@@ -1,0 +1,2 @@
+# App-wide hooks live here (e.g., useDebounce, useMediaQuery).
+# Feature-specific hooks go in features/<name>/hooks/ instead.

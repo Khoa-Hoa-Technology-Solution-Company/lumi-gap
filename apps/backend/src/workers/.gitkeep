@@ -1,0 +1,7 @@
+# Standalone BullMQ worker entry points live here. Each worker runs as a
+# separate Node process (npm script: pnpm worker:sync / worker:embedding / worker:report).
+#
+# Planned:
+#   sync.worker.ts        — fetch from OpenAlex/Semantic Scholar, upsert papers
+#   embedding.worker.ts   — batch-embed paper title+abstract with Gemini
+#   report.worker.ts      — generate analytical reports + research gaps via RAG

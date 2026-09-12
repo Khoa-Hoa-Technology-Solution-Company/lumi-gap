@@ -1,0 +1,29 @@
+{
+  "expo": {
+    "name": "Publication Trend",
+    "slug": "publication-trend",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "trendapp",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.publicationtrend.app"
+    },
+    "android": {
+      "package": "com.publicationtrend.app"
+    },
+    "web": {
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-notifications"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

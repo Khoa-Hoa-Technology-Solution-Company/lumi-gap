@@ -1,0 +1,89 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+out/
+.turbo/
+*.tsbuildinfo
+
+# Env
+.env
+.env.production
+.env.production.b64
+.env.compose
+.env.local
+.env.*.local
+!.env.example
+!.env.production.example
+!.env.compose.example
+!.env.*.example
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# IDE / Editor
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Testing
+coverage/
+.nyc_output/
+
+# Frontend specific
+.next/
+.nuxt/
+.svelte-kit/
+
+# Expo / React Native
+.expo/
+.expo-shared/
+*.jks
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+web-build/
+
+# Native
+ios/Pods/
+android/.gradle/
+android/app/build/
+android/build/
+
+# Misc
+*.tgz
+.eslintcache
+.cache/
+
+# Claude
+.claude/local-state/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+env/
+venv/
+.pytest_cache/
+
+# Uploads & temporary artifacts
+apps/backend/uploads/
+apps/ai-reviewer/output/
+*.pdf
+!apps/ai-reviewer/docs/*.pdf

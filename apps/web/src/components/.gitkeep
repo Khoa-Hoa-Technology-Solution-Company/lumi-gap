@@ -1,0 +1,2 @@
+# Shared UI building blocks (e.g., PaperCard, TrendChart wrappers).
+# Generic shadcn primitives go in ./ui/ — generated via `pnpm dlx shadcn@latest add ...`.

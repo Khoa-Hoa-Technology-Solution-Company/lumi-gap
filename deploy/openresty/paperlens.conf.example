@@ -1,0 +1,47 @@
+# Install one Let's Encrypt certificate containing both paperlens.uk and
+# api.paperlens.uk, then copy this file into the OpenResty conf.d directory.
+
+server {
+  listen 80;
+  server_name paperlens.uk api.paperlens.uk;
+  return 301 https://$host$request_uri;
+}
+
+server {
+  listen 443 ssl http2;
+  server_name paperlens.uk;
+
+  ssl_certificate /etc/letsencrypt/live/paperlens.uk/fullchain.pem;
+  ssl_certificate_key /etc/letsencrypt/live/paperlens.uk/privkey.pem;
+
+  location / {
+    proxy_pass http://127.0.0.1:9001;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+  }
+}
+
+server {
+  listen 443 ssl http2;
+  server_name api.paperlens.uk;
+
+  ssl_certificate /etc/letsencrypt/live/paperlens.uk/fullchain.pem;
+  ssl_certificate_key /etc/letsencrypt/live/paperlens.uk/privkey.pem;
+
+  client_max_body_size 12m;
+
+  location / {
+    proxy_pass http://127.0.0.1:9000;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_connect_timeout 10s;
+    proxy_read_timeout 120s;
+    proxy_send_timeout 120s;
+  }
+}

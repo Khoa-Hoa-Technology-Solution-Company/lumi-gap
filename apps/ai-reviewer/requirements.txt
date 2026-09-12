@@ -1,0 +1,15 @@
+fastapi>=0.116,<1
+uvicorn[standard]>=0.35,<1
+python-multipart>=0.0.20,<1
+pypdf>=5.9,<7
+openai>=1.99,<3
+google-genai>=2.0,<3
+pydantic>=2.11,<3
+python-dotenv>=1.1,<2
+google-auth>=2.40,<3
+requests>=2.32,<3
+cryptography>=44,<51
+payos>=1.1,<2
+httpx>=0.28,<1
+pdfplumber>=0.11.7,<0.12
+defusedxml>=0.7.1,<1

@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Liêm Research Paper — quản lý, review và kiểm tra định dạng bài báo khoa học">
+  <title>Liêm Research Paper</title>
+  <link rel="stylesheet" href="/static/styles.css?v=20260908-1">
+  <link rel="stylesheet" href="/static/studio.css?v=20260908-2">
+  <link rel="stylesheet" href="/static/admin.css?v=20260908-1">
+</head>
+<body>
+  <section id="auth-loading" class="login-screen" role="status" aria-live="polite">
+    <div class="auth-loading-card"><img class="brand-logo brand-logo-loading" src="/static/LRP.png" alt=""><p id="auth-loading-message">Đang mở Liêm Research Paper…</p><button id="retry-bootstrap" class="button button-ghost hidden">Thử lại</button></div>
+  </section>
+  <section id="login-screen" class="login-screen hidden" hidden>
+    <div class="login-card">
+      <img class="brand-logo brand-logo-login" src="/static/LRP.png" alt="Liêm Research Paper"><p class="eyebrow">LIÊM RESEARCH PAPER / REVIEW STUDIO</p>
+      <h1>Không gian nghiên cứu<br>của riêng bạn.</h1>
+      <p>Quản lý bản thảo, review khoa học song ngữ và kiểm tra định dạng theo chuẩn của nơi bạn muốn xuất bản.</p>
+      <div id="google-login"></div>
+      <p id="login-status" role="status">Đang tải cấu hình đăng nhập…</p>
+      <div class="login-features"><span>Thư viện riêng</span><span>Gemini key cá nhân</span><span>Ví credit & PayOS</span></div>
+    </div>
+  </section>
+  <div class="app-shell hidden" hidden>
+    <aside class="sidebar" id="workspace-nav">
+      <a class="brand" href="#" aria-label="Trang chủ Liêm Research Paper">
+        <img class="brand-logo brand-logo-sidebar" src="/static/LRP.png" alt="Liêm Research Paper">
+      </a>
+
+      <nav class="main-nav" aria-label="Điều hướng chính">
+        <button class="nav-item active" data-view="dashboard">
+          <span class="nav-icon">⌂</span><span>Tổng quan</span>
+        </button>
+        <button class="nav-item" data-view="papers">
+          <span class="nav-icon">▤</span><span>Bài báo</span>
+          <span class="nav-count" id="paper-nav-count">0</span>
+        </button>
+        <button class="nav-item" data-view="formats"><span class="nav-icon">▧</span><span>Chuẩn định dạng</span></button>
+      </nav>
+
+      <nav class="main-nav account-nav" aria-label="Tài khoản">
+        <button class="nav-item" data-view="profile"><span class="nav-icon">◎</span><span>Hồ sơ & API key</span></button>
+        <button class="nav-item" data-view="wallet"><span class="nav-icon">◈</span><span>Ví credit</span><span class="nav-count" id="account-credit">0 credit</span></button>
+        <button class="nav-item" data-view="storage"><span class="nav-icon">◫</span><span>Dung lượng</span></button>
+      </nav>
+      <nav class="main-nav admin-nav hidden" id="admin-nav" aria-label="Quản trị hệ thống">
+        <p class="admin-nav-title">VẬN HÀNH</p>
+        <button class="nav-item" data-view="admin-dashboard"><span class="nav-icon">◴</span><span>Doanh thu & credit</span></button>
+        <button class="nav-item" data-view="admin-users"><span class="nav-icon">♙</span><span>Người dùng</span></button>
+        <button class="nav-item" data-view="admin-payments"><span class="nav-icon">◈</span><span>Giao dịch nạp tiền</span></button>
+        <button class="nav-item" data-view="admin-credits"><span class="nav-icon">▤</span><span>Sổ credit</span></button>
+        <button class="nav-item" data-view="admin-activity"><span class="nav-icon">≡</span><span>Nhật ký hoạt động</span></button>
+        <p class="admin-nav-title">CẤU HÌNH</p>
+        <button class="nav-item" data-view="admin-billing"><span class="nav-icon">⚙</span><span>Thanh toán PayOS</span></button>
+        <button class="nav-item" data-view="admin-ai"><span class="nav-icon">✧</span><span>AI & model</span></button>
+        <button class="nav-item" data-view="admin-auth"><span class="nav-icon">◎</span><span>Đăng nhập & CAPTCHA</span></button>
+        <button class="nav-item" data-view="admin-review-types"><span class="nav-icon">▧</span><span>Loại review</span></button>
+        <button class="nav-item" data-view="admin-formats"><span class="nav-icon">▥</span><span>Template định dạng</span></button>
+        <button class="nav-item" data-view="admin-storage"><span class="nav-icon">◫</span><span>Dung lượng & Drive</span></button>
+        <button class="nav-item" data-view="admin-limits"><span class="nav-icon">◷</span><span>Giới hạn & chống spam</span></button>
+        <button class="nav-item" data-view="admin-email"><span class="nav-icon">✉</span><span>Email thông báo</span></button>
+      </nav>
+      <div class="sidebar-account"><strong id="account-name"></strong><button id="logout" type="button">Đăng xuất</button></div>
+
+      <div class="sidebar-note">
+        <span class="pulse-dot" id="ai-dot"></span>
+        <div><strong id="ai-label">Đang kiểm tra AI</strong><small id="ai-model">—</small></div>
+      </div>
+
+      <div class="sidebar-footer">
+        <span>Evidence-first review</span>
+        <small>Balanced by default</small>
+      </div>
+    </aside>
+
+    <main class="main-content">
+      <header class="topbar">
+        <button class="mobile-menu" id="mobile-menu" aria-label="Mở menu" aria-expanded="false" aria-controls="workspace-nav">☰</button>
+        <div class="page-heading">
+          <p class="eyebrow">WORKSPACE / SCIENTIFIC REVIEW</p>
+          <h1 id="page-title">Tổng quan nghiên cứu</h1>
+        </div>
+        <button class="button button-primary" id="open-upload">
+          <span class="button-icon">＋</span> Upload bài báo
+        </button>
+      </header>
+
+      <section class="view" id="profile-view"></section>
+      <section class="view" id="wallet-view"></section>
+      <section class="view" id="storage-view"></section>
+      <section class="view" id="admin-view"></section>
+      <section class="view" id="formats-view"></section>
+      <section class="view active" id="dashboard-view">
+        <div class="hero-card">
+          <div>
+            <p class="hero-kicker">YOUR RESEARCH, READY FOR REVIEW</p>
+            <h2>Bản thảo tốt hơn.<br><em>Sẵn sàng cho bước tiếp theo.</em></h2>
+            <p>Từ chất lượng nghiên cứu đến chuẩn trình bày. Mọi nhận xét, phiên bản và kết quả trong một không gian làm việc.</p>
+          </div>
+          <div class="hero-document" aria-hidden="true"><span>MANUSCRIPT / 01</span><div class="doc-title"></div><div class="doc-lines"></div><div class="doc-columns"><div></div><div></div></div><strong>✓ Evidence & format</strong></div>
+        </div>
+
+        <div class="metric-grid" id="metric-grid">
+          <article class="metric-card"><span>Tổng bài báo</span><strong id="metric-total">—</strong><small>trong thư viện</small></article>
+          <article class="metric-card"><span>Đã review</span><strong id="metric-reviewed">—</strong><small>báo cáo hoàn tất</small></article>
+          <article class="metric-card"><span>Đang xử lý</span><strong id="metric-reviewing">—</strong><small>tác vụ AI</small></article>
+          <article class="metric-card"><span>Chờ review</span><strong id="metric-pending">—</strong><small>sẵn sàng phân tích</small></article>
+        </div>
+
+        <div class="dashboard-grid">
+          <article class="panel score-panel">
+            <div class="panel-heading">
+              <div><p class="eyebrow">REVIEW HỘI NGHỊ</p><h3>Điểm trung bình</h3></div>
+              <span class="panel-badge">1–5</span>
+            </div>
+            <div id="score-bars" class="score-bars"></div>
+          </article>
+          <article class="panel recommendation-panel">
+            <div class="panel-heading">
+              <div><p class="eyebrow">DECISIONS</p><h3>Phân bố khuyến nghị</h3></div>
+            </div>
+            <div id="recommendation-chart" class="recommendation-chart"></div>
+          </article>
+        </div>
+
+        <section class="recent-section">
+          <div class="section-heading">
+            <div><p class="eyebrow">LIBRARY</p><h2>Bài báo gần đây</h2></div>
+            <button class="text-button" data-go-papers>Xem tất cả →</button>
+          </div>
+          <div class="paper-grid" id="recent-papers"></div>
+        </section>
+      </section>
+
+      <section class="view" id="papers-view">
+        <div class="library-toolbar">
+          <label class="search-box">
+            <span>⌕</span>
+            <input id="paper-search" type="search" placeholder="Tìm theo tiêu đề, tác giả hoặc tên file…">
+          </label>
+          <div class="filter-tabs" id="status-filters">
+            <button class="active" data-status="">Tất cả</button>
+            <button data-status="reviewed">Đã review</button>
+            <button data-status="pending">Chờ review</button>
+            <button data-status="reviewing">Đang xử lý</button>
+          </div>
+        </div>
+        <div class="library-summary"><strong id="library-count">0 bài báo</strong><span>Sắp xếp theo cập nhật gần nhất</span></div>
+        <div class="paper-grid library-grid" id="paper-list"></div>
+        <div class="empty-state hidden" id="paper-empty">
+          <span>⌁</span><h3>Chưa tìm thấy bài báo</h3><p>Thử từ khóa khác hoặc upload một file PDF mới.</p>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <button class="nav-backdrop" id="nav-backdrop" aria-label="Đóng menu" tabindex="-1"></button>
+
+  <div class="drawer-backdrop" id="drawer-backdrop"></div>
+  <aside class="detail-drawer" id="detail-drawer" aria-hidden="true">
+    <div class="drawer-header">
+      <div><p class="eyebrow">PAPER PROFILE</p><span class="status-chip" id="detail-status">—</span></div>
+      <button class="icon-button" id="close-drawer" aria-label="Đóng">×</button>
+    </div>
+    <div class="drawer-body" id="drawer-body"></div>
+  </aside>
+
+  <div class="modal-backdrop" id="upload-modal" aria-hidden="true">
+    <section class="modal" role="dialog" aria-modal="true" aria-labelledby="upload-title">
+      <div class="modal-header">
+        <div><p class="eyebrow">NEW MANUSCRIPT</p><h2 id="upload-title">Upload bài báo</h2></div>
+        <button class="icon-button" data-close-modal aria-label="Đóng">×</button>
+      </div>
+      <form id="upload-form">
+        <label class="dropzone" id="dropzone">
+          <input type="file" id="pdf-file" name="file" accept="application/pdf,.pdf" required>
+          <span class="upload-symbol">⇧</span>
+          <strong id="file-label">Kéo PDF vào đây hoặc bấm để chọn</strong>
+          <small id="upload-limit-label">Tối đa 50 MB / PDF · Dung lượng miễn phí 50 MB / tài khoản</small>
+        </label>
+        <div class="form-grid">
+          <label><span>Tiêu đề <small>(không bắt buộc)</small></span><input name="title" placeholder="Dùng khi muốn sửa tiêu đề tự nhận diện"></label>
+          <label><span>Tác giả <small>(không bắt buộc)</small></span><input name="authors" placeholder="Nguyễn Văn A, Trần Văn B"></label>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="button button-ghost" data-close-modal>Hủy</button>
+          <button type="submit" class="button button-primary" id="upload-submit">Upload & tạo profile</button>
+        </div>
+      </form>
+    </section>
+  </div>
+
+  <div class="toast-region" id="toast-region" aria-live="polite"></div>
+  <dialog id="storage-quota-dialog" class="storage-dialog" aria-labelledby="storage-quota-title">
+    <h2 id="storage-quota-title">Không đủ dung lượng upload</h2><p id="storage-quota-message"></p>
+    <div class="storage-admin-actions"><button id="quota-cleanup" class="button button-primary">Chọn bài cũ để xóa</button><button id="quota-buy" class="button button-ghost">Mua thêm dung lượng</button><button id="quota-cancel" class="button button-ghost">Để sau</button></div>
+  </dialog>
+  <script src="/static/app.js?v=20260908-4" defer></script>
+  <script src="/static/review-types.js?v=20260908-2" defer></script>
+  <script src="/static/formats.js?v=20260908-2" defer></script>
+  <script src="/static/storage.js?v=20260908-4" defer></script>
+  <script src="/static/admin.js?v=20260908-1" defer></script>
+  <script src="/static/accounts.js?v=20260908-4" defer></script>
+</body>
+</html>

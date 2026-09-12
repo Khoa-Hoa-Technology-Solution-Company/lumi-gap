@@ -1,0 +1,110 @@
+/**
+ * Centralised list of backend route paths. Use these everywhere instead of
+ * string literals so renames stay safe and grep-able.
+ */
+export const API_ROUTES = {
+  auth: {
+    register: "/auth/register",
+    login: "/auth/login",
+    refresh: "/auth/refresh",
+    logout: "/auth/logout",
+    oauthExchange: "/auth/oauth/exchange",
+    me: "/auth/me",
+    changePassword: "/auth/change-password",
+  },
+  home: {
+    overview: "/home/overview",
+  },
+  papers: {
+    list: "/papers",
+    detail: (id: string) => `/papers/${id}`,
+    translation: (id: string) => `/papers/${id}/translation`,
+    translationCapabilities: "/papers/translation/capabilities",
+    compare: "/papers/compare",
+  },
+  search: {
+    semantic: "/search", 
+  },
+  trends: {
+    topic: (topic: string) => `/trends/${encodeURIComponent(topic)}`,
+  },
+  reports: {
+    list: "/reports",
+    detail: (id: string) => `/reports/${id}`,
+    create: "/reports",
+    paperCount: (paperId: string) => `/reports/paper/${paperId}/count`,
+    evidencePreview: "/reports/evidence-preview",
+  },
+  bookmarks: {
+    list: "/bookmarks",
+    create: "/bookmarks",
+    delete: (id: string) => `/bookmarks/${id}`,
+    check: "/bookmarks/check",
+    updateNote: (id: string) => `/bookmarks/${id}`,
+  },
+  notifications: {
+    list: "/notifications",
+    read: (id: string) => `/notifications/${id}/read`,
+    readAll: "/notifications/read-all",
+  },
+  analytics: {
+    summary: "/analytics/search/summary",
+    dashboard: "/analytics/search",
+    me: "/analytics/search/me",
+  },
+  admin: {
+    sync: "/admin/sync",
+    syncRuns: "/admin/sync/runs",
+    embedStatus: "/admin/embed/status",
+    triggerEmbed: "/admin/embed",
+    users: "/admin/users",
+    userRole: (id: string) => `/admin/users/${id}/role`,
+    userStatus: (id: string) => `/admin/users/${id}/status`,
+    stats: "/admin/stats",
+    pipelineStatus: "/admin/pipeline/status",
+    openAlexIngestPreflight: "/admin/openalex-ingest/preflight",
+    openAlexIngestCampaigns: "/admin/openalex-ingest/campaigns",
+    openAlexIngestCampaign: (id: string) => `/admin/openalex-ingest/campaigns/${id}`,
+    startOpenAlexIngestCampaign: (id: string) => `/admin/openalex-ingest/campaigns/${id}/start`,
+    pauseOpenAlexIngestCampaign: (id: string) => `/admin/openalex-ingest/campaigns/${id}/pause`,
+    cancelOpenAlexIngestCampaign: (id: string) => `/admin/openalex-ingest/campaigns/${id}/cancel`,
+    triggerCorpusValidation: (campaignId: string) => `/admin/openalex-ingest/campaigns/${campaignId}/validations`,
+    latestCorpusValidation: (campaignId: string) => `/admin/openalex-ingest/campaigns/${campaignId}/validations/latest`,
+    corpusValidationRun: (validationRunId: string) => `/admin/openalex-ingest/validations/${validationRunId}`,
+    evaluationSummary: "/admin/evaluation/summary",
+  },
+  gaps: {
+    evidencePreview: "/gaps/evidence-preview",
+    analyze: "/gaps/analyze",
+    analyzeStatus: (id: string) => `/gaps/analyze/${id}`,
+    retryAnalysis: (id: string) => `/gaps/analyze/${id}/retry`,
+    activeAnalysis: "/gaps/analyze/active",
+    list: "/gaps",
+    patch: (id: string) => `/gaps/${id}`,
+    directions: (id: string) => `/gaps/${id}/directions`,
+  },
+  projects: {
+    list: "/projects",
+    create: "/projects",
+    detail: (id: string) => `/projects/${id}`,
+    update: (id: string) => `/projects/${id}`,
+    delete: (id: string) => `/projects/${id}`,
+    addPaper: (id: string) => `/projects/${id}/papers`,
+    removePaper: (id: string, paperId: string) => `/projects/${id}/papers/${paperId}`,
+    addMember: (id: string) => `/projects/${id}/members`,
+    removeMember: (id: string, memberId: string) => `/projects/${id}/members/${memberId}`,
+    chat: {
+      send: (id: string) => `/projects/${id}/chat`,
+      history: (id: string) => `/projects/${id}/chat`,
+      events: (id: string) => `/projects/${id}/chat/events`,
+      pin: (id: string, messageId: string) => `/projects/${id}/chat/${messageId}/pin`,
+    },
+    teamChat: {
+      send: (id: string) => `/projects/${id}/team-chat`,
+      history: (id: string) => `/projects/${id}/team-chat`,
+      events: (id: string) => `/projects/${id}/team-chat/events`,
+      read: (id: string, messageId: string) => `/projects/${id}/team-chat/${messageId}/read`,
+      delete: (id: string, messageId: string) => `/projects/${id}/team-chat/${messageId}`,
+    },
+  }
+} as const;

@@ -1,0 +1,34 @@
+{
+  "name": "publication-trend-system",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI-assisted Scientific Publication Trend Analysis System",
+  "packageManager": "pnpm@11.3.0",
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=11.0.0"
+  },
+  "scripts": {
+    "dev": "turbo run dev",
+    "dev:backend": "turbo run dev --filter=backend",
+    "dev:web": "turbo run dev --filter=web",
+    "dev:mobile": "pnpm --filter mobile exec expo start",
+    "dev:flutter_mobile": "cd apps/flutter_mobile && flutter run --dart-define=API_BASE_URL=http://10.0.2.2:4000/api/v1",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "test:e2e": "playwright test",
+    "test:e2e:list": "playwright test --list",
+    "clean": "turbo run clean",
+    "docker:up": "docker compose --env-file .env.compose up -d",
+    "docker:down": "docker compose --env-file .env.compose down",
+    "docker:logs": "docker compose --env-file .env.compose logs -f"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.55.0",
+    "@types/node": "^22.10.0",
+    "turbo": "^2.3.0",
+    "typescript": "^5.7.0"
+  }
+}

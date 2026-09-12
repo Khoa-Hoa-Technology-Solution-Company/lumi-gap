@@ -1,0 +1,891 @@
+// ============================================================================
+//  Publication Trend System — Logical ERD (relational)
+//  Paste this whole file into https://dbdiagram.io  (it is valid DBML).
+//
+//  NOTE (đọc trước): Đây là LOGICAL MODEL (mô hình quan hệ) dùng cho báo cáo.
+//  Hệ thống chạy thật trên MongoDB nên bản PHYSICAL khác ở 2 điểm:
+//    1. authors/keywords/topics được EMBED thẳng vào research_papers
+//       (3 bảng paper_authors/paper_keywords/paper_topics chỉ tồn tại ở mức logic).
+//    2. bookmarks/follows/publication_trends ở Mongo dùng targetKind + 1
+//       targetId duy nhất (ERD này tách cột FK cho đúng quan hệ).
+// ============================================================================
+
+Project publication_trend {
+  database_type: 'PostgreSQL'
+  Note: 'Logical ERD for the AI-assisted Publication Trend System (WDP301). 6 phases grouped by TableGroup. Physical store is MongoDB (see header note).'
+}
+
+// ---------------------------------------------------------------------------
+//  ENUMS — chốt tập giá trị hợp lệ cho các cột trạng thái/loại
+// ---------------------------------------------------------------------------
+Enum account_status {
+  active
+  suspended
+  deleted
+}
+Enum provider_status {
+  active
+  disabled
+}
+Enum config_status {
+  enabled
+  disabled
+}
+Enum run_status {
+  running
+  succeeded
+  failed
+  cancelled
+}
+Enum data_status {
+  draft
+  active
+  "low-quality"
+  archived
+}
+Enum paper_kind {
+  article
+  proceedings
+  preprint
+  review
+  "book-chapter"
+  other
+}
+Enum oa_status {
+  gold
+  green
+  hybrid
+  bronze
+  closed
+  unknown
+}
+Enum check_status {
+  pass
+  warn
+  fail
+}
+Enum detected_by {
+  openalex
+  ai
+  user
+}
+Enum bookmark_target {
+  paper
+  keyword
+  topic
+  journal
+}
+Enum follow_target {
+  keyword
+  topic
+  journal
+  author
+}
+Enum trend_target {
+  keyword
+  topic
+  journal
+  author
+}
+Enum member_role {
+  owner
+  editor
+  viewer
+}
+Enum report_status {
+  pending
+  generating
+  ready
+  "low-confidence"
+  failed
+}
+Enum input_method {
+  doi
+  abstract
+  pdf
+}
+
+// ===========================================================================
+//  PHASE 0 — Auth (đã có)
+// ===========================================================================
+Table roles {
+  id varchar [pk]
+  role_name varchar [not null, unique]
+  description text
+  created_at datetime [default: `now()`]
+  updated_at datetime
+}
+
+Table users {
+  id varchar [pk]
+  role_id varchar [not null]
+  full_name varchar [not null]
+  email varchar [not null, unique]
+  password_hash varchar [not null]
+  account_status account_status [not null, default: 'active']
+  last_login_at datetime
+  created_at datetime [default: `now()`]
+  updated_at datetime
+  indexes {
+    email [unique]
+    role_id
+  }
+}
+
+Table user_sessions {
+  id varchar [pk]
+  user_id varchar [not null]
+  refresh_token_hash varchar [not null, unique]
+  user_agent varchar
+  ip_address varchar
+  expires_at datetime [not null]
+  revoked_at datetime
+  created_at datetime [default: `now()`]
+  indexes {
+    user_id
+    expires_at
+  }
+  Note: 'Physical (Mongo): collection refreshtokens; TTL index on expires_at.'
+}
+
+// ===========================================================================
+//  PHASE A — Sync pipeline + master data
+// ===========================================================================
+Table api_providers {
+  id varchar [pk]
+  provider_name varchar [not null, unique]
+  base_url varchar [not null]
+  provider_kind varchar [not null]
+  provider_status provider_status [not null, default: 'disabled']
+  rate_limit_per_min int
+  created_at datetime [default: `now()`]
+  updated_at datetime
+}
+
+Table api_sync_configs {
+  id varchar [pk]
+  provider_id varchar [not null]
+  created_by varchar
+  config_name varchar [not null]
+  research_field varchar
+  search_text varchar
+  from_publication_year int
+  to_publication_year int
+  schedule_cron varchar
+  config_status config_status [not null, default: 'enabled']
+  last_run_at datetime
+  next_run_at datetime
+  created_at datetime [default: `now()`]
+  updated_at datetime
+  indexes {
+    provider_id
+    next_run_at
+  }
+}
+
+Table api_sync_runs {
+  id varchar [pk]
+  sync_config_id varchar
+  provider_id varchar [not null]
+  search_text varchar
+  run_status run_status [not null, default: 'running']
+  started_at datetime [not null, default: `now()`]
+  finished_at datetime
+  total_fetched int [default: 0]
+  total_inserted int [default: 0]
+  total_updated int [default: 0]
+  total_duplicates int [default: 0]
+  error_message text
+  indexes {
+    (sync_config_id, started_at)
+    run_status
+    started_at
+  }
+  Note: 'sync_config_id nullable — cho phép run thủ công không gắn config.'
+}
+
+Table journals {
+  id varchar [pk]
+  journal_name varchar [not null]
+  issn varchar [unique]
+  eissn varchar
+  publisher varchar
+  country varchar
+  homepage_url text
+  is_open_access boolean
+  works_count int
+  cited_by_count int
+  external_id varchar
+  created_at datetime [default: `now()`]
+  updated_at datetime
+  indexes {
+    journal_name
+    external_id [unique]
+  }
+}
+
+Table authors {
+  id varchar [pk]
+  full_name varchar [not null]
+  orcid varchar [unique]
+  affiliation_text text
+  h_index int
+  works_count int
+  cited_by_count int
+  external_id varchar
+  created_at datetime [default: `now()`]
+  updated_at datetime
+  indexes {
+    full_name
+    external_id [unique]
+  }
+}
+
+Table keywords {
+  id varchar [pk]
+  keyword_name varchar [not null]
+  normalized_name varchar [not null, unique]
+  created_at datetime [default: `now()`]
+  updated_at datetime
+}
+
+Table research_topics {
+  id varchar [pk]
+  parent_topic_id varchar
+  topic_name varchar [not null]
+  description text
+  research_field varchar
+  external_id varchar
+  created_at datetime [default: `now()`]
+  updated_at datetime
+  indexes {
+    (parent_topic_id, topic_name)
+    external_id [unique]
+  }
+}
+
+Table research_papers {
+  id varchar [pk]
+  journal_id varchar
+  title text [not null]
+  abstract_text text
+  doi varchar [unique, note: 'unique when present (sparse)']
+  publication_year int
+  publication_date datetime
+  paper_kind paper_kind
+  language_code varchar
+  open_access_status oa_status
+  open_access_url text
+  license_name varchar
+  citation_count int [default: 0]
+  primary_provider varchar
+  external_ids text [note: 'Mongo: nested object {doi, openalexId, ...} indexed unique-sparse on .doi & .openalexId']
+  journal_name varchar [note: 'denormalized from journals for fast list read (Mongo)']
+  data_status data_status [not null, default: 'active']
+  data_quality_score float
+  is_ai_analyzable boolean
+  created_at datetime [default: `now()`]
+  updated_at datetime
+  indexes {
+    journal_id
+    publication_year
+    doi [unique]
+    (publication_year, citation_count)
+    data_status
+  }
+  Note: 'Mongo: embeds authors[]/keywords[]/topics[]; embedding (768-dim, select:false) reserved for Phase B; text index on title+abstract_text; collection pinned "research_papers".'
+}
+
+Table paper_authors {
+  id varchar [pk]
+  paper_id varchar [not null]
+  author_id varchar [not null]
+  author_position int
+  is_corresponding boolean
+  indexes {
+    (paper_id, author_id) [unique]
+    author_id
+  }
+  Note: 'Mongo: EMBEDDED as research_papers.authors[] (not a standalone collection).'
+}
+
+Table paper_keywords {
+  id varchar [pk]
+  paper_id varchar [not null]
+  keyword_id varchar [not null]
+  detected_by detected_by
+  confidence_score float
+  indexes {
+    (paper_id, keyword_id) [unique]
+    keyword_id
+  }
+  Note: 'Mongo: EMBEDDED as research_papers.keywords[].'
+}
+
+Table paper_topics {
+  id varchar [pk]
+  paper_id varchar [not null]
+  topic_id varchar [not null]
+  detected_by detected_by
+  confidence_score float
+  indexes {
+    (paper_id, topic_id) [unique]
+    topic_id
+  }
+  Note: 'Mongo: EMBEDDED as research_papers.topics[].'
+}
+
+Table paper_source_records {
+  id varchar [pk]
+  paper_id varchar [not null]
+  provider_id varchar [not null]
+  external_record_id varchar
+  raw_metadata text [note: 'Mongo: object (Mixed), not JSON string']
+  metadata_hash varchar
+  fetched_at datetime [default: `now()`]
+  indexes {
+    (paper_id, provider_id)
+    metadata_hash
+  }
+}
+
+Table paper_references {
+  id varchar [pk]
+  paper_id varchar [not null]
+  referenced_paper_id varchar
+  referenced_doi varchar
+  referenced_title text
+  created_at datetime [default: `now()`]
+  indexes {
+    paper_id
+    (paper_id, referenced_paper_id) [unique]
+  }
+  Note: 'At least one of referenced_paper_id / referenced_doi / referenced_title must be present.'
+}
+
+Table paper_quality_checks {
+  id varchar [pk]
+  paper_id varchar [not null, unique]
+  has_title boolean
+  has_abstract boolean
+  has_doi boolean
+  has_journal boolean
+  has_publication_year boolean
+  has_authors boolean
+  has_open_access_url boolean
+  quality_score float
+  check_status check_status [not null]
+  checked_at datetime [default: `now()`]
+  indexes {
+    (check_status, checked_at)
+  }
+  Note: '1:1 with research_papers (paper_id unique).'
+}
+
+// ===========================================================================
+//  PHASE B — Embeddings + semantic search + trends
+// ===========================================================================
+Table paper_text_chunks {
+  id varchar [pk]
+  paper_id varchar [not null]
+  chunk_index int [not null]
+  section_name varchar
+  chunk_text text [not null]
+  token_count int
+  text_hash varchar
+  created_at datetime [default: `now()`]
+  indexes {
+    (paper_id, chunk_index) [unique]
+  }
+}
+
+Table paper_embeddings {
+  id varchar [pk]
+  paper_id varchar [not null]
+  chunk_id varchar
+  embedding_model varchar [not null]
+  vector_ref text
+  text_hash varchar
+  created_at datetime [default: `now()`]
+  indexes {
+    (paper_id, chunk_id, embedding_model) [unique]
+  }
+  Note: 'Mongo: vector stored on research_papers.embedding (768-dim) + Atlas paper_vector_index.'
+}
+
+Table publication_trends {
+  id varchar [pk]
+  target_kind trend_target [not null]
+  keyword_id varchar
+  topic_id varchar
+  journal_id varchar
+  author_id varchar
+  trend_year int [not null]
+  publication_count int [not null]
+  previous_year_count int
+  absolute_growth int [note: 'derived snapshot = count - prev']
+  growth_rate float [note: 'derived snapshot']
+  trend_score float
+  calculated_at datetime [default: `now()`]
+  indexes {
+    (target_kind, trend_year)
+  }
+  Note: 'POLYMORPHIC: exactly one of keyword_id/topic_id/journal_id/author_id non-null, matching target_kind. Mongo: targetKind + single targetId.'
+}
+
+// ===========================================================================
+//  PHASE C — Projects + RAG + AI reports
+// ===========================================================================
+Table research_projects {
+  id varchar [pk]
+  owner_id varchar [not null]
+  selected_topic_id varchar
+  project_title varchar [not null]
+  description text
+  research_question text
+  project_status varchar [not null, note: 'enum: active|archived']
+  created_at datetime [default: `now()`]
+  updated_at datetime
+  indexes { owner_id }
+}
+
+Table project_members {
+  id varchar [pk]
+  project_id varchar [not null]
+  user_id varchar [not null]
+  member_role member_role [not null]
+  joined_at datetime [default: `now()`]
+  indexes {
+    (project_id, user_id) [unique]
+    user_id
+  }
+}
+
+Table project_papers {
+  id varchar [pk]
+  project_id varchar [not null]
+  paper_id varchar [not null]
+  added_by varchar
+  paper_purpose varchar
+  note text
+  created_at datetime [default: `now()`]
+  indexes {
+    (project_id, paper_id) [unique]
+    paper_id
+  }
+}
+
+Table rag_queries {
+  id varchar [pk]
+  user_id varchar
+  project_id varchar
+  search_text varchar [not null]
+  query_kind varchar [not null, note: 'enum: trend|gap|evaluate']
+  generated_prompt text
+  created_at datetime [default: `now()`]
+  indexes { user_id }
+}
+
+Table rag_retrieved_contexts {
+  id varchar [pk]
+  rag_query_id varchar [not null]
+  paper_id varchar
+  chunk_id varchar
+  similarity_score float
+  context_text text
+  created_at datetime [default: `now()`]
+  indexes { rag_query_id }
+}
+
+Table ai_models {
+  id varchar [pk]
+  provider_name varchar [not null]
+  model_name varchar [not null]
+  model_purpose varchar
+  is_enabled boolean
+  created_at datetime [default: `now()`]
+  indexes {
+    (provider_name, model_name) [unique]
+  }
+}
+
+Table prompt_templates {
+  id varchar [pk]
+  template_name varchar [not null]
+  template_kind varchar [not null]
+  version_label varchar [not null]
+  template_content text [not null]
+  is_active boolean
+  created_at datetime [default: `now()`]
+  updated_at datetime
+  indexes {
+    (template_name, version_label) [unique]
+  }
+}
+
+Table llm_analysis_reports {
+  id varchar [pk]
+  user_id varchar
+  project_id varchar
+  paper_id varchar
+  uploaded_paper_id varchar
+  topic_id varchar
+  rag_query_id varchar
+  ai_model_id varchar
+  prompt_template_id varchar
+  report_kind varchar [not null, note: 'enum: trend_analysis|gap_analysis|paper_evaluation']
+  markdown_content text [not null]
+  summary text
+  report_status report_status [not null, default: 'pending']
+  created_at datetime [default: `now()`]
+  updated_at datetime
+  indexes {
+    user_id
+    (report_status, created_at)
+  }
+}
+
+Table paper_ai_scores {
+  id varchar [pk]
+  paper_id varchar
+  uploaded_paper_id varchar
+  topic_id varchar
+  report_id varchar
+  relevance_score float
+  semantic_similarity_score float
+  trend_alignment_score float
+  metadata_quality_score float
+  recency_score float
+  citation_score float
+  research_gap_score float
+  final_score float
+  explanation text
+  scored_by varchar [note: 'enum: ai|rule']
+  created_at datetime [default: `now()`]
+  indexes { paper_id }
+}
+
+Table research_gaps {
+  id varchar [pk]
+  project_id varchar
+  topic_id varchar
+  report_id varchar
+  gap_title varchar [not null]
+  gap_description text [not null]
+  evidence text
+  suggested_direction text
+  confidence_score float
+  created_at datetime [default: `now()`]
+}
+
+Table report_verifications {
+  id varchar [pk]
+  report_id varchar [not null]
+  verifier_kind varchar [not null, note: 'enum: ai|rule|human']
+  is_valid boolean [not null]
+  checklist_result text
+  feedback text
+  verified_by varchar
+  verified_at datetime [default: `now()`]
+  indexes { report_id }
+}
+
+Table dashboard_reports {
+  id varchar [pk]
+  user_id varchar [not null]
+  project_id varchar
+  generated_report_id varchar
+  report_title varchar [not null]
+  filters_text text
+  chart_data_text text
+  created_at datetime [default: `now()`]
+}
+
+// ===========================================================================
+//  PHASE D — Personalization + MCP
+// ===========================================================================
+Table saved_searches {
+  id varchar [pk]
+  user_id varchar [not null]
+  project_id varchar
+  search_text varchar [not null]
+  filters_text text
+  created_at datetime [default: `now()`]
+  indexes { user_id }
+}
+
+Table bookmarks {
+  id varchar [pk]
+  user_id varchar [not null]
+  target_kind bookmark_target [not null]
+  paper_id varchar
+  keyword_id varchar
+  topic_id varchar
+  journal_id varchar
+  note text
+  created_at datetime [default: `now()`]
+  indexes { user_id }
+  Note: 'POLYMORPHIC: exactly one of paper_id/keyword_id/topic_id/journal_id non-null, matching target_kind. Mongo: targetKind + single targetId.'
+}
+
+Table follows {
+  id varchar [pk]
+  user_id varchar [not null]
+  target_kind follow_target [not null]
+  keyword_id varchar
+  topic_id varchar
+  journal_id varchar
+  author_id varchar
+  created_at datetime [default: `now()`]
+  indexes { user_id }
+  Note: 'POLYMORPHIC: exactly one of keyword_id/topic_id/journal_id/author_id non-null, matching target_kind.'
+}
+
+Table notifications {
+  id varchar [pk]
+  user_id varchar [not null]
+  related_paper_id varchar
+  related_topic_id varchar
+  title varchar [not null]
+  message text
+  notification_kind varchar [note: 'enum: trend_alert|new_paper|report_ready|system']
+  is_read boolean [not null, default: false]
+  created_at datetime [default: `now()`]
+  indexes {
+    (user_id, is_read)
+  }
+}
+
+Table mcp_servers {
+  id varchar [pk]
+  server_name varchar [not null]
+  server_url varchar
+  server_status varchar [not null, note: 'enum: active|disabled']
+  created_at datetime [default: `now()`]
+  updated_at datetime
+}
+
+Table mcp_tools {
+  id varchar [pk]
+  server_id varchar
+  tool_name varchar [not null]
+  description text
+  input_schema_text text
+  output_schema_text text
+  is_enabled boolean
+  created_at datetime [default: `now()`]
+  updated_at datetime
+  indexes {
+    (server_id, tool_name) [unique]
+  }
+}
+
+Table mcp_tool_runs {
+  id varchar [pk]
+  tool_id varchar [not null]
+  user_id varchar
+  report_id varchar
+  request_payload_text text
+  response_payload_text text
+  run_status varchar [not null, note: 'enum: success|failed|timeout']
+  error_message text
+  executed_at datetime [default: `now()`]
+  indexes { tool_id }
+}
+
+// ===========================================================================
+//  PHASE E — Upload & evaluate custom paper
+// ===========================================================================
+Table uploaded_papers {
+  id varchar [pk]
+  user_id varchar [not null]
+  linked_paper_id varchar
+  input_method input_method [not null]
+  file_url text
+  title text
+  abstract_text text
+  doi varchar
+  extracted_text text
+  extraction_status varchar [note: 'enum: pending|done|failed']
+  evaluation_status varchar [note: 'enum: pending|evaluated|rejected']
+  created_at datetime [default: `now()`]
+  updated_at datetime
+  indexes { user_id }
+}
+
+Table uploaded_paper_checks {
+  id varchar [pk]
+  uploaded_paper_id varchar [not null, unique]
+  selected_topic_id varchar
+  relevance_score float
+  topic_match_score float
+  metadata_quality_score float
+  final_decision varchar [note: 'enum: accept|warn|reject']
+  feedback text
+  checked_at datetime [default: `now()`]
+}
+
+Table audit_logs {
+  id varchar [pk]
+  user_id varchar
+  action_name varchar [not null]
+  target_table_name varchar
+  target_record_id varchar
+  details_text text [note: 'Mongo: object (Mixed)']
+  created_at datetime [default: `now()`]
+  indexes {
+    (user_id, created_at)
+    (action_name, created_at)
+    (target_table_name, target_record_id)
+  }
+  Note: 'Mongo: TTL index on created_at (90 days).'
+}
+
+// ===========================================================================
+//  RELATIONSHIPS
+// ===========================================================================
+Ref: users.role_id > roles.id
+Ref: user_sessions.user_id > users.id
+Ref: api_sync_configs.provider_id > api_providers.id
+Ref: api_sync_configs.created_by > users.id
+Ref: api_sync_runs.sync_config_id > api_sync_configs.id
+Ref: api_sync_runs.provider_id > api_providers.id
+Ref: research_topics.parent_topic_id > research_topics.id
+Ref: research_papers.journal_id > journals.id
+Ref: paper_authors.paper_id > research_papers.id
+Ref: paper_authors.author_id > authors.id
+Ref: paper_keywords.paper_id > research_papers.id
+Ref: paper_keywords.keyword_id > keywords.id
+Ref: paper_topics.paper_id > research_papers.id
+Ref: paper_topics.topic_id > research_topics.id
+Ref: paper_source_records.paper_id > research_papers.id
+Ref: paper_source_records.provider_id > api_providers.id
+Ref: paper_references.paper_id > research_papers.id
+Ref: paper_references.referenced_paper_id > research_papers.id
+Ref: paper_quality_checks.paper_id > research_papers.id
+Ref: paper_text_chunks.paper_id > research_papers.id
+Ref: paper_embeddings.paper_id > research_papers.id
+Ref: paper_embeddings.chunk_id > paper_text_chunks.id
+Ref: publication_trends.keyword_id > keywords.id
+Ref: publication_trends.topic_id > research_topics.id
+Ref: publication_trends.journal_id > journals.id
+Ref: publication_trends.author_id > authors.id
+Ref: research_projects.owner_id > users.id
+Ref: research_projects.selected_topic_id > research_topics.id
+Ref: project_members.project_id > research_projects.id
+Ref: project_members.user_id > users.id
+Ref: project_papers.project_id > research_projects.id
+Ref: project_papers.paper_id > research_papers.id
+Ref: project_papers.added_by > users.id
+Ref: saved_searches.user_id > users.id
+Ref: saved_searches.project_id > research_projects.id
+Ref: bookmarks.user_id > users.id
+Ref: bookmarks.paper_id > research_papers.id
+Ref: bookmarks.keyword_id > keywords.id
+Ref: bookmarks.topic_id > research_topics.id
+Ref: bookmarks.journal_id > journals.id
+Ref: follows.user_id > users.id
+Ref: follows.keyword_id > keywords.id
+Ref: follows.topic_id > research_topics.id
+Ref: follows.journal_id > journals.id
+Ref: follows.author_id > authors.id
+Ref: notifications.user_id > users.id
+Ref: notifications.related_paper_id > research_papers.id
+Ref: notifications.related_topic_id > research_topics.id
+Ref: uploaded_papers.user_id > users.id
+Ref: uploaded_papers.linked_paper_id > research_papers.id
+Ref: uploaded_paper_checks.uploaded_paper_id > uploaded_papers.id
+Ref: uploaded_paper_checks.selected_topic_id > research_topics.id
+Ref: rag_queries.user_id > users.id
+Ref: rag_queries.project_id > research_projects.id
+Ref: rag_retrieved_contexts.rag_query_id > rag_queries.id
+Ref: rag_retrieved_contexts.paper_id > research_papers.id
+Ref: rag_retrieved_contexts.chunk_id > paper_text_chunks.id
+Ref: llm_analysis_reports.user_id > users.id
+Ref: llm_analysis_reports.project_id > research_projects.id
+Ref: llm_analysis_reports.paper_id > research_papers.id
+Ref: llm_analysis_reports.uploaded_paper_id > uploaded_papers.id
+Ref: llm_analysis_reports.topic_id > research_topics.id
+Ref: llm_analysis_reports.rag_query_id > rag_queries.id
+Ref: llm_analysis_reports.ai_model_id > ai_models.id
+Ref: llm_analysis_reports.prompt_template_id > prompt_templates.id
+Ref: paper_ai_scores.paper_id > research_papers.id
+Ref: paper_ai_scores.uploaded_paper_id > uploaded_papers.id
+Ref: paper_ai_scores.topic_id > research_topics.id
+Ref: paper_ai_scores.report_id > llm_analysis_reports.id
+Ref: research_gaps.project_id > research_projects.id
+Ref: research_gaps.topic_id > research_topics.id
+Ref: research_gaps.report_id > llm_analysis_reports.id
+Ref: report_verifications.report_id > llm_analysis_reports.id
+Ref: report_verifications.verified_by > users.id
+Ref: dashboard_reports.user_id > users.id
+Ref: dashboard_reports.project_id > research_projects.id
+Ref: dashboard_reports.generated_report_id > llm_analysis_reports.id
+Ref: mcp_tools.server_id > mcp_servers.id
+Ref: mcp_tool_runs.tool_id > mcp_tools.id
+Ref: mcp_tool_runs.user_id > users.id
+Ref: mcp_tool_runs.report_id > llm_analysis_reports.id
+Ref: audit_logs.user_id > users.id
+
+// ===========================================================================
+//  PHASE GROUPING (màu nhóm theo phase trên dbdiagram.io)
+// ===========================================================================
+TableGroup "Phase 0 — Auth" {
+  roles
+  users
+  user_sessions
+}
+
+TableGroup "Phase A — Sync & Data" {
+  api_providers
+  api_sync_configs
+  api_sync_runs
+  journals
+  authors
+  keywords
+  research_topics
+  research_papers
+  paper_authors
+  paper_keywords
+  paper_topics
+  paper_source_records
+  paper_references
+  paper_quality_checks
+  audit_logs
+}
+
+TableGroup "Phase B — Embeddings & Trends" {
+  paper_text_chunks
+  paper_embeddings
+  publication_trends
+}
+
+TableGroup "Phase C — Projects & AI Reports" {
+  research_projects
+  project_members
+  project_papers
+  rag_queries
+  rag_retrieved_contexts
+  ai_models
+  prompt_templates
+  llm_analysis_reports
+  paper_ai_scores
+  research_gaps
+  report_verifications
+  dashboard_reports
+}
+
+TableGroup "Phase D — Personalization & MCP" {
+  saved_searches
+  bookmarks
+  follows
+  notifications
+  mcp_servers
+  mcp_tools
+  mcp_tool_runs
+}
+
+TableGroup "Phase E — Upload & Evaluate" {
+  uploaded_papers
+  uploaded_paper_checks
+}

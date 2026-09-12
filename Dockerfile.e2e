@@ -1,0 +1,18 @@
+FROM mcr.microsoft.com/playwright:v1.55.0-noble
+
+RUN corepack enable && corepack prepare pnpm@11.3.0 --activate
+
+WORKDIR /app
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+COPY apps/backend/package.json apps/backend/package.json
+COPY apps/web/package.json apps/web/package.json
+COPY apps/mobile/package.json apps/mobile/package.json
+COPY packages/shared-types/package.json packages/shared-types/package.json
+
+RUN pnpm install --frozen-lockfile --filter publication-trend-system --ignore-scripts
+
+COPY playwright.config.ts ./
+COPY tests/e2e ./tests/e2e
+
+CMD ["pnpm", "test:e2e"]

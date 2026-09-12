@@ -1,0 +1,28 @@
+@import './fonts.css';
+@import './tailwind.css';
+@import './theme.css';
+
+@keyframes topic-marquee {
+  from {
+    transform: translateX(0);
+  }
+
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.topic-marquee {
+  animation: topic-marquee 32s linear infinite;
+  will-change: transform;
+}
+
+.topic-marquee:hover {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .topic-marquee {
+    animation-play-state: paused;
+  }
+}

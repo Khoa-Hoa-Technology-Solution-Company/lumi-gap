@@ -1,0 +1,1 @@
+# Shared hooks live here. Feature-specific hooks go in src/features/<name>/hooks/.

@@ -1,0 +1,227 @@
+name: lumi-gap
+
+# Local/demo runtime for the whole web platform. Copy .env.compose.example to
+# .env.compose and replace every placeholder before starting it.
+#
+# This file intentionally keeps heavyweight workers behind Compose profiles:
+#   docker compose up --build
+#   docker compose --profile workers up --build
+#   docker compose --profile ingest up --build
+#
+# See docs/DEPLOY_WITH_DOCKER.md for the MongoDB Vector Search limitation.
+
+x-backend-common: &backend-common
+  image: liemresearch-backend:local
+  build:
+    context: .
+    dockerfile: Dockerfile.backend
+  env_file:
+    - .env.compose
+    - .env
+  environment:
+    NODE_ENV: production
+    # URI credentials must be URL-encoded. For example, a raw # in a Mongo
+    # password becomes %23 here while Mongo itself receives the raw password.
+    MONGODB_URI: mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD_URI}@mongo:27017/publication_trend?authSource=admin
+    REDIS_URL: redis://default:${REDIS_PASSWORD_URI}@redis:6379
+    LIBRETRANSLATE_URL: http://libretranslate:5000
+    AI_REVIEWER_URL: http://ai-reviewer:8001
+    INTERNAL_SERVICE_KEY: ${INTERNAL_SERVICE_KEY:-liemresearch_internal_secret_key_2026}
+    CORS_ORIGIN: http://localhost:8080,http://localhost:5173
+    GOOGLE_CALLBACK_URL: http://localhost:4000/api/v1/auth/google/callback
+  depends_on:
+    mongo:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+  restart: unless-stopped
+
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:?Set MONGO_ROOT_USERNAME in .env.compose}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?Set MONGO_ROOT_PASSWORD in .env.compose}
+      MONGO_INITDB_DATABASE: publication_trend
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --quiet -u \"$$MONGO_INITDB_ROOT_USERNAME\" -p \"$$MONGO_INITDB_ROOT_PASSWORD\" --authenticationDatabase admin --eval \"db.adminCommand('ping').ok\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env.compose}
+    command:
+      - sh
+      - -c
+      - exec redis-server --appendonly yes --appendfsync everysec --requirepass "$$REDIS_PASSWORD"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli --no-auth-warning -a \"$$REDIS_PASSWORD\" ping | grep -qx PONG"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  # Free, self-hosted title/abstract translation for Paper Detail only.
+  # Enable with: docker compose --profile translation up --build
+  libretranslate-init:
+    image: libretranslate/libretranslate:v1.9.6
+    profiles: ["translation"]
+    user: "0:0"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        mkdir -p /home/libretranslate/.local/share /home/libretranslate/.local/cache
+        && chown -R 1032:1032 /home/libretranslate/.local
+    volumes:
+      - libretranslate-share:/home/libretranslate/.local/share
+      - libretranslate-cache:/home/libretranslate/.local/cache
+
+  libretranslate:
+    image: libretranslate/libretranslate:v1.9.6
+    profiles: ["translation"]
+    restart: unless-stopped
+    environment:
+      LT_LOAD_ONLY: ${LIBRETRANSLATE_LOAD_ONLY:-en,vi,es,fr,de,pt,zh,ja,ko,ru,id}
+    volumes:
+      - libretranslate-share:/home/libretranslate/.local/share
+      - libretranslate-cache:/home/libretranslate/.local/cache
+    depends_on:
+      libretranslate-init:
+        condition: service_completed_successfully
+    ports:
+      - "127.0.0.1:5000:5000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/languages', timeout=5)"]
+      interval: 15s
+      timeout: 8s
+      retries: 20
+      start_period: 120s
+
+  backend:
+    <<: *backend-common
+    ports:
+      - "4000:4000"
+    volumes:
+      - backend-uploads:/app/apps/backend/uploads
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:4000/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))\""]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  web:
+    image: liemresearch-web:local
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+      args:
+        VITE_API_BASE: ${VITE_API_BASE:-/api/v1}
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+
+  ai-reviewer:
+    image: liemresearch-ai-reviewer:local
+    build:
+      context: ./apps/ai-reviewer
+      dockerfile: Dockerfile
+    env_file:
+      - .env.compose
+      - .env
+    environment:
+      REVIEW_APP_HOST: 0.0.0.0
+      REVIEW_APP_PORT: 8001
+      INTERNAL_SERVICE_KEY: ${INTERNAL_SERVICE_KEY:-liemresearch_internal_secret_key_2026}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.6-flash}
+      APP_ENV: development
+      APP_BASE_URL: http://ai-reviewer:8001
+    ports:
+      - "8001:8001"
+    volumes:
+      - ai-reviewer-data:/app/data
+      - shared-storage-uploads:/app/data/uploads
+      - shared-storage-outputs:/app/outputs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/api/health', timeout=5)\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  worker-report:
+    <<: *backend-common
+    profiles: ["workers"]
+    command: ["pnpm", "--filter", "backend", "worker:report"]
+
+  worker-gaps:
+    <<: *backend-common
+    profiles: ["workers"]
+    command: ["pnpm", "--filter", "backend", "worker:gaps"]
+
+  worker-embedding:
+    <<: *backend-common
+    profiles: ["workers"]
+    command: ["pnpm", "--filter", "backend", "worker:embedding"]
+
+  worker-paper-analysis:
+    <<: *backend-common
+    profiles: ["workers"]
+    command: ["pnpm", "--filter", "backend", "worker:paper-analysis"]
+
+  worker-notifications:
+    <<: *backend-common
+    profiles: ["workers"]
+    command: ["pnpm", "--filter", "backend", "worker:notifications"]
+
+  worker-corpus-validation:
+    <<: *backend-common
+    profiles: ["workers"]
+    command: ["pnpm", "--filter", "backend", "worker:corpus-validation"]
+
+  # The campaign is explicit and needs OPENALEX_API_KEY. It never starts a
+  # campaign by itself; an admin must first plan and start one through the API.
+  worker-openalex-ingest:
+    <<: *backend-common
+    profiles: ["ingest"]
+    command: ["pnpm", "--filter", "backend", "worker:openalex-ingest"]
+
+  mongo-express:
+    image: mongo-express:1
+    profiles: ["tools"]
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      ME_CONFIG_MONGODB_ADMINUSERNAME: ${MONGO_ROOT_USERNAME}
+      ME_CONFIG_MONGODB_ADMINPASSWORD: ${MONGO_ROOT_PASSWORD}
+      ME_CONFIG_MONGODB_SERVER: mongo
+      ME_CONFIG_BASICAUTH_USERNAME: ${MONGO_EXPRESS_USERNAME:-admin}
+      ME_CONFIG_BASICAUTH_PASSWORD: ${MONGO_EXPRESS_PASSWORD:-change-me}
+    ports:
+      - "127.0.0.1:8081:8081"
+
+volumes:
+  mongo-data:
+  redis-data:
+  libretranslate-share:
+  libretranslate-cache:
+  backend-uploads:
+  ai-reviewer-data:
+  shared-storage-uploads:
+  shared-storage-outputs:

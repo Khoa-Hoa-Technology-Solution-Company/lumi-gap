@@ -1,0 +1,27 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+# Flat node_modules (like npm/yarn) instead of pnpm's default symlinked store.
+# React Native's Metro bundler does not follow pnpm symlinks reliably and Expo's
+# transitive deps live deep in the tree — isolated linking causes endless
+# "Unable to resolve X" errors. pnpm 11 reads node-linker from THIS file, not
+# .npmrc, so it must live here for `pnpm install` to apply it on every machine.
+nodeLinker: hoisted
+
+# pnpm 10+ blocks postinstall scripts by default for security. We explicitly
+# allow these because they are required for the toolchain to work:
+#   - esbuild: Vite/tsx/Vitest need its native binary
+#   - msgpackr-extract: Metro bundler (Expo) — falls back to slow JS if disabled
+#   - protobufjs: used internally by @google/genai to compile proto files
+#   - @google/genai: Gemini SDK setup
+# All four are trusted, widely used, mainstream packages.
+allowBuilds:
+  '@google/genai': true
+  # @scarf/scarf is analytics/telemetry pulled in by swagger-ui-express.
+  # We deny its postinstall — we don't want it phoning home, and the package
+  # works fine without its build step.
+  '@scarf/scarf': false
+  esbuild: true
+  msgpackr-extract: true
+  protobufjs: true

@@ -1,0 +1,16 @@
+.git
+.github
+.turbo
+node_modules
+**/node_modules
+**/dist
+**/*.tsbuildinfo
+.env
+.env.*
+!.env.example
+!.env.compose.example
+apps/backend/uploads
+coverage
+docs
+legacy
+*.log

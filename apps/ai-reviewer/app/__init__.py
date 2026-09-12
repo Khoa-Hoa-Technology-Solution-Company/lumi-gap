@@ -1,0 +1,2 @@
+"""Scientific Paper Review WebUI."""
+
