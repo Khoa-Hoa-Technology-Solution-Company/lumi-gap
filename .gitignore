@@ -87,3 +87,6 @@ apps/backend/uploads/
 apps/ai-reviewer/output/
 *.pdf
 !apps/ai-reviewer/docs/*.pdf
+
+.harness/
+harness.config.yaml
