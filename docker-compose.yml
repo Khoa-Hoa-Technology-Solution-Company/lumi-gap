@@ -40,6 +40,8 @@ services:
   mongo:
     image: mongo:7
     restart: unless-stopped
+    ports:
+      - "127.0.0.1:27017:27017"
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:?Set MONGO_ROOT_USERNAME in .env.compose}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?Set MONGO_ROOT_PASSWORD in .env.compose}
@@ -56,6 +58,8 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
+    ports:
+      - "127.0.0.1:6379:6379"
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env.compose}
     command:

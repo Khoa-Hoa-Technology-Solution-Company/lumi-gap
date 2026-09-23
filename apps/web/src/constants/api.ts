@@ -10,7 +10,28 @@ export const API_ROUTES = {
     logout: "/auth/logout",
     oauthExchange: "/auth/oauth/exchange",
     me: "/auth/me",
+    academicProfile: "/auth/me/academic-profile",
     changePassword: "/auth/change-password",
+  },
+  academicProfiles: {
+    me: "/academic-profiles/me",
+    public: (userId: string) => `/academic-profiles/${userId}`,
+    verificationRequest: "/academic-profiles/me/verification-request",
+  },
+  communities: {
+    list: "/communities",
+    detail: (idOrSlug: string) => `/communities/${idOrSlug}`,
+    join: (id: string) => `/communities/${id}/join`,
+    leave: (id: string) => `/communities/${id}/membership`,
+  },
+  forum: {
+    posts: "/forum/posts",
+    post: (id: string) => `/forum/posts/${id}`,
+    comments: (postId: string) => `/forum/posts/${postId}/comments`,
+    postVote: (id: string) => `/forum/posts/${id}/vote`,
+    commentVote: (id: string) => `/forum/comments/${id}/vote`,
+    acceptAnswer: (postId: string, commentId: string) => `/forum/posts/${postId}/accepted-answer/${commentId}`,
+    reports: "/forum/reports",
   },
   home: {
     overview: "/home/overview",
@@ -72,6 +93,7 @@ export const API_ROUTES = {
     latestCorpusValidation: (campaignId: string) => `/admin/openalex-ingest/campaigns/${campaignId}/validations/latest`,
     corpusValidationRun: (validationRunId: string) => `/admin/openalex-ingest/validations/${validationRunId}`,
     evaluationSummary: "/admin/evaluation/summary",
+    academicVerifications: "/admin/academic-verifications",
   },
   gaps: {
     evidencePreview: "/gaps/evidence-preview",

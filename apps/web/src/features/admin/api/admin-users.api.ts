@@ -5,7 +5,7 @@ import type {
   AdminUserItem,
   ListUsersQuery,
   ListUsersResponse,
-  UserRole,
+  SystemRole,
 } from "@trend/shared-types";
 
 export const adminUsersApi = {
@@ -13,7 +13,7 @@ export const adminUsersApi = {
     const res = await api.get(API_ROUTES.admin.users, { params: query });
     return { data: res.data.data as AdminUserItem[], meta: res.data.meta };
   },
-  async updateRole(id: string, role: UserRole): Promise<AdminUserItem> {
+  async updateRole(id: string, role: SystemRole): Promise<AdminUserItem> {
     const res = await api.patch(API_ROUTES.admin.userRole(id), { role });
     return res.data.data as AdminUserItem;
   },

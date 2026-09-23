@@ -3,6 +3,8 @@
 
 export * from "./common.js";
 export * from "./user.js";
+export * from "./academic-profile.js";
+export * from "./forum.js";
 export * from "./paper.js";
 export * from "./author.js";
 export * from "./journal.js";

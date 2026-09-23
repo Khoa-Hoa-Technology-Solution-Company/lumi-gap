@@ -7,8 +7,10 @@ export {
   useLogout,
   useCurrentUser,
   useUpdateProfile,
+  useUpdateAcademicProfile,
   useChangePassword,
 } from "./hooks/use-auth";
+export { requiresAcademicProfile } from "./utils/academic-profile";
 export {
   loginSchema,
   registerSchema,

@@ -365,7 +365,6 @@ export const openapiSpec = {
                     required: ["fullName"],
                     properties: {
                       fullName: { type: "string", example: "Hoang Long Anh" },
-                      role: { type: "string", enum: ["student", "lecturer", "researcher"] },
                     },
                   },
                 ],
@@ -392,6 +391,35 @@ export const openapiSpec = {
             description: "Invalid credentials",
             content: { "application/json": { schema: { $ref: "#/components/schemas/ApiError" } } },
           },
+        },
+      },
+    },
+    "/api/v1/auth/me/academic-profile": {
+      patch: {
+        tags: ["Auth"],
+        summary: "Complete the signed-in user's academic profile",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                additionalProperties: false,
+                required: ["academicProfileType"],
+                properties: {
+                  academicProfileType: {
+                    type: "string",
+                    enum: ["student", "researcher", "lecturer"],
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "200": { description: "Profile completed — returns the updated user" },
+          "401": { description: "Authentication required" },
         },
       },
     },

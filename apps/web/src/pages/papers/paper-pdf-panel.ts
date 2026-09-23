@@ -1,4 +1,4 @@
-type UserRole = "student" | "lecturer" | "researcher" | "admin";
+import type { UserRole } from "@trend/shared-types";
 
 type PaperStatus =
   | "pending"

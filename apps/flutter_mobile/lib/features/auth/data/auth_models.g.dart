@@ -11,8 +11,11 @@ _User _$UserFromJson(Map<String, dynamic> json) => _User(
   email: json['email'] as String,
   fullName: json['fullName'] as String,
   createdAt: DateTime.parse(json['createdAt'] as String),
-  role:
-      $enumDecodeNullable(_$UserRoleEnumMap, json['role']) ?? UserRole.student,
+  role: $enumDecodeNullable(_$UserRoleEnumMap, json['role']) ?? UserRole.user,
+  academicProfileType: $enumDecodeNullable(
+    _$AcademicProfileTypeEnumMap,
+    json['academicProfileType'],
+  ),
   institution: json['institution'] as String?,
   researchInterests: (json['researchInterests'] as List<dynamic>?)
       ?.map((e) => e as String)
@@ -26,16 +29,27 @@ Map<String, dynamic> _$UserToJson(_User instance) => <String, dynamic>{
   'fullName': instance.fullName,
   'createdAt': instance.createdAt.toIso8601String(),
   'role': _$UserRoleEnumMap[instance.role]!,
+  'academicProfileType':
+      _$AcademicProfileTypeEnumMap[instance.academicProfileType],
   'institution': instance.institution,
   'researchInterests': instance.researchInterests,
   'points': instance.points,
 };
 
 const _$UserRoleEnumMap = {
+  UserRole.user: 'user',
   UserRole.student: 'student',
   UserRole.lecturer: 'lecturer',
   UserRole.researcher: 'researcher',
+  UserRole.reviewer: 'reviewer',
+  UserRole.moderator: 'moderator',
   UserRole.admin: 'admin',
+};
+
+const _$AcademicProfileTypeEnumMap = {
+  AcademicProfileType.student: 'student',
+  AcademicProfileType.researcher: 'researcher',
+  AcademicProfileType.lecturer: 'lecturer',
 };
 
 _AuthTokens _$AuthTokensFromJson(Map<String, dynamic> json) => _AuthTokens(
@@ -74,9 +88,6 @@ _RegisterRequest _$RegisterRequestFromJson(Map<String, dynamic> json) =>
       email: json['email'] as String,
       password: json['password'] as String,
       fullName: json['fullName'] as String,
-      role:
-          $enumDecodeNullable(_$UserRoleEnumMap, json['role']) ??
-          UserRole.student,
     );
 
 Map<String, dynamic> _$RegisterRequestToJson(_RegisterRequest instance) =>
@@ -84,5 +95,4 @@ Map<String, dynamic> _$RegisterRequestToJson(_RegisterRequest instance) =>
       'email': instance.email,
       'password': instance.password,
       'fullName': instance.fullName,
-      'role': _$UserRoleEnumMap[instance.role]!,
     };

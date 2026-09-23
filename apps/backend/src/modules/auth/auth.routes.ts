@@ -10,6 +10,7 @@ import {
   ChangePasswordSchema,
   OAuthExchangeSchema,
   RankingsQuerySchema,
+  UpdateAcademicProfileSchema,
   type RankingsQueryInput,
 } from "./dto/auth.schema.js";
 import { UserModel } from "./models/user.model.js";
@@ -26,6 +27,12 @@ authRouter.post("/logout", validate(RefreshSchema), authController.logout);
 authRouter.post("/oauth/exchange", validate(OAuthExchangeSchema), authController.exchangeOAuthCode);
 authRouter.get("/me", requireAuth, authController.me);
 authRouter.patch("/me", requireAuth, validate(UpdateProfileSchema), authController.updateProfile);
+authRouter.patch(
+  "/me/academic-profile",
+  requireAuth,
+  validate(UpdateAcademicProfileSchema),
+  authController.updateAcademicProfile,
+);
 authRouter.post("/change-password", requireAuth, validate(ChangePasswordSchema), authController.changePassword);
 
 authRouter.get("/google", passport.authenticate("google", { scope: ["profile", "email"], session: false }));
@@ -81,7 +88,7 @@ authRouter.get("/rankings/top", validate(RankingsQuerySchema, "query"), async (r
   const skip = (currentPage - 1) * limit;
 
   const users = await UserModel.find({ isActive: { $ne: false }, role: { $ne: "admin" } })
-    .select("fullName institution points credits role avatarUrl")
+    .select("fullName institution points credits role academicProfileType avatarUrl")
     .sort({ points: -1, credits: -1, fullName: 1 })
     .skip(skip)
     .limit(limit)
@@ -92,7 +99,7 @@ authRouter.get("/rankings/top", validate(RankingsQuerySchema, "query"), async (r
     id: u._id.toString(),
     name: u.fullName,
     university: u.institution ?? "",
-    role: u.role,
+    role: u.academicProfileType ?? (u.role === "student" || u.role === "researcher" || u.role === "lecturer" ? u.role : undefined),
     points: u.points ?? 0,
     credits: u.credits ?? 0,
     avatarUrl: u.avatarUrl ?? null,
@@ -117,7 +124,7 @@ authRouter.get("/rankings/me", requireAuth, async (req: Request, res: Response) 
   }
 
   // Get how many users have MORE points (to determine rank)
-  const userDoc = await UserModel.findById(userId).select("points fullName institution role avatarUrl").lean();
+  const userDoc = await UserModel.findById(userId).select("points fullName institution role academicProfileType avatarUrl").lean();
   if (!userDoc) {
     res.status(404).json({ success: false, message: "User not found" });
     return;
@@ -151,7 +158,7 @@ authRouter.get("/rankings/me", requireAuth, async (req: Request, res: Response) 
         id: userId,
         name: userDoc.fullName,
         university: userDoc.institution ?? "",
-        role: userDoc.role,
+        role: userDoc.academicProfileType ?? (userDoc.role === "student" || userDoc.role === "researcher" || userDoc.role === "lecturer" ? userDoc.role : undefined),
         avatarUrl: userDoc.avatarUrl ?? null,
       },
       stats,
@@ -166,7 +173,7 @@ authRouter.get("/rankings/me", requireAuth, async (req: Request, res: Response) 
 authRouter.get("/rankings", async (req: Request, res: Response) => {
   const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 20));
   const users = await UserModel.find({ isActive: { $ne: false }, role: { $ne: "admin" } })
-    .select("fullName institution points credits role avatarUrl")
+    .select("fullName institution points credits role academicProfileType avatarUrl")
     .sort({ points: -1, credits: -1 })
     .limit(limit)
     .lean();
@@ -176,7 +183,7 @@ authRouter.get("/rankings", async (req: Request, res: Response) => {
     id: u._id.toString(),
     name: u.fullName,
     university: u.institution ?? "",
-    role: u.role,
+    role: u.academicProfileType ?? (u.role === "student" || u.role === "researcher" || u.role === "lecturer" ? u.role : undefined),
     points: u.points ?? 0,
     credits: u.credits ?? 0,
     avatarUrl: u.avatarUrl ?? null,

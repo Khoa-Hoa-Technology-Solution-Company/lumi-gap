@@ -21,7 +21,7 @@ export const notificationService = {
     message: string;
     type: string;
     paperId?: string | mongoose.Types.ObjectId;
-    targetKind?: "paper" | "report" | "gap" | "project";
+    targetKind?: "paper" | "report" | "gap" | "project" | "forum_post" | "academic_profile";
     targetId?: string | mongoose.Types.ObjectId;
   }) {
     const resolvedTargetKind = targetKind ?? (paperId ? "paper" : undefined);

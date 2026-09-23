@@ -1,8 +1,12 @@
 import { en } from "./en";
 import { gapEvidenceWorkflowViStrings } from "./gap-evidence-workflow";
 import { paperDetailIaViStrings } from "./paper-detail-ia";
+import { academicProfileStrings } from "./academic-profile";
+import { academicForumStrings } from "./academic-forum";
 
 export const vi: Record<keyof typeof en, string> = {
+  ...academicForumStrings,
+  ...academicProfileStrings.vi,
   ...gapEvidenceWorkflowViStrings,
   ...paperDetailIaViStrings,
   "1 research gap": "1 khoảng trống nghiên cứu",

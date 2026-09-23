@@ -1,5 +1,5 @@
 import { NavLink, Outlet } from "react-router-dom";
-import { LayoutDashboard, Users, RefreshCw, BarChart3, ShieldAlert, FileText, Activity, ClipboardCheck } from "lucide-react";
+import { LayoutDashboard, Users, RefreshCw, BarChart3, ShieldAlert, FileText, Activity, ClipboardCheck, BadgeCheck } from "lucide-react";
 import { useCurrentUser } from "@/features/auth";
 import { cn } from "@/utils/cn";
 
@@ -7,6 +7,7 @@ const NAV = [
   { to: "/admin", end: true, label: "Overview", icon: LayoutDashboard },
   { to: "/admin/users", end: false, label: "Users", icon: Users },
   { to: "/admin/papers", end: false, label: "Paper Requests", icon: FileText },
+  { to: "/admin/academic-verifications", end: false, label: "Lecturer Verification", icon: BadgeCheck },
   { to: "/admin/sync", end: false, label: "Sync", icon: RefreshCw },
   { to: "/admin/pipeline", end: false, label: "Pipeline", icon: Activity },
   { to: "/admin/evaluation", end: false, label: "Evaluation", icon: ClipboardCheck },

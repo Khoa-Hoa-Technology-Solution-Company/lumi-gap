@@ -7,7 +7,14 @@ import { env } from "../../config/env.js";
 import { AppError } from "../../common/exceptions/app-error.js";
 import type { AuthClaims } from "../../common/middleware/auth.js";
 import { RefreshTokenModel, UserModel, type UserDoc } from "./models/user.model.js";
-import type { LoginInput, RegisterInput, UpdateProfileInput, ChangePasswordInput } from "./dto/auth.schema.js";
+import type {
+  ChangePasswordInput,
+  LoginInput,
+  RegisterInput,
+  UpdateAcademicProfileInput,
+  UpdateProfileInput,
+} from "./dto/auth.schema.js";
+import { AcademicProfileModel } from "../academic-profiles/academic-profile.model.js";
 
 const BCRYPT_ROUNDS = 10;
 
@@ -21,7 +28,7 @@ export const authService = {
       email: input.email,
       passwordHash,
       fullName: input.fullName,
-      role: input.role ?? "student",
+      role: "user",
     });
 
     const tokens = await issueTokens(user);
@@ -67,7 +74,7 @@ export const authService = {
           googleId: profile.id,
           fullName: profile.displayName || "Google User",
           avatarUrl: profile.photos?.[0]?.value,
-          role: "student",
+          role: "user",
           passwordHash: "",
         });
       }
@@ -133,6 +140,36 @@ export const authService = {
     return toUserDto(user);
   },
 
+  async updateAcademicProfile(userId: string, input: UpdateAcademicProfileInput): Promise<User> {
+    const user = await UserModel.findById(userId);
+    if (!user) throw AppError.unauthorized();
+
+    const previousType = user.academicProfileType ?? legacyAcademicProfile(user.role);
+    user.academicProfileType = input.academicProfileType;
+    await user.save();
+    const resetVerification = previousType !== input.academicProfileType;
+    await AcademicProfileModel.updateOne(
+      { userId },
+      {
+        $setOnInsert: { userId },
+        ...(resetVerification
+          ? {
+              $set: { verificationStatus: "SELF_DECLARED" },
+              $unset: {
+                verificationRequestedAt: 1,
+                verifiedAt: 1,
+                verifiedBy: 1,
+                rejectionReason: 1,
+                verificationNote: 1,
+              },
+            }
+          : {}),
+      },
+      { upsert: true, runValidators: true },
+    );
+    return toUserDto(user);
+  },
+
   async changePassword(userId: string, input: ChangePasswordInput): Promise<void> {
     const user = await UserModel.findById(userId);
     if (!user) throw AppError.unauthorized();
@@ -154,6 +191,7 @@ async function issueTokens(user: UserDoc): Promise<AuthTokens> {
     sub: user._id.toString(),
     email: user.email,
     role: user.role,
+    academicProfileType: user.academicProfileType ?? legacyAcademicProfile(user.role),
   };
 
   const accessToken = jwt.sign(claims, env.JWT_ACCESS_SECRET, {
@@ -178,6 +216,12 @@ async function issueTokens(user: UserDoc): Promise<AuthTokens> {
   };
 }
 
+function legacyAcademicProfile(role: string): User["academicProfileType"] {
+  return role === "student" || role === "researcher" || role === "lecturer"
+    ? role
+    : undefined;
+}
+
 function hashToken(token: string): string {
   return crypto.createHash("sha256").update(token).digest("hex");
 }
@@ -188,6 +232,7 @@ function toUserDto(user: UserDoc): User {
     email: user.email,
     fullName: user.fullName,
     role: user.role,
+    academicProfileType: user.academicProfileType ?? legacyAcademicProfile(user.role),
     avatarUrl: user.avatarUrl ?? undefined,
     institution: user.institution ?? undefined,
     researchInterests: user.researchInterests,

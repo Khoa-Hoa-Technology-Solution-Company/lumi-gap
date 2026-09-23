@@ -1,8 +1,12 @@
 import { en } from "./en";
+import { academicProfileStrings } from "./academic-profile";
+import { academicForumStrings } from "./academic-forum";
 import { gapEvidenceWorkflowStrings } from "./gap-evidence-workflow";
 import { paperDetailIaStrings } from "./paper-detail-ia";
 
 export const fr: Record<keyof typeof en, string> = {
+  ...academicForumStrings,
+  ...academicProfileStrings.fr,
   ...gapEvidenceWorkflowStrings,
   ...paperDetailIaStrings,
   "1 research gap": "1 lacune de recherche",

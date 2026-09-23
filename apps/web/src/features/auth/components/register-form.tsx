@@ -30,8 +30,8 @@ export function RegisterForm() {
   const onSubmit = (values: RegisterFormValues) => {
     register.mutate(values, {
       onSuccess: () => {
-        toast.success("Registration successful! Please login to continue.");
-        navigate("/login", { replace: true });
+        toast.success("Account created. Tell us about your academic profile.");
+        navigate("/onboarding/academic-profile", { replace: true });
       },
       onError: (err) => {
         const axiosErr = err as AxiosError<{ error?: { message?: string } }>;

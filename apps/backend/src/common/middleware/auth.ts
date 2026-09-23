@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
 import jwt from "jsonwebtoken";
-import type { UserRole } from "@trend/shared-types";
+import type { AcademicProfileType, UserRole } from "@trend/shared-types";
 import { env } from "../../config/env.js";
 import { AppError } from "../exceptions/app-error.js";
 import { UserModel } from "../../modules/auth/models/user.model.js";
@@ -9,6 +9,7 @@ export interface AuthClaims {
   sub: string;          // user id
   email: string;
   role: UserRole;
+  academicProfileType?: AcademicProfileType;
 }
 
 declare global {

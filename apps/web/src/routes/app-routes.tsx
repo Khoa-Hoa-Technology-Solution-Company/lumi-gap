@@ -9,6 +9,7 @@ const AuthLayout = lazy(() => import("@/layouts/AuthLayout").then((m) => ({ defa
 const LoginPage = lazy(() => import("@/pages/login").then((m) => ({ default: m.LoginPage })));
 const RegisterPage = lazy(() => import("@/pages/register").then((m) => ({ default: m.RegisterPage })));
 const OAuthCallbackPage = lazy(() => import("@/pages/oauth-callback").then((m) => ({ default: m.OAuthCallbackPage })));
+const AcademicProfileOnboardingPage = lazy(() => import("@/pages/academic-profile-onboarding").then((m) => ({ default: m.AcademicProfileOnboardingPage })));
 const DashboardPage = lazy(() => import("@/pages/dashboard").then((m) => ({ default: m.DashboardPage })));
 const SearchPage = lazy(() => import("@/pages/search").then((m) => ({ default: m.SearchPage })));
 const TrendsPage = lazy(() => import("@/pages/trends").then((m) => ({ default: m.TrendsPage })));
@@ -30,14 +31,24 @@ const AdminEvaluationPage = lazy(() => import("@/pages/admin/evaluation").then((
 const AdminPapersPage = lazy(() => import("@/pages/admin/papers").then((m) => ({ default: m.AdminPapersPage })));
 const SubmitPaperPage = lazy(() => import("@/pages/papers/submit-paper").then((m) => ({ default: m.SubmitPaperPage })));
 const AdminUsersPage = lazy(() => import("@/pages/admin/users").then((m) => ({ default: m.AdminUsersPage })));
+const AdminAcademicVerificationsPage = lazy(() => import("@/pages/admin/academic-verifications").then((m) => ({ default: m.AdminAcademicVerificationsPage })));
 const AdminHomePage = lazy(() => import("@/pages/admin").then((m) => ({ default: m.AdminHomePage })));
 const NotFoundPage = lazy(() => import("@/pages/not-found").then((m) => ({ default: m.NotFoundPage })));
 const RankingsPage = lazy(() => import("@/pages/rankings").then((m) => ({ default: m.RankingsPage })));
+const ForumListPage = lazy(() => import("@/pages/forum/forum-list").then((m) => ({ default: m.ForumListPage })));
+const ForumDetailPage = lazy(() => import("@/pages/forum/forum-detail").then((m) => ({ default: m.ForumDetailPage })));
+const ForumNewPage = lazy(() => import("@/pages/forum/forum-new").then((m) => ({ default: m.ForumNewPage })));
+const CommunityListPage = lazy(() => import("@/pages/communities/community-list").then((m) => ({ default: m.CommunityListPage })));
+const CommunityDetailPage = lazy(() => import("@/pages/communities/community-detail").then((m) => ({ default: m.CommunityDetailPage })));
 
 function RouteLoading() {
   return (
-    <div className="flex min-h-[50vh] items-center justify-center px-6 text-sm font-semibold text-slate-500">
-      Loading page...
+    <div
+      className="min-h-screen bg-slate-50 dark:bg-[#09090b]"
+      role="status"
+      aria-live="polite"
+    >
+      <span className="sr-only">Loading page...</span>
     </div>
   );
 }
@@ -46,6 +57,8 @@ export function AppRoutes() {
   return (
     <Suspense fallback={<RouteLoading />}>
       <Routes>
+        <Route path="/onboarding/academic-profile" element={<AcademicProfileOnboardingPage />} />
+
         <Route element={<MainLayout />}>
           {/* Public */}
           <Route path="/" element={<Navigate to="/home" replace />} />
@@ -54,6 +67,10 @@ export function AppRoutes() {
           <Route path="/papers/:id" element={<PaperDetailPage />} />
           <Route path="/trends" element={<TrendsPage />} />
           <Route path="/trends/:topic" element={<TopicDetailPage />} />
+          <Route path="/forum" element={<ForumListPage />} />
+          <Route path="/forum/:id" element={<ForumDetailPage />} />
+          <Route path="/communities" element={<CommunityListPage />} />
+          <Route path="/communities/:slug" element={<CommunityDetailPage />} />
 
           {/* Protected (any signed-in user) */}
           <Route element={<ProtectedRoute />}>
@@ -74,11 +91,13 @@ export function AppRoutes() {
             <Route path="/projects/:id" element={<ProjectDetailPage />} />
             <Route path="/research-gaps" element={<ResearchGapsPage />} />
             <Route path="/rankings" element={<RankingsPage />} />
+            <Route path="/forum/new" element={<ForumNewPage />} />
 
             {/* Admin — nested under AdminLayout (sidebar + role gate) */}
             <Route path="/admin" element={<AdminLayout />}>
               <Route index element={<AdminHomePage />} />
               <Route path="users" element={<AdminUsersPage />} />
+              <Route path="academic-verifications" element={<AdminAcademicVerificationsPage />} />
               <Route path="papers" element={<AdminPapersPage />} />
               <Route path="papers/new" element={<SubmitPaperPage />} />
               <Route path="sync" element={<AdminSyncPage />} />

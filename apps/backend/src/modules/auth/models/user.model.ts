@@ -9,9 +9,13 @@ const userSchema = new Schema(
     fullName: { type: String, required: true },
     role: {
       type: String,
-      enum: ["student", "lecturer", "researcher", "admin"],
-      default: "student",
+      enum: ["user", "student", "lecturer", "researcher", "reviewer", "moderator", "admin"],
+      default: "user",
       required: true,
+    },
+    academicProfileType: {
+      type: String,
+      enum: ["student", "researcher", "lecturer"],
     },
     avatarUrl: { type: String },
     institution: { type: String },

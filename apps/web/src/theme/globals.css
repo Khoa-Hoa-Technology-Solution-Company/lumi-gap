@@ -54,10 +54,21 @@
 }
 
 @layer base {
+  html {
+    scrollbar-gutter: stable;
+  }
+
+  html,
+  body,
+  #root {
+    min-height: 100%;
+  }
+
   * {
     @apply border-border;
   }
+
   body {
-    @apply bg-background text-foreground;
+    @apply min-h-screen bg-slate-50 text-foreground dark:bg-[#09090b];
   }
 }

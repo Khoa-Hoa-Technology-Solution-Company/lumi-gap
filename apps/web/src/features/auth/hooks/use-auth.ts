@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { LoginRequest, RegisterRequest } from "@trend/shared-types";
+import type { LoginRequest, RegisterRequest, UpdateAcademicProfileRequest } from "@trend/shared-types";
 import { useAuthStore } from "@/stores/auth-store";
 import { authApi, type UpdateProfileRequest, type ChangePasswordRequest } from "../api/auth.api";
 
@@ -17,8 +17,15 @@ export function useLogin() {
 }
 
 export function useRegister() {
+  const setAuth = useAuthStore((s) => s.setAuth);
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (payload: RegisterRequest) => authApi.register(payload),
+    onSuccess: (data) => {
+      setAuth(data);
+      queryClient.clear();
+      queryClient.setQueryData(["current-user"], { user: data.user });
+    },
   });
 }
 
@@ -59,6 +66,17 @@ export function useUpdateProfile() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (payload: UpdateProfileRequest) => authApi.updateProfile(payload),
+    onSuccess: (data) => {
+      useAuthStore.setState({ user: data.user });
+      queryClient.setQueryData(["current-user"], data);
+    },
+  });
+}
+
+export function useUpdateAcademicProfile() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: UpdateAcademicProfileRequest) => authApi.updateAcademicProfile(payload),
     onSuccess: (data) => {
       useAuthStore.setState({ user: data.user });
       queryClient.setQueryData(["current-user"], data);

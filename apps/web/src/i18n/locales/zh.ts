@@ -1,8 +1,12 @@
 import { en } from "./en";
+import { academicProfileStrings } from "./academic-profile";
+import { academicForumStrings } from "./academic-forum";
 import { gapEvidenceWorkflowStrings } from "./gap-evidence-workflow";
 import { paperDetailIaStrings } from "./paper-detail-ia";
 
 export const zh: Record<keyof typeof en, string> = {
+  ...academicForumStrings,
+  ...academicProfileStrings.zh,
   ...gapEvidenceWorkflowStrings,
   ...paperDetailIaStrings,
   "1 research gap": "1 个研究空白",

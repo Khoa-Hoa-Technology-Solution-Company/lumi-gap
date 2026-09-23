@@ -27,7 +27,7 @@ ReactDOM.createRoot(root).render(
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
       <QueryClientProvider client={queryClient}>
         <TooltipProvider delayDuration={150}>
-          <BrowserRouter>
+          <BrowserRouter future={{ v7_startTransition: true }}>
             <I18nProvider>
               <App />
               <Toaster richColors closeButton position="top-right" />

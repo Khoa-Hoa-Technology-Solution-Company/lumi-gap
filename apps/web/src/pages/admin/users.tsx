@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import type { AxiosError } from "axios";
-import type { UserRole } from "@trend/shared-types";
+import type { SystemRole } from "@trend/shared-types";
 import { PageHeader } from "@/components/page-header";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -20,7 +20,7 @@ import { useAdminUsers, useUpdateUserRole, useUpdateUserStatus } from "@/feature
 import { Lock, Unlock, ShieldAlert } from "lucide-react";
 import { useI18n } from "@/i18n";
 
-const ROLES: UserRole[] = ["student", "lecturer", "researcher", "admin"];
+const ROLES: SystemRole[] = ["user", "reviewer", "moderator", "admin"];
 
 const SELECT_CLASS =
   "h-9 rounded-md border border-input bg-background px-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50";
@@ -37,7 +37,7 @@ export function AdminUsersPage() {
   const myId = me?.user?.id;
 
   const [search, setSearch] = useState("");
-  const [roleFilter, setRoleFilter] = useState<UserRole | "all">("all");
+  const [roleFilter, setRoleFilter] = useState<SystemRole | "all">("all");
   const [page, setPage] = useState(1);
 
   const query = {
@@ -60,7 +60,7 @@ export function AdminUsersPage() {
     );
   }
 
-  const handleRole = (id: string, role: UserRole) =>
+  const handleRole = (id: string, role: SystemRole) =>
     updateRole.mutate(
       { id, role },
       {
@@ -99,7 +99,7 @@ export function AdminUsersPage() {
           data-no-i18n
           value={roleFilter}
           onChange={(e) => {
-            setRoleFilter(e.target.value as UserRole | "all");
+            setRoleFilter(e.target.value as SystemRole | "all");
             setPage(1);
           }}
         >
@@ -119,6 +119,7 @@ export function AdminUsersPage() {
               <TableHead>Email</TableHead>
               <TableHead>Name</TableHead>
               <TableHead>Role</TableHead>
+              <TableHead>Academic Profile</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Joined</TableHead>
               <TableHead className="text-right">Action</TableHead>
@@ -128,7 +129,7 @@ export function AdminUsersPage() {
             {isLoading ? (
               Array.from({ length: 6 }).map((_, i) => (
                 <TableRow key={i}>
-                  {Array.from({ length: 6 }).map((__, j) => (
+                  {Array.from({ length: 7 }).map((__, j) => (
                     <TableCell key={j}>
                       <Skeleton className="h-5 w-full" />
                     </TableCell>
@@ -148,7 +149,7 @@ export function AdminUsersPage() {
                         data-no-i18n
                         value={u.role}
                         disabled={isSelf || updateRole.isPending}
-                        onChange={(e) => handleRole(u.id, e.target.value as UserRole)}
+                        onChange={(e) => handleRole(u.id, e.target.value as SystemRole)}
                       >
                         {ROLES.map((r) => (
                           <option key={r} value={r}>
@@ -156,6 +157,9 @@ export function AdminUsersPage() {
                           </option>
                         ))}
                       </select>
+                    </TableCell>
+                    <TableCell className="capitalize text-muted-foreground">
+                      {u.academicProfileType ?? "—"}
                     </TableCell>
                     <TableCell>
                       <Badge variant={u.isActive ? "outline" : "destructive"}>
@@ -190,7 +194,7 @@ export function AdminUsersPage() {
               })
             ) : (
               <TableRow>
-                <TableCell colSpan={6} className="py-12 text-center text-muted-foreground">
+                <TableCell colSpan={7} className="py-12 text-center text-muted-foreground">
                   No users found.
                 </TableCell>
               </TableRow>

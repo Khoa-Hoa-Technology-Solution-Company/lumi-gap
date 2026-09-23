@@ -4,9 +4,13 @@ export const RegisterSchema = z.object({
   email: z.string().email().toLowerCase(),
   password: z.string().min(8).max(128),
   fullName: z.string().min(1).max(120),
-  role: z.enum(["student", "lecturer", "researcher"]).optional(),
-});
+}).strict();
 export type RegisterInput = z.infer<typeof RegisterSchema>;
+
+export const UpdateAcademicProfileSchema = z.object({
+  academicProfileType: z.enum(["student", "researcher", "lecturer"]),
+}).strict();
+export type UpdateAcademicProfileInput = z.infer<typeof UpdateAcademicProfileSchema>;
 
 export const LoginSchema = z.object({
   email: z.string().email().toLowerCase(),

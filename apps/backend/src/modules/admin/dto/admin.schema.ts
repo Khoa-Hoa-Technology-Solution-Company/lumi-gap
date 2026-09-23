@@ -2,7 +2,7 @@ import { z } from "zod";
 
 export const ListUsersQuerySchema = z.object({
   search: z.string().trim().max(120).optional(),
-  role: z.enum(["student", "lecturer", "researcher", "admin"]).optional(),
+  role: z.enum(["user", "reviewer", "moderator", "admin"]).optional(),
   isActive: z
     .enum(["true", "false"])
     .transform((v) => v === "true")
@@ -13,8 +13,8 @@ export const ListUsersQuerySchema = z.object({
 export type ListUsersQueryInput = z.infer<typeof ListUsersQuerySchema>;
 
 export const UpdateRoleSchema = z.object({
-  role: z.enum(["student", "lecturer", "researcher", "admin"]),
-});
+  role: z.enum(["user", "reviewer", "moderator", "admin"]),
+}).strict();
 export type UpdateRoleInput = z.infer<typeof UpdateRoleSchema>;
 
 export const UpdateStatusSchema = z.object({

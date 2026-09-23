@@ -1,8 +1,12 @@
 import { en } from "./en";
+import { academicProfileStrings } from "./academic-profile";
+import { academicForumStrings } from "./academic-forum";
 import { gapEvidenceWorkflowStrings } from "./gap-evidence-workflow";
 import { paperDetailIaStrings } from "./paper-detail-ia";
 
 export const ko: Record<keyof typeof en, string> = {
+  ...academicForumStrings,
+  ...academicProfileStrings.ko,
   ...gapEvidenceWorkflowStrings,
   ...paperDetailIaStrings,
   "1 research gap": "연구 공백 1개",

@@ -1,12 +1,22 @@
 import type { ISODateString } from "./common.js";
 
-export type UserRole = "student" | "lecturer" | "researcher" | "admin";
+export type AcademicProfileType = "student" | "researcher" | "lecturer";
+
+export type SystemRole =
+  | "user"
+  | "reviewer"
+  | "moderator"
+  | "admin";
+
+/** Academic roles remain readable during the legacy-data migration window. */
+export type UserRole = SystemRole | AcademicProfileType;
 
 export interface User {
   id: string;
   email: string;
   fullName: string;
   role: UserRole;
+  academicProfileType?: AcademicProfileType;
   avatarUrl?: string;
   institution?: string;
   researchInterests?: string[];
@@ -33,7 +43,10 @@ export interface RegisterRequest {
   email: string;
   password: string;
   fullName: string;
-  role?: Exclude<UserRole, "admin">;
+}
+
+export interface UpdateAcademicProfileRequest {
+  academicProfileType: AcademicProfileType;
 }
 
 export interface AuthResponse {

@@ -1,7 +1,12 @@
 import "dotenv/config";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
+import { parse as parseDotenv } from "dotenv";
 import { z } from "zod";
 
 const optionalEnvString = z.preprocess((value) => (value === "" ? undefined : value), z.string().optional());
+const optionalEnvEmail = z.preprocess((value) => (value === "" ? undefined : value), z.string().email().optional());
 const optionalEnvUrl = z.preprocess((value) => (value === "" ? undefined : value), z.string().url().optional());
 const optionalMongoUri = z.preprocess(
   (value) => (value === "" ? undefined : value),
@@ -85,13 +90,13 @@ const EnvSchema = z.object({
   CHAT_CACHE_TTL_SECONDS: z.coerce.number().int().positive().default(604800),
   CHAT_ABSTRACT_MAX_CHARS: z.coerce.number().int().positive().default(800),
 
-  OPENALEX_MAILTO: z.string().email().optional(),
+  OPENALEX_MAILTO: optionalEnvEmail,
   // The normal application can read the existing corpus without an OpenAlex
   // key. Treat an empty Compose/.env value as absent; the scale-campaign start
   // endpoint performs the explicit key-required check before a provider call.
   OPENALEX_API_KEY: optionalEnvString,
   SEMANTIC_SCHOLAR_API_KEY: z.string().optional(),
-  CROSSREF_MAILTO: z.string().email().optional(),
+  CROSSREF_MAILTO: optionalEnvEmail,
 
   SYNC_CRON: z.string().default("0 2 * * *"),
   // OpenAlex Works list requests currently allow at most 100 results/page.
@@ -216,6 +221,35 @@ const EnvSchema = z.object({
 });
 
 const rawEnv = { ...process.env };
+
+// Native development can reuse the credentials that provision the local
+// Docker-only MongoDB and Redis services. Secrets stay in the gitignored
+// .env.compose file and are URL-encoded only in this process' memory.
+if (rawEnv.NODE_ENV !== "production" && rawEnv.LOCAL_DOCKER_INFRA === "true") {
+  const composeEnvPath = fileURLToPath(new URL("../../../../.env.compose", import.meta.url));
+
+  let composeEnv: Record<string, string>;
+  try {
+    composeEnv = parseDotenv(readFileSync(composeEnvPath));
+  } catch {
+    console.error("Cannot load .env.compose for LOCAL_DOCKER_INFRA=true");
+    process.exit(1);
+  }
+
+  const mongoUsername = composeEnv.MONGO_ROOT_USERNAME;
+  const mongoPassword = composeEnv.MONGO_ROOT_PASSWORD;
+  const redisPassword = composeEnv.REDIS_PASSWORD;
+
+  if (!mongoUsername || !mongoPassword || !redisPassword) {
+    console.error(
+      ".env.compose must define MONGO_ROOT_USERNAME, MONGO_ROOT_PASSWORD, and REDIS_PASSWORD",
+    );
+    process.exit(1);
+  }
+
+  rawEnv.MONGODB_URI = `mongodb://${encodeURIComponent(mongoUsername)}:${encodeURIComponent(mongoPassword)}@127.0.0.1:27017/publication_trend?authSource=admin`;
+  rawEnv.REDIS_URL = `redis://default:${encodeURIComponent(redisPassword)}@127.0.0.1:6379`;
+}
 // Inject mock defaults under Vitest ONLY to avoid process.exit(1) on missing secrets.
 // SECURITY: gated on VITEST (which Vitest sets automatically), NOT on NODE_ENV — a
 // production deploy mis-set to NODE_ENV=test must NOT silently boot with the hardcoded

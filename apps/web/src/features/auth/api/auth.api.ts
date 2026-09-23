@@ -3,6 +3,7 @@ import type {
   AuthTokens,
   LoginRequest,
   RegisterRequest,
+  UpdateAcademicProfileRequest,
   User,
 } from "@trend/shared-types";
 import { api } from "@/services/api-client";
@@ -34,6 +35,10 @@ export const authApi = {
   },
   async updateProfile(payload: UpdateProfileRequest): Promise<{ user: User }> {
     const res = await api.patch(API_ROUTES.auth.me, payload);
+    return res.data.data;
+  },
+  async updateAcademicProfile(payload: UpdateAcademicProfileRequest): Promise<{ user: User }> {
+    const res = await api.patch(API_ROUTES.auth.academicProfile, payload);
     return res.data.data;
   },
   async changePassword(payload: ChangePasswordRequest): Promise<void> {

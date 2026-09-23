@@ -6,6 +6,7 @@ import type {
   UpdateProfileInput,
   ChangePasswordInput,
   OAuthExchangeInput,
+  UpdateAcademicProfileInput,
 } from "./dto/auth.schema.js";
 import { authService } from "./auth.service.js";
 import { env } from "../../config/env.js";
@@ -47,6 +48,12 @@ export const authController = {
   async updateProfile(req: Request<unknown, unknown, UpdateProfileInput>, res: Response) {
     if (!req.user) return res.status(401).json({ success: false, error: { message: "Unauthorized" } });
     const user = await authService.updateProfile(req.user.sub, req.body);
+    res.json({ success: true, data: { user } });
+  },
+
+  async updateAcademicProfile(req: Request<unknown, unknown, UpdateAcademicProfileInput>, res: Response) {
+    if (!req.user) return res.status(401).json({ success: false, error: { message: "Unauthorized" } });
+    const user = await authService.updateAcademicProfile(req.user.sub, req.body);
     res.json({ success: true, data: { user } });
   },
 

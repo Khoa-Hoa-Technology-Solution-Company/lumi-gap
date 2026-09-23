@@ -1,12 +1,13 @@
 // packages/shared-types/src/admin.ts
 import type { ISODateString } from "./common.js";
-import type { UserRole } from "./user.js";
+import type { AcademicProfileType, SystemRole } from "./user.js";
 
 export interface AdminUserItem {
   id: string;
   email: string;
   fullName: string;
-  role: UserRole;
+  role: SystemRole;
+  academicProfileType?: AcademicProfileType;
   isActive: boolean;
   institution?: string;
   createdAt: ISODateString;
@@ -14,7 +15,7 @@ export interface AdminUserItem {
 
 export interface ListUsersQuery {
   search?: string;
-  role?: UserRole;
+  role?: SystemRole;
   isActive?: boolean;
   page?: number;
   pageSize?: number;
@@ -26,7 +27,7 @@ export interface ListUsersResponse {
 }
 
 export interface UpdateUserRoleRequest {
-  role: UserRole;
+  role: SystemRole;
 }
 
 export interface UpdateUserStatusRequest {
@@ -34,7 +35,7 @@ export interface UpdateUserStatusRequest {
 }
 
 export interface AdminStats {
-  users: { total: number; byRole: Record<UserRole, number> };
+  users: { total: number; byRole: Record<SystemRole, number> };
   papers: number;
   reports: number;
   gaps: number;

@@ -1,6 +1,6 @@
 import type { Job } from "bullmq";
 import type { Queue } from "bullmq";
-import { apiSyncQueue, corpusValidationQueue, embeddingQueue, gapsQueue, notificationQueue, openAlexIngestQueue, paperAnalysisQueue, reportQueue } from "../../infrastructure/queue.js";
+import { aiJobsQueue, apiSyncQueue, corpusValidationQueue, embeddingQueue, gapsQueue, notificationQueue, openAlexIngestQueue, paperAnalysisQueue, reportQueue } from "../../infrastructure/queue.js";
 import { readWorkerHeartbeats, type WorkerHeartbeatRecord } from "../../infrastructure/worker-heartbeat.js";
 import { PaperModel } from "../papers/models/paper.model.js";
 import { ReportModel } from "../reports/models/report.model.js";
@@ -22,7 +22,8 @@ export type PipelineQueueName =
   | "paper-analysis"
   | "report"
   | "gaps"
-  | "notifications";
+  | "notifications"
+  | "ai-jobs";
 
 export interface PipelineQueueStatus {
   name: PipelineQueueName;
@@ -494,6 +495,7 @@ export const pipelineService = createPipelineStatusService({
     queueAdapter("report", "Reports", reportQueue),
     queueAdapter("gaps", "Research Gaps", gapsQueue),
     queueAdapter("notifications", "Notifications", notificationQueue),
+    queueAdapter("ai-jobs", "AI Runs", aiJobsQueue),
   ],
   corpusRepository: {
     countTotalPapers: () => PaperModel.countDocuments({}),
@@ -549,4 +551,5 @@ const EXPECTED_WORKERS: Array<{ workerName: string; queueName: PipelineQueueName
   { workerName: "worker:sync", queueName: "api-sync" },
   { workerName: "worker:openalex-ingest", queueName: "openalex-ingest" },
   { workerName: "worker:corpus-validation", queueName: "corpus-validation" },
+  { workerName: "worker:ai-jobs", queueName: "ai-jobs" },
 ];

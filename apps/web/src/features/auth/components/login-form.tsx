@@ -16,7 +16,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { API_BASE_URL } from "@/services/api-client";
-import { loginSchema, useLogin, type LoginFormValues } from "@/features/auth";
+import { loginSchema, requiresAcademicProfile, useLogin, type LoginFormValues } from "@/features/auth";
 
 interface LoginFormProps {
   redirectTo?: string;
@@ -40,6 +40,10 @@ export function LoginForm({ redirectTo }: LoginFormProps) {
     login.mutate(values, {
       onSuccess: (data) => {
         toast.success(`Welcome back, ${data.user.fullName}`);
+        if (requiresAcademicProfile(data.user)) {
+          navigate("/onboarding/academic-profile", { replace: true });
+          return;
+        }
         const target =
           redirectTo ?? (location.state as LocationState | null)?.from?.pathname ?? "/home";
         navigate(target, { replace: true });

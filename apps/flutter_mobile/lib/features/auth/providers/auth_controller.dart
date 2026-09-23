@@ -72,12 +72,14 @@ class AuthController extends Notifier<AsyncValue<User?>> {
   Future<void> register(String email, String password, String fullName, UserRole role) async {
     state = const AsyncLoading();
     try {
-      await _authApi.register(RegisterRequest(
+      final response = await _authApi.register(RegisterRequest(
         email: email,
         password: password,
         fullName: fullName,
-        role: role,
       ));
+      await _tokenStore.save(response.tokens);
+      await _authApi.updateAcademicProfile(AcademicProfileType.values.byName(role.name));
+      await _tokenStore.delete();
       // Require user to login again after registration
       state = const AsyncData(null);
     } on Object catch (e, st) {

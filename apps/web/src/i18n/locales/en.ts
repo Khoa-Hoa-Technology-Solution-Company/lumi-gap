@@ -1,7 +1,11 @@
 import { gapEvidenceWorkflowStrings } from "./gap-evidence-workflow";
 import { paperDetailIaStrings } from "./paper-detail-ia";
+import { academicProfileStrings } from "./academic-profile";
+import { academicForumStrings } from "./academic-forum";
 
 export const en = {
+  ...academicForumStrings,
+  ...academicProfileStrings.en,
   ...gapEvidenceWorkflowStrings,
   ...paperDetailIaStrings,
   "-day period.": "-day period.",

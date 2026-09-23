@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { ListUsersQuery, UserRole } from "@trend/shared-types";
+import type { ListUsersQuery, SystemRole } from "@trend/shared-types";
 import { adminUsersApi } from "../api/admin-users.api";
 
 export function useAdminUsers(query: ListUsersQuery, enabled = true) {
@@ -22,7 +22,7 @@ export function useAdminStats(enabled = true, refetchInterval?: number | false) 
 export function useUpdateUserRole() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, role }: { id: string; role: UserRole }) =>
+    mutationFn: ({ id, role }: { id: string; role: SystemRole }) =>
       adminUsersApi.updateRole(id, role),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "users"] }),
   });

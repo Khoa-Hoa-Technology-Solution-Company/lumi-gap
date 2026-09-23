@@ -1,9 +1,10 @@
 import type { FilterQuery } from "mongoose";
 import type {
+  AcademicProfileType,
   AdminStats,
   AdminUserItem,
   ListUsersResponse,
-  UserRole,
+  SystemRole,
 } from "@trend/shared-types";
 import { AppError } from "../../common/exceptions/app-error.js";
 import {
@@ -23,11 +24,24 @@ function toAdminUserItem(u: UserDoc): AdminUserItem {
     id: u._id.toString(),
     email: u.email,
     fullName: u.fullName,
-    role: u.role,
+    role: normalizeSystemRole(u.role),
+    academicProfileType: u.academicProfileType ?? legacyAcademicProfile(u.role),
     isActive: u.isActive !== false,
     institution: u.institution ?? undefined,
     createdAt: (u as unknown as { createdAt: Date }).createdAt.toISOString(),
   };
+}
+
+function legacyAcademicProfile(role: string): AcademicProfileType | undefined {
+  return role === "student" || role === "researcher" || role === "lecturer"
+    ? role
+    : undefined;
+}
+
+function normalizeSystemRole(role: string): SystemRole {
+  return role === "reviewer" || role === "moderator" || role === "admin"
+    ? role
+    : "user";
 }
 
 async function loadTarget(targetId: string): Promise<UserHydrated> {
@@ -51,7 +65,11 @@ async function assertNotLastAdmin(target: UserHydrated): Promise<void> {
 export const adminService = {
   async listUsers(q: ListUsersQueryInput): Promise<ListUsersResponse> {
     const filter: FilterQuery<UserDoc> = {};
-    if (q.role) filter.role = q.role;
+    if (q.role === "user") {
+      filter.role = { $in: ["user", "student", "researcher", "lecturer"] };
+    } else if (q.role) {
+      filter.role = q.role;
+    }
     if (q.isActive !== undefined) {
       filter.isActive = q.isActive ? { $ne: false } : false;
     }
@@ -77,7 +95,7 @@ export const adminService = {
     };
   },
 
-  async updateRole(actorId: string, targetId: string, role: UserRole): Promise<AdminUserItem> {
+  async updateRole(actorId: string, targetId: string, role: SystemRole): Promise<AdminUserItem> {
     if (actorId === targetId) {
       throw AppError.badRequest("You cannot change your own role");
     }
@@ -115,17 +133,18 @@ export const adminService = {
   },
 
   async stats(): Promise<AdminStats> {
-    const roleAgg = await UserModel.aggregate<{ _id: UserRole; count: number }>([
+    const roleAgg = await UserModel.aggregate<{ _id: string; count: number }>([
       { $group: { _id: "$role", count: { $sum: 1 } } },
     ]);
-    const byRole: Record<UserRole, number> = {
-      student: 0,
-      lecturer: 0,
-      researcher: 0,
+    const byRole: Record<SystemRole, number> = {
+      user: 0,
+      reviewer: 0,
+      moderator: 0,
       admin: 0,
     };
     for (const r of roleAgg) {
-      if (r._id in byRole) byRole[r._id] = r.count;
+      const role = normalizeSystemRole(r._id);
+      byRole[role] += r.count;
     }
     const [total, papers, reports, gaps, syncAgg, latestSync] = await Promise.all([
       UserModel.countDocuments({}),
