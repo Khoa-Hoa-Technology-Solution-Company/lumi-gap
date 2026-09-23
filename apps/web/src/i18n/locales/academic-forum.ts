@@ -18,6 +18,7 @@ export const academicForumStrings = {
   "Department not provided": "Department not provided",
   Discussion: "Discussion",
   Discussions: "Discussions",
+  Explore: "Explore",
   "Filter by exact tag": "Filter by exact tag",
   Forum: "Forum",
   "Forum contribution": "Forum contribution",
@@ -44,6 +45,8 @@ export const academicForumStrings = {
   "Post not found.": "Post not found.",
   "Post response": "Post response",
   "Post type": "Post type",
+  "Paper Tools": "Paper Tools",
+  "Primary navigation": "Primary navigation",
   "Posting…": "Posting…",
   "Publish post": "Publish post",
   "Publishing…": "Publishing…",
@@ -69,4 +72,5 @@ export const academicForumStrings = {
   "Submitting…": "Submitting…",
   "Unable to load the academic profile.": "Unable to load the academic profile.",
   "Verified Lecturer": "Verified Lecturer",
+  Workspace: "Workspace",
 } as const;
