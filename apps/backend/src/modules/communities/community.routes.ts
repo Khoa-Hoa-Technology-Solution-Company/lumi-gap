@@ -1,10 +1,11 @@
-import { Router } from "express";
+import { Router, type NextFunction, type Request, type Response } from "express";
 import { z } from "zod";
 import { optionalAuth, requireAuth } from "../../common/middleware/auth.js";
 import { requirePermission } from "../../common/middleware/permission.js";
 import { validate } from "../../common/middleware/validate.js";
 import { objectIdSchema, paginationSchema } from "../../common/validation/mongo.js";
 import { communityService } from "./community.service.js";
+import { AppError } from "../../common/exceptions/app-error.js";
 
 const communityInputSchema = z.object({
   name: z.string().trim().min(2).max(120),
@@ -19,15 +20,25 @@ const lookupParamsSchema = z.object({ idOrSlug: z.string().trim().min(1).max(120
 const memberParamsSchema = z.object({ id: objectIdSchema, userId: objectIdSchema });
 const updateMemberSchema = z.object({
   role: z.enum(["moderator", "member"]).optional(),
-  status: z.enum(["pending", "active", "banned"]).optional(),
+  status: z.enum(["pending", "active", "declined", "banned"]).optional(),
 }).refine((value) => value.role !== undefined || value.status !== undefined);
 
 export const communityRouter: Router = Router();
+const requireCommunityCreator = (req: Request, _res: Response, next: NextFunction) => {
+  const role = req.user?.role;
+  const academicType = req.user?.academicProfileType;
+  if (role === "admin" || role === "moderator" || role === "researcher" || role === "lecturer"
+    || academicType === "researcher" || academicType === "lecturer") {
+    next();
+    return;
+  }
+  next(AppError.forbidden("A Researcher or Lecturer profile is required to create a community"));
+};
 communityRouter.get("/", optionalAuth, validate(paginationSchema, "query"), async (req, res) => {
   const { page, pageSize } = req.query as unknown as z.infer<typeof paginationSchema>;
   res.json({ success: true, ...(await communityService.list(req.user?.sub, page, pageSize, req.user?.role)) });
 });
-communityRouter.post("/", requireAuth, requirePermission("community:create"), validate(communityInputSchema), async (req, res) => {
+communityRouter.post("/", requireAuth, requireCommunityCreator, validate(communityInputSchema), async (req, res) => {
   res.status(201).json({ success: true, data: await communityService.create(req.body, req.user!.sub) });
 });
 communityRouter.get("/:idOrSlug", optionalAuth, validate(lookupParamsSchema, "params"), async (req, res) => {

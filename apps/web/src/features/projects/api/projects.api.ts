@@ -1,4 +1,13 @@
-import type { IProject, CreateProjectRequest, UpdateProjectRequest, AddProjectMemberRequest, AddProjectPaperRequest } from "@trend/shared-types";
+import type {
+  IProject,
+  CreateProjectRequest,
+  UpdateProjectRequest,
+  AddProjectMemberRequest,
+  AddProjectPaperRequest,
+  ProjectContributionProposal,
+  ProposeProjectContributionRequest,
+  ResolveProjectContributionRequest,
+} from "@trend/shared-types";
 import { api } from "@/services/api-client";
 import { API_ROUTES } from "@/constants";
 
@@ -36,6 +45,22 @@ export const projectsApi = {
   },
   async removeMember(id: string, memberId: string): Promise<IProject> {
     const res = await api.delete(API_ROUTES.projects.removeMember(id, memberId));
+    return res.data.data;
+  },
+  async contributions(id: string): Promise<ProjectContributionProposal[]> {
+    const res = await api.get(`/projects/${id}/contributions`);
+    return res.data.data;
+  },
+  async proposeContribution(id: string, data: ProposeProjectContributionRequest): Promise<ProjectContributionProposal> {
+    const res = await api.post(`/projects/${id}/contributions/proposals`, data);
+    return res.data.data;
+  },
+  async confirmContribution(id: string, proposalId: string, data: ResolveProjectContributionRequest = {}): Promise<ProjectContributionProposal> {
+    const res = await api.post(`/projects/${id}/contributions/${proposalId}/confirm`, data);
+    return res.data.data;
+  },
+  async rejectContribution(id: string, proposalId: string, data: ResolveProjectContributionRequest = {}): Promise<ProjectContributionProposal> {
+    const res = await api.post(`/projects/${id}/contributions/${proposalId}/reject`, data);
     return res.data.data;
   },
 };

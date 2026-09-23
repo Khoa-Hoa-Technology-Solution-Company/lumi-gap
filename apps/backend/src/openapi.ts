@@ -22,6 +22,9 @@ export const openapiSpec = {
     { name: "Search" },
     { name: "Trends" },
     { name: "Reports" },
+    { name: "Research workflow" },
+    { name: "Literature" },
+    { name: "Peer review" },
     { name: "Admin" },
   ],
   components: {
@@ -787,6 +790,60 @@ export const openapiSpec = {
           },
           "404": { description: "Not found (or not yours)" },
         },
+      },
+    },
+    "/api/v1/literature/corpora": {
+      get: {
+        tags: ["Literature"], summary: "List accessible literature corpora", security: [{ bearerAuth: [] }],
+        responses: { "200": { description: "Corpora owned by the user or linked to an accessible project" } },
+      },
+      post: {
+        tags: ["Literature"], summary: "Create a scoped literature corpus", security: [{ bearerAuth: [] }],
+        description: "Stores topic, research goal, keywords, PICOC scope and search strategy. It does not generate or fabricate literature.",
+        responses: { "201": { description: "Corpus created" }, "400": { description: "Validation failed" } },
+      },
+    },
+    "/api/v1/literature/corpora/{id}/papers": {
+      post: {
+        tags: ["Literature"], summary: "Attach an existing LumiGap paper with structured evidence", security: [{ bearerAuth: [] }],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+        responses: { "201": { description: "Corpus paper created" }, "404": { description: "Corpus or paper not found" } },
+      },
+    },
+    "/api/v1/literature/corpora/{id}/evidence-map": {
+      get: {
+        tags: ["Literature"], summary: "Aggregate the recorded evidence map", security: [{ bearerAuth: [] }],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+        responses: { "200": { description: "Counts grouped by methodology, context, outcome, research type and year" } },
+      },
+    },
+    "/api/v1/gaps/candidates": {
+      post: {
+        tags: ["Research workflow"], summary: "Create a human-authored candidate research gap", security: [{ bearerAuth: [] }],
+        description: "Gap confidence and research priority remain separate. Creation never marks the candidate as expert validated.",
+        responses: { "201": { description: "Candidate created" }, "400": { description: "Validation failed" } },
+      },
+    },
+    "/api/v1/review-availability/me": {
+      get: { tags: ["Peer review"], summary: "Get private reviewer availability settings", security: [{ bearerAuth: [] }], responses: { "200": { description: "Availability settings and active workload" } } },
+      put: { tags: ["Peer review"], summary: "Update reviewer opt-in and workload preferences", security: [{ bearerAuth: [] }], responses: { "200": { description: "Availability updated" }, "403": { description: "Lecturer or researcher profile required" } } },
+    },
+    "/api/v1/review-opportunities": {
+      get: { tags: ["Peer review"], summary: "List double-blind review opportunities", security: [{ bearerAuth: [] }], responses: { "200": { description: "Matched opportunities with no author identity" } } },
+    },
+    "/api/v1/submissions/{id}/ai-pre-review": {
+      post: {
+        tags: ["Research workflow"], summary: "Run advisory AI pre-review", security: [{ bearerAuth: [] }],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+        description: "Returns structured advisory analysis. Evidence identifiers are supplied and validated by the Node backend; AI cannot perform privileged actions.",
+        responses: { "202": { description: "Pre-review started or completed according to service contract" }, "429": { description: "Rate limit exceeded" }, "503": { description: "AI provider unavailable" } },
+      },
+    },
+    "/api/v1/projects/{id}/contributions": {
+      get: {
+        tags: ["Research workflow"], summary: "List project contribution proposals and confirmation history", security: [{ bearerAuth: [] }],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+        responses: { "200": { description: "Contribution proposals visible to project members" } },
       },
     },
     "/api/v1/admin/embed": {

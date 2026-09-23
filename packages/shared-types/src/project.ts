@@ -55,6 +55,71 @@ export interface AddProjectPaperRequest {
   paperId: string;
 }
 
+export type ProjectContributionRole =
+  | "SUPERVISION"
+  | "METHODOLOGY"
+  | "VALIDATION"
+  | "SOFTWARE"
+  | "CONCEPTUALIZATION"
+  | "WRITING_ORIGINAL_DRAFT"
+  | "WRITING_REVIEW_EDITING"
+  | "PROJECT_ADMINISTRATION"
+  | "OTHER";
+
+export type ProjectContributionProposalStatus =
+  | "PENDING_CONFIRMATION"
+  | "CONFIRMING"
+  | "CONFIRMED"
+  | "REJECTED"
+  | "WITHDRAWN";
+
+export interface ProjectContributionActor {
+  _id: string;
+  fullName?: string;
+  email?: string;
+  avatarUrl?: string;
+}
+
+export interface ProjectContributionHistoryEntry {
+  action: "PROPOSED" | "CONFIRMED" | "REJECTED" | "WITHDRAWN";
+  actorId: string | ProjectContributionActor;
+  note?: string;
+  createdAt: string;
+}
+
+export interface ProjectContributionProposal {
+  _id: string;
+  projectId: string;
+  contributorId: string | ProjectContributionActor;
+  roles: ProjectContributionRole[];
+  description: string;
+  evidence?: string;
+  visibility: "PUBLIC" | "PRIVATE";
+  status: ProjectContributionProposalStatus;
+  confirmationRequiredFrom: "OWNER" | "CONTRIBUTOR";
+  proposedBy: string | ProjectContributionActor;
+  confirmedBy?: string | ProjectContributionActor;
+  confirmedAt?: string;
+  rejectedBy?: string | ProjectContributionActor;
+  rejectedAt?: string;
+  rejectionReason?: string;
+  history: ProjectContributionHistoryEntry[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProposeProjectContributionRequest {
+  contributorId: string;
+  roles: ProjectContributionRole[];
+  description: string;
+  evidence?: string;
+  visibility?: "PUBLIC" | "PRIVATE";
+}
+
+export interface ResolveProjectContributionRequest {
+  note?: string;
+}
+
 export type ProjectChatRole = "user" | "assistant";
 export type ProjectChatScope = "private" | "team";
 

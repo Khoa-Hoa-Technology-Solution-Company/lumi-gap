@@ -10,7 +10,24 @@ export type ForumPostView = {
   community?: { id: string; name: string; slug: string }; createdAt: string;
 };
 export type ForumCommentView = { id: string; postId: string; content: string; voteScore: number; author: ForumPostView["author"]; createdAt: string; status: string };
-export type CommunityView = { id: string; name: string; slug: string; description: string; researchTopics: string[]; visibility: "public" | "private"; memberCount: number };
+export type CommunityMembershipView = { role: "owner" | "moderator" | "member"; status: "pending" | "active" | "declined" | "banned" };
+export type CommunityView = {
+  id: string; name: string; slug: string; description: string; researchTopics: string[];
+  visibility: "public" | "private"; rules: string[]; memberCount: number;
+  viewerMembership?: CommunityMembershipView; canManage: boolean; contentRestricted: boolean;
+  createdAt?: string; updatedAt?: string;
+};
+export type CommunityInput = {
+  name: string; description?: string; visibility?: "public" | "private";
+  researchTopics?: string[]; rules?: string[];
+};
+export type CommunityMemberView = {
+  id: string;
+  user: { id: string; fullName: string; email: string; avatarUrl?: string; role: string; institution?: string };
+  role: "owner" | "moderator" | "member";
+  status: "pending" | "active" | "declined" | "banned";
+  joinedAt: string;
+};
 
 function id(value: unknown): string { return String((value as { _id?: unknown })?._id ?? value ?? ""); }
 function normalizeAuthor(value: any): ForumPostView["author"] {
@@ -28,7 +45,21 @@ function normalizePost(value: any): ForumPostView {
   return { id: id(value), type: value.type ?? "discussion", title: value.title, content: value.content ?? value.body ?? "", tags: value.tags ?? [], status: value.status, voteScore: value.voteScore ?? value.score ?? 0, commentCount: value.commentCount ?? 0, acceptedCommentId: value.acceptedCommentId ? id(value.acceptedCommentId) : undefined, linkedPaperId: value.linkedPaperId ? id(value.linkedPaperId) : undefined, linkedResearchGapId: value.linkedResearchGapId ? id(value.linkedResearchGapId) : undefined, linkedProjectId: value.linkedProjectId ? id(value.linkedProjectId) : undefined, references: value.references ?? [], author: normalizeAuthor(value.authorId), community: value.communityId ? { id: id(value.communityId), name: value.communityId.name ?? "Community", slug: value.communityId.slug ?? id(value.communityId) } : undefined, createdAt: value.createdAt };
 }
 function normalizeComment(value: any): ForumCommentView { return { id: id(value), postId: id(value.postId), content: value.content ?? value.body ?? "", voteScore: value.voteScore ?? value.score ?? 0, author: normalizeAuthor(value.authorId), createdAt: value.createdAt, status: value.status }; }
-function normalizeCommunity(value: any): CommunityView { return { id: id(value), name: value.name, slug: value.slug, description: value.description ?? "", researchTopics: value.researchTopics ?? [], visibility: value.visibility, memberCount: value.memberCount ?? 0 }; }
+function normalizeCommunity(value: any): CommunityView { return {
+  id: id(value), name: value.name, slug: value.slug, description: value.description ?? "",
+  researchTopics: value.researchTopics ?? [], visibility: value.visibility, rules: value.rules ?? [],
+  memberCount: value.memberCount ?? 0, viewerMembership: value.viewerMembership,
+  canManage: Boolean(value.canManage), contentRestricted: Boolean(value.contentRestricted),
+  createdAt: value.createdAt, updatedAt: value.updatedAt,
+}; }
+function normalizeCommunityMember(value: any): CommunityMemberView {
+  const user = value.userId ?? {};
+  return {
+    id: id(value),
+    user: { id: id(user), fullName: user.fullName ?? "Unknown member", email: user.email ?? "", avatarUrl: user.avatarUrl, role: user.role ?? "user", institution: user.institution },
+    role: value.role, status: value.status, joinedAt: value.joinedAt ?? value.createdAt,
+  };
+}
 
 export const forumApi = {
   async posts(params: Record<string, string | number | undefined>): Promise<{ data: ForumPostView[]; meta: { page: number; pageSize: number; total: number; totalPages: number } }> { const response = await api.get(API_ROUTES.forum.posts, { params }); return { data: response.data.data.map(normalizePost), meta: response.data.meta }; },
@@ -42,6 +73,10 @@ export const forumApi = {
   async report(targetType: "post" | "comment", targetId: string, reason: string, description?: string) { await api.post(API_ROUTES.forum.reports, { targetType, targetId, reason, description }); },
   async communities(): Promise<CommunityView[]> { const response = await api.get(API_ROUTES.communities.list, { params: { page: 1, pageSize: 100 } }); return response.data.data.map(normalizeCommunity); },
   async community(idOrSlug: string): Promise<CommunityView> { const response = await api.get(API_ROUTES.communities.detail(idOrSlug)); return normalizeCommunity(response.data.data); },
-  async joinCommunity(id: string) { await api.post(API_ROUTES.communities.join(id)); },
+  async createCommunity(input: CommunityInput): Promise<CommunityView> { const response = await api.post(API_ROUTES.communities.list, input); return normalizeCommunity(response.data.data); },
+  async updateCommunity(id: string, input: Partial<CommunityInput>): Promise<CommunityView> { const response = await api.patch(API_ROUTES.communities.detail(id), input); return normalizeCommunity(response.data.data); },
+  async joinCommunity(id: string): Promise<CommunityMembershipView> { const response = await api.post(API_ROUTES.communities.join(id)); return response.data.data; },
   async leaveCommunity(id: string) { await api.delete(API_ROUTES.communities.leave(id)); },
+  async communityMembers(id: string): Promise<CommunityMemberView[]> { const response = await api.get(API_ROUTES.communities.members(id)); return response.data.data.map(normalizeCommunityMember); },
+  async updateCommunityMember(id: string, userId: string, input: { role?: "moderator" | "member"; status?: "pending" | "active" | "declined" | "banned" }): Promise<void> { await api.patch(API_ROUTES.communities.member(id, userId), input); },
 };

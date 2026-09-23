@@ -79,3 +79,31 @@ export const DirectionsBodySchema = z.object({
   force: z.boolean().optional(),
 });
 export type DirectionsBody = z.infer<typeof DirectionsBodySchema>;
+
+export const GapCandidateSchema = z.object({
+  topic: z.string().trim().min(3).max(200),
+  projectId: ObjectIdSchema.optional(),
+  corpusId: ObjectIdSchema.optional(),
+  title: z.string().trim().min(3).max(200),
+  gapType: z.enum(["COVERAGE_GAP", "EMPIRICAL_VALIDATION_GAP", "CONTRADICTORY_EVIDENCE_GAP", "CONTEXT_GAP", "METHODOLOGICAL_GAP", "OUTCOME_GAP", "TEMPORAL_GAP", "EMERGING_GAP", "MISSING_CONNECTION_GAP", "ASSUMPTION_GAP", "OTHER"]),
+  scope: z.string().trim().max(5000).optional(),
+  establishedKnowledge: z.string().trim().min(10).max(10000),
+  observedLimitation: z.string().trim().min(10).max(10000),
+  missingEvidence: z.string().trim().min(10).max(10000),
+  significanceExplanation: z.string().trim().min(10).max(10000),
+  suggestedResearchQuestion: z.string().trim().max(5000).optional(),
+  gapConfidence: z.enum(["LOW", "MODERATE", "HIGH"]),
+  researchPriority: z.enum(["LOW", "MODERATE", "HIGH"]),
+}).strict();
+export const GapEvidenceRecordSchema = z.object({
+  paperId: ObjectIdSchema,
+  evidenceKind: z.enum(["SUPPORTING", "COUNTER"]),
+  evidenceType: z.string().trim().max(120).optional(),
+  excerpt: z.string().trim().max(5000).optional(),
+  explanation: z.string().trim().min(10).max(5000),
+}).strict();
+export const GapValidationSchema = z.object({
+  action: z.enum(["VALIDATE", "CHALLENGE", "REQUEST_EVIDENCE", "SUGGEST_EVIDENCE", "REFINE_SCOPE", "REJECT"]),
+  comment: z.string().trim().min(10).max(10000),
+  suggestedChanges: z.string().trim().max(10000).optional(),
+}).strict();

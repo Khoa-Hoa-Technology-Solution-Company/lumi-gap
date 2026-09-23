@@ -19,7 +19,9 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
   if (isMulterError(err)) {
     const message =
       err.code === "LIMIT_FILE_SIZE"
-        ? "PDF file is too large. Maximum size is 10MB."
+        ? _req.originalUrl.includes("/academic-profiles/me/cover")
+          ? "Cover image is too large. Maximum size is 5MB."
+          : "PDF file is too large. Maximum size is 10MB."
         : `Invalid file upload: ${err.message}`;
     res.status(400).json({
       success: false,

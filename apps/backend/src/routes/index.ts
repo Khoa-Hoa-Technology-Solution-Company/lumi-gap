@@ -27,6 +27,13 @@ import {
   academicProfileAdminRouter,
   academicProfileRouter,
 } from "../modules/academic-profiles/academic-profile.routes.js";
+import {
+  contributionRouter,
+  humanReviewRouter,
+  reviewAvailabilityRouter,
+  reviewOpportunityRouter,
+} from "../modules/reviews/review.routes.js";
+import { literatureRouter } from "../modules/literature/literature.routes.js";
 
 export const apiRouter: Router = Router();
 
@@ -46,6 +53,11 @@ apiRouter.use("/submissions", submissionRouter);
 apiRouter.use("/workspaces", workspaceRouter);
 apiRouter.use("/ai-runs", aiRunRouter);
 apiRouter.use("/academic-profiles", academicProfileRouter);
+apiRouter.use("/review-availability", reviewAvailabilityRouter);
+apiRouter.use("/review-opportunities", reviewOpportunityRouter);
+apiRouter.use("/reviews", humanReviewRouter);
+apiRouter.use("/contributions", contributionRouter);
+apiRouter.use("/literature", literatureRouter);
 apiRouter.use("/bookmarks", bookmarkRouter); // Sprint 3 — bookmarks
 apiRouter.use("/analytics", analyticsRouter); // Phase D — search analytics
 apiRouter.use("/quality", qualityRouter); // Quality & Feedback — LLM-judge + user ratings

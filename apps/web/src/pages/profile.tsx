@@ -15,7 +15,7 @@ import { AcademicProfileSection } from "@/features/academic-profile";
 
 type SettingsSection = "profile" | "academic" | "credits" | "security" | "preferences" | "submit-paper" | "my-papers";
 
-export function ProfilePage() {
+export function AccountSettingsPage() {
   const { section } = useParams<{ section?: string }>();
   const { data: userData, isLoading: isUserLoading } = useCurrentUser();
   const updateProfileMutation = useUpdateProfile();

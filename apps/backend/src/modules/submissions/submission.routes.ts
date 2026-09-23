@@ -7,6 +7,7 @@ import { validate } from "../../common/middleware/validate.js";
 import { objectIdSchema } from "../../common/validation/mongo.js";
 import { AppError } from "../../common/exceptions/app-error.js";
 import { submissionService } from "./submission.service.js";
+import rateLimit from "express-rate-limit";
 
 const submissionParamsSchema = z.object({ id: objectIdSchema });
 const revisionParamsSchema = z.object({ id: objectIdSchema, revisionId: objectIdSchema });
@@ -15,6 +16,16 @@ const createSchema = z.object({
   projectId: objectIdSchema,
   title: z.string().trim().min(3).max(300),
   abstract: z.string().trim().max(10000).optional(),
+  submissionType: z.enum(["RESEARCH_PROPOSAL", "LITERATURE_REVIEW", "THESIS_DRAFT", "RESEARCH_PAPER", "SOFTWARE_RESEARCH_PROJECT"]).optional(),
+  researchField: z.string().trim().max(200).optional(),
+  researchGoal: z.string().trim().max(5000).optional(),
+  researchQuestions: z.array(z.string().trim().min(1).max(1000)).max(20).optional(),
+  claimedResearchGap: z.string().trim().max(5000).optional(),
+  claimedContribution: z.string().trim().max(5000).optional(),
+  methodology: z.string().trim().max(5000).optional(),
+  scope: z.string().trim().max(5000).optional(),
+  keywords: z.array(z.string().trim().min(1).max(120)).max(40).optional(),
+  expectedReviewWorkload: z.string().trim().max(160).optional(),
   authorIds: z.array(objectIdSchema).max(100).optional(),
   declaredConflictUserIds: z.array(objectIdSchema).max(100).optional(),
 });
@@ -41,7 +52,7 @@ function uploadedPdf(req: Request) {
 
 function parseArrayFields(body: Record<string, unknown>) {
   const copy = { ...body };
-  for (const key of ["authorIds", "declaredConflictUserIds"] as const) {
+  for (const key of ["authorIds", "declaredConflictUserIds", "researchQuestions", "keywords"] as const) {
     if (typeof copy[key] === "string") {
       try {
         copy[key] = JSON.parse(copy[key] as string);
@@ -56,8 +67,20 @@ function parseArrayFields(body: Record<string, unknown>) {
 export const submissionRouter: Router = Router();
 submissionRouter.use(requireAuth);
 
+const aiPreReviewLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.user?.sub ?? req.ip ?? "anonymous",
+});
+
 submissionRouter.get("/reviewer-assignments/me", requirePermission("submission:review"), async (req, res) => {
   res.json({ success: true, data: await submissionService.listMyAssignments(req.user!.sub) });
+});
+
+submissionRouter.get("/", async (req, res) => {
+  res.json({ success: true, data: await submissionService.listMine(req.user!.sub, req.user!.role) });
 });
 
 submissionRouter.post("/", requirePermission("submission:create"), uploadSinglePdf, async (req, res) => {
@@ -80,6 +103,15 @@ submissionRouter.post("/:id/revisions", requirePermission("submission:revise"), 
 
 submissionRouter.get("/:id/revisions", validate(submissionParamsSchema, "params"), async (req, res) => {
   res.json({ success: true, data: await submissionService.listRevisions(String(req.params.id), req.user!.sub, req.user!.role) });
+});
+
+submissionRouter.get("/:id/ai-pre-reviews", validate(submissionParamsSchema, "params"), async (req, res) => {
+  res.json({ success: true, data: await submissionService.listAiPreReviews(String(req.params.id), req.user!.sub, req.user!.role) });
+});
+
+submissionRouter.post("/:id/ai-pre-review", aiPreReviewLimiter, validate(submissionParamsSchema, "params"), async (req, res) => {
+  const data = await submissionService.runAiPreReview(String(req.params.id), req.user!.sub, req.user!.role);
+  res.status(201).json({ success: true, data });
 });
 
 submissionRouter.get("/:id/revisions/:revisionId/download", validate(revisionParamsSchema, "params"), async (req, res) => {

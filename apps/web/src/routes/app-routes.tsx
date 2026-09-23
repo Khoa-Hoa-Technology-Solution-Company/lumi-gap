@@ -16,7 +16,8 @@ const TrendsPage = lazy(() => import("@/pages/trends").then((m) => ({ default: m
 const TopicDetailPage = lazy(() => import("@/pages/trends-topic").then((m) => ({ default: m.TopicDetailPage })));
 const BookmarksPage = lazy(() => import("@/pages/bookmarks").then((m) => ({ default: m.BookmarksPage })));
 const NotificationsPage = lazy(() => import("@/pages/notifications").then((m) => ({ default: m.NotificationsPage })));
-const ProfilePage = lazy(() => import("@/pages/profile").then((m) => ({ default: m.ProfilePage })));
+const AccountSettingsPage = lazy(() => import("@/pages/profile").then((m) => ({ default: m.AccountSettingsPage })));
+const ProfilePage = lazy(() => import("@/pages/profile-overview").then((m) => ({ default: m.ProfilePage })));
 const PaperDetailPage = lazy(() => import("@/pages/papers/paper-detail").then((m) => ({ default: m.PaperDetailPage })));
 const PaperReviewPage = lazy(() => import("@/pages/papers/paper-review").then((m) => ({ default: m.PaperReviewPage })));
 const FormatCheckerPage = lazy(() => import("@/pages/papers/format-checker").then((m) => ({ default: m.FormatCheckerPage })));
@@ -40,6 +41,18 @@ const ForumDetailPage = lazy(() => import("@/pages/forum/forum-detail").then((m)
 const ForumNewPage = lazy(() => import("@/pages/forum/forum-new").then((m) => ({ default: m.ForumNewPage })));
 const CommunityListPage = lazy(() => import("@/pages/communities/community-list").then((m) => ({ default: m.CommunityListPage })));
 const CommunityDetailPage = lazy(() => import("@/pages/communities/community-detail").then((m) => ({ default: m.CommunityDetailPage })));
+const CommunityNewPage = lazy(() => import("@/pages/communities/community-new").then((m) => ({ default: m.CommunityNewPage })));
+const CommunityManagePage = lazy(() => import("@/pages/communities/community-manage").then((m) => ({ default: m.CommunityManagePage })));
+const LecturerDirectoryPage = lazy(() => import("@/pages/academics/lecturer-directory").then((m) => ({ default: m.LecturerDirectoryPage })));
+const PublicAcademicProfilePage = lazy(() => import("@/pages/academics/public-academic-profile").then((m) => ({ default: m.PublicAcademicProfilePage })));
+const ReviewOpportunitiesPage = lazy(() => import("@/pages/reviews/review-opportunities").then((m) => ({ default: m.ReviewOpportunitiesPage })));
+const ReviewDashboardPage = lazy(() => import("@/pages/reviews/review-dashboard").then((m) => ({ default: m.ReviewDashboardPage })));
+const ReviewWorkspacePage = lazy(() => import("@/pages/reviews/review-workspace").then((m) => ({ default: m.ReviewWorkspacePage })));
+const SubmissionListPage = lazy(() => import("@/pages/submissions/submission-list").then((m) => ({ default: m.SubmissionListPage })));
+const SubmissionNewPage = lazy(() => import("@/pages/submissions/submission-new").then((m) => ({ default: m.SubmissionNewPage })));
+const SubmissionDetailPage = lazy(() => import("@/pages/submissions/submission-detail").then((m) => ({ default: m.SubmissionDetailPage })));
+const ContributionArchivePage = lazy(() => import("@/pages/academics/contribution-archive").then((m) => ({ default: m.ContributionArchivePage })));
+const ResearchGapDiscoverPage = lazy(() => import("@/pages/research-gap-discover").then((m) => ({ default: m.ResearchGapDiscoverPage })));
 
 function RouteLoading() {
   return (
@@ -71,6 +84,10 @@ export function AppRoutes() {
           <Route path="/forum/:id" element={<ForumDetailPage />} />
           <Route path="/communities" element={<CommunityListPage />} />
           <Route path="/communities/:slug" element={<CommunityDetailPage />} />
+          <Route path="/lecturers" element={<LecturerDirectoryPage />} />
+          <Route path="/academics/:userId" element={<PublicAcademicProfilePage />} />
+          <Route path="/u/:handle" element={<PublicAcademicProfilePage />} />
+          <Route path="/profile/:handle/contributions" element={<ContributionArchivePage />} />
 
           {/* Protected (any signed-in user) */}
           <Route element={<ProtectedRoute />}>
@@ -83,15 +100,24 @@ export function AppRoutes() {
             <Route path="/papers/review" element={<PaperReviewPage />} />
             <Route path="/papers/format-check" element={<FormatCheckerPage />} />
             <Route path="/my-papers" element={<Navigate to="/settings/my-papers" replace />} />
-            <Route path="/settings" element={<Navigate to="/profile" replace />} />
-            <Route path="/settings/:section" element={<ProfilePage />} />
+            <Route path="/settings" element={<Navigate to="/settings/profile" replace />} />
+            <Route path="/settings/:section" element={<AccountSettingsPage />} />
             <Route path="/reports" element={<ReportsListPage />} />
             <Route path="/reports/:id" element={<ReportViewerPage />} />
             <Route path="/projects" element={<ProjectsListPage />} />
             <Route path="/projects/:id" element={<ProjectDetailPage />} />
             <Route path="/research-gaps" element={<ResearchGapsPage />} />
+            <Route path="/research-gap/discover" element={<ResearchGapDiscoverPage />} />
             <Route path="/rankings" element={<RankingsPage />} />
+            <Route path="/review-opportunities" element={<ReviewOpportunitiesPage />} />
+            <Route path="/reviews" element={<ReviewDashboardPage />} />
+            <Route path="/reviews/:assignmentId" element={<ReviewWorkspacePage />} />
+            <Route path="/submissions" element={<SubmissionListPage />} />
+            <Route path="/submissions/new" element={<SubmissionNewPage />} />
+            <Route path="/submissions/:id" element={<SubmissionDetailPage />} />
             <Route path="/forum/new" element={<ForumNewPage />} />
+            <Route path="/communities/new" element={<CommunityNewPage />} />
+            <Route path="/communities/:slug/manage" element={<CommunityManagePage />} />
 
             {/* Admin — nested under AdminLayout (sidebar + role gate) */}
             <Route path="/admin" element={<AdminLayout />}>
@@ -106,6 +132,9 @@ export function AppRoutes() {
               <Route path="analytics" element={<DashboardPage />} />
             </Route>
           </Route>
+
+          {/* Clean public profile URLs. Static application routes rank above this route. */}
+          <Route path="/:handle" element={<PublicAcademicProfilePage />} />
 
           {/* 404 catch-all */}
           <Route path="*" element={<NotFoundPage />} />

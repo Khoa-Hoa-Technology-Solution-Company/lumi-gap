@@ -9,6 +9,8 @@ import { UserModel } from "../auth/models/user.model.js";
 import { ProjectModel } from "../projects/models/project.model.js";
 import { canAccessProject } from "../projects/project-scope.js";
 import { ReviewerAssignmentModel, SubmissionModel, SubmissionRevisionModel } from "./submission.model.js";
+import { AiPreReviewModel } from "./ai-pre-review.model.js";
+import { aiReviewerClient } from "../papers/ai-reviewer.client.js";
 
 type UploadedPdf = { buffer: Buffer; originalname: string; size: number };
 
@@ -16,6 +18,16 @@ type CreateSubmissionInput = {
   projectId: string;
   title: string;
   abstract?: string;
+  submissionType?: "RESEARCH_PROPOSAL" | "LITERATURE_REVIEW" | "THESIS_DRAFT" | "RESEARCH_PAPER" | "SOFTWARE_RESEARCH_PROJECT";
+  researchField?: string;
+  researchGoal?: string;
+  researchQuestions?: string[];
+  claimedResearchGap?: string;
+  claimedContribution?: string;
+  methodology?: string;
+  scope?: string;
+  keywords?: string[];
+  expectedReviewWorkload?: string;
   authorIds?: string[];
   declaredConflictUserIds?: string[];
 };
@@ -103,6 +115,16 @@ export const submissionService = {
       declaredConflictUserIds: conflictIds,
       title: input.title,
       abstract: input.abstract,
+      submissionType: input.submissionType,
+      researchField: input.researchField,
+      researchGoal: input.researchGoal,
+      researchQuestions: ids(input.researchQuestions),
+      claimedResearchGap: input.claimedResearchGap,
+      claimedContribution: input.claimedContribution,
+      methodology: input.methodology,
+      scope: input.scope,
+      keywords: ids(input.keywords),
+      expectedReviewWorkload: input.expectedReviewWorkload,
       currentRevisionNumber: 1,
     });
 
@@ -123,6 +145,83 @@ export const submissionService = {
     }
   },
 
+  async listMine(actorId: string, actorRole: UserRole) {
+    const filter = hasPermission(actorRole, "review:assign")
+      ? {}
+      : { $or: [{ createdBy: actorId }, { authorIds: actorId }] };
+    return SubmissionModel.find(filter)
+      .select("projectId title abstract submissionType researchField researchGoal researchQuestions claimedResearchGap claimedContribution methodology scope keywords expectedReviewWorkload status currentRevisionNumber currentRevisionId createdAt updatedAt")
+      .sort({ updatedAt: -1 })
+      .limit(100)
+      .lean();
+  },
+
+  async listAiPreReviews(submissionId: string, actorId: string, actorRole: UserRole) {
+    const submission = await getSubmissionOrThrow(submissionId);
+    await assertSubmissionAccess(submission, actorId, actorRole);
+    return AiPreReviewModel.find({ submissionId })
+      .select("provider model status summary goalAlignment rqCoverage unsupportedClaims citationIssues contributionComparison reviewFocusAreas limitations completedAt createdAt")
+      .sort({ createdAt: -1 })
+      .limit(20)
+      .lean();
+  },
+
+  async runAiPreReview(submissionId: string, actorId: string, actorRole: UserRole) {
+    const submission = await getSubmissionOrThrow(submissionId);
+    if (!(await canAccessFullSubmission(submission, actorId, actorRole))) throw AppError.forbidden();
+    if (!submission.authorIds.some((id) => id.toString() === actorId) && !hasPermission(actorRole, "review:assign")) {
+      throw AppError.forbidden("Only an author or review manager can request AI pre-review");
+    }
+    if (["completed", "accepted", "rejected", "withdrawn"].includes(submission.status)) {
+      throw AppError.conflict("This submission no longer accepts pre-review analysis");
+    }
+    const active = await AiPreReviewModel.exists({ submissionId, status: { $in: ["QUEUED", "PROCESSING"] } });
+    if (active) throw AppError.conflict("An AI pre-review is already running");
+    const previousStatus = submission.status;
+    const record = await AiPreReviewModel.create({ submissionId, requestedBy: actorId, status: "PROCESSING" });
+    await SubmissionModel.updateOne({ _id: submissionId }, { $set: { status: "ai_pre_review" } });
+    try {
+      const result = await aiReviewerClient.preReview({
+        title: submission.title,
+        abstract: submission.abstract ?? undefined,
+        submission_type: submission.submissionType ?? undefined,
+        research_goal: submission.researchGoal ?? undefined,
+        research_questions: submission.researchQuestions,
+        claimed_gap: submission.claimedResearchGap ?? undefined,
+        claimed_contribution: submission.claimedContribution ?? undefined,
+        methodology: submission.methodology ?? undefined,
+        // Evidence is resolved by LumiGap, never accepted as arbitrary IDs from this API caller.
+        related_evidence: [],
+      });
+      const analysis = result.analysis;
+      Object.assign(record, {
+        provider: result.provider,
+        model: result.model,
+        status: "COMPLETED",
+        summary: analysis.summary,
+        goalAlignment: analysis.goal_alignment,
+        rqCoverage: analysis.rq_coverage,
+        unsupportedClaims: analysis.unsupported_claims,
+        citationIssues: analysis.citation_issues,
+        contributionComparison: analysis.contribution_comparison,
+        reviewFocusAreas: analysis.review_focus_areas,
+        limitations: analysis.limitations,
+        rawStructuredOutput: analysis,
+        completedAt: new Date(),
+      });
+      await record.save();
+      await SubmissionModel.updateOne({ _id: submissionId, status: "ai_pre_review" }, { $set: { status: "ready_for_review" } });
+      await auditService.log("submission.ai_pre_review.completed", { userId: actorId, targetTableName: "ai_pre_reviews", targetRecordId: record.id, details: { submissionId, provider: result.provider, model: result.model } });
+      return record.toObject({ useProjection: true });
+    } catch (error) {
+      record.status = "FAILED";
+      record.errorMessage = error instanceof Error ? error.message.slice(0, 1000) : "AI pre-review failed";
+      await record.save();
+      await SubmissionModel.updateOne({ _id: submissionId, status: "ai_pre_review" }, { $set: { status: previousStatus } });
+      throw error;
+    }
+  },
+
   async get(submissionId: string, actorId: string, actorRole: UserRole) {
     const submission = await getSubmissionOrThrow(submissionId);
     const access = await assertSubmissionAccess(submission, actorId, actorRole);
@@ -136,7 +235,7 @@ export const submissionService = {
   async addRevision(submissionId: string, responseToReview: string | undefined, file: UploadedPdf, actorId: string, actorRole: UserRole) {
     const submission = await getSubmissionOrThrow(submissionId);
     if (!(await canAccessFullSubmission(submission, actorId, actorRole))) throw AppError.forbidden();
-    if (["accepted", "rejected", "withdrawn"].includes(submission.status)) {
+    if (["completed", "accepted", "rejected", "withdrawn"].includes(submission.status)) {
       throw AppError.conflict("This submission no longer accepts revisions");
     }
 
@@ -151,7 +250,7 @@ export const submissionService = {
 
     const updated = await SubmissionModel.findOneAndUpdate(
       { _id: submission._id, currentRevisionNumber: submission.currentRevisionNumber },
-      { $set: { currentRevisionId: revision._id, status: "submitted" }, $inc: { currentRevisionNumber: 1 } },
+      { $set: { currentRevisionId: revision._id, status: "revised" }, $inc: { currentRevisionNumber: 1 } },
       { new: true },
     );
     if (!updated) {

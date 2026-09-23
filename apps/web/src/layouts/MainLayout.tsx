@@ -30,6 +30,7 @@ const navGroups = [
       { to: "/search", label: "Search" },
       { to: "/trends", label: "Trends" },
       { to: "/research-gaps", label: "Research Gaps" },
+      { to: "/research-gap/discover", label: "Gap Discovery" },
     ],
   },
   {
@@ -37,6 +38,9 @@ const navGroups = [
     items: [
       { to: "/reports", label: "Reports" },
       { to: "/projects", label: "Projects" },
+      { to: "/submissions", label: "Submissions" },
+      { to: "/reviews", label: "My Reviews" },
+      { to: "/review-opportunities", label: "Review Opportunities" },
     ],
   },
   {

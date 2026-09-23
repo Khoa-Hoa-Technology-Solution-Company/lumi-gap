@@ -261,6 +261,18 @@ export function GapCard({
           {gap.description}
         </p>
 
+        {gap.validationStatus && (
+          <div className="flex flex-wrap gap-2 pt-1 text-[10px] font-semibold uppercase tracking-wide">
+            <Badge variant="outline">{t(gap.origin === "AI_ASSISTED" ? "AI-assisted candidate" : "Researcher candidate")}</Badge>
+            <Badge variant="outline">{t(gap.validationStatus.replaceAll("_", " "))}</Badge>
+            <span className="rounded-md bg-slate-100 px-2 py-1 text-slate-600 dark:bg-slate-800 dark:text-slate-300">{t("Gap confidence")}: {gap.gapConfidence ?? "LOW"}</span>
+            <span className="rounded-md bg-slate-100 px-2 py-1 text-slate-600 dark:bg-slate-800 dark:text-slate-300">{t("Research priority")}: {gap.researchPriority ?? "MODERATE"}</span>
+          </div>
+        )}
+
+        {gap.establishedKnowledge && <div className="rounded-lg bg-slate-50 p-3 text-xs leading-5 dark:bg-slate-900"><strong>{t("What is established:")}</strong> {gap.establishedKnowledge}</div>}
+        {gap.missingEvidence && <div className="rounded-lg bg-slate-50 p-3 text-xs leading-5 dark:bg-slate-900"><strong>{t("Missing evidence:")}</strong> {gap.missingEvidence}</div>}
+
         {gap.rationale && (
           <div className="border-l-2 border-amber-500/40 pl-3 py-0.5 bg-slate-50/20 dark:bg-slate-900/10 rounded-r-xl border-y border-r border-slate-100/50 dark:border-slate-800/20">
             <span className="font-bold text-slate-500 dark:text-slate-450 text-[10px] uppercase tracking-wider block mb-0.5">{t("Why this may be a gap:")}</span>

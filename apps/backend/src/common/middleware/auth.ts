@@ -38,11 +38,11 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
   // rather than staying valid until the 15-min access token expires. Also refresh
   // the role from the DB so requireRole sees the current value.
   try {
-    const user = await UserModel.findById(claims.sub).select("isActive role").lean();
+    const user = await UserModel.findById(claims.sub).select("isActive role academicProfileType").lean();
     if (!user || user.isActive === false) {
       return next(AppError.unauthorized("Account is disabled or no longer exists"));
     }
-    req.user = { ...claims, role: user.role };
+    req.user = { ...claims, role: user.role, academicProfileType: user.academicProfileType ?? undefined };
     next();
   } catch (err) {
     next(err);
@@ -66,9 +66,9 @@ export async function optionalAuth(req: Request, _res: Response, next: NextFunct
   }
 
   try {
-    const user = await UserModel.findById(claims.sub).select("isActive role").lean();
+    const user = await UserModel.findById(claims.sub).select("isActive role academicProfileType").lean();
     if (user && user.isActive !== false) {
-      req.user = { ...claims, role: user.role };
+      req.user = { ...claims, role: user.role, academicProfileType: user.academicProfileType ?? undefined };
     }
     next();
   } catch (err) {

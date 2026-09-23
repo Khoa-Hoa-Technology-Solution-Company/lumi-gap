@@ -21,7 +21,7 @@ const communityMembershipSchema = new Schema(
     communityId: { type: Schema.Types.ObjectId, ref: "Community", required: true, index: true },
     userId: { type: Schema.Types.ObjectId, ref: "User", required: true, index: true },
     role: { type: String, enum: ["owner", "moderator", "member"], default: "member" },
-    status: { type: String, enum: ["pending", "active", "banned"], default: "active", index: true },
+    status: { type: String, enum: ["pending", "active", "declined", "banned"], default: "active", index: true },
     joinedAt: { type: Date, default: Date.now },
   },
   { timestamps: true },

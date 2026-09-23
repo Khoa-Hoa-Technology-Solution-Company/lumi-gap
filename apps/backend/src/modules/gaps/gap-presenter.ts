@@ -40,6 +40,17 @@ export interface GapListDoc {
   userId: IdLike;
   status: GapStatus;
   createdAt: Date | string;
+  gapType?: ResearchGapItem["gapType"];
+  scope?: string;
+  establishedKnowledge?: string;
+  observedLimitation?: string;
+  missingEvidence?: string;
+  significanceExplanation?: string;
+  suggestedResearchQuestion?: string;
+  validationStatus?: ResearchGapItem["validationStatus"];
+  gapConfidence?: ResearchGapItem["gapConfidence"];
+  researchPriority?: ResearchGapItem["researchPriority"];
+  origin?: ResearchGapItem["origin"];
 }
 
 export function canAccessGap(
@@ -114,5 +125,16 @@ export function toGapListItem(
           ? null
           : undefined,
     evidenceConfidence: doc.evidenceConfidence,
+    gapType: doc.gapType,
+    scope: doc.scope,
+    establishedKnowledge: doc.establishedKnowledge,
+    observedLimitation: doc.observedLimitation,
+    missingEvidence: doc.missingEvidence,
+    significanceExplanation: doc.significanceExplanation,
+    suggestedResearchQuestion: doc.suggestedResearchQuestion,
+    validationStatus: doc.validationStatus,
+    gapConfidence: doc.gapConfidence,
+    researchPriority: doc.researchPriority,
+    origin: doc.origin,
   };
 }

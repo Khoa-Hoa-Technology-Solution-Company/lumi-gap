@@ -3,6 +3,7 @@ import type { PublicAcademicProfile } from "./academic-profile.js";
 
 export type CommunityVisibility = "public" | "private";
 export type CommunityMembershipRole = "owner" | "moderator" | "member";
+export type CommunityMembershipStatus = "pending" | "active" | "declined" | "banned";
 export type ForumPostType = "discussion" | "question";
 export type ForumContentStatus = "active" | "hidden" | "locked" | "deleted";
 export type ForumReportStatus = "open" | "reviewed" | "resolved" | "dismissed";
@@ -22,9 +23,12 @@ export interface Community {
   slug: string;
   description: string;
   researchTopics: string[];
+  rules: string[];
   visibility: CommunityVisibility;
   memberCount: number;
-  membershipRole?: CommunityMembershipRole;
+  viewerMembership?: { role: CommunityMembershipRole; status: CommunityMembershipStatus };
+  canManage: boolean;
+  contentRestricted: boolean;
   createdAt: ISODateString;
   updatedAt: ISODateString;
 }

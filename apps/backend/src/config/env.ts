@@ -50,6 +50,20 @@ const EnvSchema = z.object({
   GOOGLE_CLIENT_SECRET: z.string().optional(),
   GOOGLE_CALLBACK_URL: z.string().default("http://localhost:4000/api/auth/google/callback"),
 
+  // Transactional email for security-sensitive verification messages. "log" is
+  // an explicit local-development transport and is forbidden in production.
+  EMAIL_DELIVERY_MODE: z.enum(["disabled", "log", "smtp"]).default("disabled"),
+  SMTP_HOST: optionalEnvString,
+  SMTP_PORT: z.coerce.number().int().positive().max(65535).default(587),
+  SMTP_SECURE: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
+  SMTP_USER: optionalEnvString,
+  SMTP_PASS: optionalEnvString,
+  SMTP_FROM: optionalEnvEmail,
+  ACADEMIC_EMAIL_OTP_SECRET: z.preprocess(
+    (value) => value === "" ? undefined : value,
+    z.string().min(32).optional(),
+  ),
+
   GEMINI_API_KEY: z.string().min(1, "GEMINI_API_KEY is required"),
   // Cost-saving: standardize ALL generative calls (rerank, research gaps, RAG
   // reports, quality-judge) on Gemini 3.1 Flash-Lite — the cheapest GA tier with
@@ -193,6 +207,18 @@ const EnvSchema = z.object({
     }
   }
 
+  if (value.EMAIL_DELIVERY_MODE === "smtp") {
+    for (const key of ["SMTP_HOST", "SMTP_USER", "SMTP_PASS", "SMTP_FROM"] as const) {
+      if (!value[key]) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [key],
+          message: `${key} is required when EMAIL_DELIVERY_MODE=smtp`,
+        });
+      }
+    }
+  }
+
   if (value.NODE_ENV === "production") {
     for (const [key, rawValue] of Object.entries(value)) {
       if (typeof rawValue === "string" && /^<[^>]+>$/.test(rawValue.trim())) {
@@ -215,6 +241,13 @@ const EnvSchema = z.object({
         code: z.ZodIssueCode.custom,
         path: ["SYNC_ADMIN_BYPASS"],
         message: "SYNC_ADMIN_BYPASS must be false in production",
+      });
+    }
+    if (value.EMAIL_DELIVERY_MODE === "log") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["EMAIL_DELIVERY_MODE"],
+        message: "EMAIL_DELIVERY_MODE=log is forbidden in production",
       });
     }
   }

@@ -154,13 +154,19 @@ export const authService = {
         $setOnInsert: { userId },
         ...(resetVerification
           ? {
-              $set: { verificationStatus: "SELF_DECLARED" },
               $unset: {
                 verificationRequestedAt: 1,
                 verifiedAt: 1,
                 verifiedBy: 1,
+                rejectedAt: 1,
+                rejectedBy: 1,
                 rejectionReason: 1,
+                verificationMethod: 1,
                 verificationNote: 1,
+              },
+              $set: {
+                verificationStatus: "SELF_DECLARED",
+                verificationEvidence: [],
               },
             }
           : {}),

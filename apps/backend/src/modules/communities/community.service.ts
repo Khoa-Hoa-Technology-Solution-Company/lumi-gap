@@ -12,6 +12,11 @@ type CommunityInput = {
   researchTopics?: string[];
 };
 
+type MembershipSummary = {
+  role: "owner" | "moderator" | "member";
+  status: "pending" | "active" | "declined" | "banned";
+};
+
 function slugify(value: string): string {
   return value
     .normalize("NFKD")
@@ -35,11 +40,42 @@ export async function isCommunityModerator(communityId: string, userId: string):
   return Boolean(membership);
 }
 
-async function assertCommunityModerator(communityId: string, userId: string, role?: UserRole): Promise<void> {
-  if (role === "admin") return;
-  if (!(await isCommunityModerator(communityId, userId))) {
+async function moderatorMembership(communityId: string, userId: string, role?: UserRole): Promise<MembershipSummary | null> {
+  if (role === "admin") return { role: "owner", status: "active" };
+  return CommunityMembershipModel.findOne({
+    communityId,
+    userId,
+    status: "active",
+    role: { $in: ["owner", "moderator"] },
+  }).select("role status").lean() as Promise<MembershipSummary | null>;
+}
+
+async function assertCommunityModerator(communityId: string, userId: string, role?: UserRole): Promise<MembershipSummary> {
+  const membership = await moderatorMembership(communityId, userId, role);
+  if (!membership) {
     throw AppError.forbidden("Community moderator access is required");
   }
+  return membership;
+}
+
+function presentCommunity(community: Record<string, any>, membership?: MembershipSummary | null, actorRole?: UserRole) {
+  const id = String(community._id);
+  const activeMembership = membership?.status === "active";
+  return {
+    id,
+    name: community.name,
+    slug: community.slug,
+    description: community.description ?? "",
+    researchTopics: community.researchTopics ?? [],
+    visibility: community.visibility,
+    rules: community.rules ?? [],
+    memberCount: community.memberCount ?? 0,
+    viewerMembership: membership ? { role: membership.role, status: membership.status } : undefined,
+    canManage: actorRole === "admin" || (activeMembership && ["owner", "moderator"].includes(membership!.role)),
+    contentRestricted: community.visibility === "private" && actorRole !== "admin" && !activeMembership,
+    createdAt: community.createdAt,
+    updatedAt: community.updatedAt,
+  };
 }
 
 export const communityService = {
@@ -64,24 +100,26 @@ export const communityService = {
       targetTableName: "communities",
       targetRecordId: community.id,
     });
-    return community;
+    return presentCommunity(
+      community.toObject() as unknown as Record<string, any>,
+      { role: "owner", status: "active" },
+    );
   },
 
   async list(userId: string | undefined, page: number, pageSize: number, role?: UserRole) {
-    const membershipIds = userId
-      ? await CommunityMembershipModel.distinct("communityId", {
-          userId,
-          status: { $in: ["active", "pending"] },
-        })
-      : [];
-    const filter = role === "admin"
-      ? {}
-      : { $or: [{ visibility: "public" }, { _id: { $in: membershipIds } }] };
-    const [data, total] = await Promise.all([
-      CommunityModel.find(filter).sort({ updatedAt: -1 }).skip((page - 1) * pageSize).limit(pageSize).lean(),
-      CommunityModel.countDocuments(filter),
+    const [communities, total] = await Promise.all([
+      CommunityModel.find({}).sort({ updatedAt: -1 }).skip((page - 1) * pageSize).limit(pageSize).lean(),
+      CommunityModel.countDocuments({}),
     ]);
-    return { data, meta: { page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)) } };
+    const memberships = userId && communities.length > 0
+      ? await CommunityMembershipModel.find({ userId, communityId: { $in: communities.map((item) => item._id) } })
+        .select("communityId role status").lean()
+      : [];
+    const membershipByCommunity = new Map(memberships.map((item) => [String(item.communityId), item as MembershipSummary]));
+    return {
+      data: communities.map((community) => presentCommunity(community, membershipByCommunity.get(String(community._id)), role)),
+      meta: { page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)) },
+    };
   },
 
   async get(idOrSlug: string, userId?: string, role?: UserRole) {
@@ -89,18 +127,14 @@ export const communityService = {
       ? await CommunityModel.findById(idOrSlug).lean()
       : await CommunityModel.findOne({ slug: idOrSlug }).lean();
     if (!community) throw AppError.notFound("Community not found");
-    if (
-      community.visibility === "private"
-      && role !== "admin"
-      && (!userId || !(await getActiveCommunityMembership(String(community._id), userId)))
-    ) {
-      throw AppError.forbidden("This community is private");
-    }
-    return community;
+    const membership = userId
+      ? await CommunityMembershipModel.findOne({ communityId: community._id, userId }).select("role status").lean() as MembershipSummary | null
+      : null;
+    return presentCommunity(community, membership, role);
   },
 
   async update(communityId: string, input: Partial<CommunityInput>, actorId: string, actorRole?: UserRole) {
-    await assertCommunityModerator(communityId, actorId, actorRole);
+    const actorMembership = await assertCommunityModerator(communityId, actorId, actorRole);
     const community = await CommunityModel.findByIdAndUpdate(
       communityId,
       { $set: input },
@@ -113,7 +147,11 @@ export const communityService = {
       targetRecordId: communityId,
       details: { fields: Object.keys(input) },
     });
-    return community;
+    return presentCommunity(
+      community.toObject() as unknown as Record<string, any>,
+      actorMembership,
+      actorRole,
+    );
   },
 
   async join(communityId: string, userId: string) {
@@ -136,7 +174,7 @@ export const communityService = {
       targetRecordId: membership.id,
       details: { communityId, status },
     });
-    return membership;
+    return { role: membership.role, status: membership.status };
   },
 
   async leave(communityId: string, userId: string) {
@@ -170,16 +208,19 @@ export const communityService = {
   async updateMember(
     communityId: string,
     targetUserId: string,
-    input: { role?: "moderator" | "member"; status?: "pending" | "active" | "banned" },
+    input: { role?: "moderator" | "member"; status?: "pending" | "active" | "declined" | "banned" },
     actorId: string,
     actorRole?: UserRole,
   ) {
-    await assertCommunityModerator(communityId, actorId, actorRole);
+    const actorMembership = await assertCommunityModerator(communityId, actorId, actorRole);
     const target = await CommunityMembershipModel.findOne({ communityId, userId: targetUserId });
     if (!target) throw AppError.notFound("Community membership not found");
     if (target.role === "owner") throw AppError.badRequest("The owner membership cannot be changed here");
-    if (input.role !== undefined && actorRole !== "admin") {
-      throw AppError.forbidden("Only an administrator can assign or remove community moderators");
+    if (input.role !== undefined && actorRole !== "admin" && actorMembership.role !== "owner") {
+      throw AppError.forbidden("Only the community owner can assign or remove moderators");
+    }
+    if (actorRole !== "admin" && actorMembership.role === "moderator" && target.role !== "member") {
+      throw AppError.forbidden("Community moderators can only manage regular members");
     }
     const wasActive = target.status === "active";
     if (input.role !== undefined) target.role = input.role;

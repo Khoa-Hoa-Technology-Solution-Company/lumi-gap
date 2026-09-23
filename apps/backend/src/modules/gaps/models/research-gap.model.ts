@@ -14,6 +14,27 @@ const researchGapSchema = new Schema(
     title: { type: String, required: true, maxlength: 200 },
     description: { type: String, required: true },
     rationale: { type: String, required: true },
+    gapType: {
+      type: String,
+      enum: ["COVERAGE_GAP", "EMPIRICAL_VALIDATION_GAP", "CONTRADICTORY_EVIDENCE_GAP", "CONTEXT_GAP", "METHODOLOGICAL_GAP", "OUTCOME_GAP", "TEMPORAL_GAP", "EMERGING_GAP", "MISSING_CONNECTION_GAP", "ASSUMPTION_GAP", "OTHER"],
+      default: "OTHER",
+      index: true,
+    },
+    scope: { type: String, trim: true, maxlength: 5000 },
+    establishedKnowledge: { type: String, trim: true, maxlength: 10000 },
+    observedLimitation: { type: String, trim: true, maxlength: 10000 },
+    missingEvidence: { type: String, trim: true, maxlength: 10000 },
+    significanceExplanation: { type: String, trim: true, maxlength: 10000 },
+    suggestedResearchQuestion: { type: String, trim: true, maxlength: 5000 },
+    validationStatus: {
+      type: String,
+      enum: ["DRAFT", "CANDIDATE", "UNDER_VALIDATION", "REFINED", "VALIDATED", "REJECTED", "ARCHIVED"],
+      default: "CANDIDATE",
+      index: true,
+    },
+    gapConfidence: { type: String, enum: ["LOW", "MODERATE", "HIGH"], default: "LOW", index: true },
+    researchPriority: { type: String, enum: ["LOW", "MODERATE", "HIGH"], default: "MODERATE", index: true },
+    origin: { type: String, enum: ["HUMAN", "AI_ASSISTED"], default: "AI_ASSISTED" },
     // Complete, ordered evidence pack reviewed before generation. A gap's
     // supportingPaperIds is the smaller subset cited for that specific claim.
     evidencePaperIds: { type: [Schema.Types.ObjectId], ref: "Paper", default: [] },
@@ -37,6 +58,7 @@ const researchGapSchema = new Schema(
     analysisId: { type: Schema.Types.ObjectId, ref: "GapAnalysis", index: true },
     userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
     projectId: { type: Schema.Types.ObjectId, ref: "Project", index: true },
+    corpusId: { type: Schema.Types.ObjectId, ref: "LiteratureCorpus", index: true },
     status: {
       type: String,
       enum: ["active", "resolved", "dismissed"],
@@ -49,6 +71,7 @@ const researchGapSchema = new Schema(
 researchGapSchema.index({ normalizedTopic: 1, confidence: -1 });
 researchGapSchema.index({ userId: 1, createdAt: -1 });
 researchGapSchema.index({ status: 1, createdAt: -1 });
+researchGapSchema.index({ validationStatus: 1, gapType: 1, createdAt: -1 });
 
 export type ResearchGapDoc = InferSchemaType<typeof researchGapSchema> & {
   _id: mongoose.Types.ObjectId;

@@ -44,12 +44,13 @@ function useSearchPapers(query: string) {
 import { toast } from "sonner";
 import { FileText, Users, Trash2, Plus, Loader2, CheckCircle2, XCircle, Sparkles, Zap, Search, ListFilter, MessageSquare } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
+import { ProjectContributionsTab } from "@/features/projects/components/project-contributions-tab";
 
 export function ProjectDetailPage() {
   const currentUser = useAuthStore(s => s.user);
   const { id } = useParams<{ id: string }>();
   const { data: project, isLoading } = useProject(id);
-  const [activeTab, setActiveTab] = useState<"papers" | "members" | "reports" | "gaps" | "chat">("papers");
+  const [activeTab, setActiveTab] = useState<"papers" | "members" | "contributions" | "reports" | "gaps" | "chat">("papers");
   const [autoOpenReport, setAutoOpenReport] = useState(false);
   const [autoOpenGap, setAutoOpenGap] = useState(false);
 
@@ -129,6 +130,20 @@ export function ProjectDetailPage() {
             </button>
 
             <button
+              id="project-tab-contributions"
+              role="tab"
+              aria-selected={activeTab === "contributions"}
+              aria-controls="project-panel-contributions"
+              className={`pb-3 text-sm font-semibold transition-all relative whitespace-nowrap shrink-0 ${
+                activeTab === "contributions" ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 hover:text-slate-900 dark:hover:text-white"
+              }`}
+              onClick={() => setActiveTab("contributions")}
+            >
+              Contributions
+              {activeTab === "contributions" && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 dark:bg-indigo-400 rounded-t-full" />}
+            </button>
+
+            <button
               id="project-tab-reports"
               role="tab"
               aria-selected={activeTab === "reports"}
@@ -198,6 +213,16 @@ export function ProjectDetailPage() {
           {activeTab === "members" && (
             <section id="project-panel-members" role="tabpanel" aria-labelledby="project-tab-members">
               <MembersTab projectId={project._id} members={project.members} ownerId={project.ownerId} currentUserId={currentUser?.id} />
+            </section>
+          )}
+          {activeTab === "contributions" && (
+            <section id="project-panel-contributions" role="tabpanel" aria-labelledby="project-tab-contributions">
+              <ProjectContributionsTab
+                projectId={project._id}
+                members={project.members}
+                ownerId={project.ownerId}
+                currentUserId={currentUser?.id}
+              />
             </section>
           )}
           {activeTab === "reports" && (

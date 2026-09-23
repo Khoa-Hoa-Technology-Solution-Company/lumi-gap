@@ -5,6 +5,9 @@ export type GapSource = "report" | "standalone";
 export type GapAnalysisStatus = "queued" | "analyzing" | "ready" | "failed";
 export type GapEvidenceStatus = "confirmed" | "weak" | "ai_only";
 export type GapEvidenceMode = "auto" | "selected" | "hybrid";
+export type ResearchGapType = "COVERAGE_GAP" | "EMPIRICAL_VALIDATION_GAP" | "CONTRADICTORY_EVIDENCE_GAP" | "CONTEXT_GAP" | "METHODOLOGICAL_GAP" | "OUTCOME_GAP" | "TEMPORAL_GAP" | "EMERGING_GAP" | "MISSING_CONNECTION_GAP" | "ASSUMPTION_GAP" | "OTHER";
+export type GapAssessmentLevel = "LOW" | "MODERATE" | "HIGH";
+export type GapValidationStatus = "DRAFT" | "CANDIDATE" | "UNDER_VALIDATION" | "REFINED" | "VALIDATED" | "REJECTED" | "ARCHIVED";
 
 export interface GapSupportingPaper {
   id: string;
@@ -33,6 +36,7 @@ export interface ResearchGapItem {
   sourceReportId?: string;
   analysisId?: string;
   projectId?: string;
+  corpusId?: string;
   userId: string;
   status: GapStatus;
   createdAt: string;
@@ -41,6 +45,17 @@ export interface ResearchGapItem {
   parentCounts?: { a: number; b: number };
   parentTrend?: { topic: string; growthRatePct: number } | null;
   evidenceConfidence?: number;
+  gapType?: ResearchGapType;
+  scope?: string;
+  establishedKnowledge?: string;
+  observedLimitation?: string;
+  missingEvidence?: string;
+  significanceExplanation?: string;
+  suggestedResearchQuestion?: string;
+  validationStatus?: GapValidationStatus;
+  gapConfidence?: GapAssessmentLevel;
+  researchPriority?: GapAssessmentLevel;
+  origin?: "HUMAN" | "AI_ASSISTED";
 }
 
 export interface GapAnalysisResult {
@@ -105,6 +120,22 @@ export interface ListGapsResponse {
     pageSize: number;
     totalPages: number;
   };
+}
+
+export interface CreateGapCandidateRequest {
+  topic: string;
+  projectId?: string;
+  corpusId?: string;
+  title: string;
+  gapType: ResearchGapType;
+  scope?: string;
+  establishedKnowledge: string;
+  observedLimitation: string;
+  missingEvidence: string;
+  significanceExplanation: string;
+  suggestedResearchQuestion?: string;
+  gapConfidence: GapAssessmentLevel;
+  researchPriority: GapAssessmentLevel;
 }
 
 /** One AI-suggested next research direction for a gap (advisory). */
