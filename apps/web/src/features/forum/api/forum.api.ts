@@ -15,13 +15,11 @@ export type CommunityView = { id: string; name: string; slug: string; descriptio
 function id(value: unknown): string { return String((value as { _id?: unknown })?._id ?? value ?? ""); }
 function normalizeAuthor(value: any): ForumPostView["author"] {
   const declaredType = value?.academicProfileType ?? (["student", "researcher", "lecturer"].includes(value?.role) ? value.role : undefined);
-  const isVerifiedLecturer = declaredType === "lecturer" && value?.academicVerificationStatus === "VERIFIED";
-  const safeType = declaredType === "lecturer" ? undefined : declaredType;
   return {
     id: id(value),
-    fullName: `${value?.fullName ?? "Unknown researcher"}${isVerifiedLecturer ? " · Verified Lecturer" : ""}`,
+    fullName: value?.fullName ?? "Unknown researcher",
     institution: value?.institution,
-    academicProfileType: safeType,
+    academicProfileType: declaredType,
     academicVerificationStatus: value?.academicVerificationStatus,
     academicTitle: value?.academicTitle,
   };
