@@ -157,7 +157,7 @@ export function LanguageSwitcher() {
   const selectedLanguage = languages.find((item) => item.code === language) ?? languages[0];
 
   return (
-    <DropdownMenu>
+    <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
         <button
           type="button"

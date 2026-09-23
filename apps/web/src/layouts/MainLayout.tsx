@@ -23,17 +23,14 @@ import { avatars, getLevel } from "@/utils/level";
 import { formatNumber } from "@/utils";
 import { LanguageSwitcher, useI18n } from "@/i18n";
 
-const directNavItems = [
-  { to: "/search", label: "Search" },
-  { to: "/forum", label: "Forum" },
-] as const;
-
 const navGroups = [
   {
     label: "Explore",
     items: [
+      { to: "/search", label: "Search" },
       { to: "/trends", label: "Trends" },
       { to: "/research-gaps", label: "Research Gaps" },
+      { to: "/rankings", label: "Rankings" },
     ],
   },
   {
@@ -41,6 +38,13 @@ const navGroups = [
     items: [
       { to: "/reports", label: "Reports" },
       { to: "/projects", label: "Projects" },
+    ],
+  },
+  {
+    label: "Community",
+    items: [
+      { to: "/forum", label: "Forum" },
+      { to: "/communities", label: "Communities" },
     ],
   },
   {
@@ -68,29 +72,33 @@ function DesktopNavDropdown({
   const active = items.some((item) => pathMatches(pathname, item.to));
 
   return (
-    <DropdownMenu>
+    <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
           className={cn(
-            "h-10 shrink-0 gap-1 rounded-b-none rounded-t-md border-b-2 px-3 text-sm font-medium",
+            "h-10 shrink-0 gap-1.5 rounded-b-none rounded-t-md border-b-2 px-3 text-sm font-medium transition-colors [&[data-state=open]>svg]:rotate-180",
             active
               ? "border-blue-600 bg-blue-50 text-blue-600 dark:bg-blue-950/20 dark:text-blue-400"
               : "border-transparent text-slate-600 hover:bg-blue-50/50 hover:text-blue-600 dark:text-slate-400 dark:hover:bg-blue-950/10 dark:hover:text-blue-400",
           )}
         >
           {label}
-          <ChevronDown className="h-3.5 w-3.5" />
+          <ChevronDown className="h-3.5 w-3.5 transition-transform duration-200" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-52">
+      <DropdownMenuContent
+        align="start"
+        sideOffset={8}
+        className="w-56 rounded-xl border-slate-200/90 p-1.5 shadow-xl shadow-slate-900/10 dark:border-slate-800 dark:shadow-black/30"
+      >
         {items.map((item) => (
           <DropdownMenuItem key={item.to} asChild>
             <NavLink
               to={item.to}
               className={({ isActive }) =>
                 cn(
-                  "w-full px-3 py-2.5",
+                  "w-full rounded-lg px-3 py-2.5",
                   isActive && "bg-blue-50 font-medium text-blue-700 dark:bg-blue-950/30 dark:text-blue-300",
                 )
               }
@@ -163,47 +171,14 @@ export function MainLayout() {
               aria-label={t("Primary navigation")}
               className="hidden min-[1180px]:flex items-center gap-0.5 whitespace-nowrap"
             >
-              <NavLink
-                to="/search"
-                className={({ isActive }) =>
-                  cn(
-                    "shrink-0 whitespace-nowrap rounded-b-none rounded-t-md border-b-2 px-3 py-2.5 text-sm font-medium leading-none transition-colors",
-                    isActive
-                      ? "border-blue-600 bg-blue-50 text-blue-600 dark:bg-blue-950/20 dark:text-blue-400"
-                      : "border-transparent text-slate-600 hover:bg-blue-50/50 hover:text-blue-600 dark:text-slate-400 dark:hover:bg-blue-950/10 dark:hover:text-blue-400",
-                  )
-                }
-              >
-                {t("Search")}
-              </NavLink>
-              <DesktopNavDropdown
-                label={t("Explore")}
-                pathname={location.pathname}
-                items={navGroups[0].items.map((item) => ({ ...item, label: t(item.label) }))}
-              />
-              <DesktopNavDropdown
-                label={t("Workspace")}
-                pathname={location.pathname}
-                items={navGroups[1].items.map((item) => ({ ...item, label: t(item.label) }))}
-              />
-              <NavLink
-                to="/forum"
-                className={({ isActive }) =>
-                  cn(
-                    "shrink-0 whitespace-nowrap rounded-b-none rounded-t-md border-b-2 px-3 py-2.5 text-sm font-medium leading-none transition-colors",
-                    isActive
-                      ? "border-blue-600 bg-blue-50 text-blue-600 dark:bg-blue-950/20 dark:text-blue-400"
-                      : "border-transparent text-slate-600 hover:bg-blue-50/50 hover:text-blue-600 dark:text-slate-400 dark:hover:bg-blue-950/10 dark:hover:text-blue-400",
-                  )
-                }
-              >
-                {t("Forum")}
-              </NavLink>
-              <DesktopNavDropdown
-                label={t("Paper Tools")}
-                pathname={location.pathname}
-                items={navGroups[2].items.map((item) => ({ ...item, label: t(item.label) }))}
-              />
+              {navGroups.map((group) => (
+                <DesktopNavDropdown
+                  key={group.label}
+                  label={t(group.label)}
+                  pathname={location.pathname}
+                  items={group.items.map((item) => ({ ...item, label: t(item.label) }))}
+                />
+              ))}
             </nav>
           </div>
 
@@ -244,26 +219,6 @@ export function MainLayout() {
             className="absolute left-0 right-0 top-20 z-40 border-t bg-white shadow-lg min-[1180px]:hidden dark:bg-[#0f0f11]"
           >
             <nav aria-label={t("Primary navigation")} className="mx-auto grid max-w-5xl gap-4 px-4 py-4 sm:grid-cols-2 lg:grid-cols-4">
-              <div className="space-y-1">
-                <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400">{t("Primary navigation")}</p>
-                {directNavItems.map((item) => (
-                  <NavLink
-                    key={item.to}
-                    to={item.to}
-                    onClick={() => setIsMobileMenuOpen(false)}
-                    className={({ isActive }) =>
-                      cn(
-                        "block rounded-md px-3 py-2.5 text-sm font-medium",
-                        isActive
-                          ? "bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-300"
-                          : "text-slate-600 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-zinc-800",
-                      )
-                    }
-                  >
-                    {t(item.label)}
-                  </NavLink>
-                ))}
-              </div>
               {navGroups.map((group) => (
                 <div key={group.label} className="space-y-1">
                   <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400">{t(group.label)}</p>
@@ -339,7 +294,7 @@ function UserMenu({ bookmarkCount }: { bookmarkCount: number }) {
   const levelAvatar = avatars[currentLevel];
 
   return (
-    <DropdownMenu>
+    <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
