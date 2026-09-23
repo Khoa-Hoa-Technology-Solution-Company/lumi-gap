@@ -30,7 +30,6 @@ const navGroups = [
       { to: "/search", label: "Search" },
       { to: "/trends", label: "Trends" },
       { to: "/research-gaps", label: "Research Gaps" },
-      { to: "/rankings", label: "Rankings" },
     ],
   },
   {

@@ -12,6 +12,12 @@ export {
 } from "./hooks/use-auth";
 export { requiresAcademicProfile } from "./utils/academic-profile";
 export {
+  ACADEMIC_ONBOARDING_PATH,
+  ADMIN_LANDING_PATH,
+  MEMBER_LANDING_PATH,
+  resolvePostAuthPath,
+} from "./utils/post-auth-redirect";
+export {
   loginSchema,
   registerSchema,
   type LoginFormValues,

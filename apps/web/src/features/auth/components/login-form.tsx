@@ -16,14 +16,14 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { API_BASE_URL } from "@/services/api-client";
-import { loginSchema, requiresAcademicProfile, useLogin, type LoginFormValues } from "@/features/auth";
+import { loginSchema, resolvePostAuthPath, useLogin, type LoginFormValues } from "@/features/auth";
 
 interface LoginFormProps {
   redirectTo?: string;
 }
 
 interface LocationState {
-  from?: { pathname: string };
+  from?: { pathname: string; search?: string; hash?: string };
 }
 
 export function LoginForm({ redirectTo }: LoginFormProps) {
@@ -40,12 +40,11 @@ export function LoginForm({ redirectTo }: LoginFormProps) {
     login.mutate(values, {
       onSuccess: (data) => {
         toast.success(`Welcome back, ${data.user.fullName}`);
-        if (requiresAcademicProfile(data.user)) {
-          navigate("/onboarding/academic-profile", { replace: true });
-          return;
-        }
-        const target =
-          redirectTo ?? (location.state as LocationState | null)?.from?.pathname ?? "/home";
+        const previousLocation = (location.state as LocationState | null)?.from;
+        const requestedPath = previousLocation
+          ? `${previousLocation.pathname}${previousLocation.search ?? ""}${previousLocation.hash ?? ""}`
+          : redirectTo;
+        const target = resolvePostAuthPath(data.user, requestedPath);
         navigate(target, { replace: true });
       },
       onError: (err) => {

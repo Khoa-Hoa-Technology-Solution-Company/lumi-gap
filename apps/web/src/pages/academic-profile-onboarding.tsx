@@ -8,6 +8,7 @@ import logoImage from "@/assets/logo.png";
 import { Button } from "@/components/ui/button";
 import {
   requiresAcademicProfile,
+  resolvePostAuthPath,
   useCurrentUser,
   useLogout,
   useUpdateAcademicProfile,
@@ -68,7 +69,7 @@ export function AcademicProfileOnboardingPage() {
   }
 
   if (user && !requiresAcademicProfile(user)) {
-    return <Navigate to="/home" replace />;
+    return <Navigate to={resolvePostAuthPath(user)} replace />;
   }
 
   const submit = () => {
@@ -76,9 +77,9 @@ export function AcademicProfileOnboardingPage() {
     updateProfile.mutate(
       { academicProfileType: selection },
       {
-        onSuccess: () => {
+        onSuccess: ({ user: updatedUser }) => {
           toast.success("Academic profile saved. Welcome to LiemResearch!");
-          navigate("/home", { replace: true });
+          navigate(resolvePostAuthPath(updatedUser), { replace: true });
         },
         onError: () => toast.error("Could not save your profile. Please try again."),
       },
