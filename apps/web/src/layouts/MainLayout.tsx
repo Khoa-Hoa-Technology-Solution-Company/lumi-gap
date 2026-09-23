@@ -1,4 +1,4 @@
-import { Suspense, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Link, Navigate, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { LogOut, User, Bell, Bookmark, ChevronDown, Menu, Trophy, X } from "lucide-react";
 
@@ -64,51 +64,78 @@ function DesktopNavDropdown({
   label,
   items,
   pathname,
+  open,
+  onOpen,
+  onClose,
+  onDismiss,
 }: {
   label: string;
   items: ReadonlyArray<{ to: string; label: string }>;
   pathname: string;
+  open: boolean;
+  onOpen: () => void;
+  onClose: () => void;
+  onDismiss: () => void;
 }) {
   const active = items.some((item) => pathMatches(pathname, item.to));
 
   return (
-    <DropdownMenu modal={false}>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant="ghost"
-          className={cn(
-            "h-10 shrink-0 gap-1.5 rounded-b-none rounded-t-md border-b-2 px-3 text-sm font-medium transition-colors [&[data-state=open]>svg]:rotate-180",
-            active
-              ? "border-blue-600 bg-blue-50 text-blue-600 dark:bg-blue-950/20 dark:text-blue-400"
-              : "border-transparent text-slate-600 hover:bg-blue-50/50 hover:text-blue-600 dark:text-slate-400 dark:hover:bg-blue-950/10 dark:hover:text-blue-400",
-          )}
-        >
-          {label}
-          <ChevronDown className="h-3.5 w-3.5 transition-transform duration-200" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent
-        align="start"
-        sideOffset={8}
-        className="w-56 rounded-xl border-slate-200/90 p-1.5 shadow-xl shadow-slate-900/10 dark:border-slate-800 dark:shadow-black/30"
+    <div
+      onPointerEnter={(event) => {
+        if (event.pointerType === "mouse") onOpen();
+      }}
+      onPointerLeave={(event) => {
+        if (event.pointerType === "mouse") onClose();
+      }}
+    >
+      <DropdownMenu
+        modal={false}
+        open={open}
+        onOpenChange={(nextOpen) => (nextOpen ? onOpen() : onDismiss())}
       >
-        {items.map((item) => (
-          <DropdownMenuItem key={item.to} asChild>
-            <NavLink
-              to={item.to}
-              className={({ isActive }) =>
-                cn(
-                  "w-full rounded-lg px-3 py-2.5",
-                  isActive && "bg-blue-50 font-medium text-blue-700 dark:bg-blue-950/30 dark:text-blue-300",
-                )
-              }
-            >
-              {item.label}
-            </NavLink>
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            className={cn(
+              "h-10 shrink-0 gap-1.5 rounded-b-none rounded-t-md border-b-2 px-3 text-sm font-medium transition-colors [&[data-state=open]>svg]:rotate-180",
+              active
+                ? "border-blue-600 bg-blue-50 text-blue-600 dark:bg-blue-950/20 dark:text-blue-400"
+                : "border-transparent text-slate-600 hover:bg-blue-50/50 hover:text-blue-600 dark:text-slate-400 dark:hover:bg-blue-950/10 dark:hover:text-blue-400",
+            )}
+          >
+            {label}
+            <ChevronDown className="h-3.5 w-3.5 transition-transform duration-200" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          align="start"
+          sideOffset={8}
+          onPointerEnter={(event) => {
+            if (event.pointerType === "mouse") onOpen();
+          }}
+          onPointerLeave={(event) => {
+            if (event.pointerType === "mouse") onClose();
+          }}
+          className="w-56 rounded-xl border-slate-200/90 p-1.5 shadow-xl shadow-slate-900/10 dark:border-slate-800 dark:shadow-black/30"
+        >
+          {items.map((item) => (
+            <DropdownMenuItem key={item.to} asChild>
+              <NavLink
+                to={item.to}
+                className={({ isActive }) =>
+                  cn(
+                    "w-full rounded-lg px-3 py-2.5",
+                    isActive && "bg-blue-50 font-medium text-blue-700 dark:bg-blue-950/30 dark:text-blue-300",
+                  )
+                }
+              >
+                {item.label}
+              </NavLink>
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
   );
 }
 
@@ -124,7 +151,33 @@ export function MainLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [activeDesktopMenu, setActiveDesktopMenu] = useState<string | null>(null);
+  const desktopMenuCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { t } = useI18n();
+
+  const cancelDesktopMenuClose = useCallback(() => {
+    if (desktopMenuCloseTimer.current) {
+      clearTimeout(desktopMenuCloseTimer.current);
+      desktopMenuCloseTimer.current = null;
+    }
+  }, []);
+
+  const openDesktopMenu = useCallback((label: string) => {
+    cancelDesktopMenuClose();
+    setActiveDesktopMenu(label);
+  }, [cancelDesktopMenuClose]);
+
+  const scheduleDesktopMenuClose = useCallback(() => {
+    cancelDesktopMenuClose();
+    desktopMenuCloseTimer.current = setTimeout(() => setActiveDesktopMenu(null), 140);
+  }, [cancelDesktopMenuClose]);
+
+  const dismissDesktopMenu = useCallback(() => {
+    cancelDesktopMenuClose();
+    setActiveDesktopMenu(null);
+  }, [cancelDesktopMenuClose]);
+
+  useEffect(() => cancelDesktopMenuClose, [cancelDesktopMenuClose]);
 
   const isAuthed = useAuthStore((s) => !!s.tokens?.accessToken);
   const user = useAuthStore((s) => s.user);
@@ -154,33 +207,35 @@ export function MainLayout() {
   return (
     <div className="flex min-h-screen flex-col bg-slate-50 dark:bg-[#09090b]">
       <header className="border-b bg-white dark:bg-[#0f0f11] sticky top-0 z-50">
-        <div className="container mx-auto flex h-20 min-w-0 items-center justify-between gap-1 px-3 sm:gap-4 sm:px-6 lg:px-8">
-          <div className="flex min-w-0 items-center gap-6">
-            <Link to="/" className="relative flex h-20 w-24 shrink-0 select-none items-center gap-2 overflow-visible text-2xl font-black tracking-tight sm:w-[150px]">
-              <img
-                src={logoImage}
-                alt="PAPERLENS logo"
-                className="absolute left-0 h-20 w-auto max-w-none object-contain"
+        <div className="container mx-auto grid h-20 min-w-0 grid-cols-[auto_1fr_auto] items-center gap-1 px-3 sm:gap-4 sm:px-6 lg:px-8">
+          <Link to="/" className="relative flex h-20 w-24 shrink-0 select-none items-center gap-2 overflow-visible text-2xl font-black tracking-tight sm:w-[150px]">
+            <img
+              src={logoImage}
+              alt="PAPERLENS logo"
+              className="absolute left-0 h-20 w-auto max-w-none object-contain"
+            />
+            <span className="text-slate-900 dark:text-white">
+
+            </span>
+          </Link>
+
+          <nav
+            aria-label={t("Primary navigation")}
+            className="hidden items-center justify-self-center gap-0.5 whitespace-nowrap min-[1180px]:flex"
+          >
+            {navGroups.map((group) => (
+              <DesktopNavDropdown
+                key={group.label}
+                label={t(group.label)}
+                pathname={location.pathname}
+                items={group.items.map((item) => ({ ...item, label: t(item.label) }))}
+                open={activeDesktopMenu === group.label}
+                onOpen={() => openDesktopMenu(group.label)}
+                onClose={scheduleDesktopMenuClose}
+                onDismiss={dismissDesktopMenu}
               />
-              <span className="text-slate-900 dark:text-white">
-
-              </span>
-            </Link>
-
-            <nav
-              aria-label={t("Primary navigation")}
-              className="hidden min-[1180px]:flex items-center gap-0.5 whitespace-nowrap"
-            >
-              {navGroups.map((group) => (
-                <DesktopNavDropdown
-                  key={group.label}
-                  label={t(group.label)}
-                  pathname={location.pathname}
-                  items={group.items.map((item) => ({ ...item, label: t(item.label) }))}
-                />
-              ))}
-            </nav>
-          </div>
+            ))}
+          </nav>
 
           <div className="flex shrink-0 items-center gap-0.5 sm:gap-2">
             <ThemeToggle />

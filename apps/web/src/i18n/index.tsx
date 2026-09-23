@@ -155,43 +155,87 @@ export function LanguageMenuItems() {
 export function LanguageSwitcher() {
   const { language, languages, setLanguage } = useI18n();
   const selectedLanguage = languages.find((item) => item.code === language) ?? languages[0];
+  const [open, setOpen] = useState(false);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const cancelClose = useCallback(() => {
+    if (closeTimer.current) {
+      clearTimeout(closeTimer.current);
+      closeTimer.current = null;
+    }
+  }, []);
+
+  const showMenu = useCallback(() => {
+    cancelClose();
+    setOpen(true);
+  }, [cancelClose]);
+
+  const scheduleClose = useCallback(() => {
+    cancelClose();
+    closeTimer.current = setTimeout(() => setOpen(false), 140);
+  }, [cancelClose]);
+
+  useEffect(() => cancelClose, [cancelClose]);
 
   return (
-    <DropdownMenu modal={false}>
-      <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          data-no-i18n
-          className="inline-flex h-9 items-center gap-2 rounded-full border border-slate-200 bg-white px-3 text-xs font-extrabold uppercase tracking-wide text-slate-600 shadow-sm transition hover:border-blue-200 hover:bg-blue-50/60 hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-100 dark:border-slate-800 dark:bg-[#111B27] dark:text-slate-300 dark:hover:border-blue-900/60 dark:hover:bg-blue-950/20"
-          aria-label="Change language"
-        >
-          <FlagIcon code={selectedLanguage.code} />
-          <span>{selectedLanguage.code}</span>
-          <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent
-        align="end"
-        data-no-i18n
-        className="w-44 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl dark:border-slate-800 dark:bg-zinc-950"
+    <div
+      className="shrink-0"
+      onPointerEnter={(event) => {
+        if (event.pointerType === "mouse") showMenu();
+      }}
+      onPointerLeave={(event) => {
+        if (event.pointerType === "mouse") scheduleClose();
+      }}
+    >
+      <DropdownMenu
+        modal={false}
+        open={open}
+        onOpenChange={(nextOpen) => {
+          cancelClose();
+          setOpen(nextOpen);
+        }}
       >
-        {languages.map((item) => (
-          <DropdownMenuItem
-            key={item.code}
-            onSelect={() => setLanguage(item.code)}
-            className={cn(
-              "flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm font-bold",
-              item.code === language
-                ? "bg-blue-50 text-blue-600 dark:bg-blue-950/30 dark:text-blue-400"
-                : "text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-zinc-900",
-            )}
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            data-no-i18n
+            className="inline-flex h-9 items-center gap-2 rounded-full border border-slate-200 bg-white px-3 text-xs font-extrabold uppercase tracking-wide text-slate-600 shadow-sm transition hover:border-blue-200 hover:bg-blue-50/60 hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-100 dark:border-slate-800 dark:bg-[#111B27] dark:text-slate-300 dark:hover:border-blue-900/60 dark:hover:bg-blue-950/20 [&[data-state=open]>svg:last-child]:rotate-180"
+            aria-label="Change language"
           >
-            <FlagIcon code={item.code} />
-            <span className="flex-1">{item.nativeLabel}</span>
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
+            <FlagIcon code={selectedLanguage.code} />
+            <span>{selectedLanguage.code}</span>
+            <ChevronDown className="h-3.5 w-3.5 text-slate-400 transition-transform duration-200" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          align="end"
+          data-no-i18n
+          onPointerEnter={(event) => {
+            if (event.pointerType === "mouse") showMenu();
+          }}
+          onPointerLeave={(event) => {
+            if (event.pointerType === "mouse") scheduleClose();
+          }}
+          className="w-44 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl dark:border-slate-800 dark:bg-zinc-950"
+        >
+          {languages.map((item) => (
+            <DropdownMenuItem
+              key={item.code}
+              onSelect={() => setLanguage(item.code)}
+              className={cn(
+                "flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm font-bold",
+                item.code === language
+                  ? "bg-blue-50 text-blue-600 dark:bg-blue-950/30 dark:text-blue-400"
+                  : "text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-zinc-900",
+              )}
+            >
+              <FlagIcon code={item.code} />
+              <span className="flex-1">{item.nativeLabel}</span>
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
   );
 }
 
