@@ -77,6 +77,11 @@ export function createApp(): Express {
     });
   });
 
+  // Machine-readable schema for API clients, Postman imports, and CI contract checks.
+  app.get("/openapi.json", (_req, res) => {
+    res.json(openapiSpec);
+  });
+
   // Interactive API docs (browsable + testable). Helmet's default CSP blocks
   // Swagger UI's inline assets, so disable CSP for this route only.
   app.use(
@@ -84,7 +89,11 @@ export function createApp(): Express {
     helmet({ contentSecurityPolicy: false }),
     swaggerUi.serve,
     swaggerUi.setup(openapiSpec as Record<string, unknown>, {
-      customSiteTitle: "Publication Trend API",
+      customSiteTitle: "LumiGap API",
+      swaggerOptions: {
+        persistAuthorization: true,
+        displayRequestDuration: true,
+      },
     }),
   );
 

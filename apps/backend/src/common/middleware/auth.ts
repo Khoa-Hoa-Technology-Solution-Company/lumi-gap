@@ -3,7 +3,8 @@ import jwt from "jsonwebtoken";
 import type { AcademicProfileType, UserRole } from "@trend/shared-types";
 import { env } from "../../config/env.js";
 import { AppError } from "../exceptions/app-error.js";
-import { UserModel } from "../../modules/auth/models/user.model.js";
+import { parseDatabaseId } from "../../infrastructure/database/database-id.js";
+import { getPrisma } from "../../infrastructure/database/prisma.js";
 
 export interface AuthClaims {
   sub: string;          // user id
@@ -38,11 +39,21 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
   // rather than staying valid until the 15-min access token expires. Also refresh
   // the role from the DB so requireRole sees the current value.
   try {
-    const user = await UserModel.findById(claims.sub).select("isActive role academicProfileType").lean();
-    if (!user || user.isActive === false) {
+    const parsedId = parseDatabaseId(claims.sub);
+    const user = parsedId
+      ? await getPrisma().user.findUnique({
+          where: parsedId.kind === "uuid" ? { id: parsedId.value } : { legacyMongoId: parsedId.value },
+          select: { isActive: true, role: true, academicProfileType: true },
+        })
+      : null;
+    if (!user || !user.isActive) {
       return next(AppError.unauthorized("Account is disabled or no longer exists"));
     }
-    req.user = { ...claims, role: user.role, academicProfileType: user.academicProfileType ?? undefined };
+    req.user = {
+      ...claims,
+      role: user.role as UserRole,
+      academicProfileType: user.academicProfileType as AcademicProfileType | null ?? undefined,
+    };
     next();
   } catch (err) {
     next(err);
@@ -66,9 +77,19 @@ export async function optionalAuth(req: Request, _res: Response, next: NextFunct
   }
 
   try {
-    const user = await UserModel.findById(claims.sub).select("isActive role academicProfileType").lean();
-    if (user && user.isActive !== false) {
-      req.user = { ...claims, role: user.role, academicProfileType: user.academicProfileType ?? undefined };
+    const parsedId = parseDatabaseId(claims.sub);
+    const user = parsedId
+      ? await getPrisma().user.findUnique({
+          where: parsedId.kind === "uuid" ? { id: parsedId.value } : { legacyMongoId: parsedId.value },
+          select: { isActive: true, role: true, academicProfileType: true },
+        })
+      : null;
+    if (user?.isActive) {
+      req.user = {
+        ...claims,
+        role: user.role as UserRole,
+        academicProfileType: user.academicProfileType as AcademicProfileType | null ?? undefined,
+      };
     }
     next();
   } catch (err) {

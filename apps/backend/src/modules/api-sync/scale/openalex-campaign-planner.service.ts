@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 
 import { AppError } from "../../../common/exceptions/app-error.js";
-import { ApiProviderModel } from "../models/api-provider.model.js";
+import { getPrisma } from "../../../infrastructure/database/prisma.js";
 import { fetchOpenAlexGroupCounts } from "../providers/openalex.client.js";
 import { ingestCampaignService, type PlannedPartitionInput } from "./ingest-campaign.service.js";
 import { allocateLargestRemainder, planDomainBaseline, splitSeededSampleQuota } from "./campaign-planner.js";
@@ -34,7 +34,7 @@ export interface PlanOpenAlexBackfillInput {
  */
 export const openAlexCampaignPlannerService = {
   async planBackfill(input: PlanOpenAlexBackfillInput) {
-    const provider = await ApiProviderModel.exists({ providerName: "openalex" });
+    const provider = await getPrisma().apiProvider.findUnique({ where: { providerName: "openalex" }, select: { id: true } });
     if (!provider) throw AppError.conflict("OpenAlex provider is not seeded; run seed:providers before planning a campaign");
 
     const snapshot = await openAlexPreflightService.run();

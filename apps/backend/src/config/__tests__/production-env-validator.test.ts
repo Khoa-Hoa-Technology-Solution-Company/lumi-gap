@@ -4,7 +4,7 @@ import { validateProductionEnvironment, type ProductionEnvironment } from "../pr
 function validEnvironment(): ProductionEnvironment {
   return {
     NODE_ENV: "production",
-    MONGODB_URI: "mongodb://user:password@example.test:27017/paperlens",
+    DATABASE_URL: "postgresql://user:password@postgres:5432/paperlens",
     REDIS_DEPLOYMENT: "self_hosted",
     REDIS_PASSWORD: "redis-password-that-is-at-least-32-characters",
     REDIS_URL: "redis://default:redis-password-that-is-at-least-32-characters@redis:6379",

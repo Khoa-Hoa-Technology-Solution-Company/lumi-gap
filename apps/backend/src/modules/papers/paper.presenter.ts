@@ -92,7 +92,7 @@ export function presentPaperDetail(
     viewCount: raw.viewCount ?? 0,
     pdfAvailable: Boolean(raw.pdfPath),
     // Compatibility field for the current FE. This is a protected API route,
-    // never the R2 URI, local path, bucket, or object key stored in MongoDB.
+    // never the R2 URI, local path, bucket, or object key stored in persistence.
     pdfPath: raw.pdfPath ? `/api/v1/papers/${id}/pdf-url` : undefined,
     paperStatus: options.includeWorkflow
       ? raw.paperStatus

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { objectIdSchema, paginationSchema } from "../../../common/validation/mongo.js";
+import { objectIdSchema, paginationSchema } from "../../../common/validation/database-id.js";
 import { isValidPublicHandle, normalizePublicHandle } from "../public-handle.js";
 
 const normalizeList = (maxItems: number, maxLength = 120) => z

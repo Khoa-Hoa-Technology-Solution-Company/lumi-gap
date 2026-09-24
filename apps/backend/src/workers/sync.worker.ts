@@ -1,10 +1,13 @@
 import { Worker } from "bullmq";
+import { enforcePostgresOnlyRuntime } from "../infrastructure/database/postgres-only-runtime.js";
 import { env } from "../config/env.js";
-import { connectMongo, disconnectMongo } from "../infrastructure/db.js";
+import { connectPostgres, disconnectPostgres } from "../infrastructure/database/prisma.js";
 import { apiSyncQueue, makeConnection, QUEUE_NAMES } from "../infrastructure/queue.js";
 import { logger } from "../infrastructure/logger.js";
 import { startWorkerHeartbeat } from "../infrastructure/worker-heartbeat.js";
 import { runSync, type RunSyncJob } from "../modules/api-sync/sync.service.js";
+
+enforcePostgresOnlyRuntime();
 
 /**
  * Standalone OpenAlex sync worker — a SEPARATE Node process from the API.
@@ -14,7 +17,7 @@ import { runSync, type RunSyncJob } from "../modules/api-sync/sync.service.js";
  * Also registers the daily cron (SYNC_CRON) as a repeatable job.
  */
 async function main() {
-  await connectMongo();
+  await connectPostgres();
   const stopHeartbeat = startWorkerHeartbeat({ workerName: "worker:sync", queueName: QUEUE_NAMES.apiSync });
 
   const worker = new Worker(
@@ -47,7 +50,7 @@ async function main() {
     logger.info({ signal }, "worker shutting down");
     await stopHeartbeat();
     await worker.close();
-    await disconnectMongo();
+    await disconnectPostgres();
     process.exit(0);
   };
   process.on("SIGINT", () => void shutdown("SIGINT"));

@@ -1,7 +1,7 @@
 # CLAUDE.md — Publication Trend System
 
 > Context file for Claude Code (and any AI coding assistant) working on this repo.
-> Read this first before touching code. Last updated: 2026-05-25.
+> Read this first before touching code. Last updated: 2026-09-24.
 
 ---
 
@@ -28,7 +28,7 @@ It is **not** a "build a new ML model" project. It investigates how **LLM + RAG 
 |---|---|---|
 | Mono-repo | pnpm workspaces + Turborepo | Share `@trend/shared-types` between BE/Web/Mobile, atomic commits |
 | Backend | Node.js 22 + Express 5 + TypeScript | Team familiarity, Express 5 has built-in async error handling |
-| ORM | Mongoose 8 | Schema validation + Atlas integration in one package |
+| Database/ORM | PostgreSQL 16 + pgvector + Prisma 7 | Relational integrity, migrations, and vector search in one database |
 | Queue | BullMQ + Redis | Industry standard for Node job queues |
 | Web | React 18 + Vite 6 + TypeScript | Fast HMR, ecosystem maturity |
 | Web UI | Tailwind 3 + shadcn/ui | Composable primitives, no lock-in |
@@ -38,8 +38,8 @@ It is **not** a "build a new ML model" project. It investigates how **LLM + RAG 
 | Mobile UI | NativeWind 4 | Reuse Tailwind knowledge cross-platform |
 | AI — LLM | Gemini 3.5 Flash (cheap) + 2.5 Pro (reports) | Same SDK as embeddings, generous free tier |
 | AI — Embedding | Gemini Embedding 2 (768 dim) | Same SDK, free tier sufficient for MVP |
-| Vector store | MongoDB Atlas Vector Search | Co-located with metadata, no separate DB |
-| Cache | Upstash Redis (TLS, Singapore region) | Free tier, no local Docker needed |
+| Vector store | pgvector | Co-located with PostgreSQL metadata |
+| Cache | Redis | Cache and BullMQ transport; local Compose and hosted Redis are supported |
 | Auth | JWT (15min access + 7d refresh) | Stateless, works for web + mobile |
 | Validation | Zod | Single schema for HTTP DTOs and TypeScript types |
 | Logging | Pino + pino-http | Structured JSON logs, pretty-printed in dev |
@@ -55,7 +55,7 @@ These are configured per developer in their own `.env`. The team lead (hoangtira
 
 | Service | URL | Free tier covers |
 |---|---|---|
-| MongoDB Atlas | https://cloud.mongodb.com | 512 MB on M0, ~50K papers |
+| PostgreSQL | Local Docker or managed PostgreSQL with pgvector | Primary application datastore |
 | Upstash Redis | https://console.upstash.com | 10K commands/day |
 | Google AI Studio (Gemini) | https://aistudio.google.com | ~250 RPD on Flash, ~125 on Pro |
 | OpenAlex API | https://api.openalex.org | Unlimited with polite mailto |
@@ -63,7 +63,7 @@ These are configured per developer in their own `.env`. The team lead (hoangtira
 
 **Each developer creates their own Gemini key** — sharing one hits rate limits faster.
 
-**MongoDB URI + JWT secrets are shared** through Discord/Messenger DM, never via git or public channels.
+**Database credentials + JWT secrets are never committed** and must only be shared through an approved secret channel.
 
 ---
 
@@ -84,8 +84,7 @@ LiemResearch/                                    (repo root — fork of thiennha
 ├── docs/
 │   ├── MIGRATION_MAP.md                         legacy → monorepo porting checklist
 │   └── superpowers/specs/                       design specs (per phase)
-├── docker-compose.yml                           local Mongo + Redis (not used —
-│                                                Atlas + Upstash instead)
+├── docker-compose.yml                           local PostgreSQL/pgvector + Redis
 ├── pnpm-workspace.yaml                          workspace declaration
 ├── pnpm-lock.yaml                               COMMIT THIS — version pinning
 ├── turbo.json                                   task orchestration
@@ -114,7 +113,7 @@ common/                           cross-cutting concerns
     └── error-handler.ts          global handler + 404 handler
 
 infrastructure/                   external system clients (one file per system)
-├── db.ts                         Mongoose connect / disconnect
+├── prisma.ts                     Prisma client lifecycle
 ├── redis.ts                      ioredis client + lifecycle
 ├── cache.ts                      JSON cache wrapper + hashKey()
 ├── logger.ts                     Pino logger (pretty in dev)
@@ -123,12 +122,10 @@ infrastructure/                   external system clients (one file per system)
 modules/                          feature modules — each self-contained
 ├── auth/
 │   ├── dto/auth.schema.ts        Zod request schemas
-│   ├── models/user.model.ts      User + RefreshToken (Mongoose)
 │   ├── auth.controller.ts        thin HTTP handlers
 │   ├── auth.service.ts           business logic
 │   └── auth.routes.ts            route table
 ├── papers/
-│   ├── models/paper.model.ts     Paper (Mongoose) — pinned to "research_papers"
 │   ├── paper.controller.ts
 │   └── paper.routes.ts
 ├── llm/gemini.client.ts          generateText / generateJSON
@@ -206,7 +203,7 @@ trend.ts                          PublicationTrend, YearlyCount, TopItem
 report.ts                         AnalyticalReport, ResearchGap, ReportStatus
 ```
 
-**Rule:** this package is framework-agnostic. No Express, React, or Mongoose imports.
+**Rule:** this package is framework-agnostic. No Express, React, Prisma, or database-client imports.
 
 ---
 
@@ -214,11 +211,11 @@ report.ts                         AnalyticalReport, ResearchGap, ReportStatus
 
 ### File naming
 - TypeScript files: kebab-case (`auth.service.ts`, `use-papers.ts`)
-- React components and Mongoose models: PascalCase exports inside kebab-case files
+- React components: PascalCase exports inside kebab-case files
 - Tests: colocated `__tests__/foo.test.ts`
 
 ### Module structure (backend)
-- A module under `modules/<name>/` owns its **own** routes, controller, service, schema, and Mongoose model.
+- A module under `modules/<name>/` owns its **own** routes, controller, service, and validation schema. Persistent models live in the multi-file Prisma schema.
 - Controllers stay **thin** — orchestrate HTTP I/O only. Business logic lives in `*.service.ts`.
 - Throw `AppError.*` from services. The global handler in `common/middleware/error-handler.ts` formats them.
 - Validate with `validate(schema, "body" | "query" | "params")`, not inline Zod parsing.
@@ -234,7 +231,7 @@ report.ts                         AnalyticalReport, ResearchGap, ReportStatus
 
 ### Auth
 - Access token: 15 min, signed with `JWT_ACCESS_SECRET`.
-- Refresh token: 7 days, **hashed** in MongoDB with a TTL index. Rotated on each refresh.
+- Refresh token: 7 days, **hashed** in PostgreSQL and rotated on each refresh.
 - Web: tokens in localStorage. Mobile: tokens in expo-secure-store (Keychain / Keystore).
 - 401 → client tries refresh once → on failure, clear tokens and redirect to login.
 
@@ -249,18 +246,14 @@ report.ts                         AnalyticalReport, ResearchGap, ReportStatus
 
 ### Embeddings
 - Always via `getEmbeddingProvider()` (factory). Do not import `GeminiEmbeddingProvider` directly outside the factory.
-- Mongoose: `embedding` field is `select: false` so list queries don't carry vectors over the wire.
-
-### Mongoose collection names
-- **Always pin explicitly:** `mongoose.model("Paper", schema, "research_papers")`.
-- Atlas Vector Search indexes are created against specific collection names. If you let Mongoose pluralize ("Paper" → "papers"), the index won't see your data. This bit us once — see git log `dd9c2d8`.
+- Embedding queries use pgvector through parameterized Prisma SQL. Ordinary list endpoints must not select vector payloads.
 
 ### Polymorphic relationships
 - For `bookmarks`, `follows`, `notifications`, `publication_trends`: use a `targetKind` discriminator + a single `targetId`, **not** a nullable column per kind.
 
-### Embed vs reference (MongoDB)
-- Embed bounded child lists that are always read with the parent (paper.authors[], paper.keywords[], paper.topics[]).
-- Reference everything else (paper_source_records, paper_quality_checks, paper_references).
+### Relational persistence
+- Define relations, constraints, and indexes in `apps/backend/prisma/*.prisma`.
+- Use Prisma transactions for multi-row state changes and Prisma tagged SQL for pgvector or advanced queries.
 
 ### Shared types
 - If both backend and frontend need a type (Paper, User, Report), it lives in `@trend/shared-types`.
@@ -268,7 +261,7 @@ report.ts                         AnalyticalReport, ResearchGap, ReportStatus
 
 ### Secrets
 - `.env` is `.gitignore`d. Do not commit, do not paste in chat, do not screenshot.
-- Each developer maintains their own `.env`. Shared values (Mongo URI, JWT secrets) come from a pinned Discord message.
+- Each developer maintains their own `.env`. Database credentials and JWT secrets are never committed.
 - Gemini API key: each developer has their own.
 
 ---
@@ -304,8 +297,9 @@ pnpm test                               # vitest run
 # clean
 pnpm clean                              # dist + .turbo
 
-# Mongo connectivity smoke test
-pnpm --filter backend test:mongo
+# PostgreSQL-only runtime audit and readiness probe
+pnpm --filter backend runtime:audit:postgres
+curl http://localhost:4000/ready
 ```
 
 **Backend boots with a ready banner:**
@@ -328,7 +322,8 @@ See [`apps/backend/.env.example`](apps/backend/.env.example) for the full templa
 
 | Variable | Notes |
 |---|---|
-| `MONGODB_URI` | Atlas `mongodb+srv://` connection string. URL-encode special chars in the password (`@` → `%40`). Must include `/publication_trend` before the `?`. |
+| `DATABASE_URL` | PostgreSQL connection string. Local Compose exposes PostgreSQL/pgvector on host port `5433`. |
+| `PERSISTENCE_PROVIDER` | Must be `postgresql`; the backend rejects other providers. |
 | `REDIS_URL` | Upstash `rediss://default:<password>@<host>:6379`. Note the double `s` (TLS required). |
 | `JWT_ACCESS_SECRET` | ≥ 32 chars random hex. Generate: `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"` |
 | `JWT_REFRESH_SECRET` | ≥ 32 chars random hex. Must differ from access secret. |
@@ -343,27 +338,18 @@ Web and mobile `.env` only contain the API base URL — no secrets.
 
 ## 9. Data Model Snapshot
 
-### Currently in MongoDB (Phase 0 + Vector Search index)
+### Current PostgreSQL/pgvector persistence
 
 ```
-publication_trend  (Atlas, AP_EAST_1)
-├── users                  (UserModel)             — created
-├── refreshtokens          (RefreshTokenModel)     — created, TTL indexed
-└── research_papers        (PaperModel)            — created, EMPTY
-    └── 🔍 paper_vector_index                       — READY
-        • vector: embedding (768 dim, cosine)
-        • filters: publicationYear, topics, dataStatus
+lumigap_db  (PostgreSQL 16 + pgvector)
+├── identity and access: users, refresh_tokens, roles, permissions
+├── academic data: papers, authors, topics, embeddings
+├── collaboration: communities, forum, projects, recruitment
+├── review workflow: submissions, revisions, reviewer assignments
+└── AI/RAG: reports, research gaps, AI jobs, evidence relations
 ```
 
-### Planned by end of Phase A (10 new models)
-
-`journals`, `authors`, `keywords`, `research_topics`, `paper_source_records`, `paper_quality_checks`, `api_providers`, `api_sync_configs`, `api_sync_runs`, `audit_logs`.
-
-See [docs/superpowers/specs/2026-05-25-phase-a-design.md](docs/superpowers/specs/2026-05-25-phase-a-design.md) for full schemas, embed/reference decisions, and indexes.
-
-### Deferred to later phases (~27 collections)
-
-`paper_text_chunks`, `paper_embeddings` (B), `publication_trends` (B), `research_projects`, `project_members`, `project_papers` (C), `saved_searches`, `bookmarks`, `follows`, `notifications` (D), `uploaded_papers` (E), `rag_queries`, `rag_retrieved_contexts` (C), `ai_models`, `prompt_templates`, `llm_analysis_reports`, `paper_ai_scores`, `research_gaps`, `report_verifications`, `dashboard_reports` (C-D), `mcp_servers`, `mcp_tools`, `mcp_tool_runs` (D).
+The authoritative schema is `apps/backend/prisma/`. Apply checked-in migrations with `pnpm --filter backend prisma:migrate:deploy`.
 
 ---
 
@@ -395,25 +381,25 @@ Phase E  Web pages + mobile screens + push notifications         🔒 not starte
 
 These are the things that caused real bugs or near-misses. Keep them in mind:
 
-1. **MongoDB, not PostgreSQL.** Decided before code. The schema looks SQL-ish but is adapted: embed junction tables, use polymorphic discriminators where SQL would use FK + nullable columns, JSON-as-object instead of JSON-as-text.
+1. **PostgreSQL-only runtime.** Server, API routes, and workers use Prisma/PostgreSQL. Do not introduce Mongoose or MongoDB runtime imports.
 
-2. **Mongoose collection name must be explicit.** `mongoose.model("Paper", schema, "research_papers")` — without the third argument, Mongoose pluralizes to `papers` and the Atlas Vector Search index never sees writes. (See `dd9c2d8`.)
+2. **pgvector stays in Docker locally.** Developers do not need a Windows pgvector installation. Local Compose exposes PostgreSQL on port `5433`.
 
-3. **Upstash Redis, not Docker Redis.** Docker Desktop has a known bug with its Inference Manager on Windows that blocks startup. We use Upstash (cloud, TLS) instead — same Redis protocol, no local install. Just switch `REDIS_URL`.
+3. **Redis supports local Compose or hosted TLS.** Keep credentials in `.env`; BullMQ and application cache share the same protocol.
 
-4. **URL-encode passwords in `MONGODB_URI`.** `@` becomes `%40`, `:` becomes `%3A`, `/` becomes `%2F`. Or autogenerate a password without special characters and avoid the problem.
+4. **Use Prisma migrations.** Schema changes require a checked-in migration. Never patch production tables ad hoc.
 
-5. **Auto-generated Atlas passwords are best.** Don't hand-roll passwords — they leak in URLs and chat. Atlas's Autogenerate Secure Password produces URL-safe characters.
+5. **`.env` is `.gitignore`d, never committed.** Rotate any secret that appears in chat, logs, screenshots, or version control.
 
-6. **`.env` is `.gitignore`d, never committed.** Three secrets have already leaked in chat during setup (Mongo password, Upstash token). Each leak means rotating that credential.
+6. **Use deterministic, parameterized persistence.** Prefer Prisma queries and transactions; only use Prisma tagged SQL for pgvector or database capabilities Prisma cannot express.
 
-7. **Atlas Vector Search index outlives the collection schema.** Build the index against the right collection name **before** writing the worker code that populates it. Confirmed in audit step.
+7. **Runtime audit must stay green.** `pnpm --filter backend runtime:audit:postgres` rejects server/worker import paths that reach Mongoose or legacy model files.
 
 8. **Worker is a separate Node process.** `pnpm worker:sync` runs `tsx src/workers/sync.worker.ts` in its own process. Dev terminal A: backend. Terminal B: worker. They share the Redis queue, nothing else.
 
 9. **Cache every LLM call.** The free tier has rate limits. The cache key must include `prompt_version` so a prompt change invalidates old entries.
 
-10. **The Atlas free tier (M0) is 512 MB.** Phase A targets ~100 papers (≪ 50 MB). `paper_source_records.rawMetadata` is the heaviest field; document an archive policy when usage approaches the cap.
+10. **Raw provider metadata can be large.** Monitor PostgreSQL storage and document an archive policy before corpus-scale ingestion.
 
 11. **Mobile is Android-only for testing.** Team has no Macs and no iOS devices. Code stays cross-platform Expo (so iOS support comes free later), but every PR is tested on Android Studio emulator or Expo Go Android. Design mockups frame on **Pixel 6 (412×892dp)** — not iPhone. Touch target minimum is Material 3's 48dp, not iOS's 44pt. Forms use `KeyboardAvoidingView behavior="height"` (Android), not the iOS-style `"padding"`. See [docs/DESIGN_LANGUAGE.md §11](docs/DESIGN_LANGUAGE.md) for the full Android-specific gotcha list.
 
@@ -443,7 +429,7 @@ These are the things that caused real bugs or near-misses. Keep them in mind:
 - **Stay within the conventions in §6.** They are not preferences — they are constraints we agreed on.
 - **Long-running work goes in BullMQ workers, not request handlers.** No exceptions.
 - **Validate every new env var with Zod in `config/env.ts`.** Don't read `process.env.X` directly outside that file.
-- **When adding a new Mongoose model, always:** (a) pass the collection name as the third arg to `mongoose.model()`, (b) add the relevant indexes, (c) export the typed `Doc` interface alongside the model.
+- **When changing persistence:** update the Prisma schema, create a migration, preserve foreign keys/indexes, and use transactions for multi-row writes.
 - **When adding a new API endpoint:** controller is thin, service has logic, schema validates input, return the `{ success, data, meta }` envelope.
 - **When asked to install a new dependency with a postinstall script**, update `pnpm-workspace.yaml`'s `allowBuilds` so the team doesn't trip the `ERR_PNPM_IGNORED_BUILDS` warning.
 - **If something doesn't fit the structure**, surface it instead of working around it. The structure is more easily fixed than abandoned.

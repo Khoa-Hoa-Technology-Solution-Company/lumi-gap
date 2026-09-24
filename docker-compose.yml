@@ -8,7 +8,7 @@ name: lumi-gap
 #   docker compose --profile workers up --build
 #   docker compose --profile ingest up --build
 #
-# See docs/DEPLOY_WITH_DOCKER.md for the MongoDB Vector Search limitation.
+# PostgreSQL + pgvector is the only application persistence layer.
 
 x-backend-common: &backend-common
   image: liemresearch-backend:local
@@ -20,9 +20,8 @@ x-backend-common: &backend-common
     - .env
   environment:
     NODE_ENV: production
-    # URI credentials must be URL-encoded. For example, a raw # in a Mongo
-    # password becomes %23 here while Mongo itself receives the raw password.
-    MONGODB_URI: mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD_URI}@mongo:27017/publication_trend?authSource=admin
+    DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD_URI}@postgres:5432/${POSTGRES_DB}
+    PERSISTENCE_PROVIDER: postgresql
     REDIS_URL: redis://default:${REDIS_PASSWORD_URI}@redis:6379
     LIBRETRANSLATE_URL: http://libretranslate:5000
     AI_REVIEWER_URL: http://ai-reviewer:8001
@@ -30,30 +29,33 @@ x-backend-common: &backend-common
     CORS_ORIGIN: http://localhost:8080,http://localhost:5173
     GOOGLE_CALLBACK_URL: http://localhost:4000/api/v1/auth/google/callback
   depends_on:
-    mongo:
+    postgres:
       condition: service_healthy
     redis:
       condition: service_healthy
   restart: unless-stopped
 
 services:
-  mongo:
-    image: mongo:7
+  # PostgreSQL + pgvector is the default application persistence layer.
+  postgres:
+    image: pgvector/pgvector:0.8.1-pg16
     restart: unless-stopped
     ports:
-      - "127.0.0.1:27017:27017"
+      # PostgreSQL installed directly on Windows commonly owns 5432. LumiGap
+      # uses 5433 on the host while keeping the standard port inside Docker.
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5433}:5432"
     environment:
-      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:?Set MONGO_ROOT_USERNAME in .env.compose}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?Set MONGO_ROOT_PASSWORD in .env.compose}
-      MONGO_INITDB_DATABASE: publication_trend
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env.compose}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.compose}
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in .env.compose}
     volumes:
-      - mongo-data:/data/db
+      - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "mongosh --quiet -u \"$$MONGO_INITDB_ROOT_USERNAME\" -p \"$$MONGO_INITDB_ROOT_PASSWORD\" --authenticationDatabase admin --eval \"db.adminCommand('ping').ok\""]
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
       interval: 10s
       timeout: 5s
       retries: 10
-      start_period: 15s
+      start_period: 10s
 
   redis:
     image: redis:7-alpine
@@ -204,24 +206,8 @@ services:
     profiles: ["ingest"]
     command: ["pnpm", "--filter", "backend", "worker:openalex-ingest"]
 
-  mongo-express:
-    image: mongo-express:1
-    profiles: ["tools"]
-    restart: unless-stopped
-    depends_on:
-      mongo:
-        condition: service_healthy
-    environment:
-      ME_CONFIG_MONGODB_ADMINUSERNAME: ${MONGO_ROOT_USERNAME}
-      ME_CONFIG_MONGODB_ADMINPASSWORD: ${MONGO_ROOT_PASSWORD}
-      ME_CONFIG_MONGODB_SERVER: mongo
-      ME_CONFIG_BASICAUTH_USERNAME: ${MONGO_EXPRESS_USERNAME:-admin}
-      ME_CONFIG_BASICAUTH_PASSWORD: ${MONGO_EXPRESS_PASSWORD:-change-me}
-    ports:
-      - "127.0.0.1:8081:8081"
-
 volumes:
-  mongo-data:
+  postgres-data:
   redis-data:
   libretranslate-share:
   libretranslate-cache:

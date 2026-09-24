@@ -1,0 +1,68 @@
+// Durable state for the MongoDB -> PostgreSQL copy. These tables make the
+// migration resumable without ever mutating the MongoDB source database.
+model DataMigrationRun {
+  id                String    @id @default(uuid()) @db.Uuid
+  migrationKey      String    @unique @map("migration_key") @db.VarChar(120)
+  sourceDatabase    String    @map("source_database") @db.VarChar(160)
+  sourceFingerprint String?   @map("source_fingerprint") @db.VarChar(128)
+  status            String    @default("running") @db.VarChar(24)
+  stats             Json      @default("{}")
+  startedAt         DateTime  @default(now()) @map("started_at") @db.Timestamptz(6)
+  completedAt       DateTime? @map("completed_at") @db.Timestamptz(6)
+  lastError         String?   @map("last_error")
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([status, startedAt])
+  @@map("data_migration_runs")
+}
+
+model DataMigrationCheckpoint {
+  id               String   @id @default(uuid()) @db.Uuid
+  runId            String   @map("run_id") @db.Uuid
+  sourceCollection String   @map("source_collection") @db.VarChar(120)
+  phase            String   @default("records") @db.VarChar(40)
+  lastSourceId     String?  @map("last_source_id") @db.VarChar(64)
+  scannedCount     Int      @default(0) @map("scanned_count")
+  migratedCount    Int      @default(0) @map("migrated_count")
+  failedCount      Int      @default(0) @map("failed_count")
+  isComplete       Boolean  @default(false) @map("is_complete")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([runId, sourceCollection, phase])
+  @@index([runId, isComplete])
+  @@map("data_migration_checkpoints")
+}
+
+model DataMigrationIdMap {
+  id               String   @id @default(uuid()) @db.Uuid
+  sourceCollection String   @map("source_collection") @db.VarChar(120)
+  sourceId         String   @map("source_id") @db.VarChar(64)
+  targetTable      String   @map("target_table") @db.VarChar(120)
+  targetId         String   @map("target_id") @db.Uuid
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([sourceCollection, sourceId, targetTable])
+  @@index([targetTable, targetId])
+  @@map("data_migration_id_maps")
+}
+
+model DataMigrationFailure {
+  id               String    @id @default(uuid()) @db.Uuid
+  runId            String    @map("run_id") @db.Uuid
+  sourceCollection String    @map("source_collection") @db.VarChar(120)
+  sourceId         String    @map("source_id") @db.VarChar(64)
+  phase            String    @db.VarChar(40)
+  errorCode        String?   @map("error_code") @db.VarChar(80)
+  errorMessage     String    @map("error_message")
+  safeContext      Json?     @map("safe_context")
+  attemptCount     Int       @default(1) @map("attempt_count")
+  resolvedAt       DateTime? @map("resolved_at") @db.Timestamptz(6)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([runId, sourceCollection, sourceId, phase])
+  @@index([runId, resolvedAt])
+  @@map("data_migration_failures")
+}

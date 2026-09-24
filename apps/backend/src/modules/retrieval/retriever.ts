@@ -1,18 +1,19 @@
-import type { PipelineStage } from "mongoose";
 import type { ScoredPaper } from "@trend/shared-types";
 import { normalizeAcademicTitle } from "../../common/text/academic-text.js";
-import { env } from "../../config/env.js";
+import { publicDatabaseId } from "../../infrastructure/database/database-id.js";
+import { searchPapersByEmbedding, searchPapersByKeyword } from "../../infrastructure/database/postgres-paper-search.js";
+import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { getEmbeddingProvider } from "../embeddings/embedding.factory.js";
-import { PaperModel } from "../papers/models/paper.model.js";
 import type { PaperStructuredAnalysis } from "../papers/paper-structured-context.js";
 import {
   buildPaperMetadataMatch,
   type PaperFilterInput,
 } from "../papers/paper-filter.match.js";
 
-import { logger } from "../../infrastructure/logger.js";
+type PipelineStage = Record<string, unknown>;
 
-export const VECTOR_INDEX = env.MONGODB_VECTOR_INDEX_NAME;
+/** @deprecated PostgreSQL uses pgvector and does not require a named Atlas index. */
+export const VECTOR_INDEX = "pgvector";
 
 export type RetrievalProjection = "search" | "report" | "gap" | "chat";
 
@@ -43,35 +44,80 @@ export interface RetrievedPaper {
 }
 
 export async function retrieve(opts: RetrieveOptions): Promise<RetrievedPaper[]> {
-  try {
-    const queryVector = opts.queryVector ?? (await embedQuery(opts.queryText));
-    const pipeline = buildRetrievePipeline({ ...opts, queryVector });
-    const docs = await PaperModel.aggregate(pipeline as PipelineStage[]);
-    return docs.map(toRetrievedPaper);
-  } catch (err: unknown) {
-    if (String(err).includes("$vectorSearch stage is only allowed on MongoDB Atlas")) {
-      logger.warn("MongoDB Atlas $vectorSearch unavailable; falling back to keyword search");
-      const fallbackDocs = await PaperModel.aggregate(buildFallbackKeywordPipeline(opts) as PipelineStage[]);
-      return fallbackDocs.map(toRetrievedPaper);
-    }
-    throw err;
-  }
+  return (await retrievePostgres(opts)).map(toRetrievedPaper);
 }
 
 export async function retrieveScored(opts: RetrieveOptions): Promise<ScoredPaper[]> {
-  try {
-    const queryVector = opts.queryVector ?? (await embedQuery(opts.queryText));
-    const pipeline = buildRetrievePipeline({ ...opts, queryVector });
-    const docs = await PaperModel.aggregate(pipeline as PipelineStage[]);
-    return docs.map(toScoredPaper);
-  } catch (err: unknown) {
-    if (String(err).includes("$vectorSearch stage is only allowed on MongoDB Atlas")) {
-      logger.warn("MongoDB Atlas $vectorSearch unavailable; falling back to keyword search");
-      const fallbackDocs = await PaperModel.aggregate(buildFallbackKeywordPipeline(opts) as PipelineStage[]);
-      return fallbackDocs.map(toScoredPaper);
-    }
-    throw err;
-  }
+  return (await retrievePostgres(opts)).map(toScoredPaper);
+}
+
+async function retrievePostgres(opts: RetrieveOptions): Promise<Array<Record<string, unknown>>> {
+  const limit = Math.min(500, Math.max(1, opts.poolSize ?? opts.topK));
+  const filters = {
+    publicationYearFrom: opts.filters?.yearFrom,
+    publicationYearTo: opts.filters?.yearTo,
+    dataStatus: "active",
+    ...(opts.filters?.paperKinds?.length === 1 ? { paperKind: opts.filters.paperKinds[0] } : {}),
+    ...(opts.filters?.openAccessStatuses?.length === 1 ? { openAccessStatus: opts.filters.openAccessStatuses[0] } : {}),
+    ...(opts.filters?.providers?.length === 1 ? { primaryProvider: opts.filters.providers[0] } : opts.filters?.provider ? { primaryProvider: opts.filters.provider } : {}),
+    ...(opts.filters?.languages?.length === 1 ? { language: opts.filters.languages[0] } : {}),
+  };
+  let hits = [] as Awaited<ReturnType<typeof searchPapersByEmbedding>>;
+  const vector = opts.queryVector ?? await embedQuery(opts.queryText);
+  if (vector.length === 768) hits = await searchPapersByEmbedding({ embedding: vector, filters, limit, offset: 0 });
+  if (hits.length === 0 && opts.queryText?.trim()) hits = await searchPapersByKeyword({ query: opts.queryText, filters, limit, offset: 0 });
+  if (!hits.length) return [];
+
+  const prisma = getPrisma();
+  const ids = hits.map((hit) => hit.id);
+  const [papers, authors, topics, keywords] = await Promise.all([
+    prisma.paper.findMany({ where: { id: { in: ids } } }),
+    prisma.paperAuthor.findMany({ where: { paperId: { in: ids } }, orderBy: { position: "asc" } }),
+    prisma.paperTopic.findMany({ where: { paperId: { in: ids } }, orderBy: { position: "asc" } }),
+    prisma.paperKeyword.findMany({ where: { paperId: { in: ids } }, orderBy: { position: "asc" } }),
+  ]);
+  const paperById = new Map(papers.map((paper) => [paper.id, paper]));
+  const scoreById = new Map(hits.map((hit) => [hit.id, hit.score]));
+  const authorsByPaper = groupBy(authors, (row) => row.paperId);
+  const topicsByPaper = groupBy(topics, (row) => row.paperId);
+  const keywordsByPaper = groupBy(keywords, (row) => row.paperId);
+  return hits.flatMap((hit) => {
+    const paper = paperById.get(hit.id);
+    if (!paper) return [];
+    const document: Record<string, unknown> = {
+      ...paper,
+      _id: publicDatabaseId(paper),
+      score: scoreById.get(paper.id) ?? 0,
+      authors: (authorsByPaper.get(paper.id) ?? []).map((author) => ({ displayName: author.displayName })),
+      topics: topicsByPaper.get(paper.id) ?? [],
+      keywords: (keywordsByPaper.get(paper.id) ?? []).map((keyword) => keyword.keywordName),
+    };
+    return matchesPostgresFilters(document, opts.filters) ? [document] : [];
+  }).slice(0, Math.max(1, opts.topK));
+}
+
+function groupBy<T>(rows: T[], key: (row: T) => string): Map<string, T[]> {
+  const result = new Map<string, T[]>();
+  for (const row of rows) { const value = key(row); const list = result.get(value) ?? []; list.push(row); result.set(value, list); }
+  return result;
+}
+
+function matchesPostgresFilters(paper: Record<string, unknown>, filters: RetrieveFilters | undefined): boolean {
+  if (!filters) return true;
+  const includes = (values: string[] | undefined, value: unknown, lower = false) => !values?.length || values.map((item) => lower ? item.toLowerCase() : item).includes(lower ? String(value ?? "").toLowerCase() : String(value ?? ""));
+  if (!includes(filters.paperKinds, paper.paperKind)) return false;
+  if (!includes(filters.openAccessStatuses, paper.openAccessStatus, true)) return false;
+  if (!includes(filters.providers, paper.primaryProvider, true)) return false;
+  if (filters.provider && String(paper.primaryProvider).toLowerCase() !== filters.provider.toLowerCase()) return false;
+  if (!includes(filters.sources, paper.journalName)) return false;
+  if (!includes(filters.languages, paper.language, true)) return false;
+  if (filters.openAccess && !paper.openAccessUrl) return false;
+  if (filters.minScore && Number(paper.score ?? 0) < filters.minScore) return false;
+  const topicRows = (paper.topics ?? []) as Array<Record<string, unknown>>;
+  const topicChecks: Array<[string[] | undefined, string]> = [[filters.topics, "topicName"], [filters.domains, "domainName"], [filters.fields, "fieldName"], [filters.subfields, "subfieldName"], [filters.topicIds, "openalexTopicId"], [filters.domainIds, "domainId"], [filters.fieldIds, "fieldId"], [filters.subfieldIds, "subfieldId"]];
+  if (topicChecks.some(([values, field]) => values?.length && !topicRows.some((row) => values.includes(String(row[field] ?? ""))))) return false;
+  if (filters.paperIds?.length && !filters.paperIds.includes(String(paper._id))) return false;
+  return true;
 }
 
 export function buildFallbackKeywordPipeline(opts: RetrieveOptions): PipelineStage[] {
@@ -193,7 +239,7 @@ function buildPostMatch(filters: RetrieveFilters | undefined): Record<string, un
   return Object.keys(m).length > 0 ? m : null;
 }
 
-function buildProjection(projection: RetrievalProjection): PipelineStage.Project {
+function buildProjection(projection: RetrievalProjection): Record<string, unknown> {
   if (projection === "gap") {
     return {
       $project: {

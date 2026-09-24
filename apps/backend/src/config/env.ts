@@ -8,9 +8,12 @@ import { z } from "zod";
 const optionalEnvString = z.preprocess((value) => (value === "" ? undefined : value), z.string().optional());
 const optionalEnvEmail = z.preprocess((value) => (value === "" ? undefined : value), z.string().email().optional());
 const optionalEnvUrl = z.preprocess((value) => (value === "" ? undefined : value), z.string().url().optional());
-const optionalMongoUri = z.preprocess(
+const optionalPostgresUri = z.preprocess(
   (value) => (value === "" ? undefined : value),
-  z.string().url().or(z.string().startsWith("mongodb")).optional(),
+  z.string().refine(
+    (value) => value.startsWith("postgresql://") || value.startsWith("postgres://"),
+    "DATABASE_URL must be a PostgreSQL connection URL",
+  ).optional(),
 );
 
 const EnvSchema = z.object({
@@ -19,16 +22,9 @@ const EnvSchema = z.object({
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
   CORS_ORIGIN: z.string().default("http://localhost:5173"),
 
-  MONGODB_URI: z.string().url().or(z.string().startsWith("mongodb")),
-  MONGODB_VECTOR_INDEX_NAME: z.string().min(1).default("paper_vector_index"),
-  // Read only by explicit migration scripts. The running API and workers always
-  // use MONGODB_URI, so an old database cannot accidentally remain on the
-  // normal runtime path after cutover.
-  MIGRATION_SOURCE_MONGODB_URI: optionalMongoUri,
-  MIGRATION_SOURCE_DATABASE: z.preprocess(
-    (value) => (value === "" ? undefined : value),
-    z.string().min(1).optional(),
-  ),
+  DATABASE_URL: optionalPostgresUri,
+  PERSISTENCE_PROVIDER: z.literal("postgresql").default("postgresql"),
+  MIGRATION_BATCH_SIZE: z.coerce.number().int().min(10).max(5000).default(500),
 
   REDIS_URL: z.string().url().or(z.string().startsWith("redis")),
 
@@ -195,6 +191,21 @@ const EnvSchema = z.object({
 
   INITIAL_USER_CREDITS: z.coerce.number().int().nonnegative().default(1000),
 }).superRefine((value, ctx) => {
+  if (!value.DATABASE_URL) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["DATABASE_URL"],
+      message: "DATABASE_URL is required for the PostgreSQL runtime",
+    });
+  }
+  if (value.NODE_ENV !== "test" && value.PERSISTENCE_PROVIDER !== "postgresql") {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["PERSISTENCE_PROVIDER"],
+      message: "Only PostgreSQL is allowed for the application runtime",
+    });
+  }
+
   if (value.STORAGE_PROVIDER === "r2") {
     for (const key of ["R2_ENDPOINT", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET"] as const) {
       if (!value[key]) {
@@ -256,7 +267,7 @@ const EnvSchema = z.object({
 const rawEnv = { ...process.env };
 
 // Native development can reuse the credentials that provision the local
-// Docker-only MongoDB and Redis services. Secrets stay in the gitignored
+// Docker-only Redis service. Secrets stay in the gitignored
 // .env.compose file and are URL-encoded only in this process' memory.
 if (rawEnv.NODE_ENV !== "production" && rawEnv.LOCAL_DOCKER_INFRA === "true") {
   const composeEnvPath = fileURLToPath(new URL("../../../../.env.compose", import.meta.url));
@@ -269,18 +280,15 @@ if (rawEnv.NODE_ENV !== "production" && rawEnv.LOCAL_DOCKER_INFRA === "true") {
     process.exit(1);
   }
 
-  const mongoUsername = composeEnv.MONGO_ROOT_USERNAME;
-  const mongoPassword = composeEnv.MONGO_ROOT_PASSWORD;
   const redisPassword = composeEnv.REDIS_PASSWORD;
 
-  if (!mongoUsername || !mongoPassword || !redisPassword) {
+  if (!redisPassword) {
     console.error(
-      ".env.compose must define MONGO_ROOT_USERNAME, MONGO_ROOT_PASSWORD, and REDIS_PASSWORD",
+      ".env.compose must define REDIS_PASSWORD",
     );
     process.exit(1);
   }
 
-  rawEnv.MONGODB_URI = `mongodb://${encodeURIComponent(mongoUsername)}:${encodeURIComponent(mongoPassword)}@127.0.0.1:27017/publication_trend?authSource=admin`;
   rawEnv.REDIS_URL = `redis://default:${encodeURIComponent(redisPassword)}@127.0.0.1:6379`;
 }
 // Inject mock defaults under Vitest ONLY to avoid process.exit(1) on missing secrets.
@@ -289,8 +297,9 @@ if (rawEnv.NODE_ENV !== "production" && rawEnv.LOCAL_DOCKER_INFRA === "true") {
 // mock JWT secrets (which are committed to this PUBLIC repo) and let anyone forge tokens.
 if (rawEnv.VITEST === "true") {
   rawEnv.NODE_ENV = "test";
-  rawEnv.MONGODB_URI = rawEnv.MONGODB_URI || "mongodb://localhost:27017/test";
+  rawEnv.PERSISTENCE_PROVIDER = "postgresql";
   rawEnv.REDIS_URL = rawEnv.REDIS_URL || "redis://localhost:6379";
+  rawEnv.DATABASE_URL = rawEnv.DATABASE_URL || "postgresql://test:test@localhost:5432/test";
   rawEnv.JWT_ACCESS_SECRET = rawEnv.JWT_ACCESS_SECRET || "mockaccesssecretmockaccesssecretmock";
   rawEnv.JWT_REFRESH_SECRET = rawEnv.JWT_REFRESH_SECRET || "mockrefreshsecretmockrefreshsecretmock";
   rawEnv.GEMINI_API_KEY = rawEnv.GEMINI_API_KEY || "mock-gemini-key";

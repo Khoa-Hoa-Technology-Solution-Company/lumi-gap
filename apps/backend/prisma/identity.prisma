@@ -1,0 +1,180 @@
+model User {
+  id                  String   @id @default(uuid()) @db.Uuid
+  legacyMongoId       String?  @unique @map("legacy_mongo_id") @db.VarChar(24)
+  email               String   @unique @db.VarChar(320)
+  passwordHash        String?  @map("password_hash")
+  googleId            String?  @unique @map("google_id")
+  fullName            String   @map("full_name") @db.VarChar(300)
+  role                String   @default("user") @db.VarChar(32)
+  academicProfileType String?  @map("academic_profile_type") @db.VarChar(32)
+  avatarUrl           String?  @map("avatar_url")
+  institution         String?
+  researchInterests   String[] @default([]) @map("research_interests")
+  isActive            Boolean  @default(true) @map("is_active")
+  points              Int      @default(0)
+  credits             Int      @default(0)
+  penaltyPoints       Int      @default(0) @map("penalty_points")
+  personalGeminiKey   String?  @map("personal_gemini_key")
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([role, isActive])
+  @@map("users")
+}
+
+model RefreshToken {
+  id            String    @id @default(uuid()) @db.Uuid
+  legacyMongoId String?   @unique @map("legacy_mongo_id") @db.VarChar(24)
+  userId        String    @map("user_id") @db.Uuid
+  tokenHash     String    @map("token_hash")
+  userAgent     String?   @map("user_agent")
+  ipAddress     String?   @map("ip_address") @db.VarChar(64)
+  expiresAt     DateTime  @map("expires_at") @db.Timestamptz(6)
+  revokedAt     DateTime? @map("revoked_at") @db.Timestamptz(6)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([userId])
+  @@index([tokenHash])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+model AcademicProfile {
+  id                           String    @id @default(uuid()) @db.Uuid
+  legacyMongoId                String?   @unique @map("legacy_mongo_id") @db.VarChar(24)
+  userId                       String    @unique @map("user_id") @db.Uuid
+  publicHandle                 String?   @unique @map("public_handle") @db.VarChar(40)
+  coverStorageKey              String?   @map("cover_storage_key") @db.VarChar(160)
+  coverUpdatedAt               DateTime? @map("cover_updated_at") @db.Timestamptz(6)
+  profileVisibility            String    @default("PUBLIC") @map("profile_visibility") @db.VarChar(24)
+  headline                     String?   @db.VarChar(180)
+  biography                    String?
+  academicTitle                String?   @map("academic_title") @db.VarChar(80)
+  affiliationRorId             String?   @map("affiliation_ror_id") @db.VarChar(64)
+  affiliationDepartment        String?   @map("affiliation_department") @db.VarChar(200)
+  affiliationPosition          String?   @map("affiliation_position") @db.VarChar(160)
+  affiliationStartYear         Int?      @map("affiliation_start_year")
+  institutionalEmail           String?   @map("institutional_email") @db.VarChar(320)
+  institutionalEmailVerifiedAt DateTime? @map("institutional_email_verified_at") @db.Timestamptz(6)
+  expertiseAreas               String[]  @default([]) @map("expertise_areas")
+  skills                       String[]  @default([])
+  researchKeywords             String[]  @default([]) @map("research_keywords")
+  supportAvailability          Json      @default("{}") @map("support_availability")
+  reviewAvailability           Json      @default("{}") @map("review_availability")
+  verificationStatus           String    @default("SELF_DECLARED") @map("verification_status") @db.VarChar(32)
+  verificationRequestedAt      DateTime? @map("verification_requested_at") @db.Timestamptz(6)
+  verifiedAt                   DateTime? @map("verified_at") @db.Timestamptz(6)
+  verifiedById                 String?   @map("verified_by_id") @db.Uuid
+  rejectedAt                   DateTime? @map("rejected_at") @db.Timestamptz(6)
+  rejectedById                 String?   @map("rejected_by_id") @db.Uuid
+  rejectionReason              String?   @map("rejection_reason")
+  verificationMethod           String?   @map("verification_method") @db.VarChar(120)
+  verificationNote             String?   @map("verification_note")
+  createdAt                    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([verificationStatus, verificationRequestedAt])
+  @@index([profileVisibility, verificationStatus, updatedAt])
+  @@index([affiliationRorId])
+  @@map("academic_profiles")
+}
+
+model AcademicProfileHandle {
+  id            String   @id @default(uuid()) @db.Uuid
+  legacyMongoId String?  @unique @map("legacy_mongo_id") @db.VarChar(24)
+  handle        String   @unique @db.VarChar(40)
+  userId        String   @map("user_id") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([userId])
+  @@map("academic_profile_handles")
+}
+
+model AcademicExternalIdentity {
+  id         String    @id @default(uuid()) @db.Uuid
+  profileId  String    @map("profile_id") @db.Uuid
+  provider   String    @db.VarChar(40)
+  externalId String?   @map("external_id") @db.VarChar(200)
+  profileUrl String?   @map("profile_url")
+  status     String    @default("UNVERIFIED") @db.VarChar(24)
+  source     String    @default("SELF_ASSERTED") @db.VarChar(24)
+  linkedAt   DateTime? @map("linked_at") @db.Timestamptz(6)
+  verifiedAt DateTime? @map("verified_at") @db.Timestamptz(6)
+  position   Int       @default(0)
+
+  @@unique([profileId, provider, externalId])
+  @@index([provider, externalId])
+  @@map("academic_external_identities")
+}
+
+model AcademicFeaturedWork {
+  id        String  @id @default(uuid()) @db.Uuid
+  profileId String  @map("profile_id") @db.Uuid
+  paperId   String? @map("paper_id") @db.Uuid
+  doi       String?
+  title     String?
+  year      Int?
+  source    String  @db.VarChar(24)
+  position  Int     @default(0)
+
+  @@index([profileId, position])
+  @@map("academic_featured_works")
+}
+
+model AcademicVerificationEvidence {
+  id          String    @id @default(uuid()) @db.Uuid
+  profileId   String    @map("profile_id") @db.Uuid
+  type        String    @db.VarChar(64)
+  value       String?
+  status      String    @db.VarChar(24)
+  source      String    @db.VarChar(24)
+  createdAt   DateTime  @map("created_at") @db.Timestamptz(6)
+  validatedAt DateTime? @map("validated_at") @db.Timestamptz(6)
+
+  @@index([profileId, createdAt])
+  @@map("academic_verification_evidence")
+}
+
+model AcademicEmailVerificationChallenge {
+  id            String    @id @default(uuid()) @db.Uuid
+  legacyMongoId String?   @unique @map("legacy_mongo_id") @db.VarChar(24)
+  userId        String    @map("user_id") @db.Uuid
+  email         String    @db.VarChar(320)
+  codeHash      String    @map("code_hash")
+  attempts      Int       @default(0)
+  maxAttempts   Int       @default(5) @map("max_attempts")
+  expiresAt     DateTime  @map("expires_at") @db.Timestamptz(6)
+  consumedAt    DateTime? @map("consumed_at") @db.Timestamptz(6)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([userId, email])
+  @@index([expiresAt])
+  @@map("academic_email_verification_challenges")
+}
+
+model TrustedInstitution {
+  id                 String   @id @default(uuid()) @db.Uuid
+  legacyMongoId      String?  @unique @map("legacy_mongo_id") @db.VarChar(24)
+  name               String   @db.VarChar(200)
+  rorId              String?  @map("ror_id") @db.VarChar(64)
+  verificationPolicy Json     @default("{}") @map("verification_policy")
+  isActive           Boolean  @default(true) @map("is_active")
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([rorId])
+  @@index([isActive])
+  @@map("trusted_institutions")
+}
+
+model TrustedInstitutionDomain {
+  id            String @id @default(uuid()) @db.Uuid
+  institutionId String @map("institution_id") @db.Uuid
+  domain        String @unique @db.VarChar(255)
+
+  @@index([institutionId])
+  @@map("trusted_institution_domains")
+}

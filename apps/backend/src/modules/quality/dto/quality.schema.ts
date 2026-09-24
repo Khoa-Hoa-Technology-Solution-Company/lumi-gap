@@ -1,7 +1,8 @@
 import { z } from "zod";
+import { databaseIdSchema } from "../../../common/validation/database-id.js";
 
 const TargetKind = z.enum(["report", "gap", "paper"]);
-const ObjectId = z.string().regex(/^[a-fA-F0-9]{24}$/, "invalid id");
+const ObjectId = databaseIdSchema;
 
 export const EvaluateSchema = z.object({
   targetKind: TargetKind,

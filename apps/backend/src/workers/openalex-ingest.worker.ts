@@ -1,12 +1,15 @@
 import os from "node:os";
 
 import { Worker } from "bullmq";
+import { enforcePostgresOnlyRuntime } from "../infrastructure/database/postgres-only-runtime.js";
 import { env } from "../config/env.js";
-import { connectMongo, disconnectMongo } from "../infrastructure/db.js";
+import { connectPostgres, disconnectPostgres } from "../infrastructure/database/prisma.js";
 import { logger } from "../infrastructure/logger.js";
 import { makeConnection, openAlexIngestQueue, QUEUE_NAMES } from "../infrastructure/queue.js";
 import { startWorkerHeartbeat } from "../infrastructure/worker-heartbeat.js";
 import { runCampaignPartitionPage } from "../modules/api-sync/scale/campaign-partition-runner.js";
+
+enforcePostgresOnlyRuntime();
 
 interface CampaignPageJob {
   campaignId: string;
@@ -22,7 +25,7 @@ async function main() {
     throw new Error("OPENALEX_API_KEY is required for the million-scale ingest worker");
   }
 
-  await connectMongo();
+  await connectPostgres();
   const stopHeartbeat = startWorkerHeartbeat({
     workerName: "worker:openalex-ingest",
     queueName: QUEUE_NAMES.openAlexIngest,
@@ -58,7 +61,7 @@ async function main() {
     logger.info({ signal }, "OpenAlex campaign worker shutting down");
     await stopHeartbeat();
     await worker.close();
-    await disconnectMongo();
+    await disconnectPostgres();
     process.exit(0);
   };
   process.on("SIGINT", () => void shutdown("SIGINT"));

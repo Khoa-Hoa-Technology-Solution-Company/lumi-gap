@@ -10,11 +10,13 @@ import { env } from "../../config/env.js";
 const COVER_WIDTH = 1600;
 const COVER_HEIGHT = 480;
 const MAX_INPUT_PIXELS = 30_000_000;
-const COVER_KEY_PATTERN = /^profile-covers\/([a-f0-9]{24})\/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})\.webp$/;
+const DATABASE_ID_SEGMENT = "(?:[a-f0-9]{24}|[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})";
+const COVER_KEY_PATTERN = new RegExp(`^profile-covers/(${DATABASE_ID_SEGMENT})/([a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})\\.webp$`, "i");
 const LOCAL_UPLOADS_ROOT = path.resolve(process.cwd(), "uploads");
 
 export function profileCoverKey(userId: string, id = randomUUID()): string {
-  if (!/^[a-f0-9]{24}$/.test(userId) || !/^[a-f0-9-]{36}$/.test(id)) {
+  if (!new RegExp(`^${DATABASE_ID_SEGMENT}$`, "i").test(userId)
+    || !/^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(id)) {
     throw AppError.badRequest("Invalid profile cover identifier");
   }
   return `profile-covers/${userId}/${id}.webp`;

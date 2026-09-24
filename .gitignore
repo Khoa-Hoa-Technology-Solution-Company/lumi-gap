@@ -8,6 +8,7 @@ build/
 out/
 .turbo/
 *.tsbuildinfo
+apps/backend/src/generated/prisma/
 
 # Env
 .env

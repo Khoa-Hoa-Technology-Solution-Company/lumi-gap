@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { requireAuth, optionalAuth } from "../../common/middleware/auth.js";
 import { validate } from "../../common/middleware/validate.js";
-import { objectIdSchema } from "../../common/validation/mongo.js";
+import { objectIdSchema } from "../../common/validation/database-id.js";
 import { defaultReviewCriteria } from "./review.constants.js";
 import { reviewService } from "./review.service.js";
 

@@ -4,7 +4,7 @@ import { requireAuth } from "../../common/middleware/auth.js";
 import { requirePermission } from "../../common/middleware/permission.js";
 import { uploadSinglePdf, assertPdfMagic } from "../../common/middleware/upload.js";
 import { validate } from "../../common/middleware/validate.js";
-import { objectIdSchema } from "../../common/validation/mongo.js";
+import { objectIdSchema } from "../../common/validation/database-id.js";
 import { AppError } from "../../common/exceptions/app-error.js";
 import { submissionService } from "./submission.service.js";
 import rateLimit from "express-rate-limit";

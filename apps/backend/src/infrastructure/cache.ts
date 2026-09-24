@@ -8,7 +8,7 @@ import { logger } from "./logger.js";
  * old entries.
  *
  * All operations are BEST-EFFORT: a Redis outage degrades to a cache miss /
- * skipped write, never an error. Callers can always recompute from Mongo, so
+ * skipped write, never an error. Callers can always recompute from PostgreSQL, so
  * the cache must never be the reason a request 500s.
  *
  * FAIL-FAST: every op is bounded by CACHE_OP_TIMEOUT_MS. When Upstash blips

@@ -1,6 +1,6 @@
 # Backend — Publication Trend System
 
-Node.js + Express 5 + TypeScript + MongoDB + BullMQ + Gemini.
+Node.js + Express 5 + TypeScript + PostgreSQL/pgvector + Prisma + BullMQ + Gemini.
 
 ## Quick start
 
@@ -9,7 +9,7 @@ Node.js + Express 5 + TypeScript + MongoDB + BullMQ + Gemini.
 pnpm install
 cp apps/backend/.env.example apps/backend/.env
 # fill in GEMINI_API_KEY and rotate the JWT secrets
-pnpm docker:up                # starts Mongo + Redis locally
+pnpm docker:up                # starts PostgreSQL/pgvector + Redis locally
 pnpm dev:backend              # http://localhost:4000
 ```
 
@@ -31,7 +31,7 @@ src/
 │       ├── validate.ts             Zod request validation
 │       └── error-handler.ts        global error + 404 handlers
 ├── infrastructure/                 external system clients
-│   ├── db.ts                       Mongoose connect/disconnect
+│   ├── database/prisma.ts          Prisma/PostgreSQL client lifecycle
 │   ├── redis.ts                    ioredis client + lifecycle
 │   ├── cache.ts                    JSON cache wrapper + hashKey()
 │   ├── logger.ts                   Pino logger (pretty in dev)
@@ -39,13 +39,12 @@ src/
 ├── modules/                        feature modules — each self-contained
 │   ├── auth/
 │   │   ├── dto/auth.schema.ts      Zod schemas (RegisterSchema, LoginSchema)
-│   │   ├── models/user.model.ts    Mongoose User + RefreshToken models
+│   │   ├── auth.service.ts         PostgreSQL-backed identity logic
 │   │   ├── auth.controller.ts      thin HTTP handlers
 │   │   ├── auth.service.ts         business logic (hashing, JWT issuance)
 │   │   └── auth.routes.ts          route table → controller
 │   ├── papers/
-│   │   ├── models/paper.model.ts   Paper schema + indexes (text + compound)
-│   │   └── paper.routes.ts         keyword search + detail endpoints
+│   │   └── paper.routes.ts         keyword/semantic search + detail endpoints
 │   ├── embeddings/
 │   │   ├── embedding.provider.ts   provider interface
 │   │   ├── gemini-embedding.provider.ts
@@ -69,7 +68,7 @@ src/
 ## Add a new module (recipe)
 
 1. `src/modules/<name>/`
-2. `models/<name>.model.ts` — Mongoose schema
+2. Add or update the relevant Prisma model under `prisma/`
 3. `dto/<name>.schema.ts` — Zod input schemas (if it takes input)
 4. `<name>.service.ts` — business logic
 5. `<name>.controller.ts` — thin HTTP handlers

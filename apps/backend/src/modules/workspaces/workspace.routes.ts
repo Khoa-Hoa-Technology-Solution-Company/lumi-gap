@@ -3,7 +3,7 @@ import { z } from "zod";
 import { requireAuth } from "../../common/middleware/auth.js";
 import { requirePermission } from "../../common/middleware/permission.js";
 import { validate } from "../../common/middleware/validate.js";
-import { objectIdSchema } from "../../common/validation/mongo.js";
+import { objectIdSchema } from "../../common/validation/database-id.js";
 import { workspaceService } from "./workspace.service.js";
 
 const workspaceParamsSchema = z.object({ id: objectIdSchema });

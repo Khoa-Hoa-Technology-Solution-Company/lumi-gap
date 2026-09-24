@@ -2,9 +2,10 @@ import type { PaperComparison } from "@trend/shared-types";
 import { env } from "../../config/env.js";
 import { AppError } from "../../common/exceptions/app-error.js";
 import { hashKey } from "../../infrastructure/cache.js";
+import { parseDatabaseId, publicDatabaseId } from "../../infrastructure/database/database-id.js";
+import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { generateJSON } from "../llm/gemini.client.js";
 import { cachedGenerate } from "../llm/llm.run.js";
-import { PaperModel } from "./models/paper.model.js";
 import { toPaperRef } from "./paper.service.js";
 import {
   buildComparePrompt,
@@ -28,12 +29,31 @@ export async function comparePapers(ids: string[]): Promise<PaperComparison> {
     throw AppError.badRequest(`Compare between 2 and ${env.COMPARE_MAX_PAPERS} distinct papers`);
   }
 
-  const docs = await PaperModel.find({ _id: { $in: unique }, dataStatus: "active" })
-    .select(
-      "title publicationYear authors externalIds citationCount journalName openAccessUrl paperKind aiScore abstractText aiAnalysis",
-    )
-    .lean();
-  const byId = new Map(docs.map((d) => [String(d._id), d]));
+  const parsed = unique.map(parseDatabaseId);
+  if (parsed.some((id) => !id)) throw AppError.notFound("One or more papers not found");
+  const docs = await getPrisma().paper.findMany({
+    where: {
+      dataStatus: "active",
+      OR: parsed.map((id) => id!.kind === "uuid" ? { id: id!.value } : { legacyMongoId: id!.value }),
+    },
+  });
+  const authorRows = await getPrisma().paperAuthor.findMany({
+    where: { paperId: { in: docs.map((doc) => doc.id) } },
+    orderBy: { position: "asc" },
+  });
+  const authorsByPaper = new Map<string, Array<{ displayName: string; isCorresponding: boolean }>>();
+  for (const author of authorRows) {
+    const list = authorsByPaper.get(author.paperId) ?? [];
+    list.push({ displayName: author.displayName, isCorresponding: author.isCorresponding });
+    authorsByPaper.set(author.paperId, list);
+  }
+  const hydrated = docs.map((doc) => ({
+    ...doc,
+    id: publicDatabaseId(doc),
+    authors: authorsByPaper.get(doc.id) ?? [],
+    externalIds: { doi: doc.doi },
+  }));
+  const byId = new Map(hydrated.map((doc) => [doc.id, doc]));
   if (unique.some((id) => !byId.has(id))) throw AppError.notFound("One or more papers not found");
 
   // `papers`/`metrics` follow the REQUEST order (what the user picked).
@@ -42,7 +62,7 @@ export async function comparePapers(ids: string[]): Promise<PaperComparison> {
   const metrics: Metric[] = requestDocs.map((d) => {
     const o = d as Record<string, unknown>;
     return {
-      paperId: String(o._id),
+      paperId: String(o.id),
       publicationYear: Number(o.publicationYear ?? 0),
       citationCount: Number(o.citationCount ?? 0),
       aiScore: o.aiScore as Metric["aiScore"],

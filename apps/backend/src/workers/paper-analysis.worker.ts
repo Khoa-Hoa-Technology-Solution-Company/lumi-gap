@@ -1,10 +1,13 @@
 import { Worker } from "bullmq";
+import { enforcePostgresOnlyRuntime } from "../infrastructure/database/postgres-only-runtime.js";
 import { env } from "../config/env.js";
-import { connectMongo, disconnectMongo } from "../infrastructure/db.js";
+import { connectPostgres, disconnectPostgres } from "../infrastructure/database/prisma.js";
 import { makeConnection, paperAnalysisQueue, QUEUE_NAMES } from "../infrastructure/queue.js";
 import { logger } from "../infrastructure/logger.js";
 import { startWorkerHeartbeat } from "../infrastructure/worker-heartbeat.js";
 import { runPaperAnalysis, type RunPaperAnalysisJob } from "../modules/papers/paper-analysis.service.js";
+
+enforcePostgresOnlyRuntime();
 
 /**
  * Standalone structured paper knowledge worker.
@@ -15,7 +18,7 @@ import { runPaperAnalysis, type RunPaperAnalysisJob } from "../modules/papers/pa
  * request handlers and avoids re-reading raw abstracts for every AI feature.
  */
 async function main() {
-  await connectMongo();
+  await connectPostgres();
   const stopHeartbeat = startWorkerHeartbeat({
     workerName: "worker:paper-analysis",
     queueName: QUEUE_NAMES.paperAnalysis,
@@ -43,7 +46,7 @@ async function main() {
     logger.info({ signal }, "paper analysis worker shutting down");
     await stopHeartbeat();
     await worker.close();
-    await disconnectMongo();
+    await disconnectPostgres();
     process.exit(0);
   };
   process.on("SIGINT", () => void shutdown("SIGINT"));

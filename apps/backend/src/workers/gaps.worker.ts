@@ -1,10 +1,13 @@
 import { UnrecoverableError, Worker } from "bullmq";
-import { connectMongo, disconnectMongo } from "../infrastructure/db.js";
+import { enforcePostgresOnlyRuntime } from "../infrastructure/database/postgres-only-runtime.js";
+import { connectPostgres, disconnectPostgres } from "../infrastructure/database/prisma.js";
+import { getPrisma } from "../infrastructure/database/prisma.js";
 import { makeConnection, QUEUE_NAMES } from "../infrastructure/queue.js";
 import { logger } from "../infrastructure/logger.js";
 import { startWorkerHeartbeat } from "../infrastructure/worker-heartbeat.js";
-import { GapAnalysisModel } from "../modules/gaps/models/gap-analysis.model.js";
 import { gapsService, type GapJob } from "../modules/gaps/gaps.service.js";
+
+enforcePostgresOnlyRuntime();
 
 /**
  * Standalone gaps worker — a SEPARATE Node process from the API.
@@ -23,36 +26,26 @@ const STUCK_ANALYZING_MS = 5 * 60_000;
 const USER_FACING_FAILURE = "Gap analysis failed. Please try again later.";
 
 async function main() {
-  await connectMongo();
+  await connectPostgres();
   const stopHeartbeat = startWorkerHeartbeat({ workerName: "worker:gaps", queueName: QUEUE_NAMES.gaps });
 
   // Startup sweep: a hard-killed worker leaves analyses frozen in "analyzing".
   // Fail them cleanly so the FE poll terminates instead of spinning forever.
-  const swept = await GapAnalysisModel.updateMany(
-    { status: "analyzing", updatedAt: { $lt: new Date(Date.now() - STUCK_ANALYZING_MS) } },
-    {
-      $set: {
-        status: "failed",
-        errorMessage: "Gap analysis was interrupted (worker restarted). Please try again.",
-      },
-    },
-  );
-  if (swept.modifiedCount > 0) {
-    logger.warn({ swept: swept.modifiedCount }, "swept stuck gap analyses");
+  const swept = await getPrisma().gapAnalysis.updateMany({
+    where: { status: "analyzing", updatedAt: { lt: new Date(Date.now() - STUCK_ANALYZING_MS) } },
+    data: { status: "failed", errorMessage: "Gap analysis was interrupted (worker restarted). Please try again." },
+  });
+  if (swept.count > 0) {
+    logger.warn({ swept: swept.count }, "swept stuck gap analyses");
   }
 
   // Also sweep orphaned "queued" docs (no matching BullMQ job, stuck for > 30 min)
-  const orphaned = await GapAnalysisModel.updateMany(
-    { status: "queued", updatedAt: { $lt: new Date(Date.now() - 30 * 60_000) } },
-    {
-      $set: {
-        status: "failed",
-        errorMessage: "Gap analysis was stuck in queue (worker restarted). Please try again.",
-      },
-    },
-  );
-  if (orphaned.modifiedCount > 0) {
-    logger.warn({ swept: orphaned.modifiedCount }, "swept orphaned queued gap analyses");
+  const orphaned = await getPrisma().gapAnalysis.updateMany({
+    where: { status: "queued", updatedAt: { lt: new Date(Date.now() - 30 * 60_000) } },
+    data: { status: "failed", errorMessage: "Gap analysis was stuck in queue (worker restarted). Please try again." },
+  });
+  if (orphaned.count > 0) {
+    logger.warn({ swept: orphaned.count }, "swept orphaned queued gap analyses");
   }
 
   const worker = new Worker(
@@ -91,7 +84,7 @@ async function main() {
     logger.info({ signal }, "gaps worker shutting down");
     await stopHeartbeat();
     await worker.close();
-    await disconnectMongo();
+    await disconnectPostgres();
     process.exit(0);
   };
   process.on("SIGINT", () => void shutdown("SIGINT"));

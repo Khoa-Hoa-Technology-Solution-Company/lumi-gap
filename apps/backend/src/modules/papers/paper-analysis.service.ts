@@ -1,8 +1,9 @@
 import { env } from "../../config/env.js";
 import { hashKey } from "../../infrastructure/cache.js";
+import { publicDatabaseId } from "../../infrastructure/database/database-id.js";
+import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { logger } from "../../infrastructure/logger.js";
 import { cachedGenerateJSON } from "../llm/llm.run.js";
-import { PaperModel } from "./models/paper.model.js";
 import {
   buildPaperAnalysisPrompt,
   PAPER_AI_ANALYSIS_PROMPT_VERSION,
@@ -39,7 +40,7 @@ export async function runPaperAnalysis(job: RunPaperAnalysisJob = {}): Promise<R
     if (papers.length === 0) break;
 
     for (const paper of papers) {
-      seenIds.add(String(paper._id));
+      seenIds.add(paper.id);
       try {
         const title = String(paper.title ?? "");
         const abstractText = String(paper.abstractText ?? "");
@@ -52,7 +53,7 @@ export async function runPaperAnalysis(job: RunPaperAnalysisJob = {}): Promise<R
           task: "extract",
           promptVersion: PAPER_AI_ANALYSIS_PROMPT_VERSION,
           keyParts: {
-            paperId: String(paper._id),
+            paperId: publicDatabaseId(paper),
             abstractHash: hashKey({ title, abstractText }),
           },
           model: env.GEMINI_MODEL_FAST,
@@ -79,26 +80,35 @@ export async function runPaperAnalysis(job: RunPaperAnalysisJob = {}): Promise<R
           },
         });
         const aiAnalysis = withAnalysisMetadata(raw);
-        await PaperModel.updateOne(
-          { _id: paper._id },
-          {
-            $set: {
-              aiAnalysis,
-              keywords: mergeAiKeyTerms(
-                (paper.keywords ?? []).map((k) => ({
-                  keywordName: k.keywordName,
-                  detectedBy: k.detectedBy,
-                  confidence: k.confidence ?? undefined,
-                })),
-                aiAnalysis.keyTerms,
-              ),
-            },
-          },
+        const mergedKeywords = mergeAiKeyTerms(
+          paper.keywords.map((keyword) => ({
+            keywordName: keyword.keywordName,
+            detectedBy: keyword.detectedBy,
+            confidence: keyword.confidence ?? undefined,
+          })),
+          aiAnalysis.keyTerms,
         );
+        await getPrisma().$transaction(async (tx) => {
+          await tx.paper.update({ where: { id: paper.id }, data: { aiAnalysis: aiAnalysis as never } });
+          const existingCount = paper.keywords.length;
+          const additions = mergedKeywords.slice(existingCount);
+          if (additions.length) {
+            await tx.paperKeyword.createMany({
+              data: additions.map((keyword, index) => ({
+                paperId: paper.id,
+                keywordName: keyword.keywordName ?? "",
+                detectedBy: keyword.detectedBy ?? "ai",
+                confidence: keyword.confidence,
+                position: existingCount + index,
+              })),
+              skipDuplicates: true,
+            });
+          }
+        });
         analyzed++;
       } catch (err) {
         failed++;
-        logger.warn({ err, paperId: String(paper._id) }, "paper ai analysis failed");
+        logger.warn({ err, paperId: publicDatabaseId(paper) }, "paper ai analysis failed");
       }
     }
   }
@@ -108,23 +118,30 @@ export async function runPaperAnalysis(job: RunPaperAnalysisJob = {}): Promise<R
 }
 
 async function findAnalysisCandidates(limit: number, force: boolean, seenIds: Set<string>) {
-  const filter: Record<string, unknown> = {
-    dataStatus: "active",
-    isAiAnalyzable: true,
-    abstractText: { $type: "string", $ne: "" },
-  };
-  if (seenIds.size > 0) filter._id = { $nin: [...seenIds] };
-  if (!force) {
-    filter.$or = [
-      { aiAnalysis: { $exists: false } },
-      { "aiAnalysis.analysisPromptVersion": { $ne: PAPER_AI_ANALYSIS_PROMPT_VERSION } },
-    ];
-  }
-  return PaperModel.find(filter)
-    .sort({ citationCount: -1, publicationYear: -1 })
-    .limit(limit)
-    .select("title abstractText keywords citationCount publicationYear")
-    .lean();
+  const prisma = getPrisma();
+  const candidates = await prisma.paper.findMany({
+    where: {
+      dataStatus: "active",
+      isAiAnalyzable: true,
+      abstractText: { not: null },
+      ...(seenIds.size ? { id: { notIn: [...seenIds] } } : {}),
+    },
+    orderBy: [{ citationCount: "desc" }, { publicationYear: "desc" }],
+    take: Math.max(limit * 8, limit),
+  });
+  const selected = candidates.filter((paper) => {
+    if (!paper.abstractText?.trim()) return false;
+    if (force || !paper.aiAnalysis || typeof paper.aiAnalysis !== "object") return true;
+    return (paper.aiAnalysis as Record<string, unknown>).analysisPromptVersion !== PAPER_AI_ANALYSIS_PROMPT_VERSION;
+  }).slice(0, limit);
+  const keywords = await prisma.paperKeyword.findMany({
+    where: { paperId: { in: selected.map((paper) => paper.id) } },
+    orderBy: { position: "asc" },
+  });
+  return selected.map((paper) => ({
+    ...paper,
+    keywords: keywords.filter((keyword) => keyword.paperId === paper.id),
+  }));
 }
 
 function mergeAiKeyTerms(

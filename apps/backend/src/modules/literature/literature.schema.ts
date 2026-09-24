@@ -1,6 +1,7 @@
 import { z } from "zod";
+import { databaseIdSchema } from "../../common/validation/database-id.js";
 
-const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, "Invalid identifier format");
+const objectId = databaseIdSchema;
 const optionalText = (max: number) => z.string().trim().max(max).optional();
 
 const picocSchema = z.object({

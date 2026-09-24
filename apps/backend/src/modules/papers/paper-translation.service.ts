@@ -1,16 +1,12 @@
 import { createHash } from "node:crypto";
-import mongoose from "mongoose";
 import { env } from "../../config/env.js";
 import { AppError } from "../../common/exceptions/app-error.js";
+import { parseDatabaseId, publicDatabaseId } from "../../infrastructure/database/database-id.js";
+import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { logger } from "../../infrastructure/logger.js";
-import { PaperModel } from "./models/paper.model.js";
-import { PaperTranslationModel } from "./models/paper-translation.model.js";
 import { getSupportedLanguages, LIBRETRANSLATE_PROVIDER_VERSION, translateText } from "./libretranslate.client.js";
 import { generateJSON } from "../llm/gemini.client.js";
-import {
-  buildPaperVisibilityFilter,
-  type PaperDetailViewer,
-} from "./paper.service.js";
+import { paperService, type PaperDetailViewer } from "./paper.service.js";
 
 export interface PaperTranslationResult {
   paperId: string;
@@ -33,9 +29,13 @@ export const paperTranslationService = {
     targetLanguage: string,
     viewer: PaperDetailViewer = {},
   ): Promise<PaperTranslationResult> {
-    const visibilityFilter = buildPaperVisibilityFilter(paperId, viewer);
-    if (!visibilityFilter) throw AppError.notFound("Paper not found");
-    const paper = await PaperModel.findOne(visibilityFilter).select("title abstractText language").lean();
+    if (!await paperService.getById(paperId, viewer)) throw AppError.notFound("Paper not found");
+    const parsed = parseDatabaseId(paperId);
+    if (!parsed) throw AppError.notFound("Paper not found");
+    const paper = await getPrisma().paper.findUnique({
+      where: parsed.kind === "uuid" ? { id: parsed.value } : { legacyMongoId: parsed.value },
+      select: { id: true, legacyMongoId: true, title: true, abstractText: true, language: true },
+    });
     if (!paper) throw AppError.notFound("Paper not found");
 
     const rawSourceLanguage = (paper.language || "und").toLowerCase();
@@ -43,7 +43,7 @@ export const paperTranslationService = {
     const abstractText = paper.abstractText || "";
     if (sourceLanguage === targetLanguage) {
       return {
-        paperId,
+        paperId: publicDatabaseId(paper),
         sourceLanguage,
         targetLanguage,
         translatedTitle: paper.title,
@@ -68,16 +68,19 @@ export const paperTranslationService = {
     const providerVersion = provider === "gemini" ? "gemini_v1" : LIBRETRANSLATE_PROVIDER_VERSION;
     const sourceTextHash = hashSource(paper.title, abstractText);
 
-    const cached = await PaperTranslationModel.findOne({
-      paper: paper._id,
+    const cacheKey = {
+      paperId: paper.id,
       targetLanguage,
       sourceTextHash,
       provider,
       providerVersion,
-    }).lean();
+    };
+    const cached = await getPrisma().paperTranslation.findUnique({
+      where: { paperId_targetLanguage_sourceTextHash_provider_providerVersion: cacheKey },
+    });
     if (cached) {
       return {
-        paperId,
+        paperId: publicDatabaseId(paper),
         sourceLanguage,
         targetLanguage,
         translatedTitle: cached.translatedTitle,
@@ -122,37 +125,14 @@ Respond strictly in JSON format matching this schema:
       ]);
     }
 
-    const cacheFilter = {
-      paper: paper._id,
-      targetLanguage,
-      sourceTextHash,
-      provider,
-      providerVersion,
-    } as const;
-
-    let saved;
-    try {
-      saved = await PaperTranslationModel.findOneAndUpdate(
-        cacheFilter,
-        {
-          $setOnInsert: {
-            ...cacheFilter,
-            sourceLanguage,
-            translatedTitle,
-            translatedAbstract,
-          },
-        },
-        { upsert: true, new: true },
-      ).lean();
-    } catch (error: unknown) {
-      if (!(error instanceof mongoose.mongo.MongoServerError) || error.code !== 11000) throw error;
-      saved = await PaperTranslationModel.findOne(cacheFilter).lean();
-    }
-
-    if (!saved) throw AppError.internal("Translated paper could not be cached.");
+    const saved = await getPrisma().paperTranslation.upsert({
+      where: { paperId_targetLanguage_sourceTextHash_provider_providerVersion: cacheKey },
+      create: { ...cacheKey, sourceLanguage, translatedTitle, translatedAbstract },
+      update: {},
+    });
 
     return {
-      paperId,
+      paperId: publicDatabaseId(paper),
       sourceLanguage,
       targetLanguage,
       translatedTitle: saved.translatedTitle,

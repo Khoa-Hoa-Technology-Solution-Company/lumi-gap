@@ -6,11 +6,11 @@
 export const openapiSpec = {
   openapi: "3.0.3",
   info: {
-    title: "Publication Trend API",
-    version: "0.1.0 (Phase A)",
+    title: "LumiGap API",
+    version: "0.2.0",
     description:
-      "AI-assisted academic publication trend system. Phase A exposes auth, " +
-      "paper search/detail, and admin sync. Every response uses the envelope " +
+      "AI-assisted academic research collaboration and publication trend system. " +
+      "Every response uses the envelope " +
       "`{ success, data, meta? }` or `{ success: false, error }`.",
   },
   servers: [{ url: "http://localhost:4000", description: "Local dev" }],
@@ -22,6 +22,10 @@ export const openapiSpec = {
     { name: "Search" },
     { name: "Trends" },
     { name: "Reports" },
+    { name: "Bookmarks" },
+    { name: "Notifications" },
+    { name: "Credits" },
+    { name: "Academic profiles" },
     { name: "Research workflow" },
     { name: "Literature" },
     { name: "Peer review" },
@@ -329,7 +333,7 @@ export const openapiSpec = {
     "/ready": {
       get: {
         tags: ["Health"],
-        summary: "MongoDB and Redis readiness check",
+        summary: "PostgreSQL and Redis readiness check",
         responses: {
           "200": { description: "Required dependencies are ready" },
           "503": { description: "At least one required dependency is unavailable" },
@@ -844,6 +848,86 @@ export const openapiSpec = {
         tags: ["Research workflow"], summary: "List project contribution proposals and confirmation history", security: [{ bearerAuth: [] }],
         parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
         responses: { "200": { description: "Contribution proposals visible to project members" } },
+      },
+    },
+    "/api/v1/bookmarks": {
+      get: {
+        tags: ["Bookmarks"],
+        summary: "List the signed-in user's bookmarks",
+        security: [{ bearerAuth: [] }],
+        responses: { "200": { description: "Bookmarks" }, "401": { description: "Authentication required" } },
+      },
+      post: {
+        tags: ["Bookmarks"],
+        summary: "Create a paper or report bookmark",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["targetKind", "targetId"],
+                properties: {
+                  targetKind: { type: "string", enum: ["paper", "report"] },
+                  targetId: { type: "string", format: "uuid" },
+                  note: { type: "string", maxLength: 500 },
+                },
+              },
+            },
+          },
+        },
+        responses: { "201": { description: "Bookmark created" }, "401": { description: "Authentication required" } },
+      },
+    },
+    "/api/v1/notifications": {
+      get: {
+        tags: ["Notifications"],
+        summary: "List notifications visible to the signed-in user",
+        security: [{ bearerAuth: [] }],
+        responses: { "200": { description: "Notifications" }, "401": { description: "Authentication required" } },
+      },
+    },
+    "/api/v1/notifications/read-all": {
+      post: {
+        tags: ["Notifications"],
+        summary: "Mark all visible notifications as read",
+        security: [{ bearerAuth: [] }],
+        responses: { "200": { description: "All notifications marked as read" }, "401": { description: "Authentication required" } },
+      },
+    },
+    "/api/v1/credits/balance": {
+      get: {
+        tags: ["Credits"],
+        summary: "Get the signed-in user's credit balance",
+        security: [{ bearerAuth: [] }],
+        responses: { "200": { description: "Credit balance" }, "401": { description: "Authentication required" } },
+      },
+    },
+    "/api/v1/credits/transactions": {
+      get: {
+        tags: ["Credits"],
+        summary: "List the signed-in user's credit transactions",
+        security: [{ bearerAuth: [] }],
+        responses: { "200": { description: "Credit transaction history" }, "401": { description: "Authentication required" } },
+      },
+    },
+    "/api/v1/academic-profiles/me": {
+      get: {
+        tags: ["Academic profiles"],
+        summary: "Get the signed-in user's academic profile",
+        security: [{ bearerAuth: [] }],
+        responses: { "200": { description: "Academic profile" }, "401": { description: "Authentication required" } },
+      },
+      patch: {
+        tags: ["Academic profiles"],
+        summary: "Update editable academic profile fields",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { type: "object", additionalProperties: true } } },
+        },
+        responses: { "200": { description: "Academic profile updated" }, "401": { description: "Authentication required" } },
       },
     },
     "/api/v1/admin/embed": {

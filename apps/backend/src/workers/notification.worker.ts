@@ -1,10 +1,13 @@
 import { Worker } from "bullmq";
-import { connectMongo, disconnectMongo } from "../infrastructure/db.js";
+import { enforcePostgresOnlyRuntime } from "../infrastructure/database/postgres-only-runtime.js";
+import { connectPostgres, disconnectPostgres } from "../infrastructure/database/prisma.js";
+import { getPrisma } from "../infrastructure/database/prisma.js";
+import { parseDatabaseId, publicDatabaseId } from "../infrastructure/database/database-id.js";
 import { makeConnection, QUEUE_NAMES } from "../infrastructure/queue.js";
 import { logger } from "../infrastructure/logger.js";
 import { startWorkerHeartbeat } from "../infrastructure/worker-heartbeat.js";
-import { DeviceTokenModel } from "../modules/notifications/models/device-token.model.js";
-import { NotificationModel } from "../modules/notifications/models/notification.model.js";
+
+enforcePostgresOnlyRuntime();
 
 interface NotificationJob {
   notificationId: string;
@@ -23,16 +26,18 @@ interface ExpoPushResponse {
 }
 
 async function sendPush(notificationId: string): Promise<void> {
-  const notification = await NotificationModel.findById(notificationId).lean();
+  const parsed = parseDatabaseId(notificationId);
+  if (!parsed) return;
+  const prisma = getPrisma();
+  const notification = await prisma.notification.findUnique({
+    where: parsed.kind === "uuid" ? { id: parsed.value } : { legacyMongoId: parsed.value },
+  });
   if (!notification?.userId) {
     logger.info({ notificationId }, "notification has no user target; skipping push");
     return;
   }
 
-  const tokens = await DeviceTokenModel.find({
-    userId: notification.userId,
-    disabledAt: null,
-  }).lean();
+  const tokens = await prisma.deviceToken.findMany({ where: { userId: notification.userId, disabledAt: null } });
   if (tokens.length === 0) {
     logger.info({ notificationId }, "no device tokens for notification target");
     return;
@@ -44,11 +49,11 @@ async function sendPush(notificationId: string): Promise<void> {
     title: notification.title,
     body: notification.message,
     data: {
-      notificationId: notification._id.toString(),
+      notificationId: publicDatabaseId(notification),
       type: notification.type,
-      paperId: notification.paperId?.toString(),
+      paperId: notification.paperId ?? undefined,
       targetKind: notification.targetKind ?? (notification.paperId ? "paper" : undefined),
-      targetId: notification.targetId?.toString() ?? notification.paperId?.toString(),
+      targetId: notification.targetLegacyMongoId ?? notification.targetUuid ?? notification.paperId ?? undefined,
     },
   }));
 
@@ -84,10 +89,7 @@ async function sendPush(notificationId: string): Promise<void> {
     .map(({ token }) => token!);
 
   if (disabledTokens.length > 0) {
-    await DeviceTokenModel.updateMany(
-      { token: { $in: disabledTokens } },
-      { $set: { disabledAt: new Date() } },
-    );
+    await prisma.deviceToken.updateMany({ where: { token: { in: disabledTokens } }, data: { disabledAt: new Date() } });
   }
 
   logger.info(
@@ -97,7 +99,7 @@ async function sendPush(notificationId: string): Promise<void> {
 }
 
 async function main() {
-  await connectMongo();
+  await connectPostgres();
   const stopHeartbeat = startWorkerHeartbeat({
     workerName: "worker:notifications",
     queueName: QUEUE_NAMES.notifications,
@@ -124,7 +126,7 @@ async function main() {
     logger.info({ signal }, "notification worker shutting down");
     await stopHeartbeat();
     await worker.close();
-    await disconnectMongo();
+    await disconnectPostgres();
     process.exit(0);
   };
   process.on("SIGINT", () => void shutdown("SIGINT"));

@@ -2,11 +2,14 @@ import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
 import jwt, { type SignOptions } from "jsonwebtoken";
 import type { Profile } from "passport-google-oauth20";
-import type { AuthResponse, AuthTokens, User } from "@trend/shared-types";
+import type { AuthResponse, AuthTokens, User, UserRole } from "@trend/shared-types";
+
 import { env } from "../../config/env.js";
 import { AppError } from "../../common/exceptions/app-error.js";
 import type { AuthClaims } from "../../common/middleware/auth.js";
-import { RefreshTokenModel, UserModel, type UserDoc } from "./models/user.model.js";
+import { parseDatabaseId, publicDatabaseId } from "../../infrastructure/database/database-id.js";
+import { getPrisma } from "../../infrastructure/database/prisma.js";
+import type { User as PrismaUser } from "../../generated/prisma/client.js";
 import type {
   ChangePasswordInput,
   LoginInput,
@@ -14,75 +17,92 @@ import type {
   UpdateAcademicProfileInput,
   UpdateProfileInput,
 } from "./dto/auth.schema.js";
-import { AcademicProfileModel } from "../academic-profiles/academic-profile.model.js";
 
 const BCRYPT_ROUNDS = 10;
 
+function userWhere(userId: string): { id: string } | { legacyMongoId: string } | null {
+  const parsed = parseDatabaseId(userId);
+  if (!parsed) return null;
+  return parsed.kind === "uuid" ? { id: parsed.value } : { legacyMongoId: parsed.value };
+}
+
+async function findUser(userId: string): Promise<PrismaUser | null> {
+  const where = userWhere(userId);
+  return where ? getPrisma().user.findUnique({ where }) : null;
+}
+
 export const authService = {
   async register(input: RegisterInput): Promise<AuthResponse> {
-    const existing = await UserModel.findOne({ email: input.email }).lean();
+    const prisma = getPrisma();
+    const email = input.email.trim().toLowerCase();
+    const existing = await prisma.user.findUnique({ where: { email }, select: { id: true } });
     if (existing) throw AppError.conflict("Email already registered");
 
     const passwordHash = await bcrypt.hash(input.password, BCRYPT_ROUNDS);
-    const user = await UserModel.create({
-      email: input.email,
-      passwordHash,
-      fullName: input.fullName,
-      role: "user",
-    });
-
-    const tokens = await issueTokens(user);
-    return { user: toUserDto(user), tokens };
+    try {
+      const user = await prisma.user.create({
+        data: {
+          email,
+          passwordHash,
+          fullName: input.fullName,
+          role: "user",
+          credits: env.INITIAL_USER_CREDITS,
+        },
+      });
+      const tokens = await issueTokens(user);
+      return { user: toUserDto(user), tokens };
+    } catch (error) {
+      if ((error as { code?: string }).code === "P2002") throw AppError.conflict("Email already registered");
+      throw error;
+    }
   },
 
   async login(input: LoginInput): Promise<AuthResponse> {
-    const user = await UserModel.findOne({ email: input.email });
+    const user = await getPrisma().user.findUnique({ where: { email: input.email.trim().toLowerCase() } });
     if (!user) throw AppError.unauthorized("Invalid credentials");
-
     if (!user.passwordHash) {
       throw AppError.unauthorized("This account uses Google Login. Please sign in with Google.");
     }
-
-    const ok = await bcrypt.compare(input.password, user.passwordHash);
-    if (!ok) throw AppError.unauthorized("Invalid credentials");
-
-    if (user.isActive === false) {
-      throw AppError.forbidden("Account has been disabled");
+    if (!await bcrypt.compare(input.password, user.passwordHash)) {
+      throw AppError.unauthorized("Invalid credentials");
     }
+    if (!user.isActive) throw AppError.forbidden("Account has been disabled");
 
     const tokens = await issueTokens(user);
     return { user: toUserDto(user), tokens };
   },
 
   async googleLogin(profile: Profile): Promise<AuthResponse> {
-    const email = profile.emails?.[0]?.value;
-    if (!email) throw AppError.badRequest("Google profile missing email");
+    const rawEmail = profile.emails?.[0]?.value;
+    if (!rawEmail) throw AppError.badRequest("Google profile missing email");
+    const email = rawEmail.trim().toLowerCase();
+    const prisma = getPrisma();
 
-    let user = await UserModel.findOne({ googleId: profile.id });
-    
+    let user = await prisma.user.findUnique({ where: { googleId: profile.id } });
     if (!user) {
-      user = await UserModel.findOne({ email });
-      if (user) {
-        user.googleId = profile.id;
-        if (!user.avatarUrl && profile.photos?.[0]?.value) {
-          user.avatarUrl = profile.photos[0].value;
-        }
-        await user.save();
+      const existing = await prisma.user.findUnique({ where: { email } });
+      if (existing) {
+        user = await prisma.user.update({
+          where: { id: existing.id },
+          data: {
+            googleId: profile.id,
+            avatarUrl: existing.avatarUrl ?? profile.photos?.[0]?.value,
+          },
+        });
       } else {
-        user = await UserModel.create({
-          email,
-          googleId: profile.id,
-          fullName: profile.displayName || "Google User",
-          avatarUrl: profile.photos?.[0]?.value,
-          role: "user",
-          passwordHash: "",
+        user = await prisma.user.create({
+          data: {
+            email,
+            googleId: profile.id,
+            fullName: profile.displayName || "Google User",
+            avatarUrl: profile.photos?.[0]?.value,
+            role: "user",
+            credits: env.INITIAL_USER_CREDITS,
+          },
         });
       }
     }
-
-    if (user.isActive === false) {
-      throw AppError.forbidden("Account has been disabled");
-    }
+    if (!user.isActive) throw AppError.forbidden("Account has been disabled");
 
     const tokens = await issueTokens(user);
     return { user: toUserDto(user), tokens };
@@ -90,7 +110,6 @@ export const authService = {
 
   async refresh(refreshToken: string): Promise<AuthTokens> {
     const tokenHash = hashToken(refreshToken);
-
     let payload: AuthClaims;
     try {
       payload = jwt.verify(refreshToken, env.JWT_REFRESH_SECRET) as AuthClaims;
@@ -98,122 +117,123 @@ export const authService = {
       throw AppError.unauthorized("Invalid refresh token");
     }
 
-    // Atomically claim-and-revoke the stored token. The filter matches ONLY a
-    // not-yet-revoked, unexpired record, so two concurrent refreshes with the same
-    // token can't both succeed — the second finds it already revoked and is rejected
-    // (closes the token-reuse double-mint window that check-then-save left open).
-    const stored = await RefreshTokenModel.findOneAndUpdate(
-      { tokenHash, revokedAt: null, expiresAt: { $gt: new Date() } },
-      { $set: { revokedAt: new Date() } },
-    );
-    if (!stored) throw AppError.unauthorized("Invalid refresh token");
+    const prisma = getPrisma();
+    const claimed = await prisma.refreshToken.updateMany({
+      where: { tokenHash, revokedAt: null, expiresAt: { gt: new Date() } },
+      data: { revokedAt: new Date() },
+    });
+    if (claimed.count !== 1) throw AppError.unauthorized("Invalid refresh token");
 
-    const user = await UserModel.findById(payload.sub);
+    const user = await findUser(payload.sub);
     if (!user) throw AppError.unauthorized();
-    if (user.isActive === false) {
-      throw AppError.forbidden("Account has been disabled");
-    }
-
+    if (!user.isActive) throw AppError.forbidden("Account has been disabled");
     return issueTokens(user);
   },
 
   async logout(refreshToken: string): Promise<void> {
-    const tokenHash = hashToken(refreshToken);
-    await RefreshTokenModel.updateOne({ tokenHash }, { $set: { revokedAt: new Date() } });
+    await getPrisma().refreshToken.updateMany({
+      where: { tokenHash: hashToken(refreshToken), revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
   },
 
   async me(userId: string): Promise<User> {
-    const user = await UserModel.findById(userId);
+    const user = await findUser(userId);
     if (!user) throw AppError.unauthorized();
     return toUserDto(user);
   },
 
   async updateProfile(userId: string, input: UpdateProfileInput): Promise<User> {
-    const user = await UserModel.findById(userId);
+    const user = await findUser(userId);
     if (!user) throw AppError.unauthorized();
-
-    if (input.fullName !== undefined) user.fullName = input.fullName;
-    if (input.institution !== undefined) user.institution = input.institution || undefined;
-    if (input.researchInterests !== undefined) user.researchInterests = input.researchInterests;
-
-    await user.save();
-    return toUserDto(user);
+    const updated = await getPrisma().user.update({
+      where: { id: user.id },
+      data: {
+        fullName: input.fullName,
+        institution: input.institution === undefined ? undefined : input.institution || null,
+        researchInterests: input.researchInterests,
+      },
+    });
+    return toUserDto(updated);
   },
 
   async updateAcademicProfile(userId: string, input: UpdateAcademicProfileInput): Promise<User> {
-    const user = await UserModel.findById(userId);
+    const prisma = getPrisma();
+    const user = await findUser(userId);
     if (!user) throw AppError.unauthorized();
-
     const previousType = user.academicProfileType ?? legacyAcademicProfile(user.role);
-    user.academicProfileType = input.academicProfileType;
-    await user.save();
     const resetVerification = previousType !== input.academicProfileType;
-    await AcademicProfileModel.updateOne(
-      { userId },
-      {
-        $setOnInsert: { userId },
-        ...(resetVerification
+
+    const updated = await prisma.$transaction(async (transaction) => {
+      const nextUser = await transaction.user.update({
+        where: { id: user.id },
+        data: { academicProfileType: input.academicProfileType },
+      });
+      const profile = await transaction.academicProfile.upsert({
+        where: { userId: user.id },
+        create: {
+          userId: user.id,
+          ...(resetVerification ? { verificationStatus: "SELF_DECLARED" } : {}),
+        },
+        update: resetVerification
           ? {
-              $unset: {
-                verificationRequestedAt: 1,
-                verifiedAt: 1,
-                verifiedBy: 1,
-                rejectedAt: 1,
-                rejectedBy: 1,
-                rejectionReason: 1,
-                verificationMethod: 1,
-                verificationNote: 1,
-              },
-              $set: {
-                verificationStatus: "SELF_DECLARED",
-                verificationEvidence: [],
-              },
+              verificationStatus: "SELF_DECLARED",
+              verificationRequestedAt: null,
+              verifiedAt: null,
+              verifiedById: null,
+              rejectedAt: null,
+              rejectedById: null,
+              rejectionReason: null,
+              verificationMethod: null,
+              verificationNote: null,
             }
-          : {}),
-      },
-      { upsert: true, runValidators: true },
-    );
-    return toUserDto(user);
+          : {},
+        select: { id: true },
+      });
+      if (resetVerification) {
+        await transaction.academicVerificationEvidence.deleteMany({ where: { profileId: profile.id } });
+      }
+      return nextUser;
+    });
+    return toUserDto(updated);
   },
 
   async changePassword(userId: string, input: ChangePasswordInput): Promise<void> {
-    const user = await UserModel.findById(userId);
+    const user = await findUser(userId);
     if (!user) throw AppError.unauthorized();
-
-    if (!user.passwordHash) {
-      throw AppError.badRequest("Cannot change password for OAuth-only accounts");
+    if (!user.passwordHash) throw AppError.badRequest("Cannot change password for OAuth-only accounts");
+    if (!await bcrypt.compare(input.currentPassword, user.passwordHash)) {
+      throw AppError.badRequest("Invalid current password");
     }
-
-    const ok = await bcrypt.compare(input.currentPassword, user.passwordHash);
-    if (!ok) throw AppError.badRequest("Invalid current password");
-
-    user.passwordHash = await bcrypt.hash(input.newPassword, BCRYPT_ROUNDS);
-    await user.save();
+    await getPrisma().user.update({
+      where: { id: user.id },
+      data: { passwordHash: await bcrypt.hash(input.newPassword, BCRYPT_ROUNDS) },
+    });
   },
 };
 
-async function issueTokens(user: UserDoc): Promise<AuthTokens> {
+async function issueTokens(user: PrismaUser): Promise<AuthTokens> {
   const claims: AuthClaims = {
-    sub: user._id.toString(),
+    sub: publicDatabaseId(user),
     email: user.email,
-    role: user.role,
-    academicProfileType: user.academicProfileType ?? legacyAcademicProfile(user.role),
+    role: user.role as UserRole,
+    academicProfileType: user.academicProfileType as User["academicProfileType"]
+      ?? legacyAcademicProfile(user.role),
   };
-
   const accessToken = jwt.sign(claims, env.JWT_ACCESS_SECRET, {
     expiresIn: env.JWT_ACCESS_TTL,
   } as SignOptions);
   const refreshToken = jwt.sign(claims, env.JWT_REFRESH_SECRET, {
     expiresIn: env.JWT_REFRESH_TTL,
   } as SignOptions);
-
   const decoded = jwt.decode(refreshToken) as { exp: number };
-  await RefreshTokenModel.create({
-    userId: user._id,
-    tokenHash: hashToken(refreshToken),
-    expiresAt: new Date(decoded.exp * 1000),
+  await getPrisma().refreshToken.create({
+    data: {
+      userId: user.id,
+      tokenHash: hashToken(refreshToken),
+      expiresAt: new Date(decoded.exp * 1000),
+    },
   });
-
   const accessDecoded = jwt.decode(accessToken) as { exp: number };
   return {
     accessToken,
@@ -223,30 +243,29 @@ async function issueTokens(user: UserDoc): Promise<AuthTokens> {
 }
 
 function legacyAcademicProfile(role: string): User["academicProfileType"] {
-  return role === "student" || role === "researcher" || role === "lecturer"
-    ? role
-    : undefined;
+  return role === "student" || role === "researcher" || role === "lecturer" ? role : undefined;
 }
 
 function hashToken(token: string): string {
   return crypto.createHash("sha256").update(token).digest("hex");
 }
 
-function toUserDto(user: UserDoc): User {
+function toUserDto(user: PrismaUser): User {
   return {
-    id: user._id.toString(),
+    id: publicDatabaseId(user),
     email: user.email,
     fullName: user.fullName,
-    role: user.role,
-    academicProfileType: user.academicProfileType ?? legacyAcademicProfile(user.role),
+    role: user.role as UserRole,
+    academicProfileType: user.academicProfileType as User["academicProfileType"]
+      ?? legacyAcademicProfile(user.role),
     avatarUrl: user.avatarUrl ?? undefined,
     institution: user.institution ?? undefined,
     researchInterests: user.researchInterests,
-    isActive: user.isActive !== false,
-    points: user.points ?? 0,
-    credits: user.credits ?? 0,
-    penaltyPoints: user.penaltyPoints ?? 0,
-    createdAt: (user as unknown as { createdAt: Date }).createdAt.toISOString(),
-    updatedAt: (user as unknown as { updatedAt: Date }).updatedAt.toISOString(),
+    isActive: user.isActive,
+    points: user.points,
+    credits: user.credits,
+    penaltyPoints: user.penaltyPoints,
+    createdAt: user.createdAt.toISOString(),
+    updatedAt: user.updatedAt.toISOString(),
   };
 }

@@ -1,17 +1,23 @@
 import type { Request, Response } from "express";
 import { z } from "zod";
-import { projectContributionRoles } from "./models/project-contribution.model.js";
 import { projectContributionService } from "./project-contribution.service.js";
 
-const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, "Invalid identifier format");
+const projectContributionRoles = [
+  "SUPERVISION", "METHODOLOGY", "VALIDATION", "SOFTWARE", "CONCEPTUALIZATION",
+  "WRITING_ORIGINAL_DRAFT", "WRITING_REVIEW_EDITING", "PROJECT_ADMINISTRATION", "OTHER",
+] as const;
+const databaseId = z.string().refine(
+  (value) => /^[0-9a-fA-F]{24}$/.test(value) || /^[0-9a-fA-F-]{36}$/.test(value),
+  "Invalid identifier format",
+);
 
 export const contributionProposalParamsSchema = z.object({
-  id: objectId,
-  proposalId: objectId,
+  id: databaseId,
+  proposalId: databaseId,
 });
 
 export const proposeContributionSchema = z.object({
-  contributorId: objectId,
+  contributorId: databaseId,
   roles: z.array(z.enum(projectContributionRoles)).min(1).max(projectContributionRoles.length)
     .refine((roles) => new Set(roles).size === roles.length, "Contribution roles must be unique"),
   description: z.string().trim().min(20).max(5000),

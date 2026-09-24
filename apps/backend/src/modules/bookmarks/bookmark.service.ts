@@ -1,128 +1,134 @@
 import type { Bookmark } from "@trend/shared-types";
 import { AppError } from "../../common/exceptions/app-error.js";
-import { BookmarkModel, type BookmarkDoc } from "./models/bookmark.model.js";
-import { PaperModel } from "../papers/models/paper.model.js";
-import { presentPaperDetail } from "../papers/paper.presenter.js";
-import { ReportModel } from "../reports/models/report.model.js";
 import type { CreateBookmarkInput, UpdateBookmarkInput } from "./dto/bookmark.schema.js";
+import { parseDatabaseId, publicDatabaseId } from "../../infrastructure/database/database-id.js";
+import { getPrisma } from "../../infrastructure/database/prisma.js";
 
 export const bookmarkService = {
   async create(userId: string, input: CreateBookmarkInput): Promise<Bookmark> {
-    // 1. Verify target exists
-    if (input.targetKind === "paper") {
-      const paper = await PaperModel.findOne({ _id: input.targetId, dataStatus: "active" });
-      if (!paper) throw AppError.notFound("Paper not found");
-    } else if (input.targetKind === "report") {
-      const report = await ReportModel.findById(input.targetId);
-      if (!report) throw AppError.notFound("Report not found");
+    {
+      const prisma = getPrisma();
+      const user = await postgresRecord("user", userId);
+      if (!user) throw AppError.unauthorized();
+      const target = await postgresRecord(input.targetKind, input.targetId);
+      if (!target) throw AppError.notFound(input.targetKind === "paper" ? "Paper not found" : "Report not found");
+      const where = input.targetKind === "paper"
+        ? { userId: user.id, paperId: target.id }
+        : { userId: user.id, reportId: target.id };
+      if (await prisma.bookmark.findFirst({ where, select: { id: true } })) {
+        throw AppError.conflict("Item is already bookmarked");
+      }
+      const bookmark = await prisma.bookmark.create({
+        data: {
+          userId: user.id,
+          paperId: input.targetKind === "paper" ? target.id : undefined,
+          reportId: input.targetKind === "report" ? target.id : undefined,
+          note: input.note?.trim() || null,
+        },
+      });
+      return postgresBookmarkDto(bookmark, user, input.targetKind, target);
     }
-
-    // 2. Check duplicate
-    const existing = await BookmarkModel.findOne({
-      userId,
-      targetKind: input.targetKind,
-      targetId: input.targetId,
-    });
-    if (existing) throw AppError.conflict("Item is already bookmarked");
-
-    // 3. Create bookmark
-    const doc = await BookmarkModel.create({
-      userId,
-      targetKind: input.targetKind,
-      targetId: input.targetId,
-      note: input.note?.trim() || null,
-    });
-
-    const [created] = await this.populateDetails([doc]);
-    if (!created) throw AppError.internal("Failed to load created bookmark");
-    return created;
   },
 
   async delete(userId: string, id: string): Promise<void> {
-    const bookmark = await BookmarkModel.findById(id);
-    if (!bookmark) throw AppError.notFound("Bookmark not found");
-
-    if (bookmark.userId.toString() !== userId) {
-      throw AppError.forbidden("You do not own this bookmark");
+    {
+      const prisma = getPrisma();
+      const [user, parsed] = [await postgresRecord("user", userId), parseDatabaseId(id)];
+      if (!user) throw AppError.unauthorized();
+      if (!parsed) throw AppError.notFound("Bookmark not found");
+      const bookmark = await prisma.bookmark.findUnique({
+        where: parsed.kind === "uuid" ? { id: parsed.value } : { legacyMongoId: parsed.value },
+      });
+      if (!bookmark) throw AppError.notFound("Bookmark not found");
+      if (bookmark.userId !== user.id) throw AppError.forbidden("You do not own this bookmark");
+      await prisma.bookmark.delete({ where: { id: bookmark.id } });
+      return;
     }
-
-    await BookmarkModel.deleteOne({ _id: id });
   },
 
   async list(userId: string): Promise<Bookmark[]> {
-    const docs = await BookmarkModel.find({ userId }).sort({ createdAt: -1 }).lean();
-    return this.populateDetails(docs);
+    {
+      const user = await postgresRecord("user", userId);
+      if (!user) return [];
+      const prisma = getPrisma();
+      const docs = await prisma.bookmark.findMany({ where: { userId: user.id }, orderBy: { createdAt: "desc" } });
+      const results: Bookmark[] = [];
+      for (const doc of docs) {
+        const kind = doc.paperId ? "paper" as const : "report" as const;
+        const target = doc.paperId
+          ? await prisma.paper.findUnique({ where: { id: doc.paperId }, select: { id: true, legacyMongoId: true } })
+          : doc.reportId
+            ? await prisma.report.findUnique({ where: { id: doc.reportId }, select: { id: true, legacyMongoId: true } })
+            : null;
+        if (target) results.push(postgresBookmarkDto(doc, user, kind, target));
+      }
+      return results;
+    }
   },
 
   async updateNote(userId: string, id: string, input: UpdateBookmarkInput): Promise<Bookmark> {
-    const bookmark = await BookmarkModel.findById(id);
-    if (!bookmark) throw AppError.notFound("Bookmark not found");
-
-    if (bookmark.userId.toString() !== userId) {
-      throw AppError.forbidden("You do not own this bookmark");
+    {
+      const prisma = getPrisma();
+      const [user, parsed] = [await postgresRecord("user", userId), parseDatabaseId(id)];
+      if (!user) throw AppError.unauthorized();
+      if (!parsed) throw AppError.notFound("Bookmark not found");
+      const bookmark = await prisma.bookmark.findUnique({
+        where: parsed.kind === "uuid" ? { id: parsed.value } : { legacyMongoId: parsed.value },
+      });
+      if (!bookmark) throw AppError.notFound("Bookmark not found");
+      if (bookmark.userId !== user.id) throw AppError.forbidden("You do not own this bookmark");
+      const updated = await prisma.bookmark.update({
+        where: { id: bookmark.id },
+        data: { note: input.note === undefined ? undefined : input.note?.trim() || null },
+      });
+      const kind = updated.paperId ? "paper" as const : "report" as const;
+      const target = updated.paperId
+        ? await prisma.paper.findUnique({ where: { id: updated.paperId }, select: { id: true, legacyMongoId: true } })
+        : updated.reportId
+          ? await prisma.report.findUnique({ where: { id: updated.reportId }, select: { id: true, legacyMongoId: true } })
+          : null;
+      if (!target) throw AppError.internal("Failed to load updated bookmark");
+      return postgresBookmarkDto(updated, user, kind, target);
     }
-
-    if (input.note !== undefined) {
-      bookmark.note = input.note?.trim() || null;
-    }
-    await bookmark.save();
-
-    const [updated] = await this.populateDetails([bookmark]);
-    if (!updated) throw AppError.internal("Failed to load updated bookmark");
-    return updated;
   },
 
   async checkStatus(userId: string, targetKind: "paper" | "report", targetId: string): Promise<{ bookmarked: boolean; bookmarkId?: string }> {
-    const existing = await BookmarkModel.findOne({ userId, targetKind, targetId }).lean();
-    if (existing) {
-      return { bookmarked: true, bookmarkId: existing._id.toString() };
+    {
+      const [user, target] = await Promise.all([postgresRecord("user", userId), postgresRecord(targetKind, targetId)]);
+      if (!user || !target) return { bookmarked: false };
+      const existing = await getPrisma().bookmark.findFirst({
+        where: targetKind === "paper"
+          ? { userId: user.id, paperId: target.id }
+          : { userId: user.id, reportId: target.id },
+        select: { id: true, legacyMongoId: true },
+      });
+      return existing ? { bookmarked: true, bookmarkId: publicDatabaseId(existing) } : { bookmarked: false };
     }
-    return { bookmarked: false };
-  },
-
-  // Helper method to manually populate dynamic target details
-  async populateDetails(docs: any[]): Promise<Bookmark[]> {
-    if (docs.length === 0) return [];
-
-    const paperIds = docs.filter(d => d.targetKind === "paper").map(d => d.targetId);
-    const reportIds = docs.filter(d => d.targetKind === "report").map(d => d.targetId);
-
-    const [papers, reports] = await Promise.all([
-      PaperModel.find({ _id: { $in: paperIds }, dataStatus: "active" }).lean(),
-      ReportModel.find({ _id: { $in: reportIds } }).lean(),
-    ]);
-
-    const paperMap = new Map(papers.map(p => [p._id.toString(), p]));
-    const reportMap = new Map(reports.map(r => [r._id.toString(), r]));
-
-    return docs.map(doc => {
-      const id = doc._id.toString();
-      const userId = doc.userId.toString();
-      const targetId = doc.targetId.toString();
-
-      const b: Bookmark = {
-        id,
-        userId,
-        targetKind: doc.targetKind,
-        targetId,
-        note: doc.note === null ? null : (doc.note ?? undefined),
-        createdAt: doc.createdAt.toISOString(),
-        updatedAt: doc.updatedAt.toISOString(),
-      };
-
-      if (doc.targetKind === "paper") {
-        const p = paperMap.get(targetId);
-        if (p) {
-          b.paperDetail = presentPaperDetail(p, { includeWorkflow: false });
-        }
-      } else if (doc.targetKind === "report") {
-        const r = reportMap.get(targetId);
-        if (r) {
-          b.reportDetail = { id: r._id.toString(), ...r } as any;
-        }
-      }
-
-      return b;
-    });
   }
 };
+
+async function postgresRecord(kind: "user" | "paper" | "report", value: string) {
+  const parsed = parseDatabaseId(value);
+  if (!parsed) return null;
+  const where = parsed.kind === "uuid" ? { id: parsed.value } : { legacyMongoId: parsed.value };
+  if (kind === "user") return getPrisma().user.findUnique({ where, select: { id: true, legacyMongoId: true } });
+  if (kind === "paper") return getPrisma().paper.findUnique({ where, select: { id: true, legacyMongoId: true } });
+  return getPrisma().report.findUnique({ where, select: { id: true, legacyMongoId: true } });
+}
+
+function postgresBookmarkDto(
+  bookmark: { id: string; legacyMongoId: string | null; note: string | null; createdAt: Date; updatedAt: Date },
+  user: { id: string; legacyMongoId: string | null },
+  targetKind: "paper" | "report",
+  target: { id: string; legacyMongoId: string | null },
+): Bookmark {
+  return {
+    id: publicDatabaseId(bookmark),
+    userId: publicDatabaseId(user),
+    targetKind,
+    targetId: publicDatabaseId(target),
+    note: bookmark.note,
+    createdAt: bookmark.createdAt.toISOString(),
+    updatedAt: bookmark.updatedAt.toISOString(),
+  };
+}

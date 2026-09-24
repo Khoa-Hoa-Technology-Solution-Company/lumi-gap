@@ -1,215 +1,30 @@
 import type { UserRole } from "@trend/shared-types";
-import mongoose from "mongoose";
-import { AppError } from "../../common/exceptions/app-error.js";
 import { hasPermission } from "../../common/authorization/permissions.js";
+import { AppError } from "../../common/exceptions/app-error.js";
+import { parseDatabaseId, publicDatabaseId } from "../../infrastructure/database/database-id.js";
+import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { aiJobsQueue } from "../../infrastructure/queue.js";
 import { auditService } from "../audit/audit.service.js";
-import { ProjectModel } from "../projects/models/project.model.js";
-import { canAccessProject } from "../projects/project-scope.js";
-import { DraftWorkspaceModel } from "../workspaces/workspace.model.js";
-import { AiRunModel, type AiJobType } from "./ai-run.model.js";
 
-export type CreateAiRunInput = {
-  jobType: AiJobType;
-  projectId?: string;
-  workspaceId?: string;
-  prompt?: string;
-  evidenceIds?: string[];
-  maxAttempts?: number;
-};
+export const AI_JOB_TYPES = ["gap_analysis", "report_generation", "draft_assistance", "citation_check"] as const;
+export type AiJobType = (typeof AI_JOB_TYPES)[number];
+export type CreateAiRunInput = { jobType: AiJobType; projectId?: string; workspaceId?: string; prompt?: string; evidenceIds?: string[]; maxAttempts?: number };
+function whereId(value: string): { id: string } | { legacyMongoId: string } { const parsed = parseDatabaseId(value); if (!parsed) throw AppError.badRequest("Invalid identifier"); return parsed.kind === "uuid" ? { id: parsed.value } : { legacyMongoId: parsed.value }; }
+async function uid(value: string) { const row = await getPrisma().user.findUnique({ where: whereId(value), select: { id: true } }); if (!row) throw AppError.notFound("User not found"); return row.id; }
+async function run(value: string) { const row = await getPrisma().aiRun.findUnique({ where: whereId(value) }); if (!row) throw AppError.notFound("AI run not found"); return row; }
+async function project(value: string) { const row = await getPrisma().project.findUnique({ where: whereId(value) }); if (!row) throw AppError.notFound("Project not found"); return row; }
+async function projectAccess(projectId: string, actorId: string, role: UserRole) { const [row, actor] = await Promise.all([project(projectId), uid(actorId)]); if (hasPermission(role, "ai-run:manage") || row.ownerId === actor) return row; const member = await getPrisma().projectMember.findUnique({ where: { projectId_userId: { projectId: row.id, userId: actor } } }); if (member?.status !== "active") throw AppError.forbidden("Project membership is required"); return row; }
+async function runAccess(row: Awaited<ReturnType<typeof run>>, actorId: string, role: UserRole) { const actor = await uid(actorId); if (row.ownerId === actor || hasPermission(role, "ai-run:manage")) return; if (row.projectId) { const member = await getPrisma().projectMember.findUnique({ where: { projectId_userId: { projectId: row.projectId, userId: actor } } }); if (member?.status === "active") return; } throw AppError.forbidden("You do not have access to this AI run"); }
+const present = <T extends { id: string; legacyMongoId?: string | null }>(row: T) => ({ ...row, id: publicDatabaseId(row), _id: publicDatabaseId(row) });
 
-async function assertProjectAccess(projectId: string, userId: string, role: UserRole) {
-  const project = await ProjectModel.findById(projectId).select("ownerId members").lean();
-  if (!project) throw AppError.notFound("Project not found");
-  if (!canAccessProject(project, userId) && !hasPermission(role, "ai-run:manage")) {
-    throw AppError.forbidden("Project membership is required");
-  }
-}
-
-async function getRunOrThrow(runId: string) {
-  const run = await AiRunModel.findById(runId);
-  if (!run) throw AppError.notFound("AI run not found");
-  return run;
-}
-
-async function assertRunAccess(run: { ownerId: mongoose.Types.ObjectId; projectId?: mongoose.Types.ObjectId | null }, userId: string, role: UserRole) {
-  if (run.ownerId.toString() === userId || hasPermission(role, "ai-run:manage")) return;
-  if (run.projectId) {
-    const project = await ProjectModel.findById(run.projectId).select("ownerId members").lean();
-    if (project && canAccessProject(project, userId)) return;
-  }
-  throw AppError.forbidden("You do not have access to this AI run");
-}
-
-export async function enqueueAiJob(runId: string) {
-  const run = await getRunOrThrow(runId);
-  if (run.status !== "queued") throw AppError.conflict("Only queued AI runs can be enqueued");
-  const nextAttempt = run.attempts + 1;
-  const jobId = `ai-run-${run.id}-attempt-${nextAttempt}`;
-  await aiJobsQueue.add(
-    run.jobType,
-    { runId: run.id, jobType: run.jobType },
-    { jobId },
-  );
-  run.queueJobId = jobId;
-  await run.save();
-  return run;
-}
-
-export async function createAiRun(input: CreateAiRunInput, ownerId: string, ownerRole: UserRole) {
-  let projectId = input.projectId;
-  if (input.workspaceId) {
-    const workspace = await DraftWorkspaceModel.findById(input.workspaceId).select("projectId").lean();
-    if (!workspace) throw AppError.notFound("Draft workspace not found");
-    if (projectId && workspace.projectId.toString() !== projectId) {
-      throw AppError.badRequest("Workspace does not belong to the selected project");
-    }
-    projectId = workspace.projectId.toString();
-  }
-  if (projectId) await assertProjectAccess(projectId, ownerId, ownerRole);
-  const run = await AiRunModel.create({
-    ownerId,
-    projectId,
-    workspaceId: input.workspaceId,
-    jobType: input.jobType,
-    prompt: input.prompt,
-    evidenceIds: input.evidenceIds ?? [],
-    maxAttempts: input.maxAttempts ?? 3,
-    status: "queued",
-  });
-  try {
-    await enqueueAiJob(run.id);
-  } catch (error) {
-    await AiRunModel.updateOne(
-      { _id: run._id },
-      { $set: { status: "failed", errorCode: "QUEUE_UNAVAILABLE", errorMessage: "Unable to enqueue AI job", completedAt: new Date() } },
-    );
-    throw error;
-  }
-  await auditService.log("ai_run.created", {
-    userId: ownerId,
-    targetTableName: "ai_runs",
-    targetRecordId: run.id,
-    details: { jobType: input.jobType, projectId },
-  });
-  return getRunOrThrow(run.id);
-}
-
-export async function retryAiJob(runId: string, actorId: string, actorRole: UserRole) {
-  const run = await getRunOrThrow(runId);
-  await assertRunAccess(run, actorId, actorRole);
-  if (run.status !== "failed") throw AppError.conflict("Only failed AI runs can be retried");
-  if (run.attempts >= run.maxAttempts) throw AppError.conflict("AI run has reached its retry limit");
-  run.status = "queued";
-  run.errorCode = undefined;
-  run.errorMessage = undefined;
-  run.completedAt = undefined;
-  await run.save();
-  try {
-    await enqueueAiJob(run.id);
-  } catch (error) {
-    await AiRunModel.updateOne(
-      { _id: run._id },
-      { $set: { status: "failed", errorCode: "QUEUE_UNAVAILABLE", errorMessage: "Unable to enqueue AI job", completedAt: new Date() } },
-    );
-    throw error;
-  }
-  await auditService.log("ai_run.retried", {
-    userId: actorId,
-    targetTableName: "ai_runs",
-    targetRecordId: run.id,
-    details: { nextAttempt: run.attempts + 1 },
-  });
-  return getRunOrThrow(run.id);
-}
-
-export async function cancelAiJob(runId: string, actorId: string, actorRole: UserRole) {
-  const run = await getRunOrThrow(runId);
-  await assertRunAccess(run, actorId, actorRole);
-  if (["completed", "cancelled"].includes(run.status)) throw AppError.conflict("AI run is already final");
-  const now = new Date();
-  const cancelled = await AiRunModel.findOneAndUpdate(
-    { _id: run._id, status: { $nin: ["completed", "cancelled"] } },
-    { $set: { status: "cancelled", cancelRequestedAt: now, completedAt: now } },
-    { new: true },
-  );
-  if (!cancelled) throw AppError.conflict("AI run completed before cancellation could be recorded");
-  if (run.queueJobId) {
-    const job = await aiJobsQueue.getJob(run.queueJobId);
-    if (job) await job.remove().catch(() => undefined);
-  }
-  await auditService.log("ai_run.cancelled", {
-    userId: actorId,
-    targetTableName: "ai_runs",
-    targetRecordId: run.id,
-  });
-  return cancelled;
-}
-
-export async function markAiRunStarted(runId: string) {
-  const run = await AiRunModel.findOneAndUpdate(
-    { _id: runId, status: "queued", $expr: { $lt: ["$attempts", "$maxAttempts"] } },
-    { $set: { status: "running", startedAt: new Date() }, $inc: { attempts: 1 } },
-    { new: true },
-  );
-  if (!run) throw AppError.conflict("AI run cannot be started");
-  return run;
-}
-
-export async function completeAiRun(
-  runId: string,
-  result: { resultSummary?: string; costUsd?: number; latencyMs?: number; evidenceIds?: string[] },
-) {
-  const evidenceIds = result.evidenceIds ?? [];
-  if (evidenceIds.some((id) => !mongoose.Types.ObjectId.isValid(id))) {
-    throw AppError.badRequest("Worker returned an invalid evidence ID");
-  }
-  const run = await AiRunModel.findOneAndUpdate(
-    { _id: runId, status: "running", cancelRequestedAt: { $exists: false } },
-    {
-      $set: {
-        status: "completed",
-        resultSummary: result.resultSummary,
-        costUsd: result.costUsd,
-        latencyMs: result.latencyMs,
-        evidenceIds: evidenceIds.map((id) => new mongoose.Types.ObjectId(id)),
-        completedAt: new Date(),
-      },
-    },
-    { new: true, runValidators: true },
-  );
-  if (!run) throw AppError.conflict("AI run is not active or was cancelled");
-  return run;
-}
-
-export async function failAiRun(runId: string, error: { code: string; message: string; latencyMs?: number }) {
-  return AiRunModel.findOneAndUpdate(
-    { _id: runId, status: "running" },
-    {
-      $set: {
-        status: "failed",
-        errorCode: error.code.slice(0, 120),
-        errorMessage: error.message.slice(0, 2000),
-        latencyMs: error.latencyMs,
-        completedAt: new Date(),
-      },
-    },
-    { new: true, runValidators: true },
-  );
-}
-
-export const aiRunService = {
-  createAiRun,
-  enqueueAiJob,
-  retryAiJob,
-  cancelAiJob,
-  markAiRunStarted,
-  completeAiRun,
-  failAiRun,
-
-  async get(runId: string, actorId: string, actorRole: UserRole) {
-    const run = await getRunOrThrow(runId);
-    await assertRunAccess(run, actorId, actorRole);
-    return run;
-  },
-};
+export async function enqueueAiJob(runId: string) { const row = await run(runId); if (row.status !== "queued") throw AppError.conflict("Only queued AI runs can be enqueued"); const jobId = `ai-run-${row.id}-attempt-${row.attempts + 1}`; await aiJobsQueue.add(row.jobType, { runId: row.id, jobType: row.jobType }, { jobId }); return present(await getPrisma().aiRun.update({ where: { id: row.id }, data: { queueJobId: jobId } })); }
+export async function createAiRun(input: CreateAiRunInput, ownerId: string, ownerRole: UserRole) { const owner = await uid(ownerId); let projectId: string | undefined; let workspaceId: string | undefined; if (input.workspaceId) { const workspace = await getPrisma().draftWorkspace.findUnique({ where: whereId(input.workspaceId) }); if (!workspace) throw AppError.notFound("Draft workspace not found"); workspaceId = workspace.id; projectId = workspace.projectId; if (input.projectId && (await project(input.projectId)).id !== projectId) throw AppError.badRequest("Workspace does not belong to the selected project"); } else if (input.projectId) projectId = (await project(input.projectId)).id; if (projectId) await projectAccess(projectId, ownerId, ownerRole);
+  const evidence: string[] = await Promise.all((input.evidenceIds ?? []).map(async (id) => { const parsed = parseDatabaseId(id); if (!parsed) throw AppError.badRequest("Invalid evidence ID"); if (parsed.kind === "uuid") return parsed.value; const mapped = await getPrisma().dataMigrationIdMap.findFirst({ where: { sourceId: parsed.value }, select: { targetId: true } }); if (!mapped) throw AppError.badRequest("Unknown evidence ID"); return mapped.targetId; }));
+  const row = await getPrisma().$transaction(async (tx) => { const created = await tx.aiRun.create({ data: { ownerId: owner, projectId, workspaceId, jobType: input.jobType, prompt: input.prompt, maxAttempts: input.maxAttempts ?? 3, status: "queued" } }); if (evidence.length) await tx.aiRunEvidence.createMany({ data: evidence.map((evidenceId, position) => ({ runId: created.id, evidenceId, position })) }); return created; }); try { await enqueueAiJob(row.id); } catch (error) { await getPrisma().aiRun.update({ where: { id: row.id }, data: { status: "failed", errorCode: "QUEUE_UNAVAILABLE", errorMessage: "Unable to enqueue AI job", completedAt: new Date() } }); throw error; }
+  await auditService.log("ai_run.created", { userId: ownerId, targetTableName: "ai_runs", targetRecordId: row.id, details: { jobType: input.jobType, projectId } }); return present(await run(row.id)); }
+export async function retryAiJob(runId: string, actorId: string, actorRole: UserRole) { const row = await run(runId); await runAccess(row, actorId, actorRole); if (row.status !== "failed") throw AppError.conflict("Only failed AI runs can be retried"); if (row.attempts >= row.maxAttempts) throw AppError.conflict("AI run has reached its retry limit"); await getPrisma().aiRun.update({ where: { id: row.id }, data: { status: "queued", errorCode: null, errorMessage: null, completedAt: null } }); try { await enqueueAiJob(row.id); } catch (error) { await getPrisma().aiRun.update({ where: { id: row.id }, data: { status: "failed", errorCode: "QUEUE_UNAVAILABLE", errorMessage: "Unable to enqueue AI job", completedAt: new Date() } }); throw error; } await auditService.log("ai_run.retried", { userId: actorId, targetTableName: "ai_runs", targetRecordId: row.id, details: { nextAttempt: row.attempts + 1 } }); return present(await run(row.id)); }
+export async function cancelAiJob(runId: string, actorId: string, actorRole: UserRole) { const row = await run(runId); await runAccess(row, actorId, actorRole); if (["completed", "cancelled"].includes(row.status)) throw AppError.conflict("AI run is already final"); const changed = await getPrisma().aiRun.updateMany({ where: { id: row.id, status: { notIn: ["completed", "cancelled"] } }, data: { status: "cancelled", cancelRequestedAt: new Date(), completedAt: new Date() } }); if (!changed.count) throw AppError.conflict("AI run completed before cancellation could be recorded"); if (row.queueJobId) { const job = await aiJobsQueue.getJob(row.queueJobId); if (job) await job.remove().catch(() => undefined); } await auditService.log("ai_run.cancelled", { userId: actorId, targetTableName: "ai_runs", targetRecordId: row.id }); return present(await run(row.id)); }
+export async function markAiRunStarted(runId: string) { const row = await run(runId); const changed = await getPrisma().aiRun.updateMany({ where: { id: row.id, status: "queued", attempts: { lt: row.maxAttempts } }, data: { status: "running", startedAt: new Date(), attempts: { increment: 1 } } }); if (!changed.count) throw AppError.conflict("AI run cannot be started"); return present(await run(row.id)); }
+export async function completeAiRun(runId: string, result: { resultSummary?: string; costUsd?: number; latencyMs?: number; evidenceIds?: string[] }) { const row = await run(runId); const ids = result.evidenceIds ?? []; if (ids.some((id) => !parseDatabaseId(id))) throw AppError.badRequest("Worker returned an invalid evidence ID"); const changed = await getPrisma().aiRun.updateMany({ where: { id: row.id, status: "running", cancelRequestedAt: null }, data: { status: "completed", resultSummary: result.resultSummary, costUsd: result.costUsd, latencyMs: result.latencyMs, completedAt: new Date() } }); if (!changed.count) throw AppError.conflict("AI run is not active or was cancelled"); return present(await run(row.id)); }
+export async function failAiRun(runId: string, error: { code: string; message: string; latencyMs?: number }) { const row = await run(runId); const changed = await getPrisma().aiRun.updateMany({ where: { id: row.id, status: "running" }, data: { status: "failed", errorCode: error.code.slice(0, 120), errorMessage: error.message.slice(0, 2000), latencyMs: error.latencyMs, completedAt: new Date() } }); return changed.count ? present(await run(row.id)) : null; }
+export const aiRunService = { createAiRun, enqueueAiJob, retryAiJob, cancelAiJob, markAiRunStarted, completeAiRun, failAiRun, async get(runId: string, actorId: string, actorRole: UserRole) { const row = await run(runId); await runAccess(row, actorId, actorRole); return present(row); } };

@@ -13,10 +13,10 @@ import {
   UpdateAcademicProfileSchema,
   type RankingsQueryInput,
 } from "./dto/auth.schema.js";
-import { UserModel } from "./models/user.model.js";
-import { calculateUserRankingStats } from "./points.service.js";
 import passport from "./passport.js";
 import { env } from "../../config/env.js";
+import { getPrisma } from "../../infrastructure/database/prisma.js";
+import { parseDatabaseId, publicDatabaseId } from "../../infrastructure/database/database-id.js";
 
 export const authRouter: Router = Router();
 
@@ -56,18 +56,16 @@ authRouter.get("/search", requireAuth, async (req: Request, res: Response) => {
     return;
   }
   
-  const users = await UserModel.find({
-    email: { $regex: emailQuery, $options: "i" },
-    isActive: { $ne: false },
-  })
-    .select("email fullName avatarUrl")
-    .limit(10)
-    .lean();
+  const users = await getPrisma().user.findMany({
+    where: { email: { contains: emailQuery, mode: "insensitive" }, isActive: true },
+    select: { id: true, legacyMongoId: true, email: true, fullName: true, avatarUrl: true },
+    take: 10,
+  });
     
   res.json({
     success: true,
     data: users.map(u => ({
-      id: u._id.toString(),
+      id: publicDatabaseId(u),
       email: u.email,
       fullName: u.fullName,
       avatarUrl: u.avatarUrl
@@ -82,21 +80,26 @@ authRouter.get("/search", requireAuth, async (req: Request, res: Response) => {
 authRouter.get("/rankings/top", validate(RankingsQuerySchema, "query"), async (req: Request, res: Response) => {
   const { page, limit } = req.query as unknown as RankingsQueryInput;
 
-  const total = await UserModel.countDocuments({ isActive: { $ne: false }, role: { $ne: "admin" } });
+  const prisma = getPrisma();
+  const total = await prisma.user.count({ where: { isActive: true, role: { not: "admin" } } });
   const totalPages = Math.max(1, Math.ceil(total / limit));
   const currentPage = Math.min(page, totalPages);
   const skip = (currentPage - 1) * limit;
 
-  const users = await UserModel.find({ isActive: { $ne: false }, role: { $ne: "admin" } })
-    .select("fullName institution points credits role academicProfileType avatarUrl")
-    .sort({ points: -1, credits: -1, fullName: 1 })
-    .skip(skip)
-    .limit(limit)
-    .lean();
+  const users = await prisma.user.findMany({
+    where: { isActive: true, role: { not: "admin" } },
+    select: {
+      id: true, legacyMongoId: true, fullName: true, institution: true, points: true,
+      credits: true, role: true, academicProfileType: true, avatarUrl: true,
+    },
+    orderBy: [{ points: "desc" }, { credits: "desc" }, { fullName: "asc" }],
+    skip,
+    take: limit,
+  });
 
   const rankings = users.map((u, i) => ({
     rank: skip + i + 1,
-    id: u._id.toString(),
+    id: publicDatabaseId(u),
     name: u.fullName,
     university: u.institution ?? "",
     role: u.academicProfileType ?? (u.role === "student" || u.role === "researcher" || u.role === "lecturer" ? u.role : undefined),
@@ -124,7 +127,17 @@ authRouter.get("/rankings/me", requireAuth, async (req: Request, res: Response) 
   }
 
   // Get how many users have MORE points (to determine rank)
-  const userDoc = await UserModel.findById(userId).select("points fullName institution role academicProfileType avatarUrl").lean();
+  const prisma = getPrisma();
+  const parsedId = parseDatabaseId(userId);
+  const userDoc = parsedId
+    ? await prisma.user.findUnique({
+        where: parsedId.kind === "uuid" ? { id: parsedId.value } : { legacyMongoId: parsedId.value },
+        select: {
+          id: true, legacyMongoId: true, points: true, fullName: true, institution: true,
+          role: true, academicProfileType: true, avatarUrl: true, penaltyPoints: true,
+        },
+      })
+    : null;
   if (!userDoc) {
     res.status(404).json({ success: false, message: "User not found" });
     return;
@@ -135,27 +148,62 @@ authRouter.get("/rankings/me", requireAuth, async (req: Request, res: Response) 
     return;
   }
 
-  const usersAhead = await UserModel.countDocuments({
-    isActive: { $ne: false },
-    role: { $ne: "admin" },
-    $or: [
-      { points: { $gt: userDoc.points ?? 0 } },
-      {
-        points: userDoc.points ?? 0,
-        fullName: { $lt: userDoc.fullName },
-      },
-    ],
+  const usersAhead = await prisma.user.count({
+    where: {
+      isActive: true,
+      role: { not: "admin" },
+      OR: [
+        { points: { gt: userDoc.points } },
+        { points: userDoc.points, fullName: { lt: userDoc.fullName } },
+      ],
+    },
   });
 
   const rank = usersAhead + 1;
-  const stats = await calculateUserRankingStats(userId);
+  const [uploadAggregate, uploadedPdfs, requestedPapers, ratedPapers] = await Promise.all([
+    prisma.paper.aggregate({
+      where: {
+        uploadedById: userDoc.id,
+        paperStatus: { in: ["not-downloaded", "downloaded"] },
+        pdfPath: { not: null },
+      },
+      _sum: { uploadCreditReward: true },
+    }),
+    prisma.paper.count({
+      where: {
+        uploadedById: userDoc.id,
+        paperStatus: { in: ["not-downloaded", "downloaded"] },
+        pdfPath: { not: null },
+      },
+    }),
+    prisma.paper.count({
+      where: {
+        requestedById: userDoc.id,
+        paperStatus: { in: ["not-downloaded", "downloaded", "pending", "rejected"] },
+      },
+    }),
+    prisma.userRating.findMany({
+      where: { userId: userDoc.id, paperId: { not: null } },
+      distinct: ["paperId"],
+      select: { paperId: true },
+    }),
+  ]);
+  const uploadCreditReward = uploadAggregate._sum.uploadCreditReward ?? 0;
+  const stats = {
+    points: Math.max(0, uploadCreditReward + ratedPapers.length * 5 - userDoc.penaltyPoints),
+    uploadCreditReward,
+    uploadedPdfs,
+    requestedPapers,
+    ratingsGiven: ratedPapers.length,
+    penaltyPoints: userDoc.penaltyPoints,
+  };
 
   res.json({
     success: true,
     data: {
       rank,
       user: {
-        id: userId,
+        id: publicDatabaseId(userDoc),
         name: userDoc.fullName,
         university: userDoc.institution ?? "",
         role: userDoc.academicProfileType ?? (userDoc.role === "student" || userDoc.role === "researcher" || userDoc.role === "lecturer" ? userDoc.role : undefined),
@@ -172,15 +220,19 @@ authRouter.get("/rankings/me", requireAuth, async (req: Request, res: Response) 
  */
 authRouter.get("/rankings", async (req: Request, res: Response) => {
   const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 20));
-  const users = await UserModel.find({ isActive: { $ne: false }, role: { $ne: "admin" } })
-    .select("fullName institution points credits role academicProfileType avatarUrl")
-    .sort({ points: -1, credits: -1 })
-    .limit(limit)
-    .lean();
+  const users = await getPrisma().user.findMany({
+    where: { isActive: true, role: { not: "admin" } },
+    select: {
+      id: true, legacyMongoId: true, fullName: true, institution: true, points: true,
+      credits: true, role: true, academicProfileType: true, avatarUrl: true,
+    },
+    orderBy: [{ points: "desc" }, { credits: "desc" }],
+    take: limit,
+  });
 
   const data = users.map((u, i) => ({
     rank: i + 1,
-    id: u._id.toString(),
+    id: publicDatabaseId(u),
     name: u.fullName,
     university: u.institution ?? "",
     role: u.academicProfileType ?? (u.role === "student" || u.role === "researcher" || u.role === "lecturer" ? u.role : undefined),

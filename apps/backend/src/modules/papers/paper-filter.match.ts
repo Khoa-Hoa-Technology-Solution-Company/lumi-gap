@@ -1,4 +1,3 @@
-import mongoose from "mongoose";
 import type { TrendCitationBand } from "../trends/trend.filters.js";
 
 export interface PaperFilterInput {
@@ -37,7 +36,7 @@ export function buildPaperMetadataMatch(
     : { dataStatus: "active" };
 
   if (input.paperIds?.length) {
-    match._id = { $in: input.paperIds.map(toMongoId) };
+    match._id = { $in: input.paperIds };
   }
   if (input.yearFrom !== undefined || input.yearTo !== undefined) {
     match.publicationYear = {
@@ -131,8 +130,4 @@ function expandOpenAlexIds(values: string[]): string[] {
     }
   }
   return Array.from(expanded);
-}
-
-function toMongoId(id: string): mongoose.Types.ObjectId | string {
-  return mongoose.Types.ObjectId.isValid(id) ? new mongoose.Types.ObjectId(id) : id;
 }

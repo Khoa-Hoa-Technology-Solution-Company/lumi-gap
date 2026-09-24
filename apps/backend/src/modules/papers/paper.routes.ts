@@ -432,10 +432,6 @@ paperRouter.patch("/:id/status", requireAuth, requireRole("admin"), async (req, 
   }
 });
 
-import mongoose from "mongoose";
-
-// ... (keep other imports and code) ...
-
 /** PATCH /papers/:id — admin updates paper details, or user resubmits their rejected paper request. */
 paperRouter.patch("/:id", requireAuth, uploadSinglePdf, async (req, res, next) => {
   try {
@@ -461,7 +457,7 @@ paperRouter.patch("/:id", requireAuth, uploadSinglePdf, async (req, res, next) =
       const updateInput = { ...req.body };
       if (pdfPath) {
         updateInput.pdfPath = pdfPath;
-        updateInput.uploadedBy = new mongoose.Types.ObjectId(userId);
+        updateInput.uploadedBy = userId;
         updateInput.uploadedAt = new Date();
       }
       updated = await paperService.update(id, updateInput);

@@ -3,7 +3,7 @@ import { z } from "zod";
 import { optionalAuth, requireAuth } from "../../common/middleware/auth.js";
 import { requirePermission } from "../../common/middleware/permission.js";
 import { validate } from "../../common/middleware/validate.js";
-import { objectIdSchema, paginationSchema } from "../../common/validation/mongo.js";
+import { objectIdSchema, paginationSchema } from "../../common/validation/database-id.js";
 import { communityService } from "./community.service.js";
 import { AppError } from "../../common/exceptions/app-error.js";
 

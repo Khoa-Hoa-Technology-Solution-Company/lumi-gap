@@ -3,6 +3,7 @@ import { projectController, createProjectSchema, updateProjectSchema, addMemberS
 import { requireAuth } from "../../common/middleware/auth.js";
 import { validate } from "../../common/middleware/validate.js";
 import { z } from "zod";
+import { databaseIdSchema } from "../../common/validation/database-id.js";
 import { projectChatRouter } from "./chat.routes.js";
 import { projectTeamChatRouter } from "./team-chat.routes.js";
 import {
@@ -15,15 +16,15 @@ import {
 export const projectRouter: Router = Router();
 
 const paramIdSchema = z.object({
-  id: z.string().regex(/^[0-9a-fA-F]{24}$/, "Invalid project ID format"),
+  id: databaseIdSchema,
 });
 
 const paramPaperIdSchema = paramIdSchema.extend({
-  paperId: z.string().regex(/^[0-9a-fA-F]{24}$/, "Invalid paper ID format"),
+  paperId: databaseIdSchema,
 });
 
 const paramMemberIdSchema = paramIdSchema.extend({
-  memberId: z.string().regex(/^[0-9a-fA-F]{24}$/, "Invalid member ID format"),
+  memberId: databaseIdSchema,
 });
 
 projectRouter.use(requireAuth);

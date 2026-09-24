@@ -3,9 +3,8 @@ import { z } from "zod";
 import { requireAuth } from "../../common/middleware/auth.js";
 import { requirePermission } from "../../common/middleware/permission.js";
 import { validate } from "../../common/middleware/validate.js";
-import { objectIdSchema } from "../../common/validation/mongo.js";
-import { AI_JOB_TYPES } from "./ai-run.model.js";
-import { aiRunService } from "./ai-run.service.js";
+import { objectIdSchema } from "../../common/validation/database-id.js";
+import { AI_JOB_TYPES, aiRunService } from "./ai-run.service.js";
 
 const paramsSchema = z.object({ id: objectIdSchema });
 const createSchema = z.object({

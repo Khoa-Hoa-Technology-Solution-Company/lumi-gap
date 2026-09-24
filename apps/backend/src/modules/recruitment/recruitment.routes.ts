@@ -3,7 +3,7 @@ import { z } from "zod";
 import { requireAuth } from "../../common/middleware/auth.js";
 import { requirePermission } from "../../common/middleware/permission.js";
 import { validate } from "../../common/middleware/validate.js";
-import { objectIdSchema, paginationSchema } from "../../common/validation/mongo.js";
+import { objectIdSchema, paginationSchema } from "../../common/validation/database-id.js";
 import { recruitmentService } from "./recruitment.service.js";
 
 const openingInputSchema = z.object({

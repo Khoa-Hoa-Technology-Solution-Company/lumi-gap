@@ -1,17 +1,19 @@
 import { AppError } from "../../common/exceptions/app-error.js";
 import { logger } from "../../infrastructure/logger.js";
+import { parseDatabaseId } from "../../infrastructure/database/database-id.js";
+import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { auditService } from "../audit/audit.service.js";
-import { UserModel } from "../auth/models/user.model.js";
-import { AcademicProfileModel } from "./academic-profile.model.js";
 import { academicProfileService } from "./academic-profile.service.js";
 import { normalizeProfileCover, profileCoverStorage } from "./profile-cover-storage.service.js";
 
 async function ensureAcademicUser(userId: string) {
-  const user = await UserModel.findById(userId).select("academicProfileType role isActive").lean();
+  const parsed = parseDatabaseId(userId);
+  const user = parsed ? await getPrisma().user.findUnique({ where: parsed.kind === "uuid" ? { id: parsed.value } : { legacyMongoId: parsed.value }, select: { id: true, academicProfileType: true, role: true, isActive: true } }) : null;
   if (!user || user.isActive === false || !(user.academicProfileType
     || ["student", "researcher", "lecturer"].includes(user.role))) {
     throw AppError.notFound("Academic profile not found");
   }
+  return user;
 }
 
 async function removeOldCover(key: string | null | undefined) {
@@ -23,16 +25,13 @@ async function removeOldCover(key: string | null | undefined) {
 
 export const academicProfileCoverService = {
   async upload(userId: string, input: Buffer) {
-    await ensureAcademicUser(userId);
+    const user = await ensureAcademicUser(userId);
     const normalized = await normalizeProfileCover(input);
     const newKey = await profileCoverStorage.save(userId, normalized);
     let previous;
     try {
-      previous = await AcademicProfileModel.findOneAndUpdate(
-        { userId },
-        { $set: { coverStorageKey: newKey, coverUpdatedAt: new Date() }, $setOnInsert: { userId } },
-        { upsert: true, new: false, runValidators: true },
-      );
+      previous = await getPrisma().academicProfile.findUnique({ where: { userId: user.id } });
+      await getPrisma().academicProfile.upsert({ where: { userId: user.id }, create: { userId: user.id, coverStorageKey: newKey, coverUpdatedAt: new Date() }, update: { coverStorageKey: newKey, coverUpdatedAt: new Date() } });
     } catch (error) {
       await profileCoverStorage.remove(newKey).catch(() => undefined);
       throw error;
@@ -45,12 +44,9 @@ export const academicProfileCoverService = {
   },
 
   async remove(userId: string) {
-    await ensureAcademicUser(userId);
-    const previous = await AcademicProfileModel.findOneAndUpdate(
-      { userId },
-      { $unset: { coverStorageKey: 1, coverUpdatedAt: 1 } },
-      { new: false },
-    );
+    const user = await ensureAcademicUser(userId);
+    const previous = await getPrisma().academicProfile.findUnique({ where: { userId: user.id } });
+    if (previous) await getPrisma().academicProfile.update({ where: { id: previous.id }, data: { coverStorageKey: null, coverUpdatedAt: null } });
     await removeOldCover(previous?.coverStorageKey);
     await auditService.log("academic_profile.cover.removed", {
       userId, targetTableName: "academic_profiles", targetRecordId: userId,
@@ -59,8 +55,8 @@ export const academicProfileCoverService = {
   },
 
   async publicLocation(userId: string, viewerId?: string) {
-    await ensureAcademicUser(userId);
-    const profile = await AcademicProfileModel.findOne({ userId }).select("coverStorageKey profileVisibility").lean();
+    const user = await ensureAcademicUser(userId);
+    const profile = await getPrisma().academicProfile.findUnique({ where: { userId: user.id }, select: { coverStorageKey: true, profileVisibility: true } });
     if (!profile?.coverStorageKey) throw AppError.notFound("Cover image not found");
     if (userId !== viewerId
       && profile.profileVisibility !== "PUBLIC"

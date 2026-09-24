@@ -1,8 +1,9 @@
-import mongoose from "mongoose";
+import { randomBytes } from "node:crypto";
 import type { UserRole } from "@trend/shared-types";
 import { AppError } from "../../common/exceptions/app-error.js";
+import { parseDatabaseId, publicDatabaseId } from "../../infrastructure/database/database-id.js";
+import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { auditService } from "../audit/audit.service.js";
-import { CommunityMembershipModel, CommunityModel } from "./community.model.js";
 
 type CommunityInput = {
   name: string;
@@ -11,234 +12,179 @@ type CommunityInput = {
   rules?: string[];
   researchTopics?: string[];
 };
-
 type MembershipSummary = {
   role: "owner" | "moderator" | "member";
   status: "pending" | "active" | "declined" | "banned";
 };
 
 function slugify(value: string): string {
-  return value
-    .normalize("NFKD")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 80);
+  return value.normalize("NFKD").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 80);
+}
+
+async function resolveUserId(value: string): Promise<string> {
+  const parsed = parseDatabaseId(value);
+  if (!parsed) throw AppError.badRequest("Invalid user id");
+  const user = await getPrisma().user.findUnique({
+    where: parsed.kind === "uuid" ? { id: parsed.value } : { legacyMongoId: parsed.value },
+    select: { id: true },
+  });
+  if (!user) throw AppError.notFound("User not found");
+  return user.id;
+}
+
+async function resolveCommunityId(value: string): Promise<string> {
+  const parsed = parseDatabaseId(value);
+  if (!parsed) throw AppError.badRequest("Invalid community id");
+  const community = await getPrisma().community.findUnique({
+    where: parsed.kind === "uuid" ? { id: parsed.value } : { legacyMongoId: parsed.value },
+    select: { id: true },
+  });
+  if (!community) throw AppError.notFound("Community not found");
+  return community.id;
 }
 
 export async function getActiveCommunityMembership(communityId: string, userId: string) {
-  return CommunityMembershipModel.findOne({ communityId, userId, status: "active" }).lean();
+  const [resolvedCommunityId, resolvedUserId] = await Promise.all([resolveCommunityId(communityId), resolveUserId(userId)]);
+  return getPrisma().communityMembership.findUnique({
+    where: { communityId_userId: { communityId: resolvedCommunityId, userId: resolvedUserId } },
+  }).then((membership) => membership?.status === "active" ? membership : null);
 }
 
 export async function isCommunityModerator(communityId: string, userId: string): Promise<boolean> {
-  const membership = await CommunityMembershipModel.findOne({
-    communityId,
-    userId,
-    status: "active",
-    role: { $in: ["owner", "moderator"] },
-  }).lean();
-  return Boolean(membership);
+  const membership = await getActiveCommunityMembership(communityId, userId);
+  return Boolean(membership && ["owner", "moderator"].includes(membership.role));
 }
 
 async function moderatorMembership(communityId: string, userId: string, role?: UserRole): Promise<MembershipSummary | null> {
   if (role === "admin") return { role: "owner", status: "active" };
-  return CommunityMembershipModel.findOne({
-    communityId,
-    userId,
-    status: "active",
-    role: { $in: ["owner", "moderator"] },
-  }).select("role status").lean() as Promise<MembershipSummary | null>;
+  const membership = await getActiveCommunityMembership(communityId, userId);
+  if (!membership || !["owner", "moderator"].includes(membership.role)) return null;
+  return membership as MembershipSummary;
 }
 
 async function assertCommunityModerator(communityId: string, userId: string, role?: UserRole): Promise<MembershipSummary> {
   const membership = await moderatorMembership(communityId, userId, role);
-  if (!membership) {
-    throw AppError.forbidden("Community moderator access is required");
-  }
+  if (!membership) throw AppError.forbidden("Community moderator access is required");
   return membership;
 }
 
-function presentCommunity(community: Record<string, any>, membership?: MembershipSummary | null, actorRole?: UserRole) {
-  const id = String(community._id);
+function presentCommunity(community: {
+  id: string; legacyMongoId: string | null; name: string; slug: string; description: string;
+  researchTopics: string[]; visibility: string; rules: string[]; memberCount: number;
+  createdAt: Date; updatedAt: Date;
+}, membership?: MembershipSummary | null, actorRole?: UserRole) {
   const activeMembership = membership?.status === "active";
   return {
-    id,
-    name: community.name,
-    slug: community.slug,
-    description: community.description ?? "",
-    researchTopics: community.researchTopics ?? [],
-    visibility: community.visibility,
-    rules: community.rules ?? [],
-    memberCount: community.memberCount ?? 0,
+    id: publicDatabaseId(community), name: community.name, slug: community.slug,
+    description: community.description, researchTopics: community.researchTopics,
+    visibility: community.visibility, rules: community.rules, memberCount: community.memberCount,
     viewerMembership: membership ? { role: membership.role, status: membership.status } : undefined,
-    canManage: actorRole === "admin" || (activeMembership && ["owner", "moderator"].includes(membership!.role)),
+    canManage: actorRole === "admin" || Boolean(activeMembership && ["owner", "moderator"].includes(membership!.role)),
     contentRestricted: community.visibility === "private" && actorRole !== "admin" && !activeMembership,
-    createdAt: community.createdAt,
-    updatedAt: community.updatedAt,
+    createdAt: community.createdAt, updatedAt: community.updatedAt,
   };
 }
 
 export const communityService = {
   async create(input: CommunityInput, actorId: string) {
+    const ownerId = await resolveUserId(actorId);
     const slugBase = slugify(input.name);
     if (!slugBase) throw AppError.badRequest("Community name must contain letters or numbers");
-    const slug = `${slugBase}-${new mongoose.Types.ObjectId().toString().slice(-6)}`;
-    const community = await CommunityModel.create({ ...input, slug, ownerId: actorId, memberCount: 1 });
-    try {
-      await CommunityMembershipModel.create({
-        communityId: community._id,
-        userId: actorId,
-        role: "owner",
-        status: "active",
-      });
-    } catch (error) {
-      await CommunityModel.deleteOne({ _id: community._id });
-      throw error;
-    }
-    await auditService.log("community.created", {
-      userId: actorId,
-      targetTableName: "communities",
-      targetRecordId: community.id,
+    const slug = `${slugBase}-${randomBytes(3).toString("hex")}`;
+    const community = await getPrisma().$transaction(async (tx) => {
+      const created = await tx.community.create({ data: { ...input, slug, ownerId, memberCount: 1 } });
+      await tx.communityMembership.create({ data: { communityId: created.id, userId: ownerId, role: "owner", status: "active" } });
+      return created;
     });
-    return presentCommunity(
-      community.toObject() as unknown as Record<string, any>,
-      { role: "owner", status: "active" },
-    );
+    await auditService.log("community.created", { userId: actorId, targetTableName: "communities", targetRecordId: community.id });
+    return presentCommunity(community, { role: "owner", status: "active" });
   },
 
   async list(userId: string | undefined, page: number, pageSize: number, role?: UserRole) {
+    const prisma = getPrisma();
+    const resolvedUserId = userId ? await resolveUserId(userId) : undefined;
     const [communities, total] = await Promise.all([
-      CommunityModel.find({}).sort({ updatedAt: -1 }).skip((page - 1) * pageSize).limit(pageSize).lean(),
-      CommunityModel.countDocuments({}),
+      prisma.community.findMany({ orderBy: { updatedAt: "desc" }, skip: (page - 1) * pageSize, take: pageSize }),
+      prisma.community.count(),
     ]);
-    const memberships = userId && communities.length > 0
-      ? await CommunityMembershipModel.find({ userId, communityId: { $in: communities.map((item) => item._id) } })
-        .select("communityId role status").lean()
+    const memberships = resolvedUserId && communities.length > 0
+      ? await prisma.communityMembership.findMany({ where: { userId: resolvedUserId, communityId: { in: communities.map((item) => item.id) } } })
       : [];
-    const membershipByCommunity = new Map(memberships.map((item) => [String(item.communityId), item as MembershipSummary]));
-    return {
-      data: communities.map((community) => presentCommunity(community, membershipByCommunity.get(String(community._id)), role)),
-      meta: { page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)) },
-    };
+    const byCommunity = new Map(memberships.map((item) => [item.communityId, item as MembershipSummary]));
+    return { data: communities.map((community) => presentCommunity(community, byCommunity.get(community.id), role)), meta: { page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)) } };
   },
 
   async get(idOrSlug: string, userId?: string, role?: UserRole) {
-    const community = mongoose.isValidObjectId(idOrSlug)
-      ? await CommunityModel.findById(idOrSlug).lean()
-      : await CommunityModel.findOne({ slug: idOrSlug }).lean();
+    const parsed = parseDatabaseId(idOrSlug);
+    const community = await getPrisma().community.findUnique({ where: parsed ? (parsed.kind === "uuid" ? { id: parsed.value } : { legacyMongoId: parsed.value }) : { slug: idOrSlug } });
     if (!community) throw AppError.notFound("Community not found");
-    const membership = userId
-      ? await CommunityMembershipModel.findOne({ communityId: community._id, userId }).select("role status").lean() as MembershipSummary | null
-      : null;
-    return presentCommunity(community, membership, role);
+    const resolvedUserId = userId ? await resolveUserId(userId) : undefined;
+    const membership = resolvedUserId ? await getPrisma().communityMembership.findUnique({ where: { communityId_userId: { communityId: community.id, userId: resolvedUserId } } }) : null;
+    return presentCommunity(community, membership as MembershipSummary | null, role);
   },
 
   async update(communityId: string, input: Partial<CommunityInput>, actorId: string, actorRole?: UserRole) {
-    const actorMembership = await assertCommunityModerator(communityId, actorId, actorRole);
-    const community = await CommunityModel.findByIdAndUpdate(
-      communityId,
-      { $set: input },
-      { new: true, runValidators: true },
-    );
-    if (!community) throw AppError.notFound("Community not found");
-    await auditService.log("community.updated", {
-      userId: actorId,
-      targetTableName: "communities",
-      targetRecordId: communityId,
-      details: { fields: Object.keys(input) },
-    });
-    return presentCommunity(
-      community.toObject() as unknown as Record<string, any>,
-      actorMembership,
-      actorRole,
-    );
+    const id = await resolveCommunityId(communityId);
+    const actorMembership = await assertCommunityModerator(id, actorId, actorRole);
+    const community = await getPrisma().community.update({ where: { id }, data: input });
+    await auditService.log("community.updated", { userId: actorId, targetTableName: "communities", targetRecordId: id, details: { fields: Object.keys(input) } });
+    return presentCommunity(community, actorMembership, actorRole);
   },
 
   async join(communityId: string, userId: string) {
-    const community = await CommunityModel.findById(communityId).select("visibility").lean();
-    if (!community) throw AppError.notFound("Community not found");
-    const existing = await CommunityMembershipModel.findOne({ communityId, userId }).select("status role").lean();
+    const [id, resolvedUserId] = await Promise.all([resolveCommunityId(communityId), resolveUserId(userId)]);
+    const community = await getPrisma().community.findUniqueOrThrow({ where: { id } });
+    const existing = await getPrisma().communityMembership.findUnique({ where: { communityId_userId: { communityId: id, userId: resolvedUserId } } });
     if (existing?.status === "banned") throw AppError.forbidden("You are banned from this community");
     const status = community.visibility === "public" ? "active" : "pending";
-    const membership = await CommunityMembershipModel.findOneAndUpdate(
-      { communityId, userId },
-      { $setOnInsert: { role: "member", joinedAt: new Date() }, $set: { status } },
-      { new: true, upsert: true, runValidators: true },
-    );
-    if (status === "active" && existing?.status !== "active") {
-      await CommunityModel.updateOne({ _id: communityId }, { $inc: { memberCount: 1 } });
-    }
-    await auditService.log("community.joined", {
-      userId,
-      targetTableName: "community_memberships",
-      targetRecordId: membership.id,
-      details: { communityId, status },
+    const membership = await getPrisma().$transaction(async (tx) => {
+      const updated = await tx.communityMembership.upsert({ where: { communityId_userId: { communityId: id, userId: resolvedUserId } }, create: { communityId: id, userId: resolvedUserId, role: "member", status }, update: { status } });
+      if (status === "active" && existing?.status !== "active") await tx.community.update({ where: { id }, data: { memberCount: { increment: 1 } } });
+      return updated;
     });
+    await auditService.log("community.joined", { userId, targetTableName: "community_memberships", targetRecordId: membership.id, details: { communityId: id, status } });
     return { role: membership.role, status: membership.status };
   },
 
   async leave(communityId: string, userId: string) {
-    const membership = await CommunityMembershipModel.findOne({ communityId, userId });
+    const [id, resolvedUserId] = await Promise.all([resolveCommunityId(communityId), resolveUserId(userId)]);
+    const membership = await getPrisma().communityMembership.findUnique({ where: { communityId_userId: { communityId: id, userId: resolvedUserId } } });
     if (!membership) return;
     if (membership.role === "owner") throw AppError.badRequest("Transfer ownership before leaving the community");
-    const wasActive = membership.status === "active";
-    await membership.deleteOne();
-    if (wasActive) {
-      await CommunityModel.updateOne(
-        { _id: communityId, memberCount: { $gt: 0 } },
-        { $inc: { memberCount: -1 } },
-      );
-    }
-    await auditService.log("community.left", {
-      userId,
-      targetTableName: "community_memberships",
-      targetRecordId: membership.id,
-      details: { communityId },
+    await getPrisma().$transaction(async (tx) => {
+      await tx.communityMembership.delete({ where: { id: membership.id } });
+      if (membership.status === "active") {
+        const community = await tx.community.findUniqueOrThrow({ where: { id } });
+        await tx.community.update({ where: { id }, data: { memberCount: Math.max(0, community.memberCount - 1) } });
+      }
     });
+    await auditService.log("community.left", { userId, targetTableName: "community_memberships", targetRecordId: membership.id, details: { communityId: id } });
   },
 
   async listMembers(communityId: string, actorId: string, actorRole?: UserRole) {
-    await assertCommunityModerator(communityId, actorId, actorRole);
-    return CommunityMembershipModel.find({ communityId })
-      .sort({ role: 1, createdAt: 1 })
-      .populate("userId", "fullName email avatarUrl role institution")
-      .lean();
+    const id = await resolveCommunityId(communityId);
+    await assertCommunityModerator(id, actorId, actorRole);
+    return getPrisma().communityMembership.findMany({ where: { communityId: id }, orderBy: [{ role: "asc" }, { createdAt: "asc" }] });
   },
 
-  async updateMember(
-    communityId: string,
-    targetUserId: string,
-    input: { role?: "moderator" | "member"; status?: "pending" | "active" | "declined" | "banned" },
-    actorId: string,
-    actorRole?: UserRole,
-  ) {
-    const actorMembership = await assertCommunityModerator(communityId, actorId, actorRole);
-    const target = await CommunityMembershipModel.findOne({ communityId, userId: targetUserId });
+  async updateMember(communityId: string, targetUserId: string, input: { role?: "moderator" | "member"; status?: "pending" | "active" | "declined" | "banned" }, actorId: string, actorRole?: UserRole) {
+    const [id, resolvedTargetId] = await Promise.all([resolveCommunityId(communityId), resolveUserId(targetUserId)]);
+    const actorMembership = await assertCommunityModerator(id, actorId, actorRole);
+    const target = await getPrisma().communityMembership.findUnique({ where: { communityId_userId: { communityId: id, userId: resolvedTargetId } } });
     if (!target) throw AppError.notFound("Community membership not found");
     if (target.role === "owner") throw AppError.badRequest("The owner membership cannot be changed here");
-    if (input.role !== undefined && actorRole !== "admin" && actorMembership.role !== "owner") {
-      throw AppError.forbidden("Only the community owner can assign or remove moderators");
-    }
-    if (actorRole !== "admin" && actorMembership.role === "moderator" && target.role !== "member") {
-      throw AppError.forbidden("Community moderators can only manage regular members");
-    }
-    const wasActive = target.status === "active";
-    if (input.role !== undefined) target.role = input.role;
-    if (input.status !== undefined) target.status = input.status;
-    await target.save();
-    const isActive = target.status === "active";
-    if (wasActive !== isActive) {
-      await CommunityModel.updateOne(
-        { _id: communityId, ...(isActive ? {} : { memberCount: { $gt: 0 } }) },
-        { $inc: { memberCount: isActive ? 1 : -1 } },
-      );
-    }
-    await auditService.log("community.member.updated", {
-      userId: actorId,
-      targetTableName: "community_memberships",
-      targetRecordId: target.id,
-      details: input,
+    if (input.role !== undefined && actorRole !== "admin" && actorMembership.role !== "owner") throw AppError.forbidden("Only the community owner can assign or remove moderators");
+    if (actorRole !== "admin" && actorMembership.role === "moderator" && target.role !== "member") throw AppError.forbidden("Community moderators can only manage regular members");
+    const nextStatus = input.status ?? target.status;
+    const updated = await getPrisma().$transaction(async (tx) => {
+      const result = await tx.communityMembership.update({ where: { id: target.id }, data: input });
+      if ((target.status === "active") !== (nextStatus === "active")) {
+        const community = await tx.community.findUniqueOrThrow({ where: { id } });
+        await tx.community.update({ where: { id }, data: { memberCount: Math.max(0, community.memberCount + (nextStatus === "active" ? 1 : -1)) } });
+      }
+      return result;
     });
-    return target;
+    await auditService.log("community.member.updated", { userId: actorId, targetTableName: "community_memberships", targetRecordId: target.id, details: input });
+    return updated;
   },
 };

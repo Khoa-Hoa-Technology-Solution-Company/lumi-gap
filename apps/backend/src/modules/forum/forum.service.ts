@@ -1,354 +1,297 @@
 import type { UserRole } from "@trend/shared-types";
-import mongoose from "mongoose";
 import { AppError } from "../../common/exceptions/app-error.js";
+import { parseDatabaseId, publicDatabaseId } from "../../infrastructure/database/database-id.js";
+import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { auditService } from "../audit/audit.service.js";
-import { AcademicProfileModel } from "../academic-profiles/academic-profile.model.js";
 import { getActiveCommunityMembership, isCommunityModerator } from "../communities/community.service.js";
-import { CommunityMembershipModel, CommunityModel } from "../communities/community.model.js";
-import { ResearchGapModel } from "../gaps/models/research-gap.model.js";
 import { notificationService } from "../notifications/notification.service.js";
-import { PaperModel } from "../papers/models/paper.model.js";
-import { ProjectModel } from "../projects/models/project.model.js";
-import { ContentReportModel, ForumCommentModel, ForumPostModel, ForumVoteModel } from "./forum.model.js";
 
 type ReferenceInput = { paperId?: string; doi?: string; url?: string; title?: string };
 type PostInput = {
-  type?: "discussion" | "question";
-  title: string;
-  content: string;
-  communityId?: string;
-  tags?: string[];
-  linkedPaperId?: string;
-  linkedResearchGapId?: string;
-  linkedProjectId?: string;
-  references?: ReferenceInput[];
+  type?: "discussion" | "question"; title: string; content: string; communityId?: string; tags?: string[];
+  linkedPaperId?: string; linkedResearchGapId?: string; linkedProjectId?: string; references?: ReferenceInput[];
 };
+type ReferenceRecord = { paperId: string | null; doi: string | null; url: string | null; title: string | null; verified: boolean; position: number };
 
-async function assertCanPostToCommunity(communityId: string | undefined, userId: string): Promise<void> {
-  if (!communityId) return;
-  const community = await CommunityModel.findById(communityId).select("visibility").lean();
-  if (!community) throw AppError.notFound("Community not found");
-  if (!(await getActiveCommunityMembership(communityId, userId))) {
-    throw AppError.forbidden("Active community membership is required to post");
-  }
+function idWhere(value: string): { id: string } | { legacyMongoId: string } {
+  const parsed = parseDatabaseId(value);
+  if (!parsed) throw AppError.badRequest("Invalid identifier");
+  return parsed.kind === "uuid" ? { id: parsed.value } : { legacyMongoId: parsed.value };
 }
 
+async function resolveUserId(value: string): Promise<string> {
+  const row = await getPrisma().user.findUnique({ where: idWhere(value), select: { id: true } });
+  if (!row) throw AppError.notFound("User not found");
+  return row.id;
+}
+async function resolveCommunity(value: string) {
+  const row = await getPrisma().community.findUnique({ where: idWhere(value), select: { id: true, legacyMongoId: true, name: true, slug: true, visibility: true } });
+  if (!row) throw AppError.notFound("Community not found");
+  return row;
+}
+async function resolvePost(value: string) {
+  const row = await getPrisma().forumPost.findUnique({ where: idWhere(value) });
+  if (!row) throw AppError.notFound("Forum post not found");
+  return row;
+}
+async function resolveComment(value: string) {
+  const row = await getPrisma().forumComment.findUnique({ where: idWhere(value) });
+  if (!row) throw AppError.notFound("Comment not found");
+  return row;
+}
+async function resolvePaper(value?: string): Promise<string | undefined> {
+  if (!value) return undefined;
+  const row = await getPrisma().paper.findUnique({ where: idWhere(value), select: { id: true } });
+  if (!row) throw AppError.badRequest("A linked academic entity does not exist");
+  return row.id;
+}
+async function resolveGap(value?: string): Promise<string | undefined> {
+  if (!value) return undefined;
+  const row = await getPrisma().researchGap.findUnique({ where: idWhere(value), select: { id: true } });
+  if (!row) throw AppError.badRequest("A linked academic entity does not exist");
+  return row.id;
+}
+async function resolveProject(value?: string): Promise<string | undefined> {
+  if (!value) return undefined;
+  const row = await getPrisma().project.findUnique({ where: idWhere(value), select: { id: true } });
+  if (!row) throw AppError.badRequest("A linked academic entity does not exist");
+  return row.id;
+}
+
+async function assertCanPostToCommunity(communityId: string | undefined, userId: string): Promise<string | undefined> {
+  if (!communityId) return undefined;
+  const community = await resolveCommunity(communityId);
+  if (!(await getActiveCommunityMembership(community.id, userId))) throw AppError.forbidden("Active community membership is required to post");
+  return community.id;
+}
 async function assertCanViewCommunity(communityId: string | undefined, userId?: string, role?: UserRole): Promise<void> {
   if (!communityId) return;
-  const community = await CommunityModel.findById(communityId).select("visibility").lean();
-  if (!community) throw AppError.notFound("Community not found");
-  if (community.visibility === "private" && role !== "admin") {
-    if (!userId || !(await getActiveCommunityMembership(communityId, userId))) {
-      throw AppError.forbidden("This community is private");
-    }
+  const community = await resolveCommunity(communityId);
+  if (community.visibility === "private" && role !== "admin" && (!userId || !(await getActiveCommunityMembership(community.id, userId)))) {
+    throw AppError.forbidden("This community is private");
   }
 }
-
-async function visibleCommunityIds(userId?: string, role?: UserRole) {
-  if (role === "admin") return CommunityModel.distinct("_id", {});
-  const publicIds = await CommunityModel.distinct("_id", { visibility: "public" });
+async function visibleCommunityIds(userId?: string, role?: UserRole): Promise<string[]> {
+  const prisma = getPrisma();
+  if (role === "admin") return (await prisma.community.findMany({ select: { id: true } })).map((row) => row.id);
+  const publicIds = (await prisma.community.findMany({ where: { visibility: "public" }, select: { id: true } })).map((row) => row.id);
   if (!userId) return publicIds;
-  const memberIds = await CommunityMembershipModel.distinct("communityId", { userId, status: "active" });
-  return [...new Set([...publicIds, ...memberIds].map(String))];
+  const resolvedUserId = await resolveUserId(userId);
+  const memberIds = (await prisma.communityMembership.findMany({ where: { userId: resolvedUserId, status: "active" }, select: { communityId: true } })).map((row) => row.communityId);
+  return [...new Set([...publicIds, ...memberIds])];
+}
+async function canModerate(communityId: string | null | undefined, actorId: string, role: UserRole): Promise<boolean> {
+  return role === "admin" || Boolean(communityId && await isCommunityModerator(communityId, actorId));
 }
 
-async function canModerate(communityId: unknown, actorId: string, role: UserRole): Promise<boolean> {
-  if (role === "admin") return true;
-  return Boolean(communityId && await isCommunityModerator(String(communityId), actorId));
+async function prepareReferences(references: ReferenceInput[] = []): Promise<ReferenceRecord[]> {
+  return Promise.all(references.map(async (reference, position) => {
+    if (!reference.paperId) return { paperId: null, doi: reference.doi ?? null, url: reference.url ?? null, title: reference.title ?? null, verified: false, position };
+    const paper = await getPrisma().paper.findUnique({ where: idWhere(reference.paperId), select: { id: true, title: true, doi: true } });
+    if (!paper) throw AppError.badRequest("A referenced paper does not exist");
+    return { paperId: paper.id, doi: paper.doi ?? reference.doi ?? null, url: reference.url ?? null, title: paper.title, verified: true, position };
+  }));
 }
 
-async function validateLinks(input: Partial<PostInput>): Promise<void> {
-  const checks: Array<Promise<unknown>> = [];
-  if (input.linkedPaperId) checks.push(PaperModel.exists({ _id: input.linkedPaperId }));
-  if (input.linkedResearchGapId) checks.push(ResearchGapModel.exists({ _id: input.linkedResearchGapId }));
-  if (input.linkedProjectId) checks.push(ProjectModel.exists({ _id: input.linkedProjectId }));
-  const results = await Promise.all(checks);
-  if (results.some((result) => !result)) throw AppError.badRequest("A linked academic entity does not exist");
+async function academicAuthors(userIds: string[]) {
+  if (!userIds.length) return new Map<string, Record<string, unknown>>();
+  const ids = [...new Set(userIds)];
+  const prisma = getPrisma();
+  const [users, profiles] = await Promise.all([
+    prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, legacyMongoId: true, fullName: true, avatarUrl: true, academicProfileType: true, institution: true, role: true } }),
+    prisma.academicProfile.findMany({ where: { userId: { in: ids } }, select: { userId: true, verificationStatus: true, academicTitle: true } }),
+  ]);
+  const profileByUser = new Map(profiles.map((profile) => [profile.userId, profile]));
+  return new Map(users.map((user) => {
+    const id = publicDatabaseId(user); const profile = profileByUser.get(user.id);
+    return [user.id, { _id: id, id, fullName: user.fullName, avatarUrl: user.avatarUrl, academicProfileType: user.academicProfileType, institution: user.institution, role: user.role, academicVerificationStatus: profile?.verificationStatus ?? "SELF_DECLARED", academicTitle: profile?.academicTitle }];
+  }));
 }
 
-async function prepareReferences(references: ReferenceInput[] = []) {
-  const paperIds = references.flatMap((reference) => reference.paperId ? [reference.paperId] : []);
-  const papers = paperIds.length
-    ? await PaperModel.find({ _id: { $in: paperIds } }).select("title publicationYear externalIds.doi").lean()
-    : [];
-  const paperMap = new Map(papers.map((paper) => [String(paper._id), paper]));
-  if (paperIds.some((id) => !paperMap.has(id))) throw AppError.badRequest("A referenced paper does not exist");
-  return references.map((reference) => {
-    const paper = reference.paperId ? paperMap.get(reference.paperId) : undefined;
-    return {
-      ...reference,
-      title: paper?.title ?? reference.title,
-      doi: paper?.externalIds?.doi ?? reference.doi,
-      verified: Boolean(paper),
-    };
+async function publicIdsFor(model: "paper" | "gap" | "project" | "comment", ids: Array<string | null | undefined>) {
+  const uniqueIds = [...new Set(ids.filter((id): id is string => Boolean(id)))];
+  if (!uniqueIds.length) return new Map<string, string>();
+  const prisma = getPrisma();
+  const rows = model === "paper" ? await prisma.paper.findMany({ where: { id: { in: uniqueIds } }, select: { id: true, legacyMongoId: true } })
+    : model === "gap" ? await prisma.researchGap.findMany({ where: { id: { in: uniqueIds } }, select: { id: true, legacyMongoId: true } })
+      : model === "project" ? await prisma.project.findMany({ where: { id: { in: uniqueIds } }, select: { id: true, legacyMongoId: true } })
+        : await prisma.forumComment.findMany({ where: { id: { in: uniqueIds } }, select: { id: true, legacyMongoId: true } });
+  return new Map(rows.map((row) => [row.id, publicDatabaseId(row)]));
+}
+
+async function presentPosts(posts: Array<Awaited<ReturnType<typeof resolvePost>>>) {
+  if (!posts.length) return [];
+  const prisma = getPrisma(); const postIds = posts.map((post) => post.id);
+  const [authors, communities, references, postPapers, paperIds, gapIds, projectIds, commentIds] = await Promise.all([
+    academicAuthors(posts.map((post) => post.authorId)),
+    prisma.community.findMany({ where: { id: { in: posts.flatMap((post) => post.communityId ? [post.communityId] : []) } }, select: { id: true, legacyMongoId: true, name: true, slug: true } }),
+    prisma.forumReference.findMany({ where: { postId: { in: postIds } }, orderBy: { position: "asc" } }),
+    prisma.forumPostPaper.findMany({ where: { postId: { in: postIds } }, orderBy: { position: "asc" } }),
+    publicIdsFor("paper", posts.map((post) => post.linkedPaperId)), publicIdsFor("gap", posts.flatMap((post) => [post.researchGapId, post.linkedResearchGapId])),
+    publicIdsFor("project", posts.map((post) => post.linkedProjectId)), publicIdsFor("comment", posts.map((post) => post.acceptedCommentId)),
+  ]);
+  const communityById = new Map(communities.map((community) => { const id = publicDatabaseId(community); return [community.id, { _id: id, id, name: community.name, slug: community.slug }]; }));
+  const referencesByPost = new Map<string, typeof references>();
+  for (const reference of references) { const list = referencesByPost.get(reference.postId!) ?? []; list.push(reference); referencesByPost.set(reference.postId!, list); }
+  const papersByPost = new Map<string, string[]>(); const allPaperIds = await publicIdsFor("paper", postPapers.map((row) => row.paperId));
+  for (const row of postPapers) { const list = papersByPost.get(row.postId) ?? []; list.push(allPaperIds.get(row.paperId) ?? row.paperId); papersByPost.set(row.postId, list); }
+  return posts.map((post) => {
+    const id = publicDatabaseId(post); const linkedPaperId = post.linkedPaperId ? paperIds.get(post.linkedPaperId) ?? post.linkedPaperId : undefined;
+    return { ...post, _id: id, id, content: post.body, authorId: authors.get(post.authorId) ?? post.authorId,
+      communityId: post.communityId ? communityById.get(post.communityId) ?? post.communityId : undefined,
+      researchGapId: post.researchGapId ? gapIds.get(post.researchGapId) ?? post.researchGapId : undefined,
+      paperIds: papersByPost.get(post.id) ?? (linkedPaperId ? [linkedPaperId] : []), linkedPaperId,
+      linkedResearchGapId: post.linkedResearchGapId ? gapIds.get(post.linkedResearchGapId) ?? post.linkedResearchGapId : undefined,
+      linkedProjectId: post.linkedProjectId ? projectIds.get(post.linkedProjectId) ?? post.linkedProjectId : undefined,
+      acceptedCommentId: post.acceptedCommentId ? commentIds.get(post.acceptedCommentId) ?? post.acceptedCommentId : undefined,
+      references: (referencesByPost.get(post.id) ?? []).map(({ id: _id, postId: _postId, commentId: _commentId, position: _position, ...reference }) => reference) };
   });
 }
 
-async function attachAcademicVerification<T extends Record<string, any>>(items: T[]): Promise<T[]> {
-  const userIds = items.flatMap((item) => item.authorId ? [String(item.authorId._id ?? item.authorId)] : []);
-  if (userIds.length === 0) return items;
-  const profiles = await AcademicProfileModel.find({ userId: { $in: userIds } })
-    .select("userId verificationStatus academicTitle")
-    .lean();
-  const byUser = new Map(profiles.map((profile) => [String(profile.userId), profile]));
-  for (const item of items) {
-    if (item.authorId && typeof item.authorId === "object") {
-      const profile = byUser.get(String(item.authorId._id));
-      item.authorId.academicVerificationStatus = profile?.verificationStatus ?? "SELF_DECLARED";
-      item.authorId.academicTitle = profile?.academicTitle;
-    }
-  }
-  return items;
-}
-
-async function recalculateScore(subjectKind: "post" | "comment", subjectId: string): Promise<number> {
-  const [result] = await ForumVoteModel.aggregate<{ score: number }>([
-    { $match: { subjectKind, subjectId: new mongoose.Types.ObjectId(subjectId) } },
-    { $group: { _id: null, score: { $sum: "$value" } } },
+async function presentComments(comments: Array<Awaited<ReturnType<typeof resolveComment>>>) {
+  if (!comments.length) return [];
+  const prisma = getPrisma();
+  const [authors, references, parentIds] = await Promise.all([
+    academicAuthors(comments.map((comment) => comment.authorId)),
+    prisma.forumReference.findMany({ where: { commentId: { in: comments.map((comment) => comment.id) } }, orderBy: { position: "asc" } }),
+    publicIdsFor("comment", comments.map((comment) => comment.parentCommentId)),
   ]);
-  const score = result?.score ?? 0;
-  if (subjectKind === "post") {
-    await ForumPostModel.updateOne({ _id: subjectId }, { $set: { score, voteScore: score } });
-  } else {
-    await ForumCommentModel.updateOne({ _id: subjectId }, { $set: { score, voteScore: score } });
-  }
-  return score;
+  const refsByComment = new Map<string, typeof references>();
+  for (const reference of references) { const list = refsByComment.get(reference.commentId!) ?? []; list.push(reference); refsByComment.set(reference.commentId!, list); }
+  return comments.map((comment) => { const id = publicDatabaseId(comment); return { ...comment, _id: id, id, content: comment.body,
+    authorId: authors.get(comment.authorId) ?? comment.authorId, parentCommentId: comment.parentCommentId ? parentIds.get(comment.parentCommentId) ?? comment.parentCommentId : undefined,
+    references: (refsByComment.get(comment.id) ?? []).map(({ id: _id, postId: _postId, commentId: _commentId, position: _position, ...reference }) => reference) }; });
 }
 
 export const forumService = {
   async createPost(input: PostInput, userId: string) {
-    await Promise.all([assertCanPostToCommunity(input.communityId, userId), validateLinks(input)]);
-    const post = await ForumPostModel.create({
-      ...input,
-      type: input.type ?? "discussion",
-      body: input.content,
-      researchGapId: input.linkedResearchGapId,
-      paperIds: input.linkedPaperId ? [input.linkedPaperId] : [],
-      references: await prepareReferences(input.references),
-      authorId: userId,
+    const [authorId, communityId, linkedPaperId, linkedResearchGapId, linkedProjectId, references] = await Promise.all([
+      resolveUserId(userId), assertCanPostToCommunity(input.communityId, userId), resolvePaper(input.linkedPaperId), resolveGap(input.linkedResearchGapId), resolveProject(input.linkedProjectId), prepareReferences(input.references),
+    ]);
+    const post = await getPrisma().$transaction(async (tx) => {
+      const created = await tx.forumPost.create({ data: { authorId, communityId, researchGapId: linkedResearchGapId, linkedPaperId, linkedResearchGapId, linkedProjectId, type: input.type ?? "discussion", title: input.title, body: input.content, tags: input.tags ?? [] } });
+      if (linkedPaperId) await tx.forumPostPaper.create({ data: { postId: created.id, paperId: linkedPaperId, position: 0 } });
+      if (references.length) await tx.forumReference.createMany({ data: references.map((reference) => ({ ...reference, postId: created.id })) });
+      return created;
     });
     await auditService.log("forum.post.created", { userId, targetTableName: "forum_posts", targetRecordId: post.id });
-    return post;
+    return (await presentPosts([post]))[0];
   },
 
-  async listPosts(
-    filter: { communityId?: string; linkedResearchGapId?: string; type?: string; tag?: string },
-    page: number,
-    pageSize: number,
-    actorId?: string,
-    actorRole?: UserRole,
-  ) {
-    const query: Record<string, unknown> = { status: { $in: ["active", "locked"] } };
-    if (filter.linkedResearchGapId) query.linkedResearchGapId = filter.linkedResearchGapId;
-    if (filter.type) query.type = filter.type;
-    if (filter.tag) query.tags = filter.tag;
-    if (filter.communityId) {
-      await assertCanViewCommunity(filter.communityId, actorId, actorRole);
-      query.communityId = filter.communityId;
-    } else {
-      query.$or = [
-        { communityId: { $exists: false } },
-        { communityId: null },
-        { communityId: { $in: await visibleCommunityIds(actorId, actorRole) } },
-      ];
-    }
-    const [data, total] = await Promise.all([
-      ForumPostModel.find(query).sort({ createdAt: -1 }).skip((page - 1) * pageSize).limit(pageSize)
-        .populate("authorId", "fullName avatarUrl academicProfileType institution role")
-        .populate("communityId", "name slug").lean(),
-      ForumPostModel.countDocuments(query),
-    ]);
-    return { data: await attachAcademicVerification(data as Array<Record<string, any>>), meta: { page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)) } };
+  async listPosts(filter: { communityId?: string; linkedResearchGapId?: string; type?: string; tag?: string }, page: number, pageSize: number, actorId?: string, actorRole?: UserRole) {
+    const prisma = getPrisma(); const where: Record<string, unknown> = { status: { in: ["active", "locked"] } };
+    if (filter.linkedResearchGapId) where.linkedResearchGapId = await resolveGap(filter.linkedResearchGapId);
+    if (filter.type) where.type = filter.type; if (filter.tag) where.tags = { has: filter.tag };
+    if (filter.communityId) { const community = await resolveCommunity(filter.communityId); await assertCanViewCommunity(community.id, actorId, actorRole); where.communityId = community.id; }
+    else where.OR = [{ communityId: null }, { communityId: { in: await visibleCommunityIds(actorId, actorRole) } }];
+    const [data, total] = await Promise.all([prisma.forumPost.findMany({ where, orderBy: { createdAt: "desc" }, skip: (page - 1) * pageSize, take: pageSize }), prisma.forumPost.count({ where })]);
+    return { data: await presentPosts(data), meta: { page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)) } };
   },
 
   async getPost(postId: string, actorId?: string, actorRole?: UserRole) {
-    const post = await ForumPostModel.findOne({ _id: postId, status: { $ne: "deleted" } })
-      .populate("authorId", "fullName avatarUrl academicProfileType institution role")
-      .populate("communityId", "name slug").lean();
-    if (!post) throw AppError.notFound("Forum post not found");
-    const communityId = post.communityId && typeof post.communityId === "object" && "_id" in post.communityId
-      ? String(post.communityId._id) : post.communityId ? String(post.communityId) : undefined;
-    await assertCanViewCommunity(communityId, actorId, actorRole);
-    if (post.status === "hidden") {
-      const authorId = post.authorId && typeof post.authorId === "object" && "_id" in post.authorId
-        ? String(post.authorId._id) : String(post.authorId);
-      if (!actorId || (authorId !== actorId && !(await canModerate(communityId, actorId, actorRole!)))) {
-        throw AppError.notFound("Forum post not found");
-      }
-    }
-    return (await attachAcademicVerification([post as Record<string, any>]))[0];
+    const post = await resolvePost(postId); if (post.status === "deleted") throw AppError.notFound("Forum post not found");
+    await assertCanViewCommunity(post.communityId ?? undefined, actorId, actorRole);
+    if (post.status === "hidden" && (!actorId || (await resolveUserId(actorId)) !== post.authorId && !(await canModerate(post.communityId, actorId, actorRole!)))) throw AppError.notFound("Forum post not found");
+    return (await presentPosts([post]))[0];
   },
 
   async updatePost(postId: string, input: Partial<PostInput>, userId: string) {
-    const post = await ForumPostModel.findById(postId);
-    if (!post || post.status === "deleted") throw AppError.notFound("Forum post not found");
-    if (post.authorId.toString() !== userId) throw AppError.forbidden("Only the author can edit this post");
-    await validateLinks(input);
-    const update: Record<string, unknown> = { ...input };
-    if (input.content !== undefined) update.body = input.content;
-    if (input.references !== undefined) update.references = await prepareReferences(input.references);
-    return ForumPostModel.findByIdAndUpdate(postId, { $set: update }, { new: true, runValidators: true });
+    const post = await resolvePost(postId); if (post.status === "deleted") throw AppError.notFound("Forum post not found");
+    if (post.authorId !== await resolveUserId(userId)) throw AppError.forbidden("Only the author can edit this post");
+    const [linkedPaperId, linkedResearchGapId, linkedProjectId, references] = await Promise.all([
+      input.linkedPaperId !== undefined ? resolvePaper(input.linkedPaperId) : undefined,
+      input.linkedResearchGapId !== undefined ? resolveGap(input.linkedResearchGapId) : undefined,
+      input.linkedProjectId !== undefined ? resolveProject(input.linkedProjectId) : undefined,
+      input.references !== undefined ? prepareReferences(input.references) : undefined,
+    ]);
+    const updated = await getPrisma().$transaction(async (tx) => {
+      const result = await tx.forumPost.update({ where: { id: post.id }, data: {
+        ...(input.type !== undefined ? { type: input.type } : {}), ...(input.title !== undefined ? { title: input.title } : {}), ...(input.content !== undefined ? { body: input.content } : {}),
+        ...(input.tags !== undefined ? { tags: input.tags } : {}), ...(input.linkedPaperId !== undefined ? { linkedPaperId } : {}),
+        ...(input.linkedResearchGapId !== undefined ? { linkedResearchGapId, researchGapId: linkedResearchGapId } : {}), ...(input.linkedProjectId !== undefined ? { linkedProjectId } : {}),
+      } });
+      if (input.linkedPaperId !== undefined) { await tx.forumPostPaper.deleteMany({ where: { postId: post.id } }); if (linkedPaperId) await tx.forumPostPaper.create({ data: { postId: post.id, paperId: linkedPaperId, position: 0 } }); }
+      if (references !== undefined) { await tx.forumReference.deleteMany({ where: { postId: post.id } }); if (references.length) await tx.forumReference.createMany({ data: references.map((reference) => ({ ...reference, postId: post.id })) }); }
+      return result;
+    });
+    return (await presentPosts([updated]))[0];
   },
 
   async deletePost(postId: string, userId: string, role: UserRole) {
-    const post = await ForumPostModel.findById(postId);
-    if (!post || post.status === "deleted") throw AppError.notFound("Forum post not found");
-    if (post.authorId.toString() !== userId && role !== "admin") throw AppError.forbidden();
-    post.status = "deleted";
-    await post.save();
+    const post = await resolvePost(postId); if (post.status === "deleted") throw AppError.notFound("Forum post not found");
+    if (post.authorId !== await resolveUserId(userId) && role !== "admin") throw AppError.forbidden();
+    await getPrisma().forumPost.update({ where: { id: post.id }, data: { status: "deleted" } });
   },
-
   async moderatePost(postId: string, status: "active" | "hidden" | "locked" | "deleted", actorId: string, actorRole: UserRole) {
-    const existing = await ForumPostModel.findById(postId).select("communityId").lean();
-    if (!existing) throw AppError.notFound("Forum post not found");
-    if (!(await canModerate(existing.communityId, actorId, actorRole))) {
-      throw AppError.forbidden("Forum moderator access is required in this community");
-    }
-    const post = await ForumPostModel.findByIdAndUpdate(postId, { $set: { status } }, { new: true });
-    await auditService.log("forum.post.moderated", {
-      userId: actorId, targetTableName: "forum_posts", targetRecordId: postId,
-      details: { status, communityId: existing.communityId },
-    });
-    return post;
+    const post = await resolvePost(postId); if (!(await canModerate(post.communityId, actorId, actorRole))) throw AppError.forbidden("Forum moderator access is required in this community");
+    const updated = await getPrisma().forumPost.update({ where: { id: post.id }, data: { status } });
+    await auditService.log("forum.post.moderated", { userId: actorId, targetTableName: "forum_posts", targetRecordId: post.id, details: { status, communityId: post.communityId } });
+    return (await presentPosts([updated]))[0];
   },
 
   async addComment(postId: string, input: { content: string; parentCommentId?: string; references?: ReferenceInput[] }, userId: string) {
-    const post = await ForumPostModel.findById(postId).select("status communityId authorId title").lean();
-    if (!post || post.status === "deleted" || post.status === "hidden") throw AppError.notFound("Forum post not found");
-    if (post.status === "locked") throw AppError.conflict("This post is locked");
-    await assertCanPostToCommunity(post.communityId?.toString(), userId);
-    if (input.parentCommentId) {
-      const parent = await ForumCommentModel.exists({ _id: input.parentCommentId, postId, status: "active" });
-      if (!parent) throw AppError.badRequest("Parent comment does not belong to this post");
-    }
-    const comment = await ForumCommentModel.create({
-      ...input, body: input.content, references: await prepareReferences(input.references), postId, authorId: userId,
-    });
-    await ForumPostModel.updateOne({ _id: postId }, { $inc: { commentCount: 1 } });
-    if (String(post.authorId) !== userId) {
-      await notificationService.create({
-        userId: String(post.authorId), title: "New comment on your forum post",
-        message: `Someone commented on “${post.title}”.`, type: "forum_comment_created",
-        targetKind: "forum_post", targetId: String(post._id),
-      });
-    }
-    return comment;
+    const post = await resolvePost(postId); if (["deleted", "hidden"].includes(post.status)) throw AppError.notFound("Forum post not found"); if (post.status === "locked") throw AppError.conflict("This post is locked");
+    await assertCanPostToCommunity(post.communityId ?? undefined, userId); const authorId = await resolveUserId(userId);
+    const parent = input.parentCommentId ? await resolveComment(input.parentCommentId) : undefined; if (parent && (parent.postId !== post.id || parent.status !== "active")) throw AppError.badRequest("Parent comment does not belong to this post");
+    const references = await prepareReferences(input.references);
+    const comment = await getPrisma().$transaction(async (tx) => { const created = await tx.forumComment.create({ data: { postId: post.id, authorId, parentCommentId: parent?.id, body: input.content } });
+      if (references.length) await tx.forumReference.createMany({ data: references.map((reference) => ({ ...reference, commentId: created.id })) });
+      await tx.forumPost.update({ where: { id: post.id }, data: { commentCount: { increment: 1 } } }); return created; });
+    if (post.authorId !== authorId) await notificationService.create({ userId: post.authorId, title: "New comment on your forum post", message: `Someone commented on “${post.title}”.`, type: "forum_comment_created", targetKind: "forum_post", targetId: post.id });
+    return (await presentComments([comment]))[0];
   },
 
   async listComments(postId: string, page: number, pageSize: number, actorId?: string, actorRole?: UserRole) {
-    const post = await ForumPostModel.findOne({ _id: postId, status: { $in: ["active", "locked"] } }).select("communityId").lean();
-    if (!post) throw AppError.notFound("Forum post not found");
-    await assertCanViewCommunity(post.communityId?.toString(), actorId, actorRole);
-    const query = { postId, status: "active" };
-    const [data, total] = await Promise.all([
-      ForumCommentModel.find(query).sort({ createdAt: 1 }).skip((page - 1) * pageSize).limit(pageSize)
-        .populate("authorId", "fullName avatarUrl academicProfileType institution role").lean(),
-      ForumCommentModel.countDocuments(query),
+    const post = await resolvePost(postId); if (!["active", "locked"].includes(post.status)) throw AppError.notFound("Forum post not found"); await assertCanViewCommunity(post.communityId ?? undefined, actorId, actorRole);
+    const where = { postId: post.id, status: "active" }; const [data, total] = await Promise.all([
+      getPrisma().forumComment.findMany({ where, orderBy: { createdAt: "asc" }, skip: (page - 1) * pageSize, take: pageSize }), getPrisma().forumComment.count({ where }),
     ]);
-    return { data: await attachAcademicVerification(data as Array<Record<string, any>>), meta: { page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)) } };
+    return { data: await presentComments(data), meta: { page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)) } };
   },
-
   async updateComment(commentId: string, input: { content: string; references?: ReferenceInput[] }, userId: string) {
-    const comment = await ForumCommentModel.findById(commentId);
-    if (!comment || comment.status === "deleted") throw AppError.notFound("Comment not found");
-    if (comment.authorId.toString() !== userId) throw AppError.forbidden("Only the author can edit this comment");
-    comment.content = input.content;
-    comment.body = input.content;
-    if (input.references) comment.set("references", await prepareReferences(input.references));
-    await comment.save();
-    return comment;
+    const comment = await resolveComment(commentId); if (comment.status === "deleted") throw AppError.notFound("Comment not found"); if (comment.authorId !== await resolveUserId(userId)) throw AppError.forbidden("Only the author can edit this comment");
+    const references = input.references !== undefined ? await prepareReferences(input.references) : undefined;
+    const updated = await getPrisma().$transaction(async (tx) => { const result = await tx.forumComment.update({ where: { id: comment.id }, data: { body: input.content } });
+      if (references !== undefined) { await tx.forumReference.deleteMany({ where: { commentId: comment.id } }); if (references.length) await tx.forumReference.createMany({ data: references.map((reference) => ({ ...reference, commentId: comment.id })) }); } return result; });
+    return (await presentComments([updated]))[0];
   },
-
   async deleteComment(commentId: string, userId: string, role: UserRole) {
-    const comment = await ForumCommentModel.findById(commentId);
-    if (!comment || comment.status === "deleted") throw AppError.notFound("Comment not found");
-    if (comment.authorId.toString() !== userId && role !== "admin") throw AppError.forbidden();
-    comment.status = "deleted";
-    await comment.save();
-    await ForumPostModel.updateOne({ _id: comment.postId, commentCount: { $gt: 0 } }, { $inc: { commentCount: -1 } });
+    const comment = await resolveComment(commentId); if (comment.status === "deleted") throw AppError.notFound("Comment not found"); if (comment.authorId !== await resolveUserId(userId) && role !== "admin") throw AppError.forbidden();
+    await getPrisma().$transaction(async (tx) => { await tx.forumComment.update({ where: { id: comment.id }, data: { status: "deleted" } }); const post = await tx.forumPost.findUniqueOrThrow({ where: { id: comment.postId }, select: { commentCount: true } }); if (post.commentCount > 0) await tx.forumPost.update({ where: { id: comment.postId }, data: { commentCount: { decrement: 1 } } }); });
   },
-
   async moderateComment(commentId: string, status: "active" | "hidden", actorId: string, actorRole: UserRole) {
-    const comment = await ForumCommentModel.findById(commentId).select("postId").lean();
-    if (!comment) throw AppError.notFound("Comment not found");
-    const post = await ForumPostModel.findById(comment.postId).select("communityId").lean();
-    if (!post || !(await canModerate(post.communityId, actorId, actorRole))) throw AppError.forbidden();
-    const updated = await ForumCommentModel.findByIdAndUpdate(commentId, { $set: { status } }, { new: true });
-    await auditService.log("forum.comment.moderated", {
-      userId: actorId, targetTableName: "forum_comments", targetRecordId: commentId,
-      details: { status, communityId: post.communityId },
-    });
-    return updated;
+    const comment = await resolveComment(commentId); const post = await getPrisma().forumPost.findUnique({ where: { id: comment.postId } }); if (!post || !(await canModerate(post.communityId, actorId, actorRole))) throw AppError.forbidden();
+    const updated = await getPrisma().forumComment.update({ where: { id: comment.id }, data: { status } }); await auditService.log("forum.comment.moderated", { userId: actorId, targetTableName: "forum_comments", targetRecordId: comment.id, details: { status, communityId: post.communityId } }); return (await presentComments([updated]))[0];
   },
-
   async acceptAnswer(postId: string, commentId: string, userId: string) {
-    const post = await ForumPostModel.findById(postId);
-    if (!post || post.status === "deleted") throw AppError.notFound("Forum post not found");
-    if (post.type !== "question") throw AppError.badRequest("Only question posts can accept an answer");
-    if (post.authorId.toString() !== userId) throw AppError.forbidden("Only the question author can accept an answer");
-    const comment = await ForumCommentModel.findOne({ _id: commentId, postId, status: "active" }).lean();
-    if (!comment) throw AppError.badRequest("The answer does not belong to this question");
-    post.acceptedCommentId = new mongoose.Types.ObjectId(commentId);
-    await post.save();
-    if (String(comment.authorId) !== userId) {
-      await notificationService.create({
-        userId: String(comment.authorId), title: "Your answer was accepted",
-        message: `Your answer to “${post.title}” was accepted.`, type: "forum_answer_accepted",
-        targetKind: "forum_post", targetId: postId,
-      });
-    }
-    return post;
+    const [post, comment] = await Promise.all([resolvePost(postId), resolveComment(commentId)]); if (post.status === "deleted") throw AppError.notFound("Forum post not found"); if (post.type !== "question") throw AppError.badRequest("Only question posts can accept an answer"); if (post.authorId !== await resolveUserId(userId)) throw AppError.forbidden("Only the question author can accept an answer"); if (comment.postId !== post.id || comment.status !== "active") throw AppError.badRequest("The answer does not belong to this question");
+    const updated = await getPrisma().forumPost.update({ where: { id: post.id }, data: { acceptedCommentId: comment.id } }); if (comment.authorId !== post.authorId) await notificationService.create({ userId: comment.authorId, title: "Your answer was accepted", message: `Your answer to “${post.title}” was accepted.`, type: "forum_answer_accepted", targetKind: "forum_post", targetId: post.id }); return (await presentPosts([updated]))[0];
   },
 
   async vote(subjectKind: "post" | "comment", subjectId: string, value: -1 | 0 | 1, userId: string, actorRole: UserRole) {
-    const post = subjectKind === "post"
-      ? await ForumPostModel.findOne({ _id: subjectId, status: { $in: ["active", "locked"] } }).select("communityId").lean()
-      : await ForumCommentModel.findOne({ _id: subjectId, status: "active" }).select("postId").lean()
-        .then((comment) => comment
-          ? ForumPostModel.findOne({ _id: comment.postId, status: { $in: ["active", "locked"] } }).select("communityId").lean()
-          : null);
-    if (!post) throw AppError.notFound(`${subjectKind === "post" ? "Post" : "Comment"} not found`);
-    await assertCanViewCommunity(post.communityId?.toString(), userId, actorRole);
-    if (value === 0) await ForumVoteModel.deleteOne({ subjectKind, subjectId, userId });
-    else await ForumVoteModel.findOneAndUpdate(
-      { subjectKind, subjectId, userId },
-      { $set: { value }, $setOnInsert: { subjectKind, subjectId, userId } },
-      { upsert: true, new: true, runValidators: true },
-    );
-    return { subjectKind, subjectId, value, score: await recalculateScore(subjectKind, subjectId) };
+    const prisma = getPrisma(); const resolvedUserId = await resolveUserId(userId); const subject = subjectKind === "post" ? await resolvePost(subjectId) : await resolveComment(subjectId);
+    const post = subjectKind === "post" ? subject as Awaited<ReturnType<typeof resolvePost>> : await prisma.forumPost.findUnique({ where: { id: (subject as Awaited<ReturnType<typeof resolveComment>>).postId } });
+    if (!post || !["active", "locked"].includes(post.status)) throw AppError.notFound(`${subjectKind === "post" ? "Post" : "Comment"} not found`); await assertCanViewCommunity(post.communityId ?? undefined, userId, actorRole);
+    const target = subjectKind === "post" ? { postId: subject.id, commentId: null } : { postId: null, commentId: subject.id };
+    const score = await prisma.$transaction(async (tx) => { const existing = await tx.forumVote.findFirst({ where: { userId: resolvedUserId, ...target } }); if (value === 0) { if (existing) await tx.forumVote.delete({ where: { id: existing.id } }); } else if (existing) await tx.forumVote.update({ where: { id: existing.id }, data: { value } }); else await tx.forumVote.create({ data: { userId: resolvedUserId, value, ...target } });
+      const aggregate = await tx.forumVote.aggregate({ where: target, _sum: { value: true } }); const nextScore = aggregate._sum.value ?? 0; if (subjectKind === "post") await tx.forumPost.update({ where: { id: subject.id }, data: { score: nextScore, voteScore: nextScore } }); else await tx.forumComment.update({ where: { id: subject.id }, data: { score: nextScore, voteScore: nextScore } }); return nextScore; });
+    return { subjectKind, subjectId: publicDatabaseId(subject), value, score };
   },
 
   async report(targetType: "post" | "comment", targetId: string, input: { reason: string; description?: string }, userId: string) {
-    const post = targetType === "post"
-      ? await ForumPostModel.findById(targetId).select("communityId status").lean()
-      : await ForumCommentModel.findById(targetId).select("postId status").lean()
-        .then((comment) => comment ? ForumPostModel.findById(comment.postId).select("communityId status").lean() : null);
-    if (!post || post.status === "deleted") throw AppError.notFound("Report target not found");
-    try {
-      return await ContentReportModel.create({ reporterId: userId, targetType, targetId, communityId: post.communityId, ...input });
-    } catch (error) {
-      if ((error as { code?: number }).code === 11000) throw AppError.conflict("You already have an open report for this content");
-      throw error;
-    }
+    const prisma = getPrisma(); const reporterId = await resolveUserId(userId); const target = targetType === "post" ? await resolvePost(targetId) : await resolveComment(targetId);
+    const post = targetType === "post" ? target as Awaited<ReturnType<typeof resolvePost>> : await prisma.forumPost.findUnique({ where: { id: (target as Awaited<ReturnType<typeof resolveComment>>).postId } });
+    if (!post || post.status === "deleted") throw AppError.notFound("Report target not found"); const targetWhere = targetType === "post" ? { postId: target.id } : { commentId: target.id };
+    if (await prisma.contentReport.findFirst({ where: { reporterId, status: "open", ...targetWhere } })) throw AppError.conflict("You already have an open report for this content");
+    const report = await prisma.contentReport.create({ data: { reporterId, communityId: post.communityId, reason: input.reason, description: input.description, ...targetWhere } });
+    return { ...report, id: publicDatabaseId(report), _id: publicDatabaseId(report), targetType, targetId: publicDatabaseId(target) };
   },
-
   async listReports(communityId: string, actorId: string, actorRole: UserRole) {
-    if (!(await canModerate(communityId, actorId, actorRole))) throw AppError.forbidden();
-    return ContentReportModel.find({ communityId, status: "open" }).sort({ createdAt: 1 }).lean();
+    const community = await resolveCommunity(communityId); if (!(await canModerate(community.id, actorId, actorRole))) throw AppError.forbidden();
+    const reports = await getPrisma().contentReport.findMany({ where: { communityId: community.id, status: "open" }, orderBy: { createdAt: "asc" } }); return reports.map((report) => ({ ...report, id: publicDatabaseId(report), _id: publicDatabaseId(report), targetType: report.postId ? "post" : "comment", targetId: report.postId ?? report.commentId }));
   },
-
   async reviewReport(reportId: string, input: { status: "reviewed" | "resolved" | "dismissed"; moderationNote?: string }, actorId: string, actorRole: UserRole) {
-    const report = await ContentReportModel.findById(reportId);
-    if (!report) throw AppError.notFound("Content report not found");
-    if (!(await canModerate(report.communityId, actorId, actorRole))) throw AppError.forbidden();
-    report.status = input.status;
-    report.moderationNote = input.moderationNote;
-    report.reviewedBy = new mongoose.Types.ObjectId(actorId);
-    report.reviewedAt = new Date();
-    await report.save();
-    await auditService.log("forum.report.reviewed", {
-      userId: actorId, targetTableName: "forum_content_reports", targetRecordId: reportId, details: input,
-    });
-    return report;
+    const report = await getPrisma().contentReport.findUnique({ where: idWhere(reportId) }); if (!report) throw AppError.notFound("Content report not found"); if (!(await canModerate(report.communityId, actorId, actorRole))) throw AppError.forbidden();
+    const updated = await getPrisma().contentReport.update({ where: { id: report.id }, data: { ...input, reviewedById: await resolveUserId(actorId), reviewedAt: new Date() } }); await auditService.log("forum.report.reviewed", { userId: actorId, targetTableName: "forum_content_reports", targetRecordId: report.id, details: input }); return { ...updated, id: publicDatabaseId(updated), _id: publicDatabaseId(updated), targetType: updated.postId ? "post" : "comment", targetId: updated.postId ?? updated.commentId };
   },
 };

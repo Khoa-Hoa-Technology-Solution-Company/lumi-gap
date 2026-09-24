@@ -1,7 +1,5 @@
-import mongoose from "mongoose";
+import { getPrisma } from "./database/prisma.js";
 import { redis } from "./redis.js";
-
-type DependencyName = "mongo" | "redis";
 
 export interface DependencyReadiness {
   ok: boolean;
@@ -10,10 +8,10 @@ export interface DependencyReadiness {
 
 export interface ReadinessResult {
   status: "ready" | "not_ready";
-  dependencies: Record<DependencyName, DependencyReadiness>;
+  dependencies: Record<string, DependencyReadiness>;
 }
 
-type ReadinessProbes = Record<DependencyName, () => Promise<void>>;
+type ReadinessProbes = Record<string, () => Promise<void>>;
 
 const DEFAULT_TIMEOUT_MS = 2_000;
 const CACHE_TTL_MS = 5_000;
@@ -43,14 +41,13 @@ export async function evaluateReadiness(
   probes: ReadinessProbes,
   timeoutMs = DEFAULT_TIMEOUT_MS,
 ): Promise<ReadinessResult> {
-  const [mongo, redisResult] = await Promise.all([
-    runProbe(probes.mongo, timeoutMs),
-    runProbe(probes.redis, timeoutMs),
-  ]);
-  const dependencies = { mongo, redis: redisResult };
+  const entries = await Promise.all(
+    Object.entries(probes).map(async ([name, probe]) => [name, await runProbe(probe, timeoutMs)] as const),
+  );
+  const dependencies = Object.fromEntries(entries);
 
   return {
-    status: mongo.ok && redisResult.ok ? "ready" : "not_ready",
+    status: Object.values(dependencies).every((dependency) => dependency.ok) ? "ready" : "not_ready",
     dependencies,
   };
 }
@@ -59,19 +56,15 @@ export async function getReadiness(): Promise<ReadinessResult> {
   const now = Date.now();
   if (cachedReadiness && cachedReadiness.expiresAt > now) return cachedReadiness.result;
 
-  const result = await evaluateReadiness({
-    mongo: async () => {
-      if (mongoose.connection.readyState !== 1 || !mongoose.connection.db) {
-        throw new Error("mongo is not connected");
-      }
-      await mongoose.connection.db.admin().ping();
-    },
+  const probes: ReadinessProbes = {
     redis: async () => {
       if (redis.status !== "ready") throw new Error("redis is not connected");
       const response = await redis.ping();
       if (response !== "PONG") throw new Error("redis ping failed");
     },
-  });
+  };
+  probes.postgres = async () => { await getPrisma().$queryRaw`SELECT 1`; };
+  const result = await evaluateReadiness(probes);
   cachedReadiness = { expiresAt: now + CACHE_TTL_MS, result };
   return result;
 }

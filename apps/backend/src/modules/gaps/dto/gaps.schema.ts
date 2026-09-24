@@ -1,6 +1,7 @@
 import { z } from "zod";
+import { databaseIdSchema } from "../../../common/validation/database-id.js";
 
-const ObjectIdSchema = z.string().regex(/^[a-fA-F0-9]{24}$/, "invalid paper id");
+const ObjectIdSchema = databaseIdSchema;
 const SelectedPaperIdsSchema = z
   .array(ObjectIdSchema)
   .max(10, "selectedPaperIds cannot exceed 10 papers")
@@ -71,7 +72,7 @@ export type PatchGapDto = z.infer<typeof PatchGapSchema>;
 
 /** Params of the directions routes: /api/v1/gaps/:id/directions. */
 export const GapIdParamsSchema = z.object({
-  id: z.string().regex(/^[a-fA-F0-9]{24}$/, "invalid id"),
+  id: databaseIdSchema,
 });
 
 /** Body of POST /api/v1/gaps/:id/directions. */

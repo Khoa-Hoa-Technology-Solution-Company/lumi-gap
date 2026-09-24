@@ -2,10 +2,8 @@ import type { Job } from "bullmq";
 import type { Queue } from "bullmq";
 import { aiJobsQueue, apiSyncQueue, corpusValidationQueue, embeddingQueue, gapsQueue, notificationQueue, openAlexIngestQueue, paperAnalysisQueue, reportQueue } from "../../infrastructure/queue.js";
 import { readWorkerHeartbeats, type WorkerHeartbeatRecord } from "../../infrastructure/worker-heartbeat.js";
-import { PaperModel } from "../papers/models/paper.model.js";
-import { ReportModel } from "../reports/models/report.model.js";
-import { GapAnalysisModel } from "../gaps/models/gap-analysis.model.js";
-import { ApiSyncRunModel } from "../api-sync/models/api-sync-run.model.js";
+import { publicDatabaseId } from "../../infrastructure/database/database-id.js";
+import { getPrisma } from "../../infrastructure/database/prisma.js";
 
 const STUCK_GENERATING_MS = 5 * 60_000;
 const STUCK_QUEUED_MS = 30 * 60_000;
@@ -498,30 +496,27 @@ export const pipelineService = createPipelineStatusService({
     queueAdapter("ai-jobs", "AI Runs", aiJobsQueue),
   ],
   corpusRepository: {
-    countTotalPapers: () => PaperModel.countDocuments({}),
-    countActivePapers: () => PaperModel.countDocuments({ dataStatus: "active" }),
-    countAnalyzablePapers: () => PaperModel.countDocuments({ isAiAnalyzable: true }),
-    countEmbeddedPapers: () => PaperModel.countDocuments({ isAiAnalyzable: true, embedding: { $exists: true } }),
-    countAiAnalyzedPapers: () => PaperModel.countDocuments({
-      isAiAnalyzable: true,
-      "aiAnalysis.analysisPromptVersion": { $exists: true },
-    }),
+    countTotalPapers: () => getPrisma().paper.count(),
+    countActivePapers: () => getPrisma().paper.count({ where: { dataStatus: "active" } }),
+    countAnalyzablePapers: () => getPrisma().paper.count({ where: { isAiAnalyzable: true } }),
+    countEmbeddedPapers: () => getPrisma().$queryRaw<Array<{ count: bigint }>>`
+      SELECT COUNT(*)::bigint AS count FROM papers WHERE is_ai_analyzable = TRUE AND embedding IS NOT NULL
+    `.then((rows) => Number(rows[0]?.count ?? 0)),
+    countAiAnalyzedPapers: () => getPrisma().paper.count({ where: { isAiAnalyzable: true, aiAnalysis: { not: null as never } } }),
   },
   staleRepository: {
-    countReportsQueuedBefore: (before) => ReportModel.countDocuments({ status: "queued", updatedAt: { $lt: before } }),
-    countReportsGeneratingBefore: (before) =>
-      ReportModel.countDocuments({ status: "generating", updatedAt: { $lt: before } }),
-    countGapsQueuedBefore: (before) => GapAnalysisModel.countDocuments({ status: "queued", updatedAt: { $lt: before } }),
-    countGapsAnalyzingBefore: (before) =>
-      GapAnalysisModel.countDocuments({ status: "analyzing", updatedAt: { $lt: before } }),
-    countSyncRunningBefore: (before) => ApiSyncRunModel.countDocuments({ runStatus: "running", startedAt: { $lt: before } }),
+    countReportsQueuedBefore: (before) => getPrisma().report.count({ where: { status: "queued", updatedAt: { lt: before } } }),
+    countReportsGeneratingBefore: (before) => getPrisma().report.count({ where: { status: "generating", updatedAt: { lt: before } } }),
+    countGapsQueuedBefore: (before) => getPrisma().gapAnalysis.count({ where: { status: "queued", updatedAt: { lt: before } } }),
+    countGapsAnalyzingBefore: (before) => getPrisma().gapAnalysis.count({ where: { status: "analyzing", updatedAt: { lt: before } } }),
+    countSyncRunningBefore: (before) => getPrisma().apiSyncRun.count({ where: { runStatus: "running", startedAt: { lt: before } } }),
   },
   syncRepository: {
     async getLatestRun() {
-      const run = await ApiSyncRunModel.findOne().sort({ startedAt: -1 }).lean();
+      const run = await getPrisma().apiSyncRun.findFirst({ orderBy: { startedAt: "desc" } });
       if (!run) return null;
       return {
-        id: String(run._id),
+        id: publicDatabaseId(run),
         status: run.runStatus,
         searchText: run.searchText ?? undefined,
         startedAt: run.startedAt?.toISOString(),
@@ -534,7 +529,7 @@ export const pipelineService = createPipelineStatusService({
       };
     },
     async hasFreshRunningRun(since) {
-      return (await ApiSyncRunModel.countDocuments({ runStatus: "running", startedAt: { $gte: since } })) > 0;
+      return (await getPrisma().apiSyncRun.count({ where: { runStatus: "running", startedAt: { gte: since } } })) > 0;
     },
   },
   heartbeatRepository: {
