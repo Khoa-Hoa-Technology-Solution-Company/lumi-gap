@@ -1,4 +1,15 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("../../../config/env.js", () => ({
+  env: {
+    // Unit-test fixture only. Runtime configuration must still provide its own secret.
+    ACADEMIC_EMAIL_OTP_SECRET: "unit-test-academic-email-otp-key-000000000000",
+    EMAIL_DELIVERY_MODE: "disabled",
+    LOG_LEVEL: "silent",
+    NODE_ENV: "test",
+  },
+}));
+
 import {
   academicEmailOtpMatches,
   generateAcademicEmailOtp,
