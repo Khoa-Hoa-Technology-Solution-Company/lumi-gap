@@ -219,7 +219,20 @@ export function AcademicProfileView({
             </div>
           </div>
 
-          <div className="mt-4 max-w-3xl">
+          <section id="about" className="mt-4 max-w-3xl scroll-mt-24">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-slate-700 dark:text-slate-200">
+                <BookOpen className="h-4 w-4 text-blue-600 dark:text-blue-300" />
+                <h2 className="text-sm font-semibold">About</h2>
+              </div>
+              {owner && (
+                <EditButton
+                  label="About"
+                  editing={editingSection === "about"}
+                  onClick={() => editingSection === "about" ? onCloseEdit?.() : onEdit?.("about")}
+                />
+              )}
+            </div>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
               <h1 className="text-2xl font-semibold tracking-[-0.025em] text-slate-950 dark:text-slate-50 sm:text-[2rem]">{profile.displayName}</h1>
               {profile.verificationStatuses?.affiliation === "VERIFIED" && (
@@ -233,6 +246,19 @@ export function AcademicProfileView({
               {institution && <span className="inline-flex items-center gap-1.5"><MapPin className="h-4 w-4 text-slate-400" />{institution}{profile.affiliation.department ? ` · ${profile.affiliation.department}` : ""}</span>}
             </div>
             {profile.headline && <p className="mt-4 max-w-2xl text-base leading-7 text-slate-700 dark:text-slate-200 sm:text-[17px]">{profile.headline}</p>}
+            {editor("about") ?? (profile.biography || profile.bio ? (
+              <p className="mt-4 max-w-[72ch] whitespace-pre-wrap break-words text-[15px] leading-7 text-slate-600 dark:text-slate-300">{profile.biography || profile.bio}</p>
+            ) : owner ? (
+              <button
+                type="button"
+                onClick={() => onEdit?.("about")}
+                className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-blue-700 hover:underline focus-visible:rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 dark:text-blue-300"
+              >
+                Add a short introduction <ArrowRight className="h-3.5 w-3.5" />
+              </button>
+            ) : (
+              <p className="mt-4 text-sm text-slate-400">No introduction added yet.</p>
+            ))}
             {profile.researchInterests.length > 0 && (
               <div className="mt-4 flex flex-wrap gap-2">
                 {profile.researchInterests.slice(0, 3).map((interest) => (
@@ -241,7 +267,7 @@ export function AcademicProfileView({
               </div>
             )}
             {profile.verificationStatuses?.position === "VERIFIED" && <p className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-300"><BadgeCheck className="h-3.5 w-3.5" />Position verified</p>}
-          </div>
+          </section>
           {editor("cover")}
           {editor("intro")}
         </div>
@@ -265,14 +291,6 @@ export function AcademicProfileView({
 
       <div className="mt-6 grid items-start gap-6 lg:grid-cols-12">
         <div className="min-w-0 space-y-6 lg:col-span-8">
-          <ProfileSection id="about" title="About" icon={<BookOpen />} tone="light" owner={owner} editing={editingSection === "about"} onEdit={() => onEdit?.("about")} onClose={onCloseEdit}>
-            {editor("about") ?? (profile.biography || profile.bio ? (
-              <p className="max-w-[72ch] whitespace-pre-wrap break-words text-[15px] leading-7 text-slate-700 dark:text-slate-300">{profile.biography || profile.bio}</p>
-            ) : (
-              <EmptyProfileField owner={owner} text="Tell others about your academic interests and research journey." action="Add bio" onEdit={() => onEdit?.("about")} />
-            ))}
-          </ProfileSection>
-
           <ProfileSection id="research" title="Research Interests & Expertise" icon={<GraduationCap />} tone="featured" owner={owner} editing={editingSection === "research"} onEdit={() => onEdit?.("research")} onClose={onCloseEdit}>
             {editor("research") ?? (hasResearch ? (
               <div className="grid gap-6 sm:grid-cols-2">
