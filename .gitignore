@@ -31,11 +31,12 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-# IDE / Editor
+# IDE / Editor & AI Agents
 .vscode/*
 !.vscode/settings.json
 !.vscode/extensions.json
 .idea/
+.herdr/
 *.swp
 *.swo
 .DS_Store
