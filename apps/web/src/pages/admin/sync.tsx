@@ -48,11 +48,12 @@ import {
 } from "lucide-react";
 import { formatNumber } from "@/utils";
 import { useI18n } from "@/i18n";
+import { isAdminSystemRole } from "@trend/shared-types";
 
 export function AdminSyncPage() {
   const { t } = useI18n();
   const { data: currentUserData } = useCurrentUser();
-  const isAdmin = currentUserData?.user?.role === "admin";
+  const isAdmin = isAdminSystemRole(currentUserData?.user?.systemRole);
 
   const { data: adminStats, isLoading: isAdminStatsLoading, refetch: refetchAdminStats } = useAdminStats(isAdmin, 10000);
   const { data: runs, isLoading, isError, refetch } = useSyncRuns(isAdmin);

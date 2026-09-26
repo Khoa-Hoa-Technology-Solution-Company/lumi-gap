@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatQualityTierName } from "@/utils";
+import { isAdminSystemRole } from "@trend/shared-types";
 
 interface MyPaper {
   id: string;
@@ -56,7 +57,7 @@ const TIER_COLORS: Record<number, string> = {
 export function MyPapersPage({ isEmbedded = false }: { isEmbedded?: boolean } = {}) {
   const user = useAuthStore((s) => s.user);
 
-  if (user?.role === "admin") {
+  if (isAdminSystemRole(user?.systemRole)) {
     return (
       <main className="container py-8 max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center space-y-4">
         <div className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/50 rounded-xl p-8 max-w-md mx-auto">

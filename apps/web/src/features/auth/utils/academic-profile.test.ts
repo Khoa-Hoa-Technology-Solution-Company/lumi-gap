@@ -7,6 +7,9 @@ const baseUser: User = {
   email: "user@example.test",
   fullName: "Test User",
   role: "user",
+  systemRole: "RESEARCH_USER",
+  accountStatus: "ACTIVE",
+  onboarding: { completed: false },
   createdAt: "2026-09-22T00:00:00.000Z",
   updatedAt: "2026-09-22T00:00:00.000Z",
 };
@@ -17,11 +20,10 @@ describe("requiresAcademicProfile", () => {
   });
 
   it("allows a regular user after choosing an academic profile", () => {
-    expect(requiresAcademicProfile({ ...baseUser, academicProfileType: "researcher" })).toBe(false);
+    expect(requiresAcademicProfile({ ...baseUser, primaryPosition: "RESEARCH_STAFF", onboarding: { completed: true } })).toBe(false);
   });
 
   it("does not block privileged or legacy accounts", () => {
-    expect(requiresAcademicProfile({ ...baseUser, role: "admin" })).toBe(false);
-    expect(requiresAcademicProfile({ ...baseUser, role: "student" })).toBe(false);
+    expect(requiresAcademicProfile({ ...baseUser, role: "admin", systemRole: "ADMIN" })).toBe(false);
   });
 });

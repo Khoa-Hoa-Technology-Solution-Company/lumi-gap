@@ -38,10 +38,11 @@ import {
 } from "lucide-react";
 import { cn } from "@/utils/cn";
 import { formatNumber } from "@/utils";
+import { isAdminSystemRole } from "@trend/shared-types";
 
 export function AdminPipelinePage() {
   const { data: currentUserData } = useCurrentUser();
-  const isAdmin = currentUserData?.user?.role === "admin";
+  const isAdmin = isAdminSystemRole(currentUserData?.user?.systemRole);
 
   const { data: status, isLoading, isError, refetch, isFetching } = usePipelineStatus(isAdmin);
   const [expandedJobId, setExpandedJobId] = useState<string | null>(null);

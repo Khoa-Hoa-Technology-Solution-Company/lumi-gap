@@ -21,6 +21,45 @@ export function useUpdateAcademicProfile() {
   });
 }
 
+export function useAcademicIdentityLinks(enabled = true) {
+  return useQuery({
+    queryKey: ["academic-profile", "academic-identities"],
+    queryFn: academicProfileApi.listAcademicIdentities,
+    enabled,
+  });
+}
+
+function refreshAcademicIdentityQueries(queryClient: ReturnType<typeof useQueryClient>) {
+  queryClient.invalidateQueries({ queryKey: ["academic-profile", "academic-identities"] });
+  queryClient.invalidateQueries({ queryKey: ["academic-profile", "me"] });
+  queryClient.invalidateQueries({ queryKey: ["academic-profile", "public"] });
+  queryClient.invalidateQueries({ queryKey: ["academic-profile", "handle"] });
+}
+
+export function useCreateAcademicIdentity() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: academicProfileApi.createAcademicIdentity,
+    onSuccess: () => refreshAcademicIdentityQueries(queryClient),
+  });
+}
+
+export function useUpdateAcademicIdentity() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ identityId, input }: { identityId: string; input: Parameters<typeof academicProfileApi.updateAcademicIdentity>[1] }) => academicProfileApi.updateAcademicIdentity(identityId, input),
+    onSuccess: () => refreshAcademicIdentityQueries(queryClient),
+  });
+}
+
+export function useDeleteAcademicIdentity() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (identityId: string) => academicProfileApi.deleteAcademicIdentity(identityId),
+    onSuccess: () => refreshAcademicIdentityQueries(queryClient),
+  });
+}
+
 export function useRequestAcademicVerification() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -31,6 +70,10 @@ export function useRequestAcademicVerification() {
       queryClient.invalidateQueries({ queryKey: ["academic-profile", "handle"] });
     },
   });
+}
+
+export function useAcademicVerificationEvidenceFile() {
+  return useMutation({ mutationFn: academicProfileApi.verificationEvidenceFile });
 }
 
 export function useInstitutionalEmailStatus(enabled = true) {
@@ -91,6 +134,16 @@ function refreshCoverProfile(queryClient: ReturnType<typeof useQueryClient>, pro
   queryClient.invalidateQueries({ queryKey: ["academic-profile", "handle"] });
 }
 
+export function useUploadAcademicAvatar() {
+  const queryClient = useQueryClient();
+  return useMutation({ mutationFn: (file: File) => academicProfileApi.uploadAvatar(file), onSuccess: (profile) => refreshCoverProfile(queryClient, profile) });
+}
+
+export function useRemoveAcademicAvatar() {
+  const queryClient = useQueryClient();
+  return useMutation({ mutationFn: academicProfileApi.removeAvatar, onSuccess: (profile) => refreshCoverProfile(queryClient, profile) });
+}
+
 export function useUploadAcademicCover() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -107,16 +160,16 @@ export function useRemoveAcademicCover() {
   });
 }
 
-export function useAcademicCover(coverUrl?: string) {
+function useAcademicMedia(mediaUrl?: string) {
   const [objectUrl, setObjectUrl] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
     let createdUrl: string | null = null;
     setObjectUrl(null);
-    if (!coverUrl) return undefined;
+    if (!mediaUrl) return undefined;
 
-    academicProfileApi.cover(coverUrl).then((blob) => {
+    academicProfileApi.media(mediaUrl).then((blob) => {
       createdUrl = URL.createObjectURL(blob);
       if (active) setObjectUrl(createdUrl);
       else URL.revokeObjectURL(createdUrl);
@@ -128,9 +181,16 @@ export function useAcademicCover(coverUrl?: string) {
       active = false;
       if (createdUrl) URL.revokeObjectURL(createdUrl);
     };
-  }, [coverUrl]);
+  }, [mediaUrl]);
 
   return objectUrl;
+}
+
+export function useAcademicCover(coverUrl?: string) { return useAcademicMedia(coverUrl); }
+export function useAcademicAvatar(avatarUrl?: string) {
+  const isManaged = avatarUrl?.startsWith("/academic-profiles/");
+  const managed = useAcademicMedia(isManaged ? avatarUrl : undefined);
+  return isManaged ? managed : avatarUrl ?? null;
 }
 
 export function useLecturers(filters: Parameters<typeof academicProfileApi.lecturers>[0] = {}) {
@@ -144,10 +204,18 @@ export function useAcademicVerifications(status = "PENDING") {
   return useQuery({ queryKey: ["admin", "academic-verifications", status], queryFn: () => academicProfileApi.listVerifications(status) });
 }
 
+export function useAcademicVerificationDetails(requestId: string | null) {
+  return useQuery({
+    queryKey: ["admin", "academic-verification", requestId],
+    queryFn: () => academicProfileApi.verificationDetails(requestId!),
+    enabled: Boolean(requestId),
+  });
+}
+
 export function useDecideAcademicVerification() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ profileId, input }: { profileId: string; input: { decision: "approve"; method?: string; note?: string } | { decision: "reject"; reason: string; note?: string } }) => academicProfileApi.decide(profileId, input),
+    mutationFn: ({ requestId, input }: { requestId: string; input: { decision: "approve"; method?: string; note?: string } | { decision: "reject"; reason: string; note?: string } }) => academicProfileApi.decide(requestId, input),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin", "academic-verifications"] }),
   });
 }

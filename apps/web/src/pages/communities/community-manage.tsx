@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useCurrentUser } from "@/features/auth";
 import { type CommunityView, useCommunity, useCommunityMembers, useUpdateCommunity, useUpdateCommunityMember } from "@/features/forum";
+import { isAdminSystemRole } from "@trend/shared-types";
 
 function splitValues(value: string) {
   return [...new Set(value.split(/[\n,]/).map((item) => item.trim()).filter(Boolean))];
@@ -76,7 +77,7 @@ function MemberManagement({ community }: { community: CommunityView }) {
   const members = useCommunityMembers(community.id, community.canManage);
   const updateMember = useUpdateCommunityMember();
   const [error, setError] = useState("");
-  const canAssignModerators = currentUser?.user.role === "admin" || community.viewerMembership?.role === "owner";
+  const canAssignModerators = isAdminSystemRole(currentUser?.user.systemRole) || community.viewerMembership?.role === "owner";
 
   async function change(userId: string, input: { role?: "moderator" | "member"; status?: "pending" | "active" | "declined" | "banned" }) {
     setError("");

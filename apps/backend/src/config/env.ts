@@ -20,7 +20,7 @@ const EnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: z.coerce.number().int().positive().default(4000),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
-  CORS_ORIGIN: z.string().default("http://localhost:5173"),
+  CORS_ORIGIN: z.string().default("http://localhost:3000,http://localhost:5173"),
 
   DATABASE_URL: optionalPostgresUri,
   PERSISTENCE_PROVIDER: z.literal("postgresql").default("postgresql"),
@@ -37,14 +37,23 @@ const EnvSchema = z.object({
   R2_BUCKET: optionalEnvString,
   R2_SIGNED_URL_TTL_SECONDS: z.coerce.number().int().positive().default(300),
 
-  JWT_ACCESS_SECRET: z.string().min(32, "JWT_ACCESS_SECRET must be at least 32 chars"),
-  JWT_REFRESH_SECRET: z.string().min(32, "JWT_REFRESH_SECRET must be at least 32 chars"),
+  // RS256 access tokens. Private keys are never committed; local development
+  // uses ignored PEM files under apps/backend/.keys.
+  JWT_ALGORITHM: z.literal("RS256").default("RS256"),
+  JWT_PRIVATE_KEY_PATH: z.string().default(".keys/jwt-private.pem"),
+  JWT_PUBLIC_KEY_PATH: z.string().default(".keys/jwt-public.pem"),
+  JWT_ISSUER: z.string().min(1).default("lumigap-api"),
+  JWT_AUDIENCE: z.string().min(1).default("lumigap-web"),
+  // Deprecated HMAC secrets remain optional during the migration window. They
+  // are not used to sign or verify access/refresh tokens.
+  JWT_ACCESS_SECRET: optionalEnvString,
+  JWT_REFRESH_SECRET: optionalEnvString,
   JWT_ACCESS_TTL: z.string().default("15m"),
   JWT_REFRESH_TTL: z.string().default("7d"),
 
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
-  GOOGLE_CALLBACK_URL: z.string().default("http://localhost:4000/api/auth/google/callback"),
+  GOOGLE_CALLBACK_URL: z.string().default("http://localhost:4000/api/v1/auth/google/callback"),
 
   // Transactional email for security-sensitive verification messages. "log" is
   // an explicit local-development transport and is forbidden in production.
@@ -83,7 +92,7 @@ const EnvSchema = z.object({
   LIBRETRANSLATE_API_KEY: optionalEnvString,
   // Internal AI Reviewer service (Python FastAPI)
   AI_REVIEWER_URL: z.string().url().default("http://localhost:8001"),
-  INTERNAL_SERVICE_KEY: z.string().default("liemresearch_internal_secret_key_2026"),
+  INTERNAL_SERVICE_KEY: z.string().min(32, "INTERNAL_SERVICE_KEY must contain at least 32 characters"),
   // PayOS Payment Integration
   PAYOS_CLIENT_ID: optionalEnvString,
   PAYOS_API_KEY: optionalEnvString,
@@ -240,13 +249,6 @@ const EnvSchema = z.object({
         });
       }
     }
-    if (value.JWT_ACCESS_SECRET === value.JWT_REFRESH_SECRET) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["JWT_REFRESH_SECRET"],
-        message: "JWT access and refresh secrets must be different in production",
-      });
-    }
     if (value.SYNC_ADMIN_BYPASS) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -300,9 +302,8 @@ if (rawEnv.VITEST === "true") {
   rawEnv.PERSISTENCE_PROVIDER = "postgresql";
   rawEnv.REDIS_URL = rawEnv.REDIS_URL || "redis://localhost:6379";
   rawEnv.DATABASE_URL = rawEnv.DATABASE_URL || "postgresql://test:test@localhost:5432/test";
-  rawEnv.JWT_ACCESS_SECRET = rawEnv.JWT_ACCESS_SECRET || "mockaccesssecretmockaccesssecretmock";
-  rawEnv.JWT_REFRESH_SECRET = rawEnv.JWT_REFRESH_SECRET || "mockrefreshsecretmockrefreshsecretmock";
   rawEnv.GEMINI_API_KEY = rawEnv.GEMINI_API_KEY || "mock-gemini-key";
+  rawEnv.INTERNAL_SERVICE_KEY = rawEnv.INTERNAL_SERVICE_KEY || "mock-internal-service-key-32-characters";
 }
 
 const parsed = EnvSchema.safeParse(rawEnv);

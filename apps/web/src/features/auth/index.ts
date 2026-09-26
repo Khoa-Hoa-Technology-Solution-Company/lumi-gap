@@ -13,6 +13,7 @@ export {
 export { requiresAcademicProfile } from "./utils/academic-profile";
 export {
   ACADEMIC_ONBOARDING_PATH,
+  EMAIL_VERIFICATION_PATH,
   ADMIN_LANDING_PATH,
   MEMBER_LANDING_PATH,
   resolvePostAuthPath,

@@ -72,4 +72,11 @@
   body {
     @apply min-h-screen bg-slate-50 text-foreground dark:bg-[#09090b];
   }
+
+  /* Radix locks body scrolling for dialogs/sheets. Keep the app width stable
+     while the scrollbar is temporarily hidden, so opening a detail panel does
+     not move the table or header underneath it. */
+  html body[data-scroll-locked] {
+    margin-right: 0 !important;
+  }
 }

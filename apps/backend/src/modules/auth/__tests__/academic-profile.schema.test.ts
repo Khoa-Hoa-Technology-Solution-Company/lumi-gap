@@ -6,7 +6,7 @@ describe("academic profile onboarding contracts", () => {
   it("rejects attempts to assign an authorization role during registration", () => {
     const result = RegisterSchema.safeParse({
       email: "new-user@example.test",
-      password: "correct-horse-battery-staple",
+      password: "Correct-horse-battery-staple1",
       fullName: "New User",
       role: "admin",
     });
@@ -14,15 +14,15 @@ describe("academic profile onboarding contracts", () => {
     expect(result.success).toBe(false);
   });
 
-  it.each(["student", "researcher", "lecturer"] as const)(
-    "accepts the supported academic profile type %s",
-    (academicProfileType) => {
-      expect(UpdateAcademicProfileSchema.safeParse({ academicProfileType }).success).toBe(true);
+  it.each(["STUDENT", "LECTURER", "RESEARCH_STAFF", "INDUSTRY_PRACTITIONER", "OTHER"] as const)(
+    "accepts the supported primary position %s",
+    (primaryPosition) => {
+      expect(UpdateAcademicProfileSchema.safeParse({ primaryPosition, institutionName: "FPT University" }).success).toBe(true);
     },
   );
 
   it("rejects authorization roles as academic profile types", () => {
-    expect(UpdateAcademicProfileSchema.safeParse({ academicProfileType: "admin" }).success).toBe(false);
+    expect(UpdateAcademicProfileSchema.safeParse({ primaryPosition: "ADMIN", institutionName: "FPT University" }).success).toBe(false);
   });
 
   it("gives the base user role normal contributor permissions", () => {

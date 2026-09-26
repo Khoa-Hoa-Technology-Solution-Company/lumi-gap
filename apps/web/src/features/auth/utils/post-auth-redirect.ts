@@ -1,10 +1,11 @@
-import type { User } from "@trend/shared-types";
+import { isAdminSystemRole, type User } from "@trend/shared-types";
 
 import { requiresAcademicProfile } from "./academic-profile";
 
 export const MEMBER_LANDING_PATH = "/home";
 export const ADMIN_LANDING_PATH = "/admin";
 export const ACADEMIC_ONBOARDING_PATH = "/onboarding/academic-profile";
+export const EMAIL_VERIFICATION_PATH = "/verify-email";
 
 const AUTH_ENTRY_PATHS = new Set([
   "/login",
@@ -30,5 +31,5 @@ export function resolvePostAuthPath(user: User, requestedPath?: string): string 
     return requestedPath;
   }
 
-  return user.role === "admin" ? ADMIN_LANDING_PATH : MEMBER_LANDING_PATH;
+  return isAdminSystemRole(user.systemRole) ? ADMIN_LANDING_PATH : MEMBER_LANDING_PATH;
 }

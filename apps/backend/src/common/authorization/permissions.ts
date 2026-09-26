@@ -48,6 +48,9 @@ const leadPermissions: readonly Permission[] = [
 ];
 
 export const rolePermissions: Readonly<Record<UserRole, ReadonlySet<Permission>>> = {
+  RESEARCH_USER: new Set(contributorPermissions),
+  ADMIN: new Set(permissions),
+  SUPER_ADMIN: new Set(permissions),
   user: new Set(contributorPermissions),
   student: new Set(contributorPermissions),
   lecturer: new Set(leadPermissions),

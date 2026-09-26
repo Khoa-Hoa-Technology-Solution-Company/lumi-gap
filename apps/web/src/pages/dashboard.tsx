@@ -22,7 +22,7 @@ import {
   buildSearchTarget,
   fillMissingDays
 } from "./dashboard.helpers";
-import type { TopQuery, VolumeByDay } from "@trend/shared-types";
+import { isAdminSystemRole, type TopQuery, type VolumeByDay } from "@trend/shared-types";
 import { formatNumber } from "@/utils";
 import { useI18n } from "@/i18n";
 
@@ -66,7 +66,7 @@ function useSearchSummary() {
 export function DashboardPage() {
   const navigate = useNavigate();
   const { data: user, isLoading: isUserLoading } = useCurrentUser();
-  const isAdmin = user?.user?.role === "admin";
+  const isAdmin = isAdminSystemRole(user?.user?.systemRole);
   const [days, setDays] = useState<7 | 14 | 30>(7);
 
   // APIs

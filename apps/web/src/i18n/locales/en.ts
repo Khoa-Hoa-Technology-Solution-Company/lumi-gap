@@ -2,8 +2,12 @@ import { gapEvidenceWorkflowStrings } from "./gap-evidence-workflow";
 import { paperDetailIaStrings } from "./paper-detail-ia";
 import { academicProfileStrings } from "./academic-profile";
 import { academicForumStrings } from "./academic-forum";
+import { authSecurityStrings } from "./auth-security";
+import { newUiStrings } from "./new-ui";
 
 export const en = {
+  ...newUiStrings,
+  ...authSecurityStrings,
   ...academicForumStrings,
   ...academicProfileStrings.en,
   ...gapEvidenceWorkflowStrings,
@@ -1027,7 +1031,7 @@ export const en = {
   "Paper translation failed. Please try again.": "Paper translation failed. Please try again.",
   "Paper Type": "Paper Type",
   "Paper Types": "Paper Types",
-  "PAPERLENS logo": "PAPERLENS logo",
+  "LumiGap logo": "LumiGap logo",
   "Papers": "Papers",
   "PAPERS": "PAPERS",
   "papers (": "papers (",

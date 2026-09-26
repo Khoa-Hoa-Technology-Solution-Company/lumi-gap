@@ -1,8 +1,4 @@
-import type { AcademicProfileType, ReviewAvailabilitySettings } from "@trend/shared-types";
-
-export function canUseReviewerWorkspace(academicType: AcademicProfileType | undefined): boolean {
-  return academicType === "lecturer" || academicType === "researcher";
-}
+import type { ReviewAvailabilitySettings } from "@trend/shared-types";
 
 export function reviewCapacityIssue(settings: ReviewAvailabilitySettings, now = new Date()): string | undefined {
   if (!settings.availableForReview) return "Enable Available for Review before accepting opportunities";

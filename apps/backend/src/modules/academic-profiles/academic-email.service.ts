@@ -12,6 +12,7 @@ export function generateAcademicEmailOtp(): string {
 
 export function hashAcademicEmailOtp(userId: string, email: string, code: string): string {
   const secret = env.ACADEMIC_EMAIL_OTP_SECRET ?? env.JWT_REFRESH_SECRET;
+  if (!secret) throw AppError.serviceUnavailable("Academic email verification is not configured");
   return createHmac("sha256", secret)
     .update(`${OTP_CONTEXT}:${userId}:${email.toLowerCase()}:${code}`)
     .digest("hex");

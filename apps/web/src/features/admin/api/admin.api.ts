@@ -150,4 +150,20 @@ export const adminApi = {
     const res = await api.get(API_ROUTES.admin.corpusValidationRun(validationRunId));
     return res.data.data as CorpusValidationRun;
   },
+  async getStats() {
+    const res = await api.get(API_ROUTES.admin.stats);
+    return res.data.data;
+  },
+  async getAuditLogs(params?: { search?: string; page?: number; pageSize?: number }) {
+    const res = await api.get(API_ROUTES.admin.auditLogs, { params });
+    return res.data;
+  },
+  async getWorkers() {
+    const res = await api.get(API_ROUTES.admin.workers);
+    return res.data.data;
+  },
+  async getSettings() {
+    const res = await api.get(API_ROUTES.admin.settings);
+    return res.data.data;
+  },
 };

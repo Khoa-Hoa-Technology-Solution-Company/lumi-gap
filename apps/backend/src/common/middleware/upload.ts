@@ -42,6 +42,26 @@ export const uploadProfileCover = (multer as any)({
   },
 }).single("cover");
 
+export const uploadProfileAvatar = (multer as any)({
+  storage,
+  limits: { fileSize: 5 * 1024 * 1024, files: 1 },
+  fileFilter: (_req: any, file: any, cb: any) => {
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.mimetype)) {
+      return cb(AppError.badRequest("Only JPEG, PNG, or WebP profile photos are allowed"));
+    }
+    cb(null, true);
+  },
+}).single("avatar");
+
+export const uploadPositionEvidence = (multer as any)({
+  storage,
+  limits: { fileSize: 10 * 1024 * 1024, files: 1 },
+  fileFilter: (_req: any, file: any, cb: any) => {
+    if (file.mimetype !== "application/pdf") return cb(AppError.badRequest("Only PDF supporting documents are allowed"));
+    cb(null, true);
+  },
+}).single("evidence");
+
 /**
  * Verify the uploaded bytes are actually a PDF. The multer `fileFilter` only sees the
  * client-supplied MIME type (spoofable), so the buffer is checked here AFTER upload for

@@ -8,7 +8,12 @@ const member: User = {
   email: "researcher@example.test",
   fullName: "Researcher",
   role: "user",
+  systemRole: "RESEARCH_USER",
+  accountStatus: "ACTIVE",
   academicProfileType: "researcher",
+  primaryPosition: "RESEARCH_STAFF",
+  onboarding: { completed: true },
+  emailVerifiedAt: "2026-09-23T00:00:00.000Z",
   createdAt: "2026-09-23T00:00:00.000Z",
   updatedAt: "2026-09-23T00:00:00.000Z",
 };
@@ -19,11 +24,11 @@ describe("resolvePostAuthPath", () => {
   });
 
   it("sends an admin to the admin workspace", () => {
-    expect(resolvePostAuthPath({ ...member, role: "admin" })).toBe("/admin");
+    expect(resolvePostAuthPath({ ...member, role: "admin", systemRole: "ADMIN" })).toBe("/admin");
   });
 
   it("requires academic onboarding before any requested destination", () => {
-    expect(resolvePostAuthPath({ ...member, academicProfileType: undefined }, "/projects"))
+    expect(resolvePostAuthPath({ ...member, primaryPosition: undefined, onboarding: { completed: false } }, "/projects"))
       .toBe("/onboarding/academic-profile");
   });
 

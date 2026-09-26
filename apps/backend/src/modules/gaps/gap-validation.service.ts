@@ -2,6 +2,7 @@ import { AppError } from "../../common/exceptions/app-error.js";
 import { parseDatabaseId, publicDatabaseId } from "../../infrastructure/database/database-id.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { auditService } from "../audit/audit.service.js";
+import { capabilityService } from "../authorization/capability.service.js";
 
 type GapCandidateInput = { topic: string; projectId?: string; corpusId?: string; title: string; gapType: string; scope?: string; establishedKnowledge: string; observedLimitation: string; missingEvidence: string; significanceExplanation: string; suggestedResearchQuestion?: string; gapConfidence: "LOW" | "MODERATE" | "HIGH"; researchPriority: "LOW" | "MODERATE" | "HIGH" };
 function whereId(value: string) { const parsed = parseDatabaseId(value); if (!parsed) throw AppError.badRequest("Invalid identifier"); return parsed.kind === "uuid" ? { id: parsed.value } : { legacyMongoId: parsed.value }; }
@@ -13,7 +14,7 @@ async function corpus(value: string) { const row = await getPrisma().literatureC
 async function paper(value: string) { const row = await getPrisma().paper.findUnique({ where: whereId(value) }); if (!row) throw AppError.badRequest("Evidence paper does not exist in the LumiGap corpus"); return row; }
 async function accessProject(projectId: string, userId: string) { const row = await getPrisma().project.findUnique({ where: { id: projectId } }); if (!row) return false; return row.ownerId === userId || Boolean(await getPrisma().projectMember.findUnique({ where: { projectId_userId: { projectId, userId } } })); }
 async function ownedGap(gapId: string, userIdInput: string) { const [row, owner] = await Promise.all([gap(gapId), user(userIdInput)]); if (row.userId !== owner.id) throw AppError.notFound("Research gap candidate not found"); return { row, owner }; }
-async function assertExpert(userIdInput: string) { const owner = await user(userIdInput); const profile = await getPrisma().academicProfile.findUnique({ where: { userId: owner.id } }); const academicType = owner.academicProfileType ?? (["lecturer", "researcher"].includes(owner.role) ? owner.role : undefined); if (!owner.isActive || !["lecturer", "researcher"].includes(academicType ?? "")) throw AppError.forbidden("Only lecturers and researchers can validate research gaps"); return { owner, profile }; }
+async function assertExpert(userIdInput: string) { const owner = await user(userIdInput); const [profile, capabilities] = await Promise.all([getPrisma().academicProfile.findUnique({ where: { userId: owner.id } }), capabilityService.list(owner.id)]); if (owner.accountStatus !== "ACTIVE" || !capabilities.includes("GAP_VALIDATION")) throw AppError.forbidden("Verified academic identity and GAP_VALIDATION capability are required"); return { owner, profile }; }
 
 export const gapValidationService = {
   async createCandidate(userIdInput: string, input: GapCandidateInput) {

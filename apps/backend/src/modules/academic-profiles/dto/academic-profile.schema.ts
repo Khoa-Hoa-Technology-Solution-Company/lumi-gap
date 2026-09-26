@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { objectIdSchema, paginationSchema } from "../../../common/validation/database-id.js";
-import { isValidPublicHandle, normalizePublicHandle } from "../public-handle.js";
+import { isValidPublicHandle, isValidResolvablePublicHandle, normalizePublicHandle } from "../public-handle.js";
 
 const normalizeList = (maxItems: number, maxLength = 120) => z
   .array(z.string().trim().min(1).max(maxLength))
@@ -22,7 +22,7 @@ const httpsUrl = z.string().url().max(500).refine((value) => new URL(value).prot
 });
 
 export function isValidOrcid(value: string): boolean {
-  const normalized = value.replace(/^https:\/\/orcid\.org\//i, "").toUpperCase();
+  const normalized = value.replace(/^https?:\/\/orcid\.org\//i, "").toUpperCase();
   if (!/^\d{4}-\d{4}-\d{4}-[\dX]{4}$/.test(normalized)) return false;
   const chars = normalized.replaceAll("-", "");
   let total = 0;
@@ -111,6 +111,66 @@ const externalIdentitySchema = z.object({
   }
 });
 
+const academicIdentityProviderSchema = z.enum(["ORCID", "OPENALEX", "GOOGLE_SCHOLAR", "SEMANTIC_SCHOLAR", "OTHER"]);
+const externalHttpUrl = z.string().url().max(500).refine((value) => {
+  const url = new URL(value);
+  return (url.protocol === "http:" || url.protocol === "https:") && !url.username && !url.password;
+}, "Only HTTP or HTTPS profile URLs without embedded credentials are allowed");
+const academicIdentityLinkFields = z.object({
+  provider: academicIdentityProviderSchema,
+  label: optionalText(120),
+  identifier: optionalText(255),
+  profileUrl: externalHttpUrl.optional(),
+  visibility: z.enum(["PUBLIC", "REGISTERED_USERS", "PRIVATE"]).default("PUBLIC"),
+}).strict();
+
+function validateAcademicIdentityLink(value: z.infer<typeof academicIdentityLinkFields>, ctx: z.RefinementCtx) {
+  const identifier = value.identifier?.trim();
+  const profileUrl = value.profileUrl ? new URL(value.profileUrl) : undefined;
+  if (!identifier && !profileUrl) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["identifier"], message: "An identifier or profile URL is required" });
+  }
+  if (identifier && /^[a-z][a-z\d+.-]*:/i.test(identifier) && !/^https?:\/\//i.test(identifier)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["identifier"], message: "Identifiers cannot use unsupported URL schemes" });
+  }
+  if (value.provider === "OTHER" && !value.label?.trim()) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["label"], message: "A profile name is required for Other academic profile" });
+  }
+  if (value.provider === "ORCID") {
+    const candidate = identifier ?? value.profileUrl ?? "";
+    if (!isValidOrcid(candidate)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["identifier"], message: "Invalid ORCID checksum" });
+    if (profileUrl && profileUrl.hostname.toLowerCase() !== "orcid.org") {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["profileUrl"], message: "ORCID URLs must use orcid.org" });
+    }
+  }
+  if (value.provider === "OPENALEX") {
+    const candidate = (identifier ?? value.profileUrl ?? "").replace(/^https?:\/\/openalex\.org\//i, "").replace(/\/$/, "");
+    if (!/^A\d+$/i.test(candidate)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["identifier"], message: "OpenAlex Author ID must look like A123456789" });
+    if (profileUrl && profileUrl.hostname.toLowerCase() !== "openalex.org") {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["profileUrl"], message: "OpenAlex URLs must use openalex.org" });
+    }
+  }
+  if (value.provider === "GOOGLE_SCHOLAR") {
+    if (!profileUrl || profileUrl.hostname.toLowerCase() !== "scholar.google.com" || !/^\/citations\/?$/i.test(profileUrl.pathname) || !profileUrl.searchParams.get("user")) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["profileUrl"], message: "Use a Google Scholar citations profile URL with a user ID" });
+    }
+  }
+  if (value.provider === "SEMANTIC_SCHOLAR" && profileUrl
+      && (!/^(www\.)?semanticscholar\.org$/i.test(profileUrl.hostname) || !/^\/author\//i.test(profileUrl.pathname))) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["profileUrl"], message: "Semantic Scholar URLs must use semanticscholar.org/author" });
+  }
+}
+
+export const AcademicIdentityLinkSchema = academicIdentityLinkFields.superRefine(validateAcademicIdentityLink);
+export const CreateAcademicIdentityLinkSchema = AcademicIdentityLinkSchema;
+export const UpdateAcademicIdentityLinkSchema = academicIdentityLinkFields.partial().refine(
+  (value) => Object.keys(value).length > 0,
+  "At least one academic identity field is required",
+);
+export const AcademicIdentityLinkParamsSchema = z.object({ identityId: objectIdSchema }).strict();
+export type CreateAcademicIdentityLinkInput = z.infer<typeof CreateAcademicIdentityLinkSchema>;
+export type UpdateAcademicIdentityLinkInput = z.infer<typeof UpdateAcademicIdentityLinkSchema>;
+
 const featuredWorkSchema = z.object({
   paperId: objectIdSchema.optional(),
   doi: optionalText(300),
@@ -136,11 +196,19 @@ const affiliationSchema = z.object({
 }).strict();
 
 export const UpdateAcademicProfileDetailsSchema = z.object({
+  primaryPosition: z.enum(["STUDENT", "LECTURER", "RESEARCH_STAFF", "INDUSTRY_PRACTITIONER", "OTHER"]).optional(),
+  positionTitle: z.string().trim().min(1).max(160).optional(),
+  // Temporary compatibility input. The service translates this into primaryPosition.
   academicType: z.enum(["student", "researcher", "lecturer"]).optional(),
   displayName: z.string().trim().min(1).max(120).optional(),
   headline: optionalText(180),
   biography: optionalText(3000),
   profileVisibility: z.enum(["PUBLIC", "MEMBERS_ONLY", "PRIVATE"]).optional(),
+  privacy: z.object({
+    orcid: z.enum(["PUBLIC", "REGISTERED_USERS", "PRIVATE"]).optional(),
+    researchInterests: z.enum(["PUBLIC", "REGISTERED_USERS", "PRIVATE"]).optional(),
+    expertise: z.enum(["PUBLIC", "REGISTERED_USERS", "PRIVATE"]).optional(),
+  }).strict().optional(),
   academicTitle: z.enum([
     "Lecturer", "Senior Lecturer", "Assistant Professor", "Associate Professor",
     "Professor", "Research Fellow", "Other",
@@ -171,15 +239,33 @@ export const UpdateAcademicProfileDetailsSchema = z.object({
 export const PublicProfileParamsSchema = z.object({ userId: objectIdSchema }).strict();
 export const PublicHandleSchema = z.string().trim().transform(normalizePublicHandle)
   .refine(isValidPublicHandle, "Use 3–40 lowercase letters, numbers, or single hyphens; choose a non-reserved name");
-export const PublicHandleParamsSchema = z.object({ handle: PublicHandleSchema }).strict();
+const ResolvablePublicHandleSchema = z.string().trim().transform(normalizePublicHandle)
+  .refine(isValidResolvablePublicHandle, "Invalid public profile URL");
+export const PublicHandleParamsSchema = z.object({ handle: ResolvablePublicHandleSchema }).strict();
 export const UpdatePublicHandleSchema = z.object({ handle: PublicHandleSchema }).strict();
-export const VerificationRequestSchema = z.object({}).strict();
+export const VerificationRequestSchema = z.object({
+  type: z.enum(["POSITION", "AFFILIATION"]).default("POSITION"),
+  evidenceType: z.enum(["INSTITUTIONAL_EMAIL", "INSTITUTIONAL_PROFILE", "ORCID", "EXTERNAL_ACADEMIC_PROFILE", "DOCUMENT", "OTHER"]),
+  reference: z.string().trim().max(500).optional(),
+}).strict().superRefine((value, ctx) => {
+  if (["INSTITUTIONAL_PROFILE", "EXTERNAL_ACADEMIC_PROFILE"].includes(value.evidenceType)) {
+    try {
+      const url = new URL(value.reference ?? "");
+      if (!["https:", "http:"].includes(url.protocol) || !url.hostname || url.username || url.password) throw new Error();
+    } catch {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["reference"], message: "Use a valid HTTPS profile URL" });
+    }
+  }
+  if (value.evidenceType === "OTHER" && !value.reference?.trim()) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["reference"], message: "Describe the supporting evidence" });
+  }
+});
 export const InstitutionalEmailChallengeSchema = z.object({}).strict();
 export const InstitutionalEmailVerifySchema = z.object({
   code: z.string().trim().regex(/^\d{6}$/, "Enter the 6-digit verification code"),
 }).strict();
 export const VerificationListQuerySchema = paginationSchema.extend({
-  status: z.enum(["PENDING", "VERIFIED", "REJECTED", "SELF_DECLARED"]).default("PENDING"),
+  status: z.enum(["PENDING", "VERIFIED", "REJECTED", "EXPIRED", "INVALIDATED"]).default("PENDING"),
 });
 export const LecturerListQuerySchema = paginationSchema.extend({
   expertise: z.string().trim().max(120).optional(),
@@ -189,7 +275,7 @@ export const LecturerListQuerySchema = paginationSchema.extend({
   reviewAvailable: booleanQuery.optional(),
   verifiedOnly: booleanQuery.default(true),
 });
-export const VerificationDecisionParamsSchema = z.object({ profileId: objectIdSchema }).strict();
+export const VerificationDecisionParamsSchema = z.object({ requestId: objectIdSchema }).strict();
 export const VerificationDecisionSchema = z.discriminatedUnion("decision", [
   z.object({ decision: z.literal("approve"), method: optionalText(120), note: optionalText(1000) }).strict(),
   z.object({ decision: z.literal("reject"), reason: z.string().trim().min(1).max(1000), note: optionalText(1000) }).strict(),
@@ -197,4 +283,5 @@ export const VerificationDecisionSchema = z.discriminatedUnion("decision", [
 
 export type UpdateAcademicProfileDetailsInput = z.infer<typeof UpdateAcademicProfileDetailsSchema>;
 export type VerificationDecisionInput = z.infer<typeof VerificationDecisionSchema>;
+export type VerificationRequestInput = z.infer<typeof VerificationRequestSchema>;
 export type LecturerListQueryInput = z.infer<typeof LecturerListQuerySchema>;

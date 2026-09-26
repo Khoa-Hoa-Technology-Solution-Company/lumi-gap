@@ -3,6 +3,7 @@ import { Link, Navigate, NavLink, Outlet, useLocation, useNavigate } from "react
 import { LogOut, User, Bell, Bookmark, ChevronDown, Menu, Trophy, X } from "lucide-react";
 
 import logoImage from "@/assets/logo.png";
+import logoDarkImage from "@/assets/logo-dark.png";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import {
@@ -22,6 +23,7 @@ import { cn } from "@/utils/cn";
 import { avatars, getLevel } from "@/utils/level";
 import { formatNumber } from "@/utils";
 import { LanguageSwitcher, useI18n } from "@/i18n";
+import { isAdminSystemRole } from "@trend/shared-types";
 
 const navGroups = [
   {
@@ -184,9 +186,10 @@ export function MainLayout() {
 
   const isAuthed = useAuthStore((s) => !!s.tokens?.accessToken);
   const user = useAuthStore((s) => s.user);
-  const { data: bookmarks } = useBookmarks({ enabled: isAuthed });
-  const { data: notifications } = useNotifications({ enabled: isAuthed });
-  const { data: currentUserData } = useCurrentUser();
+  const currentUserQuery = useCurrentUser();
+  const { data: bookmarks } = useBookmarks({ enabled: isAuthed && !currentUserQuery.isFetching && !!currentUserQuery.data?.user });
+  const { data: notifications } = useNotifications({ enabled: isAuthed && !currentUserQuery.isFetching && !!currentUserQuery.data?.user });
+  const currentUserData = currentUserQuery.data;
   const activeUser = currentUserData?.user ?? user;
 
   const unreadCount = notifications?.filter((n) => !n.isRead).length || 0;
@@ -197,7 +200,7 @@ export function MainLayout() {
     return false;
   }).length || 0;
 
-  if (isAuthed && requiresAcademicProfile(activeUser)) {
+  if (isAuthed && !currentUserQuery.isFetching && currentUserData?.user && requiresAcademicProfile(activeUser)) {
     return (
       <Navigate
         to="/onboarding/academic-profile"
@@ -211,15 +214,17 @@ export function MainLayout() {
     <div className="flex min-h-screen flex-col bg-slate-50 dark:bg-[#09090b]">
       <header className="border-b bg-white dark:bg-[#0f0f11] sticky top-0 z-50">
         <div className="container mx-auto grid h-20 min-w-0 grid-cols-[auto_1fr_auto] items-center gap-1 px-3 sm:gap-4 sm:px-6 lg:px-8">
-          <Link to="/" className="relative flex h-20 w-24 shrink-0 select-none items-center gap-2 overflow-visible text-2xl font-black tracking-tight sm:w-[150px]">
+          <Link to="/" className="flex h-20 shrink-0 select-none items-center">
             <img
               src={logoImage}
-              alt="PAPERLENS logo"
-              className="absolute left-0 h-20 w-auto max-w-none object-contain"
+              alt="LumiGap"
+              className="h-9 w-auto object-contain dark:hidden sm:h-10"
             />
-            <span className="text-slate-900 dark:text-white">
-
-            </span>
+            <img
+              src={logoDarkImage}
+              alt="LumiGap"
+              className="hidden h-9 w-auto object-contain dark:block sm:h-10"
+            />
           </Link>
 
           <nav
@@ -326,9 +331,10 @@ function UserMenu({ bookmarkCount }: { bookmarkCount: number }) {
   const navigate = useNavigate();
   const { t } = useI18n();
   const isAuthed = useAuthStore((s) => !!s.tokens?.accessToken);
-  const { data } = useCurrentUser();
+  const currentUserQuery = useCurrentUser();
+  const data = currentUserQuery.data;
   const logout = useLogout();
-  const { data: balanceData } = useCreditBalance({ enabled: isAuthed });
+  const { data: balanceData } = useCreditBalance({ enabled: isAuthed && !currentUserQuery.isFetching && !!data?.user });
 
   if (!isAuthed) {
     return (
@@ -345,7 +351,7 @@ function UserMenu({ bookmarkCount }: { bookmarkCount: number }) {
 
   const email = data?.user?.email ?? t("Account");
   const fullName = data?.user?.fullName || email;
-  const role = data?.user?.role;
+  const systemRole = data?.user?.systemRole;
   const credits = balanceData?.credits ?? data?.user?.credits ?? 0;
   const points = data?.user?.points ?? 0;
   const currentLevel = getLevel(points);
@@ -360,7 +366,7 @@ function UserMenu({ bookmarkCount }: { bookmarkCount: number }) {
           className="h-10 w-10 rounded-full hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors"
           aria-label={t("Account")}
         >
-          {role !== "admin" ? (
+          {!isAdminSystemRole(systemRole) ? (
             <div className="w-9 h-9 rounded-full bg-white dark:bg-zinc-900 border border-slate-200 dark:border-slate-800 flex items-center justify-center p-0.5 overflow-hidden shrink-0 shadow-sm">
               <img src={levelAvatar} alt={`Level ${currentLevel}`} className="w-full h-full object-contain rounded-full" />
             </div>
@@ -378,7 +384,7 @@ function UserMenu({ bookmarkCount }: { bookmarkCount: number }) {
             <p className="text-xs leading-none text-slate-500 truncate">{email}</p>
           </div>
         </DropdownMenuLabel>
-        {role !== "admin" && (
+        {!isAdminSystemRole(systemRole) && (
           <>
             <DropdownMenuSeparator />
             <div className="px-3 py-2 text-xs font-semibold text-slate-500 space-y-1.5 bg-slate-50/50 dark:bg-zinc-900/30 rounded-md animate-fadeIn">
@@ -415,7 +421,7 @@ function UserMenu({ bookmarkCount }: { bookmarkCount: number }) {
           <Trophy className="mr-2 h-4 w-4" />
           {t("Rankings")}
         </DropdownMenuItem>
-        {role === "admin" && (
+        {isAdminSystemRole(systemRole) && (
           <>
             <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={() => navigate("/admin")}>

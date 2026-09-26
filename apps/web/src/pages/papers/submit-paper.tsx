@@ -5,6 +5,7 @@ import { api } from "@/services/api-client";
 import { useAuthStore } from "@/stores/auth-store";
 import { toast } from "sonner";
 import { Loader2, Upload, FileText, X, AlertTriangle, Info } from "lucide-react";
+import { isAdminSystemRole } from "@trend/shared-types";
 
 function countWords(str: string) {
   return str
@@ -27,7 +28,7 @@ export function SubmitPaperPage({ isEmbedded = false }: { isEmbedded?: boolean }
   const [searchParams] = useSearchParams();
   const editId = searchParams.get("edit");
   const user = useAuthStore((s) => s.user);
-  const isAdmin = user?.role === "admin";
+  const isAdmin = isAdminSystemRole(user?.systemRole);
 
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});

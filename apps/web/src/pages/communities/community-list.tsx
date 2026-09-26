@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useCurrentUser } from "@/features/auth";
 import { useCommunities } from "@/features/forum";
+import { isAdminSystemRole } from "@trend/shared-types";
 
 type Scope = "all" | "mine";
 
@@ -16,8 +17,7 @@ export function CommunityListPage() {
   const [scope, setScope] = useState<Scope>("all");
   const user = currentUser?.user;
   const canCreate = Boolean(user && (
-    ["researcher", "lecturer", "moderator", "admin"].includes(user.role)
-    || ["researcher", "lecturer"].includes(user.academicProfileType ?? "")
+    isAdminSystemRole(user.systemRole) || user.capabilities?.includes("BASIC_RESEARCH")
   ));
 
   const communities = useMemo(() => {

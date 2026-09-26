@@ -5,13 +5,13 @@ import { useCurrentUser } from "@/features/auth";
 import { AcademicProfileView, useAcademicProfile } from "@/features/academic-profile";
 import type { EditSection } from "@/features/academic-profile/components/academic-profile-inline-editor";
 
-const editSections: EditSection[] = ["cover", "intro", "about", "research", "works", "identity", "affiliation", "availability", "link"];
+const editSections: EditSection[] = ["cover", "intro", "about", "research", "works", "affiliation", "availability", "link"];
 
 export function ProfilePage() {
   const { data: currentUser, isLoading: userLoading } = useCurrentUser();
   const [searchParams, setSearchParams] = useSearchParams();
   const user = currentUser?.user;
-  const hasAcademicProfile = Boolean(user && (user.academicProfileType || ["student", "researcher", "lecturer"].includes(user.role)));
+  const hasAcademicProfile = Boolean(user?.primaryPosition || user?.onboarding?.completed);
   const { data: profile, isLoading: profileLoading, error } = useAcademicProfile(hasAcademicProfile);
   const requestedSection = searchParams.get("edit");
   const editingSection = requestedSection === "1" ? "intro"

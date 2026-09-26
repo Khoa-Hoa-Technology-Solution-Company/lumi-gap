@@ -1,14 +1,17 @@
 import { lazy, Suspense } from "react";
 import { Route, Routes, Navigate } from "react-router-dom";
 import { MainLayout } from "@/layouts/MainLayout";
-import { AdminLayout } from "@/layouts/AdminLayout";
 import { ProtectedRoute } from "@/components/protected-route";
 
+const AdminLayout = lazy(() => import("@/layouts/AdminLayout").then((m) => ({ default: m.AdminLayout })));
 const HomePage = lazy(() => import("@/pages/home").then((m) => ({ default: m.HomePage })));
 const AuthLayout = lazy(() => import("@/layouts/AuthLayout").then((m) => ({ default: m.AuthLayout })));
 const LoginPage = lazy(() => import("@/pages/login").then((m) => ({ default: m.LoginPage })));
 const RegisterPage = lazy(() => import("@/pages/register").then((m) => ({ default: m.RegisterPage })));
 const OAuthCallbackPage = lazy(() => import("@/pages/oauth-callback").then((m) => ({ default: m.OAuthCallbackPage })));
+const VerifyEmailPage = lazy(() => import("@/pages/verify-email").then((m) => ({ default: m.VerifyEmailPage })));
+const ForgotPasswordPage = lazy(() => import("@/pages/forgot-password").then((m) => ({ default: m.ForgotPasswordPage })));
+const ResetPasswordPage = lazy(() => import("@/pages/reset-password").then((m) => ({ default: m.ResetPasswordPage })));
 const AcademicProfileOnboardingPage = lazy(() => import("@/pages/academic-profile-onboarding").then((m) => ({ default: m.AcademicProfileOnboardingPage })));
 const DashboardPage = lazy(() => import("@/pages/dashboard").then((m) => ({ default: m.DashboardPage })));
 const SearchPage = lazy(() => import("@/pages/search").then((m) => ({ default: m.SearchPage })));
@@ -32,7 +35,14 @@ const AdminEvaluationPage = lazy(() => import("@/pages/admin/evaluation").then((
 const AdminPapersPage = lazy(() => import("@/pages/admin/papers").then((m) => ({ default: m.AdminPapersPage })));
 const SubmitPaperPage = lazy(() => import("@/pages/papers/submit-paper").then((m) => ({ default: m.SubmitPaperPage })));
 const AdminUsersPage = lazy(() => import("@/pages/admin/users").then((m) => ({ default: m.AdminUsersPage })));
+const AdminProfilesPage = lazy(() => import("@/pages/admin/profiles").then((m) => ({ default: m.AdminProfilesPage })));
 const AdminAcademicVerificationsPage = lazy(() => import("@/pages/admin/academic-verifications").then((m) => ({ default: m.AdminAcademicVerificationsPage })));
+const AdminCorpusValidationPage = lazy(() => import("@/pages/admin/corpus-validation").then((m) => ({ default: m.AdminCorpusValidationPage })));
+const AdminCommunityPage = lazy(() => import("@/pages/admin/community").then((m) => ({ default: m.AdminCommunityPage })));
+const AdminAiJobsPage = lazy(() => import("@/pages/admin/ai-jobs").then((m) => ({ default: m.AdminAiJobsPage })));
+const AdminAuditLogsPage = lazy(() => import("@/pages/admin/audit-logs").then((m) => ({ default: m.AdminAuditLogsPage })));
+const AdminWorkersPage = lazy(() => import("@/pages/admin/workers").then((m) => ({ default: m.AdminWorkersPage })));
+const AdminSettingsPage = lazy(() => import("@/pages/admin/settings").then((m) => ({ default: m.AdminSettingsPage })));
 const AdminHomePage = lazy(() => import("@/pages/admin").then((m) => ({ default: m.AdminHomePage })));
 const NotFoundPage = lazy(() => import("@/pages/not-found").then((m) => ({ default: m.NotFoundPage })));
 const RankingsPage = lazy(() => import("@/pages/rankings").then((m) => ({ default: m.RankingsPage })));
@@ -72,6 +82,29 @@ export function AppRoutes() {
       <Routes>
         <Route path="/onboarding/academic-profile" element={<AcademicProfileOnboardingPage />} />
 
+        {/* Standalone Admin Section (No MainLayout header/footer) */}
+        <Route element={<ProtectedRoute />}>
+          <Route path="/admin" element={<AdminLayout />}>
+            <Route index element={<AdminHomePage />} />
+            <Route path="users" element={<AdminUsersPage />} />
+            <Route path="profiles" element={<Navigate to="/admin/users" replace />} />
+            <Route path="academic-verifications" element={<AdminAcademicVerificationsPage />} />
+            <Route path="papers" element={<AdminPapersPage />} />
+            <Route path="papers/new" element={<SubmitPaperPage />} />
+            <Route path="sync" element={<AdminSyncPage />} />
+            <Route path="pipeline" element={<AdminPipelinePage />} />
+            <Route path="corpus-validation" element={<AdminCorpusValidationPage />} />
+            <Route path="community" element={<AdminCommunityPage />} />
+            <Route path="ai-jobs" element={<AdminAiJobsPage />} />
+            <Route path="evaluation" element={<AdminEvaluationPage />} />
+            <Route path="audit-logs" element={<AdminAuditLogsPage />} />
+            <Route path="workers" element={<AdminWorkersPage />} />
+            <Route path="settings" element={<AdminSettingsPage />} />
+            <Route path="analytics" element={<DashboardPage />} />
+          </Route>
+        </Route>
+
+        {/* Main Application with Header & Footer */}
         <Route element={<MainLayout />}>
           {/* Public */}
           <Route path="/" element={<Navigate to="/home" replace />} />
@@ -118,19 +151,6 @@ export function AppRoutes() {
             <Route path="/forum/new" element={<ForumNewPage />} />
             <Route path="/communities/new" element={<CommunityNewPage />} />
             <Route path="/communities/:slug/manage" element={<CommunityManagePage />} />
-
-            {/* Admin — nested under AdminLayout (sidebar + role gate) */}
-            <Route path="/admin" element={<AdminLayout />}>
-              <Route index element={<AdminHomePage />} />
-              <Route path="users" element={<AdminUsersPage />} />
-              <Route path="academic-verifications" element={<AdminAcademicVerificationsPage />} />
-              <Route path="papers" element={<AdminPapersPage />} />
-              <Route path="papers/new" element={<SubmitPaperPage />} />
-              <Route path="sync" element={<AdminSyncPage />} />
-              <Route path="pipeline" element={<AdminPipelinePage />} />
-              <Route path="evaluation" element={<AdminEvaluationPage />} />
-              <Route path="analytics" element={<DashboardPage />} />
-            </Route>
           </Route>
 
           {/* Clean public profile URLs. Static application routes rank above this route. */}
@@ -144,6 +164,9 @@ export function AppRoutes() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/auth/oauth-callback" element={<OAuthCallbackPage />} />
+          <Route path="/verify-email" element={<VerifyEmailPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
         </Route>
       </Routes>
     </Suspense>

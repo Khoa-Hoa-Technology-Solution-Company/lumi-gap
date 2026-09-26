@@ -10,7 +10,7 @@ Researchers, students, reviewers, and research teams who need to search scientif
 
 ## Product Purpose
 
-PaperLens is an AI-assisted scientific publication analysis workspace. It combines academic metadata, semantic search, trend analysis, evidence-grounded reports, paper review, and collaborative research workflows in one dependable interface.
+LumiGap is an AI-assisted scientific publication analysis workspace. It combines academic metadata, semantic search, trend analysis, evidence-grounded reports, paper review, and collaborative research workflows in one dependable interface.
 
 ## Brand Personality
 

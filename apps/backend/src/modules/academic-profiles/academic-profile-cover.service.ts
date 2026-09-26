@@ -8,9 +8,12 @@ import { normalizeProfileCover, profileCoverStorage } from "./profile-cover-stor
 
 async function ensureAcademicUser(userId: string) {
   const parsed = parseDatabaseId(userId);
-  const user = parsed ? await getPrisma().user.findUnique({ where: parsed.kind === "uuid" ? { id: parsed.value } : { legacyMongoId: parsed.value }, select: { id: true, academicProfileType: true, role: true, isActive: true } }) : null;
-  if (!user || user.isActive === false || !(user.academicProfileType
-    || ["student", "researcher", "lecturer"].includes(user.role))) {
+  const user = parsed ? await getPrisma().user.findUnique({
+    where: parsed.kind === "uuid" ? { id: parsed.value } : { legacyMongoId: parsed.value },
+    select: { id: true, systemRole: true, accountStatus: true },
+  }) : null;
+  if (!user || user.accountStatus !== "ACTIVE"
+    || !["RESEARCH_USER", "ADMIN", "SUPER_ADMIN"].includes(user.systemRole)) {
     throw AppError.notFound("Academic profile not found");
   }
   return user;
@@ -27,11 +30,12 @@ export const academicProfileCoverService = {
   async upload(userId: string, input: Buffer) {
     const user = await ensureAcademicUser(userId);
     const normalized = await normalizeProfileCover(input);
-    const newKey = await profileCoverStorage.save(userId, normalized);
+    const newKey = await profileCoverStorage.save(user.id, normalized);
     let previous;
     try {
       previous = await getPrisma().academicProfile.findUnique({ where: { userId: user.id } });
-      await getPrisma().academicProfile.upsert({ where: { userId: user.id }, create: { userId: user.id, coverStorageKey: newKey, coverUpdatedAt: new Date() }, update: { coverStorageKey: newKey, coverUpdatedAt: new Date() } });
+      const media = { coverStorageKey: newKey, coverMimeType: "image/webp", coverSizeBytes: normalized.length, coverWidth: 1600, coverHeight: 480, coverUpdatedAt: new Date() };
+      await getPrisma().academicProfile.upsert({ where: { userId: user.id }, create: { userId: user.id, ...media }, update: media });
     } catch (error) {
       await profileCoverStorage.remove(newKey).catch(() => undefined);
       throw error;
@@ -46,7 +50,7 @@ export const academicProfileCoverService = {
   async remove(userId: string) {
     const user = await ensureAcademicUser(userId);
     const previous = await getPrisma().academicProfile.findUnique({ where: { userId: user.id } });
-    if (previous) await getPrisma().academicProfile.update({ where: { id: previous.id }, data: { coverStorageKey: null, coverUpdatedAt: null } });
+    if (previous) await getPrisma().academicProfile.update({ where: { id: previous.id }, data: { coverStorageKey: null, coverMimeType: null, coverSizeBytes: null, coverWidth: null, coverHeight: null, coverUpdatedAt: null } });
     await removeOldCover(previous?.coverStorageKey);
     await auditService.log("academic_profile.cover.removed", {
       userId, targetTableName: "academic_profiles", targetRecordId: userId,

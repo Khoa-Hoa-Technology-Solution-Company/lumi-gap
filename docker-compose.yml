@@ -25,7 +25,7 @@ x-backend-common: &backend-common
     REDIS_URL: redis://default:${REDIS_PASSWORD_URI}@redis:6379
     LIBRETRANSLATE_URL: http://libretranslate:5000
     AI_REVIEWER_URL: http://ai-reviewer:8001
-    INTERNAL_SERVICE_KEY: ${INTERNAL_SERVICE_KEY:-liemresearch_internal_secret_key_2026}
+    INTERNAL_SERVICE_KEY: ${INTERNAL_SERVICE_KEY:?Set INTERNAL_SERVICE_KEY in .env.compose}
     CORS_ORIGIN: http://localhost:8080,http://localhost:5173
     GOOGLE_CALLBACK_URL: http://localhost:4000/api/v1/auth/google/callback
   depends_on:
@@ -34,6 +34,8 @@ x-backend-common: &backend-common
     redis:
       condition: service_healthy
   restart: unless-stopped
+  volumes:
+    - ./apps/backend/.keys:/run/secrets:ro
 
 services:
   # PostgreSQL + pgvector is the default application persistence layer.
@@ -118,6 +120,7 @@ services:
       - "4000:4000"
     volumes:
       - backend-uploads:/app/apps/backend/uploads
+      - ./apps/backend/.keys:/run/secrets:ro
     healthcheck:
       test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:4000/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))\""]
       interval: 15s
@@ -150,7 +153,7 @@ services:
     environment:
       REVIEW_APP_HOST: 0.0.0.0
       REVIEW_APP_PORT: 8001
-      INTERNAL_SERVICE_KEY: ${INTERNAL_SERVICE_KEY:-liemresearch_internal_secret_key_2026}
+      INTERNAL_SERVICE_KEY: ${INTERNAL_SERVICE_KEY:?Set INTERNAL_SERVICE_KEY in .env.compose}
       GEMINI_API_KEY: ${GEMINI_API_KEY}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.6-flash}
       APP_ENV: development

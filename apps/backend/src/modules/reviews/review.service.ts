@@ -1,17 +1,17 @@
 import crypto from "node:crypto";
-import type { AcademicProfileType, HumanReviewInput, ReviewAvailabilitySettings, SubmissionType } from "@trend/shared-types";
+import type { HumanReviewInput, ReviewAvailabilitySettings, SubmissionType } from "@trend/shared-types";
 import { AppError } from "../../common/exceptions/app-error.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { parseDatabaseId, publicDatabaseId } from "../../infrastructure/database/database-id.js";
 import { auditService } from "../audit/audit.service.js";
+import { capabilityService } from "../authorization/capability.service.js";
 import { defaultReviewCriteria } from "./review.constants.js";
-import { basicConflictReason, canUseReviewerWorkspace, reviewCapacityIssue } from "./review.rules.js";
+import { basicConflictReason, reviewCapacityIssue } from "./review.rules.js";
 
 type AvailabilityInput = Omit<ReviewAvailabilitySettings, "activeReviewCount">;
 type OpportunityFilters = { researchField?: string; topic?: string; submissionType?: SubmissionType; methodology?: string; dateFrom?: Date; sort?: "relevance" | "newest" };
 type AvailabilityRecord = { enabled?: boolean; acceptedFields?: string[]; preferredTopics?: string[]; types?: string[]; maximumActiveReviews?: number; preferredReviewWorkload?: string; note?: string; temporarilyUnavailableUntil?: string | Date; autoRecommendationEnabled?: boolean };
 
-const legacyAcademicType = (role: string): AcademicProfileType | undefined => role === "student" || role === "researcher" || role === "lecturer" ? role : undefined;
 const normalized = (value: string) => value.trim().toLocaleLowerCase();
 const normalizedSet = (values: string[]) => new Set(values.map(normalized));
 const isUniqueViolation = (error: unknown) => (error as { code?: string }).code === "P2002";
@@ -39,14 +39,14 @@ async function resolveUser(input: string) {
 
 async function reviewerContext(userInput: string) {
   const user = await resolveUser(userInput);
-  const [profile, activeReviewCount] = await Promise.all([
+  const [profile, activeReviewCount, capabilities] = await Promise.all([
     getPrisma().academicProfile.findUnique({ where: { userId: user.id } }),
     getPrisma().reviewerAssignment.count({ where: { reviewerId: user.id, status: "accepted" } }),
+    capabilityService.list(user.id),
   ]);
-  const academicType = user.academicProfileType === "student" || user.academicProfileType === "researcher" || user.academicProfileType === "lecturer"
-    ? user.academicProfileType
-    : legacyAcademicType(user.role);
-  if (!canUseReviewerWorkspace(academicType)) throw AppError.forbidden("Only lecturers and researchers can participate in peer review");
+  if (!capabilities.includes("STRUCTURED_REVIEW")) {
+    throw AppError.forbidden("Verified academic identity and STRUCTURED_REVIEW capability are required");
+  }
   return { user, profile, availability: jsonRecord(profile?.reviewAvailability), activeReviewCount };
 }
 

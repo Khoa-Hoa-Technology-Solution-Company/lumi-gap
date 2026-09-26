@@ -1,6 +1,6 @@
-# PaperLens Production Deployment Runbook
+# LumiGap Production Deployment Runbook
 
-This is the source of truth for deploying and operating the PaperLens web
+This is the source of truth for deploying and operating the LumiGap web
 platform at `paperlens.uk`. It contains no real credentials.
 
 ## 1. Production Topology
@@ -78,7 +78,7 @@ environment into GitHub, a pull request, an issue, a screenshot, or build logs.
 ### TLS and reverse proxy
 
 The production server runs Nginx Proxy Manager in Docker on the external
-`nginx-network`. Jenkins attaches the PaperLens containers to that network with
+`nginx-network`. Jenkins attaches the LumiGap containers to that network with
 stable aliases:
 
 | Public host | Forward hostname | Forward port |
@@ -288,7 +288,7 @@ screenshots, and video when it fails.
 ## 8. Deploy
 
 1. Merge the reviewed PR into `main`.
-2. Open the Jenkins PaperLens job.
+2. Open the Jenkins LumiGap job.
 3. Select **Build Now**.
 4. Confirm **Validate production environment** passes.
 5. Confirm the candidate backend passes `/ready`.

@@ -2,10 +2,10 @@ import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "re
 import type {
   AcademicProfile,
   AcademicReviewType,
-  AcademicVerificationStatus,
   FeaturedWorkSource,
   ResearchSupportType,
   UpdateAcademicProfileDetailsRequest,
+  VerificationStatus,
 } from "@trend/shared-types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,7 +15,6 @@ import {
   BadgeCheck,
   BookOpen,
   BriefcaseBusiness,
-  ExternalLink,
   GraduationCap,
   HandHeart,
   MailCheck,
@@ -28,18 +27,24 @@ import {
 import {
   useAcademicProfile,
   useInstitutionalEmailStatus,
-  useRequestAcademicVerification,
   useRequestInstitutionalEmailChallenge,
   useUpdateAcademicProfile,
   useVerifyInstitutionalEmail,
 } from "../hooks/use-academic-profile";
+import { AcademicIdentityManager } from "./academic-identity-manager";
+import { PositionVerificationPanel } from "./position-verification-panel";
 
-const statusStyle: Record<AcademicVerificationStatus, string> = {
-  SELF_DECLARED: "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200",
+const statusStyle: Record<VerificationStatus, string> = {
+  NOT_SUBMITTED: "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200",
+  UNVERIFIED: "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200",
   PENDING: "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300",
   VERIFIED: "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300",
   REJECTED: "border-red-200 bg-red-50 text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300",
+  EXPIRED: "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200",
+  INVALIDATED: "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200",
 };
+
+const statusLabel: Record<VerificationStatus, string> = { NOT_SUBMITTED: "Not submitted", UNVERIFIED: "Not submitted", PENDING: "Pending", VERIFIED: "Verified", REJECTED: "Rejected", EXPIRED: "Expired", INVALIDATED: "Invalidated" };
 
 const academicTitles = ["Lecturer", "Senior Lecturer", "Assistant Professor", "Associate Professor", "Professor", "Research Fellow", "Other"] as const;
 const supportOptions: Array<{ value: ResearchSupportType; label: string }> = [
@@ -79,11 +84,6 @@ type FormState = {
   expertiseAreas: string;
   skills: string;
   researchKeywords: string;
-  orcid: string;
-  github: string;
-  openAlex: string;
-  googleScholar: string;
-  semanticScholar: string;
   featuredWorks: EditableWork[];
   supportEnabled: boolean;
   supportTypes: ResearchSupportType[];
@@ -113,14 +113,6 @@ function toForm(profile: AcademicProfile): FormState {
     expertiseAreas: profile.expertiseAreas.join(", "),
     skills: profile.skills.join(", "),
     researchKeywords: profile.researchKeywords.join(", "),
-    orcid: profile.externalIdentities.find((item) => item.provider === "ORCID")?.externalId
-      ?? profile.externalIdentities.find((item) => item.provider === "ORCID")?.profileUrl ?? "",
-    github: profile.externalIdentities.find((item) => item.provider === "GITHUB")?.profileUrl ?? "",
-    openAlex: profile.externalIdentities.find((item) => item.provider === "OPENALEX")?.externalId
-      ?? profile.externalIdentities.find((item) => item.provider === "OPENALEX")?.profileUrl ?? "",
-    googleScholar: profile.externalIdentities.find((item) => item.provider === "GOOGLE_SCHOLAR")?.profileUrl ?? "",
-    semanticScholar: profile.externalIdentities.find((item) => item.provider === "SEMANTIC_SCHOLAR")?.externalId
-      ?? profile.externalIdentities.find((item) => item.provider === "SEMANTIC_SCHOLAR")?.profileUrl ?? "",
     featuredWorks: profile.featuredWorks.map(({ canonical: _canonical, ...work }) => work),
     supportEnabled: profile.supportAvailability.enabled,
     supportTypes: profile.supportAvailability.types,
@@ -136,7 +128,6 @@ function toForm(profile: AcademicProfile): FormState {
 export function AcademicProfileSection() {
   const { data, isLoading, error } = useAcademicProfile();
   const update = useUpdateAcademicProfile();
-  const request = useRequestAcademicVerification();
   const emailStatus = useInstitutionalEmailStatus();
   const emailChallenge = useRequestInstitutionalEmailChallenge();
   const emailVerify = useVerifyInstitutionalEmail();
@@ -149,10 +140,6 @@ export function AcademicProfileSection() {
     if (data) setForm(toForm(data));
   }, [data]);
 
-  const canRequest = data?.academicType === "lecturer"
-    && emailStatus.data?.verified === true
-    && (data.verificationStatus === "SELF_DECLARED" || data.verificationStatus === "REJECTED");
-
   if (isLoading) return <AcademicProfileSkeleton />;
   if (error || !data || !form) return <p className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">Unable to load the academic profile.</p>;
 
@@ -160,16 +147,6 @@ export function AcademicProfileSection() {
   const save = async (event: FormEvent) => {
     event.preventDefault();
     setMessage(null);
-    const externalIdentities: NonNullable<UpdateAcademicProfileDetailsRequest["externalIdentities"]> = [];
-    if (form.orcid) externalIdentities.push({ provider: "ORCID", externalId: form.orcid });
-    if (form.github) externalIdentities.push({ provider: "GITHUB", profileUrl: form.github });
-    if (form.openAlex) externalIdentities.push(/^https:\/\//i.test(form.openAlex)
-      ? { provider: "OPENALEX", profileUrl: form.openAlex }
-      : { provider: "OPENALEX", externalId: form.openAlex });
-    if (form.googleScholar) externalIdentities.push({ provider: "GOOGLE_SCHOLAR", profileUrl: form.googleScholar });
-    if (form.semanticScholar) externalIdentities.push(/^https:\/\//i.test(form.semanticScholar)
-      ? { provider: "SEMANTIC_SCHOLAR", profileUrl: form.semanticScholar }
-      : { provider: "SEMANTIC_SCHOLAR", externalId: form.semanticScholar });
     try {
       await update.mutateAsync({
         displayName: form.displayName.trim(),
@@ -188,7 +165,6 @@ export function AcademicProfileSection() {
         expertiseAreas: split(form.expertiseAreas),
         skills: split(form.skills),
         researchKeywords: split(form.researchKeywords),
-        externalIdentities,
         featuredWorks: form.featuredWorks,
         supportAvailability: {
           enabled: form.supportEnabled,
@@ -217,9 +193,9 @@ export function AcademicProfileSection() {
           <h2 className="mt-1 text-2xl font-bold tracking-tight text-slate-950 dark:text-white">Edit academic profile</h2>
           <p className="mt-1 max-w-2xl text-sm text-slate-500">Build a trustworthy research identity without exposing private verification data.</p>
         </div>
-        <Badge variant="outline" className={`gap-1.5 px-3 py-1.5 ${statusStyle[data.verificationStatus]}`}>
-          {data.verificationStatus === "VERIFIED" && <BadgeCheck className="h-3.5 w-3.5" />}
-          {data.verificationStatus.replace("_", " ")}
+        <Badge variant="outline" className={`gap-1.5 px-3 py-1.5 ${statusStyle[data.verificationStatuses?.position ?? "NOT_SUBMITTED"]}`}>
+          {data.verificationStatuses?.position === "VERIFIED" && <BadgeCheck className="h-3.5 w-3.5" />}
+          {statusLabel[data.verificationStatuses?.position ?? "NOT_SUBMITTED"]}
         </Badge>
       </header>
 
@@ -291,7 +267,7 @@ export function AcademicProfileSection() {
         <FeaturedWorksEditor works={form.featuredWorks} onChange={(works) => set("featuredWorks", works)} />
       </Section>
 
-      {data.academicType === "lecturer" && (
+      {["LECTURER", "RESEARCH_STAFF"].includes(data.primaryPosition ?? "") && (
         <div className="grid gap-5 xl:grid-cols-2">
           <Section icon={<HandHeart />} title="Research support" description="Availability only. LumiGap will never auto-assign you.">
             <AvailabilityEditor enabled={form.supportEnabled} onEnabled={(value) => set("supportEnabled", value)} values={form.supportTypes} onValues={(value) => set("supportTypes", value)} options={supportOptions} topics={form.supportTopics} onTopics={(value) => set("supportTopics", value)} note={form.supportNote} onNote={(value) => set("supportNote", value)} />
@@ -302,27 +278,10 @@ export function AcademicProfileSection() {
         </div>
       )}
 
-      <Section icon={<ExternalLink />} title="External identities" description="Manual links remain unverified until a real provider or admin verification step succeeds.">
-        <div className="grid gap-4 lg:grid-cols-2">
-          <IdentityField label="ORCID iD" priority="Primary" identity={data.externalIdentities.find((item) => item.provider === "ORCID")}><Input value={form.orcid} onChange={(event) => set("orcid", event.target.value)} placeholder="0000-0002-1825-0097" /></IdentityField>
-          <IdentityField label="GitHub" priority="Recommended for Software / CS" identity={data.externalIdentities.find((item) => item.provider === "GITHUB")}><Input type="url" value={form.github} onChange={(event) => set("github", event.target.value)} placeholder="https://github.com/username" /></IdentityField>
-          <IdentityField label="OpenAlex Author ID" priority="Recommended" identity={data.externalIdentities.find((item) => item.provider === "OPENALEX")}><Input value={form.openAlex} onChange={(event) => set("openAlex", event.target.value)} placeholder="A123456789" /></IdentityField>
-          <IdentityField label="Google Scholar" priority="Optional" identity={data.externalIdentities.find((item) => item.provider === "GOOGLE_SCHOLAR")}><Input type="url" value={form.googleScholar} onChange={(event) => set("googleScholar", event.target.value)} placeholder="https://scholar.google.com/citations?user=..." /></IdentityField>
-          <IdentityField label="Semantic Scholar" priority="Optional" identity={data.externalIdentities.find((item) => item.provider === "SEMANTIC_SCHOLAR")}><Input value={form.semanticScholar} onChange={(event) => set("semanticScholar", event.target.value)} placeholder="Author ID or https://www.semanticscholar.org/author/..." /></IdentityField>
-        </div>
-        <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-600 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-300">Added means self-asserted. A verified connection requires OAuth or a trusted system check. ORCID linked never means Lecturer verified.</p>
-      </Section>
+      <AcademicIdentityManager profile={data} editable />
 
-      <Section icon={<BadgeCheck />} title="Verification" description="Lecturer verification is an admin-reviewed trust decision.">
-        <VerificationPanel profile={data} canRequest={canRequest} pending={request.isPending} onRequest={async () => {
-          setMessage(null);
-          try {
-            await request.mutateAsync();
-            setMessage({ tone: "success", text: "Verification request submitted for admin review." });
-          } catch {
-            setMessage({ tone: "error", text: "Verify your institutional email and complete institution details before requesting verification." });
-          }
-        }} />
+      <Section icon={<BadgeCheck />} title="Academic Position Verification" description="Verification confirms profile information only. It does not grant system roles or review privileges.">
+        <PositionVerificationPanel profile={data} editable />
       </Section>
 
       {message && <p role="status" className={`rounded-lg border px-4 py-3 text-sm ${message.tone === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-red-200 bg-red-50 text-red-700"}`}>{message.text}</p>}
@@ -360,38 +319,6 @@ function FeaturedWorksEditor({ works, onChange }: { works: EditableWork[]; onCha
     setDraft({ paperId: "", title: "", doi: "", year: "", source: "MANUAL" });
   };
   return <div className="space-y-3">{works.map((work, index) => <div key={`${work.paperId ?? work.doi ?? work.title}-${index}`} className="flex items-start justify-between gap-3 rounded-lg border border-slate-200 p-3 dark:border-slate-800"><div><p className="text-sm font-medium text-slate-900 dark:text-white">{work.title || work.paperId || work.doi}</p><p className="mt-1 text-xs text-slate-500">{work.source}{work.year ? ` · ${work.year}` : ""}{work.doi ? ` · ${work.doi}` : ""}</p></div><Button type="button" variant="ghost" size="icon" aria-label="Remove work" onClick={() => onChange(works.filter((_, itemIndex) => itemIndex !== index))}><Trash2 className="h-4 w-4" /></Button></div>)}<div className="grid gap-3 rounded-xl bg-slate-50 p-4 dark:bg-slate-900/60 md:grid-cols-2"><Field label="Source"><select className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-zinc-950" value={draft.source} onChange={(event) => setDraft((current) => ({ ...current, source: event.target.value as FeaturedWorkSource }))}><option value="MANUAL">Manual</option><option value="LUMIGAP">LumiGap paper</option><option value="ORCID">Imported from ORCID</option></select></Field>{draft.source === "LUMIGAP" ? <Field label="LumiGap Paper ID"><Input value={draft.paperId} onChange={(event) => setDraft((current) => ({ ...current, paperId: event.target.value }))} /></Field> : <><Field label="Title"><Input value={draft.title} onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))} /></Field><Field label="DOI"><Input value={draft.doi} onChange={(event) => setDraft((current) => ({ ...current, doi: event.target.value }))} /></Field><Field label="Year"><Input type="number" value={draft.year} onChange={(event) => setDraft((current) => ({ ...current, year: event.target.value }))} /></Field></>}<div className="flex items-end"><Button type="button" variant="outline" className="gap-2" onClick={add} disabled={works.length >= 10}><Plus className="h-4 w-4" />Add featured work</Button></div></div></div>;
-}
-
-function IdentityField({
-  label,
-  priority,
-  identity,
-  children,
-}: {
-  label: string;
-  priority: string;
-  identity?: AcademicProfile["externalIdentities"][number];
-  children: ReactNode;
-}) {
-  const state = identity?.status === "VERIFIED"
-    ? "Verified connection"
-    : identity?.status === "LINKED"
-      ? "Linked"
-      : identity
-        ? "Added · unverified"
-        : "Not added";
-  return (
-    <div className="space-y-2 rounded-xl border border-slate-200 p-4 dark:border-slate-800">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <Label>{label}</Label>
-          <p className="mt-1 text-[11px] text-slate-500">{priority}</p>
-        </div>
-        <Badge variant="outline" className={identity?.status === "VERIFIED" ? statusStyle.VERIFIED : "text-slate-500"}>{state}</Badge>
-      </div>
-      {children}
-    </div>
-  );
 }
 
 function InstitutionalEmailVerification({
@@ -438,10 +365,6 @@ function InstitutionalEmailVerification({
       )}
     </div>
   );
-}
-
-function VerificationPanel({ profile, canRequest, pending, onRequest }: { profile: AcademicProfile; canRequest: boolean; pending: boolean; onRequest: () => void }) {
-  return <div className={`rounded-xl border p-4 ${statusStyle[profile.verificationStatus]}`}><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="font-semibold">{profile.verificationStatus.replace("_", " ")}</p><p className="mt-1 text-xs opacity-80">Verified institutional email is required. ORCID, GitHub, or the Lecturer profile type alone never grants this badge.</p></div>{canRequest && <Button type="button" variant="outline" disabled={pending} onClick={onRequest}>{pending ? "Submitting…" : "Request verification"}</Button>}</div>{profile.verificationStatus === "REJECTED" && profile.verification.rejectionReason && <p className="mt-3 border-t border-current/15 pt-3 text-sm">Reason: {profile.verification.rejectionReason}</p>}</div>;
 }
 
 function AcademicProfileSkeleton() {

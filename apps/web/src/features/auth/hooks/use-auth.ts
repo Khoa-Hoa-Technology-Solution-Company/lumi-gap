@@ -45,8 +45,7 @@ export function useLogout() {
 }
 
 export function useCurrentUser() {
-  const tokens = useAuthStore((s) => s.tokens);
-  const user = useAuthStore((s) => s.user);
+  const hasToken = useAuthStore((s) => !!s.tokens?.accessToken);
   return useQuery({
     queryKey: ["current-user"],
     queryFn: async () => {
@@ -54,10 +53,19 @@ export function useCurrentUser() {
       useAuthStore.setState({ user: data.user });
       return data;
     },
-    enabled: !!tokens?.accessToken,
-    initialData: user ? { user } : undefined,
-    staleTime: 0,
-    refetchOnMount: "always",
+    enabled: hasToken,
+    // Use placeholderData (not initialData) so the store snapshot is used only
+    // as a temporary visual placeholder and doesn't affect query status.
+    // Reading the store outside a selector avoids a reactive subscription that
+    // would re-render this hook every time queryFn updates the store — which
+    // previously caused an infinite fetch loop (staleTime: 0 + store write in
+    // queryFn → re-render → new refetch → repeat).
+    placeholderData: () => {
+      const user = useAuthStore.getState().user;
+      return user ? { user } : undefined;
+    },
+    staleTime: 30_000,
+    refetchOnMount: true,
     refetchOnWindowFocus: true,
   });
 }
@@ -89,4 +97,3 @@ export function useChangePassword() {
     mutationFn: (payload: ChangePasswordRequest) => authApi.changePassword(payload),
   });
 }
-

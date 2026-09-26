@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCheck, Loader2, Radio, SendHorizonal, Trash2, XCircle } from "lucide-react";
-import type { ProjectTeamChatMessage } from "@trend/shared-types";
+import { isAdminSystemRole, type ProjectTeamChatMessage } from "@trend/shared-types";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useAuthStore } from "@/stores/auth-store";
@@ -247,7 +247,7 @@ export function ProjectTeamChatPanel({ projectId, ownerId }: ProjectTeamChatPane
           ) : (
             visibleMessages.map((item) => {
               const isMe = item.sender.id === currentUser?.id;
-              const canDelete = isMe || currentUser?.id === ownerId || currentUser?.role === "admin";
+              const canDelete = isMe || currentUser?.id === ownerId || isAdminSystemRole(currentUser?.systemRole);
               const isPending = item.id === "pending-team-msg";
               const readByOthers = Math.max(0, item.readCount - (isMe ? 1 : 0));
               return (

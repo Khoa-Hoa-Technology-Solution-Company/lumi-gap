@@ -404,7 +404,8 @@ export const openapiSpec = {
     "/api/v1/auth/me/academic-profile": {
       patch: {
         tags: ["Auth"],
-        summary: "Complete the signed-in user's academic profile",
+        summary: "Complete academic onboarding",
+        description: "Declares a primary position and institution. This does not verify the position or grant reviewer capabilities.",
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -413,12 +414,14 @@ export const openapiSpec = {
               schema: {
                 type: "object",
                 additionalProperties: false,
-                required: ["academicProfileType"],
+                required: ["primaryPosition", "institutionName"],
                 properties: {
-                  academicProfileType: {
+                  primaryPosition: {
                     type: "string",
-                    enum: ["student", "researcher", "lecturer"],
+                    enum: ["STUDENT", "LECTURER", "RESEARCH_STAFF", "INDUSTRY_PRACTITIONER", "OTHER"],
                   },
+                  institutionName: { type: "string", minLength: 2, maxLength: 200 },
+                  country: { type: "string", minLength: 2, maxLength: 100 },
                 },
               },
             },
@@ -428,6 +431,53 @@ export const openapiSpec = {
           "200": { description: "Profile completed — returns the updated user" },
           "401": { description: "Authentication required" },
         },
+      },
+    },
+    "/api/v1/auth/refresh": {
+      post: {
+        tags: ["Auth"],
+        summary: "Rotate an opaque refresh token",
+        requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["refreshToken"], properties: { refreshToken: { type: "string", minLength: 32 } } } } } },
+        responses: { "200": { description: "New access and refresh tokens" }, "401": { description: "Invalid, expired, revoked, or reused refresh token" } },
+      },
+    },
+    "/api/v1/auth/status": {
+      get: {
+        tags: ["Auth"],
+        summary: "Read account, email, onboarding, position, and capability status",
+        security: [{ bearerAuth: [] }],
+        responses: { "200": { description: "Current authorization state" }, "401": { description: "Authentication required" } },
+      },
+    },
+    "/api/v1/auth/email/verify": {
+      post: {
+        tags: ["Auth"],
+        summary: "Verify account email with a one-time token",
+        requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["token"], properties: { token: { type: "string", minLength: 32 } } } } } },
+        responses: { "200": { description: "Email verified" }, "400": { description: "Token invalid, expired, or already used" } },
+      },
+    },
+    "/api/v1/auth/password/forgot": {
+      post: {
+        tags: ["Auth"],
+        summary: "Request a password reset",
+        description: "Always returns the same response to prevent account enumeration.",
+        responses: { "202": { description: "Request accepted" } },
+      },
+    },
+    "/api/v1/auth/password/reset": {
+      post: {
+        tags: ["Auth"],
+        summary: "Reset a password using a one-time token",
+        responses: { "200": { description: "Password reset and active sessions revoked" } },
+      },
+    },
+    "/api/v1/auth/google": {
+      get: {
+        tags: ["Auth"],
+        summary: "Start Google OpenID Connect login",
+        description: "Uses state, nonce, PKCE, and a short-lived server-side state record.",
+        responses: { "302": { description: "Redirect to Google authorization" } },
       },
     },
     "/api/v1/auth/oauth/exchange": {

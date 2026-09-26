@@ -3,8 +3,12 @@ import { academicProfileStrings } from "./academic-profile";
 import { academicForumStrings } from "./academic-forum";
 import { gapEvidenceWorkflowStrings } from "./gap-evidence-workflow";
 import { paperDetailIaStrings } from "./paper-detail-ia";
+import { authSecurityStrings } from "./auth-security";
+import { newUiStrings } from "./new-ui";
 
 export const ru: Record<keyof typeof en, string> = {
+  ...newUiStrings,
+  ...authSecurityStrings,
   ...academicForumStrings,
   ...academicProfileStrings.ru,
   ...gapEvidenceWorkflowStrings,
@@ -1030,7 +1034,7 @@ export const ru: Record<keyof typeof en, string> = {
   "Paper translation failed. Please try again.": "Бумажный перевод не удался. Пожалуйста, попробуйте еще раз.",
   "Paper Type": "Тип бумаги",
   "Paper Types": "Типы бумаги",
-  "PAPERLENS logo": "Логотип ПАПЕРЛЕНС",
+  "LumiGap logo": "Логотип LumiGap",
   "Papers": "Статьи",
   "PAPERS": "ДОКУМЕНТЫ",
   "papers (": "документы (",

@@ -12,6 +12,9 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           const normalizedId = id.replace(/\\/g, "/");
+          if (normalizedId.endsWith("/src/i18n/locales/new-ui.ts")) {
+            return "i18n-new-ui";
+          }
           if (!normalizedId.includes("node_modules")) return undefined;
           if (
             normalizedId.includes("/node_modules/react/") ||
@@ -67,7 +70,7 @@ export default defineConfig({
     },
   },
   server: {
-    port: 5173,
+    port: 3000,
     proxy: {
       // Optional: proxy /api during dev so cookies work without CORS.
       // Remove if you prefer hitting the backend directly via VITE_API_BASE.

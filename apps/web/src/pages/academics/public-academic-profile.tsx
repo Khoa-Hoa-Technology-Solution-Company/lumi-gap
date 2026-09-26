@@ -18,8 +18,8 @@ export function PublicAcademicProfilePage() {
     return <main className="mx-auto max-w-3xl px-4 py-16 text-center"><h1 className="text-2xl font-semibold text-slate-950 dark:text-white">{t("Academic profile unavailable")}</h1><Button asChild variant="outline" className="mt-5"><Link to="/communities">{t("Explore academic communities")}</Link></Button></main>;
   }
 
-  if (profile.publicHandle && (userId || location.pathname.startsWith("/u/") || profile.publicHandle !== handle)) {
-    return <Navigate to={`/${profile.publicHandle}`} replace />;
+  if (profile.publicHandle && !userId && location.pathname !== `/u/${profile.publicHandle}`) {
+    return <Navigate to={`/u/${profile.publicHandle}`} replace />;
   }
 
   return <AcademicProfileView profile={profile} />;

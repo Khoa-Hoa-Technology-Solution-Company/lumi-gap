@@ -10,6 +10,29 @@ interface AuthState {
   clear: () => void;
 }
 
+type PersistedAuthState = Pick<AuthState, "user" | "tokens">;
+
+function isCurrentAuthState(value: unknown): value is PersistedAuthState {
+  if (!value || typeof value !== "object") return false;
+  const state = value as Partial<PersistedAuthState>;
+  const user = state.user;
+  const tokens = state.tokens;
+
+  // The auth token format changed with the PostgreSQL identity migration.
+  // Old persisted sessions cannot be refreshed by the new API, so discard
+  // them during hydration instead of rendering a page that can only produce
+  // repeated 401 responses.
+  return Boolean(
+    user
+      && typeof user === "object"
+      && "systemRole" in user
+      && tokens
+      && typeof tokens === "object"
+      && typeof (tokens as { accessToken?: unknown }).accessToken === "string"
+      && typeof (tokens as { refreshToken?: unknown }).refreshToken === "string",
+  );
+}
+
 export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
@@ -19,6 +42,13 @@ export const useAuthStore = create<AuthState>()(
       setTokens: (tokens) => set({ tokens }),
       clear: () => set({ user: null, tokens: null }),
     }),
-    { name: "trend-auth" },
+    {
+      name: "trend-auth",
+      version: 1,
+      migrate: (persistedState) =>
+        isCurrentAuthState(persistedState)
+          ? persistedState
+          : { user: null, tokens: null },
+    },
   ),
 );

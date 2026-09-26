@@ -3,8 +3,12 @@ import { gapEvidenceWorkflowViStrings } from "./gap-evidence-workflow";
 import { paperDetailIaViStrings } from "./paper-detail-ia";
 import { academicProfileStrings } from "./academic-profile";
 import { academicForumStrings } from "./academic-forum";
+import { authSecurityStrings } from "./auth-security";
+import { newUiStrings } from "./new-ui";
 
 export const vi: Record<keyof typeof en, string> = {
+  ...newUiStrings,
+  ...authSecurityStrings,
   ...academicForumStrings,
   ...academicProfileStrings.vi,
   ...gapEvidenceWorkflowViStrings,
@@ -1030,7 +1034,7 @@ export const vi: Record<keyof typeof en, string> = {
   "Paper translation failed. Please try again.": "Dịch bài báo thất bại. Vui lòng thử lại.",
   "Paper Type": "Loại giấy",
   "Paper Types": "Các loại giấy",
-  "PAPERLENS logo": "Logo PAPERLENS",
+  "LumiGap logo": "Logo LumiGap",
   "Papers": "Bài báo",
   "PAPERS": "BÀI BÁO",
   "papers (": "bài báo (",

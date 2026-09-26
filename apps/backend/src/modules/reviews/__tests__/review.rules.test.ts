@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ReviewAvailabilitySettings } from "@trend/shared-types";
-import { basicConflictReason, canUseReviewerWorkspace, reviewCapacityIssue } from "../review.rules.js";
+import { basicConflictReason, reviewCapacityIssue } from "../review.rules.js";
 
 const settings: ReviewAvailabilitySettings = {
   availableForReview: true,
@@ -13,13 +13,6 @@ const settings: ReviewAvailabilitySettings = {
 };
 
 describe("peer-review business rules", () => {
-  it("allows lecturer and researcher profiles, but not students", () => {
-    expect(canUseReviewerWorkspace("lecturer")).toBe(true);
-    expect(canUseReviewerWorkspace("researcher")).toBe(true);
-    expect(canUseReviewerWorkspace("student")).toBe(false);
-    expect(canUseReviewerWorkspace(undefined)).toBe(false);
-  });
-
   it("requires explicit opt-in and enforces maximum active workload", () => {
     expect(reviewCapacityIssue({ ...settings, availableForReview: false })).toMatch(/Enable/);
     expect(reviewCapacityIssue({ ...settings, activeReviewCount: 2 })).toMatch(/Maximum/);

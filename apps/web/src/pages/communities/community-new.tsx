@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useCurrentUser } from "@/features/auth";
 import { useCreateCommunity } from "@/features/forum";
+import { isAdminSystemRole } from "@trend/shared-types";
 
 function splitValues(value: string) {
   return [...new Set(value.split(/[\n,]/).map((item) => item.trim()).filter(Boolean))];
@@ -21,8 +22,7 @@ export function CommunityNewPage() {
   const { data: currentUser } = useCurrentUser();
   const user = currentUser?.user;
   const canCreate = Boolean(user && (
-    ["researcher", "lecturer", "moderator", "admin"].includes(user.role)
-    || ["researcher", "lecturer"].includes(user.academicProfileType ?? "")
+    isAdminSystemRole(user.systemRole) || user.capabilities?.includes("BASIC_RESEARCH")
   ));
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -46,7 +46,7 @@ export function CommunityNewPage() {
   }
 
   if (!canCreate) {
-    return <main className="mx-auto max-w-2xl px-4 py-16 text-center"><h1 className="text-2xl font-semibold text-slate-950 dark:text-slate-50">Community creation is limited</h1><p className="mx-auto mt-3 max-w-lg text-sm leading-6 text-slate-500">A Researcher or Lecturer academic profile is required to create and lead a community. Students can still join existing communities.</p><Button asChild variant="outline" className="mt-5"><Link to="/communities">Browse communities</Link></Button></main>;
+    return <main className="mx-auto max-w-2xl px-4 py-16 text-center"><h1 className="text-2xl font-semibold text-slate-950 dark:text-slate-50">Community creation is limited</h1><p className="mx-auto mt-3 max-w-lg text-sm leading-6 text-slate-500">Complete email verification and academic onboarding to create a community.</p><Button asChild variant="outline" className="mt-5"><Link to="/communities">Browse communities</Link></Button></main>;
   }
 
   return (

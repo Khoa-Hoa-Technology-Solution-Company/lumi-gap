@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { ACADEMIC_POSITION_OPTIONS } from "@trend/shared-types";
 import type {
   AcademicProfile,
   AcademicReviewType,
@@ -7,11 +8,11 @@ import type {
   UpdateAcademicProfileDetailsRequest,
 } from "@trend/shared-types";
 import { Plus, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   useInstitutionalEmailStatus,
-  useRequestAcademicVerification,
   useRequestInstitutionalEmailChallenge,
   useSetPublicHandle,
   useUpdateAcademicProfile,
@@ -20,7 +21,7 @@ import {
   useRemoveAcademicCover,
 } from "../hooks/use-academic-profile";
 
-export type EditSection = "cover" | "intro" | "about" | "research" | "works" | "identity" | "affiliation" | "availability" | "link";
+export type EditSection = "cover" | "intro" | "about" | "research" | "works" | "affiliation" | "availability" | "link";
 
 type WorkInput = NonNullable<UpdateAcademicProfileDetailsRequest["featuredWorks"]>[number];
 
@@ -70,11 +71,6 @@ function toEditableWorks(profile: AcademicProfile): WorkInput[] {
     : { source: work.source, title: work.title, doi: work.doi, year: work.year });
 }
 
-function identityValue(profile: AcademicProfile, provider: AcademicProfile["externalIdentities"][number]["provider"]): string {
-  const identity = profile.externalIdentities.find((item) => item.provider === provider);
-  return identity?.externalId || identity?.profileUrl || "";
-}
-
 export function AcademicProfileInlineEditor({
   section,
   profile,
@@ -91,7 +87,6 @@ export function AcademicProfileInlineEditor({
   const emailStatus = useInstitutionalEmailStatus(section === "affiliation");
   const requestCode = useRequestInstitutionalEmailChallenge();
   const verifyCode = useVerifyInstitutionalEmail();
-  const requestLecturerVerification = useRequestAcademicVerification();
   const [message, setMessage] = useState<{ text: string; tone: "success" | "error" } | null>(null);
   const [saved, setSaved] = useState(false);
 
@@ -100,21 +95,19 @@ export function AcademicProfileInlineEditor({
   const [academicTitle, setAcademicTitle] = useState(profile.academicTitle ?? "");
   const [biography, setBiography] = useState(profile.biography ?? profile.bio ?? "");
   const [profileVisibility, setProfileVisibility] = useState(profile.profileVisibility);
+  const [orcidVisibility, setOrcidVisibility] = useState(profile.privacy.orcid);
+  const [researchVisibility, setResearchVisibility] = useState(profile.privacy.researchInterests);
+  const [expertiseVisibility, setExpertiseVisibility] = useState(profile.privacy.expertise);
   const [researchInterests, setResearchInterests] = useState(toCsv(profile.researchInterests));
   const [expertiseAreas, setExpertiseAreas] = useState(toCsv(profile.expertiseAreas));
   const [skills, setSkills] = useState(toCsv(profile.skills));
   const [researchKeywords, setResearchKeywords] = useState(toCsv(profile.researchKeywords));
   const [works, setWorks] = useState<WorkInput[]>(() => toEditableWorks(profile));
   const [draftWork, setDraftWork] = useState({ source: "MANUAL" as "MANUAL" | "LUMIGAP", paperId: "", title: "", doi: "", year: "" });
-  const [orcid, setOrcid] = useState(identityValue(profile, "ORCID"));
-  const [github, setGithub] = useState(identityValue(profile, "GITHUB"));
-  const [openAlex, setOpenAlex] = useState(identityValue(profile, "OPENALEX"));
-  const [googleScholar, setGoogleScholar] = useState(identityValue(profile, "GOOGLE_SCHOLAR"));
-  const [semanticScholar, setSemanticScholar] = useState(identityValue(profile, "SEMANTIC_SCHOLAR"));
   const [institutionName, setInstitutionName] = useState(profile.affiliation.institutionName ?? "");
   const [rorId, setRorId] = useState(profile.affiliation.rorId ?? "");
   const [department, setDepartment] = useState(profile.affiliation.department ?? "");
-  const [position, setPosition] = useState(profile.affiliation.position ?? "");
+  const [position, setPosition] = useState(profile.positionTitle ?? profile.affiliation.position ?? "");
   const [startYear, setStartYear] = useState(profile.affiliation.startYear?.toString() ?? "");
   const [institutionalEmail, setInstitutionalEmail] = useState(profile.affiliation.institutionalEmail ?? "");
   const [code, setCode] = useState("");
@@ -151,7 +144,7 @@ export function AcademicProfileInlineEditor({
         headline: headline.trim(),
         ...(profile.academicType === "student" ? {} : { academicTitle: academicTitle ? academicTitle as AcademicTitle : null }),
       };
-      case "about": return { biography: biography.trim(), profileVisibility };
+      case "about": return { biography: biography.trim(), profileVisibility, privacy: { orcid: orcidVisibility, researchInterests: researchVisibility, expertise: expertiseVisibility } };
       case "research": return {
         researchInterests: fromCsv(researchInterests),
         expertiseAreas: fromCsv(expertiseAreas),
@@ -159,23 +152,7 @@ export function AcademicProfileInlineEditor({
         researchKeywords: fromCsv(researchKeywords),
       };
       case "works": return { featuredWorks: works };
-      case "identity": {
-        const identities: NonNullable<UpdateAcademicProfileDetailsRequest["externalIdentities"]> = [];
-        if (orcid.trim()) identities.push({ provider: "ORCID", externalId: orcid.trim() });
-        if (github.trim()) identities.push({ provider: "GITHUB", profileUrl: github.trim() });
-        if (openAlex.trim()) identities.push(/^https:\/\//i.test(openAlex.trim())
-          ? { provider: "OPENALEX", profileUrl: openAlex.trim() }
-          : { provider: "OPENALEX", externalId: openAlex.trim() });
-        if (googleScholar.trim()) identities.push({ provider: "GOOGLE_SCHOLAR", profileUrl: googleScholar.trim() });
-        if (semanticScholar.trim()) identities.push(/^https:\/\//i.test(semanticScholar.trim())
-          ? { provider: "SEMANTIC_SCHOLAR", profileUrl: semanticScholar.trim() }
-          : { provider: "SEMANTIC_SCHOLAR", externalId: semanticScholar.trim() });
-        for (const other of profile.externalIdentities.filter((item) => item.provider === "OTHER")) {
-          identities.push({ provider: "OTHER", externalId: other.externalId, profileUrl: other.profileUrl });
-        }
-        return { externalIdentities: identities };
-      }
-      case "affiliation": return { affiliation: {
+      case "affiliation": return { positionTitle: position.trim(), affiliation: {
         institutionName: institutionName.trim(),
         rorId: rorId.trim(),
         department: department.trim(),
@@ -202,6 +179,28 @@ export function AcademicProfileInlineEditor({
     }
   }
 
+  const dirty = (() => {
+    if (section === "cover") return Boolean(coverFile);
+    if (section === "link") return handle.trim().toLowerCase() !== (profile.publicHandle ?? "");
+    if (section === "intro") return displayName.trim() !== profile.displayName || headline.trim() !== (profile.headline ?? "") || academicTitle !== (profile.academicTitle ?? "");
+    if (section === "about") return biography.trim() !== (profile.biography ?? profile.bio ?? "") || profileVisibility !== profile.profileVisibility || orcidVisibility !== profile.privacy.orcid || researchVisibility !== profile.privacy.researchInterests || expertiseVisibility !== profile.privacy.expertise;
+    if (section === "research") return researchInterests !== toCsv(profile.researchInterests) || expertiseAreas !== toCsv(profile.expertiseAreas) || skills !== toCsv(profile.skills) || researchKeywords !== toCsv(profile.researchKeywords);
+    if (section === "works") return JSON.stringify(works) !== JSON.stringify(toEditableWorks(profile));
+    if (section === "affiliation") return institutionName.trim() !== (profile.affiliation.institutionName ?? "") || department.trim() !== (profile.affiliation.department ?? "") || position.trim() !== (profile.positionTitle ?? profile.affiliation.position ?? "") || rorId.trim() !== (profile.affiliation.rorId ?? "") || startYear !== (profile.affiliation.startYear?.toString() ?? "") || institutionalEmail.trim() !== (profile.affiliation.institutionalEmail ?? "");
+    return supportEnabled !== profile.supportAvailability.enabled || JSON.stringify(supportTypes) !== JSON.stringify(profile.supportAvailability.types) || supportTopics !== toCsv(profile.supportAvailability.preferredTopics) || supportNote !== (profile.supportAvailability.note ?? "") || reviewEnabled !== profile.reviewAvailability.enabled || JSON.stringify(reviewTypes) !== JSON.stringify(profile.reviewAvailability.types) || reviewTopics !== toCsv(profile.reviewAvailability.preferredTopics) || reviewNote !== (profile.reviewAvailability.note ?? "");
+  })();
+
+  useEffect(() => {
+    if (!dirty) return undefined;
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
+
+  function closeEditor() {
+    onClose();
+  }
+
   async function save(event: FormEvent) {
     event.preventDefault();
     setMessage(null);
@@ -223,6 +222,7 @@ export function AcademicProfileInlineEditor({
       } else {
         onClose();
       }
+      toast.success(section === "cover" ? "Cover image updated" : "Profile changes saved");
     } catch (error) {
       setMessage({ text: errorMessage(error), tone: "error" });
     }
@@ -256,6 +256,7 @@ export function AcademicProfileInlineEditor({
       {section === "about" && <div className="space-y-4">
         <TextField label="About you"><textarea className="min-h-36 w-full rounded-md border border-slate-200 bg-transparent px-3 py-2 text-sm leading-6 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500 dark:border-slate-700" maxLength={3000} value={biography} onChange={(event) => setBiography(event.target.value)} /><p className="mt-1 text-xs text-slate-500">{biography.length}/3000</p></TextField>
         <TextField label="Profile visibility"><select className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-[#101923]" value={profileVisibility} onChange={(event) => setProfileVisibility(event.target.value as typeof profileVisibility)}><option value="PUBLIC">Public — anyone can view</option><option value="MEMBERS_ONLY">LumiGap members only</option><option value="PRIVATE">Private — only you</option></select></TextField>
+        <div className="grid gap-3 border-t border-slate-100 pt-4 sm:grid-cols-3 dark:border-slate-800"><VisibilityField label="ORCID" value={orcidVisibility} onChange={setOrcidVisibility} /><VisibilityField label="Research interests" value={researchVisibility} onChange={setResearchVisibility} /><VisibilityField label="Expertise" value={expertiseVisibility} onChange={setExpertiseVisibility} /></div>
       </div>}
 
       {section === "research" && <div className="grid gap-4 sm:grid-cols-2">
@@ -274,20 +275,11 @@ export function AcademicProfileInlineEditor({
         <Button type="button" variant="outline" size="sm" disabled={works.length >= 10} onClick={addWork} className="gap-1.5"><Plus className="h-3.5 w-3.5" />Add work</Button>
       </div>}
 
-      {section === "identity" && <div className="grid gap-4">
-        <TextField label="ORCID iD"><Input value={orcid} onChange={(event) => setOrcid(event.target.value)} placeholder="0000-0002-1825-0097" /></TextField>
-        <TextField label="GitHub profile"><Input type="url" value={github} onChange={(event) => setGithub(event.target.value)} placeholder="https://github.com/username" /></TextField>
-        <TextField label="OpenAlex Author ID"><Input value={openAlex} onChange={(event) => setOpenAlex(event.target.value)} placeholder="A123456789" /></TextField>
-        <TextField label="Google Scholar profile"><Input type="url" value={googleScholar} onChange={(event) => setGoogleScholar(event.target.value)} placeholder="https://scholar.google.com/citations?user=..." /></TextField>
-        <TextField label="Semantic Scholar Author ID"><Input value={semanticScholar} onChange={(event) => setSemanticScholar(event.target.value)} /></TextField>
-        <p className="text-xs leading-5 text-slate-500">Links entered here are self-asserted. They do not verify Lecturer status.</p>
-      </div>}
-
       {section === "affiliation" && <div className="space-y-5">
         <div className="grid gap-4">
           <TextField label={profile.academicType === "student" ? "University or school" : "Institution"}><Input value={institutionName} maxLength={200} onChange={(event) => setInstitutionName(event.target.value)} /></TextField>
           <TextField label={profile.academicType === "student" ? "Program or major" : "Department"}><Input value={department} maxLength={200} onChange={(event) => setDepartment(event.target.value)} /></TextField>
-          {profile.academicType !== "student" && <TextField label="Academic position"><Input value={position} maxLength={160} onChange={(event) => setPosition(event.target.value)} /></TextField>}
+          <TextField label="Current academic or professional position"><Input list="academic-position-options" value={position} maxLength={160} onChange={(event) => setPosition(event.target.value)} placeholder="Search or enter your position…" /><datalist id="academic-position-options">{ACADEMIC_POSITION_OPTIONS.map((option) => <option key={option.title} value={option.title} />)}</datalist><p className="mt-1 text-xs text-slate-500">Choose a known position or enter a custom title.</p></TextField>
           {profile.academicType !== "student" && <TextField label="ROR ID"><Input value={rorId} onChange={(event) => setRorId(event.target.value)} placeholder="https://ror.org/…" /></TextField>}
           <TextField label={profile.academicType === "student" ? "Enrollment year" : "Start year"}><Input type="number" min={1900} max={new Date().getFullYear()} value={startYear} onChange={(event) => setStartYear(event.target.value)} /></TextField>
           <TextField label="Institutional email"><Input type="email" value={institutionalEmail} onChange={(event) => setInstitutionalEmail(event.target.value)} /></TextField>
@@ -297,7 +289,6 @@ export function AcademicProfileInlineEditor({
           <p className="mt-1 text-xs leading-5 text-slate-500">Save this section before requesting a code. Email verification is separate from Lecturer verification.</p>
           <div className="mt-3 flex flex-wrap gap-2"><Button type="button" variant="outline" size="sm" disabled={!emailMatchesSaved || !institutionalEmail || requestCode.isPending} onClick={async () => { setMessage(null); try { await requestCode.mutateAsync(); setCodeSent(true); setMessage({ text: "Verification code sent to your institutional email.", tone: "success" }); } catch (error) { setMessage({ text: errorMessage(error), tone: "error" }); } }}>Send verification code</Button></div>
           {codeSent && <div className="mt-3 flex gap-2"><Input inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, ""))} placeholder="6-digit code" aria-label="Institutional email verification code" /><Button type="button" variant="outline" size="sm" disabled={code.length !== 6 || verifyCode.isPending} onClick={async () => { setMessage(null); try { await verifyCode.mutateAsync(code); setCodeSent(false); setCode(""); setMessage({ text: "Institutional email verified.", tone: "success" }); } catch (error) { setMessage({ text: errorMessage(error), tone: "error" }); } }}>Verify</Button></div>}
-          {profile.academicType === "lecturer" && emailMatchesSaved && emailStatus.data?.verified && ["SELF_DECLARED", "REJECTED"].includes(profile.verificationStatus) && <Button type="button" variant="outline" size="sm" className="mt-3" disabled={requestLecturerVerification.isPending} onClick={async () => { setMessage(null); try { await requestLecturerVerification.mutateAsync(); setMessage({ text: "Lecturer verification submitted for review.", tone: "success" }); } catch (error) { setMessage({ text: errorMessage(error), tone: "error" }); } }}>Request Lecturer verification</Button>}
         </div>
       </div>}
 
@@ -310,7 +301,7 @@ export function AcademicProfileInlineEditor({
 
       {message && <p role="status" className={`text-xs leading-5 ${message.tone === "success" ? "text-emerald-700 dark:text-emerald-300" : "text-red-700 dark:text-red-300"}`}>{message.text}</p>}
       {saved && <p role="status" className="text-xs text-emerald-700 dark:text-emerald-300">Saved. You can verify the institutional email below or close this section.</p>}
-      <div className="flex flex-wrap justify-end gap-2"><Button type="button" variant="ghost" size="sm" onClick={onClose}>{section === "affiliation" && saved ? "Done" : "Cancel"}</Button><Button type="submit" size="sm" disabled={busy || (section === "cover" && (!coverFile || coverFile.size > 5 * 1024 * 1024))}>{busy ? "Saving…" : section === "cover" ? "Save cover" : "Save changes"}</Button></div>
+      <div className="flex flex-wrap justify-end gap-2"><Button type="button" variant="ghost" size="sm" onClick={closeEditor}>{section === "affiliation" && saved ? "Done" : "Cancel"}</Button><Button type="submit" size="sm" disabled={busy || !dirty || (section === "cover" && (!coverFile || coverFile.size > 5 * 1024 * 1024))}>{busy ? "Saving…" : section === "cover" ? "Save cover" : "Save changes"}</Button></div>
     </form>
   );
 }
@@ -321,6 +312,10 @@ function TextField({ label, children }: { label: string; children: ReactNode }) 
 
 function CsvField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
   return <TextField label={label}><Input value={value} onChange={(event) => onChange(event.target.value)} /><p className="text-[11px] text-slate-500">Separate topics with commas.</p></TextField>;
+}
+
+function VisibilityField({ label, value, onChange }: { label: string; value: "PUBLIC" | "REGISTERED_USERS" | "PRIVATE"; onChange: (value: "PUBLIC" | "REGISTERED_USERS" | "PRIVATE") => void }) {
+  return <TextField label={`${label} visibility`}><select className="h-10 w-full rounded-md border border-slate-200 bg-white px-2 text-xs dark:border-slate-700 dark:bg-[#101923]" value={value} onChange={(event) => onChange(event.target.value as typeof value)}><option value="PUBLIC">Public</option><option value="REGISTERED_USERS">Members</option><option value="PRIVATE">Private</option></select></TextField>;
 }
 
 function AvailabilityFields<T extends string>({ title, enabled, onEnabled, selected, onSelected, options, topics, onTopics, note, onNote }: {

@@ -3,8 +3,12 @@ import { academicProfileStrings } from "./academic-profile";
 import { academicForumStrings } from "./academic-forum";
 import { gapEvidenceWorkflowStrings } from "./gap-evidence-workflow";
 import { paperDetailIaStrings } from "./paper-detail-ia";
+import { authSecurityStrings } from "./auth-security";
+import { newUiStrings } from "./new-ui";
 
 export const fr: Record<keyof typeof en, string> = {
+  ...newUiStrings,
+  ...authSecurityStrings,
   ...academicForumStrings,
   ...academicProfileStrings.fr,
   ...gapEvidenceWorkflowStrings,
@@ -1030,7 +1034,7 @@ export const fr: Record<keyof typeof en, string> = {
   "Paper translation failed. Please try again.": "La traduction papier a échoué. Veuillez réessayer.",
   "Paper Type": "Type de papier",
   "Paper Types": "Types de papier",
-  "PAPERLENS logo": "logo PAPERLENS",
+  "LumiGap logo": "Logo LumiGap",
   "Papers": "Articles",
   "PAPERS": "PAPIERS",
   "papers (": "papiers (",

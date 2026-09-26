@@ -5,7 +5,7 @@ export const paperDetailIaStrings = {
   "Advisory LLM": "Advisory LLM",
   "AI abstract review": "AI abstract review",
   "citations indexed (": "citations indexed (",
-  "Cited papers indexed in PaperLens": "Cited papers indexed in PaperLens",
+  "Cited papers indexed in LumiGap": "Cited papers indexed in LumiGap",
   "Classification & Open Access": "Classification & Open Access",
   "Community feedback": "Community feedback",
   "Core Methods": "Core Methods",
@@ -28,7 +28,7 @@ export const paperDetailIaStrings = {
     "Generated from the title and abstract only. It does not change indexing, approval, credits, or quality tier.",
   "How this signal is computed": "How this signal is computed",
   "Impact": "Impact",
-  "in PaperLens": "in PaperLens",
+  "in LumiGap": "in LumiGap",
   "Key Contributions": "Key Contributions",
   "Loading cited papers...": "Loading cited papers...",
   "Loading OpenAlex related works...": "Loading OpenAlex related works...",
@@ -52,9 +52,9 @@ export const paperDetailIaStrings = {
     "OpenAlex taxonomy fields have not been synced for this work yet.",
   "Overall Signal": "Overall Signal",
   "Paper Reading and Knowledge": "Paper Reading and Knowledge",
-  "PaperLens matches title and abstract meaning. This is independent of citations and OpenAlex relations.":
-    "PaperLens matches title and abstract meaning. This is independent of citations and OpenAlex relations.",
-  "papers, but none are currently indexed in PaperLens.": "papers, but none are currently indexed in PaperLens.",
+  "LumiGap matches title and abstract meaning. This is independent of citations and OpenAlex relations.":
+    "LumiGap matches title and abstract meaning. This is independent of citations and OpenAlex relations.",
+  "papers, but none are currently indexed in LumiGap.": "papers, but none are currently indexed in LumiGap.",
   "Platform quality rubric": "Platform quality rubric",
   "Publication": "Publication",
   "Rating:": "Rating:",
@@ -73,10 +73,10 @@ export const paperDetailIaStrings = {
   "Structured knowledge extractions are not available for this work yet.":
     "Structured knowledge extractions are not available for this work yet.",
   "Structured paper knowledge": "Structured paper knowledge",
-  "Synthesized reports referencing this work in PaperLens.":
-    "Synthesized reports referencing this work in PaperLens.",
-  "These are works cited by this paper. Only papers already indexed in PaperLens can be opened here.":
-    "These are works cited by this paper. Only papers already indexed in PaperLens can be opened here.",
+  "Synthesized reports referencing this work in LumiGap.":
+    "Synthesized reports referencing this work in LumiGap.",
+  "These are works cited by this paper. Only papers already indexed in LumiGap can be opened here.":
+    "These are works cited by this paper. Only papers already indexed in LumiGap can be opened here.",
   "This score is calculated deterministically from citation counts, field-weighted citation impact (FWCI), publication recency, and metadata field presence. It does not invoke a generative LLM.":
     "This score is calculated deterministically from citation counts, field-weighted citation impact (FWCI), publication recency, and metadata field presence. It does not invoke a generative LLM.",
   "This work cites": "This work cites",
@@ -95,7 +95,7 @@ export const paperDetailIaViStrings: Record<keyof typeof paperDetailIaStrings, s
   "Advisory LLM": "AI tham vấn",
   "AI abstract review": "Đánh giá tóm tắt bởi AI",
   "citations indexed (": "trích dẫn được đánh chỉ mục (",
-  "Cited papers indexed in PaperLens": "Các bài báo trích dẫn có trong PaperLens",
+  "Cited papers indexed in LumiGap": "Các bài báo trích dẫn có trong LumiGap",
   "Classification & Open Access": "Phân loại & Truy cập mở",
   "Community feedback": "Phản hồi cộng đồng",
   "Core Methods": "Phương pháp cốt lõi",
@@ -118,7 +118,7 @@ export const paperDetailIaViStrings: Record<keyof typeof paperDetailIaStrings, s
     "Chỉ được tạo từ tiêu đề và tóm tắt. Không làm thay đổi chỉ mục, phê duyệt, credit hoặc phân hạng chất lượng.",
   "How this signal is computed": "Cách tính tín hiệu này",
   "Impact": "Ảnh hưởng",
-  "in PaperLens": "trong PaperLens",
+  "in LumiGap": "trong LumiGap",
   "Key Contributions": "Đóng góp chính",
   "Loading cited papers...": "Đang tải danh sách bài báo được trích dẫn...",
   "Loading OpenAlex related works...": "Đang tải bài báo liên quan từ OpenAlex...",
@@ -142,9 +142,9 @@ export const paperDetailIaViStrings: Record<keyof typeof paperDetailIaStrings, s
     "Các trường phân loại OpenAlex chưa được đồng bộ cho tác phẩm này.",
   "Overall Signal": "Tín hiệu tổng thể",
   "Paper Reading and Knowledge": "Đọc bài báo & Tri thức",
-  "PaperLens matches title and abstract meaning. This is independent of citations and OpenAlex relations.":
-    "PaperLens khớp nối ý nghĩa tiêu đề và tóm tắt. Khái niệm này độc lập với trích dẫn và liên kết OpenAlex.",
-  "papers, but none are currently indexed in PaperLens.": "bài báo, nhưng chưa có bài nào được đánh chỉ mục trong PaperLens.",
+  "LumiGap matches title and abstract meaning. This is independent of citations and OpenAlex relations.":
+    "LumiGap khớp nối ý nghĩa tiêu đề và tóm tắt. Khái niệm này độc lập với trích dẫn và liên kết OpenAlex.",
+  "papers, but none are currently indexed in LumiGap.": "bài báo, nhưng chưa có bài nào được đánh chỉ mục trong LumiGap.",
   "Platform quality rubric": "Thang điểm chất lượng nền tảng",
   "Publication": "Xuất bản",
   "Rating:": "Đánh giá:",
@@ -163,10 +163,10 @@ export const paperDetailIaViStrings: Record<keyof typeof paperDetailIaStrings, s
   "Structured knowledge extractions are not available for this work yet.":
     "Trích xuất tri thức cấu trúc chưa sẵn có cho tác phẩm này.",
   "Structured paper knowledge": "Tri thức cấu trúc bài báo",
-  "Synthesized reports referencing this work in PaperLens.":
-    "Báo cáo tổng hợp có tham chiếu tác phẩm này trong PaperLens.",
-  "These are works cited by this paper. Only papers already indexed in PaperLens can be opened here.":
-    "Đây là các tác phẩm được trích dẫn bởi bài báo này. Chỉ những bài đã đánh chỉ mục trong PaperLens mới mở được tại đây.",
+  "Synthesized reports referencing this work in LumiGap.":
+    "Báo cáo tổng hợp có tham chiếu tác phẩm này trong LumiGap.",
+  "These are works cited by this paper. Only papers already indexed in LumiGap can be opened here.":
+    "Đây là các tác phẩm được trích dẫn bởi bài báo này. Chỉ những bài đã đánh chỉ mục trong LumiGap mới mở được tại đây.",
   "This score is calculated deterministically from citation counts, field-weighted citation impact (FWCI), publication recency, and metadata field presence. It does not invoke a generative LLM.":
     "Điểm số này được tính toán định tính từ số lượt trích dẫn, ảnh hưởng trích dẫn trọng số ngành (FWCI), tính mới xuất bản và sự hiện diện siêu dữ liệu. Không dùng AI tạo sinh.",
   "This work cites": "Tác phẩm này trích dẫn",

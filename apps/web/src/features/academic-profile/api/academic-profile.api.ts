@@ -1,5 +1,9 @@
 import type {
   AcademicProfile,
+  AdminAcademicVerificationItem,
+  AcademicIdentityLink,
+  AcademicIdentityProvider,
+  AcademicIdentityVisibility,
   AcademicVerificationListResponse,
   LecturerDirectoryResponse,
   InstitutionalEmailVerificationStatus,
@@ -18,8 +22,41 @@ export const academicProfileApi = {
     const response = await api.patch(API_ROUTES.academicProfiles.me, input);
     return response.data.data;
   },
-  async requestVerification(): Promise<AcademicProfile> {
-    const response = await api.post(API_ROUTES.academicProfiles.verificationRequest, {});
+  async listAcademicIdentities(): Promise<AcademicIdentityLink[]> {
+    const response = await api.get(API_ROUTES.academicProfiles.academicIdentities);
+    return response.data.data;
+  },
+  async createAcademicIdentity(input: {
+    provider: AcademicIdentityProvider;
+    label?: string;
+    identifier?: string;
+    profileUrl?: string;
+    visibility: AcademicIdentityVisibility;
+  }): Promise<AcademicIdentityLink> {
+    const response = await api.post(API_ROUTES.academicProfiles.academicIdentities, input);
+    return response.data.data;
+  },
+  async updateAcademicIdentity(identityId: string, input: Partial<{
+    provider: AcademicIdentityProvider;
+    label: string;
+    identifier: string;
+    profileUrl: string;
+    visibility: AcademicIdentityVisibility;
+  }>): Promise<AcademicIdentityLink> {
+    const response = await api.patch(API_ROUTES.academicProfiles.academicIdentity(identityId), input);
+    return response.data.data;
+  },
+  async deleteAcademicIdentity(identityId: string): Promise<void> {
+    await api.delete(API_ROUTES.academicProfiles.academicIdentity(identityId));
+  },
+  async requestVerification(input: { type?: "POSITION" | "AFFILIATION"; evidenceType?: "INSTITUTIONAL_EMAIL" | "INSTITUTIONAL_PROFILE" | "ORCID" | "EXTERNAL_ACADEMIC_PROFILE" | "DOCUMENT" | "OTHER"; reference?: string; file?: File } = {}): Promise<AcademicProfile> {
+    const { file, ...request } = input;
+    const form = new FormData();
+    form.append("type", request.type || "POSITION");
+    form.append("evidenceType", request.evidenceType || "INSTITUTIONAL_EMAIL");
+    if (request.reference) form.append("reference", request.reference);
+    if (file) form.append("evidence", file);
+    const response = await api.post(API_ROUTES.academicProfiles.verificationRequest, form);
     return response.data.data;
   },
   async institutionalEmailStatus(): Promise<InstitutionalEmailVerificationStatus> {
@@ -52,11 +89,21 @@ export const academicProfileApi = {
     const response = await api.post(API_ROUTES.academicProfiles.cover, form);
     return response.data.data;
   },
+  async uploadAvatar(file: File): Promise<AcademicProfile> {
+    const form = new FormData();
+    form.append("avatar", file);
+    const response = await api.post(API_ROUTES.academicProfiles.avatar, form);
+    return response.data.data;
+  },
+  async removeAvatar(): Promise<AcademicProfile> {
+    const response = await api.delete(API_ROUTES.academicProfiles.avatar);
+    return response.data.data;
+  },
   async removeCover(): Promise<AcademicProfile> {
     const response = await api.delete(API_ROUTES.academicProfiles.cover);
     return response.data.data;
   },
-  async cover(url: string): Promise<Blob> {
+  async media(url: string): Promise<Blob> {
     const response = await api.get(url, { responseType: "blob" });
     return response.data;
   },
@@ -76,12 +123,16 @@ export const academicProfileApi = {
     const response = await api.get(API_ROUTES.admin.academicVerifications, { params: { status, page: 1, pageSize: 50 } });
     return { data: response.data.data, meta: response.data.meta };
   },
-  async decide(profileId: string, input: { decision: "approve"; method?: string; note?: string } | { decision: "reject"; reason: string; note?: string }): Promise<AcademicProfile> {
-    const response = await api.patch(`${API_ROUTES.admin.academicVerifications}/${profileId}`, input);
+  async decide(requestId: string, input: { decision: "approve"; method?: string; note?: string } | { decision: "reject"; reason: string; note?: string }): Promise<AcademicProfile> {
+    const response = await api.patch(`${API_ROUTES.admin.academicVerifications}/${requestId}`, input);
     return response.data.data;
   },
-  async verificationDetails(profileId: string): Promise<AcademicProfile> {
-    const response = await api.get(API_ROUTES.admin.academicVerification(profileId));
+  async verificationDetails(requestId: string): Promise<AdminAcademicVerificationItem> {
+    const response = await api.get(API_ROUTES.admin.academicVerification(requestId));
     return response.data.data;
+  },
+  async verificationEvidenceFile(requestId: string): Promise<Blob> {
+    const response = await api.get(API_ROUTES.academicProfiles.verificationEvidence(requestId), { responseType: "blob" });
+    return response.data;
   },
 };

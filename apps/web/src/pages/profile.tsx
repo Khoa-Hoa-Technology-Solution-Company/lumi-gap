@@ -12,6 +12,7 @@ import { avatars, getLevel, getLevelProgress, getNextLevelPoints, LEVEL_THRESHOL
 import { formatNumber } from "@/utils";
 import { CreditHistory } from "@/features/credits";
 import { AcademicProfileSection } from "@/features/academic-profile";
+import { isAdminSystemRole } from "@trend/shared-types";
 
 type SettingsSection = "profile" | "academic" | "credits" | "security" | "preferences" | "submit-paper" | "my-papers";
 
@@ -22,7 +23,7 @@ export function AccountSettingsPage() {
   const changePasswordMutation = useChangePassword();
 
   const user = userData?.user;
-  const isAdmin = user?.role === "admin";
+  const isAdmin = isAdminSystemRole(user?.systemRole);
 
   const [activeSection, setActiveSection] = useState<SettingsSection>("profile");
 

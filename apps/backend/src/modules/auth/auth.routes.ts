@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from "express";
+import rateLimit from "express-rate-limit";
 import { requireAuth } from "../../common/middleware/auth.js";
 import { validate } from "../../common/middleware/validate.js";
 import { authController } from "./auth.controller.js";
@@ -12,20 +13,31 @@ import {
   RankingsQuerySchema,
   UpdateAcademicProfileSchema,
   type RankingsQueryInput,
+  VerifyEmailSchema,
+  ResendEmailVerificationSchema,
+  ForgotPasswordSchema,
+  ResetPasswordSchema,
 } from "./dto/auth.schema.js";
-import passport from "./passport.js";
-import { env } from "../../config/env.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { parseDatabaseId, publicDatabaseId } from "../../infrastructure/database/database-id.js";
 
 export const authRouter: Router = Router();
 
-authRouter.post("/register", validate(RegisterSchema), authController.register);
-authRouter.post("/login", validate(LoginSchema), authController.login);
-authRouter.post("/refresh", validate(RefreshSchema), authController.refresh);
+const credentialLimiter = rateLimit({ windowMs: 15 * 60_000, limit: 10, standardHeaders: "draft-7", legacyHeaders: false });
+const tokenLimiter = rateLimit({ windowMs: 15 * 60_000, limit: 60, standardHeaders: "draft-7", legacyHeaders: false });
+const recoveryLimiter = rateLimit({ windowMs: 60 * 60_000, limit: 5, standardHeaders: "draft-7", legacyHeaders: false });
+
+authRouter.post("/register", credentialLimiter, validate(RegisterSchema), authController.register);
+authRouter.post("/login", credentialLimiter, validate(LoginSchema), authController.login);
+authRouter.post("/refresh", tokenLimiter, validate(RefreshSchema), authController.refresh);
 authRouter.post("/logout", validate(RefreshSchema), authController.logout);
+authRouter.post("/email/verify", tokenLimiter, validate(VerifyEmailSchema), authController.verifyEmail);
+authRouter.post("/email/resend", recoveryLimiter, validate(ResendEmailVerificationSchema), authController.resendEmailVerification);
+authRouter.post("/password/forgot", recoveryLimiter, validate(ForgotPasswordSchema), authController.forgotPassword);
+authRouter.post("/password/reset", recoveryLimiter, validate(ResetPasswordSchema), authController.resetPassword);
 authRouter.post("/oauth/exchange", validate(OAuthExchangeSchema), authController.exchangeOAuthCode);
 authRouter.get("/me", requireAuth, authController.me);
+authRouter.get("/status", requireAuth, authController.status);
 authRouter.patch("/me", requireAuth, validate(UpdateProfileSchema), authController.updateProfile);
 authRouter.patch(
   "/me/academic-profile",
@@ -35,16 +47,8 @@ authRouter.patch(
 );
 authRouter.post("/change-password", requireAuth, validate(ChangePasswordSchema), authController.changePassword);
 
-authRouter.get("/google", passport.authenticate("google", { scope: ["profile", "email"], session: false }));
-const primaryWebOrigin = env.CORS_ORIGIN.split(",")[0]?.trim() ?? env.CORS_ORIGIN;
-authRouter.get(
-  "/google/callback",
-  passport.authenticate("google", {
-    session: false,
-    failureRedirect: `${primaryWebOrigin}/login?error=GoogleLoginFailed`,
-  }),
-  authController.googleCallback
-);
+authRouter.get("/google", recoveryLimiter, authController.googleStart);
+authRouter.get("/google/callback", authController.googleCallback);
 
 /**
  * GET /auth/search?email=... — Search users by email for adding to projects.

@@ -3,8 +3,12 @@ import { academicProfileStrings } from "./academic-profile";
 import { academicForumStrings } from "./academic-forum";
 import { gapEvidenceWorkflowStrings } from "./gap-evidence-workflow";
 import { paperDetailIaStrings } from "./paper-detail-ia";
+import { authSecurityStrings } from "./auth-security";
+import { newUiStrings } from "./new-ui";
 
 export const id: Record<keyof typeof en, string> = {
+  ...newUiStrings,
+  ...authSecurityStrings,
   ...academicForumStrings,
   ...academicProfileStrings.id,
   ...gapEvidenceWorkflowStrings,
@@ -1030,7 +1034,7 @@ export const id: Record<keyof typeof en, string> = {
   "Paper translation failed. Please try again.": "Terjemahan makalah gagal. Silakan coba lagi.",
   "Paper Type": "Jenis Kertas",
   "Paper Types": "Jenis Kertas",
-  "PAPERLENS logo": "Logo KERTAS",
+  "LumiGap logo": "Logo LumiGap",
   "Papers": "Makalah",
   "PAPERS": "KERTAS",
   "papers (": "makalah (",

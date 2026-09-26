@@ -6,6 +6,7 @@ import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { parseDatabaseId, publicDatabaseId } from "../../infrastructure/database/database-id.js";
 import { pdfStorageService } from "../../infrastructure/pdf-storage.service.js";
 import { auditService } from "../audit/audit.service.js";
+import { capabilityService } from "../authorization/capability.service.js";
 import { aiReviewerClient } from "../papers/ai-reviewer.client.js";
 
 type UploadedPdf = { buffer: Buffer; originalname: string; size: number };
@@ -154,7 +155,8 @@ export const submissionService = {
 
   async assignReviewer(submissionInput: string, input: { reviewerId: string; dueAt?: Date; enforceInstitutionConflict?: boolean }, actorInput: string) {
     const actor = await resolveUser(actorInput); const submission = await getSubmissionOrThrow(submissionInput); const reviewer = await resolveUser(input.reviewerId);
-    if (!["reviewer", "moderator", "admin"].includes(reviewer.role) && !["researcher", "lecturer"].includes(reviewer.academicProfileType ?? "")) throw AppError.badRequest("Reviewer must be an active user with a review-capable role or profile");
+    const reviewerCapabilities = await capabilityService.list(reviewer.id);
+    if (!reviewerCapabilities.includes("STRUCTURED_REVIEW")) throw AppError.badRequest("Reviewer must have the STRUCTURED_REVIEW capability");
     const prisma = getPrisma(); const [selfOrAuthor, declared, authorLinks] = await Promise.all([prisma.submissionAuthor.findUnique({ where: { submissionId_userId: { submissionId: submission.id, userId: reviewer.id } } }), prisma.submissionDeclaredConflict.findUnique({ where: { submissionId_userId: { submissionId: submission.id, userId: reviewer.id } } }), prisma.submissionAuthor.findMany({ where: { submissionId: submission.id }, select: { userId: true } })]);
     let sameInstitution = false; if (input.enforceInstitutionConflict !== false && reviewer.institution?.trim()) { const authors = await prisma.user.findMany({ where: { id: { in: authorLinks.map((row) => row.userId) } }, select: { institution: true } }); const value = reviewer.institution.trim().toLocaleLowerCase(); sameInstitution = authors.some((row) => row.institution?.trim().toLocaleLowerCase() === value); }
     if (selfOrAuthor || declared || sameInstitution) throw AppError.conflict("Reviewer assignment conflicts with the submission", { selfOrAuthor: Boolean(selfOrAuthor), declared: Boolean(declared), sameInstitution });

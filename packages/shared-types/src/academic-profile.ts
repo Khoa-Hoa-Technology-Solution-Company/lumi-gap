@@ -1,8 +1,33 @@
 import type { ISODateString } from "./common.js";
-import type { AcademicProfileType } from "./user.js";
+import type { AcademicProfileType, PrimaryPosition, VerificationStatus } from "./user.js";
 
 export type AcademicVerificationStatus = "SELF_DECLARED" | "PENDING" | "VERIFIED" | "REJECTED";
 export type AcademicProfileVisibility = "PUBLIC" | "MEMBERS_ONLY" | "PRIVATE";
+export type ProfileFieldVisibility = "PUBLIC" | "REGISTERED_USERS" | "PRIVATE";
+export type AcademicPositionCategory = "STUDENT" | "LECTURER" | "RESEARCH_STAFF" | "UNCLASSIFIED";
+export type AcademicPositionSource = "PREDEFINED" | "CUSTOM";
+export const ACADEMIC_POSITION_OPTIONS = [
+  { title: "Student", category: "STUDENT" },
+  { title: "Undergraduate Student", category: "STUDENT" },
+  { title: "Master's Student", category: "STUDENT" },
+  { title: "PhD Student", category: "STUDENT" },
+  { title: "PhD Candidate", category: "STUDENT" },
+  { title: "Lecturer", category: "LECTURER" },
+  { title: "Senior Lecturer", category: "LECTURER" },
+  { title: "Faculty Member", category: "LECTURER" },
+  { title: "Professor", category: "LECTURER" },
+  { title: "Research Assistant", category: "RESEARCH_STAFF" },
+  { title: "Research Associate", category: "RESEARCH_STAFF" },
+  { title: "Research Scientist", category: "RESEARCH_STAFF" },
+  { title: "Research Staff", category: "RESEARCH_STAFF" },
+  { title: "Postdoctoral Researcher", category: "RESEARCH_STAFF" },
+  { title: "Independent Researcher", category: "UNCLASSIFIED" },
+] as const satisfies ReadonlyArray<{ title: string; category: AcademicPositionCategory }>;
+
+export function classifyAcademicPosition(title: string): { category: AcademicPositionCategory; source: AcademicPositionSource } {
+  const known = ACADEMIC_POSITION_OPTIONS.find((option) => option.title.toLocaleLowerCase() === title.trim().toLocaleLowerCase());
+  return known ? { category: known.category, source: "PREDEFINED" } : { category: "UNCLASSIFIED", source: "CUSTOM" };
+}
 export type AcademicTitle =
   | "Lecturer"
   | "Senior Lecturer"
@@ -27,13 +52,60 @@ export type AcademicReviewType =
   | "EXPERIMENTAL_RESULTS" | "RESEARCH_PAPER" | "SOFTWARE_RESEARCH_PROJECT";
 
 export interface AcademicAffiliation {
+  id?: string;
   institutionName?: string;
   rorId?: string;
   department?: string;
   position?: string;
+  positionTitle?: string;
+  positionCategory?: AcademicPositionCategory;
+  positionSource?: AcademicPositionSource;
+  affiliationVerificationStatus?: VerificationStatus;
+  positionVerificationStatus?: VerificationStatus;
   startYear?: number;
+  startDate?: ISODateString;
+  endDate?: ISODateString;
+  isCurrent?: boolean;
+  isPrimary?: boolean;
   institutionalEmail?: string;
   institutionalEmailVerifiedAt?: ISODateString;
+}
+
+export interface AcademicProfilePrivacy {
+  orcid: ProfileFieldVisibility;
+  researchInterests: ProfileFieldVisibility;
+  expertise: ProfileFieldVisibility;
+}
+
+export type AcademicVerificationRequestType = "POSITION" | "AFFILIATION";
+export type AcademicVerificationEvidenceType = "INSTITUTIONAL_EMAIL" | "INSTITUTIONAL_PROFILE" | "ORCID" | "EXTERNAL_ACADEMIC_PROFILE" | "DOCUMENT" | "OTHER";
+export interface AcademicVerificationRequest {
+  id: string;
+  type: AcademicVerificationRequestType;
+  targetValue?: string;
+  evidenceType: AcademicVerificationEvidenceType;
+  reference?: string;
+  status: VerificationStatus;
+  submittedAt: ISODateString;
+  reviewedAt?: ISODateString;
+  rejectionReason?: string;
+  metadata?: Record<string, unknown>;
+  evidenceFileName?: string;
+  evidenceMimeType?: string;
+  evidenceSizeBytes?: number;
+}
+
+export interface AdminAcademicVerificationItem {
+  profile: AcademicProfile;
+  request: AcademicVerificationRequest;
+  history: AcademicVerificationRequest[];
+}
+
+export interface AcademicProfileHistoryEntry {
+  id: string;
+  action: string;
+  summary: string;
+  createdAt: ISODateString;
 }
 
 export type PublicAcademicAffiliation = Omit<
@@ -49,6 +121,24 @@ export interface AcademicExternalIdentity {
   source: ExternalIdentitySource;
   linkedAt?: ISODateString;
   verifiedAt?: ISODateString;
+}
+
+export type AcademicIdentityProvider = "ORCID" | "OPENALEX" | "GOOGLE_SCHOLAR" | "SEMANTIC_SCHOLAR" | "OTHER";
+export type AcademicIdentityStatus = "SELF_DECLARED" | "CONNECTED" | "LINKED" | "INVALID";
+export type AcademicIdentityConnectionMethod = "MANUAL" | "OAUTH" | "SYSTEM" | "ADMIN";
+export type AcademicIdentityVisibility = "PUBLIC" | "REGISTERED_USERS" | "PRIVATE";
+
+export interface AcademicIdentityLink {
+  id: string;
+  provider: AcademicIdentityProvider;
+  label?: string;
+  identifier?: string;
+  profileUrl?: string;
+  connectionMethod: AcademicIdentityConnectionMethod;
+  status: AcademicIdentityStatus;
+  visibility: AcademicIdentityVisibility;
+  createdAt: ISODateString;
+  updatedAt: ISODateString;
 }
 
 export interface AcademicAvailability<T extends string> {
@@ -131,6 +221,10 @@ export interface AcademicProfile {
   points: number;
   publicHandle?: string;
   academicType: AcademicProfileType;
+  primaryPosition?: PrimaryPosition;
+  positionTitle?: string;
+  positionCategory: AcademicPositionCategory;
+  positionSource: AcademicPositionSource;
   displayName: string;
   avatarUrl?: string;
   coverUrl?: string;
@@ -141,6 +235,7 @@ export interface AcademicProfile {
   bio?: string;
   academicTitle?: AcademicTitle;
   affiliation: AcademicAffiliation;
+  affiliationHistory: AcademicAffiliation[];
   /** @deprecated Use affiliation.institutionName. */
   institution?: string;
   /** @deprecated Use affiliation.department. */
@@ -152,19 +247,30 @@ export interface AcademicProfile {
   skills: string[];
   researchKeywords: string[];
   externalIdentities: AcademicExternalIdentity[];
+  academicIdentityLinks: AcademicIdentityLink[];
   featuredWorks: AcademicFeaturedWork[];
   supportAvailability: AcademicAvailability<ResearchSupportType>;
   reviewAvailability: AcademicAvailability<AcademicReviewType>;
   verificationStatus: AcademicVerificationStatus;
+  verificationStatuses?: {
+    identity: VerificationStatus;
+    email: VerificationStatus;
+    affiliation: VerificationStatus;
+    position: VerificationStatus;
+    orcid: VerificationStatus;
+  };
   verification: AcademicVerification;
   verificationEvidence: AcademicVerificationEvidence[];
+  verificationRequests: AcademicVerificationRequest[];
+  profileHistory: AcademicProfileHistoryEntry[];
+  privacy: AcademicProfilePrivacy;
   createdAt: ISODateString;
   updatedAt: ISODateString;
 }
 
 export interface PublicAcademicProfile extends Omit<
   AcademicProfile,
-  "id" | "institutionalEmail" | "verification" | "verificationEvidence" | "affiliation" | "reviewAvailability"
+  "id" | "institutionalEmail" | "verification" | "verificationEvidence" | "verificationRequests" | "profileHistory" | "privacy" | "affiliation" | "affiliationHistory" | "reviewAvailability"
 > {
   affiliation: PublicAcademicAffiliation;
   reviewAvailability: Omit<
@@ -187,11 +293,15 @@ export interface CompactAcademicProfile {
 }
 
 export interface UpdateAcademicProfileDetailsRequest {
+  primaryPosition?: PrimaryPosition;
+  positionTitle?: string;
+  /** @deprecated Use primaryPosition. Kept only for old clients during migration. */
   academicType?: AcademicProfileType;
   displayName?: string;
   headline?: string;
   biography?: string;
   profileVisibility?: AcademicProfileVisibility;
+  privacy?: Partial<AcademicProfilePrivacy>;
   academicTitle?: AcademicTitle | null;
   affiliation?: {
     institutionName?: string;
@@ -227,7 +337,7 @@ export interface UpdateAcademicProfileDetailsRequest {
 }
 
 export interface AcademicVerificationListResponse {
-  data: AcademicProfile[];
+  data: AdminAcademicVerificationItem[];
   meta: { page: number; pageSize: number; total: number; totalPages: number };
 }
 
