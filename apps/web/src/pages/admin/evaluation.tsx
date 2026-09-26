@@ -1,4 +1,4 @@
-import type { EvaluationCheck, EvaluationStatus } from "@trend/shared-types";
+import { isAdminSystemRole, type EvaluationCheck, type EvaluationStatus } from "@trend/shared-types";
 import { AlertTriangle, CheckCircle2, ClipboardCheck, Gauge, XCircle } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
@@ -12,7 +12,7 @@ import { formatNumber } from "@/utils";
 
 export function AdminEvaluationPage() {
   const { data: me, isLoading: isUserLoading } = useCurrentUser();
-  const isAdmin = me?.user?.role === "admin";
+  const isAdmin = isAdminSystemRole(me?.user?.systemRole);
   const { data, isLoading, isError } = useEvaluationSummary(isAdmin);
 
   if (isUserLoading || isLoading) {

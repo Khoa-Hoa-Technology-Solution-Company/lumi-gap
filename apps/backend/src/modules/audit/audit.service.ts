@@ -1,5 +1,6 @@
 import { logger } from "../../infrastructure/logger.js";
-import { AuditLogModel } from "./models/audit-log.model.js";
+import { parseDatabaseId } from "../../infrastructure/database/database-id.js";
+import { getPrisma } from "../../infrastructure/database/prisma.js";
 
 export interface AuditOptions {
   userId?: string;
@@ -15,12 +16,25 @@ export interface AuditOptions {
 export const auditService = {
   async log(actionName: string, opts: AuditOptions = {}): Promise<void> {
     try {
-      await AuditLogModel.create({
-        actionName,
-        userId: opts.userId,
-        targetTableName: opts.targetTableName,
-        targetRecordId: opts.targetRecordId,
-        detailsText: opts.details,
+      let userId: string | null = null;
+      if (opts.userId) {
+        const parsed = parseDatabaseId(opts.userId);
+        if (parsed) {
+          const user = await getPrisma().user.findUnique({
+            where: parsed.kind === "uuid" ? { id: parsed.value } : { legacyMongoId: parsed.value },
+            select: { id: true },
+          });
+          userId = user?.id ?? null;
+        }
+      }
+      await getPrisma().auditLog.create({
+        data: {
+          actionName,
+          userId,
+          targetTableName: opts.targetTableName,
+          targetRecordId: opts.targetRecordId,
+          details: opts.details === undefined ? undefined : opts.details as never,
+        },
       });
     } catch (err) {
       logger.warn({ err, actionName }, "audit log write failed (non-fatal)");

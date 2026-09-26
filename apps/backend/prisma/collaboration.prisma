@@ -1,0 +1,393 @@
+model Project {
+  id            String   @id @default(uuid()) @db.Uuid
+  legacyMongoId String?  @unique @map("legacy_mongo_id") @db.VarChar(24)
+  title         String   @db.VarChar(100)
+  description   String?
+  ownerId       String   @map("owner_id") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([ownerId])
+  @@map("projects")
+}
+
+model ProjectMember {
+  id        String   @id @default(uuid()) @db.Uuid
+  projectId String   @map("project_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  role      String   @default("member") @db.VarChar(24)
+  status    String   @default("active") @db.VarChar(24)
+  joinedAt  DateTime @default(now()) @map("joined_at") @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([projectId, userId])
+  @@index([userId, status])
+  @@map("project_members")
+}
+
+model ProjectPaper {
+  id        String   @id @default(uuid()) @db.Uuid
+  projectId String   @map("project_id") @db.Uuid
+  paperId   String   @map("paper_id") @db.Uuid
+  addedById String?  @map("added_by_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([projectId, paperId])
+  @@index([paperId])
+  @@map("project_papers")
+}
+
+model ProjectChatMessage {
+  id                  String    @id @default(uuid()) @db.Uuid
+  legacyMongoId       String?   @unique @map("legacy_mongo_id") @db.VarChar(24)
+  projectId           String    @map("project_id") @db.Uuid
+  userId              String    @map("user_id") @db.Uuid
+  scope               String    @default("private") @db.VarChar(16)
+  role                String    @db.VarChar(16)
+  content             String
+  creditTransactionId String?   @map("credit_transaction_id") @db.Uuid
+  creditCost          Int?      @map("credit_cost")
+  isPinned            Boolean   @default(false) @map("is_pinned")
+  pinnedAt            DateTime? @map("pinned_at") @db.Timestamptz(6)
+  pinnedById          String?   @map("pinned_by_id") @db.Uuid
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([projectId, userId, createdAt])
+  @@index([projectId, scope, createdAt])
+  @@map("project_chat_messages")
+}
+
+model ProjectChatCitation {
+  messageId String @map("message_id") @db.Uuid
+  paperId   String @map("paper_id") @db.Uuid
+  position  Int
+
+  @@id([messageId, paperId])
+  @@index([paperId])
+  @@map("project_chat_citations")
+}
+
+model ProjectTeamMessage {
+  id            String    @id @default(uuid()) @db.Uuid
+  legacyMongoId String?   @unique @map("legacy_mongo_id") @db.VarChar(24)
+  projectId     String    @map("project_id") @db.Uuid
+  senderId      String    @map("sender_id") @db.Uuid
+  content       String
+  isDeleted     Boolean   @default(false) @map("is_deleted")
+  deletedAt     DateTime? @map("deleted_at") @db.Timestamptz(6)
+  deletedById   String?   @map("deleted_by_id") @db.Uuid
+  deleteReason  String?   @map("delete_reason")
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([projectId, createdAt])
+  @@index([projectId, isDeleted, createdAt])
+  @@index([senderId])
+  @@map("project_team_messages")
+}
+
+model ProjectTeamMessageRead {
+  messageId String   @map("message_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  readAt    DateTime @default(now()) @map("read_at") @db.Timestamptz(6)
+
+  @@id([messageId, userId])
+  @@index([userId])
+  @@map("project_team_message_reads")
+}
+
+model ProjectContributionProposal {
+  id                       String    @id @default(uuid()) @db.Uuid
+  legacyMongoId            String?   @unique @map("legacy_mongo_id") @db.VarChar(24)
+  projectId                String    @map("project_id") @db.Uuid
+  contributorId            String    @map("contributor_id") @db.Uuid
+  roles                    String[]  @default([])
+  description              String
+  evidence                 String?
+  visibility               String    @default("PUBLIC") @db.VarChar(16)
+  status                   String    @default("PENDING_CONFIRMATION") @db.VarChar(32)
+  confirmationRequiredFrom String    @map("confirmation_required_from") @db.VarChar(16)
+  proposedById             String    @map("proposed_by_id") @db.Uuid
+  confirmedById            String?   @map("confirmed_by_id") @db.Uuid
+  confirmedAt              DateTime? @map("confirmed_at") @db.Timestamptz(6)
+  rejectedById             String?   @map("rejected_by_id") @db.Uuid
+  rejectedAt               DateTime? @map("rejected_at") @db.Timestamptz(6)
+  rejectionReason          String?   @map("rejection_reason")
+  createdAt                DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([projectId, createdAt])
+  @@index([contributorId, status])
+  @@map("project_contribution_proposals")
+}
+
+model ProjectContributionHistory {
+  id         String   @id @default(uuid()) @db.Uuid
+  proposalId String   @map("proposal_id") @db.Uuid
+  action     String   @db.VarChar(24)
+  actorId    String   @map("actor_id") @db.Uuid
+  note       String?
+  createdAt  DateTime @map("created_at") @db.Timestamptz(6)
+
+  @@index([proposalId, createdAt])
+  @@map("project_contribution_history")
+}
+
+model Community {
+  id             String                   @id @default(uuid()) @db.Uuid
+  legacyMongoId  String?                  @unique @map("legacy_mongo_id") @db.VarChar(24)
+  name           String                   @db.VarChar(120)
+  slug           String                   @unique @db.VarChar(120)
+  description    String                   @default("")
+  researchTopics String[]                 @default([]) @map("research_topics")
+  visibility     String                   @default("public") @db.VarChar(16)
+  rules          String[]                 @default([])
+  ownerId        String                   @map("owner_id") @db.Uuid
+  memberCount    Int                      @default(0) @map("member_count")
+  searchDocument Unsupported("tsvector")? @map("search_document")
+  createdAt      DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([visibility])
+  @@index([ownerId])
+  @@map("communities")
+}
+
+model CommunityMembership {
+  id            String   @id @default(uuid()) @db.Uuid
+  legacyMongoId String?  @unique @map("legacy_mongo_id") @db.VarChar(24)
+  communityId   String   @map("community_id") @db.Uuid
+  userId        String   @map("user_id") @db.Uuid
+  role          String   @default("member") @db.VarChar(16)
+  status        String   @default("active") @db.VarChar(16)
+  joinedAt      DateTime @default(now()) @map("joined_at") @db.Timestamptz(6)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([communityId, userId])
+  @@index([communityId, status, role])
+  @@index([userId])
+  @@map("community_memberships")
+}
+
+model ForumPost {
+  id                  String   @id @default(uuid()) @db.Uuid
+  legacyMongoId       String?  @unique @map("legacy_mongo_id") @db.VarChar(24)
+  authorId            String   @map("author_id") @db.Uuid
+  communityId         String?  @map("community_id") @db.Uuid
+  researchGapId       String?  @map("research_gap_id") @db.Uuid
+  linkedPaperId       String?  @map("linked_paper_id") @db.Uuid
+  linkedResearchGapId String?  @map("linked_research_gap_id") @db.Uuid
+  linkedProjectId     String?  @map("linked_project_id") @db.Uuid
+  type                String   @default("discussion") @db.VarChar(16)
+  title               String   @db.VarChar(240)
+  body                String
+  tags                String[] @default([])
+  status              String   @default("active") @db.VarChar(16)
+  acceptedCommentId   String?  @map("accepted_comment_id") @db.Uuid
+  score               Int      @default(0)
+  voteScore           Int      @default(0) @map("vote_score")
+  commentCount        Int      @default(0) @map("comment_count")
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([communityId, status, createdAt])
+  @@index([researchGapId, status, createdAt])
+  @@index([type, status, createdAt])
+  @@index([tags], type: Gin)
+  @@map("forum_posts")
+}
+
+model ForumPostPaper {
+  postId   String @map("post_id") @db.Uuid
+  paperId  String @map("paper_id") @db.Uuid
+  position Int
+
+  @@id([postId, paperId])
+  @@index([paperId])
+  @@map("forum_post_papers")
+}
+
+model ForumComment {
+  id              String   @id @default(uuid()) @db.Uuid
+  legacyMongoId   String?  @unique @map("legacy_mongo_id") @db.VarChar(24)
+  postId          String   @map("post_id") @db.Uuid
+  authorId        String   @map("author_id") @db.Uuid
+  parentCommentId String?  @map("parent_comment_id") @db.Uuid
+  body            String
+  status          String   @default("active") @db.VarChar(16)
+  score           Int      @default(0)
+  voteScore       Int      @default(0) @map("vote_score")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([postId, status, createdAt])
+  @@index([authorId])
+  @@map("forum_comments")
+}
+
+model ForumReference {
+  id        String  @id @default(uuid()) @db.Uuid
+  postId    String? @map("post_id") @db.Uuid
+  commentId String? @map("comment_id") @db.Uuid
+  paperId   String? @map("paper_id") @db.Uuid
+  doi       String?
+  url       String?
+  title     String?
+  verified  Boolean @default(false)
+  position  Int     @default(0)
+
+  @@index([postId, position])
+  @@index([commentId, position])
+  @@map("forum_references")
+}
+
+model ForumVote {
+  id            String   @id @default(uuid()) @db.Uuid
+  legacyMongoId String?  @unique @map("legacy_mongo_id") @db.VarChar(24)
+  postId        String?  @map("post_id") @db.Uuid
+  commentId     String?  @map("comment_id") @db.Uuid
+  userId        String   @map("user_id") @db.Uuid
+  value         Int
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([postId])
+  @@index([commentId])
+  @@index([userId])
+  @@map("forum_votes")
+}
+
+model ContentReport {
+  id             String    @id @default(uuid()) @db.Uuid
+  legacyMongoId  String?   @unique @map("legacy_mongo_id") @db.VarChar(24)
+  reporterId     String    @map("reporter_id") @db.Uuid
+  postId         String?   @map("post_id") @db.Uuid
+  commentId      String?   @map("comment_id") @db.Uuid
+  communityId    String?   @map("community_id") @db.Uuid
+  reason         String    @db.VarChar(32)
+  description    String?
+  status         String    @default("open") @db.VarChar(16)
+  reviewedById   String?   @map("reviewed_by_id") @db.Uuid
+  reviewedAt     DateTime? @map("reviewed_at") @db.Timestamptz(6)
+  moderationNote String?   @map("moderation_note")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([communityId, status, createdAt])
+  @@index([reporterId, status])
+  @@map("forum_content_reports")
+}
+
+model RecruitmentOpening {
+  id            String    @id @default(uuid()) @db.Uuid
+  legacyMongoId String?   @unique @map("legacy_mongo_id") @db.VarChar(24)
+  projectId     String    @map("project_id") @db.Uuid
+  createdById   String    @map("created_by_id") @db.Uuid
+  title         String    @db.VarChar(180)
+  description   String
+  requirements  String[]  @default([])
+  capacity      Int       @default(1)
+  acceptedCount Int       @default(0) @map("accepted_count")
+  status        String    @default("open") @db.VarChar(16)
+  closesAt      DateTime? @map("closes_at") @db.Timestamptz(6)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([projectId, status, createdAt])
+  @@map("recruitment_openings")
+}
+
+model RecruitmentApplication {
+  id            String    @id @default(uuid()) @db.Uuid
+  legacyMongoId String?   @unique @map("legacy_mongo_id") @db.VarChar(24)
+  openingId     String    @map("opening_id") @db.Uuid
+  projectId     String    @map("project_id") @db.Uuid
+  applicantId   String    @map("applicant_id") @db.Uuid
+  coverLetter   String    @map("cover_letter")
+  skills        String[]  @default([])
+  status        String    @default("submitted") @db.VarChar(24)
+  decidedById   String?   @map("decided_by_id") @db.Uuid
+  decidedAt     DateTime? @map("decided_at") @db.Timestamptz(6)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([openingId, applicantId])
+  @@index([openingId, status, createdAt])
+  @@index([projectId])
+  @@map("recruitment_applications")
+}
+
+model DraftWorkspace {
+  id            String   @id @default(uuid()) @db.Uuid
+  legacyMongoId String?  @unique @map("legacy_mongo_id") @db.VarChar(24)
+  projectId     String   @unique @map("project_id") @db.Uuid
+  name          String   @db.VarChar(160)
+  createdById   String   @map("created_by_id") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("draft_workspaces")
+}
+
+model DraftWorkspaceMember {
+  workspaceId String @map("workspace_id") @db.Uuid
+  userId      String @map("user_id") @db.Uuid
+
+  @@id([workspaceId, userId])
+  @@index([userId])
+  @@map("draft_workspace_members")
+}
+
+model WorkspaceSection {
+  id            String   @id @default(uuid()) @db.Uuid
+  legacyMongoId String?  @unique @map("legacy_mongo_id") @db.VarChar(24)
+  workspaceId   String   @map("workspace_id") @db.Uuid
+  title         String   @db.VarChar(240)
+  content       String   @default("")
+  order         Int
+  version       Int      @default(1)
+  createdById   String   @map("created_by_id") @db.Uuid
+  updatedById   String   @map("updated_by_id") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, order, createdAt])
+  @@map("workspace_sections")
+}
+
+model SectionRevision {
+  id            String   @id @default(uuid()) @db.Uuid
+  legacyMongoId String?  @unique @map("legacy_mongo_id") @db.VarChar(24)
+  workspaceId   String   @map("workspace_id") @db.Uuid
+  sectionId     String   @map("section_id") @db.Uuid
+  version       Int
+  title         String   @db.VarChar(240)
+  content       String
+  order         Int
+  changedById   String   @map("changed_by_id") @db.Uuid
+  changeSummary String?  @map("change_summary")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([sectionId, version])
+  @@index([workspaceId])
+  @@map("section_revisions")
+}
+
+model WorkspaceComment {
+  id             String    @id @default(uuid()) @db.Uuid
+  legacyMongoId  String?   @unique @map("legacy_mongo_id") @db.VarChar(24)
+  workspaceId    String    @map("workspace_id") @db.Uuid
+  sectionId      String    @map("section_id") @db.Uuid
+  authorId       String    @map("author_id") @db.Uuid
+  body           String
+  sectionVersion Int       @map("section_version")
+  status         String    @default("open") @db.VarChar(16)
+  resolvedById   String?   @map("resolved_by_id") @db.Uuid
+  resolvedAt     DateTime? @map("resolved_at") @db.Timestamptz(6)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([workspaceId, sectionId, createdAt])
+  @@map("workspace_comments")
+}

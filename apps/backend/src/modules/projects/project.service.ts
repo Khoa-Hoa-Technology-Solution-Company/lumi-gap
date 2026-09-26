@@ -1,252 +1,27 @@
-import { ProjectModel, type ProjectDoc } from "./models/project.model.js";
-import type { CreateProjectRequest, UpdateProjectRequest, AddProjectMemberRequest } from "@trend/shared-types";
+import type { AddProjectMemberRequest, CreateProjectRequest, UpdateProjectRequest } from "@trend/shared-types";
 import { AppError } from "../../common/exceptions/app-error.js";
-import mongoose from "mongoose";
-import { PaperModel } from "../papers/models/paper.model.js";
-import {
-  assertProjectHasPapers,
-  canAccessProject,
-  getProjectPaperIds,
-  type ProjectAiFeature,
-} from "./project-scope.js";
+import { parseDatabaseId, publicDatabaseId } from "../../infrastructure/database/database-id.js";
+import { getPrisma } from "../../infrastructure/database/prisma.js";
+import type { ProjectAiFeature } from "./project-scope.js";
+
+function whereId(value: string): { id: string } | { legacyMongoId: string } { const parsed = parseDatabaseId(value); if (!parsed) throw AppError.badRequest("Invalid identifier"); return parsed.kind === "uuid" ? { id: parsed.value } : { legacyMongoId: parsed.value }; }
+async function uid(value: string) { const row = await getPrisma().user.findUnique({ where: whereId(value), select: { id: true } }); if (!row) throw AppError.notFound("User not found"); return row.id; }
+async function pid(value: string) { const row = await getPrisma().paper.findUnique({ where: whereId(value), select: { id: true, dataStatus: true } }); if (!row || row.dataStatus !== "active") throw AppError.notFound("Paper not found"); return row.id; }
+async function project(value: string) { const row = await getPrisma().project.findUnique({ where: whereId(value) }); if (!row) throw AppError.notFound("Project not found"); return row; }
+const present = <T extends { id: string; legacyMongoId?: string | null }>(row: T) => ({ ...row, id: publicDatabaseId(row), _id: publicDatabaseId(row) });
+async function access(row: Awaited<ReturnType<typeof project>>, actorId: string) { const actor = await uid(actorId); const membership = await getPrisma().projectMember.findUnique({ where: { projectId_userId: { projectId: row.id, userId: actor } } }); return { actor, allowed: row.ownerId === actor || membership?.status === "active", owner: row.ownerId === actor || membership?.role === "owner" }; }
+async function hydrate(row: Awaited<ReturnType<typeof project>>) { const prisma = getPrisma(); const [members, papers] = await Promise.all([prisma.projectMember.findMany({ where: { projectId: row.id, status: "active" } }), prisma.projectPaper.findMany({ where: { projectId: row.id }, orderBy: { createdAt: "asc" } })]); const [users, paperRows] = await Promise.all([prisma.user.findMany({ where: { id: { in: members.map((m) => m.userId) } }, select: { id: true, legacyMongoId: true, fullName: true, email: true, avatarUrl: true } }), prisma.paper.findMany({ where: { id: { in: papers.map((p) => p.paperId) } }, select: { id: true, legacyMongoId: true, title: true, publicationYear: true, abstractText: true } })]); const userMap = new Map(users.map((u) => [u.id, u])), paperMap = new Map(paperRows.map((p) => [p.id, p])); return { ...present(row), members: members.map((m) => ({ targetKind: "User", targetId: userMap.get(m.userId) ? present(userMap.get(m.userId)!) : m.userId, role: m.role })), papers: papers.map((p) => ({ targetKind: "Paper", targetId: paperMap.get(p.paperId) ? present(paperMap.get(p.paperId)!) : p.paperId })) }; }
 
 export class ProjectService {
-  /**
-   * Create a new project.
-   */
-  async createProject(data: CreateProjectRequest, ownerId: string): Promise<ProjectDoc> {
-    const project = new ProjectModel({
-      title: data.title,
-      description: data.description,
-      ownerId: new mongoose.Types.ObjectId(ownerId),
-      members: [
-        {
-          targetKind: "User",
-          targetId: new mongoose.Types.ObjectId(ownerId),
-          role: "owner",
-        },
-      ],
-      papers: [],
-    });
-
-    return await project.save();
-  }
-
-  /**
-   * Get all projects where the user is a member (or owner).
-   */
-  async getProjectsByUser(userId: string): Promise<ProjectDoc[]> {
-    return await ProjectModel.find({
-      $or: [
-        { ownerId: new mongoose.Types.ObjectId(userId) },
-        { "members.targetId": new mongoose.Types.ObjectId(userId) },
-      ],
-    })
-      .sort({ updatedAt: -1 })
-      .populate("members.targetId", "fullName email avatarUrl")
-      .populate("papers.targetId", "title publicationYear")
-      .lean();
-  }
-
-  /**
-   * Get a specific project by ID.
-   */
-  async getProjectById(projectId: string, userId: string, userRole?: string): Promise<ProjectDoc> {
-    const project = await ProjectModel.findById(projectId)
-      .populate("members.targetId", "fullName email avatarUrl")
-      .populate("papers.targetId", "title publicationYear authors abstractText")
-      .lean();
-    if (!project) {
-      throw AppError.notFound("Project not found");
-    }
-
-    if (!canAccessProject(project, userId) && userRole !== "admin") {
-      throw AppError.forbidden("Access denied to this project");
-    }
-
-    return project;
-  }
-
-  /**
-   * Resolve project paper ids behind one access check. AI features use this to
-   * ensure "project report/gaps/chat" are grounded in the selected workspace,
-   * not the global corpus.
-   */
-  async getProjectPaperIdsForUser(
-    projectId: string,
-    userId: string,
-    feature?: ProjectAiFeature,
-  ): Promise<string[]> {
-    const project = await ProjectModel.findById(projectId).select("ownerId members papers").lean();
-    if (!project) throw AppError.notFound("Project not found");
-    if (!canAccessProject(project, userId)) {
-      throw AppError.forbidden("Access denied to this project");
-    }
-
-    const paperIds = getProjectPaperIds(project);
-    if (feature) assertProjectHasPapers(paperIds, feature);
-    return paperIds;
-  }
-
-  /**
-   * Update project details.
-   */
-  async updateProject(
-    projectId: string,
-    data: UpdateProjectRequest,
-    userId: string,
-  ): Promise<ProjectDoc> {
-    const project = await ProjectModel.findById(projectId);
-    if (!project) throw AppError.notFound("Project not found");
-
-    const isOwner = project.ownerId.toString() === userId || project.members.some(
-      (m) => m.targetId.toString() === userId && m.role === "owner"
-    );
-
-    if (!isOwner) throw AppError.forbidden("Only owners can update the project details");
-
-    if (data.title !== undefined) project.title = data.title;
-    if (data.description !== undefined) project.description = data.description;
-
-    return await project.save();
-  }
-
-  /**
-   * Delete a project.
-   */
-  async deleteProject(projectId: string, userId: string): Promise<void> {
-    const project = await ProjectModel.findById(projectId);
-    if (!project) throw AppError.notFound("Project not found");
-
-    if (project.ownerId.toString() !== userId) {
-      throw AppError.forbidden("Only the primary owner can delete the project");
-    }
-
-    await ProjectModel.findByIdAndDelete(projectId);
-  }
-
-  /**
-   * Add a paper to the project.
-   */
-  async addPaperToProject(projectId: string, paperId: string, userId: string): Promise<ProjectDoc> {
-    if (!mongoose.Types.ObjectId.isValid(paperId)) {
-      throw AppError.badRequest("Invalid paper id");
-    }
-
-    const project = await ProjectModel.findById(projectId);
-    if (!project) throw AppError.notFound("Project not found");
-
-    const hasAccess = project.ownerId.toString() === userId || project.members.some(
-      (m) => m.targetId.toString() === userId
-    );
-
-    if (!hasAccess) throw AppError.forbidden("Only project members can modify papers");
-
-    const paperExists = await PaperModel.exists({ _id: paperId, dataStatus: "active" });
-    if (!paperExists) {
-      throw AppError.notFound("Paper not found");
-    }
-
-    const updated = await ProjectModel.findOneAndUpdate(
-      { _id: projectId, "papers.targetId": { $ne: new mongoose.Types.ObjectId(paperId) } },
-      { $push: { papers: { targetKind: "Paper", targetId: new mongoose.Types.ObjectId(paperId) } } },
-      { new: true }
-    );
-
-    if (!updated) {
-      throw AppError.badRequest("Paper already exists in the project");
-    }
-
-    return updated;
-  }
-
-  /**
-   * Remove a paper from the project.
-   */
-  async removePaperFromProject(projectId: string, paperId: string, userId: string): Promise<ProjectDoc> {
-    const project = await ProjectModel.findById(projectId);
-    if (!project) throw AppError.notFound("Project not found");
-
-    const hasAccess = project.ownerId.toString() === userId || project.members.some(
-      (m) => m.targetId.toString() === userId
-    );
-
-    if (!hasAccess) throw AppError.forbidden("Only project members can modify papers");
-
-    const updated = await ProjectModel.findByIdAndUpdate(
-      projectId,
-      { $pull: { papers: { targetId: new mongoose.Types.ObjectId(paperId) } } },
-      { new: true }
-    );
-
-    return updated!;
-  }
-
-  /**
-   * Add a member to the project.
-   */
-  async addMemberToProject(
-    projectId: string,
-    memberData: AddProjectMemberRequest,
-    userId: string,
-  ): Promise<ProjectDoc> {
-    const project = await ProjectModel.findById(projectId);
-    if (!project) throw AppError.notFound("Project not found");
-
-    const isOwner = project.ownerId.toString() === userId || project.members.some(
-      (m) => m.targetId.toString() === userId && m.role === "owner"
-    );
-
-    if (!isOwner) throw AppError.forbidden("Only owners can modify project members");
-
-    const updated = await ProjectModel.findOneAndUpdate(
-      { _id: projectId, "members.targetId": { $ne: new mongoose.Types.ObjectId(memberData.targetId) } },
-      { 
-        $push: { 
-          members: { 
-            targetKind: memberData.targetKind, 
-            targetId: new mongoose.Types.ObjectId(memberData.targetId), 
-            role: memberData.role 
-          } 
-        } 
-      },
-      { new: true }
-    );
-
-    if (!updated) {
-      throw AppError.badRequest("Member already exists in the project");
-    }
-
-    return updated;
-  }
-
-  /**
-   * Remove a member from the project.
-   */
-  async removeMemberFromProject(projectId: string, targetId: string, userId: string): Promise<ProjectDoc> {
-    const project = await ProjectModel.findById(projectId);
-    if (!project) throw AppError.notFound("Project not found");
-
-    if (project.ownerId.toString() === targetId) {
-      throw AppError.badRequest("Cannot remove the primary owner");
-    }
-
-    const isOwner = project.ownerId.toString() === userId || project.members.some(
-      (m) => m.targetId.toString() === userId && m.role === "owner"
-    );
-
-    // User can remove themselves, or owners can remove anyone
-    const isSelf = targetId === userId;
-    if (!isOwner && !isSelf) throw AppError.forbidden("Only owners can remove other members");
-
-    const updated = await ProjectModel.findByIdAndUpdate(
-      projectId,
-      { $pull: { members: { targetId: new mongoose.Types.ObjectId(targetId) } } },
-      { new: true }
-    );
-
-    return updated!;
-  }
+  async createProject(data: CreateProjectRequest, ownerId: string) { const owner = await uid(ownerId); const row = await getPrisma().$transaction(async (tx) => { const created = await tx.project.create({ data: { title: data.title, description: data.description, ownerId: owner } }); await tx.projectMember.create({ data: { projectId: created.id, userId: owner, role: "owner", status: "active" } }); return created; }); return hydrate(row); }
+  async getProjectsByUser(userId: string) { const actor = await uid(userId); const memberships = await getPrisma().projectMember.findMany({ where: { userId: actor, status: "active" }, select: { projectId: true } }); const rows = await getPrisma().project.findMany({ where: { OR: [{ ownerId: actor }, { id: { in: memberships.map((m) => m.projectId) } }] }, orderBy: { updatedAt: "desc" } }); return Promise.all(rows.map(hydrate)); }
+  async getProjectById(projectId: string, userId: string, userRole?: string) { const row = await project(projectId); const rights = await access(row, userId); if (!rights.allowed && userRole !== "admin") throw AppError.forbidden("Access denied to this project"); return hydrate(row); }
+  async getProjectPaperIdsForUser(projectId: string, userId: string, feature?: ProjectAiFeature) { const row = await project(projectId); const rights = await access(row, userId); if (!rights.allowed) throw AppError.forbidden("Access denied to this project"); const papers = await getPrisma().projectPaper.findMany({ where: { projectId: row.id }, orderBy: { createdAt: "asc" } }); if (feature && !papers.length) throw AppError.badRequest(`Add papers to the project before using ${feature}`); const publicRows = await getPrisma().paper.findMany({ where: { id: { in: papers.map((p) => p.paperId) } }, select: { id: true, legacyMongoId: true } }); const byId = new Map(publicRows.map((p) => [p.id, publicDatabaseId(p)])); return papers.map((p) => byId.get(p.paperId) ?? p.paperId); }
+  async updateProject(projectId: string, data: UpdateProjectRequest, userId: string) { const row = await project(projectId); if (!(await access(row, userId)).owner) throw AppError.forbidden("Only owners can update the project details"); return hydrate(await getPrisma().project.update({ where: { id: row.id }, data: { ...(data.title !== undefined ? { title: data.title } : {}), ...(data.description !== undefined ? { description: data.description } : {}) } })); }
+  async deleteProject(projectId: string, userId: string) { const row = await project(projectId); const actor = await uid(userId); if (row.ownerId !== actor) throw AppError.forbidden("Only the primary owner can delete the project"); await getPrisma().project.delete({ where: { id: row.id } }); }
+  async addPaperToProject(projectId: string, paperId: string, userId: string) { const row = await project(projectId); const rights = await access(row, userId); if (!rights.allowed) throw AppError.forbidden("Only project members can modify papers"); const paper = await pid(paperId); if (await getPrisma().projectPaper.findUnique({ where: { projectId_paperId: { projectId: row.id, paperId: paper } } })) throw AppError.badRequest("Paper already exists in the project"); await getPrisma().projectPaper.create({ data: { projectId: row.id, paperId: paper, addedById: rights.actor } }); return hydrate(row); }
+  async removePaperFromProject(projectId: string, paperId: string, userId: string) { const row = await project(projectId); const rights = await access(row, userId); if (!rights.allowed) throw AppError.forbidden("Only project members can modify papers"); const paper = await pid(paperId); await getPrisma().projectPaper.deleteMany({ where: { projectId: row.id, paperId: paper } }); return hydrate(row); }
+  async addMemberToProject(projectId: string, memberData: AddProjectMemberRequest, userId: string) { const row = await project(projectId); if (!(await access(row, userId)).owner) throw AppError.forbidden("Only owners can modify project members"); if (memberData.targetKind !== "User") throw AppError.badRequest("Only user members are supported"); const member = await uid(memberData.targetId); if (await getPrisma().projectMember.findUnique({ where: { projectId_userId: { projectId: row.id, userId: member } } })) throw AppError.badRequest("Member already exists in the project"); await getPrisma().projectMember.create({ data: { projectId: row.id, userId: member, role: memberData.role, status: "active" } }); return hydrate(row); }
+  async removeMemberFromProject(projectId: string, targetId: string, userId: string) { const row = await project(projectId); const [target, rights] = await Promise.all([uid(targetId), access(row, userId)]); if (row.ownerId === target) throw AppError.badRequest("Cannot remove the primary owner"); if (!rights.owner && target !== rights.actor) throw AppError.forbidden("Only owners can remove other members"); await getPrisma().projectMember.deleteMany({ where: { projectId: row.id, userId: target } }); return hydrate(row); }
 }
-
 export const projectService = new ProjectService();

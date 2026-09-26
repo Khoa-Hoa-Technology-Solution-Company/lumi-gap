@@ -1,0 +1,261 @@
+model Submission {
+  id                     String   @id @default(uuid()) @db.Uuid
+  legacyMongoId          String?  @unique @map("legacy_mongo_id") @db.VarChar(24)
+  projectId              String   @map("project_id") @db.Uuid
+  createdById            String   @map("created_by_id") @db.Uuid
+  title                  String   @db.VarChar(300)
+  abstractText           String?  @map("abstract_text")
+  submissionType         String?  @map("submission_type") @db.VarChar(40)
+  researchField          String?  @map("research_field") @db.VarChar(200)
+  researchGoal           String?  @map("research_goal")
+  researchQuestions      String[] @default([]) @map("research_questions")
+  claimedResearchGap     String?  @map("claimed_research_gap")
+  claimedContribution    String?  @map("claimed_contribution")
+  methodology            String?
+  scope                  String?
+  keywords               String[] @default([])
+  expectedReviewWorkload String?  @map("expected_review_workload") @db.VarChar(160)
+  status                 String   @default("submitted") @db.VarChar(32)
+  currentRevisionNumber  Int      @default(1) @map("current_revision_number")
+  currentRevisionId      String?  @map("current_revision_id") @db.Uuid
+  createdAt              DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([projectId, createdAt])
+  @@index([createdById])
+  @@index([status, submissionType, researchField, createdAt])
+  @@map("submissions")
+}
+
+model SubmissionAuthor {
+  submissionId String @map("submission_id") @db.Uuid
+  userId       String @map("user_id") @db.Uuid
+  position     Int
+
+  @@id([submissionId, userId])
+  @@unique([submissionId, position])
+  @@index([userId])
+  @@map("submission_authors")
+}
+
+model SubmissionDeclaredConflict {
+  submissionId String @map("submission_id") @db.Uuid
+  userId       String @map("user_id") @db.Uuid
+
+  @@id([submissionId, userId])
+  @@index([userId])
+  @@map("submission_declared_conflicts")
+}
+
+model SubmissionRevision {
+  id               String   @id @default(uuid()) @db.Uuid
+  legacyMongoId    String?  @unique @map("legacy_mongo_id") @db.VarChar(24)
+  submissionId     String   @map("submission_id") @db.Uuid
+  revisionNumber   Int      @map("revision_number")
+  uploadedById     String   @map("uploaded_by_id") @db.Uuid
+  responseToReview String?  @map("response_to_review")
+  storageUri       String   @map("storage_uri")
+  checksumSha256   String   @map("checksum_sha256") @db.Char(64)
+  sizeBytes        Int      @map("size_bytes")
+  originalFileName String   @map("original_file_name") @db.VarChar(255)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([submissionId, revisionNumber])
+  @@index([uploadedById])
+  @@map("submission_revisions")
+}
+
+model ReviewerAssignment {
+  id             String    @id @default(uuid()) @db.Uuid
+  legacyMongoId  String?   @unique @map("legacy_mongo_id") @db.VarChar(24)
+  submissionId   String    @map("submission_id") @db.Uuid
+  reviewerId     String    @map("reviewer_id") @db.Uuid
+  assignedById   String    @map("assigned_by_id") @db.Uuid
+  anonymousCode  String    @unique @map("anonymous_code")
+  status         String    @default("assigned") @db.VarChar(24)
+  decision       String?   @db.VarChar(24)
+  reviewText     String?   @map("review_text")
+  dueAt          DateTime? @map("due_at") @db.Timestamptz(6)
+  completedAt    DateTime? @map("completed_at") @db.Timestamptz(6)
+  conflictChecks Json      @default("{}") @map("conflict_checks")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([submissionId, reviewerId])
+  @@index([reviewerId, status, createdAt])
+  @@map("reviewer_assignments")
+}
+
+model AiPreReview {
+  id                     String    @id @default(uuid()) @db.Uuid
+  legacyMongoId          String?   @unique @map("legacy_mongo_id") @db.VarChar(24)
+  submissionId           String    @map("submission_id") @db.Uuid
+  requestedById          String    @map("requested_by_id") @db.Uuid
+  provider               String?   @db.VarChar(80)
+  model                  String?   @db.VarChar(160)
+  status                 String    @default("QUEUED") @db.VarChar(24)
+  summary                String?
+  goalAlignment          Json?     @map("goal_alignment")
+  rqCoverage             Json      @default("[]") @map("rq_coverage")
+  unsupportedClaims      Json      @default("[]") @map("unsupported_claims")
+  citationIssues         String[]  @default([]) @map("citation_issues")
+  contributionComparison String?   @map("contribution_comparison")
+  reviewFocusAreas       String[]  @default([]) @map("review_focus_areas")
+  limitations            String[]  @default([])
+  rawStructuredOutput    Json?     @map("raw_structured_output")
+  errorMessage           String?   @map("error_message")
+  completedAt            DateTime? @map("completed_at") @db.Timestamptz(6)
+  createdAt              DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([submissionId, createdAt])
+  @@index([submissionId, status])
+  @@map("ai_pre_reviews")
+}
+
+model ReviewConflict {
+  id            String    @id @default(uuid()) @db.Uuid
+  legacyMongoId String?   @unique @map("legacy_mongo_id") @db.VarChar(24)
+  submissionId  String    @map("submission_id") @db.Uuid
+  reviewerId    String    @map("reviewer_id") @db.Uuid
+  status        String    @db.VarChar(24)
+  reason        String?
+  detectedBy    String    @map("detected_by") @db.VarChar(16)
+  resolvedById  String?   @map("resolved_by_id") @db.Uuid
+  resolvedAt    DateTime? @map("resolved_at") @db.Timestamptz(6)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([submissionId, reviewerId])
+  @@map("review_conflicts")
+}
+
+model ReviewTemplate {
+  id             String   @id @default(uuid()) @db.Uuid
+  legacyMongoId  String?  @unique @map("legacy_mongo_id") @db.VarChar(24)
+  name           String   @db.VarChar(200)
+  description    String?
+  submissionType String?  @map("submission_type")
+  active         Boolean  @default(true)
+  version        Int      @default(1)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([submissionType, active])
+  @@map("review_templates")
+}
+
+model ReviewCriterion {
+  id            String   @id @default(uuid()) @db.Uuid
+  legacyMongoId String?  @unique @map("legacy_mongo_id") @db.VarChar(24)
+  templateId    String   @map("template_id") @db.Uuid
+  key           String   @db.VarChar(80)
+  label         String   @db.VarChar(160)
+  description   String?
+  weight        Float?
+  order         Int
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([templateId, key])
+  @@map("review_criteria")
+}
+
+model HumanReview {
+  id             String    @id @default(uuid()) @db.Uuid
+  legacyMongoId  String?   @unique @map("legacy_mongo_id") @db.VarChar(24)
+  assignmentId   String    @unique @map("assignment_id") @db.Uuid
+  reviewerId     String    @map("reviewer_id") @db.Uuid
+  submissionId   String    @map("submission_id") @db.Uuid
+  revisionId     String    @map("revision_id") @db.Uuid
+  templateId     String?   @map("template_id") @db.Uuid
+  status         String    @default("DRAFT") @db.VarChar(16)
+  overallComment String?   @map("overall_comment")
+  recommendation String?   @db.VarChar(24)
+  submittedAt    DateTime? @map("submitted_at") @db.Timestamptz(6)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([reviewerId, status])
+  @@index([submissionId])
+  @@map("human_reviews")
+}
+
+model ReviewResponse {
+  id            String   @id @default(uuid()) @db.Uuid
+  legacyMongoId String?  @unique @map("legacy_mongo_id") @db.VarChar(24)
+  reviewId      String   @map("review_id") @db.Uuid
+  criterionKey  String   @map("criterion_key") @db.VarChar(80)
+  comment       String
+  evidence      String?
+  rating        Int?
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([reviewId, criterionKey])
+  @@map("review_responses")
+}
+
+model ResearchContribution {
+  id                          String    @id @default(uuid()) @db.Uuid
+  legacyMongoId               String?   @unique @map("legacy_mongo_id") @db.VarChar(24)
+  contributorId               String    @map("contributor_id") @db.Uuid
+  projectId                   String?   @map("project_id") @db.Uuid
+  submissionId                String?   @map("submission_id") @db.Uuid
+  contributionType            String    @map("contribution_type") @db.VarChar(48)
+  description                 String?
+  evidence                    String?
+  provenance                  String    @db.VarChar(32)
+  verificationStatus          String    @map("verification_status") @db.VarChar(32)
+  visibility                  String    @default("PUBLIC") @db.VarChar(16)
+  verifiedById                String?   @map("verified_by_id") @db.Uuid
+  verifiedAt                  DateTime? @map("verified_at") @db.Timestamptz(6)
+  sourceReviewAssignmentId    String?   @unique @map("source_review_assignment_id") @db.Uuid
+  sourceProjectContributionId String?   @map("source_project_contribution_id") @db.Uuid
+  createdAt                   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([contributorId, createdAt])
+  @@index([projectId])
+  @@index([submissionId])
+  @@index([sourceProjectContributionId])
+  @@map("research_contributions")
+}
+
+model AiRun {
+  id                String    @id @default(uuid()) @db.Uuid
+  legacyMongoId     String?   @unique @map("legacy_mongo_id") @db.VarChar(24)
+  ownerId           String    @map("owner_id") @db.Uuid
+  projectId         String?   @map("project_id") @db.Uuid
+  workspaceId       String?   @map("workspace_id") @db.Uuid
+  jobType           String    @map("job_type") @db.VarChar(32)
+  prompt            String?
+  status            String    @default("queued") @db.VarChar(24)
+  attempts          Int       @default(0)
+  maxAttempts       Int       @default(3) @map("max_attempts")
+  queueJobId        String?   @map("queue_job_id")
+  costUsd           Decimal?  @map("cost_usd") @db.Decimal(18, 8)
+  latencyMs         Int?      @map("latency_ms")
+  resultSummary     String?   @map("result_summary")
+  errorCode         String?   @map("error_code") @db.VarChar(120)
+  errorMessage      String?   @map("error_message")
+  startedAt         DateTime? @map("started_at") @db.Timestamptz(6)
+  completedAt       DateTime? @map("completed_at") @db.Timestamptz(6)
+  cancelRequestedAt DateTime? @map("cancel_requested_at") @db.Timestamptz(6)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([ownerId, createdAt])
+  @@index([projectId, status, createdAt])
+  @@map("ai_runs")
+}
+
+model AiRunEvidence {
+  runId      String @map("run_id") @db.Uuid
+  evidenceId String @map("evidence_id") @db.Uuid
+  position   Int
+
+  @@id([runId, evidenceId])
+  @@map("ai_run_evidence")
+}

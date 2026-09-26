@@ -1,7 +1,9 @@
 import { env } from "../../config/env.js";
+import { Prisma } from "../../generated/prisma/client.js";
+import { vectorParameter } from "../../infrastructure/database/postgres-paper-search.js";
+import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { logger } from "../../infrastructure/logger.js";
 import { auditService } from "../audit/audit.service.js";
-import { PaperModel } from "../papers/models/paper.model.js";
 import { getEmbeddingProvider } from "./embedding.factory.js";
 import type { EmbeddingProvider } from "./embedding.provider.js";
 
@@ -66,8 +68,6 @@ export async function runEmbedding(job: RunEmbeddingJob = {}): Promise<Embedding
   // Only ACTIVE papers good enough for AI, that don't have a vector yet. The
   // `dataStatus: "active"` gate keeps unreviewed user submissions (draft/pending)
   // out of the embedding quota + semantic index until an admin approves them.
-  const filter = buildEmbeddingCandidateFilter(provider);
-
   let totalEmbedded = 0;
   let totalFailed = 0;
   let batches = 0;
@@ -85,12 +85,20 @@ export async function runEmbedding(job: RunEmbeddingJob = {}): Promise<Embedding
   );
 
   while (totalEmbedded + totalFailed < maxPapers) {
-    const candidates = await PaperModel.find(filter)
-      // Prioritize user-contributed/requested papers first (uploadedBy exists)
-      .sort({ uploadedBy: -1, citationCount: -1, publicationYear: -1 })
-      .select("_id title abstractText")
-      .limit(batchSize)
-      .lean();
+    const candidates = await getPrisma().$queryRaw<Array<{ id: string; title: string; abstractText: string | null }>>(Prisma.sql`
+      SELECT id, title, abstract_text AS "abstractText"
+      FROM papers
+      WHERE is_ai_analyzable = true
+        AND data_status = 'active'
+        AND (
+          embedding IS NULL
+          OR embedding_model IS DISTINCT FROM ${provider.modelName}
+          OR embedding_version IS DISTINCT FROM ${provider.modelVersion}
+          OR embedding_dimensions IS DISTINCT FROM ${provider.dimensions}
+        )
+      ORDER BY (uploaded_by_id IS NOT NULL) DESC, citation_count DESC, publication_year DESC
+      LIMIT ${batchSize}
+    `);
 
     if (candidates.length === 0) break;
     batches += 1;
@@ -127,13 +135,18 @@ export async function runEmbedding(job: RunEmbeddingJob = {}): Promise<Embedding
 
     const provenance = buildEmbeddingProvenance(provider);
     await Promise.all(
-      candidates.map((p, i) => {
-        const vec = vectors[i];
-        return PaperModel.updateOne(
-          { _id: p._id, ...filter },
-          { $set: { embedding: vec, ...provenance } },
-        );
-      }),
+      candidates.map((paper, index) => getPrisma().$executeRaw(Prisma.sql`
+        UPDATE papers
+        SET embedding = CAST(${vectorParameter(vectors[index]!)} AS vector),
+            embedding_model = ${provenance.embeddingModel},
+            embedding_version = ${provenance.embeddingVersion},
+            embedding_dimensions = ${provenance.embeddingDimensions},
+            embedding_updated_at = ${provenance.embeddingUpdatedAt},
+            updated_at = now()
+        WHERE id = CAST(${paper.id} AS uuid)
+          AND is_ai_analyzable = true
+          AND data_status = 'active'
+      `)),
     );
     totalEmbedded += candidates.length;
     logger.info({ batch: batches, embedded: totalEmbedded }, "embedding batch stored");

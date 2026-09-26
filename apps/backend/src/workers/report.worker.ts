@@ -1,11 +1,14 @@
 import { UnrecoverableError, Worker } from "bullmq";
-import { connectMongo, disconnectMongo } from "../infrastructure/db.js";
+import { enforcePostgresOnlyRuntime } from "../infrastructure/database/postgres-only-runtime.js";
+import { connectPostgres, disconnectPostgres } from "../infrastructure/database/prisma.js";
+import { getPrisma } from "../infrastructure/database/prisma.js";
 import { makeConnection, QUEUE_NAMES } from "../infrastructure/queue.js";
 import { logger } from "../infrastructure/logger.js";
 import { startWorkerHeartbeat } from "../infrastructure/worker-heartbeat.js";
-import { ReportModel } from "../modules/reports/models/report.model.js";
 import { markReportFailed, runRagPipeline, type ReportJob } from "../modules/reports/rag.service.js";
 import { PROMPT_VERSION } from "../modules/reports/report.prompt.js";
+
+enforcePostgresOnlyRuntime();
 
 /**
  * Standalone report worker — a SEPARATE Node process from the API.
@@ -27,7 +30,7 @@ const STUCK_QUEUED_MS = 30 * 60_000;
 const USER_FACING_FAILURE = "Report generation failed. Please try again later.";
 
 async function main() {
-  await connectMongo();
+  await connectPostgres();
   const stopHeartbeat = startWorkerHeartbeat({ workerName: "worker:report", queueName: QUEUE_NAMES.report });
 
   // Startup sweep: a hard-killed worker leaves reports frozen in "generating", and
@@ -35,21 +38,14 @@ async function main() {
   // Both keep counting against the user's pending-report quota until cleared, so fail
   // them cleanly. (Mirrors gaps.worker, which already sweeps orphaned queued jobs.)
   const now = Date.now();
-  const swept = await ReportModel.updateMany(
-    {
-      $or: [
-        { status: "generating", updatedAt: { $lt: new Date(now - STUCK_GENERATING_MS) } },
-        { status: "queued", updatedAt: { $lt: new Date(now - STUCK_QUEUED_MS) } },
-      ],
-    },
-    {
-      $set: {
-        status: "failed",
-        errorMessage: "Report generation was interrupted (worker restarted). Please try again.",
-      },
-    },
-  );
-  if (swept.modifiedCount > 0) logger.warn({ swept: swept.modifiedCount }, "swept stuck reports");
+  const swept = await getPrisma().report.updateMany({
+    where: { OR: [
+      { status: "generating", updatedAt: { lt: new Date(now - STUCK_GENERATING_MS) } },
+      { status: "queued", updatedAt: { lt: new Date(now - STUCK_QUEUED_MS) } },
+    ] },
+    data: { status: "failed", errorMessage: "Report generation was interrupted (worker restarted). Please try again." },
+  });
+  if (swept.count > 0) logger.warn({ swept: swept.count }, "swept stuck reports");
 
   const worker = new Worker(
     QUEUE_NAMES.report,
@@ -87,7 +83,7 @@ async function main() {
     logger.info({ signal }, "report worker shutting down");
     await stopHeartbeat();
     await worker.close();
-    await disconnectMongo();
+    await disconnectPostgres();
     process.exit(0);
   };
   process.on("SIGINT", () => void shutdown("SIGINT"));

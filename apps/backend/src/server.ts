@@ -1,8 +1,11 @@
 import { env } from "./config/env.js";
+import { enforcePostgresOnlyRuntime } from "./infrastructure/database/postgres-only-runtime.js";
 import { createApp } from "./app.js";
-import { connectMongo, disconnectMongo } from "./infrastructure/db.js";
+import { connectPostgres, disconnectPostgres } from "./infrastructure/database/prisma.js";
 import { connectRedis, disconnectRedis } from "./infrastructure/redis.js";
 import { logger } from "./infrastructure/logger.js";
+
+enforcePostgresOnlyRuntime();
 
 function printReadyBanner(port: number) {
   const url = `http://localhost:${port}`;
@@ -26,7 +29,8 @@ function printReadyBanner(port: number) {
 }
 
 async function main() {
-  await connectMongo();
+  await connectPostgres();
+  logger.info("postgres connected");
   await connectRedis();
 
   const app = createApp();
@@ -38,7 +42,8 @@ async function main() {
   const shutdown = async (signal: string) => {
     logger.info({ signal }, "shutting down");
     server.close();
-    await disconnectMongo();
+    await disconnectPostgres();
+    logger.info("postgres disconnected");
     await disconnectRedis();
     process.exit(0);
   };

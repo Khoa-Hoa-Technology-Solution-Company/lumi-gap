@@ -1,42 +1,38 @@
-import mongoose from "mongoose";
 import { AppError } from "../../../common/exceptions/app-error.js";
-import { OpenAlexIngestCampaignModel } from "../models/openalex-ingest-campaign.model.js";
-import { OpenAlexIngestPageAttemptModel } from "../models/openalex-ingest-page-attempt.model.js";
-import { OpenAlexIngestPartitionModel } from "../models/openalex-ingest-partition.model.js";
+import { parseDatabaseId, publicDatabaseId } from "../../../infrastructure/database/database-id.js";
+import { getPrisma } from "../../../infrastructure/database/prisma.js";
 
-function campaignObjectId(value: string): mongoose.Types.ObjectId {
-  if (!mongoose.isObjectIdOrHexString(value)) throw AppError.badRequest("Invalid campaign id");
-  return new mongoose.Types.ObjectId(value);
+async function campaign(value: string) {
+  const parsed = parseDatabaseId(value);
+  if (!parsed) throw AppError.badRequest("Invalid campaign id");
+  const row = await getPrisma().openAlexIngestCampaign.findUnique({
+    where: parsed.kind === "uuid" ? { id: parsed.value } : { legacyMongoId: parsed.value },
+  });
+  if (!row) throw AppError.notFound("Ingest campaign not found");
+  return row;
 }
 
 export const ingestCampaignAdminService = {
   async listRecent(limit = 20) {
-    return OpenAlexIngestCampaignModel.find().sort({ createdAt: -1 }).limit(limit).lean();
+    const rows = await getPrisma().openAlexIngestCampaign.findMany({ orderBy: { createdAt: "desc" }, take: limit });
+    return rows.map((row) => ({ ...row, id: publicDatabaseId(row), _id: publicDatabaseId(row) }));
   },
 
   async getDetail(campaignIdInput: string) {
-    const campaignId = campaignObjectId(campaignIdInput);
-    const [campaign, partitions, attempts] = await Promise.all([
-      OpenAlexIngestCampaignModel.findById(campaignId).lean(),
-      OpenAlexIngestPartitionModel.aggregate<{ state: string; count: number; targetCount: number; acceptedCount: number }>([
-        { $match: { campaignId } },
-        {
-          $group: {
-            _id: "$state",
-            count: { $sum: 1 },
-            targetCount: { $sum: "$targetCount" },
-            acceptedCount: { $sum: "$checkpoint.acceptedCount" },
-          },
-        },
-        { $project: { _id: 0, state: "$_id", count: 1, targetCount: 1, acceptedCount: 1 } },
-      ]),
-      OpenAlexIngestPageAttemptModel.aggregate<{ state: string; count: number }>([
-        { $match: { campaignId } },
-        { $group: { _id: "$state", count: { $sum: 1 } } },
-        { $project: { _id: 0, state: "$_id", count: 1 } },
-      ]),
+    const selected = await campaign(campaignIdInput);
+    const [partitionRows, attemptRows] = await Promise.all([
+      getPrisma().openAlexIngestPartition.groupBy({
+        by: ["state"], where: { campaignId: selected.id },
+        _count: { _all: true }, _sum: { targetCount: true, acceptedCount: true },
+      }),
+      getPrisma().openAlexIngestPageAttempt.groupBy({
+        by: ["state"], where: { campaignId: selected.id }, _count: { _all: true },
+      }),
     ]);
-    if (!campaign) throw AppError.notFound("Ingest campaign not found");
-    return { campaign, partitions, attempts };
+    return {
+      campaign: { ...selected, id: publicDatabaseId(selected), _id: publicDatabaseId(selected) },
+      partitions: partitionRows.map((row) => ({ state: row.state, count: row._count._all, targetCount: row._sum.targetCount ?? 0, acceptedCount: row._sum.acceptedCount ?? 0 })),
+      attempts: attemptRows.map((row) => ({ state: row.state, count: row._count._all })),
+    };
   },
 };

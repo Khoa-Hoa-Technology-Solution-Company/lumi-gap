@@ -1,8 +1,16 @@
 import { en } from "./en";
+import { academicProfileStrings } from "./academic-profile";
+import { academicForumStrings } from "./academic-forum";
 import { gapEvidenceWorkflowStrings } from "./gap-evidence-workflow";
 import { paperDetailIaStrings } from "./paper-detail-ia";
+import { authSecurityStrings } from "./auth-security";
+import { newUiStrings } from "./new-ui";
 
 export const ko: Record<keyof typeof en, string> = {
+  ...newUiStrings,
+  ...authSecurityStrings,
+  ...academicForumStrings,
+  ...academicProfileStrings.ko,
   ...gapEvidenceWorkflowStrings,
   ...paperDetailIaStrings,
   "1 research gap": "연구 공백 1개",
@@ -1026,7 +1034,7 @@ export const ko: Record<keyof typeof en, string> = {
   "Paper translation failed. Please try again.": "종이 번역에 실패했습니다. 다시 시도해 주세요.",
   "Paper Type": "용지 종류",
   "Paper Types": "용지 종류",
-  "PAPERLENS logo": "PAPERLENS 로고",
+  "LumiGap logo": "LumiGap 로고",
   "Papers": "논문",
   "PAPERS": "논문",
   "papers (": "논문 (",

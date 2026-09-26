@@ -1,264 +1,43 @@
+import { randomUUID } from "node:crypto";
 import type { AnalyticalReport, PreviewReportEvidenceResponse, ReportListItem } from "@trend/shared-types";
-import mongoose from "mongoose";
 import { AppError } from "../../common/exceptions/app-error.js";
 import { env } from "../../config/env.js";
+import { parseDatabaseId, publicDatabaseId } from "../../infrastructure/database/database-id.js";
+import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { logger } from "../../infrastructure/logger.js";
 import { reportQueue } from "../../infrastructure/queue.js";
-import { BookmarkModel } from "../bookmarks/models/bookmark.model.js";
-import { getEmbeddingProvider } from "../embeddings/embedding.factory.js";
-import { paperService } from "../papers/paper.service.js";
-import { ReportModel, type ReportDoc } from "./models/report.model.js";
-import type {
-  CreateReportInput,
-  ListReportsQuery,
-  PreviewReportEvidenceInput,
-} from "./dto/report.schema.js";
 import { creditService } from "../credits/credit.service.js";
 import { resolveReportCreditCost } from "../credits/credit-policy.js";
-import { collectReportEvidence } from "./report.evidence.js";
+import { getEmbeddingProvider } from "../embeddings/embedding.factory.js";
+import { paperService } from "../papers/paper.service.js";
 import { projectService } from "../projects/project.service.js";
 import { resolveProjectEvidenceIds } from "../projects/project-scope.js";
+import type { CreateReportInput, ListReportsQuery, PreviewReportEvidenceInput } from "./dto/report.schema.js";
+import { collectReportEvidence } from "./report.evidence.js";
 
-/**
- * HTTP-facing report operations. The heavy RAG work lives in rag.service.ts
- * and runs in the report worker — this service only creates/reads documents
- * and enqueues jobs (CLAUDE.md: no long-running work in request handlers).
- */
-
-/** "generating" docs older than this are dead-worker orphans — don't count
- *  them against the user's pending quota (the worker sweeps them on restart). */
 const STALE_GENERATING_MS = 5 * 60_000;
+function whereId(value: string) { const parsed = parseDatabaseId(value); if (!parsed) throw AppError.badRequest("Invalid identifier"); return parsed.kind === "uuid" ? { id: parsed.value } : { legacyMongoId: parsed.value }; }
+async function user(value: string) { const row = await getPrisma().user.findUnique({ where: whereId(value) }); if (!row) throw AppError.notFound("User not found"); return row; }
+async function report(value: string) { const row = await getPrisma().report.findUnique({ where: whereId(value) }); if (!row) throw AppError.notFound("Report not found"); return row; }
+async function canAccessProject(projectId: string, userId: string) { const project = await getPrisma().project.findUnique({ where: { id: projectId } }); if (!project) return false; return project.ownerId === userId || Boolean(await getPrisma().projectMember.findUnique({ where: { projectId_userId: { projectId, userId } } })); }
+
+async function dto(row: Awaited<ReturnType<typeof report>>): Promise<AnalyticalReport> { const links = await getPrisma().reportPaper.findMany({ where: { reportId: row.id }, orderBy: { position: "asc" } }); const groundingPaperIds = links.filter((link) => link.kind === "grounding").map((link) => link.paperId); const selectedPaperIds = links.filter((link) => link.kind === "selected").map((link) => link.paperId); return { ...row, id: publicDatabaseId(row), groundingPaperIds, selectedPaperIds, researchGaps: row.researchGapSnapshots } as unknown as AnalyticalReport; }
 
 export const reportService = {
-  /** Create a queued report + enqueue its job. Guarded against quota abuse. */
-  async create(userId: string, input: CreateReportInput): Promise<{ id: string; status: string }> {
-    const selectedPaperIds = await resolveReportEvidenceScope(userId, input);
-
-    // NOTE: check-then-insert is not atomic; a same-user burst can slightly
-    // exceed the cap. Accepted — the per-user rate limiter on the route is the
-    // real throughput throttle; this guard only bounds CONCURRENT work.
-    const pending = await ReportModel.countDocuments({
-      userId,
-      $or: [
-        { status: "queued" },
-        { status: "generating", updatedAt: { $gte: new Date(Date.now() - STALE_GENERATING_MS) } },
-      ],
-    });
-    if (pending >= env.REPORT_MAX_PENDING_PER_USER) {
-      throw AppError.tooMany(
-        `You already have ${pending} report(s) in progress — wait for them to finish first.`,
-      );
-    }
-
-    const reportId = new mongoose.Types.ObjectId();
-    const { action, cost } = resolveReportCreditCost({
-      fast: input.fast,
-      deepAnalysis: input.deepAnalysis,
-    });
-
-    let txId: mongoose.Types.ObjectId | undefined;
-    if (cost > 0) {
-      const tx = await creditService.chargeCreditsChecked({
-        userId,
-        action,
-        amount: cost,
-        targetKind: "report",
-        targetId: reportId.toString(),
-        idempotencyKey: `report:${reportId}`,
-      });
-      if (tx) {
-        txId = tx._id;
-      }
-    }
-
-    try {
-      const report = await ReportModel.create({
-        _id: reportId,
-        userId,
-        query: input.query,
-        topic: input.topic,
-        projectId: input.projectId,
-        yearFrom: input.yearFrom,
-        yearTo: input.yearTo,
-        scopeFilters: input.scopeFilters,
-        language: input.language ?? "auto",
-        deepAnalysis: input.deepAnalysis ?? false,
-        fast: input.fast ?? false,
-        selectedPaperIds: selectedPaperIds ?? [],
-        status: "queued",
-        creditTransactionId: txId,
-        creditCost: cost,
-        creditAction: action,
-      });
-
-      // jobId = reportId → BullMQ dedups accidental double-submits of the same doc.
-      await reportQueue.add(
-        "generate-report",
-        { reportId: String(report._id) },
-        { jobId: String(report._id) },
-      );
-
-      return { id: String(report._id), status: "queued" };
-    } catch (err) {
-      if (txId) {
-        await creditService.refundCreditsOnce({
-          transactionId: txId.toString(),
-          reason: "Failed to create report or enqueue job",
-        });
-      }
-      throw err;
-    }
+  async create(userIdInput: string, input: CreateReportInput): Promise<{ id: string; status: string }> {
+    const owner = await user(userIdInput); const selectedPaperIds = await resolveReportEvidenceScope(userIdInput, input);
+    const pending = await getPrisma().report.count({ where: { userId: owner.id, OR: [{ status: "queued" }, { status: "generating", updatedAt: { gte: new Date(Date.now() - STALE_GENERATING_MS) } }] } });
+    if (pending >= env.REPORT_MAX_PENDING_PER_USER) throw AppError.tooMany(`You already have ${pending} report(s) in progress — wait for them to finish first.`);
+    const reportId = randomUUID(); const { action, cost } = resolveReportCreditCost({ fast: input.fast, deepAnalysis: input.deepAnalysis }); let txId: string | undefined;
+    if (cost > 0) { const tx = await creditService.chargeCreditsChecked({ userId: userIdInput, action, amount: cost, targetKind: "report", targetId: reportId, idempotencyKey: `report:${reportId}` }); txId = tx?.id ?? tx?._id?.toString(); }
+    try { const project = input.projectId ? await getPrisma().project.findUnique({ where: whereId(input.projectId) }) : null; const created = await getPrisma().$transaction(async (tx) => { const row = await tx.report.create({ data: { id: reportId, userId: owner.id, query: input.query, topic: input.topic, projectId: project?.id, yearFrom: input.yearFrom, yearTo: input.yearTo, scopeFilters: (input.scopeFilters ?? {}) as never, language: input.language ?? "auto", deepAnalysis: input.deepAnalysis ?? false, fast: input.fast ?? false, status: "queued", creditTransactionId: txId, creditCost: cost, creditAction: action } }); const resolved = await Promise.all((selectedPaperIds ?? []).map(async (id) => getPrisma().paper.findUnique({ where: whereId(id), select: { id: true } }))); if (resolved.length) await tx.reportPaper.createMany({ data: resolved.flatMap((paper, position) => paper ? [{ reportId: row.id, paperId: paper.id, kind: "selected", position }] : []), skipDuplicates: true }); return row; }); await reportQueue.add("generate-report", { reportId: created.id }, { jobId: created.id }); return { id: publicDatabaseId(created), status: "queued" }; } catch (error) { if (txId) await creditService.refundCreditsOnce({ transactionId: txId, reason: "Failed to create report or enqueue job" }); throw error; }
   },
-
-  /** Preview the exact evidence pack that report generation will use. No LLM generation here. */
-  async previewEvidence(
-    userId: string,
-    input: PreviewReportEvidenceInput,
-  ): Promise<PreviewReportEvidenceResponse> {
-    const selectedPaperIds = await resolveReportEvidenceScope(userId, input);
-    const fillWithRetrieved = input.projectId ? false : input.fillWithRetrieved;
-    let queryVector: number[] | undefined;
-    let usedTextFallback = false;
-
-    if (fillWithRetrieved ?? true) {
-      try {
-        queryVector = await getEmbeddingProvider().embed(input.query);
-      } catch (err) {
-        usedTextFallback = true;
-        logger.warn({ err }, "report evidence preview embedding failed; using text fallback");
-      }
-    }
-
-    const evidence = await collectReportEvidence({
-      queryText: input.query,
-      queryVector,
-      selectedPaperIds,
-      yearFrom: input.yearFrom,
-      yearTo: input.yearTo,
-      scopeFilters: input.scopeFilters,
-      fillWithRetrieved,
-    });
-    const warnings = evidence.missingSelectedPaperIds.map(
-      (id) => `Selected paper ${id} was not found in the active corpus and was skipped.`,
-    );
-    if (usedTextFallback) {
-      warnings.push("Semantic embedding was unavailable, so the evidence preview used keyword fallback.");
-    }
-    if (evidence.papers.length === 0) {
-      warnings.push("No active evidence papers were found for this query.");
-    }
-
-    return {
-      papers: evidence.papers,
-      retrievedPaperIds: evidence.retrievedPaperIds,
-      selectedPaperIds: evidence.selectedPaperIds,
-      maxEvidencePapers: evidence.maxEvidencePapers,
-      warnings,
-    };
-  },
-
-  /** The user's own reports (or project reports), newest first — WITHOUT heavy fields. */
-  async list(userId: string, { page, pageSize, projectId, paperId }: ListReportsQuery) {
-    let filter: Record<string, any> = { userId };
-    
-    if (projectId) {
-      const { ProjectModel } = await import("../projects/models/project.model.js");
-      const project = await ProjectModel.findById(projectId).lean();
-      if (!project) throw AppError.notFound("Project not found");
-      const hasAccess = project.ownerId.toString() === userId || project.members.some((m) => m.targetId.toString() === userId);
-      if (!hasAccess) throw AppError.notFound("Project not found");
-      filter = { projectId }; // Show all reports for this project
-    }
-    if (paperId) filter.groundingPaperIds = paperId;
-
-    const [docs, total] = await Promise.all([
-      ReportModel.find(filter)
-        .select("-markdown -researchGaps -groundingPaperIds")
-        .sort({ createdAt: -1 })
-        .skip((page - 1) * pageSize)
-        .limit(pageSize)
-        .lean(),
-      ReportModel.countDocuments(filter),
-    ]);
-    return { reports: docs.map((d) => toReportDto(d) as ReportListItem), total };
-  },
-
-  /** Full report — owner or project member. */
-  async getById(userId: string, id: string): Promise<AnalyticalReport> {
-    const doc = await ReportModel.findOne({ _id: id }).lean().catch(() => null);
-    if (!doc) throw AppError.notFound("Report not found");
-
-    // Check access
-    let hasAccess = doc.userId.toString() === userId;
-    if (!hasAccess && doc.projectId) {
-      // Lazy import to avoid circular dep just in case
-      const { ProjectModel } = await import("../projects/models/project.model.js");
-      const project = await ProjectModel.findById(doc.projectId).lean();
-      if (project) {
-        hasAccess = project.ownerId.toString() === userId || project.members.some((m) => m.targetId.toString() === userId);
-      }
-    }
-    if (!hasAccess) throw AppError.notFound("Report not found"); // mask 403 as 404
-
-    const report = toReportDto(doc);
-    report.groundingPapers = await paperService.getSummariesByIds(report.groundingPaperIds ?? []);
-    return report;
-  },
-
-  /** Delete a single report by ID. */
-  async deleteById(userId: string, id: string): Promise<void> {
-    const result = await ReportModel.deleteOne({ _id: id, userId });
-    if (result.deletedCount === 0) {
-      throw AppError.notFound("Report not found or not owned by you");
-    }
-    await BookmarkModel.deleteMany({ userId, targetKind: "report", targetId: id });
-  },
-
-  /** Delete multiple reports by IDs. */
-  async deleteBatch(userId: string, ids: string[]): Promise<void> {
-    await ReportModel.deleteMany({ _id: { $in: ids }, userId });
-    await BookmarkModel.deleteMany({ userId, targetKind: "report", targetId: { $in: ids } });
-  },
-
-  /** Count completed reports that ground on a given paper. Public — no auth. */
-  async countByPaper(paperId: string): Promise<number> {
-    return ReportModel.countDocuments({
-      groundingPaperIds: paperId,
-      status: "ready",
-    });
-  },
+  async previewEvidence(userId: string, input: PreviewReportEvidenceInput): Promise<PreviewReportEvidenceResponse> { const selectedPaperIds = await resolveReportEvidenceScope(userId, input); const fillWithRetrieved = input.projectId ? false : input.fillWithRetrieved; let queryVector: number[] | undefined; let usedTextFallback = false; if (fillWithRetrieved ?? true) { try { queryVector = await getEmbeddingProvider().embed(input.query); } catch (error) { usedTextFallback = true; logger.warn({ error }, "report evidence preview embedding failed; using text fallback"); } } const evidence = await collectReportEvidence({ queryText: input.query, queryVector, selectedPaperIds, yearFrom: input.yearFrom, yearTo: input.yearTo, scopeFilters: input.scopeFilters, fillWithRetrieved }); const warnings = evidence.missingSelectedPaperIds.map((id) => `Selected paper ${id} was not found in the active corpus and was skipped.`); if (usedTextFallback) warnings.push("Semantic embedding was unavailable, so the evidence preview used keyword fallback."); if (!evidence.papers.length) warnings.push("No active evidence papers were found for this query."); return { papers: evidence.papers, retrievedPaperIds: evidence.retrievedPaperIds, selectedPaperIds: evidence.selectedPaperIds, maxEvidencePapers: evidence.maxEvidencePapers, warnings }; },
+  async list(userIdInput: string, { page, pageSize, projectId, paperId }: ListReportsQuery) { const owner = await user(userIdInput); let where: Record<string, unknown> = { userId: owner.id }; if (projectId) { const project = await getPrisma().project.findUnique({ where: whereId(projectId) }); if (!project || !await canAccessProject(project.id, owner.id)) throw AppError.notFound("Project not found"); where = { projectId: project.id }; } if (paperId) { const paper = await getPrisma().paper.findUnique({ where: whereId(paperId) }); if (!paper) return { reports: [], total: 0 }; const links = await getPrisma().reportPaper.findMany({ where: { paperId: paper.id }, select: { reportId: true } }); where = { ...where, id: { in: links.map((link) => link.reportId) } }; } const [rows, total] = await Promise.all([getPrisma().report.findMany({ where, orderBy: { createdAt: "desc" }, skip: (page - 1) * pageSize, take: pageSize }), getPrisma().report.count({ where })]); const reports = await Promise.all(rows.map(dto)); return { reports: reports.map(({ markdown: _markdown, ...item }) => item as ReportListItem), total }; },
+  async getById(userIdInput: string, id: string) { const [owner, row] = await Promise.all([user(userIdInput), report(id)]); if (row.userId !== owner.id && (!row.projectId || !await canAccessProject(row.projectId, owner.id))) throw AppError.notFound("Report not found"); const result = await dto(row); result.groundingPapers = await paperService.getSummariesByIds(result.groundingPaperIds ?? []); return result; },
+  async deleteById(userIdInput: string, id: string) { const [owner, row] = await Promise.all([user(userIdInput), report(id)]); if (row.userId !== owner.id) throw AppError.notFound("Report not found or not owned by you"); await getPrisma().$transaction([getPrisma().bookmark.deleteMany({ where: { userId: owner.id, reportId: row.id } }), getPrisma().report.delete({ where: { id: row.id } })]); },
+  async deleteBatch(userIdInput: string, ids: string[]) { const owner = await user(userIdInput); const rows = (await Promise.all(ids.map((id) => getPrisma().report.findUnique({ where: whereId(id), select: { id: true, userId: true } })))).filter((row): row is NonNullable<typeof row> => Boolean(row && row.userId === owner.id)); const reportIds = rows.map((row) => row.id); await getPrisma().$transaction([getPrisma().bookmark.deleteMany({ where: { userId: owner.id, reportId: { in: reportIds } } }), getPrisma().report.deleteMany({ where: { id: { in: reportIds }, userId: owner.id } })]); },
+  async countByPaper(paperId: string) { const paper = await getPrisma().paper.findUnique({ where: whereId(paperId), select: { id: true } }); if (!paper) return 0; const links = await getPrisma().reportPaper.findMany({ where: { paperId: paper.id }, select: { reportId: true } }); return getPrisma().report.count({ where: { id: { in: links.map((link) => link.reportId) }, status: "ready" } }); },
 };
 
-/**
- * `_id` → `id`; strip internals (`__v`, `cacheKey`, `updatedAt`) — they are
- * not part of the wire contract. Dates serialize to ISO strings via res.json.
- */
-function toReportDto(doc: Partial<ReportDoc> & { _id: unknown }): AnalyticalReport {
-  const { _id, __v, cacheKey, updatedAt, ...rest } = doc as Record<string, unknown>;
-  void __v;
-  void cacheKey;
-  void updatedAt;
-  return { id: String(_id), ...rest } as unknown as AnalyticalReport;
-}
-
-// Code quality reviewed and formatted
-
-async function resolveReportEvidenceScope(
-  userId: string,
-  input: Pick<CreateReportInput, "projectId" | "selectedPaperIds">,
-): Promise<string[] | undefined> {
-  if (!input.projectId) return input.selectedPaperIds;
-
-  const projectPaperIds = await projectService.getProjectPaperIdsForUser(
-    input.projectId,
-    userId,
-    "report",
-  );
-  const resolved = resolveProjectEvidenceIds(projectPaperIds, input.selectedPaperIds);
-  if (resolved.invalidIds.length > 0) {
-    throw AppError.badRequest("Selected evidence papers must belong to the project.", {
-      invalidPaperIds: resolved.invalidIds,
-    });
-  }
-  return resolved.ids;
-}
+async function resolveReportEvidenceScope(userId: string, input: Pick<CreateReportInput, "projectId" | "selectedPaperIds">) { if (!input.projectId) return input.selectedPaperIds; const projectPaperIds = await projectService.getProjectPaperIdsForUser(input.projectId, userId, "report"); const resolved = resolveProjectEvidenceIds(projectPaperIds, input.selectedPaperIds); if (resolved.invalidIds.length) throw AppError.badRequest("Selected evidence papers must belong to the project.", { invalidPaperIds: resolved.invalidIds }); return resolved.ids; }

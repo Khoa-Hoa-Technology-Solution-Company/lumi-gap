@@ -4,6 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import type { AxiosError } from "axios";
 import logoImage from "@/assets/logo.png";
+import logoDarkImage from "@/assets/logo-dark.png";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,8 +16,7 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { API_BASE_URL } from "@/services/api-client";
-import { registerSchema, useRegister, type RegisterFormValues } from "@/features/auth";
+import { authApi, registerSchema, resolvePostAuthPath, useRegister, type RegisterFormValues } from "@/features/auth";
 
 export function RegisterForm() {
   const navigate = useNavigate();
@@ -29,9 +29,10 @@ export function RegisterForm() {
 
   const onSubmit = (values: RegisterFormValues) => {
     register.mutate(values, {
-      onSuccess: () => {
-        toast.success("Registration successful! Please login to continue.");
-        navigate("/login", { replace: true });
+      onSuccess: ({ user }) => {
+        toast.success(`Account created successfully. Welcome, ${user.fullName}!`);
+        const target = resolvePostAuthPath(user);
+        navigate(target, { replace: true });
       },
       onError: (err) => {
         const axiosErr = err as AxiosError<{ error?: { message?: string } }>;
@@ -42,11 +43,18 @@ export function RegisterForm() {
 
   return (
     <div className="flex flex-col items-center w-full text-slate-900 dark:text-white">
-      <img
-        src={logoImage}
-        alt="LiemResearch logo"
-        className="mb-6 h-24 w-auto max-w-[220px] object-contain sm:h-28"
-      />
+      <div className="mb-6 flex justify-center">
+        <img
+          src={logoImage}
+          alt="LumiGap"
+          className="h-16 w-auto max-w-[260px] object-contain sm:h-20 dark:hidden"
+        />
+        <img
+          src={logoDarkImage}
+          alt="LumiGap"
+          className="hidden h-16 w-auto max-w-[260px] object-contain sm:h-20 dark:block"
+        />
+      </div>
 
       <div className="mb-6 space-y-2 text-center w-full">
         <h1 className="text-4xl font-extrabold tracking-tight text-slate-900 dark:text-white">Create an account</h1>
@@ -57,7 +65,7 @@ export function RegisterForm() {
         className="w-full rounded-xl bg-white dark:bg-[#2a2a2a] border-slate-200 dark:border-[#3a3a3a] hover:bg-slate-50 dark:hover:bg-[#333] text-slate-900 dark:text-white h-12 font-bold shadow-sm"
         type="button"
         onClick={() => {
-          window.location.href = `${API_BASE_URL}/auth/google`;
+          window.location.href = authApi.googleAuthorizationUrl();
         }}
       >
         <svg className="mr-2 h-5 w-5" viewBox="0 0 24 24">

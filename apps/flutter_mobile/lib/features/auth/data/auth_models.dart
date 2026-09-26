@@ -3,7 +3,9 @@ import 'package:freezed_annotation/freezed_annotation.dart';
 part 'auth_models.freezed.dart';
 part 'auth_models.g.dart';
 
-enum UserRole { student, lecturer, researcher, admin }
+enum UserRole { user, student, lecturer, researcher, reviewer, moderator, admin }
+
+enum AcademicProfileType { student, researcher, lecturer }
 
 @freezed
 abstract class User with _$User {
@@ -12,7 +14,8 @@ abstract class User with _$User {
     required String email,
     required String fullName,
     required DateTime createdAt,
-    @Default(UserRole.student) UserRole role,
+    @Default(UserRole.user) UserRole role,
+    AcademicProfileType? academicProfileType,
     String? institution,
     List<String>? researchInterests,
     @Default(0) int points,
@@ -58,7 +61,6 @@ abstract class RegisterRequest with _$RegisterRequest {
     required String email,
     required String password,
     required String fullName,
-    @Default(UserRole.student) UserRole role,
   }) = _RegisterRequest;
 
   factory RegisterRequest.fromJson(Map<String, dynamic> json) => _$RegisterRequestFromJson(json);

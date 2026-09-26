@@ -1,5 +1,7 @@
 import { env } from "../../config/env.js";
 import { logger } from "../../infrastructure/logger.js";
+import { parseDatabaseId, publicDatabaseId } from "../../infrastructure/database/database-id.js";
+import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { gapsService } from "../gaps/gaps.service.js";
 import { getEmbeddingProvider } from "../embeddings/embedding.factory.js";
 import {
@@ -13,8 +15,6 @@ import { assertCitationsInRange as assertGroundedCitationsInRange } from "../llm
 import { MCP_TOOL_DEFS } from "../mcp/mcp.tools.js";
 import { executeMcpTool } from "../mcp/mcp.executor.js";
 import { notificationService } from "../notifications/notification.service.js";
-import { ReportModel, type ReportHydrated } from "./models/report.model.js";
-import { RagQueryModel } from "./models/rag-query.model.js";
 import { collectReportEvidence } from "./report.evidence.js";
 import {
   buildReportPrompt,
@@ -47,28 +47,31 @@ export interface ReportJob {
  * report `failed` only when the job has exhausted its attempts (worker decides).
  */
 export async function runRagPipeline(job: ReportJob): Promise<void> {
-  const report: ReportHydrated | null = await ReportModel.findById(job.reportId);
+  const parsedId = parseDatabaseId(job.reportId);
+  const report = parsedId ? await getPrisma().report.findUnique({ where: parsedId.kind === "uuid" ? { id: parsedId.value } : { legacyMongoId: parsedId.value } }) : null;
   if (!report) {
     logger.warn({ reportId: job.reportId }, "report vanished before processing");
     return;
   }
   if (report.status === "ready") return; // replayed job — already done
 
-  report.status = "generating";
-  await report.save();
+  await getPrisma().report.update({ where: { id: report.id }, data: { status: "generating" } });
 
   // ① Embed the question only when retrieval needs it. If the user already
   // curated a fixed evidence set, selected papers are enough to build the
-  // grounded report. If embedding is unavailable, fall back to Mongo text
+  // grounded report. If embedding is unavailable, fall back to PostgreSQL text
   // retrieval so the job can still produce an evidence-grounded report.
   const t0 = Date.now();
-  const selectedPaperIds = (report.selectedPaperIds ?? []).map((id) => String(id));
+  const selectedLinks = await getPrisma().reportPaper.findMany({ where: { reportId: report.id, kind: "selected" }, orderBy: { position: "asc" } });
+  const selectedRows = await getPrisma().paper.findMany({ where: { id: { in: selectedLinks.map((link) => link.paperId) } }, select: { id: true, legacyMongoId: true } });
+  const selectedById = new Map(selectedRows.map((row) => [row.id, publicDatabaseId(row)]));
+  const selectedPaperIds = selectedLinks.map((link) => selectedById.get(link.paperId) ?? link.paperId);
   let queryVector: number[] | undefined;
   if (selectedPaperIds.length === 0) {
     try {
       queryVector = await getEmbeddingProvider().embed(report.query);
     } catch (err) {
-      logger.warn({ err, reportId: String(report._id) }, "report embedding failed; using text fallback retrieval");
+      logger.warn({ err, reportId: publicDatabaseId(report) }, "report embedding failed; using text fallback retrieval");
     }
   }
   const embeddingMs = Date.now() - t0;
@@ -108,7 +111,7 @@ export async function runRagPipeline(job: ReportJob): Promise<void> {
   });
   logger.info(
     {
-      reportId: String(report._id),
+      reportId: publicDatabaseId(report),
       promptVersion: PROMPT_VERSION,
       language,
       resolvedLanguage,
@@ -163,7 +166,7 @@ export async function runRagPipeline(job: ReportJob): Promise<void> {
           MCP_TOOL_DEFS,
           (call) =>
             executeMcpTool(call, {
-              reportId: String(report._id),
+              reportId: publicDatabaseId(report),
               userId: String(report.userId),
             }),
           {
@@ -191,7 +194,7 @@ export async function runRagPipeline(job: ReportJob): Promise<void> {
         // Only truncation / malformed content fall back; real errors propagate.
         if (!(err instanceof LlmTruncationError || err instanceof LlmContentError)) throw err;
         logger.warn(
-          { reportId: String(report._id), reason: err.name },
+          { reportId: publicDatabaseId(report), reason: err.name },
           "deepAnalysis failed — falling back to classic RAG",
         );
         const fallback = await generateJSON<ReportLlmOutput>(
@@ -223,10 +226,7 @@ export async function runRagPipeline(job: ReportJob): Promise<void> {
   const llmMs = Date.now() - t2;
 
   // ⑥ Persist the finished report.
-  report.markdown = output.markdown;
-  report.set(
-    "researchGaps",
-    (output.gaps ?? []).slice(0, 6).map((g) => ({
+  const researchGaps = (output.gaps ?? []).slice(0, 6).map((g) => ({
       title: String(g.title ?? "").slice(0, 200),
       description: String(g.description ?? ""),
       rationale: String(g.rationale ?? ""),
@@ -236,19 +236,13 @@ export async function runRagPipeline(job: ReportJob): Promise<void> {
         .map((n) => papers[n - 1]!.id),
       confidence: clamp01(g.confidence),
       probe: normalizeProbe(g.probe),
-    })),
-  );
-  report.set(
-    "groundingPaperIds",
-    papers.map((p) => p.id),
-  );
-  report.modelVersion = model;
-  report.promptVersion = PROMPT_VERSION;
-  report.cacheKey = effectiveCacheKey;
-  report.status = "ready";
-  report.completedAt = new Date();
-  report.errorMessage = undefined;
-  await report.save();
+    }));
+  await getPrisma().$transaction(async (tx) => {
+    await tx.report.update({ where: { id: report.id }, data: { markdown: output.markdown, researchGapSnapshots: researchGaps as never, modelVersion: model, promptVersion: PROMPT_VERSION, cacheKey: effectiveCacheKey, status: "ready", completedAt: new Date(), errorMessage: null } });
+    await tx.reportPaper.deleteMany({ where: { reportId: report.id, kind: "grounding" } });
+    const resolved = await Promise.all(papers.map(async (paper) => { const parsed = parseDatabaseId(paper.id); if (!parsed) return null; return getPrisma().paper.findUnique({ where: parsed.kind === "uuid" ? { id: parsed.value } : { legacyMongoId: parsed.value }, select: { id: true } }); }));
+    await tx.reportPaper.createMany({ data: resolved.flatMap((paper, position) => paper ? [{ reportId: report.id, paperId: paper.id, kind: "grounding", position }] : []), skipDuplicates: true });
+  });
 
   // If it was a cache hit, refund the credits charged during create()
   if (cacheHit && report.creditTransactionId) {
@@ -257,8 +251,7 @@ export async function runRagPipeline(job: ReportJob): Promise<void> {
       transactionId: report.creditTransactionId.toString(),
       reason: "Report cache hit",
     });
-    report.creditRefundedAt = new Date();
-    await report.save();
+    await getPrisma().report.update({ where: { id: report.id }, data: { creditRefundedAt: new Date() } });
   }
 
   // ⑦ Audit trail.
@@ -271,22 +264,22 @@ export async function runRagPipeline(job: ReportJob): Promise<void> {
       message: `Your AI report "${report.topic || report.query}" is ready to read.`,
       type: "report_ready",
       targetKind: "report",
-      targetId: report._id,
+      targetId: publicDatabaseId(report),
     })
     .catch((err) =>
-      logger.warn({ err, reportId: String(report._id) }, "report-ready notification failed (non-fatal)"),
+      logger.warn({ err, reportId: publicDatabaseId(report) }, "report-ready notification failed (non-fatal)"),
     );
 
   // ⑧ Fan-out gaps into research_gaps collection (non-fatal).
   await gapsService
     .fanOutGapsFromReport({
-      _id: report._id,
+      _id: publicDatabaseId(report),
       userId: report.userId,
       projectId: report.projectId,
-      projectPaperIds: (report.selectedPaperIds ?? []).map((id) => String(id)),
+      projectPaperIds: selectedPaperIds,
       evidencePaperIds: papers.map((paper) => paper.id),
       query: report.query,
-      researchGaps: ((report.researchGaps ?? []) as unknown[]).map((raw) => {
+      researchGaps: researchGaps.map((raw) => {
         const g = raw as {
           title?: string;
           description?: string;
@@ -306,11 +299,11 @@ export async function runRagPipeline(job: ReportJob): Promise<void> {
       }),
     })
     .catch((err) =>
-      logger.warn({ err, reportId: String(report._id) }, "gap fan-out failed (non-fatal)"),
+      logger.warn({ err, reportId: publicDatabaseId(report) }, "gap fan-out failed (non-fatal)"),
     );
 
   logger.info(
-    { reportId: String(report._id), papers: papers.length, embeddingMs, searchMs, llmMs, cacheHit },
+    { reportId: publicDatabaseId(report), papers: papers.length, embeddingMs, searchMs, llmMs, cacheHit },
     "report ready",
   );
 }
@@ -345,28 +338,25 @@ function normalizeReportScopeFilters(scopeFilters: unknown) {
 
 /** Mark a report failed — called by the worker when retries are exhausted. */
 export async function markReportFailed(reportId: string, message: string): Promise<void> {
-  const report = await ReportModel.findOneAndUpdate(
-    { _id: reportId, status: { $ne: "ready" }, creditRefundedAt: { $exists: false } },
-    { $set: { status: "failed", errorMessage: message.slice(0, 500), creditRefundedAt: new Date() } },
-    { new: true }
-  ).lean();
+  const parsed = parseDatabaseId(reportId);
+  if (!parsed) return;
+  const current = await getPrisma().report.findUnique({ where: parsed.kind === "uuid" ? { id: parsed.value } : { legacyMongoId: parsed.value } });
+  if (!current || current.status === "ready") return;
+  const claimed = await getPrisma().report.updateMany({ where: { id: current.id, status: { not: "ready" }, creditRefundedAt: null }, data: { status: "failed", errorMessage: message.slice(0, 500), creditRefundedAt: new Date() } });
 
-  if (report && report.creditTransactionId) {
+  if (claimed.count && current.creditTransactionId) {
     const { creditService } = await import("../credits/credit.service.js");
     await creditService.refundCreditsOnce({
-      transactionId: report.creditTransactionId.toString(),
+      transactionId: current.creditTransactionId,
       reason: `Report generation failed: ${message.slice(0, 100)}`,
     });
-  } else if (!report) {
-    await ReportModel.updateOne(
-      { _id: reportId, status: { $ne: "ready" } },
-      { $set: { status: "failed", errorMessage: message.slice(0, 500) } }
-    );
+  } else if (!claimed.count) {
+    await getPrisma().report.updateMany({ where: { id: current.id, status: { not: "ready" } }, data: { status: "failed", errorMessage: message.slice(0, 500) } });
   }
 }
 
 async function auditRagRun(
-  report: { _id: unknown; userId: unknown; query: string; yearFrom?: number | null; yearTo?: number | null },
+  report: { id: string; userId: string; query: string; yearFrom?: number | null; yearTo?: number | null },
   run: {
     embeddingMs: number;
     searchMs: number;
@@ -376,18 +366,20 @@ async function auditRagRun(
   },
 ): Promise<void> {
   try {
-    await RagQueryModel.create({
-      reportId: report._id,
+    const query = await getPrisma().ragQuery.create({ data: {
+      reportId: report.id,
       userId: report.userId,
       queryText: report.query,
       topK: env.REPORT_TOP_K,
-      filters: { yearFrom: report.yearFrom ?? undefined, yearTo: report.yearTo ?? undefined },
-      retrieved: run.papers.map((p, i) => ({ paperId: p.id, score: p.score, rank: i + 1 })),
+      yearFrom: report.yearFrom,
+      yearTo: report.yearTo,
       embeddingMs: run.embeddingMs,
       searchMs: run.searchMs,
       llmMs: run.llmMs,
       cacheHit: run.cacheHit,
-    });
+    } });
+    const resolved = await Promise.all(run.papers.map(async (paper) => { const parsed = parseDatabaseId(paper.id); if (!parsed) return null; return getPrisma().paper.findUnique({ where: parsed.kind === "uuid" ? { id: parsed.value } : { legacyMongoId: parsed.value }, select: { id: true } }); }));
+    await getPrisma().ragQueryResult.createMany({ data: resolved.flatMap((paper, index) => paper ? [{ queryId: query.id, paperId: paper.id, score: run.papers[index]!.score, rank: index + 1 }] : []), skipDuplicates: true });
   } catch (err) {
     logger.warn({ err }, "rag audit write failed (non-fatal)");
   }

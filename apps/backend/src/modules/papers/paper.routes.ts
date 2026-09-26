@@ -1,5 +1,4 @@
 import { Router, type NextFunction, type Request, type Response } from "express";
-import jwt from "jsonwebtoken";
 import { AppError } from "../../common/exceptions/app-error.js";
 import { requireAuth, requireRole, optionalAuth } from "../../common/middleware/auth.js";
 import { uploadSinglePdf, uploadPaperReviewPdf, assertPdfMagic } from "../../common/middleware/upload.js";
@@ -18,6 +17,7 @@ import { paperTranslationController } from "./paper-translation.controller.js";
 
 import { runEmbedding } from "../embeddings/embedding.service.js";
 import { logger } from "../../infrastructure/logger.js";
+import { tokenService } from "../auth/token.service.js";
 import { pdfStorageService } from "../../infrastructure/pdf-storage.service.js";
 
 export const paperRouter: Router = Router();
@@ -327,7 +327,7 @@ paperRouter.get("/:id/download", async (req, res, next) => {
 
     let decoded: any;
     try {
-      decoded = jwt.verify(token, env.JWT_ACCESS_SECRET);
+      decoded = tokenService.verifyPurposeToken(token, "paper-download");
     } catch {
       throw AppError.unauthorized("Download token is invalid or expired");
     }
@@ -432,10 +432,6 @@ paperRouter.patch("/:id/status", requireAuth, requireRole("admin"), async (req, 
   }
 });
 
-import mongoose from "mongoose";
-
-// ... (keep other imports and code) ...
-
 /** PATCH /papers/:id — admin updates paper details, or user resubmits their rejected paper request. */
 paperRouter.patch("/:id", requireAuth, uploadSinglePdf, async (req, res, next) => {
   try {
@@ -461,7 +457,7 @@ paperRouter.patch("/:id", requireAuth, uploadSinglePdf, async (req, res, next) =
       const updateInput = { ...req.body };
       if (pdfPath) {
         updateInput.pdfPath = pdfPath;
-        updateInput.uploadedBy = new mongoose.Types.ObjectId(userId);
+        updateInput.uploadedBy = userId;
         updateInput.uploadedAt = new Date();
       }
       updated = await paperService.update(id, updateInput);

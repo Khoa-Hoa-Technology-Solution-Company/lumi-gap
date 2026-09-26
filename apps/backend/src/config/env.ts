@@ -1,29 +1,30 @@
 import "dotenv/config";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
+import { parse as parseDotenv } from "dotenv";
 import { z } from "zod";
 
 const optionalEnvString = z.preprocess((value) => (value === "" ? undefined : value), z.string().optional());
+const optionalEnvEmail = z.preprocess((value) => (value === "" ? undefined : value), z.string().email().optional());
 const optionalEnvUrl = z.preprocess((value) => (value === "" ? undefined : value), z.string().url().optional());
-const optionalMongoUri = z.preprocess(
+const optionalPostgresUri = z.preprocess(
   (value) => (value === "" ? undefined : value),
-  z.string().url().or(z.string().startsWith("mongodb")).optional(),
+  z.string().refine(
+    (value) => value.startsWith("postgresql://") || value.startsWith("postgres://"),
+    "DATABASE_URL must be a PostgreSQL connection URL",
+  ).optional(),
 );
 
 const EnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: z.coerce.number().int().positive().default(4000),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
-  CORS_ORIGIN: z.string().default("http://localhost:5173"),
+  CORS_ORIGIN: z.string().default("http://localhost:3000,http://localhost:5173"),
 
-  MONGODB_URI: z.string().url().or(z.string().startsWith("mongodb")),
-  MONGODB_VECTOR_INDEX_NAME: z.string().min(1).default("paper_vector_index"),
-  // Read only by explicit migration scripts. The running API and workers always
-  // use MONGODB_URI, so an old database cannot accidentally remain on the
-  // normal runtime path after cutover.
-  MIGRATION_SOURCE_MONGODB_URI: optionalMongoUri,
-  MIGRATION_SOURCE_DATABASE: z.preprocess(
-    (value) => (value === "" ? undefined : value),
-    z.string().min(1).optional(),
-  ),
+  DATABASE_URL: optionalPostgresUri,
+  PERSISTENCE_PROVIDER: z.literal("postgresql").default("postgresql"),
+  MIGRATION_BATCH_SIZE: z.coerce.number().int().min(10).max(5000).default(500),
 
   REDIS_URL: z.string().url().or(z.string().startsWith("redis")),
 
@@ -36,14 +37,37 @@ const EnvSchema = z.object({
   R2_BUCKET: optionalEnvString,
   R2_SIGNED_URL_TTL_SECONDS: z.coerce.number().int().positive().default(300),
 
-  JWT_ACCESS_SECRET: z.string().min(32, "JWT_ACCESS_SECRET must be at least 32 chars"),
-  JWT_REFRESH_SECRET: z.string().min(32, "JWT_REFRESH_SECRET must be at least 32 chars"),
+  // RS256 access tokens. Private keys are never committed; local development
+  // uses ignored PEM files under apps/backend/.keys.
+  JWT_ALGORITHM: z.literal("RS256").default("RS256"),
+  JWT_PRIVATE_KEY_PATH: z.string().default(".keys/jwt-private.pem"),
+  JWT_PUBLIC_KEY_PATH: z.string().default(".keys/jwt-public.pem"),
+  JWT_ISSUER: z.string().min(1).default("lumigap-api"),
+  JWT_AUDIENCE: z.string().min(1).default("lumigap-web"),
+  // Deprecated HMAC secrets remain optional during the migration window. They
+  // are not used to sign or verify access/refresh tokens.
+  JWT_ACCESS_SECRET: optionalEnvString,
+  JWT_REFRESH_SECRET: optionalEnvString,
   JWT_ACCESS_TTL: z.string().default("15m"),
   JWT_REFRESH_TTL: z.string().default("7d"),
 
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
-  GOOGLE_CALLBACK_URL: z.string().default("http://localhost:4000/api/auth/google/callback"),
+  GOOGLE_CALLBACK_URL: z.string().default("http://localhost:4000/api/v1/auth/google/callback"),
+
+  // Transactional email for security-sensitive verification messages. "log" is
+  // an explicit local-development transport and is forbidden in production.
+  EMAIL_DELIVERY_MODE: z.enum(["disabled", "log", "smtp"]).default("disabled"),
+  SMTP_HOST: optionalEnvString,
+  SMTP_PORT: z.coerce.number().int().positive().max(65535).default(587),
+  SMTP_SECURE: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
+  SMTP_USER: optionalEnvString,
+  SMTP_PASS: optionalEnvString,
+  SMTP_FROM: optionalEnvEmail,
+  ACADEMIC_EMAIL_OTP_SECRET: z.preprocess(
+    (value) => value === "" ? undefined : value,
+    z.string().min(32).optional(),
+  ),
 
   GEMINI_API_KEY: z.string().min(1, "GEMINI_API_KEY is required"),
   // Cost-saving: standardize ALL generative calls (rerank, research gaps, RAG
@@ -68,7 +92,7 @@ const EnvSchema = z.object({
   LIBRETRANSLATE_API_KEY: optionalEnvString,
   // Internal AI Reviewer service (Python FastAPI)
   AI_REVIEWER_URL: z.string().url().default("http://localhost:8001"),
-  INTERNAL_SERVICE_KEY: z.string().default("liemresearch_internal_secret_key_2026"),
+  INTERNAL_SERVICE_KEY: z.string().min(32, "INTERNAL_SERVICE_KEY must contain at least 32 characters"),
   // PayOS Payment Integration
   PAYOS_CLIENT_ID: optionalEnvString,
   PAYOS_API_KEY: optionalEnvString,
@@ -85,13 +109,13 @@ const EnvSchema = z.object({
   CHAT_CACHE_TTL_SECONDS: z.coerce.number().int().positive().default(604800),
   CHAT_ABSTRACT_MAX_CHARS: z.coerce.number().int().positive().default(800),
 
-  OPENALEX_MAILTO: z.string().email().optional(),
+  OPENALEX_MAILTO: optionalEnvEmail,
   // The normal application can read the existing corpus without an OpenAlex
   // key. Treat an empty Compose/.env value as absent; the scale-campaign start
   // endpoint performs the explicit key-required check before a provider call.
   OPENALEX_API_KEY: optionalEnvString,
   SEMANTIC_SCHOLAR_API_KEY: z.string().optional(),
-  CROSSREF_MAILTO: z.string().email().optional(),
+  CROSSREF_MAILTO: optionalEnvEmail,
 
   SYNC_CRON: z.string().default("0 2 * * *"),
   // OpenAlex Works list requests currently allow at most 100 results/page.
@@ -176,6 +200,21 @@ const EnvSchema = z.object({
 
   INITIAL_USER_CREDITS: z.coerce.number().int().nonnegative().default(1000),
 }).superRefine((value, ctx) => {
+  if (!value.DATABASE_URL) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["DATABASE_URL"],
+      message: "DATABASE_URL is required for the PostgreSQL runtime",
+    });
+  }
+  if (value.NODE_ENV !== "test" && value.PERSISTENCE_PROVIDER !== "postgresql") {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["PERSISTENCE_PROVIDER"],
+      message: "Only PostgreSQL is allowed for the application runtime",
+    });
+  }
+
   if (value.STORAGE_PROVIDER === "r2") {
     for (const key of ["R2_ENDPOINT", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET"] as const) {
       if (!value[key]) {
@@ -183,6 +222,18 @@ const EnvSchema = z.object({
           code: z.ZodIssueCode.custom,
           path: [key],
           message: `${key} is required when STORAGE_PROVIDER=r2`,
+        });
+      }
+    }
+  }
+
+  if (value.EMAIL_DELIVERY_MODE === "smtp") {
+    for (const key of ["SMTP_HOST", "SMTP_USER", "SMTP_PASS", "SMTP_FROM"] as const) {
+      if (!value[key]) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [key],
+          message: `${key} is required when EMAIL_DELIVERY_MODE=smtp`,
         });
       }
     }
@@ -198,13 +249,6 @@ const EnvSchema = z.object({
         });
       }
     }
-    if (value.JWT_ACCESS_SECRET === value.JWT_REFRESH_SECRET) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["JWT_REFRESH_SECRET"],
-        message: "JWT access and refresh secrets must be different in production",
-      });
-    }
     if (value.SYNC_ADMIN_BYPASS) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -212,21 +256,54 @@ const EnvSchema = z.object({
         message: "SYNC_ADMIN_BYPASS must be false in production",
       });
     }
+    if (value.EMAIL_DELIVERY_MODE === "log") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["EMAIL_DELIVERY_MODE"],
+        message: "EMAIL_DELIVERY_MODE=log is forbidden in production",
+      });
+    }
   }
 });
 
 const rawEnv = { ...process.env };
+
+// Native development can reuse the credentials that provision the local
+// Docker-only Redis service. Secrets stay in the gitignored
+// .env.compose file and are URL-encoded only in this process' memory.
+if (rawEnv.NODE_ENV !== "production" && rawEnv.LOCAL_DOCKER_INFRA === "true") {
+  const composeEnvPath = fileURLToPath(new URL("../../../../.env.compose", import.meta.url));
+
+  let composeEnv: Record<string, string>;
+  try {
+    composeEnv = parseDotenv(readFileSync(composeEnvPath));
+  } catch {
+    console.error("Cannot load .env.compose for LOCAL_DOCKER_INFRA=true");
+    process.exit(1);
+  }
+
+  const redisPassword = composeEnv.REDIS_PASSWORD;
+
+  if (!redisPassword) {
+    console.error(
+      ".env.compose must define REDIS_PASSWORD",
+    );
+    process.exit(1);
+  }
+
+  rawEnv.REDIS_URL = `redis://default:${encodeURIComponent(redisPassword)}@127.0.0.1:6379`;
+}
 // Inject mock defaults under Vitest ONLY to avoid process.exit(1) on missing secrets.
 // SECURITY: gated on VITEST (which Vitest sets automatically), NOT on NODE_ENV — a
 // production deploy mis-set to NODE_ENV=test must NOT silently boot with the hardcoded
 // mock JWT secrets (which are committed to this PUBLIC repo) and let anyone forge tokens.
 if (rawEnv.VITEST === "true") {
   rawEnv.NODE_ENV = "test";
-  rawEnv.MONGODB_URI = rawEnv.MONGODB_URI || "mongodb://localhost:27017/test";
+  rawEnv.PERSISTENCE_PROVIDER = "postgresql";
   rawEnv.REDIS_URL = rawEnv.REDIS_URL || "redis://localhost:6379";
-  rawEnv.JWT_ACCESS_SECRET = rawEnv.JWT_ACCESS_SECRET || "mockaccesssecretmockaccesssecretmock";
-  rawEnv.JWT_REFRESH_SECRET = rawEnv.JWT_REFRESH_SECRET || "mockrefreshsecretmockrefreshsecretmock";
+  rawEnv.DATABASE_URL = rawEnv.DATABASE_URL || "postgresql://test:test@localhost:5432/test";
   rawEnv.GEMINI_API_KEY = rawEnv.GEMINI_API_KEY || "mock-gemini-key";
+  rawEnv.INTERNAL_SERVICE_KEY = rawEnv.INTERNAL_SERVICE_KEY || "mock-internal-service-key-32-characters";
 }
 
 const parsed = EnvSchema.safeParse(rawEnv);

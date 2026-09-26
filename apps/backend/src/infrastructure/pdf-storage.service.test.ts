@@ -27,6 +27,14 @@ describe("pdf storage service", () => {
     expect(writeFile).toHaveBeenCalledWith(expect.stringContaining("uploads-test"), pdfBuffer);
   });
 
+  it("never resolves a local download outside the configured upload directory", () => {
+    const storage = createPdfStorageService({ provider: "local", uploadsDir: "uploads-test" });
+
+    expect(storage.resolveLocalPath("/uploads/paper.pdf")).toMatch(/uploads-test[\\/]paper\.pdf$/);
+    expect(storage.resolveLocalPath("/uploads/../secrets.txt")).toBeNull();
+    expect(storage.resolveLocalPath("C:\\secrets.txt")).toBeNull();
+  });
+
   it("stores R2 PDFs as r2://bucket/key object references", async () => {
     const putObject = vi.fn().mockResolvedValue(undefined);
     const storage = createPdfStorageService({

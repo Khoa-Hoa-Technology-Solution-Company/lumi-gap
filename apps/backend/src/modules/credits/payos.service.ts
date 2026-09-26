@@ -1,9 +1,10 @@
 import crypto from "node:crypto";
 import { AppError } from "../../common/exceptions/app-error.js";
 import { env } from "../../config/env.js";
+import { parseDatabaseId, publicDatabaseId } from "../../infrastructure/database/database-id.js";
+import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { logger } from "../../infrastructure/logger.js";
 import { creditService } from "./credit.service.js";
-import { PaymentOrderModel } from "./models/payment-order.model.js";
 
 export interface CreatePaymentLinkParams {
   userId: string;
@@ -130,19 +131,20 @@ export const payosService = {
       checkoutUrl = `${defaultReturn}&orderCode=${orderCode}&mock=true`;
     }
 
-    const order = await PaymentOrderModel.create({
-      orderCode,
-      userId,
-      amount: amountVnd,
-      credits: creditsToAdd,
-      status: "pending",
-      paymentLinkId,
-      checkoutUrl,
-      qrCode,
+    const parsedUserId = parseDatabaseId(userId);
+    if (!parsedUserId) throw AppError.notFound("Không tìm thấy thông tin người dùng");
+    const user = await getPrisma().user.findUnique({
+      where: parsedUserId.kind === "uuid" ? { id: parsedUserId.value } : { legacyMongoId: parsedUserId.value },
+      select: { id: true },
     });
+    if (!user) throw AppError.notFound("Không tìm thấy thông tin người dùng");
+    const order = await getPrisma().paymentOrder.create({ data: {
+      orderCode: BigInt(orderCode), userId: user.id, amount: amountVnd, credits: creditsToAdd,
+      status: "pending", paymentLinkId: paymentLinkId || null, checkoutUrl, qrCode: qrCode || null,
+    } });
 
     return {
-      orderId: order._id.toString(),
+      orderId: publicDatabaseId(order),
       orderCode,
       amount: amountVnd,
       credits: creditsToAdd,
@@ -172,7 +174,7 @@ export const payosService = {
       return { success: false };
     }
 
-    const order = await PaymentOrderModel.findOne({ orderCode });
+    const order = await getPrisma().paymentOrder.findUnique({ where: { orderCode: BigInt(orderCode) } });
     if (!order) {
       logger.warn({ orderCode }, "PayOS order not found in database");
       return { success: true };
@@ -181,22 +183,26 @@ export const payosService = {
     if (order.status === "paid") {
       return { success: true, message: "Order already paid" };
     }
-
-    order.status = "paid";
-    order.paidAt = new Date();
-    await order.save();
+    if (amount !== order.amount) {
+      logger.warn({ orderCode, expectedAmount: order.amount, receivedAmount: amount }, "PayOS amount mismatch");
+      throw AppError.badRequest("Số tiền thanh toán không khớp với đơn nạp credit");
+    }
 
     // Cộng credit cho người dùng
     await creditService.rewardCreditsOnce({
-      userId: order.userId.toString(),
+      userId: order.userId,
       amount: order.credits,
-      targetId: order._id.toString(),
+      targetId: order.id,
       idempotencyKey: `payos:${orderCode}`,
       metadata: {
         paymentProvider: "payos",
         orderCode,
         amountVnd: amount,
       },
+    });
+    await getPrisma().paymentOrder.updateMany({
+      where: { id: order.id, status: "pending" },
+      data: { status: "paid", paidAt: new Date() },
     });
 
     logger.info(
@@ -211,9 +217,16 @@ export const payosService = {
    * Lấy lịch sử nạp tiền của người dùng
    */
   async getUserOrders(userId: string) {
-    return PaymentOrderModel.find({ userId })
-      .sort({ createdAt: -1 })
-      .limit(50)
-      .lean();
+    const parsed = parseDatabaseId(userId);
+    if (!parsed) return [];
+    const user = await getPrisma().user.findUnique({
+      where: parsed.kind === "uuid" ? { id: parsed.value } : { legacyMongoId: parsed.value },
+      select: { id: true },
+    });
+    if (!user) return [];
+    const orders = await getPrisma().paymentOrder.findMany({
+      where: { userId: user.id }, orderBy: { createdAt: "desc" }, take: 50,
+    });
+    return orders.map((order) => ({ ...order, id: publicDatabaseId(order), _id: publicDatabaseId(order), orderCode: Number(order.orderCode) }));
   },
 };

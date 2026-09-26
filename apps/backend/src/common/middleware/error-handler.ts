@@ -19,7 +19,9 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
   if (isMulterError(err)) {
     const message =
       err.code === "LIMIT_FILE_SIZE"
-        ? "PDF file is too large. Maximum size is 10MB."
+        ? _req.originalUrl.includes("/academic-profiles/me/cover")
+          ? "Cover image is too large. Maximum size is 5MB."
+          : "PDF file is too large. Maximum size is 10MB."
         : `Invalid file upload: ${err.message}`;
     res.status(400).json({
       success: false,
@@ -49,7 +51,7 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
     return;
   }
 
-  // Mongoose CastError = a malformed value reached a typed field, almost always a
+  // Legacy CastError = a malformed value reached a typed field, almost always a
   // non-ObjectId in a `:id` path param (e.g. GET /papers/not-an-id). That's a client
   // error → 400, not a 500. One guard here fixes every bad-id route at once.
   if (err instanceof Error && err.name === "CastError") {

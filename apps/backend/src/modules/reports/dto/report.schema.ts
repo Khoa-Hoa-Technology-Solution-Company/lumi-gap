@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { TREND_CITATION_BANDS } from "../../trends/trend.filters.js";
+import { databaseIdSchema } from "../../../common/validation/database-id.js";
 
-const ObjectIdSchema = z.string().regex(/^[0-9a-fA-F]{24}$/, "Invalid paper ID format");
+const ObjectIdSchema = databaseIdSchema;
 const SelectedPaperIdsSchema = z.array(ObjectIdSchema).max(20, "selectedPaperIds cannot exceed 20 papers");
 
 function stringList(v: unknown): string[] | undefined {

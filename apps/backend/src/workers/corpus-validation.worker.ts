@@ -1,17 +1,20 @@
 import { Worker } from "bullmq";
+import { enforcePostgresOnlyRuntime } from "../infrastructure/database/postgres-only-runtime.js";
 
-import { connectMongo, disconnectMongo } from "../infrastructure/db.js";
+import { connectPostgres, disconnectPostgres } from "../infrastructure/database/prisma.js";
 import { logger } from "../infrastructure/logger.js";
 import { makeConnection, QUEUE_NAMES } from "../infrastructure/queue.js";
 import { startWorkerHeartbeat } from "../infrastructure/worker-heartbeat.js";
 import { corpusValidationService } from "../modules/api-sync/scale/corpus-validation.service.js";
+
+enforcePostgresOnlyRuntime();
 
 interface CorpusValidationJob {
   validationRunId: string;
 }
 
 async function main() {
-  await connectMongo();
+  await connectPostgres();
   const stopHeartbeat = startWorkerHeartbeat({
     workerName: "worker:corpus-validation",
     queueName: QUEUE_NAMES.corpusValidation,
@@ -30,7 +33,7 @@ async function main() {
     logger.info({ signal }, "corpus validation worker shutting down");
     await stopHeartbeat();
     await worker.close();
-    await disconnectMongo();
+    await disconnectPostgres();
     process.exit(0);
   };
   process.on("SIGINT", () => void shutdown("SIGINT"));

@@ -17,6 +17,23 @@ import { homeRouter } from "../modules/home/home.routes.js";
 import { creditRouter } from "../modules/credits/credit.routes.js";
 import { pipelineRouter } from "../modules/pipeline/pipeline.routes.js";
 import { evaluationRouter } from "../modules/evaluation/evaluation.routes.js";
+import { communityRouter } from "../modules/communities/community.routes.js";
+import { forumRouter, gapDiscussionRouter } from "../modules/forum/forum.routes.js";
+import { recruitmentRouter } from "../modules/recruitment/recruitment.routes.js";
+import { submissionRouter } from "../modules/submissions/submission.routes.js";
+import { workspaceRouter } from "../modules/workspaces/workspace.routes.js";
+import { aiRunRouter } from "../modules/ai-jobs/ai-run.routes.js";
+import {
+  academicProfileAdminRouter,
+  academicProfileRouter,
+} from "../modules/academic-profiles/academic-profile.routes.js";
+import {
+  contributionRouter,
+  humanReviewRouter,
+  reviewAvailabilityRouter,
+  reviewOpportunityRouter,
+} from "../modules/reviews/review.routes.js";
+import { literatureRouter } from "../modules/literature/literature.routes.js";
 
 export const apiRouter: Router = Router();
 
@@ -27,7 +44,20 @@ apiRouter.use("/papers", paperRouter);
 apiRouter.use("/search", searchRouter); // Phase B — semantic search
 apiRouter.use("/trends", trendRouter); // Phase B/C — publication trends
 apiRouter.use("/reports", reportRouter); // Phase C — RAG analytical reports
+apiRouter.use("/gaps", gapDiscussionRouter);
 apiRouter.use("/gaps", gapsRouter); // Phase D — research gaps
+apiRouter.use("/communities", communityRouter);
+apiRouter.use("/forum", forumRouter);
+apiRouter.use("/openings", recruitmentRouter);
+apiRouter.use("/submissions", submissionRouter);
+apiRouter.use("/workspaces", workspaceRouter);
+apiRouter.use("/ai-runs", aiRunRouter);
+apiRouter.use("/academic-profiles", academicProfileRouter);
+apiRouter.use("/review-availability", reviewAvailabilityRouter);
+apiRouter.use("/review-opportunities", reviewOpportunityRouter);
+apiRouter.use("/reviews", humanReviewRouter);
+apiRouter.use("/contributions", contributionRouter);
+apiRouter.use("/literature", literatureRouter);
 apiRouter.use("/bookmarks", bookmarkRouter); // Sprint 3 — bookmarks
 apiRouter.use("/analytics", analyticsRouter); // Phase D — search analytics
 apiRouter.use("/quality", qualityRouter); // Quality & Feedback — LLM-judge + user ratings
@@ -38,3 +68,4 @@ apiRouter.use("/admin", embeddingRouter); // /admin/embed
 apiRouter.use("/admin", pipelineRouter); // /admin/pipeline/status
 apiRouter.use("/admin", evaluationRouter); // /admin/evaluation/summary
 apiRouter.use("/admin", adminRouter); // /admin/users, /admin/stats — user management
+apiRouter.use("/admin", academicProfileAdminRouter);

@@ -3,6 +3,7 @@ import { requireAuth } from "../../common/middleware/auth.js";
 import { validate } from "../../common/middleware/validate.js";
 import { notificationService } from "./notification.service.js";
 import { RegisterDeviceTokenSchema } from "./dto/device-token.schema.js";
+import { publicDatabaseId } from "../../infrastructure/database/database-id.js";
 
 export const notificationRouter: Router = Router();
 
@@ -12,7 +13,7 @@ notificationRouter.post("/device-token", requireAuth, validate(RegisterDeviceTok
     res.status(201).json({
       success: true,
       data: {
-        id: token._id.toString(),
+        id: publicDatabaseId(token),
         platform: token.platform,
         lastSeenAt: token.lastSeenAt,
       },

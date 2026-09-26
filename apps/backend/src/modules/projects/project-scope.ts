@@ -1,7 +1,6 @@
-import mongoose from "mongoose";
 import { AppError } from "../../common/exceptions/app-error.js";
 
-type IdLike = string | mongoose.Types.ObjectId | { _id?: string | mongoose.Types.ObjectId } | null | undefined;
+type IdLike = string | { _id?: IdLike; toString?: () => string } | null | undefined;
 
 export interface ProjectScopeLike {
   ownerId?: IdLike;
@@ -14,8 +13,11 @@ export type ProjectAiFeature = "report" | "gap analysis" | "project chat";
 export function idToString(value: IdLike): string | null {
   if (!value) return null;
   if (typeof value === "string") return value;
-  if (value instanceof mongoose.Types.ObjectId) return value.toString();
-  if (typeof value === "object" && "_id" in value) return idToString(value._id);
+  if (typeof value === "object" && "_id" in value && value._id !== value) return idToString(value._id);
+  if (typeof value === "object" && typeof value.toString === "function") {
+    const text = value.toString();
+    return text === "[object Object]" ? null : text;
+  }
   return null;
 }
 

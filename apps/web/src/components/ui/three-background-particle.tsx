@@ -142,7 +142,8 @@ export function ThreeBackgroundParticle() {
         };
         window.addEventListener("mousemove", handleMouseMove);
 
-        const clock = new THREE.Clock();
+        const timer = new THREE.Timer();
+        timer.connect(document);
         const initialCamPos = new THREE.Vector3(0, 10, 0);
         const targetCamPos = new THREE.Vector3(positionCam.x, positionCam.y, positionCam.z);
         const initialLookAt = new THREE.Vector3(3, 5, 5);
@@ -153,7 +154,8 @@ export function ThreeBackgroundParticle() {
         let animationFrameId: number;
 
         const animate = (now: number) => {
-            const time = clock.getElapsedTime();
+            timer.update(now);
+            const time = timer.getElapsed();
 
             for (const p of particles) {
                 const r = Math.sqrt(p.basePos.x ** 2 + p.basePos.z ** 2);
@@ -215,6 +217,7 @@ export function ThreeBackgroundParticle() {
             window.removeEventListener("mousemove", handleMouseMove);
             window.removeEventListener("resize", handleResize);
             cancelAnimationFrame(animationFrameId);
+            timer.dispose();
             renderer.dispose();
             if (container.contains(renderer.domElement)) {
                 container.removeChild(renderer.domElement);

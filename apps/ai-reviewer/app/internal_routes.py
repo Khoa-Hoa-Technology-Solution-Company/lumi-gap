@@ -14,6 +14,7 @@ from app.config import ALLOWED_STRICTNESS, OUTPUT_DIR, UPLOAD_DIR
 from app.format_checker import PRESETS, analyze_format, report_markdown
 from app.reviewer import GeminiReviewProvider, safe_slug, write_artifacts
 from app.security import Security
+from app.pre_review import PreReviewRequest, run_pre_review
 
 
 def verify_internal_key(x_internal_key: Optional[str] = Header(None)) -> None:
@@ -45,6 +46,21 @@ def internal_router(database, security: Security) -> APIRouter:
             }
             for p in PRESETS
         ]
+
+    @router.post("/pre-review")
+    def pre_review(payload: PreReviewRequest) -> dict[str, Any]:
+        settings = security.settings(reveal=True)
+        api_key = settings.get("gemini_api_key")
+        if not api_key:
+            raise HTTPException(status_code=503, detail="AI pre-review is disabled because Gemini is not configured")
+        model = settings.get("gemini_model", "gemini-3.7-flash")
+        try:
+            analysis = run_pre_review(payload, api_key=api_key, model=model)
+            return {"status": "completed", "provider": "gemini", "model": model, "analysis": analysis}
+        except ValueError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail="AI pre-review could not produce valid structured analysis") from exc
 
     @router.post("/format-check")
     async def format_check(

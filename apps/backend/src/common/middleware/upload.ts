@@ -1,4 +1,4 @@
-// @ts-ignore
+// @ts-expect-error multer's CommonJS export is callable and exposes memoryStorage at runtime.
 import multer from "multer";
 import { AppError } from "../exceptions/app-error.js";
 
@@ -30,6 +30,37 @@ export const uploadPaperReviewPdf = (multer as any)({
     cb(null, true);
   },
 }).single("file");
+
+export const uploadProfileCover = (multer as any)({
+  storage,
+  limits: { fileSize: 5 * 1024 * 1024, files: 1 },
+  fileFilter: (_req: any, file: any, cb: any) => {
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.mimetype)) {
+      return cb(AppError.badRequest("Only JPEG, PNG, or WebP cover images are allowed"));
+    }
+    cb(null, true);
+  },
+}).single("cover");
+
+export const uploadProfileAvatar = (multer as any)({
+  storage,
+  limits: { fileSize: 5 * 1024 * 1024, files: 1 },
+  fileFilter: (_req: any, file: any, cb: any) => {
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.mimetype)) {
+      return cb(AppError.badRequest("Only JPEG, PNG, or WebP profile photos are allowed"));
+    }
+    cb(null, true);
+  },
+}).single("avatar");
+
+export const uploadPositionEvidence = (multer as any)({
+  storage,
+  limits: { fileSize: 10 * 1024 * 1024, files: 1 },
+  fileFilter: (_req: any, file: any, cb: any) => {
+    if (file.mimetype !== "application/pdf") return cb(AppError.badRequest("Only PDF supporting documents are allowed"));
+    cb(null, true);
+  },
+}).single("evidence");
 
 /**
  * Verify the uploaded bytes are actually a PDF. The multer `fileFilter` only sees the

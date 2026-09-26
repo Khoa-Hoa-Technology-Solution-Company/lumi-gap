@@ -1,7 +1,7 @@
 export type ProductionEnvironment = Record<string, string | undefined>;
 
 const REQUIRED_KEYS = [
-  "MONGODB_URI",
+  "DATABASE_URL",
   "REDIS_DEPLOYMENT",
   "REDIS_PASSWORD",
   "REDIS_URL",
@@ -50,8 +50,8 @@ export function validateProductionEnvironment(values: ProductionEnvironment): st
     errors.push("SYNC_ADMIN_BYPASS must be false in production");
   }
 
-  if (!values.MONGODB_URI?.startsWith("mongodb://") && !values.MONGODB_URI?.startsWith("mongodb+srv://")) {
-    errors.push("MONGODB_URI must use mongodb:// or mongodb+srv://");
+  if (!values.DATABASE_URL?.startsWith("postgresql://") && !values.DATABASE_URL?.startsWith("postgres://")) {
+    errors.push("DATABASE_URL must use postgresql:// or postgres://");
   }
 
   if (!values.REDIS_URL?.startsWith("redis://") && !values.REDIS_URL?.startsWith("rediss://")) {

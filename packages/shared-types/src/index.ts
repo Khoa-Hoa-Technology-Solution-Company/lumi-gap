@@ -3,6 +3,8 @@
 
 export * from "./common.js";
 export * from "./user.js";
+export * from "./academic-profile.js";
+export * from "./forum.js";
 export * from "./paper.js";
 export * from "./author.js";
 export * from "./journal.js";
@@ -22,5 +24,7 @@ export * from "./credit.js";
 export * from "./evaluation.js";
 export * from "./corpus-validation.js";
 export * from "./review.js";
+export * from "./research-review.js";
+export * from "./literature.js";
 
 // Code quality reviewed and formatted

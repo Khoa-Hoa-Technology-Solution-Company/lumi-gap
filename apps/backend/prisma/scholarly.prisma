@@ -1,0 +1,346 @@
+model Author {
+  id            String   @id @default(uuid()) @db.Uuid
+  legacyMongoId String?  @unique @map("legacy_mongo_id") @db.VarChar(24)
+  openalexId    String?  @unique @map("openalex_id")
+  orcid         String?
+  scholarId     String?  @map("scholar_id")
+  displayName   String   @map("display_name")
+  hIndex        Int?     @map("h_index")
+  citedByCount  Int      @default(0) @map("cited_by_count")
+  worksCount    Int      @default(0) @map("works_count")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([displayName])
+  @@index([orcid])
+  @@map("authors")
+}
+
+model AuthorAffiliation {
+  id       String  @id @default(uuid()) @db.Uuid
+  authorId String  @map("author_id") @db.Uuid
+  name     String
+  country  String?
+  ror      String?
+  position Int     @default(0)
+
+  @@index([authorId, position])
+  @@map("author_affiliations")
+}
+
+model Journal {
+  id            String   @id @default(uuid()) @db.Uuid
+  legacyMongoId String?  @unique @map("legacy_mongo_id") @db.VarChar(24)
+  openalexId    String?  @unique @map("openalex_id")
+  eissn         String?
+  crossrefId    String?  @map("crossref_id")
+  name          String
+  publisher     String?
+  country       String?
+  type          String   @default("journal") @db.VarChar(32)
+  isOpenAccess  Boolean  @default(false) @map("is_open_access")
+  homepageUrl   String?  @map("homepage_url")
+  worksCount    Int      @default(0) @map("works_count")
+  citedByCount  Int      @default(0) @map("cited_by_count")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([name])
+  @@map("journals")
+}
+
+model JournalIssn {
+  id        String @id @default(uuid()) @db.Uuid
+  journalId String @map("journal_id") @db.Uuid
+  issn      String @db.VarChar(32)
+
+  @@unique([journalId, issn])
+  @@index([issn])
+  @@map("journal_issns")
+}
+
+model Keyword {
+  id             String   @id @default(uuid()) @db.Uuid
+  legacyMongoId  String?  @unique @map("legacy_mongo_id") @db.VarChar(24)
+  keywordName    String   @map("keyword_name")
+  normalizedName String   @unique @map("normalized_name")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("keywords")
+}
+
+model ResearchTopic {
+  id            String   @id @default(uuid()) @db.Uuid
+  legacyMongoId String?  @unique @map("legacy_mongo_id") @db.VarChar(24)
+  parentTopicId String?  @map("parent_topic_id") @db.Uuid
+  topicName     String   @map("topic_name")
+  description   String?
+  researchField String?  @map("research_field")
+  openalexId    String?  @map("openalex_id")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([parentTopicId, topicName])
+  @@index([openalexId])
+  @@map("research_topics")
+}
+
+model Paper {
+  id                           String                      @id @default(uuid()) @db.Uuid
+  legacyMongoId                String?                     @unique @map("legacy_mongo_id") @db.VarChar(24)
+  doi                          String?                     @unique
+  openalexId                   String?                     @map("openalex_id")
+  semanticScholarId            String?                     @map("semantic_scholar_id")
+  arxivId                      String?                     @map("arxiv_id")
+  pubmedId                     String?                     @map("pubmed_id")
+  title                        String
+  abstractText                 String?                     @map("abstract_text")
+  journalId                    String?                     @map("journal_id") @db.Uuid
+  journalName                  String?                     @map("journal_name")
+  publicationYear              Int                         @map("publication_year")
+  publicationDate              DateTime?                   @map("publication_date") @db.Date
+  paperKind                    String                      @default("article") @map("paper_kind") @db.VarChar(32)
+  language                     String                      @default("und") @db.VarChar(16)
+  openAccessStatus             String                      @default("unknown") @map("open_access_status") @db.VarChar(24)
+  openAccessUrl                String?                     @map("open_access_url")
+  paperLink                    String?                     @map("paper_link")
+  licenseName                  String?                     @map("license_name")
+  citationCount                Int                         @default(0) @map("citation_count")
+  fwci                         Float?
+  citationNormalizedPercentile Json?                       @map("citation_normalized_percentile")
+  relatedWorksCount            Int                         @default(0) @map("related_works_count")
+  primaryProvider              String                      @map("primary_provider") @db.VarChar(32)
+  pdfPath                      String?                     @map("pdf_path")
+  requestedById                String?                     @map("requested_by_id") @db.Uuid
+  uploadedById                 String?                     @map("uploaded_by_id") @db.Uuid
+  uploadedAt                   DateTime?                   @map("uploaded_at") @db.Timestamptz(6)
+  uploadRewardedAt             DateTime?                   @map("upload_rewarded_at") @db.Timestamptz(6)
+  rejectionReason              String?                     @map("rejection_reason")
+  paperStatus                  String                      @default("pending") @map("paper_status") @db.VarChar(40)
+  dataStatus                   String                      @default("draft") @map("data_status") @db.VarChar(24)
+  dataQualityScore             Float                       @default(0) @map("data_quality_score")
+  isAiAnalyzable               Boolean                     @default(false) @map("is_ai_analyzable")
+  metadataScore                Float                       @default(0) @map("metadata_score")
+  sourceScore                  Float                       @default(0) @map("source_score")
+  duplicateScore               Float                       @default(0) @map("duplicate_score")
+  relevanceScore               Float                       @default(0) @map("relevance_score")
+  prestigeScore                Float                       @default(0) @map("prestige_score")
+  utilityScore                 Float                       @default(0) @map("utility_score")
+  qualityScore                 Float                       @default(0) @map("quality_score")
+  qualityTier                  Int                         @default(0) @map("quality_tier")
+  qualityTierName              String                      @default("Invalid") @map("quality_tier_name")
+  downloadCost                 Int?                        @map("download_cost")
+  uploadCreditReward           Int                         @default(0) @map("upload_credit_reward")
+  averageRating                Float                       @default(0) @map("average_rating")
+  totalRatings                 Int                         @default(0) @map("total_ratings")
+  downloadCount                Int                         @default(0) @map("download_count")
+  viewCount                    Int                         @default(0) @map("view_count")
+  embedding                    Unsupported("vector(768)")?
+  embeddingModel               String?                     @map("embedding_model")
+  embeddingVersion             String?                     @map("embedding_version")
+  embeddingDimensions          Int?                        @map("embedding_dimensions")
+  embeddingUpdatedAt           DateTime?                   @map("embedding_updated_at") @db.Timestamptz(6)
+  referencedWorks              String[]                    @default([]) @map("referenced_works")
+  relatedWorks                 String[]                    @default([]) @map("related_works")
+  aiScore                      Json?                       @map("ai_score")
+  aiAnalysis                   Json?                       @map("ai_analysis")
+  searchDocument               Unsupported("tsvector")?    @map("search_document")
+  createdAt                    DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                    DateTime                    @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([openalexId])
+  @@index([semanticScholarId])
+  @@index([arxivId])
+  @@index([pubmedId])
+  @@index([publicationYear, citationCount])
+  @@index([language])
+  @@index([paperStatus])
+  @@index([dataStatus])
+  @@index([isAiAnalyzable, dataStatus])
+  @@index([requestedById])
+  @@index([uploadedById])
+  @@map("papers")
+}
+
+model PaperAuthor {
+  paperId         String  @map("paper_id") @db.Uuid
+  authorId        String? @map("author_id") @db.Uuid
+  displayName     String  @map("display_name")
+  position        Int
+  isCorresponding Boolean @default(false) @map("is_corresponding")
+
+  @@id([paperId, position])
+  @@index([authorId])
+  @@map("paper_authors")
+}
+
+model PaperKeyword {
+  paperId     String  @map("paper_id") @db.Uuid
+  keywordId   String? @map("keyword_id") @db.Uuid
+  keywordName String  @map("keyword_name")
+  detectedBy  String  @default("openalex") @map("detected_by") @db.VarChar(24)
+  confidence  Float?
+  position    Int
+
+  @@id([paperId, position])
+  @@index([keywordId])
+  @@index([keywordName])
+  @@map("paper_keywords")
+}
+
+model PaperTopic {
+  paperId         String  @map("paper_id") @db.Uuid
+  topicId         String? @map("topic_id") @db.Uuid
+  openalexTopicId String? @map("openalex_topic_id")
+  topicName       String  @map("topic_name")
+  detectedBy      String  @default("openalex") @map("detected_by") @db.VarChar(24)
+  confidence      Float?
+  isPrimary       Boolean @default(false) @map("is_primary")
+  subfieldId      String? @map("subfield_id")
+  subfieldName    String? @map("subfield_name")
+  fieldId         String? @map("field_id")
+  fieldName       String? @map("field_name")
+  domainId        String? @map("domain_id")
+  domainName      String? @map("domain_name")
+  position        Int
+
+  @@id([paperId, position])
+  @@index([topicId])
+  @@index([topicName])
+  @@index([openalexTopicId])
+  @@index([subfieldName])
+  @@index([fieldName])
+  @@index([domainName])
+  @@map("paper_topics")
+}
+
+model PaperIdentity {
+  id                  String   @id @default(uuid()) @db.Uuid
+  legacyMongoId       String?  @unique @map("legacy_mongo_id") @db.VarChar(24)
+  provider            String   @db.VarChar(32)
+  normalizedValue     String   @map("normalized_value")
+  paperId             String   @map("paper_id") @db.Uuid
+  firstSeenCampaignId String?  @map("first_seen_campaign_id") @db.Uuid
+  lastVerifiedAt      DateTime @map("last_verified_at") @db.Timestamptz(6)
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([provider, normalizedValue])
+  @@index([paperId])
+  @@map("paper_identities")
+}
+
+model PaperSourceRecord {
+  id               String   @id @default(uuid()) @db.Uuid
+  legacyMongoId    String?  @unique @map("legacy_mongo_id") @db.VarChar(24)
+  paperId          String   @map("paper_id") @db.Uuid
+  providerId       String   @map("provider_id") @db.Uuid
+  externalRecordId String?  @map("external_record_id")
+  rawMetadata      Json?    @map("raw_metadata")
+  metadataHash     String?  @map("metadata_hash")
+  fetchedAt        DateTime @map("fetched_at") @db.Timestamptz(6)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([paperId, providerId])
+  @@index([metadataHash])
+  @@map("paper_source_records")
+}
+
+model PaperQualityCheck {
+  id                 String   @id @default(uuid()) @db.Uuid
+  legacyMongoId      String?  @unique @map("legacy_mongo_id") @db.VarChar(24)
+  paperId            String   @unique @map("paper_id") @db.Uuid
+  hasTitle           Boolean  @default(false) @map("has_title")
+  hasAbstract        Boolean  @default(false) @map("has_abstract")
+  hasDoi             Boolean  @default(false) @map("has_doi")
+  hasJournal         Boolean  @default(false) @map("has_journal")
+  hasPublicationYear Boolean  @default(false) @map("has_publication_year")
+  hasAuthors         Boolean  @default(false) @map("has_authors")
+  hasOpenAccessUrl   Boolean  @default(false) @map("has_open_access_url")
+  qualityScore       Float    @default(0) @map("quality_score")
+  checkStatus        String   @default("fail") @map("check_status") @db.VarChar(16)
+  checkedAt          DateTime @map("checked_at") @db.Timestamptz(6)
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([checkStatus, checkedAt])
+  @@map("paper_quality_checks")
+}
+
+model PaperDownload {
+  id            String   @id @default(uuid()) @db.Uuid
+  legacyMongoId String?  @unique @map("legacy_mongo_id") @db.VarChar(24)
+  paperId       String   @map("paper_id") @db.Uuid
+  userId        String   @map("user_id") @db.Uuid
+  cost          Int      @default(0)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([paperId, userId])
+  @@index([userId])
+  @@map("paper_downloads")
+}
+
+model PaperTranslation {
+  id                 String   @id @default(uuid()) @db.Uuid
+  legacyMongoId      String?  @unique @map("legacy_mongo_id") @db.VarChar(24)
+  paperId            String   @map("paper_id") @db.Uuid
+  sourceLanguage     String   @map("source_language") @db.VarChar(24)
+  targetLanguage     String   @map("target_language") @db.VarChar(24)
+  sourceTextHash     String   @map("source_text_hash")
+  translatedTitle    String   @map("translated_title")
+  translatedAbstract String   @default("") @map("translated_abstract")
+  provider           String
+  providerVersion    String   @map("provider_version")
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([paperId, targetLanguage, sourceTextHash, provider, providerVersion], map: "paper_translation_cache_v1")
+  @@map("paper_translations")
+}
+
+model PaperReview {
+  id              String   @id @default(uuid()) @db.Uuid
+  legacyMongoId   String?  @unique @map("legacy_mongo_id") @db.VarChar(24)
+  userId          String   @map("user_id") @db.Uuid
+  paperId         String?  @map("paper_id") @db.Uuid
+  fileName        String   @map("file_name")
+  fileSize        Int      @default(0) @map("file_size")
+  strictness      String   @default("balanced") @db.VarChar(16)
+  model           String
+  status          String   @default("pending") @db.VarChar(24)
+  recommendation  String   @default("Borderline")
+  scores          Json     @default("{}")
+  profile         Json     @default("{}")
+  bilingualReview Json     @default("{}") @map("bilingual_review")
+  reportMarkdown  String?  @map("report_markdown")
+  artifactsDir    String?  @map("artifacts_dir")
+  errorMessage    String?  @map("error_message")
+  creditsCharged  Int      @default(0) @map("credits_charged")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([userId, createdAt])
+  @@index([paperId])
+  @@index([status])
+  @@map("paper_reviews")
+}
+
+model PaperFormatCheck {
+  id             String   @id @default(uuid()) @db.Uuid
+  legacyMongoId  String?  @unique @map("legacy_mongo_id") @db.VarChar(24)
+  userId         String   @map("user_id") @db.Uuid
+  fileName       String   @map("file_name")
+  preset         String
+  passed         Boolean
+  summary        String   @default("")
+  measurements   Json     @default("{}")
+  reportMarkdown String   @default("") @map("report_markdown")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([userId, createdAt])
+  @@map("paper_format_checks")
+}

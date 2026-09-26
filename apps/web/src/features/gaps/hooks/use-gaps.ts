@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { gapsApi } from "../api/gaps.api";
-import type { AnalyzeGapRequest, PreviewGapEvidenceRequest } from "@trend/shared-types";
+import type { AnalyzeGapRequest, CreateGapCandidateRequest, PreviewGapEvidenceRequest } from "@trend/shared-types";
 
 export function useGaps(params?: Parameters<typeof gapsApi.list>[0]) {
   return useQuery({
@@ -65,5 +65,13 @@ export function usePatchGapStatus() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["gaps"] });
     },
+  });
+}
+
+export function useCreateGapCandidate() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: CreateGapCandidateRequest) => gapsApi.createCandidate(payload),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["gaps"] }),
   });
 }

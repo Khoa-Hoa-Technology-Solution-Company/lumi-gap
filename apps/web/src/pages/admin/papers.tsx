@@ -29,6 +29,7 @@ import { cn } from "@/utils/cn";
 import { formatNumber, formatQualityTierName } from "@/utils";
 import { formatPaperRequester, type PaperRequesterValue } from "@/features/admin/utils/paper-request";
 import { useI18n } from "@/i18n";
+import { isAdminSystemRole } from "@trend/shared-types";
 
 interface AdminPaper {
   id: string;
@@ -95,7 +96,7 @@ const PAGE_SIZE = 15;
 export function AdminPapersPage() {
   const { t } = useI18n();
   const { data: user, isLoading: isUserLoading } = useCurrentUser();
-  const isAdmin = user?.user?.role === "admin";
+  const isAdmin = isAdminSystemRole(user?.user?.systemRole);
 
   const [papers, setPapers] = useState<AdminPaper[]>([]);
   const [loading, setLoading] = useState(true);

@@ -21,6 +21,7 @@ import {
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { isAdminSystemRole } from "@trend/shared-types";
 import { AddToProjectDropdown } from "@/features/projects/components/add-to-project-dropdown";
 import {
   usePaper,
@@ -68,7 +69,7 @@ export function PaperDetailPage() {
     refetch,
   } = usePaper(id);
   const currentUser = useAuthStore((s) => s.user);
-  const isAdmin = currentUser?.role === "admin";
+  const isAdmin = isAdminSystemRole(currentUser?.systemRole);
   const { data: bookmarkStatus } = useBookmarkStatus("paper", id, {
     enabled: Boolean(currentUser),
   });
@@ -231,7 +232,7 @@ export function PaperDetailPage() {
 
     const pdfWindow = window.open("about:blank", "_blank");
     if (!pdfWindow) {
-      toast.error("Allow pop-ups for PaperLens before opening this PDF.");
+      toast.error("Allow pop-ups for LumiGap before opening this PDF.");
       return;
     }
     pdfWindow.opener = null;

@@ -1,4 +1,4 @@
-type UserRole = "student" | "lecturer" | "researcher" | "admin";
+import { isAdminSystemRole, type SystemRole, type UserRole } from "@trend/shared-types";
 
 type PaperStatus =
   | "pending"
@@ -18,7 +18,7 @@ export interface PaperPdfPanelInput {
     requestedBy?: { _id: string };
     uploadedBy?: { _id: string };
   };
-  currentUser?: { id: string; role?: UserRole } | null;
+  currentUser?: { id: string; systemRole?: SystemRole; role?: UserRole } | null;
 }
 
 export type PaperPdfPanelMode =
@@ -86,7 +86,7 @@ export function getPaperPdfPanelState({
   paper,
   currentUser,
 }: PaperPdfPanelInput): PaperPdfPanelState {
-  const isAdmin = currentUser?.role === "admin";
+  const isAdmin = isAdminSystemRole(currentUser?.systemRole);
   const isRequester = Boolean(currentUser && paper.requestedBy?._id === currentUser.id);
   const isUploader = Boolean(currentUser && paper.uploadedBy?._id === currentUser.id);
   const isOwner = isRequester || isUploader;

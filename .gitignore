@@ -8,6 +8,7 @@ build/
 out/
 .turbo/
 *.tsbuildinfo
+apps/backend/src/generated/prisma/
 
 # Env
 .env
@@ -84,6 +85,7 @@ venv/
 
 # Uploads & temporary artifacts
 apps/backend/uploads/
+apps/backend/.keys/
 apps/ai-reviewer/output/
 *.pdf
 !apps/ai-reviewer/docs/*.pdf

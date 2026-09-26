@@ -1,0 +1,337 @@
+model Bookmark {
+  id            String   @id @default(uuid()) @db.Uuid
+  legacyMongoId String?  @unique @map("legacy_mongo_id") @db.VarChar(24)
+  userId        String   @map("user_id") @db.Uuid
+  paperId       String?  @map("paper_id") @db.Uuid
+  reportId      String?  @map("report_id") @db.Uuid
+  note          String?  @db.VarChar(500)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([userId, createdAt])
+  @@map("bookmarks")
+}
+
+model Report {
+  id                   String    @id @default(uuid()) @db.Uuid
+  legacyMongoId        String?   @unique @map("legacy_mongo_id") @db.VarChar(24)
+  userId               String    @map("user_id") @db.Uuid
+  projectId            String?   @map("project_id") @db.Uuid
+  topic                String?
+  query                String
+  status               String    @default("queued") @db.VarChar(24)
+  markdown             String?
+  researchGapSnapshots Json      @default("[]") @map("research_gap_snapshots")
+  modelVersion         String    @default("") @map("model_version")
+  promptVersion        String    @default("") @map("prompt_version")
+  cacheKey             String?   @map("cache_key")
+  yearFrom             Int?      @map("year_from")
+  yearTo               Int?      @map("year_to")
+  scopeFilters         Json      @default("{}") @map("scope_filters")
+  language             String    @default("auto") @db.VarChar(8)
+  deepAnalysis         Boolean   @default(false) @map("deep_analysis")
+  fast                 Boolean   @default(false)
+  errorMessage         String?   @map("error_message")
+  completedAt          DateTime? @map("completed_at") @db.Timestamptz(6)
+  creditTransactionId  String?   @map("credit_transaction_id") @db.Uuid
+  creditCost           Int?      @map("credit_cost")
+  creditAction         String?   @map("credit_action")
+  creditRefundedAt     DateTime? @map("credit_refunded_at") @db.Timestamptz(6)
+  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([userId, createdAt])
+  @@index([projectId])
+  @@index([status, updatedAt])
+  @@index([cacheKey])
+  @@map("reports")
+}
+
+model ReportPaper {
+  reportId String @map("report_id") @db.Uuid
+  paperId  String @map("paper_id") @db.Uuid
+  kind     String @db.VarChar(16)
+  position Int
+
+  @@id([reportId, paperId, kind])
+  @@index([paperId])
+  @@map("report_papers")
+}
+
+model RagQuery {
+  id            String   @id @default(uuid()) @db.Uuid
+  legacyMongoId String?  @unique @map("legacy_mongo_id") @db.VarChar(24)
+  reportId      String   @map("report_id") @db.Uuid
+  userId        String   @map("user_id") @db.Uuid
+  queryText     String   @map("query_text")
+  topK          Int      @map("top_k")
+  yearFrom      Int?     @map("year_from")
+  yearTo        Int?     @map("year_to")
+  embeddingMs   Int      @default(0) @map("embedding_ms")
+  searchMs      Int      @default(0) @map("search_ms")
+  llmMs         Int      @default(0) @map("llm_ms")
+  cacheHit      Boolean  @default(false) @map("cache_hit")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([reportId])
+  @@index([userId, createdAt])
+  @@map("rag_queries")
+}
+
+model RagQueryResult {
+  queryId String @map("query_id") @db.Uuid
+  paperId String @map("paper_id") @db.Uuid
+  score   Float
+  rank    Int
+
+  @@id([queryId, paperId])
+  @@unique([queryId, rank])
+  @@index([paperId])
+  @@map("rag_query_results")
+}
+
+model GapAnalysis {
+  id                  String    @id @default(uuid()) @db.Uuid
+  legacyMongoId       String?   @unique @map("legacy_mongo_id") @db.VarChar(24)
+  userId              String    @map("user_id") @db.Uuid
+  projectId           String?   @map("project_id") @db.Uuid
+  topic               String
+  yearFrom            Int?      @map("year_from")
+  yearTo              Int?      @map("year_to")
+  evidenceMode        String    @default("auto") @map("evidence_mode") @db.VarChar(16)
+  status              String    @default("queued") @db.VarChar(24)
+  errorMessage        String?   @map("error_message")
+  promptVersion       String    @default("") @map("prompt_version")
+  modelVersion        String    @default("") @map("model_version")
+  creditTransactionId String?   @map("credit_transaction_id") @db.Uuid
+  creditCost          Int?      @map("credit_cost")
+  creditAction        String?   @map("credit_action")
+  creditRefundedAt    DateTime? @map("credit_refunded_at") @db.Timestamptz(6)
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([userId, createdAt])
+  @@index([projectId])
+  @@index([status, updatedAt])
+  @@map("gap_analyses")
+}
+
+model GapAnalysisPaper {
+  analysisId String @map("analysis_id") @db.Uuid
+  paperId    String @map("paper_id") @db.Uuid
+  position   Int
+
+  @@id([analysisId, paperId])
+  @@index([paperId])
+  @@map("gap_analysis_papers")
+}
+
+model ResearchGap {
+  id                        String   @id @default(uuid()) @db.Uuid
+  legacyMongoId             String?  @unique @map("legacy_mongo_id") @db.VarChar(24)
+  topic                     String
+  normalizedTopic           String   @map("normalized_topic")
+  title                     String   @db.VarChar(200)
+  description               String
+  rationale                 String
+  gapType                   String   @default("OTHER") @map("gap_type") @db.VarChar(64)
+  scope                     String?
+  establishedKnowledge      String?  @map("established_knowledge")
+  observedLimitation        String?  @map("observed_limitation")
+  missingEvidence           String?  @map("missing_evidence")
+  significanceExplanation   String?  @map("significance_explanation")
+  suggestedResearchQuestion String?  @map("suggested_research_question")
+  validationStatus          String   @default("CANDIDATE") @map("validation_status") @db.VarChar(32)
+  gapConfidence             String   @default("LOW") @map("gap_confidence") @db.VarChar(16)
+  researchPriority          String   @default("MODERATE") @map("research_priority") @db.VarChar(16)
+  origin                    String   @default("AI_ASSISTED") @db.VarChar(24)
+  confidence                Float    @default(0.5)
+  probe                     Json?
+  intersectionCount         Int?     @map("intersection_count")
+  parentCounts              Json?    @map("parent_counts")
+  parentTrend               Json?    @map("parent_trend")
+  evidenceConfidence        Float?   @map("evidence_confidence")
+  source                    String   @db.VarChar(16)
+  sourceReportId            String?  @map("source_report_id") @db.Uuid
+  analysisId                String?  @map("analysis_id") @db.Uuid
+  userId                    String   @map("user_id") @db.Uuid
+  projectId                 String?  @map("project_id") @db.Uuid
+  corpusId                  String?  @map("corpus_id") @db.Uuid
+  status                    String   @default("active") @db.VarChar(16)
+  createdAt                 DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                 DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([normalizedTopic, confidence])
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+  @@index([validationStatus, gapType, createdAt])
+  @@index([analysisId])
+  @@index([projectId])
+  @@index([corpusId])
+  @@map("research_gaps")
+}
+
+model ResearchGapPaper {
+  gapId    String @map("gap_id") @db.Uuid
+  paperId  String @map("paper_id") @db.Uuid
+  kind     String @db.VarChar(16)
+  position Int
+
+  @@id([gapId, paperId, kind])
+  @@index([paperId])
+  @@map("research_gap_papers")
+}
+
+model GapDirections {
+  id                  String   @id @default(uuid()) @db.Uuid
+  legacyMongoId       String?  @unique @map("legacy_mongo_id") @db.VarChar(24)
+  gapId               String   @unique @map("gap_id") @db.Uuid
+  model               String   @default("")
+  promptVersion       String   @default("") @map("prompt_version")
+  evidenceHash        String   @default("") @map("evidence_hash")
+  creditTransactionId String?  @map("credit_transaction_id") @db.Uuid
+  creditCost          Int?     @map("credit_cost")
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("gap_directions")
+}
+
+model GapDirectionItem {
+  id                String @id @default(uuid()) @db.Uuid
+  directionsId      String @map("directions_id") @db.Uuid
+  title             String
+  rationale         String @default("")
+  suggestedApproach String @default("") @map("suggested_approach")
+  position          Int
+
+  @@unique([directionsId, position])
+  @@map("gap_direction_items")
+}
+
+model GapDirectionPaper {
+  directionId String @map("direction_id") @db.Uuid
+  paperId     String @map("paper_id") @db.Uuid
+  position    Int
+
+  @@id([directionId, paperId])
+  @@index([paperId])
+  @@map("gap_direction_papers")
+}
+
+model GapEvidenceRecord {
+  id            String   @id @default(uuid()) @db.Uuid
+  legacyMongoId String?  @unique @map("legacy_mongo_id") @db.VarChar(24)
+  gapId         String   @map("gap_id") @db.Uuid
+  paperId       String   @map("paper_id") @db.Uuid
+  evidenceKind  String   @map("evidence_kind") @db.VarChar(16)
+  evidenceType  String?  @map("evidence_type") @db.VarChar(120)
+  excerpt       String?
+  explanation   String
+  addedById     String   @map("added_by_id") @db.Uuid
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([gapId, paperId, evidenceKind])
+  @@index([paperId])
+  @@map("gap_evidence_records")
+}
+
+model GapValidation {
+  id               String   @id @default(uuid()) @db.Uuid
+  legacyMongoId    String?  @unique @map("legacy_mongo_id") @db.VarChar(24)
+  gapId            String   @map("gap_id") @db.Uuid
+  reviewerId       String   @map("reviewer_id") @db.Uuid
+  action           String   @db.VarChar(32)
+  comment          String
+  suggestedChanges String?  @map("suggested_changes")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([gapId, createdAt])
+  @@index([reviewerId])
+  @@map("gap_validations")
+}
+
+model LiteratureCorpus {
+  id             String   @id @default(uuid()) @db.Uuid
+  legacyMongoId  String?  @unique @map("legacy_mongo_id") @db.VarChar(24)
+  ownerId        String   @map("owner_id") @db.Uuid
+  projectId      String?  @map("project_id") @db.Uuid
+  name           String   @db.VarChar(200)
+  topic          String   @db.VarChar(300)
+  researchGoal   String?  @map("research_goal")
+  domain         String?
+  keywords       String[] @default([])
+  picoc          Json     @default("{}")
+  searchStrategy String?  @map("search_strategy")
+  status         String   @default("DRAFT") @db.VarChar(16)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([ownerId, createdAt])
+  @@index([projectId])
+  @@index([topic])
+  @@index([status])
+  @@map("literature_corpora")
+}
+
+model CorpusPaper {
+  id              String   @id @default(uuid()) @db.Uuid
+  legacyMongoId   String?  @unique @map("legacy_mongo_id") @db.VarChar(24)
+  corpusId        String   @map("corpus_id") @db.Uuid
+  paperId         String   @map("paper_id") @db.Uuid
+  included        Boolean  @default(true)
+  exclusionReason String?  @map("exclusion_reason")
+  evidence        Json     @default("{}")
+  addedById       String   @map("added_by_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([corpusId, paperId])
+  @@index([paperId])
+  @@index([included])
+  @@map("corpus_papers")
+}
+
+model QualityEvaluation {
+  id            String   @id @default(uuid()) @db.Uuid
+  legacyMongoId String?  @unique @map("legacy_mongo_id") @db.VarChar(24)
+  paperId       String?  @map("paper_id") @db.Uuid
+  reportId      String?  @map("report_id") @db.Uuid
+  gapId         String?  @map("gap_id") @db.Uuid
+  relevance     Int
+  groundedness  Int
+  completeness  Int
+  overall       Int
+  rationale     String   @default("")
+  model         String   @default("")
+  promptVersion String   @default("") @map("prompt_version")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([paperId])
+  @@index([reportId])
+  @@index([gapId])
+  @@map("quality_evaluations")
+}
+
+model UserRating {
+  id            String   @id @default(uuid()) @db.Uuid
+  legacyMongoId String?  @unique @map("legacy_mongo_id") @db.VarChar(24)
+  userId        String   @map("user_id") @db.Uuid
+  paperId       String?  @map("paper_id") @db.Uuid
+  reportId      String?  @map("report_id") @db.Uuid
+  gapId         String?  @map("gap_id") @db.Uuid
+  stars         Int
+  comment       String?
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([userId])
+  @@index([paperId])
+  @@index([reportId])
+  @@index([gapId])
+  @@map("user_ratings")
+}

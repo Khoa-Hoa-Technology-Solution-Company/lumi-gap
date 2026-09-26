@@ -1,10 +1,13 @@
 import { Worker } from "bullmq";
+import { enforcePostgresOnlyRuntime } from "../infrastructure/database/postgres-only-runtime.js";
 import { env } from "../config/env.js";
-import { connectMongo, disconnectMongo } from "../infrastructure/db.js";
+import { connectPostgres, disconnectPostgres } from "../infrastructure/database/prisma.js";
 import { embeddingQueue, makeConnection, QUEUE_NAMES } from "../infrastructure/queue.js";
 import { logger } from "../infrastructure/logger.js";
 import { startWorkerHeartbeat } from "../infrastructure/worker-heartbeat.js";
 import { runEmbedding, type RunEmbeddingJob } from "../modules/embeddings/embedding.service.js";
+
+enforcePostgresOnlyRuntime();
 
 /**
  * Standalone embedding worker — a SEPARATE Node process from the API.
@@ -14,7 +17,7 @@ import { runEmbedding, type RunEmbeddingJob } from "../modules/embeddings/embedd
  * Also registers a daily cron (EMBED_CRON) so newly-synced papers get embedded.
  */
 async function main() {
-  await connectMongo();
+  await connectPostgres();
   const stopHeartbeat = startWorkerHeartbeat({ workerName: "worker:embedding", queueName: QUEUE_NAMES.embedding });
 
   const worker = new Worker(
@@ -41,7 +44,7 @@ async function main() {
     logger.info({ signal }, "embedding worker shutting down");
     await stopHeartbeat();
     await worker.close();
-    await disconnectMongo();
+    await disconnectPostgres();
     process.exit(0);
   };
   process.on("SIGINT", () => void shutdown("SIGINT"));

@@ -5,6 +5,15 @@ const isDev = env.NODE_ENV === "development";
 
 export const logger = pino({
   level: env.LOG_LEVEL,
+  redact: {
+    paths: [
+      "req.headers.authorization",
+      "req.headers.cookie",
+      "request.headers.authorization",
+      "request.headers.cookie",
+    ],
+    censor: "[Redacted]",
+  },
   ...(isDev
     ? {
         transport: {

@@ -78,7 +78,7 @@ export function PaperRelationshipsSection({
         </h2>
       </div>
 
-      {/* D1. Cited papers indexed in PaperLens */}
+      {/* D1. Cited papers indexed in LumiGap */}
       <CitedPapersBlock
         references={references}
         totalReferenced={totalReferenced}
@@ -131,10 +131,10 @@ function CitedPapersBlock({
         <div>
           <h3 className="text-base font-bold tracking-tight text-slate-900 dark:text-white flex items-center gap-2">
             <Link2 className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-            Cited papers indexed in PaperLens
+            Cited papers indexed in LumiGap
           </h3>
           <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-            These are works cited by this paper. Only papers already indexed in PaperLens can be opened here.
+            These are works cited by this paper. Only papers already indexed in LumiGap can be opened here.
           </p>
         </div>
 
@@ -179,7 +179,7 @@ function CitedPapersBlock({
       {!isLoading && !isError && (!references || references.length === 0) && (
         <div className="rounded-xl border border-dashed border-slate-200/80 bg-slate-50/50 p-6 text-center text-xs text-slate-500 dark:border-slate-800 dark:bg-slate-900/30">
           {hasTotal
-            ? `This work cites ${totalReferenced} papers, but none are currently indexed in PaperLens.`
+            ? `This work cites ${totalReferenced} papers, but none are currently indexed in LumiGap.`
             : "No cited paper references supplied for this work."}
         </div>
       )}
@@ -221,7 +221,7 @@ function OpenAlexRelatedWorksBlock({
 
         {totalRelated !== undefined && (
           <Badge variant="secondary" className="font-semibold text-xs shrink-0">
-            {inCorpus ?? works.length} of {totalRelated} in PaperLens
+            {inCorpus ?? works.length} of {totalRelated} in LumiGap
           </Badge>
         )}
       </div>
@@ -282,7 +282,7 @@ function SemanticallySimilarPapersBlock({
           Semantically similar papers
         </h3>
         <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-          PaperLens matches title and abstract meaning. This is independent of citations and OpenAlex relations.
+          LumiGap matches title and abstract meaning. This is independent of citations and OpenAlex relations.
         </p>
       </div>
 

@@ -1,0 +1,13 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// The schema is split by domain. Stable API strings remain String columns and
+// receive exact CHECK constraints in the reviewed SQL migration. This avoids
+// PostgreSQL enum lock-in while preserving every value currently accepted by
+// Mongoose and Zod.

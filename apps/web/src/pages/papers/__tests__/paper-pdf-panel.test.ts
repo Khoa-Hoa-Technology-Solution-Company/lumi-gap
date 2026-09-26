@@ -91,7 +91,7 @@ describe("getPaperPdfPanelState", () => {
         paperStatus: undefined,
         requestedBy: undefined,
       },
-      currentUser: { id: "admin", role: "admin" },
+      currentUser: { id: "admin", systemRole: "ADMIN" },
     });
 
     expect(state.shouldShowPanel).toBe(true);
@@ -189,7 +189,7 @@ describe("getPaperPdfPanelState", () => {
   it("does not allow admins to upload a PDF for rejected papers", () => {
     const state = getPaperPdfPanelState({
       paper: { ...basePaper, paperStatus: "rejected" },
-      currentUser: { id: "admin", role: "admin" },
+      currentUser: { id: "admin", systemRole: "ADMIN" },
     });
 
     expect(state.canUploadPdf).toBe(false);

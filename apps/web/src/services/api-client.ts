@@ -18,13 +18,23 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
 
 let refreshPromise: Promise<string | null> | null = null;
 
+function isProtectedRequest(config?: InternalAxiosRequestConfig): boolean {
+  const url = config?.url ?? "";
+  return !url.includes("/auth/login")
+    && !url.includes("/auth/register")
+    && !url.includes("/auth/refresh")
+    && !url.includes("/auth/oauth/exchange")
+    && !url.includes("/auth/password/")
+    && !url.includes("/auth/email/");
+}
+
 api.interceptors.response.use(
   (r) => r,
   async (error: AxiosError) => {
-    const original = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
+    const original = error.config as (InternalAxiosRequestConfig & { _retry?: boolean }) | undefined;
     const refreshToken = useAuthStore.getState().tokens?.refreshToken;
 
-    if (error.response?.status === 401 && refreshToken && !original._retry) {
+    if (error.response?.status === 401 && original && refreshToken && !original._retry && isProtectedRequest(original)) {
       original._retry = true;
       refreshPromise ??= refreshAccessToken(refreshToken).finally(() => {
         refreshPromise = null;
@@ -34,6 +44,12 @@ api.interceptors.response.use(
         original.headers.Authorization = `Bearer ${newAccess}`;
         return api(original);
       }
+      useAuthStore.getState().clear();
+    }
+
+    // A legacy/missing refresh token must not leave the app stuck with a
+    // persisted access token that can never authorize another request.
+    if (error.response?.status === 401 && isProtectedRequest(original)) {
       useAuthStore.getState().clear();
     }
 

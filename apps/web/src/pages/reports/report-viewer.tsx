@@ -14,7 +14,7 @@ import { toast } from "sonner";
 import { AiEvaluation } from "@/components/ai-evaluation";
 import { useAuthStore } from "@/stores/auth-store";
 import { useQueryClient } from "@tanstack/react-query";
-import type { PaperRef } from "@trend/shared-types";
+import { isAdminSystemRole, type PaperRef } from "@trend/shared-types";
 
 const growthData = [
   { year: "2020", volume: 10 },
@@ -109,7 +109,7 @@ export function ReportViewerPage() {
   const navigate = useNavigate();
   const [showRoses, setShowRoses] = useState(true);
   const currentUser = useAuthStore((s) => s.user);
-  const isAdmin = currentUser?.role === "admin";
+  const isAdmin = isAdminSystemRole(currentUser?.systemRole);
   const { data: report, isLoading, isError } = useReport(id || "");
   const bookmarkStatus = useBookmarkStatus("report", id);
   const createBookmark = useCreateBookmark();

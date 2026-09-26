@@ -10,8 +10,8 @@ This repository is a **pnpm + Turborepo mono-repo** containing three runnable ap
 
 | Service | Address |
 |---|---|
-| PaperLens web application | [https://paperlens.uk](https://paperlens.uk) |
-| PaperLens API | [https://api.paperlens.uk](https://api.paperlens.uk) |
+| LumiGap web application | [https://paperlens.uk](https://paperlens.uk) |
+| LumiGap API | [https://api.paperlens.uk](https://api.paperlens.uk) |
 
 Production is deployed from `main` by Jenkins using the repository's
 [`Jenkinsfile`](Jenkinsfile). Nginx Proxy Manager terminates TLS and routes the
@@ -25,20 +25,18 @@ The production stack contains:
 - a private self-hosted Redis container for queues, cache, locks, and worker
   heartbeats;
 - LibreTranslate for on-demand paper translation;
-- the teacher-managed MongoDB server, with MongoDB Search/mongot for vector
-  retrieval.
+- PostgreSQL 16 with pgvector as the only application database.
 
 Redis uses authenticated connections, AOF persistence, a Docker volume, and an
 internal Docker network. Port `6379` is not published publicly. Production does
 not depend on Upstash quotas or an external Redis API key.
 
-> Local development and production are intentionally different. Local
-> `docker compose` can start MongoDB and Redis for development; production uses
-> the managed server configuration described above.
+> Local development and production use the same PostgreSQL/Prisma persistence
+> model. Docker Compose starts PostgreSQL with pgvector and Redis.
 
 For environment preparation, Jenkins configuration, deployment, worker
 verification, rollback, and secret-handling rules, follow the version-controlled
-**[PaperLens Production Deployment Runbook](README_PRODUCTION.md)**.
+**[LumiGap Production Deployment Runbook](README_PRODUCTION.md)**.
 
 ---
 
@@ -60,7 +58,7 @@ This repo is a fork of [thiennhat-ctrl/LiemResearch](https://github.com/thiennha
 ```
 .
 ├── apps/
-│   ├── backend/              Node.js 20+ · Express 5 · TypeScript · Mongoose · BullMQ · Gemini
+│   ├── backend/              Node.js 20+ · Express 5 · TypeScript · Prisma · BullMQ · Gemini
 │   ├── web/                  React 18 · Vite · Tailwind · shadcn/ui · TanStack Query · React Router
 │   └── mobile/               Expo SDK 52 · React Native · Expo Router · NativeWind · TanStack Query
 ├── packages/
@@ -68,7 +66,7 @@ This repo is a fork of [thiennhat-ctrl/LiemResearch](https://github.com/thiennha
 ├── legacy/                   original LiemResearch code (port reference — see docs/MIGRATION_MAP.md)
 │   ├── backend-js/           JS backend: ratings, points, notifications, S3 PDF upload
 │   └── web-figma/            Figma-exported React UI: 17 pages + rank badge assets
-├── docker-compose.yml        local MongoDB + Redis (+ optional mongo-express UI)
+├── docker-compose.yml        PostgreSQL/pgvector + Redis + application services
 ├── pnpm-workspace.yaml
 ├── turbo.json
 └── tsconfig.base.json
@@ -88,10 +86,8 @@ This repo is a fork of [thiennhat-ctrl/LiemResearch](https://github.com/thiennha
 | Android Studio | only for mobile Android emulator | https://developer.android.com/studio |
 | Xcode | only for mobile iOS simulator (Mac only) | App Store |
 
-> You do not need access to the production MongoDB server during local
-> development. `docker compose` starts local MongoDB and Redis. Vector search is
-> available only when the selected MongoDB environment has MongoDB Search/mongot
-> and the required vector index configured.
+> PostgreSQL with pgvector is the only supported runtime database. MongoDB is
+> not required for the backend, API, or workers.
 
 ---
 
@@ -108,11 +104,13 @@ cp apps/mobile/.env.example  apps/mobile/.env
 
 # In apps/backend/.env, set at minimum:
 #   GEMINI_API_KEY=...        (from Google AI Studio)
-#   JWT_ACCESS_SECRET=...     (run the one-liner the .env.example shows)
-#   JWT_REFRESH_SECRET=...    (different value from the access secret)
+#   DATABASE_URL=postgresql://...
+#   REDIS_URL=redis://...
+# Then generate the ignored RS256 key pair:
+pnpm --filter backend auth:keys:generate
 
-# 3. start MongoDB + Redis
-pnpm docker:up                # mongo:27017, redis:6379, mongo-express:8081
+# 3. start PostgreSQL/pgvector + Redis
+pnpm docker:up                # postgres:5433, redis:6379
 
 # 4. start everything (backend + web; mobile starts separately because it opens a UI)
 pnpm dev:backend              # http://localhost:4000  → GET /health
@@ -136,7 +134,7 @@ pnpm build                    # build all
 pnpm typecheck                # tsc --noEmit across the whole repo
 pnpm lint                     # lint everything
 
-pnpm docker:up                # start mongo + redis (detached)
+pnpm docker:up                # start PostgreSQL/pgvector + Redis (detached)
 pnpm docker:down              # stop them
 pnpm docker:logs              # tail their logs
 ```
@@ -146,11 +144,11 @@ pnpm docker:logs              # tail their logs
 ## What goes where (rules to keep the repo sane)
 
 - **Shared TypeScript types live in `packages/shared-types`.** If both web and backend need an interface (e.g. `Paper`, `Report`, `AuthTokens`), put it there. No framework imports allowed inside that package.
-- **Backend modules are self-contained.** A module under `apps/backend/src/modules/<name>/` owns its own routes, controller, service, schema, and Mongoose model. Cross-module calls go through the service layer, never directly into another module's model.
+- **Backend modules are self-contained.** A module under `apps/backend/src/modules/<name>/` owns its routes, controller, service, and validation schema. PostgreSQL access goes through the generated Prisma client.
 - **Long-running work goes through BullMQ.** API sync, embedding generation, and report generation MUST be enqueued — never run inside an HTTP handler. See `apps/backend/src/queue/queue.ts`.
 - **LLM calls are cached.** Every LLM response is keyed by `hash(query + filters + model + prompt_version + retrieved_paper_ids)` and stored in Redis. We never call the LLM during normal search — only when the user explicitly requests AI analysis.
 - **Embeddings go through `getEmbeddingProvider()`.** Don't import `GeminiEmbeddingProvider` directly outside the factory — that's how we swap to self-hosted `@xenova/transformers` later.
-- **Auth is JWT with rotated refresh tokens.** Refresh tokens are stored hashed in Mongo with a TTL index. Web persists tokens to localStorage; mobile persists to expo-secure-store (keychain/keystore).
+- **Auth uses short-lived RS256 JWT access tokens and rotated opaque refresh tokens.** Only SHA-256 refresh-token hashes are stored in PostgreSQL; reuse detection revokes the token family.
 
 ---
 
@@ -160,7 +158,7 @@ pnpm docker:logs              # tail their logs
 |---|---|
 | Mono-repo with pnpm + Turborepo | Share `@trend/shared-types` between 3 apps without copy-paste. Vercel-friendly. |
 | Express 5 over Fastify | Team familiarity; Express 5 has built-in async error handling. |
-| MongoDB + MongoDB Vector Search | Single store for metadata + embeddings; production uses the teacher-managed MongoDB server with MongoDB Search/mongot. |
+| PostgreSQL + pgvector + Prisma | Relational integrity, transactional security workflows, migrations, and vector retrieval in one supported runtime store. |
 | Gemini (LLM + embeddings) | One SDK, one API key, generous free tier, cheap production tier. |
 | BullMQ + Redis | Industry standard for Node job queues; survives restarts. |
 | Expo over bare React Native | OTA updates, EAS Build, no native toolchain pain for the common case. |

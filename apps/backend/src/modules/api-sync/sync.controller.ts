@@ -1,7 +1,8 @@
 import type { Request, Response } from "express";
 import { apiSyncQueue, corpusValidationQueue, openAlexIngestQueue } from "../../infrastructure/queue.js";
 import { env } from "../../config/env.js";
-import { ApiSyncRunModel } from "./models/api-sync-run.model.js";
+import { publicDatabaseId } from "../../infrastructure/database/database-id.js";
+import { getPrisma } from "../../infrastructure/database/prisma.js";
 import type { TriggerSyncInput } from "./dto/trigger-sync.schema.js";
 import type { PlanOpenAlexCampaignInput } from "./dto/trigger-sync.schema.js";
 import type { TriggerCorpusValidationInput } from "./dto/trigger-sync.schema.js";
@@ -26,7 +27,8 @@ export const syncController = {
   },
 
   async listRuns(_req: Request, res: Response) {
-    const runs = await ApiSyncRunModel.find().sort({ startedAt: -1 }).limit(20).lean();
+    const rows = await getPrisma().apiSyncRun.findMany({ orderBy: { startedAt: "desc" }, take: 20 });
+    const runs = rows.map((row) => ({ ...row, id: publicDatabaseId(row), _id: publicDatabaseId(row) }));
     res.json({ success: true, data: runs, meta: { total: runs.length } });
   },
 

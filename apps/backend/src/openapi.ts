@@ -6,11 +6,11 @@
 export const openapiSpec = {
   openapi: "3.0.3",
   info: {
-    title: "Publication Trend API",
-    version: "0.1.0 (Phase A)",
+    title: "LumiGap API",
+    version: "0.2.0",
     description:
-      "AI-assisted academic publication trend system. Phase A exposes auth, " +
-      "paper search/detail, and admin sync. Every response uses the envelope " +
+      "AI-assisted academic research collaboration and publication trend system. " +
+      "Every response uses the envelope " +
       "`{ success, data, meta? }` or `{ success: false, error }`.",
   },
   servers: [{ url: "http://localhost:4000", description: "Local dev" }],
@@ -22,6 +22,13 @@ export const openapiSpec = {
     { name: "Search" },
     { name: "Trends" },
     { name: "Reports" },
+    { name: "Bookmarks" },
+    { name: "Notifications" },
+    { name: "Credits" },
+    { name: "Academic profiles" },
+    { name: "Research workflow" },
+    { name: "Literature" },
+    { name: "Peer review" },
     { name: "Admin" },
   ],
   components: {
@@ -326,7 +333,7 @@ export const openapiSpec = {
     "/ready": {
       get: {
         tags: ["Health"],
-        summary: "MongoDB and Redis readiness check",
+        summary: "PostgreSQL and Redis readiness check",
         responses: {
           "200": { description: "Required dependencies are ready" },
           "503": { description: "At least one required dependency is unavailable" },
@@ -365,7 +372,6 @@ export const openapiSpec = {
                     required: ["fullName"],
                     properties: {
                       fullName: { type: "string", example: "Hoang Long Anh" },
-                      role: { type: "string", enum: ["student", "lecturer", "researcher"] },
                     },
                   },
                 ],
@@ -393,6 +399,85 @@ export const openapiSpec = {
             content: { "application/json": { schema: { $ref: "#/components/schemas/ApiError" } } },
           },
         },
+      },
+    },
+    "/api/v1/auth/me/academic-profile": {
+      patch: {
+        tags: ["Auth"],
+        summary: "Complete academic onboarding",
+        description: "Declares a primary position and institution. This does not verify the position or grant reviewer capabilities.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                additionalProperties: false,
+                required: ["primaryPosition", "institutionName"],
+                properties: {
+                  primaryPosition: {
+                    type: "string",
+                    enum: ["STUDENT", "LECTURER", "RESEARCH_STAFF", "INDUSTRY_PRACTITIONER", "OTHER"],
+                  },
+                  institutionName: { type: "string", minLength: 2, maxLength: 200 },
+                  country: { type: "string", minLength: 2, maxLength: 100 },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          "200": { description: "Profile completed — returns the updated user" },
+          "401": { description: "Authentication required" },
+        },
+      },
+    },
+    "/api/v1/auth/refresh": {
+      post: {
+        tags: ["Auth"],
+        summary: "Rotate an opaque refresh token",
+        requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["refreshToken"], properties: { refreshToken: { type: "string", minLength: 32 } } } } } },
+        responses: { "200": { description: "New access and refresh tokens" }, "401": { description: "Invalid, expired, revoked, or reused refresh token" } },
+      },
+    },
+    "/api/v1/auth/status": {
+      get: {
+        tags: ["Auth"],
+        summary: "Read account, email, onboarding, position, and capability status",
+        security: [{ bearerAuth: [] }],
+        responses: { "200": { description: "Current authorization state" }, "401": { description: "Authentication required" } },
+      },
+    },
+    "/api/v1/auth/email/verify": {
+      post: {
+        tags: ["Auth"],
+        summary: "Verify account email with a one-time token",
+        requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["token"], properties: { token: { type: "string", minLength: 32 } } } } } },
+        responses: { "200": { description: "Email verified" }, "400": { description: "Token invalid, expired, or already used" } },
+      },
+    },
+    "/api/v1/auth/password/forgot": {
+      post: {
+        tags: ["Auth"],
+        summary: "Request a password reset",
+        description: "Always returns the same response to prevent account enumeration.",
+        responses: { "202": { description: "Request accepted" } },
+      },
+    },
+    "/api/v1/auth/password/reset": {
+      post: {
+        tags: ["Auth"],
+        summary: "Reset a password using a one-time token",
+        responses: { "200": { description: "Password reset and active sessions revoked" } },
+      },
+    },
+    "/api/v1/auth/google": {
+      get: {
+        tags: ["Auth"],
+        summary: "Start Google OpenID Connect login",
+        description: "Uses state, nonce, PKCE, and a short-lived server-side state record.",
+        responses: { "302": { description: "Redirect to Google authorization" } },
       },
     },
     "/api/v1/auth/oauth/exchange": {
@@ -759,6 +844,140 @@ export const openapiSpec = {
           },
           "404": { description: "Not found (or not yours)" },
         },
+      },
+    },
+    "/api/v1/literature/corpora": {
+      get: {
+        tags: ["Literature"], summary: "List accessible literature corpora", security: [{ bearerAuth: [] }],
+        responses: { "200": { description: "Corpora owned by the user or linked to an accessible project" } },
+      },
+      post: {
+        tags: ["Literature"], summary: "Create a scoped literature corpus", security: [{ bearerAuth: [] }],
+        description: "Stores topic, research goal, keywords, PICOC scope and search strategy. It does not generate or fabricate literature.",
+        responses: { "201": { description: "Corpus created" }, "400": { description: "Validation failed" } },
+      },
+    },
+    "/api/v1/literature/corpora/{id}/papers": {
+      post: {
+        tags: ["Literature"], summary: "Attach an existing LumiGap paper with structured evidence", security: [{ bearerAuth: [] }],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+        responses: { "201": { description: "Corpus paper created" }, "404": { description: "Corpus or paper not found" } },
+      },
+    },
+    "/api/v1/literature/corpora/{id}/evidence-map": {
+      get: {
+        tags: ["Literature"], summary: "Aggregate the recorded evidence map", security: [{ bearerAuth: [] }],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+        responses: { "200": { description: "Counts grouped by methodology, context, outcome, research type and year" } },
+      },
+    },
+    "/api/v1/gaps/candidates": {
+      post: {
+        tags: ["Research workflow"], summary: "Create a human-authored candidate research gap", security: [{ bearerAuth: [] }],
+        description: "Gap confidence and research priority remain separate. Creation never marks the candidate as expert validated.",
+        responses: { "201": { description: "Candidate created" }, "400": { description: "Validation failed" } },
+      },
+    },
+    "/api/v1/review-availability/me": {
+      get: { tags: ["Peer review"], summary: "Get private reviewer availability settings", security: [{ bearerAuth: [] }], responses: { "200": { description: "Availability settings and active workload" } } },
+      put: { tags: ["Peer review"], summary: "Update reviewer opt-in and workload preferences", security: [{ bearerAuth: [] }], responses: { "200": { description: "Availability updated" }, "403": { description: "Lecturer or researcher profile required" } } },
+    },
+    "/api/v1/review-opportunities": {
+      get: { tags: ["Peer review"], summary: "List double-blind review opportunities", security: [{ bearerAuth: [] }], responses: { "200": { description: "Matched opportunities with no author identity" } } },
+    },
+    "/api/v1/submissions/{id}/ai-pre-review": {
+      post: {
+        tags: ["Research workflow"], summary: "Run advisory AI pre-review", security: [{ bearerAuth: [] }],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+        description: "Returns structured advisory analysis. Evidence identifiers are supplied and validated by the Node backend; AI cannot perform privileged actions.",
+        responses: { "202": { description: "Pre-review started or completed according to service contract" }, "429": { description: "Rate limit exceeded" }, "503": { description: "AI provider unavailable" } },
+      },
+    },
+    "/api/v1/projects/{id}/contributions": {
+      get: {
+        tags: ["Research workflow"], summary: "List project contribution proposals and confirmation history", security: [{ bearerAuth: [] }],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+        responses: { "200": { description: "Contribution proposals visible to project members" } },
+      },
+    },
+    "/api/v1/bookmarks": {
+      get: {
+        tags: ["Bookmarks"],
+        summary: "List the signed-in user's bookmarks",
+        security: [{ bearerAuth: [] }],
+        responses: { "200": { description: "Bookmarks" }, "401": { description: "Authentication required" } },
+      },
+      post: {
+        tags: ["Bookmarks"],
+        summary: "Create a paper or report bookmark",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["targetKind", "targetId"],
+                properties: {
+                  targetKind: { type: "string", enum: ["paper", "report"] },
+                  targetId: { type: "string", format: "uuid" },
+                  note: { type: "string", maxLength: 500 },
+                },
+              },
+            },
+          },
+        },
+        responses: { "201": { description: "Bookmark created" }, "401": { description: "Authentication required" } },
+      },
+    },
+    "/api/v1/notifications": {
+      get: {
+        tags: ["Notifications"],
+        summary: "List notifications visible to the signed-in user",
+        security: [{ bearerAuth: [] }],
+        responses: { "200": { description: "Notifications" }, "401": { description: "Authentication required" } },
+      },
+    },
+    "/api/v1/notifications/read-all": {
+      post: {
+        tags: ["Notifications"],
+        summary: "Mark all visible notifications as read",
+        security: [{ bearerAuth: [] }],
+        responses: { "200": { description: "All notifications marked as read" }, "401": { description: "Authentication required" } },
+      },
+    },
+    "/api/v1/credits/balance": {
+      get: {
+        tags: ["Credits"],
+        summary: "Get the signed-in user's credit balance",
+        security: [{ bearerAuth: [] }],
+        responses: { "200": { description: "Credit balance" }, "401": { description: "Authentication required" } },
+      },
+    },
+    "/api/v1/credits/transactions": {
+      get: {
+        tags: ["Credits"],
+        summary: "List the signed-in user's credit transactions",
+        security: [{ bearerAuth: [] }],
+        responses: { "200": { description: "Credit transaction history" }, "401": { description: "Authentication required" } },
+      },
+    },
+    "/api/v1/academic-profiles/me": {
+      get: {
+        tags: ["Academic profiles"],
+        summary: "Get the signed-in user's academic profile",
+        security: [{ bearerAuth: [] }],
+        responses: { "200": { description: "Academic profile" }, "401": { description: "Authentication required" } },
+      },
+      patch: {
+        tags: ["Academic profiles"],
+        summary: "Update editable academic profile fields",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { type: "object", additionalProperties: true } } },
+        },
+        responses: { "200": { description: "Academic profile updated" }, "401": { description: "Authentication required" } },
       },
     },
     "/api/v1/admin/embed": {

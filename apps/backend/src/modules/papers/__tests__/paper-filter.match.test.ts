@@ -28,7 +28,7 @@ describe("paper keyword filter parity", () => {
     });
   });
 
-  it("builds one complete Mongo match for keyword and semantic fallback paths", () => {
+  it("builds one complete filter for keyword and semantic fallback paths", () => {
     expect(
       buildPaperMetadataMatch({
         yearFrom: 2020,

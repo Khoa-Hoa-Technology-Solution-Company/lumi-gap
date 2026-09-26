@@ -38,6 +38,15 @@ class AuthApi {
     );
   }
 
+  Future<User> updateAcademicProfile(AcademicProfileType academicProfileType) async {
+    final response = await _client.dio.patch<Map<String, dynamic>>(
+      ApiRoutes.authAcademicProfile,
+      data: {'academicProfileType': academicProfileType.name},
+    );
+    final data = (response.data ?? {})['data'] as Map<String, dynamic>;
+    return User.fromJson(data['user'] as Map<String, dynamic>);
+  }
+
   Future<User> me() async {
     final response = await _client.dio.get<Map<String, dynamic>>(ApiRoutes.authMe);
     final data = (response.data ?? {})['data'] as Map<String, dynamic>;

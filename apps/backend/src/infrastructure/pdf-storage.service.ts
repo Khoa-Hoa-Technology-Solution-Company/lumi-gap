@@ -69,12 +69,12 @@ export function createPdfStorageService(options: PdfStorageOptions): PdfStorageS
     const writeFile = options.writeFile ?? fs.writeFile;
     const unlink = options.unlink ?? fs.unlink;
     const uploadsDir = options.uploadsDir;
+    const absoluteDir = path.resolve(uploadsDir);
 
     return {
       async savePdf(buffer, originalName) {
         const key = buildPdfObjectKey(originalName, randomId());
         const filename = key.split("/").at(-1)!;
-        const absoluteDir = path.resolve(uploadsDir);
         const absolutePath = path.join(absoluteDir, filename);
         await mkdir(absoluteDir, { recursive: true });
         await writeFile(absolutePath, buffer);
@@ -94,7 +94,14 @@ export function createPdfStorageService(options: PdfStorageOptions): PdfStorageS
       },
       resolveLocalPath(uri) {
         if (!uri || uri.startsWith("r2://")) return null;
-        return path.resolve(uri.startsWith("/") ? uri.slice(1) : uri);
+        const prefix = "/uploads/";
+        if (!uri.startsWith(prefix)) return null;
+        const requestedName = uri.slice(prefix.length);
+        const filename = path.basename(requestedName);
+        if (!filename || filename !== requestedName) return null;
+        const resolved = path.resolve(absoluteDir, filename);
+        if (!resolved.startsWith(`${absoluteDir}${path.sep}`)) return null;
+        return resolved;
       },
     };
   }

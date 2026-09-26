@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { databaseIdSchema } from "../../../common/validation/database-id.js";
 
 /** Body for POST /api/v1/admin/sync. */
 export const TriggerSyncSchema = z.object({
@@ -10,11 +11,11 @@ export const TriggerSyncSchema = z.object({
 export type TriggerSyncInput = z.infer<typeof TriggerSyncSchema>;
 
 export const IngestCampaignParamsSchema = z.object({
-  campaignId: z.string().regex(/^[a-f\d]{24}$/i, "campaignId must be a MongoDB ObjectId"),
+  campaignId: databaseIdSchema,
 });
 
 export const CorpusValidationParamsSchema = z.object({
-  validationRunId: z.string().regex(/^[a-f\d]{24}$/i, "validationRunId must be a MongoDB ObjectId"),
+  validationRunId: databaseIdSchema,
 });
 
 export const TriggerCorpusValidationSchema = z.object({

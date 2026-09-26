@@ -187,14 +187,12 @@ describe("buildChatCacheKey", () => {
 
 describe("buildChatHistoryFilter", () => {
   it("keeps private AI history scoped to the current user", () => {
-    const filter = buildChatHistoryFilter("507f1f77bcf86cd799439011", "507f1f77bcf86cd799439012", "private");
-    expect(filter).toHaveProperty("userId");
-    expect(filter).toHaveProperty("$or");
-    expect(filter.$or).toEqual([{ scope: "private" }, { scope: { $exists: false } }]);
+    const filter = buildChatHistoryFilter("project-id", "user-id", "private");
+    expect(filter).toEqual({ projectId: "project-id", userId: "user-id", scope: "private" });
   });
 
   it("keeps team AI history shared across project members", () => {
-    const filter = buildChatHistoryFilter("507f1f77bcf86cd799439011", "507f1f77bcf86cd799439012", "team");
+    const filter = buildChatHistoryFilter("project-id", "user-id", "team");
     expect(filter).toMatchObject({ scope: "team" });
     expect(filter).not.toHaveProperty("userId");
   });

@@ -1,6 +1,7 @@
 import { z } from "zod";
+import { databaseIdSchema } from "../../../common/validation/database-id.js";
 
-const objectId = z.string().regex(/^[a-f\d]{24}$/i, "Invalid ObjectId");
+const objectId = databaseIdSchema;
 
 export const ProjectChatParamsSchema = z.object({
   id: objectId,

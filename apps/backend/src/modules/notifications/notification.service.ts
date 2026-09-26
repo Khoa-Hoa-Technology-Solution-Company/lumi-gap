@@ -1,182 +1,19 @@
-import mongoose from "mongoose";
+import { parseDatabaseId, publicDatabaseId } from "../../infrastructure/database/database-id.js";
+import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { notificationQueue } from "../../infrastructure/queue.js";
-import { NotificationModel } from "./models/notification.model.js";
-import { DeviceTokenModel } from "./models/device-token.model.js";
 import type { RegisterDeviceTokenInput } from "./dto/device-token.schema.js";
 
+async function user(value: string) { const parsed = parseDatabaseId(value); if (!parsed) return null; return getPrisma().user.findUnique({ where: parsed.kind === "uuid" ? { id: parsed.value } : { legacyMongoId: parsed.value }, select: { id: true, legacyMongoId: true } }); }
+async function target(kind: string | undefined, value: string) { const parsed = parseDatabaseId(value); if (!parsed || !kind) return undefined; const where = parsed.kind === "uuid" ? { id: parsed.value } : { legacyMongoId: parsed.value }; switch (kind) { case "paper": return getPrisma().paper.findUnique({ where, select: { id: true, legacyMongoId: true } }) ?? undefined; case "report": return getPrisma().report.findUnique({ where, select: { id: true, legacyMongoId: true } }) ?? undefined; case "gap": return getPrisma().researchGap.findUnique({ where, select: { id: true, legacyMongoId: true } }) ?? undefined; case "project": return getPrisma().project.findUnique({ where, select: { id: true, legacyMongoId: true } }) ?? undefined; case "forum_post": return getPrisma().forumPost.findUnique({ where, select: { id: true, legacyMongoId: true } }) ?? undefined; case "academic_profile": return getPrisma().academicProfile.findUnique({ where, select: { id: true, legacyMongoId: true } }) ?? undefined; default: return undefined; } }
+
 export const notificationService = {
-  async create({
-    userId,
-    role,
-    title,
-    message,
-    type,
-    paperId,
-    targetKind,
-    targetId,
-  }: {
-    userId?: string | mongoose.Types.ObjectId;
-    role?: string;
-    title: string;
-    message: string;
-    type: string;
-    paperId?: string | mongoose.Types.ObjectId;
-    targetKind?: "paper" | "report" | "gap" | "project";
-    targetId?: string | mongoose.Types.ObjectId;
-  }) {
-    const resolvedTargetKind = targetKind ?? (paperId ? "paper" : undefined);
-    const resolvedTargetId = targetId ?? paperId;
-
-    const notification = await NotificationModel.create({
-      userId: userId ? new mongoose.Types.ObjectId(userId) : undefined,
-      role,
-      title,
-      message,
-      type,
-      paperId: paperId ? new mongoose.Types.ObjectId(paperId) : undefined,
-      targetKind: resolvedTargetKind,
-      targetId: resolvedTargetId ? new mongoose.Types.ObjectId(resolvedTargetId) : undefined,
-    });
-
-    if (notification.userId) {
-      await notificationQueue.add(
-        "send-push",
-        { notificationId: notification._id.toString() },
-        { jobId: notification._id.toString() },
-      );
-    }
-
-    return notification;
+  async create(input: { userId?: string | { toString(): string }; role?: string; title: string; message: string; type: string; paperId?: string | { toString(): string }; targetKind?: "paper" | "report" | "gap" | "project" | "forum_post" | "academic_profile"; targetId?: string | { toString(): string } }) {
+    const kind = input.targetKind ?? (input.paperId ? "paper" : undefined); const targetValue = input.targetId ?? input.paperId; const recipient = input.userId ? await user(String(input.userId)) : null; if (input.userId && !recipient) throw new Error("Notification user does not exist"); const resolved = targetValue ? await target(kind, String(targetValue)) : undefined; const paper = input.paperId ? await target("paper", String(input.paperId)) : undefined;
+    const row = await getPrisma().notification.create({ data: { userId: recipient?.id, role: input.role, title: input.title, message: input.message, type: input.type, paperId: paper?.id, targetKind: kind, targetLegacyMongoId: resolved?.legacyMongoId, targetUuid: resolved?.id } });
+    if (row.userId) await notificationQueue.add("send-push", { notificationId: publicDatabaseId(row) }, { jobId: publicDatabaseId(row) }); return row;
   },
-
-  async registerDeviceToken(userId: string, input: RegisterDeviceTokenInput) {
-    return DeviceTokenModel.findOneAndUpdate(
-      { token: input.token },
-      {
-        $set: {
-          userId: new mongoose.Types.ObjectId(userId),
-          token: input.token,
-          platform: input.platform,
-          deviceName: input.deviceName,
-          lastSeenAt: new Date(),
-          disabledAt: null,
-        },
-      },
-      { new: true, upsert: true, setDefaultsOnInsert: true },
-    );
-  },
-
-  async list(userId: string, role: string) {
-    const filter: Record<string, any> = {
-      $or: [
-        { userId: new mongoose.Types.ObjectId(userId) },
-      ],
-    };
-    if (role === "admin") {
-      filter.$or.push({ role: "admin" });
-    }
-    const docs = await NotificationModel.find(filter).sort({ createdAt: -1 }).lean();
-    return docs.map((doc) => {
-      let isRead = doc.isRead;
-      if (doc.role === "admin") {
-        isRead = doc.readBy.some((id) => id.toString() === userId);
-      }
-
-      let title = doc.title;
-      let message = doc.message;
-
-      // On-the-fly translation for existing Vietnamese notification records
-      if (title === "Yêu cầu đăng bài đang chờ duyệt") {
-        title = "Paper Submission Pending";
-      } else if (title === "Yêu cầu đăng bài mới") {
-        title = "New Paper Submission Request";
-      } else if (title === "Bài báo được duyệt thành công") {
-        title = "Paper Submission Approved";
-      } else if (title === "Yêu cầu đăng bài bị từ chối") {
-        title = "Paper Submission Rejected";
-      } else if (title === "Test Điều hướng Paper") {
-        title = "Paper Navigation Test";
-      } else if (title === "Test Điều hướng Report") {
-        title = "Report Navigation Test";
-      } else if (title === "Test Điều hướng Project") {
-        title = "Project Navigation Test";
-      }
-
-      if (message && typeof message === "string") {
-        if (message.startsWith("Bài báo '") && message.endsWith("' đang chờ duyệt.")) {
-          const titleName = message.slice(9, -17);
-          message = `Your paper submission request for '${titleName}' is pending review.`;
-        } else if (message.startsWith("Người dùng ") && message.includes(" đã gửi yêu cầu đăng bài '")) {
-          const parts = message.split(" đã gửi yêu cầu đăng bài '");
-          if (parts[0] && parts[1]) {
-            const userPart = parts[0].slice(11);
-            const titleName = parts[1].slice(0, -2);
-            message = `User ${userPart} has submitted a new paper: '${titleName}'.`;
-          }
-        } else if (message.startsWith("Duyệt thành công bài báo '") && message.endsWith("'.")) {
-          const titleName = message.slice(26, -2);
-          message = `Your paper submission '${titleName}' has been approved successfully.`;
-        } else if (message.startsWith("Bài báo '") && message.includes("' đã bị từ chối. Lý do: ")) {
-          const parts = message.split("' đã bị từ chối. Lý do: ");
-          if (parts[0] && parts[1]) {
-            const titleName = parts[0].slice(9);
-            const reason = parts[1];
-            message = `Your paper submission '${titleName}' was rejected. Reason: ${reason}`;
-          }
-        } else if (message === "Click vào đây sẽ nhảy sang trang chi tiết bài báo (Sẽ báo lỗi 404 vì ID này là ID ảo, nhưng URL sẽ đúng).") {
-          message = "Click here to navigate to the paper details page (Will show 404 because this is a dummy ID, but the URL will be correct).";
-        } else if (message === "Click vào đây sẽ nhảy sang trang Report Detail.") {
-          message = "Click here to navigate to the Report Detail page.";
-        } else if (message === "Click vào đây sẽ nhảy sang trang Project Detail.") {
-          message = "Click here to navigate to the Project Detail page.";
-        }
-      }
-
-      return {
-        id: doc._id.toString(),
-        title,
-        message,
-        type: doc.type,
-        paperId: doc.paperId ? doc.paperId.toString() : null,
-        targetKind: doc.targetKind ?? (doc.paperId ? "paper" : null),
-        targetId: doc.targetId ? doc.targetId.toString() : doc.paperId ? doc.paperId.toString() : null,
-        isRead,
-        createdAt: doc.createdAt,
-      };
-    });
-  },
-
-  async markAsRead(id: string, userId: string) {
-    const notification = await NotificationModel.findById(id);
-    if (!notification) return null;
-
-    if (notification.role === "admin") {
-      if (!notification.readBy.some((uid) => uid.toString() === userId)) {
-        notification.readBy.push(new mongoose.Types.ObjectId(userId));
-        await notification.save();
-      }
-    } else {
-      notification.isRead = true;
-      await notification.save();
-    }
-    return notification;
-  },
-
-  async markAllAsRead(userId: string, role: string) {
-    // For user-targeted notifications, set isRead = true
-    await NotificationModel.updateMany(
-      { userId: new mongoose.Types.ObjectId(userId), isRead: false },
-      { $set: { isRead: true } }
-    );
-
-    // For admin-targeted notifications, add user to readBy list
-    if (role === "admin") {
-      await NotificationModel.updateMany(
-        { role: "admin", readBy: { $ne: new mongoose.Types.ObjectId(userId) } },
-        { $push: { readBy: new mongoose.Types.ObjectId(userId) } }
-      );
-    }
-  },
+  async registerDeviceToken(userId: string, input: RegisterDeviceTokenInput) { const owner = await user(userId); if (!owner) throw new Error("Device-token user does not exist"); return getPrisma().deviceToken.upsert({ where: { token: input.token }, create: { userId: owner.id, token: input.token, platform: input.platform, deviceName: input.deviceName, lastSeenAt: new Date() }, update: { userId: owner.id, platform: input.platform, deviceName: input.deviceName, lastSeenAt: new Date(), disabledAt: null } }); },
+  async list(userId: string, role: string) { const owner = await user(userId); if (!owner) return []; const prisma = getPrisma(); const rows = await prisma.notification.findMany({ where: role === "admin" ? { OR: [{ userId: owner.id }, { role: "admin" }] } : { userId: owner.id }, orderBy: { createdAt: "desc" } }); const readIds = role === "admin" ? new Set((await prisma.notificationRead.findMany({ where: { userId: owner.id, notificationId: { in: rows.map((row) => row.id) } }, select: { notificationId: true } })).map((entry) => entry.notificationId)) : new Set<string>(); return rows.map((row) => ({ id: publicDatabaseId(row), title: row.title, message: row.message, type: row.type, paperId: row.paperId, targetKind: row.targetKind ?? (row.paperId ? "paper" : null), targetId: row.targetLegacyMongoId ?? row.targetUuid ?? row.paperId, isRead: row.role === "admin" ? readIds.has(row.id) : row.isRead, createdAt: row.createdAt })); },
+  async markAsRead(id: string, userId: string) { const parsed = parseDatabaseId(id); const owner = await user(userId); if (!parsed || !owner) return null; const row = await getPrisma().notification.findUnique({ where: parsed.kind === "uuid" ? { id: parsed.value } : { legacyMongoId: parsed.value } }); if (!row) return null; if (row.role === "admin") { await getPrisma().notificationRead.upsert({ where: { notificationId_userId: { notificationId: row.id, userId: owner.id } }, create: { notificationId: row.id, userId: owner.id }, update: { readAt: new Date() } }); return row; } if (row.userId !== owner.id) return null; return getPrisma().notification.update({ where: { id: row.id }, data: { isRead: true } }); },
+  async markAllAsRead(userId: string, role: string) { const owner = await user(userId); if (!owner) return; const prisma = getPrisma(); await prisma.notification.updateMany({ where: { userId: owner.id, isRead: false }, data: { isRead: true } }); if (role === "admin") { const rows = await prisma.notification.findMany({ where: { role: "admin" }, select: { id: true } }); await prisma.notificationRead.createMany({ data: rows.map((row) => ({ notificationId: row.id, userId: owner.id })), skipDuplicates: true }); } },
 };
-
-// Code quality reviewed and formatted

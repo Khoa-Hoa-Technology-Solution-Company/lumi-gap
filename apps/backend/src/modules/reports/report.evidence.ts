@@ -1,7 +1,7 @@
 import type { EvidencePaper } from "./report.prompt.js";
-import type { SortOrder } from "mongoose";
 import { env } from "../../config/env.js";
-import { PaperModel } from "../papers/models/paper.model.js";
+import { parseDatabaseId, publicDatabaseId } from "../../infrastructure/database/database-id.js";
+import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { retrieve, type RetrieveFilters } from "../retrieval/retriever.js";
 
 export type ReportEvidenceSource = "selected" | "retrieved";
@@ -116,47 +116,27 @@ async function fetchTextEvidencePapers(
   },
 ): Promise<ReportEvidencePaper[]> {
   const q = queryText?.trim();
-  const match = buildTextEvidenceMatch(filters);
-  if (q) match.$text = { $search: q };
-
-  const projection = q
-    ? {
-        title: 1,
-        abstractText: 1,
-        publicationYear: 1,
-        journalName: 1,
-        citationCount: 1,
-        "authors.displayName": 1,
-        score: { $meta: "textScore" },
-      }
-    : {
-        title: 1,
-        abstractText: 1,
-        publicationYear: 1,
-        journalName: 1,
-        citationCount: 1,
-        "authors.displayName": 1,
-      };
-  const sort: Record<string, SortOrder | { $meta: "textScore" }> = q
-    ? { score: { $meta: "textScore" }, citationCount: -1 as const }
-    : { citationCount: -1 as const, publicationYear: -1 as const };
-
-  const docs = await PaperModel.find(match, projection)
-    .sort(sort)
-    .limit(env.REPORT_TOP_K)
-    .lean();
-
+  const f = filters ?? {};
+  const docs = await getPrisma().paper.findMany({ where: {
+    dataStatus: "active",
+    ...(q ? { OR: [{ title: { contains: q, mode: "insensitive" } }, { abstractText: { contains: q, mode: "insensitive" } }] } : {}),
+    ...(f.yearFrom !== undefined || f.yearTo !== undefined ? { publicationYear: { ...(f.yearFrom !== undefined ? { gte: f.yearFrom } : {}), ...(f.yearTo !== undefined ? { lte: f.yearTo } : {}) } } : {}),
+    ...(f.paperKinds?.length ? { paperKind: { in: f.paperKinds } } : {}),
+    ...(f.openAccessStatuses?.length ? { openAccessStatus: { in: normalizeLowercase(f.openAccessStatuses) } } : {}),
+    ...(f.providers?.length ? { primaryProvider: { in: normalizeLowercase(f.providers) } } : {}),
+    ...(f.sources?.length ? { journalName: { in: uniqueStrings(f.sources) } } : {}),
+    ...(f.languages?.length ? { language: { in: normalizeLowercase(f.languages) } } : {}),
+  }, orderBy: [{ citationCount: "desc" }, { publicationYear: "desc" }], take: env.REPORT_TOP_K });
+  const authors = await getPrisma().paperAuthor.findMany({ where: { paperId: { in: docs.map((doc) => doc.id) } }, orderBy: { position: "asc" } });
   return docs.map((doc) => ({
-    id: String(doc._id),
+    id: publicDatabaseId(doc),
     title: String(doc.title ?? ""),
     abstractText: doc.abstractText ? String(doc.abstractText) : undefined,
     publicationYear: doc.publicationYear as number | undefined,
     journalName: doc.journalName ? String(doc.journalName) : undefined,
     citationCount: doc.citationCount as number | undefined,
-    authorNames: ((doc.authors ?? []) as Array<{ displayName?: string }>)
-      .map((a) => a.displayName ?? "")
-      .filter(Boolean),
-    score: Number((doc as { score?: number }).score ?? 0.5),
+    authorNames: authors.filter((author) => author.paperId === doc.id).map((author) => author.displayName),
+    score: 0.5,
     source: "retrieved",
   }));
 }
@@ -204,10 +184,10 @@ async function fetchSelectedEvidencePapers(
 ): Promise<{ papers: ReportEvidencePaper[]; missingIds: string[] }> {
   if (ids.length === 0) return { papers: [], missingIds: [] };
 
-  const docs = await PaperModel.find({ _id: { $in: ids }, dataStatus: "active" })
-    .select("title abstractText publicationYear journalName citationCount authors")
-    .lean();
-  const byId = new Map(docs.map((doc) => [String(doc._id), doc]));
+  const parsed = ids.map(parseDatabaseId).filter((id): id is NonNullable<typeof id> => Boolean(id));
+  const docs = await getPrisma().paper.findMany({ where: { dataStatus: "active", OR: parsed.map((id) => id.kind === "uuid" ? { id: id.value } : { legacyMongoId: id.value }) } });
+  const authors = await getPrisma().paperAuthor.findMany({ where: { paperId: { in: docs.map((doc) => doc.id) } }, orderBy: { position: "asc" } });
+  const byId = new Map(docs.map((doc) => [publicDatabaseId(doc), doc]));
   const papers: ReportEvidencePaper[] = [];
   const missingIds: string[] = [];
 
@@ -224,9 +204,7 @@ async function fetchSelectedEvidencePapers(
       publicationYear: doc.publicationYear as number | undefined,
       journalName: doc.journalName ? String(doc.journalName) : undefined,
       citationCount: doc.citationCount as number | undefined,
-      authorNames: ((doc.authors ?? []) as Array<{ displayName?: string }>)
-        .map((a) => a.displayName ?? "")
-        .filter(Boolean),
+      authorNames: authors.filter((author) => author.paperId === doc.id).map((author) => author.displayName),
       score: 1,
       source: "selected",
     });

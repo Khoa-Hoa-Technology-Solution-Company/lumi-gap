@@ -1,9 +1,10 @@
 // apps/backend/src/modules/mcp/mcp.executor.ts
 import { logger } from "../../infrastructure/logger.js";
+import { parseDatabaseId } from "../../infrastructure/database/database-id.js";
+import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { searchService } from "../search/search.service.js";
 import { trendService } from "../trends/trend.service.js";
 import { paperService } from "../papers/paper.service.js";
-import { McpToolRunModel } from "./models/mcp-tool-run.model.js";
 
 export interface McpToolCall {
   name: string;
@@ -81,14 +82,28 @@ export async function executeMcpTool(
   }
 
   // Fire-and-forget audit log
-  McpToolRunModel.create({
-    reportId: context.reportId,
-    userId: context.userId,
-    toolName: call.name,
-    input: call.args,
-    output,
-    durationMs: Date.now() - t0,
-  }).catch((err) => logger.warn({ err }, "mcp_tool_run log failed (non-fatal)"));
+  const resolveId = async (kind: "report" | "user", value?: string) => {
+    if (!value) return undefined;
+    const parsed = parseDatabaseId(value);
+    if (!parsed) return undefined;
+    const where = parsed.kind === "uuid" ? { id: parsed.value } : { legacyMongoId: parsed.value };
+    const row = kind === "report"
+      ? await getPrisma().report.findUnique({ where, select: { id: true } })
+      : await getPrisma().user.findUnique({ where, select: { id: true } });
+    return row?.id;
+  };
+  Promise.all([resolveId("report", context.reportId), resolveId("user", context.userId)])
+    .then(([reportId, userId]) => getPrisma().mcpToolRun.create({
+      data: {
+        reportId,
+        userId,
+        toolName: call.name,
+        input: call.args as never,
+        output: output as never,
+        durationMs: Date.now() - t0,
+      },
+    }))
+    .catch((err) => logger.warn({ err }, "mcp_tool_run log failed (non-fatal)"));
 
   return output;
 }

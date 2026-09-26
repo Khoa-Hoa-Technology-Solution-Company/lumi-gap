@@ -11,23 +11,27 @@ import { MyPapersPage } from "./papers/my-papers";
 import { avatars, getLevel, getLevelProgress, getNextLevelPoints, LEVEL_THRESHOLDS } from "@/utils/level";
 import { formatNumber } from "@/utils";
 import { CreditHistory } from "@/features/credits";
+import { AcademicProfileSection } from "@/features/academic-profile";
+import { isAdminSystemRole } from "@trend/shared-types";
 
-type SettingsSection = "profile" | "credits" | "security" | "preferences" | "submit-paper" | "my-papers";
+type SettingsSection = "profile" | "academic" | "credits" | "security" | "preferences" | "submit-paper" | "my-papers";
 
-export function ProfilePage() {
+export function AccountSettingsPage() {
   const { section } = useParams<{ section?: string }>();
   const { data: userData, isLoading: isUserLoading } = useCurrentUser();
   const updateProfileMutation = useUpdateProfile();
   const changePasswordMutation = useChangePassword();
 
   const user = userData?.user;
-  const isAdmin = user?.role === "admin";
+  const isAdmin = isAdminSystemRole(user?.systemRole);
 
   const [activeSection, setActiveSection] = useState<SettingsSection>("profile");
 
   // Sync section parameter with active tab state
   useEffect(() => {
-    if (section === "security" || section === "account") {
+    if (section === "academic" || section === "academic-profile") {
+      setActiveSection("academic");
+    } else if (section === "security" || section === "account") {
       setActiveSection("security");
     } else if (section === "credits" || section === "credit-history") {
       setActiveSection("credits");
@@ -174,6 +178,20 @@ export function ProfilePage() {
           </button>
 
           {!isAdmin && (
+            <button
+              onClick={() => { setActiveSection("academic"); setSuccessMessage(""); setErrorMessage(""); }}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left text-sm font-semibold transition-all ${
+                activeSection === "academic"
+                  ? "bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400"
+                  : "text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/40"
+              }`}
+            >
+              <GraduationCap className="w-4 h-4" />
+              Academic Profile
+            </button>
+          )}
+
+          {!isAdmin && (
             <>
               <button
                 onClick={() => { setActiveSection("submit-paper"); setSuccessMessage(""); setErrorMessage(""); }}
@@ -292,7 +310,7 @@ export function ProfilePage() {
                             </h3>
                             <div className="flex justify-center sm:justify-start gap-2">
                               <Badge className="bg-blue-100 hover:bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 border-none capitalize text-xs font-bold px-2 py-0.5">
-                                {user.role}
+                                {user.academicProfileType ?? user.role}
                               </Badge>
                               <Badge className="bg-indigo-100 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400 border-none text-xs font-bold px-2 py-0.5">
                                 Level {currentLevel}
@@ -452,6 +470,9 @@ export function ProfilePage() {
               </form>
             </div>
           )}
+
+          {/* Section 2: Credit ledger */}
+          {activeSection === "academic" && !isAdmin && <AcademicProfileSection />}
 
           {/* Section 2: Credit ledger */}
           {activeSection === "credits" && <CreditHistory />}

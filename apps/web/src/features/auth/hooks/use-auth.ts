@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { LoginRequest, RegisterRequest } from "@trend/shared-types";
+import type { LoginRequest, RegisterRequest, UpdateAcademicProfileRequest } from "@trend/shared-types";
 import { useAuthStore } from "@/stores/auth-store";
 import { authApi, type UpdateProfileRequest, type ChangePasswordRequest } from "../api/auth.api";
 
@@ -17,8 +17,15 @@ export function useLogin() {
 }
 
 export function useRegister() {
+  const setAuth = useAuthStore((s) => s.setAuth);
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (payload: RegisterRequest) => authApi.register(payload),
+    onSuccess: (data) => {
+      setAuth(data);
+      queryClient.clear();
+      queryClient.setQueryData(["current-user"], { user: data.user });
+    },
   });
 }
 
@@ -38,8 +45,7 @@ export function useLogout() {
 }
 
 export function useCurrentUser() {
-  const tokens = useAuthStore((s) => s.tokens);
-  const user = useAuthStore((s) => s.user);
+  const hasToken = useAuthStore((s) => !!s.tokens?.accessToken);
   return useQuery({
     queryKey: ["current-user"],
     queryFn: async () => {
@@ -47,10 +53,19 @@ export function useCurrentUser() {
       useAuthStore.setState({ user: data.user });
       return data;
     },
-    enabled: !!tokens?.accessToken,
-    initialData: user ? { user } : undefined,
-    staleTime: 0,
-    refetchOnMount: "always",
+    enabled: hasToken,
+    // Use placeholderData (not initialData) so the store snapshot is used only
+    // as a temporary visual placeholder and doesn't affect query status.
+    // Reading the store outside a selector avoids a reactive subscription that
+    // would re-render this hook every time queryFn updates the store — which
+    // previously caused an infinite fetch loop (staleTime: 0 + store write in
+    // queryFn → re-render → new refetch → repeat).
+    placeholderData: () => {
+      const user = useAuthStore.getState().user;
+      return user ? { user } : undefined;
+    },
+    staleTime: 30_000,
+    refetchOnMount: true,
     refetchOnWindowFocus: true,
   });
 }
@@ -66,9 +81,19 @@ export function useUpdateProfile() {
   });
 }
 
+export function useUpdateAcademicProfile() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: UpdateAcademicProfileRequest) => authApi.updateAcademicProfile(payload),
+    onSuccess: (data) => {
+      useAuthStore.setState({ user: data.user });
+      queryClient.setQueryData(["current-user"], data);
+    },
+  });
+}
+
 export function useChangePassword() {
   return useMutation({
     mutationFn: (payload: ChangePasswordRequest) => authApi.changePassword(payload),
   });
 }
-

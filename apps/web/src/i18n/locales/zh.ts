@@ -1,8 +1,16 @@
 import { en } from "./en";
+import { academicProfileStrings } from "./academic-profile";
+import { academicForumStrings } from "./academic-forum";
 import { gapEvidenceWorkflowStrings } from "./gap-evidence-workflow";
 import { paperDetailIaStrings } from "./paper-detail-ia";
+import { authSecurityStrings } from "./auth-security";
+import { newUiStrings } from "./new-ui";
 
 export const zh: Record<keyof typeof en, string> = {
+  ...newUiStrings,
+  ...authSecurityStrings,
+  ...academicForumStrings,
+  ...academicProfileStrings.zh,
   ...gapEvidenceWorkflowStrings,
   ...paperDetailIaStrings,
   "1 research gap": "1 个研究空白",
@@ -1026,7 +1034,7 @@ export const zh: Record<keyof typeof en, string> = {
   "Paper translation failed. Please try again.": "论文翻译失败。请再试一次。",
   "Paper Type": "纸张类型",
   "Paper Types": "纸张类型",
-  "PAPERLENS logo": "纸镜标志",
+  "LumiGap logo": "LumiGap 标志",
   "Papers": "论文",
   "PAPERS": "论文",
   "papers (": "论文（",

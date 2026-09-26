@@ -175,7 +175,7 @@ export function PaperMetadataSidebar({
           )}
         </div>
         <p className="text-xs text-slate-500 dark:text-slate-400">
-          Synthesized reports referencing this work in PaperLens.
+          Synthesized reports referencing this work in LumiGap.
         </p>
         <Button
           asChild

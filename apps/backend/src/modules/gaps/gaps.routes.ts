@@ -10,8 +10,12 @@ import {
   GapIdParamsSchema,
   DirectionsBodySchema,
   PreviewGapEvidenceSchema,
+  GapCandidateSchema,
+  GapEvidenceRecordSchema,
+  GapValidationSchema,
 } from "./dto/gaps.schema.js";
 import { gapsController } from "./gaps.controller.js";
+import { gapValidationService } from "./gap-validation.service.js";
 
 export const gapsRouter: Router = Router();
 
@@ -88,6 +92,27 @@ gapsRouter.post(
 );
 gapsRouter.get("/analyze/:id", gapsController.getAnalysis);
 gapsRouter.get("/", gapsController.list);
+gapsRouter.post("/candidates", validate(GapCandidateSchema), async (req, res) => {
+  const data = await gapValidationService.createCandidate(req.user!.sub, req.body);
+  res.status(201).json({ success: true, data });
+});
+gapsRouter.post("/:id/request-validation", validate(GapIdParamsSchema, "params"), async (req, res) => {
+  res.json({ success: true, data: await gapValidationService.requestValidation(String(req.params.id), req.user!.sub) });
+});
+gapsRouter.post("/:id/evidence", validate(GapIdParamsSchema, "params"), validate(GapEvidenceRecordSchema), async (req, res) => {
+  const data = await gapValidationService.addEvidence(String(req.params.id), req.user!.sub, req.body);
+  res.status(201).json({ success: true, data });
+});
+gapsRouter.get("/:id/evidence", validate(GapIdParamsSchema, "params"), async (req, res) => {
+  res.json({ success: true, data: await gapValidationService.getEvidence(String(req.params.id), req.user!.sub) });
+});
+gapsRouter.post("/:id/validations", validate(GapIdParamsSchema, "params"), validate(GapValidationSchema), async (req, res) => {
+  const data = await gapValidationService.addValidation(String(req.params.id), req.user!.sub, req.body);
+  res.status(201).json({ success: true, data });
+});
+gapsRouter.get("/:id/validations", validate(GapIdParamsSchema, "params"), async (req, res) => {
+  res.json({ success: true, data: await gapValidationService.getValidations(String(req.params.id), req.user!.sub) });
+});
 gapsRouter.patch("/:id", validate(PatchGapSchema), gapsController.patch);
 gapsRouter.post(
   "/:id/directions",

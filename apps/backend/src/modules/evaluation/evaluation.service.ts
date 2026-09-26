@@ -5,11 +5,9 @@ import type {
   EvaluationSummary,
 } from "@trend/shared-types";
 import { env } from "../../config/env.js";
+import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { assertCitationsInRange } from "../llm/grounding.js";
-import { PaperModel } from "../papers/models/paper.model.js";
-import { ReportModel } from "../reports/models/report.model.js";
 import { computePaperScore } from "../scoring/paper-score.js";
-import { ResearchGapModel } from "../gaps/models/research-gap.model.js";
 import { computeGapEvidence } from "../gaps/gap-evidence.js";
 import { computeMetrics } from "../trends/trend.formulas.js";
 
@@ -27,55 +25,41 @@ export interface EvaluationRepository {
 }
 
 export const evaluationRepository: EvaluationRepository = {
-  countPapers: () => PaperModel.countDocuments(),
-  countActivePapers: () => PaperModel.countDocuments({ dataStatus: "active" }),
-  countAnalyzablePapers: () => PaperModel.countDocuments({ dataStatus: "active", isAiAnalyzable: true }),
-  countEmbeddedPapers: () =>
-    PaperModel.countDocuments({
-      dataStatus: "active",
-      isAiAnalyzable: true,
-      [`embedding.${env.GEMINI_EMBEDDING_DIMENSIONS - 1}`]: { $exists: true },
-      [`embedding.${env.GEMINI_EMBEDDING_DIMENSIONS}`]: { $exists: false },
-    }),
-  countAiAnalyzedPapers: () =>
-    PaperModel.countDocuments({
-      dataStatus: "active",
-      isAiAnalyzable: true,
-      "aiAnalysis.analysisPromptVersion": { $exists: true },
-    }),
-  countReadyReports: () => ReportModel.countDocuments({ status: "ready" }),
-  countGroundedReports: () =>
-    ReportModel.countDocuments({
-      status: "ready",
-      groundingPaperIds: { $exists: true, $ne: [] },
-    }),
+  countPapers: () => getPrisma().paper.count(),
+  countActivePapers: () => getPrisma().paper.count({ where: { dataStatus: "active" } }),
+  countAnalyzablePapers: () => getPrisma().paper.count({ where: { dataStatus: "active", isAiAnalyzable: true } }),
+  countEmbeddedPapers: () => getPrisma().$queryRaw<Array<{ count: bigint }>>`
+    SELECT COUNT(*)::bigint AS count FROM papers
+    WHERE data_status = 'active' AND is_ai_analyzable = TRUE AND embedding IS NOT NULL
+  `.then((rows) => Number(rows[0]?.count ?? 0)),
+  countAiAnalyzedPapers: () => getPrisma().paper.count({ where: { dataStatus: "active", isAiAnalyzable: true, aiAnalysis: { not: null as never } } }),
+  countReadyReports: () => getPrisma().report.count({ where: { status: "ready" } }),
+  countGroundedReports: async () => {
+    const ready = await getPrisma().report.findMany({ where: { status: "ready" }, select: { id: true } });
+    return (await getPrisma().reportPaper.groupBy({ by: ["reportId"], where: { reportId: { in: ready.map((row) => row.id) } } })).length;
+  },
   async countReportsWithInvalidCitations() {
-    const reports = await ReportModel.find({
-      status: "ready",
-      groundingPaperIds: { $exists: true, $ne: [] },
-    })
-      .select("markdown groundingPaperIds")
-      .lean();
+    const reports = await getPrisma().report.findMany({ where: { status: "ready" }, select: { id: true, markdown: true } });
+    const counts = await getPrisma().reportPaper.groupBy({ by: ["reportId"], where: { reportId: { in: reports.map((row) => row.id) } }, _count: { _all: true } });
+    const countByReport = new Map(counts.map((row) => [row.reportId, row._count._all]));
 
     let invalid = 0;
     for (const report of reports) {
       try {
-        assertCitationsInRange(report.markdown ?? "", report.groundingPaperIds?.length ?? 0);
+        assertCitationsInRange(report.markdown ?? "", countByReport.get(report.id) ?? 0);
       } catch {
         invalid += 1;
       }
     }
     return invalid;
   },
-  countActiveGaps: () => ResearchGapModel.countDocuments({ status: "active" }),
-  countEvidenceBackedGaps: () =>
-    ResearchGapModel.countDocuments({
-      status: "active",
-      supportingPaperIds: { $exists: true, $ne: [] },
-      "probe.topicA": { $exists: true, $ne: "" },
-      "probe.topicB": { $exists: true, $ne: "" },
-      evidenceConfidence: { $gte: 0.5 },
-    }),
+  countActiveGaps: () => getPrisma().researchGap.count({ where: { status: "active" } }),
+  countEvidenceBackedGaps: async () => {
+    const gaps = await getPrisma().researchGap.findMany({ where: { status: "active", evidenceConfidence: { gte: 0.5 } }, select: { id: true, probe: true } });
+    const supported = await getPrisma().researchGapPaper.groupBy({ by: ["gapId"], where: { gapId: { in: gaps.map((row) => row.id) }, kind: "supporting" } });
+    const ids = new Set(supported.map((row) => row.gapId));
+    return gaps.filter((row) => { const probe = row.probe as Record<string, unknown> | null; return ids.has(row.id) && Boolean(probe?.topicA) && Boolean(probe?.topicB); }).length;
+  },
 };
 
 export const evaluationService = {

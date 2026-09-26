@@ -7,6 +7,8 @@ import type {
   GapDirections,
   PreviewGapEvidenceRequest,
   PreviewGapEvidenceResponse,
+  CreateGapCandidateRequest,
+  ResearchGapItem,
 } from "@trend/shared-types";
 
 export const gapsApi = {
@@ -61,6 +63,10 @@ export const gapsApi = {
 
   async generateDirections(gapId: string, force: boolean): Promise<GapDirections> {
     const res = await api.post(API_ROUTES.gaps.directions(gapId), { force });
+    return res.data.data;
+  },
+  async createCandidate(payload: CreateGapCandidateRequest): Promise<ResearchGapItem> {
+    const res = await api.post("/gaps/candidates", payload);
     return res.data.data;
   },
 };

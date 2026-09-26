@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { useNotifications, useMarkNotificationRead, useMarkAllNotificationsRead } from "@/features/notifications";
 import { useAuthStore } from "@/stores/auth-store";
 import { toast } from "sonner";
+import { isAdminSystemRole } from "@trend/shared-types";
 
 function formatTime(dateStr: string) {
   try {
@@ -27,7 +28,7 @@ function formatTime(dateStr: string) {
 export function NotificationsPage() {
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
-  const isAdmin = user?.role === "admin";
+  const isAdmin = isAdminSystemRole(user?.systemRole);
 
   const { data: notifications, isLoading } = useNotifications();
   const markReadMutation = useMarkNotificationRead();

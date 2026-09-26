@@ -1,8 +1,16 @@
 import { en } from "./en";
+import { academicProfileStrings } from "./academic-profile";
+import { academicForumStrings } from "./academic-forum";
 import { gapEvidenceWorkflowStrings } from "./gap-evidence-workflow";
 import { paperDetailIaStrings } from "./paper-detail-ia";
+import { authSecurityStrings } from "./auth-security";
+import { newUiStrings } from "./new-ui";
 
 export const es: Record<keyof typeof en, string> = {
+  ...newUiStrings,
+  ...authSecurityStrings,
+  ...academicForumStrings,
+  ...academicProfileStrings.es,
   ...gapEvidenceWorkflowStrings,
   ...paperDetailIaStrings,
   "1 research gap": "1 brecha de investigación",
@@ -1026,7 +1034,7 @@ export const es: Record<keyof typeof en, string> = {
   "Paper translation failed. Please try again.": "La traducción del papel falló. Por favor inténtalo de nuevo.",
   "Paper Type": "Tipo de papel",
   "Paper Types": "Tipos de papel",
-  "PAPERLENS logo": "Logotipo de lentes de papel",
+  "LumiGap logo": "Logotipo de LumiGap",
   "Papers": "Artículos",
   "PAPERS": "PAPELES",
   "papers (": "papeles (",

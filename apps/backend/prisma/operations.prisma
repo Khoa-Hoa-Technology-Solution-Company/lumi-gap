@@ -1,0 +1,381 @@
+model CreditTransaction {
+  id                    String   @id @default(uuid()) @db.Uuid
+  legacyMongoId         String?  @unique @map("legacy_mongo_id") @db.VarChar(24)
+  userId                String   @map("user_id") @db.Uuid
+  type                  String   @db.VarChar(16)
+  action                String   @db.VarChar(64)
+  amount                Int
+  balanceAfter          Int      @map("balance_after")
+  targetKind            String?  @map("target_kind") @db.VarChar(32)
+  targetLegacyMongoId   String?  @map("target_legacy_mongo_id") @db.VarChar(24)
+  targetUuid            String?  @map("target_uuid") @db.Uuid
+  idempotencyKey        String   @unique @map("idempotency_key")
+  status                String   @default("applied") @db.VarChar(16)
+  refundedTransactionId String?  @map("refunded_transaction_id") @db.Uuid
+  metadata              Json?
+  createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([userId, createdAt])
+  @@index([targetKind, targetUuid])
+  @@map("credit_transactions")
+}
+
+model PaymentOrder {
+  id            String    @id @default(uuid()) @db.Uuid
+  legacyMongoId String?   @unique @map("legacy_mongo_id") @db.VarChar(24)
+  orderCode     BigInt    @unique @map("order_code")
+  userId        String    @map("user_id") @db.Uuid
+  amount        Int
+  credits       Int
+  status        String    @default("pending") @db.VarChar(16)
+  paymentLinkId String?   @map("payment_link_id")
+  checkoutUrl   String?   @map("checkout_url")
+  qrCode        String?   @map("qr_code")
+  paidAt        DateTime? @map("paid_at") @db.Timestamptz(6)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([userId])
+  @@index([status])
+  @@map("payment_orders")
+}
+
+model Notification {
+  id                  String   @id @default(uuid()) @db.Uuid
+  legacyMongoId       String?  @unique @map("legacy_mongo_id") @db.VarChar(24)
+  userId              String?  @map("user_id") @db.Uuid
+  role                String?  @db.VarChar(32)
+  title               String
+  message             String
+  type                String
+  paperId             String?  @map("paper_id") @db.Uuid
+  targetKind          String?  @map("target_kind") @db.VarChar(32)
+  targetLegacyMongoId String?  @map("target_legacy_mongo_id") @db.VarChar(24)
+  targetUuid          String?  @map("target_uuid") @db.Uuid
+  isRead              Boolean  @default(false) @map("is_read")
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([userId, isRead, createdAt])
+  @@index([role, createdAt])
+  @@index([targetKind, targetUuid])
+  @@map("notifications")
+}
+
+model NotificationRead {
+  notificationId String   @map("notification_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  readAt         DateTime @default(now()) @map("read_at") @db.Timestamptz(6)
+
+  @@id([notificationId, userId])
+  @@index([userId])
+  @@map("notification_reads")
+}
+
+model DeviceToken {
+  id            String    @id @default(uuid()) @db.Uuid
+  legacyMongoId String?   @unique @map("legacy_mongo_id") @db.VarChar(24)
+  userId        String    @map("user_id") @db.Uuid
+  token         String    @unique
+  platform      String    @db.VarChar(16)
+  deviceName    String?   @map("device_name") @db.VarChar(120)
+  lastSeenAt    DateTime  @map("last_seen_at") @db.Timestamptz(6)
+  disabledAt    DateTime? @map("disabled_at") @db.Timestamptz(6)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([userId, disabledAt])
+  @@map("device_tokens")
+}
+
+model SearchLog {
+  id            String   @id @default(uuid()) @db.Uuid
+  legacyMongoId String?  @unique @map("legacy_mongo_id") @db.VarChar(24)
+  userId        String?  @map("user_id") @db.Uuid
+  query         String
+  mode          String   @db.VarChar(32)
+  resultCount   Int      @map("result_count")
+  durationMs    Int      @map("duration_ms")
+  filters       Json     @default("{}")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([userId, createdAt])
+  @@index([createdAt])
+  @@map("search_logs")
+}
+
+model AuditLog {
+  id              String   @id @default(uuid()) @db.Uuid
+  legacyMongoId   String?  @unique @map("legacy_mongo_id") @db.VarChar(24)
+  userId          String?  @map("user_id") @db.Uuid
+  actionName      String   @map("action_name")
+  targetTableName String?  @map("target_table_name")
+  targetRecordId  String?  @map("target_record_id")
+  details         Json?    @map("details")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([userId, createdAt])
+  @@index([actionName, createdAt])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+model McpToolRun {
+  id            String   @id @default(uuid()) @db.Uuid
+  legacyMongoId String?  @unique @map("legacy_mongo_id") @db.VarChar(24)
+  reportId      String?  @map("report_id") @db.Uuid
+  userId        String?  @map("user_id") @db.Uuid
+  toolName      String   @map("tool_name")
+  input         Json?
+  output        Json?
+  durationMs    Int?     @map("duration_ms")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([reportId])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("mcp_tool_runs")
+}
+
+model TrendExplanation {
+  id            String   @id @default(uuid()) @db.Uuid
+  legacyMongoId String?  @unique @map("legacy_mongo_id") @db.VarChar(24)
+  userId        String   @map("user_id") @db.Uuid
+  topic         String?
+  language      String   @db.VarChar(8)
+  yearFrom      Int      @map("year_from")
+  yearTo        Int      @map("year_to")
+  scopeHash     String   @map("scope_hash")
+  scopeLabel    String   @map("scope_label")
+  scopeFilters  Json     @default("{}") @map("scope_filters")
+  explanation   Json
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([userId, createdAt])
+  @@index([userId, topic, scopeHash, createdAt])
+  @@map("trend_explanations")
+}
+
+model ApiProvider {
+  id              String   @id @default(uuid()) @db.Uuid
+  legacyMongoId   String?  @unique @map("legacy_mongo_id") @db.VarChar(24)
+  providerName    String   @unique @map("provider_name")
+  baseUrl         String   @map("base_url")
+  providerKind    String   @default("academic-api") @map("provider_kind") @db.VarChar(32)
+  providerStatus  String   @default("disabled") @map("provider_status") @db.VarChar(16)
+  rateLimitPerMin Int      @default(60) @map("rate_limit_per_min")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("api_providers")
+}
+
+model ApiSyncConfig {
+  id                  String    @id @default(uuid()) @db.Uuid
+  legacyMongoId       String?   @unique @map("legacy_mongo_id") @db.VarChar(24)
+  providerId          String    @map("provider_id") @db.Uuid
+  createdById         String?   @map("created_by_id") @db.Uuid
+  configName          String    @map("config_name")
+  searchText          String    @map("search_text")
+  fromPublicationYear Int?      @map("from_publication_year")
+  toPublicationYear   Int?      @map("to_publication_year")
+  scheduleCron        String?   @map("schedule_cron")
+  configStatus        String    @default("enabled") @map("config_status") @db.VarChar(16)
+  lastRunAt           DateTime? @map("last_run_at") @db.Timestamptz(6)
+  nextRunAt           DateTime? @map("next_run_at") @db.Timestamptz(6)
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([providerId])
+  @@map("api_sync_configs")
+}
+
+model ApiSyncRun {
+  id              String    @id @default(uuid()) @db.Uuid
+  legacyMongoId   String?   @unique @map("legacy_mongo_id") @db.VarChar(24)
+  syncConfigId    String?   @map("sync_config_id") @db.Uuid
+  providerId      String    @map("provider_id") @db.Uuid
+  runStatus       String    @default("running") @map("run_status") @db.VarChar(16)
+  searchText      String?   @map("search_text")
+  startedAt       DateTime  @map("started_at") @db.Timestamptz(6)
+  finishedAt      DateTime? @map("finished_at") @db.Timestamptz(6)
+  totalFetched    Int       @default(0) @map("total_fetched")
+  totalInserted   Int       @default(0) @map("total_inserted")
+  totalUpdated    Int       @default(0) @map("total_updated")
+  totalDuplicates Int       @default(0) @map("total_duplicates")
+  errorMessage    String?   @map("error_message")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([startedAt])
+  @@index([runStatus])
+  @@map("api_sync_runs")
+}
+
+model OpenAlexIngestCampaign {
+  id                String    @id @default(uuid()) @db.Uuid
+  legacyMongoId     String?   @unique @map("legacy_mongo_id") @db.VarChar(24)
+  campaignKey       String    @unique @map("campaign_key")
+  providerName      String    @default("openalex") @map("provider_name")
+  campaignKind      String    @map("campaign_kind") @db.VarChar(16)
+  state             String    @default("draft") @db.VarChar(40)
+  targetUniqueWorks Int       @map("target_unique_works")
+  manifest          Json
+  progress          Json      @default("{}")
+  startedAt         DateTime? @map("started_at") @db.Timestamptz(6)
+  completedAt       DateTime? @map("completed_at") @db.Timestamptz(6)
+  failureReason     String?   @map("failure_reason")
+  completionNote    String?   @map("completion_note")
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([state, createdAt])
+  @@map("openalex_ingest_campaigns")
+}
+
+model OpenAlexIngestPartition {
+  id                String    @id @default(uuid()) @db.Uuid
+  legacyMongoId     String?   @unique @map("legacy_mongo_id") @db.VarChar(24)
+  campaignId        String    @map("campaign_id") @db.Uuid
+  partitionKey      String    @map("partition_key")
+  cohortId          String    @map("cohort_id")
+  stratumKey        String    @map("stratum_key")
+  filterExpression  String    @map("filter_expression")
+  plannedPopulation Int       @map("planned_population")
+  targetCount       Int       @map("target_count")
+  selectionMethod   String    @map("selection_method") @db.VarChar(24)
+  seed              Int?
+  state             String    @default("planned") @db.VarChar(24)
+  checkpointCursor  String?   @map("checkpoint_cursor")
+  acceptedCount     Int       @default(0) @map("accepted_count")
+  committedAttempts Int       @default(0) @map("committed_attempts")
+  checkpointVersion Int       @default(0) @map("checkpoint_version")
+  leaseOwnerId      String?   @map("lease_owner_id")
+  leaseExpiresAt    DateTime? @map("lease_expires_at") @db.Timestamptz(6)
+  leaseHeartbeatAt  DateTime? @map("lease_heartbeat_at") @db.Timestamptz(6)
+  lastError         String?   @map("last_error")
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([campaignId, partitionKey])
+  @@index([campaignId, state, leaseExpiresAt])
+  @@map("openalex_ingest_partitions")
+}
+
+model OpenAlexIngestPageAttempt {
+  id                  String    @id @default(uuid()) @db.Uuid
+  legacyMongoId       String?   @unique @map("legacy_mongo_id") @db.VarChar(24)
+  campaignId          String    @map("campaign_id") @db.Uuid
+  partitionId         String    @map("partition_id") @db.Uuid
+  idempotencyKey      String    @map("idempotency_key")
+  cursorBefore        String?   @map("cursor_before")
+  cursorAfter         String?   @map("cursor_after")
+  requestFingerprint  String    @map("request_fingerprint")
+  responseHash        String?   @map("response_hash")
+  state               String    @default("started") @db.VarChar(24)
+  expectedResultCount Int       @default(0) @map("expected_result_count")
+  acceptedCount       Int       @default(0) @map("accepted_count")
+  rejectedCount       Int       @default(0) @map("rejected_count")
+  conflictCount       Int       @default(0) @map("conflict_count")
+  errorMessage        String?   @map("error_message")
+  committedAt         DateTime? @map("committed_at") @db.Timestamptz(6)
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([partitionId, idempotencyKey])
+  @@index([campaignId, state, createdAt])
+  @@map("openalex_ingest_page_attempts")
+}
+
+model IngestDeadLetter {
+  id                 String    @id @default(uuid()) @db.Uuid
+  legacyMongoId      String?   @unique @map("legacy_mongo_id") @db.VarChar(24)
+  campaignId         String    @map("campaign_id") @db.Uuid
+  partitionId        String?   @map("partition_id") @db.Uuid
+  attemptId          String?   @map("attempt_id") @db.Uuid
+  state              String    @default("open") @db.VarChar(16)
+  reasonCode         String    @map("reason_code")
+  sourceIdentity     String?   @map("source_identity")
+  requestFingerprint String?   @map("request_fingerprint")
+  payloadHash        String?   @map("payload_hash")
+  details            Json?
+  resolutionNote     String?   @map("resolution_note")
+  resolvedAt         DateTime? @map("resolved_at") @db.Timestamptz(6)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([campaignId, state, createdAt])
+  @@index([reasonCode])
+  @@map("ingest_dead_letters")
+}
+
+model CorpusValidationRun {
+  id                     String    @id @default(uuid()) @db.Uuid
+  legacyMongoId          String?   @unique @map("legacy_mongo_id") @db.VarChar(24)
+  campaignId             String    @map("campaign_id") @db.Uuid
+  state                  String    @default("queued") @db.VarChar(16)
+  overallStatus          String?   @map("overall_status") @db.VarChar(24)
+  decision               String?   @db.VarChar(32)
+  validatorVersion       String    @map("validator_version")
+  snapshotCommittedPages Int       @map("snapshot_committed_pages")
+  idempotencyKey         String    @unique @map("idempotency_key")
+  activeKey              String?   @map("active_key")
+  executionToken         String?   @map("execution_token")
+  metrics                Json?
+  checks                 Json      @default("[]")
+  failureReason          String?   @map("failure_reason")
+  requestedAt            DateTime  @map("requested_at") @db.Timestamptz(6)
+  startedAt              DateTime? @map("started_at") @db.Timestamptz(6)
+  completedAt            DateTime? @map("completed_at") @db.Timestamptz(6)
+  createdAt              DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([campaignId, createdAt])
+  @@index([state, createdAt])
+  @@map("corpus_validation_runs")
+}
+
+model OpenAlexRefreshWatermark {
+  id                 String    @id @default(uuid()) @db.Uuid
+  legacyMongoId      String?   @unique @map("legacy_mongo_id") @db.VarChar(24)
+  refreshPolicyKey   String    @unique @map("refresh_policy_key")
+  providerName       String    @default("openalex") @map("provider_name")
+  lastSuccessfulAt   DateTime? @map("last_successful_at") @db.Timestamptz(6)
+  sourceUpdatedSince DateTime? @map("source_updated_since") @db.Timestamptz(6)
+  overlapHours       Int       @default(72) @map("overlap_hours")
+  lastCampaignId     String?   @map("last_campaign_id") @db.Uuid
+  state              String    @default("idle") @db.VarChar(16)
+  failureReason      String?   @map("failure_reason")
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("openalex_refresh_watermarks")
+}
+
+model PaperCohortMembership {
+  id               String   @id @default(uuid()) @db.Uuid
+  legacyMongoId    String?  @unique @map("legacy_mongo_id") @db.VarChar(24)
+  paperId          String   @map("paper_id") @db.Uuid
+  cohortId         String   @map("cohort_id")
+  campaignId       String   @map("campaign_id") @db.Uuid
+  stratumKey       String   @map("stratum_key")
+  samplingWeight   Float?   @map("sampling_weight")
+  selectionMethod  String   @map("selection_method") @db.VarChar(32)
+  policyVersion    String   @map("policy_version")
+  reason           String   @db.VarChar(32)
+  sourcePopulation Int?     @map("source_population")
+  selectedAt       DateTime @map("selected_at") @db.Timestamptz(6)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([paperId, cohortId, campaignId], map: "paper_cohort_campaign_unique")
+  @@index([cohortId, stratumKey])
+  @@index([campaignId, paperId])
+  @@index([campaignId, cohortId, stratumKey, paperId])
+  @@map("paper_cohort_memberships")
+}

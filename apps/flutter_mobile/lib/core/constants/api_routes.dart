@@ -7,6 +7,7 @@ class ApiRoutes {
   static const String authRefresh = '/auth/refresh';
   static const String authLogout = '/auth/logout';
   static const String authMe = '/auth/me';
+  static const String authAcademicProfile = '/auth/me/academic-profile';
   static const String authChangePassword = '/auth/change-password';
   static const String authRankingsTop = '/auth/rankings/top';
   static const String authRankingsMe = '/auth/rankings/me';

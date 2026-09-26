@@ -12,20 +12,18 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import type { AxiosError } from "axios";
 import { router } from "expo-router";
 import { useColorScheme } from "nativewind";
 
 import { useLogin, useRegister } from "@/features/auth";
 import { useAuthStore } from "@/stores/auth-store";
 
-const ROLES = ["student", "lecturer", "researcher"] as const;
-
 export default function LoginScreen() {
   const [isRegisterTab, setIsRegisterTab] = useState(false);
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState<(typeof ROLES)[number]>("researcher");
   const [showPassword, setShowPassword] = useState(false);
 
   const loginMutation = useLogin();
@@ -53,10 +51,11 @@ export default function LoginScreen() {
       }
 
       registerMutation.mutate(
-        { email: email.trim(), password, fullName: fullName.trim(), role },
+        { email: email.trim(), password, fullName: fullName.trim() },
         {
-          onError: (error: any) => {
-            Alert.alert("Registration failed", error?.response?.data?.error?.message ?? "Could not create account.");
+          onError: (error) => {
+            const message = (error as AxiosError<{ error?: { message?: string } }>).response?.data?.error?.message;
+            Alert.alert("Registration failed", message ?? "Could not create account.");
           },
         },
       );
@@ -66,8 +65,9 @@ export default function LoginScreen() {
     loginMutation.mutate(
       { email: email.trim(), password },
       {
-        onError: (error: any) => {
-          Alert.alert("Sign in failed", error?.response?.data?.error?.message ?? "Wrong email or password.");
+        onError: (error) => {
+          const message = (error as AxiosError<{ error?: { message?: string } }>).response?.data?.error?.message;
+          Alert.alert("Sign in failed", message ?? "Wrong email or password.");
         },
       },
     );
@@ -166,24 +166,6 @@ export default function LoginScreen() {
                   </TouchableOpacity>
                 </View>
               </View>
-
-              {isRegisterTab && (
-                <View className="flex-row gap-2">
-                  {ROLES.map((item) => (
-                    <TouchableOpacity
-                      key={item}
-                      className={`flex-1 rounded-full border px-2 py-2 ${
-                        role === item ? "border-[#06B6D4] bg-[#083344]" : "border-border dark:border-[#26334A] bg-background dark:bg-[#0F1B2D]"
-                      }`}
-                      onPress={() => setRole(item)}
-                    >
-                      <Text className={`text-center text-[11px] font-semibold ${role === item ? "text-[#67E8F9]" : "text-[#94A3B8]"}`}>
-                        {item}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              )}
 
               {!isRegisterTab && (
                 <TouchableOpacity className="self-end">

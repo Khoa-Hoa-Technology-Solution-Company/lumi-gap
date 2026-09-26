@@ -30,7 +30,54 @@ export interface ReviewPaperResponse {
   artifacts_dir: string;
 }
 
+export interface AiPreReviewResponse {
+  status: "completed";
+  provider: string;
+  model: string;
+  analysis: {
+    summary: string;
+    goal_alignment: { assessment: string; evidence_ids: string[] };
+    rq_coverage: Array<{ research_question: string; assessment: string; evidence_ids: string[] }>;
+    unsupported_claims: Array<{ claim: string; reason: string; evidence_ids: string[] }>;
+    citation_issues: string[];
+    contribution_comparison: string;
+    review_focus_areas: string[];
+    limitations: string[];
+  };
+}
+
 export const aiReviewerClient = {
+  async preReview(input: {
+    title: string;
+    abstract?: string;
+    submission_type?: string;
+    research_goal?: string;
+    research_questions: string[];
+    claimed_gap?: string;
+    claimed_contribution?: string;
+    methodology?: string;
+    related_evidence: Array<{ id: string; title: string; excerpt?: string }>;
+  }): Promise<AiPreReviewResponse> {
+    try {
+      const response = await fetch(`${env.AI_REVIEWER_URL}/internal/pre-review`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Internal-Key": env.INTERNAL_SERVICE_KEY },
+        body: JSON.stringify(input),
+        signal: AbortSignal.timeout(180000),
+      });
+      if (!response.ok) {
+        const message = await response.text();
+        logger.warn({ status: response.status, message }, "AI pre-review request failed");
+        if (response.status === 503) throw AppError.serviceUnavailable("AI pre-review is not configured");
+        throw AppError.serviceUnavailable("AI pre-review could not produce validated analysis");
+      }
+      return await response.json() as AiPreReviewResponse;
+    } catch (error) {
+      if (error instanceof AppError) throw error;
+      logger.error({ err: error }, "AI pre-review service unavailable");
+      throw AppError.serviceUnavailable("AI pre-review service is unavailable");
+    }
+  },
   /**
    * Kiểm tra tình trạng kết nối đến Python AI Reviewer Service
    */

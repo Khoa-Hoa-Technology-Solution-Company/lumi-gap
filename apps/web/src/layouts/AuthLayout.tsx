@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { Outlet } from "react-router-dom";
 import { ThreeBackgroundParticle } from "@/components/ui/three-background-particle";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -10,7 +11,15 @@ export function AuthLayout() {
         <ThemeToggle />
       </div>
       <div className="z-10 w-full max-w-sm">
-        <Outlet />
+        <Suspense
+          fallback={(
+            <div className="min-h-80" role="status" aria-live="polite">
+              <span className="sr-only">Loading page...</span>
+            </div>
+          )}
+        >
+          <Outlet />
+        </Suspense>
       </div>
     </div>
   );

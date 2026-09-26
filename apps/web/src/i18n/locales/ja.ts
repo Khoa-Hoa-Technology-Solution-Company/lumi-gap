@@ -1,8 +1,16 @@
 import { en } from "./en";
+import { academicProfileStrings } from "./academic-profile";
+import { academicForumStrings } from "./academic-forum";
 import { gapEvidenceWorkflowStrings } from "./gap-evidence-workflow";
 import { paperDetailIaStrings } from "./paper-detail-ia";
+import { authSecurityStrings } from "./auth-security";
+import { newUiStrings } from "./new-ui";
 
 export const ja: Record<keyof typeof en, string> = {
+  ...newUiStrings,
+  ...authSecurityStrings,
+  ...academicForumStrings,
+  ...academicProfileStrings.ja,
   ...gapEvidenceWorkflowStrings,
   ...paperDetailIaStrings,
   "1 research gap": "研究ギャップ 1 件",
@@ -1026,7 +1034,7 @@ export const ja: Record<keyof typeof en, string> = {
   "Paper translation failed. Please try again.": "紙の翻訳は失敗しました。もう一度試してください。",
   "Paper Type": "用紙の種類",
   "Paper Types": "用紙の種類",
-  "PAPERLENS logo": "ペーパーレンズのロゴ",
+  "LumiGap logo": "LumiGapのロゴ",
   "Papers": "論文",
   "PAPERS": "論文",
   "papers (": "論文 (",
