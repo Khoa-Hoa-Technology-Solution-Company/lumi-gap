@@ -11,6 +11,9 @@ type CommunityInput = {
   visibility?: "public" | "private";
   rules?: string[];
   researchTopics?: string[];
+  researchField?: string;
+  icon?: string;
+  status?: "ACTIVE" | "ARCHIVED";
 };
 type MembershipSummary = {
   role: "owner" | "moderator" | "member";
@@ -70,42 +73,45 @@ async function assertCommunityModerator(communityId: string, userId: string, rol
 
 function presentCommunity(community: {
   id: string; legacyMongoId: string | null; name: string; slug: string; description: string;
-  researchTopics: string[]; visibility: string; rules: string[]; memberCount: number;
+  researchTopics: string[]; researchField: string | null; icon: string | null; visibility: string; status: string;
+  rules: string[]; memberCount: number; threadCount: number;
   createdAt: Date; updatedAt: Date;
 }, membership?: MembershipSummary | null, actorRole?: UserRole) {
   const activeMembership = membership?.status === "active";
   return {
     id: publicDatabaseId(community), name: community.name, slug: community.slug,
-    description: community.description, researchTopics: community.researchTopics,
-    visibility: community.visibility, rules: community.rules, memberCount: community.memberCount,
+    description: community.description, researchTopics: community.researchTopics, researchField: community.researchField ?? undefined, icon: community.icon ?? undefined,
+    visibility: community.visibility, status: community.status, rules: community.rules, memberCount: community.memberCount, threadCount: community.threadCount,
     viewerMembership: membership ? { role: membership.role, status: membership.status } : undefined,
     canManage: actorRole === "admin" || Boolean(activeMembership && ["owner", "moderator"].includes(membership!.role)),
+    canEditCommunity: actorRole === "admin",
     contentRestricted: community.visibility === "private" && actorRole !== "admin" && !activeMembership,
     createdAt: community.createdAt, updatedAt: community.updatedAt,
   };
 }
 
 export const communityService = {
-  async create(input: CommunityInput, actorId: string) {
+  async create(input: CommunityInput, actorId: string, actorRole?: UserRole) {
+    if (actorRole !== "admin") throw AppError.forbidden("Only administrators can create research communities");
     const ownerId = await resolveUserId(actorId);
     const slugBase = slugify(input.name);
     if (!slugBase) throw AppError.badRequest("Community name must contain letters or numbers");
     const slug = `${slugBase}-${randomBytes(3).toString("hex")}`;
     const community = await getPrisma().$transaction(async (tx) => {
       const created = await tx.community.create({ data: { ...input, slug, ownerId, memberCount: 1 } });
-      await tx.communityMembership.create({ data: { communityId: created.id, userId: ownerId, role: "owner", status: "active" } });
+      await tx.communityMembership.create({ data: { communityId: created.id, userId: ownerId, role: "moderator", status: "active" } });
       return created;
     });
     await auditService.log("community.created", { userId: actorId, targetTableName: "communities", targetRecordId: community.id });
-    return presentCommunity(community, { role: "owner", status: "active" });
+    return presentCommunity(community, { role: "moderator", status: "active" }, actorRole);
   },
 
   async list(userId: string | undefined, page: number, pageSize: number, role?: UserRole) {
     const prisma = getPrisma();
     const resolvedUserId = userId ? await resolveUserId(userId) : undefined;
     const [communities, total] = await Promise.all([
-      prisma.community.findMany({ orderBy: { updatedAt: "desc" }, skip: (page - 1) * pageSize, take: pageSize }),
-      prisma.community.count(),
+      prisma.community.findMany({ where: role === "admin" ? {} : { status: "ACTIVE" }, orderBy: { updatedAt: "desc" }, skip: (page - 1) * pageSize, take: pageSize }),
+      prisma.community.count({ where: role === "admin" ? {} : { status: "ACTIVE" } }),
     ]);
     const memberships = resolvedUserId && communities.length > 0
       ? await prisma.communityMembership.findMany({ where: { userId: resolvedUserId, communityId: { in: communities.map((item) => item.id) } } })
@@ -118,13 +124,17 @@ export const communityService = {
     const parsed = parseDatabaseId(idOrSlug);
     const community = await getPrisma().community.findUnique({ where: parsed ? (parsed.kind === "uuid" ? { id: parsed.value } : { legacyMongoId: parsed.value }) : { slug: idOrSlug } });
     if (!community) throw AppError.notFound("Community not found");
+    if (community.status === "ARCHIVED" && role !== "admin") throw AppError.notFound("Community not found");
     const resolvedUserId = userId ? await resolveUserId(userId) : undefined;
     const membership = resolvedUserId ? await getPrisma().communityMembership.findUnique({ where: { communityId_userId: { communityId: community.id, userId: resolvedUserId } } }) : null;
-    return presentCommunity(community, membership as MembershipSummary | null, role);
+    const moderatorMemberships = await getPrisma().communityMembership.findMany({ where: { communityId: community.id, role: { in: ["owner", "moderator"] }, status: "active" }, select: { userId: true } });
+    const moderators = moderatorMemberships.length ? await getPrisma().user.findMany({ where: { id: { in: moderatorMemberships.map((item) => item.userId) } }, select: { id: true, legacyMongoId: true, fullName: true, avatarUrl: true } }) : [];
+    return { ...presentCommunity(community, membership as MembershipSummary | null, role), moderators: moderators.map((moderator) => ({ id: publicDatabaseId(moderator), fullName: moderator.fullName, avatarUrl: moderator.avatarUrl ?? undefined })) };
   },
 
   async update(communityId: string, input: Partial<CommunityInput>, actorId: string, actorRole?: UserRole) {
     const id = await resolveCommunityId(communityId);
+    if (actorRole !== "admin") throw AppError.forbidden("Only administrators can edit or archive research communities");
     const actorMembership = await assertCommunityModerator(id, actorId, actorRole);
     const community = await getPrisma().community.update({ where: { id }, data: input });
     await auditService.log("community.updated", { userId: actorId, targetTableName: "communities", targetRecordId: id, details: { fields: Object.keys(input) } });
@@ -134,6 +144,7 @@ export const communityService = {
   async join(communityId: string, userId: string) {
     const [id, resolvedUserId] = await Promise.all([resolveCommunityId(communityId), resolveUserId(userId)]);
     const community = await getPrisma().community.findUniqueOrThrow({ where: { id } });
+    if (community.status === "ARCHIVED") throw AppError.conflict("Archived communities cannot accept new members");
     const existing = await getPrisma().communityMembership.findUnique({ where: { communityId_userId: { communityId: id, userId: resolvedUserId } } });
     if (existing?.status === "banned") throw AppError.forbidden("You are banned from this community");
     const status = community.visibility === "public" ? "active" : "pending";
@@ -150,7 +161,7 @@ export const communityService = {
     const [id, resolvedUserId] = await Promise.all([resolveCommunityId(communityId), resolveUserId(userId)]);
     const membership = await getPrisma().communityMembership.findUnique({ where: { communityId_userId: { communityId: id, userId: resolvedUserId } } });
     if (!membership) return;
-    if (membership.role === "owner") throw AppError.badRequest("Transfer ownership before leaving the community");
+    if (membership.role === "owner") throw AppError.badRequest("Legacy community owners must assign another moderator before leaving");
     await getPrisma().$transaction(async (tx) => {
       await tx.communityMembership.delete({ where: { id: membership.id } });
       if (membership.status === "active") {
@@ -164,7 +175,10 @@ export const communityService = {
   async listMembers(communityId: string, actorId: string, actorRole?: UserRole) {
     const id = await resolveCommunityId(communityId);
     await assertCommunityModerator(id, actorId, actorRole);
-    return getPrisma().communityMembership.findMany({ where: { communityId: id }, orderBy: [{ role: "asc" }, { createdAt: "asc" }] });
+    const memberships = await getPrisma().communityMembership.findMany({ where: { communityId: id }, orderBy: [{ role: "asc" }, { createdAt: "asc" }] });
+    const users = await getPrisma().user.findMany({ where: { id: { in: memberships.map((membership) => membership.userId) } }, select: { id: true, legacyMongoId: true, fullName: true, email: true, avatarUrl: true, role: true, institution: true } });
+    const byId = new Map(users.map((user) => [user.id, { ...user, id: publicDatabaseId(user), _id: publicDatabaseId(user) }]));
+    return memberships.map((membership) => ({ ...membership, id: publicDatabaseId(membership), _id: publicDatabaseId(membership), userId: byId.get(membership.userId) }));
   },
 
   async updateMember(communityId: string, targetUserId: string, input: { role?: "moderator" | "member"; status?: "pending" | "active" | "declined" | "banned" }, actorId: string, actorRole?: UserRole) {
@@ -173,7 +187,7 @@ export const communityService = {
     const target = await getPrisma().communityMembership.findUnique({ where: { communityId_userId: { communityId: id, userId: resolvedTargetId } } });
     if (!target) throw AppError.notFound("Community membership not found");
     if (target.role === "owner") throw AppError.badRequest("The owner membership cannot be changed here");
-    if (input.role !== undefined && actorRole !== "admin" && actorMembership.role !== "owner") throw AppError.forbidden("Only the community owner can assign or remove moderators");
+    if (input.role !== undefined && actorRole !== "admin") throw AppError.forbidden("Only administrators can assign or remove community moderators");
     if (actorRole !== "admin" && actorMembership.role === "moderator" && target.role !== "member") throw AppError.forbidden("Community moderators can only manage regular members");
     const nextStatus = input.status ?? target.status;
     const updated = await getPrisma().$transaction(async (tx) => {

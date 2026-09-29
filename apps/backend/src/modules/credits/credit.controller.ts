@@ -13,6 +13,12 @@ export const creditController = {
     res.json({ success: true, data: { credits } });
   },
 
+  /** GET /api/v1/credits/summary */
+  async getSummary(req: Request, res: Response) {
+    const summary = await creditService.getSummary(req.user!.sub);
+    res.json({ success: true, data: summary });
+  },
+
   /** GET /api/v1/credits/transactions */
   async listTransactions(req: Request, res: Response, next: NextFunction) {
     const parsed = ListTransactionsQuerySchema.safeParse(req.query);

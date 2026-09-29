@@ -1,82 +1,142 @@
+import type { ForumPostType, ForumResearchContext, ForumSort } from "@trend/shared-types";
 import { API_ROUTES } from "@/constants";
 import { api } from "@/services/api-client";
 
+export type ForumReferenceView = { paperId?: string; doi?: string; url?: string; title?: string; authors?: string[]; year?: number; verified?: boolean };
+export type ForumAuthorView = { id: string; fullName: string; avatarUrl?: string; institution?: string; academicProfileType?: string; academicTitle?: string; affiliationVerified?: boolean };
 export type ForumPostView = {
-  id: string; type: "discussion" | "question"; title: string; content: string; tags: string[];
-  status: string; voteScore: number; commentCount: number; acceptedCommentId?: string;
+  id: string; type: ForumPostType; title: string; content: string; tags: string[]; status: string;
+  voteScore: number; commentCount: number; acceptedCommentId?: string; viewerVote: -1 | 0 | 1;
+  isFollowing: boolean; isPinned: boolean; editedAt?: string;
+  canModerate: boolean;
   linkedPaperId?: string; linkedResearchGapId?: string; linkedProjectId?: string;
-  references: Array<{ paperId?: string; doi?: string; url?: string; title?: string; verified?: boolean }>;
-  author: { id: string; fullName: string; institution?: string; academicProfileType?: string; academicVerificationStatus?: string; academicTitle?: string };
-  community?: { id: string; name: string; slug: string }; createdAt: string;
+  linkedPaper?: { id: string; title: string; publicationYear?: number; doi?: string };
+  linkedResearchGap?: { id: string; title: string; topic?: string };
+  linkedProject?: { id: string; title: string };
+  references: ForumReferenceView[]; author: ForumAuthorView;
+  community?: { id: string; name: string; slug: string }; createdAt: string; updatedAt?: string;
 };
-export type ForumCommentView = { id: string; postId: string; content: string; voteScore: number; author: ForumPostView["author"]; createdAt: string; status: string };
+export type ForumCommentView = {
+  id: string; postId: string; content: string; voteScore: number; viewerVote: -1 | 0 | 1;
+  author: ForumAuthorView; createdAt: string; editedAt?: string; status: string; isAccepted: boolean;
+  parentCommentId?: string; references: ForumReferenceView[];
+};
 export type CommunityMembershipView = { role: "owner" | "moderator" | "member"; status: "pending" | "active" | "declined" | "banned" };
 export type CommunityView = {
   id: string; name: string; slug: string; description: string; researchTopics: string[];
-  visibility: "public" | "private"; rules: string[]; memberCount: number;
+  researchField?: string; icon?: string; visibility: "public" | "private"; status: "ACTIVE" | "ARCHIVED";
+  rules: string[]; memberCount: number; threadCount: number;
+  moderators?: Array<{ id: string; fullName: string; avatarUrl?: string }>;
   viewerMembership?: CommunityMembershipView; canManage: boolean; contentRestricted: boolean;
+  canEditCommunity: boolean;
   createdAt?: string; updatedAt?: string;
 };
 export type CommunityInput = {
-  name: string; description?: string; visibility?: "public" | "private";
-  researchTopics?: string[]; rules?: string[];
+  name: string; description?: string; visibility?: "public" | "private"; researchField?: string;
+  icon?: string; status?: "ACTIVE" | "ARCHIVED"; researchTopics?: string[]; rules?: string[];
 };
 export type CommunityMemberView = {
-  id: string;
-  user: { id: string; fullName: string; email: string; avatarUrl?: string; role: string; institution?: string };
-  role: "owner" | "moderator" | "member";
-  status: "pending" | "active" | "declined" | "banned";
-  joinedAt: string;
+  id: string; user: { id: string; fullName: string; email: string; avatarUrl?: string; role: string; institution?: string };
+  role: "owner" | "moderator" | "member"; status: "pending" | "active" | "declined" | "banned"; joinedAt: string;
+};
+export type ForumPostInput = {
+  type: ForumPostType; title: string; content: string; communityId: string; tags: string[];
+  linkedPaperId?: string; linkedResearchGapId?: string; linkedProjectId?: string; references?: ForumReferenceView[];
+};
+export type ForumPostFilters = {
+  page?: number; pageSize?: number; query?: string; communityId?: string; type?: ForumPostType;
+  tag?: string; sort?: ForumSort; linkedPaperId?: string; includeModerated?: boolean;
+};
+export type ForumReportView = {
+  id: string; targetType: "post" | "comment"; targetId: string; postId: string; reason: string; description?: string;
+  status: "open" | "reviewed" | "resolved" | "dismissed"; reporter: { id: string; fullName: string };
+  community?: { id: string; name: string; slug: string }; target: { title?: string; excerpt: string; status: string };
+  moderationNote?: string; createdAt: string; reviewedAt?: string;
+};
+export type ForumModerationActionView = {
+  id: string; action: string; reason?: string; actor: { id: string; fullName: string };
+  community?: { id: string; name: string; slug: string }; targetType: "post" | "comment" | "report";
+  targetId: string; createdAt: string;
 };
 
-function id(value: unknown): string { return String((value as { _id?: unknown })?._id ?? value ?? ""); }
-function normalizeAuthor(value: any): ForumPostView["author"] {
-  const declaredType = value?.academicProfileType ?? (["student", "researcher", "lecturer"].includes(value?.role) ? value.role : undefined);
+type UnknownRecord = Record<string, unknown>;
+const record = (value: unknown): UnknownRecord => value && typeof value === "object" ? value as UnknownRecord : {};
+const id = (value: unknown): string => { const row = record(value); return String(row._id ?? row.id ?? value ?? ""); };
+const text = (value: unknown): string | undefined => typeof value === "string" ? value : undefined;
+const stringList = (value: unknown): string[] => Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+
+function normalizeAuthor(value: unknown): ForumAuthorView {
+  const row = record(value);
+  return { id: id(row), fullName: text(row.fullName) ?? "Unknown researcher", avatarUrl: text(row.avatarUrl), institution: text(row.institution), academicProfileType: text(row.academicProfileType), academicTitle: text(row.academicTitle), affiliationVerified: row.affiliationVerified === true };
+}
+function normalizeReference(value: unknown): ForumReferenceView {
+  const row = record(value);
+  return { paperId: row.paperId ? id(row.paperId) : undefined, doi: text(row.doi), url: text(row.url), title: text(row.title), authors: stringList(row.authors), year: typeof row.year === "number" ? row.year : undefined, verified: row.verified === true };
+}
+function normalizeResearchContext(value: unknown): { id: string; title: string; topic?: string; doi?: string; publicationYear?: number } | undefined {
+  const row = record(value); const contextId = id(row); if (!contextId) return undefined;
+  return { id: contextId, title: text(row.title) ?? "", topic: text(row.topic), doi: text(row.doi), publicationYear: typeof row.publicationYear === "number" ? row.publicationYear : undefined };
+}
+function normalizePost(value: unknown): ForumPostView {
+  const row = record(value); const community = record(row.community ?? row.communityId); const author = row.author ?? row.authorId;
+  const rawType = String(row.type ?? "DISCUSSION").toUpperCase();
+  const type: ForumPostType = rawType === "QUESTION" || rawType === "PAPER_DISCUSSION" || rawType === "RESEARCH_GAP_DISCUSSION" ? rawType : "DISCUSSION";
   return {
-    id: id(value),
-    fullName: value?.fullName ?? "Unknown researcher",
-    institution: value?.institution,
-    academicProfileType: declaredType,
-    academicVerificationStatus: value?.academicVerificationStatus,
-    academicTitle: value?.academicTitle,
+    id: id(row), type, title: text(row.title) ?? "", content: text(row.content ?? row.body) ?? "", tags: stringList(row.tags),
+    status: text(row.status) ?? "active", voteScore: Number(row.voteScore ?? row.score ?? 0), commentCount: Number(row.commentCount ?? 0),
+    acceptedCommentId: row.acceptedCommentId ? id(row.acceptedCommentId) : undefined, viewerVote: Number(row.viewerVote ?? 0) as -1 | 0 | 1,
+    isFollowing: row.isFollowing === true, isPinned: row.isPinned === true, canModerate: row.canModerate === true, editedAt: text(row.editedAt),
+    linkedPaperId: row.linkedPaperId ? id(row.linkedPaperId) : undefined, linkedResearchGapId: row.linkedResearchGapId ? id(row.linkedResearchGapId) : undefined,
+    linkedProjectId: row.linkedProjectId ? id(row.linkedProjectId) : undefined,
+    linkedPaper: normalizeResearchContext(row.linkedPaper), linkedResearchGap: normalizeResearchContext(row.linkedResearchGap), linkedProject: normalizeResearchContext(row.linkedProject),
+    references: Array.isArray(row.references) ? row.references.map(normalizeReference) : [], author: normalizeAuthor(author),
+    community: row.communityId || row.community ? { id: id(community), name: text(community.name) ?? "Community", slug: text(community.slug) ?? id(community) } : undefined,
+    createdAt: text(row.createdAt) ?? new Date(0).toISOString(), updatedAt: text(row.updatedAt),
   };
 }
-function normalizePost(value: any): ForumPostView {
-  return { id: id(value), type: value.type ?? "discussion", title: value.title, content: value.content ?? value.body ?? "", tags: value.tags ?? [], status: value.status, voteScore: value.voteScore ?? value.score ?? 0, commentCount: value.commentCount ?? 0, acceptedCommentId: value.acceptedCommentId ? id(value.acceptedCommentId) : undefined, linkedPaperId: value.linkedPaperId ? id(value.linkedPaperId) : undefined, linkedResearchGapId: value.linkedResearchGapId ? id(value.linkedResearchGapId) : undefined, linkedProjectId: value.linkedProjectId ? id(value.linkedProjectId) : undefined, references: value.references ?? [], author: normalizeAuthor(value.authorId), community: value.communityId ? { id: id(value.communityId), name: value.communityId.name ?? "Community", slug: value.communityId.slug ?? id(value.communityId) } : undefined, createdAt: value.createdAt };
+function normalizeComment(value: unknown): ForumCommentView {
+  const row = record(value);
+  return { id: id(row), postId: id(row.postId), content: text(row.content ?? row.body) ?? "", voteScore: Number(row.voteScore ?? row.score ?? 0), viewerVote: Number(row.viewerVote ?? 0) as -1 | 0 | 1, author: normalizeAuthor(row.author ?? row.authorId), createdAt: text(row.createdAt) ?? new Date(0).toISOString(), editedAt: text(row.editedAt), status: text(row.status) ?? "active", isAccepted: row.isAccepted === true, parentCommentId: row.parentCommentId ? id(row.parentCommentId) : undefined, references: Array.isArray(row.references) ? row.references.map(normalizeReference) : [] };
 }
-function normalizeComment(value: any): ForumCommentView { return { id: id(value), postId: id(value.postId), content: value.content ?? value.body ?? "", voteScore: value.voteScore ?? value.score ?? 0, author: normalizeAuthor(value.authorId), createdAt: value.createdAt, status: value.status }; }
-function normalizeCommunity(value: any): CommunityView { return {
-  id: id(value), name: value.name, slug: value.slug, description: value.description ?? "",
-  researchTopics: value.researchTopics ?? [], visibility: value.visibility, rules: value.rules ?? [],
-  memberCount: value.memberCount ?? 0, viewerMembership: value.viewerMembership,
-  canManage: Boolean(value.canManage), contentRestricted: Boolean(value.contentRestricted),
-  createdAt: value.createdAt, updatedAt: value.updatedAt,
-}; }
-function normalizeCommunityMember(value: any): CommunityMemberView {
-  const user = value.userId ?? {};
-  return {
-    id: id(value),
-    user: { id: id(user), fullName: user.fullName ?? "Unknown member", email: user.email ?? "", avatarUrl: user.avatarUrl, role: user.role ?? "user", institution: user.institution },
-    role: value.role, status: value.status, joinedAt: value.joinedAt ?? value.createdAt,
-  };
+function normalizeCommunity(value: unknown): CommunityView {
+  const row = record(value);
+  const moderators = Array.isArray(row.moderators) ? row.moderators.map((value) => { const moderator = record(value); return { id: id(moderator), fullName: text(moderator.fullName) ?? "", avatarUrl: text(moderator.avatarUrl) }; }) : undefined;
+  return { id: id(row), name: text(row.name) ?? "", slug: text(row.slug) ?? "", description: text(row.description) ?? "", researchTopics: stringList(row.researchTopics), researchField: text(row.researchField), icon: text(row.icon), visibility: row.visibility === "private" ? "private" : "public", status: row.status === "ARCHIVED" ? "ARCHIVED" : "ACTIVE", rules: stringList(row.rules), memberCount: Number(row.memberCount ?? 0), threadCount: Number(row.threadCount ?? 0), moderators, viewerMembership: row.viewerMembership as CommunityMembershipView | undefined, canManage: row.canManage === true, canEditCommunity: row.canEditCommunity === true, contentRestricted: row.contentRestricted === true, createdAt: text(row.createdAt), updatedAt: text(row.updatedAt) };
+}
+function normalizeCommunityMember(value: unknown): CommunityMemberView {
+  const row = record(value); const user = record(row.user ?? row.userId);
+  return { id: id(row), user: { id: id(user), fullName: text(user.fullName) ?? "Unknown member", email: text(user.email) ?? "", avatarUrl: text(user.avatarUrl), role: text(user.role) ?? "user", institution: text(user.institution) }, role: row.role as CommunityMemberView["role"], status: row.status as CommunityMemberView["status"], joinedAt: text(row.joinedAt ?? row.createdAt) ?? new Date(0).toISOString() };
 }
 
 export const forumApi = {
-  async posts(params: Record<string, string | number | undefined>): Promise<{ data: ForumPostView[]; meta: { page: number; pageSize: number; total: number; totalPages: number } }> { const response = await api.get(API_ROUTES.forum.posts, { params }); return { data: response.data.data.map(normalizePost), meta: response.data.meta }; },
+  async posts(params: ForumPostFilters): Promise<{ data: ForumPostView[]; meta: { page: number; pageSize: number; total: number; totalPages: number } }> { const response = await api.get(API_ROUTES.forum.posts, { params }); return { data: response.data.data.map(normalizePost), meta: response.data.meta }; },
   async post(postId: string): Promise<ForumPostView> { const response = await api.get(API_ROUTES.forum.post(postId)); return normalizePost(response.data.data); },
-  async createPost(input: { type: "discussion" | "question"; title: string; content: string; communityId?: string; tags: string[] }): Promise<ForumPostView> { const response = await api.post(API_ROUTES.forum.posts, input); return normalizePost(response.data.data); },
+  async createPost(input: ForumPostInput): Promise<ForumPostView> { const response = await api.post(API_ROUTES.forum.posts, input); return normalizePost(response.data.data); },
+  async updatePost(postId: string, input: Partial<ForumPostInput>): Promise<ForumPostView> { const response = await api.patch(API_ROUTES.forum.post(postId), input); return normalizePost(response.data.data); },
+  async deletePost(postId: string): Promise<void> { await api.delete(API_ROUTES.forum.post(postId)); },
   async comments(postId: string): Promise<ForumCommentView[]> { const response = await api.get(API_ROUTES.forum.comments(postId), { params: { page: 1, pageSize: 100 } }); return response.data.data.map(normalizeComment); },
-  async addComment(postId: string, content: string): Promise<ForumCommentView> { const response = await api.post(API_ROUTES.forum.comments(postId), { content }); return normalizeComment(response.data.data); },
-  async votePost(id: string, value: -1 | 0 | 1) { const response = await api.post(API_ROUTES.forum.postVote(id), { value }); return response.data.data; },
-  async voteComment(id: string, value: -1 | 0 | 1) { const response = await api.post(API_ROUTES.forum.commentVote(id), { value }); return response.data.data; },
+  async addComment(postId: string, input: { content: string; parentCommentId?: string; references?: ForumReferenceView[] }): Promise<ForumCommentView> { const response = await api.post(API_ROUTES.forum.comments(postId), input); return normalizeComment(response.data.data); },
+  async updateComment(commentId: string, input: { content: string; references?: ForumReferenceView[] }): Promise<ForumCommentView> { const response = await api.patch(API_ROUTES.forum.comment(commentId), input); return normalizeComment(response.data.data); },
+  async deleteComment(commentId: string): Promise<void> { await api.delete(API_ROUTES.forum.comment(commentId)); },
+  async votePost(postId: string, value: -1 | 0 | 1) { const response = await api.post(API_ROUTES.forum.postVote(postId), { value }); return response.data.data; },
+  async voteComment(commentId: string, value: -1 | 0 | 1) { const response = await api.post(API_ROUTES.forum.commentVote(commentId), { value }); return response.data.data; },
   async accept(postId: string, commentId: string) { const response = await api.post(API_ROUTES.forum.acceptAnswer(postId, commentId)); return normalizePost(response.data.data); },
+  async unaccept(postId: string) { const response = await api.delete(API_ROUTES.forum.acceptedAnswer(postId)); return normalizePost(response.data.data); },
+  async follow(postId: string, following: boolean) { if (following) await api.put(API_ROUTES.forum.follow(postId)); else await api.delete(API_ROUTES.forum.follow(postId)); },
+  async context(q?: string): Promise<ForumResearchContext> { const response = await api.get(API_ROUTES.forum.context, { params: { q } }); return response.data.data; },
+  async shareGap(gapId: string): Promise<void> { await api.post(API_ROUTES.forum.shareGap(gapId)); },
   async report(targetType: "post" | "comment", targetId: string, reason: string, description?: string) { await api.post(API_ROUTES.forum.reports, { targetType, targetId, reason, description }); },
+  async reports(params: { communityId?: string; status?: "open" | "reviewed" | "resolved" | "dismissed" | "all" } = {}): Promise<ForumReportView[]> { const response = await api.get(API_ROUTES.forum.reports, { params }); return response.data.data; },
+  async reviewReport(reportId: string, input: { status: "reviewed" | "resolved" | "dismissed"; moderationNote?: string }): Promise<ForumReportView> { const response = await api.patch(API_ROUTES.forum.reviewReport(reportId), input); return response.data.data; },
+  async moderationActions(communityId?: string): Promise<ForumModerationActionView[]> { const response = await api.get(API_ROUTES.forum.moderationActions, { params: { communityId } }); return response.data.data; },
+  async moderatePost(postId: string, action: "THREAD_PINNED" | "THREAD_UNPINNED" | "THREAD_LOCKED" | "THREAD_UNLOCKED" | "THREAD_HIDDEN" | "THREAD_RESTORED", reason?: string): Promise<ForumPostView> { const response = await api.patch(API_ROUTES.forum.postModeration(postId), { action, reason }); return normalizePost(response.data.data); },
+  async moderateComment(commentId: string, action: "RESPONSE_HIDDEN" | "RESPONSE_RESTORED", reason?: string): Promise<ForumCommentView> { const response = await api.patch(API_ROUTES.forum.commentModeration(commentId), { action, reason }); return normalizeComment(response.data.data); },
   async communities(): Promise<CommunityView[]> { const response = await api.get(API_ROUTES.communities.list, { params: { page: 1, pageSize: 100 } }); return response.data.data.map(normalizeCommunity); },
   async community(idOrSlug: string): Promise<CommunityView> { const response = await api.get(API_ROUTES.communities.detail(idOrSlug)); return normalizeCommunity(response.data.data); },
   async createCommunity(input: CommunityInput): Promise<CommunityView> { const response = await api.post(API_ROUTES.communities.list, input); return normalizeCommunity(response.data.data); },
-  async updateCommunity(id: string, input: Partial<CommunityInput>): Promise<CommunityView> { const response = await api.patch(API_ROUTES.communities.detail(id), input); return normalizeCommunity(response.data.data); },
-  async joinCommunity(id: string): Promise<CommunityMembershipView> { const response = await api.post(API_ROUTES.communities.join(id)); return response.data.data; },
-  async leaveCommunity(id: string) { await api.delete(API_ROUTES.communities.leave(id)); },
-  async communityMembers(id: string): Promise<CommunityMemberView[]> { const response = await api.get(API_ROUTES.communities.members(id)); return response.data.data.map(normalizeCommunityMember); },
-  async updateCommunityMember(id: string, userId: string, input: { role?: "moderator" | "member"; status?: "pending" | "active" | "declined" | "banned" }): Promise<void> { await api.patch(API_ROUTES.communities.member(id, userId), input); },
+  async updateCommunity(communityId: string, input: Partial<CommunityInput>): Promise<CommunityView> { const response = await api.patch(API_ROUTES.communities.detail(communityId), input); return normalizeCommunity(response.data.data); },
+  async joinCommunity(communityId: string): Promise<CommunityMembershipView> { const response = await api.post(API_ROUTES.communities.join(communityId)); return response.data.data; },
+  async leaveCommunity(communityId: string) { await api.delete(API_ROUTES.communities.leave(communityId)); },
+  async communityMembers(communityId: string): Promise<CommunityMemberView[]> { const response = await api.get(API_ROUTES.communities.members(communityId)); return response.data.data.map(normalizeCommunityMember); },
+  async updateCommunityMember(communityId: string, userId: string, input: { role?: "moderator" | "member"; status?: "pending" | "active" | "declined" | "banned" }): Promise<void> { await api.patch(API_ROUTES.communities.member(communityId, userId), input); },
 };

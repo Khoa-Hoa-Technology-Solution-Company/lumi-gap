@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   useProjectContributions,
+  useProjectActivity,
   useProposeProjectContribution,
   useResolveProjectContribution,
 } from "../hooks/use-projects";
@@ -55,6 +56,7 @@ export function ProjectContributionsTab({
   currentUserId?: string;
 }) {
   const { data = [], isLoading, isError, refetch } = useProjectContributions(projectId);
+  const { data: activity = [], isLoading: isActivityLoading } = useProjectActivity(projectId);
   const propose = useProposeProjectContribution(projectId);
   const confirm = useResolveProjectContribution(projectId, "confirm");
   const reject = useResolveProjectContribution(projectId, "reject");
@@ -63,7 +65,7 @@ export function ProjectContributionsTab({
   const [selectedRoles, setSelectedRoles] = useState<ProjectContributionRole[]>([]);
   const [description, setDescription] = useState("");
   const [evidence, setEvidence] = useState("");
-  const ownerIds = useMemo(() => new Set([ownerId, ...members.filter((member) => member.role === "owner").map(memberId)]), [members, ownerId]);
+  const ownerIds = useMemo(() => new Set([ownerId, ...members.filter((member) => member.role === "OWNER").map(memberId)]), [members, ownerId]);
 
   const reset = () => {
     setContributorId(currentUserId ?? "");
@@ -167,6 +169,11 @@ export function ProjectContributionsTab({
         </Dialog>
       </div>
 
+      <section className="space-y-3">
+        <div><h3 className="font-semibold text-slate-900 dark:text-white">Project activity</h3><p className="text-sm text-muted-foreground">Traceable actions are recorded automatically as the team works.</p></div>
+        {isActivityLoading ? <Skeleton className="h-28 w-full" /> : activity.length === 0 ? <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">Project contributions will appear as members work on literature, evidence, gaps, and reports.</div> : <div className="divide-y rounded-xl border bg-card">{activity.map((item) => <div key={item.id} className="flex gap-3 p-4"><div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-indigo-600 dark:bg-indigo-950"><Clock3 className="h-4 w-4" /></div><div><p className="text-sm"><span className="font-medium">{item.actor?.fullName || "LumiGap"}</span> {activityText(item.type, item.metadata)}</p><p className="mt-1 text-xs text-muted-foreground">{new Date(item.createdAt).toLocaleString()}</p></div></div>)}</div>}
+      </section>
+
       {isLoading ? (
         <div className="space-y-3"><Skeleton className="h-32 w-full" /><Skeleton className="h-32 w-full" /></div>
       ) : isError ? (
@@ -206,4 +213,28 @@ export function ProjectContributionsTab({
       )}
     </div>
   );
+}
+
+function activityText(type: string, metadata: Record<string, unknown>) {
+  const title = typeof metadata.title === "string" ? ` “${metadata.title}”` : "";
+  const labels: Record<string, string> = {
+    PROJECT_CREATED: "created the project",
+    PROJECT_UPDATED: "updated project settings",
+    MEMBER_INVITED: "invited a collaborator",
+    MEMBER_JOINED: "joined the project",
+    MEMBER_REMOVED: "removed a project member",
+    MEMBER_LEFT: "left the project",
+    OWNERSHIP_TRANSFERRED: "transferred project ownership",
+    PAPER_ADDED: `added paper${title}`,
+    PAPER_REMOVED: `removed paper${title}`,
+    PAPER_SCREENED: `screened paper${title} as ${String(metadata.to ?? "undecided").toLowerCase()}`,
+    PAPER_READING_STATUS_CHANGED: `changed reading status for${title}`,
+    GAP_CREATED: `created candidate research gap${title}`,
+    GAP_STATUS_CHANGED: `updated candidate research gap${title}`,
+    REPORT_CREATED: `created research artifact${title}`,
+    REPORT_STATUS_CHANGED: `updated research artifact${title} to ${String(metadata.artifactStatus ?? "draft").toLowerCase()}`,
+    REPORT_FINALIZED: `finalized research artifact${title}`,
+    PROJECT_ARCHIVED: "archived the project",
+  };
+  return labels[type] ?? type.toLowerCase().replaceAll("_", " ");
 }

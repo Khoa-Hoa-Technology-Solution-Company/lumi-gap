@@ -70,9 +70,6 @@ const reviewOptions: Array<{ value: AcademicReviewType; label: string }> = [
 type EditableWork = NonNullable<UpdateAcademicProfileDetailsRequest["featuredWorks"]>[number];
 
 type FormState = {
-  displayName: string;
-  headline: string;
-  biography: string;
   academicTitle: "" | (typeof academicTitles)[number];
   institutionName: string;
   rorId: string;
@@ -99,9 +96,6 @@ const split = (value: string) => value.split(",").map((item) => item.trim()).fil
 
 function toForm(profile: AcademicProfile): FormState {
   return {
-    displayName: profile.displayName,
-    headline: profile.headline ?? "",
-    biography: profile.biography ?? profile.bio ?? "",
     academicTitle: profile.academicTitle ?? "",
     institutionName: profile.affiliation.institutionName ?? profile.institution ?? "",
     rorId: profile.affiliation.rorId ?? "",
@@ -149,9 +143,6 @@ export function AcademicProfileSection() {
     setMessage(null);
     try {
       await update.mutateAsync({
-        displayName: form.displayName.trim(),
-        headline: form.headline || undefined,
-        biography: form.biography || undefined,
         academicTitle: form.academicTitle || undefined,
         affiliation: {
           institutionName: form.institutionName || undefined,
@@ -201,8 +192,6 @@ export function AcademicProfileSection() {
 
       <Section icon={<UserRound />} title="Overview" description="How your academic identity is introduced across LumiGap.">
         <div className="grid gap-4 md:grid-cols-2">
-          <Field label="Display name"><Input value={form.displayName} maxLength={120} required onChange={(event) => set("displayName", event.target.value)} placeholder="Your name" /></Field>
-          <Field label="Headline"><Input value={form.headline} maxLength={180} onChange={(event) => set("headline", event.target.value)} placeholder="Empirical software engineering researcher" /></Field>
           <Field label="Academic title">
             <select className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-zinc-950" value={form.academicTitle} onChange={(event) => set("academicTitle", event.target.value as FormState["academicTitle"])}>
               <option value="">Select title</option>
@@ -210,7 +199,6 @@ export function AcademicProfileSection() {
             </select>
           </Field>
         </div>
-        <Field label="Biography" hint={`${form.biography.length}/3000`}><textarea className="min-h-28 w-full rounded-md border border-slate-200 bg-transparent px-3 py-2 text-sm leading-6 dark:border-slate-700" maxLength={3000} value={form.biography} onChange={(event) => set("biography", event.target.value)} /></Field>
       </Section>
 
       <Section icon={<GraduationCap />} title="Academic identity" description="Institutional affiliation is reviewed independently from your selected account role.">

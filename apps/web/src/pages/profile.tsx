@@ -13,6 +13,8 @@ import { formatNumber } from "@/utils";
 import { CreditHistory } from "@/features/credits";
 import { AcademicProfileSection } from "@/features/academic-profile";
 import { isAdminSystemRole } from "@trend/shared-types";
+import { checkPasswordPolicy } from "@/features/auth/utils/password-policy";
+import { useI18n } from "@/i18n";
 
 type SettingsSection = "profile" | "academic" | "credits" | "security" | "preferences" | "submit-paper" | "my-papers";
 
@@ -21,9 +23,11 @@ export function AccountSettingsPage() {
   const { data: userData, isLoading: isUserLoading } = useCurrentUser();
   const updateProfileMutation = useUpdateProfile();
   const changePasswordMutation = useChangePassword();
+  const { t } = useI18n();
 
   const user = userData?.user;
   const isAdmin = isAdminSystemRole(user?.systemRole);
+  const hasPasswordLogin = user?.authProviders?.password ?? true;
 
   const [activeSection, setActiveSection] = useState<SettingsSection>("profile");
 
@@ -47,7 +51,6 @@ export function AccountSettingsPage() {
   }, [section, isAdmin]);
 
   // Profile Form State
-  const [fullName, setFullName] = useState("");
   const [institution, setInstitution] = useState("");
   const [interestInput, setInterestInput] = useState("");
   const [researchInterests, setResearchInterests] = useState<string[]>([]);
@@ -64,7 +67,6 @@ export function AccountSettingsPage() {
   // Sync state with current user data when loaded
   useEffect(() => {
     if (userData?.user) {
-      setFullName(userData.user.fullName || "");
       setInstitution(userData.user.institution || "");
       setResearchInterests(userData.user.researchInterests || []);
     }
@@ -75,14 +77,8 @@ export function AccountSettingsPage() {
     setSuccessMessage("");
     setErrorMessage("");
 
-    if (!fullName.trim()) {
-      setErrorMessage("Full Name is required.");
-      return;
-    }
-
     try {
       await updateProfileMutation.mutateAsync({
-        fullName,
         institution,
         researchInterests,
       });
@@ -97,13 +93,13 @@ export function AccountSettingsPage() {
     setSuccessMessage("");
     setErrorMessage("");
 
-    if (!currentPassword) {
+    if (hasPasswordLogin && !currentPassword) {
       setErrorMessage("Current password is required.");
       return;
     }
 
-    if (newPassword.length < 8) {
-      setErrorMessage("New password must be at least 8 characters.");
+    if (!checkPasswordPolicy(newPassword).valid) {
+      setErrorMessage("Use at least 10 characters with uppercase, lowercase, and a number.");
       return;
     }
 
@@ -114,10 +110,10 @@ export function AccountSettingsPage() {
 
     try {
       await changePasswordMutation.mutateAsync({
-        currentPassword,
+        ...(hasPasswordLogin ? { currentPassword } : {}),
         newPassword,
       });
-      setSuccessMessage("Password updated successfully.");
+      setSuccessMessage(hasPasswordLogin ? "Password updated successfully." : t("Password set successfully. You can now sign in with Google or email and password."));
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
@@ -379,19 +375,7 @@ export function AccountSettingsPage() {
               )}
 
               <form onSubmit={handleSaveProfile} className="space-y-6">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                  {/* Name Input */}
-                  <div className="space-y-2">
-                    <Label htmlFor="fullName" className="text-sm font-bold text-slate-700 dark:text-slate-300">Full Name</Label>
-                    <Input
-                      id="fullName"
-                      value={fullName}
-                      onChange={(e) => setFullName(e.target.value)}
-                      placeholder="e.g. John Doe"
-                      className="h-10 focus:ring-2 focus:ring-blue-500 dark:bg-[#1e1e1e]"
-                    />
-                  </div>
-
+                <div className="grid grid-cols-1 gap-6">
                   {/* Email (Readonly) */}
                   <div className="space-y-2">
                     <Label htmlFor="email" className="text-sm font-bold text-slate-700 dark:text-slate-300">Email Address (Read-only)</Label>
@@ -482,22 +466,29 @@ export function AccountSettingsPage() {
             <div>
               <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-6 pb-2 border-b border-slate-100 dark:border-slate-800 flex items-center gap-2">
                 <Key className="w-5 h-5 text-blue-600" />
-                Change Password
+                {hasPasswordLogin ? "Change Password" : t("Set Password")}
               </h2>
 
               <form onSubmit={handleChangePassword} className="space-y-6 max-w-xl">
                 {/* Current Password */}
-                <div className="space-y-2">
-                  <Label htmlFor="currentPassword" className="text-sm font-bold text-slate-700 dark:text-slate-300">Current Password</Label>
-                  <Input
-                    id="currentPassword"
-                    type="password"
-                    value={currentPassword}
-                    onChange={(e) => setCurrentPassword(e.target.value)}
-                    placeholder="Enter current password"
-                    className="h-10 focus:ring-2 focus:ring-blue-500 dark:bg-[#1e1e1e]"
-                  />
-                </div>
+                {hasPasswordLogin ? (
+                  <div className="space-y-2">
+                    <Label htmlFor="currentPassword" className="text-sm font-bold text-slate-700 dark:text-slate-300">Current Password</Label>
+                    <Input
+                      id="currentPassword"
+                      type="password"
+                      autoComplete="current-password"
+                      value={currentPassword}
+                      onChange={(e) => setCurrentPassword(e.target.value)}
+                      placeholder="Enter current password"
+                      className="h-10 focus:ring-2 focus:ring-blue-500 dark:bg-[#1e1e1e]"
+                    />
+                  </div>
+                ) : (
+                  <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm leading-6 text-blue-900 dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-100">
+                    {t("This account currently signs in with Google. Set a LumiGap password to also sign in using email and password. This stays on the same account.")}
+                  </div>
+                )}
 
                 {/* New Password */}
                 <div className="space-y-2">
@@ -505,9 +496,10 @@ export function AccountSettingsPage() {
                   <Input
                     id="newPassword"
                     type="password"
+                    autoComplete="new-password"
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="Create a strong password (min 8 chars)"
+                    placeholder="At least 10 characters"
                     className="h-10 focus:ring-2 focus:ring-blue-500 dark:bg-[#1e1e1e]"
                   />
                 </div>
@@ -518,12 +510,19 @@ export function AccountSettingsPage() {
                   <Input
                     id="confirmPassword"
                     type="password"
+                    autoComplete="new-password"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     placeholder="Confirm new password"
                     className="h-10 focus:ring-2 focus:ring-blue-500 dark:bg-[#1e1e1e]"
                   />
                 </div>
+
+                <p className="text-xs leading-5 text-slate-500 dark:text-slate-400">
+                  {hasPasswordLogin
+                    ? t("Use at least 10 characters with one uppercase letter, one lowercase letter, and one number.")
+                    : t("Use at least 10 characters with one uppercase letter, one lowercase letter, and one number. After this, both Continue with Google and Email + Password will sign in to this same LumiGap account.")}
+                </p>
 
                 {/* Submit button */}
                 <Button
@@ -532,7 +531,7 @@ export function AccountSettingsPage() {
                   className="bg-blue-700 hover:bg-blue-800 text-white font-bold h-11 px-6 gap-2 rounded-lg"
                 >
                   <Lock className="w-4 h-4" />
-                  {changePasswordMutation.isPending ? "Updating..." : "Change Password"}
+                  {changePasswordMutation.isPending ? "Updating..." : hasPasswordLogin ? "Change Password" : t("Set Password")}
                 </Button>
               </form>
             </div>

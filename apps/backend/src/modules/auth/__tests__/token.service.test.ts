@@ -4,10 +4,10 @@ import { createOpaqueToken, hashOpaqueToken, tokenService } from "../token.servi
 
 describe("tokenService", () => {
   it("signs and verifies RS256 access tokens with minimal claims", () => {
-    const signed = tokenService.signAccessToken({ sub: "user-1", systemRole: "RESEARCH_USER", sessionId: "session-1" });
+    const signed = tokenService.signAccessToken({ sub: "user-1", systemRole: "USER", sessionId: "session-1" });
     expect(jwt.decode(signed.token, { complete: true })?.header.alg).toBe("RS256");
     expect(tokenService.verifyAccessToken(signed.token)).toMatchObject({
-      sub: "user-1", systemRole: "RESEARCH_USER", sessionId: "session-1",
+      sub: "user-1", systemRole: "USER", sessionId: "session-1",
     });
   });
 
@@ -19,7 +19,7 @@ describe("tokenService", () => {
   });
 
   it("accepts the super-admin role in signed access tokens", () => {
-    const signed = tokenService.signAccessToken({ sub: "owner-1", systemRole: "SUPER_ADMIN", sessionId: "session-owner" });
-    expect(tokenService.verifyAccessToken(signed.token).systemRole).toBe("SUPER_ADMIN");
+    const signed = tokenService.signAccessToken({ sub: "owner-1", systemRole: "ADMIN", sessionId: "session-owner" });
+    expect(tokenService.verifyAccessToken(signed.token).systemRole).toBe("ADMIN");
   });
 });

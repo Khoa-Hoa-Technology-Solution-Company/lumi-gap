@@ -35,6 +35,7 @@ export function buildChatHistoryFilter(projectId: string, userId: string, scope:
 export class ProjectChatService {
   async sendMessage(projectIdInput: string, userIdInput: string, message: string, scope: ProjectChatScope = "private"): Promise<SendProjectChatMessageResult> {
     const access = await this.assertCanAccess(projectIdInput, userIdInput);
+    if (access.project.status === "ARCHIVED") throw AppError.conflict("Archived projects are read-only");
     const projectId = access.project.id;
     const userId = access.user.id;
     const papers = await this.loadProjectEvidence(projectId);
@@ -110,7 +111,7 @@ export class ProjectChatService {
 
   private async loadProjectEvidence(projectId: string): Promise<ChatEvidencePaper[]> {
     const prisma = getPrisma();
-    const links = await prisma.projectPaper.findMany({ where: { projectId }, orderBy: { createdAt: "asc" } });
+    const links = await prisma.projectPaper.findMany({ where: { projectId, screeningStatus: { not: "EXCLUDED" } }, orderBy: { createdAt: "asc" } });
     if (!links.length) return [];
     const papers = await prisma.paper.findMany({ where: { id: { in: links.map((link) => link.paperId) } }, select: { id: true, legacyMongoId: true, title: true, abstractText: true, publicationYear: true } });
     const authors = await prisma.paperAuthor.findMany({ where: { paperId: { in: papers.map((paper) => paper.id) } }, orderBy: { position: "asc" } });
@@ -125,7 +126,7 @@ export class ProjectChatService {
     const [project, user] = await Promise.all([prisma.project.findFirst({ where: idWhere(projectIdInput) }), prisma.user.findFirst({ where: idWhere(userIdInput) })]);
     if (!project) throw AppError.notFound("Project not found");
     if (!user) throw AppError.notFound("User not found");
-    if (project.ownerId !== user.id) { const member = await prisma.projectMember.findFirst({ where: { projectId: project.id, userId: user.id, status: "active" } }); if (!member) throw AppError.forbidden("Access denied to this project"); }
+    if (project.ownerId !== user.id) { const member = await prisma.projectMember.findFirst({ where: { projectId: project.id, userId: user.id, status: "ACTIVE" } }); if (!member) throw AppError.forbidden("Access denied to this project"); }
     return { project, user };
   }
 

@@ -5,8 +5,12 @@ import { gapEvidenceWorkflowStrings } from "./gap-evidence-workflow";
 import { paperDetailIaStrings } from "./paper-detail-ia";
 import { authSecurityStrings } from "./auth-security";
 import { newUiStrings } from "./new-ui";
+import { projectInvitationStrings } from "./project-invitations";
+import { studentOnboardingStrings } from "./student-onboarding";
 
 export const de: Record<keyof typeof en, string> = {
+  ...projectInvitationStrings,
+  ...studentOnboardingStrings,
   ...newUiStrings,
   ...authSecurityStrings,
   ...academicForumStrings,

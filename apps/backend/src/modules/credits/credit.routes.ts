@@ -11,6 +11,7 @@ creditRouter.post("/payos/webhook", creditController.handlePayosWebhook);
 creditRouter.use(requireAuth);
 
 creditRouter.get("/balance", creditController.getBalance);
+creditRouter.get("/summary", creditController.getSummary);
 creditRouter.get("/transactions", creditController.listTransactions);
 creditRouter.get("/orders", creditController.listOrders);
 creditRouter.post("/payos/create-payment-link", creditController.createPaymentLink);

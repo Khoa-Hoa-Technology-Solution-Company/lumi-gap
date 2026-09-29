@@ -6,8 +6,8 @@ import {
 describe("admin user schemas", () => {
   it("parses lifecycle filters and deterministic sorting", () => {
     expect(ListUsersQuerySchema.parse({
-      role: "SUPER_ADMIN", accountStatus: "SUSPENDED", emailVerified: "false", sortBy: "lastLoginAt",
-    })).toMatchObject({ role: "SUPER_ADMIN", accountStatus: "SUSPENDED", emailVerified: false, sortBy: "lastLoginAt" });
+      role: "ADMIN", accountStatus: "SUSPENDED", emailVerified: "false", sortBy: "lastLoginAt",
+    })).toMatchObject({ role: "ADMIN", accountStatus: "SUSPENDED", emailVerified: false, sortBy: "lastLoginAt" });
   });
 
   it("requires an audit reason for sensitive mutations", () => {
@@ -16,8 +16,9 @@ describe("admin user schemas", () => {
   });
 
   it("enforces the same password policy for admin-created users", () => {
-    expect(CreateUserSchema.safeParse({ email: "new@example.com", fullName: "New User", password: "weak", role: "RESEARCH_USER" }).success).toBe(false);
-    expect(CreateUserSchema.safeParse({ email: "new@example.com", fullName: "New User", password: "SecurePass123", role: "SUPER_ADMIN" }).success).toBe(true);
+    expect(CreateUserSchema.safeParse({ email: "new@example.com", fullName: "New User", password: "weak", role: "USER" }).success).toBe(false);
+    expect(CreateUserSchema.safeParse({ email: "new@example.com", fullName: "New User", password: "SecurePass123", role: "USER" }).success).toBe(true);
+    expect(CreateUserSchema.safeParse({ email: "new@example.com", fullName: "New User", password: "SecurePass123", role: "ADMIN" }).success).toBe(false);
   });
 
   it("normalizes email/name and rejects blank names", () => {

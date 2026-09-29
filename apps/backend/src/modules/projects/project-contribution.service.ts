@@ -3,6 +3,7 @@ import { AppError } from "../../common/exceptions/app-error.js";
 import { parseDatabaseId, publicDatabaseId } from "../../infrastructure/database/database-id.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { auditService } from "../audit/audit.service.js";
+import { capabilityService } from "../authorization/capability.service.js";
 import { canResolveContribution, contributionConfirmationParty, isProjectMember, isProjectOwner } from "./project-contribution.rules.js";
 
 function whereId(value: string) {
@@ -20,8 +21,8 @@ async function userId(value: string) {
 async function projectOrThrow(projectId: string) {
   const project = await getPrisma().project.findUnique({ where: whereId(projectId) });
   if (!project) throw AppError.notFound("Project not found");
-  const members = await getPrisma().projectMember.findMany({ where: { projectId: project.id, status: "active" } });
-  return { ...project, members: members.map((member) => ({ targetId: member.userId, role: member.role === "owner" ? "owner" as const : "member" as const })) };
+  const members = await getPrisma().projectMember.findMany({ where: { projectId: project.id, status: "ACTIVE" } });
+  return { ...project, members: members.map((member) => ({ targetId: member.userId, role: member.role.toUpperCase() === "OWNER" ? "owner" as const : "member" as const })) };
 }
 
 async function proposalOrThrow(projectId: string, proposalId: string) {
@@ -51,14 +52,16 @@ async function presentProposal(proposal: Awaited<ReturnType<typeof proposalOrThr
   };
 }
 
-function assertResolver(project: Awaited<ReturnType<typeof projectOrThrow>>, proposal: Awaited<ReturnType<typeof proposalOrThrow>>, actorId: string) {
+async function assertResolver(project: Awaited<ReturnType<typeof projectOrThrow>>, proposal: Awaited<ReturnType<typeof proposalOrThrow>>, actorId: string) {
   if (!isProjectMember(project, actorId)) throw AppError.forbidden("Project membership is required");
+  const actorHasAcademicApproval = (await capabilityService.list(actorId)).includes("APPROVE_ACADEMIC_CONTRIBUTION");
   if (!canResolveContribution({
     requiredFrom: proposal.confirmationRequiredFrom as "OWNER" | "CONTRIBUTOR",
     actorId,
     proposerId: proposal.proposedById,
     contributorId: proposal.contributorId,
     actorIsOwner: isProjectOwner(project, actorId),
+    actorHasAcademicApproval,
   })) throw AppError.forbidden("This contribution must be resolved by the required counterparty");
 }
 
@@ -72,6 +75,7 @@ export const projectContributionService = {
 
   async propose(projectIdInput: string, actorIdInput: string, input: ProposeProjectContributionRequest) {
     const [project, actorId, contributorId] = await Promise.all([projectOrThrow(projectIdInput), userId(actorIdInput), userId(input.contributorId)]);
+    if (project.status === "ARCHIVED") throw AppError.conflict("Archived projects are read-only");
     if (!isProjectMember(project, contributorId)) throw AppError.badRequest("The contributor must be a current project member");
     if (actorId !== contributorId && !isProjectOwner(project, actorId)) throw AppError.forbidden("Only project owners can propose roles for another contributor");
     const confirmationRequiredFrom = contributionConfirmationParty(actorId, contributorId);
@@ -96,8 +100,9 @@ export const projectContributionService = {
 
   async confirm(projectIdInput: string, proposalIdInput: string, actorIdInput: string, input: ResolveProjectContributionRequest) {
     const [project, actorId] = await Promise.all([projectOrThrow(projectIdInput), userId(actorIdInput)]);
+    if (project.status === "ARCHIVED") throw AppError.conflict("Archived projects are read-only");
     const proposal = await proposalOrThrow(project.id, proposalIdInput);
-    assertResolver(project, proposal, actorId);
+    await assertResolver(project, proposal, actorId);
     if (proposal.status !== "PENDING_CONFIRMATION") throw AppError.conflict("Only pending contribution proposals can be confirmed");
     const confirmedAt = new Date();
     const confirmed = await getPrisma().$transaction(async (tx) => {
@@ -123,8 +128,9 @@ export const projectContributionService = {
 
   async reject(projectIdInput: string, proposalIdInput: string, actorIdInput: string, input: ResolveProjectContributionRequest) {
     const [project, actorId] = await Promise.all([projectOrThrow(projectIdInput), userId(actorIdInput)]);
+    if (project.status === "ARCHIVED") throw AppError.conflict("Archived projects are read-only");
     const proposal = await proposalOrThrow(project.id, proposalIdInput);
-    assertResolver(project, proposal, actorId);
+    await assertResolver(project, proposal, actorId);
     const rejectedAt = new Date();
     const rejected = await getPrisma().$transaction(async (tx) => {
       const changed = await tx.projectContributionProposal.updateMany({

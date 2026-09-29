@@ -1,11 +1,10 @@
 import { Router } from "express";
 import { z } from "zod";
-import { optionalAuth, requireAuth } from "../../common/middleware/auth.js";
+import { optionalAuth, requireAuth, requireSystemRole } from "../../common/middleware/auth.js";
 import { requirePermission } from "../../common/middleware/permission.js";
 import { validate } from "../../common/middleware/validate.js";
 import { objectIdSchema, paginationSchema } from "../../common/validation/database-id.js";
 import { communityService } from "./community.service.js";
-import { requireCapability } from "../authorization/authorization.middleware.js";
 
 const communityInputSchema = z.object({
   name: z.string().trim().min(2).max(120),
@@ -13,7 +12,10 @@ const communityInputSchema = z.object({
   visibility: z.enum(["public", "private"]).optional(),
   rules: z.array(z.string().trim().min(1).max(300)).max(30).optional(),
   researchTopics: z.array(z.string().trim().min(1).max(120)).max(50).optional(),
-});
+  researchField: z.string().trim().min(2).max(160).optional(),
+  icon: z.string().trim().min(1).max(40).regex(/^[a-z0-9-]+$/i).optional(),
+  status: z.enum(["ACTIVE", "ARCHIVED"]).optional(),
+}).strict();
 const communityUpdateSchema = communityInputSchema.partial().refine((value) => Object.keys(value).length > 0);
 const idParamsSchema = z.object({ id: objectIdSchema });
 const lookupParamsSchema = z.object({ idOrSlug: z.string().trim().min(1).max(120) });
@@ -28,8 +30,8 @@ communityRouter.get("/", optionalAuth, validate(paginationSchema, "query"), asyn
   const { page, pageSize } = req.query as unknown as z.infer<typeof paginationSchema>;
   res.json({ success: true, ...(await communityService.list(req.user?.sub, page, pageSize, req.user?.role)) });
 });
-communityRouter.post("/", requireAuth, requireCapability("BASIC_RESEARCH"), validate(communityInputSchema), async (req, res) => {
-  res.status(201).json({ success: true, data: await communityService.create(req.body, req.user!.sub) });
+communityRouter.post("/", requireAuth, requireSystemRole("ADMIN"), validate(communityInputSchema), async (req, res) => {
+  res.status(201).json({ success: true, data: await communityService.create(req.body, req.user!.sub, req.user!.role) });
 });
 communityRouter.get("/:idOrSlug", optionalAuth, validate(lookupParamsSchema, "params"), async (req, res) => {
   res.json({ success: true, data: await communityService.get(req.params.idOrSlug as string, req.user?.sub, req.user?.role) });

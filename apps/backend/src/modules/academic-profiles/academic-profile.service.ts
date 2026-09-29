@@ -19,6 +19,8 @@ import { parseDatabaseId, publicDatabaseId } from "../../infrastructure/database
 import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { auditService } from "../audit/audit.service.js";
 import { capabilityService } from "../authorization/capability.service.js";
+import { affiliationService } from "../verification/affiliation.service.js";
+import { participantScopeForUser } from "../identity/participant-scope.service.js";
 import { notificationService } from "../notifications/notification.service.js";
 import { visibleAcademicIdentityLinks } from "./academic-identity.service.js";
 import { institutionalEmailVerificationService } from "./institutional-email-verification.service.js";
@@ -26,6 +28,7 @@ import type { LecturerListQueryInput, UpdateAcademicProfileDetailsInput, Verific
 import { isValidPublicHandle, isValidResolvablePublicHandle, normalizePublicHandle } from "./public-handle.js";
 import { verificationEvidenceStorage } from "./verification-evidence-storage.service.js";
 import { assertPdfMagic } from "../../common/middleware/upload.js";
+import { applyDisplayNameChangeLimit, getDisplayNamePolicy } from "./display-name-policy.service.js";
 
 type LooseRecord = Record<string, unknown>;
 const DEFAULT_PRIVACY: AcademicProfilePrivacy = { orcid: "PUBLIC", researchInterests: "PUBLIC", expertise: "PUBLIC" };
@@ -38,6 +41,12 @@ function compatibilityType(position: string | null): AcademicProfileType | undef
   if (position === "LECTURER") return "lecturer";
   if (position) return "researcher";
   return undefined;
+}
+function academicRoleForPosition(position: string | null): "STUDENT" | "RESEARCHER" | "LECTURER" | undefined {
+  if (!position) return undefined;
+  if (position === "STUDENT") return "STUDENT";
+  if (position === "LECTURER") return "LECTURER";
+  return "RESEARCHER";
 }
 function positionFromLegacy(type: AcademicProfileType | undefined): PrimaryPosition | undefined {
   if (type === "student") return "STUDENT";
@@ -117,6 +126,7 @@ function mapAffiliation(item: {
 }
 function historySummary(action: string, details: unknown): string {
   const values = record(details);
+  if (action === "academic_profile.display_name.changed") return "Display name changed";
   if (action === "academic_profile.position.changed") return `Position changed: ${stringValue(values.previous) ?? "Not set"} → ${stringValue(values.next) ?? "Not set"}`;
   if (action === "academic_profile.affiliation.changed") return `Current affiliation changed: ${stringValue(values.previous) ?? "Not set"} → ${stringValue(values.next) ?? "Not set"}`;
   if (action === "affiliation.verified") return "Academic affiliation verified";
@@ -131,7 +141,7 @@ async function buildPrivateProfile(userId: string): Promise<AcademicProfile> {
   const prisma = getPrisma();
   const user = await resolveUser(userId);
   const profile = await prisma.academicProfile.upsert({ where: { userId: user.id }, create: { userId: user.id, verificationStatus: "SELF_DECLARED" }, update: {} });
-  const [identities, identityLinks, works, legacyEvidence, affiliations, requests, history] = await Promise.all([
+  const [identities, identityLinks, works, legacyEvidence, affiliations, requests, history, displayNamePolicy] = await Promise.all([
     prisma.academicExternalIdentity.findMany({ where: { profileId: profile.id }, orderBy: { position: "asc" } }),
     prisma.academicIdentityLink.findMany({ where: { userId: user.id }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] }),
     prisma.academicFeaturedWork.findMany({ where: { profileId: profile.id }, orderBy: { position: "asc" } }),
@@ -139,6 +149,7 @@ async function buildPrivateProfile(userId: string): Promise<AcademicProfile> {
     prisma.affiliation.findMany({ where: { userId: user.id }, orderBy: [{ isPrimary: "desc" }, { validUntil: "desc" }, { createdAt: "desc" }] }),
     prisma.verificationEvidence.findMany({ where: { userId: user.id, verificationType: { in: ["POSITION", "AFFILIATION"] } }, orderBy: { submittedAt: "desc" } }),
     prisma.auditLog.findMany({ where: { userId: user.id, OR: [{ actionName: { startsWith: "academic_profile." } }, { actionName: { startsWith: "affiliation." } }] }, orderBy: { createdAt: "desc" }, take: 30 }),
+    getDisplayNamePolicy(prisma, user.id),
   ]);
   const academicType = compatibilityType(profile.primaryPosition) ?? user.academicProfileType ?? legacyType(user.role) ?? "researcher";
   const support = record(profile.supportAvailability), review = record(profile.reviewAvailability);
@@ -157,13 +168,22 @@ async function buildPrivateProfile(userId: string): Promise<AcademicProfile> {
   };
   return {
     id: publicDatabaseId(profile), userId: publicUserId, points: Math.max(0, user.points), publicHandle: profile.publicHandle ?? undefined,
-    academicType: academicType as AcademicProfileType, primaryPosition: profile.primaryPosition as PrimaryPosition | null ?? undefined,
+    academicType: academicType as AcademicProfileType,
+    academicRole: profile.academicRole as "STUDENT" | "RESEARCHER" | "LECTURER" | null ?? undefined,
+    academicRoleVerificationStatus: profile.roleVerificationStatus as VerificationStatus | "SELF_DECLARED",
+    primaryPosition: profile.primaryPosition as PrimaryPosition | null ?? undefined,
     positionTitle: profile.positionTitle ?? profile.affiliationPosition ?? titleForPosition(profile.primaryPosition as PrimaryPosition | undefined),
     positionCategory: profile.positionCategory as AcademicProfile["positionCategory"], positionSource: profile.positionSource as AcademicProfile["positionSource"],
     displayName: user.fullName,
+    displayNamePolicy,
     avatarUrl: profile.avatarStorageKey ? `/academic-profiles/${publicUserId}/avatar?v=${profile.avatarUpdatedAt?.getTime() ?? 1}` : user.avatarUrl ?? undefined,
     coverUrl: profile.coverStorageKey ? `/academic-profiles/${publicUserId}/cover?v=${profile.coverUpdatedAt?.getTime() ?? 1}` : undefined,
-    profileVisibility: profile.profileVisibility as AcademicProfile["profileVisibility"], privacy: privacySettings(profile.privacySettings),
+    profileVisibility: profile.profileVisibility as AcademicProfile["profileVisibility"],
+    discoverability: {
+      showInResearcherSearch: profile.showInResearcherSearch,
+      allowCollaborationRequests: profile.allowCollaborationRequests,
+    },
+    privacy: privacySettings(profile.privacySettings),
     headline: profile.headline ?? undefined, biography: profile.biography ?? undefined, bio: profile.biography ?? undefined,
     academicTitle: profile.academicTitle as AcademicProfile["academicTitle"],
     affiliation: { ...currentAffiliation, institutionalEmail: profile.institutionalEmail ?? undefined, institutionalEmailVerifiedAt: profile.institutionalEmailVerifiedAt?.toISOString() },
@@ -204,7 +224,7 @@ function visibleTo(setting: AcademicProfilePrivacy[keyof AcademicProfilePrivacy]
   return setting === "PUBLIC" || setting === "REGISTERED_USERS" && Boolean(viewerId);
 }
 function toPublicProfile(profile: AcademicProfile, viewerId?: string): PublicAcademicProfile {
-  const { id: _id, institutionalEmail: _email, verification: _verification, verificationEvidence: _evidence,
+  const { id: _id, institutionalEmail: _email, displayNamePolicy: _displayNamePolicy, verification: _verification, verificationEvidence: _evidence,
     verificationRequests: _requests, profileHistory: _history, privacy, affiliationHistory: _affiliationHistory,
     affiliation, reviewAvailability, ...safe } = profile;
   const unavailable = reviewAvailability.temporarilyUnavailableUntil ? new Date(reviewAvailability.temporarilyUnavailableUntil).getTime() > Date.now() : false;
@@ -286,14 +306,18 @@ export const academicProfileService = {
       return { paperId: paper.id, doi: null, title: null, year: null, source: "LUMIGAP" };
     }));
     const now = new Date(), nextPrivacy = input.privacy ? { ...privacySettings(profile.privacySettings), ...input.privacy } : undefined;
+    let displayNameChanged = false;
     await prisma.$transaction(async (tx) => {
-      await tx.user.update({ where: { id: user.id }, data: { ...(nextPrimaryPosition !== undefined ? { academicProfileType: compatibilityType(nextPrimaryPosition) } : {}), ...(input.displayName !== undefined ? { fullName: input.displayName } : {}), ...(requestedInstitution !== undefined ? { institution: requestedInstitution || null } : {}), ...(input.researchInterests !== undefined ? { researchInterests: input.researchInterests } : {}) } });
+      if (input.displayName !== undefined) displayNameChanged = await applyDisplayNameChangeLimit(tx, user.id, input.displayName, now);
+      await tx.user.update({ where: { id: user.id }, data: { ...(nextPrimaryPosition !== undefined ? { academicProfileType: compatibilityType(nextPrimaryPosition) } : {}), ...(requestedInstitution !== undefined ? { institution: requestedInstitution || null } : {}), ...(input.researchInterests !== undefined ? { researchInterests: input.researchInterests } : {}) } });
       await tx.academicProfile.update({ where: { id: profile.id }, data: {
-        ...(nextPrimaryPosition !== undefined ? { primaryPosition: nextPrimaryPosition } : {}),
+        ...(nextPrimaryPosition !== undefined ? { primaryPosition: nextPrimaryPosition, academicRole: academicRoleForPosition(nextPrimaryPosition) } : {}),
         ...(requestedTitle !== undefined ? { positionTitle: nextTitle, positionCategory: classification.category, positionSource: classification.source } : {}),
-        ...(positionVerificationTargetChanged ? { positionStatus: "NOT_SUBMITTED", verificationStatus: "SELF_DECLARED", verificationRequestedAt: null, verifiedAt: null, verifiedById: null } : {}),
+        ...(positionVerificationTargetChanged ? { positionStatus: "NOT_SUBMITTED", roleVerificationStatus: "SELF_DECLARED", roleVerificationMethod: null, roleVerifiedAt: null, roleVerifiedById: null, verificationStatus: "SELF_DECLARED", verificationRequestedAt: null, verifiedAt: null, verifiedById: null } : {}),
         ...(institutionChanged ? { affiliationStatus: "NOT_SUBMITTED" } : {}), ...(input.headline !== undefined ? { headline: input.headline || null } : {}),
         ...(input.profileVisibility !== undefined ? { profileVisibility: input.profileVisibility } : {}), ...(nextPrivacy ? { privacySettings: nextPrivacy as never } : {}),
+        ...(input.discoverability?.showInResearcherSearch !== undefined ? { showInResearcherSearch: input.discoverability.showInResearcherSearch } : {}),
+        ...(input.discoverability?.allowCollaborationRequests !== undefined ? { allowCollaborationRequests: input.discoverability.allowCollaborationRequests } : {}),
         ...((input.biography ?? input.bio) !== undefined ? { biography: (input.biography ?? input.bio) || null } : {}), ...(input.academicTitle !== undefined ? { academicTitle: input.academicTitle } : {}),
         ...(input.expertiseAreas !== undefined ? { expertiseAreas: input.expertiseAreas } : {}), ...(input.skills !== undefined ? { skills: input.skills } : {}), ...(input.researchKeywords !== undefined ? { researchKeywords: input.researchKeywords } : {}),
         ...(requested.rorId !== undefined ? { affiliationRorId: requested.rorId || null } : {}), ...(requestedDepartment !== undefined ? { affiliationDepartment: requestedDepartment || null } : {}), ...(requestedTitle !== undefined ? { affiliationPosition: nextTitle || null } : {}),
@@ -303,13 +327,9 @@ export const academicProfileService = {
       } });
       if (positionVerificationTargetChanged) await tx.verificationEvidence.updateMany({ where: { userId: user.id, verificationType: "POSITION", status: { in: ["PENDING", "VERIFIED"] } }, data: { status: "INVALIDATED", reviewedAt: now, rejectionReason: "Position or institution changed by profile owner" } });
       if (institutionChanged) await tx.verificationEvidence.updateMany({ where: { userId: user.id, verificationType: "AFFILIATION", status: "PENDING" }, data: { status: "INVALIDATED", reviewedAt: now, rejectionReason: "Affiliation changed by profile owner" } });
-      if (requestedInstitution !== undefined && requestedInstitution.trim()) {
+      if (requestedInstitution !== undefined && requestedInstitution.trim() && !institutionChanged && currentAffiliation) {
         const affiliationData = { institutionName: requestedInstitution, department: requestedDepartment ?? currentAffiliation?.department, rorId: requested.rorId ?? currentAffiliation?.rorId, academicTitle: input.academicTitle === undefined ? currentAffiliation?.academicTitle : input.academicTitle, positionTitle: nextTitle, positionCategory: classification.category, positionSource: classification.source, positionStatus: positionVerificationTargetChanged ? "NOT_SUBMITTED" : currentAffiliation?.positionStatus ?? "NOT_SUBMITTED" };
-        if (institutionChanged && currentAffiliation) {
-          await tx.affiliation.update({ where: { id: currentAffiliation.id }, data: { isPrimary: false, validUntil: now } });
-          await tx.affiliation.create({ data: { userId: user.id, ...affiliationData, verificationStatus: "NOT_SUBMITTED", verificationSource: "SELF_DECLARED", affiliationType: "EXTERNAL", isPrimary: true, validFrom: requested.startYear ? new Date(Date.UTC(requested.startYear, 0, 1)) : now } });
-        } else if (currentAffiliation) await tx.affiliation.update({ where: { id: currentAffiliation.id }, data: affiliationData });
-        else await tx.affiliation.create({ data: { userId: user.id, ...affiliationData, verificationStatus: "NOT_SUBMITTED", verificationSource: "SELF_DECLARED", affiliationType: "EXTERNAL", isPrimary: true, validFrom: requested.startYear ? new Date(Date.UTC(requested.startYear, 0, 1)) : now } });
+        await tx.affiliation.update({ where: { id: currentAffiliation.id }, data: affiliationData });
       } else if (positionChanged && currentAffiliation) await tx.affiliation.update({ where: { id: currentAffiliation.id }, data: { positionTitle: nextTitle, positionCategory: classification.category, positionSource: classification.source, positionStatus: "NOT_SUBMITTED" } });
       if (input.externalIdentities !== undefined) {
         await tx.academicExternalIdentity.deleteMany({ where: { profileId: profile.id } });
@@ -324,8 +344,27 @@ export const academicProfileService = {
         if (resolvedWorks.length) await tx.academicFeaturedWork.createMany({ data: resolvedWorks.map((work, index) => ({ profileId: profile.id, ...work, position: index })) });
       }
     });
+    if (requestedInstitution !== undefined && requestedInstitution.trim() && (institutionChanged || !currentAffiliation)) {
+      await affiliationService.declare(user.id, requestedInstitution, {
+        department: requestedDepartment || undefined,
+        rorId: requested.rorId || undefined,
+      });
+      await prisma.affiliation.updateMany({
+        where: { userId: user.id, isPrimary: true, isCurrent: true },
+        data: {
+          positionTitle: nextTitle,
+          positionCategory: classification.category,
+          positionSource: classification.source,
+          positionStatus: "NOT_SUBMITTED",
+          academicTitle: input.academicTitle ?? undefined,
+          startDate: requested.startYear ? new Date(Date.UTC(requested.startYear, 0, 1)) : now,
+          validFrom: requested.startYear ? new Date(Date.UTC(requested.startYear, 0, 1)) : now,
+        },
+      });
+    }
     if (emailChanged) await institutionalEmailVerificationService.invalidate(user.id);
     await capabilityService.evaluate(user.id);
+    if (displayNameChanged) await auditService.log("academic_profile.display_name.changed", { userId: user.id, targetTableName: "users", targetRecordId: user.id });
     if (positionChanged) await auditService.log("academic_profile.position.changed", { userId: user.id, targetTableName: "academic_profiles", targetRecordId: profile.id, details: { previous: profile.positionTitle, next: nextTitle, previousStatus: profile.positionStatus } });
     if (institutionChanged) await auditService.log("academic_profile.affiliation.changed", { userId: user.id, targetTableName: "affiliations", targetRecordId: profile.id, details: { previous: currentAffiliation?.institutionName ?? user.institution, next: requestedInstitution } });
     await auditService.log("academic_profile.updated", { userId: user.id, targetTableName: "academic_profiles", targetRecordId: profile.id, details: { fields: Object.keys(input).filter((field) => field !== "institutionalEmail") } });
@@ -346,6 +385,9 @@ export const academicProfileService = {
       assertPdfMagic(file?.buffer);
       if (input.type !== "POSITION") throw AppError.badRequest("Document evidence is currently supported for position verification only");
     } else if (file) throw AppError.badRequest("A file is only accepted for document evidence");
+    if (input.type === "POSITION" && input.evidenceType === "ORCID") {
+      throw AppError.badRequest("ORCID can support scholarly identity, but it is not sufficient by itself to verify Lecturer employment");
+    }
     let reference = input.reference;
     if (input.evidenceType === "INSTITUTIONAL_EMAIL") {
       if (!profile.institutionalEmail || !profile.institutionalEmailVerifiedAt) throw AppError.badRequest("Verify your institutional email first");
@@ -362,8 +404,8 @@ export const academicProfileService = {
     let request;
     try {
       request = await prisma.$transaction(async (tx) => {
-      const created = await tx.verificationEvidence.create({ data: { userId: user.id, academicProfileId: profile.id, verificationType: input.type, sourceType: input.evidenceType, sourceReference: reference, evidenceStorageKey: fileKey, evidenceFileName: file ? safeEvidenceFileName(file.originalname) : null, evidenceMimeType: file ? "application/pdf" : null, evidenceSizeBytes: file?.size ?? null, status: "PENDING", metadata: { targetValue, institutionName: affiliation?.institutionName ?? user.institution, positionTitle: profile.positionTitle, primaryPosition: profile.primaryPosition, positionCategory: profile.positionCategory } } });
-      await tx.academicProfile.update({ where: { id: profile.id }, data: input.type === "POSITION" ? { positionStatus: "PENDING", verificationStatus: "PENDING", verificationRequestedAt: now, rejectionReason: null } : { affiliationStatus: "PENDING" } });
+      const created = await tx.verificationEvidence.create({ data: { userId: user.id, academicProfileId: profile.id, verificationType: input.type, sourceType: input.evidenceType, sourceReference: reference, evidenceStorageKey: fileKey, evidenceFileName: file ? safeEvidenceFileName(file.originalname) : null, evidenceMimeType: file ? "application/pdf" : null, evidenceSizeBytes: file?.size ?? null, status: "PENDING", metadata: { targetValue, institutionName: affiliation?.institutionName ?? user.institution, academicRole: profile.academicRole, positionTitle: profile.positionTitle, primaryPosition: profile.primaryPosition, positionCategory: profile.positionCategory } } });
+      await tx.academicProfile.update({ where: { id: profile.id }, data: input.type === "POSITION" ? { positionStatus: "PENDING", roleVerificationStatus: "PENDING", verificationStatus: "PENDING", verificationRequestedAt: now, rejectionReason: null } : { affiliationStatus: "PENDING" } });
       if (affiliation) await tx.affiliation.update({ where: { id: affiliation.id }, data: input.type === "POSITION" ? { positionStatus: "PENDING" } : { verificationStatus: "PENDING" } });
       return created;
       });
@@ -373,6 +415,7 @@ export const academicProfileService = {
       throw error;
     }
     await auditService.log("academic_profile.verification.requested", { userId: user.id, targetTableName: "verification_evidence", targetRecordId: request.id, details: { type: input.type, evidenceType: input.evidenceType, targetValue } });
+    await auditService.log(input.type === "POSITION" ? "ACADEMIC_ROLE_VERIFICATION_SUBMITTED" : "AFFILIATION_VERIFICATION_SUBMITTED", { userId: user.id, targetTableName: "verification_evidence", targetRecordId: request.id, details: { evidenceType: input.evidenceType } });
     return buildPrivateProfile(user.id);
   },
   async listVerificationRequests(statusValue: string, page: number, pageSize: number) {
@@ -436,8 +479,8 @@ export const academicProfileService = {
       const updated = await tx.verificationEvidence.updateMany({ where: { id: request.id, status: "PENDING" }, data: { status: nextStatus, reviewedById: admin.id, reviewedAt: now, rejectionReason: approved ? null : input.reason } });
       if (updated.count !== 1) throw AppError.conflict("This verification request has already been decided");
       const profileData = request.verificationType === "POSITION" ? approved
-        ? { positionStatus: nextStatus, verificationStatus: "VERIFIED", verifiedAt: now, verifiedById: admin.id, rejectedAt: null, rejectedById: null, rejectionReason: null, verificationMethod: input.method ?? "ADMIN_REVIEW", verificationNote: input.note }
-        : { positionStatus: nextStatus, verificationStatus: "REJECTED", verifiedAt: null, verifiedById: null, rejectedAt: now, rejectedById: admin.id, rejectionReason: input.reason, verificationMethod: "ADMIN_REVIEW", verificationNote: input.note }
+        ? { positionStatus: nextStatus, roleVerificationStatus: "VERIFIED", roleVerificationMethod: input.method ?? "MANUAL_REVIEW", roleVerifiedAt: now, roleVerifiedById: admin.id, verificationStatus: "VERIFIED", verifiedAt: now, verifiedById: admin.id, rejectedAt: null, rejectedById: null, rejectionReason: null, verificationMethod: input.method ?? "ADMIN_REVIEW", verificationNote: input.note }
+        : { positionStatus: nextStatus, roleVerificationStatus: "REJECTED", roleVerificationMethod: "MANUAL_REVIEW", roleVerifiedAt: null, roleVerifiedById: admin.id, verificationStatus: "REJECTED", verifiedAt: null, verifiedById: null, rejectedAt: now, rejectedById: admin.id, rejectionReason: input.reason, verificationMethod: "ADMIN_REVIEW", verificationNote: input.note }
         : { affiliationStatus: nextStatus };
       if (request.verificationType === "POSITION") {
         const updatedProfile = await tx.academicProfile.updateMany({ where: { id: profile.id, positionTitle: requestedPosition, ...(requestedPrimaryPosition !== undefined ? { primaryPosition: requestedPrimaryPosition as string | null } : {}), ...(requestedPositionCategory !== undefined ? { positionCategory: String(requestedPositionCategory) } : {}) }, data: profileData });
@@ -445,20 +488,33 @@ export const academicProfileService = {
         await tx.affiliation.updateMany({ where: { userId: request.userId, isPrimary: true }, data: { positionStatus: nextStatus } });
       } else {
         await tx.academicProfile.update({ where: { id: profile.id }, data: profileData });
-        if (affiliation) await tx.affiliation.update({ where: { id: affiliation.id }, data: { verificationStatus: nextStatus, verificationSource: "ADMIN" } });
+        if (affiliation) await tx.affiliation.update({ where: { id: affiliation.id }, data: { verificationStatus: nextStatus, verificationMethod: "MANUAL_REVIEW", verificationSource: "ADMIN", verifiedAt: approved ? now : null, verifiedById: admin.id } });
       }
     });
     await capabilityService.evaluate(request.userId);
     await auditService.log(`academic_profile.verification.${approved ? "approved" : "rejected"}`, { userId: admin.id, targetTableName: "verification_evidence", targetRecordId: request.id, details: { type: request.verificationType, targetUserId: request.userId } });
+    await auditService.log(request.verificationType === "POSITION"
+      ? (approved ? "ACADEMIC_ROLE_VERIFIED" : "ACADEMIC_ROLE_REJECTED")
+      : (approved ? "AFFILIATION_VERIFIED" : "AFFILIATION_REJECTED"), {
+      userId: admin.id, targetTableName: "verification_evidence", targetRecordId: request.id,
+      details: { targetUserId: request.userId, method: ("method" in input ? input.method : undefined) ?? "MANUAL_REVIEW" },
+    });
     await notificationService.create({ userId: request.userId, title: `${request.verificationType === "POSITION" ? "Position" : "Affiliation"} verification ${approved ? "approved" : "rejected"}`, message: approved ? "Your academic verification is now visible on your profile." : "Your verification request needs changes. Open Academic Profile for details.", type: `academic_verification_${approved ? "approved" : "rejected"}`, targetKind: "academic_profile", targetId: profile.id });
     return buildPrivateProfile(request.userId);
   },
   async listLecturers(query: LecturerListQueryInput) {
     const prisma = getPrisma();
-    const users = await prisma.user.findMany({ where: { accountStatus: "ACTIVE", systemRole: "RESEARCH_USER", ...(query.institution ? { institution: { contains: query.institution, mode: "insensitive" } } : {}), ...(query.researchInterest ? { researchInterests: { has: query.researchInterest } } : {}) }, select: { id: true } });
-    const where = { userId: { in: users.map((item) => item.id) }, primaryPosition: "LECTURER", profileVisibility: "PUBLIC", ...(query.verifiedOnly ? { positionStatus: "VERIFIED" } : {}), ...(query.expertise ? { expertiseAreas: { has: query.expertise } } : {}), ...(query.supportAvailable !== undefined ? { supportAvailability: { path: ["enabled"], equals: query.supportAvailable } } : {}), ...(query.reviewAvailable !== undefined ? { reviewAvailability: { path: ["enabled"], equals: query.reviewAvailable } } : {}) };
+    const users = await prisma.user.findMany({ where: { accountStatus: "ACTIVE", systemRole: "USER", ...(query.institution ? { institution: { contains: query.institution, mode: "insensitive" } } : {}), ...(query.researchInterest ? { researchInterests: { has: query.researchInterest } } : {}) }, select: { id: true } });
+    const where = { userId: { in: users.map((item) => item.id) }, primaryPosition: "LECTURER", profileVisibility: "PUBLIC", showInResearcherSearch: true, ...(query.verifiedOnly ? { positionStatus: "VERIFIED" } : {}), ...(query.expertise ? { expertiseAreas: { has: query.expertise } } : {}), ...(query.supportAvailable !== undefined ? { supportAvailability: { path: ["enabled"], equals: query.supportAvailable } } : {}), ...(query.reviewAvailable !== undefined ? { reviewAvailability: { path: ["enabled"], equals: query.reviewAvailable } } : {}) };
     const [profiles, total] = await Promise.all([prisma.academicProfile.findMany({ where, orderBy: [{ verifiedAt: "desc" }, { updatedAt: "desc" }], skip: (query.page - 1) * query.pageSize, take: query.pageSize }), prisma.academicProfile.count({ where })]);
     return { data: await Promise.all(profiles.map((item) => this.getCompact(item.userId))), meta: { page: query.page, pageSize: query.pageSize, total, totalPages: Math.max(1, Math.ceil(total / query.pageSize)) } };
   },
-  async isVerifiedLecturer(userId: string) { const user = await resolveUser(userId); const profile = await getPrisma().academicProfile.findUnique({ where: { userId: user.id }, select: { primaryPosition: true, positionStatus: true } }); return profile?.primaryPosition === "LECTURER" && profile.positionStatus === "VERIFIED"; },
+  async isVerifiedLecturer(userId: string) {
+    const user = await resolveUser(userId);
+    const [profile, scope] = await Promise.all([
+      getPrisma().academicProfile.findUnique({ where: { userId: user.id }, select: { academicRole: true, roleVerificationStatus: true } }),
+      participantScopeForUser(user.id),
+    ]);
+    return profile?.academicRole === "LECTURER" && profile.roleVerificationStatus === "VERIFIED" && scope === "INTERNAL";
+  },
 };

@@ -17,6 +17,6 @@ describe("RBAC permissions", () => {
     expect(hasPermission("moderator", "review:assign")).toBe(true);
     expect(hasPermission("moderator", "forum:moderate")).toBe(true);
     expect(hasPermission("admin", "ai-run:manage")).toBe(true);
-    expect(hasPermission("SUPER_ADMIN", "ai-run:manage")).toBe(true);
+    expect(hasPermission("ADMIN", "ai-run:manage")).toBe(true);
   });
 });

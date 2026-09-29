@@ -3,6 +3,8 @@ import type { PaperRef } from "./paper.js";
 
 export type ReportStatus = "queued" | "generating" | "ready" | "failed";
 export type ReportLanguage = "auto" | "en" | "vi";
+export type ResearchArtifactType = "LITERATURE_REVIEW" | "EVIDENCE_SYNTHESIS" | "GAP_ANALYSIS" | "RESEARCH_PROPOSAL" | "RESEARCH_PLAN" | "GENERAL_REPORT";
+export type ResearchArtifactStatus = "DRAFT" | "REVIEWING" | "FINAL" | "ARCHIVED";
 
 export interface ReportScopeFilters {
   paperKinds?: string[];
@@ -27,6 +29,7 @@ export interface CreateReportRequest {
   /** The analytical question. The report language is controlled by `language`. */
   query: string;
   projectId?: string;
+  title?: string;
   /** Optional display label, e.g. the topic the user clicked on the Trends page. */
   topic?: string;
   yearFrom?: number;
@@ -39,6 +42,7 @@ export interface CreateReportRequest {
   fast?: boolean; // Fast mode — use the Flash model (faster, lighter). Ignored if deepAnalysis.
   /** Optional fixed evidence set chosen by the user before generation. */
   selectedPaperIds?: string[];
+  artifactType?: ResearchArtifactType;
 }
 
 export interface PreviewReportEvidenceRequest {
@@ -107,9 +111,13 @@ export interface AnalyticalReport {
   id: string;
   userId: string;
   projectId?: string;
+  title?: string;
   topic?: string;
   query: string;
   status: ReportStatus;
+  artifactType: ResearchArtifactType;
+  artifactStatus: ResearchArtifactStatus;
+  isAiGenerated: boolean;
   yearFrom?: number;
   yearTo?: number;
   /** Markdown body. Inline citations are [n] where n is 1-based into

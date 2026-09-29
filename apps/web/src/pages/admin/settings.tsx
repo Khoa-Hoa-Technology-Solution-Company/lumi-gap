@@ -96,7 +96,7 @@ export function AdminSettingsPage() {
           {isLoading ? (
             <Skeleton className="h-16 w-full" />
           ) : (
-            (settings?.trustedInstitutions || []).map((inst: any) => (
+            (settings?.institutions || []).map((inst: any) => (
               <div key={inst.id} className="py-3.5 flex items-center justify-between text-xs">
                 <div>
                   <p className="font-bold text-slate-900 dark:text-white">{inst.name}</p>

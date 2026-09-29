@@ -6,7 +6,7 @@
   "main": "dist/server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "pnpm runtime:audit:postgres && pnpm db:generate && tsc -p tsconfig.build.json",
+    "build": "pnpm runtime:audit:postgres && pnpm db:generate && tsc -p tsconfig.build.json && node scripts/copy-auth-mail-assets.mjs",
     "start": "node dist/server.js",
     "lint": "eslint \"src/**/*.ts\"",
     "typecheck": "pnpm db:generate && tsc --noEmit",

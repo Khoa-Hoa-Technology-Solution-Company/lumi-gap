@@ -36,7 +36,7 @@ async function getProjectForAccess(projectInput: string, userId: string, role: U
   const project = await prisma.project.findFirst({ where: idWhere(projectInput) });
   if (!project) throw AppError.notFound("Project not found");
   if (project.ownerId !== userId && !hasPermission(role, "review:assign")) {
-    const member = await prisma.projectMember.findFirst({ where: { projectId: project.id, userId, status: "active" } });
+    const member = await prisma.projectMember.findFirst({ where: { projectId: project.id, userId, status: "ACTIVE" } });
     if (!member) throw AppError.forbidden("Project membership is required");
   }
   return project;
@@ -54,7 +54,7 @@ async function canAccessFullSubmission(submission: SubmissionRow, userId: string
   if (await prisma.submissionAuthor.findUnique({ where: { submissionId_userId: { submissionId: submission.id, userId } } })) return true;
   const project = await prisma.project.findUnique({ where: { id: submission.projectId } });
   if (project?.ownerId === userId) return true;
-  return Boolean(await prisma.projectMember.findFirst({ where: { projectId: submission.projectId, userId, status: "active" } }));
+  return Boolean(await prisma.projectMember.findFirst({ where: { projectId: submission.projectId, userId, status: "ACTIVE" } }));
 }
 
 async function assertSubmissionAccess(submission: SubmissionRow, userId: string, role: UserRole) {
@@ -71,7 +71,7 @@ async function persistFile(file: UploadedPdf) {
 }
 
 function submissionDto(row: SubmissionRow) { return { ...row, id: publicDatabaseId(row), projectId: row.projectId, createdBy: row.createdById, abstract: row.abstractText, currentRevisionId: row.currentRevisionId ?? undefined }; }
-function revisionDto(row: { id: string; legacyMongoId: string | null; submissionId: string; revisionNumber: number; uploadedById: string; responseToReview: string | null; checksumSha256: string; sizeBytes: number; originalFileName: string; createdAt: Date; updatedAt: Date }) { return { ...row, id: publicDatabaseId(row), uploadedBy: row.uploadedById, responseToReview: row.responseToReview ?? undefined }; }
+function revisionDto(row: { id: string; legacyMongoId: string | null; submissionId: string; revisionNumber: number; uploadedById: string; responseToReview: string | null; checksumSha256: string | null; sizeBytes: number; originalFileName: string | null; storageUri?: string | null; contentSnapshot?: string | null; contentType?: string; createdAt: Date; updatedAt: Date }) { return { ...row, id: publicDatabaseId(row), uploadedBy: row.uploadedById, responseToReview: row.responseToReview ?? undefined }; }
 function aiReviewDto(row: { id: string; legacyMongoId: string | null; [key: string]: unknown }) { return { ...row, id: publicDatabaseId(row) }; }
 
 async function hydrateSubmission(submission: SubmissionRow) {
@@ -151,13 +151,14 @@ export const submissionService = {
 
   async listRevisions(submissionInput: string, actorInput: string, actorRole: UserRole) { const actor = await resolveUser(actorInput); const submission = await getSubmissionOrThrow(submissionInput); const access = await assertSubmissionAccess(submission, actor.id, actorRole); const rows = await getPrisma().submissionRevision.findMany({ where: { submissionId: submission.id }, orderBy: { revisionNumber: "desc" } }); return rows.map((row) => { const dto = revisionDto(row); if (access === "blind") { const { uploadedById: _uploadedById, uploadedBy: _uploadedBy, originalFileName: _originalFileName, ...safe } = dto; return safe; } return dto; }); },
 
-  async resolveDownload(submissionInput: string, revisionInput: string, actorInput: string, actorRole: UserRole) { const actor = await resolveUser(actorInput); const submission = await getSubmissionOrThrow(submissionInput); await assertSubmissionAccess(submission, actor.id, actorRole); const revision = await getPrisma().submissionRevision.findFirst({ where: { ...idWhere(revisionInput), submissionId: submission.id } }); if (!revision) throw AppError.notFound("Submission revision not found"); const signedUrl = await pdfStorageService.getSignedDownloadUrl(revision.storageUri); if (signedUrl) return { kind: "redirect" as const, url: signedUrl }; const localPath = pdfStorageService.resolveLocalPath(revision.storageUri); if (!localPath) throw AppError.notFound("Submission file is not available"); return { kind: "local" as const, path: localPath, filename: `submission-revision-${revision.revisionNumber}.pdf` }; },
+  async resolveDownload(submissionInput: string, revisionInput: string, actorInput: string, actorRole: UserRole) { const actor = await resolveUser(actorInput); const submission = await getSubmissionOrThrow(submissionInput); await assertSubmissionAccess(submission, actor.id, actorRole); const revision = await getPrisma().submissionRevision.findFirst({ where: { ...idWhere(revisionInput), submissionId: submission.id } }); if (!revision) throw AppError.notFound("Submission revision not found"); if (!revision.storageUri) throw AppError.badRequest("This artifact revision is displayed in LumiGap and has no PDF download"); const signedUrl = await pdfStorageService.getSignedDownloadUrl(revision.storageUri); if (signedUrl) return { kind: "redirect" as const, url: signedUrl }; const localPath = pdfStorageService.resolveLocalPath(revision.storageUri); if (!localPath) throw AppError.notFound("Submission file is not available"); return { kind: "local" as const, path: localPath, filename: `submission-revision-${revision.revisionNumber}.pdf` }; },
 
   async assignReviewer(submissionInput: string, input: { reviewerId: string; dueAt?: Date; enforceInstitutionConflict?: boolean }, actorInput: string) {
     const actor = await resolveUser(actorInput); const submission = await getSubmissionOrThrow(submissionInput); const reviewer = await resolveUser(input.reviewerId);
     const reviewerCapabilities = await capabilityService.list(reviewer.id);
     if (!reviewerCapabilities.includes("STRUCTURED_REVIEW")) throw AppError.badRequest("Reviewer must have the STRUCTURED_REVIEW capability");
     const prisma = getPrisma(); const [selfOrAuthor, declared, authorLinks] = await Promise.all([prisma.submissionAuthor.findUnique({ where: { submissionId_userId: { submissionId: submission.id, userId: reviewer.id } } }), prisma.submissionDeclaredConflict.findUnique({ where: { submissionId_userId: { submissionId: submission.id, userId: reviewer.id } } }), prisma.submissionAuthor.findMany({ where: { submissionId: submission.id }, select: { userId: true } })]);
+    if (await prisma.reviewerAssignment.findFirst({ where: { submissionId: submission.id, reviewerId: reviewer.id, status: { notIn: ["declined", "cancelled", "completed"] } } })) throw AppError.conflict("This reviewer already has an active assignment for the submission");
     let sameInstitution = false; if (input.enforceInstitutionConflict !== false && reviewer.institution?.trim()) { const authors = await prisma.user.findMany({ where: { id: { in: authorLinks.map((row) => row.userId) } }, select: { institution: true } }); const value = reviewer.institution.trim().toLocaleLowerCase(); sameInstitution = authors.some((row) => row.institution?.trim().toLocaleLowerCase() === value); }
     if (selfOrAuthor || declared || sameInstitution) throw AppError.conflict("Reviewer assignment conflicts with the submission", { selfOrAuthor: Boolean(selfOrAuthor), declared: Boolean(declared), sameInstitution });
     try { const assignment = await prisma.$transaction(async (tx) => { const created = await tx.reviewerAssignment.create({ data: { submissionId: submission.id, reviewerId: reviewer.id, assignedById: actor.id, anonymousCode: `R-${crypto.randomBytes(12).toString("hex")}`, dueAt: input.dueAt, conflictChecks: { selfOrAuthor: false, declared: false, sameInstitution, checkedAt: new Date().toISOString() } } }); await tx.submission.updateMany({ where: { id: submission.id, status: "submitted" }, data: { status: "under_review" } }); return created; }); await auditService.log("submission.reviewer.assigned", { userId: actor.id, targetTableName: "reviewer_assignments", targetRecordId: assignment.id, details: { submissionId: submission.id, reviewerId: reviewer.id } }); return assignment; } catch (error) { if (isUniqueViolation(error)) throw AppError.conflict("This reviewer is already assigned to the submission"); throw error; }

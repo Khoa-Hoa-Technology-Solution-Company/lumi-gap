@@ -7,6 +7,14 @@ import type {
   ProjectContributionProposal,
   ProposeProjectContributionRequest,
   ResolveProjectContributionRequest,
+  IncomingProjectInvitation,
+  ProjectInvitationPreview,
+  InviteProjectMemberRequest,
+  ProjectActivity,
+  UpdateProjectPaperRequest,
+  MentorRelationship,
+  RequestMentorRelationshipRequest,
+  RespondMentorRelationshipRequest,
 } from "@trend/shared-types";
 import { api } from "@/services/api-client";
 import { API_ROUTES } from "@/constants";
@@ -39,12 +47,71 @@ export const projectsApi = {
     const res = await api.delete(API_ROUTES.projects.removePaper(id, paperId));
     return res.data.data;
   },
+  async updatePaper(id: string, paperId: string, data: UpdateProjectPaperRequest): Promise<void> {
+    await api.patch(API_ROUTES.projects.updatePaper(id, paperId), data);
+  },
   async addMember(id: string, data: AddProjectMemberRequest): Promise<IProject> {
     const res = await api.post(API_ROUTES.projects.addMember(id), data);
     return res.data.data;
   },
   async removeMember(id: string, memberId: string): Promise<IProject> {
     const res = await api.delete(API_ROUTES.projects.removeMember(id, memberId));
+    return res.data.data;
+  },
+  async inviteMember(id: string, data: InviteProjectMemberRequest): Promise<void> {
+    await api.post(API_ROUTES.projects.invitations.create(id), data);
+  },
+  async cancelInvitation(id: string, invitationId: string): Promise<void> {
+    await api.post(API_ROUTES.projects.invitations.cancel(id, invitationId));
+  },
+  async listMyInvitations(): Promise<IncomingProjectInvitation[]> {
+    const res = await api.get(API_ROUTES.projects.invitations.mine);
+    return res.data.data;
+  },
+  async respondToInvitation(projectId: string, invitationId: string, decision: "accept" | "decline"): Promise<void> {
+    await api.post(decision === "accept" ? API_ROUTES.projects.invitations.accept(projectId, invitationId) : API_ROUTES.projects.invitations.decline(projectId, invitationId));
+  },
+  async invitationPreview(token: string): Promise<ProjectInvitationPreview> {
+    const res = await api.get(API_ROUTES.projects.invitations.preview(token));
+    return res.data.data;
+  },
+  async respondToInvitationToken(token: string, decision: "accept" | "decline"): Promise<{ status: "ACCEPTED" | "DECLINED"; alreadyMember: boolean }> {
+    const res = await api.post(decision === "accept" ? API_ROUTES.projects.invitations.acceptToken(token) : API_ROUTES.projects.invitations.declineToken(token));
+    return res.data.data;
+  },
+  async archive(id: string): Promise<IProject> {
+    const res = await api.post(API_ROUTES.projects.archive(id));
+    return res.data.data;
+  },
+  async leave(id: string): Promise<void> {
+    await api.post(API_ROUTES.projects.leave(id));
+  },
+  async transferOwnership(id: string, userId: string): Promise<IProject> {
+    const res = await api.post(API_ROUTES.projects.transferOwnership(id), { userId });
+    return res.data.data;
+  },
+  async activity(id: string): Promise<ProjectActivity[]> {
+    const res = await api.get(API_ROUTES.projects.activity(id));
+    return res.data.data;
+  },
+  async mentorships(id: string): Promise<MentorRelationship[]> {
+    const res = await api.get(API_ROUTES.projects.mentorships.list(id));
+    return res.data.data;
+  },
+  async requestMentorship(id: string, data: RequestMentorRelationshipRequest): Promise<MentorRelationship> {
+    const res = await api.post(API_ROUTES.projects.mentorships.request(id), data);
+    return res.data.data;
+  },
+  async acceptMentorship(id: string, relationshipId: string, data: RespondMentorRelationshipRequest = {}): Promise<MentorRelationship> {
+    const res = await api.post(API_ROUTES.projects.mentorships.accept(id, relationshipId), data);
+    return res.data.data;
+  },
+  async declineMentorship(id: string, relationshipId: string, data: RespondMentorRelationshipRequest = {}): Promise<MentorRelationship> {
+    const res = await api.post(API_ROUTES.projects.mentorships.decline(id, relationshipId), data);
+    return res.data.data;
+  },
+  async endMentorship(id: string, relationshipId: string, data: RespondMentorRelationshipRequest = {}): Promise<MentorRelationship> {
+    const res = await api.post(API_ROUTES.projects.mentorships.end(id, relationshipId), data);
     return res.data.data;
   },
   async contributions(id: string): Promise<ProjectContributionProposal[]> {

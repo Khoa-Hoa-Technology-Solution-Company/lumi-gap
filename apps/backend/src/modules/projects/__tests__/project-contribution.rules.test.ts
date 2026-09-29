@@ -68,4 +68,23 @@ describe("project contribution confirmation rules", () => {
       actorIsOwner: true,
     })).toBe(false);
   });
+
+  it("allows a separate verified academic approver to resolve eligible project contributions", () => {
+    expect(canResolveContribution({
+      requiredFrom: "CONTRIBUTOR",
+      actorId: "lecturer-1",
+      proposerId: "owner-1",
+      contributorId: "member-1",
+      actorIsOwner: false,
+      actorHasAcademicApproval: true,
+    })).toBe(true);
+    expect(canResolveContribution({
+      requiredFrom: "CONTRIBUTOR",
+      actorId: "lecturer-1",
+      proposerId: "owner-1",
+      contributorId: "member-1",
+      actorIsOwner: false,
+      actorHasAcademicApproval: false,
+    })).toBe(false);
+  });
 });

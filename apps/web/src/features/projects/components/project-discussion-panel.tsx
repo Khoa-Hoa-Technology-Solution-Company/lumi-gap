@@ -8,6 +8,7 @@ interface ProjectDiscussionPanelProps {
   projectId: string;
   paperCount: number;
   ownerId?: string;
+  onAddPapers?: () => void;
 }
 
 type ChatMode = "team-chat" | "private-ai" | "team-ai";
@@ -16,6 +17,7 @@ export function ProjectDiscussionPanel({
   projectId,
   paperCount,
   ownerId,
+  onAddPapers,
 }: ProjectDiscussionPanelProps) {
   const currentUser = useAuthStore((s) => s.user);
   const [activeMode, setActiveMode] = useState<ChatMode>("team-chat");
@@ -88,6 +90,7 @@ export function ProjectDiscussionPanel({
           paperCount={paperCount}
           currentUserName={currentUserName}
           scope="private"
+          onAddPapers={onAddPapers}
           draft={aiDraft}
           onDraftChange={setAiDraft}
           onSwitchToTeamAI={() => setActiveMode("team-ai")}
@@ -99,6 +102,7 @@ export function ProjectDiscussionPanel({
           paperCount={paperCount}
           currentUserName={currentUserName}
           scope="team"
+          onAddPapers={onAddPapers}
           draft={aiDraft}
           onDraftChange={setAiDraft}
         />

@@ -3,6 +3,8 @@ import { AppError } from "../../common/exceptions/app-error.js";
 import { parseDatabaseId } from "../../infrastructure/database/database-id.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { auditService } from "../audit/audit.service.js";
+import { policyCapabilities } from "../identity/identity-foundation.rules.js";
+import { participantScopeForUser } from "../identity/participant-scope.service.js";
 
 const POLICY_SOURCE = "SYSTEM_POLICY_V1";
 const ALL_CAPABILITIES: Capability[] = [
@@ -10,6 +12,11 @@ const ALL_CAPABILITIES: Capability[] = [
   "RESEARCH_SUPPORT",
   "STRUCTURED_REVIEW",
   "GAP_VALIDATION",
+  "CREATE_RESEARCH_PROJECT",
+  "APPROVE_ACADEMIC_CONTRIBUTION",
+  "MENTOR_PROJECT",
+  "REVIEW_ARTIFACT",
+  "MANAGE_SYSTEM",
 ];
 
 async function userUuid(value: string): Promise<string> {
@@ -38,18 +45,39 @@ export const capabilityService = {
   async evaluate(userId: string): Promise<Capability[]> {
     const id = await userUuid(userId);
     const prisma = getPrisma();
-    const [user, current] = await Promise.all([
+    const [user, profile, current, participantScope] = await Promise.all([
       prisma.user.findUnique({ where: { id }, select: { accountStatus: true, systemRole: true } }),
+      prisma.academicProfile.findUnique({ where: { userId: id }, select: { academicRole: true, roleVerificationStatus: true } }),
       prisma.userCapability.findMany({ where: { userId: id } }),
+      participantScopeForUser(id),
     ]);
     if (!user) throw AppError.unauthorized();
+    const currentHostPosition = participantScope === "INTERNAL"
+      ? await prisma.affiliation.findFirst({
+        where: {
+          userId: id,
+          isCurrent: true,
+          verificationStatus: "VERIFIED",
+          positionStatus: "VERIFIED",
+          institutionId: {
+            in: (await prisma.institution.findMany({
+              where: { hostInstitution: true, status: "ACTIVE", isActive: true },
+              select: { id: true },
+            })).map((institution) => institution.id),
+          },
+        },
+        select: { id: true },
+      })
+      : null;
 
-    const desired = new Set<Capability>();
-    if (user.accountStatus === "ACTIVE" && user.systemRole === "RESEARCH_USER") {
-      desired.add("BASIC_RESEARCH");
-      // Academic profile declarations and verification do not grant support, reviewer, or gap-validation capabilities.
-      // Those capabilities must be provisioned explicitly, independently of Academic Position.
-    }
+    const desired = new Set<Capability>(policyCapabilities({
+      systemRole: user.systemRole === "ADMIN" ? "ADMIN" : "USER",
+      accountActive: user.accountStatus === "ACTIVE",
+      academicRole: profile?.academicRole as "STUDENT" | "RESEARCHER" | "LECTURER" | undefined,
+      academicRoleVerificationStatus: profile?.roleVerificationStatus as never,
+      participantScope,
+      currentHostPositionVerified: Boolean(currentHostPosition),
+    }));
 
     const policyRows = current.filter((row) => row.source === POLICY_SOURCE);
     const grants = [...desired].filter((capability) =>

@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { RegisterSchema } from "../../auth/dto/auth.schema.js";
 
-const SystemRoleSchema = z.enum(["RESEARCH_USER", "ADMIN", "SUPER_ADMIN"]);
+const SystemRoleSchema = z.enum(["USER", "ADMIN"]);
+const CreateUserSystemRoleSchema = z.literal("USER");
 const AccountStatusSchema = z.enum(["ACTIVE", "SUSPENDED", "DISABLED"]);
 const ReasonSchema = z.string().trim().min(3).max(500);
 
@@ -37,7 +38,7 @@ export const CreateUserSchema = z.object({
   email: z.string().trim().email().toLowerCase(),
   fullName: z.string().trim().min(1).max(120),
   password: RegisterSchema.shape.password,
-  role: SystemRoleSchema.default("RESEARCH_USER"),
+  role: CreateUserSystemRoleSchema.default("USER"),
   institution: z.string().trim().max(300).optional(),
   accountStatus: AccountStatusSchema.default("ACTIVE"),
 }).strict();

@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   getAiActionCost,
   resolveReportCreditCost,
-  AI_CREDIT_COSTS,
 } from "../credit-policy.js";
 
 describe("Credit Policy", () => {
@@ -21,6 +20,7 @@ describe("Credit Policy", () => {
       expect(getAiActionCost("semantic_search")).toBe(0);
       expect(getAiActionCost("trends_deterministic")).toBe(0);
       expect(getAiActionCost("paper_request")).toBe(0);
+      expect(getAiActionCost("credit_topup")).toBe(0);
     });
   });
 

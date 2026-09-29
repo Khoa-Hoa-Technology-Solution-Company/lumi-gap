@@ -17,15 +17,35 @@ import {
   ResendEmailVerificationSchema,
   ForgotPasswordSchema,
   ResetPasswordSchema,
+  AddEmailSchema,
 } from "./dto/auth.schema.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { parseDatabaseId, publicDatabaseId } from "../../infrastructure/database/database-id.js";
 
 export const authRouter: Router = Router();
 
-const credentialLimiter = rateLimit({ windowMs: 15 * 60_000, limit: 10, standardHeaders: "draft-7", legacyHeaders: false });
-const tokenLimiter = rateLimit({ windowMs: 15 * 60_000, limit: 60, standardHeaders: "draft-7", legacyHeaders: false });
-const recoveryLimiter = rateLimit({ windowMs: 60 * 60_000, limit: 5, standardHeaders: "draft-7", legacyHeaders: false });
+const isDev = process.env.NODE_ENV !== "production";
+const credentialLimiter = rateLimit({
+  windowMs: 15 * 60_000,
+  limit: isDev ? 1000 : 30,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { success: false, error: { code: "TOO_MANY_REQUESTS", message: "Too many login attempts. Please try again in 15 minutes." } },
+});
+const tokenLimiter = rateLimit({
+  windowMs: 15 * 60_000,
+  limit: isDev ? 2000 : 120,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { success: false, error: { code: "TOO_MANY_REQUESTS", message: "Too many requests. Please try again later." } },
+});
+const recoveryLimiter = rateLimit({
+  windowMs: 60 * 60_000,
+  limit: isDev ? 500 : 15,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { success: false, error: { code: "TOO_MANY_REQUESTS", message: "Too many requests. Please try again later." } },
+});
 
 authRouter.post("/register", credentialLimiter, validate(RegisterSchema), authController.register);
 authRouter.post("/login", credentialLimiter, validate(LoginSchema), authController.login);
@@ -33,11 +53,13 @@ authRouter.post("/refresh", tokenLimiter, validate(RefreshSchema), authControlle
 authRouter.post("/logout", validate(RefreshSchema), authController.logout);
 authRouter.post("/email/verify", tokenLimiter, validate(VerifyEmailSchema), authController.verifyEmail);
 authRouter.post("/email/resend", recoveryLimiter, validate(ResendEmailVerificationSchema), authController.resendEmailVerification);
+authRouter.post("/me/emails", requireAuth, recoveryLimiter, validate(AddEmailSchema), authController.addEmail);
 authRouter.post("/password/forgot", recoveryLimiter, validate(ForgotPasswordSchema), authController.forgotPassword);
 authRouter.post("/password/reset", recoveryLimiter, validate(ResetPasswordSchema), authController.resetPassword);
 authRouter.post("/oauth/exchange", validate(OAuthExchangeSchema), authController.exchangeOAuthCode);
 authRouter.get("/me", requireAuth, authController.me);
 authRouter.get("/status", requireAuth, authController.status);
+authRouter.get("/academic-onboarding/options", requireAuth, authController.academicOnboardingOptions);
 authRouter.patch("/me", requireAuth, validate(UpdateProfileSchema), authController.updateProfile);
 authRouter.patch(
   "/me/academic-profile",

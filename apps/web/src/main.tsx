@@ -30,7 +30,17 @@ ReactDOM.createRoot(root).render(
           <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
             <I18nProvider>
               <App />
-              <Toaster richColors closeButton position="top-right" />
+              <Toaster
+                closeButton
+                position="bottom-right"
+                duration={2400}
+                visibleToasts={2}
+                expand={false}
+                gap={8}
+                offset={16}
+                mobileOffset={12}
+                swipeDirections={["right", "bottom"]}
+              />
             </I18nProvider>
           </BrowserRouter>
         </TooltipProvider>

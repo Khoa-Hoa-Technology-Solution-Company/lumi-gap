@@ -12,6 +12,9 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           const normalizedId = id.replace(/\\/g, "/");
+          if (normalizedId.endsWith("/src/i18n/locales/en.ts")) {
+            return "i18n-en";
+          }
           if (normalizedId.endsWith("/src/i18n/locales/new-ui.ts")) {
             return "i18n-new-ui";
           }

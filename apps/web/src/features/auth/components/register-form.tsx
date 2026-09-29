@@ -16,9 +16,16 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import { PasswordInput } from "./password-input";
 import { authApi, registerSchema, resolvePostAuthPath, useRegister, type RegisterFormValues } from "@/features/auth";
+import { storeAuthReturnTo } from "@/features/auth/utils/auth-return";
 
-export function RegisterForm() {
+interface RegisterFormProps {
+  redirectTo?: string;
+  invitationToken?: string;
+}
+
+export function RegisterForm({ redirectTo, invitationToken }: RegisterFormProps) {
   const navigate = useNavigate();
   const register = useRegister();
 
@@ -28,10 +35,10 @@ export function RegisterForm() {
   });
 
   const onSubmit = (values: RegisterFormValues) => {
-    register.mutate(values, {
+    register.mutate({ ...values, invitationToken }, {
       onSuccess: ({ user }) => {
         toast.success(`Account created successfully. Welcome, ${user.fullName}!`);
-        const target = resolvePostAuthPath(user);
+        const target = resolvePostAuthPath(user, redirectTo);
         navigate(target, { replace: true });
       },
       onError: (err) => {
@@ -65,7 +72,8 @@ export function RegisterForm() {
         className="w-full rounded-xl bg-white dark:bg-[#2a2a2a] border-slate-200 dark:border-[#3a3a3a] hover:bg-slate-50 dark:hover:bg-[#333] text-slate-900 dark:text-white h-12 font-bold shadow-sm"
         type="button"
         onClick={() => {
-          window.location.href = authApi.googleAuthorizationUrl();
+          storeAuthReturnTo(redirectTo);
+          window.location.href = authApi.googleAuthorizationUrl(invitationToken);
         }}
       >
         <svg className="mr-2 h-5 w-5" viewBox="0 0 24 24">
@@ -149,10 +157,10 @@ export function RegisterForm() {
                   <FormLabel className="text-sm font-bold text-slate-900 dark:text-white">Password <span className="text-red-500">*</span></FormLabel>
                   <FormControl>
                     <div className="relative">
-                      <Input
+                      <PasswordInput
                         className="rounded-xl h-12 bg-white dark:bg-[#2a2a2a] border-slate-300 dark:border-[#3a3a3a] text-slate-900 dark:text-gray-100 focus-visible:ring-[#42bdf5] pr-10 placeholder:text-slate-400 dark:placeholder:text-gray-500 shadow-sm"
-                        type="password"
                         autoComplete="new-password"
+                        maxLength={128}
                         placeholder="Your password"
                         {...field}
                       />
@@ -174,7 +182,7 @@ export function RegisterForm() {
 
       <p className="mt-6 text-center text-sm text-slate-600 dark:text-gray-400">
         Already have an account?{" "}
-        <Link to="/login" className="font-bold text-[#42bdf5] hover:text-[#20a5e3] transition-colors">
+        <Link to={redirectTo ? `/login?returnTo=${encodeURIComponent(redirectTo)}` : "/login"} className="font-bold text-[#42bdf5] hover:text-[#20a5e3] transition-colors">
           Login
         </Link>
       </p>

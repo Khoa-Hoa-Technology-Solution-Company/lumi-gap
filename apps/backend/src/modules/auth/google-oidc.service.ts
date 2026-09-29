@@ -34,14 +34,14 @@ export function resolveOAuthReturnOrigin(candidate?: string): string {
 }
 
 export const googleOidcService = {
-  async authorizationUrl(returnOrigin?: string): Promise<string> {
+  async authorizationUrl(returnOrigin?: string, invitationToken?: string): Promise<string> {
     const { clientId } = configured();
     const state = crypto.randomBytes(32).toString("base64url");
     const nonce = crypto.randomBytes(32).toString("base64url");
     const codeVerifier = crypto.randomBytes(48).toString("base64url");
     const codeChallenge = crypto.createHash("sha256").update(codeVerifier).digest("base64url");
     const stored = await redis.set(
-      stateKey(state), JSON.stringify({ nonce, codeVerifier, returnOrigin: resolveOAuthReturnOrigin(returnOrigin) }), "EX", STATE_TTL_SECONDS, "NX",
+      stateKey(state), JSON.stringify({ nonce, codeVerifier, returnOrigin: resolveOAuthReturnOrigin(returnOrigin), invitationToken }), "EX", STATE_TTL_SECONDS, "NX",
     );
     if (stored !== "OK") throw AppError.serviceUnavailable("Unable to start Google sign-in");
     const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
@@ -57,11 +57,11 @@ export const googleOidcService = {
     return url.toString();
   },
 
-  async exchange(code: string, state: string): Promise<{ identity: GoogleIdentity; returnOrigin: string }> {
+  async exchange(code: string, state: string): Promise<{ identity: GoogleIdentity; returnOrigin: string; invitationToken?: string }> {
     const { clientId, clientSecret } = configured();
     const raw = await redis.getdel(stateKey(state));
     if (!raw) throw AppError.unauthorized("Google sign-in state is invalid or expired");
-    let saved: { nonce: string; codeVerifier: string; returnOrigin?: string };
+    let saved: { nonce: string; codeVerifier: string; returnOrigin?: string; invitationToken?: string };
     try { saved = JSON.parse(raw) as typeof saved; } catch { throw AppError.unauthorized("Google sign-in state is invalid or expired"); }
 
     const response = await fetch("https://oauth2.googleapis.com/token", {
@@ -95,6 +95,7 @@ export const googleOidcService = {
     }
     return {
       returnOrigin: resolveOAuthReturnOrigin(saved.returnOrigin),
+      invitationToken: saved.invitationToken,
       identity: {
         subject: payload.sub,
         email: payload.email,

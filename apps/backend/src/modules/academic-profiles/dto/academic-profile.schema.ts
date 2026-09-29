@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ACADEMIC_BIOGRAPHY_MAX_CHARACTERS, ACADEMIC_BIOGRAPHY_MAX_WORDS, countAcademicBiographyWords } from "@trend/shared-types";
 import { objectIdSchema, paginationSchema } from "../../../common/validation/database-id.js";
 import { isValidPublicHandle, isValidResolvablePublicHandle, normalizePublicHandle } from "../public-handle.js";
 
@@ -16,6 +17,10 @@ const normalizeList = (maxItems: number, maxLength = 120) => z
   });
 
 const optionalText = (max: number) => z.string().trim().max(max).optional();
+const optionalBiography = z.string().trim().max(ACADEMIC_BIOGRAPHY_MAX_CHARACTERS).refine(
+  (value) => countAcademicBiographyWords(value) <= ACADEMIC_BIOGRAPHY_MAX_WORDS,
+  "Biography must be " + ACADEMIC_BIOGRAPHY_MAX_WORDS + " words or fewer",
+).optional();
 const booleanQuery = z.union([z.boolean(), z.enum(["true", "false"])]).transform((value) => value === true || value === "true");
 const httpsUrl = z.string().url().max(500).refine((value) => new URL(value).protocol === "https:", {
   message: "Only HTTPS profile URLs are allowed",
@@ -202,8 +207,12 @@ export const UpdateAcademicProfileDetailsSchema = z.object({
   academicType: z.enum(["student", "researcher", "lecturer"]).optional(),
   displayName: z.string().trim().min(1).max(120).optional(),
   headline: optionalText(180),
-  biography: optionalText(3000),
+  biography: optionalBiography,
   profileVisibility: z.enum(["PUBLIC", "MEMBERS_ONLY", "PRIVATE"]).optional(),
+  discoverability: z.object({
+    showInResearcherSearch: z.boolean().optional(),
+    allowCollaborationRequests: z.boolean().optional(),
+  }).strict().optional(),
   privacy: z.object({
     orcid: z.enum(["PUBLIC", "REGISTERED_USERS", "PRIVATE"]).optional(),
     researchInterests: z.enum(["PUBLIC", "REGISTERED_USERS", "PRIVATE"]).optional(),
@@ -230,7 +239,7 @@ export const UpdateAcademicProfileDetailsSchema = z.object({
   reviewAvailability: reviewAvailabilitySchema.optional(),
 
   // Compatibility fields accepted from clients released with the first MVP.
-  bio: optionalText(3000),
+  bio: optionalBiography,
   institution: optionalText(200),
   department: optionalText(200),
   institutionalEmail: z.string().trim().toLowerCase().email().max(320).optional(),

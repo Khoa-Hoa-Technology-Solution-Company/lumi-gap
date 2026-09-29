@@ -1,198 +1,60 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { api } from "@/services/api-client";
-import {
-  MessageSquare, ShieldAlert, Users, ThumbsUp, Eye,
-  AlertTriangle, CheckCircle2, Lock, Trash2, Search
-} from "lucide-react";
-import { Skeleton } from "@/components/ui/skeleton";
+import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import { Archive, ArchiveRestore, Lock, MessageSquare, Pin, Plus, Search, ShieldAlert, Users } from "lucide-react";
+import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { ForumModerationQueue } from "@/features/forum/components/forum-moderation-queue";
+import { type CommunityView, type ForumPostView, useCommunities, useForumPosts, useModerateForumContent, useUpdateCommunity } from "@/features/forum";
+import { useI18n } from "@/i18n";
+import { cn } from "@/utils/cn";
 import { formatNumber } from "@/utils";
 
+type Tab = "communities" | "discussions" | "moderation";
+
 export function AdminCommunityPage() {
-  const [activeTab, setActiveTab] = useState<"communities" | "discussions" | "moderation">("communities");
-  const [search, setSearch] = useState("");
+  const { t } = useI18n(); const [tab, setTab] = useState<Tab>("communities"); const [search, setSearch] = useState("");
+  const communities = useCommunities(); const posts = useForumPosts({ page: 1, pageSize: 100, query: search || undefined, includeModerated: true });
+  const visibleCommunities = useMemo(() => (communities.data ?? []).filter((item) => !search || `${item.name} ${item.description} ${item.researchField ?? ""}`.toLocaleLowerCase().includes(search.toLocaleLowerCase())), [communities.data, search]);
+  const activeCount = (communities.data ?? []).filter((item) => item.status === "ACTIVE").length;
 
-  const { data: communities, isLoading: isCommLoading } = useQuery({
-    queryKey: ["admin", "communities"],
-    queryFn: async () => {
-      const res = await api.get("/communities").catch(() => ({ data: { data: [] } }));
-      return (res.data.data ?? []) as Array<{
-        id: string;
-        name: string;
-        slug: string;
-        description?: string;
-        memberCount?: number;
-        postCount?: number;
-        isPrivate?: boolean;
-        createdAt: string;
-      }>;
-    },
-  });
-
-  const { data: forumPosts, isLoading: isPostsLoading } = useQuery({
-    queryKey: ["admin", "forum-posts"],
-    queryFn: async () => {
-      const res = await api.get("/forum/posts", { params: { pageSize: 20 } }).catch(() => ({ data: { data: [] } }));
-      return (res.data.data ?? []) as Array<{
-        id: string;
-        title: string;
-        content: string;
-        author?: { fullName: string; email: string };
-        commentCount?: number;
-        upvoteCount?: number;
-        createdAt: string;
-      }>;
-    },
-  });
-
-  return (
-    <div className="space-y-6 select-none">
-      {/* Page Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Community & Content Moderation</h1>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            Manage academic discussion spaces, research communities, and platform content moderation.
-          </p>
-        </div>
-      </div>
-
-      {/* Metric Cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-1">
-          <div className="flex items-center justify-between text-xs font-semibold text-slate-500">
-            <span>Active Communities</span>
-            <Users className="h-4 w-4 text-blue-600" />
-          </div>
-          <div className="text-2xl font-bold text-slate-900 dark:text-white tabular-nums">
-            {isCommLoading ? <Skeleton className="h-7 w-12" /> : formatNumber(communities?.length ?? 0)}
-          </div>
-          <p className="text-[11px] text-slate-400">Research working groups and specialized fields</p>
-        </div>
-
-        <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-1">
-          <div className="flex items-center justify-between text-xs font-semibold text-slate-500">
-            <span>Forum Discussions</span>
-            <MessageSquare className="h-4 w-4 text-indigo-600" />
-          </div>
-          <div className="text-2xl font-bold text-slate-900 dark:text-white tabular-nums">
-            {isPostsLoading ? <Skeleton className="h-7 w-12" /> : formatNumber(forumPosts?.length ?? 0)}
-          </div>
-          <p className="text-[11px] text-slate-400">Paper reviews, questions and methodology talks</p>
-        </div>
-
-        <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-1">
-          <div className="flex items-center justify-between text-xs font-semibold text-slate-500">
-            <span>Flagged Reports</span>
-            <ShieldAlert className="h-4 w-4 text-emerald-600" />
-          </div>
-          <div className="text-2xl font-bold text-emerald-600 tabular-nums">0</div>
-          <p className="text-[11px] text-slate-400">All community content within academic safety norms</p>
-        </div>
-      </div>
-
-      {/* Tabs */}
-      <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 text-xs font-semibold">
-        <button
-          onClick={() => setActiveTab("communities")}
-          className={`pb-3 px-3 transition-colors ${
-            activeTab === "communities"
-              ? "border-b-2 border-blue-600 text-blue-600 font-bold"
-              : "text-slate-500 hover:text-slate-800 dark:hover:text-white"
-          }`}
-        >
-          Communities ({communities?.length ?? 0})
-        </button>
-        <button
-          onClick={() => setActiveTab("discussions")}
-          className={`pb-3 px-3 transition-colors ${
-            activeTab === "discussions"
-              ? "border-b-2 border-blue-600 text-blue-600 font-bold"
-              : "text-slate-500 hover:text-slate-800 dark:hover:text-white"
-          }`}
-        >
-          Discussions & Posts ({forumPosts?.length ?? 0})
-        </button>
-        <button
-          onClick={() => setActiveTab("moderation")}
-          className={`pb-3 px-3 transition-colors ${
-            activeTab === "moderation"
-              ? "border-b-2 border-blue-600 text-blue-600 font-bold"
-              : "text-slate-500 hover:text-slate-800 dark:hover:text-white"
-          }`}
-        >
-          Moderation Queue (0)
-        </button>
-      </div>
-
-      {/* Tab Content */}
-      {activeTab === "communities" && (
-        <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <div className="divide-y divide-slate-100 dark:divide-slate-800">
-            {communities && communities.length > 0 ? (
-              communities.map((c) => (
-                <div key={c.id} className="p-4 flex items-center justify-between text-xs hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
-                  <div>
-                    <h3 className="font-bold text-slate-900 dark:text-white">{c.name}</h3>
-                    <p className="text-[11px] text-slate-400 mt-0.5">{c.description || "No description provided."}</p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-2.5 py-0.5 text-[10px] font-semibold text-slate-600 dark:text-slate-300">
-                      {c.memberCount || 1} members
-                    </span>
-                    <button className="rounded-lg border border-slate-200 px-2.5 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300">
-                      Settings
-                    </button>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="py-12 text-center text-xs text-slate-400">
-                No communities created yet.
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {activeTab === "discussions" && (
-        <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          <div className="divide-y divide-slate-100 dark:divide-slate-800">
-            {forumPosts && forumPosts.length > 0 ? (
-              forumPosts.map((p) => (
-                <div key={p.id} className="p-4 flex items-center justify-between text-xs hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
-                  <div className="min-w-0 flex-1 pr-4">
-                    <h3 className="font-bold text-slate-900 dark:text-white truncate">{p.title}</h3>
-                    <p className="text-[11px] text-slate-400 mt-0.5 truncate">
-                      By {p.author?.fullName || "Anonymous"} • {new Date(p.createdAt).toLocaleDateString()}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span className="flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                      <MessageSquare className="h-3 w-3" /> {p.commentCount || 0}
-                    </span>
-                    <button className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800">
-                      <Lock className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="py-12 text-center text-xs text-slate-400">
-                No discussions or forum posts found.
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {activeTab === "moderation" && (
-        <div className="rounded-2xl border border-dashed border-slate-200 p-12 text-center text-xs text-slate-400 dark:border-slate-800">
-          <CheckCircle2 className="mx-auto h-8 w-8 text-emerald-500 mb-2" />
-          <p className="font-semibold text-slate-700 dark:text-slate-300">Moderation Queue is Clean</p>
-          <p className="text-[11px] text-slate-400 mt-1">No reported posts or users requiring administrative action.</p>
-        </div>
-      )}
-    </div>
-  );
+  return <div className="space-y-6"><div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"><div><h1 className="text-2xl font-bold tracking-tight">{t("Research Communities & Forum")}</h1><p className="mt-1 text-sm text-muted-foreground">{t("Create and archive research communities, assign moderators, and review reported forum content.")}</p></div><Button asChild><Link to="/communities/new"><Plus className="h-4 w-4" />{t("Create community")}</Link></Button></div>
+    <div className="grid gap-4 sm:grid-cols-3"><Metric label={t("Active Communities")} value={activeCount} icon={Users} /><Metric label={t("Forum Discussions")} value={posts.data?.meta.total ?? 0} icon={MessageSquare} /><Metric label={t("Moderation scope")} value={t("Platform-wide")} icon={ShieldAlert} /></div>
+    <nav className="flex gap-1 overflow-x-auto border-b" aria-label={t("Administration sections")}>{(["communities", "discussions", "moderation"] as const).map((value) => <button key={value} type="button" onClick={() => setTab(value)} className={cn("whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium", tab === value ? "border-blue-700 text-blue-700" : "border-transparent text-muted-foreground hover:text-foreground")}>{t(value === "communities" ? "Communities" : value === "discussions" ? "Discussions" : "Moderation Queue")}</button>)}</nav>
+    {tab !== "moderation" ? <label className="relative block max-w-md"><span className="sr-only">{t("Search")}</span><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t(tab === "communities" ? "Search communities" : "Search discussions")} className="pl-9" /></label> : null}
+    {tab === "communities" ? <CommunityAdminList data={visibleCommunities} loading={communities.isLoading} /> : tab === "discussions" ? <DiscussionAdminList data={posts.data?.data ?? []} loading={posts.isLoading} /> : <ForumModerationQueue />}
+  </div>;
 }
+
+function Metric({ label, value, icon: Icon }: { label: string; value: number | string; icon: typeof Users }) { return <div className="rounded-xl border bg-card p-5"><div className="flex items-center justify-between text-sm font-medium text-muted-foreground"><span>{label}</span><Icon className="h-4 w-4 text-blue-700" /></div><div className="mt-2 text-2xl font-bold tabular-nums">{typeof value === "number" ? formatNumber(value) : value}</div></div>; }
+
+function CommunityAdminList({ data, loading }: { data: CommunityView[]; loading: boolean }) {
+  const { t } = useI18n(); const update = useUpdateCommunity(); const [target, setTarget] = useState<CommunityView>(); const [confirmation, setConfirmation] = useState("");
+  async function changeStatus() { if (!target || confirmation !== target.name) return; const next = target.status === "ACTIVE" ? "ARCHIVED" : "ACTIVE"; try { await update.mutateAsync({ id: target.id, input: { status: next } }); toast.success(t(next === "ACTIVE" ? "Community restored" : "Community archived")); setTarget(undefined); setConfirmation(""); } catch { toast.error(t("Could not update community status.")); } }
+  if (loading) return <Loading />;
+  return <><div className="overflow-hidden rounded-xl border bg-card"><div className="divide-y">{data.length ? data.map((community) => <div key={community.id} className="grid gap-4 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><Link to={`/communities/${community.slug}`} className="font-semibold hover:text-blue-700">{community.name}</Link><Badge variant={community.status === "ACTIVE" ? "secondary" : "outline"}>{t(community.status === "ACTIVE" ? "Active" : "Archived")}</Badge></div><p className="mt-1 line-clamp-1 text-sm text-muted-foreground">{community.description}</p><p className="mt-2 text-xs text-muted-foreground">{community.memberCount} {t("members")} · {community.threadCount} {t("discussions")}</p></div><div className="flex gap-2"><Button asChild size="sm" variant="outline"><Link to={`/communities/${community.slug}/manage`}>{t("Manage")}</Link></Button><Button size="sm" variant="ghost" className={community.status === "ACTIVE" ? "text-red-600" : "text-emerald-700"} onClick={() => { setTarget(community); setConfirmation(""); }}>{community.status === "ACTIVE" ? <Archive className="h-4 w-4" /> : <ArchiveRestore className="h-4 w-4" />}{t(community.status === "ACTIVE" ? "Archive" : "Restore")}</Button></div></div>) : <Empty text={t("No communities found.")} />}</div></div>
+    <Dialog open={Boolean(target)} onOpenChange={(open) => { if (!open) setTarget(undefined); }}><DialogContent><DialogHeader><DialogTitle>{t(target?.status === "ACTIVE" ? "Archive this community?" : "Restore this community?")}</DialogTitle><DialogDescription>{t(target?.status === "ACTIVE" ? "Archived communities become read-only and cannot accept new members." : "Restoring makes the community active again.")}</DialogDescription></DialogHeader><label className="space-y-2 text-sm"><span>{t("Type the community name to confirm")}: <strong>{target?.name}</strong></span><Input value={confirmation} onChange={(event) => setConfirmation(event.target.value)} autoComplete="off" /></label><DialogFooter><Button variant="ghost" onClick={() => setTarget(undefined)}>{t("Cancel")}</Button><Button variant={target?.status === "ACTIVE" ? "destructive" : "default"} disabled={confirmation !== target?.name || update.isPending} onClick={changeStatus}>{t(target?.status === "ACTIVE" ? "Archive community" : "Restore community")}</Button></DialogFooter></DialogContent></Dialog>
+  </>;
+}
+
+function DiscussionAdminList({ data, loading }: { data: ForumPostView[]; loading: boolean }) {
+  const { t } = useI18n();
+  const moderate = useModerateForumContent();
+  const [target, setTarget] = useState<ForumPostView>();
+  const [reason, setReason] = useState("");
+  async function hide() {
+    if (!target || reason.trim().length < 3) return;
+    try {
+      await moderate.mutateAsync({ targetType: "post", targetId: target.id, action: target.status === "hidden" ? "THREAD_RESTORED" : "THREAD_HIDDEN", reason: reason.trim() });
+      toast.success(t(target.status === "hidden" ? "Discussion restored" : "Discussion hidden")); setTarget(undefined); setReason("");
+    } catch { toast.error(t("Could not moderate this discussion.")); }
+  }
+  if (loading) return <Loading />;
+  return <><div className="overflow-hidden rounded-xl border bg-card"><div className="divide-y">{data.length ? data.map((post) => <div key={post.id} className="grid gap-4 p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><Badge variant="outline">{t(post.type)}</Badge>{post.isPinned ? <Badge variant="secondary">{t("Pinned")}</Badge> : null}{post.status === "locked" ? <Badge variant="secondary">{t("Locked")}</Badge> : null}{post.status === "hidden" ? <Badge variant="destructive">{t("Hidden")}</Badge> : null}</div><Link to={`/forum/${post.id}`} className="mt-2 block truncate font-semibold hover:text-blue-700">{post.title}</Link><p className="mt-1 text-xs text-muted-foreground">{post.author.fullName} · {post.commentCount} {t("responses")}</p></div><div className="flex flex-wrap gap-1">{post.status !== "hidden" ? <><Button size="sm" variant="ghost" disabled={moderate.isPending} onClick={() => moderate.mutate({ targetType: "post", targetId: post.id, action: post.isPinned ? "THREAD_UNPINNED" : "THREAD_PINNED" })}><Pin className="h-4 w-4" />{t(post.isPinned ? "Unpin" : "Pin")}</Button><Button size="sm" variant="ghost" disabled={moderate.isPending} onClick={() => moderate.mutate({ targetType: "post", targetId: post.id, action: post.status === "locked" ? "THREAD_UNLOCKED" : "THREAD_LOCKED" })}><Lock className="h-4 w-4" />{t(post.status === "locked" ? "Unlock" : "Lock")}</Button></> : null}<Button size="sm" variant="ghost" className={post.status === "hidden" ? "text-emerald-700" : "text-red-600"} onClick={() => setTarget(post)}>{t(post.status === "hidden" ? "Restore" : "Hide")}</Button></div></div>) : <Empty text={t("No discussions found.")} />}</div></div>
+    <Dialog open={Boolean(target)} onOpenChange={(open) => { if (!open) setTarget(undefined); }}><DialogContent><DialogHeader><DialogTitle>{t(target?.status === "hidden" ? "Restore this discussion?" : "Hide this discussion?")}</DialogTitle><DialogDescription>{t(target?.status === "hidden" ? "The discussion will return to the community feed." : "It will leave the public feed and the action will be recorded in moderation history.")}</DialogDescription></DialogHeader><label className="space-y-2 text-sm"><span>{t("Moderation reason")}</span><textarea rows={4} maxLength={2000} value={reason} onChange={(event) => setReason(event.target.value)} className="w-full rounded-md border bg-background px-3 py-2" /></label><DialogFooter><Button variant="ghost" onClick={() => setTarget(undefined)}>{t("Cancel")}</Button><Button variant={target?.status === "hidden" ? "default" : "destructive"} disabled={reason.trim().length < 3 || moderate.isPending} onClick={hide}>{t(target?.status === "hidden" ? "Restore discussion" : "Hide discussion")}</Button></DialogFooter></DialogContent></Dialog></>;
+}
+
+function Loading() { return <div className="space-y-2">{[0, 1, 2, 3].map((item) => <div key={item} className="h-24 animate-pulse rounded-xl bg-muted" />)}</div>; }
+function Empty({ text }: { text: string }) { return <div className="py-14 text-center text-sm text-muted-foreground">{text}</div>; }

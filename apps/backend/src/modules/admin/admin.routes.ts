@@ -15,7 +15,7 @@ adminRouter.get("/users", adminController.listUsers);
 adminRouter.get("/users/summary", adminController.summary);
 adminRouter.post("/users", validate(CreateUserSchema), adminController.createUser);
 adminRouter.get("/users/:id", adminController.getUser);
-adminRouter.patch("/users/:id", requireSystemRole("SUPER_ADMIN"), validate(UpdateUserSchema), adminController.updateUser);
+adminRouter.patch("/users/:id", validate(UpdateUserSchema), adminController.updateUser);
 adminRouter.patch("/users/:id/role", validate(UpdateRoleSchema), adminController.updateRole);
 adminRouter.patch("/users/:id/status", validate(UpdateStatusSchema), adminController.updateStatus);
 adminRouter.post("/users/:id/revoke-sessions", validate(AdminReasonSchema), adminController.revokeSessions);

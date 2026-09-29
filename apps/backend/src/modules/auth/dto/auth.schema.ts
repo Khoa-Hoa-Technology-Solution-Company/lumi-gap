@@ -7,10 +7,12 @@ export const RegisterSchema = z.object({
     .regex(/[A-Z]/, "Password must include an uppercase letter")
     .regex(/[0-9]/, "Password must include a number"),
   fullName: z.string().min(1).max(120),
+  invitationToken: z.string().min(32).max(256).optional(),
 }).strict();
 export type RegisterInput = z.infer<typeof RegisterSchema>;
 
 export const UpdateAcademicProfileSchema = z.object({
+  academicRole: z.enum(["STUDENT", "RESEARCHER", "LECTURER"]),
   primaryPosition: z.enum(["STUDENT", "LECTURER", "RESEARCH_STAFF", "INDUSTRY_PRACTITIONER", "OTHER"]).optional(),
   positionTitle: z.string().trim().max(160).optional(),
   institutionName: z.string().trim().max(200).optional().nullable(),
@@ -18,10 +20,37 @@ export const UpdateAcademicProfileSchema = z.object({
   department: z.string().trim().max(200).optional().nullable(),
   specifiedPosition: z.string().trim().max(160).optional(),
   country: z.string().trim().min(2).max(100).optional(),
-}).strict().refine(
-  (data) => Boolean(data.primaryPosition || data.positionTitle || data.specifiedPosition),
-  { message: "Position is required", path: ["positionTitle"] },
-);
+  campusId: z.string().uuid().optional().nullable(),
+  programId: z.string().uuid().optional().nullable(),
+  researchAreas: z.array(z.string().trim().min(1).max(80)).max(20).optional(),
+  expertiseAreas: z.array(z.string().trim().min(1).max(80)).max(30).optional(),
+  researchInterests: z.array(z.string().trim().min(1).max(80)).max(20).optional(),
+  researchKeywords: z.array(z.string().trim().min(1).max(80)).max(30).optional(),
+  skills: z.array(z.string().trim().min(1).max(80)).max(30).optional(),
+}).strict().superRefine((data, ctx) => {
+  const researchAreas = data.researchAreas ?? data.expertiseAreas;
+  if (!researchAreas?.length) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["researchAreas"], message: "Select at least one research area" });
+  }
+  if (!data.researchInterests?.length) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["researchInterests"], message: "Select at least one research interest" });
+  }
+  if (data.academicRole === "STUDENT") {
+    if (data.noAffiliation || !data.institutionName?.trim()) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["institutionName"], message: "Institution is required" });
+    }
+    if (!data.programId) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["programId"], message: "Program / Major is required for students" });
+    }
+    return;
+  }
+  if (!(data.positionTitle?.trim() || data.specifiedPosition?.trim())) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["positionTitle"], message: "Current position is required" });
+  }
+  if (!data.institutionName?.trim() && !data.noAffiliation) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["institutionName"], message: "Institution is required" });
+  }
+});
 export type UpdateAcademicProfileInput = z.infer<typeof UpdateAcademicProfileSchema>;
 
 export const LoginSchema = z.object({
@@ -41,20 +70,26 @@ export const OAuthExchangeSchema = z.object({
 export type OAuthExchangeInput = z.infer<typeof OAuthExchangeSchema>;
 
 export const UpdateProfileSchema = z.object({
-  fullName: z.string().min(1).max(120).optional(),
+  fullName: z.string().trim().min(1).max(120).optional(),
   institution: z.string().max(120).optional().nullable(),
   researchInterests: z.array(z.string()).optional(),
 });
 export type UpdateProfileInput = z.infer<typeof UpdateProfileSchema>;
 
 export const ChangePasswordSchema = z.object({
-  currentPassword: z.string().min(1),
+  currentPassword: z.string().min(1).max(128).optional(),
   newPassword: RegisterSchema.shape.password,
 }).strict();
 export type ChangePasswordInput = z.infer<typeof ChangePasswordSchema>;
 
 export const VerifyEmailSchema = z.object({ token: z.string().min(32).max(256) }).strict();
 export type VerifyEmailInput = z.infer<typeof VerifyEmailSchema>;
+
+export const AddEmailSchema = z.object({
+  email: z.string().email().toLowerCase(),
+  purpose: z.enum(["INSTITUTIONAL", "CONTACT"]).default("INSTITUTIONAL"),
+}).strict();
+export type AddEmailInput = z.infer<typeof AddEmailSchema>;
 
 export const ResendEmailVerificationSchema = z.object({ email: z.string().email().toLowerCase() }).strict();
 export type ResendEmailVerificationInput = z.infer<typeof ResendEmailVerificationSchema>;

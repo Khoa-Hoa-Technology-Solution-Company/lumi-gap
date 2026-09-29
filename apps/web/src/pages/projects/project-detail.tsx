@@ -1,23 +1,23 @@
 import { useState, useEffect, useCallback } from "react";
-import { useParams } from "react-router-dom";
-import { PageHeader } from "@/components/page-header";
+import { useNavigate, useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { useProject, useAddPaperToProject, useRemovePaperFromProject, useAddMemberToProject, useRemoveMemberFromProject } from "@/features/projects/hooks/use-projects";
+import { useProject, useRemoveMemberFromProject, useInviteProjectMember, useCancelProjectInvitation, useUpdateProject, useArchiveProject, useDeleteProject, useLeaveProject, useTransferProjectOwnership } from "@/features/projects/hooks/use-projects";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/services/api-client";
-import { useReports, useCreateReport } from "@/features/reports/hooks/use-reports";
+import { useReports, useCreateReport, useUpdateArtifactStatus } from "@/features/reports/hooks/use-reports";
 import { useGaps, useAnalyzeGap, useGapAnalysisStatus } from "@/features/gaps";
 import { ProjectDiscussionPanel } from "@/features/projects/components/project-discussion-panel";
 import { Link } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
-import type { ReportLanguage } from "@trend/shared-types";
-import { CompareTable } from "@/features/compare/components/compare-table";
-import { useComparePapers } from "@/features/compare/hooks/use-compare";
+import type { IProject, ProjectStatus, ProjectVisibility, ReportLanguage, ResearchArtifactType } from "@trend/shared-types";
+import { ProjectLiteratureWorkspace } from "@/features/projects/components/project-literature-workspace";
+import { ProjectPaperPickerDialog } from "@/features/projects/components/project-paper-picker-dialog";
+import { SubmitReviewDialog } from "@/features/reviews/components/submit-review-dialog";
+
 function useSearchUsers(email: string) {
   return useQuery({
     queryKey: ["searchUsers", email],
@@ -30,29 +30,30 @@ function useSearchUsers(email: string) {
   });
 }
 
-function useSearchPapers(query: string) {
-  return useQuery({
-    queryKey: ["searchPapers", query],
-    queryFn: async () => {
-      if (!query || query.length < 3) return [];
-      const res = await api.get<{ success: boolean; data: any[] }>(`/papers?q=${encodeURIComponent(query)}&pageSize=10`);
-      return res.data.data;
-    },
-    enabled: query.length >= 3,
-  });
-}
 import { toast } from "sonner";
-import { FileText, Users, Trash2, Plus, Loader2, CheckCircle2, XCircle, Sparkles, Zap, Search, ListFilter, MessageSquare } from "lucide-react";
+import { Archive, FileText, Users, Trash2, Plus, Loader2, XCircle, Sparkles, Zap, MessageSquare, Settings2, ShieldCheck } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
 import { ProjectContributionsTab } from "@/features/projects/components/project-contributions-tab";
+import { useI18n } from "@/i18n";
 
 export function ProjectDetailPage() {
   const currentUser = useAuthStore(s => s.user);
+  const navigate = useNavigate();
+  const { t, language } = useI18n();
   const { id } = useParams<{ id: string }>();
-  const { data: project, isLoading } = useProject(id);
+  const { data: project, isLoading, isError } = useProject(id);
   const [activeTab, setActiveTab] = useState<"papers" | "members" | "contributions" | "reports" | "gaps" | "chat">("papers");
   const [autoOpenReport, setAutoOpenReport] = useState(false);
   const [autoOpenGap, setAutoOpenGap] = useState(false);
+  const [paperPickerOpen, setPaperPickerOpen] = useState(false);
+
+  const relativeActivity = (value: string) => {
+    const elapsed = Math.max(0, Date.now() - new Date(value).getTime());
+    const unit = elapsed < 60 * 60 * 1000 ? "minute" : elapsed < 24 * 60 * 60 * 1000 ? "hour" : "day";
+    const divisor = unit === "minute" ? 60_000 : unit === "hour" ? 3_600_000 : 86_400_000;
+    const amount = Math.max(1, Math.floor(elapsed / divisor));
+    return new Intl.RelativeTimeFormat(language, { numeric: "auto" }).format(-amount, unit);
+  };
 
   if (isLoading) {
     return (
@@ -66,39 +67,43 @@ export function ProjectDetailPage() {
   if (!project) {
     return (
       <main className="container py-8">
-        <div className="rounded-lg border border-dashed p-12 text-center text-muted-foreground">
-          Project not found or you do not have access.
+        <div className="rounded-lg border border-dashed p-12 text-center text-muted-foreground" role="status">
+          {isError ? t("The project could not be loaded. Refresh and try again.") : t("Project not found or you do not have access.")}
         </div>
       </main>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#0a0a0a]">
-      <main className="container max-w-6xl py-10 space-y-10">
+    <div className="min-h-screen bg-background">
+      <main className="container max-w-7xl space-y-5 py-5 sm:py-6">
 
-        {/* Overview Dashboard Header */}
-        <div className="flex flex-col md:flex-row md:items-start justify-between gap-6">
-          <div className="flex-1">
-            <h1 className="text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white mb-3">{project.title}</h1>
-            <p className="text-slate-500 dark:text-slate-400 max-w-2xl text-lg leading-relaxed">{project.description || "No description provided."}</p>
-          </div>
-
-          <div className="flex gap-4 items-center shrink-0">
-            <div className="flex flex-col items-center bg-white dark:bg-zinc-900 border border-slate-200/60 dark:border-white/10 rounded-2xl p-4 min-w-[120px] shadow-sm transition-transform hover:-translate-y-1 duration-300">
-              <span className="text-3xl font-black text-indigo-600 dark:text-indigo-400 mb-1">{project.papers?.length || 0}</span>
-              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Papers</span>
+        <header className="space-y-3 border-b pb-4">
+          <Link to="/projects" className="inline-flex items-center text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">← {t("Projects")}</Link>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0">
+              <h1 className="text-2xl font-semibold tracking-tight text-foreground">{project.title}</h1>
+              {project.description ? <p className="mt-1 max-w-3xl text-sm leading-5 text-muted-foreground">{project.description}</p> : null}
+              <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                {project.researchField ? <span>{project.researchField}</span> : null}
+                {project.researchField ? <span aria-hidden="true">·</span> : null}
+                <span>{t(project.status.replaceAll("_", " "))}</span><span aria-hidden="true">·</span>
+                <span>{t(project.visibility.replaceAll("_", " "))}</span><span aria-hidden="true">·</span>
+                <span>{t("{{count}} papers", { count: project.paperCount })}</span><span aria-hidden="true">·</span>
+                <span>{t("{{count}} members", { count: project.memberCount })}</span><span aria-hidden="true">·</span>
+                <span>{t("Updated {{time}}", { time: relativeActivity(project.updatedAt) })}</span>
+              </div>
             </div>
-            <div className="flex flex-col items-center bg-white dark:bg-zinc-900 border border-slate-200/60 dark:border-white/10 rounded-2xl p-4 min-w-[120px] shadow-sm transition-transform hover:-translate-y-1 duration-300">
-              <span className="text-3xl font-black text-indigo-600 dark:text-indigo-400 mb-1">{project.members?.length || 0}</span>
-              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Members</span>
-            </div>
+            {project.accessRole ? <ProjectHeaderActions project={project} onLeft={() => navigate("/projects")} /> : null}
           </div>
-        </div>
+        </header>
 
+        {project.isPublicSummary ? (
+          <div className="rounded-lg border bg-card p-8 text-center"><ShieldCheck className="mx-auto h-8 w-8 text-primary" /><h2 className="mt-3 text-lg font-semibold">{t("Public project summary")}</h2><p className="mx-auto mt-2 max-w-xl text-sm text-muted-foreground">{t("Papers, member details, reports, candidate gaps, contributions and chat are available only to current project members.")}</p></div>
+        ) : <>
         {/* Underline Tabs */}
         <div className="border-b border-slate-200 dark:border-white/10 overflow-x-auto">
-          <div className="flex gap-6 sm:gap-8 min-w-max pb-1" role="tablist" aria-label="Project sections">
+          <div className="flex gap-5 sm:gap-7 min-w-max pb-1" role="tablist" aria-label={t("Project sections")}>
             <button
               id="project-tab-papers"
               role="tab"
@@ -109,7 +114,7 @@ export function ProjectDetailPage() {
               }`}
               onClick={() => setActiveTab("papers")}
             >
-              Papers
+              {t("Literature")}
               <Badge variant="secondary" className="ml-2 rounded-full px-2 py-0.5 text-[10px] bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-slate-300">{project.papers?.length || 0}</Badge>
               {activeTab === "papers" && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 dark:bg-indigo-400 rounded-t-full" />}
             </button>
@@ -124,7 +129,7 @@ export function ProjectDetailPage() {
               }`}
               onClick={() => setActiveTab("members")}
             >
-              Members
+              {t("Members")}
               <Badge variant="secondary" className="ml-2 rounded-full px-2 py-0.5 text-[10px] bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-slate-300">{project.members?.length || 0}</Badge>
               {activeTab === "members" && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 dark:bg-indigo-400 rounded-t-full" />}
             </button>
@@ -139,7 +144,7 @@ export function ProjectDetailPage() {
               }`}
               onClick={() => setActiveTab("contributions")}
             >
-              Contributions
+              {t("Contributions")}
               {activeTab === "contributions" && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 dark:bg-indigo-400 rounded-t-full" />}
             </button>
 
@@ -153,7 +158,7 @@ export function ProjectDetailPage() {
               }`}
               onClick={() => setActiveTab("reports")}
             >
-              Reports
+              {t("Artifacts")}
               {activeTab === "reports" && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 dark:bg-indigo-400 rounded-t-full" />}
             </button>
 
@@ -167,7 +172,7 @@ export function ProjectDetailPage() {
               }`}
               onClick={() => setActiveTab("gaps")}
             >
-              Gaps
+              {t("Research Gaps")}
               {activeTab === "gaps" && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 dark:bg-indigo-400 rounded-t-full" />}
             </button>
 
@@ -183,7 +188,7 @@ export function ProjectDetailPage() {
             >
               <span className="inline-flex items-center gap-1.5">
                 <MessageSquare className="h-4 w-4" />
-                Chat
+                {t("Chat")}
               </span>
               {activeTab === "chat" && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 dark:bg-indigo-400 rounded-t-full" />}
             </button>
@@ -194,11 +199,13 @@ export function ProjectDetailPage() {
         <div>
           {activeTab === "papers" && (
             <section id="project-panel-papers" role="tabpanel" aria-labelledby="project-tab-papers">
-              <PapersTab
+              <ProjectLiteratureWorkspace
                 projectId={project._id}
                 papers={project.papers}
-                currentUserId={currentUser?.id}
-                ownerId={project.ownerId}
+                criteria={project.screeningCriteria}
+                isOwner={project.accessRole === "OWNER"}
+                readOnly={project.status === "ARCHIVED" || !project.accessRole}
+                onRequestAddPaper={() => setPaperPickerOpen(true)}
                 onNavigateToReports={() => {
                   setActiveTab("reports");
                   setAutoOpenReport(true);
@@ -212,7 +219,7 @@ export function ProjectDetailPage() {
           )}
           {activeTab === "members" && (
             <section id="project-panel-members" role="tabpanel" aria-labelledby="project-tab-members">
-              <MembersTab projectId={project._id} members={project.members} ownerId={project.ownerId} currentUserId={currentUser?.id} />
+              <MembersTab projectId={project._id} members={project.members} pendingInvitations={project.pendingInvitations ?? []} ownerId={project.ownerId} currentUserId={currentUser?.id} />
             </section>
           )}
           {activeTab === "contributions" && (
@@ -251,12 +258,150 @@ export function ProjectDetailPage() {
                 projectId={project._id}
                 paperCount={project.papers?.length || 0}
                 ownerId={project.ownerId}
+                onAddPapers={() => setPaperPickerOpen(true)}
               />
             </section>
           )}
         </div>
+        <ProjectPaperPickerDialog
+          projectId={project._id}
+          papers={project.papers ?? []}
+          open={paperPickerOpen}
+          onOpenChange={setPaperPickerOpen}
+        />
+        </>}
       </main>
     </div>
+  );
+}
+
+function ProjectHeaderActions({ project, onLeft }: { project: IProject; onLeft: () => void }) {
+  const isOwner = project.accessRole === "OWNER";
+  type ConfirmationAction = "archive" | "delete" | "leave";
+  const [open, setOpen] = useState(false);
+  const [confirmationAction, setConfirmationAction] = useState<ConfirmationAction | null>(null);
+  const [confirmationText, setConfirmationText] = useState("");
+  const [title, setTitle] = useState(project.title);
+  const [description, setDescription] = useState(project.description ?? "");
+  const [researchField, setResearchField] = useState(project.researchField ?? "");
+  const [status, setStatus] = useState<ProjectStatus>(project.status);
+  const [visibility, setVisibility] = useState<ProjectVisibility>(project.visibility);
+  const updateProject = useUpdateProject(project._id);
+  const archiveProject = useArchiveProject(project._id);
+  const deleteProject = useDeleteProject(project._id);
+  const leaveProject = useLeaveProject(project._id);
+
+  const save = async (event: React.FormEvent) => {
+    event.preventDefault();
+    try {
+      await updateProject.mutateAsync({ title, description, researchField: researchField || null, status, visibility });
+      toast.success("Project settings saved");
+      setOpen(false);
+    } catch {
+      toast.error("Could not save project settings");
+    }
+  };
+
+  const openConfirmation = (action: ConfirmationAction) => {
+    setConfirmationText("");
+    setConfirmationAction(action);
+  };
+
+  const closeConfirmation = (nextOpen: boolean) => {
+    if (nextOpen) return;
+    if (archiveProject.isPending || deleteProject.isPending || leaveProject.isPending) return;
+    setConfirmationAction(null);
+    setConfirmationText("");
+  };
+
+  const confirmProjectAction = async () => {
+    if (!confirmationAction) return;
+    if (confirmationAction !== "leave" && confirmationText !== project.title) return;
+    const action = confirmationAction;
+    try {
+      if (action === "archive") {
+        await archiveProject.mutateAsync();
+        toast.success("Project archived");
+        setOpen(false);
+      } else if (action === "delete") {
+        await deleteProject.mutateAsync();
+        toast.success("Project deleted");
+      } else {
+        await leaveProject.mutateAsync();
+        toast.success("You left the project");
+      }
+      setConfirmationAction(null);
+      setConfirmationText("");
+      if (action !== "archive") onLeft();
+    } catch {
+      toast.error(action === "archive" ? "Could not archive project" : action === "delete" ? "Could not delete project" : "Could not leave project");
+    }
+  };
+
+  const confirmationPending = archiveProject.isPending || deleteProject.isPending || leaveProject.isPending;
+  const requiresProjectName = confirmationAction !== null && confirmationAction !== "leave";
+
+  if (!isOwner) return <>
+    <Button variant="outline" size="sm" onClick={() => openConfirmation("leave")}>Leave project</Button>
+    <Dialog open={confirmationAction !== null} onOpenChange={closeConfirmation}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Leave this project?</DialogTitle>
+          <DialogDescription>You will immediately lose access to private project content and chat. You can be invited again by a project owner.</DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={() => closeConfirmation(false)} disabled={confirmationPending}>Cancel</Button>
+          <Button type="button" variant="destructive" onClick={confirmProjectAction} disabled={confirmationPending}>
+            {leaveProject.isPending ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Leaving…</> : "Leave project"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  </>;
+  return (
+    <>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogTrigger asChild><Button variant="outline" size="sm"><Settings2 className="mr-2 h-4 w-4" />Project settings</Button></DialogTrigger>
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-xl">
+          <DialogHeader><DialogTitle>Project settings</DialogTitle><DialogDescription>Update the workspace details and access policy. Only the owner can change these settings.</DialogDescription></DialogHeader>
+          <form onSubmit={save} className="space-y-4">
+            <div className="space-y-2"><Label htmlFor="project-title">Project name</Label><Input id="project-title" value={title} onChange={(event) => setTitle(event.target.value)} maxLength={100} required /></div>
+            <div className="space-y-2"><Label htmlFor="project-description">Description</Label><textarea id="project-description" value={description} onChange={(event) => setDescription(event.target.value)} maxLength={5000} className="min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" /></div>
+            <div className="space-y-2"><Label htmlFor="project-field">Research field</Label><Input id="project-field" value={researchField} onChange={(event) => setResearchField(event.target.value)} maxLength={200} placeholder="e.g. Human-computer interaction" /></div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2"><Label htmlFor="project-status">Status</Label><select id="project-status" value={status} onChange={(event) => setStatus(event.target.value as ProjectStatus)} className="h-10 w-full rounded-md border bg-background px-3 text-sm">{["PLANNING", "ACTIVE", "ON_HOLD", "COMPLETED"].map((value) => <option key={value} value={value}>{value.replaceAll("_", " ")}</option>)}</select></div>
+              <div className="space-y-2"><Label htmlFor="project-visibility">Visibility</Label><select id="project-visibility" value={visibility} onChange={(event) => setVisibility(event.target.value as ProjectVisibility)} className="h-10 w-full rounded-md border bg-background px-3 text-sm">{["PRIVATE", "INVITE_ONLY", "PUBLIC_SUMMARY"].map((value) => <option key={value} value={value}>{value.replaceAll("_", " ")}</option>)}</select></div>
+            </div>
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950/30"><p className="text-sm font-medium text-amber-900 dark:text-amber-200">Prefer archive over delete</p><p className="mt-1 text-xs text-amber-700 dark:text-amber-300">Archiving preserves papers, activity, reports, gaps and chat as a read-only record.</p><div className="mt-3 flex flex-wrap gap-2"><Button type="button" variant="outline" size="sm" onClick={() => openConfirmation("archive")} disabled={archiveProject.isPending || project.status === "ARCHIVED"}><Archive className="mr-2 h-4 w-4" />{project.status === "ARCHIVED" ? "Archived" : "Archive project"}</Button><Button type="button" variant="destructive" size="sm" onClick={() => openConfirmation("delete")} disabled={deleteProject.isPending}><Trash2 className="mr-2 h-4 w-4" />Delete permanently</Button></div></div>
+            <DialogFooter><Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button type="submit" disabled={updateProject.isPending || !title.trim()}>{updateProject.isPending ? "Saving..." : "Save changes"}</Button></DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={confirmationAction !== null} onOpenChange={closeConfirmation}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{confirmationAction === "archive" ? "Archive this project?" : confirmationAction === "leave" ? "Leave this project?" : "Permanently delete this project?"}</DialogTitle>
+            <DialogDescription>
+              {confirmationAction === "archive"
+                ? "Members will retain read access, but the workspace becomes read-only. Papers, reports, gaps and chat will be preserved."
+                : confirmationAction === "leave"
+                  ? "You will immediately lose access to private project content and chat. You can be invited again by a project owner."
+                  : "This permanently deletes the project and its project-scoped data. This action cannot be undone."}
+            </DialogDescription>
+          </DialogHeader>
+          {requiresProjectName && <div className="space-y-2">
+            <Label htmlFor="confirm-project-name">To confirm, type <span className="font-semibold text-foreground">{project.title}</span></Label>
+            <Input id="confirm-project-name" value={confirmationText} onChange={(event) => setConfirmationText(event.target.value)} autoComplete="off" autoCapitalize="off" spellCheck={false} />
+          </div>}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => closeConfirmation(false)} disabled={confirmationPending}>Cancel</Button>
+            <Button type="button" variant={confirmationAction === "delete" || confirmationAction === "leave" ? "destructive" : "default"} onClick={confirmProjectAction} disabled={confirmationPending || (requiresProjectName && confirmationText !== project.title)}>
+              {confirmationPending ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />{archiveProject.isPending ? "Archiving…" : deleteProject.isPending ? "Deleting…" : "Leaving…"}</> : confirmationAction === "archive" ? "Archive project" : confirmationAction === "leave" ? "Leave project" : "Delete permanently"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
@@ -273,15 +418,18 @@ function ReportsTab({
 }) {
   const { data: reports, isLoading } = useReports(projectId);
   const createReport = useCreateReport();
+  const updateArtifactStatus = useUpdateArtifactStatus();
 
   const [open, setOpen] = useState(false);
   const [topic, setTopic] = useState(defaultTopic || "");
+  const [reportTitle, setReportTitle] = useState("");
   const [query, setQuery] = useState("");
   const [language, setLanguage] = useState<ReportLanguage>("auto");
   const [yearFrom, setYearFrom] = useState<string>("");
   const [yearTo, setYearTo] = useState<string>("");
   const [deepAnalysis, setDeepAnalysis] = useState(false);
   const [fast, setFast] = useState(true);
+  const [artifactType, setArtifactType] = useState<ResearchArtifactType>("GENERAL_REPORT");
 
   // Sync openOnInit
   useEffect(() => {
@@ -315,22 +463,26 @@ function ReportsTab({
     try {
       await createReport.mutateAsync({
         query: query.trim(),
+        title: reportTitle.trim() || undefined,
         topic: topic.trim() || undefined,
         language,
         deepAnalysis,
         fast,
         projectId,
+        artifactType,
         yearFrom: fromYear,
         yearTo: toYear
       });
       setOpen(false);
       setTopic(defaultTopic || "");
+      setReportTitle("");
       setQuery("");
       setYearFrom("");
       setYearTo("");
       setLanguage("auto");
       setDeepAnalysis(false);
       setFast(true);
+      setArtifactType("GENERAL_REPORT");
       toast.success("Report generation started");
     } catch (error: any) {
       console.error("Failed to create report:", error);
@@ -355,6 +507,13 @@ function ReportsTab({
               </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
+              <div className="flex flex-col gap-2"><Label htmlFor="report-title">Title</Label><Input id="report-title" value={reportTitle} onChange={(event) => setReportTitle(event.target.value)} maxLength={240} placeholder="e.g. Evidence synthesis for adaptive learning" /></div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="artifact-type">Artifact type</Label>
+                <select id="artifact-type" value={artifactType} onChange={(event) => setArtifactType(event.target.value as ResearchArtifactType)} className="h-10 rounded-md border bg-background px-3 text-sm">
+                  <option value="LITERATURE_REVIEW">Literature review</option><option value="EVIDENCE_SYNTHESIS">Evidence synthesis</option><option value="GAP_ANALYSIS">Gap analysis</option><option value="RESEARCH_PROPOSAL">Research proposal</option><option value="RESEARCH_PLAN">Research plan</option><option value="GENERAL_REPORT">General report</option>
+                </select>
+              </div>
               <div className="flex flex-col gap-2">
                 <Label htmlFor="topic">Topic / Keyword</Label>
                 <Input
@@ -473,12 +632,14 @@ function ReportsTab({
                 </div>
                 <div className="min-w-0">
                   <Link to={`/reports/${report.id}`} className="font-semibold hover:text-primary transition-colors block truncate">
-                    {report.topic || 'AI Report'}
+                    {report.title || report.topic || 'AI Report'}
                   </Link>
                   <p className="text-sm text-muted-foreground line-clamp-1 mt-1 max-w-xl">{report.query}</p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2"><Badge variant="outline">{report.artifactType?.replaceAll("_", " ") || "GENERAL REPORT"}</Badge>{report.isAiGenerated ? <Badge variant="secondary">AI-generated draft</Badge> : null}<select aria-label={`Artifact status for ${report.topic || "report"}`} value={report.artifactStatus || "DRAFT"} onChange={async (event) => { try { await updateArtifactStatus.mutateAsync({ id: report.id, status: event.target.value as "DRAFT" | "REVIEWING" | "FINAL" | "ARCHIVED" }); toast.success("Artifact status updated"); } catch { toast.error("Could not update artifact status"); } }} className="h-7 rounded-md border bg-background px-2 text-xs"><option value="DRAFT">Draft</option><option value="REVIEWING">Reviewing</option><option value="FINAL">Final</option><option value="ARCHIVED">Archived</option></select></div>
                 </div>
               </div>
               <div className="flex items-center gap-6 w-full sm:w-auto sm:justify-end ml-14 sm:ml-0">
+                {report.status === "ready" && report.artifactStatus !== "ARCHIVED" ? <SubmitReviewDialog reportId={report.id} artifactTitle={report.title || report.topic || "Research artifact"} artifactType={report.artifactType} trigger={<Button size="sm" variant="outline">Submit for Review</Button>} /> : null}
                 <Badge
                   variant={report.status === 'ready' ? 'default' : report.status === 'failed' ? 'destructive' : 'secondary'}
                   className={`rounded-full ${report.status === 'ready' ? 'bg-emerald-500 hover:bg-emerald-600 text-white border-transparent' : ''}`}
@@ -497,9 +658,9 @@ function ReportsTab({
           <div className="flex h-16 w-16 items-center justify-center rounded-full bg-background shadow-sm mb-4">
             <FileText className="h-6 w-6 text-muted-foreground/60" />
           </div>
-          <h4 className="text-lg font-semibold tracking-tight mb-2">No reports yet</h4>
+          <h4 className="text-lg font-semibold tracking-tight mb-2">No research artifacts yet</h4>
           <p className="text-sm text-muted-foreground max-w-sm mb-6">
-            Generate an AI report to analyze papers and extract useful insights for this project.
+            Create a research artifact from your project evidence and analysis.
           </p>
           <Button onClick={() => setOpen(true)} variant="outline" className="rounded-full shadow-sm">
             <Plus className="w-4 h-4 mr-2" />
@@ -623,7 +784,7 @@ function GapsTab({
   return (
     <div className="space-y-4 mt-2">
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6">
-        <h3 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Research Gaps</h3>
+        <div><h3 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Candidate Research Gaps</h3><p className="mt-1 text-sm text-muted-foreground">AI-assisted results are candidates for review, not validated research conclusions.</p></div>
 
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-3 bg-white dark:bg-zinc-900 px-4 py-1.5 rounded-full border border-slate-200/60 dark:border-white/10 shadow-sm">
@@ -718,12 +879,7 @@ function GapsTab({
                   <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-cyan-50 dark:bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 transition-transform group-hover:scale-110 duration-500">
                     <Sparkles className="h-6 w-6" />
                   </div>
-                  <Badge
-                    variant={gap.status === 'dismissed' ? 'secondary' : 'outline'}
-                    className={`text-[10px] rounded-full px-2.5 py-0.5 font-bold uppercase tracking-wider shrink-0 shadow-sm ${gap.status === 'active' ? 'text-slate-500 border-slate-200 dark:border-zinc-700' : gap.status === 'resolved' ? 'bg-emerald-500 hover:bg-emerald-600 text-white border-transparent' : 'text-slate-500 border-slate-200 dark:border-zinc-700'}`}
-                  >
-                    {gap.status}
-                  </Badge>
+                  <Badge variant="outline" className={`text-[10px] rounded-full px-2.5 py-0.5 font-bold uppercase tracking-wider shrink-0 shadow-sm ${gap.validationStatus === "VALIDATED" ? "border-emerald-300 bg-emerald-50 text-emerald-700 dark:bg-emerald-950" : "border-amber-200 bg-amber-50 text-amber-700 dark:bg-amber-950"}`}>{(gap.validationStatus || "CANDIDATE").replaceAll("_", " ")}</Badge>
                 </div>
                 <h4 className="font-bold text-slate-900 dark:text-white text-lg tracking-tight group-hover:text-cyan-600 dark:group-hover:text-cyan-400 transition-colors mb-2">
                   {gap.title}
@@ -757,9 +913,9 @@ function GapsTab({
           <div className="flex h-16 w-16 items-center justify-center rounded-full bg-background shadow-sm mb-4">
             <Sparkles className="h-6 w-6 text-muted-foreground/60" />
           </div>
-          <h4 className="text-lg font-semibold tracking-tight mb-2">No research gaps yet</h4>
+          <h4 className="text-lg font-semibold tracking-tight mb-2">No candidate research gaps yet</h4>
           <p className="text-sm text-muted-foreground max-w-sm mb-6">
-            Run gap analysis to discover research opportunities and missing literature.
+            Candidate research gaps will appear after the project has sufficient screened literature and evidence.
           </p>
           <Button onClick={() => setOpen(true)} variant="outline" className="rounded-full shadow-sm">
             <Sparkles className="w-4 h-4 mr-2 text-cyan-500" />
@@ -771,335 +927,33 @@ function GapsTab({
   );
 }
 
-function PapersTab({
-  projectId,
-  papers,
-  currentUserId,
-  ownerId,
-  onNavigateToReports,
-  onNavigateToGaps
-}: {
-  projectId: string;
-  papers: any[];
-  currentUserId?: string;
-  ownerId: string;
-  onNavigateToReports: () => void;
-  onNavigateToGaps: () => void;
-}) {
+function MembersTab({ projectId, members, pendingInvitations, ownerId, currentUserId }: { projectId: string; members: any[]; pendingInvitations: IProject["pendingInvitations"]; ownerId: string; currentUserId?: string }) {
   const isCurrentUserOwner = currentUserId === ownerId;
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [searchTitle, setSearchTitle] = useState("");
-  const [selectedPaper, setSelectedPaper] = useState<{ id: string; title: string; year?: number; score?: number } | null>(null);
-
-  const { data: searchResults, isLoading: isSearching } = useSearchPapers(searchTitle);
-  const getPaperScore = (p: any) => p.score ?? p.aiScore?.finalScore ?? p.dataQualityScore ?? 0;
-  const sortedSearchResults = searchResults ? [...searchResults].sort((a, b) => getPaperScore(b) - getPaperScore(a)) : [];
-  const addPaper = useAddPaperToProject(projectId);
-  const removePaper = useRemovePaperFromProject(projectId);
-
-  // PR2: Checkbox selection states
-  const [selectedPaperIds, setSelectedPaperIds] = useState<string[]>([]);
-
-  // PR2: Paper comparison states
-  const [comparePaperIds, setComparePaperIds] = useState<string[]>([]);
-  const [isCompareOpen, setIsCompareOpen] = useState(false);
-  const { data: comparisonData, isLoading: isComparing, isError: isCompareError } = useComparePapers(isCompareOpen ? comparePaperIds : []);
-
-  // Clear selections when papers change
-  useEffect(() => {
-    setSelectedPaperIds([]);
-  }, [papers]);
-
-  const toggleSelectPaper = (paperId: string) => {
-    setSelectedPaperIds(prev =>
-      prev.includes(paperId) ? prev.filter(id => id !== paperId) : [...prev, paperId]
-    );
-  };
-
-  const handleAdd = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedPaper) return toast.error("Please select a paper");
-    try {
-      await addPaper.mutateAsync({ paperId: selectedPaper.id });
-      toast.success("Paper added successfully");
-      setIsDialogOpen(false);
-      setSelectedPaper(null);
-      setSearchTitle("");
-    } catch (err) {
-      toast.error("Failed to add paper. It may already exist in the project.");
-    }
-  };
-
-  const [paperToDelete, setPaperToDelete] = useState<string | null>(null);
-
-  const handleRemove = async () => {
-    if (!paperToDelete) return;
-    try {
-      await removePaper.mutateAsync(paperToDelete);
-      toast.success("Paper removed");
-    } catch (err) {
-      toast.error("Failed to remove paper");
-    } finally {
-      setPaperToDelete(null);
-    }
-  };
-
-  return (
-    <div className="space-y-4 mt-2">
-      <div className="flex justify-between items-center mb-6">
-        <h3 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Collected Papers</h3>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogTrigger asChild>
-            <Button size="sm" className="rounded-full shadow-sm"><Plus className="w-4 h-4 mr-2" /> Add Paper</Button>
-          </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Add Paper</DialogTitle>
-                <DialogDescription>Search and add papers to this project.</DialogDescription>
-              </DialogHeader>
-              <form onSubmit={handleAdd} className="space-y-4 pt-4">
-                <div className="space-y-2 relative">
-                  <Label>Search paper by title</Label>
-                  {selectedPaper ? (
-                    <div className="flex items-center justify-between p-2 border rounded-md bg-secondary/20">
-                      <div className="text-sm">
-                        <p className="font-medium line-clamp-2">{selectedPaper.title}</p>
-                        <div className="flex gap-4 mt-1">
-                          <p className="text-muted-foreground text-xs">Year: {selectedPaper.year ?? "N/A"}</p>
-                          <p className="text-cyan-600 dark:text-cyan-400 text-xs font-semibold">Score: {selectedPaper.score?.toFixed(2) ?? "N/A"}</p>
-                        </div>
-                      </div>
-                      <Button type="button" variant="ghost" size="sm" onClick={() => setSelectedPaper(null)}>Change</Button>
-                    </div>
-                  ) : (
-                    <div>
-                      <Input
-                        value={searchTitle}
-                        onChange={(e) => setSearchTitle(e.target.value)}
-                        placeholder="e.g. LLM in education..."
-                        autoComplete="off"
-                      />
-                      {searchTitle.length > 2 && (
-                        <div className="absolute z-10 w-full mt-1 bg-background border rounded-md shadow-md max-h-60 overflow-auto">
-                          {isSearching ? (
-                            <div className="p-3 text-sm text-muted-foreground">Searching...</div>
-                          ) : sortedSearchResults.length === 0 ? (
-                            <div className="p-3 text-sm text-muted-foreground">Paper not found.</div>
-                          ) : (
-                            sortedSearchResults.map((p: any) => {
-                               const score = getPaperScore(p);
-                               return (
-                                 <div
-                                   key={p.id}
-                                   className="p-3 hover:bg-secondary cursor-pointer border-b last:border-0 flex justify-between items-start"
-                                   onClick={() => setSelectedPaper({ id: p.id, title: p.title, year: p.publicationYear ?? p.year, score })}
-                                 >
-                                   <div>
-                                     <p className="font-medium text-sm line-clamp-2">{p.title}</p>
-                                     <p className="text-muted-foreground text-xs mt-1">Year: {p.publicationYear ?? p.year ?? "N/A"}</p>
-                                   </div>
-                                   <div className="text-xs font-bold text-cyan-600 dark:text-cyan-400 shrink-0 ml-2 bg-cyan-50 dark:bg-cyan-900/30 px-2 py-1 rounded">
-                                     Score: {score.toFixed(2)}
-                                   </div>
-                                 </div>
-                               );
-                            })
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-                <DialogFooter>
-                  <Button type="button" variant="outline" onClick={() => { setIsDialogOpen(false); setSelectedPaper(null); setSearchTitle(""); }}>Cancel</Button>
-                  <Button type="submit" disabled={addPaper.isPending || !selectedPaper}>
-                    {addPaper.isPending ? "Adding..." : "Add"}
-                  </Button>
-                </DialogFooter>
-              </form>
-            </DialogContent>
-          </Dialog>
-      </div>
-
-      {/* PR2: Bulk Action Bar */}
-      {selectedPaperIds.length > 0 && (
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/50 p-4 rounded-xl shadow-sm gap-4 transition-all duration-200">
-          <span className="text-xs font-bold text-indigo-700 dark:text-indigo-400 tracking-wider uppercase font-mono">
-            {selectedPaperIds.length} paper{selectedPaperIds.length > 1 ? "s" : ""} selected
-          </span>
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={selectedPaperIds.length < 2 || selectedPaperIds.length > 4}
-              onClick={() => {
-                setComparePaperIds(selectedPaperIds);
-                setIsCompareOpen(true);
-              }}
-              className="h-8 text-xs font-bold gap-1.5 border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/50"
-            >
-              <Sparkles className="w-3.5 h-3.5" /> Compare Selected
-            </Button>
-            <Button
-              size="sm"
-              onClick={onNavigateToReports}
-              className="h-8 text-xs font-bold gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white"
-            >
-              <FileText className="w-3.5 h-3.5" /> Generate Report
-            </Button>
-            <Button
-              size="sm"
-              onClick={onNavigateToGaps}
-              className="h-8 text-xs font-bold gap-1.5 bg-cyan-600 hover:bg-cyan-700 text-white border-0"
-            >
-              <Zap className="w-3.5 h-3.5" /> Analyze Gaps
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* PR2: Paper Comparison Dialog */}
-      <Dialog open={isCompareOpen} onOpenChange={setIsCompareOpen}>
-        <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-indigo-900 dark:text-indigo-100">
-              <Sparkles className="w-5 h-5 text-indigo-500" />
-              Cross-Paper AI Comparison
-            </DialogTitle>
-            <DialogDescription>
-              AI-generated comparison of key research findings, methodologies, and outcomes.
-            </DialogDescription>
-          </DialogHeader>
-
-          {isComparing ? (
-            <div className="py-20 flex flex-col items-center justify-center gap-4">
-              <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
-              <p className="text-sm text-slate-500 font-medium">Gemini is analyzing and cross-comparing papers...</p>
-            </div>
-          ) : isCompareError ? (
-            <div className="py-12 text-center text-red-500 font-medium">
-              Failed to load paper comparison. Please try again.
-            </div>
-          ) : comparisonData ? (
-            <div className="mt-4">
-              <CompareTable comparison={comparisonData} />
-            </div>
-          ) : null}
-          <DialogFooter>
-            <Button onClick={() => setIsCompareOpen(false)}>Close</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={!!paperToDelete} onOpenChange={(open) => !open && setPaperToDelete(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Remove Paper</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to remove this paper from the project?
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setPaperToDelete(null)} disabled={removePaper.isPending}>Cancel</Button>
-            <Button variant="destructive" onClick={handleRemove} disabled={removePaper.isPending}>
-              {removePaper.isPending ? "Removing..." : "Remove"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {papers?.length === 0 ? (
-        <div className="mt-8 flex flex-col items-center justify-center rounded-3xl border border-dashed bg-muted/20 px-6 py-20 text-center">
-          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-background shadow-sm mb-4">
-            <FileText className="h-6 w-6 text-muted-foreground/60" />
-          </div>
-          <h4 className="text-lg font-semibold tracking-tight mb-2">No papers yet</h4>
-          <p className="text-sm text-muted-foreground max-w-sm">
-            Add relevant papers to the project for AI analysis and reference.
-          </p>
-        </div>
-      ) : (
-        <div className="grid gap-4 md:grid-cols-2 mt-4">
-          {papers.map((p) => {
-            const paperObj = typeof p.targetId === 'object' && p.targetId !== null ? p.targetId : null;
-            const paperId = paperObj ? paperObj._id : p.targetId;
-            const isSelected = selectedPaperIds.includes(paperId);
-            return (
-              <div
-                key={paperId}
-                className={`flex flex-row justify-between items-center rounded-2xl border p-5 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-indigo-500/5 group relative overflow-hidden ${
-                  isSelected ? "border-indigo-500 bg-indigo-50/10 dark:bg-indigo-950/5 ring-1 ring-indigo-500" : "border-slate-200/60 dark:border-white/10 bg-white dark:bg-zinc-900 hover:border-indigo-500/30"
-                }`}
-              >
-                {/* Checkbox Selector */}
-                <div className="flex items-center pr-2 relative z-10">
-                  <input
-                    type="checkbox"
-                    checked={isSelected}
-                    onChange={() => toggleSelectPaper(paperId)}
-                    className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                  />
-                </div>
-
-                <div className="flex items-start gap-4 flex-1 min-w-0 pr-4 ml-2">
-                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-500 transition-colors group-hover:bg-indigo-100 dark:group-hover:bg-indigo-500/20">
-                    <FileText className="w-5 h-5" />
-                  </div>
-                  <div className="min-w-0 flex-1 pt-0.5">
-                    {paperObj ? (
-                      <>
-                        <h4 className="text-base font-bold text-slate-900 dark:text-white leading-tight truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
-                          <Link to={`/papers/${paperId}`} className="hover:underline decoration-indigo-300 underline-offset-2">{paperObj.title}</Link>
-                        </h4>
-                        <p className="text-sm text-slate-500 dark:text-slate-400 mt-2 flex items-center gap-2">
-                           <span className="bg-slate-100 dark:bg-white/5 px-2 py-0.5 rounded text-xs font-semibold">{paperObj.publicationYear || "N/A"}</span>
-                           <span className="opacity-50">•</span>
-                           <span className="truncate">{paperObj.authors?.map((a: any) => a.displayName).slice(0, 2).join(", ")}{paperObj.authors?.length > 2 ? " et al." : ""}</span>
-                        </p>
-                      </>
-                    ) : (
-                      <>
-                        <h4 className="text-base font-bold text-slate-900 dark:text-white leading-tight truncate">
-                          Unknown Paper (ID: <span className="font-mono text-slate-400 text-sm">{paperId}</span>)
-                        </h4>
-                      </>
-                    )}
-                  </div>
-                </div>
-                <Button variant="ghost" size="icon" className="relative z-10 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10 shrink-0 h-9 w-9 rounded-full opacity-0 group-hover:opacity-100 transition-all duration-300" onClick={() => setPaperToDelete(paperId)}>
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function MembersTab({ projectId, members, ownerId, currentUserId }: { projectId: string; members: any[]; ownerId: string; currentUserId?: string }) {
-  const isCurrentUserOwner = currentUserId === ownerId;
+  const { t } = useI18n();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [searchEmail, setSearchEmail] = useState("");
   const [selectedUser, setSelectedUser] = useState<{ id: string; fullName: string; email: string } | null>(null);
-  const [role, setRole] = useState<"owner" | "member">("member");
+  const [invitationMessage, setInvitationMessage] = useState("");
 
   const { data: searchResults, isLoading: isSearching } = useSearchUsers(searchEmail);
-  const addMember = useAddMemberToProject(projectId);
+  const inviteMember = useInviteProjectMember(projectId);
+  const cancelInvitation = useCancelProjectInvitation(projectId);
   const removeMember = useRemoveMemberFromProject(projectId);
+  const transferOwnership = useTransferProjectOwnership(projectId);
+  const [memberToTransfer, setMemberToTransfer] = useState<{ id: string; name: string } | null>(null);
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedUser) return toast.error("Please select a user");
+    if (!selectedUser && !searchEmail.trim()) return toast.error("Select a LumiGap user or enter an email address");
     try {
-      await addMember.mutateAsync({ targetId: selectedUser.id, targetKind: "User", role });
-      toast.success("Member added successfully");
+      await inviteMember.mutateAsync({ userId: selectedUser?.id, email: selectedUser ? undefined : searchEmail.trim(), message: invitationMessage.trim() || undefined });
+      toast.success("Invitation sent");
       setIsDialogOpen(false);
       setSelectedUser(null);
       setSearchEmail("");
-    } catch (err) {
-      toast.error("Failed to add member.");
+      setInvitationMessage("");
+    } catch {
+      toast.error("Could not send the invitation");
     }
   };
 
@@ -1110,10 +964,21 @@ function MembersTab({ projectId, members, ownerId, currentUserId }: { projectId:
     try {
       await removeMember.mutateAsync(memberToDelete);
       toast.success("Member removed");
-    } catch (err) {
+    } catch {
       toast.error("Failed to remove member");
     } finally {
       setMemberToDelete(null);
+    }
+  };
+
+  const handleTransferOwnership = async () => {
+    if (!memberToTransfer) return;
+    try {
+      await transferOwnership.mutateAsync(memberToTransfer.id);
+      toast.success("Ownership transferred");
+      setMemberToTransfer(null);
+    } catch {
+      toast.error("Could not transfer ownership");
     }
   };
 
@@ -1134,15 +999,8 @@ function MembersTab({ projectId, members, ownerId, currentUserId }: { projectId:
               <form onSubmit={handleAdd} className="space-y-4 pt-4">
                 <div className="grid grid-cols-1 gap-4">
                   <div className="space-y-2">
-                    <Label>Role</Label>
-                    <select
-                      className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                      value={role}
-                      onChange={(e) => setRole(e.target.value as any)}
-                    >
-                      <option value="member">Member</option>
-                      <option value="owner">Owner</option>
-                    </select>
+                    <Label>Project role</Label>
+                    <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm"><span className="font-medium">Member</span><p className="mt-0.5 text-xs text-muted-foreground">Academic position does not change project permissions.</p></div>
                   </div>
                 </div>
                 <div className="space-y-2 relative">
@@ -1186,10 +1044,11 @@ function MembersTab({ projectId, members, ownerId, currentUserId }: { projectId:
                     </div>
                   )}
                 </div>
+                <div className="space-y-2"><Label htmlFor="invitation-message">Invitation message <span className="text-muted-foreground">(optional)</span></Label><textarea id="invitation-message" value={invitationMessage} onChange={(event) => setInvitationMessage(event.target.value)} maxLength={1000} className="min-h-20 w-full rounded-md border bg-background px-3 py-2 text-sm" placeholder="Add context about the project and expected collaboration." /></div>
                 <DialogFooter>
-                  <Button type="button" variant="outline" onClick={() => { setIsDialogOpen(false); setSelectedUser(null); setSearchEmail(""); }}>Cancel</Button>
-                  <Button type="submit" disabled={addMember.isPending || !selectedUser}>
-                    {addMember.isPending ? "Adding..." : "Add"}
+                  <Button type="button" variant="outline" onClick={() => { setIsDialogOpen(false); setSelectedUser(null); setSearchEmail(""); setInvitationMessage(""); }}>Cancel</Button>
+                  <Button type="submit" disabled={inviteMember.isPending || (!selectedUser && !searchEmail.trim())}>
+                    {inviteMember.isPending ? "Sending..." : "Send invitation"}
                   </Button>
                 </DialogFooter>
               </form>
@@ -1215,14 +1074,40 @@ function MembersTab({ projectId, members, ownerId, currentUserId }: { projectId:
         </DialogContent>
       </Dialog>
 
+      <Dialog open={memberToTransfer !== null} onOpenChange={(open) => { if (!open && !transferOwnership.isPending) setMemberToTransfer(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Transfer project ownership?</DialogTitle>
+            <DialogDescription>
+              {memberToTransfer ? t("{{name}} will become the project owner. You will become a regular member and lose owner-only controls.", { name: memberToTransfer.name }) : null}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setMemberToTransfer(null)} disabled={transferOwnership.isPending}>Cancel</Button>
+            <Button type="button" onClick={handleTransferOwnership} disabled={transferOwnership.isPending}>
+              {transferOwnership.isPending ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Transferring…</> : "Transfer ownership"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {isCurrentUserOwner && pendingInvitations && pendingInvitations.length > 0 ? (
+        <section className="space-y-3">
+          <div><h4 className="font-semibold">Pending invitations</h4><p className="text-sm text-muted-foreground">Invitations expire automatically after 14 days.</p></div>
+          <div className="divide-y rounded-xl border bg-card">
+            {pendingInvitations.map((invitation) => <div key={invitation.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-sm font-medium">{invitation.invitedUser?.fullName || invitation.email}</p><p className="text-xs text-muted-foreground">{invitation.email} · expires {new Date(invitation.expiresAt).toLocaleDateString()}</p></div><Button size="sm" variant="outline" disabled={cancelInvitation.isPending} onClick={async () => { try { await cancelInvitation.mutateAsync(invitation.id); toast.success("Invitation cancelled"); } catch { toast.error("Could not cancel invitation"); } }}>Cancel invitation</Button></div>)}
+          </div>
+        </section>
+      ) : null}
+
       {members?.length === 0 ? (
         <div className="mt-8 flex flex-col items-center justify-center rounded-3xl border border-dashed bg-muted/20 px-6 py-20 text-center">
           <div className="flex h-16 w-16 items-center justify-center rounded-full bg-background shadow-sm mb-4">
             <Users className="h-6 w-6 text-muted-foreground/60" />
           </div>
-          <h4 className="text-lg font-semibold tracking-tight mb-2">No members yet</h4>
+          <h4 className="text-lg font-semibold tracking-tight mb-2">Invite researchers to collaborate on this project.</h4>
           <p className="text-sm text-muted-foreground max-w-sm">
-            Invite colleagues or experts to collaborate on the project.
+            Pending invitations and active members will appear here.
           </p>
         </div>
       ) : (
@@ -1246,8 +1131,8 @@ function MembersTab({ projectId, members, ownerId, currentUserId }: { projectId:
                         <p className="text-sm text-slate-500 dark:text-slate-400 flex flex-wrap items-center gap-x-2 gap-y-1 mt-1">
                           <span className="truncate max-w-full">{memberObj.email}</span>
                           <span className="opacity-30 text-xs hidden sm:inline">•</span>
-                          <span className={`capitalize font-bold text-xs px-2 py-0.5 rounded-md shrink-0 ${m.role === 'owner' ? 'bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-900/50' : 'bg-purple-50 dark:bg-purple-500/10 text-purple-700 dark:text-purple-400 border border-purple-200 dark:border-purple-900/50'}`}>
-                            {m.role === 'owner' ? 'Owner' : 'Member'}
+                          <span className={`capitalize font-bold text-xs px-2 py-0.5 rounded-md shrink-0 ${m.role === 'OWNER' ? 'bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-900/50' : 'bg-purple-50 dark:bg-purple-500/10 text-purple-700 dark:text-purple-400 border border-purple-200 dark:border-purple-900/50'}`}>
+                            {m.role === 'OWNER' ? 'Owner' : 'Member'}
                           </span>
                           {isPrimaryOwner && <span className="text-[10px] uppercase font-black shrink-0 bg-amber-500 text-white px-2 py-0.5 rounded shadow-sm tracking-wider">Creator</span>}
                         </p>
@@ -1258,8 +1143,8 @@ function MembersTab({ projectId, members, ownerId, currentUserId }: { projectId:
                           {m.targetKind} <span className="font-mono text-slate-400 text-xs font-normal ml-2">(ID: {memberId})</span>
                         </h4>
                         <p className="text-sm text-slate-500 dark:text-slate-400 flex flex-wrap items-center gap-x-2 gap-y-1 mt-1">
-                          <span className={`capitalize font-bold text-xs px-2 py-0.5 rounded-md shrink-0 ${m.role === 'owner' ? 'bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-900/50' : 'bg-purple-50 dark:bg-purple-500/10 text-purple-700 dark:text-purple-400 border border-purple-200 dark:border-purple-900/50'}`}>
-                            {m.role === 'owner' ? 'Owner' : 'Member'}
+                          <span className={`capitalize font-bold text-xs px-2 py-0.5 rounded-md shrink-0 ${m.role === 'OWNER' ? 'bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-900/50' : 'bg-purple-50 dark:bg-purple-500/10 text-purple-700 dark:text-purple-400 border border-purple-200 dark:border-purple-900/50'}`}>
+                            {m.role === 'OWNER' ? 'Owner' : 'Member'}
                           </span>
                           {isPrimaryOwner && <span className="text-[10px] uppercase font-black shrink-0 bg-amber-500 text-white px-2 py-0.5 rounded shadow-sm tracking-wider">Creator</span>}
                         </p>
@@ -1268,9 +1153,10 @@ function MembersTab({ projectId, members, ownerId, currentUserId }: { projectId:
                   </div>
                 </div>
                 {isCurrentUserOwner && !isPrimaryOwner && (
-                  <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 shrink-0 h-8 w-8 rounded-full ml-4" onClick={() => setMemberToDelete(memberId)}>
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                  <div className="ml-4 flex shrink-0 gap-1">
+                    <Button variant="ghost" size="icon" title="Transfer ownership" disabled={transferOwnership.isPending} className="h-8 w-8 rounded-full text-muted-foreground hover:text-amber-700" onClick={() => setMemberToTransfer({ id: memberId, name: memberObj?.fullName || "this member" })}><ShieldCheck className="h-4 w-4" /></Button>
+                    <Button variant="ghost" size="icon" title="Remove member" className="h-8 w-8 rounded-full text-muted-foreground hover:bg-destructive/10 hover:text-destructive" onClick={() => setMemberToDelete(memberId)}><Trash2 className="h-4 w-4" /></Button>
+                  </div>
                 )}
               </div>
             );

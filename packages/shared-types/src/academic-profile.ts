@@ -1,11 +1,19 @@
 import type { ISODateString } from "./common.js";
-import type { AcademicProfileType, PrimaryPosition, VerificationStatus } from "./user.js";
+import type { AcademicProfileType, AcademicRole, PrimaryPosition, VerificationStatus } from "./user.js";
 
 export type AcademicVerificationStatus = "SELF_DECLARED" | "PENDING" | "VERIFIED" | "REJECTED";
 export type AcademicProfileVisibility = "PUBLIC" | "MEMBERS_ONLY" | "PRIVATE";
 export type ProfileFieldVisibility = "PUBLIC" | "REGISTERED_USERS" | "PRIVATE";
 export type AcademicPositionCategory = "STUDENT" | "LECTURER" | "RESEARCH_STAFF" | "UNCLASSIFIED";
 export type AcademicPositionSource = "PREDEFINED" | "CUSTOM";
+export const ACADEMIC_BIOGRAPHY_MAX_WORDS = 500;
+export const ACADEMIC_BIOGRAPHY_MAX_CHARACTERS = 10000;
+
+export function countAcademicBiographyWords(value: string): number {
+  const trimmed = value.trim();
+  return trimmed ? trimmed.split(/\s+/u).length : 0;
+}
+
 export const ACADEMIC_POSITION_OPTIONS = [
   { title: "Student", category: "STUDENT" },
   { title: "Undergraduate Student", category: "STUDENT" },
@@ -75,6 +83,11 @@ export interface AcademicProfilePrivacy {
   orcid: ProfileFieldVisibility;
   researchInterests: ProfileFieldVisibility;
   expertise: ProfileFieldVisibility;
+}
+
+export interface AcademicProfileDiscoverability {
+  showInResearcherSearch: boolean;
+  allowCollaborationRequests: boolean;
 }
 
 export type AcademicVerificationRequestType = "POSITION" | "AFFILIATION";
@@ -221,14 +234,23 @@ export interface AcademicProfile {
   points: number;
   publicHandle?: string;
   academicType: AcademicProfileType;
+  academicRole?: AcademicRole;
+  academicRoleVerificationStatus?: VerificationStatus | "SELF_DECLARED";
   primaryPosition?: PrimaryPosition;
   positionTitle?: string;
   positionCategory: AcademicPositionCategory;
   positionSource: AcademicPositionSource;
   displayName: string;
+  displayNamePolicy?: {
+    maxChanges: number;
+    remainingChanges: number;
+    windowDays: number;
+    nextAvailableAt?: ISODateString;
+  };
   avatarUrl?: string;
   coverUrl?: string;
   profileVisibility: AcademicProfileVisibility;
+  discoverability: AcademicProfileDiscoverability;
   headline?: string;
   biography?: string;
   /** @deprecated Use biography. Kept while existing clients migrate. */
@@ -270,7 +292,7 @@ export interface AcademicProfile {
 
 export interface PublicAcademicProfile extends Omit<
   AcademicProfile,
-  "id" | "institutionalEmail" | "verification" | "verificationEvidence" | "verificationRequests" | "profileHistory" | "privacy" | "affiliation" | "affiliationHistory" | "reviewAvailability"
+  "id" | "institutionalEmail" | "displayNamePolicy" | "verification" | "verificationEvidence" | "verificationRequests" | "profileHistory" | "privacy" | "affiliation" | "affiliationHistory" | "reviewAvailability"
 > {
   affiliation: PublicAcademicAffiliation;
   reviewAvailability: Omit<
@@ -301,6 +323,7 @@ export interface UpdateAcademicProfileDetailsRequest {
   headline?: string;
   biography?: string;
   profileVisibility?: AcademicProfileVisibility;
+  discoverability?: Partial<AcademicProfileDiscoverability>;
   privacy?: Partial<AcademicProfilePrivacy>;
   academicTitle?: AcademicTitle | null;
   affiliation?: {

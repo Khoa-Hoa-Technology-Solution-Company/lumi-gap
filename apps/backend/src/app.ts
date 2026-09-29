@@ -4,7 +4,6 @@ import helmet from "helmet";
 import compression from "compression";
 import { pinoHttp } from "pino-http";
 import swaggerUi from "swagger-ui-express";
-import path from "path";
 
 import { env } from "./config/env.js";
 import { logger } from "./infrastructure/logger.js";
@@ -47,6 +46,7 @@ export function createApp(): Express {
         callback(null, isAllowedCorsOrigin(origin, allowedCorsOrigins, env.NODE_ENV));
       },
       credentials: true,
+      exposedHeaders: ["Retry-After"],
     }),
   );
   app.use(compression());

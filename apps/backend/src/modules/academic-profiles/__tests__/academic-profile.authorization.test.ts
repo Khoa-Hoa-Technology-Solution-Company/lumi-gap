@@ -6,7 +6,7 @@ describe("academic verification authorization", () => {
   it("rejects a normal user at the admin verification boundary", () => {
     const middleware = requireSystemRole("ADMIN");
     const next = vi.fn() as NextFunction;
-    middleware({ user: { sub: "user-1", email: "user@example.test", role: "user", systemRole: "RESEARCH_USER" } } as Request, {} as Response, next);
+    middleware({ user: { sub: "user-1", email: "user@example.test", role: "user", systemRole: "USER" } } as Request, {} as Response, next);
     expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 403 }));
   });
 
@@ -17,10 +17,10 @@ describe("academic verification authorization", () => {
     expect(next).toHaveBeenCalledWith();
   });
 
-  it("allows the distinct SUPER_ADMIN system role to review academic verification", () => {
+  it("allows the distinct ADMIN system role to review academic verification", () => {
     const middleware = requireSystemRole("ADMIN");
     const next = vi.fn() as NextFunction;
-    middleware({ user: { sub: "super-1", email: "super@example.test", role: "admin", systemRole: "SUPER_ADMIN" } } as Request, {} as Response, next);
+    middleware({ user: { sub: "super-1", email: "super@example.test", role: "admin", systemRole: "ADMIN" } } as Request, {} as Response, next);
     expect(next).toHaveBeenCalledWith();
   });
 });

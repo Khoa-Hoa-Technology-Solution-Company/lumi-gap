@@ -15,6 +15,7 @@ interface ProjectChatPanelProps {
   currentUserName: string;
   scope?: ProjectChatScope;
   onSwitchToTeamAI?: () => void;
+  onAddPapers?: () => void;
   draft?: string;
   onDraftChange?: (val: string) => void;
 }
@@ -25,6 +26,7 @@ export function ProjectChatPanel({
   currentUserName,
   scope = "private",
   onSwitchToTeamAI,
+  onAddPapers,
   draft,
   onDraftChange,
 }: ProjectChatPanelProps) {
@@ -236,20 +238,35 @@ export function ProjectChatPanel({
               <Loader2 className="mr-2 h-4 w-4 animate-spin text-indigo-600" />
               Loading AI history...
             </div>
+          ) : visibleMessages.length === 0 && paperCount === 0 ? (
+            <div className="flex h-full flex-col items-center justify-center px-4 text-center">
+              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl border border-indigo-100 bg-indigo-50 text-indigo-600 dark:border-indigo-900/50 dark:bg-indigo-950/40 dark:text-indigo-300">
+                <FileText className="h-5 w-5" />
+              </div>
+              <h4 className="text-base font-semibold text-slate-900 dark:text-white">
+                Add papers to start your AI chat
+              </h4>
+              <p className="mt-2 max-w-sm text-sm leading-relaxed text-slate-500 dark:text-slate-400">
+                Search and add papers from LumiGap. Your questions will be grounded in the research you choose.
+              </p>
+              {onAddPapers && (
+                <Button type="button" className="mt-4" onClick={onAddPapers}>
+                  <Search className="mr-2 h-4 w-4" />
+                  Find papers to add
+                </Button>
+              )}
+              <p className="mt-3 text-xs text-slate-400 dark:text-slate-500">
+                Empty projects are blocked before credits are charged.
+              </p>
+            </div>
           ) : visibleMessages.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center text-center">
               <div className="mb-3 rounded-full bg-white dark:bg-zinc-800 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 shadow-sm border border-slate-100/50 dark:border-white/5">
                 No messages yet
               </div>
-              {paperCount === 0 ? (
-                <p className="max-w-sm text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                  Add papers before asking AI. Empty projects are blocked before credits are charged.
-                </p>
-              ) : (
-                <p className="max-w-sm text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                  Ask questions about methodologies, limitations, trends, or gaps in your project's papers.
-                </p>
-              )}
+              <p className="max-w-sm text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                Ask questions about methodologies, limitations, trends, or gaps in your project's papers.
+              </p>
             </div>
           ) : (
             visibleMessages.map((item) => {
@@ -421,6 +438,12 @@ export function ProjectChatPanel({
                 );
               }
             })
+          )}
+          {!historyQuery.isLoading && visibleMessages.length > 0 && paperCount === 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm dark:border-amber-900/60 dark:bg-amber-950/20">
+              <span className="text-amber-900 dark:text-amber-200">Add a paper to continue asking AI about this project.</span>
+              {onAddPapers && <Button type="button" size="sm" variant="outline" onClick={onAddPapers}><Search className="mr-2 h-4 w-4" />Find papers</Button>}
+            </div>
           )}
           {sendMutation.isPending && (
             <div className="flex justify-start gap-3">

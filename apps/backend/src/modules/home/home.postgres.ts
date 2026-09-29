@@ -54,7 +54,7 @@ async function resolveUserId(publicId: string): Promise<string | null> {
 async function getWorkspaceSnapshot(userId: string): Promise<NonNullable<HomeOverview["workspace"]>> {
   const prisma = getPrisma();
   const memberships = await prisma.projectMember.findMany({
-    where: { userId, status: "active" },
+    where: { userId, status: "ACTIVE" },
     select: { projectId: true },
   });
   const memberProjectIds = memberships.map((row) => row.projectId);

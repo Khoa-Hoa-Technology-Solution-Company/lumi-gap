@@ -1,6 +1,8 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useState } from "react";
+import { ArrowLeft, Info } from "lucide-react";
 import { toast } from "sonner";
 import type { AxiosError } from "axios";
 import logoImage from "@/assets/logo.png";
@@ -16,7 +18,10 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import { PasswordInput } from "./password-input";
 import { authApi, loginSchema, resolvePostAuthPath, useLogin, type LoginFormValues } from "@/features/auth";
+import { storeAuthReturnTo } from "@/features/auth/utils/auth-return";
+import { useI18n } from "@/i18n";
 
 interface LoginFormProps {
   redirectTo?: string;
@@ -30,16 +35,27 @@ export function LoginForm({ redirectTo }: LoginFormProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const login = useLogin();
+  const { t } = useI18n();
+  const [authNotice, setAuthNotice] = useState(false);
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: { email: "", password: "" },
   });
 
+  const startGoogleLogin = () => {
+    const previousLocation = (location.state as LocationState | null)?.from;
+    const requestedPath = previousLocation
+      ? `${previousLocation.pathname}${previousLocation.search ?? ""}${previousLocation.hash ?? ""}`
+      : redirectTo;
+    storeAuthReturnTo(requestedPath);
+    window.location.href = authApi.googleAuthorizationUrl();
+  };
+
   const onSubmit = (values: LoginFormValues) => {
+    setAuthNotice(false);
     login.mutate(values, {
       onSuccess: (data) => {
-        toast.success(`Welcome back, ${data.user.fullName}`);
         const previousLocation = (location.state as LocationState | null)?.from;
         const requestedPath = previousLocation
           ? `${previousLocation.pathname}${previousLocation.search ?? ""}${previousLocation.hash ?? ""}`
@@ -48,15 +64,25 @@ export function LoginForm({ redirectTo }: LoginFormProps) {
         navigate(target, { replace: true });
       },
       onError: (err) => {
-        const axiosErr = err as AxiosError<{ error?: { message?: string } }>;
-        toast.error(axiosErr?.response?.data?.error?.message ?? "Login failed");
+        const axiosErr = err as AxiosError<{ error?: { message?: string }; message?: string }>;
+        if (axiosErr?.response?.status === 401) {
+          setAuthNotice(true);
+          return;
+        }
+        if (axiosErr?.response?.status === 429) {
+          const rateMsg = axiosErr.response?.data?.error?.message ?? axiosErr.response?.data?.message;
+          toast.error(typeof rateMsg === "string" ? rateMsg : t("Too many login attempts. Please wait a moment and try again."));
+          return;
+        }
+        const errorMsg = axiosErr?.response?.data?.error?.message ?? axiosErr?.response?.data?.message;
+        toast.error(typeof errorMsg === "string" ? errorMsg : t("Login failed"));
       },
     });
   };
 
   return (
     <div className="flex flex-col items-center w-full text-slate-900 dark:text-white">
-      <div className="mb-6 flex justify-center">
+      <Link to="/home" className="mb-6 flex justify-center" aria-label="Back to LumiGap home">
         <img
           src={logoImage}
           alt="LumiGap"
@@ -67,7 +93,12 @@ export function LoginForm({ redirectTo }: LoginFormProps) {
           alt="LumiGap"
           className="hidden h-16 w-auto max-w-[260px] object-contain sm:h-20 dark:block"
         />
-      </div>
+      </Link>
+
+      <Link to="/home" className="mb-5 inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 transition-colors hover:text-blue-700 dark:text-slate-400 dark:hover:text-blue-400">
+        <ArrowLeft className="h-4 w-4" />
+        Back to LumiGap home
+      </Link>
 
       <div className="mb-6 space-y-2 text-center w-full">
         <h1 className="text-4xl font-extrabold tracking-tight text-slate-900 dark:text-white">Welcome back!</h1>
@@ -77,9 +108,7 @@ export function LoginForm({ redirectTo }: LoginFormProps) {
         variant="outline"
         className="w-full rounded-xl bg-white dark:bg-[#2a2a2a] border-slate-200 dark:border-[#3a3a3a] hover:bg-slate-50 dark:hover:bg-[#333] text-slate-900 dark:text-white h-12 font-bold shadow-sm"
         type="button"
-        onClick={() => {
-          window.location.href = authApi.googleAuthorizationUrl();
-        }}
+        onClick={startGoogleLogin}
       >
         <svg className="mr-2 h-5 w-5" viewBox="0 0 24 24">
           <path
@@ -99,7 +128,7 @@ export function LoginForm({ redirectTo }: LoginFormProps) {
             fill="#EA4335"
           />
         </svg>
-        Google
+        {t("Continue with Google")}
       </Button>
 
       <div className="relative my-8 w-full">
@@ -143,20 +172,39 @@ export function LoginForm({ redirectTo }: LoginFormProps) {
                 <FormItem>
                   <FormLabel className="text-sm font-bold text-slate-900 dark:text-white">Password <span className="text-red-500">*</span></FormLabel>
                   <FormControl>
-                    <div className="relative">
-                      <Input
-                        className="rounded-xl h-12 bg-white dark:bg-[#2a2a2a] border-slate-300 dark:border-[#3a3a3a] text-slate-900 dark:text-gray-100 focus-visible:ring-[#42bdf5] pr-10 placeholder:text-slate-400 dark:placeholder:text-gray-500 shadow-sm"
-                        type="password"
-                        autoComplete="current-password"
-                        placeholder="********"
-                        {...field}
-                      />
-                    </div>
+                    <PasswordInput
+                      className="h-12 rounded-xl border-slate-300 bg-white text-slate-900 shadow-sm placeholder:text-slate-400 focus-visible:ring-[#42bdf5] dark:border-[#3a3a3a] dark:bg-[#2a2a2a] dark:text-gray-100 dark:placeholder:text-gray-500"
+                      autoComplete="current-password"
+                      maxLength={128}
+                      placeholder="********"
+                      {...field}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
+
+            {authNotice && (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100" role="alert">
+                <div className="flex gap-3">
+                  <Info className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600 dark:text-amber-300" />
+                  <div className="space-y-3">
+                    <p className="leading-6">
+                      {t("We could not sign you in with that email and password. If you used Google before, choose Continue with Google or request a password reset.")}
+                    </p>
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <Button type="button" size="sm" className="rounded-xl bg-slate-950 text-white hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200" onClick={startGoogleLogin}>
+                        {t("Continue with Google")}
+                      </Button>
+                      <Button type="button" size="sm" variant="outline" className="rounded-xl border-amber-300 bg-white/70 text-amber-950 hover:bg-white dark:border-amber-800 dark:bg-amber-950/20 dark:text-amber-100" onClick={() => navigate("/forgot-password")}>
+                        {t("Reset password")}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div className="flex w-full justify-end pt-1">
               <Link to="/forgot-password" className="text-sm text-[#42bdf5] hover:text-[#20a5e3] transition-colors">
@@ -173,7 +221,10 @@ export function LoginForm({ redirectTo }: LoginFormProps) {
 
       <p className="mt-6 text-center text-sm text-slate-600 dark:text-gray-400">
         Don&apos;t have an account?{" "}
-        <Link to="/register" className="font-bold text-[#42bdf5] hover:text-[#20a5e3] transition-colors">
+        <Link
+          to={redirectTo ? `/register?returnTo=${encodeURIComponent(redirectTo)}` : "/register"}
+          className="font-bold text-[#42bdf5] hover:text-[#20a5e3] transition-colors"
+        >
           Register
         </Link>
       </p>

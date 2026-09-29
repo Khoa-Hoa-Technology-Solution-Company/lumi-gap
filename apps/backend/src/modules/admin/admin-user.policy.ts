@@ -7,11 +7,7 @@ export function assertCanCreateUser(
   actor: { systemRole: string },
   requestedRole: SystemRole,
 ): void {
-  if (actor.systemRole === "SUPER_ADMIN") return;
-  if (actor.systemRole === "ADMIN" && requestedRole === "RESEARCH_USER") return;
-  if (actor.systemRole === "ADMIN") {
-    throw AppError.forbidden("Admins can only create research-user accounts");
-  }
+  if (actor.systemRole === "ADMIN" && requestedRole === "USER") return;
   throw AppError.forbidden();
 }
 
@@ -24,16 +20,9 @@ export function assertCanManageUser(
     throw AppError.badRequest(`You cannot change your own ${action === "UPDATE_ROLE" ? "system role" : "account status"}`);
   }
 
-  if (actor.systemRole === "SUPER_ADMIN") return;
   if (actor.systemRole !== "ADMIN") throw AppError.forbidden();
-  if (target.systemRole !== "RESEARCH_USER") {
-    throw AppError.forbidden("Admins can only manage research-user accounts");
-  }
-  if (action === "UPDATE_ROLE" || action === "UPDATE_PROFILE") {
-    throw AppError.forbidden("Only a super admin can change identity or role data");
-  }
 }
 
 export function legacyRole(systemRole: SystemRole): "admin" | "user" {
-  return systemRole === "RESEARCH_USER" ? "user" : "admin";
+  return systemRole === "USER" ? "user" : "admin";
 }

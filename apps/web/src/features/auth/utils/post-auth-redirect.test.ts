@@ -8,7 +8,7 @@ const member: User = {
   email: "researcher@example.test",
   fullName: "Researcher",
   role: "user",
-  systemRole: "RESEARCH_USER",
+  systemRole: "USER",
   accountStatus: "ACTIVE",
   academicProfileType: "researcher",
   primaryPosition: "RESEARCH_STAFF",
