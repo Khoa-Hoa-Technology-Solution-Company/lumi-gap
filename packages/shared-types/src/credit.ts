@@ -18,6 +18,7 @@ export type CreditAction =
   | "project_chat_message"
   | "paper_request"
   | "paper_download"
+  | "credit_topup"
   | "paper_upload_reward"
   | "paper_review_system_key"
   | "paper_review_personal_key"
@@ -45,6 +46,30 @@ export interface CreditTransaction {
 
 export interface CreditBalance {
   credits: number;
+}
+
+export type PaymentOrderStatus = "pending" | "paid" | "cancelled" | "expired";
+
+export interface PaymentOrder {
+  id: string;
+  orderCode: number;
+  amount: number;
+  credits: number;
+  status: PaymentOrderStatus;
+  checkoutUrl?: string | null;
+  paidAt?: ISODateString | null;
+  createdAt: ISODateString;
+  updatedAt: ISODateString;
+}
+
+export interface CreditSummary {
+  balance: number;
+  totalSpent: number;
+  totalRefunded: number;
+  totalRewards: number;
+  totalPurchased: number;
+  totalTopupVnd: number;
+  transactionCount: number;
 }
 
 /** Credit cost table exposed to frontend for UI display. */

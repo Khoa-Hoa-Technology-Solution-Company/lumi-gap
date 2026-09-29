@@ -85,8 +85,7 @@ export async function optionalAuth(req: Request, _res: Response, next: NextFunct
 export function requireSystemRole(...roles: SystemRole[]) {
   return (req: Request, _res: Response, next: NextFunction) => {
     if (!req.user) return next(AppError.unauthorized());
-    const accepted = roles.includes(req.user.systemRole)
-      || (req.user.systemRole === "SUPER_ADMIN" && roles.includes("ADMIN"));
+    const accepted = roles.includes(req.user.systemRole);
     if (!accepted) return next(AppError.forbidden());
     next();
   };

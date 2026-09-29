@@ -5,6 +5,7 @@ import {
   CreateReportSchema,
   ListReportsQuerySchema,
   PreviewReportEvidenceSchema,
+  UpdateArtifactStatusSchema,
 } from "./dto/report.schema.js";
 
 /**
@@ -56,6 +57,13 @@ export const reportController = {
   /** GET /api/v1/reports/:id — full report, owner only. */
   async getById(req: Request, res: Response) {
     const data = await reportService.getById(req.user!.sub, req.params.id as string);
+    res.json({ success: true, data });
+  },
+
+  async updateArtifactStatus(req: Request, res: Response, next: NextFunction) {
+    const parsed = UpdateArtifactStatusSchema.safeParse(req.body);
+    if (!parsed.success) { next(parsed.error); return; }
+    const data = await reportService.updateArtifactStatus(req.user!.sub, req.params.id as string, parsed.data.status);
     res.json({ success: true, data });
   },
 

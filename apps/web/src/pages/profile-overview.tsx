@@ -5,7 +5,7 @@ import { useCurrentUser } from "@/features/auth";
 import { AcademicProfileView, useAcademicProfile } from "@/features/academic-profile";
 import type { EditSection } from "@/features/academic-profile/components/academic-profile-inline-editor";
 
-const editSections: EditSection[] = ["cover", "intro", "about", "research", "works", "affiliation", "availability", "link"];
+const editSections: EditSection[] = ["cover", "intro", "research", "works", "affiliation", "availability", "link"];
 
 export function ProfilePage() {
   const { data: currentUser, isLoading: userLoading } = useCurrentUser();
@@ -14,7 +14,7 @@ export function ProfilePage() {
   const hasAcademicProfile = Boolean(user?.primaryPosition || user?.onboarding?.completed);
   const { data: profile, isLoading: profileLoading, error } = useAcademicProfile(hasAcademicProfile);
   const requestedSection = searchParams.get("edit");
-  const editingSection = requestedSection === "1" ? "intro"
+  const editingSection = requestedSection === "1" || requestedSection === "about" ? "intro"
     : editSections.find((section) => section === requestedSection) ?? null;
   const setEditing = (section: EditSection | null) => setSearchParams(section ? { edit: section } : {}, { replace: true });
 

@@ -12,7 +12,7 @@ async function ensureAcademicUser(userId: string) {
     where: parsed.kind === "uuid" ? { id: parsed.value } : { legacyMongoId: parsed.value },
     select: { id: true, systemRole: true, accountStatus: true },
   }) : null;
-  if (!user || user.accountStatus !== "ACTIVE" || !["RESEARCH_USER", "ADMIN", "SUPER_ADMIN"].includes(user.systemRole)) {
+  if (!user || user.accountStatus !== "ACTIVE" || !["USER", "ADMIN"].includes(user.systemRole)) {
     throw AppError.notFound("Academic profile not found");
   }
   return user;

@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Settings, FileText, X, Bell, Loader2, CheckCircle2, AlertCircle, Sparkles, HelpCircle } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Settings, FileText, Bell, Loader2, CheckCircle2, AlertCircle, Sparkles } from "lucide-react";
 import { useNotifications, useMarkNotificationRead, useMarkAllNotificationsRead } from "@/features/notifications";
+import { getNotificationDestination } from "@/features/notifications/utils/notification-destination";
+import type { NotificationItem } from "@trend/shared-types";
 import { useAuthStore } from "@/stores/auth-store";
 import { toast } from "sonner";
 import { isAdminSystemRole } from "@trend/shared-types";
@@ -45,50 +46,17 @@ export function NotificationsPage() {
     }
   };
 
-  const handleNotificationClick = async (
-    id: string, 
-    isRead: boolean, 
-    targetKind: string | null, 
-    targetId: string | null,
-    type: string
-  ) => {
-    if (!isRead) {
+  const handleNotificationClick = async (notification: NotificationItem) => {
+    if (!notification.isRead) {
       try {
-        await markReadMutation.mutateAsync(id);
+        await markReadMutation.mutateAsync(notification.id);
       } catch (err) {
         console.error("Failed to mark read:", err);
       }
     }
 
-    if (type === "level_up") {
-      navigate("/rankings");
-      return;
-    }
-
-    if (isAdmin && type === "submission_pending") {
-      navigate("/admin/papers");
-      return;
-    }
-
-    if (!isAdmin && type === "submission_rejected" && targetKind === "paper" && targetId) {
-      navigate(`/settings/submit-paper?edit=${targetId}`);
-      return;
-    }
-
-    if (targetKind && targetId) {
-      if (targetKind === "paper") navigate(`/papers/${targetId}`);
-      else if (targetKind === "report") navigate(`/reports/${targetId}`);
-      else if (targetKind === "gap") navigate(`/gaps/${targetId}`);
-      else if (targetKind === "project") navigate(`/projects/${targetId}`);
-      return;
-    }
-
-    // Navigate based on role and notification type (legacy fallback)
-    if (isAdmin) {
-      navigate("/admin/papers");
-    } else {
-      navigate("/settings/my-papers");
-    }
+    const destination = getNotificationDestination(notification, isAdmin);
+    if (destination) navigate(destination);
   };
 
   if (isLoading) {
@@ -226,7 +194,7 @@ export function NotificationsPage() {
                 return (
                   <div
                     key={item.id}
-                    onClick={() => handleNotificationClick(item.id, item.isRead, item.targetKind, item.targetId, item.type)}
+                    onClick={() => handleNotificationClick(item)}
                     className={`border rounded-xl p-5 relative cursor-pointer transition-all hover:border-slate-300 dark:hover:border-zinc-700 ${
                       item.isRead
                         ? "bg-white dark:bg-[#121212] border-slate-200 dark:border-slate-800"

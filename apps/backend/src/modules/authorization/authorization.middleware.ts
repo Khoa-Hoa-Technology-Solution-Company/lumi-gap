@@ -6,7 +6,7 @@ import { capabilityService } from "./capability.service.js";
 export function requireCapability(capability: UserCapability) {
   return async (req: Request, _res: Response, next: NextFunction): Promise<void> => {
     if (!req.user) return next(AppError.unauthorized());
-    if (req.user.systemRole === "ADMIN" || req.user.systemRole === "SUPER_ADMIN") return next();
+    if (req.user.systemRole === "ADMIN") return next();
     try {
       const capabilities = await capabilityService.list(req.user.sub);
       if (!capabilities.includes(capability)) {

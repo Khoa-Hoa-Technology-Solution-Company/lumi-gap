@@ -1,9 +1,19 @@
 import { api } from "@/services/api-client";
-import type { ApiResponse, CreditBalance, CreditTransaction, ResponseMeta } from "@trend/shared-types";
+import type {
+  ApiResponse,
+  CreditBalance,
+  CreditSummary,
+  CreditTransaction,
+  PaymentOrder,
+  ResponseMeta,
+} from "@trend/shared-types";
 
 export const creditsApi = {
   getBalance: () =>
     api.get<ApiResponse<CreditBalance>>("/credits/balance").then((r) => r.data),
+
+  getSummary: () =>
+    api.get<ApiResponse<CreditSummary>>("/credits/summary").then((r) => r.data),
 
   listTransactions: (params?: {
     page?: number;
@@ -33,5 +43,5 @@ export const creditsApi = {
       .then((r) => r.data),
 
   listOrders: () =>
-    api.get<{ success: true; data: any[] }>("/credits/orders").then((r) => r.data),
+    api.get<{ success: true; data: PaymentOrder[] }>("/credits/orders").then((r) => r.data),
 };

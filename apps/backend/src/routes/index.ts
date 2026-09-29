@@ -32,6 +32,8 @@ import {
   humanReviewRouter,
   reviewAvailabilityRouter,
   reviewOpportunityRouter,
+  reviewRequestRouter,
+  reviewTemplateRouter,
 } from "../modules/reviews/review.routes.js";
 import { literatureRouter } from "../modules/literature/literature.routes.js";
 
@@ -56,6 +58,8 @@ apiRouter.use("/academic-profiles", academicProfileRouter);
 apiRouter.use("/review-availability", reviewAvailabilityRouter);
 apiRouter.use("/review-opportunities", reviewOpportunityRouter);
 apiRouter.use("/reviews", humanReviewRouter);
+apiRouter.use("/review-requests", reviewRequestRouter);
+apiRouter.use("/review-templates", reviewTemplateRouter);
 apiRouter.use("/contributions", contributionRouter);
 apiRouter.use("/literature", literatureRouter);
 apiRouter.use("/bookmarks", bookmarkRouter); // Sprint 3 — bookmarks

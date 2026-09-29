@@ -15,7 +15,7 @@ async function application(value: string) { const row = await getPrisma().recrui
 async function assertProjectOwner(projectId: string, actorId: string, role?: UserRole) {
   const [row, actor] = await Promise.all([project(projectId), userId(actorId)]);
   const membership = await getPrisma().projectMember.findUnique({ where: { projectId_userId: { projectId: row.id, userId: actor } } });
-  if (row.ownerId !== actor && membership?.role !== "owner" && role !== "admin" && role !== "moderator") throw AppError.forbidden("Project owner access is required");
+  if (row.ownerId !== actor && membership?.role !== "OWNER" && role !== "admin" && role !== "moderator") throw AppError.forbidden("Project owner access is required");
   return row;
 }
 const present = <T extends { id: string; legacyMongoId?: string | null }>(row: T) => ({ ...row, id: publicDatabaseId(row), _id: publicDatabaseId(row) });
@@ -48,7 +48,7 @@ export const recruitmentService = {
   async decideApplication(openingId: string, applicationId: string, status: "shortlisted" | "accepted" | "rejected", actorId: string, actorRole: UserRole) {
     const [row, app, actor] = await Promise.all([opening(openingId), application(applicationId), userId(actorId)]); if (app.openingId !== row.id) throw AppError.notFound("Recruitment application not found"); await assertProjectOwner(row.projectId, actorId, actorRole);
     if (["accepted", "rejected", "withdrawn"].includes(app.status) && app.status !== status) throw AppError.conflict("This application already has a final decision"); if (app.status === status) return present(app);
-    const updated = await getPrisma().$transaction(async (tx) => { if (status === "accepted") { const reserved = await tx.recruitmentOpening.updateMany({ where: { id: row.id, status: "open", acceptedCount: { lt: row.capacity } }, data: { acceptedCount: { increment: 1 } } }); if (!reserved.count) throw AppError.conflict("This opening has reached capacity or is closed"); await tx.projectMember.upsert({ where: { projectId_userId: { projectId: row.projectId, userId: app.applicantId } }, create: { projectId: row.projectId, userId: app.applicantId, role: "member", status: "active" }, update: { status: "active" } }); }
+    const updated = await getPrisma().$transaction(async (tx) => { if (status === "accepted") { const reserved = await tx.recruitmentOpening.updateMany({ where: { id: row.id, status: "open", acceptedCount: { lt: row.capacity } }, data: { acceptedCount: { increment: 1 } } }); if (!reserved.count) throw AppError.conflict("This opening has reached capacity or is closed"); await tx.projectMember.upsert({ where: { projectId_userId: { projectId: row.projectId, userId: app.applicantId } }, create: { projectId: row.projectId, userId: app.applicantId, role: "MEMBER", status: "ACTIVE" }, update: { status: "ACTIVE" } }); }
       return tx.recruitmentApplication.update({ where: { id: app.id }, data: { status, decidedById: actor, decidedAt: new Date() } }); });
     await auditService.log("recruitment.application.decided", { userId: actorId, targetTableName: "recruitment_applications", targetRecordId: app.id, details: { status, projectId: row.projectId } }); return present(updated);
   },

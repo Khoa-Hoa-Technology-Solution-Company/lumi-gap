@@ -2,20 +2,143 @@ import { AppError } from "../../common/exceptions/app-error.js";
 import { parseDatabaseId } from "../../infrastructure/database/database-id.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { auditService } from "../audit/audit.service.js";
+import { normalizeEmail } from "../identity/identity-foundation.rules.js";
 import { academicEmailDelivery, generateAcademicEmailOtp, hashAcademicEmailOtp } from "./academic-email.service.js";
 
 const OTP_TTL_MINUTES = 10;
 const OTP_MAX_ATTEMPTS = 5;
-const normalizeEmail = (value: string) => value.trim().toLowerCase();
 const emailDomain = (email: string) => email.slice(email.lastIndexOf("@") + 1).toLowerCase();
-function maskEmail(email: string) { const [local = "", domain = ""] = email.split("@"); const visible = local.slice(0, Math.min(2, local.length)); return `${visible}${"*".repeat(Math.max(2, local.length - visible.length))}@${domain}`; }
-async function userId(value: string) { const parsed = parseDatabaseId(value); if (!parsed) throw AppError.unauthorized(); const user = await getPrisma().user.findUnique({ where: parsed.kind === "uuid" ? { id: parsed.value } : { legacyMongoId: parsed.value }, select: { id: true } }); if (!user) throw AppError.unauthorized(); return user.id; }
-async function trustedInstitutionForEmail(email: string) { const prisma = getPrisma(); const domain = await prisma.trustedInstitutionDomain.findUnique({ where: { domain: emailDomain(email) } }); if (!domain) return null; const institution = await prisma.trustedInstitution.findUnique({ where: { id: domain.institutionId } }); if (!institution?.isActive) return null; const policy = institution.verificationPolicy && typeof institution.verificationPolicy === "object" ? institution.verificationPolicy as Record<string, unknown> : {}; return policy.allowInstitutionalEmailVerification === true ? institution : null; }
-async function currentProfile(value: string) { const id = await userId(value); const profile = await getPrisma().academicProfile.findUnique({ where: { userId: id } }); if (!profile?.institutionalEmail) throw AppError.badRequest("Add and save an institutional email first"); return { id, profile, email: normalizeEmail(profile.institutionalEmail) }; }
+
+function maskEmail(email: string) {
+  const [local = "", domain = ""] = email.split("@");
+  const visible = local.slice(0, Math.min(2, local.length));
+  return `${visible}${"*".repeat(Math.max(2, local.length - visible.length))}@${domain}`;
+}
+
+async function userId(value: string) {
+  const parsed = parseDatabaseId(value);
+  if (!parsed) throw AppError.unauthorized();
+  const user = await getPrisma().user.findUnique({
+    where: parsed.kind === "uuid" ? { id: parsed.value } : { legacyMongoId: parsed.value }, select: { id: true },
+  });
+  if (!user) throw AppError.unauthorized();
+  return user.id;
+}
+
+async function institutionForEmail(email: string) {
+  const prisma = getPrisma();
+  const domain = await prisma.institutionDomain.findUnique({ where: { domain: emailDomain(email) } });
+  if (!domain?.trusted || domain.status !== "ACTIVE") return null;
+  const institution = await prisma.institution.findUnique({ where: { id: domain.institutionId } });
+  if (!institution?.isActive || institution.status !== "ACTIVE") return null;
+  const policy = institution.verificationPolicy && typeof institution.verificationPolicy === "object"
+    ? institution.verificationPolicy as Record<string, unknown> : {};
+  return policy.allowInstitutionalEmailVerification === true ? institution : null;
+}
+
+async function currentProfile(value: string) {
+  const id = await userId(value);
+  const profile = await getPrisma().academicProfile.findUnique({ where: { userId: id } });
+  if (!profile?.institutionalEmail) throw AppError.badRequest("Add and save an institutional email first");
+  return { id, profile, email: normalizeEmail(profile.institutionalEmail) };
+}
 
 export const institutionalEmailVerificationService = {
-  async status(value: string) { const id = await userId(value); const profile = await getPrisma().academicProfile.findUnique({ where: { userId: id } }); if (!profile?.institutionalEmail) return { verified: false, trustedInstitution: false }; const institution = await trustedInstitutionForEmail(profile.institutionalEmail); return { email: profile.institutionalEmail, verified: Boolean(profile.institutionalEmailVerifiedAt), verifiedAt: profile.institutionalEmailVerifiedAt?.toISOString(), trustedInstitution: Boolean(institution), institutionName: institution?.name }; },
-  async requestChallenge(value: string) { const { id, profile, email } = await currentProfile(value); const institution = await trustedInstitutionForEmail(email); if (!institution) throw AppError.badRequest("This email domain is not registered as a trusted institution"); const code = generateAcademicEmailOtp(); const expiresAt = new Date(Date.now() + OTP_TTL_MINUTES * 60_000); const codeHash = hashAcademicEmailOtp(value, email, code); await getPrisma().academicEmailVerificationChallenge.upsert({ where: { userId_email: { userId: id, email } }, create: { userId: id, email, codeHash, attempts: 0, maxAttempts: OTP_MAX_ATTEMPTS, expiresAt }, update: { codeHash, attempts: 0, maxAttempts: OTP_MAX_ATTEMPTS, expiresAt, consumedAt: null } }); try { await academicEmailDelivery.sendVerificationCode({ email, code, expiresInMinutes: OTP_TTL_MINUTES }); } catch (error) { await getPrisma().academicEmailVerificationChallenge.update({ where: { userId_email: { userId: id, email } }, data: { consumedAt: new Date() } }); throw error; } await auditService.log("academic_profile.institutional_email.challenge_requested", { userId: value, targetTableName: "academic_profiles", targetRecordId: profile.id, details: { institutionId: institution.id, domain: emailDomain(email) } }); return { email: maskEmail(email), expiresAt: expiresAt.toISOString() }; },
-  async verifyChallenge(value: string, code: string) { const prisma = getPrisma(); const { id, profile, email } = await currentProfile(value); const now = new Date(); const codeHash = hashAcademicEmailOtp(value, email, code); const challenge = await prisma.academicEmailVerificationChallenge.findUnique({ where: { userId_email: { userId: id, email } } }); if (!challenge || challenge.codeHash !== codeHash || challenge.consumedAt || challenge.expiresAt <= now || challenge.attempts >= challenge.maxAttempts) { if (challenge && !challenge.consumedAt && challenge.expiresAt > now && challenge.attempts < challenge.maxAttempts) await prisma.academicEmailVerificationChallenge.update({ where: { id: challenge.id }, data: { attempts: { increment: 1 } } }); throw AppError.badRequest("The verification code is invalid or expired"); } const institution = await trustedInstitutionForEmail(email); if (!institution) throw AppError.badRequest("This institution is no longer eligible for email verification"); await prisma.$transaction(async (tx) => { const claimed = await tx.academicEmailVerificationChallenge.updateMany({ where: { id: challenge.id, consumedAt: null, attempts: { lt: challenge.maxAttempts }, expiresAt: { gt: now } }, data: { consumedAt: now } }); if (!claimed.count) throw AppError.badRequest("The verification code is invalid or expired"); const current = await tx.academicProfile.findUnique({ where: { id: profile.id }, select: { institutionalEmail: true } }); if (current?.institutionalEmail?.toLowerCase() !== email) throw AppError.conflict("Institutional email changed; request a new code"); await tx.academicProfile.update({ where: { id: profile.id }, data: { institutionalEmailVerifiedAt: now } }); await tx.academicVerificationEvidence.deleteMany({ where: { profileId: profile.id, type: { in: ["INSTITUTIONAL_EMAIL", "TRUSTED_INSTITUTION"] } } }); await tx.academicVerificationEvidence.createMany({ data: [{ profileId: profile.id, type: "INSTITUTIONAL_EMAIL", value: email, status: "VALIDATED", source: "SYSTEM", createdAt: now, validatedAt: now }, { profileId: profile.id, type: "TRUSTED_INSTITUTION", value: institution.id, status: "VALIDATED", source: "SYSTEM", createdAt: now, validatedAt: now }] }); }); await auditService.log("academic_profile.institutional_email.verified", { userId: value, targetTableName: "academic_profiles", targetRecordId: profile.id, details: { institutionId: institution.id, domain: emailDomain(email) } }); return this.status(value); },
-  async invalidate(value: string) { const id = await userId(value); await getPrisma().academicEmailVerificationChallenge.updateMany({ where: { userId: id, consumedAt: null }, data: { consumedAt: new Date() } }); },
+  async status(value: string) {
+    const id = await userId(value);
+    const profile = await getPrisma().academicProfile.findUnique({ where: { userId: id } });
+    if (!profile?.institutionalEmail) return { verified: false, trustedInstitution: false };
+    const institution = await institutionForEmail(profile.institutionalEmail);
+    return {
+      email: profile.institutionalEmail,
+      verified: Boolean(profile.institutionalEmailVerifiedAt),
+      verifiedAt: profile.institutionalEmailVerifiedAt?.toISOString(),
+      trustedInstitution: Boolean(institution),
+      institutionName: institution?.name,
+    };
+  },
+
+  async requestChallenge(value: string) {
+    const { id, profile, email } = await currentProfile(value);
+    const institution = await institutionForEmail(email);
+    if (!institution) throw AppError.badRequest("This email domain is not registered as a trusted institution");
+    const existing = await getPrisma().userEmail.findUnique({ where: { normalizedEmail: email } });
+    if (existing && existing.userId !== id) throw AppError.conflict("Email is already linked to another account");
+    const code = generateAcademicEmailOtp();
+    const expiresAt = new Date(Date.now() + OTP_TTL_MINUTES * 60_000);
+    const codeHash = hashAcademicEmailOtp(value, email, code);
+    await getPrisma().academicEmailVerificationChallenge.upsert({
+      where: { userId_email: { userId: id, email } },
+      create: { userId: id, email, codeHash, attempts: 0, maxAttempts: OTP_MAX_ATTEMPTS, expiresAt },
+      update: { codeHash, attempts: 0, maxAttempts: OTP_MAX_ATTEMPTS, expiresAt, consumedAt: null },
+    });
+    try {
+      await academicEmailDelivery.sendVerificationCode({ email, code, expiresInMinutes: OTP_TTL_MINUTES });
+    } catch (error) {
+      await getPrisma().academicEmailVerificationChallenge.update({
+        where: { userId_email: { userId: id, email } }, data: { consumedAt: new Date() },
+      });
+      throw error;
+    }
+    await auditService.log("AFFILIATION_VERIFICATION_SUBMITTED", {
+      userId: value, targetTableName: "academic_profiles", targetRecordId: profile.id,
+      details: { institutionId: institution.id, domain: emailDomain(email), method: "INSTITUTIONAL_EMAIL" },
+    });
+    return { email: maskEmail(email), expiresAt: expiresAt.toISOString() };
+  },
+
+  async verifyChallenge(value: string, code: string) {
+    const prisma = getPrisma();
+    const { id, profile, email } = await currentProfile(value);
+    const now = new Date();
+    const codeHash = hashAcademicEmailOtp(value, email, code);
+    const challenge = await prisma.academicEmailVerificationChallenge.findUnique({ where: { userId_email: { userId: id, email } } });
+    if (!challenge || challenge.codeHash !== codeHash || challenge.consumedAt
+      || challenge.expiresAt <= now || challenge.attempts >= challenge.maxAttempts) {
+      if (challenge && !challenge.consumedAt && challenge.expiresAt > now && challenge.attempts < challenge.maxAttempts) {
+        await prisma.academicEmailVerificationChallenge.update({ where: { id: challenge.id }, data: { attempts: { increment: 1 } } });
+      }
+      throw AppError.badRequest("The verification code is invalid or expired");
+    }
+    const institution = await institutionForEmail(email);
+    if (!institution) throw AppError.badRequest("This institution is no longer eligible for email verification");
+    const claimedEmail = await prisma.userEmail.findUnique({ where: { normalizedEmail: email } });
+    if (claimedEmail && claimedEmail.userId !== id) throw AppError.conflict("Email is already linked to another account");
+    await prisma.$transaction(async (tx) => {
+      const claimed = await tx.academicEmailVerificationChallenge.updateMany({
+        where: { id: challenge.id, consumedAt: null, attempts: { lt: challenge.maxAttempts }, expiresAt: { gt: now } },
+        data: { consumedAt: now },
+      });
+      if (!claimed.count) throw AppError.badRequest("The verification code is invalid or expired");
+      const current = await tx.academicProfile.findUnique({ where: { id: profile.id }, select: { institutionalEmail: true } });
+      if (current?.institutionalEmail?.toLowerCase() !== email) throw AppError.conflict("Institutional email changed; request a new code");
+      const verifiedEmail = await tx.userEmail.upsert({
+        where: { normalizedEmail: email },
+        create: { userId: id, normalizedEmail: email, purpose: "INSTITUTIONAL", verifiedAt: now },
+        update: { purpose: "INSTITUTIONAL", verifiedAt: now },
+      });
+      if (verifiedEmail.userId !== id) {
+        throw AppError.conflict("Email is already linked to another account");
+      }
+      await tx.academicProfile.update({ where: { id: profile.id }, data: { institutionalEmailVerifiedAt: now } });
+      await tx.academicVerificationEvidence.deleteMany({
+        where: { profileId: profile.id, type: { in: ["INSTITUTIONAL_EMAIL", "TRUSTED_INSTITUTION"] } },
+      });
+      await tx.academicVerificationEvidence.createMany({ data: [
+        { profileId: profile.id, type: "INSTITUTIONAL_EMAIL", value: email, status: "VALIDATED", source: "SYSTEM", createdAt: now, validatedAt: now },
+        { profileId: profile.id, type: "TRUSTED_INSTITUTION", value: institution.id, status: "VALIDATED", source: "SYSTEM", createdAt: now, validatedAt: now },
+      ] });
+    });
+    await auditService.log("EMAIL_VERIFIED", {
+      userId: value, targetTableName: "user_emails", details: { purpose: "INSTITUTIONAL", institutionId: institution.id },
+    });
+    return this.status(value);
+  },
+
+  async invalidate(value: string) {
+    const id = await userId(value);
+    await getPrisma().academicEmailVerificationChallenge.updateMany({
+      where: { userId: id, consumedAt: null }, data: { consumedAt: new Date() },
+    });
+  },
 };

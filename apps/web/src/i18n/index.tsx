@@ -53,13 +53,14 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   const [language, setLanguageState] = useState<UiLanguageCode>(() => readStoredLanguage());
   const [activeDictionary, setActiveDictionary] = useState<Dictionary>(englishDictionary);
   const textOriginals = useRef(new WeakMap<Text, string>());
+  const textTranslations = useRef(new WeakMap<Text, string>());
   const attrOriginals = useRef(new WeakMap<Element, Map<string, string>>());
+  const attrTranslations = useRef(new WeakMap<Element, Map<string, string>>());
   const scanTimer = useRef<number | undefined>();
 
   useEffect(() => {
     document.documentElement.lang = language;
     let cancelled = false;
-    setActiveDictionary(englishDictionary);
     void loadDictionary(language).then((dictionary) => {
       if (!cancelled) setActiveDictionary(dictionary);
     });
@@ -72,9 +73,12 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     if (nextLanguage === language) return;
 
     setLanguageState(nextLanguage);
-    window.localStorage.setItem(STORAGE_KEY, nextLanguage);
+    try {
+      window.localStorage.setItem(STORAGE_KEY, nextLanguage);
+    } catch {
+      // Keep the language change available when browser storage is disabled.
+    }
     document.documentElement.lang = nextLanguage;
-    window.location.reload();
   }, [language]);
 
   const t = useCallback<Translate>(
@@ -88,7 +92,14 @@ export function I18nProvider({ children }: { children: ReactNode }) {
 
   const translateDom = useCallback(() => {
     if (!document.body) return;
-    translateRenderedDom(document.body, activeDictionary, textOriginals.current, attrOriginals.current);
+    translateRenderedDom(
+      document.body,
+      activeDictionary,
+      textOriginals.current,
+      textTranslations.current,
+      attrOriginals.current,
+      attrTranslations.current,
+    );
   }, [activeDictionary]);
 
   useEffect(() => {
@@ -356,9 +367,37 @@ function renderFlagSvg(code: UiLanguageCode) {
   }
 }
 
+export function resolveInitialLanguage(
+  storedLanguage: string | null,
+  browserLanguages: readonly string[],
+): UiLanguageCode {
+  const stored = UI_LANGUAGES.find((language) => language.code === storedLanguage);
+  if (stored) return stored.code;
+
+  for (const browserLanguage of browserLanguages) {
+    const primaryLanguage = browserLanguage.trim().toLowerCase().split(/[-_]/, 1)[0];
+    const supported = UI_LANGUAGES.find((language) => language.code === primaryLanguage);
+    if (supported) return supported.code;
+  }
+
+  return "en";
+}
+
 function readStoredLanguage(): UiLanguageCode {
-  const stored = window.localStorage.getItem(STORAGE_KEY);
-  return UI_LANGUAGES.some((language) => language.code === stored) ? (stored as UiLanguageCode) : "en";
+  let storedLanguage: string | null = null;
+  try {
+    storedLanguage = window.localStorage.getItem(STORAGE_KEY);
+  } catch {
+    // Browser language detection still works if local storage is unavailable.
+  }
+
+  const browserLanguages = typeof navigator === "undefined"
+    ? []
+    : navigator.languages.length > 0
+      ? navigator.languages
+      : [navigator.language];
+
+  return resolveInitialLanguage(storedLanguage, browserLanguages);
 }
 
 function interpolate(template: string, values?: Record<string, string | number>) {
@@ -370,7 +409,9 @@ function translateRenderedDom(
   root: HTMLElement,
   dictionary: Record<string, string>,
   textOriginals: WeakMap<Text, string>,
+  textTranslations: WeakMap<Text, string>,
   attrOriginals: WeakMap<Element, Map<string, string>>,
+  attrTranslations: WeakMap<Element, Map<string, string>>,
 ) {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
     acceptNode(node) {
@@ -384,14 +425,14 @@ function translateRenderedDom(
     const node = walker.currentNode as Text;
     const current = node.nodeValue ?? "";
     const previousSource = textOriginals.get(node);
-    const previousTranslation = previousSource
-      ? translateWithWhitespace(previousSource, dictionary)
-      : undefined;
+    const previousTranslation = textTranslations.get(node);
     if (!previousSource || current !== previousTranslation) {
       textOriginals.set(node, current);
     }
     const source = textOriginals.get(node) ?? current;
-    node.nodeValue = translateWithWhitespace(source, dictionary);
+    const translation = translateWithWhitespace(source, dictionary);
+    textTranslations.set(node, translation);
+    node.nodeValue = translation;
   }
 
   const elements = root.querySelectorAll<HTMLElement>(ATTRIBUTES.map((attr) => `[${attr}]`).join(","));
@@ -402,19 +443,24 @@ function translateRenderedDom(
       originals = new Map();
       attrOriginals.set(element, originals);
     }
+    let translations = attrTranslations.get(element);
+    if (!translations) {
+      translations = new Map();
+      attrTranslations.set(element, translations);
+    }
 
     for (const attr of ATTRIBUTES) {
       const current = element.getAttribute(attr);
       if (!current || !shouldTranslate(current)) continue;
       const previousSource = originals.get(attr);
-      const previousTranslation = previousSource
-        ? translateWithWhitespace(previousSource, dictionary)
-        : undefined;
+      const previousTranslation = translations.get(attr);
       if (!previousSource || current !== previousTranslation) {
         originals.set(attr, current);
       }
       const source = originals.get(attr) ?? current;
-      element.setAttribute(attr, translateWithWhitespace(source, dictionary));
+      const translation = translateWithWhitespace(source, dictionary);
+      translations.set(attr, translation);
+      element.setAttribute(attr, translation);
     }
   }
 }

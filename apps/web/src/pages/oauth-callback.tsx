@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import { authApi } from "@/features/auth/api/auth.api";
 import { resolvePostAuthPath } from "@/features/auth";
+import { consumeAuthReturnTo } from "@/features/auth/utils/auth-return";
 
 export function OAuthCallbackPage() {
   const [searchParams] = useSearchParams();
@@ -28,8 +29,7 @@ export function OAuthCallbackPage() {
       authApi.exchangeOAuthCode(code)
         .then(({ user, tokens }) => {
           setAuth({ user, tokens });
-          toast.success(`Welcome back, ${user.fullName}`);
-          navigate(resolvePostAuthPath(user), { replace: true });
+          navigate(resolvePostAuthPath(user, consumeAuthReturnTo()), { replace: true });
         })
         .catch(() => {
           toast.error("Google login link expired or was already used");

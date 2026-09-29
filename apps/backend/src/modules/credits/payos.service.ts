@@ -194,6 +194,8 @@ export const payosService = {
       amount: order.credits,
       targetId: order.id,
       idempotencyKey: `payos:${orderCode}`,
+      action: "credit_topup",
+      targetKind: "payment_order",
       metadata: {
         paymentProvider: "payos",
         orderCode,

@@ -64,9 +64,10 @@ import {
   useUpdateUserStatus,
 } from "@/features/admin";
 import { authApi, useCurrentUser } from "@/features/auth";
+import { combineAcademicBio } from "@/features/academic-profile/utils/academic-bio";
 import { useI18n } from "@/i18n";
 
-const ROLES: SystemRole[] = ["RESEARCH_USER", "ADMIN", "SUPER_ADMIN"];
+const ROLES: SystemRole[] = ["USER", "ADMIN"];
 const STATUSES: AccountStatus[] = ["ACTIVE", "SUSPENDED", "DISABLED"];
 const SELECT_CLASS =
   "h-9 rounded-md border border-input bg-background px-2.5 text-sm outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50";
@@ -85,7 +86,7 @@ function formatDate(value?: string): string {
 }
 
 function roleLabel(role: SystemRole): string {
-  return role === "SUPER_ADMIN" ? "Super admin" : role === "ADMIN" ? "Admin" : "Research user";
+  return role === "ADMIN" ? "Admin" : "User";
 }
 
 function statusLabel(status: AccountStatus): string {
@@ -122,7 +123,6 @@ export function AdminUsersPage() {
   const myRole = me?.user?.systemRole;
   const myId = me?.user?.id;
   const isAdmin = isAdminSystemRole(myRole);
-  const isSuperAdmin = myRole === "SUPER_ADMIN";
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search.trim());
   const [roleFilter, setRoleFilter] = useState<SystemRole | "all">("all");
@@ -319,7 +319,7 @@ export function AdminUsersPage() {
         </div>
       </section>
 
-      <CreateUserDialog open={createOpen} onOpenChange={setCreateOpen} isSuperAdmin={isSuperAdmin} />
+      <CreateUserDialog open={createOpen} onOpenChange={setCreateOpen} />
       <UserDetailSheet
         userId={selectedId}
         open={Boolean(selectedId)}
@@ -362,13 +362,11 @@ function SummaryCard({ label, value, icon: Icon, loading, tone = "slate" }: {
   );
 }
 
-function CreateUserDialog({ open, onOpenChange, isSuperAdmin }: {
+function CreateUserDialog({ open, onOpenChange }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  isSuperAdmin: boolean;
 }) {
   const createUser = useCreateAdminUser();
-  const [role, setRole] = useState<SystemRole>("RESEARCH_USER");
   const [sendInvite, setSendInvite] = useState(true);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -392,7 +390,7 @@ function CreateUserDialog({ open, onOpenChange, isSuperAdmin }: {
         email,
         password,
         institution,
-        role: isSuperAdmin ? role : "RESEARCH_USER",
+        role: "USER",
         accountStatus: "ACTIVE",
       });
 
@@ -405,7 +403,6 @@ function CreateUserDialog({ open, onOpenChange, isSuperAdmin }: {
 
       onOpenChange(false);
       formElement.reset();
-      setRole("RESEARCH_USER");
       setSendInvite(true);
     } catch (error) {
       toast.error(apiErr(error));
@@ -471,29 +468,14 @@ function CreateUserDialog({ open, onOpenChange, isSuperAdmin }: {
             <label htmlFor="create-user-role" className="text-sm font-medium">
               Account type
             </label>
-            {isSuperAdmin ? (
-              <select
-                id="create-user-role"
-                className={`${SELECT_CLASS} w-full`}
-                value={role}
-                onChange={(event) => setRole(event.target.value as SystemRole)}
-              >
-                {ROLES.map((item) => (
-                  <option key={item} value={item}>
-                    {roleLabel(item)}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <div
-                id="create-user-role"
-                className="flex h-9 w-full items-center rounded-md border border-input bg-muted/40 px-3 py-2 text-sm text-foreground"
-              >
-                Research user
-              </div>
-            )}
+            <div
+              id="create-user-role"
+              className="flex h-9 w-full items-center rounded-md border border-input bg-muted/40 px-3 py-2 text-sm text-foreground"
+            >
+              Research user
+            </div>
             <p className="text-xs text-muted-foreground">
-              Administrative roles can only be granted by a super admin.
+              Admin access is granted only from an existing account through the audited role-change workflow.
             </p>
           </div>
 
@@ -534,13 +516,14 @@ function UserDetailSheet({ userId, open, onOpenChange, actorId, actorRole, onAct
   const { data: user, isLoading } = useAdminUser(userId);
   const updateUser = useUpdateAdminUser();
   const [editing, setEditing] = useState(false);
-  const [nextRole, setNextRole] = useState<SystemRole>("RESEARCH_USER");
+  const [nextRole, setNextRole] = useState<SystemRole>("USER");
 
   useEffect(() => setEditing(false), [userId]);
   useEffect(() => { if (user) setNextRole(user.role); }, [user]);
 
-  const canManage = user ? !(user.id === actorId || (actorRole === "ADMIN" && user.role !== "RESEARCH_USER")) : false;
-  const canEditIdentity = canManage && actorRole === "SUPER_ADMIN";
+  const canManage = user ? user.id !== actorId && actorRole === "ADMIN" : false;
+  const canEditIdentity = canManage && actorRole === "ADMIN";
+  const academicBio = combineAcademicBio(user?.academicProfile?.headline, user?.academicProfile?.biography);
 
   const handleEdit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -651,10 +634,10 @@ function UserDetailSheet({ userId, open, onOpenChange, actorId, actorRole, onAct
                     <Detail label="ORCID" value={user.academicProfile?.orcidStatus || "Not submitted"} />
                     <Detail label="Institutional email" value={user.academicProfile?.institutionalEmail || "Not provided"} hint={user.academicProfile?.institutionalEmailVerifiedAt ? "Verified" : undefined} />
                   </dl>
-                  {user.academicProfile?.headline ? (
+                  {academicBio ? (
                     <div className="rounded-lg bg-muted/50 px-4 py-3 text-sm">
-                      <div className="text-xs text-muted-foreground">Profile headline</div>
-                      <p className="mt-1 leading-6">{user.academicProfile.headline}</p>
+                      <div className="text-xs text-muted-foreground">Academic Bio</div>
+                      <p className="mt-1 whitespace-pre-wrap leading-6">{academicBio}</p>
                     </div>
                   ) : null}
                 </section>
@@ -677,7 +660,7 @@ function UserDetailSheet({ userId, open, onOpenChange, actorId, actorRole, onAct
                         <Button variant="outline" disabled={nextRole === user.role} onClick={() => onAction({ kind: "role", user, value: nextRole })}>Change role</Button>
                       ) : null}
                     </div>
-                    {!canEditIdentity ? <p className="text-xs text-muted-foreground">Only a super admin can change roles. You also cannot change your own role.</p> : null}
+                    {!canEditIdentity ? <p className="text-xs text-muted-foreground">Only an existing admin can grant or revoke admin access. You also cannot change your own role.</p> : null}
 
                     <div>
                       <div className="text-xs text-muted-foreground">Sign-in methods</div>

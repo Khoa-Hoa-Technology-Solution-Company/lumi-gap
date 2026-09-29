@@ -4,6 +4,8 @@ import { creditsApi } from "../api/credits.api.js";
 export const creditKeys = {
   all: ["credits"] as const,
   balance: () => [...creditKeys.all, "balance"] as const,
+  summary: () => [...creditKeys.all, "summary"] as const,
+  orders: () => [...creditKeys.all, "orders"] as const,
   transactions: (filters?: Record<string, unknown>) =>
     [...creditKeys.all, "transactions", filters] as const,
 };
@@ -17,6 +19,30 @@ export function useCreditBalance(options?: { enabled?: boolean }) {
       throw new Error("Failed to fetch credit balance");
     },
     staleTime: 30_000, // 30s — balance changes on every AI action
+    refetchOnWindowFocus: true,
+    ...options,
+  });
+}
+
+export function useCreditSummary(options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: creditKeys.summary(),
+    queryFn: async () => {
+      const res = await creditsApi.getSummary();
+      if (res.success) return res.data;
+      throw new Error("Failed to fetch credit summary");
+    },
+    staleTime: 30_000,
+    refetchOnWindowFocus: true,
+    ...options,
+  });
+}
+
+export function usePaymentOrders(options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: creditKeys.orders(),
+    queryFn: async () => (await creditsApi.listOrders()).data,
+    staleTime: 30_000,
     refetchOnWindowFocus: true,
     ...options,
   });

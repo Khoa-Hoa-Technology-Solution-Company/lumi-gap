@@ -50,7 +50,7 @@ export interface CreateAdminUserRequest {
   email: string;
   fullName: string;
   password: string;
-  role: SystemRole;
+  role?: "USER";
   institution?: string;
   accountStatus?: AccountStatus;
 }
@@ -88,6 +88,7 @@ export interface AdminUserDetail extends AdminUserItem {
     publicHandle?: string;
     profileVisibility?: string;
     headline?: string;
+    biography?: string;
     institutionalEmail?: string;
     institutionalEmailVerifiedAt?: ISODateString;
     identityStatus?: string;
@@ -189,7 +190,7 @@ export interface AdminPlatformSettings {
   enablePublicRegistration: boolean;
   enableAutoEmailVerify: boolean;
   enableAiEvaluationJudge: boolean;
-  trustedInstitutions: Array<{
+  institutions: Array<{
     id: string;
     name: string;
     rorId?: string | null;

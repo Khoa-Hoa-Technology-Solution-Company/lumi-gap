@@ -13,7 +13,7 @@ async function ensureAcademicUser(userId: string) {
     select: { id: true, systemRole: true, accountStatus: true },
   }) : null;
   if (!user || user.accountStatus !== "ACTIVE"
-    || !["RESEARCH_USER", "ADMIN", "SUPER_ADMIN"].includes(user.systemRole)) {
+    || !["USER", "ADMIN"].includes(user.systemRole)) {
     throw AppError.notFound("Academic profile not found");
   }
   return user;

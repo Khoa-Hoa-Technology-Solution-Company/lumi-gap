@@ -36,6 +36,7 @@ const ScopeFiltersSchema = z
 export const CreateReportSchema = z
   .object({
     query: z.string().trim().min(3, "query must be at least 3 characters").max(500),
+    title: z.string().trim().min(1).max(240).optional(),
     topic: z.string().trim().max(200).optional(),
     projectId: z.string().optional(),
     yearFrom: z.coerce.number().int().min(1900).max(2100).optional(),
@@ -45,6 +46,7 @@ export const CreateReportSchema = z
     deepAnalysis: z.boolean().optional(), // Phase D — opt-in Gemini function-calling mode
     fast: z.boolean().optional(), // Fast mode — Flash model (ignored when deepAnalysis is true)
     selectedPaperIds: SelectedPaperIdsSchema.optional(),
+    artifactType: z.enum(["LITERATURE_REVIEW", "EVIDENCE_SYNTHESIS", "GAP_ANALYSIS", "RESEARCH_PROPOSAL", "RESEARCH_PLAN", "GENERAL_REPORT"]).default("GENERAL_REPORT"),
   })
   .refine((b) => b.yearFrom === undefined || b.yearTo === undefined || b.yearFrom <= b.yearTo, {
     message: "yearFrom must be <= yearTo",
@@ -90,6 +92,10 @@ export type BatchDeleteInput = z.infer<typeof BatchDeleteSchema>;
 
 export const PaperIdParamSchema = z.object({
   paperId: ObjectIdSchema,
+});
+
+export const UpdateArtifactStatusSchema = z.object({
+  status: z.enum(["DRAFT", "REVIEWING", "FINAL", "ARCHIVED"]),
 });
 
 export type PaperIdParam = z.infer<typeof PaperIdParamSchema>;

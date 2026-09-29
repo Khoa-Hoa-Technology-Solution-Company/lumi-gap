@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import type { CreateReportRequest, PreviewReportEvidenceRequest } from "@trend/shared-types";
+import type { CreateReportRequest, PreviewReportEvidenceRequest, ResearchArtifactStatus } from "@trend/shared-types";
 import { reportsApi } from "../api/reports.api";
 
 export function useReports(projectId?: string, paperId?: string) {
@@ -41,6 +41,11 @@ export function useCreateReport() {
       queryClient.invalidateQueries({ queryKey: ["credits"] });
     },
   });
+}
+
+export function useUpdateArtifactStatus() {
+  const queryClient = useQueryClient();
+  return useMutation({ mutationFn: ({ id, status }: { id: string; status: ResearchArtifactStatus }) => reportsApi.updateArtifactStatus(id, status), onSuccess: () => queryClient.invalidateQueries({ queryKey: ["reports"] }) });
 }
 
 export function useReportEvidencePreview() {

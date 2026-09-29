@@ -75,6 +75,137 @@ export type HumanReviewRecommendation =
   | "MAJOR_REVISION"
   | "REJECT";
 
+export type AcademicReviewMode =
+  | "GUIDED_FEEDBACK"
+  | "STRUCTURED_REVIEW"
+  | "RUBRIC_ASSESSMENT";
+
+export type ReviewTemplateSource = "SYSTEM" | "PERSONAL" | "PROJECT";
+export type ReviewTemplateStatus = "DRAFT" | "PUBLISHED" | "ARCHIVED";
+export type ReviewRequestStatus =
+  | "REQUESTED"
+  | "ACCEPTED"
+  | "IN_REVIEW"
+  | "SUBMITTED"
+  | "REVISION_REQUESTED"
+  | "RESUBMITTED"
+  | "COMPLETED"
+  | "DECLINED"
+  | "CANCELLED"
+  | "EXPIRED";
+
+export type StructuredAssessment =
+  | "MAJOR_ISSUES"
+  | "NEEDS_IMPROVEMENT"
+  | "ADEQUATE"
+  | "STRONG"
+  | "NOT_APPLICABLE";
+
+export type OverallAcademicAssessment =
+  | "STRONG"
+  | "MINOR_REVISION"
+  | "MAJOR_REVISION"
+  | "NOT_READY";
+
+export type ReviewRevisionStatus = "OPEN" | "ADDRESSED" | "ACCEPTED" | "REOPENED";
+
+export interface ReviewCriterionLevelInput {
+  label: string;
+  description?: string;
+  score: number;
+}
+
+export interface ReviewTemplateCriterionInput {
+  key?: string;
+  title: string;
+  description?: string;
+  required: boolean;
+  allowNotApplicable: boolean;
+  weight?: number;
+  levels?: ReviewCriterionLevelInput[];
+}
+
+export interface ReviewTemplateVersionInput {
+  reviewMode: AcademicReviewMode;
+  description?: string;
+  guidelines: string[];
+  criteria: ReviewTemplateCriterionInput[];
+}
+
+export interface CreateReviewTemplateInput extends ReviewTemplateVersionInput {
+  name: string;
+  artifactType?: string;
+  source: ReviewTemplateSource;
+  projectId?: string;
+  publish?: boolean;
+}
+
+export interface ReviewTemplateSummary {
+  id: string;
+  name: string;
+  source: ReviewTemplateSource;
+  artifactType?: string;
+  status: ReviewTemplateStatus;
+  ownerId?: string;
+  projectId?: string;
+  activeVersion?: ReviewTemplateVersionDetail;
+  updatedAt: ISODateString;
+}
+
+export interface ReviewTemplateVersionDetail {
+  id: string;
+  versionNumber: number;
+  reviewMode: AcademicReviewMode;
+  description?: string;
+  guidelines: string[];
+  status: "DRAFT" | "PUBLISHED";
+  publishedAt?: ISODateString;
+  criteria: Array<Omit<ReviewTemplateCriterionInput, "levels"> & {
+    id: string;
+    key: string;
+    order: number;
+    levels: Array<ReviewCriterionLevelInput & { id: string; position: number }>;
+  }>;
+}
+
+export interface CreateReviewRequestInput {
+  submissionId?: string;
+  reportId?: string;
+  reviewerId: string;
+  templateVersionId: string;
+  message?: string;
+  dueAt?: ISODateString;
+}
+
+export interface ResubmitReviewRequestInput {
+  revisionId?: string;
+  reportId?: string;
+  responses: Array<{ revisionItemId: string; responseText: string }>;
+}
+
+export interface ReviewCriterionResponseInput {
+  criterionKey: string;
+  comment?: string;
+  evidence?: string;
+  assessment?: StructuredAssessment;
+  performanceLevelId?: string;
+  notApplicable?: boolean;
+}
+
+export interface RequiredRevisionInput {
+  priority: "MINOR" | "MAJOR";
+  description: string;
+}
+
+export interface AcademicReviewInput {
+  keyStrengths?: string;
+  keyConcerns?: string;
+  overallComment?: string;
+  overallAssessment?: OverallAcademicAssessment;
+  responses: ReviewCriterionResponseInput[];
+  requiredRevisions?: RequiredRevisionInput[];
+}
+
 export interface ReviewCriterionDefinition {
   id: string;
   key: string;

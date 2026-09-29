@@ -2,18 +2,24 @@ import type { ISODateString } from "./common.js";
 
 export type AcademicProfileType = "student" | "researcher" | "lecturer";
 
-export type SystemRole = "RESEARCH_USER" | "ADMIN" | "SUPER_ADMIN";
+export type SystemRole = "USER" | "ADMIN";
 export type AccountStatus = "ACTIVE" | "SUSPENDED" | "DISABLED";
+export type AcademicRole = "STUDENT" | "RESEARCHER" | "LECTURER";
+export type ParticipantScope = "INTERNAL" | "EXTERNAL" | "PENDING";
+export type AdmissionBasis = "LEGACY" | "HOST_INSTITUTION" | "INVITATION" | "ADMIN";
 export type PrimaryPosition = "STUDENT" | "LECTURER" | "RESEARCH_STAFF" | "INDUSTRY_PRACTITIONER" | "OTHER";
 export type VerificationStatus = "NOT_SUBMITTED" | "PENDING" | "VERIFIED" | "REJECTED" | "EXPIRED" | "INVALIDATED" | "UNVERIFIED";
-export type UserCapability = "BASIC_RESEARCH" | "RESEARCH_SUPPORT" | "STRUCTURED_REVIEW" | "GAP_VALIDATION";
+export type UserCapability =
+  | "BASIC_RESEARCH" | "RESEARCH_SUPPORT" | "STRUCTURED_REVIEW" | "GAP_VALIDATION"
+  | "CREATE_RESEARCH_PROJECT" | "APPROVE_ACADEMIC_CONTRIBUTION"
+  | "MENTOR_PROJECT" | "REVIEW_ARTIFACT" | "MANAGE_SYSTEM";
 export type LegacySystemRole = "user" | "reviewer" | "moderator" | "admin";
 
 /** Academic roles remain readable during the legacy-data migration window. */
 export type UserRole = SystemRole | LegacySystemRole | AcademicProfileType;
 
-export function isAdminSystemRole(role: unknown): role is "ADMIN" | "SUPER_ADMIN" {
-  return role === "ADMIN" || role === "SUPER_ADMIN";
+export function isAdminSystemRole(role: unknown): role is "ADMIN" {
+  return role === "ADMIN";
 }
 
 export interface User {
@@ -24,8 +30,17 @@ export interface User {
   systemRole: SystemRole;
   accountStatus: AccountStatus;
   academicProfileType?: AcademicProfileType;
+  academicRole?: AcademicRole;
+  academicRoleVerificationStatus?: VerificationStatus | "SELF_DECLARED";
   primaryPosition?: PrimaryPosition;
+  participantScope?: ParticipantScope;
+  admissionBasis?: AdmissionBasis;
+  verifiedEmails?: Array<{ email: string; isPrimary: boolean; purpose: "ACCOUNT" | "INSTITUTIONAL" | "CONTACT"; verifiedAt: ISODateString }>;
   emailVerifiedAt?: ISODateString;
+  authProviders?: {
+    password: boolean;
+    google: boolean;
+  };
   capabilities?: UserCapability[];
   onboarding?: { completed: boolean };
   avatarUrl?: string;
@@ -54,9 +69,11 @@ export interface RegisterRequest {
   email: string;
   password: string;
   fullName: string;
+  invitationToken?: string;
 }
 
 export interface UpdateAcademicProfileRequest {
+  academicRole: AcademicRole;
   primaryPosition?: PrimaryPosition;
   positionTitle?: string;
   institutionName?: string;
@@ -64,6 +81,38 @@ export interface UpdateAcademicProfileRequest {
   department?: string;
   specifiedPosition?: string;
   country?: string;
+  campusId?: string | null;
+  programId?: string | null;
+  researchAreas?: string[];
+  expertiseAreas?: string[];
+  researchInterests?: string[];
+  researchKeywords?: string[];
+  skills?: string[];
+}
+
+export interface AcademicOnboardingOptions {
+  hostInstitution?: {
+    id: string;
+    name: string;
+  };
+  campuses: Array<{
+    id: string;
+    name: string;
+    code?: string | null;
+    city?: string | null;
+    country?: string | null;
+  }>;
+  programs: Array<{
+    id: string;
+    name: string;
+    code?: string | null;
+    campusId?: string | null;
+  }>;
+  verificationMethods: {
+    feid: boolean;
+    institutionalEmail: boolean;
+    manualReview: boolean;
+  };
 }
 
 export interface AuthResponse {

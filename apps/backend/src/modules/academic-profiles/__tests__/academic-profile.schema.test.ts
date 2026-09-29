@@ -12,6 +12,11 @@ import {
 } from "../dto/academic-profile.schema.js";
 
 describe("academic profile input validation", () => {
+  it("limits biography text to 500 words", () => {
+    expect(UpdateAcademicProfileDetailsSchema.safeParse({ biography: Array.from({ length: 500 }, () => "word").join(" ") }).success).toBe(true);
+    expect(UpdateAcademicProfileDetailsSchema.safeParse({ biography: Array.from({ length: 501 }, () => "word").join(" ") }).success).toBe(false);
+  });
+
   it("validates ORCID using its checksum", () => {
     expect(isValidOrcid("0000-0002-1825-0097")).toBe(true);
     expect(isValidOrcid("https://orcid.org/0000-0002-1825-0097")).toBe(true);

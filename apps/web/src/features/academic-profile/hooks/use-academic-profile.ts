@@ -18,6 +18,9 @@ export function useUpdateAcademicProfile() {
       queryClient.invalidateQueries({ queryKey: ["academic-profile", "handle"] });
       queryClient.invalidateQueries({ queryKey: ["current-user"] });
     },
+    onError: (_error, input) => {
+      if (input.displayName !== undefined) queryClient.invalidateQueries({ queryKey: ["academic-profile", "me"] });
+    },
   });
 }
 

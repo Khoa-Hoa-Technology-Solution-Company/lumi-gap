@@ -29,7 +29,7 @@ export interface SubmissionRevision {
   submissionId: string;
   revisionNumber: number;
   responseToReview?: string;
-  checksumSha256: string;
+  checksumSha256?: string;
   sizeBytes: number;
   createdAt: string;
 }

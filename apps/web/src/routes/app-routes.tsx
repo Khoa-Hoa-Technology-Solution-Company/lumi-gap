@@ -1,8 +1,8 @@
 import { lazy, Suspense } from "react";
 import { Route, Routes, Navigate } from "react-router-dom";
-import { MainLayout } from "@/layouts/MainLayout";
 import { ProtectedRoute } from "@/components/protected-route";
 
+const MainLayout = lazy(() => import("@/layouts/MainLayout").then((m) => ({ default: m.MainLayout })));
 const AdminLayout = lazy(() => import("@/layouts/AdminLayout").then((m) => ({ default: m.AdminLayout })));
 const HomePage = lazy(() => import("@/pages/home").then((m) => ({ default: m.HomePage })));
 const AuthLayout = lazy(() => import("@/layouts/AuthLayout").then((m) => ({ default: m.AuthLayout })));
@@ -28,6 +28,7 @@ const ReportsListPage = lazy(() => import("@/pages/reports/reports-list").then((
 const ReportViewerPage = lazy(() => import("@/pages/reports/report-viewer").then((m) => ({ default: m.ReportViewerPage })));
 const ProjectsListPage = lazy(() => import("@/pages/projects/projects-list").then((m) => ({ default: m.ProjectsListPage })));
 const ProjectDetailPage = lazy(() => import("@/pages/projects/project-detail").then((m) => ({ default: m.ProjectDetailPage })));
+const ProjectInvitationPage = lazy(() => import("@/pages/projects/project-invitation").then((m) => ({ default: m.ProjectInvitationPage })));
 const ResearchGapsPage = lazy(() => import("@/pages/research-gaps").then((m) => ({ default: m.ResearchGapsPage })));
 const AdminSyncPage = lazy(() => import("@/pages/admin/sync").then((m) => ({ default: m.AdminSyncPage })));
 const AdminPipelinePage = lazy(() => import("@/pages/admin/pipeline").then((m) => ({ default: m.AdminPipelinePage })));
@@ -58,6 +59,9 @@ const PublicAcademicProfilePage = lazy(() => import("@/pages/academics/public-ac
 const ReviewOpportunitiesPage = lazy(() => import("@/pages/reviews/review-opportunities").then((m) => ({ default: m.ReviewOpportunitiesPage })));
 const ReviewDashboardPage = lazy(() => import("@/pages/reviews/review-dashboard").then((m) => ({ default: m.ReviewDashboardPage })));
 const ReviewWorkspacePage = lazy(() => import("@/pages/reviews/review-workspace").then((m) => ({ default: m.ReviewWorkspacePage })));
+const ReviewRequestDetailPage = lazy(() => import("@/pages/reviews/review-request-detail").then((m) => ({ default: m.ReviewRequestDetailPage })));
+const ReviewTemplatesPage = lazy(() => import("@/pages/reviews/review-templates").then((m) => ({ default: m.ReviewTemplatesPage })));
+const ReviewTemplateBuilderPage = lazy(() => import("@/pages/reviews/review-template-builder").then((m) => ({ default: m.ReviewTemplateBuilderPage })));
 const SubmissionListPage = lazy(() => import("@/pages/submissions/submission-list").then((m) => ({ default: m.SubmissionListPage })));
 const SubmissionNewPage = lazy(() => import("@/pages/submissions/submission-new").then((m) => ({ default: m.SubmissionNewPage })));
 const SubmissionDetailPage = lazy(() => import("@/pages/submissions/submission-detail").then((m) => ({ default: m.SubmissionDetailPage })));
@@ -121,6 +125,8 @@ export function AppRoutes() {
           <Route path="/academics/:userId" element={<PublicAcademicProfilePage />} />
           <Route path="/u/:handle" element={<PublicAcademicProfilePage />} />
           <Route path="/profile/:handle/contributions" element={<ContributionArchivePage />} />
+          <Route path="/projects/:id" element={<ProjectDetailPage />} />
+          <Route path="/invitations/:token" element={<ProjectInvitationPage />} />
 
           {/* Protected (any signed-in user) */}
           <Route element={<ProtectedRoute />}>
@@ -138,13 +144,16 @@ export function AppRoutes() {
             <Route path="/reports" element={<ReportsListPage />} />
             <Route path="/reports/:id" element={<ReportViewerPage />} />
             <Route path="/projects" element={<ProjectsListPage />} />
-            <Route path="/projects/:id" element={<ProjectDetailPage />} />
             <Route path="/research-gaps" element={<ResearchGapsPage />} />
             <Route path="/research-gap/discover" element={<ResearchGapDiscoverPage />} />
             <Route path="/rankings" element={<RankingsPage />} />
             <Route path="/review-opportunities" element={<ReviewOpportunitiesPage />} />
             <Route path="/reviews" element={<ReviewDashboardPage />} />
             <Route path="/reviews/:assignmentId" element={<ReviewWorkspacePage />} />
+            <Route path="/review-requests/:requestId" element={<ReviewRequestDetailPage />} />
+            <Route path="/review-templates" element={<ReviewTemplatesPage />} />
+            <Route path="/review-templates/new" element={<ReviewTemplateBuilderPage />} />
+            <Route path="/review-templates/:templateId/edit" element={<ReviewTemplateBuilderPage />} />
             <Route path="/submissions" element={<SubmissionListPage />} />
             <Route path="/submissions/new" element={<SubmissionNewPage />} />
             <Route path="/submissions/:id" element={<SubmissionDetailPage />} />

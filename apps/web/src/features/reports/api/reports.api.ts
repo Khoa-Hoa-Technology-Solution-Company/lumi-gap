@@ -6,6 +6,7 @@ import type {
   PreviewReportEvidenceRequest,
   PreviewReportEvidenceResponse,
   ReportListItem,
+  ResearchArtifactStatus,
 } from "@trend/shared-types";
 
 export const reportsApi = {
@@ -34,5 +35,8 @@ export const reportsApi = {
 
   async deleteBatch(ids: string[]): Promise<void> {
     await api.delete(API_ROUTES.reports.list, { data: { ids } });
+  },
+  async updateArtifactStatus(id: string, status: ResearchArtifactStatus): Promise<void> {
+    await api.patch(`/reports/${id}/artifact-status`, { status });
   },
 };

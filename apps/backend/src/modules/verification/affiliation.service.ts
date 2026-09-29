@@ -1,9 +1,10 @@
+import crypto from "node:crypto";
 import { AppError } from "../../common/exceptions/app-error.js";
 import { parseDatabaseId } from "../../infrastructure/database/database-id.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { auditService } from "../audit/audit.service.js";
-
-const FPT_DOMAINS = new Set(["fpt.edu.vn", "fe.edu.vn"]);
+import { normalizeEmail } from "../identity/identity-foundation.rules.js";
+import { participantScopeForUser } from "../identity/participant-scope.service.js";
 
 async function resolveUser(value: string) {
   const parsed = parseDatabaseId(value);
@@ -15,36 +16,165 @@ async function resolveUser(value: string) {
   return user;
 }
 
+async function resolveInstitution(name: string) {
+  const prisma = getPrisma();
+  const normalizedName = name.trim();
+  const existing = await prisma.institution.findFirst({ where: { name: { equals: normalizedName, mode: "insensitive" } } });
+  if (existing) return existing;
+  const slug = `external-${crypto.createHash("sha256").update(normalizedName.toLowerCase()).digest("hex").slice(0, 24)}`;
+  return prisma.institution.upsert({
+    where: { slug },
+    create: { name: normalizedName, slug, hostInstitution: false, status: "ACTIVE", verificationPolicy: {} },
+    update: {},
+  });
+}
+
+async function trustedInstitutionForEmail(emailInput: string) {
+  const email = normalizeEmail(emailInput);
+  const domain = email.split("@")[1];
+  if (!domain) return null;
+  const prisma = getPrisma();
+  const configuredDomain = await prisma.institutionDomain.findUnique({ where: { domain } });
+  const institution = configuredDomain?.trusted && configuredDomain.status === "ACTIVE"
+    ? await prisma.institution.findUnique({ where: { id: configuredDomain.institutionId } })
+    : null;
+  if (!institution?.isActive || institution.status !== "ACTIVE") return null;
+  return { email, domain, institution, verificationMethod: configuredDomain!.verificationMethod };
+}
+
 export const affiliationService = {
   async declare(userId: string, institutionName: string, details: { department?: string; rorId?: string } = {}) {
     const user = await resolveUser(userId);
+    const institution = await resolveInstitution(institutionName);
     const prisma = getPrisma();
-    const current = await prisma.affiliation.findFirst({ where: { userId: user.id, isPrimary: true } });
+    const current = await prisma.affiliation.findFirst({ where: { userId: user.id, isPrimary: true, isCurrent: true } });
     const sameDeclaration = current
-      && current.institutionName.trim().toLocaleLowerCase() === institutionName.trim().toLocaleLowerCase()
+      && current.institutionId === institution.id
       && (current.department ?? "") === (details.department ?? "")
       && (current.rorId ?? "") === (details.rorId ?? "");
-    // Saving an unrelated profile section must not erase valid evidence.
     if (sameDeclaration) return;
-    await prisma.$transaction(async (tx) => {
-      if (current) await tx.affiliation.update({ where: { id: current.id }, data: { isPrimary: false, validUntil: new Date() } });
-      await tx.affiliation.create({ data: {
-        userId: user.id, institutionName, department: details.department, rorId: details.rorId,
-        affiliationType: "EXTERNAL", verificationStatus: "NOT_SUBMITTED",
-        verificationSource: "SELF_DECLARED", isPrimary: true, validFrom: new Date(),
+    const now = new Date();
+    const created = await prisma.$transaction(async (tx) => {
+      if (current) await tx.affiliation.update({
+        where: { id: current.id }, data: { isPrimary: false, isCurrent: false, endDate: now, validUntil: now },
+      });
+      const affiliation = await tx.affiliation.create({ data: {
+        userId: user.id, institutionId: institution.id, institutionName: institution.name,
+        department: details.department, rorId: details.rorId,
+        verificationStatus: "NOT_SUBMITTED", verificationSource: "SELF_DECLARED",
+        isPrimary: true, isCurrent: true, startDate: now, validFrom: now,
       } });
-      await tx.user.update({ where: { id: user.id }, data: { institution: institutionName } });
+      await tx.user.update({ where: { id: user.id }, data: { institution: institution.name } });
       await tx.academicProfile.upsert({
         where: { userId: user.id },
         create: { userId: user.id, affiliationStatus: "NOT_SUBMITTED" },
         update: { affiliationStatus: "NOT_SUBMITTED" },
       });
+      return affiliation;
     });
-    await auditService.log("affiliation.declared", {
-      userId: user.id,
-      targetTableName: "affiliations",
-      details: { institutionName, source: "SELF_DECLARED" },
+    await auditService.log("AFFILIATION_CREATED", {
+      userId: user.id, targetTableName: "affiliations", targetRecordId: created.id,
+      details: { institutionId: institution.id, source: "SELF_DECLARED" },
     });
+  },
+
+  async verifyFromEmail(userId: string, emailInput: string) {
+    const user = await resolveUser(userId);
+    const trusted = await trustedInstitutionForEmail(emailInput);
+    if (!trusted) return null;
+    const { email, domain, institution, verificationMethod } = trusted;
+    const prisma = getPrisma();
+    const claimedEmail = await prisma.userEmail.findUnique({ where: { normalizedEmail: email } });
+    if (claimedEmail && claimedEmail.userId !== user.id) {
+      throw AppError.conflict("Institutional email is already linked to another account");
+    }
+    const now = new Date();
+    let affiliationId: string | undefined;
+    await prisma.$transaction(async (tx) => {
+      const verifiedEmail = await tx.userEmail.upsert({
+        where: { normalizedEmail: email },
+        create: { userId: user.id, normalizedEmail: email, purpose: "INSTITUTIONAL", verifiedAt: now },
+        update: { purpose: "INSTITUTIONAL", verifiedAt: now },
+      });
+      if (verifiedEmail.userId !== user.id) {
+        throw AppError.conflict("Institutional email is already linked to another account");
+      }
+      const profile = await tx.academicProfile.upsert({
+        where: { userId: user.id },
+        create: {
+          userId: user.id,
+          institutionalEmail: email,
+          institutionalEmailVerifiedAt: now,
+          affiliationStatus: "VERIFIED",
+        },
+        update: {
+          institutionalEmail: email,
+          institutionalEmailVerifiedAt: now,
+          affiliationStatus: "VERIFIED",
+        },
+      });
+      const current = await tx.affiliation.findFirst({ where: { userId: user.id, isPrimary: true, isCurrent: true } });
+      const sameInstitution = current?.institutionId === institution.id;
+      if (current && !sameInstitution) {
+        await tx.affiliation.update({
+          where: { id: current.id },
+          data: { isPrimary: false, isCurrent: false, endDate: now, validUntil: now },
+        });
+      }
+      const affiliation = current && sameInstitution
+        ? await tx.affiliation.update({
+            where: { id: current.id },
+            data: {
+              institutionName: institution.name,
+              institutionDomain: domain,
+              rorId: institution.rorId,
+              verificationStatus: "VERIFIED",
+              verificationMethod,
+              verificationSource: "EMAIL",
+              verifiedAt: now,
+            },
+          })
+        : await tx.affiliation.create({
+            data: {
+              userId: user.id,
+              institutionId: institution.id,
+              institutionName: institution.name,
+              institutionDomain: domain,
+              rorId: institution.rorId,
+              verificationStatus: "VERIFIED",
+              verificationMethod,
+              verificationSource: "EMAIL",
+              verifiedAt: now,
+              isPrimary: true,
+              isCurrent: true,
+              startDate: now,
+              validFrom: now,
+            },
+          });
+      affiliationId = affiliation.id;
+      await tx.user.update({ where: { id: user.id }, data: { institution: institution.name } });
+      await tx.verificationEvidence.create({
+        data: {
+          userId: user.id,
+          academicProfileId: profile.id,
+          verificationType: "AFFILIATION",
+          sourceType: verificationMethod,
+          sourceReference: domain,
+          status: "VERIFIED",
+          reviewedAt: now,
+          metadata: { institutionId: institution.id, hostInstitution: institution.hostInstitution },
+        },
+      });
+    });
+    await auditService.log("AFFILIATION_VERIFIED", {
+      userId: user.id, targetTableName: "affiliations", targetRecordId: affiliationId,
+      details: { institutionId: institution.id, domain, method: verificationMethod },
+    });
+    return {
+      participantScope: await participantScopeForUser(user.id),
+      status: "VERIFIED" as const,
+      method: verificationMethod,
+    };
   },
 
   async verifyFromInstitutionalEmail(userId: string) {
@@ -54,53 +184,10 @@ export const affiliationService = {
     if (!profile?.institutionalEmail || !profile.institutionalEmailVerifiedAt) {
       throw AppError.badRequest("Institutional email is not verified");
     }
-    const domain = profile.institutionalEmail.split("@").at(-1)?.toLowerCase();
-    if (!domain) throw AppError.badRequest("Institutional email is invalid");
-    const trustedDomain = await prisma.trustedInstitutionDomain.findUnique({ where: { domain } });
-    const institution = trustedDomain
-      ? await prisma.trustedInstitution.findUnique({ where: { id: trustedDomain.institutionId } })
-      : null;
-    if (!institution?.isActive) throw AppError.badRequest("Institution is not trusted for affiliation verification");
-    const affiliationType = FPT_DOMAINS.has(domain) ? "INTERNAL" : "EXTERNAL";
-    const now = new Date();
-    await prisma.$transaction(async (tx) => {
-      const current = await tx.affiliation.findFirst({ where: { userId: user.id, isPrimary: true } });
-      const sameInstitution = current?.institutionName.trim().toLocaleLowerCase() === institution.name.trim().toLocaleLowerCase();
-      if (current && !sameInstitution) await tx.affiliation.update({ where: { id: current.id }, data: { isPrimary: false, validUntil: now } });
-      if (current && sameInstitution) {
-        await tx.affiliation.update({ where: { id: current.id }, data: {
-          institutionDomain: domain, rorId: institution.rorId, department: profile.affiliationDepartment,
-          academicTitle: profile.academicTitle, affiliationType, verificationStatus: "VERIFIED", verificationSource: "EMAIL",
-        } });
-      } else {
-        await tx.affiliation.create({ data: {
-          userId: user.id, institutionName: institution.name, institutionDomain: domain, rorId: institution.rorId,
-          department: profile.affiliationDepartment, academicTitle: profile.academicTitle,
-          positionTitle: profile.positionTitle, positionCategory: profile.positionCategory, positionSource: profile.positionSource,
-          positionStatus: profile.positionStatus, affiliationType, verificationStatus: "VERIFIED",
-          verificationSource: "EMAIL", isPrimary: true, validFrom: now,
-        } });
-      }
-      await tx.user.update({ where: { id: user.id }, data: { institution: institution.name } });
-      await tx.academicProfile.update({ where: { id: profile.id }, data: { affiliationStatus: "VERIFIED" } });
-      await tx.verificationEvidence.create({
-        data: {
-          userId: user.id,
-          academicProfileId: profile.id,
-          verificationType: "AFFILIATION",
-          sourceType: "EMAIL",
-          sourceReference: domain,
-          status: "VERIFIED",
-          reviewedAt: now,
-          metadata: { institutionId: institution.id, affiliationType },
-        },
-      });
-    });
-    await auditService.log("affiliation.verified", {
-      userId: user.id,
-      targetTableName: "affiliations",
-      details: { institutionId: institution.id, domain, affiliationType, source: "EMAIL" },
-    });
-    return { affiliationType, status: "VERIFIED" as const, source: "EMAIL" as const };
+    const trusted = await trustedInstitutionForEmail(profile.institutionalEmail);
+    if (!trusted) {
+      throw AppError.badRequest("Institution is not trusted for affiliation verification");
+    }
+    return this.verifyFromEmail(user.id, trusted.email);
   },
 };

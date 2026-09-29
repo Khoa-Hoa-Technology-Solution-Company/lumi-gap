@@ -17,7 +17,8 @@ async function canAccessProject(projectId: string, userId: string) {
   const project = await getPrisma().project.findUnique({ where: { id: projectId } });
   if (!project) return false;
   if (project.ownerId === userId) return true;
-  return Boolean(await getPrisma().projectMember.findUnique({ where: { projectId_userId: { projectId, userId } } }));
+  const membership = await getPrisma().projectMember.findUnique({ where: { projectId_userId: { projectId, userId } } });
+  return membership?.status === "ACTIVE";
 }
 
 async function accessibleCorpus(corpusId: string, userIdInput: string) {
@@ -38,7 +39,7 @@ function present<T extends { id: string; legacyMongoId?: string | null }>(row: T
 export const literatureService = {
   async list(userIdInput: string) {
     const userId = await resolveUser(userIdInput);
-    const memberships = await getPrisma().projectMember.findMany({ where: { userId, status: "active" }, select: { projectId: true } });
+    const memberships = await getPrisma().projectMember.findMany({ where: { userId, status: "ACTIVE" }, select: { projectId: true } });
     const ownedProjects = await getPrisma().project.findMany({ where: { ownerId: userId }, select: { id: true } });
     const projectIds = [...new Set([...memberships.map((row) => row.projectId), ...ownedProjects.map((row) => row.id)])];
     const corpora = await getPrisma().literatureCorpus.findMany({ where: { OR: [{ ownerId: userId }, { projectId: { in: projectIds } }] }, orderBy: { updatedAt: "desc" } });

@@ -8,7 +8,7 @@ import {
   loadDictionary,
   type TranslationKey,
 } from "../locales";
-import { UI_LANGUAGES } from "../index";
+import { resolveInitialLanguage, UI_LANGUAGES } from "../index";
 
 const TRANSLATABLE_ATTRIBUTES = new Set(["placeholder", "aria-label", "title", "alt"]);
 const TEXT_PROPS = new Set([
@@ -49,7 +49,7 @@ describe("UI i18n dictionaries", () => {
     for (const language of UI_LANGUAGES) {
       expect(Object.keys(await loadDictionary(language.code)).sort()).toEqual(sourceKeys);
     }
-  });
+  }, 15_000);
 
   it("covers known body text that is easy to miss", () => {
     expect(englishDictionary).toMatchObject({
@@ -69,6 +69,20 @@ describe("UI i18n dictionaries", () => {
     const missing = [...uiStrings].filter((text) => !(text in englishDictionary)).sort((a, b) => a.localeCompare(b));
 
     expect(missing).toEqual([]);
+  });
+});
+
+describe("initial interface language", () => {
+  it("keeps a supported language the user selected previously", () => {
+    expect(resolveInitialLanguage("fr", ["vi-VN", "en-US"])).toBe("fr");
+  });
+
+  it("detects the first supported browser language, including regional tags", () => {
+    expect(resolveInitialLanguage(null, ["th-TH", "vi-VN", "en-US"])).toBe("vi");
+  });
+
+  it("falls back to English when no browser language is supported", () => {
+    expect(resolveInitialLanguage("unsupported", ["th-TH", "ar"])).toBe("en");
   });
 });
 

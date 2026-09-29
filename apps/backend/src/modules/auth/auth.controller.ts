@@ -11,6 +11,7 @@ import type {
   ResendEmailVerificationInput,
   ForgotPasswordInput,
   ResetPasswordInput,
+  AddEmailInput,
 } from "./dto/auth.schema.js";
 import { authService } from "./auth.service.js";
 import { env } from "../../config/env.js";
@@ -69,7 +70,12 @@ export const authController = {
         systemRole: user.systemRole,
         emailVerified: Boolean(user.emailVerifiedAt),
         onboardingCompleted: user.onboarding?.completed === true,
+        admissionBasis: user.admissionBasis,
+        participantScope: user.participantScope,
+        academicRole: user.academicRole,
+        academicRoleVerificationStatus: user.academicRoleVerificationStatus,
         primaryPosition: user.primaryPosition,
+        verifiedEmails: user.verifiedEmails ?? [],
         capabilities: user.capabilities ?? [],
       },
     });
@@ -79,6 +85,12 @@ export const authController = {
     if (!req.user) return res.status(401).json({ success: false, error: { message: "Unauthorized" } });
     const user = await authService.updateAcademicProfile(req.user.sub, req.body);
     res.json({ success: true, data: { user } });
+  },
+
+  async academicOnboardingOptions(req: Request, res: Response) {
+    if (!req.user) return res.status(401).json({ success: false, error: { message: "Unauthorized" } });
+    const options = await authService.academicOnboardingOptions();
+    res.json({ success: true, data: options });
   },
 
   async changePassword(req: Request<unknown, unknown, ChangePasswordInput>, res: Response) {
@@ -97,6 +109,12 @@ export const authController = {
     res.status(202).json({ success: true, data: { accepted: true } });
   },
 
+  async addEmail(req: Request<unknown, unknown, AddEmailInput>, res: Response) {
+    if (!req.user) return res.status(401).json({ success: false, error: { message: "Unauthorized" } });
+    await authService.addEmail(req.user.sub, req.body);
+    res.status(202).json({ success: true, data: { accepted: true } });
+  },
+
   async forgotPassword(req: Request<unknown, unknown, ForgotPasswordInput>, res: Response) {
     await authService.forgotPassword(req.body.email);
     res.status(202).json({ success: true, data: { accepted: true } });
@@ -109,7 +127,8 @@ export const authController = {
 
   async googleStart(req: Request, res: Response) {
     const returnOrigin = typeof req.query.returnOrigin === "string" ? req.query.returnOrigin : undefined;
-    res.redirect(await googleOidcService.authorizationUrl(returnOrigin));
+    const invitationToken = typeof req.query.invitationToken === "string" ? req.query.invitationToken : undefined;
+    res.redirect(await googleOidcService.authorizationUrl(returnOrigin, invitationToken));
   },
 
   async googleCallback(req: Request, res: Response) {
@@ -120,7 +139,7 @@ export const authController = {
       const state = typeof req.query.state === "string" ? req.query.state : "";
       if (!code || !state) throw new Error("Missing Google callback parameters");
       const exchanged = await googleOidcService.exchange(code, state);
-      const result = await authService.googleLogin(exchanged.identity, sessionContext(req));
+      const result = await authService.googleLogin(exchanged.identity, sessionContext(req), exchanged.invitationToken);
 
       const exchangeCode = await oauthExchangeService.create(result);
       const redirectUrl = new URL(`${exchanged.returnOrigin}/auth/oauth-callback`);

@@ -25,6 +25,7 @@ import {
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useI18n } from "@/i18n";
 import {
   Dialog,
   DialogContent,
@@ -99,8 +100,10 @@ function statusLabel(status: AcademicIdentityLink["status"]): string {
   return status === "SELF_DECLARED" ? "Self-declared" : status.charAt(0) + status.slice(1).toLowerCase();
 }
 
-function visibilityLabel(visibility: AcademicIdentityVisibility): string {
-  return visibilityOptions.find((option) => option.value === visibility)?.label ?? visibility;
+type Translate = ReturnType<typeof useI18n>["t"];
+
+function visibilityLabel(visibility: AcademicIdentityVisibility, t: Translate): string {
+  return t(visibilityOptions.find((option) => option.value === visibility)?.label ?? visibility);
 }
 
 function safeViewUrl(identity: AcademicIdentityLink): string | undefined {
@@ -178,6 +181,7 @@ function valueForIdentity(identity: AcademicIdentityLink): string {
 }
 
 export function AcademicIdentityManager({ profile, editable }: { profile: ProfileWithAcademicIdentities; editable: boolean }) {
+  const { t } = useI18n();
   const linksQuery = useAcademicIdentityLinks(editable);
   const create = useCreateAcademicIdentity();
   const update = useUpdateAcademicIdentity();
@@ -210,7 +214,7 @@ export function AcademicIdentityManager({ profile, editable }: { profile: Profil
   async function submit() {
     const error = validateDraft(draft);
     if (error) {
-      setFormError(error);
+      setFormError(t(error));
       return;
     }
     setFormError(null);
@@ -218,11 +222,11 @@ export function AcademicIdentityManager({ profile, editable }: { profile: Profil
       if (editing) await update.mutateAsync({ identityId: editing.id, input: draftPayload(draft) });
       else await create.mutateAsync(draftPayload(draft));
       setDialogOpen(false);
-      setNotice(editing ? "Academic identity updated." : "Academic identity added.");
-      toast.success(editing ? "Academic identity updated" : "Academic identity added");
+      setNotice(t(editing ? "Academic identity updated." : "Academic identity added."));
+      toast.success(t(editing ? "Academic identity updated" : "Academic identity added"));
     } catch (error) {
       const response = error as { response?: { data?: { error?: { message?: string } } } };
-      setFormError(response.response?.data?.error?.message ?? "Could not save this academic identity.");
+      setFormError(response.response?.data?.error?.message ?? t("Could not save this academic identity."));
     }
   }
 
@@ -231,11 +235,11 @@ export function AcademicIdentityManager({ profile, editable }: { profile: Profil
       await remove.mutateAsync(identity.id);
       setDeleteId(null);
       setMenuId(null);
-      setNotice("Academic identity removed.");
-      toast.success("Academic identity removed");
+      setNotice(t("Academic identity removed."));
+      toast.success(t("Academic identity removed"));
     } catch (error) {
       const response = error as { response?: { data?: { error?: { message?: string } } } };
-      setNotice(response.response?.data?.error?.message ?? "Could not remove this academic identity.");
+      setNotice(response.response?.data?.error?.message ?? t("Could not remove this academic identity."));
     }
   }
 
@@ -243,35 +247,39 @@ export function AcademicIdentityManager({ profile, editable }: { profile: Profil
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <p className="max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-300">Connect your scholarly profiles to make your research identity easier to discover.</p>
-        {editable && <Button type="button" size="sm" onClick={openCreate} className="gap-1.5"><Plus className="h-4 w-4" />Add academic identity</Button>}
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">{t("Scholarly profiles")}</h3>
+          <p className="mt-1 max-w-xl text-xs leading-5 text-slate-500 dark:text-slate-400">{t("Connect scholarly profiles such as ORCID or OpenAlex to help people discover your work.")}</p>
+        </div>
+        {editable && <Button type="button" size="sm" onClick={openCreate} className="shrink-0 gap-1.5"><Plus className="h-4 w-4" />{t("Add academic identity")}</Button>}
       </div>
       {notice && <p role="status" className="text-xs font-medium text-[#0f6870] dark:text-teal-300">{notice}</p>}
-      {editable && linksQuery.isLoading && <div className="space-y-2" role="status" aria-label="Loading academic identities"><div className="h-16 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-900" /><div className="h-16 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-900" /></div>}
-      {editable && linksQuery.isError && <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#f0c9c3] bg-[#fff6f4] px-4 py-3 text-sm text-[#9c3d34] dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-200"><span>Could not load academic identities.</span><Button type="button" variant="outline" size="sm" onClick={() => linksQuery.refetch()}>Try again</Button></div>}
-      {!linksQuery.isLoading && !linksQuery.isError && links.length === 0 && <div className="rounded-xl border border-dashed border-[#b9e5e1] bg-[#f7fcfb] px-5 py-7 text-center dark:border-teal-900 dark:bg-teal-950/20"><div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-[#e8f6f4] text-[#0f7b83] dark:bg-teal-950/60 dark:text-teal-300"><Link2 className="h-5 w-5" /></div><p className="mt-3 text-sm font-semibold text-slate-900 dark:text-slate-100">No academic identities added yet</p><p className="mx-auto mt-1 max-w-md text-xs leading-5 text-slate-500">Add ORCID, OpenAlex, Scholar profiles, or another scholarly link. These links never verify your academic position automatically.</p>{editable && <Button type="button" variant="outline" size="sm" onClick={openCreate} className="mt-4 gap-1.5"><Plus className="h-4 w-4" />Add academic identity</Button>}</div>}
+      {!links.some((identity) => identity.provider === "ORCID") && <div className="flex items-center justify-between gap-3 border-y border-slate-100 py-2.5 text-xs dark:border-slate-800"><span className="font-medium text-slate-600 dark:text-slate-300">ORCID</span><Badge variant="outline" className="border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">{t("Not connected")}</Badge></div>}
+      {editable && linksQuery.isLoading && <div className="space-y-2" role="status" aria-label={t("Loading academic identities")}><div className="h-16 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-900" /><div className="h-16 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-900" /></div>}
+      {editable && linksQuery.isError && <div className="flex flex-wrap items-center justify-between gap-3 border-y border-[#f0c9c3] bg-[#fff6f4] px-1 py-3 text-sm text-[#9c3d34] dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-200"><span>{t("Could not load academic identities.")}</span><Button type="button" variant="outline" size="sm" onClick={() => linksQuery.refetch()}>{t("Try again")}</Button></div>}
+      {!linksQuery.isLoading && !linksQuery.isError && links.length === 0 && <div className="border-t border-slate-100 py-5 dark:border-slate-800"><p className="text-sm font-medium text-slate-800 dark:text-slate-200">{t("No academic identities added yet")}</p><p className="mt-1 max-w-xl text-xs leading-5 text-slate-500">{t("Add ORCID, OpenAlex, Scholar profiles, or another scholarly link. These links never verify your academic position automatically.")}</p></div>}
       {links.length > 0 && <div className="space-y-2">{links.map((identity) => {
         const viewUrl = safeViewUrl(identity);
         const isDeleting = deleteId === identity.id;
         return <article key={identity.id} className="relative flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3.5 dark:border-slate-800 dark:bg-[#101923]">
           <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${providerTone(identity.provider)}`}>{providerIcon(identity.provider)}</span>
-          <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">{identity.label || providerLabels[identity.provider]}</h3><Badge variant="outline" className={`px-2 py-0.5 text-[11px] ${statusTone(identity.status)}`}>{identity.status === "LINKED" && <BadgeCheck className="mr-1 h-3 w-3" />}{statusLabel(identity.status)}</Badge></div><p className="mt-1 break-all text-xs text-slate-500 dark:text-slate-400">{identity.identifier || identity.profileUrl}</p><p className="mt-1 inline-flex items-center gap-1 text-[11px] text-slate-400"><span className="text-slate-500">{visibilityLabel(identity.visibility)}</span></p></div>
-          <div className="flex items-center gap-1"><Button type="button" variant="outline" size="sm" disabled={!viewUrl} asChild={Boolean(viewUrl)}>{viewUrl ? <a href={viewUrl} target="_blank" rel="noopener noreferrer"><ExternalLink className="h-3.5 w-3.5" />View</a> : <span><ExternalLink className="h-3.5 w-3.5" />View</span>}</Button>{editable && <div className="relative"><Button type="button" variant="ghost" size="icon" aria-label={`Actions for ${identity.label || providerLabels[identity.provider]}`} aria-expanded={menuId === identity.id} onClick={() => setMenuId(menuId === identity.id ? null : identity.id)}><MoreHorizontal className="h-4 w-4" /></Button>{menuId === identity.id && <div className="absolute right-0 top-10 z-10 w-32 rounded-lg border border-slate-200 bg-white p-1 shadow-lg dark:border-slate-700 dark:bg-slate-900"><button type="button" className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs hover:bg-slate-100 dark:hover:bg-slate-800" onClick={() => openEdit(identity)}><Pencil className="h-3.5 w-3.5" />Edit</button><button type="button" className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs text-red-700 hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-950/40" onClick={() => { setDeleteId(identity.id); setMenuId(null); }}><Trash2 className="h-3.5 w-3.5" />Remove</button></div>}</div>}</div>
-          {isDeleting && <div className="flex w-full items-center justify-end gap-2 border-t border-slate-100 pt-3 text-xs dark:border-slate-800"><span className="mr-auto text-slate-500">Remove this identity?</span><Button type="button" variant="ghost" size="sm" onClick={() => setDeleteId(null)}>Cancel</Button><Button type="button" variant="destructive" size="sm" disabled={remove.isPending} onClick={() => void confirmDelete(identity)}>{remove.isPending ? "Removing…" : "Remove"}</Button></div>}
+          <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">{identity.label || providerLabels[identity.provider]}</h3><Badge variant="outline" className={`px-2 py-0.5 text-[11px] ${statusTone(identity.status)}`}>{identity.status === "LINKED" && <BadgeCheck className="mr-1 h-3 w-3" />}{t(statusLabel(identity.status))}</Badge></div><p className="mt-1 break-all text-xs text-slate-500 dark:text-slate-400">{identity.identifier || identity.profileUrl}</p><p className="mt-1 inline-flex items-center gap-1 text-[11px] text-slate-400"><span className="text-slate-500">{visibilityLabel(identity.visibility, t)}</span></p></div>
+          <div className="flex items-center gap-1"><Button type="button" variant="outline" size="sm" disabled={!viewUrl} asChild={Boolean(viewUrl)}>{viewUrl ? <a href={viewUrl} target="_blank" rel="noopener noreferrer"><ExternalLink className="h-3.5 w-3.5" />{t("View")}</a> : <span><ExternalLink className="h-3.5 w-3.5" />{t("View")}</span>}</Button>{editable && <div className="relative"><Button type="button" variant="ghost" size="icon" aria-label={t("Actions for {{name}}", { name: identity.label || providerLabels[identity.provider] })} aria-expanded={menuId === identity.id} onClick={() => setMenuId(menuId === identity.id ? null : identity.id)}><MoreHorizontal className="h-4 w-4" /></Button>{menuId === identity.id && <div className="absolute right-0 top-10 z-10 w-32 rounded-lg border border-slate-200 bg-white p-1 shadow-lg dark:border-slate-700 dark:bg-slate-900"><button type="button" className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs hover:bg-slate-100 dark:hover:bg-slate-800" onClick={() => openEdit(identity)}><Pencil className="h-3.5 w-3.5" />{t("Edit")}</button><button type="button" className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs text-red-700 hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-950/40" onClick={() => { setDeleteId(identity.id); setMenuId(null); }}><Trash2 className="h-3.5 w-3.5" />{t("Remove")}</button></div>}</div>}</div>
+          {isDeleting && <div className="flex w-full items-center justify-end gap-2 border-t border-slate-100 pt-3 text-xs dark:border-slate-800"><span className="mr-auto text-slate-500">{t("Remove this identity?")}</span><Button type="button" variant="ghost" size="sm" onClick={() => setDeleteId(null)}>{t("Cancel")}</Button><Button type="button" variant="destructive" size="sm" disabled={remove.isPending} onClick={() => void confirmDelete(identity)}>{remove.isPending ? t("Removing…") : t("Remove")}</Button></div>}
         </article>;
       })}</div>}
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-h-[calc(100vh-2rem)] max-w-xl overflow-y-auto">
-          <DialogHeader><DialogTitle>{editing ? "Edit academic identity" : "Add academic identity"}</DialogTitle><DialogDescription>{editing ? "Update this scholarly profile link and its visibility." : "Choose one provider to show only the fields needed for that profile."}</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>{t(editing ? "Edit academic identity" : "Add academic identity")}</DialogTitle><DialogDescription>{t(editing ? "Update this scholarly profile link and its visibility." : "Choose one provider to show only the fields needed for that profile.")}</DialogDescription></DialogHeader>
           <div className="space-y-5 py-1">
-            <div className="space-y-2"><Label htmlFor="academic-identity-provider">Provider</Label><select id="academic-identity-provider" className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-zinc-950" value={draft.provider} onChange={(event) => setDraft((current) => ({ ...current, provider: event.target.value as AcademicIdentityProvider, label: event.target.value === "OTHER" ? current.label : "", value: "" }))}>{providerOptions.map((option) => <option key={option.value} value={option.value}>{option.label} · {option.hint}</option>)}</select></div>
-            {draft.provider === "OTHER" && <div className="space-y-2"><Label htmlFor="academic-identity-label">Profile name</Label><Input id="academic-identity-label" value={draft.label} maxLength={120} onChange={(event) => setDraft((current) => ({ ...current, label: event.target.value }))} placeholder="e.g. University researcher profile" /></div>}
-            <div className="space-y-2"><Label htmlFor="academic-identity-value">{draft.provider === "ORCID" ? "ORCID iD" : draft.provider === "GOOGLE_SCHOLAR" ? "Scholar profile URL" : draft.provider === "OTHER" ? "Profile URL / identifier" : `${providerLabels[draft.provider]} Author ID or profile URL`}</Label><Input id="academic-identity-value" value={draft.value} onChange={(event) => setDraft((current) => ({ ...current, value: event.target.value }))} placeholder={draft.provider === "ORCID" ? "0000-0002-1825-0097" : draft.provider === "OPENALEX" ? "A123456789 or https://openalex.org/A123456789" : draft.provider === "GOOGLE_SCHOLAR" ? "https://scholar.google.com/citations?user=..." : draft.provider === "SEMANTIC_SCHOLAR" ? "Author ID or https://www.semanticscholar.org/author/..." : "https://example.edu/profile or identifier"} autoFocus /></div>
-            <div className="space-y-2"><Label htmlFor="academic-identity-visibility">Visibility</Label><select id="academic-identity-visibility" className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-zinc-950" value={draft.visibility} onChange={(event) => setDraft((current) => ({ ...current, visibility: event.target.value as AcademicIdentityVisibility }))}>{visibilityOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select><p className="text-xs text-slate-500">Visibility controls who can see the link, not whether it is verified.</p></div>
+            <div className="space-y-2"><Label htmlFor="academic-identity-provider">{t("Provider")}</Label><select id="academic-identity-provider" className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-zinc-950" value={draft.provider} onChange={(event) => setDraft((current) => ({ ...current, provider: event.target.value as AcademicIdentityProvider, label: event.target.value === "OTHER" ? current.label : "", value: "" }))}>{providerOptions.map((option) => <option key={option.value} value={option.value}>{t(option.label)} · {t(option.hint)}</option>)}</select></div>
+            {draft.provider === "OTHER" && <div className="space-y-2"><Label htmlFor="academic-identity-label">{t("Profile name")}</Label><Input id="academic-identity-label" value={draft.label} maxLength={120} onChange={(event) => setDraft((current) => ({ ...current, label: event.target.value }))} placeholder={t("e.g. University researcher profile")} /></div>}
+            <div className="space-y-2"><Label htmlFor="academic-identity-value">{t(draft.provider === "ORCID" ? "ORCID iD" : draft.provider === "GOOGLE_SCHOLAR" ? "Scholar profile URL" : draft.provider === "OTHER" ? "Profile URL / identifier" : `${providerLabels[draft.provider]} Author ID or profile URL`)}</Label><Input id="academic-identity-value" value={draft.value} onChange={(event) => setDraft((current) => ({ ...current, value: event.target.value }))} placeholder={t(draft.provider === "ORCID" ? "0000-0002-1825-0097" : draft.provider === "OPENALEX" ? "A123456789 or https://openalex.org/A123456789" : draft.provider === "GOOGLE_SCHOLAR" ? "https://scholar.google.com/citations?user=..." : draft.provider === "SEMANTIC_SCHOLAR" ? "Author ID or https://www.semanticscholar.org/author/..." : "https://example.edu/profile or identifier")} autoFocus /></div>
+            <div className="space-y-2"><Label htmlFor="academic-identity-visibility">{t("Visibility")}</Label><select id="academic-identity-visibility" className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-zinc-950" value={draft.visibility} onChange={(event) => setDraft((current) => ({ ...current, visibility: event.target.value as AcademicIdentityVisibility }))}>{visibilityOptions.map((option) => <option key={option.value} value={option.value}>{t(option.label)}</option>)}</select><p className="text-xs text-slate-500">{t("Visibility controls who can see the link, not whether it is verified.")}</p></div>
             {formError && <p role="alert" className="rounded-lg border border-[#f0c9c3] bg-[#fff6f4] px-3 py-2 text-sm text-[#9c3d34] dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-200">{formError}</p>}
           </div>
-          <DialogFooter><Button type="button" variant="ghost" onClick={() => setDialogOpen(false)}>Cancel</Button><Button type="button" onClick={() => void submit()} disabled={busy}>{busy ? "Saving…" : editing ? "Save changes" : "Add identity"}</Button></DialogFooter>
+          <DialogFooter><Button type="button" variant="ghost" onClick={() => setDialogOpen(false)}>{t("Cancel")}</Button><Button type="button" onClick={() => void submit()} disabled={busy}>{busy ? t("Saving…") : editing ? t("Save changes") : t("Add identity")}</Button></DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

@@ -24,8 +24,10 @@ export function canResolveContribution(input: {
   proposerId: string;
   contributorId: string;
   actorIsOwner: boolean;
+  actorHasAcademicApproval?: boolean;
 }) {
   if (input.actorId === input.proposerId) return false;
+  if (input.actorHasAcademicApproval) return true;
   return input.requiredFrom === "OWNER"
     ? input.actorIsOwner
     : input.actorId === input.contributorId;

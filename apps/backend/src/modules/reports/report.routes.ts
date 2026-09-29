@@ -43,5 +43,6 @@ reportRouter.post("/", createReportLimiter, reportController.create);
 reportRouter.post("/evidence-preview", reportController.previewEvidence);
 reportRouter.get("/", reportController.list);
 reportRouter.get("/:id", reportController.getById);
+reportRouter.patch("/:id/artifact-status", reportController.updateArtifactStatus);
 reportRouter.delete("/", reportController.deleteBatch);
 reportRouter.delete("/:id", reportController.deleteById);

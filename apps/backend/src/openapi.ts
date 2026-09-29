@@ -372,6 +372,7 @@ export const openapiSpec = {
                     required: ["fullName"],
                     properties: {
                       fullName: { type: "string", example: "Hoang Long Anh" },
+                      invitationToken: { type: "string", minLength: 32, description: "Required for external invitation-only admission" },
                     },
                   },
                 ],
@@ -414,8 +415,9 @@ export const openapiSpec = {
               schema: {
                 type: "object",
                 additionalProperties: false,
-                required: ["primaryPosition", "institutionName"],
+                required: ["academicRole", "institutionName"],
                 properties: {
+                  academicRole: { type: "string", enum: ["STUDENT", "RESEARCHER", "LECTURER"] },
                   primaryPosition: {
                     type: "string",
                     enum: ["STUDENT", "LECTURER", "RESEARCH_STAFF", "INDUSTRY_PRACTITIONER", "OTHER"],
@@ -455,6 +457,15 @@ export const openapiSpec = {
         summary: "Verify account email with a one-time token",
         requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["token"], properties: { token: { type: "string", minLength: 32 } } } } } },
         responses: { "200": { description: "Email verified" }, "400": { description: "Token invalid, expired, or already used" } },
+      },
+    },
+    "/api/v1/auth/me/emails": {
+      post: {
+        tags: ["Auth"],
+        summary: "Link and verify an additional account or institutional email",
+        security: [{ bearerAuth: [] }],
+        requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["email"], properties: { email: { type: "string", format: "email" }, purpose: { type: "string", enum: ["INSTITUTIONAL", "CONTACT"] } } } } } },
+        responses: { "202": { description: "Verification request accepted" }, "409": { description: "Email is already linked to another account" } },
       },
     },
     "/api/v1/auth/password/forgot": {

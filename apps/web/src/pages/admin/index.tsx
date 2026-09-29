@@ -62,7 +62,7 @@ export function AdminHomePage() {
     {
       title: "Total Users",
       value: data?.users.total,
-      subtext: `${data?.users.byRole.RESEARCH_USER ?? 0} researchers, ${data?.users.byRole.ADMIN ?? 0} admins`,
+      subtext: `${data?.users.byRole.USER ?? 0} researchers, ${data?.users.byRole.ADMIN ?? 0} admins`,
       icon: Users,
       trend: "+12.5% this month",
       link: "/admin/users",

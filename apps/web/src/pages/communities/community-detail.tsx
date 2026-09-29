@@ -1,86 +1,48 @@
+import { useMemo, useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
-import { ArrowLeft, CheckCircle2, Clock3, LockKeyhole, Settings2, ShieldCheck, Users } from "lucide-react";
+import { ArrowLeft, Check, ChevronDown, LockKeyhole, MessageSquare, Settings2, ShieldCheck, Users } from "lucide-react";
+import type { ForumSort } from "@trend/shared-types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useCommunity, useForumPosts, useJoinCommunity, useLeaveCommunity } from "@/features/forum";
+import { useI18n } from "@/i18n";
 import { useAuthStore } from "@/stores/auth-store";
+import { cn } from "@/utils/cn";
+
+type Tab = ForumSort | "about";
+const TABS: Array<{ value: Tab; label: string }> = [{ value: "latest", label: "Latest" }, { value: "unanswered", label: "Unanswered" }, { value: "popular", label: "Popular" }, { value: "about", label: "About" }];
 
 function requestError(error: unknown, fallback: string) {
   return (error as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message ?? fallback;
 }
 
 export function CommunityDetailPage() {
-  const { slug = "" } = useParams();
-  const location = useLocation();
-  const { data: community, isLoading, error } = useCommunity(slug);
-  const join = useJoinCommunity();
-  const leave = useLeaveCommunity();
-  const isAuthed = useAuthStore((state) => Boolean(state.tokens?.accessToken));
-  const posts = useForumPosts({ page: 1, pageSize: 20, communityId: community?.id }, Boolean(community?.id && !community.contentRestricted));
-  const membership = community?.viewerMembership;
-  const membershipBusy = join.isPending || leave.isPending;
-  const mutationError = join.error ? requestError(join.error, "Could not join this community.") : leave.error ? requestError(leave.error, "Could not leave this community.") : "";
+  const { t } = useI18n(); const { slug = "" } = useParams(); const location = useLocation();
+  const { data: community, isLoading, error } = useCommunity(slug); const join = useJoinCommunity(); const leave = useLeaveCommunity();
+  const isAuthed = useAuthStore((state) => Boolean(state.tokens?.accessToken)); const [tab, setTab] = useState<Tab>("latest");
+  const posts = useForumPosts({ page: 1, pageSize: 30, communityId: community?.id, sort: tab === "about" ? "latest" : tab }, Boolean(community?.id && !community.contentRestricted && tab !== "about"));
+  const popularTags = useMemo(() => { const counts = new Map<string, number>(); for (const post of posts.data?.data ?? []) for (const tag of post.tags) counts.set(tag, (counts.get(tag) ?? 0) + 1); return [...counts].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([tag]) => tag); }, [posts.data?.data]);
+  const membership = community?.viewerMembership; const busy = join.isPending || leave.isPending;
+  const mutationError = join.error ? requestError(join.error, t("Could not join this community.")) : leave.error ? requestError(leave.error, t("Could not leave this community.")) : "";
 
-  if (isLoading) return <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6"><div className="h-52 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-900" /><div className="mt-6 h-72 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-900" /></main>;
-  if (error || !community) return <main className="mx-auto max-w-3xl px-4 py-16 text-center"><h1 className="text-2xl font-semibold text-slate-950 dark:text-slate-50">Community unavailable</h1><p className="mt-2 text-sm text-slate-500">This community may not exist or may no longer be available.</p><Button asChild variant="outline" className="mt-5"><Link to="/communities">Browse communities</Link></Button></main>;
+  if (isLoading) return <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6"><div className="h-52 animate-pulse rounded-xl bg-muted" /><div className="mt-6 h-72 animate-pulse rounded-xl bg-muted" /></main>;
+  if (error || !community) return <main className="mx-auto max-w-3xl px-4 py-16 text-center"><h1 className="text-2xl font-semibold">{t("Community unavailable")}</h1><p className="mt-2 text-sm text-muted-foreground">{t("This community may not exist or may no longer be available.")}</p><Button asChild variant="outline" className="mt-5"><Link to="/communities">{t("Browse communities")}</Link></Button></main>;
 
-  const joinLabel = community.visibility === "private" ? "Request to join" : "Join community";
+  return <main className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
+    <Link to="/communities" className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-blue-700"><ArrowLeft className="h-4 w-4" />{t("All communities")}</Link>
+    <header className="mt-5 border-b pb-6"><div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between"><div className="min-w-0 max-w-3xl"><div className="flex flex-wrap items-center gap-2"><Badge variant="outline" className="gap-1 font-normal">{community.visibility === "private" ? <LockKeyhole className="h-3 w-3" /> : null}{t(community.visibility === "private" ? "Private" : "Public")}</Badge>{community.researchField ? <span className="text-xs font-medium text-blue-700">{community.researchField}</span> : null}</div><h1 className="mt-3 text-3xl font-bold tracking-tight">{community.name}</h1><p className="mt-3 max-w-[72ch] text-sm leading-7 text-muted-foreground">{community.description || t("A focused academic community for exchanging evidence, questions and research practice.")}</p><div className="mt-4 flex flex-wrap gap-4 text-sm text-muted-foreground"><span className="inline-flex items-center gap-1.5"><Users className="h-4 w-4" />{community.memberCount} {t(community.memberCount === 1 ? "member" : "members")}</span><span className="inline-flex items-center gap-1.5"><MessageSquare className="h-4 w-4" />{community.threadCount} {t(community.threadCount === 1 ? "discussion" : "discussions")}</span></div></div>
+      <div className="flex shrink-0 flex-wrap gap-2">{community.canManage ? <Button asChild variant="outline" className="gap-2"><Link to={`/communities/${community.slug}/manage`}><Settings2 className="h-4 w-4" />{t("Manage")}</Link></Button> : null}{!isAuthed ? <Button asChild><Link to="/login" state={{ from: location }}>{t("Sign in to join")}</Link></Button> : membership?.status === "active" ? <DropdownMenu><DropdownMenuTrigger asChild><Button variant="outline" disabled={busy}><Check className="h-4 w-4" />{t("Joined")}<ChevronDown className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem className="text-red-600" onSelect={() => leave.mutate(community.id)}>{t("Leave community")}</DropdownMenuItem></DropdownMenuContent></DropdownMenu> : membership?.status === "pending" ? <Button variant="outline" disabled={busy} onClick={() => leave.mutate(community.id)}>{t(busy ? "Working…" : "Cancel request")}</Button> : membership?.status === "banned" ? <Button disabled variant="outline">{t("Access unavailable")}</Button> : <Button disabled={busy || community.status === "ARCHIVED"} onClick={() => join.mutate(community.id)}>{t(busy ? "Joining…" : community.visibility === "private" ? "Request to join" : "Join Community")}</Button>}</div>
+    </div>{mutationError ? <p role="alert" className="mt-4 text-sm text-red-600">{mutationError}</p> : null}</header>
 
-  return (
-    <main className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
-      <Link to="/communities" className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-600 hover:text-blue-700 focus-visible:rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500 dark:text-slate-300"><ArrowLeft className="h-4 w-4" />All communities</Link>
-
-      <header className="mt-5 border-b border-slate-200 pb-7 dark:border-slate-800">
-        <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0 max-w-3xl">
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="outline" className="gap-1 font-normal">{community.visibility === "private" ? <LockKeyhole className="h-3 w-3" /> : null}{community.visibility === "private" ? "Private" : "Public"}</Badge>
-              <span className="inline-flex items-center gap-1.5 text-xs text-slate-500"><Users className="h-3.5 w-3.5" />{community.memberCount} {community.memberCount === 1 ? "member" : "members"}</span>
-              {membership?.status === "active" ? <Badge className="gap-1 border-emerald-200 bg-emerald-50 font-normal text-emerald-700 hover:bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300"><CheckCircle2 className="h-3 w-3" />{membership.role}</Badge> : null}
-              {membership?.status === "pending" ? <Badge variant="outline" className="gap-1 font-normal text-amber-700 dark:text-amber-300"><Clock3 className="h-3 w-3" />Request pending</Badge> : null}
-            </div>
-            <h1 className="mt-3 text-3xl font-bold tracking-tight text-slate-950 dark:text-slate-50">{community.name}</h1>
-            <p className="mt-3 max-w-[70ch] text-sm leading-7 text-slate-600 dark:text-slate-300">{community.description || "A focused academic community for exchanging evidence, questions and research practice."}</p>
-            {community.researchTopics.length > 0 ? <div className="mt-4 flex flex-wrap gap-2">{community.researchTopics.map((topic) => <Badge key={topic} variant="secondary" className="font-normal">{topic}</Badge>)}</div> : null}
-          </div>
-
-          <div className="flex shrink-0 flex-wrap gap-2">
-            {community.canManage ? <Button asChild variant="outline" className="gap-2"><Link to={`/communities/${community.slug}/manage`}><Settings2 className="h-4 w-4" />Manage</Link></Button> : null}
-            {!isAuthed ? <Button asChild><Link to="/login" state={{ from: location }}>Sign in to join</Link></Button>
-              : !membership || membership.status === "declined" ? <Button disabled={membershipBusy} onClick={() => join.mutate(community.id)}>{membershipBusy ? "Working…" : joinLabel}</Button>
-                : membership.status === "pending" ? <Button variant="outline" disabled={membershipBusy} onClick={() => leave.mutate(community.id)}>{membershipBusy ? "Working…" : "Cancel request"}</Button>
-                  : membership.status === "active" && membership.role !== "owner" ? <Button variant="outline" disabled={membershipBusy} onClick={() => leave.mutate(community.id)}>{membershipBusy ? "Working…" : "Leave community"}</Button>
-                    : membership.status === "banned" ? <Button disabled variant="outline">Access unavailable</Button> : null}
-          </div>
-        </div>
-        {mutationError ? <p role="alert" className="mt-4 text-sm text-red-600 dark:text-red-300">{mutationError}</p> : null}
-      </header>
-
-      <div className="mt-7 grid items-start gap-7 lg:grid-cols-[minmax(0,1fr)_280px]">
-        <section>
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <div><h2 className="text-xl font-semibold text-slate-950 dark:text-slate-50">Recent discussions</h2><p className="mt-1 text-sm text-slate-500">Questions and evidence shared by this community.</p></div>
-            {membership?.status === "active" ? <Button size="sm" asChild><Link to={`/forum/new?community=${community.id}`}>New post</Link></Button> : null}
-          </div>
-
-          {community.contentRestricted ? (
-            <div className="rounded-xl border border-dashed border-slate-300 px-6 py-12 text-center dark:border-slate-700"><LockKeyhole className="mx-auto h-6 w-6 text-slate-400" /><h3 className="mt-3 font-semibold text-slate-900 dark:text-slate-100">Discussions are private</h3><p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">Request membership to read and contribute to this community.</p></div>
-          ) : posts.isLoading ? (
-            <div className="divide-y divide-slate-200 overflow-hidden rounded-xl border border-slate-200 dark:divide-slate-800 dark:border-slate-800">{Array.from({ length: 3 }).map((_, index) => <div key={index} className="h-28 animate-pulse bg-slate-50 dark:bg-slate-900/40" />)}</div>
-          ) : posts.error ? (
-            <div className="rounded-xl border border-red-200 bg-red-50 p-5 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">Unable to load community discussions.</div>
-          ) : posts.data?.data.length ? (
-            <div className="divide-y divide-slate-200 overflow-hidden rounded-xl border border-slate-200 bg-white dark:divide-slate-800 dark:border-slate-800 dark:bg-[#101923]">{posts.data.data.map((post) => <Link key={post.id} to={`/forum/${post.id}`} className="block p-5 transition-colors hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-inset focus-visible:outline-blue-500 dark:hover:bg-slate-900/60"><div className="flex flex-wrap items-center gap-2"><Badge variant="secondary" className="font-normal capitalize">{post.type}</Badge><span className="text-xs text-slate-500">{post.commentCount} {post.commentCount === 1 ? "response" : "responses"}</span></div><h3 className="mt-2 font-semibold text-slate-900 dark:text-slate-100">{post.title}</h3><p className="mt-1 line-clamp-2 text-sm leading-6 text-slate-500">{post.content}</p></Link>)}</div>
-          ) : (
-            <div className="rounded-xl border border-dashed border-slate-300 px-6 py-12 text-center dark:border-slate-700"><h3 className="font-semibold text-slate-900 dark:text-slate-100">No discussions yet</h3><p className="mt-2 text-sm text-slate-500">{membership?.status === "active" ? "Start the first focused academic discussion." : "Join the community to start a discussion."}</p></div>
-          )}
-        </section>
-
-        <aside className="space-y-5">
-          <section className="rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-[#101923]"><div className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-blue-600" /><h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Community rules</h2></div>{community.rules.length > 0 ? <ol className="mt-4 space-y-3 text-sm leading-6 text-slate-600 dark:text-slate-300">{community.rules.map((rule, index) => <li key={`${rule}-${index}`} className="flex gap-3"><span className="font-medium tabular-nums text-slate-400">{index + 1}.</span><span>{rule}</span></li>)}</ol> : <p className="mt-3 text-sm leading-6 text-slate-500">Follow respectful academic discussion and cite evidence where possible.</p>}</section>
-          {community.visibility === "private" ? <section className="rounded-xl bg-slate-100 p-5 text-sm leading-6 text-slate-600 dark:bg-slate-900 dark:text-slate-300"><strong className="font-semibold text-slate-900 dark:text-slate-100">Private community</strong><p className="mt-1">Membership requests must be approved before discussions become visible.</p></section> : null}
-        </aside>
-      </div>
-    </main>
-  );
+    <nav className="mt-5 flex gap-1 overflow-x-auto border-b" aria-label={t("Community views")}>{TABS.map((item) => <button key={item.value} type="button" onClick={() => setTab(item.value)} className={cn("whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium", tab === item.value ? "border-blue-700 text-blue-700" : "border-transparent text-muted-foreground hover:text-foreground")}>{t(item.label)}</button>)}</nav>
+    <div className="mt-6 grid items-start gap-7 lg:grid-cols-[minmax(0,1fr)_280px]"><section>{tab === "about" ? <AboutCommunity community={community} t={t} /> : <><div className="mb-4 flex items-center justify-between gap-3"><div><h2 className="text-lg font-semibold">{t(TABS.find((item) => item.value === tab)?.label ?? "Latest")} {t("discussions")}</h2><p className="mt-1 text-sm text-muted-foreground">{t("Questions and evidence shared by this community.")}</p></div>{membership?.status === "active" ? <Button size="sm" asChild><Link to={`/forum/new?community=${community.id}`}>{t("New discussion")}</Link></Button> : null}</div>
+        {community.contentRestricted ? <Empty icon={LockKeyhole} title={t("Discussions are private")} detail={t("Request membership to read and contribute to this community.")} /> : posts.isLoading ? <div className="divide-y overflow-hidden rounded-xl border">{Array.from({ length: 3 }).map((_, index) => <div key={index} className="h-32 animate-pulse bg-muted/40" />)}</div> : posts.error ? <div className="rounded-xl border border-red-200 bg-red-50 p-5 text-sm text-red-700">{t("Unable to load community discussions.")}</div> : posts.data?.data.length ? <div className="divide-y overflow-hidden rounded-xl border bg-card">{posts.data.data.map((post) => <Link key={post.id} to={`/forum/${post.id}`} className="block p-5 transition-colors hover:bg-muted/30"><div className="flex flex-wrap items-center gap-2"><Badge variant="secondary" className="font-normal">{t(post.type)}</Badge><span className="text-xs text-muted-foreground">{post.commentCount} {t(post.commentCount === 1 ? "response" : "responses")}</span></div><h3 className="mt-2 font-semibold">{post.title}</h3><p className="mt-1 line-clamp-2 text-sm leading-6 text-muted-foreground">{post.content}</p></Link>)}</div> : <Empty icon={MessageSquare} title={t("No discussions in this community yet.")} detail={t(membership?.status === "active" ? "Start the first focused academic discussion." : "Join the community to start a discussion.")} action={membership?.status === "active" ? <Button asChild size="sm"><Link to={`/forum/new?community=${community.id}`}>{t("Start discussion")}</Link></Button> : undefined} />}</>}</section>
+      <aside className="space-y-5"><section className="rounded-xl border bg-card p-5"><div className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-blue-700" /><h2 className="text-sm font-semibold">{t("Community rules")}</h2></div>{community.rules.length ? <ol className="mt-4 space-y-3 text-sm leading-6 text-muted-foreground">{community.rules.map((rule, index) => <li key={`${rule}-${index}`} className="flex gap-3"><span className="font-medium tabular-nums text-muted-foreground">{index + 1}.</span><span>{rule}</span></li>)}</ol> : <p className="mt-3 text-sm leading-6 text-muted-foreground">{t("Follow respectful academic discussion and cite evidence where possible.")}</p>}</section>
+        {community.moderators?.length ? <section className="rounded-xl border bg-card p-5"><h2 className="text-sm font-semibold">{t("Moderators")}</h2><div className="mt-3 space-y-3">{community.moderators.map((moderator) => <div key={moderator.id} className="flex items-center gap-2"><div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-muted text-xs font-semibold">{moderator.avatarUrl ? <img src={moderator.avatarUrl} alt="" className="h-full w-full object-cover" /> : moderator.fullName.split(/\s+/).slice(0, 2).map((part) => part[0]).join("")}</div><span className="text-sm">{moderator.fullName}</span></div>)}</div></section> : null}
+        {popularTags.length ? <section className="rounded-xl border bg-card p-5"><h2 className="text-sm font-semibold">{t("Popular Topics")}</h2><div className="mt-3 flex flex-wrap gap-2">{popularTags.map((tag) => <Badge key={tag} variant="secondary" className="font-normal">{tag}</Badge>)}</div></section> : null}</aside></div>
+  </main>;
 }
+
+function AboutCommunity({ community, t }: { community: NonNullable<ReturnType<typeof useCommunity>["data"]>; t: (key: string) => string }) { return <div className="rounded-xl border bg-card p-6"><h2 className="text-lg font-semibold">{t("About this community")}</h2><p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-muted-foreground">{community.description}</p>{community.researchTopics.length ? <><h3 className="mt-6 text-sm font-semibold">{t("Research topics")}</h3><div className="mt-3 flex flex-wrap gap-2">{community.researchTopics.map((topic) => <Badge key={topic} variant="secondary" className="font-normal">{topic}</Badge>)}</div></> : null}</div>; }
+function Empty({ icon: Icon, title, detail, action }: { icon: typeof MessageSquare; title: string; detail: string; action?: React.ReactNode }) { return <div className="rounded-xl border border-dashed px-6 py-12 text-center"><Icon className="mx-auto h-6 w-6 text-muted-foreground" /><h3 className="mt-3 font-semibold">{title}</h3><p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">{detail}</p>{action ? <div className="mt-5">{action}</div> : null}</div>; }

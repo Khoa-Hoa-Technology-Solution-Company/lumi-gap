@@ -23,6 +23,10 @@ function isSafeInternalPath(path: string): boolean {
 }
 
 export function resolvePostAuthPath(user: User, requestedPath?: string): string {
+  if (requestedPath?.startsWith("/invitations/") && isSafeInternalPath(requestedPath)) {
+    return requestedPath;
+  }
+
   if (requiresAcademicProfile(user)) {
     return ACADEMIC_ONBOARDING_PATH;
   }

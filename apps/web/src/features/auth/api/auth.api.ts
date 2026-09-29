@@ -1,4 +1,5 @@
 import type {
+  AcademicOnboardingOptions,
   AuthResponse,
   AuthTokens,
   LoginRequest,
@@ -10,9 +11,10 @@ import { api, API_BASE_URL } from "@/services/api-client";
 import { API_ROUTES } from "@/constants";
 
 export const authApi = {
-  googleAuthorizationUrl(): string {
+  googleAuthorizationUrl(invitationToken?: string): string {
     const url = new URL(`${API_BASE_URL}/auth/google`, window.location.origin);
     url.searchParams.set("returnOrigin", window.location.origin);
+    if (invitationToken) url.searchParams.set("invitationToken", invitationToken);
     return url.toString();
   },
   async register(payload: RegisterRequest): Promise<AuthResponse> {
@@ -46,6 +48,13 @@ export const authApi = {
     const res = await api.patch(API_ROUTES.auth.academicProfile, payload);
     return res.data.data;
   },
+  async addEmail(email: string, purpose: "INSTITUTIONAL" | "CONTACT" = "CONTACT"): Promise<void> {
+    await api.post(API_ROUTES.auth.emails, { email, purpose });
+  },
+  async academicOnboardingOptions(): Promise<AcademicOnboardingOptions> {
+    const res = await api.get(API_ROUTES.auth.academicOnboardingOptions);
+    return res.data.data;
+  },
   async changePassword(payload: ChangePasswordRequest): Promise<void> {
     await api.post(API_ROUTES.auth.changePassword, payload);
   },
@@ -71,6 +80,6 @@ export interface UpdateProfileRequest {
 
 export interface ChangePasswordRequest {
   currentPassword?: string;
-  newPassword?: string;
+  newPassword: string;
 }
 

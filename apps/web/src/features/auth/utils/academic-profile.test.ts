@@ -7,7 +7,7 @@ const baseUser: User = {
   email: "user@example.test",
   fullName: "Test User",
   role: "user",
-  systemRole: "RESEARCH_USER",
+  systemRole: "USER",
   accountStatus: "ACTIVE",
   onboarding: { completed: false },
   createdAt: "2026-09-22T00:00:00.000Z",

@@ -25,8 +25,8 @@ export class AppError extends Error {
   static conflict(message: string, details?: unknown) {
     return new AppError(409, "CONFLICT", message, details);
   }
-  static tooMany(message = "Too many requests") {
-    return new AppError(429, "TOO_MANY_REQUESTS", message);
+  static tooMany(message = "Too many requests", details?: unknown) {
+    return new AppError(429, "TOO_MANY_REQUESTS", message, details);
   }
   static internal(message = "Internal server error") {
     return new AppError(500, "INTERNAL", message);

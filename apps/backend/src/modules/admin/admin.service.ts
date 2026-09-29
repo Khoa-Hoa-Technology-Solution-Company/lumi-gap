@@ -8,15 +8,18 @@ import { parseDatabaseId, publicDatabaseId } from "../../infrastructure/database
 import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { auditService } from "../audit/audit.service.js";
 import { passwordService } from "../auth/password.service.js";
+import { capabilityService } from "../authorization/capability.service.js";
 import { assertCanCreateUser, assertCanManageUser, legacyRole } from "./admin-user.policy.js";
 import type {
   CreateUserInput, ListUsersQueryInput, UpdateUserInput,
 } from "./dto/admin.schema.js";
 
-async function loadTarget(value: string) {
+type PrismaClientLike = ReturnType<typeof getPrisma>;
+
+async function loadTarget(value: string, prisma: PrismaClientLike = getPrisma()) {
   const parsed = parseDatabaseId(value);
   if (!parsed) throw AppError.notFound("User not found");
-  const user = await getPrisma().user.findUnique({
+  const user = await prisma.user.findUnique({
     where: parsed.kind === "uuid" ? { id: parsed.value } : { legacyMongoId: parsed.value },
   });
   if (!user) throw AppError.notFound("User not found");
@@ -101,6 +104,7 @@ export const adminService = {
           publicHandle: true,
           profileVisibility: true,
           headline: true,
+          biography: true,
           institutionalEmail: true,
           institutionalEmailVerifiedAt: true,
           identityStatus: true,
@@ -144,6 +148,7 @@ export const adminService = {
         publicHandle: profile.publicHandle ?? undefined,
         profileVisibility: profile.profileVisibility,
         headline: profile.headline ?? undefined,
+        biography: profile.biography ?? undefined,
         institutionalEmail: profile.institutionalEmail ?? undefined,
         institutionalEmailVerifiedAt: profile.institutionalEmailVerifiedAt?.toISOString(),
         identityStatus: profile.identityStatus,
@@ -197,7 +202,7 @@ export const adminService = {
       prisma.user.count({ where: { emailVerifiedAt: null } }),
       prisma.user.groupBy({ by: ["systemRole"], _count: { _all: true } }),
     ]);
-    const byRole: Record<SystemRole, number> = { RESEARCH_USER: 0, ADMIN: 0, SUPER_ADMIN: 0 };
+    const byRole: Record<SystemRole, number> = { USER: 0, ADMIN: 0 };
     for (const row of roles) if (row.systemRole in byRole) byRole[row.systemRole as SystemRole] = row._count._all;
     return { total, active, suspended, disabled, unverifiedEmail, byRole };
   },
@@ -220,9 +225,11 @@ export const adminService = {
             isActive: input.accountStatus === "ACTIVE",
             institution: input.institution?.trim() || null,
             credits: env.INITIAL_USER_CREDITS,
+            admissionBasis: "ADMIN",
           },
         });
-        if (input.role === "RESEARCH_USER") {
+        await tx.userEmail.create({ data: { userId: user.id, normalizedEmail: email, isPrimary: true, purpose: "ACCOUNT" } });
+        if (input.role === "USER") {
           await tx.academicProfile.create({ data: { userId: user.id } });
           await tx.userCapability.create({
             data: { userId: user.id, capability: "BASIC_RESEARCH", status: "ACTIVE", source: "ADMIN_CREATED" },
@@ -234,6 +241,7 @@ export const adminService = {
         userId: actor.id, targetTableName: "users", targetRecordId: created.id,
         details: { role: input.role, accountStatus: input.accountStatus },
       });
+      await capabilityService.evaluate(created.id);
       return item(created);
     } catch (error) {
       if ((error as { code?: string }).code === "P2002") throw AppError.conflict("Email already registered");
@@ -276,17 +284,18 @@ export const adminService = {
 
   async updateRole(actorInput: string, targetInput: string, systemRole: SystemRole, reason: string): Promise<AdminUserItem> {
     const now = new Date();
+    let actorId = "";
+    let previousRole = "";
     const updated = await withUserManagementLock(async (tx) => {
-      const [actor, target] = await Promise.all([
-        tx.user.findUnique({ where: { id: (await loadTarget(actorInput)).id } }),
-        tx.user.findUnique({ where: { id: (await loadTarget(targetInput)).id } }),
-      ]);
-      if (!actor || !target) throw AppError.notFound("User not found");
+      const [actor, target] = await Promise.all([loadTarget(actorInput, tx), loadTarget(targetInput, tx)]);
       assertCanManageUser(actor, target, "UPDATE_ROLE");
-      if (target.systemRole === "SUPER_ADMIN" && systemRole !== "SUPER_ADMIN" && target.accountStatus === "ACTIVE") {
-        const activeOwners = await tx.user.count({ where: { systemRole: "SUPER_ADMIN", accountStatus: "ACTIVE" } });
-        if (activeOwners <= 1) throw AppError.badRequest("Cannot demote the last active super admin");
+      actorId = actor.id;
+      previousRole = target.systemRole;
+      if (target.systemRole === "ADMIN" && systemRole !== "ADMIN" && target.accountStatus === "ACTIVE") {
+        const activeOwners = await tx.user.count({ where: { systemRole: "ADMIN", accountStatus: "ACTIVE" } });
+        if (activeOwners <= 1) throw AppError.badRequest("Cannot demote the last active admin");
       }
+      if (target.systemRole === systemRole) throw AppError.badRequest("System role is unchanged");
       const user = await tx.user.update({
         where: { id: target.id },
         data: { systemRole, role: legacyRole(systemRole) },
@@ -297,27 +306,30 @@ export const adminService = {
       });
       return user;
     });
+    await capabilityService.evaluate(updated.id);
     await auditService.log("admin.system_role.updated", {
-      userId: actorInput,
+      userId: actorId,
       targetTableName: "users",
       targetRecordId: updated.id,
-      details: { next: systemRole, reason },
+      details: { previous: previousRole, next: systemRole, reason },
+    });
+    await auditService.log(systemRole === "ADMIN" ? "ADMIN_ROLE_GRANTED" : "ADMIN_ROLE_REVOKED", {
+      userId: actorId, targetTableName: "users", targetRecordId: updated.id, details: { previous: previousRole, next: systemRole, reason },
     });
     return item(updated);
   },
 
   async updateStatus(actorInput: string, targetInput: string, accountStatus: AccountStatus, reason: string): Promise<AdminUserItem> {
+    let actorId = "";
+    let previousStatus = "";
     const updated = await withUserManagementLock(async (tx) => {
-      const [actorRecord, targetRecord] = await Promise.all([loadTarget(actorInput), loadTarget(targetInput)]);
-      const [actor, target] = await Promise.all([
-        tx.user.findUnique({ where: { id: actorRecord.id } }),
-        tx.user.findUnique({ where: { id: targetRecord.id } }),
-      ]);
-      if (!actor || !target) throw AppError.notFound("User not found");
+      const [actor, target] = await Promise.all([loadTarget(actorInput, tx), loadTarget(targetInput, tx)]);
       assertCanManageUser(actor, target, "UPDATE_STATUS");
-      if (target.systemRole === "SUPER_ADMIN" && target.accountStatus === "ACTIVE" && accountStatus !== "ACTIVE") {
-        const activeOwners = await tx.user.count({ where: { systemRole: "SUPER_ADMIN", accountStatus: "ACTIVE" } });
-        if (activeOwners <= 1) throw AppError.badRequest("Cannot disable the last active super admin");
+      actorId = actor.id;
+      previousStatus = target.accountStatus;
+      if (target.systemRole === "ADMIN" && target.accountStatus === "ACTIVE" && accountStatus !== "ACTIVE") {
+        const activeOwners = await tx.user.count({ where: { systemRole: "ADMIN", accountStatus: "ACTIVE" } });
+        if (activeOwners <= 1) throw AppError.badRequest("Cannot disable the last active admin");
       }
       const user = await tx.user.update({
         where: { id: target.id },
@@ -337,11 +349,12 @@ export const adminService = {
       }
       return user;
     });
+    await capabilityService.evaluate(updated.id);
     await auditService.log("admin.account_status.updated", {
-      userId: actorInput,
+      userId: actorId,
       targetTableName: "users",
       targetRecordId: updated.id,
-      details: { next: accountStatus, reason },
+      details: { previous: previousStatus, next: accountStatus, reason },
     });
     return item(updated);
   },
@@ -372,7 +385,7 @@ export const adminService = {
       prisma.report.count(),
       prisma.researchGap.count(),
       prisma.project.count().catch(() => 0),
-      prisma.academicProfile.count({ where: { positionStatus: "PENDING" } }).catch(() => 0),
+      prisma.verificationEvidence.count({ where: { verificationType: { in: ["POSITION", "AFFILIATION"] }, status: "PENDING" } }).catch(() => 0),
       prisma.aiRun.count().catch(() => 0),
       prisma.community.count().catch(() => 0),
       prisma.apiSyncRun.aggregate({ _count: { _all: true }, _sum: { totalFetched: true, totalInserted: true, totalUpdated: true, totalDuplicates: true } }),
@@ -403,9 +416,9 @@ export const adminService = {
       user: r.userId ? usersMap.get(r.userId) ?? null : null,
     }));
 
-    const byRole: Record<SystemRole, number> = { RESEARCH_USER: 0, ADMIN: 0, SUPER_ADMIN: 0 };
+    const byRole: Record<SystemRole, number> = { USER: 0, ADMIN: 0 };
     for (const group of roleGroups) {
-      if (group.systemRole === "RESEARCH_USER" || group.systemRole === "ADMIN" || group.systemRole === "SUPER_ADMIN") {
+      if (group.systemRole === "USER" || group.systemRole === "ADMIN") {
         byRole[group.systemRole] = group._count._all;
       }
     }
@@ -565,8 +578,8 @@ export const adminService = {
   async getPlatformSettings(): Promise<AdminPlatformSettings> {
     const prisma = getPrisma();
     const [institutions, domains, providers] = await Promise.all([
-      prisma.trustedInstitution.findMany({ orderBy: { createdAt: "desc" } }),
-      prisma.trustedInstitutionDomain.findMany(),
+      prisma.institution.findMany({ orderBy: { createdAt: "desc" } }),
+      prisma.institutionDomain.findMany(),
       prisma.apiProvider.findMany({ orderBy: { createdAt: "desc" } }),
     ]);
 
@@ -580,10 +593,10 @@ export const adminService = {
     return {
       initialCredits: env.INITIAL_USER_CREDITS ?? 1000,
       openAlexRateLimit: 600,
-      enablePublicRegistration: true,
-      enableAutoEmailVerify: true,
+      enablePublicRegistration: false,
+      enableAutoEmailVerify: false,
       enableAiEvaluationJudge: true,
-      trustedInstitutions: institutions.map(i => ({
+      institutions: institutions.map(i => ({
         id: publicDatabaseId(i),
         name: i.name,
         rorId: i.rorId,

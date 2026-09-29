@@ -4,8 +4,8 @@ const USER_ID = "11111111-1111-4111-8111-111111111111";
 const ADMIN_ID = "22222222-2222-4222-8222-222222222222";
 
 const mocks = vi.hoisted(() => {
-  const state: { user: Record<string, any>; admin: Record<string, any>; profile: Record<string, any>; affiliation: Record<string, any>; requests: Record<string, any>[] } = { user: {}, admin: {}, profile: {}, affiliation: {}, requests: [] };
-  const prisma: Record<string, any> = {};
+  const state: { user: Record<string, any>; admin: Record<string, any>; profile: Record<string, any>; affiliation: Record<string, any>; requests: Record<string, any>[]; displayNameChanges: Array<{ changedAt: Date }> } = { user: {}, admin: {}, profile: {}, affiliation: {}, requests: [], displayNameChanges: [] };
+  const prisma: Record<string, any> = { $queryRaw: vi.fn(async () => []) };
   const matches = (row: Record<string, any>, where: Record<string, any> = {}) => Object.entries(where).every(([key, value]) => {
     if (value && typeof value === "object" && "in" in value) return value.in.includes(row[key]);
     return row[key] === value;
@@ -56,6 +56,13 @@ const mocks = vi.hoisted(() => {
   for (const model of ["academicExternalIdentity", "academicIdentityLink", "academicFeaturedWork", "academicVerificationEvidence", "auditLog"]) {
     prisma[model] = { findMany: vi.fn(async () => []), findFirst: vi.fn(async () => null) };
   }
+  prisma.userDisplayNameChange = {
+    findMany: vi.fn(async ({ where, take }: any) => state.displayNameChanges
+      .filter((change) => change.changedAt > where.changedAt.gt)
+      .sort((a, b) => a.changedAt.getTime() - b.changedAt.getTime())
+      .slice(0, take)),
+    create: vi.fn(async ({ data }: any) => { const change = { changedAt: data.changedAt }; state.displayNameChanges.push(change); return change; }),
+  };
   prisma.$transaction = vi.fn(async (callback: (tx: typeof prisma) => unknown) => callback(prisma));
   return {
     state, prisma,
@@ -80,11 +87,12 @@ function resetState() {
     profile: {
       id: "profile-1", userId: USER_ID, primaryPosition: "LECTURER", positionTitle: "Lecturer", positionCategory: "LECTURER", positionSource: "PREDEFINED",
       positionStatus: "NOT_SUBMITTED", affiliationStatus: "VERIFIED", identityStatus: "VERIFIED", emailStatus: "VERIFIED", orcidStatus: "NOT_SUBMITTED",
-      verificationStatus: "SELF_DECLARED", profileVisibility: "PUBLIC", privacySettings: {}, expertiseAreas: [], skills: [], researchKeywords: [],
+      verificationStatus: "SELF_DECLARED", profileVisibility: "PUBLIC", showInResearcherSearch: true, allowCollaborationRequests: true, privacySettings: {}, expertiseAreas: [], skills: [], researchKeywords: [],
       supportAvailability: {}, reviewAvailability: {}, createdAt: new Date("2026-01-01"), updatedAt: new Date("2026-01-01"),
     },
     affiliation: { id: "affiliation-1", userId: USER_ID, institutionName: "FPT University", isPrimary: true, validUntil: null, verificationStatus: "VERIFIED", positionStatus: "NOT_SUBMITTED", positionTitle: "Lecturer", positionCategory: "LECTURER", positionSource: "PREDEFINED" },
     requests: [],
+    displayNameChanges: [],
   });
   vi.clearAllMocks();
 }
@@ -114,6 +122,15 @@ describe("academic position verification lifecycle", () => {
     expect(mocks.state.profile.affiliationStatus).toBe("VERIFIED");
   });
 
+  it("does not accept ORCID alone as Lecturer employment evidence", async () => {
+    await expect(academicProfileService.requestVerification(USER_ID, {
+      type: "POSITION",
+      evidenceType: "ORCID",
+      reference: "https://orcid.org/0000-0002-1825-0097",
+    })).rejects.toMatchObject({ statusCode: 400 });
+    expect(mocks.state.requests).toHaveLength(0);
+  });
+
   it("invalidates a pending position request when its declared position changes", async () => {
     await academicProfileService.requestVerification(USER_ID, requestInput);
     await academicProfileService.updateMine(USER_ID, { positionTitle: "Senior Lecturer" });
@@ -134,6 +151,45 @@ describe("academic position verification lifecycle", () => {
     expect(mocks.state.profile.affiliationStatus).toBe("VERIFIED");
     expect(mocks.state.profile.identityStatus).toBe("VERIFIED");
     expect(mocks.state.profile.emailStatus).toBe("VERIFIED");
+  });
+
+  it("persists an owner display name change and exposes the remaining quota", async () => {
+    const updated = await academicProfileService.updateMine(USER_ID, { displayName: "Ada Lovelace" });
+
+    expect(mocks.state.user.fullName).toBe("Ada Lovelace");
+    expect(mocks.state.displayNameChanges).toHaveLength(1);
+    expect(updated.displayNamePolicy).toMatchObject({ maxChanges: 2, remainingChanges: 1, windowDays: 30 });
+  });
+
+  it("blocks profile name changes when the owner has already used two in 30 days", async () => {
+    mocks.state.displayNameChanges = [
+      { changedAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1_000) },
+      { changedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1_000) },
+    ];
+
+    await expect(academicProfileService.updateMine(USER_ID, { displayName: "Ada Lovelace" })).rejects.toMatchObject({ statusCode: 429 });
+    expect(mocks.state.user.fullName).toBe("Ada Researcher");
+    expect(mocks.state.displayNameChanges).toHaveLength(2);
+  });
+
+  it("persists display name, visibility, and discoverability from one profile edit", async () => {
+    const updated = await academicProfileService.updateMine(USER_ID, {
+      displayName: "Ada Lovelace",
+      profileVisibility: "MEMBERS_ONLY",
+      discoverability: { showInResearcherSearch: false, allowCollaborationRequests: false },
+    });
+
+    expect(mocks.state.user.fullName).toBe("Ada Lovelace");
+    expect(mocks.state.displayNameChanges).toHaveLength(1);
+    expect(mocks.state.profile).toMatchObject({
+      profileVisibility: "MEMBERS_ONLY",
+      showInResearcherSearch: false,
+      allowCollaborationRequests: false,
+    });
+    expect(updated).toMatchObject({
+      profileVisibility: "MEMBERS_ONLY",
+      discoverability: { showInResearcherSearch: false, allowCollaborationRequests: false },
+    });
   });
 
   it("prevents self-approval and confirms request submission is audited", async () => {

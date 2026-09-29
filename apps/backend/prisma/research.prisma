@@ -17,9 +17,13 @@ model Report {
   legacyMongoId        String?   @unique @map("legacy_mongo_id") @db.VarChar(24)
   userId               String    @map("user_id") @db.Uuid
   projectId            String?   @map("project_id") @db.Uuid
+  title                String?   @db.VarChar(240)
   topic                String?
   query                String
   status               String    @default("queued") @db.VarChar(24)
+  artifactType         String    @default("GENERAL_REPORT") @map("artifact_type") @db.VarChar(32)
+  artifactStatus       String    @default("DRAFT") @map("artifact_status") @db.VarChar(24)
+  isAiGenerated        Boolean   @default(true) @map("is_ai_generated")
   markdown             String?
   researchGapSnapshots Json      @default("[]") @map("research_gap_snapshots")
   modelVersion         String    @default("") @map("model_version")
@@ -159,6 +163,7 @@ model ResearchGap {
   projectId                 String?  @map("project_id") @db.Uuid
   corpusId                  String?  @map("corpus_id") @db.Uuid
   status                    String   @default("active") @db.VarChar(16)
+  forumShareable            Boolean  @default(false) @map("forum_shareable")
   createdAt                 DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt                 DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 

@@ -1,6 +1,6 @@
-import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Link, Navigate, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { LogOut, User, Bell, Bookmark, ChevronDown, Menu, Trophy, X } from "lucide-react";
+import { LogOut, User, Bookmark, ChevronDown, KeyRound, Menu, Trophy, X } from "lucide-react";
 
 import logoImage from "@/assets/logo.png";
 import logoDarkImage from "@/assets/logo-dark.png";
@@ -25,6 +25,8 @@ import { formatNumber } from "@/utils";
 import { LanguageSwitcher, useI18n } from "@/i18n";
 import { isAdminSystemRole } from "@trend/shared-types";
 
+const NotificationMenu = lazy(() => import("@/features/notifications/components/notification-menu"));
+
 const navGroups = [
   {
     label: "Explore",
@@ -41,7 +43,8 @@ const navGroups = [
       { to: "/reports", label: "Reports" },
       { to: "/projects", label: "Projects" },
       { to: "/submissions", label: "Submissions" },
-      { to: "/reviews", label: "My Reviews" },
+      { to: "/reviews", label: "Review Center" },
+      { to: "/review-templates", label: "Review Templates" },
       { to: "/review-opportunities", label: "Review Opportunities" },
     ],
   },
@@ -153,7 +156,6 @@ function PageLoadingFallback() {
 }
 
 export function MainLayout() {
-  const navigate = useNavigate();
   const location = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [activeDesktopMenu, setActiveDesktopMenu] = useState<string | null>(null);
@@ -188,7 +190,7 @@ export function MainLayout() {
   const user = useAuthStore((s) => s.user);
   const currentUserQuery = useCurrentUser();
   const { data: bookmarks } = useBookmarks({ enabled: isAuthed && !currentUserQuery.isFetching && !!currentUserQuery.data?.user });
-  const { data: notifications } = useNotifications({ enabled: isAuthed && !currentUserQuery.isFetching && !!currentUserQuery.data?.user });
+  const { data: notifications, isLoading: notificationsLoading } = useNotifications({ enabled: isAuthed && !currentUserQuery.isFetching && !!currentUserQuery.data?.user });
   const currentUserData = currentUserQuery.data;
   const activeUser = currentUserData?.user ?? user;
 
@@ -249,16 +251,9 @@ export function MainLayout() {
             <ThemeToggle />
             <LanguageSwitcher />
             {isAuthed && (
-              <Button variant="ghost" size="icon" className="relative rounded-full text-slate-500 hover:bg-blue-50 hover:text-blue-600 dark:text-slate-400 dark:hover:bg-blue-950/20 dark:hover:text-blue-400" asChild>
-                <Link to="/notifications" aria-label={t("Notifications")}>
-                  <Bell className="h-5 w-5" />
-                  {unreadCount > 0 && (
-                    <span className="absolute -right-1 -top-1 flex h-5 min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white ring-2 ring-white dark:ring-[#0f0f11]">
-                      {unreadCount}
-                    </span>
-                  )}
-                </Link>
-              </Button>
+              <Suspense fallback={<span className="h-10 w-10" aria-hidden="true" />}>
+                <NotificationMenu notifications={notifications} isLoading={notificationsLoading} unreadCount={unreadCount} isAdmin={isAdminSystemRole(activeUser?.systemRole)} />
+              </Suspense>
             )}
             <UserMenu bookmarkCount={validBookmarksCount} />
 
@@ -387,7 +382,7 @@ function UserMenu({ bookmarkCount }: { bookmarkCount: number }) {
         {!isAdminSystemRole(systemRole) && (
           <>
             <DropdownMenuSeparator />
-            <div className="px-3 py-2 text-xs font-semibold text-slate-500 space-y-1.5 bg-slate-50/50 dark:bg-zinc-900/30 rounded-md animate-fadeIn">
+            <button type="button" onClick={() => navigate("/settings/credits")} className="w-full rounded-md bg-slate-50/50 px-3 py-2 text-left text-xs font-semibold text-slate-500 transition-colors hover:bg-blue-50 dark:bg-zinc-900/30 dark:hover:bg-blue-950/20">
               <div className="flex justify-between items-center">
                 <span>{t("Level")}</span>
                 <span className="font-bold text-slate-700 dark:text-slate-200">{currentLevel}</span>
@@ -400,13 +395,17 @@ function UserMenu({ bookmarkCount }: { bookmarkCount: number }) {
                 <span>{t("Points:")}</span>
                 <span className="text-amber-600 dark:text-amber-500 font-bold">{formatNumber(points)} {t("pts")}</span>
               </div>
-            </div>
+            </button>
           </>
         )}
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={() => navigate("/profile")}>
           <User className="mr-2 h-4 w-4" />
           {t("Profile")}
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => navigate("/settings/security")}>
+          <KeyRound className="mr-2 h-4 w-4" />
+          {t("Security & password")}
         </DropdownMenuItem>
         <DropdownMenuItem onSelect={() => navigate("/bookmarks")}>
           <Bookmark className="mr-2 h-4 w-4" />
