@@ -62,8 +62,8 @@ describe.sequential("research forum persistence and authorization", () => {
   });
 
   it("restricts community creation to admins and persists idempotent membership", async () => {
-    await expect(communityService.create({ name: `Unauthorized ${marker}` }, authorId, "user")).rejects.toMatchObject({ statusCode: 403 });
-    const community = await communityService.create({ name: `Software Engineering ${marker}`, description: "Evidence-led software engineering discussion", researchField: "Software Engineering" }, adminId, "admin");
+    await expect(communityService.create({ name: `Unauthorized ${marker}` }, { sub: authorId, role: "user", systemRole: "USER" })).rejects.toMatchObject({ statusCode: 403 });
+    const community = await communityService.create({ name: `Software Engineering ${marker}`, description: "Evidence-led software engineering discussion", researchField: "Software Engineering" }, { sub: adminId, role: "admin", systemRole: "ADMIN" });
     communityId = community.id;
     await communityService.join(communityId, authorId);
     await communityService.join(communityId, authorId);

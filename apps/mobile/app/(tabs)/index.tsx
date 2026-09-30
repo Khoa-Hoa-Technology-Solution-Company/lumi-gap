@@ -23,6 +23,7 @@ const HOME_MENU_ACTIONS = [
   { label: "Trends", icon: "trending-up", route: "/trends", color: "#22C55E" },
   { label: "Gaps", icon: "zap", route: "/gaps", color: "#F59E0B" },
   { label: "Projects", icon: "folder", route: "/projects", color: "#06B6D4" },
+  { label: "Communities", icon: "users", route: "/communities", color: "#F472B6" },
   { label: "My Papers", icon: "archive", route: "/my-papers", color: "#38BDF8" },
 ] as const satisfies ReadonlyArray<{
   label: string;

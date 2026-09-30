@@ -12,6 +12,11 @@
       "persistent": true,
       "dependsOn": ["^build"]
     },
+    "dev:workers": {
+      "cache": false,
+      "persistent": true,
+      "dependsOn": ["^build"]
+    },
     "lint": {
       "outputs": []
     },

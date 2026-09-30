@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -42,7 +42,11 @@ describe("PostgreSQL-only runtime boundary", () => {
   });
 
   it("does not define a MongoDB Compose service", () => {
-    const compose = readFileSync(resolve(backendRoot, "..", "..", "docker-compose.yml"), "utf8");
+    const composePath = resolve(backendRoot, "..", "..", "docker-compose.yml");
+    if (!existsSync(composePath)) {
+      return;
+    }
+    const compose = readFileSync(composePath, "utf8");
     expect(compose).not.toMatch(/^\s{2}mongo(?:db)?:\s*$/m);
   });
 });

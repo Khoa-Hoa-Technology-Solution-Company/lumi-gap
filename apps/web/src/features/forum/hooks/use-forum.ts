@@ -1,10 +1,21 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { forumApi, type ForumPostFilters, type ForumPostInput, type ForumReferenceView } from "../api/forum.api";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { forumApi, type CommunityListParams, type ForumPostFilters, type ForumPostInput, type ForumReferenceView } from "../api/forum.api";
 
 export function useForumPosts(params: ForumPostFilters, enabled = true) { return useQuery({ queryKey: ["forum", "posts", params], queryFn: () => forumApi.posts(params), enabled }); }
 export function useForumPost(id?: string) { return useQuery({ queryKey: ["forum", "post", id], queryFn: () => forumApi.post(id!), enabled: Boolean(id) }); }
 export function useForumComments(postId?: string) { return useQuery({ queryKey: ["forum", "comments", postId], queryFn: () => forumApi.comments(postId!), enabled: Boolean(postId) }); }
 export function useCommunities() { return useQuery({ queryKey: ["communities"], queryFn: forumApi.communities }); }
+export function useCommunityList(params: Omit<CommunityListParams, "page">, enabled = true) {
+  return useInfiniteQuery({
+    queryKey: ["communities", "list", params],
+    queryFn: ({ pageParam }) => forumApi.communityPage({ ...params, page: pageParam }),
+    initialPageParam: 1,
+    getNextPageParam: (last) => (last.page < last.totalPages ? last.page + 1 : undefined),
+    enabled,
+  });
+}
+export function useCommunityFacets() { return useQuery({ queryKey: ["communities", "facets"], queryFn: forumApi.communityFacets, staleTime: 5 * 60_000 }); }
+export function useCommunityRecommendations(enabled = true) { return useQuery({ queryKey: ["communities", "recommendations"], queryFn: forumApi.communityRecommendations, enabled, staleTime: 5 * 60_000 }); }
 export function useCommunity(slug?: string) { return useQuery({ queryKey: ["community", slug], queryFn: () => forumApi.community(slug!), enabled: Boolean(slug) }); }
 export function useCreateForumPost() { const client = useQueryClient(); return useMutation({ mutationFn: forumApi.createPost, onSuccess: () => client.invalidateQueries({ queryKey: ["forum", "posts"] }) }); }
 export function useUpdateForumPost() { const client = useQueryClient(); return useMutation({ mutationFn: ({ postId, input }: { postId: string; input: Partial<ForumPostInput> }) => forumApi.updatePost(postId, input), onSuccess: (_, input) => { client.invalidateQueries({ queryKey: ["forum", "post", input.postId] }); client.invalidateQueries({ queryKey: ["forum", "posts"] }); } }); }
@@ -24,6 +35,15 @@ function invalidateCommunityQueries(client: ReturnType<typeof useQueryClient>) {
 }
 export function useCreateCommunity() { const client = useQueryClient(); return useMutation({ mutationFn: forumApi.createCommunity, onSuccess: () => invalidateCommunityQueries(client) }); }
 export function useUpdateCommunity() { const client = useQueryClient(); return useMutation({ mutationFn: ({ id, input }: { id: string; input: Parameters<typeof forumApi.updateCommunity>[1] }) => forumApi.updateCommunity(id, input), onSuccess: () => invalidateCommunityQueries(client) }); }
+export function useReviewCommunity() { const client = useQueryClient(); return useMutation({ mutationFn: ({ id, input }: { id: string; input: Parameters<typeof forumApi.reviewCommunity>[1] }) => forumApi.reviewCommunity(id, input), onSuccess: () => invalidateCommunityQueries(client) }); }
+export function useCommunitySummary(id?: string, enabled = true) { return useQuery({ queryKey: ["community", id, "summary"], queryFn: () => forumApi.communitySummary(id!), enabled: Boolean(id) && enabled, refetchInterval: (query) => query.state.data?.status === "pending" ? 3000 : false }); }
+export function useRequestCommunitySummary() { const client = useQueryClient(); return useMutation({ mutationFn: forumApi.requestCommunitySummary, onSuccess: (data, id) => client.setQueryData(["community", id, "summary"], data) }); }
+export function useSetCommunityStatus() { const client = useQueryClient(); return useMutation({ mutationFn: ({ id, status }: { id: string; status: "ACTIVE" | "ARCHIVED" }) => forumApi.setCommunityStatus(id, status), onSuccess: () => invalidateCommunityQueries(client) }); }
+export function useResubmitCommunity() { const client = useQueryClient(); return useMutation({ mutationFn: forumApi.resubmitCommunity, onSuccess: () => invalidateCommunityQueries(client) }); }
+export function useTransferCommunityOwnership() { const client = useQueryClient(); return useMutation({ mutationFn: ({ id, userId }: { id: string; userId: string }) => forumApi.transferCommunityOwnership(id, userId), onSuccess: () => invalidateCommunityQueries(client) }); }
+export function useCommunityPublicMembers(id?: string, enabled = true) { return useQuery({ queryKey: ["community", id, "public-members"], queryFn: () => forumApi.publicCommunityMembers(id!), enabled: Boolean(id) && enabled }); }
+export function useCommunityRelatedPapers(id?: string, enabled = true) { return useQuery({ queryKey: ["community", id, "related-papers"], queryFn: () => forumApi.relatedPapers(id!), enabled: Boolean(id) && enabled, staleTime: 10 * 60_000 }); }
+export function useCommunityRelatedGaps(id?: string, enabled = true) { return useQuery({ queryKey: ["community", id, "related-gaps"], queryFn: () => forumApi.relatedGaps(id!), enabled: Boolean(id) && enabled, staleTime: 10 * 60_000 }); }
 export function useJoinCommunity() { const client = useQueryClient(); return useMutation({ mutationFn: forumApi.joinCommunity, onSuccess: () => invalidateCommunityQueries(client) }); }
 export function useLeaveCommunity() { const client = useQueryClient(); return useMutation({ mutationFn: forumApi.leaveCommunity, onSuccess: () => invalidateCommunityQueries(client) }); }
 export function useCommunityMembers(id?: string, enabled = true) { return useQuery({ queryKey: ["community", id, "members"], queryFn: () => forumApi.communityMembers(id!), enabled: Boolean(id) && enabled }); }

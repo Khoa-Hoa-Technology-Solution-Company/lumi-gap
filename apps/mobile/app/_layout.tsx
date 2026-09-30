@@ -96,6 +96,22 @@ function AppStack() {
           }}
         />
         <Stack.Screen
+          name="communities"
+          options={{
+            title: "Communities",
+            presentation: "modal",
+            headerShown: false,
+          }}
+        />
+        <Stack.Screen
+          name="community/[slug]"
+          options={{
+            title: "Community",
+            presentation: "modal",
+            headerShown: false,
+          }}
+        />
+        <Stack.Screen
           name="projects"
           options={{
             title: "Projects",

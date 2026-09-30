@@ -31,6 +31,7 @@ export const QUEUE_NAMES = {
   gaps: "gaps", // Phase D
   notifications: "notifications",
   aiJobs: "ai-jobs",
+  communitySummary: "community-summary",
 } as const;
 
 export const apiSyncQueue = new Queue(QUEUE_NAMES.apiSync, {
@@ -82,6 +83,14 @@ export const aiJobsQueue = new Queue(QUEUE_NAMES.aiJobs, {
   defaultJobOptions: {
     ...defaultJobOptions,
     attempts: 1,
+  },
+});
+
+export const communitySummaryQueue = new Queue(QUEUE_NAMES.communitySummary, {
+  connection: makeConnection(),
+  defaultJobOptions: {
+    ...defaultJobOptions,
+    attempts: 3,
   },
 });
 

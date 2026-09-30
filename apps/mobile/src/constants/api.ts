@@ -38,6 +38,15 @@ export const API_ROUTES = {
     rate: "/quality/rate",
     deleteRate: (ratingId: string) => `/quality/rate/${ratingId}`,
   },
+  communities: {
+    list: "/communities",
+    detail: (idOrSlug: string) => `/communities/${idOrSlug}`,
+    join: (id: string) => `/communities/${id}/join`,
+    leave: (id: string) => `/communities/${id}/membership`,
+  },
+  forum: {
+    posts: "/forum/posts",
+  },
   reports: {
     list: "/reports",
     detail: (id: string) => `/reports/${id}`,

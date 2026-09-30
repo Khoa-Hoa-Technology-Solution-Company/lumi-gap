@@ -19,16 +19,22 @@ export function ForumNewPage() {
   const { t } = useI18n(); const navigate = useNavigate(); const [searchParams] = useSearchParams(); const create = useCreateForumPost(); const shareGap = useShareForumGap();
   const { data: communities } = useCommunities(); const { data: context } = useForumContext();
   const joined = useMemo(() => (communities ?? []).filter((community) => community.status === "ACTIVE" && community.viewerMembership?.status === "active"), [communities]);
-  const [type, setType] = useState<ForumPostType>("QUESTION"); const [communityId, setCommunityId] = useState("");
+  const [type, setType] = useState<ForumPostType>(searchParams.get("gap") ? "RESEARCH_GAP_DISCUSSION" : "QUESTION"); const [communityId, setCommunityId] = useState("");
   const [title, setTitle] = useState(""); const [content, setContent] = useState(""); const [tags, setTags] = useState("");
-  const [linkedPaperId, setLinkedPaperId] = useState(""); const [linkedGapId, setLinkedGapId] = useState(""); const [linkedProjectId, setLinkedProjectId] = useState("");
+  const requestedGapId = searchParams.get("gap") ?? ""; const [linkedPaperId, setLinkedPaperId] = useState(""); const [linkedGapId, setLinkedGapId] = useState(requestedGapId); const [linkedProjectId, setLinkedProjectId] = useState("");
   const [doi, setDoi] = useState(""); const [citationTitle, setCitationTitle] = useState(""); const [citationYear, setCitationYear] = useState("");
   const [preview, setPreview] = useState(false);
   useEffect(() => {
     const requestedCommunity = searchParams.get("community");
     if (!communityId && requestedCommunity && joined.some((community) => community.id === requestedCommunity)) setCommunityId(requestedCommunity);
   }, [communityId, joined, searchParams]);
-  const selectedGap = context?.gaps.find((gap) => gap.id === linkedGapId);
+  // A gap opened from a community page may not be among the user's own; the server re-checks that it is shareable.
+  const gapOptions = useMemo(() => {
+    const own = context?.gaps ?? [];
+    if (!requestedGapId || own.some((gap) => gap.id === requestedGapId)) return own;
+    return [{ id: requestedGapId, title: searchParams.get("gapTitle") ?? requestedGapId, topic: "", forumShareable: true }, ...own];
+  }, [context?.gaps, requestedGapId, searchParams]);
+  const selectedGap = gapOptions.find((gap) => gap.id === linkedGapId);
   const references: ForumReferenceView[] = doi.trim() && citationTitle.trim() ? [{ doi: doi.trim(), title: citationTitle.trim(), year: citationYear ? Number(citationYear) : undefined }] : [];
 
   function insert(prefix: string, suffix = prefix) {
@@ -61,7 +67,7 @@ export function ForumNewPage() {
         <Field label={t("Tags")} hint={t("Comma-separated research concepts. LumiGap normalizes duplicates.")}><Input value={tags} onChange={(event) => setTags(event.target.value)} placeholder={t("AI for SE, Code Review, Empirical Study")} /></Field>
         <section className="border-t pt-6"><div className="flex items-center gap-2"><BookOpen className="h-4 w-4 text-blue-700" /><h2 className="font-semibold">{t("Linked Research Context")}</h2></div><p className="mt-1 text-xs text-muted-foreground">{t("Only public or explicitly shareable research objects can appear in a forum discussion.")}</p><div className="mt-4 grid gap-4 sm:grid-cols-2">
           <Field label={t(type === "PAPER_DISCUSSION" ? "Linked Paper *" : "Linked Paper")}><select value={linkedPaperId} onChange={(event) => setLinkedPaperId(event.target.value)} className="h-10 w-full rounded-md border bg-background px-3 text-sm"><option value="">{t("No linked paper")}</option>{context?.papers.map((paper) => <option key={paper.id} value={paper.id}>{paper.title} ({paper.publicationYear})</option>)}</select></Field>
-          <Field label={t(type === "RESEARCH_GAP_DISCUSSION" ? "Candidate Research Gap *" : "Candidate Research Gap")}><select value={linkedGapId} onChange={(event) => setLinkedGapId(event.target.value)} className="h-10 w-full rounded-md border bg-background px-3 text-sm"><option value="">{t("No linked research gap")}</option>{context?.gaps.map((gap) => <option key={gap.id} value={gap.id}>{gap.title}{gap.forumShareable ? "" : ` · ${t("Private")}`}</option>)}</select></Field>
+          <Field label={t(type === "RESEARCH_GAP_DISCUSSION" ? "Candidate Research Gap *" : "Candidate Research Gap")}><select value={linkedGapId} onChange={(event) => setLinkedGapId(event.target.value)} className="h-10 w-full rounded-md border bg-background px-3 text-sm"><option value="">{t("No linked research gap")}</option>{gapOptions.map((gap) => <option key={gap.id} value={gap.id}>{gap.title}{gap.forumShareable ? "" : ` · ${t("Private")}`}</option>)}</select></Field>
           {selectedGap && !selectedGap.forumShareable ? <div className="sm:col-span-2 rounded-lg border p-3 text-sm"><p>{t("This candidate gap is private. Make it shareable before linking it to a forum thread.")}</p><Button type="button" variant="outline" size="sm" className="mt-3" disabled={shareGap.isPending} onClick={() => shareGap.mutateAsync(selectedGap.id).then(() => toast.success(t("Research gap is now shareable"))).catch(() => toast.error(t("Could not share this research gap")))}>{t("Make gap shareable")}</Button></div> : null}
           <Field label={t("Linked Project")} hint={t("Only projects with Public Summary visibility are listed.")}><select value={linkedProjectId} onChange={(event) => setLinkedProjectId(event.target.value)} className="h-10 w-full rounded-md border bg-background px-3 text-sm"><option value="">{t("No linked project")}</option>{context?.projects.map((project) => <option key={project.id} value={project.id}>{project.title}</option>)}</select></Field>
         </div></section>

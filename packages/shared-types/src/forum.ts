@@ -2,6 +2,7 @@ import type { ISODateString, ResponseMeta } from "./common.js";
 import type { PublicAcademicProfile } from "./academic-profile.js";
 
 export type CommunityVisibility = "public" | "private";
+export type CommunityStatus = "ACTIVE" | "ARCHIVED" | "PENDING_APPROVAL" | "REJECTED";
 export type CommunityMembershipRole = "owner" | "moderator" | "member";
 export type CommunityMembershipStatus = "pending" | "active" | "declined" | "banned";
 export type ForumPostType = "QUESTION" | "DISCUSSION" | "PAPER_DISCUSSION" | "RESEARCH_GAP_DISCUSSION";
@@ -31,16 +32,88 @@ export interface Community {
   icon?: string;
   rules: string[];
   visibility: CommunityVisibility;
-  status: "ACTIVE" | "ARCHIVED";
+  status: CommunityStatus;
+  reviewNote?: string;
+  reviewedAt?: ISODateString;
   memberCount: number;
   threadCount: number;
   moderators?: Array<{ id: string; fullName: string; avatarUrl?: string }>;
   viewerMembership?: { role: CommunityMembershipRole; status: CommunityMembershipStatus };
   canManage: boolean;
   canEditCommunity: boolean;
+  isOwner: boolean;
+  isAdmin: boolean;
+  /** Only present for managers: requests waiting for approval. */
+  pendingRequestCount?: number;
   contentRestricted: boolean;
   createdAt: ISODateString;
   updatedAt: ISODateString;
+}
+
+export type CommunitySort = "recent" | "newest" | "members" | "discussions" | "name";
+
+export interface CommunityFacet {
+  name: string;
+  count: number;
+}
+
+export interface CommunityRecommendation extends Community {
+  matchedInterests: string[];
+}
+
+export interface CommunityInput {
+  name: string;
+  description?: string;
+  visibility?: CommunityVisibility;
+  researchField?: string;
+  icon?: string;
+  researchTopics?: string[];
+  rules?: string[];
+}
+
+export interface CommunityMember {
+  id: string;
+  user: { id: string; fullName: string; email: string; avatarUrl?: string; role: string; institution?: string };
+  role: CommunityMembershipRole;
+  status: CommunityMembershipStatus;
+  joinedAt: ISODateString;
+}
+
+export type CommunitySummary =
+  | { status: "completed"; summary: string; postCount: number }
+  | { status: "pending" | "none"; postCount: number }
+  | { status: "failed"; message: string; postCount: number };
+
+/** Member-facing roster entry. Deliberately has no email address. */
+export interface CommunityPublicMember {
+  id: string;
+  fullName: string;
+  avatarUrl?: string;
+  institution?: string;
+  role: CommunityMembershipRole;
+  joinedAt: ISODateString;
+}
+
+export interface CommunityRelatedPaper {
+  id: string;
+  title: string;
+  publicationYear: number;
+  citationCount: number;
+  doi?: string;
+}
+
+export interface CommunityRelatedGap {
+  id: string;
+  title: string;
+  topic: string;
+  description: string;
+  gapType: string;
+  validationStatus: string;
+}
+
+export interface CommunityReviewInput {
+  decision: "approve" | "reject";
+  note?: string;
 }
 
 export interface ForumAuthorSummary {

@@ -18,6 +18,7 @@ import { applyDisplayNameChangeLimit } from "../academic-profiles/display-name-p
 import { affiliationService } from "../verification/affiliation.service.js";
 import { authMailService } from "./auth-mail.service.js";
 import { replaceActivePasswordResetToken } from "./password-reset-token.service.js";
+import { canProposeCommunity } from "../communities/community.rules.js";
 import { passwordService } from "./password.service.js";
 import { createOpaqueToken, hashOpaqueToken, tokenService } from "./token.service.js";
 import type {
@@ -210,6 +211,7 @@ async function toUserDto(user: PrismaUser): Promise<User> {
     emailVerifiedAt: user.emailVerifiedAt?.toISOString(),
     authProviders: { password: Boolean(user.passwordHash), google: Boolean(user.googleId) },
     capabilities,
+    canProposeCommunity: canProposeCommunity({ systemRole: user.systemRole, academicProfileType: user.academicProfileType ?? undefined }, profile?.roleVerificationStatus),
     onboarding: { completed: Boolean(user.onboardingCompletedAt && primaryPosition) },
     avatarUrl: user.avatarUrl ?? undefined,
     institution: user.institution ?? undefined,
