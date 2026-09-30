@@ -1,7 +1,12 @@
 # CLAUDE.md — Publication Trend System
 
 > Context file for Claude Code (and any AI coding assistant) working on this repo.
-> Read this first before touching code. Last updated: 2026-09-24.
+> Read this first before touching code. Last updated: 2026-09-26.
+
+### Auto-Spec Rule (Multi-Agent with Antigravity):
+- Khi người dùng bảo "lên spec...", "phân tích tính năng X", hoặc "spec X": **MẶC ĐỊNH LUÔN TỰ ĐỘNG TẠO FILE TẠI `.herdr/specs/<ten-tinh-nang>.md`**.
+- Không cần người dùng phải nhắc đường dẫn file. Tự động lưu vào `.herdr/specs/` để Antigravity đọc và code.
+
 
 ---
 
