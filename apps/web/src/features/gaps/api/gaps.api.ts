@@ -9,6 +9,9 @@ import type {
   PreviewGapEvidenceResponse,
   CreateGapCandidateRequest,
   ResearchGapItem,
+  GapCommunityDiscussionContext,
+  ReviewForumCitationAsEvidenceRequest,
+  GapStructuredEvidenceItem,
 } from "@trend/shared-types";
 
 export const gapsApi = {
@@ -67,6 +70,26 @@ export const gapsApi = {
   },
   async createCandidate(payload: CreateGapCandidateRequest): Promise<ResearchGapItem> {
     const res = await api.post("/gaps/candidates", payload);
+    return res.data.data;
+  },
+  async communityDiscussions(gapId: string): Promise<GapCommunityDiscussionContext> {
+    const res = await api.get(API_ROUTES.gaps.discussions(gapId));
+    return res.data.data;
+  },
+  async reviewForumCitation(gapId: string, referenceId: string, payload: ReviewForumCitationAsEvidenceRequest) {
+    const res = await api.post(API_ROUTES.gaps.reviewForumCitation(gapId, referenceId), payload);
+    return res.data.data;
+  },
+  async forumCitationEvidenceOptions(gapId: string, referenceId: string, projectId?: string): Promise<{
+    status: string;
+    projectId?: string;
+    corpusId?: string;
+    paper: { id: string; title: string };
+    projectPaper?: { id: string; screeningStatus: string };
+    extractedEvidence: GapStructuredEvidenceItem[];
+    message: string;
+  }> {
+    const res = await api.get(API_ROUTES.gaps.forumCitationEvidenceOptions(gapId, referenceId), { params: projectId ? { projectId } : undefined });
     return res.data.data;
   },
 };

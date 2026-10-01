@@ -47,7 +47,7 @@ export function CommunityListPage() {
       <div className="max-w-2xl">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-700">{t("Research fields")}</p>
         <h1 className="mt-2 text-3xl font-bold tracking-tight">{t("Research Communities")}</h1>
-        <p className="mt-2 text-sm leading-6 text-muted-foreground">{t("Join focused spaces for questions, evidence and academic discussion in your research field.")}</p>
+        <p className="mt-2 text-sm leading-6 text-muted-foreground">{t("Join focused spaces for questions and discussions in your area of research.")}</p>
       </div>
       {canCreate ? <Button asChild className="gap-2 self-start sm:self-auto"><Link to="/communities/new"><Plus className="h-4 w-4" />{t("Create community")}</Link></Button> : null}
     </header>

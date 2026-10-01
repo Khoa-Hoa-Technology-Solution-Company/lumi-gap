@@ -183,6 +183,13 @@ function safeExternalUrl(value?: string): string | undefined {
   return undefined;
 }
 
+function contextualActionClass(active = false): string {
+  return cn(
+    "transition-all duration-150 ease-out sm:translate-y-1 sm:opacity-0 sm:group-hover/profile-section:translate-y-0 sm:group-hover/profile-section:opacity-100 sm:group-focus-within/profile-section:translate-y-0 sm:group-focus-within/profile-section:opacity-100",
+    active && "sm:translate-y-0 sm:opacity-100",
+  );
+}
+
 export function AcademicProfileView({
   profile,
   editableProfile,
@@ -557,7 +564,7 @@ export function AcademicProfileView({
                 e.stopPropagation();
                 setCoverDialogOpen(true);
               }}
-              className="absolute bottom-4 right-4 z-30 inline-flex cursor-pointer items-center gap-2 rounded-xl border border-white/25 bg-slate-950/70 px-3.5 py-2 text-xs font-semibold text-white shadow-lg backdrop-blur-md transition-all hover:bg-slate-900 hover:scale-105 active:scale-95 focus-visible:ring-2 focus-visible:ring-blue-500 sm:bottom-5 sm:right-6"
+              className="absolute bottom-4 right-4 z-30 inline-flex cursor-pointer items-center gap-2 rounded-xl border border-white/25 bg-slate-950/70 px-3.5 py-2 text-xs font-semibold text-white opacity-100 shadow-lg backdrop-blur-md transition-all hover:scale-105 hover:bg-slate-900 active:scale-95 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-blue-500 sm:bottom-5 sm:right-6 sm:translate-y-1 sm:opacity-0 sm:group-hover/banner:translate-y-0 sm:group-hover/banner:opacity-100 sm:focus-within:translate-y-0 sm:focus-within:opacity-100"
             >
               <Camera className="h-3.5 w-3.5 text-blue-300" />
               <span>{profile.coverUrl ? t("Change cover") : t("Add cover")}</span>
@@ -812,7 +819,7 @@ export function AcademicProfileView({
             {/* Left Col (8-col): Bio + Research Topics + Works */}
             <div className="space-y-6 lg:col-span-8">
               {/* Academic Bio Card */}
-              <section className="rounded-3xl border border-slate-200/90 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-[#11131a] sm:p-7">
+              <section className="group/profile-section rounded-3xl border border-slate-200/90 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-[#11131a] sm:p-7">
                 <div className="mb-4 flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
                     <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-300">
@@ -835,7 +842,7 @@ export function AcademicProfileView({
                         setEditModalTab("general");
                         setIsEditModalOpen(true);
                       }}
-                      className="gap-1.5 text-xs font-bold text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-950/30"
+                      className={cn(contextualActionClass(isEditModalOpen && editModalTab === "general"), "gap-1.5 text-xs font-bold text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-950/30")}
                     >
                       <Pencil className="h-3.5 w-3.5" />
                       <span>{t("Edit")}</span>
@@ -863,7 +870,7 @@ export function AcademicProfileView({
               </section>
 
               {/* Research Scope & Tags Card */}
-              <section className="rounded-3xl border border-slate-200/90 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-[#11131a] sm:p-7">
+              <section className="group/profile-section rounded-3xl border border-slate-200/90 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-[#11131a] sm:p-7">
                 <div className="mb-6 flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
                     <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-300">
@@ -886,7 +893,7 @@ export function AcademicProfileView({
                         setEditModalTab("research");
                         setIsEditModalOpen(true);
                       }}
-                      className="gap-1.5 text-xs font-bold text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-950/30"
+                      className={cn(contextualActionClass(isEditModalOpen && editModalTab === "research"), "gap-1.5 text-xs font-bold text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-950/30")}
                     >
                       <Pencil className="h-3.5 w-3.5" />
                       <span>{t("Edit topics")}</span>
@@ -991,7 +998,7 @@ export function AcademicProfileView({
               </section>
 
               {/* Featured Works & Contributions */}
-              <section className="rounded-3xl border border-slate-200/90 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-[#11131a] sm:p-7">
+              <section className="group/profile-section rounded-3xl border border-slate-200/90 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-[#11131a] sm:p-7">
                 <div className="mb-4 flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
                     <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-300">
@@ -1011,7 +1018,7 @@ export function AcademicProfileView({
                       variant="ghost"
                       size="sm"
                       onClick={() => onEdit?.("works")}
-                      className="gap-1.5 text-xs font-bold text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-950/30"
+                      className={cn(contextualActionClass(editingSection === "works"), "gap-1.5 text-xs font-bold text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-950/30")}
                     >
                       <Plus className="h-3.5 w-3.5" />
                       <span>{t("Add work")}</span>
@@ -1126,7 +1133,7 @@ export function AcademicProfileView({
               </section>
 
               {/* Collaboration Preview */}
-              <section className="rounded-3xl border border-slate-200/90 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-[#11131a]">
+              <section className="group/profile-section rounded-3xl border border-slate-200/90 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-[#11131a]">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <HandHeart className="h-4.5 w-4.5 text-blue-600 dark:text-blue-400" />
@@ -1139,7 +1146,7 @@ export function AcademicProfileView({
                       variant="ghost"
                       size="sm"
                       onClick={() => handleTabChange("collaboration")}
-                      className="h-8 text-xs font-bold text-blue-600"
+                      className={cn(contextualActionClass(), "h-8 text-xs font-bold text-blue-600")}
                     >
                       {t("Configure")}
                     </Button>
@@ -1354,7 +1361,7 @@ export function AcademicProfileView({
         {/* TAB 4: COLLABORATION & REVIEW */}
         {activeTab === "collaboration" && (
           <div className="space-y-6">
-            <section className="rounded-3xl border border-slate-200/90 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-[#11131a] sm:p-8">
+            <section className="group/profile-section rounded-3xl border border-slate-200/90 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-[#11131a] sm:p-8">
               <div className="mb-6 flex items-center justify-between border-b border-slate-100 pb-5 dark:border-white/5">
                 <div className="flex items-center gap-3">
                   <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-300">
@@ -1378,7 +1385,7 @@ export function AcademicProfileView({
                         ? onCloseEdit?.()
                         : onEdit?.("availability")
                     }
-                    className="gap-1.5 text-xs font-bold"
+                    className={cn(contextualActionClass(editingSection === "availability"), "gap-1.5 text-xs font-bold")}
                   >
                     <Pencil className="h-3.5 w-3.5" />
                     <span>
@@ -1541,7 +1548,7 @@ export function AcademicProfileView({
 
               <div className="space-y-6">
                 {/* Public Handle Box */}
-                <div className="rounded-2xl border border-slate-200/80 bg-slate-50/60 p-5 dark:border-white/10 dark:bg-white/[0.02]">
+                <div className="group/profile-section rounded-2xl border border-slate-200/80 bg-slate-50/60 p-5 dark:border-white/10 dark:bg-white/[0.02]">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <h3 className="text-sm font-bold text-slate-900 dark:text-white">
@@ -1556,7 +1563,7 @@ export function AcademicProfileView({
                         size="sm"
                         variant="outline"
                         onClick={() => onEdit?.("link")}
-                        className="text-xs font-bold"
+                        className={cn(contextualActionClass(editingSection === "link"), "text-xs font-bold")}
                       >
                         <Pencil className="h-3.5 w-3.5 mr-1" />
                         {t("Edit handle")}
@@ -1583,7 +1590,7 @@ export function AcademicProfileView({
                 </div>
 
                 {/* Visibility Mode Display */}
-                <div className="rounded-2xl border border-slate-200/80 bg-slate-50/60 p-5 dark:border-white/10 dark:bg-white/[0.02]">
+                <div className="group/profile-section rounded-2xl border border-slate-200/80 bg-slate-50/60 p-5 dark:border-white/10 dark:bg-white/[0.02]">
                   <div className="flex items-center justify-between">
                     <div>
                       <h3 className="text-sm font-bold text-slate-900 dark:text-white">
@@ -1605,7 +1612,7 @@ export function AcademicProfileView({
                           setEditModalTab("privacy");
                           setIsEditModalOpen(true);
                         }}
-                        className="text-xs font-bold"
+                        className={cn(contextualActionClass(isEditModalOpen && editModalTab === "privacy"), "text-xs font-bold")}
                       >
                         <Pencil className="h-3.5 w-3.5 mr-1" />
                         {t("Change")}
@@ -1615,7 +1622,7 @@ export function AcademicProfileView({
                 </div>
 
                 {/* Discoverability Toggles Display */}
-                <div className="rounded-2xl border border-slate-200/80 bg-slate-50/60 p-5 dark:border-white/10 dark:bg-white/[0.02]">
+                <div className="group/profile-section rounded-2xl border border-slate-200/80 bg-slate-50/60 p-5 dark:border-white/10 dark:bg-white/[0.02]">
                   <div className="flex items-center justify-between">
                     <div>
                       <h3 className="text-sm font-bold text-slate-900 dark:text-white">
@@ -1639,7 +1646,7 @@ export function AcademicProfileView({
                           setEditModalTab("privacy");
                           setIsEditModalOpen(true);
                         }}
-                        className="text-xs font-bold"
+                        className={cn(contextualActionClass(isEditModalOpen && editModalTab === "privacy"), "text-xs font-bold")}
                       >
                         <Pencil className="h-3.5 w-3.5 mr-1" />
                         {t("Configure")}

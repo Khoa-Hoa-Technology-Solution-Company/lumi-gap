@@ -231,15 +231,23 @@ model GapEvidenceRecord {
   gapId         String   @map("gap_id") @db.Uuid
   paperId       String   @map("paper_id") @db.Uuid
   evidenceKind  String   @map("evidence_kind") @db.VarChar(16)
-  evidenceType  String?  @map("evidence_type") @db.VarChar(120)
+  evidenceType  String   @default("LEGACY") @map("evidence_type") @db.VarChar(120)
   excerpt       String?
+  sourceLocation String? @map("source_location")
   explanation   String
+  projectPaperId String? @map("project_paper_id") @db.Uuid
+  corpusPaperId String? @map("corpus_paper_id") @db.Uuid
+  forumReferenceId String? @map("forum_reference_id") @db.Uuid
+  forumPostId String? @map("forum_post_id") @db.Uuid
+  forumCommentId String? @map("forum_comment_id") @db.Uuid
   addedById     String   @map("added_by_id") @db.Uuid
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  @@unique([gapId, paperId, evidenceKind])
+  @@unique([gapId, paperId, evidenceKind, evidenceType])
   @@index([paperId])
+  @@index([corpusPaperId])
+  @@index([forumReferenceId])
   @@map("gap_evidence_records")
 }
 

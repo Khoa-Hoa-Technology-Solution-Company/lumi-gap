@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { gapsApi } from "../api/gaps.api";
-import type { AnalyzeGapRequest, CreateGapCandidateRequest, PreviewGapEvidenceRequest } from "@trend/shared-types";
+import type { AnalyzeGapRequest, CreateGapCandidateRequest, PreviewGapEvidenceRequest, ReviewForumCitationAsEvidenceRequest } from "@trend/shared-types";
 
 export function useGaps(params?: Parameters<typeof gapsApi.list>[0]) {
   return useQuery({
@@ -73,5 +73,33 @@ export function useCreateGapCandidate() {
   return useMutation({
     mutationFn: (payload: CreateGapCandidateRequest) => gapsApi.createCandidate(payload),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["gaps"] }),
+  });
+}
+
+export function useGapCommunityDiscussions(gapId?: string) {
+  return useQuery({
+    queryKey: ["gaps", gapId, "community-discussions"],
+    queryFn: () => gapsApi.communityDiscussions(gapId!),
+    enabled: Boolean(gapId),
+  });
+}
+
+export function useReviewForumCitationAsEvidence() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ gapId, referenceId, payload }: { gapId: string; referenceId: string; payload: ReviewForumCitationAsEvidenceRequest }) =>
+      gapsApi.reviewForumCitation(gapId, referenceId, payload),
+    onSuccess: (_, input) => {
+      queryClient.invalidateQueries({ queryKey: ["gaps", input.gapId, "community-discussions"] });
+      queryClient.invalidateQueries({ queryKey: ["gaps"] });
+    },
+  });
+}
+
+export function useForumCitationEvidenceOptions(gapId?: string, referenceId?: string, projectId?: string) {
+  return useQuery({
+    queryKey: ["gaps", gapId, "forum-citation-evidence-options", referenceId, projectId],
+    queryFn: () => gapsApi.forumCitationEvidenceOptions(gapId!, referenceId!, projectId),
+    enabled: Boolean(gapId && referenceId),
   });
 }

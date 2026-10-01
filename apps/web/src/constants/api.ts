@@ -194,6 +194,9 @@ export const API_ROUTES = {
     list: "/gaps",
     patch: (id: string) => `/gaps/${id}`,
     directions: (id: string) => `/gaps/${id}/directions`,
+    discussions: (id: string) => `/gaps/${id}/discussions`,
+    reviewForumCitation: (id: string, referenceId: string) => `/gaps/${id}/forum-citations/${referenceId}/review-as-evidence`,
+    forumCitationEvidenceOptions: (id: string, referenceId: string) => `/gaps/${id}/forum-citations/${referenceId}/evidence-options`,
   },
   projects: {
     list: "/projects",

@@ -33,6 +33,27 @@ describe("validateProductionEnvironment", () => {
     expect(validateProductionEnvironment(validEnvironment())).toEqual([]);
   });
 
+  it("accepts Cloudinary storage when Cloudinary credentials are present", () => {
+    const values = validEnvironment();
+    values.STORAGE_PROVIDER = "cloudinary";
+    values.CLOUDINARY_CLOUD_NAME = "demo-cloud";
+    values.CLOUDINARY_API_KEY = "cloudinary-key";
+    values.CLOUDINARY_API_SECRET = "cloudinary-secret";
+
+    expect(validateProductionEnvironment(values)).toEqual([]);
+  });
+
+  it("requires Cloudinary credentials when Cloudinary storage is enabled", () => {
+    const values = validEnvironment();
+    values.STORAGE_PROVIDER = "cloudinary";
+
+    const errors = validateProductionEnvironment(values);
+
+    expect(errors).toContain("CLOUDINARY_CLOUD_NAME is required when STORAGE_PROVIDER=cloudinary");
+    expect(errors).toContain("CLOUDINARY_API_KEY is required when STORAGE_PROVIDER=cloudinary");
+    expect(errors).toContain("CLOUDINARY_API_SECRET is required when STORAGE_PROVIDER=cloudinary");
+  });
+
   it("rejects public template placeholders even when they satisfy length checks", () => {
     const values = validEnvironment();
     values.JWT_ACCESS_SECRET = "<required-secret-minimum-32-characters>";

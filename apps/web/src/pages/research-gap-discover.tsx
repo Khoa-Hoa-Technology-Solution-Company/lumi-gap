@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import type { CorpusPaperEvidence, GapAssessmentLevel, LiteratureCorpus, ResearchGapType } from "@trend/shared-types";
 import { BookOpenCheck, FileSearch, Plus, Trash2 } from "lucide-react";
@@ -145,8 +145,9 @@ function CorpusWorkspace({ corpusId }: { corpusId: string }) {
 }
 
 export function ResearchGapDiscoverPage() {
+  const [searchParams] = useSearchParams();
   const { data = [], isLoading, isError } = useLiteratureCorpora();
-  const [selectedId, setSelectedId] = useState<string>();
+  const [selectedId, setSelectedId] = useState<string>(() => searchParams.get("corpus") ?? "");
   useEffect(() => { if (!selectedId && data[0]) setSelectedId(data[0]._id); }, [data, selectedId]);
   return <main className="container max-w-7xl py-8"><div className="flex flex-col gap-4 border-b pb-6 sm:flex-row sm:items-end sm:justify-between"><div><div className="flex items-center gap-2 text-sm font-medium text-blue-700 dark:text-blue-300"><FileSearch className="h-4 w-4" />Evidence-backed discovery</div><h1 className="mt-2 text-3xl font-bold tracking-tight">Research gap workspace</h1><p className="mt-2 max-w-2xl text-muted-foreground">Define scope, curate literature, structure per-study evidence, then inspect coverage before claiming a candidate gap.</p></div><CorpusCreateDialog onCreated={(corpus) => setSelectedId(corpus._id)} /></div>
     <div className="mt-8 grid gap-8 lg:grid-cols-[280px_minmax(0,1fr)]"><aside><h2 className="mb-3 text-sm font-semibold">Literature corpora</h2>{isLoading ? <Skeleton className="h-40 w-full" /> : isError ? <div className="rounded-xl border border-destructive/30 p-4 text-sm text-destructive">Could not load literature corpora.</div> : data.length ? <div className="space-y-2">{data.map((corpus) => <button key={corpus._id} onClick={() => setSelectedId(corpus._id)} className={`w-full rounded-xl border p-3 text-left transition-colors ${selectedId === corpus._id ? "border-blue-500 bg-blue-50 dark:bg-blue-950/30" : "bg-card hover:bg-muted/60"}`}><span className="block font-medium">{corpus.name}</span><span className="mt-1 block text-xs text-muted-foreground">{corpus.paperCount ?? 0} papers</span></button>)}</div> : <div className="rounded-xl border border-dashed p-5 text-sm text-muted-foreground">Create a corpus to start an evidence-backed research gap workflow.</div>}</aside><section>{selectedId ? <CorpusWorkspace corpusId={selectedId} /> : <div className="rounded-xl border border-dashed p-12 text-center text-muted-foreground">Select or create a literature corpus.</div>}</section></div>

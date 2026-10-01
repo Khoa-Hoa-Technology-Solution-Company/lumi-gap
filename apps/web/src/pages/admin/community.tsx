@@ -17,7 +17,7 @@ type Tab = "communities" | "proposals" | "discussions" | "moderation";
 
 export function AdminCommunityPage() {
   const { t } = useI18n(); const [tab, setTab] = useState<Tab>("communities"); const [search, setSearch] = useState("");
-  const communities = useCommunities(); const posts = useForumPosts({ page: 1, pageSize: 100, query: search || undefined, includeModerated: true });
+  const communities = useCommunities({ all: true }); const posts = useForumPosts({ page: 1, pageSize: 100, query: search || undefined, includeModerated: true });
   const visibleCommunities = useMemo(() => (communities.data ?? []).filter((item) => !search || `${item.name} ${item.description} ${item.researchField ?? ""}`.toLocaleLowerCase().includes(search.toLocaleLowerCase())), [communities.data, search]);
   const activeCount = (communities.data ?? []).filter((item) => item.status === "ACTIVE").length;
   const pendingCount = (communities.data ?? []).filter((item) => item.status === "PENDING_APPROVAL").length;

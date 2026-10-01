@@ -4,8 +4,9 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { env } from "../config/env.js";
+import { cloudinaryPublicUrl, deleteCloudinaryAsset, uploadCloudinaryBuffer } from "./cloudinary-storage.service.js";
 
-export type PdfStorageProvider = "local" | "r2";
+export type PdfStorageProvider = "local" | "r2" | "cloudinary";
 
 export interface StoredPdf {
   provider: PdfStorageProvider;
@@ -40,7 +41,15 @@ interface R2StorageOptions extends BaseStorageOptions {
   getSignedUrl?: (key: string, expiresInSeconds: number) => Promise<string>;
 }
 
-export type PdfStorageOptions = LocalStorageOptions | R2StorageOptions;
+interface CloudinaryStorageOptions extends BaseStorageOptions {
+  provider: "cloudinary";
+  cloudName: string;
+  upload?: (input: { key: string; body: Buffer }) => Promise<unknown>;
+  deleteObject?: (key: string) => Promise<unknown>;
+  getSignedUrl?: (key: string, expiresInSeconds: number) => Promise<string>;
+}
+
+export type PdfStorageOptions = LocalStorageOptions | R2StorageOptions | CloudinaryStorageOptions;
 
 export interface PdfStorageService {
   savePdf(buffer: Buffer, originalName: string): Promise<StoredPdf>;
@@ -106,6 +115,48 @@ export function createPdfStorageService(options: PdfStorageOptions): PdfStorageS
     };
   }
 
+  if (options.provider === "cloudinary") {
+    const cloudName = options.cloudName;
+    const upload = options.upload;
+    const deleteObject = options.deleteObject;
+    const getSignedUrl = options.getSignedUrl;
+
+    return {
+      async savePdf(buffer, originalName) {
+        const key = buildPdfObjectKey(originalName, randomId());
+        if (upload) {
+          await upload({ key, body: buffer });
+        } else {
+          await uploadCloudinaryBuffer(buffer, {
+            resource_type: "raw",
+            type: "authenticated",
+            public_id: key,
+            overwrite: true,
+          });
+        }
+        return { provider: "cloudinary", uri: `cloudinary://${cloudName}/${key}`, key };
+      },
+      async deletePdf(uri) {
+        const parsed = parseCloudinaryUri(uri);
+        if (!parsed) return;
+        if (deleteObject) {
+          await deleteObject(parsed.key);
+          return;
+        }
+        await deleteCloudinaryAsset(parsed.key, { resource_type: "raw", type: "authenticated" });
+      },
+      async getSignedDownloadUrl(uri, expiresInSeconds = env.R2_SIGNED_URL_TTL_SECONDS) {
+        const parsed = parseCloudinaryUri(uri);
+        if (!parsed) return null;
+        if (getSignedUrl) return getSignedUrl(parsed.key, expiresInSeconds);
+        return cloudinaryPublicUrl(parsed.key, { resource_type: "raw", type: "authenticated" });
+      },
+      resolveLocalPath() {
+        return null;
+      },
+    };
+  }
+
   const bucket = options.bucket;
   const putObject = options.putObject;
   const deleteObject = options.deleteObject;
@@ -149,6 +200,17 @@ export function parseR2Uri(uri: string): { bucket: string; key: string } | null 
   if (slash <= 0) return null;
   return {
     bucket: withoutScheme.slice(0, slash),
+    key: withoutScheme.slice(slash + 1),
+  };
+}
+
+export function parseCloudinaryUri(uri: string): { cloudName: string; key: string } | null {
+  if (!uri.startsWith("cloudinary://")) return null;
+  const withoutScheme = uri.slice("cloudinary://".length);
+  const slash = withoutScheme.indexOf("/");
+  if (slash <= 0) return null;
+  return {
+    cloudName: withoutScheme.slice(0, slash),
     key: withoutScheme.slice(slash + 1),
   };
 }
@@ -198,6 +260,9 @@ export function createDefaultPdfStorageService(): PdfStorageService {
   if (env.STORAGE_PROVIDER === "r2") {
     assertR2Config();
     return createPdfStorageService({ provider: "r2", bucket: env.R2_BUCKET! });
+  }
+  if (env.STORAGE_PROVIDER === "cloudinary") {
+    return createPdfStorageService({ provider: "cloudinary", cloudName: env.CLOUDINARY_CLOUD_NAME! });
   }
   return createPdfStorageService({ provider: "local", uploadsDir: "uploads" });
 }

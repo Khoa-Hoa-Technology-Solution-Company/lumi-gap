@@ -4,6 +4,8 @@
 
 @layer base {
   :root {
+    /* The shared app bar includes its 1px bottom border. */
+  --app-header-height: calc(5rem + 1px);
     --background: 0 0% 100%;
     --foreground: 222.2 84% 4.9%;
     --card: 0 0% 100%;
@@ -184,6 +186,201 @@
 
   .lumigap-toaster[data-sonner-theme="dark"] [data-description] {
     color: oklch(0.72 0.02 255);
+  }
+
+  .forum-workspace {
+    /* Keep the navigation and topic-table geometry in sync as type grows.
+       Scoped to Forum so the rest of the research workspace keeps its scale. */
+    --forum-sidebar-width: 14rem;
+    --forum-reading-width: 69.375rem;
+    --forum-metrics-width: 27.5rem;
+    --forum-metrics-columns: 7.5rem 3.5rem 5rem 4.5rem 5rem;
+    font-size: 1rem;
+    line-height: 1.5;
+    background: oklch(0.96 0.018 275);
+  }
+
+  @media (min-width: 80rem) {
+    .forum-workspace {
+      --forum-sidebar-width: 17.5rem;
+    }
+  }
+
+  /* Native browser zoom changes available CSS width. Reflow the topic table
+     from its own reading area, not the viewport that also contains a sidebar.
+     No wheel interception, zoom detection, or counter-scaling is needed. */
+  .forum-topics {
+    container: forum-topics / inline-size;
+  }
+
+  .forum-topic-row,
+  .forum-topic-head {
+    --forum-row-metrics-width: 9rem;
+    --forum-row-metrics-columns: 3.5rem 5rem;
+  }
+
+  .forum-topic-head,
+  .forum-topic-participants,
+  .forum-topic-views,
+  .forum-topic-head-participants,
+  .forum-topic-head-views,
+  .forum-topic-head-helpful {
+    display: none;
+  }
+
+  .forum-topic-title {
+    font-size: 1.25rem;
+  }
+
+  .forum-topic-metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .forum-topic-head-metrics {
+    grid-template-columns: var(--forum-row-metrics-columns);
+  }
+
+  @container forum-topics (min-width: 30rem) {
+    .forum-topic-row,
+    .forum-topic-head {
+      grid-template-columns: minmax(0, 1fr) var(--forum-row-metrics-width);
+      align-items: center;
+    }
+
+    .forum-topic-head {
+      display: grid;
+    }
+
+    .forum-topic-row {
+      min-height: 8.5rem;
+    }
+
+    .forum-topic-row .forum-topic-metrics {
+      grid-template-columns: var(--forum-row-metrics-columns);
+      border-top-width: 0;
+      padding-top: 0;
+    }
+
+    .forum-topic-helpful {
+      display: none;
+    }
+
+    .forum-topic-activity {
+      grid-column: 2;
+      text-align: right;
+    }
+
+    .forum-topic-label {
+      @apply sr-only;
+    }
+
+    .forum-topic-row .forum-topic-excerpt {
+      -webkit-line-clamp: 1;
+    }
+
+    .forum-topics .forum-topic-toolbar {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+  }
+
+  @container forum-topics (min-width: 42rem) {
+    .forum-topic-row,
+    .forum-topic-head {
+      --forum-row-metrics-width: 19.5rem;
+      --forum-row-metrics-columns: 3.5rem 5rem 4.5rem 5rem;
+    }
+
+    .forum-topic-views,
+    .forum-topic-helpful,
+    .forum-topic-head-views {
+      display: block;
+    }
+
+    .forum-topic-head-helpful {
+      display: flex;
+    }
+
+    .forum-topic-activity {
+      grid-column: 4;
+    }
+  }
+
+  @container forum-topics (min-width: 45rem) {
+    .forum-topic-title {
+      font-size: 1.375rem;
+    }
+  }
+
+  @container forum-topics (min-width: 54rem) {
+    .forum-topics .forum-topic-toolbar {
+      display: flex;
+    }
+
+    .forum-topics .forum-topic-filter {
+      width: 12rem;
+    }
+
+  }
+
+  @container forum-topics (min-width: 60rem) {
+    .forum-topic-row,
+    .forum-topic-head {
+      --forum-row-metrics-width: var(--forum-metrics-width);
+      --forum-row-metrics-columns: var(--forum-metrics-columns);
+    }
+
+    .forum-topic-participants {
+      display: flex;
+    }
+
+    .forum-topic-head-participants {
+      display: block;
+    }
+
+    .forum-topic-activity {
+      grid-column: 5;
+    }
+  }
+
+  .forum-surface {
+    background: oklch(0.995 0.003 265);
+    box-shadow: 0 4px 20px oklch(0.4 0.03 275 / 4%);
+  }
+
+  .forum-compose {
+    container: forum-compose / inline-size;
+  }
+
+  .forum-compose-preview {
+    display: none;
+  }
+
+  .forum-compose-tabs {
+    display: flex;
+  }
+
+  .forum-compose-editor[data-view="preview"] .forum-compose-write {
+    display: none;
+  }
+
+  .forum-compose-editor[data-view="preview"] .forum-compose-preview {
+    display: block;
+  }
+
+  .forum-workspace .forum-post-actions > button,
+  .forum-workspace .forum-post-actions > a {
+    min-height: 2.5rem;
+    font-size: 1rem;
+  }
+
+  .dark .forum-workspace {
+    background: oklch(0.18 0.018 265);
+  }
+
+  .dark .forum-surface {
+    background: oklch(0.215 0.018 265);
   }
 
   .lumigap-toaster[data-sonner-theme="dark"] [data-close-button]:hover {

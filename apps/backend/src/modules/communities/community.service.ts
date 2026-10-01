@@ -43,10 +43,21 @@ const SORT_ORDERS = {
 } as const;
 const ROLE_ORDER: Record<string, number> = { owner: 0, moderator: 1, member: 2 };
 
-/** Non-admins see ACTIVE communities plus their own pending/rejected proposals. */
-function visibleWhere(role: UserRole | undefined, viewerUserId: string | undefined) {
+/**
+ * Admins see everything. Everyone else sees ACTIVE communities that are public or that they belong to
+ * (private communities are not discoverable by non-members), plus their own pending/rejected proposals.
+ */
+async function visibleWhere(role: UserRole | undefined, viewerUserId: string | undefined) {
   if (role === "admin") return {};
-  return { OR: [{ status: "ACTIVE" }, ...(viewerUserId ? [{ ownerId: viewerUserId, status: { in: OWNER_ONLY_STATUSES } }] : [])] };
+  const memberIds = viewerUserId
+    ? (await getPrisma().communityMembership.findMany({ where: { userId: viewerUserId, status: "active" }, select: { communityId: true } })).map((row) => row.communityId)
+    : [];
+  return {
+    OR: [
+      { status: "ACTIVE", OR: [{ visibility: "public" }, { id: { in: memberIds } }] },
+      ...(viewerUserId ? [{ ownerId: viewerUserId, status: { in: OWNER_ONLY_STATUSES } }] : []),
+    ],
+  };
 }
 
 type MembershipSummary = {
@@ -221,10 +232,11 @@ export const communityService = {
 
   async list(userId: string | undefined, query: CommunityListQuery, role?: UserRole) {
     const prisma = getPrisma();
-    const { page, pageSize, status, q, field, sort, scope } = query;
+    const { page, pageSize, status, q, field, sort, scope, activeOnly } = query;
     const resolvedUserId = userId ? await resolveUserId(userId) : undefined;
-    const conditions: object[] = [visibleWhere(role, resolvedUserId)];
+    const conditions: object[] = [await visibleWhere(role, resolvedUserId)];
     if (status) conditions.push({ status });
+    if (activeOnly === "true") conditions.push({ status: "ACTIVE" });
     if (field) conditions.push({ researchField: { equals: field, mode: "insensitive" } });
     if (q) conditions.push({ id: { in: await searchCommunityIds(q) } });
     if (scope === "mine") {
@@ -250,7 +262,7 @@ export const communityService = {
     const resolvedUserId = userId ? await resolveUserId(userId) : undefined;
     const groups = await getPrisma().community.groupBy({
       by: ["researchField"],
-      where: { AND: [visibleWhere(role, resolvedUserId), { researchField: { not: null } }] },
+      where: { AND: [await visibleWhere(role, resolvedUserId), { researchField: { not: null } }] },
       _count: { _all: true },
     });
     return groups

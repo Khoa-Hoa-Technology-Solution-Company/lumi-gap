@@ -27,6 +27,8 @@ export const listQuerySchema = paginationSchema.extend({
   field: z.string().trim().min(1).max(160).optional(),
   sort: communitySortSchema.default("recent"),
   scope: z.enum(["all", "mine"]).default("all"),
+  /** Used by the forum composer: list only ACTIVE communities, even for admins. */
+  activeOnly: z.enum(["true", "false"]).optional(),
 });
 
 export const reviewSchema = z.object({

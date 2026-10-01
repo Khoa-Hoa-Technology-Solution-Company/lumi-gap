@@ -1,4 +1,5 @@
-import { Router } from "express";
+import { Router, type Request, type Response } from "express";
+import { randomUUID } from "node:crypto";
 import rateLimit from "express-rate-limit";
 import { z } from "zod";
 import { optionalAuth, requireAuth } from "../../common/middleware/auth.js";
@@ -50,7 +51,10 @@ const postUpdateSchema = postBaseSchema.partial()
     ...(value.linkedResearchGapId || researchGapId ? { linkedResearchGapId: value.linkedResearchGapId ?? researchGapId } : {}),
   }));
 const postQuerySchema = paginationSchema.extend({
-  communityId: objectIdSchema.optional(),
+  page: z.coerce.number().int().min(1).max(1_000_000).default(1),
+  pageSize: z.coerce.number().int().min(1).max(30).default(20),
+  // Read filters accept stable slugs; write contracts still require database IDs.
+  communityId: z.union([objectIdSchema, z.string().max(120).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)]).optional(),
   linkedResearchGapId: objectIdSchema.optional(),
   researchGapId: objectIdSchema.optional(),
   linkedPaperId: objectIdSchema.optional(),
@@ -58,7 +62,11 @@ const postQuerySchema = paginationSchema.extend({
   tag: z.string().trim().min(1).max(80).optional(),
   query: z.string().trim().min(1).max(240).optional(),
   sort: z.enum(["latest", "popular", "unanswered", "following"]).default("latest"),
+  feed: z.enum(["latest", "popular", "unanswered", "following"]).optional(),
   includeModerated: z.enum(["true", "false"]).optional(),
+});
+const commentsPaginationSchema = paginationSchema.extend({
+  pageSize: z.coerce.number().int().min(1).max(30).default(25),
 });
 const idParamsSchema = z.object({ id: objectIdSchema });
 const postIdParamsSchema = z.object({ postId: objectIdSchema });
@@ -93,6 +101,20 @@ const moderationQueueQuerySchema = z.object({
   status: z.enum(["open", "reviewed", "resolved", "dismissed", "all"]).default("open"),
 }).strict();
 const moderationHistoryQuerySchema = z.object({ communityId: objectIdSchema.optional() }).strict();
+const reviewEvidenceParamsSchema = z.object({ id: objectIdSchema, referenceId: objectIdSchema });
+const reviewEvidenceOptionsQuerySchema = z.object({ projectId: objectIdSchema.optional() }).strict();
+const reviewAsEvidenceSchema = z.object({
+  projectId: objectIdSchema.optional(),
+  screeningStatus: z.enum(["UNDECIDED", "INCLUDED", "EXCLUDED"]).optional(),
+  exclusionReason: z.enum(["WRONG_RESEARCH_TOPIC", "WRONG_POPULATION_CONTEXT", "WRONG_METHODOLOGY", "NOT_PEER_REVIEWED", "INSUFFICIENT_RELEVANT_EVIDENCE", "DUPLICATE", "OTHER"]).optional(),
+  exclusionNote: z.string().trim().max(2000).optional(),
+  relation: z.enum(["SUPPORTING", "COUNTER", "RELATED"]).optional(),
+  evidenceType: z.string().trim().max(120).optional(),
+  excerpt: z.string().trim().max(5000).optional(),
+  evidenceSelections: z.array(z.object({ evidenceType: z.string().trim().min(2).max(120), excerpt: z.string().trim().min(2).max(5000) }).strict()).min(1).max(20).optional(),
+  explanation: z.string().trim().max(5000).optional(),
+  confirmRelation: z.boolean().optional(),
+}).strict();
 
 const forumWriteLimiter = rateLimit({
   windowMs: 60_000,
@@ -109,13 +131,30 @@ const validatePostInput = validate(postInputSchema as unknown as z.ZodSchema<unk
 const validatePostUpdate = validate(postUpdateSchema as unknown as z.ZodSchema<unknown>);
 const validateCommentInput = validate(commentSchema as unknown as z.ZodSchema<unknown>);
 
+const FORUM_VIEW_COOKIE = "lumigap_forum_viewer";
+function forumViewerKey(req: Request, res: Response) {
+  if (req.user?.sub) return `user:${req.user.sub}`;
+  const cookieHeader = req.headers.cookie ?? "";
+  const token = cookieHeader.split(";").map((part: string) => part.trim()).find((part: string) => part.startsWith(`${FORUM_VIEW_COOKIE}=`))?.slice(FORUM_VIEW_COOKIE.length + 1);
+  if (token && /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(token)) return `anon:${token.toLowerCase()}`;
+  const nextToken = randomUUID();
+  let crossSite = false;
+  try {
+    const origin = req.get("origin");
+    crossSite = Boolean(origin && new URL(origin).hostname !== req.hostname);
+  } catch { /* Invalid Origin must not turn a public topic read into a server error. */ }
+  const sameSite = crossSite && req.secure ? "None" : "Lax";
+  res.setHeader("Set-Cookie", `${FORUM_VIEW_COOKIE}=${nextToken}; Path=/; Max-Age=31536000; HttpOnly; SameSite=${sameSite}${req.secure ? "; Secure" : ""}`);
+  return `anon:${nextToken}`;
+}
+
 export const forumRouter: Router = Router();
 forumRouter.get("/posts", optionalAuth, validate(postQuerySchema, "query"), async (req, res) => {
-  const { page, pageSize, researchGapId, linkedResearchGapId, includeModerated, ...filter } = req.query as unknown as z.infer<typeof postQuerySchema>;
+  const { page, pageSize, researchGapId, linkedResearchGapId, includeModerated, feed, ...filter } = req.query as unknown as z.infer<typeof postQuerySchema>;
   res.json({
     success: true,
     ...(await forumService.listPosts(
-      { ...filter, linkedResearchGapId: linkedResearchGapId ?? researchGapId, includeModerated: includeModerated === "true" },
+      { ...filter, sort: feed ?? filter.sort, linkedResearchGapId: linkedResearchGapId ?? researchGapId, includeModerated: includeModerated === "true" },
       page,
       pageSize,
       req.user?.sub,
@@ -127,7 +166,7 @@ forumRouter.post("/posts", requireAuth, requirePermission("forum:write"), thread
   res.status(201).json({ success: true, data: await forumService.createPost(req.body, req.user!.sub) });
 });
 forumRouter.get("/posts/:id", optionalAuth, validate(idParamsSchema, "params"), async (req, res) => {
-  res.json({ success: true, data: await forumService.getPost(req.params.id as string, req.user?.sub, req.user?.role) });
+  res.json({ success: true, data: await forumService.getPost(req.params.id as string, req.user?.sub, req.user?.role, forumViewerKey(req, res)) });
 });
 forumRouter.patch("/posts/:id", requireAuth, forumWriteLimiter, validate(idParamsSchema, "params"), validatePostUpdate, async (req, res) => {
   res.json({ success: true, data: await forumService.updatePost(req.params.id as string, req.body, req.user!.sub) });
@@ -139,8 +178,8 @@ forumRouter.delete("/posts/:id", requireAuth, forumWriteLimiter, validate(idPara
 forumRouter.patch("/posts/:id/moderation", requireAuth, forumWriteLimiter, validate(idParamsSchema, "params"), validate(moderatePostSchema), async (req, res) => {
   res.json({ success: true, data: await forumService.moderatePost(req.params.id as string, req.body.action, req.body.reason, req.user!.sub, req.user!.role) });
 });
-forumRouter.get("/posts/:postId/comments", optionalAuth, validate(postIdParamsSchema, "params"), validate(paginationSchema, "query"), async (req, res) => {
-  const { page, pageSize } = req.query as unknown as z.infer<typeof paginationSchema>;
+forumRouter.get("/posts/:postId/comments", optionalAuth, validate(postIdParamsSchema, "params"), validate(commentsPaginationSchema, "query"), async (req, res) => {
+  const { page, pageSize } = req.query as unknown as z.infer<typeof commentsPaginationSchema>;
   res.json({ success: true, ...(await forumService.listComments(req.params.postId as string, page, pageSize, req.user?.sub, req.user?.role)) });
 });
 forumRouter.post("/posts/:postId/comments", requireAuth, responseLimiter, validate(postIdParamsSchema, "params"), validateCommentInput, async (req, res) => {
@@ -163,10 +202,10 @@ forumRouter.delete("/posts/:postId/accepted-answer", requireAuth, forumWriteLimi
   res.json({ success: true, data: await forumService.acceptAnswer(req.params.postId as string, undefined, req.user!.sub) });
 });
 forumRouter.put("/posts/:id/follow", requireAuth, validate(idParamsSchema, "params"), async (req, res) => {
-  res.json({ success: true, data: await forumService.follow(req.params.id as string, req.user!.sub, true) });
+  res.json({ success: true, data: await forumService.follow(req.params.id as string, req.user!.sub, true, req.user!.role) });
 });
 forumRouter.delete("/posts/:id/follow", requireAuth, validate(idParamsSchema, "params"), async (req, res) => {
-  res.json({ success: true, data: await forumService.follow(req.params.id as string, req.user!.sub, false) });
+  res.json({ success: true, data: await forumService.follow(req.params.id as string, req.user!.sub, false, req.user!.role) });
 });
 forumRouter.get("/context", requireAuth, validate(z.object({ q: z.string().trim().max(160).optional() }).strict(), "query"), async (req, res) => {
   res.json({ success: true, data: await forumService.contextOptions(req.user!.sub, String(req.query.q ?? "") || undefined) });
@@ -200,9 +239,18 @@ forumRouter.patch("/reports/:id", requireAuth, forumWriteLimiter, validate(idPar
 });
 
 export const gapDiscussionRouter: Router = Router();
+gapDiscussionRouter.get("/:id/discussions", requireAuth, validate(idParamsSchema, "params"), async (req, res) => {
+  res.json({ success: true, data: await forumService.gapDiscussionContext(req.params.id as string, req.user!.sub, req.user!.role) });
+});
 gapDiscussionRouter.post("/:id/discussions", requireAuth, requirePermission("forum:write"), threadCreateLimiter, validate(idParamsSchema, "params"), validatePostInput, async (req, res) => {
   res.status(201).json({
     success: true,
     data: await forumService.createPost({ ...req.body, type: "RESEARCH_GAP_DISCUSSION", linkedResearchGapId: req.params.id as string }, req.user!.sub),
   });
+});
+gapDiscussionRouter.get("/:id/forum-citations/:referenceId/evidence-options", requireAuth, validate(reviewEvidenceParamsSchema, "params"), validate(reviewEvidenceOptionsQuerySchema, "query"), async (req, res) => {
+  res.json({ success: true, data: await forumService.forumCitationEvidenceOptions(req.params.id as string, req.params.referenceId as string, (req.query as { projectId?: string }).projectId, req.user!.sub) });
+});
+gapDiscussionRouter.post("/:id/forum-citations/:referenceId/review-as-evidence", requireAuth, forumWriteLimiter, validate(reviewEvidenceParamsSchema, "params"), validate(reviewAsEvidenceSchema), async (req, res) => {
+  res.json({ success: true, data: await forumService.reviewCitationAsEvidence(req.params.id as string, { ...req.body, referenceId: req.params.referenceId as string }, req.user!.sub) });
 });

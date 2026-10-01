@@ -743,7 +743,7 @@ export function AcademicProfileOnboardingPage() {
                           )}
                           aria-pressed={selected}
                         >
-                          <span>{t(option)}</span>
+                        <span>{option}</span>
                         </button>
                       );
                     })}
@@ -788,7 +788,7 @@ export function AcademicProfileOnboardingPage() {
                           )}
                           aria-pressed={selected}
                         >
-                          <span>{t(option)}</span>
+                        <span>{option}</span>
                         </button>
                       );
                     })}

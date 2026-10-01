@@ -178,6 +178,7 @@ export function ProfileCoverDialog({
   const [offsetX, setOffsetX] = useState(0);
   const [offsetY, setOffsetY] = useState(0);
   const [error, setError] = useState("");
+  const [discardDialogOpen, setDiscardDialogOpen] = useState(false);
 
   const objectUrl = useMemo(() => (file ? URL.createObjectURL(file) : null), [file]);
   const preview = objectUrl ?? currentCover ?? null;
@@ -198,14 +199,21 @@ export function ProfileCoverDialog({
       setOffsetY(0);
       setError("");
       setActiveMode("upload");
+      setDiscardDialogOpen(false);
     }
   }, [open]);
 
   function close(next: boolean) {
-    if (!next && dirty && !upload.isSuccess && !window.confirm(t("Discard your unsaved cover changes?"))) {
+    if (!next && dirty && !upload.isSuccess) {
+      setDiscardDialogOpen(true);
       return;
     }
     onOpenChange(next);
+  }
+
+  function discardChanges() {
+    setDiscardDialogOpen(false);
+    onOpenChange(false);
   }
 
   function choose(next: File | undefined) {
@@ -458,6 +466,24 @@ export function ProfileCoverDialog({
           </Button>
         </DialogFooter>
       </DialogContent>
+      <Dialog open={discardDialogOpen} onOpenChange={setDiscardDialogOpen}>
+        <DialogContent className="max-w-sm rounded-2xl border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-800 dark:bg-[#101923]">
+          <DialogHeader>
+            <DialogTitle>{t("Discard changes?")}</DialogTitle>
+            <DialogDescription>
+              {t("Your selected cover image and crop adjustments will be lost.")}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button type="button" variant="ghost" onClick={() => setDiscardDialogOpen(false)}>
+              {t("Keep editing")}
+            </Button>
+            <Button type="button" variant="destructive" onClick={discardChanges}>
+              {t("Discard changes")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   );
 }
