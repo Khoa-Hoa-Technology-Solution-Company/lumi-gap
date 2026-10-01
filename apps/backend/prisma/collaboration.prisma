@@ -249,6 +249,7 @@ model CommunityMembership {
 
 model ForumPost {
   id                  String    @id @default(uuid()) @db.Uuid
+  publicSlug          String?   @unique @map("public_slug") @db.VarChar(280)
   legacyMongoId       String?   @unique @map("legacy_mongo_id") @db.VarChar(24)
   authorId            String    @map("author_id") @db.Uuid
   communityId         String?   @map("community_id") @db.Uuid

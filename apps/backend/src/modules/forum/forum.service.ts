@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { ForumPostType, ForumSort, UserRole, GapStructuredEvidenceItem } from "@trend/shared-types";
 import { AppError } from "../../common/exceptions/app-error.js";
 import { parseDatabaseId, publicDatabaseId } from "../../infrastructure/database/database-id.js";
@@ -52,6 +53,17 @@ function idWhere(value: string): { id: string } | { legacyMongoId: string } {
   return parsed.kind === "uuid" ? { id: parsed.value } : { legacyMongoId: parsed.value };
 }
 
+export function forumPublicSlug(title: string, id: string): string {
+  const base = title
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 260) || "discussion";
+  return `${base}-${id.replace(/-/g, "").slice(0, 12)}`;
+}
+
 async function resolveUserId(value: string): Promise<string> {
   const row = await getPrisma().user.findUnique({ where: idWhere(value), select: { id: true } });
   if (!row) throw AppError.notFound("User not found");
@@ -65,7 +77,12 @@ async function resolveCommunity(value: string) {
   return row;
 }
 async function resolvePost(value: string) {
-  const row = await getPrisma().forumPost.findUnique({ where: idWhere(value) });
+  const parsed = parseDatabaseId(value);
+  const row = parsed
+    ? await getPrisma().forumPost.findUnique({ where: idWhere(value) })
+    : value.length <= 280 && /^[a-z0-9]+(?:-[a-z0-9]+)*$/i.test(value)
+      ? await getPrisma().forumPost.findUnique({ where: { publicSlug: value.toLowerCase() } })
+      : null;
   if (!row) throw AppError.notFound("Forum post not found");
   return row;
 }
@@ -527,8 +544,10 @@ export const forumService = {
       resolveUserId(userId), assertCanPostToCommunity(input.communityId, userId), resolvePaper(input.linkedPaperId), resolveGap(input.linkedResearchGapId, true), resolveProject(input.linkedProjectId), prepareReferences(input.references),
     ]);
     const tags = normalizeForumTags(input.tags ?? []);
+    const cleanTitle = cleanForumText(input.title);
+    const postId = randomUUID();
     const post = await getPrisma().$transaction(async (tx) => {
-      const created = await tx.forumPost.create({ data: { authorId, communityId, researchGapId: linkedResearchGapId, linkedPaperId, linkedResearchGapId, linkedProjectId, type, title: cleanForumText(input.title), body: cleanForumText(input.content), tags: tags.map((tag) => tag.name) } });
+      const created = await tx.forumPost.create({ data: { id: postId, publicSlug: forumPublicSlug(cleanTitle, postId), authorId, communityId, researchGapId: linkedResearchGapId, linkedPaperId, linkedResearchGapId, linkedProjectId, type, title: cleanTitle, body: cleanForumText(input.content), tags: tags.map((tag) => tag.name) } });
       if (linkedPaperId) await tx.forumPostPaper.create({ data: { postId: created.id, paperId: linkedPaperId, position: 0 } });
       if (linkedResearchGapId) await tx.forumPostGap.create({ data: { postId: created.id, gapId: linkedResearchGapId } });
       if (linkedProjectId) await tx.forumPostProject.create({ data: { postId: created.id, projectId: linkedProjectId } });

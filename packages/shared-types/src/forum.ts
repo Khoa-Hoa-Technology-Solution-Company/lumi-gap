@@ -56,6 +56,7 @@ export interface ForumAuthorSummary {
 
 export interface ForumPost {
   id: string;
+  publicSlug?: string;
   author: ForumAuthorSummary;
   community?: Pick<Community, "id" | "name" | "slug">;
   type: ForumPostType;

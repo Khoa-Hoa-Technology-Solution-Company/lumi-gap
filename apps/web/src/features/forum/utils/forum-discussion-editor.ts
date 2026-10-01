@@ -51,12 +51,20 @@ export type ForumMarkdownAction =
   | "divider"
   | "quote-post";
 
+export type ForumTableConfig = {
+  rows: number;
+  columns: number;
+  includeHeader: boolean;
+  headers?: string[];
+};
+
 export interface ForumMarkdownOptions {
   now?: Date;
   quoteSource?: string;
   tableHeaders?: [string, string, string];
   noteLabel?: string;
   detailsLabel?: string;
+  table?: ForumTableConfig;
 }
 
 export function forumMarkdownShortcut(event: { key: string; code?: string; ctrlKey: boolean; metaKey: boolean; altKey: boolean; shiftKey: boolean; isComposing: boolean }): ForumMarkdownAction | undefined {
@@ -89,12 +97,19 @@ export function formatForumMarkdown(content: string, start: number, end: number,
     return insertSnippet(timestamp, timestamp.length, timestamp.length);
   }
   if (action === "table") {
-    const headers = options.tableHeaders ?? ["Title", "References", "Notes"];
+    const config = options.table ?? { rows: 2, columns: 3, includeHeader: true };
+    const columns = Math.max(1, Math.min(8, Math.round(config.columns)));
+    const rows = Math.max(1, Math.min(20, Math.round(config.rows)));
     const cell = (value: string) => value.replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
-    const selected = cell(content.slice(start, end) || placeholder);
-    const header = `| ${headers.map(cell).join(" | ")} |\n| --- | --- | --- |\n`;
-    const snippet = `${header}| ${selected} |  |  |`;
-    return insertBlock(snippet, header.length + 2, header.length + 2 + selected.length);
+    const defaultHeaders = options.tableHeaders ?? ["Title", "References", "Notes"];
+    const headers = Array.from({ length: columns }, (_, index) => cell(config.headers?.[index] || defaultHeaders[index] || `Column ${index + 1}`));
+    const firstCell = cell(content.slice(start, end) || placeholder);
+    const dataRows = Array.from({ length: rows }, (_, row) => Array.from({ length: columns }, (_, column) => row === 0 && column === 0 ? firstCell : ""));
+    const headerRow = `| ${headers.join(" | ")} |\n| ${headers.map(() => "---").join(" | ")} |\n`;
+    const body = dataRows.map((row) => `| ${row.join(" | ")} |`).join("\n");
+    const snippet = `${config.includeHeader ? headerRow : `| ${headers.map(() => "").join(" | ")} |\n| ${headers.map(() => "---").join(" | ")} |\n`}${body}`;
+    const firstCellOffset = (config.includeHeader ? headerRow.length : headerRow.length) + 2;
+    return insertBlock(snippet, firstCellOffset, firstCellOffset + firstCell.length);
   }
   if (action === "footnote") {
     const used = new Set([...content.matchAll(/\[\^(\d+)\]/g)].map((match) => Number(match[1])));

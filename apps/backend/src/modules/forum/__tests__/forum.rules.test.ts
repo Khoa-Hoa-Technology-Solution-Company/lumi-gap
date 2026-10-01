@@ -9,6 +9,7 @@ import {
   normalizeForumPostType,
   normalizeForumTags,
 } from "../forum.rules.js";
+import { forumPublicSlug } from "../forum.service.js";
 
 describe("forum domain rules", () => {
   it("normalizes duplicate tag variants to one canonical slug", () => {
@@ -48,5 +49,10 @@ describe("forum domain rules", () => {
     expect(isAllowedForumUrl("http://example.org/paper")).toBe(true);
     expect(isAllowedForumUrl("javascript:alert(1)")).toBe(false);
     expect(isAllowedForumUrl("https://user:secret@example.org/paper")).toBe(false);
+  });
+
+  it("creates stable readable thread slugs without exposing the full UUID", () => {
+    expect(forumPublicSlug("Discussing LLM evaluation: Vietnamese results", "12345678-1234-4234-8234-123456789abc")).toBe("discussing-llm-evaluation-vietnamese-results-123456781234");
+    expect(forumPublicSlug("研究方法", "12345678-1234-4234-8234-123456789abc")).toBe("discussion-123456781234");
   });
 });

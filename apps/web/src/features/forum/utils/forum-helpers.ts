@@ -83,3 +83,8 @@ export function formatForumActivityTime(value: string, locale: string): string {
     return "";
   }
 }
+
+/** Stable human-readable thread URL with UUID fallback for legacy API responses. */
+export function forumPostHref(post: { id: string; publicSlug?: string }, hash?: string): string {
+  return `/forum/${encodeURIComponent(post.publicSlug || post.id)}${hash ? `#${hash}` : ""}`;
+}

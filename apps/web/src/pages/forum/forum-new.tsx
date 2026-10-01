@@ -11,11 +11,12 @@ import { ForumFormattingToolbar } from "@/features/forum/components/forum-format
 import { ForumSidebar } from "@/features/forum/components/forum-sidebar";
 import { useCommunities, useCreateForumPost, useForumContext, useShareForumGap } from "@/features/forum/hooks/use-forum";
 import type { ForumReferenceView } from "@/features/forum/api/forum.api";
-import { buildForumDiscussionInput, formatForumMarkdown, forumInitialDiscussionType, forumMarkdownShortcut, type ForumMarkdownAction } from "@/features/forum/utils/forum-discussion-editor";
+import { buildForumDiscussionInput, formatForumMarkdown, forumInitialDiscussionType, forumMarkdownShortcut, type ForumMarkdownAction, type ForumTableConfig } from "@/features/forum/utils/forum-discussion-editor";
 import { isValidDoi, matchesExactDoi, normalizeDoi } from "@/features/projects/utils/doi";
 import { useI18n } from "@/i18n";
 import { useAuthStore } from "@/stores/auth-store";
 import { cn } from "@/utils/cn";
+import { forumPostHref } from "@/features/forum/utils/forum-helpers";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 const THREAD_TYPES: Array<{ value: ForumPostType; label: string; detail: string }> = [
@@ -196,10 +197,10 @@ export function ForumDiscussionComposer({ embedded = false, onClose, onPublished
     return () => window.clearTimeout(timer);
   }, [communityId, content, draftHydrated, draftKey, hasDraft, linkedGapId, linkedPaperId, linkedPaperLabel, linkedProjectId, references, tags, title, type]);
 
-  const insertText = (action: ForumMarkdownAction) => {
+  const insertText = (action: ForumMarkdownAction, table?: ForumTableConfig) => {
     const element = textareaRef.current;
     if (!element) return;
-    const next = formatForumMarkdown(content, element.selectionStart, element.selectionEnd, action, t("text"), { tableHeaders: [t("Title"), t("References"), t("Notes")], noteLabel: t("Note:"), detailsLabel: t("Details") });
+    const next = formatForumMarkdown(content, element.selectionStart, element.selectionEnd, action, t("text"), { tableHeaders: [t("Title"), t("References"), t("Notes")], table, noteLabel: t("Note:"), detailsLabel: t("Details") });
     if (next.content.length > 20000) return;
     setContent(next.content);
     setActiveTab("write");
@@ -263,8 +264,8 @@ export function ForumDiscussionComposer({ embedded = false, onClose, onPublished
       const post = await create.mutateAsync(result.input);
       try { window.localStorage.removeItem(draftKey); } catch { /* Ignore unavailable local storage after a successful publish. */ }
       toast.success(t("Discussion published"));
-      if (onPublished) onPublished(post.id);
-      else navigate(`/forum/${post.id}`);
+      if (onPublished) onPublished(post.publicSlug ?? post.id);
+      else navigate(forumPostHref(post));
     } catch {
       setError(t("Could not publish this discussion. Your draft has been kept. Please try again."));
     } finally { submittingRef.current = false; }
@@ -311,7 +312,7 @@ export function ForumDiscussionComposer({ embedded = false, onClose, onPublished
           <Button type="button" variant={activeTab === "preview" ? "secondary" : "ghost"} className="h-10 text-sm" aria-pressed={activeTab === "preview"} onClick={() => setActiveTab("preview")}><Eye className="h-4 w-4" />{t("Preview")}</Button>
         </div>
         <div className="border-y border-border bg-muted/20 px-3 py-1.5 sm:px-5">
-          <ForumFormattingToolbar onAction={insertText} disabled={create.isPending} />
+          <ForumFormattingToolbar onAction={insertText} onTableInsert={(config) => insertText("table", config)} disabled={create.isPending} />
         </div>
         <div className="forum-compose-editor min-w-0" data-view={activeTab}>
           <div className="forum-compose-write min-w-0 px-5 pt-4 sm:px-6">

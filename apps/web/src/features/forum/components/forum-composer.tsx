@@ -7,7 +7,7 @@ import type { ForumCommentView, ForumReferenceView } from "../api/forum.api";
 import { ForumMarkdown } from "./forum-markdown";
 import { ForumFormattingToolbar } from "./forum-formatting-toolbar";
 import { useI18n } from "@/i18n";
-import { formatForumMarkdown, forumMarkdownShortcut, type ForumMarkdownAction } from "../utils/forum-discussion-editor";
+import { formatForumMarkdown, forumMarkdownShortcut, type ForumMarkdownAction, type ForumTableConfig } from "../utils/forum-discussion-editor";
 
 interface ForumComposerProps {
   onSubmit: (data: { content: string; parentCommentId?: string; references: ForumReferenceView[] }) => Promise<void>;
@@ -34,10 +34,10 @@ export function ForumComposer({ onSubmit, replyTo, onCancelReply, availablePaper
   useEffect(() => {
     if (focusRequest) { setShowPreview(false); requestAnimationFrame(() => textareaRef.current?.focus({ preventScroll: true })); }
   }, [focusRequest]);
-  const insertText = (action: ForumMarkdownAction) => {
+  const insertText = (action: ForumMarkdownAction, table?: ForumTableConfig) => {
     const el = textareaRef.current;
     if (!el) return;
-    const next = formatForumMarkdown(content, el.selectionStart, el.selectionEnd, action, t("text"), { quoteSource: replyTo?.content ?? postContent, tableHeaders: [t("Title"), t("References"), t("Notes")], noteLabel: t("Note:"), detailsLabel: t("Details") });
+    const next = formatForumMarkdown(content, el.selectionStart, el.selectionEnd, action, t("text"), { quoteSource: replyTo?.content ?? postContent, tableHeaders: [t("Title"), t("References"), t("Notes")], table, noteLabel: t("Note:"), detailsLabel: t("Details") });
     if (next.content.length > 10000) return;
     setContent(next.content);
     requestAnimationFrame(() => { el.focus(); el.setSelectionRange(next.selectionStart, next.selectionEnd); });
@@ -79,7 +79,7 @@ export function ForumComposer({ onSubmit, replyTo, onCancelReply, availablePaper
       <fieldset disabled={disabled || isSubmitting} className="min-w-0 space-y-3">
         <div className="overflow-hidden rounded-md border border-border bg-background focus-within:ring-2 focus-within:ring-ring/40">
           <div className="flex flex-wrap items-center justify-between gap-1 border-b border-border bg-muted/30 p-1.5">
-            <ForumFormattingToolbar onAction={(action) => { setShowPreview(false); insertText(action); }} className="gap-0" disabled={disabled || isSubmitting} canQuotePost={Boolean(replyTo?.content ?? postContent)} />
+            <ForumFormattingToolbar onAction={(action) => { setShowPreview(false); insertText(action); }} onTableInsert={(config) => { setShowPreview(false); insertText("table", config); }} className="gap-0" disabled={disabled || isSubmitting} canQuotePost={Boolean(replyTo?.content ?? postContent)} />
             <Button type="button" variant="ghost" size="sm" aria-pressed={showPreview} onClick={() => setShowPreview((value) => !value)}><Eye className="mr-1.5 h-4 w-4" />{t(showPreview ? "Write" : "Preview")}</Button>
           </div>
           {showPreview ? <div className="min-h-[180px] px-4 py-3">{content.trim() ? <ForumMarkdown content={content} /> : <p className="text-sm text-muted-foreground">{t("Preview will appear here once you start typing...")}</p>}</div> : null}

@@ -40,7 +40,7 @@ import {
   type ForumReferenceView,
   forumGapCopy,
 } from "@/features/forum";
-import { formatForumNumber, formatForumRelativeTime } from "@/features/forum/utils/forum-helpers";
+import { formatForumNumber, formatForumRelativeTime, forumPostHref } from "@/features/forum/utils/forum-helpers";
 import {
   useForumCitationEvidenceOptions,
   useReviewForumCitationAsEvidence,
@@ -122,6 +122,9 @@ export function ForumDetailPage() {
     setPostedComments((previous) => previous.some((row) => row.postId === id && fetchedIds.has(row.comment.id)) ? previous.filter((row) => row.postId !== id || !fetchedIds.has(row.comment.id)) : previous);
   }, [commentsQuery.data, id]);
   useEffect(() => { setReplyTo(undefined); setFocusCommentId(undefined); }, [id]);
+  useEffect(() => {
+    if (post?.publicSlug && id !== post.publicSlug) navigate(`${forumPostHref(post)}${window.location.hash}`, { replace: true });
+  }, [id, navigate, post?.publicSlug]);
   useEffect(() => {
     if (!focusCommentId) return;
     const element = document.getElementById(`comment-${focusCommentId}`);
@@ -330,7 +333,7 @@ export function ForumDetailPage() {
                 {post.community ? <><span aria-hidden="true">/</span><Link to={`/forum?community=${post.community.id}`} className="hover:text-primary">{post.community.name}</Link></> : null}
               </nav>
               <header className="pb-7">
-                <h1 className="text-[26px] font-bold leading-[1.24] tracking-[-0.025em] text-foreground sm:text-[32px]">{post.title}</h1>
+                <h1 className="max-w-full break-words text-[26px] font-bold leading-[1.24] tracking-[-0.025em] text-foreground sm:text-[32px]">{post.title}</h1>
                 <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-base text-muted-foreground">
                   <span>{t(post.type === "QUESTION" ? "Question" : post.type === "PAPER_DISCUSSION" ? "Paper Discussion" : post.type === "RESEARCH_GAP_DISCUSSION" ? "Research Gap Discussion" : "Discussion")}</span>
                   {post.community ? <><span>·</span><Link to={`/forum?community=${post.community.id}`} className="hover:text-primary">{post.community.name}</Link></> : null}

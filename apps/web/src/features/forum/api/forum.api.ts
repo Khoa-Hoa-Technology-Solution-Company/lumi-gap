@@ -5,7 +5,7 @@ import { api } from "@/services/api-client";
 export type ForumReferenceView = { id?: string; paperId?: string; doi?: string; url?: string; title?: string; authors?: string[]; year?: number; verified?: boolean };
 export type ForumAuthorView = { id: string; fullName: string; avatarUrl?: string; institution?: string; academicProfileType?: string; academicTitle?: string; affiliationVerified?: boolean; positionTitle?: string; primaryPosition?: string; positionVerified?: boolean };
 export type ForumPostView = {
-  id: string; type: ForumPostType; title: string; content: string; tags: string[]; status: string;
+  id: string; publicSlug?: string; type: ForumPostType; title: string; content: string; tags: string[]; status: string;
   voteScore: number; commentCount: number; replyCount: number; helpfulCount: number; viewCount: number; lastActivityAt?: string;
   participants: ForumAuthorView[]; acceptedCommentId?: string; viewerVote: -1 | 0 | 1;
   isFollowing: boolean; isPinned: boolean; editedAt?: string;
@@ -85,7 +85,7 @@ function normalizePost(value: unknown): ForumPostView {
   const rawType = String(row.type ?? "DISCUSSION").toUpperCase();
   const type: ForumPostType = rawType === "QUESTION" || rawType === "PAPER_DISCUSSION" || rawType === "RESEARCH_GAP_DISCUSSION" ? rawType : "DISCUSSION";
   return {
-    id: id(row), type, title: text(row.title) ?? "", content: text(row.content ?? row.body) ?? "", tags: stringList(row.tags),
+    id: id(row), publicSlug: text(row.publicSlug ?? row.slug), type, title: text(row.title) ?? "", content: text(row.content ?? row.body) ?? "", tags: stringList(row.tags),
     status: text(row.status) ?? "active", voteScore: Number(row.voteScore ?? row.score ?? 0), commentCount: Number(row.replyCount ?? row.commentCount ?? 0), replyCount: Number(row.replyCount ?? row.commentCount ?? 0), helpfulCount: Number(row.helpfulCount ?? 0), viewCount: Number(row.viewCount ?? 0), lastActivityAt: text(row.lastActivityAt),
     participants: Array.isArray(row.participants) ? row.participants.map(normalizeAuthor) : [normalizeAuthor(author)],
     acceptedCommentId: row.acceptedCommentId ? id(row.acceptedCommentId) : undefined, viewerVote: Number(row.viewerVote ?? 0) as -1 | 0 | 1,

@@ -92,6 +92,9 @@ describe("New discussion composer", () => {
     expect(formatForumMarkdown("", 0, 0, "divider", "text").content).toBe("---");
     expect(formatForumMarkdown("", 0, 0, "quote-post", "text", { quoteSource: "A post" }).content).toContain("> A post");
     expect(formatForumMarkdown("A | B\nC", 0, 7, "table", "text").content).toContain("A \\| B C");
+    const configured = formatForumMarkdown("", 0, 0, "table", "text", { table: { rows: 3, columns: 2, includeHeader: true, headers: ["Method", "Result"] } }).content;
+    expect(configured).toContain("| Method | Result |");
+    expect(configured.split("\n").filter((line) => line.startsWith("| ")).length).toBe(5);
   });
 
   it("keeps keyboard shortcuts scoped to the editor", () => {
