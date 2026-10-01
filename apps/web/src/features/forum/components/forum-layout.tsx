@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { HTMLAttributes, ReactNode } from "react";
 import { cn } from "@/utils/cn";
 
 type ForumLayoutProps = {
@@ -35,6 +35,6 @@ export function ForumLayout({
   );
 }
 
-export function ForumSurface({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn("forum-surface mx-auto min-w-0 rounded-xl border border-border/80", className)}>{children}</div>;
+export function ForumSurface({ children, className, ...props }: HTMLAttributes<HTMLDivElement>) {
+  return <div className={cn("forum-surface mx-auto min-w-0 rounded-xl border border-border/80", className)} {...props}>{children}</div>;
 }

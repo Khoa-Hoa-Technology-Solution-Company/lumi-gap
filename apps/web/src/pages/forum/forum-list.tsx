@@ -1,13 +1,15 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import type { ForumPostType, ForumSort } from "@trend/shared-types";
+import type { ForumPostType } from "@trend/shared-types";
 import { ArrowDown, MessageSquare, Plus, Search, ShieldAlert, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { ForumCard, ForumLayout, ForumSurface, ForumSidebar, useCommunities, useForumPosts, useForumVote } from "@/features/forum";
+import { ForumCard, ForumLayout, ForumSurface, ForumSidebar, useCommunities, useForumPosts } from "@/features/forum";
 import { ForumPagination } from "@/features/forum/components/forum-pagination";
 import { parseForumListParams, updateForumListParam } from "@/features/forum/utils/forum-pagination";
+import { forumListHref } from "@/features/forum/utils/forum-pagination";
+import { FORUM_FEEDS } from "@/features/forum/utils/forum-navigation";
 import { useI18n } from "@/i18n";
 import { useAuthStore } from "@/stores/auth-store";
 import { cn } from "@/utils/cn";
@@ -20,12 +22,6 @@ const TYPES: Array<{ value: ForumPostType | ""; label: string }> = [
   { value: "DISCUSSION", label: "Discussions" },
   { value: "PAPER_DISCUSSION", label: "Paper Discussions" },
   { value: "RESEARCH_GAP_DISCUSSION", label: "Research Gap Discussions" },
-];
-
-const FEED_TABS: Array<{ value: ForumSort; label: string }> = [
-  { value: "latest", label: "Latest" },
-  { value: "popular", label: "Popular" },
-  { value: "unanswered", label: "Unanswered" },
 ];
 
 export function ForumListPage() {
@@ -47,7 +43,6 @@ export function ForumListPage() {
   const communityId = searchParams.get("community") ?? "";
   const tag = searchParams.get("tag") ?? "";
   const linkedResearchGapId = searchParams.get("linkedResearchGapId") ?? undefined;
-  const vote = useForumVote();
 
   useEffect(() => {
     // Clear a committed draft as well: returning to its original history entry
@@ -94,7 +89,13 @@ export function ForumListPage() {
     const next = updateForumListParam(searchParams, key, value);
     setSearchParams(next);
   };
-  const clearFilters = () => { setSearchInput(""); setSearchParams(pageSize === 20 ? {} : { pageSize: String(pageSize) }); };
+  const clearFilters = () => {
+    setSearchInput("");
+    const next = new URLSearchParams();
+    if (sort !== "latest") next.set("feed", sort);
+    if (pageSize !== 20) next.set("pageSize", String(pageSize));
+    setSearchParams(next);
+  };
 
   return (
       <ForumLayout
@@ -155,20 +156,21 @@ export function ForumListPage() {
             </select>
 
             <nav className="forum-topic-feeds flex flex-wrap items-end gap-1" aria-label={t("Forum feeds")}>
-              {FEED_TABS.map((feed) => (
-                <button
+              {FORUM_FEEDS.map((feed) => (
+                <Link
                   key={feed.value}
-                  type="button"
-                  onClick={() => setParam("sort", feed.value === "latest" ? undefined : feed.value)}
+                  to={feed.value === "following" && !isAuthed ? `/login?returnTo=${encodeURIComponent(forumListHref(searchParams, "feed", feed.value))}` : forumListHref(searchParams, "feed", feed.value)}
+                  title={t(feed.description)}
                   aria-current={sort === feed.value ? "page" : undefined}
                   className={`relative min-w-max rounded-sm px-2 py-3 text-base font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:px-3 ${sort === feed.value ? "text-primary" : "text-muted-foreground hover:text-foreground"}`}
                 >
                   {t(feed.label)}
                   {sort === feed.value ? <span className="absolute inset-x-2 bottom-0 h-0.5 bg-primary" /> : null}
-                </button>
+                </Link>
               ))}
             </nav>
             </div>
+            <p className="px-5 pb-3 text-sm leading-5 text-muted-foreground sm:px-6">{t(FORUM_FEEDS.find((feed) => feed.value === sort)!.description)}</p>
           </div>
 
           {/* Active filters */}
@@ -185,17 +187,15 @@ export function ForumListPage() {
           ) : null}
 
           <div className="forum-topic-head items-center gap-4 border-b border-border px-6 py-4 text-base font-medium text-muted-foreground">
-            <button type="button" onClick={() => setParam("sort")} className="flex w-fit items-center gap-1.5 hover:text-slate-900 dark:hover:text-white">
-              {t("Topic")}{sort === "latest" ? <ArrowDown className="h-3.5 w-3.5" /> : null}
-            </button>
+            <span>{t("Topic")}</span>
             <span className="forum-topic-head-metrics grid items-center gap-2">
               <span className="forum-topic-head-participants text-left">{t("Participants")}</span>
               <span className="text-center">{t("Replies")}</span>
               <span className="forum-topic-head-views text-center">{t("Views")}</span>
-              <button type="button" onClick={() => setParam("sort", "popular")} className="forum-topic-head-helpful items-center justify-center gap-1 hover:text-slate-900 dark:hover:text-white">
-                {t("Helpful")}{sort === "popular" ? <ArrowDown className="h-3.5 w-3.5" /> : null}
+              <button type="button" onClick={() => setParam("feed", "popular")} title={t(FORUM_FEEDS[2]!.description)} className="forum-topic-head-helpful items-center justify-center gap-1 rounded focus-visible:ring-2 focus-visible:ring-ring hover:text-slate-900 dark:hover:text-white">
+                {t("Helpful")}{sort === "popular" ? <ArrowDown aria-hidden="true" className="h-3.5 w-3.5" /> : null}
               </button>
-              <span className="text-right">{t("Activity")}</span>
+              <button type="button" onClick={() => setParam("feed", "latest")} title={t(FORUM_FEEDS[0]!.description)} className="flex items-center justify-end gap-1 rounded text-right focus-visible:ring-2 focus-visible:ring-ring">{t("Activity")}{sort === "latest" ? <ArrowDown aria-hidden="true" className="h-3.5 w-3.5" /> : null}</button>
             </span>
           </div>
 
@@ -233,7 +233,6 @@ export function ForumListPage() {
                       post={post}
                       locale={language}
                       isAuthed={isAuthed}
-                      onVote={(value) => vote.mutate({ kind: "post", id: post.id, value })}
                     />
                   ))}
                   </div>

@@ -240,10 +240,24 @@ describe.sequential("research forum persistence and authorization", () => {
     expect(await getPrisma().forumVote.count({ where: { commentId: response.id, userId: authorId } })).toBe(1);
     await expect(forumService.acceptAnswer(question.id, response.id, responderId)).rejects.toMatchObject({ statusCode: 403 });
     expect((await forumService.acceptAnswer(question.id, response.id, authorId)).acceptedCommentId).toBe(response.id);
+    const slug = question.publicSlug;
+    expect((await forumService.updatePost(question.id, { title: "Reworded question lifecycle" }, authorId)).publicSlug).toBe(slug);
     await forumService.follow(question.id, authorId, true);
     expect((await forumService.listPosts({ sort: "following" }, 1, 20, authorId, "user")).data.some((post) => post.id === question.id)).toBe(true);
     await forumService.moderatePost(question.id, "THREAD_LOCKED", "Temporarily closed", adminId, "admin");
     await expect(forumService.addComment(question.id, { content: "Late response" }, responderId)).rejects.toMatchObject({ statusCode: 409 });
+    await expect(forumService.acceptAnswer(question.id, undefined, authorId)).rejects.toMatchObject({ statusCode: 409 });
+    expect((await forumService.getPost(question.id, authorId, "user")).acceptedCommentId).toBe(response.id);
+    await forumService.moderatePost(question.id, "THREAD_UNLOCKED", undefined, adminId, "admin");
+    await forumService.moderateComment(response.id, "RESPONSE_HIDDEN", "Policy review", adminId, "admin");
+    await expect(forumService.acceptAnswer(question.id, response.id, authorId)).rejects.toMatchObject({ statusCode: 400 });
+    await forumService.moderatePost(question.id, "THREAD_HIDDEN", "Policy review", adminId, "admin");
+    await expect(forumService.acceptAnswer(question.id, undefined, authorId)).rejects.toMatchObject({ statusCode: 404 });
+    await forumService.moderatePost(question.id, "THREAD_RESTORED", undefined, adminId, "admin");
+    await forumService.moderateComment(response.id, "RESPONSE_RESTORED", undefined, adminId, "admin");
+    await forumService.acceptAnswer(question.id, response.id, authorId);
+    expect((await forumService.updatePost(question.id, { type: "DISCUSSION" }, authorId)).acceptedCommentId).toBeUndefined();
+    await expect(forumService.acceptAnswer(question.id, response.id, authorId)).rejects.toMatchObject({ statusCode: 400 });
   });
 
   it("preserves the exact reply target, persists citations and activity, and deduplicates recipients", async () => {
@@ -622,7 +636,7 @@ describe.sequential("research forum persistence and authorization", () => {
     postIds.push(topic.id);
     const app = express();
     app.use("/forum", forumRouter);
-    app.use((error: { statusCode?: number }, _req: Request, res: Response, _next: NextFunction) => res.status(error.statusCode ?? 500).json({ success: false }));
+    app.use((error: { name?: string; statusCode?: number }, _req: Request, res: Response, _next: NextFunction) => res.status(error.name === "ZodError" ? 400 : error.statusCode ?? 500).json({ success: false }));
     const server = app.listen(0, "127.0.0.1");
     await once(server, "listening");
     const address = server.address();
@@ -641,8 +655,29 @@ describe.sequential("research forum persistence and authorization", () => {
       expect((await opened.json()).data.viewCount).toBe(1);
       const refreshed = await fetch(`${base}/${topic.id}`, { headers: { Cookie: cookie.split(";")[0] } });
       expect((await refreshed.json()).data.viewCount).toBe(1);
+      const slugged = await fetch(`${base}/${topic.publicSlug}`, { headers: { Cookie: cookie.split(";")[0] } });
+      expect(slugged.status).toBe(200);
+      expect((await slugged.json()).data).toMatchObject({ id: topic.id, viewCount: 1 });
+      const response = await forumService.addComment(topic.id, { content: "A reply reached through a readable URL" }, responderId);
+      const replies = await fetch(`${base}/${topic.publicSlug}/comments`);
+      expect(replies.status).toBe(200);
+      expect((await replies.json()).data[0]).toMatchObject({ id: response.id, postId: topic.id });
+      for (const invalid of ["bad_slug", "bad.slug", "a".repeat(281)]) {
+        expect((await fetch(`${base}/${invalid}`)).status).toBe(400);
+        expect((await fetch(`${base}/${invalid}/comments`)).status).toBe(400);
+      }
+      // Slugs use exactly the same visibility boundary as UUIDs.
+      await getPrisma().community.update({ where: { id: communityId }, data: { visibility: "private" } });
+      try {
+        for (const locator of [topic.id, topic.publicSlug]) {
+          expect((await fetch(`${base}/${locator}`)).status).toBe(403);
+          expect((await fetch(`${base}/${locator}/comments`)).status).toBe(403);
+        }
+      } finally { await getPrisma().community.update({ where: { id: communityId }, data: { visibility: "public" } }); }
       await forumService.moderatePost(topic.id, "THREAD_HIDDEN", "Policy review", adminId, "admin");
       expect((await fetch(`${base}/${topic.id}`, { headers: { Cookie: cookie.split(";")[0] } })).status).toBe(404);
+      expect((await fetch(`${base}/${topic.publicSlug}`)).status).toBe(404);
+      expect((await fetch(`${base}/${topic.publicSlug}/comments`)).status).toBe(404);
       expect((await getPrisma().forumPost.findUniqueOrThrow({ where: { id: topic.id } })).viewCount).toBe(1);
     } finally {
       await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));

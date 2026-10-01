@@ -70,6 +70,10 @@ const commentsPaginationSchema = paginationSchema.extend({
 });
 const idParamsSchema = z.object({ id: objectIdSchema });
 const postIdParamsSchema = z.object({ postId: objectIdSchema });
+// Human-readable topic URLs are read locators, never write identifiers.
+const postLocatorSchema = z.union([objectIdSchema, z.string().min(1).max(280).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)]);
+const readPostParamsSchema = z.object({ id: postLocatorSchema });
+const readCommentsParamsSchema = z.object({ postId: postLocatorSchema });
 const acceptParamsSchema = z.object({ postId: objectIdSchema, commentId: objectIdSchema });
 const commentSchema = z.object({
   content: z.string().trim().min(1).max(10000).optional(),
@@ -165,7 +169,7 @@ forumRouter.get("/posts", optionalAuth, validate(postQuerySchema, "query"), asyn
 forumRouter.post("/posts", requireAuth, requirePermission("forum:write"), threadCreateLimiter, validatePostInput, async (req, res) => {
   res.status(201).json({ success: true, data: await forumService.createPost(req.body, req.user!.sub) });
 });
-forumRouter.get("/posts/:id", optionalAuth, validate(idParamsSchema, "params"), async (req, res) => {
+forumRouter.get("/posts/:id", optionalAuth, validate(readPostParamsSchema, "params"), async (req, res) => {
   res.json({ success: true, data: await forumService.getPost(req.params.id as string, req.user?.sub, req.user?.role, forumViewerKey(req, res)) });
 });
 forumRouter.patch("/posts/:id", requireAuth, forumWriteLimiter, validate(idParamsSchema, "params"), validatePostUpdate, async (req, res) => {
@@ -178,7 +182,7 @@ forumRouter.delete("/posts/:id", requireAuth, forumWriteLimiter, validate(idPara
 forumRouter.patch("/posts/:id/moderation", requireAuth, forumWriteLimiter, validate(idParamsSchema, "params"), validate(moderatePostSchema), async (req, res) => {
   res.json({ success: true, data: await forumService.moderatePost(req.params.id as string, req.body.action, req.body.reason, req.user!.sub, req.user!.role) });
 });
-forumRouter.get("/posts/:postId/comments", optionalAuth, validate(postIdParamsSchema, "params"), validate(commentsPaginationSchema, "query"), async (req, res) => {
+forumRouter.get("/posts/:postId/comments", optionalAuth, validate(readCommentsParamsSchema, "params"), validate(commentsPaginationSchema, "query"), async (req, res) => {
   const { page, pageSize } = req.query as unknown as z.infer<typeof commentsPaginationSchema>;
   res.json({ success: true, ...(await forumService.listComments(req.params.postId as string, page, pageSize, req.user?.sub, req.user?.role)) });
 });
@@ -196,10 +200,10 @@ forumRouter.patch("/comments/:id/moderation", requireAuth, forumWriteLimiter, va
   res.json({ success: true, data: await forumService.moderateComment(req.params.id as string, req.body.action, req.body.reason, req.user!.sub, req.user!.role) });
 });
 forumRouter.post("/posts/:postId/accepted-answer/:commentId", requireAuth, forumWriteLimiter, validate(acceptParamsSchema, "params"), async (req, res) => {
-  res.json({ success: true, data: await forumService.acceptAnswer(req.params.postId as string, req.params.commentId as string, req.user!.sub) });
+  res.json({ success: true, data: await forumService.acceptAnswer(req.params.postId as string, req.params.commentId as string, req.user!.sub, req.user!.role) });
 });
 forumRouter.delete("/posts/:postId/accepted-answer", requireAuth, forumWriteLimiter, validate(postIdParamsSchema, "params"), async (req, res) => {
-  res.json({ success: true, data: await forumService.acceptAnswer(req.params.postId as string, undefined, req.user!.sub) });
+  res.json({ success: true, data: await forumService.acceptAnswer(req.params.postId as string, undefined, req.user!.sub, req.user!.role) });
 });
 forumRouter.put("/posts/:id/follow", requireAuth, validate(idParamsSchema, "params"), async (req, res) => {
   res.json({ success: true, data: await forumService.follow(req.params.id as string, req.user!.sub, true, req.user!.role) });

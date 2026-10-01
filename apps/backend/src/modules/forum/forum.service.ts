@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { ForumPostType, ForumSort, UserRole, GapStructuredEvidenceItem } from "@trend/shared-types";
 import { AppError } from "../../common/exceptions/app-error.js";
 import { parseDatabaseId, publicDatabaseId } from "../../infrastructure/database/database-id.js";
@@ -57,11 +57,14 @@ export function forumPublicSlug(title: string, id: string): string {
   const base = title
     .normalize("NFKD")
     .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[đĐ]/g, "d")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
-    .slice(0, 260) || "discussion";
-  return `${base}-${id.replace(/-/g, "").slice(0, 12)}`;
+    .slice(0, 260).replace(/-+$/g, "") || "discussion";
+  // Seed/import UUIDs can share a prefix. Use the entire identity for the suffix.
+  // Persisted slugs never change on edits, so existing links remain valid.
+  return `${base}-${createHash("sha256").update(id).digest("hex").slice(0, 12)}`;
 }
 
 async function resolveUserId(value: string): Promise<string> {
@@ -910,7 +913,7 @@ export const forumService = {
     const tags = input.tags !== undefined ? normalizeForumTags(input.tags) : undefined;
     const updated = await getPrisma().$transaction(async (tx) => {
       const result = await tx.forumPost.update({ where: { id: post.id }, data: {
-        ...(input.type !== undefined ? { type: nextType } : {}), ...(input.title !== undefined ? { title: cleanForumText(input.title) } : {}), ...(input.content !== undefined ? { body: cleanForumText(input.content) } : {}),
+        ...(input.type !== undefined ? { type: nextType, ...(nextType !== "QUESTION" ? { acceptedCommentId: null } : {}) } : {}), ...(input.title !== undefined ? { title: cleanForumText(input.title) } : {}), ...(input.content !== undefined ? { body: cleanForumText(input.content) } : {}),
         ...(tags !== undefined ? { tags: tags.map((tag) => tag.name) } : {}), ...(input.linkedPaperId !== undefined ? { linkedPaperId } : {}),
         ...(input.linkedResearchGapId !== undefined ? { linkedResearchGapId, researchGapId: linkedResearchGapId } : {}), ...(input.linkedProjectId !== undefined ? { linkedProjectId } : {}),
         editedAt: new Date(), lastActivityAt: new Date(),
@@ -1092,10 +1095,27 @@ export const forumService = {
     await auditService.log(action, { userId: actorId, targetTableName: "forum_comments", targetRecordId: comment.id, details: { reason, communityId: post.communityId } });
     return (await presentComments([updated], actorId, action === "RESPONSE_HIDDEN" && post.acceptedCommentId === comment.id ? undefined : post.acceptedCommentId))[0];
   },
-  async acceptAnswer(postId: string, commentId: string | undefined, userId: string) {
+  async acceptAnswer(postId: string, commentId: string | undefined, userId: string, actorRole?: UserRole) {
     const post = await resolvePost(postId); const comment = commentId ? await resolveComment(commentId) : undefined;
-    if (post.status === "deleted") throw AppError.notFound("Forum post not found"); if (normalizeForumPostType(post.type) !== "QUESTION") throw AppError.badRequest("Only question threads can accept a response"); if (post.authorId !== await resolveUserId(userId)) throw AppError.forbidden("Only the question author can accept a response"); if (comment && (comment.postId !== post.id || comment.status !== "active")) throw AppError.badRequest("The response does not belong to this question");
-    const updated = await getPrisma().forumPost.update({ where: { id: post.id }, data: { acceptedCommentId: comment?.id ?? null } }); if (comment && comment.authorId !== post.authorId) await notificationService.create({ userId: comment.authorId, title: "Your response was accepted", message: `The question author accepted your response to “${post.title}”.`, type: "FORUM_RESPONSE_ACCEPTED", targetKind: "forum_post", targetId: post.id }); return (await presentPosts([updated], userId))[0];
+    const actorId = await resolveUserId(userId);
+    if (post.authorId !== actorId) throw AppError.forbidden("Only the question author can accept a response");
+    await assertCanViewCommunity(post.communityId ?? undefined, userId, actorRole);
+    const result = await getPrisma().$transaction(async (tx) => {
+      // Use the same response → root lock order as reply/moderation operations.
+      if (comment) await tx.$queryRaw`SELECT id FROM forum_comments WHERE id = ${comment.id}::uuid FOR UPDATE`;
+      await tx.$queryRaw`SELECT id FROM forum_posts WHERE id = ${post.id}::uuid FOR UPDATE`;
+      const root = await tx.forumPost.findUniqueOrThrow({ where: { id: post.id } });
+      if (["hidden", "deleted"].includes(root.status)) throw AppError.notFound("Forum post not found");
+      if (root.status !== "active") throw AppError.conflict("This discussion is locked. The accepted response was not changed");
+      if (normalizeForumPostType(root.type) !== "QUESTION") throw AppError.badRequest("Only question threads can accept a response");
+      const target = comment ? await tx.forumComment.findUnique({ where: { id: comment.id } }) : undefined;
+      if (comment && (!target || target.postId !== root.id || target.status !== "active")) throw AppError.badRequest("The response does not belong to this question or is unavailable");
+      const updated = await tx.forumPost.update({ where: { id: root.id }, data: { acceptedCommentId: target?.id ?? null } });
+      const notification = target && target.authorId !== root.authorId && root.acceptedCommentId !== target.id ? await notificationService.create({ userId: target.authorId, title: "Your response was accepted", message: `The question author accepted your response to “${root.title}”.`, type: "FORUM_RESPONSE_ACCEPTED", targetKind: "forum_post", targetId: root.id }, tx) : undefined;
+      return { updated, notification };
+    });
+    if (result.notification) void notificationService.dispatch(result.notification).catch((err: unknown) => logger.warn({ err }, "Accepted-response push failed; in-app notification remains available"));
+    return (await presentPosts([result.updated], userId))[0];
   },
 
   async vote(subjectKind: "post" | "comment", subjectId: string, value: -1 | 0 | 1, userId: string, actorRole: UserRole) {

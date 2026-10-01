@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useI18n } from "@/i18n";
 import { formatForumRelativeTime } from "../utils/forum-helpers";
 
-export function ForumThreadTimeline({ postIds, total, createdAt, lastActivityAt }: { postIds: string[]; total: number; createdAt: string; lastActivityAt: string }) {
+export function ForumThreadTimeline({ postIds, total, createdAt, lastActivityAt, hasMore = false, loadingMore = false, onLoadMore }: { postIds: string[]; total: number; createdAt: string; lastActivityAt: string; hasMore?: boolean; loadingMore?: boolean; onLoadMore?: () => void }) {
   const { t, language } = useI18n();
   const [current, setCurrent] = useState(1);
   useEffect(() => {
@@ -32,7 +32,7 @@ export function ForumThreadTimeline({ postIds, total, createdAt, lastActivityAt 
           <div className="absolute -left-[3px] h-9 w-[7px] rounded-full bg-primary transition-transform motion-reduce:transition-none" style={{ transform: `translateY(${displayedTotal > 1 ? ((current - 1) / (displayedTotal - 1)) * 170 : 0}px)` }} />
           <div className="absolute left-5 top-0 whitespace-nowrap"><p aria-live="polite" aria-atomic="true" className="text-lg font-semibold tabular-nums text-foreground">{current} / {displayedTotal}</p><span className="text-sm">{t("posts")}</span></div>
         </div>
-        <button type="button" onClick={() => jump("thread-end")} className="rounded px-2 py-2 text-left hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">{formatForumRelativeTime(lastActivityAt, language)}</button>
+        {hasMore ? <button type="button" disabled={loadingMore} onClick={onLoadMore} className="rounded px-2 py-2 text-left hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50">{t(loadingMore ? "Loading…" : "Load more replies")}</button> : <button type="button" onClick={() => jump(postIds.at(-1))} title={t("Jump to latest post")} className="rounded px-2 py-2 text-left hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">{formatForumRelativeTime(lastActivityAt, language)}</button>}
       </div>
     </aside>
   );

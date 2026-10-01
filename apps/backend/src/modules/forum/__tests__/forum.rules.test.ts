@@ -52,7 +52,13 @@ describe("forum domain rules", () => {
   });
 
   it("creates stable readable thread slugs without exposing the full UUID", () => {
-    expect(forumPublicSlug("Discussing LLM evaluation: Vietnamese results", "12345678-1234-4234-8234-123456789abc")).toBe("discussing-llm-evaluation-vietnamese-results-123456781234");
-    expect(forumPublicSlug("研究方法", "12345678-1234-4234-8234-123456789abc")).toBe("discussion-123456781234");
+    const id = "12345678-1234-4234-8234-123456789abc";
+    expect(forumPublicSlug("Discussing LLM evaluation: Vietnamese results", id)).toMatch(/^discussing-llm-evaluation-vietnamese-results-[a-f0-9]{12}$/);
+    expect(forumPublicSlug("研究方法", id)).toMatch(/^discussion-[a-f0-9]{12}$/);
+    expect(forumPublicSlug("Đánh giá nghiên cứu", id)).toMatch(/^danh-gia-nghien-cuu-/);
+    expect(forumPublicSlug("Same title", "00000000-0000-4000-9000-000000000002")).not.toBe(forumPublicSlug("Same title", "00000000-0000-4000-9000-000000000007"));
+    expect(forumPublicSlug("Stable title", id)).toBe(forumPublicSlug("Stable title", id));
+    expect(forumPublicSlug("a ".repeat(250), id)).toMatch(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
+    expect(forumPublicSlug("a ".repeat(250), id).length).toBeLessThanOrEqual(280);
   });
 });

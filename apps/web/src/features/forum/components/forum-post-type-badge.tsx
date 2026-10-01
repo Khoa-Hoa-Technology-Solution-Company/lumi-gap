@@ -18,7 +18,6 @@ export const FORUM_TYPE_CONFIG: Record<
     icon: typeof HelpCircle;
     badgeStyle: string;
     iconColor: string;
-    accentGlow: string;
   }
 > = {
   QUESTION: {
@@ -27,8 +26,7 @@ export const FORUM_TYPE_CONFIG: Record<
     icon: HelpCircle,
     badgeStyle:
       "bg-transparent text-blue-700 border-blue-200 dark:text-blue-300 dark:border-blue-800/70",
-    iconColor: "text-violet-600 dark:text-violet-400",
-    accentGlow: "from-violet-500/10 to-indigo-500/10",
+    iconColor: "text-blue-700 dark:text-blue-300",
   },
   DISCUSSION: {
     label: "Discussion",
@@ -36,8 +34,7 @@ export const FORUM_TYPE_CONFIG: Record<
     icon: MessageSquare,
     badgeStyle:
       "bg-transparent text-slate-600 border-slate-300 dark:text-slate-300 dark:border-slate-700",
-    iconColor: "text-sky-600 dark:text-sky-400",
-    accentGlow: "from-sky-500/10 to-blue-500/10",
+    iconColor: "text-slate-600 dark:text-slate-300",
   },
   PAPER_DISCUSSION: {
     label: "Paper Discussion",
@@ -46,16 +43,14 @@ export const FORUM_TYPE_CONFIG: Record<
     badgeStyle:
       "bg-transparent text-amber-800 border-amber-300 dark:text-amber-300 dark:border-amber-800/70",
     iconColor: "text-amber-700 dark:text-amber-400",
-    accentGlow: "from-amber-500/10 to-orange-500/10",
   },
   RESEARCH_GAP_DISCUSSION: {
     label: "Research Gap Discussion",
-    description: "Analysis and validation of candidate research gaps and future directions",
+    description: "Discussion of candidate research gaps—not formal evidence validation",
     icon: Compass,
     badgeStyle:
       "bg-transparent text-emerald-800 border-emerald-300 dark:text-emerald-300 dark:border-emerald-800/70",
     iconColor: "text-emerald-700 dark:text-emerald-400",
-    accentGlow: "from-emerald-500/10 to-teal-500/10",
   },
 };
 
@@ -91,7 +86,7 @@ export function ForumPostTypeBadge({
       )}
       title={t(config.description)}
     >
-      {showIcon && <Icon className={cn("shrink-0", iconSizes[size], config.iconColor)} />}
+      {showIcon && <Icon aria-hidden="true" className={cn("shrink-0", iconSizes[size], config.iconColor)} />}
       <span>{t(config.label)}</span>
     </span>
   );

@@ -3,6 +3,7 @@ import { isAxiosError } from "axios";
 import { BookOpen, Eye, Send, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { ForumCommentView, ForumReferenceView } from "../api/forum.api";
 import { ForumMarkdown } from "./forum-markdown";
 import { ForumFormattingToolbar } from "./forum-formatting-toolbar";
@@ -29,6 +30,7 @@ export function ForumComposer({ onSubmit, replyTo, onCancelReply, availablePaper
   const [doi, setDoi] = useState("");
   const [citationTitle, setCitationTitle] = useState("");
   const [error, setError] = useState("");
+  const [discardOpen, setDiscardOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const submittingRef = useRef(false);
   useEffect(() => {
@@ -100,10 +102,19 @@ export function ForumComposer({ onSubmit, replyTo, onCancelReply, availablePaper
         <p id="reply-help" className="text-xs text-muted-foreground">{t("Helpful reflects community usefulness, not scientific validation.")}</p>
         {error ? <p id="reply-error" role="alert" className="rounded-md border border-destructive/40 p-3 text-sm text-destructive">{error}</p> : null}
         <div className="flex justify-end gap-2 pt-1">
-          <Button type="button" variant="ghost" onClick={() => { if ((!content.trim() && !selectedPaperId && !doi && !citationTitle) || window.confirm(t("Discard this reply draft?"))) clearDraft(); }}>{t("Cancel")}</Button>
+          <Button type="button" variant="ghost" onClick={() => { if (!content.trim() && !selectedPaperId && !doi && !citationTitle) clearDraft(); else setDiscardOpen(true); }}>{t("Cancel")}</Button>
           <Button type="submit" disabled={!content.trim() || disabled || isSubmitting} className="gap-2"><Send className="h-4 w-4" />{t(isSubmitting ? "Posting…" : "Post reply")}</Button>
         </div>
       </fieldset>
+      <Dialog open={discardOpen} onOpenChange={setDiscardOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader><DialogTitle>{t("Discard this reply draft?")}</DialogTitle><DialogDescription>{t("Your unsent response and citations will be removed.")}</DialogDescription></DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setDiscardOpen(false)}>{t("Keep editing")}</Button>
+            <Button type="button" variant="destructive" onClick={() => { clearDraft(); setDiscardOpen(false); }}>{t("Discard draft")}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </form>
   );
 }

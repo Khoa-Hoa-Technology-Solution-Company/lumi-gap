@@ -47,6 +47,10 @@ describe("Forum sidebar real URL navigation", () => {
     expect(all.searchParams.has("community")).toBe(false);
     expect(all.searchParams.get("type")).toBe("QUESTION");
     expect(all.searchParams.get("feed")).toBe("unanswered");
+    const allTypes = new URL(navigation.find((item) => item.label === "All thread types")!.href!, "https://local.test");
+    expect(allTypes.searchParams.has("type")).toBe(false);
+    expect(allTypes.searchParams.get("community")).toBe(community.slug);
+    expect(allTypes.searchParams.get("feed")).toBe("unanswered");
     expect(navigation.find((item) => item.label === community.name)?.href).toContain("community=software-engineering");
   });
   it("restores state from refresh/history URLs, and replaces legacy sort only when changing feed", () => {

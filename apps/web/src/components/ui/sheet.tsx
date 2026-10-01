@@ -24,8 +24,8 @@ SheetOverlay.displayName = DialogPrimitive.Overlay.displayName;
 
 const SheetContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(({ className, children, ...props }, ref) => (
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & { closeLabel?: string }
+>(({ className, children, closeLabel = "Close user details", ...props }, ref) => (
   <SheetPortal>
     <SheetOverlay />
     <DialogPrimitive.Content
@@ -37,9 +37,9 @@ const SheetContent = React.forwardRef<
       {...props}
     >
       {children}
-      <DialogPrimitive.Close className="absolute right-4 top-4 rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2">
-        <X className="h-4 w-4" />
-        <span className="sr-only">Close user details</span>
+      <DialogPrimitive.Close className="absolute right-2 top-2 flex h-11 w-11 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2">
+        <X aria-hidden="true" className="h-4 w-4" />
+        <span className="sr-only">{closeLabel}</span>
       </DialogPrimitive.Close>
     </DialogPrimitive.Content>
   </SheetPortal>
