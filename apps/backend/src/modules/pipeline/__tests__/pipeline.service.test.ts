@@ -110,10 +110,10 @@ describe("pipeline status service", () => {
       timestamp: "2026-07-13T04:00:00.000Z",
     });
     expect(status.workers).toMatchObject({
-      expected: 9,
+      expected: 10,
       alive: 1,
       stale: 1,
-      missing: 7,
+      missing: 8,
     });
     expect(status.workers.heartbeats[0]).toMatchObject({
       workerName: "worker:report",
@@ -195,10 +195,10 @@ describe("pipeline status service", () => {
     const status = await service.getStatus();
 
     expect(status.workers).toMatchObject({
-      expected: 9,
+      expected: 10,
       alive: 0,
       stale: 0,
-      missing: 9,
+      missing: 10,
     });
     expect(status.recommendations.map((r) => r.title)).toContain("Worker heartbeat missing or stale");
   });

@@ -42,6 +42,8 @@ export interface User {
     google: boolean;
   };
   capabilities?: UserCapability[];
+  /** Server-computed: admins, or lecturers/researchers whose academic role is verified. */
+  canProposeCommunity?: boolean;
   onboarding?: { completed: boolean };
   avatarUrl?: string;
   institution?: string;

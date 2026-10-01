@@ -9,7 +9,7 @@
     "pnpm": ">=11.0.0"
   },
   "scripts": {
-    "dev": "turbo run dev",
+    "dev": "turbo run dev dev:workers",
     "dev:backend": "turbo run dev --filter=backend",
     "dev:web": "turbo run dev --filter=web",
     "dev:mobile": "pnpm --filter mobile exec expo start",

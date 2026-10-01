@@ -8,6 +8,10 @@ import { forumService } from "../forum.service.js";
 import { forumRouter } from "../forum.routes.js";
 import { notificationService } from "../../notifications/notification.service.js";
 
+// Positional shim over the query-object `communityService.list` signature.
+const listCommunities = (userId: string | undefined, page: number, pageSize: number, role?: Parameters<typeof communityService.list>[2], activeOnly = false) =>
+  communityService.list(userId, { page, pageSize, sort: "recent", scope: "all", activeOnly: activeOnly ? "true" : undefined }, role);
+
 describe.sequential("research forum persistence and authorization", () => {
   const marker = crypto.randomUUID();
   const emails = {
@@ -79,8 +83,8 @@ describe.sequential("research forum persistence and authorization", () => {
   });
 
   it("restricts community creation to admins and persists idempotent membership", async () => {
-    await expect(communityService.create({ name: `Unauthorized ${marker}` }, authorId, "user")).rejects.toMatchObject({ statusCode: 403 });
-    const community = await communityService.create({ name: `Software Engineering ${marker}`, description: "Evidence-led software engineering discussion", researchField: "Software Engineering" }, adminId, "admin");
+    await expect(communityService.create({ name: `Unauthorized ${marker}` }, { sub: authorId, role: "user", systemRole: "USER" })).rejects.toMatchObject({ statusCode: 403 });
+    const community = await communityService.create({ name: `Software Engineering ${marker}`, description: "Evidence-led software engineering discussion", researchField: "Software Engineering" }, { sub: adminId, role: "admin", systemRole: "ADMIN" });
     communityId = community.id;
     await communityService.join(communityId, authorId);
     await communityService.join(communityId, authorId);
@@ -468,13 +472,13 @@ describe.sequential("research forum persistence and authorization", () => {
       await expect(forumService.listPosts({ communityId: community.slug }, 1, 20, outsiderId, "user")).rejects.toMatchObject({ statusCode: 403 });
       await expect(forumService.follow(topic.id, outsiderId, true)).rejects.toMatchObject({ statusCode: 403 });
       await expect(forumService.follow(topic.id, outsiderId, true, "admin")).resolves.toEqual({ following: true });
-      expect((await communityService.list(undefined, 1, 100)).data.some((row) => row.id === communityId)).toBe(false);
-      expect((await communityService.list(outsiderId, 1, 100, "user")).data.some((row) => row.id === communityId)).toBe(false);
-      expect((await communityService.list(authorId, 1, 100, "user")).data.some((row) => row.id === communityId)).toBe(true);
+      expect((await listCommunities(undefined, 1, 100)).data.some((row) => row.id === communityId)).toBe(false);
+      expect((await listCommunities(outsiderId, 1, 100, "user")).data.some((row) => row.id === communityId)).toBe(false);
+      expect((await listCommunities(authorId, 1, 100, "user")).data.some((row) => row.id === communityId)).toBe(true);
       await prisma.community.update({ where: { id: communityId }, data: { status: "ARCHIVED" } });
       expect((await forumService.listPosts({ query }, 1, 20, authorId, "user")).data).toEqual([]);
       await expect(forumService.listPosts({ communityId: community.slug }, 1, 20, adminId, "admin")).rejects.toMatchObject({ statusCode: 404 });
-      expect((await communityService.list(adminId, 1, 100, "admin", true)).data.some((row) => row.id === communityId)).toBe(false);
+      expect((await listCommunities(adminId, 1, 100, "admin", true)).data.some((row) => row.id === communityId)).toBe(false);
     } finally { await prisma.community.update({ where: { id: communityId }, data: { status: "ACTIVE", visibility: "public" } }); }
   });
 

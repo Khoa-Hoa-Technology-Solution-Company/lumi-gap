@@ -3,9 +3,18 @@
 > Context file for Claude Code (and any AI coding assistant) working on this repo.
 > Read this first before touching code. Last updated: 2026-09-26.
 
-### Auto-Spec Rule (Multi-Agent with Antigravity):
-- Khi người dùng bảo "lên spec...", "phân tích tính năng X", hoặc "spec X": **MẶC ĐỊNH LUÔN TỰ ĐỘNG TẠO FILE TẠI `.herdr/specs/<ten-tinh-nang>.md`**.
-- Không cần người dùng phải nhắc đường dẫn file. Tự động lưu vào `.herdr/specs/` để Antigravity đọc và code.
+### Multi-Agent Workflow Rules (.herdr):
+- **Lệnh tắt siêu ngắn (Short Triggers)**:
+  - `plan <tên>` hoặc `spec <tên>`: Tự động phân tích và xuất file kế hoạch vào `.herdr/specs/<tên>.md`.
+  - `code` hoặc `làm` (hoặc `code <tên>`): **TỰ ĐỘNG quét file spec mới nhất trong `.herdr/specs/`**, đọc checklist và bắt tay vào code ngay. Người dùng **không cần gõ đường dẫn file**.
+- **Vai trò 1 (Planner / Architect)**:
+  - Khi người dùng bảo `plan...` hoặc `spec...`:
+  - **MẶC ĐỊNH LUÔN TỰ ĐỘNG TẠO FILE TẠI `.herdr/specs/<ten-tinh-nang>.md`**.
+  - File kế hoạch bắt buộc có checklist từng bước (`- [ ] Task`).
+- **Vai trò 2 (Coder / Builder)**:
+  - Khi người dùng chỉ cần gõ `code` (hoặc `làm`, `triển khai`):
+  - Tự động tìm file spec mới nhất trong `.herdr/specs/` (file có checklist chưa hoàn thành).
+  - Đọc checklist và code lần lượt từng task, tick `[x]` vào checklist và chạy test nghiệm thu.
 
 
 ---

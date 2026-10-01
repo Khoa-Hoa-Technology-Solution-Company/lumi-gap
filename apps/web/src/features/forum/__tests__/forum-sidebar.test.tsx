@@ -6,7 +6,7 @@ import type { CommunityView } from "../api/forum.api";
 import { forumListHref, parseForumListParams } from "../utils/forum-pagination";
 
 vi.mock("@/i18n", () => ({ useI18n: () => ({ t: (key: string) => key }) }));
-const community: CommunityView = { id: "community-uuid", slug: "software-engineering", name: "Software Engineering", description: "", researchTopics: [], visibility: "public", status: "ACTIVE", rules: [], memberCount: 4, threadCount: 8, canManage: false, canEditCommunity: false, contentRestricted: false };
+const community: CommunityView = { id: "community-uuid", slug: "software-engineering", name: "Software Engineering", description: "", researchTopics: [], visibility: "public", status: "ACTIVE", rules: [], memberCount: 4, threadCount: 8, canManage: false, canEditCommunity: false, isOwner: false, isAdmin: false, contentRestricted: false, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" };
 function render(location: string, props: Partial<Parameters<typeof ForumSidebar>[0]> = {}) {
   return renderToStaticMarkup(<StaticRouter location={location}><ForumSidebar communities={[community]} isAuthed {...props} /></StaticRouter>);
 }
