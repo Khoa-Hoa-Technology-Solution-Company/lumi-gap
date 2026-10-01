@@ -1,6 +1,8 @@
 import { forumRefinementVi } from "./forum-refinement";
 
 const forumKeyList = [
+  "Discussions open after approval",
+  "Members can start discussions once an administrator approves this community.",
   "· Due",
   "· Required",
   "· v",

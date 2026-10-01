@@ -2390,6 +2390,8 @@ export const vi: Record<keyof typeof en, string> = {
   "No shared research gaps yet.": "Chưa có khoảng trống nghiên cứu nào được chia sẻ.",
   "Discuss this gap": "Thảo luận khoảng trống này",
   "Request membership to see who belongs to this community.": "Hãy xin tham gia để xem ai thuộc cộng đồng này.",
+  "Discussions open after approval": "Thảo luận sẽ mở sau khi được duyệt",
+  "Members can start discussions once an administrator approves this community.": "Thành viên có thể bắt đầu thảo luận khi quản trị viên duyệt cộng đồng này.",
   ...(forumRefinementVi as Record<string, string>),
   ...(forumRefinementViOverrides as Record<string, string>),
 };
