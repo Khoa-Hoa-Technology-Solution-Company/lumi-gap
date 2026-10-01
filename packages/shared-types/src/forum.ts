@@ -11,6 +11,7 @@ export type ForumSort = "latest" | "popular" | "unanswered" | "following";
 export type ForumReportReason = "SPAM" | "OFF_TOPIC" | "HARASSMENT" | "PLAGIARISM_OR_COPYRIGHT" | "INAPPROPRIATE_CONTENT" | "OTHER";
 
 export interface ForumReference {
+  id?: string;
   paperId?: string;
   doi?: string;
   url?: string;
@@ -65,13 +66,18 @@ export interface ForumPost {
   linkedResearchGapId?: string;
   linkedProjectId?: string;
   linkedPaper?: { id: string; title: string; publicationYear?: number; doi?: string };
-  linkedResearchGap?: { id: string; title: string; topic?: string };
+  linkedResearchGap?: { id: string; title: string; topic?: string; validationStatus?: string; status?: string };
   linkedProject?: { id: string; title: string };
   references: ForumReference[];
   status: ForumContentStatus;
   acceptedCommentId?: string;
   voteScore: number;
   commentCount: number;
+  replyCount?: number;
+  helpfulCount?: number;
+  viewCount?: number;
+  lastActivityAt?: ISODateString;
+  participants?: ForumAuthorSummary[];
   isPinned: boolean;
   canModerate: boolean;
   isFollowing: boolean;

@@ -6,6 +6,7 @@ import path from "node:path";
 import sharp from "sharp";
 import { AppError } from "../../common/exceptions/app-error.js";
 import { env } from "../../config/env.js";
+import { cloudinaryPublicUrl, deleteCloudinaryAsset, uploadCloudinaryBuffer } from "../../infrastructure/cloudinary-storage.service.js";
 
 const COVER_WIDTH = 1600;
 const COVER_HEIGHT = 480;
@@ -15,6 +16,10 @@ const DATABASE_ID_SEGMENT = "(?:[a-f0-9]{24}|[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-
 const COVER_KEY_PATTERN = new RegExp(`^profile-covers/(${DATABASE_ID_SEGMENT})/([a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})\\.webp$`, "i");
 const AVATAR_KEY_PATTERN = new RegExp(`^profile-avatars/(${DATABASE_ID_SEGMENT})/([a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})\\.webp$`, "i");
 const LOCAL_UPLOADS_ROOT = path.resolve(process.cwd(), "uploads");
+
+function cloudinaryImagePublicId(key: string): string {
+  return key.replace(/\.webp$/i, "");
+}
 
 export function profileCoverKey(userId: string, id = randomUUID()): string {
   if (!new RegExp(`^${DATABASE_ID_SEGMENT}$`, "i").test(userId)
@@ -100,6 +105,17 @@ export const profileCoverStorage = {
       }));
       return key;
     }
+    if (env.STORAGE_PROVIDER === "cloudinary") {
+      await uploadCloudinaryBuffer(image, {
+        resource_type: "image",
+        type: "upload",
+        public_id: cloudinaryImagePublicId(key),
+        format: "webp",
+        overwrite: true,
+        invalidate: true,
+      });
+      return key;
+    }
     const localPath = safeProfileCoverPath(key);
     if (!localPath) throw AppError.internal();
     await fs.mkdir(path.dirname(localPath), { recursive: true });
@@ -111,6 +127,10 @@ export const profileCoverStorage = {
     if (!COVER_KEY_PATTERN.test(key)) return;
     if (env.STORAGE_PROVIDER === "r2") {
       await r2Client().send(new DeleteObjectCommand({ Bucket: env.R2_BUCKET!, Key: key }));
+      return;
+    }
+    if (env.STORAGE_PROVIDER === "cloudinary") {
+      await deleteCloudinaryAsset(cloudinaryImagePublicId(key), { resource_type: "image", type: "upload" });
       return;
     }
     const localPath = safeProfileCoverPath(key);
@@ -129,6 +149,9 @@ export const profileCoverStorage = {
       );
       return { kind: "redirect", url };
     }
+    if (env.STORAGE_PROVIDER === "cloudinary") {
+      return { kind: "redirect", url: cloudinaryPublicUrl(cloudinaryImagePublicId(key), { resource_type: "image", format: "webp" }) };
+    }
     const localPath = safeProfileCoverPath(key);
     if (!localPath) throw AppError.notFound("Cover image not found");
     return { kind: "local", path: localPath };
@@ -145,6 +168,17 @@ export const profileAvatarStorage = {
       }));
       return key;
     }
+    if (env.STORAGE_PROVIDER === "cloudinary") {
+      await uploadCloudinaryBuffer(image, {
+        resource_type: "image",
+        type: "upload",
+        public_id: cloudinaryImagePublicId(key),
+        format: "webp",
+        overwrite: true,
+        invalidate: true,
+      });
+      return key;
+    }
     const localPath = safeProfileAvatarPath(key);
     if (!localPath) throw AppError.internal();
     await fs.mkdir(path.dirname(localPath), { recursive: true });
@@ -156,6 +190,10 @@ export const profileAvatarStorage = {
     if (!AVATAR_KEY_PATTERN.test(key)) return;
     if (env.STORAGE_PROVIDER === "r2") {
       await r2Client().send(new DeleteObjectCommand({ Bucket: env.R2_BUCKET!, Key: key }));
+      return;
+    }
+    if (env.STORAGE_PROVIDER === "cloudinary") {
+      await deleteCloudinaryAsset(cloudinaryImagePublicId(key), { resource_type: "image", type: "upload" });
       return;
     }
     const localPath = safeProfileAvatarPath(key);
@@ -173,6 +211,9 @@ export const profileAvatarStorage = {
         { expiresIn: Math.min(env.R2_SIGNED_URL_TTL_SECONDS, 300) },
       );
       return { kind: "redirect", url };
+    }
+    if (env.STORAGE_PROVIDER === "cloudinary") {
+      return { kind: "redirect", url: cloudinaryPublicUrl(cloudinaryImagePublicId(key), { resource_type: "image", format: "webp" }) };
     }
     const localPath = safeProfileAvatarPath(key);
     if (!localPath) throw AppError.notFound("Profile photo not found");

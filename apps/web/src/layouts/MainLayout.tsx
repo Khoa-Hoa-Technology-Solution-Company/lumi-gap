@@ -157,6 +157,7 @@ function PageLoadingFallback() {
 
 export function MainLayout() {
   const location = useLocation();
+  const isForumSurface = location.pathname === "/forum" || location.pathname.startsWith("/forum/");
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [activeDesktopMenu, setActiveDesktopMenu] = useState<string | null>(null);
   const desktopMenuCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -213,10 +214,12 @@ export function MainLayout() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-slate-50 dark:bg-[#09090b]">
-      <header className="border-b bg-white dark:bg-[#0f0f11] sticky top-0 z-50">
-        <div className="container mx-auto grid h-20 min-w-0 grid-cols-[auto_1fr_auto] items-center gap-1 px-3 sm:gap-4 sm:px-6 lg:px-8">
-          <Link to="/" className="flex h-20 shrink-0 select-none items-center">
+    <div
+      className={cn("flex min-h-screen flex-col", isForumSurface ? "bg-background" : "bg-slate-50 dark:bg-[#09090b]")}
+    >
+      <header className="sticky top-0 z-50 h-[var(--app-header-height)] shrink-0 border-b bg-white dark:bg-[#0f0f11]">
+        <div className={cn("mx-auto grid h-full min-w-0 grid-cols-[auto_1fr_auto] items-center gap-1 px-3 sm:gap-4 sm:px-6 lg:px-8", isForumSurface ? "w-full" : "container")}>
+          <Link to="/" className="flex h-full shrink-0 select-none items-center">
             <img
               src={logoImage}
               alt="LumiGap"
@@ -274,7 +277,7 @@ export function MainLayout() {
         {isMobileMenuOpen && (
           <div
             id="primary-navigation-menu"
-            className="absolute left-0 right-0 top-20 z-40 border-t bg-white shadow-lg min-[1180px]:hidden dark:bg-[#0f0f11]"
+            className="absolute left-0 right-0 top-[var(--app-header-height)] z-40 border-t bg-white shadow-lg min-[1180px]:hidden dark:bg-[#0f0f11]"
           >
             <nav aria-label={t("Primary navigation")} className="mx-auto grid max-w-5xl gap-4 px-4 py-4 sm:grid-cols-2 lg:grid-cols-4">
               {navGroups.map((group) => (
@@ -303,12 +306,12 @@ export function MainLayout() {
           </div>
         )}
       </header>
-      <main className="flex-1 container mx-auto px-4 sm:px-6 lg:px-8 py-8 relative z-10">
+      <main className={cn("relative z-10 flex-1", isForumSurface ? "p-0" : "container mx-auto px-4 py-8 sm:px-6 lg:px-8")}>
         <Suspense fallback={<PageLoadingFallback />}>
           <Outlet />
         </Suspense>
       </main>
-      <footer className="border-t bg-white dark:bg-[#0f0f11] py-6 mt-auto">
+      {!isForumSurface ? <footer className="border-t bg-white py-6 mt-auto dark:bg-[#0f0f11]">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row justify-between items-center text-xs text-slate-500 dark:text-slate-400">
           <p>&copy; {new Date().getFullYear()} {t("Liem Research Team. All rights reserved.")}</p>
           <div className="flex gap-4 mt-4 md:mt-0">
@@ -317,7 +320,7 @@ export function MainLayout() {
             <Link to="#" className="hover:text-slate-900 dark:hover:text-white">{t("Contact Support")}</Link>
           </div>
         </div>
-      </footer>
+      </footer> : null}
     </div>
   );
 }

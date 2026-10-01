@@ -57,7 +57,3 @@ export function canShowAcademicIdentity(profileVisibility: string | null | undef
   if (isOwner || profileVisibility === "PUBLIC") return true;
   return profileVisibility === "MEMBERS" && viewerIsSignedIn;
 }
-
-export function flattenedReplyParent(parent: { id: string; parentCommentId: string | null }): string {
-  return parent.parentCommentId ?? parent.id;
-}

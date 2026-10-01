@@ -11,6 +11,7 @@ const REQUIRED_KEYS = [
 ] as const;
 
 const R2_KEYS = ["R2_ENDPOINT", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET"] as const;
+const CLOUDINARY_KEYS = ["CLOUDINARY_CLOUD_NAME", "CLOUDINARY_API_KEY", "CLOUDINARY_API_SECRET"] as const;
 const PLACEHOLDER_PATTERN = /^<[^>]+>$/;
 
 function isMissing(value: string | undefined): boolean {
@@ -107,6 +108,11 @@ export function validateProductionEnvironment(values: ProductionEnvironment): st
       if (isMissing(values[key])) errors.push(`${key} is required when STORAGE_PROVIDER=r2`);
     }
     if (!isHttpsUrl(values.R2_ENDPOINT)) errors.push("R2_ENDPOINT must be an HTTPS URL");
+  }
+  if (values.STORAGE_PROVIDER === "cloudinary") {
+    for (const key of CLOUDINARY_KEYS) {
+      if (isMissing(values[key])) errors.push(`${key} is required when STORAGE_PROVIDER=cloudinary`);
+    }
   }
 
   if (values.TRANSLATION_PROVIDER === "libretranslate" && isMissing(values.LIBRETRANSLATE_URL)) {

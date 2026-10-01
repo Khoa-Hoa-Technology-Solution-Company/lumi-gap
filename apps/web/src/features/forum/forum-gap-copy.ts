@@ -1,0 +1,18 @@
+export const forumGapCopy = {
+  unavailable: "Community discussion is unavailable.",
+  counter: "Counter-evidence",
+  discussionCitation: "Discussion citation",
+  evidenceRelation: "Evidence relation",
+  activityBoundary: "Forum activity is discovery only, not validation.",
+  citationBoundary: "Forum citations need formal evidence review.",
+  helpfulBoundary: "Helpful means useful, not validated.",
+  matchedPaper: "Matched LumiGap Paper",
+  noDiscussions: "No community discussions yet. Start one to gather perspectives.",
+  related: "Related / context only",
+  reviewAsEvidence: "Review as evidence",
+  reviewTitle: "Review citation as evidence",
+  confirmHuman: "You confirm the final evidence relation.",
+  evidenceExplanation: "Structured evidence explanation",
+  supporting: "Supporting",
+  reviewDescription: "Screen paper before linking evidence.",
+} as const;

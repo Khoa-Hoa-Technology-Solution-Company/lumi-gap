@@ -28,14 +28,18 @@ const EnvSchema = z.object({
 
   REDIS_URL: z.string().url().or(z.string().startsWith("redis")),
 
-  // PDF storage. local keeps the existing development behavior; r2 stores PDFs
-  // in Cloudflare R2 via the S3-compatible API.
-  STORAGE_PROVIDER: z.enum(["local", "r2"]).default("local"),
+  // Binary storage. local keeps the existing development behavior; r2 stores
+  // PDFs/images in Cloudflare R2 via the S3-compatible API; cloudinary stores
+  // profile media and PDF/document artifacts in Cloudinary.
+  STORAGE_PROVIDER: z.enum(["local", "r2", "cloudinary"]).default("local"),
   R2_ENDPOINT: optionalEnvUrl,
   R2_ACCESS_KEY_ID: optionalEnvString,
   R2_SECRET_ACCESS_KEY: optionalEnvString,
   R2_BUCKET: optionalEnvString,
   R2_SIGNED_URL_TTL_SECONDS: z.coerce.number().int().positive().default(300),
+  CLOUDINARY_CLOUD_NAME: optionalEnvString,
+  CLOUDINARY_API_KEY: optionalEnvString,
+  CLOUDINARY_API_SECRET: optionalEnvString,
 
   // RS256 access tokens. Private keys are never committed; local development
   // uses ignored PEM files under apps/backend/.keys.
@@ -226,6 +230,17 @@ const EnvSchema = z.object({
       }
     }
   }
+  if (value.STORAGE_PROVIDER === "cloudinary") {
+    for (const key of ["CLOUDINARY_CLOUD_NAME", "CLOUDINARY_API_KEY", "CLOUDINARY_API_SECRET"] as const) {
+      if (!value[key]) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [key],
+          message: `${key} is required when STORAGE_PROVIDER=cloudinary`,
+        });
+      }
+    }
+  }
 
   if (value.EMAIL_DELIVERY_MODE === "smtp") {
     for (const key of ["SMTP_HOST", "SMTP_USER", "SMTP_PASS", "SMTP_FROM"] as const) {
@@ -302,6 +317,7 @@ if (rawEnv.VITEST === "true") {
   rawEnv.PERSISTENCE_PROVIDER = "postgresql";
   rawEnv.REDIS_URL = rawEnv.REDIS_URL || "redis://localhost:6379";
   rawEnv.DATABASE_URL = rawEnv.DATABASE_URL || "postgresql://test:test@localhost:5432/test";
+  rawEnv.STORAGE_PROVIDER = "local";
   rawEnv.GEMINI_API_KEY = rawEnv.GEMINI_API_KEY || "mock-gemini-key";
   rawEnv.INTERNAL_SERVICE_KEY = rawEnv.INTERNAL_SERVICE_KEY || "mock-internal-service-key-32-characters";
 }

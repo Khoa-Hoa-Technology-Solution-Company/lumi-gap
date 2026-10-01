@@ -5,6 +5,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { AppError } from "../../common/exceptions/app-error.js";
 import { env } from "../../config/env.js";
+import { cloudinaryPublicUrl, deleteCloudinaryAsset, uploadCloudinaryBuffer } from "../../infrastructure/cloudinary-storage.service.js";
 
 const USER_ID = "(?:[a-f0-9]{24}|[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})";
 const UUID = "[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}";
@@ -31,6 +32,15 @@ export const verificationEvidenceStorage = {
       await client().send(new PutObjectCommand({ Bucket: env.R2_BUCKET!, Key: key, Body: bytes, ContentType: "application/pdf", ContentDisposition: "attachment", CacheControl: "private, no-store" }));
       return key;
     }
+    if (env.STORAGE_PROVIDER === "cloudinary") {
+      await uploadCloudinaryBuffer(bytes, {
+        resource_type: "raw",
+        type: "authenticated",
+        public_id: key,
+        overwrite: true,
+      });
+      return key;
+    }
     const destination = safeVerificationEvidencePath(key, ROOT, userId);
     if (!destination) throw AppError.internal();
     await fs.mkdir(path.dirname(destination), { recursive: true });
@@ -44,6 +54,10 @@ export const verificationEvidenceStorage = {
       await client().send(new DeleteObjectCommand({ Bucket: env.R2_BUCKET!, Key: key }));
       return;
     }
+    if (env.STORAGE_PROVIDER === "cloudinary") {
+      await deleteCloudinaryAsset(key, { resource_type: "raw", type: "authenticated" });
+      return;
+    }
     const filePath = safeVerificationEvidencePath(key, ROOT, ownerId);
     if (filePath) await fs.unlink(filePath).catch((error: NodeJS.ErrnoException) => { if (error.code !== "ENOENT") throw error; });
   },
@@ -53,6 +67,9 @@ export const verificationEvidenceStorage = {
     if (env.STORAGE_PROVIDER === "r2") {
       const url = await getSignedUrl(client(), new GetObjectCommand({ Bucket: env.R2_BUCKET!, Key: key, ResponseContentDisposition: "attachment; filename=position-evidence.pdf", ResponseCacheControl: "private, no-store" }), { expiresIn: 60 });
       return { kind: "redirect", url };
+    }
+    if (env.STORAGE_PROVIDER === "cloudinary") {
+      return { kind: "redirect", url: cloudinaryPublicUrl(key, { resource_type: "raw", type: "authenticated" }) };
     }
     const filePath = safeVerificationEvidencePath(key, ROOT, ownerId);
     if (!filePath) throw AppError.notFound("Verification evidence not found");

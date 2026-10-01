@@ -99,8 +99,8 @@ export const GapCandidateSchema = z.object({
 export const GapEvidenceRecordSchema = z.object({
   paperId: ObjectIdSchema,
   evidenceKind: z.enum(["SUPPORTING", "COUNTER"]),
-  evidenceType: z.string().trim().max(120).optional(),
-  excerpt: z.string().trim().max(5000).optional(),
+  evidenceType: z.string().trim().min(2).max(120),
+  excerpt: z.string().trim().min(2).max(5000),
   explanation: z.string().trim().min(10).max(5000),
 }).strict();
 export const GapValidationSchema = z.object({

@@ -14,6 +14,7 @@ import {
   Languages,
   Link2,
   Loader2,
+  MessageSquare,
   Quote,
   Scale,
   Trash2,
@@ -43,6 +44,7 @@ import type { AxiosError } from "axios";
 import { getExternalPdfUrl, getPaperPdfPanelState, shouldShowReadPdfAction } from "./paper-pdf-panel";
 import { formatNumber } from "@/utils";
 import { formatLanguageName } from "@/utils/language";
+import { useI18n } from "@/i18n";
 
 // Presentational subcomponents
 import { PaperReadingSection } from "@/features/papers/components/paper-detail/paper-reading-section";
@@ -61,6 +63,7 @@ function getApiErrorMessage(error: unknown, fallback: string): string {
 
 export function PaperDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const { t } = useI18n();
   const {
     data: paper,
     isLoading,
@@ -559,6 +562,16 @@ export function PaperDetailPage() {
                   onClick={handleCopyCitation}
                 >
                   <Quote className="w-4 h-4" /> Cite
+                </Button>
+
+                <Button
+                  asChild
+                  variant="outline"
+                  className="h-11 px-4 gap-2 text-slate-700 dark:text-slate-300 font-bold border-slate-200/80 dark:border-slate-700 rounded-xl min-h-[44px]"
+                >
+                  <Link to={`/forum/new?type=PAPER_DISCUSSION&paper=${encodeURIComponent(id ?? "")}`}>
+                    <MessageSquare className="w-4 h-4" /> {t("Start discussion")}
+                  </Link>
                 </Button>
 
                 {currentUser && (

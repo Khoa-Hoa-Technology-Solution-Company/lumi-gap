@@ -265,6 +265,8 @@ model ForumPost {
   score               Int       @default(0)
   voteScore           Int       @default(0) @map("vote_score")
   commentCount        Int       @default(0) @map("comment_count")
+  viewCount           Int       @default(0) @map("view_count")
+  lastActivityAt      DateTime  @default(now()) @map("last_activity_at") @db.Timestamptz(6)
   isPinned            Boolean   @default(false) @map("is_pinned")
   pinnedAt            DateTime? @map("pinned_at") @db.Timestamptz(6)
   editedAt            DateTime? @map("edited_at") @db.Timestamptz(6)
@@ -272,6 +274,7 @@ model ForumPost {
   updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@index([communityId, status, isPinned, updatedAt])
+  @@index([status, isPinned, lastActivityAt])
   @@index([researchGapId, status, createdAt])
   @@index([type, status, createdAt])
   @@index([tags], type: Gin)
@@ -303,6 +306,7 @@ model ForumComment {
   updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@index([postId, status, createdAt])
+  @@index([postId, status, authorId, createdAt])
   @@index([authorId])
   @@map("forum_comments")
 }
@@ -404,6 +408,17 @@ model ForumVote {
   @@index([commentId])
   @@index([userId])
   @@map("forum_votes")
+}
+
+model ForumPostView {
+  id         String   @id @default(uuid()) @db.Uuid
+  postId     String   @map("post_id") @db.Uuid
+  viewerKey  String   @map("viewer_key") @db.VarChar(160)
+  viewedAt   DateTime @default(now()) @map("viewed_at") @db.Timestamptz(6)
+
+  @@unique([postId, viewerKey])
+  @@index([postId, viewedAt])
+  @@map("forum_post_views")
 }
 
 model ContentReport {
