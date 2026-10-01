@@ -51,6 +51,7 @@
     "argon2": "^0.45.1",
     "bcryptjs": "^2.4.3",
     "bullmq": "^5.34.0",
+    "cloudinary": "^2.11.0",
     "compression": "^1.7.5",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",

@@ -1,7 +1,9 @@
-import type { ForumPostType, ForumSort, UserRole } from "@trend/shared-types";
+import type { ForumPostType, ForumSort, UserRole, GapStructuredEvidenceItem } from "@trend/shared-types";
 import { AppError } from "../../common/exceptions/app-error.js";
 import { parseDatabaseId, publicDatabaseId } from "../../infrastructure/database/database-id.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
+import { logger } from "../../infrastructure/logger.js";
+import type { Prisma } from "../../generated/prisma/client.js";
 import { auditService } from "../audit/audit.service.js";
 import { getActiveCommunityMembership, isCommunityModerator } from "../communities/community.service.js";
 import { notificationService } from "../notifications/notification.service.js";
@@ -10,12 +12,27 @@ import {
   canExposeForumProject,
   canShowAcademicIdentity,
   cleanForumText,
-  flattenedReplyParent,
+  isAllowedForumUrl,
+  isValidForumDoi,
   normalizeForumPostType,
   normalizeForumTags,
 } from "./forum.rules.js";
+import { structuredEvidenceItems } from "../gaps/structured-evidence.js";
 
 type ReferenceInput = { paperId?: string; doi?: string; url?: string; title?: string; authors?: string[]; year?: number };
+type ReviewAsEvidenceInput = {
+  referenceId: string;
+  projectId?: string;
+  screeningStatus?: "UNDECIDED" | "INCLUDED" | "EXCLUDED";
+  exclusionReason?: string;
+  exclusionNote?: string;
+  relation?: "SUPPORTING" | "COUNTER" | "RELATED";
+  evidenceType?: string;
+  excerpt?: string;
+  evidenceSelections?: Array<{ evidenceType: string; excerpt: string }>;
+  explanation?: string;
+  confirmRelation?: boolean;
+};
 type PostInput = {
   type?: ForumPostType; title: string; content: string; communityId?: string; tags?: string[];
   linkedPaperId?: string; linkedResearchGapId?: string; linkedProjectId?: string; references?: ReferenceInput[];
@@ -41,7 +58,9 @@ async function resolveUserId(value: string): Promise<string> {
   return row.id;
 }
 async function resolveCommunity(value: string) {
-  const row = await getPrisma().community.findUnique({ where: idWhere(value), select: { id: true, legacyMongoId: true, name: true, slug: true, visibility: true, status: true } });
+  const parsed = parseDatabaseId(value);
+  if (!parsed && (value.length > 120 || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value))) throw AppError.badRequest("Invalid community identifier");
+  const row = await getPrisma().community.findUnique({ where: parsed ? idWhere(value) : { slug: value }, select: { id: true, legacyMongoId: true, name: true, slug: true, visibility: true, status: true } });
   if (!row) throw AppError.notFound("Community not found");
   return row;
 }
@@ -69,12 +88,22 @@ async function resolveGap(value?: string, requireShareable = false): Promise<str
   if (requireShareable && !canExposeForumGap(row.forumShareable)) throw AppError.forbidden("This research gap is not shareable in the public forum");
   return row.id;
 }
+async function resolveGapRow(value: string) {
+  const row = await getPrisma().researchGap.findUnique({ where: idWhere(value) });
+  if (!row) throw AppError.notFound("Research gap candidate not found");
+  return row;
+}
 async function resolveProject(value?: string): Promise<string | undefined> {
   if (!value) return undefined;
   const row = await getPrisma().project.findUnique({ where: idWhere(value), select: { id: true, visibility: true } });
   if (!row) throw AppError.badRequest("A linked academic entity does not exist");
   if (!canExposeForumProject(row.visibility)) throw AppError.forbidden("Only a project with a public summary can be linked in the forum");
   return row.id;
+}
+async function resolveProjectRow(value: string) {
+  const row = await getPrisma().project.findUnique({ where: idWhere(value) });
+  if (!row) throw AppError.notFound("Project not found");
+  return row;
 }
 
 async function assertCanPostToCommunity(communityId: string | undefined, userId: string): Promise<string | undefined> {
@@ -93,18 +122,74 @@ async function assertCanViewCommunity(communityId: string | undefined, userId?: 
 }
 async function visibleCommunityIds(userId?: string, role?: UserRole): Promise<string[]> {
   const prisma = getPrisma();
-  if (role === "admin") return (await prisma.community.findMany({ select: { id: true } })).map((row) => row.id);
-  const publicIds = (await prisma.community.findMany({ where: { visibility: "public" }, select: { id: true } })).map((row) => row.id);
+  if (role === "admin") return (await prisma.community.findMany({ where: { status: "ACTIVE" }, select: { id: true } })).map((row) => row.id);
+  const publicIds = (await prisma.community.findMany({ where: { visibility: "public", status: "ACTIVE" }, select: { id: true } })).map((row) => row.id);
   if (!userId) return publicIds;
   const resolvedUserId = await resolveUserId(userId);
   const memberIds = (await prisma.communityMembership.findMany({ where: { userId: resolvedUserId, status: "active" }, select: { communityId: true } })).map((row) => row.communityId);
-  return [...new Set([...publicIds, ...memberIds])];
+  const activeMemberIds = memberIds.length ? (await prisma.community.findMany({ where: { id: { in: memberIds }, status: "ACTIVE" }, select: { id: true } })).map((row) => row.id) : [];
+  return [...new Set([...publicIds, ...activeMemberIds])];
 }
 async function canModerate(communityId: string | null | undefined, actorId: string, role: UserRole): Promise<boolean> {
   return role === "admin" || Boolean(communityId && await isCommunityModerator(communityId, actorId));
 }
 
+async function projectAccess(projectId: string, actorId: string) {
+  const [project, member] = await Promise.all([
+    getPrisma().project.findUnique({ where: { id: projectId } }),
+    getPrisma().projectMember.findUnique({ where: { projectId_userId: { projectId, userId: actorId } } }),
+  ]);
+  if (!project || project.status === "ARCHIVED") throw AppError.notFound("Project not found");
+  const isMember = project.ownerId === actorId || member?.status === "ACTIVE";
+  if (!isMember) throw AppError.forbidden("Project membership is required");
+  return project;
+}
+
+async function assertCanReadGapForForum(gapInput: string, actorInput: string) {
+  const [gap, actor] = await Promise.all([resolveGapRow(gapInput), resolveUserId(actorInput)]);
+  if (gap.userId === actor) return { gap, actor };
+  if (gap.projectId) {
+    const member = await getPrisma().projectMember.findUnique({ where: { projectId_userId: { projectId: gap.projectId, userId: actor } } });
+    const project = await getPrisma().project.findUnique({ where: { id: gap.projectId }, select: { ownerId: true, status: true } });
+    if (project?.status !== "ARCHIVED" && (project?.ownerId === actor || member?.status === "ACTIVE")) return { gap, actor };
+  }
+  throw AppError.notFound("Research gap candidate not found");
+}
+
+async function resolveForumCitationReviewContext(gapInput: string, referenceInput: string, projectInput: string | undefined, actorInput: string) {
+  const { gap, actor } = await assertCanReadGapForForum(gapInput, actorInput);
+  const referenceId = parseDatabaseId(referenceInput);
+  if (!referenceId || referenceId.kind !== "uuid") throw AppError.badRequest("Invalid forum citation identifier");
+  const prisma = getPrisma();
+  const reference = await prisma.forumReference.findUnique({ where: { id: referenceId.value } });
+  if (!reference) throw AppError.notFound("Forum citation not found");
+  const comment = reference.commentId ? await prisma.forumComment.findUnique({ where: { id: reference.commentId } }) : null;
+  const post = await prisma.forumPost.findUnique({ where: { id: reference.postId ?? comment?.postId ?? "" } });
+  if (!post || !["active", "locked"].includes(post.status)) throw AppError.notFound("Forum citation not found");
+  const link = await prisma.forumPostGap.findUnique({ where: { postId_gapId: { postId: post.id, gapId: gap.id } } });
+  if (!link && post.linkedResearchGapId !== gap.id && post.researchGapId !== gap.id) throw AppError.badRequest("This citation is not part of a discussion linked to the selected candidate gap");
+  if (!reference.paperId) throw AppError.badRequest("This forum citation must be matched to an existing LumiGap Paper before it can enter evidence review");
+  const paper = await prisma.paper.findUnique({ where: { id: reference.paperId }, select: { id: true, legacyMongoId: true, title: true, dataStatus: true } });
+  if (!paper || paper.dataStatus !== "active") throw AppError.badRequest("The cited paper is not available for evidence review");
+  const requestedProject = projectInput ? await projectAccess((await resolveProjectRow(projectInput)).id, actor) : undefined;
+  const projectId = gap.projectId ?? requestedProject?.id;
+  if (!projectId) throw AppError.badRequest("Select a research project before reviewing this forum citation as evidence");
+  if (gap.projectId && requestedProject && requestedProject.id !== gap.projectId) throw AppError.badRequest("Evidence for this candidate gap must use its owning project");
+  await projectAccess(projectId, actor);
+  const projectPaper = await prisma.projectPaper.findUnique({ where: { projectId_paperId: { projectId, paperId: paper.id } } });
+  const corpusPaper = gap.corpusId
+    ? await prisma.corpusPaper.findUnique({ where: { corpusId_paperId: { corpusId: gap.corpusId, paperId: paper.id } } })
+    : null;
+  const extractedEvidence = (corpusPaper?.included ? structuredEvidenceItems(corpusPaper.evidence) : []) as GapStructuredEvidenceItem[];
+  return { actor, gap, reference, comment, post, paper, projectId, projectPaper, corpusPaper, extractedEvidence };
+}
+
 async function prepareReferences(references: ReferenceInput[] = []): Promise<ReferenceRecord[]> {
+  if (references.length > 30) throw AppError.badRequest("Too many references");
+  for (const reference of references) {
+    if (reference.doi && !isValidForumDoi(reference.doi) || reference.url && !isAllowedForumUrl(reference.url)) throw AppError.badRequest("Invalid citation DOI or URL");
+    if (!reference.paperId && (!reference.doi || !cleanForumText(reference.title ?? ""))) throw AppError.badRequest("A DOI citation requires confirmed title metadata");
+  }
   return Promise.all(references.map(async (reference, position) => {
     if (!reference.paperId) return {
       paperId: null, doi: reference.doi?.toLocaleLowerCase() ?? null, url: reference.url ?? null,
@@ -118,13 +203,13 @@ async function prepareReferences(references: ReferenceInput[] = []): Promise<Ref
   }));
 }
 
-async function academicAuthors(userIds: string[], viewerId?: string) {
+async function academicAuthors(userIds: string[], viewerId?: string, transaction?: Prisma.TransactionClient) {
   if (!userIds.length) return new Map<string, Record<string, unknown>>();
   const ids = [...new Set(userIds)];
-  const prisma = getPrisma();
+  const prisma = transaction ?? getPrisma();
   const [users, profiles] = await Promise.all([
     prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, legacyMongoId: true, fullName: true, avatarUrl: true, academicProfileType: true, institution: true, role: true } }),
-    prisma.academicProfile.findMany({ where: { userId: { in: ids } }, select: { userId: true, affiliationStatus: true, academicTitle: true, profileVisibility: true } }),
+    prisma.academicProfile.findMany({ where: { userId: { in: ids } }, select: { userId: true, affiliationStatus: true, academicTitle: true, profileVisibility: true, primaryPosition: true, positionTitle: true, positionStatus: true } }),
   ]);
   const profileByUser = new Map(profiles.map((profile) => [profile.userId, profile]));
   return new Map(users.map((user) => {
@@ -137,7 +222,81 @@ async function academicAuthors(userIds: string[], viewerId?: string) {
       role: user.role,
       affiliationVerified: showAcademicIdentity && profile?.affiliationStatus === "VERIFIED",
       academicTitle: showAcademicIdentity ? profile?.academicTitle : undefined,
+      primaryPosition: showAcademicIdentity ? profile?.primaryPosition : undefined,
+      positionTitle: showAcademicIdentity ? profile?.positionTitle : undefined,
+      positionVerified: showAcademicIdentity && profile?.positionStatus === "VERIFIED",
     }];
+  }));
+}
+
+const FORUM_VIEW_COOLDOWN_MS = 30 * 60 * 1000;
+
+async function recordForumView(postId: string, viewerKey: string) {
+  const now = new Date();
+  const before = new Date(now.getTime() - FORUM_VIEW_COOLDOWN_MS);
+  const prisma = getPrisma();
+  const updated = await prisma.$transaction(async (tx) => {
+    const result = await tx.forumPostView.updateMany({ where: { postId, viewerKey, viewedAt: { lte: before } }, data: { viewedAt: now } });
+    if (result.count) await tx.forumPost.update({ where: { id: postId }, data: { viewCount: { increment: 1 } } });
+    return result.count;
+  });
+  if (updated) return true;
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.forumPostView.create({ data: { postId, viewerKey, viewedAt: now } });
+      await tx.forumPost.update({ where: { id: postId }, data: { viewCount: { increment: 1 } } });
+    });
+    return true;
+  } catch (error) {
+    if (isUniqueViolation(error)) return false;
+    throw error;
+  }
+}
+
+type ForumPostMetric = {
+  replyCount: number;
+  helpfulCount: number;
+  viewCount: number;
+  lastActivityAt: Date;
+  participants: string[];
+};
+
+async function forumPostMetrics(posts: Array<Awaited<ReturnType<typeof resolvePost>>>) {
+  if (!posts.length) return new Map<string, ForumPostMetric>();
+  const prisma = getPrisma();
+  const postIds = posts.map((post) => post.id);
+  const [replyStats, recentParticipants, helpfulVotes] = await Promise.all([
+    prisma.forumComment.groupBy({ by: ["postId"], where: { postId: { in: postIds }, status: "active" }, _count: { _all: true }, _max: { createdAt: true, editedAt: true } }),
+    prisma.$queryRaw<Array<{ postId: string; authorId: string }>>`
+      SELECT "postId", "authorId" FROM (
+        SELECT comment.post_id AS "postId", comment.author_id AS "authorId",
+          ROW_NUMBER() OVER (PARTITION BY comment.post_id ORDER BY MAX(comment.created_at) DESC, comment.author_id) AS rank
+        FROM forum_comments AS comment JOIN forum_posts AS post ON post.id = comment.post_id
+        WHERE comment.post_id = ANY(${postIds}::uuid[]) AND comment.status = 'active'
+          AND comment.author_id <> post.author_id
+        GROUP BY comment.post_id, comment.author_id
+      ) AS ranked WHERE rank <= 4 ORDER BY "postId", rank`,
+    prisma.forumVote.groupBy({ by: ["postId"], where: { postId: { in: postIds }, value: 1 }, _count: { _all: true } }),
+  ]);
+  const participantsByPost = new Map<string, string[]>();
+  for (const participant of recentParticipants) {
+    const list = participantsByPost.get(participant.postId) ?? [];
+    list.push(participant.authorId);
+    participantsByPost.set(participant.postId, list);
+  }
+  const replyByPost = new Map(replyStats.map((stat) => [stat.postId, stat]));
+  const helpfulByPost = new Map(helpfulVotes.flatMap((vote) => vote.postId ? [[vote.postId, vote._count._all]] : []));
+  return new Map(posts.map((post) => {
+    const reply = replyByPost.get(post.id);
+    const participants = [...new Set([post.authorId, ...(participantsByPost.get(post.id) ?? [])])].slice(0, 5);
+    const lastActivityAt = latestDate(post.createdAt, post.editedAt, reply?._max.createdAt, reply?._max.editedAt)!;
+    return [post.id, {
+      replyCount: reply?._count._all ?? 0,
+      helpfulCount: helpfulByPost.get(post.id) ?? 0,
+      viewCount: post.viewCount,
+      lastActivityAt,
+      participants,
+    } satisfies ForumPostMetric];
   }));
 }
 
@@ -159,12 +318,12 @@ async function forumResearchContexts(posts: Array<Awaited<ReturnType<typeof reso
   const projectIds = [...new Set(posts.flatMap((post) => post.linkedProjectId ? [post.linkedProjectId] : []))];
   const [papers, gaps, projects] = await Promise.all([
     paperIds.length ? prisma.paper.findMany({ where: { id: { in: paperIds }, dataStatus: "active" }, select: { id: true, legacyMongoId: true, title: true, doi: true, publicationYear: true } }) : [],
-    gapIds.length ? prisma.researchGap.findMany({ where: { id: { in: gapIds }, forumShareable: true, status: "active" }, select: { id: true, legacyMongoId: true, title: true, topic: true } }) : [],
+    gapIds.length ? prisma.researchGap.findMany({ where: { id: { in: gapIds }, forumShareable: true, status: "active" }, select: { id: true, legacyMongoId: true, title: true, topic: true, validationStatus: true, status: true } }) : [],
     projectIds.length ? prisma.project.findMany({ where: { id: { in: projectIds }, visibility: "PUBLIC_SUMMARY", archivedAt: null }, select: { id: true, legacyMongoId: true, title: true } }) : [],
   ]);
   return {
     papers: new Map(papers.map((paper) => [paper.id, { id: publicDatabaseId(paper), title: paper.title, doi: paper.doi ?? undefined, publicationYear: paper.publicationYear }])),
-    gaps: new Map(gaps.map((gap) => [gap.id, { id: publicDatabaseId(gap), title: gap.title, topic: gap.topic }])),
+    gaps: new Map(gaps.map((gap) => [gap.id, { id: publicDatabaseId(gap), title: gap.title, topic: gap.topic, validationStatus: gap.validationStatus, status: gap.status }])),
     projects: new Map(projects.map((project) => [project.id, { id: publicDatabaseId(project), title: project.title }])),
   };
 }
@@ -173,15 +332,18 @@ async function presentPosts(posts: Array<Awaited<ReturnType<typeof resolvePost>>
   if (!posts.length) return [];
   const prisma = getPrisma(); const postIds = posts.map((post) => post.id);
   const viewerId = viewerInput ? await resolveUserId(viewerInput) : undefined;
-  const [authors, communities, references, postPapers, researchContexts, commentIds, viewerVotes, follows] = await Promise.all([
-    academicAuthors(posts.map((post) => post.authorId), viewerId),
-    prisma.community.findMany({ where: { id: { in: posts.flatMap((post) => post.communityId ? [post.communityId] : []) } }, select: { id: true, legacyMongoId: true, name: true, slug: true } }),
+  const [communities, references, postPapers, researchContexts, commentIds, viewerVotes, follows, metrics] = await Promise.all([
+    prisma.community.findMany({ where: { id: { in: posts.flatMap((post) => post.communityId ? [post.communityId] : []) } }, select: { id: true, legacyMongoId: true, name: true, slug: true, status: true } }),
     prisma.forumReference.findMany({ where: { postId: { in: postIds } }, orderBy: { position: "asc" } }),
     prisma.forumPostPaper.findMany({ where: { postId: { in: postIds } }, orderBy: { position: "asc" } }),
     forumResearchContexts(posts), publicIdsFor("comment", posts.map((post) => post.acceptedCommentId)),
     viewerId ? prisma.forumVote.findMany({ where: { userId: viewerId, postId: { in: postIds } } }) : [],
     viewerId ? prisma.forumThreadFollow.findMany({ where: { userId: viewerId, postId: { in: postIds } } }) : [],
+    forumPostMetrics(posts),
   ]);
+  const participantIds = [...new Set(posts.flatMap((post) => metrics.get(post.id)?.participants ?? [post.authorId]))];
+  const participantAuthors = await academicAuthors(participantIds, viewerId);
+  const authors = participantAuthors;
   const communityById = new Map(communities.map((community) => { const id = publicDatabaseId(community); return [community.id, { _id: id, id, name: community.name, slug: community.slug }]; }));
   const referencesByPost = new Map<string, typeof references>();
   for (const reference of references) { const list = referencesByPost.get(reference.postId!) ?? []; list.push(reference); referencesByPost.set(reference.postId!, list); }
@@ -194,12 +356,20 @@ async function presentPosts(posts: Array<Awaited<ReturnType<typeof resolvePost>>
   for (const row of postPapers) { const safeId = safePaperIds.get(row.paperId); if (!safeId) continue; const list = papersByPost.get(row.postId) ?? []; list.push(safeId); papersByPost.set(row.postId, list); }
   const voteByPost = new Map(viewerVotes.flatMap((vote) => vote.postId ? [[vote.postId, vote.value]] : []));
   const followed = new Set(follows.map((follow) => follow.postId));
+  const activeMemberCommunities = new Set(viewerId ? (await prisma.communityMembership.findMany({ where: { userId: viewerId, communityId: { in: communities.map((community) => community.id) }, status: "active" }, select: { communityId: true } })).map((membership) => membership.communityId) : []);
+  const activeCommunities = new Set(communities.filter((community) => community.status === "ACTIVE").map((community) => community.id));
   const moderatedCommunityIds = viewerId && viewerRole !== "admin" ? new Set((await prisma.communityMembership.findMany({ where: { userId: viewerId, communityId: { in: posts.flatMap((post) => post.communityId ? [post.communityId] : []) }, status: "active", role: { in: ["owner", "moderator"] } }, select: { communityId: true } })).map((membership) => membership.communityId)) : new Set<string>();
   return posts.map((post) => {
     const id = publicDatabaseId(post); const linkedPaper = post.linkedPaperId ? researchContexts.papers.get(post.linkedPaperId) : undefined;
     const linkedGap = (post.linkedResearchGapId ? researchContexts.gaps.get(post.linkedResearchGapId) : undefined)
       ?? (post.researchGapId ? researchContexts.gaps.get(post.researchGapId) : undefined);
     const linkedProject = post.linkedProjectId ? researchContexts.projects.get(post.linkedProjectId) : undefined;
+    const metric = metrics.get(post.id)!;
+    const participantSummaries = metric.participants.map((participantId) => {
+      const author = participantAuthors.get(participantId);
+      if (!author) return undefined;
+      return { id: author.id, fullName: author.fullName, avatarUrl: author.avatarUrl, academicProfileType: author.academicProfileType };
+    }).filter(Boolean);
     return { ...post, _id: id, id, content: post.body, authorId: authors.get(post.authorId) ?? post.authorId,
       communityId: post.communityId ? communityById.get(post.communityId) ?? post.communityId : undefined,
       researchGapId: linkedGap?.id,
@@ -208,28 +378,50 @@ async function presentPosts(posts: Array<Awaited<ReturnType<typeof resolvePost>>
       linkedPaper, linkedResearchGap: linkedGap, linkedProject,
       acceptedCommentId: post.acceptedCommentId ? commentIds.get(post.acceptedCommentId) ?? post.acceptedCommentId : undefined,
       viewerVote: (voteByPost.get(post.id) ?? 0) as -1 | 0 | 1, isFollowing: followed.has(post.id),
+      commentCount: metric.replyCount, replyCount: metric.replyCount, helpfulCount: metric.helpfulCount, viewCount: metric.viewCount,
+      lastActivityAt: metric.lastActivityAt, participants: participantSummaries,
       canModerate: viewerRole === "admin" || Boolean(post.communityId && moderatedCommunityIds.has(post.communityId)),
-      references: (referencesByPost.get(post.id) ?? []).map(({ id: _id, postId: _postId, commentId: _commentId, position: _position, ...reference }) => ({ ...reference, paperId: reference.paperId ? safePaperIds.get(reference.paperId) : undefined })) };
+      canReply: Boolean(viewerId && post.status === "active" && (!post.communityId || activeCommunities.has(post.communityId) && activeMemberCommunities.has(post.communityId))),
+      references: (referencesByPost.get(post.id) ?? []).map(({ postId: _postId, commentId: _commentId, position: _position, ...reference }) => ({ ...reference, id: publicDatabaseId(reference), paperId: reference.paperId ? safePaperIds.get(reference.paperId) : undefined })) };
   });
 }
 
-async function presentComments(comments: Array<Awaited<ReturnType<typeof resolveComment>>>, viewerInput?: string, acceptedCommentId?: string | null) {
+async function presentComments(comments: Array<Awaited<ReturnType<typeof resolveComment>>>, viewerInput?: string, acceptedCommentId?: string | null, transaction?: Prisma.TransactionClient) {
   if (!comments.length) return [];
-  const prisma = getPrisma();
+  const prisma = transaction ?? getPrisma();
   const viewerId = viewerInput ? await resolveUserId(viewerInput) : undefined;
-  const [authors, references, parentIds, viewerVotes] = await Promise.all([
-    academicAuthors(comments.map((comment) => comment.authorId), viewerId),
-    prisma.forumReference.findMany({ where: { commentId: { in: comments.map((comment) => comment.id) } }, orderBy: { position: "asc" } }),
-    publicIdsFor("comment", comments.map((comment) => comment.parentCommentId)),
-    viewerId ? prisma.forumVote.findMany({ where: { userId: viewerId, commentId: { in: comments.map((comment) => comment.id) } } }) : [],
+  const ids = comments.map((comment) => comment.id);
+  const parents = await prisma.forumComment.findMany({ where: { id: { in: comments.flatMap((comment) => comment.parentCommentId ? [comment.parentCommentId] : []) }, postId: { in: [...new Set(comments.map((comment) => comment.postId))] } }, select: { id: true, legacyMongoId: true, postId: true, authorId: true, status: true } });
+  const [authors, references, viewerVotes, helpful] = await Promise.all([
+    academicAuthors([...comments.map((comment) => comment.authorId), ...parents.filter((parent) => parent.status === "active").map((parent) => parent.authorId)], viewerId, transaction),
+    prisma.forumReference.findMany({ where: { commentId: { in: comments.filter((comment) => comment.status === "active").map((comment) => comment.id) } }, orderBy: { position: "asc" } }),
+    viewerId ? prisma.forumVote.findMany({ where: { userId: viewerId, commentId: { in: ids } } }) : [],
+    prisma.forumVote.groupBy({ by: ["commentId"], where: { commentId: { in: ids }, value: 1 }, _count: { _all: true } }),
   ]);
+  const safePaperRows = await prisma.paper.findMany({
+    where: { id: { in: [...new Set(references.flatMap((reference) => reference.paperId ? [reference.paperId] : []))] }, dataStatus: "active" },
+    select: { id: true, legacyMongoId: true },
+  });
+  const safePaperIds = new Map(safePaperRows.map((paper) => [paper.id, publicDatabaseId(paper)]));
+  const parentsById = new Map(parents.map((parent) => [parent.id, parent]));
   const refsByComment = new Map<string, typeof references>();
   for (const reference of references) { const list = refsByComment.get(reference.commentId!) ?? []; list.push(reference); refsByComment.set(reference.commentId!, list); }
   const voteByComment = new Map(viewerVotes.flatMap((vote) => vote.commentId ? [[vote.commentId, vote.value]] : []));
-  return comments.map((comment) => { const id = publicDatabaseId(comment); return { ...comment, _id: id, id, content: comment.status === "deleted" ? "This response was removed by its author." : comment.body,
-    authorId: authors.get(comment.authorId) ?? comment.authorId, parentCommentId: comment.parentCommentId ? parentIds.get(comment.parentCommentId) ?? comment.parentCommentId : undefined,
-    viewerVote: (voteByComment.get(comment.id) ?? 0) as -1 | 0 | 1, isAccepted: acceptedCommentId === comment.id,
-    references: (refsByComment.get(comment.id) ?? []).map(({ id: _id, postId: _postId, commentId: _commentId, position: _position, ...reference }) => reference) }; });
+  const helpfulByComment = new Map(helpful.flatMap((vote) => vote.commentId ? [[vote.commentId, vote._count._all]] : []));
+  return comments.map((comment) => {
+    const id = publicDatabaseId(comment);
+    const parent = comment.parentCommentId ? parentsById.get(comment.parentCommentId) : undefined;
+    const body = comment.status === "active" ? comment.body : "This response was removed by its author.";
+    return { ...comment, body, _id: id, id, content: body,
+      authorId: authors.get(comment.authorId) ?? comment.authorId,
+      parentCommentId: parent ? publicDatabaseId(parent) : undefined,
+      parentComment: parent && parent.postId === comment.postId ? { id: publicDatabaseId(parent), status: parent.status, author: parent.status === "active" ? authors.get(parent.authorId) : undefined } : undefined,
+      viewerVote: (voteByComment.get(comment.id) ?? 0) as -1 | 0 | 1,
+      helpfulCount: helpfulByComment.get(comment.id) ?? 0,
+      isAccepted: comment.status === "active" && acceptedCommentId === comment.id,
+      references: (refsByComment.get(comment.id) ?? []).map(({ postId: _postId, commentId: _commentId, position: _position, ...reference }) => ({ ...reference, id: publicDatabaseId(reference), paperId: reference.paperId ? safePaperIds.get(reference.paperId) : undefined })),
+    };
+  });
 }
 
 async function presentReports(reports: ReportRecord[]) {
@@ -285,6 +477,47 @@ async function presentModerationActions(actions: Array<{ id: string; actorId: st
   }));
 }
 
+function latestDate(...values: Array<Date | null | undefined>) {
+  return values.filter((value): value is Date => Boolean(value)).sort((a, b) => b.getTime() - a.getTime())[0];
+}
+
+function discussionActivity(posts: Array<{ id: string; authorId: string; commentCount: number; voteScore: number; lastActivityAt: Date; createdAt: Date }>, comments: Array<{ id: string; postId: string; authorId: string; updatedAt: Date; editedAt: Date | null; createdAt: Date }>, references: Array<{ postId: string | null; commentId: string | null }>, commentPostById: Map<string, string>, follows: number) {
+  const postIds = new Set(posts.map((post) => post.id));
+  const participants = new Set<string>(posts.map((post) => post.authorId));
+  for (const comment of comments) participants.add(comment.authorId);
+  let citationCount = 0;
+  for (const reference of references) {
+    if (reference.postId && postIds.has(reference.postId)) citationCount += 1;
+    else if (reference.commentId && commentPostById.has(reference.commentId)) citationCount += 1;
+  }
+  const lastActivityAt = latestDate(...posts.map((post) => post.lastActivityAt), ...comments.flatMap((comment) => [comment.createdAt, comment.editedAt]));
+  return {
+    threadCount: posts.length,
+    responseCount: posts.reduce((sum, post) => sum + post.commentCount, 0),
+    citationCount,
+    participantCount: participants.size,
+    helpfulCount: posts.reduce((sum, post) => sum + Math.max(0, post.voteScore), 0),
+    followCount: follows,
+    lastActivityAt: lastActivityAt?.toISOString(),
+  };
+}
+
+async function notifyGapDiscussionCreated(post: { id: string; title: string; authorId: string; linkedResearchGapId: string | null }) {
+  if (!post.linkedResearchGapId) return;
+  const gap = await getPrisma().researchGap.findUnique({ where: { id: post.linkedResearchGapId }, select: { userId: true, title: true } });
+  if (!gap || gap.userId === post.authorId) return;
+  await notificationService.create({
+    userId: gap.userId,
+    title: "New community discussion linked to your candidate gap",
+    message: `A forum discussion was started for “${gap.title}”.`,
+    type: "GAP_DISCUSSION_CREATED",
+    targetKind: "forum_post",
+    targetId: post.id,
+  });
+}
+
+
+
 export const forumService = {
   async createPost(input: PostInput, userId: string) {
     const type = normalizeForumPostType(input.type);
@@ -308,6 +541,11 @@ export const forumService = {
       return created;
     });
     await auditService.log("forum.post.created", { userId, targetTableName: "forum_posts", targetRecordId: post.id });
+    if (linkedResearchGapId) {
+      await auditService.log("GAP_DISCUSSION_CREATED", { userId, targetTableName: "forum_posts", targetRecordId: post.id, details: { gapId: linkedResearchGapId } });
+      await auditService.log("THREAD_LINKED_TO_GAP", { userId, targetTableName: "forum_post_gaps", targetRecordId: post.id, details: { postId: post.id, gapId: linkedResearchGapId } });
+      await notifyGapDiscussionCreated(post);
+    }
     return (await presentPosts([post], userId))[0];
   },
 
@@ -315,7 +553,7 @@ export const forumService = {
     const prisma = getPrisma();
     const where: Record<string, unknown> = { status: { in: filter.includeModerated && actorRole === "admin" ? ["active", "locked", "hidden"] : ["active", "locked"] } };
     const conditions: Record<string, unknown>[] = [];
-    if (filter.linkedResearchGapId) where.linkedResearchGapId = await resolveGap(filter.linkedResearchGapId);
+    if (filter.linkedResearchGapId) where.linkedResearchGapId = await resolveGap(filter.linkedResearchGapId, true);
     if (filter.linkedPaperId) where.linkedPaperId = await resolvePaper(filter.linkedPaperId);
     if (filter.type) where.type = normalizeForumPostType(filter.type);
     if (filter.tag) {
@@ -325,8 +563,11 @@ export const forumService = {
       where.id = { in: links.map((item) => item.postId) };
     }
     if (filter.communityId) {
-      const community = await resolveCommunity(filter.communityId); await assertCanViewCommunity(community.id, actorId, actorRole); where.communityId = community.id;
+      const community = await resolveCommunity(filter.communityId);
+      if (community.status !== "ACTIVE") throw AppError.notFound("Community not found");
+      await assertCanViewCommunity(community.id, actorId, actorRole); where.communityId = community.id;
     } else conditions.push({ OR: [{ communityId: null }, { communityId: { in: await visibleCommunityIds(actorId, actorRole) } }] });
+    // Maintained transactionally from active replies only; the opening post is not a reply.
     if (filter.sort === "unanswered") conditions.push({ commentCount: 0 });
     if (filter.sort === "following") {
       if (!actorId) conditions.push({ id: { in: [] } });
@@ -352,9 +593,11 @@ export const forumService = {
       ] });
     }
     if (conditions.length) where.AND = conditions;
+    // Existing discovery ranking: helpful votes, visible replies, activity, then unique ID.
+    // No research confidence, evidence, validation or author credentials participate.
     const orderBy = filter.sort === "popular"
-      ? [{ isPinned: "desc" as const }, { voteScore: "desc" as const }, { commentCount: "desc" as const }, { updatedAt: "desc" as const }]
-      : [{ isPinned: "desc" as const }, { updatedAt: "desc" as const }];
+      ? [{ isPinned: "desc" as const }, { voteScore: "desc" as const }, { commentCount: "desc" as const }, { lastActivityAt: "desc" as const }, { id: "desc" as const }]
+      : [{ isPinned: "desc" as const }, { lastActivityAt: "desc" as const }, { id: "desc" as const }];
     const [data, total] = await Promise.all([
       prisma.forumPost.findMany({ where, orderBy, skip: (page - 1) * pageSize, take: pageSize }),
       prisma.forumPost.count({ where }),
@@ -362,12 +605,272 @@ export const forumService = {
     return { data: await presentPosts(data, actorId, actorRole), meta: { page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)) } };
   },
 
-  async getPost(postId: string, actorId?: string, actorRole?: UserRole) {
-    const post = await resolvePost(postId); if (post.status === "deleted" && post.commentCount === 0) throw AppError.notFound("Forum post not found");
+  async gapDiscussionContext(gapInput: string, actorInput: string, actorRole: UserRole) {
+    const { gap } = await assertCanReadGapForForum(gapInput, actorInput);
+    const prisma = getPrisma();
+    const visibleIds = await visibleCommunityIds(actorInput, actorRole);
+    const gapLinks = await prisma.forumPostGap.findMany({ where: { gapId: gap.id }, select: { postId: true } });
+    const gapPapers = await prisma.researchGapPaper.findMany({ where: { gapId: gap.id }, select: { paperId: true } });
+    const gapPaperIds = [...new Set(gapPapers.map((item) => item.paperId))];
+    const [postPaperLinks, referenceLinks] = gapPaperIds.length ? await Promise.all([
+      prisma.forumPostPaper.findMany({ where: { paperId: { in: gapPaperIds } }, select: { postId: true } }),
+      prisma.forumReference.findMany({ where: { paperId: { in: gapPaperIds } }, select: { postId: true, commentId: true } }),
+    ]) : [[], []] as const;
+    const referenceCommentIds = referenceLinks.flatMap((item) => item.commentId ? [item.commentId] : []);
+    const referenceComments = referenceCommentIds.length ? await prisma.forumComment.findMany({ where: { id: { in: referenceCommentIds } }, select: { postId: true } }) : [];
+    const sharedPostIds = [
+      ...postPaperLinks.map((item) => item.postId),
+      ...referenceLinks.flatMap((item) => item.postId ? [item.postId] : []),
+      ...referenceComments.map((item) => item.postId),
+    ];
+    const terms = [...new Set(`${gap.title} ${gap.topic}`.toLowerCase().split(/[^a-z0-9]+/).filter((term) => term.length >= 4).slice(0, 8))];
+    const communityScope = { OR: [{ communityId: null }, { communityId: { in: visibleIds } }] };
+    const posts = await prisma.forumPost.findMany({
+      where: {
+        status: { in: ["active", "locked"] },
+        AND: [communityScope],
+        OR: [
+          { id: { in: gapLinks.map((item) => item.postId) } },
+          { linkedResearchGapId: gap.id },
+          { researchGapId: gap.id },
+          ...(sharedPostIds.length ? [{ id: { in: sharedPostIds } }] : []),
+          ...terms.flatMap((term) => [{ title: { contains: term, mode: "insensitive" as const } }, { body: { contains: term, mode: "insensitive" as const } }, { tags: { has: term } }]),
+        ],
+      },
+      orderBy: [{ lastActivityAt: "desc" }],
+      take: 30,
+    });
+    const explicitPostIds = new Set([...gapLinks.map((item) => item.postId), ...posts.flatMap((post) => post.linkedResearchGapId === gap.id || post.researchGapId === gap.id ? [post.id] : [])]);
+    const sharedPaperPostIds = new Set(sharedPostIds);
+    const ranked = posts.sort((a, b) => {
+      const aExplicit = explicitPostIds.has(a.id) ? 1 : 0; const bExplicit = explicitPostIds.has(b.id) ? 1 : 0;
+      if (aExplicit !== bExplicit) return bExplicit - aExplicit;
+      const aShared = sharedPaperPostIds.has(a.id) ? 1 : 0; const bShared = sharedPaperPostIds.has(b.id) ? 1 : 0;
+      if (aShared !== bShared) return bShared - aShared;
+      const aScore = Math.max(0, a.voteScore) + a.commentCount;
+      const bScore = Math.max(0, b.voteScore) + b.commentCount;
+      if (aScore !== bScore) return bScore - aScore;
+      return b.lastActivityAt.getTime() - a.lastActivityAt.getTime();
+    }).slice(0, 12);
+    const postIds = ranked.map((post) => post.id);
+    const comments = postIds.length ? await prisma.forumComment.findMany({ where: { postId: { in: postIds }, status: "active" }, select: { id: true, postId: true, authorId: true, createdAt: true, updatedAt: true, editedAt: true } }) : [];
+    const commentPostById = new Map(comments.map((comment) => [comment.id, comment.postId]));
+    const references = postIds.length ? await prisma.forumReference.findMany({
+      where: { OR: [{ postId: { in: postIds } }, { commentId: { in: comments.map((comment) => comment.id) } }] },
+      orderBy: { createdAt: "desc" },
+    }) : [];
+    const follows = postIds.length ? await prisma.forumThreadFollow.count({ where: { postId: { in: postIds } } }) : 0;
+    const paperRows = references.some((reference) => reference.paperId)
+      ? await prisma.paper.findMany({ where: { id: { in: [...new Set(references.flatMap((reference) => reference.paperId ? [reference.paperId] : []))] }, dataStatus: "active" }, select: { id: true, legacyMongoId: true, title: true, doi: true, publicationYear: true } })
+      : [];
+    const paperById = new Map(paperRows.map((paper) => [paper.id, paper]));
+    return {
+      gap: { id: publicDatabaseId(gap), title: gap.title, topic: gap.topic, validationStatus: gap.validationStatus, status: gap.status },
+      summary: discussionActivity(ranked, comments, references, commentPostById, follows),
+      discussions: await presentPosts(ranked, actorInput, actorRole),
+      citations: references.map((reference) => {
+        const paper = reference.paperId ? paperById.get(reference.paperId) : undefined;
+        return {
+          id: publicDatabaseId(reference),
+          postId: reference.postId ? publicDatabaseId(ranked.find((post) => post.id === reference.postId) ?? { id: reference.postId }) : undefined,
+          commentId: reference.commentId ?? undefined,
+          source: reference.postId ? "post" : "response",
+          paperId: paper ? publicDatabaseId(paper) : undefined,
+          title: paper?.title ?? reference.title ?? undefined,
+          doi: paper?.doi ?? reference.doi ?? undefined,
+          year: paper?.publicationYear ?? reference.year ?? undefined,
+          verified: reference.verified,
+        };
+      }),
+      boundary: "Forum activity is a discovery signal only. It never changes gap confidence, evidence confidence, validation status, or scholarly evidence records.",
+    };
+  },
+
+  async forumCitationEvidenceOptions(gapInput: string, referenceInput: string, projectInput: string | undefined, actorInput: string) {
+    const context = await resolveForumCitationReviewContext(gapInput, referenceInput, projectInput, actorInput);
+    const { gap, paper, projectId, projectPaper, extractedEvidence } = context;
+    if (!projectPaper) {
+      return {
+        status: "SCREENING_REQUIRED",
+        projectId,
+        paper: { id: publicDatabaseId(paper), title: paper.title },
+        projectPaper: undefined,
+        extractedEvidence: [],
+        message: "Include the paper in project screening before extracting structured evidence.",
+      };
+    }
+    if (projectPaper.screeningStatus !== "INCLUDED") {
+      return {
+        status: "SCREENING_REQUIRED",
+        projectId,
+        paper: { id: publicDatabaseId(paper), title: paper.title },
+        projectPaper: { id: projectPaper.id, screeningStatus: projectPaper.screeningStatus },
+        extractedEvidence: [],
+        message: "Include the paper in project screening before extracting structured evidence.",
+      };
+    }
+    if (!extractedEvidence.length) {
+      return {
+        status: "EVIDENCE_EXTRACTION_REQUIRED",
+        projectId,
+        corpusId: gap.corpusId ? publicDatabaseId({ id: gap.corpusId }) : undefined,
+        paper: { id: publicDatabaseId(paper), title: paper.title },
+        projectPaper: { id: projectPaper.id, screeningStatus: projectPaper.screeningStatus },
+        extractedEvidence: [],
+        message: "Extract evidence from this paper before linking it to the candidate gap.",
+      };
+    }
+    return {
+      status: "EVIDENCE_SELECTION_REQUIRED",
+      projectId,
+      corpusId: gap.corpusId ? publicDatabaseId({ id: gap.corpusId }) : undefined,
+      paper: { id: publicDatabaseId(paper), title: paper.title },
+      projectPaper: { id: projectPaper.id, screeningStatus: projectPaper.screeningStatus },
+      extractedEvidence,
+      message: "Select one or more structured extracted evidence items before linking them to the candidate gap.",
+    };
+  },
+
+  async reviewCitationAsEvidence(gapInput: string, input: ReviewAsEvidenceInput, actorInput: string) {
+    const prisma = getPrisma();
+    const context = await resolveForumCitationReviewContext(gapInput, input.referenceId, input.projectId, actorInput);
+    const { gap, actor, reference, comment, post, paper, projectId } = context;
+    let { projectPaper } = context;
+    if (gap.userId !== actor && !gap.projectId) throw AppError.forbidden("Only the candidate gap owner can review evidence for a standalone gap");
+    if (input.screeningStatus === "EXCLUDED" && !input.exclusionReason?.trim()) throw AppError.badRequest("An exclusion reason is required when excluding a paper");
+    let paperWasAdded = false;
+    const screenedProjectPaper = await prisma.$transaction(async (tx) => {
+      const existing = projectPaper ?? await tx.projectPaper.findUnique({ where: { projectId_paperId: { projectId, paperId: paper.id } } });
+      const row = existing ?? await tx.projectPaper.create({ data: { projectId, paperId: paper.id, addedById: actor } });
+      paperWasAdded = !existing;
+      if (!existing) await tx.projectActivity.create({ data: { projectId, actorId: actor, type: "PAPER_ADDED_FROM_FORUM", entityKind: "PAPER", entityId: publicDatabaseId(paper), metadata: { title: paper.title, forumPostId: publicDatabaseId(post), gapId: publicDatabaseId(gap) } } });
+      if (input.screeningStatus && input.screeningStatus !== row.screeningStatus) {
+        return tx.projectPaper.update({ where: { id: row.id }, data: {
+          screeningStatus: input.screeningStatus,
+          screenedById: actor,
+          screenedAt: new Date(),
+          ...(input.screeningStatus === "EXCLUDED" ? { exclusionReason: input.exclusionReason, exclusionNote: input.exclusionNote ?? null, inclusionReason: null } : {}),
+          ...(input.screeningStatus === "INCLUDED" || input.screeningStatus === "UNDECIDED" ? { exclusionReason: null, exclusionNote: null } : {}),
+        } });
+      }
+      return row;
+    });
+    projectPaper = screenedProjectPaper;
+    await auditService.log("FORUM_CITATION_REVIEW_STARTED", { userId: actorInput, targetTableName: "forum_references", targetRecordId: reference.id, details: { gapId: publicDatabaseId(gap), postId: publicDatabaseId(post), paperId: publicDatabaseId(paper), projectId } });
+    if (paperWasAdded) await auditService.log("PAPER_ADDED_FROM_FORUM", { userId: actorInput, targetTableName: "project_papers", targetRecordId: projectPaper.id, details: { projectId, paperId: publicDatabaseId(paper), referenceId: publicDatabaseId(reference) } });
+    if (projectPaper.screeningStatus !== "INCLUDED") {
+      return {
+        status: paperWasAdded ? "PAPER_ADDED_TO_PROJECT" : "SCREENING_REQUIRED",
+        projectId,
+        paper: { id: publicDatabaseId(paper), title: paper.title },
+        projectPaper: { id: projectPaper.id, screeningStatus: projectPaper.screeningStatus },
+        message: "The forum citation is available in project literature. Include the paper before extracting structured gap evidence.",
+      };
+    }
+    const corpusPaper = gap.corpusId
+      ? await prisma.corpusPaper.findUnique({ where: { corpusId_paperId: { corpusId: gap.corpusId, paperId: paper.id } } })
+      : null;
+    const extractedEvidence = (corpusPaper?.included ? structuredEvidenceItems(corpusPaper.evidence) : []) as GapStructuredEvidenceItem[];
+    if (!extractedEvidence.length) {
+      return {
+        status: "EVIDENCE_EXTRACTION_REQUIRED",
+        projectId,
+        corpusId: gap.corpusId ? publicDatabaseId({ id: gap.corpusId }) : undefined,
+        paper: { id: publicDatabaseId(paper), title: paper.title },
+        projectPaper: { id: projectPaper.id, screeningStatus: projectPaper.screeningStatus },
+        extractedEvidence: [],
+        message: "Extract evidence from this paper before linking it to the candidate gap.",
+      };
+    }
+    const selections = input.evidenceSelections ?? (input.evidenceType && input.excerpt ? [{ evidenceType: input.evidenceType, excerpt: input.excerpt }] : []);
+    const selectedEvidence = selections.map((selection) => extractedEvidence.find((item) => item.evidenceType === selection.evidenceType && item.excerpt === selection.excerpt.trim())).filter((item): item is GapStructuredEvidenceItem => Boolean(item));
+    if (!selectedEvidence.length || selectedEvidence.length !== selections.length) {
+      return {
+        status: "EVIDENCE_SELECTION_REQUIRED",
+        projectId,
+        corpusId: gap.corpusId ? publicDatabaseId({ id: gap.corpusId }) : undefined,
+        paper: { id: publicDatabaseId(paper), title: paper.title },
+        projectPaper: { id: projectPaper.id, screeningStatus: projectPaper.screeningStatus },
+        extractedEvidence,
+        message: "Select one or more structured extracted evidence items before linking them to the candidate gap.",
+      };
+    }
+    if (!input.confirmRelation || !input.relation) {
+      return {
+        status: "RELATION_CONFIRMATION_REQUIRED",
+        projectId,
+        paper: { id: publicDatabaseId(paper), title: paper.title },
+        projectPaper: { id: projectPaper.id, screeningStatus: projectPaper.screeningStatus },
+        extractedEvidence,
+        message: "A researcher must confirm whether the selected extracted evidence is supporting, counter-evidence, or related context.",
+      };
+    }
+    if (input.relation === "RELATED") {
+      await auditService.log("FORUM_CITATION_REVIEWED_AS_RELATED", { userId: actorInput, targetTableName: "forum_references", targetRecordId: reference.id, details: { gapId: publicDatabaseId(gap), paperId: publicDatabaseId(paper) } });
+      return {
+        status: "RELATED_ONLY",
+        projectId,
+        paper: { id: publicDatabaseId(paper), title: paper.title },
+        projectPaper: { id: projectPaper.id, screeningStatus: projectPaper.screeningStatus },
+        extractedEvidence: selectedEvidence,
+        message: "The paper was recorded as related context only. No GapEvidence record was created.",
+      };
+    }
+    if (!input.explanation || input.explanation.trim().length < 10) throw AppError.badRequest("Explain the structured evidence before linking it to the candidate gap");
+    if (!corpusPaper) throw AppError.badRequest("The paper must have structured extracted evidence before it can be linked to the candidate gap");
+    try {
+      const evidence = await prisma.$transaction(async (tx) => {
+        const created = await Promise.all(selectedEvidence.map((selected) => tx.gapEvidenceRecord.create({ data: {
+          gapId: gap.id,
+          paperId: paper.id,
+          addedById: actor,
+          evidenceKind: input.relation!,
+          evidenceType: selected.evidenceType,
+          excerpt: selected.excerpt,
+          sourceLocation: selected.sourceLocation,
+          projectPaperId: projectPaper.id,
+          corpusPaperId: corpusPaper.id,
+          forumReferenceId: reference.id,
+          forumPostId: post.id,
+          forumCommentId: comment?.id,
+          explanation: cleanForumText(input.explanation!),
+        } })));
+        await tx.researchGapPaper.upsert({
+          where: { gapId_paperId_kind: { gapId: gap.id, paperId: paper.id, kind: input.relation === "SUPPORTING" ? "supporting" : "evidence" } },
+          create: { gapId: gap.id, paperId: paper.id, kind: input.relation === "SUPPORTING" ? "supporting" : "evidence", position: 0 },
+          update: {},
+        });
+        await tx.projectActivity.create({ data: { projectId, actorId: actor, type: "EVIDENCE_EXTRACTED_FROM_FORUM_SOURCE", entityKind: "GAP", entityId: publicDatabaseId(gap), metadata: { title: gap.title, evidenceKind: input.relation, paperId: publicDatabaseId(paper), forumReferenceId: publicDatabaseId(reference) } } });
+        return created;
+      });
+      for (const item of evidence) {
+        await auditService.log("EVIDENCE_EXTRACTED_FROM_FORUM_SOURCE", { userId: actorInput, targetTableName: "gap_evidence_records", targetRecordId: item.id, details: { gapId: publicDatabaseId(gap), paperId: publicDatabaseId(paper), relation: input.relation, evidenceType: item.evidenceType, forumReferenceId: publicDatabaseId(reference) } });
+        await auditService.log("EVIDENCE_LINKED_TO_GAP", { userId: actorInput, targetTableName: "gap_evidence_records", targetRecordId: item.id, details: { gapId: publicDatabaseId(gap), paperId: publicDatabaseId(paper), relation: input.relation, evidenceType: item.evidenceType } });
+      }
+      return {
+        status: "EVIDENCE_LINKED",
+        projectId,
+        paper: { id: publicDatabaseId(paper), title: paper.title },
+        projectPaper: { id: projectPaper.id, screeningStatus: projectPaper.screeningStatus },
+        extractedEvidence: selectedEvidence,
+        evidence: evidence.map((item) => ({ id: publicDatabaseId(item), evidenceKind: item.evidenceKind, evidenceType: item.evidenceType, excerpt: item.excerpt, sourceLocation: item.sourceLocation })),
+        message: "Selected structured evidence was linked after project screening and researcher confirmation.",
+      };
+    } catch (error) {
+      if ((error as { code?: string }).code === "P2002") throw AppError.conflict("This paper is already linked to the candidate gap with the same evidence relation");
+      throw error;
+    }
+  },
+
+  async getPost(postId: string, actorId?: string, actorRole?: UserRole, viewerKey?: string) {
+    const post = await resolvePost(postId);
+    if (post.status === "deleted" && !(await getPrisma().forumComment.count({ where: { postId: post.id, status: { in: ["active", "deleted"] } } }))) throw AppError.notFound("Forum post not found");
     await assertCanViewCommunity(post.communityId ?? undefined, actorId, actorRole);
     if (post.status === "hidden" && (!actorId || (await resolveUserId(actorId)) !== post.authorId && !(await canModerate(post.communityId, actorId, actorRole!)))) throw AppError.notFound("Forum post not found");
-    const presented = (await presentPosts([post], actorId, actorRole))[0];
-    return post.status === "deleted" ? { ...presented, title: "This discussion was removed by its author.", content: "", tags: [], references: [] } : presented;
+    if (viewerKey) await recordForumView(post.id, actorId ? `user:${await resolveUserId(actorId)}` : viewerKey);
+    const refreshedPost = viewerKey ? await resolvePost(postId) : post;
+    const presented = (await presentPosts([refreshedPost], actorId, actorRole))[0];
+    return post.status === "deleted" ? { ...presented, title: "This discussion was removed by its author.", body: "", content: "", tags: [], references: [] } : presented;
   },
 
   async updatePost(postId: string, input: Partial<PostInput>, userId: string) {
@@ -391,7 +894,7 @@ export const forumService = {
         ...(input.type !== undefined ? { type: nextType } : {}), ...(input.title !== undefined ? { title: cleanForumText(input.title) } : {}), ...(input.content !== undefined ? { body: cleanForumText(input.content) } : {}),
         ...(tags !== undefined ? { tags: tags.map((tag) => tag.name) } : {}), ...(input.linkedPaperId !== undefined ? { linkedPaperId } : {}),
         ...(input.linkedResearchGapId !== undefined ? { linkedResearchGapId, researchGapId: linkedResearchGapId } : {}), ...(input.linkedProjectId !== undefined ? { linkedProjectId } : {}),
-        editedAt: new Date(),
+        editedAt: new Date(), lastActivityAt: new Date(),
       } });
       if (input.linkedPaperId !== undefined) { await tx.forumPostPaper.deleteMany({ where: { postId: post.id } }); if (linkedPaperId) await tx.forumPostPaper.create({ data: { postId: post.id, paperId: linkedPaperId, position: 0 } }); }
       if (input.linkedResearchGapId !== undefined) { await tx.forumPostGap.deleteMany({ where: { postId: post.id } }); if (linkedResearchGapId) await tx.forumPostGap.create({ data: { postId: post.id, gapId: linkedResearchGapId } }); }
@@ -444,26 +947,84 @@ export const forumService = {
   },
 
   async addComment(postId: string, input: { content: string; parentCommentId?: string; references?: ReferenceInput[] }, userId: string) {
-    const post = await resolvePost(postId); if (["deleted", "hidden"].includes(post.status)) throw AppError.notFound("Forum post not found"); if (post.status === "locked") throw AppError.conflict("This post is locked");
-    await assertCanPostToCommunity(post.communityId ?? undefined, userId); const authorId = await resolveUserId(userId);
-    const parent = input.parentCommentId ? await resolveComment(input.parentCommentId) : undefined; if (parent && (parent.postId !== post.id || parent.status !== "active")) throw AppError.badRequest("Parent comment does not belong to this post");
+    const post = await resolvePost(postId);
+    const authorId = await resolveUserId(userId);
+    const parent = input.parentCommentId ? await resolveComment(input.parentCommentId) : undefined;
+    const body = cleanForumText(input.content);
+    if (!body || body.length > 10000) throw AppError.badRequest("Response content must contain 1 to 10000 characters");
     const references = await prepareReferences(input.references);
-    const parentCommentId = parent ? flattenedReplyParent(parent) : undefined;
-    const comment = await getPrisma().$transaction(async (tx) => { const created = await tx.forumComment.create({ data: { postId: post.id, authorId, parentCommentId, body: cleanForumText(input.content) } });
+    const prisma = getPrisma();
+    const result = await prisma.$transaction(async (tx) => {
+      // Match comment moderation's lock order (response, then root).
+      if (parent) {
+        await tx.$queryRaw`SELECT id FROM forum_comments WHERE id = ${parent.id}::uuid FOR UPDATE`;
+        const target = await tx.forumComment.findUnique({ where: { id: parent.id } });
+        if (!target || target.postId !== post.id || target.status !== "active") throw AppError.badRequest("Reply target is unavailable or belongs to another discussion");
+      }
+      if (post.communityId) {
+        await tx.$queryRaw`SELECT id FROM communities WHERE id = ${post.communityId}::uuid FOR SHARE`;
+        const community = await tx.community.findUnique({ where: { id: post.communityId } });
+        if (!community || community.status !== "ACTIVE") throw AppError.conflict("Archived communities are read-only");
+        await tx.$queryRaw`SELECT id FROM community_memberships WHERE community_id = ${post.communityId}::uuid AND user_id = ${authorId}::uuid FOR SHARE`;
+        const membership = await tx.communityMembership.findUnique({ where: { communityId_userId: { communityId: post.communityId, userId: authorId } } });
+        if (membership?.status !== "active") throw AppError.forbidden("Active community membership is required to reply");
+      }
+      await tx.$queryRaw`SELECT id FROM forum_posts WHERE id = ${post.id}::uuid FOR UPDATE`;
+      const root = await tx.forumPost.findUnique({ where: { id: post.id } });
+      if (!root || ["deleted", "hidden"].includes(root.status)) throw AppError.notFound("Forum post not found");
+      if (root.status !== "active") throw AppError.conflict("This discussion is locked. Your reply was not posted");
+      // Paper references expose metadata only, never private files/full text.
+      const paperIds = [...new Set(references.flatMap((reference) => reference.paperId ? [reference.paperId] : []))].sort();
+      if (paperIds.length) {
+        await tx.$queryRaw`SELECT id FROM papers WHERE id = ANY(${paperIds}::uuid[]) ORDER BY id FOR SHARE`;
+        if (await tx.paper.count({ where: { id: { in: paperIds }, dataStatus: "active" } }) !== paperIds.length) throw AppError.badRequest("A referenced paper is no longer publicly available");
+      }
+      // Preserve the actual clicked response. The UI, not the relationship, is flat.
+      const created = await tx.forumComment.create({ data: { postId: root.id, authorId, parentCommentId: parent?.id, body } });
       if (references.length) await tx.forumReference.createMany({ data: references.map((reference) => ({ ...reference, commentId: created.id, createdById: authorId })) });
-      await tx.forumPost.update({ where: { id: post.id }, data: { commentCount: { increment: 1 } } }); return created; });
-    const followers = await getPrisma().forumThreadFollow.findMany({ where: { postId: post.id, userId: { not: authorId } }, select: { userId: true } });
-    const recipients = new Set(followers.map((follow) => follow.userId));
-    if (post.authorId !== authorId) recipients.add(post.authorId);
-    if (parent && parent.authorId !== authorId) recipients.add(parent.authorId);
-    await Promise.all([...recipients].map((recipientId) => notificationService.create({ userId: recipientId, title: parent && recipientId === parent.authorId ? "New reply to your forum response" : "New activity in a forum discussion", message: `A new response was added to “${post.title}”.`, type: parent && recipientId === parent.authorId ? "FORUM_REPLY_CREATED" : "FORUM_RESPONSE_CREATED", targetKind: "forum_post", targetId: post.id })));
-    return (await presentComments([comment], userId, post.acceptedCommentId))[0];
+      await tx.forumPost.update({ where: { id: root.id }, data: { commentCount: { increment: 1 }, lastActivityAt: created.createdAt } });
+      const followers = await tx.forumThreadFollow.findMany({ where: { postId: root.id }, select: { userId: true } });
+      const recipients = new Map(followers.map((follow) => [follow.userId, "FORUM_RESPONSE_CREATED"]));
+      recipients.set(root.authorId, "FORUM_RESPONSE_CREATED");
+      if (parent) recipients.set(parent.authorId, "FORUM_REPLY_CREATED");
+      if (references.length && root.linkedResearchGapId) {
+        const gap = await tx.researchGap.findUnique({ where: { id: root.linkedResearchGapId }, select: { userId: true } });
+        if (gap && !recipients.has(gap.userId)) recipients.set(gap.userId, "FORUM_CITATION_ADDED_TO_GAP_DISCUSSION");
+      }
+      recipients.delete(authorId);
+      const notifications = await Promise.all([...recipients].map(([recipientId, type]) => notificationService.create({
+        userId: recipientId,
+        title: type === "FORUM_REPLY_CREATED" ? "New reply to your forum response" : type === "FORUM_CITATION_ADDED_TO_GAP_DISCUSSION" ? "New citation in a linked gap discussion" : "New activity in a forum discussion",
+        message: `A new response was added to “${root.title}”.`,
+        type, targetKind: "forum_post", targetId: root.id,
+      }, tx)));
+      // Build the response before commit so a presenter failure cannot be reported
+      // as a failed submission after the reply was already persisted.
+      const presented = (await presentComments([created], userId, root.acceptedCommentId, tx))[0];
+      return { presented, notifications };
+    }, { timeout: 15000 });
+    // In-app notifications are committed atomically. Push delivery is best-effort,
+    // uses the existing queue/job IDs, and cannot reject a successful submission.
+    for (const notification of result.notifications) {
+      void notificationService.dispatch(notification).catch((err: unknown) => logger.warn({ err, notificationId: notification.id }, "Forum push enqueue failed; in-app notification remains available"));
+    }
+    if (references.length) {
+      void auditService.log("FORUM_CITATION_ADDED", {
+        userId,
+        targetTableName: "forum_posts",
+        targetRecordId: post.id,
+        details: { referenceCount: references.length, linkedResearchGapId: post.linkedResearchGapId },
+      });
+    }
+    return result.presented;
   },
 
   async listComments(postId: string, page: number, pageSize: number, actorId?: string, actorRole?: UserRole) {
-    const post = await resolvePost(postId); if (!["active", "locked", "deleted"].includes(post.status) || (post.status === "deleted" && post.commentCount === 0)) throw AppError.notFound("Forum post not found"); await assertCanViewCommunity(post.communityId ?? undefined, actorId, actorRole);
+    const post = await resolvePost(postId); if (!["active", "locked", "deleted"].includes(post.status)) throw AppError.notFound("Forum post not found");
+    if (post.status === "deleted" && !(await getPrisma().forumComment.count({ where: { postId: post.id, status: { in: ["active", "deleted"] } } }))) throw AppError.notFound("Forum post not found");
+    await assertCanViewCommunity(post.communityId ?? undefined, actorId, actorRole);
     const where = { postId: post.id, status: { in: ["active", "deleted"] } }; const [data, total] = await Promise.all([
-      getPrisma().forumComment.findMany({ where, orderBy: { createdAt: "asc" }, skip: (page - 1) * pageSize, take: pageSize }), getPrisma().forumComment.count({ where }),
+      getPrisma().forumComment.findMany({ where, orderBy: [{ createdAt: "asc" }, { id: "asc" }], skip: (page - 1) * pageSize, take: pageSize }), getPrisma().forumComment.count({ where }),
     ]);
     return { data: await presentComments(data, actorId, post.acceptedCommentId), meta: { page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)) } };
   },
@@ -473,14 +1034,22 @@ export const forumService = {
     if (post.status === "locked") throw AppError.conflict("Responses in a locked discussion cannot be edited");
     const references = input.references !== undefined ? await prepareReferences(input.references) : undefined;
     const updated = await getPrisma().$transaction(async (tx) => { const result = await tx.forumComment.update({ where: { id: comment.id }, data: { body: cleanForumText(input.content), editedAt: new Date() } });
+      if (comment.status === "active") await tx.forumPost.update({ where: { id: post.id }, data: { lastActivityAt: result.editedAt! } });
       if (references !== undefined) { await tx.forumReference.deleteMany({ where: { commentId: comment.id } }); if (references.length) await tx.forumReference.createMany({ data: references.map((reference) => ({ ...reference, commentId: comment.id, createdById: comment.authorId })) }); } return result; });
     return (await presentComments([updated], userId, post.acceptedCommentId))[0];
   },
   async deleteComment(commentId: string, userId: string, role: UserRole) {
     const comment = await resolveComment(commentId); if (comment.status === "deleted") throw AppError.notFound("Comment not found"); if (comment.authorId !== await resolveUserId(userId) && role !== "admin") throw AppError.forbidden();
     await getPrisma().$transaction(async (tx) => {
-      await tx.forumComment.update({ where: { id: comment.id }, data: { status: "deleted" } });
+      const changed = await tx.forumComment.updateMany({ where: { id: comment.id, status: comment.status }, data: { status: "deleted" } });
+      if (!changed.count) throw AppError.conflict("This response changed. Please try again");
+      if (comment.status === "active") await tx.forumPost.updateMany({ where: { id: comment.postId, commentCount: { gt: 0 } }, data: { commentCount: { decrement: 1 } } });
       await tx.forumPost.updateMany({ where: { id: comment.postId, acceptedCommentId: comment.id }, data: { acceptedCommentId: null } });
+      const [root, latestReply] = await Promise.all([
+        tx.forumPost.findUniqueOrThrow({ where: { id: comment.postId }, select: { createdAt: true, editedAt: true } }),
+        tx.forumComment.aggregate({ where: { postId: comment.postId, status: "active" }, _max: { createdAt: true, editedAt: true } }),
+      ]);
+      await tx.forumPost.update({ where: { id: comment.postId }, data: { lastActivityAt: latestDate(root.editedAt, root.createdAt, latestReply._max.createdAt, latestReply._max.editedAt)! } });
     });
   },
   async moderateComment(commentId: string, action: "RESPONSE_HIDDEN" | "RESPONSE_RESTORED", reason: string | undefined, actorId: string, actorRole: UserRole) {
@@ -490,14 +1059,19 @@ export const forumService = {
     if (action === "RESPONSE_RESTORED" && comment.status !== "hidden") throw AppError.conflict("Only a hidden response can be restored");
     const actor = await resolveUserId(actorId);
     const updated = await getPrisma().$transaction(async (tx) => {
-      const row = await tx.forumComment.update({ where: { id: comment.id }, data: { status: action === "RESPONSE_HIDDEN" ? "hidden" : "active" } });
+      const changed = await tx.forumComment.updateMany({ where: { id: comment.id, status: comment.status }, data: { status: action === "RESPONSE_HIDDEN" ? "hidden" : "active" } });
+      if (!changed.count) throw AppError.conflict("This response changed. Please try again");
+      const row = await tx.forumComment.findUniqueOrThrow({ where: { id: comment.id } });
       if (action === "RESPONSE_HIDDEN") await tx.forumPost.updateMany({ where: { id: post.id, commentCount: { gt: 0 } }, data: { commentCount: { decrement: 1 } } });
       else await tx.forumPost.update({ where: { id: post.id }, data: { commentCount: { increment: 1 } } });
+      if (action === "RESPONSE_HIDDEN") await tx.forumPost.updateMany({ where: { id: post.id, acceptedCommentId: comment.id }, data: { acceptedCommentId: null } });
+      const latestReply = await tx.forumComment.aggregate({ where: { postId: post.id, status: "active" }, _max: { createdAt: true, editedAt: true } });
+      await tx.forumPost.update({ where: { id: post.id }, data: { lastActivityAt: latestDate(post.editedAt, post.createdAt, latestReply._max.createdAt, latestReply._max.editedAt)! } });
       await tx.forumModerationAction.create({ data: { actorId: actor, communityId: post.communityId, commentId: comment.id, action, reason: reason ? cleanForumText(reason) : undefined } });
       return row;
     });
     await auditService.log(action, { userId: actorId, targetTableName: "forum_comments", targetRecordId: comment.id, details: { reason, communityId: post.communityId } });
-    return (await presentComments([updated], actorId, post.acceptedCommentId))[0];
+    return (await presentComments([updated], actorId, action === "RESPONSE_HIDDEN" && post.acceptedCommentId === comment.id ? undefined : post.acceptedCommentId))[0];
   },
   async acceptAnswer(postId: string, commentId: string | undefined, userId: string) {
     const post = await resolvePost(postId); const comment = commentId ? await resolveComment(commentId) : undefined;
@@ -521,10 +1095,10 @@ export const forumService = {
     return { subjectKind, subjectId: publicDatabaseId(subject), value, score };
   },
 
-  async follow(postInput: string, userInput: string, following: boolean) {
+  async follow(postInput: string, userInput: string, following: boolean, actorRole: UserRole = "user") {
     const [post, userId] = await Promise.all([resolvePost(postInput), resolveUserId(userInput)]);
     if (!["active", "locked"].includes(post.status)) throw AppError.notFound("Forum discussion not found");
-    await assertCanViewCommunity(post.communityId ?? undefined, userInput, "user");
+    await assertCanViewCommunity(post.communityId ?? undefined, userInput, actorRole);
     if (following) await getPrisma().forumThreadFollow.upsert({ where: { postId_userId: { postId: post.id, userId } }, create: { postId: post.id, userId }, update: {} });
     else await getPrisma().forumThreadFollow.deleteMany({ where: { postId: post.id, userId } });
     return { following };

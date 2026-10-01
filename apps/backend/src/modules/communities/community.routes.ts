@@ -24,11 +24,12 @@ const updateMemberSchema = z.object({
   role: z.enum(["moderator", "member"]).optional(),
   status: z.enum(["pending", "active", "declined", "banned"]).optional(),
 }).refine((value) => value.role !== undefined || value.status !== undefined);
+const communityListSchema = paginationSchema.extend({ activeOnly: z.enum(["true", "false"]).optional() });
 
 export const communityRouter: Router = Router();
-communityRouter.get("/", optionalAuth, validate(paginationSchema, "query"), async (req, res) => {
-  const { page, pageSize } = req.query as unknown as z.infer<typeof paginationSchema>;
-  res.json({ success: true, ...(await communityService.list(req.user?.sub, page, pageSize, req.user?.role)) });
+communityRouter.get("/", optionalAuth, validate(communityListSchema, "query"), async (req, res) => {
+  const { page, pageSize, activeOnly } = req.query as unknown as z.infer<typeof communityListSchema>;
+  res.json({ success: true, ...(await communityService.list(req.user?.sub, page, pageSize, req.user?.role, activeOnly === "true")) });
 });
 communityRouter.post("/", requireAuth, requireSystemRole("ADMIN"), validate(communityInputSchema), async (req, res) => {
   res.status(201).json({ success: true, data: await communityService.create(req.body, req.user!.sub, req.user!.role) });

@@ -1,25 +1,29 @@
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { 
   Sparkles, 
-  CheckCircle2, 
   AlertCircle, 
   Zap, 
   ExternalLink,
   X,
   TrendingUp,
   GitBranch,
-  FileText,
-  ArrowUpRight
+  ArrowUpRight,
+  MessageSquare,
+  Users,
+  BookOpen
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
 import { GapOrigin } from "./gap-origin";
 import { GapDirectionsPanel } from "./gap-directions";
 import { AiEvaluation } from "@/components/ai-evaluation";
+import { useGapCommunityDiscussions } from "../hooks/use-gaps";
 import type { ResearchGapItem } from "@trend/shared-types";
 import { cn } from "@/utils/cn";
 import { useI18n } from "@/i18n";
 import { formatNumber } from "@/utils/format";
+import { forumGapCopy } from "@/features/forum/forum-gap-copy";
 
 interface GapDetailDrawerProps {
   gap: ResearchGapItem | null;
@@ -29,6 +33,7 @@ interface GapDetailDrawerProps {
 
 export function GapDetailDrawer({ gap, isOpen, onClose }: GapDetailDrawerProps) {
   const { t } = useI18n();
+  const community = useGapCommunityDiscussions(gap?.id);
   if (!gap) return null;
   const supportingPaperIds = new Set(gap.supportingPaperIds);
 
@@ -50,8 +55,6 @@ export function GapDetailDrawer({ gap, isOpen, onClose }: GapDetailDrawerProps) 
     strengthColor = "bg-purple-500/10 text-purple-700 border-purple-500/20 dark:text-purple-400";
     strengthTooltip = t("This came from a report and has not yet been verified with a corpus probe.");
   }
-
-  const confidencePct = Math.round((gap.evidenceConfidence ?? gap.confidence) * 100);
 
   return (
     <DialogPrimitive.Root open={isOpen} onOpenChange={(open) => !open && onClose()}>
@@ -254,6 +257,72 @@ export function GapDetailDrawer({ gap, isOpen, onClose }: GapDetailDrawerProps) 
             </div>
 
             {/* AI Research Directions */}
+            <div className="space-y-4 border-t border-slate-100 pt-5 dark:border-slate-800/60">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                    {t("Community")} {t("Discussion")}
+                  </h3>
+                  <p className="mt-2 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+                    {forumGapCopy.activityBoundary}
+                  </p>
+                </div>
+                <Button asChild size="sm" variant="outline" className="rounded-lg">
+                  <Link to={`/forum/new?type=RESEARCH_GAP_DISCUSSION&gap=${gap.id}`}>
+                    <MessageSquare className="h-3.5 w-3.5" />
+                    {t("Start discussion")}
+                  </Link>
+                </Button>
+              </div>
+              {community.isLoading ? (
+                <div className="h-28 animate-pulse rounded-2xl bg-slate-100 dark:bg-slate-900" />
+              ) : community.data ? (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-3 gap-2">
+                    <CommunityStat icon={MessageSquare} label={t("Discussions")} value={community.data.summary.threadCount} />
+                    <CommunityStat icon={Users} label={t("Participants")} value={community.data.summary.participantCount} />
+                    <CommunityStat icon={BookOpen} label={t("Citations")} value={community.data.summary.citationCount} />
+                  </div>
+                  {community.data.discussions.length ? (
+                    <div className="space-y-2">
+                      {community.data.discussions.slice(0, 3).map((discussion) => (
+                        <Link
+                          key={discussion.id}
+                          to={`/forum/${discussion.id}`}
+                          className="block rounded-xl border border-slate-200/70 bg-white p-3 transition-colors hover:border-cyan-300 hover:bg-cyan-50/20 dark:border-slate-800 dark:bg-slate-900/30 dark:hover:border-cyan-900/60"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <h4 className="line-clamp-2 text-xs font-bold leading-5 text-slate-800 dark:text-slate-100">{discussion.title}</h4>
+                            <ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                          </div>
+                          <div className="mt-2 flex flex-wrap gap-2 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                            {discussion.community?.name ? <span>{discussion.community.name}</span> : null}
+                            <span>{discussion.commentCount} {t("responses")}</span>
+                            <span>{discussion.voteScore} {t("helpful")}</span>
+                            <span>{discussion.references?.length ?? 0} {t("citations")}</span>
+                          </div>
+                        </Link>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="rounded-2xl border border-dashed border-slate-200 p-4 text-xs leading-relaxed text-slate-500 dark:border-slate-800 dark:text-slate-400">
+                      {forumGapCopy.noDiscussions}
+                    </div>
+                  )}
+                  {community.data.discussions.length ? (
+                    <Button asChild size="sm" variant="ghost" className="w-full justify-center rounded-lg">
+                      <Link to={`/forum?linkedResearchGapId=${gap.id}`}>{t("View")} {t("discussions")}</Link>
+                    </Button>
+                  ) : null}
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-dashed border-slate-200 p-4 text-xs text-slate-500 dark:border-slate-800">
+                  {forumGapCopy.unavailable}
+                </div>
+              )}
+            </div>
+
+            {/* AI Research Directions */}
             <div className="space-y-4">
               <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
                 {t("Next research directions")}
@@ -278,5 +347,15 @@ export function GapDetailDrawer({ gap, isOpen, onClose }: GapDetailDrawerProps) 
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>
     </DialogPrimitive.Root>
+  );
+}
+
+function CommunityStat({ icon: Icon, label, value }: { icon: typeof MessageSquare; label: string; value: number }) {
+  return (
+    <div className="rounded-xl border border-slate-200/70 bg-slate-50/60 p-3 dark:border-slate-800 dark:bg-slate-900/30">
+      <Icon className="h-3.5 w-3.5 text-cyan-600 dark:text-cyan-300" />
+      <div className="mt-2 text-sm font-extrabold text-slate-900 dark:text-white">{value}</div>
+      <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{label}</div>
+    </div>
   );
 }

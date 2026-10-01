@@ -106,12 +106,19 @@ export const communityService = {
     return presentCommunity(community, { role: "moderator", status: "active" }, actorRole);
   },
 
-  async list(userId: string | undefined, page: number, pageSize: number, role?: UserRole) {
+  async list(userId: string | undefined, page: number, pageSize: number, role?: UserRole, activeOnly = false) {
     const prisma = getPrisma();
     const resolvedUserId = userId ? await resolveUserId(userId) : undefined;
+    const memberIds = resolvedUserId && role !== "admin"
+      ? (await prisma.communityMembership.findMany({ where: { userId: resolvedUserId, status: "active" }, select: { communityId: true } })).map((row) => row.communityId)
+      : [];
+    const where = {
+      ...(role !== "admin" || activeOnly ? { status: "ACTIVE" } : {}),
+      ...(role !== "admin" ? { OR: [{ visibility: "public" }, { id: { in: memberIds } }] } : {}),
+    };
     const [communities, total] = await Promise.all([
-      prisma.community.findMany({ where: role === "admin" ? {} : { status: "ACTIVE" }, orderBy: { updatedAt: "desc" }, skip: (page - 1) * pageSize, take: pageSize }),
-      prisma.community.count({ where: role === "admin" ? {} : { status: "ACTIVE" } }),
+      prisma.community.findMany({ where, orderBy: [{ updatedAt: "desc" }, { id: "desc" }], skip: (page - 1) * pageSize, take: pageSize }),
+      prisma.community.count({ where }),
     ]);
     const memberships = resolvedUserId && communities.length > 0
       ? await prisma.communityMembership.findMany({ where: { userId: resolvedUserId, communityId: { in: communities.map((item) => item.id) } } })

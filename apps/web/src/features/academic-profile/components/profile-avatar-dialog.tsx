@@ -38,18 +38,27 @@ export function ProfileAvatarDialog({ open, currentAvatar, onOpenChange }: { ope
   const [offsetX, setOffsetX] = useState(0);
   const [offsetY, setOffsetY] = useState(0);
   const [error, setError] = useState("");
+  const [discardDialogOpen, setDiscardDialogOpen] = useState(false);
   const objectUrl = useMemo(() => file ? URL.createObjectURL(file) : null, [file]);
   const preview = objectUrl ?? currentAvatar ?? null;
   const dirty = Boolean(file) || zoom !== 1 || offsetX !== 0 || offsetY !== 0;
 
   useEffect(() => () => { if (objectUrl) URL.revokeObjectURL(objectUrl); }, [objectUrl]);
   useEffect(() => {
-    if (!open) { setFile(null); setZoom(1); setOffsetX(0); setOffsetY(0); setError(""); }
+    if (!open) { setFile(null); setZoom(1); setOffsetX(0); setOffsetY(0); setError(""); setDiscardDialogOpen(false); }
   }, [open]);
 
   function close(next: boolean) {
-    if (!next && dirty && !upload.isSuccess && !window.confirm("Discard your unsaved photo changes?")) return;
+    if (!next && dirty && !upload.isSuccess) {
+      setDiscardDialogOpen(true);
+      return;
+    }
     onOpenChange(next);
+  }
+
+  function discardChanges() {
+    setDiscardDialogOpen(false);
+    onOpenChange(false);
   }
 
   function choose(next: File | undefined) {
@@ -111,6 +120,18 @@ export function ProfileAvatarDialog({ open, currentAvatar, onOpenChange }: { ope
         <Button type="button" disabled={!file || upload.isPending || remove.isPending} onClick={save}>{upload.isPending ? "Saving…" : "Save photo"}</Button>
       </DialogFooter>
     </DialogContent>
+    <Dialog open={discardDialogOpen} onOpenChange={setDiscardDialogOpen}>
+      <DialogContent className="max-w-sm rounded-2xl border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-800 dark:bg-[#101923]">
+        <DialogHeader>
+          <DialogTitle>Discard changes?</DialogTitle>
+          <DialogDescription>Your selected photo and crop adjustments will be lost.</DialogDescription>
+        </DialogHeader>
+        <DialogFooter className="gap-2">
+          <Button type="button" variant="ghost" onClick={() => setDiscardDialogOpen(false)}>Keep editing</Button>
+          <Button type="button" variant="destructive" onClick={discardChanges}>Discard changes</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   </Dialog>;
 }
 

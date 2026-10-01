@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { buildPdfObjectKey, createPdfStorageService } from "./pdf-storage.service.js";
+import { buildPdfObjectKey, createPdfStorageService, parseCloudinaryUri } from "./pdf-storage.service.js";
 
 const pdfBuffer = Buffer.from("%PDF-1.4\nmock pdf bytes");
 
@@ -52,5 +52,23 @@ describe("pdf storage service", () => {
       Body: pdfBuffer,
       ContentType: "application/pdf",
     }));
+  });
+
+  it("stores Cloudinary PDFs as cloudinary://cloud/key object references", async () => {
+    const upload = vi.fn().mockResolvedValue(undefined);
+    const storage = createPdfStorageService({
+      provider: "cloudinary",
+      cloudName: "demo-cloud",
+      upload,
+      getSignedUrl: vi.fn().mockResolvedValue("https://res.cloudinary.com/demo-cloud/authenticated-url"),
+    });
+
+    const result = await storage.savePdf(pdfBuffer, "paper.pdf");
+
+    expect(result).toMatchObject({ provider: "cloudinary", key: expect.stringMatching(/^papers\//) });
+    expect(result.uri).toBe(`cloudinary://demo-cloud/${result.key}`);
+    expect(parseCloudinaryUri(result.uri)).toEqual({ cloudName: "demo-cloud", key: result.key });
+    expect(upload).toHaveBeenCalledWith({ key: result.key, body: pdfBuffer });
+    await expect(storage.getSignedDownloadUrl(result.uri)).resolves.toBe("https://res.cloudinary.com/demo-cloud/authenticated-url");
   });
 });

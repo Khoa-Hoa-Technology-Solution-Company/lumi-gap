@@ -4,7 +4,6 @@ import {
   canExposeForumProject,
   canShowAcademicIdentity,
   cleanForumText,
-  flattenedReplyParent,
   isAllowedForumUrl,
   isValidForumDoi,
   normalizeForumPostType,
@@ -36,11 +35,6 @@ describe("forum domain rules", () => {
     expect(canShowAcademicIdentity("MEMBERS", false, false)).toBe(false);
     expect(canShowAcademicIdentity("MEMBERS", true, false)).toBe(true);
     expect(canShowAcademicIdentity("PRIVATE", true, true)).toBe(true);
-  });
-
-  it("flattens deeper replies to a maximum visual depth of two", () => {
-    expect(flattenedReplyParent({ id: "child", parentCommentId: "root" })).toBe("root");
-    expect(flattenedReplyParent({ id: "root", parentCommentId: null })).toBe("root");
   });
 
   it("stores forum copy as safe plain text without executable HTML", () => {

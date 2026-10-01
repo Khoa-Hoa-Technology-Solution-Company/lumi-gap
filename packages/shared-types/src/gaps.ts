@@ -155,3 +155,63 @@ export interface GapDirections {
   /** When the directions were last generated (moves on each force-regenerate). */
   updatedAt: string;
 }
+
+export interface GapCommunityDiscussionSummary {
+  threadCount: number;
+  responseCount: number;
+  citationCount: number;
+  participantCount: number;
+  helpfulCount: number;
+  followCount: number;
+  lastActivityAt?: string;
+}
+
+export interface GapCommunityCitation {
+  id: string;
+  postId?: string;
+  commentId?: string;
+  source: "post" | "response";
+  paperId?: string;
+  title?: string;
+  doi?: string;
+  year?: number;
+  verified: boolean;
+}
+
+export interface GapCommunityDiscussionContext {
+  gap: { id: string; title: string; topic: string; validationStatus?: GapValidationStatus | string; status: GapStatus | string };
+  summary: GapCommunityDiscussionSummary;
+  discussions: Array<{
+    id: string;
+    title: string;
+    content: string;
+    type: string;
+    voteScore: number;
+    commentCount: number;
+    createdAt: string;
+    updatedAt?: string;
+    community?: { id: string; name: string; slug: string };
+    references?: Array<{ id?: string; paperId?: string; title?: string; doi?: string; year?: number; verified?: boolean }>;
+  }>;
+  citations: GapCommunityCitation[];
+  boundary: string;
+}
+
+export interface ReviewForumCitationAsEvidenceRequest {
+  projectId?: string;
+  screeningStatus?: "UNDECIDED" | "INCLUDED" | "EXCLUDED";
+  exclusionReason?: "WRONG_RESEARCH_TOPIC" | "WRONG_POPULATION_CONTEXT" | "WRONG_METHODOLOGY" | "NOT_PEER_REVIEWED" | "INSUFFICIENT_RELEVANT_EVIDENCE" | "DUPLICATE" | "OTHER";
+  exclusionNote?: string;
+  relation?: "SUPPORTING" | "COUNTER" | "RELATED";
+  evidenceType?: string;
+  excerpt?: string;
+  evidenceSelections?: Array<{ evidenceType: string; excerpt: string }>;
+  explanation?: string;
+  confirmRelation?: boolean;
+}
+
+export interface GapStructuredEvidenceItem {
+  evidenceType: string;
+  excerpt: string;
+  sourceLocation: string;
+}

@@ -1,65 +1,305 @@
-import { useDeferredValue, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import type { ForumPostType, ForumSort } from "@trend/shared-types";
-import { BadgeCheck, BookOpen, ChevronLeft, ChevronRight, FileText, MessageSquare, Pin, Plus, Search, Users, X } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { ArrowDown, MessageSquare, Plus, Search, ShieldAlert, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { type ForumPostView, useCommunities, useForumPosts } from "@/features/forum";
+import { ForumCard, ForumLayout, ForumSurface, ForumSidebar, useCommunities, useForumPosts, useForumVote } from "@/features/forum";
+import { ForumPagination } from "@/features/forum/components/forum-pagination";
+import { parseForumListParams, updateForumListParam } from "@/features/forum/utils/forum-pagination";
 import { useI18n } from "@/i18n";
 import { useAuthStore } from "@/stores/auth-store";
 import { cn } from "@/utils/cn";
 
-const PAGE_SIZE = 20;
-const TYPES: ForumPostType[] = ["QUESTION", "DISCUSSION", "PAPER_DISCUSSION", "RESEARCH_GAP_DISCUSSION"];
-const TABS: Array<{ value: ForumSort; label: string }> = [{ value: "latest", label: "Latest" }, { value: "unanswered", label: "Unanswered" }, { value: "popular", label: "Popular" }, { value: "following", label: "Following" }];
+const ForumDiscussionComposer = lazy(() => import("@/pages/forum/forum-new").then((module) => ({ default: module.ForumDiscussionComposer })));
 
-function relativeTime(value: string, locale: string): string {
-  const seconds = Math.round((new Date(value).getTime() - Date.now()) / 1000); const formatter = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
-  if (Math.abs(seconds) < 60) return formatter.format(seconds, "second"); const minutes = Math.round(seconds / 60);
-  if (Math.abs(minutes) < 60) return formatter.format(minutes, "minute"); const hours = Math.round(minutes / 60);
-  if (Math.abs(hours) < 24) return formatter.format(hours, "hour"); return formatter.format(Math.round(hours / 24), "day");
-}
+const TYPES: Array<{ value: ForumPostType | ""; label: string }> = [
+  { value: "", label: "All thread types" },
+  { value: "QUESTION", label: "Questions" },
+  { value: "DISCUSSION", label: "Discussions" },
+  { value: "PAPER_DISCUSSION", label: "Paper Discussions" },
+  { value: "RESEARCH_GAP_DISCUSSION", label: "Research Gap Discussions" },
+];
 
-function DiscussionRow({ post, locale, t }: { post: ForumPostView; locale: string; t: (key: string) => string }) {
-  const context = post.references[0];
-  return <article className="grid grid-cols-[42px_minmax(0,1fr)] gap-3 px-4 py-5 hover:bg-muted/25 sm:grid-cols-[56px_minmax(0,1fr)] sm:px-5">
-    <div className="pt-1 text-center"><span className="block text-base font-semibold tabular-nums">{post.voteScore}</span><span className="text-[10px] uppercase tracking-wide text-muted-foreground">{t("helpful")}</span></div>
-    <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><Badge variant="outline" className="h-5 rounded px-1.5 text-[10px]">{t(post.type)}</Badge>{post.isPinned ? <span className="inline-flex items-center gap-1 text-xs font-medium text-blue-700"><Pin className="h-3 w-3" />{t("Pinned")}</span> : null}{post.community ? <Link to={`/communities/${post.community.slug}`} className="ml-auto truncate text-xs font-medium text-muted-foreground hover:text-foreground">{post.community.name}</Link> : null}</div>
-      <Link to={`/forum/${post.id}`} className="mt-2 block rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><h2 className="text-base font-semibold leading-snug tracking-tight hover:text-blue-700 sm:text-[17px]">{post.title}</h2></Link>
-      <p className="mt-1.5 line-clamp-2 text-sm leading-6 text-muted-foreground">{post.content}</p>
-      <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground"><span className="font-medium text-foreground">{post.author.fullName}</span>{post.author.academicTitle ? <span>{post.author.academicTitle}</span> : null}{post.author.institution ? <span>· {post.author.institution}</span> : null}{post.author.affiliationVerified ? <span className="inline-flex items-center gap-1 text-emerald-700"><BadgeCheck className="h-3.5 w-3.5" />{t("Affiliation verified")}</span> : null}<span>· {relativeTime(post.createdAt, locale)}</span>{post.editedAt ? <span>· {t("Edited")}</span> : null}</div>
-      {context ? <div className="mt-3 flex items-start gap-2 rounded-md border bg-muted/20 px-3 py-2"><FileText className="mt-0.5 h-4 w-4 shrink-0 text-blue-700" /><div className="min-w-0"><p className="truncate text-xs font-medium">{context.title || context.doi}</p><p className="text-[11px] text-muted-foreground">{[context.year, context.doi].filter(Boolean).join(" · ")}</p></div></div> : null}
-      <div className="mt-3 flex flex-wrap gap-1.5">{post.tags.slice(0, 5).map((tag) => <span key={tag} className="rounded border bg-background px-2 py-0.5 text-[11px] text-muted-foreground">{tag}</span>)}</div>
-      <div className="mt-3 flex items-center gap-4 text-xs text-muted-foreground"><span className="inline-flex items-center gap-1.5"><MessageSquare className="h-3.5 w-3.5" />{post.commentCount} {t("responses")}</span><span className="inline-flex items-center gap-1.5"><BookOpen className="h-3.5 w-3.5" />{post.references.length} {t("citations")}</span></div>
-    </div>
-  </article>;
-}
+const FEED_TABS: Array<{ value: ForumSort; label: string }> = [
+  { value: "latest", label: "Latest" },
+  { value: "popular", label: "Popular" },
+  { value: "unanswered", label: "Unanswered" },
+];
 
 export function ForumListPage() {
-  const { t, language } = useI18n(); const isAuthed = useAuthStore((state) => Boolean(state.tokens?.accessToken));
-  const [page, setPage] = useState(1); const [query, setQuery] = useState(""); const deferredQuery = useDeferredValue(query);
-  const [sort, setSort] = useState<ForumSort>("latest"); const [type, setType] = useState<ForumPostType | "">(""); const [communityId, setCommunityId] = useState(""); const [tag, setTag] = useState("");
-  const { data, isLoading, isError } = useForumPosts({ page, pageSize: PAGE_SIZE, query: deferredQuery || undefined, sort, type: type || undefined, communityId: communityId || undefined, tag: tag || undefined }, sort !== "following" || isAuthed);
-  const { data: communities } = useCommunities();
-  const joined = useMemo(() => (communities ?? []).filter((community) => community.viewerMembership?.status === "active"), [communities]);
-  const popularTags = useMemo(() => { const counts = new Map<string, number>(); for (const post of data?.data ?? []) for (const item of post.tags) counts.set(item, (counts.get(item) ?? 0) + 1); return [...counts].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([item]) => item); }, [data?.data]);
-  const unanswered = useMemo(() => (data?.data ?? []).filter((post) => post.commentCount === 0).slice(0, 4), [data?.data]);
-  const clear = () => { setQuery(""); setType(""); setCommunityId(""); setTag(""); setPage(1); };
-  const hasFilters = Boolean(query || type || communityId || tag);
+  const { t, language } = useI18n();
+  const isAuthed = useAuthStore((state) => Boolean(state.tokens?.accessToken));
+  const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [composerOpen, setComposerOpen] = useState(false);
+  const [closeRequest, setCloseRequest] = useState(0);
+  const [composerExpanded, setComposerExpanded] = useState(false);
+  const { page, pageSize, sort, type, query } = parseForumListParams(searchParams);
+  // A draft belongs to one history entry. Back/forward immediately restores the URL's search.
+  const [searchDraft, setSearchDraft] = useState({ value: query, locationKey: location.key });
+  const searchInput = searchDraft.locationKey === location.key ? searchDraft.value : query;
+  const setSearchInput = (value: string) => setSearchDraft({ value, locationKey: location.key });
+  const contentTop = useRef<HTMLElement>(null);
+  const previousSearch = useRef(location.search);
+  const communityId = searchParams.get("community") ?? "";
+  const tag = searchParams.get("tag") ?? "";
+  const linkedResearchGapId = searchParams.get("linkedResearchGapId") ?? undefined;
+  const vote = useForumVote();
 
-  return <main className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6">
-    <header className="flex flex-col gap-4 border-b pb-5 sm:flex-row sm:items-end sm:justify-between"><div><h1 className="text-2xl font-semibold tracking-tight">{t("Research Forum")}</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">{t("Questions and evidence-led discussions connected to papers, research gaps, and academic research.")}</p></div><div className="flex gap-2"><Button variant="outline" asChild><Link to="/communities"><Users className="h-4 w-4" />{t("Communities")}</Link></Button>{isAuthed ? <Button asChild><Link to="/forum/new"><Plus className="h-4 w-4" />{t("New discussion")}</Link></Button> : null}</div></header>
-    <nav className="mt-5 flex gap-1 overflow-x-auto border-b" aria-label={t("Forum views")}>{TABS.map((tab) => <button key={tab.value} type="button" disabled={tab.value === "following" && !isAuthed} onClick={() => { setSort(tab.value); setPage(1); }} className={cn("whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium", sort === tab.value ? "border-blue-700 text-blue-700" : "border-transparent text-muted-foreground hover:text-foreground", tab.value === "following" && !isAuthed && "cursor-not-allowed opacity-50")}>{t(tab.label)}</button>)}</nav>
-    <section className="mt-4 grid gap-2 rounded-lg border bg-card p-3 lg:grid-cols-[minmax(260px,1fr)_190px_210px]"><div className="relative"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} placeholder={t("Search discussions, papers, DOI, topics...")} className="pl-9" /></div><select value={communityId} onChange={(event) => { setCommunityId(event.target.value); setPage(1); }} className="h-10 rounded-md border bg-background px-3 text-sm" aria-label={t("Community")}><option value="">{t("All communities")}</option>{communities?.map((community) => <option key={community.id} value={community.id}>{community.name}</option>)}</select><select value={type} onChange={(event) => { setType(event.target.value as ForumPostType | ""); setPage(1); }} className="h-10 rounded-md border bg-background px-3 text-sm" aria-label={t("Thread type")}><option value="">{t("All thread types")}</option>{TYPES.map((item) => <option key={item} value={item}>{t(item)}</option>)}</select>{hasFilters ? <button type="button" onClick={clear} className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground lg:col-span-3 lg:justify-self-end"><X className="h-3.5 w-3.5" />{t("Clear filters")}</button> : null}</section>
-      <div className="mt-5 grid gap-6 lg:grid-cols-[minmax(0,7fr)_minmax(260px,3fr)]"><section className="overflow-hidden rounded-xl border bg-card" aria-live="polite">{isLoading ? <div className="divide-y">{[0,1,2].map((item) => <div key={item} className="h-48 animate-pulse bg-muted/40" />)}</div> : isError ? <Empty title={t("Could not load discussions.")} detail={t("Please try again in a moment.")} /> : data?.data.length ? <div className="divide-y">{data.data.map((post) => <DiscussionRow key={post.id} post={post} locale={language} t={t} />)}</div> : <Empty title={t("No discussions yet.")} detail={t("Start a research question or share a topic for academic discussion.")} action={isAuthed ? <Button asChild size="sm"><Link to="/forum/new">{t("New discussion")}</Link></Button> : undefined} />}
-      {data?.meta ? <footer className="flex items-center justify-between border-t bg-muted/20 px-4 py-3 text-xs text-muted-foreground"><span>{data.meta.total} {t("discussions")}</span><div className="flex items-center gap-2"><Button variant="outline" size="icon" disabled={page <= 1} onClick={() => setPage((value) => value - 1)} aria-label={t("Previous page")}><ChevronLeft className="h-4 w-4" /></Button><span>{page} / {data.meta.totalPages}</span><Button variant="outline" size="icon" disabled={page >= data.meta.totalPages} onClick={() => setPage((value) => value + 1)} aria-label={t("Next page")}><ChevronRight className="h-4 w-4" /></Button></div></footer> : null}</section>
-      <aside className="space-y-6"><Sidebar title={t("Joined Communities")}>{joined.length ? joined.slice(0, 5).map((community) => <Link key={community.id} to={`/communities/${community.slug}`} className="flex items-center justify-between py-2 text-sm hover:text-blue-700"><span>{community.name}</span><span className="text-xs text-muted-foreground">{community.threadCount}</span></Link>) : <p className="text-sm text-muted-foreground">{t("You haven't joined any research communities yet.")} <Link to="/communities" className="font-medium text-blue-700">{t("Explore communities")}</Link></p>}</Sidebar>
-        <Sidebar title={t("Popular Topics")}><div className="flex flex-wrap gap-2">{popularTags.map((item) => <button key={item} type="button" onClick={() => { setTag(item); setPage(1); }} className={cn("rounded-md border px-2 py-1 text-xs", tag === item ? "border-blue-700 bg-blue-50 text-blue-700" : "text-muted-foreground hover:text-foreground")}>{item}</button>)}</div></Sidebar>
-        <Sidebar title={t("Unanswered Questions")}>{unanswered.length ? unanswered.map((post) => <Link key={post.id} to={`/forum/${post.id}`} className="block border-b py-2 text-sm leading-5 last:border-0 hover:text-blue-700">{post.title}</Link>) : <p className="text-sm text-muted-foreground">{t("No unanswered questions in this view.")}</p>}</Sidebar>
-      </aside></div>
-  </main>;
+  useEffect(() => {
+    // Clear a committed draft as well: returning to its original history entry
+    // must not resurrect text that was subsequently committed on another entry.
+    setSearchDraft({ value: query, locationKey: location.key });
+  }, [location.key, query]);
+
+  useEffect(() => {
+    if (searchDraft.locationKey !== location.key || query === searchDraft.value) return;
+    const timeout = window.setTimeout(() => {
+      setSearchParams(updateForumListParam(searchParams, "q", searchDraft.value || undefined));
+    }, 220);
+    return () => window.clearTimeout(timeout);
+  }, [searchDraft, location.key, query, searchParams, setSearchParams]);
+
+  useEffect(() => {
+    if (previousSearch.current !== location.search) {
+      contentTop.current?.scrollIntoView({ block: "start", behavior: "auto" });
+      previousSearch.current = location.search;
+    }
+  }, [location.search]);
+
+  const { data, isLoading, isError, refetch } = useForumPosts({
+    page, pageSize, query: query.trim() || undefined, sort,
+    type: type || undefined, communityId: communityId || undefined,
+    tag: tag || undefined, linkedResearchGapId,
+  }, sort !== "following" || isAuthed);
+  const { data: communities, isLoading: communitiesLoading, isError: communitiesError, refetch: retryCommunities } = useCommunities();
+  const selectedCommunity = communities?.find((item) => item.id === communityId || item.slug === communityId);
+  const hasFilters = Boolean(searchInput || type || communityId || tag || linkedResearchGapId);
+
+  useEffect(() => {
+    let next = new URLSearchParams(searchParams);
+    if (searchParams.has("page") && searchParams.get("page") !== String(page)) next = updateForumListParam(next, "page", String(page));
+    if (data && page > data.meta.totalPages) next = updateForumListParam(next, "page", String(data.meta.totalPages));
+    if (searchParams.has("pageSize") && searchParams.get("pageSize") !== String(pageSize)) next.set("pageSize", String(pageSize));
+    if (searchParams.has("sort") && searchParams.get("sort") !== sort) next.delete("sort");
+    if (searchParams.has("feed") && searchParams.get("feed") !== sort) next.delete("feed");
+    if (searchParams.has("type") && searchParams.get("type") !== type) next.delete("type");
+    if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
+  }, [data, page, pageSize, sort, type, searchParams, setSearchParams]);
+
+  const setParam = (key: string, value?: string) => {
+    const next = updateForumListParam(searchParams, key, value);
+    setSearchParams(next);
+  };
+  const clearFilters = () => { setSearchInput(""); setSearchParams(pageSize === 20 ? {} : { pageSize: String(pageSize) }); };
+
+  return (
+      <ForumLayout
+        sidebar={
+          <ForumSidebar
+            communities={communities}
+            communitiesLoading={communitiesLoading}
+            communitiesError={communitiesError}
+            onRetryCommunities={() => void retryCommunities()}
+            isAuthed={isAuthed}
+          />
+        }
+      >
+        <section ref={contentTop} className="min-w-0 scroll-mt-[calc(var(--app-header-height)+1rem)]" aria-label={t("Forum discussions")}>
+          <ForumSurface className="forum-topics overflow-hidden">
+          <header className="border-b border-slate-200 px-5 pb-5 pt-6 dark:border-slate-800 sm:px-7">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="min-w-0 flex-1 basis-72">
+                <h1 className="text-[1.75rem] font-semibold leading-tight tracking-tight text-foreground">{t("Research Forum")}</h1>
+                <p className="mt-1.5 max-w-[70ch] text-sm leading-6 text-muted-foreground sm:text-base">
+                  {t("Discuss research questions, papers, methods, and emerging research gaps.")}
+                </p>
+              </div>
+              {isAuthed ? (
+                <Button type="button" aria-haspopup="dialog" aria-expanded={composerOpen} className="h-11 shrink-0 px-5 text-base" onClick={() => { setCloseRequest(0); setComposerExpanded(false); setComposerOpen(true); }}>
+                    <Plus className="h-4 w-4" />
+                    {t("New discussion")}
+                </Button>
+              ) : null}
+            </div>
+            <div className="relative mt-5 max-w-2xl" role="search">
+              <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} aria-label={t("Search discussions")} placeholder={t("Search discussions, papers, DOI, topics...")} className="h-12 rounded-lg border-slate-300 bg-slate-50 pl-10 text-base dark:border-slate-700 dark:bg-slate-900 md:text-base" />
+            </div>
+          </header>
+          <div className="border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
+            <div className="forum-topic-toolbar flex flex-wrap items-center gap-2 px-5 py-3 sm:px-6">
+            <select
+              value={selectedCommunity?.slug ?? communityId}
+              onChange={(event) => setParam("community", event.target.value)}
+              aria-label={t("Community")}
+                className="forum-topic-filter h-11 w-full min-w-0 max-w-full rounded-md border border-input bg-background px-3 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <option value="">{t("All communities")}</option>
+              {(communities ?? []).map((community) => (
+                <option key={community.id} value={community.slug}>{community.name}</option>
+              ))}
+            </select>
+            <select
+              value={type}
+              onChange={(event) => setParam("type", event.target.value)}
+              aria-label={t("Thread type")}
+                className="forum-topic-filter h-11 w-full min-w-0 max-w-full rounded-md border border-input bg-background px-3 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {TYPES.map((item) => (
+                <option key={item.value} value={item.value}>{t(item.label)}</option>
+              ))}
+            </select>
+
+            <nav className="forum-topic-feeds flex flex-wrap items-end gap-1" aria-label={t("Forum feeds")}>
+              {FEED_TABS.map((feed) => (
+                <button
+                  key={feed.value}
+                  type="button"
+                  onClick={() => setParam("sort", feed.value === "latest" ? undefined : feed.value)}
+                  aria-current={sort === feed.value ? "page" : undefined}
+                  className={`relative min-w-max rounded-sm px-2 py-3 text-base font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:px-3 ${sort === feed.value ? "text-primary" : "text-muted-foreground hover:text-foreground"}`}
+                >
+                  {t(feed.label)}
+                  {sort === feed.value ? <span className="absolute inset-x-2 bottom-0 h-0.5 bg-primary" /> : null}
+                </button>
+              ))}
+            </nav>
+            </div>
+          </div>
+
+          {/* Active filters */}
+          {hasFilters ? (
+            <div className="flex flex-wrap items-center gap-2 border-b border-border px-5 py-3 text-sm sm:px-6">
+              <span className="font-medium text-muted-foreground">{t("Showing:")}</span>
+              {searchInput ? <FilterChip label={`"${searchInput}"`} onClear={() => setSearchInput("")} /> : null}
+              {type ? <FilterChip label={t(TYPES.find((item) => item.value === type)?.label ?? type)} onClear={() => setParam("type")} /> : null}
+              {communityId ? <FilterChip label={selectedCommunity?.name ?? t("Community")} onClear={() => setParam("community")} /> : null}
+              {tag ? <FilterChip label={`#${tag}`} onClear={() => setParam("tag")} /> : null}
+              {linkedResearchGapId ? <FilterChip label={t("Linked research gap")} onClear={() => setParam("linkedResearchGapId")} /> : null}
+              <button type="button" onClick={clearFilters} className="ml-auto font-medium text-blue-700 hover:underline dark:text-blue-300">{t("Clear filters")}</button>
+            </div>
+          ) : null}
+
+          <div className="forum-topic-head items-center gap-4 border-b border-border px-6 py-4 text-base font-medium text-muted-foreground">
+            <button type="button" onClick={() => setParam("sort")} className="flex w-fit items-center gap-1.5 hover:text-slate-900 dark:hover:text-white">
+              {t("Topic")}{sort === "latest" ? <ArrowDown className="h-3.5 w-3.5" /> : null}
+            </button>
+            <span className="forum-topic-head-metrics grid items-center gap-2">
+              <span className="forum-topic-head-participants text-left">{t("Participants")}</span>
+              <span className="text-center">{t("Replies")}</span>
+              <span className="forum-topic-head-views text-center">{t("Views")}</span>
+              <button type="button" onClick={() => setParam("sort", "popular")} className="forum-topic-head-helpful items-center justify-center gap-1 hover:text-slate-900 dark:hover:text-white">
+                {t("Helpful")}{sort === "popular" ? <ArrowDown className="h-3.5 w-3.5" /> : null}
+              </button>
+              <span className="text-right">{t("Activity")}</span>
+            </span>
+          </div>
+
+          {/* Topic list */}
+          <div aria-live="polite">
+            {sort === "following" && !isAuthed ? (
+              <div className="p-10 text-center"><h2 className="font-semibold">{t("Sign in to see followed discussions.")}</h2><Button asChild size="sm" className="mt-4"><Link to={`/login?returnTo=${encodeURIComponent(location.pathname + location.search)}`}>{t("Sign in")}</Link></Button></div>
+            ) : isLoading ? (
+              <div className="divide-y divide-border/60">
+                {Array.from({ length: 6 }).map((_, index) => (
+                  <div key={index} className="flex min-h-[136px] gap-4 px-6 py-5" aria-label={t("Loading discussions")}>
+                    <div className="flex-1 space-y-2">
+                      <div className="h-3 w-32 animate-pulse rounded bg-muted" />
+                      <div className="h-5 w-3/4 animate-pulse rounded bg-muted" />
+                      <div className="h-3 w-1/2 animate-pulse rounded bg-muted" />
+                    </div>
+                    <div className="h-4 w-12 animate-pulse rounded bg-muted" />
+                  </div>
+                ))}
+              </div>
+            ) : isError ? (
+              <div className="border-b border-border/70 p-10 text-center">
+                <ShieldAlert className="mx-auto h-7 w-7 text-destructive" />
+                <h2 className="mt-3 font-semibold">{t("Could not load discussions.")}</h2>
+                <p className="mt-1 text-base text-muted-foreground">{t("Please try again in a moment.")}</p>
+                <Button variant="outline" size="sm" onClick={() => refetch()} className="mt-4">{t("Retry")}</Button>
+              </div>
+            ) : data?.data.length ? (
+              <>
+                <div className="bg-white dark:bg-slate-950">
+                  <div className="divide-y divide-slate-200 border-b border-slate-200 dark:divide-slate-800 dark:border-slate-800">
+                  {data.data.map((post) => (
+                    <ForumCard
+                      key={post.id}
+                      post={post}
+                      locale={language}
+                      isAuthed={isAuthed}
+                      onVote={(value) => vote.mutate({ kind: "post", id: post.id, value })}
+                    />
+                  ))}
+                  </div>
+                </div>
+                <ForumPagination page={page} pageSize={pageSize} total={data.meta.total} totalPages={data.meta.totalPages} onPageChange={(next) => setParam("page", String(next))} onPageSizeChange={(size) => setParam("pageSize", size === 20 ? undefined : String(size))} />
+              </>
+            ) : (
+              <EmptyState hasFilters={hasFilters} isAuthed={isAuthed} following={sort === "following"} onClear={clearFilters} onNewDiscussion={() => { setCloseRequest(0); setComposerExpanded(false); setComposerOpen(true); }} t={t} />
+            )}
+          </div>
+          </ForumSurface>
+        </section>
+        <Dialog open={composerOpen} onOpenChange={(open) => { if (open) setComposerOpen(true); }}>
+          <DialogContent
+            showClose={false}
+            overlayClassName="bg-black/25 backdrop-blur-[1px]"
+            className={cn(
+              "inset-0 h-[100dvh] max-h-[100dvh] w-full max-w-none translate-x-0 translate-y-0 gap-0 overflow-hidden rounded-none border-0 p-0",
+              "sm:bottom-4 sm:left-1/2 sm:right-auto sm:top-auto sm:h-auto sm:max-h-[min(78vh,58rem)] sm:w-[min(54rem,calc(100%-2rem))] sm:translate-x-[-50%] sm:translate-y-0 sm:rounded-xl sm:border",
+              composerExpanded && "sm:bottom-4 sm:left-4 sm:right-4 sm:top-4 sm:h-auto sm:max-h-none sm:w-auto sm:translate-x-0 sm:rounded-xl",
+            )}
+            onEscapeKeyDown={(event) => { event.preventDefault(); setCloseRequest((value) => value + 1); }}
+            onPointerDownOutside={(event) => { event.preventDefault(); setCloseRequest((value) => value + 1); }}
+          >
+            <DialogHeader className="sr-only">
+              <DialogTitle>{t("New discussion")}</DialogTitle>
+              <DialogDescription>{t("Compose a research forum discussion without leaving the current feed.")}</DialogDescription>
+            </DialogHeader>
+            <Suspense fallback={<div className="flex min-h-[22rem] items-center justify-center text-sm text-muted-foreground" role="status">{t("Loading discussion editor")}</div>}>
+              <ForumDiscussionComposer
+                embedded
+                closeRequest={closeRequest}
+                expanded={composerExpanded}
+                onToggleExpand={() => setComposerExpanded((value) => !value)}
+                onClose={() => { setCloseRequest(0); setComposerExpanded(false); setComposerOpen(false); }}
+                onPublished={(postId) => { setCloseRequest(0); setComposerExpanded(false); setComposerOpen(false); navigate(`/forum/${postId}`); }}
+              />
+            </Suspense>
+          </DialogContent>
+        </Dialog>
+      </ForumLayout>
+  );
 }
 
-function Sidebar({ title, children }: { title: string; children: React.ReactNode }) { return <section className="border-b pb-5"><h2 className="text-sm font-semibold">{title}</h2><div className="mt-2">{children}</div></section>; }
-function Empty({ title, detail, action }: { title: string; detail: string; action?: React.ReactNode }) { return <div className="px-6 py-16 text-center"><MessageSquare className="mx-auto h-7 w-7 text-muted-foreground" /><h2 className="mt-3 font-semibold">{title}</h2><p className="mt-1 text-sm text-muted-foreground">{detail}</p>{action ? <div className="mt-5">{action}</div> : null}</div>; }
+function FilterChip({ label, onClear }: { label: string; onClear: () => void }) {
+  const { t } = useI18n();
+  return (
+    <span className="inline-flex items-center gap-1 rounded border border-border bg-muted/40 px-2 py-0.5 text-foreground">
+      {label}
+      <button type="button" onClick={onClear} className="rounded p-0.5 text-muted-foreground hover:bg-background hover:text-foreground" aria-label={`${t("Remove")} ${label}`}>
+        <X className="h-3 w-3" />
+      </button>
+    </span>
+  );
+}
+
+function EmptyState({ hasFilters, isAuthed, following, onClear, onNewDiscussion, t }: { hasFilters: boolean; isAuthed: boolean; following: boolean; onClear: () => void; onNewDiscussion: () => void; t: (key: string) => string }) {
+  return (
+    <div className="border-b border-border/70 p-12 text-center">
+      <MessageSquare className="mx-auto h-7 w-7 text-muted-foreground" />
+      <h2 className="mt-3 font-semibold">{t(hasFilters ? "No discussions match these filters." : following ? "No followed discussions yet." : "No discussions yet in this community.")}</h2>
+      <p className="mx-auto mt-2 max-w-md text-base text-muted-foreground">{t(hasFilters ? "Try a broader keyword or clear one of the filters." : following ? "Follow a discussion to find it here." : "Start an academic discussion with a question, paper, method, or research gap.")}</p>
+      <div className="mt-5 flex justify-center gap-2">
+        {hasFilters ? <Button variant="outline" size="sm" onClick={onClear}>{t("Clear filters")}</Button> : null}
+        {isAuthed ? <Button type="button" aria-haspopup="dialog" size="sm" onClick={onNewDiscussion}><Plus className="h-4 w-4" />{t("Start discussion")}</Button> : null}
+      </div>
+    </div>
+  );
+}
