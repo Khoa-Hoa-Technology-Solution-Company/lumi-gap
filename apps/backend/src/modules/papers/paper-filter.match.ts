@@ -23,9 +23,9 @@ export interface PaperFilterInput {
 }
 
 /**
- * Complete metadata filter used by keyword search and as the semantic
- * post-filter fallback. Keep this independent from vector-index capabilities:
- * only buildVectorFilter() decides which clauses are safe to push down.
+ * Document-style metadata filter shared by non-vector callers. The retriever
+ * pushes the equivalent predicates into SQL (see postgres-paper-search.ts),
+ * which reuses the helpers exported below.
  */
 export function buildPaperMetadataMatch(
   input: PaperFilterInput,
@@ -100,26 +100,40 @@ function buildTopicElementMatch(input: PaperFilterInput): Record<string, unknown
   return match;
 }
 
-function citationBandToMatch(band: string): Record<string, unknown> | null {
-  if (band === "0-9") return { citationCount: { $gte: 0, $lte: 9 } };
-  if (band === "10-49") return { citationCount: { $gte: 10, $lte: 49 } };
-  if (band === "50-99") return { citationCount: { $gte: 50, $lte: 99 } };
-  if (band === "100-499") return { citationCount: { $gte: 100, $lte: 499 } };
-  if (band === "500-999") return { citationCount: { $gte: 500, $lte: 999 } };
-  if (band === "1000+") return { citationCount: { $gte: 1000 } };
-  return null;
+const CITATION_BAND_RANGES: Record<string, { min: number; max?: number }> = {
+  "0-9": { min: 0, max: 9 },
+  "10-49": { min: 10, max: 49 },
+  "50-99": { min: 50, max: 99 },
+  "100-499": { min: 100, max: 499 },
+  "500-999": { min: 500, max: 999 },
+  "1000+": { min: 1000 },
+};
+
+export function citationBandRange(band: string): { min: number; max?: number } | null {
+  return CITATION_BAND_RANGES[band] ?? null;
 }
 
-function lowercase(values: unknown): string[] {
+function citationBandToMatch(band: string): Record<string, unknown> | null {
+  const range = citationBandRange(band);
+  if (!range) return null;
+  return {
+    citationCount: {
+      $gte: range.min,
+      ...(range.max !== undefined ? { $lte: range.max } : {}),
+    },
+  };
+}
+
+export function lowercase(values: unknown): string[] {
   return uniqueStrings(values).map((value) => value.toLowerCase());
 }
 
-function uniqueStrings(values: unknown): string[] {
+export function uniqueStrings(values: unknown): string[] {
   if (!Array.isArray(values)) return [];
   return Array.from(new Set(values.map(String).map((value) => value.trim()).filter(Boolean)));
 }
 
-function expandOpenAlexIds(values: string[]): string[] {
+export function expandOpenAlexIds(values: string[]): string[] {
   const expanded = new Set<string>();
   for (const value of values) {
     expanded.add(value);

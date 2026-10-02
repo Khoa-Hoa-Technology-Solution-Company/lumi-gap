@@ -64,8 +64,7 @@ export interface SemanticSearchResult {
 /**
  * Hard ceiling on the in-memory result horizon. The pool size is FIXED (never
  * grows with the requested page) so `total` is deterministic for a given
- * query+filters, and `limit` can never exceed `$vectorSearch` numCandidates
- * (≤1000) — which otherwise makes Atlas throw on deep pagination. Semantic
+ * query+filters, and a deep `page` can never inflate the SQL LIMIT. Semantic
  * relevance past the top few hundred hits is noise, so capping here is correct.
  */
 const MAX_POOL = 500;
@@ -73,13 +72,12 @@ const MAX_POOL = 500;
 export const searchService = {
   /**
    * Semantic search: embed the query into a 768-dim vector, then find the
-   * nearest paper vectors via Atlas $vectorSearch (cosine similarity).
+   * nearest paper vectors via pgvector fused with full-text rank (RRF).
    *
-   * Filters that the vector index can apply (year, dataStatus) go INTO the
-   * $vectorSearch filter. Filters it cannot (paperKind, openAccess, provider,
-   * minScore) are applied as a $match over a bounded candidate POOL, then the
-   * survivors are sorted + paginated. `total` therefore reflects the FILTERED
-   * pool, so the count, the filters and the pager all agree.
+   * All metadata filters are applied in SQL before ranking; only `minScore`
+   * trims the ranked pool in memory. The bounded pool is then sorted +
+   * paginated, so `total` reflects the FILTERED pool and the count, filters and
+   * pager all agree.
    *
    * With `rerank`, that pool is additionally re-scored by an LLM for true query
    * relevance and re-ordered before pagination.
@@ -93,7 +91,7 @@ export const searchService = {
 
     // Plain semantic path: pull a FIXED-size filtered pool, sort, paginate in
     // memory. Pool size does NOT grow with `page` — so `total` is stable and a
-    // deep `page` can't push $vectorSearch limit past numCandidates (Atlas 500).
+    // deep `page` can't inflate the SQL LIMIT.
     const poolSize = resolveSearchPoolSize(params, pageSize);
     const pool = annotateTaxonomyBoost(q, await fetchScoredPool(q, params, poolSize));
     const sorted = sortPapers(pool, sort);
@@ -282,38 +280,13 @@ async function fetchScoredPool(
       topicIds: params.topicIds,
       minScore: params.minScore,
     },
-    projection: "search",
   });
 }
 
-function resolveSearchPoolSize(params: SemanticSearchParams, minimum: number): number {
-  // Scope filters from Trends are applied after vector search because nested
-  // taxonomy fields are not vector-index-safe filters. Pull a wider candidate
-  // pool so a legitimate scoped result is not dropped simply because the
-  // global top-200 semantic candidates were mostly from another domain/source.
-  if (hasPostVectorScopeFilters(params)) return MAX_POOL;
+function resolveSearchPoolSize(_params: SemanticSearchParams, minimum: number): number {
+  // Every filter is applied in SQL before ranking, so the pool only needs to
+  // cover the requested window; no widening for scoped filters.
   return Math.min(MAX_POOL, Math.max(env.SEARCH_FILTER_POOL, minimum));
-}
-
-function hasPostVectorScopeFilters(params: SemanticSearchParams): boolean {
-  return [
-    params.paperKinds,
-    params.openAccessStatuses,
-    params.providers,
-    params.sources,
-    params.languages,
-    params.citationBands,
-    params.domains,
-    params.fields,
-    params.subfields,
-    params.topics,
-    params.domainIds,
-    params.fieldIds,
-    params.subfieldIds,
-    params.topicIds,
-  ].some((values) => Array.isArray(values) && values.length > 0)
-    || Boolean(params.openAccess)
-    || Boolean(params.provider);
 }
 
 function getSearchFilterKeyParts(params: SemanticSearchParams): Record<string, unknown> {

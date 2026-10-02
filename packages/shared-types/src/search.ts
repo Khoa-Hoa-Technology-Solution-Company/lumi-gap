@@ -16,6 +16,8 @@ export type SearchResultMode = "semantic" | "semantic+rerank";
  */
 export interface ScoredPaper extends Paper {
   score: number;
+  /** RRF fusion of vector + full-text ranks, normalized 0..1. */
+  hybridScore?: number;
   rerankScore?: number;
   taxonomyBoostScore?: number;
 }

@@ -41,9 +41,10 @@ export function computeTaxonomyBoost(query: string, paper: TaxonomyPaper): numbe
 }
 
 export function effectiveRelevanceScore(
-  paper: Pick<ScoredPaper, "score" | "taxonomyBoostScore">,
+  paper: Pick<ScoredPaper, "score" | "hybridScore" | "taxonomyBoostScore">,
 ): number {
-  return round2(Math.min(1, Number(paper.score ?? 0) + Number(paper.taxonomyBoostScore ?? 0)));
+  const base = Number(paper.hybridScore ?? paper.score ?? 0);
+  return round2(Math.min(1, base + Number(paper.taxonomyBoostScore ?? 0)));
 }
 
 function matchingWeight(query: string, value: string | undefined, weight: number): number {
