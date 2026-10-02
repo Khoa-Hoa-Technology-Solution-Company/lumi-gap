@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeTaxonomyBoost, effectiveRelevanceScore } from "../search.taxonomy.js";
+import { computeTaxonomyBoost, effectiveRelevanceScore, relevanceSortScore } from "../search.taxonomy.js";
 
 describe("computeTaxonomyBoost", () => {
   it("boosts papers whose OpenAlex taxonomy matches the query", () => {
@@ -32,5 +32,20 @@ describe("effectiveRelevanceScore", () => {
   it("keeps vector score as the base and caps the boosted relevance score", () => {
     expect(effectiveRelevanceScore({ score: 0.97, taxonomyBoostScore: 0.08 })).toBe(1);
     expect(effectiveRelevanceScore({ score: 0.7, taxonomyBoostScore: 0.03 })).toBe(0.73);
+  });
+});
+
+describe("relevanceSortScore", () => {
+  it("keeps RRF order that effectiveRelevanceScore rounds away", () => {
+    const hi = { score: 0.9, hybridScore: 0.1881 };
+    const lo = { score: 0.9, hybridScore: 0.1879 };
+    expect(effectiveRelevanceScore(hi)).toBe(effectiveRelevanceScore(lo));
+    expect(relevanceSortScore(hi)).toBeGreaterThan(relevanceSortScore(lo));
+  });
+
+  it("prefers hybridScore over score, falls back to score, and caps at 1", () => {
+    expect(relevanceSortScore({ score: 0.9, hybridScore: 0.2 })).toBeCloseTo(0.2);
+    expect(relevanceSortScore({ score: 0.6 })).toBeCloseTo(0.6);
+    expect(relevanceSortScore({ score: 0.97, taxonomyBoostScore: 0.08 })).toBe(1);
   });
 });

@@ -39,7 +39,7 @@ export type PostgresPaperSearchFilters = {
 export type PostgresPaperSearchRow = {
   id: string;
   legacyMongoId: string | null;
-  /** Cosine similarity 0..1 (normalized keyword rank when no embedding was used). */
+  /** Cosine similarity 0..1; falls back to normalized keyword rank for papers without an embedding. */
   score: number;
   /** RRF fusion of vector + full-text ranks, normalized 0..1. */
   hybridScore: number;
@@ -146,12 +146,12 @@ export function vectorParameter(embedding: readonly number[]): string {
  * truncated by a post-hoc filter. Either input may be omitted (vector-only or
  * keyword-only); at least one is required.
  */
-export async function searchPapersHybrid(input: {
+export function buildHybridSearchSql(input: {
   embedding?: readonly number[];
   query?: string;
   filters?: PostgresPaperSearchFilters;
   limit: number;
-}): Promise<PostgresPaperSearchRow[]> {
+}): Prisma.Sql {
   const { limit } = input;
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > 500) {
     throw new Error("limit must be an integer between 1 and 500");
@@ -189,11 +189,14 @@ export async function searchPapersHybrid(input: {
   const rrfK = Prisma.raw(String(RRF_K));
   const maxRrf = Prisma.raw(String(activeLists / (RRF_K + 1)));
   const scoreSql = vectorLiteral
-    ? Prisma.sql`coalesce(1 - ((p.embedding <=> ${vectorLiteral}) / 2.0), 0)::double precision`
+    ? Prisma.sql`coalesce(1 - ((p.embedding <=> ${vectorLiteral}) / 2.0), fused.kw_rank / (1 + fused.kw_rank), 0)::double precision`
     : Prisma.sql`coalesce(fused.kw_rank / (1 + fused.kw_rank), 0)::double precision`;
 
-  return getPrisma().$queryRaw<PostgresPaperSearchRow[]>(Prisma.sql`
-    WITH filtered AS (
+  // NOT MATERIALIZED: `filtered` is referenced twice (vec, kw); without it
+  // PostgreSQL copies every candidate row (incl. 768-dim vectors) into a temp
+  // store and cannot use the GIN index for the keyword branch.
+  return Prisma.sql`
+    WITH filtered AS NOT MATERIALIZED (
       SELECT p.id, p.embedding, p.search_document
       FROM papers p
       WHERE TRUE
@@ -218,5 +221,9 @@ export async function searchPapersHybrid(input: {
     JOIN papers p ON p.id = fused.id
     ORDER BY fused.rrf DESC, p.id
     LIMIT ${limit}
-  `);
+  `;
+}
+
+export async function searchPapersHybrid(input: Parameters<typeof buildHybridSearchSql>[0]): Promise<PostgresPaperSearchRow[]> {
+  return getPrisma().$queryRaw<PostgresPaperSearchRow[]>(buildHybridSearchSql(input));
 }

@@ -11,7 +11,8 @@ export type SearchResultMode = "semantic" | "semantic+rerank";
 
 /**
  * A paper plus its relevance scores — the wire shape of GET /search rows.
- * `score` is vector (cosine) similarity 0..1. `rerankScore` is the LLM
+ * `score` is vector (cosine) similarity 0..1 (normalized keyword rank for
+ * papers without an embedding). `rerankScore` is the LLM
  * relevance 0..1 and is the sort key; present ONLY when rerank=true.
  */
 export interface ScoredPaper extends Paper {

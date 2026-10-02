@@ -15,8 +15,11 @@ describe.sequential("retriever filters and hybrid search (PostgreSQL)", () => {
   const marker = crypto.randomUUID();
   const topic = `topic-${marker}`;
   const rareToken = `kw${marker.replace(/-/g, "")}`;
+  const noEmbeddingToken = `kwnoemb${marker.replace(/-/g, "")}`;
   const paperIds: string[] = [];
+  const distractorIds: string[] = [];
   let keywordPaperId = "";
+  let noEmbeddingPaperId = "";
 
   beforeAll(async () => {
     const prisma = getPrisma();
@@ -36,6 +39,19 @@ describe.sequential("retriever filters and hybrid search (PostgreSQL)", () => {
       data: { title: `Lexical only ${rareToken}`, publicationYear: 2026, primaryProvider: "user", dataStatus: "active" },
     });
     keywordPaperId = keywordPaper.id;
+    const noEmbeddingPaper = await prisma.paper.create({
+      data: { title: `No embedding ${noEmbeddingToken}`, publicationYear: 2026, primaryProvider: "user", dataStatus: "active" },
+    });
+    noEmbeddingPaperId = noEmbeddingPaper.id;
+    // Distractors sit right on the query vector but lack the topic, so an
+    // unfiltered top-K would be filled by them and drop the topic papers.
+    for (let i = 0; i < 5; i += 1) {
+      const distractor = await prisma.paper.create({
+        data: { title: `Distractor ${i} ${marker}`, publicationYear: 2026, primaryProvider: "user", dataStatus: "active" },
+      });
+      distractorIds.push(distractor.id);
+      await prisma.$executeRaw`UPDATE papers SET embedding = CAST(${vectorParameter(queryVector)} AS vector) WHERE id = ${distractor.id}::uuid`;
+    }
     for (const id of [...paperIds, keywordPaperId]) {
       await prisma.$executeRaw`UPDATE papers SET embedding = CAST(${vectorParameter(farVector)} AS vector) WHERE id = ${id}::uuid`;
     }
@@ -43,7 +59,7 @@ describe.sequential("retriever filters and hybrid search (PostgreSQL)", () => {
 
   afterAll(async () => {
     const prisma = getPrisma();
-    const ids = [...paperIds, keywordPaperId].filter(Boolean);
+    const ids = [...paperIds, ...distractorIds, keywordPaperId, noEmbeddingPaperId].filter(Boolean);
     await prisma.paperTopic.deleteMany({ where: { paperId: { in: ids } } });
     await prisma.paper.deleteMany({ where: { id: { in: ids } } });
   });
@@ -65,6 +81,14 @@ describe.sequential("retriever filters and hybrid search (PostgreSQL)", () => {
     expect(hit).toBeDefined();
     expect(hit?.hybridScore).toBeGreaterThan(0);
     expect(hit?.score).toBeGreaterThanOrEqual(0);
+    expect(hit?.score).toBeLessThanOrEqual(1);
+  });
+
+  it("scores keyword hits that have no embedding above zero", async () => {
+    const results = await retrieveScored({ queryVector, queryText: noEmbeddingToken, topK: 5 });
+    const hit = results.find((paper) => paper.id === noEmbeddingPaperId);
+    expect(hit).toBeDefined();
+    expect(hit?.score).toBeGreaterThan(0);
     expect(hit?.score).toBeLessThanOrEqual(1);
   });
 

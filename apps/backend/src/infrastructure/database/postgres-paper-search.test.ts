@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { PAPER_EMBEDDING_DIMENSIONS, filterSql, vectorParameter } from "./postgres-paper-search.js";
+import { PAPER_EMBEDDING_DIMENSIONS, buildHybridSearchSql, filterSql, vectorParameter } from "./postgres-paper-search.js";
 
 describe("PostgreSQL vector query input", () => {
   it("serializes exactly 768 finite dimensions", () => {
@@ -61,5 +61,29 @@ describe("filterSql", () => {
 
   it("filters openAccess on a non-empty url", () => {
     expect(render({ openAccess: true }).text).toContain("p.open_access_url <> ''");
+  });
+});
+
+describe("buildHybridSearchSql", () => {
+  const embedding = Array.from({ length: PAPER_EMBEDDING_DIMENSIONS }, () => 0.1);
+
+  it("builds an un-materialized fused vector + keyword query", () => {
+    const { sql } = buildHybridSearchSql({ embedding, query: "transformers", limit: 10 });
+    expect(sql).toContain("NOT MATERIALIZED");
+    expect(sql).toContain("websearch_to_tsquery");
+    expect(sql).toContain("<=>");
+  });
+
+  it("omits the vector branch for keyword-only search", () => {
+    const { sql } = buildHybridSearchSql({ query: "transformers", limit: 10 });
+    expect(sql).not.toContain("<=>");
+  });
+
+  it("requires an embedding or a query", () => {
+    expect(() => buildHybridSearchSql({ limit: 10 })).toThrow(/requires an embedding or a query/);
+  });
+
+  it("rejects an out-of-range limit", () => {
+    expect(() => buildHybridSearchSql({ query: "x", limit: 0 })).toThrow(/limit must be/);
   });
 });

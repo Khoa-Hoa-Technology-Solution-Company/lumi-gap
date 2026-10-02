@@ -20,7 +20,7 @@ import {
 } from "./search.rerank.js";
 import {
   annotateTaxonomyBoost,
-  effectiveRelevanceScore,
+  relevanceSortScore,
 } from "./search.taxonomy.js";
 
 export type { ScoredPaper } from "@trend/shared-types";
@@ -206,7 +206,7 @@ async function rerankedSearch(args: {
   for (const p of rerankHead) p.rerankScore = scoreMap[p.id]!;
   const rerankedHead = [...rerankHead].sort((a, b) =>
     (rerankGrade(b.rerankScore) - rerankGrade(a.rerankScore))
-    || (effectiveRelevanceScore(b) - effectiveRelevanceScore(a))
+    || (relevanceSortScore(b) - relevanceSortScore(a))
     || b.score - a.score
   );
   pool.splice(0, rerankHead.length, ...rerankedHead);
@@ -245,7 +245,7 @@ function sortPapers(papers: ScoredPaper[], sort: SearchSortKey): ScoredPaper[] {
   } else if (sort === "citations") {
     arr.sort((a, b) => (b.citationCount ?? 0) - (a.citationCount ?? 0));
   } else {
-    arr.sort((a, b) => effectiveRelevanceScore(b) - effectiveRelevanceScore(a) || b.score - a.score);
+    arr.sort((a, b) => relevanceSortScore(b) - relevanceSortScore(a) || b.score - a.score);
   }
   return arr;
 }
