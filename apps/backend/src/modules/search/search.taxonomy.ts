@@ -40,10 +40,17 @@ export function computeTaxonomyBoost(query: string, paper: TaxonomyPaper): numbe
   return round2(Math.min(MAX_TAXONOMY_BOOST, boost));
 }
 
-export function effectiveRelevanceScore(
-  paper: Pick<ScoredPaper, "score" | "taxonomyBoostScore">,
+/** Unrounded relevance used for sorting, so RRF order survives deep ranks. */
+export function relevanceSortScore(
+  paper: Pick<ScoredPaper, "score" | "hybridScore" | "taxonomyBoostScore">,
 ): number {
-  return round2(Math.min(1, Number(paper.score ?? 0) + Number(paper.taxonomyBoostScore ?? 0)));
+  return Math.min(1, Number(paper.hybridScore ?? paper.score ?? 0) + Number(paper.taxonomyBoostScore ?? 0));
+}
+
+export function effectiveRelevanceScore(
+  paper: Pick<ScoredPaper, "score" | "hybridScore" | "taxonomyBoostScore">,
+): number {
+  return round2(relevanceSortScore(paper));
 }
 
 function matchingWeight(query: string, value: string | undefined, weight: number): number {
