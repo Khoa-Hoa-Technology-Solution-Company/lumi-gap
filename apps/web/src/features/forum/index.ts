@@ -1,6 +1,7 @@
 export * from "./api/forum.api";
 export * from "./hooks/use-forum";
 export * from "./components/forum-author-avatar";
+export * from "./components/forum-author-popover";
 export * from "./components/forum-post-type-badge";
 export * from "./components/forum-markdown";
 export * from "./components/forum-context-card";
@@ -8,6 +9,8 @@ export * from "./components/forum-card";
 export * from "./components/forum-sidebar";
 export * from "./components/forum-layout";
 export * from "./components/forum-response-item";
+export * from "./components/forum-reaction-picker";
+export * from "./components/forum-edit-history";
 export * from "./components/forum-composer";
 export * from "./components/forum-moderation-queue";
 export * from "./forum-gap-copy";

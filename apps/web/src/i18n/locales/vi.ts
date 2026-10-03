@@ -11,8 +11,10 @@ import { projectInvitationStrings } from "./project-invitations";
 import { studentOnboardingStrings } from "./student-onboarding";
 import { forumRefinementVi } from "./forum-refinement";
 import { forumRefinementViOverrides } from "./forum-refinement-vi-overrides";
+import { researchHomeVi } from "./research-home";
 
 export const vi: Record<keyof typeof en, string> = {
+  ...researchHomeVi,
   ...projectInvitationStrings,
   ...studentOnboardingStrings,
   ...newUiStrings,

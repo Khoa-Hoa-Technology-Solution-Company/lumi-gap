@@ -8,12 +8,18 @@ import type {
   LecturerDirectoryResponse,
   InstitutionalEmailVerificationStatus,
   PublicAcademicProfile,
+  PublicForumActivity,
+  ForumActivityFilter,
   UpdateAcademicProfileDetailsRequest,
 } from "@trend/shared-types";
 import { API_ROUTES } from "@/constants";
 import { api } from "@/services/api-client";
 
 export const academicProfileApi = {
+  async forumActivity(userId: string, filter: ForumActivityFilter, page: number, signal?: AbortSignal): Promise<PublicForumActivity> {
+    const response = await api.get(API_ROUTES.academicProfiles.forumActivity(userId), { params: { filter, page }, signal });
+    return response.data.data;
+  },
   async mine(): Promise<AcademicProfile> {
     const response = await api.get(API_ROUTES.academicProfiles.me);
     return response.data.data;

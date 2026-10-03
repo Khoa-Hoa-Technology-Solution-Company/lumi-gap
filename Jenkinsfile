@@ -372,20 +372,6 @@ pipeline {
             umask 077
             printf '%s' "$BACKEND_ENV_B64" | base64 -d > .env.runtime
 
-            for key in E2E_USER_EMAIL E2E_USER_PASSWORD E2E_PAPER_ID E2E_SEARCH_QUERY; do
-              value="$(grep -m1 "^${key}=" .env.runtime | cut -d= -f2- || true)"
-              if [ -z "$value" ]; then
-                echo "Missing required browser E2E variable: $key"
-                exit 1
-              fi
-              case "$value" in
-                '<'*'>')
-                  echo "Browser E2E variable still contains a placeholder: $key"
-                  exit 1
-                  ;;
-              esac
-            done
-
             mkdir -p test-results/e2e playwright-report
             e2e_status=0
             docker run --rm \

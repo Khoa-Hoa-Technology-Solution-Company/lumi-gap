@@ -130,8 +130,8 @@ export function OverviewTab({
 
   const getScopedSearchTarget = (query: string) => {
     return scopeParams
-      ? buildScopedUrl("/search", { q: query })
-      : `/search?q=${encodeURIComponent(query)}`;
+      ? buildScopedUrl("/home", { q: query })
+      : `/home?q=${encodeURIComponent(query)}`;
   };
 
   const getScopedReportTarget = (topic: string) => {

@@ -413,15 +413,17 @@ export function ResearchGapsPage() {
           {/* Left Group: Filters */}
           <div className="flex min-w-0 flex-col gap-3.5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
             {/* Status filter */}
-            <div className="flex items-center gap-2 shrink-0">
-              <ListFilter className="w-4 h-4 text-slate-400" />
-              <span className="text-xs font-bold text-slate-700 dark:text-slate-300">{t("Status:")}</span>
-              <div className="flex items-center gap-1 rounded-xl bg-slate-100/90 p-1 dark:bg-slate-900/90 border border-slate-200/60 dark:border-slate-800/60">
+            <div className="flex w-full min-w-0 flex-col items-stretch gap-2 sm:w-auto sm:shrink-0 sm:flex-row sm:items-center">
+              <span className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300">
+                <ListFilter className="h-4 w-4 text-slate-400" />
+                {t("Status:")}
+              </span>
+              <div className="grid w-full min-w-0 grid-cols-3 items-center gap-1 rounded-xl border border-slate-200/60 bg-slate-100/90 p-1 sm:flex sm:w-auto dark:border-slate-800/60 dark:bg-slate-900/90">
                 <button
                   type="button"
                   onClick={() => setFilterStatus("active")}
                   className={cn(
-                    "h-7 px-3 text-xs font-bold rounded-lg transition-all cursor-pointer",
+                    "h-9 min-w-0 px-2 text-xs font-bold rounded-lg transition-all cursor-pointer sm:h-7 sm:px-3",
                     filterStatus === "active"
                       ? "bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-xs border border-slate-200/80 dark:border-slate-700"
                       : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-slate-800/60"
@@ -433,7 +435,7 @@ export function ResearchGapsPage() {
                   type="button"
                   onClick={() => setFilterStatus("resolved")}
                   className={cn(
-                    "h-7 px-3 text-xs font-bold rounded-lg transition-all cursor-pointer",
+                    "h-9 min-w-0 px-2 text-xs font-bold rounded-lg transition-all cursor-pointer sm:h-7 sm:px-3",
                     filterStatus === "resolved"
                       ? "bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-xs border border-slate-200/80 dark:border-slate-700"
                       : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-slate-800/60"
@@ -445,7 +447,7 @@ export function ResearchGapsPage() {
                   type="button"
                   onClick={() => setFilterStatus("dismissed")}
                   className={cn(
-                    "h-7 px-3 text-xs font-bold rounded-lg transition-all cursor-pointer",
+                    "h-9 min-w-0 px-2 text-xs font-bold rounded-lg transition-all cursor-pointer sm:h-7 sm:px-3",
                     filterStatus === "dismissed"
                       ? "bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-xs border border-slate-200/80 dark:border-slate-700"
                       : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-slate-800/60"
@@ -490,15 +492,15 @@ export function ResearchGapsPage() {
           </div>
 
           {/* Right Group: Actions */}
-          <div className="flex items-center gap-3 shrink-0 flex-wrap sm:flex-nowrap">
+          <div className="flex w-full min-w-0 flex-col items-stretch gap-3 sm:flex-row sm:flex-wrap sm:items-center lg:w-auto lg:shrink-0 lg:flex-nowrap">
             {/* Sort Select */}
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto sm:shrink-0">
               <span className="text-xs font-bold text-slate-700 dark:text-slate-300 shrink-0">{t("Sort:")}</span>
               <select
                 value={sortBy}
                 disabled={showShortlistedOnly}
                 onChange={(e) => setSortBy(e.target.value as GapSortKey)}
-                className="h-9 max-w-[210px] sm:max-w-none cursor-pointer rounded-xl border border-slate-200/80 bg-slate-50/80 dark:bg-slate-950/80 px-3 text-xs font-semibold text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 disabled:opacity-50 dark:border-slate-800 truncate"
+                className="h-11 min-w-0 flex-1 cursor-pointer truncate rounded-xl border border-slate-200/80 bg-slate-50/80 px-3 text-xs font-semibold text-slate-700 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:opacity-50 sm:h-9 sm:max-w-none sm:flex-none dark:border-slate-800 dark:bg-slate-950/80 dark:text-slate-300"
               >
                 <option value="recommended">{t("Recommended (evidence + confidence)")}</option>
                 <option value="evidence">{t("Most Evidence-backed")}</option>

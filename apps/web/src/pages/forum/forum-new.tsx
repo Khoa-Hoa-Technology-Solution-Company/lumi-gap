@@ -1,17 +1,16 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import type { ForumPostType } from "@trend/shared-types";
-import { ArrowLeft, BookOpen, Check, ChevronRight, Eye, FileSearch, Loader2, Maximize2, MessageSquare, Minimize2, Plus, Search, Send, X } from "lucide-react";
+import { ArrowLeft, BookOpen, Check, ChevronRight, FileSearch, Loader2, Maximize2, MessageSquare, Minimize2, Plus, Search, Send, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ForumLayout, ForumSurface } from "@/features/forum/components/forum-layout";
-import { ForumMarkdown } from "@/features/forum/components/forum-markdown";
-import { ForumFormattingToolbar } from "@/features/forum/components/forum-formatting-toolbar";
+import { ForumBodyEditor } from "@/features/forum/components/forum-body-editor";
 import { ForumSidebar } from "@/features/forum/components/forum-sidebar";
 import { useCommunities, useCreateForumPost, useForumContext, useShareForumGap } from "@/features/forum/hooks/use-forum";
 import type { ForumReferenceView } from "@/features/forum/api/forum.api";
-import { buildForumDiscussionInput, formatForumMarkdown, forumInitialDiscussionType, forumMarkdownShortcut, type ForumMarkdownAction, type ForumTableConfig } from "@/features/forum/utils/forum-discussion-editor";
+import { buildForumDiscussionInput, forumInitialDiscussionType } from "@/features/forum/utils/forum-discussion-editor";
 import { isValidDoi, matchesExactDoi, normalizeDoi } from "@/features/projects/utils/doi";
 import { useI18n } from "@/i18n";
 import { useAuthStore } from "@/stores/auth-store";
@@ -105,11 +104,9 @@ export function ForumDiscussionComposer({ embedded = false, onClose, onPublished
   const [paperSearch, setPaperSearch] = useState("");
   const [tagsOpen, setTagsOpen] = useState(false);
   const [advancedContextOpen, setAdvancedContextOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<"write" | "preview">("write");
   const [error, setError] = useState("");
   const [discardOpen, setDiscardOpen] = useState(false);
   const [draftHydrated, setDraftHydrated] = useState(false);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const submittingRef = useRef(false);
   const initializedCommunity = useRef(false);
   const initializedGap = useRef(false);
@@ -180,11 +177,10 @@ export function ForumDiscussionComposer({ embedded = false, onClose, onPublished
   const selectedCommunity = joined.find((community) => community.id === communityId);
   const canPublish = Boolean(communityId && joined.some((community) => community.id === communityId) && title.trim().length >= 3 && content.trim() && (type !== "PAPER_DISCUSSION" || linkedPaperId) && (type !== "RESEARCH_GAP_DISCUSSION" || selectedGap?.forumShareable));
   const hasDraft = Boolean(title.trim() || content.trim() || tags.trim() || linkedPaperId || linkedGapId || linkedProjectId || references.length);
-  const paperResults = paperSearch ? (paperLookupQuery.data?.papers ?? []) : (context?.papers ?? []);
+  const paperResults = paperSearch ? (paperLookupQuery.data?.papers ?? []) : (context?.savedPapers?.length ? context.savedPapers : (context?.papers ?? []));
   const citationResults = (citationLookupQuery.data?.papers ?? []).filter((paper) => citationMode !== "doi" || matchesExactDoi(paper.doi, citationSearch));
   const pendingCitationSet = new Set(pendingCitationIds);
   const titleNearLimit = title.length >= 200;
-  const bodyNearLimit = content.length >= 18_000;
 
   useEffect(() => {
     if (!draftHydrated) return;
@@ -197,19 +193,6 @@ export function ForumDiscussionComposer({ embedded = false, onClose, onPublished
     return () => window.clearTimeout(timer);
   }, [communityId, content, draftHydrated, draftKey, hasDraft, linkedGapId, linkedPaperId, linkedPaperLabel, linkedProjectId, references, tags, title, type]);
 
-  const insertText = (action: ForumMarkdownAction, table?: ForumTableConfig) => {
-    const element = textareaRef.current;
-    if (!element) return;
-    const next = formatForumMarkdown(content, element.selectionStart, element.selectionEnd, action, t("text"), { tableHeaders: [t("Title"), t("References"), t("Notes")], table, noteLabel: t("Note:"), detailsLabel: t("Details") });
-    if (next.content.length > 20000) return;
-    setContent(next.content);
-    setActiveTab("write");
-    requestAnimationFrame(() => { element.focus(); element.setSelectionRange(next.selectionStart, next.selectionEnd); });
-  };
-  const handleEditorKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    const action = forumMarkdownShortcut({ ...event, isComposing: event.nativeEvent.isComposing });
-    if (action) { event.preventDefault(); insertText(action); }
-  };
   const selectPaper = (paper: { id: string; title: string }) => {
     setLinkedPaperId(paper.id);
     setLinkedPaperLabel(paper.title);
@@ -307,24 +290,7 @@ export function ForumDiscussionComposer({ embedded = false, onClose, onPublished
           {communitiesQuery.isLoading ? <p role="status" className="text-sm text-muted-foreground">{t("Loading communities")}</p> : communitiesQuery.isError ? <div role="alert" className="flex flex-wrap items-center gap-3 text-sm text-destructive"><span>{t("Could not load communities.")}</span><button type="button" className="rounded underline focus-visible:ring-2 focus-visible:ring-ring" onClick={() => void communitiesQuery.refetch()}>{t("Retry")}</button></div> : !joined.length ? <p className="rounded-md border border-border bg-muted/40 p-3 text-sm leading-6 text-muted-foreground">{t("You need to join an academic community before posting.")} <Link to="/communities" className="font-medium text-primary hover:underline">{t("Browse communities")}</Link></p> : null}
         </div>
 
-        <div className="forum-compose-tabs flex items-center gap-1 px-5 pt-4 sm:px-6" role="group" aria-label={t("Editor view")}>
-          <Button type="button" variant={activeTab === "write" ? "secondary" : "ghost"} className="h-10 text-sm" aria-pressed={activeTab === "write"} onClick={() => setActiveTab("write")}>{t("Write")}</Button>
-          <Button type="button" variant={activeTab === "preview" ? "secondary" : "ghost"} className="h-10 text-sm" aria-pressed={activeTab === "preview"} onClick={() => setActiveTab("preview")}><Eye className="h-4 w-4" />{t("Preview")}</Button>
-        </div>
-        <div className="border-y border-border bg-muted/20 px-3 py-1.5 sm:px-5">
-          <ForumFormattingToolbar onAction={insertText} onTableInsert={(config) => insertText("table", config)} disabled={create.isPending} />
-        </div>
-        <div className="forum-compose-editor min-w-0" data-view={activeTab}>
-          <div className="forum-compose-write min-w-0 px-5 pt-4 sm:px-6">
-            <label htmlFor="discussion-body" className="sr-only">{t("Discussion body")}</label>
-            <textarea id="discussion-body" ref={textareaRef} required maxLength={20000} rows={12} value={content} onChange={(event) => setContent(event.target.value)} onKeyDown={handleEditorKeyDown} aria-describedby={error ? "discussion-error" : "discussion-help"} placeholder={t(BODY_PLACEHOLDERS[type])} className={cn("block min-h-[18rem] w-full resize-y bg-transparent pb-4 text-base leading-[1.7] outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring", expanded ? "h-[calc(100vh-22rem)]" : "h-[18rem]")} />
-          </div>
-          <section className="forum-compose-preview min-w-0 overflow-auto px-5 py-4 sm:px-6" aria-label={t("Live Preview")}>
-            <h2 className="mb-4 flex items-center gap-2 text-sm font-medium text-muted-foreground"><Eye className="h-4 w-4" />{t("Preview")}</h2>
-            {content.trim() ? <ForumMarkdown content={content} className="text-base sm:text-base" /> : <p className="text-base leading-7 text-muted-foreground">{t("Preview will appear here once you write content.")}</p>}
-          </section>
-        </div>
-        {bodyNearLimit ? <div className="flex items-center justify-end px-5 pt-2 sm:px-6"><span className="text-xs tabular-nums text-muted-foreground" aria-live="polite">{content.length}/20000</span></div> : null}
+        <div className="px-5 pt-4 sm:px-6"><ForumBodyEditor id="discussion-body" label={t("Discussion body")} value={content} onChange={setContent} maxLength={20000} disabled={create.isPending} describedBy={error ? "discussion-error" : "discussion-help"} placeholder={t(BODY_PLACEHOLDERS[type])} className={expanded ? "forum-editor-expanded" : undefined} /></div>
 
         <div className="space-y-3 px-5 pt-4 sm:px-6">
           <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
@@ -375,7 +341,7 @@ export function ForumDiscussionComposer({ embedded = false, onClose, onPublished
             </div>
             <p className="text-xs leading-5 text-muted-foreground">{t("Only public or explicitly shareable research objects can appear in a forum discussion.")}</p>
           </section> : null}
-          <p id="discussion-help" className="pb-2 text-sm text-muted-foreground">{t("Markdown is supported. Keep claims specific and cite sources where possible.")}</p>
+          <p id="discussion-help" className="pb-2 text-sm text-muted-foreground">{t("Keep claims specific and cite sources where possible.")}</p>
           {error ? <p id="discussion-error" role="alert" className="mb-2 rounded-md border border-destructive/40 p-3 text-base text-destructive">{error}</p> : null}
         </div>
         <footer className="sticky bottom-0 z-10 flex flex-wrap items-center justify-between gap-3 border-t border-border bg-background/95 px-5 py-3 sm:px-6">
@@ -402,5 +368,5 @@ export function ForumDiscussionComposer({ embedded = false, onClose, onPublished
   );
 
   if (embedded) return <div className={cn("forum-compose h-full overflow-y-auto", expanded ? "sm:max-h-[calc(100vh-2rem)]" : "sm:max-h-[78vh]")}>{form}</div>;
-  return <ForumLayout sidebar={<ForumSidebar communities={communitiesQuery.data} communitiesLoading={communitiesQuery.isLoading} communitiesError={communitiesQuery.isError} onRetryCommunities={() => void communitiesQuery.refetch()} isAuthed={isAuthed} />}><ForumSurface className="forum-compose overflow-hidden">{form}</ForumSurface></ForumLayout>;
+  return <ForumLayout sidebar={<ForumSidebar communities={communitiesQuery.data} communitiesLoading={communitiesQuery.isLoading} communitiesError={communitiesQuery.isError} onRetryCommunities={() => void communitiesQuery.refetch()} isAuthed={isAuthed} />}><ForumSurface className="forum-compose overflow-hidden"><div className="flex min-h-16 items-center pl-16 pr-5 lg:hidden"><Link to="/forum" className="rounded text-sm font-semibold text-muted-foreground hover:text-primary focus-visible:ring-2 focus-visible:ring-ring">{t("Research Forum")}</Link></div>{form}</ForumSurface></ForumLayout>;
 }

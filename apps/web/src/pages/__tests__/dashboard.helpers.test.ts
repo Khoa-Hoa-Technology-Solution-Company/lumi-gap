@@ -22,8 +22,8 @@ describe("dashboard helpers", () => {
     expect(getTopQueryLabel([])).toBe("No query yet");
   });
 
-  it("builds search route for recent query", () => {
-    expect(buildSearchTarget("LLM education")).toBe("/search?q=LLM%20education");
+  it("builds a home search target for a recent query", () => {
+    expect(buildSearchTarget("LLM education")).toBe("/home?q=LLM%20education");
   });
 
   it("fills missing days with zero counts", () => {

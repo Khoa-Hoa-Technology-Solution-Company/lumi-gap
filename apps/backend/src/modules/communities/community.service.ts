@@ -145,6 +145,9 @@ export const communityService = {
     const actorMembership = await assertCommunityModerator(id, actorId, actorRole);
     const community = await getPrisma().community.update({ where: { id }, data: input });
     await auditService.log("community.updated", { userId: actorId, targetTableName: "communities", targetRecordId: id, details: { fields: Object.keys(input) } });
+    if (input.status === "ARCHIVED" || input.status === "ACTIVE") {
+      await auditService.log(input.status === "ARCHIVED" ? "ARCHIVE_COMMUNITY" : "RESTORE_COMMUNITY", { userId: actorId, targetTableName: "communities", targetRecordId: id, details: {} });
+    }
     return presentCommunity(community, actorMembership, actorRole);
   },
 
@@ -197,8 +200,14 @@ export const communityService = {
     if (input.role !== undefined && actorRole !== "admin") throw AppError.forbidden("Only administrators can assign or remove community moderators");
     if (actorRole !== "admin" && actorMembership.role === "moderator" && target.role !== "member") throw AppError.forbidden("Community moderators can only manage regular members");
     const nextStatus = input.status ?? target.status;
+    const now = new Date();
+    const assignmentChanged = input.role !== undefined && input.role !== target.role;
     const updated = await getPrisma().$transaction(async (tx) => {
-      const result = await tx.communityMembership.update({ where: { id: target.id }, data: input });
+      const result = await tx.communityMembership.update({ where: { id: target.id }, data: {
+        ...input,
+        ...(assignmentChanged && input.role === "moderator" ? { assignedById: await resolveUserId(actorId), assignedAt: now, revokedAt: null } : {}),
+        ...(assignmentChanged && input.role === "member" ? { revokedAt: now } : {}),
+      } });
       if ((target.status === "active") !== (nextStatus === "active")) {
         const community = await tx.community.findUniqueOrThrow({ where: { id } });
         await tx.community.update({ where: { id }, data: { memberCount: Math.max(0, community.memberCount + (nextStatus === "active" ? 1 : -1)) } });
@@ -206,6 +215,9 @@ export const communityService = {
       return result;
     });
     await auditService.log("community.member.updated", { userId: actorId, targetTableName: "community_memberships", targetRecordId: target.id, details: input });
+    if (assignmentChanged) {
+      await auditService.log(input.role === "moderator" ? "ASSIGN_MODERATOR" : "REVOKE_MODERATOR", { userId: actorId, targetTableName: "community_memberships", targetRecordId: target.id, details: { communityId: id, moderatorId: resolvedTargetId } });
+    }
     return updated;
   },
 };

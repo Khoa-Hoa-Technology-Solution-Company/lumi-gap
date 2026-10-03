@@ -45,5 +45,5 @@ export function getTopQueryLabel(topQueries: Array<{ query: string; count: numbe
 }
 
 export function buildSearchTarget(query: string): string {
-  return `/search?q=${encodeURIComponent(query)}`;
+  return `/home?q=${encodeURIComponent(query)}`;
 }

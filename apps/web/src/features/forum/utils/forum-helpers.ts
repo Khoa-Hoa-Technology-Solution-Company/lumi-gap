@@ -84,7 +84,16 @@ export function formatForumActivityTime(value: string, locale: string): string {
   }
 }
 
-/** Stable human-readable thread URL with UUID fallback for legacy API responses. */
-export function forumPostHref(post: { id: string; publicSlug?: string }, hash?: string): string {
-  return `/forum/${encodeURIComponent(post.publicSlug || post.id)}${hash ? `#${hash}` : ""}`;
+/** Stable human-readable thread URL with UUID fallback for legacy API responses.
+ * Numeric post locators follow Discourse's `/topic-slug/post-number` format.
+ * A string locator is retained for old hash links during the migration. */
+export function forumPostHref(post: { id: string; publicSlug?: string }, postNumberOrHash?: number | string): string {
+  const base = `/forum/${encodeURIComponent(post.publicSlug || post.id)}`;
+  if (typeof postNumberOrHash === "number" || (typeof postNumberOrHash === "string" && /^\d+$/.test(postNumberOrHash))) return `${base}/${postNumberOrHash}`;
+  if (postNumberOrHash) return `${base}#${postNumberOrHash.replace(/^#/, "")}`;
+  return base;
+}
+
+export function forumPostNumberHref(post: { id: string; publicSlug?: string }, postNumber: number): string {
+  return forumPostHref(post, postNumber);
 }

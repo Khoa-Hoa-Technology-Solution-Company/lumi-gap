@@ -341,7 +341,7 @@ export function BookmarksPage() {
           {!searchQuery && (
             <div className="flex flex-wrap justify-center gap-3">
               <Button asChild size="sm" className="font-bold bg-blue-800 hover:bg-blue-900 text-white rounded-lg">
-                <Link to="/search">Explore Papers</Link>
+                <Link to="/home">Explore Papers</Link>
               </Button>
               <Button asChild variant="outline" size="sm" className="font-bold border-slate-300 dark:border-slate-700 rounded-lg">
                 <Link to="/trends">Analyze Trends</Link>

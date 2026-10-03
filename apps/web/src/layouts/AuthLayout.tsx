@@ -5,9 +5,9 @@ import { ThemeToggle } from "@/components/theme-toggle";
 
 export function AuthLayout() {
   return (
-    <div className="relative flex min-h-screen items-center justify-center p-4 overflow-hidden bg-slate-50 dark:bg-black">
+    <div className="relative flex min-h-dvh items-center justify-center overflow-x-clip overflow-y-auto bg-slate-50 px-4 py-16 [padding-bottom:max(4rem,env(safe-area-inset-bottom))] [padding-top:max(4rem,env(safe-area-inset-top))] dark:bg-black">
       <ThreeBackgroundParticle />
-      <div className="absolute top-6 right-6 z-20">
+      <div className="absolute right-3 top-3 z-20 sm:right-6 sm:top-6">
         <ThemeToggle />
       </div>
       <div className="z-10 w-full max-w-sm">

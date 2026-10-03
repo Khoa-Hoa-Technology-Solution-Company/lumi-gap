@@ -7,6 +7,7 @@ import { academicProfileController } from "./academic-profile.controller.js";
 import { uploadPositionEvidence } from "../../common/middleware/upload.js";
 import {
   PublicProfileParamsSchema,
+  PublicForumActivityQuerySchema,
   LecturerListQuerySchema,
   UpdateAcademicProfileDetailsSchema,
   VerificationDecisionParamsSchema,
@@ -110,6 +111,7 @@ academicProfileRouter.get("/by-handle/:handle", optionalAuth, validate(PublicHan
 academicProfileRouter.get("/:userId/avatar", optionalAuth, validate(PublicProfileParamsSchema, "params"), academicProfileController.publicAvatar);
 academicProfileRouter.get("/:userId/cover", optionalAuth, validate(PublicProfileParamsSchema, "params"), academicProfileController.publicCover);
 academicProfileRouter.get("/:userId/summary", optionalAuth, validate(PublicProfileParamsSchema, "params"), academicProfileController.compactProfile);
+academicProfileRouter.get("/:userId/forum-activity", optionalAuth, validate(PublicProfileParamsSchema, "params"), validate(PublicForumActivityQuerySchema, "query"), academicProfileController.forumActivity);
 academicProfileRouter.get("/:userId", optionalAuth, validate(PublicProfileParamsSchema, "params"), academicProfileController.publicProfile);
 
 export const academicProfileAdminRouter: Router = Router();

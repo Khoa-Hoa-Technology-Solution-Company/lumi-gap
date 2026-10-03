@@ -23,6 +23,8 @@ model User {
   lastLoginAt              DateTime?               @map("last_login_at") @db.Timestamptz(6)
   onboardingCompletedAt    DateTime?               @map("onboarding_completed_at") @db.Timestamptz(6)
   displayNameChanges       UserDisplayNameChange[]
+  forumPostRevisions       ForumPostRevision[]     @relation("ForumPostRevisionEditor")
+  forumCommentRevisions    ForumCommentRevision[] @relation("ForumCommentRevisionEditor")
   points                   Int                     @default(0)
   credits                  Int                     @default(0)
   penaltyPoints            Int                     @default(0) @map("penalty_points")

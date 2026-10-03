@@ -1,10 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { adminApi } from "@/features/admin";
-import {
-  Settings, Building2, Globe, Shield, Save,
-  CheckCircle2, Plus, RefreshCw, Key, CreditCard, Sparkles
-} from "lucide-react";
+import { Building2, CheckCircle2, CreditCard, Globe, Save } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export function AdminSettingsPage() {
@@ -13,8 +10,8 @@ export function AdminSettingsPage() {
     queryFn: () => adminApi.getSettings(),
   });
 
-  const [initialCredits, setInitialCredits] = useState(1000);
-  const [rateLimit, setRateLimit] = useState(600);
+  const [, setInitialCredits] = useState(1000);
+  const [, setRateLimit] = useState(600);
   const [savedMessage, setSavedMessage] = useState<string | null>(null);
 
   const handleSave = () => {
@@ -48,7 +45,7 @@ export function AdminSettingsPage() {
       )}
 
       {/* Credit & Registration Policies */}
-      <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-4">
+      <div className="space-y-4 rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm sm:p-6 dark:border-slate-800 dark:bg-slate-900">
         <h2 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
           <CreditCard className="h-4 w-4 text-blue-600" />
           User Credits & Onboarding Defaults
@@ -83,9 +80,9 @@ export function AdminSettingsPage() {
       </div>
 
       {/* Trusted Institutions List */}
-      <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+      <div className="space-y-4 rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm sm:p-6 dark:border-slate-800 dark:bg-slate-900">
+        <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <h2 className="flex items-start gap-2 text-sm font-bold text-slate-900 dark:text-white">
             <Building2 className="h-4 w-4 text-indigo-600" />
             Trusted Academic Institutions & Domains
           </h2>
@@ -97,10 +94,10 @@ export function AdminSettingsPage() {
             <Skeleton className="h-16 w-full" />
           ) : (
             (settings?.institutions || []).map((inst: any) => (
-              <div key={inst.id} className="py-3.5 flex items-center justify-between text-xs">
-                <div>
+              <div key={inst.id} className="flex min-w-0 flex-wrap items-center justify-between gap-2 py-3.5 text-xs">
+                <div className="min-w-0 flex-1">
                   <p className="font-bold text-slate-900 dark:text-white">{inst.name}</p>
-                  <p className="text-[11px] text-slate-400 mt-0.5 font-mono">
+                  <p className="mt-0.5 break-all font-mono text-[11px] text-slate-400">
                     Domains: {inst.domains.join(", ")}
                   </p>
                 </div>
@@ -114,7 +111,7 @@ export function AdminSettingsPage() {
       </div>
 
       {/* API Providers */}
-      <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 space-y-4">
+      <div className="space-y-4 rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm sm:p-6 dark:border-slate-800 dark:bg-slate-900">
         <h2 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
           <Globe className="h-4 w-4 text-emerald-600" />
           Configured Academic API Providers
@@ -125,12 +122,12 @@ export function AdminSettingsPage() {
             <Skeleton className="h-16 w-full" />
           ) : (
             (settings?.apiProviders || []).map((p: any) => (
-              <div key={p.id} className="py-3.5 flex items-center justify-between text-xs">
-                <div>
+              <div key={p.id} className="flex min-w-0 flex-wrap items-center justify-between gap-2 py-3.5 text-xs">
+                <div className="min-w-0 flex-1">
                   <p className="font-bold text-slate-900 dark:text-white uppercase">{p.providerName}</p>
-                  <p className="text-[11px] text-slate-400 mt-0.5 font-mono">{p.baseUrl}</p>
+                  <p className="mt-0.5 break-all font-mono text-[11px] text-slate-400">{p.baseUrl}</p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex shrink-0 flex-wrap items-center gap-2">
                   <span className="rounded-md bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-mono text-slate-600 dark:text-slate-300">
                     {p.rateLimitPerMin} req/min
                   </span>

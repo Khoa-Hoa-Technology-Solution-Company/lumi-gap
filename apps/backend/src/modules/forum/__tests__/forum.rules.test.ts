@@ -33,8 +33,10 @@ describe("forum domain rules", () => {
 
   it("respects academic profile visibility", () => {
     expect(canShowAcademicIdentity("PUBLIC", false, false)).toBe(true);
-    expect(canShowAcademicIdentity("MEMBERS", false, false)).toBe(false);
-    expect(canShowAcademicIdentity("MEMBERS", true, false)).toBe(true);
+    expect(canShowAcademicIdentity("MEMBERS_ONLY", false, false)).toBe(false);
+    expect(canShowAcademicIdentity("MEMBERS_ONLY", true, false)).toBe(true);
+    expect(canShowAcademicIdentity("PRIVATE", true, false)).toBe(false);
+    expect(canShowAcademicIdentity(undefined, true, false)).toBe(false);
     expect(canShowAcademicIdentity("PRIVATE", true, true)).toBe(true);
   });
 
@@ -52,13 +54,13 @@ describe("forum domain rules", () => {
   });
 
   it("creates stable readable thread slugs without exposing the full UUID", () => {
-    const id = "12345678-1234-4234-8234-123456789abc";
-    expect(forumPublicSlug("Discussing LLM evaluation: Vietnamese results", id)).toMatch(/^discussing-llm-evaluation-vietnamese-results-[a-f0-9]{12}$/);
-    expect(forumPublicSlug("研究方法", id)).toMatch(/^discussion-[a-f0-9]{12}$/);
-    expect(forumPublicSlug("Đánh giá nghiên cứu", id)).toMatch(/^danh-gia-nghien-cuu-/);
-    expect(forumPublicSlug("Same title", "00000000-0000-4000-9000-000000000002")).not.toBe(forumPublicSlug("Same title", "00000000-0000-4000-9000-000000000007"));
-    expect(forumPublicSlug("Stable title", id)).toBe(forumPublicSlug("Stable title", id));
-    expect(forumPublicSlug("a ".repeat(250), id)).toMatch(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
-    expect(forumPublicSlug("a ".repeat(250), id).length).toBeLessThanOrEqual(280);
+    expect(forumPublicSlug("Discussing LLM evaluation: Vietnamese results")).toBe("discussing-llm-evaluation-vietnamese-results");
+    expect(forumPublicSlug("研究方法")).toBe("discussion");
+    expect(forumPublicSlug("00000000-0000-4000-9000-000000000002")).toBe("00000000-0000-4000-9000-000000000002-discussion");
+    expect(forumPublicSlug("abcdef123456abcdef123456")).toBe("abcdef123456abcdef123456-discussion");
+    expect(forumPublicSlug("Đánh giá nghiên cứu")).toBe("danh-gia-nghien-cuu");
+    expect(forumPublicSlug("Stable title")).toBe(forumPublicSlug("Stable title"));
+    expect(forumPublicSlug("a ".repeat(250))).toMatch(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
+    expect(forumPublicSlug("a ".repeat(250)).length).toBeLessThanOrEqual(260);
   });
 });

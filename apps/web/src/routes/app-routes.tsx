@@ -1,10 +1,12 @@
 import { lazy, Suspense } from "react";
-import { Route, Routes, Navigate } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { ProtectedRoute } from "@/components/protected-route";
+import { LITERATURE_PATH } from "@/features/home/utils/home-search";
 
 const MainLayout = lazy(() => import("@/layouts/MainLayout").then((m) => ({ default: m.MainLayout })));
 const AdminLayout = lazy(() => import("@/layouts/AdminLayout").then((m) => ({ default: m.AdminLayout })));
 const HomePage = lazy(() => import("@/pages/home").then((m) => ({ default: m.HomePage })));
+const LiteraturePage = lazy(() => import("@/pages/literature").then((m) => ({ default: m.LiteraturePage })));
 const AuthLayout = lazy(() => import("@/layouts/AuthLayout").then((m) => ({ default: m.AuthLayout })));
 const LoginPage = lazy(() => import("@/pages/login").then((m) => ({ default: m.LoginPage })));
 const RegisterPage = lazy(() => import("@/pages/register").then((m) => ({ default: m.RegisterPage })));
@@ -12,9 +14,9 @@ const OAuthCallbackPage = lazy(() => import("@/pages/oauth-callback").then((m) =
 const VerifyEmailPage = lazy(() => import("@/pages/verify-email").then((m) => ({ default: m.VerifyEmailPage })));
 const ForgotPasswordPage = lazy(() => import("@/pages/forgot-password").then((m) => ({ default: m.ForgotPasswordPage })));
 const ResetPasswordPage = lazy(() => import("@/pages/reset-password").then((m) => ({ default: m.ResetPasswordPage })));
+const CopyrightVerifyPage = lazy(() => import("@/pages/copyright-verify").then((m) => ({ default: m.CopyrightVerifyPage })));
 const AcademicProfileOnboardingPage = lazy(() => import("@/pages/academic-profile-onboarding").then((m) => ({ default: m.AcademicProfileOnboardingPage })));
 const DashboardPage = lazy(() => import("@/pages/dashboard").then((m) => ({ default: m.DashboardPage })));
-const SearchPage = lazy(() => import("@/pages/search").then((m) => ({ default: m.SearchPage })));
 const TrendsPage = lazy(() => import("@/pages/trends").then((m) => ({ default: m.TrendsPage })));
 const TopicDetailPage = lazy(() => import("@/pages/trends-topic").then((m) => ({ default: m.TopicDetailPage })));
 const BookmarksPage = lazy(() => import("@/pages/bookmarks").then((m) => ({ default: m.BookmarksPage })));
@@ -42,6 +44,7 @@ const AdminCorpusValidationPage = lazy(() => import("@/pages/admin/corpus-valida
 const AdminCommunityPage = lazy(() => import("@/pages/admin/community").then((m) => ({ default: m.AdminCommunityPage })));
 const AdminAiJobsPage = lazy(() => import("@/pages/admin/ai-jobs").then((m) => ({ default: m.AdminAiJobsPage })));
 const AdminAuditLogsPage = lazy(() => import("@/pages/admin/audit-logs").then((m) => ({ default: m.AdminAuditLogsPage })));
+const AdminTrustSafetyPage = lazy(() => import("@/pages/admin/trust-safety").then((m) => ({ default: m.AdminTrustSafetyPage })));
 const AdminWorkersPage = lazy(() => import("@/pages/admin/workers").then((m) => ({ default: m.AdminWorkersPage })));
 const AdminSettingsPage = lazy(() => import("@/pages/admin/settings").then((m) => ({ default: m.AdminSettingsPage })));
 const AdminHomePage = lazy(() => import("@/pages/admin").then((m) => ({ default: m.AdminHomePage })));
@@ -50,12 +53,15 @@ const RankingsPage = lazy(() => import("@/pages/rankings").then((m) => ({ defaul
 const ForumListPage = lazy(() => import("@/pages/forum/forum-list").then((m) => ({ default: m.ForumListPage })));
 const ForumDetailPage = lazy(() => import("@/pages/forum/forum-detail").then((m) => ({ default: m.ForumDetailPage })));
 const ForumNewPage = lazy(() => import("@/pages/forum/forum-new").then((m) => ({ default: m.ForumNewPage })));
+const ForumModerationPage = lazy(() => import("@/pages/forum/forum-moderation").then((m) => ({ default: m.ForumModerationPage })));
+const ForumCopyrightPage = lazy(() => import("@/pages/forum/forum-copyright").then((m) => ({ default: m.ForumCopyrightPage })));
 const CommunityListPage = lazy(() => import("@/pages/communities/community-list").then((m) => ({ default: m.CommunityListPage })));
 const CommunityDetailPage = lazy(() => import("@/pages/communities/community-detail").then((m) => ({ default: m.CommunityDetailPage })));
 const CommunityNewPage = lazy(() => import("@/pages/communities/community-new").then((m) => ({ default: m.CommunityNewPage })));
 const CommunityManagePage = lazy(() => import("@/pages/communities/community-manage").then((m) => ({ default: m.CommunityManagePage })));
 const LecturerDirectoryPage = lazy(() => import("@/pages/academics/lecturer-directory").then((m) => ({ default: m.LecturerDirectoryPage })));
 const PublicAcademicProfilePage = lazy(() => import("@/pages/academics/public-academic-profile").then((m) => ({ default: m.PublicAcademicProfilePage })));
+const ForumActivityPage = lazy(() => import("@/pages/academics/forum-activity").then((m) => ({ default: m.ForumActivityPage })));
 const ReviewOpportunitiesPage = lazy(() => import("@/pages/reviews/review-opportunities").then((m) => ({ default: m.ReviewOpportunitiesPage })));
 const ReviewDashboardPage = lazy(() => import("@/pages/reviews/review-dashboard").then((m) => ({ default: m.ReviewDashboardPage })));
 const ReviewWorkspacePage = lazy(() => import("@/pages/reviews/review-workspace").then((m) => ({ default: m.ReviewWorkspacePage })));
@@ -80,6 +86,11 @@ function RouteLoading() {
   );
 }
 
+function LegacySearchRedirect() {
+  const location = useLocation();
+  return <Navigate to={{ pathname: LITERATURE_PATH, search: location.search, hash: location.hash }} replace />;
+}
+
 export function AppRoutes() {
   return (
     <Suspense fallback={<RouteLoading />}>
@@ -102,36 +113,45 @@ export function AppRoutes() {
             <Route path="ai-jobs" element={<AdminAiJobsPage />} />
             <Route path="evaluation" element={<AdminEvaluationPage />} />
             <Route path="audit-logs" element={<AdminAuditLogsPage />} />
+            <Route path="trust-safety" element={<AdminTrustSafetyPage />} />
             <Route path="workers" element={<AdminWorkersPage />} />
             <Route path="settings" element={<AdminSettingsPage />} />
             <Route path="analytics" element={<DashboardPage />} />
           </Route>
         </Route>
 
+        {/* Preserve old search links after retiring the previous search screen. */}
+        <Route path="/search" element={<LegacySearchRedirect />} />
+
         {/* Main Application with Header & Footer */}
         <Route element={<MainLayout />}>
           {/* Public */}
           <Route path="/" element={<Navigate to="/home" replace />} />
           <Route path="/home" element={<HomePage />} />
-          <Route path="/search" element={<SearchPage />} />
+          <Route path={LITERATURE_PATH} element={<LiteraturePage />} />
           <Route path="/papers/:id" element={<PaperDetailPage />} />
           <Route path="/trends" element={<TrendsPage />} />
           <Route path="/trends/:topic" element={<TopicDetailPage />} />
           <Route path="/forum" element={<ForumListPage />} />
-          <Route path="/forum/:id" element={<ForumDetailPage />} />
+          <Route path="/forum/copyright" element={<ForumCopyrightPage />} />
+          <Route path="/forum/:id/:postNumber?" element={<ForumDetailPage />} />
           <Route path="/communities" element={<CommunityListPage />} />
           <Route path="/communities/:slug" element={<CommunityDetailPage />} />
           <Route path="/lecturers" element={<LecturerDirectoryPage />} />
           <Route path="/academics/:userId" element={<PublicAcademicProfilePage />} />
           <Route path="/u/:handle" element={<PublicAcademicProfilePage />} />
+          <Route path="/u/:handle/activity" element={<ForumActivityPage />} />
+          <Route path="/u/:handle/summary" element={<ForumActivityPage summary />} />
+          <Route path="/academics/:userId/activity" element={<ForumActivityPage />} />
+          <Route path="/academics/:userId/summary" element={<ForumActivityPage summary />} />
           <Route path="/profile/:handle/contributions" element={<ContributionArchivePage />} />
           <Route path="/projects/:id" element={<ProjectDetailPage />} />
           <Route path="/invitations/:token" element={<ProjectInvitationPage />} />
 
           {/* Protected (any signed-in user) */}
           <Route element={<ProtectedRoute />}>
+            <Route path="/forum/moderation" element={<ForumModerationPage />} />
             <Route path="/dashboard" element={<DashboardPage />} />
-            <Route path="/search" element={<SearchPage />} />
             <Route path="/bookmarks" element={<BookmarksPage />} />
             <Route path="/notifications" element={<NotificationsPage />} />
             <Route path="/profile" element={<ProfilePage />} />
@@ -176,6 +196,7 @@ export function AppRoutes() {
           <Route path="/verify-email" element={<VerifyEmailPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
+          <Route path="/copyright/verify" element={<CopyrightVerifyPage />} />
         </Route>
       </Routes>
     </Suspense>

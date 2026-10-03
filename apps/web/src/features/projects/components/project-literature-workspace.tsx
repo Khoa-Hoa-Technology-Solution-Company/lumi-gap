@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { AlertCircle, ArrowUpDown, BookOpen, Check, CheckCircle2, CircleHelp, FileText, Loader2, Search, SlidersHorizontal, Sparkles, Trash2, X, XCircle } from "lucide-react";
 import type { IProject, Paper, ProjectExclusionReason, ProjectPaperSummary, ProjectReadingStatus, ProjectScreeningStatus } from "@trend/shared-types";
@@ -78,7 +78,14 @@ export function ProjectLiteratureWorkspace({
   const updatePaper = useUpdateProjectPaper(projectId);
   const updateProject = useUpdateProject(projectId);
   const removePaper = useRemovePaperFromProject(projectId);
-  const [filter, setFilter] = useState<LiteratureFilter>("UNDECIDED");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedFilter = searchParams.get("screening");
+  const filter: LiteratureFilter = ["ALL", "UNDECIDED", "INCLUDED", "EXCLUDED"].includes(requestedFilter ?? "") ? requestedFilter as LiteratureFilter : "UNDECIDED";
+  const setFilter = (next: LiteratureFilter) => {
+    const params = new URLSearchParams(searchParams);
+    params.set("screening", next);
+    setSearchParams(params, { replace: true });
+  };
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<LiteratureSort>("ADDED_NEWEST");
   const [filtersOpen, setFiltersOpen] = useState(false);

@@ -469,7 +469,7 @@ export function CompareTab({
             <Button
               variant="outline"
               size="sm"
-              onClick={() => navigate(buildScopedUrl("/search", { q: debouncedSearchTerm }))}
+              onClick={() => navigate(buildScopedUrl("/home", { q: debouncedSearchTerm }))}
               className="text-xs font-bold rounded-lg border-blue-200 hover:bg-blue-50 text-blue-700 dark:border-blue-900/30 dark:hover:bg-blue-950/20 dark:text-blue-400 flex items-center gap-1.5 mx-auto"
             >
               <Search className="w-3.5 h-3.5" /> Search scoped papers
@@ -489,7 +489,7 @@ export function CompareTab({
             <Button
               variant="outline"
               size="sm"
-              onClick={() => navigate(buildScopedUrl("/search", { q: debouncedSearchTerm || searchTerm }))}
+              onClick={() => navigate(buildScopedUrl("/home", { q: debouncedSearchTerm || searchTerm }))}
               className="text-xs font-bold rounded-lg border-blue-200 hover:bg-blue-50 text-blue-700 dark:border-blue-900/30 dark:hover:bg-blue-950/20 dark:text-blue-400 flex items-center gap-1.5 mx-auto"
             >
               <Search className="w-3.5 h-3.5" /> Search scoped papers for "{debouncedSearchTerm || searchTerm}"
@@ -896,7 +896,7 @@ export function CompareTab({
                               <TooltipTrigger asChild>
                                 <button
                                   type="button"
-                                  onClick={() => navigate(buildScopedUrl("/search", { q: t.topic }))}
+                                  onClick={() => navigate(buildScopedUrl("/home", { q: t.topic }))}
                                   aria-label={`Search scoped papers for topic ${t.topic}`}
                                   className="p-2 bg-slate-50 dark:bg-slate-900 border border-slate-200/60 dark:border-slate-800/80 text-slate-500 dark:text-slate-450 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50/50 dark:hover:bg-blue-950/20 rounded-xl transition-all shadow-sm active:scale-90 shrink-0"
                                 >

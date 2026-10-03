@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation, Link, useNavigate } from "react-router-dom";
 import {
-  LayoutDashboard, Users, UserCheck, BadgeCheck, FileText, RefreshCw,
+  LayoutDashboard, Users, BadgeCheck, FileText, RefreshCw,
   Activity, CheckCircle, MessageSquare, Cpu, ClipboardCheck, History,
   Server, Settings, ShieldAlert, ChevronRight, Menu, X, ExternalLink,
-  Globe, LogOut, User, ArrowLeft
+  LogOut, User, ArrowLeft, ShieldCheck
 } from "lucide-react";
 import logoImage from "@/assets/logo.png";
 import { useCurrentUser, useLogout } from "@/features/auth";
@@ -45,6 +45,10 @@ export function AdminLayout() {
   const navigate = useNavigate();
   const logout = useLogout();
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [location.pathname]);
 
   const pendingVerificationsCount = stats?.pendingVerifications ?? 0;
   const isSyncRunning = stats?.sync?.latestRun?.status === "running";
@@ -93,6 +97,7 @@ export function AdminLayout() {
       title: "Community",
       items: [
         { to: "/admin/community", label: "Community & Moderation", icon: MessageSquare },
+        { to: "/admin/trust-safety", label: "Trust & Safety", icon: ShieldCheck },
       ],
     },
     {
@@ -148,19 +153,20 @@ export function AdminLayout() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50/60 dark:bg-slate-950 font-sans flex">
+    <div className="flex min-h-dvh min-w-0 bg-slate-50/60 font-sans dark:bg-slate-950">
       {/* Mobile Backdrop */}
       {mobileOpen && (
         <div
           className="fixed inset-0 z-40 bg-slate-900/60 backdrop-blur-sm md:hidden"
           onClick={() => setMobileOpen(false)}
+          aria-hidden="true"
         />
       )}
 
       {/* TailAdmin-Inspired Sleek Fixed Sticky Sidebar */}
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-50 flex h-screen w-64 flex-col bg-[#1C2434] text-slate-300 transition-transform duration-300 ease-in-out md:sticky md:top-0 shrink-0 select-none",
+          "fixed inset-y-0 left-0 z-50 flex h-dvh w-[min(18rem,calc(100vw-2rem))] shrink-0 select-none flex-col bg-[#1C2434] pb-[env(safe-area-inset-bottom)] text-slate-300 transition-transform duration-300 ease-in-out md:sticky md:top-0 md:w-64",
           mobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0",
         )}
       >
@@ -179,8 +185,10 @@ export function AdminLayout() {
             </div>
           </Link>
           <button
+            type="button"
             onClick={() => setMobileOpen(false)}
-            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white md:hidden ml-1"
+            className="ml-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-800 hover:text-white md:hidden"
+            aria-label={t("Close navigation")}
           >
             <X className="h-5 w-5" />
           </button>
@@ -202,7 +210,7 @@ export function AdminLayout() {
                     onClick={() => setMobileOpen(false)}
                     className={({ isActive }) =>
                       cn(
-                        "group flex items-center justify-between rounded-lg px-3 py-2 text-xs font-semibold transition-all duration-150",
+                        "group flex min-h-10 items-center justify-between rounded-lg px-3 py-2 text-xs font-semibold transition-all duration-150",
                         isActive
                           ? "bg-[#333A48] text-white shadow-sm ring-1 ring-white/10"
                           : "text-slate-300 hover:bg-[#333A48]/50 hover:text-white",
@@ -227,6 +235,10 @@ export function AdminLayout() {
 
         {/* Sidebar Footer User Info - Pinned to bottom */}
         <div className="border-t border-slate-700/60 p-3.5 shrink-0 bg-[#1C2434]">
+          <div className="mb-3 flex min-h-11 items-center justify-between rounded-lg border border-slate-700/70 bg-slate-800/60 px-2.5 min-[420px]:hidden md:hidden">
+            <span className="text-xs font-semibold text-slate-300">{t("Language")}</span>
+            <LanguageSwitcher />
+          </div>
           <div className="flex items-center gap-3 rounded-xl bg-slate-800/60 p-2.5">
             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-500/20 text-blue-400 font-bold text-xs ring-1 ring-blue-500/30 shrink-0">
               {authData?.user?.fullName?.charAt(0) || "A"}
@@ -247,28 +259,31 @@ export function AdminLayout() {
       </aside>
 
       {/* Main Content Area */}
-      <div className="flex flex-1 flex-col min-w-0 min-h-screen">
+      <div className="flex min-h-dvh min-w-0 flex-1 flex-col">
         {/* Standalone Admin Top Bar */}
-        <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center justify-between border-b border-slate-200/80 bg-white/90 px-6 backdrop-blur-md dark:border-slate-800 dark:bg-slate-900/90">
-            <div className="flex items-center gap-4">
+          <header className="sticky top-0 z-30 flex h-16 min-w-0 shrink-0 items-center justify-between gap-2 border-b border-slate-200/80 bg-white/90 px-3 backdrop-blur-md sm:px-4 md:px-6 dark:border-slate-800 dark:bg-slate-900/90">
+            <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-4">
               <button
+                type="button"
                 onClick={() => setMobileOpen(true)}
-                className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 md:hidden"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 md:hidden"
+                aria-label={t("Open navigation")}
+                aria-expanded={mobileOpen}
               >
                 <Menu className="h-5 w-5" />
               </button>
               {/* Breadcrumb */}
-              <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
-                <Link to="/admin" className="hover:text-slate-900 dark:hover:text-white">Admin</Link>
-                <ChevronRight className="h-3.5 w-3.5" />
-                <span className="text-slate-900 font-bold dark:text-white">{currentTitle}</span>
+              <div className="flex min-w-0 items-center gap-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                <Link to="/admin" className="hidden hover:text-slate-900 sm:inline dark:hover:text-white">Admin</Link>
+                <ChevronRight className="hidden h-3.5 w-3.5 sm:block" />
+                <span className="truncate font-bold text-slate-900 dark:text-white">{t(currentTitle)}</span>
               </div>
             </div>
 
             {/* Top Bar Actions & Profile Controls */}
-            <div className="flex items-center gap-3">
+            <div className="flex shrink-0 items-center gap-1 sm:gap-2 md:gap-3">
               {/* Health Indicator */}
-              <div className="hidden sm:flex items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
+              <div className="hidden lg:flex items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
                 <span className="relative flex h-2 w-2">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
@@ -278,12 +293,12 @@ export function AdminLayout() {
 
               {/* Theme & Language Controls */}
               <ThemeToggle />
-              <LanguageSwitcher />
+              <div className="hidden min-[420px]:block"><LanguageSwitcher /></div>
 
               {/* Exit to Main App */}
               <Link
                 to="/home"
-                className="hidden md:inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700/80"
+                className="hidden lg:inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700/80"
               >
                 <ArrowLeft className="h-3.5 w-3.5" />
                 Main Site
@@ -327,7 +342,7 @@ export function AdminLayout() {
           </header>
 
           {/* Main View Container */}
-          <main className="flex-1 p-6 md:p-8 max-w-7xl w-full mx-auto">
+          <main className="mx-auto w-full min-w-0 max-w-7xl flex-1 p-4 sm:p-6 md:p-8">
             <Outlet />
           </main>
         </div>

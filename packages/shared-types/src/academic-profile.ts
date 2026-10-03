@@ -314,6 +314,39 @@ export interface CompactAcademicProfile {
   reviewAvailable: boolean;
 }
 
+export type ForumActivityFilter = "all" | "topics" | "replies" | "reactions";
+export interface PublicForumActivityItem {
+  id: string;
+  kind: "topic" | "reply" | "reaction";
+  topicId: string;
+  topicSlug: string;
+  topicTitle: string;
+  postNumber: number;
+  excerpt: string;
+  communityName?: string;
+  communitySlug?: string;
+  createdAt: ISODateString;
+  reaction?: string;
+  reactionCount: number;
+  accepted: boolean;
+}
+export interface PublicForumActivity {
+  stats: {
+    joinedAt: ISODateString;
+    lastContributionAt?: ISODateString;
+    topicsCreated: number;
+    repliesCreated: number;
+    reactionsGiven: number;
+    reactionsReceived: number;
+    acceptedResponses: number;
+    topicViews: number;
+  };
+  items: PublicForumActivityItem[];
+  topTopics: PublicForumActivityItem[];
+  topReplies: PublicForumActivityItem[];
+  meta: { page: number; pageSize: number; total: number; totalPages: number };
+}
+
 export interface UpdateAcademicProfileDetailsRequest {
   primaryPosition?: PrimaryPosition;
   positionTitle?: string;

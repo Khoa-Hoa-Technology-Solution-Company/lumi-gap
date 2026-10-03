@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import {
   FileText,
@@ -90,7 +90,6 @@ export function ReportsListPage() {
   const deleteReport = useDeleteReport();
   const deleteBatchReports = useDeleteBatchReports();
   const previewEvidence = useReportEvidencePreview();
-  const navigate = useNavigate();
 
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<string | 'ALL' | null>(null);
@@ -255,7 +254,7 @@ export function ReportsListPage() {
         await deleteReport.mutateAsync(itemToDelete);
         toast.success("Report deleted successfully");
       }
-    } catch (error) {
+    } catch {
       toast.error("Failed to delete report(s)");
     } finally {
       setDeleteModalOpen(false);
@@ -383,7 +382,7 @@ export function ReportsListPage() {
       setPaperSearchResults(prev => [...prev, ...response.papers]);
       setPaperSearchPage(nextPage);
       setPaperSearchHasMore(response.papers.length === 8);
-    } catch (error: any) {
+    } catch {
       toast.error("Could not load more papers.");
     } finally {
       setPaperSearchLoadingMore(false);
@@ -504,7 +503,7 @@ export function ReportsListPage() {
       </section>
 
       {/* Inline Generation Form */}
-      <div className="bg-white dark:bg-[#121212] border border-slate-200 dark:border-slate-800 rounded-2xl p-6 sm:p-8 shadow-sm mb-12 relative overflow-hidden">
+      <div className="relative mb-12 overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-8 dark:border-slate-800 dark:bg-[#121212]">
         <div className="absolute top-0 left-0 w-1 h-full bg-blue-600" />
         <div className="mb-7 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-2">
@@ -519,7 +518,7 @@ export function ReportsListPage() {
               Reports are generated from a fixed evidence pack, so every citation maps back to a paper you can inspect.
             </p>
           </div>
-          <div className="grid min-w-[260px] grid-cols-2 overflow-hidden rounded-xl border border-slate-200 bg-slate-50 p-1 text-xs font-bold dark:border-slate-800 dark:bg-slate-900/60">
+          <div className="grid w-full min-w-0 grid-cols-2 overflow-hidden rounded-xl border border-slate-200 bg-slate-50 p-1 text-xs font-bold sm:min-w-[260px] lg:w-auto dark:border-slate-800 dark:bg-slate-900/60">
             <div className={cn(
               "rounded-lg px-3 py-2 transition-colors",
               showPreview && previewData

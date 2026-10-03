@@ -9,8 +9,8 @@ import type { ForumCommentView } from "../api/forum.api";
 
 vi.mock("@/i18n", () => ({ useI18n: () => ({ t: (key: string) => key, language: "en" }) }));
 const comment: ForumCommentView = { id: "response", postId: "topic", content: "A methodological response", createdAt: "2026-10-01T00:00:00Z", author: { id: "researcher", fullName: "Researcher" }, status: "active", isAccepted: true, helpfulCount: 2, voteScore: 2, viewerVote: 0, references: [] };
-const defaults = { comment, isQuestion: true, isPostOwner: true, isCommentOwner: false, isAuthed: true, canReply: true, ordinal: 2, onReviewCitation: vi.fn(), onReply: vi.fn(), onEdit: vi.fn(), onDelete: vi.fn(), onReport: vi.fn(), onVote: vi.fn(), onAccept: vi.fn() };
-const render = (props: Partial<typeof defaults & { readOnly: boolean; votePending: boolean; acceptancePending: boolean }> = {}) => renderToStaticMarkup(<ForumResponseItem {...defaults} {...props} />);
+const defaults = { comment, isQuestion: true, isPostOwner: true, isCommentOwner: false, isAuthed: true, canReply: true, ordinal: 2, onReviewCitation: vi.fn(), onReply: vi.fn(), onEdit: vi.fn(), onDelete: vi.fn(), onReport: vi.fn(), onAccept: vi.fn() };
+const render = (props: Partial<typeof defaults & { readOnly: boolean; reactionPending: boolean; acceptancePending: boolean }> = {}) => renderToStaticMarkup(<ForumResponseItem {...defaults} {...props} />);
 
 describe("Research thread actions and semantics", () => {
   it("only lets the question owner accept, and labels acceptance as author judgement", () => {
@@ -20,12 +20,11 @@ describe("Research thread actions and semantics", () => {
     expect(render({ isQuestion: false })).not.toContain("Unaccept response");
     expect(render({ readOnly: true })).not.toContain("Unaccept response");
   });
-  it("guards votes and acceptance while pending, retaining research safeguards", () => {
-    const markup = render({ votePending: true, acceptancePending: true });
-    const helpful = markup.match(/<button[^>]+aria-pressed="false"[^>]*>/)?.[0] ?? "";
-    expect(helpful).toContain("disabled");
+  it("shows reactions with pending state and guards acceptance", () => {
+    const markup = render({ reactionPending: true, acceptancePending: true });
+    expect(markup).toMatch(/<button[^>]*aria-busy="true"[^>]*aria-label="Add reaction"/);
     expect(markup).toMatch(/<button[^>]*disabled[^>]*title="This marks the author/);
-    expect(markup).toContain("Helpful reflects community usefulness, not scientific validation.");
+    expect(markup).not.toContain("Helpful");
     expect(markup).toContain('aria-label="More response actions"');
   });
   it("uses real chronological, unanswered, activity and follow semantics in both navigations", () => {
@@ -43,11 +42,12 @@ describe("Research thread actions and semantics", () => {
     expect(markup).toContain('maxLength="20000"');
     expect(markup).toContain('aria-label="More formatting"');
     const editor = readFileSync(new URL("../components/forum-body-editor.tsx", import.meta.url), "utf8");
-    expect(editor).toContain('onTableInsert={(table) => insert("table", table)}');
+    expect(editor).toContain('onTableInsert={insertTable}');
+    expect(editor).toContain('forumTableDocument(table, selected?.node.toJSON())');
     // Display utilities must not override the textarea's native hidden state in Preview.
     const field = markup.match(/<textarea[^>]*>/)?.[0] ?? "";
     expect(field).not.toMatch(/class="[^"]*\b(?:block|inline-block|flex|grid)\b/);
-    expect(editor).toContain("hidden={preview}");
+    expect(editor).toContain('hidden={mode !== "visual"}');
     expect(markup).toContain("Preview");
     const composer = readFileSync(new URL("../components/forum-composer.tsx", import.meta.url), "utf8");
     expect(composer).not.toContain("window.confirm");

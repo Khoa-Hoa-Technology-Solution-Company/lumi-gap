@@ -7,7 +7,9 @@ import { requirePermission } from "../../common/middleware/permission.js";
 import { validate } from "../../common/middleware/validate.js";
 import { objectIdSchema, paginationSchema } from "../../common/validation/database-id.js";
 import { forumService } from "./forum.service.js";
+import { forumModerationService } from "./forum-moderation.service.js";
 import { isAllowedForumUrl, isValidForumDoi } from "./forum.rules.js";
+import { env } from "../../config/env.js";
 
 const referenceSchema = z.object({
   paperId: objectIdSchema.optional(),
@@ -87,12 +89,24 @@ const commentUpdateSchema = z.object({
   references: z.array(referenceSchema).max(30).optional(),
 }).strict();
 const voteSchema = z.object({ value: z.union([z.literal(-1), z.literal(0), z.literal(1)]) }).strict();
+const reactionSchema = z.object({
+  reaction: z.enum(["LIKE", "INSIGHTFUL", "CELEBRATE", "CURIOUS", "LOVE", "LAUGH", "SURPRISED", "SAD", "AGREE", "DISAGREE"]),
+  active: z.boolean().default(true),
+}).strict();
+const reactionPeopleQuerySchema = z.object({
+  scope: z.enum(["topic", "post"]).default("post"),
+  reaction: reactionSchema.shape.reaction.optional(),
+  page: z.coerce.number().int().min(1).max(1_000_000).default(1),
+  pageSize: z.coerce.number().int().min(1).max(30).default(20),
+}).strict();
 const moderatePostSchema = z.object({ action: z.enum(["THREAD_PINNED", "THREAD_UNPINNED", "THREAD_LOCKED", "THREAD_UNLOCKED", "THREAD_HIDDEN", "THREAD_RESTORED"]), reason: z.string().trim().min(3).max(2000).optional() }).strict();
 const moderateCommentSchema = z.object({ action: z.enum(["RESPONSE_HIDDEN", "RESPONSE_RESTORED"]), reason: z.string().trim().min(3).max(2000).optional() }).strict();
 const reportSchema = z.object({
   targetType: z.enum(["post", "comment"]),
   targetId: objectIdSchema,
-  reason: z.enum(["SPAM", "OFF_TOPIC", "HARASSMENT", "PLAGIARISM_OR_COPYRIGHT", "INAPPROPRIATE_CONTENT", "OTHER"]),
+  // Keep the former combined value as a compatibility input for older clients.
+  // forumService maps it to the dedicated copyright review queue.
+  reason: z.enum(["SPAM", "HARASSMENT", "OFF_TOPIC", "PRIVACY", "PLAGIARISM_CONCERN", "COPYRIGHT_CONCERN", "PLAGIARISM_OR_COPYRIGHT", "INAPPROPRIATE_CONTENT", "OTHER"]),
   description: z.string().trim().max(2000).optional(),
 }).strict();
 const communityParamsSchema = z.object({ communityId: objectIdSchema });
@@ -102,7 +116,7 @@ const reviewReportSchema = z.object({
 }).strict();
 const moderationQueueQuerySchema = z.object({
   communityId: objectIdSchema.optional(),
-  status: z.enum(["open", "reviewed", "resolved", "dismissed", "all"]).default("open"),
+  status: z.enum(["open", "claimed", "under_review", "escalated", "reviewed", "resolved", "dismissed", "all"]).default("open"),
 }).strict();
 const moderationHistoryQuerySchema = z.object({ communityId: objectIdSchema.optional() }).strict();
 const reviewEvidenceParamsSchema = z.object({ id: objectIdSchema, referenceId: objectIdSchema });
@@ -127,10 +141,31 @@ const forumWriteLimiter = rateLimit({
   legacyHeaders: false,
   keyGenerator: (req) => req.user?.sub ?? req.ip ?? "anonymous",
 });
-const threadCreateLimiter = rateLimit({ windowMs: 10 * 60_000, limit: 10, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => req.user?.sub ?? req.ip ?? "anonymous" });
-const responseLimiter = rateLimit({ windowMs: 60_000, limit: 30, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => req.user?.sub ?? req.ip ?? "anonymous" });
+const claimReportSchema = z.object({ expectedVersion: z.number().int().nonnegative().optional() }).strict();
+const reassignReportSchema = z.object({ assigneeId: objectIdSchema, expectedVersion: z.number().int().nonnegative() }).strict();
+const moderationActionSchema = z.object({
+  action: z.enum(["DISMISS_REPORT", "ESCALATE_REPORT", "HIDE_CONTENT", "RESTORE_CONTENT", "REMOVE_CONTENT", "LOCK_THREAD", "UNLOCK_THREAD", "PIN_THREAD", "UNPIN_THREAD", "MOVE_THREAD", "RESTRICT_USER", "LIFT_RESTRICTION"]),
+  reason: z.string().trim().min(3).max(2000).optional(),
+  destinationCommunityId: objectIdSchema.optional(),
+  expectedVersion: z.number().int().nonnegative().optional(),
+  policyRuleCode: z.string().trim().max(80).optional(),
+  policyVersion: z.string().trim().max(40).optional(),
+}).strict();
+const appealSchema = z.object({ reason: z.string().trim().min(3).max(5000) }).strict();
+const appealReviewSchema = z.object({ decision: z.enum(["UPHELD", "OVERTURNED"]), decisionReason: z.string().trim().min(3).max(5000) }).strict();
+const copyrightClaimSchema = z.object({
+  claimantName: z.string().trim().min(2).max(200), claimantEmail: z.string().email().max(320), claimantOrganization: z.string().trim().max(240).optional(),
+  targetType: z.enum(["THREAD", "RESPONSE"]), targetId: objectIdSchema,
+  copyrightedWorkDescription: z.string().trim().min(10).max(10000), ownershipBasis: z.string().trim().min(10).max(5000), originalSourceUrl: z.string().url().max(2000).optional(), details: z.string().trim().min(10).max(10000), sourceReportId: objectIdSchema.optional(), honeypot: z.string().max(200).optional(),
+}).strict();
+const copyrightVerifySchema = z.object({ token: z.string().trim().min(32).max(256) }).strict();
+const accountLimit = (req: Request) => req.user?.accountStatus === "ACTIVE" ? env.FORUM_RATE_LIMIT_VERIFIED : env.FORUM_RATE_LIMIT_UNVERIFIED;
+const threadCreateLimiter = rateLimit({ windowMs: 10 * 60_000, limit: accountLimit, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => req.user?.sub ?? req.ip ?? "anonymous" });
+const responseLimiter = rateLimit({ windowMs: 60_000, limit: accountLimit, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => req.user?.sub ?? req.ip ?? "anonymous" });
 const voteLimiter = rateLimit({ windowMs: 60_000, limit: 90, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => req.user?.sub ?? req.ip ?? "anonymous" });
-const reportLimiter = rateLimit({ windowMs: 60 * 60_000, limit: 8, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => req.user?.sub ?? req.ip ?? "anonymous" });
+const reportLimiter = rateLimit({ windowMs: 60 * 60_000, limit: accountLimit, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => req.user?.sub ?? req.ip ?? "anonymous" });
+const copyrightIpLimiter = rateLimit({ windowMs: 60 * 60_000, limit: env.FORUM_COPYRIGHT_PUBLIC_RATE_LIMIT, standardHeaders: true, legacyHeaders: false });
+const copyrightEmailLimiter = rateLimit({ windowMs: 60 * 60_000, limit: env.FORUM_COPYRIGHT_PUBLIC_RATE_LIMIT, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => String((req.body as { claimantEmail?: string } | undefined)?.claimantEmail ?? "missing").trim().toLowerCase() });
 const validatePostInput = validate(postInputSchema as unknown as z.ZodSchema<unknown>);
 const validatePostUpdate = validate(postUpdateSchema as unknown as z.ZodSchema<unknown>);
 const validateCommentInput = validate(commentSchema as unknown as z.ZodSchema<unknown>);
@@ -172,8 +207,25 @@ forumRouter.post("/posts", requireAuth, requirePermission("forum:write"), thread
 forumRouter.get("/posts/:id", optionalAuth, validate(readPostParamsSchema, "params"), async (req, res) => {
   res.json({ success: true, data: await forumService.getPost(req.params.id as string, req.user?.sub, req.user?.role, forumViewerKey(req, res)) });
 });
+forumRouter.get("/posts/:id/discovery", optionalAuth, validate(readPostParamsSchema, "params"), async (req, res) => {
+  res.json({ success: true, data: await forumService.postDiscovery(req.params.id as string, req.user?.sub, req.user?.role) });
+});
+forumRouter.get("/posts/:id/views", optionalAuth, validate(readPostParamsSchema, "params"), async (req, res) => {
+  res.json({ success: true, data: await forumService.recentViews(req.params.id as string, req.user?.sub, req.user?.role) });
+});
+forumRouter.get("/posts/:id/reactions", optionalAuth, validate(readPostParamsSchema, "params"), validate(reactionPeopleQuerySchema, "query"), async (req, res) => {
+  const { scope, reaction, page, pageSize } = req.query as unknown as z.infer<typeof reactionPeopleQuerySchema>;
+  res.json({ success: true, ...(await forumService.reactionPeople(scope, req.params.id as string, reaction, page, pageSize, req.user?.sub, req.user?.role)) });
+});
+forumRouter.get("/comments/:id/reactions", optionalAuth, validate(idParamsSchema, "params"), validate(reactionPeopleQuerySchema, "query"), async (req, res) => {
+  const { reaction, page, pageSize } = req.query as unknown as z.infer<typeof reactionPeopleQuerySchema>;
+  res.json({ success: true, ...(await forumService.reactionPeople("comment", req.params.id as string, reaction, page, pageSize, req.user?.sub, req.user?.role)) });
+});
 forumRouter.patch("/posts/:id", requireAuth, forumWriteLimiter, validate(idParamsSchema, "params"), validatePostUpdate, async (req, res) => {
   res.json({ success: true, data: await forumService.updatePost(req.params.id as string, req.body, req.user!.sub) });
+});
+forumRouter.get("/posts/:id/revisions", optionalAuth, validate(readPostParamsSchema, "params"), async (req, res) => {
+  res.json({ success: true, data: await forumService.listPostRevisions(req.params.id as string, req.user?.sub, req.user?.role) });
 });
 forumRouter.delete("/posts/:id", requireAuth, forumWriteLimiter, validate(idParamsSchema, "params"), async (req, res) => {
   await forumService.deletePost(req.params.id as string, req.user!.sub, req.user!.role);
@@ -191,6 +243,9 @@ forumRouter.post("/posts/:postId/comments", requireAuth, responseLimiter, valida
 });
 forumRouter.patch("/comments/:id", requireAuth, forumWriteLimiter, validate(idParamsSchema, "params"), validate(commentUpdateSchema), async (req, res) => {
   res.json({ success: true, data: await forumService.updateComment(req.params.id as string, req.body, req.user!.sub) });
+});
+forumRouter.get("/comments/:id/revisions", optionalAuth, validate(idParamsSchema, "params"), async (req, res) => {
+  res.json({ success: true, data: await forumService.listCommentRevisions(req.params.id as string, req.user?.sub, req.user?.role) });
 });
 forumRouter.delete("/comments/:id", requireAuth, forumWriteLimiter, validate(idParamsSchema, "params"), async (req, res) => {
   await forumService.deleteComment(req.params.id as string, req.user!.sub, req.user!.role);
@@ -211,6 +266,9 @@ forumRouter.put("/posts/:id/follow", requireAuth, validate(idParamsSchema, "para
 forumRouter.delete("/posts/:id/follow", requireAuth, validate(idParamsSchema, "params"), async (req, res) => {
   res.json({ success: true, data: await forumService.follow(req.params.id as string, req.user!.sub, false, req.user!.role) });
 });
+forumRouter.patch("/posts/:id/notifications", requireAuth, validate(idParamsSchema, "params"), validate(z.object({ level: z.enum(["WATCHING", "TRACKING", "NORMAL", "MUTED"]) }).strict()), async (req, res) => {
+  res.json({ success: true, data: await forumService.setNotificationLevel(req.params.id as string, req.user!.sub, req.body.level, req.user!.role) });
+});
 forumRouter.get("/context", requireAuth, validate(z.object({ q: z.string().trim().max(160).optional() }).strict(), "query"), async (req, res) => {
   res.json({ success: true, data: await forumService.contextOptions(req.user!.sub, String(req.query.q ?? "") || undefined) });
 });
@@ -222,6 +280,12 @@ forumRouter.post("/posts/:id/vote", requireAuth, voteLimiter, validate(idParamsS
 });
 forumRouter.post("/comments/:id/vote", requireAuth, voteLimiter, validate(idParamsSchema, "params"), validate(voteSchema), async (req, res) => {
   res.json({ success: true, data: await forumService.vote("comment", req.params.id as string, req.body.value, req.user!.sub, req.user!.role) });
+});
+forumRouter.post("/posts/:id/reactions", requireAuth, voteLimiter, validate(idParamsSchema, "params"), validate(reactionSchema), async (req, res) => {
+  res.json({ success: true, data: await forumService.react("post", req.params.id as string, req.body.reaction, req.body.active, req.user!.sub, req.user!.role) });
+});
+forumRouter.post("/comments/:id/reactions", requireAuth, voteLimiter, validate(idParamsSchema, "params"), validate(reactionSchema), async (req, res) => {
+  res.json({ success: true, data: await forumService.react("comment", req.params.id as string, req.body.reaction, req.body.active, req.user!.sub, req.user!.role) });
 });
 forumRouter.post("/reports", requireAuth, reportLimiter, validate(reportSchema), async (req, res) => {
   const { targetType, targetId, ...input } = req.body;
@@ -240,6 +304,49 @@ forumRouter.get("/communities/:communityId/reports", requireAuth, validate(commu
 });
 forumRouter.patch("/reports/:id", requireAuth, forumWriteLimiter, validate(idParamsSchema, "params"), validate(reviewReportSchema), async (req, res) => {
   res.json({ success: true, data: await forumService.reviewReport(req.params.id as string, req.body, req.user!.sub, req.user!.role) });
+});
+forumRouter.get("/moderation/queue", requireAuth, validate(moderationQueueQuerySchema, "query"), async (req, res) => {
+  const { communityId, status } = req.query as unknown as z.infer<typeof moderationQueueQuerySchema>;
+  res.json({ success: true, data: await forumModerationService.listQueue(req.user!.sub, req.user!.role, status, communityId) });
+});
+forumRouter.post("/reports/:id/claim", requireAuth, forumWriteLimiter, validate(idParamsSchema, "params"), validate(claimReportSchema), async (req, res) => {
+  res.json({ success: true, data: await forumModerationService.claim(req.params.id as string, req.user!.sub, req.user!.role, req.body.expectedVersion) });
+});
+forumRouter.post("/reports/:id/reassign", requireAuth, forumWriteLimiter, validate(idParamsSchema, "params"), validate(reassignReportSchema), async (req, res) => {
+  res.json({ success: true, data: await forumModerationService.reassign(req.params.id as string, req.body.assigneeId, req.user!.sub, req.user!.role, req.body.expectedVersion) });
+});
+forumRouter.post("/reports/:id/action", requireAuth, forumWriteLimiter, validate(idParamsSchema, "params"), validate(moderationActionSchema), async (req, res) => {
+  res.json({ success: true, data: await forumModerationService.applyAction(req.params.id as string, req.body.action, req.user!.sub, req.user!.role, req.body) });
+});
+forumRouter.get("/moderation/restrictions", requireAuth, validate(z.object({ userId: objectIdSchema.optional() }).strict(), "query"), async (req, res) => {
+  res.json({ success: true, data: await forumModerationService.listRestrictions(req.user!.sub, req.user!.role, (req.query as { userId?: string }).userId) });
+});
+forumRouter.post("/moderation/restrictions/:id/revoke", requireAuth, forumWriteLimiter, validate(idParamsSchema, "params"), async (req, res) => {
+  res.json({ success: true, data: await forumModerationService.revokeRestriction(req.params.id as string, req.user!.sub, req.user!.role) });
+});
+forumRouter.post("/moderation-actions/:id/appeal", requireAuth, forumWriteLimiter, validate(idParamsSchema, "params"), validate(appealSchema), async (req, res) => {
+  res.status(201).json({ success: true, data: await forumModerationService.submitAppeal(req.params.id as string, req.body.reason, req.user!.sub) });
+});
+forumRouter.get("/moderation/my-actions", requireAuth, async (req, res) => {
+  res.json({ success: true, data: await forumModerationService.myModerationActions(req.user!.sub) });
+});
+forumRouter.get("/appeals", requireAuth, validate(z.object({ status: z.enum(["SUBMITTED", "UPHELD", "OVERTURNED", "all"]).default("SUBMITTED") }).strict(), "query"), async (req, res) => {
+  res.json({ success: true, data: await forumModerationService.listAppeals(req.user!.role, String(req.query.status)) });
+});
+forumRouter.post("/appeals/:id/review", requireAuth, forumWriteLimiter, validate(idParamsSchema, "params"), validate(appealReviewSchema), async (req, res) => {
+  res.json({ success: true, data: await forumModerationService.reviewAppeal(req.params.id as string, req.body.decision, req.body.decisionReason, req.user!.sub, req.user!.role) });
+});
+forumRouter.post("/copyright-claims", copyrightIpLimiter, copyrightEmailLimiter, validate(copyrightClaimSchema), async (req, res) => {
+  res.status(202).json({ success: true, data: await forumModerationService.submitCopyrightClaim(req.body) });
+});
+forumRouter.post("/copyright-claims/verify", copyrightIpLimiter, validate(copyrightVerifySchema), async (req, res) => {
+  res.json({ success: true, data: await forumModerationService.verifyCopyrightClaim(req.body.token) });
+});
+forumRouter.get("/copyright-claims", requireAuth, async (req, res) => {
+  res.json({ success: true, data: await forumModerationService.listCopyrightClaims(req.user!.role) });
+});
+forumRouter.post("/copyright-claims/:id/review", requireAuth, forumWriteLimiter, validate(idParamsSchema, "params"), validate(z.object({ status: z.enum(["IN_REVIEW", "RESOLVED", "DISMISSED"]), reason: z.string().trim().min(3).max(5000) }).strict()), async (req, res) => {
+  res.json({ success: true, data: await forumModerationService.reviewCopyrightClaim(String(req.params.id), req.body.status, req.body.reason, req.user!.sub, req.user!.role) });
 });
 
 export const gapDiscussionRouter: Router = Router();

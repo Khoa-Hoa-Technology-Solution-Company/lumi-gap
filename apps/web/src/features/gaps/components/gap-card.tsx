@@ -313,7 +313,7 @@ export function GapCard({
           )}
 
           <Link
-            to={`/search?q=${encodeURIComponent(gap.probe ? `${gap.probe.topicA} ${gap.probe.topicB}` : gap.title)}`}
+            to={`/home?q=${encodeURIComponent(gap.probe ? `${gap.probe.topicA} ${gap.probe.topicB}` : gap.title)}`}
             className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-600 hover:text-cyan-600 dark:border-slate-800 dark:text-slate-350 dark:hover:text-cyan-400 hover:bg-slate-50 dark:hover:bg-slate-900 transition-colors"
           >
             <Search className="w-3.5 h-3.5" />
