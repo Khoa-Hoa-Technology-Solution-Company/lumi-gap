@@ -186,6 +186,12 @@ const EnvSchema = z.object({
   // throttle stops an unauthenticated loop from draining the Gemini quota.
   RERANK_MAX_PER_HOUR: z.coerce.number().int().positive().default(30),
   SEMANTIC_SEARCH_MAX_PER_MINUTE: z.coerce.number().int().positive().default(60),
+  // Community "did you mean" suggestions embed the raw query on every cache miss
+  // (Gemini, shared quota), so the route is throttled per user/IP.
+  COMMUNITY_SUGGEST_MAX_PER_MINUTE: z.coerce.number().int().min(1).default(20),
+  // Minimum similarity for a semantic community match. Score = 1 - cosine_distance / 2,
+  // i.e. (1 + cos) / 2, so 0.75 corresponds to a cosine of 0.5. Tune on real embeddings.
+  COMMUNITY_SUGGEST_MIN_SIMILARITY: z.coerce.number().min(0).max(1).default(0.75),
 
   // Quality & Feedback — per-user/hour cap on the on-demand LLM-judge (a generate call).
   QUALITY_EVAL_MAX_PER_HOUR: z.coerce.number().int().positive().default(20),

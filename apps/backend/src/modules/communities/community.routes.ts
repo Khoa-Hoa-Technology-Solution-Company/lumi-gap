@@ -1,4 +1,6 @@
 import { Router } from "express";
+import rateLimit from "express-rate-limit";
+import { env } from "../../config/env.js";
 import { optionalAuth, requireAuth } from "../../common/middleware/auth.js";
 import { requirePermission } from "../../common/middleware/permission.js";
 import { validate } from "../../common/middleware/validate.js";
@@ -19,11 +21,25 @@ import {
 
 export const communityRouter: Router = Router();
 
+/** Every uncached query costs one Gemini embedding call, so throttle per user (or IP when anonymous). */
+const suggestionLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: env.COMMUNITY_SUGGEST_MAX_PER_MINUTE,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.user?.sub ?? req.ip ?? "anonymous",
+  handler: (_req, res) =>
+    res.status(429).json({
+      success: false,
+      error: { code: "TOO_MANY_REQUESTS", message: "Community suggestion limit exceeded. Try again shortly." },
+    }),
+});
+
 communityRouter.get("/", optionalAuth, validate(listQuerySchema, "query"), communityController.list);
 communityRouter.post("/", requireAuth, validate(communityCreateSchema), communityController.create);
 communityRouter.get("/facets", optionalAuth, communityController.facets);
 communityRouter.get("/recommendations", requireAuth, communityController.recommendations);
-communityRouter.get("/suggestions", optionalAuth, validate(suggestQuerySchema, "query"), communityController.suggestions);
+communityRouter.get("/suggestions", optionalAuth, suggestionLimiter, validate(suggestQuerySchema, "query"), communityController.suggestions);
 communityRouter.get("/:idOrSlug", optionalAuth, validate(lookupParamsSchema, "params"), communityController.get);
 communityRouter.patch("/:id", requireAuth, validate(idParamsSchema, "params"), validate(communityUpdateSchema), communityController.update);
 communityRouter.patch("/:id/status", requireAuth, validate(idParamsSchema, "params"), validate(communityStatusSchema), communityController.setStatus);

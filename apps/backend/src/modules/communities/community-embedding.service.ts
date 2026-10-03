@@ -12,13 +12,6 @@ const MAX_EMBEDDING_TEXT_LENGTH = 2000;
 /** Safety cap so a run can never loop forever on rows that keep failing to update. */
 const MAX_COMMUNITIES_PER_RUN = 1000;
 
-/**
- * Minimum similarity for a semantic suggestion. The score is
- * `1 - cosine_distance / 2`, i.e. `(1 + cos) / 2`, so 0.75 corresponds to a
- * cosine of 0.5. Tune against seeded data.
- */
-export const SUGGESTION_MIN_SIMILARITY = 0.75;
-
 export function communityEmbeddingText(community: {
   name: string;
   researchField?: string | null;
@@ -101,7 +94,9 @@ export async function runCommunityEmbedding(options: { ids?: string[] } = {}): P
         AND updated_at = CAST(${community.updatedAtText} AS timestamptz)
     `)));
     // updated_at is deliberately left untouched, and the predicate above skips
-    // rows edited since they were read so a stale vector is never written.
+    // rows edited since they were read so a stale vector is never written. A row
+    // touched mid-run (e.g. join/leave bumps updated_at) is picked up by the next
+    // run or the daily EMBED_CRON.
     const written = results.reduce((sum, count) => sum + count, 0);
     totalEmbedded += written;
     if (written === 0) break;
@@ -123,22 +118,45 @@ export interface NearestCommunity {
   similarity: number;
 }
 
+/**
+ * Nearest ACTIVE communities by embedding similarity.
+ * Visibility must be applied in SQL before LIMIT; post-filtering shrinks the
+ * result set (same bug fixed in the retriever, issue #14).
+ */
 export async function nearestCommunityIds(
   embedding: readonly number[],
-  options: { limit: number; excludeIds?: string[]; publicOnly?: boolean },
+  options: {
+    limit: number;
+    excludeIds?: string[];
+    /** Only public communities (recommendations for someone who has not joined). */
+    publicOnly?: boolean;
+    /** Restrict to what this viewer may see: public, plus the communities they belong to. Admins see all. */
+    viewer?: { isAdmin: boolean; memberCommunityIds: string[] };
+    /** Defaults to env.COMMUNITY_SUGGEST_MIN_SIMILARITY. */
+    minSimilarity?: number;
+  },
 ): Promise<NearestCommunity[]> {
   const vector = Prisma.sql`CAST(${vectorParameter(embedding)} AS vector)`;
+  const minSimilarity = options.minSimilarity ?? env.COMMUNITY_SUGGEST_MIN_SIMILARITY;
   const exclude = options.excludeIds?.length
     ? Prisma.sql`AND id <> ALL(${[...options.excludeIds]}::uuid[])`
     : Prisma.empty;
+  const viewer = options.viewer;
+  const visibility = options.publicOnly
+    ? Prisma.sql`AND visibility = 'public'`
+    : viewer && !viewer.isAdmin
+      ? viewer.memberCommunityIds.length
+        ? Prisma.sql`AND (visibility = 'public' OR id = ANY(${[...viewer.memberCommunityIds]}::uuid[]))`
+        : Prisma.sql`AND visibility = 'public'`
+      : Prisma.empty;
   return getPrisma().$queryRaw<NearestCommunity[]>(Prisma.sql`
     SELECT id, (1 - (embedding <=> ${vector}) / 2.0)::double precision AS similarity
     FROM communities
     WHERE embedding IS NOT NULL
       AND status = 'ACTIVE'
-      ${options.publicOnly ? Prisma.sql`AND visibility = 'public'` : Prisma.empty}
+      ${visibility}
       ${exclude}
-      AND (1 - (embedding <=> ${vector}) / 2.0) >= ${SUGGESTION_MIN_SIMILARITY}
+      AND (1 - (embedding <=> ${vector}) / 2.0) >= ${minSimilarity}
     ORDER BY embedding <=> ${vector}, id
     LIMIT ${options.limit}
   `);

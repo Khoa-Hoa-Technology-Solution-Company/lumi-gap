@@ -5,7 +5,7 @@ import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { logger } from "../../infrastructure/logger.js";
 import type { Prisma } from "../../generated/prisma/client.js";
 import { auditService } from "../audit/audit.service.js";
-import { getActiveCommunityMembership, isCommunityModerator } from "../communities/community.service.js";
+import { getActiveCommunityMembership, isCommunityModerator, narrowVisibility } from "../communities/community.service.js";
 import { notificationService } from "../notifications/notification.service.js";
 import {
   canExposeForumGap,
@@ -116,7 +116,7 @@ async function assertCanPostToCommunity(communityId: string | undefined, userId:
 async function assertCanViewCommunity(communityId: string | undefined, userId?: string, role?: UserRole): Promise<void> {
   if (!communityId) return;
   const community = await resolveCommunity(communityId);
-  if (community.visibility === "private" && role !== "admin" && (!userId || !(await getActiveCommunityMembership(community.id, userId)))) {
+  if (narrowVisibility(community.visibility) === "private" && role !== "admin" && (!userId || !(await getActiveCommunityMembership(community.id, userId)))) {
     throw AppError.forbidden("This community is private");
   }
 }

@@ -105,3 +105,21 @@ target language, provider, and a hash of the original text. Repeated requests
 for unchanged content therefore do not invoke the translation engine again.
 The first LibreTranslate startup can take longer because its language models
 must be initialized. Keep the service private; only the backend needs access.
+
+## 7. Rate limits and horizontal scaling
+
+Every `express-rate-limit` limiter in the backend (`semanticSearchLimiter`,
+`rerankLimiter`, the forum limiters and `suggestionLimiter`) uses the default
+in-memory store, so counters are kept **per process**. With N backend instances
+behind a load balancer the effective ceiling is roughly N times the configured
+value (`SEMANTIC_SEARCH_MAX_PER_MINUTE`, `COMMUNITY_SUGGEST_MAX_PER_MINUTE`, ...).
+These limiters exist mainly to protect the shared Gemini quota, so the multiplier
+matters.
+
+Before running more than one backend instance, move the limiters to a shared
+store backed by the Redis already in the stack (for example `rate-limit-redis`).
+That change needs its own issue; the current single-instance deployment is
+unaffected.
+
+`app.ts` sets `trust proxy` to 1, so limiters that key on `req.ip` see the real
+client address when the backend runs behind a single reverse proxy.

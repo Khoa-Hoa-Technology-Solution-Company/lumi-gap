@@ -482,6 +482,20 @@ describe.sequential("research forum persistence and authorization", () => {
     } finally { await prisma.community.update({ where: { id: communityId }, data: { status: "ACTIVE", visibility: "public" } }); }
   });
 
+  it("fails closed on an unknown community visibility instead of exposing its posts", async () => {
+    const prisma = getPrisma();
+    const community = await prisma.community.findUniqueOrThrow({ where: { id: communityId } });
+    const topic = await forumService.createPost({ communityId, title: `Unknown visibility ${marker}`, content: "Scope check" }, authorId);
+    postIds.push(topic.id);
+    await prisma.$executeRaw`UPDATE communities SET visibility = 'weird' WHERE id = ${communityId}::uuid`;
+    try {
+      await expect(forumService.getPost(topic.id, outsiderId, "user")).rejects.toMatchObject({ statusCode: 403 });
+      await expect(forumService.listPosts({ communityId: community.slug }, 1, 20, outsiderId, "user")).rejects.toMatchObject({ statusCode: 403 });
+      await expect(forumService.listPosts({ communityId: community.slug }, 1, 20)).rejects.toMatchObject({ statusCode: 403 });
+      expect((await forumService.getPost(topic.id, authorId, "user")).id).toBe(topic.id);
+    } finally { await prisma.community.update({ where: { id: communityId }, data: { visibility: "public" } }); }
+  });
+
   it("ranks Popular by existing engagement deterministically without evidence/confidence inputs", async () => {
     const prisma = getPrisma();
     const query = `Sidebar ranking ${marker}`;

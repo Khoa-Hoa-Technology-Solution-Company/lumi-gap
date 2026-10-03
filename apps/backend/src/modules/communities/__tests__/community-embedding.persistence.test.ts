@@ -13,6 +13,9 @@ vi.mock("../../../infrastructure/queue.js", () => ({ embeddingQueue: { add: vi.f
 const unit = (axis: number) => Array.from({ length: PAPER_EMBEDDING_DIMENSIONS }, (_, i) => (i === axis ? 1 : 0));
 const near = unit(0);
 const orthogonal = unit(1);
+// Dedicated axis for the visibility-before-LIMIT cases so real data cannot interfere.
+const crowd = unit(5);
+const nearCrowd = crowd.map((value, i) => (i === 6 ? 0.3 : value));
 
 function mockProvider(embed: () => Promise<number[]>) {
   vi.mocked(getEmbeddingProvider).mockReturnValue({
@@ -30,7 +33,7 @@ describe.sequential("community embedding suggestions (PostgreSQL)", () => {
   let ownerId = "";
   let memberId = "";
   let outsiderId = "";
-  const c = { near: "", far: "", pending: "", priv: "", joined: "", fresh: "", pendingFresh: "" };
+  const c = { near: "", far: "", pending: "", priv: "", joined: "", fresh: "", pendingFresh: "", privA: "", privB: "", privC: "", pubA: "", pubB: "" };
 
   const setEmbedding = (id: string, vector: number[]) =>
     getPrisma().$executeRaw`UPDATE communities SET embedding = CAST(${vectorParameter(vector)} AS vector) WHERE id = ${id}::uuid`;
@@ -68,6 +71,17 @@ describe.sequential("community embedding suggestions (PostgreSQL)", () => {
     await prisma.communityMembership.create({ data: { communityId: c.priv, userId: memberId, role: "member", status: "active" } });
     await Promise.all([c.near, c.pending, c.priv, c.joined].map((id) => setEmbedding(id, near)));
     await setEmbedding(c.far, orthogonal);
+
+    // Three private communities sit exactly on the query vector; two public ones are slightly
+    // farther but still above the threshold. Filtering visibility AFTER the LIMIT would return none.
+    await create("privA", { status: "ACTIVE", visibility: "private" });
+    await create("privB", { status: "ACTIVE", visibility: "private" });
+    await create("privC", { status: "ACTIVE", visibility: "private" });
+    await create("pubA", { status: "ACTIVE" });
+    await create("pubB", { status: "ACTIVE" });
+    await Promise.all([c.privA, c.privB, c.privC].map((id) => setEmbedding(id, crowd)));
+    await Promise.all([c.pubA, c.pubB].map((id) => setEmbedding(id, nearCrowd)));
+    await prisma.communityMembership.create({ data: { communityId: c.privA, userId: memberId, role: "member", status: "active" } });
   });
 
   afterAll(async () => {
@@ -95,6 +109,22 @@ describe.sequential("community embedding suggestions (PostgreSQL)", () => {
     const asMember = ours(await communityService.suggest("anything", memberId, "user", 10));
     expect(asMember).toContain("Cemb priv");
     expect(asMember).not.toContain("Cemb pending");
+  });
+
+  it("suggest() applies visibility before LIMIT so hidden communities never crowd out visible ones", async () => {
+    mockProvider(async () => crowd);
+    const result = await communityService.suggest("anything", outsiderId, "user", 2);
+    expect(result).toHaveLength(2);
+    expect(ours(result).sort()).toEqual(["Cemb pubA", "Cemb pubB"]);
+  });
+
+  it("suggest() includes a private community the viewer belongs to, and everything for admins", async () => {
+    mockProvider(async () => crowd);
+    const asMember = ours(await communityService.suggest("anything", memberId, "user", 10));
+    expect(asMember).toContain("Cemb privA");
+    expect(asMember).not.toContain("Cemb privB");
+    const asAdmin = ours(await communityService.suggest("anything", ownerId, "admin", 10));
+    expect(asAdmin).toEqual(expect.arrayContaining(["Cemb privA", "Cemb privB", "Cemb privC", "Cemb pubA", "Cemb pubB"]));
   });
 
   it("suggest() returns [] instead of throwing when embedding fails", async () => {

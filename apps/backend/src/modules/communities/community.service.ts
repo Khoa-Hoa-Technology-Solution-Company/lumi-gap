@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import type { UserRole } from "@trend/shared-types";
+import type { Community, CommunityRecommendation, CommunityStatus as SharedCommunityStatus, CommunitySuggestion, UserRole } from "@trend/shared-types";
 import { AppError } from "../../common/exceptions/app-error.js";
 import { Prisma } from "../../generated/prisma/client.js";
 import { parseDatabaseId, publicDatabaseId } from "../../infrastructure/database/database-id.js";
@@ -61,11 +61,15 @@ async function embedQuerySafely(text: string): Promise<number[] | null> {
  * Admins see everything. Everyone else sees ACTIVE communities that are public or that they belong to
  * (private communities are not discoverable by non-members), plus their own pending/rejected proposals.
  */
+async function activeMembershipIds(viewerUserId: string | undefined): Promise<string[]> {
+  if (!viewerUserId) return [];
+  const rows = await getPrisma().communityMembership.findMany({ where: { userId: viewerUserId, status: "active" }, select: { communityId: true } });
+  return rows.map((row) => row.communityId);
+}
+
 async function visibleWhere(role: UserRole | undefined, viewerUserId: string | undefined) {
   if (role === "admin") return {};
-  const memberIds = viewerUserId
-    ? (await getPrisma().communityMembership.findMany({ where: { userId: viewerUserId, status: "active" }, select: { communityId: true } })).map((row) => row.communityId)
-    : [];
+  const memberIds = await activeMembershipIds(viewerUserId);
   return {
     OR: [
       { status: "ACTIVE", OR: [{ visibility: "public" }, { id: { in: memberIds } }] },
@@ -192,29 +196,47 @@ export async function loadViewableCommunity(idOrSlug: string, userId?: string, r
   return { community, viewerUserId };
 }
 
+const COMMUNITY_STATUS_VALUES: readonly SharedCommunityStatus[] = ["ACTIVE", "ARCHIVED", "PENDING_APPROVAL", "REJECTED"];
+
+/** Unknown DB values fail closed: read-only ARCHIVED, never ACTIVE (joinable/postable). */
+export function narrowStatus(value: string): SharedCommunityStatus {
+  const known = COMMUNITY_STATUS_VALUES.find((status) => status === value);
+  if (known) return known;
+  logger.warn({ status: value }, "unknown community status; presenting as ARCHIVED");
+  return "ARCHIVED";
+}
+
+/** Unknown DB values fail closed: anything other than "public" is treated as private. */
+export function narrowVisibility(value: string): "public" | "private" {
+  if (value === "public") return "public";
+  if (value !== "private") logger.warn({ visibility: value }, "unknown community visibility; treating as private");
+  return "private";
+}
+
 function presentCommunity(community: {
   id: string; legacyMongoId: string | null; name: string; slug: string; description: string;
   researchTopics: string[]; researchField: string | null; icon: string | null; visibility: string; status: string;
   rules: string[]; memberCount: number; threadCount: number;
   ownerId: string; reviewNote: string | null; reviewedAt: Date | null;
   createdAt: Date; updatedAt: Date;
-}, membership?: MembershipSummary | null, actorRole?: UserRole, viewerUserId?: string) {
+}, membership?: MembershipSummary | null, actorRole?: UserRole, viewerUserId?: string): Community {
   const activeMembership = membership?.status === "active";
+  const visibility = narrowVisibility(community.visibility);
   const isAdmin = actorRole === "admin";
   const isOwner = viewerUserId !== undefined && viewerUserId === community.ownerId;
   return {
     id: publicDatabaseId(community), name: community.name, slug: community.slug,
     description: community.description, researchTopics: community.researchTopics, researchField: community.researchField ?? undefined, icon: community.icon ?? undefined,
-    visibility: community.visibility, status: community.status, rules: community.rules, memberCount: community.memberCount, threadCount: community.threadCount,
+    visibility, status: narrowStatus(community.status), rules: community.rules, memberCount: community.memberCount, threadCount: community.threadCount,
     viewerMembership: membership ? { role: membership.role, status: membership.status } : undefined,
     canManage: isAdmin || Boolean(activeMembership && ["owner", "moderator"].includes(membership!.role)),
     canEditCommunity: isAdmin || isOwner,
     isOwner,
     isAdmin,
     reviewNote: isAdmin || isOwner ? community.reviewNote ?? undefined : undefined,
-    reviewedAt: isAdmin || isOwner ? community.reviewedAt ?? undefined : undefined,
-    contentRestricted: community.visibility === "private" && !isAdmin && !activeMembership,
-    createdAt: community.createdAt, updatedAt: community.updatedAt,
+    reviewedAt: isAdmin || isOwner ? community.reviewedAt?.toISOString() : undefined,
+    contentRestricted: visibility === "private" && !isAdmin && !activeMembership,
+    createdAt: community.createdAt.toISOString(), updatedAt: community.updatedAt.toISOString(),
   };
 }
 
@@ -287,7 +309,7 @@ export const communityService = {
   },
 
   /** Suggests public communities whose topics overlap the viewer's research interests, then fills up with semantic neighbours. */
-  async recommend(userId: string, limit = 6) {
+  async recommend(userId: string, limit = 6): Promise<CommunityRecommendation[]> {
     const resolvedUserId = await resolveUserId(userId);
     const prisma = getPrisma();
     const user = await prisma.user.findUniqueOrThrow({ where: { id: resolvedUserId }, select: { researchInterests: true } });
@@ -307,8 +329,7 @@ export const communityService = {
     const byTopic = topicMatches.map(({ community, matchedInterests }) => ({
       ...presentCommunity(community, null, undefined, resolvedUserId),
       matchedInterests,
-      matchReason: "topic" as "topic" | "semantic",
-      similarity: undefined as number | undefined,
+      matchReason: "topic" as const,
     }));
     if (byTopic.length >= limit) return byTopic;
 
@@ -329,21 +350,24 @@ export const communityService = {
       .map((community) => ({
         ...presentCommunity(community, null, undefined, resolvedUserId),
         matchedInterests: [] as string[],
-        matchReason: "semantic" as "topic" | "semantic",
-        similarity: Math.round((similarityById.get(community.id) ?? 0) * 100) / 100 as number | undefined,
+        matchReason: "semantic" as const,
+        similarity: Math.round((similarityById.get(community.id) ?? 0) * 100) / 100,
       }));
     return [...byTopic, ...semantic];
   },
 
   /** Semantic "did you mean" for a free-text query; empty when nothing is close or embedding is unavailable. */
-  async suggest(q: string, userId?: string, role?: UserRole, limit = 5) {
+  async suggest(q: string, userId?: string, role?: UserRole, limit = 5): Promise<CommunitySuggestion[]> {
     const resolvedUserId = userId ? await resolveUserId(userId) : undefined;
     const vector = await embedQuerySafely(q);
     if (!vector) return [];
-    const nearest = await nearestCommunityIds(vector, { limit });
+    const nearest = await nearestCommunityIds(vector, {
+      limit,
+      viewer: { isAdmin: role === "admin", memberCommunityIds: await activeMembershipIds(resolvedUserId) },
+    });
     if (nearest.length === 0) return [];
     const similarityById = new Map(nearest.map((row) => [row.id, row.similarity]));
-    // Re-apply the normal visibility rules so private communities never leak.
+    // Visibility is already enforced in SQL; re-applying the normal rules is defence in depth.
     const communities = await getPrisma().community.findMany({ where: { AND: [await visibleWhere(role, resolvedUserId), { id: { in: nearest.map((row) => row.id) } }] } });
     const memberships = resolvedUserId && communities.length > 0
       ? await getPrisma().communityMembership.findMany({ where: { userId: resolvedUserId, communityId: { in: communities.map((item) => item.id) } } })
@@ -532,7 +556,7 @@ export const communityService = {
   /** Member-facing roster: active members only, no email addresses. */
   async publicMembers(communityId: string, userId?: string, role?: UserRole) {
     const { community, viewerUserId } = await loadViewableCommunity(communityId, userId, role);
-    if (community.visibility === "private" && role !== "admin") {
+    if (narrowVisibility(community.visibility) === "private" && role !== "admin") {
       const viewer = viewerUserId
         ? await getPrisma().communityMembership.findUnique({ where: { communityId_userId: { communityId: community.id, userId: viewerUserId } } })
         : null;
