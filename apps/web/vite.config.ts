@@ -32,9 +32,8 @@ export default defineConfig({
           if (normalizedId.includes("/node_modules/@tanstack/")) {
             return "vendor-query";
           }
-          if (normalizedId.includes("/node_modules/lucide-react/")) {
-            return "vendor-icons";
-          }
+          // Let Rollup split icons by actual route usage. One global icon chunk
+          // pulls every lazy screen's icons into the initial application graph.
           if (
             normalizedId.includes("/node_modules/react-markdown/") ||
             normalizedId.includes("/node_modules/remark-gfm/") ||

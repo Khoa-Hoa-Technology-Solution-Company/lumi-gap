@@ -12,7 +12,7 @@ vi.mock("@/i18n", () => ({ useI18n: () => ({ t: (key: string) => key, language: 
 const topic: ForumPostView = {
   id: "readable-topic", type: "QUESTION", title: "How should a long academic evaluation question be presented without hiding its final words?",
   content: "A readable excerpt for the topic list.", tags: ["methodology"], status: "active",
-  voteScore: 3, commentCount: 6, replyCount: 6, helpfulCount: 3, viewCount: 1200,
+  voteScore: 3, commentCount: 6, replyCount: 6, helpfulCount: 3, viewCount: 1200, reactionCount: 3,
   participants: [{ id: "author", fullName: "Researcher" }], author: { id: "author", fullName: "Researcher", academicProfileType: "student", institution: "FPT University", affiliationVerified: true },
   viewerVote: 0, isFollowing: false, isPinned: false, acceptedCommentId: "accepted", canModerate: false, canReply: true,
   linkedResearchGap: { id: "gap-1", title: "Limited longitudinal evidence for AI-assisted review" },
@@ -27,7 +27,7 @@ describe("Forum typography hierarchy", () => {
     const heading = markup.match(/<h2[^>]+>/)?.[0];
     expect(heading).toContain("forum-topic-title");
     const css = readFileSync(new URL("../../../theme/globals.css", import.meta.url), "utf8");
-    expect(css).toMatch(/\.forum-topic-title\s*\{\s*font-size: 1\.25rem;/);
+    expect(css).toMatch(/\.forum-topic-title\s*\{\s*font-size: 1\.125rem;/);
     expect(css).toMatch(/@container forum-topics \(min-width: 45rem\)\s*\{\s*\.forum-topic-title\s*\{\s*font-size: 1\.375rem;/);
     expect(heading).not.toContain("line-clamp");
     expect(heading).toContain("break-words");
@@ -40,10 +40,12 @@ describe("Forum typography hierarchy", () => {
     const markup = renderTopic();
     expect(markup).toContain("forum-topic-row");
     expect(markup).toContain("forum-topic-metrics");
+    expect(markup).toContain("Views");
     expect(markup).toContain('href="/forum/readable-topic#responses-section"');
     expect(markup).toContain('title="6 Replies"');
     expect(markup).toContain('title="1,200 Views"');
-    expect(markup).toContain('title="3 Helpful. Helpful reflects community usefulness, not scientific validation."');
+    expect(markup).toContain('title="3 Reactions"');
+    expect(markup).not.toContain("Helpful");
   });
 
   it("keeps academic identity, research provenance and accepted-answer meaning visible", () => {
@@ -61,7 +63,7 @@ describe("Forum typography hierarchy", () => {
     expect(sidebar).toContain("text-base leading-6");
     expect(sidebar).toContain("w-[var(--forum-sidebar-width)]");
     const prose = renderToStaticMarkup(<ForumMarkdown content="An academic paragraph." />);
-    expect(prose).toContain("text-base leading-[1.7] sm:text-lg");
+    expect(prose).toContain("text-base leading-6");
     expect(prose).toContain("max-w-[70ch]");
     const css = readFileSync(new URL("../../../theme/globals.css", import.meta.url), "utf8");
     expect(css).toMatch(/\.forum-workspace\s*\{[^}]*--forum-sidebar-width: 14rem;[^}]*font-size: 1rem;/);

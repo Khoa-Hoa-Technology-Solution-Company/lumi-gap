@@ -113,6 +113,19 @@ const EnvSchema = z.object({
   CHAT_CACHE_TTL_SECONDS: z.coerce.number().int().positive().default(604800),
   CHAT_ABSTRACT_MAX_CHARS: z.coerce.number().int().positive().default(800),
 
+  // Forum Trust & Safety policy knobs. Defaults are development-safe values;
+  // production values must be confirmed by FPT/policy owners before launch.
+  FORUM_APPEAL_SUBMISSION_WINDOW_DAYS: z.coerce.number().int().min(1).max(365).default(14),
+  FORUM_MODERATION_CLAIM_LEASE_MINUTES: z.coerce.number().int().min(1).max(1440).default(30),
+  FORUM_MODERATION_EVIDENCE_RETENTION_DAYS: z.coerce.number().int().min(1).max(36500).default(365),
+  FORUM_AUDIT_METADATA_RETENTION_DAYS: z.coerce.number().int().min(1).max(36500).default(3650),
+  FORUM_MAX_PINNED_THREADS_PER_COMMUNITY: z.coerce.number().int().min(1).max(100).default(10),
+  FORUM_COPYRIGHT_EMAIL_VERIFICATION_MINUTES: z.coerce.number().int().min(5).max(1440).default(60),
+  FORUM_RATE_LIMIT_UNVERIFIED: z.coerce.number().int().min(1).max(1000).default(10),
+  FORUM_RATE_LIMIT_VERIFIED: z.coerce.number().int().min(1).max(5000).default(60),
+  FORUM_COPYRIGHT_PUBLIC_RATE_LIMIT: z.coerce.number().int().min(1).max(100).default(3),
+  FORUM_ALLOW_SOLE_ADMIN_APPEAL_REVIEW: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
+
   OPENALEX_MAILTO: optionalEnvEmail,
   // The normal application can read the existing corpus without an OpenAlex
   // key. Treat an empty Compose/.env value as absent; the scale-campaign start

@@ -490,7 +490,13 @@ export const communityService = {
       if (actorMembership.role === "moderator" && membership.role !== "member") throw AppError.forbidden("Community moderators can only manage regular members");
       const nextStatus = input.status ?? membership.status;
       if (input.role === "moderator" && nextStatus !== "active") throw AppError.badRequest("Only active members can become moderators");
-      const result = await tx.communityMembership.update({ where: { id: membership.id }, data: input });
+      const assignmentChanged = input.role !== undefined && input.role !== membership.role;
+      const now = new Date();
+      const result = await tx.communityMembership.update({ where: { id: membership.id }, data: {
+        ...input,
+        ...(assignmentChanged && input.role === "moderator" ? { assignedById: await resolveUserId(actorId), assignedAt: now, revokedAt: null } : {}),
+        ...(assignmentChanged && input.role === "member" ? { revokedAt: now } : {}),
+      } });
       await syncMemberCount(tx, id);
       const community = await tx.community.findUniqueOrThrow({ where: { id }, select: { name: true } });
       return { updated: result, target: membership, communityName: community.name };
@@ -503,6 +509,9 @@ export const communityService = {
         banned: { title: "Removed from a community", message: `You were banned from “${communityName}”.`, type: "COMMUNITY_MEMBER_BANNED" },
       }[input.status as "active" | "declined" | "banned"];
       await notifySafely({ userId: resolvedTargetId, ...copy, targetKind: "community", targetId: id });
+    }
+    if (input.role !== undefined && input.role !== target.role) {
+      await auditService.log(input.role === "moderator" ? "ASSIGN_MODERATOR" : "REVOKE_MODERATOR", { userId: actorId, targetTableName: "community_memberships", targetRecordId: target.id, details: { communityId: id, moderatorId: resolvedTargetId } });
     }
     return updated;
   },

@@ -161,7 +161,7 @@ export function PaperReadingSection({
                 {keywords.map((kw: PaperKeyword) => (
                   <Link
                     key={kw.keywordId || kw.keywordName}
-                    to={`/search?q=${encodeURIComponent(kw.keywordName)}`}
+                    to={`/home?q=${encodeURIComponent(kw.keywordName)}`}
                     className="inline-flex items-center rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
                   >
                     #{kw.keywordName}

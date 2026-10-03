@@ -1,13 +1,15 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import type { ForumPostType, ForumSort } from "@trend/shared-types";
-import { ArrowDown, MessageSquare, Plus, Search, ShieldAlert, X } from "lucide-react";
+import type { ForumPostType } from "@trend/shared-types";
+import { ArrowDown, ChevronDown, MessageSquare, Plus, Search, ShieldAlert, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { ForumCard, ForumLayout, ForumSurface, ForumSidebar, useCommunities, useForumPosts, useForumVote } from "@/features/forum";
+import { ForumCard, ForumLayout, ForumSurface, ForumSidebar, useCommunities, useForumPosts } from "@/features/forum";
 import { ForumPagination } from "@/features/forum/components/forum-pagination";
 import { parseForumListParams, updateForumListParam } from "@/features/forum/utils/forum-pagination";
+import { forumListHref } from "@/features/forum/utils/forum-pagination";
+import { FORUM_FEEDS } from "@/features/forum/utils/forum-navigation";
 import { useI18n } from "@/i18n";
 import { useAuthStore } from "@/stores/auth-store";
 import { cn } from "@/utils/cn";
@@ -22,12 +24,6 @@ const TYPES: Array<{ value: ForumPostType | ""; label: string }> = [
   { value: "RESEARCH_GAP_DISCUSSION", label: "Research Gap Discussions" },
 ];
 
-const FEED_TABS: Array<{ value: ForumSort; label: string }> = [
-  { value: "latest", label: "Latest" },
-  { value: "popular", label: "Popular" },
-  { value: "unanswered", label: "Unanswered" },
-];
-
 export function ForumListPage() {
   const { t, language } = useI18n();
   const isAuthed = useAuthStore((state) => Boolean(state.tokens?.accessToken));
@@ -37,17 +33,19 @@ export function ForumListPage() {
   const [composerOpen, setComposerOpen] = useState(false);
   const [closeRequest, setCloseRequest] = useState(0);
   const [composerExpanded, setComposerExpanded] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(() => Boolean(searchParams.get("q")));
+  const searchField = useRef<HTMLInputElement>(null);
   const { page, pageSize, sort, type, query } = parseForumListParams(searchParams);
   // A draft belongs to one history entry. Back/forward immediately restores the URL's search.
   const [searchDraft, setSearchDraft] = useState({ value: query, locationKey: location.key });
   const searchInput = searchDraft.locationKey === location.key ? searchDraft.value : query;
   const setSearchInput = (value: string) => setSearchDraft({ value, locationKey: location.key });
+  useEffect(() => { if (searchOpen) searchField.current?.focus({ preventScroll: true }); }, [searchOpen]);
   const contentTop = useRef<HTMLElement>(null);
   const previousSearch = useRef(location.search);
   const communityId = searchParams.get("community") ?? "";
   const tag = searchParams.get("tag") ?? "";
   const linkedResearchGapId = searchParams.get("linkedResearchGapId") ?? undefined;
-  const vote = useForumVote();
 
   useEffect(() => {
     // Clear a committed draft as well: returning to its original history entry
@@ -70,31 +68,41 @@ export function ForumListPage() {
     }
   }, [location.search]);
 
-  const { data, isLoading, isError, refetch } = useForumPosts({
+  const { data, isLoading, isFetching, isPlaceholderData, isError, refetch } = useForumPosts({
     page, pageSize, query: query.trim() || undefined, sort,
     type: type || undefined, communityId: communityId || undefined,
     tag: tag || undefined, linkedResearchGapId,
   }, sort !== "following" || isAuthed);
   const { data: communities, isLoading: communitiesLoading, isError: communitiesError, refetch: retryCommunities } = useCommunities();
   const selectedCommunity = communities?.find((item) => item.id === communityId || item.slug === communityId);
+  const selectedType = TYPES.find((item) => item.value === type);
+  const communityFilterLabel = selectedCommunity?.name ?? t("Community");
+  const typeFilterLabel = type ? t(selectedType?.label ?? type) : t("Type");
   const hasFilters = Boolean(searchInput || type || communityId || tag || linkedResearchGapId);
+  const updating = isFetching || searchInput.trim() !== query.trim();
 
   useEffect(() => {
     let next = new URLSearchParams(searchParams);
     if (searchParams.has("page") && searchParams.get("page") !== String(page)) next = updateForumListParam(next, "page", String(page));
-    if (data && page > data.meta.totalPages) next = updateForumListParam(next, "page", String(data.meta.totalPages));
+    if (data && !isPlaceholderData && page > data.meta.totalPages) next = updateForumListParam(next, "page", String(data.meta.totalPages));
     if (searchParams.has("pageSize") && searchParams.get("pageSize") !== String(pageSize)) next.set("pageSize", String(pageSize));
     if (searchParams.has("sort") && searchParams.get("sort") !== sort) next.delete("sort");
     if (searchParams.has("feed") && searchParams.get("feed") !== sort) next.delete("feed");
     if (searchParams.has("type") && searchParams.get("type") !== type) next.delete("type");
     if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
-  }, [data, page, pageSize, sort, type, searchParams, setSearchParams]);
+  }, [data, isPlaceholderData, page, pageSize, sort, type, searchParams, setSearchParams]);
 
   const setParam = (key: string, value?: string) => {
     const next = updateForumListParam(searchParams, key, value);
     setSearchParams(next);
   };
-  const clearFilters = () => { setSearchInput(""); setSearchParams(pageSize === 20 ? {} : { pageSize: String(pageSize) }); };
+  const clearFilters = () => {
+    setSearchInput("");
+    const next = new URLSearchParams();
+    if (sort !== "latest") next.set("feed", sort);
+    if (pageSize !== 20) next.set("pageSize", String(pageSize));
+    setSearchParams(next);
+  };
 
   return (
       <ForumLayout
@@ -110,65 +118,82 @@ export function ForumListPage() {
       >
         <section ref={contentTop} className="min-w-0 scroll-mt-[calc(var(--app-header-height)+1rem)]" aria-label={t("Forum discussions")}>
           <ForumSurface className="forum-topics overflow-hidden">
-          <header className="border-b border-slate-200 px-5 pb-5 pt-6 dark:border-slate-800 sm:px-7">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div className="min-w-0 flex-1 basis-72">
-                <h1 className="text-[1.75rem] font-semibold leading-tight tracking-tight text-foreground">{t("Research Forum")}</h1>
-                <p className="mt-1.5 max-w-[70ch] text-sm leading-6 text-muted-foreground sm:text-base">
-                  {t("Discuss research questions, papers, methods, and emerging research gaps.")}
-                </p>
-              </div>
-              {isAuthed ? (
-                <Button type="button" aria-haspopup="dialog" aria-expanded={composerOpen} className="h-11 shrink-0 px-5 text-base" onClick={() => { setCloseRequest(0); setComposerExpanded(false); setComposerOpen(true); }}>
-                    <Plus className="h-4 w-4" />
-                    {t("New discussion")}
-                </Button>
-              ) : null}
-            </div>
-            <div className="relative mt-5 max-w-2xl" role="search">
-              <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} aria-label={t("Search discussions")} placeholder={t("Search discussions, papers, DOI, topics...")} className="h-12 rounded-lg border-slate-300 bg-slate-50 pl-10 text-base dark:border-slate-700 dark:bg-slate-900 md:text-base" />
-            </div>
+          <header className="forum-list-header sr-only">
+            <h1>{t("Research Forum")}</h1>
+            <p>{t("Discuss research questions, papers, methods, and emerging research gaps.")}</p>
+            {updating && !isLoading ? <div role="status" className="absolute inset-x-0 bottom-0 h-0.5 animate-pulse bg-primary/60 motion-reduce:animate-none"><span className="sr-only">{t("Updating discussions…")}</span></div> : null}
           </header>
-          <div className="border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
-            <div className="forum-topic-toolbar flex flex-wrap items-center gap-2 px-5 py-3 sm:px-6">
-            <select
-              value={selectedCommunity?.slug ?? communityId}
-              onChange={(event) => setParam("community", event.target.value)}
-              aria-label={t("Community")}
-                className="forum-topic-filter h-11 w-full min-w-0 max-w-full rounded-md border border-input bg-background px-3 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <option value="">{t("All communities")}</option>
-              {(communities ?? []).map((community) => (
-                <option key={community.id} value={community.slug}>{community.name}</option>
-              ))}
-            </select>
-            <select
-              value={type}
-              onChange={(event) => setParam("type", event.target.value)}
-              aria-label={t("Thread type")}
-                className="forum-topic-filter h-11 w-full min-w-0 max-w-full rounded-md border border-input bg-background px-3 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              {TYPES.map((item) => (
-                <option key={item.value} value={item.value}>{t(item.label)}</option>
-              ))}
-            </select>
+          <div className="forum-topic-toolbar border-b border-slate-200 dark:border-slate-800">
+            <div className="forum-topic-toolbar-row flex min-w-0 flex-wrap items-center gap-2 px-4 py-2 sm:px-6">
+              <div className="forum-topic-filter-group flex min-w-0 items-center gap-2">
+                <label className="forum-topic-filter-control">
+                  <span className="sr-only">{t("Community")}</span>
+                  <span className="forum-topic-filter-shell" aria-hidden="true">
+                    <span className="forum-topic-filter-label">{communityFilterLabel}</span>
+                    <ChevronDown className="forum-topic-filter-chevron" />
+                  </span>
+                  <select
+                    value={selectedCommunity?.slug ?? communityId}
+                    onChange={(event) => setParam("community", event.target.value)}
+                    aria-label={t("Community")}
+                    className="forum-topic-filter forum-topic-filter-select"
+                  >
+                    <option value="">{t("All communities")}</option>
+                    {(communities ?? []).map((community) => (
+                      <option key={community.id} value={community.slug}>{community.name}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="forum-topic-filter-control">
+                  <span className="sr-only">{t("Thread type")}</span>
+                  <span className="forum-topic-filter-shell" aria-hidden="true">
+                    <span className="forum-topic-filter-label">{typeFilterLabel}</span>
+                    <ChevronDown className="forum-topic-filter-chevron" />
+                  </span>
+                  <select
+                    value={type}
+                    onChange={(event) => setParam("type", event.target.value)}
+                    aria-label={t("Thread type")}
+                    className="forum-topic-filter forum-topic-filter-select"
+                  >
+                    {TYPES.map((item) => (
+                      <option key={item.value} value={item.value}>{t(item.label)}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
 
-            <nav className="forum-topic-feeds flex flex-wrap items-end gap-1" aria-label={t("Forum feeds")}>
-              {FEED_TABS.map((feed) => (
-                <button
+              <nav className="forum-topic-feeds flex min-w-0 flex-1 flex-nowrap items-center gap-0.5 overflow-x-auto" aria-label={t("Forum feeds")}>
+              {FORUM_FEEDS.map((feed) => (
+                <Link
                   key={feed.value}
-                  type="button"
-                  onClick={() => setParam("sort", feed.value === "latest" ? undefined : feed.value)}
+                  to={feed.value === "following" && !isAuthed ? `/login?returnTo=${encodeURIComponent(forumListHref(searchParams, "feed", feed.value))}` : forumListHref(searchParams, "feed", feed.value)}
+                  title={t(feed.description)}
                   aria-current={sort === feed.value ? "page" : undefined}
-                  className={`relative min-w-max rounded-sm px-2 py-3 text-base font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:px-3 ${sort === feed.value ? "text-primary" : "text-muted-foreground hover:text-foreground"}`}
+                  className={`forum-topic-feed relative min-h-10 min-w-max rounded-md px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:text-base ${sort === feed.value ? "is-active text-primary" : "text-muted-foreground hover:bg-muted/70 hover:text-foreground"}`}
                 >
                   {t(feed.label)}
-                  {sort === feed.value ? <span className="absolute inset-x-2 bottom-0 h-0.5 bg-primary" /> : null}
-                </button>
+                  {sort === feed.value ? <span className="forum-topic-feed-indicator absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-primary" /> : null}
+                </Link>
               ))}
-            </nav>
+              </nav>
+              <div className="forum-topic-toolbar-actions ml-auto flex shrink-0 items-center gap-2">
+                <Button type="button" variant="outline" size="icon" aria-label={t(searchOpen ? "Hide search" : "Show search")} aria-expanded={searchOpen} aria-controls="forum-list-search" className="forum-search-toggle h-9 w-9 rounded-full" onClick={() => setSearchOpen((open) => !open)}>
+                  {searchOpen ? <X className="h-4 w-4" /> : <Search className="h-4 w-4" />}
+                </Button>
+                {isAuthed ? (
+                  <Button variant="discussion" type="button" aria-label={t("New discussion")} title={t("New discussion")} aria-haspopup="dialog" aria-expanded={composerOpen} className="forum-new-discussion shrink-0 gap-1.5 rounded-lg px-3 text-sm sm:px-4 sm:text-base" onClick={() => { setCloseRequest(0); setComposerExpanded(false); setComposerOpen(true); }}>
+                    <Plus className="h-4 w-4 text-amber-200" aria-hidden="true" />
+                    <span>{t("New discussion")}</span>
+                  </Button>
+                ) : null}
+              </div>
             </div>
+            <div id="forum-list-search" data-expanded={searchOpen} className="forum-list-search relative mx-4 max-w-2xl pb-3 sm:mx-6" role="search">
+              <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-[calc(50%+0.375rem)] text-sky-600 dark:text-sky-300" />
+              <Input ref={searchField} value={searchInput} onChange={(event) => setSearchInput(event.target.value)} aria-label={t("Search discussions")} placeholder={t("Search discussions, papers, DOI, topics...")} className="h-10 rounded-lg border-slate-300 bg-white/80 pl-10 text-sm shadow-sm ring-1 ring-white/60 placeholder:text-slate-400 focus-visible:border-violet-400 focus-visible:ring-violet-400/30 dark:border-slate-700 dark:bg-slate-950/60 dark:ring-slate-800/60" />
+            </div>
+            <p className="sr-only">{t(FORUM_FEEDS.find((feed) => feed.value === sort)!.description)}</p>
           </div>
 
           {/* Active filters */}
@@ -185,22 +210,20 @@ export function ForumListPage() {
           ) : null}
 
           <div className="forum-topic-head items-center gap-4 border-b border-border px-6 py-4 text-base font-medium text-muted-foreground">
-            <button type="button" onClick={() => setParam("sort")} className="flex w-fit items-center gap-1.5 hover:text-slate-900 dark:hover:text-white">
-              {t("Topic")}{sort === "latest" ? <ArrowDown className="h-3.5 w-3.5" /> : null}
-            </button>
+            <span>{t("Topic")}</span>
             <span className="forum-topic-head-metrics grid items-center gap-2">
               <span className="forum-topic-head-participants text-left">{t("Participants")}</span>
               <span className="text-center">{t("Replies")}</span>
               <span className="forum-topic-head-views text-center">{t("Views")}</span>
-              <button type="button" onClick={() => setParam("sort", "popular")} className="forum-topic-head-helpful items-center justify-center gap-1 hover:text-slate-900 dark:hover:text-white">
-                {t("Helpful")}{sort === "popular" ? <ArrowDown className="h-3.5 w-3.5" /> : null}
+              <button type="button" onClick={() => setParam("feed", "popular")} title={t(FORUM_FEEDS[2]!.description)} className="forum-topic-head-helpful items-center justify-center gap-1 rounded focus-visible:ring-2 focus-visible:ring-ring hover:text-slate-900 dark:hover:text-white">
+                {t("Reactions")}{sort === "popular" ? <ArrowDown aria-hidden="true" className="h-3.5 w-3.5" /> : null}
               </button>
-              <span className="text-right">{t("Activity")}</span>
+              <button type="button" onClick={() => setParam("feed", "latest")} title={t(FORUM_FEEDS[0]!.description)} className="flex items-center justify-end gap-1 rounded text-right focus-visible:ring-2 focus-visible:ring-ring">{t("Activity")}{sort === "latest" ? <ArrowDown aria-hidden="true" className="h-3.5 w-3.5" /> : null}</button>
             </span>
           </div>
 
           {/* Topic list */}
-          <div aria-live="polite">
+          <div aria-live="polite" aria-busy={updating}>
             {sort === "following" && !isAuthed ? (
               <div className="p-10 text-center"><h2 className="font-semibold">{t("Sign in to see followed discussions.")}</h2><Button asChild size="sm" className="mt-4"><Link to={`/login?returnTo=${encodeURIComponent(location.pathname + location.search)}`}>{t("Sign in")}</Link></Button></div>
             ) : isLoading ? (
@@ -233,7 +256,6 @@ export function ForumListPage() {
                       post={post}
                       locale={language}
                       isAuthed={isAuthed}
-                      onVote={(value) => vote.mutate({ kind: "post", id: post.id, value })}
                     />
                   ))}
                   </div>
@@ -298,7 +320,7 @@ function EmptyState({ hasFilters, isAuthed, following, onClear, onNewDiscussion,
       <p className="mx-auto mt-2 max-w-md text-base text-muted-foreground">{t(hasFilters ? "Try a broader keyword or clear one of the filters." : following ? "Follow a discussion to find it here." : "Start an academic discussion with a question, paper, method, or research gap.")}</p>
       <div className="mt-5 flex justify-center gap-2">
         {hasFilters ? <Button variant="outline" size="sm" onClick={onClear}>{t("Clear filters")}</Button> : null}
-        {isAuthed ? <Button type="button" aria-haspopup="dialog" size="sm" onClick={onNewDiscussion}><Plus className="h-4 w-4" />{t("Start discussion")}</Button> : null}
+        {isAuthed ? <Button variant="discussion" type="button" aria-haspopup="dialog" size="sm" onClick={onNewDiscussion}><Plus className="h-4 w-4" />{t("Start discussion")}</Button> : null}
       </div>
     </div>
   );

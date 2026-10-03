@@ -117,7 +117,7 @@ export function DashboardPage() {
             title="Search Papers"
             description="Find papers using Boolean or AI Semantic search"
             icon={<Search className="w-5 h-5 text-blue-600 dark:text-blue-400" />}
-            onAction={() => navigate("/search")}
+            onAction={() => navigate("/home")}
           />
           <ActionCard
             title="Explore Trends"
@@ -196,7 +196,7 @@ export function DashboardPage() {
           <div className="py-10 text-center bg-white dark:bg-[#121212] border border-slate-200/80 dark:border-slate-800/80 border-dashed rounded-2xl p-6 select-none">
             <p className="text-sm text-slate-500 mb-4">No recent searches logged yet. Start exploring now!</p>
             <Button
-              onClick={() => navigate("/search")}
+              onClick={() => navigate("/home")}
               className="bg-blue-700 hover:bg-blue-800 text-white rounded-full font-bold shadow-md animate-pulse"
             >
               Start Searching

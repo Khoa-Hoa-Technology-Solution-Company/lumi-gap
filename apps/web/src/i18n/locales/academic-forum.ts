@@ -856,6 +856,10 @@ const forumKeyList = [
   "Write your response",
   "Write your response. Markdown is supported.",
   "This candidate gap is private. Make it shareable before linking it to a forum thread.",
+  "React", "Add reaction", "Reactions", "Helpful", "Insightful", "Celebrate", "Curious", "No reactions yet",
+  "Could not update reaction.", "Views are activity signals, not scientific validation.", "View author profile",
+  "Saved papers", "Search saved or LumiGap papers", "Paper results", "Search your saved papers or the LumiGap library.",
+  "No papers found", "See latest loaded post",
   ...Object.keys(forumRefinementVi) as Array<keyof typeof forumRefinementVi>,
 ] as const;
 

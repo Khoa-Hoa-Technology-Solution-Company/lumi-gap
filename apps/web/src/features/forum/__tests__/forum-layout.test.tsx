@@ -18,7 +18,7 @@ describe("Forum workspace layout", () => {
     );
 
     expect(markup).toContain("--app-header-height");
-    expect(markup).toContain("md:grid-cols-[var(--forum-sidebar-width)_minmax(0,1fr)]");
+    expect(markup).toContain("lg:grid-cols-[var(--forum-sidebar-width)_minmax(0,1fr)]");
     expect(markup).toContain("forum-workspace");
     expect(markup).toContain("Local navigation");
     expect(markup).toContain("Conversation");
@@ -40,8 +40,8 @@ describe("Forum workspace layout", () => {
     expect(markup).toContain("overscroll-y-contain");
     expect(markup).toContain('aria-label="Forum navigation"');
     expect(markup).toContain('aria-label="Open forum navigation"');
-    expect(markup).toContain("md:hidden");
-    expect(markup).toContain("bg-background md:block");
+    expect(markup).toContain("lg:hidden");
+    expect(markup).toContain("bg-background lg:block");
   });
 
   it("anchors navigation at the viewport edge while independently centering the bounded reading area", () => {

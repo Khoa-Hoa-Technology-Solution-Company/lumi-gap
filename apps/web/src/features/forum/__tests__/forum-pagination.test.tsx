@@ -51,7 +51,7 @@ describe("Forum list URL pagination", () => {
 
 describe("Forum readability and locale", () => {
   it("translates the literal UI labels on list, thread and reading components", () => {
-    const paths = ["../../../pages/forum/forum-list.tsx", "../../../pages/forum/forum-detail.tsx", "../components/forum-author-byline.tsx", "../components/forum-response-item.tsx", "../components/forum-composer.tsx", "../components/forum-thread-timeline.tsx", "../components/forum-context-card.tsx"];
+    const paths = ["../../../pages/forum/forum-list.tsx", "../../../pages/forum/forum-detail.tsx", "../components/forum-author-byline.tsx", "../components/forum-response-item.tsx", "../components/forum-composer.tsx", "../components/forum-thread-timeline.tsx", "../components/forum-thread-discovery.tsx", "../components/forum-context-card.tsx"];
     const keys = new Set<string>();
     for (const path of paths) for (const match of readFileSync(new URL(path, import.meta.url), "utf8").matchAll(/\bt\("([^"]+)"\)/g)) keys.add(match[1]!);
     const missing = [...keys].filter((key) => !vietnamese[key as keyof typeof vietnamese] || vietnamese[key as keyof typeof vietnamese] === key);
@@ -74,7 +74,7 @@ describe("Forum readability and locale", () => {
   it("caps prose measure without allowing raw HTML execution", () => {
     const markup = renderToStaticMarkup(<ForumMarkdown content={'A readable paragraph.\n\n<script>alert(1)</script>\n\n[link](javascript:alert(1))'} />);
     expect(markup).toContain("max-w-[70ch]");
-    expect(markup).toContain("leading-[1.7]");
+    expect(markup).toContain("text-base leading-6");
     expect(markup).not.toContain("<script>");
     expect(markup).not.toContain('href="javascript:');
   });

@@ -6,8 +6,10 @@ import { authSecurityStrings } from "./auth-security";
 import { newUiStrings } from "./new-ui";
 import { projectInvitationStrings } from "./project-invitations";
 import { studentOnboardingStrings } from "./student-onboarding";
+import { researchHomeEn } from "./research-home-en";
 
 export const en = {
+  ...researchHomeEn,
   ...newUiStrings,
   ...projectInvitationStrings,
   ...studentOnboardingStrings,

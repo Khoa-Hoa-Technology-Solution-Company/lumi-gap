@@ -161,21 +161,8 @@ Replace **every value enclosed in angle brackets**, including:
 Required runtime secrets include MongoDB, the self-hosted Redis password, two different JWT secrets,
 Gemini, Google OAuth, and R2 when `STORAGE_PROVIDER=r2`.
 
-The Jenkins browser gate also requires a dedicated low-privilege E2E account
-with enough test credits to run one AI rerank, and one stable paper fixture.
-The fixture must be active, embedded, discoverable by `E2E_SEARCH_QUERY`,
-contain an abstract, and expose a readable PDF:
-
-```dotenv
-E2E_USER_EMAIL=<dedicated-test-account>
-E2E_USER_PASSWORD=<dedicated-test-password>
-E2E_PAPER_ID=<stable-paper-object-id>
-E2E_SEARCH_QUERY=<query-that-returns-that-paper>
-E2E_TRANSLATION_LANGUAGE=vi
-```
-
-Do not use an administrator account. These values stay in the protected Jenkins
-credential and are never baked into the web image.
+The Jenkins browser gate checks that legacy `/search` URLs redirect to the home
+research composer. It does not require a dedicated account or paper fixture.
 
 Redis runs inside the private Docker network with AOF persistence. Production
 must use:

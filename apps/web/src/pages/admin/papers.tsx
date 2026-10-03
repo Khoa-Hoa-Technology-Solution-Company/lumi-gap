@@ -4,7 +4,6 @@ import { api } from "@/services/api-client";
 import { toast } from "sonner";
 import {
   FileText,
-  Clock,
   CheckCircle2,
   XCircle,
   Search,
@@ -17,8 +16,6 @@ import {
   CheckSquare,
   Square,
   AlertCircle,
-  Filter,
-  Sparkles,
   RotateCcw,
   Plus,
 } from "lucide-react";
@@ -208,11 +205,10 @@ export function AdminPapersPage() {
     }
   };
 
-  const pendingCount = papers.filter((p) => p.paperStatus === "pending").length;
   const isAllSelected = papers.length > 0 && selectedIds.length === papers.length;
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl mx-auto select-none">
+    <div className="mx-auto max-w-7xl space-y-6 select-none">
       {/* Top Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
@@ -245,8 +241,8 @@ export function AdminPapersPage() {
       </div>
 
       {/* Control Bar: Filters & Search */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-white dark:bg-[#121212] p-3 rounded-xl border border-slate-200/80 dark:border-zinc-800/80 shadow-xs">
-        <div className="flex flex-1 items-center gap-3 flex-wrap sm:flex-nowrap">
+      <div className="flex flex-col items-stretch justify-between gap-3 rounded-xl border border-slate-200/80 bg-white p-3 shadow-xs lg:flex-row lg:items-center dark:border-zinc-800/80 dark:bg-[#121212]">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3 lg:flex-nowrap">
           {/* Checkbox Select All */}
           <button
             onClick={() => handleSelectAll(!isAllSelected)}
@@ -263,7 +259,7 @@ export function AdminPapersPage() {
           <div className="h-4 w-px bg-slate-200 dark:bg-zinc-800 hidden sm:block" />
 
           {/* Search input */}
-          <div className="relative flex-1 min-w-[200px]">
+          <div className="relative min-w-[200px] flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <input
               type="text"
@@ -281,16 +277,16 @@ export function AdminPapersPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex w-full min-w-0 items-center gap-2 lg:w-auto">
           {/* Status Filter */}
-          <div className="relative">
+          <div className="relative min-w-0 flex-1 lg:flex-none">
             <select
               value={statusFilter}
               onChange={(e) => {
                 setStatusFilter(e.target.value);
                 setPage(1);
               }}
-              className="h-9 pl-3 pr-8 rounded-lg border border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-900 text-xs font-semibold text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
+              className="h-11 w-full cursor-pointer rounded-lg border border-slate-200 bg-slate-50 pl-3 pr-8 text-xs font-semibold text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-500 sm:h-9 lg:w-auto dark:border-zinc-800 dark:bg-zinc-900 dark:text-slate-300"
             >
               {STATUS_OPTIONS.map((s) => (
                 <option key={s} value={s}>
@@ -350,19 +346,19 @@ export function AdminPapersPage() {
               <div
                 key={paper.id}
                 className={cn(
-                  "relative rounded-xl border bg-white dark:bg-[#11161F] p-4 transition-all duration-200 shadow-xs space-y-3",
+                  "relative space-y-3 rounded-xl border bg-white p-3 shadow-xs transition-all duration-200 sm:p-4 dark:bg-[#11161F]",
                   isSelected
                     ? "border-blue-500/80 bg-blue-50/20 dark:border-blue-600/60 dark:bg-blue-950/10"
                     : "border-slate-200/80 dark:border-zinc-800/80 hover:border-slate-300 dark:hover:border-zinc-700"
                 )}
               >
                 {/* Header Row: Checkbox + Title + Status + Action Group */}
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex items-start gap-3 min-w-0 flex-1">
+                <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+                  <div className="flex min-w-0 flex-1 items-start gap-2 sm:gap-3">
                     {/* Checkbox */}
                     <button
                       onClick={() => handleToggleSelect(paper.id)}
-                      className="mt-0.5 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                      className="-ml-2 -mt-2 flex h-11 w-11 shrink-0 items-center justify-center text-slate-400 transition-colors hover:text-blue-600 sm:ml-0 sm:mt-0 sm:h-8 sm:w-8 dark:hover:text-blue-400"
                       aria-label="Select paper request"
                     >
                       {isSelected ? (
@@ -373,10 +369,10 @@ export function AdminPapersPage() {
                     </button>
 
                     <div className="space-y-1 min-w-0 flex-1">
-                      <div className="flex items-center gap-2 flex-wrap">
+                      <div className="flex min-w-0 flex-col items-start gap-2 sm:flex-row sm:flex-wrap sm:items-center">
                         <Link
                           to={`/papers/${paper.id}`}
-                          className="font-bold text-sm text-slate-900 dark:text-slate-100 hover:text-blue-600 dark:hover:text-blue-400 transition-colors line-clamp-1"
+                          className="line-clamp-2 min-w-0 break-words text-sm font-bold text-slate-900 transition-colors hover:text-blue-600 sm:line-clamp-1 dark:text-slate-100 dark:hover:text-blue-400"
                         >
                           {paper.title}
                         </Link>
@@ -385,7 +381,7 @@ export function AdminPapersPage() {
                             href={`https://doi.org/${paper.externalIds.doi}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 text-[11px] font-mono text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 bg-slate-100 dark:bg-zinc-900 px-2 py-0.5 rounded border border-slate-200/60 dark:border-zinc-800 shrink-0"
+                            className="inline-flex max-w-full items-center gap-1 break-all rounded border border-slate-200/60 bg-slate-100 px-2 py-0.5 font-mono text-[11px] text-slate-500 hover:text-blue-600 sm:shrink-0 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:text-blue-400"
                             onClick={(e) => e.stopPropagation()}
                           >
                             {paper.externalIds.doi}
@@ -412,7 +408,7 @@ export function AdminPapersPage() {
                   </div>
 
                   {/* Top-Right Status & Ergonomic Actions */}
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex w-full flex-wrap items-center gap-2 pl-9 sm:w-auto sm:shrink-0 sm:justify-end sm:pl-0">
                     <Badge variant="outline" className={cn("text-xs font-semibold px-2.5 py-0.5 rounded-full", statusConfig.class)}>
                       {statusConfig.label}
                     </Badge>
@@ -425,7 +421,7 @@ export function AdminPapersPage() {
                           e.preventDefault();
                           handleViewPdf(paper.id);
                         }}
-                        className="h-8 px-3 text-xs font-semibold text-blue-600 border-blue-200/80 hover:bg-blue-50 dark:border-blue-900/50 dark:text-blue-400 dark:hover:bg-blue-950/30 ml-2"
+                        className="h-10 px-3 text-xs font-semibold text-blue-600 border-blue-200/80 hover:bg-blue-50 sm:ml-2 sm:h-8 dark:border-blue-900/50 dark:text-blue-400 dark:hover:bg-blue-950/30"
                       >
                         <FileText className="w-3.5 h-3.5 mr-1" />
                         View PDF
@@ -434,12 +430,12 @@ export function AdminPapersPage() {
 
                     {/* Pending Action Buttons */}
                     {isPending && !isRejecting && (
-                      <div className="flex items-center gap-1.5 ml-2">
+                      <div className="flex flex-wrap items-center gap-1.5 sm:ml-2">
                         <Button
                           size="sm"
                           disabled={isUpdating}
                           onClick={() => updateStatus(paper.id, "not-downloaded")}
-                          className="h-8 px-3 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
+                          className="h-10 px-3 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs sm:h-8"
                         >
                           {isUpdating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5 mr-1" />}
                           Approve
@@ -452,7 +448,7 @@ export function AdminPapersPage() {
                             setRejectingId(paper.id);
                             setRejectReason("");
                           }}
-                          className="h-8 px-3 text-xs font-semibold text-rose-600 border-rose-200/80 hover:bg-rose-50 dark:border-rose-900/50 dark:text-rose-400 dark:hover:bg-rose-950/30"
+                          className="h-10 px-3 text-xs font-semibold text-rose-600 border-rose-200/80 hover:bg-rose-50 sm:h-8 dark:border-rose-900/50 dark:text-rose-400 dark:hover:bg-rose-950/30"
                         >
                           <XCircle className="w-3.5 h-3.5 mr-1" />
                           Reject
@@ -470,7 +466,7 @@ export function AdminPapersPage() {
                           setRejectingId(paper.id);
                           setRejectReason("");
                         }}
-                        className="h-8 text-xs text-slate-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 ml-1"
+                        className="h-10 text-xs text-slate-500 hover:text-rose-600 hover:bg-rose-50 sm:ml-1 sm:h-8 dark:hover:bg-rose-950/30"
                       >
                         Revoke Approval
                       </Button>
@@ -480,7 +476,7 @@ export function AdminPapersPage() {
 
                 {/* Quality Metrics Pill */}
                 {paper.qualityScore !== undefined && paper.qualityScore > 0 && (
-                  <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400 pt-1 border-t border-slate-100 dark:border-zinc-800/60">
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400 pt-1 border-t border-slate-100 dark:border-zinc-800/60 sm:gap-3">
                     <span>
                       Quality Score: <strong className="text-blue-600 dark:text-blue-400">{paper.qualityScore}/100</strong>
                     </span>
@@ -530,19 +526,19 @@ export function AdminPapersPage() {
                     </div>
 
                     {/* Custom Reason Input */}
-                    <div className="flex gap-2">
+                    <div className="flex flex-col gap-2 sm:flex-row">
                       <input
                         type="text"
                         value={rejectReason}
                         onChange={(e) => setRejectReason(e.target.value)}
                         placeholder="Enter custom rejection detail (min 5 chars)..."
-                        className="flex-1 h-8 px-3 rounded-lg border border-rose-200 dark:border-rose-900/60 bg-white dark:bg-zinc-950 text-xs font-medium text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-rose-500"
+                        className="h-11 min-w-0 flex-1 rounded-lg border border-rose-200 bg-white px-3 text-base font-medium text-slate-900 focus:outline-none focus:ring-1 focus:ring-rose-500 sm:h-8 sm:text-xs dark:border-rose-900/60 dark:bg-zinc-950 dark:text-white"
                       />
                       <Button
                         size="sm"
                         disabled={isUpdating || rejectReason.trim().length < 5}
                         onClick={() => updateStatus(paper.id, "rejected", rejectReason.trim())}
-                        className="h-8 text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white shrink-0"
+                        className="h-11 shrink-0 text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white sm:h-8"
                       >
                         {isUpdating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Confirm Reject"}
                       </Button>

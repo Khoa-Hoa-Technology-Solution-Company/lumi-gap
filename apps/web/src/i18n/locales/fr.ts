@@ -1,3 +1,4 @@
+import { researchHomeEn } from "./research-home-en";
 import { en } from "./en";
 import { academicProfileStrings } from "./academic-profile";
 import { academicForumStrings } from "./academic-forum";
@@ -9,6 +10,7 @@ import { projectInvitationStrings } from "./project-invitations";
 import { studentOnboardingStrings } from "./student-onboarding";
 
 export const fr: Record<keyof typeof en, string> = {
+  ...researchHomeEn,
   ...projectInvitationStrings,
   ...studentOnboardingStrings,
   ...newUiStrings,

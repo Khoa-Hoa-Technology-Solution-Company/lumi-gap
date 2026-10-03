@@ -3,6 +3,7 @@ import { BadgeCheck } from "lucide-react";
 import { cn } from "@/utils/cn";
 import type { ForumAuthorView } from "../api/forum.api";
 import { useI18n } from "@/i18n";
+import { useAcademicAvatar } from "@/features/academic-profile/hooks/use-academic-profile";
 
 interface ForumAuthorAvatarProps {
   author: ForumAuthorView;
@@ -65,6 +66,7 @@ export function ForumAuthorAvatar({
   className,
 }: ForumAuthorAvatarProps) {
   const { t } = useI18n();
+  const avatarSrc = useAcademicAvatar(author.avatarUrl);
   const initials = useMemo(() => getAuthorInitials(author.fullName), [author.fullName]);
   const gradient = useMemo(
     () => getAuthorGradient(author.id || author.fullName),
@@ -77,12 +79,12 @@ export function ForumAuthorAvatar({
         className={cn(
           "flex items-center justify-center overflow-hidden rounded-full shadow-sm ring-1 ring-black/5 dark:ring-white/10",
           SIZE_CLASSES[size],
-          !author.avatarUrl && `bg-gradient-to-br ${gradient}`
+          !avatarSrc && `bg-gradient-to-br ${gradient}`
         )}
       >
-        {author.avatarUrl ? (
+        {avatarSrc ? (
           <img
-            src={author.avatarUrl}
+            src={avatarSrc}
             alt={author.fullName}
             className="h-full w-full object-cover"
             loading="lazy"

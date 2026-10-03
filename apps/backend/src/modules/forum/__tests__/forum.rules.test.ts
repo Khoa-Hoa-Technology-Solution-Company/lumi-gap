@@ -9,6 +9,7 @@ import {
   normalizeForumPostType,
   normalizeForumTags,
 } from "../forum.rules.js";
+import { forumPublicSlug } from "../forum.service.js";
 
 describe("forum domain rules", () => {
   it("normalizes duplicate tag variants to one canonical slug", () => {
@@ -32,8 +33,10 @@ describe("forum domain rules", () => {
 
   it("respects academic profile visibility", () => {
     expect(canShowAcademicIdentity("PUBLIC", false, false)).toBe(true);
-    expect(canShowAcademicIdentity("MEMBERS", false, false)).toBe(false);
-    expect(canShowAcademicIdentity("MEMBERS", true, false)).toBe(true);
+    expect(canShowAcademicIdentity("MEMBERS_ONLY", false, false)).toBe(false);
+    expect(canShowAcademicIdentity("MEMBERS_ONLY", true, false)).toBe(true);
+    expect(canShowAcademicIdentity("PRIVATE", true, false)).toBe(false);
+    expect(canShowAcademicIdentity(undefined, true, false)).toBe(false);
     expect(canShowAcademicIdentity("PRIVATE", true, true)).toBe(true);
   });
 
@@ -48,5 +51,16 @@ describe("forum domain rules", () => {
     expect(isAllowedForumUrl("http://example.org/paper")).toBe(true);
     expect(isAllowedForumUrl("javascript:alert(1)")).toBe(false);
     expect(isAllowedForumUrl("https://user:secret@example.org/paper")).toBe(false);
+  });
+
+  it("creates stable readable thread slugs without exposing the full UUID", () => {
+    expect(forumPublicSlug("Discussing LLM evaluation: Vietnamese results")).toBe("discussing-llm-evaluation-vietnamese-results");
+    expect(forumPublicSlug("研究方法")).toBe("discussion");
+    expect(forumPublicSlug("00000000-0000-4000-9000-000000000002")).toBe("00000000-0000-4000-9000-000000000002-discussion");
+    expect(forumPublicSlug("abcdef123456abcdef123456")).toBe("abcdef123456abcdef123456-discussion");
+    expect(forumPublicSlug("Đánh giá nghiên cứu")).toBe("danh-gia-nghien-cuu");
+    expect(forumPublicSlug("Stable title")).toBe(forumPublicSlug("Stable title"));
+    expect(forumPublicSlug("a ".repeat(250))).toMatch(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
+    expect(forumPublicSlug("a ".repeat(250)).length).toBeLessThanOrEqual(260);
   });
 });

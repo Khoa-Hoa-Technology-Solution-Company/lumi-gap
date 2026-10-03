@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CommunityView } from "../api/forum.api";
 import { buildForumDiscussionInput, formatForumMarkdown, forumInitialDiscussionType, forumMarkdownShortcut, forumNewDiscussionHref, insertForumMarkdown, type ForumDiscussionDraft } from "../utils/forum-discussion-editor";
 import { ForumNewPage } from "@/pages/forum/forum-new";
+import { ForumMarkdown } from "../components/forum-markdown";
 
 const state = vi.hoisted(() => ({ loading: false, error: false, pending: false }));
 vi.mock("@/i18n", () => ({ useI18n: () => ({ t: (key: string) => key, language: "en" }) }));
@@ -35,10 +36,10 @@ describe("New discussion composer", () => {
     expect(markup).toContain("forum-workspace");
     expect(markup).toContain(">Add citation<");
     expect(markup).toContain(">Link research context<");
-    expect(markup).toContain('aria-label="Live Preview"');
+    expect(markup).toContain(">Preview</button>");
     expect(markup).toContain('aria-label="Formatting"');
     expect(markup).toContain('for="discussion-title"');
-    expect(markup).toContain('for="discussion-body"');
+    expect(markup).toContain('aria-label="Discussion body"');
     expect(markup).not.toContain("<main");
     expect(markup).not.toContain("rounded-3xl");
     expect(markup).toContain("forum-compose-tabs flex");
@@ -75,7 +76,7 @@ describe("New discussion composer", () => {
     const css = readFileSync(new URL("../../../theme/globals.css", import.meta.url), "utf8");
     expect(css).toMatch(/\.forum-compose\s*\{\s*container: forum-compose \/ inline-size;/);
     expect(css).toMatch(/\.forum-compose-tabs\s*\{\s*display: flex;/);
-    expect(css).not.toMatch(/\.forum-compose-editor[\s\S]*grid-template-columns/);
+    expect(css).not.toMatch(/\.forum-compose-editor[^{}]*\{[^}]*grid-template-columns/);
   });
 
   it("formats selected text without discarding the rest of the draft", () => {
@@ -87,11 +88,47 @@ describe("New discussion composer", () => {
     expect(formatForumMarkdown("", 0, 0, "table", "text").content).toContain("| Title | References | Notes |");
     expect(formatForumMarkdown("", 0, 0, "footnote", "text").content).toContain("[^1]: text");
     expect(formatForumMarkdown("", 0, 0, "callout", "text").content).toContain("> **Note**");
-    expect(formatForumMarkdown("", 0, 0, "details", "text").content).toContain("> **Details**");
+    expect(formatForumMarkdown("", 0, 0, "details", "text").content).toContain(':::details{summary="Details"}');
     expect(formatForumMarkdown("", 0, 0, "strikethrough", "text").content).toBe("~~text~~");
     expect(formatForumMarkdown("", 0, 0, "divider", "text").content).toBe("---");
     expect(formatForumMarkdown("", 0, 0, "quote-post", "text", { quoteSource: "A post" }).content).toContain("> A post");
     expect(formatForumMarkdown("A | B\nC", 0, 7, "table", "text").content).toContain("A \\| B C");
+    expect(formatForumMarkdown("", 0, 0, "heading-1", "text").content).toBe("# text");
+    expect(formatForumMarkdown("", 0, 0, "heading-4", "text").content).toBe("#### text");
+    expect(formatForumMarkdown("", 0, 0, "paragraph", "text").content).toBe("text");
+    expect(formatForumMarkdown("", 0, 0, "small", "text").content).toContain(":small[text]");
+    expect(formatForumMarkdown("", 0, 0, "spoiler", "text").content).toContain(":spoiler[text]");
+    expect(formatForumMarkdown("", 0, 0, "wrap", "text").content).toContain(':::wrap{type="note"}');
+    expect(formatForumMarkdown("", 0, 0, "image", "text", { image: { url: "https://example.org/figure.png", alt: "Study figure" } }).content).toContain("![Study figure](https://example.org/figure.png)");
+    expect(formatForumMarkdown("", 0, 0, "image", "text", { image: { url: "javascript:alert(1)", alt: "unsafe" } }).content).toBe("");
+    expect(formatForumMarkdown("", 0, 0, "math", "text", { math: "E = mc^2" }).content).toBe("$$E = mc^2$$");
+    const configured = formatForumMarkdown("", 0, 0, "table", "text", { table: { rows: 3, columns: 2, includeHeader: true, headers: ["Method", "Result"] } }).content;
+    expect(configured).toContain("| Method | Result |");
+    expect(configured.split("\n").filter((line) => line.startsWith("| ")).length).toBe(5);
+  });
+
+  it("renders safe forum shortcodes, image URLs, details and spoilers as UI", () => {
+    const content = `:::details{summary="Details"}
+Hidden methods.
+:::
+
+:spoiler[Sensitive result]
+
+:small[caption] $$x^2$$
+
+:::wrap{type="note"}
+long_identifier
+:::
+
+![Figure](https://example.org/figure.png)`;
+    const markup = renderToStaticMarkup(<ForumMarkdown content={content} />);
+    expect(markup).toContain("<details");
+    expect(markup).toContain("forum-spoiler");
+    expect(markup).toContain("forum-small");
+    expect(markup).toContain("forum-math");
+    expect(markup).toContain("forum-wrap");
+    expect(markup).toContain('src="https://example.org/figure.png"');
+    expect(renderToStaticMarkup(<ForumMarkdown content={'![bad](javascript:alert(1))'} />)).not.toContain("javascript:");
   });
 
   it("keeps keyboard shortcuts scoped to the editor", () => {

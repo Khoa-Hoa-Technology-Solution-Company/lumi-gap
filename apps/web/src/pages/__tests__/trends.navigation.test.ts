@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { getRisingKeywordTarget, getTopicTrendTarget } from "../trends.navigation";
 
 describe("trends navigation", () => {
-  it("sends rising keywords to search because topic detail only accepts topics", () => {
+  it("sends rising keywords to the home search composer", () => {
     expect(getRisingKeywordTarget("retrieval augmented generation")).toBe(
-      "/search?q=retrieval%20augmented%20generation",
+      "/home?q=retrieval%20augmented%20generation",
     );
   });
 

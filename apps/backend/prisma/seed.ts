@@ -504,7 +504,7 @@ async function main() {
       const recentReplyMinutes = index === 6 && replyIndex === replyCount - 1 ? 18 : index === 9 && replyIndex === replyCount - 1 ? 60 : null;
       const replyAt = recentReplyMinutes === null ? new Date(createdAt.getTime() + (replyIndex + 1) * 60 * 60 * 1000) : new Date(now - recentReplyMinutes * 60 * 1000);
       const replyBody = replyBodies[(index + replyIndex) % replyBodies.length];
-      await prisma.forumComment.upsert({ where: { id: commentId }, create: { id: commentId, postId: id, authorId: replyAuthor, body: replyBody, status: "active", createdAt: replyAt, updatedAt: replyAt }, update: { postId: id, authorId: replyAuthor, body: replyBody, status: "active", createdAt: replyAt, editedAt: null, updatedAt: replyAt } });
+      await prisma.forumComment.upsert({ where: { id: commentId }, create: { id: commentId, postId: id, postNumber: replyIndex + 2, authorId: replyAuthor, body: replyBody, status: "active", createdAt: replyAt, updatedAt: replyAt }, update: { postId: id, authorId: replyAuthor, body: replyBody, status: "active", createdAt: replyAt, editedAt: null, updatedAt: replyAt } });
     }
     const replyActivityAt = await prisma.forumComment.aggregate({ where: { postId: id, status: "active" }, _count: { _all: true }, _max: { createdAt: true, editedAt: true } });
     const lastActivityAt = [createdAt, replyActivityAt?._max.createdAt, replyActivityAt?._max.editedAt].filter((date): date is Date => Boolean(date)).sort((a, b) => b.getTime() - a.getTime())[0] ?? createdAt;
@@ -518,6 +518,7 @@ async function main() {
     const helpfulTarget = [0, 5, 3, 1, 0, 3, 5, 1, 3, 0, 5, 1, 0, 3][index];
     for (let voteIndex = 0; voteIndex < helpfulTarget; voteIndex += 1) {
       await prisma.forumVote.create({ data: { id: voteIds[voteIndex], postId: id, userId: voters[voteIndex].id, value: 1, createdAt } });
+      await prisma.forumReaction.upsert({ where: { targetType_targetId_userId: { targetType: "post", targetId: id, userId: voters[voteIndex].id } }, create: { targetType: "post", targetId: id, userId: voters[voteIndex].id, reaction: "LIKE", createdAt }, update: {} });
     }
     await prisma.forumPost.update({ where: { id }, data: { score: helpfulTarget, voteScore: helpfulTarget } });
     await prisma.forumPost.update({ where: { id }, data: { viewCount: [18, 248, 135, 431, 76, 42, 1024, 29, 314, 187, 63, 91, 54, 208][index] } });

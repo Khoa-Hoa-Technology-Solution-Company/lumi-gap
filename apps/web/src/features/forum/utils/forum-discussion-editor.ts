@@ -1,5 +1,6 @@
 import type { ForumPostType } from "@trend/shared-types";
 import type { CommunityView, ForumPostInput, ForumReferenceView } from "../api/forum.api";
+import { safeForumImageUrl } from "./forum-formatting";
 
 const types: ForumPostType[] = ["QUESTION", "DISCUSSION", "PAPER_DISCUSSION", "RESEARCH_GAP_DISCUSSION"];
 
@@ -35,6 +36,12 @@ export type ForumMarkdownAction =
   | "bold"
   | "italic"
   | "heading"
+  | "heading-1"
+  | "heading-2"
+  | "heading-3"
+  | "heading-4"
+  | "paragraph"
+  | "small"
   | "link"
   | "quote"
   | "bullet"
@@ -46,10 +53,22 @@ export type ForumMarkdownAction =
   | "footnote"
   | "callout"
   | "details"
+  | "spoiler"
+  | "wrap"
+  | "image"
+  | "math"
   | "checklist"
   | "strikethrough"
   | "divider"
   | "quote-post";
+
+export type ForumTableConfig = {
+  rows: number;
+  columns: number;
+  includeHeader: boolean;
+  headers?: string[];
+  cells?: string[][];
+};
 
 export interface ForumMarkdownOptions {
   now?: Date;
@@ -57,6 +76,9 @@ export interface ForumMarkdownOptions {
   tableHeaders?: [string, string, string];
   noteLabel?: string;
   detailsLabel?: string;
+  table?: ForumTableConfig;
+  image?: { url: string; alt: string };
+  math?: string;
 }
 
 export function forumMarkdownShortcut(event: { key: string; code?: string; ctrlKey: boolean; metaKey: boolean; altKey: boolean; shiftKey: boolean; isComposing: boolean }): ForumMarkdownAction | undefined {
@@ -88,13 +110,35 @@ export function formatForumMarkdown(content: string, start: number, end: number,
     const timestamp = (options.now ?? new Date()).toISOString().replace("T", " ").replace(/\.\d{3}Z$/, " UTC");
     return insertSnippet(timestamp, timestamp.length, timestamp.length);
   }
+  if (action === "image") {
+    const image = options.image;
+    if (!image?.url.trim()) return insertSnippet("", 0, 0);
+    const safeUrl = safeForumImageUrl(image.url);
+    if (!safeUrl) return insertSnippet("", 0, 0);
+    const alt = image.alt.trim().replaceAll("[", "").replaceAll("]", "") || "Image";
+    const url = safeUrl.replace(/[()]/g, (character) => encodeURIComponent(character));
+    const snippet = `![${alt}](${url})`;
+    return insertBlock(snippet, snippet.length, snippet.length);
+  }
+  if (action === "math") {
+    const expression = options.math?.trim() || placeholder;
+    const snippet = `$$${expression}$$`;
+    return insertSnippet(snippet, snippet.length, snippet.length);
+  }
   if (action === "table") {
-    const headers = options.tableHeaders ?? ["Title", "References", "Notes"];
+    const config = options.table ?? { rows: 2, columns: 3, includeHeader: true };
+    const columns = Math.max(1, Math.min(8, Math.round(config.columns)));
+    const rows = Math.max(1, Math.min(20, Math.round(config.rows)));
     const cell = (value: string) => value.replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
-    const selected = cell(content.slice(start, end) || placeholder);
-    const header = `| ${headers.map(cell).join(" | ")} |\n| --- | --- | --- |\n`;
-    const snippet = `${header}| ${selected} |  |  |`;
-    return insertBlock(snippet, header.length + 2, header.length + 2 + selected.length);
+    const defaultHeaders = options.tableHeaders ?? ["Title", "References", "Notes"];
+    const headers = Array.from({ length: columns }, (_, index) => cell(config.headers?.[index] || defaultHeaders[index] || `Column ${index + 1}`));
+    const firstCell = cell(content.slice(start, end) || placeholder);
+    const dataRows = Array.from({ length: rows }, (_, row) => Array.from({ length: columns }, (_, column) => config.cells ? cell(config.cells[row]?.[column] ?? "") : row === 0 && column === 0 ? firstCell : ""));
+    const headerRow = `| ${headers.join(" | ")} |\n| ${headers.map(() => "---").join(" | ")} |\n`;
+    const body = dataRows.map((row) => `| ${row.join(" | ")} |`).join("\n");
+    const snippet = `${config.includeHeader ? headerRow : `| ${headers.map(() => "").join(" | ")} |\n| ${headers.map(() => "---").join(" | ")} |\n`}${body}`;
+    const firstCellOffset = (config.includeHeader ? headerRow.length : headerRow.length) + 2;
+    return insertBlock(snippet, firstCellOffset, firstCellOffset + firstCell.length);
   }
   if (action === "footnote") {
     const used = new Set([...content.matchAll(/\[\^(\d+)\]/g)].map((match) => Number(match[1])));
@@ -119,9 +163,19 @@ export function formatForumMarkdown(content: string, start: number, end: number,
     // a standard Markdown construct and would otherwise render as raw code in
     // react-markdown rather than as a disclosure widget.
     const label = options.detailsLabel ?? "Details";
-    const prefix = `> **${label}**\n`;
-    const snippet = prefix + selected.split("\n").map((line) => "> " + line).join("\n");
-    return insertBlock(snippet, prefix.length + 2, snippet.length);
+    const snippet = `:::details{summary="${label}"}\n${selected}\n:::`;
+    const opening = `:::details{summary="${label}"}\n`;
+    return insertBlock(snippet, opening.length, opening.length + selected.length);
+  }
+  if (action === "spoiler") {
+    const selected = content.slice(start, end) || placeholder;
+    const snippet = `:spoiler[${selected}]`;
+    return insertSnippet(snippet, ":spoiler[".length, ":spoiler[".length + selected.length);
+  }
+  if (action === "wrap") {
+    const selected = content.slice(start, end) || placeholder;
+    const snippet = `:::wrap{type="note"}\n${selected}\n:::`;
+    return insertBlock(snippet, ":::wrap{type=\"note\"}\n".length, ":::wrap{type=\"note\"}\n".length + selected.length);
   }
   if (action === "divider") return insertBlock("---", 3, 3);
   if (action === "quote-post") {
@@ -143,8 +197,11 @@ export function formatForumMarkdown(content: string, start: number, end: number,
     const prefix = `${fence}text\n`;
     return { content: `${before}${prefix}${selected}\n${fence}${after}`, selectionStart: lineStart + prefix.length, selectionEnd: lineStart + prefix.length + selected.length };
   }
-  const prefix = (index: number) => action === "heading" ? "## " : action === "quote" ? "> " : action === "numbered" ? `${index + 1}. ` : action === "checklist" ? "- [ ] " : "- ";
-  const formatted = selected.split("\n").map((line, index) => prefix(index) + line).join("\n");
+  const headingLevel = action.startsWith("heading-") ? Number(action.slice("heading-".length)) : action === "heading" ? 2 : 0;
+  const prefix = (index: number) => headingLevel ? `${"#".repeat(headingLevel)} ` : action === "quote" ? "> " : action === "numbered" ? `${index + 1}. ` : action === "checklist" ? "- [ ] " : action === "paragraph" ? "" : action === "small" ? "[small]" : "- ";
+  const inlinePrefix = action === "small" ? ":small[" : "";
+  const inlineSuffix = action === "small" ? "]" : "";
+  const formatted = inlinePrefix ? `${inlinePrefix}${selected}${inlineSuffix}` : selected.split("\n").map((line, index) => prefix(index) + line).join("\n");
   return { content: before + formatted + after, selectionStart: lineStart, selectionEnd: lineStart + formatted.length };
 }
 

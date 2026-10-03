@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -42,7 +42,15 @@ export function ProjectDetailPage() {
   const { t, language } = useI18n();
   const { id } = useParams<{ id: string }>();
   const { data: project, isLoading, isError } = useProject(id);
-  const [activeTab, setActiveTab] = useState<"papers" | "members" | "contributions" | "reports" | "gaps" | "chat">("papers");
+  const [searchParams, setSearchParams] = useSearchParams();
+  type ProjectTab = "papers" | "members" | "contributions" | "reports" | "gaps" | "chat";
+  const tabParam = searchParams.get("tab");
+  const activeTab: ProjectTab = ["papers", "members", "contributions", "reports", "gaps", "chat"].includes(tabParam ?? "") ? tabParam as ProjectTab : "papers";
+  const setActiveTab = (tab: ProjectTab) => {
+    const params = new URLSearchParams(searchParams);
+    params.set("tab", tab);
+    setSearchParams(params, { replace: true });
+  };
   const [autoOpenReport, setAutoOpenReport] = useState(false);
   const [autoOpenGap, setAutoOpenGap] = useState(false);
   const [paperPickerOpen, setPaperPickerOpen] = useState(false);

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -203,7 +203,16 @@ export function ProjectsListPage() {
   const navigate = useNavigate();
   const { t } = useI18n();
 
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [isDialogOpen, setDialogOpen] = useState(searchParams.get("create") === "1");
+  const setIsDialogOpen = (open: boolean) => {
+    setDialogOpen(open);
+    if (!open && searchParams.has("create")) {
+      const params = new URLSearchParams(searchParams);
+      params.delete("create");
+      setSearchParams(params, { replace: true });
+    }
+  };
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [researchField, setResearchField] = useState("");

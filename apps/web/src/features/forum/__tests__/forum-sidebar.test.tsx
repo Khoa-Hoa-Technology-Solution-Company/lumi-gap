@@ -19,6 +19,9 @@ function links(markup: string) {
 }
 describe("Forum sidebar real URL navigation", () => {
   const initial = "/forum?feed=unanswered&community=software-engineering&type=QUESTION&q=review&page=3&pageSize=10";
+  it("keeps the broad community and type resets neutral on the unfiltered forum", () => {
+    expect(links(render("/forum")).filter((item) => item.active).map((item) => item.label)).toEqual(["Latest"]);
+  });
   it("derives simultaneous active states entirely from the current URL", () => {
     expect(links(render(initial)).filter((item) => item.active).map((item) => item.label)).toEqual(["Unanswered", "Software Engineering", "Questions"]);
     expect(links(render("/forum?sort=popular&community=community-uuid&type=DISCUSSION")).filter((item) => item.active).map((item) => item.label)).toEqual(["Popular", "Software Engineering", "Discussions"]);
@@ -47,6 +50,10 @@ describe("Forum sidebar real URL navigation", () => {
     expect(all.searchParams.has("community")).toBe(false);
     expect(all.searchParams.get("type")).toBe("QUESTION");
     expect(all.searchParams.get("feed")).toBe("unanswered");
+    const allTypes = new URL(navigation.find((item) => item.label === "All thread types")!.href!, "https://local.test");
+    expect(allTypes.searchParams.has("type")).toBe(false);
+    expect(allTypes.searchParams.get("community")).toBe(community.slug);
+    expect(allTypes.searchParams.get("feed")).toBe("unanswered");
     expect(navigation.find((item) => item.label === community.name)?.href).toContain("community=software-engineering");
   });
   it("restores state from refresh/history URLs, and replaces legacy sort only when changing feed", () => {

@@ -7,6 +7,7 @@ import { communityService } from "../../communities/community.service.js";
 import { forumService } from "../forum.service.js";
 import { forumRouter } from "../forum.routes.js";
 import { notificationService } from "../../notifications/notification.service.js";
+import { backfillForumSlugs } from "../forum-slugs.js";
 
 // Positional shim over the query-object `communityService.list` signature.
 const listCommunities = (userId: string | undefined, page: number, pageSize: number, role?: Parameters<typeof communityService.list>[2], activeOnly = false) =>
@@ -55,8 +56,10 @@ describe.sequential("research forum persistence and authorization", () => {
     if (postIds.length) {
       await prisma.contentReport.deleteMany({ where: { OR: [{ postId: { in: postIds } }, { commentId: { in: commentIds } }] } });
       await prisma.forumVote.deleteMany({ where: { OR: [{ postId: { in: postIds } }, { commentId: { in: commentIds } }] } });
+      await prisma.forumReaction.deleteMany({ where: { targetId: { in: [...postIds, ...commentIds] } } });
       await prisma.forumReference.deleteMany({ where: { OR: [{ postId: { in: postIds } }, { commentId: { in: commentIds } }] } });
       await prisma.forumThreadFollow.deleteMany({ where: { postId: { in: postIds } } });
+      await prisma.forumPostView.deleteMany({ where: { postId: { in: postIds } } });
       await prisma.forumPostTag.deleteMany({ where: { postId: { in: postIds } } });
       await prisma.forumPostGap.deleteMany({ where: { postId: { in: postIds } } });
       await prisma.forumPostProject.deleteMany({ where: { postId: { in: postIds } } });
@@ -91,6 +94,100 @@ describe.sequential("research forum persistence and authorization", () => {
     await communityService.join(communityId, responderId);
     expect(await getPrisma().communityMembership.count({ where: { communityId, userId: authorId } })).toBe(1);
     await expect(forumService.createPost({ communityId, title: "Unauthorized post", content: "Not a member" }, outsiderId)).rejects.toMatchObject({ statusCode: 403 });
+  });
+
+  it("allocates readable collision-safe slugs, retains aliases and keeps URLs stable on edits", async () => {
+    const title = `Readable collision ${marker}`;
+    const before = await getPrisma().community.findUniqueOrThrow({ where: { id: communityId } });
+    const topics = await Promise.all([1, 2].map(() => forumService.createPost({ communityId, title, content: "Concurrent submissions" }, authorId)));
+    postIds.push(...topics.map((topic) => topic.id));
+    const base = topics.map((topic) => topic.publicSlug!).sort((a, b) => a.length - b.length);
+    expect(base[1]).toBe(`${base[0]}-2`);
+    expect((await getPrisma().community.findUniqueOrThrow({ where: { id: communityId } })).threadCount).toBe(before.threadCount + 2);
+    const alias = `old-citation-${marker}-000000000000`;
+    await getPrisma().forumPost.update({ where: { id: topics[0]!.id }, data: { publicSlugAliases: [alias] } });
+    expect((await forumService.getPost(alias)).id).toBe(topics[0]!.id);
+    expect((await forumService.updatePost(topics[0]!.id, { title: "A different title" }, authorId)).publicSlug).toBe(topics[0]!.publicSlug);
+    const reserved = await forumService.createPost({ communityId, title: alias, content: "Must not steal a published alias" }, authorId);
+    postIds.push(reserved.id);
+    expect(reserved.publicSlug).toBe(`${alias}-2`);
+    expect((await forumService.getPost(alias)).id).toBe(topics[0]!.id);
+  });
+
+  it("gives fresh post-migration fixtures readable URLs without renaming published links", async () => {
+    const title = `Fresh imported title ${marker}`;
+    const rows = await Promise.all([1, 2].map(() => getPrisma().forumPost.create({ data: { authorId, communityId, title, body: "Fixture" } })));
+    const ids = rows.map((post) => post.id); postIds.push(...ids);
+    await backfillForumSlugs(ids);
+    const first = await getPrisma().forumPost.findMany({ where: { id: { in: ids } }, orderBy: { publicSlug: "asc" } });
+    expect(first[0]!.publicSlug).toBeTruthy();
+    expect(first[1]!.publicSlug).toBe(`${first[0]!.publicSlug}-2`);
+    await getPrisma().forumPost.update({ where: { id: first[0]!.id }, data: { title: "Reworded imported topic" } });
+    await backfillForumSlugs(ids);
+    expect((await getPrisma().forumPost.findUniqueOrThrow({ where: { id: first[0]!.id } })).publicSlug).toBe(first[0]!.publicSlug);
+  });
+
+  it("discovers actual related and suggested topics without duplication or evidence changes", async () => {
+    const tag = `cosmology-${marker}`;
+    const source = await forumService.createPost({ communityId, title: "Supernova gravitational redshift measurement", tags: [tag], content: "Source" }, authorId);
+    const related = await forumService.createPost({ communityId, title: "Black hole observation limits", tags: [tag], content: "Related by tag" }, authorId);
+    const suggested = await forumService.createPost({ communityId, title: "Ocean currents at continental margins", content: "Other community discussion" }, authorId);
+    const hidden = await forumService.createPost({ communityId, title: "Hidden black hole observation", tags: [tag], content: "Hidden" }, authorId);
+    const deleted = await forumService.createPost({ communityId, title: "Deleted black hole observation", tags: [tag], content: "Deleted" }, authorId);
+    postIds.push(source.id, related.id, suggested.id, hidden.id, deleted.id);
+    await getPrisma().forumPost.update({ where: { id: hidden.id }, data: { status: "hidden" } });
+    await getPrisma().forumPost.update({ where: { id: deleted.id }, data: { status: "deleted" } });
+    const gapBefore = await getPrisma().researchGap.findUniqueOrThrow({ where: { id: gapId } });
+    const evidenceBefore = await getPrisma().gapEvidenceRecord.count({ where: { gapId } });
+    const result = await forumService.postDiscovery(source.publicSlug!);
+    expect(result.related).toContainEqual(expect.objectContaining({ id: related.id, reason: "SHARED_TAGS" }));
+    expect(result.suggested).toContainEqual(expect.objectContaining({ id: suggested.id, reason: "SAME_COMMUNITY" }));
+    const ids = [...result.related, ...result.suggested].map((topic) => topic.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const id of [source.id, hidden.id, deleted.id]) expect(ids).not.toContain(id);
+    expect(result.related.length).toBeLessThanOrEqual(5);
+    expect(result.suggested.length).toBeLessThanOrEqual(5);
+    expect((await getPrisma().forumPost.findUniqueOrThrow({ where: { id: source.id } })).viewCount).toBe(0);
+    expect(await getPrisma().gapEvidenceRecord.count({ where: { gapId } })).toBe(evidenceBefore);
+    expect(await getPrisma().researchGap.findUniqueOrThrow({ where: { id: gapId } })).toMatchObject({ confidence: gapBefore.confidence, evidenceConfidence: gapBefore.evidenceConfidence, validationStatus: gapBefore.validationStatus });
+    expect(JSON.stringify(result)).not.toContain('"body"');
+    await expect(forumService.postDiscovery(hidden.id, adminId, "admin")).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it("does not use a now-private academic context as the reason for a recommendation", async () => {
+    const source = await forumService.createPost({ communityId, title: "Public source about methodological limitations", linkedResearchGapId: gapId, linkedProjectId: publicProjectId, content: "Source" }, authorId);
+    const candidate = await forumService.createPost({ communityId, title: "A different public source", linkedResearchGapId: gapId, content: "Candidate" }, authorId);
+    postIds.push(source.id, candidate.id);
+    try {
+      await getPrisma().researchGap.update({ where: { id: gapId }, data: { forumShareable: false } });
+      await getPrisma().project.update({ where: { id: publicProjectId }, data: { visibility: "PRIVATE" } });
+      const result = await forumService.postDiscovery(source.id);
+      expect(result.related.find((topic) => topic.id === candidate.id)?.reason).not.toBe("SAME_GAP");
+      expect(JSON.stringify(result)).not.toContain(gapId);
+      expect(JSON.stringify(result)).not.toContain(publicProjectId);
+    } finally {
+      await getPrisma().researchGap.update({ where: { id: gapId }, data: { forumShareable: true } });
+      await getPrisma().project.update({ where: { id: publicProjectId }, data: { visibility: "PUBLIC_SUMMARY" } });
+    }
+  });
+
+  it("filters private/archived recommendations and protects discovery source aliases", async () => {
+    const tag = `privacy-${marker}`;
+    const source = await forumService.createPost({ title: "Private recommendation boundary source", tags: [tag], content: "Public source" }, authorId);
+    const related = await forumService.createPost({ communityId, title: "Restricted recommendation candidate", tags: [tag], content: "Member-only" }, authorId);
+    postIds.push(source.id, related.id);
+    const alias = `restricted-${marker}-000000000000`;
+    await getPrisma().forumPost.update({ where: { id: related.id }, data: { publicSlugAliases: [alias] } });
+    try {
+      await getPrisma().community.update({ where: { id: communityId }, data: { visibility: "private" } });
+      expect((await forumService.postDiscovery(source.id)).related.map((topic) => topic.id)).not.toContain(related.id);
+      expect((await forumService.postDiscovery(source.id, outsiderId, "user")).related.map((topic) => topic.id)).not.toContain(related.id);
+      expect((await forumService.postDiscovery(source.id, authorId, "user")).related.map((topic) => topic.id)).toContain(related.id);
+      expect((await forumService.postDiscovery(source.id, adminId, "admin")).related.map((topic) => topic.id)).toContain(related.id);
+      for (const locator of [related.id, related.publicSlug!, alias]) await expect(forumService.postDiscovery(locator)).rejects.toMatchObject({ statusCode: 403 });
+      await getPrisma().community.update({ where: { id: communityId }, data: { status: "ARCHIVED" } });
+      expect((await forumService.postDiscovery(source.id, adminId, "admin")).related.map((topic) => topic.id)).not.toContain(related.id);
+    } finally { await getPrisma().community.update({ where: { id: communityId }, data: { visibility: "public", status: "ACTIVE" } }); }
   });
 
   it("persists all four thread types and rejects private research context", async () => {
@@ -235,6 +332,62 @@ describe.sequential("research forum persistence and authorization", () => {
     await expect(forumService.reviewCitationAsEvidence(gapId, { referenceId: citation!.id!, projectId: publicProjectId, relation: "SUPPORTING", confirmRelation: true, explanation: "Admin moderation rights should not grant scholarly evidence authority." }, adminId)).rejects.toMatchObject({ statusCode: 404 });
   });
 
+  it("persists the emoji palette idempotently without changing scholarly evidence or access boundaries", async () => {
+    const topic = await forumService.createPost({ communityId, title: `Emoji palette ${marker}`, content: "Community feedback only" }, authorId);
+    postIds.push(topic.id);
+    const response = await forumService.addComment(topic.id, { content: "A response with reactions" }, responderId);
+    const reactions = ["LIKE", "INSIGHTFUL", "CELEBRATE", "CURIOUS", "LOVE", "LAUGH", "SURPRISED", "SAD", "AGREE", "DISAGREE"] as const;
+    const gapBefore = await getPrisma().researchGap.findUniqueOrThrow({ where: { id: gapId } });
+    const evidenceBefore = await getPrisma().gapEvidenceRecord.count({ where: { gapId } });
+    for (const name of reactions) {
+      await forumService.react("post", topic.publicSlug, name, true, responderId, "user");
+      const repeated = await forumService.react("post", topic.id, name, true, responderId, "user");
+      expect(repeated.counts[name]).toBe(1);
+      expect(repeated.viewerReactions).toEqual([name]);
+      expect(Object.values(repeated.counts).reduce((sum, count) => sum + count, 0)).toBe(1);
+      await forumService.react("comment", response.id, name, true, authorId, "user");
+    }
+    expect((await forumService.getPost(topic.id, responderId, "user")).viewerReactions).toEqual(["DISAGREE"]);
+    const comments = await forumService.listComments(topic.id, 1, 20, authorId, "user");
+    expect(comments.data[0]).toMatchObject({ reactionCounts: Object.fromEntries(reactions.map((name) => [name, name === "DISAGREE" ? 1 : 0])), viewerReactions: ["DISAGREE"] });
+    const staleRemoval = await forumService.react("post", topic.id, "LOVE", false, responderId, "user");
+    expect(staleRemoval.viewerReactions).toEqual(["DISAGREE"]);
+    const removed = await forumService.react("post", topic.id, "DISAGREE", false, responderId, "user");
+    expect(removed.counts.DISAGREE).toBe(0);
+    expect(removed.viewerReactions).toEqual([]);
+    expect(removed.reactors.DISAGREE).toBeUndefined();
+    expect(await getPrisma().gapEvidenceRecord.count({ where: { gapId } })).toBe(evidenceBefore);
+    expect(await getPrisma().researchGap.findUniqueOrThrow({ where: { id: gapId } })).toMatchObject({ confidence: gapBefore.confidence, validationStatus: gapBefore.validationStatus });
+    await getPrisma().community.update({ where: { id: communityId }, data: { visibility: "private" } });
+    try {
+      await expect(forumService.react("post", topic.id, "LOVE", true, outsiderId, "user")).rejects.toMatchObject({ statusCode: 403 });
+      await expect(forumService.react("comment", response.id, "LOVE", true, outsiderId, "user")).rejects.toMatchObject({ statusCode: 403 });
+    } finally {
+      await getPrisma().community.update({ where: { id: communityId }, data: { visibility: "public" } });
+    }
+    await forumService.moderateComment(response.id, "RESPONSE_HIDDEN", "Policy review", adminId, "admin");
+    await expect(forumService.react("comment", response.id, "LOVE", true, authorId, "user")).rejects.toMatchObject({ statusCode: 404 });
+    await forumService.moderatePost(topic.id, "THREAD_HIDDEN", "Policy review", adminId, "admin");
+    await expect(forumService.react("post", topic.id, "LOVE", true, responderId, "user")).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it("keeps one reaction per member and target during concurrent replacements", async () => {
+    const prisma = getPrisma();
+    const topic = await forumService.createPost({ communityId, title: `Single reaction ${marker}`, content: "One choice per member" }, authorId);
+    postIds.push(topic.id);
+    const response = await forumService.addComment(topic.id, { content: "Independent response reactions" }, responderId);
+    for (const [kind, targetId] of [["post", topic.id], ["comment", response.id]] as const) {
+      await Promise.all((["LIKE", "LOVE", "AGREE", "CELEBRATE"] as const).map((reaction) => forumService.react(kind, targetId, reaction, true, authorId, "user")));
+      const stored = await prisma.forumReaction.findMany({ where: { targetType: kind, targetId, userId: authorId } });
+      expect(stored).toHaveLength(1);
+      await expect(prisma.forumReaction.create({ data: { targetType: kind, targetId, userId: authorId, reaction: "CURIOUS" } })).rejects.toMatchObject({ code: "P2002" });
+      await forumService.react(kind, targetId, "INSIGHTFUL", true, responderId, "user");
+      expect(await prisma.forumReaction.count({ where: { targetType: kind, targetId } })).toBe(2);
+      await forumService.react(kind, targetId, stored[0]!.reaction as Parameters<typeof forumService.react>[2], false, authorId, "user");
+      expect(await prisma.forumReaction.count({ where: { targetType: kind, targetId, userId: authorId } })).toBe(0);
+    }
+  });
+
   it("persists responses, one vote, accepted response, following, and locked-thread boundaries", async () => {
     const question = await forumService.createPost({ communityId, type: "QUESTION", title: "Question lifecycle", content: "Please cite evidence" }, authorId);
     postIds.push(question.id);
@@ -242,12 +395,32 @@ describe.sequential("research forum persistence and authorization", () => {
     await forumService.vote("comment", response.id, 1, authorId, "user");
     await forumService.vote("comment", response.id, 1, authorId, "user");
     expect(await getPrisma().forumVote.count({ where: { commentId: response.id, userId: authorId } })).toBe(1);
+    await forumService.react("comment", response.id, "INSIGHTFUL", true, authorId, "user");
+    const reacted = await forumService.getPost(question.id, authorId, "user");
+    const listedResponse = (await forumService.listComments(question.id, 1, 20, authorId, "user")).data.find((item) => item.id === response.id);
+    expect(listedResponse).toMatchObject({ reactionCounts: { INSIGHTFUL: 1 }, viewerReactions: ["INSIGHTFUL"] });
+    expect(reacted).toMatchObject({ reactionCounts: expect.any(Object) });
+    await forumService.react("comment", response.id, "INSIGHTFUL", false, authorId, "user");
     await expect(forumService.acceptAnswer(question.id, response.id, responderId)).rejects.toMatchObject({ statusCode: 403 });
     expect((await forumService.acceptAnswer(question.id, response.id, authorId)).acceptedCommentId).toBe(response.id);
+    const slug = question.publicSlug;
+    expect((await forumService.updatePost(question.id, { title: "Reworded question lifecycle" }, authorId)).publicSlug).toBe(slug);
     await forumService.follow(question.id, authorId, true);
     expect((await forumService.listPosts({ sort: "following" }, 1, 20, authorId, "user")).data.some((post) => post.id === question.id)).toBe(true);
     await forumService.moderatePost(question.id, "THREAD_LOCKED", "Temporarily closed", adminId, "admin");
     await expect(forumService.addComment(question.id, { content: "Late response" }, responderId)).rejects.toMatchObject({ statusCode: 409 });
+    await expect(forumService.acceptAnswer(question.id, undefined, authorId)).rejects.toMatchObject({ statusCode: 409 });
+    expect((await forumService.getPost(question.id, authorId, "user")).acceptedCommentId).toBe(response.id);
+    await forumService.moderatePost(question.id, "THREAD_UNLOCKED", undefined, adminId, "admin");
+    await forumService.moderateComment(response.id, "RESPONSE_HIDDEN", "Policy review", adminId, "admin");
+    await expect(forumService.acceptAnswer(question.id, response.id, authorId)).rejects.toMatchObject({ statusCode: 400 });
+    await forumService.moderatePost(question.id, "THREAD_HIDDEN", "Policy review", adminId, "admin");
+    await expect(forumService.acceptAnswer(question.id, undefined, authorId)).rejects.toMatchObject({ statusCode: 404 });
+    await forumService.moderatePost(question.id, "THREAD_RESTORED", undefined, adminId, "admin");
+    await forumService.moderateComment(response.id, "RESPONSE_RESTORED", undefined, adminId, "admin");
+    await forumService.acceptAnswer(question.id, response.id, authorId);
+    expect((await forumService.updatePost(question.id, { type: "DISCUSSION" }, authorId)).acceptedCommentId).toBeUndefined();
+    await expect(forumService.acceptAnswer(question.id, response.id, authorId)).rejects.toMatchObject({ statusCode: 400 });
   });
 
   it("preserves the exact reply target, persists citations and activity, and deduplicates recipients", async () => {
@@ -362,6 +535,74 @@ describe.sequential("research forum persistence and authorization", () => {
     expect(afterVote.lastActivityAt).toEqual(activityBeforeVote);
   });
 
+  it("records daily views atomically, deduplicates eight hours, and keeps analytics reads out of lifetime totals", async () => {
+    const prisma = getPrisma();
+    const topic = await forumService.createPost({ communityId, title: "Recent view history", content: "View tracking" }, authorId);
+    postIds.push(topic.id);
+    const key = `anon:${marker}`;
+    await Promise.all(Array.from({ length: 5 }, () => forumService.getPost(topic.id, undefined, undefined, key)));
+    expect((await forumService.getPost(topic.id)).viewCount).toBe(1);
+    const history = await forumService.recentViews(topic.publicSlug!);
+    expect(history).toMatchObject({ cooldownHours: 8, timeZone: "UTC", daily: [{ date: new Date().toISOString().slice(0, 10), count: 1 }] });
+    await prisma.forumPostView.updateMany({ where: { postId: topic.id, viewerKey: key }, data: { viewedAt: new Date(Date.now() - (8 * 60 - 1) * 60_000) } });
+    await forumService.getPost(topic.id, undefined, undefined, key);
+    expect((await forumService.getPost(topic.id)).viewCount).toBe(1);
+    await prisma.forumPostView.updateMany({ where: { postId: topic.id, viewerKey: key }, data: { viewedAt: new Date(Date.now() - 8 * 60 * 60_000 - 1000) } });
+    await Promise.all(Array.from({ length: 5 }, () => forumService.getPost(topic.id, undefined, undefined, key)));
+    expect((await forumService.recentViews(topic.id)).daily.at(-1)?.count).toBe(2);
+    expect((await forumService.getPost(topic.id)).viewCount).toBe(2);
+    expect(JSON.stringify(history)).not.toMatch(/viewerKey|anon:|userId|email/);
+  });
+
+  it("returns actual daily values and tracked zero days without inventing a breakdown of older lifetime views", async () => {
+    const prisma = getPrisma();
+    const topic = await forumService.createPost({ communityId, title: "Daily view series", content: "Historical breakdown" }, authorId);
+    postIds.push(topic.id);
+    const today = new Date(`${new Date().toISOString().slice(0, 10)}T00:00:00Z`);
+    const start = new Date(today.getTime() - 3 * 86400000);
+    await prisma.forumPost.update({ where: { id: topic.id }, data: { viewCount: 99, viewsTrackedSince: start } });
+    await prisma.forumPostDailyView.createMany({ data: [{ postId: topic.id, day: start, count: 6 }, { postId: topic.id, day: today, count: 2 }] });
+    const history = await forumService.recentViews(topic.id);
+    expect(history.daily.map((day) => day.count)).toEqual([6, 0, 0, 2]);
+    expect(history.trackingStartedAt).toBe(start.toISOString());
+    expect((await forumService.getPost(topic.id)).viewCount).toBe(99);
+  });
+
+  it("paginates full reaction people, filters types and visible replies, and enforces topic privacy", async () => {
+    const prisma = getPrisma();
+    const topic = await forumService.createPost({ communityId, title: "Reaction people inspection", content: "Public reactions" }, authorId);
+    postIds.push(topic.id);
+    const visible = await forumService.addComment(topic.id, { content: "Visible response" }, responderId);
+    const hidden = await forumService.addComment(topic.id, { content: "Moderated response" }, authorId);
+    const users = await Promise.all(Array.from({ length: 7 }, (_, index) => prisma.user.create({ data: { email: `reactor-${index}-${marker}@example.test`, fullName: `Reaction reader ${index}` } })));
+    try {
+      await prisma.forumReaction.createMany({ data: [...users.map((user) => ({ userId: user.id, targetType: "post", targetId: topic.id, reaction: "LIKE" })), { userId: adminId, targetType: "post", targetId: topic.id, reaction: "AGREE" }, { userId: responderId, targetType: "comment", targetId: visible.id, reaction: "CURIOUS" }, { userId: authorId, targetType: "comment", targetId: hidden.id, reaction: "LOVE" }] });
+      await forumService.moderateComment(hidden.id, "RESPONSE_HIDDEN", "Policy review", adminId, "admin");
+      const all = await forumService.reactionPeople("topic", topic.publicSlug!, undefined);
+      expect(all.meta.total).toBe(9);
+      expect(all.counts).toMatchObject({ LIKE: 7, AGREE: 1, CURIOUS: 1, LOVE: 0 });
+      expect(all.data.filter((person) => person.reaction === "LIKE")).toHaveLength(7);
+      expect(JSON.stringify(all)).not.toMatch(/email|password|viewerKey/);
+      const pages = await Promise.all([1, 2, 3].map((page) => forumService.reactionPeople("post", topic.id, "LIKE", page, 3)));
+      expect(pages.map((page) => page.data.length)).toEqual([3, 3, 1]);
+      expect(new Set(pages.flatMap((page) => page.data.map((row) => row.id))).size).toBe(7);
+      expect(pages[0]!.meta).toMatchObject({ total: 7, totalPages: 3 });
+      expect((await forumService.reactionPeople("comment", visible.id, undefined)).counts.CURIOUS).toBe(1);
+      await expect(forumService.reactionPeople("comment", hidden.id, undefined)).rejects.toMatchObject({ statusCode: 404 });
+      await prisma.community.update({ where: { id: communityId }, data: { visibility: "private" } });
+      await expect(forumService.reactionPeople("topic", topic.id, undefined)).rejects.toMatchObject({ statusCode: 403 });
+      await expect(forumService.recentViews(topic.publicSlug!)).rejects.toMatchObject({ statusCode: 403 });
+      expect((await forumService.reactionPeople("topic", topic.id, undefined, 1, 20, authorId, "user")).meta.total).toBe(9);
+      await forumService.moderatePost(topic.id, "THREAD_HIDDEN", "Policy review", adminId, "admin");
+      await expect(forumService.recentViews(topic.id, adminId, "admin")).rejects.toMatchObject({ statusCode: 404 });
+      await expect(forumService.reactionPeople("topic", topic.id, undefined, 1, 20, adminId, "admin")).rejects.toMatchObject({ statusCode: 404 });
+    } finally {
+      await prisma.community.update({ where: { id: communityId }, data: { visibility: "public" } });
+      await prisma.forumReaction.deleteMany({ where: { userId: { in: users.map((user) => user.id) } } });
+      await prisma.user.deleteMany({ where: { id: { in: users.map((user) => user.id) } } });
+    }
+  });
+
   it("excludes hidden/deleted replies, restores counts, and does not double-decrement a hidden deletion", async () => {
     const prisma = getPrisma();
     const topic = await forumService.createPost({ communityId, type: "QUESTION", title: `Visibility metrics ${marker}`, content: "Root is not a reply." }, authorId);
@@ -456,6 +697,48 @@ describe.sequential("research forum persistence and authorization", () => {
     expect((await forumService.listPosts(filter, 1, 20, authorId, "user")).meta.total).toBe(0);
   });
 
+  it("persists all notification levels per viewer and only sends the selected reply notifications", async () => {
+    const prisma = getPrisma();
+    const topic = await forumService.createPost({ communityId, type: "QUESTION", title: `Notification preferences ${marker}`, content: "A discussion for notification preferences" }, authorId);
+    postIds.push(topic.id);
+    const notifications = (userId: string) => prisma.notification.count({ where: { targetUuid: topic.id, userId } });
+    const reply = await forumService.addComment(topic.id, { content: "A response to the opening post" }, responderId);
+    await forumService.setNotificationLevel(topic.id, authorId, "MUTED");
+    await forumService.setNotificationLevel(topic.id, responderId, "TRACKING");
+    expect(await forumService.getPost(topic.id, authorId)).toMatchObject({ notificationLevel: "MUTED", isFollowing: false });
+    expect(await forumService.getPost(topic.id, responderId)).toMatchObject({ notificationLevel: "TRACKING", isFollowing: true });
+    const before = { author: await notifications(authorId), responder: await notifications(responderId) };
+    await forumService.addComment(topic.id, { content: "An unrelated new response" }, authorId);
+    expect(await notifications(responderId)).toBe(before.responder);
+    await forumService.addComment(topic.id, { content: "A direct reply to the tracked participant", parentCommentId: reply.id }, authorId);
+    expect(await notifications(responderId)).toBe(before.responder + 1);
+    await forumService.addComment(topic.id, { content: "A response while the opening author is muted" }, responderId);
+    expect(await notifications(authorId)).toBe(before.author);
+    await forumService.setNotificationLevel(topic.id, responderId, "WATCHING");
+    await forumService.addComment(topic.id, { content: "New activity for the watcher" }, authorId);
+    expect(await notifications(responderId)).toBe(before.responder + 2);
+    await forumService.setNotificationLevel(topic.id, responderId, "NORMAL");
+    expect(await forumService.getPost(topic.id, responderId)).toMatchObject({ notificationLevel: "NORMAL", isFollowing: false });
+    expect((await forumService.listPosts({ query: `Notification preferences ${marker}`, sort: "following" }, 1, 20, responderId)).meta.total).toBe(0);
+    await forumService.setNotificationLevel(topic.id, responderId, "MUTED");
+    const beforeAccepted = await notifications(responderId);
+    await forumService.acceptAnswer(topic.id, reply.id, authorId, "user");
+    expect(await notifications(responderId)).toBe(beforeAccepted);
+    await expect(forumService.setNotificationLevel(topic.id, responderId, "INVALID" as "NORMAL")).rejects.toMatchObject({ statusCode: 400 });
+    await forumService.moderatePost(topic.id, "THREAD_HIDDEN", "Testing notification access", adminId, "admin");
+    await expect(forumService.setNotificationLevel(topic.id, responderId, "WATCHING")).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it("computes likes and reading time from all visible replies, including unloaded reply pages", async () => {
+    const topic = await forumService.createPost({ communityId, type: "DISCUSSION", title: `Topic reading metrics ${marker}`, content: Array(440).fill("literature").join(" ") }, authorId);
+    postIds.push(topic.id);
+    const reply = await forumService.addComment(topic.id, { content: Array(220).fill("research").join(" ") }, responderId);
+    await forumService.react("comment", reply.id, "LIKE", true, authorId, "user");
+    expect(await forumService.getPost(topic.id)).toMatchObject({ readingTimeMinutes: 3, likeCount: 1 });
+    await forumService.moderateComment(reply.id, "RESPONSE_HIDDEN", "Visibility for metrics", adminId, "admin");
+    expect(await forumService.getPost(topic.id)).toMatchObject({ readingTimeMinutes: 2, likeCount: 0 });
+  });
+
   it("does not leak private or archived communities through discovery, any feed, search or a slug", async () => {
     const prisma = getPrisma();
     const community = await prisma.community.findUniqueOrThrow({ where: { id: communityId } });
@@ -509,9 +792,10 @@ describe.sequential("research forum persistence and authorization", () => {
     expect((await forumService.getPost(topic.id)).viewCount).toBe(1);
     await Promise.all(Array.from({ length: 8 }, () => forumService.getPost(topic.id, authorId, "user", "ignored-client-key")));
     expect((await forumService.getPost(topic.id)).viewCount).toBe(2);
-    await prisma.forumPostView.update({ where: { postId_viewerKey: { postId: topic.id, viewerKey: anonymousKey } }, data: { viewedAt: new Date(Date.now() - 31 * 60000) } });
+    await prisma.forumPostView.update({ where: { postId_viewerKey: { postId: topic.id, viewerKey: anonymousKey } }, data: { viewedAt: new Date(Date.now() - (8 * 60 + 1) * 60000) } });
     await Promise.all(Array.from({ length: 8 }, () => forumService.getPost(topic.id, undefined, undefined, anonymousKey)));
     expect((await forumService.getPost(topic.id)).viewCount).toBe(3);
+    expect((await forumService.recentViews(topic.id)).daily.at(-1)?.count).toBe(3);
     expect(await prisma.forumPostView.count({ where: { postId: topic.id } })).toBe(2);
   });
 
@@ -519,12 +803,18 @@ describe.sequential("research forum persistence and authorization", () => {
     const prisma = getPrisma();
     const topic = await forumService.createPost({ communityId, title: `Private metrics ${marker}`, content: "Private root" }, authorId);
     postIds.push(topic.id);
+    const reply = await forumService.addComment(topic.id, { content: "Private response history" }, responderId);
+    await forumService.updatePost(topic.id, { content: "Updated private root" }, authorId);
+    await forumService.updateComment(reply.id, { content: "Updated private reply" }, responderId);
     await prisma.community.update({ where: { id: communityId }, data: { visibility: "private" } });
     try {
       await expect(forumService.getPost(topic.id, undefined, undefined, "anon:forbidden")).rejects.toMatchObject({ statusCode: 403 });
       await expect(forumService.getPost(topic.id, outsiderId, "user", "user:forbidden")).rejects.toMatchObject({ statusCode: 403 });
       expect((await forumService.listPosts({ query: `Private metrics ${marker}` }, 1, 10)).data).toHaveLength(0);
       expect(await prisma.forumPostView.count({ where: { postId: topic.id } })).toBe(0);
+      await expect(forumService.listPostRevisions(topic.id)).rejects.toMatchObject({ statusCode: 403 });
+      await expect(forumService.listCommentRevisions(reply.id, outsiderId, "user")).rejects.toMatchObject({ statusCode: 403 });
+      expect(await forumService.listCommentRevisions(reply.id, responderId, "user")).toHaveLength(1);
     } finally {
       await prisma.community.update({ where: { id: communityId }, data: { visibility: "public" } });
     }
@@ -539,11 +829,12 @@ describe.sequential("research forum persistence and authorization", () => {
     postIds.push(topic.id);
     const users = await Promise.all(Array.from({ length: 6 }, (_, index) => prisma.user.create({ data: { email: `forum-participant-${index}-${marker}@example.test`, fullName: `Participant ${index}` } })));
     try {
-      await prisma.forumComment.createMany({ data: users.map((user, index) => ({ postId: topic.id, authorId: user.id, body: "Methodological contribution", createdAt: new Date(Date.now() - (6 - index) * 60000) })) });
+      await prisma.forumComment.createMany({ data: users.map((user, index) => ({ postId: topic.id, postNumber: index + 2, authorId: user.id, body: "Methodological contribution", createdAt: new Date(Date.now() - (6 - index) * 60000) })) });
       await forumService.addComment(topic.id, { content: "Author clarification" }, authorId);
       const shown = await forumService.getPost(topic.id);
       expect(shown.participants.map((user) => user.id)).toEqual([authorId, ...users.slice(2).reverse().map((user) => user.id)]);
       expect(new Set(shown.participants.map((user) => user.id)).size).toBe(5);
+      expect(shown.participantCount).toBe(7);
       for (const user of shown.participants) expect(Object.keys(user)).toEqual(["id", "fullName", "avatarUrl", "academicProfileType"]);
     } finally {
       await prisma.forumComment.deleteMany({ where: { postId: topic.id, authorId: { in: users.map((user) => user.id) } } });
@@ -613,7 +904,7 @@ describe.sequential("research forum persistence and authorization", () => {
     postIds.push(topic.id);
     const ids = Array.from({ length: 26 }, () => crypto.randomUUID());
     const createdAt = new Date("2026-09-02T00:00:00Z");
-    await prisma.forumComment.createMany({ data: ids.map((id) => ({ id, postId: topic.id, authorId: responderId, body: "A chronological response", createdAt })) });
+    await prisma.forumComment.createMany({ data: [...ids].sort().map((id, index) => ({ id, postId: topic.id, postNumber: index + 2, authorId: responderId, body: "A chronological response", createdAt })) });
     const first = await forumService.listComments(topic.id, 1, 25);
     const next = await forumService.listComments(topic.id, 2, 25);
     expect(first.meta).toMatchObject({ pageSize: 25, total: 26, totalPages: 2 });
@@ -626,7 +917,7 @@ describe.sequential("research forum persistence and authorization", () => {
     postIds.push(topic.id);
     const app = express();
     app.use("/forum", forumRouter);
-    app.use((error: { statusCode?: number }, _req: Request, res: Response, _next: NextFunction) => res.status(error.statusCode ?? 500).json({ success: false }));
+    app.use((error: { name?: string; statusCode?: number }, _req: Request, res: Response, _next: NextFunction) => res.status(error.name === "ZodError" ? 400 : error.statusCode ?? 500).json({ success: false }));
     const server = app.listen(0, "127.0.0.1");
     await once(server, "listening");
     const address = server.address();
@@ -635,6 +926,7 @@ describe.sequential("research forum persistence and authorization", () => {
     try {
       const listed = await (await fetch(`${base}?query=${encodeURIComponent(`HTTP metrics ${marker}`)}`)).json();
       expect(listed.data[0]).toMatchObject({ id: topic.id, replyCount: 0, helpfulCount: 0, viewCount: 0 });
+      expect((await fetch(`${base}/${topic.id}/reactions`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reaction: "LOVE", active: true }) })).status).toBe(401);
       expect(listed.data[0].lastActivityAt).toEqual(expect.any(String));
       expect(listed.data[0].participants[0]).toMatchObject({ id: authorId });
       const opened = await fetch(`${base}/${topic.id}`, { headers: { Origin: "not-a-valid-origin" } });
@@ -645,8 +937,43 @@ describe.sequential("research forum persistence and authorization", () => {
       expect((await opened.json()).data.viewCount).toBe(1);
       const refreshed = await fetch(`${base}/${topic.id}`, { headers: { Cookie: cookie.split(";")[0] } });
       expect((await refreshed.json()).data.viewCount).toBe(1);
+      const slugged = await fetch(`${base}/${topic.publicSlug}`, { headers: { Cookie: cookie.split(";")[0] } });
+      expect(slugged.status).toBe(200);
+      expect((await slugged.json()).data).toMatchObject({ id: topic.id, viewCount: 1 });
+      const response = await forumService.addComment(topic.id, { content: "A reply reached through a readable URL" }, responderId);
+      const replies = await fetch(`${base}/${topic.publicSlug}/comments`);
+      expect(replies.status).toBe(200);
+      expect((await replies.json()).data[0]).toMatchObject({ id: response.id, postId: topic.id });
+      const discovery = await fetch(`${base}/${topic.publicSlug}/discovery`);
+      expect(discovery.status).toBe(200);
+      expect((await discovery.json()).data).toMatchObject({ related: expect.any(Array), suggested: expect.any(Array) });
+      const views = await fetch(`${base}/${topic.publicSlug}/views`);
+      expect(views.status).toBe(200);
+      expect((await views.json()).data).toMatchObject({ cooldownHours: 8, daily: [expect.objectContaining({ count: 1 })] });
+      expect((await (await fetch(`${base}/${topic.id}/reactions?scope=topic`)).json()).meta.total).toBe(0);
+      for (const invalid of ["page=0", "pageSize=31", "scope=private", "reaction=UNKNOWN"]) expect((await fetch(`${base}/${topic.id}/reactions?${invalid}`)).status).toBe(400);
+      expect((await forumService.getPost(topic.id)).viewCount).toBe(1);
+      for (const invalid of ["bad_slug", "bad.slug", "a".repeat(281)]) {
+        expect((await fetch(`${base}/${invalid}`)).status).toBe(400);
+        expect((await fetch(`${base}/${invalid}/comments`)).status).toBe(400);
+        expect((await fetch(`${base}/${invalid}/discovery`)).status).toBe(400);
+      }
+      // Slugs use exactly the same visibility boundary as UUIDs.
+      await getPrisma().community.update({ where: { id: communityId }, data: { visibility: "private" } });
+      try {
+        for (const locator of [topic.id, topic.publicSlug]) {
+          expect((await fetch(`${base}/${locator}`)).status).toBe(403);
+          expect((await fetch(`${base}/${locator}/views`)).status).toBe(403);
+          expect((await fetch(`${base}/${locator}/reactions?scope=topic`)).status).toBe(403);
+          expect((await fetch(`${base}/${locator}/comments`)).status).toBe(403);
+          expect((await fetch(`${base}/${locator}/discovery`)).status).toBe(403);
+        }
+      } finally { await getPrisma().community.update({ where: { id: communityId }, data: { visibility: "public" } }); }
       await forumService.moderatePost(topic.id, "THREAD_HIDDEN", "Policy review", adminId, "admin");
       expect((await fetch(`${base}/${topic.id}`, { headers: { Cookie: cookie.split(";")[0] } })).status).toBe(404);
+      expect((await fetch(`${base}/${topic.publicSlug}`)).status).toBe(404);
+      expect((await fetch(`${base}/${topic.publicSlug}/comments`)).status).toBe(404);
+      expect((await fetch(`${base}/${topic.publicSlug}/discovery`)).status).toBe(404);
       expect((await getPrisma().forumPost.findUniqueOrThrow({ where: { id: topic.id } })).viewCount).toBe(1);
     } finally {
       await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
@@ -669,15 +996,54 @@ describe.sequential("research forum persistence and authorization", () => {
     const persistedResponse = (await forumService.listComments(discussion.id, 1, 20, responderId, "user")).data.find((comment) => comment.id === response.id);
     expect(persistedResponse).toMatchObject({ content: "Edited response", status: "active" });
     expect(persistedResponse?.editedAt).toBeTruthy();
+    expect(await forumService.listPostRevisions(discussion.id)).toMatchObject([{ revision: 1, title: "Editable discussion", content: "Original body", tags: ["original"] }]);
+    expect(await forumService.listCommentRevisions(response.id, outsiderId, "user")).toMatchObject([{ revision: 1, content: "Original response" }]);
+    await forumService.updateComment(response.id, { content: "Second edit" }, responderId);
+    expect(await forumService.listCommentRevisions(response.id)).toMatchObject([{ revision: 2, content: "Edited response" }, { revision: 1, content: "Original response" }]);
 
     await expect(forumService.deleteComment(response.id, outsiderId, "user")).rejects.toMatchObject({ statusCode: 403 });
     await forumService.deleteComment(response.id, responderId, "user");
     const removedResponse = (await forumService.listComments(discussion.id, 1, 20, authorId, "user")).data.find((comment) => comment.id === response.id);
     expect(removedResponse).toMatchObject({ status: "deleted", content: "This response was removed by its author." });
+    await expect(forumService.listCommentRevisions(response.id)).rejects.toMatchObject({ statusCode: 404 });
+    await expect(forumService.listCommentRevisions(response.id, authorId, "user")).rejects.toMatchObject({ statusCode: 404 });
+    expect(await forumService.listCommentRevisions(response.id, responderId, "user")).toHaveLength(2);
+    expect(await forumService.listCommentRevisions(response.id, adminId, "admin")).toHaveLength(2);
 
     await forumService.deletePost(discussion.id, authorId, "user");
     const removedDiscussion = await forumService.getPost(discussion.id, authorId, "user");
     expect(removedDiscussion).toMatchObject({ status: "deleted", title: "This discussion was removed by its author.", content: "" });
+    await expect(forumService.listPostRevisions(discussion.id, outsiderId, "user")).rejects.toMatchObject({ statusCode: 404 });
+    expect(await forumService.listPostRevisions(discussion.id, authorId, "user")).toHaveLength(1);
+    const visible = await getPrisma().forumComment.update({ where: { id: response.id }, data: { status: "active" } });
+    expect(await forumService.listCommentRevisions(visible.id)).toHaveLength(2);
+  });
+
+  it("keeps post numbers stable across moderation and allocates concurrent replies without reuse", async () => {
+    const topic = await forumService.createPost({ communityId, title: `Stable numbers ${marker}`, content: "Opening post" }, authorId);
+    postIds.push(topic.id);
+    const first = await forumService.addComment(topic.id, { content: "Original hidden reply", references: [{ paperId }] }, responderId);
+    const second = await forumService.addComment(topic.id, { content: "Later reply https://example.test/method" }, authorId);
+    expect([first.postNumber, second.postNumber]).toEqual([2, 3]);
+    await forumService.react("comment", first.id, "LOVE", true, authorId, "user");
+    await forumService.react("comment", second.id, "INSIGHTFUL", true, responderId, "user");
+    expect(await forumService.getPost(topic.id)).toMatchObject({ reactionCount: 2, linkCount: 2, participantCount: 2 });
+    await forumService.updateComment(first.id, { content: "Edited hidden reply" }, responderId);
+    await forumService.moderateComment(first.id, "RESPONSE_HIDDEN", undefined, adminId, "admin");
+    expect((await forumService.listComments(topic.id, 1, 25)).data.map((row) => row.postNumber)).toEqual([3]);
+    expect(await forumService.getPost(topic.id)).toMatchObject({ reactionCount: 1, linkCount: 1, participantCount: 1 });
+    await expect(forumService.listCommentRevisions(first.id)).rejects.toMatchObject({ statusCode: 404 });
+    await expect(forumService.listCommentRevisions(first.id, authorId, "user")).rejects.toMatchObject({ statusCode: 404 });
+    expect(await forumService.listCommentRevisions(first.id, responderId, "user")).toMatchObject([{ content: "Original hidden reply" }]);
+    expect(await forumService.listCommentRevisions(first.id, adminId, "admin")).toHaveLength(1);
+    await forumService.deleteComment(second.id, authorId, "user");
+    const concurrent = await Promise.all([
+      forumService.addComment(topic.id, { content: "Concurrent A" }, responderId),
+      forumService.addComment(topic.id, { content: "Concurrent B" }, authorId),
+    ]);
+    expect(concurrent.map((row) => row.postNumber).sort()).toEqual([4, 5]);
+    await forumService.moderateComment(first.id, "RESPONSE_RESTORED", undefined, adminId, "admin");
+    expect((await forumService.listComments(topic.id, 1, 25)).data.map((row) => row.postNumber)).toEqual([2, 3, 4, 5]);
   });
 
   it("enforces moderation permissions and creates report and action audit records", async () => {

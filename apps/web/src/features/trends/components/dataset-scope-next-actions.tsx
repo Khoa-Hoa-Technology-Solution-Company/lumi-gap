@@ -75,7 +75,7 @@ export function DatasetScopeNextActions({
     addList("subfieldIds", subfieldIds);
     addList("subfields", subfields);
     addList("topicIds", topicIds);
-    addList("topics", topicsFilter); // Target pages like /search and /reports accept 'topics'
+    addList("topics", topicsFilter); // Keep the active scope available to the home search composer and reports.
     addList("topicsFilter", topicsFilter); // Fallback keep url sync intact
     addList("paperKinds", paperKinds);
     addList("openAccessStatuses", openAccessStatuses);
@@ -186,7 +186,7 @@ export function DatasetScopeNextActions({
           disabled={isDisabled}
           onClick={() => {
             if (!isDisabled) {
-              navigate(buildScopedUrl("/search", { q: scopeTarget }));
+              navigate(buildScopedUrl("/home", { q: scopeTarget }));
             }
           }}
           className="w-full flex items-center justify-between p-3.5 bg-white dark:bg-slate-900 hover:bg-blue-50/20 dark:hover:bg-slate-855 border border-slate-200 dark:border-slate-800 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl text-left transition-all active:scale-[0.98] shadow-sm group"

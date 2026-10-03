@@ -17,11 +17,12 @@ describe("Forum native-zoom reflow", () => {
 
   it("keeps secondary columns hidden until the content area can accommodate them", () => {
     const queries = css.slice(css.indexOf("@container forum-topics (min-width: 30rem)"));
-    const compact = queries.slice(0, queries.indexOf("@container forum-topics (min-width: 42rem)"));
-    const medium = queries.slice(queries.indexOf("@container forum-topics (min-width: 42rem)"), queries.indexOf("@container forum-topics (min-width: 45rem)"));
+    const base = css.slice(css.indexOf(".forum-topic-head,"), css.indexOf("@container forum-topics (min-width: 30rem)"));
+    const medium = queries.slice(queries.indexOf("@container forum-topics (min-width: 54rem)"), queries.indexOf("@container forum-topics (min-width: 60rem)"));
     const wide = queries.slice(queries.indexOf("@container forum-topics (min-width: 60rem)"));
-    expect(compact).toMatch(/\.forum-topic-helpful\s*\{\s*display: none;/);
-    expect(medium).toContain("--forum-row-metrics-width: 19.5rem;");
+    expect(base).toMatch(/\.forum-topic-helpful,[^{]+\{\s*display: none;/);
+    expect(base).toContain("grid-template-columns: 40px minmax(0, 1fr) 44px;");
+    expect(medium).toContain("--forum-row-metrics-width: 20.5rem;");
     expect(medium).toMatch(/\.forum-topic-views,\s*\.forum-topic-helpful,\s*\.forum-topic-head-views\s*\{\s*display: block;/);
     expect(wide).toMatch(/\.forum-topic-participants\s*\{\s*display: flex;/);
   });
@@ -35,6 +36,12 @@ describe("Forum native-zoom reflow", () => {
     ].map((path) => readFileSync(new URL(path, import.meta.url), "utf8")).join("\n");
     expect(sources).not.toMatch(/onWheel|addEventListener\(["']wheel|devicePixelRatio|visualViewport|style=\{\{\s*zoom/);
     const forumStyles = css.slice(css.indexOf(".forum-workspace {"), css.indexOf(".lumigap-toaster[data-sonner-theme=\"dark\"] [data-close-button]:hover"));
-    expect(forumStyles).not.toMatch(/\bzoom\s*:|transform\s*:\s*scale/);
+    expect(forumStyles).not.toMatch(/\bzoom\s*:/);
+    // Local emoji hover feedback must not be mistaken for counter-scaling the page.
+    for (const [, selectors, declarations] of forumStyles.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      if (/\.forum-(?:workspace|surface|topics|topic-row)\b/.test(selectors!)) {
+        expect(declarations).not.toMatch(/transform\s*:\s*scale/);
+      }
+    }
   });
 });
