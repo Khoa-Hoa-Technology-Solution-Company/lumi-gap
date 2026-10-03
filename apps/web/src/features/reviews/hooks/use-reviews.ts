@@ -31,7 +31,7 @@ export function useSaveReview(assignmentId: string) {
 }
 export function useSubmitReview(assignmentId: string) {
   const client = useQueryClient();
-  return useMutation({ mutationFn: (input: AcademicReviewInput) => reviewsApi.submit(assignmentId, input), onSuccess: () => { client.invalidateQueries({ queryKey: ["review-center"] }); client.invalidateQueries({ queryKey: ["reviews", assignmentId] }); } });
+  return useMutation({ mutationFn: (input: AcademicReviewInput) => reviewsApi.submit(assignmentId, input), onSuccess: () => { client.invalidateQueries({ queryKey: ["review-center"] }); client.invalidateQueries({ queryKey: ["reviews", assignmentId] }); client.invalidateQueries({ queryKey: ["submissions"] }); client.invalidateQueries({ queryKey: ["review-requests"] }); } });
 }
 
 export function useReviewTemplates() { return useQuery({ queryKey: ["review-templates"], queryFn: reviewsApi.templates }); }
@@ -71,6 +71,6 @@ export function useReviewRequestAction() {
     accept: useMutation({ mutationFn: reviewsApi.acceptRequest, onSuccess: refresh }),
     decline: useMutation({ mutationFn: ({ id, reason }: { id: string; reason?: string }) => reviewsApi.declineRequest(id, reason), onSuccess: refresh }),
     cancel: useMutation({ mutationFn: reviewsApi.cancelRequest, onSuccess: refresh }),
-    resubmit: useMutation({ mutationFn: ({ id, input }: { id: string; input: ResubmitReviewRequestInput }) => reviewsApi.resubmit(id, input), onSuccess: () => { refresh(); client.invalidateQueries({ queryKey: ["review-requests"] }); } }),
+    resubmit: useMutation({ mutationFn: ({ id, input }: { id: string; input: ResubmitReviewRequestInput }) => reviewsApi.resubmit(id, input), onSuccess: () => { refresh(); client.invalidateQueries({ queryKey: ["review-requests"] }); client.invalidateQueries({ queryKey: ["reviews"] }); client.invalidateQueries({ queryKey: ["submissions"] }); } }),
   };
 }

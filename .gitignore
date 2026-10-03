@@ -93,3 +93,6 @@ apps/ai-reviewer/output/
 
 .harness/
 harness.config.yaml
+# Playwright output
+test-results/
+playwright-report/

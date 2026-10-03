@@ -28,3 +28,5 @@ export * from "./research-review.js";
 export * from "./literature.js";
 
 // Code quality reviewed and formatted
+
+export * from "./submission-history.js";

@@ -31,7 +31,7 @@ export function SubmitReviewDialog({ reportId, submissionId, artifactTitle, arti
   const reviewers = useReviewerCandidates(deferredSearch);
   const create = useCreateReviewRequest();
   const grouped = useMemo(() => {
-    const rows = (templates.data ?? []).filter((item) => item.status === "PUBLISHED" && item.activeVersion && (!artifactType || !item.artifactType || item.artifactType === artifactType));
+    const rows = (templates.data ?? []).filter((item) => item.status === "PUBLISHED" && item.activeVersion && (!artifactType || !item.artifactType || item.artifactType === artifactType || (item.artifactType === "MANUSCRIPT" && ["RESEARCH_PAPER", "THESIS_DRAFT", "SOFTWARE_RESEARCH_PROJECT"].includes(artifactType))));
     return Object.entries(sourceLabel).map(([source, label]) => ({ source, label, items: rows.filter((item) => item.source === source) })).filter((group) => group.items.length);
   }, [artifactType, templates.data]);
   const selectedTemplate = (templates.data ?? []).find((item) => item.activeVersion?.id === templateVersionId);

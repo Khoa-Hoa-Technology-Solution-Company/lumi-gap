@@ -4,12 +4,12 @@ import { AppError } from "../../common/exceptions/app-error.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { parseDatabaseId, publicDatabaseId } from "../../infrastructure/database/database-id.js";
 import { auditService } from "../audit/audit.service.js";
-import { capabilityService } from "../authorization/capability.service.js";
+import { assertPeerReviewer, assertReviewerInTransaction, assertReviewAdmission, lockReviewerAndSubmission, refreshSubmissionReviewStatus } from "./peer-review-access.js";
 import { normalizeEmail } from "../identity/identity-foundation.rules.js";
 import { notificationService } from "../notifications/notification.service.js";
 import { createOpaqueToken, hashOpaqueToken } from "../auth/token.service.js";
 import { hydrateReviewTemplateVersion } from "./review-template.service.js";
-import { canCancelReviewRequest, canResubmitReviewRequest, canViewReviewRequest } from "./academic-review.rules.js";
+import { canCancelReviewRequest, canResubmitReviewRequest, canViewReviewRequest, eligiblePeerReviewer } from "./academic-review.rules.js";
 
 const ACTIVE_REQUEST_STATUSES = ["REQUESTED", "ACCEPTED", "IN_REVIEW", "SUBMITTED", "REVISION_REQUESTED", "RESUBMITTED"];
 const EXTERNAL_REVIEW_INVITATION_DAYS = 14;
@@ -71,20 +71,20 @@ async function ensureReportSubmission(reportInput: string, actorId: string) {
     });
     submission = result;
   } else {
-    const current = submission.currentRevisionId
-      ? await prisma.submissionRevision.findUnique({ where: { id: submission.currentRevisionId } }) : null;
-    if (current?.checksumSha256 !== checksum) {
-      const nextRevision = submission.currentRevisionNumber + 1;
-      submission = await prisma.$transaction(async (tx) => {
-        const revision = await tx.submissionRevision.create({ data: {
-          submissionId: submission!.id, revisionNumber: nextRevision, uploadedById: actorId,
-          checksumSha256: checksum, contentSnapshot: markdown, contentType: "MARKDOWN", sizeBytes: Buffer.byteLength(markdown),
-        } });
-        return tx.submission.update({ where: { id: submission!.id }, data: {
-          currentRevisionId: revision.id, currentRevisionNumber: nextRevision, status: "ready_for_review",
-        } });
-      });
-    }
+    submission = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM submissions WHERE id = ${submission!.id}::uuid FOR UPDATE`;
+      const live = await tx.submission.findUniqueOrThrow({ where: { id: submission!.id } });
+      if (["accepted", "rejected", "withdrawn"].includes(live.status)) throw AppError.conflict("This research is read-only");
+      const current = live.currentRevisionId ? await tx.submissionRevision.findUnique({ where: { id: live.currentRevisionId } }) : null;
+      if (current?.checksumSha256 === checksum) return live;
+      const revision = await tx.submissionRevision.create({ data: {
+        submissionId: live.id, revisionNumber: live.currentRevisionNumber + 1, uploadedById: actorId, sourceRevisionId: current?.id,
+        checksumSha256: checksum, contentSnapshot: markdown, contentType: "MARKDOWN", sizeBytes: Buffer.byteLength(markdown),
+      } });
+      await tx.submission.update({ where: { id: live.id }, data: { currentRevisionId: revision.id, currentRevisionNumber: revision.revisionNumber, status: "revised" } });
+      await refreshSubmissionReviewStatus(tx, live.id);
+      return tx.submission.findUniqueOrThrow({ where: { id: live.id } });
+    });
   }
   return submission;
 }
@@ -100,6 +100,11 @@ async function resolveSubmission(input: Pick<CreateReviewRequestInput, "reportId
   if (!isAuthor && project.ownerId !== actorId) throw AppError.forbidden("Only an author or project owner can request review");
   if (!submission.currentRevisionId) throw AppError.conflict("The submission has no reviewable revision");
   return submission;
+}
+
+async function assertTemplateAccess(templateId: string, actorId: string, projectId: string) {
+  const template = await getPrisma().reviewTemplate.findUniqueOrThrow({ where: { id: templateId } });
+  if (!template.active || template.status !== "PUBLISHED" || (template.source === "PERSONAL" && template.ownerId !== actorId) || (template.source === "PROJECT" && template.projectId !== projectId)) throw AppError.forbidden("This review template is not available for your research");
 }
 
 async function requestRecord(input: string) {
@@ -138,14 +143,14 @@ async function externalInvitationByToken(token: string) {
   return invitation;
 }
 
-async function summary(row: Awaited<ReturnType<typeof requestRecord>>) {
+async function summary(row: Awaited<ReturnType<typeof requestRecord>>, viewerId?: string) {
   const prisma = getPrisma();
   const [assignment, submission, requester, revision, reviews] = await Promise.all([
     assignmentForRequest(row.id),
     prisma.submission.findUniqueOrThrow({ where: { id: row.submissionId } }),
     prisma.user.findUniqueOrThrow({ where: { id: row.requesterId }, select: { id: true, fullName: true, avatarUrl: true } }),
     prisma.submissionRevision.findUniqueOrThrow({ where: { id: row.artifactRevisionId } }),
-    prisma.humanReview.findMany({ where: { assignmentId: (await assignmentForRequest(row.id)).id }, orderBy: { roundNumber: "asc" } }),
+    prisma.humanReview.findMany({ where: { assignmentId: (await assignmentForRequest(row.id)).id, ...(viewerId === (await assignmentForRequest(row.id)).reviewerId ? {} : { status: "SUBMITTED" }) }, orderBy: { roundNumber: "asc" } }),
   ]);
   const reviewer = await prisma.user.findUniqueOrThrow({ where: { id: assignment.reviewerId }, select: { id: true, fullName: true, avatarUrl: true, institution: true } });
   return {
@@ -196,6 +201,7 @@ export const reviewRequestService = {
       getPrisma().reviewTemplateVersion.findFirst({ where: { ...whereId(input.templateVersionId), status: "PUBLISHED" } }),
     ]);
     if (!version) throw AppError.badRequest("Select a published review template version");
+    await assertTemplateAccess(version.templateId, actor.id, submission.projectId);
     const reviewerEmail = normalizeEmail(input.reviewerEmail);
     const token = createOpaqueToken();
     const now = new Date();
@@ -240,13 +246,13 @@ export const reviewRequestService = {
 
   async reviewerCandidates(actorInput: string, query?: string) {
     const actor = await resolveUser(actorInput);
-    const capabilities = await getPrisma().userCapability.findMany({
-      where: { capability: "STRUCTURED_REVIEW", status: "ACTIVE", OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] },
+    const capabilities = await getPrisma().academicProfile.findMany({
+      where: { academicRole: { in: ["LECTURER", "RESEARCHER"] }, roleVerificationStatus: "VERIFIED" },
       select: { userId: true }, take: 100,
     });
     const users = await getPrisma().user.findMany({
       where: {
-        id: { in: capabilities.map((item) => item.userId).filter((id) => id !== actor.id) }, isActive: true,
+        id: { in: capabilities.map((item) => item.userId).filter((id) => id !== actor.id) }, isActive: true, accountStatus: "ACTIVE",
         ...(query ? { OR: [{ fullName: { contains: query, mode: "insensitive" } }, { institution: { contains: query, mode: "insensitive" } }] } : {}),
       },
       select: { id: true, legacyMongoId: true, fullName: true, avatarUrl: true, institution: true }, take: 30,
@@ -267,8 +273,9 @@ export const reviewRequestService = {
       getPrisma().reviewTemplateVersion.findFirst({ where: { ...whereId(input.templateVersionId), status: "PUBLISHED" } }),
     ]);
     if (!version) throw AppError.badRequest("Select a published review template version");
+    await assertTemplateAccess(version.templateId, actor.id, submission.projectId);
     if (reviewer.id === actor.id) throw AppError.conflict("You cannot review your own artifact");
-    if (!(await capabilityService.list(reviewer.id)).includes("STRUCTURED_REVIEW")) throw AppError.badRequest("The selected user is not qualified for structured review");
+    await assertPeerReviewer(reviewer.id);
     const [membership, owned, duplicate] = await Promise.all([
       getPrisma().projectMember.findUnique({ where: { projectId_userId: { projectId: submission.projectId, userId: reviewer.id } } }),
       getPrisma().project.findFirst({ where: { id: submission.projectId, ownerId: reviewer.id } }),
@@ -282,13 +289,15 @@ export const reviewRequestService = {
     if (membership?.status === "ACTIVE" || owned) throw AppError.conflict("Project contributors cannot review this artifact");
     if (duplicate) throw AppError.conflict("This reviewer already has an active request for this artifact");
     const created = await getPrisma().$transaction(async (tx) => {
+      await lockReviewerAndSubmission(tx, reviewer.id, submission.id);
+      const liveSubmission = await assertReviewAdmission(tx, submission.id, reviewer.id);
       const request = await tx.reviewRequest.create({ data: {
         submissionId: submission.id, projectId: submission.projectId, requesterId: actor.id,
-        templateVersionId: version.id, artifactRevisionId: submission.currentRevisionId!,
+        templateVersionId: version.id, artifactRevisionId: liveSubmission.currentRevisionId!,
         message: input.message?.trim() || undefined, dueAt: input.dueAt ? new Date(input.dueAt) : undefined,
       } });
       const assignment = await tx.reviewerAssignment.create({ data: {
-        submissionId: submission.id, reviewRequestId: request.id, reviewerId: reviewer.id, assignedById: actor.id,
+        submissionId: submission.id, reviewRequestId: request.id, artifactRevisionId: request.artifactRevisionId, reviewerId: reviewer.id, assignedById: actor.id,
         anonymousCode: `R-${crypto.randomBytes(12).toString("hex")}`, status: "assigned", dueAt: request.dueAt,
         conflictChecks: { selfOrAuthor: false, projectContributor: false, checkedAt: new Date().toISOString() },
       } });
@@ -310,7 +319,7 @@ export const reviewRequestService = {
       getPrisma().reviewRequest.findMany({ where: { id: { in: incomingIds } }, orderBy: { updatedAt: "desc" } }),
       getPrisma().reviewRequest.findMany({ where: { requesterId: actor.id }, orderBy: { updatedAt: "desc" } }),
     ]);
-    return { incoming: await Promise.all(incoming.map(summary)), sent: await Promise.all(sent.map(summary)) };
+    return { incoming: await Promise.all(incoming.map((row) => summary(row, actor.id))), sent: await Promise.all(sent.map((row) => summary(row, actor.id))) };
   },
 
   async detail(requestInput: string, actorInput: string) {
@@ -318,22 +327,21 @@ export const reviewRequestService = {
     const request = await requestRecord(requestInput);
     const assignment = await assignmentForRequest(request.id);
     if (!canViewReviewRequest({ actorId: actor.id, requesterId: request.requesterId, reviewerId: assignment.reviewerId })) throw AppError.forbidden();
-    if (assignment.reviewerId === actor.id && !(await capabilityService.list(actor.id)).includes("STRUCTURED_REVIEW")) {
-      throw AppError.forbidden("Verified academic review capability is required to view assigned artifacts");
-    }
     const prisma = getPrisma();
+    const reviewerProfile = actor.id === assignment.reviewerId ? await prisma.academicProfile.findUnique({ where: { userId: actor.id } }) : null;
+    const canWork = actor.id === assignment.reviewerId && actor.accountStatus === "ACTIVE" && eligiblePeerReviewer(reviewerProfile?.academicRole, reviewerProfile?.roleVerificationStatus) && !["cancelled", "declined"].includes(assignment.status);
     const [base, revision, templateVersion, reviews] = await Promise.all([
-      summary(request), prisma.submissionRevision.findUniqueOrThrow({ where: { id: request.artifactRevisionId } }),
+      summary(request, canWork ? actor.id : undefined), prisma.submissionRevision.findUniqueOrThrow({ where: { id: request.artifactRevisionId } }),
       hydrateReviewTemplateVersion(request.templateVersionId),
-      prisma.humanReview.findMany({ where: { assignmentId: assignment.id }, orderBy: { roundNumber: "asc" } }),
+      prisma.humanReview.findMany({ where: { assignmentId: assignment.id, ...(canWork ? {} : { status: "SUBMITTED" }) }, orderBy: { roundNumber: "asc" } }),
     ]);
     const reviewDetails = await Promise.all(reviews.map(async (review) => ({
       ...review, id: publicDatabaseId(review),
       responses: await prisma.reviewResponse.findMany({ where: { reviewId: review.id } }),
-      requiredRevisions: await prisma.reviewRevisionItem.findMany({ where: { reviewId: review.id }, orderBy: { position: "asc" } }),
+      requiredRevisions: await Promise.all((await prisma.reviewRevisionItem.findMany({ where: { reviewId: review.id }, orderBy: { position: "asc" } })).map(async (item) => ({ ...item, responses: await prisma.reviewRevisionResponse.findMany({ where: { revisionItemId: item.id }, orderBy: { createdAt: "asc" } }) }))),
     })));
     return {
-      ...base, templateVersion, artifactContent: revision.contentSnapshot ?? undefined,
+      ...base, templateVersion, artifactContent: actor.id === assignment.reviewerId && !canWork ? undefined : revision.contentSnapshot ?? undefined,
       reviews: reviewDetails,
     };
   },
@@ -341,14 +349,15 @@ export const reviewRequestService = {
   async accept(requestInput: string, actorInput: string) {
     const actor = await resolveUser(actorInput); const request = await requestRecord(requestInput); const assignment = await assignmentForRequest(request.id);
     if (assignment.reviewerId !== actor.id) throw AppError.forbidden();
-    if (!(await capabilityService.list(actor.id)).includes("STRUCTURED_REVIEW")) {
-      throw AppError.forbidden("Verified academic review capability is required to accept review requests");
-    }
+    await assertPeerReviewer(actor.id);
     if (request.status !== "REQUESTED" || assignment.status !== "assigned") throw AppError.conflict("This review request can no longer be accepted");
-    await getPrisma().$transaction([
-      getPrisma().reviewRequest.update({ where: { id: request.id }, data: { status: "ACCEPTED" } }),
-      getPrisma().reviewerAssignment.update({ where: { id: assignment.id }, data: { status: "accepted" } }),
-    ]);
+    await getPrisma().$transaction(async (tx) => {
+      await lockReviewerAndSubmission(tx, actor.id, request.submissionId);
+      await assertReviewAdmission(tx, request.submissionId, actor.id, { excludeAssignmentId: assignment.id });
+      const claimed = await tx.reviewRequest.updateMany({ where: { id: request.id, status: "REQUESTED" }, data: { status: "ACCEPTED" } });
+      if (claimed.count !== 1) throw AppError.conflict("This request was already handled");
+      await tx.reviewerAssignment.update({ where: { id: assignment.id }, data: { status: "accepted", artifactRevisionId: request.artifactRevisionId } });
+    });
     await Promise.all([
       auditService.log("REVIEW_REQUEST_ACCEPTED", { userId: actor.id, targetTableName: "review_requests", targetRecordId: request.id }),
       notificationService.create({ userId: request.requesterId, title: "Review request accepted", message: `${actor.fullName} accepted your academic review request.`, type: "REVIEW_REQUEST_ACCEPTED", targetKind: "project", targetId: request.projectId }),
@@ -361,9 +370,7 @@ export const reviewRequestService = {
     if (invitation.status !== "PENDING") throw AppError.conflict("This review invitation is no longer pending");
     const ownsInvitedEmail = (await verifiedEmailsForUser(actor.id)).includes(normalizeEmail(invitation.reviewerEmail));
     if (!ownsInvitedEmail) throw AppError.forbidden("Verify the invited email address before accepting this review invitation");
-    if (!(await capabilityService.list(actor.id)).includes("STRUCTURED_REVIEW")) {
-      throw AppError.forbidden("Verified academic review capability is required before accepting this review invitation");
-    }
+    await assertPeerReviewer(actor.id);
     const submission = await getPrisma().submission.findUniqueOrThrow({ where: { id: invitation.submissionId } });
     if (await getPrisma().submissionAuthor.findUnique({ where: { submissionId_userId: { submissionId: submission.id, userId: actor.id } } })) {
       throw AppError.conflict("You cannot review your own artifact");
@@ -377,8 +384,10 @@ export const reviewRequestService = {
     if (duplicate) throw AppError.conflict("This reviewer already has an active request for this artifact");
     const now = new Date();
     const created = await getPrisma().$transaction(async (tx) => {
+      await lockReviewerAndSubmission(tx, actor.id, submission.id);
+      await assertReviewAdmission(tx, submission.id, actor.id);
       const claimed = await tx.externalReviewInvitation.updateMany({
-        where: { id: invitation.id, status: "PENDING" },
+        where: { id: invitation.id, status: "PENDING", expiresAt: { gt: now } },
         data: { status: "ACCEPTED", invitedUserId: actor.id, respondedAt: now },
       });
       if (claimed.count !== 1) throw AppError.conflict("This review invitation was already handled");
@@ -389,12 +398,14 @@ export const reviewRequestService = {
         templateVersionId: invitation.templateVersionId,
         artifactRevisionId: invitation.artifactRevisionId,
         status: "ACCEPTED",
+        origin: "EXTERNAL_INVITATION",
         message: invitation.message,
         dueAt: invitation.dueAt,
       } });
       const assignment = await tx.reviewerAssignment.create({ data: {
         submissionId: submission.id,
         reviewRequestId: request.id,
+        artifactRevisionId: request.artifactRevisionId,
         reviewerId: actor.id,
         assignedById: invitation.requesterId,
         anonymousCode: `R-${crypto.randomBytes(12).toString("hex")}`,
@@ -428,10 +439,13 @@ export const reviewRequestService = {
     const actor = await resolveUser(actorInput); const request = await requestRecord(requestInput); const assignment = await assignmentForRequest(request.id);
     if (assignment.reviewerId !== actor.id) throw AppError.forbidden();
     if (request.status !== "REQUESTED") throw AppError.conflict("This review request can no longer be declined");
-    await getPrisma().$transaction([
-      getPrisma().reviewRequest.update({ where: { id: request.id }, data: { status: "DECLINED" } }),
-      getPrisma().reviewerAssignment.update({ where: { id: assignment.id }, data: { status: "declined", reviewText: reason?.trim() || undefined } }),
-    ]);
+    await getPrisma().$transaction(async (tx) => {
+      await lockReviewerAndSubmission(tx, assignment.reviewerId, request.submissionId);
+      const changed = await tx.reviewRequest.updateMany({ where: { id: request.id, status: "REQUESTED" }, data: { status: "DECLINED" } });
+      if (!changed.count) throw AppError.conflict("This request has already changed");
+      await tx.reviewerAssignment.update({ where: { id: assignment.id }, data: { status: "declined", reviewText: reason?.trim() || undefined } });
+      await refreshSubmissionReviewStatus(tx, request.submissionId);
+    });
     await Promise.all([
       auditService.log("REVIEW_REQUEST_DECLINED", { userId: actor.id, targetTableName: "review_requests", targetRecordId: request.id, details: { reason: reason?.trim() } }),
       notificationService.create({ userId: request.requesterId, title: "Review request declined", message: `${actor.fullName} declined the review request.`, type: "REVIEW_REQUEST_DECLINED", targetKind: "project", targetId: request.projectId }),
@@ -442,52 +456,79 @@ export const reviewRequestService = {
     const actor = await resolveUser(actorInput); const request = await requestRecord(requestInput); const assignment = await assignmentForRequest(request.id);
     if (request.requesterId !== actor.id) throw AppError.forbidden();
     if (!canCancelReviewRequest(request.status as never)) throw AppError.conflict("This review request can no longer be cancelled");
-    await getPrisma().$transaction([
-      getPrisma().reviewRequest.update({ where: { id: request.id }, data: { status: "CANCELLED" } }),
-      getPrisma().reviewerAssignment.update({ where: { id: assignment.id }, data: { status: "cancelled" } }),
-    ]);
+    await getPrisma().$transaction(async (tx) => {
+      await lockReviewerAndSubmission(tx, assignment.reviewerId, request.submissionId);
+      const changed = await tx.reviewRequest.updateMany({ where: { id: request.id, status: { in: ["REQUESTED", "ACCEPTED"] } }, data: { status: "CANCELLED" } });
+      if (!changed.count) throw AppError.conflict("This request has already changed");
+      await tx.reviewerAssignment.update({ where: { id: assignment.id }, data: { status: "cancelled" } });
+      await refreshSubmissionReviewStatus(tx, request.submissionId);
+    });
     await auditService.log("REVIEW_REQUEST_CANCELLED", { userId: actor.id, targetTableName: "review_requests", targetRecordId: request.id });
   },
 
   async resubmit(requestInput: string, actorInput: string, input: ResubmitReviewRequestInput) {
     const actor = await resolveUser(actorInput); const request = await requestRecord(requestInput); const assignment = await assignmentForRequest(request.id);
     if (request.requesterId !== actor.id) throw AppError.forbidden();
-    if (!canResubmitReviewRequest(request.status as never)) throw AppError.conflict("This request is not waiting for a revision");
-    let revision = input.revisionId ? await getPrisma().submissionRevision.findFirst({ where: { ...whereId(input.revisionId), submissionId: request.submissionId } }) : null;
-    if (input.reportId) {
-      const report = await getPrisma().report.findFirst({ where: whereId(input.reportId) });
-      if (!report || report.projectId !== request.projectId || report.status !== "ready" || !report.markdown?.trim()) throw AppError.badRequest("Select a completed research artifact from this project");
-      const project = await projectAccess(request.projectId, actor.id);
-      if (report.userId !== actor.id && project.ownerId !== actor.id) throw AppError.forbidden("Only the artifact creator or project owner can resubmit it");
-      const markdown = report.markdown; const checksum = crypto.createHash("sha256").update(markdown).digest("hex");
-      const previous = await getPrisma().submissionRevision.findUnique({ where: { id: request.artifactRevisionId } });
-      if (previous?.checksumSha256 === checksum) throw AppError.badRequest("The revised artifact must differ from the reviewed version");
-      const submission = await getPrisma().submission.findUniqueOrThrow({ where: { id: request.submissionId } });
-      revision = await getPrisma().submissionRevision.create({ data: {
-        submissionId: request.submissionId, revisionNumber: submission.currentRevisionNumber + 1, uploadedById: actor.id,
-        checksumSha256: checksum, contentSnapshot: markdown, contentType: "MARKDOWN", sizeBytes: Buffer.byteLength(markdown),
-        responseToReview: "Resubmitted from an updated LumiGap research artifact.",
-      } });
-    }
-    if (!revision || revision.id === request.artifactRevisionId) throw AppError.badRequest("Select a newer artifact revision");
-    const latestReview = await getPrisma().humanReview.findFirst({ where: { assignmentId: assignment.id, status: "SUBMITTED" }, orderBy: { roundNumber: "desc" } });
-    if (!latestReview) throw AppError.conflict("The submitted review could not be found");
-    const items = await getPrisma().reviewRevisionItem.findMany({ where: { reviewId: latestReview.id, status: { in: ["OPEN", "REOPENED"] } } });
-    const responseMap = new Map(input.responses.map((item) => [item.revisionItemId, item.responseText.trim()]));
-    const missing = items.filter((item) => !responseMap.get(publicDatabaseId(item)) && !responseMap.get(item.id));
-    if (missing.length) throw AppError.badRequest("Respond to every required revision before resubmitting", { missingRevisionItemIds: missing.map(publicDatabaseId) });
-    await getPrisma().$transaction(async (tx) => {
+    const revision = await getPrisma().$transaction(async (tx) => {
+      await lockReviewerAndSubmission(tx, assignment.reviewerId, request.submissionId);
+      const current = await tx.reviewRequest.findUniqueOrThrow({ where: { id: request.id } });
+      if (!canResubmitReviewRequest(current.status as never)) throw AppError.conflict("This request is not waiting for a revision");
+      const submission = await tx.submission.findUniqueOrThrow({ where: { id: request.submissionId } });
+      const previous = await tx.submissionRevision.findUniqueOrThrow({ where: { id: current.artifactRevisionId } });
+      let revised = input.revisionId ? await tx.submissionRevision.findFirst({ where: { ...whereId(input.revisionId), submissionId: request.submissionId } }) : null;
+      if (input.reportId) {
+        const report = await tx.report.findFirst({ where: whereId(input.reportId) });
+        if (!report || report.id !== submission.sourceReportId || report.projectId !== request.projectId || report.status !== "ready" || !report.markdown?.trim()) {
+          throw AppError.badRequest("Select an updated version of the original research artifact");
+        }
+        const checksum = crypto.createHash("sha256").update(report.markdown).digest("hex");
+        if (previous.checksumSha256 === checksum) throw AppError.badRequest("The revised artifact must differ from the reviewed version");
+        revised = await tx.submissionRevision.create({ data: { submissionId: submission.id,
+          revisionNumber: submission.currentRevisionNumber + 1, uploadedById: actor.id, sourceRevisionId: previous.id,
+          checksumSha256: checksum, contentSnapshot: report.markdown, contentType: "MARKDOWN", sizeBytes: Buffer.byteLength(report.markdown),
+          responseToReview: "Updated research artifact submitted for another review round." } });
+      }
+      if (!revised || revised.revisionNumber <= previous.revisionNumber) throw AppError.badRequest("Select a newer artifact revision");
+      const submittedReviews = await tx.humanReview.findMany({ where: { assignmentId: assignment.id, status: "SUBMITTED" }, select: { id: true } });
+      if (!submittedReviews.length) throw AppError.conflict("No submitted review exists");
+      const items = await tx.reviewRevisionItem.findMany({ where: { reviewId: { in: submittedReviews.map((review) => review.id) }, status: { in: ["OPEN", "REOPENED"] } } });
+      const responseMap = new Map(input.responses.map((item) => [item.revisionItemId, item.responseText.trim()]));
+      if (responseMap.size !== input.responses.length || input.responses.some((response) => !items.some((item) => item.id === response.revisionItemId || publicDatabaseId(item) === response.revisionItemId))) {
+        throw AppError.badRequest("Revision responses must refer to this request's open revision items");
+      }
+      const missing = items.filter((item) => !responseMap.get(publicDatabaseId(item)) && !responseMap.get(item.id));
+      if (missing.length) throw AppError.badRequest("Respond to every required revision before resubmitting", { missingRevisionItemIds: missing.map(publicDatabaseId) });
       for (const item of items) {
-        await tx.reviewRevisionResponse.create({ data: { revisionItemId: item.id, submissionRevisionId: revision.id, responseText: responseMap.get(publicDatabaseId(item)) ?? responseMap.get(item.id)! } });
+        await tx.reviewRevisionResponse.create({ data: { revisionItemId: item.id, submissionRevisionId: revised.id, responseText: responseMap.get(publicDatabaseId(item)) ?? responseMap.get(item.id)! } });
         await tx.reviewRevisionItem.update({ where: { id: item.id }, data: { status: "ADDRESSED" } });
       }
-      await tx.reviewRequest.update({ where: { id: request.id }, data: { status: "RESUBMITTED", artifactRevisionId: revision.id } });
-      await tx.reviewerAssignment.update({ where: { id: assignment.id }, data: { status: "accepted", completedAt: null } });
-      await tx.submission.update({ where: { id: request.submissionId }, data: { status: "under_review", currentRevisionId: revision.id, currentRevisionNumber: revision.revisionNumber } });
+      await tx.reviewRequest.update({ where: { id: request.id }, data: { status: "RESUBMITTED", artifactRevisionId: revised.id } });
+      await tx.reviewerAssignment.update({ where: { id: assignment.id }, data: { status: "accepted", completedAt: null, artifactRevisionId: revised.id } });
+      await tx.submission.updateMany({ where: { id: submission.id, currentRevisionNumber: { lt: revised.revisionNumber } }, data: { currentRevisionId: revised.id, currentRevisionNumber: revised.revisionNumber } });
+      await refreshSubmissionReviewStatus(tx, submission.id);
+      return revised;
     });
     await Promise.all([
       auditService.log("REVISION_RESUBMITTED", { userId: actor.id, targetTableName: "review_requests", targetRecordId: request.id, details: { revisionId: revision.id } }),
       notificationService.create({ userId: assignment.reviewerId, title: "Revision resubmitted", message: `A revised version of the assigned artifact is ready for review.`, type: "REVISION_RESUBMITTED", targetKind: "project", targetId: request.projectId }),
     ]);
+  },
+
+  async resolveRevisionItem(requestInput: string, itemInput: string, status: "ACCEPTED" | "REOPENED", actorInput: string) {
+    const { user } = await assertPeerReviewer(actorInput);
+    const request = await requestRecord(requestInput); const assignment = await assignmentForRequest(request.id);
+    if (assignment.reviewerId !== user.id || assignment.status !== "accepted" || !["RESUBMITTED", "IN_REVIEW"].includes(request.status)) throw AppError.forbidden("Only the assigned reviewer can verify changes during a new review round");
+    await getPrisma().$transaction(async (tx) => {
+      await lockReviewerAndSubmission(tx, user.id, request.submissionId);
+      await assertReviewerInTransaction(tx, user.id);
+      const live = await tx.reviewRequest.findUniqueOrThrow({ where: { id: request.id } });
+      if (!["RESUBMITTED", "IN_REVIEW"].includes(live.status) || live.artifactRevisionId !== request.artifactRevisionId) throw AppError.conflict("The review round has changed; refresh before verifying");
+      const reviews = await tx.humanReview.findMany({ where: { assignmentId: assignment.id, status: "SUBMITTED" }, select: { id: true } });
+      const item = await tx.reviewRevisionItem.findFirst({ where: { ...whereId(itemInput), reviewId: { in: reviews.map((review) => review.id) } } });
+      if (!item || !["ADDRESSED", "ACCEPTED", "REOPENED"].includes(item.status)) throw AppError.badRequest("This revision item has no author response to verify");
+      await tx.reviewRevisionItem.update({ where: { id: item.id }, data: { status } });
+      await tx.reviewRevisionResponse.updateMany({ where: { revisionItemId: item.id, submissionRevisionId: request.artifactRevisionId }, data: { status } });
+    });
+    await auditService.log("REVIEW_REVISION_VERIFIED", { userId: user.id, targetTableName: "review_revision_items", targetRecordId: itemInput, details: { status, requestId: request.id } });
   },
 };

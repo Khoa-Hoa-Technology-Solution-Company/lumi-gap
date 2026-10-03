@@ -45,6 +45,8 @@ const reviewResponseSchema = z.object({
   notApplicable: z.boolean().optional(),
 }).strict();
 const draftReviewSchema = z.object({
+  expectedRevisionId: objectIdSchema.optional(),
+  expectedRoundNumber: z.number().int().min(1).optional(),
   keyStrengths: z.string().trim().max(20000).optional(),
   keyConcerns: z.string().trim().max(20000).optional(),
   overallComment: z.string().trim().max(20000).optional(),
@@ -99,7 +101,7 @@ const declineRequestSchema = z.object({ reason: z.string().trim().max(2000).opti
 const reviewerQuerySchema = z.object({ q: z.string().trim().max(120).optional() }).strict();
 const resubmitSchema = z.object({
   revisionId: objectIdSchema.optional(), reportId: objectIdSchema.optional(),
-  responses: z.array(z.object({ revisionItemId: objectIdSchema, responseText: z.string().trim().min(3).max(10000) }).strict()).min(1).max(30),
+  responses: z.array(z.object({ revisionItemId: objectIdSchema, responseText: z.string().trim().min(3).max(10000) }).strict()).max(30),
 }).strict().refine((value) => Boolean(value.revisionId) !== Boolean(value.reportId), "Select exactly one revised artifact version");
 
 export const reviewAvailabilityRouter: Router = Router();
@@ -207,6 +209,11 @@ reviewRequestRouter.post("/:requestId/cancel", validate(requestParamsSchema, "pa
 });
 reviewRequestRouter.post("/:requestId/resubmit", validate(requestParamsSchema, "params"), validate(resubmitSchema), async (req, res) => {
   await reviewRequestService.resubmit(String(req.params.requestId), req.user!.sub, req.body); res.status(204).send();
+});
+
+reviewRequestRouter.patch("/:requestId/revision-items/:itemId", validate(z.object({ requestId: objectIdSchema, itemId: objectIdSchema }), "params"), validate(z.object({ status: z.enum(["ACCEPTED", "REOPENED"]) }).strict()), async (req, res) => {
+  await reviewRequestService.resolveRevisionItem(String(req.params.requestId), String(req.params.itemId), req.body.status, req.user!.sub);
+  res.status(204).send();
 });
 
 export const contributionRouter: Router = Router();
