@@ -12,8 +12,10 @@ import { studentOnboardingStrings } from "./student-onboarding";
 import { forumRefinementVi } from "./forum-refinement";
 import { forumRefinementViOverrides } from "./forum-refinement-vi-overrides";
 import { researchHomeVi } from "./research-home";
+import { trustSafetyRagViStrings } from "./trust-safety-rag";
 
 export const vi: Record<keyof typeof en, string> = {
+  ...trustSafetyRagViStrings,
   ...researchHomeVi,
   ...projectInvitationStrings,
   ...studentOnboardingStrings,

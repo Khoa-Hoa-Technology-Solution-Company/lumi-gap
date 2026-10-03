@@ -8,8 +8,10 @@ import { authSecurityStrings } from "./auth-security";
 import { newUiStrings } from "./new-ui";
 import { projectInvitationStrings } from "./project-invitations";
 import { studentOnboardingStrings } from "./student-onboarding";
+import { trustSafetyRagStrings } from "./trust-safety-rag";
 
 export const ja: Record<keyof typeof en, string> = {
+  ...trustSafetyRagStrings,
   ...researchHomeEn,
   ...projectInvitationStrings,
   ...studentOnboardingStrings,

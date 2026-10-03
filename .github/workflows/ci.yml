@@ -18,6 +18,31 @@ jobs:
   verify:
     name: typecheck + test
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.1-pg16
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - uses: actions/checkout@v4
 
@@ -35,8 +60,16 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Deploy database migrations
+        run: pnpm --filter backend db:migrate:deploy
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/test
+
       - name: Typecheck (all packages)
         run: pnpm typecheck
 
       - name: Test (all packages)
         run: pnpm test
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/test
+          REDIS_URL: redis://localhost:6379

@@ -7,8 +7,10 @@ import { newUiStrings } from "./new-ui";
 import { projectInvitationStrings } from "./project-invitations";
 import { studentOnboardingStrings } from "./student-onboarding";
 import { researchHomeEn } from "./research-home-en";
+import { trustSafetyRagStrings } from "./trust-safety-rag";
 
 export const en = {
+  ...trustSafetyRagStrings,
   ...researchHomeEn,
   ...newUiStrings,
   ...projectInvitationStrings,
