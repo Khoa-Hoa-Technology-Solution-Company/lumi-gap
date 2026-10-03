@@ -51,6 +51,7 @@ import { PaperReadingSection } from "@/features/papers/components/paper-detail/p
 import { PaperResearchSignalsSection } from "@/features/papers/components/paper-detail/paper-research-signals-section";
 import { PaperRelationshipsSection } from "@/features/papers/components/paper-detail/paper-relationships-section";
 import { PaperMetadataSidebar } from "@/features/papers/components/paper-detail/paper-metadata-sidebar";
+import { PaperKnowledgePanel } from "@/features/papers/components/paper-knowledge-panel";
 
 function getApiErrorMessage(error: unknown, fallback: string): string {
   const axiosError = error as AxiosError<{ error?: { message?: string } }>;
@@ -750,6 +751,7 @@ export function PaperDetailPage() {
           />
 
           {/* Section E: Operational PDF Workflow */}
+          {paper.dataStatus === "active" && <PaperKnowledgePanel paperId={paper.id} />}
           {shouldShowPdfPanel && (
             <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-xs dark:border-slate-800 dark:bg-[#11161F] space-y-4">
               <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">

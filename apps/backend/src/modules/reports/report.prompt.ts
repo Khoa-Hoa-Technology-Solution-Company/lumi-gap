@@ -1,4 +1,7 @@
 import crypto from "node:crypto";
+import { buildPaperEvidenceText, type PaperStructuredAnalysis } from "../papers/paper-structured-context.js";
+import { formatKnowledgeEvidence } from "../knowledge/knowledge.text.js";
+import type { KnowledgeEvidence } from "../knowledge/knowledge.types.js";
 
 /**
  * Prompt construction for RAG analytical reports — PURE functions, no I/O.
@@ -6,7 +9,7 @@ import crypto from "node:crypto";
  * PROMPT_VERSION is part of the Redis cache key (CLAUDE.md §6): bump it on ANY
  * wording change so stale cached reports are never served for a new prompt.
  */
-export const PROMPT_VERSION = "report-v4";
+export const PROMPT_VERSION = "report-v5-full-text";
 
 /** Max characters of abstract quoted per paper (keeps the prompt within budget). */
 export const MAX_ABSTRACT_CHARS = 1200;
@@ -16,6 +19,8 @@ export interface EvidencePaper {
   id: string;
   title: string;
   abstractText?: string;
+  aiAnalysis?: PaperStructuredAnalysis | null;
+  knowledgeEvidence?: KnowledgeEvidence;
   publicationYear?: number;
   journalName?: string;
   citationCount?: number;
@@ -54,6 +59,7 @@ export const REPORT_SYSTEM_PROMPT = [
   "3. Follow the OUTPUT LANGUAGE block in the user message exactly.",
   "4. The OUTPUT LANGUAGE block overrides the language used in the topic, question, evidence, and abstracts.",
   "5. If the evidence is insufficient for a claim, say so explicitly instead of guessing.",
+  "Mention source coverage (abstract only or PDF text). When citing a source passage, include its PDF page and chunk ID alongside the paper citation. Knowledge relations are extracted claims, not independently verified facts.",
   "6. Structure the markdown with four sections whose headings are translated to the output language:",
   "   Overview, Key trends, Notable papers, Evidence limitations.",
   "7. Research gaps go in the separate `gaps` JSON field, NOT in the markdown.",
@@ -75,7 +81,7 @@ export function buildReportPrompt(
     .map((p, i) => {
       const n = i + 1;
       const authors = p.authorNames.slice(0, 3).join(", ") + (p.authorNames.length > 3 ? " et al." : "");
-      const abstract = (p.abstractText ?? "(no abstract available)").slice(0, MAX_ABSTRACT_CHARS);
+      const abstract = [buildPaperEvidenceText({ ...p, abstractText: p.abstractText ?? "(no abstract available)" }).slice(0, MAX_ABSTRACT_CHARS), formatKnowledgeEvidence(p.knowledgeEvidence)].filter(Boolean).join("\n\n");
       return [
         `[${n}] "${p.title}" (${p.publicationYear ?? "n.d."})`,
         `    Authors: ${authors || "unknown"}`,

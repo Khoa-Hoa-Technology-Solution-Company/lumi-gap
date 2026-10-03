@@ -2,7 +2,7 @@ import { Worker } from "bullmq";
 import { enforcePostgresOnlyRuntime } from "../infrastructure/database/postgres-only-runtime.js";
 import { env } from "../config/env.js";
 import { connectPostgres, disconnectPostgres } from "../infrastructure/database/prisma.js";
-import { apiSyncQueue, makeConnection, QUEUE_NAMES } from "../infrastructure/queue.js";
+import { apiSyncQueue, paperAnalysisQueue, makeConnection, QUEUE_NAMES } from "../infrastructure/queue.js";
 import { logger } from "../infrastructure/logger.js";
 import { startWorkerHeartbeat } from "../infrastructure/worker-heartbeat.js";
 import { runSync, type RunSyncJob } from "../modules/api-sync/sync.service.js";
@@ -24,7 +24,9 @@ async function main() {
     QUEUE_NAMES.apiSync,
     async (job) => {
       logger.info({ jobId: job.id, data: job.data }, "sync job received");
-      return runSync(job.data as RunSyncJob);
+      const result = await runSync(job.data as RunSyncJob);
+      await paperAnalysisQueue.add("synced-paper-knowledge", {});
+      return result;
     },
     { connection: makeConnection(), concurrency: 1 }, // one sync at a time → respect rate limit
   );

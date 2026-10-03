@@ -13,9 +13,9 @@ enforcePostgresOnlyRuntime();
  * Standalone structured paper knowledge worker.
  * Run with: pnpm --filter backend worker:paper-analysis
  *
- * Extracts aiAnalysis once per active AI-analyzable paper, versioned by
- * PAPER_AI_ANALYSIS_PROMPT_VERSION. This keeps richer reasoning data out of
- * request handlers and avoids re-reading raw abstracts for every AI feature.
+ * Indexes approved PDFs/abstracts into page chunks, vectors and grounded graph
+ * relations, versioned by RAG_INDEX_VERSION. Runs scheduled backfills and
+ * targeted user jobs outside request handlers.
  */
 async function main() {
   await connectPostgres();

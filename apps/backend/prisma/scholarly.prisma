@@ -145,6 +145,7 @@ model Paper {
   relatedWorks                 String[]                    @default([]) @map("related_works")
   aiScore                      Json?                       @map("ai_score")
   aiAnalysis                   Json?                       @map("ai_analysis")
+  document                     PaperDocument?
   searchDocument               Unsupported("tsvector")?    @map("search_document")
   createdAt                    DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt                    DateTime                    @updatedAt @map("updated_at") @db.Timestamptz(6)

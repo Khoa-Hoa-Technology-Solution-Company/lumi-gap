@@ -1,5 +1,6 @@
 import type { ISODateString } from "./common.js";
 import type { PaperRef } from "./paper.js";
+import type { PaperEvidenceSnapshot } from "./knowledge.js";
 
 export type ReportStatus = "queued" | "generating" | "ready" | "failed";
 export type ReportLanguage = "auto" | "en" | "vi";
@@ -108,6 +109,7 @@ export interface ResearchGap {
 }
 
 export interface AnalyticalReport {
+  evidenceSnapshot?: PaperEvidenceSnapshot[];
   id: string;
   userId: string;
   projectId?: string;

@@ -15,6 +15,7 @@ from app.format_checker import PRESETS, analyze_format, report_markdown
 from app.reviewer import GeminiReviewProvider, safe_slug, write_artifacts
 from app.security import Security
 from app.pre_review import PreReviewRequest, run_pre_review
+from app.rag_routes import rag_router
 
 
 def verify_internal_key(x_internal_key: Optional[str] = Header(None)) -> None:
@@ -25,6 +26,7 @@ def verify_internal_key(x_internal_key: Optional[str] = Header(None)) -> None:
 
 def internal_router(database, security: Security) -> APIRouter:
     router = APIRouter(prefix="/internal", dependencies=[Depends(verify_internal_key)])
+    router.include_router(rag_router)
 
     @router.get("/health")
     def internal_health() -> dict[str, Any]:

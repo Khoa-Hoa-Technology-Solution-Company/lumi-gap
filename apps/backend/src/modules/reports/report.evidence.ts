@@ -3,6 +3,7 @@ import { env } from "../../config/env.js";
 import { parseDatabaseId, publicDatabaseId } from "../../infrastructure/database/database-id.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { retrieve, type RetrieveFilters } from "../retrieval/retriever.js";
+import { attachKnowledgeEvidence } from "../knowledge/knowledge.retrieval.js";
 
 export type ReportEvidenceSource = "selected" | "retrieved";
 
@@ -65,11 +66,11 @@ export async function collectReportEvidence(
   ]);
 
   return {
-    papers: mergeReportEvidence({
+    papers: await attachKnowledgeEvidence(mergeReportEvidence({
       selected: selected.papers,
       retrieved,
       maxPapers: env.REPORT_TOP_K,
-    }),
+    }), input.queryText ?? "", input.queryVector),
     retrievedPaperIds: retrieved.map((p) => p.id),
     selectedPaperIds,
     missingSelectedPaperIds: selected.missingIds,
@@ -86,6 +87,7 @@ async function fetchRetrievedEvidencePapers(input: CollectReportEvidenceInput): 
 
   if (input.queryVector && input.queryVector.length > 0) {
     return retrieve({
+      fullText: true,
       queryVector: input.queryVector,
       queryText: input.queryText,
       topK: env.REPORT_TOP_K,
@@ -94,6 +96,7 @@ async function fetchRetrievedEvidencePapers(input: CollectReportEvidenceInput): 
     }).then((papers) => papers.map((p) => ({ ...p, source: "retrieved" as const })));
   }
 
+  if (input.queryText?.trim()) return retrieve({ queryText: input.queryText, topK: env.REPORT_TOP_K, filters, fullText: true }).then((papers) => papers.map((paper) => ({ ...paper, source: "retrieved" as const })));
   return fetchTextEvidencePapers(input.queryText, filters);
 }
 
@@ -124,6 +127,7 @@ async function fetchTextEvidencePapers(
     publicationYear: doc.publicationYear as number | undefined,
     journalName: doc.journalName ? String(doc.journalName) : undefined,
     citationCount: doc.citationCount as number | undefined,
+    aiAnalysis: doc.aiAnalysis as never,
     authorNames: authors.filter((author) => author.paperId === doc.id).map((author) => author.displayName),
     score: 0.5,
     source: "retrieved",
@@ -193,6 +197,7 @@ async function fetchSelectedEvidencePapers(
       publicationYear: doc.publicationYear as number | undefined,
       journalName: doc.journalName ? String(doc.journalName) : undefined,
       citationCount: doc.citationCount as number | undefined,
+      aiAnalysis: doc.aiAnalysis as never,
       authorNames: authors.filter((author) => author.paperId === doc.id).map((author) => author.displayName),
       score: 1,
       source: "selected",

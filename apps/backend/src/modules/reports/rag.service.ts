@@ -16,6 +16,7 @@ import { MCP_TOOL_DEFS } from "../mcp/mcp.tools.js";
 import { executeMcpTool } from "../mcp/mcp.executor.js";
 import { notificationService } from "../notifications/notification.service.js";
 import { collectReportEvidence } from "./report.evidence.js";
+import { assertGapReferences, assertSourceLocators } from "../knowledge/knowledge.grounding.js";
 import {
   buildReportPrompt,
   PROMPT_VERSION,
@@ -57,17 +58,15 @@ export async function runRagPipeline(job: ReportJob): Promise<void> {
 
   await getPrisma().report.update({ where: { id: report.id }, data: { status: "generating" } });
 
-  // ① Embed the question only when retrieval needs it. If the user already
-  // curated a fixed evidence set, selected papers are enough to build the
-  // grounded report. If embedding is unavailable, fall back to PostgreSQL text
-  // retrieval so the job can still produce an evidence-grounded report.
+  // Embed the question for passage ranking even with a fixed paper set.
+  // Failure degrades to text retrieval without expanding the user's scope.
   const t0 = Date.now();
   const selectedLinks = await getPrisma().reportPaper.findMany({ where: { reportId: report.id, kind: "selected" }, orderBy: { position: "asc" } });
   const selectedRows = await getPrisma().paper.findMany({ where: { id: { in: selectedLinks.map((link) => link.paperId) } }, select: { id: true, legacyMongoId: true } });
   const selectedById = new Map(selectedRows.map((row) => [row.id, publicDatabaseId(row)]));
   const selectedPaperIds = selectedLinks.map((link) => selectedById.get(link.paperId) ?? link.paperId);
   let queryVector: number[] | undefined;
-  if (selectedPaperIds.length === 0) {
+  {
     try {
       queryVector = await getEmbeddingProvider().embed(report.query);
     } catch (err) {
@@ -88,6 +87,7 @@ export async function runRagPipeline(job: ReportJob): Promise<void> {
     fillWithRetrieved: selectedPaperIds.length === 0,
   });
   const papers = evidence.papers;
+  await getPrisma().report.update({ where: { id: report.id }, data: { evidenceSnapshot: papers as never } });
   const searchMs = Date.now() - t1;
 
   // ③ No evidence → permanent failure (retrying won't grow the corpus).
@@ -150,6 +150,13 @@ export async function runRagPipeline(job: ReportJob): Promise<void> {
     inputHash,
     onCacheHit: () => {
       cacheHit = true;
+    },
+    validate: (candidate) => {
+      if (!candidate || typeof candidate.markdown !== "string") throw new LlmContentError("Report is missing markdown");
+      assertCitationsInRange(candidate.markdown, papers.length);
+      assertSourceLocators(candidate.markdown, papers);
+      assertGapReferences(candidate.gaps ?? [], papers);
+      return candidate;
     },
     generate: async (routedModel) => {
       if (report.deepAnalysis) {

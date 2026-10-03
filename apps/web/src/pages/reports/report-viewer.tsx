@@ -226,6 +226,17 @@ export function ReportViewerPage() {
           <h1 className="text-4xl font-bold text-slate-900 dark:text-white tracking-tight leading-[1.1] mb-6">
             {title}
           </h1>
+          {!!report?.evidenceSnapshot?.length && <details className="mb-6 rounded-xl border bg-card p-4">
+            <summary className="cursor-pointer text-sm font-semibold">Source evidence used for this report</summary>
+            <p className="mt-2 text-xs text-muted-foreground">These passages were saved when the report was generated and remain available after paper reindexing.</p>
+            {report?.evidenceSnapshot?.map((source, position) => <div key={source.id} className="mt-4 space-y-2 border-t pt-3">
+              <Link className="text-sm font-medium underline" to={`/papers/${source.id}`}>[{position + 1}] {source.title}</Link>
+              <p className="text-xs text-muted-foreground">{source.knowledgeEvidence?.sourceKind === "abstract" || !source.knowledgeEvidence ? "Abstract / metadata only" : "PDF text"}</p>
+              {source.knowledgeEvidence?.warnings.map((warning) => <p key={warning} className="text-xs text-muted-foreground">{warning}</p>)}
+              {source.knowledgeEvidence?.passages.map((passage) => <blockquote key={passage.id} className="border-l-2 pl-3 text-sm"><p className="break-all text-xs text-muted-foreground">{passage.pageNumber ? `PDF page ${passage.pageNumber}` : "Abstract"} · chunk {passage.id}</p><p className="mt-1 whitespace-pre-wrap">{passage.text}</p></blockquote>)}
+              {!source.knowledgeEvidence && <p className="text-sm">{source.abstractText ?? "No abstract available"}</p>}
+            </div>)}
+          </details>}
 
           <div className="flex flex-wrap items-center gap-3 mb-8 print:hidden">
             <Button onClick={() => setShowRoses(!showRoses)} variant="outline" className="h-9 px-4 gap-2 text-slate-700 dark:text-slate-300 font-semibold border-slate-300 dark:border-slate-700 rounded-md hover:bg-slate-50">
