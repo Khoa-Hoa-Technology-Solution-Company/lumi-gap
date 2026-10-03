@@ -207,26 +207,31 @@ model ProjectContributionHistory {
 }
 
 model Community {
-  id             String                   @id @default(uuid()) @db.Uuid
-  legacyMongoId  String?                  @unique @map("legacy_mongo_id") @db.VarChar(24)
-  name           String                   @db.VarChar(120)
-  slug           String                   @unique @db.VarChar(120)
-  description    String                   @default("")
-  researchField  String?                  @map("research_field") @db.VarChar(160)
-  icon           String?                  @db.VarChar(40)
-  researchTopics String[]                 @default([]) @map("research_topics")
-  visibility     String                   @default("public") @db.VarChar(16)
-  status         String                   @default("ACTIVE") @db.VarChar(16)
-  rules          String[]                 @default([])
-  ownerId        String                   @map("owner_id") @db.Uuid
-  memberCount    Int                      @default(0) @map("member_count")
-  threadCount    Int                      @default(0) @map("thread_count")
-  reviewNote     String?                  @map("review_note")
-  reviewedById   String?                  @map("reviewed_by_id") @db.Uuid
-  reviewedAt     DateTime?                @map("reviewed_at") @db.Timestamptz(6)
-  searchDocument Unsupported("tsvector")? @map("search_document")
-  createdAt      DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt      DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id                  String                      @id @default(uuid()) @db.Uuid
+  legacyMongoId       String?                     @unique @map("legacy_mongo_id") @db.VarChar(24)
+  name                String                      @db.VarChar(120)
+  slug                String                      @unique @db.VarChar(120)
+  description         String                      @default("")
+  researchField       String?                     @map("research_field") @db.VarChar(160)
+  icon                String?                     @db.VarChar(40)
+  researchTopics      String[]                    @default([]) @map("research_topics")
+  visibility          String                      @default("public") @db.VarChar(16)
+  status              String                      @default("ACTIVE") @db.VarChar(16)
+  rules               String[]                    @default([])
+  ownerId             String                      @map("owner_id") @db.Uuid
+  memberCount         Int                         @default(0) @map("member_count")
+  threadCount         Int                         @default(0) @map("thread_count")
+  reviewNote          String?                     @map("review_note")
+  reviewedById        String?                     @map("reviewed_by_id") @db.Uuid
+  reviewedAt          DateTime?                   @map("reviewed_at") @db.Timestamptz(6)
+  searchDocument      Unsupported("tsvector")?    @map("search_document")
+  embedding           Unsupported("vector(768)")?
+  embeddingModel      String?                     @map("embedding_model")
+  embeddingVersion    String?                     @map("embedding_version")
+  embeddingDimensions Int?                        @map("embedding_dimensions")
+  embeddingUpdatedAt  DateTime?                   @map("embedding_updated_at") @db.Timestamptz(6)
+  createdAt           DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime                    @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@index([status, visibility, updatedAt])
   @@index([ownerId])
@@ -415,10 +420,10 @@ model ForumVote {
 }
 
 model ForumPostView {
-  id         String   @id @default(uuid()) @db.Uuid
-  postId     String   @map("post_id") @db.Uuid
-  viewerKey  String   @map("viewer_key") @db.VarChar(160)
-  viewedAt   DateTime @default(now()) @map("viewed_at") @db.Timestamptz(6)
+  id        String   @id @default(uuid()) @db.Uuid
+  postId    String   @map("post_id") @db.Uuid
+  viewerKey String   @map("viewer_key") @db.VarChar(160)
+  viewedAt  DateTime @default(now()) @map("viewed_at") @db.Timestamptz(6)
 
   @@unique([postId, viewerKey])
   @@index([postId, viewedAt])

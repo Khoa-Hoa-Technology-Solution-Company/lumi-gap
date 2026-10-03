@@ -281,6 +281,8 @@ const forumKeyList = [
   "Filter by research field",
   "All fields",
   "Recommended for you",
+  "Close to your research interests",
+  "No communities match your search. You might be interested in:",
   "Based on the research interests in your academic profile.",
   "Load more",
   "Loading…",

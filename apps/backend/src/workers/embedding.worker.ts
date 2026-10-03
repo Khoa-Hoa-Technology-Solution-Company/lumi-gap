@@ -5,6 +5,7 @@ import { connectPostgres, disconnectPostgres } from "../infrastructure/database/
 import { embeddingQueue, makeConnection, QUEUE_NAMES } from "../infrastructure/queue.js";
 import { logger } from "../infrastructure/logger.js";
 import { startWorkerHeartbeat } from "../infrastructure/worker-heartbeat.js";
+import { COMMUNITY_EMBEDDING_JOB, runCommunityEmbedding } from "../modules/communities/community-embedding.service.js";
 import { runEmbedding, type RunEmbeddingJob } from "../modules/embeddings/embedding.service.js";
 
 enforcePostgresOnlyRuntime();
@@ -13,7 +14,7 @@ enforcePostgresOnlyRuntime();
  * Standalone embedding worker — a SEPARATE Node process from the API.
  * Run with: pnpm --filter backend worker:embedding
  *
- * Consumes the "embedding" BullMQ queue and vectorises AI-analyzable papers.
+ * Consumes the "embedding" BullMQ queue and vectorises ACTIVE communities and AI-analyzable papers.
  * Also registers a daily cron (EMBED_CRON) so newly-synced papers get embedded.
  */
 async function main() {
@@ -24,7 +25,11 @@ async function main() {
     QUEUE_NAMES.embedding,
     async (job) => {
       logger.info({ jobId: job.id, data: job.data }, "embedding job received");
-      return runEmbedding(job.data as RunEmbeddingJob);
+      // Community-only job: cheap and triggered by a content change, so skip the paper batch.
+      if (job.name === COMMUNITY_EMBEDDING_JOB) return { communities: await runCommunityEmbedding() };
+      // Communities are few and cheap; embed them first so they never wait behind a large paper batch.
+      const communities = await runCommunityEmbedding();
+      return { communities, papers: await runEmbedding(job.data as RunEmbeddingJob) };
     },
     { connection: makeConnection(), concurrency: 1 }, // one run at a time → respect Gemini rate limit
   );

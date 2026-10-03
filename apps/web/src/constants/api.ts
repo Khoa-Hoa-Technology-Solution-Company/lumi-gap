@@ -96,6 +96,7 @@ export const API_ROUTES = {
     relatedPapers: (id: string) => `/communities/${id}/related-papers`,
     relatedGaps: (id: string) => `/communities/${id}/related-gaps`,
     recommendations: "/communities/recommendations",
+    suggestions: "/communities/suggestions",
     summary: (id: string) => `/communities/${id}/summary`,
   },
   forum: {

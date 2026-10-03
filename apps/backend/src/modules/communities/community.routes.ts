@@ -12,6 +12,7 @@ import {
   lookupParamsSchema,
   memberParamsSchema,
   reviewSchema,
+  suggestQuerySchema,
   transferOwnershipSchema,
   updateMemberSchema,
 } from "./dto/community.schema.js";
@@ -22,6 +23,7 @@ communityRouter.get("/", optionalAuth, validate(listQuerySchema, "query"), commu
 communityRouter.post("/", requireAuth, validate(communityCreateSchema), communityController.create);
 communityRouter.get("/facets", optionalAuth, communityController.facets);
 communityRouter.get("/recommendations", requireAuth, communityController.recommendations);
+communityRouter.get("/suggestions", optionalAuth, validate(suggestQuerySchema, "query"), communityController.suggestions);
 communityRouter.get("/:idOrSlug", optionalAuth, validate(lookupParamsSchema, "params"), communityController.get);
 communityRouter.patch("/:id", requireAuth, validate(idParamsSchema, "params"), validate(communityUpdateSchema), communityController.update);
 communityRouter.patch("/:id/status", requireAuth, validate(idParamsSchema, "params"), validate(communityStatusSchema), communityController.setStatus);

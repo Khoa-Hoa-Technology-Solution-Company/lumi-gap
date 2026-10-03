@@ -19,6 +19,7 @@ export function useCommunityList(params: Omit<CommunityListParams, "page">, enab
   });
 }
 export function useCommunityFacets() { const viewer = useForumViewer(); return useQuery({ queryKey: ["communities", "facets", viewer], queryFn: forumApi.communityFacets, staleTime: 5 * 60_000 }); }
+export function useCommunitySuggestions(q: string, enabled = true) { const viewer = useForumViewer(); return useQuery({ queryKey: ["communities", "suggestions", viewer, q], queryFn: () => forumApi.communitySuggestions(q), enabled: enabled && q.length >= 2, staleTime: 5 * 60_000 }); }
 export function useCommunityRecommendations(enabled = true) { const viewer = useForumViewer(); return useQuery({ queryKey: ["communities", "recommendations", viewer], queryFn: forumApi.communityRecommendations, enabled, staleTime: 5 * 60_000 }); }
 export function useCommunity(slug?: string) { const viewer = useForumViewer(); return useQuery({ queryKey: ["community", slug, viewer], queryFn: () => forumApi.community(slug!), enabled: Boolean(slug) }); }
 export function useCreateForumPost() { const client = useQueryClient(); return useMutation({ mutationFn: forumApi.createPost, onSuccess: () => client.invalidateQueries({ queryKey: ["forum", "posts"] }) }); }

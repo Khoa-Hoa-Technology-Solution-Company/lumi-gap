@@ -2354,6 +2354,8 @@ export const vi: Record<keyof typeof en, string> = {
   "Filter by research field": "Lọc theo lĩnh vực nghiên cứu",
   "All fields": "Tất cả lĩnh vực",
   "Recommended for you": "Gợi ý cho bạn",
+  "Close to your research interests": "Gần với lĩnh vực nghiên cứu của bạn",
+  "No communities match your search. You might be interested in:": "Không có community nào khớp với tìm kiếm của bạn. Có thể bạn quan tâm:",
   "Based on the research interests in your academic profile.": "Dựa trên mối quan tâm nghiên cứu trong hồ sơ học thuật của bạn.",
   "Load more": "Tải thêm",
   "Loading…": "Đang tải…",
