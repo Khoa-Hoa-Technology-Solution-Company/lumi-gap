@@ -788,7 +788,7 @@ export const ru: Record<keyof typeof en, string> = {
   "Level": "Уровень",
   "Level Tiers": "Уровни уровней",
   "Library is empty": "Библиотека пуста",
-  "Liem Research Team. All rights reserved.": "Исследовательская группа Лиема. Все права защищены.",
+  "Tori Team. All rights reserved.": "Исследовательская группа Лиема. Все права защищены.",
   "LiemResearch logo": "Логотип LiemResearch",
   "Limitations": "Ограничения",
   "Live": "Живи",

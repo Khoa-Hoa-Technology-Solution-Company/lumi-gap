@@ -788,7 +788,7 @@ export const zh: Record<keyof typeof en, string> = {
   "Level": "级别",
   "Level Tiers": "级别等级",
   "Library is empty": "图书馆已空",
-  "Liem Research Team. All rights reserved.": "林研究团队。版权所有。",
+  "Tori Team. All rights reserved.": "林研究团队。版权所有。",
   "LiemResearch logo": "LiemResearch 徽标",
   "Limitations": "局限性",
   "Live": "直播",

@@ -788,7 +788,7 @@ export const de: Record<keyof typeof en, string> = {
   "Level": "Ebene",
   "Level Tiers": "Levelstufen",
   "Library is empty": "Die Bibliothek ist leer",
-  "Liem Research Team. All rights reserved.": "Liem-Forschungsteam. Alle Rechte vorbehalten.",
+  "Tori Team. All rights reserved.": "Liem-Forschungsteam. Alle Rechte vorbehalten.",
   "LiemResearch logo": "LiemResearch-Logo",
   "Limitations": "Einschränkungen",
   "Live": "Lebe",

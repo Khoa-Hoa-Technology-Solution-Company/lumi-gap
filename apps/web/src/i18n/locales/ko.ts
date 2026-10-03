@@ -788,7 +788,7 @@ export const ko: Record<keyof typeof en, string> = {
   "Level": "레벨",
   "Level Tiers": "레벨 등급",
   "Library is empty": "라이브러리가 비어 있습니다.",
-  "Liem Research Team. All rights reserved.": "리엠 연구팀. 모든 권리 보유.",
+  "Tori Team. All rights reserved.": "리엠 연구팀. 모든 권리 보유.",
   "LiemResearch logo": "LiemResearch 로고",
   "Limitations": "제한사항",
   "Live": "라이브",
