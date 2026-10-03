@@ -59,6 +59,7 @@ export interface ResearchGapItem {
 }
 
 export interface GapAnalysisResult {
+  evidenceSnapshot?: import("./knowledge.js").PaperEvidenceSnapshot[];
   id: string;
   topic: string;
   status: GapAnalysisStatus;

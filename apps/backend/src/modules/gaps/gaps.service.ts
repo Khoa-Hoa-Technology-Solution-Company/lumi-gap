@@ -18,6 +18,8 @@ import { buildGapsCacheKey, buildGapsPrompt, GAP_PROMPT_VERSION, GAPS_SYSTEM_PRO
 import type { AnalyzeGapDto, ListGapsQuery, PatchGapDto, PreviewGapEvidenceDto } from "./dto/gaps.schema.js";
 import { toGapListItem, type GapListDoc } from "./gap-presenter.js";
 import { projectService } from "../projects/project.service.js";
+import { attachKnowledgeEvidence } from "../knowledge/knowledge.retrieval.js";
+import { assertGapReferences } from "../knowledge/knowledge.grounding.js";
 
 export interface GapJob { analysisId: string }
 type GapEvidenceCandidate = GapEvidencePaper & { journalName?: string; citationCount?: number; authorNames: string[]; score: number; source: "selected" | "retrieved" };
@@ -72,7 +74,7 @@ async function assertCanReadGap(userInput: string, gap: { userId: string; projec
 async function analysisDto(analysis: NonNullable<Awaited<ReturnType<typeof resolveAnalysis>>>) {
   const [gaps, papers] = await Promise.all([getPrisma().researchGap.findMany({ where: { analysisId: analysis.id }, select: { id: true, legacyMongoId: true } }), getPrisma().gapAnalysisPaper.findMany({ where: { analysisId: analysis.id }, orderBy: { position: "asc" } })]);
   const paperRows = await getPrisma().paper.findMany({ where: { id: { in: papers.map((row) => row.paperId) } }, select: { id: true, legacyMongoId: true } }); const paperMap = new Map(paperRows.map((row) => [row.id, publicDatabaseId(row)]));
-  return { id: publicDatabaseId(analysis), topic: analysis.topic, status: analysis.status, gapIds: gaps.map(publicDatabaseId), errorMessage: analysis.errorMessage ?? undefined, yearFrom: analysis.yearFrom ?? undefined, yearTo: analysis.yearTo ?? undefined, selectedPaperIds: papers.flatMap((row) => { const id = paperMap.get(row.paperId); return id ? [id] : []; }), evidenceMode: analysis.evidenceMode as GapEvidenceMode, createdAt: analysis.createdAt.toISOString(), updatedAt: analysis.updatedAt.toISOString() };
+  return { id: publicDatabaseId(analysis), topic: analysis.topic, status: analysis.status, gapIds: gaps.map(publicDatabaseId), evidenceSnapshot: analysis.evidenceSnapshot as unknown as import("@trend/shared-types").PaperEvidenceSnapshot[], errorMessage: analysis.errorMessage ?? undefined, yearFrom: analysis.yearFrom ?? undefined, yearTo: analysis.yearTo ?? undefined, selectedPaperIds: papers.flatMap((row) => { const id = paperMap.get(row.paperId); return id ? [id] : []; }), evidenceMode: analysis.evidenceMode as GapEvidenceMode, createdAt: analysis.createdAt.toISOString(), updatedAt: analysis.updatedAt.toISOString() };
 }
 
 async function directionsDto(row: { id: string; gapId: string; model: string; updatedAt: Date }): Promise<GapDirections> {
@@ -110,14 +112,20 @@ export const gapsService = {
   async runGapPipeline(job: GapJob): Promise<void> {
     const analysis = await resolveAnalysis(job.analysisId); if (!analysis) { logger.warn({ analysisId: job.analysisId }, "gap analysis vanished before processing"); return; } if (analysis.status === "ready") return;
     await getPrisma().gapAnalysis.update({ where: { id: analysis.id }, data: { status: "analyzing" } });
-    const evidenceMode = analysis.evidenceMode as GapEvidenceMode; const queryVector = evidenceMode === "selected" ? undefined : await getEmbeddingProvider().embed(analysis.topic);
+    const evidenceMode = analysis.evidenceMode as GapEvidenceMode;
+    let queryVector: number[] | undefined;
+    {
+      try { queryVector = await getEmbeddingProvider().embed(analysis.topic); }
+      catch (error) { logger.warn({ err: error }, "Gap query embedding unavailable; using full-text retrieval"); }
+    }
     const user = await getPrisma().user.findUniqueOrThrow({ where: { id: analysis.userId } }); const project = analysis.projectId ? await getPrisma().project.findUnique({ where: { id: analysis.projectId } }) : null;
     const projectPaperIds = project ? await projectService.getProjectPaperIdsForUser(publicDatabaseId(project), publicDatabaseId(user), "gap analysis") : undefined;
     const selectedLinks = await getPrisma().gapAnalysisPaper.findMany({ where: { analysisId: analysis.id }, orderBy: { position: "asc" } }); const selectedRows = await getPrisma().paper.findMany({ where: { id: { in: selectedLinks.map((row) => row.paperId) } }, select: { id: true, legacyMongoId: true } }); const selectedMap = new Map(selectedRows.map((row) => [row.id, publicDatabaseId(row)]));
     const evidence = await collectGapEvidence({ topic: analysis.topic, queryVector, selectedPaperIds: selectedLinks.flatMap((row) => { const id = selectedMap.get(row.paperId); return id ? [id] : []; }), evidenceMode, yearFrom: analysis.yearFrom ?? undefined, yearTo: analysis.yearTo ?? undefined, projectPaperIds }); const papers = evidence.papers;
+    await getPrisma().gapAnalysis.update({ where: { id: analysis.id }, data: { evidenceSnapshot: papers as never } });
     if (!papers.length || (evidenceMode === "selected" && papers.length < 3)) { await this.markAnalysisFailed(job.analysisId, evidenceMode === "selected" ? "The reviewed evidence pack no longer contains at least 3 active papers." : "Not enough corpus data for this topic — try a broader question."); return; }
     const normalizedTopic = normalizeTopicStr(analysis.topic), model = env.GEMINI_MODEL_DEEP; const cacheKey = buildGapsCacheKey({ normalizedTopic, yearFrom: analysis.yearFrom ?? undefined, yearTo: analysis.yearTo ?? undefined, model, retrievedPaperIds: papers.map((paper) => paper.id) }); let cacheHit = false;
-    const output = await cachedGenerateJSON<GapsLlmOutput>({ task: "gap", promptVersion: GAP_PROMPT_VERSION, keyParts: { legacyCacheKey: cacheKey, normalizedTopic, yearFrom: analysis.yearFrom, yearTo: analysis.yearTo, retrievedPaperIds: papers.map((paper) => paper.id) }, model, prompt: buildGapsPrompt(analysis.topic, papers), onCacheHit: () => { cacheHit = true; }, validate: (candidate) => { if (!candidate || !Array.isArray(candidate.gaps) || !candidate.gaps.length) throw new LlmContentError("LLM returned empty gaps output"); return candidate; }, options: { system: GAPS_SYSTEM_PROMPT, temperature: 0.2, maxOutputTokens: env.GAPS_MAX_OUTPUT_TOKENS } });
+    const output = await cachedGenerateJSON<GapsLlmOutput>({ task: "gap", promptVersion: GAP_PROMPT_VERSION, keyParts: { legacyCacheKey: cacheKey, normalizedTopic, yearFrom: analysis.yearFrom, yearTo: analysis.yearTo, retrievedPaperIds: papers.map((paper) => paper.id) }, model, prompt: buildGapsPrompt(analysis.topic, papers), onCacheHit: () => { cacheHit = true; }, validate: (candidate) => { if (!candidate || !Array.isArray(candidate.gaps) || !candidate.gaps.length) throw new LlmContentError("LLM returned empty gaps output"); assertGapReferences(candidate.gaps, papers); return candidate; }, options: { system: GAPS_SYSTEM_PROMPT, temperature: 0.2, maxOutputTokens: env.GAPS_MAX_OUTPUT_TOKENS } });
     const evidenceScopePaperIds = evidenceMode === "auto" ? projectPaperIds : papers.map((paper) => paper.id); const paperRows = await getPrisma().paper.findMany({ where: { OR: papers.map((paper) => idWhere(paper.id)) }, select: { id: true, legacyMongoId: true } }); const paperMap = new Map<string, string>(); for (const row of paperRows) { paperMap.set(publicDatabaseId(row), row.id); paperMap.set(row.id, row.id); }
     const prepared = await Promise.all(output.gaps.slice(0, 5).map(async (gap) => ({ gap, evidence: await scoreGapEvidence(gap.probe, evidenceScopePaperIds) })));
     const gapRows = await getPrisma().$transaction(async (db) => {
@@ -161,9 +169,13 @@ export const gapsService = {
 
 async function collectGapEvidence(input: CollectGapEvidenceInput): Promise<CollectGapEvidenceResult> {
   const selectedPaperIds = [...new Set(input.selectedPaperIds ?? [])]; const selected = input.evidenceMode === "auto" ? { papers: [] as GapEvidenceCandidate[], missingIds: [] as string[] } : await fetchSelectedGapEvidence(selectedPaperIds, input); let retrieved: GapEvidenceCandidate[] = [];
-  if (input.evidenceMode !== "selected") { const filters = { yearFrom: input.yearFrom, yearTo: input.yearTo, paperIds: input.projectPaperIds }; const candidates = input.queryVector?.length ? await retrieveGapEvidence(input.queryVector, filters) : await retrieveGapTextEvidence(input.topic, filters); retrieved = candidates.map((paper) => ({ ...paper, authorNames: paper.authorNames, score: Number(paper.score ?? 0.5), source: "retrieved" })); }
+  if (input.evidenceMode !== "selected") {
+    const filters = { yearFrom: input.yearFrom, yearTo: input.yearTo, paperIds: input.projectPaperIds };
+    const candidates = await retrieve({ queryText: input.topic, queryVector: input.queryVector, topK: env.GAPS_TOP_K, filters, fullText: true });
+    retrieved = candidates.map((paper) => ({ ...paper, source: "retrieved" }));
+  }
   const seen = new Set<string>(), papers: GapEvidenceCandidate[] = []; for (const paper of [...selected.papers, ...retrieved]) { if (papers.length >= env.GAPS_TOP_K) break; if (!seen.has(paper.id)) { seen.add(paper.id); papers.push(paper); } }
-  return { papers, selectedPaperIds, retrievedPaperIds: retrieved.map((paper) => paper.id), missingSelectedPaperIds: selected.missingIds };
+  return { papers: await attachKnowledgeEvidence(papers, input.topic, input.queryVector), selectedPaperIds, retrievedPaperIds: retrieved.map((paper) => paper.id), missingSelectedPaperIds: selected.missingIds };
 }
 
 async function fetchSelectedGapEvidence(values: string[], input: Pick<CollectGapEvidenceInput, "yearFrom" | "yearTo" | "projectPaperIds">) {
@@ -171,11 +183,4 @@ async function fetchSelectedGapEvidence(values: string[], input: Pick<CollectGap
   const papers: GapEvidenceCandidate[] = [], missingIds: string[] = []; for (const value of values) { const doc = byId.get(value); if (!doc) { missingIds.push(value); continue; } papers.push({ id: publicDatabaseId(doc), title: doc.title, abstractText: doc.abstractText ?? undefined, aiAnalysis: doc.aiAnalysis as never, publicationYear: doc.publicationYear, journalName: doc.journalName ?? undefined, citationCount: doc.citationCount, authorNames: authorMap.get(doc.id) ?? [], score: 1, source: "selected" }); } return { papers, missingIds };
 }
 
-async function retrieveGapTextEvidence(topic: string, filters: { yearFrom?: number; yearTo?: number; paperIds?: string[] }) {
-  const ids = filters.paperIds ? await resolvePaperIds(filters.paperIds) : undefined; const terms = topic.split(/\s+/).map((value) => value.trim()).filter((value) => value.length > 1).slice(0, 8); const docs = await getPrisma().paper.findMany({ where: { dataStatus: "active", ...(ids ? { id: { in: ids } } : {}), ...((filters.yearFrom !== undefined || filters.yearTo !== undefined) ? { publicationYear: { ...(filters.yearFrom !== undefined ? { gte: filters.yearFrom } : {}), ...(filters.yearTo !== undefined ? { lte: filters.yearTo } : {}) } } : {}), ...(terms.length ? { OR: terms.flatMap((term) => [{ title: { contains: term, mode: "insensitive" as const } }, { abstractText: { contains: term, mode: "insensitive" as const } }]) } : {}) }, orderBy: [{ citationCount: "desc" }, { publicationYear: "desc" }], take: env.GAPS_TOP_K, select: { id: true, legacyMongoId: true, title: true, abstractText: true, aiAnalysis: true, publicationYear: true, journalName: true, citationCount: true } }); return hydrateEvidence(docs, "retrieved");
-}
-
-async function retrieveGapEvidence(queryVector: number[], filters: { yearFrom?: number; yearTo?: number; paperIds?: string[] }) { const papers = await retrieve({ queryVector, topK: env.GAPS_TOP_K, poolSize: env.GAPS_TOP_K, filters }); return papers.map((paper) => ({ ...paper, authorNames: paper.authorNames, score: Number(paper.score ?? 0.5), source: "retrieved" as const })); }
-
-async function hydrateEvidence(docs: Array<{ id: string; legacyMongoId: string | null; title: string; abstractText: string | null; aiAnalysis: unknown; publicationYear: number; journalName: string | null; citationCount: number }>, source: "selected" | "retrieved") { const authors = await getPrisma().paperAuthor.findMany({ where: { paperId: { in: docs.map((row) => row.id) } }, orderBy: { position: "asc" } }); const map = new Map<string, string[]>(); for (const author of authors) { const list = map.get(author.paperId) ?? []; list.push(author.displayName); map.set(author.paperId, list); } return docs.map((doc) => ({ id: publicDatabaseId(doc), title: doc.title, abstractText: doc.abstractText ?? undefined, aiAnalysis: doc.aiAnalysis as never, publicationYear: doc.publicationYear, journalName: doc.journalName ?? undefined, citationCount: doc.citationCount, authorNames: map.get(doc.id) ?? [], score: 0.5, source })); }
 function toPreviewGapPaper(paper: GapEvidenceCandidate) { return { id: paper.id, title: paper.title, abstractText: paper.abstractText, publicationYear: paper.publicationYear, journalName: paper.journalName, citationCount: paper.citationCount, authorNames: paper.authorNames, score: paper.score, source: paper.source }; }

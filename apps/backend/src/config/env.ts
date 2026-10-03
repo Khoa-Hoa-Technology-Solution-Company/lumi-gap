@@ -161,6 +161,9 @@ const EnvSchema = z.object({
   PAPER_ANALYSIS_BATCH_SIZE: z.coerce.number().int().min(1).max(100).default(25),
   PAPER_ANALYSIS_MAX_PAPERS_PER_RUN: z.coerce.number().int().positive().default(100),
   PAPER_ANALYSIS_MAX_OUTPUT_TOKENS: z.coerce.number().int().positive().default(1024),
+  RAG_MAX_CHUNKS: z.coerce.number().int().min(1).max(400).default(300),
+  RAG_CHUNK_CHARS: z.coerce.number().int().min(500).max(4000).default(2400),
+  RAG_PASSAGES_PER_PAPER: z.coerce.number().int().min(1).max(5).default(3),
 
   // Phase C — RAG analytical reports.
   REPORT_TOP_K: z.coerce.number().int().min(1).max(10).default(8),
