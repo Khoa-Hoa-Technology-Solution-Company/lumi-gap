@@ -22,4 +22,3 @@ ON CONFLICT (slug) DO NOTHING;
 UPDATE communities SET is_forum_category = true WHERE slug = 'general-research' AND visibility = 'public';
 UPDATE forum_posts SET community_id = (SELECT id FROM communities WHERE slug = 'general-research' AND is_forum_category = true)
 WHERE community_id IS NULL AND EXISTS (SELECT 1 FROM communities WHERE slug = 'general-research' AND is_forum_category = true);
-
