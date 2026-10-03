@@ -1,5 +1,6 @@
 export * from "./api/forum.api";
 export * from "./hooks/use-forum";
+export * from "./community-access";
 export * from "./components/forum-author-avatar";
 export * from "./components/forum-author-popover";
 export * from "./components/forum-post-type-badge";

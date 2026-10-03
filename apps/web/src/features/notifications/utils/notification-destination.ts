@@ -17,6 +17,7 @@ export function getNotificationDestination(
       project: "/projects",
       forum_post: "/forum",
       academic_profile: "/academics",
+      community: "/communities",
     };
     if (notification.targetKind) return `${routeByKind[notification.targetKind]}/${notification.targetId}`;
   }

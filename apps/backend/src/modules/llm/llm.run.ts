@@ -2,7 +2,7 @@ import { env } from "../../config/env.js";
 import { cache, hashKey, LLM_CACHE_TTL_SECONDS } from "../../infrastructure/cache.js";
 import { generateJSON, generateText, type GenerateOptions } from "./gemini.client.js";
 
-export type LlmTask = "rerank" | "extract" | "chat" | "report" | "gap" | "judge" | "compare" | "directions" | "trend";
+export type LlmTask = "rerank" | "extract" | "chat" | "report" | "gap" | "judge" | "compare" | "directions" | "trend" | "summary";
 
 interface CachedGenerateBase<T> {
   task: LlmTask;

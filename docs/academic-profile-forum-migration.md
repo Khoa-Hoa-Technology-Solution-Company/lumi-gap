@@ -24,11 +24,16 @@ No legacy Lecturer is marked `VERIFIED`. Verification requires the explicit requ
 
 ## Community behavior
 
-- Public and private communities are discoverable in `/communities`; private discussion content remains membership-gated.
-- Public joins become active immediately. Private joins create a pending request that an owner or moderator can approve or decline. Declined users may request again; banned users may not.
-- Students can join communities. Researcher and Lecturer academic profiles can create them; global moderators and administrators can also create them.
-- Owners and moderators can edit community details, rules and visibility. Moderators can manage regular members. Only the owner or an administrator can assign or remove moderators.
-- Owners cannot leave until ownership-transfer support is added. Other active members can leave, and pending applicants can cancel their request.
+Permissions follow the matrix in `.herdr/specs/research-communities.md` §1.2.
+
+- Public and private communities are discoverable in `/communities`; private discussion content remains membership-gated, and the member roster of a private community is visible to its active members only.
+- **Proposing a community.** Administrators create communities directly (`ACTIVE`). A lecturer or researcher whose academic role is `VERIFIED` (`AcademicProfile.roleVerificationStatus`) files a proposal that starts as `PENDING_APPROVAL`. A self-declared lecturer or researcher cannot propose. Students cannot. Eligibility is computed on the server (`canProposeCommunity` in `/auth/me`); clients never derive it from a role. Each user may have at most 3 proposals waiting, and a name may not duplicate a live or pending community (case, accent and spacing are ignored).
+- **Review.** Only administrators approve or reject. Rejecting requires a note, which the proposer sees. A rejected proposal can be edited by its owner and resubmitted. `PENDING_APPROVAL` and `REJECTED` communities are visible to the owner and administrators only; nobody can join or post in them. Administrators are notified of new proposals; owners are notified of decisions.
+- **Membership.** Public joins become active immediately. Private joins create a pending request that the owner or a moderator can approve or decline (they are notified of new requests, and the requester of the decision). Declined users may request again; banned users may not join. Joining never downgrades an active member.
+- **Roles.** The proposer holds the `owner` membership (one per community). Owners and administrators edit details, rules, topics and visibility, assign or remove moderators, and transfer ownership to an active member. Moderators manage regular members and hide content. Only administrators archive or restore a community, which makes it read-only.
+- **Leaving.** Owners must transfer ownership before leaving. Other active members can leave, and pending applicants can cancel their request.
+- **Counters.** `memberCount` is recomputed from active memberships under a row lock on every membership change, so concurrent joins and leaves cannot drift it.
 - Forum posts can target a community only when the author has an active membership. The post composer therefore lists only communities the current user has joined.
+- **Research data.** A community page lists papers and shareable research gaps matched to its topics with PostgreSQL full-text search (cached for one hour, never an LLM call), and offers an on-demand weekly discussion summary that runs in the `community-summary` worker and is cached in Redis.
 
 Community API responses expose viewer-specific membership state, `canManage`, and `contentRestricted`. They do not expose the internal `ownerId` on public list or detail responses.

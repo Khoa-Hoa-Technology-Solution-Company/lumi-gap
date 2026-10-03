@@ -1,6 +1,6 @@
 import type { Job } from "bullmq";
 import type { Queue } from "bullmq";
-import { aiJobsQueue, apiSyncQueue, corpusValidationQueue, embeddingQueue, gapsQueue, notificationQueue, openAlexIngestQueue, paperAnalysisQueue, reportQueue } from "../../infrastructure/queue.js";
+import { aiJobsQueue, apiSyncQueue, communitySummaryQueue, corpusValidationQueue, embeddingQueue, gapsQueue, notificationQueue, openAlexIngestQueue, paperAnalysisQueue, reportQueue } from "../../infrastructure/queue.js";
 import { readWorkerHeartbeats, type WorkerHeartbeatRecord } from "../../infrastructure/worker-heartbeat.js";
 import { publicDatabaseId } from "../../infrastructure/database/database-id.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
@@ -21,7 +21,8 @@ export type PipelineQueueName =
   | "report"
   | "gaps"
   | "notifications"
-  | "ai-jobs";
+  | "ai-jobs"
+  | "community-summary";
 
 export interface PipelineQueueStatus {
   name: PipelineQueueName;
@@ -494,6 +495,7 @@ export const pipelineService = createPipelineStatusService({
     queueAdapter("gaps", "Research Gaps", gapsQueue),
     queueAdapter("notifications", "Notifications", notificationQueue),
     queueAdapter("ai-jobs", "AI Runs", aiJobsQueue),
+    queueAdapter("community-summary", "Community Summaries", communitySummaryQueue),
   ],
   corpusRepository: {
     countTotalPapers: () => getPrisma().paper.count(),
@@ -547,4 +549,5 @@ const EXPECTED_WORKERS: Array<{ workerName: string; queueName: PipelineQueueName
   { workerName: "worker:openalex-ingest", queueName: "openalex-ingest" },
   { workerName: "worker:corpus-validation", queueName: "corpus-validation" },
   { workerName: "worker:ai-jobs", queueName: "ai-jobs" },
+  { workerName: "worker:community-summary", queueName: "community-summary" },
 ];

@@ -85,27 +85,16 @@ async function fetchRetrievedEvidencePapers(input: CollectReportEvidenceInput): 
   };
 
   if (input.queryVector && input.queryVector.length > 0) {
-    // Most report scope fields are applied after $vectorSearch because the
-    // deployed vector index only guarantees year/status filters. Retrieve a
-    // wider candidate pool so a valid language/taxonomy slice is not discarded
-    // merely because it was absent from the first REPORT_TOP_K global matches.
-    const hasPostVectorScope = hasNonEmptyScope(input.scopeFilters);
     return retrieve({
       queryVector: input.queryVector,
+      queryText: input.queryText,
       topK: env.REPORT_TOP_K,
-      poolSize: hasPostVectorScope ? Math.min(500, Math.max(200, env.REPORT_TOP_K * 20)) : env.REPORT_TOP_K,
-      numCandidates: hasPostVectorScope ? 1000 : 200,
+      poolSize: env.REPORT_TOP_K,
       filters,
-      projection: "report",
     }).then((papers) => papers.map((p) => ({ ...p, source: "retrieved" as const })));
   }
 
   return fetchTextEvidencePapers(input.queryText, filters);
-}
-
-function hasNonEmptyScope(scopeFilters: CollectReportEvidenceInput["scopeFilters"]): boolean {
-  if (!scopeFilters) return false;
-  return Object.values(scopeFilters).some((value) => Array.isArray(value) && value.length > 0);
 }
 
 async function fetchTextEvidencePapers(

@@ -16,7 +16,7 @@ vi.mock("@/features/forum/hooks/use-forum", () => ({
   useShareForumGap: () => ({ isPending: false, mutateAsync: vi.fn() }),
 }));
 
-const joined: CommunityView = { id: "joined", slug: "research-methodology", name: "Research Methodology", description: "", researchTopics: [], visibility: "public", status: "ACTIVE", rules: [], memberCount: 1, threadCount: 0, canManage: false, canEditCommunity: false, contentRestricted: false, viewerMembership: { status: "active", role: "member" } };
+const joined: CommunityView = { id: "joined", slug: "research-methodology", name: "Research Methodology", description: "", researchTopics: [], visibility: "public", status: "ACTIVE", rules: [], memberCount: 1, threadCount: 0, canManage: false, canEditCommunity: false, isOwner: false, isAdmin: false, contentRestricted: false, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z", viewerMembership: { status: "active", role: "member" } };
 const communities = [joined, { ...joined, id: "pending", slug: "pending", name: "Pending community", viewerMembership: { status: "pending" as const, role: "member" as const } }];
 const draft: ForumDiscussionDraft = { type: "QUESTION", communityId: "joined", title: "  A research question  ", content: "  Evidence and methods.  ", tags: "methods, evidence, methods", linkedPaperId: "", linkedGapId: "", linkedProjectId: "", references: [] };
 const render = (url = "/forum/new") => renderToStaticMarkup(<StaticRouter location={url}><ForumNewPage /></StaticRouter>);

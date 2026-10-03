@@ -84,6 +84,14 @@ export function ForumDiscussionComposer({ embedded = false, onClose, onPublished
   const contextEnabled = contextOpen || Boolean(searchParams.get("gap") || searchParams.get("paper"));
   const contextQuery = useForumContext(undefined, contextEnabled);
   const context = contextQuery.data;
+  // A gap opened from a community page may belong to someone else; the server re-checks that it is shareable.
+  const requestedGapId = searchParams.get("gap");
+  const requestedGapTitle = searchParams.get("gapTitle");
+  const contextGaps = useMemo(() => {
+    const own = context?.gaps ?? [];
+    if (!requestedGapId || own.some((gap) => gap.id === requestedGapId)) return own;
+    return [{ id: requestedGapId, title: requestedGapTitle ?? requestedGapId, topic: "", forumShareable: true }, ...own];
+  }, [context?.gaps, requestedGapId, requestedGapTitle]);
   const joined = useMemo(() => (communitiesQuery.data ?? []).filter((community) => community.status === "ACTIVE" && community.viewerMembership?.status === "active"), [communitiesQuery.data]);
 
   const [communityId, setCommunityId] = useState("");
@@ -142,9 +150,9 @@ export function ForumDiscussionComposer({ embedded = false, onClose, onPublished
   useEffect(() => {
     if (initializedGap.current || !context) return;
     initializedGap.current = true;
-    const gap = context.gaps.find((item) => item.id === searchParams.get("gap"));
+    const gap = contextGaps.find((item) => item.id === searchParams.get("gap"));
     if (gap) { setType("RESEARCH_GAP_DISCUSSION"); setLinkedGapId(gap.id); setContextOpen(true); }
-  }, [context, searchParams]);
+  }, [context, contextGaps, searchParams]);
   useEffect(() => {
     if (initializedPaper.current || !context) return;
     initializedPaper.current = true;
@@ -172,7 +180,7 @@ export function ForumDiscussionComposer({ embedded = false, onClose, onPublished
     setDraftHydrated(true);
   }, [draftKey]);
 
-  const selectedGap = context?.gaps.find((gap) => gap.id === linkedGapId);
+  const selectedGap = contextGaps.find((gap) => gap.id === linkedGapId);
   const contextCount = [linkedPaperId, linkedGapId, linkedProjectId].filter(Boolean).length;
   const selectedCommunity = joined.find((community) => community.id === communityId);
   const canPublish = Boolean(communityId && joined.some((community) => community.id === communityId) && title.trim().length >= 3 && content.trim() && (type !== "PAPER_DISCUSSION" || linkedPaperId) && (type !== "RESEARCH_GAP_DISCUSSION" || selectedGap?.forumShareable));
@@ -239,7 +247,7 @@ export function ForumDiscussionComposer({ embedded = false, onClose, onPublished
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (submittingRef.current || create.isPending) return;
-    const result = buildForumDiscussionInput({ type, communityId, title, content, tags, linkedPaperId, linkedGapId, linkedProjectId, references }, joined, context?.gaps ?? []);
+    const result = buildForumDiscussionInput({ type, communityId, title, content, tags, linkedPaperId, linkedGapId, linkedProjectId, references }, joined, contextGaps);
     if ("error" in result) { setError(t(result.error)); setContextOpen(true); return; }
     setError("");
     submittingRef.current = true;
@@ -332,7 +340,7 @@ export function ForumDiscussionComposer({ embedded = false, onClose, onPublished
                   {paperSearchText.trim().length >= 2 && !paperLookupQuery.isLoading && !paperResults.length ? <p className="text-xs text-muted-foreground">{t("No papers found")}</p> : null}
                 </>}
               </div>
-              <label className="min-w-0 space-y-2 text-sm font-medium sm:col-span-2"><span>{t("Candidate Research Gap")}{type === "RESEARCH_GAP_DISCUSSION" ? " *" : ""}</span><select aria-label={t("Candidate Research Gap")} required={type === "RESEARCH_GAP_DISCUSSION"} value={linkedGapId} onChange={(event) => setLinkedGapId(event.target.value)} className={fieldClass}><option value="">{t("No linked research gap")}</option>{context?.gaps.map((gap) => <option key={gap.id} value={gap.id}>{gap.title}{gap.forumShareable ? "" : ` · ${t("Private")}`}</option>)}</select></label>
+              <label className="min-w-0 space-y-2 text-sm font-medium sm:col-span-2"><span>{t("Candidate Research Gap")}{type === "RESEARCH_GAP_DISCUSSION" ? " *" : ""}</span><select aria-label={t("Candidate Research Gap")} required={type === "RESEARCH_GAP_DISCUSSION"} value={linkedGapId} onChange={(event) => setLinkedGapId(event.target.value)} className={fieldClass}><option value="">{t("No linked research gap")}</option>{contextGaps.map((gap) => <option key={gap.id} value={gap.id}>{gap.title}{gap.forumShareable ? "" : ` · ${t("Private")}`}</option>)}</select></label>
             </div>
             {selectedGap && !selectedGap.forumShareable ? <div className="rounded-md border border-border bg-muted/40 p-3 text-sm leading-6"><p>{t("This candidate gap is private. Make it shareable before linking it to a forum thread.")}</p><Button type="button" variant="outline" className="mt-2 h-10" disabled={shareGap.isPending} onClick={() => void shareGap.mutateAsync(selectedGap.id).then(() => toast.success(t("Research gap is now shareable"))).catch(() => toast.error(t("Could not share this research gap")))}>{t("Make gap shareable")}</Button></div> : null}
             <div>

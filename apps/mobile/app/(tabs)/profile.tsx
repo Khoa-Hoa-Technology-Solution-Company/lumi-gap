@@ -124,6 +124,7 @@ export default function ProfileScreen() {
             <SettingsRow icon="upload-cloud" label="Submit Paper" onPress={() => router.push("/submit-paper" as any)} />
             <SettingsRow icon="file-text" label="My Papers" onPress={() => router.push("/my-papers" as any)} />
             <SettingsRow icon="folder" label="Projects" onPress={() => router.push("/projects" as any)} />
+            <SettingsRow icon="users" label="Communities" onPress={() => router.push("/communities" as any)} />
             <SettingsRow icon="award" label="Rankings" onPress={() => router.push("/rankings" as any)} />
             <SettingsRow icon="bell" label="Notifications" onPress={() => router.push("/notifications" as any)} />
           </View>

@@ -6,7 +6,7 @@ export interface NotificationItem {
   message: string;
   type: string;
   paperId: string | null;
-  targetKind: "paper" | "report" | "gap" | "project" | "forum_post" | "academic_profile" | null;
+  targetKind: "paper" | "report" | "gap" | "project" | "forum_post" | "academic_profile" | "community" | null;
   targetId: string | null;
   isRead: boolean;
   createdAt: string;

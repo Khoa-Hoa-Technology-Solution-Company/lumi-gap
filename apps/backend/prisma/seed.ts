@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { getPrisma, disconnectPostgres } from "../src/infrastructure/database/prisma.js";
 import { passwordService } from "../src/modules/auth/password.service.js";
+import { seedCommunities } from "./seed-communities.js";
 import { seedForumPagination } from "./seed-forum-pagination.js";
 
 async function main() {
@@ -210,7 +211,7 @@ async function main() {
       passwordHash: userPasswordHash,
       fullName: "Dr. Nguyen Van A",
       role: "user",
-      systemRole: "RESEARCH_USER",
+      systemRole: "USER",
       accountStatus: "ACTIVE",
       academicProfileType: "lecturer",
       institution: "FPT University",
@@ -223,7 +224,7 @@ async function main() {
     update: {
       passwordHash: userPasswordHash,
       fullName: "Dr. Nguyen Van A",
-      systemRole: "RESEARCH_USER",
+      systemRole: "USER",
       accountStatus: "ACTIVE",
       emailVerifiedAt: new Date(),
       onboardingCompletedAt: new Date(),
@@ -245,6 +246,10 @@ async function main() {
       positionStatus: "VERIFIED",
       orcidStatus: "NOT_SUBMITTED",
       verificationStatus: "VERIFIED",
+      academicRole: "LECTURER",
+      roleVerificationStatus: "VERIFIED",
+      roleVerificationMethod: "MANUAL_REVIEW",
+      roleVerifiedAt: new Date(),
       headline: "Senior Lecturer in Computer Science @ FPT University",
       biography: "Lecturer and researcher focusing on NLP, automated literature reviews, and AI-driven scientific workflows.",
       affiliationDepartment: "Department of Computer Science",
@@ -264,6 +269,10 @@ async function main() {
       emailStatus: "VERIFIED",
       positionStatus: "VERIFIED",
       verificationStatus: "VERIFIED",
+      academicRole: "LECTURER",
+      roleVerificationStatus: "VERIFIED",
+      roleVerificationMethod: "MANUAL_REVIEW",
+      roleVerifiedAt: new Date(),
       onboardingCompletedAt: new Date(),
     },
   });
@@ -293,7 +302,7 @@ async function main() {
       passwordHash: userPasswordHash,
       fullName: "Tran Thi B",
       role: "user",
-      systemRole: "RESEARCH_USER",
+      systemRole: "USER",
       accountStatus: "ACTIVE",
       academicProfileType: "student",
       institution: "FPT University",
@@ -306,7 +315,7 @@ async function main() {
     update: {
       passwordHash: userPasswordHash,
       fullName: "Tran Thi B",
-      systemRole: "RESEARCH_USER",
+      systemRole: "USER",
       accountStatus: "ACTIVE",
       emailVerifiedAt: new Date(),
       onboardingCompletedAt: new Date(),
@@ -521,7 +530,11 @@ async function main() {
 
   await seedForumPagination();
 
-  // 4. Default Sync Config for OpenAlex
+  // 4. Research communities, memberships and sample discussions
+  console.log("💬 Seeding Research Communities...");
+  await seedCommunities(prisma, { lecturer, student, admin: admin1 });
+
+  // 5. Default Sync Config for OpenAlex
   console.log("⚙️  Seeding Default Sync Configs...");
   const existingConfig = await prisma.apiSyncConfig.findFirst({
     where: { providerId: openalexProvider.id },
