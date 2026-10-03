@@ -324,7 +324,7 @@ export function MainLayout() {
       </main>
       {!isForumSurface ? <footer className="border-t bg-white py-6 mt-auto dark:bg-[#0f0f11]">
         <div className="container mx-auto flex flex-col items-center justify-between px-4 text-center text-xs text-slate-500 sm:px-6 md:flex-row md:text-left lg:px-8 dark:text-slate-400">
-          <p className="max-w-full break-words">&copy; {new Date().getFullYear()} {t("Liem Research Team. All rights reserved.")}</p>
+          <p className="max-w-full break-words">&copy; {new Date().getFullYear()} {t("Tori Team. All rights reserved.")}</p>
           <div className="mt-4 flex flex-wrap justify-center gap-x-4 gap-y-2 md:mt-0 md:justify-end">
             <Link to="#" className="hover:text-slate-900 dark:hover:text-white">{t("Privacy Policy")}</Link>
             <Link to="#" className="hover:text-slate-900 dark:hover:text-white">{t("Terms of Service")}</Link>

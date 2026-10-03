@@ -8,8 +8,10 @@ import { authSecurityStrings } from "./auth-security";
 import { newUiStrings } from "./new-ui";
 import { projectInvitationStrings } from "./project-invitations";
 import { studentOnboardingStrings } from "./student-onboarding";
+import { trustSafetyRagStrings } from "./trust-safety-rag";
 
 export const pt: Record<keyof typeof en, string> = {
+  ...trustSafetyRagStrings,
   ...researchHomeEn,
   ...projectInvitationStrings,
   ...studentOnboardingStrings,
@@ -788,7 +790,7 @@ export const pt: Record<keyof typeof en, string> = {
   "Level": "Nível",
   "Level Tiers": "Níveis de nível",
   "Library is empty": "A biblioteca está vazia",
-  "Liem Research Team. All rights reserved.": "Equipe de Pesquisa Liem. Todos os direitos reservados.",
+  "Tori Team. All rights reserved.": "Equipe de Pesquisa Liem. Todos os direitos reservados.",
   "LiemResearch logo": "Logotipo da LiemResearch",
   "Limitations": "Limitações",
   "Live": "Ao vivo",

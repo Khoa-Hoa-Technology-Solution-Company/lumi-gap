@@ -8,7 +8,7 @@ import { paperService } from "./paper.service.js";
 import { comparePapers } from "./paper.compare.js";
 import { PaperListQuerySchema } from "./dto/paper.schema.js";
 import { CompareBodySchema } from "./dto/compare.schema.js";
-import { embeddingQueue } from "../../infrastructure/queue.js";
+import { embeddingQueue, paperAnalysisQueue } from "../../infrastructure/queue.js";
 import { env } from "../../config/env.js";
 import rateLimit from "express-rate-limit";
 import { validate } from "../../common/middleware/validate.js";
@@ -19,8 +19,20 @@ import { runEmbedding } from "../embeddings/embedding.service.js";
 import { logger } from "../../infrastructure/logger.js";
 import { tokenService } from "../auth/token.service.js";
 import { pdfStorageService } from "../../infrastructure/pdf-storage.service.js";
+import { knowledgeService } from "../knowledge/knowledge.service.js";
+import { z } from "zod";
 
 export const paperRouter: Router = Router();
+
+const knowledgeParams = z.object({ id: z.string().regex(/^(?:[0-9a-f]{24}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i) });
+const knowledgeBody = z.object({ force: z.boolean().default(false) }).default({ force: false });
+const knowledgeLimiter = rateLimit({ windowMs: 3600000, limit: 10, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => req.user!.sub });
+paperRouter.get("/:id/knowledge", requireAuth, validate(knowledgeParams, "params"), async (req, res) => {
+  res.json({ success: true, data: await knowledgeService.get(String(req.params.id)) });
+});
+paperRouter.post("/:id/knowledge", requireAuth, knowledgeLimiter, validate(knowledgeParams, "params"), validate(knowledgeBody), async (req, res) => {
+  res.status(202).json({ success: true, data: await knowledgeService.requestIndex(String(req.params.id), req.body.force) });
+});
 
 const translationLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
@@ -48,8 +60,10 @@ const compareLimiter = rateLimit({
     }),
 });
 
-const triggerEmbedding = () => {
+const triggerEmbedding = (paperId?: string) => {
   embeddingQueue.add("manual-embedding", {}).catch(() => {});
+  paperAnalysisQueue.add("paper-corpus-updated", {}).catch((error) => logger.warn({ err: error }, "Could not enqueue paper knowledge indexing"));
+  if (paperId) knowledgeService.requestIndex(paperId).catch((error) => logger.warn({ err: error, paperId }, "Paper knowledge index request could not be scheduled"));
   // Keep local development convenient without making production API instances
   // perform worker CPU/network work or race the dedicated embedding worker.
   if (env.NODE_ENV !== "production") {
@@ -392,7 +406,7 @@ paperRouter.post("/:id/upload-pdf", requireAuth, uploadSinglePdf, async (req, re
 paperRouter.patch("/:id/accept-pdf", requireAuth, async (req, res, next) => {
   try {
     const paper = await paperService.acceptPdf(String(req.params.id), String(req.user!.sub));
-    triggerEmbedding();
+    triggerEmbedding(paper.id);
     res.json({ success: true, data: paper });
   } catch (error) {
     next(error);
@@ -425,7 +439,7 @@ paperRouter.patch("/:id/status", requireAuth, requireRole("admin"), async (req, 
     const { status, rejectionReason } = req.body as { status: string; rejectionReason?: string };
     if (!status) throw AppError.badRequest("Status is required");
     const paper = await paperService.updateStatus(String(req.params.id), status, rejectionReason);
-    triggerEmbedding();
+    triggerEmbedding(paper.dataStatus === "active" ? paper.id : undefined);
     res.json({ success: true, data: paper });
   } catch (error) {
     next(error);
@@ -465,7 +479,7 @@ paperRouter.patch("/:id", requireAuth, uploadSinglePdf, async (req, res, next) =
       updated = await paperService.resubmit(id, userId, req.body, pdfPath);
     }
 
-    triggerEmbedding();
+    triggerEmbedding(updated.dataStatus === "active" ? updated.id : undefined);
     res.json({ success: true, data: updated });
   } catch (error) {
     next(error);

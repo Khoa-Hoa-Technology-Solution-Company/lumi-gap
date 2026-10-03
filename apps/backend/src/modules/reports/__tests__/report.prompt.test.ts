@@ -25,6 +25,11 @@ function paper(overrides: Partial<EvidencePaper> = {}): EvidencePaper {
 }
 
 describe("buildReportPrompt", () => {
+  it("includes current full-text passages, graph facts and PDF locators", () => {
+    const prompt = buildReportPrompt("Compare methods", [paper({ knowledgeEvidence: { sourceKind: "uploaded_pdf", contentHash: "content", warnings: ["Page 2 has images"], passages: [{ id: "chunk-source", pageNumber: 5, text: "We use Random Forest.", relations: ["USES_METHOD → Random Forest"] }] } })]);
+    expect(prompt).toContain("PDF page 5"); expect(prompt).toContain("chunk-source");
+    expect(prompt).toContain("USES_METHOD"); expect(prompt).toContain("Page 2 has images");
+  });
   it("numbers evidence [1..K] in input order", () => {
     const prompt = buildReportPrompt("LLM in education?", [
       paper({ id: "a", title: "First" }),
@@ -100,7 +105,7 @@ describe("REPORT_SYSTEM_PROMPT", () => {
 
 describe("report language resolution", () => {
   it("bumps prompt version when report language behavior changes", () => {
-    expect(PROMPT_VERSION).toBe("report-v4");
+    expect(PROMPT_VERSION).toBe("report-v5-full-text");
   });
 
   it("detects English from ASCII academic questions", () => {

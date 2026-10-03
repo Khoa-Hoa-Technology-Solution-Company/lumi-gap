@@ -7,8 +7,10 @@ import { newUiStrings } from "./new-ui";
 import { projectInvitationStrings } from "./project-invitations";
 import { studentOnboardingStrings } from "./student-onboarding";
 import { researchHomeEn } from "./research-home-en";
+import { trustSafetyRagStrings } from "./trust-safety-rag";
 
 export const en = {
+  ...trustSafetyRagStrings,
   ...researchHomeEn,
   ...newUiStrings,
   ...projectInvitationStrings,
@@ -838,7 +840,7 @@ export const en = {
   "Level": "Level",
   "Level Tiers": "Level Tiers",
   "Library is empty": "Library is empty",
-  "Liem Research Team. All rights reserved.": "Liem Research Team. All rights reserved.",
+  "Tori Team. All rights reserved.": "Tori Team. All rights reserved.",
   "LiemResearch logo": "LiemResearch logo",
   "Limitations": "Limitations",
   "Live": "Live",

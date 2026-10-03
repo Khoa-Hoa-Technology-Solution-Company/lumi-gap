@@ -191,6 +191,16 @@ services:
     <<: *backend-common
     profiles: ["workers"]
     command: ["pnpm", "--filter", "backend", "worker:paper-analysis"]
+    volumes:
+      - backend-uploads:/app/apps/backend/uploads:ro
+      - ./apps/backend/.keys:/run/secrets:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ai-reviewer:
+        condition: service_healthy
 
   worker-notifications:
     <<: *backend-common

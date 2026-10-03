@@ -1,0 +1,61 @@
+model PaperDocument {
+  id             String   @id @default(uuid()) @db.Uuid
+  paperId        String   @unique @map("paper_id") @db.Uuid
+  paper          Paper    @relation(fields: [paperId], references: [id], onDelete: Cascade)
+  status         String   @default("queued") @db.VarChar(24)
+  sourceKind     String   @default("abstract") @map("source_kind") @db.VarChar(24)
+  sourceHash     String   @map("source_hash") @db.VarChar(64)
+  contentHash    String?  @map("content_hash") @db.VarChar(64)
+  indexVersion   String?  @map("index_version")
+  indexingToken  String?  @map("indexing_token") @db.Uuid
+  pageCount      Int      @default(0) @map("page_count")
+  warnings       String[] @default([])
+  errorMessage   String?  @map("error_message")
+  indexedAt      DateTime? @map("indexed_at") @db.Timestamptz(6)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  chunks         PaperChunk[]
+
+  @@index([status, updatedAt])
+  @@map("paper_documents")
+}
+
+model PaperChunk {
+  id          String @id @default(uuid()) @db.Uuid
+  documentId  String @map("document_id") @db.Uuid
+  document    PaperDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  position    Int
+  pageNumber  Int? @map("page_number")
+  text        String
+  contentHash String @map("content_hash") @db.VarChar(64)
+  embedding   Unsupported("vector(768)")?
+  relations   KnowledgeRelation[]
+
+  @@unique([documentId, position])
+  @@map("paper_chunks")
+}
+
+model KnowledgeEntity {
+  id             String @id @default(uuid()) @db.Uuid
+  kind           String @db.VarChar(32)
+  normalizedName String @map("normalized_name")
+  name           String
+  relations      KnowledgeRelation[]
+
+  @@unique([kind, normalizedName])
+  @@map("knowledge_entities")
+}
+
+// Paper is the subject; entity is the object. Each edge has an exact source quote.
+model KnowledgeRelation {
+  id       String @id @default(uuid()) @db.Uuid
+  chunkId  String @map("chunk_id") @db.Uuid
+  chunk    PaperChunk @relation(fields: [chunkId], references: [id], onDelete: Cascade)
+  entityId String @map("entity_id") @db.Uuid
+  entity   KnowledgeEntity @relation(fields: [entityId], references: [id], onDelete: Restrict)
+  kind     String @db.VarChar(32)
+  quote    String
+
+  @@unique([chunkId, entityId, kind])
+  @@index([entityId, kind])
+  @@map("knowledge_relations")
+}
