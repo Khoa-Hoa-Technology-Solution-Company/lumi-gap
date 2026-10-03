@@ -2,6 +2,7 @@ import { lazy, Suspense } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { ProtectedRoute } from "@/components/protected-route";
 import { LITERATURE_PATH } from "@/features/home/utils/home-search";
+import { loadForumDetailPage } from "@/features/forum/utils/forum-page-loading";
 
 const MainLayout = lazy(() => import("@/layouts/MainLayout").then((m) => ({ default: m.MainLayout })));
 const AdminLayout = lazy(() => import("@/layouts/AdminLayout").then((m) => ({ default: m.AdminLayout })));
@@ -51,7 +52,9 @@ const AdminHomePage = lazy(() => import("@/pages/admin").then((m) => ({ default:
 const NotFoundPage = lazy(() => import("@/pages/not-found").then((m) => ({ default: m.NotFoundPage })));
 const RankingsPage = lazy(() => import("@/pages/rankings").then((m) => ({ default: m.RankingsPage })));
 const ForumListPage = lazy(() => import("@/pages/forum/forum-list").then((m) => ({ default: m.ForumListPage })));
-const ForumDetailPage = lazy(() => import("@/pages/forum/forum-detail").then((m) => ({ default: m.ForumDetailPage })));
+const ForumCategoriesPage = lazy(() => import("@/pages/forum/forum-categories").then((m) => ({ default: m.ForumCategoriesPage })));
+const ForumCategoryDirectoryPage = lazy(() => import("@/pages/forum/forum-category-directory").then((m) => ({ default: m.ForumCategoryDirectoryPage })));
+const ForumDetailPage = lazy(loadForumDetailPage);
 const ForumNewPage = lazy(() => import("@/pages/forum/forum-new").then((m) => ({ default: m.ForumNewPage })));
 const ForumModerationPage = lazy(() => import("@/pages/forum/forum-moderation").then((m) => ({ default: m.ForumModerationPage })));
 const ForumCopyrightPage = lazy(() => import("@/pages/forum/forum-copyright").then((m) => ({ default: m.ForumCopyrightPage })));
@@ -133,6 +136,8 @@ export function AppRoutes() {
           <Route path="/trends" element={<TrendsPage />} />
           <Route path="/trends/:topic" element={<TopicDetailPage />} />
           <Route path="/forum" element={<ForumListPage />} />
+          <Route path="/forum/categories" element={<ForumCategoryDirectoryPage />} />
+          <Route path="/forum/category/:categorySlug" element={<ForumListPage />} />
           <Route path="/forum/copyright" element={<ForumCopyrightPage />} />
           <Route path="/forum/:id/:postNumber?" element={<ForumDetailPage />} />
           <Route path="/communities" element={<CommunityListPage />} />
@@ -151,6 +156,7 @@ export function AppRoutes() {
           {/* Protected (any signed-in user) */}
           <Route element={<ProtectedRoute />}>
             <Route path="/forum/moderation" element={<ForumModerationPage />} />
+            <Route path="/forum/categories/manage" element={<ForumCategoriesPage />} />
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/bookmarks" element={<BookmarksPage />} />
             <Route path="/notifications" element={<NotificationsPage />} />

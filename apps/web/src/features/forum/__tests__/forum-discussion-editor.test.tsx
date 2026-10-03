@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { StaticRouter } from "react-router-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { CommunityView } from "../api/forum.api";
+import type { ForumCategoryView } from "../api/forum.api";
 import { buildForumDiscussionInput, formatForumMarkdown, forumInitialDiscussionType, forumMarkdownShortcut, forumNewDiscussionHref, insertForumMarkdown, type ForumDiscussionDraft } from "../utils/forum-discussion-editor";
 import { ForumNewPage } from "@/pages/forum/forum-new";
 import { ForumMarkdown } from "../components/forum-markdown";
@@ -10,21 +10,24 @@ import { ForumMarkdown } from "../components/forum-markdown";
 const state = vi.hoisted(() => ({ loading: false, error: false, pending: false }));
 vi.mock("@/i18n", () => ({ useI18n: () => ({ t: (key: string) => key, language: "en" }) }));
 vi.mock("@/features/forum/hooks/use-forum", () => ({
-  useCommunities: () => ({ data: state.loading || state.error ? undefined : communities, isLoading: state.loading, isError: state.error, refetch: vi.fn() }),
   useForumContext: () => ({ data: { papers: [{ id: "paper", title: "Study", publicationYear: 2026 }], gaps: [{ id: "gap", title: "Candidate", forumShareable: false }], projects: [{ id: "project", title: "Project" }] }, isLoading: false, isError: false, refetch: vi.fn() }),
   useCreateForumPost: () => ({ isPending: state.pending, mutateAsync: vi.fn() }),
   useShareForumGap: () => ({ isPending: false, mutateAsync: vi.fn() }),
 }));
+vi.mock("@/features/forum/hooks/use-forum-categories", () => ({
+  useForumCategories: () => ({ data: state.loading || state.error ? undefined : communities, isLoading: state.loading, isError: state.error, refetch: vi.fn() }),
+  useForumTags: () => ({ data: [] }),
+}));
 
-const joined: CommunityView = { id: "joined", slug: "research-methodology", name: "Research Methodology", description: "", researchTopics: [], visibility: "public", status: "ACTIVE", rules: [], memberCount: 1, threadCount: 0, canManage: false, canEditCommunity: false, isOwner: false, isAdmin: false, contentRestricted: false, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z", viewerMembership: { status: "active", role: "member" } };
-const communities = [joined, { ...joined, id: "pending", slug: "pending", name: "Pending community", viewerMembership: { status: "pending" as const, role: "member" as const } }];
+const joined: ForumCategoryView = { id: "joined", slug: "research-methodology", name: "Research Methodology", description: "", status: "ACTIVE", sortOrder: 0 };
+const communities = [joined, { ...joined, id: "pending", slug: "archived", name: "Archived category", status: "ARCHIVED" as const }];
 const draft: ForumDiscussionDraft = { type: "QUESTION", communityId: "joined", title: "  A research question  ", content: "  Evidence and methods.  ", tags: "methods, evidence, methods", linkedPaperId: "", linkedGapId: "", linkedProjectId: "", references: [] };
 const render = (url = "/forum/new") => renderToStaticMarkup(<StaticRouter location={url}><ForumNewPage /></StaticRouter>);
 beforeEach(() => { state.loading = false; state.error = false; state.pending = false; });
 
 describe("New discussion composer", () => {
   it("keeps community/type defaults but does not carry list sorting or search into a new post", () => {
-    expect(forumNewDiscussionHref(new URLSearchParams("community=research-methodology&type=PAPER_DISCUSSION&page=3&feed=popular&q=abc"))).toBe("/forum/new?community=research-methodology&type=PAPER_DISCUSSION");
+    expect(forumNewDiscussionHref(new URLSearchParams("community=research-methodology&type=PAPER_DISCUSSION&page=3&feed=popular&q=abc"))).toBe("/forum/new?category=research-methodology&type=PAPER_DISCUSSION");
     expect(forumNewDiscussionHref(new URLSearchParams("type=PAPER_DISCUSSION&paper=paper&page=2"))).toBe("/forum/new?type=PAPER_DISCUSSION&paper=paper");
     expect(forumNewDiscussionHref(new URLSearchParams("type=invalid"))).toBe("/forum/new");
     expect(forumInitialDiscussionType(new URLSearchParams("type=DISCUSSION"))).toBe("DISCUSSION");
@@ -46,7 +49,7 @@ describe("New discussion composer", () => {
     expect(markup).not.toContain('id="discussion-research-context"');
     expect(markup).not.toContain('aria-label="Paper Citation Title"');
     expect(markup).not.toContain('aria-label="DOI"');
-    const select = markup.match(/<select aria-label="Community"[^>]*>(.*?)<\/select>/)?.[1];
+    const select = markup.match(/<select aria-label="Category"[^>]*>(.*?)<\/select>/)?.[1];
     expect(select).toContain('value="joined"');
     expect(select).not.toContain('value="pending"');
   });
@@ -63,10 +66,10 @@ describe("New discussion composer", () => {
 
   it("shows honest loading/retry states and disables the form while publishing", () => {
     state.loading = true;
-    expect(render()).toContain("Loading communities");
+    expect(render()).toContain("Loading categories");
     expect(render()).not.toContain("You need to join a research community before posting.");
     state.loading = false; state.error = true;
-    expect(render()).toContain("Could not load communities.");
+    expect(render()).toContain("Could not load categories.");
     state.error = false; state.pending = true;
     expect(render()).toContain('<fieldset disabled=""');
     expect(render()).toContain("Publishing…");
@@ -143,7 +146,7 @@ describe("Discussion submission contract", () => {
     const result = buildForumDiscussionInput(draft, [joined], []);
     expect(result).toEqual({ input: { type: "QUESTION", communityId: "joined", title: "A research question", content: "Evidence and methods.", tags: ["methods", "evidence"], linkedPaperId: undefined, linkedResearchGapId: undefined, linkedProjectId: undefined, references: [] } });
   });
-  it("requires joined membership and valid title/body", () => {
+  it("requires an active category and valid title/body without membership", () => {
     expect(buildForumDiscussionInput(draft, [], [])).toHaveProperty("error");
     for (const change of [{ title: "ab" }, { title: "a".repeat(241) }, { content: " " }, { content: "a".repeat(20001) }, { tags: "a".repeat(81) }, { tags: Array.from({ length: 13 }, (_, i) => `tag${i}`).join(",") }]) expect(buildForumDiscussionInput({ ...draft, ...change }, [joined], [])).toHaveProperty("error");
   });

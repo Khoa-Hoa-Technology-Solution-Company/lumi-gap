@@ -9,6 +9,7 @@ import { accountManagementStrings } from "./account-management";
 import { projectLiteratureViStrings } from "./project-literature";
 import { projectInvitationStrings } from "./project-invitations";
 import { studentOnboardingStrings } from "./student-onboarding";
+import { studentOnboardingViStrings } from "./student-onboarding-vi";
 import { forumRefinementVi } from "./forum-refinement";
 import { forumRefinementViOverrides } from "./forum-refinement-vi-overrides";
 import { researchHomeVi } from "./research-home";
@@ -2398,4 +2399,5 @@ export const vi: Record<keyof typeof en, string> = {
   "Members can start discussions once an administrator approves this community.": "Thành viên có thể bắt đầu thảo luận khi quản trị viên duyệt cộng đồng này.",
   ...(forumRefinementVi as Record<string, string>),
   ...(forumRefinementViOverrides as Record<string, string>),
+  ...(studentOnboardingViStrings as Record<string, string>),
 };

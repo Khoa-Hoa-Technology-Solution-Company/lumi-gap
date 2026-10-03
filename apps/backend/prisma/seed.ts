@@ -429,11 +429,11 @@ async function main() {
     "I would distinguish perceived usefulness from correctness. Developer trust is an outcome to measure, not a substitute for independent assessment of the suggested change.",
   ];
   const forumCommunityRows = [] as Array<{ id: string; slug: string }>;
-  for (const [name, slug, description] of communities) {
+  for (const [sortOrder, [name, slug, description]] of communities.entries()) {
     const community = await prisma.community.upsert({
       where: { slug },
-      create: { name, slug, description, researchField: name, researchTopics: [name, "Research methods"], rules: ["Cite evidence when making empirical claims.", "Keep critique focused on methods and results."], ownerId: admin2.id, visibility: "public", status: "ACTIVE" },
-      update: {},
+      create: { name, slug, description, researchField: name, researchTopics: [name, "Research methods"], rules: ["Cite evidence when making empirical claims.", "Keep critique focused on methods and results."], ownerId: admin2.id, visibility: "public", status: "ACTIVE", isForumCategory: true, sortOrder },
+      update: { isForumCategory: true },
     });
     forumCommunityRows.push({ id: community.id, slug: community.slug });
     for (const member of [admin2, lecturer, student, ...seededForumUsers.map((user) => ({ ...user }))]) {

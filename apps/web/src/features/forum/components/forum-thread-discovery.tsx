@@ -8,7 +8,7 @@ import { useForumDiscovery } from "../hooks/use-forum";
 import { formatForumActivityTime, formatForumNumber, forumPostHref } from "../utils/forum-helpers";
 
 const reasonLabels: Record<ForumDiscoveryReason, string> = {
-  SAME_PAPER: "Same paper", SAME_GAP: "Same candidate gap", SHARED_TAGS: "Shared research tags", SIMILAR_TOPIC: "Similar topic", SAME_COMMUNITY: "In this community", RECENT_DISCUSSION: "Recent discussion",
+  SAME_PAPER: "Same paper", SAME_GAP: "Same candidate gap", SHARED_TAGS: "Shared research tags", SIMILAR_TOPIC: "Similar topic", SAME_COMMUNITY: "In this category", RECENT_DISCUSSION: "Recent discussion",
 };
 
 export function ForumThreadDiscovery({ postId }: { postId: string }) {
@@ -51,10 +51,10 @@ export function ForumThreadDiscoveryView({ data, loading, error, onRetry }: { da
           <caption className="sr-only">{t(tab === "suggested" ? "Suggested discussions" : "Related discussions")}</caption>
           <thead className="text-xs text-muted-foreground"><tr><th scope="col" className="pb-2 text-left font-medium">{t("Topic")}</th><th scope="col" className="w-14 pb-2 text-right font-medium sm:w-16">{t("Replies")}</th><th scope="col" className="hidden w-16 pb-2 text-right font-medium sm:table-cell">{t("Views")}</th><th scope="col" className="w-14 pb-2 text-right font-medium sm:w-20">{t("Activity")}</th></tr></thead>
           <tbody className="divide-y divide-border">{topics.map((topic) => <tr key={topic.id}>
-            <td className="py-4 pr-3 align-top"><Link to={forumPostHref(topic)} className="break-words font-medium leading-snug text-foreground hover:text-primary hover:underline focus-visible:rounded focus-visible:ring-2 focus-visible:ring-ring">{topic.title}</Link><div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">{topic.community ? <Link to={`/forum?community=${encodeURIComponent(topic.community.slug)}`} className="hover:text-primary hover:underline">{topic.community.name}</Link> : null}{topic.reason !== "SAME_COMMUNITY" || !topic.community ? <span>{t(reasonLabels[topic.reason] ?? "Similar topic")}</span> : null}</div></td>
+            <td className="py-4 pr-3 align-top"><Link to={forumPostHref(topic)} className="break-words font-medium leading-snug text-foreground hover:text-primary hover:underline focus-visible:rounded focus-visible:ring-2 focus-visible:ring-ring">{topic.title}</Link><div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">{topic.community ? <Link to={`/forum?category=${encodeURIComponent(topic.community.slug)}`} className="hover:text-primary hover:underline">{t(topic.community.name)}</Link> : null}{topic.reason !== "SAME_COMMUNITY" || !topic.community ? <span>{t(reasonLabels[topic.reason] ?? "Similar topic")}</span> : null}</div></td>
             <td className="py-4 text-right align-top tabular-nums">{formatForumNumber(topic.replyCount, language)}</td><td className="hidden py-4 text-right align-top tabular-nums text-muted-foreground sm:table-cell">{formatForumNumber(topic.viewCount, language)}</td><td className="py-4 text-right align-top text-muted-foreground"><time dateTime={topic.lastActivityAt ?? topic.createdAt} title={new Date(topic.lastActivityAt ?? topic.createdAt).toLocaleString(language)}>{formatForumActivityTime(topic.lastActivityAt ?? topic.createdAt, language)}</time></td>
           </tr>)}</tbody>
-        </table> : <p className="py-6 text-sm text-muted-foreground">{t(tab === "suggested" ? "No other discussions in this community yet." : "No related discussions found yet.")}</p>}
+        </table> : <p className="py-6 text-sm text-muted-foreground">{t(tab === "suggested" ? "No other discussions in this category yet." : "No related discussions found yet.")}</p>}
       </div>
       <p className="mt-3 text-xs leading-relaxed text-muted-foreground">{t("Discussion suggestions are for discovery, not scientific evidence.")}</p>
     </section>

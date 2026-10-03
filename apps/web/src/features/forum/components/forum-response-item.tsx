@@ -12,6 +12,7 @@ import { formatForumRelativeTime } from "../utils/forum-helpers";
 import { useI18n } from "@/i18n";
 import { cn } from "@/utils/cn";
 import { ForumReactionPicker } from "./forum-reaction-picker";
+import { ForumHelpfulButton } from "./forum-helpful-button";
 import { ForumAuthorPopover } from "./forum-author-popover";
 import { ForumEditHistory } from "./forum-edit-history";
 import { forumPostHref } from "../utils/forum-helpers";
@@ -26,6 +27,8 @@ interface ForumResponseItemProps {
   canReply: boolean;
   readOnly?: boolean;
   reactionPending?: boolean;
+  helpfulPending?: boolean;
+  onHelpful?: () => void;
   acceptancePending?: boolean;
   isOP?: boolean;
   linkedGapId?: string;
@@ -48,7 +51,7 @@ interface ForumResponseItemProps {
   authorTopicPostCount?: number;
   onJumpToPost?: (postNumber: number) => void;
 }
-export function ForumResponseItem({ comment, isQuestion, isPostOwner, isCommentOwner, isAuthed, canReply, readOnly, reactionPending = false, acceptancePending = false, isOP = false, linkedGapId, ordinal, onReviewCitation, onReply, onEdit, onDelete, onReport, onModerate, onReaction, onAccept, onFilterAuthor, replies = [], post, postNumberForComment, authorTopicPostCount, onJumpToPost }: ForumResponseItemProps) {
+export function ForumResponseItem({ comment, isQuestion, isPostOwner, isCommentOwner, isAuthed, canReply, readOnly, reactionPending = false, helpfulPending = false, onHelpful, acceptancePending = false, isOP = false, linkedGapId, ordinal, onReviewCitation, onReply, onEdit, onDelete, onReport, onModerate, onReaction, onAccept, onFilterAuthor, replies = [], post, postNumberForComment, authorTopicPostCount, onJumpToPost }: ForumResponseItemProps) {
   const { t, language } = useI18n();
   const [repliesExpanded, setRepliesExpanded] = useState(false);
   const active = comment.status === "active";
@@ -76,6 +79,7 @@ export function ForumResponseItem({ comment, isQuestion, isPostOwner, isCommentO
             {active ? <>
               {isQuestion && isPostOwner && !readOnly ? <Button type="button" variant="ghost" size="sm" disabled={acceptancePending} onClick={onAccept} className={cn("gap-1.5 text-muted-foreground", comment.isAccepted && "text-emerald-700 dark:text-emerald-300")} title={t("This marks the author's accepted response, not scientific verification.")}><Check aria-hidden="true" className="h-4 w-4" />{t(comment.isAccepted ? "Unaccept response" : "Accept response")}</Button> : null}
             </> : null}
+            {active ? <ForumHelpfulButton count={comment.helpfulCount} selected={comment.viewerVote === 1} disabled={readOnly} pending={helpfulPending} onToggle={onHelpful} /> : null}
             {active ? <ForumReactionPicker countsOnly target={{ scope: "comment", id: comment.id }} counts={comment.reactionCounts} viewerReactions={comment.viewerReactions} reactionUsers={comment.reactionUsers} isAuthed={isAuthed} disabled={readOnly} pending={reactionPending} onToggle={onReaction ?? (() => undefined)} /> : null}
             {replies.length ? <button type="button" aria-expanded={repliesExpanded} onClick={() => setRepliesExpanded((previous) => !previous)} className="forum-post-reply-count inline-flex items-center gap-1 rounded px-2 py-1 text-sm text-muted-foreground hover:text-foreground">{replies.length} {t(replies.length === 1 ? "reply" : "replies")}<ChevronDown aria-hidden="true" className={cn("h-3 w-3", repliesExpanded && "rotate-180")} /></button> : null}
             <div className="forum-post-action-links ml-auto inline-flex items-center gap-0.5">

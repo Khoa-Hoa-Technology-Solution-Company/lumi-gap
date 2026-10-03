@@ -29,12 +29,12 @@ export function ForumLayout({
         )}
       >
         {sidebar}
-        <div className={cn("forum-content mx-auto w-full min-w-0 max-w-[calc(var(--forum-reading-width)+4rem)] px-3 pb-12 pt-3 sm:px-6 sm:pt-5 lg:px-6 xl:px-8 xl:pt-8", contentClassName)}>{children}</div>
+        <div className={cn("forum-content w-full min-w-0 px-3 pb-12 pt-2 sm:px-5 sm:pt-4 lg:px-6 xl:px-7 xl:pt-6", contentClassName)}>{children}</div>
       </div>
     </div>
   );
 }
 
 export function ForumSurface({ children, className, ...props }: HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("forum-surface mx-auto min-w-0 rounded-xl border border-border/80", className)} {...props}>{children}</div>;
+  return <div className={cn("forum-surface min-w-0", className)} {...props}>{children}</div>;
 }

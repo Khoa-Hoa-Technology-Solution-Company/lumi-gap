@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { useAdminUsers } from "@/features/admin/hooks/use-admin-users";
-import { useCommunities } from "@/features/forum/hooks/use-forum";
+import { useForumCategories } from "@/features/forum/hooks/use-forum-categories";
 import { forumApi, type ForumAppealView, type ForumCopyrightClaim, type ForumQueueAction, type ForumQueueReport } from "@/features/forum/api/forum.api";
 import { useAuthStore } from "@/stores/auth-store";
 import { cn } from "@/utils/cn";
@@ -34,7 +34,7 @@ export function AdminTrustSafetyPage() {
   const restrictions = useQuery({ queryKey: ["admin", "forum", viewer, "restrictions"], queryFn: forumApi.restrictions, enabled: tab === "restrictions" });
   const copyright = useQuery({ queryKey: ["admin", "forum", viewer, "copyright"], queryFn: forumApi.copyrightClaims, enabled: tab === "copyright" });
   const users = useAdminUsers({ role: "ADMIN", accountStatus: "ACTIVE", pageSize: 100 }, tab === "reports");
-  const communities = useCommunities();
+  const categories = useForumCategories();
   const mutation = useMutation({
     mutationFn: (operation: () => Promise<unknown>) => operation(),
     onSuccess: async () => {
@@ -58,7 +58,7 @@ export function AdminTrustSafetyPage() {
       <Button className="ml-auto" size="sm" variant="outline" disabled={current.isFetching} onClick={() => { void current.refetch(); }}><RefreshCw className="h-4 w-4" />Refresh</Button>
     </div>
     {current.isPending ? <p role="status" className={card}>Loading…</p> : current.isError ? <p role="alert" className={card}>Could not load this queue. Use Refresh to try again.</p> : current.data?.length === 0 ? <div className={cn(card, "py-12 text-center text-muted-foreground")}><CheckCircle2 className="mx-auto mb-3 h-6 w-6" />There are no items in this view.</div> : <div className="space-y-4">
-      {tab === "reports" ? queue.data?.map((report) => <ReportEditor key={report.id} report={report} viewer={viewer} admins={users.data?.data ?? []} communities={communities.data ?? []} pending={pending} run={run} />) : null}
+      {tab === "reports" ? queue.data?.map((report) => <ReportEditor key={report.id} report={report} viewer={viewer} admins={users.data?.data ?? []} categories={categories.data ?? []} pending={pending} run={run} />) : null}
       {tab === "appeals" ? appeals.data?.map((appeal) => <AppealEditor key={appeal.id} appeal={appeal} pending={pending} run={run} />) : null}
       {tab === "restrictions" ? restrictions.data?.map((restriction) => {
         const expired = Boolean(restriction.expiresAt && new Date(restriction.expiresAt) <= new Date());
@@ -77,9 +77,9 @@ function DecisionNote({ value, onChange, maxLength = 5000 }: { value: string; on
   return <label className="block space-y-2 text-sm"><span className="font-medium">Decision reason</span><textarea className={control} rows={3} minLength={3} maxLength={maxLength} value={value} onChange={(event) => onChange(event.target.value)} placeholder="Explain the decision for the affected user and the audit history." /></label>;
 }
 
-function ReportEditor({ report, viewer, admins, communities, pending, run }: {
+function ReportEditor({ report, viewer, admins, categories, pending, run }: {
   report: ForumQueueReport; viewer?: string; admins: Array<{ id: string; fullName: string }>;
-  communities: Array<{ id: string; name: string; status: string }>; pending: boolean; run: Run;
+  categories: Array<{ id: string; name: string; status: string }>; pending: boolean; run: Run;
 }) {
   const [action, setAction] = useState<ForumQueueAction>("DISMISS_REPORT");
   const [reason, setReason] = useState("");
@@ -95,7 +95,7 @@ function ReportEditor({ report, viewer, admins, communities, pending, run }: {
       <div className="flex flex-wrap items-center gap-3"><Button size="sm" variant="outline" disabled={pending} onClick={() => run(() => forumApi.claimReport(report.id, report.version))}>{report.assignedToId === viewer ? "Renew my claim" : "Claim report"}</Button>{report.claimExpiresAt ? <span className="text-xs text-muted-foreground">Claim expires {new Date(report.claimExpiresAt).toLocaleString()}</span> : null}</div>
       <div className="flex flex-wrap items-end gap-3"><label className="min-w-48 flex-1 space-y-2 text-sm"><span>Assign to an active Admin</span><select className={control} value={assignee} onChange={(event) => setAssignee(event.target.value)}><option value="">Select an Admin</option>{admins.map((admin) => <option key={admin.id} value={admin.id}>{admin.fullName}</option>)}</select></label><Button size="sm" variant="outline" disabled={pending || !assignee} onClick={() => run(() => forumApi.reassignReport(report.id, assignee, report.version))}>Reassign</Button></div>
       <label className="block space-y-2 text-sm"><span>Moderation action</span><select className={control} value={action} onChange={(event) => setAction(event.target.value as ForumQueueAction)}>{actions.map((value) => <option key={value} value={value}>{actionLabels[value]}</option>)}</select></label>
-      {action === "MOVE_THREAD" ? <label className="block space-y-2 text-sm"><span>Destination community</span><select className={control} value={destination} onChange={(event) => setDestination(event.target.value)}><option value="">Select a community</option>{communities.filter((community) => community.status === "ACTIVE" && community.id !== report.communityId).map((community) => <option key={community.id} value={community.id}>{community.name}</option>)}</select></label> : null}
+      {action === "MOVE_THREAD" ? <label className="block space-y-2 text-sm"><span>Destination category</span><select className={control} value={destination} onChange={(event) => setDestination(event.target.value)}><option value="">Select a category</option>{categories.filter((category) => category.status === "ACTIVE" && category.id !== report.communityId).map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label> : null}
       {action === "RESTRICT_USER" ? <p className="text-sm text-muted-foreground">This action restricts the author's posting across the forum until revoked.</p> : null}
       <DecisionNote value={reason} onChange={setReason} maxLength={2000} />
       <Button disabled={pending || reason.trim().length < 3 || (action === "MOVE_THREAD" && !destination)} onClick={() => run(() => forumApi.reportAction(report.id, action, { reason: reason.trim(), expectedVersion: report.version, ...(action === "MOVE_THREAD" ? { destinationCommunityId: destination } : {}) }))}>Apply decision</Button>

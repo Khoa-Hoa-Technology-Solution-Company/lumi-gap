@@ -12,7 +12,7 @@ import { ForumFormattingToolbar } from "./forum-formatting-toolbar";
 import { ForumMarkdown } from "./forum-markdown";
 import { formatForumMarkdown, forumMarkdownShortcut, type ForumMarkdownAction, type ForumTableConfig } from "../utils/forum-discussion-editor";
 import { canUseForumVisualEditor, forumRichTextExtensions, forumTableDocument, writeForumFootnote, removeForumFootnote } from "../utils/forum-rich-text";
-import { safeForumImageUrl, forumWrapType } from "../utils/forum-formatting";
+import { forumWrapType } from "../utils/forum-formatting";
 
 type EditorMode = "visual" | "markdown" | "preview";
 export function ForumBodyEditor({ value, onChange, maxLength, label, disabled = false, id, placeholder, describedBy, quoteSource, focusRequest = 0, className, compact = false, footerActions }: {
@@ -25,7 +25,6 @@ export function ForumBodyEditor({ value, onChange, maxLength, label, disabled = 
   const [warning, setWarning] = useState("");
   const [note, setNote] = useState<{ id?: string; text: string }>();
   const [link, setLink] = useState<{ text: string; url: string }>();
-  const [image, setImage] = useState<{ url: string; alt: string }>();
   const [math, setMath] = useState<string>();
   const textarea = useRef<HTMLTextAreaElement>(null);
   const intentionalMarkdown = useRef(false);
@@ -115,7 +114,6 @@ export function ForumBodyEditor({ value, onChange, maxLength, label, disabled = 
   const action = (item: ForumMarkdownAction) => {
     if (disabled) return;
     if (item === "footnote") { setNote({ text: "" }); return; }
-    if (item === "image") { setImage({ url: "", alt: "" }); return; }
     if (item === "math") { setMath(""); return; }
     if (mode === "markdown") { rawInsert(item); return; }
     if (!editor) return;
@@ -230,7 +228,6 @@ export function ForumBodyEditor({ value, onChange, maxLength, label, disabled = 
       </DialogContent>
     </Dialog>
     <Dialog open={Boolean(link)} onOpenChange={(open) => { if (!open) setLink(undefined); }}><DialogContent className="max-w-lg"><DialogHeader><DialogTitle>{t("Link")}</DialogTitle><DialogDescription>{t("Enter a safe web address for the selected text.")}</DialogDescription></DialogHeader><label className="space-y-1 text-sm">{t("Text")}<Input value={link?.text ?? ""} maxLength={1000} onChange={(event) => setLink((current) => ({ url: current?.url ?? "", text: event.target.value }))} /></label><label className="space-y-1 text-sm">URL<Input value={link?.url ?? ""} maxLength={2000} onChange={(event) => setLink((current) => ({ text: current?.text ?? "", url: event.target.value }))} /></label><DialogFooter><Button type="button" variant="ghost" onClick={() => setLink(undefined)}>{t("Cancel")}</Button><Button type="button" disabled={!link?.text.trim() || !/^(https?:\/\/|mailto:)[^\s]+$/i.test(link?.url.trim() ?? "")} onClick={() => { if (link && !disabled) editor?.chain().focus().insertContent({ type: "text", text: link.text, marks: [{ type: "link", attrs: { href: link.url.trim() } }] }).run(); setLink(undefined); }}>{t("Insert link")}</Button></DialogFooter></DialogContent></Dialog>
-    <Dialog open={Boolean(image)} onOpenChange={(open) => { if (!open) setImage(undefined); }}><DialogContent className="max-w-lg"><DialogHeader><DialogTitle>{t("Insert image")}</DialogTitle><DialogDescription>{t("Add an image from a secure HTTPS URL. The image remains a Markdown reference and is not treated as research evidence.")}</DialogDescription></DialogHeader><label className="space-y-1 text-sm"><span>{t("Image URL")}</span><Input value={image?.url ?? ""} placeholder="https://example.org/figure.png" maxLength={2000} onChange={(event) => setImage((current) => ({ url: event.target.value, alt: current?.alt ?? "" }))} /></label><label className="space-y-1 text-sm"><span>{t("Alternative text")}</span><Input value={image?.alt ?? ""} placeholder={t("Describe the image") as string} maxLength={240} onChange={(event) => setImage((current) => ({ url: current?.url ?? "", alt: event.target.value }))} /></label><DialogFooter><Button type="button" variant="ghost" onClick={() => setImage(undefined)}>{t("Cancel")}</Button><Button type="button" disabled={!safeForumImageUrl(image?.url)} onClick={() => { if (!image || disabled) return; const src = safeForumImageUrl(image.url); if (!src) return; const alt = image.alt.trim() || "Image"; if (mode === "markdown") { if (rawInsert("image", undefined, undefined, { url: src, alt })) setImage(undefined); return; } if (editor) { editor.chain().focus().insertContent({ type: "forumImage", attrs: { src, alt } }).run(); setImage(undefined); } }}>{t("Insert image")}</Button></DialogFooter></DialogContent></Dialog>
     <Dialog open={math !== undefined} onOpenChange={(open) => { if (!open) setMath(undefined); }}><DialogContent className="max-w-lg"><DialogHeader><DialogTitle>{t("Insert math")}</DialogTitle><DialogDescription>{t("Enter a LaTeX expression. It will be stored as inline math in the discussion Markdown.")}</DialogDescription></DialogHeader><label className="space-y-1 text-sm"><span>{t("Math expression")}</span><Input autoFocus value={math ?? ""} maxLength={1000} placeholder="E = mc^2" onChange={(event) => setMath(event.target.value)} /></label><DialogFooter><Button type="button" variant="ghost" onClick={() => setMath(undefined)}>{t("Cancel")}</Button><Button type="button" disabled={!math?.trim()} onClick={() => { const expression = math?.trim(); if (disabled || !expression) return; if (mode === "markdown") { if (rawInsert("math", undefined, undefined, undefined, expression)) setMath(undefined); return; } if (editor) { editor.chain().focus().insertContent({ type: "forumInlineMath", attrs: { latex: expression } }).run(); setMath(undefined); } }}>{t("Insert math")}</Button></DialogFooter></DialogContent></Dialog>
   </div>;
 }

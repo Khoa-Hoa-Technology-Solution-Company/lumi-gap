@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { BadgeCheck } from "lucide-react";
 import { cn } from "@/utils/cn";
 import type { ForumAuthorView } from "../api/forum.api";
@@ -7,20 +7,20 @@ import { useAcademicAvatar } from "@/features/academic-profile/hooks/use-academi
 
 interface ForumAuthorAvatarProps {
   author: ForumAuthorView;
-  size?: "xs" | "sm" | "md" | "lg" | "xl";
+  size?: "xs" | "sm" | "md" | "lg" | "xl" | "card";
   showVerifiedBadge?: boolean;
   className?: string;
 }
 
-const GRADIENTS = [
-  "from-blue-500 to-indigo-600 text-white",
-  "from-violet-500 to-purple-600 text-white",
-  "from-emerald-500 to-teal-600 text-white",
-  "from-amber-500 to-orange-600 text-white",
-  "from-rose-500 to-pink-600 text-white",
-  "from-cyan-500 to-blue-600 text-white",
-  "from-fuchsia-500 to-pink-600 text-white",
-  "from-teal-500 to-emerald-600 text-white",
+const AVATAR_COLORS = [
+  "bg-[#486786] text-white",
+  "bg-[#76628b] text-white",
+  "bg-[#52786d] text-white",
+  "bg-[#8d704f] text-white",
+  "bg-[#986574] text-white",
+  "bg-[#4f7885] text-white",
+  "bg-[#806a7d] text-white",
+  "bg-[#63715a] text-white",
 ];
 
 export function getAuthorInitials(name: string): string {
@@ -33,22 +33,23 @@ export function getAuthorInitials(name: string): string {
   return ((first[0] || "") + (last[0] || "")).toUpperCase() || "U";
 }
 
-export function getAuthorGradient(key: string): string {
+function getAuthorColor(key: string): string {
   let hash = 0;
   for (let i = 0; i < key.length; i++) {
     hash = (hash << 5) - hash + key.charCodeAt(i);
     hash |= 0;
   }
-  const index = Math.abs(hash) % GRADIENTS.length;
-  return GRADIENTS[index] || GRADIENTS[0] || "from-blue-500 to-indigo-600 text-white";
+  const index = Math.abs(hash) % AVATAR_COLORS.length;
+  return AVATAR_COLORS[index]!;
 }
 
 const SIZE_CLASSES = {
-  xs: "h-6 w-6 text-[10px]",
+  xs: "h-6 w-6 text-xs font-medium",
   sm: "h-8 w-8 text-xs font-semibold",
   md: "h-10 w-10 text-sm font-semibold",
   lg: "h-12 w-12 text-base font-bold",
   xl: "h-14 w-14 text-lg font-bold",
+  card: "h-24 w-24 text-3xl font-semibold sm:h-32 sm:w-32 sm:text-4xl",
 };
 
 const BADGE_SIZES = {
@@ -57,6 +58,7 @@ const BADGE_SIZES = {
   md: "h-4 w-4 -right-1 -bottom-1",
   lg: "h-4.5 w-4.5 -right-1 -bottom-1",
   xl: "h-5 w-5 -right-1 -bottom-1",
+  card: "h-6 w-6 -right-1 -bottom-1",
 };
 
 export function ForumAuthorAvatar({
@@ -67,31 +69,34 @@ export function ForumAuthorAvatar({
 }: ForumAuthorAvatarProps) {
   const { t } = useI18n();
   const avatarSrc = useAcademicAvatar(author.avatarUrl);
+  const [failedSrc, setFailedSrc] = useState<string>();
+  const showImage = Boolean(avatarSrc && avatarSrc !== failedSrc);
   const initials = useMemo(() => getAuthorInitials(author.fullName), [author.fullName]);
-  const gradient = useMemo(
-    () => getAuthorGradient(author.id || author.fullName),
+  const color = useMemo(
+    () => getAuthorColor(author.id || author.fullName),
     [author.id, author.fullName]
   );
 
   return (
-    <div role="img" aria-label={author.fullName} title={author.fullName} className={cn("relative inline-flex shrink-0 select-none", className)}>
+    <div role="img" aria-label={author.fullName} title={author.fullName} className={cn("forum-author-avatar relative inline-flex shrink-0 select-none rounded-full", className)}>
       <div
         className={cn(
-          "flex items-center justify-center overflow-hidden rounded-full shadow-sm ring-1 ring-black/5 dark:ring-white/10",
+          "relative flex items-center justify-center overflow-hidden rounded-full ring-1 ring-black/5 dark:ring-white/10",
           SIZE_CLASSES[size],
-          !avatarSrc && `bg-gradient-to-br ${gradient}`
+          color
         )}
       >
-        {avatarSrc ? (
+        <span aria-hidden="true" className="leading-none">{size === "xs" ? initials.slice(0, 1) : initials}</span>
+        {showImage ? (
           <img
-            src={avatarSrc}
-            alt={author.fullName}
-            className="h-full w-full object-cover"
+            src={avatarSrc!}
+            alt=""
+            className="absolute inset-0 h-full w-full object-cover"
             loading="lazy"
+            decoding="async"
+            onError={() => setFailedSrc(avatarSrc ?? undefined)}
           />
-        ) : (
-          <span>{initials}</span>
-        )}
+        ) : null}
       </div>
 
       {showVerifiedBadge && author.affiliationVerified && (

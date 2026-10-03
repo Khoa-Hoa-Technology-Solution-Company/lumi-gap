@@ -1,5 +1,6 @@
 import { accountManagementStrings } from "./account-management";
 import { projectLiteratureStrings } from "./project-literature";
+import { forumRefinementStrings } from "./forum-refinement";
 
 // English fallbacks for recently introduced profile/admin surfaces. Keeping
 // each string once avoids duplicating key/value text in the initial bundle.
@@ -518,10 +519,15 @@ const newUiKeys = [
   "No matching projects",
   "Try another name or status.",
   "Clear filters",
+  "URL",
+  "Website",
+  "yearFrom",
+  "yearTo",
 ] as const;
 
 export const newUiStrings = {
   ...(Object.fromEntries(newUiKeys.map((key) => [key, key])) as { [Key in typeof newUiKeys[number]]: Key }),
   ...projectLiteratureStrings,
   ...accountManagementStrings.en,
+  ...forumRefinementStrings,
 } as const;

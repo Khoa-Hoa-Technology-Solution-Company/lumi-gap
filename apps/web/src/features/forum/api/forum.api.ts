@@ -50,6 +50,8 @@ export type CommunityMembershipView = NonNullable<Community["viewerMembership"]>
 export type { CommunityStatus, CommunityInput };
 export type CommunitySummaryView = CommunitySummary;
 export type CommunityView = Community;
+export type ForumCategoryView = import("@trend/shared-types").ForumCategory;
+export type ForumCategoryInput = Pick<ForumCategoryView, "name" | "slug" | "description" | "sortOrder">;
 export type CommunityMemberView = CommunityMember;
 export type CommunityListParams = { status?: CommunityStatus; q?: string; field?: string; sort?: CommunitySort; scope?: "all" | "mine"; page?: number; pageSize?: number };
 export type CommunityPage = { items: CommunityView[]; page: number; totalPages: number; total: number };
@@ -58,7 +60,7 @@ export type ForumPostInput = {
   linkedPaperId?: string; linkedResearchGapId?: string; linkedProjectId?: string; references?: ForumReferenceView[];
 };
 export type ForumPostFilters = {
-  page?: number; pageSize?: number; query?: string; communityId?: string; type?: ForumPostType;
+  page?: number; pageSize?: number; query?: string; category?: string; communityId?: string; type?: ForumPostType;
   tag?: string; sort?: ForumSort; linkedPaperId?: string; linkedResearchGapId?: string; includeModerated?: boolean;
 };
 export type ForumReportView = {
@@ -206,7 +208,7 @@ export const forumApi = {
     }) : [];
     return { related: normalizeTopics(response.data.data.related), suggested: normalizeTopics(response.data.data.suggested) };
   },
-  async createPost(input: ForumPostInput): Promise<ForumPostView> { const response = await api.post(API_ROUTES.forum.posts, input); return normalizePost(response.data.data); },
+  async createPost(input: ForumPostInput): Promise<ForumPostView> { const { communityId, ...fields } = input; const response = await api.post(API_ROUTES.forum.posts, { ...fields, categoryId: communityId }); return normalizePost(response.data.data); },
   async updatePost(postId: string, input: Partial<ForumPostInput>): Promise<ForumPostView> { const response = await api.patch(API_ROUTES.forum.post(postId), input); return normalizePost(response.data.data); },
   async postRevisions(postId: string): Promise<ForumPostRevisionView[]> { const response = await api.get(API_ROUTES.forum.postRevisions(postId), { withCredentials: true }); return Array.isArray(response.data.data) ? response.data.data.map(normalizePostRevision) : []; },
   async deletePost(postId: string): Promise<void> { await api.delete(API_ROUTES.forum.post(postId)); },

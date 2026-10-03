@@ -211,6 +211,9 @@ model Community {
   legacyMongoId  String?                  @unique @map("legacy_mongo_id") @db.VarChar(24)
   name           String                   @db.VarChar(120)
   slug           String                   @unique @db.VarChar(120)
+  // Forum categories reuse the existing taxonomy and moderator assignments.
+  isForumCategory Boolean                 @default(false) @map("is_forum_category")
+  sortOrder      Int                      @default(0) @map("sort_order")
   description    String                   @default("")
   researchField  String?                  @map("research_field") @db.VarChar(160)
   icon           String?                  @db.VarChar(40)
@@ -229,6 +232,7 @@ model Community {
   updatedAt      DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@index([status, visibility, updatedAt])
+  @@index([isForumCategory, status, sortOrder])
   @@index([ownerId])
   @@index([reviewedById])
   @@map("communities")

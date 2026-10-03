@@ -35,7 +35,7 @@ async function userId(value: string) {
 }
 
 async function communityId(value: string) {
-  const row = await getPrisma().community.findUnique({ where: idWhere(value), select: { id: true, status: true } });
+  const row = await getPrisma().community.findUnique({ where: idWhere(value), select: { id: true, status: true, isForumCategory: true, visibility: true } });
   if (!row) throw AppError.notFound("Community not found");
   return row;
 }
@@ -251,6 +251,7 @@ export const forumModerationService = {
     if (action === "REMOVE_CONTENT" && actorRole !== "admin") throw AppError.forbidden("Only Admin can remove forum content");
     const destination = input.destinationCommunityId ? await communityId(input.destinationCommunityId) : undefined;
     if (destination && destination.status !== "ACTIVE") throw AppError.badRequest("Destination community is not active");
+    if (action === "MOVE_THREAD" && destination && (!destination.isForumCategory || destination.visibility !== "public")) throw AppError.badRequest("Select an active forum category as the destination");
     if (action === "MOVE_THREAD" && !destination) throw AppError.badRequest("A destination community is required");
     const result = await getPrisma().$transaction(async (tx) => {
       // Lock content before reports so a move can update every report in this
@@ -291,6 +292,8 @@ export const forumModerationService = {
         // before capacity checks or counter updates to avoid opposite moves.
         const communityIds = [thread!.communityId, destination.id].filter((id): id is string => Boolean(id)).sort();
         for (const id of communityIds) await tx.$queryRaw`SELECT id FROM communities WHERE id = ${id}::uuid FOR UPDATE`;
+        const currentDestination = await tx.community.findUnique({ where: { id: destination.id } });
+        if (!currentDestination?.isForumCategory || currentDestination.status !== "ACTIVE") throw AppError.conflict("The destination category is no longer active");
         if (contentIsVisible && thread!.isPinned) await assertForumPinCapacity(tx, destination.id, row.id);
         const responseIds = (await tx.forumComment.findMany({ where: { postId: row.id }, select: { id: true } })).map((response) => response.id);
         await tx.forumPost.update({ where: { id: row.id }, data: { communityId: destination.id, moderationVersion: { increment: 1 } } });

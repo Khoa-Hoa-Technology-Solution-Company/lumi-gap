@@ -49,7 +49,7 @@ describe("Forum Suggested / Related navigation", () => {
     await act(async () => container.querySelector<HTMLButtonElement>('button:not([role="tab"])')!.click());
     expect(retry).toHaveBeenCalledTimes(1);
     await act(async () => root.render(<ForumThreadDiscoveryView data={{ suggested: [], related: [] }} onRetry={retry} />));
-    expect(container.textContent).toContain("No other discussions in this community yet.");
+    expect(container.textContent).toContain("No other discussions in this category yet.");
   });
 });
 
@@ -97,11 +97,12 @@ describe("Forum timeline truthfulness and interaction", () => {
     expect(pushState).not.toHaveBeenCalled();
     expect(container.querySelector('input[type="range"]')?.getAttribute("aria-valuetext")).toBe("Post 3 / 3");
   });
-  it("collapses a single opening post without a fake scroll rail or repeated dates", () => {
+  it("shows the real single-post count without an interactive scroll rail", () => {
     const markup = renderToStaticMarkup(<ForumThreadTimeline postIds={["opening-post"]} total={1} createdAt={date} lastActivityAt={date} />);
     expect(markup).toContain("Opening post");
     expect(markup).not.toContain('type="range"');
-    expect(markup).not.toContain("1 / 1");
+    expect(markup).toContain("1 / 1");
+    expect(markup).not.toContain("forum-timeline-rail");
     expect(markup).toContain("2026");
     expect(markup).not.toContain("Last activity");
   });
