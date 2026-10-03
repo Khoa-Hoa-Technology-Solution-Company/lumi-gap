@@ -8,8 +8,10 @@ import { authSecurityStrings } from "./auth-security";
 import { newUiStrings } from "./new-ui";
 import { projectInvitationStrings } from "./project-invitations";
 import { studentOnboardingStrings } from "./student-onboarding";
+import { trustSafetyRagStrings } from "./trust-safety-rag";
 
 export const zh: Record<keyof typeof en, string> = {
+  ...trustSafetyRagStrings,
   ...researchHomeEn,
   ...projectInvitationStrings,
   ...studentOnboardingStrings,
@@ -788,7 +790,7 @@ export const zh: Record<keyof typeof en, string> = {
   "Level": "级别",
   "Level Tiers": "级别等级",
   "Library is empty": "图书馆已空",
-  "Liem Research Team. All rights reserved.": "林研究团队。版权所有。",
+  "Tori Team. All rights reserved.": "林研究团队。版权所有。",
   "LiemResearch logo": "LiemResearch 徽标",
   "Limitations": "局限性",
   "Live": "直播",

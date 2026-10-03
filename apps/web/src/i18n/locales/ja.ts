@@ -8,8 +8,10 @@ import { authSecurityStrings } from "./auth-security";
 import { newUiStrings } from "./new-ui";
 import { projectInvitationStrings } from "./project-invitations";
 import { studentOnboardingStrings } from "./student-onboarding";
+import { trustSafetyRagStrings } from "./trust-safety-rag";
 
 export const ja: Record<keyof typeof en, string> = {
+  ...trustSafetyRagStrings,
   ...researchHomeEn,
   ...projectInvitationStrings,
   ...studentOnboardingStrings,
@@ -788,7 +790,7 @@ export const ja: Record<keyof typeof en, string> = {
   "Level": "レベル",
   "Level Tiers": "レベル階層",
   "Library is empty": "ライブラリが空です",
-  "Liem Research Team. All rights reserved.": "リーム研究チーム。無断転載を禁じます。",
+  "Tori Team. All rights reserved.": "リーム研究チーム。無断転載を禁じます。",
   "LiemResearch logo": "リームリサーチのロゴ",
   "Limitations": "制限事項",
   "Live": "ライブ",
