@@ -16,6 +16,7 @@ export function parseForumListParams(params: URLSearchParams) {
   const rawType = params.get("type") as ForumPostType;
   return {
     page, pageSize,
+    category: params.get("category") ?? params.get("community") ?? "",
     sort: sorts.includes(rawSort) ? rawSort : "latest" as ForumSort,
     type: types.includes(rawType) ? rawType : "" as const,
     query: (params.get("q") ?? params.get("search") ?? "").slice(0, 240),
@@ -32,6 +33,10 @@ export function updateForumListParam(params: URLSearchParams, key: string, value
     value = value || "latest";
   }
   if (key === "q") next.delete("search");
+  if (key === "category" || key === "community") {
+    next.delete("community");
+    key = "category";
+  }
   if (value && !(key === "page" && value === "1")) next.set(key, value);
   else next.delete(key);
   if (key !== "page") next.delete("page");

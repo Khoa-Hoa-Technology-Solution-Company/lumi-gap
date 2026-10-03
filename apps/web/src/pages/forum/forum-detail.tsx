@@ -29,9 +29,11 @@ import {
   useDeleteForumPost,
   useForumComments,
   useForumContext,
-  useCommunities,
+  useForumCategories,
+  useFollowThread,
   useForumPost,
   useForumReaction,
+  useForumVote,
   useModerateForumContent,
   useUnacceptAnswer,
   useUpdateForumComment,
@@ -41,7 +43,7 @@ import {
   type ForumReportReason,
   forumGapCopy,
 } from "@/features/forum";
-import { formatForumNumber, formatForumRelativeTime, forumPostHref } from "@/features/forum/utils/forum-helpers";
+import { formatForumRelativeTime, forumPostHref } from "@/features/forum/utils/forum-helpers";
 import {
   useForumCitationEvidenceOptions,
   useReviewForumCitationAsEvidence,
@@ -54,6 +56,7 @@ import { ForumThreadTimeline } from "@/features/forum/components/forum-thread-ti
 import { ForumPostTypeBadge } from "@/features/forum/components/forum-post-type-badge";
 import { ForumThreadDiscovery } from "@/features/forum/components/forum-thread-discovery";
 import { ForumReactionPicker } from "@/features/forum/components/forum-reaction-picker";
+import { ForumHelpfulButton } from "@/features/forum/components/forum-helpful-button";
 import { ForumAuthorPopover } from "@/features/forum/components/forum-author-popover";
 import { ForumTopicStats } from "@/features/forum/components/forum-topic-stats";
 import { ForumNotificationMenu } from "@/features/forum/components/forum-notification-menu";
@@ -83,9 +86,11 @@ export function ForumDetailPage() {
 
   const add = useAddForumComment();
   const reaction = useForumReaction();
+  const helpful = useForumVote();
   const accept = useAcceptAnswer();
   const unaccept = useUnacceptAnswer();
   const notification = useForumNotificationLevel();
+  const follow = useFollowThread();
   const moderate = useModerateForumContent();
   const reviewCitation = useReviewForumCitationAsEvidence();
   const updatePost = useUpdateForumPost();
@@ -143,7 +148,7 @@ export function ForumDetailPage() {
   const [selectedEvidenceTypes, setSelectedEvidenceTypes] = useState<string[]>([]);
 
   const { data: context } = useForumContext(undefined, isAuthed && composerOpen);
-  const { data: communities, isLoading: communitiesLoading, isError: communitiesError, refetch: retryCommunities } = useCommunities();
+  const { data: communities, isLoading: communitiesLoading, isError: communitiesError, refetch: retryCommunities } = useForumCategories();
 
   const comments = useMemo(() => {
     const byId = new Map<string, ForumCommentView>();
@@ -246,14 +251,26 @@ export function ForumDetailPage() {
 
   if (postQuery.isLoading) {
     return (
-      <ForumLayout sidebar={<ForumSidebar communities={communities} communitiesLoading={communitiesLoading} communitiesError={communitiesError} onRetryCommunities={() => void retryCommunities()} isAuthed={isAuthed} />}><ForumSurface className="p-6" role="status" aria-label={t("Loading discussion")}>
-        <div className="h-6 w-48 animate-pulse rounded bg-muted" />
-        <div className="mt-6 grid gap-8 lg:grid-cols-[minmax(0,1fr)] xl:grid-cols-[minmax(0,820px)_240px]">
-          <div className="space-y-6">
-            <div className="h-48 animate-pulse rounded-xl bg-muted/50" />
-            <div className="h-32 animate-pulse rounded-xl bg-muted/40" />
+      <ForumLayout className="forum-conversation-workspace" contentClassName="forum-conversation-content" sidebar={<ForumSidebar communities={communities} communitiesLoading={communitiesLoading} communitiesError={communitiesError} onRetryCommunities={() => void retryCommunities()} isAuthed={isAuthed} />}><ForumSurface className="forum-detail-surface forum-detail-loading px-4 pb-8 pt-4" role="status" aria-label={t("Loading discussion")}>
+        <div className="mb-3 min-h-11 lg:hidden" aria-hidden="true" />
+        <div className="border-b border-border pb-4" aria-hidden="true">
+          <div className="h-8 w-4/5 rounded bg-muted/70" />
+          <div className="mt-2 h-4 w-40 rounded bg-muted/50" />
+        </div>
+        <div className="forum-detail-grid mx-auto mt-4 grid grid-cols-[minmax(0,1fr)] gap-6 xl:grid-cols-[minmax(0,1fr)_168px] xl:gap-8" aria-hidden="true">
+          <div className="flex gap-5">
+            <div className="h-10 w-10 shrink-0 rounded-full bg-muted/60" />
+            <div className="min-w-0 flex-1 space-y-4">
+              <div className="h-5 w-40 rounded bg-muted/60" />
+              <div className="h-3 w-28 rounded bg-muted/40" />
+              <div className="space-y-3 pt-3">
+                {["w-full", "w-11/12", "w-4/5", "w-full", "w-3/4"].map((width, index) => <div key={index} className={cn("h-4 rounded bg-muted/40", width)} />)}
+              </div>
+              <div className="mt-8 h-9 rounded bg-muted/30" />
+              <div className="h-20 rounded bg-muted/30" />
+            </div>
           </div>
-          <div className="h-64 animate-pulse rounded-xl bg-muted/40" />
+          <div className="hidden space-y-4 pt-2 xl:block"><div className="h-4 w-20 rounded bg-muted/50" /><div className="h-16 w-24 rounded bg-muted/40" /></div>
         </div>
       </ForumSurface></ForumLayout>
     );
@@ -263,7 +280,7 @@ export function ForumDetailPage() {
     const status = isAxiosError(postQuery.error) ? postQuery.error.response?.status : undefined;
     const unavailable = status === 400 || status === 403 || status === 404;
     return (
-      <ForumLayout sidebar={<ForumSidebar communities={communities} communitiesLoading={communitiesLoading} communitiesError={communitiesError} onRetryCommunities={() => void retryCommunities()} isAuthed={isAuthed} />}><ForumSurface className="px-4 py-16 text-center">
+      <ForumLayout className="forum-conversation-workspace" contentClassName="forum-conversation-content" sidebar={<ForumSidebar communities={communities} communitiesLoading={communitiesLoading} communitiesError={communitiesError} onRetryCommunities={() => void retryCommunities()} isAuthed={isAuthed} />}><ForumSurface className="forum-detail-surface px-4 py-16 text-center">
         <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
           <MessageSquare className="h-7 w-7" />
         </div>
@@ -285,8 +302,11 @@ export function ForumDetailPage() {
   const locked = post.status === "locked";
   const removed = post.status === "deleted";
   const readOnly = locked || removed || post.status === "hidden";
-  const isPostUpvoted = post.viewerVote === 1;
   const canReply = isAuthed && post.canReply && !locked && !removed && post.status === "active";
+  const toggleHelpful = (kind: "post" | "comment", targetId: string, viewerVote: number) => {
+    if (!isAuthed) { navigate(`/login?returnTo=${encodeURIComponent(forumPostHref(post))}`); return; }
+    helpful.mutate({ kind, id: targetId, value: viewerVote === 1 ? 0 : 1 }, { onError: () => toast.error(t("Could not update Helpful.")) });
+  };
 
   const handleShare = async () => {
     try {
@@ -438,21 +458,23 @@ export function ForumDetailPage() {
 
   return (
     <ForumLayout
+      className="forum-conversation-workspace"
+      contentClassName="forum-conversation-content"
       sidebar={<ForumSidebar communities={communities} communitiesLoading={communitiesLoading} communitiesError={communitiesError} onRetryCommunities={() => void retryCommunities()} isAuthed={isAuthed} />}
     >
-        <ForumSurface className="forum-detail-surface px-4 pb-8 pt-4 sm:px-5">
+        <ForumSurface className="forum-detail-surface forum-content-ready px-4 pb-8 pt-4">
               <div className="mb-3 flex min-h-11 items-center pl-12 lg:hidden"><Link to="/forum" className="rounded text-sm font-semibold text-muted-foreground hover:text-primary focus-visible:ring-2 focus-visible:ring-ring">{t("Research Forum")}</Link></div>
               <header id="thread-title" className="forum-detail-title scroll-mt-[calc(var(--app-header-height)+1rem)] pb-4">
                 <h1 className="forum-thread-title max-w-full break-words">{post.title}</h1>
                 <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[13px] text-muted-foreground">
                   <ForumPostTypeBadge type={post.type} size="sm" className="border-0 p-0 font-normal" />
-                  {post.community ? <><span aria-hidden="true">·</span><Link to={`/forum?community=${post.community.slug}`} className="hover:text-primary">{post.community.name}</Link></> : null}
+                  {post.community ? <><span aria-hidden="true">·</span><Link to={`/forum?category=${encodeURIComponent(post.community.slug)}`} className="hover:text-primary">{t(post.community.name)}</Link></> : null}
                   {post.tags.length ? <><span aria-hidden="true">,</span>{post.tags.map((tag, index) => <span key={tag}><Link to={`/forum?tag=${encodeURIComponent(tag)}`} className="hover:text-primary">{tag}</Link>{index < post.tags.length - 1 ? "," : ""}</span>)}</> : null}
                   {post.isPinned ? <span className="inline-flex items-center gap-1"><Pin className="h-3.5 w-3.5" />{t("Pinned")}</span> : null}
                   {locked ? <span className="inline-flex items-center gap-1"><Lock className="h-3.5 w-3.5" />{t("Locked")}</span> : null}
                 </div>
               </header>
-          <div className="forum-detail-grid mx-auto grid grid-cols-[minmax(0,1fr)] gap-6 xl:grid-cols-[minmax(0,1fr)_145px] xl:gap-10 2xl:gap-14">
+          <div className="forum-detail-grid mx-auto grid grid-cols-[minmax(0,1fr)] gap-6 xl:grid-cols-[minmax(0,1fr)_168px] xl:gap-8">
             <div className="min-w-0">
               {filteredAuthorId ? <div role="status" className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded border border-border bg-muted/30 p-3 text-sm"><span>{t("Showing posts by")} {post.author.id === filteredAuthorId ? post.author.fullName : comments.find((comment) => comment.author.id === filteredAuthorId)?.author.fullName}</span><button type="button" onClick={() => setFilteredAuthorId(undefined)} className="inline-flex items-center gap-1 text-primary hover:underline"><X className="h-3.5 w-3.5" />{t("Show all posts")}</button></div> : null}
               {locked ? <div role="status" className="mb-6 flex gap-3 rounded-md border border-border bg-muted/30 p-4"><Lock className="mt-0.5 h-4 w-4 shrink-0" /><div><p className="text-sm font-semibold">{t("This discussion is locked.")}</p><p className="mt-1 text-sm text-muted-foreground">{t("Existing responses remain visible, but new replies cannot be added.")}</p></div></div> : null}
@@ -475,6 +497,7 @@ export function ForumDetailPage() {
                     </section> : null}
                     {post.references.length ? <section aria-label={t("References")} className="col-span-2 mt-6 min-w-0"><h2 className="forum-post-section-title mb-3">{t("References")}</h2><ol className="space-y-3">{post.references.map((reference, index) => <li key={reference.id || index}><ForumReferenceItem reference={reference} index={index + 1} linkedGapId={isAuthed ? post.linkedResearchGapId : undefined} onReviewEvidence={setReviewTarget} /></li>)}</ol></section> : null}
                     <div role="group" aria-label={t("Discussion actions")} className="forum-post-actions col-span-2 mt-5 flex flex-wrap items-center gap-x-1 gap-y-2">
+                      <ForumHelpfulButton count={post.helpfulCount} selected={post.viewerVote === 1} disabled={readOnly} pending={helpful.isPending} onToggle={() => toggleHelpful("post", post.id, post.viewerVote)} />
                       <ForumReactionPicker countsOnly target={{ scope: "post", id: post.id }} counts={post.reactionCounts} viewerReactions={post.viewerReactions} reactionUsers={post.reactionUsers} isAuthed={isAuthed} disabled={readOnly} pending={reaction.isPending} onToggle={(reactionName, active) => reaction.mutate({ kind: "post", id: post.id, reaction: reactionName, active }, { onError: () => toast.error(t("Could not update reaction.")) })} />
                       <div className="forum-post-action-links ml-auto inline-flex items-center gap-0.5">
                       <ForumReactionPicker triggerOnly counts={post.reactionCounts} viewerReactions={post.viewerReactions} reactionUsers={post.reactionUsers} isAuthed={isAuthed} disabled={readOnly} pending={reaction.isPending} onToggle={(reactionName, active) => reaction.mutate({ kind: "post", id: post.id, reaction: reactionName, active }, { onError: () => toast.error(t("Could not update reaction.")) })} />
@@ -487,7 +510,7 @@ export function ForumDetailPage() {
                           {isOwner && !readOnly ? <><DropdownMenuSeparator /><DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => setDeleteTarget({ type: "post", id: post.id })}><Trash2 aria-hidden="true" className="mr-2 h-4 w-4" />{t("Delete discussion")}</DropdownMenuItem></> : null}
                         </DropdownMenuContent>
                       </DropdownMenu> : null}
-                      <Button type="button" variant="ghost" size="sm" disabled={readOnly || (isAuthed && !canReply)} onClick={() => openComposer()} title={!canReply ? t(isAuthed ? readOnly ? "This discussion is read-only." : "Active community membership is required to reply." : "Sign in to join the discussion.") : undefined} className="gap-1.5 text-muted-foreground"><Reply aria-hidden="true" className="h-4 w-4" />{t("Reply")}</Button>
+                      <Button type="button" variant="ghost" size="sm" disabled={readOnly || (isAuthed && !canReply)} onClick={() => openComposer()} title={!canReply ? t(isAuthed ? readOnly ? "This discussion is read-only." : "This category is read-only or replying is unavailable." : "Sign in to join the discussion.") : undefined} className="gap-1.5 text-muted-foreground"><Reply aria-hidden="true" className="h-4 w-4" />{t("Reply")}</Button>
                       </div>
                     </div>
                     {post.canModerate && !removed ? <div className="col-span-2 mt-3 flex flex-wrap gap-1 border-t border-border pt-3">
@@ -516,6 +539,7 @@ export function ForumDetailPage() {
                   onReport={(commentId) => setReportTarget({ type: "comment", id: commentId })}
                   onModerate={post.canModerate ? (commentId) => setModerationTarget({ type: "comment", id: commentId, action: "RESPONSE_HIDDEN" }) : undefined}
                   onReaction={(reactionName, active) => reaction.mutate({ kind: "comment", id: comment.id, postId: post.id, reaction: reactionName, active }, { onError: () => toast.error(t("Could not update reaction.")) })}
+                  helpfulPending={helpful.isPending} onHelpful={() => toggleHelpful("comment", comment.id, comment.viewerVote)}
                   onAccept={() => comment.isAccepted ? unaccept.mutate(post.id, { onError: () => toast.error(t("Could not update accepted response.")) }) : accept.mutate({ postId: post.id, commentId: comment.id }, { onError: () => toast.error(t("Could not update accepted response.")) })}
                 />)}
                 {commentsQuery.hasNextPage ? <div ref={repliesSentinel} className="border-t py-5">{(legacyCommentId || requestedPostNumber) && !deepLinkSettled ? <p role="status" className="mb-3 text-sm text-muted-foreground">{t("This reply is not loaded yet. Load more replies to reach it.")}</p> : null}<Button variant="outline" disabled={commentsQuery.isFetchingNextPage} onClick={() => commentsQuery.fetchNextPage()}>{t(commentsQuery.isFetchingNextPage ? "Loading…" : "Load more replies")}</Button></div> : null}
@@ -523,7 +547,7 @@ export function ForumDetailPage() {
               </section>
               <div id="thread-end" tabIndex={-1} className="scroll-mt-24 outline-none">
                 {!filteredAuthorId && comments.length ? <ForumTopicStats key={`${post.id}-end`} post={post} comments={comments} hasMore={commentsQuery.hasNextPage} loadingMore={commentsQuery.isFetchingNextPage} onLoadMore={() => void commentsQuery.fetchNextPage()} onJumpToPost={jumpToPost} compact /> : null}
-                <div className="flex flex-wrap items-center justify-end gap-2 py-5"><Button type="button" size="sm" disabled={readOnly || (isAuthed && !canReply)} onClick={() => openComposer()} className="gap-1.5 rounded-full"><Reply className="h-4 w-4" aria-hidden="true" />{t("Reply")}</Button>{notificationControl(true)}</div>
+                <div className="flex flex-wrap items-center justify-end gap-2 py-5"><Button type="button" size="sm" disabled={readOnly || (isAuthed && !canReply)} onClick={() => openComposer()} className="gap-1.5 rounded-full"><Reply className="h-4 w-4" aria-hidden="true" />{t("Reply")}</Button><Button type="button" variant="outline" size="sm" aria-pressed={post.isFollowing} disabled={follow.isPending || removed || post.status === "hidden"} onClick={() => { if (!isAuthed) { navigate(`/login?returnTo=${encodeURIComponent(forumPostHref(post))}`); return; } follow.mutate({ postId: post.id, following: !post.isFollowing }, { onError: () => toast.error(t("Could not update follow status.")) }); }}>{t(post.isFollowing ? "Following" : "Follow")}</Button>{notificationControl(true)}</div>
                 <div id="response-composer" className="scroll-mt-24">
                   {isAuthed && !removed && post.status !== "hidden" ? <>
                     {canReply ? (
@@ -552,7 +576,7 @@ export function ForumDetailPage() {
                           />
                         </Suspense> : null}
                       </div>
-                    ) : !locked ? <p className="border-t py-6 text-sm text-muted-foreground">{t("Active community membership is required to reply.")} {post.community ? <Link to={`/communities/${post.community.slug}`} className="text-primary hover:underline">{t("View community")}</Link> : null}</p> : null}
+                    ) : !locked ? <p className="border-t py-6 text-sm text-muted-foreground">{t("This category is read-only or replying is unavailable.")} {post.community ? <Link to={`/forum?category=${encodeURIComponent(post.community.slug)}`} className="text-primary hover:underline">{t("View category")}</Link> : null}</p> : null}
                     {canReply && !composerOpen && focusRequest > 0 ? <button type="button" className="forum-reply-resume" onClick={() => { setComposerOpen(true); setFocusRequest((value) => value + 1); }}><Reply className="h-4 w-4" aria-hidden="true" />{t("Continue reply")}</button> : null}
                   </> : !isAuthed && !readOnly ? <div className="border-t py-7"><p className="text-sm text-muted-foreground">{t("Sign in to join the discussion.")}</p><Button asChild size="sm" className="mt-3"><Link to={`/login?returnTo=${encodeURIComponent(forumPostHref(post))}`}>{t("Sign in")}</Link></Button></div> : null}
                 </div>

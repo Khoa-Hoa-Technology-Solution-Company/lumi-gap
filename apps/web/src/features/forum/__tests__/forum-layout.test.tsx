@@ -44,13 +44,13 @@ describe("Forum workspace layout", () => {
     expect(markup).toContain("bg-background lg:block");
   });
 
-  it("anchors navigation at the viewport edge while independently centering the bounded reading area", () => {
+  it("anchors navigation at the viewport edge while letting the discussion surface use the available width", () => {
     const markup = renderToStaticMarkup(
       <ForumLayout sidebar={<aside>Navigation</aside>}><article>Topics</article></ForumLayout>,
     );
 
-    expect(markup).toContain("forum-content mx-auto w-full min-w-0");
-    expect(markup).toContain("max-w-[calc(var(--forum-reading-width)+4rem)]");
+    expect(markup).toContain("forum-content w-full min-w-0");
+    expect(markup).not.toContain("max-w-[calc(var(--forum-reading-width)+4rem)]");
     expect(markup).not.toContain("max-w-[1800px]");
   });
 

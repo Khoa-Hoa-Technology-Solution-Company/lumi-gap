@@ -50,7 +50,8 @@ describe("forum real-data contract", () => {
   it("provides Vietnamese metric labels and compact non-wrapping recent activity", () => {
     expect(["Topic", "Replies", "Views", "Helpful", "Activity"].map((key) => vietnamese[key as keyof typeof vietnamese])).toEqual(["Chủ đề", "Trả lời", "Lượt xem", "Hữu ích", "Hoạt động"]);
     vi.spyOn(Date, "now").mockReturnValue(new Date("2026-09-30T12:00:00Z").getTime());
-    expect(formatForumActivityTime("2026-09-30T10:00:00Z", "vi")).toBe("2h");
-    expect(formatForumActivityTime("2026-09-28T12:00:00Z", "vi")).toBe("2d");
+    expect(formatForumActivityTime("2026-09-30T10:00:00Z", "vi")).toBe("2 giờ");
+    expect(formatForumActivityTime("2026-09-28T12:00:00Z", "vi")).toBe("2 ngày");
+    expect(formatForumActivityTime("2026-09-30T10:00:00Z", "en")).toBe("2h");
   });
 });

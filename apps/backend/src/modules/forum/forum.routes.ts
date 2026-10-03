@@ -8,6 +8,8 @@ import { validate } from "../../common/middleware/validate.js";
 import { objectIdSchema, paginationSchema } from "../../common/validation/database-id.js";
 import { forumService } from "./forum.service.js";
 import { forumModerationService } from "./forum-moderation.service.js";
+import { forumCategoryService } from "./forum-category.service.js";
+import { forumPaperService } from "./forum-paper.service.js";
 import { isAllowedForumUrl, isValidForumDoi } from "./forum.rules.js";
 import { env } from "../../config/env.js";
 
@@ -26,7 +28,8 @@ const postBaseSchema = z.object({
   title: z.string().trim().min(3).max(240),
   content: z.string().trim().min(1).max(20000).optional(),
   body: z.string().trim().min(1).max(20000).optional(),
-  communityId: objectIdSchema,
+  categoryId: objectIdSchema.optional(),
+  communityId: objectIdSchema.optional(),
   tags: z.array(z.string().trim().min(1).max(80)).max(12).default([]),
   linkedPaperId: objectIdSchema.optional(),
   linkedResearchGapId: objectIdSchema.optional(),
@@ -37,17 +40,21 @@ const postBaseSchema = z.object({
 }).strict();
 
 const postInputSchema = postBaseSchema
+  .refine((value) => Boolean(value.categoryId || value.communityId), "Category is required")
+  .refine((value) => !value.categoryId || !value.communityId || value.categoryId === value.communityId, "Use one category")
   .refine((value) => value.content || value.body, "Post content is required")
-  .transform(({ body, content, paperIds, researchGapId, ...value }) => ({
+  .transform(({ body, content, paperIds, researchGapId, categoryId, ...value }) => ({
     ...value,
+    communityId: categoryId ?? value.communityId!,
     content: content ?? body!,
     linkedPaperId: value.linkedPaperId ?? paperIds?.[0],
     linkedResearchGapId: value.linkedResearchGapId ?? researchGapId,
   }));
 const postUpdateSchema = postBaseSchema.partial()
   .refine((value) => Object.keys(value).length > 0, "At least one field is required")
-  .transform(({ body, content, paperIds, researchGapId, ...value }) => ({
+  .transform(({ body, content, paperIds, researchGapId, categoryId, ...value }) => ({
     ...value,
+    ...(categoryId ? { communityId: categoryId } : {}),
     ...(content || body ? { content: content ?? body } : {}),
     ...(value.linkedPaperId || paperIds?.[0] ? { linkedPaperId: value.linkedPaperId ?? paperIds?.[0] } : {}),
     ...(value.linkedResearchGapId || researchGapId ? { linkedResearchGapId: value.linkedResearchGapId ?? researchGapId } : {}),
@@ -57,6 +64,7 @@ const postQuerySchema = paginationSchema.extend({
   pageSize: z.coerce.number().int().min(1).max(30).default(20),
   // Read filters accept stable slugs; write contracts still require database IDs.
   communityId: z.union([objectIdSchema, z.string().max(120).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)]).optional(),
+  category: z.union([objectIdSchema, z.string().max(120).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)]).optional(),
   linkedResearchGapId: objectIdSchema.optional(),
   researchGapId: objectIdSchema.optional(),
   linkedPaperId: objectIdSchema.optional(),
@@ -188,12 +196,44 @@ function forumViewerKey(req: Request, res: Response) {
 }
 
 export const forumRouter: Router = Router();
+const paperDoiSchema = z.object({ doi: z.string().trim().min(1).max(300) }).strict();
+const paperLookupLimiter = rateLimit({ windowMs: 60_000, limit: 15, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => req.user?.sub ?? req.ip ?? "anonymous" });
+forumRouter.post("/papers/doi/preview", requireAuth, paperLookupLimiter, validate(paperDoiSchema), async (req, res) => {
+  res.json({ success: true, data: await forumPaperService.preview(req.body.doi) });
+});
+forumRouter.post("/papers/doi/attach", requireAuth, requirePermission("forum:write"), paperLookupLimiter, validate(paperDoiSchema), async (req, res) => {
+  res.json({ success: true, data: await forumPaperService.attach(req.body.doi) });
+});
+const categorySchema = z.object({ name: z.string().trim().min(2).max(120), slug: z.string().trim().min(2).max(120).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/), description: z.string().trim().max(2000).optional(), sortOrder: z.number().int().min(0).max(10000).optional(), status: z.enum(["ACTIVE", "ARCHIVED"]).optional() }).strict();
+forumRouter.get("/categories", optionalAuth, validate(z.object({ all: z.enum(["true", "false"]).optional() }).strict(), "query"), async (req, res) => {
+  res.json({ success: true, data: await forumCategoryService.list(req.query.all === "true", req.user?.role) });
+});
+forumRouter.post("/categories", requireAuth, forumWriteLimiter, validate(categorySchema), async (req, res) => {
+  res.status(201).json({ success: true, data: await forumCategoryService.create(req.body, req.user!.sub, req.user!.role) });
+});
+forumRouter.patch("/categories/:id", requireAuth, forumWriteLimiter, validate(idParamsSchema, "params"), validate(categorySchema.partial().refine((value) => Object.keys(value).length > 0, "At least one field is required")), async (req, res) => {
+  res.json({ success: true, data: await forumCategoryService.update(req.params.id as string, req.body, req.user!.sub, req.user!.role) });
+});
+forumRouter.get("/categories/:id/moderators", requireAuth, validate(idParamsSchema, "params"), async (req, res) => {
+  res.json({ success: true, data: await forumCategoryService.moderators(req.params.id as string, req.user!.role) });
+});
+forumRouter.put("/categories/:id/moderators/:userId", requireAuth, forumWriteLimiter, validate(z.object({ id: objectIdSchema, userId: objectIdSchema }), "params"), async (req, res) => {
+  await forumCategoryService.assignModerator(req.params.id as string, req.params.userId as string, true, req.user!.sub, req.user!.role);
+  res.json({ success: true });
+});
+forumRouter.delete("/categories/:id/moderators/:userId", requireAuth, forumWriteLimiter, validate(z.object({ id: objectIdSchema, userId: objectIdSchema }), "params"), async (req, res) => {
+  await forumCategoryService.assignModerator(req.params.id as string, req.params.userId as string, false, req.user!.sub, req.user!.role);
+  res.json({ success: true });
+});
+forumRouter.get("/tags", optionalAuth, validate(z.object({ q: z.string().trim().max(80).optional() }).strict(), "query"), async (req, res) => {
+  res.json({ success: true, data: await forumService.tagOptions(req.query.q as string | undefined) });
+});
 forumRouter.get("/posts", optionalAuth, validate(postQuerySchema, "query"), async (req, res) => {
-  const { page, pageSize, researchGapId, linkedResearchGapId, includeModerated, feed, ...filter } = req.query as unknown as z.infer<typeof postQuerySchema>;
+  const { page, pageSize, researchGapId, linkedResearchGapId, includeModerated, feed, category, ...filter } = req.query as unknown as z.infer<typeof postQuerySchema>;
   res.json({
     success: true,
     ...(await forumService.listPosts(
-      { ...filter, sort: feed ?? filter.sort, linkedResearchGapId: linkedResearchGapId ?? researchGapId, includeModerated: includeModerated === "true" },
+      { ...filter, communityId: category ?? filter.communityId, sort: feed ?? filter.sort, linkedResearchGapId: linkedResearchGapId ?? researchGapId, includeModerated: includeModerated === "true" },
       page,
       pageSize,
       req.user?.sub,

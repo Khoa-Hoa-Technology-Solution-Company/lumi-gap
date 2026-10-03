@@ -7,6 +7,7 @@ import { logger } from "../../infrastructure/logger.js";
 import type { Prisma } from "../../generated/prisma/client.js";
 import { auditService } from "../audit/audit.service.js";
 import { getActiveCommunityMembership, isCommunityModerator } from "../communities/community.service.js";
+import { resolveForumCategory } from "./forum-category.service.js";
 import { notificationService } from "../notifications/notification.service.js";
 import {
   canExposeForumGap,
@@ -119,11 +120,10 @@ async function resolveProjectRow(value: string) {
   return row;
 }
 
-async function assertCanPostToCommunity(communityId: string | undefined, userId: string): Promise<string | undefined> {
-  if (!communityId) return undefined;
-  const community = await resolveCommunity(communityId);
-  if (community.status !== "ACTIVE") throw AppError.conflict("Archived communities are read-only");
-  if (!(await getActiveCommunityMembership(community.id, userId))) throw AppError.forbidden("Active community membership is required to post");
+async function assertCanPostToCommunity(communityId: string | undefined): Promise<string> {
+  if (!communityId) throw AppError.badRequest("Select a forum category");
+  const community = await resolveForumCategory(communityId);
+  if (community.status !== "ACTIVE") throw AppError.conflict("Archived categories are read-only");
   return community.id;
 }
 async function assertCanViewCommunity(communityId: string | undefined, userId?: string, role?: UserRole): Promise<void> {
@@ -133,15 +133,9 @@ async function assertCanViewCommunity(communityId: string | undefined, userId?: 
     throw AppError.forbidden("This community is private");
   }
 }
-async function visibleCommunityIds(userId?: string, role?: UserRole): Promise<string[]> {
+async function visibleCommunityIds(_userId?: string, _role?: UserRole): Promise<string[]> {
   const prisma = getPrisma();
-  if (role === "admin") return (await prisma.community.findMany({ where: { status: "ACTIVE" }, select: { id: true } })).map((row) => row.id);
-  const publicIds = (await prisma.community.findMany({ where: { visibility: "public", status: "ACTIVE" }, select: { id: true } })).map((row) => row.id);
-  if (!userId) return publicIds;
-  const resolvedUserId = await resolveUserId(userId);
-  const memberIds = (await prisma.communityMembership.findMany({ where: { userId: resolvedUserId, status: "active" }, select: { communityId: true } })).map((row) => row.communityId);
-  const activeMemberIds = memberIds.length ? (await prisma.community.findMany({ where: { id: { in: memberIds }, status: "ACTIVE" }, select: { id: true } })).map((row) => row.id) : [];
-  return [...new Set([...publicIds, ...activeMemberIds])];
+  return (await prisma.community.findMany({ where: { isForumCategory: true, visibility: "public", status: "ACTIVE" }, select: { id: true } })).map((row) => row.id);
 }
 async function canModerate(communityId: string | null | undefined, actorId: string, role: UserRole): Promise<boolean> {
   return role === "admin" || Boolean(communityId && await isCommunityModerator(communityId, actorId));
@@ -167,6 +161,13 @@ async function assertCanReadGapForForum(gapInput: string, actorInput: string) {
     if (project?.status !== "ARCHIVED" && (project?.ownerId === actor || member?.status === "ACTIVE")) return { gap, actor };
   }
   throw AppError.notFound("Research gap candidate not found");
+}
+
+async function resolveGapForWrite(value: string | undefined, actorId: string) {
+  if (!value) return undefined;
+  const { gap } = await assertCanReadGapForForum(value, actorId);
+  if (!gap.forumShareable) throw AppError.badRequest("Select a shareable candidate research gap");
+  return gap.id;
 }
 
 async function resolveForumCitationReviewContext(gapInput: string, referenceInput: string, projectInput: string | undefined, actorInput: string) {
@@ -222,14 +223,17 @@ async function academicAuthors(userIds: string[], viewerId?: string, transaction
   const prisma = transaction ?? getPrisma();
   const [users, profiles] = await Promise.all([
     prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, legacyMongoId: true, fullName: true, avatarUrl: true, academicProfileType: true, institution: true, role: true } }),
-    prisma.academicProfile.findMany({ where: { userId: { in: ids } }, select: { userId: true, publicHandle: true, affiliationStatus: true, academicTitle: true, profileVisibility: true, primaryPosition: true, positionTitle: true, positionStatus: true } }),
+    prisma.academicProfile.findMany({ where: { userId: { in: ids } }, select: { userId: true, publicHandle: true, affiliationStatus: true, academicTitle: true, profileVisibility: true, primaryPosition: true, positionTitle: true, positionStatus: true, avatarStorageKey: true, avatarUpdatedAt: true } }),
   ]);
   const profileByUser = new Map(profiles.map((profile) => [profile.userId, profile]));
   return new Map(users.map((user) => {
     const id = publicDatabaseId(user); const profile = profileByUser.get(user.id);
     const showAcademicIdentity = canShowAcademicIdentity(profile?.profileVisibility, Boolean(viewerId), viewerId === user.id);
+    const avatarUrl = profile?.avatarStorageKey
+      ? showAcademicIdentity ? `/academic-profiles/${encodeURIComponent(id)}/avatar?v=${profile.avatarUpdatedAt?.getTime() ?? 1}` : undefined
+      : user.avatarUrl;
     return [user.id, {
-      _id: id, id, fullName: user.fullName, avatarUrl: user.avatarUrl,
+      _id: id, id, fullName: user.fullName, avatarUrl,
       publicHandle: showAcademicIdentity ? profile?.publicHandle : undefined,
       academicProfileType: showAcademicIdentity ? user.academicProfileType : undefined,
       institution: showAcademicIdentity ? user.institution : undefined,
@@ -427,7 +431,7 @@ async function presentPosts(posts: Array<Awaited<ReturnType<typeof resolvePost>>
   const prisma = getPrisma(); const postIds = posts.map((post) => post.id);
   const viewerId = viewerInput ? await resolveUserId(viewerInput) : undefined;
   const [communities, references, postPapers, researchContexts, commentIds, viewerVotes, follows, metrics, reactions] = await Promise.all([
-    prisma.community.findMany({ where: { id: { in: posts.flatMap((post) => post.communityId ? [post.communityId] : []) } }, select: { id: true, legacyMongoId: true, name: true, slug: true, status: true } }),
+    prisma.community.findMany({ where: { id: { in: posts.flatMap((post) => post.communityId ? [post.communityId] : []) } }, select: { id: true, legacyMongoId: true, name: true, slug: true, status: true, isForumCategory: true } }),
     prisma.forumReference.findMany({ where: { postId: { in: postIds } }, orderBy: { position: "asc" } }),
     prisma.forumPostPaper.findMany({ where: { postId: { in: postIds } }, orderBy: { position: "asc" } }),
     forumResearchContexts(posts), publicIdsFor("comment", posts.map((post) => post.acceptedCommentId)),
@@ -454,6 +458,7 @@ async function presentPosts(posts: Array<Awaited<ReturnType<typeof resolvePost>>
   const notificationLevels = new Map(follows.map((follow) => [follow.postId, follow.notificationLevel]));
   const activeMemberCommunities = new Set(viewerId ? (await prisma.communityMembership.findMany({ where: { userId: viewerId, communityId: { in: communities.map((community) => community.id) }, status: "active" }, select: { communityId: true } })).map((membership) => membership.communityId) : []);
   const activeCommunities = new Set(communities.filter((community) => community.status === "ACTIVE").map((community) => community.id));
+  const categoryIds = new Set(communities.filter((community) => community.isForumCategory).map((community) => community.id));
   const moderatedCommunityIds = viewerId && viewerRole !== "admin" ? new Set((await prisma.communityMembership.findMany({ where: { userId: viewerId, communityId: { in: posts.flatMap((post) => post.communityId ? [post.communityId] : []) }, status: "active", role: { in: ["owner", "moderator"] } }, select: { communityId: true } })).map((membership) => membership.communityId)) : new Set<string>();
   return posts.map((post) => {
     const id = publicDatabaseId(post); const linkedPaper = post.linkedPaperId ? researchContexts.papers.get(post.linkedPaperId) : undefined;
@@ -469,6 +474,7 @@ async function presentPosts(posts: Array<Awaited<ReturnType<typeof resolvePost>>
     }).filter(Boolean);
     return { ...post, _id: id, id, content: post.body, authorId: authors.get(post.authorId) ?? post.authorId,
       communityId: post.communityId ? communityById.get(post.communityId) ?? post.communityId : undefined,
+      category: post.communityId && categoryIds.has(post.communityId) ? communityById.get(post.communityId) : undefined,
       researchGapId: linkedGap?.id,
       paperIds: papersByPost.get(post.id) ?? (linkedPaper ? [linkedPaper.id] : []), linkedPaperId: linkedPaper?.id,
       linkedResearchGapId: linkedGap?.id, linkedProjectId: linkedProject?.id,
@@ -481,8 +487,65 @@ async function presentPosts(posts: Array<Awaited<ReturnType<typeof resolvePost>>
       reactionCounts: reactionMetric.counts, viewerReactions: reactionMetric.viewerReactions, reactionUsers: reactionMetric.reactors,
       lastActivityAt: metric.lastActivityAt, participants: participantSummaries,
       canModerate: viewerRole === "admin" || Boolean(post.communityId && moderatedCommunityIds.has(post.communityId)),
-      canReply: Boolean(viewerId && post.status === "active" && (!post.communityId || activeCommunities.has(post.communityId) && activeMemberCommunities.has(post.communityId))),
+      canReply: Boolean(viewerId && post.status === "active" && (!post.communityId || activeCommunities.has(post.communityId) && (categoryIds.has(post.communityId) || activeMemberCommunities.has(post.communityId)))),
       references: (referencesByPost.get(post.id) ?? []).map(({ postId: _postId, commentId: _commentId, position: _position, ...reference }) => ({ ...reference, id: publicDatabaseId(reference), paperId: reference.paperId ? safePaperIds.get(reference.paperId) : undefined })) };
+  });
+}
+
+const topicListSelect = {
+  id: true, legacyMongoId: true, publicSlug: true, authorId: true, communityId: true,
+  title: true, type: true, tags: true, status: true, isPinned: true, acceptedCommentId: true,
+  voteScore: true, commentCount: true, viewCount: true, lastActivityAt: true, createdAt: true,
+} as const satisfies Prisma.ForumPostSelect;
+type TopicListRow = Prisma.ForumPostGetPayload<{ select: typeof topicListSelect }>;
+
+/** Bounded row DTOs. Full bodies, citations and reading statistics belong to the topic endpoint. */
+async function presentTopicRows(posts: TopicListRow[], viewerInput?: string) {
+  if (!posts.length) return [];
+  const prisma = getPrisma();
+  const ids = posts.map((post) => post.id);
+  const viewerId = viewerInput ? await resolveUserId(viewerInput) : undefined;
+  const [categories, participants, helpful, follows, excerpts, acceptedIds] = await Promise.all([
+    prisma.community.findMany({ where: { id: { in: posts.flatMap((post) => post.communityId ? [post.communityId] : []) } }, select: { id: true, legacyMongoId: true, name: true, slug: true } }),
+    prisma.$queryRaw<Array<{ postId: string; authorId: string; participantCount: number }>>`
+      WITH participants AS (
+        SELECT post.id AS post_id, post.author_id, post.created_at AS activity
+        FROM forum_posts post WHERE post.id = ANY(${ids}::uuid[])
+        UNION ALL
+        SELECT comment.post_id, comment.author_id, comment.created_at FROM forum_comments comment
+        WHERE comment.post_id = ANY(${ids}::uuid[]) AND comment.status = 'active' AND comment.visibility_status = 'ACTIVE'
+      ), distinct_authors AS (
+        SELECT post_id, author_id, MAX(activity) AS activity FROM participants GROUP BY post_id, author_id
+      ), ranked AS (
+        SELECT post_id, author_id, COUNT(*) OVER (PARTITION BY post_id)::integer AS total,
+          ROW_NUMBER() OVER (PARTITION BY post_id ORDER BY activity DESC, author_id) AS rank FROM distinct_authors
+      ) SELECT post_id AS "postId", author_id AS "authorId", total AS "participantCount" FROM ranked WHERE rank <= 4 ORDER BY post_id, rank`,
+    prisma.forumVote.groupBy({ by: ["postId"], where: { postId: { in: ids }, value: 1 }, _count: { _all: true } }),
+    viewerId ? prisma.forumThreadFollow.findMany({ where: { userId: viewerId, postId: { in: ids } }, select: { postId: true, notificationLevel: true } }) : [],
+    prisma.$queryRaw<Array<{ id: string; excerpt: string }>>`SELECT id, LEFT(body, 240) AS excerpt FROM forum_posts WHERE id = ANY(${ids}::uuid[])`,
+    publicIdsFor("comment", posts.map((post) => post.acceptedCommentId)),
+  ]);
+  const authors = await academicAuthors([...posts.map((post) => post.authorId), ...participants.map((row) => row.authorId)], viewerId);
+  const categoryMap = new Map(categories.map((row) => [row.id, { id: publicDatabaseId(row), name: row.name, slug: row.slug }]));
+  const helpfulMap = new Map(helpful.map((row) => [row.postId, row._count._all]));
+  const followMap = new Map(follows.map((row) => [row.postId, row.notificationLevel]));
+  const excerptMap = new Map(excerpts.map((row) => [row.id, row.excerpt]));
+  const participantMap = new Map<string, typeof participants>();
+  for (const row of participants) { const list = participantMap.get(row.postId) ?? []; list.push(row); participantMap.set(row.postId, list); }
+  return posts.map((post) => {
+    const people = participantMap.get(post.id) ?? [];
+    const level = followMap.get(post.id) ?? "NORMAL";
+    const category = post.communityId ? categoryMap.get(post.communityId) : undefined;
+    return {
+      id: publicDatabaseId(post), publicSlug: post.publicSlug, title: post.title, type: post.type,
+      tags: post.tags, status: post.status, isPinned: post.isPinned, createdAt: post.createdAt,
+      content: excerptMap.get(post.id), authorId: authors.get(post.authorId), category, communityId: category,
+      acceptedCommentId: post.acceptedCommentId ? acceptedIds.get(post.acceptedCommentId) : undefined,
+      voteScore: post.voteScore, replyCount: post.commentCount, commentCount: post.commentCount,
+      viewCount: post.viewCount, helpfulCount: helpfulMap.get(post.id) ?? 0, lastActivityAt: post.lastActivityAt,
+      participantCount: people[0]?.participantCount ?? 1, participants: people.map((row) => authors.get(row.authorId)).filter(Boolean),
+      isFollowing: level === "WATCHING" || level === "TRACKING", notificationLevel: level,
+    };
   });
 }
 
@@ -680,27 +743,46 @@ async function listCommentRevisions(commentInput: string, actorId?: string, acto
 
 
 export const forumService = {
+  async tagOptions(query?: string) {
+    return getPrisma().$queryRaw<Array<{ name: string; slug: string }>>`
+      SELECT DISTINCT tag.name, tag.slug FROM forum_tags tag
+      JOIN forum_post_tags link ON link.tag_id = tag.id
+      JOIN forum_posts post ON post.id = link.post_id
+      JOIN communities category ON category.id = post.community_id
+      WHERE category.is_forum_category = true AND category.status = 'ACTIVE' AND category.visibility = 'public'
+        AND post.visibility_status = 'ACTIVE' AND post.status IN ('active', 'locked')
+        AND tag.name ILIKE ${`%${query?.trim() ?? ""}%`}
+      ORDER BY tag.name, tag.slug LIMIT 50`;
+  },
   async createPost(input: PostInput, userId: string) {
     const type = normalizeForumPostType(input.type);
     if (type === "PAPER_DISCUSSION" && !input.linkedPaperId) throw AppError.badRequest("Paper discussions require a linked LumiGap paper");
     if (type === "RESEARCH_GAP_DISCUSSION" && !input.linkedResearchGapId) throw AppError.badRequest("Research gap discussions require a shareable candidate gap");
     const [authorId, communityId, linkedPaperId, linkedResearchGapId, linkedProjectId, references] = await Promise.all([
-      resolveUserId(userId), assertCanPostToCommunity(input.communityId, userId), resolvePaper(input.linkedPaperId), resolveGap(input.linkedResearchGapId, true), resolveProject(input.linkedProjectId), prepareReferences(input.references),
+      resolveUserId(userId), assertCanPostToCommunity(input.communityId), resolvePaper(input.linkedPaperId), resolveGapForWrite(input.linkedResearchGapId, userId), resolveProject(input.linkedProjectId), prepareReferences(input.references),
     ]);
     await forumModerationService.assertForumRestriction(userId, "CREATE_THREAD", communityId ?? undefined);
     const tags = normalizeForumTags(input.tags ?? []);
     const cleanTitle = cleanForumText(input.title);
+    const cleanBody = cleanForumText(input.content);
+    if (cleanTitle.length < 3 || cleanTitle.length > 240 || !cleanBody || cleanBody.length > 20000) throw AppError.badRequest("Title and discussion body are required");
     const postId = randomUUID();
     const post = await withSlugRetry(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM communities WHERE id = ${communityId}::uuid FOR UPDATE`;
+      const category = await tx.community.findUnique({ where: { id: communityId } });
+      if (!category?.isForumCategory || category.status !== "ACTIVE") throw AppError.conflict("This category is unavailable or archived");
       const publicSlug = await allocateForumSlug(tx, cleanTitle);
-      const created = await tx.forumPost.create({ data: { id: postId, publicSlug, authorId, communityId, researchGapId: linkedResearchGapId, linkedPaperId, linkedResearchGapId, linkedProjectId, type, title: cleanTitle, body: cleanForumText(input.content), tags: tags.map((tag) => tag.name) } });
+      const created = await tx.forumPost.create({ data: { id: postId, publicSlug, authorId, communityId, researchGapId: linkedResearchGapId, linkedPaperId, linkedResearchGapId, linkedProjectId, type, title: cleanTitle, body: cleanBody, tags: tags.map((tag) => tag.name) } });
       if (linkedPaperId) await tx.forumPostPaper.create({ data: { postId: created.id, paperId: linkedPaperId, position: 0 } });
       if (linkedResearchGapId) await tx.forumPostGap.create({ data: { postId: created.id, gapId: linkedResearchGapId } });
       if (linkedProjectId) await tx.forumPostProject.create({ data: { postId: created.id, projectId: linkedProjectId } });
+      const canonicalTags: string[] = [];
       for (const tag of tags) {
         const row = await tx.forumTag.upsert({ where: { slug: tag.slug }, create: tag, update: {} });
         await tx.forumPostTag.create({ data: { postId: created.id, tagId: row.id } });
+        canonicalTags.push(row.name);
       }
+      if (canonicalTags.length) created.tags = (await tx.forumPost.update({ where: { id: created.id }, data: { tags: canonicalTags } })).tags;
       if (references.length) await tx.forumReference.createMany({ data: references.map((reference) => ({ ...reference, postId: created.id, createdById: authorId })) });
       if (communityId) await tx.community.update({ where: { id: communityId }, data: { threadCount: { increment: 1 } } });
       return created;
@@ -729,10 +811,10 @@ export const forumService = {
       where.id = { in: links.map((item) => item.postId) };
     }
     if (filter.communityId) {
-      const community = await resolveCommunity(filter.communityId);
-      if (community.status !== "ACTIVE") throw AppError.notFound("Community not found");
+      const community = await resolveForumCategory(filter.communityId);
+      if (community.status !== "ACTIVE") throw AppError.notFound("Forum category not found");
       await assertCanViewCommunity(community.id, actorId, actorRole); where.communityId = community.id;
-    } else conditions.push({ OR: [{ communityId: null }, { communityId: { in: await visibleCommunityIds(actorId, actorRole) } }] });
+    } else conditions.push({ communityId: { in: await visibleCommunityIds(actorId, actorRole) } });
     // Maintained transactionally from active replies only; the opening post is not a reply.
     if (filter.sort === "unanswered") conditions.push({ commentCount: 0 });
     if (filter.sort === "following") {
@@ -748,7 +830,7 @@ export const forumService = {
       const [matchingCommunities, matchingPapers, matchingReferences, matchingTags] = await Promise.all([
         prisma.community.findMany({ where: { name: { contains: query, mode: "insensitive" } }, select: { id: true } }),
         prisma.paper.findMany({ where: { dataStatus: "active", OR: [{ title: { contains: query, mode: "insensitive" } }, { doi: { contains: query, mode: "insensitive" } }] }, select: { id: true } }),
-        prisma.forumReference.findMany({ where: { OR: [{ title: { contains: query, mode: "insensitive" } }, { doi: { contains: query, mode: "insensitive" } }] }, select: { postId: true } }),
+        prisma.forumReference.findMany({ where: { postId: { not: null }, OR: [{ title: { contains: query, mode: "insensitive" } }, { doi: { contains: query, mode: "insensitive" } }] }, select: { postId: true } }),
         prisma.forumTag.findMany({ where: { OR: [{ name: { contains: query, mode: "insensitive" } }, { slug: { contains: query.toLocaleLowerCase() } }] }, select: { id: true } }),
       ]);
       const tagLinks = matchingTags.length ? await prisma.forumPostTag.findMany({ where: { tagId: { in: matchingTags.map((tag) => tag.id) } }, select: { postId: true } }) : [];
@@ -765,10 +847,10 @@ export const forumService = {
       ? [{ isPinned: "desc" as const }, { voteScore: "desc" as const }, { commentCount: "desc" as const }, { lastActivityAt: "desc" as const }, { id: "desc" as const }]
       : [{ isPinned: "desc" as const }, { lastActivityAt: "desc" as const }, { id: "desc" as const }];
     const [data, total] = await Promise.all([
-      prisma.forumPost.findMany({ where, orderBy, skip: (page - 1) * pageSize, take: pageSize }),
+      prisma.forumPost.findMany({ where, orderBy, select: topicListSelect, skip: (page - 1) * pageSize, take: pageSize }),
       prisma.forumPost.count({ where }),
     ]);
-    return { data: await presentPosts(data, actorId, actorRole), meta: { page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)) } };
+    return { data: await presentTopicRows(data, actorId), meta: { page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)) } };
   },
 
   async gapDiscussionContext(gapInput: string, actorInput: string, actorRole: UserRole) {
@@ -790,7 +872,7 @@ export const forumService = {
       ...referenceComments.map((item) => item.postId),
     ];
     const terms = [...new Set(`${gap.title} ${gap.topic}`.toLowerCase().split(/[^a-z0-9]+/).filter((term) => term.length >= 4).slice(0, 8))];
-    const communityScope = { OR: [{ communityId: null }, { communityId: { in: visibleIds } }] };
+    const communityScope = { communityId: { in: visibleIds } };
     const posts = await prisma.forumPost.findMany({
       where: {
         visibilityStatus: "ACTIVE",
@@ -1093,7 +1175,7 @@ export const forumService = {
       visibleCommunityIds(actorId, actorRole), presentPosts([source], actorId, actorRole),
     ]);
     const safeSource = sourceRows[0]!;
-    const visibility: Prisma.ForumPostWhereInput = { id: { not: source.id }, status: { in: ["active", "locked"] }, OR: [{ communityId: null }, { communityId: { in: visibleIds } }] };
+    const visibility: Prisma.ForumPostWhereInput = { id: { not: source.id }, visibilityStatus: "ACTIVE", status: { in: ["active", "locked"] }, communityId: { in: visibleIds } };
     const relatedConditions: Prisma.ForumPostWhereInput[] = forumDiscoveryTerms(source.title).map((term) => ({ title: { contains: term, mode: "insensitive" } }));
     const tags = forumDiscoveryTags(source.tags);
     // Use public context IDs only, never similarity to private project/gap metadata.
@@ -1130,7 +1212,9 @@ export const forumService = {
     await forumModerationService.assertForumRestriction(userId, "POSTING", post.communityId ?? undefined);
     const actorId = await resolveUserId(userId);
     if (post.authorId !== actorId) throw AppError.forbidden("Only the author can edit this post");
+    if (input.communityId !== undefined && (await resolveForumCategory(input.communityId)).id !== post.communityId) throw AppError.forbidden("Category moves require an administrator moderation action");
     if (post.status === "locked") throw AppError.conflict("A locked discussion cannot be edited");
+    if (input.title !== undefined && cleanForumText(input.title).trim().length < 3 || input.content !== undefined && !cleanForumText(input.content).trim()) throw AppError.badRequest("Title and discussion body are required");
     const nextType = input.type ? normalizeForumPostType(input.type) : normalizeForumPostType(post.type);
     const nextPaperInput = input.linkedPaperId !== undefined ? input.linkedPaperId : post.linkedPaperId ?? undefined;
     const nextGapInput = input.linkedResearchGapId !== undefined ? input.linkedResearchGapId : post.linkedResearchGapId ?? undefined;
@@ -1138,7 +1222,7 @@ export const forumService = {
     if (nextType === "RESEARCH_GAP_DISCUSSION" && !nextGapInput) throw AppError.badRequest("Research gap discussions require a shareable candidate gap");
     const [linkedPaperId, linkedResearchGapId, linkedProjectId, references] = await Promise.all([
       input.linkedPaperId !== undefined ? resolvePaper(input.linkedPaperId) : undefined,
-      input.linkedResearchGapId !== undefined ? resolveGap(input.linkedResearchGapId, true) : undefined,
+      input.linkedResearchGapId !== undefined ? resolveGapForWrite(input.linkedResearchGapId, userId) : undefined,
       input.linkedProjectId !== undefined ? resolveProject(input.linkedProjectId) : undefined,
       input.references !== undefined ? prepareReferences(input.references) : undefined,
     ]);
@@ -1168,7 +1252,9 @@ export const forumService = {
       if (input.linkedProjectId !== undefined) { await tx.forumPostProject.deleteMany({ where: { postId: post.id } }); if (linkedProjectId) await tx.forumPostProject.create({ data: { postId: post.id, projectId: linkedProjectId } }); }
       if (tags !== undefined) {
         await tx.forumPostTag.deleteMany({ where: { postId: post.id } });
-        for (const tag of tags) { const row = await tx.forumTag.upsert({ where: { slug: tag.slug }, create: tag, update: {} }); await tx.forumPostTag.create({ data: { postId: post.id, tagId: row.id } }); }
+        const canonicalTags: string[] = [];
+        for (const tag of tags) { const row = await tx.forumTag.upsert({ where: { slug: tag.slug }, create: tag, update: {} }); await tx.forumPostTag.create({ data: { postId: post.id, tagId: row.id } }); canonicalTags.push(row.name); }
+        result.tags = (await tx.forumPost.update({ where: { id: post.id }, data: { tags: canonicalTags } })).tags;
       }
       if (references !== undefined) { await tx.forumReference.deleteMany({ where: { postId: post.id } }); if (references.length) await tx.forumReference.createMany({ data: references.map((reference) => ({ ...reference, postId: post.id, createdById: post.authorId })) }); }
       return result;
@@ -1245,10 +1331,13 @@ export const forumService = {
       if (post.communityId) {
         await tx.$queryRaw`SELECT id FROM communities WHERE id = ${post.communityId}::uuid FOR SHARE`;
         const community = await tx.community.findUnique({ where: { id: post.communityId } });
-        if (!community || community.status !== "ACTIVE") throw AppError.conflict("Archived communities are read-only");
-        await tx.$queryRaw`SELECT id FROM community_memberships WHERE community_id = ${post.communityId}::uuid AND user_id = ${authorId}::uuid FOR SHARE`;
-        const membership = await tx.communityMembership.findUnique({ where: { communityId_userId: { communityId: post.communityId, userId: authorId } } });
-        if (membership?.status !== "active") throw AppError.forbidden("Active community membership is required to reply");
+        if (!community || community.status !== "ACTIVE") throw AppError.conflict("Archived categories are read-only");
+        // Keep access rules on old group topics; categories need no membership.
+        if (!community.isForumCategory) {
+          await tx.$queryRaw`SELECT id FROM community_memberships WHERE community_id = ${post.communityId}::uuid AND user_id = ${authorId}::uuid FOR SHARE`;
+          const membership = await tx.communityMembership.findUnique({ where: { communityId_userId: { communityId: post.communityId, userId: authorId } } });
+          if (membership?.status !== "active") throw AppError.forbidden("This discussion is unavailable");
+        }
       }
       await tx.$queryRaw`SELECT id FROM forum_posts WHERE id = ${post.id}::uuid FOR UPDATE`;
       const root = await tx.forumPost.findUnique({ where: { id: post.id } });
@@ -1469,8 +1558,11 @@ export const forumService = {
 
   async contextOptions(userInput: string, query?: string) {
     const userId = await resolveUserId(userInput); const prisma = getPrisma();
-    const memberships = await prisma.projectMember.findMany({ where: { userId, status: "ACTIVE" }, select: { projectId: true } });
-    const accessibleProjectIds = memberships.map((membership) => membership.projectId);
+    const [memberships, ownedProjects] = await Promise.all([
+      prisma.projectMember.findMany({ where: { userId, status: "ACTIVE" }, select: { projectId: true } }),
+      prisma.project.findMany({ where: { ownerId: userId, status: { not: "ARCHIVED" } }, select: { id: true } }),
+    ]);
+    const accessibleProjectIds = [...new Set([...memberships.map((membership) => membership.projectId), ...ownedProjects.map((project) => project.id)])];
     const search = query?.trim();
     const savedBookmarkRows = await prisma.bookmark.findMany({ where: { userId, paperId: { not: null } }, select: { paperId: true }, orderBy: { createdAt: "desc" }, take: 50 });
     const savedPaperIds = savedBookmarkRows.flatMap((row) => row.paperId ? [row.paperId] : []);

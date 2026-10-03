@@ -5,6 +5,7 @@ import { LogOut, User, Bookmark, ChevronDown, KeyRound, Menu, Trophy, X } from "
 import logoImage from "@/assets/logo.png";
 import logoDarkImage from "@/assets/logo-dark.png";
 import { Button } from "@/components/ui/button";
+import { RouteTransition } from "@/components/route-transition";
 import { ThemeToggle } from "@/components/theme-toggle";
 import {
   DropdownMenu,
@@ -51,7 +52,6 @@ const navGroups = [
     label: "Community",
     items: [
       { to: "/forum", label: "Forum" },
-      { to: "/communities", label: "Communities" },
     ],
   },
   {
@@ -241,6 +241,7 @@ export function MainLayout() {
             className="hidden items-center justify-self-center gap-0.5 whitespace-nowrap min-[1180px]:flex"
           >
             {navGroups.map((group) => (
+              group.label === "Community" ? <Link key={group.label} to="/forum" className={cn("rounded-md px-3 py-2 text-sm font-medium transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", location.pathname.startsWith("/forum") && "bg-muted text-primary")}>{t(group.label)}</Link> :
               <DesktopNavDropdown
                 key={group.label}
                 label={t(group.label)}
@@ -319,7 +320,7 @@ export function MainLayout() {
       </header>
       <main className={cn("relative z-10 min-w-0 flex-1", isForumSurface || isHomeSurface ? "w-full p-0" : "container mx-auto w-full px-4 py-5 sm:px-6 sm:py-8 lg:px-8")}>
         <Suspense fallback={<PageLoadingFallback />}>
-          <Outlet />
+          <RouteTransition><Outlet /></RouteTransition>
         </Suspense>
       </main>
       {!isForumSurface ? <footer className="border-t bg-white py-6 mt-auto dark:bg-[#0f0f11]">

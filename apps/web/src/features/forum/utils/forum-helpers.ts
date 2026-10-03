@@ -71,13 +71,14 @@ export function formatForumActivityTime(value: string, locale: string): string {
     const time = new Date(value).getTime();
     if (Number.isNaN(time)) return "";
     const elapsedSeconds = Math.max(0, Math.round((Date.now() - time) / 1000));
-    if (elapsedSeconds < 60) return `${Math.max(1, elapsedSeconds)}s`;
+    const unit = new Intl.NumberFormat(locale, { style: "unit", unit: "second", unitDisplay: "narrow" });
+    if (elapsedSeconds < 60) return unit.format(Math.max(1, elapsedSeconds));
     const minutes = Math.round(elapsedSeconds / 60);
-    if (minutes < 60) return `${minutes}m`;
+    if (minutes < 60) return new Intl.NumberFormat(locale, { style: "unit", unit: "minute", unitDisplay: "narrow" }).format(minutes);
     const hours = Math.round(minutes / 60);
-    if (hours < 24) return `${hours}h`;
+    if (hours < 24) return new Intl.NumberFormat(locale, { style: "unit", unit: "hour", unitDisplay: "narrow" }).format(hours);
     const days = Math.round(hours / 24);
-    if (days < 30) return `${days}d`;
+    if (days < 30) return new Intl.NumberFormat(locale, { style: "unit", unit: "day", unitDisplay: "narrow" }).format(days);
     return new Date(value).toLocaleDateString(locale, { month: "short", day: "numeric" });
   } catch {
     return "";

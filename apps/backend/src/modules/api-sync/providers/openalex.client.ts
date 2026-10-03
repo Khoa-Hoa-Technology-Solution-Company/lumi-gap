@@ -154,6 +154,17 @@ function appendOpenAlexIdentity(url: URL): void {
   if (env.OPENALEX_API_KEY) url.searchParams.set("api_key", env.OPENALEX_API_KEY);
 }
 
+/** Interactive DOI lookup: fixed provider host, bounded timeout and no URL redirects. */
+export async function fetchOpenAlexWorkByDoi(doi: string): Promise<OpenAlexWork | null> {
+  if (doi.length > 300 || !/^10\.\d{4,9}\/\S+$/i.test(doi)) throw new Error("Invalid DOI");
+  const url = new URL(`${BASE_URL}/doi:${encodeURIComponent(doi)}`);
+  appendOpenAlexIdentity(url);
+  const response = await fetch(url, { redirect: "error", signal: AbortSignal.timeout(10_000), headers: { Accept: "application/json" } });
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(`OpenAlex lookup failed (${response.status})`);
+  return await response.json() as OpenAlexWork;
+}
+
 async function fetchWithRetry(url: string, attempt = 1): Promise<OpenAlexPage> {
   await sleep(RATE_LIMIT_DELAY_MS);
   const t0 = Date.now();

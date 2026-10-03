@@ -51,7 +51,11 @@ export function ForumReactionPicker({ counts, viewerReactions, reactionUsers = {
     <div className="forum-reactions inline-flex min-w-0 flex-wrap items-center gap-1" data-mode={countsOnly ? "counts" : triggerOnly ? "trigger" : "all"} aria-label={t("Reactions")}>
       {!triggerOnly ? visible.map((reaction) => <ForumReactorsPopover key={reaction.value} target={target} counts={safeCounts} users={reactionUsers} initialFilter={reaction.value} trigger={<span aria-hidden="true">{reaction.emoji}</span>} triggerLabel={`${t(reaction.label)} ${safeCounts[reaction.value]}. ${t("Who reacted")}`} title={`${t(reaction.label)} · ${titleFor(reaction.value)}`} triggerClassName={cn("forum-reaction-chip inline-flex h-8 w-6 items-center justify-center rounded text-base transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", isSelected(reaction.value) ? "bg-primary/10 text-primary" : "text-muted-foreground")} />) : null}
       {!triggerOnly && total > 0 ? <ForumReactorsPopover target={target} counts={safeCounts} users={reactionUsers} trigger={total} triggerLabel={`${t("Reactions")} ${total}`} title={t("Who reacted")} triggerClassName="ml-1 rounded text-sm tabular-nums text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring" /> : null}
-      {!countsOnly ? <DropdownMenu modal={false}>
+      {!countsOnly ? <DropdownMenu modal={false} onOpenChange={(open) => {
+        // Opening from the heart records the default immediately. Dismissing
+        // the palette keeps it; choosing another emoji replaces it.
+        if (open && canReact && !selected) onToggle("LIKE", true);
+      }}>
         <DropdownMenuTrigger asChild>
           <Button type="button" variant="ghost" size="icon" aria-busy={pending} aria-label={t(selected ? "Change reaction" : "Add reaction")} title={selected ? `${t("Your reaction")}: ${t(selected.label)}` : t("Add reaction")} className={cn("forum-reaction-trigger ml-auto h-9 w-9 text-muted-foreground", selected && "text-rose-600 dark:text-rose-400")}>
             {selected ? <span key={selected.value} aria-hidden="true" className="forum-selected-reaction">{selected.emoji}</span> : <Heart aria-hidden="true" className="h-4 w-4" />}

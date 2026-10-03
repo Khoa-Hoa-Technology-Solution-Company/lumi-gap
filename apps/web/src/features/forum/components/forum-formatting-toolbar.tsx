@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Bold, CalendarClock, Code, FileCode2, ChevronRight, Italic, Link2, List, ListOrdered, MessageSquareQuote, Plus, NotebookPen, Quote, CheckSquare, Strikethrough, Minus, Table2, Heading1, ImagePlus, Sigma, EyeOff, WrapText, Pilcrow, Type } from "lucide-react";
+import { Bold, CalendarClock, Code, FileCode2, ChevronRight, Italic, Link2, List, ListOrdered, MessageSquareQuote, Plus, NotebookPen, Quote, CheckSquare, Strikethrough, Minus, Table2, Heading1, Sigma, EyeOff, WrapText, Pilcrow, Type } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuShortcut, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useI18n } from "@/i18n";
@@ -20,7 +20,7 @@ const primaryItems: ToolbarItem[] = [
 ];
 const advancedItems: ToolbarItem[] = [
   { label: "Insert table", action: "table", icon: Table2 }, { label: "Add footnote", action: "footnote", icon: NotebookPen },
-  { label: "Insert image", action: "image", icon: ImagePlus }, { label: "Insert math", action: "math", icon: Sigma },
+  { label: "Insert math", action: "math", icon: Sigma },
   { label: "Code block", action: "code-block", icon: FileCode2 }, { label: "Insert date/time", action: "date", icon: CalendarClock, shortcut: "Ctrl Shift ." },
   { label: "Insert note", action: "callout", icon: MessageSquareQuote }, { label: "Hide details", action: "details", icon: ChevronRight },
   { label: "Blur spoiler", action: "spoiler", icon: EyeOff }, { label: "Apply wrap", action: "wrap", icon: WrapText },

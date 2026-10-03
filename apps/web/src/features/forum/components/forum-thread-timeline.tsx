@@ -138,7 +138,13 @@ export function ForumThreadTimeline({ postIds, postDates, total, createdAt, last
         <button type="button" onClick={() => jump(postIds[0])} title={`${t("Jump to opening post")}: ${new Date(createdAt).toLocaleString(language)}`} className="forum-timeline-date focus-visible:ring-2 focus-visible:ring-ring">
           <time dateTime={createdAt}>{date(createdAt)}</time>
         </button>
-        {displayedTotal === 1 ? <p className="py-4 text-xs" title={new Date(createdAt).toLocaleString(language)}>{postIds[0] === "opening-post" ? t("Opening post") : `${t("Post")} 1 / 1`}</p> : <>
+        {displayedTotal === 1 ? <div className="forum-timeline-single-post">
+          <div className="forum-timeline-position">
+            <p className="font-semibold tabular-nums text-foreground">1 / 1</p>
+            <time dateTime={createdAt}>{date(createdAt)}</time>
+            <span className="sr-only">{postIds[0] === "opening-post" ? t("Opening post") : t("Post")}</span>
+          </div>
+        </div> : <>
           <div className="forum-timeline-scrubber">
             <div className="forum-timeline-rail" aria-hidden="true" />
             <input ref={desktopRange} type="range" min={1} max={Math.max(1, postIds.length)} step="0.001" defaultValue={1} disabled={postIds.length < 2} aria-label={t("Navigate loaded posts")} aria-valuetext={`${t("Post")} ${selected} / ${displayedTotal}`} onPointerDown={() => { dragging.current = true; }} onPointerUp={() => { dragging.current = false; }} onPointerCancel={() => { dragging.current = false; }} onBlur={() => { dragging.current = false; }} onChange={(event) => scrub(Number(event.target.value))} onKeyDown={navigateWithKey} className="forum-timeline-range" />

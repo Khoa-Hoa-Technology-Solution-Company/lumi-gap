@@ -37,6 +37,43 @@ const openPicker = async () => {
 };
 
 describe("Forum emoji palette", () => {
+  it("adds a heart immediately and keeps it when the palette is dismissed", async () => {
+    const toggle = vi.fn();
+    function HeartChoice() {
+      const [choice, setChoice] = useState<ForumReactionName[]>([]);
+      return <ForumReactionPicker counts={counts} viewerReactions={choice} isAuthed onToggle={(reaction, active) => { toggle(reaction, active); setChoice(active ? [reaction] : []); }} />;
+    }
+    await act(async () => root.render(<HeartChoice />));
+    const trigger = await openPicker();
+    expect(toggle).toHaveBeenCalledTimes(1);
+    expect(toggle).toHaveBeenCalledWith("LIKE", true);
+    expect(trigger.textContent).toContain("❤️");
+    expect(document.querySelector('[role="menuitemradio"][aria-label="Like"]')?.getAttribute("aria-checked")).toBe("true");
+    await act(async () => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect(trigger.textContent).toContain("❤️");
+    expect(toggle).toHaveBeenCalledTimes(1);
+    await openPicker();
+    expect(toggle).toHaveBeenCalledTimes(1);
+    await act(async () => document.querySelector<HTMLElement>('[role="menuitemradio"][aria-label="Like"]')!.click());
+    expect(toggle).toHaveBeenLastCalledWith("LIKE", false);
+    expect(trigger.getAttribute("aria-label")).toBe("Add reaction");
+  });
+
+  it("replaces the automatic heart with the emoji selected in the same palette", async () => {
+    const toggle = vi.fn();
+    function HeartChoice() {
+      const [choice, setChoice] = useState<ForumReactionName[]>([]);
+      return <ForumReactionPicker counts={counts} viewerReactions={choice} isAuthed onToggle={(reaction, active) => { toggle(reaction, active); setChoice(active ? [reaction] : []); }} />;
+    }
+    await act(async () => root.render(<HeartChoice />));
+    await openPicker();
+    await act(async () => document.querySelector<HTMLElement>('[role="menuitemradio"][aria-label="Laugh"]')!.click());
+    expect(toggle.mock.calls).toEqual([["LIKE", true], ["LAUGH", true]]);
+    expect(container.querySelector('.forum-reaction-trigger')?.textContent).toContain("😂");
+    expect(document.querySelector('[role="menu"][aria-label="Choose a reaction"]')).toBeNull();
+  });
+
   it("opens a compact palette, exposes selected state, and toggles the exact reaction", async () => {
     const toggle = vi.fn();
     await act(async () => root.render(<ForumReactionPicker counts={counts} viewerReactions={["LOVE"]} isAuthed onToggle={toggle} />));

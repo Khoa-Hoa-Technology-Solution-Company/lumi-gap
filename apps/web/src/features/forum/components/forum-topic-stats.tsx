@@ -55,13 +55,13 @@ export function ForumTopicStats({ post, comments, hasMore, onLoadMore, loadingMo
         </>} /></li>
         {linkCount > 0 ? <li><span className="forum-topic-stat"><Link2 aria-hidden="true" className="h-3.5 w-3.5 text-violet-600 dark:text-violet-300" /><span><strong className="forum-topic-stat-value">{formatForumNumber(linkCount, language)}</strong> {t("Links")}</span></span></li> : null}
       </ul> : <span className="forum-topic-reading-time"><Clock3 aria-hidden="true" className="h-3.5 w-3.5" />{readingTime} {t("min")} {t("read")}</span>}
+      {!compact ? <div className="forum-topic-stat-participants" aria-label={t("Participants")}>
+        <span className="sr-only"><strong>{formatForumNumber(participantCount, language)}</strong> {t("Participants")}</span>
+        <div className="forum-topic-participant-avatars">{post.participants.map((author) => <ForumAuthorPopover key={author.id} author={author} authorTopicPostCount={authorTopicPostCount(author.id)} onFilterPosts={onFilterAuthor ? () => onFilterAuthor(author.id) : undefined}><ForumAuthorAvatar author={author} size="sm" /></ForumAuthorPopover>)}</div>
+      </div> : null}
       <button type="button" onClick={() => setSummaryOpen((previous) => !previous)} aria-expanded={summaryOpen} className="forum-topic-summary-button"><Sparkles className="h-4 w-4" aria-hidden="true" />{t(summaryOpen ? "Show full discussion" : "Summarize")}</button>
     </div>
     {!compact ? <div className="forum-topic-stats-meta">
-      <div className="forum-topic-stat-participants" aria-label={t("Participants")}>
-        <span><strong className="font-medium text-foreground">{formatForumNumber(participantCount, language)}</strong> {t("Participants")}</span>
-        <div className="forum-topic-participant-avatars">{post.participants.map((author) => <ForumAuthorPopover key={author.id} author={author} authorTopicPostCount={authorTopicPostCount(author.id)} onFilterPosts={onFilterAuthor ? () => onFilterAuthor(author.id) : undefined}><ForumAuthorAvatar author={author} size="xs" /></ForumAuthorPopover>)}</div>
-      </div>
       <span className="forum-topic-last-activity">{t("Last activity")}: <time dateTime={lastActivityAt} title={new Date(lastActivityAt).toLocaleString(language)}>{formatForumRelativeTime(lastActivityAt, language)}</time></span>
       <span className="forum-topic-reading-time"><Clock3 aria-hidden="true" className="h-3.5 w-3.5" />{readingTime} {t("min")} {t("read")}</span>
     </div> : null}

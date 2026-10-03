@@ -1,14 +1,14 @@
 import type { ForumPostType } from "@trend/shared-types";
-import type { CommunityView, ForumPostInput, ForumReferenceView } from "../api/forum.api";
+import type { ForumPostInput, ForumReferenceView } from "../api/forum.api";
 import { safeForumImageUrl } from "./forum-formatting";
 
 const types: ForumPostType[] = ["QUESTION", "DISCUSSION", "PAPER_DISCUSSION", "RESEARCH_GAP_DISCUSSION"];
 
 export function forumNewDiscussionHref(params: URLSearchParams) {
   const next = new URLSearchParams();
-  const community = params.get("community");
+  const community = params.get("category") ?? params.get("community");
   const type = params.get("type") as ForumPostType;
-  if (community) next.set("community", community);
+  if (community) next.set("category", community);
   if (types.includes(type)) next.set("type", type);
   for (const key of ["paper", "gap"] as const) {
     const value = params.get(key);
@@ -211,8 +211,8 @@ export type ForumDiscussionDraft = {
   references: ForumReferenceView[];
 };
 
-export function buildForumDiscussionInput(draft: ForumDiscussionDraft, joined: CommunityView[], gaps: Array<{ id: string; forumShareable: boolean }>): { input: ForumPostInput } | { error: string } {
-  if (!joined.some((community) => community.id === draft.communityId)) return { error: "Join a community before starting a discussion." };
+export function buildForumDiscussionInput(draft: ForumDiscussionDraft, categories: Array<{ id: string; status?: string }>, gaps: Array<{ id: string; forumShareable: boolean }>): { input: ForumPostInput } | { error: string } {
+  if (!categories.some((category) => category.id === draft.communityId && (!category.status || category.status === "ACTIVE"))) return { error: "Select an active forum category." };
   const title = draft.title.trim();
   const content = draft.content.trim();
   if (title.length < 3 || title.length > 240) return { error: "Use a discussion title between 3 and 240 characters." };

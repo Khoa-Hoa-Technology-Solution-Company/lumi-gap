@@ -22,7 +22,7 @@ describe.sequential("forum report decisions, restrictions and appeals", () => {
     const users = await Promise.all(["admin", "reviewer", "moderator", "author", "reporter", "outsider"].map((name) => prisma.user.create({ data: { fullName: name, email: "moderation-" + name + "-" + marker + "@example.test", ...(name === "admin" || name === "reviewer" ? { role: "admin", systemRole: "ADMIN" } : {}) } })));
     userIds = users.map((user) => user.id);
     [admin, reviewer, moderator, author, reporter, outsider] = userIds;
-    const communities = await Promise.all(["source", "destination"].map((name) => prisma.community.create({ data: { name: "Moderation " + name, slug: "moderation-" + name + "-" + marker, ownerId: moderator } })));
+    const communities = await Promise.all(["source", "destination"].map((name) => prisma.community.create({ data: { name: "Moderation " + name, slug: "moderation-" + name + "-" + marker, ownerId: moderator, isForumCategory: true } })));
     [community, destination] = communities.map((row) => row.id);
     await prisma.communityMembership.createMany({ data: [community, destination].flatMap((communityId) => [moderator, author, reporter].map((userId) => ({ communityId, userId, status: "active", role: userId === moderator ? "owner" : "member" }))) });
   });
@@ -82,11 +82,11 @@ describe.sequential("forum report decisions, restrictions and appeals", () => {
 
   it("does not let outsiders report member-only content", async () => {
     const post = await topic();
-    await prisma.community.update({ where: { id: community }, data: { visibility: "private" } });
+    await prisma.community.update({ where: { id: community }, data: { visibility: "private", isForumCategory: false } });
     try {
       await expect(report(post.id, "SPAM", outsider)).rejects.toMatchObject({ statusCode: 403 });
       expect(await report(post.id)).toMatchObject({ status: "open" });
-    } finally { await prisma.community.update({ where: { id: community }, data: { visibility: "public" } }); }
+    } finally { await prisma.community.update({ where: { id: community }, data: { visibility: "public", isForumCategory: true } }); }
   });
 
   it("presents a response report as a response and retains the discussion URL", async () => {

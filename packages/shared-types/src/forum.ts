@@ -245,3 +245,15 @@ export interface ForumModerationAction {
   targetId: string;
   createdAt: ISODateString;
 }
+/** Public forum taxonomy. Membership is not required to read or participate. */
+export interface ForumCategory {
+  id: string;
+  name: string;
+  slug: string;
+  description: string;
+  status: "ACTIVE" | "ARCHIVED";
+  sortOrder: number;
+  /** Visible topics only; populated by the category directory endpoint. */
+  topicCount?: number;
+  topicsThisWeek?: number;
+}

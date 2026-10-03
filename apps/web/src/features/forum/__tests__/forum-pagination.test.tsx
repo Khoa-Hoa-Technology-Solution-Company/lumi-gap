@@ -13,7 +13,7 @@ vi.mock("@/i18n", () => ({ useI18n: () => ({ t: (key: string) => key, language: 
 describe("Forum list URL pagination", () => {
   it("defaults to 20 and restores every valid URL value", () => {
     expect(parseForumListParams(new URLSearchParams())).toMatchObject({ page: 1, pageSize: 20, sort: "latest", type: "", query: "" });
-    expect(parseForumListParams(new URLSearchParams("page=2&pageSize=30&sort=following&type=QUESTION&q=screening"))).toEqual({ page: 2, pageSize: 30, sort: "following", type: "QUESTION", query: "screening" });
+    expect(parseForumListParams(new URLSearchParams("page=2&pageSize=30&sort=following&type=QUESTION&q=screening"))).toEqual({ page: 2, pageSize: 30, sort: "following", type: "QUESTION", query: "screening", category: "" });
   });
   it.each(["0", "-1", "1.5", "Infinity", "NaN", "9007199254740992", "1000001", "x"])("normalizes invalid page %s", (value) => {
     expect(parseForumListParams(new URLSearchParams({ page: value })).page).toBe(1);

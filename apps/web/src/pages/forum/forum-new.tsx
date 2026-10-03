@@ -7,10 +7,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ForumLayout, ForumSurface } from "@/features/forum/components/forum-layout";
 import { ForumBodyEditor } from "@/features/forum/components/forum-body-editor";
+import { ForumDoiLookup } from "@/features/forum/components/forum-doi-lookup";
 import { ForumSidebar } from "@/features/forum/components/forum-sidebar";
-import { useCommunities, useCreateForumPost, useForumContext, useShareForumGap } from "@/features/forum/hooks/use-forum";
+import { useCreateForumPost, useForumContext, useShareForumGap } from "@/features/forum/hooks/use-forum";
 import type { ForumReferenceView } from "@/features/forum/api/forum.api";
 import { buildForumDiscussionInput, forumInitialDiscussionType } from "@/features/forum/utils/forum-discussion-editor";
+import { useForumCategories, useForumTags } from "@/features/forum/hooks/use-forum-categories";
 import { isValidDoi, matchesExactDoi, normalizeDoi } from "@/features/projects/utils/doi";
 import { useI18n } from "@/i18n";
 import { useAuthStore } from "@/stores/auth-store";
@@ -22,7 +24,7 @@ const THREAD_TYPES: Array<{ value: ForumPostType; label: string; detail: string 
   { value: "QUESTION", label: "Question", detail: "Ask a focused research question and provide enough context for useful answers." },
   { value: "DISCUSSION", label: "Discussion", detail: "Start an academic discussion around a method, finding, research direction, or research problem." },
   { value: "PAPER_DISCUSSION", label: "Paper Discussion", detail: "Critique, reproduce findings, or discuss limitations of a specific paper." },
-  { value: "RESEARCH_GAP_DISCUSSION", label: "Research Gap Discussion", detail: "Invite the community to examine and validate a candidate research gap." },
+  { value: "RESEARCH_GAP_DISCUSSION", label: "Research Gap Discussion", detail: "Invite researchers to examine a candidate research gap." },
 ];
 const TITLE_PLACEHOLDERS: Record<ForumPostType, string> = {
   QUESTION: "State your research question clearly",
@@ -77,14 +79,14 @@ export function ForumDiscussionComposer({ embedded = false, onClose, onPublished
   const [searchParams] = useSearchParams();
   const create = useCreateForumPost();
   const shareGap = useShareForumGap();
-  const communitiesQuery = useCommunities();
+  const communitiesQuery = useForumCategories();
   const initialType = forumInitialDiscussionType(searchParams);
   const [type, setType] = useState<ForumPostType>(() => initialType);
   const [contextOpen, setContextOpen] = useState(() => ["PAPER_DISCUSSION", "RESEARCH_GAP_DISCUSSION"].includes(initialType));
   const contextEnabled = contextOpen || Boolean(searchParams.get("gap") || searchParams.get("paper"));
   const contextQuery = useForumContext(undefined, contextEnabled);
   const context = contextQuery.data;
-  // A gap opened from a community page may belong to someone else; the server re-checks that it is shareable.
+  // Incoming links remain subject to the server's gap access and shareability checks.
   const requestedGapId = searchParams.get("gap");
   const requestedGapTitle = searchParams.get("gapTitle");
   const contextGaps = useMemo(() => {
@@ -92,7 +94,7 @@ export function ForumDiscussionComposer({ embedded = false, onClose, onPublished
     if (!requestedGapId || own.some((gap) => gap.id === requestedGapId)) return own;
     return [{ id: requestedGapId, title: requestedGapTitle ?? requestedGapId, topic: "", forumShareable: true }, ...own];
   }, [context?.gaps, requestedGapId, requestedGapTitle]);
-  const joined = useMemo(() => (communitiesQuery.data ?? []).filter((community) => community.status === "ACTIVE" && community.viewerMembership?.status === "active"), [communitiesQuery.data]);
+  const joined = useMemo(() => (communitiesQuery.data ?? []).filter((community) => community.status === "ACTIVE"), [communitiesQuery.data]);
 
   const [communityId, setCommunityId] = useState("");
   const [title, setTitle] = useState("");
@@ -111,6 +113,7 @@ export function ForumDiscussionComposer({ embedded = false, onClose, onPublished
   const [paperSearchText, setPaperSearchText] = useState("");
   const [paperSearch, setPaperSearch] = useState("");
   const [tagsOpen, setTagsOpen] = useState(false);
+  const { data: tagOptions } = useForumTags(tagsOpen);
   const [advancedContextOpen, setAdvancedContextOpen] = useState(false);
   const [error, setError] = useState("");
   const [discardOpen, setDiscardOpen] = useState(false);
@@ -120,7 +123,7 @@ export function ForumDiscussionComposer({ embedded = false, onClose, onPublished
   const initializedGap = useRef(false);
   const initializedPaper = useRef(false);
   const draftKey = useMemo(() => {
-    const key = [searchParams.get("community") ?? "all", searchParams.get("type") ?? "QUESTION", searchParams.get("paper") ?? "none", searchParams.get("gap") ?? "none"].join(":");
+    const key = [(searchParams.get("category") ?? searchParams.get("community")) ?? "all", searchParams.get("type") ?? "QUESTION", searchParams.get("paper") ?? "none", searchParams.get("gap") ?? "none"].join(":");
     return `lumigap:forum-draft:v1:${key}`;
   }, [searchParams]);
 
@@ -143,7 +146,7 @@ export function ForumDiscussionComposer({ embedded = false, onClose, onPublished
   useEffect(() => {
     if (initializedCommunity.current || !communitiesQuery.data) return;
     initializedCommunity.current = true;
-    const requested = searchParams.get("community");
+    const requested = (searchParams.get("category") ?? searchParams.get("community"));
     const community = joined.find((item) => item.id === requested || item.slug === requested);
     if (community) setCommunityId(community.id);
   }, [communitiesQuery.data, joined, searchParams]);
@@ -276,10 +279,10 @@ export function ForumDiscussionComposer({ embedded = false, onClose, onPublished
         <div className="space-y-3 px-5 pt-4 sm:px-6">
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="min-w-0">
-              <span className="sr-only">{t("Community")} *</span>
-              <select aria-label={t("Community")} required value={communityId} onChange={(event) => setCommunityId(event.target.value)} disabled={communitiesQuery.isLoading || communitiesQuery.isError} className={cn(fieldClass, "h-12 rounded-lg font-medium")}>
-                <option value="">{t("Select a joined community")}</option>
-                {joined.map((community) => <option key={community.id} value={community.id}>{community.name}</option>)}
+              <span className="sr-only">{t("Category")} *</span>
+              <select aria-label={t("Category")} required value={communityId} onChange={(event) => setCommunityId(event.target.value)} disabled={communitiesQuery.isLoading || communitiesQuery.isError} className={cn(fieldClass, "h-12 rounded-lg font-medium")}>
+                <option value="">{t("Select a category")}</option>
+                {joined.map((community) => <option key={community.id} value={community.id}>{t(community.name)}</option>)}
               </select>
             </label>
             <label className="min-w-0">
@@ -295,7 +298,7 @@ export function ForumDiscussionComposer({ embedded = false, onClose, onPublished
             {titleNearLimit ? <span className="pointer-events-none absolute bottom-2 right-3 text-xs tabular-nums text-muted-foreground" aria-live="polite">{title.length}/240</span> : null}
           </div>
           <p className="text-sm leading-5 text-muted-foreground">{t(THREAD_TYPES.find((option) => option.value === type)!.detail)}</p>
-          {communitiesQuery.isLoading ? <p role="status" className="text-sm text-muted-foreground">{t("Loading communities")}</p> : communitiesQuery.isError ? <div role="alert" className="flex flex-wrap items-center gap-3 text-sm text-destructive"><span>{t("Could not load communities.")}</span><button type="button" className="rounded underline focus-visible:ring-2 focus-visible:ring-ring" onClick={() => void communitiesQuery.refetch()}>{t("Retry")}</button></div> : !joined.length ? <p className="rounded-md border border-border bg-muted/40 p-3 text-sm leading-6 text-muted-foreground">{t("You need to join an academic community before posting.")} <Link to="/communities" className="font-medium text-primary hover:underline">{t("Browse communities")}</Link></p> : null}
+          {communitiesQuery.isLoading ? <p role="status" className="text-sm text-muted-foreground">{t("Loading categories")}</p> : communitiesQuery.isError ? <div role="alert" className="flex flex-wrap items-center gap-3 text-sm text-destructive"><span>{t("Could not load categories.")}</span><button type="button" className="rounded underline focus-visible:ring-2 focus-visible:ring-ring" onClick={() => void communitiesQuery.refetch()}>{t("Retry")}</button></div> : !joined.length ? <p className="rounded-md border border-border bg-muted/40 p-3 text-sm leading-6 text-muted-foreground">{t("No active categories are available. Please try again later.")}</p> : null}
         </div>
 
         <div className="px-5 pt-4 sm:px-6"><ForumBodyEditor id="discussion-body" label={t("Discussion body")} value={content} onChange={setContent} maxLength={20000} disabled={create.isPending} describedBy={error ? "discussion-error" : "discussion-help"} placeholder={t(BODY_PLACEHOLDERS[type])} className={expanded ? "forum-editor-expanded" : undefined} /></div>
@@ -322,11 +325,15 @@ export function ForumDiscussionComposer({ embedded = false, onClose, onPublished
               {citationResults.map((paper) => { const checked = pendingCitationSet.has(paper.id); return <label key={paper.id} className="flex cursor-pointer items-start gap-3 border-b border-border px-3 py-3 last:border-0 hover:bg-muted/40"><input type="checkbox" checked={checked} onChange={() => toggleCitation(paper)} className="mt-1 h-4 w-4 accent-primary" /><span className="min-w-0"><span className="block text-sm font-medium">{paper.title}</span><span className="mt-1 block text-xs text-muted-foreground">{[paper.publicationYear, paper.doi].filter(Boolean).join(" · ")}</span></span>{checked ? <Check className="ml-auto mt-0.5 h-4 w-4 shrink-0 text-primary" /> : null}</label>; })}
             </div> : null}
             <div className="flex justify-end"><Button type="button" className="h-10" disabled={!pendingCitationIds.length} onClick={attachCitations}>{t("Attach selected")}</Button></div>
+            {citationMode === "doi" && isValidDoi(citationText) ? <ForumDoiLookup key={normalizeDoi(citationText)} doi={normalizeDoi(citationText)} onAttach={(paper) => {
+              setReferences((current) => current.some((reference) => reference.paperId === paper.paperId) ? current : [...current, { paperId: paper.paperId, doi: paper.doi, title: paper.title, authors: paper.authors, year: paper.publicationYear }]);
+              setCitationText(""); setCitationSearch("");
+            }} /> : null}
           </section> : null}
 
           {references.length ? <ul className="space-y-2" aria-label={t("Attached citations")}>{references.map((reference) => <li key={reference.paperId ?? reference.doi} className="flex items-start justify-between gap-3 rounded-md border border-border bg-muted/20 px-3 py-2"><span className="min-w-0"><span className="block truncate text-sm font-medium">{reference.title ?? reference.doi}</span><span className="block text-xs text-muted-foreground">{[reference.year, reference.doi].filter(Boolean).join(" · ")}</span></span><Button type="button" variant="ghost" size="icon" className="h-9 w-9 shrink-0" aria-label={t("Remove citation")} onClick={() => removeCitation(reference.paperId, reference.doi)}><X className="h-4 w-4" /></Button></li>)}</ul> : null}
 
-          {tagsOpen ? <div id="discussion-tags" className="space-y-2 border-y border-border py-4"><label htmlFor="discussion-tags-input" className="text-sm font-medium">{t("Tags")}</label><Input id="discussion-tags-input" aria-label={t("Tags")} value={tags} onChange={(event) => setTags(event.target.value)} placeholder={t("Optional tags, separated by commas")} className="h-11 text-base" maxLength={1000} /><p className="text-xs text-muted-foreground">{t("Use up to 12 tags, separated by commas.")}</p></div> : null}
+          {tagsOpen ? <div id="discussion-tags" className="space-y-2 border-y border-border py-4"><label htmlFor="discussion-tags-input" className="text-sm font-medium">{t("Tags")}</label><Input id="discussion-tags-input" list="forum-tag-options" aria-label={t("Tags")} value={tags} onChange={(event) => setTags(event.target.value)} placeholder={t("Optional tags, separated by commas")} className="h-11 text-base" maxLength={1000} /><p className="text-xs text-muted-foreground">{t("Use up to 12 tags, separated by commas.")}</p><datalist id="forum-tag-options">{tagOptions?.map((tag) => <option key={tag.slug} value={tags.includes(",") ? `${tags.slice(0, tags.lastIndexOf(",") + 1)} ${tag.name}` : tag.name} />)}</datalist></div> : null}
 
           {contextOpen ? <section id="discussion-research-context" className="space-y-4 border-y border-border py-4" aria-label={t("Link research context")}>
             {contextQuery.isLoading ? <p role="status" className="text-sm text-muted-foreground">{t("Loading research context…")}</p> : contextQuery.isError ? <div role="alert" className="flex flex-wrap items-center gap-3 text-sm text-destructive"><span>{t("Could not load research context.")}</span><button type="button" className="rounded underline focus-visible:ring-2 focus-visible:ring-ring" onClick={() => void contextQuery.refetch()}>{t("Retry")}</button></div> : null}
@@ -338,6 +345,7 @@ export function ForumDiscussionComposer({ embedded = false, onClose, onPublished
                   {paperSearchText.trim().length >= 2 && paperLookupQuery.isLoading ? <p role="status" className="text-xs text-muted-foreground">{t("Searching papers…")}</p> : null}
                   {paperSearchText.trim().length >= 2 && !paperLookupQuery.isLoading && paperResults.length ? <div className="max-h-44 overflow-y-auto rounded-md border border-border" role="listbox">{paperResults.map((paper) => <button type="button" role="option" key={paper.id} className="flex w-full items-start gap-3 border-b border-border px-3 py-2 text-left last:border-0 hover:bg-muted/40" onClick={() => selectPaper(paper)}><span className="min-w-0"><span className="block text-sm font-medium">{paper.title}</span><span className="block text-xs text-muted-foreground">{[paper.publicationYear, paper.doi].filter(Boolean).join(" · ")}</span></span></button>)}</div> : null}
                   {paperSearchText.trim().length >= 2 && !paperLookupQuery.isLoading && !paperResults.length ? <p className="text-xs text-muted-foreground">{t("No papers found")}</p> : null}
+                  {isValidDoi(paperSearchText) ? <ForumDoiLookup key={normalizeDoi(paperSearchText)} doi={normalizeDoi(paperSearchText)} onAttach={(paper) => selectPaper({ id: paper.paperId, title: paper.title })} /> : null}
                 </>}
               </div>
               <label className="min-w-0 space-y-2 text-sm font-medium sm:col-span-2"><span>{t("Candidate Research Gap")}{type === "RESEARCH_GAP_DISCUSSION" ? " *" : ""}</span><select aria-label={t("Candidate Research Gap")} required={type === "RESEARCH_GAP_DISCUSSION"} value={linkedGapId} onChange={(event) => setLinkedGapId(event.target.value)} className={fieldClass}><option value="">{t("No linked research gap")}</option>{contextGaps.map((gap) => <option key={gap.id} value={gap.id}>{gap.title}{gap.forumShareable ? "" : ` · ${t("Private")}`}</option>)}</select></label>
@@ -353,7 +361,7 @@ export function ForumDiscussionComposer({ embedded = false, onClose, onPublished
           {error ? <p id="discussion-error" role="alert" className="mb-2 rounded-md border border-destructive/40 p-3 text-base text-destructive">{error}</p> : null}
         </div>
         <footer className="sticky bottom-0 z-10 flex flex-wrap items-center justify-between gap-3 border-t border-border bg-background/95 px-5 py-3 sm:px-6">
-          <p className="hidden text-sm text-muted-foreground sm:block">{selectedCommunity ? selectedCommunity.visibility === "private" ? t("Discussions are private") : t("Anyone can read discussions and members join immediately.") : t("Select a community before publishing.")}</p>
+          <p className="hidden text-sm text-muted-foreground sm:block">{selectedCommunity ? t("Anyone can read this discussion.") : t("Select a category before publishing.")}</p>
           <div className="ml-auto flex items-center gap-2">
             <Button type="button" variant="ghost" className="h-11 text-base text-muted-foreground" onClick={cancel}>{t("Discard")}</Button>
             <Button type="submit" disabled={create.isPending || !canPublish} className="h-11 min-w-32 text-base shadow-none"><Send className="h-4 w-4" />{t(create.isPending ? "Publishing…" : "Publish discussion")}</Button>

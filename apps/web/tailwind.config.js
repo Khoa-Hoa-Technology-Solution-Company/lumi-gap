@@ -2,6 +2,9 @@
 export default {
   darkMode: ["class"],
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
+  // Category presentation builds these semantic hooks from API category slugs.
+  safelist: ["software-engineering", "artificial-intelligence", "data-science", "cybersecurity", "information-systems", "research-methodology", "general-research"]
+    .flatMap((tone) => ["icon", "accent", "marker"].map((part) => `forum-category-${part}--${tone}`)),
   theme: {
     container: {
       center: true,
