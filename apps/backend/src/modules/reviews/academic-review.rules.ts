@@ -22,7 +22,19 @@ export function canViewReviewRequest(input: { actorId: string; requesterId: stri
 }
 
 export function canUseOpenReviewOpportunities(participantScope: ParticipantScope): boolean {
-  return participantScope !== "EXTERNAL";
+  return ["INTERNAL", "EXTERNAL", "PENDING"].includes(participantScope);
+}
+
+export function eligiblePeerReviewer(role: string | null | undefined, verification: string | null | undefined): boolean {
+  return (role === "LECTURER" || role === "RESEARCHER") && verification === "VERIFIED";
+}
+
+export function submissionReviewStatus(assignments: Array<{ status: string; requestStatus?: string | null; decision?: string | null }>): string {
+  const active = assignments.filter((item) => !["declined", "cancelled"].includes(item.status));
+  if (active.some((item) => ["REQUESTED", "ACCEPTED", "IN_REVIEW", "RESUBMITTED"].includes(item.requestStatus ?? "")
+    || (!item.requestStatus && ["assigned", "accepted"].includes(item.status)))) return "under_review";
+  if (active.some((item) => item.requestStatus === "REVISION_REQUESTED")) return "revision_requested";
+  return active.length && active.every((item) => item.status === "completed") ? "completed" : "ready_for_review";
 }
 
 export function weightedRubricScore(items: Array<{ score: number; weight: number }>): number | undefined {

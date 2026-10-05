@@ -61,6 +61,7 @@ export const API_ROUTES = {
     archive: (templateId: string) => `/review-templates/${templateId}/archive`,
   },
   reviewRequests: {
+    revisionItem: (id: string, itemId: string) => `/review-requests/${id}/revision-items/${itemId}`,
     list: "/review-requests",
     reviewers: "/review-requests/reviewers",
     detail: (requestId: string) => `/review-requests/${requestId}`,
@@ -73,6 +74,9 @@ export const API_ROUTES = {
     user: (userId: string) => `/contributions/users/${userId}`,
   },
   submissions: {
+    history: (id: string) => `/submissions/${id}/history`,
+    versions: (id: string) => `/submissions/${id}/versions`,
+    openReview: (id: string) => `/submissions/${id}/open-review`,
     list: "/submissions",
     create: "/submissions",
     detail: (id: string) => `/submissions/${id}`,

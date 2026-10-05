@@ -39,19 +39,16 @@ export function policyCapabilities(identity: CapabilityIdentity): UserCapability
   if (!identity.accountActive) return [];
   const capabilities: UserCapability[] = identity.systemRole === "ADMIN" ? ["MANAGE_SYSTEM"] : ["BASIC_RESEARCH"];
   if (identity.systemRole !== "ADMIN" && identity.participantScope !== "EXTERNAL") capabilities.push("CREATE_RESEARCH_PROJECT");
-  if (
-    identity.academicRole === "LECTURER"
-    && identity.academicRoleVerificationStatus === "VERIFIED"
-  ) {
+  if (["LECTURER", "RESEARCHER"].includes(identity.academicRole ?? "")
+    && identity.academicRoleVerificationStatus === "VERIFIED") {
+    capabilities.push("REVIEW_ARTIFACT", "STRUCTURED_REVIEW");
+  }
+  if (identity.academicRole === "LECTURER" && identity.academicRoleVerificationStatus === "VERIFIED") {
     if (identity.participantScope === "INTERNAL" && identity.currentHostPositionVerified === true) {
       capabilities.push(
         "APPROVE_ACADEMIC_CONTRIBUTION",
         "MENTOR_PROJECT",
-        "REVIEW_ARTIFACT",
-        "STRUCTURED_REVIEW",
       );
-    } else if (identity.participantScope === "EXTERNAL") {
-      capabilities.push("REVIEW_ARTIFACT", "STRUCTURED_REVIEW");
     }
   }
   return capabilities;

@@ -4,13 +4,11 @@ import { AppError } from "../../common/exceptions/app-error.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { parseDatabaseId, publicDatabaseId } from "../../infrastructure/database/database-id.js";
 import { auditService } from "../audit/audit.service.js";
-import { capabilityService } from "../authorization/capability.service.js";
-import { participantScopeForUser } from "../identity/participant-scope.service.js";
+import { assertPeerReviewer, assertReviewerInTransaction, assertReviewAdmission, defaultPeerReviewTemplate, lockReviewerAndSubmission, refreshSubmissionReviewStatus } from "./peer-review-access.js";
 import { notificationService } from "../notifications/notification.service.js";
 import { defaultReviewCriteria } from "./review.constants.js";
-import { basicConflictReason, reviewCapacityIssue } from "./review.rules.js";
 import { hydrateReviewTemplateVersion } from "./review-template.service.js";
-import { canUseOpenReviewOpportunities, reviewOutcome, weightedRubricScore } from "./academic-review.rules.js";
+import { reviewOutcome, weightedRubricScore } from "./academic-review.rules.js";
 
 type AvailabilityInput = Omit<ReviewAvailabilitySettings, "activeReviewCount">;
 type OpportunityFilters = { researchField?: string; topic?: string; submissionType?: SubmissionType; methodology?: string; dateFrom?: Date; sort?: "relevance" | "newest" };
@@ -18,7 +16,6 @@ type AvailabilityRecord = { enabled?: boolean; acceptedFields?: string[]; prefer
 
 const normalized = (value: string) => value.trim().toLocaleLowerCase();
 const normalizedSet = (values: string[]) => new Set(values.map(normalized));
-const isUniqueViolation = (error: unknown) => (error as { code?: string }).code === "P2002";
 
 function idWhere(value: string): { id?: string; legacyMongoId?: string } {
   const parsed = parseDatabaseId(value);
@@ -42,15 +39,8 @@ async function resolveUser(input: string) {
 }
 
 async function reviewerContext(userInput: string) {
-  const user = await resolveUser(userInput);
-  const [profile, activeReviewCount, capabilities] = await Promise.all([
-    getPrisma().academicProfile.findUnique({ where: { userId: user.id } }),
-    getPrisma().reviewerAssignment.count({ where: { reviewerId: user.id, status: "accepted" } }),
-    capabilityService.list(user.id),
-  ]);
-  if (!capabilities.includes("STRUCTURED_REVIEW")) {
-    throw AppError.forbidden("Verified academic identity and STRUCTURED_REVIEW capability are required");
-  }
+  const { user, profile } = await assertPeerReviewer(userInput);
+  const activeReviewCount = await getPrisma().reviewerAssignment.count({ where: { reviewerId: user.id, status: { in: ["assigned", "accepted"] } } });
   return { user, profile, availability: jsonRecord(profile?.reviewAvailability), activeReviewCount };
 }
 
@@ -71,7 +61,6 @@ function availabilityDto(context: Awaited<ReturnType<typeof reviewerContext>>): 
   };
 }
 
-function assertAvailable(settings: ReviewAvailabilitySettings) { const issue = reviewCapacityIssue(settings); if (issue) throw AppError.conflict(issue); }
 
 async function resolveSubmission(input: string) {
   const submission = await getPrisma().submission.findFirst({ where: idWhere(input) });
@@ -79,25 +68,6 @@ async function resolveSubmission(input: string) {
   return submission;
 }
 
-async function detectConflict(submissionId: string, projectId: string, reviewerId: string) {
-  const prisma = getPrisma();
-  const [authors, declared, existing, project, membership] = await Promise.all([
-    prisma.submissionAuthor.findMany({ where: { submissionId }, select: { userId: true } }),
-    prisma.submissionDeclaredConflict.findMany({ where: { submissionId }, select: { userId: true } }),
-    prisma.reviewConflict.findUnique({ where: { submissionId_reviewerId: { submissionId, reviewerId } } }),
-    prisma.project.findUnique({ where: { id: projectId } }),
-    prisma.projectMember.findFirst({ where: { projectId, userId: reviewerId, status: "ACTIVE" } }),
-  ]);
-  const immediate = basicConflictReason({ reviewerId, authorIds: authors.map((row) => row.userId), declaredConflictUserIds: declared.map((row) => row.userId), isProjectContributor: false });
-  if (immediate) return immediate;
-  if (existing && ["DECLARED", "SYSTEM_DETECTED", "BLOCKED"].includes(existing.status)) return existing.reason || "A conflict of interest blocks this review";
-  const isProjectContributor = project?.ownerId === reviewerId || Boolean(membership);
-  if (isProjectContributor) {
-    await prisma.reviewConflict.upsert({ where: { submissionId_reviewerId: { submissionId, reviewerId } }, create: { submissionId, reviewerId, status: "SYSTEM_DETECTED", reason: "Reviewer is a contributor to the related project", detectedBy: "SYSTEM" }, update: { status: "SYSTEM_DETECTED", reason: "Reviewer is a contributor to the related project", detectedBy: "SYSTEM" } });
-    return basicConflictReason({ reviewerId, authorIds: authors.map((row) => row.userId), declaredConflictUserIds: declared.map((row) => row.userId), isProjectContributor });
-  }
-  return undefined;
-}
 
 export const reviewService = {
   async getAvailability(userId: string) { return availabilityDto(await reviewerContext(userId)); },
@@ -127,9 +97,6 @@ export const reviewService = {
 
   async listOpportunities(userIdInput: string, filters: OpportunityFilters) {
     const context = await reviewerContext(userIdInput);
-    if (!canUseOpenReviewOpportunities(await participantScopeForUser(context.user.id))) {
-      return { availability: availabilityDto(context), opportunities: [] };
-    }
     const settings = availabilityDto(context);
     if (!settings.availableForReview) return { availability: settings, opportunities: [] };
     const prisma = getPrisma();
@@ -143,7 +110,7 @@ export const reviewService = {
     ]);
     const blockedSubmissions = [...authored, ...declared, ...assignments, ...conflicts].map((row) => row.submissionId);
     const blockedProjects = [...ownedProjects.map((row) => row.id), ...memberships.map((row) => row.projectId)];
-    const submissions = await prisma.submission.findMany({ where: { status: { in: ["submitted", "ready_for_review", "revised"] }, id: { notIn: blockedSubmissions }, projectId: { notIn: blockedProjects }, ...(filters.researchField ? { researchField: { contains: filters.researchField, mode: "insensitive" } } : {}), ...(filters.topic ? { keywords: { has: filters.topic } } : {}), ...(filters.submissionType ? { submissionType: filters.submissionType } : settings.acceptedSubmissionTypes.length ? { submissionType: { in: settings.acceptedSubmissionTypes } } : {}), ...(filters.methodology ? { methodology: { contains: filters.methodology, mode: "insensitive" } } : {}), ...(filters.dateFrom ? { createdAt: { gte: filters.dateFrom } } : {}) }, orderBy: { createdAt: "desc" }, take: 200 });
+    const submissions = await prisma.submission.findMany({ where: { openForReview: true, status: { in: ["submitted", "ready_for_review", "revised"] }, id: { notIn: blockedSubmissions }, projectId: { notIn: blockedProjects }, ...(filters.researchField ? { researchField: { contains: filters.researchField, mode: "insensitive" } } : {}), ...(filters.topic ? { keywords: { has: filters.topic } } : {}), ...(filters.submissionType ? { submissionType: filters.submissionType } : settings.acceptedSubmissionTypes.length ? { submissionType: { in: settings.acceptedSubmissionTypes } } : {}), ...(filters.methodology ? { methodology: { contains: filters.methodology, mode: "insensitive" } } : {}), ...(filters.dateFrom ? { createdAt: { gte: filters.dateFrom } } : {}) }, orderBy: { createdAt: "desc" }, take: 200 });
     const fields = normalizedSet(settings.acceptedFields), topics = normalizedSet(settings.acceptedTopics), expertise = normalizedSet(context.profile?.expertiseAreas ?? []), interests = normalizedSet(context.user.researchInterests);
     const opportunities = submissions.map((submission) => {
       const reasons: string[] = []; let score = 0;
@@ -151,25 +118,27 @@ export const reviewService = {
       const matchingKeywords = submission.keywords.filter((keyword) => topics.has(normalized(keyword)) || interests.has(normalized(keyword)) || expertise.has(normalized(keyword)));
       if (matchingKeywords.length) { score += Math.min(40, matchingKeywords.length * 10); reasons.push(`Topic match: ${matchingKeywords.slice(0, 3).join(", ")}`); }
       if (settings.acceptedSubmissionTypes.includes(submission.submissionType as SubmissionType)) { score += 15; reasons.push("Accepted submission type"); }
-      return { id: publicDatabaseId(submission), title: submission.title, abstract: submission.abstractText, submissionType: submission.submissionType, researchField: submission.researchField, researchGoal: submission.researchGoal, claimedResearchGap: submission.claimedResearchGap, methodology: submission.methodology, keywords: submission.keywords, status: submission.status.toUpperCase(), currentRevisionNumber: submission.currentRevisionNumber, expectedWorkload: submission.expectedReviewWorkload, matchReasons: reasons, matchScore: score, submittedAt: submission.createdAt, authorVisibility: "DOUBLE_BLIND" as const };
+      return { id: publicDatabaseId(submission), title: submission.title, abstract: submission.abstractText, submissionType: submission.submissionType, researchField: submission.researchField, researchGoal: submission.researchGoal, claimedResearchGap: submission.claimedResearchGap, methodology: submission.methodology, keywords: submission.keywords, status: submission.status.toUpperCase(), currentRevisionNumber: submission.currentRevisionNumber, expectedWorkload: submission.expectedReviewWorkload, matchReasons: reasons, matchScore: score, submittedAt: submission.createdAt, authorVisibility: "SUMMARY_ONLY" as const };
     });
     opportunities.sort(filters.sort === "newest" ? (a, b) => b.submittedAt.getTime() - a.submittedAt.getTime() : (a, b) => b.matchScore - a.matchScore || b.submittedAt.getTime() - a.submittedAt.getTime());
     return { availability: settings, opportunities };
   },
 
   async acceptOpportunity(submissionInput: string, reviewerInput: string) {
-    const context = await reviewerContext(reviewerInput); const settings = availabilityDto(context); assertAvailable(settings);
-    if (!canUseOpenReviewOpportunities(await participantScopeForUser(context.user.id))) {
-      throw AppError.forbidden("External reviewers can only accept explicit review invitations");
-    }
+    const context = await reviewerContext(reviewerInput);
     const submission = await resolveSubmission(submissionInput);
-    if (!["submitted", "ready_for_review", "revised"].includes(submission.status)) throw AppError.conflict("This submission is not accepting reviewers");
-    const conflict = await detectConflict(submission.id, submission.projectId, context.user.id); if (conflict) throw AppError.conflict(conflict);
-    if (await getPrisma().reviewerAssignment.findFirst({ where: { submissionId: submission.id, reviewerId: context.user.id, status: { notIn: ["declined", "cancelled", "completed"] } } })) throw AppError.conflict("You already have an active assignment for this submission");
-    try {
-      const assignment = await getPrisma().$transaction(async (tx) => { const created = await tx.reviewerAssignment.create({ data: { submissionId: submission.id, reviewerId: context.user.id, assignedById: context.user.id, anonymousCode: `R-${crypto.randomBytes(12).toString("hex")}`, status: "accepted", conflictChecks: { selfOrAuthor: false, declared: false, sameInstitution: false, checkedAt: new Date().toISOString() } } }); await tx.submission.updateMany({ where: { id: submission.id, status: { in: ["submitted", "ready_for_review", "revised"] } }, data: { status: "under_review" } }); return created; });
-      await auditService.log("review.opportunity.accepted", { userId: context.user.id, targetTableName: "reviewer_assignments", targetRecordId: assignment.id, details: { submissionId: submission.id } }); return assignment;
-    } catch (error) { if (isUniqueViolation(error)) throw AppError.conflict("You already have an assignment for this submission"); throw error; }
+    const assignment = await getPrisma().$transaction(async (tx) => {
+      await lockReviewerAndSubmission(tx, context.user.id, submission.id);
+      const live = await assertReviewAdmission(tx, submission.id, context.user.id, { requireAvailable: true });
+      if (!live.openForReview || !["submitted", "ready_for_review", "revised"].includes(live.status) || !live.currentRevisionId) throw AppError.conflict("This research is not accepting open reviews");
+      const version = await defaultPeerReviewTemplate(tx, live.submissionType);
+      const request = await tx.reviewRequest.create({ data: { submissionId: live.id, projectId: live.projectId, requesterId: live.createdById, templateVersionId: version.id, artifactRevisionId: live.currentRevisionId, origin: "OPEN_OPPORTUNITY", status: "ACCEPTED" } });
+      const created = await tx.reviewerAssignment.create({ data: { submissionId: live.id, reviewerId: context.user.id, assignedById: live.createdById, reviewRequestId: request.id, artifactRevisionId: live.currentRevisionId, anonymousCode: `R-${crypto.randomBytes(12).toString("hex")}`, status: "accepted" } });
+      await refreshSubmissionReviewStatus(tx, live.id);
+      return created;
+    });
+    await auditService.log("review.opportunity.accepted", { userId: context.user.id, targetTableName: "reviewer_assignments", targetRecordId: assignment.id, details: { submissionId: submission.id } });
+    return assignment;
   },
 
   async declareConflict(submissionInput: string, reviewerInput: string, reason: string) {
@@ -179,10 +148,7 @@ export const reviewService = {
   },
 
   async saveReview(assignmentInput: string, reviewerInput: string, input: AcademicReviewInput, submit: boolean) {
-    const reviewer = await resolveUser(reviewerInput); const prisma = getPrisma();
-    if (!(await capabilityService.list(reviewer.id)).includes("STRUCTURED_REVIEW")) {
-      throw AppError.forbidden("Verified academic review capability is required to write reviews");
-    }
+    const { user: reviewer } = await assertPeerReviewer(reviewerInput); const prisma = getPrisma();
     const assignment = await prisma.reviewerAssignment.findFirst({ where: { ...idWhere(assignmentInput), reviewerId: reviewer.id } });
     if (!assignment) throw AppError.notFound("Review assignment not found");
     if (assignment.status !== "accepted") throw AppError.conflict("Only accepted assignments can be reviewed");
@@ -194,6 +160,8 @@ export const reviewService = {
       ? await prisma.reviewCriterion.findMany({ where: { versionId: version.id }, orderBy: { order: "asc" } })
       : defaultReviewCriteria.map(([key, label, description], order) => ({ id: key, key, label, description, order, required: true, allowNotApplicable: false, weight: null }));
     const allowedKeys = new Set(criteria.map((criterion) => criterion.key));
+    if (new Set(input.responses.map((response) => response.criterionKey)).size !== input.responses.length) throw AppError.badRequest("Each criterion can only appear once");
+    if (input.responses.some((response) => response.notApplicable && !criteria.find((item) => item.key === response.criterionKey)?.allowNotApplicable)) throw AppError.badRequest("This criterion cannot be marked not applicable");
     if (input.responses.some((response) => !allowedKeys.has(response.criterionKey))) throw AppError.badRequest("Review contains an unknown criterion");
     const responsesByKey = new Map(input.responses.map((response) => [response.criterionKey, response]));
     if (submit) {
@@ -214,10 +182,12 @@ export const reviewService = {
     const reviews = await prisma.humanReview.findMany({ where: { assignmentId: assignment.id }, orderBy: { roundNumber: "desc" } });
     const existing = reviews.find((review) => review.status === "DRAFT");
     const roundNumber = existing?.roundNumber ?? (reviews[0]?.roundNumber ?? 0) + 1;
-    const revisionId = request?.artifactRevisionId ?? submission.currentRevisionId;
+    const revisionId = request?.artifactRevisionId ?? assignment.artifactRevisionId;
+    if (!revisionId) throw AppError.conflict("This assignment has no pinned revision");
+    if ((input.expectedRevisionId && input.expectedRevisionId !== revisionId) || (input.expectedRoundNumber && input.expectedRoundNumber !== roundNumber)) throw AppError.conflict("The assigned revision or round has changed. Refresh before saving.");
     const levels = version?.reviewMode === "RUBRIC_ASSESSMENT" ? await prisma.reviewCriterionLevel.findMany({ where: { criterionId: { in: criteria.map((item) => item.id) } } }) : [];
     const levelMap = new Map(levels.map((level) => [level.id, level]));
-    for (const response of input.responses) if (response.performanceLevelId && !levelMap.has(response.performanceLevelId)) throw AppError.badRequest("Review contains an invalid performance level");
+    for (const response of input.responses) if (response.performanceLevelId && levelMap.get(response.performanceLevelId)?.criterionId !== criteria.find((item) => item.key === response.criterionKey)?.id) throw AppError.badRequest("Review contains an invalid performance level");
     const scored = input.responses.flatMap((response) => {
       if (response.notApplicable || !response.performanceLevelId) return [];
       const level = levelMap.get(response.performanceLevelId); const criterion = criteria.find((item) => item.key === response.criterionKey);
@@ -226,31 +196,49 @@ export const reviewService = {
     const weightedScore = weightedRubricScore(scored);
     const persistable = input.responses.filter((response) => response.comment?.trim() || response.assessment || response.performanceLevelId || response.notApplicable);
     const now = new Date();
+    let outcome = reviewOutcome(input.overallAssessment, input.requiredRevisions?.length ?? 0);
     const review = await prisma.$transaction(async (tx) => {
-      const reviewData = { reviewerId: reviewer.id, submissionId: assignment.submissionId, revisionId, templateId: version?.templateId, templateVersionId: version?.id, overallComment: input.overallComment, keyStrengths: input.keyStrengths, keyConcerns: input.keyConcerns, overallAssessment: input.overallAssessment, recommendation: input.overallAssessment, weightedScore, status: submit ? "SUBMITTED" : "DRAFT", submittedAt: submit ? now : null };
+      await lockReviewerAndSubmission(tx, reviewer.id, submission.id);
+      const liveProfile = await assertReviewerInTransaction(tx, reviewer.id);
+      const live = await tx.reviewerAssignment.findUniqueOrThrow({ where: { id: assignment.id } });
+      const liveRequest = request ? await tx.reviewRequest.findUniqueOrThrow({ where: { id: request.id } }) : null;
+      if (live.status !== "accepted" || (liveRequest && !["ACCEPTED", "RESUBMITTED", "IN_REVIEW"].includes(liveRequest.status)) || (liveRequest?.artifactRevisionId ?? live.artifactRevisionId) !== revisionId) throw AppError.conflict("This round has changed or was already submitted; refresh the workspace");
+      const storedRound = await tx.humanReview.findUnique({ where: { assignmentId_roundNumber: { assignmentId: assignment.id, roundNumber } } });
+      if (storedRound?.status === "SUBMITTED") throw AppError.conflict("Submitted review rounds are immutable");
+      let pendingRevisionCount = 0;
+      if (submit) {
+        const previousReviews = await tx.humanReview.findMany({ where: { assignmentId: assignment.id, status: "SUBMITTED" }, select: { id: true } });
+        const unresolved = await tx.reviewRevisionItem.findMany({ where: { reviewId: { in: previousReviews.map((item) => item.id) }, status: { not: "ACCEPTED" } } });
+        if (unresolved.some((item) => item.status === "ADDRESSED")) throw AppError.conflict("Accept or reopen every author response before submitting");
+        pendingRevisionCount = unresolved.length;
+        if (["MINOR_REVISION", "MAJOR_REVISION"].includes(input.overallAssessment ?? "") && !input.requiredRevisions?.length && !pendingRevisionCount) throw AppError.badRequest("Revision assessments require at least one actionable revision item");
+      }
+      const reviewData = { reviewerAcademicRole: submit ? liveProfile.academicRole : undefined, reviewerId: reviewer.id, submissionId: assignment.submissionId, revisionId, templateId: version?.templateId, templateVersionId: version?.id, overallComment: input.overallComment ?? null, keyStrengths: input.keyStrengths ?? null, keyConcerns: input.keyConcerns ?? null, overallAssessment: input.overallAssessment ?? null, recommendation: input.overallAssessment ?? null, weightedScore: weightedScore ?? null, status: submit ? "SUBMITTED" : "DRAFT", submittedAt: submit ? now : null };
       const saved = await tx.humanReview.upsert({ where: { assignmentId_roundNumber: { assignmentId: assignment.id, roundNumber } }, create: { assignmentId: assignment.id, roundNumber, ...reviewData }, update: reviewData });
       for (const response of persistable) {
         const level = response.performanceLevelId ? levelMap.get(response.performanceLevelId) : undefined;
-        await tx.reviewResponse.upsert({ where: { reviewId_criterionKey: { reviewId: saved.id, criterionKey: response.criterionKey } }, create: { reviewId: saved.id, criterionKey: response.criterionKey, comment: response.comment?.trim() ?? "", evidence: response.evidence?.trim(), assessment: response.assessment, performanceLevelId: level?.id, score: level?.score, notApplicable: response.notApplicable ?? false }, update: { comment: response.comment?.trim() ?? "", evidence: response.evidence?.trim(), assessment: response.assessment, performanceLevelId: level?.id, score: level?.score, notApplicable: response.notApplicable ?? false } });
+        await tx.reviewResponse.upsert({ where: { reviewId_criterionKey: { reviewId: saved.id, criterionKey: response.criterionKey } }, create: { reviewId: saved.id, criterionKey: response.criterionKey, comment: response.comment?.trim() ?? "", evidence: response.evidence?.trim() || null, assessment: response.assessment ?? null, performanceLevelId: response.notApplicable ? null : level?.id ?? null, score: response.notApplicable ? null : level?.score ?? null, notApplicable: response.notApplicable ?? false }, update: { comment: response.comment?.trim() ?? "", evidence: response.evidence?.trim() || null, assessment: response.assessment ?? null, performanceLevelId: response.notApplicable ? null : level?.id ?? null, score: response.notApplicable ? null : level?.score ?? null, notApplicable: response.notApplicable ?? false } });
       }
       await tx.reviewResponse.deleteMany({ where: { reviewId: saved.id, criterionKey: { notIn: persistable.map((response) => response.criterionKey) } } });
       await tx.reviewRevisionItem.deleteMany({ where: { reviewId: saved.id } });
       if (input.requiredRevisions?.length) await tx.reviewRevisionItem.createMany({ data: input.requiredRevisions.map((item, position) => ({ reviewId: saved.id, position, priority: item.priority, description: item.description.trim() })) });
       if (request && !submit && ["ACCEPTED", "RESUBMITTED"].includes(request.status)) await tx.reviewRequest.update({ where: { id: request.id }, data: { status: "IN_REVIEW" } });
       if (submit) {
-        const outcome = reviewOutcome(input.overallAssessment, input.requiredRevisions?.length ?? 0);
+        outcome = reviewOutcome(input.overallAssessment, (input.requiredRevisions?.length ?? 0) + pendingRevisionCount);
         await tx.reviewerAssignment.update({ where: { id: assignment.id }, data: { status: outcome.assignmentStatus, decision: input.overallAssessment?.toLowerCase(), reviewText: input.overallComment ?? input.keyConcerns, completedAt: outcome.requestStatus === "COMPLETED" ? now : null } });
-        await tx.submission.update({ where: { id: assignment.submissionId }, data: { status: outcome.submissionStatus } });
         if (request) await tx.reviewRequest.update({ where: { id: request.id }, data: { status: outcome.requestStatus, completedAt: outcome.requestStatus === "COMPLETED" ? now : null } });
-        await tx.researchContribution.upsert({ where: { sourceReviewAssignmentId: assignment.id }, create: { contributorId: reviewer.id, projectId: submission.projectId, submissionId: assignment.submissionId, contributionType: "REVIEW", description: `Peer review of “${submission.title}”`, evidence: `Completed review assignment ${publicDatabaseId(assignment)}`, provenance: "LUMIGAP_REVIEW", verificationStatus: "VERIFIED_BY_LUMIGAP", visibility: "PUBLIC", verifiedById: reviewer.id, verifiedAt: now, sourceReviewAssignmentId: assignment.id }, update: {} });
+        await refreshSubmissionReviewStatus(tx, submission.id);
+        const contribution = await tx.researchContribution.findFirst({ where: { contributorId: reviewer.id, submissionId: submission.id, contributionType: "REVIEW" } });
+        const evidence = `Latest submitted review ${saved.id}; revision ${revisionId}; round ${roundNumber}`;
+        if (contribution) await tx.researchContribution.update({ where: { id: contribution.id }, data: { evidence, verifiedAt: now, visibility: "PRIVATE" } });
+        else await tx.researchContribution.create({ data: { contributorId: reviewer.id, projectId: submission.projectId, submissionId: submission.id, contributionType: "REVIEW", description: `Peer review of “${submission.title}”`, evidence, provenance: "LUMIGAP_REVIEW", verificationStatus: "VERIFIED_BY_LUMIGAP", visibility: "PRIVATE", verifiedById: reviewer.id, verifiedAt: now, sourceReviewAssignmentId: assignment.id } });
       }
       return saved;
     });
     if (submit) {
-      const outcome = reviewOutcome(input.overallAssessment, input.requiredRevisions?.length ?? 0);
       await auditService.log("REVIEW_SUBMITTED", { userId: reviewer.id, targetTableName: "human_reviews", targetRecordId: review.id, details: { assignmentId: assignment.id, submissionId: assignment.submissionId, roundNumber } });
       await auditService.log(outcome.requestStatus === "REVISION_REQUESTED" ? "REVISION_REQUESTED" : "REVIEW_COMPLETED", { userId: reviewer.id, targetTableName: "review_requests", targetRecordId: request?.id, details: { reviewId: review.id, roundNumber } });
-      if (request) await notificationService.create({ userId: request.requesterId, title: "Academic review submitted", message: `Feedback for “${submission.title}” is ready.`, type: input.requiredRevisions?.length ? "REVISION_REQUESTED" : "REVIEW_SUBMITTED", targetKind: "project", targetId: submission.projectId });
+      if (request) await notificationService.create({ userId: request.requesterId, title: "Academic review submitted", message: `Feedback for “${submission.title}” is ready.`, type: outcome.requestStatus === "REVISION_REQUESTED" ? "REVISION_REQUESTED" : "REVIEW_SUBMITTED", targetKind: "project", targetId: submission.projectId });
     } else if (!existing) await auditService.log("REVIEW_STARTED", { userId: reviewer.id, targetTableName: "human_reviews", targetRecordId: review.id, details: { assignmentId: assignment.id, roundNumber } });
     return { review, responses: await prisma.reviewResponse.findMany({ where: { reviewId: review.id }, orderBy: { createdAt: "asc" } }), requiredRevisions: await prisma.reviewRevisionItem.findMany({ where: { reviewId: review.id }, orderBy: { position: "asc" } }) };
   },
@@ -258,15 +246,15 @@ export const reviewService = {
   async getReview(assignmentInput: string, reviewerInput: string) {
     const reviewer = await resolveUser(reviewerInput); const prisma = getPrisma(); const assignment = await prisma.reviewerAssignment.findFirst({ where: { ...idWhere(assignmentInput), reviewerId: reviewer.id } });
     if (!assignment) throw AppError.notFound("Review assignment not found");
-    if (!(await capabilityService.list(reviewer.id)).includes("STRUCTURED_REVIEW")) {
-      throw AppError.forbidden("Verified academic review capability is required to view assigned artifacts");
-    }
+    if (["declined", "cancelled"].includes(assignment.status)) throw AppError.forbidden("This assignment no longer grants artifact access");
+    await assertPeerReviewer(reviewer.id);
     const request = assignment.reviewRequestId ? await prisma.reviewRequest.findUnique({ where: { id: assignment.reviewRequestId } }) : null;
     const reviews = await prisma.humanReview.findMany({ where: { assignmentId: assignment.id }, orderBy: { roundNumber: "desc" } });
-    const review = reviews.find((item) => item.status === "DRAFT") ?? reviews[0];
+    const pinnedRevisionId = request?.artifactRevisionId ?? assignment.artifactRevisionId;
+    const review = reviews.find((item) => item.status === "DRAFT" && item.revisionId === pinnedRevisionId) ?? reviews.find((item) => item.revisionId === pinnedRevisionId);
     const templateVersion = request ? await hydrateReviewTemplateVersion(request.templateVersionId) : undefined;
     const submission = await prisma.submission.findUniqueOrThrow({ where: { id: assignment.submissionId } });
-    const revision = await prisma.submissionRevision.findUnique({ where: { id: request?.artifactRevisionId ?? submission.currentRevisionId! } });
+    const revision = await prisma.submissionRevision.findUnique({ where: { id: pinnedRevisionId! } });
     return {
       assignment: { ...assignment, id: publicDatabaseId(assignment), submissionId: submissionDto(submission) },
       request: request ? { id: publicDatabaseId(request), status: request.status, message: request.message, dueAt: request.dueAt } : undefined,
@@ -275,6 +263,8 @@ export const reviewService = {
       templateVersion,
       criteria: templateVersion?.criteria ?? defaultReviewCriteria.map(([key, label, description], order) => ({ key, title: label, description, order, required: true, allowNotApplicable: false, levels: [] })),
       artifactContent: revision?.contentSnapshot ?? undefined,
+      artifactRevision: revision ? { id: revision.id, revisionNumber: revision.revisionNumber, contentType: revision.contentType } : undefined,
+      previousRevisionItems: await Promise.all((await prisma.reviewRevisionItem.findMany({ where: { reviewId: { in: reviews.filter((item) => item.status === "SUBMITTED" && item.revisionId !== pinnedRevisionId).map((item) => item.id) } }, orderBy: { createdAt: "asc" } })).map(async (item) => ({ ...item, responses: await prisma.reviewRevisionResponse.findMany({ where: { revisionItemId: item.id }, orderBy: { createdAt: "desc" } }) }))),
       roundNumber: review?.roundNumber ?? (reviews[0]?.roundNumber ?? 0) + 1,
     };
   },

@@ -8,6 +8,7 @@ import { newUiStrings } from "./new-ui";
 import { accountManagementStrings } from "./account-management";
 import { projectLiteratureViStrings } from "./project-literature";
 import { projectInvitationStrings } from "./project-invitations";
+import { peerReviewVersionStrings } from "./peer-review-versions";
 import { studentOnboardingStrings } from "./student-onboarding";
 import { studentOnboardingViStrings } from "./student-onboarding-vi";
 import { forumRefinementVi } from "./forum-refinement";
@@ -19,6 +20,7 @@ export const vi: Record<keyof typeof en, string> = {
   ...trustSafetyRagViStrings,
   ...researchHomeVi,
   ...projectInvitationStrings,
+  ...peerReviewVersionStrings,
   ...studentOnboardingStrings,
   ...newUiStrings,
   ...({

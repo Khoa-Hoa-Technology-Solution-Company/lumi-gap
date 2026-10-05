@@ -94,6 +94,21 @@ submissionRouter.get("/:id", validate(submissionParamsSchema, "params"), async (
   res.json({ success: true, data: await submissionService.get(String(req.params.id), req.user!.sub, req.user!.role) });
 });
 
+submissionRouter.get("/:id/history", validate(submissionParamsSchema, "params"), async (req, res) => {
+  res.json({ success: true, data: await submissionService.history(String(req.params.id), req.user!.sub, req.user!.role) });
+});
+submissionRouter.patch("/:id/open-review", validate(submissionParamsSchema, "params"), validate(z.object({ enabled: z.boolean() }).strict()), async (req, res) => {
+  await submissionService.setOpenForReview(String(req.params.id), req.body.enabled, req.user!.sub, req.user!.role);
+  res.status(204).send();
+});
+submissionRouter.post("/:id/versions", validate(submissionParamsSchema, "params"), validate(z.object({
+  content: z.string().trim().min(1).max(500000).optional(), sourceRevisionId: objectIdSchema.optional(),
+  expectedRevisionNumber: z.number().int().min(1), summary: z.string().trim().min(3).max(20000),
+}).strict().refine((value) => value.content !== undefined || Boolean(value.sourceRevisionId), "Provide content or a source revision")), async (req, res) => {
+  const data = await submissionService.createVersion(String(req.params.id), req.body, req.user!.sub, req.user!.role);
+  res.status(201).json({ success: true, data });
+});
+
 submissionRouter.post("/:id/revisions", requirePermission("submission:revise"), validate(submissionParamsSchema, "params"), uploadSinglePdf, async (req, res) => {
   const parsed = revisionSchema.safeParse(req.body);
   if (!parsed.success) throw parsed.error;

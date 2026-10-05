@@ -6,6 +6,8 @@ import {
   canViewReviewRequest,
   nextTemplateVersionNumber,
   reviewOutcome,
+  eligiblePeerReviewer,
+  submissionReviewStatus,
   weightedRubricScore,
 } from "../academic-review.rules.js";
 
@@ -31,10 +33,10 @@ describe("academic review lifecycle rules", () => {
     expect(canViewReviewRequest({ actorId: "project-member", requesterId: "requester", reviewerId: "reviewer" })).toBe(false);
   });
 
-  it("keeps open review opportunities unavailable to external reviewers", () => {
+  it("permits qualified reviewers from either participant scope", () => {
     expect(canUseOpenReviewOpportunities("INTERNAL")).toBe(true);
     expect(canUseOpenReviewOpportunities("PENDING")).toBe(true);
-    expect(canUseOpenReviewOpportunities("EXTERNAL")).toBe(false);
+    expect(canUseOpenReviewOpportunities("EXTERNAL")).toBe(true);
   });
 
   it("calculates rubric scores only from applicable weighted levels", () => {
@@ -47,4 +49,16 @@ describe("academic review lifecycle rules", () => {
     expect(nextTemplateVersionNumber([{ versionNumber: 1, status: "PUBLISHED" }])).toBe(2);
     expect(nextTemplateVersionNumber([{ versionNumber: 1, status: "PUBLISHED" }, { versionNumber: 2, status: "DRAFT" }])).toBe(3);
   });
+  it("requires verified Lecturer or Researcher role even when capabilities are stale", () => {
+    expect(eligiblePeerReviewer("STUDENT", "VERIFIED")).toBe(false);
+    expect(eligiblePeerReviewer("RESEARCHER", "SELF_DECLARED")).toBe(false);
+    expect(eligiblePeerReviewer("RESEARCHER", "VERIFIED")).toBe(true);
+    expect(eligiblePeerReviewer("LECTURER", "VERIFIED")).toBe(true);
+  });
+  it("does not complete the article while another reviewer is working or requests revision", () => {
+    expect(submissionReviewStatus([{ status: "completed", requestStatus: "COMPLETED" }, { status: "accepted", requestStatus: "IN_REVIEW" }])).toBe("under_review");
+    expect(submissionReviewStatus([{ status: "completed", requestStatus: "COMPLETED" }, { status: "accepted", requestStatus: "REVISION_REQUESTED" }])).toBe("revision_requested");
+    expect(submissionReviewStatus([{ status: "completed", requestStatus: "COMPLETED" }, { status: "declined" }])).toBe("completed");
+  });
+
 });

@@ -1,4 +1,4 @@
-import type { StructuredSubmissionInput, SubmissionStatus, SubmissionType } from "@trend/shared-types";
+import type { StructuredSubmissionInput, SubmissionStatus, SubmissionType, SubmissionHistory } from "@trend/shared-types";
 import { API_ROUTES } from "@/constants";
 import { api } from "@/services/api-client";
 
@@ -26,6 +26,8 @@ export interface SubmissionSummary {
 
 export interface SubmissionRevision {
   _id: string;
+  contentType?: string;
+  contentSnapshot?: string;
   submissionId: string;
   revisionNumber: number;
   responseToReview?: string;
@@ -52,6 +54,9 @@ export interface AiPreReview {
 }
 
 export const submissionsApi = {
+  async history(id: string): Promise<SubmissionHistory> { return (await api.get(API_ROUTES.submissions.history(id))).data.data; },
+  async createVersion(id: string, input: { content?: string; sourceRevisionId?: string; expectedRevisionNumber: number; summary: string }): Promise<void> { await api.post(API_ROUTES.submissions.versions(id), input); },
+  async setOpenForReview(id: string, enabled: boolean): Promise<void> { await api.patch(API_ROUTES.submissions.openReview(id), { enabled }); },
   async list(): Promise<SubmissionSummary[]> {
     const response = await api.get(API_ROUTES.submissions.list);
     return response.data.data;
@@ -70,13 +75,13 @@ export const submissionsApi = {
       if (value === undefined) continue;
       body.append(key, Array.isArray(value) ? JSON.stringify(value) : value);
     }
-    body.append("file", file);
+    body.append("pdf", file);
     const response = await api.post(API_ROUTES.submissions.create, body);
     return response.data.data;
   },
   async addRevision(id: string, file: File, responseToReview?: string): Promise<void> {
     const body = new FormData();
-    body.append("file", file);
+    body.append("pdf", file);
     if (responseToReview) body.append("responseToReview", responseToReview);
     await api.post(API_ROUTES.submissions.revisions(id), body);
   },

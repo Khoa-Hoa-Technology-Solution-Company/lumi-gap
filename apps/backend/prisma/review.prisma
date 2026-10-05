@@ -17,6 +17,7 @@ model Submission {
   keywords               String[] @default([])
   expectedReviewWorkload String?  @map("expected_review_workload") @db.VarChar(160)
   status                 String   @default("submitted") @db.VarChar(32)
+  openForReview          Boolean  @default(false) @map("open_for_review")
   currentRevisionNumber  Int      @default(1) @map("current_revision_number")
   currentRevisionId      String?  @map("current_revision_id") @db.Uuid
   createdAt              DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -55,6 +56,7 @@ model SubmissionRevision {
   revisionNumber   Int      @map("revision_number")
   uploadedById     String   @map("uploaded_by_id") @db.Uuid
   responseToReview String?  @map("response_to_review")
+  sourceRevisionId String?  @map("source_revision_id") @db.Uuid
   storageUri       String?  @map("storage_uri")
   checksumSha256   String?  @map("checksum_sha256") @db.Char(64)
   sizeBytes        Int      @default(0) @map("size_bytes")
@@ -74,6 +76,7 @@ model ReviewerAssignment {
   legacyMongoId   String?   @unique @map("legacy_mongo_id") @db.VarChar(24)
   submissionId    String    @map("submission_id") @db.Uuid
   reviewRequestId String?   @unique @map("review_request_id") @db.Uuid
+  artifactRevisionId String? @map("artifact_revision_id") @db.Uuid
   reviewerId      String    @map("reviewer_id") @db.Uuid
   assignedById    String    @map("assigned_by_id") @db.Uuid
   anonymousCode   String    @unique @map("anonymous_code")
@@ -216,6 +219,7 @@ model ReviewRequest {
   templateVersionId  String    @map("template_version_id") @db.Uuid
   artifactRevisionId String    @map("artifact_revision_id") @db.Uuid
   status             String    @default("REQUESTED") @db.VarChar(24)
+  origin             String    @default("DIRECT_INVITATION") @db.VarChar(32)
   message            String?
   dueAt              DateTime? @map("due_at") @db.Timestamptz(6)
   createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -270,6 +274,7 @@ model HumanReview {
   keyConcerns       String?   @map("key_concerns")
   overallAssessment String?   @map("overall_assessment") @db.VarChar(24)
   weightedScore     Float?    @map("weighted_score")
+  reviewerAcademicRole String? @map("reviewer_academic_role") @db.VarChar(24)
   recommendation    String?   @db.VarChar(24)
   submittedAt       DateTime? @map("submitted_at") @db.Timestamptz(6)
   createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -277,6 +282,7 @@ model HumanReview {
 
   @@unique([assignmentId, roundNumber])
   @@index([reviewerId, status])
+  @@index([revisionId, status], map: "human_reviews_revision_status_idx")
   @@index([submissionId])
   @@index([templateVersionId])
   @@map("human_reviews")

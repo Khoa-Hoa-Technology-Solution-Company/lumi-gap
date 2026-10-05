@@ -48,7 +48,7 @@ export interface ReviewOpportunity {
   matchReasons: string[];
   matchScore: number;
   submittedAt: ISODateString;
-  authorVisibility: "DOUBLE_BLIND";
+  authorVisibility: "DOUBLE_BLIND" | "SUMMARY_ONLY";
 }
 
 export interface StructuredSubmissionInput {
@@ -198,6 +198,8 @@ export interface RequiredRevisionInput {
 }
 
 export interface AcademicReviewInput {
+  expectedRevisionId?: string;
+  expectedRoundNumber?: number;
   keyStrengths?: string;
   keyConcerns?: string;
   overallComment?: string;
