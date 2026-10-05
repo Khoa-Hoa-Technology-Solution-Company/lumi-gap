@@ -33,6 +33,9 @@
     "globals": "^16.5.0",
     "turbo": "^2.3.0",
     "typescript": "^5.7.0",
-    "typescript-eslint": "^8.70.1"
+    "typescript-eslint": "^8.70.1",
+    "dotenv": "^16.4.7",
+    "dotenv-expand": "^11.0.7",
+    "cross-spawn": "^7.0.6"
   }
 }

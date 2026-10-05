@@ -1,4 +1,4 @@
-import "dotenv/config";
+import "../src/config/load-env.js";
 import { getPrisma, disconnectPostgres } from "../src/infrastructure/database/prisma.js";
 import { passwordService } from "../src/modules/auth/password.service.js";
 import { seedCommunities } from "./seed-communities.js";

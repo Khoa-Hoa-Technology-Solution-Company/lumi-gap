@@ -1,5 +1,5 @@
 /**
- * Probe the CURRENT Gemini key (from apps/backend/.env) with one embed + one
+ * Probe the CURRENT Gemini key (from root .env) with one embed + one
  * generate call, to see exactly what quota is available right now. No DB needed.
  *
  * Run: pnpm --filter backend exec tsx scripts/probe-gemini.ts
