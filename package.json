@@ -24,6 +24,7 @@
     "docker:up": "docker compose up -d --build",
     "docker:down": "docker compose down",
     "docker:logs": "docker compose logs -f",
+    "setup": "node scripts/setup.mjs",
     "docker:infra": "docker compose up -d postgres redis",
     "docker:reset": "docker compose down -v"
   },
