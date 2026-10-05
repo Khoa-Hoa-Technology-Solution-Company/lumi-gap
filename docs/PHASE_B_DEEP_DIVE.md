@@ -163,7 +163,7 @@ pipeline = [
 ## 6. Cách verify (chạy thật)
 
 ```powershell
-# 0. (BẮT BUỘC) GEMINI_API_KEY còn hạn trong apps/backend/.env
+# 0. (BẮT BUỘC) GEMINI_API_KEY còn hạn trong root .env
 
 # 1. Sinh vector cho 200 paper
 pnpm --filter backend embed:once

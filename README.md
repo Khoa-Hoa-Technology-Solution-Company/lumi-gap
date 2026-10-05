@@ -10,8 +10,8 @@ This repository is a **pnpm + Turborepo mono-repo** containing the backend, web,
 
 | Service | Address |
 |---|---|
-| LumiGap web application | [https://LumiGap.uk](https://LumiGap.uk) |
-| LumiGap API | [https://api.LumiGap.uk](https://api.LumiGap.uk) |
+| LumiGap web application | [https://lumigap.uk](https://lumigap.uk) |
+| LumiGap API | [https://api.lumigap.uk](https://api.lumigap.uk) |
 
 Production is deployed from `main` by Jenkins using the repository's
 [`Jenkinsfile`](Jenkinsfile). Nginx Proxy Manager terminates TLS and routes the
@@ -72,8 +72,8 @@ This repo is a fork of [thiennhat-ctrl/LiemResearch](https://github.com/thiennha
 ├── docs/                     project documentation
 ├── tests/                    Playwright e2e tests (playwright.config.ts)
 ├── Dockerfile.backend / Dockerfile.web / Dockerfile.e2e
-├── docker-compose.yml        PostgreSQL/pgvector + Redis + backend + web + ai-reviewer (+ workers/translation/ingest profiles)
-├── .env.compose.example      template for the Docker Compose environment
+├── docker-compose.yml        PostgreSQL/pgvector + Redis + backend + web + ai-reviewer (+ default workers and seed/translation/ingest profiles)
+├── .env.example              single local environment template
 ├── Jenkinsfile               production CI/CD pipeline
 ├── pnpm-workspace.yaml
 ├── turbo.json
@@ -102,45 +102,88 @@ This repo is a fork of [thiennhat-ctrl/LiemResearch](https://github.com/thiennha
 
 ## First-time setup
 
+Run commands from `lumi-gap/` (the directory containing `docker-compose.yml`).
+
+### Full Docker stack
+
+Docker Desktop must be running with Linux containers. Node/pnpm are optional for this route.
+
 ```bash
-# 1. install all workspace deps (backend + web + mobile + shared-types)
+cp .env.example .env
+# Set GEMINI_API_KEY in .env; change the example passwords before sharing a demo.
+docker compose up -d --build
+```
+
+PowerShell: use `Copy-Item .env.example .env`. Open **http://localhost:8080**;
+API health is **http://localhost:4000/health**. PostgreSQL migrations and JWT
+key generation run automatically before the API and workers start.
+
+To create demo accounts (explicitly, once the stack is ready):
+
+```bash
+docker compose --profile seed up seed
+```
+
+Sign in with `admin@liemresearch.com` / `Admin123456!`. Seed data is for local demos only.
+
+### Native development with the same .env
+
+```bash
 pnpm install
-
-# 2. copy env templates and fill them in
-cp .env.compose.example             .env.compose
-cp apps/backend/.env.example        apps/backend/.env
-cp apps/web/.env.example            apps/web/.env
-cp apps/mobile/.env.example         apps/mobile/.env
-cp apps/flutter_mobile/.env.example apps/flutter_mobile/.env   # only if using Flutter
-
-# In .env.compose, replace every placeholder (POSTGRES_*, REDIS_*, GEMINI_API_KEY,
-# INTERNAL_SERVICE_KEY). The *_PASSWORD_URI values are the URL-encoded passwords.
-# In apps/backend/.env, set at minimum:
-#   GEMINI_API_KEY=...        (from Google AI Studio)
-#   DATABASE_URL=postgresql://...
-#   REDIS_URL=redis://...
-# Then generate the ignored RS256 key pair:
-pnpm --filter backend auth:keys:generate
-
-# 3. start PostgreSQL/pgvector + Redis (uses .env.compose)
-pnpm docker:up                # postgres:5433, redis:6379
-
-# 4. start the apps (mobile starts separately because it opens a UI)
-pnpm dev:backend              # http://localhost:4000  → GET /health
-pnpm dev:web                  # http://localhost:5173
-pnpm dev:mobile               # opens Expo dev tools, scan QR with Expo Go
-pnpm dev:flutter_mobile       # Flutter app against http://10.0.2.2:4000/api/v1
+pnpm setup                    # preserves an existing .env; creates native JWT keys
+# Set GEMINI_API_KEY in root .env.
+pnpm docker:infra             # PostgreSQL :5433 and Redis :6379 only
+pnpm --filter backend db:migrate:deploy
+pnpm --filter backend db:seed
+pnpm dev:backend              # terminal A, http://localhost:4000
+pnpm dev:web                  # terminal B, http://localhost:3000
 ```
 
-`pnpm docker:up` runs `docker compose --env-file .env.compose up -d`, which starts every non-profile service (postgres, redis, backend, web, ai-reviewer). Optional profiles:
+Use `pnpm --filter backend dev:workers` in another terminal for native workers.
+To use AI review natively, also start `docker compose up -d --build ai-reviewer`.
+Stop a full Docker stack with `pnpm docker:down` before switching to native apps,
+so API/worker ports and queues are not shared accidentally.
+
+Only root `.env` is edited locally. Backend and Prisma load it using an absolute
+path and expand URL variables. Vite loads it with `envDir` and exposes only
+`VITE_*`. Keep `VITE_API_BASE=/api/v1` so both Vite and nginx proxy API calls.
+`API_PORT`, `WEB_PORT`, `POSTGRES_HOST_PORT`, and `REDIS_HOST_PORT` configure host ports.
+Passwords must contain only letters and digits; `pnpm setup` generates random hex values.
+
+`pnpm dev:mobile` loads root `EXPO_PUBLIC_*` for Expo. `pnpm dev:flutter_mobile`
+reads root `API_BASE_URL` and passes only that public value via a temporary JSON `--dart-define-from-file`.
+Android emulator URLs default to `http://10.0.2.2:4000/api/v1`; use your computer's LAN IP for a physical phone.
+
+Seven workers start with the Docker stack. Allow roughly 8 GB RAM for the full
+stack (a starting allocation; actual use depends on workload). For lighter native
+work, start only `pnpm docker:infra` and the workers you need. Docker workers can
+also be stopped with `docker compose stop worker-report worker-gaps worker-embedding worker-paper-analysis worker-notifications worker-corpus-validation worker-community-summary`.
+
+Optional services:
 
 ```bash
-docker compose --env-file .env.compose --profile workers up -d --build      # report, gaps, embedding, paper-analysis, notifications, corpus-validation
-docker compose --env-file .env.compose --profile translation up -d --build  # LibreTranslate
-docker compose --env-file .env.compose --profile ingest up -d --build       # OpenAlex ingest worker (needs OPENALEX_API_KEY)
+docker compose --profile translation up -d --build  # set TRANSLATION_PROVIDER=libretranslate
+docker compose --profile ingest up -d --build       # requires OPENALEX_API_KEY
 ```
 
-To stop the containers when you're done: `pnpm docker:down`.
+See [Docker setup and verification](docs/DEPLOY_WITH_DOCKER.md),
+[environment inventory](docs/environment-variables.md), and
+[production deployment](README_PRODUCTION.md).
+
+### Existing installations
+
+Run `pnpm setup`, then transfer your Gemini/OAuth/storage credentials from the old
+app environment into root `.env`. Preserve the database and Redis passwords used
+for existing volumes. If the old passwords contain special characters, use a
+properly encoded URL for native development and rotate credentials deliberately
+before using the new local Compose URL format.
+
+Once verified, remove obsolete local app/Compose env files. Postgres initialization
+credentials apply only when creating a fresh volume; changing the root password
+does not update an existing database role. Redis applies `requirepass` when its
+container starts, so recreate clients and Redis together when rotating its password.
+`pnpm docker:reset` deletes **all local Compose data, uploads, and Docker JWT keys**;
+back up anything you need first. Native keys under `apps/backend/.keys` are preserved.
 
 ---
 
@@ -159,9 +202,11 @@ pnpm lint                     # lint everything
 pnpm test                     # unit tests (turbo)
 pnpm test:e2e                 # Playwright e2e tests
 
-pnpm docker:up                # docker compose --env-file .env.compose up -d
+pnpm docker:up                # full Docker stack, builds images
 pnpm docker:down              # stop them
+pnpm docker:infra             # only PostgreSQL + Redis
 pnpm docker:logs              # tail their logs
+pnpm docker:reset             # delete local Compose volumes/data
 
 # backend workers (run from the repo root with --filter backend)
 pnpm --filter backend dev:all             # API + all workers (runs dev:check first)

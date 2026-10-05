@@ -52,7 +52,7 @@ Users can search across thousands of publication indexes using two modes:
 *   **FR-SR-7 (Fallback Mode & Diagnostics)**:
     *   If a semantic search query fails due to an expired/invalid `GEMINI_API_KEY`, the backend must return a structured error with code `GEMINI_API_KEY_ERROR`.
     *   The frontend must intercept this error, render a prominent warning banner explaining the issue, and provide a one-click button to fallback to Keyword Search Mode.
-    *   A Vietnamese-guided step list must be toggleable to show the user how to configure a new key in `apps/backend/.env`.
+    *   A Vietnamese-guided step list must be toggleable to show the user how to configure a new key in `root .env`.
 
 ---
 

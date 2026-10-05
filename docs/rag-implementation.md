@@ -42,7 +42,7 @@ Backend defaults are `RAG_MAX_CHUNKS=300`, `RAG_CHUNK_CHARS=2400` and `RAG_PASSA
 
 3. Rebuild/restart the Python reviewer with `/internal/extract-text`. Set the same non-empty `INTERNAL_SERVICE_KEY` on backend/workers and reviewer, and set `AI_REVIEWER_URL` to the reviewer address. PDF extraction itself does not call Gemini.
 4. Configure the backend Gemini key/models and existing PDF storage credentials. Rebuild backend, shared types and web. Run the API plus `worker:paper-analysis`, `worker:report` and `worker:gaps`. For local file uploads, the analysis worker must see the same uploads directory as the API; Compose now mounts it read-only.
-5. For Compose, use the existing `.env.compose`/`.env` configuration and the `workers` profile after migration. The analysis worker depends on healthy PostgreSQL, Redis and reviewer services.
+5. For Compose, use root `.env` and the default workers after migration. The analysis worker depends on healthy PostgreSQL, Redis and reviewer services.
 
 The existing Jenkinsfile still contains legacy MongoDB vector commands and lacks a Prisma migration/reviewer deployment stage. Update that deployment pipeline before production rollout; it is not validated by this implementation.
 
