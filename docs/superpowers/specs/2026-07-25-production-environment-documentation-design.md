@@ -2,7 +2,7 @@
 
 ## Goal
 
-Document the production environment for PaperLens so another team member can
+Document the production environment for LumiGap so another team member can
 configure and deploy the application without copying secrets into Git.
 
 ## Artifacts
@@ -13,11 +13,11 @@ The production runbook will explain:
 
 - the roles of DNS, OpenResty, Jenkins, Docker, and application environment
   variables;
-- the public URLs `https://paperlens.uk` and
-  `https://api.paperlens.uk/api/v1`;
+- the public URLs `https://LumiGap.uk` and
+  `https://api.LumiGap.uk/api/v1`;
 - how to prepare the backend production environment;
 - how to store that environment in the Jenkins Secret Text credential
-  `liemresearch-backend-env-b64`;
+  `LumiGap-backend-env-b64`;
 - the required Jenkins build arguments and runtime overrides;
 - Google OAuth origin and callback configuration;
 - post-deployment health, CORS, API, and OAuth checks;
@@ -45,13 +45,13 @@ placeholder.
 
 - Variable names and defaults: `apps/backend/src/config/env.ts`.
 - Safe local examples: `apps/backend/.env.example`.
-- Production deployment behavior: the Jenkins `User1/LiemResearch` pipeline.
+- Production deployment behavior: the Jenkins `User1/LumiGap` pipeline.
 - Public endpoints:
-  - Web: `https://paperlens.uk`
-  - API: `https://api.paperlens.uk/api/v1`
-  - Health: `https://api.paperlens.uk/health`
+  - Web: `https://LumiGap.uk`
+  - API: `https://api.LumiGap.uk/api/v1`
+  - Health: `https://api.LumiGap.uk/health`
   - Google callback:
-    `https://api.paperlens.uk/api/v1/auth/google/callback`
+    `https://api.LumiGap.uk/api/v1/auth/google/callback`
 
 ## Acceptance Criteria
 

@@ -11,7 +11,7 @@ name: lumi-gap
 # PostgreSQL + pgvector is the only application persistence layer.
 
 x-backend-common: &backend-common
-  image: liemresearch-backend:local
+  image: LumiGap-backend:local
   build:
     context: .
     dockerfile: Dockerfile.backend
@@ -129,7 +129,7 @@ services:
       start_period: 20s
 
   web:
-    image: liemresearch-web:local
+    image: LumiGap-web:local
     build:
       context: .
       dockerfile: Dockerfile.web
@@ -143,7 +143,7 @@ services:
     restart: unless-stopped
 
   ai-reviewer:
-    image: liemresearch-ai-reviewer:local
+    image: LumiGap-ai-reviewer:local
     build:
       context: ./apps/ai-reviewer
       dockerfile: Dockerfile

@@ -841,7 +841,6 @@ export const en = {
   "Level Tiers": "Level Tiers",
   "Library is empty": "Library is empty",
   "Tori Team. All rights reserved.": "Tori Team. All rights reserved.",
-  "LiemResearch logo": "LiemResearch logo",
   "Limitations": "Limitations",
   "Live": "Live",
   "Loading AI history...": "Loading AI history...",

@@ -791,7 +791,6 @@ export const id: Record<keyof typeof en, string> = {
   "Level Tiers": "Tingkatan Tingkat",
   "Library is empty": "Perpustakaan kosong",
   "Tori Team. All rights reserved.": "Tim Peneliti Liem. Semua hak dilindungi undang-undang.",
-  "LiemResearch logo": "Logo Penelitian Liem",
   "Limitations": "Keterbatasan",
   "Live": "Hidup",
   "Loading AI history...": "Memuat riwayat AI...",

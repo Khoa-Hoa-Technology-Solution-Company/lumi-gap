@@ -1,6 +1,6 @@
 # Docker Compose Runtime
 
-This Compose stack is a reproducible **local/demo runtime** for LiemResearch:
+This Compose stack is a reproducible **local/demo runtime** for LumiGap:
 
 - React web app through Nginx on `http://localhost:8080`
 - Express API on `http://localhost:4000`
