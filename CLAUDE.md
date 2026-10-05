@@ -84,14 +84,14 @@ These are configured per developer in their own `.env`. The team lead (hoangtira
 ## 4. Repository Layout
 
 ```
-LiemResearch/                                    (repo root — fork of thiennhat-ctrl/LiemResearch)
+LumiGap/                                    (repo root — fork of thiennhat-ctrl/LiemResearch)
 ├── apps/
 │   ├── backend/                                 Express 5 API + BullMQ workers
 │   ├── web/                                     React + Vite + shadcn web app
 │   └── mobile/                                  Expo + NativeWind mobile app
 ├── packages/
 │   └── shared-types/                            framework-agnostic TS types
-├── legacy/                                      original LiemResearch code — port reference
+├── legacy/                                      original LumiGap code — port reference
 │   ├── backend-js/                              ratings, points, notifications, S3 (JS)
 │   └── web-figma/                               17 UI pages + rank badges (Tailwind v4)
 │                                                → port per docs/MIGRATION_MAP.md, then delete

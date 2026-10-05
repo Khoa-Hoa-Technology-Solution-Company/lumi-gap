@@ -5,13 +5,13 @@ Bản kế hoạch triển khai chi tiết cho việc phát triển giao diện 
 ## 1. Phân rã công việc (Task Breakdown)
 
 - [x] **Task 1: Khai báo API Endpoint & Local Types**
-  - Thêm `evidencePreview` vào `API_ROUTES.reports` ở [api.ts](file:///d:/Ky8-FPT/LiemResearch/apps/web/src/constants/api.ts).
-  - Định nghĩa các interface `EvidencePaper`, `EvidencePreviewRequest`, `EvidencePreviewResponse`, `WebCreateReportRequest` và viết hàm `previewEvidence` trong [reports.api.ts](file:///d:/Ky8-FPT/LiemResearch/apps/web/src/features/reports/api/reports.api.ts).
+  - Thêm `evidencePreview` vào `API_ROUTES.reports` ở [api.ts](file:///d:/Ky8-FPT/LumiGap/apps/web/src/constants/api.ts).
+  - Định nghĩa các interface `EvidencePaper`, `EvidencePreviewRequest`, `EvidencePreviewResponse`, `WebCreateReportRequest` và viết hàm `previewEvidence` trong [reports.api.ts](file:///d:/Ky8-FPT/LumiGap/apps/web/src/features/reports/api/reports.api.ts).
 - [x] **Task 2: Tích hợp hook React Query cho xem trước bằng chứng**
-  - Viết hook `useReportEvidencePreview` trong [use-reports.ts](file:///d:/Ky8-FPT/LiemResearch/apps/web/src/features/reports/hooks/use-reports.ts).
+  - Viết hook `useReportEvidencePreview` trong [use-reports.ts](file:///d:/Ky8-FPT/LumiGap/apps/web/src/features/reports/hooks/use-reports.ts).
   - Cập nhật hook `useCreateReport` để nhận kiểu `WebCreateReportRequest`.
 - [x] **Task 3: Cập nhật giao diện Form và thiết kế xem trước bằng chứng**
-  - Cập nhật [reports-list.tsx](file:///d:/Ky8-FPT/LiemResearch/apps/web/src/pages/reports/reports-list.tsx):
+  - Cập nhật [reports-list.tsx](file:///d:/Ky8-FPT/LumiGap/apps/web/src/pages/reports/reports-list.tsx):
     - Đưa nút "Preview Evidence Pack" làm hành động chính khi điền form.
     - Hiển thị Skeleton Loader khi đang tải ngầm.
     - Hiển thị danh sách các bài báo bằng chứng (Relevance Score, Source Badge, Authors, Collapsible Abstract, Trash Button).

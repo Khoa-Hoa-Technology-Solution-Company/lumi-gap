@@ -6,7 +6,7 @@
 ## 1. Introduction
 
 ### 1.1 Purpose
-This document provides a detailed specification of the Software Requirements for the **Discovery & Personalization** domains of the **LiemResearch** platform. It outlines the functional and non-functional requirements, database schemas, and architectural boundaries governing scientific publication discovery, search filtering, paper metadata, user bookmarking, note annotation, and customized user profiles.
+This document provides a detailed specification of the Software Requirements for the **Discovery & Personalization** domains of the **LumiGap** platform. It outlines the functional and non-functional requirements, database schemas, and architectural boundaries governing scientific publication discovery, search filtering, paper metadata, user bookmarking, note annotation, and customized user profiles.
 
 ### 1.2 Scope
 The scope of the Discovery & Personalization domain includes:

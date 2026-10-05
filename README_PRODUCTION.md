@@ -1,18 +1,18 @@
 # LumiGap Production Deployment Runbook
 
 This is the source of truth for deploying and operating the LumiGap web
-platform at `paperlens.uk`. It contains no real credentials.
+platform at `LumiGap.uk`. It contains no real credentials.
 
 ## 1. Production Topology
 
 ```text
 Browser
   |
-  +-- https://paperlens.uk
-  |      DNS + TLS + Nginx Proxy Manager -> paperlens-web:80
+  +-- https://LumiGap.uk
+  |      DNS + TLS + Nginx Proxy Manager -> LumiGap-web:80
   |
-  +-- https://api.paperlens.uk
-         DNS + TLS + Nginx Proxy Manager -> paperlens-backend:4000
+  +-- https://api.LumiGap.uk
+         DNS + TLS + Nginx Proxy Manager -> LumiGap-backend:4000
                                                        |
                   +------------------------------------+------------------+
                   |                    |               |                  |
@@ -28,12 +28,12 @@ Public endpoints:
 
 | Purpose | URL |
 |---|---|
-| Web application | `https://paperlens.uk` |
-| API base | `https://api.paperlens.uk/api/v1` |
-| Process liveness | `https://api.paperlens.uk/health` |
-| MongoDB/Redis readiness | `https://api.paperlens.uk/ready` |
-| API documentation | `https://api.paperlens.uk/api-docs` |
-| Google OAuth callback | `https://api.paperlens.uk/api/v1/auth/google/callback` |
+| Web application | `https://LumiGap.uk` |
+| API base | `https://api.LumiGap.uk/api/v1` |
+| Process liveness | `https://api.LumiGap.uk/health` |
+| MongoDB/Redis readiness | `https://api.LumiGap.uk/ready` |
+| API documentation | `https://api.LumiGap.uk/api-docs` |
+| Google OAuth callback | `https://api.LumiGap.uk/api/v1/auth/google/callback` |
 
 ## 2. Version-Controlled Deployment Files
 
@@ -42,7 +42,7 @@ Public endpoints:
 | `Jenkinsfile` | Canonical production pipeline |
 | `Dockerfile.backend` | API and worker image |
 | `Dockerfile.web` | Vite build and Nginx runtime image |
-| `deploy/openresty/paperlens.conf.example` | Reverse proxy and TLS template |
+| `deploy/openresty/LumiGap.conf.example` | Reverse proxy and TLS template |
 | `apps/backend/.env.production.example` | Complete public environment template |
 | `apps/backend/scripts/validate-production-env.ts` | Pre-deploy environment guard |
 | `README_PRODUCTION.md` | This runbook |
@@ -59,7 +59,7 @@ diverge.
 | `apps/backend/.env.production` | **No** |
 | `apps/backend/.env` | **No** |
 | `.env.compose` | **No**; local Docker Compose only |
-| Jenkins Secret Text `liemresearch-backend-env-b64` | **No** |
+| Jenkins Secret Text `LumiGap-backend-env-b64` | **No** |
 | Jenkins temporary `.env.runtime` | **No**; deleted after every build |
 
 Base64 is transport encoding, not encryption. Never paste the private
@@ -69,8 +69,8 @@ environment into GitHub, a pull request, an issue, a screenshot, or build logs.
 
 ### DNS and firewall
 
-- `paperlens.uk` A record points to the deployment server.
-- `api.paperlens.uk` A record points to the same deployment server.
+- `LumiGap.uk` A record points to the deployment server.
+- `api.LumiGap.uk` A record points to the same deployment server.
 - Public firewall permits only required services such as `80` and `443`.
 - MongoDB, Redis, ports `9000`, and `9001` are not exposed to the public
   Internet. Nginx Proxy Manager is the public entry point.
@@ -83,8 +83,8 @@ stable aliases:
 
 | Public host | Forward hostname | Forward port |
 |---|---|---:|
-| `paperlens.uk` | `paperlens-web` | `80` |
-| `api.paperlens.uk` | `paperlens-backend` | `4000` |
+| `LumiGap.uk` | `LumiGap-web` | `80` |
+| `api.LumiGap.uk` | `LumiGap-backend` | `4000` |
 
 Do not forward either host to `127.0.0.1` or the server's public IP. From inside
 the reverse-proxy container, `127.0.0.1` refers to that container itself, while
@@ -99,12 +99,12 @@ the command does not depend on an already-valid HTTPS configuration:
 ```bash
 sudo systemctl stop openresty
 sudo certbot certonly --standalone \
-  -d paperlens.uk \
-  -d api.paperlens.uk
+  -d LumiGap.uk \
+  -d api.LumiGap.uk
 sudo systemctl start openresty
 ```
 
-Install `deploy/openresty/paperlens.conf.example` in the server's OpenResty
+Install `deploy/openresty/LumiGap.conf.example` in the server's OpenResty
 `conf.d` directory, verify certificate paths, then run:
 
 ```bash
@@ -119,13 +119,13 @@ Configure the production OAuth client in Google Cloud:
 **Authorized JavaScript origin**
 
 ```text
-https://paperlens.uk
+https://LumiGap.uk
 ```
 
 **Authorized redirect URI**
 
 ```text
-https://api.paperlens.uk/api/v1/auth/google/callback
+https://api.LumiGap.uk/api/v1/auth/google/callback
 ```
 
 The redirect URI must match `GOOGLE_CALLBACK_URL` exactly.
@@ -181,8 +181,8 @@ Keep these public values:
 ```env
 NODE_ENV=production
 PORT=4000
-CORS_ORIGIN=https://paperlens.uk
-GOOGLE_CALLBACK_URL=https://api.paperlens.uk/api/v1/auth/google/callback
+CORS_ORIGIN=https://LumiGap.uk
+GOOGLE_CALLBACK_URL=https://api.LumiGap.uk/api/v1/auth/google/callback
 TRANSLATION_PROVIDER=libretranslate
 LIBRETRANSLATE_URL=http://libretranslate:5000
 SYNC_ADMIN_BYPASS=false
@@ -205,7 +205,7 @@ file path.
 Create or update a Jenkins **Secret Text** credential:
 
 ```text
-ID: liemresearch-backend-env-b64
+ID: LumiGap-backend-env-b64
 ```
 
 Encode the private file on Windows without printing it:
@@ -250,7 +250,7 @@ more papers.
 The web image is built with:
 
 ```text
-VITE_API_BASE=https://api.paperlens.uk/api/v1
+VITE_API_BASE=https://api.LumiGap.uk/api/v1
 ```
 
 The backend candidate must pass `/ready` before the live API container is
@@ -293,9 +293,9 @@ gaps require their workers, while most AI features require Redis queues.
 ### Public liveness and readiness
 
 ```powershell
-(Invoke-WebRequest https://paperlens.uk -UseBasicParsing).StatusCode
-(Invoke-WebRequest https://api.paperlens.uk/health -UseBasicParsing).StatusCode
-(Invoke-WebRequest https://api.paperlens.uk/ready -UseBasicParsing).StatusCode
+(Invoke-WebRequest https://LumiGap.uk -UseBasicParsing).StatusCode
+(Invoke-WebRequest https://api.LumiGap.uk/health -UseBasicParsing).StatusCode
+(Invoke-WebRequest https://api.LumiGap.uk/ready -UseBasicParsing).StatusCode
 ```
 
 All must return `200`. `/health` means the Express process is alive. `/ready`
@@ -305,13 +305,13 @@ also pings MongoDB and Redis and returns `503` when either dependency is down.
 
 ```powershell
 $headers = @{
-  Origin = "https://paperlens.uk"
+  Origin = "https://LumiGap.uk"
   "Access-Control-Request-Method" = "GET"
   "Access-Control-Request-Headers" = "authorization,content-type"
 }
 
 $response = Invoke-WebRequest `
-  -Uri "https://api.paperlens.uk/api/v1/papers/translation/capabilities" `
+  -Uri "https://api.LumiGap.uk/api/v1/papers/translation/capabilities" `
   -Method Options `
   -Headers $headers `
   -UseBasicParsing
@@ -320,12 +320,12 @@ $response.StatusCode
 $response.Headers["Access-Control-Allow-Origin"]
 ```
 
-Expected: status `204` and origin `https://paperlens.uk`.
+Expected: status `204` and origin `https://LumiGap.uk`.
 
 ### Translation
 
 ```powershell
-Invoke-RestMethod "https://api.paperlens.uk/api/v1/papers/translation/capabilities"
+Invoke-RestMethod "https://api.LumiGap.uk/api/v1/papers/translation/capabilities"
 ```
 
 Then sign in, open one paper containing an abstract, translate it, reload the
@@ -336,12 +336,12 @@ page, and confirm the cached translation still appears.
 Test both:
 
 1. Successful Google sign-in returns to
-   `https://paperlens.uk/auth/oauth-callback?code=...`, exchanges the short-lived
+   `https://LumiGap.uk/auth/oauth-callback?code=...`, exchanges the short-lived
    code once, and then removes it from the browser URL.
 2. Cancelled/failed Google sign-in returns to
-   `https://paperlens.uk/login?error=GoogleLoginFailed`.
+   `https://LumiGap.uk/login?error=GoogleLoginFailed`.
 
-Neither path may redirect to `localhost` or `api.paperlens.uk/login`. Access and
+Neither path may redirect to `localhost` or `api.LumiGap.uk/login`. Access and
 refresh tokens must never appear in the callback URL.
 
 ### Workers
@@ -388,7 +388,7 @@ separate decisions.
   loss still affects pending jobs, so monitor failed/dead-letter jobs.
 - Rotate credentials immediately after any public disclosure.
 - After rotation, update Jenkins credential
-  `liemresearch-backend-env-b64` and deploy again.
+  `LumiGap-backend-env-b64` and deploy again.
 - Remove the private environment from chat/file-transfer history after the
   authorized operator stores it securely.
 
@@ -399,7 +399,7 @@ A production deployment is accepted only when:
 - [ ] Jenkins checked out the intended `main` commit.
 - [ ] Production environment validation passed with no placeholder.
 - [ ] Web, API, and `/ready` return `200`.
-- [ ] CORS allows `https://paperlens.uk` and rejects unapproved origins.
+- [ ] CORS allows `https://LumiGap.uk` and rejects unapproved origins.
 - [ ] Google success and failure paths return to the web domain.
 - [ ] LibreTranslate reports supported languages and translates one paper.
 - [ ] Six steady worker containers are running with fresh heartbeats.

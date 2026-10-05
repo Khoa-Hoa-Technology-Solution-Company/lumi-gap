@@ -1372,7 +1372,6 @@ export const vi: Record<keyof typeof en, string> = {
   "Level Tiers": "Cấp bậc",
   "Library is empty": "Thư viện trống",
   "Tori Team. All rights reserved.": "Nhóm Tori. Đã đăng ký bản quyền.",
-  "LiemResearch logo": "LiêmResearch logo",
   "Limitations": "Hạn chế",
   "Live": "Trực tiếp",
   "Loading AI history...": "Đang tải lịch sử AI...",

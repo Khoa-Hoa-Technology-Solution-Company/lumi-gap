@@ -4,7 +4,7 @@
 ---
 
 ## 1. Introduction & Scope
-This document outlines the system verification test suite for the **Discovery & Personalization** domains of the **LiemResearch** platform. The tests cover manual UI verification, API payload validity, validation constraints, and error diagnostic fallback operations.
+This document outlines the system verification test suite for the **Discovery & Personalization** domains of the **LumiGap** platform. The tests cover manual UI verification, API payload validity, validation constraints, and error diagnostic fallback operations.
 
 ---
 

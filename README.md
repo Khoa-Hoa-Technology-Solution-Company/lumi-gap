@@ -10,8 +10,8 @@ This repository is a **pnpm + Turborepo mono-repo** containing the backend, web,
 
 | Service | Address |
 |---|---|
-| LumiGap web application | [https://paperlens.uk](https://paperlens.uk) |
-| LumiGap API | [https://api.paperlens.uk](https://api.paperlens.uk) |
+| LumiGap web application | [https://LumiGap.uk](https://LumiGap.uk) |
+| LumiGap API | [https://api.LumiGap.uk](https://api.LumiGap.uk) |
 
 Production is deployed from `main` by Jenkins using the repository's
 [`Jenkinsfile`](Jenkinsfile). Nginx Proxy Manager terminates TLS and routes the
@@ -65,7 +65,7 @@ This repo is a fork of [thiennhat-ctrl/LiemResearch](https://github.com/thiennha
 │   └── ai-reviewer/          Python FastAPI internal service for paper review/analysis
 ├── packages/
 │   └── shared-types/         framework-agnostic TypeScript types shared by the TypeScript apps
-├── legacy/                   original LiemResearch code (port reference — see docs/MIGRATION_MAP.md)
+├── legacy/                   original LumiGap code (port reference — see docs/MIGRATION_MAP.md)
 │   ├── backend-js/           JS backend: ratings, points, notifications, S3 PDF upload
 │   └── web-figma/            Figma-exported React UI: 17 pages + rank badge assets
 ├── deploy/                   deployment assets

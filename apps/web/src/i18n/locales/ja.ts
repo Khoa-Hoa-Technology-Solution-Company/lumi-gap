@@ -791,7 +791,6 @@ export const ja: Record<keyof typeof en, string> = {
   "Level Tiers": "レベル階層",
   "Library is empty": "ライブラリが空です",
   "Tori Team. All rights reserved.": "リーム研究チーム。無断転載を禁じます。",
-  "LiemResearch logo": "リームリサーチのロゴ",
   "Limitations": "制限事項",
   "Live": "ライブ",
   "Loading AI history...": "AI 履歴を読み込んでいます...",
