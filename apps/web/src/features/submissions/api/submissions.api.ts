@@ -75,13 +75,13 @@ export const submissionsApi = {
       if (value === undefined) continue;
       body.append(key, Array.isArray(value) ? JSON.stringify(value) : value);
     }
-    body.append("file", file);
+    body.append("pdf", file);
     const response = await api.post(API_ROUTES.submissions.create, body);
     return response.data.data;
   },
   async addRevision(id: string, file: File, responseToReview?: string): Promise<void> {
     const body = new FormData();
-    body.append("file", file);
+    body.append("pdf", file);
     if (responseToReview) body.append("responseToReview", responseToReview);
     await api.post(API_ROUTES.submissions.revisions(id), body);
   },
