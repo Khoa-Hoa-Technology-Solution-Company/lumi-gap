@@ -1,10 +1,10 @@
-# LiemResearch — Publication Trend System
+# LumiGap — Publication Trend System
 
 > **AI-assisted Scientific Publication Trend Analysis** — multi-source academic metadata aggregation + vector semantic search + LLM-grounded analytical reports + MCP tool calling, to help researchers discover trends, evaluate papers, and identify research gaps.
 >
 > WDP301 capstone @ FPT University.
 
-This repository is a **pnpm + Turborepo mono-repo** containing three runnable apps and one shared package.
+This repository is a **pnpm + Turborepo mono-repo** containing the backend, web, two mobile clients, a Python AI reviewer service, and one shared package.
 
 ## Production deployment
 
@@ -19,7 +19,7 @@ public domains to Docker containers over the private `nginx-network`.
 
 The production stack contains:
 
-- the React web application and Express backend;
+- the React web application, Express backend, and the internal Python (FastAPI) AI Reviewer service;
 - six BullMQ worker processes for reports, research gaps, notifications,
   embeddings, paper analysis, and corpus validation;
 - a private self-hosted Redis container for queues, cache, locks, and worker
@@ -46,8 +46,8 @@ This repo is a fork of [thiennhat-ctrl/LiemResearch](https://github.com/thiennha
 
 | Came from | What |
 |---|---|
-| **publication-trend-system** (60 commits) | The entire monorepo: TypeScript backend (OpenAlex sync pipeline, Gemini embeddings, semantic search, BullMQ workers), web (shadcn/ui + TanStack Query), mobile (Expo), shared types |
-| **LiemResearch** (original) | Community features to be ported: ratings, points/credits, notifications, PDF requests, rank badges, 17 UI pages — preserved under [`legacy/`](legacy/) |
+| **publication-trend-system** (60 commits) | The entire monorepo: TypeScript backend (OpenAlex sync pipeline, Gemini embeddings, semantic search, BullMQ workers), web (shadcn/ui + TanStack Query), mobile (Expo), Flutter mobile, AI reviewer, shared types |
+| **LumiGap** (original) | Community features to be ported: ratings, points/credits, notifications, PDF requests, rank badges, 17 UI pages — preserved under [`legacy/`](legacy/) |
 
 `legacy/` is **reference material only** (it is not part of the pnpm workspace and is never built). Each feature gets ported into the monorepo following [docs/MIGRATION_MAP.md](docs/MIGRATION_MAP.md); once everything is ported, `legacy/` will be deleted.
 
@@ -60,13 +60,21 @@ This repo is a fork of [thiennhat-ctrl/LiemResearch](https://github.com/thiennha
 ├── apps/
 │   ├── backend/              Node.js 20+ · Express 5 · TypeScript · Prisma · BullMQ · Gemini
 │   ├── web/                  React 18 · Vite · Tailwind · shadcn/ui · TanStack Query · React Router
-│   └── mobile/               Expo SDK 52 · React Native · Expo Router · NativeWind · TanStack Query
+│   ├── mobile/               Expo SDK 52 · React Native · Expo Router · NativeWind · TanStack Query
+│   ├── flutter_mobile/       Flutter mobile client (not part of the pnpm workspace)
+│   └── ai-reviewer/          Python FastAPI internal service for paper review/analysis
 ├── packages/
-│   └── shared-types/         framework-agnostic TypeScript types shared by all three apps
+│   └── shared-types/         framework-agnostic TypeScript types shared by the TypeScript apps
 ├── legacy/                   original LiemResearch code (port reference — see docs/MIGRATION_MAP.md)
 │   ├── backend-js/           JS backend: ratings, points, notifications, S3 PDF upload
 │   └── web-figma/            Figma-exported React UI: 17 pages + rank badge assets
-├── docker-compose.yml        PostgreSQL/pgvector + Redis + application services
+├── deploy/                   deployment assets
+├── docs/                     project documentation
+├── tests/                    Playwright e2e tests (playwright.config.ts)
+├── Dockerfile.backend / Dockerfile.web / Dockerfile.e2e
+├── docker-compose.yml        PostgreSQL/pgvector + Redis + backend + web + ai-reviewer (+ workers/translation/ingest profiles)
+├── .env.compose.example      template for the Docker Compose environment
+├── Jenkinsfile               production CI/CD pipeline
 ├── pnpm-workspace.yaml
 ├── turbo.json
 └── tsconfig.base.json
@@ -79,10 +87,11 @@ This repo is a fork of [thiennhat-ctrl/LiemResearch](https://github.com/thiennha
 | Tool | Version | How to get it |
 |---|---|---|
 | Node.js | **>= 20** (22 recommended) | https://nodejs.org |
-| pnpm | **>= 11** | `npm install -g pnpm` |
+| pnpm | **>= 11** (repo pins `pnpm@11.3.0`) | `npm install -g pnpm` |
 | Docker Desktop | latest | https://docker.com/products/docker-desktop |
 | Git | any | https://git-scm.com |
 | **Gemini API key** | free tier OK | https://aistudio.google.com/apikey |
+| Flutter SDK | only for `apps/flutter_mobile` | https://flutter.dev |
 | Android Studio | only for mobile Android emulator | https://developer.android.com/studio |
 | Xcode | only for mobile iOS simulator (Mac only) | App Store |
 
@@ -94,14 +103,18 @@ This repo is a fork of [thiennhat-ctrl/LiemResearch](https://github.com/thiennha
 ## First-time setup
 
 ```bash
-# 1. install all workspace deps (one command for backend + web + mobile + shared-types)
+# 1. install all workspace deps (backend + web + mobile + shared-types)
 pnpm install
 
 # 2. copy env templates and fill them in
-cp apps/backend/.env.example apps/backend/.env
-cp apps/web/.env.example     apps/web/.env
-cp apps/mobile/.env.example  apps/mobile/.env
+cp .env.compose.example             .env.compose
+cp apps/backend/.env.example        apps/backend/.env
+cp apps/web/.env.example            apps/web/.env
+cp apps/mobile/.env.example         apps/mobile/.env
+cp apps/flutter_mobile/.env.example apps/flutter_mobile/.env   # only if using Flutter
 
+# In .env.compose, replace every placeholder (POSTGRES_*, REDIS_*, GEMINI_API_KEY,
+# INTERNAL_SERVICE_KEY). The *_PASSWORD_URI values are the URL-encoded passwords.
 # In apps/backend/.env, set at minimum:
 #   GEMINI_API_KEY=...        (from Google AI Studio)
 #   DATABASE_URL=postgresql://...
@@ -109,34 +122,54 @@ cp apps/mobile/.env.example  apps/mobile/.env
 # Then generate the ignored RS256 key pair:
 pnpm --filter backend auth:keys:generate
 
-# 3. start PostgreSQL/pgvector + Redis
+# 3. start PostgreSQL/pgvector + Redis (uses .env.compose)
 pnpm docker:up                # postgres:5433, redis:6379
 
-# 4. start everything (backend + web; mobile starts separately because it opens a UI)
+# 4. start the apps (mobile starts separately because it opens a UI)
 pnpm dev:backend              # http://localhost:4000  → GET /health
 pnpm dev:web                  # http://localhost:5173
 pnpm dev:mobile               # opens Expo dev tools, scan QR with Expo Go
+pnpm dev:flutter_mobile       # Flutter app against http://10.0.2.2:4000/api/v1
 ```
 
-To stop the databases when you're done: `pnpm docker:down`.
+`pnpm docker:up` runs `docker compose --env-file .env.compose up -d`, which starts every non-profile service (postgres, redis, backend, web, ai-reviewer). Optional profiles:
+
+```bash
+docker compose --env-file .env.compose --profile workers up -d --build      # report, gaps, embedding, paper-analysis, notifications, corpus-validation
+docker compose --env-file .env.compose --profile translation up -d --build  # LibreTranslate
+docker compose --env-file .env.compose --profile ingest up -d --build       # OpenAlex ingest worker (needs OPENALEX_API_KEY)
+```
+
+To stop the containers when you're done: `pnpm docker:down`.
 
 ---
 
 ## Common commands
 
 ```bash
-pnpm dev                      # turbo: run all apps' dev scripts in parallel
+pnpm dev                      # turbo: run all apps' dev and dev:workers scripts in parallel
 pnpm dev:backend              # backend only
 pnpm dev:web                  # web only
 pnpm dev:mobile               # mobile only (Expo)
+pnpm dev:flutter_mobile       # Flutter mobile (Android emulator API base)
 
 pnpm build                    # build all
 pnpm typecheck                # tsc --noEmit across the whole repo
 pnpm lint                     # lint everything
+pnpm test                     # unit tests (turbo)
+pnpm test:e2e                 # Playwright e2e tests
 
-pnpm docker:up                # start PostgreSQL/pgvector + Redis (detached)
+pnpm docker:up                # docker compose --env-file .env.compose up -d
 pnpm docker:down              # stop them
 pnpm docker:logs              # tail their logs
+
+# backend workers (run from the repo root with --filter backend)
+pnpm --filter backend dev:all             # API + all workers (runs dev:check first)
+pnpm --filter backend dev:workers         # all workers only
+pnpm --filter backend worker:<name>       # one of: report, gaps, notifications, embedding,
+                                          #   paper-analysis, corpus-validation, community-summary,
+                                          #   ai-jobs, sync, openalex-ingest
+pnpm --filter backend workers:verify:heartbeats
 ```
 
 ---
