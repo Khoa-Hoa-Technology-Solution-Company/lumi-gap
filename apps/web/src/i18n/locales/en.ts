@@ -5,6 +5,7 @@ import { academicForumStrings } from "./academic-forum";
 import { authSecurityStrings } from "./auth-security";
 import { newUiStrings } from "./new-ui";
 import { projectInvitationStrings } from "./project-invitations";
+import { peerReviewVersionStrings } from "./peer-review-versions";
 import { studentOnboardingStrings } from "./student-onboarding";
 import { researchHomeEn } from "./research-home-en";
 import { trustSafetyRagStrings } from "./trust-safety-rag";
@@ -14,6 +15,7 @@ export const en = {
   ...researchHomeEn,
   ...newUiStrings,
   ...projectInvitationStrings,
+  ...peerReviewVersionStrings,
   ...studentOnboardingStrings,
   ...authSecurityStrings,
   ...academicForumStrings,
