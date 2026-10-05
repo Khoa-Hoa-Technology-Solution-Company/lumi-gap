@@ -385,7 +385,7 @@ async function main() {
   for (const [index, input] of forumUsers.entries()) {
     const user = await prisma.user.upsert({
       where: { email: input.email },
-      create: { ...input, passwordHash: userPasswordHash, role: "user", systemRole: "RESEARCH_USER", accountStatus: "ACTIVE", emailVerifiedAt: new Date(), onboardingCompletedAt: new Date(), researchInterests: ["Software Engineering", "Artificial Intelligence"] },
+      create: { ...input, passwordHash: userPasswordHash, role: "user", systemRole: "USER", accountStatus: "ACTIVE", emailVerifiedAt: new Date(), onboardingCompletedAt: new Date(), researchInterests: ["Software Engineering", "Artificial Intelligence"] },
       update: { fullName: input.fullName, institution: input.institution, academicProfileType: input.academicProfileType, passwordHash: userPasswordHash, accountStatus: "ACTIVE" },
     });
     seededForumUsers.push({ id: user.id, fullName: user.fullName });
