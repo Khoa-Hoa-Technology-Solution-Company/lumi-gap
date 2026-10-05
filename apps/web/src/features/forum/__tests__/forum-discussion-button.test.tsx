@@ -35,7 +35,9 @@ describe("Discussion creation button", () => {
   it("uses the same accent on forum and community creation entry points", () => {
     const list = readFileSync(new URL("../../../pages/forum/forum-list.tsx", import.meta.url), "utf8");
     const community = readFileSync(new URL("../../../pages/communities/community-detail.tsx", import.meta.url), "utf8");
-    expect(list.match(/variant="discussion"/g)).toHaveLength(3);
+    // The display toggle uses this accent too, but is not a creation entry point.
+    const creationButtons = list.replace(/<Button\b[^>]*className="forum-topic-view-toggle[^\"]*"[^>]*>/g, "");
+    expect(creationButtons.match(/variant="discussion"/g)).toHaveLength(3);
     expect(community.match(/variant="discussion"/g)).toHaveLength(2);
   });
 });

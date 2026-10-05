@@ -169,6 +169,8 @@ docker compose --profile ingest up -d --build       # requires OPENALEX_API_KEY
 See [Docker setup and verification](docs/DEPLOY_WITH_DOCKER.md),
 [environment inventory](docs/environment-variables.md), and
 [production deployment](README_PRODUCTION.md).
+The [validation report](docs/single-env-docker-validation.md) records Docker,
+native, browser, and test results for the single environment migration.
 
 ### Existing installations
 
