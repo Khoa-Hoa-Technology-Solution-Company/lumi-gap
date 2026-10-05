@@ -21,9 +21,11 @@
     "test:e2e": "playwright test",
     "test:e2e:list": "playwright test --list",
     "clean": "turbo run clean",
-    "docker:up": "docker compose --env-file .env.compose up -d",
-    "docker:down": "docker compose --env-file .env.compose down",
-    "docker:logs": "docker compose --env-file .env.compose logs -f"
+    "docker:up": "docker compose up -d --build",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f",
+    "docker:infra": "docker compose up -d postgres redis",
+    "docker:reset": "docker compose down -v"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
