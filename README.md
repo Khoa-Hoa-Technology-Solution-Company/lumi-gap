@@ -154,10 +154,17 @@ Passwords must contain only letters and digits; `pnpm setup` generates random he
 reads root `API_BASE_URL` and passes only that public value via a temporary JSON `--dart-define-from-file`.
 Android emulator URLs default to `http://10.0.2.2:4000/api/v1`; use your computer's LAN IP for a physical phone.
 
-Seven workers start with the Docker stack. Allow roughly 8 GB RAM for the full
+Eight workers start with the Docker stack, including OpenAlex topic sync. Allow roughly 8 GB RAM for the full
 stack (a starting allocation; actual use depends on workload). For lighter native
 work, start only `pnpm docker:infra` and the workers you need. Docker workers can
-also be stopped with `docker compose stop worker-report worker-gaps worker-embedding worker-paper-analysis worker-notifications worker-corpus-validation worker-community-summary`.
+also be stopped with `docker compose stop worker-sync worker-report worker-gaps worker-embedding worker-paper-analysis worker-notifications worker-corpus-validation worker-community-summary`.
+
+The demo seed does not populate a searchable research corpus. In the admin UI,
+run a topic sync (for example, `large language model`), then run embedding for
+semantic search. Search reads imported local papers; selecting OpenAlex filters
+the local corpus and does not fetch new papers from the provider. Configure
+`OPENALEX_API_KEY` and optionally `OPENALEX_MAILTO` in root `.env` before syncing.
+The sync worker also registers the daily schedule configured by `SYNC_CRON`.
 
 Optional services:
 
