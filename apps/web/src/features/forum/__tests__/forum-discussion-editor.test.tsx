@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { StaticRouter } from "react-router-dom/server";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ForumCategoryView } from "../api/forum.api";
 import { buildForumDiscussionInput, formatForumMarkdown, forumInitialDiscussionType, forumMarkdownShortcut, forumNewDiscussionHref, insertForumMarkdown, type ForumDiscussionDraft } from "../utils/forum-discussion-editor";
@@ -13,6 +14,7 @@ vi.mock("@/features/forum/hooks/use-forum", () => ({
   useForumContext: () => ({ data: { papers: [{ id: "paper", title: "Study", publicationYear: 2026 }], gaps: [{ id: "gap", title: "Candidate", forumShareable: false }], projects: [{ id: "project", title: "Project" }] }, isLoading: false, isError: false, refetch: vi.fn() }),
   useCreateForumPost: () => ({ isPending: state.pending, mutateAsync: vi.fn() }),
   useShareForumGap: () => ({ isPending: false, mutateAsync: vi.fn() }),
+  useForumPaperSearch: () => ({ data: [], isLoading: false, isError: false, refetch: vi.fn() }),
 }));
 vi.mock("@/features/forum/hooks/use-forum-categories", () => ({
   useForumCategories: () => ({ data: state.loading || state.error ? undefined : communities, isLoading: state.loading, isError: state.error, refetch: vi.fn() }),
@@ -22,7 +24,7 @@ vi.mock("@/features/forum/hooks/use-forum-categories", () => ({
 const joined: ForumCategoryView = { id: "joined", slug: "research-methodology", name: "Research Methodology", description: "", status: "ACTIVE", sortOrder: 0 };
 const communities = [joined, { ...joined, id: "pending", slug: "archived", name: "Archived category", status: "ARCHIVED" as const }];
 const draft: ForumDiscussionDraft = { type: "QUESTION", communityId: "joined", title: "  A research question  ", content: "  Evidence and methods.  ", tags: "methods, evidence, methods", linkedPaperId: "", linkedGapId: "", references: [] };
-const render = (url = "/forum/new") => renderToStaticMarkup(<StaticRouter location={url}><ForumNewPage /></StaticRouter>);
+const render = (url = "/forum/new") => renderToStaticMarkup(<QueryClientProvider client={new QueryClient()}><StaticRouter location={url}><ForumNewPage /></StaticRouter></QueryClientProvider>);
 beforeEach(() => { state.loading = false; state.error = false; state.pending = false; });
 
 describe("New discussion composer", () => {

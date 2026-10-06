@@ -1,3 +1,4 @@
+import { aiModel } from "../user-ai/user-ai.runtime.js";
 import type { ScoredPaper } from "@trend/shared-types";
 import { env } from "../../config/env.js";
 import { AppError } from "../../common/exceptions/app-error.js";
@@ -128,7 +129,7 @@ async function rerankedSearch(args: {
     abstractText: (p as { abstractText?: string }).abstractText,
   }));
 
-  const model = env.GEMINI_MODEL_FAST;
+  const model = aiModel();
   if (!params.userId) {
     throw AppError.unauthorized("Authentication is required for AI re-ranking");
   }

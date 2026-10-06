@@ -1,0 +1,25 @@
+model UserAiConnection {
+  id            String   @id @default(uuid()) @db.Uuid
+  userId        String   @map("user_id") @db.Uuid
+  name          String   @db.VarChar(100)
+  provider      String   @db.VarChar(24)
+  baseUrl       String   @map("base_url")
+  encryptedKey  String?  @map("encrypted_key")
+  model         String
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  preferences   UserAiPreference[]
+
+  @@index([userId])
+  @@map("user_ai_connections")
+}
+
+model UserAiPreference {
+  userId       String @id @map("user_id") @db.Uuid
+  connectionId String? @map("connection_id") @db.Uuid
+  user         User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  connection   UserAiConnection? @relation(fields: [connectionId], references: [id], onDelete: SetNull)
+
+  @@map("user_ai_preferences")
+}

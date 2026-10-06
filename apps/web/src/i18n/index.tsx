@@ -45,7 +45,7 @@ interface I18nContextValue {
   t: Translate;
 }
 
-const STORAGE_KEY = "LumiGap.uiLanguage";
+const STORAGE_KEY = "lumigap.uiLanguage";
 const I18nContext = createContext<I18nContextValue | undefined>(undefined);
 const ATTRIBUTES = ["placeholder", "aria-label", "title"] as const;
 const SKIP_SELECTOR = "script,style,noscript,canvas,code,pre,textarea,[contenteditable='true'],[data-no-i18n]";
@@ -401,7 +401,8 @@ export function resolveInitialLanguage(
 function readStoredLanguage(): UiLanguageCode {
   let storedLanguage: string | null = null;
   try {
-    storedLanguage = window.localStorage.getItem(STORAGE_KEY);
+    storedLanguage = window.localStorage.getItem(STORAGE_KEY)
+      ?? window.localStorage.getItem("LumiGap.uiLanguage");
   } catch {
     // Browser language detection still works if local storage is unavailable.
   }

@@ -51,16 +51,16 @@ MIGRATION_SOURCE_DATABASE=source_db
 MIGRATION_BATCH_SIZE=500
 ```
 
-Compose additionally requires `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_PASSWORD_URI`, and `POSTGRES_DB`. Keep secrets in `.env`/`.env.compose`; never commit them.
+Compose additionally requires `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`. Keep secrets in the root `.env`; never commit them.
 
 If the archived copier is ever used, use a read-only source account. Remove its credentials immediately after the copy; never add those variables to the application runtime environment.
 
 ## Local infrastructure
 
-Copy `.env.compose.example` to the gitignored `.env.compose`, replace all placeholders, then start only the databases and queue:
+Run `pnpm setup` (or copy root `.env.example` to `.env`), set `GEMINI_API_KEY`, then start only the databases and queue:
 
 ```powershell
-docker compose up -d postgres redis
+pnpm docker:infra
 docker compose ps
 ```
 
@@ -71,8 +71,9 @@ explicit migration/verification run and stopped again afterward.
 Run the backend and frontend natively as before:
 
 ```powershell
-pnpm --filter backend dev
-pnpm --filter web dev
+pnpm --filter backend db:migrate:deploy
+pnpm dev:backend
+pnpm dev:web
 ```
 
 The backend process starts and its readiness probe passes with only PostgreSQL and Redis. Routes still listed as legacy-only require repository migration before they can be exercised with MongoDB stopped.

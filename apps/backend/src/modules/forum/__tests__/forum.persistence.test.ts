@@ -204,7 +204,9 @@ describe.sequential("research forum persistence and authorization", () => {
     await expect(forumService.createPost({ title: "Missing category", content: "Required taxonomy" }, authorId)).rejects.toMatchObject({ statusCode: 400 });
     await expect(forumService.createPost({ communityId, type: "PAPER_DISCUSSION", title: "Missing paper", content: "Required metadata" }, authorId)).rejects.toMatchObject({ statusCode: 400 });
     await expect(forumService.createPost({ communityId, type: "RESEARCH_GAP_DISCUSSION", title: "Missing gap", content: "Required candidate gap" }, authorId)).rejects.toMatchObject({ statusCode: 400 });
-    const question = await forumService.createPost({ communityId, type: "QUESTION", title: "How should this be evaluated?", content: "<script>alert(1)</script> Evidence is needed", tags: ["LLM", "llm"] }, authorId);
+    // Seeded tag names are global. Use a unique tag to test first-writer casing
+    // and duplicate normalization without depending on existing demo data.
+    const question = await forumService.createPost({ communityId, type: "QUESTION", title: "How should this be evaluated?", content: "<script>alert(1)</script> Evidence is needed", tags: [`LLM-${marker}`, `llm-${marker}`] }, authorId);
     const discussion = await forumService.createPost({ communityId, type: "DISCUSSION", title: "Open methods discussion", content: "Compare methods", linkedProjectId: publicProjectId }, authorId);
     const paperDiscussion = await forumService.createPost({ communityId, type: "PAPER_DISCUSSION", title: "Discuss this paper", content: "Assess the evidence", linkedPaperId: paperId }, authorId);
     const gapDiscussion = await forumService.createPost({ communityId, type: "RESEARCH_GAP_DISCUSSION", title: "Discuss this candidate gap", content: "Is evidence missing?", linkedResearchGapId: gapId }, authorId);
@@ -212,7 +214,7 @@ describe.sequential("research forum persistence and authorization", () => {
     expect([question.type, discussion.type, paperDiscussion.type, gapDiscussion.type]).toEqual(["QUESTION", "DISCUSSION", "PAPER_DISCUSSION", "RESEARCH_GAP_DISCUSSION"]);
     expect(await getPrisma().forumPostGap.count({ where: { postId: gapDiscussion.id, gapId } })).toBe(1);
     expect(question.content).not.toContain("<script>");
-    expect(question.tags).toEqual(["LLM"]);
+    expect(question.tags).toEqual([`LLM-${marker}`]);
     await expect(forumService.createPost({ communityId, title: "Private project leak", content: "Must fail", linkedProjectId: privateProjectId }, authorId)).rejects.toMatchObject({ statusCode: 403 });
     const privateGap = await getPrisma().researchGap.create({ data: { topic: "Private gap", normalizedTopic: `private-gap-${marker}`, title: `Private gap ${marker}`, description: "Private candidate", rationale: "Private evidence", source: "user", userId: authorId, forumShareable: false } });
     await expect(forumService.createPost({ communityId, type: "RESEARCH_GAP_DISCUSSION", title: "Private gap leak", content: "Must fail", linkedResearchGapId: privateGap.id }, authorId)).rejects.toMatchObject({ statusCode: 400 });

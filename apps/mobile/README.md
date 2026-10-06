@@ -7,7 +7,8 @@ Expo SDK 52 + React Native + TypeScript + Expo Router + NativeWind.
 ```bash
 # from repo root
 pnpm install
-cp apps/mobile/.env.example apps/mobile/.env
+pnpm setup
+# Set EXPO_PUBLIC_API_BASE in root .env (LAN IP for a phone).
 pnpm dev:mobile                # opens Expo dev tools
 ```
 

@@ -1,107 +1,141 @@
-# Docker Compose Runtime
+# Docker Compose runtime
 
-This Compose stack is a reproducible **local/demo runtime** for LumiGap:
+Run commands from `lumi-gap/`. Docker Desktop must run Linux containers.
+The stack includes PostgreSQL 16/pgvector, Redis, API, nginx web, AI Reviewer,
+and eight workers. Docker serves production web bundles and `node dist`.
+Production keeps its Jenkins credential contract; see [production](../README_PRODUCTION.md).
 
-- React web app through Nginx on `http://localhost:8080`
-- Express API on `http://localhost:4000`
-- MongoDB and Redis with persistent named volumes
-- opt-in BullMQ workers through Compose profiles
+## Configure and start
 
-It is suitable for a lecturer to inspect the project architecture and run the
-application locally. It is not a replacement for managed production hosting.
-MongoDB and Redis are intentionally internal-only; this prevents collisions
-with a developer's existing local database and keeps them off the host network.
-
-## 1. Configure secrets
-
-From the repository root:
-
-```powershell
-Copy-Item .env.compose.example .env.compose
+```bash
+cp .env.example .env
+# Fill GEMINI_API_KEY; change example passwords before sharing a demo.
+docker compose config -q
+docker compose up -d --build
 ```
 
-Set unique `MONGO_ROOT_PASSWORD`, `MONGO_ROOT_PASSWORD_URI`, `JWT_ACCESS_SECRET`,
-`JWT_REFRESH_SECRET`, and `GEMINI_API_KEY` in `.env.compose`. Do not send or
-commit this file. Generate a JWT secret with:
+PowerShell uses `Copy-Item .env.example .env`. No extra env-file option is needed.
+Node/pnpm are optional for Docker. If installed, `pnpm setup` generates four
+random secrets and native JWT keys; it preserves existing `.env` and keys.
+Docker creates its own RS256 key pair in a persistent named volume.
 
-```powershell
-node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
+`migrate` waits for PostgreSQL and applies all committed Prisma migrations.
+API/workers wait for successful migration, JWT initialization, and healthy Redis.
+Web waits for a healthy API; failed initializers block dependent services.
+
+Open **http://localhost:8080**. Health: **http://localhost:4000/health**;
+readiness: **http://localhost:4000/ready**; docs: **http://localhost:4000/api-docs**.
+Host ports are `WEB_PORT`, `API_PORT`, `POSTGRES_HOST_PORT`, `REDIS_HOST_PORT`.
+Keep `VITE_API_BASE=/api/v1` so nginx and Vite proxy API calls.
+Only `VITE_*` enters the web bundle; never prefix a secret with `VITE_`.
+
+## Demo seed and optional services
+
+```bash
+docker compose --profile seed up seed
 ```
 
-`MONGO_ROOT_PASSWORD_URI` is the same Mongo password URL-encoded for use in
-the connection URI. For example, `#` becomes `%23`.
+Sign in with `admin@liemresearch.com` / `Admin123456!`. Seed runs in development
+mode because fixtures reject production. Use it only for local/demo data;
+repeated seed upserts fixtures and may reset demo passwords and fixture values.
 
-## 2. Start the app
+Default workers: topic sync, report, gaps, embedding, paper analysis, notifications,
+corpus validation, community summary. Begin with roughly 8 GB Docker memory,
+then adjust to measured workload. Stop workers on a smaller machine:
 
-```powershell
-docker compose --env-file .env.compose up --build
+```bash
+docker compose stop worker-sync worker-report worker-gaps worker-embedding worker-paper-analysis worker-notifications worker-corpus-validation worker-community-summary
 ```
 
-Open `http://localhost:8080`. API health is at `http://localhost:4000/health`
-and API documentation is at `http://localhost:4000/api-docs`.
+They start again on the next full `up`. Optional profiles:
 
-Stop while retaining data:
-
-```powershell
-docker compose --env-file .env.compose down
+```bash
+# Set TRANSLATION_PROVIDER=libretranslate in root .env first.
+docker compose --profile translation up -d --build
+# Set OPENALEX_API_KEY before requesting new provider data.
+docker compose --profile ingest up -d --build
 ```
 
-Delete local Mongo/Redis/upload data as well:
+Ingest does not start a campaign automatically; an admin starts it through the
+application. LibreTranslate may take longer on first startup to load models.
 
-```powershell
-docker compose --env-file .env.compose down -v
+## Native apps with the same .env
+
+Stop the full Docker stack first to avoid duplicate API/workers, then:
+
+```bash
+pnpm install
+pnpm setup
+# Fill GEMINI_API_KEY in root .env.
+pnpm docker:infra
+pnpm --filter backend db:migrate:deploy
+pnpm --filter backend db:seed
+pnpm dev:backend   # terminal A, localhost:4000
+pnpm dev:web       # terminal B, localhost:3000
 ```
 
-## 3. Workers are explicit
+Run `pnpm --filter backend dev:workers` in another terminal if needed.
+AI review also needs `docker compose up -d --build ai-reviewer`.
+Relative JWT paths are anchored to `apps/backend` regardless of shell cwd.
 
-The default command starts only web, API, MongoDB, and Redis. This prevents a
-demo from unexpectedly consuming Gemini quota or processing a large queue.
+## Stop, reset, and transfer existing settings
 
-```powershell
-# Reports, gaps, embedding, paper analysis, and notifications
-docker compose --env-file .env.compose --profile workers up --build
-
-# Million-scale OpenAlex campaign worker; requires OPENALEX_API_KEY.
-docker compose --env-file .env.compose --profile ingest up --build
-
-# Optional Mongo Express, bound only to localhost:8081.
-docker compose --env-file .env.compose --profile tools up
-
-# Optional free Paper Detail translation (title + abstract only).
-# Set TRANSLATION_PROVIDER=libretranslate in .env.compose first.
-docker compose --env-file .env.compose --profile translation up --build
+```bash
+pnpm docker:logs
+pnpm docker:down    # preserves named volumes
+pnpm docker:reset   # deletes DB, Redis, uploads, reviewer data, Docker JWT keys
 ```
 
-The OpenAlex campaign worker does not begin a campaign on startup. An admin
-must plan and explicitly start a campaign through the API/dashboard.
+Back up needed data before resetting. Native keys under `apps/backend/.keys`
+survive Docker reset. Existing installations should transfer Gemini, OAuth,
+storage and email credentials into root `.env` after `pnpm setup`. Reuse the
+Postgres password for existing volumes: changing its initialization variable
+does not change an existing database role. Redis applies its password on startup;
+recreate Redis and clients together when rotating it. Local Compose passwords
+must be alphanumeric, avoiding separate URL-encoded password variables.
+Remove obsolete local environment files once the new configuration is verified.
 
-## 4. Important vector-search boundary
+The independent AI Reviewer repository retains its own standalone configuration;
+the root Compose stack injects root `.env`.
 
-The official `mongo:7` image in this Compose file is MongoDB Community. It does
-not contain MongoDB Atlas Vector Search (`mongot`), so `$vectorSearch`-based
-semantic search, RAG retrieval, and embedding-backed features cannot be fully
-demonstrated against this local Mongo container.
+## Verify a fresh installation
 
-For those features, point `MONGODB_URI` at MongoDB Atlas or a self-hosted
-MongoDB deployment where the administrator has installed and configured
-`mongot`/Vector Search. Do not claim that plain MongoDB Community provides
-Atlas Vector Search.
+Use a disposable checkout/project so reset cannot delete developer data:
 
-## 5. OpenAlex authentication
+```bash
+docker compose config -q
+docker compose up -d --build
+docker compose ps -a
+docker compose exec postgres psql -U lumi_gap -d lumi_gap -c '\dt'
+curl http://localhost:4000/health
+curl http://localhost:8080/api/v1/auth/me  # expected 401 without a token
+docker compose --profile seed up seed
+```
 
-Older project syncs used `OPENALEX_MAILTO` (the historical polite-pool
-mechanism). OpenAlex now requires an API key for new API access. Add the free
-key as `OPENALEX_API_KEY` before starting the million-scale ingest worker.
-The legacy corpus remains valid; the key is required for future provider calls,
-not to read existing papers from MongoDB.
+Sign in at the web URL with the seeded admin to verify nginx and authentication.
+Then verify native apps as above and run `pnpm typecheck`, `pnpm test`,
+`pnpm --filter web build`, and `pnpm test:e2e`.
+Integration/browser tests need PostgreSQL/Redis and seeded apps; AI calls need
+valid provider credentials. Health checks do not verify an external AI provider.
 
-## 6. Paper Detail translation
+## AI evaluation and paper indexing failures
 
-Translation is opt-in and does not translate the website, PDFs, taxonomy, DOI,
-or author names. The backend sends only a paper's title and abstract to the
-self-hosted LibreTranslate container when an authenticated user clicks
-Translate. Results are cached in `paper_translations` using the paper id,
-target language, provider, and a hash of the original text. Repeated requests
-for unchanged content therefore do not invoke the translation engine again.
-The first LibreTranslate startup can take longer because its language models
-must be initialized. Keep the service private; only the backend needs access.
+- Keep `GEMINI_MODEL_FAST` and `GEMINI_MODEL_DEEP` set to models that can actually
+  generate content with your project's key. A model listed by the provider can
+  still return 404 for generation. The local default is `gemini-3.1-flash-lite`.
+- `LLM_QUOTA_EXHAUSTED` means the provider reports a daily/monthly limit or zero
+  available quota. Wait for the quota to reset, or update `GEMINI_API_KEY` in the
+  root `.env` with a key from a project that has available quota. Keys belonging
+  to the same Google project share its quota. Paper indexing stops without
+  repeating the exhausted request. Per-minute limits use the provider's retry
+  delay; temporary overload is retried a bounded number of times.
+- After editing `.env`, recreate the API and workers with
+  `docker compose up -d --no-build --pull never` when local images are already
+  built. Reload nginx with `docker compose exec -T web nginx -s reload` after the
+  backend is healthy, so it resolves the recreated backend container.
+- Check `docker compose logs --tail 100 backend worker-paper-analysis` for the
+  failing operation. An Index request returning 202 only means it was queued;
+  successful indexing must reach `ready` with stored passages and embeddings.
+- When the remote PDF cannot be read, indexing may use the abstract. The paper
+  evidence panel reports **Abstract only** and source warnings; this does not
+  provide full manuscript coverage.

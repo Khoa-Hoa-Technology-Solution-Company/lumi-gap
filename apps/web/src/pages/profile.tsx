@@ -16,10 +16,12 @@ import { isAdminSystemRole } from "@trend/shared-types";
 import { checkPasswordPolicy } from "@/features/auth/utils/password-policy";
 import { useI18n } from "@/i18n";
 import { SettingsPanelTransition } from "@/components/settings-panel-transition";
+import { UserAiSettings } from "@/features/user-ai/user-ai-settings";
 
-type SettingsSection = "profile" | "academic" | "credits" | "security" | "preferences" | "submit-paper" | "my-papers";
+type SettingsSection = "profile" | "academic" | "credits" | "security" | "preferences" | "ai" | "submit-paper" | "my-papers";
 
 function settingsSectionFromRoute(section: string | undefined, isAdmin: boolean): SettingsSection {
+  if (section === "ai") return "ai";
   if (["academic", "academic-profile"].includes(section ?? "") && !isAdmin) return "academic";
   if (["security", "account"].includes(section ?? "")) return "security";
   if (["credits", "credit-history"].includes(section ?? "")) return "credits";
@@ -169,6 +171,11 @@ export function AccountSettingsPage() {
           >
             <User className="w-4 h-4" />
             My Profile
+          </button>
+
+          <button onClick={() => { setActiveSection("ai"); setSuccessMessage(""); setErrorMessage(""); }}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left text-sm font-semibold transition-all ${activeSection === "ai" ? "bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400" : "text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/40"}`}>
+            <Key className="w-4 h-4" />AI Connections
           </button>
 
           {!isAdmin && (
@@ -583,6 +590,7 @@ export function AccountSettingsPage() {
           )}
 
           {/* Section 5: Submit Paper */}
+          {activeSection === "ai" && <UserAiSettings />}
           {activeSection === "submit-paper" && !isAdmin && (
             <SubmitPaperPage isEmbedded={true} />
           )}

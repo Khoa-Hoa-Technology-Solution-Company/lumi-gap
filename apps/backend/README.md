@@ -7,9 +7,10 @@ Node.js + Express 5 + TypeScript + PostgreSQL/pgvector + Prisma + BullMQ + Gemin
 ```bash
 # from repo root
 pnpm install
-cp apps/backend/.env.example apps/backend/.env
-# fill in GEMINI_API_KEY and rotate the JWT secrets
-pnpm docker:up                # starts PostgreSQL/pgvector + Redis locally
+pnpm setup
+# fill in GEMINI_API_KEY in root .env
+pnpm docker:infra                # starts PostgreSQL/pgvector + Redis locally
+pnpm --filter backend db:migrate:deploy
 pnpm dev:backend              # http://localhost:4000
 ```
 
@@ -77,7 +78,7 @@ src/
 
 ## Env vars
 
-See [.env.example](.env.example) — `config/env.ts` will refuse to boot if anything required is missing.
+See [root .env.example](../../.env.example) — `config/env.ts` will refuse to boot if anything required is missing.
 
 ## PDF storage
 

@@ -81,7 +81,7 @@ describe("onboarding language", () => {
     expect(firstRenderLanguages.every((title) => title === vietnamese["Welcome to LumiGap"])).toBe(true);
     expect(container.querySelector("h1")!.textContent).toBe(vietnamese["Welcome to LumiGap"]);
     expect(document.documentElement.lang).toBe("vi");
-    expect(localStorage.getItem("LumiGap.uiLanguage")).toBeNull();
+    expect(localStorage.getItem("lumigap.uiLanguage")).toBeNull();
   });
 
   it("remembers a manual change and keeps it after reloading", async () => {
@@ -95,7 +95,7 @@ describe("onboarding language", () => {
     await selectLanguage("English");
     expect(container.querySelector<HTMLInputElement>("#skills-input")!.value).toBe("Python");
     expect(container.querySelector("h1")!.textContent).toBe("Welcome to LumiGap");
-    expect(localStorage.getItem("LumiGap.uiLanguage")).toBe("en");
+    expect(localStorage.getItem("lumigap.uiLanguage")).toBe("en");
     await close();
     await mount();
     expect(container.querySelector("h1")!.textContent).toBe("Welcome to LumiGap");
@@ -106,7 +106,7 @@ describe("onboarding language", () => {
     await locales.loadDictionary("vi");
     await mount();
     await selectLanguage("Tiếng Việt");
-    expect(localStorage.getItem("LumiGap.uiLanguage")).toBe("vi");
+    expect(localStorage.getItem("lumigap.uiLanguage")).toBe("vi");
     await close();
     vi.spyOn(navigator, "languages", "get").mockReturnValue(["en-US"]);
     await mount();
@@ -130,6 +130,17 @@ describe("onboarding language", () => {
     await mount();
     expect(container.querySelector("h1")!.textContent).toBe("Welcome to LumiGap");
     expect(document.documentElement.lang).toBe("en");
-    expect(localStorage.getItem("LumiGap.uiLanguage")).toBeNull();
+    expect(localStorage.getItem("lumigap.uiLanguage")).toBeNull();
+  });
+
+  it("preserves the old preference key and gives new preferences priority", async () => {
+    localStorage.setItem("LumiGap.uiLanguage", "en");
+    await mount();
+    expect(document.documentElement.lang).toBe("en");
+    await close();
+    await locales.loadDictionary("vi");
+    localStorage.setItem("lumigap.uiLanguage", "vi");
+    await mount();
+    expect(document.documentElement.lang).toBe("vi");
   });
 });

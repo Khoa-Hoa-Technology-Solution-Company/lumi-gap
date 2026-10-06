@@ -15,13 +15,15 @@ async function approvedPaper(input: string) {
 }
 
 export const knowledgeService = {
-  async requestIndex(input: string, force = false): Promise<{ status: string }> {
+  async requestIndex(input: string, force = false, userId?: string): Promise<{ status: string }> {
     const paper = await approvedPaper(input);
     const prisma = getPrisma();
     const hash = sourceFingerprint(paper);
     const claimed = await prisma.$transaction(async (tx) => {
       // Serialize the short enqueue decision across concurrent API requests.
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`rag:${paper.id}`}, 0))`;
+      // The lock function returns PostgreSQL void, which Prisma cannot decode.
+      // Execute it without deserializing a result row; the transaction owns it.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`rag:${paper.id}`}, 0))`;
       const existing = await tx.paperDocument.findUnique({ where: { paperId: paper.id } });
       if (existing && existing.sourceHash === hash) {
         if (!force && existing.status === "ready" && existing.indexVersion === RAG_INDEX_VERSION) return { status: "ready", document: null };
@@ -33,7 +35,7 @@ export const knowledgeService = {
     if (!claimed.document) return { status: claimed.status };
     const document = claimed.document;
     try {
-      await paperAnalysisQueue.add("index-paper", { paperIds: [paper.id], force: true, maxPapers: 1 }, { jobId: `rag-${paper.id}-${randomUUID()}` });
+      await paperAnalysisQueue.add("index-paper", { paperIds: [paper.id], force: true, maxPapers: 1, ...(userId ? { userId } : {}) }, { jobId: `rag-${paper.id}-${randomUUID()}` });
     } catch (error) {
       await prisma.paperDocument.updateMany({ where: { id: document.id, sourceHash: hash, status: "queued" }, data: { status: "failed", errorMessage: "Index queue unavailable; retry later" } });
       throw AppError.serviceUnavailable("Paper indexing queue is unavailable");

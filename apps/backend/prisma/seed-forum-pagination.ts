@@ -1,4 +1,4 @@
-import "dotenv/config";
+import "../src/config/load-env.js";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getPrisma, disconnectPostgres } from "../src/infrastructure/database/prisma.js";

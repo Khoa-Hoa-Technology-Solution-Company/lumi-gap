@@ -1,12 +1,17 @@
 // Verify resets against an isolated copy; never mutate the source account data.
-import "dotenv/config";
+import { config } from "dotenv";
+import { expand } from "dotenv-expand";
 import pg from "pg";
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
-import { URL } from "node:url";
+import { URL, fileURLToPath } from "node:url";
 import process from "node:process";
 import console from "node:console";
+
+const rootEnv = config({ path: fileURLToPath(new URL("../../../.env", import.meta.url)) });
+if (rootEnv.error && rootEnv.error.code !== "ENOENT") throw rootEnv.error;
+expand(rootEnv);
 
 const container = "lumi-gap-postgres-1";
 const scratch = "codex_repeat_user_reset_check_20261006";

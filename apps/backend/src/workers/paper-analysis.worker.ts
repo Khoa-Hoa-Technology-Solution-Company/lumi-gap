@@ -1,4 +1,4 @@
-import { Worker } from "bullmq";
+import { UnrecoverableError, Worker } from "bullmq";
 import { enforcePostgresOnlyRuntime } from "../infrastructure/database/postgres-only-runtime.js";
 import { env } from "../config/env.js";
 import { connectPostgres, disconnectPostgres } from "../infrastructure/database/prisma.js";
@@ -6,6 +6,7 @@ import { makeConnection, paperAnalysisQueue, QUEUE_NAMES } from "../infrastructu
 import { logger } from "../infrastructure/logger.js";
 import { startWorkerHeartbeat } from "../infrastructure/worker-heartbeat.js";
 import { runPaperAnalysis, type RunPaperAnalysisJob } from "../modules/papers/paper-analysis.service.js";
+import { withUserAi } from "../modules/user-ai/user-ai.runtime.js";
 
 enforcePostgresOnlyRuntime();
 
@@ -28,7 +29,15 @@ async function main() {
     QUEUE_NAMES.paperAnalysis,
     async (job) => {
       logger.info({ jobId: job.id, data: job.data }, "paper analysis job received");
-      return runPaperAnalysis(job.data as RunPaperAnalysisJob);
+      try {
+        const input = job.data as RunPaperAnalysisJob;
+        return await (input.userId ? withUserAi(input.userId, () => runPaperAnalysis(input)) : runPaperAnalysis(input));
+      } catch (err) {
+        if (err instanceof Error && (err as { nonRetryable?: boolean }).nonRetryable) {
+          throw new UnrecoverableError(err.message);
+        }
+        throw err;
+      }
     },
     { connection: makeConnection(), concurrency: 1 },
   );

@@ -2,6 +2,7 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
+import ts from "typescript";
 
 const backendRoot = process.cwd();
 
@@ -26,9 +27,19 @@ describe("PostgreSQL-only runtime boundary", () => {
   });
 
   it("contains no legacy model imports", () => {
-    const offenders = runtimeSources.filter((path) =>
-      /(?:\.model\.js|\/models\/)/.test(readFileSync(path, "utf8")),
-    );
+    const offenders = runtimeSources.filter((path) => {
+      const source = ts.createSourceFile(path, readFileSync(path, "utf8"), ts.ScriptTarget.Latest, true);
+      let legacyImport = false;
+      function visit(node: ts.Node) {
+        const specifier = ts.isImportDeclaration(node) || ts.isExportDeclaration(node) ? node.moduleSpecifier
+          : ts.isCallExpression(node) && (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
+            ts.isIdentifier(node.expression) && node.expression.text === "require") ? node.arguments[0] : undefined;
+        if (specifier && ts.isStringLiteral(specifier) && /(?:\.model\.js|\/models\/)/.test(specifier.text)) legacyImport = true;
+        ts.forEachChild(node, visit);
+      }
+      visit(source);
+      return legacyImport;
+    });
     expect(offenders).toEqual([]);
   });
 

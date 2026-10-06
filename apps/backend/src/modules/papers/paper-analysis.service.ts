@@ -4,8 +4,10 @@ import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { logger } from "../../infrastructure/logger.js";
 import { indexPaper } from "../knowledge/knowledge.ingest.js";
 import { RAG_INDEX_VERSION } from "../knowledge/knowledge.text.js";
+import { LlmQuotaError } from "../llm/gemini.client.js";
 
 export interface RunPaperAnalysisJob {
+  userId?: string;
   paperIds?: string[];
   batchSize?: number;
   maxPapers?: number;
@@ -68,6 +70,7 @@ export async function runPaperAnalysis(job: RunPaperAnalysisJob = {}): Promise<R
       } catch (err) {
         failed++;
         logger.warn({ err, paperId: publicDatabaseId(paper) }, "paper ai analysis failed");
+        if (err instanceof LlmQuotaError) throw err; // Stop the batch when the shared project quota is exhausted.
         if (job.paperIds?.length) throw err; // Targeted jobs must fail so BullMQ retries them.
       }
     }

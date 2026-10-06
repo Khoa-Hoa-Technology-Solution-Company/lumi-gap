@@ -5,7 +5,10 @@ import remarkDirective from "remark-directive";
 
 // Use the same Markdown AST on the server and client. Code, escaped text and
 // link destinations must never become scholarly citations.
-const parser = unified().use(remarkParse).use(remarkGfm).use(remarkDirective);
+function createCitationParser() {
+  return unified().use(remarkParse).use(remarkGfm).use(remarkDirective);
+}
+let parser: ReturnType<typeof createCitationParser> | undefined;
 export const forumCitationPaperIdPattern = /^(?:[a-f0-9]{24}|[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})$/i;
 export type ForumCitationOccurrence = { paperId: string; from: number; to: number };
 export function forumCitationToken(paperId: string) {
@@ -19,6 +22,7 @@ export function forumCitationOccurrences(content: string): ForumCitationOccurren
     if (node.type === "textDirective" && node.name === "cite") occurrences.push({ paperId: node.attributes?.paperId?.toLowerCase() ?? "", from: node.position?.start.offset ?? 0, to: node.position?.end.offset ?? 0 });
     node.children?.forEach(visit);
   };
+  parser ??= createCitationParser();
   visit(parser.parse(content) as Ast);
   return occurrences;
 }

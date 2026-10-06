@@ -1,4 +1,4 @@
-package com.LumiGap.flutter_mobile
+package com.lumigap.flutter_mobile
 
 import io.flutter.embedding.android.FlutterActivity
 
