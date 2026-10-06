@@ -5,7 +5,7 @@ const mocks = vi.hoisted(() => {
   const db = {
     paper: { findFirst: vi.fn() },
     paperDocument: { findUnique: vi.fn(), upsert: vi.fn(), updateMany: vi.fn() },
-    $transaction: vi.fn(), $queryRaw: vi.fn(),
+    $transaction: vi.fn(), $executeRaw: vi.fn(),
   };
   return { paper, db, add: vi.fn() };
 });
@@ -25,7 +25,7 @@ beforeEach(() => {
 describe("knowledge indexing requests", () => {
   it("serializes the enqueue decision and adds a targeted worker job", async () => {
     await expect(knowledgeService.requestIndex(mocks.paper.id)).resolves.toEqual({ status: "queued" });
-    expect(mocks.db.$queryRaw).toHaveBeenCalledOnce();
+    expect(mocks.db.$executeRaw).toHaveBeenCalledOnce();
     expect(mocks.db.paperDocument.upsert).toHaveBeenCalledOnce();
     expect(mocks.add).toHaveBeenCalledWith("index-paper", { paperIds: [mocks.paper.id], force: true, maxPapers: 1 }, expect.objectContaining({ jobId: expect.stringContaining(`rag-${mocks.paper.id}-`) }));
   });

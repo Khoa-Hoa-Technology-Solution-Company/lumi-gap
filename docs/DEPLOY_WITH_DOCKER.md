@@ -117,3 +117,25 @@ Then verify native apps as above and run `pnpm typecheck`, `pnpm test`,
 `pnpm --filter web build`, and `pnpm test:e2e`.
 Integration/browser tests need PostgreSQL/Redis and seeded apps; AI calls need
 valid provider credentials. Health checks do not verify an external AI provider.
+
+## AI evaluation and paper indexing failures
+
+- Keep `GEMINI_MODEL_FAST` and `GEMINI_MODEL_DEEP` set to models that can actually
+  generate content with your project's key. A model listed by the provider can
+  still return 404 for generation. The local default is `gemini-3.1-flash-lite`.
+- `LLM_QUOTA_EXHAUSTED` means the provider reports a daily/monthly limit or zero
+  available quota. Wait for the quota to reset, or update `GEMINI_API_KEY` in the
+  root `.env` with a key from a project that has available quota. Keys belonging
+  to the same Google project share its quota. Paper indexing stops without
+  repeating the exhausted request. Per-minute limits use the provider's retry
+  delay; temporary overload is retried a bounded number of times.
+- After editing `.env`, recreate the API and workers with
+  `docker compose up -d --no-build --pull never` when local images are already
+  built. Reload nginx with `docker compose exec -T web nginx -s reload` after the
+  backend is healthy, so it resolves the recreated backend container.
+- Check `docker compose logs --tail 100 backend worker-paper-analysis` for the
+  failing operation. An Index request returning 202 only means it was queued;
+  successful indexing must reach `ready` with stored passages and embeddings.
+- When the remote PDF cannot be read, indexing may use the abstract. The paper
+  evidence panel reports **Abstract only** and source warnings; this does not
+  provide full manuscript coverage.
