@@ -2,7 +2,7 @@
 
 Run commands from `lumi-gap/`. Docker Desktop must run Linux containers.
 The stack includes PostgreSQL 16/pgvector, Redis, API, nginx web, AI Reviewer,
-and seven workers. Docker serves production web bundles and `node dist`.
+and eight workers. Docker serves production web bundles and `node dist`.
 Production keeps its Jenkins credential contract; see [production](../README_PRODUCTION.md).
 
 ## Configure and start
@@ -39,12 +39,12 @@ Sign in with `admin@liemresearch.com` / `Admin123456!`. Seed runs in development
 mode because fixtures reject production. Use it only for local/demo data;
 repeated seed upserts fixtures and may reset demo passwords and fixture values.
 
-Default workers: report, gaps, embedding, paper analysis, notifications,
+Default workers: topic sync, report, gaps, embedding, paper analysis, notifications,
 corpus validation, community summary. Begin with roughly 8 GB Docker memory,
 then adjust to measured workload. Stop workers on a smaller machine:
 
 ```bash
-docker compose stop worker-report worker-gaps worker-embedding worker-paper-analysis worker-notifications worker-corpus-validation worker-community-summary
+docker compose stop worker-sync worker-report worker-gaps worker-embedding worker-paper-analysis worker-notifications worker-corpus-validation worker-community-summary
 ```
 
 They start again on the next full `up`. Optional profiles:
