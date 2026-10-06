@@ -15,7 +15,7 @@ async function approvedPaper(input: string) {
 }
 
 export const knowledgeService = {
-  async requestIndex(input: string, force = false): Promise<{ status: string }> {
+  async requestIndex(input: string, force = false, userId?: string): Promise<{ status: string }> {
     const paper = await approvedPaper(input);
     const prisma = getPrisma();
     const hash = sourceFingerprint(paper);
@@ -35,7 +35,7 @@ export const knowledgeService = {
     if (!claimed.document) return { status: claimed.status };
     const document = claimed.document;
     try {
-      await paperAnalysisQueue.add("index-paper", { paperIds: [paper.id], force: true, maxPapers: 1 }, { jobId: `rag-${paper.id}-${randomUUID()}` });
+      await paperAnalysisQueue.add("index-paper", { paperIds: [paper.id], force: true, maxPapers: 1, ...(userId ? { userId } : {}) }, { jobId: `rag-${paper.id}-${randomUUID()}` });
     } catch (error) {
       await prisma.paperDocument.updateMany({ where: { id: document.id, sourceHash: hash, status: "queued" }, data: { status: "failed", errorMessage: "Index queue unavailable; retry later" } });
       throw AppError.serviceUnavailable("Paper indexing queue is unavailable");

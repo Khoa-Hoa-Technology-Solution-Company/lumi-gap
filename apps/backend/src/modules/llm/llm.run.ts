@@ -1,6 +1,7 @@
 import { env } from "../../config/env.js";
 import { cache, hashKey, LLM_CACHE_TTL_SECONDS } from "../../infrastructure/cache.js";
 import { generateJSON, generateText, type GenerateOptions } from "./gemini.client.js";
+import { aiCacheNamespace, personalAiRuntime } from "../user-ai/user-ai.runtime.js";
 
 export type LlmTask = "rerank" | "extract" | "chat" | "report" | "gap" | "judge" | "compare" | "directions" | "trend" | "summary";
 
@@ -19,6 +20,7 @@ interface CachedGenerateBase<T> {
 }
 
 export function routeLlmModel(task: LlmTask, override?: string): string {
+  if (personalAiRuntime()) return personalAiRuntime()!.model;
   if (override) return override;
   if (task === "report" || task === "gap" || task === "trend") return env.GEMINI_MODEL_DEEP;
   return env.GEMINI_MODEL_FAST;
@@ -32,6 +34,7 @@ export function buildLlmCacheKey(args: {
   inputHash?: string;
 }): string {
   return `llm:${args.task}:${args.promptVersion}:${hashKey({
+    ...(personalAiRuntime() ? { providerScope: aiCacheNamespace() } : {}),
     model: args.model,
     keyParts: args.keyParts,
     inputHash: args.inputHash ?? null,

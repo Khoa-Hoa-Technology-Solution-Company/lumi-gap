@@ -1,3 +1,4 @@
+import { aiModel } from "../user-ai/user-ai.runtime.js";
 import { randomUUID } from "node:crypto";
 import { env } from "../../config/env.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
@@ -41,7 +42,7 @@ export async function indexPaper(paperId: string, force = false) {
       const result = await cachedGenerateJSON<{ analysis: PaperAnalysisContent; relations: GroundedRelation[] }>({
         task: "extract", promptVersion: RAG_INDEX_VERSION,
         keyParts: { paperId, contentHash, positions: batch.map((chunk) => chunk.position) },
-        model: env.GEMINI_MODEL_FAST,
+        model: aiModel(),
         prompt: [
           `Paper title: ${sanitizeForPrompt(paper.title)}`,
           `Source coverage: ${source.sourceKind}`,

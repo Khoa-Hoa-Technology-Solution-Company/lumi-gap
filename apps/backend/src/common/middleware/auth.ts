@@ -7,6 +7,7 @@ import { AppError } from "../exceptions/app-error.js";
 import { parseDatabaseId } from "../../infrastructure/database/database-id.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { tokenService, type AccessTokenClaims } from "../../modules/auth/token.service.js";
+import { withUserAi } from "../../modules/user-ai/user-ai.runtime.js";
 
 export interface AuthClaims extends AccessTokenClaims {
   role: UserRole;
@@ -68,7 +69,7 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
     const claims = await hydrateClaims(tokenService.verifyAccessToken(token));
     if (!claims) return next(AppError.unauthorized("Account or session is no longer active"));
     req.user = claims;
-    next();
+    await withUserAi(claims.sub, () => next());
   } catch (error) { next(error); }
 }
 
@@ -77,9 +78,16 @@ export async function optionalAuth(req: Request, _res: Response, next: NextFunct
   if (!token) return next();
   try {
     const claims = await hydrateClaims(tokenService.verifyAccessToken(token));
-    if (claims) req.user = claims;
-    next();
-  } catch { next(); }
+    if (claims) {
+      req.user = claims;
+      await withUserAi(claims.sub, () => next());
+    } else next();
+  } catch (error) {
+    // Invalid optional tokens remain anonymous; a configured account must not
+    // silently run AI with platform credentials when its settings cannot load.
+    if (req.user) next(error);
+    else next();
+  }
 }
 
 export function requireSystemRole(...roles: SystemRole[]) {

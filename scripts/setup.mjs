@@ -9,13 +9,22 @@ export function setup(root = fileURLToPath(new URL("../", import.meta.url))) {
   const path = resolve(root, ".env");
   if (!existsSync(path)) {
     let template = readFileSync(resolve(root, ".env.example"), "utf8");
-    for (const key of ["POSTGRES_PASSWORD", "REDIS_PASSWORD", "INTERNAL_SERVICE_KEY", "ACADEMIC_EMAIL_OTP_SECRET"]) {
+    for (const key of ["POSTGRES_PASSWORD", "REDIS_PASSWORD", "INTERNAL_SERVICE_KEY", "ACADEMIC_EMAIL_OTP_SECRET", "AI_CONNECTION_ENCRYPTION_KEY"]) {
       template = template.replace(new RegExp(`^${key}=.*$`, "m"), `${key}=${randomBytes(24).toString("hex")}`);
     }
     writeFileSync(path, template, { mode: 0o600, flag: "wx" });
     console.log("Created root .env with random local credentials. Set GEMINI_API_KEY in .env.");
   } else {
-    console.log("Root .env already exists; preserved without changes.");
+    console.log("Root .env already exists; preserving configured values.");
+  }
+  const current = readFileSync(path, "utf8");
+  if (!/^AI_CONNECTION_ENCRYPTION_KEY=.+$/m.test(current)) {
+    const key = randomBytes(32).toString("hex");
+    const updated = /^AI_CONNECTION_ENCRYPTION_KEY=.*$/m.test(current)
+      ? current.replace(/^AI_CONNECTION_ENCRYPTION_KEY=.*$/m, `AI_CONNECTION_ENCRYPTION_KEY=${key}`)
+      : `${current.trimEnd()}\nAI_CONNECTION_ENCRYPTION_KEY=${key}\n`;
+    writeFileSync(path, updated, { mode: 0o600 });
+    console.log("Generated encryption key for personal AI connections.");
   }
   const created = ensureJwtKeys(resolve(root, "apps/backend/.keys/jwt-private.pem"), resolve(root, "apps/backend/.keys/jwt-public.pem"));
   console.log(created ? "Created local RS256 keys." : "Existing local RS256 keys verified.");

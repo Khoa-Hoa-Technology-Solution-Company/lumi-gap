@@ -7,6 +7,7 @@ import { RAG_INDEX_VERSION } from "../knowledge/knowledge.text.js";
 import { LlmQuotaError } from "../llm/gemini.client.js";
 
 export interface RunPaperAnalysisJob {
+  userId?: string;
   paperIds?: string[];
   batchSize?: number;
   maxPapers?: number;

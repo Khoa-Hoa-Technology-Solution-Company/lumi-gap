@@ -1,3 +1,4 @@
+import { aiModel } from "../user-ai/user-ai.runtime.js";
 import type { PaperComparison } from "@trend/shared-types";
 import { env } from "../../config/env.js";
 import { AppError } from "../../common/exceptions/app-error.js";
@@ -77,7 +78,7 @@ export async function comparePapers(ids: string[]): Promise<PaperComparison> {
   // {a,b} and {b,a} share an entry but their perPaper[] columns would misalign.
   // We build + cache in canonical order, then remap perPaper back to request order.
   const canonical = [...unique].sort();
-  const model = env.GEMINI_MODEL_FAST;
+  const model = aiModel();
   const cacheKey = buildCompareCacheKey({
     paperIds: unique,
     model,
