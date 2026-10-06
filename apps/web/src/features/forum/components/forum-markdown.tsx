@@ -1,6 +1,11 @@
+import { Link } from "react-router-dom";
+import { ForumCitationPreview } from "./forum-citation-preview";
+import { forumCitationPaperIdPattern, orderForumReferences } from "@trend/shared-types";
+import type { ForumReferenceView } from "../api/forum.api";
+import { ForumReferenceItem } from "./forum-context-card";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { lazy, Suspense, useId, useState, type ReactNode } from "react";
+import { lazy, Suspense, useId, useRef, useState, type ReactNode } from "react";
 import { ExternalLink } from "lucide-react";
 import { cn } from "@/utils/cn";
 import { useI18n } from "@/i18n";
@@ -13,6 +18,8 @@ interface ForumMarkdownProps {
   content: string;
   className?: string;
   isCompact?: boolean;
+  references?: ForumReferenceView[];
+  renderReferences?: boolean;
 }
 
 function ForumSpoiler({ children }: { children: ReactNode }) {
@@ -25,13 +32,15 @@ function MathView({ latex, block }: { latex: string; block?: boolean }) {
   return <Suspense fallback={<span className="forum-math">{latex}</span>}><ForumMathView latex={latex} block={block} /></Suspense>;
 }
 
-export function ForumMarkdown({ content, className, isCompact = false }: ForumMarkdownProps) {
+export function ForumMarkdown({ content, className, isCompact = false, references = [], renderReferences = false }: ForumMarkdownProps) {
   const footnotePrefix = `forum-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}-`;
   const { t } = useI18n();
+  const citationScope = useRef<HTMLDivElement>(null);
   if (!content) return null;
 
   return (
     <div
+      ref={citationScope}
       className={cn(
         "forum-prose prose prose-neutral dark:prose-invert max-w-[70ch] break-words [overflow-wrap:anywhere]",
         isCompact
@@ -63,6 +72,12 @@ export function ForumMarkdown({ content, className, isCompact = false }: ForumMa
           h2: ({ children, id, node: _node, ...props }) => <h2 {...props} id={id === "footnote-label" ? `${footnotePrefix}footnote-label` : id}>{children}</h2>,
           span: ({ children, node }) => {
             const properties = node?.properties as Record<string, unknown> | undefined;
+            const paperId = properties?.dataForumCitation ?? properties?.["data-forum-citation"];
+            if (paperId !== undefined) {
+              const source = references.find((reference) => reference.paperId?.toLowerCase() === String(paperId));
+              const number = properties?.dataCitationNumber ?? properties?.["data-citation-number"];
+              return source && forumCitationPaperIdPattern.test(String(paperId)) ? <Link to={`/papers/${encodeURIComponent(String(paperId))}`} data-forum-citation={String(paperId)} className="forum-inline-citation" aria-label={`${t("View paper")} ${number}: ${source.title ?? ""}`}>[{String(number)}]</Link> : <span className="text-muted-foreground" title={t("Citation source unavailable")}>[{String(number)}]</span>;
+            }
             const mathKind = properties?.dataForumMath ?? properties?.["data-forum-math"];
             const latex = properties?.dataLatex ?? properties?.["data-latex"];
             const spoiler = properties?.dataForumSpoiler ?? properties?.["data-forum-spoiler"];
@@ -117,6 +132,8 @@ export function ForumMarkdown({ content, className, isCompact = false }: ForumMa
       >
         {content}
       </Markdown>
+      <ForumCitationPreview scope={citationScope} references={references} />
+      {renderReferences && references.length ? <section aria-label={t("References")} className="not-prose mt-6 border-t border-border pt-4"><h3 className="mb-3 text-sm font-semibold">{t("References")}</h3><ol className="space-y-3">{orderForumReferences(content, references).map((reference, index) => <li key={reference.paperId ?? reference.id ?? index}><ForumReferenceItem reference={reference} index={index + 1} /></li>)}</ol></section> : null}
     </div>
   );
 }

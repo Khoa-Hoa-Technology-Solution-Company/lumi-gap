@@ -195,7 +195,7 @@ describe.sequential("forum report decisions, restrictions and appeals", () => {
         expect(await prisma.contentReport.findUniqueOrThrow({ where: { id: item.id } })).toMatchObject({ status: "escalated", assignedToId: null, claimExpiresAt: null });
         expect((await prisma.forumPost.findUniqueOrThrow({ where: { id: post.id } })).status).toBe("active");
       }
-      expect(notificationService.create).toHaveBeenCalledWith(expect.objectContaining({ role: "admin", title: "Forum report escalated" }));
+      expect(notificationService.create).toHaveBeenCalledWith(expect.objectContaining({ role: "admin", title: "Forum report escalated", type: "FORUM_REPORT_ESCALATED" }));
       expect(notificationService.create).toHaveBeenCalledWith(expect.objectContaining({ userId: reporter, title: "Report forwarded" }));
     } finally { await prisma.communityMembership.delete({ where: { communityId_userId: { communityId: community, userId: outsider } } }); }
   });
@@ -226,6 +226,7 @@ describe.sequential("forum report decisions, restrictions and appeals", () => {
     expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
     expect(results.filter((result) => result.status === "rejected")).toHaveLength(1);
     expect(vi.mocked(notificationService.create).mock.calls.filter(([input]) => input.title === "Copyright claim received")).toHaveLength(1);
+    expect(notificationService.create).toHaveBeenCalledWith(expect.objectContaining({ role: "admin", type: "FORUM_COPYRIGHT_RECEIVED" }));
     expect(vi.mocked(auditService.log).mock.calls.filter(([action]) => action === "COPYRIGHT_CLAIM_VERIFIED")).toHaveLength(1);
     await expect(moderation.verifyCopyrightClaim(token)).rejects.toMatchObject({ statusCode: 400 });
   });

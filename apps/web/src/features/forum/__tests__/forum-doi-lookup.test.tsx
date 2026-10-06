@@ -47,10 +47,10 @@ describe("Forum DOI preview actions", () => {
     expect(container.textContent).toContain("Paper metadata");
     expect(attached).not.toHaveBeenCalled();
   });
-  it("shows metadata quality limits and prevents attachment", async () => {
+  it("shows incomplete citation metadata and prevents attachment", async () => {
     vi.mocked(forumPaperApi.preview).mockResolvedValue({ ...preview, canAttach: false });
     await render(); await click("Resolve DOI");
-    await settle(() => expect(container.textContent).toContain("quality requirements"));
+    await settle(() => expect(container.textContent).toContain("missing citation metadata"));
     expect(container.textContent).not.toContain("Attach paper");
     expect(forumPaperApi.attach).not.toHaveBeenCalled();
   });

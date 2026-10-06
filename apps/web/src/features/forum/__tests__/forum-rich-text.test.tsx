@@ -183,7 +183,8 @@ describe("Visual forum tables and footnotes", () => {
     try {
       await act(async () => { root.render(<Draft />); });
       expect(container.querySelector("table")?.textContent).toContain("Review");
-      expect(container.querySelector("[data-footnote-ref]")?.textContent).toBe("[1]");
+      expect(container.querySelector(".forum-rich-editor")?.getAttribute("data-empty")).toBe("false");
+      expect(container.querySelector("[data-footnote-ref]")?.textContent).toBe("1");
       expect(changes).not.toHaveBeenCalled();
       for (const mode of ["Markdown", "Preview", "Write"]) {
         await act(async () => { [...container.querySelectorAll("button")].find((button) => button.textContent === mode)!.click(); });

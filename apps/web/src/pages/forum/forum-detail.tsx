@@ -1,3 +1,4 @@
+import { orderForumReferences } from "@trend/shared-types";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { isAxiosError } from "axios";
@@ -132,6 +133,8 @@ export function ForumDetailPage() {
 
   const [postEditorOpen, setPostEditorOpen] = useState(false);
   const [editTitle, setEditTitle] = useState("");
+  const [editReferences, setEditReferences] = useState<ForumReferenceView[]>([]);
+  const [editCommentReferences, setEditCommentReferences] = useState<ForumReferenceView[]>([]);
   const [editContent, setEditContent] = useState("");
   const [editTags, setEditTags] = useState("");
 
@@ -381,6 +384,7 @@ export function ForumDetailPage() {
         input: {
           title: editTitle.trim(),
           content: editContent.trim(),
+          references: orderForumReferences(editContent, editReferences),
           tags: editTags
             .split(",")
             .map((tag) => tag.trim())
@@ -401,6 +405,7 @@ export function ForumDetailPage() {
         postId: post.id,
         commentId: editComment.id,
         content: editCommentContent.trim(),
+        references: orderForumReferences(editCommentContent, editCommentReferences),
       });
       setEditComment(undefined);
       toast.success(t("Response updated"));
@@ -489,13 +494,13 @@ export function ForumDetailPage() {
                       <ForumAuthorByline author={post.author} authorTopicPostCount={authorTopicPostCount(post.author.id)} canReply={!readOnly && (!isAuthed || canReply)} onReply={() => openComposer()} onFilterPosts={() => filterAuthor(post.author.id)} />
                       <div className="inline-flex max-w-full flex-wrap items-center gap-1"><ForumPostLink post={post} postNumber={1} targetId="opening-post" onJump={jumpToPost} title={`${t("Post")} #1`} className="forum-post-date py-0.5 text-sm text-muted-foreground"><time dateTime={post.createdAt} title={new Date(post.createdAt).toLocaleString(language)}>{formatForumRelativeTime(post.createdAt, language)}</time></ForumPostLink>{!removed || isOwner || post.canModerate ? <ForumEditHistory kind="post" id={post.id} editedAt={post.editedAt} /> : null}</div>
                     </header>
-                    <div className="col-span-2 mt-4 min-w-0"><ForumMarkdown content={post.content} /></div>
+                    <div className="col-span-2 mt-4 min-w-0"><ForumMarkdown content={post.content} references={post.references} /></div>
                     {post.linkedPaper || post.linkedResearchGap || post.linkedProject ? <section aria-label={t("Linked research context")} className={cn("col-span-2 mt-6 min-w-0 space-y-4", !post.linkedPaper && "rounded-md border border-border bg-muted/20 px-4 py-4")}>
                       {post.linkedPaper ? <ForumLinkedPaper paper={post.linkedPaper} /> : null}
                       {post.linkedResearchGap ? <div><p className="mb-1 text-xs font-medium text-muted-foreground">{t("Linked Candidate Research Gap")}</p><p className="text-[15px] font-medium">{post.linkedResearchGap.title}</p><Link to={`/research-gaps?gapId=${post.linkedResearchGap.id}`} className="mt-1 inline-block text-[13px] text-primary hover:underline">{t("View gap")}</Link></div> : null}
                       {post.linkedProject ? <div><p className="mb-1 text-xs text-muted-foreground">{t("Linked Project")}</p><Link to={`/projects/${post.linkedProject.id}`} className="text-sm font-medium hover:text-primary">{post.linkedProject.title}</Link></div> : null}
                     </section> : null}
-                    {post.references.length ? <section aria-label={t("References")} className="col-span-2 mt-6 min-w-0"><h2 className="forum-post-section-title mb-3">{t("References")}</h2><ol className="space-y-3">{post.references.map((reference, index) => <li key={reference.id || index}><ForumReferenceItem reference={reference} index={index + 1} linkedGapId={isAuthed ? post.linkedResearchGapId : undefined} onReviewEvidence={setReviewTarget} /></li>)}</ol></section> : null}
+                    {post.references.length ? <section aria-label={t("References")} className="col-span-2 mt-6 min-w-0"><h2 className="forum-post-section-title mb-3">{t("References")}</h2><ol className="space-y-3">{orderForumReferences(post.content, post.references).map((reference, index) => <li key={reference.id || index}><ForumReferenceItem reference={reference} index={index + 1} linkedGapId={isAuthed ? post.linkedResearchGapId : undefined} onReviewEvidence={setReviewTarget} /></li>)}</ol></section> : null}
                     <div role="group" aria-label={t("Discussion actions")} className="forum-post-actions col-span-2 mt-5 flex flex-wrap items-center gap-x-1 gap-y-2">
                       <ForumHelpfulButton count={post.helpfulCount} selected={post.viewerVote === 1} disabled={readOnly} pending={helpful.isPending} onToggle={() => toggleHelpful("post", post.id, post.viewerVote)} />
                       <ForumReactionPicker countsOnly target={{ scope: "post", id: post.id }} counts={post.reactionCounts} viewerReactions={post.viewerReactions} reactionUsers={post.reactionUsers} isAuthed={isAuthed} disabled={readOnly} pending={reaction.isPending} onToggle={(reactionName, active) => reaction.mutate({ kind: "post", id: post.id, reaction: reactionName, active }, { onError: () => toast.error(t("Could not update reaction.")) })} />
@@ -505,7 +510,7 @@ export function ForumDetailPage() {
                       {isAuthed && !removed ? <DropdownMenu>
                         <DropdownMenuTrigger asChild><Button type="button" variant="ghost" size="icon" className="h-9 w-9 text-muted-foreground" aria-label={t("More discussion actions")} title={t("More discussion actions")}><MoreHorizontal aria-hidden="true" className="h-4 w-4" /></Button></DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          {isOwner && !readOnly ? <><DropdownMenuItem onSelect={() => { setEditTitle(post.title); setEditContent(post.content); setEditTags(post.tags.join(", ")); setPostEditorOpen(true); }}><Pencil aria-hidden="true" className="mr-2 h-4 w-4" />{t("Edit discussion")}</DropdownMenuItem><DropdownMenuSeparator /></> : null}
+                          {isOwner && !readOnly ? <><DropdownMenuItem onSelect={() => { setEditTitle(post.title); setEditContent(post.content); setEditReferences(post.references); setEditTags(post.tags.join(", ")); setPostEditorOpen(true); }}><Pencil aria-hidden="true" className="mr-2 h-4 w-4" />{t("Edit discussion")}</DropdownMenuItem><DropdownMenuSeparator /></> : null}
                           <DropdownMenuItem onSelect={() => setReportTarget({ type: "post", id: post.id })}><Flag aria-hidden="true" className="mr-2 h-4 w-4" />{t("Report content")}</DropdownMenuItem>
                           {isOwner && !readOnly ? <><DropdownMenuSeparator /><DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => setDeleteTarget({ type: "post", id: post.id })}><Trash2 aria-hidden="true" className="mr-2 h-4 w-4" />{t("Delete discussion")}</DropdownMenuItem></> : null}
                         </DropdownMenuContent>
@@ -534,7 +539,7 @@ export function ForumDetailPage() {
                   acceptancePending={accept.isPending || unaccept.isPending} isOP={comment.author.id === post.author.id}
                   linkedGapId={isAuthed ? post.linkedResearchGapId : undefined} onFilterAuthor={filterAuthor}
                   replies={replyLookup.children.get(comment.id)} onReviewCitation={setReviewTarget} onReply={openComposer}
-                  onEdit={(target) => { setEditComment(target); setEditCommentContent(target.content); }}
+                  onEdit={(target) => { setEditComment(target); setEditCommentContent(target.content); setEditCommentReferences(target.references); }}
                   onDelete={(commentId) => setDeleteTarget({ type: "comment", id: commentId })}
                   onReport={(commentId) => setReportTarget({ type: "comment", id: commentId })}
                   onModerate={post.canModerate ? (commentId) => setModerationTarget({ type: "comment", id: commentId, action: "RESPONSE_HIDDEN" }) : undefined}
@@ -707,7 +712,7 @@ export function ForumDetailPage() {
                 disabled={updatePost.isPending}
               />
             </label>
-            <div className="space-y-1.5"><p className="text-sm font-semibold">{t("Body")}</p><Suspense fallback={<ForumEditorLoading />}><ForumBodyEditor value={editContent} onChange={setEditContent} maxLength={20000} label={t("Discussion body")} disabled={updatePost.isPending} /></Suspense></div>
+            <div className="space-y-1.5"><p className="text-sm font-semibold">{t("Body")}</p><Suspense fallback={<ForumEditorLoading />}><ForumBodyEditor value={editContent} onChange={setEditContent} references={editReferences} onReferencesChange={setEditReferences} maxLength={20000} label={t("Discussion body")} disabled={updatePost.isPending} /></Suspense></div>
             <label className="block space-y-1.5 text-xs font-semibold">
               <span>{t("Tags")}</span>
               <Input
@@ -747,7 +752,7 @@ export function ForumDetailPage() {
             <DialogTitle>{t("Edit response")}</DialogTitle>
             <DialogDescription>{t("Your changes will be visible in this discussion.")}</DialogDescription>
           </DialogHeader>
-          <Suspense fallback={<ForumEditorLoading />}><ForumBodyEditor value={editCommentContent} onChange={setEditCommentContent} maxLength={10000} label={t("Response")} disabled={updateComment.isPending} /></Suspense>
+          <Suspense fallback={<ForumEditorLoading />}><ForumBodyEditor value={editCommentContent} onChange={setEditCommentContent} references={editCommentReferences} onReferencesChange={setEditCommentReferences} maxLength={10000} label={t("Response")} disabled={updateComment.isPending} /></Suspense>
           <DialogFooter className="gap-2">
             <Button variant="ghost" size="sm" onClick={() => setEditComment(undefined)}>
               {t("Cancel")}

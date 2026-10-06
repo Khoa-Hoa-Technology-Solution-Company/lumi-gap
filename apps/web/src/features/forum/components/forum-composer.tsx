@@ -1,3 +1,4 @@
+import { orderForumReferences } from "@trend/shared-types";
 import { useEffect, useState, useRef, type FormEvent } from "react";
 import { isAxiosError } from "axios";
 import { BookOpen, Check, Loader2, Search, Send, X } from "lucide-react";
@@ -26,6 +27,7 @@ interface ForumComposerProps {
 
 export function ForumComposer({ onSubmit, replyTo, onCancelReply, availablePapers = [], savedPapers = [], isSubmitting = false, disabled = false, focusRequest = 0, postContent, compact = false, onClose }: ForumComposerProps) {
   const { t } = useI18n();
+  const [inlineReferences, setInlineReferences] = useState<ForumReferenceView[]>([]);
   const [content, setContent] = useState("");
   const [showCitations, setShowCitations] = useState(false);
   const [selectedPaper, setSelectedPaper] = useState<NonNullable<ForumComposerProps["availablePapers"]>[number]>();
@@ -46,7 +48,7 @@ export function ForumComposer({ onSubmit, replyTo, onCancelReply, availablePaper
     ? (paperLookup.data?.papers ?? [])
     : (savedPapers.length ? savedPapers : availablePapers);
   const clearDraft = () => {
-    setContent(""); setSelectedPaper(undefined); setPaperSearchText(""); setPaperSearch(""); setDoi(""); setCitationTitle(""); setShowCitations(false); setError(""); onCancelReply?.();
+    setContent(""); setInlineReferences([]); setSelectedPaper(undefined); setPaperSearchText(""); setPaperSearch(""); setDoi(""); setCitationTitle(""); setShowCitations(false); setError(""); onCancelReply?.();
   };
   const requestDiscard = () => {
     if (isSubmitting || submittingRef.current) return;
@@ -66,7 +68,7 @@ export function ForumComposer({ onSubmit, replyTo, onCancelReply, availablePaper
     if (normalizedDoi) references.push({ doi: normalizedDoi, title: citationTitle.trim() });
     setError(""); submittingRef.current = true;
     try {
-      await onSubmit({ content: content.trim(), parentCommentId: replyTo?.id, references });
+      await onSubmit({ content: content.trim(), parentCommentId: replyTo?.id, references: orderForumReferences(content, [...inlineReferences, ...references]) });
       clearDraft();
     } catch (failure) {
       const message = isAxiosError(failure) ? failure.response?.data?.error?.message : undefined;
@@ -86,7 +88,7 @@ export function ForumComposer({ onSubmit, replyTo, onCancelReply, availablePaper
       </div>
       {replyTo ? <p className="mb-3 line-clamp-2 text-sm text-muted-foreground">{replyTo.content.slice(0, 180)}</p> : null}
       <fieldset disabled={disabled || isSubmitting} className={compact ? "forum-reply-fields" : "min-w-0 space-y-3"}>
-        <ForumBodyEditor id="forum-reply-content" label={t("Write your response")} placeholder={compact ? t("Write a reply. Use the toolbar or Markdown to format your text.") : undefined} describedBy={error ? "reply-error" : "reply-help"} value={content} onChange={setContent} maxLength={10000} disabled={disabled || isSubmitting} quoteSource={replyTo?.content ?? postContent} focusRequest={focusRequest} compact={compact} footerActions={compact ? <>{citationButton}{actions}</> : undefined} />
+        <ForumBodyEditor id="forum-reply-content" label={t("Write your response")} placeholder={compact ? t("Write a reply. Use the toolbar or Markdown to format your text.") : undefined} describedBy={error ? "reply-error" : "reply-help"} value={content} onChange={setContent} references={inlineReferences} onReferencesChange={setInlineReferences} maxLength={10000} disabled={disabled || isSubmitting} quoteSource={replyTo?.content ?? postContent} focusRequest={focusRequest} compact={compact} footerActions={compact ? <>{citationButton}{actions}</> : undefined} />
         {!compact ? <div className="flex items-center justify-between gap-2">
           {citationButton}
           <span className="text-xs tabular-nums text-muted-foreground">{content.length}/10000</span>

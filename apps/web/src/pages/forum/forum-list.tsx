@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type { ForumPostType } from "@trend/shared-types";
 import { ArrowDown, ChevronDown, List, MessageSquare, PanelTop, SquarePen, Search, ShieldAlert, X } from "lucide-react";
@@ -16,6 +16,7 @@ import { useI18n } from "@/i18n";
 import { useAuthStore } from "@/stores/auth-store";
 import { cn } from "@/utils/cn";
 import { getForumCategoryPresentation } from "@/features/forum/utils/forum-category-presentation";
+import { ForumComposerResizeHandle } from "@/features/forum/components/forum-composer-resize-handle";
 
 const ForumDiscussionComposer = lazy(() => import("@/pages/forum/forum-new").then((module) => ({ default: module.ForumDiscussionComposer })));
 
@@ -42,6 +43,8 @@ export function ForumListPage() {
   const [composerOpen, setComposerOpen] = useState(false);
   const [closeRequest, setCloseRequest] = useState(0);
   const [composerExpanded, setComposerExpanded] = useState(false);
+  const [composerHeight, setComposerHeight] = useState<number>();
+  useEffect(() => { if (!composerOpen) setComposerHeight(undefined); }, [composerOpen]);
   const [viewMode, setViewMode] = useState<"compact" | "expanded">(() => {
     try { return localStorage.getItem("lumigap.forum.topic-view") === "expanded" ? "expanded" : "compact"; }
     catch { return "compact"; }
@@ -320,13 +323,15 @@ export function ForumListPage() {
         </section>
         <Dialog open={composerOpen} onOpenChange={(open) => { if (open) setComposerOpen(true); }}>
           <DialogContent
+            id="forum-discussion-dialog"
             showClose={false}
             overlayClassName="bg-black/25 backdrop-blur-[1px]"
             className={cn(
-              "inset-0 h-[100dvh] max-h-[100dvh] w-full max-w-none translate-x-0 translate-y-0 gap-0 overflow-hidden rounded-none border-0 p-0",
-              "sm:bottom-4 sm:left-1/2 sm:right-auto sm:top-auto sm:h-auto sm:max-h-[min(78vh,58rem)] sm:w-[min(54rem,calc(100%-2rem))] sm:translate-x-[-50%] sm:translate-y-0 sm:rounded-xl sm:border",
-              composerExpanded && "sm:bottom-4 sm:left-4 sm:right-4 sm:top-4 sm:h-auto sm:max-h-none sm:w-auto sm:translate-x-0 sm:rounded-xl",
+              "forum-discussion-dialog inset-x-0 bottom-0 top-auto flex min-h-0 max-h-[100dvh] w-full max-w-none flex-col translate-x-0 translate-y-0 gap-0 overflow-hidden rounded-none border-0 p-0 sm:max-h-[calc(100dvh-2rem)] sm:p-0",
+              "sm:bottom-4 sm:left-1/2 sm:right-auto sm:w-[min(54rem,calc(100%-2rem))] sm:translate-x-[-50%] sm:rounded-xl sm:border",
+              composerExpanded && "sm:left-4 sm:right-4 sm:w-auto sm:translate-x-0",
             )}
+            style={{ "--forum-composer-height": composerExpanded ? "100dvh" : composerHeight ? `${composerHeight}px` : undefined } as CSSProperties}
             onEscapeKeyDown={(event) => { event.preventDefault(); setCloseRequest((value) => value + 1); }}
             onPointerDownOutside={(event) => { event.preventDefault(); setCloseRequest((value) => value + 1); }}
           >
@@ -339,6 +344,7 @@ export function ForumListPage() {
                 embedded
                 closeRequest={closeRequest}
                 expanded={composerExpanded}
+                resizeHandle={<ForumComposerResizeHandle height={composerHeight} expanded={composerExpanded} onResize={(height) => { setComposerHeight(height); setComposerExpanded(false); }} />}
                 onToggleExpand={() => setComposerExpanded((value) => !value)}
                 onClose={() => { setCloseRequest(0); setComposerExpanded(false); setComposerOpen(false); }}
                 onPublished={(postId) => { setCloseRequest(0); setComposerExpanded(false); setComposerOpen(false); navigate(`/forum/${postId}`); }}

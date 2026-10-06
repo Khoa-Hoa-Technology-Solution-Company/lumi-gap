@@ -31,3 +31,4 @@ export * from "./knowledge.js";
 // Code quality reviewed and formatted
 
 export * from "./submission-history.js";
+export * from "./forum-citations.js";

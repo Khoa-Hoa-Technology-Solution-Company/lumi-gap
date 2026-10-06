@@ -1,3 +1,4 @@
+import { forumCitationPaperIds, orderForumReferences } from "@trend/shared-types";
 import type { ForumPostType } from "@trend/shared-types";
 import type { ForumPostInput, ForumReferenceView } from "../api/forum.api";
 import { safeForumImageUrl } from "./forum-formatting";
@@ -20,7 +21,7 @@ export function forumNewDiscussionHref(params: URLSearchParams) {
 
 export function forumInitialDiscussionType(params: URLSearchParams): ForumPostType {
   const type = params.get("type") as ForumPostType;
-  return types.includes(type) ? type : "QUESTION";
+  return types.includes(type) ? type : params.get("gap") ? "RESEARCH_GAP_DISCUSSION" : params.get("paper") ? "PAPER_DISCUSSION" : "QUESTION";
 }
 
 export function insertForumMarkdown(content: string, start: number, end: number, prefix: string, suffix: string, placeholder: string) {
@@ -50,6 +51,7 @@ export type ForumMarkdownAction =
   | "code-block"
   | "table"
   | "date"
+  | "citation"
   | "footnote"
   | "callout"
   | "details"
@@ -207,9 +209,18 @@ export function formatForumMarkdown(content: string, start: number, end: number,
 
 export type ForumDiscussionDraft = {
   type: ForumPostType; communityId: string; title: string; content: string; tags: string;
-  linkedPaperId: string; linkedGapId: string; linkedProjectId: string;
+  linkedPaperId: string; linkedGapId: string;
   references: ForumReferenceView[];
 };
+
+export const FORUM_DISCUSSION_TAG_LIMIT = 5;
+export function forumDiscussionTags(value: string): string[] {
+  const unique = new Map<string, string>();
+  for (const tag of value.split(",").map((item) => item.trim()).filter(Boolean)) {
+    if (!unique.has(tag.toLowerCase())) unique.set(tag.toLowerCase(), tag);
+  }
+  return [...unique.values()];
+}
 
 export function buildForumDiscussionInput(draft: ForumDiscussionDraft, categories: Array<{ id: string; status?: string }>, gaps: Array<{ id: string; forumShareable: boolean }>): { input: ForumPostInput } | { error: string } {
   if (!categories.some((category) => category.id === draft.communityId && (!category.status || category.status === "ACTIVE"))) return { error: "Select an active forum category." };
@@ -219,24 +230,24 @@ export function buildForumDiscussionInput(draft: ForumDiscussionDraft, categorie
   if (!content || content.length > 20000) return { error: "Write a discussion body of up to 20,000 characters." };
   if (draft.type === "PAPER_DISCUSSION" && !draft.linkedPaperId) return { error: "Select a paper for this paper discussion." };
   if (draft.type === "RESEARCH_GAP_DISCUSSION" && !draft.linkedGapId) return { error: "Select a shareable candidate research gap." };
-  if (draft.linkedGapId && !gaps.some((gap) => gap.id === draft.linkedGapId && gap.forumShareable)) return { error: "Select a shareable candidate research gap." };
-  const tags = [...new Set(draft.tags.split(",").map((tag) => tag.trim()).filter(Boolean))];
-  if (tags.length > 12 || tags.some((tag) => tag.length > 80)) return { error: "Use up to 12 tags, with no more than 80 characters each." };
-  const references = draft.references.slice(0, 30).map((reference) => ({
+  if (draft.type === "RESEARCH_GAP_DISCUSSION" && !gaps.some((gap) => gap.id === draft.linkedGapId && gap.forumShareable)) return { error: "Select a shareable candidate research gap." };
+  const tags = forumDiscussionTags(draft.tags);
+  if (tags.length > FORUM_DISCUSSION_TAG_LIMIT || tags.some((tag) => tag.length > 80)) return { error: "Use up to 5 tags, with no more than 80 characters each." };
+  if (draft.references.some((reference) => !reference.paperId && (!reference.doi || !reference.title))) return { error: "Attach a paper from LumiGap before adding a citation." };
+  const citedIds = new Set(forumCitationPaperIds(content));
+  const references = orderForumReferences(content, draft.references.filter((reference) => reference.paperId && citedIds.has(reference.paperId.toLowerCase()))).slice(0, 30).map((reference) => ({
     paperId: reference.paperId,
     doi: reference.doi?.trim().toLowerCase(),
     url: reference.url,
     title: reference.title?.trim(),
     authors: reference.authors?.map((author) => author.trim()).filter(Boolean),
     year: reference.year,
-    verified: reference.verified,
   }));
   if (references.some((reference) => !reference.paperId && (!reference.doi || !reference.title))) return { error: "Attach a paper from LumiGap before adding a citation." };
   return { input: {
     type: draft.type, communityId: draft.communityId, title, content, tags,
-    linkedPaperId: draft.linkedPaperId || undefined,
-    linkedResearchGapId: draft.linkedGapId || undefined,
-    linkedProjectId: draft.linkedProjectId || undefined,
+    linkedPaperId: draft.type === "PAPER_DISCUSSION" ? draft.linkedPaperId : undefined,
+    linkedResearchGapId: draft.type === "RESEARCH_GAP_DISCUSSION" ? draft.linkedGapId : undefined,
     references,
   } };
 }

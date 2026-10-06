@@ -4,7 +4,7 @@ import { api } from "@/services/api-client";
 
 export type { ForumReportReason } from "@trend/shared-types";
 
-export type ForumReferenceView = { id?: string; paperId?: string; doi?: string; url?: string; title?: string; authors?: string[]; year?: number; verified?: boolean };
+export type ForumReferenceView = { id?: string; paperId?: string; doi?: string; url?: string; title?: string; authors?: string[]; year?: number; venue?: string; verified?: boolean };
 export type ForumReactionName = "LIKE" | "INSIGHTFUL" | "CELEBRATE" | "CURIOUS" | "LOVE" | "LAUGH" | "SURPRISED" | "SAD" | "AGREE" | "DISAGREE";
 export type ForumReactionUser = { id: string; fullName: string; avatarUrl?: string };
 export type ForumReactionTarget = { scope: "topic" | "post" | "comment"; id: string };
@@ -101,7 +101,7 @@ function normalizeAuthor(value: unknown): ForumAuthorView {
 }
 function normalizeReference(value: unknown): ForumReferenceView {
   const row = record(value);
-  return { id: row.id ? id(row.id) : undefined, paperId: row.paperId ? id(row.paperId) : undefined, doi: text(row.doi), url: text(row.url), title: text(row.title), authors: stringList(row.authors), year: typeof row.year === "number" ? row.year : undefined, verified: row.verified === true };
+  return { id: row.id ? id(row.id) : undefined, paperId: row.paperId ? id(row.paperId) : undefined, doi: text(row.doi), venue: text(row.venue), url: text(row.url), title: text(row.title), authors: stringList(row.authors), year: typeof row.year === "number" ? row.year : undefined, verified: row.verified === true };
 }
 function normalizeResearchContext(value: unknown): { id: string; title: string; topic?: string; doi?: string; publicationYear?: number; validationStatus?: string; status?: string } | undefined {
   const row = record(value); const contextId = id(row); if (!contextId) return undefined;
@@ -191,6 +191,10 @@ function normalizeCommunityMember(value: unknown): CommunityMemberView {
   return { id: id(row), user: { id: id(user), fullName: text(user.fullName) ?? "Unknown member", email: text(user.email) ?? "", avatarUrl: text(user.avatarUrl), role: text(user.role) ?? "user", institution: text(user.institution) }, role: row.role as CommunityMemberView["role"], status: row.status as CommunityMemberView["status"], joinedAt: text(row.joinedAt ?? row.createdAt) ?? new Date(0).toISOString() };
 }
 
+function writableForumInput<T extends { references?: ForumReferenceView[] }>(input: T) {
+  return { ...input, ...(input.references !== undefined ? { references: input.references.map(({ paperId, doi, url, title, authors, year }) => ({ paperId, doi, url, title, authors, year })) } : {}) };
+}
+
 export const forumApi = {
   async posts(params: ForumPostFilters, signal?: AbortSignal): Promise<{ data: ForumPostView[]; meta: { page: number; pageSize: number; total: number; totalPages: number } }> { const response = await api.get(API_ROUTES.forum.posts, { params, signal }); return { data: response.data.data.map(normalizePost), meta: response.data.meta }; },
   async post(postId: string, signal?: AbortSignal): Promise<ForumPostView> { const response = await api.get(API_ROUTES.forum.post(postId), { withCredentials: true, signal }); return normalizePost(response.data.data); },
@@ -208,14 +212,14 @@ export const forumApi = {
     }) : [];
     return { related: normalizeTopics(response.data.data.related), suggested: normalizeTopics(response.data.data.suggested) };
   },
-  async createPost(input: ForumPostInput): Promise<ForumPostView> { const { communityId, ...fields } = input; const response = await api.post(API_ROUTES.forum.posts, { ...fields, categoryId: communityId }); return normalizePost(response.data.data); },
-  async updatePost(postId: string, input: Partial<ForumPostInput>): Promise<ForumPostView> { const response = await api.patch(API_ROUTES.forum.post(postId), input); return normalizePost(response.data.data); },
+  async createPost(input: ForumPostInput): Promise<ForumPostView> { const { communityId, ...fields } = input; const response = await api.post(API_ROUTES.forum.posts, writableForumInput({ ...fields, categoryId: communityId })); return normalizePost(response.data.data); },
+  async updatePost(postId: string, input: Partial<ForumPostInput>): Promise<ForumPostView> { const response = await api.patch(API_ROUTES.forum.post(postId), writableForumInput(input)); return normalizePost(response.data.data); },
   async postRevisions(postId: string): Promise<ForumPostRevisionView[]> { const response = await api.get(API_ROUTES.forum.postRevisions(postId), { withCredentials: true }); return Array.isArray(response.data.data) ? response.data.data.map(normalizePostRevision) : []; },
   async deletePost(postId: string): Promise<void> { await api.delete(API_ROUTES.forum.post(postId)); },
   async comments(postId: string): Promise<ForumCommentView[]> { const response = await api.get(API_ROUTES.forum.comments(postId), { params: { page: 1, pageSize: 25 } }); return response.data.data.map(normalizeComment); },
   async commentsPage(postId: string, page = 1, signal?: AbortSignal): Promise<ForumCommentsPage> { const response = await api.get(API_ROUTES.forum.comments(postId), { params: { page, pageSize: 25 }, signal }); return { data: response.data.data.map(normalizeComment), meta: response.data.meta }; },
-  async addComment(postId: string, input: { content: string; parentCommentId?: string; references?: ForumReferenceView[] }): Promise<ForumCommentView> { const response = await api.post(API_ROUTES.forum.comments(postId), input); return normalizeComment(response.data.data); },
-  async updateComment(commentId: string, input: { content: string; references?: ForumReferenceView[] }): Promise<ForumCommentView> { const response = await api.patch(API_ROUTES.forum.comment(commentId), input); return normalizeComment(response.data.data); },
+  async addComment(postId: string, input: { content: string; parentCommentId?: string; references?: ForumReferenceView[] }): Promise<ForumCommentView> { const response = await api.post(API_ROUTES.forum.comments(postId), writableForumInput(input)); return normalizeComment(response.data.data); },
+  async updateComment(commentId: string, input: { content: string; references?: ForumReferenceView[] }): Promise<ForumCommentView> { const response = await api.patch(API_ROUTES.forum.comment(commentId), writableForumInput(input)); return normalizeComment(response.data.data); },
   async commentRevisions(commentId: string): Promise<ForumCommentRevisionView[]> { const response = await api.get(API_ROUTES.forum.commentRevisions(commentId), { withCredentials: true }); return Array.isArray(response.data.data) ? response.data.data.map(normalizeCommentRevision) : []; },
   async deleteComment(commentId: string): Promise<void> { await api.delete(API_ROUTES.forum.comment(commentId)); },
   async votePost(postId: string, value: -1 | 0 | 1) { const response = await api.post(API_ROUTES.forum.postVote(postId), { value }); return response.data.data; },

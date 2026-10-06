@@ -1,3 +1,7 @@
+import { forumCitationToken, forumCitationPaperIds, orderForumReferences } from "@trend/shared-types";
+import type { ForumReferenceView } from "../api/forum.api";
+import { ForumCitationPicker } from "./forum-citation-picker";
+import { ForumCitationPreview } from "./forum-citation-preview";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { EditorContent, useEditor, useEditorState } from "@tiptap/react";
 import { Extension } from "@tiptap/core";
@@ -15,18 +19,21 @@ import { canUseForumVisualEditor, forumRichTextExtensions, forumTableDocument, w
 import { forumWrapType } from "../utils/forum-formatting";
 
 type EditorMode = "visual" | "markdown" | "preview";
-export function ForumBodyEditor({ value, onChange, maxLength, label, disabled = false, id, placeholder, describedBy, quoteSource, focusRequest = 0, className, compact = false, footerActions }: {
+export function ForumBodyEditor({ value, onChange, maxLength, label, disabled = false, id, placeholder, describedBy, quoteSource, focusRequest = 0, className, compact = false, footerActions, references = [], onReferencesChange }: {
   value: string; onChange: (value: string) => void; maxLength: number; label: string; disabled?: boolean;
   id?: string; placeholder?: string; describedBy?: string; quoteSource?: string; focusRequest?: number; className?: string;
-  compact?: boolean; footerActions?: ReactNode;
+  compact?: boolean; footerActions?: ReactNode; references?: ForumReferenceView[]; onReferencesChange?: (references: ForumReferenceView[]) => void;
 }) {
   const { t } = useI18n();
   const [mode, setMode] = useState<EditorMode>("visual");
   const [warning, setWarning] = useState("");
   const [note, setNote] = useState<{ id?: string; text: string }>();
+  const [citationOpen, setCitationOpen] = useState(false);
+  const citationPosition = useRef<{ from: number; to: number }>();
   const [link, setLink] = useState<{ text: string; url: string }>();
   const [math, setMath] = useState<string>();
   const textarea = useRef<HTMLTextAreaElement>(null);
+  const citationScope = useRef<HTMLDivElement>(null);
   const intentionalMarkdown = useRef(false);
   const synced = useRef("");
   const latest = useRef({ onChange, maxLength, disabled, t });
@@ -66,6 +73,7 @@ export function ForumBodyEditor({ value, onChange, maxLength, label, disabled = 
   const activeActions = useEditorState({ editor, selector: ({ editor: current }) => !current ? [] : ([
     ["bold", "bold"], ["italic", "italic"], ["heading", "heading"], ["link", "link"], ["quote", "blockquote"], ["bullet", "bulletList"], ["numbered", "orderedList"], ["code", "code"],
   ] as const).filter(([, node]) => current.isActive(node)).map(([action]) => action) }) ?? [];
+  const isEmpty = useEditorState({ editor, selector: ({ editor: current }) => current?.isEmpty ?? true });
 
   useEffect(() => {
     if (!editor || value === synced.current) return;
@@ -113,6 +121,10 @@ export function ForumBodyEditor({ value, onChange, maxLength, label, disabled = 
   };
   const action = (item: ForumMarkdownAction) => {
     if (disabled) return;
+    if (item === "citation") {
+      citationPosition.current = mode === "markdown" ? { from: textarea.current?.selectionStart ?? value.length, to: textarea.current?.selectionEnd ?? value.length } : editor ? { from: editor.state.selection.to, to: editor.state.selection.to } : undefined;
+      setCitationOpen(true); return;
+    }
     if (item === "footnote") { setNote({ text: "" }); return; }
     if (item === "math") { setMath(""); return; }
     if (mode === "markdown") { rawInsert(item); return; }
@@ -154,6 +166,26 @@ export function ForumBodyEditor({ value, onChange, maxLength, label, disabled = 
         break;
       }
     }
+  };
+  const insertCitation = (paper: ForumReferenceView & { paperId: string }) => {
+    if (disabled) return false;
+    const position = citationPosition.current;
+    if (!position) return false;
+    const nextReferences = [...references.filter((item) => item.paperId !== paper.paperId), paper];
+    if (new Set([...forumCitationPaperIds(value), paper.paperId]).size > 30) { setWarning(t("Use up to 30 references.")); return false; }
+    if (value.length + forumCitationToken(paper.paperId).length > maxLength) { setWarning(t("This change exceeds the discussion length limit. Your previous content has been kept.")); return false; }
+    if (mode === "visual" && (!editor || !editor.state.doc.resolve(position.to).parent.inlineContent)) { setWarning(t("Place the cursor in text before adding a citation.")); return false; }
+    onReferencesChange?.(nextReferences);
+    if (mode === "markdown") {
+      const token = forumCitationToken(paper.paperId);
+      onChange(value.slice(0, position.to) + token + value.slice(position.to));
+      requestAnimationFrame(() => { textarea.current?.focus(); textarea.current?.setSelectionRange(position.to + token.length, position.to + token.length); });
+    } else if (editor) {
+      if (!editor.state.doc.resolve(position.to).parent.inlineContent) { setWarning(t("Place the cursor in text before adding a citation.")); return false; }
+      editor.chain().focus().insertContentAt(position.to, { type: "forumCitation", attrs: { paperId: paper.paperId } }).run();
+    } else return false;
+    setWarning("");
+    return true;
   };
   const selectedTable = () => {
     if (!editor || mode !== "visual") return;
@@ -207,8 +239,9 @@ export function ForumBodyEditor({ value, onChange, maxLength, label, disabled = 
     </div> : null}
     <div className={cn("forum-editor-frame overflow-hidden rounded-md border border-input bg-background focus-within:ring-2 focus-within:ring-ring/40", compact && "forum-editor-frame-compact")}>
       {!compact && mode !== "preview" ? <div className="border-b bg-muted/30 p-1.5">{formattingToolbar}</div> : null}
-      {mode === "preview" ? <section aria-label={t("Live Preview")} className="min-h-64 p-4">{value.trim() ? <ForumMarkdown content={value} className="sm:text-base" /> : <p className="text-sm text-muted-foreground">{t("Preview will appear here once you start typing...")}</p>}</section> : null}
-      <div hidden={mode !== "visual"} className="forum-rich-editor" data-empty={editor?.isEmpty} data-placeholder={placeholder ?? label}><EditorContent editor={editor} /></div>
+      {mode === "preview" ? <section aria-label={t("Live Preview")} className="min-h-64 p-4">{value.trim() ? <ForumMarkdown content={value} references={forumCitationPaperIds(value).length ? orderForumReferences(value, references) : []} renderReferences className="sm:text-base" /> : <p className="text-sm text-muted-foreground">{t("Preview will appear here once you start typing...")}</p>}</section> : null}
+      <div ref={citationScope} hidden={mode !== "visual"} className="forum-rich-editor" data-empty={isEmpty} data-placeholder={placeholder ?? label}><EditorContent editor={editor} /></div>
+      <ForumCitationPreview scope={citationScope} references={references} editable enabled={mode === "visual"} />
       {mode === "markdown" || !editor ? <textarea ref={textarea} id={mode === "markdown" ? id : undefined} aria-label={label} aria-describedby={describedBy} value={value} onChange={(event) => { synced.current = event.target.value; onChange(event.target.value); }} onKeyDown={keyDown} maxLength={maxLength} disabled={disabled} rows={8} placeholder={placeholder} className="min-h-64 w-full resize-y bg-background p-4 text-base leading-relaxed outline-none" /> : null}
     </div>
     {compact ? <div className="forum-editor-bottom-bar">
@@ -220,6 +253,7 @@ export function ForumBodyEditor({ value, onChange, maxLength, label, disabled = 
     </div> : null}
     {!compact && mode === "visual" ? <p className="mt-2 text-xs text-muted-foreground">{t("Edit table cells directly. Click a footnote number to edit its note.")}</p> : null}
     {warning ? <p role="alert" className="mt-2 text-sm text-destructive">{warning}</p> : null}
+    {citationOpen ? <ForumCitationPicker onInsert={insertCitation} onClose={() => { setCitationOpen(false); if (mode === "visual") editor?.commands.focus(undefined, { scrollIntoView: false }); else textarea.current?.focus(); }} /> : null}
     <Dialog open={Boolean(note)} onOpenChange={(open) => { if (!open) setNote(undefined); }}>
       <DialogContent className="max-w-lg"><DialogHeader><DialogTitle>{t(note?.id ? "Edit footnote" : "Add footnote")}</DialogTitle><DialogDescription>{t("A footnote adds a numbered note to your text. It does not create a paper citation or research evidence.")}</DialogDescription></DialogHeader>
         <label className="space-y-2 text-sm font-medium"><span>{t("Footnote text")}</span><textarea value={note?.text ?? ""} onChange={(event) => setNote((current) => ({ ...current, text: event.target.value }))} maxLength={2000} rows={5} className="w-full rounded-md border border-input bg-background p-3 text-base font-normal outline-none focus-visible:ring-2 focus-visible:ring-ring" /></label>

@@ -28,7 +28,7 @@ import {
 } from "@/features/auth";
 import { useAuthStore } from "@/stores/auth-store";
 import { cn } from "@/utils/cn";
-import { useI18n } from "@/i18n";
+import { LanguageSwitcher, useI18n } from "@/i18n";
 
 const ROLE_OPTIONS: Array<{
   role: AcademicRole;
@@ -351,22 +351,25 @@ export function AcademicProfileOnboardingPage() {
     <main className="relative min-h-screen bg-slate-50/80 px-4 py-8 text-slate-950 dark:bg-[#09090b] dark:text-white sm:px-6 lg:py-12">
       <div className="relative mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-6xl flex-col">
         {/* Top Header */}
-        <header className="flex items-center justify-between pb-8">
+        <header className="flex flex-wrap items-center justify-between gap-3 pb-8">
           <Link to="/" className="flex shrink-0 items-center">
             <img src={logoImage} alt="LumiGap" className="h-9 w-auto object-contain dark:hidden" />
             <img src={logoDarkImage} alt="LumiGap" className="hidden h-9 w-auto object-contain dark:block" />
           </Link>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="gap-2 text-xs text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
-            disabled={logout.isPending}
-            onClick={() => logout.mutate(undefined, { onSettled: () => navigate("/login", { replace: true }) })}
-          >
-            <LogOut className="h-3.5 w-3.5" />
-            {t("Sign out")}
-          </Button>
+          <div className="flex items-center gap-2">
+            <LanguageSwitcher />
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="gap-2 text-xs text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+              disabled={logout.isPending}
+              onClick={() => logout.mutate(undefined, { onSettled: () => navigate("/login", { replace: true }) })}
+            >
+              <LogOut className="h-3.5 w-3.5" />
+              {t("Sign out")}
+            </Button>
+          </div>
         </header>
 
         <div className="grid flex-1 items-start gap-10 lg:grid-cols-12">

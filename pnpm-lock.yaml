@@ -455,6 +455,19 @@ importers:
         version: 2.1.9(@types/node@22.19.19)(jsdom@26.1.0)(lightningcss@1.27.0)(terser@5.48.0)
 
   packages/shared-types:
+    dependencies:
+      remark-directive:
+        specifier: ^4.0.0
+        version: 4.0.0
+      remark-gfm:
+        specifier: ^4.0.1
+        version: 4.0.1
+      remark-parse:
+        specifier: ^11.0.0
+        version: 11.0.0
+      unified:
+        specifier: ^11.0.5
+        version: 11.0.5
     devDependencies:
       rimraf:
         specifier: ^6.0.1

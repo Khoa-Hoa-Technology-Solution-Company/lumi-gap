@@ -8,15 +8,26 @@ import { useCurrentUser, useUpdateProfile, useChangePassword } from "@/features/
 import { Badge } from "@/components/ui/badge";
 import { SubmitPaperPage } from "./papers/submit-paper";
 import { MyPapersPage } from "./papers/my-papers";
-import { avatars, getLevel, getLevelProgress, getNextLevelPoints, LEVEL_THRESHOLDS } from "@/utils/level";
+import { avatars, getLevel, getLevelProgress, getNextLevelPoints } from "@/utils/level";
 import { formatNumber } from "@/utils";
 import { CreditHistory } from "@/features/credits";
 import { AcademicProfileSection } from "@/features/academic-profile";
 import { isAdminSystemRole } from "@trend/shared-types";
 import { checkPasswordPolicy } from "@/features/auth/utils/password-policy";
 import { useI18n } from "@/i18n";
+import { SettingsPanelTransition } from "@/components/settings-panel-transition";
 
 type SettingsSection = "profile" | "academic" | "credits" | "security" | "preferences" | "submit-paper" | "my-papers";
+
+function settingsSectionFromRoute(section: string | undefined, isAdmin: boolean): SettingsSection {
+  if (["academic", "academic-profile"].includes(section ?? "") && !isAdmin) return "academic";
+  if (["security", "account"].includes(section ?? "")) return "security";
+  if (["credits", "credit-history"].includes(section ?? "")) return "credits";
+  if (["preferences", "customization", "notifications"].includes(section ?? "")) return "preferences";
+  if (["submit-paper", "submit"].includes(section ?? "") && !isAdmin) return "submit-paper";
+  if (["my-papers", "submissions"].includes(section ?? "") && !isAdmin) return "my-papers";
+  return "profile";
+}
 
 export function AccountSettingsPage() {
   const { section } = useParams<{ section?: string }>();
@@ -29,25 +40,11 @@ export function AccountSettingsPage() {
   const isAdmin = isAdminSystemRole(user?.systemRole);
   const hasPasswordLogin = user?.authProviders?.password ?? true;
 
-  const [activeSection, setActiveSection] = useState<SettingsSection>("profile");
+  const [activeSection, setActiveSection] = useState<SettingsSection>(() => settingsSectionFromRoute(section, isAdmin));
 
   // Sync section parameter with active tab state
   useEffect(() => {
-    if (section === "academic" || section === "academic-profile") {
-      setActiveSection("academic");
-    } else if (section === "security" || section === "account") {
-      setActiveSection("security");
-    } else if (section === "credits" || section === "credit-history") {
-      setActiveSection("credits");
-    } else if (section === "preferences" || section === "customization" || section === "notifications") {
-      setActiveSection("preferences");
-    } else if ((section === "submit-paper" || section === "submit") && !isAdmin) {
-      setActiveSection("submit-paper");
-    } else if ((section === "my-papers" || section === "submissions") && !isAdmin) {
-      setActiveSection("my-papers");
-    } else {
-      setActiveSection("profile");
-    }
+    setActiveSection(settingsSectionFromRoute(section, isAdmin));
   }, [section, isAdmin]);
 
   // Profile Form State
@@ -160,8 +157,9 @@ export function AccountSettingsPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-12 gap-8 items-start">
         {/* Left Nav Menu */}
-        <aside className="md:col-span-4 lg:col-span-3 space-y-1">
+        <aside aria-label={t("Account Settings")} className="account-settings-nav md:col-span-4 lg:col-span-3 space-y-1">
           <button
+            aria-current={activeSection === "profile" ? "page" : undefined}
             onClick={() => { setActiveSection("profile"); setSuccessMessage(""); setErrorMessage(""); }}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left text-sm font-semibold transition-all ${
               activeSection === "profile"
@@ -175,6 +173,7 @@ export function AccountSettingsPage() {
 
           {!isAdmin && (
             <button
+              aria-current={activeSection === "academic" ? "page" : undefined}
               onClick={() => { setActiveSection("academic"); setSuccessMessage(""); setErrorMessage(""); }}
               className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left text-sm font-semibold transition-all ${
                 activeSection === "academic"
@@ -190,6 +189,7 @@ export function AccountSettingsPage() {
           {!isAdmin && (
             <>
               <button
+                aria-current={activeSection === "submit-paper" ? "page" : undefined}
                 onClick={() => { setActiveSection("submit-paper"); setSuccessMessage(""); setErrorMessage(""); }}
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left text-sm font-semibold transition-all ${
                   activeSection === "submit-paper"
@@ -201,6 +201,7 @@ export function AccountSettingsPage() {
                 Submit Paper
               </button>
               <button
+                aria-current={activeSection === "my-papers" ? "page" : undefined}
                 onClick={() => { setActiveSection("my-papers"); setSuccessMessage(""); setErrorMessage(""); }}
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left text-sm font-semibold transition-all ${
                   activeSection === "my-papers"
@@ -216,6 +217,7 @@ export function AccountSettingsPage() {
 
           <button
             onClick={() => { setActiveSection("credits"); setSuccessMessage(""); setErrorMessage(""); }}
+            aria-current={activeSection === "credits" ? "page" : undefined}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left text-sm font-semibold transition-all ${
               activeSection === "credits"
                 ? "bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400"
@@ -228,6 +230,7 @@ export function AccountSettingsPage() {
 
           <button
             onClick={() => { setActiveSection("security"); setSuccessMessage(""); setErrorMessage(""); }}
+            aria-current={activeSection === "security" ? "page" : undefined}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left text-sm font-semibold transition-all ${
               activeSection === "security"
                 ? "bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400"
@@ -239,6 +242,7 @@ export function AccountSettingsPage() {
           </button>
           <button
             onClick={() => { setActiveSection("preferences"); setSuccessMessage(""); setErrorMessage(""); }}
+            aria-current={activeSection === "preferences" ? "page" : undefined}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left text-sm font-semibold transition-all ${
               activeSection === "preferences"
                 ? "bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400"
@@ -251,7 +255,9 @@ export function AccountSettingsPage() {
         </aside>
 
         {/* Right Content Panels */}
-        <section className="md:col-span-8 lg:col-span-9 bg-white dark:bg-[#121212] rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm p-6 sm:p-8">
+        <div className="min-w-0 md:col-span-8 lg:col-span-9 bg-white dark:bg-[#121212] rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+        <SettingsPanelTransition section={activeSection}>
+        <section className="p-6 sm:p-8">
           
           {/* Notifications */}
           {successMessage && (
@@ -587,6 +593,8 @@ export function AccountSettingsPage() {
           )}
 
         </section>
+        </SettingsPanelTransition>
+        </div>
       </div>
     </main>
   );

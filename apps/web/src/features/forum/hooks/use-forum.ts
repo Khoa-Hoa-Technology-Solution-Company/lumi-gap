@@ -4,10 +4,15 @@ import { useAuthStore } from "@/stores/auth-store";
 import { invalidateForumThreadQueries } from "../utils/forum-query-cache";
 import type { ForumNotificationLevel, ForumReportStatus } from "@trend/shared-types";
 import { useRef } from "react";
+import { forumPaperApi } from "../api/forum-paper.api";
 import { applyForumReactionCache, captureForumReactionCache, optimisticForumReaction, restoreForumReactionCache, type ForumReactionChange } from "../utils/forum-reaction-cache";
 
 // Private visibility and follow DTOs must never reuse another viewer's cache.
 function useForumViewer() { return useAuthStore((state) => state.tokens?.accessToken ? state.user?.id ?? "authenticated" : "anonymous"); }
+export function useForumPaperSearch(query: string, enabled = true) {
+  const viewer = useForumViewer();
+  return useQuery({ queryKey: ["forum", "paper-search", "openalex", query, viewer], queryFn: ({ signal }) => forumPaperApi.search(query, signal), enabled: enabled && query.length >= 3 && viewer !== "anonymous", staleTime: 60_000, retry: false });
+}
 export function useForumPosts(params: ForumPostFilters, enabled = true) {
   const viewer = useForumViewer();
   return useQuery({
@@ -58,7 +63,7 @@ export function useCreateForumPost() { const client = useQueryClient(); return u
 export function useUpdateForumPost() { const client = useQueryClient(); return useMutation({ mutationFn: ({ postId, input }: { postId: string; input: Partial<ForumPostInput> }) => forumApi.updatePost(postId, input), onSuccess: () => invalidateForumThreadQueries(client) }); }
 export function useDeleteForumPost() { const client = useQueryClient(); return useMutation({ mutationFn: forumApi.deletePost, onSuccess: () => client.invalidateQueries({ queryKey: ["forum"] }) }); }
 export function useAddForumComment() { const client = useQueryClient(); return useMutation({ mutationFn: ({ postId, content, parentCommentId, references }: { postId: string; content: string; parentCommentId?: string; references?: ForumReferenceView[] }) => forumApi.addComment(postId, { content, parentCommentId, references }), onSuccess: () => { void client.invalidateQueries({ queryKey: ["forum"] }); } }); }
-export function useUpdateForumComment() { const client = useQueryClient(); return useMutation({ mutationFn: ({ postId: _postId, commentId, content }: { postId: string; commentId: string; content: string }) => forumApi.updateComment(commentId, { content }), onSuccess: () => client.invalidateQueries({ queryKey: ["forum"] }) }); }
+export function useUpdateForumComment() { const client = useQueryClient(); return useMutation({ mutationFn: ({ postId: _postId, commentId, content, references }: { postId: string; commentId: string; content: string; references?: ForumReferenceView[] }) => forumApi.updateComment(commentId, { content, references }), onSuccess: () => client.invalidateQueries({ queryKey: ["forum"] }) }); }
 export function useDeleteForumComment() { const client = useQueryClient(); return useMutation({ mutationFn: ({ postId: _postId, commentId }: { postId: string; commentId: string }) => forumApi.deleteComment(commentId), onSuccess: () => client.invalidateQueries({ queryKey: ["forum"] }) }); }
 export function useForumVote() { const client = useQueryClient(); return useMutation({ mutationFn: ({ kind, id, value }: { kind: "post" | "comment"; id: string; value: -1 | 0 | 1 }) => kind === "post" ? forumApi.votePost(id, value) : forumApi.voteComment(id, value), onSuccess: () => client.invalidateQueries({ queryKey: ["forum"] }) }); }
 export function useForumReaction() {

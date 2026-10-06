@@ -40,6 +40,7 @@ const postBaseSchema = z.object({
 }).strict();
 
 const postInputSchema = postBaseSchema
+  .refine((value) => value.tags.length <= 5, "Use up to 5 tags")
   .refine((value) => Boolean(value.categoryId || value.communityId), "Category is required")
   .refine((value) => !value.categoryId || !value.communityId || value.categoryId === value.communityId, "Use one category")
   .refine((value) => value.content || value.body, "Post content is required")
@@ -198,6 +199,13 @@ function forumViewerKey(req: Request, res: Response) {
 export const forumRouter: Router = Router();
 const paperDoiSchema = z.object({ doi: z.string().trim().min(1).max(300) }).strict();
 const paperLookupLimiter = rateLimit({ windowMs: 60_000, limit: 15, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => req.user?.sub ?? req.ip ?? "anonymous" });
+const paperSearchLimiter = rateLimit({ windowMs: 60_000, limit: 60, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => req.user?.sub ?? req.ip ?? "anonymous" });
+forumRouter.get("/papers/search", requireAuth, paperSearchLimiter, validate(z.object({ q: z.string().trim().min(3).max(160) }).strict(), "query"), async (req, res) => {
+  res.json({ success: true, data: await forumPaperService.search(req.query.q as string) });
+});
+forumRouter.post("/papers/openalex/attach", requireAuth, requirePermission("forum:write"), paperLookupLimiter, validate(z.object({ openalexId: z.string().regex(/^W\d{1,20}$/) }).strict()), async (req, res) => {
+  res.json({ success: true, data: await forumPaperService.attachOpenAlex(req.body.openalexId) });
+});
 forumRouter.post("/papers/doi/preview", requireAuth, paperLookupLimiter, validate(paperDoiSchema), async (req, res) => {
   res.json({ success: true, data: await forumPaperService.preview(req.body.doi) });
 });

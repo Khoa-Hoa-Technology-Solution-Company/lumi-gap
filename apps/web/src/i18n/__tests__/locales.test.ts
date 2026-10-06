@@ -25,7 +25,7 @@ const TEXT_PROPS = new Set([
   "successMessage",
   "errorMessage",
 ]);
-const SKIP_SOURCE_PATTERNS = [/__tests__/, /components[\\/]ui/, /i18n[\\/]locales/, /vite-env\.d\.ts$/];
+const SKIP_SOURCE_PATTERNS = [/__tests__/, /\.(test|spec)\.[jt]sx?$/, /components[\\/]ui/, /i18n[\\/]locales/, /vite-env\.d\.ts$/];
 
 describe("UI i18n dictionaries", () => {
   it("translates onboarding, academic profile and cover controls into Vietnamese", async () => {

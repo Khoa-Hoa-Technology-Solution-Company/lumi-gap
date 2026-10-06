@@ -20,6 +20,7 @@ export interface ForumReference {
   title?: string;
   authors?: string[];
   year?: number;
+  venue?: string;
   verified: boolean;
   paper?: { id: string; title: string; publicationYear?: number; doi?: string };
 }
@@ -213,8 +214,8 @@ export interface ForumPostListResponse { data: ForumPost[]; meta: ResponseMeta }
 export interface ForumCommentListResponse { data: ForumComment[]; meta: ResponseMeta }
 
 export interface ForumResearchContext {
-  papers: Array<{ id: string; title: string; doi?: string; publicationYear?: number }>;
-  savedPapers?: Array<{ id: string; title: string; doi?: string; publicationYear?: number }>;
+  papers: Array<{ id: string; title: string; doi?: string; publicationYear?: number; authors?: string[]; venue?: string }>;
+  savedPapers?: Array<{ id: string; title: string; doi?: string; publicationYear?: number; authors?: string[]; venue?: string }>;
   gaps: Array<{ id: string; title: string; topic: string; forumShareable: boolean }>;
   projects: Array<{ id: string; title: string; visibility: "PUBLIC_SUMMARY" }>;
 }
