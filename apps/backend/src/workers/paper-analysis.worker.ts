@@ -6,6 +6,7 @@ import { makeConnection, paperAnalysisQueue, QUEUE_NAMES } from "../infrastructu
 import { logger } from "../infrastructure/logger.js";
 import { startWorkerHeartbeat } from "../infrastructure/worker-heartbeat.js";
 import { runPaperAnalysis, type RunPaperAnalysisJob } from "../modules/papers/paper-analysis.service.js";
+import { withUserAi } from "../modules/user-ai/user-ai.runtime.js";
 
 enforcePostgresOnlyRuntime();
 
@@ -29,7 +30,8 @@ async function main() {
     async (job) => {
       logger.info({ jobId: job.id, data: job.data }, "paper analysis job received");
       try {
-        return await runPaperAnalysis(job.data as RunPaperAnalysisJob);
+        const input = job.data as RunPaperAnalysisJob;
+        return await (input.userId ? withUserAi(input.userId, () => runPaperAnalysis(input)) : runPaperAnalysis(input));
       } catch (err) {
         if (err instanceof Error && (err as { nonRetryable?: boolean }).nonRetryable) {
           throw new UnrecoverableError(err.message);

@@ -1,3 +1,4 @@
+import { aiModel } from "../user-ai/user-ai.runtime.js";
 import { env } from "../../config/env.js";
 import { logger } from "../../infrastructure/logger.js";
 import { parseDatabaseId, publicDatabaseId } from "../../infrastructure/database/database-id.js";
@@ -102,7 +103,7 @@ export async function runRagPipeline(job: ReportJob): Promise<void> {
   // otherwise Pro classic (default). Cache key includes `model`, so fast (Flash)
   // and standard (Pro) outputs never collide.
   const model =
-    !report.deepAnalysis && report.fast ? env.GEMINI_MODEL_FAST : env.GEMINI_MODEL_DEEP;
+    !report.deepAnalysis && report.fast ? aiModel() : aiModel("deep");
   const language = (report.language ?? "auto") as ReportLanguage;
   const resolvedLanguage = resolveReportLanguage(language, report.query, report.topic ?? undefined);
   const prompt = buildReportPrompt(report.query, papers, {

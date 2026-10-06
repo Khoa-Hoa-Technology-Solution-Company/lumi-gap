@@ -36,10 +36,12 @@ import {
   reviewTemplateRouter,
 } from "../modules/reviews/review.routes.js";
 import { literatureRouter } from "../modules/literature/literature.routes.js";
+import { userAiRouter } from "../modules/user-ai/user-ai.routes.js";
 
 export const apiRouter: Router = Router();
 
 apiRouter.use("/auth", authRouter);
+apiRouter.use("/user-ai", userAiRouter);
 apiRouter.use("/home", homeRouter);
 apiRouter.use("/projects", projectRouter);
 apiRouter.use("/papers", paperRouter);

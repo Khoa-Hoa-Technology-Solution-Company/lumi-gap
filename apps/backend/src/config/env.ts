@@ -71,6 +71,11 @@ const EnvSchema = z.object({
   ),
 
   GEMINI_API_KEY: z.string().min(1, "GEMINI_API_KEY is required"),
+  GEMINI_BASE_URL: z.string().url().default("https://generativelanguage.googleapis.com"),
+  AI_CONNECTION_ENCRYPTION_KEY: z.preprocess((value) => value === "" ? undefined : value, z.string().min(32).optional()),
+  AI_ALLOWED_BASE_URLS: z.string().default(""),
+  AI_ALLOW_LOCAL_ENDPOINTS: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
+  AI_LOCALHOST_HOST: z.string().regex(/^(?:[a-zA-Z0-9.-]+)?$/, "AI_LOCALHOST_HOST must be a hostname without a port or path").default(""),
   // Keep generative models configurable as provider availability changes.
   // Embeddings use their own model; changing these preserves existing vectors.
   GEMINI_MODEL_FAST: z.string().default("gemini-3.1-flash-lite"),
