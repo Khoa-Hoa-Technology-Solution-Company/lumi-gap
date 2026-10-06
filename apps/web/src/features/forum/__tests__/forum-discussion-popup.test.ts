@@ -9,7 +9,7 @@ describe("Forum discussion popup composer", () => {
     expect(list).toContain("const ForumDiscussionComposer = lazy(");
     expect(list).toContain("<Dialog open={composerOpen}");
     expect(list).toContain("onPublished={(postId) =>");
-    expect(list).toContain("inset-0 h-[100dvh] max-h-[100dvh]");
+    expect(list).toContain("forum-discussion-dialog");
     expect(composer).toContain("Expand composer");
     expect(list).not.toContain("to={forumNewDiscussionHref(searchParams)}");
   });

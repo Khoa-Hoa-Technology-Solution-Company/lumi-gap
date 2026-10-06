@@ -1,3 +1,4 @@
+import { forumCitationToken, forumCitationPaperIds } from "@trend/shared-types";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import express, { type NextFunction, type Request, type Response } from "express";
 import { once } from "node:events";
@@ -23,7 +24,7 @@ describe.sequential("research forum persistence and authorization", () => {
     outsider: `forum-outsider-${marker}@example.test`,
   };
   let adminId = ""; let authorId = ""; let responderId = ""; let outsiderId = "";
-  let communityId = ""; let paperId = ""; let gapId = ""; let publicProjectId = ""; let privateProjectId = ""; let corpusId = "";
+  let communityId = ""; let paperId = ""; let citationSecondPaperId = ""; let gapId = ""; let publicProjectId = ""; let privateProjectId = ""; let corpusId = "";
   const postIds: string[] = [];
   const extraCategoryIds: string[] = [];
 
@@ -84,6 +85,8 @@ describe.sequential("research forum persistence and authorization", () => {
     if (gapId) await prisma.researchGap.deleteMany({ where: { id: gapId } });
     if (corpusId) await prisma.literatureCorpus.deleteMany({ where: { id: corpusId } });
     await prisma.project.deleteMany({ where: { id: { in: [publicProjectId, privateProjectId].filter(Boolean) } } });
+    if (paperId) await prisma.paperAuthor.deleteMany({ where: { paperId } });
+    if (citationSecondPaperId) await prisma.paper.deleteMany({ where: { id: citationSecondPaperId } });
     if (paperId) await prisma.paper.deleteMany({ where: { id: paperId } });
     await prisma.user.deleteMany({ where: { email: { in: Object.values(emails) } } });
   });
@@ -94,8 +97,11 @@ describe.sequential("research forum persistence and authorization", () => {
     communityId = community.id;
     // Retain existing assignment fixtures for the legacy private-group access regression below.
     await getPrisma().communityMembership.createMany({ data: [authorId, responderId].map((userId) => ({ communityId, userId, status: "active", role: "member" })) });
-    const topic = await forumService.createPost({ communityId, title: "Category outsider post", content: "No membership required" }, outsiderId);
+    const tags = Array.from({ length: 5 }, (_, i) => `limit-${marker}-${i}`);
+    const topic = await forumService.createPost({ communityId, title: "Category outsider post", content: "No membership required", tags }, outsiderId);
     postIds.push(topic.id);
+    expect(topic.tags).toEqual(tags);
+    await expect(forumService.createPost({ communityId, title: "Too many tags", content: "Reject the sixth tag", tags: [...tags, "sixth"] }, outsiderId)).rejects.toMatchObject({ statusCode: 400 });
     expect(await getPrisma().communityMembership.count({ where: { communityId, userId: outsiderId } })).toBe(0);
     await expect(communityService.join(communityId, outsiderId)).rejects.toMatchObject({ statusCode: 409 });
   });
@@ -530,8 +536,8 @@ describe.sequential("research forum persistence and authorization", () => {
     await forumService.vote("post", discussion.id, 1, responderId, "user");
     await forumService.vote("comment", (await forumService.listComments(discussion.id, 1, 20, responderId, "user")).data[0].id, 1, adminId, "admin");
 
-    const first = await forumService.getPost(discussion.id, authorId, "user", "test-viewer");
-    const second = await forumService.getPost(discussion.id, authorId, "user", "test-viewer");
+    const first = await forumService.getPost(discussion.id, responderId, "user", "test-viewer");
+    const second = await forumService.getPost(discussion.id, responderId, "user", "test-viewer");
     expect(first).toMatchObject({ commentCount: 2, replyCount: 2, helpfulCount: 1, viewCount: 1 });
     expect(second.viewCount).toBe(1);
     expect(first.participants?.map((participant) => participant.id)).toEqual(expect.arrayContaining([authorId, responderId, adminId]));
@@ -801,9 +807,13 @@ describe.sequential("research forum persistence and authorization", () => {
     const topic = await forumService.createPost({ communityId, title: `View cooldown ${marker}`, content: "Server-controlled views" }, authorId);
     postIds.push(topic.id);
     const anonymousKey = `anon:${crypto.randomUUID()}`;
+    await Promise.all(Array.from({ length: 3 }, () => forumService.getPost(topic.publicSlug!, authorId, "user", "ignored-client-key")));
+    expect((await forumService.getPost(topic.id)).viewCount).toBe(0);
+    expect(await prisma.forumPostView.count({ where: { postId: topic.id } })).toBe(0);
+    expect((await forumService.recentViews(topic.id)).daily.at(-1)?.count).toBe(0);
     await Promise.all(Array.from({ length: 8 }, () => forumService.getPost(topic.id, undefined, undefined, anonymousKey)));
     expect((await forumService.getPost(topic.id)).viewCount).toBe(1);
-    await Promise.all(Array.from({ length: 8 }, () => forumService.getPost(topic.id, authorId, "user", "ignored-client-key")));
+    await Promise.all(Array.from({ length: 8 }, () => forumService.getPost(topic.id, responderId, "user", "ignored-client-key")));
     expect((await forumService.getPost(topic.id)).viewCount).toBe(2);
     await prisma.forumPostView.update({ where: { postId_viewerKey: { postId: topic.id, viewerKey: anonymousKey } }, data: { viewedAt: new Date(Date.now() - (8 * 60 + 1) * 60000) } });
     await Promise.all(Array.from({ length: 8 }, () => forumService.getPost(topic.id, undefined, undefined, anonymousKey)));
@@ -1167,4 +1177,36 @@ describe.sequential("research forum persistence and authorization", () => {
     expect(history.some((action) => action.action === "THREAD_HIDDEN" && action.targetId === post.id)).toBe(true);
     expect(history.some((action) => action.action === "REPORT_RESOLVED" && action.targetId === report!.id)).toBe(true);
   });
+  it("persists scholarly citation links in body order with authoritative metadata and removes deleted references", async () => {
+    const prisma = getPrisma();
+    if (!communityId) communityId = (await forumCategoryService.create({ name: `Citations ${marker}`, slug: `citations-${marker}` }, adminId, "admin")).id;
+    await prisma.paper.update({ where: { id: paperId }, data: { journalName: "Citation Journal" } });
+    await prisma.paperAuthor.create({ data: { paperId, displayName: "Citation Author", position: 0 } });
+    const body = `Evidence ${forumCitationToken(paperId)}. Repeat ${forumCitationToken(paperId)}.`;
+    const post = await forumService.createPost({ communityId, title: "Structured scholarly citation", content: body, references: [{ paperId, title: "Forged title", authors: ["Forged author"] }] }, authorId);
+    postIds.push(post.id);
+    expect(post.references).toHaveLength(1);
+    expect(post.references[0]).toMatchObject({ paperId, title: `Forum paper ${marker}`, authors: ["Citation Author"], venue: "Citation Journal", verified: true });
+    expect(forumCitationPaperIds(post.content)).toEqual([paperId]);
+    expect(await prisma.forumReference.findFirst({ where: { postId: post.id } })).toMatchObject({ paperId, position: 0 });
+    const secondPaper = await prisma.paper.create({ data: { title: "Second citation source", publicationYear: 2024, primaryProvider: "user", dataStatus: "active", legacyMongoId: marker.replaceAll("-", "").slice(0, 24) } });
+    citationSecondPaperId = secondPaper.id;
+    const reordered = await forumService.updatePost(post.id, { content: `Moved ${forumCitationToken(secondPaper.id)} before ${body}` }, authorId);
+    expect(reordered.references.map((reference) => reference.paperId)).toEqual([secondPaper.legacyMongoId, paperId]);
+    expect(forumCitationPaperIds(reordered.content)).toEqual([secondPaper.legacyMongoId, paperId]);
+    const persistedOrder = await prisma.forumReference.findMany({ where: { postId: post.id }, orderBy: { position: "asc" } });
+    expect(persistedOrder.map((reference) => reference.paperId)).toEqual([secondPaper.id, paperId]);
+    const reduced = await forumService.updatePost(post.id, { content: body }, authorId);
+    expect(reduced.references.map((reference) => reference.paperId)).toEqual([paperId]);
+    const edited = await forumService.updatePost(post.id, { content: "Removed inline citation." }, authorId);
+    expect(edited.references).toEqual([]);
+    await expect(forumService.createPost({ communityId, title: "Invalid source", content: ':cite[]{paperId="invalid"}' }, authorId)).rejects.toMatchObject({ statusCode: 400 });
+    await expect(forumService.createPost({ communityId, title: "Missing source", content: forumCitationToken(crypto.randomUUID()) }, authorId)).rejects.toMatchObject({ statusCode: 400 });
+    await prisma.paper.update({ where: { id: paperId }, data: { dataStatus: "draft" } });
+    try {
+      await expect(forumService.updatePost(post.id, { content: body }, authorId)).rejects.toMatchObject({ statusCode: 400 });
+    } finally { await prisma.paper.update({ where: { id: paperId }, data: { dataStatus: "active" } }); }
+    await prisma.paperAuthor.deleteMany({ where: { paperId, displayName: "Citation Author" } });
+  });
+
 });

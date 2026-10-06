@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowUpRight, CheckCircle2, RefreshCw, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
@@ -24,9 +24,17 @@ type Run = (operation: () => Promise<unknown>) => void;
 const finalStatuses = ["resolved", "dismissed", "reviewed"];
 
 export function AdminTrustSafetyPage() {
-  const [tab, setTab] = useState("reports");
-  const [status, setStatus] = useState<Parameters<typeof forumApi.moderationQueue>[0]>("open");
-  const [appealStatus, setAppealStatus] = useState<Parameters<typeof forumApi.appeals>[0]>("SUBMITTED");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedTab = searchParams.get("tab") ?? "reports";
+  const tab = ["reports", "appeals", "restrictions", "copyright"].includes(requestedTab) ? requestedTab : "reports";
+  const requestedStatus = searchParams.get("status") ?? "open";
+  const status = (["open", "claimed", "under_review", "escalated", "resolved", "dismissed", "all"].includes(requestedStatus) ? requestedStatus : "open") as Parameters<typeof forumApi.moderationQueue>[0];
+  const appealStatus = searchParams.get("appealStatus") === "all" ? "all" : "SUBMITTED";
+  const updateFilter = (key: string, value: string) => setSearchParams((previous) => {
+    const next = new URLSearchParams(previous);
+    next.set(key, value);
+    return next;
+  });
   const viewer = useAuthStore((state) => state.user?.id);
   const qc = useQueryClient();
   const queue = useQuery({ queryKey: ["admin", "forum", viewer, "reports", status], queryFn: () => forumApi.moderationQueue(status), enabled: tab === "reports" });
@@ -50,11 +58,11 @@ export function AdminTrustSafetyPage() {
   return <div className="space-y-6">
     <PageHeader title="Trust & Safety" description="Review reports and appeals, manage posting restrictions and review verified copyright claims." />
     <nav aria-label="Moderation sections" className="flex flex-wrap gap-2 border-b pb-4">
-      {Object.entries({ reports: "Reports", appeals: "Appeals", restrictions: "Restrictions", copyright: "Copyright claims" }).map(([value, label]) => <Button key={value} variant={tab === value ? "default" : "outline"} aria-pressed={tab === value} onClick={() => setTab(value)}>{label}</Button>)}
+      {Object.entries({ reports: "Reports", appeals: "Appeals", restrictions: "Restrictions", copyright: "Copyright claims" }).map(([value, label]) => <Button key={value} variant={tab === value ? "default" : "outline"} aria-pressed={tab === value} onClick={() => updateFilter("tab", value)}>{label}</Button>)}
     </nav>
     <div className="flex flex-wrap items-center gap-2">
-      {tab === "reports" ? <label className="flex items-center gap-3 text-sm">Queue<select className={control} value={status} onChange={(event) => setStatus(event.target.value as typeof status)}>{["open", "claimed", "under_review", "escalated", "resolved", "dismissed", "all"].map((value) => <option key={value} value={value}>{value.replaceAll("_", " ")}</option>)}</select></label> : null}
-      {tab === "appeals" ? <label className="flex items-center gap-3 text-sm">Status<select className={control} value={appealStatus} onChange={(event) => setAppealStatus(event.target.value as typeof appealStatus)}><option value="SUBMITTED">Pending review</option><option value="all">All appeals</option></select></label> : null}
+      {tab === "reports" ? <label className="flex items-center gap-3 text-sm">Queue<select className={control} value={status} onChange={(event) => updateFilter("status", event.target.value)}>{["open", "claimed", "under_review", "escalated", "resolved", "dismissed", "all"].map((value) => <option key={value} value={value}>{value.replaceAll("_", " ")}</option>)}</select></label> : null}
+      {tab === "appeals" ? <label className="flex items-center gap-3 text-sm">Status<select className={control} value={appealStatus} onChange={(event) => updateFilter("appealStatus", event.target.value)}><option value="SUBMITTED">Pending review</option><option value="all">All appeals</option></select></label> : null}
       <Button className="ml-auto" size="sm" variant="outline" disabled={current.isFetching} onClick={() => { void current.refetch(); }}><RefreshCw className="h-4 w-4" />Refresh</Button>
     </div>
     {current.isPending ? <p role="status" className={card}>Loading…</p> : current.isError ? <p role="alert" className={card}>Could not load this queue. Use Refresh to try again.</p> : current.data?.length === 0 ? <div className={cn(card, "py-12 text-center text-muted-foreground")}><CheckCircle2 className="mx-auto mb-3 h-6 w-6" />There are no items in this view.</div> : <div className="space-y-4">

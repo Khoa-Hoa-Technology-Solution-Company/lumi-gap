@@ -15,6 +15,8 @@ import type { ForumTableConfig } from "./forum-discussion-editor";
 import { forumFormattingExtensions } from "./forum-formatting-extensions";
 import { safeForumImageUrl } from "./forum-formatting";
 
+import { ForumCitation } from "./forum-citation-node";
+
 const footnoteId = /^[a-zA-Z0-9_-]{1,100}$/;
 const safeId = (value: unknown) => typeof value === "string" && footnoteId.test(value) ? value : "1";
 
@@ -54,7 +56,7 @@ export const ForumFootnoteReference = Node.create<{ editLabel: string }>({
   addOptions: () => ({ editLabel: "Edit footnote" }),
   addAttributes: () => ({ id: { default: "1", parseHTML: (element) => safeId(element.getAttribute("data-footnote-ref")), renderHTML: () => ({}) }, label: { default: null, rendered: false } }),
   parseHTML: () => [{ tag: "sup[data-footnote-ref]" }],
-  renderHTML({ node }) { const label = node.attrs.label ?? safeId(node.attrs.id); return ["sup", { "data-footnote-ref": safeId(node.attrs.id), class: "forum-footnote-ref", tabindex: "0", role: "button", "aria-label": `${this.options.editLabel} ${label}`, title: this.options.editLabel }, `[${label}]`]; },
+  renderHTML({ node }) { const label = node.attrs.label ?? safeId(node.attrs.id); return ["sup", { "data-footnote-ref": safeId(node.attrs.id), class: "forum-footnote-ref", tabindex: "0", role: "button", "aria-label": `${this.options.editLabel} ${label}`, title: this.options.editLabel }, String(label)]; },
   markdownTokenizer: {
     name: "forumFootnoteReference", level: "inline",
     start: (src) => src.indexOf("[^"),
@@ -68,7 +70,7 @@ export const ForumFootnoteDefinition = Node.create({
   name: "forumFootnoteDefinition", group: "block", content: "block+", defining: true,
   addAttributes: () => ({ id: { default: "1", parseHTML: (element) => safeId(element.getAttribute("data-footnote-definition")), renderHTML: () => ({}) }, label: { default: null, rendered: false } }),
   parseHTML: () => [{ tag: "div[data-footnote-definition]", contentElement: ".forum-footnote-content" }],
-  renderHTML: ({ node }) => ["div", { "data-footnote-definition": safeId(node.attrs.id), class: "forum-footnote-definition" }, ["span", { contenteditable: "false", class: "forum-footnote-label" }, `[${node.attrs.label ?? safeId(node.attrs.id)}]`], ["div", { class: "forum-footnote-content" }, 0]],
+  renderHTML: ({ node }) => ["div", { "data-footnote-definition": safeId(node.attrs.id), class: "forum-footnote-definition" }, ["span", { contenteditable: "false", class: "forum-footnote-label" }, String(node.attrs.label ?? safeId(node.attrs.id))], ["div", { class: "forum-footnote-content" }, 0]],
   addProseMirrorPlugins() {
     return [new Plugin({ appendTransaction: (_transactions, _old, state) => {
       const order = new Map<string, string>();
@@ -97,7 +99,7 @@ export function forumRichTextExtensions(editFootnoteLabel = "Edit footnote"): An
     StarterKit.configure({ underline: false, link: { openOnClick: false, autolink: false, linkOnPaste: false, protocols: ["http", "https", "mailto"] } }),
     TableKit.configure({ table: false }), ForumTable.configure({ resizable: false, renderWrapper: true, cellMinWidth: 100 }),
     TaskList, TaskItem.configure({ nested: true }),
-    ForumFootnoteReference.configure({ editLabel: editFootnoteLabel }), ForumFootnoteDefinition, ...forumFormattingExtensions, Markdown,
+    ForumFootnoteReference.configure({ editLabel: editFootnoteLabel }), ForumFootnoteDefinition, ForumCitation, ...forumFormattingExtensions, Markdown,
   ];
 }
 

@@ -2,6 +2,14 @@
 @tailwind components;
 @tailwind utilities;
 
+.account-settings-nav button {
+  transition: background-color 180ms ease-out, color 180ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .account-settings-nav button { transition: none; }
+}
+
 @font-face {
   font-family: "Source Sans 3";
   font-style: normal;
@@ -932,6 +940,18 @@
     container: forum-compose / inline-size;
   }
 
+  .forum-discussion-dialog {
+    height: clamp(min(22.5rem, 100dvh), var(--forum-composer-height, 100dvh), 100dvh);
+    max-height: 100dvh;
+  }
+
+  @media (min-width: 640px) {
+    .forum-discussion-dialog {
+      height: clamp(min(22.5rem, calc(100dvh - 2rem)), var(--forum-composer-height, min(78dvh, 58rem)), calc(100dvh - 2rem));
+      max-height: calc(100dvh - 2rem);
+    }
+  }
+
   .forum-compose-preview {
     display: none;
   }
@@ -1389,3 +1409,12 @@
     }
   }
 }
+
+.forum-citation-node, .forum-inline-citation { color: hsl(var(--primary)); font-weight: 600; white-space: nowrap; padding-inline: 0.12em; }
+.forum-rich-editor .forum-citation-node { opacity: 1; cursor: pointer; border-radius: 0.2rem; }
+.forum-citation-node:hover, .forum-inline-citation:hover { background: hsl(var(--primary) / 0.1); }
+.forum-citation-node:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
+.forum-citation-preview { overflow-wrap: anywhere; animation: forum-citation-appear 120ms ease-out; }
+@keyframes forum-citation-appear { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) { .forum-citation-preview { animation: none; } }
+.forum-inline-citation:hover { text-decoration: underline; }

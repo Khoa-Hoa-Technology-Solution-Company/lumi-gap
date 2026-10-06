@@ -15,6 +15,7 @@ import {
 import { cn } from "@/utils/cn";
 import {
   englishDictionary,
+  getCachedDictionary,
   loadDictionary,
   type Dictionary,
 } from "./locales";
@@ -51,7 +52,8 @@ const SKIP_SELECTOR = "script,style,noscript,canvas,code,pre,textarea,[contented
 
 export function I18nProvider({ children }: { children: ReactNode }) {
   const [language, setLanguageState] = useState<UiLanguageCode>(() => readStoredLanguage());
-  const [activeDictionary, setActiveDictionary] = useState<Dictionary>(englishDictionary);
+  const [loadedDictionary, setLoadedDictionary] = useState<Dictionary | undefined>(() => getCachedDictionary(language));
+  const activeDictionary = loadedDictionary ?? englishDictionary;
   const textOriginals = useRef(new WeakMap<Text, string>());
   const textTranslations = useRef(new WeakMap<Text, string>());
   const attrOriginals = useRef(new WeakMap<Element, Map<string, string>>());
@@ -59,10 +61,18 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   const scanTimer = useRef<number | undefined>();
 
   useEffect(() => {
-    document.documentElement.lang = language;
     let cancelled = false;
     void loadDictionary(language).then((dictionary) => {
-      if (!cancelled) setActiveDictionary(dictionary);
+      if (!cancelled) {
+        document.documentElement.lang = language;
+        setLoadedDictionary(dictionary);
+      }
+    }).catch(() => {
+      if (!cancelled) {
+        document.documentElement.lang = "en";
+        setLanguageState("en");
+        setLoadedDictionary(englishDictionary);
+      }
     });
     return () => {
       cancelled = true;
@@ -70,16 +80,13 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   }, [language]);
 
   const setLanguage = useCallback((nextLanguage: UiLanguageCode) => {
-    if (nextLanguage === language) return;
-
     setLanguageState(nextLanguage);
     try {
       window.localStorage.setItem(STORAGE_KEY, nextLanguage);
     } catch {
       // Keep the language change available when browser storage is disabled.
     }
-    document.documentElement.lang = nextLanguage;
-  }, [language]);
+  }, []);
 
   const t = useCallback<Translate>(
     (key, values) => {
@@ -124,7 +131,15 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     };
   }, [translateDom]);
 
-  return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
+  return (
+    <I18nContext.Provider value={value}>
+      {loadedDictionary ? children : (
+        <div className="flex min-h-dvh items-center justify-center bg-slate-50 dark:bg-black" role="status" aria-busy="true" aria-label={t("Loading...")}>
+          <Languages className="h-6 w-6 animate-pulse text-slate-400 motion-reduce:animate-none" aria-hidden="true" />
+        </div>
+      )}
+    </I18nContext.Provider>
+  );
 }
 
 export function useI18n() {
@@ -386,7 +401,8 @@ export function resolveInitialLanguage(
 function readStoredLanguage(): UiLanguageCode {
   let storedLanguage: string | null = null;
   try {
-    storedLanguage = window.localStorage.getItem(STORAGE_KEY);
+    storedLanguage = window.localStorage.getItem(STORAGE_KEY)
+      ?? window.localStorage.getItem("LumiGap.uiLanguage");
   } catch {
     // Browser language detection still works if local storage is unavailable.
   }

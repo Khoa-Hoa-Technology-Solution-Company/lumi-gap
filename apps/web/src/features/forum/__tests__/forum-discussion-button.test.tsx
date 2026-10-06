@@ -36,7 +36,7 @@ describe("Discussion creation button", () => {
     const list = readFileSync(new URL("../../../pages/forum/forum-list.tsx", import.meta.url), "utf8");
     const community = readFileSync(new URL("../../../pages/communities/community-detail.tsx", import.meta.url), "utf8");
     // The display toggle uses this accent too, but is not a creation entry point.
-    const creationButtons = list.replace(/<Button\b[^>]*className="forum-topic-view-toggle[^\"]*"[^>]*>/g, "");
+    const creationButtons = list.replace(/<Button\b[^>]*className="forum-topic-view-toggle[^"]*"[^>]*>/g, "");
     expect(creationButtons.match(/variant="discussion"/g)).toHaveLength(3);
     expect(community.match(/variant="discussion"/g)).toHaveLength(2);
   });

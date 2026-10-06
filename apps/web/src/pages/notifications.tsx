@@ -46,15 +46,8 @@ export function NotificationsPage() {
     }
   };
 
-  const handleNotificationClick = async (notification: NotificationItem) => {
-    if (!notification.isRead) {
-      try {
-        await markReadMutation.mutateAsync(notification.id);
-      } catch (err) {
-        console.error("Failed to mark read:", err);
-      }
-    }
-
+  const handleNotificationClick = (notification: NotificationItem) => {
+    if (!notification.isRead) markReadMutation.mutate(notification.id);
     const destination = getNotificationDestination(notification, isAdmin);
     if (destination) navigate(destination);
   };
@@ -192,10 +185,11 @@ export function NotificationsPage() {
                 const isRejected = item.type === "submission_rejected";
 
                 return (
-                  <div
+                  <button
+                    type="button"
                     key={item.id}
                     onClick={() => handleNotificationClick(item)}
-                    className={`border rounded-xl p-5 relative cursor-pointer transition-all hover:border-slate-300 dark:hover:border-zinc-700 ${
+                    className={`w-full text-left border rounded-xl p-5 relative cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring hover:border-slate-300 dark:hover:border-zinc-700 ${
                       item.isRead
                         ? "bg-white dark:bg-[#121212] border-slate-200 dark:border-slate-800"
                         : "bg-[#f0f4ff] dark:bg-blue-900/10 border-blue-200 dark:border-blue-800/50"
@@ -234,7 +228,7 @@ export function NotificationsPage() {
                         </div>
                       </div>
                     </div>
-                  </div>
+                  </button>
                 );
               })}
             </div>

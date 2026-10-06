@@ -144,10 +144,10 @@ export const forumModerationService = {
           : await tx.forumCommentRevision.findFirst({ where: { commentId: row.id }, orderBy: { revision: "desc" }, select: { id: true } });
         return tx.contentReport.create({ data: { reporterId, targetType: row.type, targetId: row.id, postId: row.postId, commentId: row.type === "RESPONSE" ? row.id : undefined, communityId: row.communityId, reason: input.reason, description: input.description?.trim() || undefined, status, escalatedAt: status === "escalated" ? new Date() : undefined, reportedRevisionId: revision?.id, contentSnapshot: snapshot({ ...row, title: parent.title, body: content.body, status: content.status, visibilityStatus: content.visibilityStatus }, revision?.id) } });
       });
-      await notify(reporterId, "Report received", "Your report has been received.");
+      await notify(reporterId, "Report received", "Your report has been received.", row.postId);
       const moderators = row.communityId && status !== "escalated" ? await getPrisma().communityMembership.findMany({ where: { communityId: row.communityId, status: "active", role: { in: ["owner", "moderator"] } }, select: { userId: true } }) : [];
       if (moderators.length) await Promise.all(moderators.map((moderator) => notify(moderator.userId, "New community report", "A forum report is waiting in your moderation queue.", row.postId)));
-      else await notificationService.create({ role: "admin", title: "Forum report needs review", message: "A forum report was routed to the Admin moderation queue.", type: "FORUM_MODERATION" });
+      else await notificationService.create({ role: "admin", title: "Forum report needs review", message: "A forum report was routed to the Admin moderation queue.", type: "FORUM_REPORT_REVIEW" });
       await auditService.log("REPORT_CREATED", { userId: reporter, targetTableName: "forum_content_reports", targetRecordId: created.id, details: { targetType: row.type, targetId: row.id, reason: input.reason, routedTo: status === "escalated" ? "admin" : row.communityId ? "community" : "admin" } });
       return { id: publicDatabaseId(created), status: created.status, targetType: created.targetType, targetId: publicDatabaseId(row), createdAt: created.createdAt };
     } catch (error) {
@@ -374,9 +374,9 @@ export const forumModerationService = {
     }
     if (["HIDE_CONTENT", "REMOVE_CONTENT", "LOCK_THREAD", "RESTRICT_USER"].includes(action) && row.authorId !== actor) await notify(row.authorId, "Forum moderation update", `Your ${row.type === "THREAD" ? "discussion" : "response"} was moderated under the Community Guidelines.`, row.postId);
     if (action === "ESCALATE_REPORT") {
-      await notificationService.create({ role: "admin", title: "Forum report escalated", message: "A community moderator forwarded a report for Admin review.", type: "FORUM_MODERATION" });
-      await notify(report.reporterId, "Report forwarded", "Your report was forwarded for Admin review.");
-    } else await notify(report.reporterId, "Report reviewed", "Your report has been reviewed.");
+      await notificationService.create({ role: "admin", title: "Forum report escalated", message: "A community moderator forwarded a report for Admin review.", type: "FORUM_REPORT_ESCALATED" });
+      await notify(report.reporterId, "Report forwarded", "Your report was forwarded for Admin review.", row.postId);
+    } else await notify(report.reporterId, "Report reviewed", "Your report has been reviewed.", row.postId);
     return result;
   },
 
@@ -393,7 +393,7 @@ export const forumModerationService = {
     try { row = await getPrisma().moderationAppeal.create({ data: { moderationActionId: action.id, appellantId: actor, reason: reason.trim().slice(0, 5000), submitDeadlineAt: deadline } }); }
     catch (error) { if ((error as { code?: string }).code === "P2002") throw AppError.conflict("You already submitted an appeal for this decision"); throw error; }
     await auditService.log("APPEAL_SUBMITTED", { userId: appellant, targetTableName: "moderation_appeals", targetRecordId: row.id, details: { moderationActionId: action.id } });
-    await notificationService.create({ role: "admin", title: "Moderation appeal received", message: "A forum moderation decision is awaiting appeal review.", type: "FORUM_MODERATION" });
+    await notificationService.create({ role: "admin", title: "Moderation appeal received", message: "A forum moderation decision is awaiting appeal review.", type: "FORUM_APPEAL_RECEIVED" });
     return row;
   },
 
@@ -509,7 +509,7 @@ export const forumModerationService = {
     const changed = await getPrisma().copyrightClaim.updateMany({ where: { id: claim.id, emailVerificationTokenHash: hash, status: "PENDING_EMAIL_VERIFICATION", emailVerificationExpiresAt: { gt: new Date() } }, data: { status: "RECEIVED", emailVerifiedAt: new Date(), emailVerificationTokenHash: null } });
     if (!changed.count) throw AppError.badRequest("Verification token is invalid or expired");
     await auditService.log("COPYRIGHT_CLAIM_VERIFIED", { targetTableName: "copyright_claims", targetRecordId: claim.id, details: {} });
-    await notificationService.create({ role: "admin", title: "Copyright claim received", message: "A verified forum copyright claim is awaiting review.", type: "FORUM_MODERATION" });
+    await notificationService.create({ role: "admin", title: "Copyright claim received", message: "A verified forum copyright claim is awaiting review.", type: "FORUM_COPYRIGHT_RECEIVED" });
     return { accepted: true, id: publicDatabaseId(claim) };
   },
 

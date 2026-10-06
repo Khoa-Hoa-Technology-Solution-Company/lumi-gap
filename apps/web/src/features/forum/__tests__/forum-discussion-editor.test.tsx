@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { StaticRouter } from "react-router-dom/server";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ForumCategoryView } from "../api/forum.api";
 import { buildForumDiscussionInput, formatForumMarkdown, forumInitialDiscussionType, forumMarkdownShortcut, forumNewDiscussionHref, insertForumMarkdown, type ForumDiscussionDraft } from "../utils/forum-discussion-editor";
@@ -13,6 +14,7 @@ vi.mock("@/features/forum/hooks/use-forum", () => ({
   useForumContext: () => ({ data: { papers: [{ id: "paper", title: "Study", publicationYear: 2026 }], gaps: [{ id: "gap", title: "Candidate", forumShareable: false }], projects: [{ id: "project", title: "Project" }] }, isLoading: false, isError: false, refetch: vi.fn() }),
   useCreateForumPost: () => ({ isPending: state.pending, mutateAsync: vi.fn() }),
   useShareForumGap: () => ({ isPending: false, mutateAsync: vi.fn() }),
+  useForumPaperSearch: () => ({ data: [], isLoading: false, isError: false, refetch: vi.fn() }),
 }));
 vi.mock("@/features/forum/hooks/use-forum-categories", () => ({
   useForumCategories: () => ({ data: state.loading || state.error ? undefined : communities, isLoading: state.loading, isError: state.error, refetch: vi.fn() }),
@@ -21,8 +23,8 @@ vi.mock("@/features/forum/hooks/use-forum-categories", () => ({
 
 const joined: ForumCategoryView = { id: "joined", slug: "research-methodology", name: "Research Methodology", description: "", status: "ACTIVE", sortOrder: 0 };
 const communities = [joined, { ...joined, id: "pending", slug: "archived", name: "Archived category", status: "ARCHIVED" as const }];
-const draft: ForumDiscussionDraft = { type: "QUESTION", communityId: "joined", title: "  A research question  ", content: "  Evidence and methods.  ", tags: "methods, evidence, methods", linkedPaperId: "", linkedGapId: "", linkedProjectId: "", references: [] };
-const render = (url = "/forum/new") => renderToStaticMarkup(<StaticRouter location={url}><ForumNewPage /></StaticRouter>);
+const draft: ForumDiscussionDraft = { type: "QUESTION", communityId: "joined", title: "  A research question  ", content: "  Evidence and methods.  ", tags: "methods, evidence, methods", linkedPaperId: "", linkedGapId: "", references: [] };
+const render = (url = "/forum/new") => renderToStaticMarkup(<QueryClientProvider client={new QueryClient()}><StaticRouter location={url}><ForumNewPage /></StaticRouter></QueryClientProvider>);
 beforeEach(() => { state.loading = false; state.error = false; state.pending = false; });
 
 describe("New discussion composer", () => {
@@ -37,8 +39,10 @@ describe("New discussion composer", () => {
   it("uses one shared Forum shell with progressive actions and a real Markdown preview", () => {
     const markup = render();
     expect(markup).toContain("forum-workspace");
-    expect(markup).toContain(">Add citation<");
-    expect(markup).toContain(">Link research context<");
+    expect(markup).toContain('aria-label="More formatting"');
+    expect(markup).not.toContain("Link research context");
+    expect(markup).toContain('aria-label="Tags"');
+    expect(markup).toContain("Up to 5 tags");
     expect(markup).toContain(">Preview</button>");
     expect(markup).toContain('aria-label="Formatting"');
     expect(markup).toContain('for="discussion-title"');
@@ -46,7 +50,8 @@ describe("New discussion composer", () => {
     expect(markup).not.toContain("<main");
     expect(markup).not.toContain("rounded-3xl");
     expect(markup).toContain("forum-compose-tabs flex");
-    expect(markup).not.toContain('id="discussion-research-context"');
+    expect(markup).not.toContain('id="discussion-type-source"');
+    expect(markup).not.toContain("Linked Project");
     expect(markup).not.toContain('aria-label="Paper Citation Title"');
     expect(markup).not.toContain('aria-label="DOI"');
     const select = markup.match(/<select aria-label="Category"[^>]*>(.*?)<\/select>/)?.[1];
@@ -56,12 +61,19 @@ describe("New discussion composer", () => {
 
   it("exposes required research fields immediately for paper/gap discussions", () => {
     const paper = render("/forum/new?type=PAPER_DISCUSSION");
-    expect(paper).toContain('id="discussion-research-context"');
+    expect(paper).toContain('id="discussion-type-source"');
     expect(paper).toContain('aria-label="Linked Paper"');
     expect(paper).toContain('required=""');
+    expect(paper).not.toContain('aria-label="Candidate Research Gap"');
+    expect(paper).not.toContain("Linked Project");
     const gap = render("/forum/new?type=RESEARCH_GAP_DISCUSSION");
     expect(gap).toContain('aria-label="Candidate Research Gap"');
     expect(gap).toContain('required=""');
+    expect(gap).not.toContain('aria-label="Linked Paper"');
+    expect(gap).not.toContain("Linked Project");
+    const discussion = render("/forum/new?type=DISCUSSION");
+    expect(discussion).not.toContain('id="discussion-type-source"');
+    expect(discussion).not.toContain("Advanced project context");
   });
 
   it("shows honest loading/retry states and disables the form while publishing", () => {
@@ -144,11 +156,11 @@ long_identifier
 describe("Discussion submission contract", () => {
   it("keeps real creation DTOs, trims text and normalizes duplicate tags", () => {
     const result = buildForumDiscussionInput(draft, [joined], []);
-    expect(result).toEqual({ input: { type: "QUESTION", communityId: "joined", title: "A research question", content: "Evidence and methods.", tags: ["methods", "evidence"], linkedPaperId: undefined, linkedResearchGapId: undefined, linkedProjectId: undefined, references: [] } });
+    expect(result).toEqual({ input: { type: "QUESTION", communityId: "joined", title: "A research question", content: "Evidence and methods.", tags: ["methods", "evidence"], linkedPaperId: undefined, linkedResearchGapId: undefined, references: [] } });
   });
   it("requires an active category and valid title/body without membership", () => {
     expect(buildForumDiscussionInput(draft, [], [])).toHaveProperty("error");
-    for (const change of [{ title: "ab" }, { title: "a".repeat(241) }, { content: " " }, { content: "a".repeat(20001) }, { tags: "a".repeat(81) }, { tags: Array.from({ length: 13 }, (_, i) => `tag${i}`).join(",") }]) expect(buildForumDiscussionInput({ ...draft, ...change }, [joined], [])).toHaveProperty("error");
+    for (const change of [{ title: "ab" }, { title: "a".repeat(241) }, { content: " " }, { content: "a".repeat(20001) }, { tags: "a".repeat(81) }, { tags: Array.from({ length: 6 }, (_, i) => `tag${i}`).join(",") }]) expect(buildForumDiscussionInput({ ...draft, ...change }, [joined], [])).toHaveProperty("error");
   });
   it("retains required papers and gap-sharing checks without making private gaps public automatically", () => {
     expect(buildForumDiscussionInput({ ...draft, type: "PAPER_DISCUSSION" }, [joined], [])).toHaveProperty("error");
@@ -156,8 +168,22 @@ describe("Discussion submission contract", () => {
     expect(buildForumDiscussionInput({ ...draft, type: "RESEARCH_GAP_DISCUSSION", linkedGapId: "gap" }, [joined], [{ id: "gap", forumShareable: true }])).toHaveProperty("input.linkedResearchGapId", "gap");
   });
   it("sends attached indexed papers as ForumReferences without creating gap evidence", () => {
-    const result = buildForumDiscussionInput({ ...draft, references: [{ paperId: "paper", doi: "10.1145/abc", title: "Study", year: 2025, verified: true }] }, [joined], []);
-    expect(result).toHaveProperty("input.references", [{ paperId: "paper", doi: "10.1145/abc", title: "Study", year: 2025, verified: true }]);
+    const result = buildForumDiscussionInput({ ...draft, content: 'Evidence :cite[]{paperId="11111111-1111-4111-8111-111111111111"}.', references: [{ paperId: "11111111-1111-4111-8111-111111111111", doi: "10.1145/abc", title: "Study", year: 2025, verified: true }] }, [joined], []);
+    expect(result).toHaveProperty("input.references", [{ paperId: "11111111-1111-4111-8111-111111111111", doi: "10.1145/abc", title: "Study", year: 2025, authors: undefined, url: undefined }]);
     expect(buildForumDiscussionInput({ ...draft, references: [{ doi: "10.1145/abc" }] }, [joined], [])).toHaveProperty("error");
+  });
+  it("excludes hidden Paper/Gap links and legacy project context while keeping citations independent", () => {
+    const legacy = { ...draft, linkedPaperId: "paper", linkedGapId: "private-gap", linkedProjectId: "old-project" };
+    const question = buildForumDiscussionInput(legacy, [joined], []);
+    expect(question).toHaveProperty("input.linkedPaperId", undefined);
+    expect(question).toHaveProperty("input.linkedResearchGapId", undefined);
+    expect(question).not.toHaveProperty("input.linkedProjectId");
+    const paper = buildForumDiscussionInput({ ...legacy, type: "PAPER_DISCUSSION" }, [joined], []);
+    expect(paper).toHaveProperty("input.linkedPaperId", "paper");
+    expect(paper).toHaveProperty("input.linkedResearchGapId", undefined);
+    const gap = buildForumDiscussionInput({ ...legacy, type: "RESEARCH_GAP_DISCUSSION", linkedGapId: "gap" }, [joined], [{ id: "gap", forumShareable: true }]);
+    expect(gap).toHaveProperty("input.linkedPaperId", undefined);
+    expect(gap).toHaveProperty("input.linkedResearchGapId", "gap");
+    expect(buildForumDiscussionInput({ ...draft, tags: "one,two,three,four,five,ONE" }, [joined], [])).toHaveProperty("input.tags", ["one", "two", "three", "four", "five"]);
   });
 });

@@ -184,7 +184,7 @@ export function ForumReferenceItem({
       <span className="pt-0.5 tabular-nums text-muted-foreground">[{index}]</span>
       <div className="min-w-0 flex-1">
         <p className="font-medium leading-relaxed text-foreground">{reference.title || reference.doi || t("Academic Reference")}</p>
-        {reference.authors?.length || reference.year ? <p className="mt-0.5 text-[13px] text-muted-foreground">{[reference.authors?.join(", "), reference.year].filter(Boolean).join(" · ")}</p> : null}
+        {reference.authors?.length || reference.year || reference.venue ? <p className="mt-0.5 text-[13px] text-muted-foreground">{[reference.authors?.join(", "), reference.year, reference.venue].filter(Boolean).join(" · ")}</p> : null}
         <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-2 text-[13px]">
           {reference.paperId ? <Link to={`/papers/${reference.paperId}`} className="text-primary hover:underline">{t("View paper")}</Link> : null}
           {safeUrl ? <a href={safeUrl} target="_blank" rel="noopener noreferrer" className="inline-flex min-w-0 items-center gap-1 break-all text-primary hover:underline">{reference.doi ? "DOI: " + reference.doi : t("View source")}<ExternalLink className="h-3 w-3 shrink-0" /></a> : null}

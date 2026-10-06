@@ -10,7 +10,14 @@ type DirectiveNode = Node & { name?: string; attributes?: Record<string, string>
 /** Allowlisted native nodes, never an HTML parser and never links as sentinels. */
 export function remarkForumFormatting() {
   return (tree: Root) => {
+    const citations = new Map<string, number>();
     function visit(node: DirectiveNode) {
+      if (node.type === "textDirective" && node.name === "cite") {
+        const paperId = node.attributes?.paperId?.toLowerCase() ?? "";
+        if (!citations.has(paperId)) citations.set(paperId, citations.size + 1);
+        node.data = { hName: "span", hProperties: { "data-forum-citation": paperId, "data-citation-number": citations.get(paperId) } };
+        node.children = [];
+      }
       if (node.type === "textDirective" && (node.name === "small" || node.name === "spoiler")) node.data = { hName: node.name === "small" ? "small" : "span", hProperties: { className: [`forum-${node.name}`], ...(node.name === "spoiler" ? { "data-forum-spoiler": "true" } : {}) } };
       if (node.type === "containerDirective" && node.name === "details") {
         const summary = node.attributes?.summary?.slice(0, 240) || "Details";
