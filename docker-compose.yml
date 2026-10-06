@@ -1,41 +1,36 @@
 name: lumi-gap
 
-# Local/demo runtime for the whole web platform. Copy .env.compose.example to
-# .env.compose and replace every placeholder before starting it.
-#
-# This file intentionally keeps heavyweight workers behind Compose profiles:
-#   docker compose up --build
-#   docker compose --profile workers up --build
-#   docker compose --profile ingest up --build
-#
-# PostgreSQL + pgvector is the only application persistence layer.
+# Local production-style stack. Copy .env.example to .env and set GEMINI_API_KEY,
+# or run pnpm setup. Workers start by default; seed/translation/ingest are opt-in.
 
 x-backend-common: &backend-common
-  image: LumiGap-backend:local
-  build:
-    context: .
-    dockerfile: Dockerfile.backend
-  env_file:
-    - .env.compose
-    - .env
-  environment:
+  image: lumigap-backend:local
+  pull_policy: never
+  env_file: .env
+  environment: &backend-environment
     NODE_ENV: production
-    DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD_URI}@postgres:5432/${POSTGRES_DB}
+    PORT: 4000
+    DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
     PERSISTENCE_PROVIDER: postgresql
-    REDIS_URL: redis://default:${REDIS_PASSWORD_URI}@redis:6379
+    REDIS_URL: redis://default:${REDIS_PASSWORD}@redis:6379
     LIBRETRANSLATE_URL: http://libretranslate:5000
     AI_REVIEWER_URL: http://ai-reviewer:8001
-    INTERNAL_SERVICE_KEY: ${INTERNAL_SERVICE_KEY:?Set INTERNAL_SERVICE_KEY in .env.compose}
-    CORS_ORIGIN: http://localhost:8080,http://localhost:5173
-    GOOGLE_CALLBACK_URL: http://localhost:4000/api/v1/auth/google/callback
-  depends_on:
-    postgres:
-      condition: service_healthy
+    INTERNAL_SERVICE_KEY: ${INTERNAL_SERVICE_KEY:?Set INTERNAL_SERVICE_KEY in .env}
+    JWT_PRIVATE_KEY_PATH: /run/secrets/jwt-private.pem
+    JWT_PUBLIC_KEY_PATH: /run/secrets/jwt-public.pem
+    CORS_ORIGIN: http://localhost:${WEB_PORT:-8080},http://localhost:3000
+    GOOGLE_CALLBACK_URL: http://localhost:${API_PORT:-4000}/api/v1/auth/google/callback
+  depends_on: &backend-dependencies
+    migrate:
+      condition: service_completed_successfully
+    jwt-keys:
+      condition: service_completed_successfully
     redis:
       condition: service_healthy
   restart: unless-stopped
   volumes:
-    - ./apps/backend/.keys:/run/secrets:ro
+    - jwt-keys:/run/secrets:ro
+    - backend-uploads:/app/apps/backend/uploads
 
 services:
   # PostgreSQL + pgvector is the default application persistence layer.
@@ -47,9 +42,9 @@ services:
       # uses 5433 on the host while keeping the standard port inside Docker.
       - "127.0.0.1:${POSTGRES_HOST_PORT:-5433}:5432"
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env.compose}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.compose}
-      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in .env.compose}
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in .env}
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -63,9 +58,9 @@ services:
     image: redis:7-alpine
     restart: unless-stopped
     ports:
-      - "127.0.0.1:6379:6379"
+      - "127.0.0.1:${REDIS_HOST_PORT:-6379}:6379"
     environment:
-      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env.compose}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
     command:
       - sh
       - -c
@@ -114,13 +109,45 @@ services:
       retries: 20
       start_period: 120s
 
+  # One-shot initialization. Missing/invalid keys or failed migrations block API/workers.
+  jwt-keys:
+    image: lumigap-backend:local
+    pull_policy: never
+    command: ["node", "scripts/jwt-keys.mjs"]
+    volumes:
+      - jwt-keys:/run/secrets
+    restart: "no"
+
+  migrate:
+    <<: *backend-common
+    command: ["pnpm", "--filter", "backend", "db:migrate:deploy"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes: []
+    restart: "no"
+
+  seed:
+    <<: *backend-common
+    profiles: ["seed"]
+    environment:
+      <<: *backend-environment
+      NODE_ENV: development
+    command: ["pnpm", "--filter", "backend", "db:seed"]
+    restart: "no"
+
   backend:
     <<: *backend-common
+    # Build this shared image once; workers and one-shot services reuse it.
+    pull_policy: build
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
     ports:
-      - "4000:4000"
+      - "${API_PORT:-4000}:4000"
     volumes:
       - backend-uploads:/app/apps/backend/uploads
-      - ./apps/backend/.keys:/run/secrets:ro
+      - jwt-keys:/run/secrets:ro
     healthcheck:
       test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:4000/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))\""]
       interval: 15s
@@ -129,7 +156,7 @@ services:
       start_period: 20s
 
   web:
-    image: LumiGap-web:local
+    image: lumigap-web:local
     build:
       context: .
       dockerfile: Dockerfile.web
@@ -139,21 +166,19 @@ services:
       backend:
         condition: service_healthy
     ports:
-      - "8080:80"
+      - "${WEB_PORT:-8080}:80"
     restart: unless-stopped
 
   ai-reviewer:
-    image: LumiGap-ai-reviewer:local
+    image: lumigap-ai-reviewer:local
     build:
       context: ./apps/ai-reviewer
       dockerfile: Dockerfile
-    env_file:
-      - .env.compose
-      - .env
+    env_file: .env
     environment:
       REVIEW_APP_HOST: 0.0.0.0
       REVIEW_APP_PORT: 8001
-      INTERNAL_SERVICE_KEY: ${INTERNAL_SERVICE_KEY:?Set INTERNAL_SERVICE_KEY in .env.compose}
+      INTERNAL_SERVICE_KEY: ${INTERNAL_SERVICE_KEY:?Set INTERNAL_SERVICE_KEY in .env}
       GEMINI_API_KEY: ${GEMINI_API_KEY}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.6-flash}
       APP_ENV: development
@@ -174,43 +199,38 @@ services:
 
   worker-report:
     <<: *backend-common
-    profiles: ["workers"]
     command: ["pnpm", "--filter", "backend", "worker:report"]
 
   worker-gaps:
     <<: *backend-common
-    profiles: ["workers"]
     command: ["pnpm", "--filter", "backend", "worker:gaps"]
 
   worker-embedding:
     <<: *backend-common
-    profiles: ["workers"]
     command: ["pnpm", "--filter", "backend", "worker:embedding"]
 
   worker-paper-analysis:
     <<: *backend-common
-    profiles: ["workers"]
     command: ["pnpm", "--filter", "backend", "worker:paper-analysis"]
     volumes:
       - backend-uploads:/app/apps/backend/uploads:ro
-      - ./apps/backend/.keys:/run/secrets:ro
+      - jwt-keys:/run/secrets:ro
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      <<: *backend-dependencies
       ai-reviewer:
         condition: service_healthy
 
   worker-notifications:
     <<: *backend-common
-    profiles: ["workers"]
     command: ["pnpm", "--filter", "backend", "worker:notifications"]
 
   worker-corpus-validation:
     <<: *backend-common
-    profiles: ["workers"]
     command: ["pnpm", "--filter", "backend", "worker:corpus-validation"]
+
+  worker-community-summary:
+    <<: *backend-common
+    command: ["pnpm", "--filter", "backend", "worker:community-summary"]
 
   # The campaign is explicit and needs OPENALEX_API_KEY. It never starts a
   # campaign by itself; an admin must first plan and start one through the API.
@@ -220,6 +240,7 @@ services:
     command: ["pnpm", "--filter", "backend", "worker:openalex-ingest"]
 
 volumes:
+  jwt-keys:
   postgres-data:
   redis-data:
   libretranslate-share:

@@ -21,6 +21,15 @@ importers:
       '@types/node':
         specifier: ^22.10.0
         version: 22.19.19
+      cross-spawn:
+        specifier: ^7.0.6
+        version: 7.0.6
+      dotenv:
+        specifier: ^16.4.7
+        version: 16.6.1
+      dotenv-expand:
+        specifier: ^11.0.7
+        version: 11.0.7
       eslint:
         specifier: ^9.39.4
         version: 9.39.4(jiti@2.7.0)
@@ -81,6 +90,9 @@ importers:
       dotenv:
         specifier: ^16.4.7
         version: 16.6.1
+      dotenv-expand:
+        specifier: ^11.0.7
+        version: 11.0.7
       express:
         specifier: ^5.0.1
         version: 5.2.1

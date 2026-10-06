@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
+// This tests the allowlist, independently of a developer's root .env/ports.
+vi.mock("../../../config/env.js", () => ({
+  env: { CORS_ORIGIN: "http://localhost:3000,http://localhost:5173" },
+}));
+
 vi.mock("../../../infrastructure/redis.js", () => ({
   redis: { set: vi.fn(), getdel: vi.fn() },
 }));

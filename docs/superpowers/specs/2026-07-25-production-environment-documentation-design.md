@@ -13,11 +13,11 @@ The production runbook will explain:
 
 - the roles of DNS, OpenResty, Jenkins, Docker, and application environment
   variables;
-- the public URLs `https://LumiGap.uk` and
-  `https://api.LumiGap.uk/api/v1`;
+- the public URLs `https://lumigap.uk` and
+  `https://api.lumigap.uk/api/v1`;
 - how to prepare the backend production environment;
 - how to store that environment in the Jenkins Secret Text credential
-  `LumiGap-backend-env-b64`;
+  `lumigap-backend-env-b64`;
 - the required Jenkins build arguments and runtime overrides;
 - Google OAuth origin and callback configuration;
 - post-deployment health, CORS, API, and OAuth checks;
@@ -47,11 +47,11 @@ placeholder.
 - Safe local examples: `apps/backend/.env.example`.
 - Production deployment behavior: the Jenkins `User1/LumiGap` pipeline.
 - Public endpoints:
-  - Web: `https://LumiGap.uk`
-  - API: `https://api.LumiGap.uk/api/v1`
-  - Health: `https://api.LumiGap.uk/health`
+  - Web: `https://lumigap.uk`
+  - API: `https://api.lumigap.uk/api/v1`
+  - Health: `https://api.lumigap.uk/health`
   - Google callback:
-    `https://api.LumiGap.uk/api/v1/auth/google/callback`
+    `https://api.lumigap.uk/api/v1/auth/google/callback`
 
 ## Acceptance Criteria
 

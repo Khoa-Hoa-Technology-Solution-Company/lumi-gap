@@ -133,7 +133,7 @@ This document outlines the system verification test suite for the **Discovery & 
 #### TC5.1: Expired Gemini API Key Fallback
 *   **Objective**: Verify system recovers gracefully when vector search fails.
 *   **Steps**:
-    1. Configure an invalid `GEMINI_API_KEY` in `apps/backend/.env`.
+    1. Configure an invalid `GEMINI_API_KEY` in `root .env`.
     2. Run a semantic search at `/search`.
 *   **Expected Result**:
     *   Search page displays a glassmorphic red warning banner notifying about the expired key.
