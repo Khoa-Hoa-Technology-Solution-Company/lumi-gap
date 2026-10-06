@@ -1,6 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 import { env } from "../../config/env.js";
 import { logger } from "../../infrastructure/logger.js";
+import { AppError } from "../../common/exceptions/app-error.js";
 
 /**
  * Thin singleton wrapper around the Google GenAI SDK.
@@ -12,6 +13,59 @@ import { logger } from "../../infrastructure/logger.js";
  * future cost tracking live in one place.
  */
 const client = new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
+
+function exhaustedQuota(error: unknown, model: string): LlmQuotaError | undefined {
+  const providerError = (error ?? {}) as { status?: number; message?: string };
+  if (providerError.status !== 429) return undefined;
+  try {
+    const body = JSON.parse(providerError.message ?? "") as {
+      error?: { details?: Array<{ retryDelay?: string; violations?: Array<{ quotaId?: string; quotaValue?: string }> }> };
+    };
+    const details = body.error?.details ?? [];
+    const violations = details.flatMap((detail) => detail.violations ?? []);
+    const zeroQuota = violations.some((violation) => violation.quotaValue === "0");
+    const dailyQuota = violations.some((violation) => /PerDay|Daily|PerMonth/i.test(violation.quotaId ?? ""));
+    if (!zeroQuota && !dailyQuota) return undefined;
+    const seconds = Number.parseFloat(details.find((detail) => detail.retryDelay)?.retryDelay ?? "");
+    const wait = Number.isFinite(seconds) && seconds > 0 ? ` (about ${Math.ceil(seconds / 3600)} hours)` : "";
+    return new LlmQuotaError(zeroQuota
+      ? `Gemini quota is unavailable for ${model}. Configure an API key from a project with available quota or enable billing.`
+      : `Gemini daily or monthly quota is exhausted for ${model}. Retry after the quota resets${wait}, or configure an API key from a project with available quota.`);
+  } catch { return undefined; }
+}
+
+/** Quota that cannot recover during this job; safe to display in HTTP and index errors. */
+export class LlmQuotaError extends AppError {
+  readonly nonRetryable = true;
+  constructor(message: string) {
+    super(429, "LLM_QUOTA_EXHAUSTED", message);
+    this.name = "LlmQuotaError";
+  }
+}
+
+function generationRetryDelay(error: unknown, attempt: number): number | undefined {
+  const providerError = (error ?? {}) as { status?: number; message?: string };
+  const backoff = 1000 * 2 ** attempt;
+  if (providerError.status === 503) return backoff;
+  if (providerError.status !== 429) return undefined;
+  // A per-minute limit can recover within a request; a daily/zero quota cannot.
+  try {
+    const body = JSON.parse(providerError.message ?? "") as {
+      error?: { details?: Array<{ retryDelay?: string; violations?: Array<{ quotaId?: string; quotaValue?: string }> }> };
+    };
+    const details = body.error?.details ?? [];
+    const violations = details.flatMap((detail) => detail.violations ?? []);
+    if (violations.some((violation) => /PerDay|Daily|PerMonth/i.test(violation.quotaId ?? "") || violation.quotaValue === "0")) return undefined;
+    if (violations.some((violation) => /PerMinute|PerSecond/i.test(violation.quotaId ?? ""))) {
+      const retrySeconds = Number.parseFloat(details.find((detail) => detail.retryDelay)?.retryDelay ?? "");
+      if (!Number.isFinite(retrySeconds)) return undefined;
+      const delay = Math.ceil(retrySeconds * 1000) + 1000;
+      return delay <= 60000 ? Math.max(backoff, delay) : undefined;
+    }
+  } catch { /* Older provider errors may contain only a message. */ }
+  const message = String(providerError.message ?? error).toLowerCase();
+  return /quota exceeded|exceeded your current quota|free_tier_requests|resource_exhausted/.test(message) ? undefined : backoff;
+}
 
 export interface GenerateOptions {
   /** Override the default model. Default: GEMINI_MODEL_FAST. */
@@ -56,15 +110,30 @@ export async function generateText(prompt: string, opts: GenerateOptions = {}): 
   const maxOutputTokens = opts.maxOutputTokens ?? 1024;
   const t0 = Date.now();
   try {
-    const result = await client.models.generateContent({
+    const request = {
       model,
       contents: prompt,
       config: {
         systemInstruction: opts.system,
         temperature: opts.temperature ?? 0.4,
         maxOutputTokens,
+        httpOptions: { timeout: 60000 },
       },
-    });
+    };
+    const result = await (async () => {
+      for (let attempt = 0; ; attempt++) {
+        try {
+          return await client.models.generateContent(request);
+        } catch (error) {
+          const quotaError = exhaustedQuota(error, model);
+          if (quotaError) throw quotaError;
+          const delayMs = generationRetryDelay(error, attempt);
+          if (attempt >= 2 || delayMs === undefined) throw error;
+          logger.warn({ model, attempt: attempt + 1, delayMs }, "gemini temporarily unavailable; retrying");
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+        }
+      }
+    })();
     // result.text silently returns the PARTIAL text when the model ran out of
     // output budget — detect and fail fast rather than hand back broken JSON.
     const finishReason = String(result.candidates?.[0]?.finishReason ?? "");
