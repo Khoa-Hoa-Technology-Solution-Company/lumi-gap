@@ -3,6 +3,8 @@ import { AppError } from "../../common/exceptions/app-error.js";
 import type { CreateBookmarkInput, UpdateBookmarkInput } from "./dto/bookmark.schema.js";
 import { parseDatabaseId, publicDatabaseId } from "../../infrastructure/database/database-id.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
+import { paperService } from "../papers/paper.service.js";
+import { reportService } from "../reports/report.service.js";
 
 export const bookmarkService = {
   async create(userId: string, input: CreateBookmarkInput): Promise<Bookmark> {
@@ -55,12 +57,25 @@ export const bookmarkService = {
       const results: Bookmark[] = [];
       for (const doc of docs) {
         const kind = doc.paperId ? "paper" as const : "report" as const;
-        const target = doc.paperId
-          ? await prisma.paper.findUnique({ where: { id: doc.paperId }, select: { id: true, legacyMongoId: true } })
-          : doc.reportId
-            ? await prisma.report.findUnique({ where: { id: doc.reportId }, select: { id: true, legacyMongoId: true } })
-            : null;
-        if (target) results.push(postgresBookmarkDto(doc, user, kind, target));
+        const targetId = doc.paperId ?? doc.reportId;
+        if (!targetId) continue;
+        const target = await postgresRecord(kind, targetId);
+        if (!target) continue;
+        const bookmark = postgresBookmarkDto(doc, user, kind, target);
+        if (kind === "paper") {
+          const paper = await paperService.getById(targetId, { userId });
+          if (!paper) continue;
+          bookmark.paperDetail = paper;
+        } else {
+          try {
+            // Use the report's access checks before returning private content.
+            bookmark.reportDetail = await reportService.getById(userId, targetId);
+          } catch (error) {
+            if (error instanceof AppError && error.statusCode === 404) continue;
+            throw error;
+          }
+        }
+        results.push(bookmark);
       }
       return results;
     }
