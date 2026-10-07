@@ -142,18 +142,25 @@ valid provider credentials. Health checks do not verify an external AI provider.
 
 ## Rate limits and horizontal scaling
 
-Every `express-rate-limit` limiter in the backend (`semanticSearchLimiter`,
-`rerankLimiter`, the forum limiters and `suggestionLimiter`) uses the default
-in-memory store, so counters are kept **per process**. With N backend instances
-behind a load balancer the effective ceiling is roughly N times the configured
-value (`SEMANTIC_SEARCH_MAX_PER_MINUTE`, `COMMUNITY_SUGGEST_MAX_PER_MINUTE`, ...).
+Every rate limiter in the backend is created through `createRateLimiter()`
+(`apps/backend/src/common/middleware/rate-limit.ts`). By default the counters
+live in the **memory** of each process, so with N backend instances behind a load
+balancer the effective ceiling is roughly N times the configured value
+(`SEMANTIC_SEARCH_MAX_PER_MINUTE`, `COMMUNITY_SUGGEST_MAX_PER_MINUTE`, ...).
 These limiters exist mainly to protect the shared Gemini quota, so the multiplier
 matters.
 
-Before running more than one backend instance, move the limiters to a shared
-store backed by the Redis already in the stack (for example `rate-limit-redis`).
-That change needs its own issue; the current single-instance deployment is
-unaffected.
+When you run more than one backend instance, set `RATE_LIMIT_STORE=redis` in the
+root `.env`. Counters are then kept in the stack's Redis under `rl:<limiter>:*`
+keys and shared by all instances. If Redis fails, requests are let through
+(`passOnStoreError`) instead of returning a 500, so the limit is only
+best-effort during an outage.
+
+Leave it at the default (`memory`) for a single instance, and **do not enable it
+on the hosted Upstash free tier**: that plan allows about 10K commands per day
+and every rate-limited request costs one or two Redis commands, which would use
+up the quota that BullMQ and the LLM cache also depend on. Use a local or paid
+Redis when you turn it on.
 
 `app.ts` sets `trust proxy` to 1, so limiters that key on `req.ip` see the real
 client address when the backend runs behind a single reverse proxy.

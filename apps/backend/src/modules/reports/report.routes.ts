@@ -1,5 +1,5 @@
 import { Router } from "express";
-import rateLimit from "express-rate-limit";
+import { createRateLimiter } from "../../common/middleware/rate-limit.js";
 import { env } from "../../config/env.js";
 import { requireAuth } from "../../common/middleware/auth.js";
 import { validate } from "../../common/middleware/validate.js";
@@ -23,7 +23,7 @@ reportRouter.use(requireAuth);
  * the service bounds CONCURRENT work; this bounds work per hour so one account
  * can't drain the team's daily Gemini quota by submit-wait-submit looping.
  */
-const createReportLimiter = rateLimit({
+const createReportLimiter = createRateLimiter("reports:createReportLimiter", {
   windowMs: 60 * 60 * 1000,
   limit: env.REPORT_MAX_PER_HOUR,
   standardHeaders: true,

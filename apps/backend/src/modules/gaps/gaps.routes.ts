@@ -1,5 +1,5 @@
 import { Router } from "express";
-import rateLimit from "express-rate-limit";
+import { createRateLimiter } from "../../common/middleware/rate-limit.js";
 import { env } from "../../config/env.js";
 import { requireAuth } from "../../common/middleware/auth.js";
 import { validate } from "../../common/middleware/validate.js";
@@ -27,7 +27,7 @@ gapsRouter.use(requireAuth);
  * so this bounds work per hour to keep the team inside the Gemini free-tier quota
  * (mirrors the report-creation limiter).
  */
-const analyzeGapLimiter = rateLimit({
+const analyzeGapLimiter = createRateLimiter("gaps:analyzeGapLimiter", {
   windowMs: 60 * 60 * 1000,
   limit: env.GAPS_MAX_PER_HOUR,
   standardHeaders: true,
@@ -43,7 +43,7 @@ const analyzeGapLimiter = rateLimit({
     }),
 });
 
-const evidencePreviewLimiter = rateLimit({
+const evidencePreviewLimiter = createRateLimiter("gaps:evidencePreviewLimiter", {
   windowMs: 60 * 60 * 1000,
   limit: Math.max(env.GAPS_MAX_PER_HOUR * 5, 10),
   standardHeaders: true,
@@ -60,7 +60,7 @@ const evidencePreviewLimiter = rateLimit({
 });
 
 /** Per-user throttle for the directions LLM call — protects the Gemini free-tier quota. */
-const directionsLimiter = rateLimit({
+const directionsLimiter = createRateLimiter("gaps:directionsLimiter", {
   windowMs: 60 * 60 * 1000,
   limit: env.DIRECTIONS_MAX_PER_HOUR,
   standardHeaders: true,

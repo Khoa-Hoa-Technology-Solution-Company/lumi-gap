@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from "express";
-import rateLimit from "express-rate-limit";
+import { createRateLimiter } from "../../common/middleware/rate-limit.js";
 import { requireAuth } from "../../common/middleware/auth.js";
 import { validate } from "../../common/middleware/validate.js";
 import { authController } from "./auth.controller.js";
@@ -25,21 +25,21 @@ import { parseDatabaseId, publicDatabaseId } from "../../infrastructure/database
 export const authRouter: Router = Router();
 
 const isDev = process.env.NODE_ENV !== "production";
-const credentialLimiter = rateLimit({
+const credentialLimiter = createRateLimiter("auth:credentialLimiter", {
   windowMs: 15 * 60_000,
   limit: isDev ? 1000 : 30,
   standardHeaders: "draft-7",
   legacyHeaders: false,
   message: { success: false, error: { code: "TOO_MANY_REQUESTS", message: "Too many login attempts. Please try again in 15 minutes." } },
 });
-const tokenLimiter = rateLimit({
+const tokenLimiter = createRateLimiter("auth:tokenLimiter", {
   windowMs: 15 * 60_000,
   limit: isDev ? 2000 : 120,
   standardHeaders: "draft-7",
   legacyHeaders: false,
   message: { success: false, error: { code: "TOO_MANY_REQUESTS", message: "Too many requests. Please try again later." } },
 });
-const recoveryLimiter = rateLimit({
+const recoveryLimiter = createRateLimiter("auth:recoveryLimiter", {
   windowMs: 60 * 60_000,
   limit: isDev ? 500 : 15,
   standardHeaders: "draft-7",
