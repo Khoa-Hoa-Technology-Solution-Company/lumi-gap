@@ -18,17 +18,21 @@ interface SubmitReviewDialogProps {
 
 const sourceLabel = { SYSTEM: "LumiGap Templates", PERSONAL: "My Templates", PROJECT: "Project Templates" } as const;
 
+const DEFAULT_DUE_DAYS = 14;
+const MAX_DUE_DAYS = 180; // backend limit
+
 export function SubmitReviewDialog({ reportId, submissionId, artifactTitle, artifactType, trigger, onSubmitted }: SubmitReviewDialogProps) {
   const [open, setOpen] = useState(false);
   const [templateVersionId, setTemplateVersionId] = useState("");
   const [reviewerId, setReviewerId] = useState("");
   const [search, setSearch] = useState("");
   const [message, setMessage] = useState("");
-  const [dueAt, setDueAt] = useState("");
+  const dateInput = (days: number) => { const date = new Date(); date.setDate(date.getDate() + days); return date.toISOString().slice(0, 10); };
+  const [dueAt, setDueAt] = useState(() => dateInput(DEFAULT_DUE_DAYS));
   const [preview, setPreview] = useState(false);
   const deferredSearch = useDeferredValue(search);
   const templates = useReviewTemplates();
-  const reviewers = useReviewerCandidates(deferredSearch);
+  const reviewers = useReviewerCandidates(deferredSearch, { reportId, submissionId });
   const create = useCreateReviewRequest();
   const grouped = useMemo(() => {
     const rows = (templates.data ?? []).filter((item) => item.status === "PUBLISHED" && item.activeVersion && (!artifactType || !item.artifactType || item.artifactType === artifactType || (item.artifactType === "MANUSCRIPT" && ["RESEARCH_PAPER", "THESIS_DRAFT", "SOFTWARE_RESEARCH_PROJECT"].includes(artifactType))));
@@ -39,11 +43,12 @@ export function SubmitReviewDialog({ reportId, submissionId, artifactTitle, arti
 
   async function submit() {
     if (!templateVersionId || !reviewerId) return toast.error("Select a review template and reviewer");
+    if (!dueAt) return toast.error("Select a due date for the review");
     try {
       await create.mutateAsync({
         reportId, submissionId, reviewerId, templateVersionId,
         message: message.trim() || undefined,
-        dueAt: dueAt ? new Date(`${dueAt}T23:59:59`).toISOString() : undefined,
+        dueAt: new Date(`${dueAt}T23:59:59`).toISOString(),
       });
       toast.success("Review request sent");
       setOpen(false);
@@ -71,7 +76,7 @@ export function SubmitReviewDialog({ reportId, submissionId, artifactTitle, arti
           {selectedReviewer && !selectedReviewer.availableForReview ? <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">This reviewer has the required capability but is not currently advertising open availability. They may still decline.</p> : null}
         </fieldset>
 
-        <div className="grid gap-4 sm:grid-cols-2"><label className="text-sm font-medium">Optional message<textarea value={message} onChange={(event) => setMessage(event.target.value)} maxLength={3000} className="mt-2 min-h-24 w-full rounded-md border bg-background px-3 py-2 text-sm" placeholder="Context or focus for the reviewer" /></label><label className="text-sm font-medium">Optional due date<div className="relative mt-2"><CalendarDays className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input type="date" min={new Date().toISOString().slice(0, 10)} value={dueAt} onChange={(event) => setDueAt(event.target.value)} className="pl-9" /></div></label></div>
+        <div className="grid gap-4 sm:grid-cols-2"><label className="text-sm font-medium">Optional message<textarea value={message} onChange={(event) => setMessage(event.target.value)} maxLength={3000} className="mt-2 min-h-24 w-full rounded-md border bg-background px-3 py-2 text-sm" placeholder="Context or focus for the reviewer" /></label><label className="text-sm font-medium">Due date<div className="relative mt-2"><CalendarDays className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input type="date" required min={dateInput(0)} max={dateInput(MAX_DUE_DAYS - 1)} value={dueAt} onChange={(event) => setDueAt(event.target.value)} className="pl-9" /></div><span className="mt-1 block text-xs font-normal text-muted-foreground">Once the reviewer accepts, you can only cancel after this date.</span></label></div>
       </div>
       <DialogFooter><Button type="button" variant="ghost" onClick={() => setOpen(false)}>Cancel</Button><Button type="button" onClick={submit} disabled={!templateVersionId || !reviewerId || create.isPending}>{create.isPending ? "Sending…" : "Send review request"}</Button></DialogFooter>
     </DialogContent>

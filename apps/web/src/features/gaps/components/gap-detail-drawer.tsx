@@ -10,16 +10,22 @@ import {
   ArrowUpRight,
   MessageSquare,
   Users,
-  BookOpen
+  BookOpen,
+  CheckCircle2,
+  XCircle,
+  Undo2,
+  Loader2,
+  FilePlus2
 } from "lucide-react";
+import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
 import { GapOrigin } from "./gap-origin";
 import { GapDirectionsPanel } from "./gap-directions";
 import { AiEvaluation } from "@/components/ai-evaluation";
-import { useGapCommunityDiscussions } from "../hooks/use-gaps";
-import type { ResearchGapItem } from "@trend/shared-types";
+import { useGapCommunityDiscussions, usePatchGapStatus } from "../hooks/use-gaps";
+import type { GapStatus, ResearchGapItem } from "@trend/shared-types";
 import { cn } from "@/utils/cn";
 import { useI18n } from "@/i18n";
 import { formatNumber } from "@/utils/format";
@@ -29,12 +35,25 @@ interface GapDetailDrawerProps {
   gap: ResearchGapItem | null;
   isOpen: boolean;
   onClose: () => void;
+  /** When set (project context), shows a button that turns this gap into a research proposal draft. */
+  onDraftProposal?: (gap: ResearchGapItem) => void;
 }
 
-export function GapDetailDrawer({ gap, isOpen, onClose }: GapDetailDrawerProps) {
+export function GapDetailDrawer({ gap, isOpen, onClose, onDraftProposal }: GapDetailDrawerProps) {
   const { t } = useI18n();
   const community = useGapCommunityDiscussions(gap?.id);
+  const { mutateAsync: patchStatus, isPending: isPatching } = usePatchGapStatus();
   if (!gap) return null;
+
+  const handleUpdateStatus = async (status: GapStatus) => {
+    try {
+      await patchStatus({ id: gap.id, status });
+      toast.success(t("Opportunity marked as {{status}}", { status: t(status) }));
+      onClose();
+    } catch (err: any) {
+      toast.error(err.response?.data?.error?.message || t("Failed to update opportunity status."));
+    }
+  };
   const supportingPaperIds = new Set(gap.supportingPaperIds);
 
   // Determine evidence status visual mapping
@@ -109,6 +128,32 @@ export function GapDetailDrawer({ gap, isOpen, onClose }: GapDetailDrawerProps) 
                     {strengthTooltip}
                   </span>
                 </div>
+
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  {onDraftProposal && (
+                    <Button size="sm" disabled={isPatching} onClick={() => onDraftProposal(gap)} className="h-8 gap-1.5 text-xs">
+                      <FilePlus2 className="h-3.5 w-3.5" />
+                      {t("Draft research proposal")}
+                    </Button>
+                  )}
+                  {gap.status === "active" ? (
+                    <>
+                      <Button size="sm" variant="outline" disabled={isPatching} onClick={() => handleUpdateStatus("resolved")} className="h-8 gap-1.5 text-xs">
+                        {isPatching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />}
+                        {t("Mark as Resolved")}
+                      </Button>
+                      <Button size="sm" variant="outline" disabled={isPatching} onClick={() => handleUpdateStatus("dismissed")} className="h-8 gap-1.5 text-xs">
+                        {isPatching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <XCircle className="h-3.5 w-3.5 text-rose-600" />}
+                        {t("Dismiss opportunity")}
+                      </Button>
+                    </>
+                  ) : (
+                    <Button size="sm" variant="outline" disabled={isPatching} onClick={() => handleUpdateStatus("active")} className="h-8 gap-1.5 text-xs">
+                      {isPatching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Undo2 className="h-3.5 w-3.5 text-blue-600" />}
+                      {t("Restore to Active")}
+                    </Button>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -141,6 +186,15 @@ export function GapDetailDrawer({ gap, isOpen, onClose }: GapDetailDrawerProps) 
               </h3>
               {gap.probe ? (
                 <div className="bg-slate-50/50 dark:bg-slate-900/10 border border-slate-100 dark:border-slate-800/60 rounded-2xl p-4 space-y-4">
+                  {gap.lowSample && (
+                    <div className="flex gap-2 rounded-xl border border-amber-200/70 bg-amber-50 p-3 text-xs leading-relaxed text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300">
+                      <AlertCircle className="size-4 shrink-0 mt-0.5" />
+                      <span>
+                        <strong>{t("Low sample")}.</strong>{" "}
+                        {t("A probe topic has too few matching papers, so this evidence score is not reliable yet. Add related papers and re-run the analysis.")}
+                      </span>
+                    </div>
+                  )}
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
                       <span className="text-[10px] text-slate-400 font-bold uppercase block">{t("Topic Concept A")}</span>

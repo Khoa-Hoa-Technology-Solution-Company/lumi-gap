@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canAccessGap, toGapListItem } from "../gap-presenter.js";
+import { canAccessGap, isGapLowSample, toGapListItem } from "../gap-presenter.js";
 
 describe("canAccessGap", () => {
   it("allows the gap owner", () => {
@@ -156,5 +156,13 @@ describe("toGapListItem", () => {
 
     expect(item.evidencePaperIds).toEqual(["paper-1"]);
     expect(item.evidencePapers).toHaveLength(1);
+  });
+});
+
+describe("isGapLowSample", () => {
+  it("flags gaps whose smaller probe topic is under the threshold", () => {
+    expect(isGapLowSample({ parentCounts: { a: 1, b: 40 } }, 5)).toBe(true);
+    expect(isGapLowSample({ parentCounts: { a: 5, b: 40 } }, 5)).toBe(false);
+    expect(isGapLowSample({}, 5)).toBe(false);
   });
 });

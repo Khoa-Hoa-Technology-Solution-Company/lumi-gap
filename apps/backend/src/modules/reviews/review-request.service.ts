@@ -9,9 +9,35 @@ import { normalizeEmail } from "../identity/identity-foundation.rules.js";
 import { notificationService } from "../notifications/notification.service.js";
 import { createOpaqueToken, hashOpaqueToken } from "../auth/token.service.js";
 import { hydrateReviewTemplateVersion } from "./review-template.service.js";
-import { canCancelReviewRequest, canResubmitReviewRequest, canViewReviewRequest, eligiblePeerReviewer } from "./academic-review.rules.js";
+import { ACTIVE_REVIEW_REQUEST_STATUSES } from "./review.constants.js";
+import type { Prisma } from "../../generated/prisma/client.js";
+import { canCancelReviewRequest, canResubmitReviewRequest, canReviewerDeclineRequest, canViewReviewRequest, eligiblePeerReviewer, reviewDeadline } from "./academic-review.rules.js";
 
-const ACTIVE_REQUEST_STATUSES = ["REQUESTED", "ACCEPTED", "IN_REVIEW", "SUBMITTED", "REVISION_REQUESTED", "RESUBMITTED"];
+const ACTIVE_REQUEST_STATUSES = ACTIVE_REVIEW_REQUEST_STATUSES;
+
+/** Cancelled/declined requests hand the artifact back to DRAFT when no review is active or completed. */
+async function releaseArtifactReviewing(tx: Prisma.TransactionClient, submissionId: string, actorId: string) {
+  const submission = await tx.submission.findUnique({ where: { id: submissionId }, select: { sourceReportId: true, projectId: true } });
+  if (!submission?.sourceReportId) return;
+  const report = await tx.report.findUnique({ where: { id: submission.sourceReportId } });
+  if (!report || report.artifactStatus !== "REVIEWING") return;
+  const [active, completed] = await Promise.all([
+    tx.reviewRequest.count({ where: { submissionId, status: { in: ACTIVE_REQUEST_STATUSES } } }),
+    tx.reviewRequest.count({ where: { submissionId, status: "COMPLETED" } }),
+  ]);
+  if (active > 0 || completed > 0) return;
+  await tx.report.update({ where: { id: report.id }, data: { artifactStatus: "DRAFT" } });
+  await tx.projectActivity.create({ data: { projectId: submission.projectId, actorId, type: "REPORT_STATUS_CHANGED", entityKind: "REPORT", entityId: publicDatabaseId(report), metadata: { title: report.topic ?? report.query, artifactStatus: "DRAFT" } } });
+}
+
+/** A report-backed artifact enters REVIEWING as soon as a review request exists. */
+async function markArtifactReviewing(tx: Prisma.TransactionClient, submission: { sourceReportId: string | null; projectId: string }, actorId: string) {
+  if (!submission.sourceReportId) return;
+  const report = await tx.report.findUnique({ where: { id: submission.sourceReportId } });
+  if (!report || report.artifactStatus === "REVIEWING") return;
+  await tx.report.update({ where: { id: report.id }, data: { artifactStatus: "REVIEWING" } });
+  await tx.projectActivity.create({ data: { projectId: submission.projectId, actorId, type: "REPORT_STATUS_CHANGED", entityKind: "REPORT", entityId: publicDatabaseId(report), metadata: { title: report.topic ?? report.query, artifactStatus: "REVIEWING" } } });
+}
 const EXTERNAL_REVIEW_INVITATION_DAYS = 14;
 type CreateExternalReviewInvitationInput = Omit<CreateReviewRequestInput, "reviewerId"> & { reviewerEmail: string };
 
@@ -152,7 +178,10 @@ async function summary(row: Awaited<ReturnType<typeof requestRecord>>, viewerId?
     prisma.submissionRevision.findUniqueOrThrow({ where: { id: row.artifactRevisionId } }),
     prisma.humanReview.findMany({ where: { assignmentId: (await assignmentForRequest(row.id)).id, ...(viewerId === (await assignmentForRequest(row.id)).reviewerId ? {} : { status: "SUBMITTED" }) }, orderBy: { roundNumber: "asc" } }),
   ]);
-  const reviewer = await prisma.user.findUniqueOrThrow({ where: { id: assignment.reviewerId }, select: { id: true, fullName: true, avatarUrl: true, institution: true } });
+  const [reviewer, sourceReport] = await Promise.all([
+    prisma.user.findUniqueOrThrow({ where: { id: assignment.reviewerId }, select: { id: true, fullName: true, avatarUrl: true, institution: true } }),
+    submission.sourceReportId ? prisma.report.findUnique({ where: { id: submission.sourceReportId }, select: { id: true, legacyMongoId: true } }) : null,
+  ]);
   return {
     id: publicDatabaseId(row), status: row.status, message: row.message ?? undefined, dueAt: row.dueAt ?? undefined,
     createdAt: row.createdAt, updatedAt: row.updatedAt, completedAt: row.completedAt ?? undefined,
@@ -161,7 +190,7 @@ async function summary(row: Awaited<ReturnType<typeof requestRecord>>, viewerId?
     artifact: {
       submissionId: publicDatabaseId(submission), title: submission.title, type: submission.submissionType,
       projectId: submission.projectId, revisionId: publicDatabaseId(revision), revisionNumber: revision.revisionNumber,
-      contentType: revision.contentType,
+      contentType: revision.contentType, sourceReportId: sourceReport ? publicDatabaseId(sourceReport) : undefined,
     },
     latestReview: reviews.at(-1) ? {
       id: publicDatabaseId(reviews.at(-1)!), roundNumber: reviews.at(-1)!.roundNumber,
@@ -244,15 +273,28 @@ export const reviewRequestService = {
     return { id: invitation.id, token, expiresAt: expiresAt.toISOString(), reviewerEmail };
   },
 
-  async reviewerCandidates(actorInput: string, query?: string) {
+  async reviewerCandidates(actorInput: string, query?: string, scope: { reportId?: string; submissionId?: string } = {}) {
     const actor = await resolveUser(actorInput);
+    // Owners and active members of the artifact's project are rejected at request time, so do not offer them.
+    const scopedProjectId = scope.reportId
+      ? (await getPrisma().report.findFirst({ where: whereId(scope.reportId), select: { projectId: true } }))?.projectId
+      : scope.submissionId ? (await getPrisma().submission.findFirst({ where: whereId(scope.submissionId), select: { projectId: true } }))?.projectId : null;
+    const contributorIds = new Set<string>();
+    if (scopedProjectId) {
+      const [project, members] = await Promise.all([
+        getPrisma().project.findUnique({ where: { id: scopedProjectId }, select: { ownerId: true } }),
+        getPrisma().projectMember.findMany({ where: { projectId: scopedProjectId, status: "ACTIVE" }, select: { userId: true } }),
+      ]);
+      if (project) contributorIds.add(project.ownerId);
+      for (const member of members) contributorIds.add(member.userId);
+    }
     const capabilities = await getPrisma().academicProfile.findMany({
       where: { academicRole: { in: ["LECTURER", "RESEARCHER"] }, roleVerificationStatus: "VERIFIED" },
       select: { userId: true }, take: 100,
     });
     const users = await getPrisma().user.findMany({
       where: {
-        id: { in: capabilities.map((item) => item.userId).filter((id) => id !== actor.id) }, isActive: true, accountStatus: "ACTIVE",
+        id: { in: capabilities.map((item) => item.userId).filter((id) => id !== actor.id && !contributorIds.has(id)) }, isActive: true, accountStatus: "ACTIVE",
         ...(query ? { OR: [{ fullName: { contains: query, mode: "insensitive" } }, { institution: { contains: query, mode: "insensitive" } }] } : {}),
       },
       select: { id: true, legacyMongoId: true, fullName: true, avatarUrl: true, institution: true }, take: 30,
@@ -302,6 +344,7 @@ export const reviewRequestService = {
         conflictChecks: { selfOrAuthor: false, projectContributor: false, checkedAt: new Date().toISOString() },
       } });
       await tx.submission.update({ where: { id: submission.id }, data: { status: "under_review" } });
+      await markArtifactReviewing(tx, submission, actor.id);
       return { request, assignment };
     });
     await Promise.all([
@@ -360,7 +403,7 @@ export const reviewRequestService = {
     });
     await Promise.all([
       auditService.log("REVIEW_REQUEST_ACCEPTED", { userId: actor.id, targetTableName: "review_requests", targetRecordId: request.id }),
-      notificationService.create({ userId: request.requesterId, title: "Review request accepted", message: `${actor.fullName} accepted your academic review request.`, type: "REVIEW_REQUEST_ACCEPTED", targetKind: "project", targetId: request.projectId }),
+      notificationService.create({ userId: request.requesterId, title: "Review request accepted", message: `${actor.fullName} accepted your academic review request.`, type: "REVIEW_REQUEST_ACCEPTED", targetKind: "review_request", targetId: request.id }),
     ]);
   },
 
@@ -414,6 +457,7 @@ export const reviewRequestService = {
         conflictChecks: { selfOrAuthor: false, projectContributor: false, checkedAt: now.toISOString() },
       } });
       await tx.submission.updateMany({ where: { id: submission.id, status: { in: ["submitted", "ready_for_review", "revised"] } }, data: { status: "under_review" } });
+      await markArtifactReviewing(tx, submission, invitation.requesterId);
       return { request, assignment };
     });
     await Promise.all([
@@ -428,8 +472,8 @@ export const reviewRequestService = {
         title: "External review invitation accepted",
         message: `${actor.fullName} accepted your academic review invitation.`,
         type: "REVIEW_REQUEST_ACCEPTED",
-        targetKind: "project",
-        targetId: invitation.projectId,
+        targetKind: "review_request",
+        targetId: created.request.id,
       }),
     ]);
     return summary(created.request);
@@ -438,32 +482,52 @@ export const reviewRequestService = {
   async decline(requestInput: string, actorInput: string, reason?: string) {
     const actor = await resolveUser(actorInput); const request = await requestRecord(requestInput); const assignment = await assignmentForRequest(request.id);
     if (assignment.reviewerId !== actor.id) throw AppError.forbidden();
-    if (request.status !== "REQUESTED") throw AppError.conflict("This review request can no longer be declined");
+    const submittedReviews = await getPrisma().humanReview.count({ where: { assignmentId: assignment.id, status: "SUBMITTED" } });
+    if (!canReviewerDeclineRequest(request.status as never, submittedReviews)) {
+      throw AppError.conflict(submittedReviews ? "You already submitted a review round, so you can no longer withdraw from this review" : "This review request can no longer be declined");
+    }
+    const withdrawing = request.status !== "REQUESTED";
     await getPrisma().$transaction(async (tx) => {
       await lockReviewerAndSubmission(tx, assignment.reviewerId, request.submissionId);
-      const changed = await tx.reviewRequest.updateMany({ where: { id: request.id, status: "REQUESTED" }, data: { status: "DECLINED" } });
+      // Claim the exact status we validated so a concurrent change is never overwritten.
+      const changed = await tx.reviewRequest.updateMany({ where: { id: request.id, status: request.status }, data: { status: "DECLINED" } });
       if (!changed.count) throw AppError.conflict("This request has already changed");
       await tx.reviewerAssignment.update({ where: { id: assignment.id }, data: { status: "declined", reviewText: reason?.trim() || undefined } });
       await refreshSubmissionReviewStatus(tx, request.submissionId);
+      await releaseArtifactReviewing(tx, request.submissionId, request.requesterId);
     });
     await Promise.all([
       auditService.log("REVIEW_REQUEST_DECLINED", { userId: actor.id, targetTableName: "review_requests", targetRecordId: request.id, details: { reason: reason?.trim() } }),
-      notificationService.create({ userId: request.requesterId, title: "Review request declined", message: `${actor.fullName} declined the review request.`, type: "REVIEW_REQUEST_DECLINED", targetKind: "project", targetId: request.projectId }),
+      notificationService.create({
+        userId: request.requesterId,
+        title: withdrawing ? "Reviewer withdrew" : "Review request declined",
+        message: withdrawing ? `${actor.fullName} withdrew from the review. You can invite another reviewer.` : `${actor.fullName} declined the review request.`,
+        type: "REVIEW_REQUEST_DECLINED", targetKind: "review_request", targetId: request.id,
+      }),
     ]);
   },
 
   async cancel(requestInput: string, actorInput: string) {
     const actor = await resolveUser(actorInput); const request = await requestRecord(requestInput); const assignment = await assignmentForRequest(request.id);
     if (request.requesterId !== actor.id) throw AppError.forbidden();
-    if (!canCancelReviewRequest(request.status as never)) throw AppError.conflict("This review request can no longer be cancelled");
+    if (!canCancelReviewRequest({ status: request.status as never, dueAt: request.dueAt, createdAt: request.createdAt })) {
+      throw AppError.conflict(["ACCEPTED", "IN_REVIEW"].includes(request.status)
+        ? `The reviewer has accepted this request. You can cancel it only if the review is still not delivered after ${reviewDeadline(request).toISOString().slice(0, 10)}.`
+        : "This review request can no longer be cancelled");
+    }
     await getPrisma().$transaction(async (tx) => {
       await lockReviewerAndSubmission(tx, assignment.reviewerId, request.submissionId);
-      const changed = await tx.reviewRequest.updateMany({ where: { id: request.id, status: { in: ["REQUESTED", "ACCEPTED"] } }, data: { status: "CANCELLED" } });
+      // Claim the exact status we validated: a request accepted in the meantime must not be cancelled.
+      const changed = await tx.reviewRequest.updateMany({ where: { id: request.id, status: request.status }, data: { status: "CANCELLED" } });
       if (!changed.count) throw AppError.conflict("This request has already changed");
       await tx.reviewerAssignment.update({ where: { id: assignment.id }, data: { status: "cancelled" } });
       await refreshSubmissionReviewStatus(tx, request.submissionId);
+      await releaseArtifactReviewing(tx, request.submissionId, actor.id);
     });
-    await auditService.log("REVIEW_REQUEST_CANCELLED", { userId: actor.id, targetTableName: "review_requests", targetRecordId: request.id });
+    await Promise.all([
+      auditService.log("REVIEW_REQUEST_CANCELLED", { userId: actor.id, targetTableName: "review_requests", targetRecordId: request.id }),
+      notificationService.create({ userId: assignment.reviewerId, title: "Review request cancelled", message: `${actor.fullName} cancelled the review request.`, type: "REVIEW_REQUEST_CANCELLED", targetKind: "review_request", targetId: request.id }),
+    ]);
   },
 
   async resubmit(requestInput: string, actorInput: string, input: ResubmitReviewRequestInput) {

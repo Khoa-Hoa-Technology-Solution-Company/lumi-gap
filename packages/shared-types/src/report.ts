@@ -119,6 +119,8 @@ export interface AnalyticalReport {
   status: ReportStatus;
   artifactType: ResearchArtifactType;
   artifactStatus: ResearchArtifactStatus;
+  /** Review requests on this project artifact; drives which status changes are allowed. */
+  artifactReview?: { activeRequestCount: number; completedRequestCount: number };
   isAiGenerated: boolean;
   yearFrom?: number;
   yearTo?: number;

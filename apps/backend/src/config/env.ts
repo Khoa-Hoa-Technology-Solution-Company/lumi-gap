@@ -178,6 +178,7 @@ const EnvSchema = z.object({
   GAP_SCARCE_ABS: z.coerce.number().int().nonnegative().default(5),
   GAP_SCARCE_PCT: z.coerce.number().min(0).max(1).default(0.02),
   GAP_PARENT_RISING_MIN: z.coerce.number().default(0), // growthRatePct strictly above this = rising
+  GAP_MIN_PARENT_PAPERS: z.coerce.number().int().nonnegative().default(5), // each probe topic needs this many papers to be confirmed
   // v2 — paper comparison (one cached LLM call; capped to bound tokens).
   COMPARE_MAX_PAPERS: z.coerce.number().int().min(2).max(4).default(4),
   COMPARE_PROMPT_VERSION: z.string().default("compare-v2"),

@@ -127,6 +127,7 @@ Users can also save multiple personal API connections in Settings → AI Connect
 | `GAP_SCARCE_ABS` | `EnvSchema` / backend | Default / optional (see template) |
 | `GAP_SCARCE_PCT` | `EnvSchema` / backend | Default / optional (see template) |
 | `GAP_PARENT_RISING_MIN` | `EnvSchema` / backend | Default / optional (see template) |
+| `GAP_MIN_PARENT_PAPERS` | `EnvSchema` / backend | Default / optional (see template) |
 | `COMPARE_MAX_PAPERS` | `EnvSchema` / backend | Default / optional (see template) |
 | `COMPARE_PROMPT_VERSION` | `EnvSchema` / backend | Default / optional (see template) |
 | `COMPARE_MAX_PER_HOUR` | `EnvSchema` / backend | Default / optional (see template) |

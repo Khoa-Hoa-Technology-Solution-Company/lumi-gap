@@ -128,10 +128,14 @@ async function invitationByToken(token: string) {
 }
 
 async function verifiedEmailsForUser(userId: string): Promise<string[]> {
-  const rows = await getPrisma().userEmail.findMany({
-    where: { userId, verifiedAt: { not: null } }, select: { normalizedEmail: true },
-  });
-  return rows.map((row) => row.normalizedEmail);
+  const [rows, user] = await Promise.all([
+    getPrisma().userEmail.findMany({ where: { userId, verifiedAt: { not: null } }, select: { normalizedEmail: true } }),
+    getPrisma().user.findUnique({ where: { id: userId }, select: { email: true, emailVerifiedAt: true } }),
+  ]);
+  const emails = new Set(rows.map((row) => row.normalizedEmail));
+  // Accounts created before user_emails existed only carry the verified primary email on users.
+  if (user?.emailVerifiedAt && user.email) emails.add(user.email.trim().toLowerCase());
+  return [...emails];
 }
 
 async function invitationPreview(invitation: Awaited<ReturnType<typeof invitationByToken>>, viewerId?: string): Promise<ProjectInvitationPreview> {
