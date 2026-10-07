@@ -1,4 +1,4 @@
-import type { Community, CommunityFacet, CommunityInput, CommunityPublicMember, CommunityRecommendation, CommunityRelatedGap, CommunityRelatedPaper, CommunitySort, CommunityMember, CommunityReviewInput, CommunityStatus, CommunitySummary, ForumNotificationLevel, ForumPostType, ForumReportReason, ForumReportStatus, ForumResearchContext, ForumSort } from "@trend/shared-types";
+import type { Community, CommunityFacet, CommunityInput, CommunityPublicMember, CommunityRecommendation, CommunityRelatedGap, CommunityRelatedPaper, CommunitySort, CommunityMember, CommunityReviewInput, CommunityStatus, CommunitySummary, CommunitySuggestion, ForumNotificationLevel, ForumPostType, ForumReportReason, ForumReportStatus, ForumResearchContext, ForumSort } from "@trend/shared-types";
 import { API_ROUTES } from "@/constants";
 import { api } from "@/services/api-client";
 
@@ -279,7 +279,8 @@ export const forumApi = {
     return { items: response.data.data.map(normalizeCommunity), page: Number(meta.page ?? params.page ?? 1), totalPages: Number(meta.totalPages ?? 1), total: Number(meta.total ?? 0) };
   },
   async communityFacets(): Promise<CommunityFacet[]> { const response = await api.get(API_ROUTES.communities.facets); return response.data.data; },
-  async communityRecommendations(): Promise<CommunityRecommendation[]> { const response = await api.get(API_ROUTES.communities.recommendations); return response.data.data.map((row: Record<string, unknown>) => ({ ...normalizeCommunity(row), matchedInterests: stringList(row.matchedInterests) })); },
+  async communityRecommendations(): Promise<CommunityRecommendation[]> { const response = await api.get(API_ROUTES.communities.recommendations); return response.data.data.map((row: Record<string, unknown>) => ({ ...normalizeCommunity(row), matchedInterests: stringList(row.matchedInterests), matchReason: row.matchReason === "semantic" ? "semantic" as const : "topic" as const, similarity: typeof row.similarity === "number" ? row.similarity : undefined })); },
+  async communitySuggestions(q: string): Promise<CommunitySuggestion[]> { const response = await api.get(API_ROUTES.communities.suggestions, { params: { q } }); return response.data.data.map((row: Record<string, unknown>) => ({ ...normalizeCommunity(row), similarity: Number(row.similarity ?? 0) })); },
   async community(idOrSlug: string): Promise<CommunityView> { const response = await api.get(API_ROUTES.communities.detail(idOrSlug)); return normalizeCommunity(response.data.data); },
   async createCommunity(input: CommunityInput): Promise<CommunityView> { const response = await api.post(API_ROUTES.communities.list, input); return normalizeCommunity(response.data.data); },
   async updateCommunity(communityId: string, input: Partial<CommunityInput>): Promise<CommunityView> { const response = await api.patch(API_ROUTES.communities.detail(communityId), input); return normalizeCommunity(response.data.data); },

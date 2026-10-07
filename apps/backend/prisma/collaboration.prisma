@@ -207,29 +207,34 @@ model ProjectContributionHistory {
 }
 
 model Community {
-  id             String                   @id @default(uuid()) @db.Uuid
-  legacyMongoId  String?                  @unique @map("legacy_mongo_id") @db.VarChar(24)
-  name           String                   @db.VarChar(120)
-  slug           String                   @unique @db.VarChar(120)
+  id                  String                      @id @default(uuid()) @db.Uuid
+  legacyMongoId       String?                     @unique @map("legacy_mongo_id") @db.VarChar(24)
+  name                String                      @db.VarChar(120)
+  slug                String                      @unique @db.VarChar(120)
   // Forum categories reuse the existing taxonomy and moderator assignments.
-  isForumCategory Boolean                 @default(false) @map("is_forum_category")
-  sortOrder      Int                      @default(0) @map("sort_order")
-  description    String                   @default("")
-  researchField  String?                  @map("research_field") @db.VarChar(160)
-  icon           String?                  @db.VarChar(40)
-  researchTopics String[]                 @default([]) @map("research_topics")
-  visibility     String                   @default("public") @db.VarChar(16)
-  status         String                   @default("ACTIVE") @db.VarChar(16)
-  rules          String[]                 @default([])
-  ownerId        String                   @map("owner_id") @db.Uuid
-  memberCount    Int                      @default(0) @map("member_count")
-  threadCount    Int                      @default(0) @map("thread_count")
-  reviewNote     String?                  @map("review_note")
-  reviewedById   String?                  @map("reviewed_by_id") @db.Uuid
-  reviewedAt     DateTime?                @map("reviewed_at") @db.Timestamptz(6)
-  searchDocument Unsupported("tsvector")? @map("search_document")
-  createdAt      DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt      DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(6)
+  isForumCategory     Boolean                     @default(false) @map("is_forum_category")
+  sortOrder           Int                         @default(0) @map("sort_order")
+  description         String                      @default("")
+  researchField       String?                     @map("research_field") @db.VarChar(160)
+  icon                String?                     @db.VarChar(40)
+  researchTopics      String[]                    @default([]) @map("research_topics")
+  visibility          String                      @default("public") @db.VarChar(16)
+  status              String                      @default("ACTIVE") @db.VarChar(16)
+  rules               String[]                    @default([])
+  ownerId             String                      @map("owner_id") @db.Uuid
+  memberCount         Int                         @default(0) @map("member_count")
+  threadCount         Int                         @default(0) @map("thread_count")
+  reviewNote          String?                     @map("review_note")
+  reviewedById        String?                     @map("reviewed_by_id") @db.Uuid
+  reviewedAt          DateTime?                   @map("reviewed_at") @db.Timestamptz(6)
+  searchDocument      Unsupported("tsvector")?    @map("search_document")
+  embedding           Unsupported("vector(768)")?
+  embeddingModel      String?                     @map("embedding_model")
+  embeddingVersion    String?                     @map("embedding_version")
+  embeddingDimensions Int?                        @map("embedding_dimensions")
+  embeddingUpdatedAt  DateTime?                   @map("embedding_updated_at") @db.Timestamptz(6)
+  createdAt           DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime                    @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@index([status, visibility, updatedAt])
   @@index([isForumCategory, status, sortOrder])
@@ -239,18 +244,18 @@ model Community {
 }
 
 model CommunityMembership {
-  id            String   @id @default(uuid()) @db.Uuid
-  legacyMongoId String?  @unique @map("legacy_mongo_id") @db.VarChar(24)
-  communityId   String   @map("community_id") @db.Uuid
-  userId        String   @map("user_id") @db.Uuid
-  role          String   @default("member") @db.VarChar(16)
-  status        String   @default("active") @db.VarChar(16)
-  assignedById  String?  @map("assigned_by_id") @db.Uuid
+  id            String    @id @default(uuid()) @db.Uuid
+  legacyMongoId String?   @unique @map("legacy_mongo_id") @db.VarChar(24)
+  communityId   String    @map("community_id") @db.Uuid
+  userId        String    @map("user_id") @db.Uuid
+  role          String    @default("member") @db.VarChar(16)
+  status        String    @default("active") @db.VarChar(16)
+  assignedById  String?   @map("assigned_by_id") @db.Uuid
   assignedAt    DateTime? @map("assigned_at") @db.Timestamptz(6)
   revokedAt     DateTime? @map("revoked_at") @db.Timestamptz(6)
-  joinedAt      DateTime @default(now()) @map("joined_at") @db.Timestamptz(6)
-  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  joinedAt      DateTime  @default(now()) @map("joined_at") @db.Timestamptz(6)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@unique([communityId, userId])
   @@index([communityId, status, role])
@@ -274,8 +279,8 @@ model ForumPost {
   body                String
   tags                String[]  @default([])
   status              String    @default("active") @db.VarChar(16)
-  visibilityStatus     String    @default("ACTIVE") @map("visibility_status") @db.VarChar(16)
-  isLocked             Boolean   @default(false) @map("is_locked")
+  visibilityStatus    String    @default("ACTIVE") @map("visibility_status") @db.VarChar(16)
+  isLocked            Boolean   @default(false) @map("is_locked")
   moderationVersion   Int       @default(0) @map("moderation_version")
   acceptedCommentId   String?   @map("accepted_comment_id") @db.Uuid
   score               Int       @default(0)
@@ -290,8 +295,8 @@ model ForumPost {
   createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  revisions           ForumPostRevision[]
-  dailyViews          ForumPostDailyView[]
+  revisions  ForumPostRevision[]
+  dailyViews ForumPostDailyView[]
 
   @@index([communityId, status, isPinned, updatedAt])
   @@index([status, isPinned, lastActivityAt])
@@ -313,24 +318,24 @@ model ForumPostPaper {
 }
 
 model ForumComment {
-  id              String    @id @default(uuid()) @db.Uuid
-  legacyMongoId   String?   @unique @map("legacy_mongo_id") @db.VarChar(24)
-  postId          String    @map("post_id") @db.Uuid
-  postNumber      Int       @map("post_number")
-  authorId        String    @map("author_id") @db.Uuid
-  parentCommentId String?   @map("parent_comment_id") @db.Uuid
-  body            String
-  status          String    @default("active") @db.VarChar(16)
-  visibilityStatus String   @default("ACTIVE") @map("visibility_status") @db.VarChar(16)
-  isLocked        Boolean   @default(false) @map("is_locked")
-  moderationVersion Int     @default(0) @map("moderation_version")
-  score           Int       @default(0)
-  voteScore       Int       @default(0) @map("vote_score")
-  editedAt        DateTime? @map("edited_at") @db.Timestamptz(6)
-  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id                String    @id @default(uuid()) @db.Uuid
+  legacyMongoId     String?   @unique @map("legacy_mongo_id") @db.VarChar(24)
+  postId            String    @map("post_id") @db.Uuid
+  postNumber        Int       @map("post_number")
+  authorId          String    @map("author_id") @db.Uuid
+  parentCommentId   String?   @map("parent_comment_id") @db.Uuid
+  body              String
+  status            String    @default("active") @db.VarChar(16)
+  visibilityStatus  String    @default("ACTIVE") @map("visibility_status") @db.VarChar(16)
+  isLocked          Boolean   @default(false) @map("is_locked")
+  moderationVersion Int       @default(0) @map("moderation_version")
+  score             Int       @default(0)
+  voteScore         Int       @default(0) @map("vote_score")
+  editedAt          DateTime? @map("edited_at") @db.Timestamptz(6)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  revisions       ForumCommentRevision[]
+  revisions ForumCommentRevision[]
 
   @@unique([postId, postNumber])
   @@index([postId, status, createdAt])
@@ -396,10 +401,10 @@ model ForumPostProject {
 }
 
 model ForumThreadFollow {
-  postId    String   @map("post_id") @db.Uuid
-  userId    String   @map("user_id") @db.Uuid
-  notificationLevel String @default("WATCHING") @map("notification_level") @db.VarChar(16)
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  postId            String   @map("post_id") @db.Uuid
+  userId            String   @map("user_id") @db.Uuid
+  notificationLevel String   @default("WATCHING") @map("notification_level") @db.VarChar(16)
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   @@id([postId, userId])
   @@index([userId, createdAt])
@@ -407,22 +412,22 @@ model ForumThreadFollow {
 }
 
 model ForumModerationAction {
-  id          String   @id @default(uuid()) @db.Uuid
-  actorId     String   @map("actor_id") @db.Uuid
-  communityId String?  @map("community_id") @db.Uuid
-  postId      String?  @map("post_id") @db.Uuid
-  commentId   String?  @map("comment_id") @db.Uuid
-  reportId    String?  @map("report_id") @db.Uuid
-  targetType  String?  @map("target_type") @db.VarChar(16)
-  targetId    String?  @map("target_id") @db.Uuid
-  userId      String?  @map("user_id") @db.Uuid
-  sourceAppealId String? @map("source_appeal_id") @db.Uuid
-  policyRuleCode String? @map("policy_rule_code") @db.VarChar(80)
-  policyVersion String? @map("policy_version") @db.VarChar(40)
-  previousState Json? @map("previous_state")
-  action      String   @db.VarChar(40)
-  reason      String?
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  id             String   @id @default(uuid()) @db.Uuid
+  actorId        String   @map("actor_id") @db.Uuid
+  communityId    String?  @map("community_id") @db.Uuid
+  postId         String?  @map("post_id") @db.Uuid
+  commentId      String?  @map("comment_id") @db.Uuid
+  reportId       String?  @map("report_id") @db.Uuid
+  targetType     String?  @map("target_type") @db.VarChar(16)
+  targetId       String?  @map("target_id") @db.Uuid
+  userId         String?  @map("user_id") @db.Uuid
+  sourceAppealId String?  @map("source_appeal_id") @db.Uuid
+  policyRuleCode String?  @map("policy_rule_code") @db.VarChar(80)
+  policyVersion  String?  @map("policy_version") @db.VarChar(40)
+  previousState  Json?    @map("previous_state")
+  action         String   @db.VarChar(40)
+  reason         String?
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   @@index([communityId, createdAt])
   @@index([postId, createdAt])
@@ -463,10 +468,10 @@ model ForumReaction {
 }
 
 model ForumPostView {
-  id         String   @id @default(uuid()) @db.Uuid
-  postId     String   @map("post_id") @db.Uuid
-  viewerKey  String   @map("viewer_key") @db.VarChar(160)
-  viewedAt   DateTime @default(now()) @map("viewed_at") @db.Timestamptz(6)
+  id        String   @id @default(uuid()) @db.Uuid
+  postId    String   @map("post_id") @db.Uuid
+  viewerKey String   @map("viewer_key") @db.VarChar(160)
+  viewedAt  DateTime @default(now()) @map("viewed_at") @db.Timestamptz(6)
 
   @@unique([postId, viewerKey])
   @@index([postId, viewedAt])
@@ -474,9 +479,9 @@ model ForumPostView {
 }
 
 model ForumPostDailyView {
-  postId String   @map("post_id") @db.Uuid
-  day    DateTime @db.Date
-  count  Int      @default(0)
+  postId String    @map("post_id") @db.Uuid
+  day    DateTime  @db.Date
+  count  Int       @default(0)
   post   ForumPost @relation(fields: [postId], references: [id], onDelete: Cascade)
 
   @@id([postId, day])
@@ -484,31 +489,31 @@ model ForumPostDailyView {
 }
 
 model ContentReport {
-  id             String    @id @default(uuid()) @db.Uuid
-  legacyMongoId  String?   @unique @map("legacy_mongo_id") @db.VarChar(24)
-  reporterId     String    @map("reporter_id") @db.Uuid
-  postId         String?   @map("post_id") @db.Uuid
-  commentId      String?   @map("comment_id") @db.Uuid
-  communityId    String?   @map("community_id") @db.Uuid
-  targetType     String    @default("THREAD") @map("target_type") @db.VarChar(16)
-  targetId       String?   @map("target_id") @db.Uuid
-  reason         String    @db.VarChar(32)
-  description    String?
-  status         String    @default("open") @db.VarChar(16)
-  reviewedById   String?   @map("reviewed_by_id") @db.Uuid
-  reviewedAt     DateTime? @map("reviewed_at") @db.Timestamptz(6)
-  moderationNote String?   @map("moderation_note")
-  assignedToId   String?   @map("assigned_to_id") @db.Uuid
-  assignedAt     DateTime? @map("assigned_at") @db.Timestamptz(6)
-  claimExpiresAt DateTime? @map("claim_expires_at") @db.Timestamptz(6)
-  reportedRevisionId String? @map("reported_revision_id") @db.Uuid
-  contentSnapshot Json?    @map("content_snapshot")
-  version        Int       @default(0)
-  resolvedAt     DateTime? @map("resolved_at") @db.Timestamptz(6)
-  resolutionNote String?   @map("resolution_note")
-  escalatedAt    DateTime? @map("escalated_at") @db.Timestamptz(6)
-  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id                 String    @id @default(uuid()) @db.Uuid
+  legacyMongoId      String?   @unique @map("legacy_mongo_id") @db.VarChar(24)
+  reporterId         String    @map("reporter_id") @db.Uuid
+  postId             String?   @map("post_id") @db.Uuid
+  commentId          String?   @map("comment_id") @db.Uuid
+  communityId        String?   @map("community_id") @db.Uuid
+  targetType         String    @default("THREAD") @map("target_type") @db.VarChar(16)
+  targetId           String?   @map("target_id") @db.Uuid
+  reason             String    @db.VarChar(32)
+  description        String?
+  status             String    @default("open") @db.VarChar(16)
+  reviewedById       String?   @map("reviewed_by_id") @db.Uuid
+  reviewedAt         DateTime? @map("reviewed_at") @db.Timestamptz(6)
+  moderationNote     String?   @map("moderation_note")
+  assignedToId       String?   @map("assigned_to_id") @db.Uuid
+  assignedAt         DateTime? @map("assigned_at") @db.Timestamptz(6)
+  claimExpiresAt     DateTime? @map("claim_expires_at") @db.Timestamptz(6)
+  reportedRevisionId String?   @map("reported_revision_id") @db.Uuid
+  contentSnapshot    Json?     @map("content_snapshot")
+  version            Int       @default(0)
+  resolvedAt         DateTime? @map("resolved_at") @db.Timestamptz(6)
+  resolutionNote     String?   @map("resolution_note")
+  escalatedAt        DateTime? @map("escalated_at") @db.Timestamptz(6)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@index([communityId, status, createdAt])
   @@index([reporterId, status])
@@ -559,27 +564,27 @@ model ModerationAppeal {
 }
 
 model CopyrightClaim {
-  id                       String    @id @default(uuid()) @db.Uuid
-  claimantName             String    @map("claimant_name") @db.VarChar(200)
-  claimantEmail            String    @map("claimant_email") @db.VarChar(320)
-  claimantOrganization     String?   @map("claimant_organization") @db.VarChar(240)
-  targetType               String    @map("target_type") @db.VarChar(16)
-  targetId                 String    @map("target_id") @db.Uuid
-  copyrightedWorkDescription String  @map("copyrighted_work_description")
-  ownershipBasis           String    @map("ownership_basis")
-  originalSourceUrl        String?   @map("original_source_url")
-  details                  String
-  sourceReportId           String?   @map("source_report_id") @db.Uuid
-  status                   String    @default("PENDING_EMAIL_VERIFICATION") @db.VarChar(32)
-  assignedTo               String?   @map("assigned_to") @db.Uuid
-  emailVerificationTokenHash String? @unique @map("email_verification_token_hash")
+  id                         String    @id @default(uuid()) @db.Uuid
+  claimantName               String    @map("claimant_name") @db.VarChar(200)
+  claimantEmail              String    @map("claimant_email") @db.VarChar(320)
+  claimantOrganization       String?   @map("claimant_organization") @db.VarChar(240)
+  targetType                 String    @map("target_type") @db.VarChar(16)
+  targetId                   String    @map("target_id") @db.Uuid
+  copyrightedWorkDescription String    @map("copyrighted_work_description")
+  ownershipBasis             String    @map("ownership_basis")
+  originalSourceUrl          String?   @map("original_source_url")
+  details                    String
+  sourceReportId             String?   @map("source_report_id") @db.Uuid
+  status                     String    @default("PENDING_EMAIL_VERIFICATION") @db.VarChar(32)
+  assignedTo                 String?   @map("assigned_to") @db.Uuid
+  emailVerificationTokenHash String?   @unique @map("email_verification_token_hash")
   emailVerificationExpiresAt DateTime? @map("email_verification_expires_at") @db.Timestamptz(6)
-  emailVerifiedAt          DateTime? @map("email_verified_at") @db.Timestamptz(6)
-  submittedAt              DateTime  @default(now()) @map("submitted_at") @db.Timestamptz(6)
-  resolvedAt               DateTime? @map("resolved_at") @db.Timestamptz(6)
-  resolutionNote           String?   @map("resolution_note")
-  createdAt                DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt                DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  emailVerifiedAt            DateTime? @map("email_verified_at") @db.Timestamptz(6)
+  submittedAt                DateTime  @default(now()) @map("submitted_at") @db.Timestamptz(6)
+  resolvedAt                 DateTime? @map("resolved_at") @db.Timestamptz(6)
+  resolutionNote             String?   @map("resolution_note")
+  createdAt                  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@index([status, submittedAt])
   @@index([targetType, targetId])
@@ -597,8 +602,8 @@ model ForumPostRevision {
   editedById String   @map("edited_by_id") @db.Uuid
   createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  post       ForumPost @relation(fields: [postId], references: [id], onDelete: Cascade)
-  editedBy   User      @relation("ForumPostRevisionEditor", fields: [editedById], references: [id], onDelete: Restrict)
+  post     ForumPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  editedBy User      @relation("ForumPostRevisionEditor", fields: [editedById], references: [id], onDelete: Restrict)
 
   @@unique([postId, revision])
   @@index([postId, createdAt])
@@ -614,8 +619,8 @@ model ForumCommentRevision {
   editedById String   @map("edited_by_id") @db.Uuid
   createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  comment    ForumComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
-  editedBy   User         @relation("ForumCommentRevisionEditor", fields: [editedById], references: [id], onDelete: Restrict)
+  comment  ForumComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  editedBy User         @relation("ForumCommentRevisionEditor", fields: [editedById], references: [id], onDelete: Restrict)
 
   @@unique([commentId, revision])
   @@index([commentId, createdAt])

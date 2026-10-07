@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useCurrentUser } from "@/features/auth";
-import { canProposeCommunity, useCommunityFacets, useCommunityList, useCommunityRecommendations, type CommunityView } from "@/features/forum";
+import { canProposeCommunity, useCommunityFacets, useCommunityList, useCommunityRecommendations, useCommunitySuggestions, type CommunityView } from "@/features/forum";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { useI18n } from "@/i18n";
 import { cn } from "@/utils/cn";
@@ -41,6 +41,10 @@ export function CommunityListPage() {
   const communities = useMemo(() => list.data?.pages.flatMap((page) => page.items) ?? [], [list.data]);
   const total = list.data?.pages[0]?.total ?? 0;
   const recommended = recommendations.data ?? [];
+  // Text search found nothing: fall back to communities that are close in meaning.
+  const noTextMatch = Boolean(debouncedQuery) && !list.isLoading && !list.error && communities.length === 0;
+  const suggestions = useCommunitySuggestions(debouncedQuery, noTextMatch);
+  const suggested = suggestions.data ?? [];
 
   return <main className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
     <header className="flex flex-col gap-5 border-b pb-6 sm:flex-row sm:items-end sm:justify-between">
@@ -84,7 +88,9 @@ export function CommunityListPage() {
         {recommended.map((community) => <Link key={community.id} to={`/communities/${community.slug}`} className="rounded-xl border bg-card p-4 transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
           <h3 className="font-semibold">{community.name}</h3>
           {community.researchField ? <p className="mt-1 text-xs font-medium text-blue-700">{community.researchField}</p> : null}
-          <div className="mt-3 flex flex-wrap gap-1.5">{community.matchedInterests.slice(0, 3).map((interest) => <Badge key={interest} variant="secondary" className="font-normal">{interest}</Badge>)}</div>
+          {community.matchReason === "semantic"
+            ? <p className="mt-3 text-xs text-muted-foreground">{t("Close to your research interests")}</p>
+            : <div className="mt-3 flex flex-wrap gap-1.5">{community.matchedInterests.slice(0, 3).map((interest) => <Badge key={interest} variant="secondary" className="font-normal">{interest}</Badge>)}</div>}
         </Link>)}
       </div>
     </section> : null}
@@ -102,6 +108,10 @@ export function CommunityListPage() {
             <h2 className="font-semibold">{t(scope === "mine" && !debouncedQuery && !field ? "You haven't joined any research communities yet." : "No communities found")}</h2>
             <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">{t(isFiltering ? "Try a broader name or research topic." : "New research communities will appear here.")}</p>
             {debouncedQuery || field ? <Button type="button" variant="outline" className="mt-4" onClick={() => { setQuery(""); setField(undefined); }}>{t("Clear filters")}</Button> : null}
+            {noTextMatch && suggested.length ? <div className="mt-8 border-t pt-6 text-left">
+              <p className="text-sm font-medium">{t("No communities match your search. You might be interested in:")}</p>
+              <div className="mt-3 divide-y overflow-hidden rounded-xl border bg-card">{suggested.map((community) => <CommunityRow key={community.id} community={community} t={t} />)}</div>
+            </div> : null}
           </div>}
   </main>;
 }

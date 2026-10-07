@@ -1,9 +1,12 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { getPrisma } from "../../../infrastructure/database/prisma.js";
 import { communityRelatedService } from "../community-related.service.js";
 import { communityService } from "../community.service.js";
 import type { CommunityActor } from "../community.rules.js";
 import { reviewSchema, type CommunityListQuery } from "../dto/community.schema.js";
+
+// Community changes enqueue embedding jobs; keep tests from feeding a running dev worker.
+vi.mock("../../../infrastructure/queue.js", () => ({ embeddingQueue: { add: vi.fn().mockResolvedValue(undefined) } }));
 
 const LIST_DEFAULTS: CommunityListQuery = { page: 1, pageSize: 50, sort: "recent", scope: "all" };
 
