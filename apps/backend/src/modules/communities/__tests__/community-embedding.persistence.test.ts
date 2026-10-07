@@ -193,6 +193,28 @@ describe.sequential("community embedding suggestions (PostgreSQL)", () => {
     expect(row.embeddingUpdatedAt).toBeInstanceOf(Date);
   });
 
+  it("runCommunityEmbedding() does not re-embed a community edited mid-run within the same run", async () => {
+    const prisma = getPrisma();
+    const [edited, other] = await Promise.all(["churnA", "churnB"].map(async (key) => {
+      const community = await prisma.community.create({ data: { name: `Cemb ${key} ${marker}`, slug: `cemb-${key}-${marker}`, ownerId, status: "ACTIVE" } });
+      communityIds.push(community.id);
+      return community;
+    }));
+    const embedBatch = vi.fn(async (texts: string[]) => {
+      // Someone edits `edited` after it was read: the UPDATE guard skips it, leaving it stale.
+      if (embedBatch.mock.calls.length === 1) await prisma.$executeRaw`UPDATE communities SET updated_at = now() + interval '1 second' WHERE id = ${edited.id}::uuid`;
+      return texts.map(() => near);
+    });
+    vi.mocked(getEmbeddingProvider).mockReturnValue({
+      modelName: "test-model", modelVersion: "v1", dimensions: PAPER_EMBEDDING_DIMENSIONS, embed: async () => near, embedBatch,
+    } as unknown as ReturnType<typeof getEmbeddingProvider>);
+    const result = await runCommunityEmbedding({ ids: [edited.id, other.id] });
+    expect(result.totalEmbedded).toBe(1);
+    expect(embedBatch).toHaveBeenCalledTimes(1);
+    expect(await embeddingIsNull(other.id)).toBe(false);
+    expect(await embeddingIsNull(edited.id)).toBe(true);
+  });
+
   it("update() clears the embedding when embedded content changes, but not for other fields", async () => {
     expect(await embeddingIsNull(c.near)).toBe(false);
     await communityService.update(c.near, { rules: ["Be kind"] }, ownerId, "admin");
