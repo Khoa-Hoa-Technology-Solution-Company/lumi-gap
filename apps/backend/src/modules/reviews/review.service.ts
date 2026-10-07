@@ -238,7 +238,7 @@ export const reviewService = {
     if (submit) {
       await auditService.log("REVIEW_SUBMITTED", { userId: reviewer.id, targetTableName: "human_reviews", targetRecordId: review.id, details: { assignmentId: assignment.id, submissionId: assignment.submissionId, roundNumber } });
       await auditService.log(outcome.requestStatus === "REVISION_REQUESTED" ? "REVISION_REQUESTED" : "REVIEW_COMPLETED", { userId: reviewer.id, targetTableName: "review_requests", targetRecordId: request?.id, details: { reviewId: review.id, roundNumber } });
-      if (request) await notificationService.create({ userId: request.requesterId, title: "Academic review submitted", message: `Feedback for “${submission.title}” is ready.`, type: outcome.requestStatus === "REVISION_REQUESTED" ? "REVISION_REQUESTED" : "REVIEW_SUBMITTED", targetKind: "project", targetId: submission.projectId });
+      if (request) await notificationService.create({ userId: request.requesterId, title: "Academic review submitted", message: `Feedback for “${submission.title}” is ready.`, type: outcome.requestStatus === "REVISION_REQUESTED" ? "REVISION_REQUESTED" : "REVIEW_SUBMITTED", targetKind: "review_request", targetId: request.id });
     } else if (!existing) await auditService.log("REVIEW_STARTED", { userId: reviewer.id, targetTableName: "human_reviews", targetRecordId: review.id, details: { assignmentId: assignment.id, roundNumber } });
     return { review, responses: await prisma.reviewResponse.findMany({ where: { reviewId: review.id }, orderBy: { createdAt: "asc" } }), requiredRevisions: await prisma.reviewRevisionItem.findMany({ where: { reviewId: review.id }, orderBy: { position: "asc" } }) };
   },

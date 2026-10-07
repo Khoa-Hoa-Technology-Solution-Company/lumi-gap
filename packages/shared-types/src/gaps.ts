@@ -45,6 +45,8 @@ export interface ResearchGapItem {
   parentCounts?: { a: number; b: number };
   parentTrend?: { topic: string; growthRatePct: number } | null;
   evidenceConfidence?: number;
+  /** A probe topic has too few papers for the evidence score to be meaningful. */
+  lowSample?: boolean;
   gapType?: ResearchGapType;
   scope?: string;
   establishedKnowledge?: string;

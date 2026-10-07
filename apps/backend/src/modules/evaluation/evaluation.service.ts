@@ -239,6 +239,7 @@ function buildGapEvidenceCheck(): EvaluationCheck {
       scarceAbs: env.GAP_SCARCE_ABS,
       scarcePct: env.GAP_SCARCE_PCT,
       parentRisingMin: env.GAP_PARENT_RISING_MIN,
+      minParentPapers: env.GAP_MIN_PARENT_PAPERS,
     },
   );
   const pass = evidence.confirmed && evidence.scarcityScore > 0 && evidence.evidenceConfidence >= 0.5;

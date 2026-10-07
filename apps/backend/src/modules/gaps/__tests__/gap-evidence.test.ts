@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { buildGapsPrompt } from "../gaps.prompt.js";
 import { computeGapEvidence } from "../gap-evidence.js";
 
-const T = { scarceAbs: 5, scarcePct: 0.02, parentRisingMin: 0 };
+const T = { scarceAbs: 5, scarcePct: 0.02, parentRisingMin: 0, minParentPapers: 5 };
 
 describe("computeGapEvidence", () => {
   it("confirms a scarce intersection under a rising parent", () => {
@@ -41,6 +41,26 @@ describe("computeGapEvidence", () => {
     );
     expect(e.scarcityScore).toBe(1);
     expect(e.confirmed).toBe(true);
+  });
+
+  it("gives no evidence confidence when a parent topic has no papers", () => {
+    const e = computeGapEvidence(
+      { intersectionCount: 0, parentCounts: { a: 12, b: 0 }, parentRisingGrowthPct: 30 },
+      T,
+    );
+    expect(e.scarcityScore).toBe(0);
+    expect(e.confirmed).toBe(false);
+    expect(e.evidenceConfidence).toBe(0);
+  });
+
+  it("does not confirm when a parent topic has too few papers", () => {
+    const e = computeGapEvidence(
+      { intersectionCount: 0, parentCounts: { a: 1, b: 1 }, parentRisingGrowthPct: 100 },
+      T,
+    );
+    expect(e.lowSample).toBe(true);
+    expect(e.confirmed).toBe(false);
+    expect(e.evidenceConfidence).toBeLessThanOrEqual(0.25);
   });
 });
 

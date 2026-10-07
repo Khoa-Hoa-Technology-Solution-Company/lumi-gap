@@ -29,6 +29,15 @@ export function getNotificationDestination(
   if (!isAdmin && notification.type === "submission_rejected" && notification.targetKind === "paper" && notification.targetId) {
     return `/settings/submit-paper?edit=${encodeURIComponent(notification.targetId)}`;
   }
+  // The invitee is not a member yet: the project page cannot accept, the project list shows the pending invitation.
+  if (notification.type === "project_invitation") return "/projects";
+  // Reviewers are usually not project members; their requests live in the review center.
+  if (["REVIEW_REQUESTED", "REVISION_RESUBMITTED", "REVIEW_REQUEST_CANCELLED"].includes(notification.type)) return "/reviews";
+  // Requester-side review updates concern a submitted artifact, which lives in the project's Artifacts tab.
+  const requesterReviewTypes = ["REVIEW_REQUEST_ACCEPTED", "REVIEW_REQUEST_DECLINED", "REVIEW_SUBMITTED", "REVISION_REQUESTED"];
+  if (requesterReviewTypes.includes(notification.type) && notification.targetKind === "project" && notification.targetId) {
+    return `/projects/${encodeURIComponent(notification.targetId)}?tab=reports`;
+  }
   if (notification.targetId) {
     const routeByKind: Record<NonNullable<NotificationItem["targetKind"]>, string> = {
       paper: "/papers",
@@ -38,6 +47,7 @@ export function getNotificationDestination(
       forum_post: "/forum",
       academic_profile: "/academics",
       community: "/communities",
+      review_request: "/review-requests",
     };
     if (notification.targetKind && routeByKind[notification.targetKind]) return `${routeByKind[notification.targetKind]}/${encodeURIComponent(notification.targetId)}`;
   }

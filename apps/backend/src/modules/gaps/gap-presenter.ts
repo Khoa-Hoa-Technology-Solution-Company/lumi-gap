@@ -64,16 +64,25 @@ export function canAccessGap(
   return (project.members ?? []).some((member) => String(member.targetId ?? "") === userId);
 }
 
-export function getGapEvidenceStatus(gap: Pick<GapListDoc, "source" | "probe" | "evidenceConfidence">): GapEvidenceStatus {
+/** True when a probe topic has fewer papers than the confirmation threshold (stored scores may predate the threshold). */
+export function isGapLowSample(gap: Pick<GapListDoc, "parentCounts">, minParentPapers: number): boolean {
+  const { a, b } = gap.parentCounts ?? {};
+  if (a === undefined || b === undefined) return false;
+  return Math.min(a, b) < Math.max(minParentPapers, 1);
+}
+
+export function getGapEvidenceStatus(gap: Pick<GapListDoc, "source" | "probe" | "evidenceConfidence">, lowSample = false): GapEvidenceStatus {
   if (gap.source === "report" && !gap.probe) return "ai_only";
-  if (!gap.probe) return "weak";
+  if (!gap.probe || lowSample) return "weak";
   return Number(gap.evidenceConfidence ?? 0) >= 0.5 ? "confirmed" : "weak";
 }
 
 export function toGapListItem(
   doc: GapListDoc,
   supportingPapersById: Map<string, GapSupportingPaper>,
+  options: { minParentPapers?: number } = {},
 ): ResearchGapItem {
+  const lowSample = options.minParentPapers !== undefined ? isGapLowSample(doc, options.minParentPapers) : undefined;
   const supportingPaperIds = (doc.supportingPaperIds ?? []).map(String);
   const evidencePaperIds = (doc.evidencePaperIds?.length
     ? doc.evidencePaperIds
@@ -97,7 +106,7 @@ export function toGapListItem(
       .map((id) => supportingPapersById.get(id))
       .filter((paper): paper is GapSupportingPaper => Boolean(paper)),
     confidence: doc.confidence,
-    evidenceStatus: getGapEvidenceStatus(doc),
+    evidenceStatus: getGapEvidenceStatus(doc, lowSample),
     source: doc.source,
     sourceReportId: doc.sourceReportId ? String(doc.sourceReportId) : undefined,
     analysisId: doc.analysisId ? String(doc.analysisId) : undefined,
@@ -125,6 +134,7 @@ export function toGapListItem(
           ? null
           : undefined,
     evidenceConfidence: doc.evidenceConfidence,
+    lowSample,
     gapType: doc.gapType,
     scope: doc.scope,
     establishedKnowledge: doc.establishedKnowledge,

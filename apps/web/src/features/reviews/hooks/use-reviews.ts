@@ -59,14 +59,19 @@ export function useArchiveReviewTemplate() {
 
 export function useReviewCenter() { return useQuery({ queryKey: ["review-center"], queryFn: reviewsApi.center, retry: false }); }
 export function useReviewRequest(requestId?: string) { return useQuery({ queryKey: ["review-requests", requestId], queryFn: () => reviewsApi.requestDetail(requestId!), enabled: Boolean(requestId), retry: false }); }
-export function useReviewerCandidates(query = "") { return useQuery({ queryKey: ["review-reviewers", query], queryFn: () => reviewsApi.reviewerCandidates(query || undefined), staleTime: 30_000 }); }
+export function useReviewerCandidates(query = "", scope: { reportId?: string; submissionId?: string } = {}) { return useQuery({ queryKey: ["review-reviewers", query, scope.reportId ?? null, scope.submissionId ?? null], queryFn: () => reviewsApi.reviewerCandidates(query || undefined, scope), staleTime: 30_000 }); }
 export function useCreateReviewRequest() {
   const client = useQueryClient();
-  return useMutation({ mutationFn: (input: CreateReviewRequestInput) => reviewsApi.createRequest(input), onSuccess: () => client.invalidateQueries({ queryKey: ["review-center"] }) });
+  return useMutation({ mutationFn: (input: CreateReviewRequestInput) => reviewsApi.createRequest(input), onSuccess: () => Promise.all([client.invalidateQueries({ queryKey: ["review-center"] }), client.invalidateQueries({ queryKey: ["reports"] })]) });
 }
 export function useReviewRequestAction() {
   const client = useQueryClient();
-  const refresh = () => client.invalidateQueries({ queryKey: ["review-center"] });
+  // Request status drives the detail page and the project artifact status, so refresh all three.
+  const refresh = () => Promise.all([
+    client.invalidateQueries({ queryKey: ["review-center"] }),
+    client.invalidateQueries({ queryKey: ["review-requests"] }),
+    client.invalidateQueries({ queryKey: ["reports"] }),
+  ]);
   return {
     accept: useMutation({ mutationFn: reviewsApi.acceptRequest, onSuccess: refresh }),
     decline: useMutation({ mutationFn: ({ id, reason }: { id: string; reason?: string }) => reviewsApi.declineRequest(id, reason), onSuccess: refresh }),

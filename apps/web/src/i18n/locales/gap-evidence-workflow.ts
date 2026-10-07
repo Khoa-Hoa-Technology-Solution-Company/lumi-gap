@@ -259,6 +259,22 @@ export const gapEvidenceWorkflowStrings = {
   "Year unknown": "Year unknown",
   "1 research gap": "1 research gap",
   "{{count}} research gaps from the same analysis": "{{count}} research gaps from the same analysis",
+  "Draft research proposal": "Draft research proposal",
+  "Drafted from research gap \"{{title}}\".": "Drafted from research gap \"{{title}}\".",
+  "Evidence limited to the gap's {{count}} paper(s) in this project.": "Evidence limited to the gap's {{count}} paper(s) in this project.",
+  "All project papers will be used as evidence.": "All project papers will be used as evidence.",
+  "Use all project papers": "Use all project papers",
+  "Low sample": "Low sample",
+  "Corpus evidence": "Corpus evidence",
+  "Insufficient data": "Insufficient data",
+  "Corpus evidence score: how scarce the topic intersection is in this project's papers and whether a parent topic is rising. Not the AI's self-reported confidence.":
+    "Corpus evidence score: how scarce the topic intersection is in this project's papers and whether a parent topic is rising. Not the AI's self-reported confidence.",
+  "No papers in this project match \"{{topic}}\". Add related papers to score this gap.":
+    "No papers in this project match \"{{topic}}\". Add related papers to score this gap.",
+  "Only {{count}} paper(s) in this project match \"{{topic}}\". Add related papers before trusting this score.":
+    "Only {{count}} paper(s) in this project match \"{{topic}}\". Add related papers before trusting this score.",
+  "A probe topic has too few matching papers, so this evidence score is not reliable yet. Add related papers and re-run the analysis.":
+    "A probe topic has too few matching papers, so this evidence score is not reliable yet. Add related papers and re-run the analysis.",
 } as const;
 
 export const gapEvidenceWorkflowViStrings: Record<
@@ -485,4 +501,20 @@ export const gapEvidenceWorkflowViStrings: Record<
   "Overall AI Score": "Điểm AI tổng thể",
   "Re-evaluate": "Đánh giá lại",
   "Relevance": "Mức độ liên quan",
+  "Draft research proposal": "Soạn đề cương nghiên cứu",
+  "Drafted from research gap \"{{title}}\".": "Soạn từ khoảng trống nghiên cứu \"{{title}}\".",
+  "Evidence limited to the gap's {{count}} paper(s) in this project.": "Chỉ dùng {{count}} bài bằng chứng của khoảng trống này trong project.",
+  "All project papers will be used as evidence.": "Sẽ dùng toàn bộ bài của project làm bằng chứng.",
+  "Use all project papers": "Dùng toàn bộ bài của project",
+  "Low sample": "Mẫu quá nhỏ",
+  "Corpus evidence": "Bằng chứng từ kho dữ liệu",
+  "Insufficient data": "Chưa đủ dữ liệu",
+  "Corpus evidence score: how scarce the topic intersection is in this project's papers and whether a parent topic is rising. Not the AI's self-reported confidence.":
+    "Điểm bằng chứng từ kho dữ liệu: mức độ hiếm của giao điểm hai chủ đề trong các bài của project và chủ đề cha có đang tăng hay không. Không phải độ tự tin do AI tự đánh giá.",
+  "No papers in this project match \"{{topic}}\". Add related papers to score this gap.":
+    "Không có bài nào trong project khớp với \"{{topic}}\". Hãy thêm bài liên quan để chấm điểm khoảng trống này.",
+  "Only {{count}} paper(s) in this project match \"{{topic}}\". Add related papers before trusting this score.":
+    "Chỉ có {{count}} bài trong project khớp với \"{{topic}}\". Hãy thêm bài liên quan trước khi tin vào điểm này.",
+  "A probe topic has too few matching papers, so this evidence score is not reliable yet. Add related papers and re-run the analysis.":
+    "Một chủ đề probe có quá ít bài khớp, nên điểm bằng chứng này chưa đáng tin. Hãy thêm bài liên quan rồi chạy lại phân tích.",
 };
