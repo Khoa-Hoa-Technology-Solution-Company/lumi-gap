@@ -43,6 +43,8 @@ export async function runCommunityEmbedding(options: { ids?: string[] } = {}): P
   const batchSize = env.EMBED_BATCH_SIZE;
   let totalEmbedded = 0;
   let seen = 0;
+  // Ids already tried in this run: a row edited mid-run keeps a stale vector and would otherwise be re-selected and re-embedded.
+  const attempted = new Set<string>();
 
   while (seen < MAX_COMMUNITIES_PER_RUN) {
     const candidates = await getPrisma().$queryRaw<Array<{
@@ -59,6 +61,7 @@ export async function runCommunityEmbedding(options: { ids?: string[] } = {}): P
       WHERE status = 'ACTIVE'
         AND is_forum_category = false
         ${options.ids?.length ? Prisma.sql`AND id = ANY(${[...options.ids]}::uuid[])` : Prisma.empty}
+        ${attempted.size ? Prisma.sql`AND id <> ALL(${[...attempted]}::uuid[])` : Prisma.empty}
         AND (
           embedding IS NULL
           OR embedding_model IS DISTINCT FROM ${provider.modelName}
@@ -70,6 +73,7 @@ export async function runCommunityEmbedding(options: { ids?: string[] } = {}): P
     `);
     if (candidates.length === 0) break;
     seen += candidates.length;
+    for (const candidate of candidates) attempted.add(candidate.id);
 
     // Rethrow on failure so the BullMQ job fails and retries with backoff.
     const vectors = await provider.embedBatch(candidates.map(communityEmbeddingText));

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import rateLimit from "express-rate-limit";
+import { createRateLimiter } from "../../common/middleware/rate-limit.js";
 import { env } from "../../config/env.js";
 import { optionalAuth, requireAuth } from "../../common/middleware/auth.js";
 import { requirePermission } from "../../common/middleware/permission.js";
@@ -22,7 +22,7 @@ import {
 export const communityRouter: Router = Router();
 
 /** Every uncached query costs one Gemini embedding call, so throttle per user (or IP when anonymous). */
-const suggestionLimiter = rateLimit({
+const suggestionLimiter = createRateLimiter("communities:suggestionLimiter", {
   windowMs: 60 * 1000,
   limit: env.COMMUNITY_SUGGEST_MAX_PER_MINUTE,
   standardHeaders: true,

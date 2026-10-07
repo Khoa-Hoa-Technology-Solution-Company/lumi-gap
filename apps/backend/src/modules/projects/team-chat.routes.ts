@@ -1,5 +1,5 @@
 import { Router } from "express";
-import rateLimit from "express-rate-limit";
+import { createRateLimiter } from "../../common/middleware/rate-limit.js";
 import { env } from "../../config/env.js";
 import { validate } from "../../common/middleware/validate.js";
 import {
@@ -13,7 +13,7 @@ import { projectTeamChatController } from "./project-team-chat.controller.js";
 
 export const projectTeamChatRouter: Router = Router({ mergeParams: true });
 
-const teamChatSendLimiter = rateLimit({
+const teamChatSendLimiter = createRateLimiter("projects:teamChatSendLimiter", {
   windowMs: 60 * 1000,
   limit: env.TEAM_CHAT_MAX_PER_MINUTE,
   standardHeaders: true,

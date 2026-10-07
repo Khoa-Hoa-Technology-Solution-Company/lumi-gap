@@ -203,6 +203,10 @@ const EnvSchema = z.object({
   // Community "did you mean" suggestions embed the raw query on every cache miss
   // (Gemini, shared quota), so the route is throttled per user/IP.
   COMMUNITY_SUGGEST_MAX_PER_MINUTE: z.coerce.number().int().min(1).default(20),
+  // Where rate-limit counters live. "memory" is per process; "redis" is shared across backend
+  // instances. Default is memory because hosted Upstash free allows only 10K commands/day and
+  // every limited request costs 1-2 of them; enable redis only when running more than one instance.
+  RATE_LIMIT_STORE: z.enum(["memory", "redis"]).default("memory"),
   // Minimum similarity for a semantic community match. Score = 1 - cosine_distance / 2,
   // i.e. (1 + cos) / 2, so 0.75 corresponds to a cosine of 0.5. Tune on real embeddings.
   COMMUNITY_SUGGEST_MIN_SIMILARITY: z.coerce.number().min(0).max(1).default(0.75),

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import rateLimit from "express-rate-limit";
+import { createRateLimiter } from "../../common/middleware/rate-limit.js";
 import { optionalAuth, requireAuth, requireSystemRole } from "../../common/middleware/auth.js";
 import { validate } from "../../common/middleware/validate.js";
 import { uploadProfileAvatar, uploadProfileCover } from "../../common/middleware/upload.js";
@@ -23,7 +23,7 @@ import {
   UpdatePublicHandleSchema,
 } from "./dto/academic-profile.schema.js";
 
-const verificationRequestLimiter = rateLimit({
+const verificationRequestLimiter = createRateLimiter("academic-profiles:verificationRequestLimiter", {
   windowMs: 60 * 60 * 1000,
   limit: 5,
   keyGenerator: (req) => req.user!.sub,
@@ -32,7 +32,7 @@ const verificationRequestLimiter = rateLimit({
   message: { success: false, message: "Too many verification requests. Please try again later." },
 });
 
-const emailChallengeLimiter = rateLimit({
+const emailChallengeLimiter = createRateLimiter("academic-profiles:emailChallengeLimiter", {
   windowMs: 60 * 60 * 1000,
   limit: 5,
   keyGenerator: (req) => req.user!.sub,
@@ -41,7 +41,7 @@ const emailChallengeLimiter = rateLimit({
   message: { success: false, message: "Too many email verification requests. Please try again later." },
 });
 
-const emailVerifyLimiter = rateLimit({
+const emailVerifyLimiter = createRateLimiter("academic-profiles:emailVerifyLimiter", {
   windowMs: 15 * 60 * 1000,
   limit: 10,
   keyGenerator: (req) => req.user!.sub,
@@ -50,7 +50,7 @@ const emailVerifyLimiter = rateLimit({
   message: { success: false, message: "Too many verification attempts. Please try again later." },
 });
 
-const publicHandleLimiter = rateLimit({
+const publicHandleLimiter = createRateLimiter("academic-profiles:publicHandleLimiter", {
   windowMs: 24 * 60 * 60 * 1000,
   limit: 5,
   keyGenerator: (req) => req.user!.sub,
@@ -59,7 +59,7 @@ const publicHandleLimiter = rateLimit({
   message: { success: false, message: "Too many public URL changes. Please try again tomorrow." },
 });
 
-const coverUploadLimiter = rateLimit({
+const coverUploadLimiter = createRateLimiter("academic-profiles:coverUploadLimiter", {
   windowMs: 24 * 60 * 60 * 1000,
   limit: 20,
   keyGenerator: (req) => req.user!.sub,
@@ -68,7 +68,7 @@ const coverUploadLimiter = rateLimit({
   message: { success: false, message: "Too many cover uploads. Please try again tomorrow." },
 });
 
-const avatarUploadLimiter = rateLimit({
+const avatarUploadLimiter = createRateLimiter("academic-profiles:avatarUploadLimiter", {
   windowMs: 24 * 60 * 60 * 1000,
   limit: 20,
   keyGenerator: (req) => req.user!.sub,

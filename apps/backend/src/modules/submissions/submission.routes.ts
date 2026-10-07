@@ -7,7 +7,7 @@ import { validate } from "../../common/middleware/validate.js";
 import { objectIdSchema } from "../../common/validation/database-id.js";
 import { AppError } from "../../common/exceptions/app-error.js";
 import { submissionService } from "./submission.service.js";
-import rateLimit from "express-rate-limit";
+import { createRateLimiter } from "../../common/middleware/rate-limit.js";
 
 const submissionParamsSchema = z.object({ id: objectIdSchema });
 const revisionParamsSchema = z.object({ id: objectIdSchema, revisionId: objectIdSchema });
@@ -67,7 +67,7 @@ function parseArrayFields(body: Record<string, unknown>) {
 export const submissionRouter: Router = Router();
 submissionRouter.use(requireAuth);
 
-const aiPreReviewLimiter = rateLimit({
+const aiPreReviewLimiter = createRateLimiter("submissions:aiPreReviewLimiter", {
   windowMs: 60 * 60 * 1000,
   limit: 5,
   standardHeaders: true,

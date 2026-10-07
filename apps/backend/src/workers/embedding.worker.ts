@@ -5,7 +5,7 @@ import { connectPostgres, disconnectPostgres } from "../infrastructure/database/
 import { embeddingQueue, makeConnection, QUEUE_NAMES } from "../infrastructure/queue.js";
 import { logger } from "../infrastructure/logger.js";
 import { startWorkerHeartbeat } from "../infrastructure/worker-heartbeat.js";
-import { COMMUNITY_EMBEDDING_JOB, runCommunityEmbedding } from "../modules/communities/community-embedding.service.js";
+import { COMMUNITY_EMBEDDING_JOB, enqueueCommunityEmbedding, runCommunityEmbedding } from "../modules/communities/community-embedding.service.js";
 import { runEmbedding, type RunEmbeddingJob } from "../modules/embeddings/embedding.service.js";
 
 enforcePostgresOnlyRuntime();
@@ -42,6 +42,9 @@ async function main() {
   await embeddingQueue.add("scheduled-embedding", {} satisfies RunEmbeddingJob, {
     repeat: { pattern: env.EMBED_CRON },
   });
+
+  // Backfill communities created before embeddings existed; a run with nothing to embed exits immediately.
+  enqueueCommunityEmbedding();
 
   logger.info({ cron: env.EMBED_CRON }, "embedding worker listening on embedding queue");
 

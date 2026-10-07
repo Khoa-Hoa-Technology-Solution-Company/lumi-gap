@@ -10,7 +10,7 @@ import { PaperListQuerySchema } from "./dto/paper.schema.js";
 import { CompareBodySchema } from "./dto/compare.schema.js";
 import { embeddingQueue, paperAnalysisQueue } from "../../infrastructure/queue.js";
 import { env } from "../../config/env.js";
-import rateLimit from "express-rate-limit";
+import { createRateLimiter } from "../../common/middleware/rate-limit.js";
 import { validate } from "../../common/middleware/validate.js";
 import { TranslatePaperBodySchema } from "./dto/translate-paper.schema.js";
 import { paperTranslationController } from "./paper-translation.controller.js";
@@ -26,7 +26,7 @@ export const paperRouter: Router = Router();
 
 const knowledgeParams = z.object({ id: z.string().regex(/^(?:[0-9a-f]{24}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i) });
 const knowledgeBody = z.object({ force: z.boolean().default(false) }).default({ force: false });
-const knowledgeLimiter = rateLimit({ windowMs: 3600000, limit: 10, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => req.user!.sub });
+const knowledgeLimiter = createRateLimiter("papers:knowledgeLimiter", { windowMs: 3600000, limit: 10, keyGenerator: (req) => req.user!.sub });
 paperRouter.get("/:id/knowledge", requireAuth, validate(knowledgeParams, "params"), async (req, res) => {
   res.json({ success: true, data: await knowledgeService.get(String(req.params.id)) });
 });
@@ -34,7 +34,7 @@ paperRouter.post("/:id/knowledge", requireAuth, knowledgeLimiter, validate(knowl
   res.status(202).json({ success: true, data: await knowledgeService.requestIndex(String(req.params.id), req.body.force, req.user!.sub) });
 });
 
-const translationLimiter = rateLimit({
+const translationLimiter = createRateLimiter("papers:translationLimiter", {
   windowMs: 60 * 60 * 1000,
   limit: env.TRANSLATION_MAX_PER_HOUR,
   standardHeaders: true,
@@ -47,7 +47,7 @@ const translationLimiter = rateLimit({
     }),
 });
 
-const compareLimiter = rateLimit({
+const compareLimiter = createRateLimiter("papers:compareLimiter", {
   windowMs: 60 * 60 * 1000,
   limit: env.COMPARE_MAX_PER_HOUR,
   standardHeaders: true,
