@@ -100,7 +100,7 @@ export function TopicDetailPage() {
               variant="outline"
               size="sm"
               className="h-9 px-3 rounded-lg font-bold gap-1.5 text-xs border-slate-200 dark:border-slate-800 shadow-sm"
-              onClick={() => navigate(`/search?q=${encodeURIComponent(decodedTopic)}`)}
+              onClick={() => navigate(`/home?q=${encodeURIComponent(decodedTopic)}`)}
             >
               <Search className="w-3.5 h-3.5 text-slate-500" /> Search Papers
             </Button>

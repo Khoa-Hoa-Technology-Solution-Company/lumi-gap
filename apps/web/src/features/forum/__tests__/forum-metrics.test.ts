@@ -10,7 +10,7 @@ describe("forum real-data contract", () => {
   const topic = {
     id: "topic-id", type: "QUESTION", title: "Evaluation methods", body: "Academic discussion",
     createdAt: "2026-09-01T00:00:00.000Z", lastActivityAt: "2026-09-30T00:00:00.000Z",
-    commentCount: 99, replyCount: 3, voteScore: 7, helpfulCount: 2, viewCount: 248,
+    commentCount: 99, replyCount: 3, voteScore: 7, helpfulCount: 2, viewCount: 248, reactionCount: 12, participantCount: 8, linkCount: 6,
     authorId: { id: "author", fullName: "Researcher" },
     participants: [{ id: "author", fullName: "Researcher" }, { id: "reply-author", fullName: "Reviewer" }],
   };
@@ -18,7 +18,7 @@ describe("forum real-data contract", () => {
   it("preserves backend metrics and participant identity rather than recounting locally", async () => {
     vi.spyOn(api, "get").mockResolvedValue({ data: { data: [topic], meta: { page: 1, total: 1 } } });
     const result = await forumApi.posts({ sort: "latest" });
-    expect(result.data[0]).toMatchObject({ replyCount: 3, commentCount: 3, helpfulCount: 2, viewCount: 248, lastActivityAt: topic.lastActivityAt });
+    expect(result.data[0]).toMatchObject({ replyCount: 3, commentCount: 3, helpfulCount: 2, viewCount: 248, reactionCount: 12, participantCount: 8, linkCount: 6, lastActivityAt: topic.lastActivityAt });
     expect(result.data[0]!.participants.map((user) => user.id)).toEqual(["author", "reply-author"]);
   });
 
@@ -40,17 +40,18 @@ describe("forum real-data contract", () => {
 
   it("retains real pagination, response Helpful and parent-author context", async () => {
     const meta = { page: 2, pageSize: 25, total: 26, totalPages: 2 };
-    const get = vi.spyOn(api, "get").mockResolvedValue({ data: { data: [{ id: "reply", postId: "topic-id", body: "Follow-up", helpfulCount: 2, voteScore: 1, parentCommentId: "parent", parentComment: { id: "parent", status: "active", author: { id: "author", fullName: "Researcher" } } }], meta } });
+    const get = vi.spyOn(api, "get").mockResolvedValue({ data: { data: [{ id: "reply", postId: "topic-id", postNumber: 28, body: "Follow-up", helpfulCount: 2, voteScore: 1, parentCommentId: "parent", parentComment: { id: "parent", postNumber: 4, status: "active", author: { id: "author", fullName: "Researcher" } } }], meta } });
     const result = await forumApi.commentsPage(topic.id, 2);
     expect(get).toHaveBeenCalledWith(expect.stringContaining(topic.id), { params: { page: 2, pageSize: 25 } });
     expect(result.meta).toEqual(meta);
-    expect(result.data[0]).toMatchObject({ helpfulCount: 2, voteScore: 1, parentCommentId: "parent", parentComment: { author: { fullName: "Researcher" } } });
+    expect(result.data[0]).toMatchObject({ postNumber: 28, helpfulCount: 2, voteScore: 1, parentCommentId: "parent", parentComment: { postNumber: 4, author: { fullName: "Researcher" } } });
   });
 
   it("provides Vietnamese metric labels and compact non-wrapping recent activity", () => {
     expect(["Topic", "Replies", "Views", "Helpful", "Activity"].map((key) => vietnamese[key as keyof typeof vietnamese])).toEqual(["Chủ đề", "Trả lời", "Lượt xem", "Hữu ích", "Hoạt động"]);
     vi.spyOn(Date, "now").mockReturnValue(new Date("2026-09-30T12:00:00Z").getTime());
-    expect(formatForumActivityTime("2026-09-30T10:00:00Z", "vi")).toBe("2h");
-    expect(formatForumActivityTime("2026-09-28T12:00:00Z", "vi")).toBe("2d");
+    expect(formatForumActivityTime("2026-09-30T10:00:00Z", "vi")).toBe("2 giờ");
+    expect(formatForumActivityTime("2026-09-28T12:00:00Z", "vi")).toBe("2 ngày");
+    expect(formatForumActivityTime("2026-09-30T10:00:00Z", "en")).toBe("2h");
   });
 });

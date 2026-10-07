@@ -26,5 +26,9 @@ export * from "./corpus-validation.js";
 export * from "./review.js";
 export * from "./research-review.js";
 export * from "./literature.js";
+export * from "./knowledge.js";
 
 // Code quality reviewed and formatted
+
+export * from "./submission-history.js";
+export * from "./forum-citations.js";

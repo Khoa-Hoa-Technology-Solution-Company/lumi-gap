@@ -1,23 +1,23 @@
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, Bot, CheckCircle2, Download, FileClock, Play, Upload } from "lucide-react";
+import { ArrowLeft, Bot, Play, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { VersionHistory } from "@/features/submissions/components/version-history";
 import { SubmitReviewDialog } from "@/features/reviews/components/submit-review-dialog";
 import {
-  submissionsApi,
   useAddSubmissionRevision,
   useAiPreReviews,
   useRunAiPreReview,
   useSubmission,
-  useSubmissionRevisions,
+  useSubmissionHistory,
 } from "@/features/submissions";
 
 export function SubmissionDetailPage() {
   const { id = "" } = useParams();
   const submission = useSubmission(id);
-  const revisions = useSubmissionRevisions(id);
+  const history = useSubmissionHistory(id);
   const addRevision = useAddSubmissionRevision(id);
   const preReviews = useAiPreReviews(id);
   const runPreReview = useRunAiPreReview(id);
@@ -29,7 +29,7 @@ export function SubmissionDetailPage() {
   if (!submission.data || submission.error) return <main className="mx-auto max-w-3xl px-4 py-16"><div className="rounded-xl border border-red-200 bg-red-50 p-5 text-sm text-red-700">Submission not found or you do not have access.</div></main>;
 
   const data = submission.data;
-  const canRevise = !["completed", "accepted", "rejected", "withdrawn"].includes(data.status);
+  const canRevise = history.data?.canManage === true && !["accepted", "rejected", "withdrawn"].includes(data.status);
   const latestPreReview = preReviews.data?.[0];
 
   async function uploadRevision() {
@@ -48,7 +48,7 @@ export function SubmissionDetailPage() {
       <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between"><div>
         <div className="flex flex-wrap gap-2"><Badge variant="outline">{data.submissionType?.replaceAll("_", " ") || "Submission"}</Badge><Badge>{data.status.replaceAll("_", " ")}</Badge><Badge variant="secondary">Revision {data.currentRevisionNumber}</Badge></div>
         <h1 className="mt-4 text-2xl font-semibold tracking-tight">{data.title}</h1><p className="mt-2 text-sm text-slate-500">{data.researchField || "Research field not specified"}</p>
-      </div>{canRevise ? <SubmitReviewDialog submissionId={id} artifactTitle={data.title} artifactType={data.submissionType} /> : null}</div>
+      </div>{canRevise ? <div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => setShowRevision((value) => !value)}><Upload />New PDF version</Button><SubmitReviewDialog submissionId={id} artifactTitle={data.title} artifactType={data.submissionType} /></div> : null}</div>
       {data.abstract ? <p className="mt-4 text-sm leading-6 text-slate-600 dark:text-slate-400">{data.abstract}</p> : null}
     </header>
 
@@ -57,12 +57,9 @@ export function SubmissionDetailPage() {
       {latestPreReview?.status === "COMPLETED" ? <div className="mt-5 grid gap-4 border-t border-blue-200 pt-5 dark:border-blue-900 md:grid-cols-2"><div><h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Summary</h3><p className="mt-2 text-sm leading-6">{latestPreReview.summary}</p>{latestPreReview.goalAlignment ? <p className="mt-3 text-sm"><strong>Goal alignment:</strong> {latestPreReview.goalAlignment.assessment}</p> : null}</div><div><h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Human review focus</h3><ul className="mt-2 space-y-1.5 text-sm">{latestPreReview.reviewFocusAreas.map((item) => <li key={item}>• {item}</li>)}</ul>{latestPreReview.limitations.length ? <div className="mt-4 rounded-lg bg-white/70 p-3 text-xs text-slate-600 dark:bg-slate-950/40 dark:text-slate-400"><strong>Analysis limitations:</strong> {latestPreReview.limitations.join(" ")}</div> : null}</div></div> : null}
     </section>
 
-    <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_320px]"><section className="space-y-4"><Claim title="Research goal" value={data.researchGoal} /><Claim title="Research questions" value={data.researchQuestions?.map((item, index) => `${index + 1}. ${item}`).join("\n")} preserve /><Claim title="Claimed research gap" value={data.claimedResearchGap} /><Claim title="Claimed contribution" value={data.claimedContribution} /><Claim title="Methodology" value={data.methodology} /><Claim title="Scope" value={data.scope} /></section>
-      <aside><div className="rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-zinc-950"><div className="flex items-center justify-between"><h2 className="font-semibold">Revision history</h2>{canRevise ? <Button variant="ghost" size="sm" onClick={() => setShowRevision((value) => !value)}><Upload />New</Button> : null}</div>
-        {showRevision ? <div className="mt-4 rounded-xl border border-slate-200 p-3 dark:border-slate-800"><input type="file" accept="application/pdf,.pdf" className="block w-full text-xs" onChange={(event) => setFile(event.target.files?.[0])} /><textarea className="mt-3 min-h-20 w-full rounded-md border border-input bg-transparent px-3 py-2 text-xs" placeholder="Response to review / revision summary" value={response} onChange={(event) => setResponse(event.target.value)} /><Button className="mt-3 w-full" size="sm" onClick={uploadRevision} disabled={!file || addRevision.isPending}>Upload revision</Button></div> : null}
-        <ol className="mt-4 space-y-3">{revisions.data?.map((revision) => <li key={revision._id} className="rounded-xl bg-slate-50 p-3 dark:bg-slate-900"><div className="flex items-center justify-between"><span className="flex items-center gap-2 text-sm font-medium">{revision.revisionNumber === data.currentRevisionNumber ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : <FileClock className="h-4 w-4 text-slate-400" />}Revision {revision.revisionNumber}</span><button type="button" aria-label={`Download revision ${revision.revisionNumber}`} className="text-slate-500 hover:text-blue-700" onClick={() => submissionsApi.downloadRevision(id, revision._id, revision.revisionNumber).catch(() => toast.error("Download unavailable"))}><Download className="h-4 w-4" /></button></div><p className="mt-2 text-xs text-slate-500">{new Date(revision.createdAt).toLocaleString()} · {(revision.sizeBytes / 1024 / 1024).toFixed(2)} MB</p>{revision.responseToReview ? <p className="mt-2 text-xs leading-5 text-slate-600 dark:text-slate-400">{revision.responseToReview}</p> : null}{revision.checksumSha256 ? <p className="mt-2 truncate font-mono text-[10px] text-slate-400" title={revision.checksumSha256}>SHA-256 {revision.checksumSha256}</p> : null}</li>)}</ol>
-      </div></aside>
-    </div>
+    {history.data ? <VersionHistory id={id} history={history.data} readOnly={["accepted", "rejected", "withdrawn"].includes(data.status)} /> : <p className="mt-6 text-sm text-muted-foreground">{history.error ? "Không thể tải lịch sử phiên bản. Hãy tải lại trang." : "Đang tải lịch sử phiên bản…"}</p>}
+    {showRevision && canRevise ? <section className="mt-6 rounded-xl border bg-card p-5"><h2 className="font-semibold">Upload a new PDF version</h2><label className="mt-3 block text-sm">PDF file<input type="file" accept="application/pdf,.pdf" className="mt-2 block w-full min-w-0 text-xs" onChange={(event) => setFile(event.target.files?.[0])} /></label><label className="mt-3 block text-sm">Revision summary<textarea className="mt-2 min-h-20 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm" value={response} onChange={(event) => setResponse(event.target.value)} /></label><Button className="mt-3" size="sm" onClick={uploadRevision} disabled={!file || addRevision.isPending}>Upload version</Button></section> : null}
+    <section className="mt-6 grid min-w-0 grid-cols-1 gap-4 md:grid-cols-2"><Claim title="Research goal" value={data.researchGoal} /><Claim title="Research questions" value={data.researchQuestions?.map((item, index) => `${index + 1}. ${item}`).join("\n")} preserve /><Claim title="Claimed research gap" value={data.claimedResearchGap} /><Claim title="Claimed contribution" value={data.claimedContribution} /><Claim title="Methodology" value={data.methodology} /><Claim title="Scope" value={data.scope} /></section>
   </main>;
 }
 

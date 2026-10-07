@@ -1,9 +1,41 @@
 import { accountManagementStrings } from "./account-management";
 import { projectLiteratureStrings } from "./project-literature";
+import { forumRefinementStrings } from "./forum-refinement";
 
 // English fallbacks for recently introduced profile/admin surfaces. Keeping
 // each string once avoids duplicating key/value text in the initial bundle.
 const newUiKeys = [
+  "Add AI connection",
+  "Add connection",
+  "AI Connections",
+  "API key",
+  "API key saved",
+  "API protocol",
+  "Applies to reports, research gaps, AI scoring, paper analysis and AI chat. Search embeddings, scheduled corpus jobs and manuscript AI Reviewer use the platform connection.",
+  "Base URL",
+  "Choose a model",
+  "Confirm delete",
+  "Connection name",
+  "Delete this connection? If active, your tasks will use platform AI.",
+  "e.g. Gemini personal, OpenRouter, local gateway",
+  "Edit AI connection",
+  "Fetch models",
+  "Fetch models first",
+  "Gemini",
+  "Keys are encrypted and never displayed after saving. A new endpoint requires entering its key again. OpenAI-compatible gateways without authentication may leave this empty.",
+  "Loading connections…",
+  "Model",
+  "No API key",
+  "OpenAI-compatible",
+  "OpenAI-compatible (OpenAI, OpenRouter, gateways)",
+  "OpenAI-compatible endpoints usually include /v1. Local gateways (Ollama, LM Studio or compatible proxies) can use http://localhost:PORT/v1 or a LAN address. In Docker, localhost connects to the host computer.",
+  "Platform AI",
+  "Save connection",
+  "Save your API keys and endpoints, fetch available models, then select a connection for your AI tasks.",
+  "Use as default",
+  "Use platform AI",
+  "Use the application's default AI configuration.",
+  "Your AI connections",
   "– Present",
   ") does not have privileges to manage the LumiGAP platform.",
   "• Target:",
@@ -518,10 +550,15 @@ const newUiKeys = [
   "No matching projects",
   "Try another name or status.",
   "Clear filters",
+  "URL",
+  "Website",
+  "yearFrom",
+  "yearTo",
 ] as const;
 
 export const newUiStrings = {
   ...(Object.fromEntries(newUiKeys.map((key) => [key, key])) as { [Key in typeof newUiKeys[number]]: Key }),
   ...projectLiteratureStrings,
   ...accountManagementStrings.en,
+  ...forumRefinementStrings,
 } as const;

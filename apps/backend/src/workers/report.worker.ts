@@ -7,6 +7,7 @@ import { logger } from "../infrastructure/logger.js";
 import { startWorkerHeartbeat } from "../infrastructure/worker-heartbeat.js";
 import { markReportFailed, runRagPipeline, type ReportJob } from "../modules/reports/rag.service.js";
 import { PROMPT_VERSION } from "../modules/reports/report.prompt.js";
+import { withUserAi } from "../modules/user-ai/user-ai.runtime.js";
 
 enforcePostgresOnlyRuntime();
 
@@ -52,7 +53,10 @@ async function main() {
     async (job) => {
       logger.info({ jobId: job.id, attempt: job.attemptsMade + 1 }, "report job received");
       try {
-        await runRagPipeline(job.data as ReportJob);
+        const input = job.data as ReportJob;
+        const report = await getPrisma().report.findUnique({ where: { id: input.reportId }, select: { userId: true } });
+        if (report) await withUserAi(report.userId, () => runRagPipeline(input));
+        else await runRagPipeline(input);
       } catch (err) {
         // Truncation & friends can never succeed on retry — skip the backoff dance.
         if (err instanceof Error && (err as { nonRetryable?: boolean }).nonRetryable) {

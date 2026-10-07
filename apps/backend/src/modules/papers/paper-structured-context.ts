@@ -9,6 +9,8 @@ export interface PaperStructuredAnalysis {
   contributions?: string[];
   futureWork?: string[];
   keyTerms?: string[];
+  sourceKind?: string;
+  warnings?: string[];
 }
 
 const MAX_FIELD_CHARS = 500;
@@ -20,6 +22,7 @@ export function buildStructuredPaperContext(
   if (!aiAnalysis) return null;
 
   const lines: string[] = [];
+  if (aiAnalysis.sourceKind) lines.push(`Coverage: ${aiAnalysis.sourceKind === "abstract" ? "abstract only" : "PDF text"}`);
   addScalar(lines, "Summary", aiAnalysis.summary);
   addScalar(lines, "Methods", aiAnalysis.methods);
   addScalar(lines, "Dataset", aiAnalysis.dataset);

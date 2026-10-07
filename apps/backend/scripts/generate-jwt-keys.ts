@@ -1,14 +1,9 @@
-import { generateKeyPairSync } from "node:crypto";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { backendRoot } from "../src/config/load-env.js";
 import { resolve } from "node:path";
+import { ensureJwtKeys } from "../../../scripts/jwt-keys.mjs";
 
-const directory = resolve(process.cwd(), ".keys");
-mkdirSync(directory, { recursive: true });
-const { privateKey, publicKey } = generateKeyPairSync("rsa", {
-  modulusLength: 3072,
-  privateKeyEncoding: { type: "pkcs8", format: "pem" },
-  publicKeyEncoding: { type: "spki", format: "pem" },
-});
-writeFileSync(resolve(directory, "jwt-private.pem"), privateKey, { mode: 0o600 });
-writeFileSync(resolve(directory, "jwt-public.pem"), publicKey, { mode: 0o644 });
-process.stdout.write("Generated local RS256 key pair in apps/backend/.keys (gitignored).\n");
+const created = ensureJwtKeys(
+  resolve(backendRoot, process.env.JWT_PRIVATE_KEY_PATH ?? ".keys/jwt-private.pem"),
+  resolve(backendRoot, process.env.JWT_PUBLIC_KEY_PATH ?? ".keys/jwt-public.pem"),
+);
+console.log(created ? "Generated local RS256 key pair (gitignored)." : "Existing RS256 key pair verified.");

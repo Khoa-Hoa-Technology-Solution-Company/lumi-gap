@@ -1,3 +1,4 @@
+import { researchHomeEn } from "./research-home-en";
 import { en } from "./en";
 import { academicProfileStrings } from "./academic-profile";
 import { academicForumStrings } from "./academic-forum";
@@ -6,10 +7,15 @@ import { paperDetailIaStrings } from "./paper-detail-ia";
 import { authSecurityStrings } from "./auth-security";
 import { newUiStrings } from "./new-ui";
 import { projectInvitationStrings } from "./project-invitations";
+import { peerReviewVersionStrings } from "./peer-review-versions";
 import { studentOnboardingStrings } from "./student-onboarding";
+import { trustSafetyRagStrings } from "./trust-safety-rag";
 
 export const pt: Record<keyof typeof en, string> = {
+  ...trustSafetyRagStrings,
+  ...researchHomeEn,
   ...projectInvitationStrings,
+  ...peerReviewVersionStrings,
   ...studentOnboardingStrings,
   ...newUiStrings,
   ...authSecurityStrings,
@@ -786,8 +792,7 @@ export const pt: Record<keyof typeof en, string> = {
   "Level": "Nível",
   "Level Tiers": "Níveis de nível",
   "Library is empty": "A biblioteca está vazia",
-  "Liem Research Team. All rights reserved.": "Equipe de Pesquisa Liem. Todos os direitos reservados.",
-  "LiemResearch logo": "Logotipo da LiemResearch",
+  "Tori Team. All rights reserved.": "Equipe de Pesquisa Liem. Todos os direitos reservados.",
   "Limitations": "Limitações",
   "Live": "Ao vivo",
   "Loading AI history...": "Carregando histórico de IA...",

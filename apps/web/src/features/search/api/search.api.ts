@@ -38,7 +38,7 @@ export interface SearchParams {
 export const searchApi = {
   /** Semantic search (Phase B) — GET /api/v1/search. Same envelope as /papers,
    *  but each paper carries a relevance `score` (and `rerankScore` if rerank). */
-  async semantic(params: SearchParams) {
+  async semantic(params: SearchParams, signal?: AbortSignal) {
     // Flatten array filters → CSV for the query string.
     const { paperKind, ...rest } = params;
     const query: Record<string, unknown> = { ...rest };
@@ -67,7 +67,7 @@ export const searchApi = {
         else delete query[key];
       }
     }
-    const res = await api.get(API_ROUTES.search.semantic, { params: query });
+    const res = await api.get(API_ROUTES.search.semantic, { params: query, signal });
     return {
       papers: res.data.data as ScoredPaper[],
       meta: res.data.meta as {

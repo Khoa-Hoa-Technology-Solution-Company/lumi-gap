@@ -12,8 +12,8 @@
     "dev": "turbo run dev dev:workers",
     "dev:backend": "turbo run dev --filter=backend",
     "dev:web": "turbo run dev --filter=web",
-    "dev:mobile": "pnpm --filter mobile exec expo start",
-    "dev:flutter_mobile": "cd apps/flutter_mobile && flutter run --dart-define=API_BASE_URL=http://10.0.2.2:4000/api/v1",
+    "dev:mobile": "node scripts/run-mobile.mjs expo",
+    "dev:flutter_mobile": "node scripts/run-mobile.mjs flutter",
     "build": "turbo run build",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
@@ -21,9 +21,12 @@
     "test:e2e": "playwright test",
     "test:e2e:list": "playwright test --list",
     "clean": "turbo run clean",
-    "docker:up": "docker compose --env-file .env.compose up -d",
-    "docker:down": "docker compose --env-file .env.compose down",
-    "docker:logs": "docker compose --env-file .env.compose logs -f"
+    "docker:up": "docker compose up -d --build",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f",
+    "setup": "node scripts/setup.mjs",
+    "docker:infra": "docker compose up -d postgres redis",
+    "docker:reset": "docker compose down -v"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
@@ -33,6 +36,9 @@
     "globals": "^16.5.0",
     "turbo": "^2.3.0",
     "typescript": "^5.7.0",
-    "typescript-eslint": "^8.70.1"
+    "typescript-eslint": "^8.70.1",
+    "dotenv": "^16.4.7",
+    "dotenv-expand": "^11.0.7",
+    "cross-spawn": "^7.0.6"
   }
 }

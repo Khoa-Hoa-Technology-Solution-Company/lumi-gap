@@ -71,15 +71,30 @@ export function formatForumActivityTime(value: string, locale: string): string {
     const time = new Date(value).getTime();
     if (Number.isNaN(time)) return "";
     const elapsedSeconds = Math.max(0, Math.round((Date.now() - time) / 1000));
-    if (elapsedSeconds < 60) return `${Math.max(1, elapsedSeconds)}s`;
+    const unit = new Intl.NumberFormat(locale, { style: "unit", unit: "second", unitDisplay: "narrow" });
+    if (elapsedSeconds < 60) return unit.format(Math.max(1, elapsedSeconds));
     const minutes = Math.round(elapsedSeconds / 60);
-    if (minutes < 60) return `${minutes}m`;
+    if (minutes < 60) return new Intl.NumberFormat(locale, { style: "unit", unit: "minute", unitDisplay: "narrow" }).format(minutes);
     const hours = Math.round(minutes / 60);
-    if (hours < 24) return `${hours}h`;
+    if (hours < 24) return new Intl.NumberFormat(locale, { style: "unit", unit: "hour", unitDisplay: "narrow" }).format(hours);
     const days = Math.round(hours / 24);
-    if (days < 30) return `${days}d`;
+    if (days < 30) return new Intl.NumberFormat(locale, { style: "unit", unit: "day", unitDisplay: "narrow" }).format(days);
     return new Date(value).toLocaleDateString(locale, { month: "short", day: "numeric" });
   } catch {
     return "";
   }
+}
+
+/** Stable human-readable thread URL with UUID fallback for legacy API responses.
+ * Numeric post locators follow Discourse's `/topic-slug/post-number` format.
+ * A string locator is retained for old hash links during the migration. */
+export function forumPostHref(post: { id: string; publicSlug?: string }, postNumberOrHash?: number | string): string {
+  const base = `/forum/${encodeURIComponent(post.publicSlug || post.id)}`;
+  if (typeof postNumberOrHash === "number" || (typeof postNumberOrHash === "string" && /^\d+$/.test(postNumberOrHash))) return `${base}/${postNumberOrHash}`;
+  if (postNumberOrHash) return `${base}#${postNumberOrHash.replace(/^#/, "")}`;
+  return base;
+}
+
+export function forumPostNumberHref(post: { id: string; publicSlug?: string }, postNumber: number): string {
+  return forumPostHref(post, postNumber);
 }

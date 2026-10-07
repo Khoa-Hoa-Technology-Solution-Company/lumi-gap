@@ -1,18 +1,18 @@
 # LumiGap Production Deployment Runbook
 
 This is the source of truth for deploying and operating the LumiGap web
-platform at `paperlens.uk`. It contains no real credentials.
+platform at `lumigap.uk`. It contains no real credentials.
 
 ## 1. Production Topology
 
 ```text
 Browser
   |
-  +-- https://paperlens.uk
-  |      DNS + TLS + Nginx Proxy Manager -> paperlens-web:80
+  +-- https://lumigap.uk
+  |      DNS + TLS + Nginx Proxy Manager -> lumigap-web:80
   |
-  +-- https://api.paperlens.uk
-         DNS + TLS + Nginx Proxy Manager -> paperlens-backend:4000
+  +-- https://api.lumigap.uk
+         DNS + TLS + Nginx Proxy Manager -> lumigap-backend:4000
                                                        |
                   +------------------------------------+------------------+
                   |                    |               |                  |
@@ -28,12 +28,12 @@ Public endpoints:
 
 | Purpose | URL |
 |---|---|
-| Web application | `https://paperlens.uk` |
-| API base | `https://api.paperlens.uk/api/v1` |
-| Process liveness | `https://api.paperlens.uk/health` |
-| MongoDB/Redis readiness | `https://api.paperlens.uk/ready` |
-| API documentation | `https://api.paperlens.uk/api-docs` |
-| Google OAuth callback | `https://api.paperlens.uk/api/v1/auth/google/callback` |
+| Web application | `https://lumigap.uk` |
+| API base | `https://api.lumigap.uk/api/v1` |
+| Process liveness | `https://api.lumigap.uk/health` |
+| MongoDB/Redis readiness | `https://api.lumigap.uk/ready` |
+| API documentation | `https://api.lumigap.uk/api-docs` |
+| Google OAuth callback | `https://api.lumigap.uk/api/v1/auth/google/callback` |
 
 ## 2. Version-Controlled Deployment Files
 
@@ -42,8 +42,8 @@ Public endpoints:
 | `Jenkinsfile` | Canonical production pipeline |
 | `Dockerfile.backend` | API and worker image |
 | `Dockerfile.web` | Vite build and Nginx runtime image |
-| `deploy/openresty/paperlens.conf.example` | Reverse proxy and TLS template |
-| `apps/backend/.env.production.example` | Complete public environment template |
+| `deploy/openresty/lumigap.conf.example` | Reverse proxy and TLS template |
+| `.env.production.example` | Complete public environment template |
 | `apps/backend/scripts/validate-production-env.ts` | Pre-deploy environment guard |
 | `README_PRODUCTION.md` | This runbook |
 
@@ -55,11 +55,10 @@ diverge.
 
 | File or secret | Commit to Git? |
 |---|---|
-| `apps/backend/.env.production.example` | Yes |
+| `.env.production.example` | Yes |
 | `apps/backend/.env.production` | **No** |
-| `apps/backend/.env` | **No** |
-| `.env.compose` | **No**; local Docker Compose only |
-| Jenkins Secret Text `liemresearch-backend-env-b64` | **No** |
+| `.env` | **No**; single local environment |
+| Jenkins Secret Text `lumigap-backend-env-b64` | **No** |
 | Jenkins temporary `.env.runtime` | **No**; deleted after every build |
 
 Base64 is transport encoding, not encryption. Never paste the private
@@ -69,8 +68,8 @@ environment into GitHub, a pull request, an issue, a screenshot, or build logs.
 
 ### DNS and firewall
 
-- `paperlens.uk` A record points to the deployment server.
-- `api.paperlens.uk` A record points to the same deployment server.
+- `lumigap.uk` A record points to the deployment server.
+- `api.lumigap.uk` A record points to the same deployment server.
 - Public firewall permits only required services such as `80` and `443`.
 - MongoDB, Redis, ports `9000`, and `9001` are not exposed to the public
   Internet. Nginx Proxy Manager is the public entry point.
@@ -83,8 +82,8 @@ stable aliases:
 
 | Public host | Forward hostname | Forward port |
 |---|---|---:|
-| `paperlens.uk` | `paperlens-web` | `80` |
-| `api.paperlens.uk` | `paperlens-backend` | `4000` |
+| `lumigap.uk` | `lumigap-web` | `80` |
+| `api.lumigap.uk` | `lumigap-backend` | `4000` |
 
 Do not forward either host to `127.0.0.1` or the server's public IP. From inside
 the reverse-proxy container, `127.0.0.1` refers to that container itself, while
@@ -99,12 +98,12 @@ the command does not depend on an already-valid HTTPS configuration:
 ```bash
 sudo systemctl stop openresty
 sudo certbot certonly --standalone \
-  -d paperlens.uk \
-  -d api.paperlens.uk
+  -d lumigap.uk \
+  -d api.lumigap.uk
 sudo systemctl start openresty
 ```
 
-Install `deploy/openresty/paperlens.conf.example` in the server's OpenResty
+Install `deploy/openresty/lumigap.conf.example` in the server's OpenResty
 `conf.d` directory, verify certificate paths, then run:
 
 ```bash
@@ -119,13 +118,13 @@ Configure the production OAuth client in Google Cloud:
 **Authorized JavaScript origin**
 
 ```text
-https://paperlens.uk
+https://lumigap.uk
 ```
 
 **Authorized redirect URI**
 
 ```text
-https://api.paperlens.uk/api/v1/auth/google/callback
+https://api.lumigap.uk/api/v1/auth/google/callback
 ```
 
 The redirect URI must match `GOOGLE_CALLBACK_URL` exactly.
@@ -150,7 +149,7 @@ current and previous backend/web image tags.
 Create the private file:
 
 ```powershell
-Copy-Item apps/backend/.env.production.example apps/backend/.env.production
+Copy-Item .env.production.example apps/backend/.env.production
 ```
 
 Replace **every value enclosed in angle brackets**, including:
@@ -161,21 +160,8 @@ Replace **every value enclosed in angle brackets**, including:
 Required runtime secrets include MongoDB, the self-hosted Redis password, two different JWT secrets,
 Gemini, Google OAuth, and R2 when `STORAGE_PROVIDER=r2`.
 
-The Jenkins browser gate also requires a dedicated low-privilege E2E account
-with enough test credits to run one AI rerank, and one stable paper fixture.
-The fixture must be active, embedded, discoverable by `E2E_SEARCH_QUERY`,
-contain an abstract, and expose a readable PDF:
-
-```dotenv
-E2E_USER_EMAIL=<dedicated-test-account>
-E2E_USER_PASSWORD=<dedicated-test-password>
-E2E_PAPER_ID=<stable-paper-object-id>
-E2E_SEARCH_QUERY=<query-that-returns-that-paper>
-E2E_TRANSLATION_LANGUAGE=vi
-```
-
-Do not use an administrator account. These values stay in the protected Jenkins
-credential and are never baked into the web image.
+The Jenkins browser gate checks that legacy `/search` URLs redirect to the home
+research composer. It does not require a dedicated account or paper fixture.
 
 Redis runs inside the private Docker network with AOF persistence. Production
 must use:
@@ -194,8 +180,8 @@ Keep these public values:
 ```env
 NODE_ENV=production
 PORT=4000
-CORS_ORIGIN=https://paperlens.uk
-GOOGLE_CALLBACK_URL=https://api.paperlens.uk/api/v1/auth/google/callback
+CORS_ORIGIN=https://lumigap.uk
+GOOGLE_CALLBACK_URL=https://api.lumigap.uk/api/v1/auth/google/callback
 TRANSLATION_PROVIDER=libretranslate
 LIBRETRANSLATE_URL=http://libretranslate:5000
 SYNC_ADMIN_BYPASS=false
@@ -218,7 +204,7 @@ file path.
 Create or update a Jenkins **Secret Text** credential:
 
 ```text
-ID: liemresearch-backend-env-b64
+ID: lumigap-backend-env-b64
 ```
 
 Encode the private file on Windows without printing it:
@@ -263,7 +249,7 @@ more papers.
 The web image is built with:
 
 ```text
-VITE_API_BASE=https://api.paperlens.uk/api/v1
+VITE_API_BASE=https://api.lumigap.uk/api/v1
 ```
 
 The backend candidate must pass `/ready` before the live API container is
@@ -306,9 +292,9 @@ gaps require their workers, while most AI features require Redis queues.
 ### Public liveness and readiness
 
 ```powershell
-(Invoke-WebRequest https://paperlens.uk -UseBasicParsing).StatusCode
-(Invoke-WebRequest https://api.paperlens.uk/health -UseBasicParsing).StatusCode
-(Invoke-WebRequest https://api.paperlens.uk/ready -UseBasicParsing).StatusCode
+(Invoke-WebRequest https://lumigap.uk -UseBasicParsing).StatusCode
+(Invoke-WebRequest https://api.lumigap.uk/health -UseBasicParsing).StatusCode
+(Invoke-WebRequest https://api.lumigap.uk/ready -UseBasicParsing).StatusCode
 ```
 
 All must return `200`. `/health` means the Express process is alive. `/ready`
@@ -318,13 +304,13 @@ also pings MongoDB and Redis and returns `503` when either dependency is down.
 
 ```powershell
 $headers = @{
-  Origin = "https://paperlens.uk"
+  Origin = "https://lumigap.uk"
   "Access-Control-Request-Method" = "GET"
   "Access-Control-Request-Headers" = "authorization,content-type"
 }
 
 $response = Invoke-WebRequest `
-  -Uri "https://api.paperlens.uk/api/v1/papers/translation/capabilities" `
+  -Uri "https://api.lumigap.uk/api/v1/papers/translation/capabilities" `
   -Method Options `
   -Headers $headers `
   -UseBasicParsing
@@ -333,12 +319,12 @@ $response.StatusCode
 $response.Headers["Access-Control-Allow-Origin"]
 ```
 
-Expected: status `204` and origin `https://paperlens.uk`.
+Expected: status `204` and origin `https://lumigap.uk`.
 
 ### Translation
 
 ```powershell
-Invoke-RestMethod "https://api.paperlens.uk/api/v1/papers/translation/capabilities"
+Invoke-RestMethod "https://api.lumigap.uk/api/v1/papers/translation/capabilities"
 ```
 
 Then sign in, open one paper containing an abstract, translate it, reload the
@@ -349,12 +335,12 @@ page, and confirm the cached translation still appears.
 Test both:
 
 1. Successful Google sign-in returns to
-   `https://paperlens.uk/auth/oauth-callback?code=...`, exchanges the short-lived
+   `https://lumigap.uk/auth/oauth-callback?code=...`, exchanges the short-lived
    code once, and then removes it from the browser URL.
 2. Cancelled/failed Google sign-in returns to
-   `https://paperlens.uk/login?error=GoogleLoginFailed`.
+   `https://lumigap.uk/login?error=GoogleLoginFailed`.
 
-Neither path may redirect to `localhost` or `api.paperlens.uk/login`. Access and
+Neither path may redirect to `localhost` or `api.lumigap.uk/login`. Access and
 refresh tokens must never appear in the callback URL.
 
 ### Workers
@@ -401,7 +387,7 @@ separate decisions.
   loss still affects pending jobs, so monitor failed/dead-letter jobs.
 - Rotate credentials immediately after any public disclosure.
 - After rotation, update Jenkins credential
-  `liemresearch-backend-env-b64` and deploy again.
+  `lumigap-backend-env-b64` and deploy again.
 - Remove the private environment from chat/file-transfer history after the
   authorized operator stores it securely.
 
@@ -412,7 +398,7 @@ A production deployment is accepted only when:
 - [ ] Jenkins checked out the intended `main` commit.
 - [ ] Production environment validation passed with no placeholder.
 - [ ] Web, API, and `/ready` return `200`.
-- [ ] CORS allows `https://paperlens.uk` and rejects unapproved origins.
+- [ ] CORS allows `https://lumigap.uk` and rejects unapproved origins.
 - [ ] Google success and failure paths return to the web domain.
 - [ ] LibreTranslate reports supported languages and translates one paper.
 - [ ] Six steady worker containers are running with fresh heartbeats.

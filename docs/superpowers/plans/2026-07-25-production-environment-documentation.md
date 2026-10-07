@@ -4,17 +4,17 @@
 
 **Goal:** Provide a safe production deployment runbook, a complete committed environment template, and a private production environment file that can be sent directly to the project supervisor.
 
-**Architecture:** Git stores only documentation and placeholders. The real production values are copied mechanically from the existing private backend environment, updated with PaperLens public URLs, ignored by Git, and transferred privately. Jenkins remains the runtime secret store through `liemresearch-backend-env-b64`.
+**Architecture:** Git stores only documentation and placeholders. The real production values are copied mechanically from the existing private backend environment, updated with LumiGap public URLs, ignored by Git, and transferred privately. Jenkins remains the runtime secret store through `lumigap-backend-env-b64`.
 
-**Tech Stack:** Markdown, dotenv, Jenkins Pipeline, Docker, Google OAuth, PaperLens DNS/OpenResty.
+**Tech Stack:** Markdown, dotenv, Jenkins Pipeline, Docker, Google OAuth, LumiGap DNS/OpenResty.
 
 ## Global Constraints
 
 - Never print or commit real MongoDB, Redis, Gemini, R2, Google OAuth, JWT, or provider secrets.
 - Treat `apps/backend/src/config/env.ts` as the complete environment-variable source of truth.
-- Use `https://paperlens.uk` for the web origin.
-- Use `https://api.paperlens.uk/api/v1` for the API base.
-- Use `https://api.paperlens.uk/api/v1/auth/google/callback` for Google OAuth.
+- Use `https://lumigap.uk` for the web origin.
+- Use `https://api.lumigap.uk/api/v1` for the API base.
+- Use `https://api.lumigap.uk/api/v1/auth/google/callback` for Google OAuth.
 - Keep the private production file ignored by Git.
 
 ---
@@ -46,8 +46,8 @@ the public deployment values:
 NODE_ENV=production
 PORT=4000
 LOG_LEVEL=info
-CORS_ORIGIN=https://paperlens.uk
-GOOGLE_CALLBACK_URL=https://api.paperlens.uk/api/v1/auth/google/callback
+CORS_ORIGIN=https://lumigap.uk
+GOOGLE_CALLBACK_URL=https://api.lumigap.uk/api/v1/auth/google/callback
 TRANSLATION_PROVIDER=libretranslate
 LIBRETRANSLATE_URL=http://libretranslate:5000
 SYNC_ADMIN_BYPASS=false
@@ -92,7 +92,7 @@ Extract uppercase keys from both files and verify every schema key is present
 in the template. Defaults may still be shown explicitly for operational
 clarity.
 
-### Task 3: Add the PaperLens production runbook
+### Task 3: Add the LumiGap production runbook
 
 **Files:**
 - Create: `README_PRODUCTION.md`
@@ -106,8 +106,8 @@ clarity.
 Explain:
 
 ```text
-paperlens.uk -> OpenResty -> frontend :9001
-api.paperlens.uk -> OpenResty -> backend :9000
+lumigap.uk -> OpenResty -> frontend :9001
+api.lumigap.uk -> OpenResty -> backend :9000
 Jenkins -> Docker images and containers
 Jenkins credential -> temporary .env.runtime
 ```
@@ -122,9 +122,9 @@ Base64 without placing its contents in Git.
 Show the exact build argument and runtime overrides:
 
 ```bash
---build-arg VITE_API_BASE=https://api.paperlens.uk/api/v1
--e CORS_ORIGIN=https://paperlens.uk
--e GOOGLE_CALLBACK_URL=https://api.paperlens.uk/api/v1/auth/google/callback
+--build-arg VITE_API_BASE=https://api.lumigap.uk/api/v1
+-e CORS_ORIGIN=https://lumigap.uk
+-e GOOGLE_CALLBACK_URL=https://api.lumigap.uk/api/v1/auth/google/callback
 ```
 
 Document Google Authorized JavaScript origin and redirect URI.
@@ -134,9 +134,9 @@ Document Google Authorized JavaScript origin and redirect URI.
 Include checks for:
 
 ```text
-https://paperlens.uk
-https://api.paperlens.uk/health
-Access-Control-Allow-Origin: https://paperlens.uk
+https://lumigap.uk
+https://api.lumigap.uk/health
+Access-Control-Allow-Origin: https://lumigap.uk
 Google callback domain
 ```
 

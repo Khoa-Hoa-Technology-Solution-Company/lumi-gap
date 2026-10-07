@@ -1,3 +1,4 @@
+import { researchHomeEn } from "./research-home-en";
 import { en } from "./en";
 import { academicProfileStrings } from "./academic-profile";
 import { academicForumStrings } from "./academic-forum";
@@ -6,10 +7,15 @@ import { paperDetailIaStrings } from "./paper-detail-ia";
 import { authSecurityStrings } from "./auth-security";
 import { newUiStrings } from "./new-ui";
 import { projectInvitationStrings } from "./project-invitations";
+import { peerReviewVersionStrings } from "./peer-review-versions";
 import { studentOnboardingStrings } from "./student-onboarding";
+import { trustSafetyRagStrings } from "./trust-safety-rag";
 
 export const de: Record<keyof typeof en, string> = {
+  ...trustSafetyRagStrings,
+  ...researchHomeEn,
   ...projectInvitationStrings,
+  ...peerReviewVersionStrings,
   ...studentOnboardingStrings,
   ...newUiStrings,
   ...authSecurityStrings,
@@ -786,8 +792,7 @@ export const de: Record<keyof typeof en, string> = {
   "Level": "Ebene",
   "Level Tiers": "Levelstufen",
   "Library is empty": "Die Bibliothek ist leer",
-  "Liem Research Team. All rights reserved.": "Liem-Forschungsteam. Alle Rechte vorbehalten.",
-  "LiemResearch logo": "LiemResearch-Logo",
+  "Tori Team. All rights reserved.": "Liem-Forschungsteam. Alle Rechte vorbehalten.",
   "Limitations": "Einschränkungen",
   "Live": "Lebe",
   "Loading AI history...": "AI-Verlauf wird geladen...",

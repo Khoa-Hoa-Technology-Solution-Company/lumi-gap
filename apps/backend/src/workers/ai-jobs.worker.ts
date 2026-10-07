@@ -8,6 +8,7 @@ import { makeConnection, QUEUE_NAMES } from "../infrastructure/queue.js";
 import { startWorkerHeartbeat } from "../infrastructure/worker-heartbeat.js";
 import { completeAiRun, failAiRun, markAiRunStarted, type AiJobType } from "../modules/ai-jobs/ai-run.service.js";
 import { getLlmProvider } from "../modules/llm/llm.factory.js";
+import { withUserAi } from "../modules/user-ai/user-ai.runtime.js";
 
 enforcePostgresOnlyRuntime();
 
@@ -68,11 +69,11 @@ async function processAiRun(payload: AiJobPayload): Promise<void> {
       evidence,
       "</EVIDENCE>",
     ].join("\n");
-    const output = await getLlmProvider().generate(prompt, {
-      system: systemPrompts[run.jobType],
+    const output = await withUserAi(run.ownerId, () => getLlmProvider().generate(prompt, {
+      system: systemPrompts[payload.jobType],
       temperature: 0.2,
       maxOutputTokens: 4096,
-    });
+    }));
     await completeAiRun(payload.runId, {
       resultSummary: output.slice(0, 20000),
       latencyMs: Date.now() - startedAt,

@@ -35,7 +35,7 @@ export interface PapersListParams {
 }
 
 export const papersApi = {
-  async list(params: PapersListParams) {
+  async list(params: PapersListParams, signal?: AbortSignal) {
     // Encode array filters consistently for both keyword and semantic routes.
     const { paperKind, ...rest } = params;
     const query: Record<string, unknown> = { ...rest };
@@ -62,7 +62,7 @@ export const papersApi = {
       const value = params[key];
       if (Array.isArray(value) && value.length > 0) query[key] = value.join(",");
     }
-    const res = await api.get(API_ROUTES.papers.list, { params: query });
+    const res = await api.get(API_ROUTES.papers.list, { params: query, signal });
     return {
       papers: res.data.data as Paper[],
       meta: res.data.meta as {

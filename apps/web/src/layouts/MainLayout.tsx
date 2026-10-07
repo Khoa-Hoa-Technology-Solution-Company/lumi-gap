@@ -5,6 +5,7 @@ import { LogOut, User, Bookmark, ChevronDown, KeyRound, Menu, Trophy, X } from "
 import logoImage from "@/assets/logo.png";
 import logoDarkImage from "@/assets/logo-dark.png";
 import { Button } from "@/components/ui/button";
+import { RouteTransition } from "@/components/route-transition";
 import { ThemeToggle } from "@/components/theme-toggle";
 import {
   DropdownMenu,
@@ -31,7 +32,6 @@ const navGroups = [
   {
     label: "Explore",
     items: [
-      { to: "/search", label: "Search" },
       { to: "/trends", label: "Trends" },
       { to: "/research-gaps", label: "Research Gaps" },
       { to: "/research-gap/discover", label: "Gap Discovery" },
@@ -52,7 +52,6 @@ const navGroups = [
     label: "Community",
     items: [
       { to: "/forum", label: "Forum" },
-      { to: "/communities", label: "Communities" },
     ],
   },
   {
@@ -157,7 +156,8 @@ function PageLoadingFallback() {
 
 export function MainLayout() {
   const location = useLocation();
-  const isForumSurface = location.pathname === "/forum" || location.pathname.startsWith("/forum/");
+  const isHomeSurface = location.pathname === "/home" || location.pathname === "/" || location.pathname === "/literature";
+  const isForumSurface = location.pathname === "/forum" || location.pathname.startsWith("/forum/") || /^\/(?:u|academics)\/[^/]+\/(?:activity|summary)\/?$/.test(location.pathname);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [activeDesktopMenu, setActiveDesktopMenu] = useState<string | null>(null);
   const desktopMenuCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -186,6 +186,10 @@ export function MainLayout() {
   }, [cancelDesktopMenuClose]);
 
   useEffect(() => cancelDesktopMenuClose, [cancelDesktopMenuClose]);
+  useEffect(() => {
+    setIsMobileMenuOpen(false);
+    dismissDesktopMenu();
+  }, [dismissDesktopMenu, location.pathname]);
 
   const isAuthed = useAuthStore((s) => !!s.tokens?.accessToken);
   const user = useAuthStore((s) => s.user);
@@ -215,20 +219,20 @@ export function MainLayout() {
 
   return (
     <div
-      className={cn("flex min-h-screen flex-col", isForumSurface ? "bg-background" : "bg-slate-50 dark:bg-[#09090b]")}
+      className={cn("flex min-h-screen flex-col", isForumSurface ? "bg-background" : "bg-slate-50 dark:bg-[#09090b]", isHomeSurface && "home-app-shell")}
     >
-      <header className="sticky top-0 z-50 h-[var(--app-header-height)] shrink-0 border-b bg-white dark:bg-[#0f0f11]">
-        <div className={cn("mx-auto grid h-full min-w-0 grid-cols-[auto_1fr_auto] items-center gap-1 px-3 sm:gap-4 sm:px-6 lg:px-8", isForumSurface ? "w-full" : "container")}>
-          <Link to="/" className="flex h-full shrink-0 select-none items-center">
+      <header className={cn("sticky top-0 z-50 h-[var(--app-header-height)] shrink-0 border-b bg-white dark:bg-[#0f0f11]", isForumSurface && "forum-app-header", isHomeSurface && "home-app-header")}>
+        <div className={cn("mx-auto grid h-full w-full min-w-0 grid-cols-[minmax(0,auto)_1fr_auto] items-center gap-1 px-3 sm:gap-4 sm:px-6 lg:px-8", isForumSurface ? "max-w-none" : "max-w-screen-2xl", isHomeSurface && "home-app-nav-inner")}>
+          <Link to="/" className="forum-app-brand flex h-full min-w-0 shrink select-none items-center">
             <img
               src={logoImage}
               alt="LumiGap"
-              className="h-9 w-auto object-contain dark:hidden sm:h-10"
+              className="h-9 w-auto max-w-[7rem] object-contain dark:hidden min-[420px]:max-w-[9rem] sm:h-10 sm:max-w-none"
             />
             <img
               src={logoDarkImage}
               alt="LumiGap"
-              className="hidden h-9 w-auto object-contain dark:block sm:h-10"
+              className="hidden h-9 w-auto max-w-[7rem] object-contain dark:block min-[420px]:max-w-[9rem] sm:h-10 sm:max-w-none"
             />
           </Link>
 
@@ -237,6 +241,7 @@ export function MainLayout() {
             className="hidden items-center justify-self-center gap-0.5 whitespace-nowrap min-[1180px]:flex"
           >
             {navGroups.map((group) => (
+              group.label === "Community" ? <Link key={group.label} to="/forum" className={cn("rounded-md px-3 py-2 text-sm font-medium transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", location.pathname.startsWith("/forum") && "bg-muted text-primary")}>{t(group.label)}</Link> :
               <DesktopNavDropdown
                 key={group.label}
                 label={t(group.label)}
@@ -250,9 +255,9 @@ export function MainLayout() {
             ))}
           </nav>
 
-          <div className="flex shrink-0 items-center gap-0.5 sm:gap-2">
-            <ThemeToggle />
-            <LanguageSwitcher />
+          <div className="forum-app-controls flex min-w-0 shrink-0 items-center gap-0.5 sm:gap-2">
+            <div className="hidden sm:block"><ThemeToggle /></div>
+            <div className="hidden min-[360px]:block"><LanguageSwitcher /></div>
             {isAuthed && (
               <Suspense fallback={<span className="h-10 w-10" aria-hidden="true" />}>
                 <NotificationMenu notifications={notifications} isLoading={notificationsLoading} unreadCount={unreadCount} isAdmin={isAdminSystemRole(activeUser?.systemRole)} />
@@ -277,9 +282,16 @@ export function MainLayout() {
         {isMobileMenuOpen && (
           <div
             id="primary-navigation-menu"
-            className="absolute left-0 right-0 top-[var(--app-header-height)] z-40 border-t bg-white shadow-lg min-[1180px]:hidden dark:bg-[#0f0f11]"
+            className="absolute left-0 right-0 top-[var(--app-header-height)] z-40 max-h-[calc(100dvh-var(--app-header-height))] overflow-y-auto overscroll-y-contain border-t bg-white pb-[env(safe-area-inset-bottom)] shadow-lg min-[1180px]:hidden dark:bg-[#0f0f11]"
           >
             <nav aria-label={t("Primary navigation")} className="mx-auto grid max-w-5xl gap-4 px-4 py-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="flex min-h-11 items-center justify-between gap-3 rounded-lg border bg-slate-50 px-3 sm:hidden dark:bg-zinc-900">
+                <span className="text-sm font-medium text-slate-600 dark:text-slate-300">{t("Preferences")}</span>
+                <div className="flex items-center gap-2">
+                  <div className="min-[360px]:hidden"><LanguageSwitcher /></div>
+                  <ThemeToggle />
+                </div>
+              </div>
               {navGroups.map((group) => (
                 <div key={group.label} className="space-y-1">
                   <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400">{t(group.label)}</p>
@@ -306,15 +318,15 @@ export function MainLayout() {
           </div>
         )}
       </header>
-      <main className={cn("relative z-10 flex-1", isForumSurface ? "p-0" : "container mx-auto px-4 py-8 sm:px-6 lg:px-8")}>
+      <main className={cn("relative z-10 min-w-0 flex-1", isForumSurface || isHomeSurface ? "w-full p-0" : "container mx-auto w-full px-4 py-5 sm:px-6 sm:py-8 lg:px-8")}>
         <Suspense fallback={<PageLoadingFallback />}>
-          <Outlet />
+          <RouteTransition><Outlet /></RouteTransition>
         </Suspense>
       </main>
       {!isForumSurface ? <footer className="border-t bg-white py-6 mt-auto dark:bg-[#0f0f11]">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row justify-between items-center text-xs text-slate-500 dark:text-slate-400">
-          <p>&copy; {new Date().getFullYear()} {t("Liem Research Team. All rights reserved.")}</p>
-          <div className="flex gap-4 mt-4 md:mt-0">
+        <div className="container mx-auto flex flex-col items-center justify-between px-4 text-center text-xs text-slate-500 sm:px-6 md:flex-row md:text-left lg:px-8 dark:text-slate-400">
+          <p className="max-w-full break-words">&copy; {new Date().getFullYear()} {t("Tori Team. All rights reserved.")}</p>
+          <div className="mt-4 flex flex-wrap justify-center gap-x-4 gap-y-2 md:mt-0 md:justify-end">
             <Link to="#" className="hover:text-slate-900 dark:hover:text-white">{t("Privacy Policy")}</Link>
             <Link to="#" className="hover:text-slate-900 dark:hover:text-white">{t("Terms of Service")}</Link>
             <Link to="#" className="hover:text-slate-900 dark:hover:text-white">{t("Contact Support")}</Link>

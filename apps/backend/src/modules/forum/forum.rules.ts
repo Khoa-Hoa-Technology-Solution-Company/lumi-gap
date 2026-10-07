@@ -55,5 +55,5 @@ export function canExposeForumGap(forumShareable: boolean): boolean {
 
 export function canShowAcademicIdentity(profileVisibility: string | null | undefined, viewerIsSignedIn: boolean, isOwner: boolean): boolean {
   if (isOwner || profileVisibility === "PUBLIC") return true;
-  return profileVisibility === "MEMBERS" && viewerIsSignedIn;
+  return profileVisibility === "MEMBERS_ONLY" && viewerIsSignedIn;
 }

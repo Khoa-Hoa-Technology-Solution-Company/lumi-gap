@@ -80,7 +80,7 @@ describe("capabilityService academic-position separation", () => {
 
     const granted = mocks.userCapability.upsert.mock.calls.map(([call]) => call.create.capability);
     expect(granted).toEqual(expect.arrayContaining(["BASIC_RESEARCH", "CREATE_RESEARCH_PROJECT"]));
-    expect(granted).not.toContain("STRUCTURED_REVIEW");
+    expect(granted).toContain("STRUCTURED_REVIEW");
     expect(granted).not.toContain("APPROVE_ACADEMIC_CONTRIBUTION");
     expect(granted).not.toContain("MENTOR_PROJECT");
   });

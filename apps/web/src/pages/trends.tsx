@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from "react";
-import { Sparkles, Search, Calendar, FileText, Loader2, ChevronDown, ChevronRight, AlertCircle, X } from "lucide-react";
+import { Sparkles, Search, Loader2, ChevronDown, ChevronRight, AlertCircle, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTrendsOverview, useTrendCompare, useTrendRelationships, useExplainTrend, useTrendExplainHistory } from "@/features/trends/hooks/use-trends";
@@ -325,19 +325,6 @@ export function TrendsPage() {
 
     return parts.length > 0 ? parts.join(" → ") : "All OpenAlex domains";
   }, [data, domainIds, domains, fieldIds, fields, subfieldIds, subfields, topicIds, topicsFilter]);
-
-  const activeFiltersCount = useMemo(() => {
-    return (
-      domains.length + fields.length + subfields.length + topicsFilter.length +
-      domainIds.length + fieldIds.length + subfieldIds.length + topicIds.length +
-      paperKinds.length + openAccessStatuses.length + providers.length + sources.length +
-      languages.length + citationBands.length
-    );
-  }, [
-    domains, fields, subfields, topicsFilter,
-    domainIds, fieldIds, subfieldIds, topicIds,
-    paperKinds, openAccessStatuses, providers, sources, languages, citationBands
-  ]);
 
   // Hook queries for sub-features
   const compareQuery = useTrendCompare(
@@ -976,7 +963,7 @@ export function TrendsPage() {
             role="tablist"
             aria-label="Trend analysis sections"
             onKeyDown={handleTabKeyDown}
-            className="h-10 p-1 inline-flex items-center bg-blue-50/40 dark:bg-slate-900 border border-blue-100/70 dark:border-slate-800 rounded-xl mb-6 gap-1 overflow-x-auto overflow-y-hidden whitespace-nowrap select-none shadow-sm"
+            className="mb-6 flex h-10 w-full max-w-full items-center gap-1 overflow-x-auto overflow-y-hidden whitespace-nowrap rounded-xl border border-blue-100/70 bg-blue-50/40 p-1 shadow-sm [scrollbar-width:none] dark:border-slate-800 dark:bg-slate-900 [&::-webkit-scrollbar]:hidden"
           >
             {TREND_TABS.map((tab) => {
               const selected = activeTab === tab.id;

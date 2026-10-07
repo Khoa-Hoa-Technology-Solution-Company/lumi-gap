@@ -26,6 +26,7 @@ model Report {
   isAiGenerated        Boolean   @default(true) @map("is_ai_generated")
   markdown             String?
   researchGapSnapshots Json      @default("[]") @map("research_gap_snapshots")
+  evidenceSnapshot     Json      @default("[]") @map("evidence_snapshot")
   modelVersion         String    @default("") @map("model_version")
   promptVersion        String    @default("") @map("prompt_version")
   cacheKey             String?   @map("cache_key")
@@ -104,6 +105,7 @@ model GapAnalysis {
   yearFrom            Int?      @map("year_from")
   yearTo              Int?      @map("year_to")
   evidenceMode        String    @default("auto") @map("evidence_mode") @db.VarChar(16)
+  evidenceSnapshot    Json      @default("[]") @map("evidence_snapshot")
   status              String    @default("queued") @db.VarChar(24)
   errorMessage        String?   @map("error_message")
   promptVersion       String    @default("") @map("prompt_version")

@@ -33,7 +33,7 @@ describe.sequential("community embedding suggestions (PostgreSQL)", () => {
   let ownerId = "";
   let memberId = "";
   let outsiderId = "";
-  const c = { near: "", far: "", pending: "", priv: "", joined: "", fresh: "", pendingFresh: "", privA: "", privB: "", privC: "", pubA: "", pubB: "" };
+  const c = { near: "", far: "", pending: "", priv: "", joined: "", fresh: "", pendingFresh: "", privA: "", privB: "", privC: "", pubA: "", pubB: "", catNear: "", catCrowd: "", catFresh: "" };
 
   const setEmbedding = (id: string, vector: number[]) =>
     getPrisma().$executeRaw`UPDATE communities SET embedding = CAST(${vectorParameter(vector)} AS vector) WHERE id = ${id}::uuid`;
@@ -82,6 +82,14 @@ describe.sequential("community embedding suggestions (PostgreSQL)", () => {
     await Promise.all([c.privA, c.privB, c.privC].map((id) => setEmbedding(id, crowd)));
     await Promise.all([c.pubA, c.pubB].map((id) => setEmbedding(id, nearCrowd)));
     await prisma.communityMembership.create({ data: { communityId: c.privA, userId: memberId, role: "member", status: "active" } });
+
+    // Forum categories are ACTIVE + public rows of the same table but are not joinable communities.
+    // They sit exactly on the query vectors, so they would win the LIMIT if they were not excluded.
+    await create("catNear", { status: "ACTIVE", isForumCategory: true, researchTopics: [`zzqx-${marker}`] });
+    await create("catCrowd", { status: "ACTIVE", isForumCategory: true });
+    await create("catFresh", { status: "ACTIVE", isForumCategory: true });
+    await setEmbedding(c.catNear, near);
+    await setEmbedding(c.catCrowd, crowd);
   });
 
   afterAll(async () => {
@@ -125,6 +133,30 @@ describe.sequential("community embedding suggestions (PostgreSQL)", () => {
     expect(asMember).not.toContain("Cemb privB");
     const asAdmin = ours(await communityService.suggest("anything", ownerId, "admin", 10));
     expect(asAdmin).toEqual(expect.arrayContaining(["Cemb privA", "Cemb privB", "Cemb privC", "Cemb pubA", "Cemb pubB"]));
+  });
+
+  it("suggest() never returns forum categories and still fills the limit with real communities", async () => {
+    mockProvider(async () => crowd);
+    const result = await communityService.suggest("anything", outsiderId, "user", 2);
+    expect(ours(result)).not.toContain("Cemb catCrowd");
+    expect(ours(result).sort()).toEqual(["Cemb pubA", "Cemb pubB"]);
+    mockProvider(async () => near);
+    expect(ours(await communityService.suggest("anything", ownerId, "admin", 10))).not.toContain("Cemb catNear");
+  });
+
+  it("recommend() never returns forum categories, by text match or by semantic match", async () => {
+    mockProvider(async () => near);
+    const names = ours(await communityService.recommend(outsiderId, 10));
+    expect(names).toContain("Cemb near");
+    expect(names).not.toContain("Cemb catNear");
+    expect(names).not.toContain("Cemb catCrowd");
+  });
+
+  it("runCommunityEmbedding() does not embed forum categories", async () => {
+    mockProvider(async () => near);
+    const result = await runCommunityEmbedding({ ids: [c.catFresh] });
+    expect(result.totalEmbedded).toBe(0);
+    expect(await embeddingIsNull(c.catFresh)).toBe(true);
   });
 
   it("suggest() returns [] instead of throwing when embedding fails", async () => {

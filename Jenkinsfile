@@ -50,7 +50,7 @@ pipeline {
           set -eu
           docker build --pull -t "$BACKEND_IMAGE:$IMAGE_TAG" -f Dockerfile.backend .
           docker build --pull \
-            --build-arg VITE_API_BASE=https://api.paperlens.uk/api/v1 \
+            --build-arg VITE_API_BASE=https://api.lumigap.uk/api/v1 \
             -t "$WEB_IMAGE:$IMAGE_TAG" \
             -f Dockerfile.web .
           if [ "${RUN_BROWSER_E2E:-false}" = 'true' ]; then
@@ -64,7 +64,7 @@ pipeline {
 
     stage('Validate production environment') {
       steps {
-        withCredentials([string(credentialsId: 'liemresearch-backend-env-b64', variable: 'BACKEND_ENV_B64')]) {
+        withCredentials([string(credentialsId: 'lumigap-backend-env-b64', variable: 'BACKEND_ENV_B64')]) {
           sh '''
             set -eu
             umask 077
@@ -161,7 +161,7 @@ pipeline {
 
     stage('Ensure filtered vector index') {
       steps {
-        withCredentials([string(credentialsId: 'liemresearch-backend-env-b64', variable: 'BACKEND_ENV_B64')]) {
+        withCredentials([string(credentialsId: 'lumigap-backend-env-b64', variable: 'BACKEND_ENV_B64')]) {
           sh '''
             set -eu
             umask 077
@@ -189,7 +189,7 @@ pipeline {
 
     stage('Deploy backend, web and workers') {
       steps {
-        withCredentials([string(credentialsId: 'liemresearch-backend-env-b64', variable: 'BACKEND_ENV_B64')]) {
+        withCredentials([string(credentialsId: 'lumigap-backend-env-b64', variable: 'BACKEND_ENV_B64')]) {
           sh '''
             set -eu
             umask 077
@@ -203,9 +203,9 @@ pipeline {
               --env-file .env.runtime \
               -e NODE_ENV=production \
               -e PORT=4000 \
-              -e CORS_ORIGIN=https://paperlens.uk \
+              -e CORS_ORIGIN=https://lumigap.uk \
               -e MONGODB_VECTOR_INDEX_NAME="$PAPER_VECTOR_INDEX_NAME" \
-              -e GOOGLE_CALLBACK_URL=https://api.paperlens.uk/api/v1/auth/google/callback \
+              -e GOOGLE_CALLBACK_URL=https://api.lumigap.uk/api/v1/auth/google/callback \
               -e TRANSLATION_PROVIDER=libretranslate \
               -e LIBRETRANSLATE_URL=http://libretranslate:5000 \
               "$BACKEND_IMAGE:$IMAGE_TAG"
@@ -236,15 +236,15 @@ pipeline {
               --env-file .env.runtime \
               -e NODE_ENV=production \
               -e PORT=4000 \
-              -e CORS_ORIGIN=https://paperlens.uk \
+              -e CORS_ORIGIN=https://lumigap.uk \
               -e MONGODB_VECTOR_INDEX_NAME="$PAPER_VECTOR_INDEX_NAME" \
-              -e GOOGLE_CALLBACK_URL=https://api.paperlens.uk/api/v1/auth/google/callback \
+              -e GOOGLE_CALLBACK_URL=https://api.lumigap.uk/api/v1/auth/google/callback \
               -e TRANSLATION_PROVIDER=libretranslate \
               -e LIBRETRANSLATE_URL=http://libretranslate:5000 \
               -v user1-liemresearch-uploads:/app/apps/backend/uploads \
               "$BACKEND_IMAGE:$IMAGE_TAG"
             docker network connect \
-              --alias paperlens-backend \
+              --alias lumigap-backend \
               "$PROXY_NETWORK" \
               "$BACKEND_CONTAINER"
 
@@ -270,7 +270,7 @@ pipeline {
               -p 127.0.0.1:9001:80 \
               "$WEB_IMAGE:$IMAGE_TAG"
             docker network connect \
-              --alias paperlens-web \
+              --alias lumigap-web \
               "$PROXY_NETWORK" \
               "$WEB_CONTAINER"
             docker exec "$WEB_CONTAINER" wget -qO- http://127.0.0.1/ >/dev/null
@@ -331,11 +331,11 @@ pipeline {
           public_ready=0
           for attempt in $(seq 1 30); do
             web_status=$(curl -sS -o /dev/null -w '%{http_code}' \
-              --connect-timeout 5 --max-time 15 https://paperlens.uk/ || true)
+              --connect-timeout 5 --max-time 15 https://lumigap.uk/ || true)
             health_status=$(curl -sS -o /dev/null -w '%{http_code}' \
-              --connect-timeout 5 --max-time 15 https://api.paperlens.uk/health || true)
+              --connect-timeout 5 --max-time 15 https://api.lumigap.uk/health || true)
             ready_status=$(curl -sS -o /dev/null -w '%{http_code}' \
-              --connect-timeout 5 --max-time 15 https://api.paperlens.uk/ready || true)
+              --connect-timeout 5 --max-time 15 https://api.lumigap.uk/ready || true)
 
             if [ "$web_status" = "200" ] &&
                [ "$health_status" = "200" ] &&
@@ -349,14 +349,14 @@ pipeline {
           done
 
           if [ "$public_ready" -ne 1 ]; then
-            echo "PaperLens public smoke test failed."
+            echo "LumiGap public smoke test failed."
             echo "Ensure Nginx Proxy Manager forwards:"
-            echo "  paperlens.uk -> paperlens-web:80"
-            echo "  api.paperlens.uk -> paperlens-backend:4000"
+            echo "  lumigap.uk -> lumigap-web:80"
+            echo "  api.lumigap.uk -> lumigap-backend:4000"
             exit 1
           fi
 
-          echo "PaperLens public endpoints returned HTTP 200."
+          echo "LumiGap public endpoints returned HTTP 200."
         '''
       }
     }
@@ -366,32 +366,18 @@ pipeline {
         expression { params.RUN_BROWSER_E2E }
       }
       steps {
-        withCredentials([string(credentialsId: 'liemresearch-backend-env-b64', variable: 'BACKEND_ENV_B64')]) {
+        withCredentials([string(credentialsId: 'lumigap-backend-env-b64', variable: 'BACKEND_ENV_B64')]) {
           sh '''
             set -eu
             umask 077
             printf '%s' "$BACKEND_ENV_B64" | base64 -d > .env.runtime
-
-            for key in E2E_USER_EMAIL E2E_USER_PASSWORD E2E_PAPER_ID E2E_SEARCH_QUERY; do
-              value="$(grep -m1 "^${key}=" .env.runtime | cut -d= -f2- || true)"
-              if [ -z "$value" ]; then
-                echo "Missing required browser E2E variable: $key"
-                exit 1
-              fi
-              case "$value" in
-                '<'*'>')
-                  echo "Browser E2E variable still contains a placeholder: $key"
-                  exit 1
-                  ;;
-              esac
-            done
 
             mkdir -p test-results/e2e playwright-report
             e2e_status=0
             docker run --rm \
               --env-file .env.runtime \
               -e CI=true \
-              -e E2E_BASE_URL=https://paperlens.uk \
+              -e E2E_BASE_URL=https://lumigap.uk \
               -v "$WORKSPACE/test-results/e2e:/app/test-results/e2e" \
               -v "$WORKSPACE/playwright-report:/app/playwright-report" \
               "$E2E_IMAGE:$IMAGE_TAG" || e2e_status=$?
@@ -426,7 +412,7 @@ pipeline {
       sh 'rm -f .env.runtime'
     }
     success {
-      echo "Deployed PaperLens image tag ${env.IMAGE_TAG}"
+      echo "Deployed LumiGap image tag ${env.IMAGE_TAG}"
     }
   }
 }

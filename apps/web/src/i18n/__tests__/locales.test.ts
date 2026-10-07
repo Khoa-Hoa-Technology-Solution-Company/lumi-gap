@@ -9,6 +9,7 @@ import {
   type TranslationKey,
 } from "../locales";
 import { resolveInitialLanguage, UI_LANGUAGES } from "../index";
+import { studentOnboardingStrings } from "../locales/student-onboarding";
 
 const TRANSLATABLE_ATTRIBUTES = new Set(["placeholder", "aria-label", "title", "alt"]);
 const TEXT_PROPS = new Set([
@@ -24,9 +25,15 @@ const TEXT_PROPS = new Set([
   "successMessage",
   "errorMessage",
 ]);
-const SKIP_SOURCE_PATTERNS = [/__tests__/, /components[\\/]ui/, /i18n[\\/]locales/, /vite-env\.d\.ts$/];
+const SKIP_SOURCE_PATTERNS = [/__tests__/, /\.(test|spec)\.[jt]sx?$/, /components[\\/]ui/, /i18n[\\/]locales/, /vite-env\.d\.ts$/];
 
 describe("UI i18n dictionaries", () => {
+  it("translates onboarding, academic profile and cover controls into Vietnamese", async () => {
+    const vietnamese = await loadDictionary("vi");
+    const untranslated = Object.keys(studentOnboardingStrings).filter((key) => key !== "· DOI:" && vietnamese[key] === key);
+    expect(untranslated).toEqual([]);
+    expect(vietnamese["Research Methodology"]).toBe("Phương pháp nghiên cứu");
+  });
   it("ships all 11 interface languages used by paper translation", () => {
     expect(UI_LANGUAGES.map((language) => language.code)).toEqual([
       "en",
@@ -196,6 +203,7 @@ function normalizeUiString(value: string) {
   if (/^[/#&?=]/.test(text)) return "";
   if (/^https?:\/\//i.test(text) || text.includes("@")) return "";
   if (/^#[0-9a-f]{3,8}$/i.test(text)) return "";
+  if (/^[wh]-\d+\/\d+$/.test(text)) return "";
   if (/rgba?\(|hsl\(|\b(px|rem|fr|vh|vw)\b|calc\(|linear-gradient|shadow|animate-|duration-|ease-|translate|scale|rotate|opacity|fill|stroke|bg-|text-|border-|rounded|absolute|relative|flex|grid|items-|justify-|hover:|dark:|from-|to-|via-/i.test(text)) {
     return "";
   }

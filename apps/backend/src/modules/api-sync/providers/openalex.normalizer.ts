@@ -60,6 +60,14 @@ export interface NormalizedTopic {
   domainName?: string;
 }
 
+/** Bibliographic metadata is enough to cite a source; abstract length is an AI requirement. */
+export function hasOpenAlexCitationMetadata(paper: NormalizedPaper): boolean {
+  return Boolean((paper.externalIds.doi ? /^10\.\d{4,9}\/\S+$/i.test(paper.externalIds.doi) : /^W\d{1,20}$/.test(paper.externalIds.openalexId ?? ""))
+    && paper.title.trim() && paper.title !== "Untitled"
+    && Number.isInteger(paper.publicationYear) && paper.publicationYear > 0
+    && paper.authors.some((author) => author.displayName.trim() && author.displayName !== "Unknown"));
+}
+
 /** Convert one OpenAlex Work into the normalized paper shape. Pure & permissive. */
 export function normalizeOpenAlexWork(w: OpenAlexWork): NormalizedPaper {
   return {

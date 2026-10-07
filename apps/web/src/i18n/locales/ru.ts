@@ -1,3 +1,4 @@
+import { researchHomeEn } from "./research-home-en";
 import { en } from "./en";
 import { academicProfileStrings } from "./academic-profile";
 import { academicForumStrings } from "./academic-forum";
@@ -6,10 +7,15 @@ import { paperDetailIaStrings } from "./paper-detail-ia";
 import { authSecurityStrings } from "./auth-security";
 import { newUiStrings } from "./new-ui";
 import { projectInvitationStrings } from "./project-invitations";
+import { peerReviewVersionStrings } from "./peer-review-versions";
 import { studentOnboardingStrings } from "./student-onboarding";
+import { trustSafetyRagStrings } from "./trust-safety-rag";
 
 export const ru: Record<keyof typeof en, string> = {
+  ...trustSafetyRagStrings,
+  ...researchHomeEn,
   ...projectInvitationStrings,
+  ...peerReviewVersionStrings,
   ...studentOnboardingStrings,
   ...newUiStrings,
   ...authSecurityStrings,
@@ -786,8 +792,7 @@ export const ru: Record<keyof typeof en, string> = {
   "Level": "Уровень",
   "Level Tiers": "Уровни уровней",
   "Library is empty": "Библиотека пуста",
-  "Liem Research Team. All rights reserved.": "Исследовательская группа Лиема. Все права защищены.",
-  "LiemResearch logo": "Логотип LiemResearch",
+  "Tori Team. All rights reserved.": "Исследовательская группа Лиема. Все права защищены.",
   "Limitations": "Ограничения",
   "Live": "Живи",
   "Loading AI history...": "Загрузка истории ИИ...",

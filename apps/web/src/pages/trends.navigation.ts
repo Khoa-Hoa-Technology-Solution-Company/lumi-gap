@@ -4,5 +4,5 @@ export function getTopicTrendTarget(topic: string, openalexTopicId?: string): st
 }
 
 export function getRisingKeywordTarget(keyword: string): string {
-  return `/search?q=${encodeURIComponent(keyword)}`;
+  return `/home?q=${encodeURIComponent(keyword)}`;
 }

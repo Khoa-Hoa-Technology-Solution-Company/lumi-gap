@@ -1,8 +1,23 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { buildOpenAlexPageUrl, OPENALEX_MAX_PER_PAGE } from "../openalex.client.js";
+import { buildOpenAlexPageUrl, OPENALEX_MAX_PER_PAGE, searchOpenAlexWorks, fetchOpenAlexWorkById } from "../openalex.client.js";
 
 describe("OpenAlex Works request contract", () => {
+  it("encodes interactive search on a fixed host and rejects arbitrary attach URLs", async () => {
+    const request = vi.fn(async () => new Response(JSON.stringify({ results: [{ id: "https://openalex.org/W123" }] }), { status: 200 }));
+    vi.stubGlobal("fetch", request);
+    try {
+      expect(await searchOpenAlexWorks("spring boot & performance")).toHaveLength(1);
+      const [url, options] = request.mock.calls[0] as unknown as [URL, RequestInit];
+      expect(url.origin).toBe("https://api.openalex.org");
+      expect(url.searchParams.get("search")).toBe("spring boot & performance");
+      expect(url.searchParams.get("per_page")).toBe("20");
+      expect(options.redirect).toBe("error");
+      expect(options.signal).toBeInstanceOf(AbortSignal);
+      await expect(fetchOpenAlexWorkById("http://127.0.0.1/private")).rejects.toThrow("Invalid OpenAlex");
+      expect(request).toHaveBeenCalledOnce();
+    } finally { vi.unstubAllGlobals(); }
+  });
   it("uses the documented per_page parameter and clamps it to the provider maximum", () => {
     const url = buildOpenAlexPageUrl({
       searchText: "machine learning",

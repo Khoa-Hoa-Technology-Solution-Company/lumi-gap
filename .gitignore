@@ -19,7 +19,6 @@ apps/backend/src/generated/prisma/
 .env.*.local
 !.env.example
 !.env.production.example
-!.env.compose.example
 !.env.*.example
 
 # Logs
@@ -93,3 +92,6 @@ apps/ai-reviewer/output/
 
 .harness/
 harness.config.yaml
+# Playwright output
+test-results/
+playwright-report/

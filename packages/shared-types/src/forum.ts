@@ -7,9 +7,10 @@ export type CommunityMembershipRole = "owner" | "moderator" | "member";
 export type CommunityMembershipStatus = "pending" | "active" | "declined" | "banned";
 export type ForumPostType = "QUESTION" | "DISCUSSION" | "PAPER_DISCUSSION" | "RESEARCH_GAP_DISCUSSION";
 export type ForumContentStatus = "active" | "hidden" | "locked" | "deleted";
-export type ForumReportStatus = "open" | "reviewed" | "resolved" | "dismissed";
+export type ForumReportStatus = "open" | "claimed" | "under_review" | "escalated" | "reviewed" | "resolved" | "dismissed";
 export type ForumSort = "latest" | "popular" | "unanswered" | "following";
-export type ForumReportReason = "SPAM" | "OFF_TOPIC" | "HARASSMENT" | "PLAGIARISM_OR_COPYRIGHT" | "INAPPROPRIATE_CONTENT" | "OTHER";
+export type ForumNotificationLevel = "WATCHING" | "TRACKING" | "NORMAL" | "MUTED";
+export type ForumReportReason = "SPAM" | "OFF_TOPIC" | "HARASSMENT" | "PRIVACY" | "PLAGIARISM_CONCERN" | "COPYRIGHT_CONCERN" | "INAPPROPRIATE_CONTENT" | "OTHER";
 
 export interface ForumReference {
   id?: string;
@@ -19,6 +20,7 @@ export interface ForumReference {
   title?: string;
   authors?: string[];
   year?: number;
+  venue?: string;
   verified: boolean;
   paper?: { id: string; title: string; publicationYear?: number; doi?: string };
 }
@@ -138,6 +140,7 @@ export interface ForumAuthorSummary {
 
 export interface ForumPost {
   id: string;
+  publicSlug?: string;
   author: ForumAuthorSummary;
   community?: Pick<Community, "id" | "name" | "slug">;
   type: ForumPostType;
@@ -163,6 +166,12 @@ export interface ForumPost {
   isPinned: boolean;
   canModerate: boolean;
   isFollowing: boolean;
+  notificationLevel?: ForumNotificationLevel;
+  likeCount?: number;
+  reactionCount?: number;
+  participantCount?: number;
+  linkCount?: number;
+  readingTimeMinutes?: number;
   viewerVote?: -1 | 0 | 1;
   editedAt?: ISODateString;
   createdAt: ISODateString;
@@ -172,6 +181,7 @@ export interface ForumPost {
 export interface ForumComment {
   id: string;
   postId: string;
+  postNumber: number;
   author: ForumAuthorSummary;
   content: string;
   references: ForumReference[];
@@ -185,11 +195,36 @@ export interface ForumComment {
   updatedAt: ISODateString;
 }
 
+export interface ForumRevisionAuthor {
+  id: string;
+  fullName: string;
+  avatarUrl?: string;
+}
+
+export interface ForumPostRevision {
+  id: string;
+  revision: number;
+  title: string;
+  content: string;
+  tags: string[];
+  editedBy: ForumRevisionAuthor;
+  createdAt: ISODateString;
+}
+
+export interface ForumCommentRevision {
+  id: string;
+  revision: number;
+  content: string;
+  editedBy: ForumRevisionAuthor;
+  createdAt: ISODateString;
+}
+
 export interface ForumPostListResponse { data: ForumPost[]; meta: ResponseMeta }
 export interface ForumCommentListResponse { data: ForumComment[]; meta: ResponseMeta }
 
 export interface ForumResearchContext {
-  papers: Array<{ id: string; title: string; doi?: string; publicationYear?: number }>;
+  papers: Array<{ id: string; title: string; doi?: string; publicationYear?: number; authors?: string[]; venue?: string }>;
+  savedPapers?: Array<{ id: string; title: string; doi?: string; publicationYear?: number; authors?: string[]; venue?: string }>;
   gaps: Array<{ id: string; title: string; topic: string; forumShareable: boolean }>;
   projects: Array<{ id: string; title: string; visibility: "PUBLIC_SUMMARY" }>;
 }
@@ -219,4 +254,16 @@ export interface ForumModerationAction {
   targetType: "post" | "comment" | "report";
   targetId: string;
   createdAt: ISODateString;
+}
+/** Public forum taxonomy. Membership is not required to read or participate. */
+export interface ForumCategory {
+  id: string;
+  name: string;
+  slug: string;
+  description: string;
+  status: "ACTIVE" | "ARCHIVED";
+  sortOrder: number;
+  /** Visible topics only; populated by the category directory endpoint. */
+  topicCount?: number;
+  topicsThisWeek?: number;
 }

@@ -57,6 +57,7 @@ export async function runCommunityEmbedding(options: { ids?: string[] } = {}): P
              description, updated_at::text AS "updatedAtText"
       FROM communities
       WHERE status = 'ACTIVE'
+        AND is_forum_category = false
         ${options.ids?.length ? Prisma.sql`AND id = ANY(${[...options.ids]}::uuid[])` : Prisma.empty}
         AND (
           embedding IS NULL
@@ -154,6 +155,8 @@ export async function nearestCommunityIds(
     FROM communities
     WHERE embedding IS NOT NULL
       AND status = 'ACTIVE'
+      -- Forum categories live in this table but are not joinable communities; exclude them before LIMIT.
+      AND is_forum_category = false
       ${visibility}
       ${exclude}
       AND (1 - (embedding <=> ${vector}) / 2.0) >= ${minSimilarity}

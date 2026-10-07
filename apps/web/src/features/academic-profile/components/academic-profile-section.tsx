@@ -33,6 +33,7 @@ import {
 } from "../hooks/use-academic-profile";
 import { AcademicIdentityManager } from "./academic-identity-manager";
 import { PositionVerificationPanel } from "./position-verification-panel";
+import { useI18n } from "@/i18n";
 
 const statusStyle: Record<VerificationStatus, string> = {
   NOT_SUBMITTED: "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200",
@@ -120,6 +121,7 @@ function toForm(profile: AcademicProfile): FormState {
 }
 
 export function AcademicProfileSection() {
+  const { t } = useI18n();
   const { data, isLoading, error } = useAcademicProfile();
   const update = useUpdateAcademicProfile();
   const emailStatus = useInstitutionalEmailStatus();
@@ -135,7 +137,7 @@ export function AcademicProfileSection() {
   }, [data]);
 
   if (isLoading) return <AcademicProfileSkeleton />;
-  if (error || !data || !form) return <p className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">Unable to load the academic profile.</p>;
+  if (error || !data || !form) return <p className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{t("Unable to load the academic profile.")}</p>;
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => setForm((current) => current ? { ...current, [key]: value } : current);
   const save = async (event: FormEvent) => {
@@ -170,9 +172,9 @@ export function AcademicProfileSection() {
           note: form.reviewNote || undefined,
         },
       });
-      setMessage({ tone: "success", text: "Academic profile saved." });
+      setMessage({ tone: "success", text: t("Academic profile saved.") });
     } catch {
-      setMessage({ tone: "error", text: "Could not save. Check ORCID, ROR, email, and list limits." });
+      setMessage({ tone: "error", text: t("Could not save. Check ORCID, ROR, email, and list limits.") });
     }
   };
 
@@ -180,35 +182,35 @@ export function AcademicProfileSection() {
     <form onSubmit={save} className="space-y-5">
       <header className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-200 pb-5 dark:border-slate-800">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-600">Academic identity</p>
-          <h2 className="mt-1 text-2xl font-bold tracking-tight text-slate-950 dark:text-white">Edit academic profile</h2>
-          <p className="mt-1 max-w-2xl text-sm text-slate-500">Build a trustworthy research identity without exposing private verification data.</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-600">{t("Academic identity")}</p>
+          <h2 className="mt-1 text-2xl font-bold tracking-tight text-slate-950 dark:text-white">{t("Edit academic profile")}</h2>
+          <p className="mt-1 max-w-2xl text-sm text-slate-500">{t("Build a trustworthy research identity without exposing private verification data.")}</p>
         </div>
         <Badge variant="outline" className={`gap-1.5 px-3 py-1.5 ${statusStyle[data.verificationStatuses?.position ?? "NOT_SUBMITTED"]}`}>
           {data.verificationStatuses?.position === "VERIFIED" && <BadgeCheck className="h-3.5 w-3.5" />}
-          {statusLabel[data.verificationStatuses?.position ?? "NOT_SUBMITTED"]}
+          {t(statusLabel[data.verificationStatuses?.position ?? "NOT_SUBMITTED"])}
         </Badge>
       </header>
 
-      <Section icon={<UserRound />} title="Overview" description="How your academic identity is introduced across LumiGap.">
+      <Section icon={<UserRound />} title={t("Overview")} description={t("How your academic identity is introduced across LumiGap.")}>
         <div className="grid gap-4 md:grid-cols-2">
-          <Field label="Academic title">
+          <Field label={t("Academic title")}>
             <select className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-zinc-950" value={form.academicTitle} onChange={(event) => set("academicTitle", event.target.value as FormState["academicTitle"])}>
-              <option value="">Select title</option>
+              <option value="">{t("Select title")}</option>
               {academicTitles.map((title) => <option key={title} value={title}>{title}</option>)}
             </select>
           </Field>
         </div>
       </Section>
 
-      <Section icon={<GraduationCap />} title="Academic identity" description="Institutional affiliation is reviewed independently from your selected account role.">
+      <Section icon={<GraduationCap />} title={t("Academic identity")} description={t("Institutional affiliation is reviewed independently from your selected account role.")}>
         <div className="grid gap-4 md:grid-cols-2">
-          <Field label="Institution"><Input value={form.institutionName} onChange={(event) => set("institutionName", event.target.value)} /></Field>
-          <Field label="ROR ID" hint="Optional"><Input value={form.rorId} onChange={(event) => set("rorId", event.target.value)} placeholder="https://ror.org/03yrm5c26" /></Field>
-          <Field label="Department"><Input value={form.department} onChange={(event) => set("department", event.target.value)} /></Field>
-          <Field label="Position"><Input value={form.position} onChange={(event) => set("position", event.target.value)} /></Field>
-          <Field label="Start year"><Input type="number" min={1900} max={new Date().getFullYear()} value={form.startYear} onChange={(event) => set("startYear", event.target.value)} /></Field>
-          <Field label="Institutional email" hint="Private by default"><Input type="email" value={form.institutionalEmail} onChange={(event) => set("institutionalEmail", event.target.value)} /></Field>
+          <Field label={t("Institution")}><Input value={form.institutionName} onChange={(event) => set("institutionName", event.target.value)} /></Field>
+          <Field label="ROR ID" hint={t("Optional")}><Input value={form.rorId} onChange={(event) => set("rorId", event.target.value)} placeholder="https://ror.org/03yrm5c26" /></Field>
+          <Field label={t("Department")}><Input value={form.department} onChange={(event) => set("department", event.target.value)} /></Field>
+          <Field label={t("Position")}><Input value={form.position} onChange={(event) => set("position", event.target.value)} /></Field>
+          <Field label={t("Start year")}><Input type="number" min={1900} max={new Date().getFullYear()} value={form.startYear} onChange={(event) => set("startYear", event.target.value)} /></Field>
+          <Field label={t("Institutional email")} hint={t("Private by default")}><Input type="email" value={form.institutionalEmail} onChange={(event) => set("institutionalEmail", event.target.value)} /></Field>
         </div>
         <InstitutionalEmailVerification
           savedEmail={data.affiliation.institutionalEmail}
@@ -242,25 +244,25 @@ export function AcademicProfileSection() {
         />
       </Section>
 
-      <Section icon={<BriefcaseBusiness />} title="Research expertise" description="Use concise, specific terms to support future expertise matching.">
+      <Section icon={<BriefcaseBusiness />} title={t("Research expertise")} description={t("Use concise, specific terms to support future expertise matching.")}>
         <div className="grid gap-4 md:grid-cols-2">
-          <CommaField label="Research interests" value={form.researchInterests} onChange={(value) => set("researchInterests", value)} placeholder="Software Engineering, Artificial Intelligence" />
-          <CommaField label="Expertise areas" value={form.expertiseAreas} onChange={(value) => set("expertiseAreas", value)} placeholder="Empirical Software Engineering, Automated Testing" />
-          <CommaField label="Skills" value={form.skills} onChange={(value) => set("skills", value)} placeholder="Experimental Design, Python, Statistical Analysis" />
-          <CommaField label="Research keywords" value={form.researchKeywords} onChange={(value) => set("researchKeywords", value)} placeholder="mutation testing, defect prediction" />
+          <CommaField label={t("Research interests")} value={form.researchInterests} onChange={(value) => set("researchInterests", value)} placeholder={t("Software Engineering, Artificial Intelligence")} />
+          <CommaField label={t("Expertise areas")} value={form.expertiseAreas} onChange={(value) => set("expertiseAreas", value)} placeholder={t("Empirical Software Engineering, Automated Testing")} />
+          <CommaField label={t("Skills")} value={form.skills} onChange={(value) => set("skills", value)} placeholder={t("Experimental Design, Python, Statistical Analysis")} />
+          <CommaField label={t("Research keywords")} value={form.researchKeywords} onChange={(value) => set("researchKeywords", value)} placeholder={t("mutation testing, defect prediction")} />
         </div>
       </Section>
 
-      <Section icon={<BookOpen />} title="Research outputs" description="LumiGap papers use canonical metadata. Manually entered works remain self-asserted.">
+      <Section icon={<BookOpen />} title={t("Research outputs")} description={t("LumiGap papers use canonical metadata. Manually entered works remain self-asserted.")}>
         <FeaturedWorksEditor works={form.featuredWorks} onChange={(works) => set("featuredWorks", works)} />
       </Section>
 
       {["LECTURER", "RESEARCH_STAFF"].includes(data.primaryPosition ?? "") && (
         <div className="grid gap-5 xl:grid-cols-2">
-          <Section icon={<HandHeart />} title="Research support" description="Availability only. LumiGap will never auto-assign you.">
+          <Section icon={<HandHeart />} title={t("Research support")} description={t("Availability only. LumiGap will never auto-assign you.")}>
             <AvailabilityEditor enabled={form.supportEnabled} onEnabled={(value) => set("supportEnabled", value)} values={form.supportTypes} onValues={(value) => set("supportTypes", value)} options={supportOptions} topics={form.supportTopics} onTopics={(value) => set("supportTopics", value)} note={form.supportNote} onNote={(value) => set("supportNote", value)} />
           </Section>
-          <Section icon={<ShieldCheck />} title="Academic review" description="Review preferences are separate from mentoring and support.">
+          <Section icon={<ShieldCheck />} title={t("Academic review")} description={t("Review preferences are separate from mentoring and support.")}>
             <AvailabilityEditor enabled={form.reviewEnabled} onEnabled={(value) => set("reviewEnabled", value)} values={form.reviewTypes} onValues={(value) => set("reviewTypes", value)} options={reviewOptions} topics={form.reviewTopics} onTopics={(value) => set("reviewTopics", value)} note={form.reviewNote} onNote={(value) => set("reviewNote", value)} />
           </Section>
         </div>
@@ -268,13 +270,13 @@ export function AcademicProfileSection() {
 
       <AcademicIdentityManager profile={data} editable />
 
-      <Section icon={<BadgeCheck />} title="Academic Position Verification" description="Verification confirms profile information only. It does not grant system roles or review privileges.">
+      <Section icon={<BadgeCheck />} title={t("Academic Position Verification")} description={t("Verification confirms profile information only. It does not grant system roles or review privileges.")}>
         <PositionVerificationPanel profile={data} editable />
       </Section>
 
       {message && <p role="status" className={`rounded-lg border px-4 py-3 text-sm ${message.tone === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-red-200 bg-red-50 text-red-700"}`}>{message.text}</p>}
       <div className="sticky bottom-4 flex justify-end">
-        <Button type="submit" disabled={update.isPending} className="gap-2 shadow-lg"><Save className="h-4 w-4" />{update.isPending ? "Saving…" : "Save academic profile"}</Button>
+        <Button type="submit" disabled={update.isPending} className="gap-2 shadow-lg"><Save className="h-4 w-4" />{update.isPending ? t("Saving…") : t("Save academic profile")}</Button>
       </div>
     </form>
   );
@@ -289,8 +291,9 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
 }
 
 function CommaField({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (value: string) => void; placeholder: string }) {
+  const { t } = useI18n();
   const count = useMemo(() => split(value).length, [value]);
-  return <Field label={label} hint={`${count} items`}><Input value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} /><p className="text-[11px] text-slate-400">Separate values with commas.</p></Field>;
+  return <Field label={label} hint={`${count} ${t("items")}`}><Input value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} /><p className="text-[11px] text-slate-400">{t("Separate values with commas.")}</p></Field>;
 }
 
 function AvailabilityEditor<T extends string>({ enabled, onEnabled, values, onValues, options, topics, onTopics, note, onNote }: { enabled: boolean; onEnabled: (value: boolean) => void; values: T[]; onValues: (value: T[]) => void; options: Array<{ value: T; label: string }>; topics: string; onTopics: (value: string) => void; note: string; onNote: (value: string) => void }) {

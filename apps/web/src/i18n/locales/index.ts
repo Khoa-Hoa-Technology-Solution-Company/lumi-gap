@@ -8,6 +8,10 @@ export const englishDictionary = en as Dictionary;
 
 const dictionaryCache = new Map<SupportedLocale, Dictionary>([["en", englishDictionary]]);
 
+export function getCachedDictionary(locale: SupportedLocale): Dictionary | undefined {
+  return dictionaryCache.get(locale);
+}
+
 const dictionaryLoaders: Record<
   Exclude<SupportedLocale, "en">,
   () => Promise<Dictionary>

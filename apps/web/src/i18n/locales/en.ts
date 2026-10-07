@@ -5,11 +5,17 @@ import { academicForumStrings } from "./academic-forum";
 import { authSecurityStrings } from "./auth-security";
 import { newUiStrings } from "./new-ui";
 import { projectInvitationStrings } from "./project-invitations";
+import { peerReviewVersionStrings } from "./peer-review-versions";
 import { studentOnboardingStrings } from "./student-onboarding";
+import { researchHomeEn } from "./research-home-en";
+import { trustSafetyRagStrings } from "./trust-safety-rag";
 
 export const en = {
+  ...trustSafetyRagStrings,
+  ...researchHomeEn,
   ...newUiStrings,
   ...projectInvitationStrings,
+  ...peerReviewVersionStrings,
   ...studentOnboardingStrings,
   ...authSecurityStrings,
   ...academicForumStrings,
@@ -836,8 +842,7 @@ export const en = {
   "Level": "Level",
   "Level Tiers": "Level Tiers",
   "Library is empty": "Library is empty",
-  "Liem Research Team. All rights reserved.": "Liem Research Team. All rights reserved.",
-  "LiemResearch logo": "LiemResearch logo",
+  "Tori Team. All rights reserved.": "Tori Team. All rights reserved.",
   "Limitations": "Limitations",
   "Live": "Live",
   "Loading AI history...": "Loading AI history...",

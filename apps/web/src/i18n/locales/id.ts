@@ -1,3 +1,4 @@
+import { researchHomeEn } from "./research-home-en";
 import { en } from "./en";
 import { academicProfileStrings } from "./academic-profile";
 import { academicForumStrings } from "./academic-forum";
@@ -6,10 +7,15 @@ import { paperDetailIaStrings } from "./paper-detail-ia";
 import { authSecurityStrings } from "./auth-security";
 import { newUiStrings } from "./new-ui";
 import { projectInvitationStrings } from "./project-invitations";
+import { peerReviewVersionStrings } from "./peer-review-versions";
 import { studentOnboardingStrings } from "./student-onboarding";
+import { trustSafetyRagStrings } from "./trust-safety-rag";
 
 export const id: Record<keyof typeof en, string> = {
+  ...trustSafetyRagStrings,
+  ...researchHomeEn,
   ...projectInvitationStrings,
+  ...peerReviewVersionStrings,
   ...studentOnboardingStrings,
   ...newUiStrings,
   ...authSecurityStrings,
@@ -786,8 +792,7 @@ export const id: Record<keyof typeof en, string> = {
   "Level": "Tingkat",
   "Level Tiers": "Tingkatan Tingkat",
   "Library is empty": "Perpustakaan kosong",
-  "Liem Research Team. All rights reserved.": "Tim Peneliti Liem. Semua hak dilindungi undang-undang.",
-  "LiemResearch logo": "Logo Penelitian Liem",
+  "Tori Team. All rights reserved.": "Tim Peneliti Liem. Semua hak dilindungi undang-undang.",
   "Limitations": "Keterbatasan",
   "Live": "Hidup",
   "Loading AI history...": "Memuat riwayat AI...",

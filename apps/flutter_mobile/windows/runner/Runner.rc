@@ -89,11 +89,11 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "com.liemresearch" "\0"
+            VALUE "CompanyName", "com.lumigap" "\0"
             VALUE "FileDescription", "flutter_mobile" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "flutter_mobile" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2026 com.liemresearch. All rights reserved." "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 com.lumigap. All rights reserved." "\0"
             VALUE "OriginalFilename", "flutter_mobile.exe" "\0"
             VALUE "ProductName", "flutter_mobile" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"

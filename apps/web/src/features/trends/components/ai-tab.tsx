@@ -517,7 +517,7 @@ export function AITab({
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => navigate(buildScopedUrl("/search", { q: activeFocusTopic }))}
+                    onClick={() => navigate(buildScopedUrl("/home", { q: activeFocusTopic }))}
                     className="h-9 rounded-xl text-xs font-extrabold gap-2 border-blue-200 text-blue-700 hover:bg-blue-50 dark:border-blue-900/40 dark:text-blue-400 dark:hover:bg-blue-950/20"
                   >
                     <Search className="w-3.5 h-3.5" />

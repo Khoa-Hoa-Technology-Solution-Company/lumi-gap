@@ -1,3 +1,4 @@
+import { researchHomeEn } from "./research-home-en";
 import { en } from "./en";
 import { academicProfileStrings } from "./academic-profile";
 import { academicForumStrings } from "./academic-forum";
@@ -6,10 +7,15 @@ import { paperDetailIaStrings } from "./paper-detail-ia";
 import { authSecurityStrings } from "./auth-security";
 import { newUiStrings } from "./new-ui";
 import { projectInvitationStrings } from "./project-invitations";
+import { peerReviewVersionStrings } from "./peer-review-versions";
 import { studentOnboardingStrings } from "./student-onboarding";
+import { trustSafetyRagStrings } from "./trust-safety-rag";
 
 export const zh: Record<keyof typeof en, string> = {
+  ...trustSafetyRagStrings,
+  ...researchHomeEn,
   ...projectInvitationStrings,
+  ...peerReviewVersionStrings,
   ...studentOnboardingStrings,
   ...newUiStrings,
   ...authSecurityStrings,
@@ -786,8 +792,7 @@ export const zh: Record<keyof typeof en, string> = {
   "Level": "级别",
   "Level Tiers": "级别等级",
   "Library is empty": "图书馆已空",
-  "Liem Research Team. All rights reserved.": "林研究团队。版权所有。",
-  "LiemResearch logo": "LiemResearch 徽标",
+  "Tori Team. All rights reserved.": "林研究团队。版权所有。",
   "Limitations": "局限性",
   "Live": "直播",
   "Loading AI history...": "正在加载人工智能历史记录...",

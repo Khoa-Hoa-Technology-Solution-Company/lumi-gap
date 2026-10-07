@@ -56,7 +56,7 @@ export default function NotificationMenu({ notifications, isLoading, unreadCount
             </DropdownMenuItem>
           ))}
         </div>
-        <div className="border-t border-slate-100 p-2 dark:border-slate-800"><Button variant="ghost" size="sm" className="w-full justify-center font-semibold text-blue-700 dark:text-blue-400" onClick={() => navigate("/notifications")}>{t("View all notifications")}</Button></div>
+        <div className="border-t border-slate-100 p-2 dark:border-slate-800"><DropdownMenuItem className="justify-center font-semibold text-blue-700 dark:text-blue-400" onSelect={() => navigate("/notifications")}>{t("View all notifications")}</DropdownMenuItem></div>
       </DropdownMenuContent>
     </DropdownMenu>
   );

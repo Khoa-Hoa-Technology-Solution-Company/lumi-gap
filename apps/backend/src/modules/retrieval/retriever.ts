@@ -7,12 +7,14 @@ import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { getEmbeddingProvider } from "../embeddings/embedding.factory.js";
 import type { PaperStructuredAnalysis } from "../papers/paper-structured-context.js";
 import type { PaperFilterInput } from "../papers/paper-filter.match.js";
+import { searchKnowledgePapers } from "../knowledge/knowledge.retrieval.js";
 
 export interface RetrieveFilters extends PaperFilterInput {
   minScore?: number;
 }
 
 export interface RetrieveOptions {
+  fullText?: boolean;
   queryText?: string;
   queryVector?: number[];
   topK: number;
@@ -45,12 +47,21 @@ async function retrievePostgres(opts: RetrieveOptions): Promise<Array<Record<str
   const query = opts.queryText?.trim() || undefined;
   const embedding = await resolveQueryVector(opts, query);
   if (!embedding && !query) return [];
-  const hits = await searchPapersHybrid({
+  const metadataHits = await searchPapersHybrid({
     embedding,
     query,
     filters: toSqlFilters(opts.filters),
     limit,
   });
+  const passageHits = opts.fullText ? await searchKnowledgePapers(query ?? "", embedding, toSqlFilters(opts.filters), limit) : [];
+  const combined = new Map<string, (typeof metadataHits)[number]>();
+  for (const list of [metadataHits, passageHits]) {
+    list.forEach((hit, index) => {
+      const previous = combined.get(hit.id);
+      combined.set(hit.id, { ...hit, score: Math.max(previous?.score ?? 0, hit.score), hybridScore: (previous?.hybridScore ?? 0) + 1 / (60 + index + 1) });
+    });
+  }
+  const hits = passageHits.length ? [...combined.values()].sort((a, b) => b.hybridScore - a.hybridScore).slice(0, limit) : metadataHits;
   if (!hits.length) return [];
 
   const prisma = getPrisma();

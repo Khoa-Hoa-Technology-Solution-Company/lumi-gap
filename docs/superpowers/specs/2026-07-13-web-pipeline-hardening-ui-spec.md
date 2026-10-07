@@ -97,7 +97,7 @@
   ```
 
 ## 4. Giao diện người dùng (UI/UX)
-- **Theme & Design Taste:** Đồng bộ với giao diện Admin hiện tại của LiemResearch (sử dụng font Inter, các bo góc `rounded-xl`, viền mờ `border-[#EAEAEA] dark:border-[#26334A]`, background `bg-card dark:bg-[#111B27]`).
+- **Theme & Design Taste:** Đồng bộ với giao diện Admin hiện tại của LumiGap (sử dụng font Inter, các bo góc `rounded-xl`, viền mờ `border-[#EAEAEA] dark:border-[#26334A]`, background `bg-card dark:bg-[#111B27]`).
 - **Trạng thái Polling:** Hiển thị loader nhỏ dạng vòng xoay mờ khi đang fetching ngầm.
 - **Trạng thái lỗi:** Sử dụng Alert banner màu đỏ nếu API bị lỗi.
 - **Trạng thái trống:** Hiển thị SVG/Icon trống nếu không có jobs lỗi gần đây.

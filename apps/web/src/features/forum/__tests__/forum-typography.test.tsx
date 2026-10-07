@@ -12,7 +12,7 @@ vi.mock("@/i18n", () => ({ useI18n: () => ({ t: (key: string) => key, language: 
 const topic: ForumPostView = {
   id: "readable-topic", type: "QUESTION", title: "How should a long academic evaluation question be presented without hiding its final words?",
   content: "A readable excerpt for the topic list.", tags: ["methodology"], status: "active",
-  voteScore: 3, commentCount: 6, replyCount: 6, helpfulCount: 3, viewCount: 1200,
+  voteScore: 3, commentCount: 6, replyCount: 6, helpfulCount: 3, viewCount: 1200, reactionCount: 3,
   participants: [{ id: "author", fullName: "Researcher" }], author: { id: "author", fullName: "Researcher", academicProfileType: "student", institution: "FPT University", affiliationVerified: true },
   viewerVote: 0, isFollowing: false, isPinned: false, acceptedCommentId: "accepted", canModerate: false, canReply: true,
   linkedResearchGap: { id: "gap-1", title: "Limited longitudinal evidence for AI-assisted review" },
@@ -27,44 +27,47 @@ describe("Forum typography hierarchy", () => {
     const heading = markup.match(/<h2[^>]+>/)?.[0];
     expect(heading).toContain("forum-topic-title");
     const css = readFileSync(new URL("../../../theme/globals.css", import.meta.url), "utf8");
-    expect(css).toMatch(/\.forum-topic-title\s*\{\s*font-size: 1\.25rem;/);
+    expect(css).toMatch(/\.forum-topic-title\s*\{\s*font-size: 1\.125rem;/);
     expect(css).toMatch(/@container forum-topics \(min-width: 45rem\)\s*\{\s*\.forum-topic-title\s*\{\s*font-size: 1\.375rem;/);
     expect(heading).not.toContain("line-clamp");
     expect(heading).toContain("break-words");
     expect(markup.indexOf(topic.title)).toBeLessThan(markup.indexOf(topic.community!.name));
-    expect(markup).toContain("line-clamp-2 text-base leading-6");
-    expect(markup).toContain("flex-wrap items-center gap-x-2 gap-y-1 text-sm");
+    expect(markup).not.toContain(topic.content);
+    expect(markup).toContain("flex-wrap items-center gap-x-2 gap-y-1 text-xs");
+    expect(renderTopic({ ...topic, isPinned: true })).toContain(topic.content);
   });
 
   it("retains real metrics and reply anchors with the shared table geometry", () => {
     const markup = renderTopic();
     expect(markup).toContain("forum-topic-row");
     expect(markup).toContain("forum-topic-metrics");
+    expect(markup).toContain("Views");
     expect(markup).toContain('href="/forum/readable-topic#responses-section"');
     expect(markup).toContain('title="6 Replies"');
     expect(markup).toContain('title="1,200 Views"');
-    expect(markup).toContain('title="3 Helpful. Helpful reflects community usefulness, not scientific validation."');
+    expect(markup).toContain('title="This was useful to the community."');
+    expect(markup).toContain("Helpful");
   });
 
-  it("keeps academic identity, research provenance and accepted-answer meaning visible", () => {
+  it("keeps category/type/tags and author acceptance visible in compact rows", () => {
     const markup = renderTopic();
     expect(markup).toContain("Researcher");
-    expect(markup).toContain("Student · FPT University");
-    expect(markup).toContain("Limited longitudinal evidence for AI-assisted review");
-    expect(markup).toContain('href="/research-gaps?gapId=gap-1"');
+    expect(markup).toContain('href="/forum?category=research-methodology"');
+    expect(markup).toContain('href="/forum?tag=methodology"');
+    expect(markup).not.toContain("Limited longitudinal evidence for AI-assisted review");
     expect(markup).toContain("Accepted by question author");
-    expect(markup).toContain("not scientific verification");
+    expect(markup).not.toContain("Scientifically Verified");
   });
 
   it("uses readable navigation and prose without changing the global app font scale", () => {
     const sidebar = renderToStaticMarkup(<StaticRouter location="/forum"><ForumSidebar /></StaticRouter>);
-    expect(sidebar).toContain("text-base leading-6");
+    expect(sidebar).toContain("text-sm leading-5");
     expect(sidebar).toContain("w-[var(--forum-sidebar-width)]");
     const prose = renderToStaticMarkup(<ForumMarkdown content="An academic paragraph." />);
-    expect(prose).toContain("text-base leading-[1.7] sm:text-lg");
+    expect(prose).toContain("text-base leading-6");
     expect(prose).toContain("max-w-[70ch]");
     const css = readFileSync(new URL("../../../theme/globals.css", import.meta.url), "utf8");
-    expect(css).toMatch(/\.forum-workspace\s*\{[^}]*--forum-sidebar-width: 14rem;[^}]*font-size: 1rem;/);
+    expect(css).toMatch(/\.forum-workspace\s*\{[^}]*--forum-sidebar-width: 13\.5rem;[^}]*font-size: 1rem;/);
   });
 
   it("reserves the exact width of the enlarged metric columns and their four gaps", () => {

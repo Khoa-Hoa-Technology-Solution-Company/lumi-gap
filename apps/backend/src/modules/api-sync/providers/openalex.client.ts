@@ -154,6 +154,37 @@ function appendOpenAlexIdentity(url: URL): void {
   if (env.OPENALEX_API_KEY) url.searchParams.set("api_key", env.OPENALEX_API_KEY);
 }
 
+/** Interactive DOI lookup: fixed provider host, bounded timeout and no URL redirects. */
+export async function fetchOpenAlexWorkByDoi(doi: string): Promise<OpenAlexWork | null> {
+  if (doi.length > 300 || !/^10\.\d{4,9}\/\S+$/i.test(doi)) throw new Error("Invalid DOI");
+  const url = new URL(`${BASE_URL}/doi:${encodeURIComponent(doi)}`);
+  appendOpenAlexIdentity(url);
+  const response = await fetch(url, { redirect: "error", signal: AbortSignal.timeout(10_000), headers: { Accept: "application/json" } });
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(`OpenAlex lookup failed (${response.status})`);
+  return await response.json() as OpenAlexWork;
+}
+
+/** Interactive search uses the shared provider credentials, with a short request budget. */
+export async function searchOpenAlexWorks(query: string, signal?: AbortSignal): Promise<OpenAlexWork[]> {
+  if (query.trim().length < 3 || query.length > 160) throw new Error("Invalid paper search query");
+  const url = buildOpenAlexPageUrl({ searchText: query.trim(), cursor: "*", perPage: 20 });
+  const response = await fetch(url, { redirect: "error", signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(10_000)]) : AbortSignal.timeout(10_000), headers: { Accept: "application/json" } });
+  if (!response.ok) throw new Error(`OpenAlex search failed (${response.status})`);
+  const page = await response.json() as OpenAlexPage;
+  return (page.results ?? []).slice(0, 20);
+}
+
+export async function fetchOpenAlexWorkById(id: string): Promise<OpenAlexWork | null> {
+  if (!/^W\d{1,20}$/.test(id)) throw new Error("Invalid OpenAlex work identifier");
+  const url = new URL(`${BASE_URL}/${id}`);
+  appendOpenAlexIdentity(url);
+  const response = await fetch(url, { redirect: "error", signal: AbortSignal.timeout(10_000), headers: { Accept: "application/json" } });
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(`OpenAlex lookup failed (${response.status})`);
+  return await response.json() as OpenAlexWork;
+}
+
 async function fetchWithRetry(url: string, attempt = 1): Promise<OpenAlexPage> {
   await sleep(RATE_LIMIT_DELAY_MS);
   const t0 = Date.now();

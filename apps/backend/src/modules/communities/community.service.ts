@@ -68,9 +68,10 @@ async function activeMembershipIds(viewerUserId: string | undefined): Promise<st
 }
 
 async function visibleWhere(role: UserRole | undefined, viewerUserId: string | undefined) {
-  if (role === "admin") return {};
+  if (role === "admin") return { isForumCategory: false };
   const memberIds = await activeMembershipIds(viewerUserId);
   return {
+    isForumCategory: false,
     OR: [
       { status: "ACTIVE", OR: [{ visibility: "public" }, { id: { in: memberIds } }] },
       ...(viewerUserId ? [{ ownerId: viewerUserId, status: { in: OWNER_ONLY_STATUSES } }] : []),
@@ -317,7 +318,7 @@ export const communityService = {
     if (interests.length === 0) return [];
     const [joined, candidates] = await Promise.all([
       prisma.communityMembership.findMany({ where: { userId: resolvedUserId }, select: { communityId: true } }),
-      prisma.community.findMany({ where: { status: "ACTIVE", visibility: "public" }, orderBy: [{ memberCount: "desc" }, { id: "asc" }], take: 300 }),
+      prisma.community.findMany({ where: { status: "ACTIVE", visibility: "public", isForumCategory: false }, orderBy: [{ memberCount: "desc" }, { id: "asc" }], take: 300 }),
     ]);
     const excluded = new Set(joined.map((row) => row.communityId));
     const topicMatches = candidates
@@ -344,7 +345,7 @@ export const communityService = {
     });
     if (nearest.length === 0) return byTopic;
     const similarityById = new Map(nearest.map((row) => [row.id, row.similarity]));
-    const rows = await prisma.community.findMany({ where: { id: { in: nearest.map((row) => row.id) }, status: "ACTIVE", visibility: "public" } });
+    const rows = await prisma.community.findMany({ where: { id: { in: nearest.map((row) => row.id) }, status: "ACTIVE", visibility: "public", isForumCategory: false } });
     const semantic = rows
       .sort((a, b) => (similarityById.get(b.id) ?? 0) - (similarityById.get(a.id) ?? 0))
       .map((community) => ({
@@ -395,7 +396,8 @@ export const communityService = {
   /** Owner or admin edits content fields. Status changes go through `setStatus`/`review`. */
   async update(communityId: string, input: Partial<CommunityContent>, actorId: string, actorRole?: UserRole) {
     const [id, actorUserId] = await Promise.all([resolveCommunityId(communityId), resolveUserId(actorId)]);
-    const current = await getPrisma().community.findUniqueOrThrow({ where: { id }, select: { ownerId: true, status: true, name: true } });
+    const current = await getPrisma().community.findUniqueOrThrow({ where: { id }, select: { ownerId: true, status: true, name: true, isForumCategory: true } });
+    if (current.isForumCategory) throw AppError.forbidden("Use forum category administration to manage this category");
     const admin = actorRole === "admin";
     if (!admin && current.ownerId !== actorUserId) throw AppError.forbidden("Only the community owner or an administrator can edit this community");
     if (current.status === "ARCHIVED" && !admin) throw AppError.conflict("Archived communities are read-only");
@@ -415,7 +417,8 @@ export const communityService = {
   async setStatus(communityId: string, status: "ACTIVE" | "ARCHIVED", actorId: string, actorRole?: UserRole) {
     if (actorRole !== "admin") throw AppError.forbidden("Only administrators can archive or restore research communities");
     const id = await resolveCommunityId(communityId);
-    const current = await getPrisma().community.findUniqueOrThrow({ where: { id }, select: { status: true } });
+    const current = await getPrisma().community.findUniqueOrThrow({ where: { id }, select: { status: true, isForumCategory: true } });
+    if (current.isForumCategory) throw AppError.forbidden("Use forum category administration to manage this category");
     if (OWNER_ONLY_STATUSES.includes(current.status)) throw AppError.conflict("Use the review endpoint to approve or reject a proposed community");
     await getPrisma().community.update({ where: { id }, data: { status } });
     if (status === "ACTIVE") enqueueCommunityEmbedding();
@@ -451,6 +454,7 @@ export const communityService = {
   async resubmit(communityId: string, actorId: string, actorRole?: UserRole) {
     const [id, actorUserId] = await Promise.all([resolveCommunityId(communityId), resolveUserId(actorId)]);
     const community = await getPrisma().community.findUniqueOrThrow({ where: { id } });
+    if (community.isForumCategory) throw AppError.forbidden("Forum categories do not support community proposals");
     if (community.ownerId !== actorUserId) throw AppError.forbidden("Only the community owner can resubmit a proposal");
     if (community.status !== "REJECTED") throw AppError.conflict("Only rejected proposals can be resubmitted");
     await assertProposalQuota(actorUserId);
@@ -471,6 +475,7 @@ export const communityService = {
     const name = await getPrisma().$transaction(async (tx) => {
       await lockCommunity(tx, id);
       const community = await tx.community.findUniqueOrThrow({ where: { id } });
+      if (community.isForumCategory) throw AppError.forbidden("Forum categories are managed by administrators");
       if (!admin && community.ownerId !== actorUserId) throw AppError.forbidden("Only the community owner or an administrator can transfer ownership");
       if (community.status !== "ACTIVE") throw AppError.conflict("Ownership can only be transferred for active communities");
       if (community.ownerId === targetId) throw AppError.badRequest("This member already owns the community");
@@ -492,6 +497,7 @@ export const communityService = {
     const { membership, previousStatus, communityName } = await getPrisma().$transaction(async (tx) => {
       await lockCommunity(tx, id);
       const community = await tx.community.findUniqueOrThrow({ where: { id } });
+      if (community.isForumCategory) throw AppError.conflict("Forum categories do not require membership");
       if (community.status !== "ACTIVE") throw AppError.conflict("Only active communities can accept new members");
       const existing = await tx.communityMembership.findUnique({ where: { communityId_userId: { communityId: id, userId: resolvedUserId } } });
       if (existing?.status === "banned") throw AppError.forbidden("You are banned from this community");
@@ -530,6 +536,8 @@ export const communityService = {
     const [id, resolvedUserId] = await Promise.all([resolveCommunityId(communityId), resolveUserId(userId)]);
     const removed = await getPrisma().$transaction(async (tx) => {
       await lockCommunity(tx, id);
+      const community = await tx.community.findUniqueOrThrow({ where: { id }, select: { isForumCategory: true } });
+      if (community.isForumCategory) throw AppError.conflict("Forum categories do not require membership");
       const membership = await tx.communityMembership.findUnique({ where: { communityId_userId: { communityId: id, userId: resolvedUserId } } });
       if (!membership) return null;
       if (membership.role === "owner") throw AppError.conflict("Transfer ownership to another member before leaving this community");
@@ -579,6 +587,8 @@ export const communityService = {
     const actorMembership = await assertCommunityModerator(id, actorId, actorRole);
     const { updated, target, communityName } = await getPrisma().$transaction(async (tx) => {
       await lockCommunity(tx, id);
+      const category = await tx.community.findUniqueOrThrow({ where: { id }, select: { isForumCategory: true } });
+      if (category.isForumCategory) throw AppError.forbidden("Use forum category administration to assign moderators");
       const membership = await tx.communityMembership.findUnique({ where: { communityId_userId: { communityId: id, userId: resolvedTargetId } } });
       if (!membership) throw AppError.notFound("Community membership not found");
       if (membership.role === "owner") throw AppError.badRequest("The owner membership cannot be changed here");
@@ -587,7 +597,13 @@ export const communityService = {
       if (actorMembership.role === "moderator" && membership.role !== "member") throw AppError.forbidden("Community moderators can only manage regular members");
       const nextStatus = input.status ?? membership.status;
       if (input.role === "moderator" && nextStatus !== "active") throw AppError.badRequest("Only active members can become moderators");
-      const result = await tx.communityMembership.update({ where: { id: membership.id }, data: input });
+      const assignmentChanged = input.role !== undefined && input.role !== membership.role;
+      const now = new Date();
+      const result = await tx.communityMembership.update({ where: { id: membership.id }, data: {
+        ...input,
+        ...(assignmentChanged && input.role === "moderator" ? { assignedById: await resolveUserId(actorId), assignedAt: now, revokedAt: null } : {}),
+        ...(assignmentChanged && input.role === "member" ? { revokedAt: now } : {}),
+      } });
       await syncMemberCount(tx, id);
       const community = await tx.community.findUniqueOrThrow({ where: { id }, select: { name: true } });
       return { updated: result, target: membership, communityName: community.name };
@@ -600,6 +616,9 @@ export const communityService = {
         banned: { title: "Removed from a community", message: `You were banned from “${communityName}”.`, type: "COMMUNITY_MEMBER_BANNED" },
       }[input.status as "active" | "declined" | "banned"];
       await notifySafely({ userId: resolvedTargetId, ...copy, targetKind: "community", targetId: id });
+    }
+    if (input.role !== undefined && input.role !== target.role) {
+      await auditService.log(input.role === "moderator" ? "ASSIGN_MODERATOR" : "REVOKE_MODERATOR", { userId: actorId, targetTableName: "community_memberships", targetRecordId: target.id, details: { communityId: id, moderatorId: resolvedTargetId } });
     }
     return updated;
   },

@@ -2,11 +2,12 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { StaticRouter } from "react-router-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { ForumSidebar } from "../components/forum-sidebar";
-import type { CommunityView } from "../api/forum.api";
+import { getForumCategoryPresentation } from "../utils/forum-category-presentation";
+import type { ForumCategoryView } from "../api/forum.api";
 import { forumListHref, parseForumListParams } from "../utils/forum-pagination";
 
 vi.mock("@/i18n", () => ({ useI18n: () => ({ t: (key: string) => key }) }));
-const community: CommunityView = { id: "community-uuid", slug: "software-engineering", name: "Software Engineering", description: "", researchTopics: [], visibility: "public", status: "ACTIVE", rules: [], memberCount: 4, threadCount: 8, canManage: false, canEditCommunity: false, isOwner: false, isAdmin: false, contentRestricted: false, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" };
+const community: ForumCategoryView = { id: "community-uuid", slug: "software-engineering", name: "Software Engineering", description: "", status: "ACTIVE", sortOrder: 0 };
 function render(location: string, props: Partial<Parameters<typeof ForumSidebar>[0]> = {}) {
   return renderToStaticMarkup(<StaticRouter location={location}><ForumSidebar communities={[community]} isAuthed {...props} /></StaticRouter>);
 }
@@ -19,6 +20,9 @@ function links(markup: string) {
 }
 describe("Forum sidebar real URL navigation", () => {
   const initial = "/forum?feed=unanswered&community=software-engineering&type=QUESTION&q=review&page=3&pageSize=10";
+  it("keeps the broad community and type resets neutral on the unfiltered forum", () => {
+    expect(links(render("/forum")).filter((item) => item.active).map((item) => item.label)).toEqual(["Latest"]);
+  });
   it("derives simultaneous active states entirely from the current URL", () => {
     expect(links(render(initial)).filter((item) => item.active).map((item) => item.label)).toEqual(["Unanswered", "Software Engineering", "Questions"]);
     expect(links(render("/forum?sort=popular&community=community-uuid&type=DISCUSSION")).filter((item) => item.active).map((item) => item.label)).toEqual(["Popular", "Software Engineering", "Discussions"]);
@@ -42,12 +46,19 @@ describe("Forum sidebar real URL navigation", () => {
       expect(url.searchParams.get("community")).toBe(community.slug);
       expect(url.searchParams.has("page")).toBe(false);
     }
-    expect(navigation.find((item) => item.label === "Browse")?.href).toBe("/communities");
-    const all = new URL(navigation.find((item) => item.label === "All communities")!.href!, "https://local.test");
-    expect(all.searchParams.has("community")).toBe(false);
-    expect(all.searchParams.get("type")).toBe("QUESTION");
-    expect(all.searchParams.get("feed")).toBe("unanswered");
-    expect(navigation.find((item) => item.label === community.name)?.href).toContain("community=software-engineering");
+    expect(navigation.some((item) => item.href === "/communities")).toBe(false);
+    const all = new URL(navigation.find((item) => item.label === "All categories")!.href!, "https://local.test");
+    expect(all.pathname).toBe("/forum/categories");
+    expect(all.search).toBe("");
+    const allTypes = new URL(navigation.find((item) => item.label === "All thread types")!.href!, "https://local.test");
+    expect(allTypes.searchParams.has("type")).toBe(false);
+    expect(allTypes.searchParams.get("community")).toBe(community.slug);
+    expect(allTypes.searchParams.get("feed")).toBe("unanswered");
+    expect(navigation.find((item) => item.label === community.name)?.href).toContain("category=software-engineering");
+  });
+  it("opens the public category directory with only All categories selected", () => {
+    expect(links(render("/forum/categories", { isAuthed: false })).filter((item) => item.active).map((item) => item.label)).toEqual(["All categories"]);
+    expect(links(render("/forum/categories")).find((item) => item.label === "Latest")?.href).toBe("/forum?feed=latest");
   });
   it("restores state from refresh/history URLs, and replaces legacy sort only when changing feed", () => {
     const params = new URLSearchParams("sort=popular&type=DISCUSSION&q=review&page=2");
@@ -67,14 +78,29 @@ describe("Forum sidebar real URL navigation", () => {
     expect(login.searchParams.get("returnTo")).toBe("/forum?community=software-engineering&type=QUESTION&q=review&pageSize=10&feed=following");
   });
   it("renders compact loading, retry and honest empty community states", () => {
-    expect(render("/forum", { communitiesLoading: true })).toContain('aria-label="Loading communities"');
+    expect(render("/forum", { communitiesLoading: true })).toContain('aria-label="Loading categories"');
     const error = render("/forum", { communitiesError: true, onRetryCommunities: () => {} });
     expect(error).toContain('role="alert"');
-    expect(error).toContain("Could not load communities.");
+    expect(error).toContain("Could not load categories.");
     expect(error).toContain("Retry");
     const empty = render("/forum", { communities: [] });
-    expect(empty).toContain("No academic communities available.");
+    expect(empty).toContain("No forum categories available.");
     expect(empty).not.toContain("Communities will appear here.");
     expect(render("/forum")).toContain("Open forum navigation");
+  });
+});
+
+describe("forum category visual presentation", () => {
+  it("keeps built-in category icon and tone hooks stable", () => {
+    const visual = getForumCategoryPresentation("software-engineering");
+    expect(visual.tone).toBe("software-engineering");
+    expect(visual.iconClassName).toContain("forum-category-icon--software-engineering");
+    expect(visual.accentClassName).toContain("forum-category-accent--software-engineering");
+    expect(visual.markerClassName).toContain("forum-category-marker--software-engineering");
+  });
+
+  it("uses the restrained general treatment for custom or missing slugs", () => {
+    expect(getForumCategoryPresentation("new-custom-category").tone).toBe("general-research");
+    expect(getForumCategoryPresentation(null).tone).toBe("general-research");
   });
 });

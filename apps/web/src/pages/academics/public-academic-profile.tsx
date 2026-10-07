@@ -22,5 +22,12 @@ export function PublicAcademicProfilePage() {
     return <Navigate to={`/u/${profile.publicHandle}`} replace />;
   }
 
-  return <AcademicProfileView profile={profile} />;
+  const forumProfileBase = profile.publicHandle ? `/u/${encodeURIComponent(profile.publicHandle)}` : `/academics/${encodeURIComponent(profile.userId)}`;
+  return <>
+    <nav className="mx-auto flex max-w-[1120px] flex-wrap justify-end gap-2 px-4 pt-4" aria-label={t("Member profile navigation")}>
+      <Button asChild variant="ghost" size="sm"><Link to={`${forumProfileBase}/summary`}>{t("Forum summary")}</Link></Button>
+      <Button asChild variant="outline" size="sm"><Link to={`${forumProfileBase}/activity`}>{t("Forum activity")}</Link></Button>
+    </nav>
+    <AcademicProfileView profile={profile} />
+  </>;
 }

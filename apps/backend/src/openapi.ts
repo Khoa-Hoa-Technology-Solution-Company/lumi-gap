@@ -714,6 +714,22 @@ export const openapiSpec = {
         },
       },
     },
+    "/api/v1/papers/{id}/knowledge": {
+      parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+      get: {
+        tags: ["Papers"], summary: "Get approved paper indexing status, graph and page evidence",
+        security: [{ bearerAuth: [] }],
+        description: "Only active papers. Includes source coverage, warnings, up to 100 grounded edges and the first 12 source passages. Outdated/failed indexes expose no passages.",
+        responses: { "200": { description: "PaperKnowledge in the success envelope" }, "401": { description: "Sign-in required" }, "404": { description: "Approved paper not found" } },
+      },
+      post: {
+        tags: ["Papers"], summary: "Queue full-text RAG indexing for an approved paper",
+        security: [{ bearerAuth: [] }],
+        description: "10 requests/hour/user. Returns immediately. A force refresh can retry an open-access PDF that previously fell back to its abstract. Running jobs are not duplicated.",
+        requestBody: { required: false, content: { "application/json": { schema: { type: "object", properties: { force: { type: "boolean", default: false } } } } } },
+        responses: { "202": { description: "Current status (queued, processing or ready)" }, "401": { description: "Sign-in required" }, "404": { description: "Approved paper not found" }, "429": { description: "Indexing rate limit exceeded" }, "503": { description: "Queue unavailable" } },
+      },
+    },
     "/api/v1/reports": {
       post: {
         tags: ["Reports"],

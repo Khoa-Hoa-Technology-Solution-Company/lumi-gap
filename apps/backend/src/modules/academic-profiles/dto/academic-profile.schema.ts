@@ -17,6 +17,10 @@ const normalizeList = (maxItems: number, maxLength = 120) => z
   });
 
 const optionalText = (max: number) => z.string().trim().max(max).optional();
+export const PublicForumActivityQuerySchema = z.object({
+  filter: z.enum(["all", "topics", "replies", "reactions"]).default("all"),
+  page: z.coerce.number().int().min(1).max(10000).default(1),
+});
 const optionalBiography = z.string().trim().max(ACADEMIC_BIOGRAPHY_MAX_CHARACTERS).refine(
   (value) => countAcademicBiographyWords(value) <= ACADEMIC_BIOGRAPHY_MAX_WORDS,
   "Biography must be " + ACADEMIC_BIOGRAPHY_MAX_WORDS + " words or fewer",

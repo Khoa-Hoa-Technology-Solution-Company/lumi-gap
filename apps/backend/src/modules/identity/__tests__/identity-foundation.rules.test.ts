@@ -58,7 +58,7 @@ describe("identity and affiliation foundation rules", () => {
     expect(capabilities).toContain("CREATE_RESEARCH_PROJECT");
     expect(capabilities).not.toContain("APPROVE_ACADEMIC_CONTRIBUTION");
     expect(capabilities).not.toContain("MENTOR_PROJECT");
-    expect(capabilities).not.toContain("STRUCTURED_REVIEW");
+    expect(capabilities).toContain("STRUCTURED_REVIEW");
   });
 
   it("requires both internal affiliation and verified Lecturer position for Lecturer privileges", () => {
@@ -80,7 +80,9 @@ describe("identity and affiliation foundation rules", () => {
     expect(external).not.toContain("APPROVE_ACADEMIC_CONTRIBUTION");
     expect(external).not.toContain("MENTOR_PROJECT");
 
-    for (const capabilities of [pendingAffiliation, expiredPosition]) {
+    expect(pendingAffiliation).toContain("STRUCTURED_REVIEW");
+    expect(pendingAffiliation).toContain("REVIEW_ARTIFACT");
+    for (const capabilities of [expiredPosition]) {
       expect(capabilities).not.toContain("APPROVE_ACADEMIC_CONTRIBUTION");
       expect(capabilities).not.toContain("MENTOR_PROJECT");
       expect(capabilities).not.toContain("REVIEW_ARTIFACT");
@@ -156,5 +158,12 @@ describe("identity and affiliation foundation rules", () => {
       email: "student@fpt.edu.vn", password: "StrongPassword123", fullName: "Student", role: "ADMIN",
     }).success).toBe(false);
   });
+  it.each(["LECTURER", "RESEARCHER"] as const)("grants verified %s review authority independently of participant scope", (academicRole) => {
+    for (const participantScope of ["INTERNAL", "EXTERNAL", "PENDING"] as const) expect(policyCapabilities({ systemRole: "USER", accountActive: true, academicRole, academicRoleVerificationStatus: "VERIFIED", participantScope })).toContain("STRUCTURED_REVIEW");
+  });
+  it.each(["USER", "ADMIN"] as const)("never gives a Student peer-review authority under %s", (systemRole) => {
+    for (const participantScope of ["INTERNAL", "EXTERNAL"] as const) expect(policyCapabilities({ systemRole, accountActive: true, academicRole: "STUDENT", academicRoleVerificationStatus: "VERIFIED", participantScope })).not.toContain("STRUCTURED_REVIEW");
+  });
+
 });
 

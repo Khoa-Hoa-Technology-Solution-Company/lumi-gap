@@ -51,6 +51,7 @@ import { PaperReadingSection } from "@/features/papers/components/paper-detail/p
 import { PaperResearchSignalsSection } from "@/features/papers/components/paper-detail/paper-research-signals-section";
 import { PaperRelationshipsSection } from "@/features/papers/components/paper-detail/paper-relationships-section";
 import { PaperMetadataSidebar } from "@/features/papers/components/paper-detail/paper-metadata-sidebar";
+import { PaperKnowledgePanel } from "@/features/papers/components/paper-knowledge-panel";
 
 function getApiErrorMessage(error: unknown, fallback: string): string {
   const axiosError = error as AxiosError<{ error?: { message?: string } }>;
@@ -103,6 +104,7 @@ export function PaperDetailPage() {
   const [translationLanguage, setTranslationLanguage] = useState("vi");
   const [showTranslation, setShowTranslation] = useState(false);
   const [translatePopoverOpen, setTranslatePopoverOpen] = useState(false);
+  const [translationMenuOffset, setTranslationMenuOffset] = useState(0);
 
   useEffect(() => {
     const supported = translationCapabilities?.targetLanguages ?? [];
@@ -121,10 +123,12 @@ export function PaperDetailPage() {
     if (translatePopoverOpen) {
       window.addEventListener("click", handleClickOutside);
       window.addEventListener("keydown", handleEscape);
+      window.addEventListener("resize", handleClickOutside);
     }
     return () => {
       window.removeEventListener("click", handleClickOutside);
       window.removeEventListener("keydown", handleEscape);
+      window.removeEventListener("resize", handleClickOutside);
     };
   }, [translatePopoverOpen]);
 
@@ -515,7 +519,7 @@ export function PaperDetailPage() {
 
             {/* Action Bar (Responsive Touch Targets >= 44px) */}
             <div className="flex flex-wrap items-center justify-between border-b border-slate-200/80 dark:border-slate-800 pb-6 gap-4">
-              <div className="flex flex-wrap items-center gap-2.5 sm:gap-3 overflow-x-auto max-w-full pb-1 sm:pb-0">
+              <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2.5 sm:gap-3">
                 {showReadPdfAction ? (
                   <Button
                     data-testid="paper-pdf-action"
@@ -595,6 +599,14 @@ export function PaperDetailPage() {
                     }`}
                     onClick={(e) => {
                       e.stopPropagation();
+                      if (!translatePopoverOpen) {
+                        const triggerLeft = e.currentTarget.getBoundingClientRect().left;
+                        const menuWidth = Math.min(256, window.innerWidth - 32);
+                        setTranslationMenuOffset(Math.max(
+                          16 - triggerLeft,
+                          Math.min(0, window.innerWidth - 16 - triggerLeft - menuWidth),
+                        ));
+                      }
                       setTranslatePopoverOpen(!translatePopoverOpen);
                     }}
                     title="Translate this paper"
@@ -614,7 +626,8 @@ export function PaperDetailPage() {
                       role="dialog"
                       aria-label="Translate paper"
                       onClick={(e) => e.stopPropagation()}
-                      className="absolute left-0 mt-2 w-64 p-3.5 bg-white dark:bg-[#181818] rounded-xl shadow-2xl border border-slate-200 dark:border-slate-800 z-50 text-xs animate-in fade-in zoom-in-95 duration-100"
+                      style={{ left: translationMenuOffset }}
+                      className="absolute mt-2 w-64 max-w-[calc(100vw-2rem)] p-3.5 bg-white dark:bg-[#181818] rounded-xl shadow-2xl border border-slate-200 dark:border-slate-800 z-50 text-xs animate-in fade-in zoom-in-95 duration-100"
                     >
                       <div className="flex items-center justify-between pb-2 mb-2.5 border-b border-slate-100 dark:border-slate-800">
                         <span className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
@@ -750,6 +763,7 @@ export function PaperDetailPage() {
           />
 
           {/* Section E: Operational PDF Workflow */}
+          {paper.dataStatus === "active" && <PaperKnowledgePanel paperId={paper.id} />}
           {shouldShowPdfPanel && (
             <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-xs dark:border-slate-800 dark:bg-[#11161F] space-y-4">
               <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">

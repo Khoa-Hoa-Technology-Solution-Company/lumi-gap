@@ -8,7 +8,7 @@
 PRODUCT_NAME = flutter_mobile
 
 // The application's bundle identifier
-PRODUCT_BUNDLE_IDENTIFIER = com.liemresearch.flutterMobile
+PRODUCT_BUNDLE_IDENTIFIER = com.lumigap.flutterMobile
 
 // The copyright displayed in application information
-PRODUCT_COPYRIGHT = Copyright © 2026 com.liemresearch. All rights reserved.
+PRODUCT_COPYRIGHT = Copyright © 2026 com.lumigap. All rights reserved.

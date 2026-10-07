@@ -1,7 +1,8 @@
-import "dotenv/config";
+import "../src/config/load-env.js";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getPrisma, disconnectPostgres } from "../src/infrastructure/database/prisma.js";
+import { backfillForumSlugs } from "../src/modules/forum/forum-slugs.js";
 
 /** Additive fixtures only: existing topics, credentials and memberships are untouched. */
 export async function seedForumPagination() {
@@ -69,7 +70,7 @@ export async function seedForumPagination() {
         if (type === "RESEARCH_GAP_DISCUSSION") await tx.forumPostGap.create({ data: { postId: id, gapId: gap.id } });
         if (type === "DISCUSSION") {
           const replyAt = new Date(createdAt.getTime() + 3600000);
-          await tx.forumComment.create({ data: { postId: id, authorId: author.id, body: "A transparent protocol should distinguish task performance from long-term outcomes and document threats to validity.", createdAt: replyAt } });
+          await tx.forumComment.create({ data: { postId: id, postNumber: 2, authorId: author.id, body: "A transparent protocol should distinguish task performance from long-term outcomes and document threats to validity.", createdAt: replyAt } });
           await tx.forumPost.update({ where: { id }, data: { commentCount: 1, lastActivityAt: replyAt } });
         }
         await tx.community.update({ where: { id: current.id }, data: { threadCount: { increment: 1 } } });
@@ -79,6 +80,7 @@ export async function seedForumPagination() {
       if (type === "QUESTION" || type === "DISCUSSION") await prisma.forumThreadFollow.upsert({ where: { postId_userId: { postId: id, userId: author.id } }, create: { postId: id, userId: author.id }, update: {} });
     }
   }
+  await backfillForumSlugs();
   return count + added;
 }
 

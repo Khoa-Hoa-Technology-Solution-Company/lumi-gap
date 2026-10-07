@@ -38,3 +38,5 @@ export function useRunAiPreReview(id: string) {
     client.invalidateQueries({ queryKey: ["submissions", id, "ai-pre-reviews"] });
   } });
 }
+
+export function useSubmissionHistory(id: string) { return useQuery({ queryKey: ["submissions", id, "history"], queryFn: () => submissionsApi.history(id), enabled: Boolean(id) }); }

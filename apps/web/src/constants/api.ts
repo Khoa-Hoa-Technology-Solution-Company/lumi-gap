@@ -25,6 +25,7 @@ export const API_ROUTES = {
     academicIdentity: (identityId: string) => `/academic-profiles/me/academic-identities/${identityId}`,
     public: (userId: string) => `/academic-profiles/${userId}`,
     byHandle: (handle: string) => `/academic-profiles/by-handle/${encodeURIComponent(handle)}`,
+    forumActivity: (userId: string) => `/academic-profiles/${encodeURIComponent(userId)}/forum-activity`,
     publicHandle: "/academic-profiles/me/public-handle",
     avatar: "/academic-profiles/me/avatar",
     cover: "/academic-profiles/me/cover",
@@ -60,6 +61,7 @@ export const API_ROUTES = {
     archive: (templateId: string) => `/review-templates/${templateId}/archive`,
   },
   reviewRequests: {
+    revisionItem: (id: string, itemId: string) => `/review-requests/${id}/revision-items/${itemId}`,
     list: "/review-requests",
     reviewers: "/review-requests/reviewers",
     detail: (requestId: string) => `/review-requests/${requestId}`,
@@ -72,6 +74,9 @@ export const API_ROUTES = {
     user: (userId: string) => `/contributions/users/${userId}`,
   },
   submissions: {
+    history: (id: string) => `/submissions/${id}/history`,
+    versions: (id: string) => `/submissions/${id}/versions`,
+    openReview: (id: string) => `/submissions/${id}/open-review`,
     list: "/submissions",
     create: "/submissions",
     detail: (id: string) => `/submissions/${id}`,
@@ -102,9 +107,12 @@ export const API_ROUTES = {
   forum: {
     posts: "/forum/posts",
     post: (id: string) => `/forum/posts/${id}`,
+    postRevisions: (id: string) => `/forum/posts/${id}/revisions`,
     comments: (postId: string) => `/forum/posts/${postId}/comments`,
     postVote: (id: string) => `/forum/posts/${id}/vote`,
     commentVote: (id: string) => `/forum/comments/${id}/vote`,
+    postReactions: (id: string) => `/forum/posts/${id}/reactions`,
+    commentReactions: (id: string) => `/forum/comments/${id}/reactions`,
     acceptAnswer: (postId: string, commentId: string) => `/forum/posts/${postId}/accepted-answer/${commentId}`,
     acceptedAnswer: (postId: string) => `/forum/posts/${postId}/accepted-answer`,
     follow: (id: string) => `/forum/posts/${id}/follow`,
@@ -113,12 +121,14 @@ export const API_ROUTES = {
     postModeration: (id: string) => `/forum/posts/${id}/moderation`,
     commentModeration: (id: string) => `/forum/comments/${id}/moderation`,
     comment: (id: string) => `/forum/comments/${id}`,
+    commentRevisions: (id: string) => `/forum/comments/${id}/revisions`,
     reports: "/forum/reports",
     moderationActions: "/forum/moderation/actions",
     reviewReport: (id: string) => `/forum/reports/${id}`,
   },
   home: {
     overview: "/home/overview",
+    research: "/home/research",
   },
   papers: {
     list: "/papers",

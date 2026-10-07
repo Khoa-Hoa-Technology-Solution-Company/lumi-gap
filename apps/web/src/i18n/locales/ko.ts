@@ -1,3 +1,4 @@
+import { researchHomeEn } from "./research-home-en";
 import { en } from "./en";
 import { academicProfileStrings } from "./academic-profile";
 import { academicForumStrings } from "./academic-forum";
@@ -6,10 +7,15 @@ import { paperDetailIaStrings } from "./paper-detail-ia";
 import { authSecurityStrings } from "./auth-security";
 import { newUiStrings } from "./new-ui";
 import { projectInvitationStrings } from "./project-invitations";
+import { peerReviewVersionStrings } from "./peer-review-versions";
 import { studentOnboardingStrings } from "./student-onboarding";
+import { trustSafetyRagStrings } from "./trust-safety-rag";
 
 export const ko: Record<keyof typeof en, string> = {
+  ...trustSafetyRagStrings,
+  ...researchHomeEn,
   ...projectInvitationStrings,
+  ...peerReviewVersionStrings,
   ...studentOnboardingStrings,
   ...newUiStrings,
   ...authSecurityStrings,
@@ -786,8 +792,7 @@ export const ko: Record<keyof typeof en, string> = {
   "Level": "레벨",
   "Level Tiers": "레벨 등급",
   "Library is empty": "라이브러리가 비어 있습니다.",
-  "Liem Research Team. All rights reserved.": "리엠 연구팀. 모든 권리 보유.",
-  "LiemResearch logo": "LiemResearch 로고",
+  "Tori Team. All rights reserved.": "리엠 연구팀. 모든 권리 보유.",
   "Limitations": "제한사항",
   "Live": "라이브",
   "Loading AI history...": "AI 기록 로드 중...",

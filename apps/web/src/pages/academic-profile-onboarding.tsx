@@ -28,7 +28,7 @@ import {
 } from "@/features/auth";
 import { useAuthStore } from "@/stores/auth-store";
 import { cn } from "@/utils/cn";
-import { useI18n } from "@/i18n";
+import { LanguageSwitcher, useI18n } from "@/i18n";
 
 const ROLE_OPTIONS: Array<{
   role: AcademicRole;
@@ -113,6 +113,16 @@ const RESEARCH_INTEREST_OPTIONS = [
   "Other",
 ];
 
+const OPTION_TRANSLATION_KEYS = new Set([
+  ...RESEARCH_AREA_OPTIONS,
+  ...RESEARCH_INTEREST_OPTIONS,
+  ...DEFAULT_FPT_PROGRAMS.map((program) => program.name),
+]);
+
+function displayOption(value: string, t: (key: string) => string): string {
+  return OPTION_TRANSLATION_KEYS.has(value) || value === "FPT University" ? t(value) : value;
+}
+
 function splitTags(value: string): string[] {
   return Array.from(new Set(value.split(",").map((item) => item.trim()).filter(Boolean)));
 }
@@ -176,7 +186,6 @@ export function AcademicProfileOnboardingPage() {
   const hostInstitutionName = options?.hostInstitution?.name ?? "FPT University";
   const isInvitedExternal = user?.admissionBasis === "INVITATION" && user.participantScope !== "INTERNAL";
   const roleCopy = ROLE_OPTIONS.find((option) => option.role === academicRole) ?? ROLE_OPTIONS[0]!;
-  const RoleIcon = roleCopy.icon;
   const isStudent = academicRole === "STUDENT";
   const isResearcher = academicRole === "RESEARCHER";
   const isLecturer = academicRole === "LECTURER";
@@ -184,6 +193,8 @@ export function AcademicProfileOnboardingPage() {
   const hasFptEmail = hasFptAccountEmail(user);
   const isFptAffiliatedAccount = !isInvitedExternal && (hasFptEmail || hasTrustedEmail || user?.participantScope === "INTERNAL");
   const requiresFptAffiliation = isStudent || (isResearcher && !isInvitedExternal) || (isLecturer && isFptAffiliatedAccount);
+  const displayCampus = (campus: CampusOption) => [campus.name.replace(/^FPT University\b/, t("FPT University")), campus.city ? displayOption(campus.city, t) : ""].filter(Boolean).join(" · ");
+  const displayProgram = (program: ProgramOption) => [program.code, displayOption(program.name, t)].filter(Boolean).join(" · ");
 
   useEffect(() => {
     if (isInvitedExternal && academicRole === "STUDENT") setAcademicRole("RESEARCHER");
@@ -340,22 +351,25 @@ export function AcademicProfileOnboardingPage() {
     <main className="relative min-h-screen bg-slate-50/80 px-4 py-8 text-slate-950 dark:bg-[#09090b] dark:text-white sm:px-6 lg:py-12">
       <div className="relative mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-6xl flex-col">
         {/* Top Header */}
-        <header className="flex items-center justify-between pb-8">
+        <header className="flex flex-wrap items-center justify-between gap-3 pb-8">
           <Link to="/" className="flex shrink-0 items-center">
             <img src={logoImage} alt="LumiGap" className="h-9 w-auto object-contain dark:hidden" />
             <img src={logoDarkImage} alt="LumiGap" className="hidden h-9 w-auto object-contain dark:block" />
           </Link>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="gap-2 text-xs text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
-            disabled={logout.isPending}
-            onClick={() => logout.mutate(undefined, { onSettled: () => navigate("/login", { replace: true }) })}
-          >
-            <LogOut className="h-3.5 w-3.5" />
-            {t("Sign out")}
-          </Button>
+          <div className="flex items-center gap-2">
+            <LanguageSwitcher />
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="gap-2 text-xs text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+              disabled={logout.isPending}
+              onClick={() => logout.mutate(undefined, { onSettled: () => navigate("/login", { replace: true }) })}
+            >
+              <LogOut className="h-3.5 w-3.5" />
+              {t("Sign out")}
+            </Button>
+          </div>
         </header>
 
         <div className="grid flex-1 items-start gap-10 lg:grid-cols-12">
@@ -425,7 +439,7 @@ export function AcademicProfileOnboardingPage() {
                   </p>
                   <p className="mt-0.5 max-w-[220px] truncate text-xs text-slate-500 dark:text-slate-400">
                     {requiresFptAffiliation
-                      ? `${hostInstitutionName}${selectedCampus ? ` · ${selectedCampus.city || selectedCampus.name}` : ""}`
+                      ? `${displayOption(hostInstitutionName, t)}${selectedCampus ? ` · ${displayCampus(selectedCampus)}` : ""}`
                       : institutionName || t("Independent")}
                   </p>
                 </div>
@@ -474,7 +488,7 @@ export function AcademicProfileOnboardingPage() {
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-xs font-bold text-slate-900 dark:text-white">
-                    {user?.fullName || "Scholar"}
+                    {user?.fullName || t("Scholar")}
                   </p>
                   <p className="truncate text-[11px] text-slate-500 dark:text-slate-400">
                     {user?.email}
@@ -579,7 +593,7 @@ export function AcademicProfileOnboardingPage() {
                     <div className="flex items-center justify-between rounded-xl border border-blue-200 bg-blue-50/60 px-4 py-3 text-blue-950 dark:border-blue-900/60 dark:bg-blue-950/30 dark:text-blue-100">
                       <div className="flex items-center gap-3">
                         <University className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                        <span className="font-semibold text-sm">{hostInstitutionName}</span>
+                      <span className="font-semibold text-sm">{displayOption(hostInstitutionName, t)}</span>
                       </div>
                       <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-semibold text-blue-700 dark:bg-blue-900/50 dark:text-blue-200">
                         <Lock className="h-3 w-3" />
@@ -602,7 +616,7 @@ export function AcademicProfileOnboardingPage() {
                         <option value="">{optionsQuery.isLoading ? t("Loading campuses…") : t("Select campus")}</option>
                         {availableCampuses.map((campus) => (
                           <option key={campus.id} value={campus.id}>
-                            {[campus.name, campus.city].filter(Boolean).join(" · ")}
+                            {displayCampus(campus)}
                           </option>
                         ))}
                       </select>
@@ -649,7 +663,7 @@ export function AcademicProfileOnboardingPage() {
                         <option value="">{optionsQuery.isLoading ? t("Loading programs…") : t("Select program")}</option>
                         {availablePrograms.map((program) => (
                           <option key={program.id} value={program.id}>
-                            {[program.code, program.name].filter(Boolean).join(" · ")}
+                            {displayProgram(program)}
                           </option>
                         ))}
                       </select>
@@ -743,7 +757,7 @@ export function AcademicProfileOnboardingPage() {
                           )}
                           aria-pressed={selected}
                         >
-                        <span>{option}</span>
+                          <span>{displayOption(option, t)}</span>
                         </button>
                       );
                     })}
@@ -788,7 +802,7 @@ export function AcademicProfileOnboardingPage() {
                           )}
                           aria-pressed={selected}
                         >
-                        <span>{option}</span>
+                          <span>{displayOption(option, t)}</span>
                         </button>
                       );
                     })}

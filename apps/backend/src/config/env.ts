@@ -1,8 +1,5 @@
-import "dotenv/config";
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-
-import { parse as parseDotenv } from "dotenv";
+import { backendRoot } from "./load-env.js";
+import { resolve } from "node:path";
 import { z } from "zod";
 
 const optionalEnvString = z.preprocess((value) => (value === "" ? undefined : value), z.string().optional());
@@ -10,7 +7,7 @@ const optionalEnvEmail = z.preprocess((value) => (value === "" ? undefined : val
 const optionalEnvUrl = z.preprocess((value) => (value === "" ? undefined : value), z.string().url().optional());
 const optionalPostgresUri = z.preprocess(
   (value) => (value === "" ? undefined : value),
-  z.string().refine(
+  z.string().url("DATABASE_URL must be a valid URL; use alphanumeric passwords for local setup").refine(
     (value) => value.startsWith("postgresql://") || value.startsWith("postgres://"),
     "DATABASE_URL must be a PostgreSQL connection URL",
   ).optional(),
@@ -44,8 +41,8 @@ const EnvSchema = z.object({
   // RS256 access tokens. Private keys are never committed; local development
   // uses ignored PEM files under apps/backend/.keys.
   JWT_ALGORITHM: z.literal("RS256").default("RS256"),
-  JWT_PRIVATE_KEY_PATH: z.string().default(".keys/jwt-private.pem"),
-  JWT_PUBLIC_KEY_PATH: z.string().default(".keys/jwt-public.pem"),
+  JWT_PRIVATE_KEY_PATH: z.string().default(".keys/jwt-private.pem").transform((value) => resolve(backendRoot, value)),
+  JWT_PUBLIC_KEY_PATH: z.string().default(".keys/jwt-public.pem").transform((value) => resolve(backendRoot, value)),
   JWT_ISSUER: z.string().min(1).default("lumigap-api"),
   JWT_AUDIENCE: z.string().min(1).default("lumigap-web"),
   // Deprecated HMAC secrets remain optional during the migration window. They
@@ -74,14 +71,15 @@ const EnvSchema = z.object({
   ),
 
   GEMINI_API_KEY: z.string().min(1, "GEMINI_API_KEY is required"),
-  // Cost-saving: standardize ALL generative calls (rerank, research gaps, RAG
-  // reports, quality-judge) on Gemini 3.1 Flash-Lite — the cheapest GA tier with
-  // a generous free quota. If deep reports/gaps need higher quality later, raise
-  // GEMINI_MODEL_DEEP in .env (e.g. a Pro model) without touching code.
-  // NOTE: embeddings use a SEPARATE model below — Flash-Lite is a text model,
-  // not an embedding model — so this change does NOT affect embedding coverage.
-  GEMINI_MODEL_FAST: z.string().default("gemini-2.5-flash"),
-  GEMINI_MODEL_DEEP: z.string().default("gemini-2.5-flash"),
+  GEMINI_BASE_URL: z.string().url().default("https://generativelanguage.googleapis.com"),
+  AI_CONNECTION_ENCRYPTION_KEY: z.preprocess((value) => value === "" ? undefined : value, z.string().min(32).optional()),
+  AI_ALLOWED_BASE_URLS: z.string().default(""),
+  AI_ALLOW_LOCAL_ENDPOINTS: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
+  AI_LOCALHOST_HOST: z.string().regex(/^(?:[a-zA-Z0-9.-]+)?$/, "AI_LOCALHOST_HOST must be a hostname without a port or path").default(""),
+  // Keep generative models configurable as provider availability changes.
+  // Embeddings use their own model; changing these preserves existing vectors.
+  GEMINI_MODEL_FAST: z.string().default("gemini-3.1-flash-lite"),
+  GEMINI_MODEL_DEEP: z.string().default("gemini-3.1-flash-lite"),
   GEMINI_EMBEDDING_MODEL: z.string().default("gemini-embedding-2"),
   GEMINI_EMBEDDING_VERSION: z.string().min(1).default("1"),
   GEMINI_EMBEDDING_DIMENSIONS: z.coerce.number().int().positive().default(768),
@@ -112,6 +110,19 @@ const EnvSchema = z.object({
   CHAT_MAX_PROMPT_CHARS: z.coerce.number().int().positive().default(12000),
   CHAT_CACHE_TTL_SECONDS: z.coerce.number().int().positive().default(604800),
   CHAT_ABSTRACT_MAX_CHARS: z.coerce.number().int().positive().default(800),
+
+  // Forum Trust & Safety policy knobs. Defaults are development-safe values;
+  // production values must be confirmed by FPT/policy owners before launch.
+  FORUM_APPEAL_SUBMISSION_WINDOW_DAYS: z.coerce.number().int().min(1).max(365).default(14),
+  FORUM_MODERATION_CLAIM_LEASE_MINUTES: z.coerce.number().int().min(1).max(1440).default(30),
+  FORUM_MODERATION_EVIDENCE_RETENTION_DAYS: z.coerce.number().int().min(1).max(36500).default(365),
+  FORUM_AUDIT_METADATA_RETENTION_DAYS: z.coerce.number().int().min(1).max(36500).default(3650),
+  FORUM_MAX_PINNED_THREADS_PER_COMMUNITY: z.coerce.number().int().min(1).max(100).default(10),
+  FORUM_COPYRIGHT_EMAIL_VERIFICATION_MINUTES: z.coerce.number().int().min(5).max(1440).default(60),
+  FORUM_RATE_LIMIT_UNVERIFIED: z.coerce.number().int().min(1).max(1000).default(10),
+  FORUM_RATE_LIMIT_VERIFIED: z.coerce.number().int().min(1).max(5000).default(60),
+  FORUM_COPYRIGHT_PUBLIC_RATE_LIMIT: z.coerce.number().int().min(1).max(100).default(3),
+  FORUM_ALLOW_SOLE_ADMIN_APPEAL_REVIEW: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
 
   OPENALEX_MAILTO: optionalEnvEmail,
   // The normal application can read the existing corpus without an OpenAlex
@@ -148,6 +159,9 @@ const EnvSchema = z.object({
   PAPER_ANALYSIS_BATCH_SIZE: z.coerce.number().int().min(1).max(100).default(25),
   PAPER_ANALYSIS_MAX_PAPERS_PER_RUN: z.coerce.number().int().positive().default(100),
   PAPER_ANALYSIS_MAX_OUTPUT_TOKENS: z.coerce.number().int().positive().default(1024),
+  RAG_MAX_CHUNKS: z.coerce.number().int().min(1).max(400).default(300),
+  RAG_CHUNK_CHARS: z.coerce.number().int().min(500).max(4000).default(2400),
+  RAG_PASSAGES_PER_PAPER: z.coerce.number().int().min(1).max(5).default(3),
 
   // Phase C — RAG analytical reports.
   REPORT_TOP_K: z.coerce.number().int().min(1).max(10).default(8),
@@ -289,31 +303,6 @@ const EnvSchema = z.object({
 
 const rawEnv = { ...process.env };
 
-// Native development can reuse the credentials that provision the local
-// Docker-only Redis service. Secrets stay in the gitignored
-// .env.compose file and are URL-encoded only in this process' memory.
-if (rawEnv.NODE_ENV !== "production" && rawEnv.LOCAL_DOCKER_INFRA === "true") {
-  const composeEnvPath = fileURLToPath(new URL("../../../../.env.compose", import.meta.url));
-
-  let composeEnv: Record<string, string>;
-  try {
-    composeEnv = parseDotenv(readFileSync(composeEnvPath));
-  } catch {
-    console.error("Cannot load .env.compose for LOCAL_DOCKER_INFRA=true");
-    process.exit(1);
-  }
-
-  const redisPassword = composeEnv.REDIS_PASSWORD;
-
-  if (!redisPassword) {
-    console.error(
-      ".env.compose must define REDIS_PASSWORD",
-    );
-    process.exit(1);
-  }
-
-  rawEnv.REDIS_URL = `redis://default:${encodeURIComponent(redisPassword)}@127.0.0.1:6379`;
-}
 // Inject mock defaults under Vitest ONLY to avoid process.exit(1) on missing secrets.
 // SECURITY: gated on VITEST (which Vitest sets automatically), NOT on NODE_ENV — a
 // production deploy mis-set to NODE_ENV=test must NOT silently boot with the hardcoded
@@ -342,7 +331,7 @@ if (!parsed.success) {
     console.error(`  │${msg.padEnd(58)}│`);
   }
   console.error("  │                                                          │");
-  console.error("  │  Fix apps/backend/.env then re-run pnpm dev:backend      │");
+  console.error("  │  Fix root .env then re-run pnpm dev:backend              │");
   console.error("  └──────────────────────────────────────────────────────────┘");
   console.error("");
   process.exit(1);

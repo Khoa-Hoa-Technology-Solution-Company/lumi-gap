@@ -5,7 +5,7 @@ import { enforcePostgresOnlyRuntime } from "../infrastructure/database/postgres-
 import { env } from "../config/env.js";
 import { connectPostgres, disconnectPostgres } from "../infrastructure/database/prisma.js";
 import { logger } from "../infrastructure/logger.js";
-import { makeConnection, openAlexIngestQueue, QUEUE_NAMES } from "../infrastructure/queue.js";
+import { makeConnection, openAlexIngestQueue, paperAnalysisQueue, QUEUE_NAMES } from "../infrastructure/queue.js";
 import { startWorkerHeartbeat } from "../infrastructure/worker-heartbeat.js";
 import { runCampaignPartitionPage } from "../modules/api-sync/scale/campaign-partition-runner.js";
 
@@ -48,6 +48,7 @@ async function main() {
       if (result.status === "continued" || result.status === "completed") {
         await openAlexIngestQueue.add("campaign-page", { campaignId: data.campaignId });
       }
+      if (result.status === "completed") await paperAnalysisQueue.add("ingested-paper-knowledge", {});
       return result;
     },
     { connection: makeConnection(), concurrency: env.OPENALEX_INGEST_CONCURRENCY },

@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { HTMLAttributes, ReactNode } from "react";
 import { cn } from "@/utils/cn";
 
 type ForumLayoutProps = {
@@ -25,16 +25,16 @@ export function ForumLayout({
     <div className={cn("forum-workspace relative min-h-[calc(100dvh-var(--app-header-height))]", className)}>
       <div
         className={cn(
-          "w-full md:grid md:grid-cols-[var(--forum-sidebar-width)_minmax(0,1fr)]",
+          "w-full lg:grid lg:grid-cols-[var(--forum-sidebar-width)_minmax(0,1fr)]",
         )}
       >
         {sidebar}
-        <div className={cn("forum-content mx-auto w-full min-w-0 max-w-[calc(var(--forum-reading-width)+4rem)] px-4 pb-12 pt-5 sm:px-6 md:px-4 lg:px-6 xl:px-8 xl:pt-8", contentClassName)}>{children}</div>
+        <div className={cn("forum-content w-full min-w-0 px-3 pb-12 pt-2 sm:px-5 sm:pt-4 lg:px-6 xl:px-7 xl:pt-6", contentClassName)}>{children}</div>
       </div>
     </div>
   );
 }
 
-export function ForumSurface({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn("forum-surface mx-auto min-w-0 rounded-xl border border-border/80", className)}>{children}</div>;
+export function ForumSurface({ children, className, ...props }: HTMLAttributes<HTMLDivElement>) {
+  return <div className={cn("forum-surface min-w-0", className)} {...props}>{children}</div>;
 }

@@ -9,7 +9,7 @@ type SecurityMessage = {
   text: string;
   html?: string;
   attachments?: Array<{ filename: string; path: string; cid: string }>;
-  event: "email_verification" | "password_reset";
+  event: "email_verification" | "password_reset" | "copyright_claim_verification";
 };
 
 const LUMIGAP_LOGO_PATH = fileURLToPath(new URL("./assets/lumigap-logo.png", import.meta.url));
@@ -153,6 +153,18 @@ export const authMailService = {
       event: "email_verification",
       subject: "Verify your LumiGap email",
       text: `Verify your LumiGap email by opening this link within 24 hours: ${url.toString()}`,
+    });
+  },
+
+  sendCopyrightVerification(email: string, token: string, claimId: string) {
+    const url = new URL("/copyright/verify", webOrigin());
+    url.searchParams.set("token", token);
+    url.searchParams.set("claim", claimId);
+    return deliver({
+      to: email,
+      event: "copyright_claim_verification",
+      subject: "Verify your LumiGap copyright claim",
+      text: `Verify your copyright claim by opening this link within the configured verification window: ${url.toString()}`,
     });
   },
 

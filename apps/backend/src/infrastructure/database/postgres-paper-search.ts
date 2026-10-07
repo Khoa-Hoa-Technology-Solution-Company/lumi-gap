@@ -111,7 +111,7 @@ export function filterSql(filters: PostgresPaperSearchFilters): Prisma.Sql {
   });
   if (bands.length) conditions.push(Prisma.sql`(${Prisma.join(bands, " OR ")})`);
 
-  if (filters.paperIds?.length) {
+  if (filters.paperIds !== undefined) {
     const uuids: string[] = [];
     const legacyIds: string[] = [];
     for (const raw of uniqueStrings(filters.paperIds)) {

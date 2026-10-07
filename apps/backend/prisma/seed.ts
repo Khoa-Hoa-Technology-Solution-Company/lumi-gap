@@ -1,4 +1,4 @@
-import "dotenv/config";
+import "../src/config/load-env.js";
 import { getPrisma, disconnectPostgres } from "../src/infrastructure/database/prisma.js";
 import { passwordService } from "../src/modules/auth/password.service.js";
 import { seedCommunities } from "./seed-communities.js";
@@ -385,7 +385,7 @@ async function main() {
   for (const [index, input] of forumUsers.entries()) {
     const user = await prisma.user.upsert({
       where: { email: input.email },
-      create: { ...input, passwordHash: userPasswordHash, role: "user", systemRole: "RESEARCH_USER", accountStatus: "ACTIVE", emailVerifiedAt: new Date(), onboardingCompletedAt: new Date(), researchInterests: ["Software Engineering", "Artificial Intelligence"] },
+      create: { ...input, passwordHash: userPasswordHash, role: "user", systemRole: "USER", accountStatus: "ACTIVE", emailVerifiedAt: new Date(), onboardingCompletedAt: new Date(), researchInterests: ["Software Engineering", "Artificial Intelligence"] },
       update: { fullName: input.fullName, institution: input.institution, academicProfileType: input.academicProfileType, passwordHash: userPasswordHash, accountStatus: "ACTIVE" },
     });
     seededForumUsers.push({ id: user.id, fullName: user.fullName });
@@ -429,11 +429,11 @@ async function main() {
     "I would distinguish perceived usefulness from correctness. Developer trust is an outcome to measure, not a substitute for independent assessment of the suggested change.",
   ];
   const forumCommunityRows = [] as Array<{ id: string; slug: string }>;
-  for (const [name, slug, description] of communities) {
+  for (const [sortOrder, [name, slug, description]] of communities.entries()) {
     const community = await prisma.community.upsert({
       where: { slug },
-      create: { name, slug, description, researchField: name, researchTopics: [name, "Research methods"], rules: ["Cite evidence when making empirical claims.", "Keep critique focused on methods and results."], ownerId: admin2.id, visibility: "public", status: "ACTIVE" },
-      update: {},
+      create: { name, slug, description, researchField: name, researchTopics: [name, "Research methods"], rules: ["Cite evidence when making empirical claims.", "Keep critique focused on methods and results."], ownerId: admin2.id, visibility: "public", status: "ACTIVE", isForumCategory: true, sortOrder },
+      update: { isForumCategory: true },
     });
     forumCommunityRows.push({ id: community.id, slug: community.slug });
     for (const member of [admin2, lecturer, student, ...seededForumUsers.map((user) => ({ ...user }))]) {
@@ -504,7 +504,7 @@ async function main() {
       const recentReplyMinutes = index === 6 && replyIndex === replyCount - 1 ? 18 : index === 9 && replyIndex === replyCount - 1 ? 60 : null;
       const replyAt = recentReplyMinutes === null ? new Date(createdAt.getTime() + (replyIndex + 1) * 60 * 60 * 1000) : new Date(now - recentReplyMinutes * 60 * 1000);
       const replyBody = replyBodies[(index + replyIndex) % replyBodies.length];
-      await prisma.forumComment.upsert({ where: { id: commentId }, create: { id: commentId, postId: id, authorId: replyAuthor, body: replyBody, status: "active", createdAt: replyAt, updatedAt: replyAt }, update: { postId: id, authorId: replyAuthor, body: replyBody, status: "active", createdAt: replyAt, editedAt: null, updatedAt: replyAt } });
+      await prisma.forumComment.upsert({ where: { id: commentId }, create: { id: commentId, postId: id, postNumber: replyIndex + 2, authorId: replyAuthor, body: replyBody, status: "active", createdAt: replyAt, updatedAt: replyAt }, update: { postId: id, authorId: replyAuthor, body: replyBody, status: "active", createdAt: replyAt, editedAt: null, updatedAt: replyAt } });
     }
     const replyActivityAt = await prisma.forumComment.aggregate({ where: { postId: id, status: "active" }, _count: { _all: true }, _max: { createdAt: true, editedAt: true } });
     const lastActivityAt = [createdAt, replyActivityAt?._max.createdAt, replyActivityAt?._max.editedAt].filter((date): date is Date => Boolean(date)).sort((a, b) => b.getTime() - a.getTime())[0] ?? createdAt;
@@ -518,6 +518,7 @@ async function main() {
     const helpfulTarget = [0, 5, 3, 1, 0, 3, 5, 1, 3, 0, 5, 1, 0, 3][index];
     for (let voteIndex = 0; voteIndex < helpfulTarget; voteIndex += 1) {
       await prisma.forumVote.create({ data: { id: voteIds[voteIndex], postId: id, userId: voters[voteIndex].id, value: 1, createdAt } });
+      await prisma.forumReaction.upsert({ where: { targetType_targetId_userId: { targetType: "post", targetId: id, userId: voters[voteIndex].id } }, create: { targetType: "post", targetId: id, userId: voters[voteIndex].id, reaction: "LIKE", createdAt }, update: {} });
     }
     await prisma.forumPost.update({ where: { id }, data: { score: helpfulTarget, voteScore: helpfulTarget } });
     await prisma.forumPost.update({ where: { id }, data: { viewCount: [18, 248, 135, 431, 76, 42, 1024, 29, 314, 187, 63, 91, 54, 208][index] } });

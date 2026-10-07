@@ -1,5 +1,6 @@
 import type { Request, Response } from "express";
-import { LecturerListQuerySchema, VerificationListQuerySchema } from "./dto/academic-profile.schema.js";
+import { LecturerListQuerySchema, PublicForumActivityQuerySchema, VerificationListQuerySchema } from "./dto/academic-profile.schema.js";
+import { publicForumActivity } from "./academic-forum-activity.service.js";
 import { academicProfileService } from "./academic-profile.service.js";
 import { institutionalEmailVerificationService } from "./institutional-email-verification.service.js";
 import { academicProfileCoverService } from "./academic-profile-cover.service.js";
@@ -31,6 +32,10 @@ export const academicProfileController = {
   },
   async publicProfile(req: Request, res: Response) {
     res.json({ success: true, data: await academicProfileService.getPublic(req.params.userId as string, req.user?.sub) });
+  },
+  async forumActivity(req: Request, res: Response) {
+    const { filter, page } = PublicForumActivityQuerySchema.parse(req.query);
+    res.json({ success: true, data: await publicForumActivity(req.params.userId as string, filter, page, req.user?.sub, req.user?.role) });
   },
   async publicProfileByHandle(req: Request, res: Response) {
     res.json({ success: true, data: await academicProfileService.getPublicByHandle(req.params.handle as string, req.user?.sub) });

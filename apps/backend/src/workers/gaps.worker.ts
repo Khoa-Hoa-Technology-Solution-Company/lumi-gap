@@ -6,6 +6,7 @@ import { makeConnection, QUEUE_NAMES } from "../infrastructure/queue.js";
 import { logger } from "../infrastructure/logger.js";
 import { startWorkerHeartbeat } from "../infrastructure/worker-heartbeat.js";
 import { gapsService, type GapJob } from "../modules/gaps/gaps.service.js";
+import { withUserAi } from "../modules/user-ai/user-ai.runtime.js";
 
 enforcePostgresOnlyRuntime();
 
@@ -53,7 +54,10 @@ async function main() {
     async (job) => {
       logger.info({ jobId: job.id, attempt: job.attemptsMade + 1 }, "gap job received");
       try {
-        await gapsService.runGapPipeline(job.data as GapJob);
+        const input = job.data as GapJob;
+        const analysis = await getPrisma().gapAnalysis.findUnique({ where: { id: input.analysisId }, select: { userId: true } });
+        if (analysis) await withUserAi(analysis.userId, () => gapsService.runGapPipeline(input));
+        else await gapsService.runGapPipeline(input);
       } catch (err) {
         // Non-retryable errors (e.g. output truncation) skip the backoff dance.
         if (err instanceof Error && (err as { nonRetryable?: boolean }).nonRetryable) {

@@ -84,14 +84,14 @@ These are configured per developer in their own `.env`. The team lead (hoangtira
 ## 4. Repository Layout
 
 ```
-LiemResearch/                                    (repo root — fork of thiennhat-ctrl/LiemResearch)
+LumiGap/                                    (repo root — fork of thiennhat-ctrl/LiemResearch)
 ├── apps/
 │   ├── backend/                                 Express 5 API + BullMQ workers
 │   ├── web/                                     React + Vite + shadcn web app
 │   └── mobile/                                  Expo + NativeWind mobile app
 ├── packages/
 │   └── shared-types/                            framework-agnostic TS types
-├── legacy/                                      original LiemResearch code — port reference
+├── legacy/                                      original LumiGap code — port reference
 │   ├── backend-js/                              ratings, points, notifications, S3 (JS)
 │   └── web-figma/                               17 UI pages + rank badges (Tailwind v4)
 │                                                → port per docs/MIGRATION_MAP.md, then delete
@@ -244,7 +244,7 @@ report.ts                         AnalyticalReport, ResearchGap, ReportStatus
 ```
 
 ### Auth
-- Access token: 15 min, signed with `JWT_ACCESS_SECRET`.
+- Access token: 15 min, signed with an RS256 private key.
 - Refresh token: 7 days, **hashed** in PostgreSQL and rotated on each refresh.
 - Web: tokens in localStorage. Mobile: tokens in expo-secure-store (Keychain / Keystore).
 - 401 → client tries refresh once → on failure, clear tokens and redirect to login.
@@ -332,21 +332,9 @@ If env is invalid, a red banner names the missing variable.
 
 ## 8. Environment Variables
 
-See [`apps/backend/.env.example`](apps/backend/.env.example) for the full template. Required for backend boot:
+See root [`.env.example`](.env.example) and [the key inventory](docs/environment-variables.md). Run `pnpm setup` to generate local passwords and RS256 keys, then fill in `GEMINI_API_KEY`. Backend/Prisma/workers load root `.env` independent of cwd and expand `${...}`; Compose overrides internal hosts.
 
-| Variable | Notes |
-|---|---|
-| `DATABASE_URL` | PostgreSQL connection string. Local Compose exposes PostgreSQL/pgvector on host port `5433`. |
-| `PERSISTENCE_PROVIDER` | Must be `postgresql`; the backend rejects other providers. |
-| `REDIS_URL` | Upstash `rediss://default:<password>@<host>:6379`. Note the double `s` (TLS required). |
-| `JWT_ACCESS_SECRET` | ≥ 32 chars random hex. Generate: `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"` |
-| `JWT_REFRESH_SECRET` | ≥ 32 chars random hex. Must differ from access secret. |
-| `GEMINI_API_KEY` | From https://aistudio.google.com/apikey. Each dev has their own. |
-
-Optional (have sensible defaults):
-- `PORT` (4000), `LOG_LEVEL` (info), `CORS_ORIGIN`, `SYNC_CRON`, `OPENALEX_MAILTO`, `GEMINI_MODEL_FAST`, `GEMINI_EMBEDDING_DIMENSIONS`, etc.
-
-Web and mobile `.env` only contain the API base URL — no secrets.
+Use `pnpm docker:infra` for native backend/web or `pnpm docker:up` for the full stack with default workers. Migrations and Docker JWT keys initialize automatically. Demo seed is opt-in (`docker compose --profile seed up seed`). Vite uses root `envDir` and exposes only `VITE_*`; native web runs on port 3000. Mobile launchers consume only public API configuration from root `.env`. Production uses the separate root `.env.production.example` template and the existing Jenkins credential contract.
 
 ---
 
@@ -363,7 +351,7 @@ lumigap_db  (PostgreSQL 16 + pgvector)
 └── AI/RAG: reports, research gaps, AI jobs, evidence relations
 ```
 
-The authoritative schema is `apps/backend/prisma/`. Apply checked-in migrations with `pnpm --filter backend prisma:migrate:deploy`.
+The authoritative schema is `apps/backend/prisma/`. Apply checked-in migrations with `pnpm --filter backend db:migrate:deploy`.
 
 ---
 

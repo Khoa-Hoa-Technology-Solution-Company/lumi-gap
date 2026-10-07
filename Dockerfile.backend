@@ -16,6 +16,7 @@ COPY packages/shared-types/package.json packages/shared-types/package.json
 
 RUN pnpm install --frozen-lockfile
 
+COPY scripts scripts
 COPY apps/backend apps/backend
 COPY packages/shared-types packages/shared-types
 

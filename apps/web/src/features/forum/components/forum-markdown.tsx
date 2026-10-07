@@ -1,50 +1,96 @@
+import { Link } from "react-router-dom";
+import { ForumCitationPreview } from "./forum-citation-preview";
+import { forumCitationPaperIdPattern, orderForumReferences } from "@trend/shared-types";
+import type { ForumReferenceView } from "../api/forum.api";
+import { ForumReferenceItem } from "./forum-context-card";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { lazy, Suspense, useId, useRef, useState, type ReactNode } from "react";
 import { ExternalLink } from "lucide-react";
 import { cn } from "@/utils/cn";
+import { useI18n } from "@/i18n";
+import { forumRemarkPlugins } from "../utils/forum-remark-formatting";
+import { safeForumImageUrl } from "../utils/forum-formatting";
+
+const ForumMathView = lazy(() => import("./forum-math-view"));
 
 interface ForumMarkdownProps {
   content: string;
   className?: string;
   isCompact?: boolean;
+  references?: ForumReferenceView[];
+  renderReferences?: boolean;
 }
 
-export function ForumMarkdown({ content, className, isCompact = false }: ForumMarkdownProps) {
+function ForumSpoiler({ children }: { children: ReactNode }) {
+  const { t } = useI18n();
+  const [revealed, setRevealed] = useState(false);
+  return <span role="button" tabIndex={0} aria-expanded={revealed} aria-label={t(revealed ? "Hide spoiler" : "Reveal spoiler")} className="forum-spoiler-toggle" data-revealed={revealed} onClick={() => setRevealed((current) => !current)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setRevealed((current) => !current); } }}><span aria-hidden={!revealed}>{children}</span></span>;
+}
+
+function MathView({ latex, block }: { latex: string; block?: boolean }) {
+  return <Suspense fallback={<span className="forum-math">{latex}</span>}><ForumMathView latex={latex} block={block} /></Suspense>;
+}
+
+export function ForumMarkdown({ content, className, isCompact = false, references = [], renderReferences = false }: ForumMarkdownProps) {
+  const footnotePrefix = `forum-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}-`;
+  const { t } = useI18n();
+  const citationScope = useRef<HTMLDivElement>(null);
   if (!content) return null;
 
   return (
     <div
+      ref={citationScope}
       className={cn(
-        "prose prose-slate dark:prose-invert max-w-[70ch] break-words [overflow-wrap:anywhere]",
+        "forum-prose prose prose-neutral dark:prose-invert max-w-[70ch] break-words [overflow-wrap:anywhere]",
         isCompact
           ? "prose-sm leading-relaxed"
-          : "text-base leading-[1.7] sm:text-lg prose-headings:font-semibold prose-headings:tracking-tight prose-a:text-blue-600 dark:prose-a:text-blue-400 prose-a:no-underline hover:prose-a:underline",
+          : "text-base leading-6 prose-headings:font-semibold prose-headings:tracking-tight",
         className
       )}
     >
       <Markdown
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={[remarkGfm, ...forumRemarkPlugins]}
+        remarkRehypeOptions={{ clobberPrefix: footnotePrefix, footnoteLabel: t("Footnotes"), footnoteBackLabel: t("Back to text") }}
         components={{
-          a: ({ href, children, ...props }) => {
+          a: ({ href, children, node: _node, ...props }) => {
             const isExternal = href?.startsWith("http://") || href?.startsWith("https://");
             return (
               <a
                 href={href}
                 target={isExternal ? "_blank" : undefined}
                 rel={isExternal ? "noopener noreferrer" : undefined}
-                className="inline-flex items-center gap-1 font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 underline underline-offset-2"
+                className="forum-prose-link"
                 {...props}
+                aria-describedby={props["aria-describedby"] === "footnote-label" ? `${footnotePrefix}footnote-label` : props["aria-describedby"]}
               >
                 {children}
-                {isExternal && <ExternalLink className="inline h-3 w-3 opacity-70" />}
+                {isExternal && <ExternalLink aria-hidden="true" className="ml-1 inline h-3 w-3 opacity-70" />}
               </a>
             );
           },
-          blockquote: ({ children }) => (
-            <blockquote className="my-4 rounded-md border border-border bg-muted/30 px-4 py-2.5 text-muted-foreground not-italic">
-              {children}
-            </blockquote>
-          ),
+          h2: ({ children, id, node: _node, ...props }) => <h2 {...props} id={id === "footnote-label" ? `${footnotePrefix}footnote-label` : id}>{children}</h2>,
+          span: ({ children, node }) => {
+            const properties = node?.properties as Record<string, unknown> | undefined;
+            const paperId = properties?.dataForumCitation ?? properties?.["data-forum-citation"];
+            if (paperId !== undefined) {
+              const source = references.find((reference) => reference.paperId?.toLowerCase() === String(paperId));
+              const number = properties?.dataCitationNumber ?? properties?.["data-citation-number"];
+              return source && forumCitationPaperIdPattern.test(String(paperId)) ? <Link to={`/papers/${encodeURIComponent(String(paperId))}`} data-forum-citation={String(paperId)} className="forum-inline-citation" aria-label={`${t("View paper")} ${number}: ${source.title ?? ""}`}>[{String(number)}]</Link> : <span className="text-muted-foreground" title={t("Citation source unavailable")}>[{String(number)}]</span>;
+            }
+            const mathKind = properties?.dataForumMath ?? properties?.["data-forum-math"];
+            const latex = properties?.dataLatex ?? properties?.["data-latex"];
+            const spoiler = properties?.dataForumSpoiler ?? properties?.["data-forum-spoiler"];
+            return mathKind ? <MathView latex={String(latex ?? "")} /> : spoiler ? <ForumSpoiler>{children}</ForumSpoiler> : <span>{children}</span>;
+          },
+          div: ({ children, node, className: divClass }) => {
+            const properties = node?.properties as Record<string, unknown> | undefined;
+            const mathKind = properties?.dataForumMath ?? properties?.["data-forum-math"];
+            const latex = properties?.dataLatex ?? properties?.["data-latex"];
+            return mathKind ? <MathView latex={String(latex ?? "")} block /> : <div className={divClass}>{children}</div>;
+          },
+          blockquote: ({ children }) => <blockquote className="my-4 rounded-md border border-border bg-muted/30 px-4 py-2.5 text-neutral-700 not-italic dark:text-neutral-300">{children}</blockquote>,
+          img: ({ src, alt, title }) => safeForumImageUrl(src) ? <img src={safeForumImageUrl(src)} alt={alt ?? ""} title={title} loading="lazy" referrerPolicy="no-referrer" className="forum-image my-4" /> : null,
           code: ({ className: codeClassName, children, ...props }) => {
             const isBlock = codeClassName?.includes("language-");
             if (isBlock) {
@@ -67,7 +113,7 @@ export function ForumMarkdown({ content, className, isCompact = false }: ForumMa
           },
           ul: ({ children }) => <ul className="my-2.5 list-disc pl-5 space-y-1">{children}</ul>,
           ol: ({ children }) => <ol className="my-2.5 list-decimal pl-5 space-y-1">{children}</ol>,
-          li: ({ children }) => <li className="pl-0.5">{children}</li>,
+          li: ({ children, node: _node, className: itemClassName, ...props }) => <li {...props} className={cn("pl-0.5", itemClassName)}>{children}</li>,
           table: ({ children }) => (
             <div className="my-4 overflow-x-auto rounded-xl border border-border">
               <table className="w-full text-left text-base divide-y divide-border">{children}</table>
@@ -81,11 +127,13 @@ export function ForumMarkdown({ content, className, isCompact = false }: ForumMa
           td: ({ children }) => (
             <td className="px-4 py-2.5 text-foreground/90 border-t border-border/50">{children}</td>
           ),
-          p: ({ children }) => <p className="my-3 leading-[1.7]">{children}</p>,
+          p: ({ children }) => <p className="my-4 leading-6">{children}</p>,
         }}
       >
         {content}
       </Markdown>
+      <ForumCitationPreview scope={citationScope} references={references} />
+      {renderReferences && references.length ? <section aria-label={t("References")} className="not-prose mt-6 border-t border-border pt-4"><h3 className="mb-3 text-sm font-semibold">{t("References")}</h3><ol className="space-y-3">{orderForumReferences(content, references).map((reference, index) => <li key={reference.paperId ?? reference.id ?? index}><ForumReferenceItem reference={reference} index={index + 1} /></li>)}</ol></section> : null}
     </div>
   );
 }
