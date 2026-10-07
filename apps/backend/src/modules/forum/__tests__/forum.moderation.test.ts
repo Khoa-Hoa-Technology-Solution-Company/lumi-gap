@@ -89,6 +89,15 @@ describe.sequential("forum report decisions, restrictions and appeals", () => {
     } finally { await prisma.community.update({ where: { id: community }, data: { visibility: "public", isForumCategory: true } }); }
   });
 
+  it("rejects reports from outsiders when community visibility is unknown", async () => {
+    const post = await topic();
+    await prisma.$executeRaw`UPDATE communities SET is_forum_category = false, visibility = 'weird' WHERE id = ${community}::uuid`;
+    try {
+      await expect(report(post.id, "SPAM", outsider)).rejects.toMatchObject({ statusCode: 403 });
+      expect(await report(post.id)).toMatchObject({ status: "open" });
+    } finally { await prisma.community.update({ where: { id: community }, data: { visibility: "public", isForumCategory: true } }); }
+  });
+
   it("presents a response report as a response and retains the discussion URL", async () => {
     const post = await topic(); const response = await prisma.forumComment.create({ data: { postId: post.id, postNumber: 2, authorId: author, body: "Reported response, distinct from the opening post" } });
     const item = await moderation.createReport({ targetType: "comment", targetId: response.id, reason: "OFF_TOPIC" }, reporter);

@@ -5,7 +5,7 @@ import { parseDatabaseId, publicDatabaseId } from "../../infrastructure/database
 import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { auditService } from "../audit/audit.service.js";
 import { notificationService } from "../notifications/notification.service.js";
-import { getActiveCommunityMembership, isCommunityModerator } from "../communities/community.service.js";
+import { getActiveCommunityMembership, isCommunityModerator, narrowVisibility } from "../communities/community.service.js";
 import { env } from "../../config/env.js";
 import { authMailService } from "../auth/auth-mail.service.js";
 import { assertForumPinCapacity } from "./forum-locks.js";
@@ -120,7 +120,7 @@ export const forumModerationService = {
         getPrisma().user.findUniqueOrThrow({ where: { id: reporterId }, select: { systemRole: true } }),
         getActiveCommunityMembership(row.communityId, reporterId),
       ]);
-      if (community.visibility === "private" && reporterUser.systemRole !== "ADMIN" && !membership) throw AppError.forbidden("This community is private");
+      if (narrowVisibility(community.visibility) === "private" && reporterUser.systemRole !== "ADMIN" && !membership) throw AppError.forbidden("This community is private");
     }
     if (row.type === "RESPONSE") {
       const parent = await getPrisma().forumPost.findUniqueOrThrow({ where: { id: row.postId }, select: { status: true, visibilityStatus: true } });
