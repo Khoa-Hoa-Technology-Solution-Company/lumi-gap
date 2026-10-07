@@ -3,20 +3,6 @@
 > Context file for Claude Code (and any AI coding assistant) working on this repo.
 > Read this first before touching code. Last updated: 2026-10-07.
 
-### Multi-Agent Workflow Rules (.herdr):
-- **Lệnh tắt siêu ngắn (Short Triggers)**:
-  - `plan <tên>` hoặc `spec <tên>`: Tự động phân tích và xuất file kế hoạch vào `.herdr/specs/<tên>.md`.
-  - `code` hoặc `làm` (hoặc `code <tên>`): **TỰ ĐỘNG quét file spec mới nhất trong `.herdr/specs/`**, đọc checklist và bắt tay vào code ngay. Người dùng **không cần gõ đường dẫn file**.
-- **Vai trò 1 (Planner / Architect)**:
-  - Khi người dùng bảo `plan...` hoặc `spec...`:
-  - **MẶC ĐỊNH LUÔN TỰ ĐỘNG TẠO FILE TẠI `.herdr/specs/<ten-tinh-nang>.md`**.
-  - File kế hoạch bắt buộc có checklist từng bước (`- [ ] Task`).
-- **Vai trò 2 (Coder / Builder)**:
-  - Khi người dùng chỉ cần gõ `code` (hoặc `làm`, `triển khai`):
-  - Tự động tìm file spec mới nhất trong `.herdr/specs/` (file có checklist chưa hoàn thành).
-  - Đọc checklist và code lần lượt từng task, tick `[x]` vào checklist và chạy test nghiệm thu.
-
-
 ---
 
 ## 1. What This Project Is
@@ -99,7 +85,6 @@ LumiGap/                                    (repo root — fork of thiennhat-ctr
 │   └── web-figma/                               17 UI pages + rank badges (Tailwind v4)
 ├── docs/                                        guides, runbooks, migration audits
 │   └── superpowers/specs/                       design specs (per phase)
-├── .herdr/                                      multi-agent workflow (specs/ holds plans)
 ├── tests/ + playwright.config.ts                Playwright e2e (pnpm test:e2e)
 ├── scripts/                                     setup.mjs and other repo scripts
 ├── deploy/, Jenkinsfile, Dockerfile.*           deployment and CI
@@ -467,7 +452,6 @@ These are the things that caused real bugs or near-misses. Keep them in mind:
 | [docs/PERSONAL_AI_CONNECTIONS.md](docs/PERSONAL_AI_CONNECTIONS.md) | Per-user AI provider connections (encrypted keys) |
 | [docs/environment-variables.md](docs/environment-variables.md) | Inventory of every env variable |
 | [docs/DEPLOY_WITH_DOCKER.md](docs/DEPLOY_WITH_DOCKER.md) | Docker deploy, troubleshooting, rate limits and scaling |
-| [.herdr/README.md](.herdr/README.md) | Multi-agent (planner/builder) workflow and spec format |
 | [docs/superpowers/specs/2026-05-25-phase-a-design.md](docs/superpowers/specs/2026-05-25-phase-a-design.md) | Full Phase A design (data flow, schemas, acceptance criteria) |
 
 ---
