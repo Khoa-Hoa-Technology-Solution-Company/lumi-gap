@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { gapsApi } from "../api/gaps.api";
-import type { AnalyzeGapRequest, CreateGapCandidateRequest, PreviewGapEvidenceRequest, ReviewForumCitationAsEvidenceRequest } from "@trend/shared-types";
+import type { AnalyzeGapRequest, CreateGapCandidateRequest, CreateGapValidationRequest, PreviewGapEvidenceRequest, ReviewForumCitationAsEvidenceRequest } from "@trend/shared-types";
 
 export function useGaps(params?: Parameters<typeof gapsApi.list>[0]) {
   return useQuery({
@@ -66,6 +66,49 @@ export function usePatchGapStatus() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["gaps"] });
     },
+  });
+}
+
+export function useRequestGapValidation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (gapId: string) => gapsApi.requestValidation(gapId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["gaps"] }),
+  });
+}
+
+export function useGapValidations(gapId: string | undefined, enabled = true) {
+  return useQuery({
+    queryKey: ["gaps", gapId, "validations"],
+    queryFn: () => gapsApi.validations(gapId!),
+    enabled: Boolean(gapId) && enabled,
+  });
+}
+
+export function useGapEvidenceRecords(gapId: string | undefined, enabled = true) {
+  return useQuery({
+    queryKey: ["gaps", gapId, "evidence-records"],
+    queryFn: () => gapsApi.evidence(gapId!),
+    enabled: Boolean(gapId) && enabled,
+  });
+}
+
+export function useAddGapValidation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ gapId, payload }: { gapId: string; payload: CreateGapValidationRequest }) => gapsApi.addValidation(gapId, payload),
+    onSuccess: (_, { gapId }) => {
+      queryClient.invalidateQueries({ queryKey: ["gaps", gapId, "validations"] });
+      queryClient.invalidateQueries({ queryKey: ["gapValidationQueue"] });
+    },
+  });
+}
+
+export function useGapValidationQueue(page: number, enabled = true) {
+  return useQuery({
+    queryKey: ["gapValidationQueue", page],
+    queryFn: () => gapsApi.validationQueue({ page, pageSize: 10 }),
+    enabled,
   });
 }
 

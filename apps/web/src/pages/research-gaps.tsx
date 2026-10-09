@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   Sparkles,
   XCircle,
@@ -12,7 +12,8 @@ import {
   ChevronRight,
   Star,
   ChevronUp,
-  ChevronDown
+  ChevronDown,
+  ShieldCheck
 } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
@@ -140,6 +141,7 @@ function AnalysisPoller({
 export function ResearchGapsPage() {
   const { t } = useI18n();
   const userId = useAuthStore((state) => state.user?.id ?? "anonymous");
+  const isGapExpert = useAuthStore((state) => Boolean(state.user?.capabilities?.includes("GAP_VALIDATION")));
   const [searchParams] = useSearchParams();
   const [activeAnalysisId, setActiveAnalysisId] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<"active" | "resolved" | "dismissed">("active");
@@ -345,6 +347,7 @@ export function ResearchGapsPage() {
       <PageHeader
         title={t("Research Gaps")}
         description={t("AI-suggested research opportunities grounded in retrieved papers.")}
+        actions={isGapExpert ? <Button asChild variant="outline" size="sm"><Link to="/research-gaps/validation"><ShieldCheck className="h-4 w-4" />{t("Gap validation queue")}</Link></Button> : undefined}
       />
 
       {activeAnalysisId && (

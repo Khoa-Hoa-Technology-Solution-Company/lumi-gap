@@ -110,6 +110,12 @@ export const GapEvidenceRecordSchema = z.object({
   excerpt: z.string().trim().min(2).max(5000),
   explanation: z.string().trim().min(10).max(5000),
 }).strict();
+/** Query params of GET /api/v1/gaps/validation-queue. */
+export const ValidationQueueQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(50).default(20),
+});
+export type ValidationQueueQuery = z.infer<typeof ValidationQueueQuerySchema>;
 export const GapValidationSchema = z.object({
   action: z.enum(["VALIDATE", "CHALLENGE", "REQUEST_EVIDENCE", "SUGGEST_EVIDENCE", "REFINE_SCOPE", "REJECT"]),
   comment: z.string().trim().min(10).max(10000),

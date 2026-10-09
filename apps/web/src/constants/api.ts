@@ -208,6 +208,10 @@ export const API_ROUTES = {
     discussions: (id: string) => `/gaps/${id}/discussions`,
     reviewForumCitation: (id: string, referenceId: string) => `/gaps/${id}/forum-citations/${referenceId}/review-as-evidence`,
     forumCitationEvidenceOptions: (id: string, referenceId: string) => `/gaps/${id}/forum-citations/${referenceId}/evidence-options`,
+    validationQueue: "/gaps/validation-queue",
+    requestValidation: (id: string) => `/gaps/${id}/request-validation`,
+    validations: (id: string) => `/gaps/${id}/validations`,
+    evidence: (id: string) => `/gaps/${id}/evidence`,
   },
   projects: {
     list: "/projects",

@@ -295,6 +295,76 @@ export const gapEvidenceWorkflowStrings = {
     "Filter included papers by title or DOI",
   "No included project papers match. Screen more papers as INCLUDED in the Papers tab.":
     "No included project papers match. Screen more papers as INCLUDED in the Papers tab.",
+  "Validate":
+    "Validate",
+  "Challenge":
+    "Challenge",
+  "Request evidence":
+    "Request evidence",
+  "Suggest evidence":
+    "Suggest evidence",
+  "Refine scope":
+    "Refine scope",
+  "Validation requested. Verified experts can now review this gap.":
+    "Validation requested. Verified experts can now review this gap.",
+  "Could not request expert validation.":
+    "Could not request expert validation.",
+  "Expert validation":
+    "Expert validation",
+  "Requesting validation shares this gap and its linked evidence with verified experts who hold research-gap validation rights.":
+    "Requesting validation shares this gap and its linked evidence with verified experts who hold research-gap validation rights.",
+  "Request expert validation":
+    "Request expert validation",
+  "No expert decisions yet.":
+    "No expert decisions yet.",
+  "Validation decision recorded.":
+    "Validation decision recorded.",
+  "Could not record the validation decision.":
+    "Could not record the validation decision.",
+  "Decision":
+    "Decision",
+  "Comment (at least 10 characters)":
+    "Comment (at least 10 characters)",
+  "Suggested changes (optional)":
+    "Suggested changes (optional)",
+  "Record decision":
+    "Record decision",
+  "Gap validation queue":
+    "Gap validation queue",
+  "Research gaps whose owners asked verified experts for a decision. Gaps from your own projects are not shown.":
+    "Research gaps whose owners asked verified experts for a decision. Gaps from your own projects are not shown.",
+  "This page is for verified experts with research-gap validation rights.":
+    "This page is for verified experts with research-gap validation rights.",
+  "Could not load the validation queue.":
+    "Could not load the validation queue.",
+  "No research gaps are waiting for validation.":
+    "No research gaps are waiting for validation.",
+  "Established knowledge":
+    "Established knowledge",
+  "Observed limitation":
+    "Observed limitation",
+  "Missing evidence":
+    "Missing evidence",
+  "Why it matters":
+    "Why it matters",
+  "Suggested research question":
+    "Suggested research question",
+  "AI-assisted":
+    "AI-assisted",
+  "You already responded":
+    "You already responded",
+  "{{count}} evidence record(s)":
+    "{{count}} evidence record(s)",
+  "{{count}} expert decision(s)":
+    "{{count}} expert decision(s)",
+  "Hide evidence and decision":
+    "Hide evidence and decision",
+  "Review evidence and decide":
+    "Review evidence and decide",
+  "Linked evidence":
+    "Linked evidence",
+  "No structured evidence is linked yet.":
+    "No structured evidence is linked yet.",
 } as const;
 
 export const gapEvidenceWorkflowViStrings: Record<
@@ -557,4 +627,74 @@ export const gapEvidenceWorkflowViStrings: Record<
     "Lọc các bài INCLUDED theo tiêu đề hoặc DOI",
   "No included project papers match. Screen more papers as INCLUDED in the Papers tab.":
     "Không có bài INCLUDED nào khớp. Hãy sàng lọc thêm bài là INCLUDED ở tab Papers.",
+  "Validate":
+    "Xác nhận",
+  "Challenge":
+    "Phản biện",
+  "Request evidence":
+    "Yêu cầu thêm bằng chứng",
+  "Suggest evidence":
+    "Gợi ý bằng chứng",
+  "Refine scope":
+    "Thu hẹp phạm vi",
+  "Validation requested. Verified experts can now review this gap.":
+    "Đã gửi yêu cầu thẩm định. Chuyên gia đã xác minh giờ có thể xem khoảng trống này.",
+  "Could not request expert validation.":
+    "Không thể gửi yêu cầu thẩm định.",
+  "Expert validation":
+    "Thẩm định của chuyên gia",
+  "Requesting validation shares this gap and its linked evidence with verified experts who hold research-gap validation rights.":
+    "Gửi yêu cầu thẩm định sẽ chia sẻ khoảng trống này và các bằng chứng đã liên kết với các chuyên gia đã xác minh có quyền thẩm định khoảng trống nghiên cứu.",
+  "Request expert validation":
+    "Yêu cầu chuyên gia thẩm định",
+  "No expert decisions yet.":
+    "Chưa có chuyên gia nào đưa ra quyết định.",
+  "Validation decision recorded.":
+    "Đã ghi nhận quyết định thẩm định.",
+  "Could not record the validation decision.":
+    "Không thể ghi nhận quyết định thẩm định.",
+  "Decision":
+    "Quyết định",
+  "Comment (at least 10 characters)":
+    "Nhận xét (ít nhất 10 ký tự)",
+  "Suggested changes (optional)":
+    "Đề xuất chỉnh sửa (không bắt buộc)",
+  "Record decision":
+    "Ghi nhận quyết định",
+  "Gap validation queue":
+    "Hàng đợi thẩm định khoảng trống",
+  "Research gaps whose owners asked verified experts for a decision. Gaps from your own projects are not shown.":
+    "Các khoảng trống nghiên cứu mà người tạo đã yêu cầu chuyên gia thẩm định. Khoảng trống thuộc project của bạn không được hiển thị.",
+  "This page is for verified experts with research-gap validation rights.":
+    "Trang này dành cho chuyên gia đã xác minh có quyền thẩm định khoảng trống nghiên cứu.",
+  "Could not load the validation queue.":
+    "Không thể tải hàng đợi thẩm định.",
+  "No research gaps are waiting for validation.":
+    "Hiện không có khoảng trống nào chờ thẩm định.",
+  "Established knowledge":
+    "Kiến thức đã được xác lập",
+  "Observed limitation":
+    "Hạn chế quan sát được",
+  "Missing evidence":
+    "Bằng chứng còn thiếu",
+  "Why it matters":
+    "Vì sao quan trọng",
+  "Suggested research question":
+    "Câu hỏi nghiên cứu gợi ý",
+  "AI-assisted":
+    "Có AI hỗ trợ",
+  "You already responded":
+    "Bạn đã phản hồi",
+  "{{count}} evidence record(s)":
+    "{{count}} bằng chứng",
+  "{{count}} expert decision(s)":
+    "{{count}} quyết định của chuyên gia",
+  "Hide evidence and decision":
+    "Ẩn bằng chứng và quyết định",
+  "Review evidence and decide":
+    "Xem bằng chứng và quyết định",
+  "Linked evidence":
+    "Bằng chứng đã liên kết",
+  "No structured evidence is linked yet.":
+    "Chưa có bằng chứng có cấu trúc nào được liên kết.",
 };

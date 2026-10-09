@@ -12,6 +12,11 @@ import type {
   GapCommunityDiscussionContext,
   ReviewForumCitationAsEvidenceRequest,
   GapStructuredEvidenceItem,
+  CreateGapValidationRequest,
+  GapValidationQueueItem,
+  GapValidationRecord,
+  GapEvidenceRecordView,
+  ResponseMeta,
 } from "@trend/shared-types";
 
 export const gapsApi = {
@@ -68,6 +73,26 @@ export const gapsApi = {
   async generateDirections(gapId: string, force: boolean): Promise<GapDirections> {
     const res = await api.post(API_ROUTES.gaps.directions(gapId), { force });
     return res.data.data;
+  },
+  /** Owner shares the gap with verified experts (status becomes UNDER_VALIDATION). */
+  async requestValidation(gapId: string): Promise<void> {
+    await api.post(API_ROUTES.gaps.requestValidation(gapId));
+  },
+  async validations(gapId: string): Promise<GapValidationRecord[]> {
+    const res = await api.get(API_ROUTES.gaps.validations(gapId));
+    return res.data.data;
+  },
+  async evidence(gapId: string): Promise<GapEvidenceRecordView[]> {
+    const res = await api.get(API_ROUTES.gaps.evidence(gapId));
+    return res.data.data;
+  },
+  async addValidation(gapId: string, payload: CreateGapValidationRequest): Promise<void> {
+    await api.post(API_ROUTES.gaps.validations(gapId), payload);
+  },
+  /** Gaps awaiting an expert decision; requires the GAP_VALIDATION capability. */
+  async validationQueue(params: { page?: number; pageSize?: number }): Promise<{ data: GapValidationQueueItem[]; meta: ResponseMeta }> {
+    const res = await api.get(API_ROUTES.gaps.validationQueue, { params });
+    return { data: res.data.data, meta: res.data.meta };
   },
   async createCandidate(payload: CreateGapCandidateRequest): Promise<ResearchGapItem> {
     const res = await api.post("/gaps/candidates", payload);

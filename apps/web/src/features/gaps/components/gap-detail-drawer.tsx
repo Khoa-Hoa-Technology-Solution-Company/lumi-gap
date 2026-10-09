@@ -23,6 +23,7 @@ import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
 import { GapOrigin } from "./gap-origin";
 import { GapDirectionsPanel } from "./gap-directions";
+import { GapExpertValidationPanel } from "./gap-expert-validation";
 import { AiEvaluation } from "@/components/ai-evaluation";
 import { useGapCommunityDiscussions, usePatchGapStatus } from "../hooks/use-gaps";
 import type { GapStatus, ResearchGapItem } from "@trend/shared-types";
@@ -376,6 +377,8 @@ export function GapDetailDrawer({ gap, isOpen, onClose, onDraftProposal }: GapDe
                 </div>
               )}
             </div>
+
+            <GapExpertValidationPanel gap={gap} />
 
             {/* AI Research Directions */}
             <div className="space-y-4">
