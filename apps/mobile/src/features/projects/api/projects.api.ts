@@ -68,9 +68,9 @@ export const projectsApi = {
     return res.data.data;
   },
 
-  async addMember(id: string, data: AddProjectMemberRequest): Promise<ProjectView> {
-    const res = await api.post(API_ROUTES.projects.addMember(id), data);
-    return res.data.data;
+  /** Sends an invitation the user must accept; nobody is added to the project directly. */
+  async addMember(id: string, data: AddProjectMemberRequest): Promise<void> {
+    await api.post(API_ROUTES.projects.addMember(id), data);
   },
 
   async removeMember(id: string, memberId: string): Promise<ProjectView> {

@@ -352,8 +352,10 @@ function ProjectHeaderActions({ project, onLeft }: { project: IProject; onLeft: 
       setConfirmationAction(null);
       setConfirmationText("");
       if (action !== "archive") onLeft();
-    } catch {
-      toast.error(action === "archive" ? "Could not archive project" : action === "delete" ? "Could not delete project" : "Could not leave project");
+    } catch (error) {
+      // A delete is refused (409) while submissions or other members' work remain; the server says what.
+      const message = (error as { response?: { data?: { error?: { message?: string } } } }).response?.data?.error?.message;
+      toast.error(message || (action === "archive" ? "Could not archive project" : action === "delete" ? "Could not delete project" : "Could not leave project"));
     }
   };
 

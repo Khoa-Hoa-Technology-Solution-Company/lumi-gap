@@ -24,10 +24,14 @@ export const updateProjectSchema = z.object({
   exclusionCriteria: z.array(z.string().trim().min(1).max(240)).max(20).optional(),
 }).refine((value) => Object.keys(value).length > 0, "At least one field is required");
 
+/**
+ * Legacy "add member" body, kept for older clients (Flutter sends an email as targetId and a
+ * lowercase role). It no longer adds anyone directly: it sends an invitation the person must accept.
+ */
 export const addMemberSchema = z.object({
-  targetKind: z.literal("User"),
-  targetId: databaseIdSchema,
-  role: z.literal("MEMBER"),
+  targetKind: z.literal("User").optional(),
+  targetId: z.union([databaseIdSchema, z.string().trim().email().max(320)]),
+  role: z.string().trim().toUpperCase().pipe(z.literal("MEMBER")).optional(),
 });
 
 export const addPaperSchema = z.object({ paperId: databaseIdSchema });
@@ -139,9 +143,10 @@ export class ProjectController {
     res.json({ success: true, data: { cancelled: true } });
   }
 
+  /** POST /projects/:id/members — legacy alias of POST /projects/:id/invitations; returns the invitation. */
   async addMember(req: Request, res: Response) {
-    const project = await projectService.addMemberToProject(req.params.id as string, req.body, req.user!.sub);
-    res.status(201).json({ success: true, data: project });
+    const invitation = await projectService.addMemberToProject(req.params.id as string, req.body, req.user!.sub);
+    res.status(201).json({ success: true, data: invitation });
   }
 
   async removeMember(req: Request, res: Response) {
