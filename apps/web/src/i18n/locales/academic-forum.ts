@@ -620,6 +620,8 @@ const forumKeyList = [
   "Verified contribution",
   "You have not enabled Available for Review",
   "AI pre-review · advisory only",
+  "AI pre-review is running. Results appear here when it finishes.",
+  "AI pre-review failed.",
   "Analysis limitations:",
   "Analyzing…",
   "COMPLETED",

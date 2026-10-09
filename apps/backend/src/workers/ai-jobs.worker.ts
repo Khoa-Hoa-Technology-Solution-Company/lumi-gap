@@ -4,19 +4,18 @@ import { AppError } from "../common/exceptions/app-error.js";
 import { connectPostgres, disconnectPostgres, getPrisma } from "../infrastructure/database/prisma.js";
 import { parseDatabaseId, publicDatabaseId } from "../infrastructure/database/database-id.js";
 import { logger } from "../infrastructure/logger.js";
-import { makeConnection, QUEUE_NAMES } from "../infrastructure/queue.js";
+import { aiJobsQueue, hasLiveJob, makeConnection, QUEUE_NAMES } from "../infrastructure/queue.js";
 import { startWorkerHeartbeat } from "../infrastructure/worker-heartbeat.js";
 import { completeAiRun, failAiRun, markAiRunStarted, type AiJobType } from "../modules/ai-jobs/ai-run.service.js";
 import { getLlmProvider } from "../modules/llm/llm.factory.js";
 import { withUserAi } from "../modules/user-ai/user-ai.runtime.js";
+import { AI_PRE_REVIEW_JOB, aiPreReviewJobId, submissionService, type AiPreReviewJob } from "../modules/submissions/submission.service.js";
 
 enforcePostgresOnlyRuntime();
 
 type AiJobPayload = { runId: string; jobType: AiJobType };
 
 const systemPrompts: Record<AiJobType, string> = {
-  gap_analysis: "Analyze the supplied research evidence and identify well-supported research gaps. Clearly separate evidence from inference.",
-  report_generation: "Create a concise, evidence-grounded research report. Do not invent citations or claims absent from the supplied evidence.",
   draft_assistance: "Help improve the academic draft while preserving the author's meaning. Flag uncertain claims instead of fabricating support.",
   citation_check: "Check whether the supplied evidence supports the requested claims. Explicitly mark unsupported or ambiguous claims.",
 };
@@ -54,6 +53,8 @@ async function processAiRun(payload: AiJobPayload): Promise<void> {
     });
     if (!run || run.status !== "running") return;
     if (run.jobType !== payload.jobType) throw new Error("Queue payload does not match the persisted AI run type");
+    // Runs created before gap_analysis/report_generation were retired cannot be processed any more.
+    if (!(payload.jobType in systemPrompts)) throw new Error(`Unsupported AI run type: ${payload.jobType}`);
     const evidenceIds = (await getPrisma().aiRunEvidence.findMany({
       where: { runId: run.id },
       orderBy: { position: "asc" },
@@ -89,17 +90,43 @@ async function processAiRun(payload: AiJobPayload): Promise<void> {
   }
 }
 
+/** Pre-reviews stuck longer than this with no live job lost their worker; fail them so the author can retry. */
+const STUCK_PRE_REVIEW_MS = 15 * 60_000;
+
+async function sweepStuckPreReviews() {
+  const stuck = await getPrisma().aiPreReview.findMany({
+    where: { status: { in: ["QUEUED", "PROCESSING"] }, updatedAt: { lt: new Date(Date.now() - STUCK_PRE_REVIEW_MS) } },
+    select: { id: true },
+  });
+  let swept = 0;
+  for (const record of stuck) {
+    if (await hasLiveJob(aiJobsQueue, aiPreReviewJobId(record.id))) continue;
+    await submissionService.failAiPreReview(record.id, "AI pre-review was interrupted (worker restarted). Please try again.");
+    swept += 1;
+  }
+  if (swept > 0) logger.warn({ swept }, "swept stuck AI pre-reviews");
+}
+
 async function main() {
   await connectPostgres();
   const stopHeartbeat = startWorkerHeartbeat({ workerName: "worker:ai-jobs", queueName: QUEUE_NAMES.aiJobs });
+  await sweepStuckPreReviews();
   const worker = new Worker(
     QUEUE_NAMES.aiJobs,
-    async (job) => processAiRun(job.data as AiJobPayload),
+    async (job) => job.name === AI_PRE_REVIEW_JOB
+      ? submissionService.processAiPreReview(job.data as AiPreReviewJob)
+      : processAiRun(job.data as AiJobPayload),
     { connection: makeConnection(), concurrency: 2 },
   );
 
   worker.on("completed", (job) => logger.info({ jobId: job.id }, "AI job completed"));
-  worker.on("failed", (job, error) => logger.error({ jobId: job?.id, error }, "AI job failed"));
+  worker.on("failed", (job, error) => {
+    logger.error({ jobId: job?.id, error }, "AI job failed");
+    // Pre-reviews retry with backoff; only the last failed attempt is surfaced to the author.
+    if (job?.name === AI_PRE_REVIEW_JOB && job.attemptsMade >= (job.opts.attempts ?? 1)) {
+      void submissionService.failAiPreReview((job.data as AiPreReviewJob).preReviewId);
+    }
+  });
   logger.info("AI job worker listening on ai-jobs queue");
 
   const shutdown = async (signal: string) => {

@@ -28,13 +28,13 @@ export function useAddSubmissionRevision(id: string) {
 }
 
 export function useAiPreReviews(id: string) {
-  return useQuery({ queryKey: ["submissions", id, "ai-pre-reviews"], queryFn: () => submissionsApi.aiPreReviews(id), enabled: Boolean(id) });
+  // Pre-reviews run in a worker; poll while the latest one is still queued or processing.
+  return useQuery({ queryKey: ["submissions", id, "ai-pre-reviews"], queryFn: () => submissionsApi.aiPreReviews(id), enabled: Boolean(id), refetchInterval: (query) => ["QUEUED", "PROCESSING"].includes(query.state.data?.[0]?.status ?? "") ? 3000 : false });
 }
 
 export function useRunAiPreReview(id: string) {
   const client = useQueryClient();
   return useMutation({ mutationFn: () => submissionsApi.runAiPreReview(id), onSuccess: () => {
-    client.invalidateQueries({ queryKey: ["submissions", id] });
     client.invalidateQueries({ queryKey: ["submissions", id, "ai-pre-reviews"] });
   } });
 }

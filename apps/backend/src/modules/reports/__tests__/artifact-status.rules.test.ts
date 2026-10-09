@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { artifactStatusChangeError } from "../artifact-status.rules.js";
+import { artifactDeleteError, artifactStatusChangeError } from "../artifact-status.rules.js";
 
 const none = { activeRequestCount: 0, completedRequestCount: 0 };
 const active = { activeRequestCount: 1, completedRequestCount: 0 };
@@ -27,5 +27,16 @@ describe("artifactStatusChangeError", () => {
     expect(artifactStatusChangeError("DRAFT", none)).toBeNull();
     expect(artifactStatusChangeError("ARCHIVED", none)).toBeNull();
     expect(artifactStatusChangeError("DRAFT", completed)).toBeNull();
+  });
+});
+
+describe("artifactDeleteError", () => {
+  it("allows deleting an artifact that was never reviewed", () => {
+    expect(artifactDeleteError(none)).toBeNull();
+  });
+
+  it("blocks deleting an artifact under review or with completed reviews", () => {
+    expect(artifactDeleteError(active)).not.toBeNull();
+    expect(artifactDeleteError(completed)).not.toBeNull();
   });
 });
