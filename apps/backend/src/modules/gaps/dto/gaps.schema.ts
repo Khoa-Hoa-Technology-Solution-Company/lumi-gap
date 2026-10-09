@@ -15,7 +15,8 @@ export const AnalyzeGapSchema = z
     yearFrom: z.coerce.number().int().min(1900).max(2100).optional(),
     yearTo: z.coerce.number().int().min(1900).max(2100).optional(),
     selectedPaperIds: SelectedPaperIdsSchema.optional(),
-    evidenceMode: z.enum(["auto", "selected", "hybrid"]).default("auto"),
+    // Same default as the evidence preview, so an unreviewed request retrieves the same way the preview did.
+    evidenceMode: z.enum(["auto", "selected", "hybrid"]).default("hybrid"),
   })
   .superRefine((body, ctx) => {
     if (body.yearFrom !== undefined && body.yearTo !== undefined && body.yearFrom > body.yearTo) {
@@ -45,6 +46,11 @@ export const PreviewGapEvidenceSchema = z
     { message: "yearFrom must be <= yearTo", path: ["yearFrom"] },
   );
 
+/** Query params of GET /api/v1/gaps/analyze/active. Without projectId only personal runs are returned. */
+export const ActiveGapAnalysisQuerySchema = z.object({
+  projectId: databaseIdSchema.optional(),
+});
+
 /** Query params of GET /api/v1/gaps. */
 export const ListGapsQuerySchema = z.object({
   topic: z.string().trim().max(200).optional(),
@@ -68,6 +74,7 @@ export const PatchGapSchema = z.object({
 export type AnalyzeGapDto = z.infer<typeof AnalyzeGapSchema>;
 export type PreviewGapEvidenceDto = z.infer<typeof PreviewGapEvidenceSchema>;
 export type ListGapsQuery = z.infer<typeof ListGapsQuerySchema>;
+export type ActiveGapAnalysisQuery = z.infer<typeof ActiveGapAnalysisQuerySchema>;
 export type PatchGapDto = z.infer<typeof PatchGapSchema>;
 
 /** Params of the directions routes: /api/v1/gaps/:id/directions. */

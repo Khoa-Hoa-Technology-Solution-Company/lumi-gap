@@ -4,8 +4,8 @@ import { env } from "../../config/env.js";
 import { requireAuth } from "../../common/middleware/auth.js";
 import { validate } from "../../common/middleware/validate.js";
 import {
+  ActiveGapAnalysisQuerySchema,
   AnalyzeGapSchema,
-  ListGapsQuerySchema,
   PatchGapSchema,
   GapIdParamsSchema,
   DirectionsBodySchema,
@@ -83,7 +83,7 @@ gapsRouter.post(
   gapsController.previewEvidence,
 );
 gapsRouter.post("/analyze", analyzeGapLimiter, validate(AnalyzeGapSchema), gapsController.analyze);
-gapsRouter.get("/analyze/active", gapsController.getActiveAnalysis);
+gapsRouter.get("/analyze/active", validate(ActiveGapAnalysisQuerySchema, "query"), gapsController.getActiveAnalysis);
 gapsRouter.post(
   "/analyze/:id/retry",
   analyzeGapLimiter,

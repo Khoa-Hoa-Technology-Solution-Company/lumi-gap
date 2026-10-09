@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canAccessGap, isGapLowSample, toGapListItem } from "../gap-presenter.js";
+import { canAccessGap, isGapLowSample, sortGapRows, toGapListItem, type GapSortRow } from "../gap-presenter.js";
 
 describe("canAccessGap", () => {
   it("allows the gap owner", () => {
@@ -164,5 +164,52 @@ describe("isGapLowSample", () => {
     expect(isGapLowSample({ parentCounts: { a: 1, b: 40 } }, 5)).toBe(true);
     expect(isGapLowSample({ parentCounts: { a: 5, b: 40 } }, 5)).toBe(false);
     expect(isGapLowSample({}, 5)).toBe(false);
+  });
+});
+
+describe("sortGapRows", () => {
+  const probe = { topicA: "federated learning", topicB: "medical imaging" };
+  const row = (id: string, overrides: Partial<GapSortRow>): GapSortRow => ({
+    id,
+    confidence: 0.5,
+    evidenceConfidence: null,
+    createdAt: new Date("2026-01-01T00:00:00Z"),
+    source: "standalone",
+    probe,
+    parentCounts: { a: 40, b: 40 },
+    supportingCount: 0,
+    ...overrides,
+  });
+  const ids = (rows: GapSortRow[]) => rows.map((item) => item.id);
+
+  // confirmed evidence, weak evidence with high AI confidence, AI-only report gap, newest weak gap
+  const rows = [
+    row("confirmed", { evidenceConfidence: 0.7, confidence: 0.4, supportingCount: 1 }),
+    row("confident", { evidenceConfidence: 0.3, confidence: 0.95, supportingCount: 4 }),
+    row("ai-only", { source: "report", probe: null, parentCounts: null, confidence: 0.9 }),
+    row("newest", { evidenceConfidence: 0.2, confidence: 0.2, createdAt: new Date("2026-06-01T00:00:00Z") }),
+  ];
+
+  it("ranks by evidence score, falling back to AI confidence", () => {
+    expect(ids(sortGapRows(rows, "recommended", 5))).toEqual(["ai-only", "confirmed", "confident", "newest"]);
+  });
+
+  it("puts confirmed evidence first for the evidence sort", () => {
+    expect(ids(sortGapRows(rows, "evidence", 5))).toEqual(["confirmed", "confident", "newest", "ai-only"]);
+  });
+
+  it("orders by the AI's own confidence for the confidence sort", () => {
+    expect(ids(sortGapRows(rows, "confidence", 5))).toEqual(["confident", "ai-only", "confirmed", "newest"]);
+  });
+
+  it("orders by supporting papers, newest first, and AI-only last", () => {
+    expect(ids(sortGapRows(rows, "papers", 5))).toEqual(["confident", "confirmed", "ai-only", "newest"]);
+    expect(ids(sortGapRows(rows, "newest", 5))[0]).toBe("newest");
+    expect(ids(sortGapRows(rows, "ai_only_last", 5))).toEqual(["confirmed", "confident", "newest", "ai-only"]);
+  });
+
+  it("treats a low-sample probe as weak evidence", () => {
+    const lowSample = row("low-sample", { evidenceConfidence: 0.9, parentCounts: { a: 1, b: 40 } });
+    expect(ids(sortGapRows([lowSample, rows[0]!], "evidence", 5))).toEqual(["confirmed", "low-sample"]);
   });
 });

@@ -30,8 +30,9 @@ export const gapsApi = {
     return res.data.data;
   },
 
-  async getActiveAnalysis(): Promise<GapAnalysisResult | null> {
-    const res = await api.get(API_ROUTES.gaps.activeAnalysis);
+  /** Without projectId only personal (project-less) runs are returned. */
+  async getActiveAnalysis(projectId?: string): Promise<GapAnalysisResult | null> {
+    const res = await api.get(API_ROUTES.gaps.activeAnalysis, { params: projectId ? { projectId } : undefined });
     return res.data.data ?? null;
   },
 

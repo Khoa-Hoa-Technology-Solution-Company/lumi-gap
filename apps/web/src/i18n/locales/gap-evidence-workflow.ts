@@ -275,6 +275,26 @@ export const gapEvidenceWorkflowStrings = {
     "Only {{count}} paper(s) in this project match \"{{topic}}\". Add related papers before trusting this score.",
   "A probe topic has too few matching papers, so this evidence score is not reliable yet. Add related papers and re-run the analysis.":
     "A probe topic has too few matching papers, so this evidence score is not reliable yet. Add related papers and re-run the analysis.",
+  "Gap status":
+    "Gap status",
+  "Filters by the corpus evidence score, or the AI's confidence when a gap has no evidence score.":
+    "Filters by the corpus evidence score, or the AI's confidence when a gap has no evidence score.",
+  "Min evidence score: {{value}}%":
+    "Min evidence score: {{value}}%",
+  "Minimum evidence score":
+    "Minimum evidence score",
+  "Close gap analysis":
+    "Close gap analysis",
+  "No research gaps with this status":
+    "No research gaps with this status",
+  "Pick an included paper from this project to add to the evidence set.":
+    "Pick an included paper from this project to add to the evidence set.",
+  "Add a paper from this project":
+    "Add a paper from this project",
+  "Filter included papers by title or DOI":
+    "Filter included papers by title or DOI",
+  "No included project papers match. Screen more papers as INCLUDED in the Papers tab.":
+    "No included project papers match. Screen more papers as INCLUDED in the Papers tab.",
 } as const;
 
 export const gapEvidenceWorkflowViStrings: Record<
@@ -517,4 +537,24 @@ export const gapEvidenceWorkflowViStrings: Record<
     "Chỉ có {{count}} bài trong project khớp với \"{{topic}}\". Hãy thêm bài liên quan trước khi tin vào điểm này.",
   "A probe topic has too few matching papers, so this evidence score is not reliable yet. Add related papers and re-run the analysis.":
     "Một chủ đề probe có quá ít bài khớp, nên điểm bằng chứng này chưa đáng tin. Hãy thêm bài liên quan rồi chạy lại phân tích.",
+  "Gap status":
+    "Trạng thái khoảng trống",
+  "Filters by the corpus evidence score, or the AI's confidence when a gap has no evidence score.":
+    "Lọc theo điểm bằng chứng từ kho dữ liệu, hoặc độ tự tin của AI khi khoảng trống chưa có điểm bằng chứng.",
+  "Min evidence score: {{value}}%":
+    "Điểm bằng chứng tối thiểu: {{value}}%",
+  "Minimum evidence score":
+    "Điểm bằng chứng tối thiểu",
+  "Close gap analysis":
+    "Đóng phân tích khoảng trống",
+  "No research gaps with this status":
+    "Không có khoảng trống nghiên cứu nào ở trạng thái này",
+  "Pick an included paper from this project to add to the evidence set.":
+    "Chọn một bài đã được INCLUDED trong project để thêm vào tập bằng chứng.",
+  "Add a paper from this project":
+    "Thêm bài báo từ project",
+  "Filter included papers by title or DOI":
+    "Lọc các bài INCLUDED theo tiêu đề hoặc DOI",
+  "No included project papers match. Screen more papers as INCLUDED in the Papers tab.":
+    "Không có bài INCLUDED nào khớp. Hãy sàng lọc thêm bài là INCLUDED ở tab Papers.",
 };

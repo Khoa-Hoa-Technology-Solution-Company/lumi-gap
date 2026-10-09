@@ -58,6 +58,8 @@ export interface ResearchGapItem {
   gapConfidence?: GapAssessmentLevel;
   researchPriority?: GapAssessmentLevel;
   origin?: "HUMAN" | "AI_ASSISTED";
+  /** The viewer may resolve or dismiss this gap (its creator, or the owner of its project). */
+  canManage?: boolean;
 }
 
 export interface GapAnalysisResult {

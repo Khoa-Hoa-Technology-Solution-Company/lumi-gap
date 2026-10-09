@@ -136,7 +136,8 @@ export function GapDetailDrawer({ gap, isOpen, onClose, onDraftProposal }: GapDe
                       {t("Draft research proposal")}
                     </Button>
                   )}
-                  {gap.status === "active" ? (
+                  {/* Only the creator or the project owner may change the status; older payloads omit canManage. */}
+                  {gap.canManage === false ? null : gap.status === "active" ? (
                     <>
                       <Button size="sm" variant="outline" disabled={isPatching} onClick={() => handleUpdateStatus("resolved")} className="h-8 gap-1.5 text-xs">
                         {isPatching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />}

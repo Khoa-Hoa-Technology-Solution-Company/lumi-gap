@@ -18,6 +18,7 @@ import { toast } from "sonner";
 import type {
   AnalyzeGapRequest,
   GapEvidencePaper,
+  IProjectPaper,
   Paper,
   PreviewGapEvidenceResponse,
 } from "@trend/shared-types";
@@ -40,12 +41,15 @@ import { useI18n } from "@/i18n";
 interface GapAnalysisWorkflowProps {
   isAnalyzing: boolean;
   onAnalyze: (payload: AnalyzeGapRequest) => void;
+  /** Scopes evidence to this project's INCLUDED papers instead of the whole corpus. */
+  projectId?: string;
+  /** The project's papers; only INCLUDED ones can be added as evidence. Required with projectId. */
+  projectPapers?: IProjectPaper[];
+  defaultTopic?: string;
 }
 
-type PaperSearchCandidate = Pick<
-  Paper,
-  "id" | "title" | "publicationYear" | "citationCount"
-> & {
+type PaperSearchCandidate = Pick<Paper, "id" | "title" | "publicationYear"> & {
+  citationCount?: number;
   score?: number;
 };
 
@@ -58,10 +62,14 @@ const SEARCH_RESULTS_LIMIT = 50;
 export function GapAnalysisWorkflow({
   isAnalyzing,
   onAnalyze,
+  projectId,
+  projectPapers,
+  defaultTopic,
 }: GapAnalysisWorkflowProps) {
   const currentYear = new Date().getFullYear();
   const { t } = useI18n();
-  const [topic, setTopic] = useState("");
+  const inProject = Boolean(projectId);
+  const [topic, setTopic] = useState(defaultTopic ?? "");
   const [yearFrom, setYearFrom] = useState("");
   const [yearTo, setYearTo] = useState("");
   const [preview, setPreview] = useState<PreviewGapEvidenceResponse | null>(null);
@@ -93,8 +101,20 @@ export function GapAnalysisWorkflow({
   }), [paperLanguage, paperYearFrom, paperYearTo]);
   const activePaperFilterCount =
     (paperYearFrom || paperYearTo ? 1 : 0) + (paperLanguage === "auto" ? 0 : 1);
-  const searchResultPageCount = Math.ceil(searchResults.length / SEARCH_RESULTS_PAGE_SIZE);
-  const paginatedSearchResults = searchResults.slice(
+  // Inside a project the picker filters the project's INCLUDED papers locally; the backend rejects anything else.
+  const projectCandidates = useMemo(() => {
+    if (!inProject) return null;
+    const query = paperSearch.trim().toLowerCase();
+    return (projectPapers ?? []).flatMap((link): PaperSearchCandidate[] => {
+      if (link.screeningStatus !== "INCLUDED" || typeof link.targetId === "string") return [];
+      const paper = link.targetId;
+      const matches = !query || paper.title.toLowerCase().includes(query) || (paper.doi ?? "").toLowerCase().includes(query);
+      return matches ? [{ id: paper._id, title: paper.title, publicationYear: paper.publicationYear }] : [];
+    });
+  }, [inProject, paperSearch, projectPapers]);
+  const visibleResults = projectCandidates ?? searchResults;
+  const searchResultPageCount = Math.ceil(visibleResults.length / SEARCH_RESULTS_PAGE_SIZE);
+  const paginatedSearchResults = visibleResults.slice(
     (searchResultPage - 1) * SEARCH_RESULTS_PAGE_SIZE,
     searchResultPage * SEARCH_RESULTS_PAGE_SIZE,
   );
@@ -118,6 +138,7 @@ export function GapAnalysisWorkflow({
     try {
       const data = await previewEvidence.mutateAsync({
         topic: topic.trim(),
+        projectId,
         ...years,
         selectedPaperIds: pinnedIds,
         evidenceMode: "hybrid",
@@ -216,6 +237,7 @@ export function GapAnalysisWorkflow({
     if (!canAnalyze || !validateYears()) return;
     onAnalyze({
       topic: topic.trim(),
+      projectId,
       ...years,
       selectedPaperIds: selectedIds,
       evidenceMode: "selected",
@@ -416,7 +438,9 @@ export function GapAnalysisWorkflow({
                     {t("Add supporting evidence")}
                   </p>
                   <p className="mt-1 text-xs text-slate-500">
-                    {t("Search the corpus for a missing study, then add it to the evidence set.")}
+                    {inProject
+                      ? t("Pick an included paper from this project to add to the evidence set.")
+                      : t("Search the corpus for a missing study, then add it to the evidence set.")}
                   </p>
                 </div>
                 <Button
@@ -425,7 +449,7 @@ export function GapAnalysisWorkflow({
                   className="h-10 shrink-0 rounded-lg bg-cyan-600 px-4 font-bold text-white hover:bg-cyan-700"
                 >
                   <Plus className="h-4 w-4" />
-                  {t("Add a paper from the corpus")}
+                  {inProject ? t("Add a paper from this project") : t("Add a paper from the corpus")}
                 </Button>
               </div>
 
@@ -443,30 +467,32 @@ export function GapAnalysisWorkflow({
                       {t("Add supporting evidence")}
                     </DialogTitle>
                     <DialogDescription>
-                      {t("Search the corpus for a missing study, then add it to the evidence set.")}
+                      {inProject
+                        ? t("Pick an included paper from this project to add to the evidence set.")
+                        : t("Search the corpus for a missing study, then add it to the evidence set.")}
                     </DialogDescription>
                   </DialogHeader>
 
-                  <div className="flex items-center justify-between gap-3">
+                  {!inProject && <div className="flex items-center justify-between gap-3">
                     <p className="text-xs text-slate-500">
                       {t("Searches exact title, DOI, keywords, and semantic meaning in one step.")}
                     </p>
                     <Badge variant="outline" className="w-fit shrink-0 border-cyan-200 bg-cyan-50 text-cyan-800 dark:border-cyan-900 dark:bg-cyan-950/30 dark:text-cyan-200">
                       {t("Hybrid paper search")}
                     </Badge>
-                  </div>
+                  </div>}
 
                   <div className="relative flex flex-col gap-2 sm:flex-row">
                 <input
                   value={paperSearch}
                   onChange={(event) => setPaperSearch(event.target.value)}
                   onKeyDown={(event) => {
-                    if (event.key === "Enter") void searchPapers();
+                    if (event.key === "Enter" && !inProject) void searchPapers();
                   }}
-                  placeholder={t("Enter a title, DOI, keyword, method, dataset, or research problem")}
+                  placeholder={inProject ? t("Filter included papers by title or DOI") : t("Enter a title, DOI, keyword, method, dataset, or research problem")}
                   className="h-10 min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-cyan-500 dark:border-slate-700 dark:bg-slate-950"
                 />
-                <div className="relative">
+                {!inProject && <><div className="relative">
                   <Button
                     type="button"
                     variant="outline"
@@ -612,15 +638,20 @@ export function GapAnalysisWorkflow({
                 <Button variant="outline" onClick={() => void searchPapers()} disabled={isSearching || paperSearch.trim().length < 2}>
                   {isSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
                   {t("Search")}
-                </Button>
+                </Button></>}
               </div>
               {searchError && <p className="mt-2 text-xs text-red-600">{searchError}</p>}
-              {hasSearched && !isSearching && !searchError && searchResults.length === 0 && (
+              {inProject && visibleResults.length === 0 && (
+                <p className="mt-3 text-xs text-slate-500">
+                  {t("No included project papers match. Screen more papers as INCLUDED in the Papers tab.")}
+                </p>
+              )}
+              {!inProject && hasSearched && !isSearching && !searchError && searchResults.length === 0 && (
                 <p className="mt-3 text-xs text-slate-500">
                   {t("No matching papers yet. Try another phrase or switch search mode.")}
                 </p>
               )}
-              {searchResults.length > 0 && (
+              {visibleResults.length > 0 && (
                 <div ref={paperResultsRef} className="max-h-72 divide-y divide-slate-200 overflow-y-auto rounded-lg border border-slate-200 bg-white [scrollbar-width:none] [&::-webkit-scrollbar]:hidden dark:divide-slate-800 dark:border-slate-800 dark:bg-slate-950">
                   {paginatedSearchResults.map((paper) => {
                     const added = selectedIds.includes(paper.id);
@@ -629,8 +660,11 @@ export function GapAnalysisWorkflow({
                         <div className="min-w-0">
                           <p className="text-sm font-semibold leading-snug text-slate-900 dark:text-white">{paper.title}</p>
                           <p className="mt-1 text-xs text-slate-500">
-                            {paper.publicationYear} · {formatNumber(paper.citationCount ?? 0)} {t("citations")}
-                            {paper.score === undefined
+                            {paper.publicationYear}
+                            {paper.citationCount !== undefined && ` · ${formatNumber(paper.citationCount)} ${t("citations")}`}
+                            {inProject
+                              ? null
+                              : paper.score === undefined
                               ? ` ${t("· keyword match")}`
                               : paper.score <= 1
                                 ? ` · ${Math.round(Math.max(0, paper.score) * 100)}${t("% semantic match")}`

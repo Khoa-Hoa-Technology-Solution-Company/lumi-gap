@@ -22,10 +22,11 @@ export function useGapAnalysisStatus(analysisId: string | null) {
   });
 }
 
-export function useActiveGapAnalysis() {
+/** Latest queued/analyzing run for one project, or the user's personal runs when projectId is omitted. */
+export function useActiveGapAnalysis(projectId?: string) {
   return useQuery({
-    queryKey: ["activeGapAnalysis"],
-    queryFn: () => gapsApi.getActiveAnalysis(),
+    queryKey: ["activeGapAnalysis", projectId ?? null],
+    queryFn: () => gapsApi.getActiveAnalysis(projectId),
   });
 }
 

@@ -55,7 +55,11 @@ export async function runRagPipeline(job: ReportJob): Promise<void> {
     logger.warn({ reportId: job.reportId }, "report vanished before processing");
     return;
   }
-  if (report.status === "ready") return; // replayed job — already done
+  if (report.status === "ready") {
+    // Replayed job — the report is done, but a crash may have skipped the gap fan-out; it is idempotent.
+    await gapsService.enqueueReportGapFanout(report.id);
+    return;
+  }
 
   await getPrisma().report.update({ where: { id: report.id }, data: { status: "generating" } });
 
@@ -278,36 +282,11 @@ export async function runRagPipeline(job: ReportJob): Promise<void> {
       logger.warn({ err, reportId: publicDatabaseId(report) }, "report-ready notification failed (non-fatal)"),
     );
 
-  // ⑧ Fan-out gaps into research_gaps collection (non-fatal).
+  // ⑧ Fan-out gaps into research_gaps as a separate retryable job (non-fatal for the report).
   await gapsService
-    .fanOutGapsFromReport({
-      _id: publicDatabaseId(report),
-      userId: report.userId,
-      projectId: report.projectId,
-      projectPaperIds: selectedPaperIds,
-      evidencePaperIds: papers.map((paper) => paper.id),
-      query: report.query,
-      researchGaps: researchGaps.map((raw) => {
-        const g = raw as {
-          title?: string;
-          description?: string;
-          rationale?: string;
-          supportingPaperIds?: unknown[];
-          confidence?: unknown;
-          probe?: unknown;
-        };
-        return {
-          title: String(g.title ?? ""),
-          description: String(g.description ?? ""),
-          rationale: String(g.rationale ?? ""),
-          supportingPaperIds: g.supportingPaperIds ?? [],
-          confidence: Number(g.confidence ?? 0.5),
-          probe: normalizeProbe(g.probe),
-        };
-      }),
-    })
+    .enqueueReportGapFanout(report.id)
     .catch((err) =>
-      logger.warn({ err, reportId: publicDatabaseId(report) }, "gap fan-out failed (non-fatal)"),
+      logger.warn({ err, reportId: publicDatabaseId(report) }, "gap fan-out enqueue failed (non-fatal)"),
     );
 
   logger.info(

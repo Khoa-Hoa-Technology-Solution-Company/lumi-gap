@@ -5,7 +5,7 @@ import { getPrisma } from "../infrastructure/database/prisma.js";
 import { makeConnection, QUEUE_NAMES } from "../infrastructure/queue.js";
 import { logger } from "../infrastructure/logger.js";
 import { startWorkerHeartbeat } from "../infrastructure/worker-heartbeat.js";
-import { gapsService, type GapJob } from "../modules/gaps/gaps.service.js";
+import { gapsService, REPORT_GAP_FANOUT_JOB, type GapJob, type ReportGapFanoutJob } from "../modules/gaps/gaps.service.js";
 import { withUserAi } from "../modules/user-ai/user-ai.runtime.js";
 
 enforcePostgresOnlyRuntime();
@@ -14,8 +14,9 @@ enforcePostgresOnlyRuntime();
  * Standalone gaps worker — a SEPARATE Node process from the API.
  * Run with: pnpm --filter backend worker:gaps
  *
- * Consumes the "gaps" BullMQ queue: each job is one gap-analysis pipeline run
- * (embed → vector search → Gemini → persist). Concurrency 1 keeps us inside the
+ * Consumes the "gaps" BullMQ queue: each "gap-analysis" job is one gap-analysis
+ * pipeline run (embed → vector search → Gemini → persist); each "report-gap-fanout"
+ * job copies a finished report's gaps into research_gaps. Concurrency 1 keeps us inside the
  * Gemini free-tier rate limit; BullMQ retries transient failures (5 attempts,
  * exponential backoff). Non-retryable errors short-circuit via UnrecoverableError.
  */
@@ -54,6 +55,11 @@ async function main() {
     async (job) => {
       logger.info({ jobId: job.id, attempt: job.attemptsMade + 1 }, "gap job received");
       try {
+        // Report fan-out only copies stored gaps and scores probes — no LLM call, so no personal AI binding.
+        if (job.name === REPORT_GAP_FANOUT_JOB) {
+          await gapsService.fanOutGapsFromReport(job.data as ReportGapFanoutJob);
+          return;
+        }
         const input = job.data as GapJob;
         const analysis = await getPrisma().gapAnalysis.findUnique({ where: { id: input.analysisId }, select: { userId: true } });
         if (analysis) await withUserAi(analysis.userId, () => gapsService.runGapPipeline(input));
@@ -76,7 +82,8 @@ async function main() {
     // the raw error stays in the log line above.
     const exhausted = job && job.attemptsMade >= (job.opts.attempts ?? 1);
     const unrecoverable = err instanceof UnrecoverableError;
-    if (job && (exhausted || unrecoverable)) {
+    // A failed fan-out leaves the ready report intact; the error log above is enough.
+    if (job && job.name !== REPORT_GAP_FANOUT_JOB && (exhausted || unrecoverable)) {
       const { analysisId } = job.data as GapJob;
       void gapsService.markAnalysisFailed(analysisId, USER_FACING_FAILURE);
     }
