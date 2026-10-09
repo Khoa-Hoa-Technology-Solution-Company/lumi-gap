@@ -61,7 +61,12 @@ export async function runRagPipeline(job: ReportJob): Promise<void> {
     return;
   }
 
-  await getPrisma().report.update({ where: { id: report.id }, data: { status: "generating" } });
+  // Claim atomically: a report failed and refunded by the startup sweep must not run (and finish) anyway.
+  const claimed = await getPrisma().report.updateMany({ where: { id: report.id, status: { in: ["queued", "generating"] } }, data: { status: "generating" } });
+  if (!claimed.count) {
+    logger.info({ reportId: job.reportId, status: report.status }, "report no longer pending; skipping job");
+    return;
+  }
 
   // Embed the question for passage ranking even with a fixed paper set.
   // Failure degrades to text retrieval without expanding the user's scope.

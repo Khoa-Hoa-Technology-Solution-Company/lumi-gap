@@ -6,7 +6,7 @@ import { paperReviewController } from "./paper-review.controller.js";
 import { CreatePaperSchema } from "./dto/create-paper.schema.js";
 import { paperService } from "./paper.service.js";
 import { comparePapers } from "./paper.compare.js";
-import { PaperListQuerySchema } from "./dto/paper.schema.js";
+import { PaperListQuerySchema, UpdatePaperStatusSchema, type UpdatePaperStatusInput } from "./dto/paper.schema.js";
 import { CompareBodySchema } from "./dto/compare.schema.js";
 import { embeddingQueue, paperAnalysisQueue } from "../../infrastructure/queue.js";
 import { env } from "../../config/env.js";
@@ -434,10 +434,9 @@ paperRouter.delete("/:id/cancel", requireAuth, async (req, res, next) => {
 });
 
 /** PATCH /papers/:id/status — admin updates paper status. */
-paperRouter.patch("/:id/status", requireAuth, requireRole("admin"), async (req, res, next) => {
+paperRouter.patch("/:id/status", requireAuth, requireRole("admin"), validate(UpdatePaperStatusSchema), async (req, res, next) => {
   try {
-    const { status, rejectionReason } = req.body as { status: string; rejectionReason?: string };
-    if (!status) throw AppError.badRequest("Status is required");
+    const { status, rejectionReason } = req.body as UpdatePaperStatusInput;
     const paper = await paperService.updateStatus(String(req.params.id), status, rejectionReason);
     triggerEmbedding(paper.dataStatus === "active" ? paper.id : undefined, req.user!.sub);
     res.json({ success: true, data: paper });

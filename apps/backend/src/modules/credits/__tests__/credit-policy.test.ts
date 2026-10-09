@@ -14,12 +14,12 @@ describe("Credit Policy", () => {
       expect(getAiActionCost("generate_gaps")).toBe(30);
       expect(getAiActionCost("generate_directions")).toBe(15);
       expect(getAiActionCost("project_chat_message")).toBe(1);
+      expect(getAiActionCost("paper_request")).toBe(100);
     });
 
     it("should return 0 for free actions", () => {
       expect(getAiActionCost("semantic_search")).toBe(0);
       expect(getAiActionCost("trends_deterministic")).toBe(0);
-      expect(getAiActionCost("paper_request")).toBe(0);
       expect(getAiActionCost("credit_topup")).toBe(0);
     });
   });

@@ -94,4 +94,16 @@ export const communitySummaryQueue = new Queue(QUEUE_NAMES.communitySummary, {
   },
 });
 
+/** BullMQ states in which a job will still be (re)processed by a worker. */
+const LIVE_JOB_STATES = new Set(["waiting", "delayed", "active", "prioritized", "waiting-children"]);
+
+/**
+ * True when the queue still holds a job with this custom id that a worker will run.
+ * Startup sweeps use it to tell a slow-but-alive job from a lost one.
+ */
+export async function hasLiveJob(queue: Queue, jobId: string): Promise<boolean> {
+  const job = await queue.getJob(jobId);
+  return job ? LIVE_JOB_STATES.has(await job.getState()) : false;
+}
+
 export { makeConnection };
