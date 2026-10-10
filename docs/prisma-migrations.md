@@ -1,6 +1,6 @@
 # Prisma migrations: schema drift and the safe workflow
 
-Last checked: 2026-10-09, against `apps/backend/prisma/migrations` up to `20261009120000_submissions_project_restrict`.
+Last checked: 2026-10-10, against `apps/backend/prisma/migrations` up to `20261010120000_research_gap_evidence_scope`.
 
 ## The problem
 
@@ -15,7 +15,8 @@ describe everything those migrations create. `prisma migrate diff --from-migrati
 | `ALTER COLUMN ... DROP DEFAULT` | 15 | Defaults set in SQL (`gen_random_uuid()`, `now()`, generated `search_document`) that the schema leaves to Prisma |
 
 So **`pnpm --filter backend db:migrate:dev` must not be used**: the migration it creates would delete
-every foreign key, the vector index and the search indexes.
+every foreign key, the vector index and the search indexes. The script is disabled in `apps/backend/package.json`
+(it prints a warning and exits with code 1), so it cannot be run by accident. Use the workflow below instead.
 
 Two more things block `migrate dev` today:
 

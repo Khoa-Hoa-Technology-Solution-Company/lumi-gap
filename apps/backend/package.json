@@ -17,7 +17,7 @@
     "db:generate": "prisma generate --config prisma7.config.ts",
     "db:format": "prisma format --config prisma7.config.ts",
     "db:validate": "prisma validate --config prisma7.config.ts",
-    "db:migrate:dev": "prisma migrate dev --config prisma7.config.ts",
+    "db:migrate:dev": "node -e \"console.error('db:migrate:dev is disabled: it would drop SQL-only foreign keys and indexes. See docs/prisma-migrations.md'); process.exit(1)\"",
     "db:migrate:deploy": "prisma migrate deploy --config prisma7.config.ts",
     "db:migrate:status": "prisma migrate status --config prisma7.config.ts",
     "db:seed": "tsx prisma/seed.ts",
