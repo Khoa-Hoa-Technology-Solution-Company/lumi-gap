@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canAccessGap, isGapLowSample, toGapListItem } from "../gap-presenter.js";
+import { canAccessGap, isGapLowSample, sortGapRows, toGapListItem, type GapSortRow } from "../gap-presenter.js";
 
 describe("canAccessGap", () => {
   it("allows the gap owner", () => {
@@ -97,6 +97,7 @@ describe("toGapListItem", () => {
         supportingPaperIds: [],
         confidence: 0.7,
         evidenceConfidence: 0.76,
+        evidenceScopeSize: 1000,
         source: "standalone",
         userId: "user-1",
         status: "active",
@@ -133,6 +134,66 @@ describe("toGapListItem", () => {
     expect(item.evidenceStatus).toBe("weak");
   });
 
+  it("exposes the counting scope and the project-level evidence without letting it decide the label", () => {
+    const base = {
+      _id: "gap-scope",
+      topic: "AI education",
+      normalizedTopic: "ai education",
+      title: "Scoped gap",
+      description: "desc",
+      rationale: "why",
+      supportingPaperIds: [],
+      confidence: 0.7,
+      evidenceConfidence: 0.2,
+      source: "standalone" as const,
+      userId: "user-1",
+      status: "active" as const,
+      createdAt: new Date("2026-07-01T00:00:00.000Z"),
+      probe: { topicA: "LLM feedback", topicB: "rural education" },
+    };
+    const projectEvidence = { intersectionCount: 0, parentCounts: { a: 7, b: 7 }, scopePaperCount: 7, evidenceConfidence: 0.95 };
+
+    const item = toGapListItem({ ...base, evidenceScopeSize: 1200, projectEvidence }, new Map());
+    expect(item.evidenceScopeSize).toBe(1200);
+    expect(item.projectEvidence).toEqual(projectEvidence);
+    expect(item.evidenceStatus).toBe("weak");
+
+    const legacy = toGapListItem(base, new Map());
+    expect(legacy.evidenceScopeSize).toBeUndefined();
+    expect(legacy.projectEvidence).toBeUndefined();
+  });
+
+  describe("evidence status and the recorded counting scope", () => {
+    const gap = (evidenceScopeSize?: number) => toGapListItem(
+      {
+        _id: "gap-scope-status",
+        topic: "AI education",
+        normalizedTopic: "ai education",
+        title: "Scope status gap",
+        description: "desc",
+        rationale: "why",
+        supportingPaperIds: [],
+        confidence: 0.9,
+        evidenceConfidence: 0.9,
+        evidenceScopeSize,
+        source: "standalone",
+        userId: "user-1",
+        status: "active",
+        createdAt: new Date("2026-07-01T00:00:00.000Z"),
+        probe: { topicA: "LLM feedback", topicB: "rural education" },
+      },
+      new Map(),
+    );
+
+    it("never confirms a gap whose counting scope was not recorded", () => {
+      expect(gap(undefined).evidenceStatus).toBe("weak");
+    });
+
+    it("confirms a gap with a recorded scope and a high evidence score", () => {
+      expect(gap(1000).evidenceStatus).toBe("confirmed");
+    });
+  });
+
   it("uses supporting papers as evidence for legacy gaps", () => {
     const item = toGapListItem(
       {
@@ -164,5 +225,58 @@ describe("isGapLowSample", () => {
     expect(isGapLowSample({ parentCounts: { a: 1, b: 40 } }, 5)).toBe(true);
     expect(isGapLowSample({ parentCounts: { a: 5, b: 40 } }, 5)).toBe(false);
     expect(isGapLowSample({}, 5)).toBe(false);
+  });
+});
+
+describe("sortGapRows", () => {
+  const probe = { topicA: "federated learning", topicB: "medical imaging" };
+  const row = (id: string, overrides: Partial<GapSortRow>): GapSortRow => ({
+    id,
+    confidence: 0.5,
+    evidenceConfidence: null,
+    evidenceScopeSize: 1000,
+    createdAt: new Date("2026-01-01T00:00:00Z"),
+    source: "standalone",
+    probe,
+    parentCounts: { a: 40, b: 40 },
+    supportingCount: 0,
+    ...overrides,
+  });
+  const ids = (rows: GapSortRow[]) => rows.map((item) => item.id);
+
+  // confirmed evidence, weak evidence with high AI confidence, AI-only report gap, newest weak gap
+  const rows = [
+    row("confirmed", { evidenceConfidence: 0.7, confidence: 0.4, supportingCount: 1 }),
+    row("confident", { evidenceConfidence: 0.3, confidence: 0.95, supportingCount: 4 }),
+    row("ai-only", { source: "report", probe: null, parentCounts: null, confidence: 0.9 }),
+    row("newest", { evidenceConfidence: 0.2, confidence: 0.2, createdAt: new Date("2026-06-01T00:00:00Z") }),
+  ];
+
+  it("ranks by evidence score, falling back to AI confidence", () => {
+    expect(ids(sortGapRows(rows, "recommended", 5))).toEqual(["ai-only", "confirmed", "confident", "newest"]);
+  });
+
+  it("puts confirmed evidence first for the evidence sort", () => {
+    expect(ids(sortGapRows(rows, "evidence", 5))).toEqual(["confirmed", "confident", "newest", "ai-only"]);
+  });
+
+  it("orders by the AI's own confidence for the confidence sort", () => {
+    expect(ids(sortGapRows(rows, "confidence", 5))).toEqual(["confident", "ai-only", "confirmed", "newest"]);
+  });
+
+  it("orders by supporting papers, newest first, and AI-only last", () => {
+    expect(ids(sortGapRows(rows, "papers", 5))).toEqual(["confident", "confirmed", "ai-only", "newest"]);
+    expect(ids(sortGapRows(rows, "newest", 5))[0]).toBe("newest");
+    expect(ids(sortGapRows(rows, "ai_only_last", 5))).toEqual(["confirmed", "confident", "newest", "ai-only"]);
+  });
+
+  it("ranks a gap without a recorded counting scope after confirmed ones", () => {
+    const unscoped = row("unscoped", { evidenceConfidence: 0.95, evidenceScopeSize: null });
+    expect(ids(sortGapRows([unscoped, rows[0]!], "evidence", 5))).toEqual(["confirmed", "unscoped"]);
+  });
+
+  it("treats a low-sample probe as weak evidence", () => {
+    const lowSample = row("low-sample", { evidenceConfidence: 0.9, parentCounts: { a: 1, b: 40 } });
+    expect(ids(sortGapRows([lowSample, rows[0]!], "evidence", 5))).toEqual(["confirmed", "low-sample"]);
   });
 });

@@ -254,8 +254,10 @@ export function ReportsListPage() {
         await deleteReport.mutateAsync(itemToDelete);
         toast.success("Report deleted successfully");
       }
-    } catch {
-      toast.error("Failed to delete report(s)");
+    } catch (error) {
+      // e.g. 409 when a report was sent for review and can only be archived.
+      const message = (error as { response?: { data?: { error?: { message?: string } } } }).response?.data?.error?.message;
+      toast.error(message || "Failed to delete report(s)");
     } finally {
       setDeleteModalOpen(false);
       setItemToDelete(null);

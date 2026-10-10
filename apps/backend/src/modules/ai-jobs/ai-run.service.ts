@@ -6,7 +6,11 @@ import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { aiJobsQueue } from "../../infrastructure/queue.js";
 import { auditService } from "../audit/audit.service.js";
 
-export const AI_JOB_TYPES = ["gap_analysis", "report_generation", "draft_assistance", "citation_check"] as const;
+/**
+ * Generic AI runs. Gap analysis and report generation are not offered here: they have dedicated,
+ * credit-charged, evidence-grounded pipelines (POST /gaps/analyze, POST /reports).
+ */
+export const AI_JOB_TYPES = ["draft_assistance", "citation_check"] as const;
 export type AiJobType = (typeof AI_JOB_TYPES)[number];
 export type CreateAiRunInput = { jobType: AiJobType; projectId?: string; workspaceId?: string; prompt?: string; evidenceIds?: string[]; maxAttempts?: number };
 function whereId(value: string): { id: string } | { legacyMongoId: string } { const parsed = parseDatabaseId(value); if (!parsed) throw AppError.badRequest("Invalid identifier"); return parsed.kind === "uuid" ? { id: parsed.value } : { legacyMongoId: parsed.value }; }

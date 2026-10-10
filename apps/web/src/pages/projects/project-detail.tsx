@@ -6,15 +6,17 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useProject, useRemoveMemberFromProject, useInviteProjectMember, useCancelProjectInvitation, useUpdateProject, useArchiveProject, useDeleteProject, useLeaveProject, useTransferProjectOwnership } from "@/features/projects/hooks/use-projects";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/services/api-client";
 import { useReports, useCreateReport, useUpdateArtifactStatus } from "@/features/reports/hooks/use-reports";
-import { useGaps, useAnalyzeGap, useGapAnalysisStatus } from "@/features/gaps";
+import { useGaps, useAnalyzeGap, useGapAnalysisStatus, useActiveGapAnalysis } from "@/features/gaps";
 import { GapDetailDrawer } from "@/features/gaps/components/gap-detail-drawer";
+import { GapAnalysisWorkflow } from "@/features/gaps/components/gap-analysis-workflow";
+import { GapScopeNote } from "@/features/gaps/components/gap-evidence-summary";
 import { ProjectDiscussionPanel } from "@/features/projects/components/project-discussion-panel";
 import { Link } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
-import type { IProject, ProjectStatus, ProjectVisibility, ReportLanguage, ResearchArtifactType, ResearchGapItem } from "@trend/shared-types";
+import type { AnalyzeGapRequest, GapStatus, IProject, ProjectStatus, ProjectVisibility, ReportLanguage, ResearchArtifactType, ResearchGapItem } from "@trend/shared-types";
 import { ProjectLiteratureWorkspace } from "@/features/projects/components/project-literature-workspace";
 import { ProjectPaperPickerDialog } from "@/features/projects/components/project-paper-picker-dialog";
 import { SubmitReviewDialog } from "@/features/reviews/components/submit-review-dialog";
@@ -259,6 +261,7 @@ export function ProjectDetailPage() {
             <section id="project-panel-gaps" role="tabpanel" aria-labelledby="project-tab-gaps">
               <GapsTab
                 projectId={project._id}
+                projectPapers={project.papers ?? []}
                 defaultTopic={project.title}
                 openOnInit={autoOpenGap}
                 onOpenChange={setAutoOpenGap}
@@ -350,8 +353,10 @@ function ProjectHeaderActions({ project, onLeft }: { project: IProject; onLeft: 
       setConfirmationAction(null);
       setConfirmationText("");
       if (action !== "archive") onLeft();
-    } catch {
-      toast.error(action === "archive" ? "Could not archive project" : action === "delete" ? "Could not delete project" : "Could not leave project");
+    } catch (error) {
+      // A delete is refused (409) while submissions or other members' work remain; the server says what.
+      const message = (error as { response?: { data?: { error?: { message?: string } } } }).response?.data?.error?.message;
+      toast.error(message || (action === "archive" ? "Could not archive project" : action === "delete" ? "Could not delete project" : "Could not leave project"));
     }
   };
 
@@ -815,6 +820,7 @@ function ReportsTab({
 
 function AnalysisPoller({ analysisId, onDone }: { analysisId: string; onDone: () => void }) {
   const { data } = useGapAnalysisStatus(analysisId);
+  const { t } = useI18n();
 
   useEffect(() => {
     if (data?.status === "ready") {
@@ -826,7 +832,7 @@ function AnalysisPoller({ analysisId, onDone }: { analysisId: string; onDone: ()
     return (
       <div className="bg-red-50 text-red-600 p-4 rounded-lg border border-red-200 text-sm flex items-center gap-2 mb-4">
         <XCircle className="w-4 h-4" />
-        {data.errorMessage ?? "Analysis failed."}
+        {data.errorMessage ?? t("Analysis failed.")}
       </div>
     );
   }
@@ -835,7 +841,7 @@ function AnalysisPoller({ analysisId, onDone }: { analysisId: string; onDone: ()
     <div className="bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900 p-4 rounded-lg flex items-center gap-3 mb-4 shadow-sm">
       <Loader2 className="w-5 h-5 text-blue-500 animate-spin" />
       <p className="text-sm text-blue-700 dark:text-blue-300 font-medium">
-        {data?.status === "analyzing" ? "Analyzing documents with AI..." : "Queued for analysis..."}
+        {data?.status === "analyzing" ? t("Analyzing documents with AI...") : t("Queued for analysis...")}
       </p>
     </div>
   );
@@ -843,34 +849,36 @@ function AnalysisPoller({ analysisId, onDone }: { analysisId: string; onDone: ()
 
 function GapsTab({
   projectId,
+  projectPapers,
   defaultTopic,
   openOnInit,
   onOpenChange,
   onDraftProposal
 }: {
   projectId: string;
+  projectPapers: IProject["papers"];
   defaultTopic?: string;
   openOnInit?: boolean;
   onOpenChange?: (open: boolean) => void;
   onDraftProposal?: (gap: ResearchGapItem) => void;
 }) {
-  const [minConfidence, setMinConfidence] = useState(0);
-  const [debouncedConfidence, setDebouncedConfidence] = useState(0);
+  const [minScore, setMinScore] = useState(0);
+  const [debouncedMinScore, setDebouncedMinScore] = useState(0);
+  const [status, setStatus] = useState<GapStatus>("active");
 
   useEffect(() => {
-    const timer = setTimeout(() => setDebouncedConfidence(minConfidence), 300);
+    const timer = setTimeout(() => setDebouncedMinScore(minScore), 300);
     return () => clearTimeout(timer);
-  }, [minConfidence]);
+  }, [minScore]);
 
-  const { data: gapsData, isLoading, refetch } = useGaps({ projectId, pageSize: 50, minConfidence: debouncedConfidence });
+  const { data: gapsData, isLoading, refetch } = useGaps({ projectId, status, pageSize: 50, minConfidence: debouncedMinScore });
   const analyze = useAnalyzeGap();
+  const queryClient = useQueryClient();
+  const { data: activeAnalysis } = useActiveGapAnalysis(projectId);
   const [selectedGap, setSelectedGap] = useState<ResearchGapItem | null>(null);
   const { t } = useI18n();
 
   const [open, setOpen] = useState(false);
-  const [topic, setTopic] = useState(defaultTopic || "");
-  const [yearFrom, setYearFrom] = useState<string>("");
-  const [yearTo, setYearTo] = useState<string>("");
   const [activeAnalysisId, setActiveAnalysisId] = useState<string | null>(null);
 
   // Sync openOnInit
@@ -881,128 +889,81 @@ function GapsTab({
     }
   }, [openOnInit, onOpenChange]);
 
-  // Sync defaultTopic when dialog opens
+  // Resume polling a run started earlier in this project (tab switch, reload).
   useEffect(() => {
-    if (open && defaultTopic) {
-      setTopic(defaultTopic);
+    if (activeAnalysis && (activeAnalysis.status === "queued" || activeAnalysis.status === "analyzing")) {
+      setActiveAnalysisId(activeAnalysis.id);
     }
-  }, [open, defaultTopic]);
+  }, [activeAnalysis]);
 
-  const handleGenerate = async () => {
-    if (!topic.trim()) {
-      toast.error("Please enter a topic for gap analysis");
-      return;
-    }
-    const fromYear = yearFrom ? parseInt(yearFrom, 10) : undefined;
-    const toYear = yearTo ? parseInt(yearTo, 10) : undefined;
-
-    if (fromYear && toYear && fromYear > toYear) {
-      toast.error("Year From must be less than or equal to Year To");
-      return;
-    }
-
-    analyze.mutate({
-      topic: topic.trim(),
-      projectId,
-      yearFrom: fromYear,
-      yearTo: toYear
-    }, {
+  const handleAnalyze = (payload: AnalyzeGapRequest) => {
+    analyze.mutate(payload, {
       onSuccess: ({ analysisId }) => {
         setOpen(false);
-        setTopic(defaultTopic || "");
-        setYearFrom("");
-        setYearTo("");
         setActiveAnalysisId(analysisId);
-        toast.success("Gap analysis queued");
+        toast.success(t("Gap analysis queued with the reviewed evidence pack."));
       },
       onError: (err: any) => {
-        toast.error(err.response?.data?.error?.message || "Failed to start gap analysis");
+        toast.error(err.response?.data?.error?.message || t("Failed to trigger gap analysis."));
       }
     });
   };
 
   const handleDone = useCallback(() => {
     setActiveAnalysisId(null);
+    void queryClient.invalidateQueries({ queryKey: ["activeGapAnalysis", projectId] });
     void refetch();
-  }, [refetch]);
+  }, [projectId, queryClient, refetch]);
 
   return (
     <div className="space-y-4 mt-2">
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6">
-        <div><h3 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Candidate Research Gaps</h3><p className="mt-1 text-sm text-muted-foreground">AI-assisted results are candidates for review, not validated research conclusions.</p></div>
+        <div><h3 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">{t("Candidate Research Gaps")}</h3><p className="mt-1 text-sm text-muted-foreground">{t("AI-assisted results are candidates for review, not validated research conclusions.")}</p></div>
 
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-3 bg-white dark:bg-zinc-900 px-4 py-1.5 rounded-full border border-slate-200/60 dark:border-white/10 shadow-sm">
+        <div className="flex flex-wrap items-center gap-3">
+          <select
+            aria-label={t("Gap status")}
+            value={status}
+            onChange={(event) => setStatus(event.target.value as GapStatus)}
+            className="h-9 rounded-full border border-slate-200/60 bg-white px-3 text-sm font-medium text-slate-700 shadow-sm dark:border-white/10 dark:bg-zinc-900 dark:text-slate-300"
+          >
+            <option value="active">{t("Active")}</option>
+            <option value="resolved">{t("Resolved")}</option>
+            <option value="dismissed">{t("Dismissed")}</option>
+          </select>
+          <div
+            className="flex items-center gap-3 bg-white dark:bg-zinc-900 px-4 py-1.5 rounded-full border border-slate-200/60 dark:border-white/10 shadow-sm"
+            title={t("Filters by the corpus evidence score, or the AI's confidence when a gap has no evidence score.")}
+          >
             <Zap className="w-4 h-4 text-emerald-500" />
-            <span className="text-sm font-semibold text-slate-700 dark:text-slate-300 w-[140px]">Min Confidence: {Math.round(minConfidence * 100)}%</span>
+            <span className="text-sm font-semibold text-slate-700 dark:text-slate-300 w-[160px]">{t("Min evidence score: {{value}}%", { value: Math.round(minScore * 100) })}</span>
             <input
               type="range"
               min="0"
               max="1"
               step="0.1"
-              value={minConfidence}
-              onChange={(e) => setMinConfidence(parseFloat(e.target.value))}
+              value={minScore}
+              onChange={(e) => setMinScore(parseFloat(e.target.value))}
+              aria-label={t("Minimum evidence score")}
               className="w-24 accent-emerald-500 cursor-pointer"
             />
           </div>
 
-          <Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger asChild>
-              <Button size="sm" className="rounded-full shadow-sm shrink-0"><Sparkles className="w-4 h-4 mr-2" /> New Gap Analysis</Button>
-            </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Gap Analysis</DialogTitle>
-              <DialogDescription>
-                Discover research opportunities and missing literature for the project.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="gap-topic">Topic</Label>
-                <Input
-                  id="gap-topic"
-                  value={topic}
-                  onChange={(e) => setTopic(e.target.value)}
-                  placeholder="e.g. AI in Healthcare"
-                />
-              </div>
-
-              <div className="flex gap-4">
-                <div className="flex-1 flex flex-col gap-2">
-                  <Label htmlFor="gap-year-from">Year From</Label>
-                  <Input
-                    id="gap-year-from"
-                    type="number"
-                    value={yearFrom}
-                    onChange={(e) => setYearFrom(e.target.value)}
-                    placeholder="2020"
-                    className="h-10 text-center"
-                  />
-                </div>
-                <div className="flex-1 flex flex-col gap-2">
-                  <Label htmlFor="gap-year-to">Year To</Label>
-                  <Input
-                    id="gap-year-to"
-                    type="number"
-                    value={yearTo}
-                    onChange={(e) => setYearTo(e.target.value)}
-                    placeholder="2026"
-                    className="h-10 text-center"
-                  />
-                </div>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setOpen(false)} disabled={analyze.isPending}>Cancel</Button>
-              <Button onClick={handleGenerate} disabled={analyze.isPending}>
-                {analyze.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null} Analyze
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+          <Button size="sm" className="rounded-full shadow-sm shrink-0" onClick={() => setOpen((current) => !current)} disabled={Boolean(activeAnalysisId)}>
+            <Sparkles className="w-4 h-4 mr-2" /> {open ? t("Close gap analysis") : t("New Gap Analysis")}
+          </Button>
         </div>
       </div>
+
+      {open && (
+        <GapAnalysisWorkflow
+          isAnalyzing={analyze.isPending}
+          onAnalyze={handleAnalyze}
+          projectId={projectId}
+          projectPapers={projectPapers}
+          defaultTopic={defaultTopic}
+        />
+      )}
 
       {activeAnalysisId && (
         <AnalysisPoller
@@ -1051,7 +1012,7 @@ function GapsTab({
                 return (
                   <div
                     className="relative z-10 pt-5 border-t border-slate-100 dark:border-zinc-800/50 mt-auto"
-                    title={t("Corpus evidence score: how scarce the topic intersection is in this project's papers and whether a parent topic is rising. Not the AI's self-reported confidence.")}
+                    title={t("Corpus evidence score: how scarce the topic intersection is across the whole LumiGap corpus and whether a parent topic is rising. Not the AI's self-reported confidence.")}
                   >
                     <div className="flex justify-between items-center mb-2">
                        <span className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
@@ -1066,8 +1027,8 @@ function GapsTab({
                     {insufficientData || lowSample ? (
                       <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
                         {insufficientData
-                          ? t("No papers in this project match \"{{topic}}\". Add related papers to score this gap.", { topic: weakTopic?.topic ?? "" })
-                          : t("Only {{count}} paper(s) in this project match \"{{topic}}\". Add related papers before trusting this score.", { count: weakTopic?.count ?? 0, topic: weakTopic?.topic ?? "" })}
+                          ? t("No corpus papers match \"{{topic}}\" yet, so this gap cannot be scored.", { topic: weakTopic?.topic ?? "" })
+                          : t("Only {{count}} corpus paper(s) match \"{{topic}}\". Treat this score with caution.", { count: weakTopic?.count ?? 0, topic: weakTopic?.topic ?? "" })}
                       </p>
                     ) : (
                       <div className="w-full bg-slate-100 dark:bg-zinc-800 rounded-full h-2 overflow-hidden shadow-inner">
@@ -1077,6 +1038,7 @@ function GapsTab({
                         />
                       </div>
                     )}
+                    {gap.probe && <div className="mt-2"><GapScopeNote evidenceScopeSize={gap.evidenceScopeSize} /></div>}
                   </div>
                 );
               })()}
@@ -1088,14 +1050,16 @@ function GapsTab({
           <div className="flex h-16 w-16 items-center justify-center rounded-full bg-background shadow-sm mb-4">
             <Sparkles className="h-6 w-6 text-muted-foreground/60" />
           </div>
-          <h4 className="text-lg font-semibold tracking-tight mb-2">No candidate research gaps yet</h4>
+          <h4 className="text-lg font-semibold tracking-tight mb-2">{status === "active" ? t("No candidate research gaps yet") : t("No research gaps with this status")}</h4>
           <p className="text-sm text-muted-foreground max-w-sm mb-6">
-            Candidate research gaps will appear after the project has sufficient screened literature and evidence.
+            {t("Candidate research gaps will appear after the project has sufficient screened literature and evidence.")}
           </p>
-          <Button onClick={() => setOpen(true)} variant="outline" className="rounded-full shadow-sm">
-            <Sparkles className="w-4 h-4 mr-2 text-cyan-500" />
-            Run first analysis
-          </Button>
+          {status === "active" && !open && (
+            <Button onClick={() => setOpen(true)} variant="outline" className="rounded-full shadow-sm" disabled={Boolean(activeAnalysisId)}>
+              <Sparkles className="w-4 h-4 mr-2 text-cyan-500" />
+              {t("Run first analysis")}
+            </Button>
+          )}
         </div>
       )}
 

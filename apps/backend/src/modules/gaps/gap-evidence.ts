@@ -55,3 +55,17 @@ export function computeGapEvidence(input: GapEvidenceInput, t: GapThresholds): G
     evidenceConfidence: round2(evidenceConfidence),
   };
 }
+
+export interface YearRange { yearFrom?: number; yearTo?: number }
+
+/**
+ * Year window used to count a probe: the intersection of the window the user chose and the one the LLM put in the probe.
+ * An empty intersection falls back to the user's window (what they asked for) and is flagged as a conflict.
+ */
+export function resolveProbeYears(user: YearRange, probe: YearRange): YearRange & { conflict: boolean } {
+  const from = [user.yearFrom, probe.yearFrom].filter((v): v is number => v !== undefined);
+  const to = [user.yearTo, probe.yearTo].filter((v): v is number => v !== undefined);
+  const yearFrom = from.length ? Math.max(...from) : undefined, yearTo = to.length ? Math.min(...to) : undefined;
+  if (yearFrom !== undefined && yearTo !== undefined && yearFrom > yearTo) return { yearFrom: user.yearFrom, yearTo: user.yearTo, conflict: true };
+  return { yearFrom, yearTo, conflict: false };
+}

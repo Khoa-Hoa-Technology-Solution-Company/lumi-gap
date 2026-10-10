@@ -22,7 +22,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
 import { GapOrigin } from "./gap-origin";
+import { GapScopeNote } from "./gap-evidence-summary";
 import { GapDirectionsPanel } from "./gap-directions";
+import { GapExpertValidationPanel } from "./gap-expert-validation";
 import { AiEvaluation } from "@/components/ai-evaluation";
 import { useGapCommunityDiscussions, usePatchGapStatus } from "../hooks/use-gaps";
 import type { GapStatus, ResearchGapItem } from "@trend/shared-types";
@@ -128,6 +130,7 @@ export function GapDetailDrawer({ gap, isOpen, onClose, onDraftProposal }: GapDe
                     {strengthTooltip}
                   </span>
                 </div>
+                {gap.probe && <GapScopeNote evidenceScopeSize={gap.evidenceScopeSize} />}
 
                 <div className="flex flex-wrap items-center gap-2 pt-1">
                   {onDraftProposal && (
@@ -136,7 +139,8 @@ export function GapDetailDrawer({ gap, isOpen, onClose, onDraftProposal }: GapDe
                       {t("Draft research proposal")}
                     </Button>
                   )}
-                  {gap.status === "active" ? (
+                  {/* Only the creator or the project owner may change the status; older payloads omit canManage. */}
+                  {gap.canManage === false ? null : gap.status === "active" ? (
                     <>
                       <Button size="sm" variant="outline" disabled={isPatching} onClick={() => handleUpdateStatus("resolved")} className="h-8 gap-1.5 text-xs">
                         {isPatching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />}
@@ -191,7 +195,7 @@ export function GapDetailDrawer({ gap, isOpen, onClose, onDraftProposal }: GapDe
                       <AlertCircle className="size-4 shrink-0 mt-0.5" />
                       <span>
                         <strong>{t("Low sample")}.</strong>{" "}
-                        {t("A probe topic has too few matching papers, so this evidence score is not reliable yet. Add related papers and re-run the analysis.")}
+                        {t("A probe topic has too few matching corpus papers, so treat this evidence score with caution.")}
                       </span>
                     </div>
                   )}
@@ -235,6 +239,24 @@ export function GapDetailDrawer({ gap, isOpen, onClose, onDraftProposal }: GapDe
                         {t("Parent topic")} <code className="bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded text-[11px] font-mono">"{gap.parentTrend.topic}"</code> {t("has")}{" "}
                         <strong>{formatNumber(gap.parentTrend.topic === gap.probe.topicA ? gap.parentCounts.a : gap.parentCounts.b)}</strong>{" "}
                         {t("historical papers in the current corpus.")}
+                      </span>
+                    </div>
+                  )}
+
+                  {gap.projectEvidence && (
+                    <div className="space-y-1 rounded-xl border border-slate-100/50 bg-white p-3 text-xs leading-relaxed text-slate-600 dark:border-slate-800/40 dark:bg-slate-900/30 dark:text-slate-400">
+                      <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                        {t("In this project's literature ({{count}} papers)", { count: formatNumber(gap.projectEvidence.scopePaperCount) })}
+                      </span>
+                      <span className="block">
+                        {t("Intersection: {{intersection}} · Topic A: {{a}} · Topic B: {{b}}", {
+                          intersection: formatNumber(gap.projectEvidence.intersectionCount),
+                          a: formatNumber(gap.projectEvidence.parentCounts.a),
+                          b: formatNumber(gap.projectEvidence.parentCounts.b),
+                        })}
+                      </span>
+                      <span className="block italic text-slate-400">
+                        {t("Context only. It is not the basis for the Confirmed label, which always uses the whole corpus.")}
                       </span>
                     </div>
                   )}
@@ -375,6 +397,8 @@ export function GapDetailDrawer({ gap, isOpen, onClose, onDraftProposal }: GapDe
                 </div>
               )}
             </div>
+
+            <GapExpertValidationPanel gap={gap} />
 
             {/* AI Research Directions */}
             <div className="space-y-4">

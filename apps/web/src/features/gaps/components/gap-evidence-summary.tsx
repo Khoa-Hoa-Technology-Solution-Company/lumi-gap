@@ -2,8 +2,21 @@ import { CheckCircle2, AlertCircle } from "lucide-react";
 import { useI18n } from "@/i18n";
 import { formatNumber } from "@/utils/format";
 
+/** Says how many corpus papers the probe counts were taken over; gaps saved before that was recorded say so. */
+export function GapScopeNote({ evidenceScopeSize }: { evidenceScopeSize?: number }) {
+  const { t } = useI18n();
+  return (
+    <p className="text-[10px] text-slate-500 dark:text-slate-400">
+      {evidenceScopeSize !== undefined
+        ? t("Counted over {{count}} corpus papers", { count: formatNumber(evidenceScopeSize) })
+        : t("Counting scope not recorded (gap created before this update)")}
+    </p>
+  );
+}
+
 interface GapEvidenceSummaryProps {
   probe?: { topicA: string; topicB: string; yearFrom?: number; yearTo?: number };
+  evidenceScopeSize?: number;
   intersectionCount?: number;
   parentCounts?: { a: number; b: number };
   parentTrend?: { topic: string; growthRatePct: number } | null;
@@ -11,6 +24,7 @@ interface GapEvidenceSummaryProps {
 
 export function GapEvidenceSummary({
   probe,
+  evidenceScopeSize,
   intersectionCount = 0,
   parentCounts,
   parentTrend,
@@ -62,6 +76,7 @@ export function GapEvidenceSummary({
         )}
         .
       </div>
+      <GapScopeNote evidenceScopeSize={evidenceScopeSize} />
     </div>
   );
 }

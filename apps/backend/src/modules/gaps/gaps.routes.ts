@@ -4,8 +4,8 @@ import { env } from "../../config/env.js";
 import { requireAuth } from "../../common/middleware/auth.js";
 import { validate } from "../../common/middleware/validate.js";
 import {
+  ActiveGapAnalysisQuerySchema,
   AnalyzeGapSchema,
-  ListGapsQuerySchema,
   PatchGapSchema,
   GapIdParamsSchema,
   DirectionsBodySchema,
@@ -13,6 +13,8 @@ import {
   GapCandidateSchema,
   GapEvidenceRecordSchema,
   GapValidationSchema,
+  ValidationQueueQuerySchema,
+  type ValidationQueueQuery,
 } from "./dto/gaps.schema.js";
 import { gapsController } from "./gaps.controller.js";
 import { gapValidationService } from "./gap-validation.service.js";
@@ -83,7 +85,7 @@ gapsRouter.post(
   gapsController.previewEvidence,
 );
 gapsRouter.post("/analyze", analyzeGapLimiter, validate(AnalyzeGapSchema), gapsController.analyze);
-gapsRouter.get("/analyze/active", gapsController.getActiveAnalysis);
+gapsRouter.get("/analyze/active", validate(ActiveGapAnalysisQuerySchema, "query"), gapsController.getActiveAnalysis);
 gapsRouter.post(
   "/analyze/:id/retry",
   analyzeGapLimiter,
@@ -92,6 +94,12 @@ gapsRouter.post(
 );
 gapsRouter.get("/analyze/:id", gapsController.getAnalysis);
 gapsRouter.get("/", gapsController.list);
+/** Experts (GAP_VALIDATION capability) see gaps whose owners requested validation, minus conflicts of interest. */
+gapsRouter.get("/validation-queue", validate(ValidationQueueQuerySchema, "query"), async (req, res) => {
+  const query = req.query as unknown as ValidationQueueQuery;
+  const { items, total } = await gapValidationService.listValidationQueue(req.user!.sub, query);
+  res.json({ success: true, data: items, meta: { page: query.page, pageSize: query.pageSize, total, totalPages: Math.ceil(total / query.pageSize) } });
+});
 gapsRouter.post("/candidates", validate(GapCandidateSchema), async (req, res) => {
   const data = await gapValidationService.createCandidate(req.user!.sub, req.body);
   res.status(201).json({ success: true, data });

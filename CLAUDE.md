@@ -285,6 +285,7 @@ report.ts                         AnalyticalReport, ResearchGap, ReportStatus
 
 ### Relational persistence
 - Define relations, constraints, and indexes in `apps/backend/prisma/*.prisma`.
+- **Never run `prisma migrate dev`** (`db:migrate:dev` is disabled). The `.prisma` files do not describe every foreign key and index the SQL migrations create, so it would generate a migration that drops them. Write migrations by hand: [docs/prisma-migrations.md](docs/prisma-migrations.md).
 - Use Prisma transactions for multi-row state changes and Prisma tagged SQL for pgvector or advanced queries.
 
 ### Shared types
@@ -439,6 +440,8 @@ These are the things that caused real bugs or near-misses. Keep them in mind:
 
 12. **Do not change `nodeLinker`.** Both `.npmrc` and `pnpm-workspace.yaml` set `hoisted`, because Metro (Expo) cannot follow pnpm's isolated symlinks. Switching to `isolated` breaks the mobile bundler with "Unable to resolve X" errors.
 
+13. **Never run `prisma migrate dev`.** The schema files do not describe the 297 foreign keys, the vector index and the full-text indexes that the SQL migrations create, so `migrate dev` generates a migration that drops them. `pnpm --filter backend db:migrate:dev` is disabled on purpose. Write migrations by hand and apply them with `db:migrate:deploy`, as described in [docs/prisma-migrations.md](docs/prisma-migrations.md).
+
 ---
 
 ## 12. Where Else To Look
@@ -468,7 +471,7 @@ These are the things that caused real bugs or near-misses. Keep them in mind:
 - **Stay within the conventions in §6.** They are not preferences — they are constraints we agreed on.
 - **Long-running work goes in BullMQ workers, not request handlers.** No exceptions.
 - **Validate every new env var with Zod in `config/env.ts`.** Don't read `process.env.X` directly outside that file.
-- **When changing persistence:** update the Prisma schema, create a migration, preserve foreign keys/indexes, and use transactions for multi-row writes.
+- **When changing persistence:** update the Prisma schema, write the migration SQL by hand following [docs/prisma-migrations.md](docs/prisma-migrations.md) (never `prisma migrate dev`), apply it with `db:migrate:deploy`, preserve foreign keys/indexes, and use transactions for multi-row writes.
 - **When adding a new API endpoint:** controller is thin, service has logic, schema validates input, return the `{ success, data, meta }` envelope.
 - **When asked to install a new dependency with a postinstall script**, update `pnpm-workspace.yaml`'s `allowBuilds` so the team doesn't trip the `ERR_PNPM_IGNORED_BUILDS` warning.
 - **If something doesn't fit the structure**, surface it instead of working around it. The structure is more easily fixed than abandoned.

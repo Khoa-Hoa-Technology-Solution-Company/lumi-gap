@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { paperFilterShape } from "./paper-filters.schema.js";
+import { PAPER_REQUEST_STATUSES } from "../paper-workflow.js";
 
 /**
  * Query params for GET /api/v1/papers (keyword browse + search). Shares
@@ -14,3 +15,11 @@ export const PaperListQuerySchema = z.object({
 });
 
 export type PaperListQueryInput = z.infer<typeof PaperListQuerySchema>;
+
+/** Body of PATCH /api/v1/papers/:id/status (admin). Allowed transitions are checked in the service. */
+export const UpdatePaperStatusSchema = z.object({
+  status: z.enum(PAPER_REQUEST_STATUSES),
+  rejectionReason: z.string().trim().max(2000).optional(),
+});
+
+export type UpdatePaperStatusInput = z.infer<typeof UpdatePaperStatusSchema>;

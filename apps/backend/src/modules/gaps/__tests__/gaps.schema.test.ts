@@ -61,6 +61,11 @@ describe("gap evidence request schemas", () => {
     expect(invalidYears.success).toBe(false);
   });
 
+  it("defaults analysis to the same hybrid mode as the evidence preview", () => {
+    expect(AnalyzeGapSchema.parse({ topic: "federated learning" }).evidenceMode).toBe("hybrid");
+    expect(PreviewGapEvidenceSchema.parse({ topic: "federated learning" }).evidenceMode).toBe("hybrid");
+  });
+
   it("parses global list search and sorting controls", () => {
     const parsed = ListGapsQuerySchema.parse({
       search: "federated learning",

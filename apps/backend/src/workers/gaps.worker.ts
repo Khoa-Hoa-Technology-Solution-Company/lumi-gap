@@ -5,7 +5,8 @@ import { getPrisma } from "../infrastructure/database/prisma.js";
 import { makeConnection, QUEUE_NAMES } from "../infrastructure/queue.js";
 import { logger } from "../infrastructure/logger.js";
 import { startWorkerHeartbeat } from "../infrastructure/worker-heartbeat.js";
-import { gapsService, type GapJob } from "../modules/gaps/gaps.service.js";
+import { sweepStuckGapAnalyses } from "../modules/gaps/gap-sweep.js";
+import { gapsService, REPORT_GAP_FANOUT_JOB, type GapJob, type ReportGapFanoutJob } from "../modules/gaps/gaps.service.js";
 import { withUserAi } from "../modules/user-ai/user-ai.runtime.js";
 
 enforcePostgresOnlyRuntime();
@@ -14,14 +15,12 @@ enforcePostgresOnlyRuntime();
  * Standalone gaps worker — a SEPARATE Node process from the API.
  * Run with: pnpm --filter backend worker:gaps
  *
- * Consumes the "gaps" BullMQ queue: each job is one gap-analysis pipeline run
- * (embed → vector search → Gemini → persist). Concurrency 1 keeps us inside the
+ * Consumes the "gaps" BullMQ queue: each "gap-analysis" job is one gap-analysis
+ * pipeline run (embed → vector search → Gemini → persist); each "report-gap-fanout"
+ * job copies a finished report's gaps into research_gaps. Concurrency 1 keeps us inside the
  * Gemini free-tier rate limit; BullMQ retries transient failures (5 attempts,
  * exponential backoff). Non-retryable errors short-circuit via UnrecoverableError.
  */
-
-/** Analyses stuck in "analyzing" longer than this are orphans of a dead worker. */
-const STUCK_ANALYZING_MS = 5 * 60_000;
 
 /** Generic user-facing failure text — raw error internals stay in server logs. */
 const USER_FACING_FAILURE = "Gap analysis failed. Please try again later.";
@@ -30,23 +29,10 @@ async function main() {
   await connectPostgres();
   const stopHeartbeat = startWorkerHeartbeat({ workerName: "worker:gaps", queueName: QUEUE_NAMES.gaps });
 
-  // Startup sweep: a hard-killed worker leaves analyses frozen in "analyzing".
-  // Fail them cleanly so the FE poll terminates instead of spinning forever.
-  const swept = await getPrisma().gapAnalysis.updateMany({
-    where: { status: "analyzing", updatedAt: { lt: new Date(Date.now() - STUCK_ANALYZING_MS) } },
-    data: { status: "failed", errorMessage: "Gap analysis was interrupted (worker restarted). Please try again." },
-  });
-  if (swept.count > 0) {
-    logger.warn({ swept: swept.count }, "swept stuck gap analyses");
-  }
-
-  // Also sweep orphaned "queued" docs (no matching BullMQ job, stuck for > 30 min)
-  const orphaned = await getPrisma().gapAnalysis.updateMany({
-    where: { status: "queued", updatedAt: { lt: new Date(Date.now() - 30 * 60_000) } },
-    data: { status: "failed", errorMessage: "Gap analysis was stuck in queue (worker restarted). Please try again." },
-  });
-  if (orphaned.count > 0) {
-    logger.warn({ swept: orphaned.count }, "swept orphaned queued gap analyses");
+  // A hard-killed worker leaves analyses frozen; fail them (with a credit refund) unless their job is still live.
+  const swept = await sweepStuckGapAnalyses();
+  if (swept > 0) {
+    logger.warn({ swept }, "swept stuck gap analyses");
   }
 
   const worker = new Worker(
@@ -54,6 +40,11 @@ async function main() {
     async (job) => {
       logger.info({ jobId: job.id, attempt: job.attemptsMade + 1 }, "gap job received");
       try {
+        // Report fan-out only copies stored gaps and scores probes — no LLM call, so no personal AI binding.
+        if (job.name === REPORT_GAP_FANOUT_JOB) {
+          await gapsService.fanOutGapsFromReport(job.data as ReportGapFanoutJob);
+          return;
+        }
         const input = job.data as GapJob;
         const analysis = await getPrisma().gapAnalysis.findUnique({ where: { id: input.analysisId }, select: { userId: true } });
         if (analysis) await withUserAi(analysis.userId, () => gapsService.runGapPipeline(input));
@@ -76,7 +67,8 @@ async function main() {
     // the raw error stays in the log line above.
     const exhausted = job && job.attemptsMade >= (job.opts.attempts ?? 1);
     const unrecoverable = err instanceof UnrecoverableError;
-    if (job && (exhausted || unrecoverable)) {
+    // A failed fan-out leaves the ready report intact; the error log above is enough.
+    if (job && job.name !== REPORT_GAP_FANOUT_JOB && (exhausted || unrecoverable)) {
       const { analysisId } = job.data as GapJob;
       void gapsService.markAnalysisFailed(analysisId, USER_FACING_FAILURE);
     }

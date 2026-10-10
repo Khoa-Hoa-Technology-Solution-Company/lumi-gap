@@ -17,3 +17,25 @@ export function invitationBelongsToUser(
   const invitedEmail = invitation.email.trim().toLowerCase();
   return user.verifiedEmails.some((email) => email.trim().toLowerCase() === invitedEmail);
 }
+
+/** Work in a project that a hard delete would destroy or orphan, beyond the owner's own drafts. */
+export interface ProjectDeleteImpact {
+  submissions: number;
+  reportsByOthers: number;
+  gapsByOthers: number;
+  contributionsByOthers: number;
+}
+
+/**
+ * Returns why the project cannot be hard-deleted, or null. Submissions carry reviewers' work and
+ * other members' reports, gaps and contributions are theirs, so such projects can only be archived.
+ */
+export function projectDeleteError(impact: ProjectDeleteImpact): string | null {
+  const blockers = [
+    impact.submissions && `${impact.submissions} submission(s) with their review history`,
+    impact.reportsByOthers && `${impact.reportsByOthers} report(s) by other members`,
+    impact.gapsByOthers && `${impact.gapsByOthers} research gap(s) by other members`,
+    impact.contributionsByOthers && `${impact.contributionsByOthers} contribution(s) by other members`,
+  ].filter(Boolean);
+  return blockers.length ? `This project still has ${blockers.join(", ")}. Archive it instead of deleting it.` : null;
+}

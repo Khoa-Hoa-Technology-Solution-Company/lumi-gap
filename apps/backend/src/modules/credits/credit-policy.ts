@@ -34,7 +34,7 @@ export const AI_CREDIT_COSTS: Record<CreditAction, number> = {
   generate_gaps: 30,
   generate_directions: 15,
   project_chat_message: 1,
-  paper_request: 0,
+  paper_request: 100,
   paper_download: 0,
   credit_topup: 0,
   paper_upload_reward: 0,

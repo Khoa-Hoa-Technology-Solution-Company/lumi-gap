@@ -2,7 +2,7 @@ import { UnrecoverableError, Worker } from "bullmq";
 import { enforcePostgresOnlyRuntime } from "../infrastructure/database/postgres-only-runtime.js";
 import { connectPostgres, disconnectPostgres } from "../infrastructure/database/prisma.js";
 import { getPrisma } from "../infrastructure/database/prisma.js";
-import { makeConnection, QUEUE_NAMES } from "../infrastructure/queue.js";
+import { hasLiveJob, makeConnection, QUEUE_NAMES, reportQueue } from "../infrastructure/queue.js";
 import { logger } from "../infrastructure/logger.js";
 import { startWorkerHeartbeat } from "../infrastructure/worker-heartbeat.js";
 import { markReportFailed, runRagPipeline, type ReportJob } from "../modules/reports/rag.service.js";
@@ -37,16 +37,23 @@ async function main() {
   // Startup sweep: a hard-killed worker leaves reports frozen in "generating", and
   // a lost job (Redis flush / enqueue failure) leaves one stuck in "queued" forever.
   // Both keep counting against the user's pending-report quota until cleared, so fail
-  // them cleanly. (Mirrors gaps.worker, which already sweeps orphaned queued jobs.)
+  // them through markReportFailed (which refunds the credits). A report whose BullMQ
+  // job (id = report id) is still waiting or will be retried is slow, not lost — skip it.
   const now = Date.now();
-  const swept = await getPrisma().report.updateMany({
+  const stuck = await getPrisma().report.findMany({
     where: { OR: [
       { status: "generating", updatedAt: { lt: new Date(now - STUCK_GENERATING_MS) } },
       { status: "queued", updatedAt: { lt: new Date(now - STUCK_QUEUED_MS) } },
     ] },
-    data: { status: "failed", errorMessage: "Report generation was interrupted (worker restarted). Please try again." },
+    select: { id: true },
   });
-  if (swept.count > 0) logger.warn({ swept: swept.count }, "swept stuck reports");
+  let swept = 0;
+  for (const report of stuck) {
+    if (await hasLiveJob(reportQueue, report.id)) continue;
+    await markReportFailed(report.id, "Report generation was interrupted (worker restarted). Please try again.");
+    swept += 1;
+  }
+  if (swept > 0) logger.warn({ swept }, "swept stuck reports");
 
   const worker = new Worker(
     QUEUE_NAMES.report,

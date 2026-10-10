@@ -89,6 +89,14 @@ export const gapEvidenceWorkflowStrings = {
   "Clear search": "Clear search",
   "Close details": "Close details",
   "Confidence": "Confidence",
+  "Counted over {{count}} corpus papers": "Counted over {{count}} corpus papers",
+  "Counting scope not recorded (gap created before this update)":
+    "Counting scope not recorded (gap created before this update)",
+  "In this project's literature ({{count}} papers)": "In this project's literature ({{count}} papers)",
+  "Intersection: {{intersection}} · Topic A: {{a}} · Topic B: {{b}}":
+    "Intersection: {{intersection}} · Topic A: {{a}} · Topic B: {{b}}",
+  "Context only. It is not the basis for the Confirmed label, which always uses the whole corpus.":
+    "Context only. It is not the basis for the Confirmed label, which always uses the whole corpus.",
   "Confirmed": "Confirmed",
   "Confirmed by corpus": "Confirmed by corpus",
   "Corpus Evidence": "Corpus Evidence",
@@ -267,14 +275,106 @@ export const gapEvidenceWorkflowStrings = {
   "Low sample": "Low sample",
   "Corpus evidence": "Corpus evidence",
   "Insufficient data": "Insufficient data",
-  "Corpus evidence score: how scarce the topic intersection is in this project's papers and whether a parent topic is rising. Not the AI's self-reported confidence.":
-    "Corpus evidence score: how scarce the topic intersection is in this project's papers and whether a parent topic is rising. Not the AI's self-reported confidence.",
-  "No papers in this project match \"{{topic}}\". Add related papers to score this gap.":
-    "No papers in this project match \"{{topic}}\". Add related papers to score this gap.",
-  "Only {{count}} paper(s) in this project match \"{{topic}}\". Add related papers before trusting this score.":
-    "Only {{count}} paper(s) in this project match \"{{topic}}\". Add related papers before trusting this score.",
-  "A probe topic has too few matching papers, so this evidence score is not reliable yet. Add related papers and re-run the analysis.":
-    "A probe topic has too few matching papers, so this evidence score is not reliable yet. Add related papers and re-run the analysis.",
+  "Corpus evidence score: how scarce the topic intersection is across the whole LumiGap corpus and whether a parent topic is rising. Not the AI's self-reported confidence.":
+    "Corpus evidence score: how scarce the topic intersection is across the whole LumiGap corpus and whether a parent topic is rising. Not the AI's self-reported confidence.",
+  "No corpus papers match \"{{topic}}\" yet, so this gap cannot be scored.":
+    "No corpus papers match \"{{topic}}\" yet, so this gap cannot be scored.",
+  "Only {{count}} corpus paper(s) match \"{{topic}}\". Treat this score with caution.":
+    "Only {{count}} corpus paper(s) match \"{{topic}}\". Treat this score with caution.",
+  "A probe topic has too few matching corpus papers, so treat this evidence score with caution.":
+    "A probe topic has too few matching corpus papers, so treat this evidence score with caution.",
+  "Gap status":
+    "Gap status",
+  "Filters by the corpus evidence score, or the AI's confidence when a gap has no evidence score.":
+    "Filters by the corpus evidence score, or the AI's confidence when a gap has no evidence score.",
+  "Min evidence score: {{value}}%":
+    "Min evidence score: {{value}}%",
+  "Minimum evidence score":
+    "Minimum evidence score",
+  "Close gap analysis":
+    "Close gap analysis",
+  "No research gaps with this status":
+    "No research gaps with this status",
+  "Pick an included paper from this project to add to the evidence set.":
+    "Pick an included paper from this project to add to the evidence set.",
+  "Add a paper from this project":
+    "Add a paper from this project",
+  "Filter included papers by title or DOI":
+    "Filter included papers by title or DOI",
+  "No included project papers match. Screen more papers as INCLUDED in the Papers tab.":
+    "No included project papers match. Screen more papers as INCLUDED in the Papers tab.",
+  "Validate":
+    "Validate",
+  "Challenge":
+    "Challenge",
+  "Request evidence":
+    "Request evidence",
+  "Suggest evidence":
+    "Suggest evidence",
+  "Refine scope":
+    "Refine scope",
+  "Validation requested. Verified experts can now review this gap.":
+    "Validation requested. Verified experts can now review this gap.",
+  "Could not request expert validation.":
+    "Could not request expert validation.",
+  "Expert validation":
+    "Expert validation",
+  "Requesting validation shares this gap and its linked evidence with verified experts who hold research-gap validation rights.":
+    "Requesting validation shares this gap and its linked evidence with verified experts who hold research-gap validation rights.",
+  "Request expert validation":
+    "Request expert validation",
+  "No expert decisions yet.":
+    "No expert decisions yet.",
+  "{{validated}}/{{quorum}} experts have validated":
+    "{{validated}}/{{quorum}} experts have validated",
+  "Validation decision recorded.":
+    "Validation decision recorded.",
+  "Could not record the validation decision.":
+    "Could not record the validation decision.",
+  "Decision":
+    "Decision",
+  "Comment (at least 10 characters)":
+    "Comment (at least 10 characters)",
+  "Suggested changes (optional)":
+    "Suggested changes (optional)",
+  "Record decision":
+    "Record decision",
+  "Gap validation queue":
+    "Gap validation queue",
+  "Research gaps whose owners asked verified experts for a decision. Gaps from your own projects are not shown.":
+    "Research gaps whose owners asked verified experts for a decision. Gaps from your own projects are not shown.",
+  "This page is for verified experts with research-gap validation rights.":
+    "This page is for verified experts with research-gap validation rights.",
+  "Could not load the validation queue.":
+    "Could not load the validation queue.",
+  "No research gaps are waiting for validation.":
+    "No research gaps are waiting for validation.",
+  "Established knowledge":
+    "Established knowledge",
+  "Observed limitation":
+    "Observed limitation",
+  "Missing evidence":
+    "Missing evidence",
+  "Why it matters":
+    "Why it matters",
+  "Suggested research question":
+    "Suggested research question",
+  "AI-assisted":
+    "AI-assisted",
+  "You already responded":
+    "You already responded",
+  "{{count}} evidence record(s)":
+    "{{count}} evidence record(s)",
+  "{{count}} expert decision(s)":
+    "{{count}} expert decision(s)",
+  "Hide evidence and decision":
+    "Hide evidence and decision",
+  "Review evidence and decide":
+    "Review evidence and decide",
+  "Linked evidence":
+    "Linked evidence",
+  "No structured evidence is linked yet.":
+    "No structured evidence is linked yet.",
 } as const;
 
 export const gapEvidenceWorkflowViStrings: Record<
@@ -372,6 +472,14 @@ export const gapEvidenceWorkflowViStrings: Record<
   "Clear search": "Xóa nội dung tìm kiếm",
   "Close details": "Đóng chi tiết",
   "Confidence": "Độ tin cậy",
+  "Counted over {{count}} corpus papers": "Đếm trên {{count}} bài của kho dữ liệu",
+  "Counting scope not recorded (gap created before this update)":
+    "Phạm vi đếm chưa được ghi nhận (gap tạo trước bản cập nhật)",
+  "In this project's literature ({{count}} papers)": "Trong tài liệu của dự án ({{count}} bài)",
+  "Intersection: {{intersection}} · Topic A: {{a}} · Topic B: {{b}}":
+    "Giao nhau: {{intersection}} · Chủ đề A: {{a}} · Chủ đề B: {{b}}",
+  "Context only. It is not the basis for the Confirmed label, which always uses the whole corpus.":
+    "Chỉ để tham khảo. Đây không phải căn cứ gắn nhãn Đã xác minh; nhãn này luôn dựa trên toàn bộ kho dữ liệu.",
   "Confirmed": "Đã xác minh",
   "Confirmed by corpus": "Đã xác minh bằng kho dữ liệu",
   "Corpus Evidence": "Bằng chứng trong kho dữ liệu",
@@ -509,12 +617,104 @@ export const gapEvidenceWorkflowViStrings: Record<
   "Low sample": "Mẫu quá nhỏ",
   "Corpus evidence": "Bằng chứng từ kho dữ liệu",
   "Insufficient data": "Chưa đủ dữ liệu",
-  "Corpus evidence score: how scarce the topic intersection is in this project's papers and whether a parent topic is rising. Not the AI's self-reported confidence.":
-    "Điểm bằng chứng từ kho dữ liệu: mức độ hiếm của giao điểm hai chủ đề trong các bài của project và chủ đề cha có đang tăng hay không. Không phải độ tự tin do AI tự đánh giá.",
-  "No papers in this project match \"{{topic}}\". Add related papers to score this gap.":
-    "Không có bài nào trong project khớp với \"{{topic}}\". Hãy thêm bài liên quan để chấm điểm khoảng trống này.",
-  "Only {{count}} paper(s) in this project match \"{{topic}}\". Add related papers before trusting this score.":
-    "Chỉ có {{count}} bài trong project khớp với \"{{topic}}\". Hãy thêm bài liên quan trước khi tin vào điểm này.",
-  "A probe topic has too few matching papers, so this evidence score is not reliable yet. Add related papers and re-run the analysis.":
-    "Một chủ đề probe có quá ít bài khớp, nên điểm bằng chứng này chưa đáng tin. Hãy thêm bài liên quan rồi chạy lại phân tích.",
+  "Corpus evidence score: how scarce the topic intersection is across the whole LumiGap corpus and whether a parent topic is rising. Not the AI's self-reported confidence.":
+    "Điểm bằng chứng từ kho dữ liệu: mức độ hiếm của giao điểm hai chủ đề trên toàn bộ kho dữ liệu LumiGap và chủ đề cha có đang tăng hay không. Không phải độ tự tin do AI tự đánh giá.",
+  "No corpus papers match \"{{topic}}\" yet, so this gap cannot be scored.":
+    "Chưa có bài nào trong kho dữ liệu khớp với \"{{topic}}\", nên chưa thể chấm điểm khoảng trống này.",
+  "Only {{count}} corpus paper(s) match \"{{topic}}\". Treat this score with caution.":
+    "Chỉ có {{count}} bài trong kho dữ liệu khớp với \"{{topic}}\". Hãy thận trọng khi dùng điểm này.",
+  "A probe topic has too few matching corpus papers, so treat this evidence score with caution.":
+    "Một chủ đề probe có quá ít bài khớp trong kho dữ liệu, nên hãy thận trọng khi dùng điểm bằng chứng này.",
+  "Gap status":
+    "Trạng thái khoảng trống",
+  "Filters by the corpus evidence score, or the AI's confidence when a gap has no evidence score.":
+    "Lọc theo điểm bằng chứng từ kho dữ liệu, hoặc độ tự tin của AI khi khoảng trống chưa có điểm bằng chứng.",
+  "Min evidence score: {{value}}%":
+    "Điểm bằng chứng tối thiểu: {{value}}%",
+  "Minimum evidence score":
+    "Điểm bằng chứng tối thiểu",
+  "Close gap analysis":
+    "Đóng phân tích khoảng trống",
+  "No research gaps with this status":
+    "Không có khoảng trống nghiên cứu nào ở trạng thái này",
+  "Pick an included paper from this project to add to the evidence set.":
+    "Chọn một bài đã được INCLUDED trong project để thêm vào tập bằng chứng.",
+  "Add a paper from this project":
+    "Thêm bài báo từ project",
+  "Filter included papers by title or DOI":
+    "Lọc các bài INCLUDED theo tiêu đề hoặc DOI",
+  "No included project papers match. Screen more papers as INCLUDED in the Papers tab.":
+    "Không có bài INCLUDED nào khớp. Hãy sàng lọc thêm bài là INCLUDED ở tab Papers.",
+  "Validate":
+    "Xác nhận",
+  "Challenge":
+    "Phản biện",
+  "Request evidence":
+    "Yêu cầu thêm bằng chứng",
+  "Suggest evidence":
+    "Gợi ý bằng chứng",
+  "Refine scope":
+    "Thu hẹp phạm vi",
+  "Validation requested. Verified experts can now review this gap.":
+    "Đã gửi yêu cầu thẩm định. Chuyên gia đã xác minh giờ có thể xem khoảng trống này.",
+  "Could not request expert validation.":
+    "Không thể gửi yêu cầu thẩm định.",
+  "Expert validation":
+    "Thẩm định của chuyên gia",
+  "Requesting validation shares this gap and its linked evidence with verified experts who hold research-gap validation rights.":
+    "Gửi yêu cầu thẩm định sẽ chia sẻ khoảng trống này và các bằng chứng đã liên kết với các chuyên gia đã xác minh có quyền thẩm định khoảng trống nghiên cứu.",
+  "Request expert validation":
+    "Yêu cầu chuyên gia thẩm định",
+  "No expert decisions yet.":
+    "Chưa có chuyên gia nào đưa ra quyết định.",
+  "{{validated}}/{{quorum}} experts have validated":
+    "{{validated}}/{{quorum}} chuyên gia xác nhận",
+  "Validation decision recorded.":
+    "Đã ghi nhận quyết định thẩm định.",
+  "Could not record the validation decision.":
+    "Không thể ghi nhận quyết định thẩm định.",
+  "Decision":
+    "Quyết định",
+  "Comment (at least 10 characters)":
+    "Nhận xét (ít nhất 10 ký tự)",
+  "Suggested changes (optional)":
+    "Đề xuất chỉnh sửa (không bắt buộc)",
+  "Record decision":
+    "Ghi nhận quyết định",
+  "Gap validation queue":
+    "Hàng đợi thẩm định khoảng trống",
+  "Research gaps whose owners asked verified experts for a decision. Gaps from your own projects are not shown.":
+    "Các khoảng trống nghiên cứu mà người tạo đã yêu cầu chuyên gia thẩm định. Khoảng trống thuộc project của bạn không được hiển thị.",
+  "This page is for verified experts with research-gap validation rights.":
+    "Trang này dành cho chuyên gia đã xác minh có quyền thẩm định khoảng trống nghiên cứu.",
+  "Could not load the validation queue.":
+    "Không thể tải hàng đợi thẩm định.",
+  "No research gaps are waiting for validation.":
+    "Hiện không có khoảng trống nào chờ thẩm định.",
+  "Established knowledge":
+    "Kiến thức đã được xác lập",
+  "Observed limitation":
+    "Hạn chế quan sát được",
+  "Missing evidence":
+    "Bằng chứng còn thiếu",
+  "Why it matters":
+    "Vì sao quan trọng",
+  "Suggested research question":
+    "Câu hỏi nghiên cứu gợi ý",
+  "AI-assisted":
+    "Có AI hỗ trợ",
+  "You already responded":
+    "Bạn đã phản hồi",
+  "{{count}} evidence record(s)":
+    "{{count}} bằng chứng",
+  "{{count}} expert decision(s)":
+    "{{count}} quyết định của chuyên gia",
+  "Hide evidence and decision":
+    "Ẩn bằng chứng và quyết định",
+  "Review evidence and decide":
+    "Xem bằng chứng và quyết định",
+  "Linked evidence":
+    "Bằng chứng đã liên kết",
+  "No structured evidence is linked yet.":
+    "Chưa có bằng chứng có cấu trúc nào được liên kết.",
 };
