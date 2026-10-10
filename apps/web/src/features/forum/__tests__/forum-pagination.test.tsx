@@ -65,11 +65,19 @@ describe("Forum readability and locale", () => {
     expect(formatForumCompactNumber(999, "vi")).toBe("999");
     expect(formatForumNumber(1034, "vi")).toBe("1.034");
   });
-  it("keeps role and institution once, with verification behind an accessible control", () => {
-    const markup = renderToStaticMarkup(<ForumAuthorByline author={{ id: "author", fullName: "Researcher", institution: "FPT University", positionTitle: "Senior Lecturer", affiliationVerified: true, positionVerified: true }} />);
+  it("keeps the role and institution compact with details behind an accessible profile control", () => {
+    const markup = renderToStaticMarkup(<ForumAuthorByline author={{ id: "author", fullName: "Researcher", academicRole: "LECTURER", institution: "FPT University", positionTitle: "Senior Lecturer", affiliationVerified: true, positionVerified: true }} />);
     expect(markup.match(/FPT University/g)).toHaveLength(1);
-    expect(markup.match(/Senior Lecturer/g)).toHaveLength(1);
-    expect(markup).toContain('aria-label="Affiliation verified · Position verified"');
+    expect(markup.match(/Lecturer/g)).toHaveLength(1);
+    expect(markup).not.toContain("Senior Lecturer");
+    expect(markup).toContain('aria-label="View author profile"');
+    expect(markup).toContain('aria-haspopup="dialog"');
+    expect(markup).toContain('href="/academics/author"');
+    expect(markup).not.toContain('aria-label="FPT Education affiliation verified"');
+  });
+  it("shows the FPT affiliation label only when that affiliation is explicitly verified", () => {
+    const markup = renderToStaticMarkup(<ForumAuthorByline author={{ id: "author", fullName: "Researcher", academicRole: "LECTURER", institution: "FPT University", fptAffiliationVerified: true }} />);
+    expect(markup).toContain('aria-label="FPT Education affiliation verified"');
   });
   it("caps prose measure without allowing raw HTML execution", () => {
     const markup = renderToStaticMarkup(<ForumMarkdown content={'A readable paragraph.\n\n<script>alert(1)</script>\n\n[link](javascript:alert(1))'} />);

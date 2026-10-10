@@ -93,6 +93,27 @@ describe("initial interface language", () => {
   });
 });
 
+describe("UI string collection", () => {
+  it("collects rendered branches without treating comparison values as copy", () => {
+    const strings = new Set<string>();
+    scanSourceText("fixture.tsx", `
+      const view = <p>{mime === "application/pdf" ? "Download private document" : "Preview image"}</p>;
+      const status = <p>{["PENDING", "FAILED"].includes(state) && "Try again"}</p>;
+    `, strings);
+    expect([...strings].sort()).toEqual(["Download private document", "Preview image", "Try again"]);
+  });
+
+  it("still collects translated labels and text returned from mapped items", () => {
+    const strings = new Set<string>();
+    scanSourceText("fixture.tsx", `
+      const view = <>{t("Review decision")}{items.map(item =>
+        item.kind === "RELATIONSHIP" ? "Mentorship active" : "Request pending"
+      )}</>;
+    `, strings);
+    expect([...strings].sort()).toEqual(["Mentorship active", "Request pending", "Review decision"]);
+  });
+});
+
 function collectUiStrings(root: string) {
   const strings = new Set<string>();
 
@@ -114,6 +135,10 @@ function collectUiStrings(root: string) {
 
 function scanSourceFile(filePath: string, strings: Set<string>) {
   const source = readFileSync(filePath, "utf8");
+  scanSourceText(filePath, source, strings);
+}
+
+function scanSourceText(filePath: string, source: string, strings: Set<string>) {
   const sourceFile = ts.createSourceFile(
     filePath,
     source,
@@ -171,10 +196,21 @@ function nearestJsxAttribute(node: ts.Node) {
 }
 
 function isInJsxChildExpression(node: ts.Node) {
+  let child = node;
   let current = node.parent;
   while (current) {
     if (ts.isJsxExpression(current)) return !nearestJsxAttribute(current);
     if (ts.isJsxAttribute(current)) return false;
+    if (ts.isConditionalExpression(current) && current.condition === child) return false;
+    if (ts.isBinaryExpression(current)) {
+      const operator = current.operatorToken.kind;
+      if ([ts.SyntaxKind.EqualsEqualsToken, ts.SyntaxKind.EqualsEqualsEqualsToken,
+        ts.SyntaxKind.ExclamationEqualsToken, ts.SyntaxKind.ExclamationEqualsEqualsToken,
+        ts.SyntaxKind.GreaterThanToken, ts.SyntaxKind.GreaterThanEqualsToken,
+        ts.SyntaxKind.LessThanToken, ts.SyntaxKind.LessThanEqualsToken].includes(operator)) return false;
+      if (operator === ts.SyntaxKind.AmpersandAmpersandToken && current.left === child) return false;
+    }
+    child = current;
     current = current.parent;
   }
   return false;
