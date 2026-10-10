@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { Paper, PaperRef } from "@trend/shared-types";
 import { AppError } from "../../common/exceptions/app-error.js";
 import { normalizeAcademicTitle } from "../../common/text/academic-text.js";
@@ -5,12 +6,14 @@ import { parseDatabaseId, publicDatabaseId } from "../../infrastructure/database
 import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { pdfStorageService } from "../../infrastructure/pdf-storage.service.js";
 import { creditService } from "../credits/credit.service.js";
+import { getAiActionCost } from "../credits/credit-policy.js";
 import { notificationService } from "../notifications/notification.service.js";
 import { tokenService } from "../auth/token.service.js";
 import type { CreatePaperInput } from "./dto/create-paper.schema.js";
 import type { SearchSortKey } from "./dto/paper-filters.schema.js";
 import type { PaperFilterInput } from "./paper-filter.match.js";
 import { calculatePaperQuality } from "./paper-quality.js";
+import { isAllowedAdminPaperStatusChange, isCancellablePaperRequest, type PaperRequestStatus } from "./paper-workflow.js";
 import { presentPaperDetail, type PaperDetailDto } from "./paper.presenter.js";
 
 export interface ListPapersParams extends PaperFilterInput { q?: string; page: number; pageSize: number; sort?: SearchSortKey }
@@ -19,6 +22,9 @@ export interface CountPapersParams { topic?: string; yearFrom?: number; yearTo?:
 export interface AdminListPapersParams { status?: string; search?: string; kind?: "normal" | "pdf"; page: number; pageSize: number }
 interface AdminListPapersResult extends ListPapersResult { normalTotal: number; pdfTotal: number }
 export interface PaperDetailViewer { userId?: string; role?: string }
+
+/** Idempotency key of the credit charge for one paper request. */
+const paperRequestChargeKey = (paperId: string) => `paper-request:${paperId}`;
 
 function idWhere(value: string): { id: string } | { legacyMongoId: string } | null {
   const parsed = parseDatabaseId(value);
@@ -119,12 +125,15 @@ export const paperService = {
 
   async create(userId: string, isAdmin: boolean, input: CreatePaperInput, pdfPath?: string) {
     const user = await resolveUser(userId); const duplicate = await getPrisma().paper.findFirst({ where: { OR: [{ doi: input.doi.toLowerCase() }, { title: { equals: input.title, mode: "insensitive" } }] } }); if (duplicate) throw AppError.conflict("A paper with the same DOI or title already exists");
-    if (!isAdmin) await creditService.chargeCreditsChecked({ userId, action: "paper_request", amount: 100, targetKind: "paper", idempotencyKey: `paper-request:${user.id}:${input.doi.toLowerCase()}` });
+    // The charge is keyed by the new paper's id so a refunded request never makes the next one free.
+    const paperId = randomUUID(); const charge = isAdmin ? null : await creditService.chargeCreditsChecked({ userId, action: "paper_request", amount: getAiActionCost("paper_request"), idempotencyKey: paperRequestChargeKey(paperId), metadata: { doi: input.doi.toLowerCase() } });
     const quality = calculatePaperQuality(input as never);
-    const row = await getPrisma().$transaction(async (tx) => { const created = await tx.paper.create({ data: { doi: input.doi.toLowerCase(), title: input.title, abstractText: input.abstractText, publicationYear: input.publicationYear, paperKind: input.paperKind, paperLink: input.paperLink, openAccessUrl: input.openAccessUrl || null, openAccessStatus: input.openAccessUrl ? "green" : "unknown", primaryProvider: "user", requestedById: user.id, uploadedById: pdfPath ? user.id : null, uploadedAt: pdfPath ? new Date() : null, pdfPath, paperStatus: pdfPath ? "pending" : "not-downloaded", dataStatus: "draft", dataQualityScore: quality.qualityScore / 100, isAiAnalyzable: false, metadataScore: quality.metadataScore, sourceScore: quality.sourceScore, duplicateScore: quality.duplicateScore, relevanceScore: quality.relevanceScore, prestigeScore: quality.prestigeScore, utilityScore: quality.utilityScore, qualityScore: quality.qualityScore, qualityTier: quality.qualityTier, qualityTierName: quality.qualityTierName } });
+    let row: Awaited<ReturnType<ReturnType<typeof getPrisma>["paper"]["create"]>>;
+    try { row = await getPrisma().$transaction(async (tx) => { const created = await tx.paper.create({ data: { id: paperId, doi: input.doi.toLowerCase(), title: input.title, abstractText: input.abstractText, publicationYear: input.publicationYear, paperKind: input.paperKind, paperLink: input.paperLink, openAccessUrl: input.openAccessUrl || null, openAccessStatus: input.openAccessUrl ? "green" : "unknown", primaryProvider: "user", requestedById: user.id, uploadedById: pdfPath ? user.id : null, uploadedAt: pdfPath ? new Date() : null, pdfPath, paperStatus: pdfPath ? "pending" : "not-downloaded", dataStatus: "draft", dataQualityScore: quality.qualityScore / 100, isAiAnalyzable: false, metadataScore: quality.metadataScore, sourceScore: quality.sourceScore, duplicateScore: quality.duplicateScore, relevanceScore: quality.relevanceScore, prestigeScore: quality.prestigeScore, utilityScore: quality.utilityScore, qualityScore: quality.qualityScore, qualityTier: quality.qualityTier, qualityTierName: quality.qualityTierName } });
       await tx.paperAuthor.createMany({ data: input.authors.map((author, index) => ({ paperId: created.id, displayName: author.displayName, position: index, isCorresponding: author.isCorresponding })) });
       await tx.paperKeyword.createMany({ data: input.keywords.map((keyword, index) => ({ paperId: created.id, keywordName: keyword.keywordName, detectedBy: "user", position: index })) });
       if (input.topics.length) await tx.paperTopic.createMany({ data: input.topics.map((topic, index) => ({ paperId: created.id, topicName: topic.topicName, detectedBy: "user", position: index })) }); return created; });
+    } catch (error) { if (charge?.id) await creditService.refundCreditsOnce({ transactionId: charge.id, reason: "Failed to create paper request" }); throw error; }
     await notificationService.create({ role: "admin", title: "New paper submission request", message: `${user.fullName} submitted “${row.title}”.`, type: "paper_submission", targetKind: "paper", targetId: row.id }); return (await hydratePapers([row], true))[0]!;
   },
   async getMyPapers(userId: string) { const user = await resolveUser(userId); return hydratePapers(await getPrisma().paper.findMany({ where: { OR: [{ requestedById: user.id }, { uploadedById: user.id }] }, orderBy: { createdAt: "desc" } }), true); },
@@ -134,8 +143,15 @@ export const paperService = {
   async uploadPdf(paperId: string, uploaderId: string, uploaderRole: string, pdfPath: string) { const paper = await this.assertCanUploadPdf(paperId, uploaderId, uploaderRole); const user = await resolveUser(uploaderId); if (paper.pdfPath) await pdfStorageService.deletePdf(paper.pdfPath); const updated = await getPrisma().paper.update({ where: { id: paper.id }, data: { pdfPath, uploadedById: user.id, uploadedAt: new Date(), paperStatus: paper.requestedById === user.id ? "pending" : "pending-requester-acceptance" } }); return (await hydratePapers([updated], true))[0]!; },
   async acceptPdf(paperId: string, requesterId: string) { const [paper, user] = await Promise.all([resolvePaper(paperId), resolveUser(requesterId)]); if (!paper) throw AppError.notFound("Paper not found"); if (paper.requestedById !== user.id) throw AppError.forbidden(); if (!paper.pdfPath) throw AppError.badRequest("No PDF is available"); const updated = await getPrisma().paper.update({ where: { id: paper.id }, data: { paperStatus: "downloaded", dataStatus: "active" } }); return (await hydratePapers([updated], true))[0]!; },
   async rejectPdf(paperId: string, requesterId: string) { const [paper, user] = await Promise.all([resolvePaper(paperId), resolveUser(requesterId)]); if (!paper) throw AppError.notFound("Paper not found"); if (paper.requestedById !== user.id) throw AppError.forbidden(); if (paper.pdfPath) await pdfStorageService.deletePdf(paper.pdfPath); const updated = await getPrisma().paper.update({ where: { id: paper.id }, data: { pdfPath: null, uploadedById: null, uploadedAt: null, paperStatus: "not-downloaded" } }); return (await hydratePapers([updated], true))[0]!; },
-  async cancelRequest(paperId: string, userId: string) { const [paper, user] = await Promise.all([resolvePaper(paperId), resolveUser(userId)]); if (!paper) throw AppError.notFound("Paper not found"); if (paper.requestedById !== user.id) throw AppError.forbidden(); if (paper.pdfPath) await pdfStorageService.deletePdf(paper.pdfPath); await getPrisma().paper.delete({ where: { id: paper.id } }); },
-  async updateStatus(paperId: string, status: string, rejectionReason?: string) { const paper = await resolvePaper(paperId); if (!paper) throw AppError.notFound("Paper not found"); const updated = await getPrisma().paper.update({ where: { id: paper.id }, data: { paperStatus: status, rejectionReason: status === "rejected" ? rejectionReason : null, dataStatus: ["downloaded", "not-downloaded", "pending-requester-acceptance"].includes(status) ? "active" : status === "rejected" ? "low-quality" : "draft" } }); return (await hydratePapers([updated], true))[0]!; },
+  async cancelRequest(paperId: string, userId: string) {
+    const [paper, user] = await Promise.all([resolvePaper(paperId), resolveUser(userId)]); if (!paper) throw AppError.notFound("Paper not found"); if (paper.requestedById !== user.id) throw AppError.forbidden();
+    if (!isCancellablePaperRequest(paper)) throw AppError.conflict("This paper is already in the corpus and can no longer be cancelled");
+    // Requests created before charges were keyed by paper id used the requester + DOI key.
+    const charge = await getPrisma().creditTransaction.findFirst({ where: { userId: user.id, type: "charge", action: "paper_request", status: "applied", idempotencyKey: { in: [paperRequestChargeKey(paper.id), ...(paper.doi ? [`paper-request:${user.id}:${paper.doi}`] : [])] } } });
+    if (paper.pdfPath) await pdfStorageService.deletePdf(paper.pdfPath); await getPrisma().paper.delete({ where: { id: paper.id } });
+    if (charge) await creditService.refundCreditsOnce({ transactionId: charge.id, reason: "Paper request cancelled" });
+  },
+  async updateStatus(paperId: string, status: PaperRequestStatus, rejectionReason?: string) { const paper = await resolvePaper(paperId); if (!paper) throw AppError.notFound("Paper not found"); if (!isAllowedAdminPaperStatusChange(paper.paperStatus, status)) throw AppError.conflict(`A paper cannot move from "${paper.paperStatus}" to "${status}"`); const updated = await getPrisma().paper.update({ where: { id: paper.id }, data: { paperStatus: status, rejectionReason: status === "rejected" ? rejectionReason : null, dataStatus: ["downloaded", "not-downloaded", "pending-requester-acceptance"].includes(status) ? "active" : status === "rejected" ? "low-quality" : "draft" } }); return (await hydratePapers([updated], true))[0]!; },
   async getPdfDownloadUrl(paperId: string, userId: string, userRole: string, baseUrl: string) { const paper = await resolvePaper(paperId); if (!paper?.pdfPath) throw AppError.notFound("PDF is not available for this paper"); await resolveUser(userId); if (paper.dataStatus !== "active" && userRole !== "admin") throw AppError.forbidden(); const id = publicDatabaseId(paper); const token = tokenService.signPurposeToken({ paperId: id, sub: userId }, "paper-download", "5m"); return { url: `${baseUrl}/api/v1/papers/${id}/download?token=${encodeURIComponent(token)}`, expiresInSeconds: 300 }; },
   async update(paperId: string, input: Record<string, unknown>) { const paper = await resolvePaper(paperId); if (!paper) throw AppError.notFound("Paper not found"); const uploader = input.uploadedBy ? await resolveUser(String(input.uploadedBy)) : undefined; const updated = await getPrisma().paper.update({ where: { id: paper.id }, data: { ...cleanUpdate(input), ...(uploader ? { uploadedById: uploader.id } : {}) } }); return (await hydratePapers([updated], true))[0]!; },
   async deletePaper(paperId: string, userId: string, userRole: string) { const [paper, user] = await Promise.all([resolvePaper(paperId), resolveUser(userId)]); if (!paper) throw AppError.notFound("Paper not found"); if (userRole !== "admin" && paper.requestedById !== user.id) throw AppError.forbidden(); if (paper.pdfPath) await pdfStorageService.deletePdf(paper.pdfPath); await getPrisma().paper.delete({ where: { id: paper.id } }); },

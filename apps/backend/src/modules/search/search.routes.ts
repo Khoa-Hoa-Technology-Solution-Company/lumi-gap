@@ -1,5 +1,5 @@
 import { Router, type NextFunction, type Request, type Response } from "express";
-import rateLimit from "express-rate-limit";
+import { createRateLimiter } from "../../common/middleware/rate-limit.js";
 import { env } from "../../config/env.js";
 import { searchController } from "./search.controller.js";
 import { isRerankRequested } from "./dto/search.schema.js";
@@ -21,7 +21,7 @@ const conditionalSearchAuth = (req: Request, res: Response, next: NextFunction) 
  * a loop of random queries would be guaranteed misses and could drain the
  * team's shared free-tier quota. Throttle ONLY the rerank path, keyed by IP.
  */
-const rerankLimiter = rateLimit({
+const rerankLimiter = createRateLimiter("search:rerankLimiter", {
   windowMs: 60 * 60 * 1000,
   limit: env.RERANK_MAX_PER_HOUR,
   standardHeaders: true,
@@ -35,7 +35,7 @@ const rerankLimiter = rateLimit({
     }),
 });
 
-const semanticSearchLimiter = rateLimit({
+const semanticSearchLimiter = createRateLimiter("search:semanticSearchLimiter", {
   windowMs: 60 * 1000,
   limit: env.SEMANTIC_SEARCH_MAX_PER_MINUTE,
   standardHeaders: true,

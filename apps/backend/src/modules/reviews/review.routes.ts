@@ -1,4 +1,4 @@
-import rateLimit from "express-rate-limit";
+import { createRateLimiter } from "../../common/middleware/rate-limit.js";
 import { env } from "../../config/env.js";
 import { Router } from "express";
 import { z } from "zod";
@@ -89,19 +89,24 @@ const createTemplateSchema = templateVersionSchema.and(z.object({
   source: z.enum(["SYSTEM", "PERSONAL", "PROJECT"]), projectId: objectIdSchema.optional(), publish: z.boolean().optional(),
 }).strict());
 const templateParamsSchema = z.object({ templateId: objectIdSchema }).strict();
+const MAX_REVIEW_DUE_DAYS = 180;
+// A due date is what lets an abandoned accepted review be cancelled, so it must be a real future date.
+const reviewDueAtSchema = z.string().datetime()
+  .refine((value) => new Date(value).getTime() > Date.now(), "The due date must be in the future")
+  .refine((value) => new Date(value).getTime() <= Date.now() + MAX_REVIEW_DUE_DAYS * 24 * 60 * 60 * 1000, `The due date must be within ${MAX_REVIEW_DUE_DAYS} days`);
 const createRequestSchema = z.object({
   submissionId: objectIdSchema.optional(), reportId: objectIdSchema.optional(), reviewerId: objectIdSchema,
-  templateVersionId: objectIdSchema, message: z.string().trim().max(3000).optional(), dueAt: z.string().datetime().optional(),
+  templateVersionId: objectIdSchema, message: z.string().trim().max(3000).optional(), dueAt: reviewDueAtSchema,
 }).strict().refine((value) => Boolean(value.submissionId) !== Boolean(value.reportId), "Select exactly one artifact source");
 const createExternalInvitationSchema = z.object({
   submissionId: objectIdSchema.optional(), reportId: objectIdSchema.optional(),
   reviewerEmail: z.string().trim().email().max(320),
-  templateVersionId: objectIdSchema, message: z.string().trim().max(3000).optional(), dueAt: z.string().datetime().optional(),
+  templateVersionId: objectIdSchema, message: z.string().trim().max(3000).optional(), dueAt: reviewDueAtSchema.optional(),
 }).strict().refine((value) => Boolean(value.submissionId) !== Boolean(value.reportId), "Select exactly one artifact source");
 const requestParamsSchema = z.object({ requestId: objectIdSchema }).strict();
 const externalInvitationTokenParamsSchema = z.object({ token: z.string().min(32).max(256).regex(/^[A-Za-z0-9_-]+$/) }).strict();
 const declineRequestSchema = z.object({ reason: z.string().trim().max(2000).optional() }).strict();
-const reviewerQuerySchema = z.object({ q: z.string().trim().max(120).optional() }).strict();
+const reviewerQuerySchema = z.object({ q: z.string().trim().max(120).optional(), reportId: objectIdSchema.optional(), submissionId: objectIdSchema.optional() }).strict();
 const resubmitSchema = z.object({
   revisionId: objectIdSchema.optional(), reportId: objectIdSchema.optional(),
   responses: z.array(z.object({ revisionItemId: objectIdSchema, responseText: z.string().trim().min(3).max(10000) }).strict()).max(30),
@@ -176,7 +181,7 @@ reviewTemplateRouter.post("/:templateId/archive", validate(templateParamsSchema,
 });
 
 export const reviewRequestRouter: Router = Router();
-const requestLimiter = rateLimit({ windowMs: 3600000, limit: env.ACADEMIC_RELATIONSHIP_REQUEST_LIMIT, standardHeaders: true, legacyHeaders: false, keyGenerator: req => req.user!.sub });
+const requestLimiter = createRateLimiter("reviews:requestLimiter", { windowMs: 3600000, limit: env.ACADEMIC_RELATIONSHIP_REQUEST_LIMIT, standardHeaders: true, legacyHeaders: false, keyGenerator: req => req.user!.sub });
 reviewRequestRouter.get("/external-invitations/:token", validate(externalInvitationTokenParamsSchema, "params"), async (req, res) => {
   res.json({ success: true, data: await reviewRequestService.externalInvitationPreview(String(req.params.token)) });
 });
@@ -190,7 +195,7 @@ reviewRequestRouter.post("/external-invitations/:token/accept", validate(externa
   res.json({ success: true, data });
 });
 reviewRequestRouter.get("/reviewers", validate(reviewerQuerySchema, "query"), async (req, res) => {
-  res.json({ success: true, data: await reviewRequestService.reviewerCandidates(req.user!.sub, String(req.query.q ?? "") || undefined) });
+  res.json({ success: true, data: await reviewRequestService.reviewerCandidates(req.user!.sub, String(req.query.q ?? "") || undefined, { reportId: req.query.reportId ? String(req.query.reportId) : undefined, submissionId: req.query.submissionId ? String(req.query.submissionId) : undefined }) });
 });
 reviewRequestRouter.get("/", async (req, res) => {
   res.json({ success: true, data: await reviewRequestService.listCenter(req.user!.sub) });

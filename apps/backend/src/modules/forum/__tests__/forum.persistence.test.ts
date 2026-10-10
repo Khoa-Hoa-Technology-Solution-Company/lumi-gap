@@ -784,6 +784,21 @@ describe.sequential("research forum persistence and authorization", () => {
     } finally { await prisma.community.update({ where: { id: communityId }, data: { status: "ACTIVE", visibility: "public", isForumCategory: true } }); }
   });
 
+  it("fails closed on an unknown community visibility instead of exposing its posts", async () => {
+    const prisma = getPrisma();
+    const topic = await forumService.createPost({ communityId, title: `Unknown visibility ${marker}`, content: "Scope check" }, authorId);
+    postIds.push(topic.id);
+    await prisma.$executeRaw`UPDATE communities SET is_forum_category = false, visibility = 'weird' WHERE id = ${communityId}::uuid`;
+    try {
+      await expect(forumService.getPost(topic.id, outsiderId, "user")).rejects.toMatchObject({ statusCode: 403 });
+      // A non-category community is not addressable as a forum category, so listing must not surface its posts either.
+      const query = `Unknown visibility ${marker}`;
+      expect((await forumService.listPosts({ query }, 1, 20, outsiderId, "user")).data).toEqual([]);
+      expect((await forumService.listPosts({ query }, 1, 20)).data).toEqual([]);
+      expect((await forumService.getPost(topic.id, authorId, "user")).id).toBe(topic.id);
+    } finally { await prisma.community.update({ where: { id: communityId }, data: { visibility: "public", isForumCategory: true } }); }
+  });
+
   it("ranks Popular by existing engagement deterministically without evidence/confidence inputs", async () => {
     const prisma = getPrisma();
     const query = `Sidebar ranking ${marker}`;

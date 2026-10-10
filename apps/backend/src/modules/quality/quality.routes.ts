@@ -1,5 +1,5 @@
 import { Router } from "express";
-import rateLimit from "express-rate-limit";
+import { createRateLimiter } from "../../common/middleware/rate-limit.js";
 import { env } from "../../config/env.js";
 import { requireAuth, requireRole } from "../../common/middleware/auth.js";
 import { validate } from "../../common/middleware/validate.js";
@@ -10,7 +10,7 @@ import { EvaluateSchema, RateSchema, TargetParamsSchema } from "./dto/quality.sc
  * Quality & Feedback routes. All require auth. `/evaluate` fires a Gemini
  * generate call, so it is throttled per user; `/agreement` is admin-only.
  */
-const evalLimiter = rateLimit({
+const evalLimiter = createRateLimiter("quality:evalLimiter", {
   windowMs: 60 * 60 * 1000,
   limit: env.QUALITY_EVAL_MAX_PER_HOUR,
   standardHeaders: true,
@@ -25,7 +25,7 @@ const evalLimiter = rateLimit({
 
 // Throttle /rate too — without it (and after the rating doc became upsert) a script
 // could still hammer the endpoint to farm points across many targets or DoS the DB.
-const rateLimiter = rateLimit({
+const rateLimiter = createRateLimiter("quality:rateLimiter", {
   windowMs: 60 * 60 * 1000,
   limit: 60, // generous for genuine rating; blocks spam/farming loops
   standardHeaders: true,

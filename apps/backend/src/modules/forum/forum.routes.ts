@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { randomUUID } from "node:crypto";
-import rateLimit from "express-rate-limit";
+import { createRateLimiter } from "../../common/middleware/rate-limit.js";
 import { z } from "zod";
 import { optionalAuth, requireVerifiedAuth as requireAuth } from "../../common/middleware/auth.js";
 import { requirePermission } from "../../common/middleware/permission.js";
@@ -143,7 +143,7 @@ const reviewAsEvidenceSchema = z.object({
   confirmRelation: z.boolean().optional(),
 }).strict();
 
-const forumWriteLimiter = rateLimit({
+const forumWriteLimiter = createRateLimiter("forum:forumWriteLimiter", {
   windowMs: 60_000,
   limit: 60,
   standardHeaders: true,
@@ -169,12 +169,12 @@ const copyrightClaimSchema = z.object({
 }).strict();
 const copyrightVerifySchema = z.object({ token: z.string().trim().min(32).max(256) }).strict();
 const accountLimit = (req: Request) => req.user?.accountStatus === "ACTIVE" ? env.FORUM_RATE_LIMIT_VERIFIED : env.FORUM_RATE_LIMIT_UNVERIFIED;
-const threadCreateLimiter = rateLimit({ windowMs: 10 * 60_000, limit: accountLimit, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => req.user?.sub ?? req.ip ?? "anonymous" });
-const responseLimiter = rateLimit({ windowMs: 60_000, limit: accountLimit, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => req.user?.sub ?? req.ip ?? "anonymous" });
-const voteLimiter = rateLimit({ windowMs: 60_000, limit: 90, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => req.user?.sub ?? req.ip ?? "anonymous" });
-const reportLimiter = rateLimit({ windowMs: 60 * 60_000, limit: accountLimit, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => req.user?.sub ?? req.ip ?? "anonymous" });
-const copyrightIpLimiter = rateLimit({ windowMs: 60 * 60_000, limit: env.FORUM_COPYRIGHT_PUBLIC_RATE_LIMIT, standardHeaders: true, legacyHeaders: false });
-const copyrightEmailLimiter = rateLimit({ windowMs: 60 * 60_000, limit: env.FORUM_COPYRIGHT_PUBLIC_RATE_LIMIT, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => String((req.body as { claimantEmail?: string } | undefined)?.claimantEmail ?? "missing").trim().toLowerCase() });
+const threadCreateLimiter = createRateLimiter("forum:threadCreateLimiter", { windowMs: 10 * 60_000, limit: accountLimit, keyGenerator: (req) => req.user?.sub ?? req.ip ?? "anonymous" });
+const responseLimiter = createRateLimiter("forum:responseLimiter", { windowMs: 60_000, limit: accountLimit, keyGenerator: (req) => req.user?.sub ?? req.ip ?? "anonymous" });
+const voteLimiter = createRateLimiter("forum:voteLimiter", { windowMs: 60_000, limit: 90, keyGenerator: (req) => req.user?.sub ?? req.ip ?? "anonymous" });
+const reportLimiter = createRateLimiter("forum:reportLimiter", { windowMs: 60 * 60_000, limit: accountLimit, keyGenerator: (req) => req.user?.sub ?? req.ip ?? "anonymous" });
+const copyrightIpLimiter = createRateLimiter("forum:copyrightIpLimiter", { windowMs: 60 * 60_000, limit: env.FORUM_COPYRIGHT_PUBLIC_RATE_LIMIT });
+const copyrightEmailLimiter = createRateLimiter("forum:copyrightEmailLimiter", { windowMs: 60 * 60_000, limit: env.FORUM_COPYRIGHT_PUBLIC_RATE_LIMIT, keyGenerator: (req) => String((req.body as { claimantEmail?: string } | undefined)?.claimantEmail ?? "missing").trim().toLowerCase() });
 const validatePostInput = validate(postInputSchema as unknown as z.ZodSchema<unknown>);
 const validatePostUpdate = validate(postUpdateSchema as unknown as z.ZodSchema<unknown>);
 const validateCommentInput = validate(commentSchema as unknown as z.ZodSchema<unknown>);
@@ -198,8 +198,8 @@ function forumViewerKey(req: Request, res: Response) {
 
 export const forumRouter: Router = Router();
 const paperDoiSchema = z.object({ doi: z.string().trim().min(1).max(300) }).strict();
-const paperLookupLimiter = rateLimit({ windowMs: 60_000, limit: 15, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => req.user?.sub ?? req.ip ?? "anonymous" });
-const paperSearchLimiter = rateLimit({ windowMs: 60_000, limit: 60, standardHeaders: true, legacyHeaders: false, keyGenerator: (req) => req.user?.sub ?? req.ip ?? "anonymous" });
+const paperLookupLimiter = createRateLimiter("forum:paperLookupLimiter", { windowMs: 60_000, limit: 15, keyGenerator: (req) => req.user?.sub ?? req.ip ?? "anonymous" });
+const paperSearchLimiter = createRateLimiter("forum:paperSearchLimiter", { windowMs: 60_000, limit: 60, keyGenerator: (req) => req.user?.sub ?? req.ip ?? "anonymous" });
 forumRouter.get("/papers/search", requireAuth, paperSearchLimiter, validate(z.object({ q: z.string().trim().min(3).max(160) }).strict(), "query"), async (req, res) => {
   res.json({ success: true, data: await forumPaperService.search(req.query.q as string) });
 });

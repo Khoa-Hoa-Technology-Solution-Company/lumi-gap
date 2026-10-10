@@ -7,7 +7,7 @@ import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { logger } from "../../infrastructure/logger.js";
 import type { Prisma } from "../../generated/prisma/client.js";
 import { auditService } from "../audit/audit.service.js";
-import { getActiveCommunityMembership, isCommunityModerator } from "../communities/community.service.js";
+import { getActiveCommunityMembership, isCommunityModerator, narrowVisibility } from "../communities/community.service.js";
 import { resolveForumCategory } from "./forum-category.service.js";
 import { notificationService } from "../notifications/notification.service.js";
 import {
@@ -21,6 +21,7 @@ import {
   normalizeForumTags,
 } from "./forum.rules.js";
 import { structuredEvidenceItems } from "../gaps/structured-evidence.js";
+import { findGapCorpusPaper } from "../gaps/gap-corpus.js";
 import { forumDiscoveryTags, forumDiscoveryTerms, forumRelatedReason, type ForumDiscoveryReason } from "./forum-discovery.js";
 import { allocateForumSlug, withSlugRetry } from "./forum-slugs.js";
 import { forumModerationService } from "./forum-moderation.service.js";
@@ -130,7 +131,7 @@ async function assertCanPostToCommunity(communityId: string | undefined): Promis
 async function assertCanViewCommunity(communityId: string | undefined, userId?: string, role?: UserRole): Promise<void> {
   if (!communityId) return;
   const community = await resolveCommunity(communityId);
-  if (community.visibility === "private" && role !== "admin" && (!userId || !(await getActiveCommunityMembership(community.id, userId)))) {
+  if (narrowVisibility(community.visibility) === "private" && role !== "admin" && (!userId || !(await getActiveCommunityMembership(community.id, userId)))) {
     throw AppError.forbidden("This community is private");
   }
 }
@@ -192,9 +193,7 @@ async function resolveForumCitationReviewContext(gapInput: string, referenceInpu
   if (gap.projectId && requestedProject && requestedProject.id !== gap.projectId) throw AppError.badRequest("Evidence for this candidate gap must use its owning project");
   await projectAccess(projectId, actor);
   const projectPaper = await prisma.projectPaper.findUnique({ where: { projectId_paperId: { projectId, paperId: paper.id } } });
-  const corpusPaper = gap.corpusId
-    ? await prisma.corpusPaper.findUnique({ where: { corpusId_paperId: { corpusId: gap.corpusId, paperId: paper.id } } })
-    : null;
+  const corpusPaper = await findGapCorpusPaper(gap, paper.id);
   const extractedEvidence = (corpusPaper?.included ? structuredEvidenceItems(corpusPaper.evidence) : []) as GapStructuredEvidenceItem[];
   return { actor, gap, reference, comment, post, paper, projectId, projectPaper, corpusPaper, extractedEvidence };
 }
@@ -981,7 +980,7 @@ export const forumService = {
 
   async forumCitationEvidenceOptions(gapInput: string, referenceInput: string, projectInput: string | undefined, actorInput: string) {
     const context = await resolveForumCitationReviewContext(gapInput, referenceInput, projectInput, actorInput);
-    const { gap, paper, projectId, projectPaper, extractedEvidence } = context;
+    const { paper, projectId, projectPaper, corpusPaper, extractedEvidence } = context;
     if (!projectPaper) {
       return {
         status: "SCREENING_REQUIRED",
@@ -1006,7 +1005,7 @@ export const forumService = {
       return {
         status: "EVIDENCE_EXTRACTION_REQUIRED",
         projectId,
-        corpusId: gap.corpusId ? publicDatabaseId({ id: gap.corpusId }) : undefined,
+        corpusId: corpusPaper ? publicDatabaseId({ id: corpusPaper.corpusId }) : undefined,
         paper: { id: publicDatabaseId(paper), title: paper.title },
         projectPaper: { id: projectPaper.id, screeningStatus: projectPaper.screeningStatus },
         extractedEvidence: [],
@@ -1016,7 +1015,7 @@ export const forumService = {
     return {
       status: "EVIDENCE_SELECTION_REQUIRED",
       projectId,
-      corpusId: gap.corpusId ? publicDatabaseId({ id: gap.corpusId }) : undefined,
+      corpusId: corpusPaper ? publicDatabaseId({ id: corpusPaper.corpusId }) : undefined,
       paper: { id: publicDatabaseId(paper), title: paper.title },
       projectPaper: { id: projectPaper.id, screeningStatus: projectPaper.screeningStatus },
       extractedEvidence,
@@ -1060,15 +1059,13 @@ export const forumService = {
         message: "The forum citation is available in project literature. Include the paper before extracting structured gap evidence.",
       };
     }
-    const corpusPaper = gap.corpusId
-      ? await prisma.corpusPaper.findUnique({ where: { corpusId_paperId: { corpusId: gap.corpusId, paperId: paper.id } } })
-      : null;
+    const corpusPaper = await findGapCorpusPaper(gap, paper.id);
     const extractedEvidence = (corpusPaper?.included ? structuredEvidenceItems(corpusPaper.evidence) : []) as GapStructuredEvidenceItem[];
     if (!extractedEvidence.length) {
       return {
         status: "EVIDENCE_EXTRACTION_REQUIRED",
         projectId,
-        corpusId: gap.corpusId ? publicDatabaseId({ id: gap.corpusId }) : undefined,
+        corpusId: corpusPaper ? publicDatabaseId({ id: corpusPaper.corpusId }) : undefined,
         paper: { id: publicDatabaseId(paper), title: paper.title },
         projectPaper: { id: projectPaper.id, screeningStatus: projectPaper.screeningStatus },
         extractedEvidence: [],
@@ -1081,7 +1078,7 @@ export const forumService = {
       return {
         status: "EVIDENCE_SELECTION_REQUIRED",
         projectId,
-        corpusId: gap.corpusId ? publicDatabaseId({ id: gap.corpusId }) : undefined,
+        corpusId: corpusPaper ? publicDatabaseId({ id: corpusPaper.corpusId }) : undefined,
         paper: { id: publicDatabaseId(paper), title: paper.title },
         projectPaper: { id: projectPaper.id, screeningStatus: projectPaper.screeningStatus },
         extractedEvidence,

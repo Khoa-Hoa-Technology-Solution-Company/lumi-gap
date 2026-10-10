@@ -1,21 +1,7 @@
 # CLAUDE.md — Publication Trend System
 
 > Context file for Claude Code (and any AI coding assistant) working on this repo.
-> Read this first before touching code. Last updated: 2026-09-26.
-
-### Multi-Agent Workflow Rules (.herdr):
-- **Lệnh tắt siêu ngắn (Short Triggers)**:
-  - `plan <tên>` hoặc `spec <tên>`: Tự động phân tích và xuất file kế hoạch vào `.herdr/specs/<tên>.md`.
-  - `code` hoặc `làm` (hoặc `code <tên>`): **TỰ ĐỘNG quét file spec mới nhất trong `.herdr/specs/`**, đọc checklist và bắt tay vào code ngay. Người dùng **không cần gõ đường dẫn file**.
-- **Vai trò 1 (Planner / Architect)**:
-  - Khi người dùng bảo `plan...` hoặc `spec...`:
-  - **MẶC ĐỊNH LUÔN TỰ ĐỘNG TẠO FILE TẠI `.herdr/specs/<ten-tinh-nang>.md`**.
-  - File kế hoạch bắt buộc có checklist từng bước (`- [ ] Task`).
-- **Vai trò 2 (Coder / Builder)**:
-  - Khi người dùng chỉ cần gõ `code` (hoặc `làm`, `triển khai`):
-  - Tự động tìm file spec mới nhất trong `.herdr/specs/` (file có checklist chưa hoàn thành).
-  - Đọc checklist và code lần lượt từng task, tick `[x]` vào checklist và chạy test nghiệm thu.
-
+> Read this first before touching code. Last updated: 2026-10-07.
 
 ---
 
@@ -32,7 +18,7 @@ It is **not** a "build a new ML model" project. It investigates how **LLM + RAG 
 
 **Target users:** lecturers, students, researchers. Three roles in code: `student`, `lecturer`, `researcher`, plus `admin`.
 
-**Status:** Phase 0 (infrastructure) and Phase A design (data pipeline) complete. Phase A implementation begins next. See [Roadmap](#10-roadmap) below.
+**Status:** Phases 0–D are largely implemented (OpenAlex sync/ingest, embeddings + hybrid retrieval, paper analysis/scoring, RAG reports, research gaps, MCP tools). Phase E UI work plus community/forum, peer-review, projects, credits, and personal AI connections are in active development. See [Roadmap](#10-roadmap) below.
 
 ---
 
@@ -50,7 +36,7 @@ It is **not** a "build a new ML model" project. It investigates how **LLM + RAG 
 | Web state | Zustand + TanStack Query | Zustand for client state, Query for server state |
 | Mobile | Expo SDK 52 + React Native + TypeScript | OTA updates, EAS Build, no native toolchain pain |
 | Mobile UI | NativeWind 4 | Reuse Tailwind knowledge cross-platform |
-| AI — LLM | Gemini 3.5 Flash (cheap) + 2.5 Pro (reports) | Same SDK as embeddings, generous free tier |
+| AI — LLM | Gemini via `GEMINI_MODEL_FAST` (summary, scoring, rerank) and `GEMINI_MODEL_DEEP` (report, gap, trend); both default to `gemini-3.1-flash-lite` in `config/env.ts` | Same SDK as embeddings, generous free tier. Never hardcode a model name: read it through `env` (or `aiModel()` / `routeLlmModel()`), because a user with a personal AI connection overrides it |
 | AI — Embedding | Gemini Embedding 2 (768 dim) | Same SDK, free tier sufficient for MVP |
 | Vector store | pgvector | Co-located with PostgreSQL metadata |
 | Cache | Redis | Cache and BullMQ transport; local Compose and hosted Redis are supported |
@@ -71,6 +57,7 @@ These are configured per developer in their own `.env`. The team lead (hoangtira
 |---|---|---|
 | PostgreSQL | Local Docker or managed PostgreSQL with pgvector | Primary application datastore |
 | Upstash Redis | https://console.upstash.com | 10K commands/day |
+| Cloudinary | https://cloudinary.com | Optional file/PDF storage; `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` (all three or none). PDFs can also use `local` or `r2` storage (`infrastructure/pdf-storage.service.ts`) |
 | Google AI Studio (Gemini) | https://aistudio.google.com | ~250 RPD on Flash, ~125 on Pro |
 | OpenAlex API | https://api.openalex.org | Unlimited with polite mailto |
 | GitHub | https://github.com/longdevlife/LiemResearch | **PUBLIC fork** — never commit secrets; old repo `publication-trend-system` is frozen |
@@ -88,23 +75,26 @@ LumiGap/                                    (repo root — fork of thiennhat-ctr
 ├── apps/
 │   ├── backend/                                 Express 5 API + BullMQ workers
 │   ├── web/                                     React + Vite + shadcn web app
-│   └── mobile/                                  Expo + NativeWind mobile app
+│   ├── mobile/                                  Expo + NativeWind mobile app
+│   ├── flutter_mobile/                          Flutter mobile app (parallel client)
+│   └── ai-reviewer/                             Python (FastAPI-style) paper-review agent service
 ├── packages/
 │   └── shared-types/                            framework-agnostic TS types
-├── legacy/                                      original LumiGap code — port reference
+├── legacy/                                      original LumiGap code — port reference only
 │   ├── backend-js/                              ratings, points, notifications, S3 (JS)
 │   └── web-figma/                               17 UI pages + rank badges (Tailwind v4)
-│                                                → port per docs/MIGRATION_MAP.md, then delete
-├── docs/
-│   ├── MIGRATION_MAP.md                         legacy → monorepo porting checklist
+├── docs/                                        guides, runbooks, migration audits
 │   └── superpowers/specs/                       design specs (per phase)
+├── tests/ + playwright.config.ts                Playwright e2e (pnpm test:e2e)
+├── scripts/                                     setup.mjs and other repo scripts
+├── deploy/, Jenkinsfile, Dockerfile.*           deployment and CI
 ├── docker-compose.yml                           local PostgreSQL/pgvector + Redis
 ├── pnpm-workspace.yaml                          workspace declaration
 ├── pnpm-lock.yaml                               COMMIT THIS — version pinning
 ├── turbo.json                                   task orchestration
 ├── tsconfig.base.json                           shared TS config
 ├── .gitignore                                   .env, node_modules, .turbo, etc.
-├── .npmrc                                       pnpm settings (node-linker isolated)
+├── .npmrc                                       pnpm settings (node-linker hoisted)
 └── CLAUDE.md                                    you are reading this
 ```
 
@@ -122,16 +112,24 @@ config/env.ts                     Zod-validated process.env (refuses boot if mis
 common/                           cross-cutting concerns
 ├── exceptions/app-error.ts       AppError class + factory methods
 └── middleware/
-    ├── auth.ts                   requireAuth (JWT) + requireRole
+    ├── auth.ts                   requireAuth / optionalAuth (JWT) + requireRole; also binds the caller's personal AI connection
+    ├── permission.ts             requirePermission(...) checks role permissions
+    ├── upload.ts                 multer memory-storage upload; the controller decides where to store the file
+    ├── rate-limit.ts             createRateLimiter(name, options): memory or Redis store (RATE_LIMIT_STORE)
     ├── validate.ts               Zod request validation
     └── error-handler.ts          global handler + 404 handler
 
 infrastructure/                   external system clients (one file per system)
-├── prisma.ts                     Prisma client lifecycle
+├── database/                    prisma.ts (Prisma client lifecycle), database-id.ts, postgres-paper-search.ts,
+│                                 postgres-only-runtime.ts (guard behind runtime:audit:postgres)
 ├── redis.ts                      ioredis client + lifecycle
-├── cache.ts                      JSON cache wrapper + hashKey()
+├── cache.ts                      JSON cache wrapper + hashKey(), LLM_CACHE_TTL_SECONDS (7 days)
 ├── logger.ts                     Pino logger (pretty in dev)
-└── queue.ts                      BullMQ queues (apiSync, embedding, report)
+├── queue.ts                      BullMQ queues (apiSync, embedding, report, ...)
+├── cloudinary-storage.service.ts Cloudinary upload/delete helpers
+├── pdf-storage.service.ts        PDF storage behind one interface: local | r2 | cloudinary
+├── readiness.ts                  dependency checks behind GET /ready
+└── worker-heartbeat.ts           worker liveness records (see scripts/verify-worker-heartbeats.ts)
 
 modules/                          feature modules — each self-contained
 ├── auth/
@@ -142,11 +140,17 @@ modules/                          feature modules — each self-contained
 ├── papers/
 │   ├── paper.controller.ts
 │   └── paper.routes.ts
-├── llm/gemini.client.ts          generateText / generateJSON
-└── embeddings/                   provider interface + Gemini implementation
+├── llm/                          gemini.client.ts (generateText / generateJSON), llm.run.ts (cachedGenerate*), llm.factory.ts
+├── user-ai/                      per-user personal AI connections (encrypted keys, see docs/PERSONAL_AI_CONNECTIONS.md)
+├── embeddings/                   provider interface + Gemini implementation
+└── ...                           api-sync, retrieval, search, scoring, trends, reports, gaps, mcp,
+                                  bookmarks, forum, communities, projects, recruitment, submissions,
+                                  reviews, credits, notifications, ai-jobs, admin, analytics, ...
+                                  (list `apps/backend/src/modules/` for the current set)
 
 workers/                          standalone process entry points
-└── (Phase A) sync.worker.ts
+└── sync, openalex-ingest, corpus-validation, embedding, paper-analysis, report,
+    gaps, notification, ai-jobs, community-summary
 
 routes/index.ts                   mounts module routers under /api/v1
 app.ts                            Express composition
@@ -163,10 +167,9 @@ constants/api.ts                  centralised backend route paths
 features/                         feature modules — each owns api/, hooks/, components/
 ├── auth/                         api/, hooks/use-auth.ts, schemas/, index.ts
 ├── papers/                       api/, hooks/use-papers.ts, index.ts
-├── search/                       (Phase B)
-├── trends/                       (Phase B)
-├── reports/                      (Phase C)
-└── bookmarks/                    (Phase D)
+├── search/, trends/, reports/, gaps/, literature/, compare/
+├── bookmarks/, forum/, projects/, submissions/, reviews/
+└── admin/, credits/, notifications/, user-ai/, academic-profile/, ...
 hooks/                            app-wide hooks
 layouts/                          MainLayout, AuthLayout
 pages/                            route components (thin)
@@ -182,6 +185,8 @@ main.tsx                          providers: QueryClient + Router
 ```
 
 ### Mobile (`apps/mobile/`)
+
+> TODO(team): confirm which mobile app is the primary one. Both `apps/mobile` (Expo, in the pnpm workspace) and `apps/flutter_mobile` (Flutter, not in the workspace; `pnpm dev:flutter_mobile`) exist and no document says which is canonical.
 
 ```
 app/                              Expo Router routes (REQUIRED at this path)
@@ -204,6 +209,13 @@ src/                              non-route code (same layout as web)
 
 assets/                           Expo icon/splash (REQUIRED at this path)
 ```
+
+### AI Reviewer (`apps/ai-reviewer/`)
+
+Python service (FastAPI served by uvicorn, `app.main:app`, started by `run.py`) that pre-reviews manuscripts, extracts PDF text and checks formats. It has its own `AGENTS.md`, `requirements.txt` and `Dockerfile`, and is **not** part of the pnpm workspace. The TypeScript/Express conventions in §6 do **not** apply to it.
+
+- Run: `pip install -r apps/ai-reviewer/requirements.txt`, then `python apps/ai-reviewer/run.py` (host/port from `REVIEW_APP_*`), or Docker Compose (service `ai-reviewer`, port 8001).
+- The backend calls it over HTTP at `AI_REVIEWER_URL` (default `http://localhost:8001`) with an `X-Internal-Key: INTERNAL_SERVICE_KEY` header: `/internal/pre-review`, `/internal/extract-text`, `/internal/health`, `/internal/format-presets` (see `modules/papers/ai-reviewer.client.ts`, `modules/knowledge/knowledge.source.ts`).
 
 ### Shared Types (`packages/shared-types/src/`)
 
@@ -254,9 +266,15 @@ report.ts                         AnalyticalReport, ResearchGap, ReportStatus
 - Each worker has retry + exponential backoff (`attempts: 5, backoff: { type: "exponential", delay: 2000 }`).
 
 ### LLM calls
-- Always go through `modules/llm/gemini.client.ts` so retries, logging, and cost tracking live in one place.
-- **Cache** every LLM response in Redis with key = `hash(query + filters + model + prompt_version + retrieved_paper_ids)`. Default TTL 7 days.
+- Call the LLM through `modules/llm/`: `cachedGenerateJSON` / `cachedGenerateText` (`llm.run.ts`) for cached calls, `getLlmProvider()` (`llm.factory.ts`) or `generateText` / `generateJSON` (`gemini.client.ts`) otherwise. Retries, quota errors and logging live there. Do not create your own Gemini client.
+- **Which key is used:** `requireAuth` / `optionalAuth` and the BullMQ workers (report, gaps, paper-analysis, ai-jobs) wrap the work in `withUserAi(userId, ...)` (`modules/user-ai/user-ai.runtime.ts`). If that user has a saved personal AI connection, `personalAiRuntime()` is set and `gemini.client.ts` sends the call through `personal-ai.client.ts` with the user's provider, base URL, model and key. Otherwise the platform key `GEMINI_API_KEY` and `GEMINI_MODEL_*` are used. A new worker that makes LLM calls on a user's behalf must also wrap its work in `withUserAi`.
+- **Cache** every LLM response in Redis. The key is `llm:<task>:<promptVersion>:<hash>` where the hash covers `model`, `keyParts` (query, filters, retrieved paper ids, ...), `inputHash` (prompt + system) and, for personal connections only, a `providerScope` (`userId:connectionId:updatedAt`) so users never read each other's cached output and editing a connection invalidates it. Platform calls share one namespace. Default TTL 7 days. Always build the key with `buildLlmCacheKey`, and bump `promptVersion` when a prompt changes.
+- **Personal keys:** stored encrypted (AES-256-GCM, `user-ai.crypto.ts`, bound to the user id), decrypted lazily only when a call is made, never logged and never returned to the client. See [docs/PERSONAL_AI_CONNECTIONS.md](docs/PERSONAL_AI_CONNECTIONS.md).
 - Never call LLM inside a search request. Only when the user explicitly requests AI analysis.
+
+### Rate limiting
+- Create every limiter with `createRateLimiter(name, options)` from `common/middleware/rate-limit.ts`; do not import `express-rate-limit` directly. `name` must be unique (it prefixes the Redis keys).
+- Counters are in memory per process by default. `RATE_LIMIT_STORE=redis` shares them between instances, but costs Redis commands per request, so do not enable it on the Upstash free tier. A failing store lets requests through.
 
 ### Embeddings
 - Always via `getEmbeddingProvider()` (factory). Do not import `GeminiEmbeddingProvider` directly outside the factory.
@@ -267,6 +285,7 @@ report.ts                         AnalyticalReport, ResearchGap, ReportStatus
 
 ### Relational persistence
 - Define relations, constraints, and indexes in `apps/backend/prisma/*.prisma`.
+- **Never run `prisma migrate dev`** (`db:migrate:dev` is disabled). The `.prisma` files do not describe every foreign key and index the SQL migrations create, so it would generate a migration that drops them. Write migrations by hand: [docs/prisma-migrations.md](docs/prisma-migrations.md).
 - Use Prisma transactions for multi-row state changes and Prisma tagged SQL for pgvector or advanced queries.
 
 ### Shared types
@@ -297,16 +316,30 @@ pnpm dev:backend                        # just backend
 pnpm dev:web                            # just web
 pnpm dev:mobile                         # just mobile (opens Expo)
 
-# workers (Phase A and later)
-pnpm --filter backend worker:sync       # OpenAlex sync worker
-pnpm --filter backend worker:embedding  # Gemini embedding worker (Phase B)
-pnpm --filter backend worker:report     # report generator (Phase C)
+# workers (each is its own process; see apps/backend/package.json for all)
+pnpm --filter backend worker:sync            # OpenAlex sync
+pnpm --filter backend worker:openalex-ingest # bulk OpenAlex ingest
+pnpm --filter backend worker:embedding       # Gemini embeddings
+pnpm --filter backend worker:paper-analysis  # AI paper analysis/scoring
+pnpm --filter backend worker:report          # report generator
+pnpm --filter backend worker:gaps            # research gap analysis
+pnpm --filter backend worker:notifications | worker:ai-jobs | worker:community-summary | worker:corpus-validation
+
+# read-only similarity report to tune COMMUNITY_SUGGEST_MIN_SIMILARITY (needs a real GEMINI_API_KEY)
+pnpm --filter backend eval:community-suggest "machine learning" "học máy"   # or: --file queries.txt
 
 # build
 pnpm build
 
 # tests
 pnpm test                               # vitest run
+pnpm test:e2e                           # Playwright e2e
+pnpm lint                               # eslint via turbo
+
+# docker
+pnpm setup                              # generate local .env secrets/keys
+pnpm docker:infra                       # postgres + redis only
+pnpm docker:up                          # full stack
 
 # clean
 pnpm clean                              # dist + .turbo
@@ -359,11 +392,11 @@ The authoritative schema is `apps/backend/prisma/`. Apply checked-in migrations 
 
 ```
 Phase 0  Setup & infrastructure                                  ✅ done
-Phase A  OpenAlex sync pipeline + Phase A models                 📐 designed, ⏳ coding next
-Phase B  Embeddings + semantic search + LLM relevance scoring    🔒 not started
-Phase C  RAG pipeline + analytical reports + projects            🔒 not started
-Phase D  MCP tools + research gap analysis                       🔒 not started
-Phase E  Web pages + mobile screens + push notifications         🔒 not started
+Phase A  OpenAlex sync pipeline + Phase A models                 ✅ implemented
+Phase B  Embeddings + semantic search + LLM relevance scoring    ✅ implemented
+Phase C  RAG pipeline + analytical reports + projects            ✅ implemented (hardening ongoing)
+Phase D  MCP tools + research gap analysis                       ✅ implemented (hardening ongoing)
+Phase E  Web pages + mobile screens + push notifications         ⏳ in progress (web far ahead of mobile)
 ```
 
 **Effort estimates** (4-person team):
@@ -405,6 +438,10 @@ These are the things that caused real bugs or near-misses. Keep them in mind:
 
 11. **Mobile is Android-only for testing.** Team has no Macs and no iOS devices. Code stays cross-platform Expo (so iOS support comes free later), but every PR is tested on Android Studio emulator or Expo Go Android. Design mockups frame on **Pixel 6 (412×892dp)** — not iPhone. Touch target minimum is Material 3's 48dp, not iOS's 44pt. Forms use `KeyboardAvoidingView behavior="height"` (Android), not the iOS-style `"padding"`. See [docs/DESIGN_LANGUAGE.md §11](docs/DESIGN_LANGUAGE.md) for the full Android-specific gotcha list.
 
+12. **Do not change `nodeLinker`.** Both `.npmrc` and `pnpm-workspace.yaml` set `hoisted`, because Metro (Expo) cannot follow pnpm's isolated symlinks. Switching to `isolated` breaks the mobile bundler with "Unable to resolve X" errors.
+
+13. **Never run `prisma migrate dev`.** The schema files do not describe the 297 foreign keys, the vector index and the full-text indexes that the SQL migrations create, so `migrate dev` generates a migration that drops them. `pnpm --filter backend db:migrate:dev` is disabled on purpose. Write migrations by hand and apply them with `db:migrate:deploy`, as described in [docs/prisma-migrations.md](docs/prisma-migrations.md).
+
 ---
 
 ## 12. Where Else To Look
@@ -415,6 +452,9 @@ These are the things that caused real bugs or near-misses. Keep them in mind:
 | [apps/backend/README.md](apps/backend/README.md) | Backend module layout + conventions |
 | [apps/web/README.md](apps/web/README.md) | Web feature-based layout |
 | [apps/mobile/README.md](apps/mobile/README.md) | Expo Router + NativeWind notes |
+| [docs/PERSONAL_AI_CONNECTIONS.md](docs/PERSONAL_AI_CONNECTIONS.md) | Per-user AI provider connections (encrypted keys) |
+| [docs/environment-variables.md](docs/environment-variables.md) | Inventory of every env variable |
+| [docs/DEPLOY_WITH_DOCKER.md](docs/DEPLOY_WITH_DOCKER.md) | Docker deploy, troubleshooting, rate limits and scaling |
 | [docs/superpowers/specs/2026-05-25-phase-a-design.md](docs/superpowers/specs/2026-05-25-phase-a-design.md) | Full Phase A design (data flow, schemas, acceptance criteria) |
 
 ---
@@ -427,11 +467,11 @@ These are the things that caused real bugs or near-misses. Keep them in mind:
 - **DO ask before** scaffolding new packages, installing global tools, or making changes outside `apps/`, `packages/`, or `docs/`.
 
 ### Code rules
-- **Read the Phase A design spec first** before suggesting changes to data flow, model schemas, or sync logic.
+- **Read the relevant design spec first** (Phase A spec for sync/data flow; other specs under `docs/superpowers/specs/`) before suggesting changes to data flow, model schemas, or sync logic.
 - **Stay within the conventions in §6.** They are not preferences — they are constraints we agreed on.
 - **Long-running work goes in BullMQ workers, not request handlers.** No exceptions.
 - **Validate every new env var with Zod in `config/env.ts`.** Don't read `process.env.X` directly outside that file.
-- **When changing persistence:** update the Prisma schema, create a migration, preserve foreign keys/indexes, and use transactions for multi-row writes.
+- **When changing persistence:** update the Prisma schema, write the migration SQL by hand following [docs/prisma-migrations.md](docs/prisma-migrations.md) (never `prisma migrate dev`), apply it with `db:migrate:deploy`, preserve foreign keys/indexes, and use transactions for multi-row writes.
 - **When adding a new API endpoint:** controller is thin, service has logic, schema validates input, return the `{ success, data, meta }` envelope.
 - **When asked to install a new dependency with a postinstall script**, update `pnpm-workspace.yaml`'s `allowBuilds` so the team doesn't trip the `ERR_PNPM_IGNORED_BUILDS` warning.
 - **If something doesn't fit the structure**, surface it instead of working around it. The structure is more easily fixed than abandoned.

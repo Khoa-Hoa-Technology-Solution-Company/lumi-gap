@@ -1,4 +1,4 @@
-import { Router, type Request } from "express";
+import { Router, type NextFunction, type Request, type Response } from "express";
 import { z } from "zod";
 import { requireAuth } from "../../common/middleware/auth.js";
 import { requireResearchWorkflow } from "../authorization/authorization.middleware.js";
@@ -8,7 +8,7 @@ import { validate } from "../../common/middleware/validate.js";
 import { objectIdSchema } from "../../common/validation/database-id.js";
 import { AppError } from "../../common/exceptions/app-error.js";
 import { submissionService } from "./submission.service.js";
-import rateLimit from "express-rate-limit";
+import { createRateLimiter } from "../../common/middleware/rate-limit.js";
 
 const submissionParamsSchema = z.object({ id: objectIdSchema });
 const revisionParamsSchema = z.object({ id: objectIdSchema, revisionId: objectIdSchema });
@@ -36,11 +36,22 @@ const assignSchema = z.object({
   dueAt: z.coerce.date().optional(),
   enforceInstitutionConflict: z.boolean().optional(),
 });
+// Reviews are submitted as structured human reviews (/reviews); an assignment only accepts, declines or cancels.
 const updateAssignmentSchema = z.object({
   status: z.enum(["accepted", "declined", "completed", "cancelled"]),
-  decision: z.enum(["accept", "minor_revision", "major_revision", "reject"]).optional(),
+  /** Optional reason when declining. */
   reviewText: z.string().trim().min(1).max(20000).optional(),
-});
+}).strict();
+
+/**
+ * The reviewer-assignment endpoints predate review requests and only forward to them.
+ * No client uses them; mark them deprecated so new callers use /review-requests.
+ */
+function deprecatedForReviewRequests(_req: Request, res: Response, next: NextFunction) {
+  res.setHeader("Deprecation", "true");
+  res.setHeader("Link", '</api/v1/review-requests>; rel="successor-version"');
+  next();
+}
 
 function uploadedPdf(req: Request) {
   const file = (req as Request & {
@@ -68,7 +79,7 @@ function parseArrayFields(body: Record<string, unknown>) {
 export const submissionRouter: Router = Router();
 submissionRouter.use(requireAuth, requireResearchWorkflow);
 
-const aiPreReviewLimiter = rateLimit({
+const aiPreReviewLimiter = createRateLimiter("submissions:aiPreReviewLimiter", {
   windowMs: 60 * 60 * 1000,
   limit: 5,
   standardHeaders: true,
@@ -76,7 +87,7 @@ const aiPreReviewLimiter = rateLimit({
   keyGenerator: (req) => req.user?.sub ?? req.ip ?? "anonymous",
 });
 
-submissionRouter.get("/reviewer-assignments/me", requirePermission("submission:review"), async (req, res) => {
+submissionRouter.get("/reviewer-assignments/me", deprecatedForReviewRequests, requirePermission("submission:review"), async (req, res) => {
   res.json({ success: true, data: await submissionService.listMyAssignments(req.user!.sub) });
 });
 
@@ -125,9 +136,10 @@ submissionRouter.get("/:id/ai-pre-reviews", validate(submissionParamsSchema, "pa
   res.json({ success: true, data: await submissionService.listAiPreReviews(String(req.params.id), req.user!.sub, req.user!.role) });
 });
 
+/** 202 Accepted — the ai-jobs worker runs the pre-review; poll GET /:id/ai-pre-reviews for the result. */
 submissionRouter.post("/:id/ai-pre-review", aiPreReviewLimiter, validate(submissionParamsSchema, "params"), async (req, res) => {
   const data = await submissionService.runAiPreReview(String(req.params.id), req.user!.sub, req.user!.role);
-  res.status(201).json({ success: true, data });
+  res.status(202).json({ success: true, data });
 });
 
 submissionRouter.get("/:id/revisions/:revisionId/download", validate(revisionParamsSchema, "params"), async (req, res) => {
@@ -141,16 +153,16 @@ submissionRouter.get("/:id/revisions/:revisionId/download", validate(revisionPar
   res.sendFile(result.path);
 });
 
-submissionRouter.post("/:id/reviewer-assignments", requirePermission("review:assign"), validate(submissionParamsSchema, "params"), validate(assignSchema), async (req, res) => {
+submissionRouter.post("/:id/reviewer-assignments", deprecatedForReviewRequests, requirePermission("review:assign"), validate(submissionParamsSchema, "params"), validate(assignSchema), async (req, res) => {
   const data = await submissionService.assignReviewer(String(req.params.id), req.body, req.user!.sub);
   res.status(201).json({ success: true, data });
 });
 
-submissionRouter.get("/:id/reviewer-assignments", requirePermission("review:assign"), validate(submissionParamsSchema, "params"), async (req, res) => {
+submissionRouter.get("/:id/reviewer-assignments", deprecatedForReviewRequests, requirePermission("review:assign"), validate(submissionParamsSchema, "params"), async (req, res) => {
   res.json({ success: true, data: await submissionService.listAssignments(String(req.params.id)) });
 });
 
-submissionRouter.patch("/:id/reviewer-assignments/:assignmentId", requirePermission("submission:review"), validate(assignmentParamsSchema, "params"), validate(updateAssignmentSchema), async (req, res) => {
+submissionRouter.patch("/:id/reviewer-assignments/:assignmentId", deprecatedForReviewRequests, requirePermission("submission:review"), validate(assignmentParamsSchema, "params"), validate(updateAssignmentSchema), async (req, res) => {
   res.json({
     success: true,
     data: await submissionService.updateAssignment(

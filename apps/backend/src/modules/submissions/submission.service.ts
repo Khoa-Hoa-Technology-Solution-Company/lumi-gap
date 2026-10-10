@@ -9,8 +9,15 @@ import { auditService } from "../audit/audit.service.js";
 import { assertPeerReviewer, lockReviewerAndSubmission, refreshSubmissionReviewStatus } from "../reviews/peer-review-access.js";
 import { reviewRequestService } from "../reviews/review-request.service.js";
 import { aiReviewerClient } from "../papers/ai-reviewer.client.js";
+import { aiJobsQueue } from "../../infrastructure/queue.js";
 
 type UploadedPdf = { buffer: Buffer; originalname: string; size: number };
+/** Job name on the ai-jobs queue that runs one AI pre-review. */
+export const AI_PRE_REVIEW_JOB = "submission-pre-review";
+export interface AiPreReviewJob { preReviewId: string }
+export const aiPreReviewJobId = (preReviewId: string) => `ai-pre-review-${preReviewId}`;
+const AI_PRE_REVIEW_FAILURE = "AI pre-review failed. Please try again later.";
+const AI_PRE_REVIEW_CLOSED_STATUSES = ["completed", "accepted", "rejected", "withdrawn"];
 type CreateSubmissionInput = { projectId: string; title: string; abstract?: string; submissionType?: "RESEARCH_PROPOSAL" | "LITERATURE_REVIEW" | "THESIS_DRAFT" | "RESEARCH_PAPER" | "SOFTWARE_RESEARCH_PROJECT"; researchField?: string; researchGoal?: string; researchQuestions?: string[]; claimedResearchGap?: string; claimedContribution?: string; methodology?: string; scope?: string; keywords?: string[]; expectedReviewWorkload?: string; authorIds?: string[]; declaredConflictUserIds?: string[] };
 type SubmissionRow = Awaited<ReturnType<typeof getSubmissionOrThrow>>;
 
@@ -139,21 +146,53 @@ export const submissionService = {
     return (await getPrisma().aiPreReview.findMany({ where: { submissionId: submission.id }, orderBy: { createdAt: "desc" }, take: 20 })).map(aiReviewDto);
   },
 
+  /** Queue an advisory AI pre-review; the ai-jobs worker runs it (processAiPreReview). Returns the QUEUED record. */
   async runAiPreReview(submissionInput: string, actorInput: string, actorRole: UserRole) {
     const actor = await resolveUser(actorInput); const submission = await getSubmissionOrThrow(submissionInput);
     if (!(await canAccessFullSubmission(submission, actor.id, actorRole))) throw AppError.forbidden();
     const isAuthor = Boolean(await getPrisma().submissionAuthor.findUnique({ where: { submissionId_userId: { submissionId: submission.id, userId: actor.id } } }));
     if (!isAuthor && !hasPermission(actorRole, "review:assign")) throw AppError.forbidden("Only an author or review manager can request AI pre-review");
-    if (["completed", "accepted", "rejected", "withdrawn"].includes(submission.status)) throw AppError.conflict("This submission no longer accepts pre-review analysis");
-    if (await getPrisma().aiPreReview.findFirst({ where: { submissionId: submission.id, status: { in: ["QUEUED", "PROCESSING"] } } })) throw AppError.conflict("An AI pre-review is already running");
-    const record = await getPrisma().aiPreReview.create({ data: { submissionId: submission.id, requestedById: actor.id, status: "PROCESSING" } });
-    await getPrisma().submission.update({ where: { id: submission.id }, data: { status: "ai_pre_review" } });
+    if (AI_PRE_REVIEW_CLOSED_STATUSES.includes(submission.status)) throw AppError.conflict("This submission no longer accepts pre-review analysis");
+    // Lock the submission row so two clicks cannot both see "nothing running" and queue twice.
+    const record = await getPrisma().$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM submissions WHERE id = ${submission.id}::uuid FOR UPDATE`;
+      if (await tx.aiPreReview.findFirst({ where: { submissionId: submission.id, status: { in: ["QUEUED", "PROCESSING"] } } })) throw AppError.conflict("An AI pre-review is already running");
+      return tx.aiPreReview.create({ data: { submissionId: submission.id, requestedById: actor.id, status: "QUEUED" } });
+    });
     try {
-      const result = await aiReviewerClient.preReview({ title: submission.title, abstract: submission.abstractText ?? undefined, submission_type: submission.submissionType ?? undefined, research_goal: submission.researchGoal ?? undefined, research_questions: submission.researchQuestions, claimed_gap: submission.claimedResearchGap ?? undefined, claimed_contribution: submission.claimedContribution ?? undefined, methodology: submission.methodology ?? undefined, related_evidence: [] });
-      const analysis = result.analysis; const completedAt = new Date();
-      const completed = await getPrisma().$transaction(async (tx) => { const updated = await tx.aiPreReview.update({ where: { id: record.id }, data: { provider: result.provider, model: result.model, status: "COMPLETED", summary: analysis.summary, goalAlignment: analysis.goal_alignment as never, rqCoverage: analysis.rq_coverage as never, unsupportedClaims: analysis.unsupported_claims as never, citationIssues: analysis.citation_issues, contributionComparison: analysis.contribution_comparison, reviewFocusAreas: analysis.review_focus_areas, limitations: analysis.limitations, rawStructuredOutput: analysis as never, completedAt } }); await tx.submission.updateMany({ where: { id: submission.id, status: "ai_pre_review" }, data: { status: "ready_for_review" } }); return updated; });
-      await auditService.log("submission.ai_pre_review.completed", { userId: actor.id, targetTableName: "ai_pre_reviews", targetRecordId: completed.id, details: { submissionId: submission.id, provider: result.provider, model: result.model } }); return aiReviewDto(completed);
-    } catch (error) { await getPrisma().$transaction([getPrisma().aiPreReview.update({ where: { id: record.id }, data: { status: "FAILED", errorMessage: error instanceof Error ? error.message.slice(0, 1000) : "AI pre-review failed" } }), getPrisma().submission.updateMany({ where: { id: submission.id, status: "ai_pre_review" }, data: { status: submission.status } })]); throw error; }
+      await aiJobsQueue.add(AI_PRE_REVIEW_JOB, { preReviewId: record.id } satisfies AiPreReviewJob, { jobId: aiPreReviewJobId(record.id), attempts: 3, backoff: { type: "exponential", delay: 5000 } });
+    } catch (error) {
+      await getPrisma().aiPreReview.update({ where: { id: record.id }, data: { status: "FAILED", errorMessage: AI_PRE_REVIEW_FAILURE } });
+      throw error;
+    }
+    await auditService.log("submission.ai_pre_review.requested", { userId: actor.id, targetTableName: "ai_pre_reviews", targetRecordId: record.id, details: { submissionId: submission.id } });
+    return aiReviewDto(record);
+  },
+
+  /** Worker side of an AI pre-review. Throws on transient errors so BullMQ retries; never changes a reviewed submission's status. */
+  async processAiPreReview(job: AiPreReviewJob) {
+    const claimed = await getPrisma().aiPreReview.updateMany({ where: { id: job.preReviewId, status: { in: ["QUEUED", "PROCESSING"] } }, data: { status: "PROCESSING" } });
+    if (!claimed.count) return;
+    const record = await getPrisma().aiPreReview.findUniqueOrThrow({ where: { id: job.preReviewId } });
+    const submission = await getPrisma().submission.findUnique({ where: { id: record.submissionId } });
+    if (!submission || AI_PRE_REVIEW_CLOSED_STATUSES.includes(submission.status)) {
+      await getPrisma().aiPreReview.update({ where: { id: record.id }, data: { status: "CANCELLED", errorMessage: "The submission was closed before the pre-review ran." } });
+      return;
+    }
+    const result = await aiReviewerClient.preReview({ title: submission.title, abstract: submission.abstractText ?? undefined, submission_type: submission.submissionType ?? undefined, research_goal: submission.researchGoal ?? undefined, research_questions: submission.researchQuestions, claimed_gap: submission.claimedResearchGap ?? undefined, claimed_contribution: submission.claimedContribution ?? undefined, methodology: submission.methodology ?? undefined, related_evidence: [] });
+    const analysis = result.analysis;
+    const completed = await getPrisma().$transaction(async (tx) => {
+      const updated = await tx.aiPreReview.update({ where: { id: record.id }, data: { provider: result.provider, model: result.model, status: "COMPLETED", summary: analysis.summary, goalAlignment: analysis.goal_alignment as never, rqCoverage: analysis.rq_coverage as never, unsupportedClaims: analysis.unsupported_claims as never, citationIssues: analysis.citation_issues, contributionComparison: analysis.contribution_comparison, reviewFocusAreas: analysis.review_focus_areas, limitations: analysis.limitations, rawStructuredOutput: analysis as never, errorMessage: null, completedAt: new Date() } });
+      // Only a fresh submission moves forward; one already under review or revised keeps its status.
+      await tx.submission.updateMany({ where: { id: submission.id, status: "submitted" }, data: { status: "ready_for_review" } });
+      return updated;
+    });
+    await auditService.log("submission.ai_pre_review.completed", { userId: record.requestedById, targetTableName: "ai_pre_reviews", targetRecordId: completed.id, details: { submissionId: submission.id, provider: result.provider, model: result.model } });
+  },
+
+  /** Final failure of a pre-review job: a safe message for the user; the raw error stays in the worker log. */
+  async failAiPreReview(preReviewId: string, message = AI_PRE_REVIEW_FAILURE) {
+    await getPrisma().aiPreReview.updateMany({ where: { id: preReviewId, status: { in: ["QUEUED", "PROCESSING"] } }, data: { status: "FAILED", errorMessage: message.slice(0, 1000) } });
   },
 
   async get(submissionInput: string, actorInput: string, actorRole: UserRole) { const actor = await resolveUser(actorInput); const submission = await getSubmissionOrThrow(submissionInput); const access = await assertSubmissionAccess(submission, actor.id, actorRole); return access === "blind" ? this.getReviewerView(submissionInput, actorInput, actorRole) : hydrateSubmission(submission); },
@@ -240,7 +279,7 @@ export const submissionService = {
     return rows.map(row => ({ ...row, id: publicDatabaseId(row), submissionId: map.get(row.submissionId) }));
   },
 
-  async updateAssignment(submissionInput: string, assignmentInput: string, input: { status: "accepted" | "declined" | "completed" | "cancelled"; decision?: "accept" | "minor_revision" | "major_revision" | "reject"; reviewText?: string }, actorInput: string, actorRole: UserRole) {
+  async updateAssignment(submissionInput: string, assignmentInput: string, input: { status: "accepted" | "declined" | "completed" | "cancelled"; reviewText?: string }, actorInput: string, actorRole: UserRole) {
     const actor = await resolveUser(actorInput); const submission = await getSubmissionOrThrow(submissionInput); const assignment = await getPrisma().reviewerAssignment.findFirst({ where: { ...idWhere(assignmentInput), submissionId: submission.id } }); if (!assignment) throw AppError.notFound("Reviewer assignment not found");
     if (assignment.reviewerId !== actor.id && !hasPermission(actorRole, "review:assign")) throw AppError.forbidden();
     if (input.status === "completed") throw AppError.conflict("Submit a structured review in the review workspace to complete this assignment");

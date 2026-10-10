@@ -57,6 +57,30 @@ export const cache = {
   },
 };
 
+/**
+ * Best-effort mutual exclusion for one short operation (e.g. a paid LLM call a double-click could start twice).
+ * Returns a release function when the lock was taken, or null when another holder has it. Like the cache it
+ * fails open: when Redis is unavailable the caller gets a no-op release and proceeds unguarded.
+ */
+export async function acquireLock(key: string, ttlSeconds: number): Promise<(() => Promise<void>) | null> {
+  const token = crypto.randomUUID();
+  try {
+    const acquired = await withTimeout(redis.set(key, token, "EX", ttlSeconds, "NX"), "lock");
+    if (acquired !== "OK") return null;
+  } catch (err) {
+    logger.warn({ err, key }, "lock unavailable; continuing without it");
+    return async () => {};
+  }
+  return async () => {
+    try {
+      // Only release our own lock — it may have expired and been taken by someone else.
+      if ((await withTimeout(redis.get(key), "unlock")) === token) await withTimeout(redis.del(key), "unlock");
+    } catch (err) {
+      logger.warn({ err, key }, "lock release failed; it expires on its own");
+    }
+  };
+}
+
 /** Stable hash for composing cache keys from arbitrary objects. */
 export function hashKey(parts: unknown): string {
   return crypto.createHash("sha256").update(JSON.stringify(parts)).digest("hex").slice(0, 32);

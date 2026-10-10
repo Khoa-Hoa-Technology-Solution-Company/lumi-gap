@@ -31,6 +31,11 @@ export const listQuerySchema = paginationSchema.extend({
   activeOnly: z.enum(["true", "false"]).optional(),
 });
 
+export const suggestQuerySchema = z.object({
+  q: z.string().trim().min(2).max(200),
+  limit: z.coerce.number().int().min(1).max(10).default(5),
+});
+
 export const reviewSchema = z.object({
   decision: z.enum(["approve", "reject"]),
   note: z.string().trim().min(1).max(2000).optional(),

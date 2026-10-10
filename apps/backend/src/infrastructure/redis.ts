@@ -15,11 +15,31 @@ export const redis = new Redis(env.REDIS_URL, {
 redis.on("error", (err) => logger.error({ err }, "redis error"));
 
 export async function connectRedis(): Promise<void> {
-  await redis.connect();
+  // With RATE_LIMIT_STORE=redis the limiter store sends commands at import time, which already
+  // starts the lazy connection; calling connect() again would throw "already connecting".
+  if (redis.status === "wait") await redis.connect();
+  else if (redis.status !== "ready") {
+    // Already connecting: wait for ready, but fail on error/end instead of hanging while ioredis keeps retrying.
+    await new Promise<void>((resolve, reject) => {
+      const cleanup = () => {
+        redis.off("ready", onReady);
+        redis.off("error", onFail);
+        redis.off("end", onEnd);
+      };
+      const onReady = () => { cleanup(); resolve(); };
+      const onFail = (err: Error) => { cleanup(); reject(err); };
+      const onEnd = () => onFail(new Error("Redis connection ended before it was ready"));
+      redis.once("ready", onReady);
+      redis.once("error", onFail);
+      redis.once("end", onEnd);
+    });
+  }
   logger.info("redis connected");
 }
 
 export async function disconnectRedis(): Promise<void> {
-  await redis.quit();
+  // QUIT on a client that never connected (lazyConnect) would wait for a connection; just drop it.
+  if (redis.status === "ready") await redis.quit();
+  else redis.disconnect();
   logger.info("redis disconnected");
 }

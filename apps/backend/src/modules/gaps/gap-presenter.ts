@@ -1,5 +1,6 @@
 import type {
   GapEvidenceStatus,
+  GapProjectEvidence,
   GapSource,
   GapStatus,
   GapSupportingPaper,
@@ -33,6 +34,8 @@ export interface GapListDoc {
   parentCounts?: { a?: number; b?: number };
   parentTrend?: { topic?: string; growthRatePct?: number } | null;
   evidenceConfidence?: number;
+  evidenceScopeSize?: number;
+  projectEvidence?: GapProjectEvidence;
   source: GapSource;
   sourceReportId?: IdLike;
   analysisId?: IdLike;
@@ -64,16 +67,72 @@ export function canAccessGap(
   return (project.members ?? []).some((member) => String(member.targetId ?? "") === userId);
 }
 
-export function getGapEvidenceStatus(gap: Pick<GapListDoc, "source" | "probe" | "evidenceConfidence">): GapEvidenceStatus {
+/** True when a probe topic has fewer papers than the confirmation threshold (stored scores may predate the threshold). */
+export function isGapLowSample(gap: Pick<GapListDoc, "parentCounts">, minParentPapers: number): boolean {
+  const { a, b } = gap.parentCounts ?? {};
+  if (a === undefined || b === undefined) return false;
+  return Math.min(a, b) < Math.max(minParentPapers, 1);
+}
+
+/**
+ * A gap whose counting scope was never recorded predates the corpus-wide counts (project gaps were scored over a
+ * handful of papers), so its score cannot support the Confirmed label.
+ */
+export function getGapEvidenceStatus(gap: Pick<GapListDoc, "source" | "probe" | "evidenceConfidence" | "evidenceScopeSize">, lowSample = false): GapEvidenceStatus {
   if (gap.source === "report" && !gap.probe) return "ai_only";
-  if (!gap.probe) return "weak";
+  if (!gap.probe || lowSample || gap.evidenceScopeSize == null) return "weak";
   return Number(gap.evidenceConfidence ?? 0) >= 0.5 ? "confirmed" : "weak";
+}
+
+export type GapSortKey = "recommended" | "evidence" | "confidence" | "papers" | "newest" | "ai_only_last";
+
+/** Minimal gap fields needed to order a list before loading full rows for one page. */
+export interface GapSortRow {
+  id: string;
+  confidence: number;
+  evidenceConfidence?: number | null;
+  evidenceScopeSize?: number | null;
+  createdAt: Date;
+  source: GapSource;
+  probe?: GapListDoc["probe"] | null;
+  parentCounts?: GapListDoc["parentCounts"] | null;
+  supportingCount: number;
+}
+
+const EVIDENCE_RANK: Record<GapEvidenceStatus, number> = { confirmed: 2, weak: 1, ai_only: 0 };
+
+/** Corpus evidence score when the gap was scored, otherwise the AI's self-reported confidence. */
+export function gapRankingScore(row: Pick<GapSortRow, "confidence" | "evidenceConfidence">): number {
+  return row.evidenceConfidence ?? row.confidence;
+}
+
+/** Orders gaps for every list sort option; ties fall back to newest first. */
+export function sortGapRows<T extends GapSortRow>(rows: T[], sortBy: GapSortKey, minParentPapers: number): T[] {
+  const evidenceRank = (row: T) => {
+    const doc = { source: row.source, probe: row.probe ?? undefined, evidenceConfidence: row.evidenceConfidence ?? undefined, evidenceScopeSize: row.evidenceScopeSize ?? undefined };
+    return EVIDENCE_RANK[getGapEvidenceStatus(doc, isGapLowSample({ parentCounts: row.parentCounts ?? undefined }, minParentPapers))];
+  };
+  const newest = (a: T, b: T) => b.createdAt.getTime() - a.createdAt.getTime();
+  const score = (a: T, b: T) => gapRankingScore(b) - gapRankingScore(a);
+  const papers = (a: T, b: T) => b.supportingCount - a.supportingCount;
+  const recommended = (a: T, b: T) => score(a, b) || newest(a, b);
+  const compare: Record<GapSortKey, (a: T, b: T) => number> = {
+    recommended,
+    evidence: (a, b) => evidenceRank(b) - evidenceRank(a) || score(a, b) || papers(a, b) || newest(a, b),
+    confidence: (a, b) => b.confidence - a.confidence || newest(a, b),
+    papers: (a, b) => papers(a, b) || score(a, b) || newest(a, b),
+    newest,
+    ai_only_last: (a, b) => Number(evidenceRank(a) === EVIDENCE_RANK.ai_only) - Number(evidenceRank(b) === EVIDENCE_RANK.ai_only) || recommended(a, b),
+  };
+  return [...rows].sort(compare[sortBy]);
 }
 
 export function toGapListItem(
   doc: GapListDoc,
   supportingPapersById: Map<string, GapSupportingPaper>,
+  options: { minParentPapers?: number; canManage?: boolean; validationQuorum?: number } = {},
 ): ResearchGapItem {
+  const lowSample = options.minParentPapers !== undefined ? isGapLowSample(doc, options.minParentPapers) : undefined;
   const supportingPaperIds = (doc.supportingPaperIds ?? []).map(String);
   const evidencePaperIds = (doc.evidencePaperIds?.length
     ? doc.evidencePaperIds
@@ -97,7 +156,7 @@ export function toGapListItem(
       .map((id) => supportingPapersById.get(id))
       .filter((paper): paper is GapSupportingPaper => Boolean(paper)),
     confidence: doc.confidence,
-    evidenceStatus: getGapEvidenceStatus(doc),
+    evidenceStatus: getGapEvidenceStatus(doc, lowSample),
     source: doc.source,
     sourceReportId: doc.sourceReportId ? String(doc.sourceReportId) : undefined,
     analysisId: doc.analysisId ? String(doc.analysisId) : undefined,
@@ -125,6 +184,9 @@ export function toGapListItem(
           ? null
           : undefined,
     evidenceConfidence: doc.evidenceConfidence,
+    evidenceScopeSize: doc.evidenceScopeSize,
+    projectEvidence: doc.projectEvidence,
+    lowSample,
     gapType: doc.gapType,
     scope: doc.scope,
     establishedKnowledge: doc.establishedKnowledge,
@@ -136,5 +198,7 @@ export function toGapListItem(
     gapConfidence: doc.gapConfidence,
     researchPriority: doc.researchPriority,
     origin: doc.origin,
+    validationQuorum: options.validationQuorum,
+    canManage: options.canManage,
   };
 }

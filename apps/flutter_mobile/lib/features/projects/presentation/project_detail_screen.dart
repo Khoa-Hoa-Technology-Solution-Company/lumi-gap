@@ -2048,14 +2048,16 @@ class _MembersSettingsTabState extends State<_MembersSettingsTab> {
       _emailController.clear();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Member added successfully.')),
+          const SnackBar(
+            content: Text('Invitation sent. They join once they accept it.'),
+          ),
         );
       }
     } on Object catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to add member: $e'),
+            content: Text('Failed to send invitation: $e'),
             backgroundColor: Colors.red,
           ),
         );

@@ -50,9 +50,9 @@ export const projectsApi = {
   async updatePaper(id: string, paperId: string, data: UpdateProjectPaperRequest): Promise<void> {
     await api.patch(API_ROUTES.projects.updatePaper(id, paperId), data);
   },
-  async addMember(id: string, data: AddProjectMemberRequest): Promise<IProject> {
-    const res = await api.post(API_ROUTES.projects.addMember(id), data);
-    return res.data.data;
+  /** Legacy alias of inviteMember: sends an invitation the user must accept; nobody is added directly. */
+  async addMember(id: string, data: AddProjectMemberRequest): Promise<void> {
+    await api.post(API_ROUTES.projects.addMember(id), data);
   },
   async removeMember(id: string, memberId: string): Promise<IProject> {
     const res = await api.delete(API_ROUTES.projects.removeMember(id, memberId));

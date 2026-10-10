@@ -287,6 +287,7 @@ export function GapCard({
       <div className="space-y-3.5 mb-4 border-t border-slate-100 dark:border-slate-800/60 pt-3 relative z-10">
         <GapEvidenceSummary 
           probe={gap.probe} 
+          evidenceScopeSize={gap.evidenceScopeSize}
           intersectionCount={gap.intersectionCount} 
           parentCounts={gap.parentCounts} 
           parentTrend={gap.parentTrend} 

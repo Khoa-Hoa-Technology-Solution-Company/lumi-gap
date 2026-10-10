@@ -34,6 +34,26 @@ describe("getNotificationDestination", () => {
     expect(getNotificationDestination({ type: "project_update", targetKind: "project", targetId: "project-1" }, false)).toBe("/projects/project-1");
   });
 
+  it("sends project invitees to the project list where they can accept or decline", () => {
+    expect(getNotificationDestination({ type: "project_invitation", targetKind: "project", targetId: "project-1" }, false)).toBe("/projects");
+  });
+
+  it("sends reviewers to the review center instead of a project they are not in", () => {
+    expect(getNotificationDestination({ type: "REVIEW_REQUESTED", targetKind: "project", targetId: "project-1" }, false)).toBe("/reviews");
+    expect(getNotificationDestination({ type: "REVISION_RESUBMITTED", targetKind: "project", targetId: "project-1" }, false)).toBe("/reviews");
+    expect(getNotificationDestination({ type: "REVIEW_REQUEST_CANCELLED", targetKind: "review_request", targetId: "request-1" }, false)).toBe("/reviews");
+  });
+
+  it("opens the review feedback page when the notification targets a review request", () => {
+    expect(getNotificationDestination({ type: "REVIEW_SUBMITTED", targetKind: "review_request", targetId: "request-1" }, false)).toBe("/review-requests/request-1");
+    expect(getNotificationDestination({ type: "REVIEW_REQUEST_DECLINED", targetKind: "review_request", targetId: "request-1" }, false)).toBe("/review-requests/request-1");
+  });
+
+  it("sends review requesters of older project-targeted notifications to the project's artifacts tab", () => {
+    expect(getNotificationDestination({ type: "REVIEW_SUBMITTED", targetKind: "project", targetId: "project-1" }, false)).toBe("/projects/project-1?tab=reports");
+    expect(getNotificationDestination({ type: "REVISION_REQUESTED", targetKind: "project", targetId: "project-1" }, false)).toBe("/projects/project-1?tab=reports");
+  });
+
   it.each([
     ["FORUM_REPORT_REVIEW", "Forum report needs review", "/admin/trust-safety?tab=reports&status=all"],
     ["FORUM_REPORT_ESCALATED", "Forum report escalated", "/admin/trust-safety?tab=reports&status=escalated"],

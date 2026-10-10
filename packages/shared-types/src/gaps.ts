@@ -17,6 +17,13 @@ export interface GapSupportingPaper {
   citationCount?: number;
 }
 
+export interface GapProjectEvidence {
+  intersectionCount: number;
+  parentCounts: { a: number; b: number };
+  scopePaperCount: number;
+  evidenceConfidence: number;
+}
+
 export interface ResearchGapItem {
   id: string;
   topic: string;
@@ -45,6 +52,12 @@ export interface ResearchGapItem {
   parentCounts?: { a: number; b: number };
   parentTrend?: { topic: string; growthRatePct: number } | null;
   evidenceConfidence?: number;
+  /** Active corpus papers the probe counts above were taken over; absent on gaps created before it was recorded. */
+  evidenceScopeSize?: number;
+  /** Same probe scored inside the project's INCLUDED papers. Context only: it never decides the Confirmed label. */
+  projectEvidence?: GapProjectEvidence;
+  /** A probe topic has too few papers for the evidence score to be meaningful. */
+  lowSample?: boolean;
   gapType?: ResearchGapType;
   scope?: string;
   establishedKnowledge?: string;
@@ -56,6 +69,10 @@ export interface ResearchGapItem {
   gapConfidence?: GapAssessmentLevel;
   researchPriority?: GapAssessmentLevel;
   origin?: "HUMAN" | "AI_ASSISTED";
+  /** Distinct experts that must agree before expert validation reaches VALIDATED or REJECTED. */
+  validationQuorum?: number;
+  /** The viewer may resolve or dismiss this gap (its creator, or the owner of its project). */
+  canManage?: boolean;
 }
 
 export interface GapAnalysisResult {
@@ -215,4 +232,57 @@ export interface GapStructuredEvidenceItem {
   evidenceType: string;
   excerpt: string;
   sourceLocation: string;
+}
+
+export type GapValidationAction = "VALIDATE" | "CHALLENGE" | "REQUEST_EVIDENCE" | "SUGGEST_EVIDENCE" | "REFINE_SCOPE" | "REJECT";
+
+/** A gap waiting for an expert decision (GET /gaps/validation-queue). Project details are never included. */
+export interface GapValidationQueueItem {
+  id: string;
+  topic: string;
+  title: string;
+  description: string;
+  gapType?: ResearchGapType;
+  scope?: string;
+  establishedKnowledge?: string;
+  observedLimitation?: string;
+  missingEvidence?: string;
+  significanceExplanation?: string;
+  suggestedResearchQuestion?: string;
+  validationStatus: GapValidationStatus;
+  gapConfidence?: GapAssessmentLevel;
+  researchPriority?: GapAssessmentLevel;
+  origin?: "HUMAN" | "AI_ASSISTED";
+  evidenceCount: number;
+  validationCount: number;
+  /** The requesting expert already recorded a decision on this gap. */
+  reviewedByMe: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GapValidationRecord {
+  id: string;
+  action: GapValidationAction;
+  comment: string;
+  suggestedChanges?: string | null;
+  createdAt: string;
+  reviewerId?: { id: string; fullName?: string | null; institution?: string | null; academicProfileType?: string | null };
+}
+
+/** One structured evidence record linked to a gap (GET /gaps/:id/evidence). */
+export interface GapEvidenceRecordView {
+  id: string;
+  evidenceKind: "SUPPORTING" | "COUNTER";
+  evidenceType: string;
+  excerpt: string;
+  explanation: string;
+  createdAt: string;
+  paperId?: { id: string; title: string; publicationYear?: number | null; journalName?: string | null; doi?: string | null };
+}
+
+export interface CreateGapValidationRequest {
+  action: GapValidationAction;
+  comment: string;
+  suggestedChanges?: string;
 }

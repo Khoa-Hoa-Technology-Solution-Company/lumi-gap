@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertProjectActionAllowed, invitationBelongsToUser } from "../project-workspace.rules.js";
+import { assertProjectActionAllowed, invitationBelongsToUser, projectDeleteError } from "../project-workspace.rules.js";
 
 describe("project workspace permission rules", () => {
   it("allows members to contribute but blocks owner-only settings", () => {
@@ -34,5 +34,19 @@ describe("project invitation ownership", () => {
 
   it("rejects invitations intended for another account", () => {
     expect(invitationBelongsToUser({ invitedUserId: "user-b", email: "other@example.com" }, { id: "user-a", verifiedEmails: ["me@example.com"] })).toBe(false);
+  });
+});
+
+describe("projectDeleteError", () => {
+  const empty = { submissions: 0, reportsByOthers: 0, gapsByOthers: 0, contributionsByOthers: 0 };
+
+  it("allows deleting a project with only the owner's own work", () => {
+    expect(projectDeleteError(empty)).toBeNull();
+  });
+
+  it("blocks deleting a project with submissions or other members' work and names what remains", () => {
+    expect(projectDeleteError({ ...empty, submissions: 1 })).toMatch(/1 submission.*Archive/);
+    expect(projectDeleteError({ ...empty, reportsByOthers: 2, gapsByOthers: 3 })).toMatch(/2 report\(s\).*3 research gap\(s\)/);
+    expect(projectDeleteError({ ...empty, contributionsByOthers: 1 })).not.toBeNull();
   });
 });

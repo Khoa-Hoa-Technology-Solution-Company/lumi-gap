@@ -9,8 +9,26 @@ export function reviewOutcome(overall: OverallAcademicAssessment | undefined, re
   } as const;
 }
 
-export function canCancelReviewRequest(status: ReviewRequestStatus): boolean {
-  return status === "REQUESTED" || status === "ACCEPTED";
+/** Requests without a due date get this window before an accepted review counts as overdue. */
+export const DEFAULT_REVIEW_WINDOW_DAYS = 30;
+
+export function reviewDeadline(request: { dueAt?: Date | null; createdAt: Date }): Date {
+  return request.dueAt ?? new Date(request.createdAt.getTime() + DEFAULT_REVIEW_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+}
+
+/**
+ * The requester may cancel until the reviewer accepts. Once accepted, the reviewer has committed
+ * time, so cancelling is only allowed when the review is overdue (otherwise the artifact would be stuck).
+ */
+export function canCancelReviewRequest(request: { status: ReviewRequestStatus; dueAt?: Date | null; createdAt: Date }, now = new Date()): boolean {
+  if (request.status === "REQUESTED") return true;
+  return (request.status === "ACCEPTED" || request.status === "IN_REVIEW") && reviewDeadline(request) < now;
+}
+
+/** A reviewer can decline a pending request, or withdraw after accepting as long as no round was submitted. */
+export function canReviewerDeclineRequest(status: ReviewRequestStatus, submittedReviewCount: number): boolean {
+  if (status === "REQUESTED") return true;
+  return (status === "ACCEPTED" || status === "IN_REVIEW") && submittedReviewCount === 0;
 }
 
 export function canResubmitReviewRequest(status: ReviewRequestStatus): boolean {

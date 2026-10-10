@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { buildGapsPrompt } from "../gaps.prompt.js";
-import { computeGapEvidence } from "../gap-evidence.js";
+import { computeGapEvidence, resolveProbeYears } from "../gap-evidence.js";
 
-const T = { scarceAbs: 5, scarcePct: 0.02, parentRisingMin: 0 };
+const T = { scarceAbs: 5, scarcePct: 0.02, parentRisingMin: 0, minParentPapers: 5 };
 
 describe("computeGapEvidence", () => {
   it("confirms a scarce intersection under a rising parent", () => {
@@ -42,6 +42,26 @@ describe("computeGapEvidence", () => {
     expect(e.scarcityScore).toBe(1);
     expect(e.confirmed).toBe(true);
   });
+
+  it("gives no evidence confidence when a parent topic has no papers", () => {
+    const e = computeGapEvidence(
+      { intersectionCount: 0, parentCounts: { a: 12, b: 0 }, parentRisingGrowthPct: 30 },
+      T,
+    );
+    expect(e.scarcityScore).toBe(0);
+    expect(e.confirmed).toBe(false);
+    expect(e.evidenceConfidence).toBe(0);
+  });
+
+  it("does not confirm when a parent topic has too few papers", () => {
+    const e = computeGapEvidence(
+      { intersectionCount: 0, parentCounts: { a: 1, b: 1 }, parentRisingGrowthPct: 100 },
+      T,
+    );
+    expect(e.lowSample).toBe(true);
+    expect(e.confirmed).toBe(false);
+    expect(e.evidenceConfidence).toBeLessThanOrEqual(0.25);
+  });
 });
 
 describe("buildGapsPrompt", () => {
@@ -69,5 +89,27 @@ describe("buildGapsPrompt", () => {
     expect(prompt).toContain("Limitations: Only one institution");
     expect(prompt).toContain("Findings: Teachers used feedback inconsistently");
     expect(prompt).toContain("Future work: Evaluate longitudinal outcomes");
+  });
+});
+
+describe("resolveProbeYears", () => {
+  it("uses the user's window when the probe has none", () => {
+    expect(resolveProbeYears({ yearFrom: 2020, yearTo: 2024 }, {})).toEqual({ yearFrom: 2020, yearTo: 2024, conflict: false });
+  });
+
+  it("uses the probe's window when the user chose none", () => {
+    expect(resolveProbeYears({}, { yearFrom: 2018, yearTo: 2022 })).toEqual({ yearFrom: 2018, yearTo: 2022, conflict: false });
+  });
+
+  it("intersects both windows", () => {
+    expect(resolveProbeYears({ yearFrom: 2020, yearTo: 2025 }, { yearFrom: 2022, yearTo: 2030 })).toEqual({ yearFrom: 2022, yearTo: 2025, conflict: false });
+  });
+
+  it("falls back to the user's window when the intersection is empty", () => {
+    expect(resolveProbeYears({ yearFrom: 2023, yearTo: 2025 }, { yearFrom: 2010, yearTo: 2015 })).toEqual({ yearFrom: 2023, yearTo: 2025, conflict: true });
+  });
+
+  it("returns no window when neither side has one", () => {
+    expect(resolveProbeYears({}, {})).toEqual({ yearFrom: undefined, yearTo: undefined, conflict: false });
   });
 });

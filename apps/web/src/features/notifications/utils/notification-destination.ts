@@ -10,7 +10,15 @@ export function getNotificationDestination(
   if (notification.type.startsWith("LECTURER_VERIFICATION_")) return `/settings/verification/lecturer${verificationQuery}`;
   if (notification.type.startsWith("MENTORSHIP_") || notification.type.startsWith("PROJECT_MENTORSHIP_")) return notification.targetId ? `/academic-support?projectId=${encodeURIComponent(notification.targetId)}` : "/academic-support";
   if (notification.type.startsWith("academic_verification_")) return "/settings/academic";
-  if (["REVIEW_REQUESTED", "REVIEW_REQUEST_ACCEPTED", "REVIEW_REQUEST_DECLINED", "REVIEW_REQUEST_CANCELLED", "REVIEW_SUBMITTED", "REVISION_REQUESTED", "REVISION_RESUBMITTED"].includes(notification.type)) return "/reviews";
+  // Reviewers can respond in the review center without project membership.
+  if (["REVIEW_REQUESTED", "REVISION_RESUBMITTED", "REVIEW_REQUEST_CANCELLED"].includes(notification.type)) return "/reviews";
+  if (["REVIEW_REQUEST_ACCEPTED", "REVIEW_REQUEST_DECLINED", "REVIEW_SUBMITTED", "REVISION_REQUESTED"].includes(notification.type)) {
+    if (notification.targetKind === "review_request" && notification.targetId) return `/review-requests/${encodeURIComponent(notification.targetId)}`;
+    if (["REVIEW_SUBMITTED", "REVISION_REQUESTED"].includes(notification.type) && notification.targetKind === "project" && notification.targetId) {
+      return `/projects/${encodeURIComponent(notification.targetId)}?tab=reports`;
+    }
+    return "/reviews";
+  }
   if (notification.type.startsWith("affiliation_")) return "/settings/academic";
   if (isAdmin && ["submission_pending", "paper_submission"].includes(notification.type)) return "/admin/papers";
   const adminReviewRoutes: Record<string, string> = {
@@ -36,6 +44,8 @@ export function getNotificationDestination(
   if (!isAdmin && notification.type === "submission_rejected" && notification.targetKind === "paper" && notification.targetId) {
     return `/settings/submit-paper?edit=${encodeURIComponent(notification.targetId)}`;
   }
+  // The invitee is not a member yet: the project page cannot accept, the project list shows the pending invitation.
+  if (notification.type === "project_invitation") return "/projects";
   if (notification.targetId) {
     const routeByKind: Record<NonNullable<NotificationItem["targetKind"]>, string> = {
       paper: "/papers",
@@ -45,6 +55,7 @@ export function getNotificationDestination(
       forum_post: "/forum",
       academic_profile: "/academics",
       community: "/communities",
+      review_request: "/review-requests",
     };
     if (notification.targetKind && routeByKind[notification.targetKind]) return `${routeByKind[notification.targetKind]}/${encodeURIComponent(notification.targetId)}`;
   }

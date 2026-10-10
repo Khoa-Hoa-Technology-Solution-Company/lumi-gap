@@ -101,6 +101,7 @@ export const API_ROUTES = {
     relatedPapers: (id: string) => `/communities/${id}/related-papers`,
     relatedGaps: (id: string) => `/communities/${id}/related-gaps`,
     recommendations: "/communities/recommendations",
+    suggestions: "/communities/suggestions",
     summary: (id: string) => `/communities/${id}/summary`,
   },
   forum: {
@@ -207,6 +208,10 @@ export const API_ROUTES = {
     discussions: (id: string) => `/gaps/${id}/discussions`,
     reviewForumCitation: (id: string, referenceId: string) => `/gaps/${id}/forum-citations/${referenceId}/review-as-evidence`,
     forumCitationEvidenceOptions: (id: string, referenceId: string) => `/gaps/${id}/forum-citations/${referenceId}/evidence-options`,
+    validationQueue: "/gaps/validation-queue",
+    requestValidation: (id: string) => `/gaps/${id}/request-validation`,
+    validations: (id: string) => `/gaps/${id}/validations`,
+    evidence: (id: string) => `/gaps/${id}/evidence`,
   },
   projects: {
     list: "/projects",

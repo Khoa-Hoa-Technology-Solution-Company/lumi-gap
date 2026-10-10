@@ -9,6 +9,8 @@ import { useReviewRequest, useReviewRequestAction } from "@/features/reviews";
 import { useSubmissionRevisions } from "@/features/submissions";
 import { useAuthStore } from "@/stores/auth-store";
 
+const DEFAULT_REVIEW_WINDOW_DAYS = 30; // backend DEFAULT_REVIEW_WINDOW_DAYS, used when a request has no due date
+
 export function ReviewRequestDetailPage() {
   const { requestId = "" } = useParams();
   const navigate = useNavigate();
@@ -27,7 +29,10 @@ export function ReviewRequestDetailPage() {
   if (query.isLoading) return <main className="mx-auto max-w-5xl px-4 py-10"><div className="h-80 animate-pulse rounded-2xl bg-muted" /></main>;
   if (!detail || query.error) return <main className="mx-auto max-w-3xl px-4 py-16"><div className="rounded-xl border border-red-200 bg-red-50 p-5 text-sm text-red-700">This review request is unavailable or you do not have access.</div></main>;
   const isRequester = currentUser?.id === detail.requester.id;
-  const canCancel = isRequester && ["REQUESTED", "ACCEPTED"].includes(detail.status);
+  // Mirrors the backend rule: cancel before acceptance, or after the deadline of an accepted review.
+  const deadline = detail.dueAt ? new Date(detail.dueAt) : new Date(new Date(detail.createdAt).getTime() + DEFAULT_REVIEW_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+  const acceptedNotOverdue = ["ACCEPTED", "IN_REVIEW"].includes(detail.status) && deadline.getTime() >= Date.now();
+  const canCancel = isRequester && (detail.status === "REQUESTED" || (["ACCEPTED", "IN_REVIEW"].includes(detail.status) && !acceptedNotOverdue));
   const canResubmit = isRequester && detail.status === "REVISION_REQUESTED" && openItems.length > 0;
   const pdfOptions = revisions.data?.filter((item) => item.revisionNumber > detail.artifact.revisionNumber) ?? [];
 
@@ -50,7 +55,7 @@ export function ReviewRequestDetailPage() {
 
   return <main className="mx-auto w-full max-w-5xl px-4 py-8 sm:px-6">
     <div className="flex items-center justify-between"><Link to="/reviews" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft className="h-4 w-4" />Review Center</Link>{canCancel ? <Button variant="ghost" className="text-red-600" onClick={() => setCancelOpen(true)}>Cancel request</Button> : null}</div>
-    <header className="mt-5 border-b pb-6"><div className="flex flex-wrap items-center gap-2"><Badge>{detail.status.replaceAll("_", " ")}</Badge><Badge variant="outline">{detail.artifact.type?.replaceAll("_", " ") || "Research artifact"}</Badge><Badge variant="secondary">Revision {detail.artifact.revisionNumber}</Badge></div><h1 className="mt-4 text-2xl font-semibold">{detail.artifact.title}</h1><dl className="mt-4 grid gap-4 text-sm sm:grid-cols-3"><div><dt className="text-muted-foreground">Requested by</dt><dd className="mt-1 font-medium"><Link to={`/academics/${encodeURIComponent(detail.requester.id)}`} className="hover:underline">{detail.requester.fullName}</Link></dd></div><div><dt className="text-muted-foreground">Reviewer</dt><dd className="mt-1 font-medium"><Link to={`/academics/${encodeURIComponent(detail.reviewer.id)}`} className="hover:underline">{detail.reviewer.fullName}</Link></dd></div><div><dt className="text-muted-foreground">Due date</dt><dd className="mt-1 font-medium">{detail.dueAt ? new Date(detail.dueAt).toLocaleDateString() : "No due date"}</dd></div></dl>{detail.mentorRelationshipActive && <p className="mt-3 text-sm text-muted-foreground">This reviewer also mentors this project. The formal review request is a separate agreement.</p>}{detail.message ? <p className="mt-4 max-w-3xl text-sm leading-6 text-muted-foreground">{detail.message}</p> : null}</header>
+    <header className="mt-5 border-b pb-6"><div className="flex flex-wrap items-center gap-2"><Badge>{detail.status.replaceAll("_", " ")}</Badge><Badge variant="outline">{detail.artifact.type?.replaceAll("_", " ") || "Research artifact"}</Badge><Badge variant="secondary">Revision {detail.artifact.revisionNumber}</Badge></div><h1 className="mt-4 text-2xl font-semibold">{detail.artifact.title}</h1><dl className="mt-4 grid gap-4 text-sm sm:grid-cols-3"><div><dt className="text-muted-foreground">Requested by</dt><dd className="mt-1 font-medium"><Link to={`/academics/${encodeURIComponent(detail.requester.id)}`} className="hover:underline">{detail.requester.fullName}</Link></dd></div><div><dt className="text-muted-foreground">Reviewer</dt><dd className="mt-1 font-medium"><Link to={`/academics/${encodeURIComponent(detail.reviewer.id)}`} className="hover:underline">{detail.reviewer.fullName}</Link></dd></div><div><dt className="text-muted-foreground">Due date</dt><dd className="mt-1 font-medium">{detail.dueAt ? new Date(detail.dueAt).toLocaleDateString() : "No due date"}</dd></div></dl>{detail.mentorRelationshipActive && <p className="mt-3 text-sm text-muted-foreground">This reviewer also mentors this project. The formal review request is a separate agreement.</p>}{detail.message ? <p className="mt-4 max-w-3xl text-sm leading-6 text-muted-foreground">{detail.message}</p> : null}{isRequester && acceptedNotOverdue ? <p className="mt-4 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800 dark:border-blue-900 dark:bg-blue-950/20 dark:text-blue-300">The reviewer has accepted this request, so it can no longer be cancelled. If the review is still not delivered after {deadline.toLocaleDateString()}, you can cancel it and invite another reviewer.</p> : null}</header>
 
     <section className="mt-6 rounded-xl border bg-card p-5"><div className="flex items-center justify-between"><div><p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Template v{detail.templateVersion.versionNumber}</p><h2 className="mt-1 text-lg font-semibold">{detail.templateVersion.reviewMode.replaceAll("_", " ")}</h2></div><Badge variant="outline">{detail.templateVersion.criteria.length} criteria</Badge></div></section>
 

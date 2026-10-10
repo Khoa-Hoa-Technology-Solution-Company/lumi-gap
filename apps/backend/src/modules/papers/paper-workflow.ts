@@ -13,7 +13,7 @@ export function isImportedPaperRecord(paper: PaperOrigin): boolean {
     : !(paper.requestedBy ?? paper.requestedById);
 }
 
-const PAPER_REQUEST_STATUSES = [
+export const PAPER_REQUEST_STATUSES = [
   "pending",
   "not-downloaded",
   "downloaded",
@@ -21,15 +21,31 @@ const PAPER_REQUEST_STATUSES = [
   "pending-requester-acceptance",
 ] as const;
 
-/** Only papers with a user request or PDF contribution belong in the admin workflow. */
-export function buildUserPaperRequestFilter(status?: string): Record<string, unknown> {
-  return {
-    paperStatus: status ?? { $in: PAPER_REQUEST_STATUSES },
-    $or: [
-      { requestedBy: { $exists: true, $ne: null } },
-      { uploadedBy: { $exists: true, $ne: null } },
-    ],
-  };
+export type PaperRequestStatus = (typeof PAPER_REQUEST_STATUSES)[number];
+
+/** Statuses an admin may move a paper to from each status (PATCH /papers/:id/status). */
+const ADMIN_PAPER_STATUS_TRANSITIONS: Record<PaperRequestStatus, readonly PaperRequestStatus[]> = {
+  pending: ["not-downloaded", "downloaded", "rejected", "pending-requester-acceptance"],
+  "pending-requester-acceptance": ["not-downloaded", "downloaded", "rejected"],
+  rejected: ["pending", "not-downloaded"],
+  "not-downloaded": ["downloaded", "rejected"],
+  downloaded: ["not-downloaded", "rejected"],
+};
+
+/** True when an admin may change a paper from `from` to `to`. Unknown legacy statuses are not restricted. */
+export function isAllowedAdminPaperStatusChange(from: string | null | undefined, to: PaperRequestStatus): boolean {
+  if (from === to) return true;
+  const allowed = ADMIN_PAPER_STATUS_TRANSITIONS[from as PaperRequestStatus];
+  return allowed ? allowed.includes(to) : true;
+}
+
+/**
+ * A requester may cancel (and be refunded for) a request that never reached the corpus.
+ * paperStatus alone is not enough: a new request without a PDF starts as "not-downloaded" (draft),
+ * and an active paper turns "pending" again after a PDF upload. Only the data status says it is live.
+ */
+export function isCancellablePaperRequest(paper: { dataStatus?: string | null }): boolean {
+  return paper.dataStatus !== "active";
 }
 
 export function isUserPaperRequest(

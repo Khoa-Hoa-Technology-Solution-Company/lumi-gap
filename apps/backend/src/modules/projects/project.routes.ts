@@ -18,7 +18,7 @@ import { z } from "zod";
 import { databaseIdSchema } from "../../common/validation/database-id.js";
 import { projectChatRouter } from "./chat.routes.js";
 import { projectTeamChatRouter } from "./team-chat.routes.js";
-import rateLimit from "express-rate-limit";
+import { createRateLimiter } from "../../common/middleware/rate-limit.js";
 import { env } from "../../config/env.js";
 import { projectMentorshipService } from "./project-mentorship.service.js";
 import {
@@ -53,7 +53,7 @@ const paramInvitationIdSchema = paramIdSchema.extend({
 });
 
 projectRouter.get("/invitation-tokens/:token", optionalAuth, validate(invitationTokenParamsSchema, "params"), projectController.getInvitationByToken);
-const academicRequestLimiter = rateLimit({ windowMs: 60 * 60 * 1000, limit: env.ACADEMIC_RELATIONSHIP_REQUEST_LIMIT, keyGenerator: req => req.user!.sub, standardHeaders: true, legacyHeaders: false });
+const academicRequestLimiter = createRateLimiter("projects:academicRequestLimiter", { windowMs: 60 * 60 * 1000, limit: env.ACADEMIC_RELATIONSHIP_REQUEST_LIMIT, keyGenerator: req => req.user!.sub, standardHeaders: true, legacyHeaders: false });
 const contextQuerySchema = z.object({ section: z.enum(["papers", "gaps", "reports", "evidence", "members"]).optional(), page: z.coerce.number().int().min(1).max(100000).default(1), pageSize: z.coerce.number().int().min(1).max(30).default(10) }).strict();
 projectRouter.get("/academic-support/preferences", requireAuth, requireResearchWorkflow, async (req, res) => {
   res.json({ success: true, data: await projectMentorshipService.preferences(req.user!.sub) });

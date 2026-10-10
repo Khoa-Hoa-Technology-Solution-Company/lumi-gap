@@ -188,6 +188,8 @@ const EnvSchema = z.object({
   GAP_SCARCE_ABS: z.coerce.number().int().nonnegative().default(5),
   GAP_SCARCE_PCT: z.coerce.number().min(0).max(1).default(0.02),
   GAP_PARENT_RISING_MIN: z.coerce.number().default(0), // growthRatePct strictly above this = rising
+  GAP_MIN_PARENT_PAPERS: z.coerce.number().int().nonnegative().default(5), // each probe topic needs this many papers to be confirmed
+  GAP_VALIDATION_QUORUM: z.coerce.number().int().min(1).default(2), // distinct experts that must agree (VALIDATE or REJECT) before a gap reaches a final status
   // v2 — paper comparison (one cached LLM call; capped to bound tokens).
   COMPARE_MAX_PAPERS: z.coerce.number().int().min(2).max(4).default(4),
   COMPARE_PROMPT_VERSION: z.string().default("compare-v2"),
@@ -210,6 +212,16 @@ const EnvSchema = z.object({
   // throttle stops an unauthenticated loop from draining the Gemini quota.
   RERANK_MAX_PER_HOUR: z.coerce.number().int().positive().default(30),
   SEMANTIC_SEARCH_MAX_PER_MINUTE: z.coerce.number().int().positive().default(60),
+  // Community "did you mean" suggestions embed the raw query on every cache miss
+  // (Gemini, shared quota), so the route is throttled per user/IP.
+  COMMUNITY_SUGGEST_MAX_PER_MINUTE: z.coerce.number().int().min(1).default(20),
+  // Where rate-limit counters live. "memory" is per process; "redis" is shared across backend
+  // instances. Default is memory because hosted Upstash free allows only 10K commands/day and
+  // every limited request costs 1-2 of them; enable redis only when running more than one instance.
+  RATE_LIMIT_STORE: z.enum(["memory", "redis"]).default("memory"),
+  // Minimum similarity for a semantic community match. Score = 1 - cosine_distance / 2,
+  // i.e. (1 + cos) / 2, so 0.75 corresponds to a cosine of 0.5. Tune on real embeddings.
+  COMMUNITY_SUGGEST_MIN_SIMILARITY: z.coerce.number().min(0).max(1).default(0.75),
 
   // Quality & Feedback — per-user/hour cap on the on-demand LLM-judge (a generate call).
   QUALITY_EVAL_MAX_PER_HOUR: z.coerce.number().int().positive().default(20),

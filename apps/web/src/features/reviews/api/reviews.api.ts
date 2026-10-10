@@ -43,7 +43,7 @@ export interface ReviewCenterItem {
   requester: { id: string; fullName: string; avatarUrl?: string };
   reviewer: { id: string; fullName: string; avatarUrl?: string; institution?: string };
   assignment: { id: string; status: string; dueAt?: string };
-  artifact: { submissionId: string; title: string; type?: string; projectId: string; revisionId: string; revisionNumber: number; contentType: string };
+  artifact: { submissionId: string; title: string; type?: string; projectId: string; revisionId: string; revisionNumber: number; contentType: string; sourceReportId?: string };
   latestReview?: { id: string; roundNumber: number; status: string; overallAssessment?: string; submittedAt?: string };
 }
 
@@ -103,7 +103,7 @@ export const reviewsApi = {
   async archiveTemplate(templateId: string): Promise<void> { await api.post(API_ROUTES.reviewTemplates.archive(templateId), {}); },
   async center(): Promise<{ incoming: ReviewCenterItem[]; sent: ReviewCenterItem[] }> { const response = await api.get(API_ROUTES.reviewRequests.list); return response.data.data; },
   async requestDetail(requestId: string): Promise<ReviewRequestDetail> { const response = await api.get(API_ROUTES.reviewRequests.detail(requestId)); return response.data.data; },
-  async reviewerCandidates(q?: string): Promise<ReviewerCandidate[]> { const response = await api.get(API_ROUTES.reviewRequests.reviewers, { params: q ? { q } : undefined }); return response.data.data; },
+  async reviewerCandidates(q?: string, scope: { reportId?: string; submissionId?: string } = {}): Promise<ReviewerCandidate[]> { const response = await api.get(API_ROUTES.reviewRequests.reviewers, { params: { ...(q ? { q } : {}), ...(scope.reportId ? { reportId: scope.reportId } : {}), ...(scope.submissionId ? { submissionId: scope.submissionId } : {}) } }); return response.data.data; },
   async createRequest(input: CreateReviewRequestInput): Promise<ReviewCenterItem> { const response = await api.post(API_ROUTES.reviewRequests.list, input); return response.data.data; },
   async acceptRequest(requestId: string): Promise<void> { await api.post(API_ROUTES.reviewRequests.accept(requestId), {}); },
   async declineRequest(requestId: string, reason?: string): Promise<void> { await api.post(API_ROUTES.reviewRequests.decline(requestId), { reason }); },

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   canCancelReviewRequest,
   canResubmitReviewRequest,
+  canReviewerDeclineRequest,
   canUseOpenReviewOpportunities,
   canViewReviewRequest,
   nextTemplateVersionNumber,
@@ -20,11 +21,32 @@ describe("academic review lifecycle rules", () => {
   });
 
   it("limits cancellation and resubmission to their explicit lifecycle states", () => {
-    expect(canCancelReviewRequest("REQUESTED")).toBe(true);
-    expect(canCancelReviewRequest("ACCEPTED")).toBe(true);
-    expect(canCancelReviewRequest("IN_REVIEW")).toBe(false);
+    const now = new Date("2026-10-07T12:00:00Z");
+    const createdAt = new Date("2026-10-01T12:00:00Z");
+    const future = new Date("2026-10-20T12:00:00Z");
+    const past = new Date("2026-10-05T12:00:00Z");
+    expect(canCancelReviewRequest({ status: "REQUESTED", dueAt: future, createdAt }, now)).toBe(true);
+    // Accepted reviews cannot be cancelled before they are overdue.
+    expect(canCancelReviewRequest({ status: "ACCEPTED", dueAt: future, createdAt }, now)).toBe(false);
+    expect(canCancelReviewRequest({ status: "IN_REVIEW", dueAt: future, createdAt }, now)).toBe(false);
+    expect(canCancelReviewRequest({ status: "ACCEPTED", dueAt: past, createdAt }, now)).toBe(true);
+    expect(canCancelReviewRequest({ status: "IN_REVIEW", dueAt: past, createdAt }, now)).toBe(true);
+    // Without a due date the default review window applies.
+    expect(canCancelReviewRequest({ status: "ACCEPTED", dueAt: null, createdAt }, now)).toBe(false);
+    expect(canCancelReviewRequest({ status: "ACCEPTED", dueAt: null, createdAt: new Date("2026-08-01T00:00:00Z") }, now)).toBe(true);
+    expect(canCancelReviewRequest({ status: "REVISION_REQUESTED", dueAt: past, createdAt }, now)).toBe(false);
+    expect(canCancelReviewRequest({ status: "COMPLETED", dueAt: past, createdAt }, now)).toBe(false);
     expect(canResubmitReviewRequest("REVISION_REQUESTED")).toBe(true);
     expect(canResubmitReviewRequest("SUBMITTED")).toBe(false);
+  });
+
+  it("lets reviewers decline or withdraw only before any round is submitted", () => {
+    expect(canReviewerDeclineRequest("REQUESTED", 0)).toBe(true);
+    expect(canReviewerDeclineRequest("ACCEPTED", 0)).toBe(true);
+    expect(canReviewerDeclineRequest("IN_REVIEW", 0)).toBe(true);
+    expect(canReviewerDeclineRequest("IN_REVIEW", 1)).toBe(false);
+    expect(canReviewerDeclineRequest("REVISION_REQUESTED", 1)).toBe(false);
+    expect(canReviewerDeclineRequest("COMPLETED", 1)).toBe(false);
   });
 
   it("keeps review request visibility assignment-scoped", () => {

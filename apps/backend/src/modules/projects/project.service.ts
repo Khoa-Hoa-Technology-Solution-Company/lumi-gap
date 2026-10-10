@@ -16,7 +16,7 @@ import { createOpaqueToken, hashOpaqueToken } from "../auth/token.service.js";
 import { assertResearchWorkflowAccess } from "../authorization/research-access.service.js";
 import { projectActivityService } from "./project-activity.service.js";
 import type { ProjectAiFeature } from "./project-scope.js";
-import { assertProjectActionAllowed, canReadProjectSummary, invitationBelongsToUser } from "./project-workspace.rules.js";
+import { assertProjectActionAllowed, canReadProjectSummary, invitationBelongsToUser, projectDeleteError } from "./project-workspace.rules.js";
 import { sendProjectInvitationEmail } from "./project-invitation.mail.js";
 
 const ACTIVE = "ACTIVE";
@@ -129,10 +129,14 @@ async function invitationByToken(token: string) {
 }
 
 async function verifiedEmailsForUser(userId: string): Promise<string[]> {
-  const rows = await getPrisma().userEmail.findMany({
-    where: { userId, verifiedAt: { not: null } }, select: { normalizedEmail: true },
-  });
-  return rows.map((row) => row.normalizedEmail);
+  const [rows, user] = await Promise.all([
+    getPrisma().userEmail.findMany({ where: { userId, verifiedAt: { not: null } }, select: { normalizedEmail: true } }),
+    getPrisma().user.findUnique({ where: { id: userId }, select: { email: true, emailVerifiedAt: true } }),
+  ]);
+  const emails = new Set(rows.map((row) => row.normalizedEmail));
+  // Accounts created before user_emails existed only carry the verified primary email on users.
+  if (user?.emailVerifiedAt && user.email) emails.add(user.email.trim().toLowerCase());
+  return [...emails];
 }
 
 async function invitationPreview(invitation: Awaited<ReturnType<typeof invitationByToken>>, viewerId?: string): Promise<ProjectInvitationPreview> {
@@ -382,7 +386,18 @@ export class ProjectService {
   async deleteProject(projectId: string, userId: string) {
     const rights = await access(projectId, userId);
     assertOwner(rights);
-    await getPrisma().project.delete({ where: { id: rights.row.id } });
+    const prisma = getPrisma(), id = rights.row.id, ownerId = rights.row.ownerId;
+    const [submissions, reportsByOthers, gapsByOthers, researchContributions, proposals] = await Promise.all([
+      prisma.submission.count({ where: { projectId: id } }),
+      prisma.report.count({ where: { projectId: id, userId: { not: ownerId } } }),
+      prisma.researchGap.count({ where: { projectId: id, userId: { not: ownerId } } }),
+      prisma.researchContribution.count({ where: { projectId: id, contributorId: { not: ownerId } } }),
+      prisma.projectContributionProposal.count({ where: { projectId: id, contributorId: { not: ownerId } } }),
+    ]);
+    const impact = { submissions, reportsByOthers, gapsByOthers, contributionsByOthers: researchContributions + proposals };
+    const blocked = projectDeleteError(impact);
+    if (blocked) throw AppError.conflict(blocked, impact);
+    await prisma.project.delete({ where: { id } });
   }
 
   async addPaperToProject(projectId: string, paperId: string, userId: string) {
@@ -586,14 +601,13 @@ export class ProjectService {
     if (!changed.count) throw AppError.notFound("Pending invitation not found");
   }
 
-  async addMemberToProject(projectId: string, memberData: AddProjectMemberRequest, userId: string) {
-    const rights = await access(projectId, userId);
-    assertOwner(rights);
-    assertMutable(rights);
-    if (memberData.targetKind !== "User" || memberData.role !== "MEMBER") throw AppError.badRequest("Only MEMBER project roles can be assigned directly");
-    const member = await resolveUser(memberData.targetId);
-    await getPrisma().projectMember.upsert({ where: { projectId_userId: { projectId: rights.row.id, userId: member.id } }, create: { projectId: rights.row.id, userId: member.id, role: "MEMBER", status: ACTIVE }, update: { role: "MEMBER", status: ACTIVE, joinedAt: new Date() } });
-    return hydrate(rights.row, rights.actor.id);
+  /**
+   * Members join only by accepting an invitation, so a removed or departed member cannot be pulled back
+   * without consent. The old direct-add endpoint now just invites the user (by id or email).
+   */
+  async addMemberToProject(projectId: string, memberData: Pick<AddProjectMemberRequest, "targetId">, userId: string) {
+    const target = memberData.targetId.trim();
+    return this.inviteMember(projectId, target.includes("@") ? { email: target } : { userId: target }, userId);
   }
 
   async removeMemberFromProject(projectId: string, targetId: string, userId: string) {

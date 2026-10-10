@@ -178,6 +178,9 @@ describe.sequential("peer-review versions and authorization (PostgreSQL)", () =>
     expect((await reviewService.getReview(assignment.id, outsider)).artifactRevision?.id).toBe(revision.id);
     expect((await submissionService.listRevisions(submission.id, outsider, "user")).some((item) => item.id === newer.id)).toBe(false);
     await expect(submissionService.resolveDownload(submission.id, newer.id, outsider, "user")).rejects.toMatchObject({ statusCode: 404 });
+    // An accepted review cannot be cancelled before it is overdue; once overdue the author may cancel.
+    await expect(reviewRequestService.cancel(assignment.reviewRequestId!, author)).rejects.toMatchObject({ statusCode: 409 });
+    await getPrisma().reviewRequest.update({ where: { id: assignment.reviewRequestId! }, data: { dueAt: new Date(Date.now() - 60_000) } });
     await reviewRequestService.cancel(assignment.reviewRequestId!, author);
     await expect(reviewService.getReview(assignment.id, outsider)).rejects.toMatchObject({ statusCode: 403 });
   });
@@ -193,6 +196,8 @@ describe.sequential("peer-review versions and authorization (PostgreSQL)", () =>
     const studentUser = await prisma.user.findUniqueOrThrow({ where: { id: student } });
     const forbidden = await reviewRequestService.createExternalInvitation({ submissionId: submission.id, templateVersionId: version, reviewerEmail: studentUser.email }, author);
     await expect(reviewRequestService.acceptExternalInvitation(forbidden.token, student)).rejects.toMatchObject({ statusCode: 403 });
+    await expect(reviewRequestService.cancel(request.id, author)).rejects.toMatchObject({ statusCode: 409 });
+    await prisma.reviewRequest.update({ where: { id: request.id }, data: { dueAt: new Date(Date.now() - 60_000) } });
     await reviewRequestService.cancel(request.id, author);
   });
 

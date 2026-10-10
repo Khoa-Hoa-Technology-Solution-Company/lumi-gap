@@ -31,6 +31,8 @@ export function SubmissionDetailPage() {
   const data = submission.data;
   const canRevise = history.data?.canManage === true && !["accepted", "rejected", "withdrawn"].includes(data.status);
   const latestPreReview = preReviews.data?.[0];
+  const preReviewRunning = latestPreReview?.status === "QUEUED" || latestPreReview?.status === "PROCESSING";
+  const preReviewFailed = latestPreReview?.status === "FAILED";
 
   async function uploadRevision() {
     if (!file) return toast.error("Choose a PDF revision");
@@ -53,7 +55,9 @@ export function SubmissionDetailPage() {
     </header>
 
     <section className="mt-6 rounded-2xl border border-blue-200 bg-blue-50/60 p-5 dark:border-blue-900 dark:bg-blue-950/20">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"><div className="flex gap-3"><Bot className="mt-0.5 h-5 w-5 shrink-0 text-blue-700" /><div><h2 className="font-semibold">AI pre-review · advisory only</h2><p className="mt-1 max-w-2xl text-xs leading-5 text-slate-600 dark:text-slate-400">Surfaces alignment, unsupported claims and human review focus areas. It does not prove novelty, validate a research gap, or replace a reviewer.</p></div></div>{canRevise ? <Button size="sm" onClick={() => runPreReview.mutateAsync().then(() => toast.success("AI pre-review completed")).catch(() => toast.error("AI pre-review is unavailable or not configured"))} disabled={runPreReview.isPending}><Play />{runPreReview.isPending ? "Analyzing…" : "Run pre-review"}</Button> : null}</div>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"><div className="flex gap-3"><Bot className="mt-0.5 h-5 w-5 shrink-0 text-blue-700" /><div><h2 className="font-semibold">AI pre-review · advisory only</h2><p className="mt-1 max-w-2xl text-xs leading-5 text-slate-600 dark:text-slate-400">Surfaces alignment, unsupported claims and human review focus areas. It does not prove novelty, validate a research gap, or replace a reviewer.</p></div></div>{canRevise ? <Button size="sm" onClick={() => runPreReview.mutateAsync().then(() => toast.success("AI pre-review queued")).catch((error: { response?: { data?: { error?: { message?: string } } } }) => toast.error(error.response?.data?.error?.message ?? "AI pre-review is unavailable or not configured"))} disabled={runPreReview.isPending || preReviewRunning}><Play />{runPreReview.isPending || preReviewRunning ? "Analyzing…" : "Run pre-review"}</Button> : null}</div>
+      {preReviewRunning ? <p className="mt-4 text-sm text-blue-800 dark:text-blue-300">AI pre-review is running. Results appear here when it finishes.</p> : null}
+      {preReviewFailed ? <p className="mt-4 text-sm text-red-700 dark:text-red-400">{latestPreReview?.errorMessage ?? "AI pre-review failed."}</p> : null}
       {latestPreReview?.status === "COMPLETED" ? <div className="mt-5 grid gap-4 border-t border-blue-200 pt-5 dark:border-blue-900 md:grid-cols-2"><div><h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Summary</h3><p className="mt-2 text-sm leading-6">{latestPreReview.summary}</p>{latestPreReview.goalAlignment ? <p className="mt-3 text-sm"><strong>Goal alignment:</strong> {latestPreReview.goalAlignment.assessment}</p> : null}</div><div><h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Human review focus</h3><ul className="mt-2 space-y-1.5 text-sm">{latestPreReview.reviewFocusAreas.map((item) => <li key={item}>• {item}</li>)}</ul>{latestPreReview.limitations.length ? <div className="mt-4 rounded-lg bg-white/70 p-3 text-xs text-slate-600 dark:bg-slate-950/40 dark:text-slate-400"><strong>Analysis limitations:</strong> {latestPreReview.limitations.join(" ")}</div> : null}</div></div> : null}
     </section>
 

@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import { gapsService } from "./gaps.service.js";
 import type {
+  ActiveGapAnalysisQuery,
   AnalyzeGapDto,
   PatchGapDto,
   PreviewGapEvidenceDto,
@@ -31,9 +32,10 @@ export const gapsController = {
     res.json({ success: true, data });
   },
 
-  /** GET /api/v1/gaps/analyze/active — latest queued/analyzing run for resume UX. */
+  /** GET /api/v1/gaps/analyze/active?projectId= — latest queued/analyzing run in that scope, for resume UX. */
   async getActiveAnalysis(req: Request, res: Response) {
-    const data = await gapsService.getActiveAnalysis(req.user!.sub);
+    const { projectId } = req.query as ActiveGapAnalysisQuery;
+    const data = await gapsService.getActiveAnalysis(req.user!.sub, projectId);
     res.json({ success: true, data });
   },
 

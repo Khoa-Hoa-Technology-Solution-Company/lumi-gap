@@ -139,3 +139,28 @@ valid provider credentials. Health checks do not verify an external AI provider.
 - When the remote PDF cannot be read, indexing may use the abstract. The paper
   evidence panel reports **Abstract only** and source warnings; this does not
   provide full manuscript coverage.
+
+## Rate limits and horizontal scaling
+
+Every rate limiter in the backend is created through `createRateLimiter()`
+(`apps/backend/src/common/middleware/rate-limit.ts`). By default the counters
+live in the **memory** of each process, so with N backend instances behind a load
+balancer the effective ceiling is roughly N times the configured value
+(`SEMANTIC_SEARCH_MAX_PER_MINUTE`, `COMMUNITY_SUGGEST_MAX_PER_MINUTE`, ...).
+These limiters exist mainly to protect the shared Gemini quota, so the multiplier
+matters.
+
+When you run more than one backend instance, set `RATE_LIMIT_STORE=redis` in the
+root `.env`. Counters are then kept in the stack's Redis under `rl:<limiter>:*`
+keys and shared by all instances. If Redis fails, requests are let through
+(`passOnStoreError`) instead of returning a 500, so the limit is only
+best-effort during an outage.
+
+Leave it at the default (`memory`) for a single instance, and **do not enable it
+on the hosted Upstash free tier**: that plan allows about 10K commands per day
+and every rate-limited request costs one or two Redis commands, which would use
+up the quota that BullMQ and the LLM cache also depend on. Use a local or paid
+Redis when you turn it on.
+
+`app.ts` sets `trust proxy` to 1, so limiters that key on `req.ip` see the real
+client address when the backend runs behind a single reverse proxy.

@@ -127,6 +127,8 @@ Users can also save multiple personal API connections in Settings → AI Connect
 | `GAP_SCARCE_ABS` | `EnvSchema` / backend | Default / optional (see template) |
 | `GAP_SCARCE_PCT` | `EnvSchema` / backend | Default / optional (see template) |
 | `GAP_PARENT_RISING_MIN` | `EnvSchema` / backend | Default / optional (see template) |
+| `GAP_MIN_PARENT_PAPERS` | `EnvSchema` / backend | Default / optional (see template) |
+| `GAP_VALIDATION_QUORUM` | `EnvSchema` / backend | Default / optional (default 2): distinct experts needed to validate or reject a gap |
 | `COMPARE_MAX_PAPERS` | `EnvSchema` / backend | Default / optional (see template) |
 | `COMPARE_PROMPT_VERSION` | `EnvSchema` / backend | Default / optional (see template) |
 | `COMPARE_MAX_PER_HOUR` | `EnvSchema` / backend | Default / optional (see template) |
@@ -136,6 +138,7 @@ Users can also save multiple personal API connections in Settings → AI Connect
 | `RERANK_CANDIDATES` | `EnvSchema` / backend | Default / optional (see template) |
 | `RERANK_MAX_PER_HOUR` | `EnvSchema` / backend | Default / optional (see template) |
 | `SEMANTIC_SEARCH_MAX_PER_MINUTE` | `EnvSchema` / backend | Default / optional (see template) |
+| `RATE_LIMIT_STORE` | `EnvSchema` / backend | Default / optional (see template) |
 | `QUALITY_EVAL_MAX_PER_HOUR` | `EnvSchema` / backend | Default / optional (see template) |
 | `DIRECTIONS_MAX_PER_HOUR` | `EnvSchema` / backend | Default / optional (see template) |
 | `SYNC_ADMIN_BYPASS` | `EnvSchema` / backend | Default / optional (see template) |

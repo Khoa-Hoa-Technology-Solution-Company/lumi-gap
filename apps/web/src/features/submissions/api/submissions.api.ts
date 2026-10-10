@@ -49,6 +49,7 @@ export interface AiPreReview {
   contributionComparison?: string;
   reviewFocusAreas: string[];
   limitations: string[];
+  errorMessage?: string;
   createdAt: string;
   completedAt?: string;
 }
