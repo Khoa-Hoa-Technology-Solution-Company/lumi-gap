@@ -48,7 +48,8 @@ interface GapAnalysisWorkflowProps {
   defaultTopic?: string;
 }
 
-type PaperSearchCandidate = Pick<Paper, "id" | "title" | "publicationYear"> & {
+type PaperSearchCandidate = Pick<Paper, "id" | "title"> & {
+  publicationYear?: number;
   citationCount?: number;
   score?: number;
 };
@@ -660,15 +661,20 @@ export function GapAnalysisWorkflow({
                         <div className="min-w-0">
                           <p className="text-sm font-semibold leading-snug text-slate-900 dark:text-white">{paper.title}</p>
                           <p className="mt-1 text-xs text-slate-500">
-                            {paper.publicationYear}
-                            {paper.citationCount !== undefined && ` · ${formatNumber(paper.citationCount)} ${t("citations")}`}
-                            {inProject
-                              ? null
-                              : paper.score === undefined
-                              ? ` ${t("· keyword match")}`
-                              : paper.score <= 1
-                                ? ` · ${Math.round(Math.max(0, paper.score) * 100)}${t("% semantic match")}`
-                                : ` · ${t("Relevance score")} ${paper.score.toFixed(2)}`}
+                            {[
+                              paper.publicationYear,
+                              paper.citationCount !== undefined && ` · ${formatNumber(paper.citationCount)} ${t("citations")}`,
+                              inProject
+                                ? null
+                                : paper.score === undefined
+                                ? ` ${t("· keyword match")}`
+                                : paper.score <= 1
+                                  ? ` · ${Math.round(Math.max(0, paper.score) * 100)}${t("% semantic match")}`
+                                  : ` · ${t("Relevance score")} ${paper.score.toFixed(2)}`,
+                            ]
+                              .filter(Boolean)
+                              .join("")
+                              .replace(/^\s*·\s*/, "")}
                           </p>
                         </div>
                         <Button
