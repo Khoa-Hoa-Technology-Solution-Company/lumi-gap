@@ -320,8 +320,8 @@ export function AdminAcademicVerificationsPage() {
           <p className="mt-2 font-semibold">No verification requests found</p>
           <p className="mt-0.5 text-xs text-slate-400">
             {searchQuery
-              ? `No requests match "${searchQuery}". Try clearing the search query.`
-              : `There are currently no verification requests under status "${status}".`}
+              ? t('No requests match "{{query}}". Try clearing the search query.', { query: searchQuery })
+              : t('There are currently no verification requests under status "{{status}}".', { status: t(status) })}
           </p>
           {status !== "ALL" && (
             <Button
@@ -1676,7 +1676,7 @@ function ReviewDetail({
                         {request.evidenceFileName}
                       </p>
                       <p className="text-[10px] text-slate-400">
-                        {request.evidenceSizeBytes ? `${(request.evidenceSizeBytes / 1024 / 1024).toFixed(1)} MB · Private PDF` : "Private PDF"}
+                        {request.evidenceSizeBytes ? t("{{size}} MB · Private PDF", { size: (request.evidenceSizeBytes / 1024 / 1024).toFixed(1) }) : t("Private PDF")}
                       </p>
                     </div>
                   </div>

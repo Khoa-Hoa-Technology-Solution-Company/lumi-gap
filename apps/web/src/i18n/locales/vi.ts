@@ -18,6 +18,7 @@ import { researchHomeVi } from "./research-home";
 import { trustSafetyRagViStrings } from "./trust-safety-rag";
 
 export const vi: Record<keyof typeof en, string> = {
+  ...en,
   ...trustSafetyRagViStrings,
   ...researchHomeVi,
   ...projectInvitationStrings,

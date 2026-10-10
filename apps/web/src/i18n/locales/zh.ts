@@ -12,6 +12,7 @@ import { studentOnboardingStrings } from "./student-onboarding";
 import { trustSafetyRagStrings } from "./trust-safety-rag";
 
 export const zh: Record<keyof typeof en, string> = {
+  ...en,
   ...trustSafetyRagStrings,
   ...researchHomeEn,
   ...projectInvitationStrings,

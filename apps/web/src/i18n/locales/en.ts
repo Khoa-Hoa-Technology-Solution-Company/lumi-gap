@@ -1,3 +1,4 @@
+import { academicSupportEn } from "./academic-support";
 import { gapEvidenceWorkflowStrings } from "./gap-evidence-workflow";
 import { paperDetailIaStrings } from "./paper-detail-ia";
 import { academicProfileStrings } from "./academic-profile";
@@ -11,6 +12,7 @@ import { researchHomeEn } from "./research-home-en";
 import { trustSafetyRagStrings } from "./trust-safety-rag";
 
 export const en = {
+  ...academicSupportEn,
   ...trustSafetyRagStrings,
   ...researchHomeEn,
   ...newUiStrings,
