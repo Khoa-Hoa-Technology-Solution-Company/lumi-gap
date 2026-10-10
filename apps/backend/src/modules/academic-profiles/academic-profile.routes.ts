@@ -1,10 +1,10 @@
 import { Router } from "express";
 import { createRateLimiter } from "../../common/middleware/rate-limit.js";
-import { optionalAuth, requireAuth, requireSystemRole } from "../../common/middleware/auth.js";
+import { optionalAuth, requireAuth, requireVerifiedAuth, requireSystemRole } from "../../common/middleware/auth.js";
 import { validate } from "../../common/middleware/validate.js";
 import { uploadProfileAvatar, uploadProfileCover } from "../../common/middleware/upload.js";
 import { academicProfileController } from "./academic-profile.controller.js";
-import { uploadPositionEvidence } from "../../common/middleware/upload.js";
+import { uploadPositionEvidence, uploadStagedVerificationEvidence } from "../../common/middleware/upload.js";
 import {
   PublicProfileParamsSchema,
   PublicForumActivityQuerySchema,
@@ -21,6 +21,9 @@ import {
   UpdateAcademicIdentityLinkSchema,
   PublicHandleParamsSchema,
   UpdatePublicHandleSchema,
+  FeaturedWorkOptionsQuerySchema,
+  EvidenceUploadSchema,
+  VerificationStatusQuerySchema,
 } from "./dto/academic-profile.schema.js";
 
 const verificationRequestLimiter = createRateLimiter("academic-profiles:verificationRequestLimiter", {
@@ -31,6 +34,7 @@ const verificationRequestLimiter = createRateLimiter("academic-profiles:verifica
   legacyHeaders: false,
   message: { success: false, message: "Too many verification requests. Please try again later." },
 });
+const evidenceUploadLimiter = createRateLimiter("academic-profiles:evidenceUploadLimiter", { windowMs: 60 * 60 * 1000, limit: 20, keyGenerator: req => req.user!.sub, standardHeaders: "draft-7", legacyHeaders: false });
 
 const emailChallengeLimiter = createRateLimiter("academic-profiles:emailChallengeLimiter", {
   windowMs: 60 * 60 * 1000,
@@ -79,6 +83,7 @@ const avatarUploadLimiter = createRateLimiter("academic-profiles:avatarUploadLim
 
 export const academicProfileRouter: Router = Router();
 academicProfileRouter.get("/me", requireAuth, academicProfileController.mine);
+academicProfileRouter.get("/me/featured-work-options", requireVerifiedAuth, validate(FeaturedWorkOptionsQuerySchema, "query"), academicProfileController.featuredWorkOptions);
 academicProfileRouter.patch("/me", requireAuth, validate(UpdateAcademicProfileDetailsSchema), academicProfileController.updateMine);
 academicProfileRouter.get("/me/academic-identities", requireAuth, academicProfileController.listAcademicIdentities);
 academicProfileRouter.post("/me/academic-identities", requireAuth, validate(CreateAcademicIdentityLinkSchema), academicProfileController.createAcademicIdentity);
@@ -89,7 +94,9 @@ academicProfileRouter.post("/me/avatar", requireAuth, avatarUploadLimiter, uploa
 academicProfileRouter.delete("/me/avatar", requireAuth, academicProfileController.removeAvatar);
 academicProfileRouter.post("/me/cover", requireAuth, coverUploadLimiter, uploadProfileCover, academicProfileController.uploadCover);
 academicProfileRouter.delete("/me/cover", requireAuth, academicProfileController.removeCover);
-academicProfileRouter.get("/me/verification-status", requireAuth, academicProfileController.verificationStatus);
+academicProfileRouter.get("/me/verification-status", requireAuth, validate(VerificationStatusQuerySchema, "query"), academicProfileController.verificationStatus);
+academicProfileRouter.get("/me/verification-requests/:requestId/evidence", requireAuth, validate(VerificationDecisionParamsSchema, "params"), academicProfileController.ownVerificationEvidenceFile);
+academicProfileRouter.post("/me/verification-evidence", requireVerifiedAuth, evidenceUploadLimiter, uploadStagedVerificationEvidence, validate(EvidenceUploadSchema), academicProfileController.stageVerificationEvidence);
 academicProfileRouter.get("/me/institutional-email/status", requireAuth, academicProfileController.institutionalEmailStatus);
 academicProfileRouter.post(
   "/me/institutional-email/challenge",

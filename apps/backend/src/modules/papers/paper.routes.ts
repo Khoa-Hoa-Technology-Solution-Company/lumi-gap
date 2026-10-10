@@ -1,6 +1,6 @@
 import { Router, type NextFunction, type Request, type Response } from "express";
 import { AppError } from "../../common/exceptions/app-error.js";
-import { requireAuth, requireRole, optionalAuth } from "../../common/middleware/auth.js";
+import { requireVerifiedAuth as requireAuth, requireRole, optionalAuth } from "../../common/middleware/auth.js";
 import { uploadSinglePdf, uploadPaperReviewPdf, assertPdfMagic } from "../../common/middleware/upload.js";
 import { paperReviewController } from "./paper-review.controller.js";
 import { CreatePaperSchema } from "./dto/create-paper.schema.js";

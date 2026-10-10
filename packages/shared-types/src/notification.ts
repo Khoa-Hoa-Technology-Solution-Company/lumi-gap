@@ -8,6 +8,7 @@ export interface NotificationItem {
   paperId: string | null;
   targetKind: "paper" | "report" | "gap" | "project" | "forum_post" | "academic_profile" | "community" | "review_request" | null;
   targetId: string | null;
+  verificationRequestId?: string;
   isRead: boolean;
   createdAt: string;
 }

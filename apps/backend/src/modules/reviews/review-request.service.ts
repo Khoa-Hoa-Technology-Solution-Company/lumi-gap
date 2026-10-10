@@ -1,4 +1,6 @@
 import crypto from "node:crypto";
+import { assertAcademicRelationshipManager } from "../projects/academic-relationship-access.js";
+import { env } from "../../config/env.js";
 import type { CreateReviewRequestInput, ResubmitReviewRequestInput } from "@trend/shared-types";
 import { AppError } from "../../common/exceptions/app-error.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
@@ -54,13 +56,7 @@ async function resolveUser(input: string) {
 }
 
 async function projectAccess(projectId: string, userId: string) {
-  const project = await getPrisma().project.findUnique({ where: { id: projectId } });
-  if (!project) throw AppError.notFound("Project not found");
-  if (project.status === "ARCHIVED") throw AppError.conflict("Archived projects are read-only");
-  if (project.ownerId === userId) return project;
-  const member = await getPrisma().projectMember.findUnique({ where: { projectId_userId: { projectId, userId } } });
-  if (member?.status !== "ACTIVE") throw AppError.forbidden("Active project membership is required");
-  return project;
+  return assertAcademicRelationshipManager(projectId, userId);
 }
 
 function reportSubmissionType(artifactType: string): string | undefined {
@@ -136,7 +132,25 @@ async function assertTemplateAccess(templateId: string, actorId: string, project
 async function requestRecord(input: string) {
   const row = await getPrisma().reviewRequest.findFirst({ where: whereId(input) });
   if (!row) throw AppError.notFound("Review request not found");
-  return row;
+  await expireReviewRequests([row.id]);
+  return getPrisma().reviewRequest.findUniqueOrThrow({ where: { id: row.id } });
+}
+
+async function expireReviewRequests(ids: string[]) {
+  const db = getPrisma();
+  const now = new Date();
+  const rows = await db.reviewRequest.findMany({ where: { id: { in: ids }, status: "REQUESTED", expiresAt: { lte: now } } });
+  for (const row of rows) {
+    const assignment = await assignmentForRequest(row.id);
+    await db.$transaction(async tx => {
+      await lockReviewerAndSubmission(tx, assignment.reviewerId, row.submissionId);
+      const changed = await tx.reviewRequest.updateMany({ where: { id: row.id, status: "REQUESTED", expiresAt: { lte: now } }, data: { status: "EXPIRED", respondedAt: now } });
+      if (changed.count) {
+        await tx.reviewerAssignment.updateMany({ where: { reviewRequestId: row.id, status: "assigned" }, data: { status: "cancelled" } });
+        await refreshSubmissionReviewStatus(tx, row.submissionId);
+      }
+    });
+  }
 }
 
 async function assignmentForRequest(requestId: string) {
@@ -171,12 +185,13 @@ async function externalInvitationByToken(token: string) {
 
 async function summary(row: Awaited<ReturnType<typeof requestRecord>>, viewerId?: string) {
   const prisma = getPrisma();
-  const [assignment, submission, requester, revision, reviews] = await Promise.all([
+  const [assignment, submission, requester, revision, reviews, project] = await Promise.all([
     assignmentForRequest(row.id),
     prisma.submission.findUniqueOrThrow({ where: { id: row.submissionId } }),
     prisma.user.findUniqueOrThrow({ where: { id: row.requesterId }, select: { id: true, fullName: true, avatarUrl: true } }),
     prisma.submissionRevision.findUniqueOrThrow({ where: { id: row.artifactRevisionId } }),
     prisma.humanReview.findMany({ where: { assignmentId: (await assignmentForRequest(row.id)).id, ...(viewerId === (await assignmentForRequest(row.id)).reviewerId ? {} : { status: "SUBMITTED" }) }, orderBy: { roundNumber: "asc" } }),
+    prisma.project.findUniqueOrThrow({ where: { id: row.projectId }, select: { id: true, legacyMongoId: true } }),
   ]);
   const [reviewer, sourceReport] = await Promise.all([
     prisma.user.findUniqueOrThrow({ where: { id: assignment.reviewerId }, select: { id: true, fullName: true, avatarUrl: true, institution: true } }),
@@ -186,10 +201,11 @@ async function summary(row: Awaited<ReturnType<typeof requestRecord>>, viewerId?
     id: publicDatabaseId(row), status: row.status, message: row.message ?? undefined, dueAt: row.dueAt ?? undefined,
     createdAt: row.createdAt, updatedAt: row.updatedAt, completedAt: row.completedAt ?? undefined,
     requester: { ...requester, id: publicDatabaseId(requester) }, reviewer: { ...reviewer, id: publicDatabaseId(reviewer) },
+    mentorRelationshipActive: Boolean(await prisma.mentorRelationship.findFirst({ where: { projectId: submission.projectId, mentorUserId: assignment.reviewerId, status: "ACTIVE" } })),
     assignment: { id: publicDatabaseId(assignment), status: assignment.status, dueAt: assignment.dueAt ?? undefined },
     artifact: {
       submissionId: publicDatabaseId(submission), title: submission.title, type: submission.submissionType,
-      projectId: submission.projectId, revisionId: publicDatabaseId(revision), revisionNumber: revision.revisionNumber,
+      projectId: publicDatabaseId(project), revisionId: publicDatabaseId(revision), revisionNumber: revision.revisionNumber,
       contentType: revision.contentType, sourceReportId: sourceReport ? publicDatabaseId(sourceReport) : undefined,
     },
     latestReview: reviews.at(-1) ? {
@@ -239,7 +255,16 @@ export const reviewRequestService = {
     const existingUser = existingUserEmail?.verifiedAt
       ? await getPrisma().user.findUnique({ where: { id: existingUserEmail.userId }, select: { id: true } })
       : await getPrisma().user.findUnique({ where: { email: reviewerEmail }, select: { id: true, emailVerifiedAt: true } });
-    const invitation = await getPrisma().externalReviewInvitation.create({
+    const invitation = await getPrisma().$transaction(async tx => {
+      await tx.$queryRaw`SELECT id FROM users WHERE id = ${actor.id}::uuid FOR UPDATE`;
+      await tx.$queryRaw`SELECT id FROM projects WHERE id = ${submission.projectId}::uuid FOR UPDATE`;
+      await assertAcademicRelationshipManager(submission.projectId, actor.id, tx);
+      await tx.externalReviewInvitation.updateMany({ where: { submissionId: submission.id, reviewerEmail, status: "PENDING", expiresAt: { lte: now } }, data: { status: "EXPIRED", respondedAt: now } });
+      if (await tx.externalReviewInvitation.findFirst({ where: { submissionId: submission.id, reviewerEmail, status: "PENDING" } })) throw AppError.conflict("A pending invitation already exists for this reviewer and artifact");
+      const cutoff = new Date(now.getTime() - env.ACADEMIC_RELATIONSHIP_COOLDOWN_HOURS * 3600000);
+      if (await tx.externalReviewInvitation.findFirst({ where: { submissionId: submission.id, reviewerEmail, status: { in: ["DECLINED", "CANCELLED"] }, respondedAt: { gt: cutoff } } })) throw AppError.conflict("Wait before inviting this reviewer again");
+      if (await tx.externalReviewInvitation.count({ where: { requesterId: actor.id, createdAt: { gt: new Date(now.getTime() - 3600000) } } }) >= env.ACADEMIC_RELATIONSHIP_REQUEST_LIMIT) throw AppError.conflict("Review invitation limit reached; try later");
+      return tx.externalReviewInvitation.create({
       data: {
         tokenHash: hashOpaqueToken(token),
         reviewerEmail,
@@ -253,6 +278,7 @@ export const reviewRequestService = {
         dueAt: input.dueAt ? new Date(input.dueAt) : undefined,
         expiresAt,
       },
+      });
     });
     await auditService.log("EXTERNAL_REVIEW_INVITATION_CREATED", {
       userId: actor.id,
@@ -289,7 +315,7 @@ export const reviewRequestService = {
       for (const member of members) contributorIds.add(member.userId);
     }
     const capabilities = await getPrisma().academicProfile.findMany({
-      where: { academicRole: { in: ["LECTURER", "RESEARCHER"] }, roleVerificationStatus: "VERIFIED" },
+      where: { academicRole: "LECTURER", roleVerificationStatus: "VERIFIED", positionStatus: "VERIFIED" },
       select: { userId: true }, take: 100,
     });
     const users = await getPrisma().user.findMany({
@@ -318,6 +344,7 @@ export const reviewRequestService = {
     await assertTemplateAccess(version.templateId, actor.id, submission.projectId);
     if (reviewer.id === actor.id) throw AppError.conflict("You cannot review your own artifact");
     await assertPeerReviewer(reviewer.id);
+    await expireReviewRequests((await getPrisma().reviewRequest.findMany({ where: { submissionId: submission.id, status: "REQUESTED" }, select: { id: true } })).map(r => r.id));
     const [membership, owned, duplicate] = await Promise.all([
       getPrisma().projectMember.findUnique({ where: { projectId_userId: { projectId: submission.projectId, userId: reviewer.id } } }),
       getPrisma().project.findFirst({ where: { id: submission.projectId, ownerId: reviewer.id } }),
@@ -332,11 +359,18 @@ export const reviewRequestService = {
     if (duplicate) throw AppError.conflict("This reviewer already has an active request for this artifact");
     const created = await getPrisma().$transaction(async (tx) => {
       await lockReviewerAndSubmission(tx, reviewer.id, submission.id);
+      await tx.$queryRaw`SELECT id FROM projects WHERE id = ${submission.projectId}::uuid FOR UPDATE`;
+      await assertAcademicRelationshipManager(submission.projectId, actor.id, tx);
+      const cutoff = new Date(Date.now() - env.ACADEMIC_RELATIONSHIP_COOLDOWN_HOURS * 3600000);
+      if (await tx.reviewRequest.count({ where: { requesterId: actor.id, createdAt: { gt: new Date(Date.now() - 3600000) } } }) >= env.ACADEMIC_RELATIONSHIP_REQUEST_LIMIT) throw AppError.conflict("Academic review request limit reached; try later");
+      const priorIds = (await tx.reviewerAssignment.findMany({ where: { submissionId: submission.id, reviewerId: reviewer.id, reviewRequestId: { not: null } }, select: { reviewRequestId: true } })).flatMap(r => r.reviewRequestId ? [r.reviewRequestId] : []);
+      if (await tx.reviewRequest.findFirst({ where: { id: { in: priorIds }, status: { in: ["DECLINED", "CANCELLED"] }, updatedAt: { gt: cutoff } } })) throw AppError.conflict("Wait before requesting this reviewer again");
       const liveSubmission = await assertReviewAdmission(tx, submission.id, reviewer.id);
       const request = await tx.reviewRequest.create({ data: {
         submissionId: submission.id, projectId: submission.projectId, requesterId: actor.id,
         templateVersionId: version.id, artifactRevisionId: liveSubmission.currentRevisionId!,
         message: input.message?.trim() || undefined, dueAt: input.dueAt ? new Date(input.dueAt) : undefined,
+        expiresAt: new Date(Date.now() + env.ACADEMIC_RELATIONSHIP_REQUEST_EXPIRY_DAYS * 86400000),
       } });
       const assignment = await tx.reviewerAssignment.create({ data: {
         submissionId: submission.id, reviewRequestId: request.id, artifactRevisionId: request.artifactRevisionId, reviewerId: reviewer.id, assignedById: actor.id,
@@ -358,6 +392,8 @@ export const reviewRequestService = {
     const actor = await resolveUser(actorInput);
     const assignments = await getPrisma().reviewerAssignment.findMany({ where: { reviewerId: actor.id, reviewRequestId: { not: null } }, select: { reviewRequestId: true } });
     const incomingIds = assignments.flatMap((item) => item.reviewRequestId ? [item.reviewRequestId] : []);
+    const sentIds = (await getPrisma().reviewRequest.findMany({ where: { requesterId: actor.id, status: "REQUESTED" }, select: { id: true } })).map(r => r.id);
+    await expireReviewRequests([...incomingIds, ...sentIds]);
     const [incoming, sent] = await Promise.all([
       getPrisma().reviewRequest.findMany({ where: { id: { in: incomingIds } }, orderBy: { updatedAt: "desc" } }),
       getPrisma().reviewRequest.findMany({ where: { requesterId: actor.id }, orderBy: { updatedAt: "desc" } }),
@@ -372,12 +408,13 @@ export const reviewRequestService = {
     if (!canViewReviewRequest({ actorId: actor.id, requesterId: request.requesterId, reviewerId: assignment.reviewerId })) throw AppError.forbidden();
     const prisma = getPrisma();
     const reviewerProfile = actor.id === assignment.reviewerId ? await prisma.academicProfile.findUnique({ where: { userId: actor.id } }) : null;
-    const canWork = actor.id === assignment.reviewerId && actor.accountStatus === "ACTIVE" && eligiblePeerReviewer(reviewerProfile?.academicRole, reviewerProfile?.roleVerificationStatus) && !["cancelled", "declined"].includes(assignment.status);
+    const canWork = ["accepted", "completed"].includes(assignment.status) && actor.id === assignment.reviewerId && actor.accountStatus === "ACTIVE" && Boolean(actor.emailVerifiedAt) && reviewerProfile?.positionStatus === "VERIFIED" && eligiblePeerReviewer(reviewerProfile?.academicRole, reviewerProfile?.roleVerificationStatus) && !["cancelled", "declined"].includes(assignment.status);
     const [base, revision, templateVersion, reviews] = await Promise.all([
       summary(request, canWork ? actor.id : undefined), prisma.submissionRevision.findUniqueOrThrow({ where: { id: request.artifactRevisionId } }),
       hydrateReviewTemplateVersion(request.templateVersionId),
       prisma.humanReview.findMany({ where: { assignmentId: assignment.id, ...(canWork ? {} : { status: "SUBMITTED" }) }, orderBy: { roundNumber: "asc" } }),
     ]);
+    if (revision.submissionId !== request.submissionId || assignment.submissionId !== request.submissionId || assignment.artifactRevisionId !== request.artifactRevisionId) throw AppError.conflict("Review assignment does not match the target artifact");
     const reviewDetails = await Promise.all(reviews.map(async (review) => ({
       ...review, id: publicDatabaseId(review),
       responses: await prisma.reviewResponse.findMany({ where: { reviewId: review.id } }),
@@ -397,7 +434,7 @@ export const reviewRequestService = {
     await getPrisma().$transaction(async (tx) => {
       await lockReviewerAndSubmission(tx, actor.id, request.submissionId);
       await assertReviewAdmission(tx, request.submissionId, actor.id, { excludeAssignmentId: assignment.id });
-      const claimed = await tx.reviewRequest.updateMany({ where: { id: request.id, status: "REQUESTED" }, data: { status: "ACCEPTED" } });
+      const claimed = await tx.reviewRequest.updateMany({ where: { id: request.id, status: "REQUESTED", OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] }, data: { status: "ACCEPTED", respondedAt: new Date() } });
       if (claimed.count !== 1) throw AppError.conflict("This request was already handled");
       await tx.reviewerAssignment.update({ where: { id: assignment.id }, data: { status: "accepted", artifactRevisionId: request.artifactRevisionId } });
     });
@@ -441,6 +478,7 @@ export const reviewRequestService = {
         templateVersionId: invitation.templateVersionId,
         artifactRevisionId: invitation.artifactRevisionId,
         status: "ACCEPTED",
+        respondedAt: now,
         origin: "EXTERNAL_INVITATION",
         message: invitation.message,
         dueAt: invitation.dueAt,
@@ -489,15 +527,24 @@ export const reviewRequestService = {
     const withdrawing = request.status !== "REQUESTED";
     await getPrisma().$transaction(async (tx) => {
       await lockReviewerAndSubmission(tx, assignment.reviewerId, request.submissionId);
+      const liveSubmittedReviews = await tx.humanReview.count({ where: { assignmentId: assignment.id, status: "SUBMITTED" } });
+      if (!canReviewerDeclineRequest(request.status as never, liveSubmittedReviews)) {
+        throw AppError.conflict("You already submitted a review round, so you can no longer withdraw from this review");
+      }
       // Claim the exact status we validated so a concurrent change is never overwritten.
-      const changed = await tx.reviewRequest.updateMany({ where: { id: request.id, status: request.status }, data: { status: "DECLINED" } });
+      const now = new Date();
+      const changed = await tx.reviewRequest.updateMany({
+        where: { id: request.id, status: request.status,
+          ...(request.status === "REQUESTED" ? { OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] } : {}) },
+        data: { status: "DECLINED", respondedAt: now },
+      });
       if (!changed.count) throw AppError.conflict("This request has already changed");
       await tx.reviewerAssignment.update({ where: { id: assignment.id }, data: { status: "declined", reviewText: reason?.trim() || undefined } });
       await refreshSubmissionReviewStatus(tx, request.submissionId);
       await releaseArtifactReviewing(tx, request.submissionId, request.requesterId);
     });
     await Promise.all([
-      auditService.log("REVIEW_REQUEST_DECLINED", { userId: actor.id, targetTableName: "review_requests", targetRecordId: request.id, details: { reason: reason?.trim() } }),
+      auditService.log("REVIEW_REQUEST_DECLINED", { userId: actor.id, targetTableName: "review_requests", targetRecordId: request.id, details: {} }),
       notificationService.create({
         userId: request.requesterId,
         title: withdrawing ? "Reviewer withdrew" : "Review request declined",
@@ -509,6 +556,7 @@ export const reviewRequestService = {
 
   async cancel(requestInput: string, actorInput: string) {
     const actor = await resolveUser(actorInput); const request = await requestRecord(requestInput); const assignment = await assignmentForRequest(request.id);
+    await assertAcademicRelationshipManager(request.projectId, actor.id);
     if (request.requesterId !== actor.id) throw AppError.forbidden();
     if (!canCancelReviewRequest({ status: request.status as never, dueAt: request.dueAt, createdAt: request.createdAt })) {
       throw AppError.conflict(["ACCEPTED", "IN_REVIEW"].includes(request.status)
@@ -517,8 +565,9 @@ export const reviewRequestService = {
     }
     await getPrisma().$transaction(async (tx) => {
       await lockReviewerAndSubmission(tx, assignment.reviewerId, request.submissionId);
+      await assertAcademicRelationshipManager(request.projectId, actor.id, tx);
       // Claim the exact status we validated: a request accepted in the meantime must not be cancelled.
-      const changed = await tx.reviewRequest.updateMany({ where: { id: request.id, status: request.status }, data: { status: "CANCELLED" } });
+      const changed = await tx.reviewRequest.updateMany({ where: { id: request.id, status: request.status }, data: { status: "CANCELLED", respondedAt: new Date() } });
       if (!changed.count) throw AppError.conflict("This request has already changed");
       await tx.reviewerAssignment.update({ where: { id: assignment.id }, data: { status: "cancelled" } });
       await refreshSubmissionReviewStatus(tx, request.submissionId);
@@ -532,10 +581,11 @@ export const reviewRequestService = {
 
   async resubmit(requestInput: string, actorInput: string, input: ResubmitReviewRequestInput) {
     const actor = await resolveUser(actorInput); const request = await requestRecord(requestInput); const assignment = await assignmentForRequest(request.id);
-    if (request.requesterId !== actor.id) throw AppError.forbidden();
+    await assertAcademicRelationshipManager(request.projectId, actor.id);
     const revision = await getPrisma().$transaction(async (tx) => {
       await lockReviewerAndSubmission(tx, assignment.reviewerId, request.submissionId);
       const current = await tx.reviewRequest.findUniqueOrThrow({ where: { id: request.id } });
+      await assertAcademicRelationshipManager(request.projectId, actor.id, tx);
       if (!canResubmitReviewRequest(current.status as never)) throw AppError.conflict("This request is not waiting for a revision");
       const submission = await tx.submission.findUniqueOrThrow({ where: { id: request.submissionId } });
       const previous = await tx.submissionRevision.findUniqueOrThrow({ where: { id: current.artifactRevisionId } });

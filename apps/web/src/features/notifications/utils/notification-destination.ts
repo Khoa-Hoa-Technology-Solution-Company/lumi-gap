@@ -1,10 +1,25 @@
 import type { NotificationItem } from "@trend/shared-types";
 
 export function getNotificationDestination(
-  notification: Pick<NotificationItem, "type" | "targetKind" | "targetId"> & Partial<Pick<NotificationItem, "title">>,
+  notification: Pick<NotificationItem, "type" | "targetKind" | "targetId"> & Partial<Pick<NotificationItem, "title" | "verificationRequestId">>,
   isAdmin: boolean,
 ): string | null {
   if (notification.type === "level_up") return "/rankings";
+  const verificationQuery = notification.verificationRequestId ? `?requestId=${encodeURIComponent(notification.verificationRequestId)}` : "";
+  if (notification.type === "LECTURER_VERIFICATION_REVIEW_REQUESTED") return isAdmin ? `/admin/academic-verifications${verificationQuery}` : null;
+  if (notification.type.startsWith("LECTURER_VERIFICATION_")) return `/settings/verification/lecturer${verificationQuery}`;
+  if (notification.type.startsWith("MENTORSHIP_") || notification.type.startsWith("PROJECT_MENTORSHIP_")) return notification.targetId ? `/academic-support?projectId=${encodeURIComponent(notification.targetId)}` : "/academic-support";
+  if (notification.type.startsWith("academic_verification_")) return "/settings/academic";
+  // Reviewers can respond in the review center without project membership.
+  if (["REVIEW_REQUESTED", "REVISION_RESUBMITTED", "REVIEW_REQUEST_CANCELLED"].includes(notification.type)) return "/reviews";
+  if (["REVIEW_REQUEST_ACCEPTED", "REVIEW_REQUEST_DECLINED", "REVIEW_SUBMITTED", "REVISION_REQUESTED"].includes(notification.type)) {
+    if (notification.targetKind === "review_request" && notification.targetId) return `/review-requests/${encodeURIComponent(notification.targetId)}`;
+    if (["REVIEW_SUBMITTED", "REVISION_REQUESTED"].includes(notification.type) && notification.targetKind === "project" && notification.targetId) {
+      return `/projects/${encodeURIComponent(notification.targetId)}?tab=reports`;
+    }
+    return "/reviews";
+  }
+  if (notification.type.startsWith("affiliation_")) return "/settings/academic";
   if (isAdmin && ["submission_pending", "paper_submission"].includes(notification.type)) return "/admin/papers";
   const adminReviewRoutes: Record<string, string> = {
     FORUM_REPORT_REVIEW: "/admin/trust-safety?tab=reports&status=all",
@@ -31,13 +46,6 @@ export function getNotificationDestination(
   }
   // The invitee is not a member yet: the project page cannot accept, the project list shows the pending invitation.
   if (notification.type === "project_invitation") return "/projects";
-  // Reviewers are usually not project members; their requests live in the review center.
-  if (["REVIEW_REQUESTED", "REVISION_RESUBMITTED", "REVIEW_REQUEST_CANCELLED"].includes(notification.type)) return "/reviews";
-  // Requester-side review updates concern a submitted artifact, which lives in the project's Artifacts tab.
-  const requesterReviewTypes = ["REVIEW_REQUEST_ACCEPTED", "REVIEW_REQUEST_DECLINED", "REVIEW_SUBMITTED", "REVISION_REQUESTED"];
-  if (requesterReviewTypes.includes(notification.type) && notification.targetKind === "project" && notification.targetId) {
-    return `/projects/${encodeURIComponent(notification.targetId)}?tab=reports`;
-  }
   if (notification.targetId) {
     const routeByKind: Record<NonNullable<NotificationItem["targetKind"]>, string> = {
       paper: "/papers",

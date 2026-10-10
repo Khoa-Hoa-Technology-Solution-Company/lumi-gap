@@ -21,6 +21,10 @@ export const PublicForumActivityQuerySchema = z.object({
   filter: z.enum(["all", "topics", "replies", "reactions"]).default("all"),
   page: z.coerce.number().int().min(1).max(10000).default(1),
 });
+export const FeaturedWorkOptionsQuerySchema = z.object({
+  kind: z.enum(["PAPER", "PROJECT", "RESEARCH_PROPOSAL", "RESEARCH_ARTIFACT", "CANDIDATE_GAP"]).default("PAPER"),
+  q: z.string().trim().max(200).default(""),
+}).strict();
 const optionalBiography = z.string().trim().max(ACADEMIC_BIOGRAPHY_MAX_CHARACTERS).refine(
   (value) => countAcademicBiographyWords(value) <= ACADEMIC_BIOGRAPHY_MAX_WORDS,
   "Biography must be " + ACADEMIC_BIOGRAPHY_MAX_WORDS + " words or fewer",
@@ -172,7 +176,10 @@ function validateAcademicIdentityLink(value: z.infer<typeof academicIdentityLink
 
 export const AcademicIdentityLinkSchema = academicIdentityLinkFields.superRefine(validateAcademicIdentityLink);
 export const CreateAcademicIdentityLinkSchema = AcademicIdentityLinkSchema;
-export const UpdateAcademicIdentityLinkSchema = academicIdentityLinkFields.partial().refine(
+export const UpdateAcademicIdentityLinkSchema = academicIdentityLinkFields.extend({
+  identifier: optionalText(255).nullable(),
+  profileUrl: externalHttpUrl.nullable().optional(),
+}).partial().refine(
   (value) => Object.keys(value).length > 0,
   "At least one academic identity field is required",
 );
@@ -181,22 +188,32 @@ export type CreateAcademicIdentityLinkInput = z.infer<typeof CreateAcademicIdent
 export type UpdateAcademicIdentityLinkInput = z.infer<typeof UpdateAcademicIdentityLinkSchema>;
 
 const featuredWorkSchema = z.object({
+  kind: z.enum(["PAPER", "PROJECT", "RESEARCH_PROPOSAL", "RESEARCH_ARTIFACT", "CANDIDATE_GAP", "DATASET", "CONTRIBUTION", "OTHER"]).optional(),
   paperId: objectIdSchema.optional(),
+  projectId: objectIdSchema.optional(),
+  submissionId: objectIdSchema.optional(),
+  reportId: objectIdSchema.optional(),
+  gapId: objectIdSchema.optional(),
   doi: optionalText(300),
   title: optionalText(500),
   year: z.number().int().min(1000).max(new Date().getFullYear() + 1).optional(),
   source: z.enum(["LUMIGAP", "ORCID", "MANUAL"]),
 }).strict().superRefine((work, ctx) => {
-  if (work.source === "LUMIGAP" && !work.paperId) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["paperId"], message: "LumiGap works require a paperId" });
-  }
+  const targets = [work.paperId, work.projectId, work.submissionId, work.reportId, work.gapId].filter(Boolean);
+  const kind = work.kind ?? "PAPER";
+  const matches = kind === "PAPER" ? work.paperId : kind === "PROJECT" ? work.projectId : kind === "CANDIDATE_GAP" ? work.gapId : ["RESEARCH_ARTIFACT", "RESEARCH_PROPOSAL"].includes(kind) ? work.submissionId ?? work.reportId : undefined;
+  if (work.source === "LUMIGAP" && (targets.length !== 1 || !matches)) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Choose a LumiGap record matching this work type" });
+  if (work.source !== "LUMIGAP" && targets.length) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "External works cannot reference private LumiGap records" });
   if (work.source !== "LUMIGAP" && !work.title && !work.doi) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: "External works require a title or DOI" });
   }
 });
 
 const affiliationSchema = z.object({
+  institutionId: z.string().uuid().optional(),
   institutionName: optionalText(200),
+  programId: z.string().uuid().optional(),
+  programName: z.string().trim().min(2).max(160).optional(),
   rorId: z.string().trim().regex(/^(?:https:\/\/ror\.org\/)?0[a-z0-9]{8}$/i, "Invalid ROR ID").optional(),
   department: optionalText(200),
   position: optionalText(160),
@@ -205,6 +222,7 @@ const affiliationSchema = z.object({
 }).strict();
 
 export const UpdateAcademicProfileDetailsSchema = z.object({
+  academicRole: z.enum(["STUDENT", "RESEARCHER", "LECTURER"]).optional(),
   primaryPosition: z.enum(["STUDENT", "LECTURER", "RESEARCH_STAFF", "INDUSTRY_PRACTITIONER", "OTHER"]).optional(),
   positionTitle: z.string().trim().min(1).max(160).optional(),
   // Temporary compatibility input. The service translates this into primaryPosition.
@@ -236,7 +254,7 @@ export const UpdateAcademicProfileDetailsSchema = z.object({
     "Only one identity per provider is allowed",
   ).optional(),
   featuredWorks: z.array(featuredWorkSchema).max(10).refine((items) => {
-    const keys = items.map((item) => item.paperId ?? item.doi?.toLowerCase() ?? item.title?.toLowerCase());
+    const keys = items.map((item) => item.paperId ?? item.projectId ?? item.submissionId ?? item.reportId ?? item.gapId ?? item.doi?.toLowerCase() ?? item.title?.toLowerCase());
     return new Set(keys).size === keys.length;
   }, "Featured works must be unique").optional(),
   supportAvailability: availabilitySchema(supportTypes).optional(),
@@ -256,11 +274,62 @@ const ResolvablePublicHandleSchema = z.string().trim().transform(normalizePublic
   .refine(isValidResolvablePublicHandle, "Invalid public profile URL");
 export const PublicHandleParamsSchema = z.object({ handle: ResolvablePublicHandleSchema }).strict();
 export const UpdatePublicHandleSchema = z.object({ handle: PublicHandleSchema }).strict();
+const lecturerSourceType = z.enum(["OFFICIAL_FACULTY_PROFILE", "OFFICIAL_STAFF_DIRECTORY", "DEPARTMENT_DIRECTORY", "INSTITUTION_ISSUED_PROFILE", "EMPLOYMENT_DOCUMENT", "APPOINTMENT_DOCUMENT", "STAFF_ID", "OTHER_INSTITUTION_SOURCE"]);
+export const LecturerEvidenceEntrySchema = z.object({
+  type: lecturerSourceType,
+  sourceKind: z.enum(["URL", "DOCUMENT"]),
+  customEvidenceName: z.string().trim().min(2).max(200).optional(),
+  reference: z.string().trim().min(1).max(500).optional(),
+  documentIndex: z.number().int().min(0).max(5).optional(),
+  uploadId: z.string().uuid().optional(),
+  retainedSourceId: z.string().uuid().optional(),
+  additionalExplanation: z.string().trim().max(1000).optional(),
+}).strict().superRefine((entry, ctx) => {
+  const custom = entry.type === "OTHER_INSTITUTION_SOURCE";
+  const document = ["INSTITUTION_ISSUED_PROFILE", "EMPLOYMENT_DOCUMENT", "APPOINTMENT_DOCUMENT", "STAFF_ID"].includes(entry.type);
+  if (custom && !entry.customEvidenceName) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["customEvidenceName"], message: "Describe your custom evidence" });
+  if (!custom && (entry.customEvidenceName || entry.sourceKind !== (document ? "DOCUMENT" : "URL"))) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Evidence format must match its type" });
+  if (entry.sourceKind === "URL") {
+    if (!entry.reference || entry.documentIndex !== undefined || entry.uploadId || entry.retainedSourceId) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "URL evidence requires only a source URL" });
+  } else if ([entry.documentIndex !== undefined, Boolean(entry.uploadId), Boolean(entry.retainedSourceId)].filter(Boolean).length !== 1 || entry.reference) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Document evidence requires exactly one uploaded document" });
+});
+const lecturerSources = z.preprocess(value => {
+  if (typeof value !== "string") return value;
+  try { return JSON.parse(value); } catch { return value; }
+}, z.array(LecturerEvidenceEntrySchema).min(1).max(6));
+
 export const VerificationRequestSchema = z.object({
   type: z.enum(["POSITION", "AFFILIATION"]).default("POSITION"),
   evidenceType: z.enum(["INSTITUTIONAL_EMAIL", "INSTITUTIONAL_PROFILE", "ORCID", "EXTERNAL_ACADEMIC_PROFILE", "DOCUMENT", "OTHER"]),
   reference: z.string().trim().max(500).optional(),
+  institutionId: z.string().uuid().optional(),
+  studentId: z.string().trim().min(1).max(80).optional(),
+  staffId: z.string().trim().max(80).optional(),
+  additionalNote: z.string().trim().max(1000).optional(),
+  proofType: z.enum(["STUDENT_CARD", "ENROLLMENT", "STAFF", "APPOINTMENT"]).optional(),
+  path: z.enum(["STANDARD", "MANUAL"]).optional(),
+  primarySourceType: z.enum(["OFFICIAL_FACULTY_PROFILE", "OFFICIAL_STAFF_DIRECTORY", "DEPARTMENT_DIRECTORY", "EMPLOYMENT_DOCUMENT", "APPOINTMENT_DOCUMENT", "STAFF_ID", "OTHER_INSTITUTION_SOURCE"]).optional(),
+  additionalSourceType: z.enum(["OFFICIAL_FACULTY_PROFILE", "OFFICIAL_STAFF_DIRECTORY", "DEPARTMENT_DIRECTORY", "EMPLOYMENT_DOCUMENT", "APPOINTMENT_DOCUMENT", "STAFF_ID", "OTHER_INSTITUTION_SOURCE"]).optional(),
+  additionalReference: z.string().trim().max(500).optional(),
+  sources: lecturerSources.optional(),
+  submissionKey: z.string().uuid().optional(),
+  supplementsRequestId: z.string().uuid().optional(),
+  expectedReviewedAt: z.string().datetime().optional(),
 }).strict().superRefine((value, ctx) => {
+  if (value.sources) {
+    if (value.supplementsRequestId && (!value.submissionKey || !value.expectedReviewedAt) || value.expectedReviewedAt && !value.supplementsRequestId || value.sources.some(source => source.retainedSourceId) && !value.supplementsRequestId) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Supplement requires the original request, decision timestamp and submission key" });
+    if (value.type !== "POSITION" || !value.path || !value.institutionId) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Evidence entries require the Lecturer verification path and institution" });
+    if (value.primarySourceType || value.additionalSourceType || value.reference || value.additionalReference) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Do not mix legacy evidence fields with evidence entries" });
+    if (value.sources.some(source => source.uploadId) && !value.submissionKey) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Staged evidence requires a submission key" });
+    return;
+  }
+  if (value.submissionKey || value.supplementsRequestId || value.expectedReviewedAt) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Submission keys require Lecturer evidence entries" });
+  if (value.type === "AFFILIATION") {
+    for (const field of ["institutionId", "proofType"] as const) {
+      if (!value[field]) ctx.addIssue({ code: z.ZodIssueCode.custom, path: [field], message: "Required for affiliation verification" });
+    }
+    if (value.evidenceType !== "DOCUMENT") ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["evidenceType"], message: "Private document evidence is required" });
+  }
   if (["INSTITUTIONAL_PROFILE", "EXTERNAL_ACADEMIC_PROFILE"].includes(value.evidenceType)) {
     try {
       const url = new URL(value.reference ?? "");
@@ -273,12 +342,15 @@ export const VerificationRequestSchema = z.object({
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["reference"], message: "Describe the supporting evidence" });
   }
 });
-export const InstitutionalEmailChallengeSchema = z.object({}).strict();
+export const InstitutionalEmailChallengeSchema = z.object({ email: z.string().trim().toLowerCase().email("Enter a valid institutional email address.").max(320).optional() }).strict();
 export const InstitutionalEmailVerifySchema = z.object({
   code: z.string().trim().regex(/^\d{6}$/, "Enter the 6-digit verification code"),
+  email: z.string().trim().toLowerCase().email().max(320).optional(),
 }).strict();
+export const VerificationStatusQuerySchema = z.object({ submissionKey: z.string().uuid().optional(), requestId: z.string().uuid().optional(), page: z.coerce.number().int().min(1).max(10000).default(1) }).strict();
+export const EvidenceUploadSchema = z.object({ institutionId: z.string().uuid() }).strict();
 export const VerificationListQuerySchema = paginationSchema.extend({
-  status: z.enum(["PENDING", "VERIFIED", "REJECTED", "EXPIRED", "INVALIDATED"]).default("PENDING"),
+  status: z.enum(["ALL", "PENDING", "NEEDS_MORE_INFORMATION", "VERIFIED", "REJECTED", "EXPIRED", "INVALIDATED"]).default("ALL"),
 });
 export const LecturerListQuerySchema = paginationSchema.extend({
   expertise: z.string().trim().max(120).optional(),
@@ -289,9 +361,16 @@ export const LecturerListQuerySchema = paginationSchema.extend({
   verifiedOnly: booleanQuery.default(true),
 });
 export const VerificationDecisionParamsSchema = z.object({ requestId: objectIdSchema }).strict();
+const reviewFields = {
+  identityBindingMethod: z.enum(["INSTITUTION_CONTACT", "TRUSTED_INSTITUTION_RECORD"]).optional(),
+  identityBindingReference: z.string().trim().min(10).max(500).optional(),
+  checklist: z.object({ identityMatches: z.boolean(), institutionMatches: z.boolean(), currentPositionConfirmed: z.boolean(), institutionControlled: z.boolean(), noConflicts: z.boolean(), identityBound: z.boolean().optional(), independentEvidence: z.boolean().optional() }).strict().optional(),
+  evidenceChecks: z.array(z.object({ id: z.string().uuid(), status: z.enum(["UNCHECKED", "VALID", "INVALID", "INCONCLUSIVE"]), note: optionalText(1000), institutionDomainConfirmed: z.boolean().optional() }).strict()).max(7).optional(),
+};
 export const VerificationDecisionSchema = z.discriminatedUnion("decision", [
-  z.object({ decision: z.literal("approve"), method: optionalText(120), note: optionalText(1000) }).strict(),
-  z.object({ decision: z.literal("reject"), reason: z.string().trim().min(1).max(1000), note: optionalText(1000) }).strict(),
+  z.object({ decision: z.literal("approve"), method: optionalText(120), note: optionalText(1000), ...reviewFields }).strict(),
+  z.object({ decision: z.literal("reject"), reason: z.string().trim().min(1).max(1000), note: optionalText(1000), ...reviewFields }).strict(),
+  z.object({ decision: z.literal("more_info"), reason: z.string().trim().min(1).max(1000), note: optionalText(1000), ...reviewFields }).strict(),
 ]);
 
 export type UpdateAcademicProfileDetailsInput = z.infer<typeof UpdateAcademicProfileDetailsSchema>;

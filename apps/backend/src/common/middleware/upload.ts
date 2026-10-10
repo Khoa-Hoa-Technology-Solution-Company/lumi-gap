@@ -55,9 +55,18 @@ export const uploadProfileAvatar = (multer as any)({
 
 export const uploadPositionEvidence = (multer as any)({
   storage,
-  limits: { fileSize: 10 * 1024 * 1024, files: 1 },
+  limits: { fileSize: 10 * 1024 * 1024, files: 6, fields: 20, fieldSize: 64 * 1024 },
   fileFilter: (_req: any, file: any, cb: any) => {
-    if (file.mimetype !== "application/pdf") return cb(AppError.badRequest("Only PDF supporting documents are allowed"));
+    if (!["application/pdf", "image/jpeg", "image/png"].includes(file.mimetype)) return cb(AppError.badRequest("Only PDF, JPEG or PNG supporting documents are allowed"));
+    cb(null, true);
+  },
+}).fields([{ name: "evidence", maxCount: 1 }, { name: "additionalEvidence", maxCount: 1 }, { name: "evidenceFiles", maxCount: 6 }]);
+
+export const uploadStagedVerificationEvidence = (multer as any)({
+  storage,
+  limits: { fileSize: 10 * 1024 * 1024, files: 1, fields: 1, fieldSize: 1024 },
+  fileFilter: (_req: any, file: any, cb: any) => {
+    if (!["application/pdf", "image/jpeg", "image/png"].includes(file.mimetype)) return cb(AppError.badRequest("Only PDF, JPEG or PNG supporting documents are allowed"));
     cb(null, true);
   },
 }).single("evidence");

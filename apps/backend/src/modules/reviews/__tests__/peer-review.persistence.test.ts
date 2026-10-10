@@ -16,22 +16,22 @@ vi.mock("../../../infrastructure/queue.js", () => ({ notificationQueue: { add: v
 
 describe.sequential("peer-review versions and authorization (PostgreSQL)", () => {
   const marker = crypto.randomUUID();
-  let author = "", lecturer = "", researcher = "", student = "", outsider = "", template = "", version = "", lowLevel = "", highLevel = "", otherLevel = "", institutionId = "";
+  let author = "", lecturer = "", externalLecturer = "", student = "", outsider = "", template = "", version = "", lowLevel = "", highLevel = "", otherLevel = "", institutionId = "";
   const projectIds: string[] = [], submissionIds: string[] = [], userIds: string[] = [];
 
   beforeAll(async () => {
     const prisma = getPrisma();
-    for (const [name, academicRole] of [["Author", "STUDENT"], ["Lecturer", "LECTURER"], ["Researcher", "RESEARCHER"], ["Student", "STUDENT"], ["Outsider", "RESEARCHER"]]) {
-      const user = await prisma.user.create({ data: { email: `${name.toLowerCase()}-${marker}@example.test`, fullName: name, accountStatus: "ACTIVE" } });
+    for (const [name, academicRole] of [["Author", "STUDENT"], ["Lecturer", "LECTURER"], ["External Lecturer", "LECTURER"], ["Student", "STUDENT"], ["Outsider", "LECTURER"]]) {
+      const user = await prisma.user.create({ data: { email: `${name.toLowerCase()}-${marker}@example.test`, fullName: name, accountStatus: "ACTIVE", emailVerifiedAt: new Date() } });
       userIds.push(user.id);
-      await prisma.academicProfile.create({ data: { userId: user.id, academicRole, roleVerificationStatus: "VERIFIED", reviewAvailability: { enabled: true, maximumActiveReviews: 10 } } });
+      await prisma.academicProfile.create({ data: { userId: user.id, academicRole, roleVerificationStatus: "VERIFIED", positionStatus: "VERIFIED", reviewAvailability: { enabled: true, maximumActiveReviews: 10 } } });
     }
-    [author, lecturer, researcher, student, outsider] = userIds;
-    await prisma.user.updateMany({ where: { id: { in: [researcher, outsider] } }, data: { admissionBasis: "INVITATION", emailVerifiedAt: new Date() } });
+    [author, lecturer, externalLecturer, student, outsider] = userIds;
+    await prisma.user.updateMany({ where: { id: { in: [externalLecturer, outsider] } }, data: { admissionBasis: "INVITATION", emailVerifiedAt: new Date() } });
     const institution = await prisma.institution.create({ data: { name: "Test Host", slug: `test-host-${marker}`, hostInstitution: true } }); institutionId = institution.id;
     await prisma.affiliation.create({ data: { userId: lecturer, institutionId, institutionName: institution.name, isCurrent: true, verificationStatus: "VERIFIED" } });
     expect(await participantScopeForUser(lecturer)).toBe("INTERNAL");
-    expect(await participantScopeForUser(researcher)).toBe("EXTERNAL");
+    expect(await participantScopeForUser(externalLecturer)).toBe("EXTERNAL");
     const created = await reviewTemplateService.create({ name: `Review test ${marker}`, source: "PERSONAL", reviewMode: "RUBRIC_ASSESSMENT", guidelines: [], publish: true, criteria: [
       { key: "method", title: "Method", weight: 2, required: true, levels: [{ label: "Low", score: 2 }, { label: "High", score: 4 }] },
       { key: "evidence", title: "Evidence", weight: 1, required: true, levels: [{ label: "Low", score: 1 }, { label: "High", score: 3 }] },
@@ -52,7 +52,34 @@ describe.sequential("peer-review versions and authorization (PostgreSQL)", () =>
     return { submission, revision };
   }
   const input = (assessment: AcademicReviewInput["overallAssessment"] = "STRONG", level = highLevel): AcademicReviewInput => ({ overallAssessment: assessment, responses: [{ criterionKey: "method", performanceLevelId: level, comment: "Method evidence" }, { criterionKey: "evidence", performanceLevelId: otherLevel, comment: "Cited evidence" }], requiredRevisions: assessment === "MAJOR_REVISION" ? [{ priority: "MAJOR", description: "Explain the sampling method" }] : [] });
-  async function invite(submissionId: string, reviewerId = researcher) { return reviewRequestService.create({ submissionId, reviewerId, templateVersionId: version }, author); }
+  async function invite(submissionId: string, reviewerId = externalLecturer) { return reviewRequestService.create({ submissionId, reviewerId, templateVersionId: version }, author); }
+
+  it("requires Project Owner authority and hides content while request is pending or expired", async () => {
+    const { submission } = await article();
+    await getPrisma().projectMember.create({ data: { projectId: submission.projectId, userId: student, status: "ACTIVE" } });
+    await expect(reviewRequestService.create({ submissionId: submission.id, reviewerId: externalLecturer, templateVersionId: version }, student)).rejects.toMatchObject({ statusCode: 403 });
+    const request = await invite(submission.id);
+    await getPrisma().submission.update({ where: { id: submission.id }, data: { abstractText: "CONFIDENTIAL abstract", methodology: "CONFIDENTIAL methodology" } });
+    expect(JSON.stringify(await submissionService.listMyAssignments(externalLecturer))).not.toContain("CONFIDENTIAL");
+    expect((await reviewRequestService.detail(request.id, externalLecturer)).artifactContent).toBeUndefined();
+    await expect(submissionService.getReviewerView(submission.id, externalLecturer, "user")).rejects.toMatchObject({ statusCode: 403 });
+    await getPrisma().reviewRequest.update({ where: { id: request.id }, data: { expiresAt: new Date(0) } });
+    await expect(reviewRequestService.accept(request.id, externalLecturer)).rejects.toMatchObject({ statusCode: 409 });
+    expect((await getPrisma().reviewRequest.findUniqueOrThrow({ where: { id: request.id } })).status).toBe("EXPIRED");
+    await expect(reviewService.getReview(request.assignment.id, externalLecturer)).rejects.toMatchObject({ statusCode: 403 });
+  });
+
+  it("blocks verified Researchers and unverified Lecturers despite old grants", async () => {
+    const db = getPrisma();
+    const member = await db.user.create({ data: { email: `research-persona-${marker}@example.test`, fullName: "Researcher", emailVerifiedAt: new Date() } }); userIds.push(member.id);
+    await db.academicProfile.create({ data: { userId: member.id, academicRole: "RESEARCHER", roleVerificationStatus: "VERIFIED", positionStatus: "VERIFIED" } });
+    await db.userCapability.create({ data: { userId: member.id, capability: "STRUCTURED_REVIEW", status: "ACTIVE", source: "OLD_POLICY" } });
+    await expect(assertPeerReviewer(member.id)).rejects.toMatchObject({ statusCode: 403 });
+    const articleData = await article();
+    await expect(invite(articleData.submission.id, member.id)).rejects.toMatchObject({ statusCode: 403 });
+    await db.academicProfile.update({ where: { userId: member.id }, data: { academicRole: "LECTURER", roleVerificationStatus: "SELF_DECLARED", positionStatus: "NOT_SUBMITTED" } });
+    await expect(assertPeerReviewer(member.id)).rejects.toMatchObject({ statusCode: 403 });
+  });
 
   it("blocks Students despite stale review capabilities on every reviewer entry", async () => {
     const prisma = getPrisma();
@@ -60,79 +87,90 @@ describe.sequential("peer-review versions and authorization (PostgreSQL)", () =>
     await expect(assertPeerReviewer(student)).rejects.toMatchObject({ statusCode: 403 });
     const { submission, revision } = await article();
     await expect(invite(submission.id, student)).rejects.toMatchObject({ statusCode: 403 });
-    await expect(submissionService.assignReviewer(submission.id, { reviewerId: student }, author)).rejects.toMatchObject({ statusCode: 403 });
+    await expect(submissionService.assignReviewer(submission.id, { reviewerId: student }, author)).rejects.toMatchObject({ statusCode: 409 });
     const assignment = await prisma.reviewerAssignment.create({ data: { submissionId: submission.id, artifactRevisionId: revision.id, reviewerId: student, assignedById: author, anonymousCode: `STUDENT-${marker}`, status: "accepted" } });
     await expect(reviewService.getReview(assignment.id, student)).rejects.toMatchObject({ statusCode: 403 });
     await expect(reviewService.saveReview(assignment.id, student, input(), true)).rejects.toMatchObject({ statusCode: 403 });
     await expect(reviewService.acceptOpportunity(submission.id, student)).rejects.toMatchObject({ statusCode: 403 });
   });
 
+  it("requires an explicit assignment even for a verified non-FPT Lecturer", async () => {
+    const articleData = await article();
+    await assertPeerReviewer(externalLecturer);
+    await expect(reviewService.saveReview(articleData.submission.id, externalLecturer, input(), true)).rejects.toMatchObject({ statusCode: 404 });
+    await expect(submissionService.history(articleData.submission.id, externalLecturer, "user")).rejects.toMatchObject({ statusCode: 403 });
+  });
+
   it("keeps drafts private and pins scores to the reviewed version through resubmission", async () => {
     const { submission, revision } = await article(); const request = await invite(submission.id);
-    await reviewRequestService.accept(request.id, researcher);
-    await reviewService.saveReview(request.assignment.id, researcher, input("MAJOR_REVISION", lowLevel), false);
+    await reviewRequestService.accept(request.id, externalLecturer);
+    await reviewService.saveReview(request.assignment.id, externalLecturer, input("MAJOR_REVISION", lowLevel), false);
     expect((await reviewRequestService.detail(request.id, author)).reviews).toHaveLength(0);
     expect((await reviewRequestService.listCenter(author)).sent.find((item) => item.id === request.id)?.latestReview).toBeUndefined();
     expect((await submissionService.history(submission.id, author, "user")).versions[0].reviews).toHaveLength(0);
-    await expect(reviewService.saveReview(request.assignment.id, researcher, { ...input(), overallAssessment: "MINOR_REVISION", requiredRevisions: [] }, true)).rejects.toMatchObject({ statusCode: 400 });
-    await expect(reviewService.saveReview(request.assignment.id, researcher, { ...input(), responses: [{ criterionKey: "method", performanceLevelId: otherLevel }, input().responses[1]] }, true)).rejects.toMatchObject({ statusCode: 400 });
-    const submitted = await reviewService.saveReview(request.assignment.id, researcher, input("MAJOR_REVISION", lowLevel), true);
+    await expect(reviewService.saveReview(request.assignment.id, externalLecturer, { ...input(), overallAssessment: "MINOR_REVISION", requiredRevisions: [] }, true)).rejects.toMatchObject({ statusCode: 400 });
+    await expect(reviewService.saveReview(request.assignment.id, externalLecturer, { ...input(), responses: [{ criterionKey: "method", performanceLevelId: otherLevel }, input().responses[1]] }, true)).rejects.toMatchObject({ statusCode: 400 });
+    const submitted = await reviewService.saveReview(request.assignment.id, externalLecturer, input("MAJOR_REVISION", lowLevel), true);
     expect(submitted.review.revisionId).toBe(revision.id); expect(submitted.review.weightedScore).toBeCloseTo(7 / 3);
-    await expect(reviewService.saveReview(request.assignment.id, researcher, input(), false)).rejects.toMatchObject({ statusCode: 409 });
+    await expect(reviewService.saveReview(request.assignment.id, externalLecturer, input(), false)).rejects.toMatchObject({ statusCode: 409 });
     const revised = await submissionService.createVersion(submission.id, { content: "# Revised methods", summary: "Sampling explained", expectedRevisionNumber: 1 }, author, "user");
     const history = await submissionService.history(submission.id, author, "user");
     expect(history.versions[0].reviews).toHaveLength(0); expect(history.versions[1].reviews[0].weightedScore).toBeCloseTo(7 / 3);
     await expect(reviewRequestService.resubmit(request.id, author, { revisionId: revision.id, responses: [] })).rejects.toMatchObject({ statusCode: 400 });
     const resubmits = await Promise.allSettled([1, 2].map(() => reviewRequestService.resubmit(request.id, author, { revisionId: revised.id, responses: [{ revisionItemId: submitted.requiredRevisions[0].id, responseText: "Sampling described in section 2" }] })));
     expect(resubmits.filter((result) => result.status === "fulfilled")).toHaveLength(1);
-    const workspace = await reviewService.getReview(request.assignment.id, researcher);
+    const workspace = await reviewService.getReview(request.assignment.id, externalLecturer);
     expect(workspace.review).toBeUndefined(); expect(workspace.roundNumber).toBe(2); expect(workspace.artifactRevision?.id).toBe(revised.id);
-    await expect(reviewService.saveReview(request.assignment.id, researcher, { ...input(), expectedRevisionId: revision.id, expectedRoundNumber: 1 }, false)).rejects.toMatchObject({ statusCode: 409 });
-    await reviewService.saveReview(request.assignment.id, researcher, input(), false);
-    await expect(reviewService.saveReview(request.assignment.id, researcher, input(), true)).rejects.toMatchObject({ statusCode: 409 });
-    await reviewRequestService.resolveRevisionItem(request.id, submitted.requiredRevisions[0].id, "ACCEPTED", researcher);
-    await reviewService.saveReview(request.assignment.id, researcher, input(), true);
+    await expect(reviewService.saveReview(request.assignment.id, externalLecturer, { ...input(), expectedRevisionId: revision.id, expectedRoundNumber: 1 }, false)).rejects.toMatchObject({ statusCode: 409 });
+    await reviewService.saveReview(request.assignment.id, externalLecturer, input(), false);
+    await expect(reviewService.saveReview(request.assignment.id, externalLecturer, input(), true)).rejects.toMatchObject({ statusCode: 409 });
+    await reviewRequestService.resolveRevisionItem(request.id, submitted.requiredRevisions[0].id, "ACCEPTED", externalLecturer);
+    await reviewService.saveReview(request.assignment.id, externalLecturer, input(), true);
     const final = await submissionService.history(submission.id, author, "user");
     expect(final.versions[0].reviews[0].weightedScore).toBeCloseTo(11 / 3); expect(final.versions[1].reviews[0].weightedScore).toBeCloseTo(7 / 3);
     expect(final.contributions).toHaveLength(1); expect(final.contributions[0].rounds).toHaveLength(2);
-    expect(await getPrisma().researchContribution.count({ where: { submissionId: submission.id, contributorId: researcher } })).toBe(1);
+    expect(await getPrisma().researchContribution.count({ where: { submissionId: submission.id, contributorId: externalLecturer } })).toBe(1);
     expect((await getPrisma().researchContribution.findFirstOrThrow({ where: { submissionId: submission.id } })).visibility).toBe("PRIVATE");
-    expect((await reviewService.listContributions(researcher, outsider)).some((item) => item.submissionId?.id === submission.id)).toBe(false);
+    expect((await reviewService.listContributions(externalLecturer, outsider)).some((item) => item.submissionId?.id === submission.id)).toBe(false);
     const restored = await submissionService.createVersion(submission.id, { sourceRevisionId: revision.id, summary: "Restore original", expectedRevisionNumber: 2 }, author, "user");
     expect(restored.revisionNumber).toBe(3); expect(restored.contentSnapshot).toBe("# Original methods");
     expect((await submissionService.history(submission.id, author, "user")).versions[0].reviews).toHaveLength(0);
     await expect(submissionService.createVersion(submission.id, { content: "Stale version", summary: "Stale save", expectedRevisionNumber: 2 }, author, "user")).rejects.toMatchObject({ statusCode: 409 });
     await expect(submissionService.history(submission.id, outsider, "user")).rejects.toMatchObject({ statusCode: 403 });
-    await getPrisma().academicProfile.update({ where: { userId: researcher }, data: { academicRole: "STUDENT" } });
-    await expect(reviewService.saveReview(request.assignment.id, researcher, input(), true)).rejects.toMatchObject({ statusCode: 403 });
-    expect((await reviewRequestService.detail(request.id, researcher)).reviews).toHaveLength(2);
+    await getPrisma().academicProfile.update({ where: { userId: externalLecturer }, data: { academicRole: "STUDENT" } });
+    await expect(reviewService.saveReview(request.assignment.id, externalLecturer, input(), true)).rejects.toMatchObject({ statusCode: 403 });
+    expect((await reviewRequestService.detail(request.id, externalLecturer)).reviews).toHaveLength(2);
     expect((await submissionService.history(submission.id, author, "user")).contributions[0].rounds).toHaveLength(2);
-    await getPrisma().academicProfile.update({ where: { userId: researcher }, data: { academicRole: "RESEARCHER" } });
-    const nextRequest = await invite(submission.id); await reviewRequestService.accept(nextRequest.id, researcher);
-    await reviewService.saveReview(nextRequest.assignment.id, researcher, input(), true);
-    expect(await getPrisma().researchContribution.count({ where: { submissionId: submission.id, contributorId: researcher } })).toBe(1);
+    await getPrisma().academicProfile.update({ where: { userId: externalLecturer }, data: { academicRole: "LECTURER" } });
+    const nextRequest = await invite(submission.id); await reviewRequestService.accept(nextRequest.id, externalLecturer);
+    await reviewService.saveReview(nextRequest.assignment.id, externalLecturer, input(), true);
+    expect(await getPrisma().researchContribution.count({ where: { submissionId: submission.id, contributorId: externalLecturer } })).toBe(1);
     expect((await submissionService.history(submission.id, author, "user")).contributions[0].rounds).toHaveLength(3);
   });
 
   it("uses aggregate status and serializes accept/submit races", async () => {
-    const { submission } = await article(); const one = await invite(submission.id, lecturer), two = await invite(submission.id, researcher);
+    const { submission } = await article(); const one = await invite(submission.id, lecturer), two = await invite(submission.id, externalLecturer);
     const accepts = await Promise.allSettled([reviewRequestService.accept(one.id, lecturer), reviewRequestService.accept(one.id, lecturer)]);
     expect(accepts.filter((item) => item.status === "fulfilled")).toHaveLength(1);
-    await reviewRequestService.accept(two.id, researcher);
+    await reviewRequestService.accept(two.id, externalLecturer);
     const submits = await Promise.allSettled([reviewService.saveReview(one.assignment.id, lecturer, input(), true), reviewService.saveReview(one.assignment.id, lecturer, input(), true)]);
     expect(submits.filter((item) => item.status === "fulfilled")).toHaveLength(1);
     expect((await getPrisma().submission.findUniqueOrThrow({ where: { id: submission.id } })).status).toBe("under_review");
-    await reviewService.saveReview(two.assignment.id, researcher, input("MAJOR_REVISION"), true);
+    await reviewService.saveReview(two.assignment.id, externalLecturer, input("MAJOR_REVISION"), true);
     expect((await getPrisma().submission.findUniqueOrThrow({ where: { id: submission.id } })).status).toBe("revision_requested");
   });
 
-  it("hides private opportunities until author opt-in and unifies open acceptance", async () => {
+  it("keeps opted-in opportunities as summaries and requires an explicit project request", async () => {
     const { submission, revision } = await article();
     expect((await reviewService.listOpportunities(outsider, {})).opportunities.some((item) => item.id === submission.id)).toBe(false);
-    await expect(reviewService.acceptOpportunity(submission.id, outsider)).rejects.toMatchObject({ statusCode: 409 });
+    await expect(reviewService.acceptOpportunity(submission.id, outsider)).rejects.toMatchObject({ statusCode: 403 });
     await submissionService.setOpenForReview(submission.id, true, author, "user");
     expect((await reviewService.listOpportunities(outsider, {})).opportunities.some((item) => item.id === submission.id)).toBe(true);
-    const assignment = await reviewService.acceptOpportunity(submission.id, outsider);
+    await expect(reviewService.acceptOpportunity(submission.id, outsider)).rejects.toMatchObject({ statusCode: 403 });
+    const invitation = await invite(submission.id, outsider);
+    await expect(reviewService.getReview(invitation.assignment.id, outsider)).rejects.toMatchObject({ statusCode: 403 });
+    await reviewRequestService.accept(invitation.id, outsider);
+    const assignment = await getPrisma().reviewerAssignment.findUniqueOrThrow({ where: { id: invitation.assignment.id } });
     expect(assignment.artifactRevisionId).toBe(revision.id); expect(assignment.reviewRequestId).toBeTruthy();
     const center = await reviewRequestService.listCenter(outsider);
     expect(center.incoming.find((item) => item.id === assignment.reviewRequestId)?.status).toBe("ACCEPTED");
@@ -204,6 +242,41 @@ describe.sequential("peer-review versions and authorization (PostgreSQL)", () =>
     }
   });
 
+  it("rejects cross-submission pinned revisions on reads, request detail and writes", async () => {
+    // Age earlier fixture requests so this test exercises artifact integrity, not hourly limits.
+    await getPrisma().reviewRequest.updateMany({ where: { requesterId: author }, data: { createdAt: new Date(Date.now() - 86_400_000) } });
+    const first = await article(), second = await article();
+    const request = await invite(first.submission.id);
+    await reviewRequestService.accept(request.id, externalLecturer);
+    await getPrisma().reviewRequest.update({ where: { id: request.id }, data: { artifactRevisionId: second.revision.id } });
+    await getPrisma().reviewerAssignment.update({ where: { id: request.assignment.id }, data: { artifactRevisionId: second.revision.id } });
+    await expect(reviewService.getReview(request.assignment.id, externalLecturer)).rejects.toMatchObject({ statusCode: 409 });
+    await expect(reviewRequestService.detail(request.id, externalLecturer)).rejects.toMatchObject({ statusCode: 409 });
+    await expect(reviewService.saveReview(request.assignment.id, externalLecturer, input(), true)).rejects.toMatchObject({ statusCode: 409 });
+    expect(await getPrisma().humanReview.count({ where: { assignmentId: request.assignment.id } })).toBe(0);
+  });
+  it("rejects saving accepted reviews after the project is archived", async () => {
+    const { submission } = await article();
+    const request = await invite(submission.id);
+    await reviewRequestService.accept(request.id, externalLecturer);
+    await getPrisma().project.update({ where: { id: submission.projectId }, data: { status: "ARCHIVED" } });
+    await expect(reviewService.saveReview(request.assignment.id, externalLecturer, input(), false)).rejects.toMatchObject({ statusCode: 409 });
+    await expect(reviewService.saveReview(request.assignment.id, externalLecturer, input(), true)).rejects.toMatchObject({ statusCode: 409 });
+    expect(await getPrisma().humanReview.count({ where: { assignmentId: request.assignment.id } })).toBe(0);
+  });
+  it("filters legacy public contributions by source access and never exposes internal evidence", async () => {
+    const { submission } = await article();
+    const contribution = await getPrisma().researchContribution.create({ data: { contributorId: externalLecturer, projectId: submission.projectId, submissionId: submission.id, contributionType: "REVIEW", description: "PRIVATE project description", evidence: "PRIVATE internal evidence", visibility: "PUBLIC", provenance: "LUMIGAP_REVIEW", verificationStatus: "VERIFIED_BY_LUMIGAP" } });
+    expect((await reviewService.listContributions(externalLecturer)).some(row => row.id === contribution.id)).toBe(false);
+    expect((await reviewService.listContributions(externalLecturer, outsider)).some(row => row.id === contribution.id)).toBe(false);
+    await getPrisma().project.update({ where: { id: submission.projectId }, data: { visibility: "PUBLIC_SUMMARY" } });
+    expect((await reviewService.listContributions(externalLecturer)).some(row => row.id === contribution.id)).toBe(false);
+    const teamView = (await reviewService.listContributions(externalLecturer, author)).find(row => row.id === contribution.id);
+    expect(teamView?.submissionId?.id).toBe(submission.id);
+    expect(teamView).not.toHaveProperty("evidence");
+    expect(teamView).not.toHaveProperty("description");
+    expect(teamView).not.toHaveProperty("sourceReviewAssignmentId");
+  });
   afterAll(async () => {
     const prisma = getPrisma();
     const revisions = await prisma.submissionRevision.findMany({ where: { submissionId: { in: submissionIds } }, select: { id: true } });

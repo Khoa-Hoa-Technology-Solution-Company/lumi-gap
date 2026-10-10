@@ -4,6 +4,7 @@ import type {
   AcademicIdentityProvider,
   AcademicIdentityStatus,
   AcademicIdentityVisibility,
+  AcademicIdentityVerificationStatus,
 } from "@trend/shared-types";
 import { AppError } from "../../common/exceptions/app-error.js";
 import { parseDatabaseId } from "../../infrastructure/database/database-id.js";
@@ -28,6 +29,7 @@ type IdentityRow = {
   profileUrl: string | null;
   connectionMethod: AcademicIdentityConnectionMethod;
   status: AcademicIdentityStatus;
+  verificationStatus: AcademicIdentityVerificationStatus;
   visibility: AcademicIdentityVisibility;
   createdAt: Date;
   updatedAt: Date;
@@ -78,7 +80,7 @@ function normalizeInput(input: CreateAcademicIdentityLinkInput): CreateAcademicI
   return parsed.data;
 }
 
-function mapIdentity(row: IdentityRow): AcademicIdentityLink {
+export function mapAcademicIdentity(row: IdentityRow): AcademicIdentityLink {
   return {
     id: row.id,
     provider: row.provider,
@@ -87,6 +89,7 @@ function mapIdentity(row: IdentityRow): AcademicIdentityLink {
     profileUrl: row.profileUrl ?? undefined,
     connectionMethod: row.connectionMethod,
     status: row.status,
+    verificationStatus: row.verificationStatus,
     visibility: row.visibility,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
@@ -121,7 +124,7 @@ export const academicIdentityService = {
   async list(userId: string): Promise<AcademicIdentityLink[]> {
     const user = await resolveUser(userId);
     const rows = await getPrisma().academicIdentityLink.findMany({ where: { userId: user.id }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] }) as IdentityRow[];
-    return rows.map(mapIdentity);
+    return rows.map(mapAcademicIdentity);
   },
 
   async create(userId: string, input: CreateAcademicIdentityLinkInput): Promise<AcademicIdentityLink> {
@@ -131,10 +134,10 @@ export const academicIdentityService = {
       where: {
         userId: user.id,
         provider: normalized.provider,
-        OR: [
+        ...(normalized.provider === "ORCID" ? {} : { OR: [
           ...(normalized.identifier ? [{ identifier: normalized.identifier }] : []),
           ...(normalized.profileUrl ? [{ profileUrl: normalized.profileUrl }] : []),
-        ],
+        ] }),
       },
     });
     if (existing) throw AppError.conflict("This academic identity is already linked");
@@ -148,11 +151,12 @@ export const academicIdentityService = {
           profileUrl: normalized.profileUrl,
           connectionMethod: "MANUAL",
           status: "SELF_DECLARED",
+          verificationStatus: "UNVERIFIED",
           visibility: normalized.visibility,
         },
       }) as IdentityRow;
       await auditService.log("academic_profile.identity.created", { userId: user.id, targetTableName: "academic_identity_links", targetRecordId: created.id, details: { provider: created.provider } });
-      return mapIdentity(created);
+      return mapAcademicIdentity(created);
     } catch (error) {
       if (isUniqueViolation(error)) throw AppError.conflict("This academic identity is already linked");
       throw error;
@@ -165,23 +169,26 @@ export const academicIdentityService = {
     const merged = {
       provider: input.provider ?? identity.provider,
       label: hasField("label") ? input.label : identity.label ?? undefined,
-      identifier: hasField("identifier") ? input.identifier : identity.identifier ?? undefined,
-      profileUrl: hasField("profileUrl") ? input.profileUrl : identity.profileUrl ?? undefined,
+      identifier: hasField("identifier") ? input.identifier ?? undefined : identity.identifier ?? undefined,
+      profileUrl: hasField("profileUrl") ? input.profileUrl ?? undefined : identity.profileUrl ?? undefined,
       visibility: input.visibility ?? identity.visibility,
     } satisfies CreateAcademicIdentityLinkInput;
     const normalized = normalizeInput(merged);
     const changedValue = normalized.provider !== identity.provider
       || normalized.identifier !== (identity.identifier ?? undefined)
       || normalized.profileUrl !== (identity.profileUrl ?? undefined);
+    if (changedValue && identity.verificationStatus === "PROVIDER_CONNECTED") {
+      throw AppError.badRequest("Disconnect the provider before changing this academic identity");
+    }
     const duplicate = await getPrisma().academicIdentityLink.findFirst({
       where: {
         userId: user.id,
         provider: normalized.provider,
         id: { not: identity.id },
-        OR: [
+        ...(normalized.provider === "ORCID" ? {} : { OR: [
           ...(normalized.identifier ? [{ identifier: normalized.identifier }] : []),
           ...(normalized.profileUrl ? [{ profileUrl: normalized.profileUrl }] : []),
-        ],
+        ] }),
       },
     });
     if (duplicate) throw AppError.conflict("This academic identity is already linked");
@@ -191,14 +198,14 @@ export const academicIdentityService = {
         data: {
           provider: normalized.provider,
           label: normalized.label,
-          identifier: normalized.identifier,
-          profileUrl: normalized.profileUrl,
+          identifier: normalized.identifier ?? null,
+          profileUrl: normalized.profileUrl ?? null,
           visibility: normalized.visibility,
-          ...(changedValue ? { connectionMethod: "MANUAL", status: "SELF_DECLARED" } : {}),
+          ...(changedValue ? { connectionMethod: "MANUAL", status: "SELF_DECLARED", verificationStatus: "UNVERIFIED" } : {}),
         },
       }) as IdentityRow;
       await auditService.log("academic_profile.identity.updated", { userId: user.id, targetTableName: "academic_identity_links", targetRecordId: updated.id, details: { provider: updated.provider, valueChanged: changedValue } });
-      return mapIdentity(updated);
+      return mapAcademicIdentity(updated);
     } catch (error) {
       if (isUniqueViolation(error)) throw AppError.conflict("This academic identity is already linked");
       throw error;

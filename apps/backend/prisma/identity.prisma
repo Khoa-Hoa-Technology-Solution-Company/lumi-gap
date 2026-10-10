@@ -136,6 +136,8 @@ model AcademicProfile {
   skills                       String[]  @default([])
   researchKeywords             String[]  @default([]) @map("research_keywords")
   supportAvailability          Json      @default("{}") @map("support_availability")
+  mentorshipEmailEnabled       Boolean   @default(true) @map("mentorship_email_enabled")
+  notificationLocale           String    @default("en") @map("notification_locale") @db.VarChar(8)
   reviewAvailability           Json      @default("{}") @map("review_availability")
   verificationStatus           String    @default("SELF_DECLARED") @map("verification_status") @db.VarChar(32)
   verificationRequestedAt      DateTime? @map("verification_requested_at") @db.Timestamptz(6)
@@ -204,6 +206,7 @@ model VerificationEvidence {
   reviewedById       String?   @map("reviewed_by_id") @db.Uuid
   reviewedAt         DateTime? @map("reviewed_at") @db.Timestamptz(6)
   submittedAt        DateTime  @default(now()) @map("submitted_at") @db.Timestamptz(6)
+  supersededAt       DateTime? @map("superseded_at") @db.Timestamptz(6)
   expiresAt          DateTime? @map("expires_at") @db.Timestamptz(6)
   rejectionReason    String?   @map("rejection_reason")
   evidenceStorageKey String?   @map("evidence_storage_key") @db.VarChar(240)
@@ -211,12 +214,76 @@ model VerificationEvidence {
   evidenceMimeType   String?   @map("evidence_mime_type") @db.VarChar(80)
   evidenceSizeBytes  Int?      @map("evidence_size_bytes")
   metadata           Json      @default("{}")
+  verificationMethod String? @map("verification_method") @db.VarChar(48)
+  submissionKey String? @map("submission_key") @db.Uuid
+  submissionHash String? @map("submission_hash") @db.VarChar(64)
+  previousRequestId String? @map("previous_request_id") @db.Uuid
+  revision Int @default(1)
+  invalidatedAt DateTime? @map("invalidated_at") @db.Timestamptz(6)
+  institutionId String? @map("institution_id") @db.Uuid
+  sources VerificationEvidenceSource[]
   createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@index([userId, verificationType, status])
+  @@unique([userId, submissionKey])
   @@index([status, submittedAt])
   @@map("verification_evidence")
+}
+
+// Upload readiness only; Lecturer approval remains in VerificationEvidence.
+model VerificationEvidenceUpload {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  institutionId String @map("institution_id") @db.Uuid
+  positionTitle String @map("position_title") @db.VarChar(160)
+  storageKey String @unique @map("storage_key") @db.VarChar(240)
+  fileName String @map("file_name") @db.VarChar(180)
+  mimeType String @map("mime_type") @db.VarChar(80)
+  sizeBytes Int @map("size_bytes")
+  contentHash String @map("content_hash") @db.VarChar(64)
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+  consumedAt DateTime? @map("consumed_at") @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@index([userId, expiresAt])
+  @@map("verification_evidence_uploads")
+}
+
+// Individual private sources of the existing academic verification request.
+model VerificationEvidenceSource {
+  id String @id @default(uuid()) @db.Uuid
+  requestId String @map("request_id") @db.Uuid
+  previousSourceId String? @map("previous_source_id") @db.Uuid
+  request VerificationEvidence @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  slot Int
+  type String @db.VarChar(48)
+  sourceKind String? @map("source_kind") @db.VarChar(16)
+  customEvidenceName String? @map("custom_evidence_name") @db.VarChar(200)
+  additionalExplanation String? @map("additional_explanation") @db.VarChar(1000)
+  mimeType String? @map("mime_type") @db.VarChar(80)
+  urlTrustStatus String? @map("url_trust_status") @db.VarChar(32)
+  emailIdentityId String? @map("email_identity_id") @db.Uuid
+  reference String?
+  storageKey String? @map("storage_key") @db.VarChar(240)
+  fileName String? @map("file_name") @db.VarChar(180)
+  sizeBytes Int? @map("size_bytes")
+  status String @default("UNCHECKED") @db.VarChar(24)
+  checkedById String? @map("checked_by_id") @db.Uuid
+  checkedAt DateTime? @map("checked_at") @db.Timestamptz(6)
+  reviewerNote String? @map("reviewer_note")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  @@unique([requestId, slot])
+  @@map("verification_evidence_sources")
+}
+
+// Durable deletion queue survives account cascades and storage outages.
+model VerificationEvidenceDeletion {
+  storageKey String @id @map("storage_key") @db.VarChar(240)
+  userId String @map("user_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  notBefore DateTime @default(now()) @map("not_before") @db.Timestamptz(6)
+  @@map("verification_evidence_deletions")
 }
 
 model UserCapability {
@@ -315,6 +382,7 @@ model AcademicIdentityLink {
   profileUrl       String?  @map("profile_url")
   connectionMethod String   @default("MANUAL") @map("connection_method") @db.VarChar(24)
   status           String   @default("SELF_DECLARED") @db.VarChar(24)
+  verificationStatus String @default("UNVERIFIED") @map("verification_status") @db.VarChar(24)
   visibility       String   @default("PUBLIC") @db.VarChar(24)
   createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -329,6 +397,11 @@ model AcademicFeaturedWork {
   id        String  @id @default(uuid()) @db.Uuid
   profileId String  @map("profile_id") @db.Uuid
   paperId   String? @map("paper_id") @db.Uuid
+  kind      String  @default("PAPER") @db.VarChar(32)
+  projectId String? @map("project_id") @db.Uuid
+  submissionId String? @map("submission_id") @db.Uuid
+  reportId String? @map("report_id") @db.Uuid
+  gapId     String? @map("gap_id") @db.Uuid
   doi       String?
   title     String?
   year      Int?
@@ -363,6 +436,7 @@ model AcademicEmailVerificationChallenge {
   maxAttempts   Int       @default(5) @map("max_attempts")
   expiresAt     DateTime  @map("expires_at") @db.Timestamptz(6)
   consumedAt    DateTime? @map("consumed_at") @db.Timestamptz(6)
+  sentAt        DateTime @default(now()) @map("sent_at") @db.Timestamptz(6)
   createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -396,6 +470,9 @@ model InstitutionDomain {
   trusted            Boolean @default(true)
   status             String  @default("ACTIVE") @db.VarChar(24)
   verificationMethod String  @default("INSTITUTIONAL_EMAIL") @map("verification_method") @db.VarChar(48)
+  type String @default("EMAIL") @db.VarChar(16)
+  allowSubdomains Boolean @default(false) @map("allow_subdomains")
+  verifiedAt DateTime? @map("verified_at") @db.Timestamptz(6)
 
   @@index([institutionId])
   @@map("institution_domains")

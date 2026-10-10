@@ -13,8 +13,8 @@ export async function assertPeerReviewer(input: string) {
   const user = await prisma.user.findUnique({ where: parsed.kind === "uuid" ? { id: parsed.value } : { legacyMongoId: parsed.value } });
   if (!user || !user.isActive || user.accountStatus !== "ACTIVE") throw AppError.forbidden("An active reviewer account is required");
   const profile = await prisma.academicProfile.findUnique({ where: { userId: user.id } });
-  if (!eligiblePeerReviewer(profile?.academicRole, profile?.roleVerificationStatus)) {
-    throw AppError.forbidden("Only verified Lecturers and Researchers can peer-review. Students cannot act as reviewers.");
+  if (!user.emailVerifiedAt || profile?.positionStatus !== "VERIFIED" || !eligiblePeerReviewer(profile?.academicRole, profile?.roleVerificationStatus)) {
+    throw AppError.forbidden("Formal Academic Review requires a verified Lecturer position and an explicit assignment.");
   }
   let capabilities = await capabilityService.list(user.id);
   if (!capabilities.includes("STRUCTURED_REVIEW")) capabilities = await capabilityService.evaluate(user.id);
@@ -34,13 +34,14 @@ export async function assertReviewerInTransaction(tx: Prisma.TransactionClient, 
     tx.user.findUnique({ where: { id: reviewerId } }),
     tx.academicProfile.findUnique({ where: { userId: reviewerId } }),
   ]);
-  if (!user?.isActive || user.accountStatus !== "ACTIVE" || !eligiblePeerReviewer(profile?.academicRole, profile?.roleVerificationStatus)) throw AppError.forbidden("Only active, verified Lecturers and Researchers can peer-review");
+  if (!user?.isActive || user.accountStatus !== "ACTIVE" || (!user.emailVerifiedAt || profile?.positionStatus !== "VERIFIED" || !eligiblePeerReviewer(profile?.academicRole, profile?.roleVerificationStatus))) throw AppError.forbidden("An active, email-verified Lecturer with verified position is required");
   return profile!;
 }
 
 export async function assertReviewAdmission(tx: Prisma.TransactionClient, submissionId: string, reviewerId: string, options: { excludeAssignmentId?: string; requireAvailable?: boolean } = {}) {
   await assertReviewerInTransaction(tx, reviewerId);
   const submission = await tx.submission.findUniqueOrThrow({ where: { id: submissionId } });
+  await tx.$queryRaw`SELECT id FROM projects WHERE id = ${submission.projectId}::uuid FOR UPDATE`;
   const [author, declared, conflict, project, member, duplicate, profile, workload] = await Promise.all([
     tx.submissionAuthor.findUnique({ where: { submissionId_userId: { submissionId, userId: reviewerId } } }),
     tx.submissionDeclaredConflict.findUnique({ where: { submissionId_userId: { submissionId, userId: reviewerId } } }),
@@ -56,7 +57,7 @@ export async function assertReviewAdmission(tx: Prisma.TransactionClient, submis
     throw AppError.conflict("Authors, project contributors and reviewers with a declared conflict cannot review this research");
   }
   if (duplicate) throw AppError.conflict("This reviewer already has an active assignment for this research");
-  if (!eligiblePeerReviewer(profile?.academicRole, profile?.roleVerificationStatus)) throw AppError.forbidden("Lecturer or Researcher verification is required");
+  if (profile?.positionStatus !== "VERIFIED" || !eligiblePeerReviewer(profile?.academicRole, profile?.roleVerificationStatus)) throw AppError.forbidden("Lecturer position verification is required");
   const availability = profile?.reviewAvailability as { enabled?: boolean; maximumActiveReviews?: number; temporarilyUnavailableUntil?: string } | null;
   const issue = reviewCapacityIssue({ availableForReview: options.requireAvailable ? availability?.enabled === true : true,
     maximumActiveReviews: availability?.maximumActiveReviews ?? 3, activeReviewCount: workload,

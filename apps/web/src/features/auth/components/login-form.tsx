@@ -61,7 +61,7 @@ export function LoginForm({ redirectTo }: LoginFormProps) {
           ? `${previousLocation.pathname}${previousLocation.search ?? ""}${previousLocation.hash ?? ""}`
           : redirectTo;
         const target = resolvePostAuthPath(data.user, requestedPath);
-        navigate(target, { replace: true });
+        navigate(target, { state: { from: requestedPath }, replace: true });
       },
       onError: (err) => {
         const axiosErr = err as AxiosError<{ error?: { message?: string }; message?: string }>;

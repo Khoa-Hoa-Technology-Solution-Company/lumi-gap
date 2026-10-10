@@ -4,6 +4,7 @@ import { createApp } from "./app.js";
 import { connectPostgres, disconnectPostgres } from "./infrastructure/database/prisma.js";
 import { connectRedis, disconnectRedis } from "./infrastructure/redis.js";
 import { logger } from "./infrastructure/logger.js";
+import { cleanupVerificationEvidence } from "./modules/academic-profiles/verification-evidence-retention.service.js";
 
 enforcePostgresOnlyRuntime();
 
@@ -32,6 +33,17 @@ async function main() {
   await connectPostgres();
   logger.info("postgres connected");
   await connectRedis();
+  let cleaningEvidence = false;
+  const cleanEvidence = async () => {
+    if (cleaningEvidence) return;
+    cleaningEvidence = true;
+    try { await cleanupVerificationEvidence(); }
+    catch { logger.warn("Private verification evidence cleanup failed; will retry"); }
+    finally { cleaningEvidence = false; }
+  };
+  void cleanEvidence();
+  const evidenceCleanupTimer = setInterval(() => void cleanEvidence(), 60 * 60 * 1000);
+  evidenceCleanupTimer.unref();
 
   const app = createApp();
   const server = app.listen(env.PORT, () => {
@@ -42,6 +54,7 @@ async function main() {
   const shutdown = async (signal: string) => {
     logger.info({ signal }, "shutting down");
     server.close();
+    clearInterval(evidenceCleanupTimer);
     await disconnectPostgres();
     logger.info("postgres disconnected");
     await disconnectRedis();

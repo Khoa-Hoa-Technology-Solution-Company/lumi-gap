@@ -2,6 +2,7 @@ import { Router } from "express";
 import { createRateLimiter } from "../../common/middleware/rate-limit.js";
 import { env } from "../../config/env.js";
 import { requireAuth } from "../../common/middleware/auth.js";
+import { requireResearchWorkflow } from "../authorization/authorization.middleware.js";
 import { validate } from "../../common/middleware/validate.js";
 import { reportController } from "./report.controller.js";
 import { PaperIdParamSchema } from "./dto/report.schema.js";
@@ -16,7 +17,7 @@ reportRouter.get(
 );
 
 // Every report belongs to a user — auth is mandatory on the whole router.
-reportRouter.use(requireAuth);
+reportRouter.use(requireAuth, requireResearchWorkflow);
 
 /**
  * Per-user throughput throttle for report creation. The pending-count guard in

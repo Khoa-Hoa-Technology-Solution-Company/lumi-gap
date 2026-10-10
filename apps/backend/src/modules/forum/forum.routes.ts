@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { randomUUID } from "node:crypto";
 import { createRateLimiter } from "../../common/middleware/rate-limit.js";
 import { z } from "zod";
-import { optionalAuth, requireAuth } from "../../common/middleware/auth.js";
+import { optionalAuth, requireVerifiedAuth as requireAuth } from "../../common/middleware/auth.js";
 import { requirePermission } from "../../common/middleware/permission.js";
 import { validate } from "../../common/middleware/validate.js";
 import { objectIdSchema, paginationSchema } from "../../common/validation/database-id.js";

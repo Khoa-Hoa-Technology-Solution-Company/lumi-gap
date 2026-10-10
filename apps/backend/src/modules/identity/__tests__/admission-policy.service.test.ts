@@ -11,7 +11,7 @@ vi.mock("../../../infrastructure/database/prisma.js", () => ({ getPrisma: () => 
 
 import { admissionPolicyService } from "../admission-policy.service.js";
 
-describe("invitation-only external admission", () => {
+describe("personal email and institutional admission", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.institutionDomain.findUnique.mockResolvedValue(null);
@@ -26,9 +26,9 @@ describe("invitation-only external admission", () => {
       .resolves.toEqual({ basis: "HOST_INSTITUTION" });
   });
 
-  it("blocks non-invited external registration", async () => {
+  it("admits personal email with public access and no automatic affiliation", async () => {
     await expect(admissionPolicyService.evaluateRegistration("researcher@example.edu"))
-      .rejects.toMatchObject({ statusCode: 403 });
+      .resolves.toEqual({ basis: "PERSONAL_EMAIL" });
   });
 
   it("admits an external participant only with a valid pending invitation", async () => {

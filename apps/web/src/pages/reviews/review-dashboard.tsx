@@ -1,4 +1,4 @@
-import { useAuthStore } from "@/stores/auth-store";
+import { useVerifiedLecturer } from "@/features/academic-profile/hooks/use-verified-lecturer";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowRight, BookOpenCheck, Check, Clock3, FileCheck2, Inbox, Send, Shapes } from "lucide-react";
@@ -20,8 +20,7 @@ function statusClass(status: string) {
 }
 
 export function ReviewDashboardPage() {
-  const user = useAuthStore((state) => state.user);
-  const canReview = ["LECTURER", "RESEARCHER"].includes(user?.academicRole ?? "") && user?.academicRoleVerificationStatus === "VERIFIED";
+  const canReview = useVerifiedLecturer();
   const query = useReviewCenter();
   const actions = useReviewRequestAction();
   const [tab, setTab] = useState<CenterTab>("incoming");
@@ -59,7 +58,7 @@ export function ReviewDashboardPage() {
   const canWithdraw = (item: ReviewCenterItem) => ["ACCEPTED", "IN_REVIEW"].includes(item.status) && (!item.latestReview || (item.latestReview.status === "DRAFT" && item.latestReview.roundNumber === 1));
 
   return <main className="mx-auto min-w-0 w-full max-w-6xl py-4 sm:py-8">
-    <header className="flex flex-col gap-5 border-b pb-7 sm:flex-row sm:items-end sm:justify-between"><div className="min-w-0"><p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-700">Academic review</p><h1 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">Review Center</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">Manage invitations, active assessments, feedback you requested, and review history.</p></div><div className="grid w-full gap-2 min-[480px]:grid-cols-2 sm:flex sm:w-auto">{canReview ? <Button asChild variant="outline"><Link to="/review-opportunities"><BookOpenCheck className="h-4 w-4" />Browse opportunities</Link></Button> : null}<Button asChild><Link to="/review-templates"><Shapes className="h-4 w-4" />Review Templates</Link></Button></div></header>
+    <header className="flex flex-col gap-5 border-b pb-7 sm:flex-row sm:items-end sm:justify-between"><div className="min-w-0"><p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-700">Academic review</p><h1 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">Review Center</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">Manage invitations, active assessments, feedback you requested, and review history.</p></div><div className="grid w-full gap-2 min-[480px]:grid-cols-2 sm:flex sm:w-auto">{canReview ? <Button asChild variant="outline"><Link to="/academic-support"><BookOpenCheck className="h-4 w-4" />Lecturer workspace</Link></Button> : null}<Button asChild><Link to="/review-templates"><Shapes className="h-4 w-4" />Review Templates</Link></Button></div></header>
 
     <nav className="mt-6 flex w-full max-w-full gap-1 overflow-x-auto overscroll-x-contain border-b [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label="Review Center sections">{([
       ["incoming", "Incoming", Inbox], ["sent", "Sent", Send], ["progress", "In Progress", Clock3], ["completed", "Completed", FileCheck2],

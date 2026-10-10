@@ -15,7 +15,7 @@ export type ForumReactionSummary = {
   viewerReactions: ForumReactionName[];
   reactionUsers: Partial<Record<ForumReactionName, ForumReactionUser[]>>;
 };
-export type ForumAuthorView = { id: string; fullName: string; publicHandle?: string; avatarUrl?: string; institution?: string; academicProfileType?: string; academicTitle?: string; affiliationVerified?: boolean; positionTitle?: string; primaryPosition?: string; positionVerified?: boolean };
+export type ForumAuthorView = { id: string; fullName: string; publicHandle?: string; avatarUrl?: string; institution?: string; academicProfileType?: string; academicTitle?: string; affiliationVerified?: boolean; positionTitle?: string; primaryPosition?: string; positionVerified?: boolean; academicRole?: "STUDENT" | "RESEARCHER" | "LECTURER"; programMajor?: string; fptAffiliationVerified?: boolean };
 export type ForumPostView = {
   id: string; publicSlug?: string; type: ForumPostType; title: string; content: string; tags: string[]; status: string;
   voteScore: number; commentCount: number; replyCount: number; helpfulCount: number; viewCount: number; lastActivityAt?: string;
@@ -97,7 +97,7 @@ const stringList = (value: unknown): string[] => Array.isArray(value) ? value.fi
 
 function normalizeAuthor(value: unknown): ForumAuthorView {
   const row = record(value);
-  return { id: id(row), fullName: text(row.fullName) ?? "Unknown researcher", publicHandle: text(row.publicHandle), avatarUrl: text(row.avatarUrl), institution: text(row.institution), academicProfileType: text(row.academicProfileType), academicTitle: text(row.academicTitle), affiliationVerified: row.affiliationVerified === true, positionTitle: text(row.positionTitle), primaryPosition: text(row.primaryPosition), positionVerified: row.positionVerified === true };
+  return { id: id(row), fullName: text(row.fullName) ?? "Unknown researcher", publicHandle: text(row.publicHandle), avatarUrl: text(row.avatarUrl), institution: text(row.institution), academicProfileType: text(row.academicProfileType), academicTitle: text(row.academicTitle), affiliationVerified: row.affiliationVerified === true, positionTitle: text(row.positionTitle), primaryPosition: text(row.primaryPosition), positionVerified: row.positionVerified === true, academicRole: row.academicRole === "STUDENT" || row.academicRole === "RESEARCHER" || row.academicRole === "LECTURER" ? row.academicRole : undefined, programMajor: text(row.programMajor), fptAffiliationVerified: row.fptAffiliationVerified === true };
 }
 function normalizeReference(value: unknown): ForumReferenceView {
   const row = record(value);

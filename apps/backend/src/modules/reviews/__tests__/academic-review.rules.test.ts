@@ -71,10 +71,10 @@ describe("academic review lifecycle rules", () => {
     expect(nextTemplateVersionNumber([{ versionNumber: 1, status: "PUBLISHED" }])).toBe(2);
     expect(nextTemplateVersionNumber([{ versionNumber: 1, status: "PUBLISHED" }, { versionNumber: 2, status: "DRAFT" }])).toBe(3);
   });
-  it("requires verified Lecturer or Researcher role even when capabilities are stale", () => {
+  it("requires verified Lecturer role even when capabilities are stale", () => {
     expect(eligiblePeerReviewer("STUDENT", "VERIFIED")).toBe(false);
     expect(eligiblePeerReviewer("RESEARCHER", "SELF_DECLARED")).toBe(false);
-    expect(eligiblePeerReviewer("RESEARCHER", "VERIFIED")).toBe(true);
+    expect(eligiblePeerReviewer("RESEARCHER", "VERIFIED")).toBe(false);
     expect(eligiblePeerReviewer("LECTURER", "VERIFIED")).toBe(true);
   });
   it("does not complete the article while another reviewer is working or requests revision", () => {

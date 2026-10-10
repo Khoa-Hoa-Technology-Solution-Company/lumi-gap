@@ -8,7 +8,7 @@ import { AcademicProfileOnboardingPage } from "@/pages/academic-profile-onboardi
 import { I18nProvider, useI18n } from "../index";
 import * as locales from "../locales";
 
-const user = { id: "onboarding-user", email: "test@fpt.edu.vn", academicRole: "STUDENT" };
+const user = { id: "onboarding-user", email: "test@fpt.edu.vn", academicRole: "STUDENT", systemRole: "USER", emailVerifiedAt: "2026-10-01" };
 vi.mock("@/stores/auth-store", () => ({
   useAuthStore: (select: (state: unknown) => unknown) => select({ user, tokens: { accessToken: "test-token" } }),
 }));
@@ -29,7 +29,7 @@ let client: QueryClient;
 const firstRenderLanguages: string[] = [];
 function Onboarding() {
   const { t } = useI18n();
-  firstRenderLanguages.push(t("Welcome to LumiGap"));
+  firstRenderLanguages.push(t("Choose your role"));
   return <AcademicProfileOnboardingPage />;
 }
 async function mount() {
@@ -60,6 +60,7 @@ beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.spyOn(navigator, "languages", "get").mockReturnValue(["vi-VN", "en-US"]);
   localStorage.clear();
+  sessionStorage.clear();
   firstRenderLanguages.length = 0;
 });
 afterEach(async () => {
@@ -78,8 +79,9 @@ describe("onboarding language", () => {
     expect(container.querySelector("h1")).toBeNull();
     expect(container.querySelector('[aria-busy="true"]')).not.toBeNull();
     await act(async () => finish(vietnamese));
-    expect(firstRenderLanguages.every((title) => title === vietnamese["Welcome to LumiGap"])).toBe(true);
-    expect(container.querySelector("h1")!.textContent).toBe(vietnamese["Welcome to LumiGap"]);
+    expect(firstRenderLanguages.every((title) => title === vietnamese["Choose your role"])).toBe(true);
+    expect(container.querySelector("h1")!.textContent).toBe(vietnamese["Choose your role"]);
+    expect(container.querySelector('form button[type="submit"]')!.textContent).toBe("Tiếp tục");
     expect(document.documentElement.lang).toBe("vi");
     expect(localStorage.getItem("lumigap.uiLanguage")).toBeNull();
   });
@@ -87,18 +89,19 @@ describe("onboarding language", () => {
   it("remembers a manual change and keeps it after reloading", async () => {
     await locales.loadDictionary("vi");
     await mount();
-    const skills = container.querySelector<HTMLInputElement>("#skills-input")!;
+    await act(async () => container.querySelector<HTMLButtonElement>('form button[type="submit"]')!.click());
+    const skills = container.querySelector<HTMLInputElement>("#institution-search")!;
     await act(async () => {
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(skills, "Python");
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(skills, "University of Melbourne");
       skills.dispatchEvent(new Event("input", { bubbles: true }));
     });
     await selectLanguage("English");
-    expect(container.querySelector<HTMLInputElement>("#skills-input")!.value).toBe("Python");
-    expect(container.querySelector("h1")!.textContent).toBe("Welcome to LumiGap");
+    expect(container.querySelector<HTMLInputElement>("#institution-search")!.value).toBe("University of Melbourne");
+    expect(container.querySelector("h1")!.textContent).toBe("Your studies");
     expect(localStorage.getItem("lumigap.uiLanguage")).toBe("en");
     await close();
     await mount();
-    expect(container.querySelector("h1")!.textContent).toBe("Welcome to LumiGap");
+    expect(container.querySelector("h1")!.textContent).toBe("Your studies");
     expect(document.documentElement.lang).toBe("en");
   });
 
@@ -120,7 +123,7 @@ describe("onboarding language", () => {
     await mount();
     expect(document.documentElement.lang).toBe("vi");
     await selectLanguage("English");
-    expect(container.querySelector("h1")!.textContent).toBe("Welcome to LumiGap");
+    expect(container.querySelector("h1")!.textContent).toBe("Choose your role");
   });
 
   it("uses English if the initial dictionary cannot load", async () => {
@@ -128,7 +131,7 @@ describe("onboarding language", () => {
     const load = locales.loadDictionary;
     vi.spyOn(locales, "loadDictionary").mockImplementation((language) => language === "vi" ? Promise.reject(new Error("Offline")) : load(language));
     await mount();
-    expect(container.querySelector("h1")!.textContent).toBe("Welcome to LumiGap");
+    expect(container.querySelector("h1")!.textContent).toBe("Choose your role");
     expect(document.documentElement.lang).toBe("en");
     expect(localStorage.getItem("lumigap.uiLanguage")).toBeNull();
   });

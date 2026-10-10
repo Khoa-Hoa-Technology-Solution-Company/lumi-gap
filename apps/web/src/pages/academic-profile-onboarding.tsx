@@ -1,877 +1,231 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { AcademicOnboardingOptions, AcademicRole, User } from "@trend/shared-types";
-import {
-  Award,
-  BookOpen,
-  GraduationCap,
-  Loader2,
-  Lock,
-  LogOut,
-  ShieldCheck,
-  University,
-} from "lucide-react";
-import { Link, Navigate, useNavigate } from "react-router-dom";
-import { toast } from "sonner";
-
+import type { AcademicRole, User } from "@trend/shared-types";
+import { MAX_ONBOARDING_RESEARCH_AREAS, MAX_ONBOARDING_RESEARCH_INTERESTS, MAX_ONBOARDING_RESEARCH_SKILLS } from "@trend/shared-types";
+import { ArrowLeft, ArrowRight, Check, ChevronDown, GraduationCap, Microscope, Presentation, Loader2, X } from "lucide-react";
+import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import logoImage from "@/assets/logo.png";
 import logoDarkImage from "@/assets/logo-dark.png";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { authApi } from "@/features/auth/api/auth.api";
-import {
-  requiresAcademicProfile,
-  resolvePostAuthPath,
-  useCurrentUser,
-  useLogout,
-  useUpdateAcademicProfile,
-} from "@/features/auth";
+import { requiresAcademicProfile, resolvePostAuthPath, useCurrentUser, useLogout, useUpdateAcademicProfile } from "@/features/auth";
 import { useAuthStore } from "@/stores/auth-store";
-import { cn } from "@/utils/cn";
 import { LanguageSwitcher, useI18n } from "@/i18n";
+import { ResearchCheckboxField } from "@/features/academic-profile/components/research-checkbox-field";
+import { getResearchSuggestions, researchInterestOptions, researchSkillOptions } from "@/features/academic-profile/utils/research-suggestions";
+import { OnboardingOptionalSection } from "@/features/academic-profile/components/onboarding-optional-section";
+import { OnboardingAreaPicker } from "@/features/academic-profile/components/onboarding-area-picker";
+import "./academic-profile-onboarding.css";
 
-const ROLE_OPTIONS: Array<{
-  role: AcademicRole;
-  label: string;
-  description: string;
-  icon: typeof GraduationCap;
-}> = [
-  {
-    role: "STUDENT",
-    label: "Student",
-    description: "I am currently studying and contributing to research under academic guidance.",
-    icon: GraduationCap,
-  },
-  {
-    role: "LECTURER",
-    label: "Lecturer",
-    description: "I teach, supervise, or review academic work. Verification is required for privileged actions.",
-    icon: Award,
-  },
-  {
-    role: "RESEARCHER",
-    label: "Researcher",
-    description: "I conduct research independently or as part of a lab, team, or organization.",
-    icon: BookOpen,
-  },
-];
-
-type CampusOption = AcademicOnboardingOptions["campuses"][number];
-type ProgramOption = AcademicOnboardingOptions["programs"][number];
-
-const DEFAULT_FPT_CAMPUSES: CampusOption[] = [
-  { id: "00000000-0000-4000-8000-000000000101", code: "HN", name: "FPT University Hà Nội", city: "Hà Nội" },
-  { id: "00000000-0000-4000-8000-000000000102", code: "HCM", name: "FPT University Hồ Chí Minh", city: "Hồ Chí Minh" },
-  { id: "00000000-0000-4000-8000-000000000103", code: "DN", name: "FPT University Đà Nẵng", city: "Đà Nẵng" },
-  { id: "00000000-0000-4000-8000-000000000104", code: "CT", name: "FPT University Cần Thơ", city: "Cần Thơ" },
-  { id: "00000000-0000-4000-8000-000000000105", code: "QN", name: "FPT University Quy Nhơn", city: "Quy Nhơn" },
-];
-
-const DEFAULT_FPT_PROGRAMS: ProgramOption[] = [
-  { id: "00000000-0000-4000-8000-000000000201", code: "SE", name: "Software Engineering", campusId: null },
-  { id: "00000000-0000-4000-8000-000000000202", code: "AI", name: "Artificial Intelligence", campusId: null },
-  { id: "00000000-0000-4000-8000-000000000203", code: "IA", name: "Information Assurance", campusId: null },
-  { id: "00000000-0000-4000-8000-000000000204", code: "IS", name: "Information Systems", campusId: null },
-  { id: "00000000-0000-4000-8000-000000000205", code: "GD", name: "Graphic Design", campusId: null },
-  { id: "00000000-0000-4000-8000-000000000206", code: "DM", name: "Digital Marketing", campusId: null },
-  { id: "00000000-0000-4000-8000-000000000207", code: "IB", name: "International Business", campusId: null },
-  { id: "00000000-0000-4000-8000-000000000208", code: "BA", name: "Business Administration", campusId: null },
-  { id: "00000000-0000-4000-8000-000000000209", code: "HM", name: "Hotel Management", campusId: null },
-  { id: "00000000-0000-4000-8000-000000000210", code: "MC", name: "Multimedia Communications", campusId: null },
-  { id: "00000000-0000-4000-8000-000000000211", code: "EL", name: "English Language", campusId: null },
-  { id: "00000000-0000-4000-8000-000000000212", code: "JL", name: "Japanese Language", campusId: null },
-  { id: "00000000-0000-4000-8000-000000000213", code: "KL", name: "Korean Language", campusId: null },
-  { id: "00000000-0000-4000-8000-000000000214", code: "AT", name: "Automotive Engineering Technology", campusId: null },
-  { id: "00000000-0000-4000-8000-000000000215", code: "SCD", name: "Semiconductor Circuit Design", campusId: null },
-];
-
-const RESEARCH_AREA_OPTIONS = [
-  "Software Engineering",
-  "Artificial Intelligence",
-  "Information Systems",
-  "Information Security",
-  "Data Science",
-  "Human-Computer Interaction",
-  "Business and Management",
-  "Education Technology",
-  "Communications and Media",
-  "Languages and Culture",
-  "Other",
-];
-
-const RESEARCH_INTEREST_OPTIONS = [
-  "AI in education",
-  "Systematic literature reviews",
-  "Natural language processing",
-  "Software testing",
-  "Requirements engineering",
-  "Cybersecurity",
-  "Learning analytics",
-  "Digital transformation",
-  "User experience research",
-  "Research methodology",
-  "Other",
-];
-
-const OPTION_TRANSLATION_KEYS = new Set([
-  ...RESEARCH_AREA_OPTIONS,
-  ...RESEARCH_INTEREST_OPTIONS,
-  ...DEFAULT_FPT_PROGRAMS.map((program) => program.name),
-]);
-
-function displayOption(value: string, t: (key: string) => string): string {
-  return OPTION_TRANSLATION_KEYS.has(value) || value === "FPT University" ? t(value) : value;
-}
-
-function splitTags(value: string): string[] {
-  return Array.from(new Set(value.split(",").map((item) => item.trim()).filter(Boolean)));
-}
-
-function mergeTags(...groups: Array<string[] | undefined>): string[] {
-  return Array.from(new Set(groups.flatMap((group) => group ?? []).map((item) => item.trim()).filter(Boolean)));
-}
-
-function hasFptVerifiedEmail(user: User | null | undefined): boolean {
-  return Boolean(user?.verifiedEmails?.some((email) => /@(fpt\.edu\.vn|fe\.edu\.vn)$/i.test(email.email)));
-}
-
-function hasFptAccountEmail(user: User | null | undefined): boolean {
-  return Boolean(user && /@(fpt\.edu\.vn|fe\.edu\.vn)$/i.test(user.email));
+type FocusSelections = { researchAreas: string[]; researchInterests: string[]; skills: string[] };
+type Draft = FocusSelections & { step: number; expandedFocus: "interests" | "skills" | null; institutionId: string; institutionName: string; institutionSearch: string; customInstitution: boolean; academicRole: AcademicRole | ""; programId: string; programName: string; positionTitle: string };
+const roles = ["STUDENT", "LECTURER", "RESEARCHER"] as const;
+const roleQuestions = {
+  STUDENT: { details: "Your studies", institution: "Where are you studying?", search: "Search your school or university", institutionName: "School or university name", position: "Program / Major / Field of Study", focus: "Your learning interests", areas: "Fields you want to explore", help: "Choose fields you want to learn about. You do not need prior research experience.", interests: "Topics you want to explore", example: "e.g. Building accessible mobile apps" },
+  LECTURER: { details: "Your teaching role", institution: "Where do you teach?", search: "Search your teaching institution", institutionName: "Teaching institution name", position: "Teaching position or academic title", focus: "Your teaching and research", areas: "Teaching and research fields", help: "Choose the fields you teach or research to personalize your workspace.", interests: "Current teaching or research topics", example: "e.g. AI in software engineering education" },
+  RESEARCHER: { details: "Your research role", institution: "Which organization do you research with?", search: "Search your research organization", institutionName: "Research organization name", position: "Research position", focus: "Your research focus", areas: "Research Areas", help: "Choose the fields you currently research or want to work on.", interests: "Current research topics", example: "e.g. LLM for Software Engineering" },
+} as const;
+const positions = { RESEARCHER: ["Research Assistant", "Research Fellow", "Research Engineer", "Research Staff", "Independent Researcher"], LECTURER: ["Lecturer", "Senior Lecturer", "Assistant Professor", "Associate Professor", "Professor"] };
+function readDraft(key: string, institutionName: string, academicRole: AcademicRole | ""): Draft {
+  const empty: Draft = { step: 1, expandedFocus: null, institutionId: "", institutionName, institutionSearch: institutionName, customInstitution: false, academicRole, programId: "", programName: "", positionTitle: "", researchAreas: [], researchInterests: [], skills: [] };
+  try {
+    const current = sessionStorage.getItem(key);
+    const legacy = current === null;
+    const value = JSON.parse(current ?? sessionStorage.getItem(key.replace(".v4.", ".v3.")) ?? sessionStorage.getItem(key.replace(".v4.", ".v2.")) ?? "null") as (Partial<Draft> & { focusTab?: string }) | null;
+    if (!value || ![1, 2, 3].includes(value.step ?? 0)) return empty;
+    const strings = (values: unknown, max = 20): string[] => Array.isArray(values) ? [...new Set(values.filter((v): v is string => typeof v === "string").map(v => v.trim()).filter(v => v.length > 0 && v.length <= 80))].slice(0, max) : [];
+    const expandedFocus = value.expandedFocus === "interests" || value.expandedFocus === "skills" ? value.expandedFocus : value.expandedFocus === null ? null : value.focusTab === "interests" || value.focusTab === "skills" ? value.focusTab : null;
+    const focus = (source: Partial<FocusSelections>): FocusSelections => ({ researchAreas: strings(source.researchAreas), researchInterests: strings(source.researchInterests), skills: strings(source.skills, 30) });
+    const selections = focus(value);
+    return { ...empty, step: value.step!, expandedFocus: legacy ? null : expandedFocus, academicRole: roles.includes(value.academicRole as AcademicRole) ? value.academicRole! : "", customInstitution: value.customInstitution === true,
+      ...Object.fromEntries(["institutionId", "institutionName", "programId", "programName", "positionTitle"].flatMap(k => typeof value[k as keyof Draft] === "string" ? [[k, value[k as keyof Draft]]] : [])),
+      institutionSearch: typeof value.institutionSearch === "string" ? value.institutionSearch : typeof value.institutionName === "string" ? value.institutionName : institutionName,
+      ...(legacy ? { researchAreas: [], researchInterests: [], skills: [] } : selections) };
+  } catch { return empty; }
 }
 
 export function AcademicProfileOnboardingPage() {
-  const navigate = useNavigate();
   const { t } = useI18n();
-  const accessToken = useAuthStore((state) => state.tokens?.accessToken);
-  const storedUser = useAuthStore((state) => state.user);
-  const { data, isLoading } = useCurrentUser();
-  const updateProfile = useUpdateAcademicProfile();
+  const location = useLocation();
+  const requestedPath = typeof location.state?.from === "string" ? location.state.from : undefined;
+  const accessToken = useAuthStore(s => s.tokens?.accessToken);
+  const storedUser = useAuthStore(s => s.user);
+  const current = useCurrentUser();
+  const user = current.data?.user ?? storedUser;
+  if (!accessToken) return <Navigate to="/login" replace />;
+  if (current.isLoading || current.isPlaceholderData) return <div role="status" aria-busy="true" className="flex min-h-screen items-center justify-center"><Loader2 className="animate-spin" /></div>;
+  if (!user || current.isError) return <div className="p-8"><Button onClick={() => void current.refetch()}>{t("Retry")}</Button></div>;
+  if (user.systemRole !== "ADMIN" && !user.emailVerifiedAt) return <Navigate to="/verify-email" replace />;
+  if (!requiresAcademicProfile(user)) return <Navigate to={resolvePostAuthPath(user, requestedPath)} replace />;
+  return <AcademicProfileOnboardingForm key={user.id} user={user} accessToken={accessToken} requestedPath={requestedPath} />;
+}
+
+function AcademicProfileOnboardingForm({ user, accessToken, requestedPath }: { user: User; accessToken: string; requestedPath?: string }) {
+  const { t } = useI18n();
+  const navigate = useNavigate();
+  const save = useUpdateAcademicProfile();
   const logout = useLogout();
-  const user = data?.user ?? storedUser;
-
-  const step1Ref = useRef<HTMLDivElement>(null);
-  const step2Ref = useRef<HTMLDivElement>(null);
-  const step3Ref = useRef<HTMLDivElement>(null);
-
-  const [academicRole, setAcademicRole] = useState<AcademicRole>(() => {
-    if (storedUser?.academicRole) return storedUser.academicRole;
-    if (storedUser?.role === "lecturer" || storedUser?.primaryPosition === "LECTURER") return "LECTURER";
-    if (storedUser?.admissionBasis === "INVITATION" && storedUser.participantScope !== "INTERNAL") return "RESEARCHER";
-    return "STUDENT";
-  });
-
-  const [currentPosition, setCurrentPosition] = useState("");
-  const [institutionName, setInstitutionName] = useState(
-    storedUser?.admissionBasis === "INVITATION" && storedUser.participantScope !== "INTERNAL"
-      ? storedUser.institution ?? ""
-      : storedUser?.institution ?? "FPT University",
-  );
-  const [noAffiliation, setNoAffiliation] = useState(false);
-  const [campusId, setCampusId] = useState("");
-  const [programId, setProgramId] = useState("");
-  const [selectedResearchAreas, setSelectedResearchAreas] = useState<string[]>([]);
-  const [otherResearchAreas, setOtherResearchAreas] = useState("");
-  const [selectedResearchInterests, setSelectedResearchInterests] = useState<string[]>([]);
-  const [otherResearchInterests, setOtherResearchInterests] = useState("");
-  const [skills, setSkills] = useState("");
-
-  const optionsQuery = useQuery({
-    queryKey: ["academic-onboarding-options"],
-    queryFn: authApi.academicOnboardingOptions,
-    enabled: Boolean(accessToken),
-    staleTime: 5 * 60_000,
-  });
-
-  const options = optionsQuery.data;
-  const hostInstitutionName = options?.hostInstitution?.name ?? "FPT University";
-  const isInvitedExternal = user?.admissionBasis === "INVITATION" && user.participantScope !== "INTERNAL";
-  const roleCopy = ROLE_OPTIONS.find((option) => option.role === academicRole) ?? ROLE_OPTIONS[0]!;
-  const isStudent = academicRole === "STUDENT";
-  const isResearcher = academicRole === "RESEARCHER";
-  const isLecturer = academicRole === "LECTURER";
-  const hasTrustedEmail = hasFptVerifiedEmail(user);
-  const hasFptEmail = hasFptAccountEmail(user);
-  const isFptAffiliatedAccount = !isInvitedExternal && (hasFptEmail || hasTrustedEmail || user?.participantScope === "INTERNAL");
-  const requiresFptAffiliation = isStudent || (isResearcher && !isInvitedExternal) || (isLecturer && isFptAffiliatedAccount);
-  const displayCampus = (campus: CampusOption) => [campus.name.replace(/^FPT University\b/, t("FPT University")), campus.city ? displayOption(campus.city, t) : ""].filter(Boolean).join(" · ");
-  const displayProgram = (program: ProgramOption) => [program.code, displayOption(program.name, t)].filter(Boolean).join(" · ");
-
+  const draftKey = `lumigap.onboarding.v4.${user.id}`;
+  const [draft, setDraft] = useState(() => readDraft(draftKey, user.institution ?? "", user.academicRole ?? ""));
+  const institutionSearch = draft.institutionSearch;
+  const setInstitutionSearch = (value: string) => setDraft(prev => ({ ...prev, institutionSearch: value }));
+  const [query, setQuery] = useState(institutionSearch);
+  const [fieldsExpanded, setFieldsExpanded] = useState(() => !draft.expandedFocus || !draft.researchAreas.length || draft.researchAreas.length > MAX_ONBOARDING_RESEARCH_AREAS);
+  const [otherPosition, setOtherPosition] = useState(false);
+  const [showLecturerTitle, setShowLecturerTitle] = useState(() => draft.academicRole === "LECTURER" && Boolean(draft.positionTitle && draft.positionTitle !== "Lecturer"));
+  const [error, setError] = useState("");
+  const heading = useRef<HTMLHeadingElement>(null);
+  const previousStep = useRef(draft.step);
   useEffect(() => {
-    if (isInvitedExternal && academicRole === "STUDENT") setAcademicRole("RESEARCHER");
-  }, [academicRole, isInvitedExternal]);
+    if (previousStep.current === draft.step) return;
+    previousStep.current = draft.step;
+    heading.current?.focus({ preventScroll: true });
+    heading.current?.scrollIntoView?.({ block: "nearest" });
+  }, [draft.step]);
+  const update = (value: Partial<Draft>) => { setDraft(prev => ({ ...prev, ...value })); setError(""); };
+  const updateFocus = (value: Partial<FocusSelections>) => update(value);
+  useEffect(() => { const timer = setTimeout(() => setQuery(institutionSearch), 200); return () => clearTimeout(timer); }, [institutionSearch]);
+  useEffect(() => { try { sessionStorage.setItem(draftKey, JSON.stringify(draft)); } catch { /* Storage can be disabled. */ } }, [draft, draftKey]);
+  const options = useQuery({ queryKey: ["academic-onboarding-options", query, draft.institutionId], queryFn: () => authApi.academicOnboardingOptions({ q: query, ...(draft.institutionId ? { institutionId: draft.institutionId } : {}) }), enabled: Boolean(accessToken && draft.step >= 2 && draft.academicRole), staleTime: 60_000 });
+  const names: Record<AcademicRole, string> = { STUDENT: "Student", RESEARCHER: "Researcher", LECTURER: "Lecturer" };
+  const descriptions: Record<AcademicRole, string> = { STUDENT: "Enrolled in an educational program", RESEARCHER: "Research is my professional position", LECTURER: "Teaching or academic staff" };
+  const isStudent = draft.academicRole === "STUDENT";
+  const isLecturer = draft.academicRole === "LECTURER";
+  const currentPosition = isLecturer && !otherPosition ? draft.positionTitle.trim() || "Lecturer" : draft.positionTitle.trim();
+  const questions = draft.academicRole ? roleQuestions[draft.academicRole] : undefined;
+  const identityValid = Boolean(draft.academicRole);
+  const institutionValid = Boolean(draft.institutionName.trim().length >= 2 && (draft.institutionId || draft.customInstitution));
+  const detailsValid = institutionValid && (isStudent ? Boolean(draft.programId || draft.programName.trim().length >= 2) : currentPosition.length >= 2);
+  const areasValid = draft.researchAreas.length > 0 && draft.researchAreas.length <= MAX_ONBOARDING_RESEARCH_AREAS;
+  const focusValid = areasValid && draft.researchInterests.length <= MAX_ONBOARDING_RESEARCH_INTERESTS && draft.skills.length <= MAX_ONBOARDING_RESEARCH_SKILLS;
+  const titles = ["Choose your role", questions?.details ?? "Academic details", questions?.focus ?? "Research focus"];
+  const programs = draft.institutionId ? options.data?.programs ?? [] : [];
+  const positionOptions = draft.academicRole && !isStudent ? positions[draft.academicRole as "RESEARCHER" | "LECTURER"] : [];
+  const suggestions = getResearchSuggestions(draft.researchAreas, draft.researchInterests);
+  const suggestedSkills = suggestions.skillGroups.flatMap(group => group.options);
+  const displayArea = (area: string) => { const translated = t(area); return typeof translated === "string" ? translated : area; };
+  const progressLabels = ["Your role", "Setup details", "Setup focus"];
+  const stepHelp = ["Choose the role that best describes you today.", "Tell us where you study or work. You can update these details later.", "Start with your main fields, then add interests and skills if you wish."];
+  const roleIcons = { STUDENT: GraduationCap, LECTURER: Presentation, RESEARCHER: Microscope };
 
-  useEffect(() => {
-    if (isInvitedExternal && institutionName === "FPT University") setInstitutionName(user?.institution ?? "");
-  }, [institutionName, isInvitedExternal, user?.institution]);
-
-  useEffect(() => {
-    if (isFptAffiliatedAccount) setInstitutionName(hostInstitutionName);
-  }, [hostInstitutionName, isFptAffiliatedAccount]);
-
-  const availableCampuses = useMemo(() => {
-    const list = options?.campuses ?? [];
-    return list.length > 0 ? list : DEFAULT_FPT_CAMPUSES;
-  }, [options?.campuses]);
-
-  const selectedCampus = useMemo(
-    () => availableCampuses.find((campus) => campus.id === campusId),
-    [availableCampuses, campusId],
-  );
-
-  const availablePrograms = useMemo(() => {
-    const list = options?.programs ?? [];
-    const source = list.length > 0 ? list : DEFAULT_FPT_PROGRAMS;
-    if (!campusId) return source;
-    return source.filter((program) => !program.campusId || program.campusId === campusId);
-  }, [campusId, options?.programs]);
-
-  const selectedProgram = useMemo(
-    () => availablePrograms.find((program) => program.id === programId),
-    [availablePrograms, programId],
-  );
-
-  const selectedResearchAreaValues = mergeTags(
-    selectedResearchAreas.filter((item) => item !== "Other"),
-    selectedResearchAreas.includes("Other") ? splitTags(otherResearchAreas) : [],
-  );
-
-  const selectedResearchInterestValues = mergeTags(
-    selectedResearchInterests.filter((item) => item !== "Other"),
-    selectedResearchInterests.includes("Other") ? splitTags(otherResearchInterests) : [],
-  );
-
-  const positionValue = currentPosition.trim() || (isStudent || (isLecturer && requiresFptAffiliation) ? roleCopy.label : "");
-  const isPositionValid = isStudent || positionValue.length >= 2;
-  const isInstitutionValid = requiresFptAffiliation || noAffiliation || institutionName.trim().length >= 2;
-  const isProgramValid = !isStudent || Boolean(programId);
-  const isResearchMinimumValid = selectedResearchAreaValues.length > 0 && selectedResearchInterestValues.length > 0;
-  const canSubmit = isPositionValid && isInstitutionValid && isProgramValid && isResearchMinimumValid && !updateProfile.isPending;
-
-  const isStep1Complete = Boolean(academicRole);
-  const isStep2Complete = isInstitutionValid && isProgramValid;
-  const isStep3Complete = isResearchMinimumValid;
-
-  if (!accessToken) {
-    return <Navigate to="/login" replace />;
+  function next() {
+    if (draft.step === 1 && !identityValid) { setError(t("Choose your academic role to continue.")); return; }
+    if (draft.step === 2 && !institutionValid) { setError(t("Select an institution or enter its name.")); return; }
+    if (draft.step === 2 && !detailsValid) { setError(t(isStudent ? "Enter your program or major." : "Enter your current position.")); return; }
+    update({ step: draft.step + 1 });
   }
-
-  if (isLoading && !user) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50 dark:bg-[#09090b]">
-        <Loader2 className="h-7 w-7 animate-spin text-blue-600" aria-label={t("Loading account")} />
-      </div>
-    );
+  async function finish() {
+    if (save.isPending) return;
+    if (draft.researchAreas.length > MAX_ONBOARDING_RESEARCH_AREAS) { setError(t("Keep at most {{limit}} fields to continue.", { limit: MAX_ONBOARDING_RESEARCH_AREAS })); return; }
+    if (draft.researchInterests.length > MAX_ONBOARDING_RESEARCH_INTERESTS || draft.skills.length > MAX_ONBOARDING_RESEARCH_SKILLS) {
+      update({ expandedFocus: draft.researchInterests.length > MAX_ONBOARDING_RESEARCH_INTERESTS ? "interests" : "skills" });
+      setError(t("Keep at most {{limit}} selections in each optional section to continue.", { limit: MAX_ONBOARDING_RESEARCH_INTERESTS })); return;
+    }
+    if (!identityValid || !detailsValid || !draft.researchAreas.length) { setError(t("Complete your academic identity, details and research areas.")); return; }
+    setError("");
+    try {
+      const result = await save.mutateAsync({ academicRole: draft.academicRole as AcademicRole, institutionName: draft.institutionName.trim(), ...(draft.institutionId ? { institutionId: draft.institutionId } : {}), ...(isStudent ? (draft.programId ? { programId: draft.programId } : { programName: draft.programName.trim() }) : { positionTitle: currentPosition }), researchAreas: draft.researchAreas, researchInterests: draft.researchInterests, skills: draft.skills });
+      try { for (const version of ["v4", "v3", "v2"]) sessionStorage.removeItem(`lumigap.onboarding.${version}.${user.id}`); } catch { /* Optional persistence. */ }
+      navigate(resolvePostAuthPath(result.user, requestedPath), { replace: true });
+    } catch (failure) {
+      const status = (failure as { response?: { status?: number } }).response?.status;
+      setError(t(status === 403 ? "Verify your email before completing onboarding." : "Could not save your profile. Your progress has been kept; please try again."));
+    }
   }
-
-  if (user && !requiresAcademicProfile(user)) {
-    return <Navigate to={resolvePostAuthPath(user)} replace />;
-  }
-
-  const handleRoleSelect = (role: AcademicRole) => {
-    setAcademicRole(role);
-    setTimeout(() => {
-      step2Ref.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 120);
-  };
-
-  const handleCampusChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const newCampusId = e.target.value;
-    setCampusId(newCampusId);
-    if (selectedProgram?.campusId && selectedProgram.campusId !== newCampusId) {
-      setProgramId("");
-    }
-    if (isLecturer && newCampusId) {
-      setTimeout(() => {
-        step3Ref.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-      }, 150);
-    }
-  };
-
-  const handleProgramChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const newProgramId = e.target.value;
-    setProgramId(newProgramId);
-    if (newProgramId) {
-      setTimeout(() => {
-        step3Ref.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-      }, 150);
-    }
-  };
-
-  const toggleResearchArea = (option: string) => {
-    if (selectedResearchAreas.includes(option)) {
-      setSelectedResearchAreas((prev) => prev.filter((item) => item !== option));
-      return;
-    }
-    if (selectedResearchAreas.length >= 3) {
-      toast.info(t("You can select up to 3 research areas."), { id: "max-research-areas" });
-      return;
-    }
-    setSelectedResearchAreas((prev) => (prev.includes(option) ? prev : [...prev, option]));
-  };
-
-  const toggleResearchInterest = (option: string) => {
-    if (selectedResearchInterests.includes(option)) {
-      setSelectedResearchInterests((prev) => prev.filter((item) => item !== option));
-      return;
-    }
-    if (selectedResearchInterests.length >= 5) {
-      toast.info(t("You can select up to 5 research interests."), { id: "max-research-interests" });
-      return;
-    }
-    setSelectedResearchInterests((prev) => (prev.includes(option) ? prev : [...prev, option]));
-  };
-
-  const submit = () => {
-    if (!canSubmit) return;
-    const nextInstitutionName = requiresFptAffiliation ? hostInstitutionName : institutionName.trim();
-    updateProfile.mutate(
-      {
-        academicRole,
-        positionTitle: positionValue || roleCopy.label,
-        institutionName: noAffiliation && !requiresFptAffiliation ? undefined : nextInstitutionName,
-        noAffiliation: noAffiliation && !requiresFptAffiliation,
-        campusId: requiresFptAffiliation && campusId ? campusId : undefined,
-        programId: isStudent && programId ? programId : undefined,
-        researchAreas: selectedResearchAreaValues.slice(0, 5),
-        researchInterests: selectedResearchInterestValues.slice(0, 10),
-        skills: splitTags(skills),
-        researchKeywords: selectedResearchAreaValues.slice(0, 5),
-      },
-      {
-        onSuccess: ({ user: updatedUser }) => {
-          toast.success(t("Academic profile saved. Welcome to LumiGap!"));
-          navigate(resolvePostAuthPath(updatedUser), { replace: true });
-        },
-        onError: () => toast.error(t("Could not save your profile. Please try again.")),
-      },
-    );
-  };
-
-  return (
-    <main className="relative min-h-screen bg-slate-50/80 px-4 py-8 text-slate-950 dark:bg-[#09090b] dark:text-white sm:px-6 lg:py-12">
-      <div className="relative mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-6xl flex-col">
-        {/* Top Header */}
-        <header className="flex flex-wrap items-center justify-between gap-3 pb-8">
-          <Link to="/" className="flex shrink-0 items-center">
-            <img src={logoImage} alt="LumiGap" className="h-9 w-auto object-contain dark:hidden" />
-            <img src={logoDarkImage} alt="LumiGap" className="hidden h-9 w-auto object-contain dark:block" />
-          </Link>
-          <div className="flex items-center gap-2">
-            <LanguageSwitcher />
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="gap-2 text-xs text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
-              disabled={logout.isPending}
-              onClick={() => logout.mutate(undefined, { onSettled: () => navigate("/login", { replace: true }) })}
-            >
-              <LogOut className="h-3.5 w-3.5" />
-              {t("Sign out")}
-            </Button>
+  const positionLabel = isLecturer ? "Additional academic title" : questions?.position ?? "Current Position";
+  const customPosition = otherPosition || Boolean(draft.positionTitle && !positionOptions.includes(draft.positionTitle));
+  const positionFields = <div id="onboarding-position-fields" className="space-y-3">
+    <Label htmlFor="current-position">{t(positionLabel)}{!isLecturer && " *"}</Label>
+    <select id="current-position" className="w-full rounded-md border bg-background p-2 text-sm"
+      value={customPosition ? "OTHER" : isLecturer ? draft.positionTitle || "Lecturer" : draft.positionTitle}
+      onChange={event => { setOtherPosition(event.target.value === "OTHER"); update({ positionTitle: event.target.value === "OTHER" ? "" : event.target.value }); }}>
+      <option value={isLecturer ? "Lecturer" : ""}>{t(isLecturer ? "No additional title" : "Select current position")}</option>
+      {positionOptions.filter(position => !isLecturer || position !== "Lecturer").map(position => <option key={position} value={position}>{t(position)}</option>)}
+      <option value="OTHER">{t("Other")}</option>
+    </select>
+    {customPosition && <Input aria-label={t(positionLabel)} maxLength={160} value={draft.positionTitle} onChange={event => update({ positionTitle: event.target.value })} />}
+  </div>;
+  return <div className="academic-onboarding" data-no-i18n>
+    <header className="onboarding-header"><div className="onboarding-header-inner"><Link to="/" aria-label="LumiGap"><img src={logoImage} alt="LumiGap" className="h-8 w-auto dark:hidden" /><img src={logoDarkImage} alt="LumiGap" className="hidden h-8 w-auto dark:block" /></Link><div className="flex items-center gap-2 sm:gap-3"><LanguageSwitcher /><Button variant="ghost" size="sm" disabled={logout.isPending} onClick={() => logout.mutate()}>{t("Sign out")}</Button></div></div></header>
+    <main className="onboarding-shell">
+      <nav className="onboarding-progress" aria-label={t("Onboarding progress")}>
+        <ol className="onboarding-steps">{progressLabels.map((title, index) => <li key={index}>
+          <button type="button" aria-current={index + 1 === draft.step ? "step" : undefined} data-complete={index + 1 < draft.step}
+            disabled={index + 1 >= draft.step || save.isPending} onClick={() => update({ step: index + 1 })}>
+            <span className="onboarding-step-number" aria-hidden="true">{index + 1 < draft.step ? <Check /> : `0${index + 1}`}</span>
+            <span className="onboarding-step-label">{t(title)}</span>
+          </button>
+        </li>)}</ol>
+      </nav>
+      <div className="min-w-0">
+      <form onSubmit={event => { event.preventDefault(); if (draft.step < 3) next(); else void finish(); }} className="onboarding-form">
+        <div className="onboarding-form-heading"><p>{t("Step")} {draft.step} {t("of")} 3</p><h1 ref={heading} tabIndex={-1}>{t(titles[draft.step - 1]!)}</h1><p className="onboarding-step-help">{t(stepHelp[draft.step - 1]!)}</p></div>
+        <div key={draft.step} className="onboarding-step-content onboarding-motion">
+        {draft.step === 1 && <fieldset className="space-y-3"><legend className="mb-4 text-sm font-medium">{t("Academic Role")} *</legend>{roles.map(role => {
+          const Icon = roleIcons[role];
+          return <label key={role} className="onboarding-role-choice" data-selected={draft.academicRole === role}>
+            <span className="onboarding-role-icon" aria-hidden="true"><Icon /></span>
+            <span><span className="onboarding-role-title">{t(names[role])}</span><span className="onboarding-role-description">{t(descriptions[role])}</span></span>
+            <input type="radio" name="academic-role" value={role} checked={draft.academicRole === role} onChange={() => { if (draft.academicRole !== role) { update({ academicRole: role, programId: "", programName: "", positionTitle: role === "LECTURER" ? "Lecturer" : "", researchAreas: [], researchInterests: [], skills: [], expandedFocus: null }); setShowLecturerTitle(false); setFieldsExpanded(true); } setOtherPosition(false); }} />
+          </label>;
+        })}</fieldset>}
+        {draft.step === 2 && <div className="space-y-6"><p className="text-sm text-muted-foreground">{t(names[draft.academicRole as AcademicRole] || "Academic Role")} · {t("You can change your role in the previous step.")}</p><div className="space-y-2"><Label htmlFor="institution-search">{t(questions?.institution ?? "Institution")} *</Label><Input id="institution-search" maxLength={200} value={institutionSearch} placeholder={t(questions?.search ?? "Search your institution")} onChange={event => { setInstitutionSearch(event.target.value); update({ institutionId: "", institutionName: "", customInstitution: false, programId: "", programName: "" }); }} />
+          {!draft.institutionId && !draft.customInstitution && <div className="max-h-40 overflow-y-auto rounded-lg border" aria-label={t("Institutions")}>{options.isLoading ? <p className="p-3 text-sm" role="status">{t("Loading institution…")}</p> : (options.data?.institutions ?? []).map(item => <button key={item.id} type="button" className="block w-full px-3 py-2 text-left text-sm hover:bg-muted" onClick={() => { update({ institutionId: item.id, institutionName: item.name, customInstitution: false }); setInstitutionSearch(item.name); }}>{item.name}</button>)}{options.isError && <Button type="button" variant="ghost" onClick={() => void options.refetch()}>{t("Retry")}</Button>}{!options.isLoading && !options.isError && !options.data?.institutions?.length && <p className="p-3 text-sm text-muted-foreground">{t("Institution not found. You can add it below.")}</p>}</div>}
+          {!draft.institutionId && <button type="button" className="text-sm text-blue-600 dark:text-blue-400" onClick={() => update({ customInstitution: true, institutionName: institutionSearch.trim(), programId: "" })}>{t("Other institution")}</button>}{draft.customInstitution && <Input aria-label={t(questions?.institutionName ?? "Institution name")} value={draft.institutionName} maxLength={200} placeholder={t(questions?.institutionName ?? "Institution name")} onChange={event => update({ institutionName: event.target.value })} />}
+        </div><div className="space-y-3">{isStudent ? <>
+          <Label htmlFor={programs.length && draft.programId ? "program-select" : "program-name"}>{t("Program / Major / Field of Study")} *</Label>
+          {programs.length > 0 && <select id="program-select" aria-label={t("Available programs")} className="w-full rounded-md border bg-background p-2 text-sm" value={draft.programId} onChange={event => update({ programId: event.target.value, programName: programs.find(p => p.id === event.target.value)?.name ?? "" })}><option value="">{t("Other program or major")}</option>{programs.map(program => <option key={program.id} value={program.id}>{t(program.name)}</option>)}</select>}
+          {!draft.programId && <Input id="program-name" maxLength={160} value={draft.programName} placeholder={t("e.g. Software Engineering")} onChange={event => update({ programName: event.target.value })} />}
+          <p className="text-xs text-muted-foreground">{t("Student ID is only requested later for optional affiliation verification.")}</p>
+        </> : isLecturer ? <>
+          <div className="border-t pt-4">
+            <button type="button" aria-expanded={showLecturerTitle} aria-controls="onboarding-position-fields"
+              className="flex w-full items-start justify-between gap-3 rounded text-left text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+              onClick={() => { if (showLecturerTitle && currentPosition.length < 2) { update({ positionTitle: "Lecturer" }); setOtherPosition(false); } setShowLecturerTitle(value => !value); }}>
+              {t("Add an academic title (optional)")}<ChevronDown aria-hidden="true" className={`mt-0.5 h-4 w-4 shrink-0 ${showLecturerTitle ? "rotate-180" : ""}`} />
+            </button>
+            <p className="mt-2 text-xs leading-5 text-muted-foreground">{t("Your Lecturer role is already selected. Add a more specific title only if it applies.")}</p>
           </div>
-        </header>
-
-        <div className="grid flex-1 items-start gap-10 lg:grid-cols-12">
-          {/* Left Column: Focused Progress Tracker & Connected Identity */}
-          <aside className="space-y-6 lg:col-span-4 lg:sticky lg:top-8">
-            <div>
-              <span className="text-[11px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">
-                {t("Academic onboarding")}
-              </span>
-              <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-3xl">
-                {t("Welcome to LumiGap")}
-              </h1>
-              <p className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">
-                {t("LumiGap separates your login email from your academic affiliation. FPT affiliation is verified through trusted evidence, not by guessing from how you signed in.")}
-              </p>
-            </div>
-
-            {/* Vertical Progress Stepper */}
-            <nav className="relative pl-6 space-y-6 before:absolute before:bottom-3 before:left-2.5 before:top-3 before:w-0.5 before:bg-slate-200 dark:before:bg-white/10" aria-label={t("Onboarding steps")}>
-              {/* Step 1 Button */}
-              <button
-                type="button"
-                onClick={() => step1Ref.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
-                className="group relative flex w-full items-start gap-3 text-left transition"
-              >
-                <div
-                  className={cn(
-                    "absolute -left-6 flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold transition-all",
-                    isStep1Complete
-                      ? "bg-emerald-600 text-white shadow-sm"
-                      : "border-2 border-blue-600 bg-white text-blue-600 dark:bg-slate-900",
-                  )}
-                >
-                  1
-                </div>
-                <div>
-                  <p className="text-xs font-bold text-slate-900 transition-colors group-hover:text-blue-600 dark:text-white">
-                    {t("Step 1: Academic Role")}
-                  </p>
-                  <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                    {t(roleCopy.label)}
-                  </p>
-                </div>
-              </button>
-
-              {/* Step 2 Button */}
-              <button
-                type="button"
-                onClick={() => step2Ref.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
-                className="group relative flex w-full items-start gap-3 text-left transition"
-              >
-                <div
-                  className={cn(
-                    "absolute -left-6 flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold transition-all",
-                    isStep2Complete
-                      ? "bg-emerald-600 text-white shadow-sm"
-                      : isStep1Complete
-                        ? "border-2 border-blue-600 bg-white text-blue-600 dark:bg-slate-900"
-                        : "border-2 border-slate-300 bg-white text-slate-400 dark:border-white/20 dark:bg-slate-900",
-                  )}
-                >
-                  2
-                </div>
-                <div>
-                  <p className="text-xs font-bold text-slate-900 transition-colors group-hover:text-blue-600 dark:text-white">
-                    {t("Step 2: Affiliation & Program")}
-                  </p>
-                  <p className="mt-0.5 max-w-[220px] truncate text-xs text-slate-500 dark:text-slate-400">
-                    {requiresFptAffiliation
-                      ? `${displayOption(hostInstitutionName, t)}${selectedCampus ? ` · ${displayCampus(selectedCampus)}` : ""}`
-                      : institutionName || t("Independent")}
-                  </p>
-                </div>
-              </button>
-
-              {/* Step 3 Button */}
-              <button
-                type="button"
-                onClick={() => step3Ref.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
-                className="group relative flex w-full items-start gap-3 text-left transition"
-              >
-                <div
-                  className={cn(
-                    "absolute -left-6 flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold transition-all",
-                    isStep3Complete
-                      ? "bg-emerald-600 text-white shadow-sm"
-                      : isStep2Complete
-                        ? "border-2 border-blue-600 bg-white text-blue-600 dark:bg-slate-900"
-                        : "border-2 border-slate-300 bg-white text-slate-400 dark:border-white/20 dark:bg-slate-900",
-                  )}
-                >
-                  3
-                </div>
-                <div>
-                  <p className="text-xs font-bold text-slate-900 transition-colors group-hover:text-blue-600 dark:text-white">
-                    {t("Step 3: Research Focus")}
-                  </p>
-                  <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                    {isStep3Complete ? (
-                      <span>
-                        {selectedResearchAreaValues.length} {t("Research areas")}
-                      </span>
-                    ) : (
-                      t("None selected")
-                    )}
-                  </p>
-                </div>
-              </button>
-            </nav>
-
-            {/* Authenticated Account Note */}
-            <div className="rounded-2xl border border-slate-200/90 bg-white/70 p-4 shadow-sm backdrop-blur dark:border-white/10 dark:bg-white/[0.02]">
-              <div className="flex items-center gap-3">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-sm font-bold text-white shadow-sm">
-                  {user?.fullName ? user.fullName[0]?.toUpperCase() : "U"}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-xs font-bold text-slate-900 dark:text-white">
-                    {user?.fullName || t("Scholar")}
-                  </p>
-                  <p className="truncate text-[11px] text-slate-500 dark:text-slate-400">
-                    {user?.email}
-                  </p>
-                </div>
-              </div>
-              <div className="mt-3 flex items-center gap-1.5 border-t border-slate-100 pt-2.5 text-[11px] font-medium text-emerald-700 dark:border-white/5 dark:text-emerald-400">
-                <ShieldCheck className="h-3.5 w-3.5 shrink-0" />
-                <span className="truncate">{t("Connected via FPT institutional single sign-on")}</span>
-              </div>
-            </div>
-          </aside>
-
-          {/* Right Column: Progressive Stepped Form Cards */}
-          <div className="space-y-8 lg:col-span-8">
-            {/* Step 1 Card: Academic Role */}
-            <section
-              ref={step1Ref}
-              className="rounded-3xl border border-slate-200/90 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-[#12131a] sm:p-8"
-            >
-              <div className="mb-5 flex items-start justify-between">
-                <div>
-                  <span className="inline-flex items-center rounded-full bg-blue-50 px-2.5 py-0.5 text-[11px] font-bold text-blue-700 dark:bg-blue-950/50 dark:text-blue-300">
-                    {t("Step 1 of 3")}
-                  </span>
-                  <h2 className="mt-2 text-lg font-bold text-slate-900 dark:text-white sm:text-xl">
-                    {t("Current academic role")}
-                  </h2>
-                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                    {isInvitedExternal
-                      ? t("External collaborators can onboard as Researchers or Lecturers. Student access requires a verified current FPT affiliation.")
-                      : t("Choose the role that describes you today. You can request a role change later.")}
-                  </p>
-                </div>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-3">
-                {ROLE_OPTIONS.map((option) => {
-                  const Icon = option.icon;
-                  const selected = academicRole === option.role;
-                  const disabled = isInvitedExternal && option.role === "STUDENT";
-                  return (
-                    <button
-                      key={option.role}
-                      type="button"
-                      disabled={disabled}
-                      onClick={() => handleRoleSelect(option.role)}
-                      className={cn(
-                        "group relative rounded-2xl border p-4 text-left transition-all duration-150",
-                        selected
-                          ? "border-blue-600 bg-blue-50/70 text-blue-950 shadow-sm ring-2 ring-blue-600/30 dark:border-blue-500 dark:bg-blue-950/30 dark:text-blue-100 dark:ring-blue-500/30"
-                          : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50/60 dark:border-white/10 dark:bg-white/[0.02] dark:text-slate-300 dark:hover:border-white/20 dark:hover:bg-white/[0.05]",
-                        disabled && "cursor-not-allowed opacity-50 hover:border-slate-200 dark:hover:border-white/10",
-                      )}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div
-                          className={cn(
-                            "flex h-9 w-9 items-center justify-center rounded-xl transition-all",
-                            selected
-                              ? "bg-blue-600 text-white shadow-sm shadow-blue-600/25"
-                              : "bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-slate-400",
-                          )}
-                        >
-                          <Icon className="h-4.5 w-4.5" />
-                        </div>
-                      </div>
-                      <p className="mt-3 text-sm font-bold">{t(option.label)}</p>
-                      <p className="mt-1 text-xs leading-4 opacity-75">{t(option.description)}</p>
-                    </button>
-                  );
-                })}
-              </div>
-            </section>
-
-            {/* Step 2 Card: Affiliation & Program */}
-            <section
-              ref={step2Ref}
-              className="rounded-3xl border border-slate-200/90 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-[#12131a] sm:p-8"
-            >
-              <div className="mb-5">
-                <span className="inline-flex items-center rounded-full bg-blue-50 px-2.5 py-0.5 text-[11px] font-bold text-blue-700 dark:bg-blue-950/50 dark:text-blue-300">
-                  {t("Step 2 of 3")}
-                </span>
-                <h2 className="mt-2 text-lg font-bold text-slate-900 dark:text-white sm:text-xl">
-                  {t("Step 2: Affiliation & Program")}
-                </h2>
-                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                  {requiresFptAffiliation
-                    ? t("LumiGap separates your login email from your academic affiliation. FPT affiliation is verified through trusted evidence, not by guessing from how you signed in.")
-                    : t("Department or school is optional and can be completed later in Academic Profile.")}
-                </p>
-              </div>
-
-              {requiresFptAffiliation ? (
-                <div className="space-y-4">
-                  {/* FPT Locked Card */}
-                  <div>
-                    <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                      {t("Institution")}
-                    </label>
-                    <div className="flex items-center justify-between rounded-xl border border-blue-200 bg-blue-50/60 px-4 py-3 text-blue-950 dark:border-blue-900/60 dark:bg-blue-950/30 dark:text-blue-100">
-                      <div className="flex items-center gap-3">
-                        <University className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                      <span className="font-semibold text-sm">{displayOption(hostInstitutionName, t)}</span>
-                      </div>
-                      <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-semibold text-blue-700 dark:bg-blue-900/50 dark:text-blue-200">
-                        <Lock className="h-3 w-3" />
-                        {t("Verified institutional domain")}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div>
-                      <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400" htmlFor="campus-select">
-                        {t("Campus")}
-                      </label>
-                      <select
-                        id="campus-select"
-                        value={campusId}
-                        onChange={handleCampusChange}
-                        className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-white/10 dark:bg-[#1a1c24]"
-                      >
-                        <option value="">{optionsQuery.isLoading ? t("Loading campuses…") : t("Select campus")}</option>
-                        {availableCampuses.map((campus) => (
-                          <option key={campus.id} value={campus.id}>
-                            {displayCampus(campus)}
-                          </option>
-                        ))}
-                      </select>
-                      <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">{t("Optional — can be completed in Academic Profile later.")}</p>
-                    </div>
-
-                    {!isStudent && !(isLecturer && requiresFptAffiliation) && (
-                      <div>
-                        <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400" htmlFor="researcher-position-input">
-                          {t("Current position")} <span className="text-red-500">*</span>
-                        </label>
-                        <Input
-                          id="researcher-position-input"
-                          value={currentPosition}
-                          onChange={(event) => setCurrentPosition(event.target.value)}
-                          maxLength={160}
-                          placeholder={t("e.g. Research Assistant, Research Scientist")}
-                          className="h-11 rounded-xl text-sm shadow-sm focus-visible:ring-blue-500 dark:bg-[#1a1c24] dark:border-white/10"
-                        />
-                      </div>
-                    )}
-
-                    {isLecturer && requiresFptAffiliation && (
-                      <div className="rounded-xl border border-slate-200/80 bg-slate-50/80 p-3.5 text-xs text-slate-600 dark:border-white/10 dark:bg-white/[0.02] dark:text-slate-400">
-                        <p className="font-semibold text-slate-900 dark:text-white">{t("Lecturer position locked")}</p>
-                        <p className="mt-1 leading-relaxed">
-                          {t("Because your account is linked to FPT, this onboarding saves your current position as Lecturer. Department or school can be added later in Academic Profile.")}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-
-                  {isStudent && (
-                    <div>
-                      <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400" htmlFor="program-select">
-                        {t("Program / Major")} <span className="text-red-500">*</span>
-                      </label>
-                      <select
-                        id="program-select"
-                        value={programId}
-                        onChange={handleProgramChange}
-                        className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-white/10 dark:bg-[#1a1c24]"
-                      >
-                        <option value="">{optionsQuery.isLoading ? t("Loading programs…") : t("Select program")}</option>
-                        {availablePrograms.map((program) => (
-                          <option key={program.id} value={program.id}>
-                            {displayProgram(program)}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  <div>
-                    <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400" htmlFor="current-position-input">
-                      {t("Current position")} <span className="text-red-500">*</span>
-                    </label>
-                    <Input
-                      id="current-position-input"
-                      value={currentPosition}
-                      onChange={(event) => setCurrentPosition(event.target.value)}
-                      maxLength={160}
-                      placeholder={t("e.g. Research Scientist, Lecturer, Independent Researcher")}
-                      className="h-11 rounded-xl text-sm shadow-sm focus-visible:ring-blue-500 dark:bg-[#1a1c24] dark:border-white/10"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400" htmlFor="institution-input">
-                      {t("Current institution or organization")} {!noAffiliation && <span className="text-red-500">*</span>}
-                    </label>
-                    <Input
-                      id="institution-input"
-                      value={institutionName}
-                      disabled={noAffiliation}
-                      onChange={(event) => setInstitutionName(event.target.value)}
-                      placeholder={noAffiliation ? t("Independent") : t("Institution or organization")}
-                      className="h-11 rounded-xl text-sm shadow-sm focus-visible:ring-blue-500 dark:bg-[#1a1c24] dark:border-white/10"
-                    />
-                    <label className="mt-2.5 flex cursor-pointer items-center gap-2 text-xs text-slate-600 select-none dark:text-slate-300">
-                      <input
-                        type="checkbox"
-                        checked={noAffiliation}
-                        onChange={(event) => setNoAffiliation(event.target.checked)}
-                        className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 dark:border-slate-600 dark:bg-[#1a1c24]"
-                      />
-                      <span>{t("I don't currently have an institutional affiliation")}</span>
-                    </label>
-                  </div>
-                </div>
-              )}
-            </section>
-
-            {/* Step 3 Card: Research Focus (Fluid Chips & Tags) */}
-            <section
-              ref={step3Ref}
-              className="rounded-3xl border border-slate-200/90 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-[#12131a] sm:p-8"
-            >
-              <div className="mb-5">
-                <span className="inline-flex items-center rounded-full bg-blue-50 px-2.5 py-0.5 text-[11px] font-bold text-blue-700 dark:bg-blue-950/50 dark:text-blue-300">
-                  {t("Step 3 of 3")}
-                </span>
-                <h2 className="mt-2 text-lg font-bold text-slate-900 dark:text-white sm:text-xl">
-                  {t("Step 3: Research Focus")}
-                </h2>
-                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                  {t("Choose at least one area. Use Other for custom areas.")}
-                </p>
-              </div>
-
-              <div className="space-y-6">
-                {/* Research Areas - Fluid Tag Chips */}
-                <div>
-                  <div className="mb-2.5 flex items-center justify-between">
-                    <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                      {t("Research areas")} <span className="text-red-500">*</span>
-                    </label>
-                    <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
-                      {selectedResearchAreas.length}/3 {t("selected")}
-                    </span>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2 sm:gap-2.5">
-                    {RESEARCH_AREA_OPTIONS.map((option) => {
-                      const selected = selectedResearchAreas.includes(option);
-                      return (
-                        <button
-                          key={option}
-                          type="button"
-                          onClick={() => toggleResearchArea(option)}
-                          className={cn(
-                            "inline-flex items-center rounded-full border px-3.5 py-1.5 text-xs font-medium transition-all duration-150 select-none",
-                            selected
-                              ? "border-blue-600 bg-blue-600 text-white shadow-sm shadow-blue-600/20 dark:border-blue-500 dark:bg-blue-600"
-                              : "border-slate-200 bg-slate-50/50 text-slate-700 hover:border-slate-300 hover:bg-slate-100/80 dark:border-white/10 dark:bg-white/[0.03] dark:text-slate-300 dark:hover:border-white/20 dark:hover:bg-white/[0.06]",
-                          )}
-                          aria-pressed={selected}
-                        >
-                          <span>{displayOption(option, t)}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  {selectedResearchAreas.includes("Other") && (
-                    <div className="mt-3 animate-in fade-in slide-in-from-top-1 duration-150">
-                      <Input
-                        value={otherResearchAreas}
-                        onChange={(event) => setOtherResearchAreas(event.target.value)}
-                        placeholder={t("Add other research areas")}
-                        className="h-10 rounded-xl text-xs sm:text-sm bg-slate-50/60 dark:bg-white/[0.02] border-slate-200 dark:border-white/10 focus-visible:ring-blue-500"
-                      />
-                    </div>
-                  )}
-                </div>
-
-                {/* Research Interests - Fluid Tag Chips */}
-                <div>
-                  <div className="mb-2.5 flex items-center justify-between">
-                    <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                      {t("Research interests")} <span className="text-red-500">*</span>
-                    </label>
-                    <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
-                      {selectedResearchInterests.length}/5 {t("selected")}
-                    </span>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2 sm:gap-2.5">
-                    {RESEARCH_INTEREST_OPTIONS.map((option) => {
-                      const selected = selectedResearchInterests.includes(option);
-                      return (
-                        <button
-                          key={option}
-                          type="button"
-                          onClick={() => toggleResearchInterest(option)}
-                          className={cn(
-                            "inline-flex items-center rounded-full border px-3.5 py-1.5 text-xs font-medium transition-all duration-150 select-none",
-                            selected
-                              ? "border-blue-600 bg-blue-600 text-white shadow-sm shadow-blue-600/20 dark:border-blue-500 dark:bg-blue-600"
-                              : "border-slate-200 bg-slate-50/50 text-slate-700 hover:border-slate-300 hover:bg-slate-100/80 dark:border-white/10 dark:bg-white/[0.03] dark:text-slate-300 dark:hover:border-white/20 dark:hover:bg-white/[0.06]",
-                          )}
-                          aria-pressed={selected}
-                        >
-                          <span>{displayOption(option, t)}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  {selectedResearchInterests.includes("Other") && (
-                    <div className="mt-3 animate-in fade-in slide-in-from-top-1 duration-150">
-                      <Input
-                        value={otherResearchInterests}
-                        onChange={(event) => setOtherResearchInterests(event.target.value)}
-                        placeholder={t("Add other research interests")}
-                        className="h-10 rounded-xl text-xs sm:text-sm bg-slate-50/60 dark:bg-white/[0.02] border-slate-200 dark:border-white/10 focus-visible:ring-blue-500"
-                      />
-                    </div>
-                  )}
-                </div>
-
-                {/* Optional Skills Input */}
-                <div>
-                  <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400" htmlFor="skills-input">
-                    {t("Research skills")}
-                  </label>
-                  <Input
-                    id="skills-input"
-                    value={skills}
-                    onChange={(event) => setSkills(event.target.value)}
-                    placeholder={t("Screening papers, Python, qualitative coding")}
-                    className="h-11 rounded-xl text-sm shadow-sm focus-visible:ring-blue-500 dark:bg-[#1a1c24] dark:border-white/10"
-                  />
-                  <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
-                    {t("Optional — separate skills with commas, or skip for now.")}
-                  </p>
-                </div>
-
-                {/* Verification Notice for FPT Users */}
-                {requiresFptAffiliation && (
-                  <div className="rounded-2xl border border-amber-200/80 bg-amber-50/60 p-4 text-xs text-amber-950 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-100">
-                    <p className="font-bold">{t("Verification after saving")}</p>
-                    <div className="mt-1.5 space-y-1 text-slate-600 dark:text-amber-200/80 leading-relaxed">
-                      {options?.verificationMethods.feid && <p>• {t("FEID verification is available for this institution.")}</p>}
-                      {options?.verificationMethods.institutionalEmail && <p>• {t("Verify with an FPT institutional email to confirm your current affiliation.")}</p>}
-                      {options?.verificationMethods.manualReview && <p>• {t("If automated verification is not available, submit a verification request from your Academic Profile.")}</p>}
-                    </div>
-                  </div>
-                )}
-
-                {/* Submit Action */}
-                <div className="pt-2">
-                  <Button
-                    type="button"
-                    size="lg"
-                    className="h-12 w-full rounded-xl bg-blue-600 text-sm font-bold text-white shadow-md shadow-blue-600/20 transition-all hover:bg-blue-700 disabled:opacity-50"
-                    disabled={!canSubmit}
-                    onClick={submit}
-                  >
-                    {updateProfile.isPending ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" /> {t("Saving profile…")}
-                      </>
-                    ) : (
-                      t("Continue to LumiGap")
-                    )}
-                  </Button>
-                </div>
-              </div>
-            </section>
+          {showLecturerTitle ? positionFields : currentPosition !== "Lecturer" && <p className="text-sm">{t(currentPosition)}</p>}
+          <p className="text-xs leading-5 text-muted-foreground">{t("These details are self-declared. Position verification is available after onboarding.")}</p>
+        </> : positionFields}</div></div>}
+        {draft.step === 3 && <div className="onboarding-focus">
+          <section id="onboarding-fields" aria-labelledby="onboarding-fields-label" className="space-y-4">
+          <div className="onboarding-field-heading"><Label id="onboarding-fields-label" htmlFor="area-search">{t(questions?.areas ?? "Research Areas")}</Label><span className="onboarding-required">{t("Required")}</span></div>
+          {(fieldsExpanded || !areasValid) && <p className="text-sm leading-6 text-muted-foreground">{t("Choose between 1 and {{limit}} primary fields.", { limit: MAX_ONBOARDING_RESEARCH_AREAS })}</p>}
+          {draft.researchAreas.length > 0 && <div className="flex flex-wrap gap-2">{draft.researchAreas.map(area => <button type="button" key={area} className="onboarding-area-chip" onClick={() => updateFocus({ researchAreas: draft.researchAreas.filter(value => value !== area) })}>{displayArea(area)}<X aria-hidden="true" /><span className="sr-only">{t("Remove")}</span></button>)}</div>}
+          <div id="onboarding-field-choices" hidden={!fieldsExpanded && areasValid} className="space-y-3">
+          <OnboardingAreaPicker options={options.data?.researchAreas ?? []} values={draft.researchAreas} max={MAX_ONBOARDING_RESEARCH_AREAS}
+            onChange={researchAreas => updateFocus({ researchAreas })} loading={options.isLoading} failed={options.isError} onRetry={() => void options.refetch()} />
           </div>
+          <div id="area-limit" className="onboarding-selection-limit text-xs" aria-live="polite"><p className="text-muted-foreground">{draft.researchAreas.length}/{MAX_ONBOARDING_RESEARCH_AREAS} {t("fields selected")}</p>
+            {draft.researchAreas.length >= MAX_ONBOARDING_RESEARCH_AREAS && <p className={draft.researchAreas.length > MAX_ONBOARDING_RESEARCH_AREAS ? "text-red-600 dark:text-red-400" : "text-muted-foreground"}>{t(draft.researchAreas.length > MAX_ONBOARDING_RESEARCH_AREAS ? "Keep at most {{limit}} fields to continue." : "You have reached the field limit. Remove a field to choose another.", { limit: MAX_ONBOARDING_RESEARCH_AREAS })}</p>}
+            {!fieldsExpanded && areasValid && <button type="button" id="edit-onboarding-fields" aria-controls="onboarding-field-choices" aria-expanded={false} className="onboarding-text-action" onClick={() => { setFieldsExpanded(true); update({ expandedFocus: null }); }}>{t("Edit fields")}</button>}
+          </div>{options.isError && <Button type="button" variant="ghost" onClick={() => void options.refetch()}>{t("Retry")}</Button>}
+          </section>
+          <div className="onboarding-optional-intro"><p>{t("Optional. You can add these in your profile later.")}</p></div>
+          <OnboardingOptionalSection id="interests" label="Research Interests" count={draft.researchInterests.length} max={MAX_ONBOARDING_RESEARCH_INTERESTS}
+            expanded={draft.expandedFocus === "interests"} onToggle={() => { if (areasValid) setFieldsExpanded(false); update({ expandedFocus: draft.expandedFocus === "interests" ? null : "interests" }); }}>
+          <ResearchCheckboxField id="research-interest" label="Research Interests" description="Choose up to 5 topics you want to explore."
+            options={suggestions.interests} allOptions={researchInterestOptions} searchLabel="Search topics"
+            values={draft.researchInterests} onChange={researchInterests => updateFocus({ researchInterests })} max={MAX_ONBOARDING_RESEARCH_INTERESTS}
+            placeholder="Search or add a topic" />
+          </OnboardingOptionalSection>
+          <OnboardingOptionalSection id="skills" label="Research skills" count={draft.skills.length} max={MAX_ONBOARDING_RESEARCH_SKILLS}
+            expanded={draft.expandedFocus === "skills"} onToggle={() => { if (areasValid) setFieldsExpanded(false); update({ expandedFocus: draft.expandedFocus === "skills" ? null : "skills" }); }}>
+          <ResearchCheckboxField id="research-skill" label="Research skills" description="Choose up to 5 skills you use."
+            options={suggestedSkills} allOptions={researchSkillOptions} groups={suggestions.skillGroups} searchLabel="Search skills"
+            values={draft.skills} onChange={skills => updateFocus({ skills })} max={MAX_ONBOARDING_RESEARCH_SKILLS}
+            placeholder="Search or add a skill" />
+          </OnboardingOptionalSection>
+        </div>}
+        {error && <p role="alert" className="mt-5 text-sm text-red-600 dark:text-red-400">{error}</p>}
         </div>
+        <div className="onboarding-form-footer"><Button type="button" variant="ghost" disabled={draft.step === 1 || save.isPending} onClick={() => update({ step: draft.step - 1 })}><ArrowLeft aria-hidden="true" className="mr-2 h-4 w-4" />{t("Back")}</Button><Button type="submit" disabled={save.isPending || (draft.step === 1 ? !identityValid : draft.step === 2 ? !detailsValid : !focusValid)}>{save.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{t(draft.step === 3 ? "Complete onboarding" : "Continue")}<ArrowRight aria-hidden="true" className="ml-2 h-4 w-4" /></Button></div>
+      </form>
       </div>
     </main>
-  );
+  </div>;
 }

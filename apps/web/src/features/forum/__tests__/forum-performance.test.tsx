@@ -156,47 +156,24 @@ describe("Forum loading and reading interactions", () => {
     expect(container.querySelector(".forum-category-workspace")).toBeNull();
     delete (HTMLElement.prototype as unknown as { scrollIntoView?: unknown }).scrollIntoView;
   });
-  it("persists Helpful separately on the opening post and responses, retaining server state after a failed vote", async () => {
-    let savedTopic = topic;
-    let savedReply = reply;
-    vi.spyOn(forumApi, "post").mockImplementation(async () => savedTopic);
-    vi.spyOn(forumApi, "commentsPage").mockImplementation(async () => ({ ...page, data: [savedReply] }));
-    const postVote = vi.spyOn(forumApi, "votePost").mockImplementation(async (_id, value) => {
-      if (value === 0) throw new Error("Vote unavailable");
-      savedTopic = { ...savedTopic, helpfulCount: 4, viewerVote: value };
-      return { value };
-    });
-    const responseVote = vi.spyOn(forumApi, "voteComment").mockImplementation(async (_id, value) => {
-      savedReply = { ...savedReply, helpfulCount: 0, viewerVote: value };
-      return { value };
-    });
-    const react = vi.spyOn(forumApi, "react");
-    const openingHelpful = () => container.querySelector<HTMLButtonElement>('#opening-post button[aria-label^="Helpful "]')!;
-    const responseHelpful = () => container.querySelector<HTMLButtonElement>('#comment-reply-id button[aria-label^="Helpful "]')!;
+  it("keeps reaction controls on the opening post and responses without Helpful voting", async () => {
+    vi.spyOn(forumApi, "post").mockResolvedValue(topic);
+    vi.spyOn(forumApi, "commentsPage").mockResolvedValue(page);
+    const postVote = vi.spyOn(forumApi, "votePost");
+    const responseVote = vi.spyOn(forumApi, "voteComment");
     await render(detail);
-    await settle(() => expect(openingHelpful()?.getAttribute("aria-label")).toBe("Helpful 3"));
-    await act(async () => openingHelpful().click());
     await settle(() => {
-      expect(postVote).toHaveBeenCalledWith(topic.id, 1);
-      expect(openingHelpful().getAttribute("aria-pressed")).toBe("true");
-      expect(openingHelpful().getAttribute("aria-label")).toBe("Helpful 4");
+      expect(container.querySelector('#opening-post button[aria-label="Add reaction"]')).not.toBeNull();
+      expect(container.querySelector('#comment-reply-id button[aria-label="Change reaction"]')).not.toBeNull();
     });
+    for (const id of ["opening-post", "comment-reply-id"]) {
+      const actions = container.querySelector(`#${id} .forum-post-actions`)!;
+      expect(actions.querySelector('button[aria-label^="Helpful "]')).toBeNull();
+      expect(actions.textContent).not.toContain("Helpful");
+      expect(actions.querySelector('.forum-reactions[data-mode="counts"]')).not.toBeNull();
+    }
+    expect(postVote).not.toHaveBeenCalled();
     expect(responseVote).not.toHaveBeenCalled();
-    await act(async () => responseHelpful().click());
-    await settle(() => {
-      expect(responseVote).toHaveBeenCalledWith(reply.id, 0);
-      expect(responseHelpful().getAttribute("aria-pressed")).toBe("false");
-      expect(responseHelpful().getAttribute("aria-label")).toBe("Helpful 0");
-    });
-    expect(openingHelpful().getAttribute("aria-label")).toBe("Helpful 4");
-    await act(async () => openingHelpful().click());
-    await settle(() => {
-      expect(postVote).toHaveBeenLastCalledWith(topic.id, 0);
-      expect(openingHelpful().getAttribute("aria-busy")).toBe("false");
-    });
-    expect(openingHelpful().getAttribute("aria-pressed")).toBe("true");
-    expect(openingHelpful().getAttribute("aria-label")).toBe("Helpful 4");
-    expect(react).not.toHaveBeenCalled();
   });
   it("starts replies alongside an unresolved topic and shows one topic reply count", async () => {
     mocks.viewer = null;

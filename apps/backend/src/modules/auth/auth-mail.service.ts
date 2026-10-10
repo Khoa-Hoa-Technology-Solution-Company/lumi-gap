@@ -9,7 +9,7 @@ type SecurityMessage = {
   text: string;
   html?: string;
   attachments?: Array<{ filename: string; path: string; cid: string }>;
-  event: "email_verification" | "password_reset" | "copyright_claim_verification";
+  event: "email_verification" | "password_reset" | "copyright_claim_verification" | "affiliation_status" | "academic_verification_status" | "mentorship";
 };
 
 const LUMIGAP_LOGO_PATH = fileURLToPath(new URL("./assets/lumigap-logo.png", import.meta.url));
@@ -23,6 +23,16 @@ function escapeHtml(value: string): string {
     "'": "&#39;",
   };
   return value.replace(/[&<>"']/g, (character) => entities[character]!);
+}
+
+/** Shared LumiGap layout for authenticated, non-token application notifications. */
+export function buildBrandedMail(input: { locale: "en" | "vi"; subject: string; greeting: string; paragraphs: string[]; cta: string; url: string; footer?: string }) {
+  const parsed = new URL(input.url);
+  if (!["https:", "http:"].includes(parsed.protocol) || parsed.username || parsed.password) throw new Error("Invalid application email link");
+  const url = escapeHtml(parsed.toString()), subject = escapeHtml(input.subject);
+  const footer = input.footer ?? (input.locale === "vi" ? "Email tự động từ LumiGap. Thay đổi tùy chọn email tại Hỗ trợ học thuật." : "Automated email from LumiGap. Manage email preferences in Academic Support.");
+  return { text: ["LumiGap", input.subject, input.greeting, ...input.paragraphs, input.cta, parsed.toString(), footer].join("\n\n"),
+    html: `<!doctype html><html lang="${input.locale}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${subject}</title></head><body style="margin:0;background:#f3f6fb;font-family:Arial,Helvetica,sans-serif;color:#172b4d"><table role="presentation" width="100%" style="padding:32px 12px"><tr><td align="center"><table role="presentation" width="100%" style="max-width:600px;background:#fff;border:1px solid #e5eaf2;border-radius:16px"><tr><td align="center" style="padding:28px;border-bottom:1px solid #edf1f6"><img src="cid:lumigap-logo" width="220" alt="LumiGap"></td></tr><tr><td style="padding:32px 36px"><h1 style="font-size:24px;line-height:1.35;color:#102a56">${subject}</h1><p>${escapeHtml(input.greeting)}</p>${input.paragraphs.map(p => `<p style="font-size:15px;line-height:1.65">${escapeHtml(p)}</p>`).join("")}<p style="margin-top:28px"><a href="${url}" style="display:inline-block;background:#155eef;color:#fff;padding:14px 24px;border-radius:9px;text-decoration:none;font-weight:bold">${escapeHtml(input.cta)}</a></p></td></tr><tr><td style="padding:20px 36px;border-top:1px solid #edf1f6;color:#64748b;font-size:12px">${escapeHtml(footer)}</td></tr></table></td></tr></table></body></html>` };
 }
 
 export function buildPasswordResetContent(name: string, resetUrl: string): { text: string; html: string } {
@@ -113,6 +123,9 @@ async function deliver(message: SecurityMessage): Promise<boolean> {
     port: env.SMTP_PORT,
     secure: env.SMTP_SECURE,
     auth: { user: env.SMTP_USER, pass: env.SMTP_PASS },
+    connectionTimeout: 15000,
+    greetingTimeout: 15000,
+    socketTimeout: 30000,
   });
   await transporter.sendMail({
     from: env.SMTP_FROM,
@@ -139,12 +152,25 @@ export function resolvePasswordResetOrigin(configuredOrigin: string, nodeEnv: st
   return parsedOrigin.origin;
 }
 
-function webOrigin(): string {
+export function webOrigin(): string {
   const configuredOrigin = env.CORS_ORIGIN.split(",")[0]?.trim() || "http://localhost:5173";
   return resolvePasswordResetOrigin(configuredOrigin, env.NODE_ENV);
 }
 
 export const authMailService = {
+  sendLecturerVerification(email: string, content: { subject: string; text: string; html: string }) {
+    return deliver({ to: email, ...content, event: "academic_verification_status" });
+  },
+  sendMentorship(email: string, subject: string, content: { text: string; html: string }) {
+    return deliver({ to: email, subject, ...content, event: "mentorship", attachments: [{ filename: "lumigap-logo.png", path: LUMIGAP_LOGO_PATH, cid: "lumigap-logo" }] });
+  },
+  sendAcademicVerificationStatus(email: string) {
+    return deliver({ to: email, event: "academic_verification_status", subject: "Your LumiGap Lecturer verification status", text: "Your Lecturer verification request has been updated. Sign in to LumiGap and open Academic Profile to view its status and review message." });
+  },
+  sendAffiliationStatus(email: string) {
+    const url = new URL("/settings/academic", webOrigin());
+    return deliver({ to: email, event: "affiliation_status", subject: "Your LumiGap affiliation verification status", text: `Your affiliation request has been updated. Sign in to view its status and review message: ${url.toString()}` });
+  },
   sendEmailVerification(email: string, token: string) {
     const url = new URL("/verify-email", webOrigin());
     url.searchParams.set("token", token);

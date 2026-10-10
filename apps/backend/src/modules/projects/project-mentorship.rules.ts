@@ -1,4 +1,4 @@
-export type MentorRelationshipStatus = "PENDING" | "ACCEPTED" | "DECLINED" | "ENDED";
+export type MentorRelationshipStatus = "PENDING" | "ACCEPTED" | "DECLINED" | "CANCELLED" | "EXPIRED" | "ACTIVE" | "ENDED";
 
 export function canViewMentorRelationship(input: {
   actorId: string;
@@ -29,10 +29,9 @@ export function canEndMentorRelationship(input: {
   projectOwnerId: string;
   status: MentorRelationshipStatus;
 }) {
-  return input.status === "ACCEPTED"
+  return input.status === "ACTIVE"
     && (
       input.actorId === input.mentorUserId
-      || input.actorId === input.requestedBy
       || input.actorId === input.projectOwnerId
     );
 }

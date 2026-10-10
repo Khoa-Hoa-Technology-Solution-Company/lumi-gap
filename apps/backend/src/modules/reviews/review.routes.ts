@@ -1,6 +1,9 @@
+import { createRateLimiter } from "../../common/middleware/rate-limit.js";
+import { env } from "../../config/env.js";
 import { Router } from "express";
 import { z } from "zod";
 import { requireAuth, optionalAuth } from "../../common/middleware/auth.js";
+import { requireResearchWorkflow } from "../authorization/authorization.middleware.js";
 import { validate } from "../../common/middleware/validate.js";
 import { objectIdSchema } from "../../common/validation/database-id.js";
 import { defaultReviewCriteria } from "./review.constants.js";
@@ -119,7 +122,7 @@ reviewAvailabilityRouter.put("/me", validate(availabilitySchema), async (req, re
 });
 
 export const reviewOpportunityRouter: Router = Router();
-reviewOpportunityRouter.use(requireAuth);
+reviewOpportunityRouter.use(requireAuth, requireResearchWorkflow);
 reviewOpportunityRouter.get("/", validate(opportunityQuerySchema, "query"), async (req, res) => {
   res.json({ success: true, data: await reviewService.listOpportunities(req.user!.sub, req.query as never) });
 });
@@ -133,7 +136,7 @@ reviewOpportunityRouter.post("/:submissionId/conflicts", validate(submissionPara
 });
 
 export const humanReviewRouter: Router = Router();
-humanReviewRouter.use(requireAuth);
+humanReviewRouter.use(requireAuth, requireResearchWorkflow);
 humanReviewRouter.get("/", async (req, res) => {
   res.json({ success: true, data: await reviewService.listMyReviews(req.user!.sub) });
 });
@@ -178,11 +181,12 @@ reviewTemplateRouter.post("/:templateId/archive", validate(templateParamsSchema,
 });
 
 export const reviewRequestRouter: Router = Router();
+const requestLimiter = createRateLimiter("reviews:requestLimiter", { windowMs: 3600000, limit: env.ACADEMIC_RELATIONSHIP_REQUEST_LIMIT, standardHeaders: true, legacyHeaders: false, keyGenerator: req => req.user!.sub });
 reviewRequestRouter.get("/external-invitations/:token", validate(externalInvitationTokenParamsSchema, "params"), async (req, res) => {
   res.json({ success: true, data: await reviewRequestService.externalInvitationPreview(String(req.params.token)) });
 });
-reviewRequestRouter.use(requireAuth);
-reviewRequestRouter.post("/external-invitations", validate(createExternalInvitationSchema), async (req, res) => {
+reviewRequestRouter.use(requireAuth, requireResearchWorkflow);
+reviewRequestRouter.post("/external-invitations", requestLimiter, validate(createExternalInvitationSchema), async (req, res) => {
   const data = await reviewRequestService.createExternalInvitation(req.body, req.user!.sub);
   res.status(201).json({ success: true, data });
 });
@@ -196,7 +200,7 @@ reviewRequestRouter.get("/reviewers", validate(reviewerQuerySchema, "query"), as
 reviewRequestRouter.get("/", async (req, res) => {
   res.json({ success: true, data: await reviewRequestService.listCenter(req.user!.sub) });
 });
-reviewRequestRouter.post("/", validate(createRequestSchema), async (req, res) => {
+reviewRequestRouter.post("/", requestLimiter, validate(createRequestSchema), async (req, res) => {
   const data = await reviewRequestService.create(req.body, req.user!.sub);
   res.status(201).json({ success: true, data });
 });

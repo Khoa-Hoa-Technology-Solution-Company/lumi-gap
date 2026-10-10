@@ -51,8 +51,8 @@ export const authApi = {
   async addEmail(email: string, purpose: "INSTITUTIONAL" | "CONTACT" = "CONTACT"): Promise<void> {
     await api.post(API_ROUTES.auth.emails, { email, purpose });
   },
-  async academicOnboardingOptions(): Promise<AcademicOnboardingOptions> {
-    const res = await api.get(API_ROUTES.auth.academicOnboardingOptions);
+  async academicOnboardingOptions(params?: { q?: string; institutionId?: string }): Promise<AcademicOnboardingOptions> {
+    const res = await api.get(API_ROUTES.auth.academicOnboardingOptions, { params });
     return res.data.data;
   },
   async changePassword(payload: ChangePasswordRequest): Promise<void> {

@@ -11,6 +11,8 @@ const AUTH_ENTRY_PATHS = new Set([
   "/login",
   "/register",
   "/auth/oauth-callback",
+  "/verify-email",
+  "/onboarding/academic-profile",
 ]);
 
 function isSafeInternalPath(path: string): boolean {
@@ -23,16 +25,17 @@ function isSafeInternalPath(path: string): boolean {
 }
 
 export function resolvePostAuthPath(user: User, requestedPath?: string): string {
-  if (requestedPath?.startsWith("/invitations/") && isSafeInternalPath(requestedPath)) {
-    return requestedPath;
-  }
-
+  if (user.systemRole !== "ADMIN" && !user.emailVerifiedAt) return EMAIL_VERIFICATION_PATH;
   if (requiresAcademicProfile(user)) {
     return ACADEMIC_ONBOARDING_PATH;
   }
 
   if (requestedPath && isSafeInternalPath(requestedPath)) {
-    return requestedPath;
+    const [pathname = ""] = requestedPath.split(/[?#]/, 1);
+    const adminDestination = pathname === ADMIN_LANDING_PATH || pathname.startsWith(`${ADMIN_LANDING_PATH}/`);
+    if (!adminDestination || isAdminSystemRole(user.systemRole)) {
+      return requestedPath;
+    }
   }
 
   return isAdminSystemRole(user.systemRole) ? ADMIN_LANDING_PATH : MEMBER_LANDING_PATH;

@@ -1,6 +1,7 @@
 import { forwardRef, useCallback, useEffect, useId, useRef, useState, type FocusEvent, type MouseEvent, type PointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Activity, BadgeCheck, ExternalLink, Filter, MessageCircle, X } from "lucide-react";
+import { Activity, ExternalLink, Filter, MessageCircle, X } from "lucide-react";
+import { AcademicIdentitySummary, profileIdentity } from "@/features/academic-profile/components/academic-identity-summary";
 import { Link, useInRouterContext } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useI18n } from "@/i18n";
@@ -139,7 +140,7 @@ export function ForumAuthorPopover({
   const profilePath = profile?.publicHandle
     ? `/u/${encodeURIComponent(profile.publicHandle)}`
     : author.publicHandle
-      ? `/${encodeURIComponent(author.publicHandle)}`
+      ? `/u/${encodeURIComponent(author.publicHandle)}`
       : `/academics/${encodeURIComponent(author.id)}`;
   const activityPath = profile?.publicHandle
     ? `/u/${encodeURIComponent(profile.publicHandle)}/activity`
@@ -355,12 +356,10 @@ export function ForumAuthorPopover({
   }, [cardId, closeCard, closeAndRestoreFocus, open, updatePosition]);
 
   const title = profile?.displayName ?? author.fullName;
-  const rawPosition = profile?.affiliation.positionTitle ?? author.positionTitle ?? author.primaryPosition;
-  const positionTitle = rawPosition === "STUDENT" ? t("Student") : rawPosition === "LECTURER" ? t("Lecturer") : rawPosition === "RESEARCH_STAFF" ? t("Researcher") : rawPosition;
-  const institution = profile?.affiliation.institutionName ?? author.institution;
+  const identity = profile ? profileIdentity(profile) : { academicRole: (author.primaryPosition === "STUDENT" || author.academicProfileType === "student" ? "STUDENT" : author.primaryPosition === "LECTURER" || author.academicProfileType === "lecturer" ? "LECTURER" : "RESEARCHER") as "STUDENT" | "LECTURER" | "RESEARCHER", institutionName: author.institution, fptAffiliationVerified: false };
+  const verified = identity.fptAffiliationVerified === true;
   const headline = profile?.headline || profile?.biography;
   const expertise = profile?.expertiseAreas?.slice(0, 3) ?? [];
-  const verified = author.affiliationVerified || author.positionVerified || profile?.verificationStatus === "VERIFIED";
 
   const card = present && profileState.key === profileKey && typeof document !== "undefined" ? createPortal(
     <>
@@ -387,17 +386,16 @@ export function ForumAuthorPopover({
         <div className="forum-user-card-content">
           <div className="forum-user-card-header">
             <Link to={profilePath} onClick={closeCard} className="forum-user-card-avatar rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label={t("View profile")}>
-              <ForumAuthorAvatar author={{ ...author, fullName: title, avatarUrl: avatarSrc ?? undefined, affiliationVerified: verified }} size="card" showVerifiedBadge={verified} />
+              <ForumAuthorAvatar author={{ ...author, fullName: title, avatarUrl: avatarSrc ?? undefined, affiliationVerified: verified, fptAffiliationVerified: verified }} size="card" showVerifiedBadge={verified} />
             </Link>
             <div className="forum-user-card-identity min-w-0">
               <h2><Link to={profilePath} onClick={closeCard} className="hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{title}</Link></h2>
               {profile?.publicHandle || author.publicHandle ? <p className="mt-0.5 truncate text-sm text-muted-foreground">@{profile?.publicHandle ?? author.publicHandle}</p> : null}
-              {positionTitle || institution ? <p className="mt-1 text-sm leading-5 text-muted-foreground">{[positionTitle, institution].filter(Boolean).join(" · ")}</p> : null}
+              <div className="mt-1"><AcademicIdentitySummary identity={identity} /></div>
             </div>
             {onFilterPosts ? <Button type="button" size="sm" variant="outline" className="forum-user-card-topic-filter h-8 gap-1.5 rounded-full" onClick={() => { closeCard(); onFilterPosts(); }}><Filter aria-hidden="true" className="h-3.5 w-3.5" />{authorTopicPostCount !== undefined ? `${authorTopicPostCount} ` : ""}{t("Posts in this topic")}</Button> : null}
           </div>
           <button type="button" aria-label={t("Close author profile preview")} title={t("Close author profile preview")} onClick={closeAndRestoreFocus} className="forum-user-card-close rounded-full text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><X aria-hidden="true" className="h-4 w-4" /></button>
-        {verified ? <p className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-emerald-700 dark:text-emerald-300"><BadgeCheck aria-hidden="true" className="h-3.5 w-3.5" />{t("Academic identity verified")}</p> : null}
         {headline ? <p className="mt-3 line-clamp-2 text-sm leading-6">{headline}</p> : null}
         {profileLoading ? <div role="status" className="mt-3 h-8 rounded-md bg-muted/60" aria-label={t("Loading academic profile")} /> : null}
         {profileError && !headline ? <p className="mt-3 text-xs text-muted-foreground">{t("Only public profile details are shown here.")}</p> : null}

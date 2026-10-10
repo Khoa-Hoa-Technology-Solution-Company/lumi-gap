@@ -10,9 +10,9 @@ async function ensureAcademicUser(userId: string) {
   const parsed = parseDatabaseId(userId);
   const user = parsed ? await getPrisma().user.findUnique({
     where: parsed.kind === "uuid" ? { id: parsed.value } : { legacyMongoId: parsed.value },
-    select: { id: true, systemRole: true, accountStatus: true },
+    select: { id: true, systemRole: true, accountStatus: true, isActive: true },
   }) : null;
-  if (!user || user.accountStatus !== "ACTIVE" || !["USER", "ADMIN"].includes(user.systemRole)) {
+  if (!user?.isActive || user.accountStatus !== "ACTIVE" || !["USER", "ADMIN"].includes(user.systemRole)) {
     throw AppError.notFound("Academic profile not found");
   }
   return user;

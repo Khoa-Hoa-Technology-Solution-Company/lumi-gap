@@ -12,6 +12,19 @@ import {
 } from "../dto/academic-profile.schema.js";
 
 describe("academic profile input validation", () => {
+  it("requires one internal work target matching its kind and rejects external internal references", () => {
+    const projectId = "11111111-1111-4111-8111-111111111111";
+    const paperId = "22222222-2222-4222-8222-222222222222";
+    const parse = (work: unknown) => UpdateAcademicProfileDetailsSchema.safeParse({ featuredWorks: [work] }).success;
+    expect(parse({ kind: "PROJECT", source: "LUMIGAP", projectId })).toBe(true);
+    expect(parse({ kind: "PROJECT", source: "LUMIGAP", paperId })).toBe(false);
+    expect(parse({ kind: "PROJECT", source: "LUMIGAP", projectId, paperId })).toBe(false);
+    expect(parse({ kind: "DATASET", source: "MANUAL", title: "Dataset", projectId })).toBe(false);
+    expect(parse({ kind: "DATASET", source: "MANUAL", title: "Dataset" })).toBe(true);
+    expect(UpdateAcademicProfileDetailsSchema.safeParse({ featuredWorks: [
+      { kind: "PROJECT", source: "LUMIGAP", projectId }, { kind: "PROJECT", source: "LUMIGAP", projectId },
+    ] }).success).toBe(false);
+  });
   it("limits biography text to 500 words", () => {
     expect(UpdateAcademicProfileDetailsSchema.safeParse({ biography: Array.from({ length: 500 }, () => "word").join(" ") }).success).toBe(true);
     expect(UpdateAcademicProfileDetailsSchema.safeParse({ biography: Array.from({ length: 501 }, () => "word").join(" ") }).success).toBe(false);
@@ -132,6 +145,8 @@ describe("academic profile input validation", () => {
     expect(CreateAcademicIdentityLinkSchema.safeParse({ provider: "OTHER", profileUrl: "https://example.edu/profile", status: "CONNECTED" }).success).toBe(false);
     expect(CreateAcademicIdentityLinkSchema.safeParse({ provider: "OTHER", profileUrl: "https://example.edu/profile", connectionMethod: "OAUTH" }).success).toBe(false);
     expect(UpdateAcademicIdentityLinkSchema.safeParse({}).success).toBe(false);
+    expect(CreateAcademicIdentityLinkSchema.safeParse({ provider: "ORCID", identifier: "0000-0002-1825-0097", verificationStatus: "PROVIDER_CONNECTED" }).success).toBe(false);
+    expect(UpdateAcademicIdentityLinkSchema.safeParse({ verificationStatus: "PROVIDER_CONNECTED" }).success).toBe(false);
     expect(AcademicIdentityLinkSchema.safeParse({ provider: "OTHER", label: "Profile", profileUrl: "http://example.edu/profile" }).success).toBe(true);
   });
 

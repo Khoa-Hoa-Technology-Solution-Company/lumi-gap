@@ -34,20 +34,27 @@ export const capabilityService = {
   async list(userId: string): Promise<Capability[]> {
     const id = await userUuid(userId);
     const now = new Date();
-    const rows = await getPrisma().userCapability.findMany({
+    const [rows, scope, user, profile] = await Promise.all([getPrisma().userCapability.findMany({
       where: { userId: id, status: "ACTIVE", OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
       select: { capability: true },
-    });
-    return rows.map((row) => row.capability).filter((value): value is Capability =>
-      ALL_CAPABILITIES.includes(value as Capability));
+    }), participantScopeForUser(id), getPrisma().user.findUnique({ where: { id }, select: { systemRole: true, accountStatus: true, isActive: true, emailVerifiedAt: true } }),
+    getPrisma().academicProfile.findUnique({ where: { userId: id }, select: { academicRole: true, roleVerificationStatus: true, positionStatus: true } })]);
+    if (user?.accountStatus !== "ACTIVE" || !user.isActive || (user.systemRole !== "ADMIN" && !user.emailVerifiedAt)) return [];
+    const lecturer = profile?.academicRole === "LECTURER" && profile.roleVerificationStatus === "VERIFIED" && profile.positionStatus === "VERIFIED";
+    const core: Capability[] = user.systemRole === "ADMIN" ? ["MANAGE_SYSTEM"] : ["BASIC_RESEARCH", "CREATE_RESEARCH_PROJECT"];
+    return [...new Set([...core, ...rows.map((row) => row.capability).filter((value): value is Capability =>
+      ALL_CAPABILITIES.includes(value as Capability)
+      && (!["REVIEW_ARTIFACT", "STRUCTURED_REVIEW", "MENTOR_PROJECT", "APPROVE_ACADEMIC_CONTRIBUTION"].includes(value) || lecturer)
+      && (value !== "MANAGE_SYSTEM" || user.systemRole === "ADMIN")
+      && (value !== "APPROVE_ACADEMIC_CONTRIBUTION" || scope === "INTERNAL"))])];
   },
 
   async evaluate(userId: string): Promise<Capability[]> {
     const id = await userUuid(userId);
     const prisma = getPrisma();
     const [user, profile, current, participantScope] = await Promise.all([
-      prisma.user.findUnique({ where: { id }, select: { accountStatus: true, systemRole: true } }),
-      prisma.academicProfile.findUnique({ where: { userId: id }, select: { academicRole: true, roleVerificationStatus: true } }),
+      prisma.user.findUnique({ where: { id }, select: { accountStatus: true, systemRole: true, isActive: true, emailVerifiedAt: true } }),
+      prisma.academicProfile.findUnique({ where: { userId: id }, select: { academicRole: true, roleVerificationStatus: true, positionStatus: true } }),
       prisma.userCapability.findMany({ where: { userId: id } }),
       participantScopeForUser(id),
     ]);
@@ -72,7 +79,9 @@ export const capabilityService = {
 
     const desired = new Set<Capability>(policyCapabilities({
       systemRole: user.systemRole === "ADMIN" ? "ADMIN" : "USER",
-      accountActive: user.accountStatus === "ACTIVE",
+      accountActive: user.accountStatus === "ACTIVE" && user.isActive,
+      emailVerified: Boolean(user.emailVerifiedAt),
+      positionVerified: profile?.positionStatus === "VERIFIED",
       academicRole: profile?.academicRole as "STUDENT" | "RESEARCHER" | "LECTURER" | undefined,
       academicRoleVerificationStatus: profile?.roleVerificationStatus as never,
       participantScope,

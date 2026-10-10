@@ -19,7 +19,8 @@ const baseUser = {
   points: 0,
   credits: 0,
   penaltyPoints: 0,
-  emailVerifiedAt: null,
+  emailVerifiedAt: new Date(),
+  isActive: true,
   onboardingCompletedAt: null,
   createdAt: new Date("2026-01-01T00:00:00.000Z"),
   updatedAt: new Date("2026-01-01T00:00:00.000Z"),
@@ -42,12 +43,14 @@ const mocks = vi.hoisted(() => ({
       create: vi.fn(),
     },
     institution: { findFirst: vi.fn(), upsert: vi.fn() },
+    institutionDomain: { findUnique: vi.fn().mockResolvedValue(null) },
     campus: { findFirst: vi.fn() },
-    academicProgram: { findFirst: vi.fn() },
+    academicProgram: { findFirst: vi.fn(), upsert: vi.fn() },
     userEmail: { findMany: vi.fn() },
     verificationEvidence: {
-      create: vi.fn(),
+      create: vi.fn(), updateMany: vi.fn(),
     },
+    $queryRaw: vi.fn(),
     $transaction: vi.fn(),
   },
   evaluateCapabilities: vi.fn(),
@@ -85,7 +88,9 @@ describe("authService.updateAcademicProfile", () => {
     mocks.prisma.affiliation.create.mockResolvedValue({});
     mocks.prisma.institution.findFirst.mockResolvedValue({ id: "33333333-3333-4333-8333-333333333333", name: "FPT University", hostInstitution: true });
     mocks.prisma.campus.findFirst.mockResolvedValue(null);
-    mocks.prisma.academicProgram.findFirst.mockResolvedValue(null);
+    mocks.prisma.academicProgram.findFirst.mockResolvedValue({ id: "55555555-5555-4555-8555-555555555555", isActive: true });
+    mocks.prisma.academicProgram.upsert.mockResolvedValue({ id: "55555555-5555-4555-8555-555555555555", isActive: true });
+    mocks.prisma.verificationEvidence.updateMany.mockResolvedValue({ count: 0 });
     mocks.prisma.userEmail.findMany.mockResolvedValue([]);
     mocks.prisma.verificationEvidence.create.mockResolvedValue({});
     mocks.prisma.$transaction.mockImplementation(async (callback) => callback(mocks.prisma));
@@ -97,6 +102,7 @@ describe("authService.updateAcademicProfile", () => {
   it("saves onboarding as self-declared profile data without creating a verification request", async () => {
     await authService.updateAcademicProfile(USER_ID, {
       academicRole: "STUDENT",
+      programName: "Software Engineering",
       positionTitle: "Sinh viên",
       institutionName: "FPT University",
       department: "Software Engineering",
@@ -128,6 +134,21 @@ describe("authService.updateAcademicProfile", () => {
       }),
     }));
     expect(mocks.prisma.verificationEvidence.create).not.toHaveBeenCalled();
+  });
+
+  it("keeps onboarding incomplete when a profile exists but onboarding was never submitted", async () => {
+    const result = await authService.me(USER_ID);
+    expect(result.primaryPosition).toBe("STUDENT");
+    expect(result.onboarding?.completed).toBe(false);
+    expect(mocks.prisma.user.update).not.toHaveBeenCalled();
+    expect(mocks.prisma.academicProfile.upsert).not.toHaveBeenCalled();
+  });
+
+  it("reports completed onboarding only when the saved completion marker and position are present", async () => {
+    mocks.prisma.user.findUnique.mockResolvedValue({ ...baseUser, onboardingCompletedAt: new Date() });
+    expect((await authService.me(USER_ID)).onboarding?.completed).toBe(true);
+    mocks.prisma.academicProfile.findUnique.mockResolvedValue({ userId: USER_ID, primaryPosition: null });
+    expect((await authService.me(USER_ID)).onboarding?.completed).toBe(false);
   });
 
   it("saves focused FPT Student onboarding fields", async () => {
@@ -315,16 +336,19 @@ describe("authService.updateAcademicProfile", () => {
     expect(mocks.evaluateCapabilities).toHaveBeenCalledWith(USER_ID);
   });
 
-  it("blocks invited external collaborators from onboarding as Students before FPT verification", async () => {
+  it("allows invited students at non-FPT institutions", async () => {
     mocks.prisma.user.findUnique.mockResolvedValue({ ...baseUser, admissionBasis: "INVITATION" });
     mocks.participantScopeForUser.mockResolvedValue("EXTERNAL");
 
-    await expect(authService.updateAcademicProfile(USER_ID, {
+    mocks.prisma.institution.findFirst.mockResolvedValue({ id: "33333333-3333-4333-8333-333333333333", name: "External University", hostInstitution: false });
+    await authService.updateAcademicProfile(USER_ID, {
       academicRole: "STUDENT",
+      programName: "Software Engineering",
       positionTitle: "Student",
       institutionName: "External University",
       researchAreas: ["Software Engineering"],
       researchInterests: ["Evidence synthesis"],
-    })).rejects.toMatchObject({ statusCode: 400 });
+    });
+    expect(mocks.prisma.academicProfile.upsert).toHaveBeenCalledWith(expect.objectContaining({ create: expect.objectContaining({ academicRole: "STUDENT", roleVerificationStatus: "SELF_DECLARED" }) }));
   });
 });

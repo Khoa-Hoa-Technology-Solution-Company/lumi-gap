@@ -72,6 +72,7 @@ describe.sequential("identity account persistence", () => {
         email: personalResearcherEmail,
         fullName: "Personal Email Researcher",
         admissionBasis: "INVITATION",
+        emailVerifiedAt: new Date(),
       },
     });
     await prisma.userEmail.create({

@@ -29,6 +29,16 @@ const EnvSchema = z.object({
   // PDFs/images in Cloudflare R2 via the S3-compatible API; cloudinary stores
   // profile media and PDF/document artifacts in Cloudinary.
   STORAGE_PROVIDER: z.enum(["local", "r2", "cloudinary"]).default("local"),
+  AFFILIATION_EVIDENCE_RETENTION_DAYS: z.coerce.number().int().min(1).max(365).default(30),
+  ACADEMIC_VERIFICATION_EVIDENCE_RETENTION_DAYS: z.coerce.number().int().min(1).max(365).default(30),
+  ACADEMIC_EMAIL_OTP_TTL_MINUTES: z.coerce.number().int().min(2).max(30).default(10),
+  ACADEMIC_EMAIL_OTP_MAX_ATTEMPTS: z.coerce.number().int().min(3).max(10).default(5),
+  ACADEMIC_EMAIL_RESEND_COOLDOWN_SECONDS: z.coerce.number().int().min(30).max(300).default(60),
+  ACADEMIC_RELATIONSHIP_REQUEST_LIMIT: z.coerce.number().int().min(1).max(100).default(10),
+  ACADEMIC_RELATIONSHIP_COOLDOWN_HOURS: z.coerce.number().int().min(1).max(720).default(24),
+  ACADEMIC_RELATIONSHIP_REQUEST_EXPIRY_DAYS: z.coerce.number().int().min(1).max(90).default(14),
+  MAX_ACTIVE_MENTORS_PER_PROJECT: z.coerce.number().int().min(1).max(10).default(1),
+  MAX_PENDING_MENTOR_REQUESTS_PER_PROJECT: z.coerce.number().int().min(1).max(20).default(5),
   R2_ENDPOINT: optionalEnvUrl,
   R2_ACCESS_KEY_ID: optionalEnvString,
   R2_SECRET_ACCESS_KEY: optionalEnvString,

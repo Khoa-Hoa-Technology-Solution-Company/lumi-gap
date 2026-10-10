@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { requireAuth } from "../../common/middleware/auth.js";
+import { requireVerifiedAuth as requireAuth } from "../../common/middleware/auth.js";
 import { validate } from "../../common/middleware/validate.js";
 import { bookmarkService } from "./bookmark.service.js";
 import { CreateBookmarkSchema, UpdateBookmarkSchema } from "./dto/bookmark.schema.js";

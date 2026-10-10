@@ -8,6 +8,8 @@ import { parseDatabaseId } from "../../infrastructure/database/database-id.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { tokenService, type AccessTokenClaims } from "../../modules/auth/token.service.js";
 import { withUserAi } from "../../modules/user-ai/user-ai.runtime.js";
+import { assertResearchWorkflowAccess } from "../../modules/authorization/research-access.service.js";
+import { capabilityService } from "../../modules/authorization/capability.service.js";
 
 export interface AuthClaims extends AccessTokenClaims {
   role: UserRole;
@@ -18,7 +20,6 @@ export interface AuthClaims extends AccessTokenClaims {
 }
 
 declare global {
-  // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace Express {
     interface User extends AuthClaims {}
     interface Request { user?: User }
@@ -31,9 +32,9 @@ async function hydrateClaims(claims: AccessTokenClaims): Promise<AuthClaims | nu
   const prisma = getPrisma();
   const user = await prisma.user.findUnique({
     where: parsedId.kind === "uuid" ? { id: parsedId.value } : { legacyMongoId: parsedId.value },
-    select: { id: true, systemRole: true, accountStatus: true, academicProfileType: true },
+    select: { id: true, systemRole: true, accountStatus: true, academicProfileType: true, isActive: true },
   });
-  if (!user || user.accountStatus !== "ACTIVE" || user.systemRole !== claims.systemRole) return null;
+  if (!user?.isActive || user.accountStatus !== "ACTIVE" || user.systemRole !== claims.systemRole) return null;
   const activeSession = await prisma.refreshToken.findFirst({
     where: { familyId: claims.sessionId, userId: user.id, revokedAt: null, expiresAt: { gt: new Date() } },
     select: { id: true },
@@ -41,10 +42,7 @@ async function hydrateClaims(claims: AccessTokenClaims): Promise<AuthClaims | nu
   if (!activeSession) return null;
   const [profile, capabilityRows] = await Promise.all([
     prisma.academicProfile.findUnique({ where: { userId: user.id }, select: { primaryPosition: true } }),
-    prisma.userCapability.findMany({
-      where: { userId: user.id, status: "ACTIVE", OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] },
-      select: { capability: true },
-    }),
+    capabilityService.list(user.id),
   ]);
   return {
     ...claims,
@@ -53,7 +51,7 @@ async function hydrateClaims(claims: AccessTokenClaims): Promise<AuthClaims | nu
     role: isAdminSystemRole(user.systemRole) ? "admin" : "user",
     academicProfileType: user.academicProfileType as AcademicProfileType | null ?? undefined,
     primaryPosition: profile?.primaryPosition as PrimaryPosition | null ?? undefined,
-    capabilities: capabilityRows.map((row) => row.capability as UserCapability),
+    capabilities: capabilityRows,
   };
 }
 
@@ -88,6 +86,14 @@ export async function optionalAuth(req: Request, _res: Response, next: NextFunct
     if (req.user) next(error);
     else next();
   }
+}
+
+/** Authentication plus email ownership for core tools; affiliation is independent. */
+export async function requireVerifiedAuth(req: Request, res: Response, next: NextFunction): Promise<void> {
+  await requireAuth(req, res, (error?: unknown) => {
+    if (error) return next(error);
+    void assertResearchWorkflowAccess(req.user!.sub).then(() => next()).catch(next);
+  });
 }
 
 export function requireSystemRole(...roles: SystemRole[]) {

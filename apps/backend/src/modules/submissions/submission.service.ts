@@ -6,7 +6,7 @@ import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { parseDatabaseId, publicDatabaseId } from "../../infrastructure/database/database-id.js";
 import { pdfStorageService } from "../../infrastructure/pdf-storage.service.js";
 import { auditService } from "../audit/audit.service.js";
-import { assertPeerReviewer, assertReviewAdmission, defaultPeerReviewTemplate, lockReviewerAndSubmission, refreshSubmissionReviewStatus } from "../reviews/peer-review-access.js";
+import { assertPeerReviewer, lockReviewerAndSubmission, refreshSubmissionReviewStatus } from "../reviews/peer-review-access.js";
 import { reviewRequestService } from "../reviews/review-request.service.js";
 import { aiReviewerClient } from "../papers/ai-reviewer.client.js";
 import { aiJobsQueue } from "../../infrastructure/queue.js";
@@ -67,7 +67,7 @@ async function canAccessFullSubmission(submission: SubmissionRow, userId: string
 
 async function assertSubmissionAccess(submission: SubmissionRow, userId: string, role: UserRole) {
   if (await canAccessFullSubmission(submission, userId, role)) return "full" as const;
-  const assignment = await getPrisma().reviewerAssignment.findFirst({ where: { submissionId: submission.id, reviewerId: userId, status: { notIn: ["declined", "cancelled"] } } });
+  const assignment = await getPrisma().reviewerAssignment.findFirst({ where: { submissionId: submission.id, reviewerId: userId, status: { in: ["accepted", "completed"] } } });
   if (assignment) { if (assignment.status !== "completed") await assertPeerReviewer(userId); return "blind" as const; }
   throw AppError.forbidden("You do not have access to this submission");
 }
@@ -86,7 +86,7 @@ async function canManageSubmission(submission: SubmissionRow, userId: string, ro
 
 async function accessibleRevisionIds(submissionId: string, userId: string) {
   const prisma = getPrisma();
-  const assignments = await prisma.reviewerAssignment.findMany({ where: { submissionId, reviewerId: userId, status: { notIn: ["declined", "cancelled"] } } });
+  const assignments = await prisma.reviewerAssignment.findMany({ where: { submissionId, reviewerId: userId, status: { in: ["accepted", "completed"] } } });
   const reviews = await prisma.humanReview.findMany({ where: { assignmentId: { in: assignments.map((item) => item.id) } }, select: { revisionId: true } });
   return [...new Set([...assignments.flatMap((item) => item.artifactRevisionId ? [item.artifactRevisionId] : []), ...reviews.map((item) => item.revisionId)])];
 }
@@ -264,26 +264,20 @@ export const submissionService = {
 
   async resolveDownload(submissionInput: string, revisionInput: string, actorInput: string, actorRole: UserRole) { const actor = await resolveUser(actorInput); const submission = await getSubmissionOrThrow(submissionInput); const access = await assertSubmissionAccess(submission, actor.id, actorRole); const allowed = access === "blind" ? await accessibleRevisionIds(submission.id, actor.id) : undefined; const revision = await getPrisma().submissionRevision.findFirst({ where: { ...idWhere(revisionInput), submissionId: submission.id, ...(allowed ? { AND: { id: { in: allowed } } } : {}) } }); if (!revision) throw AppError.notFound("Submission revision not found"); if (!revision.storageUri) throw AppError.badRequest("This artifact revision is displayed in LumiGap and has no PDF download"); const signedUrl = await pdfStorageService.getSignedDownloadUrl(revision.storageUri); if (signedUrl) return { kind: "redirect" as const, url: signedUrl }; const localPath = pdfStorageService.resolveLocalPath(revision.storageUri); if (!localPath) throw AppError.notFound("Submission file is not available"); return { kind: "local" as const, path: localPath, filename: `submission-revision-${revision.revisionNumber}.pdf` }; },
 
-  async assignReviewer(submissionInput: string, input: { reviewerId: string; dueAt?: Date; enforceInstitutionConflict?: boolean }, actorInput: string) {
-    const actor = await resolveUser(actorInput); const submission = await getSubmissionOrThrow(submissionInput); const reviewer = await resolveUser(input.reviewerId);
-    await assertPeerReviewer(reviewer.id);
-    const assignment = await getPrisma().$transaction(async (tx) => {
-      await lockReviewerAndSubmission(tx, reviewer.id, submission.id);
-      const live = await assertReviewAdmission(tx, submission.id, reviewer.id);
-      if (!live.currentRevisionId || ["accepted", "rejected", "withdrawn"].includes(live.status)) throw AppError.conflict("Research is not accepting reviewers");
-      const version = await defaultPeerReviewTemplate(tx, live.submissionType);
-      const request = await tx.reviewRequest.create({ data: { submissionId: live.id, projectId: live.projectId, requesterId: live.createdById, templateVersionId: version.id, artifactRevisionId: live.currentRevisionId, origin: "MANAGER_ASSIGNMENT", dueAt: input.dueAt } });
-      const created = await tx.reviewerAssignment.create({ data: { submissionId: live.id, reviewerId: reviewer.id, assignedById: actor.id, reviewRequestId: request.id, artifactRevisionId: live.currentRevisionId, anonymousCode: `R-${crypto.randomBytes(12).toString("hex")}`, dueAt: input.dueAt } });
-      await refreshSubmissionReviewStatus(tx, live.id);
-      return created;
-    });
-    await auditService.log("submission.reviewer.assigned", { userId: actor.id, targetTableName: "reviewer_assignments", targetRecordId: assignment.id, details: { submissionId: submission.id, reviewerId: reviewer.id } });
-    return assignment;
+  async assignReviewer(_submissionInput: string, _input: { reviewerId: string; dueAt?: Date; enforceInstitutionConflict?: boolean }, _actorInput: string) {
+    throw AppError.conflict("Use an Academic Review Request; new direct Admin assignments are disabled");
   },
 
   async listAssignments(submissionInput: string) { const submission = await getSubmissionOrThrow(submissionInput); const prisma = getPrisma(); const rows = await prisma.reviewerAssignment.findMany({ where: { submissionId: submission.id }, orderBy: { createdAt: "desc" } }); const users = await prisma.user.findMany({ where: { id: { in: rows.map((row) => row.reviewerId) } }, select: { id: true, legacyMongoId: true, fullName: true, email: true, institution: true, role: true } }); const map = new Map(users.map((user) => [user.id, { ...user, id: publicDatabaseId(user) }])); return rows.map((row) => ({ ...row, id: publicDatabaseId(row), reviewerId: map.get(row.reviewerId) })); },
 
-  async listMyAssignments(reviewerInput: string) { const reviewer = await resolveUser(reviewerInput); const prisma = getPrisma(); const rows = await prisma.reviewerAssignment.findMany({ where: { reviewerId: reviewer.id, status: { not: "cancelled" } }, orderBy: { createdAt: "desc" } }); const submissions = await prisma.submission.findMany({ where: { id: { in: rows.map((row) => row.submissionId) } } }); const map = new Map(submissions.map((row) => [row.id, submissionDto(row)])); return rows.map((row) => ({ ...row, id: publicDatabaseId(row), submissionId: map.get(row.submissionId) })); },
+  async listMyAssignments(reviewerInput: string) {
+    const reviewer = await resolveUser(reviewerInput);
+    const prisma = getPrisma();
+    const rows = await prisma.reviewerAssignment.findMany({ where: { reviewerId: reviewer.id, status: { not: "cancelled" } }, orderBy: { createdAt: "desc" } });
+    const submissions = await prisma.submission.findMany({ where: { id: { in: rows.map(row => row.submissionId) } }, select: { id: true, legacyMongoId: true, title: true, submissionType: true, projectId: true, status: true } });
+    const map = new Map(submissions.map(row => [row.id, { ...row, id: publicDatabaseId(row), _id: publicDatabaseId(row) }]));
+    return rows.map(row => ({ ...row, id: publicDatabaseId(row), submissionId: map.get(row.submissionId) }));
+  },
 
   async updateAssignment(submissionInput: string, assignmentInput: string, input: { status: "accepted" | "declined" | "completed" | "cancelled"; reviewText?: string }, actorInput: string, actorRole: UserRole) {
     const actor = await resolveUser(actorInput); const submission = await getSubmissionOrThrow(submissionInput); const assignment = await getPrisma().reviewerAssignment.findFirst({ where: { ...idWhere(assignmentInput), submissionId: submission.id } }); if (!assignment) throw AppError.notFound("Reviewer assignment not found");

@@ -2,6 +2,7 @@ import { en } from "./en";
 import { gapEvidenceWorkflowViStrings } from "./gap-evidence-workflow";
 import { paperDetailIaViStrings } from "./paper-detail-ia";
 import { academicProfileStrings } from "./academic-profile";
+import { academicSupportVi } from "./academic-support";
 import { academicForumStrings } from "./academic-forum";
 import { authSecurityStrings } from "./auth-security";
 import { newUiStrings } from "./new-ui";
@@ -299,6 +300,7 @@ export const vi: Record<keyof typeof en, string> = {
     "Saved": "Đã lưu",
     "Save": "Lưu",
   }),
+  ...academicSupportVi,
   ...academicProfileStrings.vi,
   ...gapEvidenceWorkflowViStrings,
   ...paperDetailIaViStrings,
@@ -1618,7 +1620,7 @@ export const vi: Record<keyof typeof en, string> = {
   "Open Search with these exact filters applied.": "Mở Tìm kiếm với các bộ lọc chính xác này được áp dụng.",
   "Open trend": "Mở xu hướng",
   "Open trend details": "Chi tiết xu hướng mở",
-  "OpenAlex": "mởAlex",
+  "OpenAlex": "OpenAlex",
   "OpenAlex facts": "Sự thật về OpenAlex",
   "OpenAlex Ingest Campaign": "Chiến dịch nhập OpenAlex",
   "OpenAlex Live Index combined with manual PDF upload and custom team internal directories.": "OpenAlex Live Index kết hợp với tải lên PDF thủ công và các thư mục nội bộ của nhóm tùy chỉnh.",

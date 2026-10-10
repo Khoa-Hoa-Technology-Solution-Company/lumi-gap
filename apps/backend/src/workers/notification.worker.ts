@@ -6,6 +6,11 @@ import { parseDatabaseId, publicDatabaseId } from "../infrastructure/database/da
 import { makeConnection, QUEUE_NAMES } from "../infrastructure/queue.js";
 import { logger } from "../infrastructure/logger.js";
 import { startWorkerHeartbeat } from "../infrastructure/worker-heartbeat.js";
+import { deliverMentorshipEmail } from "../modules/projects/mentorship-mail.service.js";
+import { deliverLecturerVerificationEmail } from "../modules/academic-profiles/lecturer-verification-delivery.service.js";
+import { projectMentorshipService } from "../modules/projects/project-mentorship.service.js";
+import { notificationService } from "../modules/notifications/notification.service.js";
+import { notificationQueue } from "../infrastructure/queue.js";
 
 enforcePostgresOnlyRuntime();
 
@@ -36,10 +41,16 @@ async function sendPush(notificationId: string): Promise<void> {
     logger.info({ notificationId }, "notification has no user target; skipping push");
     return;
   }
+  if (notification.emailStatus === "PENDING") {
+    if (notification.eventKey?.startsWith("LECTURER_VERIFICATION_")) await deliverLecturerVerificationEmail(notification.id);
+    else await deliverMentorshipEmail(notification.id);
+  }
+  if (notification.pushSentAt) return;
 
   const tokens = await prisma.deviceToken.findMany({ where: { userId: notification.userId, disabledAt: null } });
   if (tokens.length === 0) {
     logger.info({ notificationId }, "no device tokens for notification target");
+    await prisma.notification.update({ where: { id: notification.id }, data: { pushSentAt: new Date() } });
     return;
   }
 
@@ -91,6 +102,7 @@ async function sendPush(notificationId: string): Promise<void> {
   if (disabledTokens.length > 0) {
     await prisma.deviceToken.updateMany({ where: { token: { in: disabledTokens } }, data: { disabledAt: new Date() } });
   }
+  await prisma.notification.update({ where: { id: notification.id }, data: { pushSentAt: new Date() } });
 
   logger.info(
     { notificationId, sent: tickets.filter((ticket) => ticket.status === "ok").length, disabled: disabledTokens.length },
@@ -120,10 +132,34 @@ async function main() {
     logger.error({ jobId: job?.id, attempt: job?.attemptsMade, err }, "notification push job failed");
   });
 
+  let maintenanceRunning = false;
+  const maintenance = async () => {
+    if (maintenanceRunning) return;
+    maintenanceRunning = true;
+    try {
+      const db = getPrisma();
+      // A worker that died after sending cannot know SMTP delivery outcome.
+      await db.notification.updateMany({ where: { emailStatus: "SENDING", emailClaimedAt: { lt: new Date(Date.now() - 5 * 60000) } }, data: { emailStatus: "UNCERTAIN" } });
+      await projectMentorshipService.expireRequests();
+      const rows = await db.notification.findMany({ where: { userId: { not: null }, AND: [{ OR: [{ eventKey: { startsWith: "MENTORSHIP_" } }, { eventKey: { startsWith: "LECTURER_VERIFICATION_" } }] }, { OR: [{ dispatchedAt: null }, { emailStatus: "PENDING" }, { pushSentAt: null }] }] }, take: 100, orderBy: { createdAt: "asc" } });
+      for (const row of rows) {
+        const job = await notificationQueue.getJob(publicDatabaseId(row));
+        if (job && await job.isFailed()) await job.retry();
+        else if (job && await job.isCompleted()) { await job.remove(); await notificationService.dispatch(row); }
+        else if (!job) await notificationService.dispatch(row);
+      }
+    } catch (err) { logger.warn({ err }, "Notification recovery will retry on the next maintenance tick"); }
+    finally { maintenanceRunning = false; }
+  };
+  const maintenanceTimer = setInterval(() => void maintenance(), 60000);
+  maintenanceTimer.unref();
+  void maintenance();
+
   logger.info("notification worker listening on notifications queue");
 
   const shutdown = async (signal: string) => {
     logger.info({ signal }, "notification worker shutting down");
+    clearInterval(maintenanceTimer);
     await stopHeartbeat();
     await worker.close();
     await disconnectPostgres();

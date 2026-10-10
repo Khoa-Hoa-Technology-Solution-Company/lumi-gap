@@ -64,14 +64,9 @@ export function AdminLayout() {
       title: "User Management",
       items: [
         { to: "/admin/users", label: "Users", icon: Users },
-      ],
-    },
-    {
-      title: "Academic Verification",
-      items: [
         {
           to: "/admin/academic-verifications",
-          label: "Verifications",
+          label: "Affiliation Verification",
           icon: BadgeCheck,
           badge: pendingVerificationsCount > 0 ? pendingVerificationsCount : undefined,
           badgeColor: "bg-amber-500/20 text-amber-500 border border-amber-500/30",
@@ -153,7 +148,7 @@ export function AdminLayout() {
   }
 
   return (
-    <div className="flex min-h-dvh min-w-0 bg-slate-50/60 font-sans dark:bg-slate-950">
+    <div className="flex h-dvh min-h-dvh w-full overflow-hidden bg-slate-50/60 font-sans dark:bg-slate-950">
       {/* Mobile Backdrop */}
       {mobileOpen && (
         <div
@@ -166,7 +161,7 @@ export function AdminLayout() {
       {/* TailAdmin-Inspired Sleek Fixed Sticky Sidebar */}
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-50 flex h-dvh w-[min(18rem,calc(100vw-2rem))] shrink-0 select-none flex-col bg-[#1C2434] pb-[env(safe-area-inset-bottom)] text-slate-300 transition-transform duration-300 ease-in-out md:sticky md:top-0 md:w-64",
+          "fixed inset-y-0 left-0 z-50 flex h-dvh w-[min(18rem,calc(100vw-2rem))] shrink-0 select-none flex-col bg-[#1C2434] pb-[env(safe-area-inset-bottom)] text-slate-300 transition-transform duration-300 ease-in-out md:static md:h-full md:w-64 md:translate-x-0 md:z-20",
           mobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0",
         )}
       >
@@ -195,7 +190,7 @@ export function AdminLayout() {
         </div>
 
         {/* Nav Categories */}
-        <div className="flex-1 overflow-y-auto px-3 py-4 space-y-6 scrollbar-thin scrollbar-thumb-slate-700">
+        <div className="flex-1 overflow-y-auto px-3 py-4 space-y-5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {NAVIGATION.map((section) => (
             <div key={section.title} className="space-y-1">
               <p className="px-3 text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
@@ -234,7 +229,7 @@ export function AdminLayout() {
         </div>
 
         {/* Sidebar Footer User Info - Pinned to bottom */}
-        <div className="border-t border-slate-700/60 p-3.5 shrink-0 bg-[#1C2434]">
+        <div className="border-t border-slate-700/60 p-3 shrink-0 bg-[#1C2434]">
           <div className="mb-3 flex min-h-11 items-center justify-between rounded-lg border border-slate-700/70 bg-slate-800/60 px-2.5 min-[420px]:hidden md:hidden">
             <span className="text-xs font-semibold text-slate-300">{t("Language")}</span>
             <LanguageSwitcher />
@@ -259,7 +254,7 @@ export function AdminLayout() {
       </aside>
 
       {/* Main Content Area */}
-      <div className="flex min-h-dvh min-w-0 flex-1 flex-col">
+      <div className="flex h-dvh min-w-0 flex-1 flex-col overflow-y-auto">
         {/* Standalone Admin Top Bar */}
           <header className="sticky top-0 z-30 flex h-16 min-w-0 shrink-0 items-center justify-between gap-2 border-b border-slate-200/80 bg-white/90 px-3 backdrop-blur-md sm:px-4 md:px-6 dark:border-slate-800 dark:bg-slate-900/90">
             <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-4">

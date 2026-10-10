@@ -1,6 +1,10 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from "axios";
 import { useAuthStore } from "@/stores/auth-store";
 
+declare module "axios" {
+  interface AxiosRequestConfig { expectedUserId?: string; }
+}
+
 const rawBaseURL = import.meta.env.VITE_API_BASE?.trim();
 export const API_BASE_URL = rawBaseURL && rawBaseURL.length > 0 ? rawBaseURL : "/api/v1";
 
@@ -11,6 +15,9 @@ if (import.meta.env.DEV) {
 }
 
 api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
+  if (config.expectedUserId && useAuthStore.getState().user?.id !== config.expectedUserId) {
+    throw new axios.CanceledError("Delivery paused until the original account signs in.");
+  }
   const token = useAuthStore.getState().tokens?.accessToken;
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
@@ -33,6 +40,7 @@ api.interceptors.response.use(
   async (error: AxiosError) => {
     const original = error.config as (InternalAxiosRequestConfig & { _retry?: boolean }) | undefined;
     const refreshToken = useAuthStore.getState().tokens?.refreshToken;
+    if (original?.expectedUserId && useAuthStore.getState().user?.id !== original.expectedUserId) return Promise.reject(error);
 
     if (error.response?.status === 401 && original && refreshToken && !original._retry && isProtectedRequest(original)) {
       original._retry = true;

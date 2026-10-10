@@ -5,10 +5,13 @@ export type AcademicProfileType = "student" | "researcher" | "lecturer";
 export type SystemRole = "USER" | "ADMIN";
 export type AccountStatus = "ACTIVE" | "SUSPENDED" | "DISABLED";
 export type AcademicRole = "STUDENT" | "RESEARCHER" | "LECTURER";
+export const MAX_ONBOARDING_RESEARCH_AREAS = 3;
+export const MAX_ONBOARDING_RESEARCH_INTERESTS = 5;
+export const MAX_ONBOARDING_RESEARCH_SKILLS = 5;
 export type ParticipantScope = "INTERNAL" | "EXTERNAL" | "PENDING";
-export type AdmissionBasis = "LEGACY" | "HOST_INSTITUTION" | "INVITATION" | "ADMIN";
+export type AdmissionBasis = "LEGACY" | "HOST_INSTITUTION" | "INVITATION" | "ADMIN" | "PERSONAL_EMAIL";
 export type PrimaryPosition = "STUDENT" | "LECTURER" | "RESEARCH_STAFF" | "INDUSTRY_PRACTITIONER" | "OTHER";
-export type VerificationStatus = "NOT_SUBMITTED" | "PENDING" | "VERIFIED" | "REJECTED" | "EXPIRED" | "INVALIDATED" | "UNVERIFIED";
+export type VerificationStatus = "NOT_SUBMITTED" | "PENDING" | "NEEDS_MORE_INFORMATION" | "VERIFIED" | "REJECTED" | "EXPIRED" | "INVALIDATED" | "UNVERIFIED";
 export type UserCapability =
   | "BASIC_RESEARCH" | "RESEARCH_SUPPORT" | "STRUCTURED_REVIEW" | "GAP_VALIDATION"
   | "CREATE_RESEARCH_PROJECT" | "APPROVE_ACADEMIC_CONTRIBUTION"
@@ -37,6 +40,7 @@ export interface User {
   admissionBasis?: AdmissionBasis;
   verifiedEmails?: Array<{ email: string; isPrimary: boolean; purpose: "ACCOUNT" | "INSTITUTIONAL" | "CONTACT"; verifiedAt: ISODateString }>;
   emailVerifiedAt?: ISODateString;
+  hasApprovedInstitutionalEmail?: boolean;
   authProviders?: {
     password: boolean;
     google: boolean;
@@ -79,12 +83,14 @@ export interface UpdateAcademicProfileRequest {
   primaryPosition?: PrimaryPosition;
   positionTitle?: string;
   institutionName?: string;
+  institutionId?: string;
   noAffiliation?: boolean;
   department?: string;
   specifiedPosition?: string;
   country?: string;
   campusId?: string | null;
   programId?: string | null;
+  programName?: string;
   researchAreas?: string[];
   expertiseAreas?: string[];
   researchInterests?: string[];
@@ -93,6 +99,8 @@ export interface UpdateAcademicProfileRequest {
 }
 
 export interface AcademicOnboardingOptions {
+  institutions: Array<{ id: string; name: string; hostInstitution: boolean }>;
+  researchAreas: string[];
   hostInstitution?: {
     id: string;
     name: string;

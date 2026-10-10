@@ -57,7 +57,7 @@ describe("project mentorship rules", () => {
       mentorUserId: "lecturer",
       requestedBy: "student",
       projectOwnerId: "owner",
-      status: "ACCEPTED",
+      status: "ACTIVE",
     })).toBe(true);
     expect(canEndMentorRelationship({
       actorId: "owner",

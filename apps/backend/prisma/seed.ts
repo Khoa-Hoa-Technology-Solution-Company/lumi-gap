@@ -47,6 +47,7 @@ async function main() {
   });
 
   // 3a. Admin Account: admin@liemresearch.com
+  await prisma.institutionDomain.upsert({ where: { domain: "daihoc.fpt.edu.vn" }, create: { institutionId: fptInstitution.id, domain: "daihoc.fpt.edu.vn", type: "WEBSITE", trusted: true, status: "ACTIVE", verifiedAt: new Date(), verificationMethod: "ADMIN_REVIEW" }, update: {} });
   const admin1 = await prisma.user.upsert({
     where: { email: "admin@liemresearch.com" },
     create: {

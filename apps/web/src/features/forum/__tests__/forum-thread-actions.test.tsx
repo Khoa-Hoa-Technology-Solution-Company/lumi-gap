@@ -24,8 +24,8 @@ describe("Research thread actions and semantics", () => {
     const markup = render({ reactionPending: true, acceptancePending: true });
     expect(markup).toMatch(/<button[^>]*aria-busy="true"[^>]*aria-label="Add reaction"/);
     expect(markup).toMatch(/<button[^>]*disabled[^>]*title="This marks the author/);
-    expect(markup).toContain('aria-label="Helpful 2"');
-    expect(markup).toContain('title="This was useful to the community."');
+    expect(markup).not.toContain('aria-label="Helpful 2"');
+    expect(markup).not.toContain('title="This was useful to the community."');
     expect(markup).toContain('aria-label="More response actions"');
   });
   it("uses real chronological, unanswered, activity and follow semantics in both navigations", () => {
