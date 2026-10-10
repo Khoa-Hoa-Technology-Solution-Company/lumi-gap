@@ -49,6 +49,13 @@ model Notification {
   title               String
   message             String
   type                String
+  eventKey            String?  @unique @map("event_key") @db.VarChar(200)
+  emailPayload        Json?    @map("email_payload")
+  emailStatus         String?  @map("email_status") @db.VarChar(24)
+  emailClaimedAt      DateTime? @map("email_claimed_at") @db.Timestamptz(6)
+  emailSentAt         DateTime? @map("email_sent_at") @db.Timestamptz(6)
+  dispatchedAt        DateTime? @map("dispatched_at") @db.Timestamptz(6)
+  pushSentAt          DateTime? @map("push_sent_at") @db.Timestamptz(6)
   paperId             String?  @map("paper_id") @db.Uuid
   targetKind          String?  @map("target_kind") @db.VarChar(32)
   targetLegacyMongoId String?  @map("target_legacy_mongo_id") @db.VarChar(24)
@@ -60,6 +67,7 @@ model Notification {
   @@index([userId, isRead, createdAt])
   @@index([role, createdAt])
   @@index([targetKind, targetUuid])
+  @@index([emailStatus, dispatchedAt])
   @@map("notifications")
 }
 

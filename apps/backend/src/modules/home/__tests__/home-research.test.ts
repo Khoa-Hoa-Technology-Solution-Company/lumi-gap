@@ -16,9 +16,9 @@ describe.sequential("Research Home real data and access boundaries", () => {
   const community = randomUUID(), hiddenTopic = randomUUID(), privateTopic = randomUUID();
   const claims = (id: string, role: "user" | "admin" = "user") => ({ sub: id, role }) as AuthClaims;
   beforeAll(async () => {
-    await db.user.createMany({ data: users.map((id) => ({ id, email: `${id}@home-test.invalid`, fullName: "Home research test", researchInterests: [`home-interest-${user}`] })) });
+    await db.user.createMany({ data: users.map((id) => ({ id, email: `${id}@home-test.invalid`, fullName: "Home research test", emailVerifiedAt: new Date(), researchInterests: [`home-interest-${user}`] })) });
     await db.userEmail.createMany({ data: users.map((id) => ({ userId: id, normalizedEmail: `${id}@home-test.invalid`, verifiedAt: new Date() })) });
-    await db.academicProfile.createMany({ data: [{ userId: user, academicRole: "STUDENT" }, { userId: lecturer, academicRole: "LECTURER" }] });
+    await db.academicProfile.createMany({ data: [{ userId: user, academicRole: "STUDENT" }, { userId: lecturer, academicRole: "LECTURER", roleVerificationStatus: "VERIFIED", positionStatus: "VERIFIED" }] });
     await db.userCapability.createMany({ data: ["STRUCTURED_REVIEW", "MENTOR_PROJECT"].map((capability) => ({ userId: lecturer, capability, status: "ACTIVE", source: "home-test" })) });
     await db.project.createMany({ data: [
       { id: active, ownerId: user, title: "Active screening work", status: "ACTIVE" },
@@ -44,7 +44,7 @@ describe.sequential("Research Home real data and access boundaries", () => {
     await db.submissionRevision.create({ data: { id: revision, submissionId: submission, revisionNumber: 1, uploadedById: user, sizeBytes: 32, contentType: "MARKDOWN", contentSnapshot: "Research proposal for review" } });
     await db.reviewRequest.create({ data: { id: request, projectId: active, submissionId: submission, requesterId: user, templateVersionId: version, artifactRevisionId: revision, status: "REVISION_REQUESTED" } });
     await db.reviewerAssignment.create({ data: { submissionId: submission, reviewerId: lecturer, assignedById: user, anonymousCode: randomUUID(), status: "accepted" } });
-    await db.mentorRelationship.create({ data: { projectId: active, mentorUserId: lecturer, requestedBy: user, status: "PENDING", message: "Please mentor our evidence work" } });
+    await db.mentorshipRequest.create({ data: { projectId: active, mentorUserId: lecturer, requestedBy: user, status: "PENDING", message: "Please mentor our evidence work" } });
     await db.projectInvitation.createMany({ data: [
       { projectId: shared, invitedById: other, email: `${user}@home-test.invalid`, expiresAt: new Date(Date.now() + 86400_000) },
       { projectId: privateId, invitedById: other, email: `${user}@home-test.invalid`, expiresAt: new Date(0) },
@@ -59,7 +59,7 @@ describe.sequential("Research Home real data and access boundaries", () => {
     await db.forumPost.deleteMany({ where: { id: { in: [privateTopic, hiddenTopic] } } });
     await db.community.deleteMany({ where: { id: community } });
     await db.projectInvitation.deleteMany({ where: { projectId: { in: projects } } });
-    await db.mentorRelationship.deleteMany({ where: { projectId: { in: projects } } });
+    await db.mentorshipRequest.deleteMany({ where: { projectId: { in: projects } } });
     await db.reviewerAssignment.deleteMany({ where: { submissionId: submission } });
     await db.reviewRequest.deleteMany({ where: { id: request } });
     await db.submissionRevision.deleteMany({ where: { id: revision } });

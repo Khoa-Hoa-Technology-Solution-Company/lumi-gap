@@ -26,7 +26,7 @@ export function canUseOpenReviewOpportunities(participantScope: ParticipantScope
 }
 
 export function eligiblePeerReviewer(role: string | null | undefined, verification: string | null | undefined): boolean {
-  return (role === "LECTURER" || role === "RESEARCHER") && verification === "VERIFIED";
+  return role === "LECTURER" && verification === "VERIFIED";
 }
 
 export function submissionReviewStatus(assignments: Array<{ status: string; requestStatus?: string | null; decision?: string | null }>): string {

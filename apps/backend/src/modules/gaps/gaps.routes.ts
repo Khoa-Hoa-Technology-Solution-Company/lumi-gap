@@ -2,10 +2,10 @@ import { Router } from "express";
 import rateLimit from "express-rate-limit";
 import { env } from "../../config/env.js";
 import { requireAuth } from "../../common/middleware/auth.js";
+import { requireResearchWorkflow } from "../authorization/authorization.middleware.js";
 import { validate } from "../../common/middleware/validate.js";
 import {
   AnalyzeGapSchema,
-  ListGapsQuerySchema,
   PatchGapSchema,
   GapIdParamsSchema,
   DirectionsBodySchema,
@@ -20,7 +20,7 @@ import { gapValidationService } from "./gap-validation.service.js";
 export const gapsRouter: Router = Router();
 
 // Every gap belongs to a user — auth is mandatory on the whole router.
-gapsRouter.use(requireAuth);
+gapsRouter.use(requireAuth, requireResearchWorkflow);
 
 /**
  * Per-user throttle for gap analysis. Each /analyze run costs a deep-model call,

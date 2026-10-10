@@ -15,7 +15,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { requiresAcademicProfile, useCurrentUser, useLogout } from "@/features/auth";
+import { resolvePostAuthPath, useCurrentUser, useLogout } from "@/features/auth";
 import { useCreditBalance } from "@/features/credits";
 import { useAuthStore } from "@/stores/auth-store";
 import { useBookmarks } from "@/features/bookmarks";
@@ -45,7 +45,7 @@ const navGroups = [
       { to: "/submissions", label: "Submissions" },
       { to: "/reviews", label: "Review Center" },
       { to: "/review-templates", label: "Review Templates" },
-      { to: "/review-opportunities", label: "Review Opportunities" },
+      { to: "/academic-support", label: "Academic Support" },
     ],
   },
   {
@@ -207,14 +207,16 @@ export function MainLayout() {
     return false;
   }).length || 0;
 
-  if (isAuthed && !currentUserQuery.isFetching && currentUserData?.user && requiresAcademicProfile(activeUser)) {
-    return (
-      <Navigate
-        to="/onboarding/academic-profile"
-        state={{ from: location.pathname }}
-        replace
-      />
-    );
+  if (isAuthed && (currentUserQuery.isLoading || currentUserQuery.isPlaceholderData)) {
+    return <PageLoadingFallback />;
+  }
+
+  if (isAuthed && !currentUserQuery.isFetching && currentUserData?.user) {
+    const currentPath = `${location.pathname}${location.search}${location.hash}`;
+    const destination = resolvePostAuthPath(currentUserData.user, currentPath);
+    if (destination !== currentPath) {
+      return <Navigate to={destination} state={{ from: currentPath }} replace />;
+    }
   }
 
   return (

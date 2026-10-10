@@ -32,6 +32,7 @@ export interface ReviewAssignmentSummary {
 }
 
 export interface ReviewCenterItem {
+  mentorRelationshipActive?: boolean;
   id: string;
   status: ReviewRequestStatus;
   message?: string;

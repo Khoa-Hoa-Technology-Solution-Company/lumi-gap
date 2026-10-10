@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { requireAuth } from "../../common/middleware/auth.js";
+import { requireResearchWorkflow } from "../authorization/authorization.middleware.js";
 import { requirePermission } from "../../common/middleware/permission.js";
 import { validate } from "../../common/middleware/validate.js";
 import { objectIdSchema } from "../../common/validation/database-id.js";
@@ -32,7 +33,7 @@ const commentSchema = z.object({ body: z.string().trim().min(1).max(5000) });
 const updateCommentSchema = z.object({ status: z.enum(["open", "resolved"]) });
 
 export const workspaceRouter: Router = Router();
-workspaceRouter.use(requireAuth);
+workspaceRouter.use(requireAuth, requireResearchWorkflow);
 
 workspaceRouter.post("/", requirePermission("workspace:write"), validate(createSchema), async (req, res) => {
   const data = await workspaceService.create(req.body, req.user!.sub, req.user!.role);

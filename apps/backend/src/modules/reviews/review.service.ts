@@ -1,14 +1,14 @@
-import crypto from "node:crypto";
 import type { AcademicReviewInput, ReviewAvailabilitySettings, SubmissionType } from "@trend/shared-types";
 import { AppError } from "../../common/exceptions/app-error.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { parseDatabaseId, publicDatabaseId } from "../../infrastructure/database/database-id.js";
 import { auditService } from "../audit/audit.service.js";
-import { assertPeerReviewer, assertReviewerInTransaction, assertReviewAdmission, defaultPeerReviewTemplate, lockReviewerAndSubmission, refreshSubmissionReviewStatus } from "./peer-review-access.js";
+import { assertPeerReviewer, assertReviewerInTransaction, lockReviewerAndSubmission, refreshSubmissionReviewStatus } from "./peer-review-access.js";
 import { notificationService } from "../notifications/notification.service.js";
 import { defaultReviewCriteria } from "./review.constants.js";
 import { hydrateReviewTemplateVersion } from "./review-template.service.js";
 import { reviewOutcome, weightedRubricScore } from "./academic-review.rules.js";
+import { resolveFeaturedWorks } from "../academic-profiles/academic-featured-works.service.js";
 
 type AvailabilityInput = Omit<ReviewAvailabilitySettings, "activeReviewCount">;
 type OpportunityFilters = { researchField?: string; topic?: string; submissionType?: SubmissionType; methodology?: string; dateFrom?: Date; sort?: "relevance" | "newest" };
@@ -124,21 +124,8 @@ export const reviewService = {
     return { availability: settings, opportunities };
   },
 
-  async acceptOpportunity(submissionInput: string, reviewerInput: string) {
-    const context = await reviewerContext(reviewerInput);
-    const submission = await resolveSubmission(submissionInput);
-    const assignment = await getPrisma().$transaction(async (tx) => {
-      await lockReviewerAndSubmission(tx, context.user.id, submission.id);
-      const live = await assertReviewAdmission(tx, submission.id, context.user.id, { requireAvailable: true });
-      if (!live.openForReview || !["submitted", "ready_for_review", "revised"].includes(live.status) || !live.currentRevisionId) throw AppError.conflict("This research is not accepting open reviews");
-      const version = await defaultPeerReviewTemplate(tx, live.submissionType);
-      const request = await tx.reviewRequest.create({ data: { submissionId: live.id, projectId: live.projectId, requesterId: live.createdById, templateVersionId: version.id, artifactRevisionId: live.currentRevisionId, origin: "OPEN_OPPORTUNITY", status: "ACCEPTED" } });
-      const created = await tx.reviewerAssignment.create({ data: { submissionId: live.id, reviewerId: context.user.id, assignedById: live.createdById, reviewRequestId: request.id, artifactRevisionId: live.currentRevisionId, anonymousCode: `R-${crypto.randomBytes(12).toString("hex")}`, status: "accepted" } });
-      await refreshSubmissionReviewStatus(tx, live.id);
-      return created;
-    });
-    await auditService.log("review.opportunity.accepted", { userId: context.user.id, targetTableName: "reviewer_assignments", targetRecordId: assignment.id, details: { submissionId: submission.id } });
-    return assignment;
+  async acceptOpportunity(_submissionInput: string, _reviewerInput: string) {
+    throw AppError.forbidden("Formal review requires a project request and Lecturer acceptance; self-assignment is disabled");
   },
 
   async declareConflict(submissionInput: string, reviewerInput: string, reason: string) {
@@ -202,6 +189,12 @@ export const reviewService = {
       const liveProfile = await assertReviewerInTransaction(tx, reviewer.id);
       const live = await tx.reviewerAssignment.findUniqueOrThrow({ where: { id: assignment.id } });
       const liveRequest = request ? await tx.reviewRequest.findUniqueOrThrow({ where: { id: request.id } }) : null;
+      await tx.$queryRaw`SELECT id FROM projects WHERE id = ${submission.projectId}::uuid FOR UPDATE`;
+      const liveProject = await tx.project.findUniqueOrThrow({ where: { id: submission.projectId } });
+      const revision = await tx.submissionRevision.findFirst({ where: { id: revisionId, submissionId: submission.id } });
+      if (liveProject.status === "ARCHIVED") throw AppError.conflict("Archived projects are read-only");
+      if (!revision || live.submissionId !== submission.id || live.reviewerId !== reviewer.id
+        || (liveRequest && (liveRequest.submissionId !== submission.id || liveRequest.projectId !== submission.projectId || live.artifactRevisionId !== liveRequest.artifactRevisionId))) throw AppError.conflict("Review assignment does not match the target artifact");
       if (live.status !== "accepted" || (liveRequest && !["ACCEPTED", "RESUBMITTED", "IN_REVIEW"].includes(liveRequest.status)) || (liveRequest?.artifactRevisionId ?? live.artifactRevisionId) !== revisionId) throw AppError.conflict("This round has changed or was already submitted; refresh the workspace");
       const storedRound = await tx.humanReview.findUnique({ where: { assignmentId_roundNumber: { assignmentId: assignment.id, roundNumber } } });
       if (storedRound?.status === "SUBMITTED") throw AppError.conflict("Submitted review rounds are immutable");
@@ -246,7 +239,7 @@ export const reviewService = {
   async getReview(assignmentInput: string, reviewerInput: string) {
     const reviewer = await resolveUser(reviewerInput); const prisma = getPrisma(); const assignment = await prisma.reviewerAssignment.findFirst({ where: { ...idWhere(assignmentInput), reviewerId: reviewer.id } });
     if (!assignment) throw AppError.notFound("Review assignment not found");
-    if (["declined", "cancelled"].includes(assignment.status)) throw AppError.forbidden("This assignment no longer grants artifact access");
+    if (!["accepted", "completed"].includes(assignment.status)) throw AppError.forbidden("Accept the review request before accessing the artifact");
     await assertPeerReviewer(reviewer.id);
     const request = assignment.reviewRequestId ? await prisma.reviewRequest.findUnique({ where: { id: assignment.reviewRequestId } }) : null;
     const reviews = await prisma.humanReview.findMany({ where: { assignmentId: assignment.id }, orderBy: { roundNumber: "desc" } });
@@ -254,7 +247,8 @@ export const reviewService = {
     const review = reviews.find((item) => item.status === "DRAFT" && item.revisionId === pinnedRevisionId) ?? reviews.find((item) => item.revisionId === pinnedRevisionId);
     const templateVersion = request ? await hydrateReviewTemplateVersion(request.templateVersionId) : undefined;
     const submission = await prisma.submission.findUniqueOrThrow({ where: { id: assignment.submissionId } });
-    const revision = await prisma.submissionRevision.findUnique({ where: { id: pinnedRevisionId! } });
+    const revision = pinnedRevisionId ? await prisma.submissionRevision.findFirst({ where: { id: pinnedRevisionId, submissionId: assignment.submissionId } }) : null;
+    if (!revision || (request && (request.submissionId !== assignment.submissionId || request.projectId !== submission.projectId || assignment.artifactRevisionId !== request.artifactRevisionId))) throw AppError.conflict("Review assignment does not match the target artifact");
     return {
       assignment: { ...assignment, id: publicDatabaseId(assignment), submissionId: submissionDto(submission) },
       request: request ? { id: publicDatabaseId(request), status: request.status, message: request.message, dueAt: request.dueAt } : undefined,
@@ -273,10 +267,27 @@ export const reviewService = {
     const user = await resolveUser(userInput); let viewerId: string | undefined;
     if (viewerInput) viewerId = (await resolveUser(viewerInput)).id;
     const prisma = getPrisma(); const rows = await prisma.researchContribution.findMany({ where: { contributorId: user.id, ...(user.id === viewerId ? {} : { visibility: "PUBLIC" }) }, orderBy: [{ verifiedAt: "desc" }, { createdAt: "desc" }] });
-    const submissions = await prisma.submission.findMany({ where: { id: { in: rows.flatMap((row) => row.submissionId ? [row.submissionId] : []) } }, select: { id: true, legacyMongoId: true, title: true } });
-    const projects = await prisma.project.findMany({ where: { id: { in: rows.flatMap((row) => row.projectId ? [row.projectId] : []) } }, select: { id: true, legacyMongoId: true, title: true } });
-    const submissionMap = new Map(submissions.map((row) => [row.id, { id: publicDatabaseId(row), title: row.title }])); const projectMap = new Map(projects.map((row) => [row.id, { id: publicDatabaseId(row), title: row.title }]));
-    return rows.map((row) => ({ ...row, id: publicDatabaseId(row), submissionId: row.submissionId ? submissionMap.get(row.submissionId) : undefined, projectId: row.projectId ? projectMap.get(row.projectId) : undefined }));
+    const works = await resolveFeaturedWorks(rows.flatMap(row => [
+      ...(row.projectId ? [{ kind: "PROJECT" as const, source: "LUMIGAP" as const, projectId: row.projectId }] : []),
+      ...(row.submissionId ? [{ kind: "RESEARCH_ARTIFACT" as const, source: "LUMIGAP" as const, submissionId: row.submissionId }] : []),
+    ]), viewerId);
+    const projectMap = new Map(works.filter(work => work.projectId).map(work => [work.projectId!, { id: work.projectId!, title: work.title }]));
+    const submissionMap = new Map(works.filter(work => work.submissionId).map(work => [work.submissionId!, { id: work.submissionId!, title: work.title }]));
+    const sources = await prisma.project.findMany({ where: { id: { in: rows.flatMap(row => row.projectId ? [row.projectId] : []) } }, select: { id: true, legacyMongoId: true } });
+    const artifacts = await prisma.submission.findMany({ where: { id: { in: rows.flatMap(row => row.submissionId ? [row.submissionId] : []) } }, select: { id: true, legacyMongoId: true } });
+    const projects = new Map(sources.map(row => [row.id, projectMap.get(publicDatabaseId(row))]));
+    const submissions = new Map(artifacts.map(row => [row.id, submissionMap.get(publicDatabaseId(row))]));
+    return rows.flatMap(row => {
+      const project = row.projectId ? projects.get(row.projectId) : undefined;
+      const submission = row.submissionId ? submissions.get(row.submissionId) : undefined;
+      // A PUBLIC contribution never publishes its underlying private artifact.
+      if ((row.projectId && !project) || (row.submissionId && !submission)) return [];
+      return [{ id: publicDatabaseId(row), contributorId: publicDatabaseId(user), contributionType: row.contributionType,
+        provenance: row.provenance, verificationStatus: row.verificationStatus, visibility: row.visibility,
+        verifiedAt: row.verifiedAt, createdAt: row.createdAt, updatedAt: row.updatedAt, projectId: project, submissionId: submission,
+        ...(viewerId === user.id ? { description: row.description, evidence: row.evidence } : {}),
+      }];
+    });
   },
 };
 

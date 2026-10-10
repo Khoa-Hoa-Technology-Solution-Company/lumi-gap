@@ -12,7 +12,7 @@ import type {
   InviteProjectMemberRequest,
   ProjectActivity,
   UpdateProjectPaperRequest,
-  MentorRelationship,
+  MentorRelationship, MentorshipRequest, MentorshipCollection,
   RequestMentorRelationshipRequest,
   RespondMentorRelationshipRequest,
 } from "@trend/shared-types";
@@ -94,19 +94,19 @@ export const projectsApi = {
     const res = await api.get(API_ROUTES.projects.activity(id));
     return res.data.data;
   },
-  async mentorships(id: string): Promise<MentorRelationship[]> {
+  async mentorships(id: string): Promise<MentorshipCollection> {
     const res = await api.get(API_ROUTES.projects.mentorships.list(id));
     return res.data.data;
   },
-  async requestMentorship(id: string, data: RequestMentorRelationshipRequest): Promise<MentorRelationship> {
+  async requestMentorship(id: string, data: RequestMentorRelationshipRequest): Promise<MentorshipRequest> {
     const res = await api.post(API_ROUTES.projects.mentorships.request(id), data);
     return res.data.data;
   },
-  async acceptMentorship(id: string, relationshipId: string, data: RespondMentorRelationshipRequest = {}): Promise<MentorRelationship> {
+  async acceptMentorship(id: string, relationshipId: string, data: RespondMentorRelationshipRequest = {}): Promise<MentorshipRequest> {
     const res = await api.post(API_ROUTES.projects.mentorships.accept(id, relationshipId), data);
     return res.data.data;
   },
-  async declineMentorship(id: string, relationshipId: string, data: RespondMentorRelationshipRequest = {}): Promise<MentorRelationship> {
+  async declineMentorship(id: string, relationshipId: string, data: RespondMentorRelationshipRequest = {}): Promise<MentorshipRequest> {
     const res = await api.post(API_ROUTES.projects.mentorships.decline(id, relationshipId), data);
     return res.data.data;
   },

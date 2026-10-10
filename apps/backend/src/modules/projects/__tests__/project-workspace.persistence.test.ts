@@ -35,6 +35,7 @@ describe.sequential("project workspace persistence", () => {
     externalId = external.id;
     paperId = paper.id;
     const verifiedAt = new Date();
+    await prisma.user.updateMany({ where: { id: { in: [ownerId, memberId, outsiderId, externalId] } }, data: { emailVerifiedAt: verifiedAt } });
     await prisma.userEmail.createMany({ data: [
       { userId: owner.id, normalizedEmail: emails.owner, isPrimary: true, purpose: "ACCOUNT", verifiedAt },
       { userId: member.id, normalizedEmail: emails.member, isPrimary: true, purpose: "ACCOUNT", verifiedAt },
@@ -204,8 +205,9 @@ describe.sequential("project workspace persistence", () => {
       .resolves.toEqual({ status: "ACCEPTED" });
     await expect(projectService.getProjectById(project._id, externalId)).resolves.toMatchObject({ accessRole: "MEMBER" });
     await expect(projectService.getProjectById(otherPrivate._id, externalId)).rejects.toMatchObject({ statusCode: 404 });
-    await expect(projectService.createProject({ title: "External standalone project", status: "ACTIVE" }, externalId))
-      .rejects.toMatchObject({ statusCode: 403 });
+    const ownProject = await projectService.createProject({ title: "Non-FPT standalone project", status: "ACTIVE" }, externalId);
+    projectIds.push(ownProject._id);
+    expect(ownProject.title).toBe("Non-FPT standalone project");
 
     const fpt = await getPrisma().institution.findUniqueOrThrow({ where: { slug: "fpt-university" } });
     await getPrisma().affiliation.create({

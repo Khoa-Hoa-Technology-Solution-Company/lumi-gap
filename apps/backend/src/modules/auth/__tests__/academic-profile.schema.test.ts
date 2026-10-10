@@ -9,6 +9,28 @@ const minimalResearchContext = {
 };
 
 describe("academic profile onboarding contracts", () => {
+  it.each(["researchInterests", "skills"] as const)("accepts zero to five optional %s, rejects a sixth", field => {
+    const payload = { academicRole: "LECTURER", institutionName: "FPT University", positionTitle: "Lecturer", researchAreas: ["Education"] };
+    expect(UpdateAcademicProfileSchema.safeParse(payload).success).toBe(true);
+    expect(UpdateAcademicProfileSchema.safeParse({ ...payload, [field]: [] }).success).toBe(true);
+    expect(UpdateAcademicProfileSchema.safeParse({ ...payload, [field]: ["One", "Two", "Three", "Four", "Five"] }).success).toBe(true);
+    const result = UpdateAcademicProfileSchema.safeParse({ ...payload, [field]: ["One", "Two", "Three", "Four", "Five", "Six"] });
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.issues).toEqual(expect.arrayContaining([expect.objectContaining({ path: [field], code: "too_big" })]));
+  });
+  it.each(["researchAreas", "expertiseAreas"] as const)("accepts three %s and rejects a fourth even through the compatibility alias", field => {
+    const payload = { academicRole: "LECTURER", institutionName: "FPT University", positionTitle: "Lecturer" };
+    expect(UpdateAcademicProfileSchema.safeParse({ ...payload, [field]: ["Software Engineering", "Education", "Artificial Intelligence"] }).success).toBe(true);
+    const result = UpdateAcademicProfileSchema.safeParse({ ...payload, [field]: ["Software Engineering", "Education", "Artificial Intelligence", "Data Science"] });
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.issues).toEqual(expect.arrayContaining([expect.objectContaining({ path: [field], code: "too_big" })]));
+  });
+  it("accepts non-FPT students with a named major and optional interests", () => {
+    expect(UpdateAcademicProfileSchema.safeParse({ academicRole: "STUDENT", institutionName: "University of Melbourne", programName: "Computer Science", researchAreas: ["Artificial Intelligence"] }).success).toBe(true);
+  });
+  it.each(["STUDENT", "RESEARCHER", "LECTURER"] as const)("requires an institution for %s", academicRole => {
+    expect(UpdateAcademicProfileSchema.safeParse({ academicRole, programName: "Computer Science", positionTitle: "Research Staff", researchAreas: ["Education"], noAffiliation: true }).success).toBe(false);
+  });
   it("rejects attempts to assign an authorization role during registration", () => {
     const result = RegisterSchema.safeParse({
       email: "new-user@example.test",
@@ -90,7 +112,7 @@ describe("academic profile onboarding contracts", () => {
     if (!result.success) expect(result.error.issues).toEqual(expect.arrayContaining([expect.objectContaining({ path: ["institutionName"] })]));
   });
 
-  it("requires research areas and interests for personalization", () => {
+  it("requires research areas for personalization", () => {
     const result = UpdateAcademicProfileSchema.safeParse({
       academicRole: "RESEARCHER",
       positionTitle: "Research Assistant",
@@ -101,7 +123,6 @@ describe("academic profile onboarding contracts", () => {
     if (!result.success) {
       expect(result.error.issues).toEqual(expect.arrayContaining([
         expect.objectContaining({ path: ["researchAreas"] }),
-        expect.objectContaining({ path: ["researchInterests"] }),
       ]));
     }
   });

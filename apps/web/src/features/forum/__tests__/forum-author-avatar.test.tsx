@@ -9,6 +9,18 @@ vi.mock("@/features/academic-profile/hooks/use-academic-profile", () => ({ useAc
 afterEach(() => vi.unstubAllGlobals());
 
 describe("Forum avatar image recovery", () => {
+  it("shows the badge only for explicitly verified FPT affiliation", async () => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    const container = document.createElement("div");
+    const root = createRoot(container);
+    const author = { id: "reader", fullName: "Thanh Nguyen", affiliationVerified: true };
+    try {
+      await act(async () => root.render(<ForumAuthorAvatar author={author} showVerifiedBadge />));
+      expect(container.querySelector('[title="FPT Education affiliation verified"]')).toBeNull();
+      await act(async () => root.render(<ForumAuthorAvatar author={{ ...author, fptAffiliationVerified: true }} showVerifiedBadge />));
+      expect(container.querySelector('[title="FPT Education affiliation verified"]')).not.toBeNull();
+    } finally { await act(async () => root.unmount()); }
+  });
   it("falls back after a failed image and displays a newly updated profile photo", async () => {
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
     const container = document.createElement("div");

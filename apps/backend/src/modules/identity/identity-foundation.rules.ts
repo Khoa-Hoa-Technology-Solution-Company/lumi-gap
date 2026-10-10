@@ -29,32 +29,29 @@ export function deriveParticipantScope(
 export interface CapabilityIdentity {
   systemRole: "USER" | "ADMIN";
   accountActive: boolean;
+  emailVerified?: boolean;
   academicRole?: AcademicRole;
   academicRoleVerificationStatus?: VerificationStatus | "SELF_DECLARED";
   participantScope: ParticipantScope;
   currentHostPositionVerified?: boolean;
+  positionVerified?: boolean;
 }
 
 export function policyCapabilities(identity: CapabilityIdentity): UserCapability[] {
   if (!identity.accountActive) return [];
+  if (identity.systemRole !== "ADMIN" && !identity.emailVerified) return [];
   const capabilities: UserCapability[] = identity.systemRole === "ADMIN" ? ["MANAGE_SYSTEM"] : ["BASIC_RESEARCH"];
-  if (identity.systemRole !== "ADMIN" && identity.participantScope !== "EXTERNAL") capabilities.push("CREATE_RESEARCH_PROJECT");
-  if (["LECTURER", "RESEARCHER"].includes(identity.academicRole ?? "")
-    && identity.academicRoleVerificationStatus === "VERIFIED") {
-    capabilities.push("REVIEW_ARTIFACT", "STRUCTURED_REVIEW");
-  }
-  if (identity.academicRole === "LECTURER" && identity.academicRoleVerificationStatus === "VERIFIED") {
-    if (identity.participantScope === "INTERNAL" && identity.currentHostPositionVerified === true) {
-      capabilities.push(
-        "APPROVE_ACADEMIC_CONTRIBUTION",
-        "MENTOR_PROJECT",
-      );
-    }
+  if (identity.systemRole !== "ADMIN") capabilities.push("CREATE_RESEARCH_PROJECT");
+  // These express eligibility; object access still requires an assignment or mentor relationship.
+  if (identity.academicRole === "LECTURER" && identity.academicRoleVerificationStatus === "VERIFIED"
+    && identity.positionVerified === true) {
+    capabilities.push("REVIEW_ARTIFACT", "STRUCTURED_REVIEW", "MENTOR_PROJECT");
+    if (identity.participantScope === "INTERNAL" && identity.currentHostPositionVerified === true) capabilities.push("APPROVE_ACADEMIC_CONTRIBUTION");
   }
   return capabilities;
 }
 
 export function invitationCanAdmitAcademicRole(role: AcademicRole): boolean {
-  return role === "RESEARCHER" || role === "LECTURER";
+  return ["STUDENT", "RESEARCHER", "LECTURER"].includes(role);
 }
 

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { MAX_ONBOARDING_RESEARCH_AREAS, MAX_ONBOARDING_RESEARCH_INTERESTS, MAX_ONBOARDING_RESEARCH_SKILLS } from "@trend/shared-types";
 
 export const RegisterSchema = z.object({
   email: z.string().email().toLowerCase(),
@@ -16,30 +17,30 @@ export const UpdateAcademicProfileSchema = z.object({
   primaryPosition: z.enum(["STUDENT", "LECTURER", "RESEARCH_STAFF", "INDUSTRY_PRACTITIONER", "OTHER"]).optional(),
   positionTitle: z.string().trim().max(160).optional(),
   institutionName: z.string().trim().max(200).optional().nullable(),
+  institutionId: z.string().uuid().optional(),
   noAffiliation: z.boolean().optional(),
   department: z.string().trim().max(200).optional().nullable(),
   specifiedPosition: z.string().trim().max(160).optional(),
   country: z.string().trim().min(2).max(100).optional(),
   campusId: z.string().uuid().optional().nullable(),
   programId: z.string().uuid().optional().nullable(),
-  researchAreas: z.array(z.string().trim().min(1).max(80)).max(20).optional(),
-  expertiseAreas: z.array(z.string().trim().min(1).max(80)).max(30).optional(),
-  researchInterests: z.array(z.string().trim().min(1).max(80)).max(20).optional(),
+  programName: z.string().trim().min(2).max(160).optional(),
+  researchAreas: z.array(z.string().trim().min(1).max(80)).max(MAX_ONBOARDING_RESEARCH_AREAS).optional(),
+  expertiseAreas: z.array(z.string().trim().min(1).max(80)).max(MAX_ONBOARDING_RESEARCH_AREAS).optional(),
+  researchInterests: z.array(z.string().trim().min(1).max(80)).max(MAX_ONBOARDING_RESEARCH_INTERESTS).optional(),
   researchKeywords: z.array(z.string().trim().min(1).max(80)).max(30).optional(),
-  skills: z.array(z.string().trim().min(1).max(80)).max(30).optional(),
+  skills: z.array(z.string().trim().min(1).max(80)).max(MAX_ONBOARDING_RESEARCH_SKILLS).optional(),
 }).strict().superRefine((data, ctx) => {
   const researchAreas = data.researchAreas ?? data.expertiseAreas;
   if (!researchAreas?.length) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["researchAreas"], message: "Select at least one research area" });
   }
-  if (!data.researchInterests?.length) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["researchInterests"], message: "Select at least one research interest" });
-  }
+  if (data.noAffiliation || (!data.institutionId && !data.institutionName?.trim())) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["institutionName"], message: "Institution is required" });
   if (data.academicRole === "STUDENT") {
-    if (data.noAffiliation || !data.institutionName?.trim()) {
+    if (data.noAffiliation || (!data.institutionId && !data.institutionName?.trim())) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["institutionName"], message: "Institution is required" });
     }
-    if (!data.programId) {
+    if (!data.programId && !data.programName) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["programId"], message: "Program / Major is required for students" });
     }
     return;
@@ -47,11 +48,16 @@ export const UpdateAcademicProfileSchema = z.object({
   if (!(data.positionTitle?.trim() || data.specifiedPosition?.trim())) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["positionTitle"], message: "Current position is required" });
   }
-  if (!data.institutionName?.trim() && !data.noAffiliation) {
+  if (!data.institutionId && !data.institutionName?.trim() && !data.noAffiliation) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["institutionName"], message: "Institution is required" });
   }
 });
 export type UpdateAcademicProfileInput = z.infer<typeof UpdateAcademicProfileSchema>;
+
+export const AcademicOnboardingOptionsSchema = z.object({
+  q: z.string().trim().max(200).optional(),
+  institutionId: z.string().uuid().optional(),
+}).strict();
 
 export const LoginSchema = z.object({
   email: z.string().email().toLowerCase(),

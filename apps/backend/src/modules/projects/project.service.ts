@@ -13,10 +13,10 @@ import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { logger } from "../../infrastructure/logger.js";
 import { notificationService } from "../notifications/notification.service.js";
 import { createOpaqueToken, hashOpaqueToken } from "../auth/token.service.js";
-import { participantScopeForUser } from "../identity/participant-scope.service.js";
+import { assertResearchWorkflowAccess } from "../authorization/research-access.service.js";
 import { projectActivityService } from "./project-activity.service.js";
 import type { ProjectAiFeature } from "./project-scope.js";
-import { assertProjectActionAllowed, invitationBelongsToUser } from "./project-workspace.rules.js";
+import { assertProjectActionAllowed, canReadProjectSummary, invitationBelongsToUser } from "./project-workspace.rules.js";
 import { sendProjectInvitationEmail } from "./project-invitation.mail.js";
 
 const ACTIVE = "ACTIVE";
@@ -91,6 +91,7 @@ function normalizeRole(role: string): ProjectRole {
 
 async function access(projectId: string, actorIdInput: string) {
   const [row, actor] = await Promise.all([resolveProject(projectId), resolveUser(actorIdInput)]);
+  await assertResearchWorkflowAccess(actor.id);
   const membership = await getPrisma().projectMember.findUnique({
     where: { projectId_userId: { projectId: row.id, userId: actor.id } },
   });
@@ -289,10 +290,7 @@ async function hydrate(row: Awaited<ReturnType<typeof resolveProject>>, viewerId
 export class ProjectService {
   async createProject(data: CreateProjectRequest, ownerIdInput: string) {
     const owner = await resolveUser(ownerIdInput);
-    const participantScope = await participantScopeForUser(owner.id);
-    if (owner.admissionBasis === "INVITATION" && participantScope === "EXTERNAL") {
-      throw AppError.forbidden("Invited external collaborators can join invited projects but cannot create projects until a current FPT affiliation is verified");
-    }
+    await assertResearchWorkflowAccess(owner.id);
     const row = await getPrisma().$transaction(async (tx) => {
       const created = await tx.project.create({ data: {
         title: data.title,
@@ -311,6 +309,7 @@ export class ProjectService {
 
   async getProjectsByUser(userIdInput: string) {
     const actor = await resolveUser(userIdInput);
+    await assertResearchWorkflowAccess(actor.id);
     const memberships = await getPrisma().projectMember.findMany({ where: { userId: actor.id, status: ACTIVE }, select: { projectId: true } });
     const rows = await getPrisma().project.findMany({
       where: { OR: [{ ownerId: actor.id }, { id: { in: memberships.map((membership) => membership.projectId) } }] },
@@ -322,13 +321,13 @@ export class ProjectService {
   async getProjectById(projectId: string, userIdInput: string) {
     const rights = await access(projectId, userIdInput);
     if (rights.isMember) return hydrate(rights.row, rights.actor.id);
-    if (rights.row.visibility === "PUBLIC_SUMMARY") return hydrate(rights.row, rights.actor.id, true);
+    if (canReadProjectSummary(rights.row.visibility, rights.isMember)) return hydrate(rights.row, rights.actor.id, true);
     throw AppError.notFound("Project not found");
   }
 
   async getPublicProjectById(projectId: string) {
     const row = await resolveProject(projectId);
-    if (row.visibility !== "PUBLIC_SUMMARY") throw AppError.notFound("Project not found");
+    if (!canReadProjectSummary(row.visibility, false)) throw AppError.notFound("Project not found");
     return hydrate(row, undefined, true);
   }
 

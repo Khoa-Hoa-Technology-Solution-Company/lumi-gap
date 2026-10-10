@@ -10,6 +10,8 @@ node_modules
 !.env.example
 apps/backend/uploads
 coverage
+.harness
+artifacts
 docs
 legacy
 *.log

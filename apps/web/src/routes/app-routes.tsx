@@ -1,6 +1,7 @@
 import { lazy, Suspense } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { ProtectedRoute } from "@/components/protected-route";
+import { ResearchWorkflowRoute } from "@/components/research-workflow-route";
 import { LITERATURE_PATH } from "@/features/home/utils/home-search";
 import { loadForumDetailPage } from "@/features/forum/utils/forum-page-loading";
 
@@ -23,6 +24,7 @@ const TopicDetailPage = lazy(() => import("@/pages/trends-topic").then((m) => ({
 const BookmarksPage = lazy(() => import("@/pages/bookmarks").then((m) => ({ default: m.BookmarksPage })));
 const NotificationsPage = lazy(() => import("@/pages/notifications").then((m) => ({ default: m.NotificationsPage })));
 const AccountSettingsPage = lazy(() => import("@/pages/profile").then((m) => ({ default: m.AccountSettingsPage })));
+const LecturerVerificationPage = lazy(() => import("@/features/academic-profile/components/lecturer-verification-status").then(m => ({ default: m.LecturerVerificationStatusPage })));
 const ProfilePage = lazy(() => import("@/pages/profile-overview").then((m) => ({ default: m.ProfilePage })));
 const PaperDetailPage = lazy(() => import("@/pages/papers/paper-detail").then((m) => ({ default: m.PaperDetailPage })));
 const PaperReviewPage = lazy(() => import("@/pages/papers/paper-review").then((m) => ({ default: m.PaperReviewPage })));
@@ -39,7 +41,6 @@ const AdminEvaluationPage = lazy(() => import("@/pages/admin/evaluation").then((
 const AdminPapersPage = lazy(() => import("@/pages/admin/papers").then((m) => ({ default: m.AdminPapersPage })));
 const SubmitPaperPage = lazy(() => import("@/pages/papers/submit-paper").then((m) => ({ default: m.SubmitPaperPage })));
 const AdminUsersPage = lazy(() => import("@/pages/admin/users").then((m) => ({ default: m.AdminUsersPage })));
-const AdminProfilesPage = lazy(() => import("@/pages/admin/profiles").then((m) => ({ default: m.AdminProfilesPage })));
 const AdminAcademicVerificationsPage = lazy(() => import("@/pages/admin/academic-verifications").then((m) => ({ default: m.AdminAcademicVerificationsPage })));
 const AdminCorpusValidationPage = lazy(() => import("@/pages/admin/corpus-validation").then((m) => ({ default: m.AdminCorpusValidationPage })));
 const AdminCommunityPage = lazy(() => import("@/pages/admin/community").then((m) => ({ default: m.AdminCommunityPage })));
@@ -62,6 +63,7 @@ const CommunityListPage = lazy(() => import("@/pages/communities/community-list"
 const CommunityDetailPage = lazy(() => import("@/pages/communities/community-detail").then((m) => ({ default: m.CommunityDetailPage })));
 const CommunityNewPage = lazy(() => import("@/pages/communities/community-new").then((m) => ({ default: m.CommunityNewPage })));
 const CommunityManagePage = lazy(() => import("@/pages/communities/community-manage").then((m) => ({ default: m.CommunityManagePage })));
+const AcademicSupportPage = lazy(() => import("@/pages/academics/academic-support").then(m => ({ default: m.AcademicSupportPage })));
 const LecturerDirectoryPage = lazy(() => import("@/pages/academics/lecturer-directory").then((m) => ({ default: m.LecturerDirectoryPage })));
 const PublicAcademicProfilePage = lazy(() => import("@/pages/academics/public-academic-profile").then((m) => ({ default: m.PublicAcademicProfilePage })));
 const ForumActivityPage = lazy(() => import("@/pages/academics/forum-activity").then((m) => ({ default: m.ForumActivityPage })));
@@ -166,14 +168,17 @@ export function AppRoutes() {
             <Route path="/papers/format-check" element={<FormatCheckerPage />} />
             <Route path="/my-papers" element={<Navigate to="/settings/my-papers" replace />} />
             <Route path="/settings" element={<Navigate to="/settings/profile" replace />} />
+            <Route path="/settings/verification/lecturer" element={<LecturerVerificationPage />} />
             <Route path="/settings/:section" element={<AccountSettingsPage />} />
+            <Route path="/rankings" element={<RankingsPage />} />
+            <Route element={<ResearchWorkflowRoute />}>
             <Route path="/reports" element={<ReportsListPage />} />
             <Route path="/reports/:id" element={<ReportViewerPage />} />
             <Route path="/projects" element={<ProjectsListPage />} />
             <Route path="/research-gaps" element={<ResearchGapsPage />} />
             <Route path="/research-gap/discover" element={<ResearchGapDiscoverPage />} />
-            <Route path="/rankings" element={<RankingsPage />} />
             <Route path="/review-opportunities" element={<ReviewOpportunitiesPage />} />
+            <Route path="/academic-support" element={<AcademicSupportPage />} />
             <Route path="/reviews" element={<ReviewDashboardPage />} />
             <Route path="/reviews/:assignmentId" element={<ReviewWorkspacePage />} />
             <Route path="/review-requests/:requestId" element={<ReviewRequestDetailPage />} />
@@ -183,6 +188,7 @@ export function AppRoutes() {
             <Route path="/submissions" element={<SubmissionListPage />} />
             <Route path="/submissions/new" element={<SubmissionNewPage />} />
             <Route path="/submissions/:id" element={<SubmissionDetailPage />} />
+            </Route>
             <Route path="/forum/new" element={<ForumNewPage />} />
             <Route path="/communities/new" element={<CommunityNewPage />} />
             <Route path="/communities/:slug/manage" element={<CommunityManagePage />} />

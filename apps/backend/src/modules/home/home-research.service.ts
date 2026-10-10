@@ -80,10 +80,12 @@ export async function researchWorkspace(userId: string, academicRole?: AcademicR
       WHERE i.status = 'PENDING' AND i.expires_at > NOW() AND p.archived_at IS NULL AND p.status NOT IN ('ARCHIVED', 'COMPLETED')
         AND i.email IN (SELECT normalized_email FROM user_emails WHERE user_id = ${userId}::uuid AND verified_at IS NOT NULL)
       UNION ALL
-      SELECT 'mentor-' || m.id, 'mentorship', p.title, m.message, NULL, '/home#home-attention', m.created_at,
+      SELECT 'mentor-' || m.id, 'mentorship', p.title, m.message, NULL, '/academic-support', m.created_at,
         ${academicRole === "LECTURER" ? 80 : 60}, p.id::text, m.id::text
-      FROM mentor_relationships m JOIN projects p ON p.id = m.project_id
-      WHERE m.mentor_user_id = ${userId}::uuid AND m.status = 'PENDING' AND ${capabilities.includes("MENTOR_PROJECT")}
+      FROM mentorship_requests m JOIN projects p ON p.id = m.project_id
+      WHERE m.status = 'PENDING' AND (m.expires_at IS NULL OR m.expires_at > NOW())
+        AND ((m.direction='PROJECT_TO_LECTURER' AND m.mentor_user_id = ${userId}::uuid AND ${capabilities.includes("MENTOR_PROJECT")})
+          OR (m.direction='LECTURER_TO_PROJECT' AND p.owner_id=${userId}::uuid))
         AND p.archived_at IS NULL AND p.status NOT IN ('ARCHIVED', 'COMPLETED')
       UNION ALL
       SELECT 'contribution-' || c.id, 'contribution', p.title, NULL, NULL,

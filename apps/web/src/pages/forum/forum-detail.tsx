@@ -34,7 +34,6 @@ import {
   useFollowThread,
   useForumPost,
   useForumReaction,
-  useForumVote,
   useModerateForumContent,
   useUnacceptAnswer,
   useUpdateForumComment,
@@ -57,7 +56,6 @@ import { ForumThreadTimeline } from "@/features/forum/components/forum-thread-ti
 import { ForumPostTypeBadge } from "@/features/forum/components/forum-post-type-badge";
 import { ForumThreadDiscovery } from "@/features/forum/components/forum-thread-discovery";
 import { ForumReactionPicker } from "@/features/forum/components/forum-reaction-picker";
-import { ForumHelpfulButton } from "@/features/forum/components/forum-helpful-button";
 import { ForumAuthorPopover } from "@/features/forum/components/forum-author-popover";
 import { ForumTopicStats } from "@/features/forum/components/forum-topic-stats";
 import { ForumNotificationMenu } from "@/features/forum/components/forum-notification-menu";
@@ -87,7 +85,6 @@ export function ForumDetailPage() {
 
   const add = useAddForumComment();
   const reaction = useForumReaction();
-  const helpful = useForumVote();
   const accept = useAcceptAnswer();
   const unaccept = useUnacceptAnswer();
   const notification = useForumNotificationLevel();
@@ -306,10 +303,6 @@ export function ForumDetailPage() {
   const removed = post.status === "deleted";
   const readOnly = locked || removed || post.status === "hidden";
   const canReply = isAuthed && post.canReply && !locked && !removed && post.status === "active";
-  const toggleHelpful = (kind: "post" | "comment", targetId: string, viewerVote: number) => {
-    if (!isAuthed) { navigate(`/login?returnTo=${encodeURIComponent(forumPostHref(post))}`); return; }
-    helpful.mutate({ kind, id: targetId, value: viewerVote === 1 ? 0 : 1 }, { onError: () => toast.error(t("Could not update Helpful.")) });
-  };
 
   const handleShare = async () => {
     try {
@@ -502,7 +495,6 @@ export function ForumDetailPage() {
                     </section> : null}
                     {post.references.length ? <section aria-label={t("References")} className="col-span-2 mt-6 min-w-0"><h2 className="forum-post-section-title mb-3">{t("References")}</h2><ol className="space-y-3">{orderForumReferences(post.content, post.references).map((reference, index) => <li key={reference.id || index}><ForumReferenceItem reference={reference} index={index + 1} linkedGapId={isAuthed ? post.linkedResearchGapId : undefined} onReviewEvidence={setReviewTarget} /></li>)}</ol></section> : null}
                     <div role="group" aria-label={t("Discussion actions")} className="forum-post-actions col-span-2 mt-5 flex flex-wrap items-center gap-x-1 gap-y-2">
-                      <ForumHelpfulButton count={post.helpfulCount} selected={post.viewerVote === 1} disabled={readOnly} pending={helpful.isPending} onToggle={() => toggleHelpful("post", post.id, post.viewerVote)} />
                       <ForumReactionPicker countsOnly target={{ scope: "post", id: post.id }} counts={post.reactionCounts} viewerReactions={post.viewerReactions} reactionUsers={post.reactionUsers} isAuthed={isAuthed} disabled={readOnly} pending={reaction.isPending} onToggle={(reactionName, active) => reaction.mutate({ kind: "post", id: post.id, reaction: reactionName, active }, { onError: () => toast.error(t("Could not update reaction.")) })} />
                       <div className="forum-post-action-links ml-auto inline-flex items-center gap-0.5">
                       <ForumReactionPicker triggerOnly counts={post.reactionCounts} viewerReactions={post.viewerReactions} reactionUsers={post.reactionUsers} isAuthed={isAuthed} disabled={readOnly} pending={reaction.isPending} onToggle={(reactionName, active) => reaction.mutate({ kind: "post", id: post.id, reaction: reactionName, active }, { onError: () => toast.error(t("Could not update reaction.")) })} />
@@ -544,7 +536,6 @@ export function ForumDetailPage() {
                   onReport={(commentId) => setReportTarget({ type: "comment", id: commentId })}
                   onModerate={post.canModerate ? (commentId) => setModerationTarget({ type: "comment", id: commentId, action: "RESPONSE_HIDDEN" }) : undefined}
                   onReaction={(reactionName, active) => reaction.mutate({ kind: "comment", id: comment.id, postId: post.id, reaction: reactionName, active }, { onError: () => toast.error(t("Could not update reaction.")) })}
-                  helpfulPending={helpful.isPending} onHelpful={() => toggleHelpful("comment", comment.id, comment.viewerVote)}
                   onAccept={() => comment.isAccepted ? unaccept.mutate(post.id, { onError: () => toast.error(t("Could not update accepted response.")) }) : accept.mutate({ postId: post.id, commentId: comment.id }, { onError: () => toast.error(t("Could not update accepted response.")) })}
                 />)}
                 {commentsQuery.hasNextPage ? <div ref={repliesSentinel} className="border-t py-5">{(legacyCommentId || requestedPostNumber) && !deepLinkSettled ? <p role="status" className="mb-3 text-sm text-muted-foreground">{t("This reply is not loaded yet. Load more replies to reach it.")}</p> : null}<Button variant="outline" disabled={commentsQuery.isFetchingNextPage} onClick={() => commentsQuery.fetchNextPage()}>{t(commentsQuery.isFetchingNextPage ? "Loading…" : "Load more replies")}</Button></div> : null}

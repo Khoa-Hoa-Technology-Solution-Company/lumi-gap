@@ -8,6 +8,9 @@ model Project {
   exclusionCriteria String[]  @default([]) @map("exclusion_criteria")
   status            String    @default("PLANNING") @db.VarChar(24)
   visibility        String    @default("PRIVATE") @db.VarChar(24)
+  mentorshipDiscovery String @default("CLOSED") @map("mentorship_discovery") @db.VarChar(24)
+  mentorshipSummary String? @map("mentorship_summary") @db.VarChar(2000)
+  mentorshipExpertise String[] @default([]) @map("mentorship_expertise")
   ownerId           String    @map("owner_id") @db.Uuid
   archivedAt        DateTime? @map("archived_at") @db.Timestamptz(6)
   createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -92,22 +95,44 @@ model ProjectActivity {
   @@map("project_activities")
 }
 
-model MentorRelationship {
+model MentorshipRequest {
   id           String    @id @default(uuid()) @db.Uuid
   projectId    String    @map("project_id") @db.Uuid
   mentorUserId String    @map("mentor_user_id") @db.Uuid
   requestedBy  String    @map("requested_by") @db.Uuid
+  direction    String    @default("PROJECT_TO_LECTURER") @db.VarChar(32)
+  respondedAt  DateTime? @map("responded_at") @db.Timestamptz(6)
+  expiresAt    DateTime? @map("expires_at") @db.Timestamptz(6)
   status       String    @default("PENDING") @db.VarChar(24)
   message      String?
   responseNote String?   @map("response_note")
-  acceptedAt   DateTime? @map("accepted_at") @db.Timestamptz(6)
-  endedAt      DateTime? @map("ended_at") @db.Timestamptz(6)
+  closeReason  String?   @map("close_reason") @db.VarChar(48)
+  idempotencyKey String? @map("idempotency_key") @db.VarChar(80)
   createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@index([projectId, status, createdAt])
   @@index([mentorUserId, status, createdAt])
   @@index([requestedBy, createdAt])
+  @@unique([requestedBy, idempotencyKey])
+  @@map("mentorship_requests")
+}
+
+model MentorRelationship {
+  id              String    @id @default(uuid()) @db.Uuid
+  projectId       String    @map("project_id") @db.Uuid
+  mentorUserId    String    @map("mentor_user_id") @db.Uuid
+  sourceRequestId String    @unique @map("source_request_id") @db.Uuid
+  status          String    @default("ACTIVE") @db.VarChar(24)
+  startedAt       DateTime  @default(now()) @map("started_at") @db.Timestamptz(6)
+  endedAt         DateTime? @map("ended_at") @db.Timestamptz(6)
+  endedById       String?   @map("ended_by_id") @db.Uuid
+  endReason       String?   @map("end_reason") @db.VarChar(1000)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([projectId, status, createdAt])
+  @@index([mentorUserId, status, createdAt])
   @@map("mentor_relationships")
 }
 

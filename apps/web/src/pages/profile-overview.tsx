@@ -16,7 +16,12 @@ export function ProfilePage() {
   const requestedSection = searchParams.get("edit");
   const editingSection = requestedSection === "1" || requestedSection === "about" ? "intro"
     : editSections.find((section) => section === requestedSection) ?? null;
-  const setEditing = (section: EditSection | null) => setSearchParams(section ? { edit: section } : {}, { replace: true });
+  const setEditing = (section: EditSection | null) => setSearchParams(current => {
+    const next = new URLSearchParams(current);
+    if (section) next.set("edit", section);
+    else next.delete("edit");
+    return next;
+  }, { replace: true });
 
   if (userLoading || (hasAcademicProfile && profileLoading)) {
     return <main className="mx-auto max-w-[1120px] px-4 py-8" aria-label="Loading profile"><div className="h-80 animate-pulse rounded-[22px] bg-slate-100 dark:bg-slate-900" /><div className="mt-5 h-48 animate-pulse rounded-[18px] bg-slate-100 dark:bg-slate-900" /></main>;

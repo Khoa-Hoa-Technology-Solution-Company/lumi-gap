@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { UpdateAcademicProfileDetailsRequest } from "@trend/shared-types";
+import type { UpdateAcademicProfileDetailsRequest, AcademicVerificationDecision } from "@trend/shared-types";
 import { academicProfileApi } from "../api/academic-profile.api";
 
 export function useAcademicProfile(enabled = true) {
@@ -72,7 +72,25 @@ export function useRequestAcademicVerification() {
       queryClient.invalidateQueries({ queryKey: ["academic-profile", "public", profile.userId] });
       queryClient.invalidateQueries({ queryKey: ["academic-profile", "handle"] });
     },
+    onError: (error) => {
+      if ((error as { response?: { status?: number } }).response?.status === 409) queryClient.invalidateQueries({ queryKey: ["academic-profile", "me"] });
+    },
   });
+}
+export function useSubmitLecturerVerification() {
+  const queryClient = useQueryClient();
+  return useMutation({ mutationFn: (input: Parameters<typeof academicProfileApi.submitLecturerVerification>[0]) => academicProfileApi.submitLecturerVerification(input), onSuccess: () => {
+    void queryClient.invalidateQueries({ queryKey: ["academic-profile", "me"] });
+    void queryClient.invalidateQueries({ queryKey: ["academic-profile", "verification-status"] });
+  }, onError: error => {
+    if ((error as { response?: { status?: number } }).response?.status === 409) void queryClient.invalidateQueries({ queryKey: ["academic-profile", "me"] });
+  } });
+}
+export function useAcademicVerificationStatus(enabled = true) {
+  return useQuery({ queryKey: ["academic-profile", "verification-status"], queryFn: () => academicProfileApi.verificationStatus(), enabled, refetchInterval: 30000 });
+}
+export function useLecturerVerificationTracking(requestId?: string, page = 1) {
+  return useQuery({ queryKey: ["academic-profile", "verification-status", requestId ?? "current", page], queryFn: () => academicProfileApi.lecturerTracking(requestId, page), staleTime: 10000, refetchOnWindowFocus: "always", refetchOnMount: "always", refetchInterval: 60000 });
 }
 
 export function useAcademicVerificationEvidenceFile() {
@@ -94,7 +112,7 @@ export function useRequestInstitutionalEmailChallenge() {
 export function useVerifyInstitutionalEmail() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (code: string) => academicProfileApi.verifyInstitutionalEmail(code),
+    mutationFn: (input: string | { code: string; email: string }) => typeof input === "string" ? academicProfileApi.verifyInstitutionalEmail(input) : academicProfileApi.verifyInstitutionalEmail(input.code, input.email),
     onSuccess: (status) => {
       queryClient.setQueryData(["academic-profile", "institutional-email"], status);
       queryClient.invalidateQueries({ queryKey: ["academic-profile", "me"] });
@@ -203,8 +221,8 @@ export function useLecturers(filters: Parameters<typeof academicProfileApi.lectu
   });
 }
 
-export function useAcademicVerifications(status = "PENDING") {
-  return useQuery({ queryKey: ["admin", "academic-verifications", status], queryFn: () => academicProfileApi.listVerifications(status) });
+export function useAcademicVerifications(status = "ALL", page = 1, pageSize = 10) {
+  return useQuery({ queryKey: ["admin", "academic-verifications", status, page, pageSize], queryFn: () => academicProfileApi.listVerifications(status, page, pageSize) });
 }
 
 export function useAcademicVerificationDetails(requestId: string | null) {
@@ -218,7 +236,14 @@ export function useAcademicVerificationDetails(requestId: string | null) {
 export function useDecideAcademicVerification() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ requestId, input }: { requestId: string; input: { decision: "approve"; method?: string; note?: string } | { decision: "reject"; reason: string; note?: string } }) => academicProfileApi.decide(requestId, input),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["admin", "academic-verifications"] }),
+    mutationFn: ({ requestId, input }: { requestId: string; input: AcademicVerificationDecision }) => academicProfileApi.decide(requestId, input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin", "academic-verifications"] });
+      queryClient.invalidateQueries({ queryKey: ["admin", "academic-verification"] });
+    },
+    onError: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin", "academic-verifications"] });
+      queryClient.invalidateQueries({ queryKey: ["admin", "academic-verification"] });
+    },
   });
 }

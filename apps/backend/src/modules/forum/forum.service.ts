@@ -251,13 +251,22 @@ async function academicAuthors(userIds: string[], viewerId?: string, transaction
   if (!userIds.length) return new Map<string, Record<string, unknown>>();
   const ids = [...new Set(userIds)];
   const prisma = transaction ?? getPrisma();
-  const [users, profiles] = await Promise.all([
+  const [users, profiles, affiliations] = await Promise.all([
     prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, legacyMongoId: true, fullName: true, avatarUrl: true, academicProfileType: true, institution: true, role: true } }),
-    prisma.academicProfile.findMany({ where: { userId: { in: ids } }, select: { userId: true, publicHandle: true, affiliationStatus: true, academicTitle: true, profileVisibility: true, primaryPosition: true, positionTitle: true, positionStatus: true, avatarStorageKey: true, avatarUpdatedAt: true } }),
+    prisma.academicProfile.findMany({ where: { userId: { in: ids } }, select: { userId: true, publicHandle: true, affiliationStatus: true, academicRole: true, roleVerificationStatus: true, academicTitle: true, profileVisibility: true, primaryPosition: true, positionTitle: true, positionStatus: true, avatarStorageKey: true, avatarUpdatedAt: true } }),
+    prisma.affiliation.findMany({ where: { userId: { in: ids }, isPrimary: true, isCurrent: true }, select: { userId: true, institutionId: true, institutionName: true, programId: true, verificationStatus: true } }),
   ]);
   const profileByUser = new Map(profiles.map((profile) => [profile.userId, profile]));
+  const affiliationByUser = new Map(affiliations.map((item) => [item.userId, item]));
+  const [institutions, programs] = await Promise.all([
+    prisma.institution.findMany({ where: { id: { in: affiliations.map(item => item.institutionId) } }, select: { id: true, hostInstitution: true } }),
+    prisma.academicProgram.findMany({ where: { id: { in: affiliations.flatMap(item => item.programId ? [item.programId] : []) } }, select: { id: true, name: true } }),
+  ]);
+  const hostIds = new Set(institutions.filter(item => item.hostInstitution).map(item => item.id));
+  const programNames = new Map(programs.map(item => [item.id, item.name]));
   return new Map(users.map((user) => {
     const id = publicDatabaseId(user); const profile = profileByUser.get(user.id);
+    const affiliation = affiliationByUser.get(user.id);
     const showAcademicIdentity = canShowAcademicIdentity(profile?.profileVisibility, Boolean(viewerId), viewerId === user.id);
     const avatarUrl = profile?.avatarStorageKey
       ? showAcademicIdentity ? `/academic-profiles/${encodeURIComponent(id)}/avatar?v=${profile.avatarUpdatedAt?.getTime() ?? 1}` : undefined
@@ -266,13 +275,16 @@ async function academicAuthors(userIds: string[], viewerId?: string, transaction
       _id: id, id, fullName: user.fullName, avatarUrl,
       publicHandle: showAcademicIdentity ? profile?.publicHandle : undefined,
       academicProfileType: showAcademicIdentity ? user.academicProfileType : undefined,
-      institution: showAcademicIdentity ? user.institution : undefined,
+      institution: showAcademicIdentity ? affiliation?.institutionName ?? user.institution : undefined,
+      academicRole: showAcademicIdentity ? profile?.academicRole : undefined,
+      programMajor: showAcademicIdentity && profile?.academicRole === "STUDENT" && affiliation?.programId ? programNames.get(affiliation.programId) : undefined,
       role: user.role,
-      affiliationVerified: showAcademicIdentity && profile?.affiliationStatus === "VERIFIED",
+      affiliationVerified: showAcademicIdentity && affiliation?.verificationStatus === "VERIFIED",
+      fptAffiliationVerified: showAcademicIdentity && affiliation?.verificationStatus === "VERIFIED" && hostIds.has(affiliation.institutionId),
       academicTitle: showAcademicIdentity ? profile?.academicTitle : undefined,
       primaryPosition: showAcademicIdentity ? profile?.primaryPosition : undefined,
       positionTitle: showAcademicIdentity ? profile?.positionTitle : undefined,
-      positionVerified: showAcademicIdentity && profile?.positionStatus === "VERIFIED",
+      positionVerified: showAcademicIdentity && profile?.positionStatus === "VERIFIED" && (profile?.academicRole !== "LECTURER" || profile.roleVerificationStatus === "VERIFIED"),
     }];
   }));
 }

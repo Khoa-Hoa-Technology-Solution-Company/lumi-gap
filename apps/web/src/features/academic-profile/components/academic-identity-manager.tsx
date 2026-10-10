@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState } from "react";
 import type {
   AcademicIdentityLink,
   AcademicIdentityProvider,
@@ -7,20 +7,17 @@ import type {
   PublicAcademicProfile,
 } from "@trend/shared-types";
 import {
-  BadgeCheck,
+  ArrowLeft,
   BookOpen,
   Database,
-  Eye,
   ExternalLink,
   Fingerprint,
   GraduationCap,
   Link2,
-  LockKeyhole,
   MoreHorizontal,
   Pencil,
   Plus,
   Trash2,
-  Users,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -45,30 +42,36 @@ import {
 
 type ProfileWithAcademicIdentities = AcademicProfile | PublicAcademicProfile;
 
-const providerOptions: Array<{ value: AcademicIdentityProvider; label: string; hint: string }> = [
-  { value: "ORCID", label: "ORCID", hint: "Persistent researcher identifier" },
-  { value: "OPENALEX", label: "OpenAlex", hint: "Author profile or ID" },
-  { value: "GOOGLE_SCHOLAR", label: "Google Scholar", hint: "Citations profile" },
-  { value: "SEMANTIC_SCHOLAR", label: "Semantic Scholar", hint: "Author profile or ID" },
-  { value: "OTHER", label: "Other academic profile", hint: "A scholarly profile not listed above" },
+const providerOptions: Array<{ value: Exclude<AcademicIdentityProvider, "ORCID">; label: string }> = [
+  { value: "GOOGLE_SCHOLAR", label: "Google Scholar" },
+  { value: "SEMANTIC_SCHOLAR", label: "Semantic Scholar" },
+  { value: "OPENALEX", label: "OpenAlex" },
+  { value: "OTHER", label: "Other" },
 ];
 
-const visibilityOptions: Array<{ value: AcademicIdentityVisibility; label: string; icon: ReactNode }> = [
-  { value: "PUBLIC", label: "Public", icon: <Eye className="h-3.5 w-3.5" /> },
-  { value: "REGISTERED_USERS", label: "Registered users", icon: <Users className="h-3.5 w-3.5" /> },
-  { value: "PRIVATE", label: "Private", icon: <LockKeyhole className="h-3.5 w-3.5" /> },
+const visibilityOptions: Array<{ value: AcademicIdentityVisibility; label: string }> = [
+  { value: "PUBLIC", label: "Public" },
+  { value: "REGISTERED_USERS", label: "LumiGap members" },
+  { value: "PRIVATE", label: "Private" },
 ];
 
-const providerLabels: Record<AcademicIdentityProvider, string> = Object.fromEntries(
-  providerOptions.map((option) => [option.value, option.label]),
-) as Record<AcademicIdentityProvider, string>;
+const providerLabels: Record<AcademicIdentityProvider, string> = {
+  ORCID: "ORCID", OPENALEX: "OpenAlex", GOOGLE_SCHOLAR: "Google Scholar",
+  SEMANTIC_SCHOLAR: "Semantic Scholar", OTHER: "Other academic profile",
+};
+const inputLabels: Record<AcademicIdentityProvider, string> = {
+  ORCID: "ORCID iD", OPENALEX: "Author ID or URL", SEMANTIC_SCHOLAR: "URL or Author ID",
+  GOOGLE_SCHOLAR: "Profile URL", OTHER: "Profile URL",
+};
+
+const selectClass = "h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 function emptyDraft(): DraftIdentity {
-  return { provider: "ORCID", label: "", value: "", visibility: "PUBLIC" };
+  return { provider: "", label: "", value: "", visibility: "PUBLIC" };
 }
 
 type DraftIdentity = {
-  provider: AcademicIdentityProvider;
+  provider: AcademicIdentityProvider | "";
   label: string;
   value: string;
   visibility: AcademicIdentityVisibility;
@@ -90,14 +93,9 @@ function providerTone(provider: AcademicIdentityProvider): string {
   return "bg-[#fdeee8] text-[#b34e38] dark:bg-rose-950/50 dark:text-rose-300";
 }
 
-function statusTone(status: AcademicIdentityLink["status"]): string {
-  if (status === "CONNECTED" || status === "LINKED") return "border-[#b9e5e1] bg-[#e8f6f4] text-[#14545b] dark:border-teal-900 dark:bg-teal-950/40 dark:text-teal-200";
-  if (status === "INVALID") return "border-[#f0c9c3] bg-[#fff0ee] text-[#9c3d34] dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200";
-  return "border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-300";
-}
-
-function statusLabel(status: AcademicIdentityLink["status"]): string {
-  return status === "SELF_DECLARED" ? "Self-declared" : status.charAt(0) + status.slice(1).toLowerCase();
+function isProviderConnected(identity: AcademicIdentityLink): boolean {
+  return identity.provider === "ORCID" && identity.connectionMethod === "OAUTH"
+    && identity.verificationStatus === "PROVIDER_CONNECTED";
 }
 
 type Translate = ReturnType<typeof useI18n>["t"];
@@ -143,6 +141,7 @@ function isValidOrcid(value: string): boolean {
 }
 
 function validateDraft(draft: DraftIdentity): string | undefined {
+  if (!draft.provider) return "Choose a service.";
   const value = draft.value.trim();
   if (!value) return "Enter an identifier or profile URL.";
   if (draft.provider === "OTHER" && !draft.label.trim()) return "Add a profile name for this academic profile.";
@@ -160,11 +159,13 @@ function validateDraft(draft: DraftIdentity): string | undefined {
     const url = new URL(value);
     if (!/^(www\.)?semanticscholar\.org$/i.test(url.hostname) || !/^\/author\//i.test(url.pathname)) return "Use a Semantic Scholar author profile URL.";
   }
+  if (draft.provider === "OTHER" && !isHttpUrl(value)) return "Use the full profile URL.";
   if (value.startsWith("http") && !isHttpUrl(value)) return "Profile URLs must use HTTP or HTTPS.";
   return undefined;
 }
 
 function draftPayload(draft: DraftIdentity) {
+  if (!draft.provider) throw new Error("Choose a service.");
   const value = draft.value.trim();
   const isUrl = /^https?:\/\//i.test(value);
   return {
@@ -187,6 +188,7 @@ export function AcademicIdentityManager({ profile, editable }: { profile: Profil
   const update = useUpdateAcademicIdentity();
   const remove = useDeleteAcademicIdentity();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [step, setStep] = useState<"choice" | "other">("choice");
   const [editing, setEditing] = useState<AcademicIdentityLink | null>(null);
   const [draft, setDraft] = useState<DraftIdentity>(emptyDraft);
   const [menuId, setMenuId] = useState<string | null>(null);
@@ -200,6 +202,7 @@ export function AcademicIdentityManager({ profile, editable }: { profile: Profil
     setEditing(null);
     setDraft(emptyDraft());
     setFormError(null);
+    setStep("choice");
     setDialogOpen(true);
   }
 
@@ -207,6 +210,7 @@ export function AcademicIdentityManager({ profile, editable }: { profile: Profil
     setEditing(identity);
     setDraft({ provider: identity.provider, label: identity.label ?? "", value: valueForIdentity(identity), visibility: identity.visibility });
     setFormError(null);
+    setStep("other");
     setMenuId(null);
     setDialogOpen(true);
   }
@@ -219,7 +223,12 @@ export function AcademicIdentityManager({ profile, editable }: { profile: Profil
     }
     setFormError(null);
     try {
-      if (editing) await update.mutateAsync({ identityId: editing.id, input: draftPayload(draft) });
+      if (editing && isProviderConnected(editing)) await update.mutateAsync({ identityId: editing.id, input: { visibility: draft.visibility } });
+      else if (editing) await update.mutateAsync({ identityId: editing.id, input: {
+        ...draftPayload(draft),
+        identifier: isHttpUrl(draft.value.trim()) ? null : draft.value.trim(),
+        profileUrl: isHttpUrl(draft.value.trim()) ? draft.value.trim() : null,
+      } });
       else await create.mutateAsync(draftPayload(draft));
       setDialogOpen(false);
       setNotice(t(editing ? "Academic identity updated." : "Academic identity added."));
@@ -243,43 +252,107 @@ export function AcademicIdentityManager({ profile, editable }: { profile: Profil
     }
   }
 
+  async function changeVisibility(identity: AcademicIdentityLink, visibility: AcademicIdentityVisibility) {
+    try {
+      await update.mutateAsync({ identityId: identity.id, input: { visibility } });
+      toast.success(t("Profile visibility updated."));
+    } catch {
+      toast.error(t("Could not update profile visibility."));
+    }
+  }
+
   const busy = create.isPending || update.isPending;
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">{t("Scholarly profiles")}</h3>
-          <p className="mt-1 max-w-xl text-xs leading-5 text-slate-500 dark:text-slate-400">{t("Connect scholarly profiles such as ORCID or OpenAlex to help people discover your work.")}</p>
+          <p className="mt-1 text-xs text-muted-foreground">{t("Link your scholarly identity and work.")}</p>
         </div>
         {editable && <Button type="button" size="sm" onClick={openCreate} className="shrink-0 gap-1.5"><Plus className="h-4 w-4" />{t("Add academic identity")}</Button>}
       </div>
       {notice && <p role="status" className="text-xs font-medium text-[#0f6870] dark:text-teal-300">{notice}</p>}
-      {!links.some((identity) => identity.provider === "ORCID") && <div className="flex items-center justify-between gap-3 border-y border-slate-100 py-2.5 text-xs dark:border-slate-800"><span className="font-medium text-slate-600 dark:text-slate-300">ORCID</span><Badge variant="outline" className="border-slate-200 bg-slate-50 text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">{t("Not connected")}</Badge></div>}
       {editable && linksQuery.isLoading && <div className="space-y-2" role="status" aria-label={t("Loading academic identities")}><div className="h-16 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-900" /><div className="h-16 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-900" /></div>}
       {editable && linksQuery.isError && <div className="flex flex-wrap items-center justify-between gap-3 border-y border-[#f0c9c3] bg-[#fff6f4] px-1 py-3 text-sm text-[#9c3d34] dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-200"><span>{t("Could not load academic identities.")}</span><Button type="button" variant="outline" size="sm" onClick={() => linksQuery.refetch()}>{t("Try again")}</Button></div>}
-      {!linksQuery.isLoading && !linksQuery.isError && links.length === 0 && <div className="border-t border-slate-100 py-5 dark:border-slate-800"><p className="text-sm font-medium text-slate-800 dark:text-slate-200">{t("No academic identities added yet")}</p><p className="mt-1 max-w-xl text-xs leading-5 text-slate-500">{t("Add ORCID, OpenAlex, Scholar profiles, or another scholarly link. These links never verify your academic position automatically.")}</p></div>}
+      {!linksQuery.isLoading && !linksQuery.isError && links.length === 0 && <p className="py-3 text-sm text-muted-foreground">{t("No academic profiles added yet.")}</p>}
       {links.length > 0 && <div className="space-y-2">{links.map((identity) => {
         const viewUrl = safeViewUrl(identity);
         const isDeleting = deleteId === identity.id;
+        const connected = isProviderConnected(identity);
         return <article key={identity.id} className="relative flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3.5 dark:border-slate-800 dark:bg-[#101923]">
           <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${providerTone(identity.provider)}`}>{providerIcon(identity.provider)}</span>
-          <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">{identity.label || providerLabels[identity.provider]}</h3><Badge variant="outline" className={`px-2 py-0.5 text-[11px] ${statusTone(identity.status)}`}>{identity.status === "LINKED" && <BadgeCheck className="mr-1 h-3 w-3" />}{t(statusLabel(identity.status))}</Badge></div><p className="mt-1 break-all text-xs text-slate-500 dark:text-slate-400">{identity.identifier || identity.profileUrl}</p><p className="mt-1 inline-flex items-center gap-1 text-[11px] text-slate-400"><span className="text-slate-500">{visibilityLabel(identity.visibility, t)}</span></p></div>
-          <div className="flex items-center gap-1"><Button type="button" variant="outline" size="sm" disabled={!viewUrl} asChild={Boolean(viewUrl)}>{viewUrl ? <a href={viewUrl} target="_blank" rel="noopener noreferrer"><ExternalLink className="h-3.5 w-3.5" />{t("View")}</a> : <span><ExternalLink className="h-3.5 w-3.5" />{t("View")}</span>}</Button>{editable && <div className="relative"><Button type="button" variant="ghost" size="icon" aria-label={t("Actions for {{name}}", { name: identity.label || providerLabels[identity.provider] })} aria-expanded={menuId === identity.id} onClick={() => setMenuId(menuId === identity.id ? null : identity.id)}><MoreHorizontal className="h-4 w-4" /></Button>{menuId === identity.id && <div className="absolute right-0 top-10 z-10 w-32 rounded-lg border border-slate-200 bg-white p-1 shadow-lg dark:border-slate-700 dark:bg-slate-900"><button type="button" className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs hover:bg-slate-100 dark:hover:bg-slate-800" onClick={() => openEdit(identity)}><Pencil className="h-3.5 w-3.5" />{t("Edit")}</button><button type="button" className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs text-red-700 hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-950/40" onClick={() => { setDeleteId(identity.id); setMenuId(null); }}><Trash2 className="h-3.5 w-3.5" />{t("Remove")}</button></div>}</div>}</div>
-          {isDeleting && <div className="flex w-full items-center justify-end gap-2 border-t border-slate-100 pt-3 text-xs dark:border-slate-800"><span className="mr-auto text-slate-500">{t("Remove this identity?")}</span><Button type="button" variant="ghost" size="sm" onClick={() => setDeleteId(null)}>{t("Cancel")}</Button><Button type="button" variant="destructive" size="sm" disabled={remove.isPending} onClick={() => void confirmDelete(identity)}>{remove.isPending ? t("Removing…") : t("Remove")}</Button></div>}
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 data-no-i18n className="text-sm font-semibold">{identity.label || providerLabels[identity.provider]}</h3>
+              <Badge variant="outline" className={connected ? "border-teal-200 bg-teal-50 text-teal-800 dark:border-teal-900 dark:bg-teal-950 dark:text-teal-200" : "text-muted-foreground"}>{t(connected ? "Connected" : "Self-declared")}</Badge>
+            </div>
+            <p className="mt-1 break-all text-xs text-muted-foreground">{identity.identifier || identity.profileUrl}</p>
+            {!connected && <p className="mt-1 text-[11px] text-muted-foreground">{visibilityLabel(identity.visibility, t)}</p>}
+          </div>
+          <div className="flex items-center gap-1">
+            {viewUrl && <Button variant="outline" size="sm" asChild><a href={viewUrl} target="_blank" rel="noopener noreferrer"><ExternalLink className="h-3.5 w-3.5" />{t("View profile")}</a></Button>}
+            {editable && (connected ? <Button type="button" variant="ghost" size="sm" onClick={() => setDeleteId(identity.id)}>{t("Disconnect")}</Button> : <div className="relative">
+              <Button type="button" variant="ghost" size="icon" aria-label={t("Actions for {{name}}", { name: identity.label || providerLabels[identity.provider] })} aria-expanded={menuId === identity.id} onClick={() => setMenuId(menuId === identity.id ? null : identity.id)}><MoreHorizontal className="h-4 w-4" /></Button>
+              {menuId === identity.id && <div className="absolute right-0 top-10 z-10 w-32 rounded-lg border border-border bg-background p-1 shadow-lg">
+                <button type="button" className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs hover:bg-muted" onClick={() => openEdit(identity)}><Pencil className="h-3.5 w-3.5" />{t("Edit")}</button>
+                <button type="button" className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs text-destructive hover:bg-muted" onClick={() => { setDeleteId(identity.id); setMenuId(null); }}><Trash2 className="h-3.5 w-3.5" />{t("Remove")}</button>
+              </div>}
+            </div>)}
+          </div>
+          {connected && (editable ? <div className="w-full border-t border-border pt-3">
+            <Label htmlFor={`identity-visibility-${identity.id}`} className="text-xs">{t("Profile visibility")}</Label>
+            <select id={`identity-visibility-${identity.id}`} className={`${selectClass} mt-2 sm:max-w-56`} value={identity.visibility} disabled={update.isPending} onChange={(event) => void changeVisibility(identity, event.target.value as AcademicIdentityVisibility)}>{visibilityOptions.map((option) => <option key={option.value} value={option.value}>{t(option.label)}</option>)}</select>
+            <p className="mt-1.5 text-xs text-muted-foreground">{t("Visibility only determines who can view this profile.")}</p>
+          </div> : <p className="w-full text-xs text-muted-foreground">{visibilityLabel(identity.visibility, t)}</p>)}
+          {isDeleting && <div className="flex w-full flex-wrap items-center justify-end gap-2 border-t border-border pt-3 text-xs"><span className="mr-auto text-muted-foreground">{t(connected ? "Disconnect ORCID from LumiGap?" : "Remove this identity?")}</span><Button type="button" variant="ghost" size="sm" onClick={() => setDeleteId(null)}>{t("Cancel")}</Button><Button type="button" variant="destructive" size="sm" disabled={remove.isPending} onClick={() => void confirmDelete(identity)}>{remove.isPending ? t("Removing…") : t(connected ? "Disconnect" : "Remove")}</Button></div>}
         </article>;
       })}</div>}
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-h-[calc(100vh-2rem)] max-w-xl overflow-y-auto">
-          <DialogHeader><DialogTitle>{t(editing ? "Edit academic identity" : "Add academic identity")}</DialogTitle><DialogDescription>{t(editing ? "Update this scholarly profile link and its visibility." : "Choose one provider to show only the fields needed for that profile.")}</DialogDescription></DialogHeader>
-          <div className="space-y-5 py-1">
-            <div className="space-y-2"><Label htmlFor="academic-identity-provider">{t("Provider")}</Label><select id="academic-identity-provider" className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-zinc-950" value={draft.provider} onChange={(event) => setDraft((current) => ({ ...current, provider: event.target.value as AcademicIdentityProvider, label: event.target.value === "OTHER" ? current.label : "", value: "" }))}>{providerOptions.map((option) => <option key={option.value} value={option.value}>{t(option.label)} · {t(option.hint)}</option>)}</select></div>
-            {draft.provider === "OTHER" && <div className="space-y-2"><Label htmlFor="academic-identity-label">{t("Profile name")}</Label><Input id="academic-identity-label" value={draft.label} maxLength={120} onChange={(event) => setDraft((current) => ({ ...current, label: event.target.value }))} placeholder={t("e.g. University researcher profile")} /></div>}
-            <div className="space-y-2"><Label htmlFor="academic-identity-value">{t(draft.provider === "ORCID" ? "ORCID iD" : draft.provider === "GOOGLE_SCHOLAR" ? "Scholar profile URL" : draft.provider === "OTHER" ? "Profile URL / identifier" : `${providerLabels[draft.provider]} Author ID or profile URL`)}</Label><Input id="academic-identity-value" value={draft.value} onChange={(event) => setDraft((current) => ({ ...current, value: event.target.value }))} placeholder={t(draft.provider === "ORCID" ? "0000-0002-1825-0097" : draft.provider === "OPENALEX" ? "A123456789 or https://openalex.org/A123456789" : draft.provider === "GOOGLE_SCHOLAR" ? "https://scholar.google.com/citations?user=..." : draft.provider === "SEMANTIC_SCHOLAR" ? "Author ID or https://www.semanticscholar.org/author/..." : "https://example.edu/profile or identifier")} autoFocus /></div>
-            <div className="space-y-2"><Label htmlFor="academic-identity-visibility">{t("Visibility")}</Label><select id="academic-identity-visibility" className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-zinc-950" value={draft.visibility} onChange={(event) => setDraft((current) => ({ ...current, visibility: event.target.value as AcademicIdentityVisibility }))}>{visibilityOptions.map((option) => <option key={option.value} value={option.value}>{t(option.label)}</option>)}</select><p className="text-xs text-slate-500">{t("Visibility controls who can see the link, not whether it is verified.")}</p></div>
-            {formError && <p role="alert" className="rounded-lg border border-[#f0c9c3] bg-[#fff6f4] px-3 py-2 text-sm text-[#9c3d34] dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-200">{formError}</p>}
-          </div>
-          <DialogFooter><Button type="button" variant="ghost" onClick={() => setDialogOpen(false)}>{t("Cancel")}</Button><Button type="button" onClick={() => void submit()} disabled={busy}>{busy ? t("Saving…") : editing ? t("Save changes") : t("Add identity")}</Button></DialogFooter>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t(editing ? "Edit academic identity" : "Add academic identity")}</DialogTitle>
+            <DialogDescription className="sr-only">{t("Connect ORCID or add a self-declared scholarly profile.")}</DialogDescription>
+          </DialogHeader>
+          {!editing && step === "choice" ? <div className="space-y-5 pt-1">
+            <section className="space-y-3 rounded-lg border border-border p-4" aria-label="ORCID">
+              <div className="flex items-center gap-2"><span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#a6ce39] text-white text-xs font-semibold" aria-hidden="true">iD</span><h4 className="text-sm font-semibold">ORCID</h4></div>
+              {links.some((identity) => identity.provider === "ORCID") ? <>
+                {links.filter((identity) => identity.provider === "ORCID").map((identity) => <div key={identity.id} className="space-y-1 text-sm"><p className="break-all text-muted-foreground">{identity.identifier || identity.profileUrl}</p><p>{t(isProviderConnected(identity) ? "ORCID connected" : "Self-declared")}</p></div>)}
+              </> : <>
+                <p className="text-sm leading-6 text-muted-foreground">{t("Connect ORCID to link your scholarly identifier with LumiGap.")}</p>
+                {/* No ORCID OAuth endpoint exists yet. Never turn a manual ID into a provider connection. */}
+                <Button type="button" variant="outline" className="w-full" disabled aria-describedby="orcid-unavailable">{t("Connect ORCID")}</Button>
+                <p id="orcid-unavailable" className="text-xs text-muted-foreground">{t("ORCID connection is not available yet.")}</p>
+              </>}
+            </section>
+            <div className="flex items-center gap-3 text-xs text-muted-foreground"><span className="h-px flex-1 bg-border" />{t("Or")}<span className="h-px flex-1 bg-border" /></div>
+            <Button type="button" variant="outline" className="w-full gap-2" onClick={() => setStep("other")}><Plus className="h-4 w-4" />{t("Add another academic profile")}</Button>
+          </div> : <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); void submit(); }}>
+            {!editing && <Button type="button" variant="ghost" size="sm" className="-ml-2 gap-1.5 text-muted-foreground" onClick={() => { setStep("choice"); setFormError(null); }}><ArrowLeft className="h-3.5 w-3.5" />{t("Back")}</Button>}
+            {editing ? <p data-no-i18n className="text-sm font-semibold">{editing.label || providerLabels[editing.provider]}</p> : <div className="space-y-2">
+              <Label htmlFor="academic-identity-provider">{t("Service")}</Label>
+              <select id="academic-identity-provider" className={selectClass} value={draft.provider} onChange={(event) => { setDraft((current) => ({ ...current, provider: event.target.value as DraftIdentity["provider"], label: "", value: "" })); setFormError(null); }}>
+                <option value="">{t("Choose a service")}</option>
+                {providerOptions.map((option) => <option data-no-i18n key={option.value} value={option.value}>{option.value === "OTHER" ? t(option.label) : option.label}</option>)}
+              </select>
+            </div>}
+            {draft.provider && <>
+              <p className="text-xs text-muted-foreground">{t(editing && isProviderConnected(editing) ? "ORCID connected" : "This profile is self-declared.")}</p>
+              {draft.provider === "OTHER" && <div className="space-y-2"><Label htmlFor="academic-identity-label">{t("Service name")}</Label><Input id="academic-identity-label" value={draft.label} maxLength={120} required onChange={(event) => setDraft((current) => ({ ...current, label: event.target.value }))} placeholder={t("e.g. University researcher profile")} /></div>}
+              <div className="space-y-2">
+                <Label htmlFor="academic-identity-value">{t(inputLabels[draft.provider])}</Label>
+                <Input id="academic-identity-value" value={draft.value} type={draft.provider === "GOOGLE_SCHOLAR" || draft.provider === "OTHER" ? "url" : "text"} required maxLength={500} readOnly={Boolean(editing && isProviderConnected(editing))} onChange={(event) => setDraft((current) => ({ ...current, value: event.target.value }))} placeholder={draft.provider === "ORCID" ? "0000-0002-1825-0097" : draft.provider === "OPENALEX" ? "A123456789" : draft.provider === "SEMANTIC_SCHOLAR" ? "123456789" : draft.provider === "GOOGLE_SCHOLAR" ? "https://scholar.google.com/citations?user=…" : "https://example.edu/profile"} />
+              </div>
+              <div className="space-y-2 border-t border-border pt-4">
+                <Label htmlFor="academic-identity-visibility">{t("Profile visibility")}</Label>
+                <select id="academic-identity-visibility" className={selectClass} value={draft.visibility} onChange={(event) => setDraft((current) => ({ ...current, visibility: event.target.value as AcademicIdentityVisibility }))}>{visibilityOptions.map((option) => <option key={option.value} value={option.value}>{t(option.label)}</option>)}</select>
+                <p className="text-xs leading-5 text-muted-foreground">{t("Visibility only determines who can view this profile.")}</p>
+              </div>
+            </>}
+            {formError && <p role="alert" className="text-sm text-destructive">{formError}</p>}
+            <DialogFooter className="gap-2 pt-1"><Button type="button" variant="ghost" onClick={() => setDialogOpen(false)}>{t("Cancel")}</Button><Button type="submit" disabled={busy || !draft.provider}>{busy ? t("Saving…") : editing ? t("Save changes") : t("Add profile")}</Button></DialogFooter>
+          </form>}
         </DialogContent>
       </Dialog>
     </div>

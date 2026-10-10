@@ -33,6 +33,8 @@ function useSearchUsers(email: string) {
 import { toast } from "sonner";
 import { Archive, FileText, Users, Trash2, Plus, Loader2, XCircle, Sparkles, Zap, MessageSquare, Settings2, ShieldCheck } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
+import { MentorProjectPanel } from "@/pages/academics/academic-support";
+import { ProjectMentorSummary } from "@/features/projects/components/project-mentor-summary";
 import { ProjectContributionsTab } from "@/features/projects/components/project-contributions-tab";
 import { useI18n } from "@/i18n";
 
@@ -43,9 +45,9 @@ export function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { data: project, isLoading, isError } = useProject(id);
   const [searchParams, setSearchParams] = useSearchParams();
-  type ProjectTab = "papers" | "members" | "contributions" | "reports" | "gaps" | "chat";
+  type ProjectTab = "papers" | "members" | "contributions" | "reports" | "gaps" | "chat" | "support";
   const tabParam = searchParams.get("tab");
-  const activeTab: ProjectTab = ["papers", "members", "contributions", "reports", "gaps", "chat"].includes(tabParam ?? "") ? tabParam as ProjectTab : "papers";
+  const activeTab: ProjectTab = ["papers", "members", "contributions", "reports", "gaps", "chat", "support"].includes(tabParam ?? "") ? tabParam as ProjectTab : "papers";
   const setActiveTab = (tab: ProjectTab) => {
     const params = new URLSearchParams(searchParams);
     params.set("tab", tab);
@@ -156,6 +158,7 @@ export function ProjectDetailPage() {
               {activeTab === "contributions" && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 dark:bg-indigo-400 rounded-t-full" />}
             </button>
 
+            <button role="tab" id="project-tab-support" aria-selected={activeTab === "support"} aria-controls="project-panel-support" onClick={() => setActiveTab("support")} className={`shrink-0 whitespace-nowrap border-b-2 pb-3 text-sm font-semibold ${activeTab === "support" ? "border-indigo-600 text-indigo-600" : "border-transparent text-slate-500"}`}>{t("Academic Support")}</button>
             <button
               id="project-tab-reports"
               role="tab"
@@ -228,8 +231,10 @@ export function ProjectDetailPage() {
           {activeTab === "members" && (
             <section id="project-panel-members" role="tabpanel" aria-labelledby="project-tab-members">
               <MembersTab projectId={project._id} members={project.members} pendingInvitations={project.pendingInvitations ?? []} ownerId={project.ownerId} currentUserId={currentUser?.id} />
+              <ProjectMentorSummary projectId={project._id} />
             </section>
           )}
+          {activeTab === "support" && <div role="tabpanel" id="project-panel-support" aria-labelledby="project-tab-support"><MentorProjectPanel projectId={id!} /></div>}
           {activeTab === "contributions" && (
             <section id="project-panel-contributions" role="tabpanel" aria-labelledby="project-tab-contributions">
               <ProjectContributionsTab
@@ -245,6 +250,7 @@ export function ProjectDetailPage() {
               <ReportsTab
                 projectId={project._id}
                 defaultTopic={project.title}
+                canRequestReview={project.ownerId === currentUser?.id}
                 openOnInit={autoOpenReport}
                 onOpenChange={setAutoOpenReport}
               />
@@ -414,11 +420,13 @@ function ProjectHeaderActions({ project, onLeft }: { project: IProject; onLeft: 
 }
 
 function ReportsTab({
+  canRequestReview,
   projectId,
   defaultTopic,
   openOnInit,
   onOpenChange
 }: {
+  canRequestReview?: boolean;
   projectId: string;
   defaultTopic?: string;
   openOnInit?: boolean;
@@ -647,7 +655,7 @@ function ReportsTab({
                 </div>
               </div>
               <div className="flex items-center gap-6 w-full sm:w-auto sm:justify-end ml-14 sm:ml-0">
-                {report.status === "ready" && report.artifactStatus !== "ARCHIVED" ? <SubmitReviewDialog reportId={report.id} artifactTitle={report.title || report.topic || "Research artifact"} artifactType={report.artifactType} trigger={<Button size="sm" variant="outline">Submit for Review</Button>} /> : null}
+                {canRequestReview && report.status === "ready" && report.artifactStatus !== "ARCHIVED" ? <SubmitReviewDialog reportId={report.id} artifactTitle={report.title || report.topic || "Research artifact"} artifactType={report.artifactType} trigger={<Button size="sm" variant="outline">Submit for Review</Button>} /> : null}
                 <Badge
                   variant={report.status === 'ready' ? 'default' : report.status === 'failed' ? 'destructive' : 'secondary'}
                   className={`rounded-full ${report.status === 'ready' ? 'bg-emerald-500 hover:bg-emerald-600 text-white border-transparent' : ''}`}
@@ -1135,7 +1143,7 @@ function MembersTab({ projectId, members, pendingInvitations, ownerId, currentUs
                   <div className="min-w-0">
                     {memberObj ? (
                       <>
-                        <h4 className="text-[16px] font-bold truncate text-slate-900 dark:text-white group-hover:text-purple-700 dark:group-hover:text-purple-400 transition-colors leading-tight mb-1">{memberObj.fullName || 'Unknown User'}</h4>
+                        <h4 className="text-[16px] font-bold truncate text-slate-900 dark:text-white group-hover:text-purple-700 dark:group-hover:text-purple-400 transition-colors leading-tight mb-1"><Link to={`/academics/${encodeURIComponent(memberId)}`} className="hover:underline">{memberObj.fullName || 'Unknown User'}</Link></h4>
                         <p className="text-sm text-slate-500 dark:text-slate-400 flex flex-wrap items-center gap-x-2 gap-y-1 mt-1">
                           <span className="truncate max-w-full">{memberObj.email}</span>
                           <span className="opacity-30 text-xs hidden sm:inline">•</span>

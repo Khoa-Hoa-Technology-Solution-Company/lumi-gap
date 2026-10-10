@@ -30,17 +30,17 @@ export const academicEmailDelivery = {
       throw AppError.serviceUnavailable("Institutional email delivery is not configured");
     }
     if (env.EMAIL_DELIVERY_MODE === "log") {
-      logger.warn(
-        { email: input.email, verificationCode: input.code, expiresInMinutes: input.expiresInMinutes },
-        "DEV ONLY: institutional email verification code",
-      );
-      return;
+      logger.warn("Institutional email verification requires SMTP; OTPs are not written to logs");
+      throw AppError.serviceUnavailable("Institutional email delivery is not configured");
     }
     const transporter = nodemailer.createTransport({
       host: env.SMTP_HOST,
       port: env.SMTP_PORT,
       secure: env.SMTP_SECURE,
       auth: { user: env.SMTP_USER, pass: env.SMTP_PASS },
+      connectionTimeout: 15000,
+      greetingTimeout: 15000,
+      socketTimeout: 30000,
     });
     await transporter.sendMail({
       from: env.SMTP_FROM,

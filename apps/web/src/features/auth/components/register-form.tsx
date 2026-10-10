@@ -39,7 +39,7 @@ export function RegisterForm({ redirectTo, invitationToken }: RegisterFormProps)
       onSuccess: ({ user }) => {
         toast.success(`Account created successfully. Welcome, ${user.fullName}!`);
         const target = resolvePostAuthPath(user, redirectTo);
-        navigate(target, { replace: true });
+        navigate(target, { state: { from: redirectTo }, replace: true });
       },
       onError: (err) => {
         const axiosErr = err as AxiosError<{ error?: { message?: string } }>;

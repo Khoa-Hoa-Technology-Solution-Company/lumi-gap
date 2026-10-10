@@ -11,6 +11,12 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { I18nProvider } from "@/i18n";
 import "./theme/globals.css";
 
+const LecturerDeliveryNotice = lazy(() =>
+  import("@/features/academic-profile/components/lecturer-delivery-notice").then((module) => ({
+    default: module.LecturerDeliveryNotice,
+  })),
+);
+
 const ReactQueryDevtools = import.meta.env.DEV
   ? lazy(() =>
       import("@tanstack/react-query-devtools").then((module) => ({
@@ -30,6 +36,9 @@ ReactDOM.createRoot(root).render(
           <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
             <I18nProvider>
               <App />
+              <Suspense fallback={null}>
+                <LecturerDeliveryNotice />
+              </Suspense>
               <Toaster
                 closeButton
                 position="bottom-right"

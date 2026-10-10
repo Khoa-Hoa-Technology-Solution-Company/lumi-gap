@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuthStore } from "@/stores/auth-store";
 import { toast } from "sonner";
@@ -11,6 +12,7 @@ export function OAuthCallbackPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const setAuth = useAuthStore((state) => state.setAuth);
+  const queryClient = useQueryClient();
   const hasProcessed = useRef(false);
 
   useEffect(() => {
@@ -29,7 +31,10 @@ export function OAuthCallbackPage() {
       authApi.exchangeOAuthCode(code)
         .then(({ user, tokens }) => {
           setAuth({ user, tokens });
-          navigate(resolvePostAuthPath(user, consumeAuthReturnTo()), { replace: true });
+          queryClient.clear();
+          queryClient.setQueryData(["current-user"], { user });
+          const requestedPath = consumeAuthReturnTo();
+          navigate(resolvePostAuthPath(user, requestedPath), { state: { from: requestedPath }, replace: true });
         })
         .catch(() => {
           toast.error("Google login link expired or was already used");
@@ -38,7 +43,7 @@ export function OAuthCallbackPage() {
     } else {
       navigate("/login", { replace: true });
     }
-  }, [searchParams, navigate, setAuth]);
+  }, [searchParams, navigate, setAuth, queryClient]);
 
   return (
     <div className="flex h-screen w-full items-center justify-center">

@@ -16,6 +16,11 @@ describe("academic verification authorization", () => {
     middleware({ user: { sub: "admin-1", email: "admin@example.test", role: "admin", systemRole: "ADMIN" } } as Request, {} as Response, next);
     expect(next).toHaveBeenCalledWith();
   });
+  it("does not treat a legacy forum moderator role as academic verification authority", () => {
+    const next = vi.fn() as NextFunction;
+    requireSystemRole("ADMIN")({ user: { sub: "moderator-1", email: "moderator@example.test", role: "moderator", systemRole: "USER" } } as Request, {} as Response, next);
+    expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 403 }));
+  });
 
   it("allows the distinct ADMIN system role to review academic verification", () => {
     const middleware = requireSystemRole("ADMIN");

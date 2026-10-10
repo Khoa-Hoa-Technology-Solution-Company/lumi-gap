@@ -119,25 +119,66 @@ export interface ProjectInvitationPreview {
   alreadyMember: boolean;
 }
 
-export type MentorRelationshipStatus = "PENDING" | "ACCEPTED" | "DECLINED" | "ENDED";
-
-export interface MentorRelationship {
+export type MentorshipRequestStatus = "PENDING" | "ACCEPTED" | "DECLINED" | "CANCELLED" | "EXPIRED";
+export type MentorRelationshipStatus = "ACTIVE" | "ENDED";
+export interface MentorshipPerson extends ProjectMemberUserSummary {
+  academicRole?: string;
+  institutionName?: string;
+  positionTitle?: string;
+  verifiedLecturer?: boolean;
+}
+export interface MentorProjectPreview {
+  id: string; title: string; summary: string; researchField?: string;
+  stage: ProjectStatus; expertise: string[]; discovery: "CLOSED" | "SEEKING_MENTOR";
+}
+export interface MentorshipActions {
+  accept: boolean; decline: boolean; cancel: boolean; end: boolean; openProject: boolean;
+}
+export interface MentorshipRequest {
+  kind: "REQUEST";
+  direction: "PROJECT_TO_LECTURER" | "LECTURER_TO_PROJECT";
+  expiresAt?: string;
+  respondedAt?: string;
   id: string;
   projectId: string;
-  mentorUser: ProjectMemberUserSummary;
-  requestedBy: ProjectMemberUserSummary;
-  status: MentorRelationshipStatus;
+  project?: MentorProjectPreview;
+  mentorUser: MentorshipPerson;
+  requestedBy: MentorshipPerson;
+  status: MentorshipRequestStatus;
   message?: string;
   responseNote?: string;
-  acceptedAt?: string;
-  endedAt?: string;
+  closeReason?: string;
+  relationshipId?: string;
+  actions: MentorshipActions;
   createdAt: string;
   updatedAt: string;
 }
-
+export interface MentorRelationship {
+  kind: "RELATIONSHIP";
+  id: string; projectId: string; sourceRequestId: string;
+  project?: MentorProjectPreview; mentorUser: MentorshipPerson;
+  status: MentorRelationshipStatus; startedAt: string;
+  endedAt?: string; endedById?: string; endReason?: string;
+  actions: MentorshipActions; createdAt: string; updatedAt: string;
+}
+export interface AcademicPageMeta { page: number; pageSize: number; total: number; totalPages: number }
+export interface MentorshipCollection {
+  requests: MentorshipRequest[]; relationships: MentorRelationship[];
+  counts: { pending: number; incoming: number; active: number };
+  policy: { maxActiveMentors: number; maxPendingRequests: number };
+  requestMeta: AcademicPageMeta; relationshipMeta: AcademicPageMeta;
+}
+export interface AvailableMentor extends MentorshipPerson {
+  expertiseAreas: string[]; researchInterests: string[]; matchedTerms: string[];
+  sameInstitution: boolean; acceptingMentorships: true;
+}
+export interface MentoringPreferences {
+  acceptingMentorships: boolean; canEnable: boolean; emailEnabled: boolean; locale: "en" | "vi";
+}
 export interface RequestMentorRelationshipRequest {
   mentorUserId: string;
-  message?: string;
+  message: string;
+  idempotencyKey?: string;
 }
 
 export interface RespondMentorRelationshipRequest {

@@ -5,13 +5,24 @@ import { projectMentorshipService } from "./project-mentorship.service.js";
 
 export const mentorshipParamsSchema = z.object({
   id: databaseIdSchema,
-  relationshipId: databaseIdSchema,
+  relationshipId: z.string().uuid(),
 });
 
 export const requestMentorshipSchema = z.object({
   mentorUserId: databaseIdSchema,
-  message: z.string().trim().max(1000).optional(),
+  message: z.string().trim().min(1).max(1000),
+  idempotencyKey: z.string().uuid().optional(),
 }).strict();
+
+export const academicSearchSchema = z.object({
+  q: z.string().trim().max(160).optional(),
+  page: z.coerce.number().int().min(1).max(100000).default(1),
+  pageSize: z.coerce.number().int().min(1).max(30).default(10),
+  institution: z.string().trim().max(200).optional(),
+  area: z.string().trim().max(120).optional(), interest: z.string().trim().max(120).optional(),
+  position: z.string().trim().max(160).optional(),
+}).strict();
+export const mentorshipOfferSchema = requestMentorshipSchema.omit({ mentorUserId: true });
 
 export const respondMentorshipSchema = z.object({
   note: z.string().trim().max(1000).optional(),
@@ -19,7 +30,7 @@ export const respondMentorshipSchema = z.object({
 
 export const projectMentorshipController = {
   async list(req: Request, res: Response) {
-    const data = await projectMentorshipService.list(req.params.id as string, req.user!.sub);
+    const data = await projectMentorshipService.list(req.params.id as string, req.user!.sub, academicSearchSchema.parse(req.query));
     res.json({ success: true, data });
   },
 

@@ -43,7 +43,7 @@ const mocks = vi.hoisted(() => {
     findUnique: vi.fn(async ({ where }: any) => state.requests.find((request) => matches(request, where)) ?? null),
     findMany: vi.fn(async ({ where }: any = {}) => state.requests.filter((request) => matches(request, where))),
     create: vi.fn(async ({ data }: any) => {
-      const row = { id: `00000000-0000-4000-8000-${String(state.requests.length + 1).padStart(12, "0")}`, submittedAt: new Date(), reviewedAt: null, reviewedById: null, rejectionReason: null, ...data };
+      const row = { id: `00000000-0000-4000-8000-${String(state.requests.length + 1).padStart(12, "0")}`, submittedAt: new Date(), reviewedAt: null, reviewedById: null, rejectionReason: null, invalidatedAt: null, ...data };
       state.requests.push(row);
       return row;
     }),
@@ -63,6 +63,8 @@ const mocks = vi.hoisted(() => {
       .slice(0, take)),
     create: vi.fn(async ({ data }: any) => { const change = { changedAt: data.changedAt }; state.displayNameChanges.push(change); return change; }),
   };
+  prisma.institution = { findMany: vi.fn(async () => []) };
+  prisma.academicProgram = { findMany: vi.fn(async () => []) };
   prisma.$transaction = vi.fn(async (callback: (tx: typeof prisma) => unknown) => callback(prisma));
   return {
     state, prisma,
@@ -82,15 +84,15 @@ import { academicProfileService } from "../academic-profile.service.js";
 
 function resetState() {
   Object.assign(mocks.state, {
-    user: { id: USER_ID, accountStatus: "ACTIVE", fullName: "Ada Researcher", institution: "FPT University", role: "user", points: 0, researchInterests: [] },
-    admin: { id: ADMIN_ID, accountStatus: "ACTIVE", fullName: "Admin", institution: null, role: "admin", points: 0, researchInterests: [] },
+    user: { id: USER_ID, accountStatus: "ACTIVE", isActive: true, fullName: "Ada Researcher", institution: "FPT University", role: "user", points: 0, researchInterests: [] },
+    admin: { id: ADMIN_ID, systemRole: "ADMIN", accountStatus: "ACTIVE", isActive: true, fullName: "Admin", institution: null, role: "admin", points: 0, researchInterests: [] },
     profile: {
       id: "profile-1", userId: USER_ID, primaryPosition: "LECTURER", positionTitle: "Lecturer", positionCategory: "LECTURER", positionSource: "PREDEFINED",
       positionStatus: "NOT_SUBMITTED", affiliationStatus: "VERIFIED", identityStatus: "VERIFIED", emailStatus: "VERIFIED", orcidStatus: "NOT_SUBMITTED",
       verificationStatus: "SELF_DECLARED", profileVisibility: "PUBLIC", showInResearcherSearch: true, allowCollaborationRequests: true, privacySettings: {}, expertiseAreas: [], skills: [], researchKeywords: [],
       supportAvailability: {}, reviewAvailability: {}, createdAt: new Date("2026-01-01"), updatedAt: new Date("2026-01-01"),
     },
-    affiliation: { id: "affiliation-1", userId: USER_ID, institutionName: "FPT University", isPrimary: true, validUntil: null, verificationStatus: "VERIFIED", positionStatus: "NOT_SUBMITTED", positionTitle: "Lecturer", positionCategory: "LECTURER", positionSource: "PREDEFINED" },
+    affiliation: { id: "affiliation-1", userId: USER_ID, institutionName: "FPT University", isPrimary: true, isCurrent: true, updatedAt: new Date("2026-01-01"), validUntil: null, verificationStatus: "VERIFIED", positionStatus: "NOT_SUBMITTED", positionTitle: "Lecturer", positionCategory: "LECTURER", positionSource: "PREDEFINED" },
     requests: [],
     displayNameChanges: [],
   });
@@ -135,7 +137,7 @@ describe("academic position verification lifecycle", () => {
     await academicProfileService.requestVerification(USER_ID, requestInput);
     await academicProfileService.updateMine(USER_ID, { positionTitle: "Senior Lecturer" });
 
-    expect(mocks.state.requests[0]).toEqual(expect.objectContaining({ status: "INVALIDATED", rejectionReason: "Position or institution changed by profile owner" }));
+    expect(mocks.state.requests[0]).toEqual(expect.objectContaining({ status: "INVALIDATED", rejectionReason: null, invalidatedAt: expect.any(Date) }));
     expect(mocks.state.profile.positionTitle).toBe("Senior Lecturer");
     expect(mocks.state.profile.positionStatus).toBe("NOT_SUBMITTED");
     expect(mocks.state.profile.affiliationStatus).toBe("VERIFIED");
@@ -144,9 +146,10 @@ describe("academic position verification lifecycle", () => {
   it("invalidates only the old position verification after a verified position changes", async () => {
     await academicProfileService.requestVerification(USER_ID, requestInput);
     await academicProfileService.decideVerification(mocks.state.requests[0]!.id, { decision: "approve" }, ADMIN_ID);
+    const reviewedAt = mocks.state.requests[0]!.reviewedAt;
     await academicProfileService.updateMine(USER_ID, { positionTitle: "Professor" });
 
-    expect(mocks.state.requests[0]!.status).toBe("INVALIDATED");
+    expect(mocks.state.requests[0]).toMatchObject({ status: "VERIFIED", invalidatedAt: expect.any(Date), reviewedAt, reviewedById: ADMIN_ID });
     expect(mocks.state.profile.positionStatus).toBe("NOT_SUBMITTED");
     expect(mocks.state.profile.affiliationStatus).toBe("VERIFIED");
     expect(mocks.state.profile.identityStatus).toBe("VERIFIED");

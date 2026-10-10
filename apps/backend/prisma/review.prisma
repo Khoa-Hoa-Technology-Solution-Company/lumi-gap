@@ -225,6 +225,8 @@ model ReviewRequest {
   createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
   completedAt        DateTime? @map("completed_at") @db.Timestamptz(6)
+  respondedAt        DateTime? @map("responded_at") @db.Timestamptz(6)
+  expiresAt          DateTime? @map("expires_at") @db.Timestamptz(6)
 
   @@index([requesterId, status, updatedAt])
   @@index([projectId, status, createdAt])

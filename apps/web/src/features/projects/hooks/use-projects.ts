@@ -11,6 +11,7 @@ import type {
   UpdateProjectPaperRequest,
   RequestMentorRelationshipRequest,
   RespondMentorRelationshipRequest,
+  MentorRelationship, MentorshipRequest,
 } from "@trend/shared-types";
 
 export function useProjects(options?: { enabled?: boolean }) {
@@ -183,7 +184,7 @@ export function useRequestProjectMentorship(id: string) {
 export function useRespondToProjectMentorship(id: string, action: "accept" | "decline" | "end") {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ relationshipId, data = {} }: { relationshipId: string; data?: RespondMentorRelationshipRequest }) => {
+    mutationFn: async ({ relationshipId, data = {} }: { relationshipId: string; data?: RespondMentorRelationshipRequest }): Promise<MentorshipRequest | MentorRelationship> => {
       if (action === "accept") return projectsApi.acceptMentorship(id, relationshipId, data);
       if (action === "decline") return projectsApi.declineMentorship(id, relationshipId, data);
       return projectsApi.endMentorship(id, relationshipId, data);

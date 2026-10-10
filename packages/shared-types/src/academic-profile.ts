@@ -22,9 +22,13 @@ export const ACADEMIC_POSITION_OPTIONS = [
   { title: "PhD Candidate", category: "STUDENT" },
   { title: "Lecturer", category: "LECTURER" },
   { title: "Senior Lecturer", category: "LECTURER" },
+  { title: "Assistant Professor", category: "LECTURER" },
+  { title: "Associate Professor", category: "LECTURER" },
   { title: "Faculty Member", category: "LECTURER" },
   { title: "Professor", category: "LECTURER" },
   { title: "Research Assistant", category: "RESEARCH_STAFF" },
+  { title: "Research Fellow", category: "RESEARCH_STAFF" },
+  { title: "Research Engineer", category: "RESEARCH_STAFF" },
   { title: "Research Associate", category: "RESEARCH_STAFF" },
   { title: "Research Scientist", category: "RESEARCH_STAFF" },
   { title: "Research Staff", category: "RESEARCH_STAFF" },
@@ -60,6 +64,10 @@ export type AcademicReviewType =
   | "EXPERIMENTAL_RESULTS" | "RESEARCH_PAPER" | "SOFTWARE_RESEARCH_PROJECT";
 
 export interface AcademicAffiliation {
+  institutionId?: string;
+  hostInstitution?: boolean;
+  programId?: string;
+  programName?: string;
   id?: string;
   institutionName?: string;
   rorId?: string;
@@ -92,7 +100,69 @@ export interface AcademicProfileDiscoverability {
 
 export type AcademicVerificationRequestType = "POSITION" | "AFFILIATION";
 export type AcademicVerificationEvidenceType = "INSTITUTIONAL_EMAIL" | "INSTITUTIONAL_PROFILE" | "ORCID" | "EXTERNAL_ACADEMIC_PROFILE" | "DOCUMENT" | "OTHER";
+export type LecturerVerificationMethod = "INSTITUTIONAL_EMAIL_AND_PROFILE" | "MANUAL_INSTITUTIONAL_EVIDENCE" | "TRUSTED_INSTITUTION_SOURCE";
+export type LecturerEvidenceType = "OFFICIAL_FACULTY_PROFILE" | "OFFICIAL_STAFF_DIRECTORY" | "DEPARTMENT_DIRECTORY" | "INSTITUTION_ISSUED_PROFILE" | "EMPLOYMENT_DOCUMENT" | "APPOINTMENT_DOCUMENT" | "STAFF_ID" | "OTHER_INSTITUTION_SOURCE";
+export interface LecturerEvidenceEntry {
+  type: LecturerEvidenceType;
+  sourceKind: "URL" | "DOCUMENT";
+  reference?: string;
+  customEvidenceName?: string;
+  additionalExplanation?: string;
+  documentIndex?: number;
+  uploadId?: string;
+  retainedSourceId?: string;
+}
+export interface LecturerVerificationSubmission {
+  requestId: string; status: VerificationStatus; submittedAt: ISODateString; submissionKey: string; accepted: true;
+}
+export interface LecturerVerificationSubmitInput {
+  type: "POSITION"; evidenceType: "DOCUMENT"; path: "STANDARD" | "MANUAL"; institutionId: string; submissionKey: string; sources: LecturerEvidenceEntry[];
+  supplementsRequestId?: string;
+  expectedReviewedAt?: ISODateString;
+}
+export type LecturerTrackingAction = "START" | "SUPPLEMENT" | "NEW_REQUEST" | "MENTORING_SETTINGS" | "WORKSPACE";
+export interface LecturerTrackingRequest {
+  id: string; previousRequestId?: string; revision: number; status: VerificationStatus;
+  institutionId?: string; institutionName: string; position: string; verificationMethod?: string;
+  submittedAt: ISODateString; reviewedAt?: ISODateString; invalidatedAt?: ISODateString; supersededAt?: ISODateString;
+  applicantMessage?: string;
+  evidence: Array<{ id: string; type: string; sourceKind: string; displayName: string; reference?: string; mimeType?: string; isAvailable: boolean; submittedAt: ISODateString; previousSourceId?: string; replaced: boolean; additionalExplanation?: string }>;
+}
+export interface LecturerVerificationTracking {
+  status: VerificationStatus; academicRole: AcademicRole; accountEmailVerified: boolean;
+  institutionId?: string; institutionName: string; position: string; allowedActions: LecturerTrackingAction[];
+  currentRequestId?: string; selectedRequest: LecturerTrackingRequest | null;
+  history: LecturerTrackingRequest[]; page: number; totalPages: number;
+  timeline: Array<{ id: string; requestId: string; eventType: "SUBMITTED" | "SUPPLEMENTED" | "MORE_INFO" | "APPROVED" | "REJECTED" | "INVALIDATED" | "EXPIRED"; createdAt: ISODateString; message?: string }>;
+}
+export interface AcademicVerificationStatusResponse {
+  academicType: AcademicProfileType; statuses: AcademicProfile["verificationStatuses"]; requests: AcademicVerificationRequest[]; submission: LecturerVerificationSubmission | null;
+  lecturer?: LecturerVerificationTracking;
+}
+export interface AcademicVerificationSource {
+  id: string; slot: number; type: LecturerEvidenceType | "INSTITUTIONAL_EMAIL";
+  sourceKind?: "URL" | "DOCUMENT" | "EMAIL";
+  customEvidenceName?: string; additionalExplanation?: string; mimeType?: string;
+  urlTrustStatus?: "REGISTRY_APPROVED" | "PENDING_ADMIN_VALIDATION" | "ADMIN_VALIDATED";
+  reference?: string; fileName?: string; sizeBytes?: number; documentAvailable: boolean;
+  status: "UNCHECKED" | "VALID" | "INVALID" | "INCONCLUSIVE";
+  checkedAt?: ISODateString; reviewerNote?: string;
+}
+export interface LecturerReviewChecklist {
+  identityMatches: boolean; institutionMatches: boolean; currentPositionConfirmed: boolean;
+  institutionControlled: boolean; noConflicts: boolean;
+  identityBound?: boolean; independentEvidence?: boolean;
+}
+export interface AcademicVerificationDecision {
+  identityBindingMethod?: "INSTITUTION_CONTACT" | "TRUSTED_INSTITUTION_RECORD";
+  identityBindingReference?: string;
+  decision: "approve" | "reject" | "more_info"; reason?: string; note?: string; method?: string;
+  checklist?: LecturerReviewChecklist;
+  evidenceChecks?: Array<{ id: string; status: AcademicVerificationSource["status"]; note?: string; institutionDomainConfirmed?: boolean }>;
+}
 export interface AcademicVerificationRequest {
+  previousRequestId?: string; revision?: number; invalidatedAt?: ISODateString; supersededAt?: ISODateString;
+  requiresIndependentIdentityBinding?: boolean;
   id: string;
   type: AcademicVerificationRequestType;
   targetValue?: string;
@@ -106,9 +176,14 @@ export interface AcademicVerificationRequest {
   evidenceFileName?: string;
   evidenceMimeType?: string;
   evidenceSizeBytes?: number;
+  verificationMethod?: LecturerVerificationMethod;
+  sources?: AcademicVerificationSource[];
+  reviewChecklist?: LecturerReviewChecklist;
 }
 
 export interface AdminAcademicVerificationItem {
+  accountEmail?: string;
+  accountEmailVerified?: boolean;
   profile: AcademicProfile;
   request: AcademicVerificationRequest;
   history: AcademicVerificationRequest[];
@@ -140,6 +215,7 @@ export type AcademicIdentityProvider = "ORCID" | "OPENALEX" | "GOOGLE_SCHOLAR" |
 export type AcademicIdentityStatus = "SELF_DECLARED" | "CONNECTED" | "LINKED" | "INVALID";
 export type AcademicIdentityConnectionMethod = "MANUAL" | "OAUTH" | "SYSTEM" | "ADMIN";
 export type AcademicIdentityVisibility = "PUBLIC" | "REGISTERED_USERS" | "PRIVATE";
+export type AcademicIdentityVerificationStatus = "UNVERIFIED" | "PROVIDER_CONNECTED";
 
 export interface AcademicIdentityLink {
   id: string;
@@ -149,6 +225,7 @@ export interface AcademicIdentityLink {
   profileUrl?: string;
   connectionMethod: AcademicIdentityConnectionMethod;
   status: AcademicIdentityStatus;
+  verificationStatus: AcademicIdentityVerificationStatus;
   visibility: AcademicIdentityVisibility;
   createdAt: ISODateString;
   updatedAt: ISODateString;
@@ -168,14 +245,24 @@ export interface AcademicAvailability<T extends string> {
 }
 
 export type FeaturedWorkSource = "LUMIGAP" | "ORCID" | "MANUAL";
-export interface AcademicFeaturedWork {
+export type AcademicFeaturedWorkKind = "PAPER" | "PROJECT" | "RESEARCH_PROPOSAL" | "RESEARCH_ARTIFACT" | "CANDIDATE_GAP" | "DATASET" | "CONTRIBUTION" | "OTHER";
+export interface AcademicFeaturedWorkInput {
+  kind?: AcademicFeaturedWorkKind;
   paperId?: string;
+  projectId?: string;
+  submissionId?: string;
+  reportId?: string;
+  gapId?: string;
   doi?: string;
   title?: string;
   year?: number;
   source: FeaturedWorkSource;
-  /** True only when metadata was resolved from the LumiGap Paper collection. */
+}
+export interface AcademicFeaturedWork extends AcademicFeaturedWorkInput {
+  /** True when metadata is resolved from an accessible LumiGap record; not a verification badge. */
   canonical: boolean;
+  href?: string;
+  visibility?: "PUBLIC" | "RESTRICTED";
 }
 
 export type VerificationEvidenceType =
@@ -226,6 +313,11 @@ export interface InstitutionalEmailVerificationStatus {
   verifiedAt?: ISODateString;
   trustedInstitution: boolean;
   institutionName?: string;
+  institutionId?: string;
+  source?: "ACCOUNT" | "LINKED";
+  accountEmailVerified?: boolean;
+  officialDomains?: string[];
+  approvedEmailDomains?: Array<{ domain: string; allowSubdomains: boolean }>;
 }
 
 export interface AcademicProfile {
@@ -308,6 +400,12 @@ export interface CompactAcademicProfile {
   avatarUrl?: string;
   academicTitle?: AcademicTitle;
   institutionName?: string;
+  academicRole?: AcademicRole;
+  programMajor?: string;
+  currentPosition?: string;
+  affiliationVerification?: VerificationStatus;
+  fptAffiliationVerified?: boolean;
+  positionVerification?: VerificationStatus;
   verificationStatus: AcademicVerificationStatus;
   expertiseAreas: string[];
   supportAvailable: boolean;
@@ -348,6 +446,7 @@ export interface PublicForumActivity {
 }
 
 export interface UpdateAcademicProfileDetailsRequest {
+  academicRole?: AcademicRole;
   primaryPosition?: PrimaryPosition;
   positionTitle?: string;
   /** @deprecated Use primaryPosition. Kept only for old clients during migration. */
@@ -360,7 +459,10 @@ export interface UpdateAcademicProfileDetailsRequest {
   privacy?: Partial<AcademicProfilePrivacy>;
   academicTitle?: AcademicTitle | null;
   affiliation?: {
+    institutionId?: string;
     institutionName?: string;
+    programId?: string;
+    programName?: string;
     rorId?: string;
     department?: string;
     position?: string;
@@ -376,13 +478,7 @@ export interface UpdateAcademicProfileDetailsRequest {
     externalId?: string;
     profileUrl?: string;
   }>;
-  featuredWorks?: Array<{
-    paperId?: string;
-    doi?: string;
-    title?: string;
-    year?: number;
-    source: FeaturedWorkSource;
-  }>;
+  featuredWorks?: AcademicFeaturedWorkInput[];
   supportAvailability?: Omit<AcademicAvailability<ResearchSupportType>, "updatedAt">;
   reviewAvailability?: Omit<AcademicAvailability<AcademicReviewType>, "updatedAt">;
   /** Compatibility inputs accepted while older clients migrate. */
@@ -394,7 +490,7 @@ export interface UpdateAcademicProfileDetailsRequest {
 
 export interface AcademicVerificationListResponse {
   data: AdminAcademicVerificationItem[];
-  meta: { page: number; pageSize: number; total: number; totalPages: number };
+  meta: { page: number; pageSize: number; total: number; totalPages: number; statusCounts?: Record<string, number> };
 }
 
 export interface LecturerDirectoryResponse {

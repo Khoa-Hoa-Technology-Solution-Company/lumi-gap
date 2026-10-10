@@ -1,6 +1,7 @@
 import { Router, type Request } from "express";
 import { z } from "zod";
 import { requireAuth } from "../../common/middleware/auth.js";
+import { requireResearchWorkflow } from "../authorization/authorization.middleware.js";
 import { requirePermission } from "../../common/middleware/permission.js";
 import { uploadSinglePdf, assertPdfMagic } from "../../common/middleware/upload.js";
 import { validate } from "../../common/middleware/validate.js";
@@ -65,7 +66,7 @@ function parseArrayFields(body: Record<string, unknown>) {
 }
 
 export const submissionRouter: Router = Router();
-submissionRouter.use(requireAuth);
+submissionRouter.use(requireAuth, requireResearchWorkflow);
 
 const aiPreReviewLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,

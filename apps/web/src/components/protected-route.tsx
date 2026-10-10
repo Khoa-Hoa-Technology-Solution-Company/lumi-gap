@@ -20,11 +20,9 @@ export function ProtectedRoute() {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  // Persisted auth state can be stale after a server-side verification or data
-  // migration. Wait for the first /auth/me result before making a verification
-  // redirect. Using isLoading (not isFetching) avoids blocking on background
-  // refetches when we already have user data from a prior fetch or placeholder.
-  if (currentUser.isLoading) {
+  // A persisted user is only a placeholder until /auth/me confirms onboarding.
+  // Cached API data can still render during a background refresh.
+  if (currentUser.isLoading || currentUser.isPlaceholderData) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50 px-6 text-center dark:bg-[#09090b]" role="status" aria-busy="true">
         <p className="text-sm text-slate-500 dark:text-slate-400">Loading page...</p>
@@ -36,8 +34,10 @@ export function ProtectedRoute() {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
+  if (user.systemRole !== "ADMIN" && !user.emailVerifiedAt) return <Navigate to="/verify-email" replace />;
+
   if (requiresAcademicProfile(user)) {
-    return <Navigate to="/onboarding/academic-profile" replace />;
+    return <Navigate to="/onboarding/academic-profile" state={{ from: `${location.pathname}${location.search}${location.hash}` }} replace />;
   }
 
   return <Outlet />;

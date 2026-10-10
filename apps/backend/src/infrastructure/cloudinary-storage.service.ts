@@ -68,3 +68,11 @@ export function cloudinaryPublicUrl(
     sign_url: options.type === "authenticated",
   });
 }
+
+export function cloudinaryPrivateDownloadUrl(publicId: string): string {
+  configureCloudinary();
+  return cloudinary.utils.private_download_url(publicId, "", {
+    resource_type: "raw", type: "authenticated", attachment: true,
+    expires_at: Math.floor(Date.now() / 1000) + 60,
+  });
+}

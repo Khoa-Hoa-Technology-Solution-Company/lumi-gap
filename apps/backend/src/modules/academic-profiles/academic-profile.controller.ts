@@ -1,8 +1,11 @@
 import type { Request, Response } from "express";
-import { LecturerListQuerySchema, PublicForumActivityQuerySchema, VerificationListQuerySchema } from "./dto/academic-profile.schema.js";
+import { FeaturedWorkOptionsQuerySchema, LecturerListQuerySchema, PublicForumActivityQuerySchema, VerificationListQuerySchema } from "./dto/academic-profile.schema.js";
+import { featuredWorkOptions } from "./academic-featured-works.service.js";
 import { publicForumActivity } from "./academic-forum-activity.service.js";
 import { academicProfileService } from "./academic-profile.service.js";
 import { institutionalEmailVerificationService } from "./institutional-email-verification.service.js";
+import { stageLecturerEvidence } from "./verification-evidence-upload.service.js";
+import { VerificationStatusQuerySchema } from "./dto/academic-profile.schema.js";
 import { academicProfileCoverService } from "./academic-profile-cover.service.js";
 import { academicProfileAvatarService } from "./academic-profile-avatar.service.js";
 import { AppError } from "../../common/exceptions/app-error.js";
@@ -11,6 +14,10 @@ import { academicIdentityService } from "./academic-identity.service.js";
 import { auditService } from "../audit/audit.service.js";
 
 export const academicProfileController = {
+  async featuredWorkOptions(req: Request, res: Response) {
+    const { kind, q } = FeaturedWorkOptionsQuerySchema.parse(req.query);
+    res.json({ success: true, data: await featuredWorkOptions(req.user!.sub, kind, q) });
+  },
   async mine(req: Request, res: Response) {
     res.json({ success: true, data: await academicProfileService.getMine(req.user!.sub) });
   },
@@ -58,7 +65,7 @@ export const academicProfileController = {
   },
   async publicAvatar(req: Request, res: Response) {
     const location = await academicProfileAvatarService.publicLocation(req.params.userId as string, req.user?.sub);
-    res.setHeader("Cache-Control", "public, max-age=300");
+    res.setHeader("Cache-Control", "private, no-store");
     if (location.kind === "redirect") {
       res.redirect(302, location.url);
       return;
@@ -70,7 +77,7 @@ export const academicProfileController = {
   },
   async publicCover(req: Request, res: Response) {
     const location = await academicProfileCoverService.publicLocation(req.params.userId as string, req.user?.sub);
-    res.setHeader("Cache-Control", "public, max-age=300");
+    res.setHeader("Cache-Control", "private, no-store");
     if (location.kind === "redirect") {
       res.redirect(302, location.url);
       return;
@@ -86,20 +93,37 @@ export const academicProfileController = {
     res.json({ success: true, ...result });
   },
   async requestVerification(req: Request, res: Response) {
-    const file = (req as Request & { file?: { buffer: Buffer; originalname: string; mimetype: string; size: number } }).file;
-    res.status(202).json({ success: true, data: await academicProfileService.requestVerification(req.user!.sub, req.body, file) });
+    const files = (req as Request & { files?: Record<string, Array<{ buffer: Buffer; originalname: string; mimetype: string; size: number }>> }).files;
+    res.status(req.body.submissionKey ? 201 : 202).json({ success: true, data: await academicProfileService.requestVerification(req.user!.sub, req.body, files?.evidence?.[0], files?.additionalEvidence?.[0], files?.evidenceFiles) });
+  },
+  async stageVerificationEvidence(req: Request, res: Response) {
+    res.status(201).json({ success: true, data: await stageLecturerEvidence(req.user!.sub, req.body.institutionId, (req as Request & { file?: { buffer: Buffer; originalname: string; mimetype: string; size: number } }).file) });
   },
   async verificationStatus(req: Request, res: Response) {
-    res.json({ success: true, data: await academicProfileService.getVerificationStatus(req.user!.sub) });
+    const query = VerificationStatusQuerySchema.parse(req.query);
+    res.setHeader("Cache-Control", "private, no-store");
+    res.json({ success: true, data: await academicProfileService.getVerificationStatus(req.user!.sub, query.submissionKey, query.requestId, query.page) });
+  },
+  async ownVerificationEvidenceFile(req: Request, res: Response) {
+    const sourceId = typeof req.query.sourceId === "string" ? req.query.sourceId : undefined;
+    const location = await academicProfileService.ownVerificationEvidenceFileLocation(req.params.requestId as string, req.user!.sub, sourceId);
+    res.setHeader("Cache-Control", "private, no-store");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.type(location.mimeType).setHeader("Content-Disposition", "attachment; filename=verification-evidence");
+    await auditService.log("academic_profile.verification.evidence_accessed", { userId: req.user!.sub, targetTableName: "verification_evidence", targetRecordId: req.params.requestId as string });
+    if (location.kind === "local") { res.sendFile(location.path); return; }
+    const upstream = await fetch(location.url, { signal: AbortSignal.timeout(15_000) });
+    if (!upstream.ok) throw AppError.notFound("Verification evidence is unavailable or has been removed");
+    res.send(Buffer.from(await upstream.arrayBuffer()));
   },
   async institutionalEmailStatus(req: Request, res: Response) {
     res.json({ success: true, data: await institutionalEmailVerificationService.status(req.user!.sub) });
   },
   async requestInstitutionalEmailChallenge(req: Request, res: Response) {
-    res.status(202).json({ success: true, data: await institutionalEmailVerificationService.requestChallenge(req.user!.sub) });
+    res.status(202).json({ success: true, data: await institutionalEmailVerificationService.requestChallenge(req.user!.sub, req.body.email) });
   },
   async verifyInstitutionalEmail(req: Request, res: Response) {
-    const email = await institutionalEmailVerificationService.verifyChallenge(req.user!.sub, req.body.code);
+    const email = await institutionalEmailVerificationService.verifyChallenge(req.user!.sub, req.body.code, req.body.email);
     const affiliation = await affiliationService.verifyFromInstitutionalEmail(req.user!.sub);
     res.json({ success: true, data: { ...email, affiliation } });
   },
@@ -116,14 +140,21 @@ export const academicProfileController = {
   },
   async verificationEvidenceFile(req: Request, res: Response) {
     const adminId = req.user!.sub;
-    const location = await academicProfileService.verificationEvidenceFileLocation(req.params.requestId as string);
+    const sourceId = typeof req.query.sourceId === "string" ? req.query.sourceId : undefined;
+    const location = await academicProfileService.verificationEvidenceFileLocation(req.params.requestId as string, adminId, sourceId);
     res.setHeader("Cache-Control", "private, no-store");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    const extension = location.mimeType === "image/png" ? "png" : location.mimeType === "image/jpeg" ? "jpg" : "pdf";
     if (location.kind === "redirect") {
       await auditService.log("academic_profile.verification.evidence_accessed", { userId: adminId, targetTableName: "verification_evidence", targetRecordId: req.params.requestId as string });
-      res.redirect(302, location.url);
+      const upstream = await fetch(location.url, { signal: AbortSignal.timeout(15_000) });
+      if (!upstream.ok) throw AppError.notFound("Verification evidence is unavailable or has been removed");
+      const bytes = Buffer.from(await upstream.arrayBuffer());
+      res.type(location.mimeType).setHeader("Content-Disposition", `attachment; filename=verification-evidence.${extension}`);
+      res.send(bytes);
       return;
     }
-    res.type("application/pdf").setHeader("Content-Disposition", "attachment; filename=position-evidence.pdf");
+    res.type(location.mimeType).setHeader("Content-Disposition", `attachment; filename=position-evidence.${extension}`);
     await auditService.log("academic_profile.verification.evidence_accessed", { userId: adminId, targetTableName: "verification_evidence", targetRecordId: req.params.requestId as string });
     res.sendFile(location.path);
   },

@@ -2,6 +2,26 @@ import { describe, expect, it } from "vitest";
 import { getNotificationDestination } from "./notification-destination";
 
 describe("getNotificationDestination", () => {
+  it("routes Lecturer verification events to private status and Admin review to the authorized queue", () => {
+    expect(getNotificationDestination({ type: "LECTURER_VERIFICATION_SUBMITTED", targetKind: null, targetId: null }, false)).toBe("/settings/verification/lecturer");
+    expect(getNotificationDestination({ type: "LECTURER_VERIFICATION_REVIEW_REQUESTED", targetKind: null, targetId: null }, true)).toBe("/admin/academic-verifications");
+    expect(getNotificationDestination({ type: "LECTURER_VERIFICATION_REVIEW_REQUESTED", targetKind: null, targetId: null }, false)).toBeNull();
+  });
+  it("opens the exact Lecturer request for the applicant or administrator", () => {
+    const notification = { type: "LECTURER_VERIFICATION_SUPPLEMENTED", targetKind: null, targetId: null, verificationRequestId: "request/1?other=value" };
+    expect(getNotificationDestination(notification, false)).toBe("/settings/verification/lecturer?requestId=request%2F1%3Fother%3Dvalue");
+    expect(getNotificationDestination({ ...notification, type: "LECTURER_VERIFICATION_REVIEW_REQUESTED" }, true)).toBe("/admin/academic-verifications?requestId=request%2F1%3Fother%3Dvalue");
+    expect(getNotificationDestination({ ...notification, type: "LECTURER_VERIFICATION_REVIEW_REQUESTED" }, false)).toBeNull();
+  });
+  it.each(["MENTORSHIP_REQUEST_CREATED", "MENTORSHIP_OFFER_CREATED", "MENTORSHIP_ACCEPTED", "MENTORSHIP_DECLINED", "MENTORSHIP_CANCELLED", "MENTORSHIP_ENDED"])("routes %s to Academic Support", type => {
+    expect(getNotificationDestination({ type, targetKind: "project", targetId: "project/one" }, false)).toBe("/academic-support?projectId=project%2Fone");
+  });
+  it.each(["academic_verification_submitted", "academic_verification_more_info", "academic_verification_approved", "academic_verification_rejected"])("routes %s to private settings", type => {
+    expect(getNotificationDestination({ type, targetKind: "academic_profile", targetId: "profile" }, false)).toBe("/settings/academic");
+  });
+  it.each(["REVIEW_REQUESTED", "REVIEW_REQUEST_CANCELLED", "REVIEW_REQUEST_ACCEPTED", "REVIEW_REQUEST_DECLINED", "REVISION_RESUBMITTED"])("routes %s to Review Center", type => {
+    expect(getNotificationDestination({ type, targetKind: "project", targetId: "project" }, false)).toBe("/reviews");
+  });
   it("routes an admin pending submission to moderation", () => {
     expect(getNotificationDestination({ type: "submission_pending", targetKind: "paper", targetId: "paper-1" }, true)).toBe("/admin/papers");
   });
@@ -39,6 +59,9 @@ describe("getNotificationDestination", () => {
     expect(getNotificationDestination({ type: "paper_submission", targetKind: "paper", targetId: "paper-1" }, true)).toBe("/admin/papers");
   });
 
+  it.each(["affiliation_request_submitted", "affiliation_verified", "affiliation_rejected", "affiliation_needs_more_information"])("routes %s to the authenticated verification settings", (type) => {
+    expect(getNotificationDestination({ type, targetKind: "academic_profile", targetId: "profile-id" }, false)).toBe("/settings/academic");
+  });
   it("encodes resource IDs so they cannot alter the destination path", () => {
     expect(getNotificationDestination({ type: "FORUM_REPLY", targetKind: "forum_post", targetId: "post/1?tab=other" }, false)).toBe("/forum/post%2F1%3Ftab%3Dother");
   });

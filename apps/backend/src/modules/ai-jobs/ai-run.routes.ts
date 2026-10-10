@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { requireAuth } from "../../common/middleware/auth.js";
+import { requireResearchWorkflow } from "../authorization/authorization.middleware.js";
 import { requirePermission } from "../../common/middleware/permission.js";
 import { validate } from "../../common/middleware/validate.js";
 import { objectIdSchema } from "../../common/validation/database-id.js";
@@ -19,7 +20,7 @@ const createSchema = z.object({
 });
 
 export const aiRunRouter: Router = Router();
-aiRunRouter.use(requireAuth);
+aiRunRouter.use(requireAuth, requireResearchWorkflow);
 
 aiRunRouter.post("/", requirePermission("ai-run:create"), validate(createSchema), async (req, res) => {
   const data = await aiRunService.createAiRun(req.body, req.user!.sub, req.user!.role);

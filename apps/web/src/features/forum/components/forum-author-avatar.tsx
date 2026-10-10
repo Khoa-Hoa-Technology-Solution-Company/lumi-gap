@@ -99,13 +99,13 @@ export function ForumAuthorAvatar({
         ) : null}
       </div>
 
-      {showVerifiedBadge && author.affiliationVerified && (
+      {showVerifiedBadge && author.fptAffiliationVerified && (
         <span
           className={cn(
             "absolute rounded-full bg-background p-0.5 text-emerald-600 shadow-sm",
             BADGE_SIZES[size]
           )}
-          title={t("Affiliation verified")}
+          title={t("FPT Education affiliation verified")}
         >
           <BadgeCheck className="h-full w-full fill-emerald-100 dark:fill-emerald-950" />
         </span>

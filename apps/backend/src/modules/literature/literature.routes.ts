@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { requireAuth } from "../../common/middleware/auth.js";
+import { requireVerifiedAuth as requireAuth } from "../../common/middleware/auth.js";
 import { validate } from "../../common/middleware/validate.js";
 import { literatureService } from "./literature.service.js";
 import { addCorpusPaperSchema, corpusIdParamsSchema, corpusPaperParamsSchema, createCorpusSchema } from "./literature.schema.js";

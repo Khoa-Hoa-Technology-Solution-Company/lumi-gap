@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import {
-  isAdminSystemRole, type AcademicRole, type AuthResponse, type AuthTokens,
+  classifyAcademicPosition, isAdminSystemRole, type AcademicRole, type AuthResponse, type AuthTokens,
   type PrimaryPosition, type SystemRole, type User,
 } from "@trend/shared-types";
 import { env } from "../../config/env.js";
@@ -12,6 +12,7 @@ import type { User as PrismaUser } from "../../generated/prisma/client.js";
 import { auditService } from "../audit/audit.service.js";
 import { capabilityService } from "../authorization/capability.service.js";
 import { admissionPolicyService } from "../identity/admission-policy.service.js";
+import { trustedInstitutionForEmail } from "../identity/institution-domain.service.js";
 import { normalizeEmail } from "../identity/identity-foundation.rules.js";
 import { participantScopeForUser } from "../identity/participant-scope.service.js";
 import { applyDisplayNameChangeLimit } from "../academic-profiles/display-name-policy.service.js";
@@ -117,11 +118,6 @@ function titleFromAcademicRole(role: AcademicRole | undefined): string {
   return "";
 }
 
-function cleanNullableString(value: string | null | undefined): string | null {
-  const trimmed = value?.trim();
-  return trimmed ? trimmed : null;
-}
-
 function cleanTags(value: string[] | undefined): string[] | undefined {
   if (value === undefined) return undefined;
   return Array.from(new Set(value.map((item) => item.trim()).filter(Boolean)));
@@ -209,6 +205,7 @@ async function toUserDto(user: PrismaUser): Promise<User> {
       verifiedAt: item.verifiedAt.toISOString(),
     }] : []),
     emailVerifiedAt: user.emailVerifiedAt?.toISOString(),
+    hasApprovedInstitutionalEmail: Boolean((await trustedInstitutionForEmail(user.email))?.institution.hostInstitution),
     authProviders: { password: Boolean(user.passwordHash), google: Boolean(user.googleId) },
     capabilities,
     canProposeCommunity: canProposeCommunity({ systemRole: user.systemRole, academicProfileType: user.academicProfileType ?? undefined }, profile?.roleVerificationStatus),
@@ -510,24 +507,35 @@ export const authService = {
   async updateProfile(userId: string, input: UpdateProfileInput): Promise<User> {
     const user = await findUser(userId);
     if (!user) throw AppError.unauthorized();
+    if (input.institution !== undefined && input.institution?.trim().toLocaleLowerCase() !== user.institution?.trim().toLocaleLowerCase()) {
+      if (!input.institution?.trim()) throw AppError.badRequest("Institution is required; update it in your academic profile");
+      const { academicProfileService } = await import("../academic-profiles/academic-profile.service.js");
+      await academicProfileService.updateMine(user.id, { affiliation: { institutionName: input.institution.trim() } });
+    }
     const updated = await getPrisma().$transaction(async (tx) => {
       if (input.fullName !== undefined) await applyDisplayNameChangeLimit(tx, user.id, input.fullName);
       return tx.user.update({
         where: { id: user.id },
-        data: { institution: input.institution === undefined ? undefined : input.institution || null, researchInterests: input.researchInterests },
+        data: { researchInterests: input.researchInterests },
       });
     });
     return toUserDto(updated);
   },
 
-  async academicOnboardingOptions() {
+  async academicOnboardingOptions(query: { q?: string; institutionId?: string } = {}) {
     const prisma = getPrisma();
     const hostInstitution = await prisma.institution.findFirst({
       where: { hostInstitution: true, status: "ACTIVE", isActive: true },
       orderBy: { name: "asc" },
     });
-    if (!hostInstitution) {
-      return {
+    const [institutions, fields] = await Promise.all([
+      prisma.institution.findMany({ where: { isActive: true, status: "ACTIVE", ...(query.q ? { name: { contains: query.q, mode: "insensitive" } } : {}) }, orderBy: [{ hostInstitution: "desc" }, { name: "asc" }], take: 30, select: { id: true, name: true, hostInstitution: true } }),
+      prisma.paperTopic.groupBy({ by: ["fieldName"], where: { fieldName: { not: null } }, orderBy: { fieldName: "asc" }, take: 100 }),
+    ]);
+    const researchAreas = [...new Set(["Computer Science", "Software Engineering", "Artificial Intelligence", "Data Science", "Information Systems", "Cybersecurity", "Education", "Business and Management", ...fields.flatMap(item => item.fieldName ? [item.fieldName] : [])])];
+    const selectedInstitutionId = query.institutionId ?? hostInstitution?.id;
+    if (!hostInstitution && !selectedInstitutionId) {
+      return { institutions, researchAreas,
         hostInstitution: undefined,
         campuses: [],
         programs: [],
@@ -536,19 +544,20 @@ export const authService = {
     }
     const [campuses, programs, domains] = await Promise.all([
       prisma.campus.findMany({
-        where: { institutionId: hostInstitution.id, isActive: true },
+        where: { institutionId: selectedInstitutionId, isActive: true },
         orderBy: [{ city: "asc" }, { name: "asc" }],
       }),
       prisma.academicProgram.findMany({
-        where: { institutionId: hostInstitution.id, isActive: true },
+        where: { institutionId: selectedInstitutionId, isActive: true },
         orderBy: [{ name: "asc" }],
       }),
       prisma.institutionDomain.findMany({
-        where: { institutionId: hostInstitution.id, trusted: true, status: "ACTIVE" },
+        where: { institutionId: hostInstitution?.id ?? selectedInstitutionId, trusted: true, status: "ACTIVE" },
       }),
     ]);
     return {
-      hostInstitution: { id: hostInstitution.id, name: hostInstitution.name },
+      institutions, researchAreas,
+      hostInstitution: hostInstitution ? { id: hostInstitution.id, name: hostInstitution.name } : undefined,
       campuses: campuses.map((campus) => ({
         id: campus.id,
         name: campus.name,
@@ -564,12 +573,12 @@ export const authService = {
       })),
       verificationMethods: {
         feid: domains.some((domain) => domain.verificationMethod === "FEID")
-          || policyFlag(hostInstitution.verificationPolicy, ["feidEnabled", "allowFeidVerification", "feid"]),
+          || policyFlag(hostInstitution?.verificationPolicy, ["feidEnabled", "allowFeidVerification", "feid"]),
         institutionalEmail: domains.some((domain) => domain.verificationMethod === "INSTITUTIONAL_EMAIL")
-          || policyFlag(hostInstitution.verificationPolicy, ["allowInstitutionalEmailVerification", "institutionalEmail"]),
-        manualReview: policyFlag(hostInstitution.verificationPolicy, ["allowManualReview", "manualReview"])
-          || !("allowManualReview" in ((hostInstitution.verificationPolicy && typeof hostInstitution.verificationPolicy === "object")
-            ? hostInstitution.verificationPolicy as Record<string, unknown>
+          || policyFlag(hostInstitution?.verificationPolicy, ["allowInstitutionalEmailVerification", "institutionalEmail"]),
+        manualReview: policyFlag(hostInstitution?.verificationPolicy, ["allowManualReview", "manualReview"])
+          || !("allowManualReview" in ((hostInstitution?.verificationPolicy && typeof hostInstitution?.verificationPolicy === "object")
+            ? hostInstitution?.verificationPolicy as Record<string, unknown>
             : {})),
       },
     };
@@ -579,6 +588,7 @@ export const authService = {
     const prisma = getPrisma();
     const user = await findUser(userId);
     if (!user) throw AppError.unauthorized();
+    if (!user.isActive || user.accountStatus !== "ACTIVE" || (!user.emailVerifiedAt && user.systemRole !== "ADMIN")) throw AppError.forbidden("Verify your email before completing onboarding");
     const now = new Date();
     const researchInterests = cleanTags(input.researchInterests);
     const expertiseAreas = cleanTags(input.expertiseAreas ?? input.researchAreas);
@@ -597,37 +607,39 @@ export const authService = {
       ? primaryPositionFromAcademicRole(selectedAcademicRole)
       : inferPrimaryPosition(positionTitle, input.primaryPosition);
     const academicRole = selectedAcademicRole ?? academicRoleFromPosition(resolvedPrimaryPosition);
-    const participantScope = await participantScopeForUser(user.id);
-    if (user.admissionBasis === "INVITATION" && participantScope === "EXTERNAL" && !["RESEARCHER", "LECTURER"].includes(academicRole)) {
-      throw AppError.badRequest("Invited external collaborators must onboard as Researchers or Lecturers until a current FPT affiliation is verified");
-    }
+    const positionClassification = classifyAcademicPosition(positionTitle);
     const legacyType = legacyProfileType(resolvedPrimaryPosition);
-    const resolvedInstitution = input.noAffiliation
-      ? "Independent"
-      : (input.institutionName?.trim() || user.institution || "Independent");
+    const resolvedInstitution = input.institutionName?.trim() || user.institution || "";
     const resolvedDepartment = input.noAffiliation ? null : (input.department?.trim() || null);
 
     const previousProfile = await prisma.academicProfile.findUnique({ where: { userId: user.id }, select: { academicRole: true } });
     await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM users WHERE id = ${user.id}::uuid FOR UPDATE`;
+      const liveUser = await tx.user.findUnique({ where: { id: user.id } });
+      if (!liveUser?.isActive || liveUser.accountStatus !== "ACTIVE" || (!liveUser.emailVerifiedAt && liveUser.systemRole !== "ADMIN")) throw AppError.forbidden("An active account with verified email is required");
       let institution: { id: string; name: string; hostInstitution: boolean } | null = null;
-      if (!input.noAffiliation && input.institutionName?.trim()) {
+      if (input.institutionId) {
+        institution = await tx.institution.findFirst({ where: { id: input.institutionId, isActive: true, status: "ACTIVE" } });
+        if (!institution) throw AppError.badRequest("Selected institution is no longer available");
+      }
+      if (!institution && input.institutionName?.trim()) {
         const institutionName = input.institutionName.trim();
         institution = await tx.institution.findFirst({
-          where: { name: { equals: institutionName, mode: "insensitive" } },
+          where: { name: { equals: institutionName, mode: "insensitive" }, isActive: true, status: "ACTIVE" },
           orderBy: [{ hostInstitution: "desc" }, { isActive: "desc" }, { createdAt: "asc" }],
         });
         if (!institution) {
           const slug = `external-${crypto.createHash("sha256").update(institutionName.toLowerCase()).digest("hex").slice(0, 24)}`;
-          institution = await tx.institution.upsert({
+          const customInstitution = await tx.institution.upsert({
             where: { slug },
             create: { name: institutionName, slug, hostInstitution: false, status: "ACTIVE", verificationPolicy: {} },
             update: {},
           });
+          if (!customInstitution.isActive || customInstitution.status !== "ACTIVE") throw AppError.badRequest("Selected institution is no longer available");
+          institution = customInstitution;
         }
       }
-      if (academicRole === "STUDENT" && !institution?.hostInstitution) {
-        throw AppError.badRequest("Student onboarding currently supports FPT University affiliation only");
-      }
+      if (!institution) throw AppError.badRequest("Institution is required");
 
       let campusId: string | null | undefined = input.campusId === undefined ? undefined : input.campusId;
       if ((campusId || input.programId) && !institution) {
@@ -637,7 +649,15 @@ export const authService = {
         const campus = await tx.campus.findFirst({ where: { id: campusId, institutionId: institution!.id, isActive: true } });
         if (!campus) throw AppError.badRequest("Selected campus is not available for this institution");
       }
-      let programId: string | null | undefined = input.programId === undefined ? undefined : input.programId;
+      let programId: string | null | undefined = academicRole === "STUDENT" ? input.programId : null;
+      if (academicRole === "STUDENT" && !programId && input.programName) {
+        const name = input.programName.trim();
+        const existing = await tx.academicProgram.findFirst({ where: { institutionId: institution.id, name: { equals: name, mode: "insensitive" }, isActive: true } });
+        const program = existing ?? await tx.academicProgram.upsert({ where: { institutionId_name: { institutionId: institution.id, name } }, create: { institutionId: institution.id, name }, update: {} });
+        if (!program.isActive) throw AppError.badRequest("Selected program is no longer available");
+        programId = program.id;
+      }
+      if (academicRole === "STUDENT" && !programId) throw AppError.badRequest("Program / Major is required for students");
       if (programId) {
         const program = await tx.academicProgram.findFirst({ where: { id: programId, institutionId: institution!.id, isActive: true } });
         if (!program) throw AppError.badRequest("Selected program is not available for this institution");
@@ -651,14 +671,18 @@ export const authService = {
         where: { userId: user.id, isPrimary: true, isCurrent: true },
       });
       const keepsCurrentAffiliation = Boolean(institution && currentAffiliation?.institutionId === institution.id);
+      const liveProfile = await tx.academicProfile.findUnique({ where: { userId: user.id } });
+      const positionChanged = liveProfile?.academicRole !== academicRole || liveProfile?.positionTitle !== positionTitle || !keepsCurrentAffiliation;
+      if (positionChanged) await tx.verificationEvidence.updateMany({ where: { userId: user.id, verificationType: "POSITION", status: "PENDING" }, data: { status: "INVALIDATED", reviewedAt: now, rejectionReason: "Academic identity changed" } });
+      if (!keepsCurrentAffiliation || liveProfile?.academicRole !== academicRole) await tx.verificationEvidence.updateMany({ where: { userId: user.id, verificationType: "AFFILIATION", status: { in: ["PENDING", "NEEDS_MORE_INFORMATION"] }, supersededAt: null }, data: { status: "INVALIDATED", supersededAt: now, reviewedAt: now, rejectionReason: "Academic identity changed" } });
       const nextAffiliationStatus = keepsCurrentAffiliation
-        ? currentAffiliation!.verificationStatus
+        ? (liveProfile?.academicRole !== academicRole && currentAffiliation!.verificationStatus === "PENDING" ? "NOT_SUBMITTED" : currentAffiliation!.verificationStatus)
         : "NOT_SUBMITTED";
 
       await tx.user.update({
         where: { id: user.id },
         data: {
-          institution: resolvedInstitution,
+          institution: institution.name || resolvedInstitution,
           academicProfileType: legacyType,
           onboardingCompletedAt: now,
           ...(researchInterests !== undefined ? { researchInterests } : {}),
@@ -672,6 +696,8 @@ export const authService = {
           academicRole,
           roleVerificationStatus: "SELF_DECLARED",
           positionTitle: positionTitle || null,
+          positionCategory: positionClassification.category,
+          positionSource: positionClassification.source,
           affiliationPosition: positionTitle || null,
           affiliationDepartment: resolvedDepartment,
           positionStatus: "NOT_SUBMITTED",
@@ -685,19 +711,15 @@ export const authService = {
         update: {
           primaryPosition: resolvedPrimaryPosition,
           academicRole,
-          roleVerificationStatus: "SELF_DECLARED",
-          roleVerificationMethod: null,
-          roleVerifiedAt: null,
-          roleVerifiedById: null,
+          ...(positionChanged ? { roleVerificationStatus: "SELF_DECLARED", roleVerificationMethod: null, roleVerifiedAt: null, roleVerifiedById: null } : {}),
           positionTitle: positionTitle || undefined,
+          positionCategory: positionClassification.category,
+          positionSource: positionClassification.source,
           affiliationPosition: positionTitle || undefined,
           affiliationDepartment: resolvedDepartment ?? undefined,
-          positionStatus: "NOT_SUBMITTED",
+          ...(positionChanged ? { positionStatus: "NOT_SUBMITTED", verificationStatus: "SELF_DECLARED", verifiedAt: null, verifiedById: null } : {}),
           affiliationStatus: nextAffiliationStatus,
           onboardingCompletedAt: now,
-          verificationStatus: "SELF_DECLARED",
-          verifiedAt: null,
-          verifiedById: null,
           ...(expertiseAreas !== undefined ? { expertiseAreas } : {}),
           ...(skills !== undefined ? { skills } : {}),
           ...(researchKeywords !== undefined ? { researchKeywords } : {}),
@@ -713,9 +735,12 @@ export const authService = {
         const affiliationData = {
           institutionName: institution.name,
           department: resolvedDepartment,
-          academicTitle: positionTitle || null,
+          academicTitle: positionTitle.slice(0, 120) || null,
           positionTitle: positionTitle || null,
-          positionStatus: "NOT_SUBMITTED",
+          positionCategory: positionClassification.category,
+          positionSource: positionClassification.source,
+          positionStatus: positionChanged ? "NOT_SUBMITTED" : (currentAffiliation?.positionStatus ?? "NOT_SUBMITTED"),
+          verificationStatus: nextAffiliationStatus,
           campusId,
           programId,
         };

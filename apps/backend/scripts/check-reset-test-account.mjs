@@ -14,18 +14,21 @@ if (rootEnv.error && rootEnv.error.code !== "ENOENT") throw rootEnv.error;
 expand(rootEnv);
 
 const container = "lumi-gap-postgres-1";
-const scratch = "codex_repeat_user_reset_check_20261006";
+const scratch = "codex_user_reset_check_" + randomUUID().replaceAll("-", "");
 const options = { maxBuffer: 128 * 1024 * 1024, windowsHide: true, stdio: ["pipe", "pipe", "pipe"] };
 const run = (args) => execFileSync("docker", ["exec", container, ...args], options);
 const email = "thanhndse182854@fpt.edu.vn";
 let created = false;
 let client;
 try {
+  const url = new URL(process.env.DATABASE_URL);
+  if (!["localhost", "127.0.0.1", "[::1]"].includes(url.hostname) || url.pathname !== "/lumigap_db" || url.port !== "5433") throw new Error("Expected local lumigap_db on port 5433 before making an isolated test copy");
+  url.pathname = "/" + scratch;
   run(["createdb", "-U", "postgres", scratch]); created = true;
   const dump = run(["pg_dump", "-U", "postgres", "-d", "lumigap_db", "-Fc", "--no-owner", "--no-privileges"]);
   execFileSync("docker", ["exec", "-i", container, "pg_restore", "-U", "postgres", "-d", scratch, "--no-owner", "--no-privileges", "--exit-on-error"], { ...options, input: dump });
-  const url = new URL(process.env.DATABASE_URL); url.pathname = "/" + scratch;
   client = new pg.Client({ connectionString: url.href }); await client.connect();
+  if ((await client.query("SELECT current_database() AS name")).rows[0].name !== scratch) throw new Error("Refusing to test outside the newly created scratch database");
   await client.query(readFileSync(new URL("../../../artifacts/database/reset-test-account.sql", import.meta.url), "utf8"));
   // A recreated source account, if any, is reset only inside the copied database.
   await client.query("SELECT public.lumigap_reset_test_account($1)", [email]);
@@ -40,6 +43,13 @@ try {
     await client.query("INSERT INTO public.users(id,email,full_name,updated_at) VALUES($1,$2,$3,now())", [userId, email, "Reset test fixture"]);
     await client.query("INSERT INTO public.academic_profiles(id,user_id,updated_at) VALUES($1,$2,now())", [randomUUID(), userId]);
     await client.query("INSERT INTO public.user_emails(id,user_id,normalized_email,updated_at) VALUES($1,$2,$3,now())", [randomUUID(), userId, email]);
+    // Real account deletion triggers enqueue private files after the deletion
+    // plan has been built. Existing tasks must also survive for storage retry.
+    const requestId = randomUUID();
+    const evidenceKeys = ["root", "source", "staged"].map(() => `verification-evidence/${userId}/${randomUUID()}.pdf`);
+    await client.query("INSERT INTO public.verification_evidence(id,user_id,verification_type,source_type,status,evidence_storage_key,updated_at) VALUES($1,$2,'POSITION','DOCUMENT','PENDING',$3,now())", [requestId, userId, evidenceKeys[0]]);
+    await client.query("INSERT INTO public.verification_evidence_sources(id,request_id,slot,type,source_kind,storage_key) VALUES($1,$2,1,'STAFF_ID','DOCUMENT',$3)", [randomUUID(), requestId, evidenceKeys[1]]);
+    await client.query("INSERT INTO public.verification_evidence_deletions(storage_key,user_id,not_before) VALUES($1,$2,now()+interval '1 day')", [evidenceKeys[2], userId]);
     await client.query("INSERT INTO public.projects(id,title,owner_id,updated_at) VALUES($1,$2,$3,now())", [projectId, "Reset fixture project", userId]);
     await client.query("INSERT INTO public.project_members(id,project_id,user_id,updated_at) VALUES($1,$2,$3,now())", [randomUUID(), projectId, userId]);
     await client.query("INSERT INTO public.community_memberships(id,community_id,user_id,updated_at) VALUES($1,$2,$3,now())", [randomUUID(), category, userId]);
@@ -54,6 +64,9 @@ try {
     await client.query("INSERT INTO public.notifications(id,user_id,title,message,type,target_kind,target_uuid,updated_at) VALUES($1,$2,$3,$4,$5,$6,$7,now())", [randomUUID(), other, "Fixture", "Fixture", "FORUM_REPLY", "forum_post", postId]);
     const result = (await client.query("SELECT public.lumigap_reset_test_account($1) AS result", [email])).rows[0].result;
     if (result.accountsDeleted !== 1 || !result.userIds.includes(userId) || result.deletedByTable.forum_posts !== 1 || result.deletedByTable.projects !== 1 || result.deletedByTable.forum_reactions !== 2 || result.deletedByTable.forum_comments !== 1 || result.deletedByTable.forum_post_papers !== 1 || result.deletedByTable.forum_restrictions !== 1) throw new Error("Fixture deletion incomplete: " + JSON.stringify(result));
+    const tasks = (await client.query("SELECT storage_key, not_before <= now() AS ready FROM public.verification_evidence_deletions WHERE user_id=$1", [userId])).rows;
+    if (result.evidenceFilesPendingDeletion !== 3 || tasks.length !== 3 || tasks.some(task => !task.ready || !evidenceKeys.includes(task.storage_key))) throw new Error("Private evidence deletion tasks lost or delayed");
+    if ((await client.query("SELECT count(*)::int AS count FROM public.verification_evidence WHERE user_id=$1", [userId])).rows[0].count !== 0) throw new Error("Verification requests remain after reset");
     const second = (await client.query("SELECT public.lumigap_reset_test_account($1) AS result", [email])).rows[0].result;
     if (second.rowsDeleted !== 0 || second.accountsDeleted !== 0) throw new Error("Second reset was not a no-op");
     const after = (await client.query(countsSql)).rows[0];

@@ -17,6 +17,7 @@ import { authService } from "./auth.service.js";
 import { env } from "../../config/env.js";
 import { oauthExchangeService } from "./oauth-exchange.service.js";
 import { googleOidcService } from "./google-oidc.service.js";
+import { AcademicOnboardingOptionsSchema } from "./dto/auth.schema.js";
 
 function sessionContext(req: Pick<Request, "get" | "ip">) {
   return { userAgent: req.get("user-agent"), ipAddress: req.ip };
@@ -89,7 +90,7 @@ export const authController = {
 
   async academicOnboardingOptions(req: Request, res: Response) {
     if (!req.user) return res.status(401).json({ success: false, error: { message: "Unauthorized" } });
-    const options = await authService.academicOnboardingOptions();
+    const options = await authService.academicOnboardingOptions(AcademicOnboardingOptionsSchema.parse(req.query));
     res.json({ success: true, data: options });
   },
 

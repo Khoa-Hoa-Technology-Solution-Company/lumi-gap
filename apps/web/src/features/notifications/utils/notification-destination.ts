@@ -1,10 +1,17 @@
 import type { NotificationItem } from "@trend/shared-types";
 
 export function getNotificationDestination(
-  notification: Pick<NotificationItem, "type" | "targetKind" | "targetId"> & Partial<Pick<NotificationItem, "title">>,
+  notification: Pick<NotificationItem, "type" | "targetKind" | "targetId"> & Partial<Pick<NotificationItem, "title" | "verificationRequestId">>,
   isAdmin: boolean,
 ): string | null {
   if (notification.type === "level_up") return "/rankings";
+  const verificationQuery = notification.verificationRequestId ? `?requestId=${encodeURIComponent(notification.verificationRequestId)}` : "";
+  if (notification.type === "LECTURER_VERIFICATION_REVIEW_REQUESTED") return isAdmin ? `/admin/academic-verifications${verificationQuery}` : null;
+  if (notification.type.startsWith("LECTURER_VERIFICATION_")) return `/settings/verification/lecturer${verificationQuery}`;
+  if (notification.type.startsWith("MENTORSHIP_") || notification.type.startsWith("PROJECT_MENTORSHIP_")) return notification.targetId ? `/academic-support?projectId=${encodeURIComponent(notification.targetId)}` : "/academic-support";
+  if (notification.type.startsWith("academic_verification_")) return "/settings/academic";
+  if (["REVIEW_REQUESTED", "REVIEW_REQUEST_ACCEPTED", "REVIEW_REQUEST_DECLINED", "REVIEW_REQUEST_CANCELLED", "REVIEW_SUBMITTED", "REVISION_REQUESTED", "REVISION_RESUBMITTED"].includes(notification.type)) return "/reviews";
+  if (notification.type.startsWith("affiliation_")) return "/settings/academic";
   if (isAdmin && ["submission_pending", "paper_submission"].includes(notification.type)) return "/admin/papers";
   const adminReviewRoutes: Record<string, string> = {
     FORUM_REPORT_REVIEW: "/admin/trust-safety?tab=reports&status=all",

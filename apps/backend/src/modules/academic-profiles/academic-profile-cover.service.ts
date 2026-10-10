@@ -10,9 +10,9 @@ async function ensureAcademicUser(userId: string) {
   const parsed = parseDatabaseId(userId);
   const user = parsed ? await getPrisma().user.findUnique({
     where: parsed.kind === "uuid" ? { id: parsed.value } : { legacyMongoId: parsed.value },
-    select: { id: true, systemRole: true, accountStatus: true },
+    select: { id: true, systemRole: true, accountStatus: true, isActive: true },
   }) : null;
-  if (!user || user.accountStatus !== "ACTIVE"
+  if (!user?.isActive || user.accountStatus !== "ACTIVE"
     || !["USER", "ADMIN"].includes(user.systemRole)) {
     throw AppError.notFound("Academic profile not found");
   }
@@ -62,7 +62,7 @@ export const academicProfileCoverService = {
     const user = await ensureAcademicUser(userId);
     const profile = await getPrisma().academicProfile.findUnique({ where: { userId: user.id }, select: { coverStorageKey: true, profileVisibility: true } });
     if (!profile?.coverStorageKey) throw AppError.notFound("Cover image not found");
-    if (userId !== viewerId
+    if (userId !== viewerId && user.id !== viewerId
       && profile.profileVisibility !== "PUBLIC"
       && !(profile.profileVisibility === "MEMBERS_ONLY" && viewerId)) {
       throw AppError.notFound("Cover image not found");

@@ -3,7 +3,7 @@ import rateLimit from "express-rate-limit";
 import { env } from "../../config/env.js";
 import { searchController } from "./search.controller.js";
 import { isRerankRequested } from "./dto/search.schema.js";
-import { optionalAuth, requireAuth } from "../../common/middleware/auth.js";
+import { optionalAuth, requireVerifiedAuth as requireAuth } from "../../common/middleware/auth.js";
 
 export const searchRouter: Router = Router();
 

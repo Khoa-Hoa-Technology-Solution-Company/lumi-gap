@@ -36,6 +36,7 @@ function row(overrides: Partial<Record<string, unknown>> = {}) {
     profileUrl: null,
     connectionMethod: "MANUAL",
     status: "SELF_DECLARED",
+    verificationStatus: "UNVERIFIED",
     visibility: "PUBLIC",
     createdAt: now,
     updatedAt: now,
@@ -58,6 +59,7 @@ describe("academicIdentityService", () => {
       label: "ORCID profile",
       identifier: "0000-0002-1825-0097",
       status: "SELF_DECLARED",
+      verificationStatus: "UNVERIFIED",
     })]);
   });
 
@@ -79,6 +81,7 @@ describe("academicIdentityService", () => {
         profileUrl: "https://example.edu/researchers/ada",
         connectionMethod: "MANUAL",
         status: "SELF_DECLARED",
+        verificationStatus: "UNVERIFIED",
         visibility: "PRIVATE",
       }),
     });
@@ -114,13 +117,33 @@ describe("academicIdentityService", () => {
     const labelOnlyUpdate = mocks.prisma.academicIdentityLink.update.mock.calls.at(-1)?.[0];
     expect(labelOnlyUpdate.data).not.toHaveProperty("status");
     expect(labelOnlyUpdate.data).not.toHaveProperty("connectionMethod");
+    expect(labelOnlyUpdate.data).not.toHaveProperty("verificationStatus");
 
     mocks.prisma.academicIdentityLink.findUnique.mockResolvedValue(row({ status: "LINKED", connectionMethod: "SYSTEM" }));
     mocks.prisma.academicIdentityLink.update.mockResolvedValue(row({ identifier: "0000-0002-1694-233X", status: "SELF_DECLARED", connectionMethod: "MANUAL" }));
     await academicIdentityService.update(USER_ID, IDENTITY_ID, { identifier: "0000-0002-1694-233X" });
     expect(mocks.prisma.academicIdentityLink.update).toHaveBeenLastCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ status: "SELF_DECLARED", connectionMethod: "MANUAL" }),
+      data: expect.objectContaining({ status: "SELF_DECLARED", connectionMethod: "MANUAL", verificationStatus: "UNVERIFIED" }),
     }));
+  });
+
+  it("preserves provider ownership when visibility changes and refuses changes to a connected ORCID", async () => {
+    const connected = row({ connectionMethod: "OAUTH", status: "CONNECTED", verificationStatus: "PROVIDER_CONNECTED" });
+    mocks.prisma.academicIdentityLink.findUnique.mockResolvedValue(connected);
+    mocks.prisma.academicIdentityLink.findFirst.mockResolvedValue(null);
+    mocks.prisma.academicIdentityLink.update.mockResolvedValue({ ...connected, visibility: "PRIVATE" });
+    const result = await academicIdentityService.update(USER_ID, IDENTITY_ID, { visibility: "PRIVATE" });
+    expect(result).toMatchObject({ visibility: "PRIVATE", verificationStatus: "PROVIDER_CONNECTED" });
+    expect(mocks.prisma.academicIdentityLink.update.mock.calls.at(-1)?.[0].data).not.toHaveProperty("verificationStatus");
+    await expect(academicIdentityService.update(USER_ID, IDENTITY_ID, { identifier: "0000-0002-1694-233X" })).rejects.toThrow("Disconnect the provider");
+    expect(mocks.prisma.academicIdentityLink.update).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects a second ORCID even when its identifier differs", async () => {
+    mocks.prisma.academicIdentityLink.findFirst.mockResolvedValue(row());
+    await expect(academicIdentityService.create(USER_ID, { provider: "ORCID", identifier: "0000-0002-1694-233X", visibility: "PRIVATE" })).rejects.toThrow("already linked");
+    expect(mocks.prisma.academicIdentityLink.findFirst).toHaveBeenCalledWith({ where: { userId: USER_ID, provider: "ORCID" } });
+    expect(mocks.prisma.academicIdentityLink.create).not.toHaveBeenCalled();
   });
 
   it("deletes an owned identity and records the deletion", async () => {
@@ -137,6 +160,16 @@ describe("academicIdentityService", () => {
     mocks.prisma.academicIdentityLink.findUnique.mockResolvedValue(row({ userId: OTHER_USER_ID }));
     await expect(academicIdentityService.remove(USER_ID, IDENTITY_ID)).rejects.toThrow("not found");
     expect(mocks.prisma.academicIdentityLink.delete).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears the previous author ID when switching to a profile URL", async () => {
+    mocks.prisma.academicIdentityLink.findUnique.mockResolvedValue(row({ provider: "OPENALEX", identifier: "A123456789" }));
+    mocks.prisma.academicIdentityLink.findFirst.mockResolvedValue(null);
+    mocks.prisma.academicIdentityLink.update.mockResolvedValue(row({ provider: "OPENALEX", identifier: null, profileUrl: "https://openalex.org/A987654321" }));
+    await academicIdentityService.update(USER_ID, IDENTITY_ID, { identifier: null, profileUrl: "https://openalex.org/A987654321" });
+    expect(mocks.prisma.academicIdentityLink.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ identifier: null, profileUrl: "https://openalex.org/A987654321", verificationStatus: "UNVERIFIED" }),
+    }));
   });
 
   it("filters public visibility without leaking private links", () => {

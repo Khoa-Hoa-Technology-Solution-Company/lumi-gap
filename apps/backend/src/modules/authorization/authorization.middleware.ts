@@ -2,6 +2,15 @@ import type { NextFunction, Request, Response } from "express";
 import type { UserCapability } from "@trend/shared-types";
 import { AppError } from "../../common/exceptions/app-error.js";
 import { capabilityService } from "./capability.service.js";
+import { assertResearchWorkflowAccess } from "./research-access.service.js";
+
+export async function requireResearchWorkflow(req: Request, _res: Response, next: NextFunction) {
+  try {
+    if (!req.user) throw AppError.unauthorized();
+    await assertResearchWorkflowAccess(req.user.sub);
+    next();
+  } catch (error) { next(error); }
+}
 
 export function requireCapability(capability: UserCapability) {
   return async (req: Request, _res: Response, next: NextFunction): Promise<void> => {

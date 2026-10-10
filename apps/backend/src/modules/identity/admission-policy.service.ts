@@ -3,6 +3,7 @@ import { AppError } from "../../common/exceptions/app-error.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { hashOpaqueToken } from "../auth/token.service.js";
 import { normalizeEmail } from "./identity-foundation.rules.js";
+import { trustedInstitutionForEmail } from "./institution-domain.service.js";
 
 export interface AdmissionDecision {
   basis: AdmissionBasis;
@@ -10,13 +11,7 @@ export interface AdmissionDecision {
 }
 
 async function hostInstitutionDomain(email: string): Promise<boolean> {
-  const domain = normalizeEmail(email).split("@")[1];
-  if (!domain) return false;
-  const prisma = getPrisma();
-  const configured = await prisma.institutionDomain.findUnique({ where: { domain } });
-  if (!configured?.trusted || configured.status !== "ACTIVE") return false;
-  const institution = await prisma.institution.findUnique({ where: { id: configured.institutionId } });
-  return Boolean(institution?.hostInstitution && institution.status === "ACTIVE" && institution.isActive);
+  return Boolean((await trustedInstitutionForEmail(email))?.institution.hostInstitution);
 }
 
 export const admissionPolicyService = {
@@ -24,7 +19,7 @@ export const admissionPolicyService = {
     const email = normalizeEmail(emailInput);
     if (await hostInstitutionDomain(email)) return { basis: "HOST_INSTITUTION" };
     if (!invitationToken) {
-      throw AppError.forbidden("External registration requires a valid invitation");
+      return { basis: "PERSONAL_EMAIL" };
     }
     if (!/^[A-Za-z0-9_-]{32,256}$/.test(invitationToken)) {
       throw AppError.forbidden("External registration requires a valid invitation");
