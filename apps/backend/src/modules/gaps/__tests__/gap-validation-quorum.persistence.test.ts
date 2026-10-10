@@ -22,7 +22,7 @@ describe.sequential("gap expert validation quorum (PostgreSQL)", () => {
     vi.spyOn(auditService, "log").mockResolvedValue(undefined);
     const [owner, expertOne, expertTwo] = await Promise.all(
       ["owner", "expert-one", "expert-two"].map((name) =>
-        prisma.user.create({ data: { fullName: `Quorum ${name}`, email: `gap-quorum-${name}-${marker}@example.test` } }),
+        prisma.user.create({ data: { fullName: `Quorum ${name}`, email: `gap-quorum-${name}-${marker}@example.test`, emailVerifiedAt: new Date() } }),
       ),
     );
     ownerId = owner!.id;

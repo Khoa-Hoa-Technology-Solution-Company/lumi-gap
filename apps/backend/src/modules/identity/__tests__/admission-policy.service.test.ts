@@ -15,15 +15,23 @@ describe("personal email and institutional admission", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.institutionDomain.findUnique.mockResolvedValue(null);
+    mocks.institution.findUnique.mockResolvedValue(null);
     mocks.projectInvitation.findFirst.mockResolvedValue(null);
     mocks.externalReviewInvitation.findFirst.mockResolvedValue(null);
   });
 
   it("allows self-registration for a configured host-institution domain", async () => {
-    mocks.institutionDomain.findUnique.mockResolvedValue({ institutionId: "fpt", trusted: true, status: "ACTIVE" });
+    mocks.institutionDomain.findUnique.mockResolvedValue({ institutionId: "fpt", type: "EMAIL", trusted: true, status: "ACTIVE" });
     mocks.institution.findUnique.mockResolvedValue({ hostInstitution: true, status: "ACTIVE", isActive: true });
     await expect(admissionPolicyService.evaluateRegistration("STUDENT@fpt.edu.vn"))
       .resolves.toEqual({ basis: "HOST_INSTITUTION" });
+  });
+
+  it("does not infer host-institution membership from a website-only domain", async () => {
+    mocks.institutionDomain.findUnique.mockResolvedValue({ institutionId: "fpt", type: "WEBSITE", trusted: true, status: "ACTIVE" });
+    await expect(admissionPolicyService.evaluateRegistration("student@fpt.edu.vn"))
+      .resolves.toEqual({ basis: "PERSONAL_EMAIL" });
+    expect(mocks.institution.findUnique).not.toHaveBeenCalled();
   });
 
   it("admits personal email with public access and no automatic affiliation", async () => {

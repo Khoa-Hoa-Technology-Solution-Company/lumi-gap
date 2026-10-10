@@ -63,7 +63,7 @@ describe.sequential("gap pipeline probe scope (PostgreSQL)", () => {
     } as unknown as ReturnType<typeof getEmbeddingProvider>);
     mockLlm();
 
-    const user = await prisma.user.create({ data: { email: `gap-scope-${m}@example.test`, fullName: `Gap scope ${m}` } });
+    const user = await prisma.user.create({ data: { email: `gap-scope-${m}@example.test`, fullName: `Gap scope ${m}`, emailVerifiedAt: new Date() } });
     userId = user.id;
 
     for (let i = 0; i < PAPER_COUNT; i += 1) {
