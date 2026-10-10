@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { useI18n } from "@/i18n";
 import { useAuthStore } from "@/stores/auth-store";
 import { useAddGapValidation, useGapValidations, useRequestGapValidation } from "../hooks/use-gaps";
+import { countValidatingExperts } from "../validation-progress";
 
 /** Statuses after the owner requested validation; validations become visible from then on. */
 const SHARED_WITH_EXPERTS = ["UNDER_VALIDATION", "REFINED", "VALIDATED", "REJECTED"];
@@ -57,6 +58,11 @@ export function GapExpertValidationPanel({ gap }: { gap: ResearchGapItem }) {
         <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">{t("Expert validation")}</h3>
         <Badge variant="outline" className="text-[10px] uppercase">{status.replaceAll("_", " ")}</Badge>
       </div>
+      {shared && validations.data && (
+        <p className="text-xs font-medium text-slate-600 dark:text-slate-400">
+          {t("{{validated}}/{{quorum}} experts have validated", { validated: countValidatingExperts(validations.data), quorum: gap.validationQuorum ?? 2 })}
+        </p>
+      )}
       {canRequest && (
         <div className="rounded-xl border border-dashed border-slate-200 p-3 text-xs leading-relaxed text-slate-600 dark:border-slate-800 dark:text-slate-400">
           <p>{t("Requesting validation shares this gap and its linked evidence with verified experts who hold research-gap validation rights.")}</p>

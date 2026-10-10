@@ -12,6 +12,7 @@ import { useReports, useCreateReport, useUpdateArtifactStatus } from "@/features
 import { useGaps, useAnalyzeGap, useGapAnalysisStatus, useActiveGapAnalysis } from "@/features/gaps";
 import { GapDetailDrawer } from "@/features/gaps/components/gap-detail-drawer";
 import { GapAnalysisWorkflow } from "@/features/gaps/components/gap-analysis-workflow";
+import { GapScopeNote } from "@/features/gaps/components/gap-evidence-summary";
 import { ProjectDiscussionPanel } from "@/features/projects/components/project-discussion-panel";
 import { Link } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
@@ -1011,7 +1012,7 @@ function GapsTab({
                 return (
                   <div
                     className="relative z-10 pt-5 border-t border-slate-100 dark:border-zinc-800/50 mt-auto"
-                    title={t("Corpus evidence score: how scarce the topic intersection is in this project's papers and whether a parent topic is rising. Not the AI's self-reported confidence.")}
+                    title={t("Corpus evidence score: how scarce the topic intersection is across the whole LumiGap corpus and whether a parent topic is rising. Not the AI's self-reported confidence.")}
                   >
                     <div className="flex justify-between items-center mb-2">
                        <span className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
@@ -1026,8 +1027,8 @@ function GapsTab({
                     {insufficientData || lowSample ? (
                       <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
                         {insufficientData
-                          ? t("No papers in this project match \"{{topic}}\". Add related papers to score this gap.", { topic: weakTopic?.topic ?? "" })
-                          : t("Only {{count}} paper(s) in this project match \"{{topic}}\". Add related papers before trusting this score.", { count: weakTopic?.count ?? 0, topic: weakTopic?.topic ?? "" })}
+                          ? t("No corpus papers match \"{{topic}}\" yet, so this gap cannot be scored.", { topic: weakTopic?.topic ?? "" })
+                          : t("Only {{count}} corpus paper(s) match \"{{topic}}\". Treat this score with caution.", { count: weakTopic?.count ?? 0, topic: weakTopic?.topic ?? "" })}
                       </p>
                     ) : (
                       <div className="w-full bg-slate-100 dark:bg-zinc-800 rounded-full h-2 overflow-hidden shadow-inner">
@@ -1037,6 +1038,7 @@ function GapsTab({
                         />
                       </div>
                     )}
+                    {gap.probe && <div className="mt-2"><GapScopeNote evidenceScopeSize={gap.evidenceScopeSize} /></div>}
                   </div>
                 );
               })()}

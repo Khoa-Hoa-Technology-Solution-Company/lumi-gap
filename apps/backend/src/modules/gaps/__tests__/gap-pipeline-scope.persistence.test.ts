@@ -43,9 +43,9 @@ describe.sequential("gap pipeline probe scope (PostgreSQL)", () => {
       ],
     } as never);
 
-  async function runAnalysis(data: { evidenceMode: "hybrid" | "auto"; projectId?: string }) {
+  async function runAnalysis(data: { evidenceMode: "hybrid" | "auto"; projectId?: string; yearFrom?: number; yearTo?: number }) {
     const analysis = await getPrisma().gapAnalysis.create({
-      data: { userId, topic: `${topicA} ${topicB}`, status: "queued", evidenceMode: data.evidenceMode, projectId: data.projectId },
+      data: { userId, topic: `${topicA} ${topicB}`, status: "queued", evidenceMode: data.evidenceMode, projectId: data.projectId, yearFrom: data.yearFrom, yearTo: data.yearTo },
     });
     analysisIds.push(analysis.id);
     await gapsService.runGapPipeline({ analysisId: analysis.id });
@@ -119,6 +119,8 @@ describe.sequential("gap pipeline probe scope (PostgreSQL)", () => {
     expect(gaps).toHaveLength(1);
     expect(gaps[0]!.parentCounts).toEqual({ a: PAPER_COUNT, b: PAPER_COUNT });
     expect(gaps[0]!.intersectionCount).toBe(PAPER_COUNT);
+    expect(gaps[0]!.evidenceScopeSize).toBeGreaterThanOrEqual(PAPER_COUNT);
+    expect(gaps[0]!.projectEvidence).toBeNull();
   });
 
   it("scores probes against the whole corpus in auto mode too", async () => {
@@ -131,12 +133,33 @@ describe.sequential("gap pipeline probe scope (PostgreSQL)", () => {
     expect(gaps[0]!.intersectionCount).toBe(PAPER_COUNT);
   });
 
-  it("scopes probes to INCLUDED project papers", async () => {
+  it("keeps the main counts on the corpus and reports INCLUDED project papers separately", async () => {
     const { done, gaps } = await runAnalysis({ evidenceMode: "hybrid", projectId });
 
     expect(done.status).toBe("ready");
     expect(gaps).toHaveLength(1);
-    expect(gaps[0]!.parentCounts).toEqual({ a: INCLUDED_COUNT, b: INCLUDED_COUNT });
-    expect(gaps[0]!.intersectionCount).toBe(INCLUDED_COUNT);
+    // The Confirmed label rests on the corpus counts, never on the project's handful of papers.
+    expect(gaps[0]!.parentCounts).toEqual({ a: PAPER_COUNT, b: PAPER_COUNT });
+    expect(gaps[0]!.intersectionCount).toBe(PAPER_COUNT);
+    expect(gaps[0]!.evidenceScopeSize).toBeGreaterThanOrEqual(PAPER_COUNT);
+    // 7 INCLUDED papers count; the 3 EXCLUDED ones and the 15 outside the project do not.
+    expect(gaps[0]!.projectEvidence).toMatchObject({
+      intersectionCount: INCLUDED_COUNT,
+      parentCounts: { a: INCLUDED_COUNT, b: INCLUDED_COUNT },
+      scopePaperCount: INCLUDED_COUNT,
+    });
+  });
+
+  it("narrows the probe counts to the year window chosen for the analysis", async () => {
+    // 25 papers spread evenly over 2021-2025, so 2023 onward leaves 3 years x 5 papers.
+    const { done, gaps } = await runAnalysis({ evidenceMode: "hybrid", yearFrom: 2023 });
+
+    expect(done.status).toBe("ready");
+    expect(gaps).toHaveLength(1);
+    expect(gaps[0]!.parentCounts).toEqual({ a: 15, b: 15 });
+    expect(gaps[0]!.intersectionCount).toBe(15);
+    // The recorded sample size is the corpus inside the same window.
+    expect(gaps[0]!.evidenceScopeSize).toBeGreaterThanOrEqual(15);
+    expect(gaps[0]!.evidenceScopeSize).toBeLessThan((await getPrisma().paper.count({ where: { dataStatus: "active" } })));
   });
 });

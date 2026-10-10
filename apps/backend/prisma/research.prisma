@@ -158,6 +158,8 @@ model ResearchGap {
   parentCounts              Json?    @map("parent_counts")
   parentTrend               Json?    @map("parent_trend")
   evidenceConfidence        Float?   @map("evidence_confidence")
+  evidenceScopeSize         Int?     @map("evidence_scope_size")
+  projectEvidence           Json?    @map("project_evidence")
   source                    String   @db.VarChar(16)
   sourceReportId            String?  @map("source_report_id") @db.Uuid
   analysisId                String?  @map("analysis_id") @db.Uuid

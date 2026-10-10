@@ -89,6 +89,14 @@ export const gapEvidenceWorkflowStrings = {
   "Clear search": "Clear search",
   "Close details": "Close details",
   "Confidence": "Confidence",
+  "Counted over {{count}} corpus papers": "Counted over {{count}} corpus papers",
+  "Counting scope not recorded (gap created before this update)":
+    "Counting scope not recorded (gap created before this update)",
+  "In this project's literature ({{count}} papers)": "In this project's literature ({{count}} papers)",
+  "Intersection: {{intersection}} · Topic A: {{a}} · Topic B: {{b}}":
+    "Intersection: {{intersection}} · Topic A: {{a}} · Topic B: {{b}}",
+  "Context only. It is not the basis for the Confirmed label, which always uses the whole corpus.":
+    "Context only. It is not the basis for the Confirmed label, which always uses the whole corpus.",
   "Confirmed": "Confirmed",
   "Confirmed by corpus": "Confirmed by corpus",
   "Corpus Evidence": "Corpus Evidence",
@@ -267,14 +275,14 @@ export const gapEvidenceWorkflowStrings = {
   "Low sample": "Low sample",
   "Corpus evidence": "Corpus evidence",
   "Insufficient data": "Insufficient data",
-  "Corpus evidence score: how scarce the topic intersection is in this project's papers and whether a parent topic is rising. Not the AI's self-reported confidence.":
-    "Corpus evidence score: how scarce the topic intersection is in this project's papers and whether a parent topic is rising. Not the AI's self-reported confidence.",
-  "No papers in this project match \"{{topic}}\". Add related papers to score this gap.":
-    "No papers in this project match \"{{topic}}\". Add related papers to score this gap.",
-  "Only {{count}} paper(s) in this project match \"{{topic}}\". Add related papers before trusting this score.":
-    "Only {{count}} paper(s) in this project match \"{{topic}}\". Add related papers before trusting this score.",
-  "A probe topic has too few matching papers, so this evidence score is not reliable yet. Add related papers and re-run the analysis.":
-    "A probe topic has too few matching papers, so this evidence score is not reliable yet. Add related papers and re-run the analysis.",
+  "Corpus evidence score: how scarce the topic intersection is across the whole LumiGap corpus and whether a parent topic is rising. Not the AI's self-reported confidence.":
+    "Corpus evidence score: how scarce the topic intersection is across the whole LumiGap corpus and whether a parent topic is rising. Not the AI's self-reported confidence.",
+  "No corpus papers match \"{{topic}}\" yet, so this gap cannot be scored.":
+    "No corpus papers match \"{{topic}}\" yet, so this gap cannot be scored.",
+  "Only {{count}} corpus paper(s) match \"{{topic}}\". Treat this score with caution.":
+    "Only {{count}} corpus paper(s) match \"{{topic}}\". Treat this score with caution.",
+  "A probe topic has too few matching corpus papers, so treat this evidence score with caution.":
+    "A probe topic has too few matching corpus papers, so treat this evidence score with caution.",
   "Gap status":
     "Gap status",
   "Filters by the corpus evidence score, or the AI's confidence when a gap has no evidence score.":
@@ -317,6 +325,8 @@ export const gapEvidenceWorkflowStrings = {
     "Request expert validation",
   "No expert decisions yet.":
     "No expert decisions yet.",
+  "{{validated}}/{{quorum}} experts have validated":
+    "{{validated}}/{{quorum}} experts have validated",
   "Validation decision recorded.":
     "Validation decision recorded.",
   "Could not record the validation decision.":
@@ -462,6 +472,14 @@ export const gapEvidenceWorkflowViStrings: Record<
   "Clear search": "Xóa nội dung tìm kiếm",
   "Close details": "Đóng chi tiết",
   "Confidence": "Độ tin cậy",
+  "Counted over {{count}} corpus papers": "Đếm trên {{count}} bài của kho dữ liệu",
+  "Counting scope not recorded (gap created before this update)":
+    "Phạm vi đếm chưa được ghi nhận (gap tạo trước bản cập nhật)",
+  "In this project's literature ({{count}} papers)": "Trong tài liệu của dự án ({{count}} bài)",
+  "Intersection: {{intersection}} · Topic A: {{a}} · Topic B: {{b}}":
+    "Giao nhau: {{intersection}} · Chủ đề A: {{a}} · Chủ đề B: {{b}}",
+  "Context only. It is not the basis for the Confirmed label, which always uses the whole corpus.":
+    "Chỉ để tham khảo. Đây không phải căn cứ gắn nhãn Đã xác minh; nhãn này luôn dựa trên toàn bộ kho dữ liệu.",
   "Confirmed": "Đã xác minh",
   "Confirmed by corpus": "Đã xác minh bằng kho dữ liệu",
   "Corpus Evidence": "Bằng chứng trong kho dữ liệu",
@@ -599,14 +617,14 @@ export const gapEvidenceWorkflowViStrings: Record<
   "Low sample": "Mẫu quá nhỏ",
   "Corpus evidence": "Bằng chứng từ kho dữ liệu",
   "Insufficient data": "Chưa đủ dữ liệu",
-  "Corpus evidence score: how scarce the topic intersection is in this project's papers and whether a parent topic is rising. Not the AI's self-reported confidence.":
-    "Điểm bằng chứng từ kho dữ liệu: mức độ hiếm của giao điểm hai chủ đề trong các bài của project và chủ đề cha có đang tăng hay không. Không phải độ tự tin do AI tự đánh giá.",
-  "No papers in this project match \"{{topic}}\". Add related papers to score this gap.":
-    "Không có bài nào trong project khớp với \"{{topic}}\". Hãy thêm bài liên quan để chấm điểm khoảng trống này.",
-  "Only {{count}} paper(s) in this project match \"{{topic}}\". Add related papers before trusting this score.":
-    "Chỉ có {{count}} bài trong project khớp với \"{{topic}}\". Hãy thêm bài liên quan trước khi tin vào điểm này.",
-  "A probe topic has too few matching papers, so this evidence score is not reliable yet. Add related papers and re-run the analysis.":
-    "Một chủ đề probe có quá ít bài khớp, nên điểm bằng chứng này chưa đáng tin. Hãy thêm bài liên quan rồi chạy lại phân tích.",
+  "Corpus evidence score: how scarce the topic intersection is across the whole LumiGap corpus and whether a parent topic is rising. Not the AI's self-reported confidence.":
+    "Điểm bằng chứng từ kho dữ liệu: mức độ hiếm của giao điểm hai chủ đề trên toàn bộ kho dữ liệu LumiGap và chủ đề cha có đang tăng hay không. Không phải độ tự tin do AI tự đánh giá.",
+  "No corpus papers match \"{{topic}}\" yet, so this gap cannot be scored.":
+    "Chưa có bài nào trong kho dữ liệu khớp với \"{{topic}}\", nên chưa thể chấm điểm khoảng trống này.",
+  "Only {{count}} corpus paper(s) match \"{{topic}}\". Treat this score with caution.":
+    "Chỉ có {{count}} bài trong kho dữ liệu khớp với \"{{topic}}\". Hãy thận trọng khi dùng điểm này.",
+  "A probe topic has too few matching corpus papers, so treat this evidence score with caution.":
+    "Một chủ đề probe có quá ít bài khớp trong kho dữ liệu, nên hãy thận trọng khi dùng điểm bằng chứng này.",
   "Gap status":
     "Trạng thái khoảng trống",
   "Filters by the corpus evidence score, or the AI's confidence when a gap has no evidence score.":
@@ -649,6 +667,8 @@ export const gapEvidenceWorkflowViStrings: Record<
     "Yêu cầu chuyên gia thẩm định",
   "No expert decisions yet.":
     "Chưa có chuyên gia nào đưa ra quyết định.",
+  "{{validated}}/{{quorum}} experts have validated":
+    "{{validated}}/{{quorum}} chuyên gia xác nhận",
   "Validation decision recorded.":
     "Đã ghi nhận quyết định thẩm định.",
   "Could not record the validation decision.":

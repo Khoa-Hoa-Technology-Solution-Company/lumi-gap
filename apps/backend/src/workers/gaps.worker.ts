@@ -2,9 +2,10 @@ import { UnrecoverableError, Worker } from "bullmq";
 import { enforcePostgresOnlyRuntime } from "../infrastructure/database/postgres-only-runtime.js";
 import { connectPostgres, disconnectPostgres } from "../infrastructure/database/prisma.js";
 import { getPrisma } from "../infrastructure/database/prisma.js";
-import { gapsQueue, hasLiveJob, makeConnection, QUEUE_NAMES } from "../infrastructure/queue.js";
+import { makeConnection, QUEUE_NAMES } from "../infrastructure/queue.js";
 import { logger } from "../infrastructure/logger.js";
 import { startWorkerHeartbeat } from "../infrastructure/worker-heartbeat.js";
+import { sweepStuckGapAnalyses } from "../modules/gaps/gap-sweep.js";
 import { gapsService, REPORT_GAP_FANOUT_JOB, type GapJob, type ReportGapFanoutJob } from "../modules/gaps/gaps.service.js";
 import { withUserAi } from "../modules/user-ai/user-ai.runtime.js";
 
@@ -21,11 +22,6 @@ enforcePostgresOnlyRuntime();
  * exponential backoff). Non-retryable errors short-circuit via UnrecoverableError.
  */
 
-/** Analyses stuck in "analyzing" longer than this are orphans of a dead worker. */
-const STUCK_ANALYZING_MS = 5 * 60_000;
-/** Analyses stuck in "queued" longer than this may have lost their job (never picked up). */
-const STUCK_QUEUED_MS = 30 * 60_000;
-
 /** Generic user-facing failure text — raw error internals stay in server logs. */
 const USER_FACING_FAILURE = "Gap analysis failed. Please try again later.";
 
@@ -33,25 +29,8 @@ async function main() {
   await connectPostgres();
   const stopHeartbeat = startWorkerHeartbeat({ workerName: "worker:gaps", queueName: QUEUE_NAMES.gaps });
 
-  // Startup sweep: a hard-killed worker leaves analyses frozen in "analyzing", and a lost job leaves one
-  // in "queued" forever. Fail them through markAnalysisFailed so the credits are refunded, but skip any
-  // analysis whose BullMQ job is still waiting or will be retried — that one is slow, not lost.
-  const now = Date.now();
-  const stuck = await getPrisma().gapAnalysis.findMany({
-    where: { OR: [
-      { status: "analyzing", updatedAt: { lt: new Date(now - STUCK_ANALYZING_MS) } },
-      { status: "queued", updatedAt: { lt: new Date(now - STUCK_QUEUED_MS) } },
-    ] },
-    select: { id: true, status: true },
-  });
-  let swept = 0;
-  for (const analysis of stuck) {
-    if (await hasLiveJob(gapsQueue, analysis.id)) continue;
-    await gapsService.markAnalysisFailed(analysis.id, analysis.status === "queued"
-      ? "Gap analysis was stuck in queue (worker restarted). Please try again."
-      : "Gap analysis was interrupted (worker restarted). Please try again.");
-    swept += 1;
-  }
+  // A hard-killed worker leaves analyses frozen; fail them (with a credit refund) unless their job is still live.
+  const swept = await sweepStuckGapAnalyses();
   if (swept > 0) {
     logger.warn({ swept }, "swept stuck gap analyses");
   }

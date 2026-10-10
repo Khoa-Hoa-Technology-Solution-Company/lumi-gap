@@ -97,6 +97,7 @@ describe("toGapListItem", () => {
         supportingPaperIds: [],
         confidence: 0.7,
         evidenceConfidence: 0.76,
+        evidenceScopeSize: 1000,
         source: "standalone",
         userId: "user-1",
         status: "active",
@@ -131,6 +132,66 @@ describe("toGapListItem", () => {
     );
 
     expect(item.evidenceStatus).toBe("weak");
+  });
+
+  it("exposes the counting scope and the project-level evidence without letting it decide the label", () => {
+    const base = {
+      _id: "gap-scope",
+      topic: "AI education",
+      normalizedTopic: "ai education",
+      title: "Scoped gap",
+      description: "desc",
+      rationale: "why",
+      supportingPaperIds: [],
+      confidence: 0.7,
+      evidenceConfidence: 0.2,
+      source: "standalone" as const,
+      userId: "user-1",
+      status: "active" as const,
+      createdAt: new Date("2026-07-01T00:00:00.000Z"),
+      probe: { topicA: "LLM feedback", topicB: "rural education" },
+    };
+    const projectEvidence = { intersectionCount: 0, parentCounts: { a: 7, b: 7 }, scopePaperCount: 7, evidenceConfidence: 0.95 };
+
+    const item = toGapListItem({ ...base, evidenceScopeSize: 1200, projectEvidence }, new Map());
+    expect(item.evidenceScopeSize).toBe(1200);
+    expect(item.projectEvidence).toEqual(projectEvidence);
+    expect(item.evidenceStatus).toBe("weak");
+
+    const legacy = toGapListItem(base, new Map());
+    expect(legacy.evidenceScopeSize).toBeUndefined();
+    expect(legacy.projectEvidence).toBeUndefined();
+  });
+
+  describe("evidence status and the recorded counting scope", () => {
+    const gap = (evidenceScopeSize?: number) => toGapListItem(
+      {
+        _id: "gap-scope-status",
+        topic: "AI education",
+        normalizedTopic: "ai education",
+        title: "Scope status gap",
+        description: "desc",
+        rationale: "why",
+        supportingPaperIds: [],
+        confidence: 0.9,
+        evidenceConfidence: 0.9,
+        evidenceScopeSize,
+        source: "standalone",
+        userId: "user-1",
+        status: "active",
+        createdAt: new Date("2026-07-01T00:00:00.000Z"),
+        probe: { topicA: "LLM feedback", topicB: "rural education" },
+      },
+      new Map(),
+    );
+
+    it("never confirms a gap whose counting scope was not recorded", () => {
+      expect(gap(undefined).evidenceStatus).toBe("weak");
+    });
+
+    it("confirms a gap with a recorded scope and a high evidence score", () => {
+      expect(gap(1000).evidenceStatus).toBe("confirmed");
+    });
   });
 
   it("uses supporting papers as evidence for legacy gaps", () => {
@@ -173,6 +234,7 @@ describe("sortGapRows", () => {
     id,
     confidence: 0.5,
     evidenceConfidence: null,
+    evidenceScopeSize: 1000,
     createdAt: new Date("2026-01-01T00:00:00Z"),
     source: "standalone",
     probe,
@@ -206,6 +268,11 @@ describe("sortGapRows", () => {
     expect(ids(sortGapRows(rows, "papers", 5))).toEqual(["confident", "confirmed", "ai-only", "newest"]);
     expect(ids(sortGapRows(rows, "newest", 5))[0]).toBe("newest");
     expect(ids(sortGapRows(rows, "ai_only_last", 5))).toEqual(["confirmed", "confident", "newest", "ai-only"]);
+  });
+
+  it("ranks a gap without a recorded counting scope after confirmed ones", () => {
+    const unscoped = row("unscoped", { evidenceConfidence: 0.95, evidenceScopeSize: null });
+    expect(ids(sortGapRows([unscoped, rows[0]!], "evidence", 5))).toEqual(["confirmed", "unscoped"]);
   });
 
   it("treats a low-sample probe as weak evidence", () => {

@@ -656,26 +656,25 @@ export function GapAnalysisWorkflow({
                 <div ref={paperResultsRef} className="max-h-72 divide-y divide-slate-200 overflow-y-auto rounded-lg border border-slate-200 bg-white [scrollbar-width:none] [&::-webkit-scrollbar]:hidden dark:divide-slate-800 dark:border-slate-800 dark:bg-slate-950">
                   {paginatedSearchResults.map((paper) => {
                     const added = selectedIds.includes(paper.id);
+                    const meta = [
+                      paper.publicationYear,
+                      paper.citationCount !== undefined && ` · ${formatNumber(paper.citationCount)} ${t("citations")}`,
+                      inProject
+                        ? null
+                        : paper.score === undefined
+                        ? ` ${t("· keyword match")}`
+                        : paper.score <= 1
+                          ? ` · ${Math.round(Math.max(0, paper.score) * 100)}${t("% semantic match")}`
+                          : ` · ${t("Relevance score")} ${paper.score.toFixed(2)}`,
+                    ]
+                      .filter(Boolean)
+                      .join("")
+                      .replace(/^\s*·\s*/, "");
                     return (
                         <div key={paper.id} className="flex items-center justify-between gap-3 p-3">
                         <div className="min-w-0">
                           <p className="text-sm font-semibold leading-snug text-slate-900 dark:text-white">{paper.title}</p>
-                          <p className="mt-1 text-xs text-slate-500">
-                            {[
-                              paper.publicationYear,
-                              paper.citationCount !== undefined && ` · ${formatNumber(paper.citationCount)} ${t("citations")}`,
-                              inProject
-                                ? null
-                                : paper.score === undefined
-                                ? ` ${t("· keyword match")}`
-                                : paper.score <= 1
-                                  ? ` · ${Math.round(Math.max(0, paper.score) * 100)}${t("% semantic match")}`
-                                  : ` · ${t("Relevance score")} ${paper.score.toFixed(2)}`,
-                            ]
-                              .filter(Boolean)
-                              .join("")
-                              .replace(/^\s*·\s*/, "")}
-                          </p>
+                          {meta && <p className="mt-1 text-xs text-slate-500">{meta}</p>}
                         </div>
                         <Button
                           type="button"
