@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowRight, ArrowUpRight, BookOpen, Bookmark, Check, Quote } from "lucide-react";
+import { ArrowUpRight, Quote } from "lucide-react";
 import { useI18n } from "@/i18n";
 
 const lenses = [
@@ -29,34 +29,22 @@ export function HomeReadingLens() {
   const [active, setActive] = useState(0);
   const lens = lenses[active]!;
 
-  return <section id="home-reading" className="home-reading-section" aria-labelledby="home-reading-heading" data-home-section="reading">
-    <div className="home-width home-reading-layout" data-home-reveal>
-      <div className="home-reading-copy">
-        <p className="home-section-kicker">{t("From reading to understanding")}</p>
-        <h2 id="home-reading-heading">{t("Read with a question in mind.")}</h2>
-        <p>{t("A useful reading session leaves more than a saved paper. It gives your next idea something to stand on.")}</p>
-        <div className="home-lens-controls" role="group" aria-label={t("Explore a reading approach")}>
-          {lenses.map((item, index) => <button key={item.label} type="button" aria-pressed={active === index} aria-controls="home-reading-note" onClick={() => setActive(index)}>
-            <span className="home-lens-number" aria-hidden="true">0{index + 1}</span>
-            <span><strong>{t(item.label)}</strong>{active === index ? <span className="home-lens-description">{t(item.description)}</span> : null}</span>
-            <ArrowRight aria-hidden="true" />
-          </button>)}
-        </div>
-        <Link to="/bookmarks" className="home-text-link">{t("Open your reading library")}<ArrowUpRight aria-hidden="true" /></Link>
-      </div>
-
-      <div className="home-reading-desk" id="home-reading-note">
-        <div className="home-reading-desk-header"><span><BookOpen aria-hidden="true" />{t("A literature note")}</span><span className="home-example-label">{t("Example workflow")}</span></div>
-        <div className="home-reading-sheet">
-          <div className="home-note-meta"><span>{t("Language model evaluation")}</span><Bookmark aria-hidden="true" /></div>
-          <p className="home-note-title">{t("Beyond the benchmark")}</p>
-          <p className="home-note-intro">{t("One topic. A few questions worth keeping close as you read.")}</p>
-          <div className="home-note-prompts">{lenses.map((item, index) => <div key={item.label} className={active === index ? "is-focused" : ""}><span aria-hidden="true">0{index + 1}</span><p>{t(item.note)}</p>{active === index ? <Check aria-hidden="true" /> : null}</div>)}</div>
-          <div className="home-note-annotation" key={active} aria-live="polite" aria-atomic="true"><Quote aria-hidden="true" /><div><span>{t(lens.caption)}</span><p>{t(lens.note)}</p></div></div>
-          <div className="home-note-footer"><span className="home-note-dot" aria-hidden="true" />{t("Keep the question connected to the source.")}</div>
-        </div>
-        <p className="home-reading-example-note">{t("An example reading approach, not a summary of a published paper.")}</p>
-      </div>
+  return <section id="home-reading" className="academic-reading home-width" aria-labelledby="home-reading-heading" data-home-reveal>
+    <div className="academic-section-heading">
+      <h2 id="home-reading-heading">{t("Read beyond the abstract.")}</h2>
+      <p>{t("Turn a reading session into questions, evidence and directions you can return to.")}</p>
     </div>
+    <div className="home-lens-controls academic-reading-tabs" role="group" aria-label={t("Explore a reading approach")}>
+      {lenses.map((item, index) => <button key={item.label} type="button" aria-pressed={active === index} aria-controls="home-reading-note" onClick={() => setActive(index)}><span aria-hidden="true">0{index + 1}</span>{t(item.label)}</button>)}
+      <Link to="/bookmarks" className="academic-text-link">{t("Open your reading library")}<ArrowUpRight aria-hidden="true" /></Link>
+    </div>
+    <div className="academic-reading-stage" id="home-reading-note">
+      <div className="academic-reading-question">
+        <span className="academic-reading-example">{t("Example workflow")} / {t("Language model evaluation")}</span>
+        <div className="home-note-annotation" key={active} aria-live="polite" aria-atomic="true"><Quote aria-hidden="true" /><span>{t(lens.caption)}</span><blockquote>{t(lens.note)}</blockquote><p>{t(lens.description)}</p></div>
+      </div>
+      <div className="home-note-prompts academic-reading-prompts">{lenses.map((item, index) => <div key={item.label} className={active === index ? "is-focused" : ""}><span aria-hidden="true">0{index + 1}</span><div><strong>{t(item.label)}</strong><p>{t(item.note)}</p></div></div>)}</div>
+    </div>
+    <p className="home-reading-example-note">{t("An example reading approach, not a summary of a published paper.")}</p>
   </section>;
 }

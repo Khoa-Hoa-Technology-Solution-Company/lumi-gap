@@ -9,6 +9,7 @@ import { GuestHomePage } from "@/pages/home-guest";
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 const mocks = vi.hoisted(() => ({ query: { data: undefined as HomeOverview | undefined, isLoading: false, isError: false, refetch: vi.fn() } }));
 vi.mock("@/features/home/hooks/use-home-overview", () => ({ useHomeOverview: () => mocks.query }));
+vi.mock("@/features/home/hooks/use-home-featured-papers", () => ({ useHomeFeaturedPapers: () => ({ ...mocks.query, data: mocks.query.data ? { papers: mocks.query.data.recentPapers } : undefined }) }));
 vi.mock("@/i18n", () => ({ useI18n: () => ({ language: "en", t: (key: string, values?: Record<string, unknown>) => key.replace(/\{\{(\w+)\}\}/g, (_, name) => String(values?.[name] ?? "")) }) }));
 
 const overview: HomeOverview = {
@@ -68,24 +69,19 @@ describe("Guest research home", () => {
     expect(container.querySelector('button[aria-label="Research source: All sources"]')).not.toBeNull();
     expect(container.querySelector("textarea")).toBeNull();
   });
-  it("supports keyboard navigation through the research workflow without showing the removed illustration", async () => {
+  it("links featured literature to the real paper without the old introduction", async () => {
     await render();
-    const tabs = container.querySelectorAll<HTMLButtonElement>('[role="tab"]');
-    await act(async () => tabs[0]!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })));
-    expect(document.activeElement).toBe(tabs[1]);
-    expect(tabs[1]!.getAttribute("aria-selected")).toBe("true");
-    expect(container.querySelector('[role="tabpanel"]:not([hidden])')?.textContent).toContain("Record screening decisions");
-    await act(async () => tabs[1]!.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true })));
-    expect(container.querySelector('[role="tabpanel"]:not([hidden]) a')?.getAttribute("href")).toBe("/research-gaps");
-    await act(async () => tabs[2]!.dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true })));
-    expect(container.querySelector('[role="tabpanel"]:not([hidden])')?.textContent).toContain("Choose scholarly sources");
-    expect(container.querySelector("img")).toBeNull();
+    expect(container.querySelector('.home-featured-paper')?.getAttribute('href')).toBe('/papers/paper-1');
+    expect(container.querySelector('.home-featured-paper')?.textContent).toContain('Retrieval quality across languages');
+    expect(container.querySelector('.home-featured-paper')?.textContent).toContain('12 citations');
+    expect(container.querySelector('[role="tablist"]')).toBeNull();
+    expect(container.querySelector('img')).toBeNull();
   });
   it("shows an actionable empty chart without inventing publications", async () => {
     mocks.query.data = { ...overview, trends: { ...overview.trends, yearlyTotalPapers: [] } };
     await render();
     expect(container.querySelector('.home-library-insights')?.textContent).toContain("Publication trends will appear as the library grows.");
     expect(container.querySelectorAll('.home-chart-bars button')).toHaveLength(0);
-    expect(container.querySelector('a[href="/home#home-research-heading"]')).not.toBeNull();
+    expect(container.querySelector('a[href="#home-research-heading"]')).not.toBeNull();
   });
 });

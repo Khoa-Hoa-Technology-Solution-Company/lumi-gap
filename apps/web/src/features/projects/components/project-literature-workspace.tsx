@@ -15,6 +15,8 @@ import { useComparePapers } from "@/features/compare/hooks/use-compare";
 import { CompareTable } from "@/features/compare/components/compare-table";
 import { useRemovePaperFromProject, useUpdateProject, useUpdateProjectPaper } from "@/features/projects/hooks/use-projects";
 import { useI18n } from "@/i18n";
+import { ProjectLiteratureEmpty } from "./project-literature-empty";
+import type { PaperPickerSource } from "./project-paper-picker-dialog";
 
 type ProjectPaperLink = IProject["papers"][number];
 type LiteratureFilter = "UNDECIDED" | "INCLUDED" | "EXCLUDED" | "ALL";
@@ -63,15 +65,17 @@ export function ProjectLiteratureWorkspace({
   onRequestAddPaper,
   onNavigateToReports,
   onNavigateToGaps,
+  onViewEvidence,
 }: {
   projectId: string;
   papers: IProject["papers"];
   criteria?: IProject["screeningCriteria"];
   isOwner: boolean;
   readOnly: boolean;
-  onRequestAddPaper: () => void;
+  onRequestAddPaper: (source?: PaperPickerSource) => void;
   onNavigateToReports: () => void;
   onNavigateToGaps: () => void;
+  onViewEvidence: () => void;
 }) {
   const { t, language } = useI18n();
   const isMobile = useIsMobile();
@@ -80,7 +84,7 @@ export function ProjectLiteratureWorkspace({
   const removePaper = useRemovePaperFromProject(projectId);
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedFilter = searchParams.get("screening");
-  const filter: LiteratureFilter = ["ALL", "UNDECIDED", "INCLUDED", "EXCLUDED"].includes(requestedFilter ?? "") ? requestedFilter as LiteratureFilter : "UNDECIDED";
+  const filter: LiteratureFilter = ["ALL", "UNDECIDED", "INCLUDED", "EXCLUDED"].includes(requestedFilter ?? "") ? requestedFilter as LiteratureFilter : "ALL";
   const setFilter = (next: LiteratureFilter) => {
     const params = new URLSearchParams(searchParams);
     params.set("screening", next);
@@ -173,6 +177,7 @@ export function ProjectLiteratureWorkspace({
   const paperTitle = selectedPaper?.title ?? selectedParts?.summary?.title ?? "";
 
   const persistStatus = async (link: ProjectPaperLink, status: ProjectScreeningStatus) => {
+    if (readOnly || updatePaper.isPending) return;
     const { id } = paperParts(link);
     try {
       await updatePaper.mutateAsync({ paperId: id, data: { screeningStatus: status } });
@@ -189,7 +194,7 @@ export function ProjectLiteratureWorkspace({
   };
 
   const saveExclusion = async () => {
-    if (!excludeDialog || !exclusionReason || updatePaper.isPending) return;
+    if (readOnly || !excludeDialog || !exclusionReason || updatePaper.isPending) return;
     try {
       await updatePaper.mutateAsync({
         paperId: paperParts(excludeDialog).id,
@@ -203,7 +208,7 @@ export function ProjectLiteratureWorkspace({
   };
 
   const saveNotes = async () => {
-    if (!notesDialog || updatePaper.isPending) return;
+    if (readOnly || !notesDialog || updatePaper.isPending) return;
     try {
       await updatePaper.mutateAsync({ paperId: paperParts(notesDialog).id, data: { notes: noteValue.trim() || null } });
       toast.success(t("Notes saved."));
@@ -214,6 +219,7 @@ export function ProjectLiteratureWorkspace({
   };
 
   const changeReadingStatus = async (link: ProjectPaperLink, status: ProjectReadingStatus) => {
+    if (readOnly || updatePaper.isPending) return;
     try {
       await updatePaper.mutateAsync({ paperId: paperParts(link).id, data: { readingStatus: status } });
       toast.success(t("Reading status saved."));
@@ -223,6 +229,7 @@ export function ProjectLiteratureWorkspace({
   };
 
   const saveCriteria = async () => {
+    if (!isOwner || readOnly || updateProject.isPending) return;
     const inclusion = inclusionText.split("\n").map((line) => line.trim()).filter(Boolean);
     const exclusion = exclusionText.split("\n").map((line) => line.trim()).filter(Boolean);
     if ([...inclusion, ...exclusion].some((line) => line.length > 240) || inclusion.length > 20 || exclusion.length > 20) {
@@ -239,7 +246,7 @@ export function ProjectLiteratureWorkspace({
   };
 
   const saveRemove = async () => {
-    if (!removeDialog) return;
+    if (readOnly || !removeDialog || removePaper.isPending) return;
     try {
       await removePaper.mutateAsync(paperParts(removeDialog).id);
       setRemoveDialog(null);
@@ -266,10 +273,10 @@ export function ProjectLiteratureWorkspace({
     setAiAnalyzedOnly(false);
   };
   const screeningTabs: Array<{ key: LiteratureFilter; label: string; count: number }> = [
+    { key: "ALL", label: "All", count: counts.all },
     { key: "UNDECIDED", label: "To screen", count: counts.undecided },
     { key: "INCLUDED", label: "Included", count: counts.included },
     { key: "EXCLUDED", label: "Excluded", count: counts.excluded },
-    { key: "ALL", label: "All", count: counts.all },
   ];
 
   const detailPanel = selectedLink && selectedParts ? (
@@ -287,7 +294,7 @@ export function ProjectLiteratureWorkspace({
       onScreen={(status) => void persistStatus(selectedLink, status)}
       onExclude={() => startExclusion(selectedLink)}
       onEditNotes={() => { setNoteValue(selectedLink.notes ?? ""); setNotesDialog(selectedLink); }}
-      onViewEvidence={onNavigateToGaps}
+      onViewEvidence={onViewEvidence}
     />
   ) : (
     <div className="flex h-full min-h-[280px] flex-col items-center justify-center px-6 text-center text-muted-foreground">
@@ -298,34 +305,24 @@ export function ProjectLiteratureWorkspace({
   );
 
   return (
-    <div className="space-y-4">
-      <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+    <div className="project-literature-workspace space-y-4">
+      <header className="project-content-heading flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h2 className="text-lg font-semibold tracking-tight">{t("Literature")}</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {t("{{papers}} papers · {{screened}} screened · {{included}} included", { papers: counts.all, screened: screenedCount, included: counts.included })}
+          <h2 className="text-2xl font-semibold tracking-tight">{t("Literature")}</h2>
+          <p className="mt-1 text-base text-muted-foreground">
+            {papers.length ? t("{{papers}} papers · {{screened}} screened · {{included}} included", { papers: counts.all, screened: screenedCount, included: counts.included }) : t("Collect, screen and connect the evidence for this project.")}
           </p>
-          <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-            <span>{t("{{inclusion}} inclusion · {{exclusion}} exclusion criteria", { inclusion: criteria?.inclusion.length ?? 0, exclusion: criteria?.exclusion.length ?? 0 })}</span>
-            <button type="button" className="font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => setCriteriaOpen(true)}>{t("View criteria")}</button>
-          </div>
         </div>
-        {papers.length > 0 ? <Button size="sm" onClick={onRequestAddPaper}><span className="mr-1 text-base leading-none">+</span>{t("Add papers")}</Button> : null}
+        {papers.length > 0 && !readOnly ? <Button size="sm" onClick={() => onRequestAddPaper()}><span className="mr-1 text-base leading-none">+</span>{t("Add papers")}</Button> : null}
       </header>
 
       {papers.length === 0 ? (
-        <div className="flex min-h-[260px] flex-col items-center justify-center border-y border-dashed px-6 py-12 text-center">
-          <BookOpen className="h-7 w-7 text-muted-foreground" />
-          <h3 className="mt-4 text-base font-semibold">{t("Build your project literature")}</h3>
-          <p className="mt-2 max-w-md text-sm text-muted-foreground">{t("Search scholarly literature or add papers you have already saved.")}</p>
-          <p className="mt-1 max-w-lg text-xs text-muted-foreground">{t("After adding papers, screen them to build the corpus for evidence synthesis and research-gap analysis.")}</p>
-          <Button className="mt-5" onClick={onRequestAddPaper}><span className="mr-1 text-base leading-none">+</span>{t("Add papers")}</Button>
-        </div>
+        <ProjectLiteratureEmpty readOnly={readOnly} onAdd={onRequestAddPaper} />
       ) : (
         <>
-          <div className="flex gap-2 overflow-x-auto border-b pb-2" role="tablist" aria-label={t("Screening status")}>
+          <div className="flex gap-2 overflow-x-auto border-b pb-2" role="group" aria-label={t("Screening status")}>
             {screeningTabs.map((item) => (
-              <button key={item.key} type="button" role="tab" aria-selected={filter === item.key} onClick={() => setFilter(item.key)} className={`inline-flex shrink-0 items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${filter === item.key ? "bg-primary/10 font-medium text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}>
+              <button key={item.key} type="button" aria-pressed={filter === item.key} onClick={() => setFilter(item.key)} className={`inline-flex shrink-0 items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${filter === item.key ? "bg-primary/10 font-medium text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}>
                 {t(item.label)}<span className="text-xs tabular-nums opacity-75">{item.count}</span>
               </button>
             ))}
@@ -380,8 +377,7 @@ export function ProjectLiteratureWorkspace({
               <span className="text-xs font-medium">{t("{{count}} selected", { count: selectedBulkIds.length })}</span>
               <div className="flex flex-wrap gap-2">
                 <Button size="sm" variant="outline" disabled={selectedBulkIds.length < 2 || selectedBulkIds.length > 4} onClick={beginCompare}><Sparkles className="mr-1.5 h-3.5 w-3.5" />{t("Compare selected")}</Button>
-                <Button size="sm" variant="outline" onClick={onNavigateToReports}><FileText className="mr-1.5 h-3.5 w-3.5" />{t("Create artifact")}</Button>
-                <Button size="sm" variant="outline" onClick={onNavigateToGaps}>{t("Research gaps")}</Button>
+                <Button size="sm" variant="ghost" onClick={() => setSelectedBulkIds([])}>{t("Clear selection")}</Button>
               </div>
             </div>
           ) : null}
@@ -434,7 +430,7 @@ export function ProjectLiteratureWorkspace({
             <DialogTitle>{t("Why are you excluding this paper?")}</DialogTitle>
             <DialogDescription className="line-clamp-2">{excludeDialog ? paperParts(excludeDialog).summary?.title : ""}</DialogDescription>
           </DialogHeader>
-          <fieldset className="space-y-2">
+          <fieldset className="space-y-2" disabled={readOnly || updatePaper.isPending}>
             <legend className="mb-2 text-sm font-medium">{t("Choose a reason")}</legend>
             {exclusionReasons.map((reason) => (
               <label key={reason.value} className={`flex cursor-pointer items-center gap-3 rounded-md border px-3 py-2.5 text-sm hover:bg-muted/50 ${exclusionReason === reason.value ? "border-primary bg-primary/[0.04]" : ""}`}>
@@ -444,7 +440,7 @@ export function ProjectLiteratureWorkspace({
           </fieldset>
           <div className="space-y-2">
             <Label htmlFor="project-exclusion-note">{t("Optional note")}</Label>
-            <textarea id="project-exclusion-note" value={exclusionNote} onChange={(event) => setExclusionNote(event.target.value)} maxLength={2000} rows={3} className="w-full resize-y rounded-md border bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
+            <textarea id="project-exclusion-note" disabled={readOnly || updatePaper.isPending} value={exclusionNote} onChange={(event) => setExclusionNote(event.target.value)} maxLength={2000} rows={3} className="w-full resize-y rounded-md border bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setExcludeDialog(null)} disabled={updatePaper.isPending}>{t("Cancel")}</Button>
@@ -457,7 +453,7 @@ export function ProjectLiteratureWorkspace({
         <DialogContent>
           <DialogHeader><DialogTitle>{t("Project notes")}</DialogTitle><DialogDescription>{t("Notes are visible to project members.")}</DialogDescription></DialogHeader>
           <Label htmlFor="project-literature-note">{t("Notes")}</Label>
-          <textarea id="project-literature-note" value={noteValue} onChange={(event) => setNoteValue(event.target.value)} maxLength={5000} rows={6} disabled={readOnly} className="w-full resize-y rounded-md border bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
+          <textarea id="project-literature-note" value={noteValue} onChange={(event) => setNoteValue(event.target.value)} maxLength={5000} rows={6} disabled={readOnly || updatePaper.isPending} className="w-full resize-y rounded-md border bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
           <DialogFooter>
             <Button variant="outline" onClick={() => setNotesDialog(null)} disabled={updatePaper.isPending}>{t("Cancel")}</Button>
             <Button onClick={() => void saveNotes()} disabled={readOnly || updatePaper.isPending}>{updatePaper.isPending ? t("Saving…") : t("Save notes")}</Button>
@@ -475,16 +471,21 @@ export function ProjectLiteratureWorkspace({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={criteriaOpen} onOpenChange={setCriteriaOpen}>
+      <div className="project-screening-summary">
+        <div><p className="text-base font-semibold">{t("Screening criteria")}</p><p className="mt-1 text-sm leading-6 text-muted-foreground">{t("{{inclusion}} inclusion · {{exclusion}} exclusion criteria", { inclusion: criteria?.inclusion.length ?? 0, exclusion: criteria?.exclusion.length ?? 0 })}</p></div>
+        <Button type="button" variant="outline" size="sm" onClick={() => setCriteriaOpen(true)}>{t(isOwner && !readOnly ? "Set screening criteria" : "View criteria")}</Button>
+      </div>
+      {papers.length > 0 && !readOnly ? <div className="flex flex-wrap items-center gap-3 pt-1"><span className="text-xs text-muted-foreground">{t("Research outputs use the project's included papers.")}</span><Button type="button" variant="outline" size="sm" disabled={counts.included === 0} onClick={onNavigateToReports}>{t("Create artifact")}</Button><Button type="button" variant="outline" size="sm" disabled={counts.included === 0} onClick={onNavigateToGaps}>{t("Research gaps")}</Button></div> : null}
+      <Dialog open={criteriaOpen} onOpenChange={next => { if (!updateProject.isPending) setCriteriaOpen(next); }}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader><DialogTitle>{t("Screening criteria")}</DialogTitle><DialogDescription>{t("Use the same criteria while reviewing every paper in this project.")}</DialogDescription></DialogHeader>
           <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2"><Label htmlFor="project-inclusion-criteria">{t("Inclusion")}</Label><textarea id="project-inclusion-criteria" value={inclusionText} onChange={(event) => setInclusionText(event.target.value)} disabled={!isOwner || readOnly} rows={7} placeholder={t("One criterion per line")} maxLength={5000} className="w-full resize-y rounded-md border bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></div>
-            <div className="space-y-2"><Label htmlFor="project-exclusion-criteria">{t("Exclusion")}</Label><textarea id="project-exclusion-criteria" value={exclusionText} onChange={(event) => setExclusionText(event.target.value)} disabled={!isOwner || readOnly} rows={7} placeholder={t("One criterion per line")} maxLength={5000} className="w-full resize-y rounded-md border bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></div>
+            <div className="space-y-2"><Label htmlFor="project-inclusion-criteria">{t("Inclusion")}</Label><textarea id="project-inclusion-criteria" value={inclusionText} onChange={(event) => setInclusionText(event.target.value)} disabled={!isOwner || readOnly || updateProject.isPending} rows={7} placeholder={t("One criterion per line")} maxLength={5000} className="w-full resize-y rounded-md border bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></div>
+            <div className="space-y-2"><Label htmlFor="project-exclusion-criteria">{t("Exclusion")}</Label><textarea id="project-exclusion-criteria" value={exclusionText} onChange={(event) => setExclusionText(event.target.value)} disabled={!isOwner || readOnly || updateProject.isPending} rows={7} placeholder={t("One criterion per line")} maxLength={5000} className="w-full resize-y rounded-md border bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></div>
           </div>
           <p className="text-xs text-muted-foreground">{t("Up to 20 criteria per list, 240 characters each.")}</p>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setCriteriaOpen(false)}>{t("Close")}</Button>
+            <Button variant="outline" onClick={() => setCriteriaOpen(false)} disabled={updateProject.isPending}>{t("Close")}</Button>
             {isOwner && !readOnly ? <Button onClick={() => void saveCriteria()} disabled={updateProject.isPending}>{updateProject.isPending ? t("Saving…") : t("Save criteria")}</Button> : null}
           </DialogFooter>
         </DialogContent>

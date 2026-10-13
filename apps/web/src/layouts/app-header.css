@@ -1,0 +1,47 @@
+/* Shared across Home and every MainLayout route. */
+.lumi-app-shell { --app-header-height: 80px; }
+.lumi-app-header {
+  top: 20px;
+  width: calc(100% - 64px);
+  max-width: 1280px;
+  margin: 20px auto 0;
+  border: 1px solid oklch(.99 .004 252 / .65);
+  border-radius: 999px;
+  background: oklch(.986 .007 252 / .96);
+  box-shadow: 0 8px 30px oklch(.23 .035 252 / .1);
+  backdrop-filter: blur(16px);
+  color: oklch(.27 .035 252);
+  font-family: var(--forum-font);
+}
+.lumi-app-nav-inner { padding-inline: 24px; }
+.lumi-app-header .forum-app-brand img { height: 44px; }
+.lumi-app-nav-inner > nav { gap: 4px; }
+.lumi-app-nav-inner > nav button,
+.lumi-app-nav-inner > nav > a { min-height: 44px; font-size: 18px; font-weight: 600; line-height: 1.35; color: inherit; }
+.lumi-app-nav-inner > nav button:hover,
+.lumi-app-nav-inner > nav > a:hover,
+.lumi-app-nav-inner > nav button[data-state="open"] { color: oklch(.49 .135 252); }
+.lumi-app-header .forum-app-controls { grid-column: 3; justify-self: end; }
+.lumi-app-header .forum-app-controls > a { min-height: 40px; padding-inline: 16px; font-size: 15px; font-weight: 600; }
+.lumi-app-header .forum-app-controls button[aria-label="Change language"] { font-size: 14px; }
+.lumi-app-header a[href="/register"] { background: oklch(.49 .135 252); color: oklch(.985 .004 252); border-radius: 999px; }
+.lumi-app-header #primary-navigation-menu { border-radius: 20px; margin-top: 10px; box-shadow: 0 12px 32px oklch(.23 .035 252 / .12); }
+.lumi-app-header #primary-navigation-menu a { font-size: 16px; }
+.dark .lumi-app-header { background: oklch(.22 .027 252 / .96); color: oklch(.94 .01 252); border-color: oklch(.94 .01 252 / .14); }
+.dark .lumi-app-nav-inner > nav button:hover,
+.dark .lumi-app-nav-inner > nav > a:hover,
+.dark .lumi-app-nav-inner > nav button[data-state="open"] { color: oklch(.77 .108 252); }
+.dark .lumi-app-header a[href="/register"] { background: oklch(.77 .108 252); color: oklch(.20 .028 252); }
+@media (max-width: 1279px) {
+  .lumi-app-nav-inner > nav { display: none; }
+  .lumi-app-header .forum-app-controls > button[aria-controls="primary-navigation-menu"] { display: inline-flex; }
+  .lumi-app-header #primary-navigation-menu { display: block; }
+  .lumi-app-header .forum-app-brand img { height: 42px; }
+}
+@media (max-width: 767px) {
+  .lumi-app-shell { --app-header-height: 68px; }
+  .lumi-app-header { top: 12px; width: calc(100% - 24px); margin-top: 12px; }
+  .lumi-app-nav-inner { padding-inline: 14px; }
+  .lumi-app-header .forum-app-brand img { height: 36px; }
+  .lumi-app-header .forum-app-controls > a { padding-inline: 12px; font-size: 14px; }
+}

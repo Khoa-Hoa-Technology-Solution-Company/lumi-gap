@@ -2,12 +2,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { StructuredSubmissionInput } from "@trend/shared-types";
 import { submissionsApi } from "../api/submissions.api";
 
-export function useSubmissions() {
-  return useQuery({ queryKey: ["submissions"], queryFn: submissionsApi.list });
+export function useSubmissions(projectId?: string) {
+  return useQuery({ queryKey: ["submissions", "list", projectId ?? "mine"], queryFn: () => submissionsApi.list(projectId) });
 }
 
-export function useSubmission(id: string) {
-  return useQuery({ queryKey: ["submissions", id], queryFn: () => submissionsApi.detail(id), enabled: Boolean(id) });
+export function useSubmission(id: string, projectId?: string) {
+  return useQuery({ queryKey: ["submissions", id, "detail", projectId ?? "standalone"], queryFn: () => submissionsApi.detail(id, projectId), enabled: Boolean(id) });
 }
 
 export function useSubmissionRevisions(id: string) {
@@ -23,13 +23,14 @@ export function useAddSubmissionRevision(id: string) {
   const client = useQueryClient();
   return useMutation({ mutationFn: ({ file, responseToReview }: { file: File; responseToReview?: string }) => submissionsApi.addRevision(id, file, responseToReview), onSuccess: () => {
     client.invalidateQueries({ queryKey: ["submissions", id] });
+    client.invalidateQueries({ queryKey: ["submissions", "list"] });
     client.invalidateQueries({ queryKey: ["submissions", id, "revisions"] });
   } });
 }
 
-export function useAiPreReviews(id: string) {
+export function useAiPreReviews(id: string, enabled = true) {
   // Pre-reviews run in a worker; poll while the latest one is still queued or processing.
-  return useQuery({ queryKey: ["submissions", id, "ai-pre-reviews"], queryFn: () => submissionsApi.aiPreReviews(id), enabled: Boolean(id), refetchInterval: (query) => ["QUEUED", "PROCESSING"].includes(query.state.data?.[0]?.status ?? "") ? 3000 : false });
+  return useQuery({ queryKey: ["submissions", id, "ai-pre-reviews"], queryFn: () => submissionsApi.aiPreReviews(id), enabled: Boolean(id) && enabled, refetchInterval: (query) => ["QUEUED", "PROCESSING"].includes(query.state.data?.[0]?.status ?? "") ? 3000 : false });
 }
 
 export function useRunAiPreReview(id: string) {
@@ -39,4 +40,4 @@ export function useRunAiPreReview(id: string) {
   } });
 }
 
-export function useSubmissionHistory(id: string) { return useQuery({ queryKey: ["submissions", id, "history"], queryFn: () => submissionsApi.history(id), enabled: Boolean(id) }); }
+export function useSubmissionHistory(id: string, enabled = true) { return useQuery({ queryKey: ["submissions", id, "history"], queryFn: () => submissionsApi.history(id), enabled: Boolean(id) && enabled }); }

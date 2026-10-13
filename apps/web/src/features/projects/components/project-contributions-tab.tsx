@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useI18n } from "@/i18n";
 import {
   useProjectContributions,
   useProjectActivity,
@@ -55,6 +56,7 @@ export function ProjectContributionsTab({
   members: IProjectMember[];
   currentUserId?: string;
 }) {
+  const { t, language } = useI18n();
   const { data = [], isLoading, isError, refetch } = useProjectContributions(projectId);
   const { data: activity = [], isLoading: isActivityLoading } = useProjectActivity(projectId);
   const propose = useProposeProjectContribution(projectId);
@@ -79,11 +81,11 @@ export function ProjectContributionsTab({
     if (!contributorId || selectedRoles.length === 0) return;
     try {
       await propose.mutateAsync({ contributorId, roles: selectedRoles, description, evidence: evidence || undefined });
-      toast.success("Contribution proposal created");
+      toast.success(t("Contribution proposal created"));
       setOpen(false);
       reset();
     } catch {
-      toast.error("Could not create the contribution proposal");
+      toast.error(t("Could not create the contribution proposal"));
     }
   };
 
@@ -97,9 +99,9 @@ export function ProjectContributionsTab({
   const resolve = async (proposalId: string, action: "confirm" | "reject") => {
     try {
       await (action === "confirm" ? confirm : reject).mutateAsync({ proposalId });
-      toast.success(action === "confirm" ? "Contribution confirmed" : "Contribution rejected");
+      toast.success(t(action === "confirm" ? "Contribution confirmed" : "Contribution rejected"));
     } catch {
-      toast.error("Could not resolve this contribution proposal");
+      toast.error(t("Could not resolve this contribution proposal"));
     }
   };
 
@@ -171,7 +173,7 @@ export function ProjectContributionsTab({
 
       <section className="space-y-3">
         <div><h3 className="font-semibold text-slate-900 dark:text-white">Project activity</h3><p className="text-sm text-muted-foreground">Traceable actions are recorded automatically as the team works.</p></div>
-        {isActivityLoading ? <Skeleton className="h-28 w-full" /> : activity.length === 0 ? <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">Project contributions will appear as members work on literature, evidence, gaps, and reports.</div> : <div className="divide-y rounded-xl border bg-card">{activity.map((item) => <div key={item.id} className="flex gap-3 p-4"><div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-indigo-600 dark:bg-indigo-950"><Clock3 className="h-4 w-4" /></div><div><p className="text-sm"><span className="font-medium">{item.actor?.fullName || "LumiGap"}</span> {activityText(item.type, item.metadata)}</p><p className="mt-1 text-xs text-muted-foreground">{new Date(item.createdAt).toLocaleString()}</p></div></div>)}</div>}
+        {isActivityLoading ? <Skeleton className="h-28 w-full" /> : activity.length === 0 ? <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">Project contributions will appear as members work on literature, evidence, gaps, and reports.</div> : <div className="divide-y rounded-xl border bg-card">{activity.map((item) => <div key={item.id} className="flex gap-3 p-4"><div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-indigo-600 dark:bg-indigo-950"><Clock3 className="h-4 w-4" /></div><div><p className="text-sm"><span className="font-medium">{item.actor?.fullName || "LumiGap"}</span> {activityText(item.type, item.metadata, t)}</p><p className="mt-1 text-xs text-muted-foreground">{new Date(item.createdAt).toLocaleString(language)}</p></div></div>)}</div>}
       </section>
 
       {isLoading ? (
@@ -215,26 +217,26 @@ export function ProjectContributionsTab({
   );
 }
 
-function activityText(type: string, metadata: Record<string, unknown>) {
+function activityText(type: string, metadata: Record<string, unknown>, t: (key: string, values?: Record<string, string | number>) => string) {
   const title = typeof metadata.title === "string" ? ` “${metadata.title}”` : "";
   const labels: Record<string, string> = {
-    PROJECT_CREATED: "created the project",
-    PROJECT_UPDATED: "updated project settings",
-    MEMBER_INVITED: "invited a collaborator",
-    MEMBER_JOINED: "joined the project",
-    MEMBER_REMOVED: "removed a project member",
-    MEMBER_LEFT: "left the project",
-    OWNERSHIP_TRANSFERRED: "transferred project ownership",
-    PAPER_ADDED: `added paper${title}`,
-    PAPER_REMOVED: `removed paper${title}`,
-    PAPER_SCREENED: `screened paper${title} as ${String(metadata.to ?? "undecided").toLowerCase()}`,
-    PAPER_READING_STATUS_CHANGED: `changed reading status for${title}`,
-    GAP_CREATED: `created candidate research gap${title}`,
-    GAP_STATUS_CHANGED: `updated candidate research gap${title}`,
-    REPORT_CREATED: `created research artifact${title}`,
-    REPORT_STATUS_CHANGED: `updated research artifact${title} to ${String(metadata.artifactStatus ?? "draft").toLowerCase()}`,
-    REPORT_FINALIZED: `finalized research artifact${title}`,
-    PROJECT_ARCHIVED: "archived the project",
+    PROJECT_CREATED: t("created the project"),
+    PROJECT_UPDATED: t("updated project settings"),
+    MEMBER_INVITED: t("invited a collaborator"),
+    MEMBER_JOINED: t("joined the project"),
+    MEMBER_REMOVED: t("removed a project member"),
+    MEMBER_LEFT: t("left the project"),
+    OWNERSHIP_TRANSFERRED: t("transferred project ownership"),
+    PAPER_ADDED: t("added paper{{title}}", { title }),
+    PAPER_REMOVED: t("removed paper{{title}}", { title }),
+    PAPER_SCREENED: t("screened paper{{title}} as {{status}}", { title, status: t(String(metadata.to ?? "undecided").toLowerCase()) }),
+    PAPER_READING_STATUS_CHANGED: t("changed reading status for{{title}}", { title }),
+    GAP_CREATED: t("created candidate research gap{{title}}", { title }),
+    GAP_STATUS_CHANGED: t("updated candidate research gap{{title}}", { title }),
+    REPORT_CREATED: t("created research artifact{{title}}", { title }),
+    REPORT_STATUS_CHANGED: t("updated research artifact{{title}} to {{status}}", { title, status: t(String(metadata.artifactStatus ?? "draft").toLowerCase()) }),
+    REPORT_FINALIZED: t("finalized research artifact{{title}}", { title }),
+    PROJECT_ARCHIVED: t("archived the project"),
   };
   return labels[type] ?? type.toLowerCase().replaceAll("_", " ");
 }

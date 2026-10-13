@@ -1,5 +1,48 @@
 # LumiGap home redesign
 
+## Current direction: October 13, 2026
+
+This section supersedes the historical layout notes below. The user's latest
+feedback requires a contemporary homepage that uses LumiGap's own identity.
+
+- The full-width library photo hero, floating navigation and centered search
+  composer remain. The photo is a local asset.
+- Keep header proportions balanced: 44px desktop logo, 17–18px semibold
+  navigation, an 80px header and a 1280px maximum width. The phone header is
+  68px with a 36px logo box. Navigation labels must not look small next to
+  the logo; verify both guest actions and signed-in controls at narrow widths.
+  Below 1280px, use the navigation menu so larger labels never crowd controls.
+- Featured literature replaces the old introductory workflow tabs. It uses real
+  recent, highly cited library papers and provides automatic horizontal scrolling
+  with manual navigation, pause, hover/focus pause and reduced-motion support.
+- A research question canvas follows the paper strip. Keep the reference's
+  central headline and surrounding questions, expressed in LumiGap blue and navy
+  on cool paper surfaces. Use `--home-*` tokens and the existing Source Sans 3
+  font through `--forum-font`.
+- Between the paper strip and question canvas, use an open, full-width navy
+  editorial band to connect reading with the next research question. Pair a
+  short headline with three reading prompts: findings, limits and possibilities.
+  Keep this transition compact, bilingual and free of a rounded outer frame.
+- The question canvas flows into the page background. Do not enclose the whole
+  section in a rounded border or an outer card; individual question cards retain
+  their own shape.
+- The previous cream canvas, Georgia headings and unrelated pastel topic icons
+  were rejected. Do not recreate that style. A generic scattered card layout
+  is not sufficient craft for this section.
+- Build visual depth through an evidence connection map, varied placement and
+  scale, readable questions, crisp blue controls and deliberate hover/focus
+  feedback. Keep all questions actionable and clearly identify them as examples.
+- Tablet layouts reflow; phone layouts provide a horizontal question strip.
+  Preserve useful text, keyboard access and document width at every breakpoint.
+- Check the result in the live browser and update the web container at port 8080
+  after a successful build. A dev-only edit does not finish the user's request.
+- Scrolling reveals content once, with short staggered entrances for headings,
+  bridge prompts and question cards. Keep section backgrounds stationary and
+  reveal the evidence connections with the question canvas. Use native scrolling,
+  no scroll hijacking, and respect reduced motion and keyboard/hash navigation.
+
+## Historical notes
+
 ## Direction
 
 Research homepage for students and researchers. Consensus informs the centered

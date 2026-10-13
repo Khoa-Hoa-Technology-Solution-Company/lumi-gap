@@ -1,12 +1,26 @@
-import { en } from "./en";
+import type { en } from "./en";
 
 export type TranslationKey = keyof typeof en;
 export type Dictionary = Record<string, string>;
 export type SupportedLocale = "en" | "vi" | "es" | "fr" | "de" | "pt" | "zh" | "ja" | "ko" | "ru" | "id";
 
-export const englishDictionary = en as Dictionary;
+// Keep dictionaries out of the initial application graph. The provider waits
+// for the selected locale, and English remains available for missing keys.
+export const englishDictionary: Dictionary = {};
 
-const dictionaryCache = new Map<SupportedLocale, Dictionary>([["en", englishDictionary]]);
+const dictionaryCache = new Map<SupportedLocale, Dictionary>();
+let englishLoad: Promise<Dictionary> | undefined;
+
+function loadEnglish(): Promise<Dictionary> {
+  if (!englishLoad) {
+    englishLoad = import("./en").then(({ en }) => {
+      Object.assign(englishDictionary, en);
+      dictionaryCache.set("en", englishDictionary);
+      return englishDictionary;
+    }).catch((error: unknown) => { englishLoad = undefined; throw error; });
+  }
+  return englishLoad;
+}
 
 export function getCachedDictionary(locale: SupportedLocale): Dictionary | undefined {
   return dictionaryCache.get(locale);
@@ -31,9 +45,9 @@ const dictionaryLoaders: Record<
 export async function loadDictionary(locale: SupportedLocale): Promise<Dictionary> {
   const cached = dictionaryCache.get(locale);
   if (cached) return cached;
-  if (locale === "en") return englishDictionary;
+  if (locale === "en") return loadEnglish();
 
-  const dictionary = await dictionaryLoaders[locale]();
+  const [, dictionary] = await Promise.all([loadEnglish(), dictionaryLoaders[locale]()]);
   dictionaryCache.set(locale, dictionary);
   return dictionary;
 }

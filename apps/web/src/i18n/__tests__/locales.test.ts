@@ -2,7 +2,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import {
   englishDictionary,
   loadDictionary,
@@ -27,7 +27,21 @@ const TEXT_PROPS = new Set([
 ]);
 const SKIP_SOURCE_PATTERNS = [/__tests__/, /\.(test|spec)\.[jt]sx?$/, /components[\\/]ui/, /i18n[\\/]locales/, /vite-env\.d\.ts$/];
 
+beforeAll(async () => { await loadDictionary("en"); });
+
 describe("UI i18n dictionaries", () => {
+  it("translates project sections and activity into Vietnamese", async () => {
+    const vi = await loadDictionary("vi");
+    expect(vi["Candidate Research Gaps"]).toBe("Khoảng trống nghiên cứu tiềm năng");
+    expect(vi["No research artifacts yet"]).toBe("Chưa có sản phẩm nghiên cứu");
+    expect(vi["Research contributions"]).toBe("Đóng góp nghiên cứu");
+    for (const key of ["Conceptualization", "Writing - original draft", "Writing - review and editing", "Project administration", "Could not resolve this contribution proposal"]) {
+      expect(vi[key]).toBeTruthy();
+      expect(vi[key]).not.toBe(key);
+    }
+    expect(vi["invited a collaborator"]).toBe("đã mời cộng tác viên");
+    expect(vi["screened paper{{title}} as {{status}}"]?.match(/\{\{\w+\}\}/g)).toEqual(["{{title}}", "{{status}}"]);
+  });
   it("translates onboarding, academic profile and cover controls into Vietnamese", async () => {
     const vietnamese = await loadDictionary("vi");
     const untranslated = Object.keys(studentOnboardingStrings).filter((key) => key !== "· DOI:" && vietnamese[key] === key);

@@ -16,6 +16,8 @@ import { forumRefinementVi } from "./forum-refinement";
 import { forumRefinementViOverrides } from "./forum-refinement-vi-overrides";
 import { researchHomeVi } from "./research-home";
 import { trustSafetyRagViStrings } from "./trust-safety-rag";
+import { projectMemberTranslations } from "./project-members";
+import { projectWorkspaceVi } from "./project-workspace";
 
 export const vi: Record<keyof typeof en, string> = {
   ...en,
@@ -2437,4 +2439,15 @@ export const vi: Record<keyof typeof en, string> = {
   ...(forumRefinementVi as Record<string, string>),
   ...(forumRefinementViOverrides as Record<string, string>),
   ...(studentOnboardingViStrings as Record<string, string>),
+  ...projectMemberTranslations,
+  ...projectWorkspaceVi,
+  "Project role": "Vai trò trong dự án",
+  "Invitation sent": "Đã gửi lời mời",
+  "Send invitation": "Gửi lời mời",
+  "Could not send the invitation": "Không thể gửi lời mời",
+  "Pending invitations": "Lời mời đang chờ",
+  "Cancel invitation": "Hủy lời mời",
+  "Invitation cancelled": "Đã hủy lời mời",
+  "Could not cancel invitation": "Không thể hủy lời mời",
+  "Invite expires": "Hết hạn",
 };

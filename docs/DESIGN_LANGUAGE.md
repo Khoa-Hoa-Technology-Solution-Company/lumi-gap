@@ -8,7 +8,9 @@
 
 **Personality:** Serious · Trustworthy · Data-driven · Premium-academic
 **Reference vibes:** Google Scholar (information density) + Notion (clarity) + Linear (polish) + Stripe Dashboard (data charts)
-**Avoid:** Magazine-style image-forward layouts · Bright saturated colors · Gradient noise · Decorative animations
+**Product screens:** Giữ mật độ thông tin và sự tập trung cho tìm kiếm, đọc tài liệu, dashboard và biểu mẫu.
+**Homepage / landing:** Cho phép bố cục giàu chiều sâu, hình ảnh, kết nối bằng chứng và tương tác rõ ràng, dùng cùng nhận diện LumiGap. Academic không đồng nghĩa với thiết kế sơ sài hoặc giao diện cũ.
+**Avoid:** Màu ngoài nhận diện · Gradient noise · Chuyển động làm gián đoạn việc đọc · Card grid lặp lại không có mục đích
 
 **1-câu mô tả:**
 > *"A research tool that respects researchers' time — dense information, calm aesthetics, and accessible in any lighting condition."*
@@ -89,12 +91,12 @@ Series 6              #EC4899   pink-500
 ### 3.1. Font Family
 
 ```
-Primary:    Inter (variable) — UI text, headings
-Body:       Inter — abstracts, descriptions
+Primary:    Source Sans 3 (self-hosted) — UI text, headings
+Body:       Source Sans 3 — abstracts, descriptions
 Mono:       JetBrains Mono — code, citation IDs, DOIs
 ```
 
-Inter chuẩn industry cho academic/SaaS UI: highly legible at small sizes, supports Vietnamese diacritics.
+Source Sans 3 là font đang được ứng dụng tải và sử dụng qua `--forum-font`. Dùng cùng font cho homepage và workspace; tạo khác biệt bằng scale, weight và layout. Không tự đổi sang Georgia/Times hoặc font serif để mô phỏng một ảnh tham khảo.
 
 ### 3.2. Type Scale
 
@@ -116,7 +118,7 @@ Inter chuẩn industry cho academic/SaaS UI: highly legible at small sizes, supp
 - **Abstract text:** body-lg (18px) — readers will spend 30s-2min per abstract
 - **Long article body** (AI report): body (16px) with 1.6 line-height
 - **Max line length:** 75ch (prevents eye fatigue on 30+ page reports)
-- **Vietnamese:** Inter supports đầy đủ — no font fallback needed
+- **Vietnamese:** Source Sans 3 supports đầy đủ — kiểm tra dấu và xuống dòng trong ảnh chụp thật
 
 ---
 
@@ -256,10 +258,22 @@ Inline trong markdown:
 | Skeleton pulse | 1500ms loop | ease-in-out |
 | Toast slide-in | 250ms | spring |
 
-**Tránh:**
+**Tránh trong màn hình làm việc:**
 - ❌ Decorative parallax
 - ❌ Auto-playing carousels
 - ❌ Spring physics trên cards (academic ≠ playful)
+
+Homepage có thể dùng carousel tự lướt khi người dùng yêu cầu. Phải có nút dừng, dừng khi hover/focus, tôn trọng reduced motion và ngừng khi khu vực không được nhìn thấy. Hover, reveal và kết nối trực quan được phép nếu giúp khám phá nội dung.
+
+### Homepage visual contract (2026-10-13)
+
+- Dùng semantic tokens `--home-*` trong `apps/web/src/features/home/home.css` và font `--forum-font`. Nền trắng/xanh lạnh, chữ navy, accent xanh LumiGap. Không dùng nền kem, nâu hoặc bảng màu pastel riêng cho một section.
+- Dùng ảnh tham khảo để hiểu bố cục, không sao chép nhận diện của website khác. Ý tưởng tiêu đề trung tâm với nội dung bao quanh phải được chuyển thành ngôn ngữ trực quan của LumiGap.
+- Section câu hỏi cần thể hiện mối liên hệ giữa câu hỏi, chủ đề và bằng chứng: đường kết nối nhẹ, thẻ có phân cấp rõ, CTA nổi bật và chiều sâu có kiểm soát. Tránh các hộp nhỏ giống nhau rải trên một vùng trống lớn.
+- Chữ display có thể lớn hơn type scale của dashboard. Chữ nội dung và câu hỏi vẫn dễ đọc; không dùng chữ metadata bé để thay cho nội dung chính.
+- Hover/focus có thể làm thẻ nổi rõ và mở hướng khám phá. Không dùng chuyển động nền liên tục làm mất tập trung.
+- Kiểm tra screenshot ở desktop, laptop nhỏ và điện thoại; không chồng nội dung trung tâm, không tràn ngang document. Mobile có thể đổi phần bao quanh thành một dải thẻ kéo ngang.
+- Hướng dẫn riêng của homepage được ghi trong `docs/home-redesign.md`; phản hồi mới nhất của người dùng có ưu tiên cao hơn các ghi chú lịch sử.
 
 ---
 
@@ -374,6 +388,19 @@ Update color → sửa 2 file này → mọi component tự cập nhật.
 ---
 
 ## 15. Decision Log
+
+### Project workspace (2026-10-13)
+
+- Dùng tab ngang cho trang chi tiết dự án, dành toàn bộ chiều rộng cho nội dung.
+  Trên điện thoại, dùng select có nhãn và nhóm nghiên cứu/cộng tác.
+- Danh sách dự án trình bày tên, mục tiêu và thao tác mở dự án rõ ràng; số bài báo
+  và thành viên là dữ liệu thực, không thêm biểu đồ hoặc số liệu trang trí.
+- Tiêu đề trang 40px desktop, 32px mobile; nội dung và thao tác chính 16–18px.
+  Giữ Source Sans 3 và màu xanh/navy LumiGap, có light/dark cùng cấu trúc.
+- Empty state phải có đường bắt đầu: tìm tài liệu, chọn bài đã lưu hoặc thêm DOI.
+  Hướng dẫn nghiên cứu nằm bên dưới, không tạo thêm sidebar.
+- Không bọc toàn bộ workspace trong khung bo tròn lớn. Dùng độ tương phản nền,
+  đường phân cách và khoảng cách để tạo phân cấp, không làm giao diện nhạt và nhỏ.
 
 | Date | Decision | Reason |
 |---|---|---|

@@ -11,6 +11,7 @@ import { ArrowRight, BookOpen, CalendarClock, FolderKanban, FolderOpen, FolderPl
 import { toast } from "sonner";
 import type { IProject, IncomingProjectInvitation, ProjectStatus, ProjectVisibility } from "@trend/shared-types";
 import { useI18n } from "@/i18n";
+import "@/features/projects/project-workspace.css";
 
 const PROJECT_STATUSES: ProjectStatus[] = ["ACTIVE", "PLANNING", "ON_HOLD", "COMPLETED", "ARCHIVED"];
 
@@ -41,67 +42,35 @@ function getVisibilityLabel(visibility: ProjectVisibility, t: (key: string) => s
 function ProjectStatusBadge({ status }: { status: ProjectStatus }) {
   const { t } = useI18n();
   return (
-    <span className={`inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-[11px] font-semibold ${PROJECT_STATUS_STYLES[status]}`}>
+    <span className={`inline-flex shrink-0 items-center rounded-md px-2.5 py-1 text-sm font-semibold ${PROJECT_STATUS_STYLES[status]}`}>
       {t(PROJECT_STATUS_LABELS[status])}
     </span>
   );
 }
 
 function ProjectRow({ project }: { project: IProject }) {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
+  const updated = new Date(project.updatedAt);
   const VisibilityIcon = project.visibility === "PUBLIC_SUMMARY"
     ? Globe2
     : project.visibility === "INVITE_ONLY"
       ? UsersRound
       : LockKeyhole;
 
-  return (
-    <Link
-      to={`/projects/${project._id}`}
-      className="group grid gap-4 px-4 py-4 transition-colors hover:bg-muted/35 focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary sm:px-5 md:grid-cols-[minmax(0,1fr)_minmax(145px,190px)_88px_100px_20px] md:items-center"
-    >
-      <div className="flex min-w-0 items-start gap-3">
-        <span className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border bg-muted/45 text-muted-foreground transition-colors group-hover:border-primary/20 group-hover:bg-primary/5 group-hover:text-primary">
-          <FolderKanban className="h-[18px] w-[18px]" aria-hidden="true" />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="flex flex-wrap items-center gap-2">
-            <span className="truncate font-semibold tracking-tight text-foreground group-hover:text-primary">{project.title}</span>
-            <ProjectStatusBadge status={project.status} />
-          </span>
-          <span className="mt-1 block line-clamp-2 text-sm leading-5 text-muted-foreground">
-            {project.description || t("No description provided.")}
-          </span>
-        </span>
+  return <Link to={`/projects/${project._id}`} className="project-docket group">
+    <div className="project-docket-main">
+      <div className="project-docket-meta"><ProjectStatusBadge status={project.status} /><span><VisibilityIcon aria-hidden="true" />{getVisibilityLabel(project.visibility, t)}</span>{project.researchField ? <span className="project-docket-field">{project.researchField}</span> : null}</div>
+      <div className="project-docket-identity">
+        <span className="project-folder-icon"><FolderKanban aria-hidden="true" /></span>
+        <div><h3>{project.title}</h3><p>{project.description || t("Build your research library and develop ideas with your team.")}</p></div>
       </div>
-
-      <span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 pl-[52px] text-xs text-muted-foreground md:block md:pl-0">
-        {project.researchField ? (
-          <span className="block truncate font-medium text-foreground/80" title={project.researchField}>{project.researchField}</span>
-        ) : (
-          <span className="block italic">{t("No research area set")}</span>
-        )}
-        <span className="mt-1 inline-flex items-center gap-1.5">
-          <VisibilityIcon className="h-3.5 w-3.5" aria-hidden="true" />
-          {getVisibilityLabel(project.visibility, t)}
-        </span>
-      </span>
-
-      <span className="flex items-center gap-1.5 pl-[52px] text-sm text-muted-foreground md:pl-0" title={t("Papers")}>
-        <BookOpen className="h-4 w-4 text-muted-foreground/70" aria-hidden="true" />
-        <span className="md:sr-only">{t("Papers")}: </span>
-        <span className="tabular-nums">{project.paperCount}</span>
-      </span>
-
-      <span className="flex items-center gap-1.5 pl-[52px] text-sm text-muted-foreground md:pl-0" title={t("Members")}>
-        <Users className="h-4 w-4 text-muted-foreground/70" aria-hidden="true" />
-        <span className="md:sr-only">{t("Members")}: </span>
-        <span className="tabular-nums">{project.memberCount}</span>
-      </span>
-
-      <ArrowRight className="hidden h-4 w-4 text-muted-foreground/50 transition-transform group-hover:translate-x-0.5 group-hover:text-primary md:block" aria-hidden="true" />
-    </Link>
-  );
+      <div className="project-docket-footer"><span>{t("Updated")} {!Number.isNaN(updated.getTime()) ? <time dateTime={project.updatedAt}>{new Intl.DateTimeFormat(language, { day: "numeric", month: "short", year: "numeric" }).format(updated)}</time> : "—"}</span><span className="project-docket-open">{t("Open workspace")}<ArrowRight aria-hidden="true" /></span></div>
+    </div>
+    <div className="project-docket-details">
+      <span><BookOpen aria-hidden="true" /><strong>{project.paperCount}</strong><span>{t("Papers")}</span></span>
+      <span><Users aria-hidden="true" /><strong>{project.memberCount}</strong><span>{t("Members")}</span></span>
+    </div>
+  </Link>;
 }
 
 function formatInvitationExpiry(expiresAt: string) {
@@ -267,14 +236,16 @@ export function ProjectsListPage() {
   };
 
   return (
-    <main className="container max-w-7xl py-8 sm:py-12">
+    <div className="projects-page project-page-width">
+      <header className="projects-intro">
+      <p className="project-breadcrumb">{t("Workspace")}<span aria-hidden="true">/</span>{t("Projects")}</p>
       <PageHeader
         title="Research Projects"
-        description="Organise papers, members, and analytical reports under unified workspaces."
+        description="A home for your evidence, ideas and research team."
         actions={
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
-              <Button className="rounded-lg px-4 shadow-sm">
+              <Button className="project-primary-action h-11 rounded-lg px-5 text-base">
                 <FolderPlus className="h-4 w-4" aria-hidden="true" />
                 New project
               </Button>
@@ -323,6 +294,7 @@ export function ProjectsListPage() {
           </Dialog>
         }
       />
+      </header>
 
       {invitations.length > 0 ? (
         <section className="mb-7 overflow-hidden rounded-xl border bg-card shadow-sm" aria-labelledby="project-invitations-title">
@@ -351,16 +323,17 @@ export function ProjectsListPage() {
         </section>
       ) : null}
 
-      <section aria-label={t("Research projects")}>
-        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="relative w-full sm:max-w-sm">
+      <section aria-label={t("Research Projects")}>
+        <div className="project-collection-heading"><h2>{t("Your projects")}</h2><span>{isLoading ? t("Loading...") : !isError ? t(projects?.length === 1 ? "{{count}} workspace" : "{{count}} workspaces", { count: projects?.length ?? 0 }) : null}</span></div>
+        <div className="project-list-toolbar">
+          <div className="relative w-full sm:max-w-md">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
             <Input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder={t("Search projects by name or field")}
               aria-label={t("Search projects by name or field")}
-              className="h-10 rounded-lg bg-background pl-9"
+              className="h-11 rounded-lg bg-background pl-10 text-base shadow-none"
             />
           </div>
           <div className="flex items-center gap-2">
@@ -369,14 +342,14 @@ export function ProjectsListPage() {
               id="project-status-filter"
               value={statusFilter}
               onChange={(event) => setStatusFilter(event.target.value as ProjectStatus | "ALL")}
-              className="h-10 min-w-36 rounded-lg border border-input bg-background px-3 text-sm shadow-sm outline-none transition focus-visible:ring-2 focus-visible:ring-ring"
+              className="h-11 min-w-36 rounded-lg border border-input bg-background px-3 text-base outline-none transition focus-visible:ring-2 focus-visible:ring-ring"
             >
               <option value="ALL">{t("All statuses")}</option>
               {PROJECT_STATUSES.map((status) => (
                 <option key={status} value={status}>{t(PROJECT_STATUS_LABELS[status])}</option>
               ))}
             </select>
-            <span className="hidden pl-2 text-sm tabular-nums text-muted-foreground sm:inline" aria-live="polite">
+            <span className="pl-2 text-sm tabular-nums text-muted-foreground" aria-live="polite">
               {filteredProjects.length} {filteredProjects.length === 1 ? t("project") : t("projects")}
             </span>
           </div>
@@ -424,21 +397,11 @@ export function ProjectsListPage() {
             <Button variant="ghost" className="mt-2" onClick={() => { setSearch(""); setStatusFilter("ALL"); }}>{t("Clear filters")}</Button>
           </div>
         ) : (
-          <div className="overflow-hidden rounded-xl border bg-card">
-            <div className="hidden grid-cols-[minmax(0,1fr)_minmax(145px,190px)_88px_100px_20px] items-center gap-4 border-b bg-muted/30 px-5 py-2.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground md:grid">
-              <span>{t("Project")}</span>
-              <span>{t("Research scope")}</span>
-              <span>{t("Papers")}</span>
-              <span>{t("Members")}</span>
-              <span />
-            </div>
-            <div className="divide-y">
-              {filteredProjects.map((project) => <ProjectRow key={project._id} project={project} />)}
-            </div>
-          </div>
+          <div className="project-docket-list">{filteredProjects.map((project) => <ProjectRow key={project._id} project={project} />)}</div>
         )}
       </section>
-    </main>
+      <section className="project-discovery-link" aria-labelledby="project-discovery-title"><BookOpen aria-hidden="true" /><div><h2 id="project-discovery-title">{t("Looking for your next source?")}</h2><p>{t("Explore the literature, save useful papers and bring them into a project.")}</p></div><Link to="/literature">{t("Browse literature")}<ArrowRight aria-hidden="true" /></Link></section>
+    </div>
   );
 }
 

@@ -1,18 +1,41 @@
 import { Link } from "react-router-dom";
-import { ArrowRight, FileCheck2, FilePlus2, History, SearchCheck } from "lucide-react";
+import { ArrowRight, FileCheck2, FilePlus2, History } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useSubmissions } from "@/features/submissions";
+import { projectSubmissionPath } from "@/features/submissions/project-submission-path";
+import { useI18n } from "@/i18n";
 
-const statusTone: Record<string, string> = {
-  completed: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  under_review: "border-blue-200 bg-blue-50 text-blue-700",
-  revision_requested: "border-amber-200 bg-amber-50 text-amber-800",
-  rejected: "border-red-200 bg-red-50 text-red-700",
-};
-
-export function SubmissionListPage() {
-  const query = useSubmissions();
-  if (query.isLoading) return <main className="mx-auto max-w-6xl px-4 py-10"><div className="h-64 animate-pulse rounded-2xl bg-slate-100 dark:bg-slate-900" /></main>;
-  return <main className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6"><header className="flex flex-col gap-5 border-b border-slate-200 pb-7 dark:border-slate-800 sm:flex-row sm:items-end sm:justify-between"><div><p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-700">Research workflow</p><h1 className="mt-2 text-3xl font-semibold tracking-tight">Submissions</h1><p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600 dark:text-slate-400">Structured goals, research questions, evidence claims and immutable manuscript revisions in one audit trail.</p></div><Button asChild><Link to="/submissions/new"><FilePlus2 />New submission</Link></Button></header>{query.error ? <div className="mt-8 rounded-xl border border-red-200 bg-red-50 p-5 text-sm text-red-700">Unable to load your submissions.</div> : query.data?.length ? <div className="mt-8 space-y-4">{query.data.map((submission) => <Link key={submission._id} to={`/submissions/${submission._id}`} className="group grid gap-4 rounded-2xl border border-slate-200 bg-white p-5 transition hover:border-blue-300 hover:shadow-sm dark:border-slate-800 dark:bg-zinc-950 md:grid-cols-[1fr_auto] md:items-center"><div><div className="flex flex-wrap items-center gap-2"><Badge variant="outline">{submission.submissionType?.replaceAll("_", " ") || "Submission"}</Badge><span className={`rounded-full border px-2.5 py-0.5 text-xs font-medium ${statusTone[submission.status] ?? "border-slate-200 bg-slate-50 text-slate-600"}`}>{submission.status.replaceAll("_", " ")}</span></div><h2 className="mt-3 text-lg font-semibold group-hover:text-blue-700">{submission.title}</h2><p className="mt-1 text-sm text-slate-500">{submission.researchField || "Research field not specified"}</p><div className="mt-4 flex flex-wrap gap-4 text-xs text-slate-500"><span className="flex items-center gap-1.5"><History className="h-3.5 w-3.5" />Revision {submission.currentRevisionNumber}</span><span className="flex items-center gap-1.5"><SearchCheck className="h-3.5 w-3.5" />Updated {new Date(submission.updatedAt).toLocaleDateString()}</span></div></div><ArrowRight className="hidden h-5 w-5 text-slate-400 transition-transform group-hover:translate-x-1 md:block" /></Link>)}</div> : <div className="mt-8 rounded-2xl border border-dashed border-slate-300 p-12 text-center dark:border-slate-700"><FileCheck2 className="mx-auto h-8 w-8 text-slate-400" /><h2 className="mt-4 font-semibold">No research submissions yet.</h2><p className="mt-2 text-sm text-slate-500">Start with a project, define the academic claim, then attach the manuscript revision.</p><Button asChild className="mt-5"><Link to="/submissions/new">Create submission</Link></Button></div>}</main>;
+export function SubmissionListPage({ projectId, readOnly = false }: { projectId?: string; readOnly?: boolean }) {
+  const query = useSubmissions(projectId);
+  const { t, language } = useI18n();
+  const Heading = projectId ? "h2" : "h1";
+  const newPath = projectId ? projectSubmissionPath(projectId, "new") : "/submissions/new";
+  return <div className={projectId ? "project-submissions" : "mx-auto w-full max-w-6xl px-4 py-8 sm:px-6"} data-no-i18n>
+    <header className="flex flex-col gap-4 border-b pb-6 sm:flex-row sm:items-start sm:justify-between">
+      <div><Heading className="text-3xl font-semibold tracking-tight">{t("Submissions")}</Heading>
+        <p className="mt-2 max-w-2xl text-base leading-6 text-muted-foreground">{t(projectId ? "Prepare manuscripts, track versions and request reviews within this project." : "Your research submissions. Open a manuscript in its project workspace.")}</p></div>
+      {!readOnly && <Button asChild className="shrink-0 self-start"><Link to={newPath}><FilePlus2 className="mr-2 h-4 w-4" />{t("New submission")}</Link></Button>}
+    </header>
+    {readOnly && <p className="mt-5 text-sm text-muted-foreground" role="status">{t("Archived projects are read-only.")}</p>}
+    {query.isLoading ? <div className="mt-6 h-48 animate-pulse bg-muted" role="status" aria-label={t("Loading submissions")} />
+      : query.error ? <div className="mt-6 border border-destructive/30 bg-destructive/5 p-5" role="alert"><p>{t("Unable to load your submissions.")}</p><Button variant="outline" className="mt-3" onClick={() => void query.refetch()}>{t("Retry")}</Button></div>
+      : query.data?.length ? <div className="mt-6">
+        <p className="mb-3 text-sm text-muted-foreground">{query.data.length} {t("Submissions")}</p>
+        <div className="divide-y border-y">{query.data.map(submission => <Link key={submission._id} to={projectSubmissionPath(projectId ?? submission.projectId, submission._id)} className="group flex items-start gap-4 px-1 py-6 transition-colors hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none sm:px-4">
+          <FileCheck2 className="mt-1 hidden h-6 w-6 shrink-0 text-primary sm:block" aria-hidden="true" />
+          <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><Badge variant="outline">{t(submission.submissionType?.replaceAll("_", " ") || "Submission")}</Badge><Badge variant="secondary">{t(submission.status.replaceAll("_", " "))}</Badge></div>
+            <h3 className="mt-3 break-words text-xl font-semibold leading-snug group-hover:text-primary">{submission.title}</h3>
+            <p className="mt-1 text-sm text-muted-foreground">{submission.researchField || t("Research field not specified")}</p>
+            <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-muted-foreground"><span className="flex items-center gap-1.5"><History className="h-4 w-4" />{t("Revision")} {submission.currentRevisionNumber}</span><span>{t("Updated")} {new Date(submission.updatedAt).toLocaleDateString(language)}</span></div>
+          </div><ArrowRight className="mt-2 h-5 w-5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-1 motion-reduce:transform-none" aria-hidden="true" />
+        </Link>)}</div>
+      </div> : <section className="py-12 sm:py-16">
+        <div className="flex h-12 w-12 items-center justify-center bg-primary/10 text-primary"><FileCheck2 className="h-6 w-6" /></div>
+        <h3 className="mt-5 text-2xl font-semibold">{t("No research submissions yet.")}</h3>
+        <p className="mt-2 max-w-xl text-base leading-7 text-muted-foreground">{t("Turn your research into a manuscript. Define its goals, attach a PDF and keep every revision together.")}</p>
+        {!readOnly && <Button asChild className="mt-6"><Link to={newPath}>{t("Create submission")}<ArrowRight className="ml-2 h-4 w-4" /></Link></Button>}
+        <ol className="mt-10 grid gap-6 border-t pt-6 sm:grid-cols-3">{["Prepare manuscript", "Track revisions", "Request peer review"].map((label, index) => <li key={label} className="flex gap-3"><span className="text-sm font-semibold tabular-nums text-primary">0{index + 1}</span><span className="text-base font-medium">{t(label)}</span></li>)}</ol>
+      </section>}
+  </div>;
 }

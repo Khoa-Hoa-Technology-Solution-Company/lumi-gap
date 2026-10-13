@@ -58,12 +58,12 @@ export const submissionsApi = {
   async history(id: string): Promise<SubmissionHistory> { return (await api.get(API_ROUTES.submissions.history(id))).data.data; },
   async createVersion(id: string, input: { content?: string; sourceRevisionId?: string; expectedRevisionNumber: number; summary: string }): Promise<void> { await api.post(API_ROUTES.submissions.versions(id), input); },
   async setOpenForReview(id: string, enabled: boolean): Promise<void> { await api.patch(API_ROUTES.submissions.openReview(id), { enabled }); },
-  async list(): Promise<SubmissionSummary[]> {
-    const response = await api.get(API_ROUTES.submissions.list);
+  async list(projectId?: string): Promise<SubmissionSummary[]> {
+    const response = await api.get(API_ROUTES.submissions.list, { params: projectId ? { projectId } : undefined });
     return response.data.data;
   },
-  async detail(id: string): Promise<SubmissionSummary> {
-    const response = await api.get(API_ROUTES.submissions.detail(id));
+  async detail(id: string, projectId?: string): Promise<SubmissionSummary> {
+    const response = await api.get(API_ROUTES.submissions.detail(id), { params: projectId ? { projectId } : undefined });
     return response.data.data;
   },
   async revisions(id: string): Promise<SubmissionRevision[]> {
