@@ -125,7 +125,7 @@ describe("literature search navigation", () => {
     expect(container.querySelector('#home-search-results a')?.getAttribute("href")).toContain("mode=keyword");
   });
   it("fetches the next page while preserving filters and resets pagination for a new query", async () => {
-    mocks.keyword.mockImplementation(async (request) => ({ ...response([{ id: "page-" + request.page, title: "Paper on page " + request.page }], 23), meta: { page: request.page, pageSize: 10, total: 23, totalPages: 3 } }));
+    mocks.keyword.mockImplementation(async (request) => ({ ...response([{ ...medicine, id: "page-" + request.page, title: "Paper on page " + request.page }], 23), meta: { page: request.page, pageSize: 10, total: 23, totalPages: 3 } }));
     await render("/home?q=Medicine&mode=keyword&provider=openalex&yearFrom=2023&yearTo=2023");
     await settle(() => Boolean(container.querySelector('a[href="/papers/page-1"]')));
     await act(async () => Array.from(container.querySelectorAll<HTMLButtonElement>("#home-search-results button")).find((button) => button.textContent === "Next")!.click());
@@ -136,7 +136,7 @@ describe("literature search navigation", () => {
   });
   it("shows loading and cancels an old query when a new search starts", async () => {
     let finishFirst!: (value: ReturnType<typeof response>) => void;
-    mocks.semantic.mockImplementation((request) => request.q === "Medicine" ? new Promise((resolve) => { finishFirst = resolve; }) : Promise.resolve(response([{ id: "economics", title: "Economic research" }])));
+    mocks.semantic.mockImplementation((request) => request.q === "Medicine" ? new Promise((resolve) => { finishFirst = resolve; }) : Promise.resolve(response([{ ...medicine, id: "economics", title: "Economic research" }])));
     await render();
     expect(container.querySelector('#home-search-results [role="status"]')).not.toBeNull();
     const signal = mocks.semantic.mock.calls[0]![1] as AbortSignal;
