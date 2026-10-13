@@ -14,6 +14,12 @@ import { papersApi } from "@/features/papers/api/papers.api";
 import { useI18n } from "@/i18n";
 
 type PaperSearchHit = Paper & { score?: number; aiScore?: { finalScore?: number } };
+export type PaperPickerSource = "search" | "library" | "doi";
+const sources = [
+  { value: "search", label: "Search LumiGap", icon: Search },
+  { value: "library", label: "My Library", icon: BookMarked },
+  { value: "doi", label: "Add by DOI", icon: FileSearch },
+] as const;
 
 function paperAuthorLine(paper: Paper) {
   const names = paper.authors?.map((author) => author.displayName).filter(Boolean) ?? [];
@@ -25,14 +31,18 @@ export function ProjectPaperPickerDialog({
   papers,
   open,
   onOpenChange,
+  initialSource = "search",
+  readOnly = false,
 }: {
   projectId: string;
   papers: IProject["papers"];
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  initialSource?: PaperPickerSource;
+  readOnly?: boolean;
 }) {
   const { t } = useI18n();
-  const [source, setSource] = useState<"search" | "library" | "doi">("search");
+  const [source, setSource] = useState<PaperPickerSource>(initialSource);
   const [searchText, setSearchText] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -43,20 +53,28 @@ export function ProjectPaperPickerDialog({
   const validDoi = source === "doi" && isValidDoi(queryText);
   const effectiveSearchQuery = source === "doi" ? normalizedDoi : queryText;
   useEffect(() => {
-    if (source === "library" || queryText.length < 3 || (source === "doi" && !validDoi)) {
+    if (open) {
+      setSource(initialSource);
+      setSearchText("");
+      setSearchQuery("");
+      setSelectedIds([]);
+    }
+  }, [open, initialSource]);
+  useEffect(() => {
+    if (!open || readOnly || source === "library" || queryText.length < 3 || (source === "doi" && !validDoi)) {
       setSearchQuery("");
       return;
     }
     const timer = window.setTimeout(() => setSearchQuery(effectiveSearchQuery), 250);
     return () => window.clearTimeout(timer);
-  }, [effectiveSearchQuery, queryText.length, source, validDoi]);
+  }, [effectiveSearchQuery, queryText.length, source, validDoi, open, readOnly]);
   const search = useQuery({
     queryKey: ["projectPaperPickerSearch", searchQuery],
-    queryFn: async () => (await papersApi.list({ q: searchQuery, page: 1, pageSize: 12 })).papers as PaperSearchHit[],
-    enabled: open && source !== "library" && searchQuery.length >= 3 && (source !== "doi" || validDoi),
+    queryFn: async ({ signal }) => (await papersApi.list({ q: searchQuery, page: 1, pageSize: 12 }, signal)).papers as PaperSearchHit[],
+    enabled: open && !readOnly && source !== "library" && searchQuery.length >= 3 && (source !== "doi" || validDoi),
     staleTime: 30_000,
   });
-  const bookmarks = useBookmarks({ enabled: open && source === "library" });
+  const bookmarks = useBookmarks({ enabled: open && !readOnly && source === "library" });
   const existingIds = useMemo(() => new Set(papers.map((link) => {
     const target = link.targetId;
     return typeof target === "string" ? target : target?._id;
@@ -68,15 +86,17 @@ export function ProjectPaperPickerDialog({
     queryKey: ["projectPaperPickerLibrary", libraryIds],
     queryFn: async () => {
       const loaded: Paper[] = [];
+      let unavailable = 0;
       for (let index = 0; index < libraryIds.length; index += 8) {
         const batch = await Promise.all(libraryIds.slice(index, index + 8).map(async (paperId) => {
           try { return await papersApi.detail(paperId); } catch { return null; }
         }));
         loaded.push(...batch.filter((paper): paper is Paper => paper !== null));
+        unavailable += batch.filter(paper => paper === null).length;
       }
-      return loaded;
+      return { papers: loaded, unavailable };
     },
-    enabled: open && source === "library" && !bookmarks.isLoading && !bookmarks.isError,
+    enabled: open && !readOnly && source === "library" && !bookmarks.isLoading && !bookmarks.isError,
     staleTime: 60_000,
   });
 
@@ -88,6 +108,7 @@ export function ProjectPaperPickerDialog({
     if (!nextOpen && isAdding) return;
     if (!nextOpen) {
       setSearchText("");
+      setSearchQuery("");
       setSelectedIds([]);
       setSource("search");
     }
@@ -95,15 +116,10 @@ export function ProjectPaperPickerDialog({
   };
 
   const results = source === "library"
-    ? library.data ?? []
+    ? (library.data?.papers ?? []).filter(paper => [paper.title, paperAuthorLine(paper), paper.journalName, paper.externalIds?.doi].some(value => value?.toLocaleLowerCase().includes(queryText.toLocaleLowerCase())))
     : source === "doi"
       ? (search.data ?? []).filter((paper) => matchesExactDoi(paper.externalIds?.doi, normalizedDoi))
       : search.data ?? [];
-  const sortedResults = [...results].sort((left, right) => {
-    const leftScore = (left as PaperSearchHit).score ?? (left as PaperSearchHit).aiScore?.finalScore ?? left.dataQualityScore ?? 0;
-    const rightScore = (right as PaperSearchHit).score ?? (right as PaperSearchHit).aiScore?.finalScore ?? right.dataQualityScore ?? 0;
-    return rightScore - leftScore;
-  });
   const isLoading = source === "library" ? bookmarks.isLoading || library.isLoading : search.isLoading;
   const isError = source === "library" ? bookmarks.isError || library.isError : search.isError;
   const waitingForDebounce = source !== "library" && queryText.length >= 3 && (source !== "doi" || validDoi) && searchQuery !== effectiveSearchQuery;
@@ -114,7 +130,7 @@ export function ProjectPaperPickerDialog({
 
   const handleAdd = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!selectedIds.length || isAdding) return;
+    if (readOnly || !selectedIds.length || isAdding) return;
     setIsAdding(true);
     let added = 0;
     const failed: string[] = [];
@@ -146,35 +162,31 @@ export function ProjectPaperPickerDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={closePicker}>
-      <DialogContent className="flex max-h-[88dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
+    <Dialog open={open && !readOnly} onOpenChange={closePicker}>
+      <DialogContent className="flex max-h-[90dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl" data-no-i18n>
         <DialogHeader className="border-b px-5 py-4 sm:px-6">
           <DialogTitle>{t("Add papers to this project")}</DialogTitle>
           <DialogDescription>{t("Find literature in LumiGap or choose papers saved to your library.")}</DialogDescription>
         </DialogHeader>
 
-        <div className="flex gap-1 border-b px-4 pt-2" role="tablist" aria-label={t("Paper source")}>
-          {([
-            ["search", "Search LumiGap", Search],
-            ["library", "My Library", BookMarked],
-            ["doi", "Add by DOI", FileSearch],
-          ] as const).map(([value, label, Icon]) => (
+        <div className="grid grid-cols-3 gap-1 border-b px-3 pt-2 sm:px-4" role="group" aria-label={t("Paper source")}>
+          {sources.map(({ value, label, icon: Icon }) => (
             <button
               key={value}
               type="button"
-              role="tab"
-              aria-selected={source === value}
-              onClick={() => { setSource(value); setSearchText(""); }}
-              className={`inline-flex items-center gap-2 border-b-2 px-3 py-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${source === value ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}
+              aria-pressed={source === value}
+              disabled={isAdding}
+              onClick={() => { setSource(value); setSearchText(""); setSearchQuery(""); }}
+              className={`inline-flex items-center justify-center gap-2 border-b-2 px-1 py-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 sm:px-3 sm:text-sm ${source === value ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}
             >
-              <Icon className="h-4 w-4" />{t(label)}
+              <Icon className="hidden h-4 w-4 shrink-0 sm:block" />{t(label)}
             </button>
           ))}
         </div>
 
         <form onSubmit={handleAdd} className="flex min-h-0 flex-1 flex-col">
           <div className="space-y-3 px-5 py-4 sm:px-6">
-            <Label htmlFor="project-paper-search">{t(source === "doi" ? "DOI" : "Search papers")}</Label>
+            <Label htmlFor="project-paper-search">{t(source === "doi" ? "DOI" : source === "library" ? "Filter saved papers" : "Search papers")}</Label>
             <div className="relative">
               {source === "doi" ? <FileSearch className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /> : <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />}
               <Input
@@ -182,10 +194,10 @@ export function ProjectPaperPickerDialog({
                 className="pl-9"
                 value={searchText}
                 onChange={(event) => setSearchText(event.target.value)}
-                placeholder={t(source === "doi" ? "Paste a DOI or doi.org link" : "Search by title, author, or keyword")}
+                placeholder={t(source === "doi" ? "Paste a DOI or doi.org link" : source === "library" ? "Filter by title, author, or DOI" : "Search by title, author, or keyword")}
                 autoComplete="off"
                 autoFocus
-                disabled={isAdding || source === "library"}
+                disabled={isAdding}
               />
             </div>
             {source === "doi" ? <p className="text-xs text-muted-foreground">{t("Looks for an exact DOI already indexed in LumiGap. This will not create a paid paper request.")}</p> : null}
@@ -195,6 +207,7 @@ export function ProjectPaperPickerDialog({
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto border-y px-5 py-3 sm:px-6">
+            {source === "library" && Boolean(library.data?.unavailable) ? <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md bg-muted p-3 text-xs"><p>{t("Some saved papers could not be loaded.")}</p><Button type="button" variant="ghost" size="sm" disabled={isAdding} onClick={retry}>{t("Try again")}</Button></div> : null}
             {source !== "library" && queryText.length === 0 ? (
               <div className="py-10 text-center text-sm text-muted-foreground">{t("Your results will appear here.")}</div>
             ) : source === "doi" && !validDoi ? (
@@ -209,13 +222,13 @@ export function ProjectPaperPickerDialog({
                 <p className="text-sm text-muted-foreground">{t("Search could not load results.")}</p>
                 <Button type="button" variant="outline" size="sm" onClick={retry}>{t("Try again")}</Button>
               </div>
-            ) : sortedResults.length === 0 ? (
+            ) : results.length === 0 ? (
               <div className="py-10 text-center text-sm text-muted-foreground">
-                {source === "library" ? t("No saved papers are available to add.") : source === "doi" ? t("No paper with this DOI is indexed in LumiGap yet.") : t("No papers found. Try a broader search.")}
+                {source === "library" ? t(queryText ? "No saved papers match this filter." : "No saved papers are available to add.") : source === "doi" ? t("No paper with this DOI is indexed in LumiGap yet.") : t("No papers found. Try a broader search.")}
               </div>
             ) : (
               <div className="divide-y">
-                {sortedResults.map((paper) => {
+                {results.map((paper) => {
                   const alreadyAdded = existingIds.has(paper.id);
                   const checked = selectedIds.includes(paper.id);
                   return (
@@ -242,9 +255,9 @@ export function ProjectPaperPickerDialog({
             )}
           </div>
 
-          <DialogFooter className="flex-row items-center justify-between gap-3 px-5 py-4 sm:px-6">
+          <DialogFooter className="shrink-0 flex-col items-stretch gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
             <span className="text-xs text-muted-foreground">{selectedIds.length ? t("{{count}} selected", { count: selectedIds.length }) : t("Select one or more papers")}</span>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <Button type="button" variant="outline" onClick={() => closePicker(false)} disabled={isAdding}>{t("Cancel")}</Button>
               <Button type="submit" disabled={selectedIds.length === 0 || isAdding}>
                 {isAdding ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />{t("Adding…")}</> : t("Add selected papers")}

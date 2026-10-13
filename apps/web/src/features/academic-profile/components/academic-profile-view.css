@@ -1,0 +1,23 @@
+.academic-profile-edit-action {
+  transition: opacity 140ms ease-out;
+}
+
+/* Keep the action's space and keyboard access when the mouse is elsewhere. */
+@media (hover: hover) and (pointer: fine) {
+  .academic-profile-edit-action {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .academic-profile-edit-region:is(:hover, :focus-within) > div > .academic-profile-edit-action,
+  .academic-profile-edit-action:focus-visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .academic-profile-edit-action {
+    transition: none;
+  }
+}

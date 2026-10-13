@@ -115,6 +115,7 @@ async function hydrateSubmission(submission: SubmissionRow) {
 export const submissionService = {
   async create(input: CreateSubmissionInput, file: UploadedPdf, actorInput: string, actorRole: UserRole) {
     const actor = await resolveUser(actorInput); const project = await getProjectForAccess(input.projectId, actor.id, actorRole);
+    if (project.status === "ARCHIVED") throw AppError.conflict("Archived projects are read-only");
     const requestedAuthorInputs = ids([actorInput, ...(input.authorIds ?? [])]); const conflictInputs = ids(input.declaredConflictUserIds).filter((id) => !requestedAuthorInputs.includes(id));
     const users = await resolveUsers([...requestedAuthorInputs, ...conflictInputs]);
     const byPublicId = new Map<string, string>(); for (const user of users) { byPublicId.set(user.id, user.id); if (user.legacyMongoId) byPublicId.set(user.legacyMongoId, user.id); }
@@ -134,8 +135,13 @@ export const submissionService = {
     } catch (error) { await pdfStorageService.deletePdf(stored.uri).catch(() => undefined); throw error; }
   },
 
-  async listMine(actorInput: string, actorRole: UserRole) {
+  async listMine(actorInput: string, actorRole: UserRole, projectInput?: string) {
     const actor = await resolveUser(actorInput); const prisma = getPrisma();
+    if (projectInput) {
+      const project = await getProjectForAccess(projectInput, actor.id, actorRole);
+      const rows = await prisma.submission.findMany({ where: { projectId: project.id }, orderBy: { updatedAt: "desc" }, take: 100 });
+      return rows.map(submissionDto);
+    }
     const authorLinks = hasPermission(actorRole, "review:assign") ? [] : await prisma.submissionAuthor.findMany({ where: { userId: actor.id }, select: { submissionId: true } });
     const rows = await prisma.submission.findMany({ where: hasPermission(actorRole, "review:assign") ? {} : { OR: [{ createdById: actor.id }, { id: { in: authorLinks.map((row) => row.submissionId) } }] }, orderBy: { updatedAt: "desc" }, take: 100 });
     return rows.map(submissionDto);
@@ -195,7 +201,16 @@ export const submissionService = {
     await getPrisma().aiPreReview.updateMany({ where: { id: preReviewId, status: { in: ["QUEUED", "PROCESSING"] } }, data: { status: "FAILED", errorMessage: message.slice(0, 1000) } });
   },
 
-  async get(submissionInput: string, actorInput: string, actorRole: UserRole) { const actor = await resolveUser(actorInput); const submission = await getSubmissionOrThrow(submissionInput); const access = await assertSubmissionAccess(submission, actor.id, actorRole); return access === "blind" ? this.getReviewerView(submissionInput, actorInput, actorRole) : hydrateSubmission(submission); },
+  async get(submissionInput: string, actorInput: string, actorRole: UserRole, projectInput?: string) {
+    const actor = await resolveUser(actorInput);
+    const submission = await getSubmissionOrThrow(submissionInput);
+    if (projectInput) {
+      const project = await getProjectForAccess(projectInput, actor.id, actorRole);
+      if (submission.projectId !== project.id) throw AppError.notFound("Submission not found in this project");
+    }
+    const access = await assertSubmissionAccess(submission, actor.id, actorRole);
+    return access === "blind" ? this.getReviewerView(submissionInput, actorInput, actorRole) : hydrateSubmission(submission);
+  },
 
   async history(submissionInput: string, actorInput: string, actorRole: UserRole) {
     const actor = await resolveUser(actorInput); const submission = await getSubmissionOrThrow(submissionInput);

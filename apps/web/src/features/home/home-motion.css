@@ -1,0 +1,40 @@
+/* Progressive enhancement: content remains visible without the observer. */
+@media (prefers-reduced-motion: no-preference) {
+  .home-discovery[data-home-motion="enabled"] [data-home-reveal] {
+    transform: translateY(28px);
+    transition: opacity 650ms var(--academic-ease), transform 750ms var(--academic-ease);
+  }
+  .home-discovery[data-home-motion="enabled"] [data-home-reveal].is-home-visible { transform: none; }
+
+  /* Keep large backgrounds still while their content enters independently. */
+  .home-discovery[data-home-motion="enabled"] :is(.home-featured, .home-research-bridge, .home-question-space)[data-home-reveal] { opacity: 1; transform: none; transition: none; }
+  .home-discovery[data-home-motion="enabled"] [data-home-animate] {
+    opacity: 0;
+    transform: translateY(30px);
+    transition: opacity 650ms var(--academic-ease), transform 750ms var(--academic-ease);
+    transition-delay: 0ms;
+  }
+  .home-discovery[data-home-motion="enabled"] [data-home-animate].is-home-visible {
+    opacity: 1;
+    transform: none;
+    transition-delay: var(--home-enter-delay, 0ms);
+  }
+  .home-featured-content { --home-enter-delay: 100ms; }
+  .home-research-bridge h2, .home-question-space h2 { --home-enter-delay: 80ms; }
+  .home-research-bridge-aside, .home-question-space-description { --home-enter-delay: 160ms; }
+  .home-question-space-actions { --home-enter-delay: 240ms; }
+  :is(.home-research-bridge-prompts, .home-question-space-prompts) > :nth-child(2) { --home-enter-delay: 90ms; }
+  :is(.home-research-bridge-prompts, .home-question-space-prompts) > :nth-child(3) { --home-enter-delay: 180ms; }
+  .home-question-space-prompts > :nth-child(n + 4) { --home-enter-delay: 270ms; }
+  .home-discovery[data-home-motion="enabled"] .home-question-space-map[data-home-animate] { transform: none; transition: opacity 1000ms var(--academic-ease); }
+  .home-discovery[data-home-motion="enabled"] .home-question-space-map .home-question-space-paths path { stroke-dasharray: 1; stroke-dashoffset: 1; }
+  .home-discovery[data-home-motion="enabled"] .home-question-space-map.is-home-visible .home-question-space-paths path { animation: home-evidence-connect 1200ms var(--academic-ease) 120ms both; }
+}
+@keyframes home-evidence-connect { to { stroke-dashoffset: 0; } }
+@media (max-width: 599px) and (prefers-reduced-motion: no-preference) {
+  .home-discovery[data-home-motion="enabled"] [data-home-animate] { transform: translateY(20px); }
+  .home-discovery[data-home-motion="enabled"] [data-home-animate].is-home-visible { transform: none; transition-delay: 0ms; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .home-discovery [data-home-animate] { opacity: 1; transform: none; }
+}

@@ -32,6 +32,7 @@ export function VersionHistory({ id, history, readOnly }: { id: string; history:
 
   async function refresh() {
     await client.invalidateQueries({ queryKey: ["submissions", id] });
+    await client.invalidateQueries({ queryKey: ["submissions", "list"] });
     await client.invalidateQueries({ queryKey: ["review-opportunities"] });
   }
   async function save() {

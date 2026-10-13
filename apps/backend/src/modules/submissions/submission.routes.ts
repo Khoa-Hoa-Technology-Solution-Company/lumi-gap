@@ -11,6 +11,7 @@ import { submissionService } from "./submission.service.js";
 import { createRateLimiter } from "../../common/middleware/rate-limit.js";
 
 const submissionParamsSchema = z.object({ id: objectIdSchema });
+const projectScopeSchema = z.object({ projectId: objectIdSchema.optional() });
 const revisionParamsSchema = z.object({ id: objectIdSchema, revisionId: objectIdSchema });
 const assignmentParamsSchema = z.object({ id: objectIdSchema, assignmentId: objectIdSchema });
 const createSchema = z.object({
@@ -91,8 +92,9 @@ submissionRouter.get("/reviewer-assignments/me", deprecatedForReviewRequests, re
   res.json({ success: true, data: await submissionService.listMyAssignments(req.user!.sub) });
 });
 
-submissionRouter.get("/", async (req, res) => {
-  res.json({ success: true, data: await submissionService.listMine(req.user!.sub, req.user!.role) });
+submissionRouter.get("/", validate(projectScopeSchema, "query"), async (req, res) => {
+  const { projectId } = projectScopeSchema.parse(req.query);
+  res.json({ success: true, data: await submissionService.listMine(req.user!.sub, req.user!.role, projectId) });
 });
 
 submissionRouter.post("/", requirePermission("submission:create"), uploadSinglePdf, async (req, res) => {
@@ -102,8 +104,9 @@ submissionRouter.post("/", requirePermission("submission:create"), uploadSingleP
   res.status(201).json({ success: true, data });
 });
 
-submissionRouter.get("/:id", validate(submissionParamsSchema, "params"), async (req, res) => {
-  res.json({ success: true, data: await submissionService.get(String(req.params.id), req.user!.sub, req.user!.role) });
+submissionRouter.get("/:id", validate(submissionParamsSchema, "params"), validate(projectScopeSchema, "query"), async (req, res) => {
+  const { projectId } = projectScopeSchema.parse(req.query);
+  res.json({ success: true, data: await submissionService.get(String(req.params.id), req.user!.sub, req.user!.role, projectId) });
 });
 
 submissionRouter.get("/:id/history", validate(submissionParamsSchema, "params"), async (req, res) => {

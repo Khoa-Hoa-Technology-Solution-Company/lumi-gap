@@ -10,6 +10,7 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 const mocks = vi.hoisted(() => ({ query: { data: undefined as HomeOverview | undefined, isLoading: false, isError: false, refetch: vi.fn() } }));
 vi.mock("@/stores/auth-store", () => ({ useAuthStore: (select: (state: unknown) => unknown) => select({ tokens: { accessToken: "local-test" } }) }));
 vi.mock("@/features/home/hooks/use-home-overview", () => ({ useHomeOverview: () => mocks.query }));
+vi.mock("@/features/home/hooks/use-home-featured-papers", () => ({ useHomeFeaturedPapers: () => ({ ...mocks.query, data: mocks.query.data ? { papers: mocks.query.data.recentPapers } : undefined }) }));
 vi.mock("@/i18n", () => ({ useI18n: () => ({ language: "en", t: (key: string, values?: Record<string, unknown>) => key.replace(/\{\{(\w+)\}\}/g, (_, name) => String(values?.[name] ?? "")) }) }));
 
 let root: Root | undefined;
@@ -52,7 +53,7 @@ describe("Focused research home", () => {
     await fillQuery(" LLM evaluation & evidence? ");
     await submit();
     expect(container.querySelector("[data-location]")?.textContent).toBe("/literature?q=LLM%20evaluation%20%26%20evidence%3F");
-    for (const route of ["/home#home-research-heading", "/trends", "/reports"]) {
+    for (const route of ["#home-research-heading", "/trends", "/reports"]) {
       expect(container.querySelector(`a[href="${route}"]`)).not.toBeNull();
     }
     expect(container.querySelector('nav[aria-label="Research shortcuts"]')).toBeNull();
@@ -106,7 +107,9 @@ describe("Focused research home", () => {
     expect(container.querySelector("h1")?.textContent).toBe("What are you researching today?");
     expect(container.querySelector('form[role="search"] input[type="search"]')).not.toBeNull();
     expect(container.querySelector("img")).toBeNull();
-    expect(container.querySelectorAll("h2")).toHaveLength(5);
+    expect(container.querySelector("#home-featured-heading")).not.toBeNull();
+    expect(container.querySelector("#home-research-bridge-heading")).not.toBeNull();
+    expect(container.querySelector("#home-question-space-heading")).not.toBeNull();
     expect(container.textContent).not.toMatch(/Welcome back|Test Researcher|Continue your research|Needs your attention|Recommended for you|From your research communities|Start your first research workflow/);
     expect(container.querySelector('[role="alert"]')?.textContent).toContain("The library is taking a moment.");
     await act(async () => Array.from(container.querySelectorAll("button")).find((button) => button.textContent === "Retry")!.click());
@@ -133,15 +136,10 @@ describe("Focused research home", () => {
     await submit();
     expect(container.querySelector("[data-location]")?.textContent).toBe("/literature?q=deep%20learning&mode=keyword&type=article&type=preprint");
   });
-  it("lets researchers explore workflow stages with the keyboard and open the matching tools", async () => {
+  it("shows a useful featured empty state and preserves research tools", async () => {
     await render();
-    const tabs = container.querySelectorAll<HTMLButtonElement>('[role="tab"]');
-    await act(async () => tabs[0]!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })));
-    expect(document.activeElement).toBe(tabs[1]);
-    expect(container.querySelector('[role="tabpanel"]:not([hidden])')?.textContent).toContain("Record screening decisions");
-    await act(async () => tabs[1]!.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true })));
-    expect(container.querySelector('[role="tabpanel"]:not([hidden])')?.textContent).toContain("Inspect supporting papers");
-    expect(container.querySelector('[role="tabpanel"]:not([hidden]) a')?.getAttribute("href")).toBe("/research-gaps");
+    expect(container.querySelector('.home-featured-empty')?.textContent).toContain('Your next read will appear as the library grows.');
+    expect(container.querySelector('.home-featured-empty a')?.getAttribute('href')).toBe('/literature');
     for (const route of ["/trends", "/papers/review", "/papers/format-check", "/reports", "/communities", "/forum"]) {
       expect(container.querySelector(`a[href="${route}"]`)).not.toBeNull();
     }
@@ -164,8 +162,9 @@ describe("Focused research home", () => {
     expect(container.querySelector(".home-note-annotation")?.textContent).toContain("A direction to validate");
     expect(container.querySelector(".home-note-prompts .is-focused")?.textContent).toContain("different real-world context");
     expect(container.querySelector(".home-reading-example-note")?.textContent).toContain("not a summary of a published paper");
-    for (const anchor of container.querySelectorAll<HTMLAnchorElement>('.home-explore-nav a[href^="#"]')) {
-      expect(container.querySelector(anchor.hash)).not.toBeNull();
+    expect(container.querySelector(".home-explore-nav")).toBeNull();
+    for (const sectionId of ["home-workflow", "home-reading", "home-landscape", "home-toolkit"]) {
+      expect(container.querySelector(`#${sectionId}`)).not.toBeNull();
     }
   });
 });

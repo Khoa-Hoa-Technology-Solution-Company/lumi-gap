@@ -17,7 +17,11 @@ vi.mock("@/features/home/hooks/use-home-overview", () => ({ useHomeOverview: () 
 vi.mock("@/components/paper-card", () => ({ PaperCard: ({ id, title }: { id: string; title: string }) => <Link data-testid="paper-detail-link" to={"/papers/" + id}>{title}</Link> }));
 vi.mock("@/i18n", () => ({ useI18n: () => ({ language: "en", t: (key: string, values?: Record<string, unknown>) => key.replace(/\{\{(\w+)\}\}/g, (_, name) => String(values?.[name] ?? "")) }) }));
 
-const medicine = { id: "medicine-paper", title: "Artificial intelligence in healthcare: transforming the practice of medicine" };
+const medicine = {
+  id: "medicine-paper",
+  title: "Artificial intelligence in healthcare: transforming the practice of medicine",
+  topics: [], authors: [], publicationYear: 2025, citationCount: 5, primaryProvider: "openalex",
+};
 const response = (papers = [medicine], total = 5) => ({ papers, meta: { page: 1, pageSize: 10, total, totalPages: Math.ceil(total / 10), mode: "semantic" } });
 let root: Root, container: HTMLDivElement, client: QueryClient;
 function Location() { const location = useLocation(); const navigate = useNavigate(); return <><output data-location>{location.pathname}{location.search}{location.hash}</output><button data-back onClick={() => navigate(-1)}>Back</button></>; }
@@ -66,7 +70,8 @@ describe("literature search navigation", () => {
     expect(container.querySelector("#home-workflow")).not.toBeNull();
     expect(container.querySelector("#home-search-results")).toBeNull();
     expect(mocks.semantic).not.toHaveBeenCalled();
-    expect(mocks.keyword).not.toHaveBeenCalled();
+    // Home fetches featured literature, but must not run a user search before submission.
+    expect(mocks.keyword.mock.calls.every(([request]) => request.sort === "citations" && !request.q)).toBe(true);
     await submit(" Medicine ");
     await settle(() => Boolean(container.querySelector('a[href="/papers/medicine-paper"]')));
     expect(container.querySelector("[data-location]")?.textContent).toBe("/literature?q=Medicine");

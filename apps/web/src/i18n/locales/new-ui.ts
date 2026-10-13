@@ -1,6 +1,8 @@
 import { accountManagementStrings } from "./account-management";
 import { projectLiteratureStrings } from "./project-literature";
 import { forumRefinementStrings } from "./forum-refinement";
+import { projectMemberStrings } from "./project-members";
+import { projectWorkspaceStrings } from "./project-workspace";
 
 // English fallbacks for recently introduced profile/admin surfaces. Keeping
 // each string once avoids duplicating key/value text in the initial bundle.
@@ -561,4 +563,6 @@ export const newUiStrings = {
   ...projectLiteratureStrings,
   ...accountManagementStrings.en,
   ...forumRefinementStrings,
+  ...projectMemberStrings,
+  ...projectWorkspaceStrings,
 } as const;

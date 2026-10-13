@@ -67,11 +67,12 @@ export function I18nProvider({ children }: { children: ReactNode }) {
         document.documentElement.lang = language;
         setLoadedDictionary(dictionary);
       }
-    }).catch(() => {
+    }).catch(async () => {
+      const fallback = await loadDictionary("en").catch(() => englishDictionary);
       if (!cancelled) {
         document.documentElement.lang = "en";
         setLanguageState("en");
-        setLoadedDictionary(englishDictionary);
+        setLoadedDictionary(fallback);
       }
     });
     return () => {
@@ -448,7 +449,7 @@ function translateRenderedDom(
     const source = textOriginals.get(node) ?? current;
     const translation = translateWithWhitespace(source, dictionary);
     textTranslations.set(node, translation);
-    node.nodeValue = translation;
+    if (current !== translation) node.nodeValue = translation;
   }
 
   const elements = root.querySelectorAll<HTMLElement>(ATTRIBUTES.map((attr) => `[${attr}]`).join(","));
@@ -476,7 +477,7 @@ function translateRenderedDom(
       const source = originals.get(attr) ?? current;
       const translation = translateWithWhitespace(source, dictionary);
       translations.set(attr, translation);
-      element.setAttribute(attr, translation);
+      if (current !== translation) element.setAttribute(attr, translation);
     }
   }
 }

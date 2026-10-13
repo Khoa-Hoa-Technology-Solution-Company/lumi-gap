@@ -25,6 +25,7 @@ import { avatars, getLevel } from "@/utils/level";
 import { formatNumber } from "@/utils";
 import { LanguageSwitcher, useI18n } from "@/i18n";
 import { isAdminSystemRole } from "@trend/shared-types";
+import "./app-header.css";
 
 const NotificationMenu = lazy(() => import("@/features/notifications/components/notification-menu"));
 
@@ -42,7 +43,6 @@ const navGroups = [
     items: [
       { to: "/reports", label: "Reports" },
       { to: "/projects", label: "Projects" },
-      { to: "/submissions", label: "Submissions" },
       { to: "/reviews", label: "Review Center" },
       { to: "/review-templates", label: "Review Templates" },
       { to: "/academic-support", label: "Academic Support" },
@@ -157,6 +157,7 @@ function PageLoadingFallback() {
 export function MainLayout() {
   const location = useLocation();
   const isHomeSurface = location.pathname === "/home" || location.pathname === "/" || location.pathname === "/literature";
+  const isProjectsSurface = location.pathname === "/projects" || location.pathname.startsWith("/projects/");
   const isForumSurface = location.pathname === "/forum" || location.pathname.startsWith("/forum/") || /^\/(?:u|academics)\/[^/]+\/(?:activity|summary)\/?$/.test(location.pathname);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [activeDesktopMenu, setActiveDesktopMenu] = useState<string | null>(null);
@@ -221,10 +222,10 @@ export function MainLayout() {
 
   return (
     <div
-      className={cn("flex min-h-screen flex-col", isForumSurface ? "bg-background" : "bg-slate-50 dark:bg-[#09090b]", isHomeSurface && "home-app-shell")}
+      className={cn("lumi-app-shell flex min-h-screen flex-col", isForumSurface ? "bg-background" : "bg-slate-50 dark:bg-[#09090b]", isHomeSurface && "home-app-shell")}
     >
-      <header className={cn("sticky top-0 z-50 h-[var(--app-header-height)] shrink-0 border-b bg-white dark:bg-[#0f0f11]", isForumSurface && "forum-app-header", isHomeSurface && "home-app-header")}>
-        <div className={cn("mx-auto grid h-full w-full min-w-0 grid-cols-[minmax(0,auto)_1fr_auto] items-center gap-1 px-3 sm:gap-4 sm:px-6 lg:px-8", isForumSurface ? "max-w-none" : "max-w-screen-2xl", isHomeSurface && "home-app-nav-inner")}>
+      <header className="lumi-app-header sticky z-50 h-[var(--app-header-height)] shrink-0">
+        <div className="lumi-app-nav-inner mx-auto grid h-full w-full min-w-0 grid-cols-[minmax(0,auto)_1fr_auto] items-center gap-1 sm:gap-4">
           <Link to="/" className="forum-app-brand flex h-full min-w-0 shrink select-none items-center">
             <img
               src={logoImage}
@@ -320,7 +321,7 @@ export function MainLayout() {
           </div>
         )}
       </header>
-      <main className={cn("relative z-10 min-w-0 flex-1", isForumSurface || isHomeSurface ? "w-full p-0" : "container mx-auto w-full px-4 py-5 sm:px-6 sm:py-8 lg:px-8")}>
+      <main className={cn("relative z-10 min-w-0 flex-1", isForumSurface || isHomeSurface || isProjectsSurface ? "w-full p-0" : "container mx-auto w-full px-4 py-5 sm:px-6 sm:py-8 lg:px-8")}>
         <Suspense fallback={<PageLoadingFallback />}>
           <RouteTransition><Outlet /></RouteTransition>
         </Suspense>

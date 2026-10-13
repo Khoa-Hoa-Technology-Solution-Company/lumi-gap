@@ -1,13 +1,12 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { lazy, Suspense, useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { useProject, useRemoveMemberFromProject, useInviteProjectMember, useCancelProjectInvitation, useUpdateProject, useArchiveProject, useDeleteProject, useLeaveProject, useTransferProjectOwnership } from "@/features/projects/hooks/use-projects";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { api } from "@/services/api-client";
+import { useProject, useUpdateProject, useArchiveProject, useDeleteProject, useLeaveProject } from "@/features/projects/hooks/use-projects";
+import { useQueryClient } from "@tanstack/react-query";
 import { useReports, useCreateReport, useUpdateArtifactStatus } from "@/features/reports/hooks/use-reports";
 import { useGaps, useAnalyzeGap, useGapAnalysisStatus, useActiveGapAnalysis } from "@/features/gaps";
 import { GapDetailDrawer } from "@/features/gaps/components/gap-detail-drawer";
@@ -18,29 +17,22 @@ import { Link } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
 import type { AnalyzeGapRequest, GapStatus, IProject, ProjectStatus, ProjectVisibility, ReportLanguage, ResearchArtifactType, ResearchGapItem } from "@trend/shared-types";
 import { ProjectLiteratureWorkspace } from "@/features/projects/components/project-literature-workspace";
-import { ProjectPaperPickerDialog } from "@/features/projects/components/project-paper-picker-dialog";
+import { ProjectSectionNav, type ProjectTab } from "@/features/projects/components/project-section-nav";
+import "@/features/projects/project-workspace.css";
+import { ProjectPaperPickerDialog, type PaperPickerSource } from "@/features/projects/components/project-paper-picker-dialog";
 import { SubmitReviewDialog } from "@/features/reviews/components/submit-review-dialog";
 import { useReviewCenter, type ReviewCenterItem } from "@/features/reviews";
 
-function useSearchUsers(email: string) {
-  return useQuery({
-    queryKey: ["searchUsers", email],
-    queryFn: async () => {
-      if (!email || email.length < 2) return [];
-      const res = await api.get<{ success: boolean; data: any[] }>(`/auth/search?email=${encodeURIComponent(email)}`);
-      return res.data.data;
-    },
-    enabled: email.length >= 2,
-  });
-}
-
 import { toast } from "sonner";
-import { Archive, FileText, Users, Trash2, Plus, Loader2, XCircle, Sparkles, Zap, MessageSquare, Settings2, ShieldCheck } from "lucide-react";
+import { Archive, FileText, Trash2, Plus, Loader2, XCircle, Sparkles, Zap, MessageSquare, Settings2, ShieldCheck, FolderKanban, ChevronRight, LockKeyhole, Globe2, UsersRound, Clock3 } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
 import { MentorProjectPanel } from "@/pages/academics/academic-support";
+import { ProjectMembersTab } from "@/features/projects/components/project-members-tab";
 import { ProjectMentorSummary } from "@/features/projects/components/project-mentor-summary";
 import { ProjectContributionsTab } from "@/features/projects/components/project-contributions-tab";
 import { useI18n } from "@/i18n";
+
+const ProjectSubmissionsPanel = lazy(() => import("@/features/projects/components/project-submissions-panel").then(m => ({ default: m.ProjectSubmissionsPanel })));
 
 export function ProjectDetailPage() {
   const currentUser = useAuthStore(s => s.user);
@@ -49,17 +41,18 @@ export function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { data: project, isLoading, isError } = useProject(id);
   const [searchParams, setSearchParams] = useSearchParams();
-  type ProjectTab = "papers" | "members" | "contributions" | "reports" | "gaps" | "chat" | "support";
   const tabParam = searchParams.get("tab");
-  const activeTab: ProjectTab = ["papers", "members", "contributions", "reports", "gaps", "chat", "support"].includes(tabParam ?? "") ? tabParam as ProjectTab : "papers";
+  const activeTab: ProjectTab = ["papers", "members", "contributions", "reports", "gaps", "chat", "support", "submissions"].includes(tabParam ?? "") ? tabParam as ProjectTab : "papers";
   const setActiveTab = (tab: ProjectTab) => {
     const params = new URLSearchParams(searchParams);
     params.set("tab", tab);
+    params.delete("submission");
     setSearchParams(params, { replace: true });
   };
   const [autoOpenReport, setAutoOpenReport] = useState(false);
   const [autoOpenGap, setAutoOpenGap] = useState(false);
   const [paperPickerOpen, setPaperPickerOpen] = useState(false);
+  const [paperPickerSource, setPaperPickerSource] = useState<PaperPickerSource>("search");
   const [reportDraft, setReportDraft] = useState<ReportDraft | null>(null);
 
   const relativeActivity = (value: string) => {
@@ -90,129 +83,44 @@ export function ProjectDetailPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <main className="container max-w-7xl space-y-5 py-5 sm:py-6">
+    <div className="project-workspace">
+      <div className="project-page-width project-detail-page">
 
-        <header className="space-y-3 border-b pb-4">
-          <Link to="/projects" className="inline-flex items-center text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">← {t("Projects")}</Link>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div className="min-w-0">
-              <h1 className="text-2xl font-semibold tracking-tight text-foreground">{project.title}</h1>
-              {project.description ? <p className="mt-1 max-w-3xl text-sm leading-5 text-muted-foreground">{project.description}</p> : null}
-              <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-                {project.researchField ? <span>{project.researchField}</span> : null}
-                {project.researchField ? <span aria-hidden="true">·</span> : null}
-                <span>{t(project.status.replaceAll("_", " "))}</span><span aria-hidden="true">·</span>
-                <span>{t(project.visibility.replaceAll("_", " "))}</span><span aria-hidden="true">·</span>
-                <span>{t("{{count}} papers", { count: project.paperCount })}</span><span aria-hidden="true">·</span>
-                <span>{t("{{count}} members", { count: project.memberCount })}</span><span aria-hidden="true">·</span>
-                <span>{t("Updated {{time}}", { time: relativeActivity(project.updatedAt) })}</span>
+        <header className="project-detail-intro">
+          <nav className="project-breadcrumb" aria-label={t("Projects")}>
+            <Link to="/projects" className="hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t("Projects")}</Link>
+            <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" /><span className="truncate">{project.title}</span>
+          </nav>
+          <div className="project-detail-title-row">
+            <div className="flex min-w-0 items-start gap-4">
+              <span className="project-folder-icon project-detail-icon"><FolderKanban className="h-7 w-7" aria-hidden="true" /></span>
+              <div className="min-w-0">
+                <p className="project-eyebrow">{t("Research project")}</p>
+                <h1>{project.title}</h1>
+                {project.description ? <p className="project-detail-description">{project.description}</p> : null}
+                {project.researchField ? <p className="project-detail-scope">{t("Research scope")}<span aria-hidden="true"> / </span>{project.researchField}</p> : null}
               </div>
             </div>
             {project.accessRole ? <ProjectHeaderActions project={project} onLeft={() => navigate("/projects")} /> : null}
           </div>
+          <div className="project-detail-meta">
+            <span className="project-status-tag" data-status={project.status}>{t({ ACTIVE: "Active", PLANNING: "Planning", ON_HOLD: "On hold", COMPLETED: "Completed", ARCHIVED: "Archived" }[project.status])}</span>
+            <span>{project.visibility === "PUBLIC_SUMMARY" ? <Globe2 aria-hidden="true" /> : project.visibility === "INVITE_ONLY" ? <UsersRound aria-hidden="true" /> : <LockKeyhole aria-hidden="true" />}{t(project.visibility === "PRIVATE" ? "Private" : project.visibility === "INVITE_ONLY" ? "Invite only" : "Public summary")}</span>
+            <span><Clock3 aria-hidden="true" />{t("Updated {{time}}", { time: relativeActivity(project.updatedAt) })}</span>
+            {!project.isPublicSummary ? <button type="button" className="project-team-shortcut" onClick={() => setActiveTab("members")}><UsersRound aria-hidden="true" />{t(project.memberCount === 1 ? "{{count}} member" : "{{count}} members", { count: project.memberCount })}<ChevronRight aria-hidden="true" /></button> : null}
+          </div>
         </header>
+        {project.status === "ARCHIVED" ? <p role="status" className="flex items-center gap-2 rounded-lg border bg-card px-4 py-3 text-sm text-muted-foreground"><Archive className="h-4 w-4 shrink-0" />{t("Archived projects are read-only.")}</p> : null}
 
         {project.isPublicSummary ? (
           <div className="rounded-lg border bg-card p-8 text-center"><ShieldCheck className="mx-auto h-8 w-8 text-primary" /><h2 className="mt-3 text-lg font-semibold">{t("Public project summary")}</h2><p className="mx-auto mt-2 max-w-xl text-sm text-muted-foreground">{t("Papers, member details, reports, candidate gaps, contributions and chat are available only to current project members.")}</p></div>
         ) : <>
-        {/* Underline Tabs */}
-        <div className="border-b border-slate-200 dark:border-white/10 overflow-x-auto">
-          <div className="flex gap-5 sm:gap-7 min-w-max pb-1" role="tablist" aria-label={t("Project sections")}>
-            <button
-              id="project-tab-papers"
-              role="tab"
-              aria-selected={activeTab === "papers"}
-              aria-controls="project-panel-papers"
-              className={`pb-3 text-sm font-semibold transition-all relative whitespace-nowrap shrink-0 ${
-                activeTab === "papers" ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 hover:text-slate-900 dark:hover:text-white"
-              }`}
-              onClick={() => setActiveTab("papers")}
-            >
-              {t("Literature")}
-              <Badge variant="secondary" className="ml-2 rounded-full px-2 py-0.5 text-[10px] bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-slate-300">{project.papers?.length || 0}</Badge>
-              {activeTab === "papers" && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 dark:bg-indigo-400 rounded-t-full" />}
-            </button>
-
-            <button
-              id="project-tab-members"
-              role="tab"
-              aria-selected={activeTab === "members"}
-              aria-controls="project-panel-members"
-              className={`pb-3 text-sm font-semibold transition-all relative whitespace-nowrap shrink-0 ${
-                activeTab === "members" ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 hover:text-slate-900 dark:hover:text-white"
-              }`}
-              onClick={() => setActiveTab("members")}
-            >
-              {t("Members")}
-              <Badge variant="secondary" className="ml-2 rounded-full px-2 py-0.5 text-[10px] bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-slate-300">{project.members?.length || 0}</Badge>
-              {activeTab === "members" && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 dark:bg-indigo-400 rounded-t-full" />}
-            </button>
-
-            <button
-              id="project-tab-contributions"
-              role="tab"
-              aria-selected={activeTab === "contributions"}
-              aria-controls="project-panel-contributions"
-              className={`pb-3 text-sm font-semibold transition-all relative whitespace-nowrap shrink-0 ${
-                activeTab === "contributions" ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 hover:text-slate-900 dark:hover:text-white"
-              }`}
-              onClick={() => setActiveTab("contributions")}
-            >
-              {t("Contributions")}
-              {activeTab === "contributions" && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 dark:bg-indigo-400 rounded-t-full" />}
-            </button>
-
-            <button role="tab" id="project-tab-support" aria-selected={activeTab === "support"} aria-controls="project-panel-support" onClick={() => setActiveTab("support")} className={`shrink-0 whitespace-nowrap border-b-2 pb-3 text-sm font-semibold ${activeTab === "support" ? "border-indigo-600 text-indigo-600" : "border-transparent text-slate-500"}`}>{t("Academic Support")}</button>
-            <button
-              id="project-tab-reports"
-              role="tab"
-              aria-selected={activeTab === "reports"}
-              aria-controls="project-panel-reports"
-              className={`pb-3 text-sm font-semibold transition-all relative whitespace-nowrap shrink-0 ${
-                activeTab === "reports" ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 hover:text-slate-900 dark:hover:text-white"
-              }`}
-              onClick={() => setActiveTab("reports")}
-            >
-              {t("Artifacts")}
-              {activeTab === "reports" && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 dark:bg-indigo-400 rounded-t-full" />}
-            </button>
-
-            <button
-              id="project-tab-gaps"
-              role="tab"
-              aria-selected={activeTab === "gaps"}
-              aria-controls="project-panel-gaps"
-              className={`pb-3 text-sm font-semibold transition-all relative whitespace-nowrap shrink-0 ${
-                activeTab === "gaps" ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 hover:text-slate-900 dark:hover:text-white"
-              }`}
-              onClick={() => setActiveTab("gaps")}
-            >
-              {t("Research Gaps")}
-              {activeTab === "gaps" && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 dark:bg-indigo-400 rounded-t-full" />}
-            </button>
-
-            <button
-              id="project-tab-chat"
-              role="tab"
-              aria-selected={activeTab === "chat"}
-              aria-controls="project-panel-chat"
-              className={`pb-3 text-sm font-semibold transition-all relative whitespace-nowrap shrink-0 ${
-                activeTab === "chat" ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 hover:text-slate-900 dark:hover:text-white"
-              }`}
-              onClick={() => setActiveTab("chat")}
-            >
-              <span className="inline-flex items-center gap-1.5">
-                <MessageSquare className="h-4 w-4" />
-                {t("Chat")}
-              </span>
-              {activeTab === "chat" && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 dark:bg-indigo-400 rounded-t-full" />}
-            </button>
-
-          </div>
-        </div>
-
-        <div>
+        <div className="project-workspace-shell">
+          <ProjectSectionNav activeTab={activeTab} onChange={setActiveTab} paperCount={project.paperCount} memberCount={project.memberCount} />
+        <div className="project-workspace-content">
+          {activeTab === "submissions" && <section id="project-panel-submissions" role="tabpanel" aria-labelledby="project-tab-submissions">
+            <Suspense fallback={<Skeleton className="h-48 w-full" />}><ProjectSubmissionsPanel projectId={project._id} projectTitle={project.title} readOnly={project.status === "ARCHIVED" || !project.accessRole} /></Suspense>
+          </section>}
           {activeTab === "papers" && (
             <section id="project-panel-papers" role="tabpanel" aria-labelledby="project-tab-papers">
               <ProjectLiteratureWorkspace
@@ -221,7 +129,8 @@ export function ProjectDetailPage() {
                 criteria={project.screeningCriteria}
                 isOwner={project.accessRole === "OWNER"}
                 readOnly={project.status === "ARCHIVED" || !project.accessRole}
-                onRequestAddPaper={() => setPaperPickerOpen(true)}
+                onRequestAddPaper={(source = "search") => { setPaperPickerSource(source); setPaperPickerOpen(true); }}
+                onViewEvidence={() => { setAutoOpenGap(false); setActiveTab("gaps"); }}
                 onNavigateToReports={() => {
                   setActiveTab("reports");
                   setAutoOpenReport(true);
@@ -235,7 +144,7 @@ export function ProjectDetailPage() {
           )}
           {activeTab === "members" && (
             <section id="project-panel-members" role="tabpanel" aria-labelledby="project-tab-members">
-              <MembersTab projectId={project._id} members={project.members} pendingInvitations={project.pendingInvitations ?? []} ownerId={project.ownerId} currentUserId={currentUser?.id} />
+              <ProjectMembersTab projectId={project._id} projectTitle={project.title} members={project.members} pendingInvitations={project.pendingInvitations ?? []} ownerId={project.ownerId} currentUserId={currentUser?.id} readOnly={project.status === "ARCHIVED"} />
               <ProjectMentorSummary projectId={project._id} />
             </section>
           )}
@@ -284,24 +193,28 @@ export function ProjectDetailPage() {
                 projectId={project._id}
                 paperCount={project.papers?.length || 0}
                 ownerId={project.ownerId}
-                onAddPapers={() => setPaperPickerOpen(true)}
+                onAddPapers={() => { if (project.status !== "ARCHIVED") { setPaperPickerSource("search"); setPaperPickerOpen(true); } }}
               />
             </section>
           )}
         </div>
+        </div>
         <ProjectPaperPickerDialog
+          initialSource={paperPickerSource}
+          readOnly={project.status === "ARCHIVED" || !project.accessRole}
           projectId={project._id}
           papers={project.papers ?? []}
           open={paperPickerOpen}
           onOpenChange={setPaperPickerOpen}
         />
         </>}
-      </main>
+      </div>
     </div>
   );
 }
 
 function ProjectHeaderActions({ project, onLeft }: { project: IProject; onLeft: () => void }) {
+  const { t } = useI18n();
   const isOwner = project.accessRole === "OWNER";
   type ConfirmationAction = "archive" | "delete" | "leave";
   const [open, setOpen] = useState(false);
@@ -370,7 +283,7 @@ function ProjectHeaderActions({ project, onLeft }: { project: IProject; onLeft: 
   const requiresProjectName = confirmationAction !== null && confirmationAction !== "leave";
 
   if (!isOwner) return <>
-    <Button variant="outline" size="sm" onClick={() => openConfirmation("leave")}>Leave project</Button>
+    <Button variant="outline" size="sm" disabled={project.status === "ARCHIVED"} onClick={() => openConfirmation("leave")}>Leave project</Button>
     <Dialog open={confirmationAction !== null} onOpenChange={closeConfirmation}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
@@ -389,19 +302,21 @@ function ProjectHeaderActions({ project, onLeft }: { project: IProject; onLeft: 
   return (
     <>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogTrigger asChild><Button variant="outline" size="sm"><Settings2 className="mr-2 h-4 w-4" />Project settings</Button></DialogTrigger>
+        <DialogTrigger asChild><Button variant="outline" size="sm"><Settings2 className="mr-2 h-4 w-4" />{t("Project settings")}</Button></DialogTrigger>
         <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-xl">
           <DialogHeader><DialogTitle>Project settings</DialogTitle><DialogDescription>Update the workspace details and access policy. Only the owner can change these settings.</DialogDescription></DialogHeader>
           <form onSubmit={save} className="space-y-4">
+            <fieldset disabled={project.status === "ARCHIVED" || updateProject.isPending} className="space-y-4">
             <div className="space-y-2"><Label htmlFor="project-title">Project name</Label><Input id="project-title" value={title} onChange={(event) => setTitle(event.target.value)} maxLength={100} required /></div>
             <div className="space-y-2"><Label htmlFor="project-description">Description</Label><textarea id="project-description" value={description} onChange={(event) => setDescription(event.target.value)} maxLength={5000} className="min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" /></div>
             <div className="space-y-2"><Label htmlFor="project-field">Research field</Label><Input id="project-field" value={researchField} onChange={(event) => setResearchField(event.target.value)} maxLength={200} placeholder="e.g. Human-computer interaction" /></div>
             <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2"><Label htmlFor="project-status">Status</Label><select id="project-status" value={status} onChange={(event) => setStatus(event.target.value as ProjectStatus)} className="h-10 w-full rounded-md border bg-background px-3 text-sm">{["PLANNING", "ACTIVE", "ON_HOLD", "COMPLETED"].map((value) => <option key={value} value={value}>{value.replaceAll("_", " ")}</option>)}</select></div>
+              <div className="space-y-2"><Label htmlFor="project-status">Status</Label><select id="project-status" value={status} onChange={(event) => setStatus(event.target.value as ProjectStatus)} className="h-10 w-full rounded-md border bg-background px-3 text-sm">{project.status === "ARCHIVED" ? <option value="ARCHIVED">{t("Archived")}</option> : null}{["PLANNING", "ACTIVE", "ON_HOLD", "COMPLETED"].map((value) => <option key={value} value={value}>{value.replaceAll("_", " ")}</option>)}</select></div>
               <div className="space-y-2"><Label htmlFor="project-visibility">Visibility</Label><select id="project-visibility" value={visibility} onChange={(event) => setVisibility(event.target.value as ProjectVisibility)} className="h-10 w-full rounded-md border bg-background px-3 text-sm">{["PRIVATE", "INVITE_ONLY", "PUBLIC_SUMMARY"].map((value) => <option key={value} value={value}>{value.replaceAll("_", " ")}</option>)}</select></div>
             </div>
+            </fieldset>
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950/30"><p className="text-sm font-medium text-amber-900 dark:text-amber-200">Prefer archive over delete</p><p className="mt-1 text-xs text-amber-700 dark:text-amber-300">Archiving preserves papers, activity, reports, gaps and chat as a read-only record.</p><div className="mt-3 flex flex-wrap gap-2"><Button type="button" variant="outline" size="sm" onClick={() => openConfirmation("archive")} disabled={archiveProject.isPending || project.status === "ARCHIVED"}><Archive className="mr-2 h-4 w-4" />{project.status === "ARCHIVED" ? "Archived" : "Archive project"}</Button><Button type="button" variant="destructive" size="sm" onClick={() => openConfirmation("delete")} disabled={deleteProject.isPending}><Trash2 className="mr-2 h-4 w-4" />Delete permanently</Button></div></div>
-            <DialogFooter><Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button type="submit" disabled={updateProject.isPending || !title.trim()}>{updateProject.isPending ? "Saving..." : "Save changes"}</Button></DialogFooter>
+            <DialogFooter><Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button type="submit" disabled={project.status === "ARCHIVED" || updateProject.isPending || !title.trim()}>{updateProject.isPending ? "Saving..." : "Save changes"}</Button></DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
@@ -1077,246 +992,6 @@ function GapsTab({
         onClose={() => setSelectedGap(null)}
         onDraftProposal={onDraftProposal ? (gap) => { setSelectedGap(null); onDraftProposal(gap); } : undefined}
       />
-    </div>
-  );
-}
-
-function MembersTab({ projectId, members, pendingInvitations, ownerId, currentUserId }: { projectId: string; members: any[]; pendingInvitations: IProject["pendingInvitations"]; ownerId: string; currentUserId?: string }) {
-  const isCurrentUserOwner = currentUserId === ownerId;
-  const { t } = useI18n();
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [searchEmail, setSearchEmail] = useState("");
-  const [selectedUser, setSelectedUser] = useState<{ id: string; fullName: string; email: string } | null>(null);
-  const [invitationMessage, setInvitationMessage] = useState("");
-
-  const { data: searchResults, isLoading: isSearching } = useSearchUsers(searchEmail);
-  const inviteMember = useInviteProjectMember(projectId);
-  const cancelInvitation = useCancelProjectInvitation(projectId);
-  const removeMember = useRemoveMemberFromProject(projectId);
-  const transferOwnership = useTransferProjectOwnership(projectId);
-  const [memberToTransfer, setMemberToTransfer] = useState<{ id: string; name: string } | null>(null);
-
-  const handleAdd = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedUser && !searchEmail.trim()) return toast.error("Select a LumiGap user or enter an email address");
-    try {
-      await inviteMember.mutateAsync({ userId: selectedUser?.id, email: selectedUser ? undefined : searchEmail.trim(), message: invitationMessage.trim() || undefined });
-      toast.success("Invitation sent");
-      setIsDialogOpen(false);
-      setSelectedUser(null);
-      setSearchEmail("");
-      setInvitationMessage("");
-    } catch {
-      toast.error("Could not send the invitation");
-    }
-  };
-
-  const [memberToDelete, setMemberToDelete] = useState<string | null>(null);
-
-  const handleRemove = async () => {
-    if (!memberToDelete) return;
-    try {
-      await removeMember.mutateAsync(memberToDelete);
-      toast.success("Member removed");
-    } catch {
-      toast.error("Failed to remove member");
-    } finally {
-      setMemberToDelete(null);
-    }
-  };
-
-  const handleTransferOwnership = async () => {
-    if (!memberToTransfer) return;
-    try {
-      await transferOwnership.mutateAsync(memberToTransfer.id);
-      toast.success("Ownership transferred");
-      setMemberToTransfer(null);
-    } catch {
-      toast.error("Could not transfer ownership");
-    }
-  };
-
-  return (
-    <div className="space-y-4 mt-2">
-      <div className="flex justify-between items-center mb-6">
-        <h3 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Project Members</h3>
-        {isCurrentUserOwner && (
-          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-            <DialogTrigger asChild>
-              <Button size="sm" className="rounded-full shadow-sm"><Plus className="w-4 h-4 mr-2" /> Add Member</Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Add Member</DialogTitle>
-                <DialogDescription>Add a user or expert to the project.</DialogDescription>
-              </DialogHeader>
-              <form onSubmit={handleAdd} className="space-y-4 pt-4">
-                <div className="grid grid-cols-1 gap-4">
-                  <div className="space-y-2">
-                    <Label>Project role</Label>
-                    <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm"><span className="font-medium">Member</span><p className="mt-0.5 text-xs text-muted-foreground">Academic position does not change project permissions.</p></div>
-                  </div>
-                </div>
-                <div className="space-y-2 relative">
-                  <Label>Search user by email</Label>
-                  {selectedUser ? (
-                    <div className="flex items-center justify-between p-2 border rounded-md bg-secondary/20">
-                      <div className="text-sm">
-                        <p className="font-medium">{selectedUser.fullName}</p>
-                        <p className="text-muted-foreground text-xs">{selectedUser.email}</p>
-                      </div>
-                      <Button type="button" variant="ghost" size="sm" onClick={() => setSelectedUser(null)}>Change</Button>
-                    </div>
-                  ) : (
-                    <div>
-                      <Input
-                        value={searchEmail}
-                        onChange={(e) => setSearchEmail(e.target.value)}
-                        placeholder="e.g. user@example.com..."
-                        autoComplete="off"
-                      />
-                      {searchEmail.length > 1 && (
-                        <div className="absolute z-10 w-full mt-1 bg-background border rounded-md shadow-md max-h-60 overflow-auto">
-                          {isSearching ? (
-                            <div className="p-3 text-sm text-muted-foreground">Searching...</div>
-                          ) : searchResults?.length === 0 ? (
-                            <div className="p-3 text-sm text-muted-foreground">User not found.</div>
-                          ) : (
-                            searchResults?.map((u: any) => (
-                              <div
-                                key={u.id}
-                                className="p-3 hover:bg-secondary cursor-pointer border-b last:border-0"
-                                onClick={() => setSelectedUser(u)}
-                              >
-                                <p className="font-medium text-sm">{u.fullName}</p>
-                                <p className="text-muted-foreground text-xs">{u.email}</p>
-                              </div>
-                            ))
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-                <div className="space-y-2"><Label htmlFor="invitation-message">Invitation message <span className="text-muted-foreground">(optional)</span></Label><textarea id="invitation-message" value={invitationMessage} onChange={(event) => setInvitationMessage(event.target.value)} maxLength={1000} className="min-h-20 w-full rounded-md border bg-background px-3 py-2 text-sm" placeholder="Add context about the project and expected collaboration." /></div>
-                <DialogFooter>
-                  <Button type="button" variant="outline" onClick={() => { setIsDialogOpen(false); setSelectedUser(null); setSearchEmail(""); setInvitationMessage(""); }}>Cancel</Button>
-                  <Button type="submit" disabled={inviteMember.isPending || (!selectedUser && !searchEmail.trim())}>
-                    {inviteMember.isPending ? "Sending..." : "Send invitation"}
-                  </Button>
-                </DialogFooter>
-              </form>
-            </DialogContent>
-          </Dialog>
-        )}
-      </div>
-
-      <Dialog open={!!memberToDelete} onOpenChange={(open) => !open && setMemberToDelete(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Remove Member</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to remove this member? They will lose permissions to add papers and generate reports.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setMemberToDelete(null)} disabled={removeMember.isPending}>Cancel</Button>
-            <Button variant="destructive" onClick={handleRemove} disabled={removeMember.isPending}>
-              {removeMember.isPending ? "Removing..." : "Remove"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={memberToTransfer !== null} onOpenChange={(open) => { if (!open && !transferOwnership.isPending) setMemberToTransfer(null); }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Transfer project ownership?</DialogTitle>
-            <DialogDescription>
-              {memberToTransfer ? t("{{name}} will become the project owner. You will become a regular member and lose owner-only controls.", { name: memberToTransfer.name }) : null}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setMemberToTransfer(null)} disabled={transferOwnership.isPending}>Cancel</Button>
-            <Button type="button" onClick={handleTransferOwnership} disabled={transferOwnership.isPending}>
-              {transferOwnership.isPending ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Transferring…</> : "Transfer ownership"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {isCurrentUserOwner && pendingInvitations && pendingInvitations.length > 0 ? (
-        <section className="space-y-3">
-          <div><h4 className="font-semibold">Pending invitations</h4><p className="text-sm text-muted-foreground">Invitations expire automatically after 14 days.</p></div>
-          <div className="divide-y rounded-xl border bg-card">
-            {pendingInvitations.map((invitation) => <div key={invitation.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-sm font-medium">{invitation.invitedUser?.fullName || invitation.email}</p><p className="text-xs text-muted-foreground">{invitation.email} · expires {new Date(invitation.expiresAt).toLocaleDateString()}</p></div><Button size="sm" variant="outline" disabled={cancelInvitation.isPending} onClick={async () => { try { await cancelInvitation.mutateAsync(invitation.id); toast.success("Invitation cancelled"); } catch { toast.error("Could not cancel invitation"); } }}>Cancel invitation</Button></div>)}
-          </div>
-        </section>
-      ) : null}
-
-      {members?.length === 0 ? (
-        <div className="mt-8 flex flex-col items-center justify-center rounded-3xl border border-dashed bg-muted/20 px-6 py-20 text-center">
-          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-background shadow-sm mb-4">
-            <Users className="h-6 w-6 text-muted-foreground/60" />
-          </div>
-          <h4 className="text-lg font-semibold tracking-tight mb-2">Invite researchers to collaborate on this project.</h4>
-          <p className="text-sm text-muted-foreground max-w-sm">
-            Pending invitations and active members will appear here.
-          </p>
-        </div>
-      ) : (
-        <div className="grid gap-4 md:grid-cols-2 mt-4">
-          {members.map((m) => {
-            const memberObj = typeof m.targetId === 'object' && m.targetId !== null ? m.targetId : null;
-            const memberId = memberObj ? memberObj._id : m.targetId;
-            const isPrimaryOwner = memberId === ownerId;
-            return (
-              <div key={memberId} className="group relative flex flex-row justify-between items-center rounded-2xl border border-slate-200/60 dark:border-white/10 bg-white dark:bg-zinc-900 p-5 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-purple-500/10 hover:border-purple-500/30 overflow-hidden">
-                <div className="absolute top-0 right-0 w-32 h-32 bg-purple-50 dark:bg-purple-900/10 rounded-bl-full -mr-10 -mt-10 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
-
-                <div className="flex items-center gap-5 flex-1 overflow-hidden z-10">
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 font-bold text-lg uppercase transition-all duration-500 group-hover:scale-110 shadow-sm border border-purple-200 dark:border-purple-500/20">
-                    {memberObj ? memberObj.fullName.charAt(0) : <Users className="w-5 h-5" />}
-                  </div>
-                  <div className="min-w-0">
-                    {memberObj ? (
-                      <>
-                        <h4 className="text-[16px] font-bold truncate text-slate-900 dark:text-white group-hover:text-purple-700 dark:group-hover:text-purple-400 transition-colors leading-tight mb-1"><Link to={`/academics/${encodeURIComponent(memberId)}`} className="hover:underline">{memberObj.fullName || 'Unknown User'}</Link></h4>
-                        <p className="text-sm text-slate-500 dark:text-slate-400 flex flex-wrap items-center gap-x-2 gap-y-1 mt-1">
-                          <span className="truncate max-w-full">{memberObj.email}</span>
-                          <span className="opacity-30 text-xs hidden sm:inline">•</span>
-                          <span className={`capitalize font-bold text-xs px-2 py-0.5 rounded-md shrink-0 ${m.role === 'OWNER' ? 'bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-900/50' : 'bg-purple-50 dark:bg-purple-500/10 text-purple-700 dark:text-purple-400 border border-purple-200 dark:border-purple-900/50'}`}>
-                            {m.role === 'OWNER' ? 'Owner' : 'Member'}
-                          </span>
-                          {isPrimaryOwner && <span className="text-[10px] uppercase font-black shrink-0 bg-amber-500 text-white px-2 py-0.5 rounded shadow-sm tracking-wider">Creator</span>}
-                        </p>
-                      </>
-                    ) : (
-                      <>
-                        <h4 className="text-[16px] font-bold truncate text-slate-900 dark:text-white group-hover:text-purple-700 dark:group-hover:text-purple-400 transition-colors leading-tight mb-1">
-                          {m.targetKind} <span className="font-mono text-slate-400 text-xs font-normal ml-2">(ID: {memberId})</span>
-                        </h4>
-                        <p className="text-sm text-slate-500 dark:text-slate-400 flex flex-wrap items-center gap-x-2 gap-y-1 mt-1">
-                          <span className={`capitalize font-bold text-xs px-2 py-0.5 rounded-md shrink-0 ${m.role === 'OWNER' ? 'bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-900/50' : 'bg-purple-50 dark:bg-purple-500/10 text-purple-700 dark:text-purple-400 border border-purple-200 dark:border-purple-900/50'}`}>
-                            {m.role === 'OWNER' ? 'Owner' : 'Member'}
-                          </span>
-                          {isPrimaryOwner && <span className="text-[10px] uppercase font-black shrink-0 bg-amber-500 text-white px-2 py-0.5 rounded shadow-sm tracking-wider">Creator</span>}
-                        </p>
-                      </>
-                    )}
-                  </div>
-                </div>
-                {isCurrentUserOwner && !isPrimaryOwner && (
-                  <div className="ml-4 flex shrink-0 gap-1">
-                    <Button variant="ghost" size="icon" title="Transfer ownership" disabled={transferOwnership.isPending} className="h-8 w-8 rounded-full text-muted-foreground hover:text-amber-700" onClick={() => setMemberToTransfer({ id: memberId, name: memberObj?.fullName || "this member" })}><ShieldCheck className="h-4 w-4" /></Button>
-                    <Button variant="ghost" size="icon" title="Remove member" className="h-8 w-8 rounded-full text-muted-foreground hover:bg-destructive/10 hover:text-destructive" onClick={() => setMemberToDelete(memberId)}><Trash2 className="h-4 w-4" /></Button>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
     </div>
   );
 }
