@@ -10,7 +10,7 @@
     "ios": "node ../../scripts/run-mobile.mjs expo --ios",
     "web": "node ../../scripts/run-mobile.mjs expo --web",
     "build": "echo \"Use EAS Build: eas build -p android|ios\"",
-    "lint": "expo lint",
+    "lint": "eslint . --report-unused-disable-directives",
     "typecheck": "tsc --noEmit",
     "clean": "rimraf .expo node_modules/.cache .turbo"
   },
