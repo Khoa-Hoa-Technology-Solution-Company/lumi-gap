@@ -11,7 +11,7 @@
 | App | File env | Biến | Giá trị dev |
 |---|---|---|---|
 | **Web** | `apps/web/.env` | `VITE_API_BASE` | `http://localhost:4000/api/v1` (hoặc để trống → dùng Vite proxy `/api`) |
-| **Mobile** | `apps/mobile/.env` | `EXPO_PUBLIC_API_BASE` | `http://10.0.2.2:4000/api/v1` (Android emulator → host); thiết bị thật dùng LAN IP `http://192.168.x.x:4000/api/v1` |
+| **Mobile (Flutter)** | `.env` ở root repo | `API_BASE_URL` | `http://10.0.2.2:4000/api/v1` (Android emulator → host); thiết bị thật dùng LAN IP `http://192.168.x.x:4000/api/v1` |
 
 > ⚠️ **Mobile Android emulator:** `localhost` = chính emulator, KHÔNG phải máy bạn. Phải dùng `10.0.2.2` (alias đặc biệt trỏ về host). `api-client.ts` của mobile đã auto-detect dev host nên thường không cần chỉnh.
 
@@ -40,7 +40,7 @@ Backend phải đang chạy: `pnpm dev:backend` → http://localhost:4000.
 **Không cần tự viết axios/token logic.** `api-client.ts` đã có sẵn:
 - Tự gắn `Authorization: Bearer <accessToken>` vào mọi request
 - Tự refresh token khi gặp 401 (gọi `/auth/refresh` 1 lần, retry request)
-- Token lưu: web → localStorage, mobile → expo-secure-store
+- Token lưu: web → localStorage, mobile → secure storage của nền tảng (Keychain / Keystore)
 
 ### Hook có sẵn (web + mobile giống nhau)
 ```ts

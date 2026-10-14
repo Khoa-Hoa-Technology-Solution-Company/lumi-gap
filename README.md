@@ -4,7 +4,7 @@
 >
 > WDP301 capstone @ FPT University.
 
-This repository is a **pnpm + Turborepo mono-repo** containing the backend, web, two mobile clients, a Python AI reviewer service, and one shared package.
+This repository is a **pnpm + Turborepo mono-repo** containing the backend, web, a Flutter mobile client, a Python AI reviewer service, and one shared package.
 
 ## Production deployment
 
@@ -46,7 +46,7 @@ This repo is a fork of [thiennhat-ctrl/LiemResearch](https://github.com/thiennha
 
 | Came from | What |
 |---|---|
-| **publication-trend-system** (60 commits) | The entire monorepo: TypeScript backend (OpenAlex sync pipeline, Gemini embeddings, semantic search, BullMQ workers), web (shadcn/ui + TanStack Query), mobile (Expo), Flutter mobile, AI reviewer, shared types |
+| **publication-trend-system** (60 commits) | The entire monorepo: TypeScript backend (OpenAlex sync pipeline, Gemini embeddings, semantic search, BullMQ workers), web (shadcn/ui + TanStack Query), Flutter mobile, AI reviewer, shared types |
 | **LumiGap** (original) | Community features to be ported: ratings, points/credits, notifications, PDF requests, rank badges, 17 UI pages — preserved under [`legacy/`](legacy/) |
 
 `legacy/` is **reference material only** (it is not part of the pnpm workspace and is never built). Each feature gets ported into the monorepo following [docs/MIGRATION_MAP.md](docs/MIGRATION_MAP.md); once everything is ported, `legacy/` will be deleted.
@@ -60,7 +60,6 @@ This repo is a fork of [thiennhat-ctrl/LiemResearch](https://github.com/thiennha
 ├── apps/
 │   ├── backend/              Node.js 20+ · Express 5 · TypeScript · Prisma · BullMQ · Gemini
 │   ├── web/                  React 18 · Vite · Tailwind · shadcn/ui · TanStack Query · React Router
-│   ├── mobile/               Expo SDK 52 · React Native · Expo Router · NativeWind · TanStack Query
 │   ├── flutter_mobile/       Flutter mobile client (not part of the pnpm workspace)
 │   └── ai-reviewer/          Python FastAPI internal service for paper review/analysis
 ├── packages/
@@ -150,7 +149,7 @@ path and expand URL variables. Vite loads it with `envDir` and exposes only
 `API_PORT`, `WEB_PORT`, `POSTGRES_HOST_PORT`, and `REDIS_HOST_PORT` configure host ports.
 Passwords must contain only letters and digits; `pnpm setup` generates random hex values.
 
-`pnpm dev:mobile` loads root `EXPO_PUBLIC_*` for Expo. `pnpm dev:flutter_mobile`
+`pnpm dev:flutter_mobile`
 reads root `API_BASE_URL` and passes only that public value via a temporary JSON `--dart-define-from-file`.
 Android emulator URLs default to `http://10.0.2.2:4000/api/v1`; use your computer's LAN IP for a physical phone.
 
@@ -202,7 +201,6 @@ back up anything you need first. Native keys under `apps/backend/.keys` are pres
 pnpm dev                      # turbo: run all apps' dev and dev:workers scripts in parallel
 pnpm dev:backend              # backend only
 pnpm dev:web                  # web only
-pnpm dev:mobile               # mobile only (Expo)
 pnpm dev:flutter_mobile       # Flutter mobile (Android emulator API base)
 
 pnpm build                    # build all
@@ -248,8 +246,7 @@ pnpm --filter backend workers:verify:heartbeats
 | PostgreSQL + pgvector + Prisma | Relational integrity, transactional security workflows, migrations, and vector retrieval in one supported runtime store. |
 | Gemini (LLM + embeddings) | One SDK, one API key, generous free tier, cheap production tier. |
 | BullMQ + Redis | Industry standard for Node job queues; survives restarts. |
-| Expo over bare React Native | OTA updates, EAS Build, no native toolchain pain for the common case. |
-| NativeWind | Reuse Tailwind muscle memory across web + mobile. |
+| Flutter for mobile | One Dart codebase for Android (and iOS later), independent of the JS workspace. |
 
 ---
 

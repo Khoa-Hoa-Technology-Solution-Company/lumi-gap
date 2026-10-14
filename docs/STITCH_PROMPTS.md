@@ -1,5 +1,7 @@
 # Stitch Prompts — Publication Trend System
 
+> Tài liệu lịch sử: mobile Expo đã được gỡ, mobile hiện tại là Flutter (`apps/flutter_mobile`).
+
 > 13 ready-to-paste prompts cho Google Stitch để generate UI mockups. **7 web + 6 mobile**. Mỗi prompt tự đứng được, có thể paste vào Stitch lần lượt mà không cần thêm context.
 >
 > **Workflow:** Stitch generate mockup → bạn xem visual → team translate qua shadcn components theo design tokens trong [DESIGN_LANGUAGE.md](DESIGN_LANGUAGE.md).

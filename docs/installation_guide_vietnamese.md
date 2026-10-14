@@ -59,14 +59,13 @@ Vite chỉ đưa `VITE_*` vào bundle; giữ `VITE_API_BASE=/api/v1` để dùng
 ## 3. Mobile
 
 ```powershell
-pnpm dev:mobile
 pnpm dev:flutter_mobile
 ```
 
-Expo dùng `EXPO_PUBLIC_API_BASE`, Flutter dùng `API_BASE_URL` từ root `.env`.
+Flutter dùng `API_BASE_URL` từ root `.env`.
 Flutter được truyền riêng URL qua JSON tạm `--dart-define-from-file`, không nhúng file chứa secret.
 Emulator Android dùng `http://10.0.2.2:4000/api/v1`; điện thoại thật cần IP LAN
-của máy và cùng mạng. SDK Expo/Flutter phải được cài riêng.
+của máy và cùng mạng. Flutter SDK phải được cài riêng.
 
 ## 4. Chuyển cấu hình cũ
 
