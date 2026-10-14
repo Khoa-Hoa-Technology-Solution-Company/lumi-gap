@@ -73,3 +73,26 @@ jobs:
         env:
           DATABASE_URL: postgresql://test:test@localhost:5432/test
           REDIS_URL: redis://localhost:6379
+
+      # The six academic-verification suites are skipped unless their *_INTEGRATION flags are set, so the step above
+      # never runs them. They need a database whose name ends in _test (they refuse to start otherwise).
+      - name: Create integration test database
+        run: PGPASSWORD=test psql -h localhost -U test -d test -c 'CREATE DATABASE lumigap_integration_test'
+
+      - name: Deploy migrations to integration test database
+        run: pnpm --filter backend db:migrate:deploy
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/lumigap_integration_test
+
+      - name: Test (academic verification integration)
+        run: pnpm --filter backend test:integration
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/lumigap_integration_test
+          REDIS_URL: redis://localhost:6379/15
+          NODE_ENV: test
+          EMAIL_DELIVERY_MODE: disabled
+          STORAGE_PROVIDER: local
+          LOG_LEVEL: error
+          STUDENT_AFFILIATION_INTEGRATION: "1"
+          LECTURER_VERIFICATION_INTEGRATION: "1"
+          MENTORSHIP_INTEGRATION: "1"

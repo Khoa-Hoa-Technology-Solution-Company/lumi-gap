@@ -49,3 +49,5 @@ Trước khi gửi, worker kiểm tra trạng thái hồ sơ; mail đến trễ 
 ## Kiểm chứng
 
 `apps/backend/scripts/check-lecturer-verification-workflow.mjs` chạy trong dịch vụ backend Compose, tạo database `_test` riêng, dùng Redis database 15, storage local và tắt email thật. Chỉ database riêng do script vừa tạo được dọn sau kiểm tra.
+
+Các suite persistence chạy trong CI sau bước test thường (cần DB `_test`); cách chạy ở máy và cảnh báo không bật cờ với DB dev: [integration-tests.md](integration-tests.md).
