@@ -78,18 +78,18 @@ describe.skipIf(!enabled).sequential("open registration, onboarding and generic 
     const lecturer = await db.user.findUniqueOrThrow({ where: { email: `lecturer-${marker}@other-university.edu` } });
     const student = await db.user.findUniqueOrThrow({ where: { email: `student-${marker}@other-university.edu` } });
     const project = await projectService.createProject({ title: "Assigned mentoring" }, student.id);
-    await expect(projectMentorshipService.request(project._id, student.id, { mentorUserId: lecturer.id, message: "Please guide our study design." })).rejects.toMatchObject({ statusCode: 403 });
+    await expect(projectMentorshipService.request(project._id, student.id, { mentorUserId: lecturer.id, message: "Please guide our study design" })).rejects.toMatchObject({ statusCode: 403 });
     const additionalBytes = Buffer.from("%PDF-1.4\nappointment\n%%EOF"), additional = { ...file, buffer: additionalBytes, size: additionalBytes.length };
     async function verifyLecturer() {
       const current = await db.affiliation.findFirstOrThrow({ where: { userId: lecturer.id, isPrimary: true, isCurrent: true } });
       await academicProfileService.requestVerification(lecturer.id, { type: "POSITION", path: "MANUAL", institutionId: current.institutionId, evidenceType: "DOCUMENT", primarySourceType: "EMPLOYMENT_DOCUMENT", additionalSourceType: "APPOINTMENT_DOCUMENT" }, file, additional);
       const evidence = await db.verificationEvidence.findFirstOrThrow({ where: { userId: lecturer.id, verificationType: "POSITION", status: "PENDING" }, include: { sources: true } });
-      await academicProfileService.decideVerification(evidence.id, { decision: "approve", identityBindingMethod: "INSTITUTION_CONTACT", identityBindingReference: "Independent institution contact recorded for this test", note: "Institution confirmed the current position and account identity independently.", checklist: { identityMatches: true, institutionMatches: true, currentPositionConfirmed: true, institutionControlled: true, noConflicts: true, identityBound: true, independentEvidence: true }, evidenceChecks: evidence.sources.map(source => ({ id: source.id, status: "VALID" })) }, adminId);
+      await academicProfileService.decideVerification(evidence.id, { decision: "approve", note: "Confirmed current employment and account binding independently.", identityBindingMethod: "INSTITUTION_CONTACT", identityBindingReference: "Independent institution contact channel", checklist: { identityMatches: true, institutionMatches: true, currentPositionConfirmed: true, institutionControlled: true, noConflicts: true, identityBound: true, independentEvidence: true }, evidenceChecks: evidence.sources.map(source => ({ id: source.id, status: "VALID" })) }, adminId);
     }
     await verifyLecturer();
     await assertPeerReviewer(lecturer.id);
     await db.academicProfile.update({ where: { userId: lecturer.id }, data: { supportAvailability: { enabled: true } } });
-    const relation = await projectMentorshipService.request(project._id, student.id, { mentorUserId: lecturer.id, message: "Please guide our study design." });
+    const relation = await projectMentorshipService.request(project._id, student.id, { mentorUserId: lecturer.id, message: "Please guide our study design" });
     expect((await projectMentorshipService.accept(project._id, relation.id, lecturer.id)).status).toBe("ACCEPTED");
     await expect(projectService.getProjectById(project._id, lecturer.id)).rejects.toMatchObject({ statusCode: 404 });
     await authService.updateProfile(lecturer.id, { institution: "Updated university" });

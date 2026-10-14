@@ -12,16 +12,22 @@ import { notificationQueue } from "../../../infrastructure/queue.js";
 import { authMailService } from "../../auth/auth-mail.service.js";
 import { buildMentorshipMail, deliverMentorshipEmail } from "../mentorship-mail.service.js";
 import { requestMentorshipSchema } from "../project-mentorship.controller.js";
+import { newCreatedAcademicData, removeCreatedAcademicData } from "./academic-test-data.js";
 
 vi.mock("../../../infrastructure/queue.js", () => ({ notificationQueue: { add: vi.fn().mockResolvedValue({}) } }));
 vi.mock("../../auth/auth-mail.service.js", async importOriginal => ({ ...await importOriginal<typeof import("../../auth/auth-mail.service.js")>(), authMailService: { sendMentorship: vi.fn().mockResolvedValue(true) } }));
 
-describe.skipIf(process.env.MENTORSHIP_INTEGRATION !== "1").sequential("complete mentorship consent, access and delivery (PostgreSQL)", () => {
+const enabled = process.env.MENTORSHIP_INTEGRATION === "1";
+if (enabled && !new URL(process.env.DATABASE_URL!).pathname.endsWith("_test")) throw new Error("Use an isolated _test database");
+
+describe.skipIf(!enabled).sequential("complete mentorship consent, access and delivery (PostgreSQL)", () => {
   const db = getPrisma();
+  const created = newCreatedAcademicData();
   let owner: string, mentor: string, second: string, member: string, unverified: string, project: string, prefix: string;
   async function user(role: string, verified = false) {
     const u = await db.user.create({ data: { fullName: `${prefix}-${crypto.randomUUID().slice(0, 6)}`, email: `${crypto.randomUUID()}@mentor-test.invalid`, institution: prefix, emailVerifiedAt: new Date(), researchInterests: ["LLM Evaluation"] } });
     await db.academicProfile.create({ data: { userId: u.id, academicRole: role, primaryPosition: role === "LECTURER" ? "LECTURER" : "STUDENT", positionTitle: role === "LECTURER" ? "Senior Lecturer" : "Student", roleVerificationStatus: verified ? "VERIFIED" : "SELF_DECLARED", positionStatus: verified ? "VERIFIED" : "NOT_SUBMITTED", expertiseAreas: ["Software Engineering"] } });
+    created.userIds.push(u.id);
     return u.id;
   }
   const invite = (lecturer = mentor, key?: string) => service.request(project, owner, { mentorUserId: lecturer, message: "Please guide our evaluation methodology", idempotencyKey: key });
@@ -36,7 +42,10 @@ describe.skipIf(process.env.MENTORSHIP_INTEGRATION !== "1").sequential("complete
     await db.projectMember.create({ data: { projectId: project, userId: member } });
     await service.preferences(mentor, { acceptingMentorships: true }); await service.preferences(second, { acceptingMentorships: true });
   });
-  afterAll(disconnectPostgres);
+  afterAll(async () => {
+    await removeCreatedAcademicData(created);
+    await disconnectPostgres();
+  });
 
   it("defaults availability OFF and allows only live verified Lecturers to enable mentoring", async () => {
     const fresh = await user("LECTURER", true);
@@ -228,6 +237,7 @@ describe.skipIf(process.env.MENTORSHIP_INTEGRATION !== "1").sequential("complete
   it("mentor reads useful scoped context and attributable guidance while all writes remain denied", async () => {
     const request = await invite(); await service.accept(project, request.id, mentor);
     const paper = await db.paper.create({ data: { title: "Study method", publicationYear: 2026, primaryProvider: "user", paperStatus: "downloaded", dataStatus: "active", abstractText: "Our study abstract" } });
+    created.paperIds.push(paper.id);
     await db.projectPaper.create({ data: { projectId: project, paperId: paper.id, notes: "Team evidence note" } });
     const context = await service.workspace(project, mentor, "Use a control group");
     expect(context.context.items[0].body).toContain("Team evidence note"); expect(context.guidance[0].attribution).toBe("MENTOR"); expect(context.guidance[0].author?._id).toBe(mentor);

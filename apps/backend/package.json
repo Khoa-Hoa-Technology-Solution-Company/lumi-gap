@@ -11,6 +11,7 @@
     "lint": "eslint \"src/**/*.ts\"",
     "typecheck": "pnpm db:generate && tsc --noEmit",
     "test": "vitest run",
+    "test:integration": "vitest run src/modules/academic-profiles/__tests__/adaptive-lecturer.persistence.test.ts src/modules/academic-profiles/__tests__/shared-academic-profile.persistence.test.ts src/modules/academic-profiles/__tests__/student-affiliation.persistence.test.ts src/modules/auth/__tests__/open-academic-onboarding.persistence.test.ts src/modules/projects/__tests__/academic-relationships.persistence.test.ts src/modules/projects/__tests__/mentorship-workflow.persistence.test.ts --maxWorkers=1 --minWorkers=1",
     "runtime:audit:postgres": "vitest run src/infrastructure/database/postgres-only-runtime.test.ts",
     "test:watch": "vitest",
     "clean": "rimraf dist .turbo",

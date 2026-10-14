@@ -1,5 +1,7 @@
 # Publication Trend — Design Language
 
+> Tài liệu lịch sử: mobile Expo đã được gỡ, mobile hiện tại là Flutter (`apps/flutter_mobile`).
+
 > Single source of truth cho mọi quyết định visual của project. Stitch generate theo doc này. shadcn theme follow doc này. Team build component đồng nhất theo doc này.
 
 ---

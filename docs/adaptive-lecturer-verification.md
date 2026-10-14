@@ -87,6 +87,16 @@ Không đổi SystemRole hoặc AcademicRole khi approve/reject. Unverified/Pend
 
 Admin/operations cần duyệt email/website domains của các trường mới; chưa có dashboard domain approval. Trường chưa có website domain có thể dùng hai tài liệu do trường cấp. Admin cần đánh giá tính hiện hành và identity binding của nội dung; hệ thống không đọc nội dung website hoặc xác minh tính thật của PDF tự động. Retention có thể cấu hình 1–365 ngày theo chính sách. Trusted institution integration là extension tương lai.
 
+## Deployment impact
+
+Migration `20261007000200_open_academic_onboarding` **thu hồi quyền** khi chạy `db:migrate:deploy`:
+
+- Đặt `status = 'REVOKED'` cho mọi dòng `user_capabilities` đang `ACTIVE` có capability `STRUCTURED_REVIEW`, `REVIEW_ARTIFACT`, `MENTOR_PROJECT` hoặc `APPROVE_ACADEMIC_CONTRIBUTION` của **mọi người không phải giảng viên đã xác minh** (`academic_role = LECTURER` và cả `role_verification_status` lẫn `position_status` đều `VERIFIED`).
+- Lịch sử được giữ: dòng cũ chuyển sang `REVOKED`, không bị xoá.
+- `capabilityService.list` cũng lọc lại khi chạy, nên một dòng `ACTIVE` còn sót vẫn không có hiệu lực với người chưa được xác minh. Riêng `APPROVE_ACADEMIC_CONTRIBUTION` còn cần phạm vi tham gia `INTERNAL`.
+- Ai cần quyền review hoặc làm mentor phải hoàn tất xác minh giảng viên. Việc đổi vai trò hoặc làm mất hiệu lực xác minh sau đó cũng thu hồi các quyền này.
+- Người dùng đang có quyền Researcher kiểu cũ sẽ mất truy cập review và mentor ngay sau khi deploy; nên báo trước cho họ và cho quản trị viên xét duyệt.
+
 ## File và API chính
 
 Backend: `prisma/identity.prisma`, migration mới, `lecturer-verification.service.ts`, `institutional-identity.service.ts`, `institutional-email-verification.service.ts`, `institution-domain.service.ts`, `academic-profile.service.ts`, schema/controller, upload middleware, retention, email delivery, affiliation service và operations command.

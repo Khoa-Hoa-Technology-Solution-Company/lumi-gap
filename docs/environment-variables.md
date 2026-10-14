@@ -81,8 +81,7 @@ Users can also save multiple personal API connections in Settings → AI Connect
 | `CREDIT_PRICE_VND` | `EnvSchema` / backend | Default / optional (see template) |
 | `MIN_TOPUP_VND` | `EnvSchema` / backend | Default / optional (see template) |
 | `VITE_API_BASE` | Vite / Docker web build | Default / optional (see template) |
-| `EXPO_PUBLIC_API_BASE` | Mobile launcher | Default / optional (see template) |
-| `API_BASE_URL` | Mobile launcher | Default / optional (see template) |
+| `API_BASE_URL` | Flutter launcher | Default / optional (see template) |
 | `MIGRATION_BATCH_SIZE` | `EnvSchema` / backend | Default / optional (see template) |
 | `CHAT_MAX_PER_HOUR` | `EnvSchema` / backend | Default / optional (see template) |
 | `TEAM_CHAT_MAX_PER_MINUTE` | `EnvSchema` / backend | Default / optional (see template) |
