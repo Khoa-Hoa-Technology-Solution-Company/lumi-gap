@@ -1,61 +1,99 @@
-import { useEffect, useRef, type KeyboardEvent } from "react";
-import { BookOpen, FileText, FileCheck2, Lightbulb, MessageSquare, ShieldCheck, Users, GitPullRequest } from "lucide-react";
+import { useRef, type ComponentType, type KeyboardEvent } from "react";
+import { BookOpen, Compass, FileText, Send, MessageSquare, Users, Award, GraduationCap, LayoutDashboard, ListChecks, NotebookPen } from "lucide-react";
 import { useI18n } from "@/i18n";
 
-export type ProjectTab = "papers" | "members" | "contributions" | "reports" | "gaps" | "chat" | "support" | "submissions";
-const sections = [
-  { key: "papers", label: "Literature", icon: BookOpen, group: "Research workspace" },
-  { key: "gaps", label: "Research Gaps", icon: Lightbulb, group: "Research workspace" },
-  { key: "reports", label: "Artifacts", icon: FileText, group: "Research workspace" },
-  { key: "submissions", label: "Submissions", icon: FileCheck2, group: "Research workspace" },
-  { key: "members", label: "Members", icon: Users, group: "Collaboration" },
-  { key: "support", label: "Academic Support", icon: ShieldCheck, group: "Collaboration" },
-  { key: "contributions", label: "Contributions", icon: GitPullRequest, group: "Collaboration" },
-  { key: "chat", label: "Chat", icon: MessageSquare, group: "Collaboration" },
-] as const;
+export type ProjectTab = "overview" | "plan" | "tasks" | "papers" | "members" | "contributions" | "reports" | "gaps" | "chat" | "support" | "submissions" | "manuscripts";
+
+export const projectSections: Array<{
+  key: ProjectTab;
+  label: string;
+  group: string;
+  icon: ComponentType<{ className?: string }>;
+  iconColor: string;
+}> = [
+  { key: "overview", label: "Overview", group: "Workspace", icon: LayoutDashboard, iconColor: "text-blue-500" },
+  { key: "plan", label: "Research plan", group: "Research", icon: NotebookPen, iconColor: "text-violet-500" },
+  { key: "papers", label: "Literature", group: "Research", icon: BookOpen, iconColor: "text-indigo-500" },
+  { key: "gaps", label: "Research Gaps", group: "Research", icon: Compass, iconColor: "text-amber-500" },
+  { key: "tasks", label: "Tasks & milestones", group: "Collaboration", icon: ListChecks, iconColor: "text-emerald-500" },
+  { key: "chat", label: "Discussions", group: "Collaboration", icon: MessageSquare, iconColor: "text-cyan-500" },
+  { key: "support", label: "Academic Support", group: "Collaboration", icon: GraduationCap, iconColor: "text-purple-500" },
+  { key: "reports", label: "Research outputs", group: "Writing & review", icon: FileText, iconColor: "text-rose-500" },
+  { key: "manuscripts", label: "Manuscripts", group: "Writing & review", icon: FileText, iconColor: "text-indigo-500" },
+  { key: "submissions", label: "Submissions", group: "Writing & review", icon: Send, iconColor: "text-teal-500" },
+  { key: "members", label: "Team & settings", group: "Team", icon: Users, iconColor: "text-slate-500" },
+  { key: "contributions", label: "Contributions", group: "Team", icon: Award, iconColor: "text-yellow-600" },
+];
+
+const groups = ["Workspace", "Research", "Collaboration", "Writing & review", "Team"];
 
 export function ProjectSectionNav({ activeTab, onChange, paperCount, memberCount }: {
   activeTab: ProjectTab; onChange: (tab: ProjectTab) => void; paperCount: number; memberCount: number;
 }) {
   const { t } = useI18n();
-  const navRef = useRef<HTMLElement>(null);
-  useEffect(() => {
-    const tabs = navRef.current?.querySelector<HTMLElement>('[role="tablist"]');
-    const selected = tabs?.querySelector<HTMLElement>('[aria-selected="true"]');
-    if (!tabs || !selected || tabs.clientWidth === 0) return;
-    const viewport = tabs.getBoundingClientRect();
-    const target = selected.getBoundingClientRect();
-    // Reveal the selected tab within its row without moving the page vertically.
-    if (target.left < viewport.left) tabs.scrollLeft += target.left - viewport.left;
-    else if (target.right > viewport.right) tabs.scrollLeft += target.right - viewport.right;
-  }, [activeTab]);
-  const onKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
-    let next: number;
-    if (event.key === "ArrowRight") next = (index + 1) % sections.length;
-    else if (event.key === "ArrowLeft") next = (index + sections.length - 1) % sections.length;
-    else if (event.key === "Home") next = 0;
-    else if (event.key === "End") next = sections.length - 1;
-    else return;
+  const nav = useRef<HTMLElement>(null);
+
+  const keyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
+    const last = projectSections.length - 1;
+    const next = event.key === "ArrowDown" || event.key === "ArrowRight" ? (index + 1) % projectSections.length : event.key === "ArrowUp" || event.key === "ArrowLeft" ? (index + last) % projectSections.length : event.key === "Home" ? 0 : event.key === "End" ? last : -1;
+    if (next < 0) return;
     event.preventDefault();
-    const section = sections[next]!;
+    const section = projectSections[next]!;
     onChange(section.key);
-    navRef.current?.querySelector<HTMLButtonElement>(`#project-tab-${section.key}`)?.focus({ preventScroll: true });
+    const selected = nav.current?.querySelector<HTMLButtonElement>(`#project-tab-${section.key}`);
+    selected?.focus({ preventScroll: true });
+    selected?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
   };
-  return <nav ref={navRef} className="project-section-nav" data-no-i18n aria-label={t("Project sections")}>
-    <div className="project-section-mobile">
-      <label htmlFor="project-section-select">{t("Project sections")}</label>
-      <select id="project-section-select" value={activeTab} onChange={event => onChange(event.target.value as ProjectTab)} aria-controls={`project-panel-${activeTab}`}>
-        {["Research workspace", "Collaboration"].map(group => <optgroup key={group} label={t(group)}>{sections.filter(section => section.group === group).map(section => <option key={section.key} value={section.key}>{t(section.label)}</option>)}</optgroup>)}
-      </select>
-    </div>
-    <div className="project-section-tabs" role="tablist" aria-label={t("Project sections")} aria-orientation="horizontal">
-      {sections.map((section, index) => {
-        const Icon = section.icon;
-        const count = section.key === "papers" ? paperCount : section.key === "members" ? memberCount : undefined;
-        return <button key={section.key} type="button" id={`project-tab-${section.key}`} role="tab" aria-selected={activeTab === section.key} aria-controls={`project-panel-${section.key}`} tabIndex={activeTab === section.key ? 0 : -1} onKeyDown={event => onKeyDown(event, index)} onClick={() => onChange(section.key)} className={`project-section-tab ${section.key === "members" ? "project-section-team" : ""}`}>
-          <Icon aria-hidden="true" /><span>{t(section.label)}</span>{count !== undefined ? <span className="project-section-count">{count}</span> : null}
-        </button>;
-      })}
-    </div>
-  </nav>;
+
+  return (
+    <nav className="coord-workspace-nav" ref={nav} data-no-i18n aria-label={t("Project sections")}>
+      <div className="coord-nav-mobile">
+        <label htmlFor="project-section-select" className="sr-only">{t("Project sections")}</label>
+        <select
+          id="project-section-select"
+          aria-controls={`project-panel-${activeTab}`}
+          value={activeTab}
+          onChange={e => onChange(e.target.value as ProjectTab)}
+        >
+          {groups.map(group => (
+            <optgroup key={group} label={t(group)}>
+              {projectSections.filter(section => section.group === group).map(section => (
+                <option key={section.key} value={section.key}>{t(section.label)}</option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+      </div>
+
+      <div className="coord-nav-tabs" role="tablist" aria-label={t("Project sections")} aria-orientation="vertical">
+        {groups.map(group => (
+          <div className="coord-nav-group" role="presentation" key={group}>
+            {group !== "Workspace" && <span className="coord-nav-label" aria-hidden="true">{t(group)}</span>}
+            {projectSections.filter(section => section.group === group).map(section => {
+              const count = section.key === "papers" ? paperCount : section.key === "members" ? memberCount : undefined;
+              const Icon = section.icon;
+              const isSelected = activeTab === section.key;
+              return (
+                <button
+                  key={section.key}
+                  type="button"
+                  id={`project-tab-${section.key}`}
+                  role="tab"
+                  aria-selected={isSelected}
+                  aria-controls={`project-panel-${section.key}`}
+                  tabIndex={isSelected ? 0 : -1}
+                  onKeyDown={e => keyDown(e, projectSections.indexOf(section))}
+                  onClick={() => onChange(section.key)}
+                >
+                  <Icon className={`h-[18px] w-[18px] shrink-0 transition-colors ${isSelected ? "text-primary" : section.iconColor}`} />
+                  <span className="font-medium">{t(section.label)}</span>
+                  {count !== undefined && <small>{count}</small>}
+                </button>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+    </nav>
+  );
 }

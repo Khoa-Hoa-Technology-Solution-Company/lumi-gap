@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCheck, Loader2, Radio, SendHorizonal, Trash2, XCircle } from "lucide-react";
+import { CheckCheck, CheckCircle2, FileText, Lightbulb, Loader2, Radio, SendHorizonal, Trash2, Users, XCircle } from "lucide-react";
 import { isAdminSystemRole, type ProjectTeamChatMessage } from "@trend/shared-types";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useAuthStore } from "@/stores/auth-store";
+import { useI18n } from "@/i18n";
 import { projectTeamChatApi } from "../api/project-team-chat.api";
 
 interface ProjectTeamChatPanelProps {
@@ -13,6 +14,7 @@ interface ProjectTeamChatPanelProps {
 }
 
 export function ProjectTeamChatPanel({ projectId, ownerId }: ProjectTeamChatPanelProps) {
+  const { t } = useI18n();
   const currentUser = useAuthStore((s) => s.user);
   const queryClient = useQueryClient();
   const [message, setMessage] = useState("");
@@ -20,6 +22,21 @@ export function ProjectTeamChatPanel({ projectId, ownerId }: ProjectTeamChatPane
   const containerRef = useRef<HTMLDivElement | null>(null);
   const lastMarkedReadRef = useRef<string | null>(null);
   const queryKey = useMemo(() => ["project-team-chat", projectId] as const, [projectId]);
+
+  const teamStarters = [
+    {
+      icon: FileText,
+      label: t("Hi team! I've updated the initial paper collection for this project."),
+    },
+    {
+      icon: CheckCircle2,
+      label: t("Let's align on our screening criteria before we start reviewing."),
+    },
+    {
+      icon: Lightbulb,
+      label: t("Check out the candidate research gaps identified in the Gaps tab."),
+    },
+  ];
 
   const historyQuery = useQuery({
     queryKey,
@@ -194,14 +211,19 @@ export function ProjectTeamChatPanel({ projectId, ownerId }: ProjectTeamChatPane
   const isDisabled = sendMutation.isPending || historyQuery.isError;
 
   return (
-    <div className="mt-2 overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-sm dark:border-white/10 dark:bg-zinc-900">
+    <div className="project-team-chat-panel mt-2 overflow-hidden rounded-2xl border border-border/80 bg-background shadow-xs dark:border-white/10">
       {/* Panel Header */}
-      <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4 dark:border-white/10">
-        <div>
-          <h3 className="text-lg font-bold text-slate-900 dark:text-white">Team Chat</h3>
-          <p className="text-sm text-slate-500 dark:text-slate-400">
-            Internal discussion workspace for project members.
-          </p>
+      <div className="flex items-center justify-between border-b border-border/70 px-5 py-3.5 bg-gradient-to-r from-blue-500/[0.04] via-transparent to-transparent">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+            <Users className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="text-base font-bold text-foreground">{t("Team Chat")}</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {t("Internal member discussion")}
+            </p>
+          </div>
         </div>
         <Badge variant="secondary" className={liveStatusBadgeClass(liveStatus)}>
           <Radio className="w-3 h-3" />
@@ -209,9 +231,9 @@ export function ProjectTeamChatPanel({ projectId, ownerId }: ProjectTeamChatPane
         </Badge>
       </div>
 
-      <div className="flex h-[520px] flex-col">
+      <div className="flex h-[560px] flex-col">
         {/* Messages Area */}
-        <div ref={containerRef} className="flex-1 space-y-4 overflow-y-auto bg-slate-50/70 px-5 py-5 dark:bg-black/20">
+        <div ref={containerRef} className="flex-1 space-y-4 overflow-y-auto bg-muted/20 px-5 py-5 dark:bg-black/20">
           {historyQuery.isLoading ? (
             <div className="flex h-full items-center justify-center text-sm text-slate-500">
               <Loader2 className="mr-2 h-4 w-4 animate-spin text-indigo-600" />
@@ -236,13 +258,38 @@ export function ProjectTeamChatPanel({ projectId, ownerId }: ProjectTeamChatPane
               </Button>
             </div>
           ) : visibleMessages.length === 0 ? (
-            <div className="flex h-full flex-col items-center justify-center text-center">
-              <div className="mb-3 rounded-full bg-white dark:bg-zinc-800 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 shadow-sm border border-slate-100/50 dark:border-white/5">
-                No team messages yet
+            <div className="flex h-full flex-col justify-center px-4 py-8 max-w-xl mx-auto text-center">
+              <div className="mb-3 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-500/10 text-blue-600 dark:text-blue-400 mx-auto">
+                <Users className="h-6 w-6" />
               </div>
-              <p className="max-w-sm text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                Start the discussion with your project members.
+              <h4 className="text-base font-bold text-foreground">
+                {t("Team collaboration chat")}
+              </h4>
+              <p className="mt-1 text-xs text-muted-foreground leading-relaxed max-w-sm mx-auto">
+                {t("Internal discussion workspace for project members.")}
               </p>
+              <div className="mt-5 space-y-2 text-left w-full">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground px-1">
+                  {t("Quick prompts")}:
+                </p>
+                {teamStarters.map((starter, idx) => {
+                  const Icon = starter.icon;
+                  return (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => {
+                        setMessage(starter.label);
+                        containerRef.current?.closest(".project-team-chat-panel")?.querySelector("textarea")?.focus();
+                      }}
+                      className="group flex w-full items-center gap-2.5 p-2.5 rounded-xl border border-border/80 bg-background hover:bg-muted/40 hover:border-blue-500/40 transition-all text-xs text-foreground/90 hover:text-foreground shadow-2xs"
+                    >
+                      <Icon className="h-4 w-4 shrink-0 text-blue-500" />
+                      <span className="flex-1 truncate">{starter.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           ) : (
             visibleMessages.map((item) => {
@@ -354,32 +401,37 @@ export function ProjectTeamChatPanel({ projectId, ownerId }: ProjectTeamChatPane
         )}
 
         {/* Input Box */}
-        <div className="border-t border-slate-100 p-4 dark:border-white/10">
+        <div className="border-t border-border/70 p-4 bg-muted/10">
           <div className="flex gap-3">
-            <textarea
-              value={message}
-              onChange={(event) => setMessage(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && !event.shiftKey) {
-                  event.preventDefault();
-                  submit();
+            <div className="flex-1 flex flex-col">
+              <textarea
+                value={message}
+                onChange={(event) => setMessage(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    submit();
+                  }
+                }}
+                maxLength={2000}
+                rows={2}
+                placeholder={
+                  historyQuery.isError
+                    ? t("Chat is unavailable due to access error")
+                    : t("Send a message to your project team members...")
                 }
-              }}
-              maxLength={2000}
-              rows={2}
-              placeholder={
-                historyQuery.isError
-                  ? "Chat is unavailable due to access error"
-                  : "Send a message to your project team members..."
-              }
-              className="min-h-[48px] flex-1 resize-none rounded-xl border border-slate-200 dark:border-slate-800 bg-background px-3 py-2 text-sm shadow-sm outline-none transition focus-visible:ring-1 focus-visible:ring-indigo-500 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-zinc-950"
-              disabled={isDisabled}
-            />
+                className="min-h-[50px] w-full resize-none rounded-xl border border-border/80 bg-background px-3.5 py-2.5 text-sm shadow-2xs outline-none transition focus-visible:ring-2 focus-visible:ring-blue-500/20 focus-visible:border-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={isDisabled}
+              />
+              <span className="text-[10px] text-muted-foreground/70 mt-1 px-1">
+                {t("Press Enter to send · Shift+Enter for new line")}
+              </span>
+            </div>
             <Button
               type="button"
               onClick={submit}
               disabled={!message.trim() || isDisabled}
-              className="h-auto rounded-xl px-4 bg-indigo-600 hover:bg-indigo-700 text-white"
+              className="h-auto rounded-xl px-4 bg-blue-600 hover:bg-blue-700 text-white shadow-xs self-stretch"
             >
               {sendMutation.isPending ? (
                 <Loader2 className="h-4 w-4 animate-spin" />

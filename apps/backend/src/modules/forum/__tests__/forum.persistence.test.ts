@@ -1,3 +1,4 @@
+import { createProjectFixture } from "../../../test-utils/project-fixture.js";
 import { forumCitationToken, forumCitationPaperIds } from "@trend/shared-types";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import express, { type NextFunction, type Request, type Response } from "express";
@@ -32,15 +33,15 @@ describe.sequential("research forum persistence and authorization", () => {
     const prisma = getPrisma();
     const [admin, author, responder, outsider, paper] = await Promise.all([
       prisma.user.create({ data: { email: emails.admin, fullName: "Forum Admin", role: "admin", systemRole: "ADMIN" } }),
-      prisma.user.create({ data: { email: emails.author, fullName: "Question Author" } }),
+      prisma.user.create({ data: { email: emails.author, fullName: "Question Author", emailVerifiedAt: new Date() } }),
       prisma.user.create({ data: { email: emails.responder, fullName: "Evidence Responder" } }),
       prisma.user.create({ data: { email: emails.outsider, fullName: "Forum Outsider" } }),
       prisma.paper.create({ data: { title: `Forum paper ${marker}`, publicationYear: 2026, primaryProvider: "user", paperStatus: "downloaded", dataStatus: "active" } }),
     ]);
     adminId = admin.id; authorId = author.id; responderId = responder.id; outsiderId = outsider.id; paperId = paper.id;
     const [publicProject, privateProject] = await Promise.all([
-      prisma.project.create({ data: { title: `Public project ${marker}`, ownerId: author.id, visibility: "PUBLIC_SUMMARY" } }),
-      prisma.project.create({ data: { title: `Private project ${marker}`, ownerId: author.id, visibility: "PRIVATE" } }),
+      createProjectFixture({ data: { title: `Public project ${marker}`, ownerId: author.id, visibility: "PUBLIC_SUMMARY" } }),
+      createProjectFixture({ data: { title: `Private project ${marker}`, ownerId: author.id, visibility: "PRIVATE" } }),
     ]);
     const corpus = await prisma.literatureCorpus.create({ data: { ownerId: author.id, projectId: publicProject.id, name: `Forum corpus ${marker}`, topic: "Forum testing" } });
     const gap = await prisma.researchGap.create({ data: { topic: "Forum testing", normalizedTopic: `forum-testing-${marker}`, title: `Shareable gap ${marker}`, description: "Candidate gap", rationale: "Test evidence", source: "user", userId: author.id, projectId: publicProject.id, corpusId: corpus.id, forumShareable: true } });

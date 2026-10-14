@@ -25,6 +25,8 @@ export interface GapProjectEvidence {
 }
 
 export interface ResearchGapItem {
+  assessmentStatus?: import("./project-research.js").GapAssessment;
+  version?: number;
   id: string;
   topic: string;
   normalizedTopic: string;
@@ -238,6 +240,7 @@ export type GapValidationAction = "VALIDATE" | "CHALLENGE" | "REQUEST_EVIDENCE" 
 
 /** A gap waiting for an expert decision (GET /gaps/validation-queue). Project details are never included. */
 export interface GapValidationQueueItem {
+  version?: number;
   id: string;
   topic: string;
   title: string;
@@ -262,6 +265,7 @@ export interface GapValidationQueueItem {
 }
 
 export interface GapValidationRecord {
+  gapVersion?: number;
   id: string;
   action: GapValidationAction;
   comment: string;
@@ -282,6 +286,7 @@ export interface GapEvidenceRecordView {
 }
 
 export interface CreateGapValidationRequest {
+  expectedVersion: number;
   action: GapValidationAction;
   comment: string;
   suggestedChanges?: string;

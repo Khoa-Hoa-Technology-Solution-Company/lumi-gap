@@ -1,5 +1,6 @@
 import type {
   AcademicReviewInput,
+  ManuscriptSourceVersionLink,
   CreateReviewRequestInput,
   CreateReviewTemplateInput,
   ReviewAvailabilitySettings,
@@ -69,6 +70,7 @@ export interface ReviewWorkspace {
   criteria: ReviewTemplateVersionDetail["criteria"];
   artifactContent?: string;
   artifactRevision?: { id: string; revisionNumber: number; contentType: string };
+  manuscriptSource?: ManuscriptSourceVersionLink;
   previousRevisionItems: Array<{ id: string; description: string; status: string; responses: Array<{ submissionRevisionId: string; responseText: string; status: string }> }>;
   roundNumber: number;
 }

@@ -1,3 +1,4 @@
+import { createProjectFixture } from "../../../test-utils/project-fixture.js";
 import { beforeEach, afterAll, describe, it, expect, vi } from "vitest";
 import { getPrisma, disconnectPostgres } from "../../../infrastructure/database/prisma.js";
 import { projectMentorshipService as service } from "../project-mentorship.service.js";
@@ -21,7 +22,7 @@ describe.skipIf(process.env.STUDENT_AFFILIATION_INTEGRATION !== "1").sequential(
       await db.academicProfile.create({ data: { userId: user.id, academicRole: role, primaryPosition: role === "LECTURER" ? "LECTURER" : "STUDENT", positionTitle: role === "LECTURER" ? "Lecturer" : "Student", roleVerificationStatus: verified ? "VERIFIED" : "SELF_DECLARED", positionStatus: verified ? "VERIFIED" : "NOT_SUBMITTED", supportAvailability: { enabled: true } } });
     }
     [owner, lecturer, member, unverified, admin] = ids;
-    project = (await db.project.create({ data: { ownerId: owner, title: "Safe title", description: "CONFIDENTIAL internal description", visibility: "PRIVATE" } })).id;
+    project = (await createProjectFixture({ data: { ownerId: owner, title: "Safe title", description: "CONFIDENTIAL internal description", visibility: "PRIVATE" } })).id;
     await db.projectMember.create({ data: { projectId: project, userId: member, role: "MEMBER", status: "ACTIVE" } });
   });
   afterAll(async () => {
@@ -101,7 +102,7 @@ describe.skipIf(process.env.STUDENT_AFFILIATION_INTEGRATION !== "1").sequential(
   });
 
   it("keeps legacy public Project IDs consistent in relationship responses", async () => {
-    const legacy = "112233445566778899aabbcc";
+    const legacy = crypto.randomUUID().replaceAll("-", "").slice(0, 24);
     await getPrisma().project.update({ where: { id: project }, data: { legacyMongoId: legacy } });
     const request = await service.request(legacy, owner, { mentorUserId: lecturer, message: "Help with research methods" });
     expect(request.projectId).toBe(legacy);

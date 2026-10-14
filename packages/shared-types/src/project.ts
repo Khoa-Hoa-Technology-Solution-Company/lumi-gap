@@ -6,10 +6,12 @@ export interface ProjectMemberUserSummary {
 }
 
 export type ProjectStatus = "PLANNING" | "ACTIVE" | "ON_HOLD" | "COMPLETED" | "ARCHIVED";
-export type ProjectVisibility = "PRIVATE" | "INVITE_ONLY" | "PUBLIC_SUMMARY";
+// Legacy visibility values remain readable during the client migration.
+export type ProjectVisibility = "PRIVATE" | "PUBLIC" | "INVITE_ONLY" | "PUBLIC_SUMMARY";
+export type ResearchApproach = "EXPLORATORY" | "LITERATURE_REVIEW" | "EMPIRICAL" | "UNDECIDED";
 export type ProjectRole = "OWNER" | "MEMBER";
 export type ProjectMemberStatus = "ACTIVE" | "REMOVED" | "LEFT";
-export type ProjectScreeningStatus = "UNDECIDED" | "INCLUDED" | "EXCLUDED";
+export type ProjectScreeningStatus = "UNDECIDED" | "INCLUDED" | "EXCLUDED" | "MAYBE";
 export type ProjectReadingStatus = "NOT_STARTED" | "READING" | "REVIEWED";
 export type ProjectExclusionReason =
   | "WRONG_RESEARCH_TOPIC"
@@ -86,6 +88,8 @@ export interface ProjectInvitation {
   status: ProjectInvitationStatus;
   expiresAt: string;
   createdAt: string;
+  lastSentAt?: string;
+  resendAvailableAt?: string;
 }
 
 export interface IncomingProjectInvitation {
@@ -201,6 +205,13 @@ export interface IProject {
   title: string;
   description?: string;
   researchField?: string;
+  researchAreas?: string[];
+  researchApproach?: ResearchApproach;
+  publicSummary?: string;
+  mentorshipDiscovery?: "CLOSED" | "SEEKING_MENTOR";
+  version?: number;
+  screeningMode?: "EXPLORATORY" | "INDEPENDENT";
+  screeningBlinded?: boolean;
   screeningCriteria?: {
     inclusion: string[];
     exclusion: string[];
@@ -228,6 +239,9 @@ export interface CreateProjectRequest {
   researchField?: string;
   status?: Exclude<ProjectStatus, "ARCHIVED">;
   visibility?: ProjectVisibility;
+  researchAreas?: string[];
+  researchApproach?: ResearchApproach;
+  idempotencyKey?: string;
 }
 
 export interface UpdateProjectRequest {
@@ -236,8 +250,19 @@ export interface UpdateProjectRequest {
   researchField?: string | null;
   status?: ProjectStatus;
   visibility?: ProjectVisibility;
+  publicSummary?: string;
+  researchAreas?: string[];
+  researchApproach?: ResearchApproach;
+  expectedVersion?: number;
   inclusionCriteria?: string[];
   exclusionCriteria?: string[];
+}
+
+export interface ProjectTeamPage {
+  members: IProjectMember[];
+  invitations: ProjectInvitation[];
+  memberMeta: AcademicPageMeta;
+  invitationMeta: AcademicPageMeta;
 }
 
 export interface AddProjectMemberRequest {
@@ -251,6 +276,7 @@ export interface AddProjectPaperRequest {
 }
 
 export interface UpdateProjectPaperRequest {
+  expectedUpdatedAt?: string;
   screeningStatus?: ProjectScreeningStatus;
   readingStatus?: ProjectReadingStatus;
   inclusionReason?: string | null;

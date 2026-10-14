@@ -1,3 +1,4 @@
+import { createProjectFixture } from "../../../test-utils/project-fixture.js";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { getPrisma, disconnectPostgres } from "../../../infrastructure/database/prisma.js";
 import * as database from "../../../infrastructure/database/prisma.js";
@@ -31,7 +32,7 @@ describe.skipIf(process.env.MENTORSHIP_INTEGRATION !== "1").sequential("complete
     env.EMAIL_DELIVERY_MODE = "disabled";
     prefix = `mentorship-${crypto.randomUUID().slice(0, 8)}`;
     owner = await user("STUDENT"); mentor = await user("LECTURER", true); second = await user("LECTURER", true); member = await user("RESEARCHER"); unverified = await user("LECTURER");
-    project = (await db.project.create({ data: { ownerId: owner, title: prefix, description: "PRIVATE-RESEARCH-NOTES", researchField: "Software Engineering", visibility: "PRIVATE" } })).id;
+    project = (await createProjectFixture({ data: { ownerId: owner, title: prefix, description: "PRIVATE-RESEARCH-NOTES", researchField: "Software Engineering", visibility: "PRIVATE" } })).id;
     await db.projectMember.create({ data: { projectId: project, userId: member } });
     await service.preferences(mentor, { acceptingMentorships: true }); await service.preferences(second, { acceptingMentorships: true });
   });
@@ -50,7 +51,7 @@ describe.skipIf(process.env.MENTORSHIP_INTEGRATION !== "1").sequential("complete
     await expect(service.offer(project, mentor, { message: "I can help" })).rejects.toMatchObject({ statusCode: 409 });
     await expect(service.discovery(mentor)).rejects.toMatchObject({ statusCode: 409 });
     expect((await service.mentors(project, owner, { q: prefix })).items.some(m => m._id === mentor)).toBe(false);
-    const otherProject = (await db.project.create({ data: { ownerId: owner, title: "Another project" } })).id;
+    const otherProject = (await createProjectFixture({ data: { ownerId: owner, title: "Another project" } })).id;
     await expect(service.request(otherProject, owner, { mentorUserId: mentor, message: "Please help" })).rejects.toMatchObject({ statusCode: 409 });
     expect((await service.list(project, mentor)).requests[0].status).toBe("PENDING");
     await service.accept(project, request.id, mentor);
@@ -150,7 +151,7 @@ describe.skipIf(process.env.MENTORSHIP_INTEGRATION !== "1").sequential("complete
     expect(outcomes.filter(r => r.status === "fulfilled")).toHaveLength(1);
     const live = await db.mentorshipRequest.findUniqueOrThrow({ where: { id: request.id } });
     expect(await db.mentorRelationship.count({ where: { sourceRequestId: request.id } })).toBe(live.status === "ACCEPTED" ? 1 : 0);
-    const other = (await db.project.create({ data: { ownerId: owner, title: "Offered project", mentorshipDiscovery: "SEEKING_MENTOR", mentorshipSummary: "Safe study design preview" } })).id;
+    const other = (await createProjectFixture({ data: { ownerId: owner, title: "Offered project", mentorshipDiscovery: "SEEKING_MENTOR", mentorshipSummary: "Safe study design preview" } })).id;
     const offer = await service.offer(other, second, { message: "Offer guidance" });
     const response = await Promise.allSettled([service.accept(other, offer.id, owner), service.cancel(other, offer.id, second)]);
     expect(response.filter(r => r.status === "fulfilled")).toHaveLength(1);
@@ -193,16 +194,16 @@ describe.skipIf(process.env.MENTORSHIP_INTEGRATION !== "1").sequential("complete
     await expect(service.accept(project, request.id, mentor)).rejects.toMatchObject({ statusCode: 409 });
   });
   it("prevents acceptance after requester loses ownership, verification loss or project closure", async () => {
-    const request = await invite(); await db.project.update({ where: { id: project }, data: { ownerId: member } });
+    const request = await invite(); await projectService.transferOwnership(project, member, owner);
     await expect(service.accept(project, request.id, mentor)).rejects.toMatchObject({ statusCode: 409 });
-    await db.project.update({ where: { id: project }, data: { ownerId: owner } });
+    await projectService.transferOwnership(project, owner, member);
     await db.academicProfile.update({ where: { userId: mentor }, data: { positionStatus: "INVALIDATED" } });
     await expect(service.accept(project, request.id, mentor)).rejects.toMatchObject({ statusCode: 403 });
     await db.academicProfile.update({ where: { userId: mentor }, data: { positionStatus: "VERIFIED" } });
     for (const status of ["ARCHIVED", "COMPLETED"]) { await db.project.update({ where: { id: project }, data: { status } }); await expect(service.accept(project, request.id, mentor)).rejects.toMatchObject({ statusCode: 409 }); }
   });
   it("only explicitly seeking projects are discoverable; private preview stays safe and paginated", async () => {
-    await seeking(); const secondProject = (await db.project.create({ data: { title: `${prefix}-second`, ownerId: owner, visibility: "PUBLIC_SUMMARY" } })).id;
+    await seeking(); const secondProject = (await createProjectFixture({ data: { title: `${prefix}-second`, ownerId: owner, visibility: "PUBLIC_SUMMARY" } })).id;
     const found = await service.discovery(mentor, { q: prefix, pageSize: 1 });
     expect(found.meta.total).toBe(1); expect(found.items[0].id).toBe(project);
     expect(JSON.stringify(found)).not.toContain("PRIVATE-RESEARCH-NOTES");
@@ -217,7 +218,7 @@ describe.skipIf(process.env.MENTORSHIP_INTEGRATION !== "1").sequential("complete
   it("rejects forged receiver, unrelated project, self/member mentorship and unrelated termination", async () => {
     const request = await invite();
     await expect(service.accept(project, request.id, second)).rejects.toMatchObject({ statusCode: 403 });
-    const unrelated = (await db.project.create({ data: { ownerId: member, title: "Unrelated" } })).id;
+    const unrelated = (await createProjectFixture({ data: { ownerId: member, title: "Unrelated" } })).id;
     await expect(service.accept(unrelated, request.id, member)).rejects.toMatchObject({ statusCode: 404 });
     await db.projectMember.create({ data: { projectId: project, userId: second } });
     await expect(invite(second)).rejects.toMatchObject({ statusCode: 409 });
@@ -239,7 +240,7 @@ describe.skipIf(process.env.MENTORSHIP_INTEGRATION !== "1").sequential("complete
     await expect(projectService.updateProjectPaper(project, paper.id, { screeningStatus: "INCLUDED" }, mentor)).rejects.toMatchObject({ statusCode: 403 });
     expect(await db.reviewerAssignment.count({ where: { reviewerId: mentor } })).toBe(0);
     await expect(reviewService.saveReview(project, mentor, {} as never, true)).rejects.toMatchObject({ statusCode: 404 });
-    const unrelated = (await db.project.create({ data: { ownerId: member, title: "Unrelated" } })).id;
+    const unrelated = (await createProjectFixture({ data: { ownerId: member, title: "Unrelated" } })).id;
     await expect(service.workspace(unrelated, mentor)).rejects.toMatchObject({ statusCode: 403 });
   });
   it.each(["owner", "mentor"])("%s can end mentorship, immediately revoking access and preserving history", async party => {
@@ -343,8 +344,10 @@ describe.skipIf(process.env.MENTORSHIP_INTEGRATION !== "1").sequential("complete
     expect(mail.html).not.toContain("<script>"); expect(mail.html).not.toContain("<img src=x"); expect(mail.html).toContain("A&amp;B"); expect(mail.html).toContain('lang="vi"');
     expect(mail.text).toContain("/academic-support?projectId="); expect(mail.text).not.toMatch(/token=/);
   });
-  it("explicit project deletion follows existing cascade policy without dangling consent", async () => {
-    const request = await invite(); await service.accept(project, request.id, mentor); await projectService.deleteProject(project, owner);
-    expect(await db.mentorRelationship.count({ where: { projectId: project } })).toBe(0); expect(await db.mentorshipRequest.count({ where: { projectId: project } })).toBe(0);
+  it("preserves mentorship consent and relationship history by requiring archive instead of deletion", async () => {
+    const request = await invite(); await service.accept(project, request.id, mentor);
+    await expect(projectService.deleteProject(project, owner)).rejects.toMatchObject({ statusCode: 409 });
+    await projectService.archiveProject(project, owner);
+    expect(await db.mentorRelationship.count({ where: { projectId: project } })).toBe(1); expect(await db.mentorshipRequest.count({ where: { projectId: project } })).toBe(1);
   });
 });

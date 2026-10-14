@@ -1,0 +1,117 @@
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { chromium, expect as uiExpect, type Browser, type Page } from "@playwright/test";
+import { createServer, type Server } from "node:http";
+import { once } from "node:events";
+import { mkdir } from "node:fs/promises";
+import { createApp } from "../../../app.js";
+import { getPrisma } from "../../../infrastructure/database/prisma.js";
+import { createProjectFixture } from "../../../test-utils/project-fixture.js";
+import { tokenService, hashOpaqueToken } from "../../auth/token.service.js";
+import { projectTasksService } from "../project-tasks.service.js";
+import { allocationService } from "../allocation.service.js";
+import { workContributionsService } from "../work-contributions.service.js";
+import { projectService } from "../project.service.js";
+const enabled = process.env.CONTRIBUTIONS_BROWSER_TEST === "1" && process.env.DATABASE_URL?.includes("127.0.0.1:15439/lumigap_project_slice_test") && process.env.REDIS_URL === "redis://127.0.0.1:16389";
+describe.skipIf(!enabled).sequential("project contributions in Chromium against persisted PostgreSQL", () => {
+  let browser: Browser, server: Server, ownerPage: Page, memberPage: Page, peerPage: Page, projectId: string, owner: string, member: string, peer: string;
+  const db = getPrisma(), origin = "http://127.0.0.1:13000", screenshotDir = "../../docs/contributions-audit-screenshots";
+  async function actor(name: string) {
+    const user = await db.user.create({ data: { fullName: name, email: `browser-${crypto.randomUUID()}@example.org`, emailVerifiedAt: new Date(), onboardingCompletedAt: new Date() } });
+    await db.academicProfile.create({ data: { userId: user.id, primaryPosition: "RESEARCH_STAFF", academicRole: "RESEARCHER", roleVerificationStatus: "SELF_DECLARED", positionStatus: "NOT_SUBMITTED" } });
+    const sessionId = crypto.randomUUID(); await db.refreshToken.create({ data: { userId: user.id, familyId: sessionId, tokenHash: hashOpaqueToken(crypto.randomUUID()), expiresAt: new Date(Date.now() + 3600000) } });
+    return { userId: user.id, token: tokenService.signAccessToken({ sub: user.id, systemRole: "USER", sessionId }).token };
+  }
+  async function pageFor(person: Awaited<ReturnType<typeof actor>>) {
+    const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+    await context.addInitScript(({ userId, token }) => { localStorage.setItem("trend-auth", JSON.stringify({ state: { user: { id: userId, systemRole: "USER" }, tokens: { accessToken: token, refreshToken: "synthetic-browser-session" } }, version: 1 })); localStorage.setItem("LumiGap.uiLanguage", "en"); localStorage.setItem("lumigap-ui-language", "en"); }, person);
+    return context.newPage();
+  }
+  beforeAll(async () => {
+    server = createServer(createApp()); server.listen(14039, "127.0.0.1"); await once(server, "listening"); browser = await chromium.launch({ headless: true }); await mkdir(screenshotDir, { recursive: true });
+    const a = await actor("Methodology researcher"), b = await actor("Analysis researcher with a long collaboration name"), c = await actor("Validation researcher"); owner = a.userId; member = b.userId; peer = c.userId;
+    const p = await createProjectFixture({ data: { title: "Contribution governance browser test", description: "Real work records and explicit consensus", ownerId: owner, status: "ACTIVE", createdAt: new Date(Date.now() - 86400000) } }); projectId = p.id;
+    await db.projectMember.createMany({ data: [member, peer].map(userId => ({ projectId, userId })) }); ownerPage = await pageFor(a); memberPage = await pageFor(b); peerPage = await pageFor(c);
+    await projectTasksService.save(projectId, member, { title: "Analysis protocol deliverable", description: "Completed the analysis protocol for the experiment", status: "DONE", blockedReason: "", assigneeId: member, milestoneId: null, dueAt: null, link: null, clientKey: crypto.randomUUID() });
+  }, 30000);
+  afterAll(async () => { if (browser) await browser.close(); if (server) { server.close(); await once(server, "close"); } });
+  it("records offline work, peer acknowledgement, disputes, new revision consent, finalization and export", async () => {
+    await ownerPage.goto(`${origin}/projects/${projectId}?tab=contributions&contributionTab=work`);
+    await ownerPage.getByRole("button", { name: "Record work contribution", exact: true }).click();
+    await ownerPage.getByLabel("Title", { exact: true }).fill("Offline methodology synthesis");
+    await ownerPage.getByLabel("Description", { exact: true }).fill("Synthesized the methodology from team interviews and offline experiment notes.");
+    await ownerPage.getByLabel("Explanatory evidence", { exact: true }).fill("Meeting notes and methodology protocol reviewed with the team.");
+    await ownerPage.getByLabel("Related task", { exact: true }).selectOption({ label: "Analysis protocol deliverable" }); await ownerPage.getByRole("button", { name: "Link task deliverable", exact: true }).click();
+    await ownerPage.getByRole("button", { name: "Save draft", exact: true }).click();
+    await ownerPage.getByRole("button", { name: "Submit for acknowledgement", exact: true }).click();
+    await memberPage.goto(`${origin}/projects/${projectId}?tab=contributions&contributionTab=work`);
+    await memberPage.getByRole("button", { name: /Offline methodology synthesis/ }).click();
+    await memberPage.getByRole("button", { name: "Acknowledge as independent peer", exact: true }).click();
+    await uiExpect(memberPage.getByText("Acknowledged by a peer", { exact: true }).first()).toBeVisible();
+    await memberPage.evaluate(() => window.scrollTo(0, 0)); await memberPage.screenshot({ path: `${screenshotDir}/work-desktop.png`, fullPage: true });
+    await memberPage.setViewportSize({ width: 390, height: 844 }); await memberPage.evaluate(() => window.scrollTo(0, 0)); await memberPage.screenshot({ path: `${screenshotDir}/work-mobile.png`, fullPage: true }); expect(await memberPage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true); await memberPage.setViewportSize({ width: 1440, height: 1000 });
+    await ownerPage.getByRole("button", { name: "Contribution allocation", exact: true }).click();
+    await ownerPage.getByRole("button", { name: "Create allocation period", exact: true }).click();
+    await ownerPage.getByLabel("Title", { exact: true }).fill("Methodology phase"); await ownerPage.getByLabel("Description", { exact: true }).fill("Offline methodology and analysis work for this phase"); await ownerPage.getByLabel("Evaluation scope", { exact: true }).fill("Research effort in methodology design and analysis");
+    const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Ho_Chi_Minh", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+    const startDate = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+    await ownerPage.getByLabel("Period start", { exact: true }).fill(startDate); await ownerPage.getByLabel("Period end", { exact: true }).fill(today);
+    await ownerPage.getByRole("button", { name: "Create period", exact: true }).click(); await ownerPage.getByRole("button", { name: "Create allocation draft", exact: true }).click();
+    async function fillProposal(rationale: string, values: string[]) { for (const [index, name] of ["Methodology researcher", "Analysis researcher with a long collaboration name", "Validation researcher"].entries()) await ownerPage.getByRole("textbox", { name: `Proposed percentage: ${name}`, exact: true }).fill(values[index]!); await ownerPage.getByLabel("Proposal rationale", { exact: true }).fill(rationale); await ownerPage.getByRole("button", { name: "Save draft", exact: true }).click(); await ownerPage.getByRole("button", { name: "Submit proposal", exact: true }).click(); }
+    await fillProposal("Initial team proposal based on documented methodology and analysis work", ["60.00", "25.00", "15.00"]);
+    const period = await db.allocationPeriod.findFirstOrThrow({ where: { projectId } }); let revision = await db.allocationRevision.findFirstOrThrow({ where: { periodId: period.id }, orderBy: { revision: "desc" } });
+    await ownerPage.getByRole("button", { name: "Approve this exact revision", exact: true }).click();
+    await memberPage.goto(`${origin}/projects/${projectId}/allocation?revision=${revision.id}`); await memberPage.getByRole("button", { name: "Approve this exact revision", exact: true }).click();
+    await peerPage.goto(`${origin}/projects/${projectId}/allocation?revision=${revision.id}`); await peerPage.getByLabel("Explanation for requested changes", { exact: true }).fill("Please include the validation protocol contribution in the proposal rationale"); await peerPage.getByRole("button", { name: "Request changes", exact: true }).click();
+    await uiExpect(peerPage.getByText("Disputed", { exact: true })).toBeVisible(); await ownerPage.reload(); await ownerPage.getByRole("button", { name: "Create proposal revision", exact: true }).click();
+    await fillProposal("Revised agreement recognizes the documented analysis and validation protocol contributions", ["40.00", "35.00", "25.00"]);
+    revision = await db.allocationRevision.findFirstOrThrow({ where: { periodId: period.id }, orderBy: { revision: "desc" } }); expect(await db.allocationApproval.count({ where: { revisionId: revision.id } })).toBe(0);
+    await ownerPage.getByRole("button", { name: "Approve this exact revision", exact: true }).click(); await memberPage.goto(`${origin}/projects/${projectId}/allocation?revision=${revision.id}`); await memberPage.getByRole("button", { name: "Approve this exact revision", exact: true }).click();
+    await peerPage.goto(`${origin}/projects/${projectId}/allocation?revision=${revision.id}`); await peerPage.getByRole("button", { name: "Approve this exact revision", exact: true }).click(); await memberPage.reload();
+    await uiExpect(memberPage.getByText("Finalized", { exact: true })).toBeVisible(); expect((await db.allocationRevision.findUniqueOrThrow({ where: { id: revision.id } })).status).toBe("FINALIZED");
+    expect(await db.allocationApproval.count({ where: { revisionId: revision.id, decision: "APPROVE" } })).toBe(3);
+    expect(await db.projectActivity.count({ where: { entityId: revision.id, type: "ALLOCATION_FINALIZED" } })).toBe(1);
+    expect(await db.notification.count({ where: { targetUuid: projectId, type: "PROJECT_ALLOCATION_UPDATE", emailStatus: "PENDING" } })).toBeGreaterThan(0);
+    await uiExpect(memberPage.getByText(`${startDate} → ${today}`, { exact: true })).toBeVisible();
+    await memberPage.evaluate(() => window.scrollTo(0, 0)); await memberPage.screenshot({ path: `${screenshotDir}/allocation-desktop.png`, fullPage: true });
+    const download = memberPage.waitForEvent("download"); await memberPage.getByRole("button", { name: "Export agreed allocation", exact: true }).click(); expect((await download).suggestedFilename()).toBe("allocation-v2.json");
+    await memberPage.setViewportSize({ width: 390, height: 844 }); await memberPage.evaluate(() => window.scrollTo(0, 0)); await memberPage.screenshot({ path: `${screenshotDir}/allocation-mobile.png`, fullPage: true }); expect(await memberPage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await ownerPage.getByRole("button", { name: "Activity", exact: true }).click(); await uiExpect(ownerPage.getByText("Recorded activity does not automatically determine contribution percentages.")).toBeVisible(); await ownerPage.evaluate(() => window.scrollTo(0, 0)); await ownerPage.screenshot({ path: `${screenshotDir}/activity-desktop.png`, fullPage: true });
+    await uiExpect(ownerPage.getByText("Completed deliverables", { exact: true }).last()).toBeVisible(); await ownerPage.setViewportSize({ width: 390, height: 844 }); await ownerPage.evaluate(() => window.scrollTo(0, 0)); await ownerPage.screenshot({ path: `${screenshotDir}/activity-mobile.png`, fullPage: true }); expect(await ownerPage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  }, 120000);
+  it("follows D's persisted notification to restricted review after departure, then disputes without project access", async () => {
+    const former = await actor("Former contributor D"), privateEvidence = "Private interview files retained by the team";
+    const p = await createProjectFixture({ data: { title: "Former participant private project", ownerId: owner, status: "ACTIVE", createdAt: new Date(Date.now() - 86400000) } });
+    await db.projectMember.createMany({ data: [member, peer, former.userId].map(userId => ({ projectId: p.id, userId })) });
+    const work = await workContributionsService.save(p.id, former.userId, { title: "Departed participant protocol", description: "Completed the methodology protocol before leaving the research team", source: "MANUAL", workDate: new Date().toISOString(), participants: [{ userId: former.userId, roles: ["METHODOLOGY"] }], evidence: privateEvidence, evidenceRefs: [], clientKey: crypto.randomUUID() });
+    await workContributionsService.submit(p.id, former.userId, work.id, 1);
+    await projectService.removeMemberFromProject(p.id, former.userId, owner);
+    const period = await allocationService.createPeriod(p.id, owner, { title: "Historical research phase", description: "Methodology effort including departed researchers", scope: "Research effort before D left this team", periodStart: new Date(Date.now() - 86400000).toISOString(), periodEnd: new Date().toISOString(), clientKey: crypto.randomUUID() });
+    const draft = await allocationService.draft(p.id, owner, period.id, { shares: [{ userId: owner, basisPoints: 4000, rationale: "Methodology design" }, { userId: member, basisPoints: 3000, rationale: "Data analysis" }, { userId: peer, basisPoints: 2500, rationale: "Validation work" }, { userId: former.userId, basisPoints: 500, rationale: "Research protocol" }], rationale: "Documented research effort including D's protocol work", clientKey: crypto.randomUUID() });
+    await allocationService.submit(p.id, owner, draft.id, 1);
+    const page = await pageFor(former); await page.goto(`${origin}/notifications`);
+    await page.getByRole("button", { name: /Cập nhật đóng góp/ }).first().click();
+    await uiExpect(page).toHaveURL(new RegExp(`/projects/${p.id}/allocation\\?revision=${draft.id}`));
+    await uiExpect(page.getByText("This restricted view shares the allocation agreement only. Project documents require separate membership.")).toBeVisible();
+    await uiExpect(page.getByText("Departed participant protocol", { exact: false })).toBeVisible();
+    await uiExpect(page.getByText(privateEvidence)).toHaveCount(0);
+    const denied = await page.request.get(`${origin}/api/v1/projects/${p.id}/contributions/work`, { headers: { Authorization: `Bearer ${former.token}` } }); expect(denied.status()).toBe(404);
+    await page.getByLabel("Explanation for requested changes", { exact: true }).fill("This proposal understates the research protocol completed before departure");
+    await page.getByRole("button", { name: "Request changes", exact: true }).click(); await uiExpect(page.getByText("Disputed", { exact: true })).toBeVisible();
+    expect((await db.allocationRevision.findUniqueOrThrow({ where: { id: draft.id } })).status).toBe("DISPUTED");
+    await page.setViewportSize({ width: 390, height: 844 }); await page.evaluate(() => window.scrollTo(0, 0)); await page.screenshot({ path: `${screenshotDir}/former-participant-mobile.png`, fullPage: true }); expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  }, 60000);
+  it("renders a Vietnamese single-participant agreement and requires explicit self acknowledgement", async () => {
+    const solo = await actor("Nghiên cứu viên độc lập"), p = await createProjectFixture({ data: { title: "Dự án một thành viên", ownerId: solo.userId, status: "ACTIVE", createdAt: new Date(Date.now() - 86400000) } });
+    const period = await allocationService.createPeriod(p.id, solo.userId, { title: "Giai đoạn phương pháp", description: "Công việc xây dựng phương pháp nghiên cứu", scope: "Nỗ lực nghiên cứu trong giai đoạn phương pháp", periodStart: new Date(Date.now() - 86400000).toISOString(), periodEnd: new Date().toISOString(), clientKey: crypto.randomUUID() });
+    const draft = await allocationService.draft(p.id, solo.userId, period.id, { shares: [{ userId: solo.userId, basisPoints: 10000, rationale: "Toàn bộ công việc của dự án một thành viên" }], rationale: "Tự ghi nhận nỗ lực nghiên cứu đã thực hiện trong giai đoạn này", clientKey: crypto.randomUUID() });
+    await allocationService.submit(p.id, solo.userId, draft.id, 1); expect(await db.allocationApproval.count({ where: { revisionId: draft.id } })).toBe(0);
+    const page = await pageFor(solo); await page.goto(origin);
+    await page.evaluate(() => { localStorage.setItem("lumigap.uiLanguage", "vi"); localStorage.setItem("LumiGap.uiLanguage", "vi"); });
+    await page.goto(`${origin}/projects/${p.id}/allocation?revision=${draft.id}`);
+    await uiExpect(page.getByText("Kết quả một người: tự xác nhận, chưa có xác nhận độc lập từ đồng nghiệp.")).toBeVisible();
+    await page.getByRole("button", { name: "Chấp thuận phiên bản này", exact: true }).click();
+    await uiExpect(page.getByText("Đã thống nhất", { exact: true })).toBeVisible();
+    expect((await db.allocationRevision.findUniqueOrThrow({ where: { id: draft.id } })).selfAcknowledged).toBe(true);
+    await page.setViewportSize({ width: 390, height: 844 }); await page.evaluate(() => window.scrollTo(0, 0)); await page.screenshot({ path: `${screenshotDir}/single-participant-vi-mobile.png`, fullPage: true }); expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  }, 60000);
+});

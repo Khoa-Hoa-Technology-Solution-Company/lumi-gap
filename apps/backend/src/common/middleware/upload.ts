@@ -1,4 +1,3 @@
-// @ts-expect-error multer's CommonJS export is callable and exposes memoryStorage at runtime.
 import multer from "multer";
 import { AppError } from "../exceptions/app-error.js";
 

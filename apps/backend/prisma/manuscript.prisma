@@ -1,0 +1,75 @@
+model ManuscriptFile {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  path String @db.VarChar(240)
+  kind String @db.VarChar(16)
+  version Int @default(1)
+  sequence Int @default(0)
+  crdtState Bytes? @map("crdt_state")
+  assetData Bytes? @map("asset_data")
+  mimeType String? @map("mime_type") @db.VarChar(80)
+  sizeBytes Int @default(0) @map("size_bytes")
+  checksum String? @db.Char(64)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+  createdById String @map("created_by_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  @@unique([id, workspaceId])
+  @@index([workspaceId, deletedAt, path])
+  @@map("manuscript_files")
+}
+
+model ManuscriptUpdate {
+  id String @id @default(uuid()) @db.Uuid
+  fileId String @map("file_id") @db.Uuid
+  actorId String @map("actor_id") @db.Uuid
+  clientSessionId String @map("client_session_id") @db.Uuid
+  clientSequence Int @map("client_sequence")
+  serverSequence Int @map("server_sequence")
+  update Bytes
+  checksum String @db.Char(64)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@unique([fileId, actorId, clientSessionId, clientSequence])
+  @@index([fileId, serverSequence])
+  @@map("manuscript_updates")
+}
+
+model ManuscriptSnapshot {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  projectId String @map("project_id") @db.Uuid
+  label String @db.VarChar(160)
+  sourceVersion Int @map("source_version")
+  manifest Json
+  checksum String @db.Char(64)
+  createdById String @map("created_by_id") @db.Uuid
+  clientKey String @map("client_key") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@unique([workspaceId, createdById, clientKey])
+  @@unique([id, projectId])
+  @@index([workspaceId, createdAt])
+  @@map("manuscript_snapshots")
+}
+
+model ManuscriptSnapshotAsset {
+  snapshotId String @map("snapshot_id") @db.Uuid
+  fileId String @map("file_id") @db.Uuid
+  data Bytes
+  @@id([snapshotId, fileId])
+  @@map("manuscript_snapshot_assets")
+}
+
+model ManuscriptCompilation {
+  id String @id @default(uuid()) @db.Uuid
+  snapshotId String @map("snapshot_id") @db.Uuid
+  requestedById String @map("requested_by_id") @db.Uuid
+  status String @default("BLOCKED") @db.VarChar(24)
+  diagnostics String @default("")
+  pdfData Bytes? @map("pdf_data")
+  checksum String? @db.Char(64)
+  toolchain String? @db.VarChar(200)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  completedAt DateTime? @map("completed_at") @db.Timestamptz(6)
+  @@index([snapshotId, createdAt])
+  @@map("manuscript_compilations")
+}

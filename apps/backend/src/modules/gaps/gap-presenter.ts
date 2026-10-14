@@ -20,6 +20,8 @@ export interface GapAccessProject {
 }
 
 export interface GapListDoc {
+  version?: number;
+  assessmentStatus?: ResearchGapItem["assessmentStatus"];
   _id: IdLike;
   topic: string;
   normalizedTopic: string;
@@ -142,6 +144,8 @@ export function toGapListItem(
 
   return {
     id: String(doc._id),
+    version: doc.version,
+    assessmentStatus: doc.assessmentStatus,
     topic: doc.topic,
     normalizedTopic: doc.normalizedTopic,
     title: doc.title,

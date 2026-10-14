@@ -1,0 +1,138 @@
+model PlanRevision {
+  id String @id @default(uuid()) @db.Uuid
+  projectId String @map("project_id") @db.Uuid
+  planId String @map("plan_id") @db.Uuid
+  version Int
+  snapshot Json
+  changedById String? @map("changed_by_id") @db.Uuid
+  changeSummary String? @map("change_summary") @db.VarChar(500)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@unique([planId, version])
+  @@unique([id, projectId])
+  @@index([projectId, createdAt])
+  @@map("plan_revisions")
+}
+
+model PlanShare {
+  id String @id @default(uuid()) @db.Uuid
+  projectId String @map("project_id") @db.Uuid
+  revisionId String @map("revision_id") @db.Uuid
+  relationshipId String @map("relationship_id") @db.Uuid
+  sharedById String @map("shared_by_id") @db.Uuid
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@index([projectId, relationshipId, revokedAt])
+  @@map("plan_shares")
+}
+
+model ProjectMilestone {
+  id String @id @default(uuid()) @db.Uuid
+  projectId String @map("project_id") @db.Uuid
+  title String @db.VarChar(240)
+  description String @default("")
+  dueAt DateTime? @map("due_at") @db.Timestamptz(6)
+  status String @default("PLANNED") @db.VarChar(24)
+  version Int @default(1)
+  createdById String @map("created_by_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  @@unique([id, projectId])
+  @@index([projectId, status, dueAt])
+  @@map("project_milestones")
+}
+
+model ProjectTask {
+  id String @id @default(uuid()) @db.Uuid
+  projectId String @map("project_id") @db.Uuid
+  title String @db.VarChar(240)
+  description String @default("")
+  status String @default("TODO") @db.VarChar(24)
+  blockedReason String @default("") @map("blocked_reason")
+  assigneeId String? @map("assignee_id") @db.Uuid
+  createdById String @map("created_by_id") @db.Uuid
+  milestoneId String? @map("milestone_id") @db.Uuid
+  dueAt DateTime? @map("due_at") @db.Timestamptz(6)
+  completedAt DateTime? @map("completed_at") @db.Timestamptz(6)
+  targetKind String? @map("target_kind") @db.VarChar(32)
+  targetId String? @map("target_id") @db.Uuid
+  clientKey String @map("client_key") @db.Uuid
+  version Int @default(1)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  @@unique([projectId, createdById, clientKey])
+  @@unique([id, projectId])
+  @@index([projectId, deletedAt, status, dueAt])
+  @@index([projectId, assigneeId, updatedAt])
+  @@map("project_tasks")
+}
+
+model ProjectDiscussion {
+  id String @id @default(uuid()) @db.Uuid
+  projectId String @map("project_id") @db.Uuid
+  title String @db.VarChar(240)
+  body String
+  category String @default("GENERAL") @db.VarChar(32)
+  status String @default("OPEN") @db.VarChar(16)
+  conclusion String @default("")
+  authorId String @map("author_id") @db.Uuid
+  targetKind String? @map("target_kind") @db.VarChar(32)
+  targetId String? @map("target_id") @db.Uuid
+  mentorRelationshipId String? @map("mentor_relationship_id") @db.Uuid
+  clientKey String @map("client_key") @db.Uuid
+  version Int @default(1)
+  context Json @default("{}")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  @@unique([projectId, authorId, clientKey])
+  @@unique([id, projectId])
+  @@index([projectId, status, updatedAt])
+  @@map("project_discussions")
+}
+
+model ProjectDecision {
+  id String @id @default(uuid()) @db.Uuid
+  projectId String @map("project_id") @db.Uuid
+  decision String @db.VarChar(500)
+  context String @default("")
+  alternatives String @default("")
+  rationale String
+  targetKind String? @map("target_kind") @db.VarChar(32)
+  targetId String? @map("target_id") @db.Uuid
+  threadId String? @map("thread_id") @db.Uuid
+  recordedById String @map("recorded_by_id") @db.Uuid
+  version Int @default(1)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  @@unique([id, projectId])
+  @@index([projectId, updatedAt])
+  @@map("project_decisions")
+}
+
+model ProjectWorkspaceComment {
+  id String @id @default(uuid()) @db.Uuid
+  projectId String @map("project_id") @db.Uuid
+  targetKind String @map("target_kind") @db.VarChar(32)
+  targetId String @map("target_id") @db.Uuid
+  authorId String @map("author_id") @db.Uuid
+  body String
+  clientKey String @map("client_key") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@unique([projectId, authorId, clientKey])
+  @@index([projectId, targetKind, targetId, createdAt])
+  @@map("project_workspace_comments")
+}
+
+model ProjectWorkspaceRevision {
+  id String @id @default(uuid()) @db.Uuid
+  projectId String @map("project_id") @db.Uuid
+  entityKind String @map("entity_kind") @db.VarChar(32)
+  entityId String @map("entity_id") @db.Uuid
+  version Int
+  snapshot Json
+  actorId String @map("actor_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@unique([entityKind, entityId, version])
+  @@index([projectId, entityKind, entityId, createdAt])
+  @@map("project_workspace_revisions")
+}

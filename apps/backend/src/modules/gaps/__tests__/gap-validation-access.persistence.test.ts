@@ -1,3 +1,4 @@
+import { createProjectFixture } from "../../../test-utils/project-fixture.js";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { getPrisma } from "../../../infrastructure/database/prisma.js";
@@ -24,7 +25,7 @@ describe.sequential("gap evidence and validation visibility (PostgreSQL)", () =>
     memberId = member!.id;
     strangerId = stranger!.id;
 
-    const project = await prisma.project.create({ data: { title: `Gap access ${marker.slice(0, 8)}`, ownerId } });
+    const project = await createProjectFixture({ data: { title: `Gap access ${marker.slice(0, 8)}`, ownerId } });
     projectId = project.id;
     await prisma.projectMember.create({ data: { projectId, userId: memberId, status: "ACTIVE" } });
 
@@ -53,7 +54,6 @@ describe.sequential("gap evidence and validation visibility (PostgreSQL)", () =>
     }
     if (projectId) {
       await prisma.projectActivity.deleteMany({ where: { projectId } });
-      await prisma.projectMember.deleteMany({ where: { projectId } });
       await prisma.project.deleteMany({ where: { id: projectId } });
     }
     await prisma.user.deleteMany({ where: { id: { in: [ownerId, memberId, strangerId].filter(Boolean) } } });

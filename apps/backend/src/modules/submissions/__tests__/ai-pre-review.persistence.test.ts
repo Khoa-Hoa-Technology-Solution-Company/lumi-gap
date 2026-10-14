@@ -1,3 +1,4 @@
+import { createProjectFixture } from "../../../test-utils/project-fixture.js";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { getPrisma } from "../../../infrastructure/database/prisma.js";
@@ -44,7 +45,7 @@ describe.sequential("AI pre-review run by the ai-jobs worker (PostgreSQL)", () =
     vi.spyOn(aiReviewerClient, "preReview").mockResolvedValue(aiResponse);
     const user = await prisma.user.create({ data: { fullName: "Pre-review user", email: `pre-review-${marker}@example.test` } });
     userId = user.id;
-    projectId = (await prisma.project.create({ data: { title: `Pre-review ${marker.slice(0, 8)}`, ownerId: userId } })).id;
+    projectId = (await createProjectFixture({ data: { title: `Pre-review ${marker.slice(0, 8)}`, ownerId: userId } })).id;
   });
 
   afterAll(async () => {

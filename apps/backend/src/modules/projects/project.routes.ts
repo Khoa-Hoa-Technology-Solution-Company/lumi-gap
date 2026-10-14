@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { projectContributionsRouter } from "./project-contributions.routes.js";
 import {
   activityQuerySchema,
   addMemberSchema,
@@ -10,6 +11,8 @@ import {
   transferOwnershipSchema,
   updateProjectPaperSchema,
   updateProjectSchema,
+  teamQuerySchema,
+  projectDirectoryQuerySchema,
 } from "./project.controller.js";
 import { optionalAuth, requireAuth } from "../../common/middleware/auth.js";
 import { requireResearchWorkflow } from "../authorization/authorization.middleware.js";
@@ -18,6 +21,8 @@ import { z } from "zod";
 import { databaseIdSchema } from "../../common/validation/database-id.js";
 import { projectChatRouter } from "./chat.routes.js";
 import { projectTeamChatRouter } from "./team-chat.routes.js";
+import { projectWorkspaceRouter } from "./project-workspace.routes.js";
+import { projectResearchRouter } from "./project-research.routes.js";
 import { createRateLimiter } from "../../common/middleware/rate-limit.js";
 import { env } from "../../config/env.js";
 import { projectMentorshipService } from "./project-mentorship.service.js";
@@ -71,14 +76,17 @@ projectRouter.get("/academic-support/opportunities", requireAuth, requireResearc
 projectRouter.get("/:id", optionalAuth, validate(paramIdSchema, "params"), projectController.getProjectById);
 projectRouter.use(requireAuth, requireResearchWorkflow);
 
-projectRouter.post("/", validate(createProjectSchema, "body"), projectController.createProject);
-projectRouter.get("/", projectController.getProjectsByUser);
-projectRouter.get("/invitations/mine", projectController.listMyInvitations);
+const projectWriteLimiter = createRateLimiter("projects:membership-writes", { windowMs: 60 * 60 * 1000, limit: 60, keyGenerator: req => req.user!.sub, standardHeaders: true, legacyHeaders: false });
+projectRouter.post("/", projectWriteLimiter, validate(createProjectSchema, "body"), projectController.createProject);
+projectRouter.get("/", validate(projectDirectoryQuerySchema, "query"), projectController.getProjectsByUser);
+projectRouter.get("/invitations/mine", validate(projectDirectoryQuerySchema, "query"), projectController.listMyInvitations);
 projectRouter.post("/invitation-tokens/:token/accept", validate(invitationTokenParamsSchema, "params"), projectController.acceptInvitationByToken);
 projectRouter.post("/invitation-tokens/:token/decline", validate(invitationTokenParamsSchema, "params"), projectController.declineInvitationByToken);
 projectRouter.put("/:id", validate(paramIdSchema, "params"), validate(updateProjectSchema, "body"), projectController.updateProject);
 projectRouter.delete("/:id", validate(paramIdSchema, "params"), projectController.deleteProject);
 projectRouter.post("/:id/archive", validate(paramIdSchema, "params"), projectController.archiveProject);
+projectRouter.post("/:id/restore", validate(paramIdSchema, "params"), projectController.restoreProject);
+projectRouter.get("/:id/team", validate(paramIdSchema, "params"), validate(teamQuerySchema, "query"), projectController.team);
 projectRouter.post("/:id/leave", validate(paramIdSchema, "params"), projectController.leaveProject);
 projectRouter.post("/:id/transfer-ownership", validate(paramIdSchema, "params"), validate(transferOwnershipSchema, "body"), projectController.transferOwnership);
 projectRouter.get("/:id/activity", validate(paramIdSchema, "params"), validate(activityQuerySchema, "query"), projectController.listActivity);
@@ -120,6 +128,7 @@ projectRouter.post(
   projectMentorshipController.end,
 );
 
+projectRouter.use("/:id/contributions", projectContributionsRouter);
 projectRouter.get("/:id/contributions", validate(paramIdSchema, "params"), projectContributionController.list);
 projectRouter.post(
   "/:id/contributions/proposals",
@@ -146,10 +155,13 @@ projectRouter.delete("/:id/papers/:paperId", validate(paramPaperIdSchema, "param
 
 projectRouter.use("/:id/chat", projectChatRouter);
 projectRouter.use("/:id/team-chat", projectTeamChatRouter);
+projectRouter.use("/:id", projectWorkspaceRouter);
+projectRouter.use("/:id/research", projectResearchRouter);
 
-projectRouter.post("/:id/members", validate(paramIdSchema, "params"), validate(addMemberSchema, "body"), projectController.addMember);
+projectRouter.post("/:id/members", projectWriteLimiter, validate(paramIdSchema, "params"), validate(addMemberSchema, "body"), projectController.addMember);
 projectRouter.delete("/:id/members/:memberId", validate(paramMemberIdSchema, "params"), projectController.removeMember);
-projectRouter.post("/:id/invitations", validate(paramIdSchema, "params"), validate(inviteMemberSchema, "body"), projectController.inviteMember);
+projectRouter.post("/:id/invitations", projectWriteLimiter, validate(paramIdSchema, "params"), validate(inviteMemberSchema, "body"), projectController.inviteMember);
+projectRouter.post("/:id/invitations/:invitationId/resend", projectWriteLimiter, validate(paramInvitationIdSchema, "params"), projectController.resendInvitation);
 projectRouter.post("/:id/invitations/:invitationId/accept", validate(paramInvitationIdSchema, "params"), projectController.acceptInvitation);
 projectRouter.post("/:id/invitations/:invitationId/decline", validate(paramInvitationIdSchema, "params"), projectController.declineInvitation);
 projectRouter.post("/:id/invitations/:invitationId/cancel", validate(paramInvitationIdSchema, "params"), projectController.cancelInvitation);
