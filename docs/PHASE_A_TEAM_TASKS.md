@@ -1,5 +1,7 @@
 # Phase A — Chia Việc Theo Use Case
 
+> Tài liệu lịch sử: mobile Expo đã được gỡ, mobile hiện tại là Flutter (`apps/flutter_mobile`).
+
 > **Triết lý:** Mỗi dev sở hữu 1 **user journey** xuyên suốt project. Khi thầy hỏi "ai làm gì", có câu trả lời 1 câu rõ ràng. CV viết được luôn.
 
 ---

@@ -12,7 +12,6 @@
     "dev": "turbo run dev dev:workers",
     "dev:backend": "turbo run dev --filter=backend",
     "dev:web": "turbo run dev --filter=web",
-    "dev:mobile": "node scripts/run-mobile.mjs expo",
     "dev:flutter_mobile": "node scripts/run-mobile.mjs flutter",
     "build": "turbo run build",
     "lint": "turbo run lint",
