@@ -9,7 +9,8 @@
     "pnpm": ">=11.0.0"
   },
   "scripts": {
-    "dev": "turbo run dev dev:workers",
+    "dev": "docker compose up -d --pull never && turbo run dev --filter=web",
+    "dev:local": "turbo run dev dev:workers",
     "dev:backend": "turbo run dev --filter=backend",
     "dev:web": "turbo run dev --filter=web",
     "dev:flutter_mobile": "node scripts/run-mobile.mjs flutter",
