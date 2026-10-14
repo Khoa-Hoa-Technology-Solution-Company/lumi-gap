@@ -198,7 +198,8 @@ back up anything you need first. Native keys under `apps/backend/.keys` are pres
 ## Common commands
 
 ```bash
-pnpm dev                      # turbo: run all apps' dev and dev:workers scripts in parallel
+pnpm dev                      # docker compose up -d (infra, backend, workers) + Vite web on :3000
+pnpm dev:local                # native backend + workers + web via turbo (hot-reload backend)
 pnpm dev:backend              # backend only
 pnpm dev:web                  # web only
 pnpm dev:flutter_mobile       # Flutter mobile (Android emulator API base)

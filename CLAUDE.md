@@ -287,7 +287,8 @@ pnpm install
 pnpm typecheck
 
 # dev servers
-pnpm dev                                # all apps in parallel (turbo)
+pnpm dev                                # docker compose up -d (infra, backend, workers; no rebuild) + Vite web
+pnpm dev:local                          # native backend + workers + web via turbo (backend hot-reload)
 pnpm dev:backend                        # just backend
 pnpm dev:web                            # just web
 pnpm dev:flutter_mobile                 # Flutter mobile (needs the Flutter SDK, API_BASE_URL in .env)
