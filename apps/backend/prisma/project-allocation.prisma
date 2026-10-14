@@ -1,0 +1,92 @@
+model ProjectMembershipPeriod {
+  id String @id @default(uuid()) @db.Uuid
+  projectId String @map("project_id") @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  joinedAt DateTime @map("joined_at") @db.Timestamptz(6)
+  leftAt DateTime? @map("left_at") @db.Timestamptz(6)
+  provenance String @db.VarChar(32)
+  @@index([projectId, joinedAt, leftAt])
+  @@index([projectId, userId])
+  @@map("project_membership_periods")
+}
+
+model ContributionParticipant {
+  proposalId String @map("proposal_id") @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  roles String[] @default([])
+  @@id([proposalId, userId])
+  @@map("contribution_participants")
+}
+
+model ContributionReview {
+  id String @id @default(uuid()) @db.Uuid
+  proposalId String @map("proposal_id") @db.Uuid
+  version Int
+  userId String @map("user_id") @db.Uuid
+  decision String @db.VarChar(24)
+  note String @default("")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@unique([proposalId, version, userId, decision], map: "contribution_reviews_response_key")
+  @@map("contribution_reviews")
+}
+
+model AllocationPeriod {
+  id String @id @default(uuid()) @db.Uuid
+  projectId String @map("project_id") @db.Uuid
+  title String @db.VarChar(240)
+  description String
+  scope String @db.VarChar(500)
+  periodStart DateTime @map("period_start") @db.Timestamptz(6)
+  periodEnd DateTime @map("period_end") @db.Timestamptz(6)
+  policyVersion String @default("CORE_TEAM_UNANIMOUS_V1") @map("policy_version") @db.VarChar(48)
+  createdById String @map("created_by_id") @db.Uuid
+  clientKey String @map("client_key") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@unique([projectId, clientKey])
+  @@unique([id, projectId])
+  @@index([projectId, createdAt])
+  @@map("allocation_periods")
+}
+
+model AllocationRevision {
+  id String @id @default(uuid()) @db.Uuid
+  periodId String @map("period_id") @db.Uuid
+  projectId String @map("project_id") @db.Uuid
+  revision Int
+  draftVersion Int @default(1) @map("draft_version")
+  status String @default("DRAFT") @db.VarChar(24)
+  rationale String @default("")
+  roster Json
+  evidenceSummary Json @default("[]") @map("evidence_summary")
+  createdById String @map("created_by_id") @db.Uuid
+  clientKey String @map("client_key") @db.Uuid
+  submittedAt DateTime? @map("submitted_at") @db.Timestamptz(6)
+  finalizedAt DateTime? @map("finalized_at") @db.Timestamptz(6)
+  selfAcknowledged Boolean @default(false) @map("self_acknowledged")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@unique([periodId, revision])
+  @@unique([periodId, clientKey])
+  @@unique([id, projectId])
+  @@index([projectId, status])
+  @@map("allocation_revisions")
+}
+
+model AllocationShare {
+  revisionId String @map("revision_id") @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  basisPoints Int @map("basis_points")
+  rationale String @default("")
+  @@id([revisionId, userId])
+  @@map("allocation_shares")
+}
+
+model AllocationApproval {
+  id String @id @default(uuid()) @db.Uuid
+  revisionId String @map("revision_id") @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  decision String @db.VarChar(16)
+  explanation String @default("")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@unique([revisionId, userId])
+  @@map("allocation_approvals")
+}

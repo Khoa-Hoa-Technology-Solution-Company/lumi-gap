@@ -1,4 +1,8 @@
+import { researchWorkflowStrings } from "./research-workflow";
+import { contributionsEn } from "./project-contributions";
+import { manuscriptsEn } from "./manuscripts";
 import { academicSupportEn } from "./academic-support";
+import { workspaceCoordinationStrings } from "./workspace-coordination";
 import { gapEvidenceWorkflowStrings } from "./gap-evidence-workflow";
 import { paperDetailIaStrings } from "./paper-detail-ia";
 import { academicProfileStrings } from "./academic-profile";
@@ -12,10 +16,14 @@ import { researchHomeEn } from "./research-home-en";
 import { trustSafetyRagStrings } from "./trust-safety-rag";
 
 export const en = {
+  ...manuscriptsEn,
+  ...researchWorkflowStrings,
+  ...workspaceCoordinationStrings,
   ...academicSupportEn,
   ...trustSafetyRagStrings,
   ...researchHomeEn,
   ...newUiStrings,
+  ...contributionsEn,
   ...projectInvitationStrings,
   ...peerReviewVersionStrings,
   ...studentOnboardingStrings,

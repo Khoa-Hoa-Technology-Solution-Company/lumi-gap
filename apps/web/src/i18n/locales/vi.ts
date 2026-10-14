@@ -1,3 +1,6 @@
+import { researchWorkflowVi } from "./research-workflow";
+import { contributionsVi } from "./project-contributions";
+import { manuscriptsVi } from "./manuscripts";
 import { en } from "./en";
 import { gapEvidenceWorkflowViStrings } from "./gap-evidence-workflow";
 import { paperDetailIaViStrings } from "./paper-detail-ia";
@@ -21,6 +24,9 @@ import { projectWorkspaceVi } from "./project-workspace";
 
 export const vi: Record<keyof typeof en, string> = {
   ...en,
+  ...manuscriptsVi,
+  ...researchWorkflowVi,
+  ...contributionsVi,
   ...trustSafetyRagViStrings,
   ...researchHomeVi,
   ...projectInvitationStrings,

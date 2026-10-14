@@ -6,13 +6,14 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { ProjectMembersTab } from "../components/project-members-tab";
 
-const mocks = vi.hoisted(() => ({ invite: vi.fn(), cancel: vi.fn(), remove: vi.fn(), transfer: vi.fn(), search: vi.fn() }));
+const mocks = vi.hoisted(() => ({ invite: vi.fn(), cancel: vi.fn(), resend: vi.fn(), remove: vi.fn(), transfer: vi.fn(), search: vi.fn() }));
 vi.mock("@/i18n", () => ({ useI18n: () => ({ language: "en", t: (key: string, values?: Record<string, string>) => key.replace(/\{\{(\w+)\}\}/g, (_, name) => values?.[name] ?? "") }) }));
 vi.mock("@/stores/auth-store", () => ({ useAuthStore: (selector: (state: unknown) => unknown) => selector({ user: { id: "owner", fullName: "Project Owner" } }) }));
 vi.mock("@/services/api-client", () => ({ api: { get: mocks.search } }));
 vi.mock("../hooks/use-projects", () => ({
   useInviteProjectMember: () => ({ mutateAsync: mocks.invite, isPending: false }),
   useCancelProjectInvitation: () => ({ mutateAsync: mocks.cancel, isPending: false }),
+  useResendProjectInvitation: () => ({ mutateAsync: mocks.resend, isPending: false }),
   useRemoveMemberFromProject: () => ({ mutateAsync: mocks.remove, isPending: false }),
   useTransferProjectOwnership: () => ({ mutateAsync: mocks.transfer, isPending: false }),
 }));

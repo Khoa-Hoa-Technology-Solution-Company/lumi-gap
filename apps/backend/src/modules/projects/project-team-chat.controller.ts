@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import type { ProjectTeamChatEvent } from "@trend/shared-types";
 import { projectTeamChatEventHub } from "./project-team-chat.events.js";
 import { projectTeamChatService } from "./project-team-chat.service.js";
+import { assertLiveRequestSession } from "../../common/middleware/auth.js";
 
 export class ProjectTeamChatController {
   async sendMessage(req: Request, res: Response) {
@@ -61,18 +62,18 @@ export class ProjectTeamChatController {
       occurredAt: new Date().toISOString(),
     });
 
+    let closed = false;
+    const cleanup = () => {
+      if (closed) return;
+      closed = true; clearInterval(heartbeat); unsubscribe(); res.end();
+    };
     const unsubscribe = projectTeamChatEventHub.subscribe(projectId, (event) => {
-      writeSse(res, event);
+      void assertLiveRequestSession(req).then(() => projectTeamChatService.assertCanOpenEvents(projectId, userId, userRole)).then(() => { if (!closed) writeSse(res, event); }).catch(cleanup);
     });
     const heartbeat = setInterval(() => {
-      res.write(`: heartbeat ${Date.now()}\n\n`);
+      void assertLiveRequestSession(req).then(() => projectTeamChatService.assertCanOpenEvents(projectId, userId, userRole)).then(() => { if (!closed) res.write(`: heartbeat ${Date.now()}\n\n`); }).catch(cleanup);
     }, 25_000);
-
-    req.on("close", () => {
-      clearInterval(heartbeat);
-      unsubscribe();
-      res.end();
-    });
+    req.on("close", cleanup);
   }
 }
 

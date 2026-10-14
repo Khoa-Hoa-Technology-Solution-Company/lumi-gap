@@ -1,3 +1,5 @@
+import { withWorkspace } from "../projects/workspace-access.js";
+import { recordGapPacket, invalidateSourceAssessments } from "../projects/gap-revision.js";
 import { forumCitationOccurrences, forumCitationPaperIds, forumCitationPaperIdPattern, forumCitationToken } from "@trend/shared-types";
 import { randomUUID } from "node:crypto";
 import type { ForumPostType, ForumSort, UserRole, GapStructuredEvidenceItem } from "@trend/shared-types";
@@ -1024,19 +1026,21 @@ export const forumService = {
   },
 
   async reviewCitationAsEvidence(gapInput: string, input: ReviewAsEvidenceInput, actorInput: string) {
-    const prisma = getPrisma();
     const context = await resolveForumCitationReviewContext(gapInput, input.referenceId, input.projectId, actorInput);
     const { gap, actor, reference, comment, post, paper, projectId } = context;
     let { projectPaper } = context;
     if (gap.userId !== actor && !gap.projectId) throw AppError.forbidden("Only the candidate gap owner can review evidence for a standalone gap");
     if (input.screeningStatus === "EXCLUDED" && !input.exclusionReason?.trim()) throw AppError.badRequest("An exclusion reason is required when excluding a paper");
     let paperWasAdded = false;
-    const screenedProjectPaper = await prisma.$transaction(async (tx) => {
-      const existing = projectPaper ?? await tx.projectPaper.findUnique({ where: { projectId_paperId: { projectId, paperId: paper.id } } });
+    const screenedProjectPaper = await withWorkspace(projectId, actor, { write: true }, async ({ tx, project: liveProject }) => {
+      const existing = await tx.projectPaper.findUnique({ where: { projectId_paperId: { projectId, paperId: paper.id } } });
       const row = existing ?? await tx.projectPaper.create({ data: { projectId, paperId: paper.id, addedById: actor } });
       paperWasAdded = !existing;
       if (!existing) await tx.projectActivity.create({ data: { projectId, actorId: actor, type: "PAPER_ADDED_FROM_FORUM", entityKind: "PAPER", entityId: publicDatabaseId(paper), metadata: { title: paper.title, forumPostId: publicDatabaseId(post), gapId: publicDatabaseId(gap) } } });
       if (input.screeningStatus && input.screeningStatus !== row.screeningStatus) {
+        if (liveProject.screeningMode === "INDEPENDENT") throw AppError.conflict("Use the assigned independent screening workflow");
+        await invalidateSourceAssessments(tx, projectId, actor, { paperId: paper.id });
+        await tx.projectActivity.create({ data: { projectId, actorId: actor, type: "PAPER_SCREENED", entityKind: "PAPER", entityId: publicDatabaseId(paper), metadata: { paperId: paper.id, before: { status: row.screeningStatus }, after: { status: input.screeningStatus, reviewerId: actor, reason: input.exclusionReason ?? "" } } } });
         return tx.projectPaper.update({ where: { id: row.id }, data: {
           screeningStatus: input.screeningStatus,
           screenedById: actor,
@@ -1109,7 +1113,12 @@ export const forumService = {
     if (!input.explanation || input.explanation.trim().length < 10) throw AppError.badRequest("Explain the structured evidence before linking it to the candidate gap");
     if (!corpusPaper) throw AppError.badRequest("The paper must have structured extracted evidence before it can be linked to the candidate gap");
     try {
-      const evidence = await prisma.$transaction(async (tx) => {
+      const evidence = await withWorkspace(projectId, actor, { write: true }, async ({ tx }) => {
+        await tx.$queryRaw`SELECT id FROM research_gaps WHERE id=${gap.id}::uuid FOR UPDATE`;
+        const liveSource = await tx.projectPaper.findUnique({ where: { projectId_paperId: { projectId, paperId: paper.id } } });
+        const liveCorpus = await findGapCorpusPaper(gap, paper.id, tx);
+        if (liveSource?.screeningStatus !== "INCLUDED" || !liveCorpus?.included || selectedEvidence.some(selected => !structuredEvidenceItems(liveCorpus.evidence).some(current => current.evidenceType === selected.evidenceType && current.excerpt === selected.excerpt))) throw AppError.conflict("The source or extraction changed. Review it again");
+        await recordGapPacket(tx, gap.id, actor);
         const created = await Promise.all(selectedEvidence.map((selected) => tx.gapEvidenceRecord.create({ data: {
           gapId: gap.id,
           paperId: paper.id,
@@ -1131,6 +1140,8 @@ export const forumService = {
           update: {},
         });
         await tx.projectActivity.create({ data: { projectId, actorId: actor, type: "EVIDENCE_EXTRACTED_FROM_FORUM_SOURCE", entityKind: "GAP", entityId: publicDatabaseId(gap), metadata: { title: gap.title, evidenceKind: input.relation, paperId: publicDatabaseId(paper), forumReferenceId: publicDatabaseId(reference) } } });
+        await tx.researchGap.update({ where: { id: gap.id }, data: { version: { increment: 1 }, validationStatus: "CANDIDATE", assessmentStatus: "PROPOSED", assessmentRationale: "" } });
+        await recordGapPacket(tx, gap.id, actor);
         return created;
       });
       for (const item of evidence) {

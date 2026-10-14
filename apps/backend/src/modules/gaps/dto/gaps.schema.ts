@@ -53,6 +53,7 @@ export const ActiveGapAnalysisQuerySchema = z.object({
 
 /** Query params of GET /api/v1/gaps. */
 export const ListGapsQuerySchema = z.object({
+  assessmentStatus: z.enum(["PROPOSED", "IN_REVIEW", "NEEDS_MORE_EVIDENCE", "TEAM_SUPPORTED", "REJECTED"]).optional(),
   topic: z.string().trim().max(200).optional(),
   search: z.string().trim().max(200).optional(),
   minConfidence: z.coerce.number().min(0).max(1).optional(),
@@ -117,6 +118,7 @@ export const ValidationQueueQuerySchema = z.object({
 });
 export type ValidationQueueQuery = z.infer<typeof ValidationQueueQuerySchema>;
 export const GapValidationSchema = z.object({
+  expectedVersion: z.number().int().positive(),
   action: z.enum(["VALIDATE", "CHALLENGE", "REQUEST_EVIDENCE", "SUGGEST_EVIDENCE", "REFINE_SCOPE", "REJECT"]),
   comment: z.string().trim().min(10).max(10000),
   suggestedChanges: z.string().trim().max(10000).optional(),

@@ -11,6 +11,7 @@ import type {
   ProjectInvitationPreview,
   InviteProjectMemberRequest,
   ProjectActivity,
+  ProjectTeamPage,
   UpdateProjectPaperRequest,
   MentorRelationship, MentorshipRequest, MentorshipCollection,
   RequestMentorRelationshipRequest,
@@ -19,10 +20,18 @@ import type {
 import { api } from "@/services/api-client";
 import { API_ROUTES } from "@/constants";
 
+async function projectPages<T>(url: string): Promise<T[]> {
+  const items: T[] = [];
+  for (let page = 1; ; page += 1) {
+    const response = await api.get<{ data: T[]; meta?: { hasNext?: boolean } }>(url, { params: { page, pageSize: 100 } });
+    items.push(...response.data.data);
+    if (!response.data.meta?.hasNext) return items;
+  }
+}
+
 export const projectsApi = {
   async list(): Promise<IProject[]> {
-    const res = await api.get(API_ROUTES.projects.list);
-    return res.data.data;
+    return projectPages<IProject>(API_ROUTES.projects.list);
   },
   async detail(id: string): Promise<IProject> {
     const res = await api.get(API_ROUTES.projects.detail(id));
@@ -64,9 +73,17 @@ export const projectsApi = {
   async cancelInvitation(id: string, invitationId: string): Promise<void> {
     await api.post(API_ROUTES.projects.invitations.cancel(id, invitationId));
   },
+  async resendInvitation(id: string, invitationId: string): Promise<void> {
+    await api.post(`/projects/${encodeURIComponent(id)}/invitations/${encodeURIComponent(invitationId)}/resend`);
+  },
+  async team(id: string, page = 1, invitationPage = 1): Promise<ProjectTeamPage> {
+    return (await api.get(`/projects/${encodeURIComponent(id)}/team`, { params: { page, invitationPage } })).data.data;
+  },
+  async restore(id: string): Promise<IProject> {
+    return (await api.post(`/projects/${encodeURIComponent(id)}/restore`)).data.data;
+  },
   async listMyInvitations(): Promise<IncomingProjectInvitation[]> {
-    const res = await api.get(API_ROUTES.projects.invitations.mine);
-    return res.data.data;
+    return projectPages<IncomingProjectInvitation>(API_ROUTES.projects.invitations.mine);
   },
   async respondToInvitation(projectId: string, invitationId: string, decision: "accept" | "decline"): Promise<void> {
     await api.post(decision === "accept" ? API_ROUTES.projects.invitations.accept(projectId, invitationId) : API_ROUTES.projects.invitations.decline(projectId, invitationId));

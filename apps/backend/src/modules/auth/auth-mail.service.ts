@@ -9,7 +9,7 @@ type SecurityMessage = {
   text: string;
   html?: string;
   attachments?: Array<{ filename: string; path: string; cid: string }>;
-  event: "email_verification" | "password_reset" | "copyright_claim_verification" | "affiliation_status" | "academic_verification_status" | "mentorship";
+  event: "email_verification" | "password_reset" | "copyright_claim_verification" | "affiliation_status" | "academic_verification_status" | "mentorship" | "contributions";
 };
 
 const LUMIGAP_LOGO_PATH = fileURLToPath(new URL("./assets/lumigap-logo.png", import.meta.url));
@@ -158,6 +158,9 @@ export function webOrigin(): string {
 }
 
 export const authMailService = {
+  sendContributions(email: string, subject: string, content: { text: string; html: string }) {
+    return deliver({ to: email, subject, ...content, event: "contributions", attachments: [{ filename: "lumigap-logo.png", path: LUMIGAP_LOGO_PATH, cid: "lumigap-logo" }] });
+  },
   sendLecturerVerification(email: string, content: { subject: string; text: string; html: string }) {
     return deliver({ to: email, ...content, event: "academic_verification_status" });
   },

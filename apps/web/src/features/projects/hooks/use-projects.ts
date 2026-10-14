@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { projectsApi } from "../api/projects.api";
+import { useAuthStore } from "@/stores/auth-store";
 import type {
   CreateProjectRequest,
   UpdateProjectRequest,
@@ -120,6 +121,20 @@ export function useCancelProjectInvitation(id: string) {
   return useMutation({ mutationFn: (invitationId: string) => projectsApi.cancelInvitation(id, invitationId), onSuccess: () => queryClient.invalidateQueries({ queryKey: ["project", id] }) });
 }
 
+export function useResendProjectInvitation(id: string) {
+  const client = useQueryClient();
+  return useMutation({ mutationFn: (invitationId: string) => projectsApi.resendInvitation(id, invitationId), onSuccess: () => client.invalidateQueries({ queryKey: ["project", id] }) });
+}
+
+export function useProjectTeam(id: string, page: number, invitationPage: number) {
+  return useQuery({ queryKey: ["project", id, "team", page, invitationPage], queryFn: () => projectsApi.team(id, page, invitationPage), enabled: Boolean(id) });
+}
+
+export function useRestoreProject(id: string) {
+  const client = useQueryClient();
+  return useMutation({ mutationFn: () => projectsApi.restore(id), onSuccess: () => { client.invalidateQueries({ queryKey: ["project", id] }); client.invalidateQueries({ queryKey: ["projects"] }); } });
+}
+
 export function useMyProjectInvitations() {
   return useQuery({ queryKey: ["project-invitations", "mine"], queryFn: projectsApi.listMyInvitations });
 }
@@ -130,8 +145,9 @@ export function useRespondToProjectInvitation() {
 }
 
 export function useProjectInvitationPreview(token: string | undefined) {
+  const viewerId = useAuthStore(state => state.user?.id);
   return useQuery({
-    queryKey: ["project-invitation-token", token],
+    queryKey: ["project-invitation-token", token, viewerId],
     queryFn: () => projectsApi.invitationPreview(token!),
     enabled: Boolean(token),
     retry: false,

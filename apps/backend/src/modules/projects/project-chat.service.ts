@@ -16,6 +16,7 @@ import { projectChatEventHub } from "./project-chat.events.js";
 import { buildChatPrompt, parseCitations, pickEvidence, type ChatEvidencePaper, type ChatHistoryTurn } from "./project-chat.prompt.js";
 import { fitToBudget, normalizeQuestion, PROJECT_CHAT_PROMPT_VERSION } from "./project-chat.tokens.js";
 import { assertProjectHasPapers } from "./project-scope.js";
+import { authorizeProjectTransaction, lockProjectAccounts } from "./project-transaction.js";
 
 export interface SendProjectChatMessageResult { scope: ProjectChatScope; answer: string; citedPaperIds: string[]; creditCost: number; }
 type UserSummary = { id: string; fullName?: string; email?: string; avatarUrl?: string };
@@ -41,8 +42,6 @@ export class ProjectChatService {
     const userId = access.user.id;
     const papers = await this.loadProjectEvidence(projectId);
     assertProjectHasPapers(papers.map((paper) => paper.id), "project chat");
-    const tx = await creditService.chargeCreditsChecked({ userId, action: "project_chat_message", amount: 1, targetKind: "project_chat", targetId: projectId, idempotencyKey: `chat:${projectId}:${userId}:${crypto.randomUUID()}` });
-    const txId = tx?.id;
     const selectedEvidence = await this.selectEvidence(message, papers);
     const selectedHistory = await this.loadRecentHistory(projectId, userId, scope);
     const fitted = fitToBudget({ papers: selectedEvidence, history: selectedHistory, maxChars: env.CHAT_MAX_PROMPT_CHARS, abstractMaxChars: env.CHAT_ABSTRACT_MAX_CHARS, render: (evidence, history) => { const built = buildChatPrompt({ question: message, evidence, history, abstractMaxChars: env.CHAT_ABSTRACT_MAX_CHARS }); return `${built.system}\n${built.prompt}`; } });
@@ -50,6 +49,8 @@ export class ProjectChatService {
     const { system, prompt } = buildChatPrompt({ question: message, evidence, history: fitted.history, abstractMaxChars: env.CHAT_ABSTRACT_MAX_CHARS });
     const provider = getLlmProvider();
     const model = provider.name === "ollama" ? env.OLLAMA_MODEL : aiModel();
+    const tx = await creditService.chargeCreditsChecked({ userId, action: "project_chat_message", amount: 1, targetKind: "project_chat", targetId: projectId, idempotencyKey: `chat:${projectId}:${userId}:${crypto.randomUUID()}` });
+    const txId = tx?.id;
     let result: SendProjectChatMessageResult;
     try {
       result = await cachedGenerate<SendProjectChatMessageResult>({ task: "chat", promptVersion: PROJECT_CHAT_PROMPT_VERSION, keyParts: { projectId, scope, question: normalizeQuestion(message), paperIds: evidence.map((paper) => paper.id).sort(), provider: provider.name }, inputHash: hashKey({ system, prompt }), model, ttlSeconds: env.CHAT_CACHE_TTL_SECONDS, generate: async () => { const answer = (await provider.generate(prompt, { system, temperature: 0.25, maxOutputTokens: 1024 })).trim().slice(0, 4000); return { scope, answer, citedPaperIds: parseCitations(answer, evidence), creditCost: 1 }; } });
@@ -59,7 +60,13 @@ export class ProjectChatService {
       throw AppError.serviceUnavailable("LLM provider unreachable");
     }
     result = { ...result, scope, creditCost: result.creditCost ?? 1 };
-    const saved = await this.saveTurn(projectId, userId, message, scope, result.answer, result.citedPaperIds, txId, result.creditCost);
+    let saved: ProjectChatHistoryMessage[];
+    try {
+      saved = await this.saveTurn(projectId, userId, message, scope, result.answer, result.citedPaperIds, txId, result.creditCost);
+    } catch (error) {
+      if (txId) await creditService.refundCreditsOnce({ transactionId: txId, reason: "Project chat message could not be saved" });
+      throw error;
+    }
     if (scope === "team") {
       for (const savedMessage of saved) projectChatEventHub.publish({ type: "message.created", projectId: projectIdInput, scope, message: savedMessage, occurredAt: new Date().toISOString() });
       await auditService.log("project.ai_chat.team_message_sent", { userId, targetTableName: "projects", targetRecordId: projectId, details: { citedPaperIds: result.citedPaperIds, creditCost: result.creditCost } });
@@ -72,6 +79,8 @@ export class ProjectChatService {
     const citationFilters = citedPaperIds.map((id) => idWhere(id));
     const citedPapers = citationFilters.length ? await prisma.paper.findMany({ where: { OR: citationFilters }, select: { id: true } }) : [];
     const rows = await prisma.$transaction(async (db) => {
+      await lockProjectAccounts(db, [userId], projectId);
+      await authorizeProjectTransaction(db, projectId, userId, "CONTRIBUTE");
       const userMessage = await db.projectChatMessage.create({ data: { projectId, userId, scope, role: "user", content: message } });
       const assistantMessage = await db.projectChatMessage.create({ data: { projectId, userId, scope, role: "assistant", content: answer, creditTransactionId, creditCost } });
       if (citedPapers.length) await db.projectChatCitation.createMany({ data: citedPapers.map((paper, position) => ({ messageId: assistantMessage.id, paperId: paper.id, position })), skipDuplicates: true });
@@ -93,7 +102,11 @@ export class ProjectChatService {
     const access = await this.assertCanAccess(projectIdInput, userIdInput);
     const message = await getPrisma().projectChatMessage.findFirst({ where: { ...idWhere(messageIdInput), projectId: access.project.id, scope: "team", role: "assistant" } });
     if (!message) throw AppError.notFound("Team AI assistant message not found");
-    const row = await getPrisma().projectChatMessage.update({ where: { id: message.id }, data: { isPinned: pinned, pinnedAt: pinned ? new Date() : null, pinnedById: pinned ? access.user.id : null } });
+    const row = await getPrisma().$transaction(async db => {
+      await lockProjectAccounts(db, [access.user.id], access.project.id);
+      await authorizeProjectTransaction(db, access.project.id, access.user.id, "CONTRIBUTE");
+      return db.projectChatMessage.update({ where: { id: message.id }, data: { isPinned: pinned, pinnedAt: pinned ? new Date() : null, pinnedById: pinned ? access.user.id : null } });
+    });
     const users = await this.loadUserSummaries([row.userId, access.user.id]);
     const hydrated = await this.toHistoryMessage(row, users, users);
     projectChatEventHub.publish({ type: "message.updated", projectId: projectIdInput, scope: "team", message: hydrated, occurredAt: new Date().toISOString() });
@@ -127,6 +140,7 @@ export class ProjectChatService {
     const [project, user] = await Promise.all([prisma.project.findFirst({ where: idWhere(projectIdInput) }), prisma.user.findFirst({ where: idWhere(userIdInput) })]);
     if (!project) throw AppError.notFound("Project not found");
     if (!user) throw AppError.notFound("User not found");
+    if (!user.isActive || user.accountStatus !== "ACTIVE") throw AppError.unauthorized();
     if (project.ownerId !== user.id) { const member = await prisma.projectMember.findFirst({ where: { projectId: project.id, userId: user.id, status: "ACTIVE" } }); if (!member) throw AppError.forbidden("Access denied to this project"); }
     return { project, user };
   }

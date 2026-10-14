@@ -1,3 +1,4 @@
+import { createProjectFixture } from "../../../test-utils/project-fixture.js";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { env } from "../../../config/env.js";
@@ -79,7 +80,7 @@ describe.sequential("gap pipeline probe scope (PostgreSQL)", () => {
       paperIds.push(paper.id);
     }
 
-    const project = await prisma.project.create({ data: { title: `Gap scope ${m}`, ownerId: userId } });
+    const project = await createProjectFixture({ data: { title: `Gap scope ${m}`, ownerId: userId } });
     projectId = project.id;
     await prisma.projectPaper.createMany({
       data: paperIds.slice(0, INCLUDED_COUNT + EXCLUDED_COUNT).map((paperId, index) => ({
@@ -101,7 +102,6 @@ describe.sequential("gap pipeline probe scope (PostgreSQL)", () => {
     if (projectId) {
       await prisma.projectActivity.deleteMany({ where: { projectId } });
       await prisma.projectPaper.deleteMany({ where: { projectId } });
-      await prisma.projectMember.deleteMany({ where: { projectId } });
       await prisma.project.deleteMany({ where: { id: projectId } });
     }
     await prisma.paper.deleteMany({ where: { id: { in: paperIds } } });
@@ -161,5 +161,20 @@ describe.sequential("gap pipeline probe scope (PostgreSQL)", () => {
     // The recorded sample size is the corpus inside the same window.
     expect(gaps[0]!.evidenceScopeSize).toBeGreaterThanOrEqual(15);
     expect(gaps[0]!.evidenceScopeSize).toBeLessThan((await getPrisma().paper.count({ where: { dataStatus: "active" } })));
+  });
+  it("rejects a changed project corpus after generation rather than saving a stale candidate", async () => {
+    const db = getPrisma();
+    const analysis = await db.gapAnalysis.create({ data: { userId, projectId, topic: `${topicA} ${topicB}`, status: "queued", evidenceMode: "hybrid" } }); analysisIds.push(analysis.id);
+    vi.mocked(cachedGenerateJSON).mockImplementationOnce(async () => {
+      await db.projectPaper.update({ where: { projectId_paperId: { projectId, paperId: paperIds[0]! } }, data: { screeningStatus: "EXCLUDED" } });
+      return { gaps: [{ title: "Stale proposal", description: "Bounded hypothesis", rationale: "Source context changed", supportingEvidence: [1], confidence: 0.99 }] } as never;
+    });
+    try {
+      await expect(gapsService.runGapPipeline({ analysisId: analysis.id })).rejects.toMatchObject({ statusCode: 409 });
+      expect(await db.researchGap.count({ where: { analysisId: analysis.id } })).toBe(0);
+    } finally {
+      await db.projectPaper.update({ where: { projectId_paperId: { projectId, paperId: paperIds[0]! } }, data: { screeningStatus: "INCLUDED" } });
+      mockLlm();
+    }
   });
 });

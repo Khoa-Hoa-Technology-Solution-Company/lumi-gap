@@ -34,8 +34,9 @@ export async function removeCreatedAcademicData({ userIds, institutionIds, paper
   await db.projectInvitation.deleteMany({ where: { OR: [{ projectId: { in: projectIds } }, { invitedById: { in: userIds } }] } });
   await db.projectActivity.deleteMany({ where: { projectId: { in: projectIds } } });
   await db.projectPaper.deleteMany({ where: { projectId: { in: projectIds } } });
-  await db.projectMember.deleteMany({ where: { OR: [{ projectId: { in: projectIds } }, { userId: { in: userIds } }] } });
+  // Deleting projects cascades their owner memberships without breaking the canonical owner guard.
   await db.project.deleteMany({ where: { id: { in: projectIds } } });
+  await db.projectMember.deleteMany({ where: { userId: { in: userIds } } });
   if (paperIds.length) await db.paper.deleteMany({ where: { id: { in: paperIds } } });
   await db.user.deleteMany({ where: { id: { in: userIds } } });
   if (institutionIds.length) {

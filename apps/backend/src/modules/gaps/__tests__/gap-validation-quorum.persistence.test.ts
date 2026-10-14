@@ -1,3 +1,4 @@
+import { createProjectFixture } from "../../../test-utils/project-fixture.js";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { env } from "../../../config/env.js";
@@ -32,7 +33,7 @@ describe.sequential("gap expert validation quorum (PostgreSQL)", () => {
       data: [expertOneId, expertTwoId].map((userId) => ({ userId, capability: "GAP_VALIDATION", source: "test" })),
     });
 
-    const project = await prisma.project.create({ data: { title: `Gap quorum ${marker.slice(0, 8)}`, ownerId } });
+    const project = await createProjectFixture({ data: { title: `Gap quorum ${marker.slice(0, 8)}`, ownerId } });
     projectId = project.id;
     const gap = await prisma.researchGap.create({
       data: {

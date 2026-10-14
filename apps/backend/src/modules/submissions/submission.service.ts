@@ -1,3 +1,4 @@
+import { currentProjectMembership } from "../authorization/project-membership.js";
 import crypto from "node:crypto";
 import type { UserRole } from "@trend/shared-types";
 import { AppError } from "../../common/exceptions/app-error.js";
@@ -59,7 +60,7 @@ async function getSubmissionOrThrow(submissionInput: string) {
 async function canAccessFullSubmission(submission: SubmissionRow, userId: string, role: UserRole) {
   if (hasPermission(role, "review:assign")) return true;
   const prisma = getPrisma();
-  if (await prisma.submissionAuthor.findUnique({ where: { submissionId_userId: { submissionId: submission.id, userId } } })) return true;
+  // Authorship is retained as attribution; current membership controls full workspace access.
   const project = await prisma.project.findUnique({ where: { id: submission.projectId } });
   if (project?.ownerId === userId) return true;
   return Boolean(await prisma.projectMember.findFirst({ where: { projectId: submission.projectId, userId, status: "ACTIVE" } }));
@@ -75,7 +76,9 @@ async function assertSubmissionAccess(submission: SubmissionRow, userId: string,
 async function canManageSubmission(submission: SubmissionRow, userId: string, role: UserRole) {
   const state = await getPrisma().project.findUnique({ where: { id: submission.projectId }, select: { status: true } });
   if (!state || state.status === "ARCHIVED") return false;
-  if (hasPermission(role, "review:assign") || submission.createdById === userId) return true;
+  if (hasPermission(role, "review:assign")) return true;
+  if (!await currentProjectMembership(submission.projectId, userId)) return false;
+  if (submission.createdById === userId) return true;
   const prisma = getPrisma();
   const [author, project] = await Promise.all([
     prisma.submissionAuthor.findUnique({ where: { submissionId_userId: { submissionId: submission.id, userId } } }),

@@ -25,6 +25,8 @@ import { GapOrigin } from "./gap-origin";
 import { GapScopeNote } from "./gap-evidence-summary";
 import { GapDirectionsPanel } from "./gap-directions";
 import { GapExpertValidationPanel } from "./gap-expert-validation";
+import { ResearchGapEvaluation } from "@/features/projects/components/research-gap-evaluation";
+import { ResearchGapDrawer } from "@/features/projects/components/research-gap-drawer";
 import { AiEvaluation } from "@/components/ai-evaluation";
 import { useGapCommunityDiscussions, usePatchGapStatus } from "../hooks/use-gaps";
 import type { GapStatus, ResearchGapItem } from "@trend/shared-types";
@@ -34,6 +36,7 @@ import { formatNumber } from "@/utils/format";
 import { forumGapCopy } from "@/features/forum/forum-gap-copy";
 
 interface GapDetailDrawerProps {
+  researchProjectId?: string;
   gap: ResearchGapItem | null;
   isOpen: boolean;
   onClose: () => void;
@@ -41,11 +44,12 @@ interface GapDetailDrawerProps {
   onDraftProposal?: (gap: ResearchGapItem) => void;
 }
 
-export function GapDetailDrawer({ gap, isOpen, onClose, onDraftProposal }: GapDetailDrawerProps) {
+export function GapDetailDrawer({ gap, isOpen, onClose, onDraftProposal, researchProjectId }: GapDetailDrawerProps) {
   const { t } = useI18n();
   const community = useGapCommunityDiscussions(gap?.id);
   const { mutateAsync: patchStatus, isPending: isPatching } = usePatchGapStatus();
   if (!gap) return null;
+  if (researchProjectId) return <ResearchGapDrawer gap={gap} projectId={researchProjectId} open={isOpen} onClose={onClose} />;
 
   const handleUpdateStatus = async (status: GapStatus) => {
     try {
@@ -64,9 +68,9 @@ export function GapDetailDrawer({ gap, isOpen, onClose, onDraftProposal }: GapDe
   let strengthTooltip = "";
 
   if (gap.evidenceStatus === "confirmed") {
-    strengthLabel = t("Confirmed by corpus");
+    strengthLabel = t("Corpus signal available");
     strengthColor = "bg-emerald-500/10 text-emerald-700 border-emerald-500/20 dark:text-emerald-400";
-    strengthTooltip = t("The gap has a corpus probe and deterministic evidence score.");
+    strengthTooltip = t("A corpus comparison produced a heuristic signal. This is not scientific validation.");
   } else if (gap.evidenceStatus === "weak") {
     strengthLabel = t("Weak corpus evidence");
     strengthColor = "bg-amber-500/10 text-amber-700 border-amber-500/20 dark:text-amber-400";
@@ -74,7 +78,7 @@ export function GapDetailDrawer({ gap, isOpen, onClose, onDraftProposal }: GapDe
   } else {
     strengthLabel = t("AI-only from report");
     strengthColor = "bg-purple-500/10 text-purple-700 border-purple-500/20 dark:text-purple-400";
-    strengthTooltip = t("This came from a report and has not yet been verified with a corpus probe.");
+    strengthTooltip = t("An AI suggestion from a report, without a saved corpus comparison. Human review is still required.");
   }
 
   return (
@@ -256,7 +260,7 @@ export function GapDetailDrawer({ gap, isOpen, onClose, onDraftProposal }: GapDe
                         })}
                       </span>
                       <span className="block italic text-slate-400">
-                        {t("Context only. It is not the basis for the Confirmed label, which always uses the whole corpus.")}
+                        {t("Context only. Corpus comparisons describe the saved collection and do not establish scientific validity.")}
                       </span>
                     </div>
                   )}
@@ -398,6 +402,7 @@ export function GapDetailDrawer({ gap, isOpen, onClose, onDraftProposal }: GapDe
               )}
             </div>
 
+            {researchProjectId && <ResearchGapEvaluation key={gap.id} projectId={researchProjectId} gapId={gap.id} />}
             <GapExpertValidationPanel gap={gap} />
 
             {/* AI Research Directions */}

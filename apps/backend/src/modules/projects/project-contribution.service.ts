@@ -66,9 +66,9 @@ async function assertResolver(project: Awaited<ReturnType<typeof projectOrThrow>
 }
 
 export const projectContributionService = {
-  async list(projectIdInput: string, actorIdInput: string, actorRole?: string) {
+  async list(projectIdInput: string, actorIdInput: string, _actorRole?: string) {
     const [project, actorId] = await Promise.all([projectOrThrow(projectIdInput), userId(actorIdInput)]);
-    if (!isProjectMember(project, actorId) && actorRole !== "admin") throw AppError.forbidden("Access denied to this project's contributions");
+    if (!isProjectMember(project, actorId)) throw AppError.forbidden("Access denied to this project's contributions");
     const proposals = await getPrisma().projectContributionProposal.findMany({ where: { projectId: project.id }, orderBy: { createdAt: "desc" } });
     return Promise.all(proposals.map((proposal) => presentProposal(proposal)));
   },

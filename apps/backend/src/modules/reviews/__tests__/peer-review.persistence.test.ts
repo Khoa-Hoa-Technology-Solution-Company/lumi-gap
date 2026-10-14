@@ -1,3 +1,4 @@
+import { createProjectFixture } from "../../../test-utils/project-fixture.js";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { getPrisma, disconnectPostgres } from "../../../infrastructure/database/prisma.js";
 import { reviewRequestService } from "../review-request.service.js";
@@ -44,7 +45,7 @@ describe.sequential("peer-review versions and authorization (PostgreSQL)", () =>
 
   async function article(openForReview = false) {
     const prisma = getPrisma();
-    const project = await prisma.project.create({ data: { ownerId: author, title: `Review project ${marker}`, visibility: "PRIVATE" } }); projectIds.push(project.id);
+    const project = await createProjectFixture({ data: { ownerId: author, title: `Review project ${marker}`, visibility: "PRIVATE" } }); projectIds.push(project.id);
     const submission = await prisma.submission.create({ data: { projectId: project.id, createdById: author, title: `Research ${marker}`, submissionType: "RESEARCH_PAPER", status: "ready_for_review", openForReview } }); submissionIds.push(submission.id);
     await prisma.submissionAuthor.create({ data: { submissionId: submission.id, userId: author, position: 0 } });
     const revision = await prisma.submissionRevision.create({ data: { submissionId: submission.id, revisionNumber: 1, uploadedById: author, contentSnapshot: "# Original methods", contentType: "MARKDOWN", sizeBytes: 18 } });
