@@ -4,6 +4,7 @@ import { DragDropProvider, KeyboardSensor, PointerSensor, useDroppable } from "@
 import { isSortable, useSortable } from "@dnd-kit/react/sortable";
 import { AlertCircle, CalendarDays, CheckCheck, CheckCircle2, Circle, CircleDashed, GripVertical, LayoutGrid, Link2, List, Plus, Search, SlidersHorizontal, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useI18n } from "@/i18n";
 import { workspaceApi } from "../api/workspace.api";
 import { useWorkspaceCommand, useWorkspaceResource } from "../hooks/use-workspace";
@@ -58,14 +59,14 @@ export function TaskBoardView({ projectId, readOnly, onSelect, mode, onMode }: {
   const doMove = async (task: WorkspaceTask, nextStatus: WorkspaceTaskStatus, beforeId: string | null, blockedReason = task.blockedReason) => {
     if (!board.data || busy.current || readOnly) return;
     if (nextStatus === "BLOCKED" && !blockedReason.trim()) { setBlocked({ task, status: nextStatus, beforeId }); setReason(""); return; }
-    busy.current = true; setBlocked(null);
+    busy.current = true;
     const next = structuredClone(board.data);
     next.columns[task.status].items = next.columns[task.status].items.filter(item => item.id !== task.id);
     const destination = next.columns[nextStatus]; const index = beforeId ? destination.items.findIndex(item => item.id === beforeId) : destination.items.length;
     destination.items.splice(index < 0 ? destination.items.length : index, 0, { ...task, status: nextStatus, blockedReason: nextStatus === "BLOCKED" ? blockedReason : "" });
     if (task.status !== nextStatus) { next.columns[task.status].total--; destination.total++; }
     setOptimistic(next);
-    try { await move.mutateAsync({ taskId: task.id, data: { expectedVersion: task.version, expectedBoardVersion: board.data.boardVersion, status: nextStatus, beforeId, blockedReason, clientKey: moveKey.current } }); moveKey.current = crypto.randomUUID(); }
+    try { await move.mutateAsync({ taskId: task.id, data: { expectedVersion: task.version, expectedBoardVersion: board.data.boardVersion, status: nextStatus, beforeId, blockedReason, clientKey: moveKey.current } }); moveKey.current = crypto.randomUUID(); setBlocked(null); setReason(""); }
     catch { await board.refetch(); moveKey.current = crypto.randomUUID(); }
     finally { setOptimistic(null); busy.current = false; }
   };
@@ -81,8 +82,10 @@ export function TaskBoardView({ projectId, readOnly, onSelect, mode, onMode }: {
       {mode === "list" && <><select aria-label={t("Task status")} value={status} onChange={e => { setStatus(e.target.value); setPage(1); }}><option value="">{t("All statuses")}</option>{taskStatuses.map(value => <option key={value} value={value}>{t(taskLabels[value])}</option>)}</select><select aria-label={t("Sort tasks")} value={sort} onChange={e => { setSort(e.target.value); setPage(1); }}>{Object.entries({ manual: "Board order", due: "Deadline", priority: "Priority", title: "Title", updated: "Recently updated" }).map(([value, label]) => <option key={value} value={value}>{t(label)}</option>)}</select></>}
       {filtered && <button type="button" className="task-reset" onClick={() => { setQ(""); setDraftQ(""); setMine(false); setUnassigned(false); setOverdue(false); setPriority(""); setMilestone(""); setAssignee([]); setStatus(""); resetPages(); }}><X size={13} />{t("Reset")}</button>}
     </div>
-    {move.error && <WorkspaceError error={move.error} />}
-    {blocked && <form className="task-blocker-form" onSubmit={e => { e.preventDefault(); void doMove(blocked.task, blocked.status, blocked.beforeId, reason); }}><label>{t("What is blocking this task?")}<textarea autoFocus required rows={2} maxLength={2000} value={reason} onChange={e => setReason(e.target.value)} /></label><div><Button size="sm" disabled={!reason.trim()}>{t("Mark as blocked")}</Button><Button type="button" size="sm" variant="ghost" onClick={() => setBlocked(null)}>{t("Cancel")}</Button></div></form>}
+    {move.error && !blocked && <WorkspaceError error={move.error} />}
+    <Dialog open={Boolean(blocked)} onOpenChange={open => { if (!open && !busy.current) setBlocked(null); }}><DialogContent closeLabel={t("Close")} data-no-i18n><DialogHeader><DialogTitle>{t("What is blocking this task?")}</DialogTitle><DialogDescription>{blocked?.task.title}</DialogDescription></DialogHeader>
+      {blocked && <form className="task-blocker-dialog" onSubmit={e => { e.preventDefault(); if (reason.trim()) void doMove(blocked.task, blocked.status, blocked.beforeId, reason.trim()); }}><label className="sr-only" htmlFor="task-blocker-reason">{t("What is blocking this task?")}</label><textarea id="task-blocker-reason" className="project-form-textarea" autoFocus required rows={4} maxLength={2000} disabled={move.isPending} value={reason} onChange={e => setReason(e.target.value)} />{move.error && <WorkspaceError error={move.error} />}<div className="flex justify-end gap-2"><Button type="button" variant="ghost" disabled={move.isPending} onClick={() => setBlocked(null)}>{t("Cancel")}</Button><Button type="submit" disabled={!reason.trim() || move.isPending}>{t(move.isPending ? "Saving…" : "Mark as blocked")}</Button></div></form>}
+    </DialogContent></Dialog>
     {mode === "board" ? board.isLoading ? <WorkspaceLoading /> : board.isError || !current ? <WorkspaceError error={board.error} retry={() => void board.refetch()} /> : <>
       <DragDropProvider sensors={taskSensors} onDragOver={event => {
         const { source, target } = event.operation;

@@ -14,7 +14,7 @@ import { canLeaveWorkspace, useUnsavedWorkspace } from "../components/workspace-
 
 vi.mock("@dnd-kit/react", () => ({ KeyboardSensor: class {}, PointerSensor: { configure: () => ({}), defaults: {} }, DragDropProvider: ({ children }: { children: ReactNode }) => children, useDroppable: () => ({ ref: () => undefined, isDropTarget: false }) }));
 vi.mock("@dnd-kit/react/sortable", () => ({ useSortable: () => ({ ref: () => undefined, handleRef: () => undefined, isDragSource: false }), isSortable: () => false }));
-const mocks = vi.hoisted(() => Object.fromEntries(["gapEvidence", "plan", "savePlan", "updatePlanDraft", "snapshotPlan", "restorePlan", "planThreads", "createPlanThread", "planHistory", "shares", "overview", "comments", "comment", "people", "artifacts", "tasks", "taskBoard", "moveTask", "task", "saveTask", "milestones", "discussions", "discussion", "saveDiscussion", "reply", "resolve", "decisions", "saveDecision", "history"].map(key => [key, vi.fn()])));
+const mocks = vi.hoisted(() => Object.fromEntries(["gapEvidence", "plan", "savePlan", "updatePlanDraft", "snapshotPlan", "restorePlan", "planThreads", "createPlanThread", "planHistory", "shares", "overview", "comments", "comment", "people", "artifacts", "tasks", "taskBoard", "moveTask", "task", "saveTask", "milestones", "saveMilestone", "discussions", "discussion", "saveDiscussion", "reply", "resolve", "decisions", "saveDecision", "history"].map(key => [key, vi.fn()])));
 vi.mock("../api/workspace.api", () => ({ workspaceApi: mocks }));
 vi.mock("@/features/gaps/api/gaps.api", () => ({ gapsApi: { evidence: mocks.gapEvidence } }));
 vi.mock("@/stores/auth-store", () => ({ useAuthStore: (select: (state: { user: { id: string } }) => unknown) => select({ user: { id: "actor" } }) }));
@@ -161,6 +161,19 @@ it("keeps a new task and its retry key after an API failure", async () => {
 it("hides archive write actions even on a direct new-task URL", async () => {
   await render(<WorkspaceTasksPanel projectId="p" readOnly />, "/projects/p?tab=tasks&task=new");
   expect(document.body.querySelector<HTMLFieldSetElement>("fieldset")?.disabled).toBe(true); expect(document.body.textContent).not.toContain("Save task");
+});
+it("opens milestones in a dialog and keeps the draft on save failure and canceled dismissal", async () => {
+  mocks.saveMilestone!.mockRejectedValueOnce(new Error("Network interrupted"));
+  await render(<WorkspaceTasksPanel projectId="p" readOnly={false} />, "/projects/p?tab=tasks&view=milestones");
+  await click("New milestone");
+  expect(document.body.querySelector('[role="dialog"]')).not.toBeNull();
+  await fill("Milestone title", "Finish evidence screening"); await click("Save milestone");
+  expect(document.body.querySelector<HTMLInputElement>('[role="dialog"] input')?.value).toBe("Finish evidence screening");
+  await click("Cancel"); await click("Keep editing");
+  expect(document.body.querySelector<HTMLInputElement>('[role="dialog"] input')?.value).toBe("Finish evidence screening");
+  await click("Save milestone");
+  expect(document.body.querySelector('[role="dialog"]')).toBeNull();
+  expect(mocks.saveMilestone).toHaveBeenLastCalledWith("p", expect.objectContaining({ title: "Finish evidence screening" }), undefined);
 });
 it("renders discussion content as text and denies mentor editing or team decisions", async () => {
   mocks.discussion!.mockResolvedValue({ thread: { id: "thread", title: "Source question", body: '<img src=x onerror="alert(1)">', category: "MENTOR_QUESTION", status: "OPEN", conclusion: "", author: { id: "owner", name: "Owner" }, link: null, mentorRelationshipId: "relationship", version: 1, replyCount: 0, createdAt: "2026-10-14T10:00:00Z", updatedAt: "2026-10-14T10:00:00Z" }, messages: empty, canResolve: false, canReply: true, canEdit: false });

@@ -83,10 +83,6 @@
 .task-quick-add:hover { background: hsl(var(--foreground) / .045); color: var(--task-blue); }
 .task-page-count { padding: 6px; font-size: 11px; color: var(--task-muted); }
 .task-board-help { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--task-muted); padding-top: 6px; }
-.task-blocker-form { border: 1px solid var(--task-line); background: var(--task-surface); padding: 16px; border-radius: 8px; margin-bottom: 16px; }
-.task-blocker-form label { display: grid; gap: 7px; font-size: 13px; }
-.task-blocker-form textarea { border: 1px solid var(--task-line); border-radius: 6px; padding: 8px; background: var(--task-bg); }
-.task-blocker-form > div { display: flex; gap: 6px; margin-top: 10px; }
 .task-list .coord-table { font-size: 13px; min-width: 850px; }
 .task-list-title { text-align: left; font-weight: 600; overflow-wrap: anywhere; max-width: 320px; }
 .task-list-title:hover { color: var(--task-blue); }
@@ -183,3 +179,15 @@
 @media(prefers-reduced-motion: reduce) { .task-card { transition: none; } .research-task-drawer { animation: none !important; transition: none !important; } }
 
 .task-editor .task-title-field > textarea { resize: none; min-height: 73px; }
+.task-blocker-dialog { display: grid; gap: 18px; }
+.task-blocker-dialog textarea, .milestone-dialog-form input, .milestone-dialog-form textarea, .milestone-dialog-form select {
+  width: 100%; min-width: 0; padding: 9px 11px; border: 1px solid hsl(var(--border));
+  border-radius: 6px; background: hsl(var(--background)); color: hsl(var(--foreground)); font-size: 14px; line-height: 1.5;
+}
+.task-blocker-dialog textarea:focus-visible, .milestone-dialog-form :is(input, textarea, select):focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
+.milestone-dialog-form.coord-editor { margin: 0; padding: 0; border: 0; background: transparent; }
+.milestone-dialog-form .coord-field-stack { display: grid; gap: 16px; min-width: 0; border: 0; padding: 0; }
+.milestone-dialog-form label { display: grid; gap: 7px; font-size: 13px; font-weight: 500; }
+.milestone-dialog-form .coord-form-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.milestone-dialog-form .coord-form-actions { justify-content: flex-end; gap: 8px; }
+@media (max-width: 400px) { .milestone-dialog-form .coord-form-pair { grid-template-columns: 1fr; } }

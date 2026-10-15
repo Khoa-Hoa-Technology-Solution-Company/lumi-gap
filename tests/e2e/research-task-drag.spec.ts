@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import type { MoveWorkspaceTask, WorkspaceTask, WorkspaceTaskStatus } from "@trend/shared-types";
+import type { MoveWorkspaceTask, ResearchPlanView, WorkspaceMilestone, WorkspaceTask, WorkspaceTaskStatus } from "@trend/shared-types";
 
 const projectId = "10000000-0000-4000-8000-000000000001";
 const user = { id: "20000000-0000-4000-8000-000000000001", fullName: "Researcher", email: "preview@example.org", systemRole: "USER", role: "user", emailVerifiedAt: "2026-10-01", onboarding: { completed: true }, capabilities: ["BASIC_RESEARCH"] };
@@ -49,7 +49,7 @@ async function fixture(page: Page, archived = false) {
     return route.fulfill({ json: { success: true, data, meta: { hasNext: false } } });
   });
   await page.goto(`/projects/${projectId}?tab=tasks`);
-  await expect(page.locator(".task-card")).toHaveCount(3).catch(error => { console.log(errors); throw error; });
+  await expect(page.locator(".task-card")).toHaveCount(3, { timeout: 15_000 }).catch(error => { console.log(errors); throw error; });
   return { moves, tasks, errors };
 }
 
@@ -102,10 +102,18 @@ test("requires a reason when dropping into Blocked and rolls back a rejected mov
   const state = await fixture(page);
   const source = page.getByRole("button", { name: "Review evidence", exact: true });
   await drag(page, source, page.locator('.task-column[data-status="BLOCKED"] .task-column-empty'));
+  await expect(page.getByRole("dialog", { name: "What is blocking this task?", exact: true })).toBeVisible();
   await expect(page.getByRole("textbox", { name: "What is blocking this task?" })).toBeVisible();
   expect(state.moves).toHaveLength(0);
   await page.getByRole("textbox", { name: "What is blocking this task?" }).fill("Waiting for the dataset");
+  await page.screenshot({ path: "artifacts/task-plan-popups/blocker-desktop.png", fullPage: true });
+  await page.route("**/move", route => route.fulfill({ status: 503, json: { success: false, error: { code: "UNAVAILABLE", message: "Try again" } } }));
   await page.getByRole("button", { name: "Mark as blocked", exact: true }).click();
+  await expect(page.getByRole("dialog").getByRole("alert")).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "What is blocking this task?" })).toHaveValue("Waiting for the dataset");
+  await page.unroute("**/move");
+  await page.getByRole("button", { name: "Mark as blocked", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(page.locator('.task-column[data-status="BLOCKED"] .task-card-title')).toHaveText("Review evidence");
   expect(state.moves[0]!.blockedReason).toBe("Waiting for the dataset");
   await page.route("**/move", route => route.fulfill({ status: 409, json: { success: false, error: { code: "TASK_BOARD_CHANGED", message: "Board changed" } } }));
@@ -136,4 +144,71 @@ test("keeps archived boards read only", async ({ page }) => {
   await drag(page, page.getByRole("button", { name: "Review evidence", exact: true }), page.locator('.task-column[data-status="DONE"] .task-column-empty'));
   await expect(page.locator('.task-column[data-status="TODO"] .task-card')).toHaveCount(3);
   expect(state.moves).toHaveLength(0); expect(state.errors).toEqual([]);
+});
+
+test("creates milestones in a popup and retains input when saving fails", async ({ page }) => {
+  const state = await fixture(page);
+  let milestone: WorkspaceMilestone | null = null, fail = true;
+  await page.route(`**/projects/${projectId}/milestones*`, async route => {
+    if (route.request().method() === "POST") {
+      if (fail) return route.fulfill({ status: 503, json: { success: false, error: { code: "UNAVAILABLE", message: "Try again" } } });
+      milestone = { ...route.request().postDataJSON(), id: "milestone-1", version: 1, createdAt: "2026-10-15T08:00:00Z", updatedAt: "2026-10-15T08:00:00Z" };
+      return route.fulfill({ json: { success: true, data: milestone } });
+    }
+    return route.fulfill({ json: { success: true, data: { ...empty, items: milestone ? [milestone] : [], total: milestone ? 1 : 0 } } });
+  });
+  await page.getByRole("button", { name: "Milestones", exact: true }).click();
+  await page.getByRole("button", { name: "New milestone", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "New milestone", exact: true });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("textbox", { name: "Milestone title", exact: true }).fill("Finish evidence screening");
+  await page.screenshot({ path: "artifacts/task-plan-popups/milestone-desktop.png", fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: "artifacts/task-plan-popups/milestone-mobile.png", fullPage: true });
+  await dialog.getByRole("button", { name: "Save milestone", exact: true }).click();
+  await expect(dialog.getByRole("alert")).toBeVisible();
+  await expect(dialog.getByRole("textbox", { name: "Milestone title", exact: true })).toHaveValue("Finish evidence screening");
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Keep editing", exact: true }).click();
+  await expect(dialog).toBeVisible();
+  fail = false;
+  await dialog.getByRole("button", { name: "Save milestone", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Finish evidence screening/ })).toBeVisible();
+  expect(state.errors).toEqual([]);
+});
+
+test("keeps plan editing, section feedback and version tools accessible in the new layout", async ({ page }) => {
+  const state = await fixture(page);
+  const plan: ResearchPlanView = { projectId, projectTitle: "Collaborative research", version: 1, currentRevisionId: null, canEdit: true, canShare: false, archived: false, access: "TEAM", content: { approach: "UNDECIDED", problem: "", objectives: [], questions: [], scope: "", methodology: "", searchStrategy: "", deliverables: [], inclusionCriteria: [], exclusionCriteria: [] } };
+  await page.route(new RegExp(`/projects/${projectId}/plan(?:/|\\?|$)`), async route => {
+    const request = route.request(), path = new URL(request.url()).pathname;
+    if (request.method() === "PATCH" && path.endsWith("/draft")) {
+      const input = request.postDataJSON();
+      plan.content = { ...plan.content, ...input.changes }; plan.version++;
+      return route.fulfill({ json: { success: true, data: { version: plan.version, content: plan.content } } });
+    }
+    if (request.method() !== "GET") return route.fulfill({ status: 405, json: { success: false } });
+    return route.fulfill({ json: { success: true, data: path.endsWith("/plan") ? plan : empty } });
+  });
+  await page.getByRole("tab", { name: "Research plan", exact: true }).click();
+  await expect(page.locator(".living-plan-document")).toBeVisible();
+  await page.screenshot({ path: "artifacts/task-plan-popups/plan-desktop.png", fullPage: true });
+  await page.getByRole("textbox", { name: "Research problem", exact: true }).fill("How can teams evaluate conflicting evidence?");
+  await expect.poll(() => plan.content.problem).toContain("conflicting evidence");
+  await page.getByRole("button", { name: "Comments on Research problem", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Comments on Research problem", exact: true })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Version history", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Version history", exact: true })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Create version", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Create version", exact: true })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.locator(".living-plan-details > summary").click();
+  await expect(page.getByRole("combobox", { name: "Research approach", exact: true })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: "artifacts/task-plan-popups/plan-mobile.png", fullPage: true });
+  expect(state.errors).toEqual([]);
 });

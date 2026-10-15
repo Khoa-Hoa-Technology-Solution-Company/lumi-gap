@@ -11,6 +11,7 @@ import { planFields, usePlanDraft } from "../hooks/use-plan-draft";
 import { canLeaveWorkspace, projectSectionHref, useUnsavedWorkspace, WorkspaceComments, WorkspaceError, WorkspaceHeading, WorkspaceLoading } from "./workspace-common";
 import { PlanDocument } from "./plan-document";
 import { PlanHistory, PlanSharing } from "./plan-history-panel";
+import "../research-plan.css";
 
 export function WorkspacePlanPanel({ projectId, mentor = false }: { projectId: string; mentor?: boolean }) {
   const [params, setParams] = useSearchParams();
@@ -35,13 +36,14 @@ function LivingPlan({ projectId, mentor, view, revision, onRevision }: { project
   const currentContent = view.canEdit ? state.draft : view.content;
   const status = state.saving ? "Saving…" : state.error ? "Could not sync changes" : state.dirty ? "Changes waiting to sync" : view.archived ? "Archived, read only" : "Draft saved";
   return <div className="coord-plan living-plan" data-no-i18n>
-    <WorkspaceHeading title={t("Research plan")} description={t(mentor ? "Only the plan revision explicitly shared with you is visible here." : "Set your research direction and update it as your team finds evidence.")} action={<div className="flex flex-wrap gap-2">
-      {!mentor && <Button type="button" size="sm" variant="outline" onClick={() => setHistoryOpen(true)}><History size={15} className="mr-2" />{t("Version history")}</Button>}
-      {view.canEdit && <Button type="button" size="sm" disabled={!state.valid || Boolean(state.conflict)} onClick={async () => { if (await state.flush()) setSnapshotOpen(true); }}><Plus size={15} className="mr-2" />{t("Create version")}</Button>}
-    </div>} />
-    <div className="living-plan-status"><span role="status" aria-live="polite">{t(snapshotId ? "Immutable version {{version}}" : "Working draft", { version: view.version })}{!snapshotId && <> · {t(status)}</>}</span>
+    <WorkspaceHeading title={t("Research plan")} description={t(mentor ? "Only the plan revision explicitly shared with you is visible here." : "Define the problem, set objectives and refine your research questions.")} />
+    <div className="living-plan-status"><div className="living-plan-save-state"><span role="status" aria-live="polite">{t(snapshotId ? "Immutable version {{version}}" : "Working draft", { version: view.version })}{!snapshotId && <> · {t(status)}</>}</span>{view.canEdit && <small>{t("Changes save automatically. Create a version when ready to share.")}</small>}</div>
+      <div className="living-plan-version-actions">
       {snapshotId && !mentor && <Button type="button" size="sm" variant="ghost" onClick={() => onRevision(null)}>{t("Back to current plan")}</Button>}
       {Boolean(state.error) && !state.conflict && view.canEdit && <Button type="button" size="sm" variant="outline" disabled={state.saving} onClick={() => void state.retry()}>{t("Retry sync")}</Button>}
+      {!mentor && <Button type="button" size="sm" variant="ghost" onClick={() => setHistoryOpen(true)}><History size={15} className="mr-2" />{t("Version history")}</Button>}
+      {view.canEdit && <Button type="button" size="sm" variant="outline" disabled={state.saving || !state.valid || Boolean(state.conflict)} onClick={async () => { if (await state.flush()) setSnapshotOpen(true); }}><Plus size={15} className="mr-2" />{t("Create version")}</Button>}
+      </div>
     </div>
     {state.recovered && <p role="status" className="mb-4 text-sm text-muted-foreground">{t("Recovered your unsynced draft from the expired session in this tab.")}</p>}
     {Boolean(state.error) && !state.conflict && view.canEdit && <WorkspaceError error={state.error} />}

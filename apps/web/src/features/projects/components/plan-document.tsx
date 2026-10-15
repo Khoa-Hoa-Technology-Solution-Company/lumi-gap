@@ -14,10 +14,10 @@ type Props = { projectId: string; content: ResearchPlanContent; editable: boolea
 export function PlanDocument({ projectId, content, editable, revisionId, version, archived, mentor, field }: Props) {
   const { t } = useI18n(); const [section, setSection] = useState<PlanSection | null>(null); const [params] = useSearchParams();
   const text = (key: "problem" | "scope" | "methodology" | "searchStrategy", rows: number, maxLength: number, placeholder: string) => editable ? <textarea id={`plan-${key}`} aria-label={t(planSectionLabels[key])} rows={rows} maxLength={maxLength} value={content[key]} placeholder={t(placeholder)} onChange={event => field(key, event.target.value)} /> : <p className="living-plan-prose">{content[key] || t("Not drafted yet")}</p>;
-  const heading = (key: PlanSection) => <div className="living-plan-section-heading"><h3 id={`plan-${key}-heading`}>{t(planSectionLabels[key])}</h3><Button type="button" size="sm" variant="ghost" aria-label={t("Comments on {{section}}", { section: t(planSectionLabels[key]) })} onClick={() => setSection(key)}><MessageSquare size={15} /><span>{t("Comments")}</span></Button></div>;
+  const heading = (key: PlanSection) => <div className="living-plan-section-heading"><h3 id={`plan-${key}-heading`}>{t(planSectionLabels[key])}</h3><Button type="button" size="icon" variant="ghost" title={t("Comments on {{section}}", { section: t(planSectionLabels[key]) })} aria-label={t("Comments on {{section}}", { section: t(planSectionLabels[key]) })} onClick={() => setSection(key)}><MessageSquare size={16} aria-hidden="true" /></Button></div>;
   return <>
     <div className="living-plan-document">
-      <section aria-labelledby="plan-problem-heading">{heading("problem")}{text("problem", 5, 5000, "What problem is your team exploring, and why is it worth investigating?")}</section>
+      <section aria-labelledby="plan-problem-heading">{heading("problem")}{text("problem", 4, 5000, "What problem is your team exploring, and why is it worth investigating?")}</section>
       <section aria-labelledby="plan-objectives-heading">{heading("objectives")}{editable ? <OrderedPlanList label="Research objectives" values={content.objectives} max={20} limit={500} onChange={values => field("objectives", values)} /> : <ReadList values={content.objectives} />}</section>
       <section id="plan-questions" aria-labelledby="plan-questions-heading">{heading("questions")}
         {!content.questions.length && <p className="living-plan-empty">{t("Add questions as literature and evidence clarify your direction.")}</p>}
@@ -30,7 +30,7 @@ export function PlanDocument({ projectId, content, editable, revisionId, version
         </li>)}</ol>
         {editable && <Button type="button" size="sm" variant="outline" disabled={content.questions.length >= 20} onClick={() => field("questions", [...content.questions, { id: crypto.randomUUID(), text: "" }])}><Plus size={14} className="mr-2" />{t("Add research question")}</Button>}
       </section>
-      <details className="living-plan-details"><summary>{t("Detailed plan")}</summary><div className="living-plan-detail-content">
+      <details className="living-plan-details"><summary><span>{t("Methods, scope & outcomes")}</span><small>{t("Approach, boundaries, screening criteria and expected outcomes")}</small></summary><div className="living-plan-detail-content">
         <label className="living-plan-approach">{t("Research approach")}{editable ? <select aria-label={t("Research approach")} value={content.approach} onChange={event => field("approach", event.target.value as ResearchApproach)}>{Object.entries(approachLabels).map(([value, label]) => <option key={value} value={value}>{t(label)}</option>)}</select> : <span>{t(approachLabels[content.approach])}</span>}</label>
         <section aria-labelledby="plan-scope-heading">{heading("scope")}{text("scope", 3, 5000, "Population, context and boundaries of the research…")}</section>
         <section aria-labelledby="plan-methodology-heading">{heading("methodology")}{text("methodology", 5, 20000, "How does your team intend to study and evaluate the problem?")}</section>
