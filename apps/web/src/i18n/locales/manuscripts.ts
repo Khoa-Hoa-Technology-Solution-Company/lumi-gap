@@ -1,4 +1,5 @@
 export const manuscriptsVi = {
+  "Choose a title and template. Your team can start writing together in the editor.": "Chọn tiêu đề và mẫu. Nhóm của bạn có thể bắt đầu cùng viết trong trình soạn thảo.",
   "Mentor feedback pending": "Đang chờ cố vấn góp ý",
   "Mentor feedback received": "Đã nhận góp ý từ cố vấn",
   "Mentor feedback addressed": "Đã xử lý góp ý của cố vấn",
