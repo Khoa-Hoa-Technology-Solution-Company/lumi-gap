@@ -1,0 +1,18 @@
+.coord-chat-tools, .coord-chat-tool-heading, .coord-chat-tool-heading > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.coord-chat-tools { flex-shrink: 0; }
+.coord-chat-tools button, .coord-chat-tool-heading button { gap: 6px; }
+.coord-chat-tools button[aria-pressed="true"] {
+  color: var(--coord-accent);
+  background: color-mix(in oklch, var(--coord-accent) 8%, var(--coord-surface));
+  border-color: color-mix(in oklch, var(--coord-accent) 35%, var(--coord-line));
+}
+.coord-chat-tool-heading { justify-content: space-between; margin-bottom: 16px; }
+.coord-chat-tool-heading h3 { margin: 0; font-size: 15px; font-weight: 650; }
+@media (max-width: 640px) {
+  .coord-discussions > .coord-heading { flex-direction: column; align-items: flex-start; }
+}

@@ -168,11 +168,30 @@ it("renders discussion content as text and denies mentor editing or team decisio
   expect(container.textContent).toContain('<img src=x onerror="alert(1)">'); expect(container.querySelector("img")).toBeNull();
   expect(container.textContent).not.toContain("Edit discussion"); expect(container.textContent).not.toContain("Record a decision from this discussion");
 });
+it("opens team chat by default and keeps threads and decisions as tools inside it", async () => {
+  await render(<WorkspaceDiscussionsPanel projectId="p" readOnly={false} legacyChat={<p>Chat interface</p>} />, "/projects/p?tab=chat");
+  expect(container.querySelector("h2")?.textContent).toBe("Team chat & AI");
+  expect(container.textContent).toContain("Chat interface");
+  expect(container.querySelector(".coord-subnav")).toBeNull();
+  expect(mocks.discussions).not.toHaveBeenCalled(); expect(mocks.decisions).not.toHaveBeenCalled();
+  await click("Threads"); expect(container.textContent).toContain("Make room for a research conversation");
+  await click("Decision log"); expect(container.textContent).toContain("Keep the reason behind each decision");
+  await click("Back to chat"); expect(container.textContent).toContain("Chat interface");
+});
+it("keeps a decision draft when returning to chat is canceled", async () => {
+  await render(<WorkspaceDiscussionsPanel projectId="p" readOnly={false} legacyChat={<p>Chat interface</p>} />, "/projects/p?tab=chat&discussionView=decisions&fromThread=source");
+  await fill("Decision", "Use the broader evidence base");
+  await click("Back to chat"); await click("Keep editing");
+  expect([...container.querySelectorAll("textarea")].some(input => input.value === "Use the broader evidence base")).toBe(true);
+  await click("Back to chat"); await click("Leave without saving");
+  expect(container.textContent).toContain("Chat interface");
+  await click("Decision log"); expect(container.querySelector("textarea")).toBeNull();
+});
 it("keeps the original discussion version after a collaborator refreshes the source", async () => {
   const thread = { id: "thread", title: "Method choice", body: "Original scope", category: "GENERAL", status: "OPEN", conclusion: "", author: { id: "owner", name: "Owner" }, link: null, mentorRelationshipId: null, version: 1, replyCount: 0, createdAt: "2026-10-14T10:00:00Z", updatedAt: "2026-10-14T10:00:00Z" };
   mocks.discussion!.mockResolvedValue({ thread, messages: empty, canResolve: true, canReply: true, canEdit: true });
   mocks.saveDiscussion!.mockRejectedValue(new Error("Conflict"));
-  await render(<WorkspaceDiscussionsPanel projectId="p" readOnly={false} owner />, "/projects/p?tab=chat&discussion=thread");
+  await render(<WorkspaceDiscussionsPanel projectId="p" readOnly={false} owner legacyChat={<p>Chat interface</p>} />, "/projects/p?tab=chat&discussionView=chat&discussion=thread");
   await click("Edit discussion"); await fill("Discussion content", "My local interpretation");
   mocks.discussion!.mockResolvedValue({ thread: { ...thread, version: 2, body: "Teammate's revision" }, messages: empty, canResolve: true, canReply: true, canEdit: true });
   await act(async () => { await client.invalidateQueries({ queryKey: ["project-workspace", "actor", "p", "discussion"] }); });

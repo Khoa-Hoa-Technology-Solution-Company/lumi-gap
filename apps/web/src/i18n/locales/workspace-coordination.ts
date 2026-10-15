@@ -224,6 +224,8 @@ export const workspaceCoordinationVi = {
   "Threads": "Chủ đề thảo luận",
   "Decision log": "Nhật ký quyết định",
   "Team chat & AI": "Trò chuyện nhóm và AI",
+  "Talk with your team, explore with AI and keep research decisions together.": "Trao đổi cùng nhóm, khám phá với AI và lưu lại các quyết định nghiên cứu.",
+  "Back to chat": "Về trò chuyện",
   "Search discussions…": "Tìm thảo luận…",
   "Search discussions": "Tìm thảo luận",
   "Discussion status": "Trạng thái thảo luận",

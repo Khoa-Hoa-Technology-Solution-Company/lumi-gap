@@ -1,7 +1,7 @@
 import { useRef, useState, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import type { DiscussionCategory, SaveWorkspaceDiscussion, WorkspaceDiscussion } from "@trend/shared-types";
-import { ArrowLeft, MessageSquare, Plus } from "lucide-react";
+import { ArrowLeft, BookOpenCheck, MessageSquare, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useI18n } from "@/i18n";
 
@@ -9,20 +9,23 @@ import { workspaceApi } from "../api/workspace.api";
 import { useWorkspaceCommand, useWorkspaceResource } from "../hooks/use-workspace";
 import { canLeaveWorkspace, CommentItems, useUnsavedWorkspace, WorkspaceArtifactLink, WorkspaceArtifactPicker, WorkspaceComposer, WorkspaceDate, WorkspaceEmpty, WorkspaceError, WorkspaceHeading, WorkspaceHistory, WorkspaceLoading, WorkspacePager, WorkspacePeoplePicker } from "./workspace-common";
 import { WorkspaceDecisions } from "./workspace-decisions";
+import "../workspace-discussions.css";
 
 export const categoryLabels: Record<DiscussionCategory, string> = { GENERAL: "General", RESEARCH_QUESTION: "Research question", EVIDENCE: "Evidence", DECISION_NEEDED: "Decision needed", MENTOR_QUESTION: "Mentor question" };
 export function WorkspaceDiscussionsPanel({ projectId, readOnly, owner = false, mentor = false, legacyChat }: { projectId: string; readOnly: boolean; owner?: boolean; mentor?: boolean; legacyChat?: ReactNode }) {
   const { t } = useI18n(); const [params, setParams] = useSearchParams();
-  const view = mentor ? "threads" : params.get("discussionView") ?? "threads"; const selected = params.get("discussion");
+  const selected = params.get("discussion");
+  const requestedView = params.get("discussionView");
+  const view = mentor ? "threads" : requestedView === "decisions" ? "decisions" : requestedView === "threads" || selected ? "threads" : legacyChat ? "chat" : "threads";
   const navigate = async (next: { view?: string; discussion?: string | null; fromThread?: string | null }, checkDraft = true) => {
     if (checkDraft && !(await canLeaveWorkspace())) return;
     const search = new URLSearchParams(params);
-    for (const [key, value] of Object.entries({ discussionView: next.view, discussion: next.discussion, fromThread: next.fromThread })) { if (value === null) search.delete(key); else if (value !== undefined) search.set(key, value); }
+    for (const [key, value] of Object.entries({ discussionView: next.view, discussion: next.discussion, fromThread: next.fromThread !== undefined ? next.fromThread : next.view ? null : undefined })) { if (value === null) search.delete(key); else if (value !== undefined) search.set(key, value); }
     setParams(search, { replace: true });
   };
-  return <div className="coord-discussions" data-no-i18n><WorkspaceHeading title={t("Discussions")} description={t(mentor ? "Questions shared with you by this research team." : "Discuss the evidence, close open questions and keep a record of decisions.")} action={!readOnly && !mentor && view === "threads" && <Button size="sm" onClick={() => navigate({ discussion: "new" })}><Plus className="mr-2 h-4 w-4" />{t("New discussion")}</Button>} />
-    {!mentor && <div className="coord-subnav" aria-label={t("Discussion views")}><button type="button" aria-current={view === "threads" ? "page" : undefined} onClick={() => navigate({ view: "threads", discussion: null })}>{t("Threads")}</button><button type="button" aria-current={view === "decisions" ? "page" : undefined} onClick={() => navigate({ view: "decisions", discussion: null })}>{t("Decision log")}</button>{legacyChat && <button type="button" aria-current={view === "chat" ? "page" : undefined} onClick={() => navigate({ view: "chat", discussion: null })}>{t("Team chat & AI")}</button>}</div>}
-    {view === "decisions" ? <WorkspaceDecisions projectId={projectId} readOnly={readOnly} fromThread={params.get("fromThread")} /> : view === "chat" && legacyChat ? legacyChat : selected ? <DiscussionDetail key={selected} projectId={projectId} selected={selected} readOnly={readOnly} owner={owner} mentor={mentor} onClose={() => navigate({ discussion: null })} onSaved={id => navigate({ discussion: id }, false)} onRecordDecision={id => navigate({ view: "decisions", fromThread: id, discussion: null })} /> : <DiscussionList projectId={projectId} onSelect={discussion => navigate({ discussion })} />}
+  return <div className="coord-discussions" data-no-i18n><WorkspaceHeading title={t(mentor ? "Discussions" : "Team chat & AI")} description={t(mentor ? "Questions shared with you by this research team." : "Talk with your team, explore with AI and keep research decisions together.")} action={!mentor && <div className="coord-chat-tools" role="group" aria-label={t("Discussion views")}><Button size="sm" variant="outline" aria-pressed={view === "threads"} onClick={() => navigate({ view: "threads", discussion: null })}><MessageSquare size={14} aria-hidden="true" />{t("Threads")}</Button><Button size="sm" variant="outline" aria-pressed={view === "decisions"} onClick={() => navigate({ view: "decisions", discussion: null })}><BookOpenCheck size={14} aria-hidden="true" />{t("Decision log")}</Button></div>} />
+    {!mentor && view !== "chat" && <div className="coord-chat-tool-heading"><div>{legacyChat && <Button size="sm" variant="ghost" onClick={() => navigate({ view: "chat", discussion: null })}><ArrowLeft size={14} aria-hidden="true" />{t("Back to chat")}</Button>}<h3>{t(view === "decisions" ? "Decision log" : "Threads")}</h3></div>{!readOnly && view === "threads" && !selected && <Button size="sm" onClick={() => navigate({ discussion: "new" })}><Plus size={14} aria-hidden="true" />{t("New discussion")}</Button>}</div>}
+    {view === "decisions" ? <WorkspaceDecisions projectId={projectId} readOnly={readOnly} fromThread={params.get("fromThread")} /> : view === "chat" && legacyChat ? legacyChat : selected ? <DiscussionDetail key={selected} projectId={projectId} selected={selected} readOnly={readOnly} owner={owner} mentor={mentor} onClose={() => navigate({ view: "threads", discussion: null })} onSaved={id => navigate({ view: "threads", discussion: id }, false)} onRecordDecision={id => navigate({ view: "decisions", fromThread: id, discussion: null })} /> : <DiscussionList projectId={projectId} onSelect={discussion => navigate({ discussion })} />}
   </div>;
 }
 function DiscussionList({ projectId, onSelect }: { projectId: string; onSelect: (id: string) => void }) {
