@@ -1,3 +1,4 @@
+import { confirmAction } from "@/services/confirmation";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { PageHeader } from "@/components/page-header";
@@ -43,8 +44,8 @@ export function BookmarksPage() {
     );
   };
 
-  const handleDeleteBookmark = (id: string, targetKind: "paper" | "report", targetId: string) => {
-    if (confirm("Are you sure you want to remove this item from your library?")) {
+  const handleDeleteBookmark = async (id: string, targetKind: "paper" | "report", targetId: string) => {
+    if ((await confirmAction({ kind: "delete", description: "Are you sure you want to remove this item from your library?" }))) {
       deleteBookmark.mutate(
         { id, targetKind, targetId },
         {

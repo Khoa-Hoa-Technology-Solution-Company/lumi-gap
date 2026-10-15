@@ -250,7 +250,8 @@ describe.skipIf(!isolated).sequential("Research tasks with PostgreSQL, HTTP and 
     await b.getByRole("button", { name: "Lưu công việc", exact: true }).click(); await uiExpect(b.getByRole("dialog").getByRole("alert")).toBeVisible(); await uiExpect(description(b)).toHaveValue("Member draft kept after conflict");
     await uiExpect(b.getByRole("button", { name: "Tải phiên bản mới nhất", exact: true })).toBeVisible();
     expect((await read(id, tid)).description).toBe(""); expect((await read(id, tid)).priority).toBe("URGENT");
-    b.on("dialog", dialog => dialog.accept()); await b.getByRole("button", { name: "Tải phiên bản mới nhất", exact: true }).click(); await uiExpect(description(b)).toHaveValue("");
+    await b.getByRole("button", { name: "Tải phiên bản mới nhất", exact: true }).click();
+    await b.getByRole("alertdialog").getByRole("button", { name: "Rời đi, không lưu", exact: true }).click(); await uiExpect(description(b)).toHaveValue("");
     await Promise.all([a.context().close(), b.context().close()]);
   }, 60000);
 });

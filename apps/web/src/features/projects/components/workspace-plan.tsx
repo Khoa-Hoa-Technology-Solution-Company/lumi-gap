@@ -18,8 +18,8 @@ export function WorkspacePlanPanel({ projectId, mentor = false }: { projectId: s
   const plan = useWorkspaceResource(projectId, "plan", () => workspaceApi.plan(projectId, revision ?? undefined), revision);
   if (plan.isLoading) return <WorkspaceLoading />;
   if (!plan.data || plan.isError) return <WorkspaceError error={plan.error} retry={() => void plan.refetch()} />;
-  return <LivingPlan key={`${projectId}:${revision ?? "draft"}`} projectId={projectId} mentor={mentor} view={plan.data} revision={revision} onRevision={(id, saved = false) => {
-    if (!saved && !canLeaveWorkspace()) return;
+  return <LivingPlan key={`${projectId}:${revision ?? "draft"}`} projectId={projectId} mentor={mentor} view={plan.data} revision={revision} onRevision={async (id, saved = false) => {
+    if (!saved && !(await canLeaveWorkspace())) return;
     const next = new URLSearchParams(params); if (id) next.set("revision", id); else next.delete("revision"); setParams(next, { replace: true });
   }} />;
 }
@@ -53,8 +53,8 @@ function LivingPlan({ projectId, mentor, view, revision, onRevision }: { project
     </nav>}
     {snapshotId && view.canShare && <PlanSharing projectId={projectId} revisionId={snapshotId} version={view.version} />}
     {snapshotId && <details className="living-plan-legacy"><summary>{t("Earlier general version comments")}</summary><WorkspaceComments key={snapshotId} projectId={projectId} targetKind="PLAN_REVISION" targetId={snapshotId} readOnly={view.archived} mentor={mentor} /></details>}
-    <Dialog open={historyOpen} onOpenChange={setHistoryOpen}><DialogContent className="max-w-3xl max-h-[85dvh] overflow-y-auto" closeLabel={t("Close")} data-no-i18n><DialogHeader><DialogTitle>{t("Version history")}</DialogTitle><DialogDescription>{t("Autosaves update the draft. Only created versions appear here.")}</DialogDescription></DialogHeader><PlanHistory projectId={projectId} current={view} onSelect={id => { if (!canLeaveWorkspace()) return; setHistoryOpen(false); onRevision(id, true); }} /></DialogContent></Dialog>
-    <Dialog open={snapshotOpen} onOpenChange={open => { if (!snapshotBusy && (!note || open || canLeaveWorkspace())) setSnapshotOpen(open); }}><DialogContent closeLabel={t("Close")} data-no-i18n><DialogHeader><DialogTitle>{t("Create version")}</DialogTitle><DialogDescription>{t("Capture the saved plan and its research questions for reference or mentor feedback. This is not academic approval.")}</DialogDescription></DialogHeader>
+    <Dialog open={historyOpen} onOpenChange={setHistoryOpen}><DialogContent className="max-w-3xl max-h-[85dvh] overflow-y-auto" closeLabel={t("Close")} data-no-i18n><DialogHeader><DialogTitle>{t("Version history")}</DialogTitle><DialogDescription>{t("Autosaves update the draft. Only created versions appear here.")}</DialogDescription></DialogHeader><PlanHistory projectId={projectId} current={view} onSelect={async id => { if (!(await canLeaveWorkspace())) return; setHistoryOpen(false); onRevision(id, true); }} /></DialogContent></Dialog>
+    <Dialog open={snapshotOpen} onOpenChange={async open => { if (!snapshotBusy && (!note || open || (await canLeaveWorkspace()))) setSnapshotOpen(open); }}><DialogContent closeLabel={t("Close")} data-no-i18n><DialogHeader><DialogTitle>{t("Create version")}</DialogTitle><DialogDescription>{t("Capture the saved plan and its research questions for reference or mentor feedback. This is not academic approval.")}</DialogDescription></DialogHeader>
       <form className="space-y-4" onSubmit={async event => {
         event.preventDefault(); if (snapshotBusy) return;
         setSnapshotBusy(true); setSnapshotError(null);

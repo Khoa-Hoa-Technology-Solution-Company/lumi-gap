@@ -1,3 +1,4 @@
+import { confirmationsVi } from "./confirmations";
 import { researchTasksVi } from "./research-tasks";
 import { livingPlanVi } from "./living-plan";
 import { projectSettingsVi } from "./project-settings";
@@ -2462,4 +2463,5 @@ export const vi: Record<keyof typeof en, string> = {
   ...projectSettingsVi,
   ...livingPlanVi,
   ...researchTasksVi,
+  ...confirmationsVi,
 };

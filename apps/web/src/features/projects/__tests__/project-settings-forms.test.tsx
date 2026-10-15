@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { ConfirmationDialog } from "@/components/confirmation-dialog";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
@@ -23,7 +24,7 @@ vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 const project: IProject = { _id: "project", title: "Research idea", description: "Existing objective", visibility: "PRIVATE", status: "PLANNING", ownerId: "owner", accessRole: "OWNER", version: 3, memberCount: 1, paperCount: 0, members: [], papers: [], updatedAt: "2026-10-14T10:00:00Z", createdAt: "2026-10-14T10:00:00Z" };
 let root: Root, container: HTMLDivElement, client: QueryClient;
 async function render(value = project) {
-  await act(async () => root.render(<QueryClientProvider client={client}><MemoryRouter initialEntries={["/projects/project?tab=members&team=settings"]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><ProjectTeamSettings project={value} /></MemoryRouter></QueryClientProvider>));
+  await act(async () => root.render(<QueryClientProvider client={client}><MemoryRouter initialEntries={["/projects/project?tab=members&team=settings"]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><ProjectTeamSettings project={value} /><ConfirmationDialog /></MemoryRouter></QueryClientProvider>));
 }
 async function fill(selector: string, value: string) {
   const input = container.querySelector<HTMLInputElement>(selector)!;
@@ -96,9 +97,10 @@ it("supports keyboard selection, custom areas, the three-item limit and Escape",
   await submit(); expect(mocks.update).toHaveBeenCalledWith({ researchAreas: ["Computer Science", "Custom area", "Biology"], expectedVersion: 3 });
 });
 it("protects dirty drafts when switching tabs", async () => {
-  const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
   await render(); await fill("#project-settings-title", "Unsaved title");
   await act(async () => container.querySelector<HTMLButtonElement>("#project-people-tab")!.click());
-  expect(container.querySelector<HTMLInputElement>("#project-settings-title")?.value).toBe("Unsaved title"); expect(confirm).toHaveBeenCalledOnce();
-  confirm.mockRestore();
+  expect(container.querySelector<HTMLInputElement>("#project-settings-title")?.value).toBe("Unsaved title");
+  expect(document.querySelector('[role="alertdialog"]')?.textContent).toContain("Leave without saving?");
+  await act(async () => [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Keep editing")!.click());
+  expect(container.querySelector<HTMLInputElement>("#project-settings-title")?.value).toBe("Unsaved title");
 });

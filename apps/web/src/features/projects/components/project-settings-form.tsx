@@ -23,7 +23,7 @@ function useSettingsDraft<T>(project: IProject, value: (project: IProject) => T)
   useUnsavedWorkspace(dirty);
   useEffect(() => { if (!dirty && latest) { setBaseline(project); setDraft(value(project)); } }, [project, dirty, latest, value]);
   const accept = (saved: IProject) => { setBaseline(saved); setDraft(value(saved)); };
-  return { baseline, draft, setDraft, dirty, latest, accept, reload: () => { if (!dirty || canLeaveWorkspace()) accept(project); } };
+  return { baseline, draft, setDraft, dirty, latest, accept, reload: async () => { if (!dirty || (await canLeaveWorkspace())) accept(project); } };
 }
 
 function ChangedNotice({ visible, reload }: { visible: boolean; reload: () => void }) {

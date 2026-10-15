@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
+import { ConfirmationDialog } from "@/components/confirmation-dialog";
 import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { MemoryRouter } from "react-router-dom";
+import { Link, MemoryRouter, useLocation } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { ResearchPlanView } from "@trend/shared-types";
@@ -22,7 +23,7 @@ const empty = { items: [], total: 0, page: 1, pageSize: 20, hasNext: false };
 const plan: ResearchPlanView = { projectId: "p", projectTitle: "Research", version: 1, currentRevisionId: "r1", canEdit: true, canShare: false, archived: false, access: "TEAM", content: { approach: "UNDECIDED", problem: "Initial question", objectives: [], questions: [], scope: "", methodology: "Interviews", searchStrategy: "Retained search", deliverables: [], inclusionCriteria: [], exclusionCriteria: [] } };
 let root: Root, container: HTMLDivElement, client: QueryClient;
 async function render(node: ReactNode, path = "/projects/p?tab=plan") {
-  await act(async () => root.render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[path]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>{node}</MemoryRouter></QueryClientProvider>));
+  await act(async () => root.render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[path]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>{node}<ConfirmationDialog /></MemoryRouter></QueryClientProvider>));
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); });
 }
 async function click(text: string) { const button = [...document.body.querySelectorAll<HTMLButtonElement>("button")].find(item => item.textContent === text); expect(button, text).toBeDefined(); await act(async () => button!.click()); await act(async () => { await new Promise(resolve => setTimeout(resolve, 25)); }); }
@@ -199,7 +200,40 @@ it("preserves the team's decision rationale on a failed save", async () => {
 });
 it("asks once when more than one workspace form has unsaved input", async () => {
   function DirtyForm() { useUnsavedWorkspace(true); return null; }
-  const confirm = vi.spyOn(window, "confirm").mockReturnValue(false); await render(<><DirtyForm /><DirtyForm /></>);
-  expect(canLeaveWorkspace()).toBe(false); expect(confirm).toHaveBeenCalledTimes(1);
-  confirm.mockReturnValue(true); expect(canLeaveWorkspace()).toBe(true); expect(confirm).toHaveBeenCalledTimes(2);
+  const native = vi.spyOn(window, "confirm"); await render(<><DirtyForm /><DirtyForm /></>);
+  let pending!: Promise<boolean>;
+  await act(async () => { pending = canLeaveWorkspace(); });
+  expect(document.querySelectorAll('[role="alertdialog"]')).toHaveLength(1);
+  expect(document.activeElement?.textContent).toBe("Keep editing");
+  await click("Keep editing"); expect(await pending).toBe(false);
+  await act(async () => { pending = canLeaveWorkspace(); });
+  await click("Leave without saving"); expect(await pending).toBe(true);
+  expect(native).not.toHaveBeenCalled();
+});
+
+it("guards router links once, preserves input on cancel and navigates only after confirmation", async () => {
+  function Editor() {
+    useUnsavedWorkspace(true); useUnsavedWorkspace(true);
+    const location = useLocation();
+    return <><input defaultValue="Draft kept" /><Link to="/projects/next">Next project</Link><output>{location.pathname}</output></>;
+  }
+  await render(<Editor />);
+  const anchor = container.querySelector("a")!;
+  await act(async () => anchor.click());
+  expect(container.querySelector("output")?.textContent).toBe("/projects/p");
+  expect(document.querySelectorAll('[role="alertdialog"]')).toHaveLength(1);
+  await click("Keep editing");
+  expect(container.querySelector("input")?.value).toBe("Draft kept");
+  await act(async () => anchor.click()); await click("Leave without saving");
+  expect(container.querySelector("output")?.textContent).toBe("/projects/next");
+});
+it("cancels with Escape, ignores duplicate requests and retains the reload warning", async () => {
+  function Editor() { useUnsavedWorkspace(true); return <input defaultValue="Retained" />; }
+  await render(<Editor />);
+  const unload = new Event("beforeunload", { cancelable: true }); window.dispatchEvent(unload); expect(unload.defaultPrevented).toBe(true);
+  let pending!: Promise<boolean>;
+  await act(async () => { pending = canLeaveWorkspace(); });
+  expect(await canLeaveWorkspace()).toBe(false);
+  await act(async () => document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+  expect(await pending).toBe(false); expect(container.querySelector("input")?.value).toBe("Retained");
 });

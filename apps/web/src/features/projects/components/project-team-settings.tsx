@@ -98,8 +98,8 @@ export function ProjectTeamSettings({ project }: { project: IProject }) {
               document.getElementById(target ? "project-settings-tab" : "project-people-tab")?.click();
               document.getElementById(target ? "project-settings-tab" : "project-people-tab")?.focus();
             }}
-            onClick={() => {
-              if (!canLeaveWorkspace()) return;
+            onClick={async () => {
+              if (!(await canLeaveWorkspace())) return;
               const next = new URLSearchParams(params);
               if (value) next.set("team", "settings");
               else next.delete("team");
@@ -188,7 +188,7 @@ function ProjectLifecycle({ project }: { project: IProject }) {
     <div className="flex flex-wrap items-start justify-between gap-4">
     <div className="max-w-prose"><h3 className="text-base font-semibold">{t("Archive and deletion")}</h3><p className="mt-1 text-sm leading-6 text-muted-foreground">{t(owner ? "Archiving preserves research and history and makes the workspace read-only. Empty projects can be deleted." : "Leaving removes your private workspace access. The owner can invite you again.")}</p></div>
     <DropdownMenu><DropdownMenuTrigger asChild><Button type="button" variant="outline">{t("Project actions")}<MoreHorizontal className="ml-2 h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end">
-      {owner ? <><DropdownMenuItem onSelect={() => { if (canLeaveWorkspace()) setAction(archived ? "restore" : "archive"); }}>{t(archived ? labels.restore : labels.archive)}</DropdownMenuItem><DropdownMenuSeparator /><DropdownMenuItem className="text-destructive" onSelect={() => { if (canLeaveWorkspace()) setAction("delete"); }}>{t(labels.delete)}</DropdownMenuItem></>
+      {owner ? <><DropdownMenuItem onSelect={async () => { if ((await canLeaveWorkspace())) setAction(archived ? "restore" : "archive"); }}>{t(archived ? labels.restore : labels.archive)}</DropdownMenuItem><DropdownMenuSeparator /><DropdownMenuItem className="text-destructive" onSelect={async () => { if ((await canLeaveWorkspace())) setAction("delete"); }}>{t(labels.delete)}</DropdownMenuItem></>
         : <DropdownMenuItem className="text-destructive" onSelect={() => setAction("leave")}>{t(labels.leave)}</DropdownMenuItem>}
     </DropdownMenuContent></DropdownMenu>
     </div>
@@ -206,7 +206,7 @@ function ProjectStatusControl({ project }: { project: IProject }) {
   const { t } = useI18n();
   const [status, setStatus] = useState(project.status), update = useUpdateProject(project._id);
   return <form className="space-y-2" onSubmit={async event => {
-    event.preventDefault(); if (update.isPending || status === project.status || !canLeaveWorkspace()) return;
+    event.preventDefault(); if (update.isPending || status === project.status || !(await canLeaveWorkspace())) return;
     try { await update.mutateAsync({ status, expectedVersion: project.version }); toast.success(t("Project updated")); }
     catch { toast.error(t("Project settings changed. Refresh before saving again.")); }
   }}><label className="block space-y-2 text-sm"><span className="font-medium">{t("Project lifecycle")}</span><select className="project-form-select" value={status} disabled={update.isPending} onChange={event => setStatus(event.target.value as ProjectStatus)}>{Object.entries({ PLANNING: "Planning", ACTIVE: "Active", ON_HOLD: "On hold", COMPLETED: "Completed" }).map(([key, label]) => <option key={key} value={key}>{t(label)}</option>)}</select></label><p className="text-xs text-muted-foreground">{t("Research stage is managed in Overview. Lifecycle controls whether the project is ongoing, paused or completed.")}</p><Button variant="outline" type="submit" size="sm" disabled={status === project.status || update.isPending}>{t("Update lifecycle")}</Button></form>;

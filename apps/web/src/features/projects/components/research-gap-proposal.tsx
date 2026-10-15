@@ -18,6 +18,6 @@ export function ResearchGapProposal({ projectId, topic, onClose }: { projectId: 
     <p className="research-help">{t("Describe an open question. Link supporting and contradictory evidence before recording team support.")}</p>
     {fields.map(([key, label]) => <label key={key}>{t(label)}<textarea required={key !== "scope"} minLength={key === "title" || key === "topic" ? 3 : key === "scope" ? 0 : 10} maxLength={key === "title" || key === "topic" ? 200 : key === "scope" ? 5000 : 10000} value={form[key]} onChange={e => setForm(value => ({ ...value, [key]: e.target.value }))} /></label>)}
     {command.isError && <WorkspaceError error={command.error} />}
-    <div className="research-actions"><Button type="submit" disabled={command.isPending}>{t("Save candidate")}</Button><Button type="button" variant="ghost" onClick={() => { if (canLeaveWorkspace()) onClose(); }}>{t("Cancel")}</Button></div>
+    <div className="research-actions"><Button type="submit" disabled={command.isPending}>{t("Save candidate")}</Button><Button type="button" variant="ghost" onClick={async () => { if ((await canLeaveWorkspace())) onClose(); }}>{t("Cancel")}</Button></div>
   </form>;
 }

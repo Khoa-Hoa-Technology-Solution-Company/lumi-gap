@@ -1,3 +1,4 @@
+import { confirmAction } from "@/services/confirmation";
 import React, { useState, useEffect } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import { Download, CheckCircle2, Info, Check, Clock, Sparkles, ChevronRight, Loader2, XCircle, Flower, Star, MessageSquare, Trash2, Bookmark as BookmarkIcon } from "lucide-react";
@@ -524,7 +525,7 @@ function ReportRatingWidget({ reportId }: { reportId: string }) {
   };
 
   const handleDeleteReview = async (ratingId: string) => {
-    if (!confirm("Are you sure you want to delete your review?")) return;
+    if (!(await confirmAction({ kind: "delete", description: "Are you sure you want to delete your review?" }))) return;
     try {
       const res = await api.delete(`/quality/rate/${ratingId}`);
       if (res.data.success) {

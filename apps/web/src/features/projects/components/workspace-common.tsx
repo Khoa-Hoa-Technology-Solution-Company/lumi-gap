@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useI18n } from "@/i18n";
 import { workspaceApi } from "../api/workspace.api";
 import { useWorkspaceCommand, useWorkspaceResource } from "../hooks/use-workspace";
+import { confirmUnsavedChanges } from "@/services/confirmation";
 
 export const stageLabels = { DISCOVERY: "Literature discovery", SCREENING: "Screening", EXTRACTION: "Evidence extraction", GAP_VALIDATION: "Gap validation", DESIGN: "Research design", WRITING: "Writing", REVIEW: "Review" } as const;
 export const taskLabels = { TODO: "To do", IN_PROGRESS: "In progress", BLOCKED: "Blocked", DONE: "Done" } as const;
@@ -21,24 +22,30 @@ export function useWorkspaceSelection(key: string) {
   return [params.get(key), (value: string | null) => { const next = new URLSearchParams(params); if (value) next.set(key, value); else next.delete(key); setParams(next, { replace: true }); }] as const;
 }
 const checkedLeaveEvents = new WeakSet<Event>();
+let approvedLinkClick = false;
 export function useUnsavedWorkspace(dirty: boolean) {
-  const { t } = useI18n();
   useEffect(() => {
     if (!dirty) return;
-    const unload = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
-    const leave = (event: Event) => { if (checkedLeaveEvents.has(event)) return; checkedLeaveEvents.add(event); if (!window.confirm(t("You have unsaved changes. Leave this section?"))) event.preventDefault(); };
+    const unload = (event: BeforeUnloadEvent) => { if (!approvedLinkClick) { event.preventDefault(); event.returnValue = ""; } };
+    const leave = (event: Event) => { event.preventDefault(); };
     const click = (event: MouseEvent) => {
       const anchor = event.target instanceof Element ? event.target.closest("a[href]") : null;
-      if (anchor instanceof HTMLAnchorElement && anchor.href !== window.location.href && !anchor.target && !event.ctrlKey && !event.metaKey && !checkedLeaveEvents.has(event)) {
+      if (!approvedLinkClick && !event.defaultPrevented && event.button === 0 && anchor instanceof HTMLAnchorElement && anchor.href !== window.location.href && anchor.origin === window.location.origin && !anchor.target && !anchor.hasAttribute("download") && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey && !checkedLeaveEvents.has(event)) {
         checkedLeaveEvents.add(event);
-        if (!window.confirm(t("You have unsaved changes. Leave this section?"))) { event.preventDefault(); event.stopPropagation(); }
+        event.preventDefault(); event.stopPropagation();
+        const href = anchor.href;
+        void confirmUnsavedChanges().then(confirmed => {
+          if (!confirmed || !anchor.isConnected || anchor.href !== href) return;
+          approvedLinkClick = true;
+          try { anchor.click(); } finally { approvedLinkClick = false; }
+        });
       }
     };
     window.addEventListener("beforeunload", unload); window.addEventListener("project-workspace-leave", leave); document.addEventListener("click", click, true);
     return () => { window.removeEventListener("beforeunload", unload); window.removeEventListener("project-workspace-leave", leave); document.removeEventListener("click", click, true); };
-  }, [dirty, t]);
+  }, [dirty]);
 }
-export const canLeaveWorkspace = () => window.dispatchEvent(new Event("project-workspace-leave", { cancelable: true }));
+export const canLeaveWorkspace = async (): Promise<boolean> => approvedLinkClick || window.dispatchEvent(new Event("project-workspace-leave", { cancelable: true })) || confirmUnsavedChanges();
 export function WorkspaceLoading() {
   const { t } = useI18n();
   return <div className="coord-loading" role="status" aria-label={t("Loading workspace")}><Skeleton className="h-7 w-52" /><Skeleton className="mt-4 h-4 w-3/4" /><Skeleton className="mt-8 h-48 w-full" /></div>;
