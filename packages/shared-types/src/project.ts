@@ -134,6 +134,7 @@ export interface MentorshipPerson extends ProjectMemberUserSummary {
 export interface MentorProjectPreview {
   id: string; title: string; summary: string; researchField?: string;
   stage: ProjectStatus; expertise: string[]; discovery: "CLOSED" | "SEEKING_MENTOR";
+  researchAreas: string[]; mentoringNeeds: string;
 }
 export interface MentorDiscoverySettings extends MentorProjectPreview {
   /** Optimistic version for owner-only discovery edits; excluded from public opportunity DTOs. */
@@ -170,6 +171,15 @@ export interface MentorRelationship {
   actions: MentorshipActions; createdAt: string; updatedAt: string;
 }
 export interface AcademicPageMeta { page: number; pageSize: number; total: number; totalPages: number }
+export interface AcademicSupportSearch {
+  q?: string; page?: number; pageSize?: number; institution?: string;
+  area?: string; interest?: string; position?: string;
+  view?: "all" | "incoming" | "outgoing" | "active" | "history";
+}
+export interface MentorSuggestion {
+  id: string; projectId: string; mentorUser: MentorshipPerson; suggestedBy: MentorshipPerson;
+  message: string; status: "PENDING" | "INVITED" | "DISMISSED"; createdAt: string;
+}
 export interface MentorshipCollection {
   requests: MentorshipRequest[]; relationships: MentorRelationship[];
   counts: { pending: number; incoming: number; active: number };

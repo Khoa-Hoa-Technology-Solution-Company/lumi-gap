@@ -21,6 +21,8 @@ model Project {
   mentorshipDiscovery String @default("CLOSED") @map("mentorship_discovery") @db.VarChar(24)
   mentorshipSummary String? @map("mentorship_summary") @db.VarChar(2000)
   mentorshipExpertise String[] @default([]) @map("mentorship_expertise")
+  mentorshipResearchAreas String[] @default([]) @map("mentorship_research_areas")
+  mentorshipNeeds String @default("") @map("mentorship_needs") @db.VarChar(2000)
   ownerId           String    @map("owner_id") @db.Uuid
   archivedAt        DateTime? @map("archived_at") @db.Timestamptz(6)
   createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -156,6 +158,24 @@ model MentorshipRequest {
   @@index([requestedBy, createdAt])
   @@unique([requestedBy, idempotencyKey])
   @@map("mentorship_requests")
+}
+
+// A team recommendation is not a consent request and grants no access.
+model MentorSuggestion {
+  id String @id @default(uuid()) @db.Uuid
+  projectId String @map("project_id") @db.Uuid
+  mentorUserId String @map("mentor_user_id") @db.Uuid
+  suggestedBy String @map("suggested_by") @db.Uuid
+  message String @db.VarChar(1000)
+  status String @default("PENDING") @db.VarChar(24)
+  requestId String? @map("request_id") @db.Uuid
+  resolvedBy String? @map("resolved_by") @db.Uuid
+  resolvedAt DateTime? @map("resolved_at") @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([projectId, status, createdAt])
+  @@map("mentor_suggestions")
 }
 
 model MentorRelationship {

@@ -62,7 +62,7 @@ describe.skipIf(!enabled).sequential("academic relationship consent (PostgreSQL)
     const previews = (await service.discovery(lecturer)).items;
     const preview = previews.find(p => p.id === project)!;
     expect(preview.summary).toContain("evaluation");
-    expect(Object.keys(preview).sort()).toEqual(["discovery", "expertise", "id", "researchField", "stage", "summary", "title"].sort());
+    expect(Object.keys(preview).sort()).toEqual(["discovery", "expertise", "id", "mentoringNeeds", "researchAreas", "researchField", "stage", "summary", "title"].sort());
     expect(JSON.stringify(preview)).not.toContain("CONFIDENTIAL");
     await expect(service.discovery(unverified)).rejects.toMatchObject({ statusCode: 403 });
     const offer = await service.offer(project, lecturer, { message: "I can mentor this project" });

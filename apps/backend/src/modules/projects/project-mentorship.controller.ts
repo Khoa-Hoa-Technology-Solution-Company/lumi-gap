@@ -21,6 +21,7 @@ export const academicSearchSchema = z.object({
   institution: z.string().trim().max(200).optional(),
   area: z.string().trim().max(120).optional(), interest: z.string().trim().max(120).optional(),
   position: z.string().trim().max(160).optional(),
+  view: z.enum(["all", "incoming", "outgoing", "active", "history"]).optional(),
 }).strict();
 export const mentorshipOfferSchema = requestMentorshipSchema.omit({ mentorUserId: true });
 
@@ -30,7 +31,7 @@ export const respondMentorshipSchema = z.object({
 
 export const projectMentorshipController = {
   async list(req: Request, res: Response) {
-    const data = await projectMentorshipService.list(req.params.id as string, req.user!.sub, academicSearchSchema.parse(req.query));
+    const data = await projectMentorshipService.list(req.params.id as string, req.user!.sub, req.query as unknown as z.infer<typeof academicSearchSchema>);
     res.json({ success: true, data });
   },
 

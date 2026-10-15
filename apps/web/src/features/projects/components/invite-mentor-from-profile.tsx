@@ -11,8 +11,8 @@ import { useI18n } from "@/i18n";
 const Composer = lazy(() => import("@/pages/academics/academic-support").then(m => ({ default: m.ConsentComposer })));
 export function InviteMentorFromProfile({ mentor }: { mentor: AvailableMentor }) {
   const { t } = useI18n(), user = useAuthStore(s => s.user), [open, setOpen] = useState(false), [projectId, setProjectId] = useState(""), [compose, setCompose] = useState(false);
-  const projects = useQuery({ queryKey: ["projects", "mentor-invitation"], queryFn: projectsApi.list, enabled: open && Boolean(user) });
-  const preview = useQuery({ queryKey: ["academic-support", "settings", projectId], queryFn: () => academicSupportApi.settings(projectId), enabled: open && Boolean(projectId) });
+  const projects = useQuery({ queryKey: ["projects", user?.id, "mentor-invitation"], queryFn: projectsApi.list, enabled: open && Boolean(user) });
+  const preview = useQuery({ queryKey: ["academic-support", user?.id, "settings", projectId], queryFn: () => academicSupportApi.settings(projectId), enabled: open && Boolean(projectId) });
   if (!user) return null;
   const owned = projects.data?.filter(p => p.ownerId === user.id && !["ARCHIVED", "COMPLETED"].includes(p.status)) ?? [];
   return <><Button size="sm" variant="outline" onClick={() => setOpen(true)}>{t("Invite as Mentor")}</Button>

@@ -4,17 +4,20 @@ import { useI18n } from "@/i18n";
 import { Button } from "@/components/ui/button";
 import { academicSupportApi } from "../api/academic-support.api";
 import type { MentoringPreferences } from "@trend/shared-types";
+import { useAuthStore } from "@/stores/auth-store";
 
 export function mentorshipError(error: unknown) {
   return (error as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message ?? "Could not complete this action. Please try again.";
 }
 export function useMentoringPreferences() {
-  return useQuery({ queryKey: ["academic-support", "preferences"], queryFn: academicSupportApi.preferences });
+  const userId = useAuthStore(s => s.user?.id);
+  return useQuery({ queryKey: ["academic-support", userId, "preferences"], queryFn: academicSupportApi.preferences });
 }
 export function MentoringPreferencesPanel({ lecturer = true }: { lecturer?: boolean }) {
   const { t, language } = useI18n(), cache = useQueryClient(), preferences = useMentoringPreferences();
+  const userId = useAuthStore(s => s.user?.id);
   const update = useMutation({ mutationFn: (input: Partial<Omit<MentoringPreferences, "canEnable">>) => academicSupportApi.savePreferences({ ...input, locale: language === "vi" ? "vi" : "en" }),
-    onSuccess: result => { cache.setQueryData(["academic-support", "preferences"], result); void cache.invalidateQueries({ queryKey: ["academic-profile"] }); void cache.invalidateQueries({ queryKey: ["academic-support", "opportunities"] }); } });
+    onSuccess: result => { cache.setQueryData(["academic-support", userId, "preferences"], result); void cache.invalidateQueries({ queryKey: ["academic-profile"] }); void cache.invalidateQueries({ queryKey: ["academic-support", userId, "opportunities"] }); } });
   if (preferences.isLoading) return <p role="status">{t("Loading…")}</p>;
   if (!preferences.data) return <p role="alert">{t("Unable to load mentoring preferences.")}</p>;
   const pref = preferences.data;

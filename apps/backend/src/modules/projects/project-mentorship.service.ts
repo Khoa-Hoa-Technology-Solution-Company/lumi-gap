@@ -8,9 +8,10 @@ import { assertAcademicRelationshipManager, assertVerifiedLecturer, assertAccept
 import { dispatchMentorshipNotifications, mentorshipNotification, type MentorshipEvent } from "./mentorship-notifications.js";
 import { mentorshipDiscoveryService } from "./mentorship-discovery.service.js";
 import { mentorshipResearchContext, type ContextQuery } from "./mentorship-context.service.js";
+import type { AcademicSupportSearch as AcademicSearch } from "@trend/shared-types";
+export type { AcademicSupportSearch as AcademicSearch } from "@trend/shared-types";
 
 type Db = Prisma.TransactionClient;
-export interface AcademicSearch { q?: string; page?: number; pageSize?: number; institution?: string; area?: string; interest?: string; position?: string }
 const emptyActions = { accept: false, decline: false, cancel: false, end: false, openProject: false };
 const policy = () => ({ maxActiveMentors: env.MAX_ACTIVE_MENTORS_PER_PROJECT, maxPendingRequests: env.MAX_PENDING_MENTOR_REQUESTS_PER_PROJECT });
 export function pageMeta(total: number, input: AcademicSearch = {}) {
@@ -33,12 +34,17 @@ async function project(input: string, db: Db = getPrisma()) {
   return row;
 }
 export function mentorshipPreview(row: Project) {
-  return { id: publicDatabaseId(row), title: row.title, summary: row.mentorshipSummary ?? "", researchField: row.researchField ?? undefined,
+  return { id: publicDatabaseId(row), title: row.title, summary: row.mentorshipSummary ?? "", researchField: row.mentorshipResearchAreas[0],
+    researchAreas: row.mentorshipResearchAreas, mentoringNeeds: row.mentorshipNeeds,
     stage: row.status, expertise: row.mentorshipExpertise, discovery: row.mentorshipDiscovery };
 }
 async function locks(tx: Db, projectId: string, userIds: string[]) {
   for (const id of [...new Set(userIds)].sort()) await tx.$queryRaw`SELECT id FROM users WHERE id = ${id}::uuid FOR NO KEY UPDATE`;
   await tx.$queryRaw`SELECT id FROM projects WHERE id = ${projectId}::uuid FOR UPDATE`;
+}
+async function assertTeam(p: Project, userId: string, db: Db = getPrisma()) {
+  const member = await db.projectMember.findUnique({ where: { projectId_userId: { projectId: p.id, userId } } });
+  if (p.ownerId !== userId && member?.status !== "ACTIVE") throw AppError.forbidden("Only the active project team can find or suggest mentors");
 }
 function assertOpenProject(p: Project) {
   if (["ARCHIVED", "COMPLETED"].includes(p.status)) throw AppError.conflict("This project no longer accepts new mentorships");
@@ -48,7 +54,7 @@ async function record(tx: Db, p: Project, actorId: string | null, type: string, 
   const relationshipEvent = ["MENTORSHIP_ENDED", "MENTOR_JOINED_PROJECT"].includes(type), activityEvent = ["MENTOR_GUIDANCE", "MENTOR_DISCOVERY_UPDATED"].includes(type);
   // Guidance content belongs to the scoped project activity, not the global admin audit feed.
   const details = type === "MENTOR_GUIDANCE" ? { projectId: p.id, attribution: metadata.attribution ?? "TEAM" } : { projectId: p.id, ...metadata };
-  await tx.auditLog.create({ data: { userId: actorId, actionName: type, targetTableName: activityEvent ? "project_activities" : relationshipEvent ? "mentor_relationships" : "mentorship_requests", targetRecordId: activityEvent ? activity.id : recordId, details } });
+  await tx.auditLog.create({ data: { userId: actorId, actionName: type, targetTableName: activityEvent ? "project_activities" : relationshipEvent ? "mentor_relationships" : type.startsWith("MENTORSHIP_SUGGEST") ? "mentor_suggestions" : "mentorship_requests", targetRecordId: activityEvent ? activity.id : recordId, details } });
 }
 async function expireInProject(tx: Db, p: Project) {
   const rows = await tx.mentorshipRequest.findMany({ where: { projectId: p.id, status: "PENDING", expiresAt: { lte: new Date() } } });
@@ -106,17 +112,22 @@ async function collection(a: Awaited<ReturnType<typeof actor>>, query: AcademicS
   const member = p ? await db.projectMember.findUnique({ where: { projectId_userId: { projectId: p.id, userId: a.id } } }) : null;
   const team = p && (p.ownerId === a.id || member?.status === "ACTIVE");
   const where = p ? { projectId: p.id, ...(team ? {} : { mentorUserId: a.id }) } : { OR: [{ mentorUserId: a.id }, { projectId: { in: owned.map(p => p.id) } }] };
+  const incomingWhere = { status: "PENDING", OR: [{ direction: "PROJECT_TO_LECTURER", mentorUserId: a.id }, { direction: "LECTURER_TO_PROJECT", projectId: { in: p?.ownerId === a.id ? [p.id] : owned.map(p => p.id) } }] };
+  const outgoingWhere = { status: "PENDING", OR: [{ direction: "LECTURER_TO_PROJECT", mentorUserId: a.id }, { direction: "PROJECT_TO_LECTURER", requestedBy: a.id }] };
+  const requestWhere: Prisma.MentorshipRequestWhereInput = { AND: [where, ...(query.view === "incoming" ? [incomingWhere] : query.view === "outgoing" ? [outgoingWhere] : query.view === "active" ? [{ id: { in: [] } }] : query.view === "history" ? [{ status: { not: "PENDING" } }] : [])] };
+  const relationshipWhere: Prisma.MentorRelationshipWhereInput = { ...where, ...(query.view === "active" ? { status: "ACTIVE" } : query.view === "history" ? { status: "ENDED" } : query.view === "incoming" || query.view === "outgoing" ? { id: { in: [] } } : {}) };
+  // Access must not depend on which tab/page the caller selected.
+  if (p && !team && !await db.mentorshipRequest.count({ where }) && !await db.mentorRelationship.count({ where })) throw AppError.forbidden();
   const [totalRequests, totalRelationships, pending, incoming, active] = await Promise.all([
-    db.mentorshipRequest.count({ where }), db.mentorRelationship.count({ where }), db.mentorshipRequest.count({ where: { ...where, status: "PENDING" } }),
+    db.mentorshipRequest.count({ where: requestWhere }), db.mentorRelationship.count({ where: relationshipWhere }), db.mentorshipRequest.count({ where: { ...where, status: "PENDING" } }),
     db.mentorshipRequest.count({ where: { AND: [where, { status: "PENDING" }, { OR: [{ direction: "PROJECT_TO_LECTURER", mentorUserId: a.id }, { direction: "LECTURER_TO_PROJECT", projectId: { in: p?.ownerId === a.id ? [p.id] : owned.map(p => p.id) } }] }] } }),
     db.mentorRelationship.count({ where: { ...where, status: "ACTIVE" } }),
   ]);
-  if (p && !team && !totalRequests && !totalRelationships) throw AppError.forbidden();
   const meta = pageMeta(totalRequests, query), relationshipMeta = pageMeta(totalRelationships, query);
   const [requests, relationships] = await Promise.all([
     // PENDING sorts before all terminal statuses allowed by the database constraint.
-    db.mentorshipRequest.findMany({ where, orderBy: [{ status: "desc" }, { createdAt: "desc" }, { id: "asc" }], take: meta.pageSize, skip: (meta.page - 1) * meta.pageSize }),
-    db.mentorRelationship.findMany({ where, orderBy: [{ status: "asc" }, { startedAt: "desc" }, { id: "asc" }], take: meta.pageSize, skip: (meta.page - 1) * meta.pageSize }),
+    db.mentorshipRequest.findMany({ where: requestWhere, orderBy: [{ status: "desc" }, { createdAt: "desc" }, { id: "asc" }], take: meta.pageSize, skip: (meta.page - 1) * meta.pageSize }),
+    db.mentorRelationship.findMany({ where: relationshipWhere, orderBy: [{ status: "asc" }, { startedAt: "desc" }, { id: "asc" }], take: meta.pageSize, skip: (meta.page - 1) * meta.pageSize }),
   ]);
   return { ...await present(requests, relationships, a.id), counts: { pending, incoming, active }, policy: policy(), requestMeta: meta, relationshipMeta };
 }
@@ -156,14 +167,54 @@ export const projectMentorshipService = {
   },
   async mentors(projectInput: string, actorInput: string, query: AcademicSearch = {}) {
     const [p, a] = await Promise.all([project(projectInput), actor(actorInput)]);
-    await assertAcademicRelationshipManager(p.id, a.id); assertOpenProject(p);
-    return mentorshipDiscoveryService.mentors(p, a, query);
+    await assertTeam(p, a.id); assertOpenProject(p);
+    const owner = await getPrisma().user.findUniqueOrThrow({ where: { id: p.ownerId } });
+    return mentorshipDiscoveryService.mentors(p, owner, query);
+  },
+  async suggestions(projectInput: string, actorInput: string, query: AcademicSearch = {}) {
+    const [p, a] = await Promise.all([project(projectInput), actor(actorInput)]);
+    await assertTeam(p, a.id);
+    const db = getPrisma(), where = { projectId: p.id, status: "PENDING" }, total = await db.mentorSuggestion.count({ where }), meta = pageMeta(total, query);
+    const rows = await db.mentorSuggestion.findMany({ where, orderBy: [{ createdAt: "desc" }, { id: "asc" }], take: meta.pageSize, skip: (meta.page - 1) * meta.pageSize });
+    const users = await db.user.findMany({ where: { id: { in: rows.flatMap(r => [r.mentorUserId, r.suggestedBy]) } }, select: { id: true, legacyMongoId: true, fullName: true, avatarUrl: true } });
+    const person = (id: string) => { const u = users.find(u => u.id === id)!; return { _id: publicDatabaseId(u), fullName: u.fullName, avatarUrl: u.avatarUrl ?? undefined }; };
+    return { items: rows.map(r => ({ id: r.id, projectId: publicDatabaseId(p), mentorUser: person(r.mentorUserId), suggestedBy: person(r.suggestedBy), message: r.message, status: r.status, createdAt: r.createdAt.toISOString() })), meta };
+  },
+  async suggest(projectInput: string, actorInput: string, input: { mentorUserId: string; message: string }) {
+    const [p, a, mentor] = await Promise.all([project(projectInput), actor(actorInput), actor(input.mentorUserId)]);
+    const result = await getPrisma().$transaction(async tx => {
+      await locks(tx, p.id, [a.id, mentor.id, p.ownerId]); const live = await project(p.id, tx); await actor(a.id, tx); await assertTeam(live, a.id, tx); assertOpenProject(live);
+      if (live.ownerId === a.id) throw AppError.badRequest("The owner can invite a mentor directly");
+      await assertAcceptingNewMentorships(tx, mentor.id);
+      const member = await tx.projectMember.findUnique({ where: { projectId_userId: { projectId: p.id, userId: mentor.id } } });
+      if (mentor.id === live.ownerId || member?.status === "ACTIVE") throw AppError.conflict("Project members cannot also become the project's academic mentor");
+      if (await tx.mentorSuggestion.findFirst({ where: { projectId: p.id, mentorUserId: mentor.id, status: "PENDING" } }) || await tx.mentorshipRequest.findFirst({ where: { projectId: p.id, mentorUserId: mentor.id, status: "PENDING" } }) || await tx.mentorRelationship.findFirst({ where: { projectId: p.id, mentorUserId: mentor.id, status: "ACTIVE" } })) throw AppError.conflict("A suggestion, pending request or active mentorship already exists");
+      if (!input.message.trim() || input.message.trim().length > 1000) throw AppError.badRequest("Explain the suggestion in 1–1000 characters");
+      if (await tx.mentorSuggestion.count({ where: { projectId: p.id, status: "PENDING" } }) >= 30) throw AppError.conflict("Review existing mentor suggestions first");
+      const row = await tx.mentorSuggestion.create({ data: { projectId: p.id, mentorUserId: mentor.id, suggestedBy: a.id, message: input.message.trim() } });
+      await record(tx, live, a.id, "MENTORSHIP_SUGGESTED", row.id);
+      await mentorshipNotification(tx, { event: "MENTORSHIP_SUGGESTED", recordId: row.id, projectId: p.id, projectTitle: live.title, actorId: a.id, recipients: [live.ownerId] });
+      return { id: row.id };
+    });
+    await dispatchMentorshipNotifications(); return result;
+  },
+  async dismissSuggestion(projectInput: string, suggestionId: string, actorInput: string) {
+    const [p, a] = await Promise.all([project(projectInput), actor(actorInput)]);
+    return getPrisma().$transaction(async tx => {
+      await locks(tx, p.id, [a.id]); const live = await assertAcademicRelationshipManager(p.id, a.id, tx); assertOpenProject(live);
+      const row = await tx.mentorSuggestion.findFirst({ where: { id: suggestionId, projectId: p.id } });
+      if (!row) throw AppError.notFound("Mentor suggestion not found");
+      if (row.status === "DISMISSED") return { id: row.id };
+      if (row.status !== "PENDING") throw AppError.conflict("This suggestion has already been handled");
+      await tx.mentorSuggestion.update({ where: { id: row.id }, data: { status: "DISMISSED", resolvedBy: a.id, resolvedAt: new Date() } });
+      await record(tx, live, a.id, "MENTORSHIP_SUGGESTION_DISMISSED", row.id); return { id: row.id };
+    });
   },
   async discovery(actorInput: string, query: AcademicSearch = {}) {
     const a = await actor(actorInput), profile = await assertAcceptingNewMentorships(getPrisma(), a.id);
     return mentorshipDiscoveryService.opportunities(a, profile, query);
   },
-  async settings(projectInput: string, actorInput: string, input?: { discovery: "CLOSED" | "SEEKING_MENTOR"; summary: string; expertise: string[]; expectedVersion?: number }) {
+  async settings(projectInput: string, actorInput: string, input?: { discovery: "CLOSED" | "SEEKING_MENTOR"; summary: string; expertise: string[]; researchAreas?: string[]; mentoringNeeds?: string; expectedVersion?: number }) {
     const [p, a] = await Promise.all([project(projectInput), actor(actorInput)]);
     await assertAcademicRelationshipManager(p.id, a.id);
     if (!input) return { ...mentorshipPreview(p), version: p.version };
@@ -171,7 +222,7 @@ export const projectMentorshipService = {
       await locks(tx, p.id, [a.id]); const live = await assertAcademicRelationshipManager(p.id, a.id, tx); assertOpenProject(live);
       if (input.expectedVersion !== undefined && input.expectedVersion !== live.version) throw AppError.conflict("Project settings changed. Refresh before saving again");
       if (input.discovery === "SEEKING_MENTOR" && input.summary.trim().length < 10) throw AppError.badRequest("Add a safe summary before opening discovery");
-      const updated = await tx.project.update({ where: { id: p.id }, data: { mentorshipDiscovery: input.discovery, mentorshipSummary: input.summary, mentorshipExpertise: input.expertise, version: { increment: 1 } } });
+      const updated = await tx.project.update({ where: { id: p.id }, data: { mentorshipDiscovery: input.discovery, mentorshipSummary: input.summary, mentorshipExpertise: input.expertise, mentorshipResearchAreas: input.researchAreas, mentorshipNeeds: input.mentoringNeeds, version: { increment: 1 } } });
       await record(tx, live, a.id, "MENTOR_DISCOVERY_UPDATED", p.id, { discovery: input.discovery }); return { ...mentorshipPreview(updated), version: updated.version };
     });
   },
@@ -202,6 +253,7 @@ export const projectMentorshipService = {
       if (await tx.mentorshipRequest.findFirst({ where: { projectId: p.id, mentorUserId: mentor.id, status: { in: ["DECLINED", "CANCELLED"] }, respondedAt: { gt: new Date(now.getTime() - env.ACADEMIC_RELATIONSHIP_COOLDOWN_HOURS * 3600000) } } })) throw AppError.conflict("Wait before sending another mentorship request to this pair");
       if (await tx.mentorshipRequest.count({ where: { requestedBy: a.id, createdAt: { gt: new Date(now.getTime() - 3600000) } } }) >= env.ACADEMIC_RELATIONSHIP_REQUEST_LIMIT) throw AppError.conflict("Mentorship request limit reached; try later");
       const request = await tx.mentorshipRequest.create({ data: { projectId: p.id, mentorUserId: mentor.id, requestedBy: a.id, direction, message: input.message.trim(), idempotencyKey: input.idempotencyKey, expiresAt: new Date(now.getTime() + env.ACADEMIC_RELATIONSHIP_REQUEST_EXPIRY_DAYS * 86400000) } });
+      if (direction === "PROJECT_TO_LECTURER") await tx.mentorSuggestion.updateMany({ where: { projectId: p.id, mentorUserId: mentor.id, status: "PENDING" }, data: { status: "INVITED", requestId: request.id, resolvedBy: a.id, resolvedAt: now } });
       const event = direction === "PROJECT_TO_LECTURER" ? "MENTORSHIP_REQUEST_RECEIVED" : "MENTORSHIP_OFFER_RECEIVED";
       await record(tx, live, a.id, event, request.id);
       await mentorshipNotification(tx, { event, recordId: request.id, projectId: p.id, projectTitle: live.title, actorId: a.id, recipients: [direction === "PROJECT_TO_LECTURER" ? mentor.id : live.ownerId] }); return request;
@@ -230,6 +282,7 @@ export const projectMentorshipService = {
       const now = new Date();
       await tx.mentorshipRequest.update({ where: { id: live.id }, data: { status: action, responseNote: note?.trim(), respondedAt: now } });
       if (action === "ACCEPTED") {
+        await tx.mentorSuggestion.updateMany({ where: { projectId: p.id, mentorUserId: live.mentorUserId, status: "PENDING" }, data: { status: "DISMISSED", resolvedBy: a.id, resolvedAt: now } });
         const relationship = await tx.mentorRelationship.create({ data: { projectId: p.id, mentorUserId: live.mentorUserId, sourceRequestId: live.id, startedAt: now } });
         await record(tx, liveProject, a.id, "MENTOR_JOINED_PROJECT", relationship.id);
         if (await tx.mentorRelationship.count({ where: { projectId: p.id, status: "ACTIVE" } }) >= env.MAX_ACTIVE_MENTORS_PER_PROJECT) {

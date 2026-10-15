@@ -106,6 +106,7 @@ describe.sequential("project workspace persistence", () => {
     const updated = await projectService.updateProject(project._id, {
       title: "Lifecycle evidence review",
       researchField: "Research integrity",
+      publicSummary: "Public overview of the research integrity study",
       status: "ACTIVE",
       visibility: "PUBLIC_SUMMARY",
     }, ownerId);

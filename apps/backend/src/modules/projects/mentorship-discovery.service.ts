@@ -47,18 +47,23 @@ export const mentorshipDiscoveryService = {
   },
   async opportunities(lecturer: User, profile: AcademicProfile, query: AcademicSearch) {
     const db = getPrisma(), meta = pageMeta(0, query), wanted = [...profile.expertiseAreas, ...lecturer.researchInterests];
+    const cooldownSince = new Date(Date.now() - env.ACADEMIC_RELATIONSHIP_COOLDOWN_HOURS * 3600000);
     const conditions = [Prisma.sql`p.mentorship_discovery='SEEKING_MENTOR' AND p.status NOT IN ('ARCHIVED','COMPLETED') AND p.owner_id<>${lecturer.id}::uuid`,
       Prisma.sql`(SELECT COUNT(*) FROM mentor_relationships mr WHERE mr.project_id=p.id AND mr.status='ACTIVE')<${env.MAX_ACTIVE_MENTORS_PER_PROJECT}`,
       Prisma.sql`NOT EXISTS(SELECT 1 FROM project_members pm WHERE pm.project_id=p.id AND pm.user_id=${lecturer.id}::uuid AND pm.status='ACTIVE')`,
+      Prisma.sql`NOT EXISTS(SELECT 1 FROM mentor_relationships mr WHERE mr.project_id=p.id AND mr.mentor_user_id=${lecturer.id}::uuid AND mr.status='ACTIVE')`,
+      Prisma.sql`EXISTS(SELECT 1 FROM users owner WHERE owner.id=p.owner_id AND owner.is_active AND owner.account_status='ACTIVE' AND owner.email_verified_at IS NOT NULL)`,
       Prisma.sql`NOT EXISTS(SELECT 1 FROM mentorship_requests r WHERE r.project_id=p.id AND r.mentor_user_id=${lecturer.id}::uuid AND r.status='PENDING' AND (r.expires_at IS NULL OR r.expires_at>NOW()))`,
+      Prisma.sql`NOT EXISTS(SELECT 1 FROM mentorship_requests r WHERE r.project_id=p.id AND r.mentor_user_id=${lecturer.id}::uuid AND r.status IN ('DECLINED','CANCELLED') AND r.responded_at>${cooldownSince})`,
+      Prisma.sql`(SELECT COUNT(*) FROM mentorship_requests r WHERE r.project_id=p.id AND r.status='PENDING' AND (r.expires_at IS NULL OR r.expires_at>NOW()))<${env.MAX_PENDING_MENTOR_REQUESTS_PER_PROJECT}`,
     ];
-    if (query.q) conditions.push(Prisma.sql`(p.title ILIKE ${pattern(query.q)} OR p.research_field ILIKE ${pattern(query.q)} OR EXISTS(SELECT 1 FROM unnest(p.mentorship_expertise) t WHERE t ILIKE ${pattern(query.q)}))`);
-    if (query.area) conditions.push(Prisma.sql`(LOWER(p.research_field)=LOWER(${query.area}) OR EXISTS(SELECT 1 FROM unnest(p.mentorship_expertise) t WHERE LOWER(t)=LOWER(${query.area})))`);
+    if (query.q) conditions.push(Prisma.sql`(p.title ILIKE ${pattern(query.q)} OR p.mentorship_summary ILIKE ${pattern(query.q)} OR p.mentorship_needs ILIKE ${pattern(query.q)} OR EXISTS(SELECT 1 FROM unnest(p.mentorship_research_areas||p.mentorship_expertise) t WHERE t ILIKE ${pattern(query.q)}))`);
+    if (query.area) conditions.push(Prisma.sql`EXISTS(SELECT 1 FROM unnest(p.mentorship_research_areas) t WHERE LOWER(t)=LOWER(${query.area}))`);
     const from = Prisma.sql`FROM projects p WHERE ${Prisma.join(conditions, " AND ")}`;
     const [count, ids] = await db.$transaction([
       db.$queryRaw<Array<{ total: bigint }>>(Prisma.sql`SELECT COUNT(*) AS total ${from}`),
       db.$queryRaw<Array<{ id: string }>>(Prisma.sql`SELECT p.id ${from} ORDER BY
-        (SELECT COUNT(DISTINCT LOWER(t)) FROM unnest(p.mentorship_expertise||ARRAY[COALESCE(p.research_field,'')]) t WHERE LOWER(t)=ANY(${termsArray(wanted)})) DESC,
+        (SELECT COUNT(DISTINCT LOWER(t)) FROM unnest(p.mentorship_expertise||p.mentorship_research_areas) t WHERE LOWER(t)=ANY(${termsArray(wanted)})) DESC,
         p.updated_at DESC,p.id LIMIT ${meta.pageSize} OFFSET ${(meta.page - 1) * meta.pageSize}`),
     ], { isolationLevel: "RepeatableRead" });
     const projects = await db.project.findMany({ where: { id: { in: ids.map(r => r.id) }, mentorshipDiscovery: "SEEKING_MENTOR", status: { notIn: ["ARCHIVED", "COMPLETED"] } } });
