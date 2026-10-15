@@ -1,4 +1,5 @@
 export const researchTasksVi: Record<string, string> = {
+  "Drag cards between columns or use the status menu.": "Kéo thẻ giữa các cột hoặc chọn trạng thái trong menu.",
   "Team tasks": "Công việc nhóm",
   "Divide work and follow your research progress.": "Phân chia nhiệm vụ và theo dõi tiến độ nghiên cứu.",
   "Create task": "Tạo công việc",

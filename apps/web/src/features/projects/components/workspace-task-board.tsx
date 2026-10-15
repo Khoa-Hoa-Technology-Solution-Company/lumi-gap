@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import type { MoveWorkspaceTask, WorkspaceTask, WorkspaceTaskBoard, WorkspaceTaskPriority, WorkspaceTaskStatus } from "@trend/shared-types";
-import { DragDropProvider, useDroppable } from "@dnd-kit/react";
+import { DragDropProvider, KeyboardSensor, PointerSensor, useDroppable } from "@dnd-kit/react";
 import { isSortable, useSortable } from "@dnd-kit/react/sortable";
 import { AlertCircle, CalendarDays, CheckCheck, CheckCircle2, Circle, CircleDashed, GripVertical, LayoutGrid, Link2, List, Plus, Search, SlidersHorizontal, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,14 @@ import { taskLabels, WorkspaceArtifactLink, WorkspaceEmpty, WorkspaceError, Work
 
 import { calendarToday, taskPriorities, taskStatuses } from "./workspace-task-utils";
 const icons = { TODO: CircleDashed, IN_PROGRESS: Circle, BLOCKED: AlertCircle, DONE: CheckCircle2 };
+const taskSensors = [PointerSensor.configure({
+  // Keep the handle for keyboard/touch access, and let pointer users grab the card.
+  activatorElements: source => [source.element],
+  preventActivation: (event, source) => {
+    if (event.target instanceof Element && event.target.closest(".task-card-title")) return false;
+    return PointerSensor.defaults.preventActivation?.(event, source) ?? false;
+  },
+}), KeyboardSensor];
 
 export function TaskDueDate({ task }: { task: WorkspaceTask }) {
   const { t, language } = useI18n();
@@ -76,20 +84,26 @@ export function TaskBoardView({ projectId, readOnly, onSelect, mode, onMode }: {
     {move.error && <WorkspaceError error={move.error} />}
     {blocked && <form className="task-blocker-form" onSubmit={e => { e.preventDefault(); void doMove(blocked.task, blocked.status, blocked.beforeId, reason); }}><label>{t("What is blocking this task?")}<textarea autoFocus required rows={2} maxLength={2000} value={reason} onChange={e => setReason(e.target.value)} /></label><div><Button size="sm" disabled={!reason.trim()}>{t("Mark as blocked")}</Button><Button type="button" size="sm" variant="ghost" onClick={() => setBlocked(null)}>{t("Cancel")}</Button></div></form>}
     {mode === "board" ? board.isLoading ? <WorkspaceLoading /> : board.isError || !current ? <WorkspaceError error={board.error} retry={() => void board.refetch()} /> : <>
-      <DragDropProvider onDragEnd={event => {
+      <DragDropProvider sensors={taskSensors} onDragOver={event => {
+        const { source, target } = event.operation;
+        // React owns transfers between column parents. Let dnd-kit preview only
+        // reorders within a column so its DOM moves cannot race React removal.
+        if (isSortable(source) && isSortable(target) && source.initialGroup !== target.group) event.preventDefault();
+      }} onDragEnd={event => {
         if (event.canceled || !event.operation.source || !event.operation.target || busy.current) return;
         const source = event.operation.source, target = event.operation.target;
         const task = taskStatuses.flatMap(key => current.columns[key].items).find(item => item.id === String(source.id));
         if (!task || !isSortable(source)) return;
-        const status = (target.type === "column" ? target.id : source.group ?? (isSortable(target) ? target.group : target.id)) as WorkspaceTaskStatus;
+        const status = (target.type === "column" ? target.id : isSortable(target) ? target.group : source.group) as WorkspaceTaskStatus;
         if (!taskStatuses.includes(status)) return;
         const rows = current.columns[status].items.filter(item => item.id !== task.id);
-        const beforeId = target.type === "column" ? null : rows[source.index]?.id ?? null;
+        const index = source.group === status ? source.index : isSortable(target) ? target.index : rows.length;
+        const beforeId = target.type === "column" ? null : rows[index]?.id ?? null;
         if (status === task.status && source.initialIndex === source.index && target.type !== "column") return;
         void doMove(task, status, beforeId);
       }}><div className="task-board" aria-label={t("Research Kanban board")} aria-busy={move.isPending}>
         {taskStatuses.map((status, i) => <TaskColumn key={status} status={status} column={current.columns[status]} readOnly={readOnly || move.isPending} onSelect={onSelect} onPage={next => setPages(old => old.map((value, index) => index === i ? next : value))} onMove={(task, status) => void doMove(task, status, null)} />)}
-      </div></DragDropProvider><p className="task-board-help"><GripVertical size={13} />{t("Drag the handle to move work. You can also use each card’s status menu.")}</p>
+      </div></DragDropProvider><p className="task-board-help"><GripVertical size={13} />{t("Drag cards between columns or use the status menu.")}</p>
     </> : tasks.isLoading ? <WorkspaceLoading /> : tasks.isError ? <WorkspaceError error={tasks.error} retry={() => void tasks.refetch()} /> : !tasks.data?.items.length ? <WorkspaceEmpty title={t(filtered ? "No matching tasks" : "Plan the next research step")}><p>{t("Create a task for a concrete action, such as reading a paper or comparing research methods.")}</p>{!readOnly && <Button onClick={() => onSelect("new")}>{t("Create the first task")}</Button>}</WorkspaceEmpty> : <><div className="coord-table-wrap task-list"><table className="coord-table"><thead><tr>{["Task", "Assignee", "Status", "Priority", "Deadline", "Milestones", "Linked research artifact"].map(label => <th key={label}>{t(label)}</th>)}</tr></thead><tbody>{tasks.data.items.map(task => <tr key={task.id}><td><button className="task-list-title" type="button" onClick={() => onSelect(task.id)}>{task.title}</button>{task.status === "BLOCKED" && <small className="task-blocked-reason">{task.blockedReason}</small>}</td><td><Person task={task} /></td><td><span className="task-status-label" data-status={task.status}>{t(taskLabels[task.status])}</span></td><td><TaskPriority priority={task.priority} /></td><td><TaskDueDate task={task} /></td><td>{milestones.data?.items.find(item => item.id === task.milestoneId)?.title ?? (task.milestoneId ? t("Milestone") : "–")}</td><td><WorkspaceArtifactLink projectId={projectId} link={task.link} /></td></tr>)}</tbody></table></div><WorkspacePager data={tasks.data} page={page} onPage={setPage} /></>}
   </section>;
 }
@@ -104,9 +118,9 @@ function TaskColumn({ status, column, readOnly, onSelect, onPage, onMove }: { st
   </section>;
 }
 function TaskCard({ task, index, readOnly, onSelect, onMove }: { task: WorkspaceTask; index: number; readOnly: boolean; onSelect: SelectTask; onMove: (task: WorkspaceTask, status: WorkspaceTaskStatus) => void }) {
-  const { t } = useI18n(); const { ref, handleRef, isDragSource } = useSortable({ id: task.id, index, group: task.status, type: "task", accept: "task", disabled: readOnly, transition: { duration: 170 } });
+  const { t } = useI18n(); const { ref, handleRef, isDragSource, isDropTarget } = useSortable({ id: task.id, index, group: task.status, type: "task", accept: "task", collisionPriority: 2, disabled: readOnly, transition: { duration: 170 } });
   const subtaskCount = task.subtaskCount ?? 0, done = task.completedSubtaskCount ?? 0;
-  return <article ref={ref} className="task-card" data-task-id={task.id} data-dragging={isDragSource}>
+  return <article ref={ref} className="task-card" data-task-id={task.id} data-dragging={isDragSource} data-over={isDropTarget && !isDragSource} data-readonly={readOnly}>
     <div className="task-card-top"><TaskPriority priority={task.priority ?? "MEDIUM"} /><button ref={handleRef} type="button" disabled={readOnly} className="task-drag-handle" aria-label={t("Move task: {{title}}", { title: task.title })}><GripVertical size={16} /></button></div>
     <button type="button" className="task-card-title" onClick={() => onSelect(task.id)}>{task.title}</button>
     {task.status === "BLOCKED" && <p className="task-blocked-reason"><AlertCircle size={13} />{task.blockedReason}</p>}

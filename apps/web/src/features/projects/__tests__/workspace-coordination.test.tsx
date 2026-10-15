@@ -12,7 +12,7 @@ import { WorkspaceDiscussionsPanel } from "../components/workspace-discussions";
 import { WorkspaceDecisions } from "../components/workspace-decisions";
 import { canLeaveWorkspace, useUnsavedWorkspace } from "../components/workspace-common";
 
-vi.mock("@dnd-kit/react", () => ({ DragDropProvider: ({ children }: { children: ReactNode }) => children, useDroppable: () => ({ ref: () => undefined, isDropTarget: false }) }));
+vi.mock("@dnd-kit/react", () => ({ KeyboardSensor: class {}, PointerSensor: { configure: () => ({}), defaults: {} }, DragDropProvider: ({ children }: { children: ReactNode }) => children, useDroppable: () => ({ ref: () => undefined, isDropTarget: false }) }));
 vi.mock("@dnd-kit/react/sortable", () => ({ useSortable: () => ({ ref: () => undefined, handleRef: () => undefined, isDragSource: false }), isSortable: () => false }));
 const mocks = vi.hoisted(() => Object.fromEntries(["gapEvidence", "plan", "savePlan", "updatePlanDraft", "snapshotPlan", "restorePlan", "planThreads", "createPlanThread", "planHistory", "shares", "overview", "comments", "comment", "people", "artifacts", "tasks", "taskBoard", "moveTask", "task", "saveTask", "milestones", "discussions", "discussion", "saveDiscussion", "reply", "resolve", "decisions", "saveDecision", "history"].map(key => [key, vi.fn()])));
 vi.mock("../api/workspace.api", () => ({ workspaceApi: mocks }));

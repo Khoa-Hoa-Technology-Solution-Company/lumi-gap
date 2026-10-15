@@ -42,6 +42,10 @@
 .task-column-items { display: flex; flex-direction: column; gap: 9px; min-height: 80px; }
 .task-card { position: relative; padding: 10px 12px 9px; background: var(--task-surface); border: 1px solid var(--task-line); border-radius: 8px; box-shadow: 0 1px 2px hsl(var(--foreground) / .035); transition: box-shadow 170ms ease, border-color 170ms ease; min-width: 0; }
 .task-card:hover, .task-card:focus-within { border-color: color-mix(in oklch, var(--task-ink) 25%, var(--task-line)); box-shadow: 0 3px 9px hsl(var(--foreground) / .06); }
+.task-card[data-readonly="false"] { cursor: grab; }
+.task-card[data-over="true"] { border-color: var(--task-blue); outline: 2px solid color-mix(in oklch, var(--task-blue) 25%, transparent); }
+.task-card[data-readonly="false"] .task-card-title { cursor: inherit; }
+.task-card[data-dragging="true"], .task-card[data-dragging="true"] .task-card-title { cursor: grabbing; }
 .task-card[data-dragging="true"] { box-shadow: 0 10px 25px hsl(var(--foreground) / .14); border-color: var(--task-blue); }
 .task-card-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 5px; }
 .task-priority { display: inline-flex; align-items: center; gap: 4px; color: var(--task-muted); font-size: 11px; line-height: 17px; white-space: nowrap; }
