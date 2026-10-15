@@ -70,6 +70,28 @@ The disposable PostgreSQL database has all 74 migrations applied successfully.
 Deploy this migration before serving code that reads the new columns. Use the repository's
 `pnpm --filter backend db:migrate:deploy`; never use `prisma migrate dev`.
 
+### Local Docker upgrade
+
+The production-style Compose backend runs compiled code from its image. Pulling code or
+rebuilding only the web client does not update that backend. A stale backend without
+`GET /tasks/board` matches `/tasks/:itemId` instead and responds with a 400 validation
+error containing `itemId: Invalid uuid` (the parsed ID is the literal `board`). This was
+reproduced on the local legacy-ID project URL on 2026-10-15.
+
+Update the image, apply pending additive migrations, recreate the API and refresh the
+web proxy's upstream connection:
+
+```sh
+docker compose build backend
+docker compose run --rm --no-deps migrate
+docker compose up -d --no-deps --no-build backend
+docker compose restart web
+```
+
+Then verify the exact authenticated `/tasks/board` request through the web port returns
+200 with all four columns. A project URL containing a migrated Mongo ID is supported;
+the `itemId` error above is not a reason to rewrite existing project URLs.
+
 ## API, concurrency and authorization
 
 Existing task/list/detail/update/delete/comment and milestone endpoints are retained.
