@@ -1,9 +1,11 @@
 import type { Request, Response } from "express";
 import { projectOverviewService as overview } from "./project-overview.service.js";
 import { projectPlanService as plan } from "./project-plan.service.js";
+import { projectPlanDraftService as draft } from "./project-plan-draft.service.js";
+import { projectPlanFeedbackService as feedback } from "./project-plan-feedback.service.js";
 import { projectTasksService as tasks } from "./project-tasks.service.js";
 import { projectDiscussionsService as discussions } from "./project-discussions.service.js";
-import { artifactQuerySchema, commentQuerySchema, discussionQuerySchema, planQuerySchema, taskQuerySchema, workspacePageSchema } from "./dto/project-workspace.schema.js";
+import { artifactQuerySchema, commentQuerySchema, discussionQuerySchema, planQuerySchema, planThreadsQuerySchema, taskQuerySchema, workspacePageSchema } from "./dto/project-workspace.schema.js";
 
 const id = (req: Request) => String(req.params.id);
 const item = (req: Request) => String(req.params.itemId);
@@ -16,6 +18,11 @@ export const projectWorkspaceController = {
   artifacts: async (req: Request, res: Response) => { const query = artifactQuerySchema.parse(req.query); return send(res, await overview.artifacts(id(req), actor(req), query.kind, query.q)); },
   plan: async (req: Request, res: Response) => send(res, await plan.get(id(req), actor(req), planQuerySchema.parse(req.query).revisionId)),
   savePlan: async (req: Request, res: Response) => send(res, await plan.save(id(req), actor(req), req.body)),
+  updatePlanDraft: async (req: Request, res: Response) => send(res, await draft.update(id(req), actor(req), req.body)),
+  snapshotPlan: async (req: Request, res: Response) => send(res, await draft.snapshot(id(req), actor(req), req.body), 201),
+  restorePlan: async (req: Request, res: Response) => send(res, await draft.restore(id(req), actor(req), item(req), req.body)),
+  planThreads: async (req: Request, res: Response) => send(res, await feedback.list(id(req), actor(req), planThreadsQuerySchema.parse(req.query))),
+  createPlanThread: async (req: Request, res: Response) => send(res, await feedback.create(id(req), actor(req), req.body), 201),
   planRevisions: async (req: Request, res: Response) => send(res, await plan.revisions(id(req), actor(req), workspacePageSchema.parse(req.query))),
   planShares: async (req: Request, res: Response) => send(res, await plan.shares(id(req), actor(req))),
   sharePlan: async (req: Request, res: Response) => send(res, await plan.share(id(req), actor(req), req.body), 201),

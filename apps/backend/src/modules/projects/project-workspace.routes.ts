@@ -17,7 +17,12 @@ projectWorkspaceRouter.get("/workspace/people", params, validate(s.discussionQue
 projectWorkspaceRouter.get("/workspace/artifacts", params, validate(s.artifactQuerySchema, "query"), c.artifacts);
 projectWorkspaceRouter.get("/plan", params, validate(s.planQuerySchema, "query"), c.plan);
 projectWorkspaceRouter.put("/plan", writes, params, validate(s.savePlanSchema), c.savePlan);
+projectWorkspaceRouter.patch("/plan/draft", writes, params, validate(s.planDraftSchema), c.updatePlanDraft);
 projectWorkspaceRouter.get("/plan/revisions", params, page, c.planRevisions);
+projectWorkspaceRouter.post("/plan/revisions", writes, params, validate(s.planSnapshotSchema), c.snapshotPlan);
+projectWorkspaceRouter.post("/plan/revisions/:itemId/restore", writes, item, validate(s.planRestoreSchema), c.restorePlan);
+projectWorkspaceRouter.get("/plan/threads", params, validate(s.planThreadsQuerySchema, "query"), c.planThreads);
+projectWorkspaceRouter.post("/plan/threads", writes, params, validate(s.planThreadSchema), c.createPlanThread);
 projectWorkspaceRouter.get("/plan/shares", params, c.planShares);
 projectWorkspaceRouter.post("/plan/shares", writes, params, validate(s.sharePlanSchema), c.sharePlan);
 projectWorkspaceRouter.delete("/plan/shares/:itemId", writes, item, c.revokeShare);

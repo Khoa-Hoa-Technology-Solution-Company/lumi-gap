@@ -1,6 +1,6 @@
 import { api } from "@/services/api-client";
 import type {
-  PlanShareSummary, ResearchPlanRevision, ResearchPlanView, ResearchStage, SaveResearchPlan,
+  CreatePlanThread, PlanDraftResult, PlanDraftUpdate, PlanSection, PlanShareSummary, ResearchPlanRevision, ResearchPlanView, ResearchStage, SaveResearchPlan,
   SaveWorkspaceDecision, SaveWorkspaceDiscussion, SaveWorkspaceTask, WorkspaceComment,
   WorkspaceDecision, WorkspaceDiscussion, WorkspaceDiscussionDetail, WorkspaceLink,
   WorkspaceMilestone, WorkspaceOverview, WorkspacePage, WorkspacePerson, WorkspaceRevision,
@@ -22,6 +22,11 @@ export const workspaceApi = {
   artifacts: (id: string, kind: WorkspaceLink["kind"], q: string) => get<WorkspaceLink[]>(id, "workspace/artifacts", { kind, q }),
   plan: (id: string, revisionId?: string) => get<ResearchPlanView>(id, "plan", { revisionId }),
   savePlan: (id: string, data: SaveResearchPlan) => write<{ version: number; revisionId: string }>(id, "plan", "put", data),
+  updatePlanDraft: (id: string, data: PlanDraftUpdate) => write<PlanDraftResult>(id, "plan/draft", "patch", data),
+  snapshotPlan: (id: string, data: { expectedVersion: number; clientKey: string; changeSummary: string }) => write<{ version: number; revisionId: string }>(id, "plan/revisions", "post", data),
+  restorePlan: (id: string, revisionId: string, data: { expectedVersion: number; clientKey: string }) => write<PlanDraftResult>(id, `plan/revisions/${revisionId}/restore`, "post", data),
+  planThreads: (id: string, section: PlanSection, revisionId?: string, page = 1) => get<WorkspacePage<WorkspaceDiscussion>>(id, "plan/threads", { section, revisionId, page }),
+  createPlanThread: (id: string, data: CreatePlanThread) => write<{ id: string }>(id, "plan/threads", "post", data),
   planHistory: (id: string, page: number) => get<WorkspacePage<ResearchPlanRevision>>(id, "plan/revisions", { page }),
   shares: (id: string) => get<PlanShareSummary[]>(id, "plan/shares"),
   share: (id: string, data: { revisionId: string; relationshipId: string }) => write(id, "plan/shares", "post", data),

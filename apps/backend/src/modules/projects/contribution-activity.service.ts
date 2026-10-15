@@ -5,7 +5,7 @@ import { withWorkspace, workspacePeople, workspacePerson } from "./workspace-acc
 
 // Explicitly omit chat, presence, autosaves, administrative audits and allocation decisions.
 export const meaningfulActivity: Record<ActivityCategory, string[]> = {
-  PLAN: ["PLAN_UPDATED"],
+  PLAN: ["PLAN_UPDATED", "PLAN_SNAPSHOT_CREATED"],
   LITERATURE: ["PAPER_ADDED", "PAPER_IMPORTED", "PAPER_ORGANIZED", "PRIVATE_SOURCE_UPLOADED"],
   SCREENING: ["PAPER_SCREENED", "SCREENING_DECIDED", "SCREENING_RESOLVED", "SCREENING_VOTE_RECORDED", "SCREENING_CONFLICT_RESOLVED"],
   EVIDENCE: ["EVIDENCE_EXTRACTED", "EVIDENCE_REVISED", "EVIDENCE_REVIEWED"],

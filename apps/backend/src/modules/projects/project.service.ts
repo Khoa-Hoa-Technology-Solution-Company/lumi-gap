@@ -21,7 +21,6 @@ import type { ProjectAiFeature } from "./project-scope.js";
 import { assertProjectActionAllowed, canReadProjectSummary, invitationBelongsToUser } from "./project-workspace.rules.js";
 import { queueProjectInvitation } from "./project-invitation-delivery.js";
 import { lockProjectAccounts, authorizeProjectTransaction, assertActiveProjectAccount } from "./project-transaction.js";
-import { recordPlanSnapshot } from "./plan-history.js";
 
 const ACTIVE = "ACTIVE";
 const INVITATION_DAYS = 7;
@@ -293,8 +292,7 @@ export class ProjectService {
         status: normalized.status, visibility: normalized.visibility, mentorshipDiscovery: "CLOSED", researchStage: "DISCOVERY",
         ownerId: owner.id, createdById: owner.id, creationKey: data.idempotencyKey, creationRequestHash: requestHash,
       } });
-      await tx.researchPlan.create({ data: { projectId: created.id, approach: normalized.approach, problem: normalized.description ?? "", updatedById: owner.id } });
-      await recordPlanSnapshot(tx, created.id, owner.id, null);
+      await tx.researchPlan.create({ data: { projectId: created.id, approach: normalized.approach, updatedById: owner.id } });
       await tx.projectMember.create({ data: { projectId: created.id, userId: owner.id, role: "OWNER", status: ACTIVE } });
       await tx.projectActivity.create({ data: { projectId: created.id, actorId: owner.id, type: "PROJECT_CREATED", metadata: {} } });
       return created;
@@ -378,7 +376,6 @@ export class ProjectService {
       }
       const areas = data.researchAreas ?? (data.researchField !== undefined ? data.researchField ? [data.researchField] : [] : undefined);
       const changesPlan = data.researchApproach !== undefined || data.inclusionCriteria !== undefined || data.exclusionCriteria !== undefined;
-      if (changesPlan) await recordPlanSnapshot(tx, row.id, null, null);
       const next = await tx.project.update({ where: { id: row.id }, data: {
         ...(data.title !== undefined ? { title: data.title } : {}),
         ...(data.description !== undefined ? { description: data.description } : {}),
@@ -391,9 +388,8 @@ export class ProjectService {
         version: { increment: 1 },
       } });
       if (changesPlan) {
-        await tx.researchPlan.update({ where: { projectId: row.id }, data: { ...(data.researchApproach !== undefined ? { approach: data.researchApproach } : {}), updatedById: actor.id, version: { increment: 1 } } });
-        const revision = await recordPlanSnapshot(tx, row.id, actor.id, "Project settings updated");
-        await tx.projectActivity.create({ data: { projectId: row.id, actorId: actor.id, type: "PLAN_UPDATED", entityKind: "PLAN_REVISION", entityId: revision.id, metadata: { version: revision.version } } });
+        const draft = await tx.researchPlan.update({ where: { projectId: row.id }, data: { ...(data.researchApproach !== undefined ? { approach: data.researchApproach } : {}), updatedById: actor.id, version: { increment: 1 } } });
+        await tx.projectActivity.create({ data: { projectId: row.id, actorId: actor.id, type: "PLAN_UPDATED", entityKind: "PLAN_DRAFT", entityId: draft.id, metadata: { version: draft.version, source: "PROJECT_SETTINGS" } } });
       }
       await tx.projectActivity.create({ data: { projectId: next.id, actorId: actor.id, type: "PROJECT_UPDATED", metadata: { fields: Object.keys(data).filter(key => key !== "expectedVersion") } } });
       return next;

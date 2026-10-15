@@ -27,6 +27,7 @@ export interface ResearchPlanRevision {
   changedBy: WorkspacePerson | null;
   changeSummary: string | null;
   createdAt: string;
+  feedbackCount?: number;
 }
 export interface ResearchPlanView {
   projectId: string;
@@ -40,6 +41,16 @@ export interface ResearchPlanView {
   access: "TEAM" | "MENTOR";
 }
 export interface SaveResearchPlan extends ResearchPlanContent { expectedVersion: number; changeSummary: string }
+export type PlanSection = "problem" | "objectives" | "questions" | "scope" | "methodology" | "searchStrategy" | "deliverables";
+export interface PlanDraftUpdate {
+  expectedVersion: number;
+  clientKey: string;
+  base: Partial<ResearchPlanContent>;
+  changes: Partial<ResearchPlanContent>;
+}
+export interface PlanDraftResult { version: number; content: ResearchPlanContent }
+export interface PlanThreadContext { section: PlanSection; revisionId: string | null; draftVersion: number }
+export interface CreatePlanThread { section: PlanSection; revisionId?: string; body: string; clientKey: string; mentions: string[] }
 export interface WorkspaceTask {
   id: string; title: string; description: string; status: WorkspaceTaskStatus; blockedReason: string;
   assignee: WorkspacePerson | null; creator: WorkspacePerson; milestoneId: string | null; dueAt: string | null;
@@ -59,6 +70,7 @@ export interface WorkspaceDiscussion {
   id: string; title: string; body: string; category: DiscussionCategory; status: "OPEN" | "RESOLVED";
   conclusion: string; author: WorkspacePerson; link: WorkspaceLink | null; mentorRelationshipId: string | null;
   version: number; replyCount: number; createdAt: string; updatedAt: string;
+  planContext?: PlanThreadContext;
 }
 export interface SaveWorkspaceDiscussion {
   title: string; body: string; category: DiscussionCategory; link: WorkspaceLink | null; mentorRelationshipId: string | null;

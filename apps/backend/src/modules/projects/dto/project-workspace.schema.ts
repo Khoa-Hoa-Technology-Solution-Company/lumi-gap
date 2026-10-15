@@ -15,6 +15,16 @@ export const savePlanSchema = z.object({
   inclusionCriteria: z.array(z.string().trim().min(1).max(240)).max(20), exclusionCriteria: z.array(z.string().trim().min(1).max(240)).max(20), changeSummary: text(500),
 }).strict();
 export const planQuerySchema = z.object({ revisionId: z.string().uuid().optional() }).strict();
+const planFieldsSchema = savePlanSchema.omit({ expectedVersion: true, changeSummary: true }).partial();
+export const planDraftSchema = z.object({ expectedVersion: z.number().int().positive(), clientKey: z.string().uuid(), base: z.record(z.unknown()), changes: planFieldsSchema }).strict().superRefine((value, ctx) => {
+  const keys = Object.keys(value.changes).sort();
+  if (!keys.length || keys.join() !== Object.keys(value.base).sort().join()) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Supply original values for exactly the changed fields" });
+});
+export const planSnapshotSchema = z.object({ expectedVersion: z.number().int().positive(), clientKey: z.string().uuid(), changeSummary: text(500).default("") }).strict();
+export const planRestoreSchema = planSnapshotSchema.omit({ changeSummary: true });
+export const planSectionSchema = z.enum(["problem", "objectives", "questions", "scope", "methodology", "searchStrategy", "deliverables"]);
+export const planThreadsQuerySchema = workspacePageSchema.extend({ section: planSectionSchema, revisionId: z.string().uuid().optional() }).strict();
+export const planThreadSchema = z.object({ section: planSectionSchema, revisionId: z.string().uuid().optional(), body: z.string().trim().min(1).max(10000), clientKey: z.string().uuid(), mentions: z.array(z.string().uuid()).max(20).default([]) }).strict();
 export const taskFieldsSchema = z.object({ title: z.string().trim().min(1).max(240), description: text(10000), status: z.enum(["TODO", "IN_PROGRESS", "BLOCKED", "DONE"]), blockedReason: text(2000), assigneeId: z.string().uuid().nullable(), milestoneId: z.string().uuid().nullable(), dueAt: z.string().datetime().nullable(), link: workspaceLinkSchema }).strict();
 const blocked = (value: { status: string; blockedReason: string }) => value.status !== "BLOCKED" || value.blockedReason.length > 0;
 export const createTaskSchema = taskFieldsSchema.extend({ clientKey: z.string().uuid() }).strict().refine(blocked, { path: ["blockedReason"], message: "Explain what is blocking this task" });

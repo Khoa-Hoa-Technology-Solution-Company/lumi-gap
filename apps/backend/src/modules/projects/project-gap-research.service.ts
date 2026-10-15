@@ -5,7 +5,6 @@ import type { assessGapSchema, reviseGapSchema, linkGapEvidenceSchema, deriveQue
 import { AppError } from "../../common/exceptions/app-error.js";
 import { withWorkspace, workspaceEvent, expectWorkspaceVersion, jsonSnapshot, workspaceId, type WorkspaceContext } from "./workspace-access.js";
 import { evidenceItem, researchPaper } from "./project-evidence.service.js";
-import { recordPlanSnapshot } from "./plan-history.js";
 
 import { recordGapPacket } from "./gap-revision.js";
 import { notificationService } from "../notifications/notification.service.js";
@@ -120,10 +119,9 @@ export const projectGapResearchService = {
       if (!links.some(row => row.evidenceKind === "SUPPORTING")) throw AppError.conflict("The supporting evidence changed. Review the candidate before deriving a question");
       const questions = (Array.isArray(plan.questions) ? plan.questions : []) as unknown as PlanQuestion[];
       if (questions.length >= 20) throw AppError.badRequest("This plan already contains 20 questions");
-      await captureGapRevision(context, gapId); await recordPlanSnapshot(context.tx, context.project.id, null, null);
+      await captureGapRevision(context, gapId);
       const question = { id: randomUUID(), text: input.text, sourceGapId: gapId, sourceGapVersion: gap.version, evidenceIds: links.map(row => row.id), sourceEvidenceRevisionIds: links.map(row => row.evidenceRevisionId!) };
       await context.tx.researchPlan.update({ where: { id: plan.id }, data: { questions: jsonSnapshot([...questions, question]), version: { increment: 1 }, updatedById: context.actorId } });
-      await recordPlanSnapshot(context.tx, context.project.id, context.actorId, "Research question derived from a team-assessed gap candidate");
       await workspaceEvent(context, "QUESTION_DERIVED", "QUESTION", input.clientKey, { questionId: question.id, gapId, text: input.text }); return { questionId: question.id };
     });
   },

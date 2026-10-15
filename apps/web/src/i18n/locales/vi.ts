@@ -1,3 +1,4 @@
+import { livingPlanVi } from "./living-plan";
 import { projectSettingsVi } from "./project-settings";
 import { researchWorkflowVi } from "./research-workflow";
 import { contributionsVi } from "./project-contributions";
@@ -2458,4 +2459,5 @@ export const vi: Record<keyof typeof en, string> = {
   "Could not cancel invitation": "Không thể hủy lời mời",
   "Invite expires": "Hết hạn",
   ...projectSettingsVi,
+  ...livingPlanVi,
 };

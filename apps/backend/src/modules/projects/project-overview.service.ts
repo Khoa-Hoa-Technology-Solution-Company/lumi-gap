@@ -31,6 +31,11 @@ export const projectOverviewService = {
           ), latest_thread AS (
             SELECT DISTINCT ON (thread_id) thread_id,sender_id FROM project_team_messages
             WHERE project_id=${project.id}::uuid AND thread_id IS NOT NULL AND NOT is_deleted ORDER BY thread_id,created_at DESC,id DESC
+          ), latest_section AS (
+            SELECT d.id,d.target_id,COALESCE(x.sender_id,d.author_id) AS author_id
+            FROM project_discussions d LEFT JOIN latest_thread x ON x.thread_id=d.id
+            WHERE d.project_id=${project.id}::uuid AND d.target_kind='PLAN_REVISION'
+              AND d.context ? 'planSection' AND d.status='OPEN'
           ), awaiting AS (
             SELECT 'plan:'||x.target_id::text AS key FROM latest_plan x
             JOIN plan_shares s ON s.revision_id=x.target_id AND s.revoked_at IS NULL
@@ -40,6 +45,10 @@ export const projectOverviewService = {
             JOIN project_discussions d ON d.id=x.thread_id AND d.status='OPEN'
             JOIN mentor_relationships m ON m.id=d.mentor_relationship_id AND m.mentor_user_id=x.sender_id AND m.status='ACTIVE'
             JOIN plan_shares s ON s.revision_id=d.target_id AND s.relationship_id=m.id AND s.revoked_at IS NULL
+            UNION
+            SELECT 'thread:'||x.id::text AS key FROM latest_section x
+            JOIN mentor_relationships m ON m.project_id=${project.id}::uuid AND m.mentor_user_id=x.author_id AND m.status='ACTIVE'
+            JOIN plan_shares s ON s.revision_id=x.target_id AND s.relationship_id=m.id AND s.revoked_at IS NULL
           ) SELECT count(DISTINCT key) AS n FROM awaiting`,
         tx.projectMember.count({ where: { projectId: project.id, status: "ACTIVE" } }),
       ]);

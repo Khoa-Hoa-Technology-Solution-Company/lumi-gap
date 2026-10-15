@@ -119,6 +119,8 @@ export function WorkspaceStage({ projectId, compact }: { projectId: string; comp
 
 const activityLabels: Record<string, string> = {
   PLAN_UPDATED: "Updated the research plan", PLAN_SHARED: "Shared a plan revision with a mentor", PLAN_SHARE_REVOKED: "Revoked plan access",
+  PLAN_DRAFT_SAVED: "Updated the plan draft", PLAN_SNAPSHOT_CREATED: "Created a plan version", PLAN_RESTORED: "Restored a plan version to the draft",
+  PLAN_SECTION_COMMENTED: "Commented on a plan section",
   RESEARCH_STAGE_CHANGED: "Changed the research stage", TASK_CREATED: "Created a task", TASK_UPDATED: "Updated a task", TASK_STATUS_CHANGED: "Changed a task status", TASK_DELETED: "Deleted a task",
   MILESTONE_CREATED: "Created a milestone", MILESTONE_UPDATED: "Updated a milestone", DISCUSSION_CREATED: "Started a discussion", DISCUSSION_UPDATED: "Updated a discussion", DISCUSSION_RESOLVED: "Recorded a discussion conclusion", DISCUSSION_REOPENED: "Reopened a discussion", DISCUSSION_REPLY: "Replied to a discussion", DECISION_CREATED: "Recorded a research decision", DECISION_UPDATED: "Revised a research decision", WORKSPACE_COMMENT_ADDED: "Left a comment", MENTOR_PLAN_FEEDBACK: "Left mentor feedback", PROJECT_CREATED: "Created the project", PROJECT_UPDATED: "Updated project details", PAPER_ADDED: "Added a paper", PAPER_REMOVED: "Removed a paper", MEMBER_JOINED: "Joined the project", MEMBER_INVITED: "Invited a team member",
 };
