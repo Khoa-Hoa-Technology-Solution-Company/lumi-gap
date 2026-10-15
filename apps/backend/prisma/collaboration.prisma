@@ -11,6 +11,7 @@ model Project {
   creationRequestHash String? @map("creation_request_hash") @db.VarChar(64)
   version           Int       @default(1)
   researchStage     String?   @map("research_stage") @db.VarChar(32)
+  taskBoardVersion  Int       @default(1) @map("task_board_version")
   screeningMode     String    @default("EXPLORATORY") @map("screening_mode") @db.VarChar(24)
   screeningBlinded  Boolean   @default(false) @map("screening_blinded")
   inclusionCriteria String[]  @default([]) @map("inclusion_criteria")

@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { isAxiosError } from "axios";
 import { Link, useSearchParams } from "react-router-dom";
-import type { WorkspaceComment, WorkspaceLink, WorkspacePage, WorkspacePerson, WorkspaceRevision } from "@trend/shared-types";
+import type { WorkspaceComment, WorkspaceLink, WorkspaceLinkKind, WorkspacePage, WorkspacePerson, WorkspaceRevision } from "@trend/shared-types";
 import { AlertCircle, ChevronLeft, ChevronRight, Link2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -12,7 +12,7 @@ import { useWorkspaceCommand, useWorkspaceResource } from "../hooks/use-workspac
 export const stageLabels = { DISCOVERY: "Literature discovery", SCREENING: "Screening", EXTRACTION: "Evidence extraction", GAP_VALIDATION: "Gap validation", DESIGN: "Research design", WRITING: "Writing", REVIEW: "Review" } as const;
 export const taskLabels = { TODO: "To do", IN_PROGRESS: "In progress", BLOCKED: "Blocked", DONE: "Done" } as const;
 export const approachLabels = { UNDECIDED: "Undecided", EXPLORATORY: "Exploratory research", LITERATURE_REVIEW: "Literature review", EMPIRICAL: "Empirical research" } as const;
-export const linkLabels = { PAPER: "Paper", SCREENING: "Screening work item", EVIDENCE: "Evidence", GAP: "Research gap", QUESTION: "Research question", MANUSCRIPT: "Writing workspace", REVIEW_REQUEST: "Review request", PLAN_REVISION: "Plan revision", REPORT: "Research output" } as const;
+export const linkLabels: Record<WorkspaceLinkKind, string> = { PAPER: "Paper", SCREENING: "Screening work item", EVIDENCE: "Evidence", GAP: "Research gap", QUESTION: "Research question", MANUSCRIPT: "Writing workspace", MANUSCRIPT_SNAPSHOT: "Manuscript snapshot", MENTOR_FEEDBACK: "Mentor feedback request", PLAN: "Research plan", REVIEW_REQUEST: "Review request", PLAN_REVISION: "Plan revision", REPORT: "Research output" } as const;
 export function projectSectionHref(id: string, tab: string, extra?: Record<string, string>) {
   return `/projects/${encodeURIComponent(id)}?${new URLSearchParams({ tab, ...extra })}`;
 }
@@ -47,7 +47,7 @@ export function WorkspaceError({ error, retry }: { error: unknown; retry?: () =>
   const { t } = useI18n();
   const status = isAxiosError(error) ? error.response?.status : undefined;
   const code = isAxiosError(error) ? error.response?.data?.error?.code : undefined;
-  return <div className="coord-error" role="alert"><AlertCircle size={18} aria-hidden="true" /><div><p>{t(code === "QUESTION_IN_USE" ? "This question is linked to research work. Keep it in the plan or update its links before removing it." : status === 409 ? "This item changed since you opened it. Your draft is kept; reload the latest version before saving again." : status === 403 || status === 404 ? "This resource is unavailable or your access has changed." : "Could not complete this request. Your input is kept. Please try again.")}</p>{retry && <Button type="button" size="sm" variant="outline" onClick={retry}>{t("Try again")}</Button>}</div></div>;
+  return <div className="coord-error" role="alert"><AlertCircle size={18} aria-hidden="true" /><div><p>{t(code === "TASK_SUBTASKS_OPEN" ? "Complete all subtasks before completing this task." : code === "TASK_PARENT_DONE" ? "Reopen the parent task before adding or reopening unfinished work." : code === "TASK_HAS_SUBTASKS" ? "Delete or detach subtasks before deleting their parent." : code === "TASK_PARENT_INVALID" ? "Subtasks support exactly one level within the same project." : code === "TASK_BOARD_CHANGED" ? "The board changed. It has been refreshed; try moving the task again." : code === "QUESTION_IN_USE" ? "This question is linked to research work. Keep it in the plan or update its links before removing it." : status === 409 ? "This item changed since you opened it. Your draft is kept; reload the latest version before saving again." : status === 403 || status === 404 ? "This resource is unavailable or your access has changed." : "Could not complete this request. Your input is kept. Please try again.")}</p>{retry && <Button type="button" size="sm" variant="outline" onClick={retry}>{t("Try again")}</Button>}</div></div>;
 }
 export function WorkspaceHeading({ title, description, action }: { title: string; description?: string; action?: ReactNode }) {
   return <header className="coord-heading"><div><h2>{title}</h2>{description && <p>{description}</p>}</div>{action}</header>;
@@ -85,8 +85,12 @@ export function WorkspaceArtifactPicker({ projectId, value, onChange, allowedKin
     </div>{choices.isError && <WorkspaceError error={choices.error} retry={() => void choices.refetch()} />}</fieldset>;
 }
 export function WorkspaceArtifactLink({ projectId, link }: { projectId: string; link: WorkspaceLink | null }) {
-  const { t } = useI18n(); if (!link) return null;
-  const url = link.kind === "EVIDENCE" ? projectSectionHref(projectId, "papers", { view: "evidence", evidence: link.id }) : link.kind === "PAPER" ? projectSectionHref(projectId, "papers", { paper: link.id }) : link.kind === "REPORT" ? `/reports/${encodeURIComponent(link.id)}` : link.kind === "REVIEW_REQUEST" ? `/review-requests/${encodeURIComponent(link.id)}` : link.kind === "QUESTION" ? projectSectionHref(projectId, "plan", { question: link.id }) + `#question-${link.id}` : link.kind === "PLAN_REVISION" ? projectSectionHref(projectId, "plan", { revision: link.id }) : projectSectionHref(projectId, link.kind === "GAP" ? "gaps" : link.kind === "SCREENING" ? "papers" : "manuscripts");
+  const { t } = useI18n();
+  const needsResolution = Boolean(link && ["MANUSCRIPT_SNAPSHOT", "MENTOR_FEEDBACK"].includes(link.kind));
+  const resolved = useWorkspaceResource(projectId, "artifact-href", () => workspaceApi.artifactHref(projectId, link!), link, needsResolution);
+  if (!link) return null;
+  if (needsResolution) return resolved.data ? <Link className="coord-inline-link" to={resolved.data.href}><Link2 size={14} aria-hidden="true" />{t(linkLabels[link.kind])}</Link> : <span className="coord-muted">{t(resolved.isError ? "Linked artifact is unavailable" : "Loading linked artifact…")}</span>;
+  const url = link.kind === "PLAN" ? projectSectionHref(projectId, "plan") : link.kind === "MANUSCRIPT" ? `/projects/${encodeURIComponent(projectId)}/manuscripts/${encodeURIComponent(link.id)}` : link.kind === "EVIDENCE" ? projectSectionHref(projectId, "papers", { view: "evidence", evidence: link.id }) : link.kind === "PAPER" ? projectSectionHref(projectId, "papers", { paper: link.id }) : link.kind === "REPORT" ? `/reports/${encodeURIComponent(link.id)}` : link.kind === "REVIEW_REQUEST" ? `/review-requests/${encodeURIComponent(link.id)}` : link.kind === "QUESTION" ? projectSectionHref(projectId, "plan", { question: link.id }) + `#question-${link.id}` : link.kind === "PLAN_REVISION" ? projectSectionHref(projectId, "plan", { revision: link.id }) : projectSectionHref(projectId, link.kind === "GAP" ? "gaps" : link.kind === "SCREENING" ? "papers" : "manuscripts");
   return <Link className="coord-inline-link" to={url}><Link2 size={14} aria-hidden="true" />{t(linkLabels[link.kind])}</Link>;
 }
 export function WorkspaceComments({ projectId, targetKind, targetId, readOnly, mentor = false }: { projectId: string; targetKind: "TASK" | "PLAN_REVISION"; targetId: string; readOnly: boolean; mentor?: boolean }) {

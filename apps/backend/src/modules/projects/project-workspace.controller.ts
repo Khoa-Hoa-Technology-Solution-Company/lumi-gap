@@ -5,7 +5,7 @@ import { projectPlanDraftService as draft } from "./project-plan-draft.service.j
 import { projectPlanFeedbackService as feedback } from "./project-plan-feedback.service.js";
 import { projectTasksService as tasks } from "./project-tasks.service.js";
 import { projectDiscussionsService as discussions } from "./project-discussions.service.js";
-import { artifactQuerySchema, commentQuerySchema, discussionQuerySchema, planQuerySchema, planThreadsQuerySchema, taskQuerySchema, workspacePageSchema } from "./dto/project-workspace.schema.js";
+import { artifactQuerySchema, commentQuerySchema, discussionQuerySchema, planQuerySchema, planThreadsQuerySchema, taskQuerySchema, taskBoardQuerySchema, workspacePageSchema } from "./dto/project-workspace.schema.js";
 
 const id = (req: Request) => String(req.params.id);
 const item = (req: Request) => String(req.params.itemId);
@@ -16,6 +16,7 @@ export const projectWorkspaceController = {
   stage: async (req: Request, res: Response) => send(res, await overview.stage(id(req), actor(req), req.body)),
   people: async (req: Request, res: Response) => { const query = discussionQuerySchema.parse(req.query); return send(res, await overview.people(id(req), actor(req), query)); },
   artifacts: async (req: Request, res: Response) => { const query = artifactQuerySchema.parse(req.query); return send(res, await overview.artifacts(id(req), actor(req), query.kind, query.q)); },
+  artifactHref: async (req: Request, res: Response) => send(res, await overview.artifactHref(id(req), actor(req), { kind: artifactQuerySchema.parse(req.query).kind, id: item(req) })),
   plan: async (req: Request, res: Response) => send(res, await plan.get(id(req), actor(req), planQuerySchema.parse(req.query).revisionId)),
   savePlan: async (req: Request, res: Response) => send(res, await plan.save(id(req), actor(req), req.body)),
   updatePlanDraft: async (req: Request, res: Response) => send(res, await draft.update(id(req), actor(req), req.body)),
@@ -28,6 +29,8 @@ export const projectWorkspaceController = {
   sharePlan: async (req: Request, res: Response) => send(res, await plan.share(id(req), actor(req), req.body), 201),
   revokeShare: async (req: Request, res: Response) => send(res, await plan.revokeShare(id(req), actor(req), item(req))),
   tasks: async (req: Request, res: Response) => send(res, await tasks.list(id(req), actor(req), taskQuerySchema.parse(req.query))),
+  taskBoard: async (req: Request, res: Response) => send(res, await tasks.board(id(req), actor(req), taskBoardQuerySchema.parse(req.query))),
+  moveTask: async (req: Request, res: Response) => send(res, await tasks.move(id(req), actor(req), item(req), req.body)),
   task: async (req: Request, res: Response) => send(res, await tasks.detail(id(req), actor(req), item(req), workspacePageSchema.parse(req.query))),
   createTask: async (req: Request, res: Response) => send(res, await tasks.save(id(req), actor(req), req.body), 201),
   updateTask: async (req: Request, res: Response) => send(res, await tasks.save(id(req), actor(req), req.body, item(req))),

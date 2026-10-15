@@ -1,3 +1,4 @@
+import { researchTasksEn } from "./research-tasks";
 import { livingPlanEn } from "./living-plan";
 import { projectSettingsEn } from "./project-settings";
 import { researchWorkflowStrings } from "./research-workflow";
@@ -18,6 +19,7 @@ import { researchHomeEn } from "./research-home-en";
 import { trustSafetyRagStrings } from "./trust-safety-rag";
 
 export const en = {
+  ...researchTasksEn,
   ...livingPlanEn,
   ...projectSettingsEn,
   ...manuscriptsEn,

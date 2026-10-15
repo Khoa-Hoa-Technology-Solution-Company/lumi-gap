@@ -11,7 +11,9 @@ import { WorkspaceDiscussionsPanel } from "../components/workspace-discussions";
 import { WorkspaceDecisions } from "../components/workspace-decisions";
 import { canLeaveWorkspace, useUnsavedWorkspace } from "../components/workspace-common";
 
-const mocks = vi.hoisted(() => Object.fromEntries(["gapEvidence", "plan", "savePlan", "updatePlanDraft", "snapshotPlan", "restorePlan", "planThreads", "createPlanThread", "planHistory", "shares", "overview", "comments", "comment", "people", "artifacts", "tasks", "task", "saveTask", "milestones", "discussions", "discussion", "saveDiscussion", "reply", "resolve", "decisions", "saveDecision", "history"].map(key => [key, vi.fn()])));
+vi.mock("@dnd-kit/react", () => ({ DragDropProvider: ({ children }: { children: ReactNode }) => children, useDroppable: () => ({ ref: () => undefined, isDropTarget: false }) }));
+vi.mock("@dnd-kit/react/sortable", () => ({ useSortable: () => ({ ref: () => undefined, handleRef: () => undefined, isDragSource: false }), isSortable: () => false }));
+const mocks = vi.hoisted(() => Object.fromEntries(["gapEvidence", "plan", "savePlan", "updatePlanDraft", "snapshotPlan", "restorePlan", "planThreads", "createPlanThread", "planHistory", "shares", "overview", "comments", "comment", "people", "artifacts", "tasks", "taskBoard", "moveTask", "task", "saveTask", "milestones", "discussions", "discussion", "saveDiscussion", "reply", "resolve", "decisions", "saveDecision", "history"].map(key => [key, vi.fn()])));
 vi.mock("../api/workspace.api", () => ({ workspaceApi: mocks }));
 vi.mock("@/features/gaps/api/gaps.api", () => ({ gapsApi: { evidence: mocks.gapEvidence } }));
 vi.mock("@/stores/auth-store", () => ({ useAuthStore: (select: (state: { user: { id: string } }) => unknown) => select({ user: { id: "actor" } }) }));
@@ -23,16 +25,17 @@ async function render(node: ReactNode, path = "/projects/p?tab=plan") {
   await act(async () => root.render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[path]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>{node}</MemoryRouter></QueryClientProvider>));
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); });
 }
-async function click(text: string) { const button = [...container.querySelectorAll<HTMLButtonElement>("button")].find(item => item.textContent === text); expect(button, text).toBeDefined(); await act(async () => button!.click()); await act(async () => { await new Promise(resolve => setTimeout(resolve, 25)); }); }
+async function click(text: string) { const button = [...document.body.querySelectorAll<HTMLButtonElement>("button")].find(item => item.textContent === text); expect(button, text).toBeDefined(); await act(async () => button!.click()); await act(async () => { await new Promise(resolve => setTimeout(resolve, 25)); }); }
 async function autosave() { await act(async () => { await new Promise(resolve => setTimeout(resolve, 1050)); }); }
 async function fill(label: string, value: string) {
-  const parent = [...container.querySelectorAll("label")].find(item => item.textContent?.startsWith(label));
-  const input = container.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(`[aria-label="${label}"]`) ?? parent?.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>("input, textarea, select"); expect(input, label).toBeDefined();
+  const parent = [...document.body.querySelectorAll("label")].find(item => item.textContent?.startsWith(label));
+  const input = document.body.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(`[aria-label="${label}"]`) ?? parent?.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>("input, textarea, select"); expect(input, label).toBeDefined();
   await act(async () => { const prototype = input instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : input instanceof HTMLSelectElement ? HTMLSelectElement.prototype : HTMLInputElement.prototype; Object.getOwnPropertyDescriptor(prototype, "value")!.set!.call(input, value); input!.dispatchEvent(new Event(input instanceof HTMLSelectElement ? "change" : "input", { bubbles: true })); });
 }
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true); vi.resetAllMocks();
   Object.values(mocks).forEach(mock => mock.mockResolvedValue(empty));
+  mocks.taskBoard!.mockResolvedValue({ boardVersion: 1, columns: { TODO: empty, IN_PROGRESS: empty, BLOCKED: empty, DONE: empty } });
   mocks.plan!.mockResolvedValue(plan); mocks.shares!.mockResolvedValue([]); mocks.artifacts!.mockResolvedValue([]);
   mocks.gapEvidence!.mockResolvedValue([{ id: "e1", evidenceKind: "COUNTER", explanation: "A conflicting finding", paperId: { id: "paper", title: "Replication study" } }]);
   mocks.savePlan!.mockResolvedValue({ version: 2, revisionId: "r2" });
@@ -151,12 +154,12 @@ it("keeps a new task and its retry key after an API failure", async () => {
   mocks.saveTask!.mockRejectedValue(new Error("Network interrupted"));
   await render(<WorkspaceTasksPanel projectId="p" readOnly={false} />, "/projects/p?tab=tasks&task=new");
   await fill("Task title", "Read the conflicting study"); await click("Save task"); await click("Save task");
-  expect(container.querySelector<HTMLInputElement>("input:not([type])")?.value).toBe("Read the conflicting study");
+  expect(document.body.querySelector<HTMLInputElement>(".task-title-field textarea")?.value).toBe("Read the conflicting study");
   const first = mocks.saveTask!.mock.calls[0]![1]; const second = mocks.saveTask!.mock.calls[1]![1]; expect(first.clientKey).toBe(second.clientKey); expect(mocks.saveTask).toHaveBeenCalledTimes(2);
 });
 it("hides archive write actions even on a direct new-task URL", async () => {
   await render(<WorkspaceTasksPanel projectId="p" readOnly />, "/projects/p?tab=tasks&task=new");
-  expect(container.querySelector<HTMLFieldSetElement>("fieldset")?.disabled).toBe(true); expect(container.textContent).not.toContain("Save task");
+  expect(document.body.querySelector<HTMLFieldSetElement>("fieldset")?.disabled).toBe(true); expect(document.body.textContent).not.toContain("Save task");
 });
 it("renders discussion content as text and denies mentor editing or team decisions", async () => {
   mocks.discussion!.mockResolvedValue({ thread: { id: "thread", title: "Source question", body: '<img src=x onerror="alert(1)">', category: "MENTOR_QUESTION", status: "OPEN", conclusion: "", author: { id: "owner", name: "Owner" }, link: null, mentorRelationshipId: "relationship", version: 1, replyCount: 0, createdAt: "2026-10-14T10:00:00Z", updatedAt: "2026-10-14T10:00:00Z" }, messages: empty, canResolve: false, canReply: true, canEdit: false });

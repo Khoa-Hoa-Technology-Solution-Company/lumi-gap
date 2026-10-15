@@ -4,7 +4,7 @@ import type {
   SaveWorkspaceDecision, SaveWorkspaceDiscussion, SaveWorkspaceTask, WorkspaceComment,
   WorkspaceDecision, WorkspaceDiscussion, WorkspaceDiscussionDetail, WorkspaceLink,
   WorkspaceMilestone, WorkspaceOverview, WorkspacePage, WorkspacePerson, WorkspaceRevision,
-  WorkspaceTask, WorkspaceTaskDetail,
+  WorkspaceTask, WorkspaceTaskDetail, WorkspaceTaskBoard, MoveWorkspaceTask,
 } from "@trend/shared-types";
 
 type Query = Record<string, string | number | undefined>;
@@ -20,6 +20,7 @@ export const workspaceApi = {
   stage: (id: string, data: { stage: ResearchStage | null; expectedVersion: number }) => write(id, "workspace/stage", "patch", data),
   people: (id: string, q = "", page = 1) => get<WorkspacePage<WorkspacePerson>>(id, "workspace/people", { q, page, pageSize: 50 }),
   artifacts: (id: string, kind: WorkspaceLink["kind"], q: string) => get<WorkspaceLink[]>(id, "workspace/artifacts", { kind, q }),
+  artifactHref: (id: string, link: WorkspaceLink) => get<{ href: string }>(id, `workspace/artifacts/${link.id}`, { kind: link.kind }),
   plan: (id: string, revisionId?: string) => get<ResearchPlanView>(id, "plan", { revisionId }),
   savePlan: (id: string, data: SaveResearchPlan) => write<{ version: number; revisionId: string }>(id, "plan", "put", data),
   updatePlanDraft: (id: string, data: PlanDraftUpdate) => write<PlanDraftResult>(id, "plan/draft", "patch", data),
@@ -32,6 +33,8 @@ export const workspaceApi = {
   share: (id: string, data: { revisionId: string; relationshipId: string }) => write(id, "plan/shares", "post", data),
   revokeShare: (id: string, shareId: string) => write(id, `plan/shares/${shareId}`, "delete"),
   tasks: (id: string, query: Query) => get<WorkspacePage<WorkspaceTask>>(id, "tasks", query),
+  taskBoard: (id: string, query: Query) => get<WorkspaceTaskBoard>(id, "tasks/board", query),
+  moveTask: (id: string, taskId: string, data: MoveWorkspaceTask) => write<{ id: string; version: number; boardVersion: number }>(id, `tasks/${taskId}/move`, "post", data),
   task: (id: string, taskId: string, page: number) => get<WorkspaceTaskDetail>(id, `tasks/${taskId}`, { page }),
   saveTask: (id: string, data: SaveWorkspaceTask & { expectedVersion?: number; clientKey?: string }, taskId?: string) => write<{ id: string; version: number }>(id, taskId ? `tasks/${taskId}` : "tasks", taskId ? "patch" : "post", data),
   deleteTask: (id: string, taskId: string, expectedVersion: number) => write(id, `tasks/${taskId}`, "delete", { expectedVersion }),

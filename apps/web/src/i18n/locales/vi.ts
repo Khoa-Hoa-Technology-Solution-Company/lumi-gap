@@ -1,3 +1,4 @@
+import { researchTasksVi } from "./research-tasks";
 import { livingPlanVi } from "./living-plan";
 import { projectSettingsVi } from "./project-settings";
 import { researchWorkflowVi } from "./research-workflow";
@@ -2460,4 +2461,5 @@ export const vi: Record<keyof typeof en, string> = {
   "Invite expires": "Hết hạn",
   ...projectSettingsVi,
   ...livingPlanVi,
+  ...researchTasksVi,
 };

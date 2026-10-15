@@ -41,12 +41,24 @@ model ProjectMilestone {
   @@map("project_milestones")
 }
 
+enum ProjectTaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
 model ProjectTask {
   id String @id @default(uuid()) @db.Uuid
   projectId String @map("project_id") @db.Uuid
   title String @db.VarChar(240)
   description String @default("")
   status String @default("TODO") @db.VarChar(24)
+  priority ProjectTaskPriority @default(MEDIUM)
+  sortOrder Int @default(0) @map("sort_order")
+  parentTaskId String? @map("parent_task_id") @db.Uuid
+  checklist Json @default("[]")
+  completedById String? @map("completed_by_id") @db.Uuid
   blockedReason String @default("") @map("blocked_reason")
   assigneeId String? @map("assignee_id") @db.Uuid
   createdById String @map("created_by_id") @db.Uuid
@@ -64,6 +76,8 @@ model ProjectTask {
   @@unique([id, projectId])
   @@index([projectId, deletedAt, status, dueAt])
   @@index([projectId, assigneeId, updatedAt])
+  @@index([projectId, deletedAt, status, sortOrder, id])
+  @@index([projectId, parentTaskId, deletedAt])
   @@map("project_tasks")
 }
 

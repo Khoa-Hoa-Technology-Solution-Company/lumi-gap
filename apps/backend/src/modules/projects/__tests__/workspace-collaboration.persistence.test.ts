@@ -213,7 +213,7 @@ describe.skipIf(!isolated).sequential("workspace collaboration (disposable Postg
     const id = await project(), task = await tasks.save(id, owner, taskInput());
     await expect(tasks.remove(id, member, task.id, 1)).rejects.toMatchObject({ statusCode: 403 }); await tasks.remove(id, owner, task.id, 1);
     expect((await tasks.list(id, owner, page)).total).toBe(0); expect(await db.projectWorkspaceRevision.count({ where: { entityKind: "TASK", entityId: task.id } })).toBe(2);
-    await expect(tasks.detail(id, member, task.id, page)).rejects.toMatchObject({ statusCode: 404 }); await expect(projectService.deleteProject(id, owner)).rejects.toMatchObject({ statusCode: 409 });
+    expect((await tasks.detail(id, member, task.id, page)).task.deletedAt).toBeTruthy(); await expect(projectService.deleteProject(id, owner)).rejects.toMatchObject({ statusCode: 409 });
   });
   it("stores discussion replies in existing messages and preserves general chat IDs and reads", async () => {
     const id = await project(), general = await db.projectTeamMessage.create({ data: { projectId: id, senderId: owner, content: "Existing general chat" } });
@@ -279,7 +279,7 @@ describe.skipIf(!isolated).sequential("workspace collaboration (disposable Postg
     await expect(plans.get(id, mentor)).rejects.toMatchObject({ statusCode: 404 });
   });
   it("keeps notifications minimal, suppresses removed members and computes actual attention", async () => {
-    const id = await project(), task = await tasks.save(id, owner, taskInput({ dueAt: new Date(Date.now() - 60000).toISOString(), status: "BLOCKED", blockedReason: "Waiting for a dataset" }));
+    const id = await project(), task = await tasks.save(id, owner, taskInput({ dueAt: new Date(Date.now() - 86400000).toISOString(), status: "BLOCKED", blockedReason: "Waiting for a dataset" }));
     const data = await overview.get(id, member); expect(data.attention).toMatchObject({ overdueTasks: 1, blockedTasks: 1 }); expect(data.myTasks[0]!.id).toBe(task.id);
     const notice = await db.notification.findFirstOrThrow({ where: { eventKey: { startsWith: `WORKSPACE:ASSIGNMENT:${task.id}:` } } }); expect(JSON.stringify(notice)).not.toContain("Private research problem"); expect(JSON.stringify(notice)).not.toContain("Waiting for a dataset"); expect(notice.emailStatus).toBe("SKIPPED");
     expect(await canDeliverWorkspaceNotification(notice)).toBe(true); await projectService.removeMemberFromProject(id, member, owner); expect(await canDeliverWorkspaceNotification(notice)).toBe(false);

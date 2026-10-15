@@ -2,8 +2,11 @@ import type { ResearchApproach, ProjectStatus } from "./project.js";
 
 export type ResearchStage = "DISCOVERY" | "SCREENING" | "EXTRACTION" | "GAP_VALIDATION" | "DESIGN" | "WRITING" | "REVIEW";
 export type WorkspaceTaskStatus = "TODO" | "IN_PROGRESS" | "BLOCKED" | "DONE";
+export type WorkspaceTaskPriority = "LOW" | "MEDIUM" | "HIGH" | "URGENT";
+export interface TaskChecklistItem { id: string; text: string; done: boolean }
+export interface MoveWorkspaceTask { expectedVersion: number; expectedBoardVersion: number; status: WorkspaceTaskStatus; beforeId: string | null; blockedReason: string; clientKey: string }
 export type DiscussionCategory = "GENERAL" | "RESEARCH_QUESTION" | "EVIDENCE" | "DECISION_NEEDED" | "MENTOR_QUESTION";
-export type WorkspaceLinkKind = "PAPER" | "SCREENING" | "EVIDENCE" | "GAP" | "QUESTION" | "MANUSCRIPT" | "REVIEW_REQUEST" | "PLAN_REVISION" | "REPORT";
+export type WorkspaceLinkKind = "PAPER" | "SCREENING" | "EVIDENCE" | "GAP" | "QUESTION" | "MANUSCRIPT" | "MANUSCRIPT_SNAPSHOT" | "MENTOR_FEEDBACK" | "PLAN" | "REVIEW_REQUEST" | "PLAN_REVISION" | "REPORT";
 export interface WorkspaceLink { kind: WorkspaceLinkKind; id: string; label?: string }
 export interface WorkspacePerson { id: string; name: string }
 export interface WorkspacePage<T> { items: T[]; page: number; pageSize: number; total: number; hasNext: boolean }
@@ -52,11 +55,15 @@ export interface PlanDraftResult { version: number; content: ResearchPlanContent
 export interface PlanThreadContext { section: PlanSection; revisionId: string | null; draftVersion: number }
 export interface CreatePlanThread { section: PlanSection; revisionId?: string; body: string; clientKey: string; mentions: string[] }
 export interface WorkspaceTask {
+  deletedAt: string | null;
+  priority: WorkspaceTaskPriority; sortOrder: number; parentTaskId: string | null; checklist: TaskChecklistItem[];
+  completedBy: WorkspacePerson | null; subtaskCount: number; completedSubtaskCount: number;
   id: string; title: string; description: string; status: WorkspaceTaskStatus; blockedReason: string;
   assignee: WorkspacePerson | null; creator: WorkspacePerson; milestoneId: string | null; dueAt: string | null;
   completedAt: string | null; link: WorkspaceLink | null; version: number; createdAt: string; updatedAt: string;
 }
 export interface SaveWorkspaceTask {
+  priority?: WorkspaceTaskPriority; parentTaskId?: string | null; checklist?: TaskChecklistItem[];
   title: string; description: string; status: WorkspaceTaskStatus; blockedReason: string;
   assigneeId: string | null; milestoneId: string | null; dueAt: string | null; link: WorkspaceLink | null;
 }
@@ -66,6 +73,7 @@ export interface WorkspaceMilestone {
 export interface WorkspaceComment { id: string; body: string; author: WorkspacePerson; createdAt: string }
 export interface WorkspaceRevision { id: string; version: number; snapshot: Record<string, unknown>; actor: WorkspacePerson; createdAt: string }
 export interface WorkspaceTaskDetail { task: WorkspaceTask; canDelete: boolean; comments: WorkspacePage<WorkspaceComment>; history: WorkspacePage<WorkspaceRevision> }
+export interface WorkspaceTaskBoard { boardVersion: number; columns: Record<WorkspaceTaskStatus, WorkspacePage<WorkspaceTask>> }
 export interface WorkspaceDiscussion {
   id: string; title: string; body: string; category: DiscussionCategory; status: "OPEN" | "RESOLVED";
   conclusion: string; author: WorkspacePerson; link: WorkspaceLink | null; mentorRelationshipId: string | null;
