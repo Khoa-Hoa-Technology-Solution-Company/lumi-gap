@@ -5,7 +5,7 @@ import type { AcademicPageMeta, AvailableMentor } from "@trend/shared-types";
 import { useI18n } from "@/i18n";
 import { useAcademicProfile } from "@/features/academic-profile/hooks/use-academic-profile";
 import { PositionVerificationPanel } from "@/features/academic-profile/components/position-verification-panel";
-import { ResearchTagField } from "@/features/academic-profile/components/research-focus-fields";
+import { MentorDiscoverySettings } from "@/features/projects/components/mentor-discovery-settings";
 import { academicSupportApi, type MentorshipItem, type MentorPreview, type AcademicSearch, type ContextSection } from "@/features/projects/api/academic-support.api";
 import { MentoringPreferencesPanel, useMentoringPreferences, mentorshipError } from "@/features/projects/components/mentoring-preferences";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
@@ -111,7 +111,7 @@ function MentorSearch({ project, disabled }: { project: MentorPreview; disabled:
   const taxonomy = useQuery({ queryKey: ["onboarding-options"], queryFn: () => authApi.academicOnboardingOptions() });
   const search = useQuery({ queryKey: ["academic-support", "mentor-search", project.id, deferred, page], queryFn: () => academicSupportApi.mentors(project.id, { ...deferred, page }), enabled: !disabled });
   const change = (field: keyof AcademicSearch, value: string) => { setFilters(current => ({ ...current, [field]: value || undefined })); setPage(1); };
-  return <details className="border-t pt-4"><summary className="cursor-pointer text-sm font-medium">{t("Find a Mentor")}</summary><div className="mt-3 space-y-3">
+  return <details className="border-t pt-4"><summary className="inline-flex cursor-pointer items-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t("Find a Mentor")}</summary><div className="mt-3 space-y-3">
     {disabled ? <p className="text-sm text-muted-foreground">{t("The project has reached its mentor or pending request limit.")}</p> : <>
       <Input aria-label={t("Search available mentors")} placeholder={t("Name, institution, research area or interest")} maxLength={160} value={filters.q ?? ""} onChange={e => change("q", e.target.value)} />
       <details><summary className="cursor-pointer text-xs text-muted-foreground">{t("More filters")}</summary><div className="mt-3 grid gap-3 sm:grid-cols-2">{(["institution", "area", "interest", "position"] as const).map(field => <label key={field} className="space-y-1 text-xs"><span>{t({ institution: "Institution", area: "Research Area", interest: "Research Interest", position: "Current Position" }[field])}</span><Input value={filters[field] ?? ""} list={field === "area" ? "mentor-area-options" : undefined} maxLength={field === "institution" ? 200 : 120} onChange={e => change(field, e.target.value)} /></label>)}</div><datalist id="mentor-area-options">{taxonomy.data?.researchAreas.map(area => <option key={area} value={area} />)}</datalist></details>
@@ -121,17 +121,6 @@ function MentorSearch({ project, disabled }: { project: MentorPreview; disabled:
       <Pager meta={search.data?.meta} onPage={setPage} />
     </>}
   </div>{selected && <ConsentComposer project={project} mentor={selected} onClose={() => setSelected(undefined)} />}</details>;
-}
-function DiscoverySettings({ project }: { project: MentorPreview }) {
-  const { t } = useI18n(), refresh = useSupportRefresh(), [discovery, setDiscovery] = useState(project.discovery), [summary, setSummary] = useState(project.summary), [expertise, setExpertise] = useState(project.expertise);
-  const taxonomy = useQuery({ queryKey: ["onboarding-options"], queryFn: () => authApi.academicOnboardingOptions() });
-  const save = useMutation({ mutationFn: () => academicSupportApi.saveSettings(project.id, { discovery, summary, expertise }), onSuccess: refresh });
-  return <details className="border-t pt-4"><summary className="cursor-pointer text-sm font-medium">{t("Mentorship discovery settings")}</summary><div className="mt-3 space-y-3">
-    <select aria-label={t("Mentorship Discovery")} className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={discovery} onChange={e => setDiscovery(e.target.value as typeof discovery)}><option value="CLOSED">{t("Closed")}</option><option value="SEEKING_MENTOR">{t("Seeking Mentor")}</option></select>
-    <label className="block space-y-1.5 text-sm"><span>{t("Safe project summary")}</span><textarea className="min-h-24 w-full rounded-md border bg-background p-3" value={summary} maxLength={2000} onChange={e => setSummary(e.target.value)} /></label><p className="text-xs leading-5 text-muted-foreground">{t("Only this preview is shared with verified Lecturers. Keep confidential research out of it.")}</p>
-    <ResearchTagField label={t("Expertise requested")} values={expertise} onChange={setExpertise} options={taxonomy.data?.researchAreas} max={10} />
-    {save.error && <p role="alert" className="text-sm text-destructive">{t(mentorshipError(save.error))}</p>}<Button size="sm" disabled={save.isPending || discovery === "SEEKING_MENTOR" && summary.trim().length < 10} onClick={() => save.mutate()}>{t("Save discovery settings")}</Button>
-  </div></details>;
 }
 export function MentorProjectPanel({ projectId }: { projectId: string }) {
   const [selectedGap, setSelectedGap] = useState<string | null>(null);
@@ -145,10 +134,10 @@ export function MentorProjectPanel({ projectId }: { projectId: string }) {
   if (!workspace.data || workspace.isError) return <p role="alert" className="text-sm text-muted-foreground">{t("Academic Support is available to the project team and active verified mentors.")}</p>;
   const data = workspace.data, readOnly = !data.canProvideFeedback;
   return <section className="space-y-5 rounded-lg border bg-card p-4 sm:p-5" data-no-i18n>
-    <header><h2 className="text-lg font-semibold">{t("Academic Support")} · {data.project.title}</h2><p className="mt-1 text-xs text-muted-foreground">{t(data.accessRole === "MENTOR" ? "Mentor access: read research context and provide guidance." : "Academic mentors are separate from project members.")}</p>{data.accessRole === "MENTOR" && <Link className="mt-3 inline-flex text-sm text-primary underline underline-offset-4" to={`/projects/${encodeURIComponent(projectId)}/plan-review`}>{t("Open shared plan and questions")}</Link>}</header>
-    {list.data && <><h3 className="text-sm font-semibold">{t("Academic Mentor")} · {list.data.counts.active} / {list.data.policy.maxActiveMentors}</h3><MentoringItems items={[...list.data.relationships, ...list.data.requests.filter(r => r.status !== "ACCEPTED")]} />
+    <header className="min-w-0 [overflow-wrap:anywhere]"><h2 className="text-lg font-semibold">{t("Mentor")} · {data.project.title}</h2><p className="mt-1 text-xs text-muted-foreground">{t(data.accessRole === "MENTOR" ? "Mentor access: read research context and provide guidance." : "Academic mentors are separate from project members.")}</p>{data.accessRole === "MENTOR" && <Link className="mt-3 inline-flex text-sm text-primary underline underline-offset-4" to={`/projects/${encodeURIComponent(projectId)}/plan-review`}>{t("Open shared plan and questions")}</Link>}</header>
+    {list.data && <><h3 className="text-sm font-semibold">{t("Mentor")} · {list.data.counts.active} / {list.data.policy.maxActiveMentors}</h3><MentoringItems items={[...list.data.relationships, ...list.data.requests.filter(r => r.status !== "ACCEPTED")]} />
       <Pager meta={list.data.requestMeta.totalPages >= list.data.relationshipMeta.totalPages ? list.data.requestMeta : list.data.relationshipMeta} onPage={setRequestPage} /></>}{list.isError && <p role="alert">{t("Unable to load mentorship requests.")}</p>}
-    {data.canManage && !readOnly && <><DiscoverySettings key={data.project.id} project={data.project} /><MentorSearch project={data.project} disabled={Boolean(list.data && (list.data.counts.active >= list.data.policy.maxActiveMentors || list.data.counts.pending >= list.data.policy.maxPendingRequests))} /></>}
+    {data.canManage && !readOnly && <><MentorDiscoverySettings projectId={data.project.id} activeMentors={list.data?.counts.active ?? 0} /><MentorSearch project={data.project} disabled={Boolean(list.data && (list.data.counts.active >= list.data.policy.maxActiveMentors || list.data.counts.pending >= list.data.policy.maxPendingRequests))} /></>}
     <div className="space-y-3 border-t pt-4"><h3 className="text-sm font-semibold">{t("Research context")}</h3>{data.context.description && <p className="whitespace-pre-wrap break-words text-sm text-muted-foreground">{data.context.description}</p>}
       {(data.context.inclusionCriteria.length > 0 || data.context.exclusionCriteria.length > 0) && <details><summary className="cursor-pointer text-xs text-muted-foreground">{t("Screening criteria")}</summary><p className="mt-2 whitespace-pre-wrap text-sm">{data.context.inclusionCriteria.join("\n")}</p><p className="mt-2 whitespace-pre-wrap text-sm">{data.context.exclusionCriteria.join("\n")}</p></details>}
       <div className="flex flex-wrap gap-1" role="group" aria-label={t("Research context")}>{(["papers", "gaps", "evidence", "reports", "members"] as const).map(s => <Button key={s} size="sm" variant={s === section ? "secondary" : "ghost"} aria-pressed={s === section} onClick={() => { if (!canLeaveWorkspace()) return; setSelectedGap(null); setSection(s); setPage(1); }}>{t({ papers: "Papers", gaps: "Candidate Gaps", evidence: "Evidence", reports: "Reports", members: "Members" }[s])} ({data.context.counts[s]})</Button>)}</div>

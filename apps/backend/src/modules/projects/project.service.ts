@@ -372,6 +372,10 @@ export class ProjectService {
       const { project } = await authorizeProjectTransaction(tx, row.id, actor.id, "EDIT_SETTINGS");
       if (data.status === "ARCHIVED") throw AppError.badRequest("Use the archive action to archive a project");
       if (data.expectedVersion !== undefined && project.version !== data.expectedVersion) throw AppError.conflict("Project settings changed. Refresh before saving again");
+      const publicVisibility = ["PUBLIC", "PUBLIC_SUMMARY"].includes(data.visibility ?? project.visibility);
+      if (publicVisibility && (data.visibility !== undefined || data.publicSummary !== undefined) && !(data.publicSummary ?? project.publicSummary)?.trim()) {
+        throw AppError.badRequest("Write a public description before publishing");
+      }
       const areas = data.researchAreas ?? (data.researchField !== undefined ? data.researchField ? [data.researchField] : [] : undefined);
       const changesPlan = data.researchApproach !== undefined || data.inclusionCriteria !== undefined || data.exclusionCriteria !== undefined;
       if (changesPlan) await recordPlanSnapshot(tx, row.id, null, null);
@@ -433,39 +437,50 @@ export class ProjectService {
     await getPrisma().$transaction(async tx => {
       await lockProjectAccounts(tx, [actor.id], row.id);
       await authorizeProjectTransaction(tx, row.id, actor.id, "DELETE");
-      const counts = await Promise.all([
-        tx.projectPaper.count({ where: { projectId: row.id } }),
-        tx.report.count({ where: { projectId: row.id } }),
-        tx.researchGap.count({ where: { projectId: row.id } }),
-        tx.submission.count({ where: { projectId: row.id } }),
-        tx.projectMember.count({ where: { projectId: row.id, userId: { not: actor.id } } }),
-        tx.projectActivity.count({ where: { projectId: row.id, type: { notIn: ["PROJECT_CREATED", "PROJECT_UPDATED", "PROJECT_ARCHIVED", "PROJECT_RESTORED"] } } }),
-        tx.projectTeamMessage.count({ where: { projectId: row.id } }),
-        tx.projectChatMessage.count({ where: { projectId: row.id } }),
-        tx.draftWorkspace.count({ where: { projectId: row.id } }),
-        tx.literatureCorpus.count({ where: { projectId: row.id } }),
-        tx.researchContribution.count({ where: { projectId: row.id } }),
-        tx.projectContributionProposal.count({ where: { projectId: row.id } }),
-        tx.allocationPeriod.count({ where: { projectId: row.id } }),
-        tx.mentorshipRequest.count({ where: { projectId: row.id } }),
-        tx.mentorRelationship.count({ where: { projectId: row.id } }),
-        tx.aiRun.count({ where: { projectId: row.id } }),
-        tx.gapAnalysis.count({ where: { projectId: row.id } }),
-        tx.reviewTemplate.count({ where: { projectId: row.id } }),
-        tx.recruitmentOpening.count({ where: { projectId: row.id } }),
-        tx.recruitmentApplication.count({ where: { projectId: row.id } }),
-        tx.projectInvitation.count({ where: { projectId: row.id } }),
-        tx.forumPostProject.count({ where: { projectId: row.id } }),
-        tx.academicFeaturedWork.count({ where: { projectId: row.id } }),
-        tx.projectTask.count({ where: { projectId: row.id } }),
-        tx.projectMilestone.count({ where: { projectId: row.id } }),
-        tx.projectDiscussion.count({ where: { projectId: row.id } }),
-        tx.projectDecision.count({ where: { projectId: row.id } }),
-        tx.projectWorkspaceComment.count({ where: { projectId: row.id } }),
-        tx.planShare.count({ where: { projectId: row.id } }),
-        tx.planRevision.count({ where: { projectId: row.id, version: { gt: 1 } } }),
-      ]);
-      if (counts.some(Boolean)) throw AppError.conflict("This project contains research or collaboration history. Archive it to preserve the records");
+      // One existence query short-circuits on history and avoids dozens of serial round trips under the lock.
+      const [history] = await tx.$queryRaw<Array<{ has_history: boolean }>>`
+        WITH target AS (SELECT ${row.id}::uuid AS project_id, ${actor.id}::uuid AS actor_id)
+        SELECT EXISTS (
+          SELECT 1 FROM project_papers h, target WHERE h.project_id = target.project_id
+          UNION ALL SELECT 1 FROM reports h, target WHERE h.project_id = target.project_id
+          UNION ALL SELECT 1 FROM research_gaps h, target WHERE h.project_id = target.project_id
+          UNION ALL SELECT 1 FROM submissions h, target WHERE h.project_id = target.project_id
+          UNION ALL SELECT 1 FROM project_members h, target WHERE h.project_id = target.project_id AND h.user_id <> target.actor_id
+          UNION ALL SELECT 1 FROM project_activities h, target WHERE h.project_id = target.project_id AND h.type NOT IN ('PROJECT_CREATED','PROJECT_UPDATED','PROJECT_ARCHIVED','PROJECT_RESTORED')
+          UNION ALL SELECT 1 FROM project_team_messages h, target WHERE h.project_id = target.project_id
+          UNION ALL SELECT 1 FROM project_chat_messages h, target WHERE h.project_id = target.project_id
+          UNION ALL SELECT 1 FROM draft_workspaces h, target WHERE h.project_id = target.project_id
+          UNION ALL SELECT 1 FROM manuscript_snapshots h, target WHERE h.project_id = target.project_id
+          UNION ALL SELECT 1 FROM project_evidence_items h, target WHERE h.project_id = target.project_id
+          UNION ALL SELECT 1 FROM project_screening_decisions h, target WHERE h.project_id = target.project_id
+          UNION ALL SELECT 1 FROM project_paper_files h, target WHERE h.project_id = target.project_id
+          UNION ALL SELECT 1 FROM project_workspace_revisions h, target WHERE h.project_id = target.project_id
+          UNION ALL SELECT 1 FROM review_requests h, target WHERE h.project_id = target.project_id
+          UNION ALL SELECT 1 FROM external_review_invitations h, target WHERE h.project_id = target.project_id
+          UNION ALL SELECT 1 FROM literature_corpora h, target WHERE h.project_id = target.project_id
+          UNION ALL SELECT 1 FROM research_contributions h, target WHERE h.project_id = target.project_id
+          UNION ALL SELECT 1 FROM project_contribution_proposals h, target WHERE h.project_id = target.project_id
+          UNION ALL SELECT 1 FROM allocation_periods h, target WHERE h.project_id = target.project_id
+          UNION ALL SELECT 1 FROM mentorship_requests h, target WHERE h.project_id = target.project_id
+          UNION ALL SELECT 1 FROM mentor_relationships h, target WHERE h.project_id = target.project_id
+          UNION ALL SELECT 1 FROM ai_runs h, target WHERE h.project_id = target.project_id
+          UNION ALL SELECT 1 FROM gap_analyses h, target WHERE h.project_id = target.project_id
+          UNION ALL SELECT 1 FROM review_templates h, target WHERE h.project_id = target.project_id
+          UNION ALL SELECT 1 FROM recruitment_openings h, target WHERE h.project_id = target.project_id
+          UNION ALL SELECT 1 FROM recruitment_applications h, target WHERE h.project_id = target.project_id
+          UNION ALL SELECT 1 FROM project_invitations h, target WHERE h.project_id = target.project_id
+          UNION ALL SELECT 1 FROM forum_post_projects h, target WHERE h.project_id = target.project_id
+          UNION ALL SELECT 1 FROM academic_featured_works h, target WHERE h.project_id = target.project_id
+          UNION ALL SELECT 1 FROM project_tasks h, target WHERE h.project_id = target.project_id
+          UNION ALL SELECT 1 FROM project_milestones h, target WHERE h.project_id = target.project_id
+          UNION ALL SELECT 1 FROM project_discussions h, target WHERE h.project_id = target.project_id
+          UNION ALL SELECT 1 FROM project_decisions h, target WHERE h.project_id = target.project_id
+          UNION ALL SELECT 1 FROM project_workspace_comments h, target WHERE h.project_id = target.project_id
+          UNION ALL SELECT 1 FROM plan_shares h, target WHERE h.project_id = target.project_id
+          UNION ALL SELECT 1 FROM plan_revisions h, target WHERE h.project_id = target.project_id AND h.version > 1
+        ) AS has_history
+      `;
+      if (history?.has_history) throw AppError.conflict("This project contains research or collaboration history. Archive it to preserve the records");
       await tx.auditLog.create({ data: { userId: actor.id, actionName: "PROJECT_DELETED", targetTableName: "projects", targetRecordId: row.id, details: { emptyProject: true } } });
       await tx.project.delete({ where: { id: row.id } });
     });

@@ -135,6 +135,10 @@ export interface MentorProjectPreview {
   id: string; title: string; summary: string; researchField?: string;
   stage: ProjectStatus; expertise: string[]; discovery: "CLOSED" | "SEEKING_MENTOR";
 }
+export interface MentorDiscoverySettings extends MentorProjectPreview {
+  /** Optimistic version for owner-only discovery edits; excluded from public opportunity DTOs. */
+  version: number;
+}
 export interface MentorshipActions {
   accept: boolean; decline: boolean; cancel: boolean; end: boolean; openProject: boolean;
 }

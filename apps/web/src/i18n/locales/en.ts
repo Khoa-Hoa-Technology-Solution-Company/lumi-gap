@@ -1,3 +1,4 @@
+import { projectSettingsEn } from "./project-settings";
 import { researchWorkflowStrings } from "./research-workflow";
 import { contributionsEn } from "./project-contributions";
 import { manuscriptsEn } from "./manuscripts";
@@ -16,6 +17,7 @@ import { researchHomeEn } from "./research-home-en";
 import { trustSafetyRagStrings } from "./trust-safety-rag";
 
 export const en = {
+  ...projectSettingsEn,
   ...manuscriptsEn,
   ...researchWorkflowStrings,
   ...workspaceCoordinationStrings,

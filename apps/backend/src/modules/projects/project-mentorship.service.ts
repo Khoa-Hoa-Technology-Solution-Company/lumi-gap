@@ -163,14 +163,16 @@ export const projectMentorshipService = {
     const a = await actor(actorInput), profile = await assertAcceptingNewMentorships(getPrisma(), a.id);
     return mentorshipDiscoveryService.opportunities(a, profile, query);
   },
-  async settings(projectInput: string, actorInput: string, input?: { discovery: "CLOSED" | "SEEKING_MENTOR"; summary: string; expertise: string[] }) {
+  async settings(projectInput: string, actorInput: string, input?: { discovery: "CLOSED" | "SEEKING_MENTOR"; summary: string; expertise: string[]; expectedVersion?: number }) {
     const [p, a] = await Promise.all([project(projectInput), actor(actorInput)]);
     await assertAcademicRelationshipManager(p.id, a.id);
-    if (!input) return mentorshipPreview(p);
+    if (!input) return { ...mentorshipPreview(p), version: p.version };
     return getPrisma().$transaction(async tx => {
       await locks(tx, p.id, [a.id]); const live = await assertAcademicRelationshipManager(p.id, a.id, tx); assertOpenProject(live);
-      const updated = await tx.project.update({ where: { id: p.id }, data: { mentorshipDiscovery: input.discovery, mentorshipSummary: input.summary, mentorshipExpertise: input.expertise } });
-      await record(tx, live, a.id, "MENTOR_DISCOVERY_UPDATED", p.id, { discovery: input.discovery }); return mentorshipPreview(updated);
+      if (input.expectedVersion !== undefined && input.expectedVersion !== live.version) throw AppError.conflict("Project settings changed. Refresh before saving again");
+      if (input.discovery === "SEEKING_MENTOR" && input.summary.trim().length < 10) throw AppError.badRequest("Add a safe summary before opening discovery");
+      const updated = await tx.project.update({ where: { id: p.id }, data: { mentorshipDiscovery: input.discovery, mentorshipSummary: input.summary, mentorshipExpertise: input.expertise, version: { increment: 1 } } });
+      await record(tx, live, a.id, "MENTOR_DISCOVERY_UPDATED", p.id, { discovery: input.discovery }); return { ...mentorshipPreview(updated), version: updated.version };
     });
   },
   async request(p: string, a: string, input: { mentorUserId: string; message: string; idempotencyKey?: string }) { return this.create(p, a, input, "PROJECT_TO_LECTURER"); },
