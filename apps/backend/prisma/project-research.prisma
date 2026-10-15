@@ -1,0 +1,62 @@
+// Extraction identity is project scoped. Immutable history uses ProjectWorkspaceRevision.
+model ProjectEvidenceItem {
+  id String @id @default(uuid()) @db.Uuid
+  projectId String @map("project_id") @db.Uuid
+  paperId String @map("paper_id") @db.Uuid
+  claim String
+  quotation String @default("")
+  locator String @default("")
+  context String @default("")
+  methodology String @default("")
+  population String @default("")
+  results String @default("")
+  limitations String @default("")
+  themes String[] @default([])
+  origin String @db.VarChar(24)
+  reviewState String @default("PENDING") @map("review_state") @db.VarChar(16)
+  reviewRationale String @default("") @map("review_rationale")
+  reviewedById String? @map("reviewed_by_id") @db.Uuid
+  reviewedAt DateTime? @map("reviewed_at") @db.Timestamptz(6)
+  extractedById String @map("extracted_by_id") @db.Uuid
+  sourceSnapshot Json @default("{}") @map("source_snapshot")
+  version Int @default(1)
+  clientKey String @map("client_key") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  @@unique([projectId, extractedById, clientKey])
+  @@unique([projectId, id])
+  @@index([projectId, reviewState, createdAt])
+  @@index([projectId, paperId])
+  @@map("project_evidence_items")
+}
+
+model ProjectScreeningDecision {
+  id String @id @default(uuid()) @db.Uuid
+  projectId String @map("project_id") @db.Uuid
+  paperId String @map("paper_id") @db.Uuid
+  reviewerId String @map("reviewer_id") @db.Uuid
+  phase String @default("TITLE_ABSTRACT") @db.VarChar(24)
+  assigned Boolean @default(true)
+  decision String @default("UNDECIDED") @db.VarChar(24)
+  reason String @default("")
+  version Int @default(1)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  @@unique([projectId, paperId, reviewerId, phase])
+  @@index([projectId, reviewerId, decision])
+  @@map("project_screening_decisions")
+}
+
+model ProjectPaperFile {
+  id String @id @default(uuid()) @db.Uuid
+  projectId String @map("project_id") @db.Uuid
+  paperId String @map("paper_id") @db.Uuid
+  uploadedById String @map("uploaded_by_id") @db.Uuid
+  content Bytes
+  sha256 String @db.VarChar(64)
+  byteSize Int @map("byte_size")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@unique([projectId, paperId, sha256])
+  @@index([projectId, paperId])
+  @@map("project_paper_files")
+}

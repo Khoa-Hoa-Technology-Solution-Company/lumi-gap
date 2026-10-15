@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import type { ProjectChatEvent } from "@trend/shared-types";
 import { projectChatEventHub } from "./project-chat.events.js";
 import { projectChatService } from "./project-chat.service.js";
+import { assertLiveRequestSession } from "../../common/middleware/auth.js";
 
 export class ProjectChatController {
   async sendMessage(req: Request, res: Response) {
@@ -50,19 +51,19 @@ export class ProjectChatController {
       occurredAt: new Date().toISOString(),
     });
 
+    let closed = false;
+    const cleanup = () => {
+      if (closed) return;
+      closed = true; clearInterval(heartbeat); unsubscribe(); res.end();
+    };
     const unsubscribe = projectChatEventHub.subscribe(projectId, (event) => {
       if (event.scope !== scope) return;
-      writeSse(res, event);
+      void assertLiveRequestSession(req).then(() => projectChatService.assertCanOpenEvents(projectId, userId)).then(() => { if (!closed) writeSse(res, event); }).catch(cleanup);
     });
     const heartbeat = setInterval(() => {
-      res.write(`: heartbeat ${Date.now()}\n\n`);
+      void assertLiveRequestSession(req).then(() => projectChatService.assertCanOpenEvents(projectId, userId)).then(() => { if (!closed) res.write(`: heartbeat ${Date.now()}\n\n`); }).catch(cleanup);
     }, 25_000);
-
-    req.on("close", () => {
-      clearInterval(heartbeat);
-      unsubscribe();
-      res.end();
-    });
+    req.on("close", cleanup);
   }
 }
 

@@ -1,8 +1,11 @@
+import { currentProjectMembership, requireCurrentProjectMembership } from "../authorization/project-membership.js";
 import type { AddCorpusPaperRequest, CreateLiteratureCorpusRequest, EvidenceMapBucket } from "@trend/shared-types";
 import { AppError } from "../../common/exceptions/app-error.js";
 import { parseDatabaseId, publicDatabaseId } from "../../infrastructure/database/database-id.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { auditService } from "../audit/audit.service.js";
+import type { Prisma } from "../../generated/prisma/client.js";
+import { withWorkspace } from "../projects/workspace-access.js";
 
 function whereId(value: string) {
   const parsed = parseDatabaseId(value);
@@ -13,18 +16,12 @@ async function resolveUser(value: string) { const row = await getPrisma().user.f
 async function resolveProject(value: string) { const row = await getPrisma().project.findUnique({ where: whereId(value) }); if (!row) throw AppError.notFound("Project not found"); return row; }
 async function resolvePaper(value: string) { const row = await getPrisma().paper.findUnique({ where: whereId(value) }); if (!row) throw AppError.notFound("Paper not found in the LumiGap corpus"); return row; }
 
-async function canAccessProject(projectId: string, userId: string) {
-  const project = await getPrisma().project.findUnique({ where: { id: projectId } });
-  if (!project) return false;
-  if (project.ownerId === userId) return true;
-  const membership = await getPrisma().projectMember.findUnique({ where: { projectId_userId: { projectId, userId } } });
-  return membership?.status === "ACTIVE";
-}
+async function canAccessProject(projectId: string, userId: string) { return Boolean(await currentProjectMembership(projectId, userId)); }
 
 async function accessibleCorpus(corpusId: string, userIdInput: string) {
   const [userId, corpus] = await Promise.all([resolveUser(userIdInput), getPrisma().literatureCorpus.findUnique({ where: whereId(corpusId) })]);
   if (!corpus) throw AppError.notFound("Literature corpus not found");
-  if (corpus.ownerId === userId || (corpus.projectId && await canAccessProject(corpus.projectId, userId))) return { corpus, userId };
+  if (corpus.projectId ? await canAccessProject(corpus.projectId, userId) : corpus.ownerId === userId) return { corpus, userId };
   throw AppError.forbidden("Access denied to this literature corpus");
 }
 
@@ -36,13 +33,23 @@ function bucket(values: Array<string | number | undefined>): EvidenceMapBucket[]
 
 function present<T extends { id: string; legacyMongoId?: string | null }>(row: T) { return { ...row, id: publicDatabaseId(row), _id: publicDatabaseId(row) }; }
 
+async function corpusWrite<T>(corpus: { id: string; projectId: string | null }, userId: string, run: (tx: Prisma.TransactionClient) => Promise<T>) {
+  if (corpus.projectId) return withWorkspace(corpus.projectId, userId, { write: true }, context => run(context.tx));
+  return getPrisma().$transaction(async tx => {
+    await tx.$queryRaw`SELECT id FROM literature_corpora WHERE id=${corpus.id}::uuid FOR UPDATE`;
+    const live = await tx.literatureCorpus.findUnique({ where: { id: corpus.id } });
+    if (!live || live.ownerId !== userId || live.projectId) throw AppError.notFound("Literature corpus not found");
+    return run(tx);
+  });
+}
+
 export const literatureService = {
   async list(userIdInput: string) {
     const userId = await resolveUser(userIdInput);
     const memberships = await getPrisma().projectMember.findMany({ where: { userId, status: "ACTIVE" }, select: { projectId: true } });
     const ownedProjects = await getPrisma().project.findMany({ where: { ownerId: userId }, select: { id: true } });
     const projectIds = [...new Set([...memberships.map((row) => row.projectId), ...ownedProjects.map((row) => row.id)])];
-    const corpora = await getPrisma().literatureCorpus.findMany({ where: { OR: [{ ownerId: userId }, { projectId: { in: projectIds } }] }, orderBy: { updatedAt: "desc" } });
+    const corpora = await getPrisma().literatureCorpus.findMany({ where: { OR: [{ ownerId: userId, projectId: null }, { projectId: { in: projectIds } }] }, orderBy: { updatedAt: "desc" } });
     const counts = await getPrisma().corpusPaper.groupBy({ by: ["corpusId"], where: { corpusId: { in: corpora.map((row) => row.id) } }, _count: { _all: true } });
     const byCorpus = new Map(counts.map((row) => [row.corpusId, row._count._all]));
     return corpora.map((corpus) => ({ ...present(corpus), paperCount: byCorpus.get(corpus.id) ?? 0 }));
@@ -54,13 +61,15 @@ export const literatureService = {
     if (input.projectId) {
       const project = await resolveProject(input.projectId);
       if (!await canAccessProject(project.id, userId)) throw AppError.forbidden("Project membership is required");
+      await requireCurrentProjectMembership(project.id, userId, true);
       projectId = project.id;
     }
-    const corpus = await getPrisma().literatureCorpus.create({ data: {
+    const create = (tx: Prisma.TransactionClient) => tx.literatureCorpus.create({ data: {
       ownerId: userId, projectId, name: input.name, topic: input.topic, researchGoal: input.researchGoal,
       domain: input.domain, keywords: input.keywords ?? [], picoc: (input.picoc ?? {}) as never,
       searchStrategy: input.searchStrategy,
     } });
+    const corpus = projectId ? await withWorkspace(projectId, userId, { write: true }, context => create(context.tx)) : await create(getPrisma());
     await auditService.log("literature.corpus.created", { userId: userIdInput, targetTableName: "literature_corpora", targetRecordId: corpus.id, details: { projectId: input.projectId, topic: input.topic } });
     return present(corpus);
   },
@@ -77,7 +86,7 @@ export const literatureService = {
     const [{ corpus, userId }, paper] = await Promise.all([accessibleCorpus(corpusId, userIdInput), resolvePaper(input.paperId)]);
     if (paper.dataStatus !== "active") throw AppError.notFound("Paper not found in the LumiGap corpus");
     try {
-      const record = await getPrisma().$transaction(async (tx) => {
+      const record = await corpusWrite(corpus, userId, async (tx) => {
         const created = await tx.corpusPaper.create({ data: { corpusId: corpus.id, paperId: paper.id, addedById: userId, included: input.included, exclusionReason: input.exclusionReason, evidence: (input.evidence ?? {}) as never } });
         await tx.literatureCorpus.update({ where: { id: corpus.id }, data: { status: "ACTIVE" } });
         return created;
@@ -88,8 +97,12 @@ export const literatureService = {
   },
 
   async removePaper(corpusId: string, paperIdInput: string, userId: string) {
-    const [{ corpus }, paper] = await Promise.all([accessibleCorpus(corpusId, userId), resolvePaper(paperIdInput)]);
-    const result = await getPrisma().corpusPaper.deleteMany({ where: { corpusId: corpus.id, paperId: paper.id } });
+    const [{ corpus, userId: actorId }, paper] = await Promise.all([accessibleCorpus(corpusId, userId), resolvePaper(paperIdInput)]);
+    const result = await corpusWrite(corpus, actorId, async tx => {
+      const source = await tx.corpusPaper.findUnique({ where: { corpusId_paperId: { corpusId: corpus.id, paperId: paper.id } } });
+      if (source && await tx.gapEvidenceRecord.findFirst({ where: { corpusPaperId: source.id }, select: { id: true } })) throw AppError.conflict("This source is linked to gap evidence. Keep it to preserve the research record");
+      return tx.corpusPaper.deleteMany({ where: { corpusId: corpus.id, paperId: paper.id } });
+    });
     if (!result.count) throw AppError.notFound("Corpus paper not found");
     await auditService.log("literature.paper.removed", { userId, targetTableName: "corpus_papers", targetRecordId: paperIdInput, details: { corpusId } });
   },

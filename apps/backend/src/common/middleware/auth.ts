@@ -55,6 +55,12 @@ function bearerToken(req: Request): string | null {
   return header?.startsWith("Bearer ") ? header.slice("Bearer ".length) : null;
 }
 
+/** Long-lived streams must recheck both token expiry and the current session. */
+export async function assertLiveRequestSession(req: Pick<Request, "headers">): Promise<void> {
+  const token = req.headers.authorization?.startsWith("Bearer ") ? req.headers.authorization.slice(7) : null;
+  if (!token || !await hydrateClaims(tokenService.verifyAccessToken(token))) throw AppError.unauthorized("Account or session is no longer active");
+}
+
 export async function requireAuth(req: Request, _res: Response, next: NextFunction): Promise<void> {
   const token = bearerToken(req);
   if (!token) return next(AppError.unauthorized("Missing or malformed Authorization header"));

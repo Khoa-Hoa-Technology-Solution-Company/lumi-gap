@@ -1,4 +1,4 @@
-import type { AcademicReviewInput, ReviewAvailabilitySettings, SubmissionType } from "@trend/shared-types";
+import type { AcademicReviewInput, ReviewAvailabilitySettings, SubmissionType, ManuscriptSourceVersionLink } from "@trend/shared-types";
 import { AppError } from "../../common/exceptions/app-error.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { parseDatabaseId, publicDatabaseId } from "../../infrastructure/database/database-id.js";
@@ -249,6 +249,8 @@ export const reviewService = {
     const submission = await prisma.submission.findUniqueOrThrow({ where: { id: assignment.submissionId } });
     const revision = pinnedRevisionId ? await prisma.submissionRevision.findFirst({ where: { id: pinnedRevisionId, submissionId: assignment.submissionId } }) : null;
     if (!revision || (request && (request.submissionId !== assignment.submissionId || request.projectId !== submission.projectId || assignment.artifactRevisionId !== request.artifactRevisionId))) throw AppError.conflict("Review assignment does not match the target artifact");
+    const manuscriptSnapshot = revision.manuscriptSnapshotId ? await prisma.manuscriptSnapshot.findUnique({ where: { id: revision.manuscriptSnapshotId }, select: { id: true, projectId: true, workspaceId: true } }) : null;
+    const manuscriptSource: ManuscriptSourceVersionLink | undefined = manuscriptSnapshot ? { projectId: manuscriptSnapshot.projectId, manuscriptId: manuscriptSnapshot.workspaceId, snapshotId: manuscriptSnapshot.id } : undefined;
     return {
       assignment: { ...assignment, id: publicDatabaseId(assignment), submissionId: submissionDto(submission) },
       request: request ? { id: publicDatabaseId(request), status: request.status, message: request.message, dueAt: request.dueAt } : undefined,
@@ -258,6 +260,7 @@ export const reviewService = {
       criteria: templateVersion?.criteria ?? defaultReviewCriteria.map(([key, label, description], order) => ({ key, title: label, description, order, required: true, allowNotApplicable: false, levels: [] })),
       artifactContent: revision?.contentSnapshot ?? undefined,
       artifactRevision: revision ? { id: revision.id, revisionNumber: revision.revisionNumber, contentType: revision.contentType } : undefined,
+      manuscriptSource,
       previousRevisionItems: await Promise.all((await prisma.reviewRevisionItem.findMany({ where: { reviewId: { in: reviews.filter((item) => item.status === "SUBMITTED" && item.revisionId !== pinnedRevisionId).map((item) => item.id) } }, orderBy: { createdAt: "asc" } })).map(async (item) => ({ ...item, responses: await prisma.reviewRevisionResponse.findMany({ where: { revisionItemId: item.id }, orderBy: { createdAt: "desc" } }) }))),
       roundNumber: review?.roundNumber ?? (reviews[0]?.roundNumber ?? 0) + 1,
     };

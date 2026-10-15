@@ -73,7 +73,7 @@ export function useRequestGapValidation() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (gapId: string) => gapsApi.requestValidation(gapId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["gaps"] }),
+    onSuccess: () => Promise.all([queryClient.invalidateQueries({ queryKey: ["gaps"] }), queryClient.invalidateQueries({ queryKey: ["project-research"] })]),
   });
 }
 
@@ -100,6 +100,7 @@ export function useAddGapValidation() {
     onSuccess: (_, { gapId }) => {
       queryClient.invalidateQueries({ queryKey: ["gaps", gapId, "validations"] });
       queryClient.invalidateQueries({ queryKey: ["gapValidationQueue"] });
+      queryClient.invalidateQueries({ queryKey: ["project-research"] });
     },
   });
 }

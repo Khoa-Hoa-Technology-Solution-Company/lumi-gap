@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bot, Clipboard, FileText, Loader2, Pin, Search, SendHorizonal, Sparkles, Users, Wifi, WifiOff, XCircle } from "lucide-react";
+import { ArrowRight, BookOpen, Bot, Clipboard, FileText, Lightbulb, Loader2, Pin, Search, SendHorizonal, Sparkles, Users, Wifi, WifiOff, XCircle } from "lucide-react";
 import type { ProjectChatMessage, ProjectChatScope } from "@trend/shared-types";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useAuthStore } from "@/stores/auth-store";
+import { useI18n } from "@/i18n";
 import { projectChatApi } from "../api/project-chat.api";
 
 interface ProjectChatPanelProps {
@@ -30,11 +31,49 @@ export function ProjectChatPanel({
   draft,
   onDraftChange,
 }: ProjectChatPanelProps) {
+  const { t } = useI18n();
   const queryClient = useQueryClient();
   const currentUser = useAuthStore((s) => s.user);
   const [localMessage, setLocalMessage] = useState("");
   const [streamStatus, setStreamStatus] = useState<"idle" | "connecting" | "live" | "reconnecting" | "offline">("idle");
   const containerRef = useRef<HTMLDivElement | null>(null);
+
+  const smartPrompts = [
+    {
+      icon: BookOpen,
+      iconColor: "text-blue-500 bg-blue-500/10 border-blue-500/20",
+      title: t("Summarise key findings"),
+      desc: t("Synthesise core contributions and takeaways from project papers."),
+      prompt: t("Summarise the key findings, methodologies, and main conclusions from the papers in this project."),
+    },
+    {
+      icon: Search,
+      iconColor: "text-purple-500 bg-purple-500/10 border-purple-500/20",
+      title: t("Compare methods & limitations"),
+      desc: t("Identify common methodologies and critical research constraints."),
+      prompt: t("What research methodologies were used in these papers, and what are their main stated limitations?"),
+    },
+    {
+      icon: Lightbulb,
+      iconColor: "text-amber-500 bg-amber-500/10 border-amber-500/20",
+      title: t("Discover research gaps"),
+      desc: t("Uncover unresolved questions and potential opportunities."),
+      prompt: t("Based on the papers in this project, what research gaps or unaddressed challenges should we focus on?"),
+    },
+    {
+      icon: FileText,
+      iconColor: "text-emerald-500 bg-emerald-500/10 border-emerald-500/20",
+      title: t("Formulate research questions"),
+      desc: t("Propose feasible and impactful research directions."),
+      prompt: t("Propose 3 feasible, rigorous research questions that could form the basis of our next study."),
+    },
+  ];
+
+  const handleSelectPrompt = (promptText: string) => {
+    setMessage(promptText);
+    const textarea = containerRef.current?.closest(".project-chat-panel")?.querySelector("textarea") || document.querySelector("textarea");
+    textarea?.focus();
+  };
 
   const message = draft ?? localMessage;
   const setMessage = (value: string) => {
@@ -183,56 +222,55 @@ export function ProjectChatPanel({
   const isDisabled = sendMutation.isPending || paperCount === 0;
 
   return (
-    <div className="mt-2 overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-sm dark:border-white/10 dark:bg-zinc-900">
+    <div className="project-chat-panel mt-2 overflow-hidden rounded-2xl border border-border/80 bg-background shadow-xs dark:border-white/10">
       {/* Panel Header */}
-      <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4 dark:border-white/10">
-        <div>
-          <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
-            {scope === "private" ? (
-              <>
-                <Sparkles className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-                <span>My AI</span>
-              </>
-            ) : (
-              <>
-                <Bot className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
-                <span>Team AI Room</span>
-              </>
-            )}
-          </h3>
-          <p className="text-sm text-slate-500 dark:text-slate-400">
-            {scope === "private"
-              ? "Only you can see this AI conversation."
-              : "Visible to all project members. Use this for decisions and shared research memory."}
-          </p>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/70 px-5 py-3.5 bg-gradient-to-r from-indigo-500/[0.04] via-transparent to-transparent">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
+            {scope === "private" ? <Sparkles className="w-5 h-5" /> : <Bot className="w-5 h-5" />}
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="text-base font-bold text-foreground">
+                {scope === "private" ? t("My AI") : t("Team AI Room")}
+              </h3>
+              <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                paperCount > 0
+                  ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30"
+                  : "bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30"
+              }`}>
+                <span className={`h-1.5 w-1.5 rounded-full ${paperCount > 0 ? "bg-emerald-500 animate-pulse" : "bg-amber-500"}`} />
+                {paperCount > 0 ? `${paperCount} ${t("papers grounded")}` : t("No papers yet")}
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {scope === "private"
+                ? t("Only you can see this AI conversation.")
+                : t("Visible to all project members. Use this for decisions and shared research memory.")}
+            </p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
-          <Badge
-            variant="secondary"
-            className="rounded-full bg-slate-100 text-slate-600 dark:bg-zinc-800 dark:text-slate-300"
-          >
-            {scope === "private" ? "Private AI" : "Team AI"}
-          </Badge>
           {scope === "team" && (
-            <Badge variant="outline" className="rounded-full bg-white text-[11px] text-slate-500 dark:bg-zinc-950">
+            <Badge variant="outline" className="rounded-full bg-background/90 text-[11px] text-muted-foreground shadow-2xs">
               {streamStatus === "live" ? (
                 <Wifi className="mr-1 h-3 w-3 text-emerald-500" />
               ) : (
                 <WifiOff className="mr-1 h-3 w-3 text-amber-500" />
               )}
               {streamStatus === "live"
-                ? "Live"
+                ? t("Live")
                 : streamStatus === "reconnecting"
-                  ? "Reconnecting"
-                  : "Connecting"}
+                  ? t("Reconnecting")
+                  : t("Connecting")}
             </Badge>
           )}
         </div>
       </div>
 
-      <div className="flex h-[520px] flex-col">
+      <div className="flex h-[560px] flex-col">
         {/* Messages list */}
-        <div ref={containerRef} className="flex-1 space-y-4 overflow-y-auto bg-slate-50/70 px-5 py-5 dark:bg-black/20">
+        <div ref={containerRef} className="flex-1 space-y-4 overflow-y-auto bg-muted/20 px-5 py-5 dark:bg-black/20">
           {historyQuery.isLoading ? (
             <div className="flex h-full items-center justify-center text-sm text-slate-500">
               <Loader2 className="mr-2 h-4 w-4 animate-spin text-indigo-600" />
@@ -260,13 +298,45 @@ export function ProjectChatPanel({
               </p>
             </div>
           ) : visibleMessages.length === 0 ? (
-            <div className="flex h-full flex-col items-center justify-center text-center">
-              <div className="mb-3 rounded-full bg-white dark:bg-zinc-800 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 shadow-sm border border-slate-100/50 dark:border-white/5">
-                No messages yet
+            <div className="flex h-full flex-col justify-center px-4 py-6 max-w-2xl mx-auto">
+              <div className="text-center mb-5">
+                <div className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-md shadow-indigo-500/25 mb-2.5">
+                  <Sparkles className="h-5 w-5" />
+                </div>
+                <h4 className="text-base font-bold text-foreground">
+                  {t("Smart Research AI Assistant")}
+                </h4>
+                <p className="mt-1 text-xs text-muted-foreground max-w-md mx-auto leading-relaxed">
+                  {t("Ask questions grounded in your project papers, synthesize findings, or uncover research gaps.")}
+                </p>
               </div>
-              <p className="max-w-sm text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                Ask questions about methodologies, limitations, trends, or gaps in your project's papers.
-              </p>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                {smartPrompts.map((item, idx) => {
+                  const Icon = item.icon;
+                  return (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => handleSelectPrompt(item.prompt)}
+                      className="group flex items-start gap-3 p-3.5 rounded-xl border border-border/80 bg-background hover:bg-muted/40 hover:border-indigo-500/40 hover:shadow-md transition-all text-left shadow-2xs"
+                    >
+                      <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border ${item.iconColor} group-hover:scale-105 transition-transform`}>
+                        <Icon className="h-4 w-4" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <span className="text-xs font-bold text-foreground group-hover:text-indigo-600 dark:group-hover:text-indigo-400 flex items-center justify-between">
+                          {item.title}
+                          <ArrowRight className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity text-indigo-500" />
+                        </span>
+                        <p className="text-[11px] text-muted-foreground line-clamp-2 mt-0.5 leading-snug">
+                          {item.desc}
+                        </p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           ) : (
             visibleMessages.map((item) => {
@@ -473,7 +543,25 @@ export function ProjectChatPanel({
         )}
 
         {/* Form Input Area */}
-        <div className="border-t border-slate-100 p-4 dark:border-white/10">
+        <div className="border-t border-border/70 p-4 bg-muted/10 space-y-2.5">
+          {paperCount > 0 && (
+            <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none pb-1">
+              <span className="text-[11px] font-bold text-muted-foreground shrink-0 flex items-center gap-1">
+                <Sparkles className="h-3 w-3 text-indigo-500" />
+                {t("Quick prompts")}:
+              </span>
+              {smartPrompts.map((item, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => handleSelectPrompt(item.prompt)}
+                  className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium border border-border/80 bg-background hover:bg-muted/60 hover:border-indigo-400 text-muted-foreground hover:text-foreground shrink-0 transition-all shadow-2xs"
+                >
+                  {item.title}
+                </button>
+              ))}
+            </div>
+          )}
           <div className="flex gap-3">
             <div className="flex-1 flex flex-col">
               <textarea
@@ -489,28 +577,34 @@ export function ProjectChatPanel({
                 rows={2}
                 placeholder={
                   paperCount === 0
-                    ? "Add papers before asking AI."
-                    : "Ask AI about papers in this project..."
+                    ? t("Add papers before asking AI.")
+                    : t("Ask AI about papers in this project…")
                 }
-                className="min-h-[48px] w-full resize-none rounded-xl border border-slate-200 dark:border-slate-800 bg-background px-3 py-2 text-sm shadow-sm outline-none transition focus-visible:ring-1 focus-visible:ring-indigo-500 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-zinc-950"
+                className="min-h-[50px] w-full resize-none rounded-xl border border-border/80 bg-background px-3.5 py-2.5 text-sm shadow-2xs outline-none transition focus-visible:ring-2 focus-visible:ring-indigo-500/20 focus-visible:border-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={isDisabled}
               />
-              {scope === "private" && onSwitchToTeamAI && message.trim().length > 0 && (
-                <button
-                  type="button"
-                  onClick={onSwitchToTeamAI}
-                  className="text-[11px] text-slate-500 hover:text-indigo-600 transition-colors flex items-center gap-1 font-semibold mt-1.5 self-start"
-                >
-                  <Users className="w-3.5 h-3.5" />
-                  Ask in Team AI Room instead
-                </button>
-              )}
+              <div className="flex items-center justify-between mt-1 px-1">
+                {scope === "private" && onSwitchToTeamAI && message.trim().length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={onSwitchToTeamAI}
+                    className="text-[11px] text-muted-foreground hover:text-indigo-600 transition-colors flex items-center gap-1 font-semibold"
+                  >
+                    <Users className="w-3.5 h-3.5" />
+                    {t("Ask in Team AI Room instead")}
+                  </button>
+                ) : (
+                  <span className="text-[10px] text-muted-foreground/70">
+                    {t("Press Enter to send · Shift+Enter for new line")}
+                  </span>
+                )}
+              </div>
             </div>
             <Button
               type="button"
               onClick={submit}
               disabled={!message.trim() || isDisabled}
-              className="h-auto rounded-xl px-4 bg-indigo-600 hover:bg-indigo-700 text-white"
+              className="h-auto rounded-xl px-4 bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs self-stretch"
             >
               {sendMutation.isPending ? (
                 <Loader2 className="h-4 w-4 animate-spin" />

@@ -31,8 +31,13 @@ const PaperReviewPage = lazy(() => import("@/pages/papers/paper-review").then((m
 const FormatCheckerPage = lazy(() => import("@/pages/papers/format-checker").then((m) => ({ default: m.FormatCheckerPage })));
 const ReportsListPage = lazy(() => import("@/pages/reports/reports-list").then((m) => ({ default: m.ReportsListPage })));
 const ReportViewerPage = lazy(() => import("@/pages/reports/report-viewer").then((m) => ({ default: m.ReportViewerPage })));
-const ProjectsListPage = lazy(() => import("@/pages/projects/projects-list").then((m) => ({ default: m.ProjectsListPage })));
+const ProjectsWorkspacePage = lazy(() => import("@/pages/projects/projects-workspace").then((m) => ({ default: m.ProjectsWorkspacePage })));
+const ProjectWorkspaceStart = lazy(() => import("@/pages/projects/projects-workspace").then((m) => ({ default: m.ProjectWorkspaceStart })));
 const ProjectDetailPage = lazy(() => import("@/pages/projects/project-detail").then((m) => ({ default: m.ProjectDetailPage })));
+const ManuscriptEditorPage = lazy(() => import("@/features/manuscripts/manuscript-editor").then(m => ({ default: m.ManuscriptEditorPage })));
+const ProjectPlanReviewPage = lazy(() => import("@/pages/projects/project-plan-review").then((m) => ({ default: m.ProjectPlanReviewPage })));
+const ProjectAllocationReviewPage = lazy(() => import("@/pages/projects/project-allocation-review").then(m => ({ default: m.ProjectAllocationReviewPage })));
+const ProjectContributionReviewPage = lazy(() => import("@/pages/projects/project-contribution-review").then(m => ({ default: m.ProjectContributionReviewPage })));
 const ProjectInvitationPage = lazy(() => import("@/pages/projects/project-invitation").then((m) => ({ default: m.ProjectInvitationPage })));
 const ResearchGapsPage = lazy(() => import("@/pages/research-gaps").then((m) => ({ default: m.ResearchGapsPage })));
 const ResearchGapValidationPage = lazy(() => import("@/pages/research-gap-validation").then((m) => ({ default: m.ResearchGapValidationPage })));
@@ -153,11 +158,22 @@ export function AppRoutes() {
           <Route path="/academics/:userId/activity" element={<ForumActivityPage />} />
           <Route path="/academics/:userId/summary" element={<ForumActivityPage summary />} />
           <Route path="/profile/:handle/contributions" element={<ContributionArchivePage />} />
-          <Route path="/projects/:id" element={<ProjectDetailPage />} />
+          <Route path="/projects" element={<ProjectsWorkspacePage />}>
+            <Route element={<ProtectedRoute />}>
+              <Route element={<ResearchWorkflowRoute />}>
+                <Route index element={<ProjectWorkspaceStart />} />
+              </Route>
+            </Route>
+            <Route path=":id" element={<ProjectDetailPage />} />
+          </Route>
           <Route path="/invitations/:token" element={<ProjectInvitationPage />} />
 
           {/* Protected (any signed-in user) */}
           <Route element={<ProtectedRoute />}>
+            <Route path="/projects/:id/plan-review" element={<ProjectPlanReviewPage />} />
+            <Route path="/projects/:projectId/manuscripts/:id" element={<ManuscriptEditorPage />} />
+            <Route path="/projects/:id/allocation" element={<ProjectAllocationReviewPage />} />
+            <Route path="/projects/:id/contribution-review" element={<ProjectContributionReviewPage />} />
             <Route path="/forum/moderation" element={<ForumModerationPage />} />
             <Route path="/forum/categories/manage" element={<ForumCategoriesPage />} />
             <Route path="/dashboard" element={<DashboardPage />} />
@@ -175,7 +191,6 @@ export function AppRoutes() {
             <Route element={<ResearchWorkflowRoute />}>
             <Route path="/reports" element={<ReportsListPage />} />
             <Route path="/reports/:id" element={<ReportViewerPage />} />
-            <Route path="/projects" element={<ProjectsListPage />} />
             <Route path="/research-gaps" element={<ResearchGapsPage />} />
             <Route path="/research-gaps/validation" element={<ResearchGapValidationPage />} />
             <Route path="/research-gap/discover" element={<ResearchGapDiscoverPage />} />

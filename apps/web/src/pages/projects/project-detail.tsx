@@ -1,52 +1,66 @@
 import { lazy, Suspense, useState, useEffect, useCallback, useMemo } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { useProject, useUpdateProject, useArchiveProject, useDeleteProject, useLeaveProject } from "@/features/projects/hooks/use-projects";
+import { useProject } from "@/features/projects/hooks/use-projects";
 import { useQueryClient } from "@tanstack/react-query";
 import { useReports, useCreateReport, useUpdateArtifactStatus } from "@/features/reports/hooks/use-reports";
 import { useGaps, useAnalyzeGap, useGapAnalysisStatus, useActiveGapAnalysis } from "@/features/gaps";
 import { GapDetailDrawer } from "@/features/gaps/components/gap-detail-drawer";
 import { GapAnalysisWorkflow } from "@/features/gaps/components/gap-analysis-workflow";
-import { GapScopeNote } from "@/features/gaps/components/gap-evidence-summary";
+import { ResearchGapProposal } from "@/features/projects/components/research-gap-proposal";
+import { assessmentLabels } from "@/features/projects/components/research-gap-evaluation";
 import { ProjectDiscussionPanel } from "@/features/projects/components/project-discussion-panel";
 import { Link } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
-import type { AnalyzeGapRequest, GapStatus, IProject, ProjectStatus, ProjectVisibility, ReportLanguage, ResearchArtifactType, ResearchGapItem } from "@trend/shared-types";
+import type { AnalyzeGapRequest, GapAssessment, IProject, ReportLanguage, ResearchArtifactType, ResearchGapItem } from "@trend/shared-types";
 import { ProjectLiteratureWorkspace } from "@/features/projects/components/project-literature-workspace";
-import { ProjectSectionNav, type ProjectTab } from "@/features/projects/components/project-section-nav";
+import { ResearchLiterature } from "@/features/projects/components/research-literature";
+import { type ProjectTab } from "@/features/projects/components/project-section-nav";
+import { WorkspaceOverviewPanel, WorkspaceStage, WorkspaceStageSelector } from "@/features/projects/components/workspace-overview";
+import { useWorkspaceOverview } from "@/features/projects/hooks/use-workspace";
+import { WorkspacePlanPanel } from "@/features/projects/components/workspace-plan";
+import { WorkspaceTasksPanel } from "@/features/projects/components/workspace-tasks";
+import { WorkspaceDiscussionsPanel } from "@/features/projects/components/workspace-discussions";
+import { canLeaveWorkspace } from "@/features/projects/components/workspace-common";
+import { ProjectSectionContent } from "@/features/projects/components/project-section-content";
 import "@/features/projects/project-workspace.css";
 import { ProjectPaperPickerDialog, type PaperPickerSource } from "@/features/projects/components/project-paper-picker-dialog";
 import { SubmitReviewDialog } from "@/features/reviews/components/submit-review-dialog";
 import { useReviewCenter, type ReviewCenterItem } from "@/features/reviews";
 
 import { toast } from "sonner";
-import { Archive, FileText, Trash2, Plus, Loader2, XCircle, Sparkles, Zap, MessageSquare, Settings2, ShieldCheck, FolderKanban, ChevronRight, LockKeyhole, Globe2, UsersRound, Clock3 } from "lucide-react";
+import { Archive, FileText, Plus, Loader2, XCircle, Sparkles, MessageSquare, Settings2, ShieldCheck, ChevronRight, LockKeyhole, Globe2, UsersRound, Clock3, Compass, FolderGit2, GraduationCap } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
 import { MentorProjectPanel } from "@/pages/academics/academic-support";
-import { ProjectMembersTab } from "@/features/projects/components/project-members-tab";
-import { ProjectMentorSummary } from "@/features/projects/components/project-mentor-summary";
-import { ProjectContributionsTab } from "@/features/projects/components/project-contributions-tab";
+import { ProjectTeamSettings } from "@/features/projects/components/project-team-settings";
+import { ProjectNextSteps } from "@/features/projects/components/project-next-steps";
+import { ProjectContributionsWorkspace } from "@/features/projects/components/project-contributions-workspace";
+import { ManuscriptsPanel } from "@/features/manuscripts/manuscripts-panel";
 import { useI18n } from "@/i18n";
 
 const ProjectSubmissionsPanel = lazy(() => import("@/features/projects/components/project-submissions-panel").then(m => ({ default: m.ProjectSubmissionsPanel })));
 
 export function ProjectDetailPage() {
   const currentUser = useAuthStore(s => s.user);
-  const navigate = useNavigate();
   const { t, language } = useI18n();
   const { id } = useParams<{ id: string }>();
-  const { data: project, isLoading, isError } = useProject(id);
+  const { data: project, isLoading, isError, isFetching, refetch } = useProject(id);
+  const resolvedProjectId = project?._id ?? id ?? "";
+  const overview = useWorkspaceOverview(resolvedProjectId, Boolean(project && !project.isPublicSummary));
+  const mentorCount = overview.data?.mentors?.length ?? 0;
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get("tab");
-  const activeTab: ProjectTab = ["papers", "members", "contributions", "reports", "gaps", "chat", "support", "submissions"].includes(tabParam ?? "") ? tabParam as ProjectTab : "papers";
-  const setActiveTab = (tab: ProjectTab) => {
+  const activeTab: ProjectTab = ["overview", "plan", "tasks", "papers", "members", "contributions", "reports", "gaps", "chat", "support", "submissions", "manuscripts"].includes(tabParam ?? "") ? tabParam as ProjectTab : "overview";
+  const setActiveTab = (tab: ProjectTab, settings = false) => {
+    if (!canLeaveWorkspace()) return;
     const params = new URLSearchParams(searchParams);
     params.set("tab", tab);
     params.delete("submission");
+    if (settings) params.set("team", "settings"); else params.delete("team");
     setSearchParams(params, { replace: true });
   };
   const [autoOpenReport, setAutoOpenReport] = useState(false);
@@ -57,6 +71,7 @@ export function ProjectDetailPage() {
 
   const relativeActivity = (value: string) => {
     const elapsed = Math.max(0, Date.now() - new Date(value).getTime());
+    if (!Number.isFinite(elapsed)) return t("Date unavailable");
     const unit = elapsed < 60 * 60 * 1000 ? "minute" : elapsed < 24 * 60 * 60 * 1000 ? "hour" : "day";
     const divisor = unit === "minute" ? 60_000 : unit === "hour" ? 3_600_000 : 86_400_000;
     const amount = Math.max(1, Math.floor(elapsed / divisor));
@@ -65,20 +80,36 @@ export function ProjectDetailPage() {
 
   if (isLoading) {
     return (
-      <main className="container py-8 space-y-6">
-        <Skeleton className="h-32 w-full rounded-xl" />
-        <Skeleton className="h-[400px] w-full rounded-xl" />
-      </main>
+      <div className="project-workspace" role="status" aria-busy="true">
+        <span className="sr-only">{t("Loading projects...")}</span>
+        <div className="project-page-width project-detail-page" aria-hidden="true">
+          <Skeleton className="mb-[26px] h-5 w-40 rounded" />
+          <div className="flex items-start gap-4">
+            <Skeleton className="h-[68px] w-[68px] shrink-0 rounded-md" />
+            <div className="w-full max-w-lg space-y-3"><Skeleton className="h-4 w-32 rounded" /><Skeleton className="h-10 w-3/4 rounded" /></div>
+          </div>
+          <Skeleton className="mt-[22px] h-9 w-64 max-w-full rounded" />
+          <div className="project-workspace-shell">
+            <Skeleton className="h-[62px] w-full rounded-none" />
+            <Skeleton className="mt-7 h-8 w-52 rounded" />
+            <Skeleton className="mt-6 h-[310px] w-full rounded-none" />
+          </div>
+        </div>
+      </div>
     );
   }
 
   if (!project) {
     return (
-      <main className="container py-8">
-        <div className="rounded-lg border border-dashed p-12 text-center text-muted-foreground" role="status">
-          {isError ? t("The project could not be loaded. Refresh and try again.") : t("Project not found or you do not have access.")}
+      <div className="project-workspace">
+        <div className="project-page-width">
+          <Link to="/projects" className="project-breadcrumb hover:text-primary">{t("Back to projects")}</Link>
+          <div className="border-y py-12 text-center text-muted-foreground" role="status">
+            <p>{isError ? t("The project could not be loaded. Refresh and try again.") : t("Project not found or you do not have access.")}</p>
+            {isError ? <Button variant="outline" className="mt-4" disabled={isFetching} onClick={() => void refetch()}>{t("Try again")}</Button> : null}
+          </div>
         </div>
-      </main>
+      </div>
     );
   }
 
@@ -86,28 +117,85 @@ export function ProjectDetailPage() {
     <div className="project-workspace">
       <div className="project-page-width project-detail-page">
 
-        <header className="project-detail-intro">
-          <nav className="project-breadcrumb" aria-label={t("Projects")}>
-            <Link to="/projects" className="hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t("Projects")}</Link>
-            <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" /><span className="truncate">{project.title}</span>
-          </nav>
-          <div className="project-detail-title-row">
-            <div className="flex min-w-0 items-start gap-4">
-              <span className="project-folder-icon project-detail-icon"><FolderKanban className="h-7 w-7" aria-hidden="true" /></span>
+        <header className="project-detail-intro coord-project-intro" data-no-i18n>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-blue-600 via-indigo-600 to-violet-600 text-white flex items-center justify-center shadow-md shadow-blue-500/20 shrink-0">
+                <FolderGit2 className="h-5 w-5" />
+              </div>
               <div className="min-w-0">
-                <p className="project-eyebrow">{t("Research project")}</p>
-                <h1>{project.title}</h1>
-                {project.description ? <p className="project-detail-description">{project.description}</p> : null}
-                {project.researchField ? <p className="project-detail-scope">{t("Research scope")}<span aria-hidden="true"> / </span>{project.researchField}</p> : null}
+                <nav className="project-breadcrumb" aria-label={t("Projects")}>
+                  <Link to="/projects" className="hover:text-primary transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">{t("Projects")}</Link>
+                  <ChevronRight className="h-3 w-3 opacity-60" aria-hidden="true" />
+                  <span className="truncate max-w-[240px] text-muted-foreground">{project.title}</span>
+                </nav>
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground leading-tight truncate">
+                    {project.title}
+                  </h1>
+                  <span className="project-status-tag" data-status={project.status}>
+                    {t({ ACTIVE: "Active", PLANNING: "Planning", ON_HOLD: "On hold", COMPLETED: "Completed", ARCHIVED: "Archived" }[project.status])}
+                  </span>
+                  {project.researchField ? (
+                    <span className="project-detail-scope">
+                      <Compass className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                      <span>{project.researchField}</span>
+                    </span>
+                  ) : null}
+                </div>
               </div>
             </div>
-            {project.accessRole ? <ProjectHeaderActions project={project} onLeft={() => navigate("/projects")} /> : null}
+
+            <div className="flex items-center gap-2 shrink-0 self-start sm:self-center mt-2 sm:mt-0">
+              {!project.isPublicSummary && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab("members")}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/80 bg-background/80 hover:bg-accent/60 hover:text-foreground text-muted-foreground text-xs font-semibold transition-all shadow-xs cursor-pointer"
+                    title={t("Team members")}
+                  >
+                    <UsersRound className="h-3.5 w-3.5 text-blue-500" aria-hidden="true" />
+                    <span>{t("Team")} · <strong className="text-foreground font-semibold">{project.memberCount}</strong></span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab("support")}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/80 bg-background/80 hover:bg-accent/60 hover:text-foreground text-muted-foreground text-xs font-semibold transition-all shadow-xs cursor-pointer"
+                    title={t("Academic mentors")}
+                  >
+                    <GraduationCap className="h-3.5 w-3.5 text-purple-500" aria-hidden="true" />
+                    <span>{t("Mentors")} · <strong className="text-foreground font-semibold">{mentorCount}</strong></span>
+                  </button>
+                </>
+              )}
+              {project.accessRole ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="rounded-lg font-semibold text-xs h-8 px-3 border-border/80 shadow-xs hover:border-primary/40 hover:text-primary shrink-0"
+                  onClick={() => setActiveTab("members", true)}
+                >
+                  <Settings2 className="mr-1.5 h-3.5 w-3.5" />
+                  {t("Project settings")}
+                </Button>
+              ) : null}
+            </div>
           </div>
+
           <div className="project-detail-meta">
-            <span className="project-status-tag" data-status={project.status}>{t({ ACTIVE: "Active", PLANNING: "Planning", ON_HOLD: "On hold", COMPLETED: "Completed", ARCHIVED: "Archived" }[project.status])}</span>
-            <span>{project.visibility === "PUBLIC_SUMMARY" ? <Globe2 aria-hidden="true" /> : project.visibility === "INVITE_ONLY" ? <UsersRound aria-hidden="true" /> : <LockKeyhole aria-hidden="true" />}{t(project.visibility === "PRIVATE" ? "Private" : project.visibility === "INVITE_ONLY" ? "Invite only" : "Public summary")}</span>
-            <span><Clock3 aria-hidden="true" />{t("Updated {{time}}", { time: relativeActivity(project.updatedAt) })}</span>
-            {!project.isPublicSummary ? <button type="button" className="project-team-shortcut" onClick={() => setActiveTab("members")}><UsersRound aria-hidden="true" />{t(project.memberCount === 1 ? "{{count}} member" : "{{count}} members", { count: project.memberCount })}<ChevronRight aria-hidden="true" /></button> : null}
+            {!project.isPublicSummary && (
+              <WorkspaceStageSelector projectId={project._id} />
+            )}
+            <span className="inline-flex items-center gap-1.5">
+              {["PUBLIC", "PUBLIC_SUMMARY"].includes(project.visibility) ? <Globe2 className="h-3.5 w-3.5 text-emerald-500" aria-hidden="true" /> : project.visibility === "INVITE_ONLY" ? <UsersRound className="h-3.5 w-3.5 text-blue-500" aria-hidden="true" /> : <LockKeyhole className="h-3.5 w-3.5 text-amber-500" aria-hidden="true" />}
+              {t(project.visibility === "PRIVATE" ? "Private" : project.visibility === "INVITE_ONLY" ? "Invite only" : "Public summary")}
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <Clock3 className="h-3.5 w-3.5 text-muted-foreground/70" aria-hidden="true" />
+              {t("Updated {{time}}", { time: relativeActivity(project.updatedAt) })}
+            </span>
           </div>
         </header>
         {project.status === "ARCHIVED" ? <p role="status" className="flex items-center gap-2 rounded-lg border bg-card px-4 py-3 text-sm text-muted-foreground"><Archive className="h-4 w-4 shrink-0" />{t("Archived projects are read-only.")}</p> : null}
@@ -115,18 +203,24 @@ export function ProjectDetailPage() {
         {project.isPublicSummary ? (
           <div className="rounded-lg border bg-card p-8 text-center"><ShieldCheck className="mx-auto h-8 w-8 text-primary" /><h2 className="mt-3 text-lg font-semibold">{t("Public project summary")}</h2><p className="mx-auto mt-2 max-w-xl text-sm text-muted-foreground">{t("Papers, member details, reports, candidate gaps, contributions and chat are available only to current project members.")}</p></div>
         ) : <>
+        <ProjectNextSteps key={project._id} project={project} onAddPaper={() => { setPaperPickerSource("search"); setPaperPickerOpen(true); }} onNavigate={(tab, settings) => setActiveTab(tab, settings)} />
         <div className="project-workspace-shell">
-          <ProjectSectionNav activeTab={activeTab} onChange={setActiveTab} paperCount={project.paperCount} memberCount={project.memberCount} />
-        <div className="project-workspace-content">
+        <ProjectSectionContent activeTab={activeTab}>
+          {activeTab === "overview" && <section id="project-panel-overview" role="tabpanel" aria-labelledby="project-tab-overview"><WorkspaceOverviewPanel project={project} /></section>}
+          {activeTab === "manuscripts" && <section id="project-panel-manuscripts" role="tabpanel" aria-labelledby="project-tab-manuscripts"><ManuscriptsPanel projectId={project._id} readOnly={project.status === "ARCHIVED" || !project.accessRole} /></section>}
+          {activeTab === "plan" && <section id="project-panel-plan" role="tabpanel" aria-labelledby="project-tab-plan"><WorkspacePlanPanel projectId={project._id} /></section>}
+          {activeTab === "tasks" && <section id="project-panel-tasks" role="tabpanel" aria-labelledby="project-tab-tasks"><WorkspaceTasksPanel projectId={project._id} readOnly={project.status === "ARCHIVED" || !project.accessRole} /></section>}
           {activeTab === "submissions" && <section id="project-panel-submissions" role="tabpanel" aria-labelledby="project-tab-submissions">
             <Suspense fallback={<Skeleton className="h-48 w-full" />}><ProjectSubmissionsPanel projectId={project._id} projectTitle={project.title} readOnly={project.status === "ARCHIVED" || !project.accessRole} /></Suspense>
           </section>}
           {activeTab === "papers" && (
             <section id="project-panel-papers" role="tabpanel" aria-labelledby="project-tab-papers">
+              <ResearchLiterature projectId={project._id} readOnly={project.status === "ARCHIVED" || !project.accessRole}>
               <ProjectLiteratureWorkspace
                 projectId={project._id}
                 papers={project.papers}
                 criteria={project.screeningCriteria}
+                screeningMode={project.screeningMode}
                 isOwner={project.accessRole === "OWNER"}
                 readOnly={project.status === "ARCHIVED" || !project.accessRole}
                 onRequestAddPaper={(source = "search") => { setPaperPickerSource(source); setPaperPickerOpen(true); }}
@@ -140,22 +234,22 @@ export function ProjectDetailPage() {
                   setAutoOpenGap(true);
                 }}
               />
+              </ResearchLiterature>
             </section>
           )}
           {activeTab === "members" && (
             <section id="project-panel-members" role="tabpanel" aria-labelledby="project-tab-members">
-              <ProjectMembersTab projectId={project._id} projectTitle={project.title} members={project.members} pendingInvitations={project.pendingInvitations ?? []} ownerId={project.ownerId} currentUserId={currentUser?.id} readOnly={project.status === "ARCHIVED"} />
-              <ProjectMentorSummary projectId={project._id} />
+              <ProjectTeamSettings key={project._id} project={project} />
             </section>
           )}
           {activeTab === "support" && <div role="tabpanel" id="project-panel-support" aria-labelledby="project-tab-support"><MentorProjectPanel projectId={id!} /></div>}
           {activeTab === "contributions" && (
             <section id="project-panel-contributions" role="tabpanel" aria-labelledby="project-tab-contributions">
-              <ProjectContributionsTab
+              <ProjectContributionsWorkspace
                 projectId={project._id}
-                members={project.members}
-                ownerId={project.ownerId}
-                currentUserId={currentUser?.id}
+                currentUserId={currentUser?.id ?? ""}
+                isOwner={project.accessRole === "OWNER"}
+                readOnly={project.status === "ARCHIVED"}
               />
             </section>
           )}
@@ -189,15 +283,15 @@ export function ProjectDetailPage() {
           )}
           {activeTab === "chat" && (
             <section id="project-panel-chat" role="tabpanel" aria-labelledby="project-tab-chat">
-              <ProjectDiscussionPanel
+              <WorkspaceDiscussionsPanel projectId={project._id} readOnly={project.status === "ARCHIVED" || !project.accessRole} owner={project.accessRole === "OWNER"} legacyChat={<ProjectDiscussionPanel
                 projectId={project._id}
                 paperCount={project.papers?.length || 0}
                 ownerId={project.ownerId}
                 onAddPapers={() => { if (project.status !== "ARCHIVED") { setPaperPickerSource("search"); setPaperPickerOpen(true); } }}
-              />
+              />} />
             </section>
           )}
-        </div>
+        </ProjectSectionContent>
         </div>
         <ProjectPaperPickerDialog
           initialSource={paperPickerSource}
@@ -210,141 +304,6 @@ export function ProjectDetailPage() {
         </>}
       </div>
     </div>
-  );
-}
-
-function ProjectHeaderActions({ project, onLeft }: { project: IProject; onLeft: () => void }) {
-  const { t } = useI18n();
-  const isOwner = project.accessRole === "OWNER";
-  type ConfirmationAction = "archive" | "delete" | "leave";
-  const [open, setOpen] = useState(false);
-  const [confirmationAction, setConfirmationAction] = useState<ConfirmationAction | null>(null);
-  const [confirmationText, setConfirmationText] = useState("");
-  const [title, setTitle] = useState(project.title);
-  const [description, setDescription] = useState(project.description ?? "");
-  const [researchField, setResearchField] = useState(project.researchField ?? "");
-  const [status, setStatus] = useState<ProjectStatus>(project.status);
-  const [visibility, setVisibility] = useState<ProjectVisibility>(project.visibility);
-  const updateProject = useUpdateProject(project._id);
-  const archiveProject = useArchiveProject(project._id);
-  const deleteProject = useDeleteProject(project._id);
-  const leaveProject = useLeaveProject(project._id);
-
-  const save = async (event: React.FormEvent) => {
-    event.preventDefault();
-    try {
-      await updateProject.mutateAsync({ title, description, researchField: researchField || null, status, visibility });
-      toast.success("Project settings saved");
-      setOpen(false);
-    } catch {
-      toast.error("Could not save project settings");
-    }
-  };
-
-  const openConfirmation = (action: ConfirmationAction) => {
-    setConfirmationText("");
-    setConfirmationAction(action);
-  };
-
-  const closeConfirmation = (nextOpen: boolean) => {
-    if (nextOpen) return;
-    if (archiveProject.isPending || deleteProject.isPending || leaveProject.isPending) return;
-    setConfirmationAction(null);
-    setConfirmationText("");
-  };
-
-  const confirmProjectAction = async () => {
-    if (!confirmationAction) return;
-    if (confirmationAction !== "leave" && confirmationText !== project.title) return;
-    const action = confirmationAction;
-    try {
-      if (action === "archive") {
-        await archiveProject.mutateAsync();
-        toast.success("Project archived");
-        setOpen(false);
-      } else if (action === "delete") {
-        await deleteProject.mutateAsync();
-        toast.success("Project deleted");
-      } else {
-        await leaveProject.mutateAsync();
-        toast.success("You left the project");
-      }
-      setConfirmationAction(null);
-      setConfirmationText("");
-      if (action !== "archive") onLeft();
-    } catch (error) {
-      // A delete is refused (409) while submissions or other members' work remain; the server says what.
-      const message = (error as { response?: { data?: { error?: { message?: string } } } }).response?.data?.error?.message;
-      toast.error(message || (action === "archive" ? "Could not archive project" : action === "delete" ? "Could not delete project" : "Could not leave project"));
-    }
-  };
-
-  const confirmationPending = archiveProject.isPending || deleteProject.isPending || leaveProject.isPending;
-  const requiresProjectName = confirmationAction !== null && confirmationAction !== "leave";
-
-  if (!isOwner) return <>
-    <Button variant="outline" size="sm" disabled={project.status === "ARCHIVED"} onClick={() => openConfirmation("leave")}>Leave project</Button>
-    <Dialog open={confirmationAction !== null} onOpenChange={closeConfirmation}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Leave this project?</DialogTitle>
-          <DialogDescription>You will immediately lose access to private project content and chat. You can be invited again by a project owner.</DialogDescription>
-        </DialogHeader>
-        <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => closeConfirmation(false)} disabled={confirmationPending}>Cancel</Button>
-          <Button type="button" variant="destructive" onClick={confirmProjectAction} disabled={confirmationPending}>
-            {leaveProject.isPending ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Leaving…</> : "Leave project"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  </>;
-  return (
-    <>
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogTrigger asChild><Button variant="outline" size="sm"><Settings2 className="mr-2 h-4 w-4" />{t("Project settings")}</Button></DialogTrigger>
-        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-xl">
-          <DialogHeader><DialogTitle>Project settings</DialogTitle><DialogDescription>Update the workspace details and access policy. Only the owner can change these settings.</DialogDescription></DialogHeader>
-          <form onSubmit={save} className="space-y-4">
-            <fieldset disabled={project.status === "ARCHIVED" || updateProject.isPending} className="space-y-4">
-            <div className="space-y-2"><Label htmlFor="project-title">Project name</Label><Input id="project-title" value={title} onChange={(event) => setTitle(event.target.value)} maxLength={100} required /></div>
-            <div className="space-y-2"><Label htmlFor="project-description">Description</Label><textarea id="project-description" value={description} onChange={(event) => setDescription(event.target.value)} maxLength={5000} className="min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" /></div>
-            <div className="space-y-2"><Label htmlFor="project-field">Research field</Label><Input id="project-field" value={researchField} onChange={(event) => setResearchField(event.target.value)} maxLength={200} placeholder="e.g. Human-computer interaction" /></div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2"><Label htmlFor="project-status">Status</Label><select id="project-status" value={status} onChange={(event) => setStatus(event.target.value as ProjectStatus)} className="h-10 w-full rounded-md border bg-background px-3 text-sm">{project.status === "ARCHIVED" ? <option value="ARCHIVED">{t("Archived")}</option> : null}{["PLANNING", "ACTIVE", "ON_HOLD", "COMPLETED"].map((value) => <option key={value} value={value}>{value.replaceAll("_", " ")}</option>)}</select></div>
-              <div className="space-y-2"><Label htmlFor="project-visibility">Visibility</Label><select id="project-visibility" value={visibility} onChange={(event) => setVisibility(event.target.value as ProjectVisibility)} className="h-10 w-full rounded-md border bg-background px-3 text-sm">{["PRIVATE", "INVITE_ONLY", "PUBLIC_SUMMARY"].map((value) => <option key={value} value={value}>{value.replaceAll("_", " ")}</option>)}</select></div>
-            </div>
-            </fieldset>
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950/30"><p className="text-sm font-medium text-amber-900 dark:text-amber-200">Prefer archive over delete</p><p className="mt-1 text-xs text-amber-700 dark:text-amber-300">Archiving preserves papers, activity, reports, gaps and chat as a read-only record.</p><div className="mt-3 flex flex-wrap gap-2"><Button type="button" variant="outline" size="sm" onClick={() => openConfirmation("archive")} disabled={archiveProject.isPending || project.status === "ARCHIVED"}><Archive className="mr-2 h-4 w-4" />{project.status === "ARCHIVED" ? "Archived" : "Archive project"}</Button><Button type="button" variant="destructive" size="sm" onClick={() => openConfirmation("delete")} disabled={deleteProject.isPending}><Trash2 className="mr-2 h-4 w-4" />Delete permanently</Button></div></div>
-            <DialogFooter><Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button type="submit" disabled={project.status === "ARCHIVED" || updateProject.isPending || !title.trim()}>{updateProject.isPending ? "Saving..." : "Save changes"}</Button></DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-      <Dialog open={confirmationAction !== null} onOpenChange={closeConfirmation}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>{confirmationAction === "archive" ? "Archive this project?" : confirmationAction === "leave" ? "Leave this project?" : "Permanently delete this project?"}</DialogTitle>
-            <DialogDescription>
-              {confirmationAction === "archive"
-                ? "Members will retain read access, but the workspace becomes read-only. Papers, reports, gaps and chat will be preserved."
-                : confirmationAction === "leave"
-                  ? "You will immediately lose access to private project content and chat. You can be invited again by a project owner."
-                  : "This permanently deletes the project and its project-scoped data. This action cannot be undone."}
-            </DialogDescription>
-          </DialogHeader>
-          {requiresProjectName && <div className="space-y-2">
-            <Label htmlFor="confirm-project-name">To confirm, type <span className="font-semibold text-foreground">{project.title}</span></Label>
-            <Input id="confirm-project-name" value={confirmationText} onChange={(event) => setConfirmationText(event.target.value)} autoComplete="off" autoCapitalize="off" spellCheck={false} />
-          </div>}
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => closeConfirmation(false)} disabled={confirmationPending}>Cancel</Button>
-            <Button type="button" variant={confirmationAction === "delete" || confirmationAction === "leave" ? "destructive" : "default"} onClick={confirmProjectAction} disabled={confirmationPending || (requiresProjectName && confirmationText !== project.title)}>
-              {confirmationPending ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />{archiveProject.isPending ? "Archiving…" : deleteProject.isPending ? "Deleting…" : "Leaving…"}</> : confirmationAction === "archive" ? "Archive project" : confirmationAction === "leave" ? "Leave project" : "Delete permanently"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
   );
 }
 
@@ -727,13 +686,13 @@ function ReportsTab({
           <div className="flex h-16 w-16 items-center justify-center rounded-full bg-background shadow-sm mb-4">
             <FileText className="h-6 w-6 text-muted-foreground/60" />
           </div>
-          <h4 className="text-lg font-semibold tracking-tight mb-2">No research artifacts yet</h4>
+          <h4 className="text-lg font-semibold tracking-tight mb-2">{t("No research artifacts yet")}</h4>
           <p className="text-sm text-muted-foreground max-w-sm mb-6">
-            Create a research artifact from your project evidence and analysis.
+            {t("Create a research artifact from your project evidence and analysis.")}
           </p>
           <Button onClick={() => setOpen(true)} variant="outline" className="rounded-full shadow-sm">
             <Plus className="w-4 h-4 mr-2" />
-            Generate first report
+            {t("Generate first report")}
           </Button>
         </div>
       )}
@@ -785,16 +744,11 @@ function GapsTab({
   onOpenChange?: (open: boolean) => void;
   onDraftProposal?: (gap: ResearchGapItem) => void;
 }) {
-  const [minScore, setMinScore] = useState(0);
-  const [debouncedMinScore, setDebouncedMinScore] = useState(0);
-  const [status, setStatus] = useState<GapStatus>("active");
-
-  useEffect(() => {
-    const timer = setTimeout(() => setDebouncedMinScore(minScore), 300);
-    return () => clearTimeout(timer);
-  }, [minScore]);
-
-  const { data: gapsData, isLoading, refetch } = useGaps({ projectId, status, pageSize: 50, minConfidence: debouncedMinScore });
+  const [assessment, setAssessment] = useState<GapAssessment | "">("");
+  const [page, setPage] = useState(1), [propose, setPropose] = useState(false);
+  const { data: currentProject } = useProject(projectId);
+  const readOnly = currentProject?.status === "ARCHIVED";
+  const { data: gapsData, isLoading, refetch } = useGaps({ projectId, status: "active", page, pageSize: 20, assessmentStatus: assessment || undefined, sortBy: "newest" });
   const analyze = useAnalyzeGap();
   const queryClient = useQueryClient();
   const { data: activeAnalysis } = useActiveGapAnalysis(projectId);
@@ -844,41 +798,18 @@ function GapsTab({
         <div><h3 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">{t("Candidate Research Gaps")}</h3><p className="mt-1 text-sm text-muted-foreground">{t("AI-assisted results are candidates for review, not validated research conclusions.")}</p></div>
 
         <div className="flex flex-wrap items-center gap-3">
-          <select
-            aria-label={t("Gap status")}
-            value={status}
-            onChange={(event) => setStatus(event.target.value as GapStatus)}
-            className="h-9 rounded-full border border-slate-200/60 bg-white px-3 text-sm font-medium text-slate-700 shadow-sm dark:border-white/10 dark:bg-zinc-900 dark:text-slate-300"
-          >
-            <option value="active">{t("Active")}</option>
-            <option value="resolved">{t("Resolved")}</option>
-            <option value="dismissed">{t("Dismissed")}</option>
+          <select aria-label={t("Team assessment")} value={assessment} onChange={e => { setAssessment(e.target.value as GapAssessment | ""); setPage(1); }} className="h-10 rounded-md border bg-white px-3 text-sm">
+            <option value="">{t("All candidates")}</option>{Object.entries(assessmentLabels).map(([value, label]) => <option key={value} value={value}>{t(label)}</option>)}
           </select>
-          <div
-            className="flex items-center gap-3 bg-white dark:bg-zinc-900 px-4 py-1.5 rounded-full border border-slate-200/60 dark:border-white/10 shadow-sm"
-            title={t("Filters by the corpus evidence score, or the AI's confidence when a gap has no evidence score.")}
-          >
-            <Zap className="w-4 h-4 text-emerald-500" />
-            <span className="text-sm font-semibold text-slate-700 dark:text-slate-300 w-[160px]">{t("Min evidence score: {{value}}%", { value: Math.round(minScore * 100) })}</span>
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.1"
-              value={minScore}
-              onChange={(e) => setMinScore(parseFloat(e.target.value))}
-              aria-label={t("Minimum evidence score")}
-              className="w-24 accent-emerald-500 cursor-pointer"
-            />
-          </div>
-
-          <Button size="sm" className="rounded-full shadow-sm shrink-0" onClick={() => setOpen((current) => !current)} disabled={Boolean(activeAnalysisId)}>
+          {!readOnly && <Button variant="outline" onClick={() => { if (canLeaveWorkspace()) setPropose(value => !value); }}>{t("Propose candidate")}</Button>}
+          <Button size="sm" className="rounded-full shadow-sm shrink-0" onClick={() => setOpen((current) => !current)} disabled={readOnly || Boolean(activeAnalysisId)}>
             <Sparkles className="w-4 h-4 mr-2" /> {open ? t("Close gap analysis") : t("New Gap Analysis")}
           </Button>
         </div>
       </div>
 
-      {open && (
+      {propose && <ResearchGapProposal projectId={projectId} topic={defaultTopic ?? ""} onClose={() => setPropose(false)} />}
+      {open && !readOnly && (
         <GapAnalysisWorkflow
           isAnalyzing={analyze.isPending}
           onAnalyze={handleAnalyze}
@@ -898,87 +829,25 @@ function GapsTab({
       {isLoading ? (
         <div className="py-12 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground/50" /></div>
       ) : gapsData?.data && gapsData.data.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {gapsData.data.map(gap => (
-            <div
-              key={gap.id}
-              role="button"
-              tabIndex={0}
-              onClick={() => setSelectedGap(gap)}
-              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSelectedGap(gap); } }}
-              className="relative flex flex-col justify-between overflow-hidden rounded-3xl border border-slate-200/60 dark:border-white/10 bg-white dark:bg-zinc-900 p-6 shadow-sm transition-all duration-500 hover:-translate-y-1.5 hover:shadow-2xl hover:shadow-cyan-500/10 hover:border-cyan-500/30 group cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500"
-            >
-              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-cyan-400 to-blue-500 opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
-
-              <div className="relative z-10 mb-5">
-                <div className="flex justify-between items-start mb-4">
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-cyan-50 dark:bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 transition-transform group-hover:scale-110 duration-500">
-                    <Sparkles className="h-6 w-6" />
-                  </div>
-                  <Badge variant="outline" className={`text-[10px] rounded-full px-2.5 py-0.5 font-bold uppercase tracking-wider shrink-0 shadow-sm ${gap.validationStatus === "VALIDATED" ? "border-emerald-300 bg-emerald-50 text-emerald-700 dark:bg-emerald-950" : "border-amber-200 bg-amber-50 text-amber-700 dark:bg-amber-950"}`}>{(gap.validationStatus || "CANDIDATE").replaceAll("_", " ")}</Badge>
-                </div>
-                <h4 className="font-bold text-slate-900 dark:text-white text-lg tracking-tight group-hover:text-cyan-600 dark:group-hover:text-cyan-400 transition-colors mb-2">
-                  {gap.title}
-                </h4>
-                <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
-                  {gap.description}
-                </p>
-              </div>
-
-              {gap.evidenceConfidence !== undefined && (() => {
-                // Zero papers for a probe topic means no data; a handful means the score is noise. Either way, hide the %.
-                const counts = gap.parentCounts;
-                const insufficientData = counts !== undefined && Math.min(counts.a, counts.b) === 0;
-                const lowSample = !insufficientData && gap.lowSample === true;
-                const weakTopic = counts && gap.probe ? (counts.a <= counts.b ? { topic: gap.probe.topicA, count: counts.a } : { topic: gap.probe.topicB, count: counts.b }) : undefined;
-                const pct = Math.round(gap.evidenceConfidence * 100);
-                return (
-                  <div
-                    className="relative z-10 pt-5 border-t border-slate-100 dark:border-zinc-800/50 mt-auto"
-                    title={t("Corpus evidence score: how scarce the topic intersection is across the whole LumiGap corpus and whether a parent topic is rising. Not the AI's self-reported confidence.")}
-                  >
-                    <div className="flex justify-between items-center mb-2">
-                       <span className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                          <Zap className="w-3.5 h-3.5 text-emerald-500" /> {t("Corpus evidence")}
-                       </span>
-                      {insufficientData || lowSample ? (
-                        <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">{insufficientData ? t("Insufficient data") : t("Low sample")}</span>
-                      ) : (
-                        <span className="text-sm font-black text-slate-700 dark:text-slate-300">{pct}%</span>
-                      )}
-                    </div>
-                    {insufficientData || lowSample ? (
-                      <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                        {insufficientData
-                          ? t("No corpus papers match \"{{topic}}\" yet, so this gap cannot be scored.", { topic: weakTopic?.topic ?? "" })
-                          : t("Only {{count}} corpus paper(s) match \"{{topic}}\". Treat this score with caution.", { count: weakTopic?.count ?? 0, topic: weakTopic?.topic ?? "" })}
-                      </p>
-                    ) : (
-                      <div className="w-full bg-slate-100 dark:bg-zinc-800 rounded-full h-2 overflow-hidden shadow-inner">
-                        <div
-                          className="bg-gradient-to-r from-emerald-400 to-teal-500 h-2 rounded-full transition-all duration-1000 ease-out"
-                          style={{ width: `${pct}%` }}
-                        />
-                      </div>
-                    )}
-                    {gap.probe && <div className="mt-2"><GapScopeNote evidenceScopeSize={gap.evidenceScopeSize} /></div>}
-                  </div>
-                );
-              })()}
-            </div>
-          ))}
+        <div className="research-candidates" data-no-i18n>
+          {gapsData.data.map(gap => <button type="button" key={gap.id} className="research-candidate" onClick={() => setSelectedGap(gap)}>
+            <span className="research-origin">{t(gap.origin === "HUMAN" ? "Human proposal" : "AI-suggested candidate")} · v{gap.version ?? 1}</span>
+            <strong>{gap.title}</strong><p>{gap.description}</p>
+            <span className="research-state">{t(assessmentLabels[gap.assessmentStatus ?? "PROPOSED"])}</span>
+          </button>)}
+          <div className="research-pagination"><Button variant="ghost" disabled={page === 1} onClick={() => setPage(value => value - 1)}>{t("Previous")}</Button><span>{t("Page {{page}}", { page })}</span><Button variant="ghost" disabled={!gapsData.meta || page >= gapsData.meta.totalPages} onClick={() => setPage(value => value + 1)}>{t("Next")}</Button></div>
         </div>
       ) : (
         <div className="mt-8 flex flex-col items-center justify-center rounded-3xl border border-dashed bg-muted/20 px-6 py-20 text-center">
           <div className="flex h-16 w-16 items-center justify-center rounded-full bg-background shadow-sm mb-4">
             <Sparkles className="h-6 w-6 text-muted-foreground/60" />
           </div>
-          <h4 className="text-lg font-semibold tracking-tight mb-2">{status === "active" ? t("No candidate research gaps yet") : t("No research gaps with this status")}</h4>
+          <h4 className="text-lg font-semibold tracking-tight mb-2">{t("No candidate research gaps yet")}</h4>
           <p className="text-sm text-muted-foreground max-w-sm mb-6">
             {t("Candidate research gaps will appear after the project has sufficient screened literature and evidence.")}
           </p>
-          {status === "active" && !open && (
-            <Button onClick={() => setOpen(true)} variant="outline" className="rounded-full shadow-sm" disabled={Boolean(activeAnalysisId)}>
+          {!readOnly && !open && (
+            <Button onClick={() => setOpen(true)} variant="outline" className="rounded-full shadow-sm" disabled={readOnly || Boolean(activeAnalysisId)}>
               <Sparkles className="w-4 h-4 mr-2 text-cyan-500" />
               {t("Run first analysis")}
             </Button>
@@ -987,7 +856,8 @@ function GapsTab({
       )}
 
       <GapDetailDrawer
-        gap={selectedGap}
+        researchProjectId={projectId}
+        gap={gapsData?.data.find(item => item.id === selectedGap?.id) ?? selectedGap}
         isOpen={selectedGap !== null}
         onClose={() => setSelectedGap(null)}
         onDraftProposal={onDraftProposal ? (gap) => { setSelectedGap(null); onDraftProposal(gap); } : undefined}

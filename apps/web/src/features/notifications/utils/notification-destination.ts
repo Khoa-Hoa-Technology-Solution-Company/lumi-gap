@@ -1,10 +1,20 @@
 import type { NotificationItem } from "@trend/shared-types";
 
 export function getNotificationDestination(
-  notification: Pick<NotificationItem, "type" | "targetKind" | "targetId"> & Partial<Pick<NotificationItem, "title" | "verificationRequestId">>,
+  notification: Pick<NotificationItem, "type" | "targetKind" | "targetId"> & Partial<Pick<NotificationItem, "title" | "verificationRequestId" | "allocationRevisionId" | "workContributionId" | "manuscriptId" | "manuscriptSnapshotId">>,
   isAdmin: boolean,
 ): string | null {
+  if (notification.type === "MANUSCRIPT_FEEDBACK_REQUEST" && notification.targetId && notification.manuscriptId && notification.manuscriptSnapshotId) return `/projects/${encodeURIComponent(notification.targetId)}/manuscripts/${encodeURIComponent(notification.manuscriptId)}?snapshot=${encodeURIComponent(notification.manuscriptSnapshotId)}`;
+  if (notification.type === "PROJECT_ALLOCATION_UPDATE" && notification.targetId && notification.allocationRevisionId) return `/projects/${encodeURIComponent(notification.targetId)}/allocation?revision=${encodeURIComponent(notification.allocationRevisionId)}`;
+  if (notification.type === "PROJECT_CONTRIBUTION_UPDATE" && notification.targetId) return notification.workContributionId ? `/projects/${encodeURIComponent(notification.targetId)}/contribution-review?record=${encodeURIComponent(notification.workContributionId)}` : `/projects/${encodeURIComponent(notification.targetId)}?tab=contributions&contributionTab=work`;
   if (notification.type === "level_up") return "/rankings";
+  if (notification.type.startsWith("PROJECT_WORKSPACE_") && notification.targetId) {
+    const id = encodeURIComponent(notification.targetId);
+    if (notification.type === "PROJECT_WORKSPACE_GAP_GUIDANCE") return `/academic-support?projectId=${id}&section=gaps`;
+    if (["PROJECT_WORKSPACE_PLAN_SHARED", "PROJECT_WORKSPACE_MENTOR_QUESTION"].includes(notification.type)) return `/projects/${id}/plan-review`;
+    const tasks = ["PROJECT_WORKSPACE_ASSIGNMENT", "PROJECT_WORKSPACE_MILESTONE"].includes(notification.type);
+    return `/projects/${id}?tab=${tasks ? "tasks" : notification.type === "PROJECT_WORKSPACE_MENTOR_FEEDBACK" ? "overview" : "chat"}`;
+  }
   const verificationQuery = notification.verificationRequestId ? `?requestId=${encodeURIComponent(notification.verificationRequestId)}` : "";
   if (notification.type === "LECTURER_VERIFICATION_REVIEW_REQUESTED") return isAdmin ? `/admin/academic-verifications${verificationQuery}` : null;
   if (notification.type.startsWith("LECTURER_VERIFICATION_")) return `/settings/verification/lecturer${verificationQuery}`;
