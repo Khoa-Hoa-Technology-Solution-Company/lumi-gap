@@ -222,7 +222,7 @@ export function MainLayout() {
 
   return (
     <div
-      className={cn("lumi-app-shell flex min-h-screen flex-col", isForumSurface ? "bg-background" : "bg-slate-50 dark:bg-[#09090b]", isHomeSurface && "home-app-shell")}
+      className={cn("lumi-app-shell flex min-h-screen flex-col", isForumSurface ? "bg-background" : "bg-slate-50 dark:bg-[#09090b]", isHomeSurface && "home-app-shell", isProjectsSurface && "projects-app-shell")}
     >
       <header className="lumi-app-header sticky z-50 h-[var(--app-header-height)] shrink-0">
         <div className="lumi-app-nav-inner mx-auto grid h-full w-full min-w-0 grid-cols-[minmax(0,auto)_1fr_auto] items-center gap-1 sm:gap-4">

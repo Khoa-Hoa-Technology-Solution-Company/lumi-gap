@@ -1,3 +1,4 @@
+import { createProjectFixture } from "../../../test-utils/project-fixture.js";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import type { Server } from "node:http";
@@ -36,8 +37,8 @@ describe.skipIf(!enabled).sequential("one shared academic profile and viewer-saf
       if (name === "Lecturer") lecturer = account.user.id;
       if (name === "Outsider") { outsider = account.user.id; outsiderToken = (await authService.login({ email, password })).tokens.accessToken; }
     }
-    const project = await db.project.create({ data: { title: "Private student project", ownerId: student } }); projectId = project.id; projectIds.push(projectId);
-    const foreign = await db.project.create({ data: { title: "Unrelated private project", ownerId: outsider } }); foreignProjectId = foreign.id; projectIds.push(foreignProjectId);
+    const project = await createProjectFixture({ data: { title: "Private student project", ownerId: student } }); projectId = project.id; projectIds.push(projectId);
+    const foreign = await createProjectFixture({ data: { title: "Unrelated private project", ownerId: outsider } }); foreignProjectId = foreign.id; projectIds.push(foreignProjectId);
     await db.projectMember.create({ data: { projectId, userId: researcher, status: "ACTIVE" } });
     const submission = await db.submission.create({ data: { projectId, createdById: student, title: "Private research proposal", submissionType: "RESEARCH_PROPOSAL" } }); submissionId = submission.id;
     await db.submissionAuthor.create({ data: { submissionId, userId: student, position: 1 } });

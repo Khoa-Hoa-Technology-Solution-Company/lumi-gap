@@ -83,6 +83,7 @@ export default defineConfig(({ mode }) => {
         "/api": {
           target: `http://localhost:${publicConfig.API_PORT || "4000"}`,
           changeOrigin: true,
+          ws: true,
         },
       },
     },

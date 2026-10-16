@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { AuthClaims } from "../../../common/middleware/auth.js";
 import { getPrisma } from "../../../infrastructure/database/prisma.js";
 import { getResearchHome, researchWorkspace } from "../home-research.service.js";
+import { createProjectFixture } from "../../../test-utils/project-fixture.js";
 
 describe.sequential("Research Home real data and access boundaries", () => {
   const db = getPrisma();
@@ -20,13 +21,13 @@ describe.sequential("Research Home real data and access boundaries", () => {
     await db.userEmail.createMany({ data: users.map((id) => ({ userId: id, normalizedEmail: `${id}@home-test.invalid`, verifiedAt: new Date() })) });
     await db.academicProfile.createMany({ data: [{ userId: user, academicRole: "STUDENT" }, { userId: lecturer, academicRole: "LECTURER", roleVerificationStatus: "VERIFIED", positionStatus: "VERIFIED" }] });
     await db.userCapability.createMany({ data: ["STRUCTURED_REVIEW", "MENTOR_PROJECT"].map((capability) => ({ userId: lecturer, capability, status: "ACTIVE", source: "home-test" })) });
-    await db.project.createMany({ data: [
+    await Promise.all([
       { id: active, ownerId: user, title: "Active screening work", status: "ACTIVE" },
       { id: privateId, ownerId: other, title: "Secret unrelated project", status: "ACTIVE" },
       { id: archived, ownerId: user, title: "Archived", status: "ARCHIVED" },
       { id: complete, ownerId: user, title: "Completed", status: "COMPLETED" },
       { id: shared, ownerId: other, title: "Shared evidence work", status: "ACTIVE" },
-    ] });
+    ].map(data => createProjectFixture({ data })));
     await db.projectMember.create({ data: { projectId: shared, userId: user, status: "ACTIVE" } });
     await db.paper.createMany({ data: papers.map((id) => ({ id, title: id === recommendation ? `home-interest-${user} recommended literature` : "Home test paper", primaryProvider: "openalex", publicationYear: 2026, dataStatus: id === restrictedPaper ? "draft" : "active" })) });
     await db.projectPaper.createMany({ data: [
@@ -69,7 +70,6 @@ describe.sequential("Research Home real data and access boundaries", () => {
     await db.gapEvidenceRecord.deleteMany({ where: { gapId: gap } });
     await db.researchGap.deleteMany({ where: { id: gap } });
     await db.projectPaper.deleteMany({ where: { projectId: { in: projects } } });
-    await db.projectMember.deleteMany({ where: { projectId: { in: projects } } });
     await db.project.deleteMany({ where: { id: { in: projects } } });
     await db.bookmark.deleteMany({ where: { userId: { in: users } } });
     await db.paper.deleteMany({ where: { id: { in: papers } } });

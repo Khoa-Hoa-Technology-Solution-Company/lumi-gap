@@ -9,7 +9,7 @@ import { ProjectLiteratureWorkspace } from "../components/project-literature-wor
 import { ProjectPaperPickerDialog } from "../components/project-paper-picker-dialog";
 import { ProjectSectionNav, type ProjectTab } from "../components/project-section-nav";
 
-const mocks = vi.hoisted(() => ({ add: vi.fn(), update: vi.fn(), criteria: vi.fn(), remove: vi.fn(), list: vi.fn(), detail: vi.fn(), bookmarks: [] as Array<{ targetKind: string; targetId: string }> }));
+const mocks = vi.hoisted(() => ({ add: vi.fn(), update: vi.fn(), criteria: vi.fn(), remove: vi.fn(), list: vi.fn(), detail: vi.fn(), paper: vi.fn(), bookmarks: [] as Array<{ targetKind: string; targetId: string }> }));
 vi.mock("@/i18n", () => ({ useI18n: () => ({ language: "en", t: (key: string, values?: Record<string, string | number>) => key.replace(/\{\{(\w+)\}\}/g, (_, name) => String(values?.[name] ?? "")) }) }));
 vi.mock("../hooks/use-projects", () => ({
   useAddPaperToProject: () => ({ mutateAsync: mocks.add, isPending: false }),
@@ -18,7 +18,7 @@ vi.mock("../hooks/use-projects", () => ({
   useRemovePaperFromProject: () => ({ mutateAsync: mocks.remove, isPending: false }),
 }));
 vi.mock("@/features/papers/api/papers.api", () => ({ papersApi: { list: mocks.list, detail: mocks.detail } }));
-vi.mock("@/features/papers/hooks/use-papers", () => ({ usePaper: () => ({ data: undefined, isLoading: false, isError: false }) }));
+vi.mock("@/features/papers/hooks/use-papers", () => ({ usePaper: mocks.paper }));
 vi.mock("@/features/compare/hooks/use-compare", () => ({ useComparePapers: () => ({ data: undefined, isLoading: false, isError: false }) }));
 vi.mock("@/features/bookmarks/hooks/use-bookmarks", () => ({ useBookmarks: () => ({ data: mocks.bookmarks, isLoading: false, isError: false, refetch: vi.fn() }) }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -40,6 +40,7 @@ beforeEach(() => {
   Object.values(mocks).forEach(value => { if (typeof value === "function") value.mockReset(); });
   Object.values(callbacks).forEach(mock => mock.mockReset());
   mocks.bookmarks = []; mocks.add.mockResolvedValue(undefined); mocks.list.mockResolvedValue({ papers: [] });
+  mocks.paper.mockReturnValue({ data: undefined, isLoading: false, isError: false });
   client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   container = document.createElement("div"); document.body.append(container); root = createRoot(container);
 });
@@ -47,14 +48,31 @@ afterEach(async () => { await act(async () => root.unmount()); client.clear(); c
 
 it("opens the specific source selected in the empty workspace", async () => {
   await render(workspace());
-  await click("Search LumiGap"); expect(callbacks.onRequestAddPaper).toHaveBeenLastCalledWith("search");
-  await click("Choose from saved papers"); expect(callbacks.onRequestAddPaper).toHaveBeenLastCalledWith("library");
+  await click("Find papers"); expect(callbacks.onRequestAddPaper).toHaveBeenLastCalledWith("search");
+  await click("Add saved papers"); expect(callbacks.onRequestAddPaper).toHaveBeenLastCalledWith("library");
   await click("Add by DOI"); expect(callbacks.onRequestAddPaper).toHaveBeenLastCalledWith("doi");
+});
+it("routes independent screening to its assigned workflow while keeping reading and notes available", async () => {
+  await render(workspace({ papers: [undecided], screeningMode: "INDEPENDENT" }));
+  await click("Read Unscreened paper");
+  const dialog = document.querySelector('[role="dialog"]')!;
+  expect(dialog.textContent).toContain("Independent reviewers");
+  expect([...dialog.querySelectorAll("button")].some(button => button.textContent === "Include")).toBe(false);
+  expect([...dialog.querySelectorAll("button")].some(button => button.textContent === "Add note")).toBe(true);
+  expect(dialog.querySelector('select[aria-label="Reading status"]')).not.toBeNull();
+  await click("Independent reviewers · Screening");
+  expect(mocks.update).not.toHaveBeenCalled();
+});
+it("records uncertainty as MAYBE rather than resetting to not screened", async () => {
+  await render(workspace({ papers: [undecided] }));
+  await click("Read Unscreened paper");
+  await click("Not sure");
+  expect(mocks.update).toHaveBeenCalledWith({ paperId: "p2", data: { screeningStatus: "MAYBE", expectedUpdatedAt: undecided.updatedAt } });
 });
 it("prevents archived workspaces from adding papers or editing criteria", async () => {
   await render(workspace({ readOnly: true }));
   expect(container.textContent).toContain("This project is read-only.");
-  expect(container.textContent).not.toContain("Search LumiGap");
+  expect(container.textContent).not.toContain("Find papers");
   await click("View criteria");
   expect(document.querySelector<HTMLTextAreaElement>("#project-inclusion-criteria")?.disabled).toBe(true);
   expect([...document.querySelectorAll("button")].some(button => button.textContent === "Save criteria")).toBe(false);
@@ -65,18 +83,64 @@ it("prevents archived workspaces from adding papers or editing criteria", async 
 it("shows all literature initially and views evidence without starting new analysis", async () => {
   await render(workspace({ papers: [included, undecided] }));
   expect(container.textContent).toContain("Included paper"); expect(container.textContent).toContain("Unscreened paper");
+  await click("Read Included paper");
   await click("View evidence"); expect(callbacks.onViewEvidence).toHaveBeenCalledOnce(); expect(callbacks.onNavigateToGaps).not.toHaveBeenCalled();
+  await click("Close");
   await click("Create artifact"); expect(callbacks.onNavigateToReports).toHaveBeenCalledOnce();
 });
 it("requires an exclusion reason and retains the form if the decision fails", async () => {
   mocks.update.mockRejectedValue(new Error("offline"));
-  await render(workspace({ papers: [undecided] })); await click("Exclude");
+  await render(workspace({ papers: [undecided] })); await click("Read Unscreened paper"); await click("Exclude");
   const save = [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Exclude paper")!;
   expect(save.disabled).toBe(true); expect(mocks.update).not.toHaveBeenCalled();
   await act(async () => document.querySelector<HTMLInputElement>('input[value="WRONG_RESEARCH_TOPIC"]')!.click());
   await click("Exclude paper");
-  expect(mocks.update).toHaveBeenCalledWith({ paperId: "p2", data: { screeningStatus: "EXCLUDED", exclusionReason: "WRONG_RESEARCH_TOPIC", exclusionNote: null } });
+  expect(mocks.update).toHaveBeenCalledWith({ paperId: "p2", data: { screeningStatus: "EXCLUDED", exclusionReason: "WRONG_RESEARCH_TOPIC", exclusionNote: null, expectedUpdatedAt: undecided.updatedAt } });
   expect(document.querySelector('[role="dialog"]')).not.toBeNull();
+});
+it("opens only the chosen paper on demand and returns focus to its row", async () => {
+  await render(workspace({ papers: [included, undecided] }));
+  expect(document.querySelector('[role="dialog"]')).toBeNull();
+  expect(mocks.paper).toHaveBeenLastCalledWith(undefined);
+  const row = container.querySelector<HTMLButtonElement>('[aria-label="Read Unscreened paper"]')!;
+  await click("Read Unscreened paper");
+  expect(mocks.paper).toHaveBeenLastCalledWith("p2");
+  const dialog = document.querySelector('[role="dialog"]')!;
+  expect(dialog.querySelector("h2")?.textContent).toBe("Unscreened paper");
+  expect(dialog.textContent).not.toContain("Included paper");
+  await click("Close");
+  await flushQueries(); // Radix restores focus after unmounting its focus scope.
+  expect(document.querySelector('[role="dialog"]')).toBeNull();
+  expect(document.activeElement).toBe(row);
+});
+it("keeps bulk selection separate from opening a paper", async () => {
+  await render(workspace({ papers: [included, undecided] }));
+  await act(async () => container.querySelector<HTMLInputElement>('[aria-label="Select Included paper for bulk actions"]')!.click());
+  expect(container.textContent).toContain("1 selected");
+  expect(document.querySelector('[role="dialog"]')).toBeNull();
+  expect(mocks.paper).toHaveBeenLastCalledWith(undefined);
+});
+it("retains the open paper after screening moves it out of the filter", async () => {
+  await render(workspace({ papers: [undecided] }));
+  const filter = container.querySelector<HTMLSelectElement>('select[aria-label="Screening status"]')!;
+  await act(async () => { filter.value = "UNDECIDED"; filter.dispatchEvent(new Event("change", { bubbles: true })); });
+  await click("Read Unscreened paper");
+  await click("Include");
+  await render(workspace({ papers: [{ ...undecided, screeningStatus: "INCLUDED" }] }));
+  expect(document.querySelector('[role="dialog"] h2')?.textContent).toBe("Unscreened paper");
+  expect(container.querySelector('[aria-label="Read Unscreened paper"]')).toBeNull();
+  await click("Close");
+  await flushQueries();
+  expect(document.activeElement).toBe(container.querySelector('input[aria-label="Search title, author, year, or venue"]'));
+});
+it("allows archived papers to be read while keeping reader mutations disabled", async () => {
+  await render(workspace({ papers: [included], readOnly: true }));
+  await click("Read Included paper");
+  const dialog = document.querySelector('[role="dialog"]')!;
+  const buttons = [...dialog.querySelectorAll<HTMLButtonElement>("button")];
+  for (const label of ["Include", "Not sure", "Exclude", "Add note"]) expect(buttons.find(button => button.textContent === label)?.disabled).toBe(true);
+  expect(dialog.querySelector<HTMLSelectElement>('select[aria-label="Reading status"]')?.disabled).toBe(true);
+  expect(mocks.update).not.toHaveBeenCalled();
 });
 it("keeps output actions disabled until literature has been included", async () => {
   await render(workspace({ papers: [undecided] }));
@@ -117,32 +181,33 @@ it("keeps search relevance order instead of ranking results by metadata quality"
   const labels = [...document.querySelectorAll("label")].filter(label => label.querySelector('input[type="checkbox"]'));
   expect(labels.map(label => label.textContent)).toEqual([expect.stringContaining("Most relevant result"), expect.stringContaining("Less relevant result")]);
 });
-it("supports keyboard navigation between project sections", async () => {
+it("supports keyboard navigation within and between project section groups", async () => {
   function Fixture() { const [tab, setTab] = useState<ProjectTab>("papers"); return <ProjectSectionNav activeTab={tab} onChange={setTab} paperCount={0} memberCount={1} />; }
   await render(<Fixture />);
-  expect(container.querySelector('[role="tablist"]')?.getAttribute("aria-orientation")).toBe("horizontal");
+  expect(container.querySelector('[role="tablist"]')?.getAttribute("aria-orientation")).toBe("vertical");
   await act(async () => container.querySelector("#project-tab-papers")!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true })));
-  expect(container.querySelector('[role="tab"][aria-selected="true"]')?.id).toBe("project-tab-chat");
-  await act(async () => container.querySelector("#project-tab-chat")!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })));
+  expect(container.querySelector('[role="tab"][aria-selected="true"]')?.id).toBe("project-tab-plan");
+  await act(async () => container.querySelector("#project-tab-plan")!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })));
   expect(document.activeElement?.id).toBe("project-tab-papers");
   await act(async () => container.querySelector("#project-tab-papers")!.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true })));
-  expect(container.querySelector('[role="tab"][aria-selected="true"]')?.id).toBe("project-tab-chat");
-  expect(document.activeElement?.id).toBe("project-tab-chat");
+  expect(container.querySelector('[role="tab"][aria-selected="true"]')?.id).toBe("project-tab-contributions");
+  expect(document.activeElement?.id).toBe("project-tab-contributions");
+  await act(async () => container.querySelector<HTMLButtonElement>("#project-tab-submissions")!.click());
+  await act(async () => container.querySelector("#project-tab-submissions")!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })));
+  expect(document.activeElement?.id).toBe("project-tab-members");
+  expect(container.querySelector('[role="tab"][aria-selected="true"]')?.id).toBe("project-tab-members");
 });
 
-it("reveals an overflowing selected tab within its row", async () => {
+it("reveals a selected section without moving focus out of the workspace navigation", async () => {
   function Fixture() { const [tab, setTab] = useState<ProjectTab>("papers"); return <ProjectSectionNav activeTab={tab} onChange={setTab} paperCount={0} memberCount={1} />; }
   await render(<Fixture />);
-  const tabs = container.querySelector<HTMLElement>('[role="tablist"]')!;
-  const last = container.querySelector<HTMLElement>("#project-tab-chat")!;
-  Object.defineProperty(tabs, "clientWidth", { value: 300 });
-  tabs.getBoundingClientRect = () => ({ left: 20, right: 320 } as DOMRect);
-  last.getBoundingClientRect = () => ({ left: 350, right: 450 } as DOMRect);
+  const last = container.querySelector<HTMLElement>("#project-tab-contributions")!;
+  const reveal = vi.fn(); last.scrollIntoView = reveal;
   await act(async () => container.querySelector("#project-tab-papers")!.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true })));
-  expect(tabs.scrollLeft).toBe(130);
+  expect(reveal).toHaveBeenCalledWith({ block: "nearest", inline: "nearest" });
   expect(document.activeElement).toBe(last);
   await act(async () => last.dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true })));
-  expect(container.querySelector('[aria-selected="true"]')?.id).toBe("project-tab-papers");
+  expect(container.querySelector('[aria-selected="true"]')?.id).toBe("project-tab-overview");
 });
 
 it("changes sections through the mobile select", async () => {

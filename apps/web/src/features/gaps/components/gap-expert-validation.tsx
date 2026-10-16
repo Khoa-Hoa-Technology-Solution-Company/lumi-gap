@@ -33,7 +33,7 @@ function errorMessage(error: unknown) {
 }
 
 /** Validation status, the creator's request button and the experts' decisions, shown in the gap drawer. */
-export function GapExpertValidationPanel({ gap }: { gap: ResearchGapItem }) {
+export function GapExpertValidationPanel({ gap, canRequestReview }: { gap: ResearchGapItem; canRequestReview?: boolean }) {
   const { t } = useI18n();
   const labels = useValidationActionLabels();
   const currentUserId = useAuthStore((state) => state.user?.id);
@@ -41,7 +41,7 @@ export function GapExpertValidationPanel({ gap }: { gap: ResearchGapItem }) {
   const shared = SHARED_WITH_EXPERTS.includes(status);
   const validations = useGapValidations(gap.id, shared);
   const request = useRequestGapValidation();
-  const canRequest = currentUserId === gap.userId && REQUESTABLE.includes(status);
+  const canRequest = (canRequestReview ?? currentUserId === gap.userId) && REQUESTABLE.includes(status);
 
   const requestValidation = async () => {
     try {
@@ -60,7 +60,7 @@ export function GapExpertValidationPanel({ gap }: { gap: ResearchGapItem }) {
       </div>
       {shared && validations.data && (
         <p className="text-xs font-medium text-slate-600 dark:text-slate-400">
-          {t("{{validated}}/{{quorum}} experts have validated", { validated: countValidatingExperts(validations.data), quorum: gap.validationQuorum ?? 2 })}
+          {t("{{validated}}/{{quorum}} experts have validated", { validated: countValidatingExperts(validations.data.filter(item => (item.gapVersion ?? 1) === (gap.version ?? 1))), quorum: gap.validationQuorum ?? 2 })}
         </p>
       )}
       {canRequest && (
@@ -80,7 +80,7 @@ export function GapExpertValidationPanel({ gap }: { gap: ResearchGapItem }) {
             <li key={item.id} className="rounded-xl border border-slate-200/70 p-3 text-xs dark:border-slate-800">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <Badge variant="secondary" className="text-[10px]">{labels[item.action] ?? item.action}</Badge>
-                <span className="text-slate-500">{item.reviewerId?.fullName ?? t("Expert")} · {new Date(item.createdAt).toLocaleDateString()}</span>
+                <span className="text-slate-500">{item.reviewerId?.fullName ?? t("Expert")} · v{item.gapVersion ?? 1} · {new Date(item.createdAt).toLocaleDateString()}</span>
               </div>
               <p className="mt-2 leading-relaxed text-slate-700 dark:text-slate-300">{item.comment}</p>
               {item.suggestedChanges ? <p className="mt-1 leading-relaxed text-slate-500">{item.suggestedChanges}</p> : null}
@@ -99,6 +99,7 @@ export function GapValidationDecisionForm({ gap, onDone }: { gap: GapValidationQ
   const { t } = useI18n();
   const labels = useValidationActionLabels();
   const addValidation = useAddGapValidation();
+  const [packetVersion] = useState(gap.version ?? 1);
   const [action, setAction] = useState<GapValidationAction>("VALIDATE");
   const [comment, setComment] = useState("");
   const [suggestedChanges, setSuggestedChanges] = useState("");
@@ -106,7 +107,7 @@ export function GapValidationDecisionForm({ gap, onDone }: { gap: GapValidationQ
 
   const submit = async () => {
     try {
-      await addValidation.mutateAsync({ gapId: gap.id, payload: { action, comment: comment.trim(), suggestedChanges: suggestedChanges.trim() || undefined } });
+      await addValidation.mutateAsync({ gapId: gap.id, payload: { action, comment: comment.trim(), suggestedChanges: suggestedChanges.trim() || undefined, expectedVersion: packetVersion } });
       toast.success(t("Validation decision recorded."));
       setComment("");
       setSuggestedChanges("");

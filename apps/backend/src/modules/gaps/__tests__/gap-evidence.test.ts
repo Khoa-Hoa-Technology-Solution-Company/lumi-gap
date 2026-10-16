@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { buildGapsPrompt } from "../gaps.prompt.js";
-import { computeGapEvidence, poissonCdf, resolveProbeYears } from "../gap-evidence.js";
+import { computeGapEvidence, parentGrowth, poissonCdf, resolveProbeYears } from "../gap-evidence.js";
 
 const T = { minParentPapers: 5, maxRatio: 0.5, alpha: 0.05 };
 const input = (evidenceScopeSize: number, a: number, b: number, intersectionCount: number, probeCount?: number) =>
@@ -28,7 +28,7 @@ describe("computeGapEvidence (under-explored ranking signal)", () => {
     expect(e.pValue).toBeCloseTo(0.0174, 4);
     expect(e.underExplored).toBe(true);
     expect(e.lowSample).toBe(false);
-    expect(e.evidenceConfidence).toBe(0.92); // 0.5 + 0.5 * (1 - 1/6) = 0.9167
+    expect(e.evidenceConfidence).toBe(0.92);
   });
 
   it("false-alarm example: an empty intersection in a small corpus is what chance predicts", () => {
@@ -55,13 +55,12 @@ describe("computeGapEvidence (under-explored ranking signal)", () => {
   });
 
   it("does not flag an intersection that is only mildly below expectation", () => {
-    const e = computeGapEvidence(input(20000, 5000, 4000, 700), T); // R = 0.7
+    const e = computeGapEvidence(input(20000, 5000, 4000, 700), T);
     expect(e.underExplored).toBe(false);
     expect(e.evidenceConfidence).toBe(0.08);
   });
 
   it("is significant at k = 1 but not under Bonferroni correction at k = 5", () => {
-    // E = 6, nAB = 1: p = 0.0174 <= 0.05 but > 0.05 / 5 = 0.01.
     expect(computeGapEvidence(input(20000, 400, 300, 1, 1), T).underExplored).toBe(true);
     expect(computeGapEvidence(input(20000, 400, 300, 1, 5), T).underExplored).toBe(false);
   });
@@ -92,6 +91,22 @@ describe("computeGapEvidence (under-explored ranking signal)", () => {
   });
 });
 
+describe("parentGrowth", () => {
+  it("uses CAGR when the starting count is non-zero", () => {
+    const growth = parentGrowth([10, 12, 15, 20].map((count, index) => ({ year: 2020 + index, count })), 10);
+    expect(growth.cagrPct).toBeGreaterThan(10);
+    expect(growth.growthRatePct).toBe(growth.cagrPct);
+    expect(growth.rising).toBe(true);
+  });
+
+  it("falls back to slope when CAGR has a zero base", () => {
+    const growth = parentGrowth([0, 0, 1, 2].map((count, index) => ({ year: 2020 + index, count })), 10);
+    expect(growth.cagrPct).toBeNull();
+    expect(growth.slope).toBeGreaterThan(0);
+    expect(growth.rising).toBe(true);
+  });
+});
+
 describe("buildGapsPrompt", () => {
   it("includes structured paper knowledge when available", () => {
     const prompt = buildGapsPrompt("LLM feedback gaps", [
@@ -113,7 +128,7 @@ describe("buildGapsPrompt", () => {
       } as any,
     ]);
 
-    expect(prompt).toContain("Structured analysis:");
+    expect(prompt).toContain("AI-extracted notes");
     expect(prompt).toContain("Limitations: Only one institution");
     expect(prompt).toContain("Findings: Teachers used feedback inconsistently");
     expect(prompt).toContain("Future work: Evaluate longitudinal outcomes");

@@ -23,6 +23,7 @@ import { forumRouter, gapDiscussionRouter } from "../modules/forum/forum.routes.
 import { recruitmentRouter } from "../modules/recruitment/recruitment.routes.js";
 import { submissionRouter } from "../modules/submissions/submission.routes.js";
 import { workspaceRouter } from "../modules/workspaces/workspace.routes.js";
+import { manuscriptRouter } from "../modules/workspaces/manuscript.routes.js";
 import { aiRunRouter } from "../modules/ai-jobs/ai-run.routes.js";
 import {
   academicProfileAdminRouter,
@@ -40,6 +41,7 @@ import { literatureRouter } from "../modules/literature/literature.routes.js";
 import { userAiRouter } from "../modules/user-ai/user-ai.routes.js";
 
 export const apiRouter: Router = Router();
+apiRouter.use("/projects/:projectId/manuscripts", manuscriptRouter);
 
 apiRouter.use("/auth", authRouter);
 apiRouter.use("/user-ai", userAiRouter);

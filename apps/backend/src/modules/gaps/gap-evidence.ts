@@ -7,10 +7,12 @@
  *
  * With N papers in scope, nA and nB mentioning each topic, and nAB mentioning both:
  *   E = nA * nB / N        expected intersection if the topics were independent
- *   R = nAB / E            observed / expected (association strength, van Eck & Waltman 2009, is proportional to R)
+ *   R = nAB / E            observed / expected
  *   p = P(X <= nAB), X ~ Poisson(E)
  * under-explored = N > 0 AND min(nA, nB) >= minParentPapers AND R <= maxRatio AND p <= alpha / k (Bonferroni, k probes).
  */
+import type { GapGlobalEvidence, YearlyCount } from "@trend/shared-types";
+import { cagrPct, linearSlope, yoyGrowthPct } from "../trends/trend.formulas.js";
 
 export interface GapEvidenceInput {
   /** N: active papers in the scope the counts were taken over. */
@@ -19,6 +21,9 @@ export interface GapEvidenceInput {
   parentCounts: { a: number; b: number };
   /** k: number of probes tested together (Bonferroni family size); values below 1 count as 1. */
   probeCount?: number;
+  /** Legacy/context fields accepted for callers that persist them; the O/E signal does not use parent growth. */
+  parentRising?: boolean;
+  globalEvidence?: GapGlobalEvidence | null;
 }
 
 export interface GapThresholds {
@@ -85,6 +90,12 @@ export function computeGapEvidence(input: GapEvidenceInput, t: GapThresholds): G
   const underExplored = !lowSample && ratio <= t.maxRatio && pValue <= t.alpha / k;
   const evidenceConfidence = underExplored ? 0.5 + 0.5 * clamp01(1 - ratio) : 0.25 * clamp01(1 - ratio);
   return { intersectionCount: nAB, parentCounts, expected, ratio, pValue, underExplored, lowSample, evidenceConfidence: round2(clamp01(evidenceConfidence)) };
+}
+
+/** Trend of a parent topic over complete years: CAGR when defined, otherwise the slope decides (growth from a zero base). */
+export function parentGrowth(series: YearlyCount[], risingMin: number): { growthRatePct: number; cagrPct: number | null; slope: number; rising: boolean } {
+  const cagr = cagrPct(series), slope = linearSlope(series);
+  return { growthRatePct: cagr ?? yoyGrowthPct(series), cagrPct: cagr, slope, rising: cagr !== null ? cagr > risingMin : slope > 0 };
 }
 
 export interface YearRange { yearFrom?: number; yearTo?: number }

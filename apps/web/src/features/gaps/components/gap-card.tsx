@@ -3,7 +3,6 @@ import {
   Sparkles, 
   CheckCircle2, 
   XCircle, 
-  Zap, 
   Undo2, 
   Loader2, 
   Search, 
@@ -36,25 +35,6 @@ interface GapCardProps {
   onMoveDown?: (gapId: string) => void;
   isFirst?: boolean;
   isLast?: boolean;
-}
-
-function ConfidenceBar({ value, isEvidence }: { value: number; isEvidence?: boolean }) {
-  const { t } = useI18n();
-  const pct = Math.round(value * 100);
-  let colorClass = "bg-rose-500";
-  if (value >= 0.7) colorClass = "bg-emerald-500";
-  else if (value >= 0.4) colorClass = "bg-amber-500";
-
-  return (
-    <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
-      <div className="w-20 sm:w-24 h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden shadow-inner">
-        <div className={`h-full ${colorClass} transition-all duration-500`} style={{ width: `${pct}%` }} />
-      </div>
-      <span className={cn("text-[10px] sm:text-[11px]", value >= 0.7 ? "text-emerald-600 dark:text-emerald-400 font-bold" : "font-semibold")}>
-        {pct}% {isEvidence ? t("Evidence") : t("AI confidence")}
-      </span>
-    </div>
-  );
 }
 
 export function GapCard({
@@ -105,7 +85,7 @@ export function GapCard({
     strengthTooltip = t("The system found a possible gap, but corpus evidence is sparse or inconclusive.");
   } else {
     strengthColor = "bg-purple-500/10 text-purple-700 border-purple-500/20 dark:text-purple-400";
-    strengthTooltip = t("This came from a report and has not yet been verified with a corpus probe.");
+    strengthTooltip = t("An AI suggestion from a report, without a saved corpus comparison. Human review is still required.");
   }
 
   return (
@@ -295,6 +275,7 @@ export function GapCard({
           parentCounts={gap.parentCounts} 
           parentTrend={gap.parentTrend} 
           underExplored={gap.underExplored}
+          globalEvidence={gap.globalEvidence}
         />
         
         <SupportingPaperList 

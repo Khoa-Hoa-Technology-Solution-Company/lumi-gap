@@ -199,6 +199,13 @@ export interface TrendEvidenceSignal {
   sources: TrendMetricTraceSource[];
 }
 
+/** A possible cause of the trend, phrased as a hypothesis and tied to papers the AI was shown. */
+export interface TrendPossibleDriver {
+  text: string;
+  paperIds: string[];
+  papers?: Array<{ id: string; title: string; publicationYear?: number }>;
+}
+
 export interface TrendExplanationResponse {
   topic: string | null;
   language: "en" | "vi";
@@ -207,6 +214,8 @@ export interface TrendExplanationResponse {
   evidenceSignals: TrendEvidenceSignal[];
   cautions: string[];
   suggestedActions: string[];
+  /** Absent on explanations saved before drivers existed. */
+  possibleDrivers?: TrendPossibleDriver[];
   metricTrace: TrendMetricTrace[];
   generatedAt: string;
 }

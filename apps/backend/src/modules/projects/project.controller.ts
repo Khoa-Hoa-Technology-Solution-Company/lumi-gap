@@ -4,7 +4,10 @@ import { databaseIdSchema } from "../../common/validation/database-id.js";
 import { projectService } from "./project.service.js";
 
 const projectStatusSchema = z.enum(["PLANNING", "ACTIVE", "ON_HOLD", "COMPLETED", "ARCHIVED"]);
-const projectVisibilitySchema = z.enum(["PRIVATE", "INVITE_ONLY", "PUBLIC_SUMMARY"]);
+const projectVisibilitySchema = z.enum(["PRIVATE", "PUBLIC", "INVITE_ONLY", "PUBLIC_SUMMARY"]);
+const researchAreasSchema = z.array(z.string().trim().min(1).max(120)).max(3)
+  .refine(areas => new Set(areas.map(area => area.toLocaleLowerCase())).size === areas.length, "Choose distinct research areas");
+const approachSchema = z.enum(["EXPLORATORY", "LITERATURE_REVIEW", "EMPIRICAL", "UNDECIDED"]);
 
 export const createProjectSchema = z.object({
   title: z.string().trim().min(1).max(100),
@@ -12,7 +15,10 @@ export const createProjectSchema = z.object({
   researchField: z.string().trim().max(200).optional(),
   status: projectStatusSchema.exclude(["ARCHIVED"]).optional(),
   visibility: projectVisibilitySchema.optional(),
-});
+  researchAreas: researchAreasSchema.optional(),
+  researchApproach: approachSchema.optional(),
+  idempotencyKey: z.string().uuid().optional(),
+}).strict();
 
 export const updateProjectSchema = z.object({
   title: z.string().trim().min(1).max(100).optional(),
@@ -20,9 +26,13 @@ export const updateProjectSchema = z.object({
   researchField: z.string().trim().max(200).nullable().optional(),
   status: projectStatusSchema.optional(),
   visibility: projectVisibilitySchema.optional(),
+  publicSummary: z.string().trim().max(2000).optional(),
+  researchAreas: researchAreasSchema.optional(),
+  researchApproach: approachSchema.optional(),
+  expectedVersion: z.number().int().positive().optional(),
   inclusionCriteria: z.array(z.string().trim().min(1).max(240)).max(20).optional(),
   exclusionCriteria: z.array(z.string().trim().min(1).max(240)).max(20).optional(),
-}).refine((value) => Object.keys(value).length > 0, "At least one field is required");
+}).strict().refine((value) => Object.keys(value).some(key => key !== "expectedVersion"), "At least one field is required");
 
 /**
  * Legacy "add member" body, kept for older clients (Flutter sends an email as targetId and a
@@ -37,7 +47,8 @@ export const addMemberSchema = z.object({
 export const addPaperSchema = z.object({ paperId: databaseIdSchema });
 
 export const updateProjectPaperSchema = z.object({
-  screeningStatus: z.enum(["UNDECIDED", "INCLUDED", "EXCLUDED"]).optional(),
+  expectedUpdatedAt: z.string().datetime().optional(),
+  screeningStatus: z.enum(["UNDECIDED", "INCLUDED", "EXCLUDED", "MAYBE"]).optional(),
   readingStatus: z.enum(["NOT_STARTED", "READING", "REVIEWED"]).optional(),
   inclusionReason: z.string().trim().max(2000).nullable().optional(),
   exclusionReason: z.enum(["WRONG_RESEARCH_TOPIC", "WRONG_POPULATION_CONTEXT", "WRONG_METHODOLOGY", "NOT_PEER_REVIEWED", "INSUFFICIENT_RELEVANT_EVIDENCE", "DUPLICATE", "OTHER"]).nullable().optional(),
@@ -49,10 +60,19 @@ export const inviteMemberSchema = z.object({
   userId: databaseIdSchema.optional(),
   email: z.string().trim().email().max(320).optional(),
   message: z.string().trim().max(1000).optional(),
-}).refine((value) => Boolean(value.userId || value.email), "Select a user or enter an email address");
+}).strict().refine((value) => Boolean(value.userId) !== Boolean(value.email), "Select one user or enter one email address");
 
 export const transferOwnershipSchema = z.object({ userId: databaseIdSchema });
 export const activityQuerySchema = z.object({ limit: z.coerce.number().int().min(1).max(100).default(50) });
+export const projectDirectoryQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).max(100000).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(100),
+}).strict();
+export const teamQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).max(100000).default(1),
+  invitationPage: z.coerce.number().int().min(1).max(100000).default(1),
+  pageSize: z.coerce.number().int().min(1).max(50).default(20),
+}).strict();
 export const invitationTokenParamsSchema = z.object({ token: z.string().min(32).max(256).regex(/^[A-Za-z0-9_-]+$/) });
 
 export class ProjectController {
@@ -61,9 +81,23 @@ export class ProjectController {
     res.status(201).json({ success: true, data: project });
   }
 
+  async team(req: Request, res: Response) {
+    const result = await projectService.team(String(req.params.id), req.user!.sub, teamQuerySchema.parse(req.query));
+    res.json({ success: true, data: result });
+  }
+
+  async resendInvitation(req: Request, res: Response) {
+    const result = await projectService.resendInvitation(String(req.params.id), String(req.params.invitationId), req.user!.sub);
+    res.json({ success: true, data: result });
+  }
+
+  async restoreProject(req: Request, res: Response) {
+    res.json({ success: true, data: await projectService.restoreProject(String(req.params.id), req.user!.sub) });
+  }
+
   async getProjectsByUser(req: Request, res: Response) {
-    const projects = await projectService.getProjectsByUser(req.user!.sub);
-    res.json({ success: true, data: projects });
+    const result = await projectService.getProjectsPageByUser(req.user!.sub, projectDirectoryQuerySchema.parse(req.query));
+    res.json({ success: true, data: result.items, meta: result.meta });
   }
 
   async getProjectById(req: Request, res: Response) {
@@ -109,8 +143,8 @@ export class ProjectController {
   }
 
   async listMyInvitations(req: Request, res: Response) {
-    const invitations = await projectService.listMyInvitations(req.user!.sub);
-    res.json({ success: true, data: invitations });
+    const result = await projectService.getMyInvitationPage(req.user!.sub, projectDirectoryQuerySchema.parse(req.query));
+    res.json({ success: true, data: result.items, meta: result.meta });
   }
 
   async getInvitationByToken(req: Request, res: Response) {

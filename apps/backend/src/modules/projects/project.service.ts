@@ -1,3 +1,5 @@
+import { invalidateSourceAssessments } from "./gap-revision.js";
+import { revokeProjectScreeningAssignments } from "./project-screening.service.js";
 import type {
   AddProjectMemberRequest,
   CreateProjectRequest,
@@ -7,59 +9,23 @@ import type {
   UpdateProjectPaperRequest,
   UpdateProjectRequest,
 } from "@trend/shared-types";
+import { createHash } from "node:crypto";
+import type { Prisma } from "../../generated/prisma/client.js";
 import { AppError } from "../../common/exceptions/app-error.js";
 import { parseDatabaseId, publicDatabaseId } from "../../infrastructure/database/database-id.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
-import { logger } from "../../infrastructure/logger.js";
-import { notificationService } from "../notifications/notification.service.js";
 import { createOpaqueToken, hashOpaqueToken } from "../auth/token.service.js";
 import { assertResearchWorkflowAccess } from "../authorization/research-access.service.js";
 import { projectActivityService } from "./project-activity.service.js";
 import type { ProjectAiFeature } from "./project-scope.js";
-import { assertProjectActionAllowed, canReadProjectSummary, invitationBelongsToUser, projectDeleteError } from "./project-workspace.rules.js";
-import { sendProjectInvitationEmail } from "./project-invitation.mail.js";
+import { assertProjectActionAllowed, canReadProjectSummary, invitationBelongsToUser } from "./project-workspace.rules.js";
+import { queueProjectInvitation } from "./project-invitation-delivery.js";
+import { lockProjectAccounts, authorizeProjectTransaction, assertActiveProjectAccount } from "./project-transaction.js";
+import { recordPlanSnapshot } from "./plan-history.js";
 
 const ACTIVE = "ACTIVE";
 const INVITATION_DAYS = 7;
-
-function runProjectInvitationDelivery(input: {
-  invitedUserId?: string;
-  email: string;
-  projectId: string;
-  publicProjectId: string;
-  projectTitle: string;
-  inviterName: string;
-  token: string;
-  message?: string;
-}) {
-  void (async () => {
-    const tasks: Array<Promise<unknown>> = [
-      sendProjectInvitationEmail({
-        email: input.email,
-        projectTitle: input.projectTitle,
-        inviterName: input.inviterName,
-        token: input.token,
-        message: input.message,
-      }),
-    ];
-    if (input.invitedUserId) {
-      tasks.push(notificationService.create({
-        userId: input.invitedUserId,
-        title: "Project invitation",
-        message: `${input.inviterName} invited you to ${input.projectTitle}.`,
-        type: "project_invitation",
-        targetKind: "project",
-        targetId: input.publicProjectId,
-      }));
-    }
-    const results = await Promise.allSettled(tasks);
-    for (const result of results) {
-      if (result.status === "rejected") {
-        logger.warn({ error: result.reason, projectId: input.projectId }, "project invitation background delivery failed");
-      }
-    }
-  })();
-}
+const RESEND_COOLDOWN_MS = 60_000;
 
 function whereId(value: string) {
   const parsed = parseDatabaseId(value);
@@ -73,9 +39,9 @@ async function resolveUser(value: string) {
   return row;
 }
 
-async function resolvePaper(value: string) {
+async function resolvePaper(value: string, allowProjectDraft = false) {
   const row = await getPrisma().paper.findUnique({ where: whereId(value) });
-  if (!row || row.dataStatus !== "active") throw AppError.notFound("Paper not found");
+  if (!row || (row.dataStatus !== "active" && !(allowProjectDraft && row.dataStatus === "draft"))) throw AppError.notFound("Paper not found");
   return row;
 }
 
@@ -101,11 +67,7 @@ async function access(projectId: string, actorIdInput: string) {
 }
 
 function assertMember(rights: Awaited<ReturnType<typeof access>>) {
-  assertProjectActionAllowed(rights.role, rights.row.status, "CONTRIBUTE");
-}
-
-function assertOwner(rights: Awaited<ReturnType<typeof access>>) {
-  if (!rights.isOwner) throw AppError.forbidden("Only the project owner can perform this action");
+  if (!rights.isMember) throw AppError.forbidden("Active project membership is required");
 }
 
 function assertMutable(rights: Awaited<ReturnType<typeof access>>) {
@@ -128,10 +90,10 @@ async function invitationByToken(token: string) {
   return invitation;
 }
 
-async function verifiedEmailsForUser(userId: string): Promise<string[]> {
+async function verifiedEmailsForUser(userId: string, db: Prisma.TransactionClient = getPrisma()): Promise<string[]> {
   const [rows, user] = await Promise.all([
-    getPrisma().userEmail.findMany({ where: { userId, verifiedAt: { not: null } }, select: { normalizedEmail: true } }),
-    getPrisma().user.findUnique({ where: { id: userId }, select: { email: true, emailVerifiedAt: true } }),
+    db.userEmail.findMany({ where: { userId, verifiedAt: { not: null } }, select: { normalizedEmail: true } }),
+    db.user.findUnique({ where: { id: userId }, select: { email: true, emailVerifiedAt: true } }),
   ]);
   const emails = new Set(rows.map((row) => row.normalizedEmail));
   // Accounts created before user_emails existed only carry the verified primary email on users.
@@ -150,34 +112,41 @@ async function invitationPreview(invitation: Awaited<ReturnType<typeof invitatio
   const now = new Date();
   const effectiveStatus = invitation.status === "PENDING" && invitation.expiresAt <= now ? "EXPIRED" : invitation.status;
   if (effectiveStatus === "EXPIRED" && invitation.status === "PENDING") {
-    await prisma.projectInvitation.updateMany({ where: { id: invitation.id, status: "PENDING" }, data: { status: "EXPIRED", respondedAt: now } });
+    await prisma.projectInvitation.updateMany({ where: { id: invitation.id, status: "PENDING", tokenHash: invitation.tokenHash, expiresAt: { lte: now } }, data: { status: "EXPIRED", respondedAt: now } });
   }
   const alreadyMember = viewer
     ? Boolean(await prisma.projectMember.findFirst({ where: { projectId: project.id, userId: viewer.id, status: ACTIVE } }))
     : false;
   const viewerEmails = viewer ? await verifiedEmailsForUser(viewer.id) : [];
-  const invitedEmail = invitation.email.toLowerCase();
+  const matches = viewer ? invitationBelongsToUser(invitation, { id: viewer.id, verifiedEmails: viewerEmails }) : false;
+  // A bearer link proves possession, not intended identity. No private description or email fallback.
   return {
     id: invitation.id,
-    projectId: publicDatabaseId(project),
-    projectTitle: project.title,
-    projectDescription: project.description ?? undefined,
-    invitedEmail: invitation.email,
+    projectId: matches ? publicDatabaseId(project) : "",
+    projectTitle: matches ? project.title : "",
+    invitedEmail: matches ? invitation.email : "",
     currentUserEmail: viewer?.email,
-    inviterName: inviter?.fullName || inviter?.email || "A LumiGap member",
+    inviterName: matches ? inviter?.fullName || "A LumiGap member" : "",
     role: "MEMBER",
-    message: invitation.message ?? undefined,
+    message: matches ? invitation.message ?? undefined : undefined,
     status: effectiveStatus as ProjectInvitationPreview["status"],
-    expiresAt: invitation.expiresAt.toISOString(),
-    createdAt: invitation.createdAt.toISOString(),
-    authenticated: Boolean(viewer),
-    emailMatches: viewerEmails.includes(invitedEmail),
-    alreadyMember,
+    expiresAt: invitation.expiresAt.toISOString(), createdAt: invitation.createdAt.toISOString(),
+    authenticated: Boolean(viewer), emailMatches: matches, alreadyMember: matches && alreadyMember,
   };
 }
 
 async function hydrate(row: Awaited<ReturnType<typeof resolveProject>>, viewerId?: string, publicSummary = false) {
   const prisma = getPrisma();
+  if (publicSummary) return {
+    _id: publicDatabaseId(row), title: row.title, description: row.publicSummary ?? undefined,
+    publicSummary: row.publicSummary ?? undefined, researchField: row.researchAreas[0], researchAreas: row.researchAreas,
+    status: row.status, visibility: row.visibility, isPublicSummary: true,
+    ownerId: "", owner: undefined, accessRole: undefined, screeningCriteria: undefined,
+    // Empty compatibility collections never reveal private counts or identities.
+    members: [], papers: [], pendingInvitations: [], recentActivity: [], memberCount: 0, paperCount: 0,
+    createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString(), archivedAt: undefined,
+  };
+  const plan = await prisma.researchPlan.findUnique({ where: { projectId: row.id } });
   const [memberLinks, paperLinks, owner, recentActivity] = await Promise.all([
     prisma.projectMember.findMany({ where: { projectId: row.id, status: ACTIVE }, orderBy: { joinedAt: "asc" } }),
     publicSummary ? Promise.resolve([]) : prisma.projectPaper.findMany({ where: { projectId: row.id }, orderBy: { createdAt: "asc" } }),
@@ -220,7 +189,7 @@ async function hydrate(row: Awaited<ReturnType<typeof resolveProject>>, viewerId
     authorsByPaper.set(author.paperId, list);
   }
   const pendingInvitations = accessRole === "OWNER"
-    ? await prisma.projectInvitation.findMany({ where: { projectId: row.id, status: "PENDING" }, orderBy: { createdAt: "desc" } })
+    ? await prisma.projectInvitation.findMany({ where: { projectId: row.id, status: "PENDING", expiresAt: { gt: new Date() } }, orderBy: { createdAt: "desc" }, take: 20 })
     : [];
   const invitedUsers = pendingInvitations.some((invite) => invite.invitedUserId)
     ? await prisma.user.findMany({ where: { id: { in: pendingInvitations.flatMap((invite) => invite.invitedUserId ? [invite.invitedUserId] : []) } }, select: { id: true, legacyMongoId: true, fullName: true, email: true, avatarUrl: true } })
@@ -232,6 +201,11 @@ async function hydrate(row: Awaited<ReturnType<typeof resolveProject>>, viewerId
     title: row.title,
     description: row.description ?? undefined,
     researchField: row.researchField ?? undefined,
+    researchAreas: row.researchAreas, researchApproach: (plan?.approach ?? "UNDECIDED") as import("@trend/shared-types").ResearchApproach,
+    publicSummary: row.publicSummary ?? undefined, mentorshipDiscovery: row.mentorshipDiscovery,
+    version: row.version,
+    screeningMode: publicSummary ? undefined : row.screeningMode as "EXPLORATORY" | "INDEPENDENT",
+    screeningBlinded: publicSummary ? undefined : row.screeningBlinded,
     screeningCriteria: publicSummary ? undefined : { inclusion: row.inclusionCriteria, exclusion: row.exclusionCriteria },
     status: row.status,
     visibility: row.visibility,
@@ -278,6 +252,7 @@ async function hydrate(row: Awaited<ReturnType<typeof resolveProject>>, viewerId
       id: invite.id,
       projectId: publicDatabaseId(row),
       invitedUser: invite.invitedUserId && invitedById.get(invite.invitedUserId) ? userSummary(invitedById.get(invite.invitedUserId)!, true) : undefined,
+      lastSentAt: invite.lastSentAt.toISOString(), resendAvailableAt: new Date(invite.lastSentAt.getTime() + RESEND_COOLDOWN_MS).toISOString(),
       email: invite.email,
       message: invite.message ?? undefined,
       status: invite.status,
@@ -294,16 +269,32 @@ async function hydrate(row: Awaited<ReturnType<typeof resolveProject>>, viewerId
 export class ProjectService {
   async createProject(data: CreateProjectRequest, ownerIdInput: string) {
     const owner = await resolveUser(ownerIdInput);
-    await assertResearchWorkflowAccess(owner.id);
-    const row = await getPrisma().$transaction(async (tx) => {
+    const normalized = {
+      title: data.title.trim(), description: data.description?.trim() || null,
+      researchAreas: data.researchAreas ?? (data.researchField?.trim() ? [data.researchField.trim()] : []),
+      approach: data.researchApproach ?? "UNDECIDED", status: data.status ?? "PLANNING",
+      visibility: data.visibility === "PUBLIC_SUMMARY" || data.visibility === "PUBLIC" ? "PUBLIC" : "PRIVATE",
+    };
+    const requestHash = createHash("sha256").update(JSON.stringify(normalized)).digest("hex");
+    const row = await getPrisma().$transaction(async tx => {
+      await lockProjectAccounts(tx, [owner.id]);
+      await assertActiveProjectAccount(tx, owner.id, true);
+      if (data.idempotencyKey) {
+        const existing = await tx.project.findUnique({ where: { createdById_creationKey: { createdById: owner.id, creationKey: data.idempotencyKey } } });
+        if (existing) {
+          if (existing.creationRequestHash !== requestHash) throw AppError.conflict("This creation key was already used with different project details");
+          await authorizeProjectTransaction(tx, existing.id, owner.id);
+          return existing;
+        }
+      }
       const created = await tx.project.create({ data: {
-        title: data.title,
-        description: data.description,
-        researchField: data.researchField,
-        status: data.status ?? "PLANNING",
-        visibility: data.visibility ?? "PRIVATE",
-        ownerId: owner.id,
+        title: normalized.title, description: normalized.description,
+        researchAreas: normalized.researchAreas, researchField: normalized.researchAreas[0],
+        status: normalized.status, visibility: normalized.visibility, mentorshipDiscovery: "CLOSED", researchStage: "DISCOVERY",
+        ownerId: owner.id, createdById: owner.id, creationKey: data.idempotencyKey, creationRequestHash: requestHash,
       } });
+      await tx.researchPlan.create({ data: { projectId: created.id, approach: normalized.approach, problem: normalized.description ?? "", updatedById: owner.id } });
+      await recordPlanSnapshot(tx, created.id, owner.id, null);
       await tx.projectMember.create({ data: { projectId: created.id, userId: owner.id, role: "OWNER", status: ACTIVE } });
       await tx.projectActivity.create({ data: { projectId: created.id, actorId: owner.id, type: "PROJECT_CREATED", metadata: {} } });
       return created;
@@ -312,14 +303,42 @@ export class ProjectService {
   }
 
   async getProjectsByUser(userIdInput: string) {
+    return (await this.getProjectsPageByUser(userIdInput, { pageSize: 100 })).items;
+  }
+
+  async getProjectsPageByUser(userIdInput: string, input: { page?: number; pageSize?: number } = {}) {
     const actor = await resolveUser(userIdInput);
     await assertResearchWorkflowAccess(actor.id);
-    const memberships = await getPrisma().projectMember.findMany({ where: { userId: actor.id, status: ACTIVE }, select: { projectId: true } });
-    const rows = await getPrisma().project.findMany({
-      where: { OR: [{ ownerId: actor.id }, { id: { in: memberships.map((membership) => membership.projectId) } }] },
-      orderBy: { updatedAt: "desc" },
-    });
-    return Promise.all(rows.map((project) => hydrate(project, actor.id)));
+    const db = getPrisma();
+    const memberships = await db.projectMember.findMany({ where: { userId: actor.id, status: ACTIVE }, select: { projectId: true } });
+    const page = Math.max(1, input.page ?? 1), pageSize = Math.min(100, Math.max(1, input.pageSize ?? 100));
+    const where = { OR: [{ ownerId: actor.id }, { id: { in: memberships.map(m => m.projectId) } }] };
+    const [rows, total] = await Promise.all([
+      db.project.findMany({ where, orderBy: [{ updatedAt: "desc" }, { id: "asc" }], skip: (page - 1) * pageSize, take: pageSize }),
+      db.project.count({ where }),
+    ]);
+    const ids = rows.map(p => p.id);
+    const [members, papers, owners, plans] = await Promise.all([
+      db.projectMember.groupBy({ by: ["projectId"], where: { projectId: { in: ids }, status: ACTIVE }, _count: true }),
+      db.projectPaper.groupBy({ by: ["projectId"], where: { projectId: { in: ids } }, _count: true }),
+      db.user.findMany({ where: { id: { in: [...new Set(rows.map(p => p.ownerId))] } }, select: { id: true, legacyMongoId: true, fullName: true, avatarUrl: true } }),
+      db.researchPlan.findMany({ where: { projectId: { in: ids } } }),
+    ]);
+    const memberCounts = new Map(members.map(m => [m.projectId, m._count]));
+    const paperCounts = new Map(papers.map(m => [m.projectId, m._count]));
+    const ownerMap = new Map(owners.map(u => [u.id, u]));
+    const approaches = new Map(plans.map(plan => [plan.projectId, plan.approach]));
+    const items = rows.map(row => ({
+      _id: publicDatabaseId(row), title: row.title, description: row.description ?? undefined,
+      researchField: row.researchField ?? undefined, researchAreas: row.researchAreas,
+      researchApproach: approaches.get(row.id) ?? "UNDECIDED", visibility: row.visibility,
+      status: row.status, ownerId: ownerMap.has(row.ownerId) ? publicDatabaseId(ownerMap.get(row.ownerId)!) : row.ownerId,
+      owner: ownerMap.has(row.ownerId) ? userSummary(ownerMap.get(row.ownerId)!) : undefined,
+      accessRole: row.ownerId === actor.id ? "OWNER" : "MEMBER", members: [], papers: [],
+      memberCount: memberCounts.get(row.id) ?? 0, paperCount: paperCounts.get(row.id) ?? 0,
+      createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString(), archivedAt: row.archivedAt?.toISOString(),
+    }));
+    return { items, meta: { page, pageSize, total, totalPages: Math.ceil(total / pageSize), hasNext: page * pageSize < total } };
   }
 
   async getProjectById(projectId: string, userIdInput: string) {
@@ -338,6 +357,7 @@ export class ProjectService {
   async getProjectPaperIdsForUser(projectId: string, userId: string, feature?: ProjectAiFeature) {
     const rights = await access(projectId, userId);
     assertMember(rights);
+    if (feature) assertMutable(rights);
     const links = await getPrisma().projectPaper.findMany({ where: { projectId: rights.row.id, ...(feature === "report" || feature === "gap analysis" ? { screeningStatus: "INCLUDED" } : feature === "project chat" ? { screeningStatus: { not: "EXCLUDED" } } : {}) }, orderBy: { createdAt: "asc" } });
     if (feature && !links.length) throw AppError.badRequest(feature === "project chat" ? "Add a non-excluded paper before using project chat" : `Include at least one screened paper before using ${feature}`);
     const papers = await getPrisma().paper.findMany({ where: { id: { in: links.map((link) => link.paperId) } }, select: { id: true, legacyMongoId: true } });
@@ -346,58 +366,109 @@ export class ProjectService {
   }
 
   async updateProject(projectId: string, data: UpdateProjectRequest, userId: string) {
-    const rights = await access(projectId, userId);
-    assertOwner(rights);
-    if (rights.row.status === "ARCHIVED") throw AppError.conflict("Archived projects are read-only");
-    if (data.status === "ARCHIVED") throw AppError.badRequest("Use the archive action to archive a project");
-    const updated = await getPrisma().$transaction(async (tx) => {
-      const next = await tx.project.update({ where: { id: rights.row.id }, data: {
+    const [row, actor] = await Promise.all([resolveProject(projectId), resolveUser(userId)]);
+    const updated = await getPrisma().$transaction(async tx => {
+      await lockProjectAccounts(tx, [actor.id], row.id);
+      const { project } = await authorizeProjectTransaction(tx, row.id, actor.id, "EDIT_SETTINGS");
+      if (data.status === "ARCHIVED") throw AppError.badRequest("Use the archive action to archive a project");
+      if (data.expectedVersion !== undefined && project.version !== data.expectedVersion) throw AppError.conflict("Project settings changed. Refresh before saving again");
+      const areas = data.researchAreas ?? (data.researchField !== undefined ? data.researchField ? [data.researchField] : [] : undefined);
+      const changesPlan = data.researchApproach !== undefined || data.inclusionCriteria !== undefined || data.exclusionCriteria !== undefined;
+      if (changesPlan) await recordPlanSnapshot(tx, row.id, null, null);
+      const next = await tx.project.update({ where: { id: row.id }, data: {
         ...(data.title !== undefined ? { title: data.title } : {}),
         ...(data.description !== undefined ? { description: data.description } : {}),
-        ...(data.researchField !== undefined ? { researchField: data.researchField } : {}),
+        ...(areas !== undefined ? { researchAreas: areas, researchField: areas[0] ?? null } : {}),
         ...(data.status !== undefined ? { status: data.status } : {}),
-        ...(data.visibility !== undefined ? { visibility: data.visibility } : {}),
+        ...(data.visibility !== undefined ? { visibility: ["PUBLIC", "PUBLIC_SUMMARY"].includes(data.visibility) ? "PUBLIC" : "PRIVATE" } : {}),
+        ...(data.publicSummary !== undefined ? { publicSummary: data.publicSummary || null } : {}),
         ...(data.inclusionCriteria !== undefined ? { inclusionCriteria: data.inclusionCriteria } : {}),
         ...(data.exclusionCriteria !== undefined ? { exclusionCriteria: data.exclusionCriteria } : {}),
+        version: { increment: 1 },
       } });
-      await tx.projectActivity.create({ data: { projectId: next.id, actorId: rights.actor.id, type: "PROJECT_UPDATED", metadata: { fields: Object.keys(data) } } });
+      if (changesPlan) {
+        await tx.researchPlan.update({ where: { projectId: row.id }, data: { ...(data.researchApproach !== undefined ? { approach: data.researchApproach } : {}), updatedById: actor.id, version: { increment: 1 } } });
+        const revision = await recordPlanSnapshot(tx, row.id, actor.id, "Project settings updated");
+        await tx.projectActivity.create({ data: { projectId: row.id, actorId: actor.id, type: "PLAN_UPDATED", entityKind: "PLAN_REVISION", entityId: revision.id, metadata: { version: revision.version } } });
+      }
+      await tx.projectActivity.create({ data: { projectId: next.id, actorId: actor.id, type: "PROJECT_UPDATED", metadata: { fields: Object.keys(data).filter(key => key !== "expectedVersion") } } });
       return next;
     });
-    return hydrate(updated, rights.actor.id);
+    return hydrate(updated, actor.id);
   }
 
   async archiveProject(projectId: string, userId: string) {
-    const rights = await access(projectId, userId);
-    assertOwner(rights);
-    assertMutable(rights);
-    const updated = await getPrisma().$transaction(async (tx) => {
-      const archivedAt = new Date();
-      const next = await tx.project.update({ where: { id: rights.row.id }, data: { status: "ARCHIVED", archivedAt } });
-      await tx.projectInvitation.updateMany({
-        where: { projectId: rights.row.id, status: "PENDING" },
-        data: { status: "CANCELLED", respondedAt: archivedAt },
-      });
-      await tx.projectActivity.create({ data: { projectId: next.id, actorId: rights.actor.id, type: "PROJECT_ARCHIVED", metadata: {} } });
+    const [row, actor] = await Promise.all([resolveProject(projectId), resolveUser(userId)]);
+    const updated = await getPrisma().$transaction(async tx => {
+      await lockProjectAccounts(tx, [actor.id], row.id);
+      const { project } = await authorizeProjectTransaction(tx, row.id, actor.id, "ARCHIVE");
+      const now = new Date();
+      const next = await tx.project.update({ where: { id: row.id }, data: { status: "ARCHIVED", archivedAt: now, mentorshipDiscovery: "CLOSED", version: { increment: 1 } } });
+      await tx.projectInvitation.updateMany({ where: { projectId: row.id, status: "PENDING" }, data: { status: "CANCELLED", respondedAt: now } });
+      await tx.projectActivity.create({ data: { projectId: row.id, actorId: actor.id, type: "PROJECT_ARCHIVED", metadata: { previousStatus: project.status } } });
       return next;
     });
-    return hydrate(updated, rights.actor.id);
+    return hydrate(updated, actor.id);
+  }
+
+  async restoreProject(projectId: string, userId: string) {
+    const [row, actor] = await Promise.all([resolveProject(projectId), resolveUser(userId)]);
+    const updated = await getPrisma().$transaction(async tx => {
+      await lockProjectAccounts(tx, [actor.id], row.id);
+      const { project } = await authorizeProjectTransaction(tx, row.id, actor.id, "RESTORE");
+      if (project.status !== "ARCHIVED") throw AppError.conflict("This project is not archived");
+      const event = await tx.projectActivity.findFirst({ where: { projectId: row.id, type: "PROJECT_ARCHIVED" }, orderBy: [{ createdAt: "desc" }, { id: "desc" }] });
+      const metadata = event?.metadata as { previousStatus?: string } | undefined;
+      const previousStatus = metadata?.previousStatus;
+      const status = previousStatus && ["PLANNING", "ACTIVE", "ON_HOLD", "COMPLETED"].includes(previousStatus) ? previousStatus : "PLANNING";
+      const next = await tx.project.update({ where: { id: row.id }, data: { status, archivedAt: null, version: { increment: 1 } } });
+      await tx.projectActivity.create({ data: { projectId: row.id, actorId: actor.id, type: "PROJECT_RESTORED", metadata: {} } });
+      return next;
+    });
+    return hydrate(updated, actor.id);
   }
 
   async deleteProject(projectId: string, userId: string) {
-    const rights = await access(projectId, userId);
-    assertOwner(rights);
-    const prisma = getPrisma(), id = rights.row.id, ownerId = rights.row.ownerId;
-    const [submissions, reportsByOthers, gapsByOthers, researchContributions, proposals] = await Promise.all([
-      prisma.submission.count({ where: { projectId: id } }),
-      prisma.report.count({ where: { projectId: id, userId: { not: ownerId } } }),
-      prisma.researchGap.count({ where: { projectId: id, userId: { not: ownerId } } }),
-      prisma.researchContribution.count({ where: { projectId: id, contributorId: { not: ownerId } } }),
-      prisma.projectContributionProposal.count({ where: { projectId: id, contributorId: { not: ownerId } } }),
-    ]);
-    const impact = { submissions, reportsByOthers, gapsByOthers, contributionsByOthers: researchContributions + proposals };
-    const blocked = projectDeleteError(impact);
-    if (blocked) throw AppError.conflict(blocked, impact);
-    await prisma.project.delete({ where: { id } });
+    const [row, actor] = await Promise.all([resolveProject(projectId), resolveUser(userId)]);
+    await getPrisma().$transaction(async tx => {
+      await lockProjectAccounts(tx, [actor.id], row.id);
+      await authorizeProjectTransaction(tx, row.id, actor.id, "DELETE");
+      const counts = await Promise.all([
+        tx.projectPaper.count({ where: { projectId: row.id } }),
+        tx.report.count({ where: { projectId: row.id } }),
+        tx.researchGap.count({ where: { projectId: row.id } }),
+        tx.submission.count({ where: { projectId: row.id } }),
+        tx.projectMember.count({ where: { projectId: row.id, userId: { not: actor.id } } }),
+        tx.projectActivity.count({ where: { projectId: row.id, type: { notIn: ["PROJECT_CREATED", "PROJECT_UPDATED", "PROJECT_ARCHIVED", "PROJECT_RESTORED"] } } }),
+        tx.projectTeamMessage.count({ where: { projectId: row.id } }),
+        tx.projectChatMessage.count({ where: { projectId: row.id } }),
+        tx.draftWorkspace.count({ where: { projectId: row.id } }),
+        tx.literatureCorpus.count({ where: { projectId: row.id } }),
+        tx.researchContribution.count({ where: { projectId: row.id } }),
+        tx.projectContributionProposal.count({ where: { projectId: row.id } }),
+        tx.allocationPeriod.count({ where: { projectId: row.id } }),
+        tx.mentorshipRequest.count({ where: { projectId: row.id } }),
+        tx.mentorRelationship.count({ where: { projectId: row.id } }),
+        tx.aiRun.count({ where: { projectId: row.id } }),
+        tx.gapAnalysis.count({ where: { projectId: row.id } }),
+        tx.reviewTemplate.count({ where: { projectId: row.id } }),
+        tx.recruitmentOpening.count({ where: { projectId: row.id } }),
+        tx.recruitmentApplication.count({ where: { projectId: row.id } }),
+        tx.projectInvitation.count({ where: { projectId: row.id } }),
+        tx.forumPostProject.count({ where: { projectId: row.id } }),
+        tx.academicFeaturedWork.count({ where: { projectId: row.id } }),
+        tx.projectTask.count({ where: { projectId: row.id } }),
+        tx.projectMilestone.count({ where: { projectId: row.id } }),
+        tx.projectDiscussion.count({ where: { projectId: row.id } }),
+        tx.projectDecision.count({ where: { projectId: row.id } }),
+        tx.projectWorkspaceComment.count({ where: { projectId: row.id } }),
+        tx.planShare.count({ where: { projectId: row.id } }),
+        tx.planRevision.count({ where: { projectId: row.id, version: { gt: 1 } } }),
+      ]);
+      if (counts.some(Boolean)) throw AppError.conflict("This project contains research or collaboration history. Archive it to preserve the records");
+      await tx.auditLog.create({ data: { userId: actor.id, actionName: "PROJECT_DELETED", targetTableName: "projects", targetRecordId: row.id, details: { emptyProject: true } } });
+      await tx.project.delete({ where: { id: row.id } });
+    });
   }
 
   async addPaperToProject(projectId: string, paperId: string, userId: string) {
@@ -405,6 +476,8 @@ export class ProjectService {
     assertMutable(rights);
     try {
       await getPrisma().$transaction(async (tx) => {
+        await lockProjectAccounts(tx, [rights.actor.id], rights.row.id);
+        await authorizeProjectTransaction(tx, rights.row.id, rights.actor.id, "CONTRIBUTE");
         await tx.projectPaper.create({ data: { projectId: rights.row.id, paperId: paper.id, addedById: rights.actor.id } });
         await tx.projectActivity.create({ data: { projectId: rights.row.id, actorId: rights.actor.id, type: "PAPER_ADDED", entityKind: "PAPER", entityId: publicDatabaseId(paper), metadata: { title: paper.title } } });
       });
@@ -416,17 +489,27 @@ export class ProjectService {
   }
 
   async updateProjectPaper(projectId: string, paperId: string, data: UpdateProjectPaperRequest, userId: string) {
-    const [rights, paper] = await Promise.all([access(projectId, userId), resolvePaper(paperId)]);
+    const [rights, paper] = await Promise.all([access(projectId, userId), resolvePaper(paperId, true)]);
     assertMutable(rights);
     const link = await getPrisma().projectPaper.findUnique({ where: { projectId_paperId: { projectId: rights.row.id, paperId: paper.id } } });
     if (!link) throw AppError.notFound("Project paper not found");
-    const nextStatus = data.screeningStatus ?? link.screeningStatus;
-    const nextExclusionReason = data.exclusionReason === undefined ? link.exclusionReason : data.exclusionReason;
-    if (nextStatus === "EXCLUDED" && !nextExclusionReason?.trim()) throw AppError.badRequest("An exclusion reason is required");
-    if (data.exclusionReason !== undefined && nextStatus !== "EXCLUDED") throw AppError.badRequest("Exclusion reasons are only valid for excluded papers");
-    if (data.exclusionNote !== undefined && nextStatus !== "EXCLUDED") throw AppError.badRequest("Exclusion notes are only valid for excluded papers");
     return getPrisma().$transaction(async (tx) => {
+      await lockProjectAccounts(tx, [rights.actor.id], rights.row.id);
+      await authorizeProjectTransaction(tx, rights.row.id, rights.actor.id, "CONTRIBUTE");
+      const live = await tx.projectPaper.findUnique({ where: { id: link.id } });
+      if (!live) throw AppError.notFound("Project paper not found");
+      const policy = await tx.project.findUniqueOrThrow({ where: { id: rights.row.id }, select: { screeningMode: true } });
+      if (policy.screeningMode === "INDEPENDENT" && [data.screeningStatus, data.inclusionReason, data.exclusionReason, data.exclusionNote].some(value => value !== undefined)) throw AppError.conflict("Use the assigned independent screening workflow and recorded team resolution");
+      if (live.updatedAt.toISOString() !== (data.expectedUpdatedAt ?? link.updatedAt.toISOString())) throw AppError.conflict("This paper changed. Reload before saving your decision or notes");
+      const nextStatus = data.screeningStatus ?? live.screeningStatus;
+      const nextExclusionReason = data.exclusionReason === undefined ? live.exclusionReason : data.exclusionReason;
+      if (nextStatus === "EXCLUDED" && !nextExclusionReason?.trim()) throw AppError.badRequest("An exclusion reason is required");
+      if (data.inclusionReason !== undefined && nextStatus !== "INCLUDED") throw AppError.badRequest("Inclusion reasons are only valid for included papers");
+      if (data.exclusionReason !== undefined && nextStatus !== "EXCLUDED") throw AppError.badRequest("Exclusion reasons are only valid for excluded papers");
+      if (data.exclusionNote !== undefined && nextStatus !== "EXCLUDED") throw AppError.badRequest("Exclusion notes are only valid for excluded papers");
+      if (data.screeningStatus !== undefined && data.screeningStatus !== live.screeningStatus) await invalidateSourceAssessments(tx, rights.row.id, rights.actor.id, { paperId: paper.id });
       const next = await tx.projectPaper.update({ where: { id: link.id }, data: {
+        updatedAt: new Date(Math.max(Date.now(), live.updatedAt.getTime() + 1)),
         ...(data.screeningStatus !== undefined ? { screeningStatus: data.screeningStatus } : {}),
         ...(data.screeningStatus !== undefined ? { screenedById: rights.actor.id, screenedAt: new Date() } : {}),
         ...(data.readingStatus !== undefined ? { readingStatus: data.readingStatus } : {}),
@@ -434,20 +517,25 @@ export class ProjectService {
         ...(data.exclusionReason !== undefined ? { exclusionReason: data.exclusionReason } : {}),
         ...(data.exclusionNote !== undefined ? { exclusionNote: data.exclusionNote } : {}),
         ...(data.notes !== undefined ? { notes: data.notes } : {}),
-        ...(data.screeningStatus === "INCLUDED" || data.screeningStatus === "UNDECIDED" ? { exclusionReason: null, exclusionNote: null } : {}),
-        ...(data.screeningStatus === "INCLUDED" || data.screeningStatus === "UNDECIDED" ? { inclusionReason: null } : {}),
+        ...(data.screeningStatus === "INCLUDED" || data.screeningStatus === "UNDECIDED" || data.screeningStatus === "MAYBE" ? { exclusionReason: null, exclusionNote: null } : {}),
+        ...(data.screeningStatus === "UNDECIDED" || data.screeningStatus === "MAYBE" ? { inclusionReason: null } : {}),
         ...(data.screeningStatus === "EXCLUDED" ? { inclusionReason: null } : {}),
       } });
-      if (data.screeningStatus && data.screeningStatus !== link.screeningStatus) await tx.projectActivity.create({ data: { projectId: rights.row.id, actorId: rights.actor.id, type: "PAPER_SCREENED", entityKind: "PAPER", entityId: publicDatabaseId(paper), metadata: { title: paper.title, from: link.screeningStatus, to: data.screeningStatus } } });
+      if (data.screeningStatus !== undefined || data.inclusionReason !== undefined || data.exclusionReason !== undefined || data.exclusionNote !== undefined) await tx.projectActivity.create({ data: { projectId: rights.row.id, actorId: rights.actor.id, type: "PAPER_SCREENED", entityKind: "PAPER", entityId: publicDatabaseId(paper), metadata: { paperId: paper.id, title: paper.title, from: live.screeningStatus, to: next.screeningStatus, before: { status: live.screeningStatus, inclusionReason: live.inclusionReason, exclusionReason: live.exclusionReason, exclusionNote: live.exclusionNote, reviewerId: live.screenedById, screenedAt: live.screenedAt?.toISOString() ?? null }, after: { status: next.screeningStatus, inclusionReason: next.inclusionReason, exclusionReason: next.exclusionReason, exclusionNote: next.exclusionNote, reviewerId: next.screenedById, screenedAt: next.screenedAt?.toISOString() ?? null } } } });
       if (data.readingStatus && data.readingStatus !== link.readingStatus) await tx.projectActivity.create({ data: { projectId: rights.row.id, actorId: rights.actor.id, type: "PAPER_READING_STATUS_CHANGED", entityKind: "PAPER", entityId: publicDatabaseId(paper), metadata: { title: paper.title, from: link.readingStatus, to: data.readingStatus } } });
       return next;
     });
   }
 
   async removePaperFromProject(projectId: string, paperId: string, userId: string) {
-    const [rights, paper] = await Promise.all([access(projectId, userId), resolvePaper(paperId)]);
+    const [rights, paper] = await Promise.all([access(projectId, userId), resolvePaper(paperId, true)]);
     assertMutable(rights);
     const removed = await getPrisma().$transaction(async (tx) => {
+      await lockProjectAccounts(tx, [rights.actor.id], rights.row.id);
+      await authorizeProjectTransaction(tx, rights.row.id, rights.actor.id, "CONTRIBUTE");
+      const referenced = await tx.gapEvidenceRecord.findFirst({ where: { paperId: paper.id, gapId: { in: (await tx.researchGap.findMany({ where: { projectId: rights.row.id }, select: { id: true } })).map(gap => gap.id) } }, select: { id: true } });
+      if (referenced) throw AppError.conflict("This paper supports recorded gap evidence. Keep the source in the project to preserve its provenance");
+      if (await tx.projectEvidenceItem.count({ where: { projectId: rights.row.id, paperId: paper.id } }) || await tx.projectPaperFile.count({ where: { projectId: rights.row.id, paperId: paper.id } }) || await tx.projectScreeningDecision.count({ where: { projectId: rights.row.id, paperId: paper.id } })) throw AppError.conflict("This source has evidence, private files or screening history. Keep it in the project and use screening to exclude it");
       const result = await tx.projectPaper.deleteMany({ where: { projectId: rights.row.id, paperId: paper.id } });
       if (result.count) await tx.projectActivity.create({ data: { projectId: rights.row.id, actorId: rights.actor.id, type: "PAPER_REMOVED", entityKind: "PAPER", entityId: publicDatabaseId(paper), metadata: { title: paper.title } } });
       return result;
@@ -457,200 +545,212 @@ export class ProjectService {
   }
 
   async inviteMember(projectId: string, input: InviteProjectMemberRequest, userId: string) {
-    const rights = await access(projectId, userId);
-    assertOwner(rights);
-    assertMutable(rights);
-    const linkedEmail = input.email
-      ? await getPrisma().userEmail.findUnique({ where: { normalizedEmail: input.email.trim().toLowerCase() } })
-      : null;
-    const invitedUser = input.userId
-      ? await resolveUser(input.userId)
-      : linkedEmail?.verifiedAt ? await getPrisma().user.findUnique({ where: { id: linkedEmail.userId } }) : null;
-    const email = (input.email ?? invitedUser?.email)?.trim().toLowerCase();
-    if (!email) throw AppError.badRequest("A LumiGap user or email address is required");
-    if (invitedUser?.id === rights.actor.id || email === rights.actor.email.toLowerCase()) throw AppError.badRequest("You are already the project owner");
-    if (invitedUser && await getPrisma().projectMember.findFirst({ where: { projectId: rights.row.id, userId: invitedUser.id, status: ACTIVE } })) throw AppError.conflict("This user is already a project member");
-    const now = new Date();
-    const expiresAt = new Date(now.getTime() + INVITATION_DAYS * 24 * 60 * 60 * 1000);
-    const rawToken = createOpaqueToken();
-    let invitation;
-    try {
-      invitation = await getPrisma().$transaction(async (tx) => {
-        await tx.projectInvitation.updateMany({ where: { projectId: rights.row.id, status: "PENDING", expiresAt: { lte: now } }, data: { status: "EXPIRED", respondedAt: now } });
-        const pending = await tx.projectInvitation.findFirst({ where: { projectId: rights.row.id, email, status: "PENDING" } });
-        const created = pending
-          ? await tx.projectInvitation.update({
-              where: { id: pending.id },
-              data: { invitedUserId: invitedUser?.id, message: input.message, tokenHash: hashOpaqueToken(rawToken), invitedById: rights.actor.id, expiresAt, respondedAt: null },
-            })
-          : await tx.projectInvitation.create({ data: { projectId: rights.row.id, invitedUserId: invitedUser?.id, email, message: input.message, tokenHash: hashOpaqueToken(rawToken), invitedById: rights.actor.id, status: "PENDING", expiresAt } });
-        await tx.projectActivity.create({ data: { projectId: rights.row.id, actorId: rights.actor.id, type: "MEMBER_INVITED", entityKind: "INVITATION", entityId: created.id, metadata: { email } } });
-        return created;
-      });
-    } catch (error) {
-      if ((error as { code?: string }).code === "P2002") throw AppError.conflict("A pending invitation already exists for this person");
-      throw error;
-    }
-    runProjectInvitationDelivery({
-      invitedUserId: invitedUser?.id,
-      email,
-      projectId: rights.row.id,
-      publicProjectId: publicDatabaseId(rights.row),
-      projectTitle: rights.row.title,
-      inviterName: rights.actor.fullName || rights.actor.email,
-      token: rawToken,
-      message: input.message,
+    if (Boolean(input.userId) === Boolean(input.email)) throw AppError.badRequest("Select one user or enter one email address");
+    const [row, actor] = await Promise.all([resolveProject(projectId), resolveUser(userId)]);
+    const emailInput = input.email?.trim().toLowerCase();
+    const db = getPrisma();
+    const linked = emailInput ? await db.userEmail.findUnique({ where: { normalizedEmail: emailInput } }) : null;
+    const invited = input.userId ? await resolveUser(input.userId)
+      : linked?.verifiedAt ? await db.user.findUnique({ where: { id: linked.userId } })
+      : emailInput ? await db.user.findFirst({ where: { email: { equals: emailInput, mode: "insensitive" }, emailVerifiedAt: { not: null } } }) : null;
+    const email = emailInput ?? invited?.email.toLowerCase();
+    if (!email) throw AppError.badRequest("A valid invitation email is required");
+    return db.$transaction(async tx => {
+      await lockProjectAccounts(tx, [actor.id, ...(invited ? [invited.id] : [])], row.id);
+      const { project } = await authorizeProjectTransaction(tx, row.id, actor.id, "MANAGE_MEMBERS");
+      if (invited) {
+        await assertActiveProjectAccount(tx, invited.id);
+        const emails = await verifiedEmailsForUser(invited.id, tx);
+        if (!emails.includes(email)) throw AppError.conflict("The selected account no longer owns this verified email");
+      }
+      if (invited?.id === project.ownerId) throw AppError.conflict("This account already owns the project");
+      if (invited && await tx.projectMember.findFirst({ where: { projectId: row.id, userId: invited.id, status: ACTIVE } })) throw AppError.conflict("This user is already a project member");
+      const now = new Date();
+      await tx.projectInvitation.updateMany({ where: { projectId: row.id, status: "PENDING", expiresAt: { lte: now } }, data: { status: "EXPIRED", respondedAt: now } });
+      const pending = await tx.projectInvitation.findFirst({ where: { projectId: row.id, status: "PENDING", OR: [{ email: { equals: email, mode: "insensitive" } }, ...(invited ? [{ invitedUserId: invited.id }] : [])] } });
+      if (pending) throw AppError.conflict("A pending invitation already exists for this person. Use Resend instead");
+      const token = createOpaqueToken();
+      const invite = await tx.projectInvitation.create({ data: {
+        projectId: row.id, invitedUserId: invited?.id, email, message: input.message,
+        invitedById: actor.id, tokenHash: hashOpaqueToken(token),
+        expiresAt: new Date(now.getTime() + INVITATION_DAYS * 86400000), lastSentAt: now,
+      } });
+      await queueProjectInvitation(tx, invite, token);
+      await tx.projectActivity.create({ data: { projectId: row.id, actorId: actor.id, type: "MEMBER_INVITED", entityKind: "INVITATION", entityId: invite.id, metadata: { email } } });
+      return { id: invite.id, status: invite.status, expiresAt: invite.expiresAt.toISOString() };
     });
-    return { id: invitation.id, status: invitation.status, expiresAt: invitation.expiresAt.toISOString() };
+  }
+
+  async resendInvitation(projectId: string, invitationId: string, userId: string) {
+    const [row, actor] = await Promise.all([resolveProject(projectId), resolveUser(userId)]);
+    return getPrisma().$transaction(async tx => {
+      await lockProjectAccounts(tx, [actor.id], row.id);
+      await authorizeProjectTransaction(tx, row.id, actor.id, "MANAGE_MEMBERS");
+      const invite = await tx.projectInvitation.findUnique({ where: { id: invitationId } });
+      if (!invite || invite.projectId !== row.id) throw AppError.notFound("Invitation not found");
+      if (!["PENDING", "EXPIRED"].includes(invite.status)) throw AppError.conflict("This invitation cannot be resent");
+      const now = new Date(), availableAt = new Date(invite.lastSentAt.getTime() + RESEND_COOLDOWN_MS);
+      if (now < availableAt) throw AppError.tooMany("Wait before resending this invitation", { retryAt: availableAt.toISOString() });
+      if (invite.invitedUserId && await tx.projectMember.findFirst({ where: { projectId: row.id, userId: invite.invitedUserId, status: ACTIVE } })) throw AppError.conflict("This person is already a member");
+      const otherPending = await tx.projectInvitation.findFirst({ where: { projectId: row.id, id: { not: invite.id }, status: "PENDING", OR: [{ email: { equals: invite.email, mode: "insensitive" } }, ...(invite.invitedUserId ? [{ invitedUserId: invite.invitedUserId }] : [])] } });
+      if (otherPending) throw AppError.conflict("A newer invitation already exists for this person");
+      const token = createOpaqueToken();
+      const updated = await tx.projectInvitation.update({ where: { id: invite.id }, data: { status: "PENDING", tokenHash: hashOpaqueToken(token), lastSentAt: now, expiresAt: new Date(now.getTime() + INVITATION_DAYS * 86400000), respondedAt: null, invitedById: actor.id } });
+      await queueProjectInvitation(tx, updated, token);
+      await tx.projectActivity.create({ data: { projectId: row.id, actorId: actor.id, type: "INVITATION_RESENT", entityKind: "INVITATION", entityId: invite.id, metadata: {} } });
+      return { id: updated.id, expiresAt: updated.expiresAt.toISOString(), resendAvailableAt: new Date(now.getTime() + RESEND_COOLDOWN_MS).toISOString() };
+    });
+  }
+
+  async team(projectId: string, userId: string, input: { page?: number; invitationPage?: number; pageSize?: number } = {}) {
+    const [row, actor] = await Promise.all([resolveProject(projectId), resolveUser(userId)]);
+    const page = Math.max(1, input.page ?? 1), invitationPage = Math.max(1, input.invitationPage ?? 1), pageSize = Math.min(50, Math.max(1, input.pageSize ?? 20));
+    return getPrisma().$transaction(async tx => {
+      await lockProjectAccounts(tx, [actor.id], row.id);
+      const rights = await authorizeProjectTransaction(tx, row.id, actor.id);
+      const owner = rights.role === "OWNER", now = new Date();
+      const memberWhere = { projectId: row.id, status: ACTIVE };
+      const inviteWhere = { projectId: row.id, status: "PENDING", expiresAt: { gt: now } };
+      const [members, memberCount, invites, invitationCount] = await Promise.all([
+        tx.projectMember.findMany({ where: memberWhere, orderBy: [{ role: "desc" }, { joinedAt: "asc" }, { id: "asc" }], skip: (page - 1) * pageSize, take: pageSize }),
+        tx.projectMember.count({ where: memberWhere }),
+        owner ? tx.projectInvitation.findMany({ where: inviteWhere, orderBy: [{ createdAt: "desc" }, { id: "desc" }], skip: (invitationPage - 1) * pageSize, take: pageSize }) : [],
+        owner ? tx.projectInvitation.count({ where: inviteWhere }) : 0,
+      ]);
+      const users = await tx.user.findMany({ where: { id: { in: [...new Set([...members.map(m => m.userId), ...invites.flatMap(i => i.invitedUserId ? [i.invitedUserId] : [])])] } }, select: { id: true, legacyMongoId: true, fullName: true, email: true, avatarUrl: true } });
+      const people = new Map(users.map(u => [u.id, u]));
+      return {
+        members: members.map(m => ({ targetKind: "User" as const, targetId: people.has(m.userId) ? userSummary(people.get(m.userId)!, owner || m.userId === actor.id) : m.userId, role: m.userId === rights.project.ownerId ? "OWNER" as const : "MEMBER" as const, status: "ACTIVE" as const, joinedAt: m.joinedAt.toISOString() })),
+        invitations: invites.map(i => ({ id: i.id, projectId: publicDatabaseId(row), email: i.email, invitedUser: i.invitedUserId && people.has(i.invitedUserId) ? userSummary(people.get(i.invitedUserId)!, true) : undefined, status: "PENDING" as const, message: i.message ?? undefined, expiresAt: i.expiresAt.toISOString(), createdAt: i.createdAt.toISOString(), lastSentAt: i.lastSentAt.toISOString(), resendAvailableAt: new Date(i.lastSentAt.getTime() + RESEND_COOLDOWN_MS).toISOString() })),
+        memberMeta: { page, pageSize, total: memberCount, totalPages: Math.ceil(memberCount / pageSize) },
+        invitationMeta: { page: invitationPage, pageSize, total: invitationCount, totalPages: Math.ceil(invitationCount / pageSize) },
+      };
+    });
   }
 
   async listMyInvitations(userIdInput: string) {
+    return (await this.getMyInvitationPage(userIdInput)).items;
+  }
+
+  async getMyInvitationPage(userIdInput: string, input: { page?: number; pageSize?: number } = {}) {
     const actor = await resolveUser(userIdInput);
-    const verifiedEmails = await verifiedEmailsForUser(actor.id);
-    const now = new Date();
-    await getPrisma().projectInvitation.updateMany({ where: { status: "PENDING", expiresAt: { lte: now }, email: { in: verifiedEmails } }, data: { status: "EXPIRED", respondedAt: now } });
-    const invitations = await getPrisma().projectInvitation.findMany({ where: { status: "PENDING", email: { in: verifiedEmails } }, orderBy: { createdAt: "desc" } });
-    const projects = await getPrisma().project.findMany({ where: { id: { in: invitations.map((invite) => invite.projectId) } }, select: { id: true, legacyMongoId: true, title: true, description: true } });
-    const inviters = await getPrisma().user.findMany({
-      where: { id: { in: invitations.map((invite) => invite.invitedById) } },
-      select: { id: true, fullName: true, email: true },
-    });
-    const byId = new Map(projects.map((project) => [project.id, project]));
-    const inviterById = new Map(inviters.map((user) => [user.id, user]));
-    return invitations.flatMap((invite) => {
-      const project = byId.get(invite.projectId);
-      const inviter = inviterById.get(invite.invitedById);
-      return project ? [{
-        id: invite.id,
-        projectId: publicDatabaseId(project),
-        projectTitle: project.title,
-        projectDescription: project.description ?? undefined,
-        inviterName: inviter?.fullName || inviter?.email || undefined,
-        role: "MEMBER" as const,
-        status: invite.status as "PENDING",
-        message: invite.message ?? undefined,
-        expiresAt: invite.expiresAt.toISOString(),
-        createdAt: invite.createdAt.toISOString(),
-      }] : [];
-    });
+    await assertResearchWorkflowAccess(actor.id);
+    const verifiedEmails = await verifiedEmailsForUser(actor.id), now = new Date();
+    const page = Math.max(1, input.page ?? 1), pageSize = Math.min(100, Math.max(1, input.pageSize ?? 100));
+    const invitations = await getPrisma().projectInvitation.findMany({ where: { status: "PENDING", expiresAt: { gt: now }, email: { in: verifiedEmails }, OR: [{ invitedUserId: null }, { invitedUserId: actor.id }] }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], skip: (page - 1) * pageSize, take: pageSize + 1 });
+    const hasNext = invitations.length > pageSize;
+    if (hasNext) invitations.pop();
+    const [projects, inviters] = await Promise.all([
+      getPrisma().project.findMany({ where: { id: { in: invitations.map(i => i.projectId) }, status: { not: "ARCHIVED" } }, select: { id: true, legacyMongoId: true, title: true } }),
+      getPrisma().user.findMany({ where: { id: { in: invitations.map(i => i.invitedById) } }, select: { id: true, fullName: true } }),
+    ]);
+    const byId = new Map(projects.map(p => [p.id, p])), inviterMap = new Map(inviters.map(u => [u.id, u]));
+    const items = invitations.flatMap(i => { const p = byId.get(i.projectId); return p ? [{ id: i.id, projectId: publicDatabaseId(p), projectTitle: p.title, inviterName: inviterMap.get(i.invitedById)?.fullName || undefined, role: "MEMBER" as const, status: "PENDING" as const, message: i.message ?? undefined, expiresAt: i.expiresAt.toISOString(), createdAt: i.createdAt.toISOString() }] : []; });
+    return { items, meta: { page, pageSize, hasNext } };
   }
 
   async getInvitationByToken(token: string, viewerId?: string) {
-    const invitation = await invitationByToken(token);
-    return invitationPreview(invitation, viewerId);
+    return invitationPreview(await invitationByToken(token), viewerId);
   }
 
   async respondToInvitationByToken(token: string, userId: string, decision: "ACCEPTED" | "DECLINED") {
-    const prisma = getPrisma();
-    const [invite, actor] = await Promise.all([invitationByToken(token), resolveUser(userId)]);
-    const verifiedEmails = await verifiedEmailsForUser(actor.id);
-    if (!verifiedEmails.includes(invite.email.toLowerCase())) {
-      throw AppError.forbidden("This invitation was sent to another email address");
-    }
-    if (invite.status !== "PENDING") throw AppError.conflict("This invitation is no longer pending");
-    const now = new Date();
-    if (invite.expiresAt <= now) {
-      await prisma.projectInvitation.updateMany({ where: { id: invite.id, status: "PENDING" }, data: { status: "EXPIRED", respondedAt: now } });
-      throw AppError.conflict("This invitation has expired");
-    }
-    const project = await prisma.project.findUnique({ where: { id: invite.projectId }, select: { status: true } });
-    if (!project) throw AppError.notFound("Project not found");
-    if (project.status === "ARCHIVED" && decision === "ACCEPTED") throw AppError.conflict("Archived projects cannot accept new members");
-    const alreadyMember = Boolean(await prisma.projectMember.findFirst({ where: { projectId: invite.projectId, userId: actor.id, status: ACTIVE } }));
-    await prisma.$transaction(async (tx) => {
-      const changed = await tx.projectInvitation.updateMany({
-        where: { id: invite.id, status: "PENDING", expiresAt: { gt: now } },
-        data: { status: decision, respondedAt: now, invitedUserId: actor.id },
-      });
-      if (changed.count !== 1) throw AppError.conflict("This invitation was already handled");
-      if (decision === "ACCEPTED" && !alreadyMember) {
-        await tx.projectMember.create({ data: { projectId: invite.projectId, userId: actor.id, role: "MEMBER", status: ACTIVE } });
-        await tx.projectActivity.create({ data: { projectId: invite.projectId, actorId: actor.id, type: "MEMBER_JOINED", entityKind: "USER", entityId: publicDatabaseId(actor), metadata: { viaInvitation: true } } });
-      }
-    });
-    return { status: decision, alreadyMember };
+    const invite = await invitationByToken(token);
+    return this.respondToInvitation(invite.projectId, invite.id, userId, decision, hashOpaqueToken(token));
   }
 
-  async respondToInvitation(projectId: string, invitationId: string, userId: string, decision: "ACCEPTED" | "DECLINED") {
+  async respondToInvitation(projectId: string, invitationId: string, userId: string, decision: "ACCEPTED" | "DECLINED", expectedTokenHash?: string) {
     const [row, actor] = await Promise.all([resolveProject(projectId), resolveUser(userId)]);
-    if (row.status === "ARCHIVED" && decision === "ACCEPTED") throw AppError.conflict("Archived projects cannot accept new members");
-    const invite = await getPrisma().projectInvitation.findUnique({ where: { id: invitationId } });
-    if (!invite || invite.projectId !== row.id) throw AppError.notFound("Invitation not found");
-    const verifiedEmails = await verifiedEmailsForUser(actor.id);
-    if (!invitationBelongsToUser(invite, { id: actor.id, verifiedEmails })) throw AppError.forbidden("This invitation belongs to another account");
-    if (invite.status !== "PENDING") throw AppError.conflict("This invitation is no longer pending");
-    if (invite.expiresAt <= new Date()) {
-      await getPrisma().projectInvitation.updateMany({ where: { id: invite.id, status: "PENDING" }, data: { status: "EXPIRED", respondedAt: new Date() } });
-      throw AppError.conflict("This invitation has expired");
-    }
-    await getPrisma().$transaction(async (tx) => {
-      const changed = await tx.projectInvitation.updateMany({ where: { id: invite.id, status: "PENDING", expiresAt: { gt: new Date() } }, data: { status: decision, respondedAt: new Date(), invitedUserId: actor.id } });
-      if (changed.count !== 1) throw AppError.conflict("This invitation was already handled");
-      if (decision === "ACCEPTED") {
-        await tx.projectMember.upsert({ where: { projectId_userId: { projectId: row.id, userId: actor.id } }, create: { projectId: row.id, userId: actor.id, role: "MEMBER", status: ACTIVE }, update: { role: "MEMBER", status: ACTIVE, joinedAt: new Date() } });
-        await tx.projectActivity.create({ data: { projectId: row.id, actorId: actor.id, type: "MEMBER_JOINED", entityKind: "USER", entityId: publicDatabaseId(actor), metadata: {} } });
+    const result = await getPrisma().$transaction(async tx => {
+      await lockProjectAccounts(tx, [actor.id], row.id);
+      await assertActiveProjectAccount(tx, actor.id);
+      const project = await tx.project.findUniqueOrThrow({ where: { id: row.id } });
+      const invite = await tx.projectInvitation.findUnique({ where: { id: invitationId } });
+      if (!invite || invite.projectId !== row.id || expectedTokenHash && invite.tokenHash !== expectedTokenHash) throw AppError.notFound("Invitation not found");
+      if (!invitationBelongsToUser(invite, { id: actor.id, verifiedEmails: await verifiedEmailsForUser(actor.id, tx) })) throw AppError.forbidden("This invitation belongs to another verified account");
+      const member = await tx.projectMember.findUnique({ where: { projectId_userId: { projectId: row.id, userId: actor.id } } });
+      const alreadyMember = member?.status === ACTIVE;
+      if (invite.status === decision && (decision === "DECLINED" || alreadyMember)) return { status: decision, alreadyMember, projectId: publicDatabaseId(project) };
+      if (invite.status !== "PENDING") throw AppError.conflict("This invitation is no longer pending");
+      const now = new Date();
+      if (invite.expiresAt <= now) {
+        await tx.projectInvitation.update({ where: { id: invite.id }, data: { status: "EXPIRED", respondedAt: now } });
+        return { expired: true as const };
       }
+      if (project.status === "ARCHIVED" && decision === "ACCEPTED") throw AppError.conflict("Archived projects cannot accept new members");
+      await tx.projectInvitation.update({ where: { id: invite.id }, data: { status: decision, respondedAt: now, invitedUserId: actor.id } });
+      if (decision === "ACCEPTED" && !alreadyMember) await tx.projectMember.upsert({
+        where: { projectId_userId: { projectId: row.id, userId: actor.id } },
+        create: { projectId: row.id, userId: actor.id, role: project.ownerId === actor.id ? "OWNER" : "MEMBER" },
+        update: { status: ACTIVE, role: project.ownerId === actor.id ? "OWNER" : "MEMBER", joinedAt: now },
+      });
+      await tx.projectActivity.create({ data: { projectId: row.id, actorId: actor.id, type: decision === "ACCEPTED" ? "MEMBER_JOINED" : "INVITATION_DECLINED", entityKind: "INVITATION", entityId: invite.id, metadata: {} } });
+      return { status: decision, alreadyMember, projectId: publicDatabaseId(project) };
     });
-    return { status: decision };
+    if ("expired" in result) throw AppError.conflict("This invitation has expired");
+    return result;
   }
 
   async cancelInvitation(projectId: string, invitationId: string, userId: string) {
-    const rights = await access(projectId, userId);
-    assertOwner(rights);
-    const changed = await getPrisma().projectInvitation.updateMany({ where: { id: invitationId, projectId: rights.row.id, status: "PENDING" }, data: { status: "CANCELLED", respondedAt: new Date() } });
-    if (!changed.count) throw AppError.notFound("Pending invitation not found");
+    const [row, actor] = await Promise.all([resolveProject(projectId), resolveUser(userId)]);
+    await getPrisma().$transaction(async tx => {
+      await lockProjectAccounts(tx, [actor.id], row.id);
+      await authorizeProjectTransaction(tx, row.id, actor.id, "MANAGE_MEMBERS");
+      const changed = await tx.projectInvitation.updateMany({ where: { id: invitationId, projectId: row.id, status: "PENDING" }, data: { status: "CANCELLED", respondedAt: new Date() } });
+      if (!changed.count) throw AppError.notFound("Pending invitation not found");
+      await tx.projectActivity.create({ data: { projectId: row.id, actorId: actor.id, type: "INVITATION_CANCELLED", entityKind: "INVITATION", entityId: invitationId, metadata: {} } });
+    });
   }
 
-  /**
-   * Members join only by accepting an invitation, so a removed or departed member cannot be pulled back
-   * without consent. The old direct-add endpoint now just invites the user (by id or email).
-   */
+  /** Compatibility route: consent is required before anyone becomes a member. */
   async addMemberToProject(projectId: string, memberData: Pick<AddProjectMemberRequest, "targetId">, userId: string) {
     const target = memberData.targetId.trim();
     return this.inviteMember(projectId, target.includes("@") ? { email: target } : { userId: target }, userId);
   }
 
   async removeMemberFromProject(projectId: string, targetId: string, userId: string) {
-    const [rights, target] = await Promise.all([access(projectId, userId), resolveUser(targetId)]);
-    assertOwner(rights);
-    assertMutable(rights);
-    if (rights.row.ownerId === target.id) throw AppError.badRequest("Transfer ownership before removing the owner");
-    const changed = await getPrisma().$transaction(async (tx) => {
-      const result = await tx.projectMember.updateMany({ where: { projectId: rights.row.id, userId: target.id, status: ACTIVE }, data: { status: "REMOVED" } });
-      if (result.count) await tx.projectActivity.create({ data: { projectId: rights.row.id, actorId: rights.actor.id, type: "MEMBER_REMOVED", entityKind: "USER", entityId: publicDatabaseId(target), metadata: { memberName: target.fullName } } });
-      return result;
+    const [row, actor, target] = await Promise.all([resolveProject(projectId), resolveUser(userId), resolveUser(targetId)]);
+    const updated = await getPrisma().$transaction(async tx => {
+      await lockProjectAccounts(tx, [actor.id, target.id], row.id);
+      const { project } = await authorizeProjectTransaction(tx, row.id, actor.id, "MANAGE_MEMBERS");
+      if (project.ownerId === target.id) throw AppError.conflict("Transfer ownership before removing the owner");
+      const changed = await tx.projectMember.updateMany({ where: { projectId: row.id, userId: target.id, status: ACTIVE }, data: { status: "REMOVED", role: "MEMBER" } });
+      if (!changed.count) throw AppError.notFound("Active project member not found");
+      await revokeProjectScreeningAssignments(tx, row.id, target.id, actor.id);
+      await tx.projectInvitation.updateMany({ where: { projectId: row.id, invitedUserId: target.id, status: "PENDING" }, data: { status: "CANCELLED", respondedAt: new Date() } });
+      await tx.projectActivity.create({ data: { projectId: row.id, actorId: actor.id, type: "MEMBER_REMOVED", entityKind: "USER", entityId: publicDatabaseId(target), metadata: {} } });
+      return project;
     });
-    if (!changed.count) throw AppError.notFound("Active project member not found");
-    return hydrate(rights.row, rights.actor.id);
+    return hydrate(updated, actor.id);
   }
 
   async leaveProject(projectId: string, userId: string) {
-    const rights = await access(projectId, userId);
-    assertMember(rights);
-    if (rights.isOwner) throw AppError.conflict("Transfer ownership before leaving this project");
-    const changed = await getPrisma().$transaction(async (tx) => {
-      const result = await tx.projectMember.updateMany({ where: { projectId: rights.row.id, userId: rights.actor.id, status: ACTIVE }, data: { status: "LEFT" } });
-      if (result.count) await tx.projectActivity.create({ data: { projectId: rights.row.id, actorId: rights.actor.id, type: "MEMBER_LEFT", entityKind: "USER", entityId: publicDatabaseId(rights.actor), metadata: {} } });
-      return result;
+    const [row, actor] = await Promise.all([resolveProject(projectId), resolveUser(userId)]);
+    await getPrisma().$transaction(async tx => {
+      await lockProjectAccounts(tx, [actor.id], row.id);
+      await authorizeProjectTransaction(tx, row.id, actor.id, "LEAVE");
+      await tx.projectMember.update({ where: { projectId_userId: { projectId: row.id, userId: actor.id } }, data: { status: "LEFT", role: "MEMBER" } });
+      await revokeProjectScreeningAssignments(tx, row.id, actor.id, actor.id);
+      await tx.projectActivity.create({ data: { projectId: row.id, actorId: actor.id, type: "MEMBER_LEFT", entityKind: "USER", entityId: publicDatabaseId(actor), metadata: {} } });
     });
-    if (!changed.count) throw AppError.conflict("You are no longer an active project member");
   }
 
   async transferOwnership(projectId: string, targetUserId: string, userId: string) {
-    const [rights, target] = await Promise.all([access(projectId, userId), resolveUser(targetUserId)]);
-    assertOwner(rights);
-    assertMutable(rights);
-    if (target.id === rights.actor.id) throw AppError.badRequest("This user already owns the project");
-    const targetMembership = await getPrisma().projectMember.findUnique({ where: { projectId_userId: { projectId: rights.row.id, userId: target.id } } });
-    if (targetMembership?.status !== ACTIVE) throw AppError.badRequest("Ownership can only be transferred to an active member");
-    const updated = await getPrisma().$transaction(async (tx) => {
-      const next = await tx.project.update({ where: { id: rights.row.id }, data: { ownerId: target.id } });
-      await tx.projectMember.update({ where: { projectId_userId: { projectId: rights.row.id, userId: rights.actor.id } }, data: { role: "MEMBER", status: ACTIVE } });
-      await tx.projectMember.update({ where: { projectId_userId: { projectId: rights.row.id, userId: target.id } }, data: { role: "OWNER", status: ACTIVE } });
-      await tx.projectActivity.create({ data: { projectId: rights.row.id, actorId: rights.actor.id, type: "OWNERSHIP_TRANSFERRED", entityKind: "USER", entityId: publicDatabaseId(target), metadata: { newOwnerName: target.fullName } } });
+    const [row, actor, target] = await Promise.all([resolveProject(projectId), resolveUser(userId), resolveUser(targetUserId)]);
+    const updated = await getPrisma().$transaction(async tx => {
+      await lockProjectAccounts(tx, [actor.id, target.id], row.id);
+      await authorizeProjectTransaction(tx, row.id, actor.id, "MANAGE_MEMBERS");
+      await assertActiveProjectAccount(tx, target.id);
+      if (actor.id === target.id) throw AppError.conflict("This account already owns the project");
+      const targetMember = await tx.projectMember.findUnique({ where: { projectId_userId: { projectId: row.id, userId: target.id } } });
+      if (targetMember?.status !== ACTIVE) throw AppError.conflict("Ownership can only be transferred to an active member");
+      // Demote before promotion to respect the unique active-owner constraint.
+      await tx.projectMember.update({ where: { projectId_userId: { projectId: row.id, userId: actor.id } }, data: { role: "MEMBER" } });
+      await tx.projectMember.update({ where: { id: targetMember.id }, data: { role: "OWNER" } });
+      const next = await tx.project.update({ where: { id: row.id }, data: { ownerId: target.id, version: { increment: 1 } } });
+      await tx.projectActivity.create({ data: { projectId: row.id, actorId: actor.id, type: "OWNERSHIP_TRANSFERRED", entityKind: "USER", entityId: publicDatabaseId(target), metadata: {} } });
       return next;
     });
-    return hydrate(updated, rights.actor.id);
+    return hydrate(updated, actor.id);
   }
 
   async listActivity(projectId: string, userId: string, limit: number) {

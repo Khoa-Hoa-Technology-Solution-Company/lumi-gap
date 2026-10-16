@@ -11,6 +11,7 @@ enforcePostgresOnlyRuntime();
 interface CommunitySummaryJob {
   communityId: string;
   postIds: string[];
+  postVersions?: string[];
 }
 
 async function main() {
@@ -19,10 +20,10 @@ async function main() {
   const worker = new Worker(
     QUEUE_NAMES.communitySummary,
     async (job) => {
-      const { communityId, postIds } = job.data as CommunitySummaryJob;
+      const { communityId, postIds, postVersions } = job.data as CommunitySummaryJob;
       try {
         // The summary lands in the Redis LLM cache; the API reads it from there.
-        await communitySummaryService.generate(communityId, postIds);
+        await communitySummaryService.generate(communityId, postIds, postVersions);
       } catch (err) {
         if (err instanceof Error && (err as { nonRetryable?: boolean }).nonRetryable) throw new UnrecoverableError(err.message);
         throw err;

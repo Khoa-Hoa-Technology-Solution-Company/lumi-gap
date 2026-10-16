@@ -108,6 +108,15 @@ export interface ResearchGap {
   evidenceConfidence?: number; // 0..1
 }
 
+/** Soft checks run on a finished report; they never block it. Absent on reports created before they existed. */
+export interface ReportGroundingChecks {
+  version?: number;
+  citationCoverage: { paragraphs: number; cited: number; pct: number };
+  /** Percentages stated in the markdown that match neither the evidence nor the trend metrics. */
+  unsupportedPercents: string[];
+  trendMetricsProvided: boolean;
+}
+
 export interface AnalyticalReport {
   evidenceSnapshot?: PaperEvidenceSnapshot[];
   id: string;
@@ -137,6 +146,7 @@ export interface AnalyticalReport {
   researchGaps: ResearchGap[];
   modelVersion: string;
   promptVersion: string;
+  groundingChecks?: ReportGroundingChecks | null;
   deepAnalysis: boolean; // NEW — Phase D
   fast?: boolean; // Fast mode — generated with the Flash model
   selectedPaperIds?: string[];

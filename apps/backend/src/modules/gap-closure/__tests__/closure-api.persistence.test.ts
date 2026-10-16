@@ -59,7 +59,11 @@ describe.sequential("Gap Closure Protocol API (PostgreSQL)", () => {
     const [owner, member, stranger, admin] = await Promise.all([create("owner"), create("member"), create("stranger"), create("admin", { systemRole: "ADMIN" })]);
     ownerId = owner.id; memberId = member.id; strangerId = stranger.id; adminId = admin.id;
     userIds.push(ownerId, memberId, strangerId, adminId);
-    const project = await prisma.project.create({ data: { title: `Closure ${marker.slice(0, 8)}`, ownerId } });
+    const project = await prisma.$transaction(async (tx) => {
+      const created = await tx.project.create({ data: { title: `Closure ${marker.slice(0, 8)}`, ownerId } });
+      await tx.projectMember.create({ data: { projectId: created.id, userId: ownerId, role: "OWNER", status: "ACTIVE" } });
+      return created;
+    });
     projectId = project.id;
     await prisma.projectMember.create({ data: { projectId, userId: memberId, status: "ACTIVE" } });
     const paper = await prisma.paper.create({ data: { title: "Telehealth for heart failure", abstractText: ABSTRACT, publicationYear: 2024, primaryProvider: "user", dataStatus: "active", doi: `10.1000/local-${marker}` } });
@@ -89,7 +93,6 @@ describe.sequential("Gap Closure Protocol API (PostgreSQL)", () => {
     await prisma.creditTransaction.deleteMany({ where: { userId: { in: userIds } } });
     await prisma.researchGap.deleteMany({ where: { id: { in: gapIds } } });
     await prisma.paper.deleteMany({ where: { id: { in: paperIds } } });
-    await prisma.projectMember.deleteMany({ where: { projectId } });
     await prisma.project.deleteMany({ where: { id: projectId } });
     await prisma.user.deleteMany({ where: { id: { in: userIds } } });
     vi.restoreAllMocks();

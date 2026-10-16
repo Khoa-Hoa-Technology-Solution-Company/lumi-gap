@@ -5,6 +5,7 @@ import { connectPostgres, disconnectPostgres } from "./infrastructure/database/p
 import { connectRedis, disconnectRedis } from "./infrastructure/redis.js";
 import { logger } from "./infrastructure/logger.js";
 import { cleanupVerificationEvidence } from "./modules/academic-profiles/verification-evidence-retention.service.js";
+import { attachManuscriptCollaboration } from "./modules/workspaces/manuscript-collaboration.js";
 
 enforcePostgresOnlyRuntime();
 
@@ -50,10 +51,12 @@ async function main() {
     logger.info({ port: env.PORT, env: env.NODE_ENV }, "backend listening");
     printReadyBanner(env.PORT);
   });
+  const closeCollaboration = attachManuscriptCollaboration(server);
 
   const shutdown = async (signal: string) => {
     logger.info({ signal }, "shutting down");
     server.close();
+    await closeCollaboration();
     clearInterval(evidenceCleanupTimer);
     await disconnectPostgres();
     logger.info("postgres disconnected");

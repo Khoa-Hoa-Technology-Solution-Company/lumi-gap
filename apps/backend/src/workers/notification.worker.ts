@@ -11,6 +11,9 @@ import { deliverLecturerVerificationEmail } from "../modules/academic-profiles/l
 import { projectMentorshipService } from "../modules/projects/project-mentorship.service.js";
 import { notificationService } from "../modules/notifications/notification.service.js";
 import { notificationQueue } from "../infrastructure/queue.js";
+import { deliverProjectInvitationEmail, recoverProjectInvitationEmails } from "../modules/projects/project-invitation-delivery.js";
+import { canDeliverWorkspaceNotification } from "../modules/projects/workspace-notification-access.js";
+import { deliverContributionsEmail } from "../modules/projects/contributions-mail.service.js";
 
 enforcePostgresOnlyRuntime();
 
@@ -37,15 +40,21 @@ async function sendPush(notificationId: string): Promise<void> {
   const notification = await prisma.notification.findUnique({
     where: parsed.kind === "uuid" ? { id: parsed.value } : { legacyMongoId: parsed.value },
   });
+  if (notification?.eventKey?.startsWith("PROJECT_INVITATION_") && notification.emailStatus === "PENDING") await deliverProjectInvitationEmail(notification.id);
   if (!notification?.userId) {
     logger.info({ notificationId }, "notification has no user target; skipping push");
     return;
   }
   if (notification.emailStatus === "PENDING") {
+    if (notification.eventKey?.startsWith("CONTRIBUTIONS:")) await deliverContributionsEmail(notification.id);
     if (notification.eventKey?.startsWith("LECTURER_VERIFICATION_")) await deliverLecturerVerificationEmail(notification.id);
-    else await deliverMentorshipEmail(notification.id);
+    else if (notification.eventKey?.startsWith("MENTORSHIP_")) await deliverMentorshipEmail(notification.id);
   }
   if (notification.pushSentAt) return;
+  if (!await canDeliverWorkspaceNotification(notification)) {
+    await prisma.notification.update({ where: { id: notification.id }, data: { pushSentAt: new Date() } });
+    return;
+  }
 
   const tokens = await prisma.deviceToken.findMany({ where: { userId: notification.userId, disabledAt: null } });
   if (tokens.length === 0) {
@@ -141,7 +150,8 @@ async function main() {
       // A worker that died after sending cannot know SMTP delivery outcome.
       await db.notification.updateMany({ where: { emailStatus: "SENDING", emailClaimedAt: { lt: new Date(Date.now() - 5 * 60000) } }, data: { emailStatus: "UNCERTAIN" } });
       await projectMentorshipService.expireRequests();
-      const rows = await db.notification.findMany({ where: { userId: { not: null }, AND: [{ OR: [{ eventKey: { startsWith: "MENTORSHIP_" } }, { eventKey: { startsWith: "LECTURER_VERIFICATION_" } }] }, { OR: [{ dispatchedAt: null }, { emailStatus: "PENDING" }, { pushSentAt: null }] }] }, take: 100, orderBy: { createdAt: "asc" } });
+      await recoverProjectInvitationEmails();
+      const rows = await db.notification.findMany({ where: { userId: { not: null }, AND: [{ OR: [{ eventKey: { startsWith: "MENTORSHIP_" } }, { eventKey: { startsWith: "PROJECT_INVITATION_" } }, { eventKey: { startsWith: "LECTURER_VERIFICATION_" } }, { eventKey: { startsWith: "WORKSPACE:" } }, { eventKey: { startsWith: "CONTRIBUTIONS:" } }] }, { OR: [{ dispatchedAt: null }, { emailStatus: "PENDING" }, { pushSentAt: null }] }] }, take: 100, orderBy: { createdAt: "asc" } });
       for (const row of rows) {
         const job = await notificationQueue.getJob(publicDatabaseId(row));
         if (job && await job.isFailed()) await job.retry();

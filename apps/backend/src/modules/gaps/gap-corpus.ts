@@ -1,4 +1,5 @@
 import { getPrisma } from "../../infrastructure/database/prisma.js";
+import type { Prisma } from "../../generated/prisma/client.js";
 import { structuredEvidenceItems } from "./structured-evidence.js";
 
 /**
@@ -6,9 +7,12 @@ import { structuredEvidenceItems } from "./structured-evidence.js";
  * hand points at its corpus; an AI-generated gap only knows its project, so every literature corpus
  * of that project is searched (most recently updated first, preferring rows with extracted evidence).
  */
-export async function findGapCorpusPaper(gap: { corpusId: string | null; projectId: string | null }, paperId: string) {
-  const prisma = getPrisma();
-  if (gap.corpusId) return prisma.corpusPaper.findUnique({ where: { corpusId_paperId: { corpusId: gap.corpusId, paperId } } });
+export async function findGapCorpusPaper(gap: { corpusId: string | null; projectId: string | null }, paperId: string, prisma: Prisma.TransactionClient = getPrisma()) {
+  if (gap.corpusId) {
+    const corpus = await prisma.literatureCorpus.findUnique({ where: { id: gap.corpusId } });
+    if (!corpus || corpus.projectId !== gap.projectId) return null;
+    return prisma.corpusPaper.findUnique({ where: { corpusId_paperId: { corpusId: gap.corpusId, paperId } } });
+  }
   if (!gap.projectId) return null;
   const corpora = await prisma.literatureCorpus.findMany({ where: { projectId: gap.projectId }, select: { id: true }, orderBy: { updatedAt: "desc" } });
   if (!corpora.length) return null;

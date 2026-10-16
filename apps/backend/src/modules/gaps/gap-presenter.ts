@@ -2,6 +2,7 @@ import type {
   GapClosureStatus,
   GapClosureSummary,
   GapEvidenceStatus,
+  GapGlobalEvidence,
   GapProjectEvidence,
   GapSource,
   GapStatus,
@@ -24,6 +25,8 @@ export interface GapAccessProject {
 }
 
 export interface GapListDoc {
+  version?: number;
+  assessmentStatus?: ResearchGapItem["assessmentStatus"];
   _id: IdLike;
   topic: string;
   normalizedTopic: string;
@@ -32,11 +35,13 @@ export interface GapListDoc {
   rationale: string;
   evidencePaperIds?: IdLike[];
   supportingPaperIds?: IdLike[];
+  counterPaperIds?: IdLike[];
   confidence: number;
   probe?: { topicA?: string; topicB?: string; yearFrom?: number; yearTo?: number };
   intersectionCount?: number;
   parentCounts?: { a?: number; b?: number };
-  parentTrend?: { topic?: string; growthRatePct?: number } | null;
+  parentTrend?: { topic?: string; growthRatePct?: number; cagrPct?: number | null; slope?: number } | null;
+  globalEvidence?: GapGlobalEvidence | null;
   evidenceConfidence?: number;
   evidenceScopeSize?: number;
   projectEvidence?: GapProjectEvidence;
@@ -158,7 +163,8 @@ const EVIDENCE_RANK: Record<GapEvidenceStatus, number> = { confirmed: 2, weak: 1
  */
 export function gapRankingScore(row: Pick<GapSortRow, "confidence" | "evidenceConfidence"> & Partial<Pick<GapSortRow, "evidenceScopeSize" | "intersectionCount" | "parentCounts">>, config?: GapSignalConfig): number {
   const signal = config ? gapUnderExploredSignal({ intersectionCount: row.intersectionCount ?? undefined, parentCounts: row.parentCounts ?? undefined, evidenceScopeSize: row.evidenceScopeSize ?? undefined }, config) : null;
-  return signal?.evidenceConfidence ?? row.evidenceConfidence ?? row.confidence;
+  // A gap without a corpus score must stay behind evidence-backed gaps even if the LLM confidence is high.
+  return signal?.evidenceConfidence ?? row.evidenceConfidence ?? 0;
 }
 
 /** Orders gaps for every list sort option; ties fall back to newest first. */
@@ -192,6 +198,7 @@ export function toGapListItem(
   const config: GapSignalConfig | undefined = options.minParentPapers !== undefined ? { minParentPapers: options.minParentPapers, maxRatio: options.maxRatio, alpha: options.alpha } : undefined;
   const signal = config ? gapUnderExploredSignal(doc, config) : null;
   const supportingPaperIds = (doc.supportingPaperIds ?? []).map(String);
+  const counterPaperIds = (doc.counterPaperIds ?? []).map(String);
   const evidencePaperIds = (doc.evidencePaperIds?.length
     ? doc.evidencePaperIds
     : doc.supportingPaperIds ?? []
@@ -200,6 +207,8 @@ export function toGapListItem(
 
   return {
     id: String(doc._id),
+    version: doc.version,
+    assessmentStatus: doc.assessmentStatus,
     topic: doc.topic,
     normalizedTopic: doc.normalizedTopic,
     title: doc.title,
@@ -207,6 +216,10 @@ export function toGapListItem(
     rationale: doc.rationale,
     supportingPaperIds,
     supportingPapers: supportingPaperIds
+      .map((id) => supportingPapersById.get(id))
+      .filter((paper): paper is GapSupportingPaper => Boolean(paper)),
+    counterPaperIds,
+    counterPapers: counterPaperIds
       .map((id) => supportingPapersById.get(id))
       .filter((paper): paper is GapSupportingPaper => Boolean(paper)),
     evidencePaperIds,
@@ -237,12 +250,18 @@ export function toGapListItem(
         : undefined,
     parentTrend:
       doc.parentTrend?.topic && doc.parentTrend.growthRatePct !== undefined
-        ? { topic: doc.parentTrend.topic, growthRatePct: doc.parentTrend.growthRatePct }
+        ? {
+            topic: doc.parentTrend.topic,
+            growthRatePct: doc.parentTrend.growthRatePct,
+            ...(doc.parentTrend.cagrPct !== undefined ? { cagrPct: doc.parentTrend.cagrPct } : {}),
+            ...(doc.parentTrend.slope !== undefined ? { slope: doc.parentTrend.slope } : {}),
+          }
         : doc.parentTrend === null
           ? null
           : undefined,
     evidenceConfidence: signal?.evidenceConfidence ?? doc.evidenceConfidence,
     underExplored: signal && signal.expected > 0 ? { expected: signal.expected, ratio: signal.ratio, pValue: signal.pValue } : undefined,
+    globalEvidence: doc.globalEvidence ?? null,
     evidenceScopeSize: doc.evidenceScopeSize,
     projectEvidence: doc.projectEvidence,
     lowSample,

@@ -1,14 +1,18 @@
+import { createProjectFixture } from "../../../test-utils/project-fixture.js";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { env } from "../../../config/env.js";
 import { getPrisma } from "../../../infrastructure/database/prisma.js";
 import { getEmbeddingProvider } from "../../embeddings/embedding.factory.js";
 import { cachedGenerateJSON } from "../../llm/llm.run.js";
+import { countOpenAlexIntersection } from "../gap-global-evidence.js";
 import { gapsService } from "../gaps.service.js";
 
 // Embedding fails on purpose: the pipeline then retrieves by keyword, which is an existing path.
 vi.mock("../../embeddings/embedding.factory.js", () => ({ getEmbeddingProvider: vi.fn() }));
 vi.mock("../../llm/llm.run.js", () => ({ cachedGenerateJSON: vi.fn() }));
+// Never reach OpenAlex from tests.
+vi.mock("../gap-global-evidence.js", () => ({ countOpenAlexIntersection: vi.fn().mockResolvedValue(null) }));
 // Never enqueue real jobs from tests: a running dev worker would call Gemini.
 vi.mock("../../../infrastructure/queue.js", () => ({ gapsQueue: { add: vi.fn().mockResolvedValue(undefined) } }));
 
@@ -79,7 +83,7 @@ describe.sequential("gap pipeline probe scope (PostgreSQL)", () => {
       paperIds.push(paper.id);
     }
 
-    const project = await prisma.project.create({ data: { title: `Gap scope ${m}`, ownerId: userId } });
+    const project = await createProjectFixture({ data: { title: `Gap scope ${m}`, ownerId: userId } });
     projectId = project.id;
     await prisma.projectPaper.createMany({
       data: paperIds.slice(0, INCLUDED_COUNT + EXCLUDED_COUNT).map((paperId, index) => ({
@@ -101,7 +105,6 @@ describe.sequential("gap pipeline probe scope (PostgreSQL)", () => {
     if (projectId) {
       await prisma.projectActivity.deleteMany({ where: { projectId } });
       await prisma.projectPaper.deleteMany({ where: { projectId } });
-      await prisma.projectMember.deleteMany({ where: { projectId } });
       await prisma.project.deleteMany({ where: { id: projectId } });
     }
     await prisma.paper.deleteMany({ where: { id: { in: paperIds } } });
@@ -121,6 +124,42 @@ describe.sequential("gap pipeline probe scope (PostgreSQL)", () => {
     expect(gaps[0]!.intersectionCount).toBe(PAPER_COUNT);
     expect(gaps[0]!.evidenceScopeSize).toBeGreaterThanOrEqual(PAPER_COUNT);
     expect(gaps[0]!.projectEvidence).toBeNull();
+    expect(gaps[0]!.globalEvidence).toBeNull();
+    expect(countOpenAlexIntersection).toHaveBeenCalledWith(topicA, topicB, expect.anything());
+  });
+
+  it("drops a probe whose topic does not occur in the gap's evidence papers", async () => {
+    vi.mocked(cachedGenerateJSON).mockResolvedValueOnce({
+      gaps: [{ title: `Invented probe ${m}`, description: "d", rationale: "r", supportingEvidence: [1], confidence: 0.5, probe: { topicA, topicB: `inventedtopic${m}k` } }],
+    } as never);
+
+    const { done, gaps } = await runAnalysis({ evidenceMode: "hybrid" });
+
+    expect(done.status).toBe("ready");
+    expect(gaps).toHaveLength(1);
+    expect(gaps[0]!.probe).toBeNull();
+    expect(gaps[0]!.intersectionCount).toBeNull();
+    expect(gaps[0]!.parentCounts).toBeNull();
+    expect(gaps[0]!.globalEvidence).toBeNull();
+  });
+
+  it("keeps a probe whose second topic occurs only in an evidence paper the gap does not cite", async () => {
+    const onlyA = `onlya${m}k`, onlyB = `onlyb${m}k`; // own words, so the other tests' corpus counts are untouched
+    const prisma = getPrisma();
+    const made = await Promise.all([`${onlyA} only`, `${onlyA} again`, `${onlyB} alone`].map((text, i) =>
+      prisma.paper.create({ data: { title: `Uncited evidence ${i} ${m}`, abstractText: `This paper mentions ${text}.`, publicationYear: 2024, primaryProvider: "user", dataStatus: "active" } })));
+    paperIds.push(...made.map((paper) => paper.id));
+    vi.mocked(cachedGenerateJSON).mockResolvedValueOnce({
+      gaps: [{ title: `Rare intersection ${m}`, description: "d", rationale: "r", supportingEvidence: [1], confidence: 0.5, probe: { topicA: onlyA, topicB: onlyB } }],
+    } as never);
+    const analysis = await prisma.gapAnalysis.create({ data: { userId, topic: `${onlyA} ${onlyB}`, status: "queued", evidenceMode: "selected" } });
+    analysisIds.push(analysis.id);
+    await prisma.gapAnalysisPaper.createMany({ data: made.map((paper, position) => ({ analysisId: analysis.id, paperId: paper.id, position })) });
+
+    await gapsService.runGapPipeline({ analysisId: analysis.id });
+
+    const [gap] = await prisma.researchGap.findMany({ where: { analysisId: analysis.id } });
+    expect(gap!.probe).toEqual({ topicA: onlyA, topicB: onlyB });
   });
 
   it("scores probes against the whole corpus in auto mode too", async () => {
@@ -161,5 +200,20 @@ describe.sequential("gap pipeline probe scope (PostgreSQL)", () => {
     // The recorded sample size is the corpus inside the same window.
     expect(gaps[0]!.evidenceScopeSize).toBeGreaterThanOrEqual(15);
     expect(gaps[0]!.evidenceScopeSize).toBeLessThan((await getPrisma().paper.count({ where: { dataStatus: "active" } })));
+  });
+  it("rejects a changed project corpus after generation rather than saving a stale candidate", async () => {
+    const db = getPrisma();
+    const analysis = await db.gapAnalysis.create({ data: { userId, projectId, topic: `${topicA} ${topicB}`, status: "queued", evidenceMode: "hybrid" } }); analysisIds.push(analysis.id);
+    vi.mocked(cachedGenerateJSON).mockImplementationOnce(async () => {
+      await db.projectPaper.update({ where: { projectId_paperId: { projectId, paperId: paperIds[0]! } }, data: { screeningStatus: "EXCLUDED" } });
+      return { gaps: [{ title: "Stale proposal", description: "Bounded hypothesis", rationale: "Source context changed", supportingEvidence: [1], confidence: 0.99 }] } as never;
+    });
+    try {
+      await expect(gapsService.runGapPipeline({ analysisId: analysis.id })).rejects.toMatchObject({ statusCode: 409 });
+      expect(await db.researchGap.count({ where: { analysisId: analysis.id } })).toBe(0);
+    } finally {
+      await db.projectPaper.update({ where: { projectId_paperId: { projectId, paperId: paperIds[0]! } }, data: { screeningStatus: "INCLUDED" } });
+      mockLlm();
+    }
   });
 });

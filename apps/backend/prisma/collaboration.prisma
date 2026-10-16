@@ -4,6 +4,15 @@ model Project {
   title             String    @db.VarChar(100)
   description       String?
   researchField     String?   @map("research_field") @db.VarChar(200)
+  researchAreas     String[]  @default([]) @map("research_areas")
+  publicSummary     String?   @map("public_summary") @db.VarChar(2000)
+  createdById       String?   @map("created_by_id") @db.Uuid
+  creationKey       String?   @map("creation_key") @db.VarChar(128)
+  creationRequestHash String? @map("creation_request_hash") @db.VarChar(64)
+  version           Int       @default(1)
+  researchStage     String?   @map("research_stage") @db.VarChar(32)
+  screeningMode     String    @default("EXPLORATORY") @map("screening_mode") @db.VarChar(24)
+  screeningBlinded  Boolean   @default(false) @map("screening_blinded")
   inclusionCriteria String[]  @default([]) @map("inclusion_criteria")
   exclusionCriteria String[]  @default([]) @map("exclusion_criteria")
   status            String    @default("PLANNING") @db.VarChar(24)
@@ -17,8 +26,29 @@ model Project {
   updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@index([ownerId])
+  @@unique([createdById, creationKey])
   @@index([status, visibility, updatedAt])
   @@map("projects")
+}
+
+// Project-level approach belongs to the research plan, not lifecycle or mentor discovery.
+model ResearchPlan {
+  id        String   @id @default(uuid()) @db.Uuid
+  projectId String   @unique @map("project_id") @db.Uuid
+  approach  String   @default("UNDECIDED") @db.VarChar(32)
+  problem String @default("")
+  objectives String[] @default([])
+  questions Json @default("[]")
+  scope String @default("")
+  methodology String @default("")
+  searchStrategy String @default("") @map("search_strategy")
+  deliverables String[] @default([])
+  updatedById String? @map("updated_by_id") @db.Uuid
+  version   Int      @default(1)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("research_plans")
 }
 
 model ProjectMember {
@@ -49,6 +79,10 @@ model ProjectPaper {
   screenedById    String?   @map("screened_by_id") @db.Uuid
   screenedAt      DateTime? @map("screened_at") @db.Timestamptz(6)
   notes           String?
+  tags            String[]  @default([])
+  collectionName  String?   @map("collection_name") @db.VarChar(120)
+  importSource    String    @default("LIBRARY") @map("import_source") @db.VarChar(24)
+  sourceReference String?   @map("source_reference") @db.VarChar(1000)
   createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -70,6 +104,7 @@ model ProjectInvitation {
   status        String    @default("PENDING") @db.VarChar(24)
   expiresAt     DateTime  @map("expires_at") @db.Timestamptz(6)
   respondedAt   DateTime? @map("responded_at") @db.Timestamptz(6)
+  lastSentAt    DateTime  @default(now()) @map("last_sent_at") @db.Timestamptz(6)
   createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -88,10 +123,14 @@ model ProjectActivity {
   entityKind String?  @map("entity_kind") @db.VarChar(32)
   entityId   String?  @map("entity_id") @db.VarChar(64)
   metadata   Json     @default("{}")
+  sourceModule String? @map("source_module") @db.VarChar(32)
+  artifactVersion Int? @map("artifact_version")
+  idempotencyKey String? @map("idempotency_key") @db.VarChar(160)
   createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   @@index([projectId, createdAt])
   @@index([actorId, createdAt])
+  @@unique([projectId, idempotencyKey])
   @@map("project_activities")
 }
 
@@ -171,6 +210,9 @@ model ProjectTeamMessage {
   legacyMongoId String?   @unique @map("legacy_mongo_id") @db.VarChar(24)
   projectId     String    @map("project_id") @db.Uuid
   senderId      String    @map("sender_id") @db.Uuid
+  threadId      String?   @map("thread_id") @db.Uuid
+  replyToId     String?   @map("reply_to_id") @db.Uuid
+  clientKey     String?   @map("client_key") @db.Uuid
   content       String
   isDeleted     Boolean   @default(false) @map("is_deleted")
   deletedAt     DateTime? @map("deleted_at") @db.Timestamptz(6)
@@ -180,6 +222,8 @@ model ProjectTeamMessage {
 
   @@index([projectId, createdAt])
   @@index([projectId, isDeleted, createdAt])
+  @@index([threadId, createdAt, id])
+  @@unique([projectId, senderId, clientKey])
   @@index([senderId])
   @@map("project_team_messages")
 }
@@ -201,6 +245,12 @@ model ProjectContributionProposal {
   contributorId            String    @map("contributor_id") @db.Uuid
   roles                    String[]  @default([])
   description              String
+  title                    String @default("") @db.VarChar(240)
+  source                   String @default("LEGACY") @db.VarChar(24)
+  workDate                 DateTime @default(now()) @map("work_date") @db.Timestamptz(6)
+  version                  Int @default(1)
+  clientKey                String? @map("client_key") @db.Uuid
+  evidenceRefs             Json @default("[]") @map("evidence_refs")
   evidence                 String?
   visibility               String    @default("PUBLIC") @db.VarChar(16)
   status                   String    @default("PENDING_CONFIRMATION") @db.VarChar(32)
@@ -216,6 +266,8 @@ model ProjectContributionProposal {
 
   @@index([projectId, createdAt])
   @@index([contributorId, status])
+  @@unique([projectId, proposedById, clientKey])
+  @@unique([id, projectId])
   @@map("project_contribution_proposals")
 }
 
@@ -225,6 +277,8 @@ model ProjectContributionHistory {
   action     String   @db.VarChar(24)
   actorId    String   @map("actor_id") @db.Uuid
   note       String?
+  version    Int @default(1)
+  snapshot   Json @default("{}")
   createdAt  DateTime @map("created_at") @db.Timestamptz(6)
 
   @@index([proposalId, createdAt])
@@ -695,11 +749,23 @@ model RecruitmentApplication {
 model DraftWorkspace {
   id            String   @id @default(uuid()) @db.Uuid
   legacyMongoId String?  @unique @map("legacy_mongo_id") @db.VarChar(24)
-  projectId     String   @unique @map("project_id") @db.Uuid
+  projectId     String   @map("project_id") @db.Uuid
   name          String   @db.VarChar(160)
   createdById   String   @map("created_by_id") @db.Uuid
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  writingMode   String   @default("LEGACY") @map("writing_mode") @db.VarChar(16)
+  documentType  String   @default("RESEARCH_PAPER") @map("document_type") @db.VarChar(32)
+  template      String   @default("ARTICLE") @db.VarChar(32)
+  description   String   @default("")
+  version       Int      @default(1)
+  mainFileId    String?  @map("main_file_id") @db.Uuid
+  archivedAt    DateTime? @map("archived_at") @db.Timestamptz(6)
+  clientKey     String?  @map("client_key") @db.Uuid
+  researchLink  Json?    @map("research_link")
+
+  @@unique([projectId, createdById, clientKey])
+  @@index([projectId, writingMode, updatedAt])
 
   @@map("draft_workspaces")
 }
