@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import { z } from "zod";
 import { projectContributionService } from "./project-contribution.service.js";
+import { AppError } from "../../common/exceptions/app-error.js";
 
 const projectContributionRoles = [
   "SUPERVISION", "METHODOLOGY", "VALIDATION", "SOFTWARE", "CONCEPTUALIZATION",
@@ -35,28 +36,15 @@ export const projectContributionController = {
     res.json({ success: true, data });
   },
 
-  async propose(req: Request, res: Response) {
-    const data = await projectContributionService.propose(req.params.id as string, req.user!.sub, req.body);
-    res.status(201).json({ success: true, data });
+  async propose(_req: Request, _res: Response) {
+    throw AppError.conflict("Use the revision-controlled work contributions endpoint");
   },
 
-  async confirm(req: Request, res: Response) {
-    const data = await projectContributionService.confirm(
-      req.params.id as string,
-      req.params.proposalId as string,
-      req.user!.sub,
-      req.body,
-    );
-    res.json({ success: true, data });
+  async confirm(_req: Request, _res: Response) {
+    throw AppError.conflict("Use the revision-controlled work acknowledgement endpoint");
   },
 
-  async reject(req: Request, res: Response) {
-    const data = await projectContributionService.reject(
-      req.params.id as string,
-      req.params.proposalId as string,
-      req.user!.sub,
-      req.body,
-    );
-    res.json({ success: true, data });
+  async reject(_req: Request, _res: Response) {
+    throw AppError.conflict("Use the revision-controlled work acknowledgement endpoint");
   },
 };

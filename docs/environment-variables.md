@@ -81,8 +81,7 @@ Users can also save multiple personal API connections in Settings → AI Connect
 | `CREDIT_PRICE_VND` | `EnvSchema` / backend | Default / optional (see template) |
 | `MIN_TOPUP_VND` | `EnvSchema` / backend | Default / optional (see template) |
 | `VITE_API_BASE` | Vite / Docker web build | Default / optional (see template) |
-| `EXPO_PUBLIC_API_BASE` | Mobile launcher | Default / optional (see template) |
-| `API_BASE_URL` | Mobile launcher | Default / optional (see template) |
+| `API_BASE_URL` | Flutter launcher | Default / optional (see template) |
 | `MIGRATION_BATCH_SIZE` | `EnvSchema` / backend | Default / optional (see template) |
 | `CHAT_MAX_PER_HOUR` | `EnvSchema` / backend | Default / optional (see template) |
 | `TEAM_CHAT_MAX_PER_MINUTE` | `EnvSchema` / backend | Default / optional (see template) |
@@ -128,6 +127,8 @@ Users can also save multiple personal API connections in Settings → AI Connect
 | `GAP_SCARCE_PCT` | `EnvSchema` / backend | Default / optional (see template) |
 | `GAP_PARENT_RISING_MIN` | `EnvSchema` / backend | Default / optional (see template) |
 | `GAP_MIN_PARENT_PAPERS` | `EnvSchema` / backend | Default / optional (see template) |
+| `GAP_GLOBAL_EVIDENCE_ENABLED` | `EnvSchema` / backend | Default / optional (default true): also count each gap probe in OpenAlex; a failure only skips the OpenAlex check |
+| `GAP_GLOBAL_EVIDENCE_TIMEOUT_MS` | `EnvSchema` / backend | Default / optional (default 15000): time budget for the three OpenAlex count calls of one probe |
 | `GAP_VALIDATION_QUORUM` | `EnvSchema` / backend | Default / optional (default 2): distinct experts needed to validate or reject a gap |
 | `COMPARE_MAX_PAPERS` | `EnvSchema` / backend | Default / optional (see template) |
 | `COMPARE_PROMPT_VERSION` | `EnvSchema` / backend | Default / optional (see template) |

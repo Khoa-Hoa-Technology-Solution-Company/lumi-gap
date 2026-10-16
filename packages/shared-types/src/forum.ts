@@ -92,7 +92,7 @@ export interface CommunityMember {
 }
 
 export type CommunitySummary =
-  | { status: "completed"; summary: string; postCount: number }
+  | { status: "completed"; summary: string; postCount: number; sources: Array<{ n: number; id: string; title: string; publicSlug?: string }> }
   | { status: "pending" | "none"; postCount: number }
   | { status: "failed"; message: string; postCount: number };
 

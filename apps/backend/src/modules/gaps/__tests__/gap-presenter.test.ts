@@ -252,8 +252,11 @@ describe("sortGapRows", () => {
     row("newest", { evidenceConfidence: 0.2, confidence: 0.2, createdAt: new Date("2026-06-01T00:00:00Z") }),
   ];
 
-  it("ranks by evidence score, falling back to AI confidence", () => {
-    expect(ids(sortGapRows(rows, "recommended", 5))).toEqual(["ai-only", "confirmed", "confident", "newest"]);
+  it("ranks by evidence score and puts unscored gaps last regardless of AI confidence", () => {
+    expect(ids(sortGapRows(rows, "recommended", 5))).toEqual(["confirmed", "confident", "newest", "ai-only"]);
+    const unscored = row("unscored", { evidenceConfidence: null, confidence: 0.9 });
+    const scored = row("scored", { evidenceConfidence: 0.3, confidence: 0.1 });
+    expect(ids(sortGapRows([unscored, scored], "recommended", 5))).toEqual(["scored", "unscored"]);
   });
 
   it("puts confirmed evidence first for the evidence sort", () => {
@@ -265,7 +268,7 @@ describe("sortGapRows", () => {
   });
 
   it("orders by supporting papers, newest first, and AI-only last", () => {
-    expect(ids(sortGapRows(rows, "papers", 5))).toEqual(["confident", "confirmed", "ai-only", "newest"]);
+    expect(ids(sortGapRows(rows, "papers", 5))).toEqual(["confident", "confirmed", "newest", "ai-only"]);
     expect(ids(sortGapRows(rows, "newest", 5))[0]).toBe("newest");
     expect(ids(sortGapRows(rows, "ai_only_last", 5))).toEqual(["confirmed", "confident", "newest", "ai-only"]);
   });
@@ -278,5 +281,56 @@ describe("sortGapRows", () => {
   it("treats a low-sample probe as weak evidence", () => {
     const lowSample = row("low-sample", { evidenceConfidence: 0.9, parentCounts: { a: 1, b: 40 } });
     expect(ids(sortGapRows([lowSample, rows[0]!], "evidence", 5))).toEqual(["confirmed", "low-sample"]);
+  });
+});
+
+describe("counter-evidence and OpenAlex counts", () => {
+  const base = {
+    _id: "gap-9",
+    topic: "AI education",
+    normalizedTopic: "ai education",
+    title: "Counter gap",
+    description: "desc",
+    rationale: "why",
+    supportingPaperIds: ["paper-1"],
+    confidence: 0.7,
+    source: "standalone" as const,
+    userId: "user-1",
+    status: "active" as const,
+    createdAt: new Date("2026-07-01T00:00:00.000Z"),
+  };
+  const papers = new Map([
+    ["paper-1", { id: "paper-1", title: "Supports" }],
+    ["paper-2", { id: "paper-2", title: "Contradicts", publicationYear: 2023 }],
+  ]);
+
+  it("keeps counter papers apart from supporting papers", () => {
+    const item = toGapListItem({ ...base, counterPaperIds: ["paper-2"] }, papers);
+
+    expect(item.counterPaperIds).toEqual(["paper-2"]);
+    expect(item.counterPapers).toEqual([{ id: "paper-2", title: "Contradicts", publicationYear: 2023 }]);
+    expect(item.supportingPapers.map((paper) => paper.id)).toEqual(["paper-1"]);
+  });
+
+  it("has no counter papers by default", () => {
+    const item = toGapListItem(base, papers);
+
+    expect(item.counterPaperIds).toEqual([]);
+    expect(item.counterPapers).toEqual([]);
+  });
+
+  it("passes the OpenAlex counts and the richer parent trend through", () => {
+    const globalEvidence = { source: "openalex" as const, intersectionCount: 4, parentCounts: { a: 900, b: 700 }, yearFrom: 2020, yearTo: 2024, fetchedAt: "2026-10-16T00:00:00.000Z" };
+    const item = toGapListItem({ ...base, globalEvidence, parentTrend: { topic: "AI", growthRatePct: 31.2, cagrPct: 31.2, slope: 4 } }, papers);
+
+    expect(item.globalEvidence).toEqual(globalEvidence);
+    expect(item.parentTrend).toEqual({ topic: "AI", growthRatePct: 31.2, cagrPct: 31.2, slope: 4 });
+  });
+
+  it("reports missing OpenAlex counts as null and keeps the old trend shape", () => {
+    const item = toGapListItem({ ...base, parentTrend: { topic: "AI", growthRatePct: 12 } }, papers);
+
+    expect(item.globalEvidence).toBeNull();
+    expect(item.parentTrend).toEqual({ topic: "AI", growthRatePct: 12 });
   });
 });

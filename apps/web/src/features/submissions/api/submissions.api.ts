@@ -44,7 +44,7 @@ export interface AiPreReview {
   summary?: string;
   goalAlignment?: { assessment: string; evidence_ids: string[] };
   rqCoverage: Array<{ research_question: string; assessment: string; evidence_ids: string[] }>;
-  unsupportedClaims: Array<{ claim: string; reason: string; evidence_ids: string[] }>;
+  unsupportedClaims: Array<{ claim: string; quote?: string; reason: string; evidence_ids: string[] }>;
   citationIssues: string[];
   contributionComparison?: string;
   reviewFocusAreas: string[];

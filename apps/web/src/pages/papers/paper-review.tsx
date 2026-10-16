@@ -23,6 +23,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { papersApi } from "@/features/papers/api/papers.api";
 import { useCreditBalance } from "@/features/credits";
+import { useI18n } from "@/i18n";
+import { ReviewFindings } from "./review-findings";
 
 const CRITERION_LABELS: Record<string, { vi: string; en: string }> = {
   scientific_quality: {
@@ -73,6 +75,7 @@ function parseNumericScore(item: any): number | null {
 }
 
 export function PaperReviewPage() {
+  const { t } = useI18n();
   const [file, setFile] = useState<File | null>(null);
   const [strictness, setStrictness] = useState<"lenient" | "balanced" | "strict">("balanced");
   const [usePersonalKey, setUsePersonalKey] = useState(false);
@@ -189,12 +192,14 @@ export function PaperReviewPage() {
     return "";
   };
 
+  // A null score means the AI marked the criterion "not assessable"; it stays in the list instead of disappearing.
   const numericScores = currentReview?.scores
     ? Object.entries(currentReview.scores).filter(([key, val]) => {
         if (key === "journal_publication" || key === "overall_recommendation") return false;
-        return parseNumericScore(val) !== null;
+        return val === null || parseNumericScore(val) !== null;
       })
     : [];
+  const analysis = currentReview?.analysis;
 
   const journalRecommendation = currentReview?.scores?.journal_publication;
   const strengths = getStrengths();
@@ -441,6 +446,10 @@ export function PaperReviewPage() {
                     </div>
                   )}
 
+                  <p className="mb-4 text-[11px] text-slate-500">{t("AI review is advisory. Check every issue against the manuscript.")}</p>
+
+                  <ReviewFindings issues={analysis?.issues} claims={analysis?.claims} warnings={analysis?.validation_warnings} t={t} />
+
                   {/* Scores Grid */}
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
                     <h3 className="text-sm font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400">
@@ -491,12 +500,14 @@ export function PaperReviewPage() {
                             )}
                           </div>
                           <div className="flex items-baseline justify-between mt-3 pt-2 border-t border-slate-100 dark:border-slate-800">
-                            <div className="flex items-baseline">
-                              <span className="text-2xl font-black text-slate-900 dark:text-white">
-                                {scoreVal !== null ? scoreVal : "—"}
-                              </span>
-                              <span className="text-xs font-semibold text-slate-400 ml-0.5">/5</span>
-                            </div>
+                            {scoreVal === null ? (
+                              <span className="text-xs font-semibold text-slate-500">{t("Not assessable")}</span>
+                            ) : (
+                              <div className="flex items-baseline">
+                                <span className="text-2xl font-black text-slate-900 dark:text-white">{scoreVal}</span>
+                                <span className="text-xs font-semibold text-slate-400 ml-0.5">/5</span>
+                              </div>
+                            )}
                             {scoreVal !== null ? (
                               scoreVal >= 4 ? (
                                 <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">

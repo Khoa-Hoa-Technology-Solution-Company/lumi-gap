@@ -49,9 +49,9 @@ describe("buildDirectionsPrompt", () => {
       } as any,
     ]);
 
-    expect(prompt).toContain("Structured analysis:");
-    expect(prompt).toContain("Future work: Run multi-semester trials");
-    expect(prompt).toContain("Contributions: Reusable evaluation rubric");
+    expect(prompt).toContain("AI-extracted notes");
+    expect(prompt).toContain("Findings: Students revised more deeply");
+    expect(prompt).toContain("Limitations: No longitudinal evaluation");
   });
 });
 

@@ -1,19 +1,20 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import type { IProject, IProjectMember } from "@trend/shared-types";
-import { Mail, Plus, ShieldCheck, Trash2, Users } from "lucide-react";
+import { Mail, MoreHorizontal, Plus, Users } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { useI18n } from "@/i18n";
 import { api } from "@/services/api-client";
 import { useAuthStore } from "@/stores/auth-store";
-import { useCancelProjectInvitation, useInviteProjectMember, useRemoveMemberFromProject, useTransferProjectOwnership } from "../hooks/use-projects";
+import { useCancelProjectInvitation, useResendProjectInvitation, useInviteProjectMember, useRemoveMemberFromProject, useTransferProjectOwnership } from "../hooks/use-projects";
 
 interface SearchUser { id: string; fullName: string | null; email: string; }
 const COLLABORATION_TYPES = ["MEMBER", "MENTOR"] as const;
@@ -38,6 +39,12 @@ export function ProjectMembersTab({ projectId, projectTitle, members, pendingInv
   const [selected, setSelected] = useState<SearchUser | null>(null);
   const [removeId, setRemoveId] = useState<string | null>(null);
   const [transfer, setTransfer] = useState<{ id: string; name: string } | null>(null);
+  const [inviteError, setInviteError] = useState("");
+  const [cancelId, setCancelId] = useState<string | null>(null);
+  const [now, setNow] = useState(Date.now);
+  const submitLock = useRef(false);
+  const resend = useResendProjectInvitation(projectId);
+  useEffect(() => { if (!pendingInvitations?.length) return; const timer = window.setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(timer); }, [pendingInvitations?.length]);
   const invite = useInviteProjectMember(projectId);
   const cancel = useCancelProjectInvitation(projectId);
   const remove = useRemoveMemberFromProject(projectId);
@@ -58,14 +65,18 @@ export function ProjectMembersTab({ projectId, projectTitle, members, pendingInv
   };
   const send = async (event: FormEvent) => {
     event.preventDefault();
-    if (!canManage || kind !== "MEMBER" || (!selected && !email.trim()) || invite.isPending) return;
+    if (!canManage || kind !== "MEMBER" || (!selected && !email.trim()) || invite.isPending || submitLock.current) return;
+    submitLock.current = true; setInviteError("");
     try {
       // The server resolves the selected user's email and prepares the invitation.
       await invite.mutateAsync(selected ? { userId: selected.id } : { email: email.trim() });
       toast.success(t("Invitation sent"));
       setOpen(false);
       reset();
-    } catch { toast.error(t("Could not send the invitation")); }
+    } catch (error) {
+      const status = (error as { response?: { status?: number } }).response?.status;
+      setInviteError(t(status === 409 ? "This person is already a member or has a pending invitation." : "Could not send the invitation. Check the address and try again."));
+    } finally { submitLock.current = false; }
   };
 
   return <div className="space-y-5" data-no-i18n>
@@ -73,7 +84,7 @@ export function ProjectMembersTab({ projectId, projectTitle, members, pendingInv
       <div><h3 className="text-lg font-semibold">{t("Project Members")}</h3><p className="mt-1 text-sm text-muted-foreground">{t("Collaborators join only after accepting an invitation.")}</p></div>
       {canManage && <Dialog open={open} onOpenChange={changeOpen}>
         <DialogTrigger asChild><Button size="sm"><Plus className="mr-2 h-4 w-4" />{t("Invite collaborator")}</Button></DialogTrigger>
-        <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg" data-no-i18n>
+        <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg" closeLabel={t("Close")} data-no-i18n>
           <DialogHeader><DialogTitle>{t("Invite collaborator")}</DialogTitle><DialogDescription>{t("Choose how this person will collaborate on the project.")}</DialogDescription></DialogHeader>
           <fieldset disabled={invite.isPending} className="space-y-2">
             <legend className="mb-2 text-sm font-medium">{t("Collaboration type")}</legend>
@@ -96,7 +107,7 @@ export function ProjectMembersTab({ projectId, projectTitle, members, pendingInv
                 {email.trim().length >= 2 && <div className="space-y-1 rounded-md border bg-background p-1">
                   {queryEmail !== email.trim() || search.isFetching ? <p className="p-2 text-xs text-muted-foreground" role="status">{t("Searching...")}</p>
                     : search.isError ? <p className="p-2 text-xs text-muted-foreground">{t("Could not search users. You can still invite by email.")}</p>
-                    : search.data?.length ? <ul aria-label={t("Matching users")}>{search.data.map(user => <li key={user.id}><button type="button" disabled={memberIds.has(user.id)} className="w-full rounded p-2 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:opacity-60" onClick={() => setSelected(user)}><span className="block text-sm font-medium">{user.fullName || user.email}</span><span className="block text-xs text-muted-foreground">{user.email}{memberIds.has(user.id) ? ` · ${t("Already a project member")}` : ""}</span></button></li>)}</ul>
+                    : search.data?.length ? <ul aria-label={t("Matching users")}>{search.data.map(user => <li key={user.id}><button type="button" disabled={memberIds.has(user.id)} className="w-full rounded p-2 text-left hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:opacity-60" onClick={() => setSelected(user)}><span className="block break-words text-sm font-medium">{user.fullName || user.email}</span><span className="block break-all text-xs text-muted-foreground">{user.email}{memberIds.has(user.id) ? ` · ${t("Already a project member")}` : ""}</span></button></li>)}</ul>
                     : <p className="p-2 text-xs text-muted-foreground">{t("No account found. You can invite this email address.")}</p>}
                 </div>}
               </>}
@@ -105,10 +116,11 @@ export function ProjectMembersTab({ projectId, projectTitle, members, pendingInv
             <section className="space-y-2 rounded-lg border bg-muted/30 p-3" aria-label={t("Invitation email")}>
               <h4 className="flex items-center gap-2 text-sm font-medium"><Mail className="h-4 w-4 text-primary" />{t("Invitation email")}</h4>
               <p className="text-xs leading-5 text-muted-foreground">{t("LumiGap prepares the invitation email automatically. No message is required.")}</p>
-              <p className="break-words text-sm leading-6">{t("{{name}} invites you to collaborate on {{project}}.", { name: inviter?.fullName || t("Project owner"), project: projectTitle })}</p>
+              <p className="break-all text-sm leading-6">{t("{{name}} invites you to collaborate on {{project}}.", { name: inviter?.fullName || t("Project owner"), project: projectTitle })}</p>
               <p className="text-xs leading-5">{t("Project role")}: <span className="font-medium">{t("Member")}</span></p>
               <p className="text-xs leading-5 text-muted-foreground">{t("The email includes a secure invitation link. They join only after accepting in LumiGap.")}</p>
             </section>
+            {inviteError ? <p role="alert" className="text-sm text-destructive">{inviteError}</p> : null}
             <DialogFooter><Button type="button" variant="outline" disabled={invite.isPending} onClick={() => changeOpen(false)}>{t("Cancel")}</Button><Button type="submit" disabled={invite.isPending || (!selected && !email.trim())}>{t(invite.isPending ? "Sending..." : "Send invitation")}</Button></DialogFooter>
           </form>}
         </DialogContent>
@@ -117,27 +129,34 @@ export function ProjectMembersTab({ projectId, projectTitle, members, pendingInv
 
     {isOwner && Boolean(pendingInvitations?.length) && <section className="space-y-2">
       <h4 className="text-sm font-semibold">{t("Pending invitations")}</h4><p className="text-xs text-muted-foreground">{t("Invitations expire automatically after 7 days.")}</p>
-      <div className="divide-y rounded-lg border">{pendingInvitations?.map(invitation => <div key={invitation.id} className="flex flex-wrap items-center justify-between gap-3 p-3">
-        <div className="min-w-0"><p className="break-words text-sm font-medium">{invitation.invitedUser?.fullName || invitation.email}</p><p className="break-words text-xs text-muted-foreground">{invitation.email} · {t("Invite expires")}: {new Date(invitation.expiresAt).toLocaleDateString(language)}</p></div>
-        {canManage ? <Button size="sm" variant="outline" disabled={cancel.isPending} onClick={async () => { try { await cancel.mutateAsync(invitation.id); toast.success(t("Invitation cancelled")); } catch { toast.error(t("Could not cancel invitation")); } }}>{t("Cancel invitation")}</Button> : null}
+      <div className="divide-y border-y">{pendingInvitations?.map(invitation => <div key={invitation.id} className="flex flex-wrap items-center justify-between gap-3 p-3">
+        <div className="min-w-0"><p className="break-all text-sm font-medium">{invitation.invitedUser?.fullName || invitation.email}</p><p className="break-all text-xs text-muted-foreground">{invitation.email} · {t("Invite expires")}: {new Date(invitation.expiresAt).toLocaleDateString(language)}</p></div>
+        {canManage ? <div className="flex shrink-0 items-center gap-2">
+          {invitation.resendAvailableAt && new Date(invitation.resendAvailableAt).getTime() > now ? <span className="text-xs text-muted-foreground">{t("Resend in {{seconds}}s", { seconds: Math.ceil((new Date(invitation.resendAvailableAt).getTime() - now) / 1000) })}</span> : null}
+          <DropdownMenu><DropdownMenuTrigger asChild><Button type="button" size="icon" variant="ghost" aria-label={t("Invitation actions for {{email}}", { email: invitation.email })}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end">
+            <DropdownMenuItem disabled={resend.isPending || Boolean(invitation.resendAvailableAt && new Date(invitation.resendAvailableAt).getTime() > now)} onSelect={() => { void resend.mutateAsync(invitation.id).then(() => toast.success(t("Invitation resent"))).catch(() => toast.error(t("Could not resend invitation. Please wait and try again."))); }}>{t("Resend invitation")}</DropdownMenuItem>
+            <DropdownMenuSeparator /><DropdownMenuItem className="text-destructive" onSelect={() => setCancelId(invitation.id)}>{t("Cancel invitation")}</DropdownMenuItem>
+          </DropdownMenuContent></DropdownMenu>
+        </div> : null}
       </div>)}</div>
     </section>}
 
-    {!members.length ? <p className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">{t("Invite researchers to collaborate on this project.")}</p> : <ul className="grid gap-3 md:grid-cols-2">
+    {!members.length ? <p className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">{t("Invite researchers to collaborate on this project.")}</p> : <ul className="divide-y border-y">
       {members.map(member => {
         const user = typeof member.targetId === "string" ? null : member.targetId;
         const id = user?._id ?? String(member.targetId);
         const primaryOwner = id === ownerId;
         const name = user?.fullName || t("Unknown User");
-        return <li key={id} className="flex items-start gap-3 rounded-lg border bg-card p-4">
+        return <li key={id} className="flex min-w-0 items-center gap-3 py-4">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 font-semibold text-primary" aria-hidden="true">{user?.fullName?.trim().charAt(0) || <Users className="h-4 w-4" />}</div>
           <div className="min-w-0 flex-1"><Link to={`/academics/${encodeURIComponent(id)}`} className="block truncate text-sm font-semibold hover:underline">{name}</Link><p className="mt-1 break-all text-xs text-muted-foreground">{user?.email}</p><Badge variant={primaryOwner ? "secondary" : "outline"} className="mt-2 font-medium">{t(primaryOwner ? "Project owner" : "Member")}</Badge></div>
-          {canManage && !primaryOwner && <div className="flex shrink-0 gap-1"><Button type="button" variant="ghost" size="icon" title={t("Transfer ownership")} aria-label={t("Transfer ownership")} disabled={transferOwnership.isPending} className="h-8 w-8" onClick={() => setTransfer({ id, name })}><ShieldCheck className="h-4 w-4" /></Button><Button type="button" variant="ghost" size="icon" title={t("Remove member")} aria-label={t("Remove member")} className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => setRemoveId(id)}><Trash2 className="h-4 w-4" /></Button></div>}
+          {canManage && !primaryOwner && <DropdownMenu><DropdownMenuTrigger asChild><Button type="button" variant="ghost" size="icon" aria-label={t("Member actions for {{name}}", { name })}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem disabled={transferOwnership.isPending} onSelect={() => setTransfer({ id, name })}>{t("Transfer ownership")}</DropdownMenuItem><DropdownMenuSeparator /><DropdownMenuItem className="text-destructive" onSelect={() => setRemoveId(id)}>{t("Remove member")}</DropdownMenuItem></DropdownMenuContent></DropdownMenu>}
         </li>;
       })}
     </ul>}
 
-    <Dialog open={canManage && Boolean(removeId)} onOpenChange={next => { if (!next && !remove.isPending) setRemoveId(null); }}><DialogContent data-no-i18n><DialogHeader><DialogTitle>{t("Remove Member")}</DialogTitle><DialogDescription>{t("Are you sure you want to remove this member? They will lose permissions to add papers and generate reports.")}</DialogDescription></DialogHeader><DialogFooter><Button type="button" variant="outline" disabled={remove.isPending} onClick={() => setRemoveId(null)}>{t("Cancel")}</Button><Button type="button" variant="destructive" disabled={remove.isPending} onClick={async () => { if (!removeId) return; try { await remove.mutateAsync(removeId); toast.success(t("Member removed")); setRemoveId(null); } catch { toast.error(t("Failed to remove member")); } }}>{t(remove.isPending ? "Removing..." : "Remove")}</Button></DialogFooter></DialogContent></Dialog>
-    <Dialog open={canManage && Boolean(transfer)} onOpenChange={next => { if (!next && !transferOwnership.isPending) setTransfer(null); }}><DialogContent data-no-i18n><DialogHeader><DialogTitle>{t("Transfer project ownership?")}</DialogTitle><DialogDescription>{transfer ? t("{{name}} will become the project owner. You will become a regular member and lose owner-only controls.", { name: transfer.name }) : null}</DialogDescription></DialogHeader><DialogFooter><Button type="button" variant="outline" disabled={transferOwnership.isPending} onClick={() => setTransfer(null)}>{t("Cancel")}</Button><Button type="button" disabled={transferOwnership.isPending} onClick={async () => { if (!transfer) return; try { await transferOwnership.mutateAsync(transfer.id); toast.success(t("Ownership transferred")); setTransfer(null); } catch { toast.error(t("Could not transfer ownership")); } }}>{t(transferOwnership.isPending ? "Transferring…" : "Transfer ownership")}</Button></DialogFooter></DialogContent></Dialog>
+    <Dialog open={canManage && Boolean(cancelId)} onOpenChange={next => { if (!next && !cancel.isPending) setCancelId(null); }}><DialogContent closeLabel={t("Close")} data-no-i18n><DialogHeader><DialogTitle>{t("Cancel this invitation?")}</DialogTitle><DialogDescription>{t("The recipient will no longer be able to join with this invitation.")}</DialogDescription></DialogHeader><DialogFooter><Button type="button" variant="outline" disabled={cancel.isPending} onClick={() => setCancelId(null)}>{t("Keep invitation")}</Button><Button type="button" variant="destructive" disabled={cancel.isPending} onClick={() => { if (cancelId) void cancel.mutateAsync(cancelId).then(() => { setCancelId(null); toast.success(t("Invitation cancelled")); }).catch(() => toast.error(t("Could not cancel invitation"))); }}>{t("Cancel invitation")}</Button></DialogFooter></DialogContent></Dialog>
+    <Dialog open={canManage && Boolean(removeId)} onOpenChange={next => { if (!next && !remove.isPending) setRemoveId(null); }}><DialogContent closeLabel={t("Close")} data-no-i18n><DialogHeader><DialogTitle>{t("Remove Member")}</DialogTitle><DialogDescription>{t("Are you sure you want to remove this member? They will lose permissions to add papers and generate reports.")}</DialogDescription></DialogHeader><DialogFooter><Button type="button" variant="outline" disabled={remove.isPending} onClick={() => setRemoveId(null)}>{t("Cancel")}</Button><Button type="button" variant="destructive" disabled={remove.isPending} onClick={async () => { if (!removeId) return; try { await remove.mutateAsync(removeId); toast.success(t("Member removed")); setRemoveId(null); } catch { toast.error(t("Failed to remove member")); } }}>{t(remove.isPending ? "Removing..." : "Remove")}</Button></DialogFooter></DialogContent></Dialog>
+    <Dialog open={canManage && Boolean(transfer)} onOpenChange={next => { if (!next && !transferOwnership.isPending) setTransfer(null); }}><DialogContent closeLabel={t("Close")} data-no-i18n><DialogHeader><DialogTitle>{t("Transfer project ownership?")}</DialogTitle><DialogDescription>{transfer ? t("{{name}} will become the project owner. You will become a regular member and lose owner-only controls.", { name: transfer.name }) : null}</DialogDescription></DialogHeader><DialogFooter><Button type="button" variant="outline" disabled={transferOwnership.isPending} onClick={() => setTransfer(null)}>{t("Cancel")}</Button><Button type="button" disabled={transferOwnership.isPending} onClick={async () => { if (!transfer) return; try { await transferOwnership.mutateAsync(transfer.id); toast.success(t("Ownership transferred")); setTransfer(null); } catch { toast.error(t("Could not transfer ownership")); } }}>{t(transferOwnership.isPending ? "Transferring…" : "Transfer ownership")}</Button></DialogFooter></DialogContent></Dialog>
   </div>;
 }

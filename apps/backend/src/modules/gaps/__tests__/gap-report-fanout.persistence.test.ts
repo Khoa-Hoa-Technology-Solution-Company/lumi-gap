@@ -3,6 +3,8 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { getPrisma } from "../../../infrastructure/database/prisma.js";
 import { gapsService } from "../gaps.service.js";
 
+// Never reach OpenAlex from tests.
+vi.mock("../gap-global-evidence.js", () => ({ countOpenAlexIntersection: vi.fn().mockResolvedValue(null) }));
 // Never enqueue real jobs from tests.
 vi.mock("../../../infrastructure/queue.js", () => ({ gapsQueue: { add: vi.fn().mockResolvedValue(undefined) } }));
 
@@ -72,6 +74,37 @@ describe.sequential("fan-out of report gaps into research gaps (PostgreSQL)", ()
     expect(gaps.every((gap) => gap.intersectionCount === 3)).toBe(true);
     const links = await prisma.researchGapPaper.findMany({ where: { gapId: { in: gaps.map((gap) => gap.id) }, kind: "evidence" } });
     expect(links).toHaveLength(2 * paperIds.length);
+  });
+
+  it("keeps a probe whose second topic occurs only in a grounding paper that is not cited", async () => {
+    const onlyB = `onlyb${m}k`;
+    const extra = await prisma.paper.create({ data: { title: `Fan-out extra ${m}`, abstractText: `Mentions ${onlyB} alone.`, publicationYear: 2024, primaryProvider: "user", dataStatus: "active" } });
+    paperIds.push(extra.id);
+    const report = await prisma.report.create({
+      data: { userId, query: `fanout keep ${m}`, status: "ready", researchGapSnapshots: [{ ...snapshot("Rare intersection"), supportingPaperIds: [paperIds[0]], probe: { topicA, topicB: onlyB } }] as never },
+    });
+    reportIds.push(report.id);
+    await prisma.reportPaper.createMany({ data: [...paperIds].map((paperId, position) => ({ reportId: report.id, paperId, kind: "grounding", position })) });
+
+    await gapsService.fanOutGapsFromReport({ reportId: report.id });
+
+    const [gap] = await gapsOf(report.id);
+    expect(gap!.probe).toEqual({ topicA, topicB: onlyB });
+  });
+
+  it("drops a report probe whose topic is in none of the evidence papers", async () => {
+    const report = await prisma.report.create({
+      data: { userId, query: `fanout drop ${m}`, status: "ready", researchGapSnapshots: [{ ...snapshot("Invented probe gap"), probe: { topicA, topicB: `inventedtopic${m}k` } }] as never },
+    });
+    reportIds.push(report.id);
+    await prisma.reportPaper.createMany({ data: paperIds.map((paperId, position) => ({ reportId: report.id, paperId, kind: "grounding", position })) });
+
+    await gapsService.fanOutGapsFromReport({ reportId: report.id });
+
+    const [gap] = await gapsOf(report.id);
+    expect(gap!.probe).toBeNull();
+    expect(gap!.intersectionCount).toBeNull();
+    expect(gap!.globalEvidence).toBeNull();
   });
 
   it("creates nothing for a report that is not ready", async () => {

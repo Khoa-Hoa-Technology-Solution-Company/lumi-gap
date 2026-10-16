@@ -9,7 +9,6 @@ import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { tokenService, type AccessTokenClaims } from "../../modules/auth/token.service.js";
 import { withUserAi } from "../../modules/user-ai/user-ai.runtime.js";
 import { assertResearchWorkflowAccess } from "../../modules/authorization/research-access.service.js";
-import { capabilityService } from "../../modules/authorization/capability.service.js";
 
 export interface AuthClaims extends AccessTokenClaims {
   role: UserRole;
@@ -40,10 +39,7 @@ async function hydrateClaims(claims: AccessTokenClaims): Promise<AuthClaims | nu
     select: { id: true },
   });
   if (!activeSession) return null;
-  const [profile, capabilityRows] = await Promise.all([
-    prisma.academicProfile.findUnique({ where: { userId: user.id }, select: { primaryPosition: true } }),
-    capabilityService.list(user.id),
-  ]);
+  const profile = await prisma.academicProfile.findUnique({ where: { userId: user.id }, select: { primaryPosition: true } });
   return {
     ...claims,
     systemRole: user.systemRole as SystemRole,
@@ -51,13 +47,18 @@ async function hydrateClaims(claims: AccessTokenClaims): Promise<AuthClaims | nu
     role: isAdminSystemRole(user.systemRole) ? "admin" : "user",
     academicProfileType: user.academicProfileType as AcademicProfileType | null ?? undefined,
     primaryPosition: profile?.primaryPosition as PrimaryPosition | null ?? undefined,
-    capabilities: capabilityRows,
   };
 }
 
 function bearerToken(req: Request): string | null {
   const header = req.headers.authorization;
   return header?.startsWith("Bearer ") ? header.slice("Bearer ".length) : null;
+}
+
+/** Long-lived streams must recheck both token expiry and the current session. */
+export async function assertLiveRequestSession(req: Pick<Request, "headers">): Promise<void> {
+  const token = req.headers.authorization?.startsWith("Bearer ") ? req.headers.authorization.slice(7) : null;
+  if (!token || !await hydrateClaims(tokenService.verifyAccessToken(token))) throw AppError.unauthorized("Account or session is no longer active");
 }
 
 export async function requireAuth(req: Request, _res: Response, next: NextFunction): Promise<void> {

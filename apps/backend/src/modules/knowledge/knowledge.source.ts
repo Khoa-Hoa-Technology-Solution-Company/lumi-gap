@@ -77,19 +77,20 @@ export async function extractPdfPages(buffer: Buffer) {
   return result;
 }
 
+export async function readStoredPdf(uri: string): Promise<Buffer> {
+  const local = pdfStorageService.resolveLocalPath(uri);
+  if (local) {
+    if ((await fs.stat(local)).size > MAX_PDF_BYTES) throw new Error("Stored PDF exceeds 25 MiB");
+    return fs.readFile(local);
+  }
+  const url = await pdfStorageService.getSignedDownloadUrl(uri);
+  if (!url) throw new Error("Stored PDF cannot be resolved");
+  return downloadPublicPdf(url);
+}
+
 export async function loadPaperSource(paper: { pdfPath: string | null; openAccessUrl: string | null; abstractText: string | null }): Promise<{ pages: SourcePage[]; pageCount: number; sourceKind: string; warnings: string[] }> {
   if (paper.pdfPath) {
-    const local = pdfStorageService.resolveLocalPath(paper.pdfPath);
-    let buffer: Buffer;
-    if (local) {
-      if ((await fs.stat(local)).size > MAX_PDF_BYTES) throw new Error("Stored PDF exceeds 25 MiB");
-      buffer = await fs.readFile(local);
-    } else {
-      const url = await pdfStorageService.getSignedDownloadUrl(paper.pdfPath);
-      if (!url) throw new Error("Stored PDF cannot be resolved");
-      buffer = await downloadPublicPdf(url);
-    }
-    return { ...await extractPdfPages(buffer), sourceKind: "uploaded_pdf" };
+    return { ...await extractPdfPages(await readStoredPdf(paper.pdfPath)), sourceKind: "uploaded_pdf" };
   }
   const warnings: string[] = [];
   if (paper.openAccessUrl) {

@@ -14,13 +14,7 @@ expand({ ...result, processEnv: values });
 const [target, ...args] = process.argv.slice(2);
 let child;
 let cleanup = () => {};
-if (target === "expo") {
-  const publicEnv = Object.fromEntries(Object.entries(values).filter(([key]) => key.startsWith("EXPO_PUBLIC_")));
-  child = spawn(process.execPath, [resolve(root, "node_modules/expo/bin/cli"), "start", ...args], {
-    cwd: resolve(root, "apps/mobile"), stdio: "inherit",
-    env: { ...publicEnv, ...process.env, EXPO_NO_DOTENV: "1" },
-  });
-} else if (target === "flutter") {
+if (target === "flutter") {
   const apiBase = process.env.API_BASE_URL ?? values.API_BASE_URL;
   if (!apiBase || !/^https?:\/\//.test(apiBase)) throw new Error("Set API_BASE_URL in root .env to an HTTP(S) API URL.");
   // A temporary JSON holds only the public URL. Avoid shell interpolation of
@@ -33,7 +27,7 @@ if (target === "expo") {
     cwd: resolve(root, "apps/flutter_mobile"), stdio: "inherit",
   });
 } else {
-  throw new Error("Usage: node scripts/run-mobile.mjs expo|flutter [arguments]");
+  throw new Error("Usage: node scripts/run-mobile.mjs flutter [arguments]");
 }
 child.on("error", (error) => { console.error(error.message); process.exitCode = 1; });
 child.on("exit", (code) => { process.exitCode = code ?? 1; });

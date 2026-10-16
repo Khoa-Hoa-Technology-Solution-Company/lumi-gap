@@ -1,3 +1,6 @@
+import { researchWorkflowVi } from "./research-workflow";
+import { contributionsVi } from "./project-contributions";
+import { manuscriptsVi } from "./manuscripts";
 import { en } from "./en";
 import { gapEvidenceWorkflowViStrings } from "./gap-evidence-workflow";
 import { paperDetailIaViStrings } from "./paper-detail-ia";
@@ -23,6 +26,9 @@ import { trendVerdictViStrings } from "./trend-verdict";
 
 export const vi: Record<keyof typeof en, string> = {
   ...en,
+  ...manuscriptsVi,
+  ...researchWorkflowVi,
+  ...contributionsVi,
   ...trustSafetyRagViStrings,
   ...trendEvidenceViStrings,
   ...trendVerdictViStrings,
@@ -2377,6 +2383,30 @@ export const vi: Record<keyof typeof en, string> = {
   "Load More": "Load More",
   "Loading...": "Loading...",
   "AI weekly summary": "Tóm tắt tuần bằng AI",
+  "Issues": "Vấn đề",
+  "Unsupported claims": "Luận điểm chưa được chứng minh",
+  "Citation issues": "Vấn đề trích dẫn",
+  "Contribution comparison": "So sánh đóng góp",
+  "AI suggestion — verify": "Gợi ý của AI — cần kiểm chứng",
+  "Claims": "Luận điểm",
+  "Recommendation": "Khuyến nghị",
+  "Not assessable": "Không đánh giá được",
+  "p.": "tr.",
+  "critical": "nghiêm trọng",
+  "high": "cao",
+  "medium": "trung bình",
+  "low": "thấp",
+  "Confirmed issue": "Vấn đề đã xác nhận",
+  "Potential issue": "Vấn đề tiềm ẩn",
+  "Missing information": "Thiếu thông tin",
+  "Reviewer suggestion": "Gợi ý của reviewer",
+  "Supported": "Được chứng minh",
+  "Partially Supported": "Chứng minh một phần",
+  "Unsupported": "Chưa được chứng minh",
+  "Cannot Assess": "Không đánh giá được",
+  "Some AI quotes could not be verified against the PDF and were removed.": "Một số trích dẫn của AI không đối chiếu được với PDF nên đã bị loại.",
+  "AI review is advisory. Check every issue against the manuscript.": "Đánh giá của AI chỉ mang tính tham khảo. Hãy đối chiếu từng vấn đề với bản thảo.",
+  "AI summary — check the linked posts": "Tóm tắt do AI tạo — hãy kiểm tra các bài viết được liên kết",
   "Could not request a summary.": "Không thể yêu cầu tóm tắt.",
   "No discussions in the last 7 days to summarize.": "Không có thảo luận nào trong 7 ngày qua để tóm tắt.",
   "Summarizing…": "Đang tóm tắt…",

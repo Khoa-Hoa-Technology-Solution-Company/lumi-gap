@@ -12,7 +12,8 @@ import {
   LlmContentError,
 } from "../llm/gemini.client.js";
 import { buildLlmCacheKey, cachedGenerate } from "../llm/llm.run.js";
-import { assertCitationsInRange as assertGroundedCitationsInRange } from "../llm/grounding.js";
+import { assertCitationsInRange as assertGroundedCitationsInRange, citationCoverage, collectAllowedNumbers, findUnsupportedNumbers } from "../llm/grounding.js";
+import { trendService } from "../trends/trend.service.js";
 import { MCP_TOOL_DEFS } from "../mcp/mcp.tools.js";
 import { executeMcpTool } from "../mcp/mcp.executor.js";
 import { notificationService } from "../notifications/notification.service.js";
@@ -26,6 +27,7 @@ import {
   type EvidencePaper,
   type ReportLanguage,
   type ReportLlmOutput,
+  type ReportTrendMetrics,
 } from "./report.prompt.js";
 
 const DEEP_ANALYSIS_SYSTEM_PROMPT = [
@@ -41,6 +43,19 @@ const DEEP_ANALYSIS_SYSTEM_PROMPT = [
 
 export interface ReportJob {
   reportId: string;
+}
+
+/** Deterministic trend figures for the report topic, or undefined when the corpus has no such topic (never fails the report). */
+async function loadReportTrendMetrics(report: { id: string; query: string; topic: string | null; yearFrom: number | null; yearTo: number | null }): Promise<ReportTrendMetrics | undefined> {
+  const topic = report.topic ?? report.query;
+  try {
+    const detail = await trendService.topic(topic, { yearFrom: report.yearFrom ?? undefined, yearTo: report.yearTo ?? undefined });
+    const years = detail.yearlyBreakdown.map((row) => row.year);
+    return { topic, yearFrom: Math.min(...years), yearTo: Math.max(...years), lastCompleteYear: detail.lastCompleteYear, totalPapers: detail.totalPapers, yearlyBreakdown: detail.yearlyBreakdown, growthRatePct: detail.growthRatePct, cagr3yPct: detail.cagr3yPct, momentum: detail.momentum };
+  } catch (err) {
+    logger.debug({ err, reportId: report.id, topic }, "no trend metrics for the report topic");
+    return undefined;
+  }
 }
 
 /**
@@ -115,9 +130,11 @@ export async function runRagPipeline(job: ReportJob): Promise<void> {
     !report.deepAnalysis && report.fast ? aiModel() : aiModel("deep");
   const language = (report.language ?? "auto") as ReportLanguage;
   const resolvedLanguage = resolveReportLanguage(language, report.query, report.topic ?? undefined);
+  const trendMetrics = await loadReportTrendMetrics(report);
   const prompt = buildReportPrompt(report.query, papers, {
     topic: report.topic ?? undefined,
     language,
+    trendMetrics,
   });
   logger.info(
     {
@@ -242,6 +259,12 @@ export async function runRagPipeline(job: ReportJob): Promise<void> {
   });
   const llmMs = Date.now() - t2;
 
+  // Soft grounding checks: they are recorded and logged, never a reason to fail (and re-charge) the report.
+  const allowedNumbers = collectAllowedNumbers([trendMetrics, papers.map((paper) => [paper.title, paper.abstractText, paper.aiAnalysis, paper.knowledgeEvidence, paper.publicationYear, paper.citationCount])]);
+  const unsupportedPercents = findUnsupportedNumbers(output.markdown, allowedNumbers, { onlyPercent: true });
+  const groundingChecks = { version: 1, citationCoverage: citationCoverage(output.markdown), unsupportedPercents: unsupportedPercents.slice(0, 20), trendMetricsProvided: Boolean(trendMetrics) };
+  if (unsupportedPercents.length) logger.warn({ reportId: publicDatabaseId(report), unsupportedPercents }, "report states percentages not found in evidence or trend metrics");
+
   // ⑥ Persist the finished report.
   const researchGaps = (output.gaps ?? []).slice(0, 6).map((g) => ({
       title: String(g.title ?? "").slice(0, 200),
@@ -251,11 +274,11 @@ export async function runRagPipeline(job: ReportJob): Promise<void> {
       supportingPaperIds: (g.supportingEvidence ?? [])
         .filter((n) => Number.isInteger(n) && n >= 1 && n <= papers.length)
         .map((n) => papers[n - 1]!.id),
-      confidence: clamp01(g.confidence),
+      confidence: 0,
       probe: normalizeProbe(g.probe),
     }));
   await getPrisma().$transaction(async (tx) => {
-    await tx.report.update({ where: { id: report.id }, data: { markdown: output.markdown, researchGapSnapshots: researchGaps as never, modelVersion: model, promptVersion: PROMPT_VERSION, cacheKey: effectiveCacheKey, status: "ready", completedAt: new Date(), errorMessage: null } });
+    await tx.report.update({ where: { id: report.id }, data: { markdown: output.markdown, researchGapSnapshots: researchGaps as never, modelVersion: model, promptVersion: PROMPT_VERSION, cacheKey: effectiveCacheKey, groundingChecks: groundingChecks as never, status: "ready", completedAt: new Date(), errorMessage: null } });
     await tx.reportPaper.deleteMany({ where: { reportId: report.id, kind: "grounding" } });
     const resolved = await Promise.all(papers.map(async (paper) => { const parsed = parseDatabaseId(paper.id); if (!parsed) return null; return getPrisma().paper.findUnique({ where: parsed.kind === "uuid" ? { id: parsed.value } : { legacyMongoId: parsed.value }, select: { id: true } }); }));
     await tx.reportPaper.createMany({ data: resolved.flatMap((paper, position) => paper ? [{ reportId: report.id, paperId: paper.id, kind: "grounding", position }] : []), skipDuplicates: true });
@@ -375,12 +398,6 @@ async function auditRagRun(
   } catch (err) {
     logger.warn({ err }, "rag audit write failed (non-fatal)");
   }
-}
-
-function clamp01(x: unknown): number {
-  const n = Number(x);
-  if (!Number.isFinite(n)) return 0.5;
-  return Math.max(0, Math.min(1, n));
 }
 
 function normalizeProbe(raw: unknown):

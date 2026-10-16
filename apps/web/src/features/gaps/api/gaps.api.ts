@@ -47,6 +47,7 @@ export const gapsApi = {
   },
 
   async list(params?: {
+    assessmentStatus?: import("@trend/shared-types").GapAssessment;
     topic?: string;
     search?: string;
     minConfidence?: number;

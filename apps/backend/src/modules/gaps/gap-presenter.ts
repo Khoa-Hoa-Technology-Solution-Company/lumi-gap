@@ -1,5 +1,6 @@
 import type {
   GapEvidenceStatus,
+  GapGlobalEvidence,
   GapProjectEvidence,
   GapSource,
   GapStatus,
@@ -20,6 +21,8 @@ export interface GapAccessProject {
 }
 
 export interface GapListDoc {
+  version?: number;
+  assessmentStatus?: ResearchGapItem["assessmentStatus"];
   _id: IdLike;
   topic: string;
   normalizedTopic: string;
@@ -28,11 +31,13 @@ export interface GapListDoc {
   rationale: string;
   evidencePaperIds?: IdLike[];
   supportingPaperIds?: IdLike[];
+  counterPaperIds?: IdLike[];
   confidence: number;
   probe?: { topicA?: string; topicB?: string; yearFrom?: number; yearTo?: number };
   intersectionCount?: number;
   parentCounts?: { a?: number; b?: number };
-  parentTrend?: { topic?: string; growthRatePct?: number } | null;
+  parentTrend?: { topic?: string; growthRatePct?: number; cagrPct?: number | null; slope?: number } | null;
+  globalEvidence?: GapGlobalEvidence | null;
   evidenceConfidence?: number;
   evidenceScopeSize?: number;
   projectEvidence?: GapProjectEvidence;
@@ -101,9 +106,9 @@ export interface GapSortRow {
 
 const EVIDENCE_RANK: Record<GapEvidenceStatus, number> = { confirmed: 2, weak: 1, ai_only: 0 };
 
-/** Corpus evidence score when the gap was scored, otherwise the AI's self-reported confidence. */
+/** Corpus evidence score; unscored gaps rank last (0). */
 export function gapRankingScore(row: Pick<GapSortRow, "confidence" | "evidenceConfidence">): number {
-  return row.evidenceConfidence ?? row.confidence;
+  return row.evidenceConfidence ?? 0;
 }
 
 /** Orders gaps for every list sort option; ties fall back to newest first. */
@@ -134,6 +139,7 @@ export function toGapListItem(
 ): ResearchGapItem {
   const lowSample = options.minParentPapers !== undefined ? isGapLowSample(doc, options.minParentPapers) : undefined;
   const supportingPaperIds = (doc.supportingPaperIds ?? []).map(String);
+  const counterPaperIds = (doc.counterPaperIds ?? []).map(String);
   const evidencePaperIds = (doc.evidencePaperIds?.length
     ? doc.evidencePaperIds
     : doc.supportingPaperIds ?? []
@@ -142,6 +148,8 @@ export function toGapListItem(
 
   return {
     id: String(doc._id),
+    version: doc.version,
+    assessmentStatus: doc.assessmentStatus,
     topic: doc.topic,
     normalizedTopic: doc.normalizedTopic,
     title: doc.title,
@@ -149,6 +157,10 @@ export function toGapListItem(
     rationale: doc.rationale,
     supportingPaperIds,
     supportingPapers: supportingPaperIds
+      .map((id) => supportingPapersById.get(id))
+      .filter((paper): paper is GapSupportingPaper => Boolean(paper)),
+    counterPaperIds,
+    counterPapers: counterPaperIds
       .map((id) => supportingPapersById.get(id))
       .filter((paper): paper is GapSupportingPaper => Boolean(paper)),
     evidencePaperIds,
@@ -179,10 +191,16 @@ export function toGapListItem(
         : undefined,
     parentTrend:
       doc.parentTrend?.topic && doc.parentTrend.growthRatePct !== undefined
-        ? { topic: doc.parentTrend.topic, growthRatePct: doc.parentTrend.growthRatePct }
+        ? {
+            topic: doc.parentTrend.topic,
+            growthRatePct: doc.parentTrend.growthRatePct,
+            ...(doc.parentTrend.cagrPct !== undefined ? { cagrPct: doc.parentTrend.cagrPct } : {}),
+            ...(doc.parentTrend.slope !== undefined ? { slope: doc.parentTrend.slope } : {}),
+          }
         : doc.parentTrend === null
           ? null
           : undefined,
+    globalEvidence: doc.globalEvidence ?? null,
     evidenceConfidence: doc.evidenceConfidence,
     evidenceScopeSize: doc.evidenceScopeSize,
     projectEvidence: doc.projectEvidence,

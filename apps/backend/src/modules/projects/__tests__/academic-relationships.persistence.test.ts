@@ -1,3 +1,4 @@
+import { createProjectFixture } from "../../../test-utils/project-fixture.js";
 import { beforeEach, afterAll, describe, it, expect, vi } from "vitest";
 import { getPrisma, disconnectPostgres } from "../../../infrastructure/database/prisma.js";
 import { projectMentorshipService as service } from "../project-mentorship.service.js";
@@ -5,29 +6,32 @@ import { academicProfileService } from "../../academic-profiles/academic-profile
 import { canAccessProjectAsMentor } from "../academic-relationship-access.js";
 import { submissionService } from "../../submissions/submission.service.js";
 import { env } from "../../../config/env.js";
-import { verificationEvidenceStorage } from "../../academic-profiles/verification-evidence-storage.service.js";
+import { newCreatedAcademicData, removeCreatedAcademicData } from "./academic-test-data.js";
 
 vi.mock("../../../infrastructure/queue.js", () => ({ notificationQueue: { add: vi.fn().mockResolvedValue({}) } }));
 
 // This suite runs only against the scratch database created by the integration harness.
-describe.skipIf(process.env.STUDENT_AFFILIATION_INTEGRATION !== "1").sequential("academic relationship consent (PostgreSQL)", () => {
+const enabled = process.env.STUDENT_AFFILIATION_INTEGRATION === "1";
+if (enabled && !new URL(process.env.DATABASE_URL!).pathname.endsWith("_test")) throw new Error("Use an isolated _test database");
+
+describe.skipIf(!enabled).sequential("academic relationship consent (PostgreSQL)", () => {
   let owner = "", lecturer = "", member = "", unverified = "", admin = "", project = "";
+  const created = newCreatedAcademicData();
   beforeEach(async () => {
     const db = getPrisma();
     const ids: string[] = [];
     for (const [name, role, verified] of [["Owner", "STUDENT", false], ["Lecturer", "LECTURER", true], ["Member", "RESEARCHER", false], ["Claimant", "LECTURER", false], ["Admin", "RESEARCHER", false]] as const) {
       const user = await db.user.create({ data: { email: `${crypto.randomUUID()}@example.test`, fullName: name, institution: "University of Melbourne", emailVerifiedAt: new Date(), ...(name === "Admin" ? { systemRole: "ADMIN", role: "admin" } : {}) } });
       ids.push(user.id);
+      created.userIds.push(user.id);
       await db.academicProfile.create({ data: { userId: user.id, academicRole: role, primaryPosition: role === "LECTURER" ? "LECTURER" : "STUDENT", positionTitle: role === "LECTURER" ? "Lecturer" : "Student", roleVerificationStatus: verified ? "VERIFIED" : "SELF_DECLARED", positionStatus: verified ? "VERIFIED" : "NOT_SUBMITTED", supportAvailability: { enabled: true } } });
     }
     [owner, lecturer, member, unverified, admin] = ids;
-    project = (await db.project.create({ data: { ownerId: owner, title: "Safe title", description: "CONFIDENTIAL internal description", visibility: "PRIVATE" } })).id;
+    project = (await createProjectFixture({ data: { ownerId: owner, title: "Safe title", description: "CONFIDENTIAL internal description", visibility: "PRIVATE" } })).id;
     await db.projectMember.create({ data: { projectId: project, userId: member, role: "MEMBER", status: "ACTIVE" } });
   });
   afterAll(async () => {
-    if (unverified) for (const source of await getPrisma().verificationEvidenceSource.findMany({ where: { request: { userId: unverified } } })) {
-      if (source.storageKey) await verificationEvidenceStorage.remove(source.storageKey, unverified);
-    }
+    await removeCreatedAcademicData(created);
     await disconnectPostgres();
   });
 
@@ -101,7 +105,7 @@ describe.skipIf(process.env.STUDENT_AFFILIATION_INTEGRATION !== "1").sequential(
   });
 
   it("keeps legacy public Project IDs consistent in relationship responses", async () => {
-    const legacy = "112233445566778899aabbcc";
+    const legacy = crypto.randomUUID().replaceAll("-", "").slice(0, 24);
     await getPrisma().project.update({ where: { id: project }, data: { legacyMongoId: legacy } });
     const request = await service.request(legacy, owner, { mentorUserId: lecturer, message: "Help with research methods" });
     expect(request.projectId).toBe(legacy);
@@ -136,6 +140,7 @@ describe.skipIf(process.env.STUDENT_AFFILIATION_INTEGRATION !== "1").sequential(
   it("keeps non-FPT Lecturer evidence private, supports more-info and safe concurrent decisions", async () => {
     const db = getPrisma();
     const institution = await db.institution.create({ data: { name: "University of Melbourne", slug: `consent-${crypto.randomUUID()}` } });
+    created.institutionIds.push(institution.id);
     await db.affiliation.create({ data: { userId: unverified, institutionId: institution.id, institutionName: institution.name, isPrimary: true, isCurrent: true } });
     const input = { type: "POSITION", path: "MANUAL", institutionId: institution.id, evidenceType: "DOCUMENT", primarySourceType: "EMPLOYMENT_DOCUMENT", additionalSourceType: "APPOINTMENT_DOCUMENT", additionalNote: "PRIVATE-NOTE" } as const;
     const buffer = Buffer.from("%PDF-1.4\nemployment\n%%EOF"), other = Buffer.from("%PDF-1.4\nappointment\n%%EOF");

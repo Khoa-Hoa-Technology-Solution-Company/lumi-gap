@@ -76,12 +76,16 @@ describe("progressive academic onboarding", () => {
     expect(selections().researchAreas).toEqual([]); expect(mocks.save).not.toHaveBeenCalled();
     await act(async () => search.click());
     expect(search.getAttribute("aria-expanded")).toBe("true");
+    // The area options come from an async query; keyboard selection needs them rendered.
+    await vi.waitFor(() => expect(container.querySelectorAll('[role="option"]').length).toBeGreaterThan(0));
     await act(async () => search.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
     expect(selections().researchAreas).toEqual([]);
     await act(async () => search.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
     await act(async () => search.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
-    expect(selections()).toMatchObject({ researchAreas: ["Software Engineering"], researchInterests: [], skills: [] });
-    expect(search.getAttribute("aria-expanded")).toBe("false");
+    await vi.waitFor(() => {
+      expect(selections()).toMatchObject({ researchAreas: ["Software Engineering"], researchInterests: [], skills: [] });
+      expect(search.getAttribute("aria-expanded")).toBe("false");
+    });
   });
   it.each(["v2", "v3"] as const)("starts %s research selections empty without a recovery prompt", async version => {
     sessionStorage.setItem(`lumigap.onboarding.${version}.member`, JSON.stringify({ step: 3, expandedFocus: "skills", academicRole: "LECTURER", institutionId: "11111111-1111-4111-8111-111111111111", institutionName: "University of Melbourne", researchAreas: ["Software Engineering"], researchInterests: ["Automated Testing"], skills: ["Data Analysis", "Python", "R", "Academic Writing"] }));
@@ -152,18 +156,22 @@ describe("progressive academic onboarding", () => {
     await render(); await identity("LECTURER"); await click("Continue"); await click("Education");
     const interestGroup = () => container.querySelector<HTMLInputElement>("#research-interest-search")!.closest("fieldset")!;
     const recommended = () => interestGroup().querySelector('[aria-label="Suggested for your fields"]')!;
-    expect(recommended().textContent).toContain("Educational Technology");
-    expect(recommended().textContent).not.toContain("Automated Testing");
+    await vi.waitFor(() => {
+      expect(recommended().textContent).toContain("Educational Technology");
+      expect(recommended().textContent).not.toContain("Automated Testing");
+    });
     await tick("research-interest", "Educational Technology");
     await tick("research-skill", "Survey Design");
     await tick("research-interest", "LLM for Software Engineering");
     const skillGroup = container.querySelector<HTMLInputElement>("#research-skill-search")!.closest("fieldset")!;
     await click("Show more suggestions");
-    expect(skillGroup.querySelector('[aria-label="Suggested for your fields"]')!.textContent).toContain("Machine Learning");
+    await vi.waitFor(() => expect(skillGroup.querySelector('[aria-label="Suggested for your fields"]')!.textContent).toContain("Machine Learning"));
     // Removing the area updates recommendations while preserving the member's choices.
     await click("EducationRemove"); await click("Software Engineering");
-    expect(recommended().textContent).toContain("Automated Testing");
-    expect(recommended().textContent).not.toContain("Educational Technology");
+    await vi.waitFor(() => {
+      expect(recommended().textContent).toContain("Automated Testing");
+      expect(recommended().textContent).not.toContain("Educational Technology");
+    });
     expect(interestGroup().querySelector<HTMLInputElement>('input[value="Educational Technology"]')!.checked).toBe(true);
     await click("Complete onboarding");
     expect(mocks.save).toHaveBeenCalledWith(expect.objectContaining({ researchAreas: ["Software Engineering"], researchInterests: ["Educational Technology", "LLM for Software Engineering"], skills: ["Survey Design"] }));

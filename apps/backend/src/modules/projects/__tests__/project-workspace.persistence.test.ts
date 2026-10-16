@@ -35,7 +35,8 @@ describe.sequential("project workspace persistence", () => {
     externalId = external.id;
     paperId = paper.id;
     const verifiedAt = new Date();
-    await prisma.user.updateMany({ where: { id: { in: [ownerId, memberId, outsiderId, externalId] } }, data: { emailVerifiedAt: verifiedAt } });
+    await prisma.user.updateMany({ where: { id: { in: [ownerId, memberId, outsiderId, externalId] } }, data: { emailVerifiedAt: verifiedAt, onboardingCompletedAt: verifiedAt } });
+    await prisma.academicProfile.createMany({ data: [ownerId, memberId, outsiderId, externalId].map(userId => ({ userId, academicRole: "RESEARCHER", primaryPosition: "RESEARCH_STAFF" })) });
     await prisma.userEmail.createMany({ data: [
       { userId: owner.id, normalizedEmail: emails.owner, isPrimary: true, purpose: "ACCOUNT", verifiedAt },
       { userId: member.id, normalizedEmail: emails.member, isPrimary: true, purpose: "ACCOUNT", verifiedAt },
@@ -66,9 +67,10 @@ describe.sequential("project workspace persistence", () => {
 
     await projectService.addPaperToProject(project._id, paperId, memberId);
     await expect(projectService.addPaperToProject(project._id, paperId, memberId)).rejects.toMatchObject({ statusCode: 409 });
-    await projectService.updateProjectPaper(project._id, paperId, { screeningStatus: "INCLUDED", readingStatus: "REVIEWED", notes: "Useful baseline" }, memberId);
+    await projectService.updateProjectPaper(project._id, paperId, { screeningStatus: "INCLUDED", inclusionReason: "Matches the research question", readingStatus: "REVIEWED", notes: "Useful baseline" }, memberId);
+    await projectService.updateProjectPaper(project._id, paperId, { notes: "Updated reading note" }, memberId);
     const refreshed = await projectService.getProjectById(project._id, memberId);
-    expect(refreshed.papers[0]).toMatchObject({ screeningStatus: "INCLUDED", readingStatus: "REVIEWED", notes: "Useful baseline" });
+    expect(refreshed.papers[0]).toMatchObject({ screeningStatus: "INCLUDED", inclusionReason: "Matches the research question", readingStatus: "REVIEWED", notes: "Updated reading note" });
     expect(refreshed.papers[0]?.screenedBy?._id).toBe(memberId);
     expect(refreshed.papers[0]?.screenedAt).toBeTruthy();
 
@@ -107,14 +109,14 @@ describe.sequential("project workspace persistence", () => {
       status: "ACTIVE",
       visibility: "PUBLIC_SUMMARY",
     }, ownerId);
-    expect(updated).toMatchObject({ title: "Lifecycle evidence review", status: "ACTIVE", visibility: "PUBLIC_SUMMARY" });
+    expect(updated).toMatchObject({ title: "Lifecycle evidence review", status: "ACTIVE", visibility: "PUBLIC" });
     await expect(projectService.updateProject(project._id, { title: "Unauthorized edit" }, outsiderId)).rejects.toMatchObject({ statusCode: 403 });
 
     const publicSummary = await projectService.getProjectById(project._id, outsiderId);
     expect(publicSummary).toMatchObject({ isPublicSummary: true, papers: [], members: [] });
 
     const declined = await projectService.inviteMember(project._id, { userId: memberId }, ownerId);
-    await expect(projectService.respondToInvitation(project._id, declined.id, memberId, "DECLINED")).resolves.toEqual({ status: "DECLINED" });
+    await expect(projectService.respondToInvitation(project._id, declined.id, memberId, "DECLINED")).resolves.toMatchObject({ status: "DECLINED" });
 
     const cancelled = await projectService.inviteMember(project._id, { userId: memberId }, ownerId);
     await projectService.cancelInvitation(project._id, cancelled.id, ownerId);
@@ -169,9 +171,9 @@ describe.sequential("project workspace persistence", () => {
 
     const anonymousPreview = await projectService.getInvitationByToken(token);
     expect(anonymousPreview).toMatchObject({
-      projectId: project._id,
-      projectTitle: "Token invitation review",
-      invitedEmail: emails.member,
+      projectId: "",
+      projectTitle: "",
+      invitedEmail: "",
       authenticated: false,
       emailMatches: false,
       status: "PENDING",
@@ -185,8 +187,8 @@ describe.sequential("project workspace persistence", () => {
     });
     await expect(projectService.respondToInvitationByToken(token, outsiderId, "ACCEPTED")).rejects.toMatchObject({ statusCode: 403 });
 
-    await expect(projectService.respondToInvitationByToken(token, memberId, "ACCEPTED")).resolves.toEqual({ status: "ACCEPTED", alreadyMember: false });
-    await expect(projectService.respondToInvitationByToken(token, memberId, "ACCEPTED")).rejects.toMatchObject({ statusCode: 409 });
+    await expect(projectService.respondToInvitationByToken(token, memberId, "ACCEPTED")).resolves.toMatchObject({ status: "ACCEPTED", alreadyMember: false });
+    await expect(projectService.respondToInvitationByToken(token, memberId, "ACCEPTED")).resolves.toMatchObject({ status: "ACCEPTED", alreadyMember: true });
     await expect(projectService.getProjectById(project._id, memberId)).resolves.toMatchObject({ accessRole: "MEMBER" });
   }, 20_000);
 
@@ -202,7 +204,7 @@ describe.sequential("project workspace persistence", () => {
     expect(stored.invitedUserId).toBe(externalId);
 
     await expect(projectService.respondToInvitation(project._id, invitation.id, externalId, "ACCEPTED"))
-      .resolves.toEqual({ status: "ACCEPTED" });
+      .resolves.toMatchObject({ status: "ACCEPTED" });
     await expect(projectService.getProjectById(project._id, externalId)).resolves.toMatchObject({ accessRole: "MEMBER" });
     await expect(projectService.getProjectById(otherPrivate._id, externalId)).rejects.toMatchObject({ statusCode: 404 });
     const ownProject = await projectService.createProject({ title: "Non-FPT standalone project", status: "ACTIVE" }, externalId);

@@ -40,7 +40,7 @@ describe("compare.prompt", () => {
       { id: "b", title: "Structured B", abstractText: "raw b" },
     ]);
 
-    expect(p).toContain("Structured analysis:");
+    expect(p).toContain("AI-extracted notes");
     expect(p).toContain("Methods: Controlled classroom study");
     expect(p).toContain("Dataset: 45 assignments");
     expect(p).toContain("Limitations: Small sample");

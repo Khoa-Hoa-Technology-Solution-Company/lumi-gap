@@ -14,6 +14,7 @@ from app.config import ALLOWED_STRICTNESS, OUTPUT_DIR, UPLOAD_DIR
 from app.format_checker import PRESETS, analyze_format, report_markdown
 from app.reviewer import GeminiReviewProvider, safe_slug, write_artifacts
 from app.security import Security
+from app.pdf_utils import NoTextLayerError
 from app.pre_review import PreReviewRequest, run_pre_review
 from app.rag_routes import rag_router
 
@@ -67,7 +68,6 @@ def internal_router(database, security: Security) -> APIRouter:
     @router.post("/format-check")
     async def format_check(
         file: UploadFile = File(None),
-        file_path: Optional[str] = Form(None),
         preset_name: str = Form("IEEE Conference · A4"),
     ) -> dict[str, Any]:
         selected_preset = next((p for p in PRESETS if p["name"] == preset_name), None)
@@ -78,16 +78,13 @@ def internal_router(database, security: Security) -> APIRouter:
         target_path: Optional[Path] = None
 
         try:
-            if file_path and Path(file_path).exists():
-                target_path = Path(file_path)
-            elif file:
-                suffix = Path(file.filename or "paper.pdf").suffix
-                with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-                    shutil.copyfileobj(file.file, tmp)
-                    temp_file = Path(tmp.name)
-                target_path = temp_file
-            else:
-                raise HTTPException(status_code=400, detail="Cần cung cấp file hoặc file_path hợp lệ")
+            if not file:
+                raise HTTPException(status_code=400, detail="Cần cung cấp file PDF")
+            suffix = Path(file.filename or "paper.pdf").suffix
+            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+                shutil.copyfileobj(file.file, tmp)
+                temp_file = Path(tmp.name)
+            target_path = temp_file
 
             analysis = analyze_format(target_path, selected_preset)
             markdown = report_markdown(analysis)
@@ -106,7 +103,6 @@ def internal_router(database, security: Security) -> APIRouter:
     @router.post("/review")
     async def review_paper(
         file: UploadFile = File(None),
-        file_path: Optional[str] = Form(None),
         strictness: str = Form("balanced"),
         api_key: Optional[str] = Form(None),
         model: Optional[str] = Form(None),
@@ -125,16 +121,13 @@ def internal_router(database, security: Security) -> APIRouter:
         target_path: Optional[Path] = None
 
         try:
-            if file_path and Path(file_path).exists():
-                target_path = Path(file_path)
-            elif file:
-                suffix = Path(file.filename or "paper.pdf").suffix
-                with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-                    shutil.copyfileobj(file.file, tmp)
-                    temp_file = Path(tmp.name)
-                target_path = temp_file
-            else:
-                raise HTTPException(status_code=400, detail="Cần cung cấp file hoặc file_path hợp lệ")
+            if not file:
+                raise HTTPException(status_code=400, detail="Cần cung cấp file PDF")
+            suffix = Path(file.filename or "paper.pdf").suffix
+            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+                shutil.copyfileobj(file.file, tmp)
+                temp_file = Path(tmp.name)
+            target_path = temp_file
 
             provider = GeminiReviewProvider(model=active_model, api_key=active_key)
             result = provider.review(target_path, strictness)
@@ -157,11 +150,20 @@ def internal_router(database, security: Security) -> APIRouter:
                 "scores": scores,
                 "bilingual_review": bilingual_review,
                 "recommendation": rec,
+                "analysis": {
+                    "issues": result.get("issues", []),
+                    "claims": result.get("claims", []),
+                    "reproducibility": result.get("reproducibility"),
+                    "validation_warnings": result.get("validation_warnings", []),
+                    "criteria": result.get("criteria", {}),
+                },
                 "report_markdown": report,
                 "artifacts_dir": str(out_dir.resolve()),
             }
         except HTTPException:
             raise
+        except NoTextLayerError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         except Exception as exc:
             raise HTTPException(status_code=500, detail=f"Lỗi khi thẩm định bài báo: {str(exc)}") from exc
         finally:

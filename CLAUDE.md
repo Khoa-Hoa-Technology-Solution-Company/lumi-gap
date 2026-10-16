@@ -34,8 +34,7 @@ It is **not** a "build a new ML model" project. It investigates how **LLM + RAG 
 | Web UI | Tailwind 3 + shadcn/ui | Composable primitives, no lock-in |
 | Web routing | React Router v6 | Simplest learning curve |
 | Web state | Zustand + TanStack Query | Zustand for client state, Query for server state |
-| Mobile | Expo SDK 52 + React Native + TypeScript | OTA updates, EAS Build, no native toolchain pain |
-| Mobile UI | NativeWind 4 | Reuse Tailwind knowledge cross-platform |
+| Mobile | Flutter (Dart), `apps/flutter_mobile` | The only mobile client; not part of the pnpm workspace |
 | AI — LLM | Gemini via `GEMINI_MODEL_FAST` (summary, scoring, rerank) and `GEMINI_MODEL_DEEP` (report, gap, trend); both default to `gemini-3.1-flash-lite` in `config/env.ts` | Same SDK as embeddings, generous free tier. Never hardcode a model name: read it through `env` (or `aiModel()` / `routeLlmModel()`), because a user with a personal AI connection overrides it |
 | AI — Embedding | Gemini Embedding 2 (768 dim) | Same SDK, free tier sufficient for MVP |
 | Vector store | pgvector | Co-located with PostgreSQL metadata |
@@ -75,8 +74,7 @@ LumiGap/                                    (repo root — fork of thiennhat-ctr
 ├── apps/
 │   ├── backend/                                 Express 5 API + BullMQ workers
 │   ├── web/                                     React + Vite + shadcn web app
-│   ├── mobile/                                  Expo + NativeWind mobile app
-│   ├── flutter_mobile/                          Flutter mobile app (parallel client)
+│   ├── flutter_mobile/                          Flutter mobile app (the only mobile client)
 │   └── ai-reviewer/                             Python (FastAPI-style) paper-review agent service
 ├── packages/
 │   └── shared-types/                            framework-agnostic TS types
@@ -184,31 +182,9 @@ App.tsx                           renders <AppRoutes />
 main.tsx                          providers: QueryClient + Router
 ```
 
-### Mobile (`apps/mobile/`)
+### Mobile (`apps/flutter_mobile/`)
 
-> TODO(team): confirm which mobile app is the primary one. Both `apps/mobile` (Expo, in the pnpm workspace) and `apps/flutter_mobile` (Flutter, not in the workspace; `pnpm dev:flutter_mobile`) exist and no document says which is canonical.
-
-```
-app/                              Expo Router routes (REQUIRED at this path)
-├── _layout.tsx                   root providers
-├── index.tsx                     home screen
-├── (tabs)/                       tab group  (Phase C)
-├── (auth)/                       auth group (Phase C)
-└── paper/[id].tsx                paper detail (Phase C)
-
-src/                              non-route code (same layout as web)
-├── components/
-├── constants/api.ts
-├── features/
-├── hooks/
-├── layouts/
-├── services/{api-client,query-client}.ts
-├── stores/auth-store.ts          zustand persisted to expo-secure-store
-├── theme/{globals.css,colors.ts}
-└── utils/format.ts
-
-assets/                           Expo icon/splash (REQUIRED at this path)
-```
+Flutter (Dart) is the only mobile client. It is **not** in the pnpm workspace, so Turborepo and `pnpm typecheck` do not cover it. Run it with `pnpm dev:flutter_mobile`; the launcher (`scripts/run-mobile.mjs`) reads `API_BASE_URL` from the root `.env` and passes only that public URL to Flutter through `--dart-define-from-file`. Tests live in `apps/flutter_mobile/test/`.
 
 ### AI Reviewer (`apps/ai-reviewer/`)
 
@@ -258,7 +234,7 @@ report.ts                         AnalyticalReport, ResearchGap, ReportStatus
 ### Auth
 - Access token: 15 min, signed with an RS256 private key.
 - Refresh token: 7 days, **hashed** in PostgreSQL and rotated on each refresh.
-- Web: tokens in localStorage. Mobile: tokens in expo-secure-store (Keychain / Keystore).
+- Web: tokens in localStorage. Mobile: tokens in secure platform storage (Keychain / Keystore).
 - 401 → client tries refresh once → on failure, clear tokens and redirect to login.
 
 ### Long-running work
@@ -311,10 +287,11 @@ pnpm install
 pnpm typecheck
 
 # dev servers
-pnpm dev                                # all apps in parallel (turbo)
+pnpm dev                                # docker compose up -d (infra, backend, workers; no rebuild) + Vite web
+pnpm dev:local                          # native backend + workers + web via turbo (backend hot-reload)
 pnpm dev:backend                        # just backend
 pnpm dev:web                            # just web
-pnpm dev:mobile                         # just mobile (opens Expo)
+pnpm dev:flutter_mobile                 # Flutter mobile (needs the Flutter SDK, API_BASE_URL in .env)
 
 # workers (each is its own process; see apps/backend/package.json for all)
 pnpm --filter backend worker:sync            # OpenAlex sync
@@ -367,7 +344,7 @@ If env is invalid, a red banner names the missing variable.
 
 See root [`.env.example`](.env.example) and [the key inventory](docs/environment-variables.md). Run `pnpm setup` to generate local passwords and RS256 keys, then fill in `GEMINI_API_KEY`. Backend/Prisma/workers load root `.env` independent of cwd and expand `${...}`; Compose overrides internal hosts.
 
-Use `pnpm docker:infra` for native backend/web or `pnpm docker:up` for the full stack with default workers. Migrations and Docker JWT keys initialize automatically. Demo seed is opt-in (`docker compose --profile seed up seed`). Vite uses root `envDir` and exposes only `VITE_*`; native web runs on port 3000. Mobile launchers consume only public API configuration from root `.env`. Production uses the separate root `.env.production.example` template and the existing Jenkins credential contract.
+Use `pnpm docker:infra` for native backend/web or `pnpm docker:up` for the full stack with default workers. Migrations and Docker JWT keys initialize automatically. Demo seed is opt-in (`docker compose --profile seed up seed`). Vite uses root `envDir` and exposes only `VITE_*`; native web runs on port 3000. The Flutter launcher consumes only the public API configuration from root `.env`. Production uses the separate root `.env.production.example` template and the existing Jenkins credential contract.
 
 ---
 
@@ -436,9 +413,9 @@ These are the things that caused real bugs or near-misses. Keep them in mind:
 
 10. **Raw provider metadata can be large.** Monitor PostgreSQL storage and document an archive policy before corpus-scale ingestion.
 
-11. **Mobile is Android-only for testing.** Team has no Macs and no iOS devices. Code stays cross-platform Expo (so iOS support comes free later), but every PR is tested on Android Studio emulator or Expo Go Android. Design mockups frame on **Pixel 6 (412×892dp)** — not iPhone. Touch target minimum is Material 3's 48dp, not iOS's 44pt. Forms use `KeyboardAvoidingView behavior="height"` (Android), not the iOS-style `"padding"`. See [docs/DESIGN_LANGUAGE.md §11](docs/DESIGN_LANGUAGE.md) for the full Android-specific gotcha list.
+11. **Mobile is Android-only for testing.** Team has no Macs and no iOS devices. Code stays cross-platform Flutter (so iOS support comes free later), but every PR is tested on the Android Studio emulator or a real Android device. Design mockups frame on **Pixel 6 (412×892dp)** — not iPhone. Touch target minimum is Material 3's 48dp, not iOS's 44pt. See [docs/DESIGN_LANGUAGE.md §11](docs/DESIGN_LANGUAGE.md) for the full Android-specific gotcha list.
 
-12. **Do not change `nodeLinker`.** Both `.npmrc` and `pnpm-workspace.yaml` set `hoisted`, because Metro (Expo) cannot follow pnpm's isolated symlinks. Switching to `isolated` breaks the mobile bundler with "Unable to resolve X" errors.
+12. **Do not change `nodeLinker`.** Both `.npmrc` and `pnpm-workspace.yaml` set `hoisted`, which was originally required by the removed Expo/Metro app. Leave it unchanged unless the team decides otherwise, because switching can break dependency resolution.
 
 13. **Never run `prisma migrate dev`.** The schema files do not describe the 297 foreign keys, the vector index and the full-text indexes that the SQL migrations create, so `migrate dev` generates a migration that drops them. `pnpm --filter backend db:migrate:dev` is disabled on purpose. Write migrations by hand and apply them with `db:migrate:deploy`, as described in [docs/prisma-migrations.md](docs/prisma-migrations.md).
 
@@ -451,7 +428,6 @@ These are the things that caused real bugs or near-misses. Keep them in mind:
 | [README.md](README.md) | First-time setup commands |
 | [apps/backend/README.md](apps/backend/README.md) | Backend module layout + conventions |
 | [apps/web/README.md](apps/web/README.md) | Web feature-based layout |
-| [apps/mobile/README.md](apps/mobile/README.md) | Expo Router + NativeWind notes |
 | [docs/PERSONAL_AI_CONNECTIONS.md](docs/PERSONAL_AI_CONNECTIONS.md) | Per-user AI provider connections (encrypted keys) |
 | [docs/environment-variables.md](docs/environment-variables.md) | Inventory of every env variable |
 | [docs/DEPLOY_WITH_DOCKER.md](docs/DEPLOY_WITH_DOCKER.md) | Docker deploy, troubleshooting, rate limits and scaling |

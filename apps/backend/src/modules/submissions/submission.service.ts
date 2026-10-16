@@ -1,3 +1,4 @@
+import { currentProjectMembership } from "../authorization/project-membership.js";
 import crypto from "node:crypto";
 import type { UserRole } from "@trend/shared-types";
 import { AppError } from "../../common/exceptions/app-error.js";
@@ -9,6 +10,10 @@ import { auditService } from "../audit/audit.service.js";
 import { assertPeerReviewer, lockReviewerAndSubmission, refreshSubmissionReviewStatus } from "../reviews/peer-review-access.js";
 import { reviewRequestService } from "../reviews/review-request.service.js";
 import { aiReviewerClient } from "../papers/ai-reviewer.client.js";
+import { extractPdfPages, readStoredPdf } from "../knowledge/knowledge.source.js";
+import { retrieve } from "../retrieval/retriever.js";
+import { logger } from "../../infrastructure/logger.js";
+import { buildManuscriptText, MAX_MANUSCRIPT_CHARS } from "./pre-review-input.js";
 import { aiJobsQueue } from "../../infrastructure/queue.js";
 
 type UploadedPdf = { buffer: Buffer; originalname: string; size: number };
@@ -59,7 +64,7 @@ async function getSubmissionOrThrow(submissionInput: string) {
 async function canAccessFullSubmission(submission: SubmissionRow, userId: string, role: UserRole) {
   if (hasPermission(role, "review:assign")) return true;
   const prisma = getPrisma();
-  if (await prisma.submissionAuthor.findUnique({ where: { submissionId_userId: { submissionId: submission.id, userId } } })) return true;
+  // Authorship is retained as attribution; current membership controls full workspace access.
   const project = await prisma.project.findUnique({ where: { id: submission.projectId } });
   if (project?.ownerId === userId) return true;
   return Boolean(await prisma.projectMember.findFirst({ where: { projectId: submission.projectId, userId, status: "ACTIVE" } }));
@@ -75,7 +80,9 @@ async function assertSubmissionAccess(submission: SubmissionRow, userId: string,
 async function canManageSubmission(submission: SubmissionRow, userId: string, role: UserRole) {
   const state = await getPrisma().project.findUnique({ where: { id: submission.projectId }, select: { status: true } });
   if (!state || state.status === "ARCHIVED") return false;
-  if (hasPermission(role, "review:assign") || submission.createdById === userId) return true;
+  if (hasPermission(role, "review:assign")) return true;
+  if (!await currentProjectMembership(submission.projectId, userId)) return false;
+  if (submission.createdById === userId) return true;
   const prisma = getPrisma();
   const [author, project] = await Promise.all([
     prisma.submissionAuthor.findUnique({ where: { submissionId_userId: { submissionId: submission.id, userId } } }),
@@ -110,6 +117,33 @@ async function hydrateSubmission(submission: SubmissionRow) {
   const users = await prisma.user.findMany({ where: { id: { in: authors.map((row) => row.userId) } }, select: { id: true, legacyMongoId: true, fullName: true, email: true, institution: true, avatarUrl: true } });
   const byId = new Map(users.map((user) => [user.id, { ...user, id: publicDatabaseId(user) }]));
   return { ...submissionDto(submission), authorIds: authors.flatMap((author) => { const user = byId.get(author.userId); return user ? [user] : []; }), createdBy: creator ? { ...creator, id: publicDatabaseId(creator) } : undefined };
+}
+
+/** Manuscript of the current revision, or undefined when it cannot be read: a pre-review without a manuscript is still useful, and throwing would only make BullMQ retry for nothing. */
+async function loadManuscriptText(submission: { id: string; currentRevisionId: string | null }): Promise<string | undefined> {
+  try {
+    const revision = submission.currentRevisionId
+      ? await getPrisma().submissionRevision.findUnique({ where: { id: submission.currentRevisionId } })
+      : await getPrisma().submissionRevision.findFirst({ where: { submissionId: submission.id }, orderBy: { revisionNumber: "desc" } });
+    if (!revision) return undefined;
+    if (revision.contentType === "MARKDOWN" && revision.contentSnapshot) return revision.contentSnapshot.slice(0, MAX_MANUSCRIPT_CHARS);
+    if (!revision.storageUri) return undefined;
+    const extracted = await extractPdfPages(await readStoredPdf(revision.storageUri));
+    return buildManuscriptText(extracted.pages) || undefined;
+  } catch (err) {
+    logger.warn({ err, submissionId: submission.id }, "pre-review manuscript unavailable");
+    return undefined;
+  }
+}
+
+async function loadRelatedEvidence(submission: { title: string; abstractText: string | null }) {
+  try {
+    const papers = await retrieve({ queryText: [submission.title, submission.abstractText].filter(Boolean).join("\n"), topK: 8, fullText: true });
+    return papers.map((paper) => ({ id: paper.id, title: paper.title, excerpt: paper.abstractText?.slice(0, 800) }));
+  } catch (err) {
+    logger.warn({ err, title: submission.title }, "pre-review related evidence unavailable");
+    return [];
+  }
 }
 
 export const submissionService = {
@@ -185,7 +219,9 @@ export const submissionService = {
       await getPrisma().aiPreReview.update({ where: { id: record.id }, data: { status: "CANCELLED", errorMessage: "The submission was closed before the pre-review ran." } });
       return;
     }
-    const result = await aiReviewerClient.preReview({ title: submission.title, abstract: submission.abstractText ?? undefined, submission_type: submission.submissionType ?? undefined, research_goal: submission.researchGoal ?? undefined, research_questions: submission.researchQuestions, claimed_gap: submission.claimedResearchGap ?? undefined, claimed_contribution: submission.claimedContribution ?? undefined, methodology: submission.methodology ?? undefined, related_evidence: [] });
+    const manuscriptText = await loadManuscriptText(submission);
+    const relatedEvidence = await loadRelatedEvidence(submission);
+    const result = await aiReviewerClient.preReview({ title: submission.title, abstract: submission.abstractText ?? undefined, submission_type: submission.submissionType ?? undefined, research_goal: submission.researchGoal ?? undefined, research_questions: submission.researchQuestions, claimed_gap: submission.claimedResearchGap ?? undefined, claimed_contribution: submission.claimedContribution ?? undefined, methodology: submission.methodology ?? undefined, ...(manuscriptText ? { manuscript_text: manuscriptText } : {}), related_evidence: relatedEvidence });
     const analysis = result.analysis;
     const completed = await getPrisma().$transaction(async (tx) => {
       const updated = await tx.aiPreReview.update({ where: { id: record.id }, data: { provider: result.provider, model: result.model, status: "COMPLETED", summary: analysis.summary, goalAlignment: analysis.goal_alignment as never, rqCoverage: analysis.rq_coverage as never, unsupportedClaims: analysis.unsupported_claims as never, citationIssues: analysis.citation_issues, contributionComparison: analysis.contribution_comparison, reviewFocusAreas: analysis.review_focus_areas, limitations: analysis.limitations, rawStructuredOutput: analysis as never, errorMessage: null, completedAt: new Date() } });

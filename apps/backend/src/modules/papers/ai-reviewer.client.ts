@@ -1,3 +1,4 @@
+import type { PaperReviewAnalysis } from "@trend/shared-types";
 import { AppError } from "../../common/exceptions/app-error.js";
 import { env } from "../../config/env.js";
 import { logger } from "../../infrastructure/logger.js";
@@ -19,12 +20,17 @@ export interface ReviewPaperResponse {
     authors?: string;
     paper_type?: string;
   };
-  scores: Record<string, { score: number; comment: { en: string; vi: string } }>;
+  /** Criterion scores (null = not assessable) plus `journal_publication` and `overall_recommendation` strings. */
+  scores: Record<string, number | null | string>;
   bilingual_review: {
-    strengths: Array<{ en: string; vi: string }>;
-    weaknesses: Array<{ en: string; vi: string }>;
-    detailed_feedback: { en: string; vi: string };
+    summary?: { en: string; vi: string };
+    strengths_en?: string[];
+    strengths_vi?: string[];
+    changes_en?: string[];
+    changes_vi?: string[];
+    tpc?: { en: string; vi: string };
   };
+  analysis?: PaperReviewAnalysis;
   recommendation: "Strong Reject" | "Reject" | "Borderline" | "Accept" | "Strong Accept";
   report_markdown: string;
   artifacts_dir: string;
@@ -38,7 +44,7 @@ export interface AiPreReviewResponse {
     summary: string;
     goal_alignment: { assessment: string; evidence_ids: string[] };
     rq_coverage: Array<{ research_question: string; assessment: string; evidence_ids: string[] }>;
-    unsupported_claims: Array<{ claim: string; reason: string; evidence_ids: string[] }>;
+    unsupported_claims: Array<{ claim: string; quote?: string; reason: string; evidence_ids: string[] }>;
     citation_issues: string[];
     contribution_comparison: string;
     review_focus_areas: string[];
@@ -56,6 +62,7 @@ export const aiReviewerClient = {
     claimed_gap?: string;
     claimed_contribution?: string;
     methodology?: string;
+    manuscript_text?: string;
     related_evidence: Array<{ id: string; title: string; excerpt?: string }>;
   }): Promise<AiPreReviewResponse> {
     try {
@@ -187,6 +194,11 @@ export const aiReviewerClient = {
         body: formData,
         signal: AbortSignal.timeout(180000), // Thẩm định Gemini sâu tối đa 3 phút
       });
+
+      if (res.status === 422) {
+        const detail = ((await res.json().catch(() => null)) as { detail?: unknown } | null)?.detail;
+        if (typeof detail === "string" && detail) throw AppError.badRequest(detail);
+      }
 
       if (!res.ok) {
         const errorBody = await res.text();

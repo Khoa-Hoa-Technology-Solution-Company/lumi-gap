@@ -30,6 +30,7 @@ model Report {
   modelVersion         String    @default("") @map("model_version")
   promptVersion        String    @default("") @map("prompt_version")
   cacheKey             String?   @map("cache_key")
+  groundingChecks      Json?     @map("grounding_checks")
   yearFrom             Int?      @map("year_from")
   yearTo               Int?      @map("year_to")
   scopeFilters         Json      @default("{}") @map("scope_filters")
@@ -152,11 +153,16 @@ model ResearchGap {
   gapConfidence             String   @default("LOW") @map("gap_confidence") @db.VarChar(16)
   researchPriority          String   @default("MODERATE") @map("research_priority") @db.VarChar(16)
   origin                    String   @default("AI_ASSISTED") @db.VarChar(24)
+  version                   Int      @default(1)
+  assessmentStatus          String   @default("PROPOSED") @map("assessment_status") @db.VarChar(32)
+  assessmentRationale       String   @default("") @map("assessment_rationale")
+  assumptions               String   @default("")
   confidence                Float    @default(0.5)
   probe                     Json?
   intersectionCount         Int?     @map("intersection_count")
   parentCounts              Json?    @map("parent_counts")
   parentTrend               Json?    @map("parent_trend")
+  globalEvidence            Json?    @map("global_evidence")
   evidenceConfidence        Float?   @map("evidence_confidence")
   evidenceScopeSize         Int?     @map("evidence_scope_size")
   projectEvidence           Json?    @map("project_evidence")
@@ -239,6 +245,8 @@ model GapEvidenceRecord {
   excerpt       String?
   sourceLocation String? @map("source_location")
   explanation   String
+  evidenceItemId String? @map("evidence_item_id") @db.Uuid
+  evidenceRevisionId String? @map("evidence_revision_id") @db.Uuid
   projectPaperId String? @map("project_paper_id") @db.Uuid
   corpusPaperId String? @map("corpus_paper_id") @db.Uuid
   forumReferenceId String? @map("forum_reference_id") @db.Uuid
@@ -259,6 +267,7 @@ model GapValidation {
   id               String   @id @default(uuid()) @db.Uuid
   legacyMongoId    String?  @unique @map("legacy_mongo_id") @db.VarChar(24)
   gapId            String   @map("gap_id") @db.Uuid
+  gapVersion       Int      @default(1) @map("gap_version")
   reviewerId       String   @map("reviewer_id") @db.Uuid
   action           String   @db.VarChar(32)
   comment          String
