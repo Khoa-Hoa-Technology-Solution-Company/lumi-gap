@@ -26,6 +26,7 @@ export * from "./credit.js";
 export * from "./evaluation.js";
 export * from "./corpus-validation.js";
 export * from "./review.js";
+export * from "./paper-review.js";
 export * from "./research-review.js";
 export * from "./literature.js";
 export * from "./knowledge.js";
