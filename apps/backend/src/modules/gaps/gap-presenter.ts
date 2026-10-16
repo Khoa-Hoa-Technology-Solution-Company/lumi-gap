@@ -1,5 +1,6 @@
 import type {
   GapEvidenceStatus,
+  GapGlobalEvidence,
   GapProjectEvidence,
   GapSource,
   GapStatus,
@@ -30,11 +31,13 @@ export interface GapListDoc {
   rationale: string;
   evidencePaperIds?: IdLike[];
   supportingPaperIds?: IdLike[];
+  counterPaperIds?: IdLike[];
   confidence: number;
   probe?: { topicA?: string; topicB?: string; yearFrom?: number; yearTo?: number };
   intersectionCount?: number;
   parentCounts?: { a?: number; b?: number };
-  parentTrend?: { topic?: string; growthRatePct?: number } | null;
+  parentTrend?: { topic?: string; growthRatePct?: number; cagrPct?: number | null; slope?: number } | null;
+  globalEvidence?: GapGlobalEvidence | null;
   evidenceConfidence?: number;
   evidenceScopeSize?: number;
   projectEvidence?: GapProjectEvidence;
@@ -136,6 +139,7 @@ export function toGapListItem(
 ): ResearchGapItem {
   const lowSample = options.minParentPapers !== undefined ? isGapLowSample(doc, options.minParentPapers) : undefined;
   const supportingPaperIds = (doc.supportingPaperIds ?? []).map(String);
+  const counterPaperIds = (doc.counterPaperIds ?? []).map(String);
   const evidencePaperIds = (doc.evidencePaperIds?.length
     ? doc.evidencePaperIds
     : doc.supportingPaperIds ?? []
@@ -153,6 +157,10 @@ export function toGapListItem(
     rationale: doc.rationale,
     supportingPaperIds,
     supportingPapers: supportingPaperIds
+      .map((id) => supportingPapersById.get(id))
+      .filter((paper): paper is GapSupportingPaper => Boolean(paper)),
+    counterPaperIds,
+    counterPapers: counterPaperIds
       .map((id) => supportingPapersById.get(id))
       .filter((paper): paper is GapSupportingPaper => Boolean(paper)),
     evidencePaperIds,
@@ -183,10 +191,16 @@ export function toGapListItem(
         : undefined,
     parentTrend:
       doc.parentTrend?.topic && doc.parentTrend.growthRatePct !== undefined
-        ? { topic: doc.parentTrend.topic, growthRatePct: doc.parentTrend.growthRatePct }
+        ? {
+            topic: doc.parentTrend.topic,
+            growthRatePct: doc.parentTrend.growthRatePct,
+            ...(doc.parentTrend.cagrPct !== undefined ? { cagrPct: doc.parentTrend.cagrPct } : {}),
+            ...(doc.parentTrend.slope !== undefined ? { slope: doc.parentTrend.slope } : {}),
+          }
         : doc.parentTrend === null
           ? null
           : undefined,
+    globalEvidence: doc.globalEvidence ?? null,
     evidenceConfidence: doc.evidenceConfidence,
     evidenceScopeSize: doc.evidenceScopeSize,
     projectEvidence: doc.projectEvidence,

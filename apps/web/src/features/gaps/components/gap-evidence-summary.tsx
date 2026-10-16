@@ -1,4 +1,5 @@
 import { CheckCircle2, AlertCircle } from "lucide-react";
+import type { GapGlobalEvidence } from "@trend/shared-types";
 import { useI18n } from "@/i18n";
 import { formatNumber } from "@/utils/format";
 
@@ -19,7 +20,8 @@ interface GapEvidenceSummaryProps {
   evidenceScopeSize?: number;
   intersectionCount?: number;
   parentCounts?: { a: number; b: number };
-  parentTrend?: { topic: string; growthRatePct: number } | null;
+  parentTrend?: { topic: string; growthRatePct: number; cagrPct?: number | null } | null;
+  globalEvidence?: GapGlobalEvidence | null;
 }
 
 export function GapEvidenceSummary({
@@ -28,6 +30,7 @@ export function GapEvidenceSummary({
   intersectionCount = 0,
   parentCounts,
   parentTrend,
+  globalEvidence,
 }: GapEvidenceSummaryProps) {
   const { t } = useI18n();
   if (!probe) {
@@ -71,11 +74,17 @@ export function GapEvidenceSummary({
               {parentTrend.growthRatePct >= 0 ? "+" : ""}
               {Math.round(parentTrend.growthRatePct)}%
             </strong>
-            {t("/year")})
+            {parentTrend.cagrPct != null ? ` ${t("CAGR")}` : t("/year")})
           </>
         )}
         .
       </div>
+      <p className="text-[11px] font-medium text-slate-600 dark:text-slate-300" title={globalEvidence ? undefined : t("OpenAlex count unavailable")}>
+        {t("Corpus: {{corpus}} · OpenAlex: {{global}}", {
+          corpus: formatNumber(intersectionCount),
+          global: globalEvidence ? formatNumber(globalEvidence.intersectionCount) : "—",
+        })}
+      </p>
       <GapScopeNote evidenceScopeSize={evidenceScopeSize} />
     </div>
   );

@@ -187,8 +187,12 @@ const EnvSchema = z.object({
   // is rising. Scarce = intersectionCount ≤ GAP_SCARCE_ABS OR ≤ GAP_SCARCE_PCT × min(parentCounts).
   GAP_SCARCE_ABS: z.coerce.number().int().nonnegative().default(5),
   GAP_SCARCE_PCT: z.coerce.number().min(0).max(1).default(0.02),
-  GAP_PARENT_RISING_MIN: z.coerce.number().default(0), // growthRatePct strictly above this = rising
-  GAP_MIN_PARENT_PAPERS: z.coerce.number().int().nonnegative().default(5), // each probe topic needs this many papers to be confirmed
+  // A parent topic is rising when its CAGR (last 3 complete years) is above this %; with no CAGR (zero base) a positive slope counts.
+  GAP_PARENT_RISING_MIN: z.coerce.number().default(10),
+  GAP_MIN_PARENT_PAPERS: z.coerce.number().int().nonnegative().default(20), // each probe topic needs this many papers to be confirmed
+  // Scarcity is capped at min(max(GAP_SCARCE_ABS, GAP_SCARCE_PCT x smaller parent), smaller parent / 4), and must also hold in OpenAlex.
+  GAP_GLOBAL_EVIDENCE_ENABLED: z.enum(["true", "false"]).default("true").transform((value) => value === "true"), // count probes in OpenAlex too (best-effort)
+  GAP_GLOBAL_EVIDENCE_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120000).default(15000),
   GAP_VALIDATION_QUORUM: z.coerce.number().int().min(1).default(2), // distinct experts that must agree (VALIDATE or REJECT) before a gap reaches a final status
   // v2 — paper comparison (one cached LLM call; capped to bound tokens).
   COMPARE_MAX_PAPERS: z.coerce.number().int().min(2).max(4).default(4),

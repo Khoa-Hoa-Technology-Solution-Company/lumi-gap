@@ -233,7 +233,7 @@ function buildGapEvidenceCheck(): EvaluationCheck {
     {
       intersectionCount: 2,
       parentCounts: { a: 100, b: 80 },
-      parentRisingGrowthPct: 25,
+      parentRising: true,
     },
     {
       scarceAbs: env.GAP_SCARCE_ABS,

@@ -24,6 +24,16 @@ export interface GapProjectEvidence {
   evidenceConfidence: number;
 }
 
+/** Probe counts taken from OpenAlex (the whole literature, not just the local corpus). Absent when OpenAlex was unavailable. */
+export interface GapGlobalEvidence {
+  source: "openalex";
+  intersectionCount: number;
+  parentCounts: { a: number; b: number };
+  yearFrom?: number;
+  yearTo?: number;
+  fetchedAt: string;
+}
+
 export interface ResearchGapItem {
   assessmentStatus?: import("./project-research.js").GapAssessment;
   version?: number;
@@ -35,6 +45,9 @@ export interface ResearchGapItem {
   rationale: string;
   supportingPaperIds: string[];
   supportingPapers: GapSupportingPaper[];
+  /** Papers an expert linked as counter-evidence (kept apart from the pipeline's evidence and supporting papers). */
+  counterPaperIds?: string[];
+  counterPapers?: GapSupportingPaper[];
   /** Complete reviewed input set the AI read when producing this gap. */
   evidencePaperIds: string[];
   /** Resolved papers in the same order as evidencePaperIds. */
@@ -52,7 +65,9 @@ export interface ResearchGapItem {
   probe?: { topicA: string; topicB: string; yearFrom?: number; yearTo?: number };
   intersectionCount?: number;
   parentCounts?: { a: number; b: number };
-  parentTrend?: { topic: string; growthRatePct: number } | null;
+  parentTrend?: { topic: string; growthRatePct: number; cagrPct?: number | null; slope?: number } | null;
+  /** OpenAlex counts for the same probe; null/absent when OpenAlex was disabled or failed. */
+  globalEvidence?: GapGlobalEvidence | null;
   evidenceConfidence?: number;
   /** Active corpus papers the probe counts above were taken over; absent on gaps created before it was recorded. */
   evidenceScopeSize?: number;

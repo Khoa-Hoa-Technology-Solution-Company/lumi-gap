@@ -161,6 +161,7 @@ model ResearchGap {
   intersectionCount         Int?     @map("intersection_count")
   parentCounts              Json?    @map("parent_counts")
   parentTrend               Json?    @map("parent_trend")
+  globalEvidence            Json?    @map("global_evidence")
   evidenceConfidence        Float?   @map("evidence_confidence")
   evidenceScopeSize         Int?     @map("evidence_scope_size")
   projectEvidence           Json?    @map("project_evidence")

@@ -114,7 +114,7 @@ export const gapValidationService = {
         } });
         await tx.researchGap.update({ where: { id: row.id }, data: { version: { increment: 1 }, validationStatus: "CANDIDATE", assessmentStatus: "PROPOSED", assessmentRationale: "" } });
         await recordGapPacket(tx, row.id, owner.id);
-        await tx.researchGapPaper.upsert({ where: { gapId_paperId_kind: { gapId: row.id, paperId: sourcePaper.id, kind: input.evidenceKind === "SUPPORTING" ? "supporting" : "evidence" } }, create: { gapId: row.id, paperId: sourcePaper.id, kind: input.evidenceKind === "SUPPORTING" ? "supporting" : "evidence", position: 0 }, update: {} });
+        await tx.researchGapPaper.upsert({ where: { gapId_paperId_kind: { gapId: row.id, paperId: sourcePaper.id, kind: input.evidenceKind === "SUPPORTING" ? "supporting" : "counter" } }, create: { gapId: row.id, paperId: sourcePaper.id, kind: input.evidenceKind === "SUPPORTING" ? "supporting" : "counter", position: 0 }, update: {} });
         if (row.projectId) await tx.projectActivity.create({ data: { projectId: row.projectId, actorId: owner.id, type: "EVIDENCE_ADDED", entityKind: "GAP", entityId: publicDatabaseId(row), metadata: { title: row.title, evidenceKind: input.evidenceKind, evidenceType: selected.evidenceType, paperId: publicDatabaseId(sourcePaper) } } });
         return created;
       });
