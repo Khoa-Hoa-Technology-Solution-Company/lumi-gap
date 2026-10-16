@@ -15,7 +15,7 @@ export interface TrendsOverviewParams {
   yearTo?: number;
   limit?: number;
   minPapers?: number;
-  sortBy?: "momentum" | "growth" | "total";
+  sortBy?: "trend" | "total";
   paperKinds?: string[];
   openAccessStatuses?: string[];
   providers?: string[];

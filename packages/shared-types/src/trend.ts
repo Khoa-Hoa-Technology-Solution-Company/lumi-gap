@@ -11,8 +11,15 @@ export interface TopItem {
 }
 
 export interface YearlyCitationMetric extends YearlyCount {
-  totalCitations: number;
-  avgCitations: number;
+  /** Sum / mean of citation counts. Null when the data source cannot sum
+   *  citations (OpenAlex aggregate queries only count works). */
+  totalCitations: number | null;
+  avgCitations: number | null;
+  /** Works among the 10% most cited of their year, type and subfield
+   *  (OpenAlex citation_normalized_percentile). Present for OpenAlex data. */
+  topCitedCount?: number;
+  /** topCitedCount / count · 100 — PP(top 10%), Waltman & Schreiber (2013). */
+  ppTop10Pct?: number | null;
 }
 
 export interface TrendFacetBucket {
@@ -64,7 +71,11 @@ export interface RecommendedTrendComparison {
   metrics: Array<{
     topic: string;
     totalPapers: number;
+    /** Verdict-based ranking metric: TrendClassification.relativeChangePct. */
+    relativeChangePct: number | null;
+    /** @deprecated Raw-count YoY growth; not used for ranking or labels. */
     growthRatePct: number;
+    /** @deprecated Raw-count least-squares slope; not used for ranking or labels. */
     momentum: number;
   }>;
 }
@@ -78,15 +89,68 @@ export interface RecommendedTrendComparison {
  * render it — label it "YTD" on the FE.
  */
 export interface TrendMetrics {
-  /** Year-over-year growth, %: last complete year vs the year before.
+  /** @deprecated Descriptive only: year-over-year growth of raw counts, %.
+   *  Not tested; never use it to sort or label a trend (use TrendClassification).
    *  Denominator is clamped to >= 1 so a 0→N jump reads as N*100%. */
   growthRatePct: number;
-  /** Compound annual growth rate over (up to) the last 3 complete years, %.
-   *  Null when the series is too short or starts at 0. */
+  /** @deprecated Descriptive only: 3-year CAGR of raw counts, %. Not tested;
+   *  never use it to sort or label a trend (use TrendClassification). */
   cagr3yPct: number | null;
-  /** Least-squares slope of count-per-year over the window (papers/year).
-   *  Positive = rising, negative = declining. The steeper, the hotter. */
+  /** @deprecated Descriptive only: least-squares slope of raw counts
+   *  (papers/year). Not tested; never use it to sort or label a trend (use
+   *  TrendClassification). */
   momentum: number;
+}
+
+/** Mann–Kendall test (Mann 1945; Kendall 1975) on the yearly share. */
+export interface MannKendallTrend {
+  n: number;
+  s: number;
+  variance: number;
+  z: number;
+  pValue: number;
+  tau: number;
+}
+
+/** Trend verdict of a topic's yearly share of its field (Mann–Kendall). */
+export type TrendVerdict = "rising" | "declining" | "stable" | "insufficient";
+
+/** Only set for rising / declining. */
+export type TrendConfidence = "high" | "medium";
+
+export type TrendReasonCode =
+  | "LOCAL_CORPUS"
+  | "TOO_FEW_YEARS"
+  | "TOO_FEW_PAPERS"
+  | "SIGNIFICANT_INCREASE"
+  | "SIGNIFICANT_DECREASE"
+  | "NO_SIGNIFICANT_TREND";
+
+/**
+ * The single trend conclusion of a topic. Decided only by the Mann–Kendall
+ * test on the yearly share s_t = n_t / N_t · 100 (N_t = papers of the same
+ * OpenAlex field), complete years only. Magnitude: Sen's slope with its 95%
+ * rank-based CI (Helsel et al. 2020, USGS TM 4-A3; Gilbert 1987). In the
+ * overview list the p-values are adjusted with Benjamini–Hochberg (qValue).
+ * Thresholds: trend.verdict.ts in the backend.
+ */
+export interface TrendClassification {
+  verdict: TrendVerdict;
+  /** Only for rising / declining. */
+  confidence: TrendConfidence | null;
+  /** Number of complete years used (n). */
+  yearsUsed: number;
+  /** Topic papers in the years used. */
+  totalPapers: number;
+  mannKendall: { s: number; z: number; tau: number; pValue: number } | null;
+  /** Benjamini–Hochberg q-value; only in the overview list. */
+  qValue: number | null;
+  /** Sen's slope of the share, percentage points per year. */
+  senSlope: number | null;
+  senSlopeCi95: [number, number] | null;
+  /** senSlope / median(share) · 100, % per year (presentation only). */
+  relativeChangePct: number | null;
+  reasons: TrendReasonCode[];
 }
 
 /** One topic in the trends overview list (GET /trends). */
@@ -96,6 +160,80 @@ export interface TrendingTopic extends TrendMetrics {
   totalPapers: number;
   /** Gap years are filled with count 0; sorted by year ascending. */
   yearlyBreakdown: YearlyCount[];
+  /** Trend verdict of the topic's share of its field over complete years. */
+  classification: TrendClassification;
+}
+
+export interface TrendShareYear {
+  year: number;
+  /** Papers of the topic. */
+  count: number;
+  /** Papers of the reference population (N_t). */
+  total: number;
+  /** count / total · 100. */
+  sharePct: number;
+}
+
+/** PP(top 10%): share of the year's papers among the 10% most cited works of
+ *  the same year, type and subfield (Waltman & Schreiber 2013). */
+export interface TrendImpactYear {
+  year: number;
+  papers: number;
+  /** Papers with OpenAlex citation_normalized_percentile.is_in_top_10_percent. */
+  topPapers: number;
+  /** topPapers / papers · 100. Null when the year has no papers. */
+  ppTop10Pct: number | null;
+}
+
+/** One keyword compared between two periods with the log odds ratio of a
+ *  2×2 table of papers (Woolf 1955; Haldane 1956). */
+export interface TrendTermShift {
+  term: string;
+  /** Papers of period A / B that carry the keyword. */
+  papersA: number;
+  papersB: number;
+  logOddsRatio: number;
+  z: number;
+  pValue: number;
+  /** Benjamini–Hochberg q-value across all keywords tested for the topic. */
+  qValue: number;
+}
+
+export interface TrendTermShiftAnalysis {
+  periodA: { yearFrom: number; yearTo: number; papers: number };
+  periodB: { yearFrom: number; yearTo: number; papers: number };
+  /** Keywords tested: the most frequent ones of each period, merged. */
+  termsTested: number;
+  /** z > 0, sorted by z descending. */
+  rising: TrendTermShift[];
+  /** z < 0, sorted by z ascending. */
+  falling: TrendTermShift[];
+}
+
+/** Where the counts come from: the whole OpenAlex population (aggregate
+ *  queries) or the local corpus when OpenAlex is unavailable. */
+export type TrendDataSource = "openalex" | "local";
+
+/** Statistical evidence for one topic (GET /trends/:topic). Every value comes
+ *  from a formula with a published source; see the web methodology panel. */
+export interface TopicTrendStatistics {
+  source: TrendDataSource;
+  significanceLevel: number;
+  /** Topic papers in the years used. */
+  totalPapers: number;
+  /** Complete years the tests use. */
+  yearsUsed: number[];
+  /** Population used as N_t: papers of the same OpenAlex field, or the whole
+   *  corpus when the topic has no field. */
+  baseline: { level: "field" | "corpus"; label: string };
+  shareSeries: TrendShareYear[];
+  mannKendall: MannKendallTrend | null;
+  /** Sen's slope of the share, percentage points per year. */
+  senSlopePctPoints: number | null;
+  /** Verdict of the share trend; p-value only (one hypothesis, qValue null). */
+  classification: TrendClassification;
+  impact: TrendImpactYear[];
+  termShift: TrendTermShiftAnalysis | null;
 }
 
 /** A keyword growing fast from a small base (early signal of a new direction). */
@@ -104,10 +242,26 @@ export interface RisingKeyword {
   totalPapers: number;
   growthRatePct: number;
   yearlyBreakdown: YearlyCount[];
+  /** 2×2 log odds ratio test of the keyword between the earlier and later half
+   *  of the window (Woolf 1955; Haldane 1956), BH-adjusted across the keywords
+   *  tested. Present when the overview comes from OpenAlex. */
+  shift?: TrendTermShift & {
+    periodA: { yearFrom: number; yearTo: number };
+    periodB: { yearFrom: number; yearTo: number };
+  };
+}
+
+/** Data Scope filters that could not be applied to the data source, e.g. the
+ *  local "provider" facet or a source name without an OpenAlex id. */
+export interface TrendScopeNotice {
+  ignoredFilters: Array<{ filter: string; values: string[]; reason: string }>;
 }
 
 /** Response shape of GET /api/v1/trends. */
 export interface TrendsOverview {
+  /** Where every count of this response comes from. */
+  dataSource?: TrendDataSource;
+  scopeNotice?: TrendScopeNotice;
   yearFrom: number;
   yearTo: number;
   /** Metrics only use years <= this. Entries in any yearlyBreakdown with
@@ -137,6 +291,7 @@ export interface TopicComparisonItem extends TrendMetrics {
 }
 
 export interface TrendCompareResponse {
+  dataSource?: TrendDataSource;
   yearFrom: number;
   yearTo: number;
   lastCompleteYear: number;
@@ -144,11 +299,13 @@ export interface TrendCompareResponse {
   computedAt: string;
 }
 
-export interface TrendTopicCandidate extends TrendingTopic {
+/** Search candidates are not tested, so they carry no classification. */
+export interface TrendTopicCandidate extends Omit<TrendingTopic, "classification"> {
   matchedBy: "topic" | "taxonomy";
 }
 
 export interface TrendTopicCandidatesResponse {
+  dataSource?: TrendDataSource;
   query: string;
   yearFrom: number;
   yearTo: number;
@@ -171,6 +328,7 @@ export interface TopicRelationshipEdge {
 }
 
 export interface TopicRelationshipResponse {
+  dataSource?: TrendDataSource;
   topic: string;
   yearFrom: number;
   yearTo: number;
@@ -226,6 +384,7 @@ export interface TrendExplanationHistoryResponse {
 
 /** Response shape of GET /api/v1/trends/:topic — deep dive into one topic. */
 export interface PublicationTrend extends TrendMetrics {
+  dataSource?: TrendDataSource;
   topic: string;
   taxonomy?: TrendTopicTaxonomy;
   totalPapers: number;
@@ -237,5 +396,6 @@ export interface PublicationTrend extends TrendMetrics {
   topJournals: TopItem[];
   topAuthors: TopItem[];
   topKeywords: TopItem[];
+  statistics?: TopicTrendStatistics;
   computedAt: string;
 }

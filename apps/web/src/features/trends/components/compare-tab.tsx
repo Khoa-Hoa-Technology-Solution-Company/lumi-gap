@@ -1,6 +1,6 @@
 import React from "react";
 import { Users, AlertTriangle, TrendingUp, BarChart2, Award, Zap, LineChart as ChartIcon, Search, FileText, X, Filter, Sparkles } from "lucide-react";
-import { Line, LineChart, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis, Legend } from "recharts";
+import { Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis, Legend } from "recharts";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useNavigate } from "react-router-dom";
@@ -8,12 +8,16 @@ import type { TrendCompareResponse, TrendTopicCandidate, TopicComparisonItem, Tr
 import type { UseQueryResult } from "@tanstack/react-query";
 import { useTrendTopicCandidates } from "../hooks/use-trends";
 import type { TrendTopicCandidatesParams } from "../api/trends.api";
-import { getTopicMetric, formatMetricValue, formatSigned } from "../../../pages/trends.insights";
+import { getTopicMetric, formatMetricValue } from "../../../pages/trends.insights";
 import type { TrendSortKey } from "../../../pages/trends.insights";
 import { formatNumber } from "@/utils";
+import { useI18n } from "@/i18n";
+import { aggregatePpTop10, averageCitations, formatPercent, hasCitationTotals, hasPpTop10, sumCitations, WORLD_AVERAGE_PP_TOP10 } from "../trend-impact";
+import { DataSourceBadge } from "./trend-data-source";
+import { TrendIntro, TrendVerdictBadge, formatRelativeChange, verdictLabel } from "./trend-verdict-badge";
 
 type DatasetTrendTab = "overview" | "topics" | "dataset" | "compare" | "ai";
-type CompareMetricMode = "papers" | "citations" | "avg_citations";
+type CompareMetricMode = "papers" | "citations" | "avg_citations" | "pp_top10";
 type CompareChartPoint = { year: string } & Record<string, number | string>;
 type CandidateTopic = TrendingTopic | TrendTopicCandidate;
 
@@ -79,7 +83,9 @@ export function CompareTab({
   scopeParams,
 }: CompareTabProps) {
   const navigate = useNavigate();
-  const [metricMode, setMetricMode] = React.useState<CompareMetricMode>("papers");
+  const { t } = useI18n();
+  const tr = t;
+  const [requestedMetricMode, setMetricMode] = React.useState<CompareMetricMode>("papers");
   const [searchTerm, setSearchTerm] = React.useState("");
   const [showAllCandidates, setShowAllCandidates] = React.useState(false);
 
@@ -123,7 +129,8 @@ export function CompareTab({
 
   // Derive active scope string
   const activeScopeText = React.useMemo(() => {
-    if (!scopeParams) return "Scope: Full active dataset";
+    const fullScope = data.dataSource === "openalex" ? "Scope: All OpenAlex works" : "Scope: Full active dataset";
+    if (!scopeParams) return fullScope;
     const parts: string[] = [];
 
     const addFilterNames = (label: string, values: string[]) => {
@@ -148,27 +155,30 @@ export function CompareTab({
     addFilterNames("Language", scopeParams.languages);
     addFilterNames("Citations", scopeParams.citationBands);
 
-    if (parts.length === 0) return "Scope: Full active dataset";
+    if (parts.length === 0) return fullScope;
     return `Scope: ${parts.join(" / ")}`;
   }, [data, scopeParams]);
 
   const isRefetching = compareQuery.isFetching && !!compareQuery.data;
 
-  const getTotalCitations = React.useCallback((topic: TopicComparisonItem) => (
-    topic.citationTrend?.reduce((acc, c) => acc + (c.totalCitations ?? 0), 0) ?? 0
-  ), []);
+  // Citation sums are null when the source cannot sum citations (OpenAlex);
+  // it reports PP(top 10%) instead. Null stays null, it is never shown as 0.
+  const comparedTopics = compareQuery.data?.topics;
+  const hasPp = React.useMemo(() => (comparedTopics ?? []).some((topic) => hasPpTop10(topic.citationTrend)), [comparedTopics]);
+  const hasTotals = React.useMemo(() => (comparedTopics ?? []).some((topic) => hasCitationTotals(topic.citationTrend)), [comparedTopics]);
+  const metricMode: CompareMetricMode = requestedMetricMode === "papers"
+    ? "papers"
+    : hasPp
+      ? "pp_top10"
+      : hasTotals
+        ? requestedMetricMode === "pp_top10" ? "citations" : requestedMetricMode
+        : "papers";
 
-  const getAverageCitations = React.useCallback((topic: TopicComparisonItem) => {
-    const totals = topic.citationTrend?.reduce(
-      (acc, c) => ({
-        citations: acc.citations + (c.totalCitations ?? 0),
-        papers: acc.papers + (c.count ?? 0),
-      }),
-      { citations: 0, papers: 0 },
-    ) ?? { citations: 0, papers: 0 };
+  const getTotalCitations = React.useCallback((topic: TopicComparisonItem) => sumCitations(topic.citationTrend), []);
 
-    return totals.papers > 0 ? totals.citations / totals.papers : 0;
-  }, []);
+  const getAverageCitations = React.useCallback((topic: TopicComparisonItem) => averageCitations(topic.citationTrend), []);
+
+  const getPpTop10 = React.useCallback((topic: TopicComparisonItem) => aggregatePpTop10(topic.citationTrend), []);
 
   const debouncedSearchTerm = useDebouncedValue(searchTerm.trim(), 300);
   const isRemoteCandidateSearch = debouncedSearchTerm.length > 0;
@@ -217,20 +227,24 @@ export function CompareTab({
     for (let y = yearFrom; y <= yearTo; y++) {
       const point: CompareChartPoint = { year: String(y) };
 
-      topicsList.forEach(t => {
-        const papersEntry = t.yearlyBreakdown?.find(entry => entry.year === y);
-        const citationsEntry = t.citationTrend?.find(entry => entry.year === y);
+      topicsList.forEach(topic => {
+        const papersEntry = topic.yearlyBreakdown?.find(entry => entry.year === y);
+        const citationsEntry = topic.citationTrend?.find(entry => entry.year === y);
 
         const papersCount = papersEntry?.count ?? 0;
-        const citationsCount = citationsEntry?.totalCitations ?? 0;
-        const avgCitationsValue = citationsEntry?.avgCitations ?? 0;
+        // A missing value leaves a gap in the line instead of drawing 0.
+        const citationsCount = citationsEntry?.totalCitations;
+        const avgCitationsValue = citationsEntry?.avgCitations;
+        const ppValue = citationsEntry?.ppTop10Pct;
 
         if (metricMode === "papers") {
-          point[t.topic] = papersCount;
+          point[topic.topic] = papersCount;
         } else if (metricMode === "citations") {
-          point[t.topic] = citationsCount;
+          if (typeof citationsCount === "number") point[topic.topic] = citationsCount;
         } else if (metricMode === "avg_citations") {
-          point[t.topic] = avgCitationsValue;
+          if (typeof avgCitationsValue === "number") point[topic.topic] = avgCitationsValue;
+        } else if (typeof ppValue === "number") {
+          point[topic.topic] = ppValue;
         }
       });
 
@@ -258,12 +272,26 @@ export function CompareTab({
     return minVol > 0 && maxVol / minVol > 5;
   }, [compareQuery.data]);
 
+  // Verdicts exist only for the topics of the overview list, so the compare
+  // response (which can hold any searched topic) is joined to them by name.
+  const classificationByTopic = React.useMemo(() => {
+    const map = new Map<string, TrendingTopic["classification"]>();
+    for (const topic of data.topics ?? []) map.set(topic.topic.toLowerCase(), topic.classification);
+    return map;
+  }, [data.topics]);
+  const classificationOf = React.useCallback(
+    (topic: string) => classificationByTopic.get(topic.toLowerCase()),
+    [classificationByTopic],
+  );
+
   // Client-side computed deterministic insights (No LLM)
-  const fastestGrowth = React.useMemo(() => {
-    const list = compareQuery.data?.topics || [];
-    if (list.length === 0) return null;
-    return [...list].sort((a, b) => b.momentum - a.momentum)[0];
-  }, [compareQuery.data]);
+  const topRising = React.useMemo(() => {
+    const rising = (compareQuery.data?.topics || [])
+      .map((topic) => ({ topic, classification: classificationOf(topic.topic) }))
+      .filter((entry): entry is { topic: TopicComparisonItem; classification: TrendingTopic["classification"] } => entry.classification?.verdict === "rising");
+    if (rising.length === 0) return null;
+    return [...rising].sort((a, b) => (b.classification.relativeChangePct ?? 0) - (a.classification.relativeChangePct ?? 0))[0];
+  }, [compareQuery.data, classificationOf]);
 
   const largestVolume = React.useMemo(() => {
     const list = compareQuery.data?.topics || [];
@@ -271,21 +299,27 @@ export function CompareTab({
     return [...list].sort((a, b) => b.totalPapers - a.totalPapers)[0];
   }, [compareQuery.data]);
 
+  // Highest citation impact: PP(top 10%) when reported, otherwise citations per paper.
   const highestCitations = React.useMemo(() => {
-    const list = compareQuery.data?.topics || [];
+    const list = (compareQuery.data?.topics || [])
+      .map((topic) => ({ topic, value: hasPp ? getPpTop10(topic) : getAverageCitations(topic) }))
+      .filter((entry): entry is { topic: TopicComparisonItem; value: number } => entry.value !== null);
     if (list.length === 0) return null;
-    return [...list].sort((a, b) => getAverageCitations(b) - getAverageCitations(a))[0];
-  }, [compareQuery.data, getAverageCitations]);
+    return [...list].sort((a, b) => b.value - a.value)[0];
+  }, [compareQuery.data, getAverageCitations, getPpTop10, hasPp]);
 
   const smallBaseWarnings = React.useMemo(() => {
     const list = compareQuery.data?.topics || [];
-    return list.filter(t => t.growthRatePct > 20 && t.totalPapers < 20);
+    return list.filter(t => t.totalPapers < 30);
   }, [compareQuery.data]);
 
   // Dynamic instruction helper text below metric toggles
   const metricHelperText = React.useMemo(() => {
     if (metricMode === "papers") {
       return "Shows how many papers were published each year. Use this to compare research activity.";
+    }
+    if (metricMode === "pp_top10") {
+      return "Shows the share of each year's papers among the 10% most cited works of the same year, type and subfield. 10% is the world average, so topics can be compared despite different sizes and ages.";
     }
     if (metricMode === "citations") {
       return "Shows accumulated citation volume. Older topics may look stronger because they had more time to collect citations.";
@@ -302,17 +336,22 @@ export function CompareTab({
       return "Select at least 2 topics to generate a comparison recommendation.";
     }
 
-    const fastest = fastestGrowth;
+    const fastest = topRising;
     const highestCit = highestCitations;
 
     if (fastest && highestCit) {
-      if (fastest.topic === highestCit.topic) {
-        return `Recommendation: ${fastest.topic} is the strongest scoped candidate, leading both growth momentum (${formatSigned(fastest.momentum, 2)} papers/year) and citation impact. Focus on this direction.`;
+      if (fastest.topic.topic === highestCit.topic.topic) {
+        return t("Recommendation: {{topic}} is the strongest scoped candidate, with a significant rise in its field share ({{change}}) and the highest citation impact. Focus on this direction.", {
+          topic: fastest.topic.topic,
+          change: formatRelativeChange(fastest.classification, t) ?? "",
+        });
       }
-      return `Recommendation: ${fastest.topic} is the fastest-growing scoped topic, but ${highestCit.topic} may be more citation-efficient. Use Avg citations before choosing a report direction.`;
+      return hasPp
+        ? t("Recommendation: {{topic}} has the strongest significant rise in its field share, but {{other}} has the larger share of highly cited papers. Check PP(top 10%) before choosing a report direction.", { topic: fastest.topic.topic, other: highestCit.topic.topic })
+        : t("Recommendation: {{topic}} has the strongest significant rise in its field share, but {{other}} may be more citation-efficient. Use Avg citations before choosing a report direction.", { topic: fastest.topic.topic, other: highestCit.topic.topic });
     }
-    return "Compare growth trends, volumes, and citation metrics to decide your research direction.";
-  }, [selectedTopics, compareQuery.data, fastestGrowth, highestCitations]);
+    return t("Compare trend verdicts, volumes, and citation metrics to decide your research direction.");
+  }, [selectedTopics, compareQuery.data, topRising, highestCitations, hasPp, t]);
 
   // Custom Recharts Tooltip showing all metrics
   const CustomChartTooltip = ({
@@ -338,8 +377,9 @@ export function CompareTab({
             const papersEntry = topicData?.yearlyBreakdown?.find((entry) => String(entry.year) === labelText);
             const citationsEntry = topicData?.citationTrend?.find((entry) => String(entry.year) === labelText);
             const papers = papersEntry?.count ?? 0;
-            const citations = citationsEntry?.totalCitations ?? 0;
-            const avg = (citationsEntry?.avgCitations ?? 0).toFixed(2);
+            const citations = citationsEntry?.totalCitations;
+            const avg = citationsEntry?.avgCitations;
+            const pp = citationsEntry?.ppTop10Pct;
 
             return (
               <div key={idx} className="space-y-0.5">
@@ -349,8 +389,14 @@ export function CompareTab({
                 </div>
                 <div className="pl-4 space-y-0.5 text-[11px] text-slate-550 dark:text-slate-450 font-semibold">
                   <p>Papers: <span className="text-slate-900 dark:text-white font-bold">{formatNumber(papers)}</span></p>
-                  <p>Citations: <span className="text-slate-900 dark:text-white font-bold">{formatNumber(citations)}</span></p>
-                  <p>Avg Citations: <span className="text-slate-900 dark:text-white font-bold">{avg}</span></p>
+                  {hasPp ? (
+                    <p>PP(top 10%): <span className="text-slate-900 dark:text-white font-bold">{typeof pp === "number" ? formatPercent(pp) : "—"}</span></p>
+                  ) : (
+                    <>
+                      <p>Citations: <span className="text-slate-900 dark:text-white font-bold">{typeof citations === "number" ? formatNumber(citations) : "—"}</span></p>
+                      <p>Avg Citations: <span className="text-slate-900 dark:text-white font-bold">{typeof avg === "number" ? avg.toFixed(2) : "—"}</span></p>
+                    </>
+                  )}
                 </div>
               </div>
             );
@@ -361,14 +407,13 @@ export function CompareTab({
     return null;
   };
 
-  const getInterpretation = (t: TopicComparisonItem) => {
-    const avgCitations = getAverageCitations(t);
+  const getInterpretation = (topic: TopicComparisonItem) => {
+    const avgCitations = getAverageCitations(topic);
+    const pp = getPpTop10(topic);
 
-    if (t.growthRatePct > 15 && t.totalPapers < 50) return "Rising but small base";
-    if (t.totalPapers > 1000 && t.momentum >= 0) return "Established baseline";
-    if (t.growthRatePct < 0) return "Declining in latest complete year";
-    if (avgCitations > 15) return "High citation impact";
-    return "Stable evolution";
+    if (pp !== null && pp > WORLD_AVERAGE_PP_TOP10) return t("Above world-average citation impact");
+    if (pp === null && avgCitations !== null && avgCitations > 15) return t("High citation impact");
+    return "—";
   };
 
   // Reusable scroll helper
@@ -422,7 +467,8 @@ export function CompareTab({
             Pick 2-5 topics to compare publication activity, citation impact, and growth stability inside the current Data Scope. Use this to decide what to read, report, or investigate next.
           </p>
         </div>
-        <div className="text-right shrink-0">
+        <div className="text-right shrink-0 flex flex-col items-end gap-1.5">
+          <DataSourceBadge source={compareQuery.data?.dataSource ?? data.dataSource} />
           <span className={`inline-block text-[10px] font-extrabold px-3 py-1 rounded-xl border select-none ${
             isRefetching
               ? "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/20 dark:text-blue-400 dark:border-blue-900/50 animate-pulse"
@@ -484,7 +530,9 @@ export function CompareTab({
         ) : candidateTopics.length === 0 && searchTerm.trim() !== "" ? (
           <div className="py-6 text-center border border-dashed border-slate-200 dark:border-slate-800 rounded-2xl p-4 bg-slate-50/10 dark:bg-slate-900/5 select-none space-y-2.5">
             <p className="text-xs font-bold text-slate-500">
-              No matching topic candidate in the current scope. This may mean the topic is not synced yet, or your Data Scope is too narrow.
+              {data.dataSource === "openalex"
+                ? "No matching topic candidate in the current scope. Try a different keyword or widen your Data Scope."
+                : "No matching topic candidate in the current scope. This may mean the topic is not synced yet, or your Data Scope is too narrow."}
             </p>
             <Button
               variant="outline"
@@ -501,7 +549,10 @@ export function CompareTab({
             <div className="flex flex-wrap gap-2.5 select-none">
               {visibleCandidates.map((t) => {
                 const isSelected = selectedTopics.includes(t.topic);
-                const metricDisplay = formatMetricValue(getTopicMetric(t, sortBy), sortBy);
+                const candidateClassification = "classification" in t ? t.classification : undefined;
+                const metricDisplay = sortBy === "trend" && candidateClassification
+                  ? `${verdictLabel(candidateClassification.verdict, tr)} · ${formatRelativeChange(candidateClassification, tr) ?? "—"}`
+                  : tr("{{count}} papers", { count: formatMetricValue(getTopicMetric(t, "total"), "total") });
                 const isMaxSelected = selectedTopics.length >= 5;
 
                 return (
@@ -532,7 +583,7 @@ export function CompareTab({
                       </span>
                     )}
                     <span className={`text-[9px] font-bold mt-1 ${isSelected ? "text-white" : "text-blue-650 dark:text-blue-400"}`}>
-                      {sortBy === "growth" ? "Growth" : sortBy === "total" ? "Papers" : "Momentum"}: {metricDisplay}
+                      {metricDisplay}
                     </span>
                   </button>
                 );
@@ -592,14 +643,16 @@ export function CompareTab({
                     <div className="flex flex-wrap gap-1.5 mb-3">
                       {rec.topics.map(tName => {
                         const info = data.topics?.find(tp => tp.topic === tName);
-                        const volumeText = info ? `${formatNumber(info.totalPapers)} papers` : "No papers";
-                        const momentumText = info ? `${formatSigned(info.momentum, 1)}/yr` : "No speed";
+                        const volumeText = info ? t("{{count}} papers", { count: formatNumber(info.totalPapers) }) : t("No papers");
+                        const trendText = info
+                          ? `${verdictLabel(info.classification.verdict, t)}${formatRelativeChange(info.classification, t) ? `, ${formatRelativeChange(info.classification, t)}` : ""}`
+                          : t("No verdict");
 
                         return (
                           <div key={tName} className="flex flex-col bg-slate-50 dark:bg-slate-800/80 px-2.5 py-1 rounded-xl border border-slate-200/40 dark:border-slate-800">
                             <span className="text-xs font-extrabold text-slate-850 dark:text-slate-200 capitalize">{tName}</span>
                             <span className="text-[9px] font-bold text-slate-450 dark:text-slate-500 mt-0.5">
-                              {volumeText} ({momentumText})
+                              {volumeText} ({trendText})
                             </span>
                           </div>
                         );
@@ -685,15 +738,15 @@ export function CompareTab({
           {/* 7. FE-Computed Recommendation Insights Panel */}
           <div className="space-y-3">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {fastestGrowth && (
+              {topRising && (
                 <div className="bg-white dark:bg-[#121212] border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-sm flex items-center gap-3">
                   <div className="p-2 bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 rounded-lg shrink-0">
                     <TrendingUp className="w-4 h-4" />
                   </div>
                   <div>
-                    <div className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Fastest Growth</div>
-                    <div className="text-xs font-bold text-slate-800 dark:text-white capitalize mt-0.5 line-clamp-1">{fastestGrowth.topic}</div>
-                    <div className="text-[10px] text-blue-600 dark:text-blue-400 font-bold">{formatSigned(fastestGrowth.momentum, 2)} papers/year</div>
+                    <div className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">{t("Top rising topic")}</div>
+                    <div className="text-xs font-bold text-slate-800 dark:text-white capitalize mt-0.5 line-clamp-1">{topRising.topic.topic}</div>
+                    <div className="text-[10px] text-blue-600 dark:text-blue-400 font-bold">{formatRelativeChange(topRising.classification, t)}</div>
                   </div>
                 </div>
               )}
@@ -718,11 +771,11 @@ export function CompareTab({
                   </div>
                   <div>
                     <div className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Highest Citation Impact</div>
-                    <div className="text-xs font-bold text-slate-800 dark:text-white capitalize mt-0.5 line-clamp-1">{highestCitations.topic}</div>
+                    <div className="text-xs font-bold text-slate-800 dark:text-white capitalize mt-0.5 line-clamp-1">{highestCitations.topic.topic}</div>
                     <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">
-                      {highestCitations.totalPapers > 0
-                        ? `${getAverageCitations(highestCitations).toFixed(1)} avg citations`
-                        : "0 avg citations"}
+                      {hasPp
+                        ? `${formatPercent(highestCitations.value)} PP(top 10%)`
+                        : t("{{value}} avg citations", { value: highestCitations.value.toFixed(1) })}
                     </div>
                   </div>
                 </div>
@@ -739,7 +792,7 @@ export function CompareTab({
               <div className="bg-amber-50/50 dark:bg-amber-950/10 border border-amber-200/50 dark:border-amber-900/30 rounded-xl p-3.5 text-xs text-amber-800 dark:text-amber-300 flex items-center gap-2 select-none">
                 <Zap className="w-4 h-4 text-amber-500 shrink-0 animate-bounce" />
                 <span>
-                  <strong>Small-base warning:</strong> {smallBaseWarnings.map(t => t.topic).join(", ")} has high growth but fewer than 20 papers.
+                  <strong>{t("Small-base warning")}:</strong> {t("{{topics}}: fewer than 30 papers in the window, too few for a trend verdict.", { topics: smallBaseWarnings.map(topic => topic.topic).join(", ") })}
                 </span>
               </div>
             )}
@@ -764,28 +817,44 @@ export function CompareTab({
                 >
                   Papers / year
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setMetricMode("citations")}
-                  className={`px-3.5 py-1.5 rounded-lg text-xs font-extrabold transition-all ${
-                    metricMode === "citations"
-                      ? "bg-blue-600 text-white shadow-sm"
-                      : "text-slate-550 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
-                  }`}
-                >
-                  Total citations
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMetricMode("avg_citations")}
-                  className={`px-3.5 py-1.5 rounded-lg text-xs font-extrabold transition-all ${
-                    metricMode === "avg_citations"
-                      ? "bg-blue-600 text-white shadow-sm"
-                      : "text-slate-550 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
-                  }`}
-                >
-                  Avg citations
-                </button>
+                {hasPp ? (
+                  <button
+                    type="button"
+                    onClick={() => setMetricMode("pp_top10")}
+                    className={`px-3.5 py-1.5 rounded-lg text-xs font-extrabold transition-all ${
+                      metricMode === "pp_top10"
+                        ? "bg-blue-600 text-white shadow-sm"
+                        : "text-slate-550 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                    }`}
+                  >
+                    PP(top 10%)
+                  </button>
+                ) : hasTotals ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setMetricMode("citations")}
+                      className={`px-3.5 py-1.5 rounded-lg text-xs font-extrabold transition-all ${
+                        metricMode === "citations"
+                          ? "bg-blue-600 text-white shadow-sm"
+                          : "text-slate-550 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                      }`}
+                    >
+                      Total citations
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMetricMode("avg_citations")}
+                      className={`px-3.5 py-1.5 rounded-lg text-xs font-extrabold transition-all ${
+                        metricMode === "avg_citations"
+                          ? "bg-blue-600 text-white shadow-sm"
+                          : "text-slate-550 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                      }`}
+                    >
+                      Avg citations
+                    </button>
+                  </>
+                ) : null}
               </div>
             </div>
 
@@ -809,8 +878,17 @@ export function CompareTab({
                     axisLine={false}
                     tickLine={false}
                     tick={{ fontSize: 11, fill: '#64748b', fontWeight: 550 }}
-                    tickFormatter={(value) => value === 0 ? '' : formatNumber(value)}
+                    tickFormatter={(value) => value === 0 ? '' : metricMode === "pp_top10" ? `${value}%` : formatNumber(value)}
+                    domain={metricMode === "pp_top10" ? [0, (dataMax: number) => Math.max(dataMax, WORLD_AVERAGE_PP_TOP10 * 1.2)] : undefined}
                   />
+                  {metricMode === "pp_top10" && (
+                    <ReferenceLine
+                      y={WORLD_AVERAGE_PP_TOP10}
+                      stroke="#64748b"
+                      strokeDasharray="6 4"
+                      label={{ value: t("10% = world average"), position: "insideBottomRight", fill: "#64748b", fontSize: 10, fontWeight: "bold" }}
+                    />
+                  )}
                   <RechartsTooltip content={<CustomChartTooltip />} />
                   <Legend
                     verticalAlign="top"
@@ -839,18 +917,24 @@ export function CompareTab({
 
           {/* 8. Comparison Table + Action links */}
           <div className="border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm bg-white dark:bg-[#121212] mt-4">
+            <TrendIntro className="border-b border-slate-100 px-6 py-3 dark:border-slate-800" />
             <div className="overflow-x-auto">
               <table className="w-full min-w-[1180px] text-sm text-left">
                 <thead className="text-xs text-slate-500 uppercase bg-slate-50/50 dark:bg-slate-900/20">
                   <tr>
                     <th className="px-6 py-4 font-medium whitespace-nowrap min-w-[260px]">Topic Name</th>
                     <th className="px-6 py-4 font-medium text-right whitespace-nowrap min-w-[90px]">Papers</th>
-                    <th className="px-6 py-4 font-medium text-right whitespace-nowrap min-w-[130px]">Momentum</th>
-                    <th className="px-6 py-4 font-medium text-right whitespace-nowrap min-w-[130px]">YoY Growth</th>
-                    <th className="px-6 py-4 font-medium text-right whitespace-nowrap min-w-[110px]">CAGR 3Y</th>
-                    <th className="px-6 py-4 font-medium text-right whitespace-nowrap min-w-[150px]">Total Citations</th>
-                    <th className="px-6 py-4 font-medium text-right whitespace-nowrap min-w-[140px]">Avg Citations</th>
-                    <th className="px-6 py-4 font-medium text-right whitespace-nowrap min-w-[140px]">Interpretation</th>
+                    <th className="px-6 py-4 font-medium whitespace-nowrap min-w-[190px]">{t("Trend")}</th>
+                    <th className="px-6 py-4 font-medium whitespace-nowrap min-w-[250px]">{t("Relative change")}</th>
+                    {hasPp ? (
+                      <th className="px-6 py-4 font-medium text-right whitespace-nowrap min-w-[150px]">PP(top 10%)</th>
+                    ) : (
+                      <>
+                        <th className="px-6 py-4 font-medium text-right whitespace-nowrap min-w-[150px]">Total Citations</th>
+                        <th className="px-6 py-4 font-medium text-right whitespace-nowrap min-w-[140px]">Avg Citations</th>
+                      </>
+                    )}
+                    <th className="px-6 py-4 font-medium text-right whitespace-nowrap min-w-[140px]">{t("Citation impact")}</th>
                     <th className="px-6 py-4 font-medium text-center whitespace-nowrap min-w-[110px]">Actions</th>
                   </tr>
                 </thead>
@@ -860,6 +944,8 @@ export function CompareTab({
                     const colorClass = colors[i % colors.length];
                     const totalCitations = getTotalCitations(t);
                     const avgCitations = getAverageCitations(t);
+                    const ppTop10 = getPpTop10(t);
+                    const rowClassification = classificationOf(t.topic);
 
                     return (
                       <tr key={i} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/10 transition-colors">
@@ -870,21 +956,34 @@ export function CompareTab({
                         <td className="px-6 py-4 text-right font-semibold text-slate-700 dark:text-slate-350">
                           {formatNumber(t.totalPapers)}
                         </td>
-                        <td className="px-6 py-4 text-right font-medium text-slate-600 dark:text-slate-400">
-                          {formatSigned(t.momentum, 2)} papers/year
+                        <td className="px-6 py-4 align-top">
+                          {rowClassification ? (
+                            <TrendVerdictBadge classification={rowClassification} size="sm" />
+                          ) : (
+                            <span className="text-[11px] text-slate-500 dark:text-slate-400">{tr("No verdict: this topic is not in the overview list")}</span>
+                          )}
                         </td>
-                        <td className={`px-6 py-4 text-right font-extrabold ${t.growthRatePct > 0 ? "text-emerald-600" : t.growthRatePct < 0 ? "text-red-500" : "text-slate-500"}`}>
-                          {formatSigned(t.growthRatePct, 1)}%
+                        <td className="px-6 py-4 align-top">
+                          {rowClassification && rowClassification.verdict !== "insufficient" ? (
+                            <span className="font-mono text-sm font-extrabold text-slate-800 dark:text-slate-200">{formatRelativeChange(rowClassification, tr) ?? "—"}</span>
+                          ) : (
+                            <span className="text-[11px] font-semibold text-slate-400">—</span>
+                          )}
                         </td>
-                        <td className="px-6 py-4 text-right font-semibold text-blue-700 dark:text-blue-400">
-                          {t.cagr3yPct !== null ? `${formatSigned(t.cagr3yPct, 1)}%` : "-"}
-                        </td>
-                        <td className="px-6 py-4 text-right font-semibold text-slate-700 dark:text-slate-300">
-                          {formatNumber(totalCitations)}
-                        </td>
-                        <td className="px-6 py-4 text-right font-semibold text-slate-750 dark:text-slate-300">
-                          {avgCitations.toFixed(2)}
-                        </td>
+                        {hasPp ? (
+                          <td className="px-6 py-4 text-right font-semibold text-slate-700 dark:text-slate-300">
+                            {ppTop10 === null ? "—" : formatPercent(ppTop10)}
+                          </td>
+                        ) : (
+                          <>
+                            <td className="px-6 py-4 text-right font-semibold text-slate-700 dark:text-slate-300">
+                              {totalCitations === null ? "—" : formatNumber(totalCitations)}
+                            </td>
+                            <td className="px-6 py-4 text-right font-semibold text-slate-750 dark:text-slate-300">
+                              {avgCitations === null ? "—" : avgCitations.toFixed(2)}
+                            </td>
+                          </>
+                        )}
                         <td className="px-6 py-4 text-right select-none">
                           <span className="inline-block text-[10.5px] font-extrabold text-slate-650 bg-slate-50 dark:bg-slate-900 border border-slate-200/50 dark:border-slate-800 px-2 py-0.5 rounded-lg">
                             {getInterpretation(t)}

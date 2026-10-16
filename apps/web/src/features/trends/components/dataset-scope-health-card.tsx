@@ -1,28 +1,35 @@
 import React from "react";
 import { HeartPulse, AlertTriangle } from "lucide-react";
-import type { TrendsOverview } from "@trend/shared-types";
+import type { TrendDataSource, TrendsOverview } from "@trend/shared-types";
 
 interface DatasetScopeHealthCardProps {
   data: TrendsOverview;
   totalInWindow: number;
   activeFiltersCount: number;
   hasCitationFilter: boolean;
+  dataSource?: TrendDataSource;
 }
 
 export function DatasetScopeHealthCard({
   data,
   totalInWindow,
   activeFiltersCount,
-  hasCitationFilter
+  hasCitationFilter,
+  dataSource
 }: DatasetScopeHealthCardProps) {
-  if (!data.taxonomyCoverage) return null;
+  // Coverage of the local corpus says nothing about OpenAlex, which classifies every work itself.
+  const showCoverage = dataSource !== "openalex";
+  const hasWarnings = totalInWindow < 500 || activeFiltersCount >= 5 || hasCitationFilter;
+  if (showCoverage ? !data.taxonomyCoverage : !hasWarnings) return null;
 
-  const coveragePct = data.taxonomyCoverage.fullHierarchyCoveragePct;
+  const coveragePct = data.taxonomyCoverage?.fullHierarchyCoveragePct ?? 0;
   const isReliable = coveragePct >= 90;
   const isPartial = coveragePct >= 70 && coveragePct < 90;
 
   return (
     <div className="bg-white dark:bg-[#121212] border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm space-y-4 select-none">
+      {showCoverage && (
+      <>
       <div className="space-y-1">
         <div className="flex items-center justify-between">
           <h3 className="text-xs font-extrabold text-slate-900 dark:text-white flex items-center gap-1.5">
@@ -68,10 +75,12 @@ export function DatasetScopeHealthCard({
           </div>
         </div>
       </div>
+      </>
+      )}
 
       {/* Scope warnings */}
-      {(totalInWindow < 500 || activeFiltersCount >= 5 || hasCitationFilter) && (
-        <div className="border-t border-slate-100 dark:border-slate-800/80 pt-3.5 space-y-2">
+      {hasWarnings && (
+        <div className={`space-y-2 ${showCoverage ? "border-t border-slate-100 dark:border-slate-800/80 pt-3.5" : ""}`}>
           <div className="text-[9.5px] font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
             <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" /> Scope Warnings
           </div>

@@ -1,7 +1,7 @@
 import React from "react";
 import { BookOpen, X, FileText, Calendar } from "lucide-react";
-import type { TrendFacetBucket, TrendingTopic } from "@trend/shared-types";
-import { formatMetricValue, type TrendSortKey } from "../../../pages/trends.insights";
+import type { RisingKeyword, TrendFacetBucket, TrendingTopic } from "@trend/shared-types";
+import { TrendVerdictBadge } from "./trend-verdict-badge";
 import { formatNumber } from "@/utils";
 import {
   Tooltip,
@@ -13,7 +13,7 @@ import { useI18n } from "@/i18n";
 // Types
 export type TooltipPayload<TPayload> = Array<{ payload: TPayload }>;
 
-export type TrendBarDatum = Pick<TrendingTopic, "topic" | "taxonomy" | "totalPapers" | "growthRatePct" | "momentum"> & {
+export type TrendBarDatum = Pick<TrendingTopic, "topic" | "taxonomy" | "totalPapers" | "classification"> & {
   metricLabel: string;
   metricDisplay: string;
 };
@@ -29,10 +29,13 @@ export type RisingKeywordRow = {
   totalPapers: number;
   yearlyBreakdown: TrendingTopic["yearlyBreakdown"];
   status: "Hot" | "Rising";
+  /** Log odds ratio test between two periods; present for OpenAlex data. */
+  shift?: RisingKeyword["shift"];
 };
 
 // 1. CustomBarTooltip Component
-export function CustomBarTooltip({ active, payload, sortBy }: { active?: boolean, payload?: TooltipPayload<TrendBarDatum>, sortBy: TrendSortKey }) {
+export function CustomBarTooltip({ active, payload }: { active?: boolean, payload?: TooltipPayload<TrendBarDatum> }) {
+  const { t } = useI18n();
   if (active && payload && payload.length && payload[0]) {
     const data = payload[0].payload;
     return (
@@ -43,9 +46,10 @@ export function CustomBarTooltip({ active, payload, sortBy }: { active?: boolean
             <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
             {data.metricLabel}: {data.metricDisplay}
           </p>
-          <p>Total papers: <span className="text-slate-900 dark:text-white font-bold">{formatNumber(data.totalPapers)}</span></p>
-          <p>Growth: <span className="text-slate-900 dark:text-white font-bold">{formatMetricValue(data.growthRatePct, sortBy)}</span></p>
-          <p>Momentum: <span className="text-slate-900 dark:text-white font-bold">{formatMetricValue(data.momentum, sortBy)}</span></p>
+          <p>{t("Total papers")}: <span className="text-slate-900 dark:text-white font-bold">{formatNumber(data.totalPapers)}</span></p>
+          <p className="flex items-center gap-1.5">
+            <TrendVerdictBadge classification={data.classification} size="sm" />
+          </p>
         </div>
       </div>
     );
