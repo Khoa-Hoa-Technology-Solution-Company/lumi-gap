@@ -241,7 +241,11 @@ export const projectMentorshipService = {
         }
       }
       if (direction === "PROJECT_TO_LECTURER") await assertAcademicRelationshipManager(p.id, a.id, tx);
-      else if (live.mentorshipDiscovery !== "SEEKING_MENTOR") throw AppError.forbidden("This project is not seeking mentorship offers");
+      else {
+        // Recheck the discovery eligibility when an offer is sent from a stale preview or directly by ID.
+        await actor(live.ownerId, tx);
+        if (live.mentorshipDiscovery !== "SEEKING_MENTOR") throw AppError.forbidden("This project is not seeking mentorship offers");
+      }
       assertOpenProject(live); await assertAcceptingNewMentorships(tx, mentor.id);
       const member = await tx.projectMember.findUnique({ where: { projectId_userId: { projectId: p.id, userId: mentor.id } } });
       if (live.ownerId === mentor.id || member?.status === "ACTIVE") throw AppError.conflict("Project members cannot also become the project's academic mentor");

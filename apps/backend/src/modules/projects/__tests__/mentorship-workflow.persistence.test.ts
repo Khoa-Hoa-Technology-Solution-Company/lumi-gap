@@ -178,6 +178,19 @@ describe.skipIf(!enabled).sequential("complete mentorship consent, access and de
     expect(await db.notification.count({ where: { targetUuid: project, type: "MENTORSHIP_OFFER_RECEIVED", userId: owner } })).toBe(1);
     expect(await db.notification.count({ where: { targetUuid: project, type: "MENTORSHIP_OFFER_ACCEPTED", userId: mentor } })).toBe(1);
   });
+  it.each([
+    { isActive: false },
+    { accountStatus: "SUSPENDED" },
+    { emailVerifiedAt: null },
+  ])("rejects direct offers when the project owner's account is no longer eligible: %j", async changes => {
+    await seeking();
+    expect((await service.discovery(mentor, { q: prefix })).items.map(p => p.id)).toContain(project);
+    await db.user.update({ where: { id: owner }, data: changes });
+    expect((await service.discovery(mentor, { q: prefix })).items).toEqual([]);
+    await expect(service.offer(project, mentor, { message: "Offer sent after discovery eligibility changed" })).rejects.toMatchObject({ statusCode: 403 });
+    expect(await db.mentorshipRequest.count({ where: { projectId: project } })).toBe(0);
+    expect(await db.notification.count({ where: { targetUuid: project } })).toBe(0);
+  });
   it("retry creates one request, notification and delivery event; mismatched reuse conflicts", async () => {
     const key = crypto.randomUUID(); const results = await Promise.all([invite(mentor, key), invite(mentor, key)]);
     expect(results[0].id).toBe(results[1].id);
