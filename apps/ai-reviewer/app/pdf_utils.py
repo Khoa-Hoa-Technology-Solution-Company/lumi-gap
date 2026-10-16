@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,27 @@ def clean_text(value: str) -> str:
     value = re.sub(r"[ \t]+", " ", value)
     value = re.sub(r"\n{3,}", "\n\n", value)
     return value.strip()
+
+
+_QUOTE_TRANSLATION = str.maketrans({
+    "\u201c": '"', "\u201d": '"', "\u201e": '"',
+    "\u2018": "'", "\u2019": "'",
+    "\u2013": "-", "\u2014": "-",
+})
+
+
+def normalize_for_match(text: str) -> str:
+    """Canonical form used to check that an AI quote really appears in the PDF text."""
+    text = unicodedata.normalize("NFKC", text or "")
+    text = re.sub(r"(\w)-\s*\n\s*(\w)", r"\1\2", text)
+    text = text.translate(_QUOTE_TRANSLATION)
+    return re.sub(r"\s+", " ", text).lower().strip()
+
+
+def split_pages(manuscript: str) -> dict[int, str]:
+    """Split text carrying `[[PAGE n]]` markers (as built by extract_pdf) into {page: text}."""
+    parts = re.split(r"\[\[PAGE (\d+)\]\]", manuscript)
+    return {int(parts[i]): parts[i + 1].strip() for i in range(1, len(parts) - 1, 2)}
 
 
 class NoTextLayerError(ValueError):

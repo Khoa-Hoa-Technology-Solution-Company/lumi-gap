@@ -150,6 +150,13 @@ def internal_router(database, security: Security) -> APIRouter:
                 "scores": scores,
                 "bilingual_review": bilingual_review,
                 "recommendation": rec,
+                "analysis": {
+                    "issues": result.get("issues", []),
+                    "claims": result.get("claims", []),
+                    "reproducibility": result.get("reproducibility"),
+                    "validation_warnings": result.get("validation_warnings", []),
+                    "criteria": result.get("criteria", {}),
+                },
                 "report_markdown": report,
                 "artifacts_dir": str(out_dir.resolve()),
             }

@@ -4,7 +4,7 @@ import json
 import os
 import re
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Callable, Protocol
 
 from google import genai
 from openai import OpenAI
@@ -15,7 +15,7 @@ from app.config import (
     PROJECT_AGENT_PATH,
     REVIEW_SPEC_PATH,
 )
-from app.pdf_utils import extract_pdf
+from app.pdf_utils import extract_pdf, normalize_for_match, split_pages
 
 
 SCORE_KEYS = (
@@ -26,7 +26,6 @@ SCORE_KEYS = (
     "completeness_of_references",
     "innovation_potential",
     "implementation_viability",
-    "personal_expertise",
 )
 
 CRITERION_LABELS = {
@@ -37,7 +36,6 @@ CRITERION_LABELS = {
     "completeness_of_references": ("Completeness of References", "Mức độ đầy đủ của tài liệu tham khảo"),
     "innovation_potential": ("Innovation potential of the proposed concept", "Tiềm năng đổi mới của ý tưởng đề xuất"),
     "implementation_viability": ("Implementation viability of the proposed concept", "Khả năng triển khai của ý tưởng đề xuất"),
-    "personal_expertise": ("Indicate your personal expertise on the subject matter of the paper", "Mức độ am hiểu chủ đề của reviewer"),
 }
 
 
@@ -53,15 +51,25 @@ def bilingual_text_schema() -> dict[str, Any]:
     }
 
 
+QUOTE_SCHEMA = {
+    "type": "object",
+    "properties": {"text": {"type": "string"}, "page": {"type": "integer", "minimum": 1}},
+    "required": ["text", "page"],
+    "additionalProperties": False,
+}
+
+
 def criterion_schema() -> dict[str, Any]:
     return {
         "type": "object",
         "properties": {
             "score": {"type": "integer", "minimum": 1, "maximum": 5},
+            "assessable": {"type": "boolean"},
             "evidence": bilingual_text_schema(),
             "explanation": bilingual_text_schema(),
+            "quotes": {"type": "array", "items": QUOTE_SCHEMA, "maxItems": 3},
         },
-        "required": ["score", "evidence", "explanation"],
+        "required": ["score", "assessable", "evidence", "explanation", "quotes"],
         "additionalProperties": False,
     }
 
@@ -81,8 +89,9 @@ ISSUE_SCHEMA = {
         "finding": {"type": "string"},
         "evidence": {"type": "string"},
         "recommendation": {"type": "string"},
+        "quotes": {"type": "array", "items": QUOTE_SCHEMA, "maxItems": 3},
     },
-    "required": ["category", "classification", "severity", "finding", "evidence", "recommendation"],
+    "required": ["category", "classification", "severity", "finding", "evidence", "recommendation", "quotes"],
     "additionalProperties": False,
 }
 
@@ -95,8 +104,9 @@ CLAIM_SCHEMA = {
             "type": "string",
             "enum": ["Supported", "Partially Supported", "Unsupported", "Cannot Assess"],
         },
+        "quotes": {"type": "array", "items": QUOTE_SCHEMA, "maxItems": 3},
     },
-    "required": ["claim", "evidence", "assessment"],
+    "required": ["claim", "evidence", "assessment", "quotes"],
     "additionalProperties": False,
 }
 
@@ -191,7 +201,16 @@ CUSTOM_REVIEW_SCHEMA = {
 }
 
 
-def build_review_request(pdf_path: Path, strictness: str, review_type: dict | None = None) -> tuple[str, str]:
+QUOTE_INSTRUCTIONS = (
+    "For every criterion, issue and claim, give 1-3 `quotes`: short verbatim excerpts (20-300 chars) copied exactly "
+    "from the manuscript, with the page number from the [[PAGE n]] markers. Never paraphrase inside a quote. "
+    "Set `assessable` to false for originality, completeness_of_references and topical_suitability when judging them "
+    "would require literature or venue information that the manuscript does not provide; explain why. "
+    "A `Confirmed issue` must have at least one quote. "
+)
+
+
+def build_review_request(pdf_path: Path, strictness: str, review_type: dict | None = None) -> tuple[str, str, dict[int, str]]:
     profile, manuscript = extract_pdf(pdf_path, require_text_layer=True)
     if review_type and review_type.get('review_instructions'):
         specification = review_type['review_instructions']
@@ -207,13 +226,14 @@ def build_review_request(pdf_path: Path, strictness: str, review_type: dict | No
         + ("English and Vietnamese content must be scientifically equivalent. " if conference else
            "Write report_markdown following the language, sections, criteria and output requested in the selected review instructions. "
            "Do not impose conference scores or a conference recommendation unless the selected instructions request them. ")
+        + (QUOTE_INSTRUCTIONS if conference else "")
         + f"Review strictness is {strictness}.\n\nSELECTED REVIEW INSTRUCTIONS:\n{specification}"
     )
     input_text = (
         f"Review this manuscript. Detected filename: {profile['filename']}. "
         "The full page-marked extracted manuscript follows.\n\n" + manuscript
     )
-    return instructions, input_text
+    return instructions, input_text, split_pages(manuscript)
 
 
 class ReviewProvider(Protocol):
@@ -234,29 +254,34 @@ class GeminiReviewProvider:
             raise RuntimeError(
                 "GEMINI_API_KEY chưa được cấu hình. Hãy thêm khóa Gemini vào file .env trước khi chạy AI review."
             )
-        instructions, input_text = build_review_request(pdf_path, strictness, self.review_type)
+        instructions, input_text, pages = build_review_request(pdf_path, strictness, self.review_type)
         custom = self.review_type is not None and self.review_type.get('output_format') == 'markdown'
         client = genai.Client(api_key=api_key)
-        interaction = client.interactions.create(
-            model=self.model,
-            system_instruction=instructions,
-            input=input_text,
-            response_format={
-                "type": "text",
-                "mime_type": "application/json",
-                "schema": CUSTOM_REVIEW_SCHEMA if custom else REVIEW_SCHEMA,
-            },
-        )
-        if not interaction.output_text:
-            raise RuntimeError("Gemini không trả về nội dung review.")
-        result = json.loads(interaction.output_text)
+
+        def _generate(text: str) -> dict[str, Any]:
+            interaction = client.interactions.create(
+                model=self.model,
+                system_instruction=instructions,
+                input=text,
+                response_format={
+                    "type": "text",
+                    "mime_type": "application/json",
+                    "schema": CUSTOM_REVIEW_SCHEMA if custom else REVIEW_SCHEMA,
+                },
+            )
+            if not interaction.output_text:
+                raise RuntimeError("Gemini không trả về nội dung review.")
+            return json.loads(interaction.output_text)
+
+        if not custom:
+            result = review_with_validation(_generate, input_text, pages)
+        else:
+            result = _generate(input_text)
         if custom:
             if (not isinstance(result, dict) or not isinstance(result.get('report_markdown'), str)
                     or not result['report_markdown'].strip() or not isinstance(result.get('profile'), dict)
                     or any(not isinstance(result['profile'].get(k), str) for k in ('title', 'authors', 'paper_type'))):
                 raise ValueError('Gemini trả về báo cáo Markdown không hợp lệ')
-        else:
-            validate_result(result)
         if self.review_type:
             result['_review_type'] = {key: self.review_type[key] for key in (
                 'review_type_id', 'review_type_name', 'review_type_revision', 'review_instructions', 'output_format', 'credit_cost', 'billing_mode')}
@@ -270,28 +295,30 @@ class OpenAIReviewProvider:
     def review(self, pdf_path: Path, strictness: str) -> dict[str, Any]:
         if not os.getenv("OPENAI_API_KEY"):
             raise RuntimeError("OPENAI_API_KEY chưa được cấu hình. Hãy thêm khóa vào biến môi trường hoặc file .env trước khi chạy AI review.")
-        instructions, input_text = build_review_request(pdf_path, strictness)
+        instructions, input_text, pages = build_review_request(pdf_path, strictness)
         client = OpenAI()
-        response = client.responses.create(
-            model=self.model,
-            instructions=instructions,
-            input=input_text,
-            reasoning={"effort": "medium"},
-            max_output_tokens=16000,
-            text={
-                "format": {
-                    "type": "json_schema",
-                    "name": "scientific_paper_review",
-                    "strict": True,
-                    "schema": REVIEW_SCHEMA,
-                }
-            },
-        )
-        if not response.output_text:
-            raise RuntimeError("Mô hình không trả về nội dung review.")
-        result = json.loads(response.output_text)
-        validate_result(result)
-        return result
+
+        def _generate(text: str) -> dict[str, Any]:
+            response = client.responses.create(
+                model=self.model,
+                instructions=instructions,
+                input=text,
+                reasoning={"effort": "medium"},
+                max_output_tokens=16000,
+                text={
+                    "format": {
+                        "type": "json_schema",
+                        "name": "scientific_paper_review",
+                        "strict": True,
+                        "schema": REVIEW_SCHEMA,
+                    }
+                },
+            )
+            if not response.output_text:
+                raise RuntimeError("Mô hình không trả về nội dung review.")
+            return json.loads(response.output_text)
+
+        return review_with_validation(_generate, input_text, pages)
 
 
 def get_review_provider() -> ReviewProvider:
@@ -320,7 +347,41 @@ def provider_status() -> dict[str, Any]:
     return {"provider": provider, "configured": False, "model": "invalid provider"}
 
 
-def validate_result(result: dict[str, Any]) -> None:
+MIN_QUOTE_CHARS = 20
+# Only these criteria may need outside literature or venue information; every other one must be scored.
+ASSESSABLE_OPTIONAL = ("originality", "completeness_of_references", "topical_suitability")
+HIGH_SEVERITIES = ("critical", "high")
+
+
+def _filter_quotes(quotes: Any, norm_pages: dict[int, str], where: str, violations: list[str], warnings: list[str]) -> list[dict[str, Any]]:
+    kept: list[dict[str, Any]] = []
+    for quote in quotes or []:
+        text = normalize_for_match(str(quote.get("text", "")))
+        page = quote.get("page")
+        if page not in norm_pages:
+            warnings.append(f"{where}: quote removed (page {page} out of range)")
+        elif len(text) < MIN_QUOTE_CHARS or text not in norm_pages[page]:
+            warnings.append(f"{where}: quote removed (not found on page {page})")
+        else:
+            kept.append(quote)
+    return kept
+
+
+def _consistency_violations(result: dict[str, Any]) -> list[str]:
+    violations: list[str] = []
+    if result["overall_recommendation"]["decision"] not in ("Accept", "Strong Accept"):
+        return violations
+    blocking = [i for i in result.get("issues", []) if i.get("classification") == "Confirmed issue" and i.get("severity") in HIGH_SEVERITIES]
+    if blocking:
+        violations.append(f"recommendation is {result['overall_recommendation']['decision']} but {len(blocking)} Confirmed critical/high issue(s) remain")
+    quality = result["criteria"]["scientific_quality"]
+    if quality.get("assessable", True) and quality["score"] <= 2:
+        violations.append(f"recommendation is {result['overall_recommendation']['decision']} but scientific_quality score is {quality['score']}")
+    return violations
+
+
+def validate_result(result: dict[str, Any], pages: dict[int, str]) -> list[str]:
+    """Validates structure (raises ValueError) and evidence (returns violations, removing unverifiable quotes in place)."""
     decision = result["overall_recommendation"]["decision"]
     if decision not in ALLOWED_RECOMMENDATIONS:
         raise ValueError(f"Overall recommendation không hợp lệ: {decision}")
@@ -333,9 +394,50 @@ def validate_result(result: dict[str, Any]) -> None:
     if len(result["remarks"]["changes_en"]) != len(result["remarks"]["changes_vi"]):
         raise ValueError("Số lượng đề xuất Anh–Việt không khớp")
 
+    norm_pages = {number: normalize_for_match(text) for number, text in pages.items()}
+    violations: list[str] = []
+    warnings: list[str] = list(result.get("validation_warnings", []))
+    for key in SCORE_KEYS:
+        item = result["criteria"][key]
+        if key not in ASSESSABLE_OPTIONAL and item.get("assessable") is False:
+            item["assessable"] = True
+            warnings.append(f"criteria.{key}: assessable=false ignored (this criterion must be scored)")
+        item["quotes"] = _filter_quotes(item.get("quotes"), norm_pages, f"criteria.{key}", violations, warnings)
+    for index, issue in enumerate(result.get("issues", [])):
+        issue["quotes"] = _filter_quotes(issue.get("quotes"), norm_pages, f"issues[{index}]", violations, warnings)
+        if issue.get("classification") == "Confirmed issue" and issue.get("severity") in HIGH_SEVERITIES and not issue["quotes"]:
+            violations.append(f"issues[{index}]: Confirmed {issue['severity']} issue has no verified quote")
+    for index, claim in enumerate(result.get("claims", [])):
+        claim["quotes"] = _filter_quotes(claim.get("quotes"), norm_pages, f"claims[{index}]", violations, warnings)
+    violations.extend(_consistency_violations(result))
+    result["validation_warnings"] = warnings
+    return violations
+
+
+def _downgrade_unquoted_issues(result: dict[str, Any]) -> None:
+    for index, issue in enumerate(result.get("issues", [])):
+        if issue.get("classification") == "Confirmed issue" and issue.get("severity") in HIGH_SEVERITIES and not issue.get("quotes"):
+            issue["classification"] = "Potential issue"
+            result["validation_warnings"].append(f"issues[{index}]: downgraded to Potential issue (no verified quote)")
+
+
+def review_with_validation(generate: Callable[[str], dict[str, Any]], input_text: str, pages: dict[int, str]) -> dict[str, Any]:
+    """Generates a review, retries once with the violations as feedback, then repairs deterministically or fails."""
+    result = generate(input_text)
+    violations = validate_result(result, pages)
+    if violations:
+        feedback = "\n\nYOUR PREVIOUS ANSWER FAILED VALIDATION:\n- " + "\n- ".join(violations) + "\nFix these problems and answer again."
+        result = generate(input_text + feedback)
+        violations = validate_result(result, pages)
+    if violations:
+        _downgrade_unquoted_issues(result)
+        if _consistency_violations(result):
+            raise ValueError("AI review is inconsistent with its own findings after one retry")
+    return result
+
 
 def scores_from_result(result: dict[str, Any]) -> dict[str, Any]:
-    scores = {key: result["criteria"][key]["score"] for key in SCORE_KEYS}
+    scores = {key: (result["criteria"][key]["score"] if result["criteria"][key].get("assessable", True) else None) for key in SCORE_KEYS}
     scores["journal_publication"] = result["journal_publication"]["decision"]
     scores["overall_recommendation"] = result["overall_recommendation"]["decision"]
     return scores
@@ -346,16 +448,19 @@ def render_report(result: dict[str, Any]) -> str:
     for key in SCORE_KEYS[:5]:
         en, _ = CRITERION_LABELS[key]
         item = result["criteria"][key]
+        if not item.get("assessable", True):
+            lines.extend([f"### {en} — Không đánh giá được / Cannot assess", "", "**Explanation:**  ", item["explanation"]["en"], ""])
+            continue
         lines.extend([f"### {en} — {item['score']}/5", "", "**Evidence:**  ", item["evidence"]["en"], "", "**Explanation:**  ", item["explanation"]["en"], ""])
     journal = result["journal_publication"]
     lines.extend([f"### Would you recommend this paper for journal publication? — {journal['decision']}", "", "**Explanation:**  ", journal["explanation"]["en"], ""])
     for key in SCORE_KEYS[5:]:
         en, _ = CRITERION_LABELS[key]
         item = result["criteria"][key]
-        lines.extend([f"### {en} — {item['score']}/5", ""])
-        if key != "personal_expertise":
-            lines.extend(["**Evidence:**  ", item["evidence"]["en"], ""])
-        lines.extend(["**Explanation:**  ", item["explanation"]["en"], ""])
+        if not item.get("assessable", True):
+            lines.extend([f"### {en} — Không đánh giá được / Cannot assess", "", "**Explanation:**  ", item["explanation"]["en"], ""])
+            continue
+        lines.extend([f"### {en} — {item['score']}/5", "", "**Evidence:**  ", item["evidence"]["en"], "", "**Explanation:**  ", item["explanation"]["en"], ""])
     overall = result["overall_recommendation"]
     lines.extend([
         f"### Overall recommendation — {overall['decision']}", "",
@@ -371,16 +476,19 @@ def render_report(result: dict[str, Any]) -> str:
     for key in SCORE_KEYS[:5]:
         _, vi = CRITERION_LABELS[key]
         item = result["criteria"][key]
+        if not item.get("assessable", True):
+            lines.extend([f"### {vi} — Không đánh giá được / Cannot assess", "", "**Giải thích:**  ", item["explanation"]["vi"], ""])
+            continue
         lines.extend([f"### {vi} — {item['score']}/5", "", "**Bằng chứng:**  ", item["evidence"]["vi"], "", "**Giải thích:**  ", item["explanation"]["vi"], ""])
     journal_vi = "Có" if journal["decision"] == "Yes" else "Không"
     lines.extend([f"### Có đề xuất bài báo cho xuất bản tạp chí không? — {journal_vi}", "", "**Giải thích:**  ", journal["explanation"]["vi"], ""])
     for key in SCORE_KEYS[5:]:
         _, vi = CRITERION_LABELS[key]
         item = result["criteria"][key]
-        lines.extend([f"### {vi} — {item['score']}/5", ""])
-        if key != "personal_expertise":
-            lines.extend(["**Bằng chứng:**  ", item["evidence"]["vi"], ""])
-        lines.extend(["**Giải thích:**  ", item["explanation"]["vi"], ""])
+        if not item.get("assessable", True):
+            lines.extend([f"### {vi} — Không đánh giá được / Cannot assess", "", "**Giải thích:**  ", item["explanation"]["vi"], ""])
+            continue
+        lines.extend([f"### {vi} — {item['score']}/5", "", "**Bằng chứng:**  ", item["evidence"]["vi"], "", "**Giải thích:**  ", item["explanation"]["vi"], ""])
     lines.extend([
         f"### Khuyến nghị tổng thể — {overall['decision']}", "",
         "**Các giá trị hợp lệ:** Strong Reject / Reject / Borderline / Accept / Strong Accept  ", "",
@@ -434,6 +542,7 @@ def write_artifacts(
             "journal_publication": result["journal_publication"],
             "overall_recommendation_scale": list(ALLOWED_RECOMMENDATIONS),
             "overall_recommendation": result["overall_recommendation"],
+            "validation_warnings": result.get("validation_warnings", []),
         },
         "review_scores.json": scores,
     }

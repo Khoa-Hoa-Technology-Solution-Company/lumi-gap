@@ -316,6 +316,7 @@ model PaperReview {
   scores          Json     @default("{}")
   profile         Json     @default("{}")
   bilingualReview Json     @default("{}") @map("bilingual_review")
+  analysis        Json     @default("{}")
   reportMarkdown  String?  @map("report_markdown")
   artifactsDir    String?  @map("artifacts_dir")
   errorMessage    String?  @map("error_message")
