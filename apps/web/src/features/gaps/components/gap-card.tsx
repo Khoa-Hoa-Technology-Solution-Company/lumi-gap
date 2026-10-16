@@ -124,7 +124,7 @@ export function GapCard({
           )}
 
           <Badge variant="outline" className={cn("rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider border", strengthColor)} title={strengthTooltip}>
-            {gap.evidenceStatus === "confirmed" ? t("Confirmed") : gap.evidenceStatus === "weak" ? t("Weak") : t("AI Only")}
+            {gap.evidenceStatus === "confirmed" ? t("Strong corpus signal") : gap.evidenceStatus === "weak" ? t("Weak") : t("AI Only")}
           </Badge>
 
           <div className="h-3 w-px bg-slate-200 dark:bg-slate-800 mx-1" />
@@ -271,6 +271,7 @@ export function GapCard({
           intersectionCount={gap.intersectionCount} 
           parentCounts={gap.parentCounts} 
           parentTrend={gap.parentTrend} 
+          globalEvidence={gap.globalEvidence}
         />
         
         <SupportingPaperList 

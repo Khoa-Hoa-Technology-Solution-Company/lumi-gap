@@ -232,8 +232,28 @@ export function GapDetailDrawer({ gap, isOpen, onClose, onDraftProposal, researc
                         <TrendingUp className="w-3.5 h-3.5" />
                         {gap.parentTrend ? `${Math.round(gap.parentTrend.growthRatePct)}%` : "0%"}
                       </span>
-                      <span className="text-[9px] text-slate-400 block mt-0.5">{t("/year")}</span>
+                      <span className="text-[9px] text-slate-400 block mt-0.5">{gap.parentTrend?.cagrPct != null ? ` ${t("CAGR")}` : t("/year")}</span>
                     </div>
+                  </div>
+
+                  <div className="space-y-1 rounded-xl border border-slate-100/50 bg-white p-3 text-xs leading-relaxed text-slate-600 dark:border-slate-800/40 dark:bg-slate-900/30 dark:text-slate-400" title={gap.globalEvidence ? undefined : t("OpenAlex count unavailable")}>
+                    <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">{t("OpenAlex (whole literature)")}</span>
+                    {gap.globalEvidence ? (
+                      <>
+                        <span className="block">
+                          {t("Intersection: {{intersection}} · Topic A: {{a}} · Topic B: {{b}}", {
+                            intersection: formatNumber(gap.globalEvidence.intersectionCount),
+                            a: formatNumber(gap.globalEvidence.parentCounts.a),
+                            b: formatNumber(gap.globalEvidence.parentCounts.b),
+                          })}
+                        </span>
+                        {(gap.globalEvidence.yearFrom !== undefined || gap.globalEvidence.yearTo !== undefined) && (
+                          <span className="block text-slate-400">{t("Years: {{range}}", { range: `${gap.globalEvidence.yearFrom ?? "…"}–${gap.globalEvidence.yearTo ?? "…"}` })}</span>
+                        )}
+                      </>
+                    ) : (
+                      <span className="block italic text-slate-400">{t("OpenAlex count unavailable")}</span>
+                    )}
                   </div>
 
                   {gap.parentTrend && gap.parentCounts && (
@@ -335,6 +355,20 @@ export function GapDetailDrawer({ gap, isOpen, onClose, onDraftProposal, researc
                 </div>
               )}
             </div>
+
+            {gap.counterPapers?.length ? (
+              <div className="space-y-3">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">{t("Counter-evidence")}</h3>
+                <ul className="space-y-2">
+                  {gap.counterPapers.map((paper) => (
+                    <li key={paper.id} className="rounded-xl border border-rose-100 bg-rose-50/50 p-2.5 text-xs dark:border-rose-500/20 dark:bg-rose-500/5">
+                      <Link to={`/papers/${paper.id}`} className="font-semibold text-slate-800 hover:underline dark:text-slate-200">{paper.title}</Link>
+                      {paper.publicationYear ? <span className="ml-2 text-slate-400">{paper.publicationYear}</span> : null}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
 
             {/* AI Research Directions */}
             <div className="space-y-4 border-t border-slate-100 pt-5 dark:border-slate-800/60">

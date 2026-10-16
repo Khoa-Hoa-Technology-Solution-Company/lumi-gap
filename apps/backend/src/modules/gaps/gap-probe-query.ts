@@ -8,6 +8,8 @@
  * as prefixes ("stud:*" covers study/studies/studied).
  */
 
+import type { GapProbe } from "@trend/shared-types";
+
 const STOPWORDS = new Set([
   "a", "an", "and", "as", "at", "by", "for", "from", "in", "into", "of", "on", "or", "the", "to", "with", "via", "vs", "versus",
 ]);
@@ -25,12 +27,37 @@ export function stemProbeWord(word: string): string {
   return word;
 }
 
+const wordsOf = (text: string): string[] => text.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+
+/** Searchable terms of a phrase: short tokens match exactly, the rest as stem prefixes. Deduplicated, stopwords removed. */
+export function probeTerms(phrase: string): Array<{ term: string; exact: boolean }> {
+  const terms = new Map<string, boolean>();
+  for (const word of wordsOf(phrase)) {
+    if (STOPWORDS.has(word)) continue;
+    const exact = word.length <= MAX_EXACT_LENGTH;
+    terms.set(exact ? word : stemProbeWord(word), exact);
+  }
+  return [...terms].map(([term, exact]) => ({ term, exact }));
+}
+
 /** Returns null when the phrase has no searchable words. Output contains only letters, digits, '&' and ':*'. */
 export function buildProbeTsQuery(phrase: string): string | null {
-  const words = phrase
-    .toLowerCase()
-    .split(/[^\p{L}\p{N}]+/u)
-    .filter((word) => word && !STOPWORDS.has(word));
-  const terms = [...new Set(words.map((word) => (word.length <= MAX_EXACT_LENGTH ? word : `${stemProbeWord(word)}:*`)))];
+  const terms = probeTerms(phrase).map(({ term, exact }) => (exact ? term : `${term}:*`));
   return terms.length ? terms.join(" & ") : null;
+}
+
+/** True when at least one text contains every term of the phrase (word-wise, same matching as the tsquery). */
+export function probeAppearsIn(phrase: string, texts: string[]): boolean {
+  const terms = probeTerms(phrase);
+  if (!terms.length) return false;
+  return texts.some((text) => {
+    const words = wordsOf(text);
+    return terms.every(({ term, exact }) => words.some((word) => (exact ? word === term : word.startsWith(term))));
+  });
+}
+
+/** Keeps a probe only when both of its topics occur in the evidence it was derived from; the LLM may invent topics. */
+export function verifyProbe(probe: GapProbe | undefined, texts: string[]): GapProbe | undefined {
+  if (!probe?.topicA || !probe?.topicB) return undefined;
+  return probeAppearsIn(probe.topicA, texts) && probeAppearsIn(probe.topicB, texts) ? probe : undefined;
 }

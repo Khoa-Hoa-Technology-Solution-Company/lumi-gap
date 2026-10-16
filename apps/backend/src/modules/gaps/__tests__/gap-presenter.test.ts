@@ -283,3 +283,54 @@ describe("sortGapRows", () => {
     expect(ids(sortGapRows([lowSample, rows[0]!], "evidence", 5))).toEqual(["confirmed", "low-sample"]);
   });
 });
+
+describe("counter-evidence and OpenAlex counts", () => {
+  const base = {
+    _id: "gap-9",
+    topic: "AI education",
+    normalizedTopic: "ai education",
+    title: "Counter gap",
+    description: "desc",
+    rationale: "why",
+    supportingPaperIds: ["paper-1"],
+    confidence: 0.7,
+    source: "standalone" as const,
+    userId: "user-1",
+    status: "active" as const,
+    createdAt: new Date("2026-07-01T00:00:00.000Z"),
+  };
+  const papers = new Map([
+    ["paper-1", { id: "paper-1", title: "Supports" }],
+    ["paper-2", { id: "paper-2", title: "Contradicts", publicationYear: 2023 }],
+  ]);
+
+  it("keeps counter papers apart from supporting papers", () => {
+    const item = toGapListItem({ ...base, counterPaperIds: ["paper-2"] }, papers);
+
+    expect(item.counterPaperIds).toEqual(["paper-2"]);
+    expect(item.counterPapers).toEqual([{ id: "paper-2", title: "Contradicts", publicationYear: 2023 }]);
+    expect(item.supportingPapers.map((paper) => paper.id)).toEqual(["paper-1"]);
+  });
+
+  it("has no counter papers by default", () => {
+    const item = toGapListItem(base, papers);
+
+    expect(item.counterPaperIds).toEqual([]);
+    expect(item.counterPapers).toEqual([]);
+  });
+
+  it("passes the OpenAlex counts and the richer parent trend through", () => {
+    const globalEvidence = { source: "openalex" as const, intersectionCount: 4, parentCounts: { a: 900, b: 700 }, yearFrom: 2020, yearTo: 2024, fetchedAt: "2026-10-16T00:00:00.000Z" };
+    const item = toGapListItem({ ...base, globalEvidence, parentTrend: { topic: "AI", growthRatePct: 31.2, cagrPct: 31.2, slope: 4 } }, papers);
+
+    expect(item.globalEvidence).toEqual(globalEvidence);
+    expect(item.parentTrend).toEqual({ topic: "AI", growthRatePct: 31.2, cagrPct: 31.2, slope: 4 });
+  });
+
+  it("reports missing OpenAlex counts as null and keeps the old trend shape", () => {
+    const item = toGapListItem({ ...base, parentTrend: { topic: "AI", growthRatePct: 12 } }, papers);
+
+    expect(item.globalEvidence).toBeNull();
+    expect(item.parentTrend).toEqual({ topic: "AI", growthRatePct: 12 });
+  });
+});
