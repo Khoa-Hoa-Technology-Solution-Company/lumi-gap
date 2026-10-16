@@ -22,6 +22,8 @@ import { researchHomeVi } from "./research-home";
 import { trustSafetyRagViStrings } from "./trust-safety-rag";
 import { projectMemberTranslations } from "./project-members";
 import { projectWorkspaceVi } from "./project-workspace";
+import { trendEvidenceViStrings } from "./trend-evidence";
+import { trendVerdictViStrings } from "./trend-verdict";
 
 export const vi: Record<keyof typeof en, string> = {
   ...en,
@@ -29,6 +31,8 @@ export const vi: Record<keyof typeof en, string> = {
   ...researchWorkflowVi,
   ...contributionsVi,
   ...trustSafetyRagViStrings,
+  ...trendEvidenceViStrings,
+  ...trendVerdictViStrings,
   ...researchHomeVi,
   ...projectInvitationStrings,
   ...peerReviewVersionStrings,
@@ -1112,6 +1116,7 @@ export const vi: Record<keyof typeof en, string> = {
   "Displayed topic activity by year": "Hoạt động chủ đề được hiển thị theo năm",
   "DOI": "DOI",
   "doi:": "doi:",
+  "Docs": "Tài liệu",
   "Domain": "Tên miền",
   "Domain Filter": "Bộ lọc tên miền",
   "Domains": "Tên miền",

@@ -15,6 +15,8 @@ import { peerReviewVersionStrings } from "./peer-review-versions";
 import { studentOnboardingStrings } from "./student-onboarding";
 import { researchHomeEn } from "./research-home-en";
 import { trustSafetyRagStrings } from "./trust-safety-rag";
+import { trendEvidenceStrings } from "./trend-evidence";
+import { trendVerdictStrings } from "./trend-verdict";
 
 export const en = {
   ...manuscriptsEn,
@@ -34,6 +36,8 @@ export const en = {
   ...gapEvidenceWorkflowStrings,
   ...gapClosureStrings,
   ...paperDetailIaStrings,
+  ...trendEvidenceStrings,
+  ...trendVerdictStrings,
   "-day period.": "-day period.",
   "— whereas": "— whereas",
   "; the next sync or PDF update will publish the full breakdown.": "; the next sync or PDF update will publish the full breakdown.",
@@ -548,6 +552,7 @@ export const en = {
   "Displayed topic activity by year": "Displayed topic activity by year",
   "DOI": "DOI",
   "doi:": "doi:",
+  "Docs": "Docs",
   "Domain": "Domain",
   "Domain Filter": "Domain Filter",
   "Domains": "Domains",

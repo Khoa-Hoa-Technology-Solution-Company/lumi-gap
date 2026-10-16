@@ -10,14 +10,19 @@ import { TopicsTab } from "@/features/trends/components/topics-tab";
 import { DatasetTab } from "@/features/trends/components/dataset-tab";
 import { CompareTab } from "@/features/trends/components/compare-tab";
 import { AITab } from "@/features/trends/components/ai-tab";
+import { DataSourceBadge, ScopeNotice } from "@/features/trends/components/trend-data-source";
+import { resolveMetricMode, type TimelinePoint, type TrendMetricMode } from "@/features/trends/trend-impact";
 import {
+  DEFAULT_TREND_SORT,
   formatMetricValue,
   getFastestKeyword,
-  getFastestTopic,
-  getHighestGrowthTopic,
-  getMostEstablishedTopic,
+  getTopRisingTopic,
   getTopicMetric,
+  parseTrendSortKey,
+  sortTopics,
   type TrendSortKey,
+  DEFAULT_TREND_YEAR_FROM,
+  DEFAULT_TREND_YEAR_TO,
 } from "./trends.insights";
 import { formatNumber } from "@/utils";
 import { formatLanguageName } from "@/utils/language";
@@ -25,7 +30,6 @@ import { useI18n } from "@/i18n";
 
 type CitationBand = "0-9" | "10-49" | "50-99" | "100-499" | "500-999" | "1000+";
 const CITATION_BANDS = ["0-9", "10-49", "50-99", "100-499", "500-999", "1000+"] as const;
-const TREND_SORT_KEYS = ["momentum", "growth", "total"] as const satisfies readonly TrendSortKey[];
 type TrendTab = "overview" | "topics" | "dataset" | "compare" | "ai";
 
 const TREND_TABS: Array<{ id: TrendTab; label: string }> = [
@@ -38,10 +42,6 @@ const TREND_TABS: Array<{ id: TrendTab; label: string }> = [
 
 function isCitationBand(value: string): value is CitationBand {
   return CITATION_BANDS.includes(value as CitationBand);
-}
-
-function isTrendSortKey(value: string): value is TrendSortKey {
-  return TREND_SORT_KEYS.includes(value as TrendSortKey);
 }
 
 function parseNumberParam(params: URLSearchParams, key: string, defaultValue: number, options?: { min?: number }): number {
@@ -76,12 +76,10 @@ export function TrendsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Controlled states synchronized with URL search params (with safety bounds)
-  const [yearFrom, setYearFrom] = useState<number>(() => parseNumberParam(searchParams, "yearFrom", 1900, { min: 1900 }));
-  const [yearTo, setYearTo] = useState<number>(() => parseNumberParam(searchParams, "yearTo", 2026, { min: 1900 }));
-  const [sortBy, setSortBy] = useState<TrendSortKey>(() => {
-    const s = searchParams.get("sortBy");
-    return s && isTrendSortKey(s) ? s : "momentum";
-  });
+  const [yearFrom, setYearFrom] = useState<number>(() => parseNumberParam(searchParams, "yearFrom", DEFAULT_TREND_YEAR_FROM, { min: 1900 }));
+  const [yearTo, setYearTo] = useState<number>(() => parseNumberParam(searchParams, "yearTo", DEFAULT_TREND_YEAR_TO, { min: 1900 }));
+  // Legacy ?sortBy=momentum|growth (and ?sort=) links map to the verdict ranking.
+  const [sortBy, setSortBy] = useState<TrendSortKey>(() => parseTrendSortKey(searchParams.get("sortBy") ?? searchParams.get("sort")));
   const [minPapers, setMinPapers] = useState<number>(() => parseNumberParam(searchParams, "minPapers", 2, { min: 1 }));
   const [yearFromInput, setYearFromInput] = useState(() => String(yearFrom));
   const [yearToInput, setYearToInput] = useState(() => String(yearTo));
@@ -145,9 +143,9 @@ export function TrendsPage() {
   // Synchronize state changes back to searchParams
   useEffect(() => {
     const nextParams = new URLSearchParams();
-    if (yearFrom !== 1900) nextParams.set("yearFrom", String(yearFrom));
-    if (yearTo !== 2026) nextParams.set("yearTo", String(yearTo));
-    if (sortBy !== "momentum") nextParams.set("sortBy", sortBy);
+    if (yearFrom !== DEFAULT_TREND_YEAR_FROM) nextParams.set("yearFrom", String(yearFrom));
+    if (yearTo !== DEFAULT_TREND_YEAR_TO) nextParams.set("yearTo", String(yearTo));
+    if (sortBy !== DEFAULT_TREND_SORT) nextParams.set("sortBy", sortBy);
     if (minPapers !== 2) nextParams.set("minPapers", String(minPapers));
     if (activeTab !== "overview") nextParams.set("tab", activeTab);
 
@@ -202,7 +200,10 @@ export function TrendsPage() {
   });
 
   const [datasetMode, setDatasetMode] = useState<"corpus" | "displayed">("corpus");
-  const [metricMode, setMetricMode] = useState<"papers" | "citations_total" | "citations_avg">("papers");
+  const [metricMode, setMetricMode] = useState<TrendMetricMode>("papers");
+  // PP(top 10%) replaces the citation sums when the source reports it; sums are
+  // dropped when the source cannot provide them.
+  const resolvedMetricMode = useMemo(() => resolveMetricMode(metricMode, data?.citationTrend), [metricMode, data?.citationTrend]);
   const [focusTopic, setFocusTopic] = useState<string>("");
 
   // Calculated displayed topics yearly sum
@@ -219,20 +220,25 @@ export function TrendsPage() {
       .sort((a, b) => Number(a.year) - Number(b.year));
   }, [data]);
 
-  // Unified timelineChartData based on datasetMode and metricMode
-  const timelineChartData = useMemo(() => {
+  // Unified timelineChartData based on datasetMode and metricMode. Years without
+  // a value (null citation totals, no papers for PP) are left out, never drawn as 0.
+  const timelineChartData = useMemo<TimelinePoint[]>(() => {
     if (!data) return [];
-    let chartData: Array<{ year: string; value: number }> = [];
-    if (metricMode === "citations_total") {
-      chartData = (data.citationTrend ?? []).map((c) => ({
-        year: String(c.year),
-        value: c.totalCitations,
-      }));
-    } else if (metricMode === "citations_avg") {
-      chartData = (data.citationTrend ?? []).map((c) => ({
-        year: String(c.year),
-        value: c.avgCitations,
-      }));
+    let chartData: TimelinePoint[] = [];
+    if (resolvedMetricMode === "pp_top10") {
+      chartData = (data.citationTrend ?? []).flatMap((c) =>
+        typeof c.ppTop10Pct === "number"
+          ? [{ year: String(c.year), value: c.ppTop10Pct, topCount: c.topCitedCount, papers: c.count }]
+          : [],
+      );
+    } else if (resolvedMetricMode === "citations_total") {
+      chartData = (data.citationTrend ?? []).flatMap((c) =>
+        typeof c.totalCitations === "number" ? [{ year: String(c.year), value: c.totalCitations }] : [],
+      );
+    } else if (resolvedMetricMode === "citations_avg") {
+      chartData = (data.citationTrend ?? []).flatMap((c) =>
+        typeof c.avgCitations === "number" ? [{ year: String(c.year), value: c.avgCitations }] : [],
+      );
     } else if (datasetMode === "corpus") {
       chartData = (data.yearlyTotalPapers ?? []).map((y) => ({
         year: String(y.year),
@@ -248,7 +254,7 @@ export function TrendsPage() {
         return y >= yearFrom && y <= yearTo;
       })
       .sort((a, b) => Number(a.year) - Number(b.year));
-  }, [data, datasetMode, metricMode, displayedTopicsYearlyData, yearFrom, yearTo]);
+  }, [data, datasetMode, resolvedMetricMode, displayedTopicsYearlyData, yearFrom, yearTo]);
 
   const peakYear = useMemo(() => {
     return [...timelineChartData].sort((a, b) => b.value - a.value)[0] ?? null;
@@ -257,20 +263,18 @@ export function TrendsPage() {
   // Transform data for top topics bar chart
   const barChartData = useMemo<TrendBarChartDatum[]>(() => {
     if (!data?.topics) return [];
-    return data.topics
-      .map((t) => ({
-        topic: t.topic,
-        taxonomy: t.taxonomy,
-        value: getTopicMetric(t, sortBy),
-        totalPapers: t.totalPapers,
-        growthRatePct: t.growthRatePct,
-        momentum: t.momentum,
-        metricLabel: sortBy === "growth" ? "Growth" : sortBy === "total" ? "Total papers" : "Momentum",
-        metricDisplay: formatMetricValue(getTopicMetric(t, sortBy), sortBy),
+    return sortTopics(data.topics, sortBy)
+      .map((topic) => ({
+        topic: topic.topic,
+        taxonomy: topic.taxonomy,
+        value: getTopicMetric(topic, sortBy),
+        totalPapers: topic.totalPapers,
+        classification: topic.classification,
+        metricLabel: sortBy === "total" ? t("Total papers") : t("Relative change per year"),
+        metricDisplay: formatMetricValue(getTopicMetric(topic, sortBy), sortBy),
       }))
-      .sort((a, b) => b.value - a.value)
       .slice(0, 5);
-  }, [data, sortBy]);
+  }, [data, sortBy, t]);
 
   const keywordsData = useMemo<RisingKeywordRow[]>(() => {
     if (!data?.risingKeywords) return [];
@@ -281,17 +285,16 @@ export function TrendsPage() {
       totalPapers: k.totalPapers,
       yearlyBreakdown: k.yearlyBreakdown,
       status: k.growthRatePct > 100 ? "Hot" : "Rising",
+      shift: k.shift,
     }));
   }, [data]);
 
-  const fastestTopic = useMemo(() => getFastestTopic((data?.topics ?? [])), [data?.topics]);
-  const highestGrowthTopic = useMemo(() => getHighestGrowthTopic((data?.topics ?? [])), [data?.topics]);
-  const establishedTopic = useMemo(() => getMostEstablishedTopic((data?.topics ?? [])), [data?.topics]);
+  const topRisingTopic = useMemo(() => getTopRisingTopic(data?.topics ?? []), [data?.topics]);
   const fastestKeyword = useMemo(() => getFastestKeyword((data?.risingKeywords ?? [])), [data?.risingKeywords]);
 
   const activeFocusTopic = useMemo(() => {
-    return focusTopic || fastestTopic?.topic || data?.topics[0]?.topic || "";
-  }, [focusTopic, fastestTopic, data]);
+    return focusTopic || topRisingTopic?.topic || data?.topics[0]?.topic || "";
+  }, [focusTopic, topRisingTopic, data]);
 
   const scopeString = useMemo(() => {
     const parts: string[] = [];
@@ -540,7 +543,10 @@ export function TrendsPage() {
       {/* 1. Page Intro */}
       <div className="mb-6 select-none space-y-2.5">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-white leading-tight">Research Trend Workbench</h1>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+            <h1 className="text-2xl font-bold text-slate-900 dark:text-white leading-tight">Research Trend Workbench</h1>
+            <DataSourceBadge source={data?.dataSource} />
+          </div>
           <p className="text-xs text-slate-500 mt-1">
             Find rising research topics, validate whether the signal is reliable, and move from trend to papers, reports, or AI explanation.</p>
         </div>
@@ -598,8 +604,8 @@ export function TrendsPage() {
               type="number"
               value={yearFromInput}
               onChange={(e) => setYearFromInput(e.target.value)}
-              onBlur={() => commitNumericInput(yearFromInput, 1900, 1900, setYearFrom, setYearFromInput)}
-              onKeyDown={(e) => handleNumericInputKeyDown(e, () => commitNumericInput(yearFromInput, 1900, 1900, setYearFrom, setYearFromInput))}
+              onBlur={() => commitNumericInput(yearFromInput, DEFAULT_TREND_YEAR_FROM, 1900, setYearFrom, setYearFromInput)}
+              onKeyDown={(e) => handleNumericInputKeyDown(e, () => commitNumericInput(yearFromInput, DEFAULT_TREND_YEAR_FROM, 1900, setYearFrom, setYearFromInput))}
               placeholder={t("From")}
               className="w-full md:w-20 h-10 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-lg text-center text-sm font-medium text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-600"
             />
@@ -608,8 +614,8 @@ export function TrendsPage() {
               type="number"
               value={yearToInput}
               onChange={(e) => setYearToInput(e.target.value)}
-              onBlur={() => commitNumericInput(yearToInput, 2026, 1900, setYearTo, setYearToInput)}
-              onKeyDown={(e) => handleNumericInputKeyDown(e, () => commitNumericInput(yearToInput, 2026, 1900, setYearTo, setYearToInput))}
+              onBlur={() => commitNumericInput(yearToInput, DEFAULT_TREND_YEAR_TO, 1900, setYearTo, setYearToInput)}
+              onKeyDown={(e) => handleNumericInputKeyDown(e, () => commitNumericInput(yearToInput, DEFAULT_TREND_YEAR_TO, 1900, setYearTo, setYearToInput))}
               placeholder={t("To")}
               className="w-full md:w-20 h-10 border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-lg text-center text-sm font-medium text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-600"
             />
@@ -619,16 +625,14 @@ export function TrendsPage() {
           <div className="relative shrink-0 w-full md:w-auto">
             <select
               value={sortBy}
+              aria-label={t("Sort topics by")}
               onChange={(e) => {
-                if (isTrendSortKey(e.target.value)) {
-                  setSortBy(e.target.value);
-                }
+                setSortBy(parseTrendSortKey(e.target.value));
               }}
               className="w-full md:w-auto h-10 pl-3 pr-8 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-sm font-medium text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-600 appearance-none cursor-pointer"
             >
-              <option value="momentum">Sort by Momentum</option>
-              <option value="growth">Sort by Growth</option>
-              <option value="total">Sort by Total Papers</option>
+              <option value="trend">{t("Trend (default)")}</option>
+              <option value="total">{t("Total papers")}</option>
             </select>
             <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
           </div>
@@ -754,6 +758,8 @@ export function TrendsPage() {
             </div>
           </div>
         )}
+
+        <ScopeNotice notice={data?.scopeNotice} />
       </div>
 
       {/* 3. Current Scope Summary */}
@@ -810,7 +816,11 @@ export function TrendsPage() {
             <FilterChip key={x} label={`Provider: ${x}`} onRemove={() => toggleFilter(providers, setProviders, x)} />
           ))}
           {sources.map((x) => (
-            <FilterChip key={x} label={`Source: ${x}`} onRemove={() => toggleFilter(sources, setSources, x)} />
+            <FilterChip
+              key={x}
+              label={`Source: ${data?.facets?.topSources?.find((b) => b.id === x || b.name === x)?.name ?? x}`}
+              onRemove={() => toggleFilter(sources, setSources, x)}
+            />
           ))}
           {languages.map((x) => (
             <FilterChip
@@ -994,15 +1004,13 @@ export function TrendsPage() {
             {activeTab === "overview" && (
               <OverviewTab
                 data={data}
-                metricMode={metricMode}
+                metricMode={resolvedMetricMode}
                 setMetricMode={setMetricMode}
                 datasetMode={datasetMode}
                 setDatasetMode={setDatasetMode}
                 peakYear={peakYear}
                 timelineChartData={timelineChartData}
-                fastestTopic={fastestTopic}
-                highestGrowthTopic={highestGrowthTopic}
-                establishedTopic={establishedTopic}
+                topRisingTopic={topRisingTopic}
                 fastestKeyword={fastestKeyword}
                 navigate={navigate}
                 setActiveTab={setActiveTab}

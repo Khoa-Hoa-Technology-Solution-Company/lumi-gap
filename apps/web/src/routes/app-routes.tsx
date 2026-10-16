@@ -21,6 +21,7 @@ const AcademicProfileOnboardingPage = lazy(() => import("@/pages/academic-profil
 const DashboardPage = lazy(() => import("@/pages/dashboard").then((m) => ({ default: m.DashboardPage })));
 const TrendsPage = lazy(() => import("@/pages/trends").then((m) => ({ default: m.TrendsPage })));
 const TopicDetailPage = lazy(() => import("@/pages/trends-topic").then((m) => ({ default: m.TopicDetailPage })));
+const DocsPage = lazy(() => import("@/pages/docs").then((m) => ({ default: m.DocsPage })));
 const BookmarksPage = lazy(() => import("@/pages/bookmarks").then((m) => ({ default: m.BookmarksPage })));
 const NotificationsPage = lazy(() => import("@/pages/notifications").then((m) => ({ default: m.NotificationsPage })));
 const AccountSettingsPage = lazy(() => import("@/pages/profile").then((m) => ({ default: m.AccountSettingsPage })));
@@ -144,6 +145,8 @@ export function AppRoutes() {
           <Route path="/papers/:id" element={<PaperDetailPage />} />
           <Route path="/trends" element={<TrendsPage />} />
           <Route path="/trends/:topic" element={<TopicDetailPage />} />
+          <Route path="/docs" element={<DocsPage />} />
+          <Route path="/docs/:sectionId" element={<DocsPage />} />
           <Route path="/forum" element={<ForumListPage />} />
           <Route path="/forum/categories" element={<ForumCategoryDirectoryPage />} />
           <Route path="/forum/category/:categorySlug" element={<ForumListPage />} />

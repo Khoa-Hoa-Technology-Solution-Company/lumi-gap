@@ -211,13 +211,16 @@ export function DatasetScopeBuilder({
               activeValues={openAccessStatuses}
               onBucketClick={(val) => handleBucketClick("Open Access", val)}
             />
-            <FacetGroup
-              title="Providers"
-              buckets={data.facets.providers}
-              total={data.totalPapersInWindow}
-              activeValues={providers}
-              onBucketClick={(val) => handleBucketClick("Providers", val)}
-            />
+            {/* OpenAlex data has no provider facet; keep it only when it has buckets or an active filter. */}
+            {((data.facets.providers?.length ?? 0) > 0 || providers.length > 0) && (
+              <FacetGroup
+                title="Providers"
+                buckets={data.facets.providers ?? []}
+                total={data.totalPapersInWindow}
+                activeValues={providers}
+                onBucketClick={(val) => handleBucketClick("Providers", val)}
+              />
+            )}
             <FacetGroup
               title="Top Sources"
               buckets={data.facets.topSources}

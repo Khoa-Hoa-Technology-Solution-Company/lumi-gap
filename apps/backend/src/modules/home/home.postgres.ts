@@ -11,7 +11,7 @@ export async function getPostgresHomeOverview(user?: AuthClaims): Promise<HomeOv
     prisma.searchLog.count(),
     prisma.paper.count({ where: { dataStatus: "active" } }),
     prisma.user.count(),
-    getPostgresTrendsOverview({ limit: 6, minPapers: 3, sortBy: "momentum" }),
+    getPostgresTrendsOverview({ limit: 6, minPapers: 3, sortBy: "trend" }),
     getRecentPapers(),
   ]);
 
