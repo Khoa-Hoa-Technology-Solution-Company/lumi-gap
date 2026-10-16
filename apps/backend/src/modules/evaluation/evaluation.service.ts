@@ -6,7 +6,7 @@ import type {
 } from "@trend/shared-types";
 import { env } from "../../config/env.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
-import { assertCitationsInRange } from "../llm/grounding.js";
+import { assertCitationsInRange, citationCoverage } from "../llm/grounding.js";
 import { computePaperScore } from "../scoring/paper-score.js";
 import { computeGapEvidence } from "../gaps/gap-evidence.js";
 import { computeMetrics } from "../trends/trend.formulas.js";
@@ -22,6 +22,7 @@ export interface EvaluationRepository {
   countReportsWithInvalidCitations(): Promise<number>;
   countActiveGaps(): Promise<number>;
   countEvidenceBackedGaps(): Promise<number>;
+  reportCitationCoverage(): Promise<{ reports: number; avgPct: number; withUnsupportedPercents: number }>;
 }
 
 export const evaluationRepository: EvaluationRepository = {
@@ -52,6 +53,17 @@ export const evaluationRepository: EvaluationRepository = {
       }
     }
     return invalid;
+  },
+  async reportCitationCoverage() {
+    const reports = await getPrisma().report.findMany({ where: { status: "ready" }, select: { markdown: true, groundingChecks: true } });
+    let total = 0, withUnsupportedPercents = 0;
+    for (const report of reports) {
+      const checks = report.groundingChecks as { citationCoverage?: { pct?: number }; unsupportedPercents?: unknown[] } | null;
+      // Reports saved before grounding checks existed are measured from their markdown; they have no percentage check.
+      total += typeof checks?.citationCoverage?.pct === "number" ? checks.citationCoverage.pct : citationCoverage(report.markdown ?? "").pct;
+      if (checks?.unsupportedPercents?.length) withUnsupportedPercents += 1;
+    }
+    return { reports: reports.length, avgPct: reports.length ? Math.round((total / reports.length) * 10) / 10 : 0, withUnsupportedPercents };
   },
   countActiveGaps: () => getPrisma().researchGap.count({ where: { status: "active" } }),
   countEvidenceBackedGaps: async () => {
@@ -134,6 +146,7 @@ async function getCorpusMetrics(repository: EvaluationRepository): Promise<Evalu
     invalidCitationReports,
     activeGaps,
     evidenceBackedGaps,
+    citationStats,
   ] = await Promise.all([
     repository.countPapers(),
     repository.countActivePapers(),
@@ -145,6 +158,7 @@ async function getCorpusMetrics(repository: EvaluationRepository): Promise<Evalu
     repository.countReportsWithInvalidCitations(),
     repository.countActiveGaps(),
     repository.countEvidenceBackedGaps(),
+    repository.reportCitationCoverage(),
   ]);
 
   return {
@@ -158,6 +172,9 @@ async function getCorpusMetrics(repository: EvaluationRepository): Promise<Evalu
     invalidCitationReports,
     activeGaps,
     evidenceBackedGaps,
+    citationCoverageReports: citationStats.reports,
+    avgCitationCoveragePct: citationStats.avgPct,
+    reportsWithUnsupportedPercents: citationStats.withUnsupportedPercents,
     embeddingCoveragePct: pct(embeddedPapers, analyzablePapers),
     aiAnalysisCoveragePct: pct(aiAnalyzedPapers, analyzablePapers),
     reportGroundingCoveragePct: pct(groundedReports, readyReports),
@@ -177,6 +194,7 @@ function buildChecks(corpus: EvaluationCorpusMetrics, now: Date): EvaluationChec
     buildReportCorpusGroundingCheck(corpus),
     buildReportCitationValidityCheck(corpus),
     buildGapCorpusEvidenceCheck(corpus),
+    buildReportCitationCoverageCheck(corpus),
   ];
 }
 
@@ -373,6 +391,24 @@ function buildReportCitationValidityCheck(corpus: EvaluationCorpusMetrics): Eval
     evidence: `${corpus.invalidCitationReports}/${corpus.groundedReports} grounded ready reports contain out-of-range citations. Citation validity=${corpus.reportCitationValidityPct}%.`,
     action:
       "Regenerate or repair reports with invalid citations, and keep the runtime citation guard enabled for every report generation path.",
+  };
+}
+
+function buildReportCitationCoverageCheck(corpus: EvaluationCorpusMetrics): EvaluationCheck {
+  const hasReports = corpus.citationCoverageReports > 0;
+  const pass = hasReports && corpus.avgCitationCoveragePct >= 70 && corpus.reportsWithUnsupportedPercents === 0;
+
+  return {
+    id: "report-citation-coverage",
+    feature: "report",
+    title: "Most report paragraphs carry a citation",
+    status: pass ? "pass" : "warn",
+    score: pass ? 10 : hasReports ? Math.min(9, Math.round(corpus.avgCitationCoveragePct / 10)) : 0,
+    maxScore: 10,
+    basis:
+      "Valid citation numbers do not show that claims are cited. Coverage is the share of prose paragraphs and list items with at least one [n]; percentages in a report must also match the evidence or the trend metrics.",
+    evidence: `Average citation coverage ${corpus.avgCitationCoveragePct}% over ${corpus.citationCoverageReports} ready reports (target >=70%); ${corpus.reportsWithUnsupportedPercents} reports state percentages not found in their evidence.`,
+    action: "Inspect low-coverage reports and reports flagged with unmatched percentages before relying on them.",
   };
 }
 

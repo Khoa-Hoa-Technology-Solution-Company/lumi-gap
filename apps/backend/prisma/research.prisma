@@ -30,6 +30,7 @@ model Report {
   modelVersion         String    @default("") @map("model_version")
   promptVersion        String    @default("") @map("prompt_version")
   cacheKey             String?   @map("cache_key")
+  groundingChecks      Json?     @map("grounding_checks")
   yearFrom             Int?      @map("year_from")
   yearTo               Int?      @map("year_to")
   scopeFilters         Json      @default("{}") @map("scope_filters")

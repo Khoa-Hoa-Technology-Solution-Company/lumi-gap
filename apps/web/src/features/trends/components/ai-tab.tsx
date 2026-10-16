@@ -2,7 +2,7 @@ import React from "react";
 import { Cpu, ChevronDown, Sparkles, Loader2, Search, FileText, Copy, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import type { TopicRelationshipEdge, TopicRelationshipResponse, TrendExplanationHistoryResponse, TrendExplanationResponse, TrendTopicCandidate, TrendsOverview } from "@trend/shared-types";
 import type { UseMutationResult, UseQueryResult } from "@tanstack/react-query";
 import { useTrendTopicCandidates } from "@/features/trends/hooks/use-trends";
@@ -133,16 +133,17 @@ export function AITab({
       currentExplanation.summary,
       "",
       "## Why it matters",
-      ...currentExplanation.whyItMatters.map((item) => `- ${item}`),
+      ...(currentExplanation.whyItMatters ?? []).map((item) => `- ${item}`),
       "",
       "## Evidence signals",
-      ...currentExplanation.evidenceSignals.map((item) => `- ${item.text} (${item.sources.join(", ")})`),
+      ...(currentExplanation.evidenceSignals ?? []).map((item) => `- ${item.text} (${(item.sources ?? []).join(", ")})`),
       "",
       "## Cautions",
-      ...currentExplanation.cautions.map((item) => `- ${item}`),
+      ...(currentExplanation.cautions ?? []).map((item) => `- ${item}`),
       "",
       "## Suggested actions",
-      ...currentExplanation.suggestedActions.map((item) => `- ${item}`),
+      ...(currentExplanation.suggestedActions ?? []).map((item) => `- ${item}`),
+      ...(currentExplanation.possibleDrivers?.length ? ["", `## ${t("Possible drivers")} (${t("Hypothesis")})`, ...currentExplanation.possibleDrivers.map((driver) => `- ${driver.text}${driver.papers?.length ? ` (${driver.papers.map((paper) => paper.title).join("; ")})` : ""}`)] : []),
     ].join("\n");
     await navigator.clipboard?.writeText(markdown);
   };
@@ -442,7 +443,7 @@ export function AITab({
                   <div className="bg-slate-50/40 dark:bg-slate-900/10 border border-slate-100 dark:border-slate-800/40 rounded-xl p-4">
                     <h4 className="font-bold text-slate-700 dark:text-slate-300 mb-2 uppercase text-[9px] tracking-wider">Why It Matters</h4>
                     <ul className="list-disc list-inside space-y-1.5 text-slate-600 dark:text-slate-400">
-                      {currentExplanation.whyItMatters.map((item: string, idx: number) => (
+                      {(currentExplanation.whyItMatters ?? []).map((item: string, idx: number) => (
                         <li key={idx} className="indent-[-12px] pl-3 leading-normal">{item}</li>
                       ))}
                     </ul>
@@ -451,11 +452,11 @@ export function AITab({
                   <div className="bg-slate-50/40 dark:bg-slate-900/10 border border-slate-100 dark:border-slate-800/40 rounded-xl p-4">
                     <h4 className="font-bold text-slate-700 dark:text-slate-300 mb-2 uppercase text-[9px] tracking-wider">Evidence Signals</h4>
                     <ul className="list-disc list-inside space-y-1.5 text-slate-600 dark:text-slate-400">
-                      {currentExplanation.evidenceSignals.map((item, idx: number) => (
+                      {(currentExplanation.evidenceSignals ?? []).map((item, idx: number) => (
                         <li key={idx} className="indent-[-12px] pl-3 leading-normal">
                           <span>{item.text}</span>
                           <div className="mt-1 flex flex-wrap gap-1 pl-3">
-                            {item.sources.map((source) => (
+                            {(item.sources ?? []).map((source) => (
                               <span key={source} className="rounded-full border border-blue-100 bg-blue-50 px-2 py-0.5 text-[9px] font-extrabold text-blue-700 dark:border-blue-900/40 dark:bg-blue-950/20 dark:text-blue-300">
                                 from {source}
                               </span>
@@ -467,10 +468,31 @@ export function AITab({
                   </div>
                 </div>
 
+                {currentExplanation.possibleDrivers?.length ? (
+                  <div className="bg-violet-50/40 dark:bg-violet-950/10 border border-violet-100 dark:border-violet-900/30 rounded-xl p-4">
+                    <h4 className="font-bold text-violet-700 dark:text-violet-400 mb-2 uppercase text-[9px] tracking-wider flex items-center gap-2">
+                      {t("Possible drivers")}
+                      <span className="rounded-full border border-violet-200 bg-white px-2 py-0.5 text-[9px] font-extrabold normal-case text-violet-700 dark:border-violet-900/40 dark:bg-violet-950/30 dark:text-violet-300">{t("Hypothesis")}</span>
+                    </h4>
+                    <ul className="space-y-2 text-slate-600 dark:text-slate-400">
+                      {currentExplanation.possibleDrivers.map((driver, idx: number) => (
+                        <li key={idx} className="leading-normal">
+                          <span>{driver.text}</span>
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            {(driver.papers ?? driver.paperIds.map((id) => ({ id, title: id }))).map((paper) => (
+                              <Link key={paper.id} to={`/papers/${paper.id}`} className="rounded-full border border-violet-100 bg-white px-2 py-0.5 text-[10px] font-semibold text-violet-700 hover:underline dark:border-violet-900/40 dark:bg-violet-950/20 dark:text-violet-300">{paper.title}</Link>
+                            ))}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+
                 <div className="bg-white dark:bg-slate-950 border border-slate-100 dark:border-slate-800/60 rounded-xl p-4">
                   <h4 className="font-bold text-slate-700 dark:text-slate-300 mb-2 uppercase text-[9px] tracking-wider">Metric Trace</h4>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {currentExplanation.metricTrace.map((trace) => (
+                    {(currentExplanation.metricTrace ?? []).map((trace) => (
                       <div key={trace.source} className="rounded-lg border border-slate-100 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/30 p-2">
                         <div className="text-[10px] font-extrabold text-slate-800 dark:text-slate-200">{trace.label}</div>
                         <div className="text-[10px] font-bold text-blue-700 dark:text-blue-400">{trace.value}</div>
@@ -484,7 +506,7 @@ export function AITab({
                   <div className="bg-amber-50/30 dark:bg-amber-950/5 border border-amber-100/50 dark:border-amber-950/20 rounded-xl p-4">
                     <h4 className="font-bold text-amber-700 dark:text-amber-400 mb-2 uppercase text-[9px] tracking-wider">Cautions</h4>
                     <ul className="list-disc list-inside space-y-1.5 text-slate-600 dark:text-slate-400">
-                      {currentExplanation.cautions.map((item: string, idx: number) => (
+                      {(currentExplanation.cautions ?? []).map((item: string, idx: number) => (
                         <li key={idx} className="indent-[-12px] pl-3 leading-normal">{item}</li>
                       ))}
                     </ul>
@@ -493,7 +515,7 @@ export function AITab({
                   <div className="bg-emerald-50/20 dark:bg-emerald-950/5 border border-emerald-100/40 dark:border-emerald-950/20 rounded-xl p-4">
                     <h4 className="font-bold text-emerald-700 dark:text-emerald-500 mb-2 uppercase text-[9px] tracking-wider">Suggested Actions</h4>
                     <ul className="list-disc list-inside space-y-1.5 text-slate-600 dark:text-slate-400">
-                      {currentExplanation.suggestedActions.map((item: string, idx: number) => (
+                      {(currentExplanation.suggestedActions ?? []).map((item: string, idx: number) => (
                         <li key={idx} className="indent-[-12px] pl-3 leading-normal">{item}</li>
                       ))}
                     </ul>
