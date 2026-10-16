@@ -272,6 +272,9 @@ export const workspaceCoordinationVi = {
   "No source discussion": "Không có thảo luận nguồn",
   "Current source discussion": "Thảo luận nguồn hiện tại",
   "Save decision": "Lưu quyết định",
+  "Possible drivers": "Nguyên nhân có thể",
+  "Hypothesis": "Giả thuyết",
+  "Some percentages could not be matched to the evidence: {{list}}": "Một số tỷ lệ phần trăm không đối chiếu được với bằng chứng: {{list}}",
   "Decision history": "Lịch sử quyết định",
   "title": "Tiêu đề", "description": "Mô tả", "status": "Trạng thái", "blockedReason": "Lý do vướng mắc", "dueAt": "Hạn hoàn thành", "completedAt": "Ngày hoàn thành", "deletedAt": "Ngày xóa", "createdAt": "Ngày tạo", "updatedAt": "Ngày cập nhật", "version": "Phiên bản", "body": "Nội dung", "conclusion": "Kết luận", "decision": "Quyết định", "context": "Bối cảnh", "alternatives": "Các phương án", "rationale": "Lý do",
 } as const;
