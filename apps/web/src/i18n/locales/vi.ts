@@ -2378,6 +2378,7 @@ export const vi: Record<keyof typeof en, string> = {
   "Load More": "Load More",
   "Loading...": "Loading...",
   "AI weekly summary": "Tóm tắt tuần bằng AI",
+  "AI summary — check the linked posts": "Tóm tắt do AI tạo — hãy kiểm tra các bài viết được liên kết",
   "Could not request a summary.": "Không thể yêu cầu tóm tắt.",
   "No discussions in the last 7 days to summarize.": "Không có thảo luận nào trong 7 ngày qua để tóm tắt.",
   "Summarizing…": "Đang tóm tắt…",

@@ -85,7 +85,7 @@ describe("buildGapsPrompt", () => {
       } as any,
     ]);
 
-    expect(prompt).toContain("Structured analysis:");
+    expect(prompt).toContain("AI-extracted notes");
     expect(prompt).toContain("Limitations: Only one institution");
     expect(prompt).toContain("Findings: Teachers used feedback inconsistently");
     expect(prompt).toContain("Future work: Evaluate longitudinal outcomes");

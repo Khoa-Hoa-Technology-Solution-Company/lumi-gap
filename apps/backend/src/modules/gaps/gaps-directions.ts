@@ -7,7 +7,7 @@ import crypto from "node:crypto";
 import type { ResearchDirection } from "@trend/shared-types";
 import { buildPaperEvidenceText, type PaperStructuredAnalysis } from "../papers/paper-structured-context.js";
 
-export const DIRECTIONS_PROMPT_VERSION = "directions-v2";
+export const DIRECTIONS_PROMPT_VERSION = "directions-v3";
 
 export const DIRECTIONS_SYSTEM_PROMPT = [
   "You are a research advisor for an academic publication-trend platform.",
@@ -20,6 +20,7 @@ export const DIRECTIONS_SYSTEM_PROMPT = [
   "- rationale: 1-2 sentences on why it follows from this gap + evidence.",
   "- suggestedApproach: the method / data / experiment to pursue it.",
   "- relatedPaperIds: ids from the supporting papers most relevant to this direction (or []).",
+  "AI-extracted notes are machine summaries that may be wrong. Use them only for orientation; every claim must be supported by the abstract or a Source chunk.",
   "No markdown, no commentary outside the JSON.",
 ].join("\n");
 
@@ -48,8 +49,6 @@ export interface DirectionPaper {
   aiAnalysis?: PaperStructuredAnalysis | null;
 }
 
-/** Bound abstracts so a pathological one can't blow the token budget. */
-const MAX_ABSTRACT_CHARS = 500;
 const MAX_DIRECTIONS = 4;
 const MAX_TEXT_CHARS = 1000;
 /** Matches the "<= 160 chars" instruction in DIRECTIONS_SYSTEM_PROMPT. */
@@ -63,7 +62,7 @@ function formatPapers(papers: DirectionPaper[]): string {
         `[${i + 1}] id=${p.id} "${p.title}"\n    ${buildPaperEvidenceText({
           abstractText: p.abstractText ?? "(no abstract)",
           aiAnalysis: p.aiAnalysis,
-        }).slice(0, MAX_ABSTRACT_CHARS)}`,
+        }, { abstractChars: 350, notesChars: 250 })}`,
     )
     .join("\n\n");
 }

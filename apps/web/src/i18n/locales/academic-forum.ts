@@ -257,6 +257,7 @@ const forumKeyList = [
   "Discuss this gap",
   "Request membership to see who belongs to this community.",
   "AI weekly summary",
+  "AI summary — check the linked posts",
   "Could not request a summary.",
   "No discussions in the last 7 days to summarize.",
   "Summarizing…",

@@ -252,8 +252,11 @@ describe("sortGapRows", () => {
     row("newest", { evidenceConfidence: 0.2, confidence: 0.2, createdAt: new Date("2026-06-01T00:00:00Z") }),
   ];
 
-  it("ranks by evidence score, falling back to AI confidence", () => {
-    expect(ids(sortGapRows(rows, "recommended", 5))).toEqual(["ai-only", "confirmed", "confident", "newest"]);
+  it("ranks by evidence score and puts unscored gaps last regardless of AI confidence", () => {
+    expect(ids(sortGapRows(rows, "recommended", 5))).toEqual(["confirmed", "confident", "newest", "ai-only"]);
+    const unscored = row("unscored", { evidenceConfidence: null, confidence: 0.9 });
+    const scored = row("scored", { evidenceConfidence: 0.3, confidence: 0.1 });
+    expect(ids(sortGapRows([unscored, scored], "recommended", 5))).toEqual(["scored", "unscored"]);
   });
 
   it("puts confirmed evidence first for the evidence sort", () => {
@@ -265,7 +268,7 @@ describe("sortGapRows", () => {
   });
 
   it("orders by supporting papers, newest first, and AI-only last", () => {
-    expect(ids(sortGapRows(rows, "papers", 5))).toEqual(["confident", "confirmed", "ai-only", "newest"]);
+    expect(ids(sortGapRows(rows, "papers", 5))).toEqual(["confident", "confirmed", "newest", "ai-only"]);
     expect(ids(sortGapRows(rows, "newest", 5))[0]).toBe("newest");
     expect(ids(sortGapRows(rows, "ai_only_last", 5))).toEqual(["confirmed", "confident", "newest", "ai-only"]);
   });

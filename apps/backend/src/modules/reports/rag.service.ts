@@ -251,7 +251,7 @@ export async function runRagPipeline(job: ReportJob): Promise<void> {
       supportingPaperIds: (g.supportingEvidence ?? [])
         .filter((n) => Number.isInteger(n) && n >= 1 && n <= papers.length)
         .map((n) => papers[n - 1]!.id),
-      confidence: clamp01(g.confidence),
+      confidence: 0,
       probe: normalizeProbe(g.probe),
     }));
   await getPrisma().$transaction(async (tx) => {
@@ -375,12 +375,6 @@ async function auditRagRun(
   } catch (err) {
     logger.warn({ err }, "rag audit write failed (non-fatal)");
   }
-}
-
-function clamp01(x: unknown): number {
-  const n = Number(x);
-  if (!Number.isFinite(n)) return 0.5;
-  return Math.max(0, Math.min(1, n));
 }
 
 function normalizeProbe(raw: unknown):

@@ -14,12 +14,31 @@ def clean_text(value: str) -> str:
     return value.strip()
 
 
-def extract_pdf(path: Path) -> tuple[dict[str, Any], str]:
+class NoTextLayerError(ValueError):
+    """The PDF has no usable text layer (likely a scan)."""
+
+
+MIN_TOTAL_CHARS = 1500
+MIN_PAGE_CHARS = 50
+
+
+def assert_text_layer(page_texts: list[str]) -> None:
+    counts = [sum(ch.isalnum() for ch in text) for text in page_texts]
+    empty_pages = sum(1 for count in counts if count < MIN_PAGE_CHARS)
+    if sum(counts) < MIN_TOTAL_CHARS or empty_pages * 2 > len(counts):
+        raise NoTextLayerError("PDF không có lớp văn bản (có thể là bản scan). Hãy dùng PDF có thể chọn/copy chữ.")
+
+
+def extract_pdf(path: Path, require_text_layer: bool = False) -> tuple[dict[str, Any], str]:
     reader = PdfReader(str(path))
     pages: list[str] = []
+    raw_pages: list[str] = []
     for number, page in enumerate(reader.pages, start=1):
         page_text = clean_text(page.extract_text() or "")
+        raw_pages.append(page_text)
         pages.append(f"[[PAGE {number}]]\n{page_text}")
+    if require_text_layer:
+        assert_text_layer(raw_pages)
     text = "\n\n".join(pages)
     first_page = pages[0] if pages else ""
     metadata = reader.metadata or {}

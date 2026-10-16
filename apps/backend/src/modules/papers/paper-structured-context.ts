@@ -1,4 +1,4 @@
-import { sanitizeForPrompt } from "../llm/grounding.js";
+import { sanitizeForPrompt, truncate } from "../llm/grounding.js";
 
 export interface PaperStructuredAnalysis {
   summary?: string | null;
@@ -33,17 +33,18 @@ export function buildStructuredPaperContext(
   addList(lines, "Key terms", aiAnalysis.keyTerms);
 
   if (lines.length === 0) return null;
-  return ["Structured analysis:", ...lines].join("\n");
+  return ["AI-extracted notes (unverified, for orientation only):", ...lines].join("\n");
 }
 
-export function buildPaperEvidenceText(input: {
-  abstractText?: string;
-  aiAnalysis?: PaperStructuredAnalysis | null;
-}): string {
-  const structured = buildStructuredPaperContext(input.aiAnalysis);
-  const abstractText = sanitizeForPrompt(input.abstractText || "(no abstract)");
-  if (!structured) return abstractText;
-  return `${structured}\n\nAbstract: ${abstractText}`;
+export function buildPaperEvidenceText(
+  input: { abstractText?: string; aiAnalysis?: PaperStructuredAnalysis | null },
+  budget: { abstractChars?: number; notesChars?: number } = {},
+): string {
+  let abstractText = sanitizeForPrompt(input.abstractText || "(no abstract)");
+  if (budget.abstractChars !== undefined) abstractText = truncate(abstractText, budget.abstractChars);
+  let notes = buildStructuredPaperContext(input.aiAnalysis);
+  if (notes && budget.notesChars !== undefined) notes = truncate(notes, budget.notesChars);
+  return notes ? `Abstract: ${abstractText}\n\n${notes}` : `Abstract: ${abstractText}`;
 }
 
 function addScalar(lines: string[], label: string, value: string | null | undefined): void {
