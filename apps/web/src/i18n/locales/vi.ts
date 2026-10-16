@@ -1,5 +1,6 @@
 import { en } from "./en";
 import { gapEvidenceWorkflowViStrings } from "./gap-evidence-workflow";
+import { gapClosureViStrings } from "./gap-closure";
 import { paperDetailIaViStrings } from "./paper-detail-ia";
 import { academicProfileStrings } from "./academic-profile";
 import { academicSupportVi } from "./academic-support";
@@ -306,6 +307,7 @@ export const vi: Record<keyof typeof en, string> = {
   ...academicSupportVi,
   ...academicProfileStrings.vi,
   ...gapEvidenceWorkflowViStrings,
+  ...gapClosureViStrings,
   ...paperDetailIaViStrings,
   ...({
     "Academic profile saved. Welcome to LumiGap!": "Đã lưu hồ sơ học thuật. Chào mừng bạn đến với LumiGap!",

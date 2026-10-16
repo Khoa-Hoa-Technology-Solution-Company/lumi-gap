@@ -1,59 +1,90 @@
-/** Pure gap-evidence scoring. No I/O — the service supplies the counts/trend. */
+/**
+ * Pure "under-explored" ranking signal for a gap probe. No I/O: the service supplies the counts.
+ *
+ * This is a RANKING signal, not proof that a gap is open. A low count of papers that mention both topics can come
+ * from vocabulary mismatch or an unindexed corpus; the Gap Closure Protocol (docs/gap-closure-protocol.md) decides
+ * whether a gap is open.
+ *
+ * With N papers in scope, nA and nB mentioning each topic, and nAB mentioning both:
+ *   E = nA * nB / N        expected intersection if the topics were independent
+ *   R = nAB / E            observed / expected (association strength, van Eck & Waltman 2009, is proportional to R)
+ *   p = P(X <= nAB), X ~ Poisson(E)
+ * under-explored = N > 0 AND min(nA, nB) >= minParentPapers AND R <= maxRatio AND p <= alpha / k (Bonferroni, k probes).
+ */
 
 export interface GapEvidenceInput {
+  /** N: active papers in the scope the counts were taken over. */
+  evidenceScopeSize: number;
   intersectionCount: number;
   parentCounts: { a: number; b: number };
-  /** YoY growth % of the more-active parent topic (0 if neither rises / unknown). */
-  parentRisingGrowthPct: number;
+  /** k: number of probes tested together (Bonferroni family size); values below 1 count as 1. */
+  probeCount?: number;
 }
 
 export interface GapThresholds {
-  scarceAbs: number;
-  scarcePct: number;
-  parentRisingMin: number;
-  /** Each parent topic needs at least this many papers before the gap can be confirmed. */
+  /** Each parent topic needs at least this many papers before the signal can be raised. */
   minParentPapers: number;
+  /** R must be at most this (default 0.5). */
+  maxRatio: number;
+  /** Family-wise significance level, divided by k (default 0.05). */
+  alpha: number;
 }
 
 export interface GapEvidence {
   intersectionCount: number;
   parentCounts: { a: number; b: number };
-  scarcityScore: number; // 0..1 — higher = scarcer
-  confirmed: boolean; // scarce AND a parent rising AND enough papers per parent
-  lowSample: boolean; // a parent topic has fewer than minParentPapers papers
-  evidenceConfidence: number; // 0..1
+  /** E = nA * nB / N. 0 when the corpus cannot speak to the probe. */
+  expected: number;
+  /** R = nAB / E. 1 (neutral) when the corpus cannot speak to the probe. */
+  ratio: number;
+  /** P(X <= nAB) for X ~ Poisson(E). 1 (neutral) when the corpus cannot speak to the probe. */
+  pValue: number;
+  /** The ranking signal: far fewer papers than independence predicts, beyond chance, with enough papers per topic. */
+  underExplored: boolean;
+  /** A parent topic has fewer than minParentPapers papers (or none), or the scope is empty. */
+  lowSample: boolean;
+  /** Ranking score 0..1 (stored in evidence_confidence). */
+  evidenceConfidence: number;
 }
+
+export const GAP_UNDEREXPLORED_DEFAULTS = { maxRatio: 0.5, alpha: 0.05 } as const;
 
 const clamp01 = (n: number): number => Math.max(0, Math.min(1, n));
 const round2 = (n: number): number => Math.round(n * 100) / 100;
 
-export function computeGapEvidence(input: GapEvidenceInput, t: GapThresholds): GapEvidence {
-  const minParent = Math.min(input.parentCounts.a, input.parentCounts.b);
-  // A parent topic with no papers means the corpus cannot speak to this gap at all;
-  // an empty intersection then is missing data, not evidence of scarcity.
-  if (minParent === 0) {
-    return { intersectionCount: input.intersectionCount, parentCounts: input.parentCounts, scarcityScore: 0, confirmed: false, lowSample: true, evidenceConfidence: 0 };
+/** P(X <= n) for X ~ Poisson(lambda), summed in log space so a large lambda neither underflows nor overflows. */
+export function poissonCdf(n: number, lambda: number): number {
+  if (!(lambda > 0)) return 1;
+  if (n < 0) return 0;
+  const k = Math.floor(n), logLambda = Math.log(lambda);
+  const terms = new Float64Array(k + 1);
+  let logFactorial = 0, max = -Infinity;
+  for (let j = 0; j <= k; j++) {
+    if (j > 0) logFactorial += Math.log(j);
+    terms[j] = -lambda + j * logLambda - logFactorial;
+    if (terms[j]! > max) max = terms[j]!;
   }
-  // Scarcity ceiling: the larger of the absolute floor and a fraction of the smaller parent.
-  const ceiling = Math.max(t.scarceAbs, Math.floor(t.scarcePct * minParent), 1);
-  const scarcityScore = clamp01(1 - input.intersectionCount / ceiling);
-  const scarce = input.intersectionCount <= ceiling;
-  const rising = input.parentRisingGrowthPct > t.parentRisingMin;
-  // With a handful of papers an empty intersection and "0 -> 1 paper" growth are noise, not evidence.
+  let sum = 0;
+  for (let j = 0; j <= k; j++) sum += Math.exp(terms[j]! - max);
+  return Math.min(1, Math.exp(max + Math.log(sum)));
+}
+
+export function computeGapEvidence(input: GapEvidenceInput, t: GapThresholds): GapEvidence {
+  const { evidenceScopeSize: N, intersectionCount: nAB, parentCounts } = input;
+  const minParent = Math.min(parentCounts.a, parentCounts.b);
+  // An empty scope or a parent topic with no papers: the corpus cannot speak to this gap at all, and an empty
+  // intersection is missing data, not evidence.
+  if (!(N > 0) || minParent <= 0) {
+    return { intersectionCount: nAB, parentCounts, expected: 0, ratio: 1, pValue: 1, underExplored: false, lowSample: true, evidenceConfidence: 0 };
+  }
+  const expected = (parentCounts.a * parentCounts.b) / N;
+  const ratio = nAB / expected;
+  const pValue = poissonCdf(nAB, expected);
   const lowSample = minParent < t.minParentPapers;
-  const confirmed = scarce && rising && !lowSample;
-  // Confirmed gaps anchor at 0.5 and scale with scarcity; unconfirmed stay low.
-  const evidenceConfidence = confirmed
-    ? clamp01(0.5 + 0.5 * scarcityScore)
-    : clamp01(0.25 * scarcityScore);
-  return {
-    intersectionCount: input.intersectionCount,
-    parentCounts: input.parentCounts,
-    scarcityScore: round2(scarcityScore),
-    confirmed,
-    lowSample,
-    evidenceConfidence: round2(evidenceConfidence),
-  };
+  const k = Math.max(1, Math.floor(input.probeCount ?? 1));
+  const underExplored = !lowSample && ratio <= t.maxRatio && pValue <= t.alpha / k;
+  const evidenceConfidence = underExplored ? 0.5 + 0.5 * clamp01(1 - ratio) : 0.25 * clamp01(1 - ratio);
+  return { intersectionCount: nAB, parentCounts, expected, ratio, pValue, underExplored, lowSample, evidenceConfidence: round2(clamp01(evidenceConfidence)) };
 }
 
 export interface YearRange { yearFrom?: number; yearTo?: number }

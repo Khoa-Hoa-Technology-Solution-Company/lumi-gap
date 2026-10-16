@@ -1,11 +1,15 @@
 import type {
+  GapClosureStatus,
+  GapClosureSummary,
   GapEvidenceStatus,
   GapProjectEvidence,
   GapSource,
   GapStatus,
   GapSupportingPaper,
+  QuestionFacets,
   ResearchGapItem,
 } from "@trend/shared-types";
+import { computeGapEvidence, GAP_UNDEREXPLORED_DEFAULTS, type GapEvidence } from "./gap-evidence.js";
 
 type IdLike = { toString(): string } | string | undefined | null;
 
@@ -54,6 +58,30 @@ export interface GapListDoc {
   gapConfidence?: ResearchGapItem["gapConfidence"];
   researchPriority?: ResearchGapItem["researchPriority"];
   origin?: ResearchGapItem["origin"];
+  closureStatus?: GapClosureStatus;
+  questionFacets?: QuestionFacets;
+  latestClosureCheck?: GapClosureSummary;
+}
+
+/** Row of gap_closure_checks reduced to what a gap list item shows. */
+export interface GapClosureSummaryRow {
+  id: string;
+  status: string;
+  decision: string | null;
+  bound: number | null;
+  judgeKind: string | null;
+  decidedAt: Date | null;
+}
+
+export function toGapClosureSummary(row: GapClosureSummaryRow): GapClosureSummary {
+  return {
+    checkId: row.id,
+    status: row.status as GapClosureSummary["status"],
+    decision: (row.decision ?? undefined) as GapClosureSummary["decision"],
+    bound: row.bound ?? undefined,
+    judgeKind: (row.judgeKind ?? undefined) as GapClosureSummary["judgeKind"],
+    decidedAt: row.decidedAt?.toISOString(),
+  };
 }
 
 export function canAccessGap(
@@ -67,20 +95,42 @@ export function canAccessGap(
   return (project.members ?? []).some((member) => String(member.targetId ?? "") === userId);
 }
 
-/** True when a probe topic has fewer papers than the confirmation threshold (stored scores may predate the threshold). */
+/** True when a probe topic has fewer papers than the signal threshold (stored scores may predate the threshold). */
 export function isGapLowSample(gap: Pick<GapListDoc, "parentCounts">, minParentPapers: number): boolean {
   const { a, b } = gap.parentCounts ?? {};
   if (a === undefined || b === undefined) return false;
   return Math.min(a, b) < Math.max(minParentPapers, 1);
 }
 
+/** Thresholds of the under-explored signal; `maxRatio` and `alpha` default to the documented 0.5 and 0.05. */
+export interface GapSignalConfig { minParentPapers: number; maxRatio?: number; alpha?: number }
+
+type GapSignalInput = Pick<GapListDoc, "intersectionCount" | "parentCounts" | "evidenceScopeSize">;
+
 /**
- * A gap whose counting scope was never recorded predates the corpus-wide counts (project gaps were scored over a
- * handful of papers), so its score cannot support the Confirmed label.
+ * The under-explored signal recomputed from the stored counts, so rows saved under an older rule are ranked under the
+ * current one. Null when a count is missing (the stored score is used instead). The probes of the run that created the
+ * row are not stored, so the family size is taken as k = 1 here.
  */
-export function getGapEvidenceStatus(gap: Pick<GapListDoc, "source" | "probe" | "evidenceConfidence" | "evidenceScopeSize">, lowSample = false): GapEvidenceStatus {
+export function gapUnderExploredSignal(gap: GapSignalInput, config: GapSignalConfig): GapEvidence | null {
+  const { a, b } = gap.parentCounts ?? {};
+  if (gap.intersectionCount == null || a === undefined || b === undefined || gap.evidenceScopeSize == null) return null;
+  return computeGapEvidence(
+    { evidenceScopeSize: gap.evidenceScopeSize, intersectionCount: gap.intersectionCount, parentCounts: { a, b }, probeCount: 1 },
+    { minParentPapers: Math.max(config.minParentPapers, 1), maxRatio: config.maxRatio ?? GAP_UNDEREXPLORED_DEFAULTS.maxRatio, alpha: config.alpha ?? GAP_UNDEREXPLORED_DEFAULTS.alpha },
+  );
+}
+
+/**
+ * "confirmed" means the under-explored ranking signal is met (not that the gap is proven open; the closure check decides).
+ * A gap whose counting scope was never recorded predates the corpus-wide counts (project gaps were scored over a
+ * handful of papers), so its score cannot support it.
+ */
+export function getGapEvidenceStatus(gap: Pick<GapListDoc, "source" | "probe" | "evidenceConfidence" | "evidenceScopeSize"> & Partial<GapSignalInput>, lowSample = false, config?: GapSignalConfig): GapEvidenceStatus {
   if (gap.source === "report" && !gap.probe) return "ai_only";
   if (!gap.probe || lowSample || gap.evidenceScopeSize == null) return "weak";
+  const signal = config ? gapUnderExploredSignal(gap, config) : null;
+  if (signal) return signal.underExplored ? "confirmed" : "weak";
   return Number(gap.evidenceConfidence ?? 0) >= 0.5 ? "confirmed" : "weak";
 }
 
@@ -92,6 +142,7 @@ export interface GapSortRow {
   confidence: number;
   evidenceConfidence?: number | null;
   evidenceScopeSize?: number | null;
+  intersectionCount?: number | null;
   createdAt: Date;
   source: GapSource;
   probe?: GapListDoc["probe"] | null;
@@ -101,19 +152,24 @@ export interface GapSortRow {
 
 const EVIDENCE_RANK: Record<GapEvidenceStatus, number> = { confirmed: 2, weak: 1, ai_only: 0 };
 
-/** Corpus evidence score when the gap was scored, otherwise the AI's self-reported confidence. */
-export function gapRankingScore(row: Pick<GapSortRow, "confidence" | "evidenceConfidence">): number {
-  return row.evidenceConfidence ?? row.confidence;
+/**
+ * Ranking score: the under-explored signal recomputed from the stored counts when possible, else the stored corpus
+ * evidence score, else the AI's self-reported confidence.
+ */
+export function gapRankingScore(row: Pick<GapSortRow, "confidence" | "evidenceConfidence"> & Partial<Pick<GapSortRow, "evidenceScopeSize" | "intersectionCount" | "parentCounts">>, config?: GapSignalConfig): number {
+  const signal = config ? gapUnderExploredSignal({ intersectionCount: row.intersectionCount ?? undefined, parentCounts: row.parentCounts ?? undefined, evidenceScopeSize: row.evidenceScopeSize ?? undefined }, config) : null;
+  return signal?.evidenceConfidence ?? row.evidenceConfidence ?? row.confidence;
 }
 
 /** Orders gaps for every list sort option; ties fall back to newest first. */
-export function sortGapRows<T extends GapSortRow>(rows: T[], sortBy: GapSortKey, minParentPapers: number): T[] {
+export function sortGapRows<T extends GapSortRow>(rows: T[], sortBy: GapSortKey, minParentPapers: number, signal: Omit<GapSignalConfig, "minParentPapers"> = {}): T[] {
+  const config: GapSignalConfig = { minParentPapers, ...signal };
   const evidenceRank = (row: T) => {
-    const doc = { source: row.source, probe: row.probe ?? undefined, evidenceConfidence: row.evidenceConfidence ?? undefined, evidenceScopeSize: row.evidenceScopeSize ?? undefined };
-    return EVIDENCE_RANK[getGapEvidenceStatus(doc, isGapLowSample({ parentCounts: row.parentCounts ?? undefined }, minParentPapers))];
+    const doc = { source: row.source, probe: row.probe ?? undefined, evidenceConfidence: row.evidenceConfidence ?? undefined, evidenceScopeSize: row.evidenceScopeSize ?? undefined, intersectionCount: row.intersectionCount ?? undefined, parentCounts: row.parentCounts ?? undefined };
+    return EVIDENCE_RANK[getGapEvidenceStatus(doc, isGapLowSample({ parentCounts: row.parentCounts ?? undefined }, minParentPapers), config)];
   };
   const newest = (a: T, b: T) => b.createdAt.getTime() - a.createdAt.getTime();
-  const score = (a: T, b: T) => gapRankingScore(b) - gapRankingScore(a);
+  const score = (a: T, b: T) => gapRankingScore(b, config) - gapRankingScore(a, config);
   const papers = (a: T, b: T) => b.supportingCount - a.supportingCount;
   const recommended = (a: T, b: T) => score(a, b) || newest(a, b);
   const compare: Record<GapSortKey, (a: T, b: T) => number> = {
@@ -130,9 +186,11 @@ export function sortGapRows<T extends GapSortRow>(rows: T[], sortBy: GapSortKey,
 export function toGapListItem(
   doc: GapListDoc,
   supportingPapersById: Map<string, GapSupportingPaper>,
-  options: { minParentPapers?: number; canManage?: boolean; validationQuorum?: number } = {},
+  options: { minParentPapers?: number; maxRatio?: number; alpha?: number; canManage?: boolean; validationQuorum?: number } = {},
 ): ResearchGapItem {
   const lowSample = options.minParentPapers !== undefined ? isGapLowSample(doc, options.minParentPapers) : undefined;
+  const config: GapSignalConfig | undefined = options.minParentPapers !== undefined ? { minParentPapers: options.minParentPapers, maxRatio: options.maxRatio, alpha: options.alpha } : undefined;
+  const signal = config ? gapUnderExploredSignal(doc, config) : null;
   const supportingPaperIds = (doc.supportingPaperIds ?? []).map(String);
   const evidencePaperIds = (doc.evidencePaperIds?.length
     ? doc.evidencePaperIds
@@ -156,7 +214,7 @@ export function toGapListItem(
       .map((id) => supportingPapersById.get(id))
       .filter((paper): paper is GapSupportingPaper => Boolean(paper)),
     confidence: doc.confidence,
-    evidenceStatus: getGapEvidenceStatus(doc, lowSample),
+    evidenceStatus: getGapEvidenceStatus(doc, lowSample, config),
     source: doc.source,
     sourceReportId: doc.sourceReportId ? String(doc.sourceReportId) : undefined,
     analysisId: doc.analysisId ? String(doc.analysisId) : undefined,
@@ -183,7 +241,8 @@ export function toGapListItem(
         : doc.parentTrend === null
           ? null
           : undefined,
-    evidenceConfidence: doc.evidenceConfidence,
+    evidenceConfidence: signal?.evidenceConfidence ?? doc.evidenceConfidence,
+    underExplored: signal && signal.expected > 0 ? { expected: signal.expected, ratio: signal.ratio, pValue: signal.pValue } : undefined,
     evidenceScopeSize: doc.evidenceScopeSize,
     projectEvidence: doc.projectEvidence,
     lowSample,
@@ -198,6 +257,9 @@ export function toGapListItem(
     gapConfidence: doc.gapConfidence,
     researchPriority: doc.researchPriority,
     origin: doc.origin,
+    closureStatus: doc.closureStatus,
+    questionFacets: doc.questionFacets,
+    latestClosureCheck: doc.latestClosureCheck,
     validationQuorum: options.validationQuorum,
     canManage: options.canManage,
   };

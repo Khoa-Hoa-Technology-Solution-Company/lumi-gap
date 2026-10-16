@@ -22,9 +22,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
 import { GapOrigin } from "./gap-origin";
-import { GapScopeNote } from "./gap-evidence-summary";
+import { GapScopeNote, GapSignalNote } from "./gap-evidence-summary";
 import { GapDirectionsPanel } from "./gap-directions";
 import { GapExpertValidationPanel } from "./gap-expert-validation";
+import { ClosureStatusBadge, GapClosurePanel } from "@/features/gap-closure";
 import { AiEvaluation } from "@/components/ai-evaluation";
 import { useGapCommunityDiscussions, usePatchGapStatus } from "../hooks/use-gaps";
 import type { GapStatus, ResearchGapItem } from "@trend/shared-types";
@@ -64,11 +65,11 @@ export function GapDetailDrawer({ gap, isOpen, onClose, onDraftProposal }: GapDe
   let strengthTooltip = "";
 
   if (gap.evidenceStatus === "confirmed") {
-    strengthLabel = t("Confirmed by corpus");
+    strengthLabel = t("Under-explored");
     strengthColor = "bg-emerald-500/10 text-emerald-700 border-emerald-500/20 dark:text-emerald-400";
-    strengthTooltip = t("The gap has a corpus probe and deterministic evidence score.");
+    strengthTooltip = t("Far fewer papers cover both topics than independence would predict. A ranking signal, not proof that the gap is open.");
   } else if (gap.evidenceStatus === "weak") {
-    strengthLabel = t("Weak corpus evidence");
+    strengthLabel = t("Weak signal");
     strengthColor = "bg-amber-500/10 text-amber-700 border-amber-500/20 dark:text-amber-400";
     strengthTooltip = t("The system found a possible gap, but corpus evidence is sparse or inconclusive.");
   } else {
@@ -84,7 +85,7 @@ export function GapDetailDrawer({ gap, isOpen, onClose, onDraftProposal }: GapDe
         <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
         
         {/* Right side slide-over drawer content */}
-        <DialogPrimitive.Content className="fixed right-0 top-0 z-50 h-full w-full max-w-xl border-l border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1c1f26] p-0 shadow-2xl duration-300 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right flex flex-col focus:outline-none">
+        <DialogPrimitive.Content className="fixed right-0 top-0 z-50 h-full w-full max-w-xl lg:max-w-2xl border-l border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1c1f26] p-0 shadow-2xl duration-300 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right flex flex-col focus:outline-none">
           
           {/* Scrollable Container */}
           <div className="flex-1 overflow-y-auto p-6 space-y-6">
@@ -126,6 +127,7 @@ export function GapDetailDrawer({ gap, isOpen, onClose, onDraftProposal }: GapDe
                   <Badge variant="outline" className={cn("rounded-lg text-[9px] font-extrabold uppercase tracking-wider px-2.5 py-0.5 border", strengthColor)}>
                     {strengthLabel}
                   </Badge>
+                  <ClosureStatusBadge status={gap.closureStatus} bound={gap.latestClosureCheck?.bound} className="rounded-lg px-2.5 text-[9px] font-extrabold" />
                   <span className="text-[10px] text-slate-500 dark:text-slate-500 font-medium">
                     {strengthTooltip}
                   </span>
@@ -232,6 +234,8 @@ export function GapDetailDrawer({ gap, isOpen, onClose, onDraftProposal }: GapDe
                     </div>
                   </div>
 
+                  <GapSignalNote intersectionCount={gap.intersectionCount} underExplored={gap.underExplored} />
+
                   {gap.parentTrend && gap.parentCounts && (
                     <div className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed bg-white dark:bg-slate-900/30 p-3 rounded-xl border border-slate-100/50 dark:border-slate-800/40 flex items-start gap-2">
                       <GitBranch className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
@@ -256,7 +260,7 @@ export function GapDetailDrawer({ gap, isOpen, onClose, onDraftProposal }: GapDe
                         })}
                       </span>
                       <span className="block italic text-slate-400">
-                        {t("Context only. It is not the basis for the Confirmed label, which always uses the whole corpus.")}
+                        {t("Context only. It does not decide the under-explored signal, which always uses the whole corpus.")}
                       </span>
                     </div>
                   )}
@@ -396,6 +400,14 @@ export function GapDetailDrawer({ gap, isOpen, onClose, onDraftProposal }: GapDe
                   {forumGapCopy.unavailable}
                 </div>
               )}
+            </div>
+
+            {/* Gap Closure Protocol: logged search, screening, and a bounded false-novelty decision */}
+            <div className="space-y-4 border-t border-slate-100 pt-5 dark:border-slate-800/60">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                {t("Closure check")}
+              </h3>
+              <GapClosurePanel gap={gap} />
             </div>
 
             <GapExpertValidationPanel gap={gap} />

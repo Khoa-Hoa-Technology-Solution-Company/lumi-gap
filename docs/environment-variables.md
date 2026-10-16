@@ -123,11 +123,15 @@ Users can also save multiple personal API connections in Settings → AI Connect
 | `GAPS_TOP_K` | `EnvSchema` / backend | Default / optional (see template) |
 | `GAPS_MAX_PER_HOUR` | `EnvSchema` / backend | Default / optional (see template) |
 | `GAPS_MAX_OUTPUT_TOKENS` | `EnvSchema` / backend | Default / optional (see template) |
-| `GAP_SCARCE_ABS` | `EnvSchema` / backend | Default / optional (see template) |
-| `GAP_SCARCE_PCT` | `EnvSchema` / backend | Default / optional (see template) |
-| `GAP_PARENT_RISING_MIN` | `EnvSchema` / backend | Default / optional (see template) |
+| `GAP_UNDEREXPLORED_MAX_RATIO` | `EnvSchema` / backend | Default / optional (default 0.5): largest observed/expected ratio for the under-explored ranking signal |
+| `GAP_UNDEREXPLORED_ALPHA` | `EnvSchema` / backend | Default / optional (default 0.05): family-wise level of the Poisson test, divided by the number of probes tested together |
 | `GAP_MIN_PARENT_PAPERS` | `EnvSchema` / backend | Default / optional (see template) |
 | `GAP_VALIDATION_QUORUM` | `EnvSchema` / backend | Default / optional (default 2): distinct experts needed to validate or reject a gap |
+| `GAP_MAX_FALSE_NOVELTY` | `EnvSchema` / backend | Default / optional (default 0.2): largest false-novelty bound for OPEN_CERTIFIED |
+| `GAP_CLOSURE_DELTA` | `EnvSchema` / backend | Default / optional (default 0.05): 1 minus the confidence of the Clopper-Pearson bounds |
+| `GAP_CLOSURE_LOCAL_TOP_K` | `EnvSchema` / backend | Default / optional (default 20): corpus papers screened per closure check |
+| `GAP_CLOSURE_OPENALEX_PER_QUERY` | `EnvSchema` / backend | Default / optional (default 10): OpenAlex results per query, 0 disables |
+| `GAP_CLOSURE_MAX_QUERIES` | `EnvSchema` / backend | Default / optional (default 3): search queries per closure check |
 | `COMPARE_MAX_PAPERS` | `EnvSchema` / backend | Default / optional (see template) |
 | `COMPARE_PROMPT_VERSION` | `EnvSchema` / backend | Default / optional (see template) |
 | `COMPARE_MAX_PER_HOUR` | `EnvSchema` / backend | Default / optional (see template) |

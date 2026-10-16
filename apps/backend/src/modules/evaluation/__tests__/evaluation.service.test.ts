@@ -45,7 +45,7 @@ describe("buildEvaluationSummary", () => {
     ]);
     expect(summary.checks.find((check) => check.id === "trend-formula-benchmark")?.status).toBe("pass");
     expect(summary.checks.find((check) => check.id === "gap-evidence-benchmark")?.evidence).toContain(
-      "confirmed=true",
+      "underExplored=true",
     );
     expect(summary.checks.find((check) => check.id === "report-grounding-guard")?.evidence).toContain(
       "out-of-range",

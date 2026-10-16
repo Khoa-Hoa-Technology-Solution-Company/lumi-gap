@@ -1,65 +1,93 @@
 import { describe, it, expect } from "vitest";
 import { buildGapsPrompt } from "../gaps.prompt.js";
-import { computeGapEvidence, resolveProbeYears } from "../gap-evidence.js";
+import { computeGapEvidence, poissonCdf, resolveProbeYears } from "../gap-evidence.js";
 
-const T = { scarceAbs: 5, scarcePct: 0.02, parentRisingMin: 0, minParentPapers: 5 };
+const T = { minParentPapers: 5, maxRatio: 0.5, alpha: 0.05 };
+const input = (evidenceScopeSize: number, a: number, b: number, intersectionCount: number, probeCount?: number) =>
+  ({ evidenceScopeSize, parentCounts: { a, b }, intersectionCount, probeCount });
 
-describe("computeGapEvidence", () => {
-  it("confirms a scarce intersection under a rising parent", () => {
-    const e = computeGapEvidence(
-      { intersectionCount: 3, parentCounts: { a: 1240, b: 60 }, parentRisingGrowthPct: 45 },
-      T,
-    );
-    expect(e.confirmed).toBe(true);
-    expect(e.scarcityScore).toBeGreaterThan(0);
-    expect(e.evidenceConfidence).toBeGreaterThan(0.5);
+describe("poissonCdf", () => {
+  it("matches the closed form for small lambda", () => {
+    expect(poissonCdf(0, 0.3)).toBeCloseTo(Math.exp(-0.3), 10);
+    expect(poissonCdf(1, 6)).toBeCloseTo(7 * Math.exp(-6), 10);
   });
 
-  it("rejects a common intersection (not scarce)", () => {
-    const e = computeGapEvidence(
-      { intersectionCount: 800, parentCounts: { a: 1240, b: 1000 }, parentRisingGrowthPct: 45 },
-      T,
-    );
-    expect(e.confirmed).toBe(false);
-    expect(e.scarcityScore).toBe(0);
+  it("stays stable for a large lambda", () => {
+    expect(poissonCdf(1000, 1000)).toBeGreaterThan(0.5);
+    expect(poissonCdf(1000, 1000)).toBeLessThan(0.53);
+    expect(poissonCdf(200, 1000)).toBeLessThan(1e-100);
+    expect(poissonCdf(5000, 1000)).toBeCloseTo(1, 8);
+  });
+});
+
+describe("computeGapEvidence (under-explored ranking signal)", () => {
+  it("worked example: 1 paper where 6 would be expected is under-explored", () => {
+    const e = computeGapEvidence(input(20000, 400, 300, 1), T);
+    expect(e.expected).toBeCloseTo(6, 10);
+    expect(e.ratio).toBeCloseTo(1 / 6, 10);
+    expect(e.pValue).toBeCloseTo(0.0174, 4);
+    expect(e.underExplored).toBe(true);
+    expect(e.lowSample).toBe(false);
+    expect(e.evidenceConfidence).toBe(0.92); // 0.5 + 0.5 * (1 - 1/6) = 0.9167
+  });
+
+  it("false-alarm example: an empty intersection in a small corpus is what chance predicts", () => {
+    const e = computeGapEvidence(input(1000, 20, 15, 0), T);
+    expect(e.expected).toBeCloseTo(0.3, 10);
+    expect(e.pValue).toBeCloseTo(0.7408, 4);
+    expect(e.underExplored).toBe(false);
+    expect(e.evidenceConfidence).toBe(0.25);
+  });
+
+  it("large-topic example: 200 papers where 1000 would be expected is under-explored", () => {
+    const e = computeGapEvidence(input(20000, 5000, 4000, 200), T);
+    expect(e.expected).toBeCloseTo(1000, 10);
+    expect(e.ratio).toBeCloseTo(0.2, 10);
+    expect(e.pValue).toBeLessThan(1e-100);
+    expect(e.underExplored).toBe(true);
+    expect(e.evidenceConfidence).toBe(0.9);
+  });
+
+  it("does not flag a common intersection", () => {
+    const e = computeGapEvidence(input(5000, 1240, 1000, 800), T);
+    expect(e.underExplored).toBe(false);
     expect(e.evidenceConfidence).toBeLessThan(0.3);
   });
 
-  it("does not confirm a scarce-but-flat intersection", () => {
-    const e = computeGapEvidence(
-      { intersectionCount: 2, parentCounts: { a: 500, b: 40 }, parentRisingGrowthPct: 0 },
-      T,
-    );
-    expect(e.confirmed).toBe(false); // parent not rising (0 is not > 0)
-    expect(e.scarcityScore).toBeGreaterThan(0);
+  it("does not flag an intersection that is only mildly below expectation", () => {
+    const e = computeGapEvidence(input(20000, 5000, 4000, 700), T); // R = 0.7
+    expect(e.underExplored).toBe(false);
+    expect(e.evidenceConfidence).toBe(0.08);
   });
 
-  it("treats a zero-paper intersection as maximally scarce", () => {
-    const e = computeGapEvidence(
-      { intersectionCount: 0, parentCounts: { a: 300, b: 80 }, parentRisingGrowthPct: 12 },
-      T,
-    );
-    expect(e.scarcityScore).toBe(1);
-    expect(e.confirmed).toBe(true);
+  it("is significant at k = 1 but not under Bonferroni correction at k = 5", () => {
+    // E = 6, nAB = 1: p = 0.0174 <= 0.05 but > 0.05 / 5 = 0.01.
+    expect(computeGapEvidence(input(20000, 400, 300, 1, 1), T).underExplored).toBe(true);
+    expect(computeGapEvidence(input(20000, 400, 300, 1, 5), T).underExplored).toBe(false);
   });
 
-  it("gives no evidence confidence when a parent topic has no papers", () => {
-    const e = computeGapEvidence(
-      { intersectionCount: 0, parentCounts: { a: 12, b: 0 }, parentRisingGrowthPct: 30 },
-      T,
-    );
-    expect(e.scarcityScore).toBe(0);
-    expect(e.confirmed).toBe(false);
+  it("does not use parent growth: the signal depends only on counts", () => {
+    expect(Object.keys(computeGapEvidence(input(20000, 400, 300, 1), T))).not.toContain("confirmed");
+  });
+
+  it("gives no signal when a parent topic has no papers", () => {
+    const e = computeGapEvidence(input(1000, 12, 0, 0), T);
+    expect(e.underExplored).toBe(false);
+    expect(e.lowSample).toBe(true);
     expect(e.evidenceConfidence).toBe(0);
   });
 
-  it("does not confirm when a parent topic has too few papers", () => {
-    const e = computeGapEvidence(
-      { intersectionCount: 0, parentCounts: { a: 1, b: 1 }, parentRisingGrowthPct: 100 },
-      T,
-    );
+  it("gives no signal for an empty scope", () => {
+    const e = computeGapEvidence(input(0, 12, 8, 0), T);
+    expect(e.underExplored).toBe(false);
     expect(e.lowSample).toBe(true);
-    expect(e.confirmed).toBe(false);
+    expect(e.evidenceConfidence).toBe(0);
+  });
+
+  it("does not flag a probe when a parent topic has too few papers", () => {
+    const e = computeGapEvidence(input(1000, 4, 600, 0), T);
+    expect(e.lowSample).toBe(true);
+    expect(e.underExplored).toBe(false);
     expect(e.evidenceConfidence).toBeLessThanOrEqual(0.25);
   });
 });

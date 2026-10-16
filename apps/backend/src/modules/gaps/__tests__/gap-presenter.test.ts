@@ -220,6 +220,54 @@ describe("toGapListItem", () => {
   });
 });
 
+describe("under-explored signal recomputed from stored counts", () => {
+  const base = {
+    _id: "gap-signal",
+    topic: "AI education",
+    normalizedTopic: "ai education",
+    title: "Signal gap",
+    description: "desc",
+    rationale: "why",
+    supportingPaperIds: [],
+    confidence: 0.4,
+    source: "standalone" as const,
+    userId: "user-1",
+    status: "active" as const,
+    createdAt: new Date("2026-07-01T00:00:00.000Z"),
+    probe: { topicA: "federated learning", topicB: "medical imaging" },
+  };
+
+  it("re-ranks an old row whose stored score came from the co-mention rule", () => {
+    // Stored 0.95 under the old rule, but 0 papers where 0.3 would be expected is chance.
+    const item = toGapListItem({ ...base, evidenceConfidence: 0.95, evidenceScopeSize: 1000, intersectionCount: 0, parentCounts: { a: 20, b: 15 } }, new Map(), { minParentPapers: 5 });
+    expect(item.evidenceStatus).toBe("weak");
+    expect(item.evidenceConfidence).toBe(0.25);
+    expect(item.underExplored?.expected).toBeCloseTo(0.3, 10);
+    expect(item.underExplored?.pValue).toBeCloseTo(0.7408, 4);
+  });
+
+  it("exposes expected, ratio and p for a significant shortfall", () => {
+    const item = toGapListItem({ ...base, evidenceConfidence: 0.1, evidenceScopeSize: 20000, intersectionCount: 1, parentCounts: { a: 400, b: 300 } }, new Map(), { minParentPapers: 5 });
+    expect(item.evidenceStatus).toBe("confirmed");
+    expect(item.evidenceConfidence).toBe(0.92);
+    expect(item.underExplored?.ratio).toBeCloseTo(1 / 6, 10);
+    expect(item.underExplored?.pValue).toBeCloseTo(0.0174, 4);
+  });
+
+  it("falls back to the stored score when a count is missing", () => {
+    const item = toGapListItem({ ...base, evidenceConfidence: 0.8, evidenceScopeSize: 1000, parentCounts: { a: 20, b: 15 } }, new Map(), { minParentPapers: 5 });
+    expect(item.evidenceStatus).toBe("confirmed");
+    expect(item.evidenceConfidence).toBe(0.8);
+    expect(item.underExplored).toBeUndefined();
+  });
+
+  it("ranks by the recomputed signal", () => {
+    const row = (id: string, intersectionCount: number, stored: number): GapSortRow => ({ id, confidence: 0.5, evidenceConfidence: stored, evidenceScopeSize: 20000, intersectionCount, createdAt: new Date("2026-01-01T00:00:00Z"), source: "standalone", probe: base.probe, parentCounts: { a: 400, b: 300 }, supportingCount: 0 });
+    const ordered = sortGapRows([row("stale-high", 6, 0.99), row("real-shortfall", 1, 0.1)], "recommended", 5).map((item) => item.id);
+    expect(ordered).toEqual(["real-shortfall", "stale-high"]);
+  });
+});
+
 describe("isGapLowSample", () => {
   it("flags gaps whose smaller probe topic is under the threshold", () => {
     expect(isGapLowSample({ parentCounts: { a: 1, b: 40 } }, 5)).toBe(true);

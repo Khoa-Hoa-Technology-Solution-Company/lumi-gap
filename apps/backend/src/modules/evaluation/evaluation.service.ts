@@ -229,32 +229,34 @@ function buildTrendFormulaCheck(now: Date): EvaluationCheck {
 }
 
 function buildGapEvidenceCheck(): EvaluationCheck {
-  const evidence = computeGapEvidence(
-    {
-      intersectionCount: 2,
-      parentCounts: { a: 100, b: 80 },
-      parentRisingGrowthPct: 25,
-    },
-    {
-      scarceAbs: env.GAP_SCARCE_ABS,
-      scarcePct: env.GAP_SCARCE_PCT,
-      parentRisingMin: env.GAP_PARENT_RISING_MIN,
-      minParentPapers: env.GAP_MIN_PARENT_PAPERS,
-    },
+  const thresholds = {
+    minParentPapers: env.GAP_MIN_PARENT_PAPERS,
+    maxRatio: env.GAP_UNDEREXPLORED_MAX_RATIO,
+    alpha: env.GAP_UNDEREXPLORED_ALPHA,
+  };
+  // 2 papers where 8 would be expected (100 * 80 / 1000) is a significant shortfall.
+  const shortfall = computeGapEvidence(
+    { evidenceScopeSize: 1000, intersectionCount: 2, parentCounts: { a: 100, b: 80 }, probeCount: 1 },
+    thresholds,
   );
-  const pass = evidence.confirmed && evidence.scarcityScore > 0 && evidence.evidenceConfidence >= 0.5;
+  // 0 papers where 0.3 would be expected (20 * 15 / 1000) is what chance predicts in a small corpus.
+  const chance = computeGapEvidence(
+    { evidenceScopeSize: 1000, intersectionCount: 0, parentCounts: { a: 20, b: 15 }, probeCount: 1 },
+    thresholds,
+  );
+  const pass = shortfall.underExplored && shortfall.evidenceConfidence >= 0.5 && !chance.underExplored && chance.evidenceConfidence < 0.5;
 
   return {
     id: "gap-evidence-benchmark",
     feature: "gap",
-    title: "Research gap evidence requires scarcity plus rising parent topic",
+    title: "Under-explored ranking signal compares observed with expected co-occurrence",
     status: pass ? "pass" : "fail",
     score: pass ? 10 : 0,
     maxScore: 10,
     basis:
-      "A confirmed gap is not just an LLM suggestion. Backend confirms that the intersection is scarce while at least one parent topic is rising.",
-    evidence: `Fixture intersection=2, parentCounts=100/80, parentGrowth=25%. Computed confirmed=${evidence.confirmed}, scarcity=${evidence.scarcityScore}, confidence=${evidence.evidenceConfidence}.`,
-    action: "If this fails, gap generation should be treated as brainstorming only, not evidence-backed analysis.",
+      "A low co-mention count is only a ranking signal, not proof that a gap is open. The signal compares the observed intersection with the count expected under independence (nA*nB/N) and requires a significant Poisson shortfall; the Gap Closure Protocol decides whether a gap is open.",
+    evidence: `Shortfall fixture N=1000, parentCounts=100/80, intersection=2: expected=${shortfall.expected.toFixed(2)}, ratio=${shortfall.ratio.toFixed(2)}, p=${shortfall.pValue.toFixed(4)}, underExplored=${shortfall.underExplored}, score=${shortfall.evidenceConfidence}. Chance fixture N=1000, parentCounts=20/15, intersection=0: expected=${chance.expected.toFixed(2)}, p=${chance.pValue.toFixed(4)}, underExplored=${chance.underExplored}.`,
+    action: "If this fails, gap ranking cannot tell a real shortfall from chance; treat gap generation as brainstorming only.",
   };
 }
 
@@ -383,14 +385,14 @@ function buildGapCorpusEvidenceCheck(corpus: EvaluationCorpusMetrics): Evaluatio
   return {
     id: "gap-corpus-evidence",
     feature: "gap",
-    title: "Saved research gaps keep probe-backed quantitative evidence",
+    title: "Saved research gaps keep probe-backed quantitative signals",
     status: pass ? "pass" : "warn",
     score: pass ? 10 : hasGaps ? 5 : 0,
     maxScore: 10,
     basis:
-      "Gap quality is stronger when the saved gap carries supporting papers, a corpus-verifiable probe, and evidenceConfidence, not just a fluent LLM description.",
-    evidence: `${corpus.evidenceBackedGaps}/${corpus.activeGaps} active gaps are evidence-backed (${corpus.gapEvidenceCoveragePct}%).`,
-    action: "Backfill or regenerate gaps through the probe-backed v2 evidence path before claiming gap correctness.",
+      "A saved gap is easier to review when it carries supporting papers, a corpus-verifiable probe, and an evidenceConfidence ranking score, not just a fluent LLM description. These counts rank gaps; they do not prove a gap is open.",
+    evidence: `${corpus.evidenceBackedGaps}/${corpus.activeGaps} active gaps carry a probe-backed ranking signal (${corpus.gapEvidenceCoveragePct}%).`,
+    action: "Backfill or regenerate gaps through the probe-backed v2 evidence path and run a closure check before presenting a gap as open.",
   };
 }
 

@@ -375,6 +375,18 @@ export const gapEvidenceWorkflowStrings = {
     "Linked evidence",
   "No structured evidence is linked yet.":
     "No structured evidence is linked yet.",
+  "Under-explored": "Under-explored",
+  "Weak signal": "Weak signal",
+  "Far fewer papers cover both topics than independence would predict. A ranking signal, not proof that the gap is open.":
+    "Far fewer papers cover both topics than independence would predict. A ranking signal, not proof that the gap is open.",
+  "{{count}} paper where {{expected}} would be expected (ratio {{ratio}}, p {{p}})":
+    "{{count}} paper where {{expected}} would be expected (ratio {{ratio}}, p {{p}})",
+  "{{count}} papers where {{expected}} would be expected (ratio {{ratio}}, p {{p}})":
+    "{{count}} papers where {{expected}} would be expected (ratio {{ratio}}, p {{p}})",
+  "A ranking signal, not proof. Run a closure check to decide whether the gap is open.":
+    "A ranking signal, not proof. Run a closure check to decide whether the gap is open.",
+  "Context only. It does not decide the under-explored signal, which always uses the whole corpus.":
+    "Context only. It does not decide the under-explored signal, which always uses the whole corpus.",
 } as const;
 
 export const gapEvidenceWorkflowViStrings: Record<
@@ -717,4 +729,16 @@ export const gapEvidenceWorkflowViStrings: Record<
     "Bằng chứng đã liên kết",
   "No structured evidence is linked yet.":
     "Chưa có bằng chứng có cấu trúc nào được liên kết.",
+  "Under-explored": "Ít được khám phá",
+  "Weak signal": "Tín hiệu yếu",
+  "Far fewer papers cover both topics than independence would predict. A ranking signal, not proof that the gap is open.":
+    "Số bài báo bàn đến cả hai chủ đề ít hơn nhiều so với mức kỳ vọng nếu hai chủ đề độc lập. Đây là tín hiệu xếp hạng, không phải bằng chứng cho thấy khoảng trống còn bỏ ngỏ.",
+  "{{count}} paper where {{expected}} would be expected (ratio {{ratio}}, p {{p}})":
+    "{{count}} bài báo trong khi kỳ vọng là {{expected}} (tỷ lệ {{ratio}}, p {{p}})",
+  "{{count}} papers where {{expected}} would be expected (ratio {{ratio}}, p {{p}})":
+    "{{count}} bài báo trong khi kỳ vọng là {{expected}} (tỷ lệ {{ratio}}, p {{p}})",
+  "A ranking signal, not proof. Run a closure check to decide whether the gap is open.":
+    "Đây là tín hiệu xếp hạng, không phải bằng chứng. Hãy chạy kiểm tra đóng để quyết định khoảng trống có còn bỏ ngỏ hay không.",
+  "Context only. It does not decide the under-explored signal, which always uses the whole corpus.":
+    "Chỉ để tham khảo. Mục này không quyết định tín hiệu ít được khám phá; tín hiệu đó luôn dựa trên toàn bộ kho dữ liệu.",
 };

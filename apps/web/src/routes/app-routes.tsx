@@ -36,6 +36,7 @@ const ProjectDetailPage = lazy(() => import("@/pages/projects/project-detail").t
 const ProjectInvitationPage = lazy(() => import("@/pages/projects/project-invitation").then((m) => ({ default: m.ProjectInvitationPage })));
 const ResearchGapsPage = lazy(() => import("@/pages/research-gaps").then((m) => ({ default: m.ResearchGapsPage })));
 const ResearchGapValidationPage = lazy(() => import("@/pages/research-gap-validation").then((m) => ({ default: m.ResearchGapValidationPage })));
+const GapClosurePage = lazy(() => import("@/pages/gap-closure").then((m) => ({ default: m.GapClosurePage })));
 const AdminSyncPage = lazy(() => import("@/pages/admin/sync").then((m) => ({ default: m.AdminSyncPage })));
 const AdminPipelinePage = lazy(() => import("@/pages/admin/pipeline").then((m) => ({ default: m.AdminPipelinePage })));
 const AdminEvaluationPage = lazy(() => import("@/pages/admin/evaluation").then((m) => ({ default: m.AdminEvaluationPage })));
@@ -178,6 +179,7 @@ export function AppRoutes() {
             <Route path="/projects" element={<ProjectsListPage />} />
             <Route path="/research-gaps" element={<ResearchGapsPage />} />
             <Route path="/research-gaps/validation" element={<ResearchGapValidationPage />} />
+            <Route path="/gap-closure" element={<GapClosurePage />} />
             <Route path="/research-gap/discover" element={<ResearchGapDiscoverPage />} />
             <Route path="/review-opportunities" element={<ReviewOpportunitiesPage />} />
             <Route path="/academic-support" element={<AcademicSupportPage />} />

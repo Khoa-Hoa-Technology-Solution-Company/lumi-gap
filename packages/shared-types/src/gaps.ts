@@ -51,12 +51,19 @@ export interface ResearchGapItem {
   intersectionCount?: number;
   parentCounts?: { a: number; b: number };
   parentTrend?: { topic: string; growthRatePct: number } | null;
+  /** Ranking score 0..1 of the under-explored signal (not a probability that the gap is open). */
   evidenceConfidence?: number;
+  /**
+   * Observed/expected numbers behind the under-explored ranking signal, when the counts and the scope size are recorded:
+   * expected = nA * nB / N (intersection if the topics were independent), ratio = observed / expected, pValue = Poisson P(X <= observed).
+   * evidenceStatus "confirmed" means this signal is met; it ranks gaps and does not prove one is open (see closureStatus).
+   */
+  underExplored?: { expected: number; ratio: number; pValue: number };
   /** Active corpus papers the probe counts above were taken over; absent on gaps created before it was recorded. */
   evidenceScopeSize?: number;
-  /** Same probe scored inside the project's INCLUDED papers. Context only: it never decides the Confirmed label. */
+  /** Same probe scored inside the project's INCLUDED papers. Context only: it never decides the under-explored signal. */
   projectEvidence?: GapProjectEvidence;
-  /** A probe topic has too few papers for the evidence score to be meaningful. */
+  /** A probe topic has too few papers for the under-explored signal to be meaningful. */
   lowSample?: boolean;
   gapType?: ResearchGapType;
   scope?: string;
@@ -73,6 +80,10 @@ export interface ResearchGapItem {
   validationQuorum?: number;
   /** The viewer may resolve or dismiss this gap (its creator, or the owner of its project). */
   canManage?: boolean;
+  /** Gap Closure Protocol result. NOT_CHECKED until a closure check is decided. */
+  closureStatus?: import("./gap-closure.js").GapClosureStatus;
+  questionFacets?: import("./gap-closure.js").QuestionFacets;
+  latestClosureCheck?: import("./gap-closure.js").GapClosureSummary;
 }
 
 export interface GapAnalysisResult {
@@ -152,6 +163,8 @@ export interface CreateGapCandidateRequest {
   missingEvidence: string;
   significanceExplanation: string;
   suggestedResearchQuestion?: string;
+  /** PICOC facets of suggestedResearchQuestion; needed for a closure check. */
+  questionFacets?: import("./gap-closure.js").QuestionFacets;
   gapConfidence: GapAssessmentLevel;
   researchPriority: GapAssessmentLevel;
 }

@@ -22,6 +22,7 @@ import type { ResearchGapItem, GapStatus } from "@trend/shared-types";
 import { cn } from "@/utils/cn";
 import { toast } from "sonner";
 import { useI18n } from "@/i18n";
+import { ClosureStatusBadge } from "@/features/gap-closure";
 
 interface GapCardProps {
   gap: ResearchGapItem;
@@ -98,7 +99,7 @@ export function GapCard({
 
   if (gap.evidenceStatus === "confirmed") {
     strengthColor = "bg-emerald-500/10 text-emerald-700 border-emerald-500/20 dark:text-emerald-400";
-    strengthTooltip = t("The gap has a corpus probe and deterministic evidence score.");
+    strengthTooltip = t("Far fewer papers cover both topics than independence would predict. A ranking signal, not proof that the gap is open.");
   } else if (gap.evidenceStatus === "weak") {
     strengthColor = "bg-amber-500/10 text-amber-700 border-amber-500/20 dark:text-amber-400";
     strengthTooltip = t("The system found a possible gap, but corpus evidence is sparse or inconclusive.");
@@ -144,8 +145,10 @@ export function GapCard({
           )}
 
           <Badge variant="outline" className={cn("rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider border", strengthColor)} title={strengthTooltip}>
-            {gap.evidenceStatus === "confirmed" ? t("Confirmed") : gap.evidenceStatus === "weak" ? t("Weak") : t("AI Only")}
+            {gap.evidenceStatus === "confirmed" ? t("Under-explored") : gap.evidenceStatus === "weak" ? t("Weak signal") : t("AI Only")}
           </Badge>
+
+          <ClosureStatusBadge status={gap.closureStatus} bound={gap.latestClosureCheck?.bound} />
 
           <div className="h-3 w-px bg-slate-200 dark:bg-slate-800 mx-1" />
 
@@ -291,6 +294,7 @@ export function GapCard({
           intersectionCount={gap.intersectionCount} 
           parentCounts={gap.parentCounts} 
           parentTrend={gap.parentTrend} 
+          underExplored={gap.underExplored}
         />
         
         <SupportingPaperList 

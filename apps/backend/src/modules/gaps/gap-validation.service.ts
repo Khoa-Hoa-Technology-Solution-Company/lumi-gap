@@ -2,14 +2,14 @@ import { AppError } from "../../common/exceptions/app-error.js";
 import { parseDatabaseId, publicDatabaseId } from "../../infrastructure/database/database-id.js";
 import { env } from "../../config/env.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
-import type { GapValidationQueueItem } from "@trend/shared-types";
+import type { GapValidationQueueItem, QuestionFacets } from "@trend/shared-types";
 import { auditService } from "../audit/audit.service.js";
 import { capabilityService } from "../authorization/capability.service.js";
 import { structuredEvidenceItems } from "./structured-evidence.js";
 import { findGapCorpusPaper } from "./gap-corpus.js";
 import { canViewGapValidation, gapValidationConflict, OPEN_FOR_VALIDATION, resolveValidationStatus, type GapValidationViewer } from "./gap-validation.rules.js";
 
-type GapCandidateInput = { topic: string; projectId?: string; corpusId?: string; title: string; gapType: string; scope?: string; establishedKnowledge: string; observedLimitation: string; missingEvidence: string; significanceExplanation: string; suggestedResearchQuestion?: string; gapConfidence: "LOW" | "MODERATE" | "HIGH"; researchPriority: "LOW" | "MODERATE" | "HIGH" };
+type GapCandidateInput = { topic: string; projectId?: string; corpusId?: string; title: string; gapType: string; scope?: string; establishedKnowledge: string; observedLimitation: string; missingEvidence: string; significanceExplanation: string; suggestedResearchQuestion?: string; questionFacets?: QuestionFacets; gapConfidence: "LOW" | "MODERATE" | "HIGH"; researchPriority: "LOW" | "MODERATE" | "HIGH" };
 function whereId(value: string) { const parsed = parseDatabaseId(value); if (!parsed) throw AppError.badRequest("Invalid identifier"); return parsed.kind === "uuid" ? { id: parsed.value } : { legacyMongoId: parsed.value }; }
 function present<T extends { id: string; legacyMongoId?: string | null }>(row: T) { return { ...row, id: publicDatabaseId(row), _id: publicDatabaseId(row) }; }
 async function user(value: string) { const row = await getPrisma().user.findUnique({ where: whereId(value) }); if (!row) throw AppError.notFound("User not found"); return row; }
@@ -57,7 +57,7 @@ export const gapValidationService = {
     if (input.corpusId) { const row = await corpus(input.corpusId); if (row.ownerId !== owner.id && (!row.projectId || !await accessProject(row.projectId, owner.id))) throw AppError.forbidden("Access denied to this literature corpus"); if (projectId && row.projectId !== projectId) throw AppError.badRequest("The literature corpus does not belong to the selected project"); corpusId = row.id; }
     const numericConfidence = { LOW: 0.3, MODERATE: 0.6, HIGH: 0.85 }[input.gapConfidence];
     const created = await getPrisma().$transaction(async (tx) => {
-      const row = await tx.researchGap.create({ data: { topic: input.topic, normalizedTopic: input.topic.trim().toLocaleLowerCase(), title: input.title, description: input.observedLimitation, rationale: input.significanceExplanation, userId: owner.id, projectId, corpusId, source: "standalone", origin: "HUMAN", gapType: input.gapType, scope: input.scope, establishedKnowledge: input.establishedKnowledge, observedLimitation: input.observedLimitation, missingEvidence: input.missingEvidence, significanceExplanation: input.significanceExplanation, suggestedResearchQuestion: input.suggestedResearchQuestion, validationStatus: "CANDIDATE", gapConfidence: input.gapConfidence, researchPriority: input.researchPriority, confidence: numericConfidence } });
+      const row = await tx.researchGap.create({ data: { topic: input.topic, normalizedTopic: input.topic.trim().toLocaleLowerCase(), title: input.title, description: input.observedLimitation, rationale: input.significanceExplanation, userId: owner.id, projectId, corpusId, source: "standalone", origin: "HUMAN", gapType: input.gapType, scope: input.scope, establishedKnowledge: input.establishedKnowledge, observedLimitation: input.observedLimitation, missingEvidence: input.missingEvidence, significanceExplanation: input.significanceExplanation, suggestedResearchQuestion: input.suggestedResearchQuestion, questionFacets: input.questionFacets && Object.keys(input.questionFacets).length ? input.questionFacets as never : undefined, validationStatus: "CANDIDATE", gapConfidence: input.gapConfidence, researchPriority: input.researchPriority, confidence: numericConfidence } });
       if (projectId) await tx.projectActivity.create({ data: { projectId, actorId: owner.id, type: "GAP_CREATED", entityKind: "GAP", entityId: publicDatabaseId(row), metadata: { title: row.title, status: "CANDIDATE" } } });
       return row;
     });

@@ -14,12 +14,56 @@ export function GapScopeNote({ evidenceScopeSize }: { evidenceScopeSize?: number
   );
 }
 
+/** Probability with three decimals; very small values read "< 0.001". */
+function formatPValue(p: number): string {
+  return p < 0.001 ? "< 0.001" : `= ${p.toFixed(3)}`;
+}
+
+/** Expected count with one decimal below 1,000, as a rounded integer above. */
+function formatExpected(expected: number): string {
+  return expected >= 1000 ? formatNumber(Math.round(expected)) : expected.toFixed(1);
+}
+
+/**
+ * Observed vs expected papers at the intersection and what the number means: the under-explored signal ranks gaps,
+ * it does not decide that one is open (the closure check does).
+ */
+export function GapSignalNote({
+  intersectionCount = 0,
+  underExplored,
+}: {
+  intersectionCount?: number;
+  underExplored?: { expected: number; ratio: number; pValue: number };
+}) {
+  const { t } = useI18n();
+  if (!underExplored) return null;
+  const values = {
+    count: formatNumber(intersectionCount),
+    expected: formatExpected(underExplored.expected),
+    ratio: underExplored.ratio.toFixed(2),
+    p: formatPValue(underExplored.pValue),
+  };
+  return (
+    <div className="space-y-0.5 text-xs leading-relaxed text-slate-600 dark:text-slate-400">
+      <p>
+        {intersectionCount === 1
+          ? t("{{count}} paper where {{expected}} would be expected (ratio {{ratio}}, p {{p}})", values)
+          : t("{{count}} papers where {{expected}} would be expected (ratio {{ratio}}, p {{p}})", values)}
+      </p>
+      <p className="text-[10px] italic text-slate-500 dark:text-slate-400">
+        {t("A ranking signal, not proof. Run a closure check to decide whether the gap is open.")}
+      </p>
+    </div>
+  );
+}
+
 interface GapEvidenceSummaryProps {
   probe?: { topicA: string; topicB: string; yearFrom?: number; yearTo?: number };
   evidenceScopeSize?: number;
   intersectionCount?: number;
   parentCounts?: { a: number; b: number };
   parentTrend?: { topic: string; growthRatePct: number } | null;
+  underExplored?: { expected: number; ratio: number; pValue: number };
 }
 
 export function GapEvidenceSummary({
@@ -28,6 +72,7 @@ export function GapEvidenceSummary({
   intersectionCount = 0,
   parentCounts,
   parentTrend,
+  underExplored,
 }: GapEvidenceSummaryProps) {
   const { t } = useI18n();
   if (!probe) {
@@ -52,7 +97,7 @@ export function GapEvidenceSummary({
         <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" /> {t("Evidence check")}
       </span>
       <div className="text-slate-600 dark:text-slate-350 leading-relaxed">
-        {t("Only")} <strong className="text-slate-900 dark:text-white">{formatNumber(intersectionCount)}</strong> {t("papers exist at the intersection of")}{" "}
+        <strong className="text-slate-900 dark:text-white">{formatNumber(intersectionCount)}</strong> {t("papers exist at the intersection of")}{" "}
         <code className="bg-white dark:bg-slate-800 border border-slate-200/50 dark:border-slate-700/50 px-1 rounded text-[10px] font-mono text-slate-800 dark:text-slate-200">
           "{probe.topicA}"
         </code>{" "}
@@ -76,6 +121,7 @@ export function GapEvidenceSummary({
         )}
         .
       </div>
+      <GapSignalNote intersectionCount={intersectionCount} underExplored={underExplored} />
       <GapScopeNote evidenceScopeSize={evidenceScopeSize} />
     </div>
   );
