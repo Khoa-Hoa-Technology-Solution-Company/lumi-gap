@@ -192,7 +192,7 @@ CUSTOM_REVIEW_SCHEMA = {
 
 
 def build_review_request(pdf_path: Path, strictness: str, review_type: dict | None = None) -> tuple[str, str]:
-    profile, manuscript = extract_pdf(pdf_path)
+    profile, manuscript = extract_pdf(pdf_path, require_text_layer=True)
     if review_type and review_type.get('review_instructions'):
         specification = review_type['review_instructions']
     else:

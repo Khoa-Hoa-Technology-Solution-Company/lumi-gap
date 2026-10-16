@@ -48,8 +48,8 @@ describe("buildReportPrompt", () => {
   it("truncates long abstracts to MAX_ABSTRACT_CHARS", () => {
     const longAbstract = "x".repeat(MAX_ABSTRACT_CHARS + 500);
     const prompt = buildReportPrompt("q?", [paper({ abstractText: longAbstract })]);
-    expect(prompt).toContain("x".repeat(MAX_ABSTRACT_CHARS));
-    expect(prompt).not.toContain("x".repeat(MAX_ABSTRACT_CHARS + 1));
+    expect(prompt).toContain("x".repeat(MAX_ABSTRACT_CHARS - 3) + "...");
+    expect(prompt).not.toContain("x".repeat(MAX_ABSTRACT_CHARS - 2));
   });
 
   it("shows first 3 authors + et al. for longer lists", () => {
@@ -105,7 +105,7 @@ describe("REPORT_SYSTEM_PROMPT", () => {
 
 describe("report language resolution", () => {
   it("bumps prompt version when report language behavior changes", () => {
-    expect(PROMPT_VERSION).toBe("report-v5-full-text");
+    expect(PROMPT_VERSION).toBe("report-v6-abstract-first");
   });
 
   it("detects English from ASCII academic questions", () => {

@@ -188,6 +188,11 @@ export const aiReviewerClient = {
         signal: AbortSignal.timeout(180000), // Thẩm định Gemini sâu tối đa 3 phút
       });
 
+      if (res.status === 422) {
+        const detail = ((await res.json().catch(() => null)) as { detail?: unknown } | null)?.detail;
+        if (typeof detail === "string" && detail) throw AppError.badRequest(detail);
+      }
+
       if (!res.ok) {
         const errorBody = await res.text();
         logger.error({ status: res.status, errorBody }, "AI Reviewer review call failed");

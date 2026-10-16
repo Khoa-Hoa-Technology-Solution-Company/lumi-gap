@@ -84,7 +84,7 @@ export function sanitizeIds(ids: unknown[], allowedIds: Set<string>): string[] {
   return [...new Set(ids.map(String).filter((id) => allowedIds.has(id)))];
 }
 
-function truncate(value: string, maxChars: number): string {
+export function truncate(value: string, maxChars: number): string {
   if (value.length <= maxChars) return value;
   if (maxChars <= 3) return value.slice(0, maxChars);
   return `${value.slice(0, maxChars - 3).trimEnd()}...`;

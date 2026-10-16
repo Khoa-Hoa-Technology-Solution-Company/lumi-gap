@@ -103,9 +103,9 @@ export interface GapSortRow {
 
 const EVIDENCE_RANK: Record<GapEvidenceStatus, number> = { confirmed: 2, weak: 1, ai_only: 0 };
 
-/** Corpus evidence score when the gap was scored, otherwise the AI's self-reported confidence. */
+/** Corpus evidence score; unscored gaps rank last (0). */
 export function gapRankingScore(row: Pick<GapSortRow, "confidence" | "evidenceConfidence">): number {
-  return row.evidenceConfidence ?? row.confidence;
+  return row.evidenceConfidence ?? 0;
 }
 
 /** Orders gaps for every list sort option; ties fall back to newest first. */
