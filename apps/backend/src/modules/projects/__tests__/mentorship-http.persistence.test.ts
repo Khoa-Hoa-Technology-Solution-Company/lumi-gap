@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { Server } from "node:http";
 import { Queue } from "bullmq";
-import type { MentorshipCollection, MentorshipRequest } from "@trend/shared-types";
+import type { MentorshipAttachment, MentorshipCollection, MentorshipDraft, MentorshipRequest } from "@trend/shared-types";
 import { createApp } from "../../../app.js";
 import { getPrisma, disconnectPostgres } from "../../../infrastructure/database/prisma.js";
 import { disconnectRedis } from "../../../infrastructure/redis.js";
@@ -51,6 +51,37 @@ describe.skipIf(!enabled).sequential("two-way mentorship through authenticated H
     const settings = await request(owner, `/projects/${project}/mentorship-discovery`, "PUT", { discovery: "SEEKING_MENTOR", summary: "Study design for a controlled experiment", researchAreas: ["Software Engineering"], expertise: ["Evaluation"], mentoringNeeds: "Help design the experiment" });
     expect(settings.status).toBe(200);
   }
+  it("protects multipart files and versioned drafts until explicitly shared in an invitation", async () => {
+    const base = "/projects/academic-support/content", context = { projectId: project, direction: "PROJECT_TO_LECTURER" };
+    const query = new URLSearchParams(context).toString();
+    const upload = async (who?: string, bytes = "%PDF-1.4\nInvitation brief\n%%EOF", mime = "application/pdf") => {
+      const form = new FormData(); form.append("file", new Blob([bytes], { type: mime }), "project-brief.pdf");
+      return fetch(`${origin}/api/v1${base}/attachments?${query}`, { method: "POST", headers: who ? { Authorization: `Bearer ${tokens.get(who)}` } : {}, body: form });
+    };
+    expect((await upload()).status).toBe(401);
+    expect((await upload(member)).status).toBe(403);
+    expect((await request(member, `${base}/draft?${query}`)).status).toBe(403);
+    expect((await upload(owner, "not a PDF")).status).toBe(400);
+    const uploaded = await upload(owner); expect(uploaded.status).toBe(201);
+    const file = (await uploaded.json() as { data: MentorshipAttachment }).data;
+    expect(file).not.toHaveProperty("content");
+    const saved = await request<MentorshipDraft>(owner, `${base}/draft`, "PUT", { ...context, message: "Reusable invitation", mentorRole: "PRIMARY", attachmentIds: [file.id], expectedVersion: 0 });
+    expect(saved.status).toBe(200); expect(saved.data.version).toBe(1);
+    expect((await request<MentorshipDraft>(owner, `${base}/draft?${query}`)).data.attachments).toEqual([file]);
+    expect((await request(owner, `${base}/draft`, "PUT", { ...context, message: "Stale tab", mentorRole: "PRIMARY", attachmentIds: [], expectedVersion: 0 })).status).toBe(409);
+    const download = (who: string) => fetch(`${origin}/api/v1${base}/attachments/${file.id}`, { headers: { Authorization: `Bearer ${tokens.get(who)}` } });
+    expect((await download(lecturer)).status).toBe(404);
+    const invitation = await request<MentorshipRequest>(owner, `/projects/${project}/mentorships`, "POST", { mentorUserId: lecturer, message: "", mentorRole: "PRIMARY", attachmentIds: [file.id] });
+    expect(invitation.status).toBe(201); expect(invitation.data.attachments).toEqual([file]);
+    const response = await download(lecturer);
+    expect(response.status).toBe(200); expect(response.headers.get("content-type")).toContain("application/pdf");
+    expect(response.headers.get("content-disposition")).toContain("attachment;");
+    expect(response.headers.get("cache-control")).toContain("no-store");
+    expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(await response.text()).toContain("Invitation brief");
+    expect((await download(member)).status).toBe(404);
+    expect((await request<MentorshipCollection>(member, `/projects/${project}/mentorships`)).data.requests[0].attachments).toEqual([]);
+  });
   it.each(["PROJECT_TO_LECTURER", "LECTURER_TO_PROJECT"])("%s completes consent, denies private access before acceptance and revokes scoped access on end", async direction => {
     await openDiscovery();
     expect((await request(member, `/projects/${project}/available-mentors`)).status).toBe(200);
@@ -90,7 +121,8 @@ describe.skipIf(!enabled).sequential("two-way mentorship through authenticated H
   });
 
   it.skipIf(process.env.MENTORSHIP_BROWSER !== "1")("operates both real browser flows and compact Vietnamese mobile forms", async () => {
-    const { chromium, expect: browserExpect } = await import("@playwright/test");
+    const { chromium, expect: baseExpect } = await import("@playwright/test");
+    const browserExpect = baseExpect.configure({ timeout: 15000 });
     const browser = await chromium.launch({ headless: true }), errors: string[] = [];
     async function pageFor(who: string) {
       const context = await browser.newContext({ viewport: { width: 1365, height: 980 } });
@@ -109,7 +141,6 @@ describe.skipIf(!enabled).sequential("two-way mentorship through authenticated H
       const ownerPage = await pageFor(owner), lecturerPage = await pageFor(lecturer), memberPage = await pageFor(member);
       await openDiscovery();
       await memberPage.goto("http://127.0.0.1:5180/academic-support?projectId=" + project);
-      await memberPage.getByText("Tìm mentor", { exact: true }).click();
       const lecturerName = (await db.user.findUniqueOrThrow({ where: { id: lecturer } })).fullName;
       await memberPage.getByRole("textbox", { name: "Tìm mentor đang nhận nhóm", exact: true }).fill(lecturerName);
       await memberPage.getByRole("article").filter({ hasText: lecturerName }).getByRole("button", { name: "Đề xuất cố vấn", exact: true }).click();
@@ -117,17 +148,68 @@ describe.skipIf(!enabled).sequential("two-way mentorship through authenticated H
       await memberPage.getByRole("button", { name: "Gửi đề xuất", exact: true }).click();
       await browserExpect(memberPage.getByRole("dialog")).toHaveCount(0);
       await ownerPage.goto("http://127.0.0.1:5180/academic-support?projectId=" + project);
-      await ownerPage.getByRole("button", { name: "Mời làm mentor", exact: true }).click();
-      await ownerPage.getByRole("dialog").locator("textarea").fill("Mời thầy cô hỗ trợ thiết kế thực nghiệm");
+      const projectPanel = ownerPage.locator(".mentor-workspace");
+      for (const label of ["Team mentor suggestions", "Research context", "Mentor guidance", "Academic Reviews"]) await browserExpect(projectPanel.getByText(label, { exact: true })).toHaveCount(0);
+      await browserExpect(projectPanel.locator(".mentor-support-details")).toHaveCount(0);
+      const finderTab = projectPanel.getByRole("tab", { name: "Tìm cố vấn", exact: true });
+      await finderTab.focus(); await finderTab.press("ArrowRight");
+      await browserExpect(projectPanel.getByRole("tab", { name: /Lời mời & cố vấn/ })).toHaveAttribute("aria-selected", "true");
+      await projectPanel.getByRole("tab", { name: /Lời mời & cố vấn/ }).press("Home");
+      await browserExpect(finderTab).toHaveAttribute("aria-selected", "true");
+      await ownerPage.getByRole("textbox", { name: "Tìm mentor đang nhận nhóm", exact: true }).fill(lecturerName);
+      const inviteButton = ownerPage.getByRole("article").filter({ hasText: lecturerName }).getByRole("button", { name: "Mời làm mentor", exact: true });
+      await inviteButton.click();
+      const composer = ownerPage.getByRole("dialog");
+      await composer.getByRole("textbox", { name: "Lời nhắn", exact: true }).fill("Mời thầy cô hỗ trợ thiết kế thực nghiệm");
+      await browserExpect(composer.getByRole("combobox", { name: "Vai trò mentor" })).toHaveValue("PRIMARY");
+      await browserExpect(composer.locator('option[value="SECONDARY"]')).toHaveAttribute("disabled", "");
+      const { default: sharp } = await import("sharp");
+      const png = await sharp({ create: { width: 320, height: 160, channels: 3, background: "#1e40af" } }).png().toBuffer();
+      await composer.locator('input[type="file"]').setInputFiles([
+        { name: "project-brief.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.4\nDemo invitation brief\n%%EOF") },
+        { name: "research-diagram.png", mimeType: "image/png", buffer: png },
+      ]);
+      await browserExpect(composer.getByRole("img", { name: "research-diagram.png" })).toBeVisible();
+      await browserExpect(composer.getByText("project-brief.pdf", { exact: true })).toBeVisible();
+      await composer.screenshot({ path: "../web/test-results/mentorship/invitation-desktop.png" });
+      await ownerPage.setViewportSize({ width: 390, height: 844 });
+      expect(await ownerPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      expect((await composer.boundingBox())!.width).toBeLessThan(390);
+      expect(await composer.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+      await composer.evaluate(element => { element.scrollTop = 0; });
+      await composer.screenshot({ path: "../web/test-results/mentorship/invitation-mobile.png", animations: "disabled" });
+      await composer.getByRole("button", { name: /^(Hủy|Huỷ|Cancel)$/ }).click();
+      await browserExpect(composer).toHaveCount(0);
+      await ownerPage.setViewportSize({ width: 1365, height: 980 });
+      await ownerPage.reload();
+      const alternative = await db.user.create({ data: { fullName: `Alternative Lecturer ${crypto.randomUUID().slice(0, 8)}`, email: `${crypto.randomUUID()}@mentorship-http.invalid`, emailVerifiedAt: new Date(), onboardingCompletedAt: new Date() } });
+      created.userIds.push(alternative.id);
+      await db.academicProfile.create({ data: { userId: alternative.id, academicRole: "LECTURER", primaryPosition: "LECTURER", positionTitle: "Lecturer", positionStatus: "VERIFIED", roleVerificationStatus: "VERIFIED", supportAvailability: { enabled: true } } });
+      await ownerPage.getByRole("textbox", { name: "Tìm mentor đang nhận nhóm", exact: true }).fill(alternative.fullName);
+      await ownerPage.getByRole("article").filter({ hasText: alternative.fullName }).getByRole("button", { name: "Mời làm mentor", exact: true }).click();
+      await browserExpect(composer.getByRole("textbox", { name: "Lời nhắn", exact: true })).toHaveValue("Mời thầy cô hỗ trợ thiết kế thực nghiệm");
+      await browserExpect(composer.getByText("project-brief.pdf", { exact: true })).toBeVisible();
+      await browserExpect(composer.getByRole("img", { name: "research-diagram.png" })).toBeVisible();
+      await composer.getByRole("button", { name: /^(Hủy|Huỷ|Cancel)$/ }).click();
+      await browserExpect(composer).toHaveCount(0);
+      await ownerPage.getByRole("textbox", { name: "Tìm mentor đang nhận nhóm", exact: true }).fill(lecturerName);
+      await inviteButton.click();
       await ownerPage.getByRole("button", { name: "Gửi lời mời", exact: true }).click();
       await browserExpect(ownerPage.getByRole("dialog")).toHaveCount(0);
       await lecturerPage.goto("http://127.0.0.1:5180/academic-support");
+      await browserExpect(lecturerPage.getByRole("img", { name: "research-diagram.png" })).toBeVisible();
+      const downloading = lecturerPage.waitForEvent("download");
+      await lecturerPage.getByRole("button", { name: "Tải tệp đính kèm: project-brief.pdf", exact: true }).click();
+      expect((await downloading).suggestedFilename()).toBe("project-brief.pdf");
       await lecturerPage.getByRole("button", { name: "Chấp nhận", exact: true }).click();
       await lecturerPage.getByRole("button", { name: "Xác nhận", exact: true }).click();
       await browserExpect(lecturerPage.getByRole("dialog")).toHaveCount(0);
+      const acceptedInvitation = await db.mentorshipRequest.findFirstOrThrow({ where: { projectId: project, mentorUserId: lecturer, status: "ACCEPTED" } });
+      expect(await db.mentorshipRequestAttachment.count({ where: { requestId: acceptedInvitation.id } })).toBe(2);
       await lecturerPage.getByRole("button", { name: "Quan hệ cố vấn đang hoạt động", exact: true }).click();
       await lecturerPage.getByRole("button", { name: /^Mở (project|dự án)$/ }).click();
-      await browserExpect(lecturerPage.getByText("CONFIDENTIAL-PROJECT-DATA", { exact: true })).toBeVisible();
+      await browserExpect(lecturerPage.getByRole("link", { name: "Mở kế hoạch và câu hỏi được chia sẻ", exact: true })).toBeVisible();
+      await browserExpect(lecturerPage.getByText("CONFIDENTIAL-PROJECT-DATA", { exact: true })).toHaveCount(0);
       const relationship = await db.mentorRelationship.findFirstOrThrow({ where: { projectId: project, status: "ACTIVE" } });
       await request(owner, `/projects/${project}/mentorships/${relationship.id}/end`, "POST", {});
       const other = await createProjectFixture({ data: { ownerId: owner, title: "Discoverable mentorship browser project", mentorshipDiscovery: "SEEKING_MENTOR", mentorshipSummary: "Safe shared preview for the offer flow", mentorshipResearchAreas: ["Software Engineering"], mentorshipNeeds: "Help with evaluation", visibility: "PRIVATE", description: "PRIVATE-OFFER-RESEARCH" } });
@@ -138,27 +220,31 @@ describe.skipIf(!enabled).sequential("two-way mentorship through authenticated H
       await lecturerPage.getByRole("button", { name: "Gửi đề nghị", exact: true }).click();
       await browserExpect(lecturerPage.getByRole("dialog")).toHaveCount(0);
       await ownerPage.reload();
+      await ownerPage.locator(".mentor-workspace").getByRole("tab", { name: /Lời mời & cố vấn/ }).click();
       await ownerPage.getByRole("button", { name: "Chấp nhận", exact: true }).click();
       await ownerPage.getByRole("button", { name: "Xác nhận", exact: true }).click();
       await browserExpect(ownerPage.getByRole("dialog")).toHaveCount(0);
       await lecturerPage.goto("http://127.0.0.1:5180/academic-support?projectId=" + other.id);
-      await browserExpect(lecturerPage.getByText("PRIVATE-OFFER-RESEARCH", { exact: true })).toBeVisible();
-      await lecturerPage.screenshot({ path: "../../artifacts/mentorship/two-way-lecturer-desktop.png", fullPage: true });
+      await browserExpect(lecturerPage.getByRole("link", { name: "Mở kế hoạch và câu hỏi được chia sẻ", exact: true })).toBeVisible();
+      await browserExpect(lecturerPage.getByText("PRIVATE-OFFER-RESEARCH", { exact: true })).toHaveCount(0);
+      await lecturerPage.screenshot({ path: "../web/test-results/mentorship/two-way-lecturer-desktop.png", fullPage: true });
       await ownerPage.goto("http://127.0.0.1:5180/academic-support?projectId=" + other.id);
       await ownerPage.setViewportSize({ width: 390, height: 844 });
-      await ownerPage.getByRole("button", { name: "Chỉnh sửa tìm người hướng dẫn", exact: true }).click();
-      await browserExpect(ownerPage.locator("#mentor-needs")).toBeVisible();
-      expect((await ownerPage.locator("#mentor-safe-summary").boundingBox())!.width).toBeGreaterThan(230);
+      await ownerPage.getByRole("button", { name: "Chỉnh sửa nhu cầu", exact: true }).click();
+      const needs = ownerPage.locator('textarea[id$="-needs"]');
+      await browserExpect(needs).toBeVisible();
+      expect(await ownerPage.locator(".mentor-preferences-dialog").evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+      expect((await ownerPage.locator('textarea[id$="-summary"]').boundingBox())!.width).toBeGreaterThan(230);
       expect(await ownerPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-      await ownerPage.locator("#mentor-needs").fill("Cần góp ý thiết kế đánh giá và phương pháp thực nghiệm");
+      await needs.fill("Cần góp ý thiết kế đánh giá và phương pháp thực nghiệm");
       await ownerPage.evaluate(() => scrollTo(0, 0));
-      await ownerPage.screenshot({ path: "../../artifacts/mentorship/two-way-owner-mobile.png", fullPage: true });
-      await ownerPage.getByRole("button", { name: "Lưu cài đặt tìm người hướng dẫn", exact: true }).click();
-      await browserExpect(ownerPage.locator("#mentor-needs")).toHaveCount(0);
+      await ownerPage.screenshot({ path: "../web/test-results/mentorship/two-way-owner-mobile.png", fullPage: true });
+      await ownerPage.getByRole("button", { name: "Lưu nhu cầu tìm cố vấn", exact: true }).click();
+      await browserExpect(needs).toHaveCount(0);
       expect((await db.project.findUniqueOrThrow({ where: { id: other.id } })).mentorshipNeeds).toContain("Cần góp ý");
       expect(errors).toEqual([]);
     } catch (error) {
-      for (const [i, context] of browser.contexts().entries()) for (const page of context.pages()) await page.screenshot({ path: `../../artifacts/mentorship/two-way-failure-${i}.png`, fullPage: true }).catch(() => {});
+      for (const [i, context] of browser.contexts().entries()) for (const page of context.pages()) await page.screenshot({ path: `../web/test-results/mentorship/two-way-failure-${i}.png`, fullPage: true }).catch(() => {});
       throw error;
     } finally {
       await Promise.all(browser.contexts().flatMap(context => context.pages().map(page => page.unrouteAll({ behavior: "wait" }))));

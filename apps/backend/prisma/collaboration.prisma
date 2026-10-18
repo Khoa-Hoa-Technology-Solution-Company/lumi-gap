@@ -143,6 +143,7 @@ model MentorshipRequest {
   mentorUserId String    @map("mentor_user_id") @db.Uuid
   requestedBy  String    @map("requested_by") @db.Uuid
   direction    String    @default("PROJECT_TO_LECTURER") @db.VarChar(32)
+  mentorRole   String    @default("PRIMARY") @map("mentor_role") @db.VarChar(16)
   respondedAt  DateTime? @map("responded_at") @db.Timestamptz(6)
   expiresAt    DateTime? @map("expires_at") @db.Timestamptz(6)
   status       String    @default("PENDING") @db.VarChar(24)
@@ -183,6 +184,7 @@ model MentorRelationship {
   projectId       String    @map("project_id") @db.Uuid
   mentorUserId    String    @map("mentor_user_id") @db.Uuid
   sourceRequestId String    @unique @map("source_request_id") @db.Uuid
+  mentorRole      String    @default("PRIMARY") @map("mentor_role") @db.VarChar(16)
   status          String    @default("ACTIVE") @db.VarChar(24)
   startedAt       DateTime  @default(now()) @map("started_at") @db.Timestamptz(6)
   endedAt         DateTime? @map("ended_at") @db.Timestamptz(6)

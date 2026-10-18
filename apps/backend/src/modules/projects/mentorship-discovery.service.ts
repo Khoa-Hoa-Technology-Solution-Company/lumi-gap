@@ -2,6 +2,7 @@ import { Prisma } from "../../generated/prisma/client.js";
 import type { AcademicProfile, Project, User } from "../../generated/prisma/client.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { env } from "../../config/env.js";
+import { mentorPositions, mentorshipPolicy } from "./mentorship-positions.js";
 import { pageMeta, mentorshipPreview, type AcademicSearch } from "./project-mentorship.service.js";
 
 const termsArray = (terms: string[]) => terms.length ? Prisma.sql`ARRAY[${Prisma.join(terms.map(s => s.toLowerCase()))}]::text[]` : Prisma.sql`ARRAY[]::text[]`;
@@ -10,7 +11,9 @@ const overlap = (profileTerms: string[], wanted: string[]) => profileTerms.filte
 
 export const mentorshipDiscoveryService = {
   async mentors(project: Project, owner: User, query: AcademicSearch) {
-    const db = getPrisma(), meta = pageMeta(0, query), wanted = [...new Set([project.researchField ?? "", ...project.mentorshipExpertise].filter(Boolean))];
+    const configured = [...project.mentorshipResearchAreas, ...project.mentorshipExpertise];
+    const db = getPrisma(), meta = pageMeta(0, query), wanted = [...new Set((configured.length ? configured : [project.researchField ?? ""]).map(term => term.trim()).filter(Boolean))];
+    const cooldownSince = new Date(Date.now() - env.ACADEMIC_RELATIONSHIP_COOLDOWN_HOURS * 3600000);
     // Only visible fields participate in filtering/matching. Private values cannot become side channels.
     const candidates = Prisma.sql`SELECT u.id, COALESCE(u.legacy_mongo_id,u.id::text) AS public_id, u.full_name, u.avatar_url, u.institution,
       p.position_title,
@@ -23,7 +26,8 @@ export const mentorshipDiscoveryService = {
         AND p.support_availability->>'enabled'='true' AND u.id<>${owner.id}::uuid
         AND NOT EXISTS(SELECT 1 FROM project_members pm WHERE pm.project_id=${project.id}::uuid AND pm.user_id=u.id AND pm.status='ACTIVE')
         AND NOT EXISTS(SELECT 1 FROM mentor_relationships mr WHERE mr.project_id=${project.id}::uuid AND mr.mentor_user_id=u.id AND mr.status='ACTIVE')
-        AND NOT EXISTS(SELECT 1 FROM mentorship_requests r WHERE r.project_id=${project.id}::uuid AND r.mentor_user_id=u.id AND r.status='PENDING' AND (r.expires_at IS NULL OR r.expires_at>NOW()))`;
+        AND NOT EXISTS(SELECT 1 FROM mentorship_requests r WHERE r.project_id=${project.id}::uuid AND r.mentor_user_id=u.id AND r.status='PENDING' AND (r.expires_at IS NULL OR r.expires_at>NOW()))
+        AND NOT EXISTS(SELECT 1 FROM mentorship_requests r WHERE r.project_id=${project.id}::uuid AND r.mentor_user_id=u.id AND r.status IN ('DECLINED','CANCELLED','CANCELED_BY_PROJECT') AND r.responded_at>${cooldownSince})`;
     const conditions: Prisma.Sql[] = [Prisma.sql`TRUE`];
     if (query.q) conditions.push(Prisma.sql`(full_name ILIKE ${pattern(query.q)} OR institution ILIKE ${pattern(query.q)} OR position_title ILIKE ${pattern(query.q)} OR EXISTS(SELECT 1 FROM unnest(areas||interests) t WHERE t ILIKE ${pattern(query.q)}))`);
     if (query.institution) conditions.push(Prisma.sql`institution ILIKE ${pattern(query.institution)}`);
@@ -48,14 +52,21 @@ export const mentorshipDiscoveryService = {
   async opportunities(lecturer: User, profile: AcademicProfile, query: AcademicSearch) {
     const db = getPrisma(), meta = pageMeta(0, query), wanted = [...profile.expertiseAreas, ...lecturer.researchInterests];
     const cooldownSince = new Date(Date.now() - env.ACADEMIC_RELATIONSHIP_COOLDOWN_HOURS * 3600000);
+    const openRole = Prisma.sql`CASE
+      WHEN NOT EXISTS(SELECT 1 FROM mentor_relationships m WHERE m.project_id=p.id AND m.status='ACTIVE' AND m.mentor_role='PRIMARY') THEN 'PRIMARY'
+      WHEN EXISTS(SELECT 1 FROM mentor_relationships m JOIN users u ON u.id=m.mentor_user_id JOIN academic_profiles ap ON ap.user_id=u.id
+        WHERE m.project_id=p.id AND m.status='ACTIVE' AND m.mentor_role='PRIMARY' AND u.is_active AND u.account_status='ACTIVE'
+        AND u.email_verified_at IS NOT NULL AND ap.academic_role='LECTURER' AND ap.role_verification_status='VERIFIED' AND ap.position_status='VERIFIED')
+        AND NOT EXISTS(SELECT 1 FROM mentor_relationships m WHERE m.project_id=p.id AND m.status='ACTIVE' AND m.mentor_role='SECONDARY') THEN 'SECONDARY'
+      ELSE NULL END`;
     const conditions = [Prisma.sql`p.mentorship_discovery='SEEKING_MENTOR' AND p.status NOT IN ('ARCHIVED','COMPLETED') AND p.owner_id<>${lecturer.id}::uuid`,
-      Prisma.sql`(SELECT COUNT(*) FROM mentor_relationships mr WHERE mr.project_id=p.id AND mr.status='ACTIVE')<${env.MAX_ACTIVE_MENTORS_PER_PROJECT}`,
+      Prisma.sql`(${openRole}) IS NOT NULL`,
       Prisma.sql`NOT EXISTS(SELECT 1 FROM project_members pm WHERE pm.project_id=p.id AND pm.user_id=${lecturer.id}::uuid AND pm.status='ACTIVE')`,
       Prisma.sql`NOT EXISTS(SELECT 1 FROM mentor_relationships mr WHERE mr.project_id=p.id AND mr.mentor_user_id=${lecturer.id}::uuid AND mr.status='ACTIVE')`,
       Prisma.sql`EXISTS(SELECT 1 FROM users owner WHERE owner.id=p.owner_id AND owner.is_active AND owner.account_status='ACTIVE' AND owner.email_verified_at IS NOT NULL)`,
       Prisma.sql`NOT EXISTS(SELECT 1 FROM mentorship_requests r WHERE r.project_id=p.id AND r.mentor_user_id=${lecturer.id}::uuid AND r.status='PENDING' AND (r.expires_at IS NULL OR r.expires_at>NOW()))`,
-      Prisma.sql`NOT EXISTS(SELECT 1 FROM mentorship_requests r WHERE r.project_id=p.id AND r.mentor_user_id=${lecturer.id}::uuid AND r.status IN ('DECLINED','CANCELLED') AND r.responded_at>${cooldownSince})`,
-      Prisma.sql`(SELECT COUNT(*) FROM mentorship_requests r WHERE r.project_id=p.id AND r.status='PENDING' AND (r.expires_at IS NULL OR r.expires_at>NOW()))<${env.MAX_PENDING_MENTOR_REQUESTS_PER_PROJECT}`,
+      Prisma.sql`NOT EXISTS(SELECT 1 FROM mentorship_requests r WHERE r.project_id=p.id AND r.mentor_user_id=${lecturer.id}::uuid AND r.status IN ('DECLINED','CANCELLED','CANCELED_BY_PROJECT') AND r.responded_at>${cooldownSince})`,
+      Prisma.sql`(SELECT COUNT(*) FROM mentorship_requests r WHERE r.project_id=p.id AND r.mentor_role=(${openRole}) AND r.status='PENDING' AND (r.expires_at IS NULL OR r.expires_at>NOW()))<${mentorshipPolicy.maxPendingPerRole}`,
     ];
     if (query.q) conditions.push(Prisma.sql`(p.title ILIKE ${pattern(query.q)} OR p.mentorship_summary ILIKE ${pattern(query.q)} OR p.mentorship_needs ILIKE ${pattern(query.q)} OR EXISTS(SELECT 1 FROM unnest(p.mentorship_research_areas||p.mentorship_expertise) t WHERE t ILIKE ${pattern(query.q)}))`);
     if (query.area) conditions.push(Prisma.sql`EXISTS(SELECT 1 FROM unnest(p.mentorship_research_areas) t WHERE LOWER(t)=LOWER(${query.area}))`);
@@ -68,6 +79,10 @@ export const mentorshipDiscoveryService = {
     ], { isolationLevel: "RepeatableRead" });
     const projects = await db.project.findMany({ where: { id: { in: ids.map(r => r.id) }, mentorshipDiscovery: "SEEKING_MENTOR", status: { notIn: ["ARCHIVED", "COMPLETED"] } } });
     const byId = new Map(projects.map(p => [p.id, p]));
-    return { items: ids.flatMap(r => { const p = byId.get(r.id); return p ? [mentorshipPreview(p)] : []; }), meta: pageMeta(Number(count[0]?.total ?? 0), query) };
+    const items = await Promise.all(ids.flatMap(r => { const p = byId.get(r.id); return p ? [p] : []; }).map(async p => {
+      const positions = await mentorPositions(p.id);
+      return { ...mentorshipPreview(p), availableRoles: (["PRIMARY", "SECONDARY"] as const).filter(role => ["VACANT", "INVITING"].includes(positions[role].status) && positions[role].pendingRequests < mentorshipPolicy.maxPendingPerRole) };
+    }));
+    return { items, meta: pageMeta(Number(count[0]?.total ?? 0), query) };
   },
 };
