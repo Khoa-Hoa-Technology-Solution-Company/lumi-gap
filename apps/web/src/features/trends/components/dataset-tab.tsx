@@ -8,6 +8,7 @@ import { DatasetScopeNextActions } from "./dataset-scope-next-actions";
 import { ActiveScopeChips, type ActiveChipItem } from "./active-scope-chips";
 import { DatasetScopeBuilder } from "./dataset-scope-builder";
 import { formatLanguageName } from "@/utils/language";
+import { DataSourceBadge, ScopeNotice } from "./trend-data-source";
 
 type DatasetTrendTab = "overview" | "topics" | "dataset" | "compare" | "ai";
 
@@ -161,8 +162,10 @@ export function DatasetTab({
     });
 
     // Top Sources
+    // OpenAlex source filters hold the source id ("S…"); show the display name.
     sources.forEach(src => {
-      chips.push({ facet: "Top Sources", val: src, label: `Source: ${src}` });
+      const name = data.facets?.topSources?.find(b => b.id === src || b.name === src)?.name || src;
+      chips.push({ facet: "Top Sources", val: src, label: `Source: ${name}` });
     });
 
     languages.forEach(language => {
@@ -191,12 +194,17 @@ export function DatasetTab({
             <SlidersHorizontal className="w-5 h-5" />
           </div>
           <div className="space-y-0.5">
-            <h2 className="text-lg font-extrabold text-slate-900 dark:text-white leading-none">Dataset Scope Builder</h2>
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-lg font-extrabold text-slate-900 dark:text-white leading-none">Dataset Scope Builder</h2>
+              <DataSourceBadge source={data.dataSource} />
+            </div>
             <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold leading-relaxed animate-fadeIn">
               Choose the paper dataset used by every Trends tab. Then continue to signals, comparison, search, or reports with the same scope.
             </p>
           </div>
         </div>
+
+        <ScopeNotice notice={data.scopeNotice} />
 
         {/* Main 2-Column Responsive Layout */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
@@ -239,6 +247,7 @@ export function DatasetTab({
               yearFrom={yearFrom}
               yearTo={yearTo}
               lastCompleteYear={data.lastCompleteYear}
+              dataSource={data.dataSource}
             />
 
             {/* Zone 4 — Sticky Scoped Next Actions */}
@@ -275,6 +284,7 @@ export function DatasetTab({
               totalInWindow={totalInWindow}
               activeFiltersCount={activeChips.length}
               hasCitationFilter={citationBands.length > 0}
+              dataSource={data.dataSource}
             />
 
             {/* Category-Grouped Active filter chips */}
@@ -287,9 +297,15 @@ export function DatasetTab({
 
         {/* Technical footer notes */}
         <div className="px-4 py-3 bg-slate-50/50 dark:bg-slate-900/10 border-l-2 border-slate-300 dark:border-slate-700 rounded-r-xl text-[11px] text-slate-555 dark:text-slate-400 select-none">
-          <p className="leading-relaxed">
-            <strong>Dataset Scope Basis:</strong> Active paper statistics calculated inside the filtered data window. Domain, field, subfield, and topic taxonomy hierarchy mappings are powered by OpenAlex.
-          </p>
+          {data.dataSource === "openalex" ? (
+            <p className="leading-relaxed">
+              <strong>Dataset Scope Basis:</strong> Paper counts come from OpenAlex aggregate queries over its whole database, filtered by the year range and the Data Scope. Domain, field, subfield, and topic hierarchy is the OpenAlex taxonomy.
+            </p>
+          ) : (
+            <p className="leading-relaxed">
+              <strong>Dataset Scope Basis:</strong> Active paper statistics calculated inside the filtered data window. Domain, field, subfield, and topic taxonomy hierarchy mappings are powered by OpenAlex.
+            </p>
+          )}
         </div>
       </div>
     </TooltipProvider>

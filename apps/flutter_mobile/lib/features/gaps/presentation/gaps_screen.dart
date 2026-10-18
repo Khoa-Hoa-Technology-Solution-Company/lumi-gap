@@ -4,6 +4,7 @@ import 'package:flutter_mobile/core/widgets/app_empty_state.dart';
 import 'package:flutter_mobile/core/widgets/app_error_state.dart';
 import 'package:flutter_mobile/core/widgets/app_loading.dart';
 import 'package:flutter_mobile/features/gaps/data/gaps_api.dart';
+import 'package:flutter_mobile/features/gaps/presentation/gap_closure_widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -608,6 +609,9 @@ class _GapsScreenState extends ConsumerState<GapsScreen> {
                   ),
                   const SizedBox(height: 16),
 
+                  GapClosureSection(gap: gap),
+                  const SizedBox(height: 16),
+
                   if (gap.supportingPapers.isNotEmpty ||
                       gap.supportingPaperIds.isNotEmpty) ...[
                     const Text(
@@ -1084,6 +1088,11 @@ class _GapCard extends StatelessWidget {
               color: isDark ? const Color(0xFFCBD5E1) : const Color(0xFF64748B),
               height: 1.4,
             ),
+          ),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: GapClosureBadge(gap: gap),
           ),
           const SizedBox(height: 12),
 

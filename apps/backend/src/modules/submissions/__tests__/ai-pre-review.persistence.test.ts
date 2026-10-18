@@ -5,10 +5,15 @@ import { getPrisma } from "../../../infrastructure/database/prisma.js";
 import { aiJobsQueue } from "../../../infrastructure/queue.js";
 import { auditService } from "../../audit/audit.service.js";
 import { aiReviewerClient, type AiPreReviewResponse } from "../../papers/ai-reviewer.client.js";
+import { extractPdfPages, readStoredPdf } from "../../knowledge/knowledge.source.js";
+import { retrieve } from "../../retrieval/retriever.js";
 import { AI_PRE_REVIEW_JOB, aiPreReviewJobId, submissionService } from "../submission.service.js";
 
 // Never enqueue real jobs from tests: a running dev worker would call the AI reviewer.
 vi.mock("../../../infrastructure/queue.js", () => ({ aiJobsQueue: { add: vi.fn().mockResolvedValue(undefined) } }));
+
+vi.mock("../../retrieval/retriever.js", () => ({ retrieve: vi.fn().mockResolvedValue([]) }));
+vi.mock("../../knowledge/knowledge.source.js", () => ({ readStoredPdf: vi.fn(), extractPdfPages: vi.fn() }));
 
 const aiResponse: AiPreReviewResponse = {
   status: "completed",
@@ -50,6 +55,7 @@ describe.sequential("AI pre-review run by the ai-jobs worker (PostgreSQL)", () =
 
   afterAll(async () => {
     await prisma.aiPreReview.deleteMany({ where: { submissionId: { in: submissionIds } } });
+    await prisma.submissionRevision.deleteMany({ where: { submissionId: { in: submissionIds } } });
     await prisma.submission.deleteMany({ where: { id: { in: submissionIds } } });
     if (projectId) await prisma.project.deleteMany({ where: { id: projectId } });
     if (userId) await prisma.user.deleteMany({ where: { id: userId } });
@@ -88,6 +94,36 @@ describe.sequential("AI pre-review run by the ai-jobs worker (PostgreSQL)", () =
 
     expect((await prisma.aiPreReview.findUniqueOrThrow({ where: { id: record.id } })).status).toBe("COMPLETED");
     expect((await prisma.submission.findUniqueOrThrow({ where: { id: submission.id } })).status).toBe("under_review");
+  });
+
+  it("sends the markdown manuscript and corpus-related papers to the AI reviewer", async () => {
+    const submission = await createSubmission("submitted");
+    await prisma.submissionRevision.create({ data: { submissionId: submission.id, revisionNumber: 1, uploadedById: userId, sizeBytes: 100, contentType: "MARKDOWN", contentSnapshot: "We propose a new gap detector." } });
+    vi.mocked(retrieve).mockResolvedValueOnce([{ id: "paper-public-id", title: "Related paper", abstractText: "Related abstract", authorNames: [], score: 0.9 }]);
+    const record = await queuedRecord(submission.id);
+    vi.mocked(aiReviewerClient.preReview).mockClear();
+
+    await submissionService.processAiPreReview({ preReviewId: record.id });
+
+    expect(aiReviewerClient.preReview).toHaveBeenCalledWith(expect.objectContaining({
+      manuscript_text: "We propose a new gap detector.",
+      related_evidence: [{ id: "paper-public-id", title: "Related paper", excerpt: "Related abstract" }],
+    }));
+  });
+
+  it("still completes without a manuscript when the stored PDF cannot be read", async () => {
+    const submission = await createSubmission("submitted");
+    await prisma.submissionRevision.create({ data: { submissionId: submission.id, revisionNumber: 1, uploadedById: userId, sizeBytes: 100, contentType: "PDF", storageUri: "missing/file.pdf" } });
+    vi.mocked(readStoredPdf).mockRejectedValueOnce(new Error("Stored PDF cannot be resolved"));
+    const record = await queuedRecord(submission.id);
+    vi.mocked(aiReviewerClient.preReview).mockClear();
+
+    await submissionService.processAiPreReview({ preReviewId: record.id });
+
+    expect((await prisma.aiPreReview.findUniqueOrThrow({ where: { id: record.id } })).status).toBe("COMPLETED");
+    const input = vi.mocked(aiReviewerClient.preReview).mock.calls[0]![0];
+    expect(input.manuscript_text).toBeUndefined();
+    expect(extractPdfPages).not.toHaveBeenCalled();
   });
 
   it("marks a pre-review as FAILED with a safe message after the last attempt", async () => {

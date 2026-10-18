@@ -183,13 +183,27 @@ const EnvSchema = z.object({
   GAPS_TOP_K: z.coerce.number().int().min(3).max(10).default(10),
   GAPS_MAX_PER_HOUR: z.coerce.number().int().positive().default(10),
   GAPS_MAX_OUTPUT_TOKENS: z.coerce.number().int().positive().default(2048),
-  // v2 — a gap is "confirmed" when its intersection is scarce AND a parent topic
-  // is rising. Scarce = intersectionCount ≤ GAP_SCARCE_ABS OR ≤ GAP_SCARCE_PCT × min(parentCounts).
+  // Under-explored ranking signal (docs/gap-closure-protocol.md): a probe is flagged when its intersection is far below
+  // what independence predicts (observed/expected <= GAP_UNDEREXPLORED_MAX_RATIO) and a one-sided Poisson test is
+  // significant at GAP_UNDEREXPLORED_ALPHA / k for k probes. It ranks gaps; it does not decide that a gap is open.
+  GAP_UNDEREXPLORED_MAX_RATIO: z.coerce.number().gt(0).max(1).default(0.5),
+  GAP_UNDEREXPLORED_ALPHA: z.coerce.number().gt(0).lt(1).default(0.05),
+  GAP_MIN_PARENT_PAPERS: z.coerce.number().int().nonnegative().default(5), // each probe topic needs this many papers before the under-explored signal can be raised
+  // Legacy scarcity/trend thresholds are retained for old rows and trend context. They do not replace O/E + Poisson.
   GAP_SCARCE_ABS: z.coerce.number().int().nonnegative().default(5),
   GAP_SCARCE_PCT: z.coerce.number().min(0).max(1).default(0.02),
-  GAP_PARENT_RISING_MIN: z.coerce.number().default(0), // growthRatePct strictly above this = rising
-  GAP_MIN_PARENT_PAPERS: z.coerce.number().int().nonnegative().default(5), // each probe topic needs this many papers to be confirmed
+  // A parent topic is rising when its CAGR (last 3 complete years) is above this %; with no CAGR (zero base) a positive slope counts.
+  GAP_PARENT_RISING_MIN: z.coerce.number().default(10),
+  GAP_GLOBAL_EVIDENCE_ENABLED: z.enum(["true", "false"]).default("true").transform((value) => value === "true"), // count probes in OpenAlex too (best-effort)
+  GAP_GLOBAL_EVIDENCE_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120000).default(15000),
   GAP_VALIDATION_QUORUM: z.coerce.number().int().min(1).default(2), // distinct experts that must agree (VALIDATE or REJECT) before a gap reaches a final status
+  // Gap Closure Protocol (docs/gap-closure-protocol.md): a gap is OPEN_CERTIFIED only when the false-novelty bound
+  // epsHat + pHat is at most GAP_MAX_FALSE_NOVELTY; both are one-sided Clopper-Pearson upper bounds at 1 - GAP_CLOSURE_DELTA.
+  GAP_MAX_FALSE_NOVELTY: z.coerce.number().gt(0).max(1).default(0.2),
+  GAP_CLOSURE_DELTA: z.coerce.number().gt(0).lt(0.5).default(0.05),
+  GAP_CLOSURE_LOCAL_TOP_K: z.coerce.number().int().min(1).max(50).default(20), // corpus papers screened per check
+  GAP_CLOSURE_OPENALEX_PER_QUERY: z.coerce.number().int().min(0).max(25).default(10), // 0 disables the OpenAlex search
+  GAP_CLOSURE_MAX_QUERIES: z.coerce.number().int().min(1).max(5).default(3),
   // v2 — paper comparison (one cached LLM call; capped to bound tokens).
   COMPARE_MAX_PAPERS: z.coerce.number().int().min(2).max(4).default(4),
   COMPARE_PROMPT_VERSION: z.string().default("compare-v2"),

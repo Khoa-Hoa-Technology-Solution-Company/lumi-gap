@@ -3,7 +3,7 @@ import { AppError } from "../../common/exceptions/app-error.js";
 import { parseDatabaseId, publicDatabaseId } from "../../infrastructure/database/database-id.js";
 import { env } from "../../config/env.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
-import type { GapValidationQueueItem } from "@trend/shared-types";
+import type { GapValidationQueueItem, QuestionFacets } from "@trend/shared-types";
 import { auditService } from "../audit/audit.service.js";
 import { capabilityService } from "../authorization/capability.service.js";
 import { structuredEvidenceItems } from "./structured-evidence.js";
@@ -14,7 +14,7 @@ import { requireCurrentProjectMembership } from "../authorization/project-member
 import { withWorkspace } from "../projects/workspace-access.js";
 import { recordGapPacket } from "../projects/gap-revision.js";
 
-type GapCandidateInput = { topic: string; projectId?: string; corpusId?: string; title: string; gapType: string; scope?: string; establishedKnowledge: string; observedLimitation: string; missingEvidence: string; significanceExplanation: string; suggestedResearchQuestion?: string; gapConfidence: "LOW" | "MODERATE" | "HIGH"; researchPriority: "LOW" | "MODERATE" | "HIGH" };
+type GapCandidateInput = { topic: string; projectId?: string; corpusId?: string; title: string; gapType: string; scope?: string; establishedKnowledge: string; observedLimitation: string; missingEvidence: string; significanceExplanation: string; suggestedResearchQuestion?: string; questionFacets?: QuestionFacets; gapConfidence: "LOW" | "MODERATE" | "HIGH"; researchPriority: "LOW" | "MODERATE" | "HIGH" };
 function whereId(value: string) { const parsed = parseDatabaseId(value); if (!parsed) throw AppError.badRequest("Invalid identifier"); return parsed.kind === "uuid" ? { id: parsed.value } : { legacyMongoId: parsed.value }; }
 function present<T extends { id: string; legacyMongoId?: string | null }>(row: T) { return { ...row, id: publicDatabaseId(row), _id: publicDatabaseId(row) }; }
 async function user(value: string) { const row = await getPrisma().user.findUnique({ where: whereId(value) }); if (!row) throw AppError.notFound("User not found"); return row; }
@@ -72,7 +72,7 @@ export const gapValidationService = {
     // Legacy numeric field is not a scientific confidence estimate for human proposals.
     const numericConfidence = 0;
     const create = async (tx: Prisma.TransactionClient) => {
-      const row = await tx.researchGap.create({ data: { topic: input.topic, normalizedTopic: input.topic.trim().toLocaleLowerCase(), title: input.title, description: input.observedLimitation, rationale: input.significanceExplanation, userId: owner.id, projectId, corpusId, source: "standalone", origin: "HUMAN", gapType: input.gapType, scope: input.scope, establishedKnowledge: input.establishedKnowledge, observedLimitation: input.observedLimitation, missingEvidence: input.missingEvidence, significanceExplanation: input.significanceExplanation, suggestedResearchQuestion: input.suggestedResearchQuestion, validationStatus: "CANDIDATE", gapConfidence: input.gapConfidence, researchPriority: input.researchPriority, confidence: numericConfidence } });
+      const row = await tx.researchGap.create({ data: { topic: input.topic, normalizedTopic: input.topic.trim().toLocaleLowerCase(), title: input.title, description: input.observedLimitation, rationale: input.significanceExplanation, userId: owner.id, projectId, corpusId, source: "standalone", origin: "HUMAN", gapType: input.gapType, scope: input.scope, establishedKnowledge: input.establishedKnowledge, observedLimitation: input.observedLimitation, missingEvidence: input.missingEvidence, significanceExplanation: input.significanceExplanation, suggestedResearchQuestion: input.suggestedResearchQuestion, questionFacets: input.questionFacets && Object.keys(input.questionFacets).length ? input.questionFacets as never : undefined, validationStatus: "CANDIDATE", gapConfidence: input.gapConfidence, researchPriority: input.researchPriority, confidence: numericConfidence } });
       if (projectId) await tx.projectActivity.create({ data: { projectId, actorId: owner.id, type: "GAP_CREATED", entityKind: "GAP", entityId: publicDatabaseId(row), metadata: { title: row.title, status: "CANDIDATE" } } });
       return row;
     };
@@ -114,7 +114,7 @@ export const gapValidationService = {
         } });
         await tx.researchGap.update({ where: { id: row.id }, data: { version: { increment: 1 }, validationStatus: "CANDIDATE", assessmentStatus: "PROPOSED", assessmentRationale: "" } });
         await recordGapPacket(tx, row.id, owner.id);
-        await tx.researchGapPaper.upsert({ where: { gapId_paperId_kind: { gapId: row.id, paperId: sourcePaper.id, kind: input.evidenceKind === "SUPPORTING" ? "supporting" : "evidence" } }, create: { gapId: row.id, paperId: sourcePaper.id, kind: input.evidenceKind === "SUPPORTING" ? "supporting" : "evidence", position: 0 }, update: {} });
+        await tx.researchGapPaper.upsert({ where: { gapId_paperId_kind: { gapId: row.id, paperId: sourcePaper.id, kind: input.evidenceKind === "SUPPORTING" ? "supporting" : "counter" } }, create: { gapId: row.id, paperId: sourcePaper.id, kind: input.evidenceKind === "SUPPORTING" ? "supporting" : "counter", position: 0 }, update: {} });
         if (row.projectId) await tx.projectActivity.create({ data: { projectId: row.projectId, actorId: owner.id, type: "EVIDENCE_ADDED", entityKind: "GAP", entityId: publicDatabaseId(row), metadata: { title: row.title, evidenceKind: input.evidenceKind, evidenceType: selected.evidenceType, paperId: publicDatabaseId(sourcePaper) } } });
         return created;
       });

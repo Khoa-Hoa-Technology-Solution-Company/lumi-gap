@@ -2,8 +2,11 @@ import React, { useMemo, useState } from "react";
 import { ResponsiveContainer, Area, AreaChart } from "recharts";
 import type { TrendsOverview, YearlyCount } from "@trend/shared-types";
 import { type RisingKeywordRow, type TrendBarChartDatum } from "./trends-shared.components";
-import { isSmallBaseKeyword, formatSigned, type TrendSortKey } from "../../../pages/trends.insights";
+import { getTopRisingTopic, isSmallBaseKeyword, sortTopics, type TrendSortKey } from "../../../pages/trends.insights";
+import { TrendIntro, TrendVerdictBadge, formatRelativeChange } from "./trend-verdict-badge";
 import { formatNumber } from "@/utils";
+import { useI18n } from "@/i18n";
+import { formatShiftCounts, formatShiftPeriods, formatShiftStats, isShiftSignificant } from "../trend-source";
 import {
   Compass,
   LineChart,
@@ -77,6 +80,9 @@ export function TopicsTab({
   setFocusTopic,
   scopeParams,
 }: TopicsTabProps) {
+  const { t } = useI18n();
+  // Rows from OpenAlex carry the log odds ratio test; the local fallback does not.
+  const usesKeywordTest = keywordsData.some((row) => row.shift);
   const buildScopedUrl = (path: string, baseParams: Record<string, string>) => {
     const params = new URLSearchParams(baseParams);
 
@@ -125,41 +131,26 @@ export function TopicsTab({
       : `/reports?create=true&topic=${encodeURIComponent(topic)}&query=${encodeURIComponent(`Analyze research trends and gaps for ${topic}`)}`;
   };
 
-  const strongestTopic = useMemo(() => {
-    if (!data.topics || data.topics.length === 0) return null;
-    return [...data.topics].sort((a, b) => b.momentum - a.momentum)[0];
-  }, [data.topics]);
+  const strongestTopic = useMemo(() => getTopRisingTopic(data.topics ?? []), [data.topics]);
 
   const earlyKeyword = useMemo(() => {
     if (!keywordsData || keywordsData.length === 0) return null;
-    const nonSmallBase = keywordsData.filter(k => !isSmallBaseKeyword(k));
-    if (nonSmallBase.length === 0) return null;
-    return [...nonSmallBase].sort((a, b) => b.growthRatePct - a.growthRatePct)[0];
+    const strong = keywordsData.filter(k => (k.shift ? isShiftSignificant(k.shift) : !isSmallBaseKeyword(k)));
+    if (strong.length === 0) return null;
+    return [...strong].sort((a, b) => (a.shift && b.shift ? b.shift.z - a.shift.z : b.growthRatePct - a.growthRatePct))[0];
   }, [keywordsData]);
 
   const exploratorySignal = useMemo(() => {
     if (!keywordsData || keywordsData.length === 0) return null;
-    const smallBase = keywordsData.filter(k => isSmallBaseKeyword(k));
-    if (smallBase.length === 0) return null;
-    return [...smallBase].sort((a, b) => b.growthRatePct - a.growthRatePct)[0];
+    const weak = keywordsData.filter(k => (k.shift ? !isShiftSignificant(k.shift) : isSmallBaseKeyword(k)));
+    if (weak.length === 0) return null;
+    return [...weak].sort((a, b) => (a.shift && b.shift ? b.shift.z - a.shift.z : b.growthRatePct - a.growthRatePct))[0];
   }, [keywordsData]);
 
   // 2. State & Logic cho Quick Sort nội bộ
-  const [localSortBy, setLocalSortBy] = useState<"momentum" | "papers" | "growth">(sortBy === "total" ? "papers" : sortBy);
+  const [localSortBy, setLocalSortBy] = useState<TrendSortKey>(sortBy);
 
-  const sortedTopics = useMemo(() => {
-    const list = [...barChartData];
-    if (localSortBy === "momentum") {
-      return list.sort((a, b) => b.momentum - a.momentum);
-    }
-    if (localSortBy === "papers") {
-      return list.sort((a, b) => b.totalPapers - a.totalPapers);
-    }
-    if (localSortBy === "growth") {
-      return list.sort((a, b) => b.growthRatePct - a.growthRatePct);
-    }
-    return list;
-  }, [barChartData, localSortBy]);
+  const sortedTopics = useMemo(() => sortTopics(barChartData, localSortBy), [barChartData, localSortBy]);
 
   // 3. Logic cho các nút hành động
   const handleCompare = (topic: string) => {
@@ -184,6 +175,27 @@ export function TopicsTab({
   };
 
   const getSignalQuality = (row: RisingKeywordRow) => {
+    if (row.shift) {
+      const detail = t("{{counts}} papers, {{stats}}, {{periods}}", {
+        counts: formatShiftCounts(row.shift),
+        stats: formatShiftStats(row.shift),
+        periods: formatShiftPeriods(row.shift),
+      });
+      if (isShiftSignificant(row.shift)) {
+        return {
+          label: "Significant rising",
+          shortLabel: "Significant rising",
+          bg: "bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 border-emerald-200/50 dark:border-emerald-900/30",
+          tooltip: detail,
+        };
+      }
+      return {
+        label: "Not significant",
+        shortLabel: "Not significant",
+        bg: "bg-slate-100 dark:bg-slate-800/60 text-slate-600 dark:text-slate-300 border-slate-200/60 dark:border-slate-700/50",
+        tooltip: detail,
+      };
+    }
     if (row.totalPapers < 15) {
       return {
         label: "Exploratory (Small Base < 15 papers)",
@@ -238,7 +250,7 @@ export function TopicsTab({
             <div className="space-y-3.5 relative z-10">
               <div className="flex items-center gap-1.5 text-blue-700 dark:text-blue-455 uppercase tracking-widest text-[9.5px] font-extrabold bg-blue-100/50 dark:bg-blue-950/60 px-2 py-0.5 rounded w-fit">
                 <Flame className="w-3.5 h-3.5" />
-                Strongest Topic
+                {t("Top rising topic")}
               </div>
               {strongestTopic ? (
                 <>
@@ -246,8 +258,9 @@ export function TopicsTab({
                     {strongestTopic.topic}
                   </h4>
                   <div className="flex flex-wrap gap-2 pt-0.5">
+                    <TrendVerdictBadge classification={strongestTopic.classification} size="sm" />
                     <span className="bg-white/80 dark:bg-slate-900/60 border border-blue-100/60 dark:border-blue-900/30 text-slate-700 dark:text-slate-350 px-2.5 py-1 rounded-lg text-[11px] font-bold">
-                      Momentum: <strong className="text-blue-600 dark:text-blue-455 font-extrabold">{formatSigned(strongestTopic.momentum, 2)}</strong>
+                      <strong className="text-blue-600 dark:text-blue-455 font-extrabold">{formatRelativeChange(strongestTopic.classification, t)}</strong>
                     </span>
                     <span className="bg-white/80 dark:bg-slate-900/60 border border-blue-100/60 dark:border-blue-900/30 text-slate-700 dark:text-slate-350 px-2.5 py-1 rounded-lg text-[11px] font-bold">
                       Volume: <strong className="text-slate-900 dark:text-white font-extrabold">{formatNumber(strongestTopic.totalPapers)}</strong>
@@ -255,7 +268,7 @@ export function TopicsTab({
                   </div>
                 </>
               ) : (
-                <p className="text-xs text-slate-455">No topic data available</p>
+                <p className="text-xs text-slate-455">{t("No topic shows a statistically significant rise in its field share in this scope.")}</p>
               )}
             </div>
 
@@ -278,7 +291,7 @@ export function TopicsTab({
             <div className="space-y-3.5 relative z-10">
               <div className="flex items-center gap-1.5 text-emerald-700 dark:text-emerald-455 uppercase tracking-widest text-[9.5px] font-extrabold bg-emerald-100/50 dark:bg-emerald-950/60 px-2 py-0.5 rounded w-fit">
                 <Zap className="w-3.5 h-3.5" />
-                Early Keyword Signal
+                {earlyKeyword?.shift ? "Significant Rising Keyword" : "Early Keyword Signal"}
               </div>
               {earlyKeyword ? (
                 <>
@@ -286,12 +299,22 @@ export function TopicsTab({
                     {earlyKeyword.keyword}
                   </h4>
                   <div className="flex flex-wrap gap-2 pt-0.5">
-                    <span className="bg-white/80 dark:bg-slate-900/60 border border-emerald-100/60 dark:border-emerald-900/30 text-slate-700 dark:text-slate-350 px-2.5 py-1 rounded-lg text-[11px] font-bold">
-                      Growth: <strong className="text-emerald-600 font-extrabold">{earlyKeyword.growth}</strong>
-                    </span>
-                    <span className="bg-white/80 dark:bg-slate-900/60 border border-emerald-100/60 dark:border-emerald-900/30 text-slate-700 dark:text-slate-350 px-2.5 py-1 rounded-lg text-[11px] font-bold">
-                      Volume: <strong className="text-slate-900 dark:text-white font-extrabold">{formatNumber(earlyKeyword.totalPapers)}</strong>
-                    </span>
+                    {earlyKeyword.shift ? (
+                      <>
+                        <span className="bg-white/80 dark:bg-slate-900/60 border border-emerald-100/60 dark:border-emerald-900/30 text-slate-700 dark:text-slate-350 px-2.5 py-1 rounded-lg text-[11px] font-bold">
+                          Papers A → B: <strong className="text-emerald-600 font-extrabold">{formatShiftCounts(earlyKeyword.shift)}</strong>
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="bg-white/80 dark:bg-slate-900/60 border border-emerald-100/60 dark:border-emerald-900/30 text-slate-700 dark:text-slate-350 px-2.5 py-1 rounded-lg text-[11px] font-bold">
+                          Growth: <strong className="text-emerald-600 font-extrabold">{earlyKeyword.growth}</strong>
+                        </span>
+                        <span className="bg-white/80 dark:bg-slate-900/60 border border-emerald-100/60 dark:border-emerald-900/30 text-slate-700 dark:text-slate-350 px-2.5 py-1 rounded-lg text-[11px] font-bold">
+                          Volume: <strong className="text-slate-900 dark:text-white font-extrabold">{formatNumber(earlyKeyword.totalPapers)}</strong>
+                        </span>
+                      </>
+                    )}
                   </div>
                 </>
               ) : (
@@ -318,7 +341,7 @@ export function TopicsTab({
             <div className="space-y-3.5 relative z-10">
               <div className="flex items-center gap-1.5 text-amber-700 dark:text-amber-455 uppercase tracking-widest text-[9.5px] font-extrabold bg-amber-100/50 dark:bg-amber-950/60 px-2 py-0.5 rounded w-fit">
                 <AlertTriangle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-500" />
-                Exploratory Signal
+                {exploratorySignal?.shift ? "Not Significant Keyword" : "Exploratory Signal"}
               </div>
               {exploratorySignal ? (
                 <>
@@ -326,16 +349,26 @@ export function TopicsTab({
                     {exploratorySignal.keyword}
                   </h4>
                   <div className="flex flex-wrap gap-2 pt-0.5">
-                    <span className="bg-white/80 dark:bg-slate-900/60 border border-amber-100/60 dark:border-amber-900/30 text-slate-700 dark:text-slate-350 px-2.5 py-1 rounded-lg text-[11px] font-bold">
-                      Growth: <strong className="text-amber-650 font-extrabold">{exploratorySignal.growth}</strong>
-                    </span>
-                    <span className="bg-white/80 dark:bg-slate-900/60 border border-amber-100/60 dark:border-amber-900/30 text-slate-700 dark:text-slate-350 px-2.5 py-1 rounded-lg text-[11px] font-bold">
-                      Volume: <strong className="text-slate-900 dark:text-white font-extrabold">{formatNumber(exploratorySignal.totalPapers)}</strong> <span className="text-amber-650 font-bold text-[10px]">(Small Base)</span>
-                    </span>
+                    {exploratorySignal.shift ? (
+                      <>
+                        <span className="bg-white/80 dark:bg-slate-900/60 border border-amber-100/60 dark:border-amber-900/30 text-slate-700 dark:text-slate-350 px-2.5 py-1 rounded-lg text-[11px] font-bold">
+                          Papers A → B: <strong className="text-amber-650 font-extrabold">{formatShiftCounts(exploratorySignal.shift)}</strong>
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="bg-white/80 dark:bg-slate-900/60 border border-amber-100/60 dark:border-amber-900/30 text-slate-700 dark:text-slate-350 px-2.5 py-1 rounded-lg text-[11px] font-bold">
+                          Growth: <strong className="text-amber-650 font-extrabold">{exploratorySignal.growth}</strong>
+                        </span>
+                        <span className="bg-white/80 dark:bg-slate-900/60 border border-amber-100/60 dark:border-amber-900/30 text-slate-700 dark:text-slate-350 px-2.5 py-1 rounded-lg text-[11px] font-bold">
+                          Volume: <strong className="text-slate-900 dark:text-white font-extrabold">{formatNumber(exploratorySignal.totalPapers)}</strong> <span className="text-amber-650 font-bold text-[10px]">(Small Base)</span>
+                        </span>
+                      </>
+                    )}
                   </div>
                 </>
               ) : (
-                <p className="text-xs text-slate-455">No exploratory keywords found</p>
+                <p className="text-xs text-slate-455">{usesKeywordTest ? "No keywords without significance" : "No exploratory keywords found"}</p>
               )}
             </div>
 
@@ -354,26 +387,7 @@ export function TopicsTab({
           </div>
         </div>
 
-        {/* Legend strip */}
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 bg-slate-50 dark:bg-slate-900/30 border border-slate-200/50 dark:border-slate-800/60 rounded-xl px-4 py-2 text-[10.5px] text-slate-500 dark:text-slate-400 font-semibold select-none">
-          <span className="text-slate-400 uppercase tracking-wider text-[9px] font-extrabold mr-1">Legend:</span>
-          <div className="flex items-center gap-1">
-            <span className="w-2.5 h-2.5 rounded-full bg-blue-500"></span>
-            <span><strong>Momentum:</strong> YoY Trend Slope</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
-            <span><strong>Growth:</strong> YoY Change %</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <span className="px-1 py-0.2 text-[8px] font-extrabold bg-red-550/10 border border-red-200/30 text-red-700 dark:text-red-400 rounded">HOT</span>
-            <span><strong>Hot Signal:</strong> High Growth & Established Base (≥15 papers)</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <span className="px-1 py-0.2 text-[8px] font-extrabold bg-amber-550/10 border border-amber-200/30 text-amber-750 dark:text-amber-455 rounded">EXP</span>
-            <span><strong>Exploratory:</strong> Early Signal & Small Base (&lt;15 papers)</span>
-          </div>
-        </div>
+        <TrendIntro className="rounded-xl border border-slate-200/50 bg-slate-50 px-4 py-2 dark:border-slate-800/60 dark:bg-slate-900/30" />
 
         {/* 3. Main Data Area: Ranked Topics vs. Emerging Keywords */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
@@ -391,7 +405,7 @@ export function TopicsTab({
                   </p>
                 </div>
                 <span className="text-[9px] bg-blue-500/10 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border border-blue-200/30 px-2 py-1 rounded font-bold uppercase tracking-wider">
-                  Active Sort: {localSortBy}
+                  {t("Active sort")}: {localSortBy === "total" ? t("Total papers") : t("Trend")}
                 </span>
               </div>
             </div>
@@ -403,55 +417,44 @@ export function TopicsTab({
                     <th className="pl-5 pr-2 py-3 font-semibold w-16 text-center whitespace-nowrap">Rank</th>
                     <th className="px-4 py-3 font-semibold min-w-[260px] whitespace-nowrap">Topic</th>
                     <th
-                      className={`px-3 py-3 font-semibold cursor-pointer transition-colors hover:text-blue-700 dark:hover:text-blue-400 text-right whitespace-nowrap min-w-[110px]`}
-                      onClick={() => setLocalSortBy("momentum")}
+                      className="px-3 py-3 font-semibold cursor-pointer transition-colors hover:text-blue-700 dark:hover:text-blue-400 text-left whitespace-nowrap min-w-[190px]"
+                      onClick={() => setLocalSortBy("trend")}
+                      aria-sort={localSortBy === "trend" ? "descending" : "none"}
                     >
-                      <span className="inline-flex items-center gap-1 justify-end w-full whitespace-nowrap">
-                        MOMENTUM
-                        {localSortBy === "momentum" ? (
+                      <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                        {t("Trend")}
+                        {localSortBy === "trend" ? (
                           <ArrowDown className="w-3.5 h-3.5 text-blue-600 dark:text-blue-450" />
                         ) : (
                           <ArrowUpDown className="w-3.5 h-3.5 text-slate-300 dark:text-slate-700" />
                         )}
                       </span>
                     </th>
-                    <th
-                      className={`px-3 py-3 font-semibold cursor-pointer transition-colors hover:text-blue-700 dark:hover:text-blue-400 text-right whitespace-nowrap min-w-[90px]`}
-                      onClick={() => setLocalSortBy("papers")}
-                    >
-                      <span className="inline-flex items-center gap-1 justify-end w-full whitespace-nowrap">
-                        PAPERS
-                        {localSortBy === "papers" ? (
-                          <ArrowDown className="w-3.5 h-3.5 text-blue-600 dark:text-blue-455" />
-                        ) : (
-                          <ArrowUpDown className="w-3.5 h-3.5 text-slate-300 dark:text-slate-700" />
-                        )}
-                      </span>
-                    </th>
-                    <th
-                      className={`px-3 py-3 font-semibold cursor-pointer transition-colors hover:text-blue-700 dark:hover:text-blue-400 text-right whitespace-nowrap min-w-[100px]`}
-                      onClick={() => setLocalSortBy("growth")}
-                    >
-                      <span className="inline-flex items-center gap-1 justify-end w-full whitespace-nowrap">
-                        GROWTH
-                        {localSortBy === "growth" ? (
-                          <ArrowDown className="w-3.5 h-3.5 text-blue-600 dark:text-blue-455" />
-                        ) : (
-                          <ArrowUpDown className="w-3.5 h-3.5 text-slate-350 dark:text-slate-700" />
-                        )}
-                      </span>
-                    </th>
-                    <th className="px-3 py-3 font-semibold text-center h-11 whitespace-nowrap min-w-[130px]">
-                      <span className="inline-flex items-center gap-1 justify-center w-full whitespace-nowrap">
-                        DATA CONF.
+                    <th className="px-3 py-3 font-semibold text-left whitespace-nowrap min-w-[120px]">
+                      <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                        {t("Relative change")}
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <HelpCircle className="w-3.5 h-3.5 text-slate-400 cursor-help" />
                           </TooltipTrigger>
-                          <TooltipContent className="max-w-[250px] bg-popover text-popover-foreground border shadow-md p-3 text-xs">
-                            Shows sample size confidence. Larger paper count (High) yields statistically more reliable signals.
+                          <TooltipContent className="max-w-[280px] bg-popover text-popover-foreground border shadow-md p-3 text-xs">
+                            {t("Relative change of the topic's share, per year")}
                           </TooltipContent>
                         </Tooltip>
+                      </span>
+                    </th>
+                    <th
+                      className="px-3 py-3 font-semibold cursor-pointer transition-colors hover:text-blue-700 dark:hover:text-blue-400 text-right whitespace-nowrap min-w-[90px]"
+                      onClick={() => setLocalSortBy("total")}
+                      aria-sort={localSortBy === "total" ? "descending" : "none"}
+                    >
+                      <span className="inline-flex items-center gap-1 justify-end w-full whitespace-nowrap">
+                        {t("Papers")}
+                        {localSortBy === "total" ? (
+                          <ArrowDown className="w-3.5 h-3.5 text-blue-600 dark:text-blue-455" />
+                        ) : (
+                          <ArrowUpDown className="w-3.5 h-3.5 text-slate-300 dark:text-slate-700" />
+                        )}
                       </span>
                     </th>
                     <th className="pr-5 pl-2 py-3 font-semibold text-center whitespace-nowrap min-w-[110px]">Actions</th>
@@ -459,25 +462,13 @@ export function TopicsTab({
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                   {sortedTopics.map((entry, idx) => {
-                    let confLabel = "High";
-                    let confColor = "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-400 border-emerald-250/20";
-                    let confTooltip = "High sample size (≥50 papers) ensures high statistical reliability.";
-                    if (entry.totalPapers < 15) {
-                      confLabel = "Low";
-                      confColor = "bg-amber-50 text-amber-700 dark:bg-amber-950/20 dark:text-amber-400 border-amber-250/20";
-                      confTooltip = "Small dataset sample size (<15 papers). Treat trend signals as exploratory.";
-                    } else if (entry.totalPapers < 50) {
-                      confLabel = "Medium";
-                      confColor = "bg-blue-50 text-blue-700 dark:bg-blue-950/20 dark:text-blue-455 border-blue-250/20";
-                      confTooltip = "Adequate sample size (15-49 papers). Moderate trend reliability.";
-                    }
-
-                    const growthVal = entry.growthRatePct;
-                    const growthColor = growthVal > 0
-                      ? "text-emerald-600 dark:text-emerald-400 font-bold"
-                      : growthVal < 0
-                        ? "text-red-500 dark:text-red-400 font-bold"
-                        : "text-slate-500 font-semibold";
+                    const classification = entry.classification;
+                    const relativeText = formatRelativeChange(classification, t);
+                    const changeColor = classification.verdict === "rising"
+                      ? "text-emerald-700 dark:text-emerald-400"
+                      : classification.verdict === "declining"
+                        ? "text-red-600 dark:text-red-400"
+                        : "text-slate-600 dark:text-slate-400";
 
                     return (
                       <tr key={idx} className="hover:bg-slate-50/55 dark:hover:bg-slate-800/10 transition-colors">
@@ -496,38 +487,20 @@ export function TopicsTab({
                             )}
                           </div>
                         </td>
-                        <td className="px-3 py-3 text-right font-mono text-xs font-semibold text-slate-700 dark:text-slate-350">
-                          <div className="flex items-center justify-end gap-1.5">
-                            {entry.momentum > 0 && entry.growthRatePct < 0 && (
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <AlertTriangle className="w-3.5 h-3.5 text-amber-500 dark:text-amber-450 cursor-help" />
-                                </TooltipTrigger>
-                                <TooltipContent className="max-w-[245px] bg-popover text-popover-foreground border shadow-md p-2.5 text-[11px] leading-relaxed">
-                                  Long-window momentum positive, last complete YoY declined.
-                                </TooltipContent>
-                              </Tooltip>
-                            )}
-                            <span>{formatSigned(entry.momentum, 2)}</span>
+                        <td className="px-3 py-3 align-top">
+                          <div className="flex flex-col items-start gap-1">
+                            <TrendVerdictBadge classification={classification} size="sm" />
                           </div>
                         </td>
-                        <td className="px-3 py-3 text-right font-mono text-xs font-semibold text-slate-700 dark:text-slate-350">
+                        <td className="px-3 py-3 align-top">
+                          {classification.verdict === "insufficient" ? (
+                            <span className="text-[11px] font-semibold text-slate-400">—</span>
+                          ) : (
+                            <span className={`font-mono text-sm font-extrabold ${changeColor}`}>{relativeText ?? "—"}</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-3 text-right font-mono text-xs font-semibold text-slate-700 dark:text-slate-350 align-top">
                           {formatNumber(entry.totalPapers)}
-                        </td>
-                        <td className={`px-3 py-3 text-right font-mono text-xs ${growthColor}`}>
-                          {formatSigned(entry.growthRatePct, 1)}%
-                        </td>
-                        <td className="px-3 py-3 text-center">
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <span className={`px-2 py-0.5 rounded border text-[10px] font-extrabold cursor-help select-none ${confColor}`}>
-                                {confLabel}
-                              </span>
-                            </TooltipTrigger>
-                            <TooltipContent className="bg-popover text-popover-foreground border shadow-sm text-xs">
-                              {confTooltip}
-                            </TooltipContent>
-                          </Tooltip>
                         </td>
                         <td className="pr-5 pl-2 py-3 text-center">
                           <div className="flex items-center justify-center gap-1.5">
@@ -602,7 +575,9 @@ export function TopicsTab({
             <div className="p-5 pb-4 border-b border-slate-100 dark:border-slate-800/50 select-none">
               <h3 className="text-base font-bold text-slate-900 dark:text-white">Emerging Keywords</h3>
               <p className="text-xs text-slate-550 dark:text-slate-400 mt-0.5 font-medium">
-                Early signals matched from paper keywords. Click icons to act.
+                {usesKeywordTest
+                  ? "Keywords whose share of papers changed between two periods. Click icons to act."
+                  : "Early signals matched from paper keywords. Click icons to act."}
               </p>
             </div>
 
@@ -611,7 +586,7 @@ export function TopicsTab({
                 <thead className="text-xs text-slate-500 uppercase bg-slate-50/50 dark:bg-slate-900/20 border-b border-slate-100 dark:border-slate-800 select-none">
                   <tr>
                     <th className="pl-5 pr-2 py-3 font-semibold">Keyword</th>
-                    <th className="px-3 py-3 font-semibold text-right">Papers</th>
+                    <th className="px-3 py-3 font-semibold text-right">{usesKeywordTest ? "Papers A → B" : "Papers"}</th>
                     <th className="px-3 py-3 font-semibold text-right">Growth</th>
                     <th className="px-2 py-3 font-semibold text-center">Trend</th>
                     <th className="pr-5 pl-2 py-3 font-semibold text-center">Actions</th>
@@ -649,7 +624,13 @@ export function TopicsTab({
                           </div>
                         </td>
                         <td className="px-3 py-3 text-right font-mono text-xs font-semibold text-slate-700 dark:text-slate-350">
-                          {formatNumber(row.totalPapers)}
+                          {row.shift ? (
+                            <div className="flex flex-col items-end leading-tight">
+                              <span>{formatShiftCounts(row.shift)}</span>
+                            </div>
+                          ) : (
+                            formatNumber(row.totalPapers)
+                          )}
                         </td>
                         <td className={`px-3 py-3 text-right font-mono text-xs ${keywordGrowthColor}`}>
                           {row.growth}
@@ -716,24 +697,6 @@ export function TopicsTab({
 
         </div>
 
-        {/* 4. Footer side notes / Definitions */}
-        <div className="bg-slate-50 dark:bg-slate-900/20 border border-slate-200/50 dark:border-slate-850 rounded-xl p-4.5 select-none space-y-2">
-          <h4 className="text-xs font-bold text-slate-700 dark:text-slate-350">Technical Glossary & Threshold Notes</h4>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-[11px] text-slate-550 dark:text-slate-400 leading-relaxed font-semibold">
-            <div className="space-y-1">
-              <p className="font-bold text-slate-800 dark:text-slate-200">Momentum</p>
-              <p>Calculated as the linear regression slope of papers published per year. Higher values mean steeper upward trends.</p>
-            </div>
-            <div className="space-y-1">
-              <p className="font-bold text-slate-800 dark:text-slate-200">Small Base Warning</p>
-              <p>Triggered when a signal's papers count is under 15 papers. Growth rates might be high, but the signal is still early/exploratory.</p>
-            </div>
-            <div className="space-y-1">
-              <p className="font-bold text-slate-800 dark:text-slate-200">Signal Quality</p>
-              <p><strong>Hot</strong> = high growth with established base (&ge;15 papers). <strong>Exploratory</strong> = early exploratory signal with small paper base (&lt;15 papers).</p>
-            </div>
-          </div>
-        </div>
       </div>
     </TooltipProvider>
   );

@@ -156,9 +156,32 @@ export const openapiSpec = {
           topic: { type: "string", example: "Artificial Intelligence" },
           totalPapers: { type: "integer", example: 142 },
           yearlyBreakdown: { type: "array", items: { $ref: "#/components/schemas/YearlyCount" } },
-          growthRatePct: { type: "number", example: 38.5, description: "YoY %, last complete year vs the one before" },
-          cagr3yPct: { type: "number", nullable: true, example: 52.1, description: "Compound annual growth over <=3 complete years" },
-          momentum: { type: "number", example: 21.4, description: "Least-squares slope, papers/year" },
+          growthRatePct: { type: "number", example: 38.5, deprecated: true, description: "Descriptive only: YoY % of raw counts. Not used for ranking or labels." },
+          cagr3yPct: { type: "number", nullable: true, example: 52.1, deprecated: true, description: "Descriptive only: CAGR of raw counts over <=3 complete years." },
+          momentum: { type: "number", example: 21.4, deprecated: true, description: "Descriptive only: least-squares slope of raw counts, papers/year." },
+          classification: {
+            type: "object",
+            description: "Trend verdict: Mann–Kendall on the yearly share of the topic's field, Sen's slope + 95% CI, BH q-value (overview).",
+            properties: {
+              verdict: { type: "string", enum: ["rising", "declining", "stable", "insufficient"] },
+              confidence: { type: "string", enum: ["high", "medium"], nullable: true },
+              yearsUsed: { type: "integer" },
+              totalPapers: { type: "integer" },
+              mannKendall: {
+                type: "object",
+                nullable: true,
+                properties: { s: { type: "number" }, z: { type: "number" }, tau: { type: "number" }, pValue: { type: "number" } },
+              },
+              qValue: { type: "number", nullable: true },
+              senSlope: { type: "number", nullable: true, description: "Percentage points per year" },
+              senSlopeCi95: { type: "array", items: { type: "number" }, minItems: 2, maxItems: 2, nullable: true },
+              relativeChangePct: { type: "number", nullable: true, description: "senSlope / median share x 100, %/year" },
+              reasons: {
+                type: "array",
+                items: { type: "string", enum: ["LOCAL_CORPUS", "TOO_FEW_YEARS", "TOO_FEW_PAPERS", "SIGNIFICANT_INCREASE", "SIGNIFICANT_DECREASE", "NO_SIGNIFICANT_TREND"] },
+              },
+            },
+          },
         },
       },
       RisingKeyword: {
@@ -663,7 +686,7 @@ export const openapiSpec = {
           { name: "yearTo", in: "query", schema: { type: "integer" }, description: "Default: current year" },
           { name: "limit", in: "query", schema: { type: "integer", default: 10, maximum: 50 } },
           { name: "minPapers", in: "query", schema: { type: "integer", default: 3 }, description: "Hide topics with fewer total papers (noise filter)" },
-          { name: "sortBy", in: "query", schema: { type: "string", enum: ["momentum", "growth", "total"], default: "momentum" } },
+          { name: "sortBy", in: "query", schema: { type: "string", enum: ["trend", "total"], default: "trend" }, description: "trend = Mann–Kendall verdict order (rising, stable, declining, insufficient). Legacy momentum/growth are accepted and mean trend." },
         ],
         responses: {
           "200": {

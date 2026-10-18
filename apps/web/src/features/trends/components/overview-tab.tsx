@@ -4,21 +4,26 @@ import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianG
 import { Button } from "@/components/ui/button";
 import type { TrendsOverview } from "@trend/shared-types";
 import { KPICard, InsightCard } from "./trends-shared.components";
-import { formatSigned } from "../../../pages/trends.insights";
-import type { RisingKeywordLike, TrendSortKey, TrendTopicLike } from "../../../pages/trends.insights";
+import { DEFAULT_TREND_YEAR_FROM, DEFAULT_TREND_YEAR_TO, formatSigned } from "../../../pages/trends.insights";
+import type { RisingKeywordLike, TrendTopicLike } from "../../../pages/trends.insights";
 import { formatCompactNumber, formatNumber } from "@/utils";
+import { useI18n } from "@/i18n";
+import { formatPercent, hasCitationTotals, hasPpTop10, WORLD_AVERAGE_PP_TOP10, type TimelinePoint, type TrendMetricMode } from "../trend-impact";
+import { formatShiftCounts, isShiftSignificant } from "../trend-source";
+import { DataSourceBadge } from "./trend-data-source";
+import { TrendFigures, TrendHowLink, TrendIntro, TrendVerdictBadge, formatRelativeChange, verdictLabel } from "./trend-verdict-badge";
+import { DOCS_SECTIONS } from "@/features/docs";
 
 interface OverviewTabProps {
   data: TrendsOverview;
-  metricMode: "papers" | "citations_total" | "citations_avg";
-  setMetricMode: (mode: "papers" | "citations_total" | "citations_avg") => void;
+  metricMode: TrendMetricMode;
+  setMetricMode: (mode: TrendMetricMode) => void;
   datasetMode: "corpus" | "displayed";
   setDatasetMode: (mode: "corpus" | "displayed") => void;
   peakYear: { year: string; value: number } | null;
-  timelineChartData: Array<{ year: string; value: number }>;
-  fastestTopic: TrendTopicLike | null;
-  highestGrowthTopic: TrendTopicLike | null;
-  establishedTopic: TrendTopicLike | null;
+  timelineChartData: TimelinePoint[];
+  /** The first rising topic of the verdict ranking, if any. */
+  topRisingTopic: TrendTopicLike | null;
   fastestKeyword: RisingKeywordLike | null;
   navigate: (path: string) => void;
   setActiveTab: (tab: "overview" | "topics" | "dataset" | "compare" | "ai") => void;
@@ -46,6 +51,56 @@ interface OverviewTabProps {
   };
 }
 
+type Translate = ReturnType<typeof useI18n>["t"];
+
+/** One-sentence reading of the emerging keyword. With the shift test the
+ *  verdict comes from q; without it (local fallback) the small-base rule applies. */
+function describeKeywordInsight(keyword: RisingKeywordLike, t: Translate): string {
+  const shift = keyword.shift;
+  if (shift) {
+    const values = { keyword: keyword.keyword, counts: formatShiftCounts(shift) };
+    return isShiftSignificant(shift)
+      ? t("{{keyword}} is a clearly rising keyword ({{counts}} papers).", values)
+      : t("{{keyword}} is rising, but not clearly enough ({{counts}} papers), so treat it as exploratory.", values);
+  }
+  const values = { keyword: keyword.keyword, growth: formatSigned(keyword.growthRatePct, 1), count: keyword.totalPapers };
+  return keyword.totalPapers < 15
+    ? t("{{keyword}} is an early keyword signal ({{growth}}% growth), but it has only {{count}} papers, so treat it as exploratory.", values)
+    : t("{{keyword}} is an early keyword signal ({{growth}}% growth).", values);
+}
+
+function describeKeywordDetail(keyword: RisingKeywordLike): string {
+  const shift = keyword.shift;
+  if (shift) return `${formatShiftCounts(shift)} papers`;
+  return `${formatSigned(keyword.growthRatePct, 1)}% growth · ${formatNumber(keyword.totalPapers)} papers`;
+}
+
+/** Data-driven reading of the chart: the highest complete year of the series. */
+function describeTimelineTakeaway(
+  mode: TrendMetricMode,
+  points: TimelinePoint[],
+  lastCompleteYear: number | undefined,
+  t: Translate,
+): string | null {
+  const complete = points.filter((point) => !lastCompleteYear || Number(point.year) <= lastCompleteYear);
+  const pool = complete.length > 0 ? complete : points;
+  const top = [...pool].sort((a, b) => b.value - a.value)[0];
+  if (!top) return null;
+  if (mode === "pp_top10") {
+    return t("PP(top 10%) is highest in {{year}} ({{value}}) among complete years; 10% is the world average.", {
+      year: top.year,
+      value: formatPercent(top.value),
+    });
+  }
+  if (mode === "papers") {
+    return t("Publication activity is highest in {{year}} ({{value}} papers) among complete years.", {
+      year: top.year,
+      value: formatNumber(top.value),
+    });
+  }
+  return t("Citation values are highest in {{year}}; older papers have had more time to collect citations.", { year: top.year });
+}
+
 export function OverviewTab({
   data,
   metricMode,
@@ -54,9 +109,7 @@ export function OverviewTab({
   setDatasetMode,
   peakYear,
   timelineChartData,
-  fastestTopic,
-  highestGrowthTopic,
-  establishedTopic,
+  topRisingTopic,
   fastestKeyword,
   navigate,
   setActiveTab,
@@ -66,8 +119,11 @@ export function OverviewTab({
   setYearTo,
   scopeParams,
 }: OverviewTabProps) {
-  const [yearFromInput, setYearFromInput] = React.useState(() => String(scopeParams?.yearFrom ?? 1900));
-  const [yearToInput, setYearToInput] = React.useState(() => String(scopeParams?.yearTo ?? 2026));
+  const { t } = useI18n();
+  const hasPp = hasPpTop10(data.citationTrend);
+  const hasTotals = hasCitationTotals(data.citationTrend);
+  const [yearFromInput, setYearFromInput] = React.useState(() => String(scopeParams?.yearFrom ?? DEFAULT_TREND_YEAR_FROM));
+  const [yearToInput, setYearToInput] = React.useState(() => String(scopeParams?.yearTo ?? DEFAULT_TREND_YEAR_TO));
 
   React.useEffect(() => {
     if (scopeParams) setYearFromInput(String(scopeParams.yearFrom));
@@ -134,35 +190,31 @@ export function OverviewTab({
       : `/home?q=${encodeURIComponent(query)}`;
   };
 
-  const getScopedReportTarget = (topic: string) => {
-    return scopeParams
-      ? buildScopedUrl("/reports", { create: "true", topic })
-      : `/reports?create=true&topic=${encodeURIComponent(topic)}`;
-  };
-
   // Deterministic Dataset Insight (no AI call)
   const insightText = React.useMemo(() => {
-    if (!fastestTopic && !fastestKeyword) {
-      return "No strong trend signals detected in the current scope.";
+    if (!topRisingTopic && !fastestKeyword) {
+      return t("No strong trend signals detected in the current scope.");
     }
     let topicInsight = "";
-    if (fastestTopic) {
-      topicInsight = `${fastestTopic.topic} is the strongest rising topic in this dataset (${formatSigned(fastestTopic.momentum, 2)} papers/year).`;
+    if (topRisingTopic?.classification) {
+      topicInsight = t("{{topic}} has the largest significant rise in its field share in this dataset ({{change}}).", {
+        topic: topRisingTopic.topic,
+        change: formatRelativeChange(topRisingTopic.classification, t) ?? "",
+      });
+    } else {
+      topicInsight = t("No topic shows a statistically significant rise in its field share in this scope.");
     }
     let keywordInsight = "";
     if (fastestKeyword) {
-      const thresholdWarning = fastestKeyword.totalPapers < 15
-        ? `, but it has only ${fastestKeyword.totalPapers} papers, so treat it as exploratory.`
-        : `.`;
-      keywordInsight = ` ${fastestKeyword.keyword} is an early keyword signal (${formatSigned(fastestKeyword.growthRatePct, 1)}% growth)${thresholdWarning}`;
+      keywordInsight = ` ${describeKeywordInsight(fastestKeyword, t)}`;
     }
     return `${topicInsight}${keywordInsight}`.trim();
-  }, [fastestTopic, fastestKeyword]);
+  }, [topRisingTopic, fastestKeyword, t]);
 
   // Custom Tooltip for Timeline Chart (Guided UX)
   interface CustomTimelineTooltipProps {
     active?: boolean;
-    payload?: Array<{ value: number; payload: { year: string; value: number } }>;
+    payload?: Array<{ value: number; payload: TimelinePoint }>;
     label?: string;
   }
 
@@ -171,10 +223,14 @@ export function OverviewTab({
       const firstPayload = payload[0];
       if (!firstPayload) return null;
       const value = firstPayload.value;
+      const point = firstPayload.payload;
       const yearNum = parseInt(label, 10);
       let explanation = "";
       let labelText = "";
-      if (metricMode === "papers") {
+      if (metricMode === "pp_top10") {
+        explanation = t("Share of the year's papers among the 10% most cited works of the same year, type and subfield. 10% is the world average.");
+        labelText = "PP(top 10%)";
+      } else if (metricMode === "papers") {
         explanation = "Publication activity in the selected dataset.";
         labelText = "Papers";
       } else if (metricMode === "citations_total") {
@@ -193,8 +249,13 @@ export function OverviewTab({
             {label} {isYtd ? <span className="text-[10px] text-amber-600 dark:text-amber-400 font-extrabold ml-1.5 bg-amber-50 dark:bg-amber-950/30 px-1.5 py-0.5 rounded border border-amber-200/50">YTD</span> : ""}
           </p>
           <p className="text-blue-600 dark:text-blue-400 font-extrabold">
-            {labelText}: {formatNumber(value)}
+            {labelText}: {metricMode === "pp_top10" ? formatPercent(value) : formatNumber(value)}
           </p>
+          {metricMode === "pp_top10" && point.topCount !== undefined && point.papers !== undefined && (
+            <p className="text-[10px] text-slate-600 dark:text-slate-300 font-semibold">
+              {t("{{value}}% ({{top}} of {{n}} papers)", { value: value.toFixed(1), top: formatNumber(point.topCount), n: formatNumber(point.papers) })}
+            </p>
+          )}
           <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-normal font-medium">
             {explanation}
           </p>
@@ -209,7 +270,7 @@ export function OverviewTab({
     return null;
   };
 
-  const isDuplicated = fastestTopic && establishedTopic && fastestTopic.topic === establishedTopic.topic;
+  const takeaway = describeTimelineTakeaway(metricMode, timelineChartData, data.lastCompleteYear, t);
 
   return (
     <div className="space-y-6">
@@ -230,64 +291,36 @@ export function OverviewTab({
       </div>
 
       {/* Reworked Insight cards into decision cards (P1 Request) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <InsightCard
-          label="Fastest moving topic"
-          variant="primary"
-          value={fastestTopic?.topic ?? "No topic"}
-          taxonomyPath={fastestTopic?.taxonomy ? `${fastestTopic.taxonomy.domainName} / ${fastestTopic.taxonomy.fieldName}` : undefined}
-          detail={fastestTopic ? `${formatSigned(fastestTopic.momentum, 2)} papers/year` : "No data"}
-          meaning={isDuplicated
-            ? "Topic Modeling dominates both momentum and volume in this dataset."
-            : "Highest momentum: the steepest paper/year slope in the selected dataset."
-          }
-          badge={isDuplicated ? (
-            <span className="text-[8px] bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-300 font-extrabold px-1.5 py-0.5 rounded border border-blue-200/30 shrink-0">
-              Also most established
-            </span>
-          ) : undefined}
-          sourceHint="Trend slope"
-          actionLabel="Open trend"
-          onAction={() => fastestTopic && navigate(getTopicTrendTarget(fastestTopic.topic))}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <TrendVerdictSummaryCard
+          topics={data.topics}
+          topRisingTopic={topRisingTopic}
+          source={data.dataSource}
+          onOpenTrend={(topic) => navigate(getTopicTrendTarget(topic))}
+          onCompare={() => setActiveTab("compare")}
         />
         <InsightCard
-          label="Highest YoY growth"
-          variant={highestGrowthTopic && highestGrowthTopic.growthRatePct > 0 ? "success" : "warning"}
-          value={highestGrowthTopic && highestGrowthTopic.growthRatePct > 0 ? highestGrowthTopic.topic : "All top topics declined YoY"}
-          taxonomyPath={highestGrowthTopic && highestGrowthTopic.growthRatePct > 0 && highestGrowthTopic.taxonomy ? `${highestGrowthTopic.taxonomy.domainName} / ${highestGrowthTopic.taxonomy.fieldName}` : undefined}
-          detail={highestGrowthTopic && highestGrowthTopic.growthRatePct > 0 ? `${formatSigned(highestGrowthTopic.growthRatePct, 1)}% growth` : "Compare with previous window."}
-          meaning={highestGrowthTopic && highestGrowthTopic.growthRatePct > 0
-            ? "Largest year-over-year change using the last complete year."
-            : "All tracked topics in the current scope experienced negative growth."
-          }
-          sourceHint="YoY % change"
-          actionLabel={highestGrowthTopic && highestGrowthTopic.growthRatePct > 0 ? "Explore papers" : "Compare topics"}
-          onAction={() => {
-            if (highestGrowthTopic && highestGrowthTopic.growthRatePct > 0) {
-              navigate(getScopedSearchTarget(highestGrowthTopic.topic));
-            } else {
-              setActiveTab("compare");
-            }
-          }}
-        />
-        <InsightCard
-          label="Most established"
-          variant="neutral"
-          value={establishedTopic?.topic ?? "No topic"}
-          taxonomyPath={establishedTopic?.taxonomy ? `${establishedTopic.taxonomy.domainName} / ${establishedTopic.taxonomy.fieldName}` : undefined}
-          detail={establishedTopic ? `${formatNumber(establishedTopic.totalPapers)} papers` : "No data"}
-          meaning="Largest paper volume in the selected dataset. Useful as a stable baseline."
-          sourceHint="Total volume"
-          actionLabel="Generate report"
-          onAction={() => establishedTopic && navigate(getScopedReportTarget(establishedTopic.topic))}
-        />
-        <InsightCard
-          label="Emerging keyword"
+          label="Supplementary: emerging keyword"
           variant="success"
           value={fastestKeyword?.keyword ?? "No keyword"}
-          detail={fastestKeyword ? `${formatSigned(fastestKeyword.growthRatePct, 1)}% growth · ${formatNumber(fastestKeyword.totalPapers)} papers` : "No data"}
-          meaning="Fast-growing keyword from indexed paper keywords. Good for early research directions."
-          badge={fastestKeyword && fastestKeyword.totalPapers < 15 ? (
+          detail={fastestKeyword ? describeKeywordDetail(fastestKeyword) : "No data"}
+          meaning={fastestKeyword?.shift
+            ? "Keyword whose share of the topic's papers changed between two periods (log odds ratio test, Benjamini–Hochberg corrected)."
+            : "Fast-growing keyword from indexed paper keywords. Good for early research directions."}
+          badge={fastestKeyword?.shift ? (
+            isShiftSignificant(fastestKeyword.shift) ? (
+              <span className="text-[8px] bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 font-extrabold px-1.5 py-0.5 rounded border border-emerald-200/30 shrink-0">
+                Significant rising
+              </span>
+            ) : (
+              <span
+                className="text-[8px] bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-extrabold px-1.5 py-0.5 rounded border border-slate-200/60 cursor-help shrink-0"
+                title="The change is not statistically significant after the Benjamini–Hochberg correction (q ≥ 0.05)."
+              >
+                Not significant
+              </span>
+            )
+          ) : fastestKeyword && fastestKeyword.totalPapers < 15 ? (
             <span
               className="text-[8px] bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 font-extrabold px-1.5 py-0.5 rounded border border-amber-200/30 cursor-help shrink-0"
               title="High growth from a small number of papers, treat as exploratory."
@@ -295,7 +328,7 @@ export function OverviewTab({
               Small base
             </span>
           ) : undefined}
-          sourceHint="YoY growth"
+          sourceHint={fastestKeyword?.shift ? "Keyword shift test" : "Keyword growth"}
           actionLabel="Search keyword"
           onAction={() => fastestKeyword && navigate(getScopedSearchTarget(fastestKeyword.keyword))}
         />
@@ -334,9 +367,7 @@ export function OverviewTab({
       <div className="bg-slate-50 dark:bg-slate-900/40 border border-slate-200/60 dark:border-slate-800/80 rounded-xl px-4 py-3 text-xs text-slate-500 dark:text-slate-400 flex flex-col md:flex-row md:items-center justify-between gap-2 shadow-sm select-none">
         <div className="flex items-center gap-2">
           <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
-          <span>
-            <strong>Momentum</strong> = trend slope in papers/year. <strong>Growth</strong> = year-over-year change using the last complete year. Topic lists show the top ranked slice, not every unique topic in scope.
-          </span>
+          <TrendIntro />
         </div>
         <div className="text-slate-400 dark:text-slate-500 font-semibold md:text-right shrink-0">
           Metrics computed through {data.lastCompleteYear ?? "-"}. {data.yearTo && data.yearTo > (data.lastCompleteYear ?? 0) ? `${data.yearTo} is YTD.` : ""}
@@ -349,7 +380,9 @@ export function OverviewTab({
           <div className="flex-1">
             <div className="flex items-center gap-2 flex-wrap">
               <h3 className="text-lg font-bold text-slate-900 dark:text-white leading-tight">
-                {metricMode === "papers"
+                {metricMode === "pp_top10"
+                  ? "Share of highly cited papers, PP(top 10%)"
+                  : metricMode === "papers"
                   ? datasetMode === "corpus"
                     ? "Publication activity by year"
                     : "Displayed topic activity by year"
@@ -360,9 +393,12 @@ export function OverviewTab({
               <span className="text-[9px] bg-blue-50 dark:bg-blue-950/20 text-blue-700 dark:text-blue-400 border border-blue-150 px-2 py-0.5 rounded font-bold uppercase tracking-wider">
                 {metricMode === "papers" ? "publication activity" : "citation impact"}
               </span>
+              <DataSourceBadge source={data.dataSource} />
             </div>
             <p className="text-xs text-slate-500 mt-1">
-              {metricMode === "papers"
+              {metricMode === "pp_top10"
+                ? "Shows the share of each year's papers that are among the 10% most cited works of the same year, type and subfield. 10% is the world average, so values above the dashed line mean more highly cited papers than expected."
+                : metricMode === "papers"
                 ? datasetMode === "corpus"
                   ? "Shows how many active papers in the selected dataset were published each year. Use this to judge research activity."
                   : "This chart sums yearly paper counts for the topics currently shown below, not necessarily every paper in the corpus."
@@ -372,10 +408,12 @@ export function OverviewTab({
             </p>
 
             {/* Chart Takeaway Insight Alert */}
-            <div className="mt-3 bg-blue-50/40 dark:bg-blue-950/15 border-l-2 border-blue-600 dark:border-blue-500 rounded-r-lg p-2.5 text-[11px] text-slate-650 dark:text-slate-300 select-none font-medium leading-relaxed">
-              <span className="font-extrabold text-blue-700 dark:text-blue-400 mr-1.5 uppercase text-[9px] tracking-wider">Takeaway:</span>
-              Publication activity peaked in 2024, then drops in 2025-2026 because 2026 is YTD and sync coverage may be incomplete.
-            </div>
+            {takeaway && (
+              <div className="mt-3 bg-blue-50/40 dark:bg-blue-950/15 border-l-2 border-blue-600 dark:border-blue-500 rounded-r-lg p-2.5 text-[11px] text-slate-650 dark:text-slate-300 select-none font-medium leading-relaxed">
+                <span className="font-extrabold text-blue-700 dark:text-blue-400 mr-1.5 uppercase text-[9px] tracking-wider">Takeaway:</span>
+                {takeaway}
+              </div>
+            )}
 
             {data.yearTo && data.yearTo > data.lastCompleteYear ? (
               <p className="text-[11px] font-semibold text-amber-600 dark:text-amber-400 mt-1.5 flex items-center gap-1">
@@ -393,8 +431,8 @@ export function OverviewTab({
                   type="number"
                   value={yearFromInput}
                   onChange={(e) => setYearFromInput(e.target.value)}
-                  onBlur={() => commitYearInput(yearFromInput, 1900, setYearFrom, setYearFromInput)}
-                  onKeyDown={(e) => handleYearInputKeyDown(e, () => commitYearInput(yearFromInput, 1900, setYearFrom, setYearFromInput))}
+                  onBlur={() => commitYearInput(yearFromInput, DEFAULT_TREND_YEAR_FROM, setYearFrom, setYearFromInput)}
+                  onKeyDown={(e) => handleYearInputKeyDown(e, () => commitYearInput(yearFromInput, DEFAULT_TREND_YEAR_FROM, setYearFrom, setYearFromInput))}
                   placeholder="From"
                   className="w-14 h-7 bg-white dark:bg-slate-800 rounded-full text-center text-[11px] font-bold text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-600 border-none shadow-sm"
                 />
@@ -403,8 +441,8 @@ export function OverviewTab({
                   type="number"
                   value={yearToInput}
                   onChange={(e) => setYearToInput(e.target.value)}
-                  onBlur={() => commitYearInput(yearToInput, 2026, setYearTo, setYearToInput)}
-                  onKeyDown={(e) => handleYearInputKeyDown(e, () => commitYearInput(yearToInput, 2026, setYearTo, setYearToInput))}
+                  onBlur={() => commitYearInput(yearToInput, DEFAULT_TREND_YEAR_TO, setYearTo, setYearToInput)}
+                  onKeyDown={(e) => handleYearInputKeyDown(e, () => commitYearInput(yearToInput, DEFAULT_TREND_YEAR_TO, setYearTo, setYearToInput))}
                   placeholder="To"
                   className="w-14 h-7 bg-white dark:bg-slate-800 rounded-full text-center text-[11px] font-bold text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-600 border-none shadow-sm"
                 />
@@ -421,28 +459,44 @@ export function OverviewTab({
               >
                 Papers
               </Button>
-              <Button
-                variant={metricMode === "citations_total" ? "default" : "ghost"}
-                size="sm"
-                onClick={() => {
-                  setMetricMode("citations_total");
-                  setDatasetMode("corpus");
-                }}
-                className="h-7 px-3 text-[11px] font-bold rounded-full"
-              >
-                Total Citations
-              </Button>
-              <Button
-                variant={metricMode === "citations_avg" ? "default" : "ghost"}
-                size="sm"
-                onClick={() => {
-                  setMetricMode("citations_avg");
-                  setDatasetMode("corpus");
-                }}
-                className="h-7 px-3 text-[11px] font-bold rounded-full"
-              >
-                Avg Citations
-              </Button>
+              {hasPp ? (
+                <Button
+                  variant={metricMode === "pp_top10" ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => {
+                    setMetricMode("pp_top10");
+                    setDatasetMode("corpus");
+                  }}
+                  className="h-7 px-3 text-[11px] font-bold rounded-full"
+                >
+                  PP(top 10%)
+                </Button>
+              ) : hasTotals ? (
+                <>
+                  <Button
+                    variant={metricMode === "citations_total" ? "default" : "ghost"}
+                    size="sm"
+                    onClick={() => {
+                      setMetricMode("citations_total");
+                      setDatasetMode("corpus");
+                    }}
+                    className="h-7 px-3 text-[11px] font-bold rounded-full"
+                  >
+                    Total Citations
+                  </Button>
+                  <Button
+                    variant={metricMode === "citations_avg" ? "default" : "ghost"}
+                    size="sm"
+                    onClick={() => {
+                      setMetricMode("citations_avg");
+                      setDatasetMode("corpus");
+                    }}
+                    className="h-7 px-3 text-[11px] font-bold rounded-full"
+                  >
+                    Avg Citations
+                  </Button>
+                </>
+              ) : null}
             </div>
 
             {/* Dataset Mode Toggle */}
@@ -473,8 +527,10 @@ export function OverviewTab({
 
             {peakYear && (
               <span className="text-xs font-bold bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 px-3 py-1.5 rounded-lg border border-blue-100 dark:border-blue-900/30 select-none">
-                Peak: {peakYear.year} · {formatCompactNumber(peakYear.value)}{" "}
-                {metricMode === "papers"
+                Peak: {peakYear.year} · {metricMode === "pp_top10" ? formatPercent(peakYear.value) : formatCompactNumber(peakYear.value)}{" "}
+                {metricMode === "pp_top10"
+                  ? "PP(top 10%)"
+                  : metricMode === "papers"
                   ? "papers"
                   : metricMode === "citations_total"
                   ? "citations"
@@ -510,9 +566,27 @@ export function OverviewTab({
                   tickLine={false}
                   width={72}
                   tick={{ fontSize: 12, fill: '#64748b', fontWeight: 500 }}
-                  tickFormatter={formatCompactNumber}
+                  tickFormatter={metricMode === "pp_top10" ? (value: number) => `${value}%` : formatCompactNumber}
+                  domain={metricMode === "pp_top10" ? [0, (dataMax: number) => Math.max(dataMax, WORLD_AVERAGE_PP_TOP10 * 1.2)] : undefined}
                 />
                 <Tooltip content={<CustomTimelineTooltip />} />
+
+                {/* World-average line: 10% of works are in the top 10% by definition */}
+                {metricMode === "pp_top10" && (
+                  <ReferenceLine
+                    y={WORLD_AVERAGE_PP_TOP10}
+                    stroke="#64748b"
+                    strokeDasharray="6 4"
+                    strokeWidth={1.5}
+                    label={{
+                      value: t("10% = world average"),
+                      position: "insideBottomRight",
+                      fill: "#64748b",
+                      fontSize: 10,
+                      fontWeight: "bold",
+                    }}
+                  />
+                )}
 
                 {/* Reference line for peak year */}
                 {peakYear && (
@@ -551,7 +625,11 @@ export function OverviewTab({
             <div className="space-y-2">
               <h4 className="font-bold text-slate-800 dark:text-white">What this chart shows</h4>
               <p className="text-slate-500 dark:text-slate-400 leading-normal font-medium">
-                This chart shows how the current dataset changes over time. Use <strong>Papers</strong> for activity, <strong>Total Citations</strong> for accumulated impact, and <strong>Avg Citations</strong> for normalized impact.
+                {hasPp ? (
+                  <>This chart shows how the current dataset changes over time. Use <strong>Papers</strong> for activity and <strong>PP(top 10%)</strong> for the share of highly cited papers; 10% is the world average.</>
+                ) : (
+                  <>This chart shows how the current dataset changes over time. Use <strong>Papers</strong> for activity, <strong>Total Citations</strong> for accumulated impact, and <strong>Avg Citations</strong> for normalized impact.</>
+                )}
               </p>
             </div>
 
@@ -569,6 +647,76 @@ export function OverviewTab({
             </div>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+const VERDICT_ORDER = ["rising", "stable", "declining", "insufficient"] as const;
+
+/** Counts of each verdict in the listed topics and the first rising topic, with the numbers behind it. */
+function TrendVerdictSummaryCard({
+  topics,
+  topRisingTopic,
+  source,
+  onOpenTrend,
+  onCompare,
+}: {
+  topics: TrendsOverview["topics"];
+  topRisingTopic: TrendTopicLike | null;
+  source: TrendsOverview["dataSource"];
+  onOpenTrend: (topic: string) => void;
+  onCompare: () => void;
+}) {
+  const { t } = useI18n();
+  const counts = VERDICT_ORDER.map((verdict) => ({
+    verdict,
+    count: topics.filter((topic) => topic.classification.verdict === verdict).length,
+  }));
+  return (
+    <div className="lg:col-span-2 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-[#121212]">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-[10px] font-extrabold uppercase tracking-widest text-blue-600 dark:text-blue-400">{t("Trend verdicts in this scope")}</p>
+        <TrendHowLink section={DOCS_SECTIONS.trendVerdict} anchor="rules" />
+      </div>
+      <dl className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {counts.map(({ verdict, count }) => (
+          <div key={verdict} className="rounded-xl border border-slate-100 bg-slate-50/60 px-3 py-2 dark:border-slate-800 dark:bg-slate-900/30">
+            <dt className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">{verdictLabel(verdict, t)}</dt>
+            <dd className="text-xl font-black text-slate-900 dark:text-white">{formatNumber(count)}</dd>
+          </div>
+        ))}
+      </dl>
+      <div className="mt-4 border-t border-slate-100 pt-4 dark:border-slate-800/60">
+        {topRisingTopic?.classification ? (
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-[12rem] flex-1 space-y-1.5">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">{t("Top rising topic")}</p>
+              <p className="truncate text-base font-extrabold text-slate-900 dark:text-white" title={topRisingTopic.topic}>{topRisingTopic.topic}</p>
+              {topRisingTopic.taxonomy && (
+                <p className="truncate text-[11px] font-semibold capitalize text-slate-400">{topRisingTopic.taxonomy.domainName} / {topRisingTopic.taxonomy.fieldName}</p>
+              )}
+              <TrendVerdictBadge classification={topRisingTopic.classification} />
+            </div>
+            <div className="flex shrink-0 flex-col gap-2 sm:items-end">
+              <TrendFigures classification={topRisingTopic.classification} source={source} className="sm:text-right" />
+              <button
+                type="button"
+                onClick={() => onOpenTrend(topRisingTopic.topic)}
+                className="w-fit text-xs font-extrabold text-blue-700 hover:underline dark:text-blue-400"
+              >
+                {t("Open trend")} ➔
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600 dark:text-slate-400">
+            <p>{t("No topic shows a statistically significant rise in its field share in this scope.")}</p>
+            <button type="button" onClick={onCompare} className="font-extrabold text-blue-700 hover:underline dark:text-blue-400">
+              {t("Compare topics")} ➔
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

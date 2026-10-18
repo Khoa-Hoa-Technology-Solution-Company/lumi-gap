@@ -1,5 +1,4 @@
 import type {
-  RecommendedTrendComparison,
   RisingKeyword,
   TrendFacetBucket,
   TrendFacets,
@@ -18,6 +17,8 @@ import {
   fillMissingYearsFromCounts,
 } from "./trend.intelligence.js";
 import { computeMetrics, fillMissingYears, truncateToCompleteYears, yoyGrowthPct } from "./trend.formulas.js";
+import { benjaminiHochberg } from "./trend.statistics.js";
+import { buildRecommendedComparisons, classifyTrend, compareByTotal, compareByTrend, shareTrendStatistics } from "./trend.verdict.js";
 import type { TrendsOverviewQuery } from "./dto/trends.schema.js";
 
 const DEFAULT_WINDOW_YEARS = 5;
@@ -116,7 +117,7 @@ export async function getPostgresTrendsOverview(query: TrendsOverviewQuery): Pro
     yearFrom,
     yearTo,
   );
-  const topics = buildTopics(topicRows, yearFrom, yearTo, lastCompleteYear, query.minPapers, query.sortBy);
+  const topics = buildTopics(topicRows, yearlyRows, yearFrom, yearTo, lastCompleteYear, query.minPapers, query.sortBy);
   const risingKeywords = buildRisingKeywords(keywordRows, yearFrom, yearTo, lastCompleteYear);
   const totalPapersInWindow = yearlyRows.reduce((sum, row) => sum + Number(row.count), 0);
 
@@ -337,8 +338,15 @@ async function taxonomyCoverage(where: Prisma.Sql): Promise<TrendTaxonomyCoverag
   };
 }
 
+/**
+ * Topics of the local corpus with their share trend. N_t is the filtered
+ * corpus of each year (what has been synced, not the field), so the verdict
+ * is always insufficient (LOCAL_CORPUS); the numbers are still filled and
+ * BH-adjusted across the tested topics.
+ */
 function buildTopics(
   rows: TopicYearRow[],
+  yearlyRows: YearRow[],
   yearFrom: number,
   yearTo: number,
   lastCompleteYear: number,
@@ -351,7 +359,8 @@ function buildTopics(
     group.years.set(row.year, (group.years.get(row.year) ?? 0) + Number(row.count));
     groups.set(row.topic, group);
   }
-  const topics: TrendingTopic[] = [];
+  const totals = new Map(yearlyRows.map((row) => [Number(row.year), Number(row.count)]));
+  const built = [];
   for (const [topic, group] of groups) {
     const yearlyBreakdown = fillMissingYears(
       [...group.years].map(([year, count]) => ({ year, count })),
@@ -360,19 +369,26 @@ function buildTopics(
     );
     const totalPapers = yearlyBreakdown.reduce((sum, row) => sum + row.count, 0);
     if (totalPapers < minPapers) continue;
-    topics.push({
-      topic,
-      ...(group.taxonomy ? { taxonomy: group.taxonomy } : {}),
-      totalPapers,
-      yearlyBreakdown,
-      ...computeMetrics(yearlyBreakdown, lastCompleteYear),
+    const shareSeries = truncateToCompleteYears(yearlyBreakdown, lastCompleteYear)
+      .filter((row) => (totals.get(row.year) ?? 0) > 0)
+      .map((row) => ({ year: row.year, count: row.count, sharePct: (row.count / Math.max(totals.get(row.year) ?? 0, row.count)) * 100 }));
+    built.push({
+      topic: {
+        topic,
+        ...(group.taxonomy ? { taxonomy: group.taxonomy } : {}),
+        totalPapers,
+        yearlyBreakdown,
+        ...computeMetrics(yearlyBreakdown, lastCompleteYear),
+      },
+      stats: shareTrendStatistics(shareSeries),
     });
   }
-  topics.sort((a, b) => {
-    if (sortBy === "growth") return b.growthRatePct - a.growthRatePct;
-    if (sortBy === "total") return b.totalPapers - a.totalPapers;
-    return b.momentum - a.momentum;
-  });
+  const qValues = benjaminiHochberg(built.map((row) => row.stats.mannKendall?.pValue ?? null));
+  const topics: TrendingTopic[] = built.map((row, index) => ({
+    ...row.topic,
+    classification: classifyTrend({ ...row.stats, source: "local", qValue: qValues[index] ?? null }),
+  }));
+  topics.sort(sortBy === "total" ? compareByTotal : compareByTrend);
   return topics;
 }
 
@@ -409,19 +425,6 @@ function buildRisingKeywords(
     .sort((a, b) => b.growthRatePct - a.growthRatePct || a.totalPapers - b.totalPapers)
     .slice(0, 10)
     .map(({ prevBase: _internal, ...row }) => row);
-}
-
-function buildRecommendedComparisons(topics: TrendingTopic[]): RecommendedTrendComparison[] {
-  const recommendations: RecommendedTrendComparison[] = [];
-  const top = topics.slice(0, 3);
-  if (top.length >= 2) {
-    recommendations.push({
-      topics: top.map((topic) => topic.topic),
-      reason: "Top momentum topics in the current filtered corpus.",
-      metrics: top.map(({ topic, totalPapers, growthRatePct, momentum }) => ({ topic, totalPapers, growthRatePct, momentum })),
-    });
-  }
-  return recommendations;
 }
 
 function toFacetBucket(row: CountRow): TrendFacetBucket {

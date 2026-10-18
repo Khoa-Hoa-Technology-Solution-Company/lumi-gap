@@ -148,6 +148,7 @@ export const paperReviewService = {
           scores: result.scores as never,
           profile: result.profile as never,
           bilingualReview: result.bilingual_review as never,
+          analysis: (result.analysis ?? {}) as never,
           reportMarkdown: result.report_markdown,
           artifactsDir: result.artifacts_dir,
         },
@@ -162,6 +163,7 @@ export const paperReviewService = {
         scores: result.scores,
         profile: result.profile,
         bilingualReview: result.bilingual_review,
+        analysis: result.analysis ?? {},
         reportMarkdown: result.report_markdown,
         creditsCharged: creditCost,
         createdAt: updated?.createdAt,
@@ -197,7 +199,7 @@ export const paperReviewService = {
     if (!user) return [];
     return getPrisma().paperReview.findMany({
       where: { userId: user.id }, orderBy: { createdAt: "desc" }, take: 50,
-      omit: { reportMarkdown: true },
+      omit: { reportMarkdown: true, analysis: true },
     });
   },
 

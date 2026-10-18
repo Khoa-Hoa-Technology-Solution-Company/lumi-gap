@@ -7,6 +7,7 @@ import { embeddingRouter } from "../modules/embeddings/embedding.routes.js";
 import { trendRouter } from "../modules/trends/trend.routes.js";
 import { reportRouter } from "../modules/reports/report.routes.js";
 import { gapsRouter } from "../modules/gaps/gaps.routes.js";
+import { closureRouter } from "../modules/gap-closure/closure.routes.js";
 import { bookmarkRouter } from "../modules/bookmarks/bookmark.routes.js";
 import { analyticsRouter } from "../modules/analytics/analytics.routes.js";
 import { qualityRouter } from "../modules/quality/quality.routes.js";
@@ -52,6 +53,7 @@ apiRouter.use("/trends", trendRouter); // Phase B/C — publication trends
 apiRouter.use("/reports", reportRouter); // Phase C — RAG analytical reports
 apiRouter.use("/gaps", gapDiscussionRouter);
 apiRouter.use("/gaps", gapsRouter); // Phase D — research gaps
+apiRouter.use("/gap-closure", closureRouter); // Gap Closure Protocol
 apiRouter.use("/communities", communityRouter);
 apiRouter.use("/forum", forumRouter);
 apiRouter.use("/openings", recruitmentRouter);

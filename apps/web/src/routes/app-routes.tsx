@@ -21,6 +21,7 @@ const AcademicProfileOnboardingPage = lazy(() => import("@/pages/academic-profil
 const DashboardPage = lazy(() => import("@/pages/dashboard").then((m) => ({ default: m.DashboardPage })));
 const TrendsPage = lazy(() => import("@/pages/trends").then((m) => ({ default: m.TrendsPage })));
 const TopicDetailPage = lazy(() => import("@/pages/trends-topic").then((m) => ({ default: m.TopicDetailPage })));
+const DocsPage = lazy(() => import("@/pages/docs").then((m) => ({ default: m.DocsPage })));
 const BookmarksPage = lazy(() => import("@/pages/bookmarks").then((m) => ({ default: m.BookmarksPage })));
 const NotificationsPage = lazy(() => import("@/pages/notifications").then((m) => ({ default: m.NotificationsPage })));
 const AccountSettingsPage = lazy(() => import("@/pages/profile").then((m) => ({ default: m.AccountSettingsPage })));
@@ -41,6 +42,7 @@ const ProjectContributionReviewPage = lazy(() => import("@/pages/projects/projec
 const ProjectInvitationPage = lazy(() => import("@/pages/projects/project-invitation").then((m) => ({ default: m.ProjectInvitationPage })));
 const ResearchGapsPage = lazy(() => import("@/pages/research-gaps").then((m) => ({ default: m.ResearchGapsPage })));
 const ResearchGapValidationPage = lazy(() => import("@/pages/research-gap-validation").then((m) => ({ default: m.ResearchGapValidationPage })));
+const GapClosurePage = lazy(() => import("@/pages/gap-closure").then((m) => ({ default: m.GapClosurePage })));
 const AdminSyncPage = lazy(() => import("@/pages/admin/sync").then((m) => ({ default: m.AdminSyncPage })));
 const AdminPipelinePage = lazy(() => import("@/pages/admin/pipeline").then((m) => ({ default: m.AdminPipelinePage })));
 const AdminEvaluationPage = lazy(() => import("@/pages/admin/evaluation").then((m) => ({ default: m.AdminEvaluationPage })));
@@ -143,6 +145,8 @@ export function AppRoutes() {
           <Route path="/papers/:id" element={<PaperDetailPage />} />
           <Route path="/trends" element={<TrendsPage />} />
           <Route path="/trends/:topic" element={<TopicDetailPage />} />
+          <Route path="/docs" element={<DocsPage />} />
+          <Route path="/docs/:sectionId" element={<DocsPage />} />
           <Route path="/forum" element={<ForumListPage />} />
           <Route path="/forum/categories" element={<ForumCategoryDirectoryPage />} />
           <Route path="/forum/category/:categorySlug" element={<ForumListPage />} />
@@ -193,6 +197,7 @@ export function AppRoutes() {
             <Route path="/reports/:id" element={<ReportViewerPage />} />
             <Route path="/research-gaps" element={<ResearchGapsPage />} />
             <Route path="/research-gaps/validation" element={<ResearchGapValidationPage />} />
+            <Route path="/gap-closure" element={<GapClosurePage />} />
             <Route path="/research-gap/discover" element={<ResearchGapDiscoverPage />} />
             <Route path="/review-opportunities" element={<ReviewOpportunitiesPage />} />
             <Route path="/academic-support" element={<AcademicSupportPage />} />

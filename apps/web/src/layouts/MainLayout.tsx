@@ -34,6 +34,7 @@ const navGroups = [
     label: "Explore",
     items: [
       { to: "/trends", label: "Trends" },
+      { to: "/docs", label: "Docs" },
       { to: "/research-gaps", label: "Research Gaps" },
       { to: "/research-gap/discover", label: "Gap Discovery" },
     ],

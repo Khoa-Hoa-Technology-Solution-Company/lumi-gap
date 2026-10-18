@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { Link } from "react-router-dom";
 import { ArrowUpRight, ChevronDown, FileCheck2, FileText, MessageSquare, TrendingUp } from "lucide-react";
-import type { HomeOverview } from "@trend/shared-types";
+import type { HomeOverview, YearlyCount } from "@trend/shared-types";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useHomeOverview } from "@/features/home/hooks/use-home-overview";
 import { useI18n } from "@/i18n";
@@ -136,12 +136,15 @@ function LibraryInsights() {
   const query = useHomeOverview();
   const [metric, setMetric] = useState<"papers" | "citations">("papers");
   const data = query.data;
+  // Hide the citation toggle when the source reports no citation sums (null totals).
+  const citationsAvailable = !data || data.trends.citationTrend.length === 0 || data.trends.citationTrend.some((entry) => entry.totalCitations !== null);
+  const activeMetric = citationsAvailable ? metric : "papers";
 
   return <div className="home-library-insights">
-    <div className="home-library-heading"><span><TrendingUp aria-hidden="true" />{t("Inside the LumiGap library")}</span><div role="group" aria-label={t("Chart metric")}><button type="button" aria-pressed={metric === "papers"} onClick={() => setMetric("papers")}>{t("Publications")}</button><button type="button" aria-pressed={metric === "citations"} onClick={() => setMetric("citations")}>{t("Citations")}</button></div></div>
+    <div className="home-library-heading"><span><TrendingUp aria-hidden="true" />{t("Inside the LumiGap library")}</span><div role="group" aria-label={t("Chart metric")}><button type="button" aria-pressed={activeMetric === "papers"} onClick={() => setMetric("papers")}>{t("Publications")}</button>{citationsAvailable ? <button type="button" aria-pressed={activeMetric === "citations"} onClick={() => setMetric("citations")}>{t("Citations")}</button> : null}</div></div>
     {query.isLoading ? <div role="status" className="home-insights-state" aria-label={t("Loading library trends")}><Skeleton className="h-6 w-48" /><Skeleton className="h-44 w-full" /></div>
       : query.isError || !data ? <div role="alert" className="home-insights-state"><p>{t("The library is taking a moment.")}</p><span>{t("You can still search while we reconnect to the latest literature.")}</span><button type="button" onClick={() => { void query.refetch(); }}>{t("Retry")}</button></div>
-      : <PublicationChart data={data} metric={metric} />}
+      : <PublicationChart data={data} metric={activeMetric} />}
     <p className="home-library-note">{t("Based on indexed literature. The current year is incomplete.")}</p>
   </div>;
 }
@@ -149,7 +152,10 @@ function LibraryInsights() {
 function PublicationChart({ data, metric }: { data: HomeOverview; metric: "papers" | "citations" }) {
   const { t } = useI18n();
   const [selectedYear, setSelectedYear] = useState<number>();
-  const series = metric === "papers" ? data.trends.yearlyTotalPapers : data.trends.citationTrend.map((entry) => ({ year: entry.year, count: entry.totalCitations }));
+  // Citation totals are null when the source cannot sum citations; those years are left out, never drawn as 0.
+  const series: YearlyCount[] = metric === "papers"
+    ? data.trends.yearlyTotalPapers
+    : data.trends.citationTrend.flatMap((entry) => (entry.totalCitations === null ? [] : [{ year: entry.year, count: entry.totalCitations }]));
   const years = series.slice(-6);
   const selected = years.find((entry) => entry.year === selectedYear) ?? years.at(-1);
   const maximum = Math.max(1, ...years.map((entry) => entry.count));

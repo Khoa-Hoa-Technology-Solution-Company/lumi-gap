@@ -23,6 +23,7 @@ describe("buildEvaluationSummary", () => {
         countReportsWithInvalidCitations: async () => 0,
         countActiveGaps: async () => 8,
         countEvidenceBackedGaps: async () => 6,
+        reportCitationCoverage: async () => ({ reports: 0, avgPct: 0, withUnsupportedPercents: 0 }),
       },
       new Date("2026-07-13T00:00:00.000Z"),
     );
@@ -42,10 +43,11 @@ describe("buildEvaluationSummary", () => {
       "report-corpus-grounding",
       "report-saved-citation-validity",
       "gap-corpus-evidence",
+      "report-citation-coverage",
     ]);
     expect(summary.checks.find((check) => check.id === "trend-formula-benchmark")?.status).toBe("pass");
     expect(summary.checks.find((check) => check.id === "gap-evidence-benchmark")?.evidence).toContain(
-      "confirmed=true",
+      "underExplored=true",
     );
     expect(summary.checks.find((check) => check.id === "report-grounding-guard")?.evidence).toContain(
       "out-of-range",
@@ -65,6 +67,7 @@ describe("buildEvaluationSummary", () => {
         countReportsWithInvalidCitations: async () => 0,
         countActiveGaps: async () => 0,
         countEvidenceBackedGaps: async () => 0,
+        reportCitationCoverage: async () => ({ reports: 0, avgPct: 0, withUnsupportedPercents: 0 }),
       },
       new Date("2026-07-13T00:00:00.000Z"),
     );
@@ -87,6 +90,7 @@ describe("buildEvaluationSummary", () => {
         countReportsWithInvalidCitations: async () => 0,
         countActiveGaps: async () => 0,
         countEvidenceBackedGaps: async () => 0,
+        reportCitationCoverage: async () => ({ reports: 0, avgPct: 0, withUnsupportedPercents: 0 }),
       },
       new Date("2026-07-13T00:00:00.000Z"),
     );
@@ -110,6 +114,7 @@ describe("buildEvaluationSummary", () => {
         countReportsWithInvalidCitations: async () => 2,
         countActiveGaps: async () => 10,
         countEvidenceBackedGaps: async () => 10,
+        reportCitationCoverage: async () => ({ reports: 0, avgPct: 0, withUnsupportedPercents: 0 }),
       },
       new Date("2026-07-13T00:00:00.000Z"),
     );
@@ -133,11 +138,58 @@ describe("buildEvaluationSummary", () => {
         countReportsWithInvalidCitations: async () => 0,
         countActiveGaps: async () => 10,
         countEvidenceBackedGaps: async () => 10,
+        reportCitationCoverage: async () => ({ reports: 10, avgPct: 85, withUnsupportedPercents: 0 }),
       },
       new Date("2026-07-13T00:00:00.000Z"),
     );
 
     expect(summary.overallStatus).toBe("healthy");
     expect(summary.checks.every((check) => check.status === "pass")).toBe(true);
+  });
+});
+
+describe("report citation coverage check", () => {
+  const summaryWith = (stats: { reports: number; avgPct: number; withUnsupportedPercents: number }) =>
+    buildEvaluationSummary(
+      {
+        countPapers: async () => 200,
+        countActivePapers: async () => 200,
+        countAnalyzablePapers: async () => 200,
+        countEmbeddedPapers: async () => 200,
+        countAiAnalyzedPapers: async () => 200,
+        countReadyReports: async () => stats.reports,
+        countGroundedReports: async () => stats.reports,
+        countReportsWithInvalidCitations: async () => 0,
+        countActiveGaps: async () => 0,
+        countEvidenceBackedGaps: async () => 0,
+        reportCitationCoverage: async () => stats,
+      },
+      new Date("2026-07-13T00:00:00.000Z"),
+    ).then((summary) => summary.checks.find((check) => check.id === "report-citation-coverage")!);
+
+  it("passes at 70% average coverage with no unmatched percentages", async () => {
+    const check = await summaryWith({ reports: 4, avgPct: 70, withUnsupportedPercents: 0 });
+    expect(check.status).toBe("pass");
+    expect(check.score).toBe(10);
+    expect(check.evidence).toContain("70%");
+    expect(check.evidence).toContain("4 ready reports");
+  });
+
+  it("warns when coverage is low", async () => {
+    const check = await summaryWith({ reports: 4, avgPct: 42.5, withUnsupportedPercents: 0 });
+    expect(check.status).toBe("warn");
+    expect(check.score).toBe(4);
+  });
+
+  it("warns when any report states percentages that do not match", async () => {
+    const check = await summaryWith({ reports: 4, avgPct: 90, withUnsupportedPercents: 1 });
+    expect(check.status).toBe("warn");
+    expect(check.evidence).toContain("1 reports state percentages");
+  });
+
+  it("warns with score 0 when there are no reports", async () => {
+    const check = await summaryWith({ reports: 0, avgPct: 0, withUnsupportedPercents: 0 });
+    expect(check.status).toBe("warn");
+    expect(check.score).toBe(0);
   });
 });
