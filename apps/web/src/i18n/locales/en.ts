@@ -1,3 +1,7 @@
+import { confirmationsEn } from "./confirmations";
+import { researchTasksEn } from "./research-tasks";
+import { livingPlanEn } from "./living-plan";
+import { projectSettingsEn } from "./project-settings";
 import { researchWorkflowStrings } from "./research-workflow";
 import { contributionsEn } from "./project-contributions";
 import { manuscriptsEn } from "./manuscripts";
@@ -19,6 +23,9 @@ import { trendEvidenceStrings } from "./trend-evidence";
 import { trendVerdictStrings } from "./trend-verdict";
 
 export const en = {
+  ...researchTasksEn,
+  ...livingPlanEn,
+  ...projectSettingsEn,
   ...manuscriptsEn,
   ...researchWorkflowStrings,
   ...workspaceCoordinationStrings,
@@ -1816,4 +1823,5 @@ export const en = {
   "YTD": "YTD",
   "Load More": "Load More",
   "Loading...": "Loading...",
+  ...confirmationsEn,
 } as const;

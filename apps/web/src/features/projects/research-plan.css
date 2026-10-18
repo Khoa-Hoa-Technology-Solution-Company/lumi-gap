@@ -1,0 +1,30 @@
+.living-plan .living-plan-status {
+  justify-content: space-between;
+  gap: 16px;
+  margin: 0 0 20px;
+  padding: 14px 0;
+  border-block: 1px solid hsl(var(--border));
+}
+.living-plan-save-state { display: grid; gap: 5px; }
+.living-plan-save-state > span { color: hsl(var(--foreground)); font-weight: 550; }
+.living-plan-save-state > small { font-size: 12px; line-height: 1.5; }
+.living-plan-version-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; color: hsl(var(--foreground)); }
+.living-plan .living-plan-document {
+  max-width: none;
+  padding: 24px 28px;
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  border-radius: 12px;
+}
+.living-plan-document > section + section { padding-top: 24px; border-top: 1px solid hsl(var(--border)); }
+.living-plan .living-plan-section-heading { margin-bottom: 10px; }
+.living-plan-section-heading > h3 { font-size: 16px; font-weight: 650; }
+.living-plan .living-plan-section-heading > button { width: 34px; height: 34px; flex-shrink: 0; }
+.living-plan .living-plan-empty { margin-top: 0; margin-bottom: 14px; font-size: 13px; }
+.living-plan .living-plan-details { padding-bottom: 0; }
+.living-plan-details > summary > span { margin-left: 4px; }
+.living-plan-details > summary > small { display: block; margin-top: 6px; font-weight: 400; font-size: 12px; line-height: 1.5; color: hsl(var(--muted-foreground)); }
+@media (max-width: 640px) {
+  .living-plan .living-plan-document { padding: 18px 16px; }
+  .living-plan .living-plan-status { align-items: flex-start; }
+}

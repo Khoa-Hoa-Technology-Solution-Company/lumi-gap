@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { confirmUnsavedChanges } from "@/services/confirmation";
+import { useEffect, useRef, useState, useSyncExternalStore, type MouseEvent } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Y from "yjs";
@@ -108,15 +109,21 @@ export function ManuscriptEditorPage() {
   if ((snapshotId ? snapshot.error : detail.error) || !title) return <section className="writing-notice"><h1>{t("Manuscript unavailable")}</h1><p>{t("This manuscript or version is unavailable, or your access has ended.")}</p><Link to={`/projects/${projectId}?tab=manuscripts`}>{t("Back to project")}</Link></section>;
   const online = provider ? [...provider.awareness.getStates()].filter(([, state]) => state.user).map(([clientId, state]) => ({ clientId, user: state.user as { id: string; name: string; color: string } })) : [];
   const pendingAny = [...providers.current.values()].some(p => p.getSnapshot().pending > 0);
+  const confirmNavigation = async (event: MouseEvent<HTMLAnchorElement>) => {
+    if (!pendingAny || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    const destination = new URL(event.currentTarget.href);
+    if (await confirmUnsavedChanges()) navigate(destination.pathname + destination.search + destination.hash);
+  };
   const displayedSync = pendingAny && sync.status === "SAVED" ? "SYNCING" : sync.status;
   const cited = provider ? [...provider.text.toString().matchAll(/\\cite(?:[A-Za-z]*)\{([^}]+)\}/g)].flatMap(match => match[1]!.split(",")) : [];
   const bibliography = files.find(f => f.path === "references.bib"), bibContent = bibliography ? providers.current.get(bibliography.id)?.text.toString() : undefined;
   const missing = bibContent === undefined ? [] : cited.filter(c => !new RegExp(`@[A-Za-z]+\\s*\\{\\s*${c.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*,`).test(bibContent));
   return <div className="writing-workspace" data-no-i18n>
-    <header className="writing-toolbar"><div className="writing-title"><Link aria-label={t("Back to project")} to={`/projects/${projectId}?tab=manuscripts`} onClick={event => { if (pendingAny && !window.confirm(t("Some edits are not saved. Leave this manuscript?"))) event.preventDefault(); }}><ArrowLeft className="h-4 w-4" /></Link><div><h1 title={title}>{title}</h1><span>{snapshotId ? `${t("Immutable version")} · ${snapshot.data?.label}` : t("Working draft")}</span></div></div>
+    <header className="writing-toolbar"><div className="writing-title"><Link aria-label={t("Back to project")} to={`/projects/${projectId}?tab=manuscripts`} onClick={confirmNavigation}><ArrowLeft className="h-4 w-4" /></Link><div><h1 title={title}>{title}</h1><span>{snapshotId ? `${t("Immutable version")} · ${snapshot.data?.label}` : t("Working draft")}</span></div></div>
       <div className="writing-online" aria-label={t("Online collaborators")}>{online.map(person => <span key={person.clientId} title={person.user.name} style={{ borderColor: person.user.color }} aria-label={person.user.name}>{person.user.name.split(" ").map(part => part[0]).join("").slice(0, 2)}</span>)}</div>
       <span role="status" className={`writing-sync ${displayedSync === "SAVED" ? "is-saved" : ""}`}>{snapshotId ? t("Read-only") : pendingAny || selected?.kind === "TEXT" ? t(syncLabels[displayedSync]) : t("Persisted file")}</span>
-      <div className="writing-toolbar-actions"><Button size="sm" variant="outline" aria-label={t("Research context")} onClick={() => openSide("references")} disabled={Boolean(snapshotId)}><BookOpen className="h-4 w-4" /><span>{t("Research context")}</span></Button><Button size="sm" variant="outline" aria-label={t("Comments")} onClick={() => openSide("comments")}><MessageSquare className="h-4 w-4" /><span>{t("Comments")}</span></Button><Button size="sm" variant="outline" aria-label={t("Version history")} onClick={() => openSide("versions")} disabled={Boolean(snapshotId)}><History className="h-4 w-4" /><span>{t("Version history")}</span></Button><Button size="sm" variant="outline" aria-label={t("Export source")} onClick={() => void exportSource()} disabled={busy}><Download className="h-4 w-4" /><span>{t("Export source")}</span></Button><Button size="sm" onClick={() => openSide("preview")}>{t("Compile PDF")}</Button></div>
+      <div className="writing-toolbar-actions">{canWrite && <Button size="sm" variant="outline" disabled={busy} onClick={() => void run(async () => { await flush(); navigate(`/projects/${projectId}?${new URLSearchParams({ tab: "tasks", task: "new", linkKind: "MANUSCRIPT", linkId: id })}`); })}><Plus className="h-4 w-4" /><span>{t("Create task")}</span></Button>}<Button size="sm" variant="outline" aria-label={t("Research context")} onClick={() => openSide("references")} disabled={Boolean(snapshotId)}><BookOpen className="h-4 w-4" /><span>{t("Research context")}</span></Button><Button size="sm" variant="outline" aria-label={t("Comments")} onClick={() => openSide("comments")}><MessageSquare className="h-4 w-4" /><span>{t("Comments")}</span></Button><Button size="sm" variant="outline" aria-label={t("Version history")} onClick={() => openSide("versions")} disabled={Boolean(snapshotId)}><History className="h-4 w-4" /><span>{t("Version history")}</span></Button><Button size="sm" variant="outline" aria-label={t("Export source")} onClick={() => void exportSource()} disabled={busy}><Download className="h-4 w-4" /><span>{t("Export source")}</span></Button><Button size="sm" onClick={() => openSide("preview")}>{t("Compile PDF")}</Button></div>
     </header>
     {error ? <div role="alert" className="writing-error">{error}</div> : null}
     {success ? <div role="status" className="writing-notice">{success}</div> : null}
@@ -153,7 +160,7 @@ export function ManuscriptEditorPage() {
         </div> : null}
       </aside>
     </div>
-    <footer className="writing-statusbar"><span>{snapshotId ? t("Immutable version") : t("Team effort is documented in Contributions, never calculated from text volume.")}</span>{!snapshotId && detail.data?.latestFeedback ? <ManuscriptFeedbackLink projectId={projectId} manuscriptId={id} feedback={detail.data.latestFeedback} onClick={event => { if (pendingAny && !window.confirm(t("Some edits are not saved. Leave this manuscript?"))) event.preventDefault(); }} /> : null}<span>{snapshotId ? `${t("Source revision")} ${snapshot.data?.sourceVersion}` : `${t("Source revision")} ${detail.data?.version}`}</span></footer>
+    <footer className="writing-statusbar"><span>{snapshotId ? t("Immutable version") : t("Team effort is documented in Contributions, never calculated from text volume.")}</span>{!snapshotId && detail.data?.latestFeedback ? <ManuscriptFeedbackLink projectId={projectId} manuscriptId={id} feedback={detail.data.latestFeedback} onClick={confirmNavigation} /> : null}<span>{snapshotId ? `${t("Source revision")} ${snapshot.data?.sourceVersion}` : `${t("Source revision")} ${detail.data?.version}`}</span></footer>
   </div>;
 }
 

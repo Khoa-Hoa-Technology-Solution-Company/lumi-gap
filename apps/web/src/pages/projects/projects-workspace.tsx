@@ -38,8 +38,8 @@ function WorkspaceSidebar() {
   const { id } = useParams(); const { t } = useI18n(); const { data: projects } = useProjects(); const [params, setParams] = useSearchParams();
   const project = projects?.find(item => item._id === id);
   const active = projectSections.some(section => section.key === params.get("tab")) ? params.get("tab") as ProjectTab : "overview";
-  const navigate = (tab: ProjectTab) => {
-    if (!canLeaveWorkspace()) return;
+  const navigate = async (tab: ProjectTab) => {
+    if (!(await canLeaveWorkspace())) return;
     const next = new URLSearchParams(); next.set("tab", tab); if (params.get("q")) next.set("q", params.get("q")!);
     setParams(next);
   };

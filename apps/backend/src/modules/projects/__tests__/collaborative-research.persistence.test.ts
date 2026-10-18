@@ -9,6 +9,7 @@ import { projectScreeningService as screening } from "../project-screening.servi
 import { projectEvidenceService as evidence } from "../project-evidence.service.js";
 import { projectGapResearchService as gaps } from "../project-gap-research.service.js";
 import { projectPlanService as plans } from "../project-plan.service.js";
+import { projectPlanDraftService } from "../project-plan-draft.service.js";
 import { gapValidationService } from "../../gaps/gap-validation.service.js";
 import { projectDiscussionsService as discussions } from "../project-discussions.service.js";
 import { projectTasksService as tasks } from "../project-tasks.service.js";
@@ -42,6 +43,7 @@ describe.skipIf(!isolated).sequential("collaborative research workflow, disposab
     return gapValidationService.createCandidate(owner, { projectId, topic: "Transfer outcomes", title: "Transfer across contexts", gapType: "CONTEXT_GAP", establishedKnowledge: "Transfer varies across contexts", observedLimitation: "Most studies use a single institution", missingEvidence: "Cross-institution replication is missing", significanceExplanation: "Scope may explain contradictory results", gapConfidence: "LOW", researchPriority: "MODERATE" });
   }
   async function accepted(projectId: string, paperId: string) { const row = await evidence.create(projectId, member, { ...extraction(), paperId }); return evidence.review(projectId, owner, row.id, { expectedVersion: row.version, state: "ACCEPTED", rationale: "Compared interpretation with the source" }); }
+  async function explicitPlan(id: string) { const view = await plans.get(id, owner); await projectPlanDraftService.snapshot(id, owner, { expectedVersion: view.version, clientKey: crypto.randomUUID(), changeSummary: "Explicit sharing checkpoint" }); return plans.get(id, owner); }
   beforeAll(async () => { owner = await person("owner"); member = await person("member"); outsider = await person("outsider"); mentor = await person("mentor"); expert = await person("expert"); await db.userCapability.create({ data: { userId: expert, capability: "GAP_VALIDATION", status: "ACTIVE", source: "TEST" } }); });
   afterAll(async () => {
     await db.gapValidation.deleteMany({ where: { reviewerId: { in: users } } });
@@ -210,7 +212,7 @@ describe.skipIf(!isolated).sequential("collaborative research workflow, disposab
     await db.academicProfile.update({ where: { userId: mentor }, data: { primaryPosition: "LECTURER", academicRole: "LECTURER", roleVerificationStatus: "VERIFIED", positionStatus: "VERIFIED", supportAvailability: { enabled: true } } });
     const request = await db.mentorshipRequest.create({ data: { projectId: id, mentorUserId: mentor, requestedBy: owner, direction: "PROJECT_TO_LECTURER", status: "ACCEPTED", expiresAt: new Date(Date.now() + 86400000) } });
     const relation = await db.mentorRelationship.create({ data: { projectId: id, mentorUserId: mentor, sourceRequestId: request.id } });
-    const plan = await plans.get(id, owner); await plans.share(id, owner, { revisionId: plan.currentRevisionId!, relationshipId: relation.id });
+    const plan = await explicitPlan(id); await plans.share(id, owner, { revisionId: plan.currentRevisionId!, relationshipId: relation.id });
     const thread = await discussions.save(id, owner, { title: "Challenge this scope", body: "Please suggest additional counterevidence", category: "MENTOR_QUESTION", mentorRelationshipId: relation.id, link: { kind: "PLAN_REVISION", id: plan.currentRevisionId! }, clientKey: crypto.randomUUID(), mentions: [] });
     await discussions.reply(id, mentor, thread.id, { replyToId: null, body: "Compare a second population before extending the claim", clientKey: crypto.randomUUID(), mentions: [] });
     const feedback = { note: "Challenge the scope with a second population", expectedVersion: gap.version, clientKey: crypto.randomUUID() };

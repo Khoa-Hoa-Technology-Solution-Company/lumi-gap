@@ -123,7 +123,17 @@ export interface ProjectInvitationPreview {
   alreadyMember: boolean;
 }
 
-export type MentorshipRequestStatus = "PENDING" | "ACCEPTED" | "DECLINED" | "CANCELLED" | "EXPIRED";
+export type MentorshipRequestStatus = "PENDING" | "ACCEPTED" | "DECLINED" | "CANCELLED" | "CANCELED_BY_PROJECT" | "EXPIRED" | "CLOSED_CAPACITY_REACHED";
+export type MentorRole = "PRIMARY" | "SECONDARY";
+export interface MentorPosition {
+  role: MentorRole; status: "LOCKED" | "VACANT" | "INVITING" | "ASSIGNED";
+  pendingRequests: number; relationshipId?: string;
+}
+export type MentorPositions = Record<MentorRole, MentorPosition>;
+export interface MentorshipAttachment { id: string; fileName: string; mimeType: string; byteSize: number }
+export interface MentorshipDraft {
+  message: string; mentorRole: MentorRole; attachments: MentorshipAttachment[]; version: number; updatedAt?: string;
+}
 export type MentorRelationshipStatus = "ACTIVE" | "ENDED";
 export interface MentorshipPerson extends ProjectMemberUserSummary {
   academicRole?: string;
@@ -134,12 +144,22 @@ export interface MentorshipPerson extends ProjectMemberUserSummary {
 export interface MentorProjectPreview {
   id: string; title: string; summary: string; researchField?: string;
   stage: ProjectStatus; expertise: string[]; discovery: "CLOSED" | "SEEKING_MENTOR";
+  researchAreas: string[]; mentoringNeeds: string;
+  availableRoles?: MentorRole[];
+}
+export interface MentorDiscoverySettings extends MentorProjectPreview {
+  /** Optimistic version for owner-only discovery edits; excluded from public opportunity DTOs. */
+  version: number;
+  /** Sender identity as it will appear to the lecturer, respecting profile visibility. */
+  invitationSender?: MentorshipPerson;
 }
 export interface MentorshipActions {
   accept: boolean; decline: boolean; cancel: boolean; end: boolean; openProject: boolean;
 }
 export interface MentorshipRequest {
   kind: "REQUEST";
+  mentorRole?: MentorRole;
+  attachments?: MentorshipAttachment[];
   direction: "PROJECT_TO_LECTURER" | "LECTURER_TO_PROJECT";
   expiresAt?: string;
   respondedAt?: string;
@@ -159,6 +179,7 @@ export interface MentorshipRequest {
 }
 export interface MentorRelationship {
   kind: "RELATIONSHIP";
+  mentorRole?: MentorRole;
   id: string; projectId: string; sourceRequestId: string;
   project?: MentorProjectPreview; mentorUser: MentorshipPerson;
   status: MentorRelationshipStatus; startedAt: string;
@@ -166,10 +187,20 @@ export interface MentorRelationship {
   actions: MentorshipActions; createdAt: string; updatedAt: string;
 }
 export interface AcademicPageMeta { page: number; pageSize: number; total: number; totalPages: number }
+export interface AcademicSupportSearch {
+  q?: string; page?: number; pageSize?: number; institution?: string;
+  area?: string; interest?: string; position?: string;
+  view?: "all" | "incoming" | "outgoing" | "active" | "history";
+}
+export interface MentorSuggestion {
+  id: string; projectId: string; mentorUser: MentorshipPerson; suggestedBy: MentorshipPerson;
+  message: string; status: "PENDING" | "INVITED" | "DISMISSED"; createdAt: string;
+}
 export interface MentorshipCollection {
   requests: MentorshipRequest[]; relationships: MentorRelationship[];
   counts: { pending: number; incoming: number; active: number };
-  policy: { maxActiveMentors: number; maxPendingRequests: number };
+  policy: { maxActiveMentors: number; maxPendingRequests: number; maxPendingPerRole?: number; expiryDays?: number };
+  positions?: MentorPositions;
   requestMeta: AcademicPageMeta; relationshipMeta: AcademicPageMeta;
 }
 export interface AvailableMentor extends MentorshipPerson {
@@ -183,6 +214,8 @@ export interface RequestMentorRelationshipRequest {
   mentorUserId: string;
   message: string;
   idempotencyKey?: string;
+  mentorRole?: MentorRole;
+  attachmentIds?: string[];
 }
 
 export interface RespondMentorRelationshipRequest {

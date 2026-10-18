@@ -369,3 +369,48 @@
   .coord-comment-list > li > div { flex-wrap: wrap; gap: 4px; }
 }
 @media (prefers-reduced-motion: reduce) { .coord-nav-tabs button { transition: none; } }
+
+/* Living plan: a focused document, with detail and discussion opened in context. */
+.living-plan { max-width: 860px; min-width: 0; }
+.living-plan > .coord-heading { align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+.living-plan-status { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin: 18px 0 28px; font-size: 12px; color: hsl(var(--muted-foreground)); }
+.living-plan-document { max-width: 76ch; min-width: 0; }
+.living-plan-document > section, .living-plan-detail-content > section { min-width: 0; margin-bottom: 32px; }
+.living-plan-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.living-plan-section-heading > button { gap: 6px; color: hsl(var(--muted-foreground)); }
+.living-plan-document textarea, .living-plan-document select { display: block; width: 100%; min-width: 0; border: 1px solid hsl(var(--border)); border-radius: 8px; padding: 12px; background: hsl(var(--background)); color: hsl(var(--foreground)); font-size: 14px; line-height: 1.7; }
+.living-plan-document textarea { resize: vertical; }
+.living-plan-document textarea:focus-visible, .living-plan-document select:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
+.living-plan-document label { font-size: 13px; }
+.living-plan-document summary { cursor: pointer; }
+.living-plan-empty { margin: 8px 0 16px; font-size: 14px; line-height: 1.7; color: hsl(var(--muted-foreground)); }
+.living-plan-prose { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; line-height: 1.8; }
+.living-plan-objectives { display: grid; gap: 12px; margin-bottom: 12px; }
+.living-plan-objectives > li { display: grid; grid-template-columns: 18px minmax(0,1fr) auto; align-items: start; gap: 8px; }
+.living-plan-objectives button, .living-plan-question-heading button { width: 30px; height: 36px; }
+.living-plan-question-list { display: grid; gap: 18px; margin-bottom: 14px; }
+.living-plan-question-list > li { min-width: 0; padding-bottom: 18px; border-bottom: 1px solid hsl(var(--border)); scroll-margin-top: 100px; }
+.living-plan-question-list > li > textarea { margin: 6px 0; }
+.living-plan-question-heading { display: flex; align-items: center; justify-content: space-between; }
+.living-plan-question-focus { outline: 2px solid hsl(var(--ring)); outline-offset: 6px; border-radius: 4px; }
+.living-plan-details, .living-plan-sharing, .living-plan-legacy { padding-block: 18px; border-top: 1px solid hsl(var(--border)); }
+.living-plan-details > summary { font-size: 15px; font-weight: 600; }
+.living-plan-detail-content { padding-top: 24px; }
+.living-plan-approach { display: block; max-width: 300px; margin-bottom: 30px; }
+.living-plan-approach select { margin-top: 8px; }
+.living-plan-links { display: flex; flex-wrap: wrap; gap: 12px 22px; margin-top: 26px; padding-block: 18px; border-top: 1px solid hsl(var(--border)); font-size: 13px; color: hsl(var(--primary)); }
+.living-plan-links a:hover { text-decoration: underline; }
+.living-plan-history { min-width: 0; }
+.living-plan-history > ul > li { padding-block: 16px; border-bottom: 1px solid hsl(var(--border)); }
+.living-plan-history small, .living-plan-feedback-list small { color: hsl(var(--muted-foreground)); font-size: 12px; }
+.living-plan-comparison, .living-plan-conflict { display: grid; gap: 16px; margin-block: 18px; padding: 16px; border: 1px solid hsl(var(--border)); border-radius: 8px; }
+.living-plan-comparison pre, .living-plan-conflict pre { white-space: pre-wrap; overflow-wrap: anywhere; font-family: inherit; font-size: 13px; line-height: 1.7; max-height: 300px; overflow: auto; padding: 12px; background: hsl(var(--muted)); border-radius: 6px; }
+.living-plan-feedback-list > li { border-bottom: 1px solid hsl(var(--border)); }
+.living-plan-feedback-list button { display: block; width: 100%; text-align: left; padding-block: 16px; }
+.living-plan-feedback-list p { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; margin-block: 8px; }
+@media (max-width: 540px) {
+  .living-plan-objectives > li { grid-template-columns: 16px minmax(0,1fr); }
+  .living-plan-objectives > li > div { grid-column: 2; justify-self: end; }
+  .living-plan-section-heading h3 { font-size: 16px; }
+  .living-plan-section-heading > button span { display: none; }
+}

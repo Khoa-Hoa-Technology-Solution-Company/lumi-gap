@@ -3,6 +3,7 @@ import type { SaveResearchPlan, SaveWorkspaceTask } from "@trend/shared-types";
 import { getPrisma } from "../../../infrastructure/database/prisma.js";
 import { projectService } from "../project.service.js";
 import { projectPlanService as plans } from "../project-plan.service.js";
+import { projectPlanDraftService } from "../project-plan-draft.service.js";
 import { projectTasksService as tasks } from "../project-tasks.service.js";
 import { projectDiscussionsService as threads } from "../project-discussions.service.js";
 import { projectOverviewService as overview } from "../project-overview.service.js";
@@ -44,6 +45,7 @@ describe.skipIf(!isolated).sequential("workspace collaboration (disposable Postg
   }
   const taskInput = (change: Partial<SaveWorkspaceTask> = {}) => ({ title: "Read the first paper", description: "Compare the method and population", status: "TODO" as const, assigneeId: member, dueAt: null, milestoneId: null, blockedReason: "", link: null, ...change, clientKey: crypto.randomUUID() });
   async function planInput(id: string): Promise<SaveResearchPlan> { const view = await plans.get(id, owner); return { ...view.content, expectedVersion: view.version, changeSummary: "Refine the research direction" }; }
+  async function explicitPlan(id: string) { const view = await plans.get(id, owner); await projectPlanDraftService.snapshot(id, owner, { expectedVersion: view.version, clientKey: crypto.randomUUID(), changeSummary: "Explicit sharing checkpoint" }); return plans.get(id, owner); }
   beforeAll(async () => { owner = await person("owner"); member = await person("member"); outsider = await person("outsider"); mentor = await person("mentor", true); });
   afterAll(async () => {
     await db.notification.deleteMany({ where: { userId: { in: users } } });
@@ -53,11 +55,11 @@ describe.skipIf(!isolated).sequential("workspace collaboration (disposable Postg
     await db.project.deleteMany({ where: { id: { in: projects } } });
     await db.user.deleteMany({ where: { id: { in: users } } });
   });
-  it("opens a factual overview and initial immutable plan with independent stage", async () => {
+  it("opens a factual overview and empty working plan with independent stage", async () => {
     const id = await project(), data = await overview.get(id, member);
     expect(data.project.researchStage).toBe("DISCOVERY"); expect(data.progress).toEqual({ papers: 0, pendingScreening: 0, included: 0, evidence: 0, gaps: 0, questions: 0 });
-    expect(data.attention).toEqual({ overdueTasks: 0, blockedTasks: 0, mentorQuestions: 0, mentorFeedback: 0, reviewResponses: 0 }); expect(data.myTasks).toEqual([]); expect(data.plan.problem).toBe("Private research problem");
-    expect((await plans.revisions(id, owner, page)).items).toHaveLength(1);
+    expect(data.attention).toEqual({ overdueTasks: 0, blockedTasks: 0, mentorQuestions: 0, mentorFeedback: 0, reviewResponses: 0 }); expect(data.myTasks).toEqual([]); expect(data.plan.problem).toBe("");
+    expect((await plans.revisions(id, owner, page)).items).toHaveLength(0);
     await expect(overview.stage(id, member, { stage: "WRITING", expectedVersion: data.project.version })).rejects.toMatchObject({ statusCode: 403 });
     await overview.stage(id, owner, { stage: "WRITING", expectedVersion: data.project.version });
     expect((await db.project.findUniqueOrThrow({ where: { id } })).status).toBe("PLANNING");
@@ -108,9 +110,9 @@ describe.skipIf(!isolated).sequential("workspace collaboration (disposable Postg
     expect(result.filter(row => row.status === "fulfilled")).toHaveLength(1); expect((await plans.revisions(id, member, page)).total).toBe(2);
     await expect(db.planRevision.updateMany({ where: { projectId: id }, data: { changeSummary: "rewrite" } })).rejects.toThrow();
   });
-  it("captures legacy criteria settings in the same plan history", async () => {
+  it("updates canonical criteria and approach without an automatic snapshot", async () => {
     const id = await project(); await projectService.updateProject(id, { inclusionCriteria: ["Adults"], researchApproach: "LITERATURE_REVIEW" }, owner);
-    const current = await plans.get(id, member); expect(current.content.inclusionCriteria).toEqual(["Adults"]); expect(current.content.approach).toBe("LITERATURE_REVIEW"); expect((await plans.revisions(id, owner, page)).total).toBe(2);
+    const current = await plans.get(id, member); expect(current.content.inclusionCriteria).toEqual(["Adults"]); expect(current.content.approach).toBe("LITERATURE_REVIEW"); expect((await plans.revisions(id, owner, page)).total).toBe(0);
   });
   it("creates one task under concurrent retries, assigns current team, persists completion and reopening", async () => {
     const id = await project(), input = taskInput(); const rows = await Promise.all([tasks.save(id, owner, input), tasks.save(id, owner, input)]);
@@ -185,7 +187,7 @@ describe.skipIf(!isolated).sequential("workspace collaboration (disposable Postg
     await expect(gapValidationService.requestValidation(candidate.id, owner)).rejects.toMatchObject({ statusCode: 409 });
   });
   it("rejects cross-project artifact, milestone, task and discussion references", async () => {
-    const a = await project(), b = await project(), otherPlan = await plans.get(b, owner), milestone = await tasks.saveMilestone(b, owner, { title: "Other project", description: "", dueAt: null, status: "PLANNED" });
+    const a = await project(), b = await project(), otherPlan = await explicitPlan(b), milestone = await tasks.saveMilestone(b, owner, { title: "Other project", description: "", dueAt: null, status: "PLANNED" });
     const otherTask = await tasks.save(b, owner, taskInput()); const otherThread = await threads.save(b, owner, { title: "Other thread", body: "Private", category: "GENERAL", link: null, mentorRelationshipId: null, clientKey: crypto.randomUUID(), mentions: [] });
     for (const kind of ["PAPER", "SCREENING", "EVIDENCE", "GAP", "QUESTION", "MANUSCRIPT", "REVIEW_REQUEST", "REPORT"] as const) await expect(tasks.save(a, owner, taskInput({ link: { kind, id: crypto.randomUUID() } }))).rejects.toMatchObject({ statusCode: 400 });
     await expect(tasks.save(a, owner, taskInput({ link: { kind: "PLAN_REVISION", id: otherPlan.currentRevisionId! } }))).rejects.toMatchObject({ statusCode: 400 });
@@ -211,7 +213,7 @@ describe.skipIf(!isolated).sequential("workspace collaboration (disposable Postg
     const id = await project(), task = await tasks.save(id, owner, taskInput());
     await expect(tasks.remove(id, member, task.id, 1)).rejects.toMatchObject({ statusCode: 403 }); await tasks.remove(id, owner, task.id, 1);
     expect((await tasks.list(id, owner, page)).total).toBe(0); expect(await db.projectWorkspaceRevision.count({ where: { entityKind: "TASK", entityId: task.id } })).toBe(2);
-    await expect(tasks.detail(id, member, task.id, page)).rejects.toMatchObject({ statusCode: 404 }); await expect(projectService.deleteProject(id, owner)).rejects.toMatchObject({ statusCode: 409 });
+    expect((await tasks.detail(id, member, task.id, page)).task.deletedAt).toBeTruthy(); await expect(projectService.deleteProject(id, owner)).rejects.toMatchObject({ statusCode: 409 });
   });
   it("stores discussion replies in existing messages and preserves general chat IDs and reads", async () => {
     const id = await project(), general = await db.projectTeamMessage.create({ data: { projectId: id, senderId: owner, content: "Existing general chat" } });
@@ -237,11 +239,11 @@ describe.skipIf(!isolated).sequential("workspace collaboration (disposable Postg
     await expect(db.projectWorkspaceRevision.updateMany({ where: { entityId: decision.id }, data: { version: 10 } })).rejects.toThrow();
   });
   it("pins mentor access to shared revisions and exact approved discussions", async () => {
-    const id = await project(), rel = await relation(id), plan = await plans.get(id, owner);
+    const id = await project(), rel = await relation(id), plan = await explicitPlan(id);
     await expect(plans.get(id, mentor)).rejects.toMatchObject({ statusCode: 404 });
     await expect(plans.share(id, member, { revisionId: plan.currentRevisionId!, relationshipId: rel.id })).rejects.toMatchObject({ statusCode: 403 });
     const share = await plans.share(id, owner, { revisionId: plan.currentRevisionId!, relationshipId: rel.id }); const mentorView = await plans.get(id, mentor); expect(mentorView).toMatchObject({ access: "MENTOR", canEdit: false, canShare: false });
-    await plans.save(id, member, { ...await planInput(id), problem: "New private revision" }); expect((await plans.get(id, mentor)).content.problem).toBe("Private research problem");
+    await plans.save(id, member, { ...await planInput(id), problem: "New private revision" }); expect((await plans.get(id, mentor)).content.problem).toBe("");
     await expect(plans.save(id, mentor, await planInput(id))).rejects.toMatchObject({ statusCode: 404 }); await expect(tasks.list(id, mentor, page)).rejects.toMatchObject({ statusCode: 404 }); await expect(threads.decisions(id, mentor, page)).rejects.toMatchObject({ statusCode: 404 });
     const shared = await threads.save(id, owner, { title: "Mentor question", body: "Please review this approved plan", category: "MENTOR_QUESTION", link: { kind: "PLAN_REVISION", id: plan.currentRevisionId! }, mentorRelationshipId: rel.id, clientKey: crypto.randomUUID(), mentions: [] });
     const notice = await db.notification.findFirstOrThrow({ where: { type: "PROJECT_WORKSPACE_MENTOR_QUESTION", targetUuid: id } });
@@ -261,14 +263,14 @@ describe.skipIf(!isolated).sequential("workspace collaboration (disposable Postg
     expect(await canDeliverWorkspaceNotification(notice)).toBe(false);
   });
   it("denies ended or unverified mentors even when a live grant remains", async () => {
-    const id = await project(), rel = await relation(id), plan = await plans.get(id, owner); await plans.share(id, owner, { revisionId: plan.currentRevisionId!, relationshipId: rel.id });
+    const id = await project(), rel = await relation(id), plan = await explicitPlan(id); await plans.share(id, owner, { revisionId: plan.currentRevisionId!, relationshipId: rel.id });
     expect((await overview.get(id, owner)).mentors).toHaveLength(1);
     await db.academicProfile.update({ where: { userId: mentor }, data: { roleVerificationStatus: "SELF_DECLARED" } }); await expect(plans.get(id, mentor)).rejects.toMatchObject({ statusCode: 404 });
     expect((await overview.get(id, member)).mentors).toEqual([]);
     await db.academicProfile.update({ where: { userId: mentor }, data: { roleVerificationStatus: "VERIFIED" } }); await db.mentorRelationship.update({ where: { id: rel.id }, data: { status: "ENDED", endedAt: new Date() } }); await expect(plans.get(id, mentor)).rejects.toMatchObject({ statusCode: 404 });
   });
   it("keeps old active shares discoverable and revocable beyond one hundred revoked grants", async () => {
-    const id = await project(), rel = await relation(id), plan = await plans.get(id, owner);
+    const id = await project(), rel = await relation(id), plan = await explicitPlan(id);
     const share = await plans.share(id, owner, { revisionId: plan.currentRevisionId!, relationshipId: rel.id });
     await db.planShare.createMany({ data: Array.from({ length: 105 }, () => ({ projectId: id, revisionId: plan.currentRevisionId!, relationshipId: rel.id, sharedById: owner, revokedAt: new Date(), createdAt: new Date(Date.now() + 1000) })) });
     expect((await plans.shares(id, owner)).map(row => row.id)).toContain(share.id);
@@ -277,7 +279,7 @@ describe.skipIf(!isolated).sequential("workspace collaboration (disposable Postg
     await expect(plans.get(id, mentor)).rejects.toMatchObject({ statusCode: 404 });
   });
   it("keeps notifications minimal, suppresses removed members and computes actual attention", async () => {
-    const id = await project(), task = await tasks.save(id, owner, taskInput({ dueAt: new Date(Date.now() - 60000).toISOString(), status: "BLOCKED", blockedReason: "Waiting for a dataset" }));
+    const id = await project(), task = await tasks.save(id, owner, taskInput({ dueAt: new Date(Date.now() - 86400000).toISOString(), status: "BLOCKED", blockedReason: "Waiting for a dataset" }));
     const data = await overview.get(id, member); expect(data.attention).toMatchObject({ overdueTasks: 1, blockedTasks: 1 }); expect(data.myTasks[0]!.id).toBe(task.id);
     const notice = await db.notification.findFirstOrThrow({ where: { eventKey: { startsWith: `WORKSPACE:ASSIGNMENT:${task.id}:` } } }); expect(JSON.stringify(notice)).not.toContain("Private research problem"); expect(JSON.stringify(notice)).not.toContain("Waiting for a dataset"); expect(notice.emailStatus).toBe("SKIPPED");
     expect(await canDeliverWorkspaceNotification(notice)).toBe(true); await projectService.removeMemberFromProject(id, member, owner); expect(await canDeliverWorkspaceNotification(notice)).toBe(false);

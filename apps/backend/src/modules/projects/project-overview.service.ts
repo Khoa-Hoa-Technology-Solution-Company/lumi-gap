@@ -1,13 +1,13 @@
 import type { ResearchStage, WorkspaceLink, WorkspaceOverview, WorkspacePage, WorkspacePerson } from "@trend/shared-types";
-import { withWorkspace, workspacePeople, workspacePerson, workspaceEvent, expectWorkspaceVersion } from "./workspace-access.js";
+import { withWorkspace, workspacePeople, workspacePerson, workspaceEvent, expectWorkspaceVersion, assertWorkspaceLink } from "./workspace-access.js";
 import { planContent } from "./plan-history.js";
-import { workspaceTaskDto } from "./project-tasks.service.js";
+import { taskDtos } from "./project-tasks.service.js";
 import { isVerifiedLecturer } from "./academic-relationship-access.js";
 
 export const projectOverviewService = {
   async get(projectId: string, actorId: string): Promise<WorkspaceOverview> {
     return withWorkspace(projectId, actorId, {}, async context => {
-      const { tx, project } = context, now = new Date();
+      const { tx, project } = context, now = new Date(new Date().toISOString().slice(0, 10));
       const [plan, members, mentorRows, paperCounts, evidence, gaps, overdueTasks, blockedTasks, mentorQuestions, reviewResponses, myTasks, reports, manuscripts, nextMilestone, events, feedback, memberCount] = await Promise.all([
         tx.researchPlan.findUniqueOrThrow({ where: { projectId: project.id } }),
         tx.projectMember.findMany({ where: { projectId: project.id, status: "ACTIVE" }, orderBy: { joinedAt: "asc" }, take: 100 }),
@@ -31,6 +31,11 @@ export const projectOverviewService = {
           ), latest_thread AS (
             SELECT DISTINCT ON (thread_id) thread_id,sender_id FROM project_team_messages
             WHERE project_id=${project.id}::uuid AND thread_id IS NOT NULL AND NOT is_deleted ORDER BY thread_id,created_at DESC,id DESC
+          ), latest_section AS (
+            SELECT d.id,d.target_id,COALESCE(x.sender_id,d.author_id) AS author_id
+            FROM project_discussions d LEFT JOIN latest_thread x ON x.thread_id=d.id
+            WHERE d.project_id=${project.id}::uuid AND d.target_kind='PLAN_REVISION'
+              AND d.context ? 'planSection' AND d.status='OPEN'
           ), awaiting AS (
             SELECT 'plan:'||x.target_id::text AS key FROM latest_plan x
             JOIN plan_shares s ON s.revision_id=x.target_id AND s.revoked_at IS NULL
@@ -40,6 +45,10 @@ export const projectOverviewService = {
             JOIN project_discussions d ON d.id=x.thread_id AND d.status='OPEN'
             JOIN mentor_relationships m ON m.id=d.mentor_relationship_id AND m.mentor_user_id=x.sender_id AND m.status='ACTIVE'
             JOIN plan_shares s ON s.revision_id=d.target_id AND s.relationship_id=m.id AND s.revoked_at IS NULL
+            UNION
+            SELECT 'thread:'||x.id::text AS key FROM latest_section x
+            JOIN mentor_relationships m ON m.project_id=${project.id}::uuid AND m.mentor_user_id=x.author_id AND m.status='ACTIVE'
+            JOIN plan_shares s ON s.revision_id=x.target_id AND s.relationship_id=m.id AND s.revoked_at IS NULL
           ) SELECT count(DISTINCT key) AS n FROM awaiting`,
         tx.projectMember.count({ where: { projectId: project.id, status: "ACTIVE" } }),
       ]);
@@ -58,7 +67,7 @@ export const projectOverviewService = {
         plan: planContent(plan, project),
         progress: { papers: paperCounts.reduce((sum, row) => sum + row._count, 0), pendingScreening: paperCounts.filter(row => row.screeningStatus === "UNDECIDED" || row.screeningStatus === "MAYBE").reduce((sum, row) => sum + row._count, 0), included: paperCounts.find(row => row.screeningStatus === "INCLUDED")?._count ?? 0, evidence: Number(evidence[0]?.n ?? 0), gaps, questions: Array.isArray(plan.questions) ? plan.questions.length : 0 },
         attention: { overdueTasks, blockedTasks, mentorQuestions, mentorFeedback: Number(feedback[0]?.n ?? 0), reviewResponses },
-        myTasks: myTasks.map(row => workspaceTaskDto(row, people)),
+        myTasks: await taskDtos(context, myTasks),
         recentArtifacts: [...reports.map(row => ({ id: row.id, title: row.topic ?? "Research report", kind: "REPORT" as const, updatedAt: row.updatedAt.toISOString() })), ...manuscripts.map(row => ({ id: row.id, title: row.name, kind: "MANUSCRIPT" as const, updatedAt: row.updatedAt.toISOString() }))].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 3),
         nextMilestone: nextMilestone ? { id: nextMilestone.id, title: nextMilestone.title, description: nextMilestone.description, dueAt: nextMilestone.dueAt?.toISOString() ?? null, status: "PLANNED", version: nextMilestone.version } : null,
         activity: events.map(row => ({ id: row.id, type: row.type, actor: row.actorId ? workspacePerson(people, row.actorId) : null, createdAt: row.createdAt.toISOString(), entityKind: row.entityKind, entityId: row.entityId })),
@@ -101,6 +110,9 @@ export const projectOverviewService = {
         case "GAP": return (await tx.researchGap.findMany({ where: { projectId: project.id, title: query }, take: 50, orderBy: { updatedAt: "desc" }, select: { id: true, title: true } })).map(row => ({ kind, id: row.id, label: row.title }));
         case "REPORT": return (await tx.report.findMany({ where: { projectId: project.id, topic: query }, take: 50, orderBy: { updatedAt: "desc" }, select: { id: true, topic: true } })).map(row => ({ kind, id: row.id, label: row.topic ?? "Research report" }));
         case "MANUSCRIPT": return (await tx.draftWorkspace.findMany({ where: { projectId: project.id, name: query }, take: 50, select: { id: true, name: true } })).map(row => ({ kind, id: row.id, label: row.name }));
+        case "MANUSCRIPT_SNAPSHOT": return (await tx.manuscriptSnapshot.findMany({ where: { projectId: project.id, label: query }, take: 50, orderBy: { createdAt: "desc" }, select: { id: true, label: true } })).map(row => ({ ...row, kind }));
+        case "MENTOR_FEEDBACK": return (await tx.projectDiscussion.findMany({ where: { projectId: project.id, title: query, targetKind: { in: ["MANUSCRIPT_SNAPSHOT", "PLAN_REVISION"] }, mentorRelationshipId: { not: null } }, take: 50, orderBy: { createdAt: "desc" }, select: { id: true, title: true } })).map(row => ({ kind, id: row.id, label: row.title }));
+        case "PLAN": { const plan = await tx.researchPlan.findUniqueOrThrow({ where: { projectId: project.id } }); return [{ kind, id: plan.id, label: project.title }]; }
         case "REVIEW_REQUEST": return (await tx.reviewRequest.findMany({ where: { projectId: project.id }, take: 50, orderBy: { createdAt: "desc" }, select: { id: true, status: true } })).map(row => ({ kind, id: row.id, label: row.status }));
         case "PLAN_REVISION": return (await tx.planRevision.findMany({ where: { projectId: project.id }, take: 50, orderBy: { version: "desc" }, select: { id: true, version: true } })).map(row => ({ kind, id: row.id, label: `v${row.version}` }));
         case "QUESTION": {
@@ -109,6 +121,25 @@ export const projectOverviewService = {
           return questions.filter(question => question.text.toLocaleLowerCase().includes(q.toLocaleLowerCase())).map(question => ({ kind, id: question.id, label: question.text }));
         }
       }
+    });
+  },
+  async artifactHref(projectId: string, actorId: string, link: WorkspaceLink) {
+    return withWorkspace(projectId, actorId, {}, async context => {
+      await assertWorkspaceLink(context, link);
+      const base = `/projects/${context.project.id}`;
+      if (link.kind === "MANUSCRIPT_SNAPSHOT") {
+        const snapshot = await context.tx.manuscriptSnapshot.findUniqueOrThrow({ where: { id: link.id } });
+        return { href: `${base}/manuscripts/${snapshot.workspaceId}?snapshot=${snapshot.id}` };
+      }
+      if (link.kind === "MENTOR_FEEDBACK") {
+        const thread = await context.tx.projectDiscussion.findUniqueOrThrow({ where: { id: link.id } });
+        if (thread.targetKind === "MANUSCRIPT_SNAPSHOT") {
+          const snapshot = await context.tx.manuscriptSnapshot.findFirstOrThrow({ where: { id: thread.targetId!, projectId: context.project.id } });
+          return { href: `${base}/manuscripts/${snapshot.workspaceId}?snapshot=${snapshot.id}` };
+        }
+        return { href: `${base}?tab=discussions&thread=${thread.id}` };
+      }
+      return { href: link.kind === "MANUSCRIPT" ? `${base}/manuscripts/${link.id}` : `${base}?tab=plan` };
     });
   },
 };

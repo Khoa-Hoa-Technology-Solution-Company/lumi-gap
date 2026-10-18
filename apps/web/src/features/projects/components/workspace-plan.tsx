@@ -1,94 +1,84 @@
 import { useRef, useState } from "react";
-import type { PlanQuestion, ResearchPlanContent, ResearchPlanView, ResearchApproach, SaveResearchPlan } from "@trend/shared-types";
-import { History, Save, Share2, X } from "lucide-react";
+import { Link, useSearchParams } from "react-router-dom";
+import type { ResearchPlanContent, ResearchPlanView } from "@trend/shared-types";
+import { History, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useI18n } from "@/i18n";
-import { gapsApi } from "@/features/gaps/api/gaps.api";
 import { workspaceApi } from "../api/workspace.api";
-import { useWorkspaceCommand, useWorkspaceOverview, useWorkspaceResource } from "../hooks/use-workspace";
-import { approachLabels, canLeaveWorkspace, useUnsavedWorkspace, useWorkspaceSelection, WorkspaceArtifactLink, WorkspaceArtifactPicker, WorkspaceComments, WorkspaceDate, WorkspaceError, WorkspaceHeading, WorkspaceLoading, WorkspacePager } from "./workspace-common";
+import { useWorkspaceResource } from "../hooks/use-workspace";
+import { planFields, usePlanDraft } from "../hooks/use-plan-draft";
+import { canLeaveWorkspace, projectSectionHref, useUnsavedWorkspace, WorkspaceComments, WorkspaceError, WorkspaceHeading, WorkspaceLoading } from "./workspace-common";
+import { PlanDocument } from "./plan-document";
+import { PlanHistory, PlanSharing } from "./plan-history-panel";
+import "../research-plan.css";
 
-const lines = (value: string) => value.split("\n").map(line => line.trim()).filter(Boolean);
 export function WorkspacePlanPanel({ projectId, mentor = false }: { projectId: string; mentor?: boolean }) {
-  const { t } = useI18n(); const [revision, setRevision] = useWorkspaceSelection("revision"); const [historyOpen, setHistoryOpen] = useState(false);
+  const [params, setParams] = useSearchParams();
+  const revision = params.get("revision");
   const plan = useWorkspaceResource(projectId, "plan", () => workspaceApi.plan(projectId, revision ?? undefined), revision);
   if (plan.isLoading) return <WorkspaceLoading />;
-  if (!plan.data) return <WorkspaceError error={plan.error} retry={() => void plan.refetch()} />;
-  const view = plan.data;
-  return <div className="coord-plan" data-no-i18n><WorkspaceHeading title={t("Research plan")} description={t(mentor ? "Only the plan revision explicitly shared with you is visible here." : "Keep a working draft of the problem, questions and approach. Refine it as you learn.")} action={!mentor && <Button size="sm" variant="outline" onClick={() => setHistoryOpen(!historyOpen)} aria-expanded={historyOpen}><History className="mr-2 h-4 w-4" />{t("Version history")}</Button>} />
-    <div className="coord-version-strip"><span>{t("Version {{version}}", { version: view.version })}</span><span>{t(view.access === "MENTOR" ? "Shared for feedback" : view.canEdit ? "Working draft" : view.archived ? "Archived, read only" : "Historical version")}</span>{revision && !mentor && <Button size="sm" variant="ghost" onClick={() => { if (canLeaveWorkspace()) setRevision(null); }}>{t("Back to current plan")}</Button>}</div>
-    {historyOpen && !mentor && <PlanHistory projectId={projectId} onSelect={id => { if (canLeaveWorkspace()) setRevision(id); }} />}
-    <PlanEditor key={`${projectId}:${revision ?? "current"}`} projectId={projectId} view={view} />
-    {view.canShare && view.currentRevisionId && <PlanSharing projectId={projectId} revisionId={view.currentRevisionId} version={view.version} />}
-    {view.currentRevisionId && <WorkspaceComments key={view.currentRevisionId} projectId={projectId} targetKind="PLAN_REVISION" targetId={view.currentRevisionId} readOnly={view.archived} mentor={view.access === "MENTOR"} />}
+  if (!plan.data || plan.isError) return <WorkspaceError error={plan.error} retry={() => void plan.refetch()} />;
+  return <LivingPlan key={`${projectId}:${revision ?? "draft"}`} projectId={projectId} mentor={mentor} view={plan.data} revision={revision} onRevision={async (id, saved = false) => {
+    if (!saved && !(await canLeaveWorkspace())) return;
+    const next = new URLSearchParams(params); if (id) next.set("revision", id); else next.delete("revision"); setParams(next, { replace: true });
+  }} />;
+}
+
+function LivingPlan({ projectId, mentor, view, revision, onRevision }: { projectId: string; mentor: boolean; view: ResearchPlanView; revision: string | null; onRevision: (id: string | null, saved?: boolean) => void }) {
+  const { t } = useI18n();
+  const state = usePlanDraft(projectId, view);
+  const [historyOpen, setHistoryOpen] = useState(false), [snapshotOpen, setSnapshotOpen] = useState(false), [note, setNote] = useState("");
+  const [snapshotError, setSnapshotError] = useState<unknown>(null), [snapshotBusy, setSnapshotBusy] = useState(false);
+  const snapshotAttempt = useRef<{ expectedVersion: number; clientKey: string; changeSummary: string } | null>(null);
+  useUnsavedWorkspace(Boolean(note.trim()) || snapshotBusy);
+  const snapshotId = revision ?? (mentor ? view.currentRevisionId : null);
+  const currentContent = view.canEdit ? state.draft : view.content;
+  const status = state.saving ? "Saving…" : state.error ? "Could not sync changes" : state.dirty ? "Changes waiting to sync" : view.archived ? "Archived, read only" : "Draft saved";
+  return <div className="coord-plan living-plan" data-no-i18n>
+    <WorkspaceHeading title={t("Research plan")} description={t(mentor ? "Only the plan revision explicitly shared with you is visible here." : "Define the problem, set objectives and refine your research questions.")} />
+    <div className="living-plan-status"><div className="living-plan-save-state"><span role="status" aria-live="polite">{t(snapshotId ? "Immutable version {{version}}" : "Working draft", { version: view.version })}{!snapshotId && <> · {t(status)}</>}</span>{view.canEdit && <small>{t("Changes save automatically. Create a version when ready to share.")}</small>}</div>
+      <div className="living-plan-version-actions">
+      {snapshotId && !mentor && <Button type="button" size="sm" variant="ghost" onClick={() => onRevision(null)}>{t("Back to current plan")}</Button>}
+      {Boolean(state.error) && !state.conflict && view.canEdit && <Button type="button" size="sm" variant="outline" disabled={state.saving} onClick={() => void state.retry()}>{t("Retry sync")}</Button>}
+      {!mentor && <Button type="button" size="sm" variant="ghost" onClick={() => setHistoryOpen(true)}><History size={15} className="mr-2" />{t("Version history")}</Button>}
+      {view.canEdit && <Button type="button" size="sm" variant="outline" disabled={state.saving || !state.valid || Boolean(state.conflict)} onClick={async () => { if (await state.flush()) setSnapshotOpen(true); }}><Plus size={15} className="mr-2" />{t("Create version")}</Button>}
+      </div>
+    </div>
+    {state.recovered && <p role="status" className="mb-4 text-sm text-muted-foreground">{t("Recovered your unsynced draft from the expired session in this tab.")}</p>}
+    {Boolean(state.error) && !state.conflict && view.canEdit && <WorkspaceError error={state.error} />}
+    {!state.valid && view.canEdit && <p role="alert" className="text-sm text-destructive">{t("Use at most 20 items per list, 500 characters per objective or output, and 240 per criterion.")}</p>}
+    {state.conflict && <PlanConflict conflict={state.conflict} draft={state.draft} onResolve={state.reconcile} />}
+    <PlanDocument projectId={projectId} content={currentContent} editable={view.canEdit} revisionId={snapshotId ?? undefined} version={view.canEdit ? state.version : view.version} archived={view.archived} mentor={mentor} field={state.field} />
+    {!mentor && <nav aria-label={t("Related research work")} className="living-plan-links">
+      <Link to={projectSectionHref(projectId, "papers")}>{t("View research literature")}</Link><Link to={projectSectionHref(projectId, "gaps")}>{t("View research gaps")}</Link><Link to={projectSectionHref(projectId, "manuscripts")}>{t("Open research manuscripts")}</Link>
+    </nav>}
+    {snapshotId && view.canShare && <PlanSharing projectId={projectId} revisionId={snapshotId} version={view.version} />}
+    {snapshotId && <details className="living-plan-legacy"><summary>{t("Earlier general version comments")}</summary><WorkspaceComments key={snapshotId} projectId={projectId} targetKind="PLAN_REVISION" targetId={snapshotId} readOnly={view.archived} mentor={mentor} /></details>}
+    <Dialog open={historyOpen} onOpenChange={setHistoryOpen}><DialogContent className="max-w-3xl max-h-[85dvh] overflow-y-auto" closeLabel={t("Close")} data-no-i18n><DialogHeader><DialogTitle>{t("Version history")}</DialogTitle><DialogDescription>{t("Autosaves update the draft. Only created versions appear here.")}</DialogDescription></DialogHeader><PlanHistory projectId={projectId} current={view} onSelect={async id => { if (!(await canLeaveWorkspace())) return; setHistoryOpen(false); onRevision(id, true); }} /></DialogContent></Dialog>
+    <Dialog open={snapshotOpen} onOpenChange={async open => { if (!snapshotBusy && (!note || open || (await canLeaveWorkspace()))) setSnapshotOpen(open); }}><DialogContent closeLabel={t("Close")} data-no-i18n><DialogHeader><DialogTitle>{t("Create version")}</DialogTitle><DialogDescription>{t("Capture the saved plan and its research questions for reference or mentor feedback. This is not academic approval.")}</DialogDescription></DialogHeader>
+      <form className="space-y-4" onSubmit={async event => {
+        event.preventDefault(); if (snapshotBusy) return;
+        setSnapshotBusy(true); setSnapshotError(null);
+        try {
+          if (!snapshotAttempt.current) {
+            if (!await state.flush()) return;
+            snapshotAttempt.current = { expectedVersion: state.current.current.version, clientKey: crypto.randomUUID(), changeSummary: note.trim() };
+          }
+          const result = await workspaceApi.snapshotPlan(projectId, snapshotAttempt.current);
+          snapshotAttempt.current = null; setNote(""); setSnapshotOpen(false); state.invalidate(); onRevision(result.revisionId, true);
+        } catch (failure) { setSnapshotError(failure); const statusCode = (failure as { response?: { status: number } }).response?.status; if (statusCode && statusCode >= 400 && statusCode < 500) snapshotAttempt.current = null; }
+        finally { setSnapshotBusy(false); }
+      }}><label className="block space-y-2 text-sm">{t("Change note, optional")}<textarea className="project-form-textarea" rows={3} maxLength={500} value={note} disabled={snapshotBusy || Boolean(snapshotAttempt.current)} onChange={event => setNote(event.target.value)} placeholder={t("What changed and why?")} /></label>{Boolean(snapshotError) && <WorkspaceError error={snapshotError} />}<Button type="submit" disabled={snapshotBusy}>{t(snapshotBusy ? "Saving…" : "Create version")}</Button></form>
+    </DialogContent></Dialog>
   </div>;
 }
-function PlanEditor({ projectId, view }: { projectId: string; view: ResearchPlanView }) {
-  const { t } = useI18n(); const [content, setContent] = useState<ResearchPlanContent>(view.content); const [summary, setSummary] = useState(""); const [saved, setSaved] = useState(false); const [invalid, setInvalid] = useState(false);
-  const [baseline, setBaseline] = useState(view);
-  const busy = useRef(false); const save = useWorkspaceCommand(projectId, (data: SaveResearchPlan) => workspaceApi.savePlan(projectId, data));
-  const dirty = JSON.stringify(content) !== JSON.stringify(baseline.content);
-  useUnsavedWorkspace(dirty);
-  const field = <K extends keyof ResearchPlanContent>(key: K, value: ResearchPlanContent[K]) => { setSaved(false); setContent(previous => ({ ...previous, [key]: value })); };
-  if (!view.canEdit) return <PlanReader content={view.content} projectId={view.access === "TEAM" ? projectId : undefined} />;
-  return <form className="coord-plan-form" onSubmit={async event => {
-    event.preventDefault(); if (busy.current) return;
-    const normalized = { ...content, objectives: lines(content.objectives.join("\n")), deliverables: lines(content.deliverables.join("\n")), inclusionCriteria: lines(content.inclusionCriteria.join("\n")), exclusionCriteria: lines(content.exclusionCriteria.join("\n")), questions: content.questions.filter(question => question.text.trim()).map(question => ({ ...question, text: question.text.trim() })) };
-    if ([normalized.objectives, normalized.deliverables].some(items => items.length > 20 || items.some(item => item.length > 500)) || [normalized.inclusionCriteria, normalized.exclusionCriteria].some(items => items.length > 20 || items.some(item => item.length > 240))) { setInvalid(true); return; }
-    setInvalid(false); busy.current = true;
-    try { const result = await save.mutateAsync({ ...normalized, expectedVersion: baseline.version, changeSummary: summary }); setContent(normalized); setBaseline({ ...view, content: normalized, version: result.version, currentRevisionId: result.revisionId }); setSaved(true); } catch { /* Preserve the draft after validation or version conflicts. */ } finally { busy.current = false; }
-  }}>
-    {view.version !== baseline.version && <div role="status" className="coord-share-notice"><p>{t("A newer version is available. Your draft has been kept.")}</p><Button type="button" size="sm" variant="outline" onClick={() => { if (!dirty || canLeaveWorkspace()) { setContent(view.content); setBaseline(view); setSaved(false); } }}>{t("Load latest version")}</Button></div>}
-    <fieldset disabled={save.isPending}>
-      <section className="coord-plan-section"><div><h3>{t("Direction")}</h3><p>{t("A partial draft is enough to begin.")}</p></div><div className="coord-field-stack">
-        <label>{t("Research approach")}<select value={content.approach} onChange={e => field("approach", e.target.value as ResearchApproach)}>{Object.entries(approachLabels).map(([key, label]) => <option value={key} key={key}>{t(label)}</option>)}</select></label>
-        <label>{t("Research problem")}<textarea rows={4} maxLength={5000} value={content.problem} onChange={e => field("problem", e.target.value)} placeholder={t("What problem are you investigating, and why does it matter?")} /></label>
-        <label>{t("Objectives")}<textarea rows={3} value={content.objectives.join("\n")} onChange={e => field("objectives", e.target.value.split("\n"))} placeholder={t("One objective per line")} /><small>{t("Up to 20 items, 500 characters each.")}</small></label>
-        <div className="coord-questions"><span className="coord-label">{t("Research questions")}</span>{content.questions.map((question, index) => <div className="coord-question" key={question.id}><div className="coord-question-content"><label><span>{t("Question {{number}}", { number: index + 1 })}</span><textarea rows={2} maxLength={1000} value={question.text} onChange={e => field("questions", content.questions.map(item => item.id === question.id ? { ...item, text: e.target.value } : item))} /></label><QuestionSources projectId={projectId} question={question} onChange={next => field("questions", content.questions.map(item => item.id === question.id ? next : item))} /></div><Button type="button" size="icon" variant="ghost" aria-label={t("Remove question {{number}}", { number: index + 1 })} onClick={() => field("questions", content.questions.filter(item => item.id !== question.id))}><X size={16} /></Button></div>)}<Button size="sm" type="button" variant="outline" disabled={content.questions.length >= 20} onClick={() => field("questions", [...content.questions, { id: crypto.randomUUID(), text: "" }])}>{t("Add research question")}</Button></div>
-        <label>{t("Scope")}<textarea rows={3} maxLength={5000} value={content.scope} onChange={e => field("scope", e.target.value)} placeholder={t("Define the population, context or boundaries of the research.")} /></label>
-      </div></section>
-      <section className="coord-plan-section"><div><h3>{t("Research method")}</h3><p>{t("Changing the approach keeps everything you have written.")}</p></div><div className="coord-field-stack">
-        <label>{t("Methodology")}<textarea rows={5} maxLength={20000} value={content.methodology} onChange={e => field("methodology", e.target.value)} /></label>
-        <details open={content.approach === "LITERATURE_REVIEW" || undefined}><summary>{t("Literature search and study criteria")}</summary><div className="coord-field-stack">
-          <label>{t("Search strategy")}<textarea rows={4} maxLength={5000} value={content.searchStrategy} onChange={e => field("searchStrategy", e.target.value)} placeholder={t("Databases, search terms and discovery strategy")} /></label>
-          <div className="coord-form-pair"><label>{t("Inclusion criteria")}<textarea rows={4} value={content.inclusionCriteria.join("\n")} onChange={e => field("inclusionCriteria", e.target.value.split("\n"))} /><small>{t("One criterion per line, up to 20 items of 240 characters.")}</small></label><label>{t("Exclusion criteria")}<textarea rows={4} value={content.exclusionCriteria.join("\n")} onChange={e => field("exclusionCriteria", e.target.value.split("\n"))} /></label></div>
-        </div></details>
-      </div></section>
-      <section className="coord-plan-section"><div><h3>{t("Expected outputs")}</h3><p>{t("Describe what your team hopes to produce.")}</p></div><label>{t("Deliverables")}<textarea rows={3} value={content.deliverables.join("\n")} onChange={e => field("deliverables", e.target.value.split("\n"))} placeholder={t("One deliverable per line")} /></label></section>
-      <div className="coord-save-area"><label>{t("Revision note, optional")}<input value={summary} maxLength={500} onChange={e => setSummary(e.target.value)} placeholder={t("What changed and why?")} /></label>{save.isError && <WorkspaceError error={save.error} />}
-        {invalid && <p role="alert" className="coord-overdue">{t("Use at most 20 items per list, 500 characters per objective or output, and 240 per criterion.")}</p>}
-        <div className="coord-form-actions"><p role="status">{t(save.isPending ? "Saving…" : dirty ? "Unsaved changes" : saved ? "Research plan saved" : "All changes saved")}</p><Button type="submit" disabled={save.isPending || !dirty}><Save className="mr-2 h-4 w-4" />{t("Save research plan")}</Button></div>
-        <p className="coord-footnote">{t("Saving a plan records a working revision. It is not formal academic approval.")}</p>
-      </div>
-    </fieldset>
-  </form>;
-}
-function QuestionSources({ projectId, question, onChange }: { projectId: string; question: PlanQuestion; onChange: (question: PlanQuestion) => void }) {
-  const { t } = useI18n(); const [open, setOpen] = useState(false);
-  const evidence = useWorkspaceResource(projectId, "question-evidence", () => gapsApi.evidence(question.sourceGapId!), question.sourceGapId, open && Boolean(question.sourceGapId));
-  return <details onToggle={event => setOpen(event.currentTarget.open)}><summary>{t("Question sources, optional")}{question.sourceGapId ? ` · ${t("Source linked")}` : ""}</summary>
-    {open && <><WorkspaceArtifactPicker key={question.sourceGapId ?? "none"} projectId={projectId} value={question.sourceGapId ? { kind: "GAP", id: question.sourceGapId } : null} allowedKinds={["GAP"]} onChange={link => { const { sourceGapId: _gap, evidenceIds: _evidence, ...base } = question; onChange(link ? { ...base, sourceGapId: link.id } : base); }} />
-      {question.sourceGapId && <fieldset className="coord-question-evidence"><legend>{t("Evidence informing this question")}</legend>{evidence.isLoading ? <WorkspaceLoading /> : evidence.isError ? <WorkspaceError error={evidence.error} retry={() => void evidence.refetch()} /> : evidence.data?.length ? evidence.data.map(item => <label key={item.id}><input type="checkbox" checked={question.evidenceIds?.includes(item.id) ?? false} disabled={!question.evidenceIds?.includes(item.id) && (question.evidenceIds?.length ?? 0) >= 30} onChange={event => onChange({ ...question, evidenceIds: event.target.checked ? [...(question.evidenceIds ?? []), item.id] : question.evidenceIds?.filter(id => id !== item.id) })} /><span><strong>{t(item.evidenceKind === "COUNTER" ? "Counterevidence" : "Supporting evidence")}</strong> · {item.paperId?.title}<small>{item.explanation}</small></span></label>) : <p className="coord-muted">{t("No evidence records linked to this gap yet.")}</p>}</fieldset>}
-      <p className="coord-footnote">{t("Linking sources records your reasoning. It does not validate a gap or approve a research question.")}</p></>}
-  </details>;
-}
-function PlanReader({ content, projectId }: { content: ResearchPlanContent; projectId?: string }) {
-  const { t } = useI18n(); const entries: Array<[string, string | string[]]> = [["Research approach", t(approachLabels[content.approach])], ["Research problem", content.problem], ["Objectives", content.objectives], ["Research questions", content.questions.map(item => item.text)], ["Scope", content.scope], ["Methodology", content.methodology], ["Search strategy", content.searchStrategy], ["Inclusion criteria", content.inclusionCriteria], ["Exclusion criteria", content.exclusionCriteria], ["Deliverables", content.deliverables]];
-  return <dl className="coord-plan-reader">{entries.map(([label, value]) => <div key={label}><dt>{t(label)}</dt><dd>{Array.isArray(value) ? value.length ? <ol>{value.map((line, index) => <li key={index}>{line}{label === "Research questions" && projectId && content.questions[index]?.sourceGapId && <WorkspaceArtifactLink projectId={projectId} link={{ kind: "GAP", id: content.questions[index]!.sourceGapId! }} />}</li>)}</ol> : <span className="coord-muted">{t("Not drafted yet")}</span> : value || <span className="coord-muted">{t("Not drafted yet")}</span>}</dd></div>)}</dl>;
-}
-function PlanHistory({ projectId, onSelect }: { projectId: string; onSelect: (revision: string) => void }) {
-  const { t } = useI18n(); const [page, setPage] = useState(1); const history = useWorkspaceResource(projectId, "plan-history", () => workspaceApi.planHistory(projectId, page), page);
-  return <section className="coord-history-panel"><h3>{t("Version history")}</h3>{history.isLoading ? <WorkspaceLoading /> : history.isError ? <WorkspaceError error={history.error} retry={() => void history.refetch()} /> : <ul className="coord-action-list">{history.data?.items.map(item => <li key={item.id}><button type="button" onClick={() => onSelect(item.id)}><span><strong>{t("Version {{version}}", { version: item.version })} · {item.changedBy?.name ?? t("Imported research plan")}</strong><small>{item.changeSummary || t("Working revision")}</small></span><WorkspaceDate value={item.createdAt} /></button></li>)}</ul>}<WorkspacePager data={history.data} page={page} onPage={setPage} /></section>;
-}
-function PlanSharing({ projectId, revisionId, version }: { projectId: string; revisionId: string; version: number }) {
-  const { t } = useI18n(); const overview = useWorkspaceOverview(projectId); const [relationshipId, setRelationshipId] = useState("");
-  const shares = useWorkspaceResource(projectId, "plan-shares", () => workspaceApi.shares(projectId));
-  const share = useWorkspaceCommand(projectId, (relationship: string) => workspaceApi.share(projectId, { revisionId, relationshipId: relationship }));
-  const revoke = useWorkspaceCommand(projectId, (id: string) => workspaceApi.revokeShare(projectId, id));
-  const active = shares.data?.filter(item => !item.revokedAt) ?? [];
-  return <details className="coord-sharing"><summary><Share2 size={16} aria-hidden="true" />{t("Mentor access")}</summary><p>{t("Share this specific revision for feedback. Later edits stay private until you share them.")}</p>
-    {overview.data?.mentors.length ? <form className="coord-share-form" onSubmit={e => { e.preventDefault(); if (relationshipId && !share.isPending) share.mutate(relationshipId); }}><label>{t("Active mentor")}<select value={relationshipId} onChange={e => setRelationshipId(e.target.value)} required><option value="">{t("Choose a mentor")}</option>{overview.data.mentors.map(mentor => <option key={mentor.relationshipId} value={mentor.relationshipId}>{mentor.name}</option>)}</select></label><Button size="sm" disabled={!relationshipId || share.isPending}>{t("Share version {{version}}", { version })}</Button></form> : <p className="coord-muted">{t("Connect an active mentor in Academic Support before sharing a plan.")}</p>}
-    {(share.error || revoke.error || shares.error) && <WorkspaceError error={share.error || revoke.error || shares.error} />}
-    <ul className="coord-share-list">{active.map(item => <li key={item.id}><span>{item.mentor.name} · {t("Version {{version}}", { version: item.version })}</span><Button size="sm" variant="ghost" disabled={revoke.isPending} onClick={() => revoke.mutate(item.id)}>{t("Revoke access")}</Button></li>)}</ul><p className="coord-footnote">{t("Revoking access stops future reads and comments. Existing research history is kept.")}</p>
-  </details>;
+
+function PlanConflict({ conflict, draft, onResolve }: { conflict: { latest: ResearchPlanView; fields: Array<keyof ResearchPlanContent> }; draft: ResearchPlanContent; onResolve: (choices: Partial<Record<keyof ResearchPlanContent, "mine" | "server">>) => void }) {
+  const { t } = useI18n(); const [choices, setChoices] = useState<Partial<Record<keyof ResearchPlanContent, "mine" | "server">>>({});
+  const display = (value: unknown) => typeof value === "string" ? value || t("Not drafted yet") : JSON.stringify(value, null, 2);
+  return <section role="alert" className="living-plan-conflict"><h3>{t("Resolve overlapping changes")}</h3><p>{t("Your draft is kept. Choose which content to use for each conflicting section. Other edits will be merged.")}</p>
+    {conflict.fields.filter(key => planFields.includes(key)).map(key => <fieldset key={key}><legend>{t(key)}</legend><div className="grid gap-3 sm:grid-cols-2">{(["mine", "server"] as const).map(choice => <label key={choice}><span className="flex gap-2"><input type="radio" name={`conflict-${key}`} checked={choices[key] === choice} onChange={() => setChoices({ ...choices, [key]: choice })} />{t(choice === "mine" ? "Use my draft" : "Use saved content")}</span><pre>{display(choice === "mine" ? draft[key] : conflict.latest.content[key])}</pre></label>)}</div></fieldset>)}
+    <Button type="button" size="sm" disabled={conflict.fields.some(key => !choices[key])} onClick={() => onResolve(choices)}>{t("Merge and continue")}</Button>
+  </section>;
 }

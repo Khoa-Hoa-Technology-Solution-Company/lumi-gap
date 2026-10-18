@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { MANUSCRIPT_TYPES, MANUSCRIPT_TEMPLATES } from "@trend/shared-types";
-export const manuscriptParams = z.object({ projectId: z.string().uuid(), id: z.string().uuid().optional(), fileId: z.string().uuid().optional(), snapshotId: z.string().uuid().optional() });
+import { databaseIdSchema } from "../../../common/validation/database-id.js";
+export const manuscriptParams = z.object({ projectId: databaseIdSchema, id: z.string().uuid().optional(), fileId: z.string().uuid().optional(), snapshotId: z.string().uuid().optional() });
 export const createManuscriptSchema = z.object({ title: z.string().trim().min(2).max(160), description: z.string().trim().max(2000).default(""), documentType: z.enum(MANUSCRIPT_TYPES), template: z.enum(MANUSCRIPT_TEMPLATES), clientKey: z.string().uuid(), researchLink: z.object({ kind: z.enum(["QUESTION", "GAP"]), id: z.string().uuid() }).nullable().optional() }).strict();
 export const createFileSchema = z.object({ path: z.string().min(1).max(240), kind: z.enum(["TEXT", "FOLDER"]), content: z.string().max(500000).default(""), clientKey: z.string().uuid() }).strict();
 export const changeFileSchema = z.object({ expectedVersion: z.number().int().positive(), path: z.string().min(1).max(240).optional(), delete: z.literal(true).optional(), main: z.literal(true).optional() }).strict().refine(value => [value.path, value.delete, value.main].filter(v => v !== undefined).length === 1, "Choose exactly one file operation");

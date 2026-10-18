@@ -13,7 +13,7 @@ export function ResearchGapDrawer({ gap: initialGap, projectId, open, onClose }:
   const { t } = useI18n();
   const packet = useResearchResource(projectId, ["gap", initialGap.id], () => researchApi.gap(projectId, initialGap.id), open);
   const gap: ResearchGapItem = packet.data ? { ...initialGap, ...packet.data.gap, scope: packet.data.gap.scope ?? undefined, validationStatus: packet.data.gap.validationStatus as ResearchGapItem["validationStatus"], origin: packet.data.gap.origin as ResearchGapItem["origin"] } : initialGap;
-  const close = () => { if (canLeaveWorkspace()) onClose(); };
+  const close = async () => { if ((await canLeaveWorkspace())) onClose(); };
   return <Dialog.Root open={open} onOpenChange={value => { if (!value) close(); }}><Dialog.Portal>
     <Dialog.Overlay className="fixed inset-0 z-50 bg-black/35" />
     <Dialog.Content className="fixed inset-y-0 right-0 z-50 w-full max-w-2xl overflow-y-auto border-l bg-white px-5 py-6 sm:px-8" data-no-i18n>

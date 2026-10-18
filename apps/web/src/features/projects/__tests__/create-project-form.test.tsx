@@ -69,6 +69,8 @@ it("recovers the same request after a lost response and a form remount", async (
 it("supports searchable custom areas and enforces a maximum of three", async () => {
   mocks.create.mockResolvedValue({ _id: "areas" }); await render();
   await fill("#project-create-title", "Three areas");
+  expect(document.querySelector('[role="listbox"]')).toBeNull();
+  await act(async () => document.querySelector<HTMLInputElement>('[role="combobox"]')!.focus());
   for (const area of ["Education", "Medicine", "Biology"]) {
     const suggestion = [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === area)!;
     await act(async () => suggestion.click());

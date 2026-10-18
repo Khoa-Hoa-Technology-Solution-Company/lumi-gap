@@ -101,6 +101,9 @@ export class ProjectController {
   }
 
   async getProjectById(req: Request, res: Response) {
+    // Visibility may be revoked at any moment; neither shared caches nor browser caches may reuse this DTO.
+    res.setHeader("Cache-Control", "private, no-store");
+    res.vary("Authorization");
     const project = req.user
       ? await projectService.getProjectById(req.params.id as string, req.user.sub)
       : await projectService.getPublicProjectById(req.params.id as string);

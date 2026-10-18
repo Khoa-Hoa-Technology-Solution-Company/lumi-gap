@@ -1,3 +1,4 @@
+import { confirmAction } from "@/services/confirmation";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "@/services/api-client";
@@ -90,7 +91,7 @@ export function MyPapersPage({ isEmbedded = false }: { isEmbedded?: boolean } = 
   }, []);
 
   const handleDelete = async (paperId: string) => {
-    if (!confirm("Are you sure you want to withdraw this submission?")) return;
+    if (!(await confirmAction({ kind: "withdraw", description: "Are you sure you want to withdraw this submission?" }))) return;
     setCancelling(paperId);
     try {
       await api.delete(`/papers/${paperId}`);

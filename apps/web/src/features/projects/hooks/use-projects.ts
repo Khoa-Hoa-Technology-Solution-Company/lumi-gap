@@ -45,7 +45,8 @@ export function useUpdateProject(id: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: UpdateProjectRequest) => projectsApi.update(id, data),
-    onSuccess: () => {
+    onSuccess: (project) => {
+      queryClient.setQueryData(["project", id], project);
       queryClient.invalidateQueries({ queryKey: ["project", id] });
       queryClient.invalidateQueries({ queryKey: ["projects"] });
     },

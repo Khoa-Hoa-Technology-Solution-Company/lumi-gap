@@ -223,9 +223,9 @@ export function MainLayout() {
 
   return (
     <div
-      className={cn("lumi-app-shell flex min-h-screen flex-col", isForumSurface ? "bg-background" : "bg-slate-50 dark:bg-[#09090b]", isHomeSurface && "home-app-shell", isProjectsSurface && "projects-app-shell")}
+      className={cn("lumi-app-shell flex min-h-screen flex-col", isForumSurface ? "forum-app-shell bg-background" : "bg-slate-50 dark:bg-[#09090b]", isHomeSurface && "home-app-shell", isProjectsSurface && "projects-app-shell")}
     >
-      <header className="lumi-app-header sticky z-50 h-[var(--app-header-height)] shrink-0">
+      <header className={cn("lumi-app-header sticky z-50 h-[var(--app-header-height)] shrink-0", isForumSurface && "forum-app-header")}>
         <div className="lumi-app-nav-inner mx-auto grid h-full w-full min-w-0 grid-cols-[minmax(0,auto)_1fr_auto] items-center gap-1 sm:gap-4">
           <Link to="/" className="forum-app-brand flex h-full min-w-0 shrink select-none items-center">
             <img

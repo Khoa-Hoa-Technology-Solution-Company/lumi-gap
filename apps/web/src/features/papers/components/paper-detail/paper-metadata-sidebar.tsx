@@ -1,3 +1,4 @@
+import { confirmAction } from "@/services/confirmation";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
@@ -305,7 +306,7 @@ function CommunityRatingsCard({
   };
 
   const handleDeleteReview = async (ratingId: string) => {
-    if (!confirm("Delete your review?")) return;
+    if (!(await confirmAction({ kind: "delete", description: "Delete your review?" }))) return;
 
     setDeletingReviewId(ratingId);
     try {

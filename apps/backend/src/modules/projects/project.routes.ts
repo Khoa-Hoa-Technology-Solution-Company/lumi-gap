@@ -26,6 +26,7 @@ import { projectResearchRouter } from "./project-research.routes.js";
 import { createRateLimiter } from "../../common/middleware/rate-limit.js";
 import { env } from "../../config/env.js";
 import { projectMentorshipService } from "./project-mentorship.service.js";
+import { mentorshipContentRouter } from "./mentorship-content.routes.js";
 import {
   contributionProposalParamsSchema,
   projectContributionController,
@@ -33,7 +34,7 @@ import {
   resolveContributionSchema,
 } from "./project-contribution.controller.js";
 import {
-  mentorshipParamsSchema, academicSearchSchema, mentorshipOfferSchema,
+  mentorshipParamsSchema, academicSearchSchema, mentorshipOfferSchema, suggestMentorSchema,
   projectMentorshipController,
   requestMentorshipSchema,
   respondMentorshipSchema,
@@ -73,6 +74,7 @@ projectRouter.get("/academic-support/mine", requireAuth, requireResearchWorkflow
 projectRouter.get("/academic-support/opportunities", requireAuth, requireResearchWorkflow, validate(academicSearchSchema, "query"), async (req, res) => {
   res.json({ success: true, data: await projectMentorshipService.discovery(req.user!.sub, academicSearchSchema.parse(req.query)) });
 });
+projectRouter.use("/academic-support/content", mentorshipContentRouter);
 projectRouter.get("/:id", optionalAuth, validate(paramIdSchema, "params"), projectController.getProjectById);
 projectRouter.use(requireAuth, requireResearchWorkflow);
 
@@ -91,11 +93,20 @@ projectRouter.post("/:id/leave", validate(paramIdSchema, "params"), projectContr
 projectRouter.post("/:id/transfer-ownership", validate(paramIdSchema, "params"), validate(transferOwnershipSchema, "body"), projectController.transferOwnership);
 projectRouter.get("/:id/activity", validate(paramIdSchema, "params"), validate(activityQuerySchema, "query"), projectController.listActivity);
 
-projectRouter.get("/:id/mentorships", validate(paramIdSchema, "params"), projectMentorshipController.list);
+projectRouter.get("/:id/mentorships", validate(paramIdSchema, "params"), validate(academicSearchSchema, "query"), projectMentorshipController.list);
+projectRouter.get("/:id/mentor-suggestions", validate(paramIdSchema, "params"), validate(academicSearchSchema, "query"), async (req, res) => {
+  res.json({ success: true, data: await projectMentorshipService.suggestions(String(req.params.id), req.user!.sub, academicSearchSchema.parse(req.query)) });
+});
+projectRouter.post("/:id/mentor-suggestions", academicRequestLimiter, validate(paramIdSchema, "params"), validate(suggestMentorSchema), async (req, res) => {
+  res.status(201).json({ success: true, data: await projectMentorshipService.suggest(String(req.params.id), req.user!.sub, req.body) });
+});
+projectRouter.post("/:id/mentor-suggestions/:suggestionId/dismiss", validate(paramIdSchema.extend({ suggestionId: z.string().uuid() }), "params"), validate(z.object({}).strict()), async (req, res) => {
+  res.json({ success: true, data: await projectMentorshipService.dismissSuggestion(String(req.params.id), String(req.params.suggestionId), req.user!.sub) });
+});
 projectRouter.get("/:id/available-mentors", validate(paramIdSchema, "params"), validate(academicSearchSchema, "query"), async (req, res) => {
   res.json({ success: true, data: await projectMentorshipService.mentors(String(req.params.id), req.user!.sub, academicSearchSchema.parse(req.query)) });
 });
-const discoverySchema = z.object({ discovery: z.enum(["CLOSED", "SEEKING_MENTOR"]), summary: z.string().trim().max(2000), expertise: z.array(z.string().trim().min(1).max(120)).max(10) }).strict().refine(v => v.discovery === "CLOSED" || v.summary.length >= 10, "Add a safe summary before opening discovery");
+const discoverySchema = z.object({ discovery: z.enum(["CLOSED", "SEEKING_MENTOR"]), summary: z.string().trim().max(2000), expertise: z.array(z.string().trim().min(1).max(120)).max(10), researchAreas: z.array(z.string().trim().min(1).max(120)).max(10).optional(), mentoringNeeds: z.string().trim().max(2000).optional(), expectedVersion: z.number().int().positive().optional() }).strict().refine(v => v.discovery === "CLOSED" || v.summary.length >= 10, "Add a safe summary before opening discovery");
 projectRouter.get("/:id/academic-support", validate(paramIdSchema, "params"), validate(contextQuerySchema, "query"), async (req, res) => { res.json({ success: true, data: await projectMentorshipService.workspace(String(req.params.id), req.user!.sub, undefined, contextQuerySchema.parse(req.query)) }); });
 projectRouter.post("/:id/academic-support/guidance", academicRequestLimiter, validate(paramIdSchema, "params"), validate(z.object({ note: z.string().trim().min(1).max(2000) }).strict()), async (req, res) => { res.status(201).json({ success: true, data: await projectMentorshipService.workspace(String(req.params.id), req.user!.sub, req.body.note) }); });
 projectRouter.get("/:id/mentorship-discovery", validate(paramIdSchema, "params"), async (req, res) => { res.json({ success: true, data: await projectMentorshipService.settings(String(req.params.id), req.user!.sub) }); });

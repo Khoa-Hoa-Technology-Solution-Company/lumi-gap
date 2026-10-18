@@ -22,6 +22,7 @@
     "db:migrate:deploy": "prisma migrate deploy --config prisma7.config.ts",
     "db:migrate:status": "prisma migrate status --config prisma7.config.ts",
     "db:seed": "tsx prisma/seed.ts",
+    "db:seed:mentorship": "tsx prisma/seed-mentorship.ts",
     "db:studio": "prisma studio --config prisma7.config.ts",
     "env:validate:production": "tsx scripts/validate-production-env.ts",
     "auth:keys:generate": "tsx scripts/generate-jwt-keys.ts",
