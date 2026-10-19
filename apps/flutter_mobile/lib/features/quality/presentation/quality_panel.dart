@@ -54,9 +54,9 @@ class _QualityPanelState extends ConsumerState<QualityPanel> {
                 Wrap(
                   spacing: 8,
                   children: [
-                    Chip(label: Text('Overall ${view.evaluation!.overall.toStringAsFixed(1)}')),
-                    Chip(label: Text('Relevant ${view.evaluation!.relevance.toStringAsFixed(1)}')),
-                    Chip(label: Text('Grounded ${view.evaluation!.groundedness.toStringAsFixed(1)}')),
+                    Chip(label: Text('Overall ${view.evaluation!.overall?.toStringAsFixed(1) ?? 'Insufficient evidence'}')),
+                    Chip(label: Text('Relevant ${view.evaluation!.relevance?.toStringAsFixed(1) ?? 'Insufficient evidence'}')),
+                    Chip(label: Text('Grounded ${view.evaluation!.groundedness?.toStringAsFixed(1) ?? 'Insufficient evidence'}')),
                   ],
                 ),
                 Text(view.evaluation!.rationale),

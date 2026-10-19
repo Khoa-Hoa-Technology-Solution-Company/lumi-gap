@@ -17,6 +17,7 @@ export * from "./analytics.js";
 export * from "./gaps.js";
 export * from "./gap-closure.js";
 export * from "./quality.js";
+export * from "./quality-rubric.js";
 export * from "./admin.js";
 export * from "./project.js";
 export * from "./project-workspace.js";

@@ -482,13 +482,15 @@ model QualityEvaluation {
   paperId       String?  @map("paper_id") @db.Uuid
   reportId      String?  @map("report_id") @db.Uuid
   gapId         String?  @map("gap_id") @db.Uuid
-  relevance     Int
-  groundedness  Int
-  completeness  Int
-  overall       Int
+  relevance     Int?
+  groundedness  Int?
+  completeness  Int?
+  overall       Float?
   rationale     String   @default("")
   model         String   @default("")
   promptVersion String   @default("") @map("prompt_version")
+  assessment    Json?    @db.JsonB
+  inputFingerprint String? @map("input_fingerprint") @db.VarChar(64)
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 

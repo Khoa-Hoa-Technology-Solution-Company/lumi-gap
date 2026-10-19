@@ -10,6 +10,11 @@ vi.mock("../../../infrastructure/queue.js", () => ({ embeddingQueue: { add: vi.f
 
 const LIST_DEFAULTS: CommunityListQuery = { page: 1, pageSize: 50, sort: "recent", scope: "all" };
 
+async function removeCreatedPaper(paperId: string) {
+  // Prisma omits undefined filters, so an uncreated fixture must skip deletion.
+  if (paperId) await getPrisma().paper.deleteMany({ where: { id: paperId } });
+}
+
 describe.sequential("research community lifecycle, permissions and counters", () => {
   const marker = crypto.randomUUID().slice(0, 8);
   const ids = { admin: "", lecturer: "", unverified: "", student: "", member: "", outsider: "" };
@@ -42,13 +47,28 @@ describe.sequential("research community lifecycle, permissions and counters", ()
   afterAll(async () => {
     const prisma = getPrisma();
     const userIds = [...Object.values(ids), ...extraUserIds].filter(Boolean);
-    await prisma.paper.deleteMany({ where: { id: researchIds.paper || undefined } });
+    await removeCreatedPaper(researchIds.paper);
     await prisma.researchGap.deleteMany({ where: { id: { in: [researchIds.gap, researchIds.privateGap].filter(Boolean) } } });
     await prisma.notification.deleteMany({ where: { OR: [{ userId: { in: userIds } }, { targetUuid: { in: communityIds } }] } });
     await prisma.communityMembership.deleteMany({ where: { communityId: { in: communityIds } } });
     await prisma.community.deleteMany({ where: { id: { in: communityIds } } });
     await prisma.academicProfile.deleteMany({ where: { userId: { in: userIds } } });
     await prisma.user.deleteMany({ where: { id: { in: userIds } } });
+  });
+
+  it("limits paper cleanup to an explicitly created fixture", async () => {
+    const prisma = getPrisma();
+    const paperIds = [crypto.randomUUID(), crypto.randomUUID()];
+    await prisma.paper.createMany({ data: paperIds.map((id) => ({ id, title: `Cleanup safety ${id}`, publicationYear: 2026, primaryProvider: "user" })) });
+    try {
+      await removeCreatedPaper("");
+      expect(await prisma.paper.count({ where: { id: { in: paperIds } } })).toBe(2);
+      await removeCreatedPaper(paperIds[0]!);
+      expect(await prisma.paper.findUnique({ where: { id: paperIds[0]! } })).toBeNull();
+      expect(await prisma.paper.findUnique({ where: { id: paperIds[1]! } })).not.toBeNull();
+    } finally {
+      await prisma.paper.deleteMany({ where: { id: { in: paperIds } } });
+    }
   });
 
   it("only admins and verified lecturers may create; proposals wait for approval", async () => {

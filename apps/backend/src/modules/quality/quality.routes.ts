@@ -4,7 +4,7 @@ import { env } from "../../config/env.js";
 import { requireAuth, requireRole } from "../../common/middleware/auth.js";
 import { validate } from "../../common/middleware/validate.js";
 import { qualityController } from "./quality.controller.js";
-import { EvaluateSchema, RateSchema, TargetParamsSchema } from "./dto/quality.schema.js";
+import { EvaluateSchema, RateSchema, TargetParamsSchema, EvaluationJobParamsSchema } from "./dto/quality.schema.js";
 
 /**
  * Quality & Feedback routes. All require auth. `/evaluate` fires a Gemini
@@ -44,6 +44,7 @@ qualityRouter.use(requireAuth);
 
 qualityRouter.get("/agreement", requireRole("admin"), qualityController.agreement);
 qualityRouter.post("/evaluate", evalLimiter, validate(EvaluateSchema), qualityController.evaluate);
+qualityRouter.get("/evaluation-jobs/:jobId", validate(EvaluationJobParamsSchema, "params"), qualityController.evaluationJob);
 qualityRouter.post("/rate", rateLimiter, validate(RateSchema), qualityController.rate);
 qualityRouter.get("/:targetKind/:targetId", validate(TargetParamsSchema, "params"), qualityController.view);
 qualityRouter.delete("/rate/:ratingId", qualityController.deleteRate);

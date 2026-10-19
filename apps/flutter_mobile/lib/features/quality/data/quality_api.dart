@@ -59,18 +59,18 @@ class QualityEvaluation {
 
   factory QualityEvaluation.fromJson(Map<String, dynamic> json) {
     return QualityEvaluation(
-      relevance: (json['relevance'] as num?)?.toDouble() ?? 0,
-      groundedness: (json['groundedness'] as num?)?.toDouble() ?? 0,
-      completeness: (json['completeness'] as num?)?.toDouble() ?? 0,
-      overall: (json['overall'] as num?)?.toDouble() ?? 0,
+      relevance: (json['relevance'] as num?)?.toDouble(),
+      groundedness: (json['groundedness'] as num?)?.toDouble(),
+      completeness: (json['completeness'] as num?)?.toDouble(),
+      overall: (json['overall'] as num?)?.toDouble(),
       rationale: (json['rationale'] ?? '').toString(),
     );
   }
 
-  final double relevance;
-  final double groundedness;
-  final double completeness;
-  final double overall;
+  final double? relevance;
+  final double? groundedness;
+  final double? completeness;
+  final double? overall;
   final String rationale;
 }
 
@@ -103,8 +103,19 @@ class QualityApi {
     return QualityView.fromJson((res.data?['data'] as Map<String, dynamic>?) ?? {});
   }
 
-  Future<void> evaluate(String kind, String id) {
-    return _dio.post<void>(ApiRoutes.qualityEvaluate, data: {'targetKind': kind, 'targetId': id});
+  Future<void> evaluate(String kind, String id) async {
+    final response = await _dio.post<Map<String, dynamic>>(ApiRoutes.qualityEvaluate, data: {'targetKind': kind, 'targetId': id, 'force': true});
+    var task = response.data?['data'] as Map<String, dynamic>? ?? {};
+    for (var attempt = 0; attempt < 120; attempt++) {
+      if (task['status'] == 'completed') return;
+      if (task['status'] == 'failed') throw StateError(task['error']?.toString() ?? 'AI evaluation failed. Please try again.');
+      final jobId = task['jobId']?.toString();
+      if (jobId == null || jobId.isEmpty) throw StateError('Missing AI evaluation task. Please try again.');
+      await Future<void>.delayed(const Duration(seconds: 2));
+      final progress = await _dio.get<Map<String, dynamic>>(ApiRoutes.qualityEvaluationJob(jobId));
+      task = progress.data?['data'] as Map<String, dynamic>? ?? {};
+    }
+    throw StateError('The assessment is still running. Reopen this item later to view the result.');
   }
 
   Future<void> rate(String kind, String id, int stars, String? comment) {

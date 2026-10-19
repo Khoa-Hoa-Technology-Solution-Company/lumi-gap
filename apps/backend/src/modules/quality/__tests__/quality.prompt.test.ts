@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildPaperJudgePrompt } from "../quality.prompt.js";
+import { buildPaperJudgePrompt, buildQualityJudgeInput } from "../quality.prompt.js";
 
 describe("buildPaperJudgePrompt", () => {
   it("includes the title and abstract and asks for JSON only", () => {
@@ -14,7 +14,8 @@ describe("buildPaperJudgePrompt", () => {
 
   it("truncates a very long abstract to bound tokens", () => {
     const long = "lorem ".repeat(2000); // ~12k chars
-    const p = buildPaperJudgePrompt({ title: "T", abstractText: long });
-    expect(p.length).toBeLessThan(long.length);
+    const input = buildQualityJudgeInput({ kind: "paper", title: "T", content: long });
+    expect(input.sources.find((item) => item.id === "target")).toMatchObject({ charactersRead: 6000, truncated: true });
+    expect(input.sources.find((item) => item.id === "target")?.text).toHaveLength(6000);
   });
 });

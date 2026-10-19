@@ -24,9 +24,11 @@ import { projectMemberTranslations } from "./project-members";
 import { projectWorkspaceVi } from "./project-workspace";
 import { trendEvidenceViStrings } from "./trend-evidence";
 import { trendVerdictViStrings } from "./trend-verdict";
+import { qualityEvaluationVi } from "./quality-evaluation";
 
 export const vi: Record<keyof typeof en, string> = {
   ...en,
+  ...qualityEvaluationVi,
   ...manuscriptsVi,
   ...researchWorkflowVi,
   ...contributionsVi,

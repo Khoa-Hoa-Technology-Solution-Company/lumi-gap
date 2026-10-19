@@ -10,6 +10,7 @@ import { completeAiRun, failAiRun, markAiRunStarted, type AiJobType } from "../m
 import { getLlmProvider } from "../modules/llm/llm.factory.js";
 import { withUserAi } from "../modules/user-ai/user-ai.runtime.js";
 import { AI_PRE_REVIEW_JOB, aiPreReviewJobId, submissionService, type AiPreReviewJob } from "../modules/submissions/submission.service.js";
+import { QUALITY_EVALUATION_JOB, qualityJobs, type QualityEvaluationPayload } from "../modules/quality/quality.jobs.js";
 
 enforcePostgresOnlyRuntime();
 
@@ -115,6 +116,8 @@ async function main() {
     QUEUE_NAMES.aiJobs,
     async (job) => job.name === AI_PRE_REVIEW_JOB
       ? submissionService.processAiPreReview(job.data as AiPreReviewJob)
+      : job.name === QUALITY_EVALUATION_JOB
+      ? qualityJobs.process(job.data as QualityEvaluationPayload)
       : processAiRun(job.data as AiJobPayload),
     { connection: makeConnection(), concurrency: 2 },
   );

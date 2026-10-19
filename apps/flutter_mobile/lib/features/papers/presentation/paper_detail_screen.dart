@@ -1011,17 +1011,17 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
                         children: [
                           _QualityBadge(
                             label: 'Overall',
-                            score: view.evaluation?.overall ?? 0.0,
+                            score: view.evaluation?.overall,
                           ),
                           const SizedBox(width: 6),
                           _QualityBadge(
                             label: 'Relevance',
-                            score: view.evaluation?.relevance ?? 0.0,
+                            score: view.evaluation?.relevance,
                           ),
                           const SizedBox(width: 6),
                           _QualityBadge(
                             label: 'Groundedness',
-                            score: view.evaluation?.groundedness ?? 0.0,
+                            score: view.evaluation?.groundedness,
                           ),
                         ],
                       ),
@@ -1251,7 +1251,7 @@ class _QualityBadge extends StatelessWidget {
   const _QualityBadge({required this.label, required this.score});
 
   final String label;
-  final double score;
+  final double? score;
 
   @override
   Widget build(BuildContext context) {
@@ -1275,7 +1275,7 @@ class _QualityBadge extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Text(
-              score.toStringAsFixed(1),
+              score?.toStringAsFixed(1) ?? 'Insufficient evidence',
               style: TextStyle(
                 color: Theme.of(context).textTheme.bodyMedium?.color,
                 fontSize: 18,

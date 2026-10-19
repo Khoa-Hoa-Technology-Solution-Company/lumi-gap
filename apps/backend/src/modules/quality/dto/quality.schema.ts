@@ -8,6 +8,7 @@ export const EvaluateSchema = z.object({
   targetKind: TargetKind,
   targetId: ObjectId,
   force: z.boolean().optional(),
+  language: z.enum(["en", "vi"]).optional(),
 });
 export type EvaluateInput = z.infer<typeof EvaluateSchema>;
 
@@ -24,3 +25,5 @@ export const TargetParamsSchema = z.object({
   targetId: ObjectId,
 });
 export type TargetParamsInput = z.infer<typeof TargetParamsSchema>;
+
+export const EvaluationJobParamsSchema = z.object({ jobId: z.string().regex(/^quality-[a-f0-9]{40}$/) });
