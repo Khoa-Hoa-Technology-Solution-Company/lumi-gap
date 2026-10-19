@@ -12,7 +12,7 @@ import { reviewRequestService } from "../../reviews/review-request.service.js";
 import { reviewService } from "../../reviews/review.service.js";
 
 vi.mock("../../../infrastructure/queue.js", () => ({ notificationQueue: { add: vi.fn().mockResolvedValue({}) } }));
-const isolated = process.env.PROJECT_SLICE_TEST === "1" && process.env.DATABASE_URL?.includes("127.0.0.1:15439/lumigap_project_slice_test") && process.env.REDIS_URL === "redis://127.0.0.1:16389";
+const isolated = (process.env.NODE_ENV === "test" && process.env.MANUSCRIPT_COMPILER_INTEGRATION === "1" && /^postgres(?:ql)?:\/\/[^/]+@(127\.0\.0\.1|localhost):[0-9]+\/codex_mentorship_[a-f0-9]{12}_test(?:\?|$)/.test(process.env.DATABASE_URL ?? "")) || process.env.PROJECT_SLICE_TEST === "1" && process.env.DATABASE_URL?.includes("127.0.0.1:15439/lumigap_project_slice_test") && process.env.REDIS_URL === "redis://127.0.0.1:16389";
 describe.skipIf(!isolated).sequential("manuscripts in disposable PostgreSQL", () => {
   const db = getPrisma(); let owner: string, member: string, outsider: string, mentor: string, reviewer: string;
   async function actor(name: string, lecturer = false) {
@@ -103,7 +103,7 @@ describe.skipIf(!isolated).sequential("manuscripts in disposable PostgreSQL", ()
     const restored = await writing.restore(d.project, owner, d.id, snap.id, { title: "Restored v1", clientKey: crypto.randomUUID() });
     expect(restored.id).not.toBe(d.id); expect(sourceText(Buffer.from((await writing.fileContent(d.project, owner, restored.id, restored.mainFileId!)).state!, "base64"))).toBe(strFromU8(zip["main.tex"]!));
     await expect(writing.asset(d.project, member, d.id, { path: "evil.png", data: Buffer.from("<svg><script>alert(1)</script></svg>").toString("base64") })).rejects.toMatchObject({ statusCode: 400 });
-    expect(await writing.compile(d.project, member, d.id, snap.id)).toMatchObject({ status: "BLOCKED", diagnostics: "COMPILER_ISOLATION_REQUIRED" });
+    await expect(writing.compile(d.project, member, d.id, snap.id)).rejects.toMatchObject({ statusCode: 503 });
   });
   it("scopes mentor feedback to shared immutable versions and preserves replies after v2", async () => {
     const d = await draft(), req = await db.mentorshipRequest.create({ data: { projectId: d.project, mentorUserId: mentor, requestedBy: owner, direction: "PROJECT_TO_LECTURER", status: "ACCEPTED", expiresAt: new Date(Date.now() + 86400000) } });

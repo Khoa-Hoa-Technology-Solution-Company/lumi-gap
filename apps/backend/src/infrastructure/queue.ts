@@ -32,7 +32,12 @@ export const QUEUE_NAMES = {
   notifications: "notifications",
   aiJobs: "ai-jobs",
   communitySummary: "community-summary",
+  manuscriptCompile: "manuscript-compile",
 } as const;
+
+export const manuscriptCompileQueue = new Queue(QUEUE_NAMES.manuscriptCompile, {
+  connection: makeConnection(), defaultJobOptions,
+});
 
 export const apiSyncQueue = new Queue(QUEUE_NAMES.apiSync, {
   connection: makeConnection(),

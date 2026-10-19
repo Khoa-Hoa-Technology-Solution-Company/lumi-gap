@@ -24,6 +24,7 @@ const EnvSchema = z.object({
   MIGRATION_BATCH_SIZE: z.coerce.number().int().min(10).max(5000).default(500),
 
   REDIS_URL: z.string().url().or(z.string().startsWith("redis")),
+  MANUSCRIPT_COMPILER_URL: optionalEnvUrl,
 
   // Binary storage. local keeps the existing development behavior; r2 stores
   // PDFs/images in Cloudflare R2 via the S3-compatible API; cloudinary stores

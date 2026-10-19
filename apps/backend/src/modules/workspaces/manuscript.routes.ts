@@ -11,22 +11,27 @@ import { AppError } from "../../common/exceptions/app-error.js";
 import { tokenService } from "../auth/token.service.js";
 import { manuscriptService } from "./manuscript.service.js";
 import { sourceText } from "./manuscript-source.js";
-import { manuscriptParams, createManuscriptSchema, createFileSchema, changeFileSchema, snapshotSchema, commentSchema, snapshotQuery, restoreSchema } from "./dto/manuscript.schema.js";
+import { manuscriptParams, createManuscriptSchema, createFileSchema, changeFileSchema, snapshotSchema, commentSchema, snapshotQuery, restoreSchema, compileSchema } from "./dto/manuscript.schema.js";
 
 export const manuscriptRouter: Router = Router({ mergeParams: true });
 manuscriptRouter.use(requireAuth, requireResearchWorkflow, validate(manuscriptParams, "params"));
 manuscriptRouter.use((_req, res, next) => { res.setHeader("Cache-Control", "private, no-store"); next(); });
 const writes = createRateLimiter("manuscripts:writes", { windowMs: 60000, max: 90 });
 const uploads = createRateLimiter("manuscripts:uploads", { windowMs: 60000, max: 10 });
+const compiles = createRateLimiter("manuscripts:compiles", { windowMs: 60000, max: 10 });
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5_000_000, files: 1, fields: 3, fieldSize: 300 } });
-// Resolve public legacy IDs before signing collaboration tickets or emitting room events.
+// Resolve public project and account IDs before persistence or collaboration tickets.
 // Services still authorize the actor and scope every manuscript operation to this project.
 const ids = async (req: { params: Record<string, unknown>; user?: { sub: string } }) => {
   const parsed = parseDatabaseId(String(req.params.projectId));
   if (!parsed) throw AppError.badRequest("Invalid identifier");
   const project = parsed.kind === "uuid" ? parsed.value : (await getPrisma().project.findUnique({ where: { legacyMongoId: parsed.value }, select: { id: true } }))?.id;
   if (!project) throw AppError.notFound("Project not found");
-  return { project, actor: req.user!.sub, id: String(req.params.id) };
+  const account = parseDatabaseId(req.user!.sub);
+  if (!account) throw AppError.unauthorized("Invalid account identifier");
+  const actor = account.kind === "uuid" ? account.value : (await getPrisma().user.findUnique({ where: { legacyMongoId: account.value }, select: { id: true } }))?.id;
+  if (!actor) throw AppError.unauthorized("Account not found");
+  return { project, actor, id: String(req.params.id) };
 };
 manuscriptRouter.get("/", async (req, res) => { const a = await ids(req); res.json({ success: true, data: await manuscriptService.list(a.project, a.actor) }); });
 manuscriptRouter.post("/", writes, validate(createManuscriptSchema), async (req, res) => { const a = await ids(req); res.status(201).json({ success: true, data: await manuscriptService.create(a.project, a.actor, req.body) }); });
@@ -49,7 +54,9 @@ manuscriptRouter.post("/:id/snapshots", writes, validate(snapshotSchema), async 
 manuscriptRouter.get("/:id/snapshots/:snapshotId", validate(manuscriptParams, "params"), async (req, res) => { const a = await ids(req); res.setHeader("Cache-Control", "no-store"); res.json({ success: true, data: await manuscriptService.viewSnapshot(a.project, a.actor, a.id, String(req.params.snapshotId)) }); });
 manuscriptRouter.post("/:id/snapshots/:snapshotId/restore", writes, validate(manuscriptParams, "params"), validate(restoreSchema), async (req, res) => { const a = await ids(req); res.status(201).json({ success: true, data: await manuscriptService.restore(a.project, a.actor, a.id, String(req.params.snapshotId), req.body) }); });
 manuscriptRouter.post("/:id/snapshots/:snapshotId/publish", writes, validate(manuscriptParams, "params"), validate(z.object({ authorIds: z.array(z.string().uuid()).min(1).max(200) }).strict()), async (req, res) => { const a = await ids(req); res.json({ success: true, data: await manuscriptService.publish(a.project, a.actor, a.id, String(req.params.snapshotId), req.body.authorIds) }); });
-manuscriptRouter.post("/:id/snapshots/:snapshotId/compile", writes, validate(manuscriptParams, "params"), async (req, res) => { const a = await ids(req); res.json({ success: true, data: await manuscriptService.compile(a.project, a.actor, a.id, String(req.params.snapshotId)) }); });
+manuscriptRouter.post("/:id/snapshots/:snapshotId/compile", compiles, validate(manuscriptParams, "params"), validate(compileSchema), async (req, res) => { const a = await ids(req); res.status(202).json({ success: true, data: await manuscriptService.compile(a.project, a.actor, a.id, String(req.params.snapshotId), req.body.engine) }); });
+manuscriptRouter.get("/:id/compilations", validate(snapshotQuery, "query"), async (req, res) => { const a = await ids(req); res.json({ success: true, data: await manuscriptService.compilations(a.project, a.actor, a.id, req.query.snapshotId as string | undefined) }); });
+manuscriptRouter.get("/:id/compilations/:compilationId/pdf", validate(manuscriptParams, "params"), async (req, res) => { const a = await ids(req); const bytes = await manuscriptService.compilationPdf(a.project, a.actor, a.id, String(req.params.compilationId)); res.set({ "Content-Type": "application/pdf", "Content-Disposition": 'inline; filename="manuscript.pdf"', "X-Content-Type-Options": "nosniff", "Content-Security-Policy": "sandbox" }).send(Buffer.from(bytes)); });
 manuscriptRouter.get("/:id/export", validate(snapshotQuery, "query"), async (req, res) => { const a = await ids(req); const zip = await manuscriptService.export(a.project, a.actor, a.id, req.query.snapshotId as string | undefined); res.set({ "Cache-Control": "private, no-store", "Content-Type": "application/zip", "Content-Disposition": 'attachment; filename="manuscript-source.zip"' }).send(Buffer.from(zip)); });
 manuscriptRouter.get("/:id/comments", validate(snapshotQuery, "query"), async (req, res) => { const a = await ids(req); res.json({ success: true, data: await manuscriptService.comments(a.project, a.actor, a.id, req.query.snapshotId as string | undefined) }); });
 manuscriptRouter.post("/:id/comments", writes, validate(commentSchema), async (req, res) => { const a = await ids(req); res.status(201).json({ success: true, data: await manuscriptService.comment(a.project, a.actor, a.id, req.body) }); });
