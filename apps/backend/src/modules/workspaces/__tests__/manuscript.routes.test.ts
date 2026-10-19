@@ -5,11 +5,11 @@ import { once } from "node:events";
 import { ZodError } from "zod";
 import { AppError } from "../../../common/exceptions/app-error.js";
 
-const mocks = vi.hoisted(() => ({ project: vi.fn(), list: vi.fn(), create: vi.fn(), detail: vi.fn(), fileContent: vi.fn(), ticket: vi.fn() }));
-vi.mock("../../../common/middleware/auth.js", () => ({ requireAuth: (req: any, _res: any, next: () => void) => { req.user = { sub: "20000000-0000-4000-8000-000000000001", sessionId: "30000000-0000-4000-8000-000000000001" }; next(); } }));
+const mocks = vi.hoisted(() => ({ actor: "20000000-0000-4000-8000-000000000001", user: vi.fn(), project: vi.fn(), list: vi.fn(), create: vi.fn(), detail: vi.fn(), fileContent: vi.fn(), ticket: vi.fn() }));
+vi.mock("../../../common/middleware/auth.js", () => ({ requireAuth: (req: any, _res: any, next: () => void) => { req.user = { sub: mocks.actor, sessionId: "30000000-0000-4000-8000-000000000001" }; next(); } }));
 vi.mock("../../authorization/authorization.middleware.js", () => ({ requireResearchWorkflow: (_req: any, _res: any, next: () => void) => next() }));
 vi.mock("../../../common/middleware/rate-limit.js", () => ({ createRateLimiter: () => (_req: any, _res: any, next: () => void) => next() }));
-vi.mock("../../../infrastructure/database/prisma.js", () => ({ getPrisma: () => ({ project: { findUnique: mocks.project } }) }));
+vi.mock("../../../infrastructure/database/prisma.js", () => ({ getPrisma: () => ({ project: { findUnique: mocks.project }, user: { findUnique: mocks.user } }) }));
 vi.mock("../manuscript.service.js", () => ({ manuscriptService: mocks }));
 vi.mock("../../auth/token.service.js", () => ({ tokenService: { signPurposeToken: mocks.ticket } }));
 import { manuscriptRouter } from "../manuscript.routes.js";
@@ -28,6 +28,8 @@ describe("manuscript HTTP project identifiers", () => {
   afterAll(async () => { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); });
   beforeEach(() => {
     vi.resetAllMocks();
+    mocks.actor = actor;
+    mocks.user.mockResolvedValue({ id: actor });
     mocks.project.mockResolvedValue({ id: canonical });
     mocks.list.mockResolvedValue([]);
     mocks.create.mockResolvedValue({ id: manuscript });
@@ -36,6 +38,23 @@ describe("manuscript HTTP project identifiers", () => {
     mocks.ticket.mockReturnValue("signed-ticket");
   });
   const call = (project: string, path = "", body?: unknown) => fetch(`${origin}/projects/${project}/manuscripts${path}`, { method: body ? "POST" : "GET", headers: body ? { "Content-Type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined });
+  it.each(["6ab2458390fdee5fbb8e4d93", "6AB2458390FDEE5FBB8E4D93"])("resolves migrated account %s for creation and collaboration", async legacyActor => {
+    mocks.actor = legacyActor;
+    const body = { title: "Collaborative research", documentType: "RESEARCH_PAPER", template: "ARTICLE", clientKey: crypto.randomUUID() };
+    expect((await call(legacy, "", body)).status).toBe(201);
+    expect(mocks.user).toHaveBeenCalledWith({ where: { legacyMongoId: legacyActor.toLowerCase() }, select: { id: true } });
+    expect(mocks.create).toHaveBeenCalledWith(canonical, actor, expect.objectContaining({ title: body.title }));
+    expect((await call(legacy, `/${manuscript}`)).status).toBe(200);
+    expect(mocks.detail).toHaveBeenCalledWith(canonical, actor, manuscript);
+    expect((await call(legacy, `/${manuscript}/files/${file}/ticket`, {})).status).toBe(200);
+    expect(mocks.ticket).toHaveBeenCalledWith(expect.objectContaining({ actorId: actor, projectId: canonical }), "manuscript-room", "5m");
+  });
+  it("rejects an unresolved account without invoking manuscript services", async () => {
+    mocks.actor = "6ab2458390fdee5fbb8e4d93";
+    mocks.user.mockResolvedValue(null);
+    expect((await call(legacy, "", { title: "Research", documentType: "RESEARCH_PAPER", template: "ARTICLE", clientKey: crypto.randomUUID() })).status).toBe(401);
+    expect(mocks.create).not.toHaveBeenCalled();
+  });
   it.each([legacy, legacy.toUpperCase(), canonical])("lists and creates through public project ID %s", async project => {
     expect((await call(project)).status).toBe(200);
     expect(mocks.list).toHaveBeenCalledWith(canonical, actor);

@@ -15,6 +15,7 @@ export class ManuscriptProvider {
   readonly doc = new Y.Doc();
   readonly awareness = new Awareness(this.doc);
   readonly text = this.doc.getText("source");
+  readonly undoManager = new Y.UndoManager(this.text, { trackedOrigins: new Set() });
   readonly clientSessionId = crypto.randomUUID();
   private socket: WebSocket | null = null;
   private queue: Pending[] = [];
@@ -112,6 +113,6 @@ export class ManuscriptProvider {
     });
   }
   destroy() {
-    if (this.stopped) return; this.stopped = true; this.controller.abort(); clearTimeout(this.retry); clearTimeout(this.renewal); this.socket?.close(); this.unsubscribeAuth(); this.doc.off("update", this.onUpdate); this.awareness.off("update", this.onAwareness); this.awareness.destroy(); this.doc.destroy(); this.listeners.clear();
+    if (this.stopped) return; this.stopped = true; this.controller.abort(); clearTimeout(this.retry); clearTimeout(this.renewal); this.socket?.close(); this.unsubscribeAuth(); this.doc.off("update", this.onUpdate); this.awareness.off("update", this.onAwareness); this.undoManager.destroy(); this.awareness.destroy(); this.doc.destroy(); this.listeners.clear();
   }
 }
