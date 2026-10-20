@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { QUALITY_TIERS, getQualityTier, calculatePaperQuality } from "../paper-quality.js";
+import { QUALITY_TIERS, QUALITY_RAW_MAX, getQualityTier, calculatePaperQuality } from "../paper-quality.js";
 
 describe("QUALITY_TIERS reward ladder", () => {
   // Guards the configured reward ladder, including 150 credits for High Value PDFs.
@@ -114,5 +114,56 @@ describe("getQualityTier", () => {
 
     expect(calculatePaperQuality(basePaper).sourceScore).toBe(0);
     expect(calculatePaperQuality({ ...basePaper, pdfPath: "r2://papers/paper.pdf" }).sourceScore).toBe(2);
+  });
+});
+
+describe("calculatePaperQuality scale", () => {
+  const fullPaper = {
+    title: "A benchmark for retrieval",
+    authors: [{ displayName: "A" }],
+    publicationYear: 2024,
+    abstractText: "We release a benchmark dataset and code for retrieval evaluation in classrooms. ".repeat(3),
+    keywords: [{ keywordName: "retrieval" }],
+    topics: [{
+      openalexTopicId: "T1",
+      topicName: "Information retrieval",
+      isPrimary: true,
+      subfieldName: "Information Systems",
+      fieldName: "Computer Science",
+      domainName: "Physical Sciences",
+    }],
+    doi: "10.1234/bench",
+    paperKind: "article",
+  };
+
+  it("normalizes the raw component sum (max 95) to 0..100 so Elite is reachable", () => {
+    const q = calculatePaperQuality(fullPaper);
+    const raw = q.metadataScore + q.sourceScore + q.duplicateScore + q.relevanceScore + q.prestigeScore + q.utilityScore;
+    expect(raw).toBe(QUALITY_RAW_MAX);
+    expect(q.qualityScore).toBe(100);
+    expect(q.qualityTierName).toBe("Elite");
+  });
+
+  it("keeps a duplicate with no metadata in the Invalid tier", () => {
+    const q = calculatePaperQuality({ isDuplicate: true });
+    expect(q.qualityScore).toBe(Math.round((3 / QUALITY_RAW_MAX) * 100));
+    expect(q.qualityTier).toBe(0);
+  });
+
+  it("does not treat decode/encoded as released code", () => {
+    const q = calculatePaperQuality({
+      abstractText: "The encoder decodes encoded signals into short summaries for readers.",
+    });
+    expect(q.utilityScore).toBe(3);
+  });
+
+  it("still credits whole-word code, datasets and benchmarks", () => {
+    for (const abstractText of ["Our code is public.", "Two datasets are released.", "A new benchmark."]) {
+      expect(calculatePaperQuality({ abstractText }).utilityScore).toBe(15);
+    }
+  });
+
+  it("credits method words by prefix", () => {
+    expect(calculatePaperQuality({ abstractText: "An experimental methodology." }).utilityScore).toBe(12);
   });
 });
