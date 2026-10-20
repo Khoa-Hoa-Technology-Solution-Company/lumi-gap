@@ -319,6 +319,16 @@ describe("sortGapRows", () => {
     expect(ids(sortGapRows([unscored, scored], "recommended", 5))).toEqual(["scored", "unscored"]);
   });
 
+  it("ranks a gap with counter-evidence (confirmed or possible) after gaps without", () => {
+    const contested = row("contested", { evidenceConfidence: 0.7, counterCount: 1 });
+    const clean = row("clean", { evidenceConfidence: 0.3, counterCount: 0 });
+    expect(ids(sortGapRows([contested, clean], "recommended", 5))).toEqual(["clean", "contested"]);
+    // The evidence sort groups by evidence status first; within one status the contested gap comes last.
+    const contestedWeak = row("contested-weak", { evidenceConfidence: 0.3, counterCount: 2 });
+    const cleanWeak = row("clean-weak", { evidenceConfidence: 0.2, counterCount: 0 });
+    expect(ids(sortGapRows([contestedWeak, cleanWeak], "evidence", 5))).toEqual(["clean-weak", "contested-weak"]);
+  });
+
   it("puts confirmed evidence first for the evidence sort", () => {
     expect(ids(sortGapRows(rows, "evidence", 5))).toEqual(["confirmed", "confident", "newest", "ai-only"]);
   });

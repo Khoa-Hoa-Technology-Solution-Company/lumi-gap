@@ -17,6 +17,7 @@ import { LlmContentError } from "../llm/gemini.client.js";
 import { cachedGenerateJSON } from "../llm/llm.run.js";
 import { retrieve } from "../retrieval/retriever.js";
 import { Prisma } from "../../generated/prisma/client.js";
+import { vectorParameter } from "../../infrastructure/database/postgres-paper-search.js";
 import { computeGapEvidence, parentGrowth, resolveProbeYears, type YearRange } from "./gap-evidence.js";
 import { buildProbeTsQuery, verifyProbe } from "./gap-probe-query.js";
 import { countOpenAlexIntersection } from "./gap-global-evidence.js";
@@ -24,6 +25,9 @@ import { fillMissingYears, truncateToCompleteYears } from "../trends/trend.formu
 import { buildDirectionsPrompt, buildDirectionsEvidenceHash, sanitizeDirections, DIRECTIONS_PROMPT_VERSION, DIRECTIONS_SYSTEM_PROMPT, type DirectionsRaw } from "./gaps-directions.js";
 import { buildGapsCacheKey, buildGapsPrompt, GAP_PROMPT_VERSION, GAPS_SYSTEM_PROMPT, type GapEvidencePaper, type GapsLlmOutput } from "./gaps.prompt.js";
 import type { AnalyzeGapDto, ListGapsQuery, PatchGapDto, PreviewGapEvidenceDto } from "./dto/gaps.schema.js";
+import { selectByMmr } from "./gap-mmr.js";
+import { expandTopicQueries, fuseByRrf } from "./gap-query-expansion.js";
+import { findPossibleCounterPapers, loadPaperEmbeddings } from "./gap-vector-queries.js";
 import { gapRankingScore, sortGapRows, toGapClosureSummary, toGapListItem, type GapListDoc } from "./gap-presenter.js";
 import { projectService } from "../projects/project.service.js";
 import { notificationService } from "../notifications/notification.service.js";
@@ -59,28 +63,49 @@ async function resolveGap(value: string) { return getPrisma().researchGap.findFi
 
 interface ProbeScope { paperIds?: string[]; yearFrom?: number; yearTo?: number }
 
-/** Every phrase must match title/abstract word-wise (see gap-probe-query.ts). Null when a phrase has no searchable words. */
-function probeMatchSql(phrases: string[], scope: ProbeScope) {
-  const queries = phrases.map(buildProbeTsQuery); if (queries.some((query) => query === null)) return null;
-  const conditions = [Prisma.sql`"data_status" = 'active'`, ...queries.map((query) => Prisma.sql`"search_document" @@ to_tsquery('simple', ${query})`)];
+/** A probe topic, with its embedding when semantic matching is on (GAP_PROBE_SEMANTIC_MIN_SIMILARITY > 0). */
+interface ProbePhrase { phrase: string; vector?: number[] }
+
+/**
+ * Every phrase must match: its words in title/abstract (see gap-probe-query.ts) OR, with a vector, a paper embedding at
+ * least GAP_PROBE_SEMANTIC_MIN_SIMILARITY close to it, so synonyms count too. Null when a phrase cannot match at all.
+ */
+function phraseMatchSql({ phrase, vector }: ProbePhrase) {
+  const query = buildProbeTsQuery(phrase);
+  const lexical = query === null ? null : Prisma.sql`"search_document" @@ to_tsquery('simple', ${query})`;
+  if (!vector) return lexical;
+  const semantic = Prisma.sql`("embedding" IS NOT NULL AND 1 - ("embedding" <=> ${vectorParameter(vector)}::vector) >= ${env.GAP_PROBE_SEMANTIC_MIN_SIMILARITY})`;
+  return lexical ? Prisma.sql`(${lexical} OR ${semantic})` : semantic;
+}
+
+function probeMatchSql(phrases: ProbePhrase[], scope: ProbeScope) {
+  const matches = phrases.map(phraseMatchSql); if (matches.some((match) => match === null)) return null;
+  const conditions = [Prisma.sql`"data_status" = 'active'`, ...(matches as Prisma.Sql[])];
   if (scope.paperIds) conditions.push(Prisma.sql`"id" = ANY(${scope.paperIds}::uuid[])`);
   if (scope.yearFrom !== undefined) conditions.push(Prisma.sql`"publication_year" >= ${scope.yearFrom}`);
   if (scope.yearTo !== undefined) conditions.push(Prisma.sql`"publication_year" <= ${scope.yearTo}`);
   return Prisma.join(conditions, " AND ");
 }
 
-async function countProbeMatches(phrases: string[], scope: ProbeScope) {
+async function countProbeMatches(phrases: ProbePhrase[], scope: ProbeScope) {
   const where = probeMatchSql(phrases, scope); if (!where) return 0;
   const [row] = await getPrisma().$queryRaw<Array<{ count: number }>>(Prisma.sql`SELECT count(*)::int AS count FROM "papers" WHERE ${where}`);
   return row?.count ?? 0;
 }
 
-async function conceptGrowth(phrase: string, scope: ProbeScope) {
+async function conceptGrowth(phrase: ProbePhrase, scope: ProbeScope) {
   const now = new Date().getFullYear(), yearTo = scope.yearTo ?? now, yearFrom = scope.yearFrom ?? yearTo - GAP_WINDOW_YEARS;
   const where = probeMatchSql([phrase], { paperIds: scope.paperIds, yearFrom, yearTo }); if (!where) return parentGrowth([], env.GAP_PARENT_RISING_MIN);
   const rows = await getPrisma().$queryRaw<Array<{ year: number; count: number }>>(Prisma.sql`SELECT "publication_year" AS year, count(*)::int AS count FROM "papers" WHERE ${where} GROUP BY "publication_year" ORDER BY "publication_year"`);
   const series = fillMissingYears(rows, yearFrom, yearTo);
   return parentGrowth(truncateToCompleteYears(series, Math.min(yearTo, now - 1)), env.GAP_PARENT_RISING_MIN);
+}
+
+/** Embeddings of a probe's two topics for semantic matching; none when it is off or embedding fails (keyword-only). */
+async function embedProbe(probe: GapProbe | undefined): Promise<{ a?: number[]; b?: number[] }> {
+  if (!(env.GAP_PROBE_SEMANTIC_MIN_SIMILARITY > 0) || !probe?.topicA || !probe?.topicB) return {};
+  try { const [a, b] = await getEmbeddingProvider().embedBatch([probe.topicA, probe.topicB]); return { a, b }; }
+  catch (error) { logger.warn({ err: error, probe }, "probe embedding failed; counting probe words only"); return {}; }
 }
 
 /** Title + abstract of each paper: the text a probe topic has to appear in. */
@@ -94,31 +119,51 @@ function groundProbe(probe: GapProbe | undefined, texts: string[], context: { ti
 }
 
 /**
+ * Possible counter-evidence for each gap text: corpus papers whose embedding is close to the gap itself (see
+ * findPossibleCounterPapers). Best-effort: no embedding, no search; the gaps are still saved.
+ */
+async function searchPossibleCounters(texts: string[], excludeIds: string[], context: { analysisId?: string; reportId?: string }): Promise<string[][]> {
+  if (!env.GAP_COUNTER_PER_GAP || !texts.length) return texts.map(() => []);
+  try {
+    const vectors = await getEmbeddingProvider().embedBatch(texts);
+    return await Promise.all(vectors.map(async (vector) => (await findPossibleCounterPapers(vector, excludeIds)).map((row) => row.paperId)));
+  } catch (error) {
+    logger.warn({ err: error, ...context }, "possible counter-evidence search unavailable; saving gaps without it");
+    return texts.map(() => []);
+  }
+}
+
+const gapText = (gap: { title?: unknown; description?: unknown }) => [gap.title, gap.description].map((part) => String(part ?? "")).join("\n").trim();
+
+/**
  * Counts one probe and computes the under-explored ranking signal (not proof that a gap is open; see gap-closure-protocol.md).
  * userYears is the window the user chose for the analysis/report; it narrows whatever window the LLM put in the probe.
  * paperIds are already-resolved internal ids of a project scope (undefined = whole corpus).
  * scopeSize returns N, the active papers of a scope; it is asked for the same window the counts use, so E = nA * nB / N
  * compares like with like. probeCount is k, the probes tested together (Bonferroni).
  */
-async function scoreGapEvidence(probe: GapProbe | undefined, paperIds: string[] | undefined, userYears: YearRange, scopeSize: (scope: ProbeScope) => Promise<number>, probeCount: number) {
+async function scoreGapEvidence(probe: GapProbe | undefined, paperIds: string[] | undefined, userYears: YearRange, scopeSize: (scope: ProbeScope) => Promise<number>, probeCount: number, vectors: { a?: number[]; b?: number[] } = {}) {
   if (!probe?.topicA || !probe?.topicB) return null;
+  const topicA: ProbePhrase = { phrase: probe.topicA, vector: vectors.a }, topicB: ProbePhrase = { phrase: probe.topicB, vector: vectors.b };
   const years = resolveProbeYears(userYears, probe); if (years.conflict) logger.warn({ userYears, probeYears: { yearFrom: probe.yearFrom, yearTo: probe.yearTo } }, "probe year window does not overlap the chosen window; using the chosen window");
   const scope: ProbeScope = { paperIds, yearFrom: years.yearFrom, yearTo: years.yearTo };
   // OpenAlex covers the whole literature, so it is asked once per probe (corpus scope only), never per project scope.
   const [evidenceScopeSize, intersectionCount, aCount, bCount, growthA, growthB, globalEvidence] = await Promise.all([
     scopeSize(scope),
-    countProbeMatches([probe.topicA, probe.topicB], scope),
-    countProbeMatches([probe.topicA], scope),
-    countProbeMatches([probe.topicB], scope),
-    conceptGrowth(probe.topicA, scope),
-    conceptGrowth(probe.topicB, scope),
+    countProbeMatches([topicA, topicB], scope),
+    countProbeMatches([topicA], scope),
+    countProbeMatches([topicB], scope),
+    conceptGrowth(topicA, scope),
+    conceptGrowth(topicB, scope),
     paperIds ? null : countOpenAlexIntersection(probe.topicA, probe.topicB, years),
   ]);
   const chosen = growthA.growthRatePct >= growthB.growthRatePct ? { topic: probe.topicA, growth: growthA } : { topic: probe.topicB, growth: growthB };
   const parentTrend = { topic: chosen.topic, growthRatePct: chosen.growth.growthRatePct, cagrPct: chosen.growth.cagrPct, slope: chosen.growth.slope };
   // Parent growth is context only (parentTrend); it no longer decides the signal.
   const evidence = computeGapEvidence({ evidenceScopeSize, intersectionCount, parentCounts: { a: aCount, b: bCount }, probeCount, globalEvidence }, { minParentPapers: env.GAP_MIN_PARENT_PAPERS, maxRatio: env.GAP_UNDEREXPLORED_MAX_RATIO, alpha: env.GAP_UNDEREXPLORED_ALPHA });
-  return { ...evidence, evidenceScopeSize, probe, parentTrend, globalEvidence };
+  // Record the threshold with the probe, so a reader knows the counts include semantic matches.
+  const recordedProbe: GapProbe = vectors.a && vectors.b ? { ...probe, semanticMinSimilarity: env.GAP_PROBE_SEMANTIC_MIN_SIMILARITY } : probe;
+  return { ...evidence, evidenceScopeSize, probe: recordedProbe, parentTrend, globalEvidence };
 }
 
 /** k for the Bonferroni correction: how many of a run's gaps carry a scorable probe. Count after grounding, so dropped probes do not tighten the test. */
@@ -148,9 +193,10 @@ async function createGapScopeScorer(years: YearRange, projectPaperIds: string[] 
     return size;
   };
   return async (probe: GapProbe | undefined) => {
-    const corpus = await scoreGapEvidence(probe, undefined, years, scopeSize, probeCount); if (!corpus) return null;
+    const vectors = await embedProbe(probe); // once per probe, shared by both scopes
+    const corpus = await scoreGapEvidence(probe, undefined, years, scopeSize, probeCount, vectors); if (!corpus) return null;
     let projectEvidence: GapProjectEvidence | undefined;
-    if (projectIds) { const inProject = await scoreGapEvidence(probe, projectIds, years, scopeSize, probeCount); if (inProject) projectEvidence = { intersectionCount: inProject.intersectionCount, parentCounts: inProject.parentCounts, scopePaperCount: inProject.evidenceScopeSize, evidenceConfidence: inProject.evidenceConfidence }; }
+    if (projectIds) { const inProject = await scoreGapEvidence(probe, projectIds, years, scopeSize, probeCount, vectors); if (inProject) projectEvidence = { intersectionCount: inProject.intersectionCount, parentCounts: inProject.parentCounts, scopePaperCount: inProject.evidenceScopeSize, evidenceConfidence: inProject.evidenceConfidence }; }
     return { ...corpus, projectEvidence };
   };
 }
@@ -228,7 +274,9 @@ export const gapsService = {
     const paperRows = await getPrisma().paper.findMany({ where: { OR: papers.map((paper) => idWhere(paper.id)) }, select: { id: true, legacyMongoId: true } });
     const paperMap = new Map<string, string>();
     for (const row of paperRows) { paperMap.set(publicDatabaseId(row), row.id); paperMap.set(row.id, row.id); }
-    const prepared = await Promise.all(grounded.map(async ({ gap, probe }) => ({ gap, evidence: await scoreScopes(probe) })));
+    // Search the corpus with each gap's own text for papers that may already answer it; the LLM only saw the pack.
+    const possibleCounters = await searchPossibleCounters(grounded.map(({ gap }) => gapText(gap)), [...new Set(paperMap.values())], { analysisId: analysis.id });
+    const prepared = await Promise.all(grounded.map(async ({ gap, probe }, index) => ({ gap, evidence: await scoreScopes(probe), possibleCounterIds: possibleCounters[index] ?? [] })));
     const persist = async (db: Prisma.TransactionClient) => {
       if (project) {
         const currentSources = await db.projectPaper.findMany({ where: { projectId: project.id, screeningStatus: "INCLUDED" }, orderBy: { paperId: "asc" }, select: { paperId: true, updatedAt: true } });
@@ -238,11 +286,11 @@ export const gapsService = {
       if (old.length) return old;
       const created = [];
       for (const item of prepared) {
-        const gap = item.gap, scored = item.evidence;
+        const gap = item.gap, scored = item.evidence, possibleCounterIds = item.possibleCounterIds;
         const row = await db.researchGap.create({ data: { topic: analysis.topic, normalizedTopic, analysisId: analysis.id, title: String(gap.title ?? "").slice(0, 200), description: String(gap.description ?? ""), rationale: String(gap.rationale ?? ""), confidence: analysis.projectId ? 0 : clamp01(gap.confidence), assumptions: typeof gap.assumptions === "string" ? gap.assumptions.slice(0, 5000) : "", probe: scored?.probe as never, intersectionCount: scored?.intersectionCount, parentCounts: scored?.parentCounts as never, parentTrend: (scored?.parentTrend ?? null) as never, globalEvidence: (scored?.globalEvidence ?? Prisma.DbNull) as never, evidenceConfidence: analysis.projectId ? 0 : scored?.evidenceConfidence ?? null, evidenceScopeSize: scored?.evidenceScopeSize, projectEvidence: scored?.projectEvidence as never, source: "standalone", userId: analysis.userId, projectId: analysis.projectId } });
         const evidenceIds = papers.flatMap((paper) => { const id = paperMap.get(paper.id); return id ? [id] : []; });
         const supportingIds = (gap.supportingEvidence ?? []).filter((index) => Number.isInteger(index) && index >= 1 && index <= papers.length).flatMap((index) => { const paper = papers[index - 1]; const id = paper ? paperMap.get(paper.id) : undefined; return id ? [id] : []; });
-        await db.researchGapPaper.createMany({ data: [...new Set(evidenceIds)].map((paperId, position) => ({ gapId: row.id, paperId, kind: "evidence", position })).concat([...new Set(supportingIds)].map((paperId, position) => ({ gapId: row.id, paperId, kind: "supporting", position }))), skipDuplicates: true });
+        await db.researchGapPaper.createMany({ data: [...new Set(evidenceIds)].map((paperId, position) => ({ gapId: row.id, paperId, kind: "evidence", position })).concat([...new Set(supportingIds)].map((paperId, position) => ({ gapId: row.id, paperId, kind: "supporting", position }))).concat(possibleCounterIds.map((paperId, position) => ({ gapId: row.id, paperId, kind: "possible_counter", position }))), skipDuplicates: true });
         created.push(row);
       }
       await db.gapAnalysis.update({ where: { id: analysis.id }, data: { status: "ready", promptVersion: GAP_PROMPT_VERSION, modelVersion: model, ...(cacheHit ? { creditRefundedAt: new Date() } : {}) } });
@@ -272,7 +320,8 @@ export const gapsService = {
       return { gap, supportIds, probe: groundProbe(gap.probe ?? undefined, probeTexts(source), { reportId: report.id, title: gap.title }) };
     });
     const scoreScopes = await createGapScopeScorer({ yearFrom: report.yearFrom ?? undefined, yearTo: report.yearTo ?? undefined }, scopedPaperIds, countProbes(grounded));
-    const prepared = await Promise.all(grounded.map(async ({ gap, supportIds, probe }) => ({ gap, scored: await scoreScopes(probe), supportIds })));
+    const possibleCounters = await searchPossibleCounters(grounded.map(({ gap }) => gapText(gap)), [...new Set([...groundingIds, ...resolved.flatMap((row) => row.supportIds)])], { reportId: report.id });
+    const prepared = await Promise.all(grounded.map(async ({ gap, supportIds, probe }, index) => ({ gap, scored: await scoreScopes(probe), supportIds, possibleCounterIds: possibleCounters[index] ?? [] })));
     const normalizedTopic = normalizeTopicStr(report.query);
     const persistReportGaps = async (db: Prisma.TransactionClient) => {
       if (await db.researchGap.count({ where: { sourceReportId: report.id } })) return 0;
@@ -280,7 +329,7 @@ export const gapsService = {
         const included = new Set((await db.projectPaper.findMany({ where: { projectId: report.projectId, screeningStatus: "INCLUDED" }, select: { paperId: true } })).map(row => row.paperId));
         if ([...groundingIds, ...prepared.flatMap(row => row.supportIds)].some(id => !included.has(id))) throw Object.assign(AppError.conflict(REPORT_SOURCES_EXCLUDED_MESSAGE), { nonRetryable: true });
       }
-      for (const { gap, scored, supportIds } of prepared) { const row = await db.researchGap.create({ data: { topic: report.query, normalizedTopic, title: String(gap.title ?? "").slice(0, 200), description: String(gap.description ?? ""), rationale: String(gap.rationale ?? ""), confidence: report.projectId ? 0 : clamp01(gap.confidence), probe: scored?.probe as never, intersectionCount: scored?.intersectionCount, parentCounts: scored?.parentCounts as never, parentTrend: (scored?.parentTrend ?? null) as never, globalEvidence: (scored?.globalEvidence ?? Prisma.DbNull) as never, evidenceConfidence: report.projectId ? 0 : scored?.evidenceConfidence ?? null, evidenceScopeSize: scored?.evidenceScopeSize, projectEvidence: scored?.projectEvidence as never, source: "report", sourceReportId: report.id, userId: report.userId, projectId: report.projectId } }); const evidenceIds = groundingIds.length ? groundingIds : supportIds; await db.researchGapPaper.createMany({ data: [...new Set(evidenceIds)].map((paperId, position) => ({ gapId: row.id, paperId, kind: "evidence", position })).concat([...new Set(supportIds)].map((paperId, position) => ({ gapId: row.id, paperId, kind: "supporting", position }))), skipDuplicates: true }); }
+      for (const { gap, scored, supportIds, possibleCounterIds } of prepared) { const row = await db.researchGap.create({ data: { topic: report.query, normalizedTopic, title: String(gap.title ?? "").slice(0, 200), description: String(gap.description ?? ""), rationale: String(gap.rationale ?? ""), confidence: report.projectId ? 0 : clamp01(gap.confidence), probe: scored?.probe as never, intersectionCount: scored?.intersectionCount, parentCounts: scored?.parentCounts as never, parentTrend: (scored?.parentTrend ?? null) as never, globalEvidence: (scored?.globalEvidence ?? Prisma.DbNull) as never, evidenceConfidence: report.projectId ? 0 : scored?.evidenceConfidence ?? null, evidenceScopeSize: scored?.evidenceScopeSize, projectEvidence: scored?.projectEvidence as never, source: "report", sourceReportId: report.id, userId: report.userId, projectId: report.projectId } }); const evidenceIds = groundingIds.length ? groundingIds : supportIds; await db.researchGapPaper.createMany({ data: [...new Set(evidenceIds)].map((paperId, position) => ({ gapId: row.id, paperId, kind: "evidence", position })).concat([...new Set(supportIds)].map((paperId, position) => ({ gapId: row.id, paperId, kind: "supporting", position }))).concat(possibleCounterIds.map((paperId, position) => ({ gapId: row.id, paperId, kind: "possible_counter", position }))), skipDuplicates: true }); }
       if (report.projectId) await db.projectActivity.create({ data: { projectId: report.projectId, actorId: report.userId, type: "GAP_CREATED", entityKind: "REPORT", entityId: publicDatabaseId(report), metadata: { count: prepared.length, origin: "AI_ASSISTED", status: "CANDIDATE", source: "report" } } });
       return prepared.length;
     };
@@ -301,9 +350,10 @@ export const gapsService = {
     const where: Prisma.ResearchGapWhereInput = { ...(project ? { projectId: project.id } : { userId: user.id }), status: query.status, ...(query.assessmentStatus ? { assessmentStatus: query.assessmentStatus } : {}), ...(query.topic ? { normalizedTopic: { contains: normalizeTopicStr(query.topic), mode: "insensitive" } } : {}), ...(query.source ? { source: query.source } : {}), ...(filters.length ? { AND: filters } : {}) };
     // Rank on light columns only, then load full rows for the requested page.
     const candidates = await getPrisma().researchGap.findMany({ where, select: { id: true, confidence: true, evidenceConfidence: true, evidenceScopeSize: true, intersectionCount: true, createdAt: true, source: true, probe: true, parentCounts: true, globalEvidence: true } });
-    const supportingCounts = candidates.length ? await getPrisma().researchGapPaper.groupBy({ by: ["gapId"], where: { gapId: { in: candidates.map((row) => row.id) }, kind: "supporting" }, _count: { _all: true } }) : []; const supportingCountByGap = new Map(supportingCounts.map((row) => [row.gapId, row._count._all]));
+    const linkCounts = candidates.length ? await getPrisma().researchGapPaper.groupBy({ by: ["gapId", "kind"], where: { gapId: { in: candidates.map((row) => row.id) }, kind: { in: ["supporting", "counter", "possible_counter"] } }, _count: { _all: true } }) : [];
+    const linkCount = (gapId: string, kinds: string[]) => linkCounts.filter((row) => row.gapId === gapId && kinds.includes(row.kind)).reduce((sum, row) => sum + row._count._all, 0);
     const signalConfig = { minParentPapers: env.GAP_MIN_PARENT_PAPERS, maxRatio: env.GAP_UNDEREXPLORED_MAX_RATIO, alpha: env.GAP_UNDEREXPLORED_ALPHA };
-    const sortRows = candidates.map((row) => ({ ...row, source: row.source as GapSource, probe: row.probe as GapListDoc["probe"], parentCounts: row.parentCounts as GapListDoc["parentCounts"], globalEvidence: row.globalEvidence as GapListDoc["globalEvidence"], supportingCount: supportingCountByGap.get(row.id) ?? 0 }));
+    const sortRows = candidates.map((row) => ({ ...row, source: row.source as GapSource, probe: row.probe as GapListDoc["probe"], parentCounts: row.parentCounts as GapListDoc["parentCounts"], globalEvidence: row.globalEvidence as GapListDoc["globalEvidence"], supportingCount: linkCount(row.id, ["supporting"]), counterCount: linkCount(row.id, ["counter", "possible_counter"]) }));
     // Filter on the same score the list ranks by (recomputed from the stored counts), not the LLM's placeholder confidence.
     const filtered = !project && query.minConfidence ? sortRows.filter((row) => gapRankingScore(row, signalConfig) >= query.minConfidence!) : sortRows;
     const ranked = sortGapRows(filtered, project ? "newest" : query.sortBy, signalConfig.minParentPapers, { maxRatio: signalConfig.maxRatio, alpha: signalConfig.alpha });
@@ -320,8 +370,9 @@ export const gapsService = {
       const evidenceIds = selectedLinks.filter((link) => link.gapId === row.id && link.kind === "evidence").flatMap((link) => { const paper = publicPaper.get(link.paperId); return paper ? [paper.id] : []; });
       const supportingIds = selectedLinks.filter((link) => link.gapId === row.id && link.kind === "supporting").flatMap((link) => { const paper = publicPaper.get(link.paperId); return paper ? [paper.id] : []; });
       const counterIds = selectedLinks.filter((link) => link.gapId === row.id && link.kind === "counter").flatMap((link) => { const paper = publicPaper.get(link.paperId); return paper ? [paper.id] : []; });
+      const possibleCounterIds = selectedLinks.filter((link) => link.gapId === row.id && link.kind === "possible_counter").flatMap((link) => { const paper = publicPaper.get(link.paperId); return paper ? [paper.id] : []; });
       const probe = row.probe as GapListDoc["probe"], parentCounts = row.parentCounts as GapListDoc["parentCounts"], parentTrend = row.parentTrend as GapListDoc["parentTrend"];
-      return toGapListItem({ version: row.version, assessmentStatus: row.assessmentStatus as GapListDoc["assessmentStatus"], _id: publicDatabaseId(row), topic: row.topic, normalizedTopic: row.normalizedTopic, title: row.title, description: row.description, rationale: row.rationale, evidencePaperIds: evidenceIds, supportingPaperIds: supportingIds, counterPaperIds: counterIds, globalEvidence: row.globalEvidence as GapListDoc["globalEvidence"], confidence: row.confidence, probe, intersectionCount: row.intersectionCount ?? undefined, parentCounts, parentTrend, evidenceConfidence: row.evidenceConfidence ?? undefined, evidenceScopeSize: row.evidenceScopeSize ?? undefined, projectEvidence: (row.projectEvidence ?? undefined) as GapListDoc["projectEvidence"], source: row.source as "report" | "standalone", sourceReportId: row.sourceReportId, analysisId: row.analysisId, projectId: row.projectId, userId: row.userId, status: row.status as "active" | "resolved" | "dismissed", createdAt: row.createdAt, gapType: row.gapType as never, scope: row.scope ?? undefined, establishedKnowledge: row.establishedKnowledge ?? undefined, observedLimitation: row.observedLimitation ?? undefined, missingEvidence: row.missingEvidence ?? undefined, significanceExplanation: row.significanceExplanation ?? undefined, suggestedResearchQuestion: row.suggestedResearchQuestion ?? undefined, validationStatus: row.validationStatus as never, gapConfidence: row.gapConfidence as never, researchPriority: row.researchPriority as never, origin: row.origin as never, closureStatus: row.closureStatus as never, questionFacets: (row.questionFacets ?? undefined) as GapListDoc["questionFacets"], latestClosureCheck: row.latestClosureCheckId ? closureChecks.get(row.latestClosureCheckId) : undefined }, supportingPapersById, { minParentPapers: env.GAP_MIN_PARENT_PAPERS, maxRatio: env.GAP_UNDEREXPLORED_MAX_RATIO, alpha: env.GAP_UNDEREXPLORED_ALPHA, validationQuorum: env.GAP_VALIDATION_QUORUM, canManage: row.userId === user.id || isProjectOwner });
+      return toGapListItem({ version: row.version, assessmentStatus: row.assessmentStatus as GapListDoc["assessmentStatus"], _id: publicDatabaseId(row), topic: row.topic, normalizedTopic: row.normalizedTopic, title: row.title, description: row.description, rationale: row.rationale, evidencePaperIds: evidenceIds, supportingPaperIds: supportingIds, counterPaperIds: counterIds, possibleCounterPaperIds: possibleCounterIds, globalEvidence: row.globalEvidence as GapListDoc["globalEvidence"], confidence: row.confidence, probe, intersectionCount: row.intersectionCount ?? undefined, parentCounts, parentTrend, evidenceConfidence: row.evidenceConfidence ?? undefined, evidenceScopeSize: row.evidenceScopeSize ?? undefined, projectEvidence: (row.projectEvidence ?? undefined) as GapListDoc["projectEvidence"], source: row.source as "report" | "standalone", sourceReportId: row.sourceReportId, analysisId: row.analysisId, projectId: row.projectId, userId: row.userId, status: row.status as "active" | "resolved" | "dismissed", createdAt: row.createdAt, gapType: row.gapType as never, scope: row.scope ?? undefined, establishedKnowledge: row.establishedKnowledge ?? undefined, observedLimitation: row.observedLimitation ?? undefined, missingEvidence: row.missingEvidence ?? undefined, significanceExplanation: row.significanceExplanation ?? undefined, suggestedResearchQuestion: row.suggestedResearchQuestion ?? undefined, validationStatus: row.validationStatus as never, gapConfidence: row.gapConfidence as never, researchPriority: row.researchPriority as never, origin: row.origin as never, closureStatus: row.closureStatus as never, questionFacets: (row.questionFacets ?? undefined) as GapListDoc["questionFacets"], latestClosureCheck: row.latestClosureCheckId ? closureChecks.get(row.latestClosureCheckId) : undefined }, supportingPapersById, { minParentPapers: env.GAP_MIN_PARENT_PAPERS, maxRatio: env.GAP_UNDEREXPLORED_MAX_RATIO, alpha: env.GAP_UNDEREXPLORED_ALPHA, validationQuorum: env.GAP_VALIDATION_QUORUM, canManage: row.userId === user.id || isProjectOwner });
     });
     return { gaps, total };
   },
@@ -353,11 +404,43 @@ async function collectGapEvidence(input: CollectGapEvidenceInput): Promise<Colle
   const selectedPaperIds = [...new Set(input.selectedPaperIds ?? [])]; const selected = input.evidenceMode === "auto" ? { papers: [] as GapEvidenceCandidate[], missingIds: [] as string[] } : await fetchSelectedGapEvidence(selectedPaperIds, input); let retrieved: GapEvidenceCandidate[] = [];
   if (input.evidenceMode !== "selected") {
     const filters = { yearFrom: input.yearFrom, yearTo: input.yearTo, paperIds: input.projectPaperIds };
-    const candidates = await retrieve({ queryText: input.topic, queryVector: input.queryVector, topK: env.GAPS_TOP_K, filters, fullText: true });
-    retrieved = candidates.map((paper) => ({ ...paper, source: "retrieved" }));
+    // Retrieve a wider pool, then let MMR keep the pack on topic but spread across it (see gap-mmr.ts).
+    const pool = await retrieveExpanded(input.topic, input.queryVector, filters, env.GAPS_TOP_K * EVIDENCE_POOL_FACTOR);
+    const pinned = selected.papers.map((paper) => paper.id), slots = Math.max(0, env.GAPS_TOP_K - pinned.length);
+    retrieved = (await diversifyEvidence(pool.filter((paper) => !pinned.includes(paper.id)), pinned, slots)).map((paper) => ({ ...paper, source: "retrieved" }));
   }
   const seen = new Set<string>(), papers: GapEvidenceCandidate[] = []; for (const paper of [...selected.papers, ...retrieved]) { if (papers.length >= env.GAPS_TOP_K) break; if (!seen.has(paper.id)) { seen.add(paper.id); papers.push(paper); } }
   return { papers: await attachKnowledgeEvidence(papers, input.topic, input.queryVector), selectedPaperIds, retrievedPaperIds: retrieved.map((paper) => paper.id), missingSelectedPaperIds: selected.missingIds };
+}
+
+/** Candidates retrieved per evidence slot before MMR picks the pack. */
+const EVIDENCE_POOL_FACTOR = 3;
+
+/**
+ * Retrieves the full topic and its leave-one-out sub-queries (gap-query-expansion.ts) and fuses them by RRF.
+ * Sub-queries are embedded in one batch; without embeddings they run keyword-only. The full topic behaves as before.
+ */
+async function retrieveExpanded(topic: string, queryVector: number[] | undefined, filters: NonNullable<Parameters<typeof retrieve>[0]["filters"]>, limit: number) {
+  const [full, ...subQueries] = expandTopicQueries(topic);
+  let subVectors: number[][] | undefined;
+  if (subQueries.length && queryVector) {
+    try { subVectors = await getEmbeddingProvider().embedBatch(subQueries); }
+    catch (error) { logger.warn({ err: error }, "gap sub-query embedding failed; sub-queries run keyword-only"); }
+  }
+  const lists = await Promise.all([
+    retrieve({ queryText: full!, queryVector, topK: limit, filters, fullText: true }),
+    ...subQueries.map((query, index) => retrieve({ queryText: query, queryVector: subVectors?.[index], keywordOnly: !subVectors, topK: limit, filters, fullText: true })),
+  ]);
+  return lists.length > 1 ? fuseByRrf(lists, limit) : lists[0]!;
+}
+
+/** MMR over the retrieved pool; falls back to retrieval order when MMR is off or too few papers have embeddings. */
+async function diversifyEvidence<T extends { id: string; score: number }>(pool: T[], pinned: string[], slots: number): Promise<T[]> {
+  if (env.GAPS_EVIDENCE_MMR_LAMBDA >= 1 || pool.length <= slots) return pool.slice(0, slots);
+  const vectors = await loadPaperEmbeddings([...pinned, ...pool.map((paper) => paper.id)]);
+  if (pool.filter((paper) => vectors.has(paper.id)).length < 2) return pool.slice(0, slots);
+  const picked = selectByMmr(pool.map((paper) => ({ id: paper.id, relevance: paper.score, paper })), vectors, slots, env.GAPS_EVIDENCE_MMR_LAMBDA, pinned);
+  return picked.map((candidate) => candidate.paper);
 }
 
 async function fetchSelectedGapEvidence(values: string[], input: Pick<CollectGapEvidenceInput, "yearFrom" | "yearTo" | "projectPaperIds">) {

@@ -69,7 +69,7 @@ export function GapSignalNote({
 }
 
 interface GapEvidenceSummaryProps {
-  probe?: { topicA: string; topicB: string; yearFrom?: number; yearTo?: number };
+  probe?: { topicA: string; topicB: string; yearFrom?: number; yearTo?: number; semanticMinSimilarity?: number };
   evidenceScopeSize?: number;
   intersectionCount?: number;
   parentCounts?: { a: number; b: number };
@@ -141,6 +141,11 @@ export function GapEvidenceSummary({
           global: globalEvidence ? formatNumber(globalEvidence.intersectionCount) : "—",
         })}
       </p>
+      {probe.semanticMinSimilarity !== undefined && (
+        <p className="text-[10px] text-slate-500 dark:text-slate-400">
+          {t("Counts include papers whose meaning is close to a topic (cosine ≥ {{threshold}}), not only word matches", { threshold: probe.semanticMinSimilarity.toFixed(2) })}
+        </p>
+      )}
       <GapScopeNote evidenceScopeSize={evidenceScopeSize} />
     </div>
   );

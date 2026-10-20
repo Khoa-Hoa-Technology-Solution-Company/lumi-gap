@@ -373,6 +373,23 @@ export function GapDetailDrawer({ gap, isOpen, onClose, onDraftProposal, researc
               </div>
             ) : null}
 
+            {gap.possibleCounterPapers?.length ? (
+              <div className="space-y-3">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">{t("Possible counter-evidence")}</h3>
+                <p className="text-xs leading-relaxed text-amber-700 dark:text-amber-400">
+                  {t("Found automatically: these corpus papers are close to this gap and may already answer it. Read them before relying on the gap.")}
+                </p>
+                <ul className="space-y-2">
+                  {gap.possibleCounterPapers.map((paper) => (
+                    <li key={paper.id} className="rounded-xl border border-amber-100 bg-amber-50/50 p-2.5 text-xs dark:border-amber-500/20 dark:bg-amber-500/5">
+                      <Link to={`/papers/${paper.id}`} className="font-semibold text-slate-800 hover:underline dark:text-slate-200">{paper.title}</Link>
+                      {paper.publicationYear ? <span className="ml-2 text-slate-400">{paper.publicationYear}</span> : null}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
             {/* AI Research Directions */}
             <div className="space-y-4 border-t border-slate-100 pt-5 dark:border-slate-800/60">
               <div className="flex flex-wrap items-start justify-between gap-3">

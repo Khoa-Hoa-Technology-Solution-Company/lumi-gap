@@ -184,6 +184,16 @@ const EnvSchema = z.object({
   GAPS_TOP_K: z.coerce.number().int().min(3).max(10).default(10),
   GAPS_MAX_PER_HOUR: z.coerce.number().int().positive().default(10),
   GAPS_MAX_OUTPUT_TOKENS: z.coerce.number().int().positive().default(2048),
+  // MMR trade-off for the evidence pack: 1 = pure relevance (old behaviour), lower = more diverse papers.
+  GAPS_EVIDENCE_MMR_LAMBDA: z.coerce.number().min(0).max(1).default(0.7),
+  // Possible counter-evidence: corpus papers whose embedding is this close (cosine) to a generated gap's text are
+  // linked for review, at most GAP_COUNTER_PER_GAP per gap (0 disables the search). Tune on real data.
+  GAP_COUNTER_MIN_SIMILARITY: z.coerce.number().min(0).max(1).default(0.75),
+  GAP_COUNTER_PER_GAP: z.coerce.number().int().min(0).max(10).default(3),
+  // Semantic probe matching: a paper also counts for a probe topic when its embedding is at least this close (cosine)
+  // to the topic's embedding, so synonyms are not missed. 0 = keyword matching only (default until calibrated with
+  // `pnpm --filter backend eval:gaps`).
+  GAP_PROBE_SEMANTIC_MIN_SIMILARITY: z.coerce.number().min(0).max(1).default(0),
   // Under-explored ranking signal (docs/gap-closure-protocol.md): a probe is flagged when its intersection is far below
   // what independence predicts (observed/expected <= GAP_UNDEREXPLORED_MAX_RATIO) and a one-sided Poisson test is
   // significant at GAP_UNDEREXPLORED_ALPHA / k for k probes. It ranks gaps; it does not decide that a gap is open.

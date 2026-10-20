@@ -19,6 +19,8 @@ export interface RetrieveOptions {
   queryVector?: number[];
   topK: number;
   poolSize?: number;
+  /** Skip embedding the query text (the caller already knows embeddings are unavailable). */
+  keywordOnly?: boolean;
   filters?: RetrieveFilters;
 }
 
@@ -130,6 +132,7 @@ function toSqlFilters(filters: RetrieveFilters | undefined): PostgresPaperSearch
 /** Returns the query embedding, or undefined to degrade to keyword-only search. */
 async function resolveQueryVector(opts: RetrieveOptions, query: string | undefined): Promise<number[] | undefined> {
   if (opts.queryVector?.length) return opts.queryVector.length === PAPER_EMBEDDING_DIMENSIONS ? opts.queryVector : undefined;
+  if (opts.keywordOnly) return undefined;
   if (!query) throw new Error("retrieve requires queryText or queryVector");
   try {
     return await getEmbeddingProvider().embed(query);

@@ -47,7 +47,7 @@ This subsection is about **ranking** candidate gaps. It is not the decision rule
 LumiGap counts the papers in its own corpus that mention both topics of a probe and compares that count with what chance would produce. Let
 
 - `N`: active papers in the scope the counts are taken over (the corpus inside the chosen years, narrowed to the probe's own years when it gives any, the same window as `nA`, `nB`, `nAB`),
-- `nA`, `nB`: papers that mention topic A, topic B,
+- `nA`, `nB`: papers that mention topic A, topic B (their words, or, when `GAP_PROBE_SEMANTIC_MIN_SIMILARITY > 0`, an embedding at least that close to the topic's; the gap then records the threshold),
 - `nAB`: papers that mention both (the intersection),
 - `k`: number of probes tested together (the gaps of one analysis or report whose probe survived grounding, i.e. both topics occur in the evidence papers).
 

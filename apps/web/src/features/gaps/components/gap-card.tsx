@@ -128,6 +128,12 @@ export function GapCard({
             {gap.evidenceStatus === "confirmed" ? t("Under-explored") : gap.evidenceStatus === "weak" ? t("Weak signal") : t("AI Only")}
           </Badge>
 
+          {gap.possibleCounterPapers?.length ? (
+            <Badge variant="outline" className="rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400" title={t("Found automatically: these corpus papers are close to this gap and may already answer it. Read them before relying on the gap.")}>
+              {t("May already be answered ({{count}})", { count: gap.possibleCounterPapers.length })}
+            </Badge>
+          ) : null}
+
           <ClosureStatusBadge status={gap.closureStatus} bound={gap.latestClosureCheck?.bound} />
 
           <div className="h-3 w-px bg-slate-200 dark:bg-slate-800 mx-1" />

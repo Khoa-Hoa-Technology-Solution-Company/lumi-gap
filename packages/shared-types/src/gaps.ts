@@ -50,6 +50,9 @@ export interface ResearchGapItem {
   /** Papers an expert linked as counter-evidence (kept apart from the pipeline's evidence and supporting papers). */
   counterPaperIds?: string[];
   counterPapers?: GapSupportingPaper[];
+  /** Corpus papers close to the gap's own text, found automatically: they may already answer it. Review before trusting the gap. */
+  possibleCounterPaperIds?: string[];
+  possibleCounterPapers?: GapSupportingPaper[];
   /** Complete reviewed input set the AI read when producing this gap. */
   evidencePaperIds: string[];
   /** Resolved papers in the same order as evidencePaperIds. */
@@ -64,7 +67,7 @@ export interface ResearchGapItem {
   userId: string;
   status: GapStatus;
   createdAt: string;
-  probe?: { topicA: string; topicB: string; yearFrom?: number; yearTo?: number };
+  probe?: { topicA: string; topicB: string; yearFrom?: number; yearTo?: number; semanticMinSimilarity?: number };
   intersectionCount?: number;
   parentCounts?: { a: number; b: number };
   parentTrend?: { topic: string; growthRatePct: number; cagrPct?: number | null; slope?: number } | null;

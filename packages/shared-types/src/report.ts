@@ -87,6 +87,8 @@ export interface GapProbe {
   yearTo?: number;
   scopeFilters?: ReportScopeFilters;
   language?: ReportLanguage;
+  /** Set when the counts also include papers whose embedding is at least this close (cosine) to a topic, not only word matches. */
+  semanticMinSimilarity?: number;
 }
 
 export interface ResearchGap {

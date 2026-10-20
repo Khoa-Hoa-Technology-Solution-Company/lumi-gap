@@ -36,8 +36,10 @@ export interface GapListDoc {
   evidencePaperIds?: IdLike[];
   supportingPaperIds?: IdLike[];
   counterPaperIds?: IdLike[];
+  /** Found by searching the corpus with the gap's own text: they may already answer it (not yet reviewed). */
+  possibleCounterPaperIds?: IdLike[];
   confidence: number;
-  probe?: { topicA?: string; topicB?: string; yearFrom?: number; yearTo?: number };
+  probe?: { topicA?: string; topicB?: string; yearFrom?: number; yearTo?: number; semanticMinSimilarity?: number };
   intersectionCount?: number;
   parentCounts?: { a?: number; b?: number };
   parentTrend?: { topic?: string; growthRatePct?: number; cagrPct?: number | null; slope?: number } | null;
@@ -154,6 +156,8 @@ export interface GapSortRow {
   parentCounts?: GapListDoc["parentCounts"] | null;
   globalEvidence?: GapGlobalEvidence | null;
   supportingCount: number;
+  /** Counter-evidence links (confirmed or possible); a gap with any ranks after gaps without. */
+  counterCount?: number;
 }
 
 const EVIDENCE_RANK: Record<GapEvidenceStatus, number> = { confirmed: 2, weak: 1, ai_only: 0 };
@@ -178,10 +182,12 @@ export function sortGapRows<T extends GapSortRow>(rows: T[], sortBy: GapSortKey,
   const newest = (a: T, b: T) => b.createdAt.getTime() - a.createdAt.getTime();
   const score = (a: T, b: T) => gapRankingScore(b, config) - gapRankingScore(a, config);
   const papers = (a: T, b: T) => b.supportingCount - a.supportingCount;
-  const recommended = (a: T, b: T) => score(a, b) || newest(a, b);
+  // A paper that may already answer the gap is a stronger reason to doubt it than any co-mention count.
+  const contested = (a: T, b: T) => Number((a.counterCount ?? 0) > 0) - Number((b.counterCount ?? 0) > 0);
+  const recommended = (a: T, b: T) => contested(a, b) || score(a, b) || newest(a, b);
   const compare: Record<GapSortKey, (a: T, b: T) => number> = {
     recommended,
-    evidence: (a, b) => evidenceRank(b) - evidenceRank(a) || score(a, b) || papers(a, b) || newest(a, b),
+    evidence: (a, b) => evidenceRank(b) - evidenceRank(a) || contested(a, b) || score(a, b) || papers(a, b) || newest(a, b),
     // The LLM now returns confidence 0 as a placeholder, so the shown score decides; the legacy value only breaks ties.
     confidence: (a, b) => score(a, b) || b.confidence - a.confidence || newest(a, b),
     papers: (a, b) => papers(a, b) || score(a, b) || newest(a, b),
@@ -201,6 +207,7 @@ export function toGapListItem(
   const signal = config ? gapUnderExploredSignal(doc, config) : null;
   const supportingPaperIds = (doc.supportingPaperIds ?? []).map(String);
   const counterPaperIds = (doc.counterPaperIds ?? []).map(String);
+  const possibleCounterPaperIds = (doc.possibleCounterPaperIds ?? []).map(String);
   const evidencePaperIds = (doc.evidencePaperIds?.length
     ? doc.evidencePaperIds
     : doc.supportingPaperIds ?? []
@@ -224,6 +231,10 @@ export function toGapListItem(
     counterPapers: counterPaperIds
       .map((id) => supportingPapersById.get(id))
       .filter((paper): paper is GapSupportingPaper => Boolean(paper)),
+    possibleCounterPaperIds,
+    possibleCounterPapers: possibleCounterPaperIds
+      .map((id) => supportingPapersById.get(id))
+      .filter((paper): paper is GapSupportingPaper => Boolean(paper)),
     evidencePaperIds,
     evidencePapers: evidencePaperIds
       .map((id) => supportingPapersById.get(id))
@@ -243,6 +254,7 @@ export function toGapListItem(
           topicB: doc.probe.topicB,
           yearFrom: doc.probe.yearFrom,
           yearTo: doc.probe.yearTo,
+          ...(doc.probe.semanticMinSimilarity !== undefined ? { semanticMinSimilarity: doc.probe.semanticMinSimilarity } : {}),
         }
       : undefined,
     intersectionCount: doc.intersectionCount,
