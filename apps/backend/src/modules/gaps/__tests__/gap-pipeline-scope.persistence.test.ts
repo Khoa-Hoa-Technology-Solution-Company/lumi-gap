@@ -75,6 +75,7 @@ describe.sequential("gap pipeline probe scope (PostgreSQL)", () => {
           publicationYear: 2021 + (i % 5),
           primaryProvider: "user",
           dataStatus: "active",
+          legacyMongoId: [0, INCLUDED_COUNT, INCLUDED_COUNT + EXCLUDED_COUNT].includes(i) ? crypto.randomUUID().replaceAll("-", "").slice(0, 24) : undefined,
         },
       });
       paperIds.push(paper.id);
@@ -162,6 +163,32 @@ describe.sequential("gap pipeline probe scope (PostgreSQL)", () => {
     expect(gaps[0]!.evidenceScopeSize).toBeGreaterThanOrEqual(15);
     expect(gaps[0]!.evidenceScopeSize).toBeLessThan((await getPrisma().paper.count({ where: { dataStatus: "active" } })));
   });
+  it("keeps legacy paper IDs in a selected project pack when the worker scopes sources by UUID", async () => {
+    const db = getPrisma();
+    const analysis = await db.gapAnalysis.create({ data: { userId, projectId, topic: `${topicA} ${topicB}`, status: "queued", evidenceMode: "selected" } });
+    analysisIds.push(analysis.id);
+    await db.gapAnalysisPaper.createMany({ data: paperIds.slice(0, 3).map((paperId, position) => ({ analysisId: analysis.id, paperId, position })) });
+    await gapsService.runGapPipeline({ analysisId: analysis.id });
+    const done = await db.gapAnalysis.findUniqueOrThrow({ where: { id: analysis.id } });
+    expect(done.status).toBe("ready");
+    expect(done.evidenceSnapshot).toHaveLength(3);
+    const legacy = await db.paper.findUniqueOrThrow({ where: { id: paperIds[0] } });
+    expect(done.evidenceSnapshot).toEqual(expect.arrayContaining([expect.objectContaining({ id: legacy.legacyMongoId })]));
+  });
+
+  it("does not admit excluded or outside-project legacy papers into a selected pack", async () => {
+    const db = getPrisma();
+    const analysis = await db.gapAnalysis.create({ data: { userId, projectId, topic: `${topicA} ${topicB}`, status: "queued", evidenceMode: "selected" } });
+    analysisIds.push(analysis.id);
+    const selected = [paperIds[0]!, paperIds[INCLUDED_COUNT]!, paperIds[INCLUDED_COUNT + EXCLUDED_COUNT]!];
+    await db.gapAnalysisPaper.createMany({ data: selected.map((paperId, position) => ({ analysisId: analysis.id, paperId, position })) });
+    const calls = vi.mocked(cachedGenerateJSON).mock.calls.length;
+    await gapsService.runGapPipeline({ analysisId: analysis.id });
+    expect((await db.gapAnalysis.findUniqueOrThrow({ where: { id: analysis.id } })).status).toBe("failed");
+    expect(await db.researchGap.count({ where: { analysisId: analysis.id } })).toBe(0);
+    expect(vi.mocked(cachedGenerateJSON).mock.calls).toHaveLength(calls);
+  });
+
   it("rejects a changed project corpus after generation rather than saving a stale candidate", async () => {
     const db = getPrisma();
     const analysis = await db.gapAnalysis.create({ data: { userId, projectId, topic: `${topicA} ${topicB}`, status: "queued", evidenceMode: "hybrid" } }); analysisIds.push(analysis.id);

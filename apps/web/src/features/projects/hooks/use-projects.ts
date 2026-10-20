@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { projectsApi } from "../api/projects.api";
 import { useAuthStore } from "@/stores/auth-store";
 import type {
@@ -14,6 +14,14 @@ import type {
   RespondMentorRelationshipRequest,
   MentorRelationship, MentorshipRequest,
 } from "@trend/shared-types";
+
+function refreshProjectLiterature(client: QueryClient, id: string) {
+  return Promise.all([
+    client.invalidateQueries({ queryKey: ["project", id] }),
+    client.invalidateQueries({ predicate: query => ["project-research", "project-workspace"].includes(String(query.queryKey[0])) && query.queryKey[2] === id }),
+    client.invalidateQueries({ queryKey: ["gaps"] }),
+  ]);
+}
 
 export function useProjects(options?: { enabled?: boolean }) {
   return useQuery({
@@ -68,9 +76,7 @@ export function useAddPaperToProject(id: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: AddProjectPaperRequest) => projectsApi.addPaper(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["project", id] });
-    },
+    onSuccess: () => refreshProjectLiterature(queryClient, id),
   });
 }
 
@@ -78,9 +84,7 @@ export function useRemovePaperFromProject(id: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (paperId: string) => projectsApi.removePaper(id, paperId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["project", id] });
-    },
+    onSuccess: () => refreshProjectLiterature(queryClient, id),
   });
 }
 
@@ -108,7 +112,7 @@ export function useUpdateProjectPaper(id: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ paperId, data }: { paperId: string; data: UpdateProjectPaperRequest }) => projectsApi.updatePaper(id, paperId, data),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["project", id] }),
+    onSuccess: () => refreshProjectLiterature(queryClient, id),
   });
 }
 

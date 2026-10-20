@@ -1,0 +1,70 @@
+# Run from the repository root:
+# docker compose -f docker-compose.yml -f apps/backend/compiler/compose.yml up -d --build
+services:
+  worker-ai-jobs:
+    networks: [default, manuscript-isolated]
+    environment:
+      MANUSCRIPT_COMPILER_URL: http://manuscript-compiler:8020
+      MANUSCRIPT_COMPILER_2025_URL: http://manuscript-compiler-2025:8020
+
+  backend:
+    networks: [default, manuscript-isolated]
+    environment:
+      MANUSCRIPT_COMPILER_URL: http://manuscript-compiler:8020
+      MANUSCRIPT_COMPILER_2025_URL: http://manuscript-compiler-2025:8020
+
+  manuscript-compiler: &compiler
+    image: lumigap-tex:2022
+    build:
+      context: .
+      dockerfile: apps/backend/compiler/Dockerfile
+    restart: unless-stopped
+    environment:
+      INTERNAL_SERVICE_KEY: ${INTERNAL_SERVICE_KEY:?Set INTERNAL_SERVICE_KEY in .env}
+    networks: [manuscript-isolated]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=128m,mode=1777"]
+    mem_limit: 768m
+    cpus: 1
+    pids_limit: 64
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8020/health',timeout=5)"]
+      interval: 20s
+      timeout: 6s
+      retries: 3
+      start_period: 15s
+
+  manuscript-compiler-2025:
+    <<: *compiler
+    image: lumigap-tex:2025
+    build:
+      context: .
+      dockerfile: apps/backend/compiler/Dockerfile
+      args: { DEBIAN_RELEASE: trixie }
+
+  worker-manuscript-compile:
+    image: lumigap-backend:local
+    pull_policy: never
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://default:${REDIS_PASSWORD}@redis:6379
+      MANUSCRIPT_COMPILER_URL: http://manuscript-compiler:8020
+      MANUSCRIPT_COMPILER_2025_URL: http://manuscript-compiler-2025:8020
+      INTERNAL_SERVICE_KEY: ${INTERNAL_SERVICE_KEY:?Set INTERNAL_SERVICE_KEY in .env}
+    command: ["node", "apps/backend/dist/workers/manuscript-compile.worker.js"]
+    restart: unless-stopped
+    networks: [default, manuscript-isolated]
+    depends_on:
+      backend: { condition: service_healthy }
+      manuscript-compiler: { condition: service_healthy }
+      manuscript-compiler-2025: { condition: service_healthy }
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+
+networks:
+  manuscript-isolated:
+    internal: true

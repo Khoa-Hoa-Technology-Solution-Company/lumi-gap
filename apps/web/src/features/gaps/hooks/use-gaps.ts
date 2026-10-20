@@ -2,10 +2,11 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { gapsApi } from "../api/gaps.api";
 import type { AnalyzeGapRequest, CreateGapCandidateRequest, CreateGapValidationRequest, PreviewGapEvidenceRequest, ReviewForumCitationAsEvidenceRequest } from "@trend/shared-types";
 
-export function useGaps(params?: Parameters<typeof gapsApi.list>[0]) {
+export function useGaps(params?: Parameters<typeof gapsApi.list>[0], enabled = true) {
   return useQuery({
     queryKey: ["gaps", params],
     queryFn: () => gapsApi.list(params),
+    enabled,
   });
 }
 

@@ -13,9 +13,17 @@ import { confirmUnsavedChanges } from "@/services/confirmation";
 export const stageLabels = { DISCOVERY: "Literature discovery", SCREENING: "Screening", EXTRACTION: "Evidence extraction", GAP_VALIDATION: "Gap validation", DESIGN: "Research design", WRITING: "Writing", REVIEW: "Review" } as const;
 export const taskLabels = { TODO: "To do", IN_PROGRESS: "In progress", BLOCKED: "Blocked", DONE: "Done" } as const;
 export const approachLabels = { UNDECIDED: "Undecided", EXPLORATORY: "Exploratory research", LITERATURE_REVIEW: "Literature review", EMPIRICAL: "Empirical research" } as const;
-export const linkLabels: Record<WorkspaceLinkKind, string> = { PAPER: "Paper", SCREENING: "Screening work item", EVIDENCE: "Evidence", GAP: "Research gap", QUESTION: "Research question", MANUSCRIPT: "Writing workspace", MANUSCRIPT_SNAPSHOT: "Manuscript snapshot", MENTOR_FEEDBACK: "Mentor feedback request", PLAN: "Research plan", REVIEW_REQUEST: "Review request", PLAN_REVISION: "Plan revision", REPORT: "Research output" } as const;
+export const linkLabels: Record<WorkspaceLinkKind, string> = { PAPER: "Paper", SCREENING: "Screening work item", EVIDENCE: "Evidence", GAP: "Research gap", QUESTION: "Research question", MANUSCRIPT: "Writing workspace", MANUSCRIPT_SNAPSHOT: "Manuscript snapshot", MENTOR_FEEDBACK: "Mentor feedback request", PLAN: "About project", REVIEW_REQUEST: "Review request", PLAN_REVISION: "Plan revision", REPORT: "Research output" } as const;
 export function projectSectionHref(id: string, tab: string, extra?: Record<string, string>) {
   return `/projects/${encodeURIComponent(id)}?${new URLSearchParams({ tab, ...extra })}`;
+}
+export function formatRelativeActivity(value: string, language: string, t: (key: string) => string): string {
+  const elapsed = Math.max(0, Date.now() - new Date(value).getTime());
+  if (!Number.isFinite(elapsed)) return t("Date unavailable");
+  const unit = elapsed < 60 * 60 * 1000 ? "minute" : elapsed < 24 * 60 * 60 * 1000 ? "hour" : "day";
+  const divisor = unit === "minute" ? 60_000 : unit === "hour" ? 3_600_000 : 86_400_000;
+  const amount = Math.max(1, Math.floor(elapsed / divisor));
+  return new Intl.RelativeTimeFormat(language, { numeric: "auto" }).format(-amount, unit);
 }
 export function useWorkspaceSelection(key: string) {
   const [params, setParams] = useSearchParams();

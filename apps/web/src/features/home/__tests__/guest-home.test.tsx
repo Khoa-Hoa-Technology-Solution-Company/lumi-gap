@@ -75,7 +75,8 @@ describe("Guest research home", () => {
     expect(container.querySelector('.home-featured-paper')?.textContent).toContain('Retrieval quality across languages');
     expect(container.querySelector('.home-featured-paper')?.textContent).toContain('12 citations');
     expect(container.querySelector('[role="tablist"]')).toBeNull();
-    expect(container.querySelector('img')).toBeNull();
+    expect(container.querySelector('img:not(.home-scholar-portrait)')).toBeNull();
+    expect(container.querySelectorAll('.home-scholar-portrait')).toHaveLength(8);
   });
   it("shows an actionable empty chart without inventing publications", async () => {
     mocks.query.data = { ...overview, trends: { ...overview.trends, yearlyTotalPapers: [] } };

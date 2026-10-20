@@ -12,23 +12,23 @@ export const projectSections: Array<{
   iconColor: string;
 }> = [
   { key: "overview", label: "Overview", group: "Workspace", icon: LayoutDashboard, iconColor: "text-blue-500" },
-  { key: "plan", label: "Research plan", group: "Research", icon: NotebookPen, iconColor: "text-violet-500" },
   { key: "papers", label: "Literature", group: "Research", icon: BookOpen, iconColor: "text-indigo-500" },
   { key: "gaps", label: "Research Gaps", group: "Research", icon: Compass, iconColor: "text-amber-500" },
   { key: "tasks", label: "Tasks & milestones", group: "Collaboration", icon: ListChecks, iconColor: "text-emerald-500" },
   { key: "chat", label: "Team chat & AI", group: "Collaboration", icon: MessageSquare, iconColor: "text-cyan-500" },
-  { key: "support", label: "Academic Support", group: "Collaboration", icon: GraduationCap, iconColor: "text-purple-500" },
+  { key: "support", label: "Find Mentors", group: "Collaboration", icon: GraduationCap, iconColor: "text-purple-500" },
   { key: "reports", label: "Research outputs", group: "Writing & review", icon: FileText, iconColor: "text-rose-500" },
   { key: "manuscripts", label: "Manuscripts", group: "Writing & review", icon: FileText, iconColor: "text-indigo-500" },
   { key: "submissions", label: "Submissions", group: "Writing & review", icon: Send, iconColor: "text-teal-500" },
   { key: "members", label: "Team & settings", group: "Team", icon: Users, iconColor: "text-slate-500" },
   { key: "contributions", label: "Contributions", group: "Team", icon: Award, iconColor: "text-yellow-600" },
+  { key: "plan", label: "About project", group: "Team", icon: NotebookPen, iconColor: "text-violet-500" },
 ];
 
 const groups = ["Workspace", "Research", "Collaboration", "Writing & review", "Team"];
 
-export function ProjectSectionNav({ activeTab, onChange, paperCount, memberCount }: {
-  activeTab: ProjectTab; onChange: (tab: ProjectTab) => void; paperCount: number; memberCount: number;
+export function ProjectSectionNav({ activeTab, onChange, paperCount, memberCount, loading = false }: {
+  activeTab: ProjectTab; onChange: (tab: ProjectTab) => void; paperCount: number; memberCount: number; loading?: boolean;
 }) {
   const { t } = useI18n();
   const nav = useRef<HTMLElement>(null);
@@ -42,17 +42,18 @@ export function ProjectSectionNav({ activeTab, onChange, paperCount, memberCount
     onChange(section.key);
     const selected = nav.current?.querySelector<HTMLButtonElement>(`#project-tab-${section.key}`);
     selected?.focus({ preventScroll: true });
-    selected?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+    selected?.scrollIntoView?.({ block: "nearest", inline: "nearest", behavior: "smooth" });
   };
 
   return (
-    <nav className="coord-workspace-nav" ref={nav} data-no-i18n aria-label={t("Project sections")}>
+    <nav className="coord-workspace-nav" ref={nav} data-no-i18n aria-busy={loading} aria-label={t("Project sections")}>
       <div className="coord-nav-mobile">
         <label htmlFor="project-section-select" className="sr-only">{t("Project sections")}</label>
         <select
           id="project-section-select"
           aria-controls={`project-panel-${activeTab}`}
           value={activeTab}
+          disabled={loading}
           onChange={e => onChange(e.target.value as ProjectTab)}
         >
           {groups.map(group => (
@@ -77,6 +78,7 @@ export function ProjectSectionNav({ activeTab, onChange, paperCount, memberCount
                 <button
                   key={section.key}
                   type="button"
+                  disabled={loading}
                   id={`project-tab-${section.key}`}
                   role="tab"
                   aria-selected={isSelected}

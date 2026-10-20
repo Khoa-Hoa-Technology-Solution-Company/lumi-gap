@@ -10,11 +10,17 @@ export function ProjectSectionContent({ activeTab, children }: { activeTab: Proj
     const changed = previousTab.current !== activeTab;
     previousTab.current = activeTab;
     if (!changed || window.matchMedia("(prefers-reduced-motion: reduce)").matches || !content.current?.animate) return;
-    // Opacity leaves fixed dialogs and popovers in their normal coordinate space.
-    const animation = content.current.animate([{ opacity: 0.25 }, { opacity: 1 }], {
-      duration: 200,
-      easing: "cubic-bezier(0.22, 1, 0.36, 1)",
-    });
+    // Smooth fade & gentle lift transition when switching tabs
+    const animation = content.current.animate(
+      [
+        { opacity: 0.35, transform: "translateY(4px)" },
+        { opacity: 1, transform: "translateY(0)" },
+      ],
+      {
+        duration: 220,
+        easing: "cubic-bezier(0.16, 1, 0.3, 1)",
+      }
+    );
     // Rapid switching replaces the current animation immediately.
     return () => animation.cancel();
   }, [activeTab]);

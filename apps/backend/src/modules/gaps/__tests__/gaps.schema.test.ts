@@ -12,6 +12,20 @@ const ids = [
 ];
 
 describe("gap evidence request schemas", () => {
+  it("accepts the combined two-paper project discovery without a prior synthesis", () => {
+    const input = { topic: "Project topic", projectId: ids[0], selectedPaperIds: ids.slice(0, 2), evidenceMode: "selected", projectDiscovery: true };
+    expect(AnalyzeGapSchema.safeParse(input).success).toBe(true);
+    expect(AnalyzeGapSchema.safeParse({ ...input, projectId: undefined }).success).toBe(false);
+    expect(AnalyzeGapSchema.safeParse({ ...input, evidenceMode: "hybrid" }).success).toBe(false);
+    expect(AnalyzeGapSchema.safeParse({ ...input, selectedPaperIds: [ids[0]] }).success).toBe(false);
+    expect(AnalyzeGapSchema.safeParse({ ...input, synthesisRevisionId: crypto.randomUUID() }).success).toBe(false);
+  });
+  it("requires a reviewed synthesis and frozen evidence for new project analysis", () => {
+    const base = { topic: "Project topic", projectId: ids[0], selectedPaperIds: ids, evidenceMode: "selected" };
+    expect(AnalyzeGapSchema.safeParse(base).success).toBe(false);
+    expect(AnalyzeGapSchema.safeParse({ ...base, synthesisRevisionId: crypto.randomUUID() }).success).toBe(true);
+    expect(AnalyzeGapSchema.safeParse({ ...base, synthesisRevisionId: crypto.randomUUID(), evidenceMode: "hybrid" }).success).toBe(false);
+  });
   it("accepts a frozen reviewed pack with at least three papers", () => {
     const parsed = AnalyzeGapSchema.parse({
       topic: "federated learning in medical imaging",

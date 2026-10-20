@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, useEffect, useCallback, useMemo } from "react";
+import { lazy, Suspense, useState, useEffect, useMemo } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,26 +6,24 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useProject } from "@/features/projects/hooks/use-projects";
-import { useQueryClient } from "@tanstack/react-query";
 import { useReports, useCreateReport, useUpdateArtifactStatus } from "@/features/reports/hooks/use-reports";
-import { useGaps, useAnalyzeGap, useGapAnalysisStatus, useActiveGapAnalysis } from "@/features/gaps";
+import { useGaps } from "@/features/gaps";
 import { GapDetailDrawer } from "@/features/gaps/components/gap-detail-drawer";
-import { GapAnalysisWorkflow } from "@/features/gaps/components/gap-analysis-workflow";
-import { ResearchGapProposal } from "@/features/projects/components/research-gap-proposal";
-import { assessmentLabels } from "@/features/projects/components/research-gap-evaluation";
+import { ProjectGapDiscovery } from "@/features/projects/components/project-gap-discovery";
+import { ProjectResearchWorkspace } from "@/features/projects/components/project-research-workspace";
+import { ProjectGapResults } from "@/features/projects/components/project-gap-results";
 import { ProjectDiscussionPanel } from "@/features/projects/components/project-discussion-panel";
 import { Link } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
-import type { AnalyzeGapRequest, GapAssessment, IProject, ReportLanguage, ResearchArtifactType, ResearchGapItem } from "@trend/shared-types";
+import type { GapAnalysisResult, IProject, ReportLanguage, ResearchArtifactType, ResearchGapItem } from "@trend/shared-types";
 import { ProjectLiteratureWorkspace } from "@/features/projects/components/project-literature-workspace";
 import { ResearchLiterature } from "@/features/projects/components/research-literature";
 import { type ProjectTab } from "@/features/projects/components/project-section-nav";
-import { WorkspaceOverviewPanel, WorkspaceStage, WorkspaceStageSelector } from "@/features/projects/components/workspace-overview";
-import { useWorkspaceOverview } from "@/features/projects/hooks/use-workspace";
+import { WorkspaceOverviewPanel } from "@/features/projects/components/workspace-overview";
 import { WorkspacePlanPanel } from "@/features/projects/components/workspace-plan";
 import { WorkspaceTasksPanel } from "@/features/projects/components/workspace-tasks";
 import { WorkspaceDiscussionsPanel } from "@/features/projects/components/workspace-discussions";
-import { canLeaveWorkspace } from "@/features/projects/components/workspace-common";
+import { canLeaveWorkspace, WorkspaceError } from "@/features/projects/components/workspace-common";
 import { ProjectSectionContent } from "@/features/projects/components/project-section-content";
 import "@/features/projects/project-workspace.css";
 import { ProjectPaperPickerDialog, type PaperPickerSource } from "@/features/projects/components/project-paper-picker-dialog";
@@ -33,7 +31,7 @@ import { SubmitReviewDialog } from "@/features/reviews/components/submit-review-
 import { useReviewCenter, type ReviewCenterItem } from "@/features/reviews";
 
 import { toast } from "sonner";
-import { Archive, FileText, Plus, Loader2, XCircle, Sparkles, MessageSquare, Settings2, ShieldCheck, ChevronRight, LockKeyhole, Globe2, UsersRound, Clock3, Compass, FolderGit2, GraduationCap } from "lucide-react";
+import { Archive, FileText, Plus, Loader2, MessageSquare, Settings2, ShieldCheck, ChevronRight, Compass } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
 import { MentorProjectPanel } from "@/pages/academics/academic-support";
 import { ProjectTeamSettings } from "@/features/projects/components/project-team-settings";
@@ -50,8 +48,6 @@ export function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { data: project, isLoading, isError, isFetching, refetch } = useProject(id);
   const resolvedProjectId = project?._id ?? id ?? "";
-  const overview = useWorkspaceOverview(resolvedProjectId, Boolean(project && !project.isPublicSummary));
-  const mentorCount = overview.data?.mentors?.length ?? 0;
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get("tab");
   const activeTab: ProjectTab = ["overview", "plan", "tasks", "papers", "members", "contributions", "reports", "gaps", "chat", "support", "submissions", "manuscripts"].includes(tabParam ?? "") ? tabParam as ProjectTab : "overview";
@@ -68,15 +64,6 @@ export function ProjectDetailPage() {
   const [paperPickerOpen, setPaperPickerOpen] = useState(false);
   const [paperPickerSource, setPaperPickerSource] = useState<PaperPickerSource>("search");
   const [reportDraft, setReportDraft] = useState<ReportDraft | null>(null);
-
-  const relativeActivity = (value: string) => {
-    const elapsed = Math.max(0, Date.now() - new Date(value).getTime());
-    if (!Number.isFinite(elapsed)) return t("Date unavailable");
-    const unit = elapsed < 60 * 60 * 1000 ? "minute" : elapsed < 24 * 60 * 60 * 1000 ? "hour" : "day";
-    const divisor = unit === "minute" ? 60_000 : unit === "hour" ? 3_600_000 : 86_400_000;
-    const amount = Math.max(1, Math.floor(elapsed / divisor));
-    return new Intl.RelativeTimeFormat(language, { numeric: "auto" }).format(-amount, unit);
-  };
 
   if (isLoading) {
     return (
@@ -117,94 +104,34 @@ export function ProjectDetailPage() {
     <div className="project-workspace">
       <div className="project-page-width project-detail-page">
 
-        <header className="project-detail-intro coord-project-intro" data-no-i18n>
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-blue-600 via-indigo-600 to-violet-600 text-white flex items-center justify-center shadow-md shadow-blue-500/20 shrink-0">
-                <FolderGit2 className="h-5 w-5" />
-              </div>
-              <div className="min-w-0">
-                <nav className="project-breadcrumb" aria-label={t("Projects")}>
-                  <Link to="/projects" className="hover:text-primary transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">{t("Projects")}</Link>
-                  <ChevronRight className="h-3 w-3 opacity-60" aria-hidden="true" />
-                  <span className="truncate max-w-[240px] text-muted-foreground">{project.title}</span>
-                </nav>
-                <div className="flex items-center gap-2.5 flex-wrap">
-                  <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground leading-tight truncate">
-                    {project.title}
-                  </h1>
-                  <span className="project-status-tag" data-status={project.status}>
-                    {t({ ACTIVE: "Active", PLANNING: "Planning", ON_HOLD: "On hold", COMPLETED: "Completed", ARCHIVED: "Archived" }[project.status])}
-                  </span>
-                  {project.researchField ? (
-                    <span className="project-detail-scope">
-                      <Compass className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                      <span>{project.researchField}</span>
-                    </span>
-                  ) : null}
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 shrink-0 self-start sm:self-center mt-2 sm:mt-0">
-              {!project.isPublicSummary && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab("members")}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/80 bg-background/80 hover:bg-accent/60 hover:text-foreground text-muted-foreground text-xs font-semibold transition-all shadow-xs cursor-pointer"
-                    title={t("Team members")}
-                  >
-                    <UsersRound className="h-3.5 w-3.5 text-blue-500" aria-hidden="true" />
-                    <span>{t("Team")} · <strong className="text-foreground font-semibold">{project.memberCount}</strong></span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab("support")}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border/80 bg-background/80 hover:bg-accent/60 hover:text-foreground text-muted-foreground text-xs font-semibold transition-all shadow-xs cursor-pointer"
-                    title={t("Academic mentors")}
-                  >
-                    <GraduationCap className="h-3.5 w-3.5 text-purple-500" aria-hidden="true" />
-                    <span>{t("Mentors")} · <strong className="text-foreground font-semibold">{mentorCount}</strong></span>
-                  </button>
-                </>
-              )}
-              {project.accessRole ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="rounded-lg font-semibold text-xs h-8 px-3 border-border/80 shadow-xs hover:border-primary/40 hover:text-primary shrink-0"
-                  onClick={() => setActiveTab("members", true)}
-                >
-                  <Settings2 className="mr-1.5 h-3.5 w-3.5" />
-                  {t("Project settings")}
-                </Button>
-              ) : null}
-            </div>
-          </div>
-
-          <div className="project-detail-meta">
-            {!project.isPublicSummary && (
-              <WorkspaceStageSelector projectId={project._id} />
-            )}
-            <span className="inline-flex items-center gap-1.5">
-              {["PUBLIC", "PUBLIC_SUMMARY"].includes(project.visibility) ? <Globe2 className="h-3.5 w-3.5 text-emerald-500" aria-hidden="true" /> : project.visibility === "INVITE_ONLY" ? <UsersRound className="h-3.5 w-3.5 text-blue-500" aria-hidden="true" /> : <LockKeyhole className="h-3.5 w-3.5 text-amber-500" aria-hidden="true" />}
-              {t(project.visibility === "PRIVATE" ? "Private" : project.visibility === "INVITE_ONLY" ? "Invite only" : "Public summary")}
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <Clock3 className="h-3.5 w-3.5 text-muted-foreground/70" aria-hidden="true" />
-              {t("Updated {{time}}", { time: relativeActivity(project.updatedAt) })}
-            </span>
-          </div>
-        </header>
-        {project.status === "ARCHIVED" ? <p role="status" className="flex items-center gap-2 rounded-lg border bg-card px-4 py-3 text-sm text-muted-foreground"><Archive className="h-4 w-4 shrink-0" />{t("Archived projects are read-only.")}</p> : null}
+        {project.status === "ARCHIVED" ? (
+          <p role="status" className="flex items-center gap-2 rounded-lg border bg-card px-4 py-3 text-sm text-muted-foreground mb-4">
+            <Archive className="h-4 w-4 shrink-0" />
+            {t("Archived projects are read-only.")}
+          </p>
+        ) : null}
 
         {project.isPublicSummary ? (
-          <div className="rounded-lg border bg-card p-8 text-center"><ShieldCheck className="mx-auto h-8 w-8 text-primary" /><h2 className="mt-3 text-lg font-semibold">{t("Public project summary")}</h2><p className="mx-auto mt-2 max-w-xl text-sm text-muted-foreground">{t("Papers, member details, reports, candidate gaps, contributions and chat are available only to current project members.")}</p></div>
-        ) : <>
-        <ProjectNextSteps key={project._id} project={project} onAddPaper={() => { setPaperPickerSource("search"); setPaperPickerOpen(true); }} onNavigate={(tab, settings) => setActiveTab(tab, settings)} />
-        <div className="project-workspace-shell">
+          <div className="rounded-lg border bg-card p-8 text-center">
+            <ShieldCheck className="mx-auto h-8 w-8 text-primary" />
+            <h2 className="mt-3 text-lg font-semibold">{project.title}</h2>
+            <p className="mt-1 text-sm font-medium text-muted-foreground">{t("Public project summary")}</p>
+            <p className="mx-auto mt-2 max-w-xl text-sm text-muted-foreground">{t("Papers, member details, reports, candidate gaps, contributions and chat are available only to current project members.")}</p>
+          </div>
+        ) : (
+          <>
+            {activeTab === "overview" && (
+              <ProjectNextSteps
+                key={project._id}
+                project={project}
+                onAddPaper={() => {
+                  setPaperPickerSource("search");
+                  setPaperPickerOpen(true);
+                }}
+                onNavigate={(tab, settings) => setActiveTab(tab, settings)}
+              />
+            )}
+            <div className="project-workspace-shell">
         <ProjectSectionContent activeTab={activeTab}>
           {activeTab === "overview" && <section id="project-panel-overview" role="tabpanel" aria-labelledby="project-tab-overview"><WorkspaceOverviewPanel project={project} /></section>}
           {activeTab === "manuscripts" && <section id="project-panel-manuscripts" role="tabpanel" aria-labelledby="project-tab-manuscripts"><ManuscriptsPanel projectId={project._id} readOnly={project.status === "ARCHIVED" || !project.accessRole} /></section>}
@@ -219,20 +146,10 @@ export function ProjectDetailPage() {
               <ProjectLiteratureWorkspace
                 projectId={project._id}
                 papers={project.papers}
-                criteria={project.screeningCriteria}
                 screeningMode={project.screeningMode}
-                isOwner={project.accessRole === "OWNER"}
                 readOnly={project.status === "ARCHIVED" || !project.accessRole}
                 onRequestAddPaper={(source = "search") => { setPaperPickerSource(source); setPaperPickerOpen(true); }}
                 onViewEvidence={() => { setAutoOpenGap(false); setActiveTab("gaps"); }}
-                onNavigateToReports={() => {
-                  setActiveTab("reports");
-                  setAutoOpenReport(true);
-                }}
-                onNavigateToGaps={() => {
-                  setActiveTab("gaps");
-                  setAutoOpenGap(true);
-                }}
               />
               </ResearchLiterature>
             </section>
@@ -268,6 +185,7 @@ export function ProjectDetailPage() {
           )}
           {activeTab === "gaps" && (
             <section id="project-panel-gaps" role="tabpanel" aria-labelledby="project-tab-gaps">
+              <ProjectResearchWorkspace projectId={project._id} readOnly={project.status === "ARCHIVED"}>
               <GapsTab
                 projectId={project._id}
                 projectPapers={project.papers ?? []}
@@ -279,6 +197,7 @@ export function ProjectDetailPage() {
                   setActiveTab("reports");
                 }}
               />
+              </ProjectResearchWorkspace>
             </section>
           )}
           {activeTab === "chat" && (
@@ -301,7 +220,7 @@ export function ProjectDetailPage() {
           open={paperPickerOpen}
           onOpenChange={setPaperPickerOpen}
         />
-        </>}
+      </>)}
       </div>
     </div>
   );
@@ -700,38 +619,8 @@ function ReportsTab({
   );
 }
 
-function AnalysisPoller({ analysisId, onDone }: { analysisId: string; onDone: () => void }) {
-  const { data } = useGapAnalysisStatus(analysisId);
-  const { t } = useI18n();
-
-  useEffect(() => {
-    if (data?.status === "ready") {
-      onDone();
-    }
-  }, [data?.status, onDone]);
-
-  if (data?.status === "failed") {
-    return (
-      <div className="bg-red-50 text-red-600 p-4 rounded-lg border border-red-200 text-sm flex items-center gap-2 mb-4">
-        <XCircle className="w-4 h-4" />
-        {data.errorMessage ?? t("Analysis failed.")}
-      </div>
-    );
-  }
-  if (data?.status === "ready") return null;
-  return (
-    <div className="bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900 p-4 rounded-lg flex items-center gap-3 mb-4 shadow-sm">
-      <Loader2 className="w-5 h-5 text-blue-500 animate-spin" />
-      <p className="text-sm text-blue-700 dark:text-blue-300 font-medium">
-        {data?.status === "analyzing" ? t("Analyzing documents with AI...") : t("Queued for analysis...")}
-      </p>
-    </div>
-  );
-}
-
 function GapsTab({
   projectId,
-  projectPapers,
   defaultTopic,
   openOnInit,
   onOpenChange,
@@ -744,115 +633,30 @@ function GapsTab({
   onOpenChange?: (open: boolean) => void;
   onDraftProposal?: (gap: ResearchGapItem) => void;
 }) {
-  const [assessment, setAssessment] = useState<GapAssessment | "">("");
-  const [page, setPage] = useState(1), [propose, setPropose] = useState(false);
+  const [page, setPage] = useState(1);
+  const [latestAnalysis, setLatestAnalysis] = useState<GapAnalysisResult | null>(null);
   const { data: currentProject } = useProject(projectId);
   const readOnly = currentProject?.status === "ARCHIVED";
-  const { data: gapsData, isLoading, refetch } = useGaps({ projectId, status: "active", page, pageSize: 20, assessmentStatus: assessment || undefined, sortBy: "newest" });
-  const analyze = useAnalyzeGap();
-  const queryClient = useQueryClient();
-  const { data: activeAnalysis } = useActiveGapAnalysis(projectId);
+  const { data: gapsData, isLoading, isError, error, refetch } = useGaps({ projectId, analysisId: latestAnalysis?.id, status: "active", page, pageSize: 20, sortBy: "newest" }, latestAnalysis?.status === "ready");
+
   const [selectedGap, setSelectedGap] = useState<ResearchGapItem | null>(null);
   const { t } = useI18n();
 
-  const [open, setOpen] = useState(false);
-  const [activeAnalysisId, setActiveAnalysisId] = useState<string | null>(null);
-
-  // Sync openOnInit
-  useEffect(() => {
-    if (openOnInit) {
-      setOpen(true);
-      onOpenChange?.(false);
-    }
-  }, [openOnInit, onOpenChange]);
-
-  // Resume polling a run started earlier in this project (tab switch, reload).
-  useEffect(() => {
-    if (activeAnalysis && (activeAnalysis.status === "queued" || activeAnalysis.status === "analyzing")) {
-      setActiveAnalysisId(activeAnalysis.id);
-    }
-  }, [activeAnalysis]);
-
-  const handleAnalyze = (payload: AnalyzeGapRequest) => {
-    analyze.mutate(payload, {
-      onSuccess: ({ analysisId }) => {
-        setOpen(false);
-        setActiveAnalysisId(analysisId);
-        toast.success(t("Gap analysis queued with the reviewed evidence pack."));
-      },
-      onError: (err: any) => {
-        toast.error(err.response?.data?.error?.message || t("Failed to trigger gap analysis."));
-      }
-    });
-  };
-
-  const handleDone = useCallback(() => {
-    setActiveAnalysisId(null);
-    void queryClient.invalidateQueries({ queryKey: ["activeGapAnalysis", projectId] });
-    void refetch();
-  }, [projectId, queryClient, refetch]);
+  useEffect(() => { if (openOnInit) onOpenChange?.(false); }, [openOnInit, onOpenChange]);
+  useEffect(() => { setPage(1); }, [latestAnalysis?.id]);
 
   return (
     <div className="space-y-4 mt-2">
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6">
-        <div><h3 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">{t("Candidate Research Gaps")}</h3><p className="mt-1 text-sm text-muted-foreground">{t("AI-assisted results are candidates for review, not validated research conclusions.")}</p></div>
-
-        <div className="flex flex-wrap items-center gap-3">
-          <select aria-label={t("Team assessment")} value={assessment} onChange={e => { setAssessment(e.target.value as GapAssessment | ""); setPage(1); }} className="h-10 rounded-md border bg-white px-3 text-sm">
-            <option value="">{t("All candidates")}</option>{Object.entries(assessmentLabels).map(([value, label]) => <option key={value} value={value}>{t(label)}</option>)}
-          </select>
-          {!readOnly && <Button variant="outline" onClick={async () => { if ((await canLeaveWorkspace())) setPropose(value => !value); }}>{t("Propose candidate")}</Button>}
-          <Button size="sm" className="rounded-full shadow-sm shrink-0" onClick={() => setOpen((current) => !current)} disabled={readOnly || Boolean(activeAnalysisId)}>
-            <Sparkles className="w-4 h-4 mr-2" /> {open ? t("Close gap analysis") : t("New Gap Analysis")}
-          </Button>
-        </div>
-      </div>
-
-      {propose && <ResearchGapProposal projectId={projectId} topic={defaultTopic ?? ""} onClose={() => setPropose(false)} />}
-      {open && !readOnly && (
-        <GapAnalysisWorkflow
-          isAnalyzing={analyze.isPending}
-          onAnalyze={handleAnalyze}
-          projectId={projectId}
-          projectPapers={projectPapers}
-          defaultTopic={defaultTopic}
-        />
-      )}
-
-      {activeAnalysisId && (
-        <AnalysisPoller
-          analysisId={activeAnalysisId}
-          onDone={handleDone}
-        />
-      )}
-
-      {isLoading ? (
+      <ProjectGapDiscovery key={projectId} projectId={projectId} defaultTopic={defaultTopic} readOnly={readOnly} onAnalysisChange={setLatestAnalysis} />
+      {latestAnalysis?.status !== "ready" ? null : isLoading ? (
         <div className="py-12 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground/50" /></div>
-      ) : gapsData?.data && gapsData.data.length > 0 ? (
-        <div className="research-candidates" data-no-i18n>
-          {gapsData.data.map(gap => <button type="button" key={gap.id} className="research-candidate" onClick={() => setSelectedGap(gap)}>
-            <span className="research-origin">{t(gap.origin === "HUMAN" ? "Human proposal" : "AI-suggested candidate")} · v{gap.version ?? 1}</span>
-            <strong>{gap.title}</strong><p>{gap.description}</p>
-            <span className="research-state">{t(assessmentLabels[gap.assessmentStatus ?? "PROPOSED"])}</span>
-          </button>)}
-          <div className="research-pagination"><Button variant="ghost" disabled={page === 1} onClick={() => setPage(value => value - 1)}>{t("Previous")}</Button><span>{t("Page {{page}}", { page })}</span><Button variant="ghost" disabled={!gapsData.meta || page >= gapsData.meta.totalPages} onClick={() => setPage(value => value + 1)}>{t("Next")}</Button></div>
-        </div>
+      ) : isError ? (<WorkspaceError error={error} retry={() => void refetch()} />) : gapsData?.data && gapsData.data.length > 0 ? (
+        <>
+          <ProjectGapResults projectId={projectId} gaps={gapsData.data} onOpen={setSelectedGap} />
+          {gapsData.meta && gapsData.meta.totalPages > 1 && <div className="research-pagination"><Button variant="ghost" disabled={page === 1} onClick={() => setPage(value => value - 1)}>{t("Previous")}</Button><span>{t("Page {{page}}", { page })}</span><Button variant="ghost" disabled={page >= gapsData.meta.totalPages} onClick={() => setPage(value => value + 1)}>{t("Next")}</Button></div>}
+        </>
       ) : (
-        <div className="mt-8 flex flex-col items-center justify-center rounded-3xl border border-dashed bg-muted/20 px-6 py-20 text-center">
-          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-background shadow-sm mb-4">
-            <Sparkles className="h-6 w-6 text-muted-foreground/60" />
-          </div>
-          <h4 className="text-lg font-semibold tracking-tight mb-2">{t("No candidate research gaps yet")}</h4>
-          <p className="text-sm text-muted-foreground max-w-sm mb-6">
-            {t("Candidate research gaps will appear after the project has sufficient screened literature and evidence.")}
-          </p>
-          {!readOnly && !open && (
-            <Button onClick={() => setOpen(true)} variant="outline" className="rounded-full shadow-sm" disabled={readOnly || Boolean(activeAnalysisId)}>
-              <Sparkles className="w-4 h-4 mr-2 text-cyan-500" />
-              {t("Run first analysis")}
-            </Button>
-          )}
-        </div>
+        null
       )}
 
       <GapDetailDrawer

@@ -1,9 +1,10 @@
-import { useState } from "react";
-import { Users, Sparkles, Bot } from "lucide-react";
+import { useId, useState } from "react";
+import { Users, Sparkles, Bot, LockKeyhole } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
 import { useI18n } from "@/i18n";
 import { ProjectTeamChatPanel } from "./project-team-chat-panel";
 import { ProjectChatPanel } from "./project-chat-panel";
+import "../project-chat.css";
 
 interface ProjectDiscussionPanelProps {
   projectId: string;
@@ -14,123 +15,67 @@ interface ProjectDiscussionPanelProps {
 
 type ChatMode = "team-chat" | "private-ai" | "team-ai";
 
-export function ProjectDiscussionPanel({
-  projectId,
-  paperCount,
-  ownerId,
-  onAddPapers,
-}: ProjectDiscussionPanelProps) {
+export function ProjectDiscussionPanel(props: ProjectDiscussionPanelProps) {
+  const currentUser = useAuthStore((s) => s.user);
+  return <DiscussionChannels key={`${props.projectId}:${currentUser?.id}`} {...props} />;
+}
+
+function DiscussionChannels({ projectId, paperCount, ownerId, onAddPapers }: ProjectDiscussionPanelProps) {
   const { t } = useI18n();
+  const id = useId();
   const currentUser = useAuthStore((s) => s.user);
   const [activeMode, setActiveMode] = useState<ChatMode>("team-chat");
-  const [aiDraft, setAiDraft] = useState("");
-
-  const currentUserName =
-    currentUser?.fullName || currentUser?.email || "You";
-
+  const [drafts, setDrafts] = useState<Record<ChatMode, string>>({ "team-chat": "", "private-ai": "", "team-ai": "" });
+  const setDraft = (mode: ChatMode, value: string) => setDrafts(current => ({ ...current, [mode]: value }));
   const channels = [
-    {
-      id: "team-chat" as const,
-      label: t("Team Chat"),
-      subtitle: t("Internal member discussion"),
-      icon: Users,
-      badgeColor: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
-      activeRing: "ring-blue-500/20 border-blue-500/40 dark:border-blue-500/30",
-    },
-    {
-      id: "private-ai" as const,
-      label: t("My AI"),
-      subtitle: t("Private research copilot"),
-      icon: Sparkles,
-      badgeColor: "bg-purple-500/10 text-purple-600 dark:text-purple-400",
-      activeRing: "ring-purple-500/20 border-purple-500/40 dark:border-purple-500/30",
-    },
-    {
-      id: "team-ai" as const,
-      label: t("Team AI Room"),
-      subtitle: t("Shared project memory & findings"),
-      icon: Bot,
-      badgeColor: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
-      activeRing: "ring-amber-500/20 border-amber-500/40 dark:border-amber-500/30",
-    },
+    { id: "team-chat" as const, label: t("Team Chat"), icon: Users },
+    { id: "private-ai" as const, label: t("My AI"), icon: Sparkles },
+    { id: "team-ai" as const, label: t("Team AI Room"), icon: Bot },
   ];
 
   return (
-    <div className="space-y-4">
-      {/* Smart Channel Hub */}
-      <div
-        className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 p-1.5 rounded-2xl border border-border/70 bg-muted/30 backdrop-blur-xs"
-        role="tablist"
-        aria-label={t("Project discussion channels")}
-      >
-        {channels.map((chan) => {
-          const Icon = chan.icon;
-          const isActive = activeMode === chan.id;
-          return (
-            <button
-              key={chan.id}
-              type="button"
-              role="tab"
-              aria-selected={isActive}
-              onClick={() => setActiveMode(chan.id)}
-              className={`flex items-center gap-3 p-3 rounded-xl text-left transition-all relative ${
-                isActive
-                  ? `bg-background text-foreground shadow-sm border ${chan.activeRing} ring-2`
-                  : "hover:bg-background/60 text-muted-foreground hover:text-foreground border border-transparent"
-              }`}
-            >
-              <div
-                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-colors ${
-                  isActive ? "bg-primary text-primary-foreground shadow-xs" : chan.badgeColor
-                }`}
-              >
-                <Icon className="h-4 w-4" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between gap-1.5">
-                  <span className={`text-xs font-bold truncate ${isActive ? "text-foreground" : "text-foreground/80"}`}>
-                    {chan.label}
-                  </span>
-                  {isActive && (
-                    <span className="h-2 w-2 rounded-full bg-emerald-500 shrink-0" aria-hidden="true" />
-                  )}
-                </div>
-                <p className="text-[11px] text-muted-foreground truncate leading-tight mt-0.5">
-                  {chan.subtitle}
-                </p>
-              </div>
-            </button>
-          );
+    <div className="project-conversation">
+      <div className="project-chat-channels" role="tablist" aria-label={t("Project discussion channels")}>
+        {channels.map((channel, index) => {
+          const Icon = channel.icon;
+          return <button
+            key={channel.id}
+            id={`${id}-${channel.id}`}
+            type="button"
+            role="tab"
+            aria-selected={activeMode === channel.id}
+            aria-controls={`${id}-panel`}
+            tabIndex={activeMode === channel.id ? 0 : -1}
+            onClick={() => setActiveMode(channel.id)}
+            onKeyDown={event => {
+              const next = event.key === "ArrowRight" ? (index + 1) % channels.length
+                : event.key === "ArrowLeft" ? (index + channels.length - 1) % channels.length
+                : event.key === "Home" ? 0 : event.key === "End" ? channels.length - 1 : null;
+              if (next === null) return;
+              event.preventDefault();
+              setActiveMode(channels[next]!.id);
+              document.getElementById(`${id}-${channels[next]!.id}`)?.focus();
+            }}
+          >
+            <Icon size={17} aria-hidden="true" />
+            <span>{channel.label}</span>
+            {channel.id === "private-ai" && <LockKeyhole size={12} aria-label={t("Private")} className="project-chat-private-icon" />}
+          </button>;
         })}
       </div>
-
-      {/* Render selected chat panel */}
-      {activeMode === "team-chat" && (
-        <ProjectTeamChatPanel projectId={projectId} ownerId={ownerId} />
-      )}
-      {activeMode === "private-ai" && (
-        <ProjectChatPanel
-          projectId={projectId}
-          paperCount={paperCount}
-          currentUserName={currentUserName}
-          scope="private"
-          onAddPapers={onAddPapers}
-          draft={aiDraft}
-          onDraftChange={setAiDraft}
-          onSwitchToTeamAI={() => setActiveMode("team-ai")}
-        />
-      )}
-      {activeMode === "team-ai" && (
-        <ProjectChatPanel
-          projectId={projectId}
-          paperCount={paperCount}
-          currentUserName={currentUserName}
-          scope="team"
-          onAddPapers={onAddPapers}
-          draft={aiDraft}
-          onDraftChange={setAiDraft}
-        />
-      )}
+      <div id={`${id}-panel`} role="tabpanel" aria-labelledby={`${id}-${activeMode}`} key={activeMode}>
+        {activeMode === "team-chat" ? <ProjectTeamChatPanel projectId={projectId} ownerId={ownerId} draft={drafts[activeMode]} onDraftChange={value => setDraft(activeMode, value)} /> : (
+          <ProjectChatPanel
+            projectId={projectId}
+            paperCount={paperCount}
+            currentUserName={currentUser?.fullName || currentUser?.email || t("You")}
+            scope={activeMode === "private-ai" ? "private" : "team"}
+            onAddPapers={onAddPapers}
+            draft={drafts[activeMode]}
+            onDraftChange={value => setDraft(activeMode, value)}
+          />
+        )}
+      </div>
     </div>
   );
 }

@@ -7,7 +7,7 @@
   .home-discovery[data-home-motion="enabled"] [data-home-reveal].is-home-visible { transform: none; }
 
   /* Keep large backgrounds still while their content enters independently. */
-  .home-discovery[data-home-motion="enabled"] :is(.home-featured, .home-research-bridge, .home-question-space)[data-home-reveal] { opacity: 1; transform: none; transition: none; }
+  .home-discovery[data-home-motion="enabled"] :is(.home-featured, .home-researchers-section, .home-research-bridge, .home-question-space)[data-home-reveal] { opacity: 1; transform: none; transition: none; }
   .home-discovery[data-home-motion="enabled"] [data-home-animate] {
     opacity: 0;
     transform: translateY(30px);

@@ -22,7 +22,7 @@ export function ForumLayout({
   contentClassName,
 }: ForumLayoutProps) {
   return (
-    <div className={cn("forum-workspace relative min-h-[calc(100dvh-var(--app-header-height))]", className)}>
+    <div className={cn("forum-workspace relative min-h-[calc(100dvh-var(--app-header-offset))]", className)}>
       <div
         className={cn(
           "w-full lg:grid lg:grid-cols-[var(--forum-sidebar-width)_minmax(0,1fr)]",

@@ -40,13 +40,13 @@ export async function indexPaper(paperId: string, force = false) {
     for (let offset = 0; offset < chunks.length; offset += 8) {
       const batch = chunks.slice(offset, offset + 8);
       const result = await cachedGenerateJSON<{ analysis: PaperAnalysisContent; relations: GroundedRelation[] }>({
-        task: "extract", promptVersion: RAG_INDEX_VERSION,
+        task: "extract", promptVersion: `${RAG_INDEX_VERSION}-questions-v2`,
         keyParts: { paperId, contentHash, positions: batch.map((chunk) => chunk.position) },
         model: aiModel(),
         prompt: [
           `Paper title: ${sanitizeForPrompt(paper.title)}`,
           `Source coverage: ${source.sourceKind}`,
-          "Extract summary, methods, dataset, findings[], limitations[], contributions[], futureWork[], keyTerms[] from ONLY the passages. Missing scalars=null, missing lists=[].",
+          "Extract summary, researchQuestions[], methods, dataset, findings[], limitations[], contributions[], futureWork[], keyTerms[] from ONLY the passages. Research questions must be explicitly stated by the source, never inferred. Missing scalars=null, missing lists=[].",
           `Return JSON {analysis: {...}, relations: [{kind, name, quote, chunkPosition}]}. Allowed kinds: ${RELATION_KINDS.join(", ")}.`,
           "Every relation must have an exact verbatim quote (12-1000 characters) from its chunk. Do not infer results, missing experiments, or future work. Entity name is a concise label for the quoted fact. Max 24 relations.",
           ...batch.map((chunk) => `<<<PASSAGE_${chunk.position} page=${chunk.pageNumber ?? "abstract"}>>>\n${sanitizeForPrompt(chunk.text)}\n<<<END_PASSAGE_${chunk.position}>>>`),
@@ -67,7 +67,7 @@ export async function indexPaper(paperId: string, force = false) {
       if (!heartbeat.count) throw new Error("Paper index lease was superseded by a source update or another job");
     }
     const merged = mergeAnalyses(analyses);
-    const aiAnalysis = { ...withAnalysisMetadata(merged), sourceKind: source.sourceKind, contentHash, analysisPromptVersion: RAG_INDEX_VERSION, warnings: source.warnings };
+    const aiAnalysis = { ...withAnalysisMetadata(merged), sourceKind: source.sourceKind, contentHash, analysisPromptVersion: `${RAG_INDEX_VERSION}-questions-v2`, warnings: source.warnings };
     await prisma.$transaction(async (tx) => {
       // Lock the paper before comparing, so edits cannot race publication of an old index.
       await tx.$queryRaw`SELECT id FROM papers WHERE id = ${paperId}::uuid FOR UPDATE`;
@@ -98,7 +98,7 @@ export async function indexPaper(paperId: string, force = false) {
 }
 
 export function mergeAnalyses(items: PaperAnalysisContent[]): PaperAnalysisContent {
-  const list = (key: "findings" | "limitations" | "contributions" | "futureWork" | "keyTerms") => [...new Set(items.flatMap((item) => item[key]))].slice(0, 32);
+  const list = (key: "researchQuestions" | "findings" | "limitations" | "contributions" | "futureWork" | "keyTerms") => [...new Set(items.flatMap((item) => item[key] ?? []))].slice(0, 32);
   const scalar = (key: "summary" | "methods" | "dataset") => [...new Set(items.flatMap((item) => item[key] ? [item[key]!] : []))].join("; ").slice(0, 4000) || null;
-  return { summary: scalar("summary"), methods: scalar("methods"), dataset: scalar("dataset"), findings: list("findings"), limitations: list("limitations"), contributions: list("contributions"), futureWork: list("futureWork"), keyTerms: list("keyTerms") };
+  return { researchQuestions: list("researchQuestions"), summary: scalar("summary"), methods: scalar("methods"), dataset: scalar("dataset"), findings: list("findings"), limitations: list("limitations"), contributions: list("contributions"), futureWork: list("futureWork"), keyTerms: list("keyTerms") };
 }

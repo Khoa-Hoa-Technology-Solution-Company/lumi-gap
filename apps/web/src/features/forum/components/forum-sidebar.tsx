@@ -195,7 +195,7 @@ export function ForumSidebar({
   return (
     <>
       <aside className="forum-sidebar-shell hidden w-[var(--forum-sidebar-width)] shrink-0 border-r border-border/70 bg-background lg:block">
-        <div className="forum-sidebar-panel sticky top-[var(--app-header-height)] max-h-[calc(100dvh-var(--app-header-height))] overflow-y-auto overscroll-y-contain px-2.5 pb-6 pt-5">
+        <div className="forum-sidebar-panel sticky top-[var(--app-header-offset)] max-h-[calc(100dvh-var(--app-header-offset)-1rem)] overflow-y-auto overscroll-y-contain px-2.5 pb-6 pt-5">
           {navigation}
         </div>
       </aside>

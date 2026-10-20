@@ -8,6 +8,8 @@ import { startWorkerHeartbeat } from "../infrastructure/worker-heartbeat.js";
 import { sweepStuckGapAnalyses } from "../modules/gaps/gap-sweep.js";
 import { gapsService, REPORT_GAP_FANOUT_JOB, type GapJob, type ReportGapFanoutJob } from "../modules/gaps/gaps.service.js";
 import { withUserAi } from "../modules/user-ai/user-ai.runtime.js";
+import { projectSynthesisService } from "../modules/projects/project-synthesis.service.js";
+import { SYNTHESIS_JOB, type SynthesisJob } from "../modules/projects/research-synthesis.js";
 
 enforcePostgresOnlyRuntime();
 
@@ -31,6 +33,7 @@ async function main() {
 
   // A hard-killed worker leaves analyses frozen; fail them (with a credit refund) unless their job is still live.
   const swept = await sweepStuckGapAnalyses();
+  await projectSynthesisService.sweep();
   if (swept > 0) {
     logger.warn({ swept }, "swept stuck gap analyses");
   }
@@ -40,6 +43,11 @@ async function main() {
     async (job) => {
       logger.info({ jobId: job.id, attempt: job.attemptsMade + 1 }, "gap job received");
       try {
+        if (job.name === SYNTHESIS_JOB) {
+          const input = job.data as SynthesisJob;
+          await withUserAi(input.userId, () => projectSynthesisService.run(input));
+          return;
+        }
         // Report fan-out only copies stored gaps and scores probes — no LLM call, so no personal AI binding.
         if (job.name === REPORT_GAP_FANOUT_JOB) {
           await gapsService.fanOutGapsFromReport(job.data as ReportGapFanoutJob);
@@ -67,6 +75,10 @@ async function main() {
     // the raw error stays in the log line above.
     const exhausted = job && job.attemptsMade >= (job.opts.attempts ?? 1);
     const unrecoverable = err instanceof UnrecoverableError;
+    if (job?.name === SYNTHESIS_JOB) {
+      if (exhausted || unrecoverable) void projectSynthesisService.fail(job.data as SynthesisJob).catch(error => logger.error({ err: error }, "Synthesis failure cleanup failed"));
+      return;
+    }
     // A failed fan-out leaves the ready report intact; the error log above is enough.
     if (job && job.name !== REPORT_GAP_FANOUT_JOB && (exhausted || unrecoverable)) {
       const { analysisId } = job.data as GapJob;

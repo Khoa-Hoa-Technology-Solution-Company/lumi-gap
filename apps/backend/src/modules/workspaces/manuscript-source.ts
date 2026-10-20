@@ -7,9 +7,9 @@ export const hashBytes = (bytes: Uint8Array | string) => createHash("sha256").up
 export const MAX_TEXT_BYTES = 500_000;
 export const MAX_CRDT_BYTES = 2_000_000;
 export function manuscriptPath(path: string, kind: "TEXT" | "ASSET" | "FOLDER") {
-  if (path.length > 240 || !path || path.split("/").some(part => !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(part) || part === "." || part === ".." || part.length > 100)) throw AppError.badRequest("Invalid manuscript path");
-  if (kind === "TEXT" && !/\.(tex|bib|txt|sty)$/.test(path)) throw AppError.badRequest("Use a .tex, .bib, .txt or .sty source file");
-  if (kind === "ASSET" && !/\.(png|jpg|jpeg|webp)$/.test(path)) throw AppError.badRequest("Use a PNG, JPEG or WebP image");
+  if (path.length > 240 || !path || path.toLowerCase().split("/")[0] === "lumigap-build" || path.split("/").some(part => !/^[A-Za-z0-9][A-Za-z0-9._ ()-]*$/.test(part) || part.endsWith(" ") || part === "." || part === ".." || part.length > 100)) throw AppError.badRequest("Invalid manuscript path");
+  if (kind === "TEXT" && !/\.(tex|bib|txt|sty|cls|bst|csv|tsv|dat|tikz|pgf|ist|bbx|cbx|lbx|def|cfg|fd)$/.test(path)) throw AppError.badRequest("Use a .tex, .bib, .txt, .sty, .cls or .bst source file");
+  if (kind === "ASSET" && !/\.(png|jpg|jpeg|webp|pdf|svg|eps)$/.test(path)) throw AppError.badRequest("Use a PNG, JPEG, WebP or PDF figure");
   return path;
 }
 export function sourceDocument(bytes?: Uint8Array | null) {
@@ -44,7 +44,19 @@ export function texEscape(value: string) {
 export function manuscriptTemplate(title: string, template: ManuscriptTemplate) {
   const sections = template === "PROPOSAL" ? ["Research problem", "Research questions", "Methodology", "Research plan"] : template === "REPORT" ? ["Introduction", "Methodology", "Results", "Conclusion"] : ["Introduction", "Related work", "Methodology", "Results", "Conclusion"];
   const files = sections.map(name => ({ path: `sections/${name.toLowerCase().replaceAll(" ", "_")}.tex`, text: `\\section{${name}}\n% Write your research here.\n` }));
-  return [{ path: "main.tex", text: `\\documentclass[11pt]{${template === "REPORT" ? "report" : "article"}}\n\\usepackage[utf8]{inputenc}\n\\usepackage[T1]{fontenc}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\title{${texEscape(title)}}\n\\author{}\n\\date{}\n\\begin{document}\n\\maketitle\n${files.map(file => `\\input{${file.path}}`).join("\n")}\n\\bibliographystyle{plain}\n\\bibliography{references}\n\\end{document}\n` }, ...files, { path: "references.bib", text: "% Add references from the project literature panel or edit BibTeX here.\n" }];
+  const fonts = "\\usepackage{iftex}\n\\ifPDFTeX\n  \\usepackage[utf8]{inputenc}\n  \\usepackage[T1,T5]{fontenc}\n  \\usepackage{lmodern}\n\\else\n  \\usepackage{fontspec}\n  \\setmainfont{DejaVu Serif}\n\\fi";
+  if (["THESIS", "ELSEVIER", "SPRINGER", "APS"].includes(template)) {
+    const classes = { THESIS: "memoir", ELSEVIER: "elsarticle", SPRINGER: "llncs", APS: "revtex4-2" };
+    const options = template === "THESIS" ? "11pt,oneside" : template === "ELSEVIER" ? "preprint" : template === "APS" ? "aps,prl,reprint" : "runningheads";
+    const bibliography = template === "ELSEVIER" ? "elsarticle-num" : template === "SPRINGER" ? "splncs04" : template === "APS" ? "apsrev4-2" : "plain";
+    const front = template === "ELSEVIER" ? `\\begin{frontmatter}\n\\title{${texEscape(title)}}\n\\author{Your team}\n\\begin{abstract}\nWrite a summary of your research.\n\\end{abstract}\n\\begin{keyword}\nResearch \\sep Methods\n\\end{keyword}\n\\end{frontmatter}` : `\\title{${texEscape(title)}}\n\\author{Your team}\n${template === "SPRINGER" ? "\\institute{Your institution}\n" : "\\date{}\n"}${template === "APS" ? "\\begin{abstract}\nWrite a summary of your research.\n\\end{abstract}\n" : ""}\\maketitle\n${template === "SPRINGER" ? "\\begin{abstract}\nWrite a summary of your research.\n\\keywords{Research \\and Methods}\n\\end{abstract}\n" : ""}${template === "THESIS" ? "\\tableofcontents\n" : ""}`;
+    const contents = files.map(file => template === "THESIS" ? { ...file, text: file.text.replace("\\section", "\\chapter") } : file);
+    return [{ path: "main.tex", text: `\\documentclass[${options}]{${classes[template as keyof typeof classes]}}\n${fonts}\n\\usepackage{graphicx,amsmath,booktabs}\n\\begin{document}\n${front}\n${contents.map(file => `\\input{${file.path}}`).join("\n")}\n\\bibliographystyle{${bibliography}}\n\\bibliography{references}\n\\end{document}\n` }, ...contents, { path: "references.bib", text: "% Add your verified references here.\n" }];
+  }
+  if (template === "BLANK") return [{ path: "main.tex", text: `\\documentclass{article}\n${fonts}\n\\begin{document}\n% Write your research here.\n\\null\n\\end{document}\n` }];
+  if (template === "PRESENTATION") return [{ path: "main.tex", text: `\\documentclass{beamer}\n${fonts}\n\\usepackage{graphicx}\n\\title{${texEscape(title)}}\n\\author{}\n\\date{}\n\\begin{document}\n\\begin{frame}\n\\titlepage\n\\end{frame}\n\\input{sections/slides.tex}\n\\end{document}\n` }, { path: "sections/slides.tex", text: "\\begin{frame}{Research question}\n  % Introduce the research question and supporting evidence.\n\\end{frame}\n\\begin{frame}{Methods}\n  % Describe your approach.\n\\end{frame}\n" }, { path: "references.bib", text: "% Add your verified references here.\n" }];
+  if (template === "IEEE_CONFERENCE") return [{ path: "main.tex", text: `\\documentclass[conference]{IEEEtran}\n${fonts}\n\\usepackage{cite,amsmath,amssymb,graphicx,booktabs}\n\\title{${texEscape(title)}}\n\\author{\\IEEEauthorblockN{Your team}}\n\\begin{document}\n\\maketitle\n\\begin{abstract}\n% Summarize your research.\n\\end{abstract}\n${files.map(file => `\\input{${file.path}}`).join("\n")}\n\\bibliographystyle{IEEEtran}\n\\bibliography{references}\n\\end{document}\n` }, ...files, { path: "references.bib", text: "% Add your verified references here.\n" }];
+  return [{ path: "main.tex", text: `\\documentclass[11pt]{${template === "REPORT" ? "report" : "article"}}\n${fonts}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\title{${texEscape(title)}}\n\\author{}\n\\date{}\n\\begin{document}\n\\maketitle\n${files.map(file => `\\input{${file.path}}`).join("\n")}\n\\bibliographystyle{plain}\n\\bibliography{references}\n\\end{document}\n` }, ...files, { path: "references.bib", text: "% Add references from the project literature panel or edit BibTeX here.\n" }];
 }
 export function citationKey(paper: { id: string; publicationYear: number }, authors: string[]) {
   const name = (authors[0] ?? "reference").normalize("NFKD").replace(/[^a-zA-Z]/g, "").slice(0, 20).toLowerCase() || "reference";

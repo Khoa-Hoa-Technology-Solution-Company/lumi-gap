@@ -1,6 +1,7 @@
 import { sanitizeForPrompt } from "../llm/grounding.js";
 
 export interface PaperStructuredAnalysis {
+  researchQuestions?: string[];
   summary?: string | null;
   methods?: string | null;
   dataset?: string | null;
@@ -24,6 +25,7 @@ export function buildStructuredPaperContext(
   const lines: string[] = [];
   if (aiAnalysis.sourceKind) lines.push(`Coverage: ${aiAnalysis.sourceKind === "abstract" ? "abstract only" : "PDF text"}`);
   addScalar(lines, "Summary", aiAnalysis.summary);
+  addList(lines, "Research questions", aiAnalysis.researchQuestions);
   addScalar(lines, "Methods", aiAnalysis.methods);
   addScalar(lines, "Dataset", aiAnalysis.dataset);
   addList(lines, "Findings", aiAnalysis.findings);

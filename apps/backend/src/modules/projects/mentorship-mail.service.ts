@@ -6,12 +6,13 @@ import { env } from "../../config/env.js";
 import { logger } from "../../infrastructure/logger.js";
 
 const events = ["MENTORSHIP_REQUEST_RECEIVED", "MENTORSHIP_OFFER_RECEIVED", "MENTORSHIP_REQUEST_ACCEPTED", "MENTORSHIP_OFFER_ACCEPTED",
-  "MENTORSHIP_REQUEST_DECLINED", "MENTORSHIP_OFFER_DECLINED", "MENTORSHIP_CANCELLED", "MENTORSHIP_EXPIRED", "MENTORSHIP_ENDED", "MENTORSHIP_SUGGESTED"] as const;
+  "MENTORSHIP_REQUEST_DECLINED", "MENTORSHIP_OFFER_DECLINED", "MENTORSHIP_CANCELLED", "MENTORSHIP_EXPIRED", "MENTORSHIP_ENDED", "MENTORSHIP_SUGGESTED", "MENTORSHIP_POSITION_FILLED"] as const;
 const payloadSchema = z.object({ event: z.enum(events), projectId: z.string().uuid(), projectTitle: z.string().max(100), actorName: z.string().max(200) }).strict();
 
 export function buildMentorshipMail(payload: MentorshipEmailPayload, name: string, locale: "en" | "vi", origin: string) {
   const { projectTitle: project, actorName: actor } = payload;
   const subjects: Record<MentorshipEvent, [string, string]> = {
+    MENTORSHIP_POSITION_FILLED: [`Mentor position assigned for ${project}`, `Vị trí mentor của ${project} đã có người nhận`],
     MENTORSHIP_SUGGESTED: [`A teammate suggested a mentor for ${project}`, `Thành viên đề xuất cố vấn cho ${project}`],
     MENTORSHIP_REQUEST_RECEIVED: [`${actor} invited you to mentor ${project}`, `${actor} mời bạn hướng dẫn ${project}`],
     MENTORSHIP_OFFER_RECEIVED: [`${actor} offered to mentor ${project}`, `${actor} đề nghị hướng dẫn ${project}`],
@@ -24,6 +25,7 @@ export function buildMentorshipMail(payload: MentorshipEmailPayload, name: strin
     MENTORSHIP_ENDED: [`Mentorship ended for ${project}`, `Đã kết thúc hướng dẫn ${project}`],
   };
   const messages: Record<MentorshipEvent, [string, string]> = {
+    MENTORSHIP_POSITION_FILLED: ["This mentor position was assigned to another lecturer. Your invitation was closed automatically, not declined.", "Vị trí đã được phân công cho giảng viên khác. Lời mời tự động đóng, không được ghi nhận là từ chối."],
     MENTORSHIP_SUGGESTED: ["Review the suggested lecturer in Academic Support.", "Xem giảng viên được đề xuất trong Hỗ trợ học thuật."],
     MENTORSHIP_REQUEST_RECEIVED: [`${actor} invited you to become the academic mentor for “${project}” on LumiGap. Review the shared preview and choose whether to accept.`, `${actor} mời bạn làm mentor học thuật cho “${project}” trên LumiGap. Xem tóm tắt được chia sẻ và quyết định chấp nhận hoặc từ chối.`],
     MENTORSHIP_OFFER_RECEIVED: [`${actor} offered to mentor “${project}”. Review the lecturer's profile before deciding.`, `${actor} đề nghị hướng dẫn “${project}”. Xem hồ sơ giảng viên trước khi quyết định.`],

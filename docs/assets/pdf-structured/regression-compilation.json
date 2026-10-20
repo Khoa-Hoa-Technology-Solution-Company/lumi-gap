@@ -1,0 +1,151 @@
+[
+  {
+    "name": "table",
+    "success": true,
+    "warningCodes": [
+      "FONT_SUBSTITUTION",
+      "FORMULAS_AND_REFERENCES",
+      "MULTICOLUMN_REVIEW_PAGE:1",
+      "READING_ORDER_REVIEW",
+      "STRUCTURED_REFLOW"
+    ],
+    "compileWarnings": [],
+    "pages": 1,
+    "text": "Research methods 1 Research sample Quantity Amount Sample 1 1 125.00 Sample 2 2 250.00 Sample 3 3 375.00 Sample 4 4 500.00 Sample 5 5 625.00 Sample 6 6 750.00 Sample 7 7 875.00 Sample 8 8 1000.00 Sample 9 9 1125.00 Sample 10 10 1250.00 Sample 11 11 1375.00 Sample 12 12 1500.00 Sample 13 13 1625.00 Sample 14 14 1750.00 Sample 15 15 1875.00 Sample 16 16 2000.00 Sample 17 17 2125.00 Sample 18 18 2250.00",
+    "charactersOutsidePage": 0
+  },
+  {
+    "name": "prose",
+    "success": true,
+    "warningCodes": [
+      "FONT_SUBSTITUTION",
+      "FORMULAS_AND_REFERENCES",
+      "READING_ORDER_REVIEW",
+      "STRUCTURED_REFLOW"
+    ],
+    "compileWarnings": [],
+    "pages": 1,
+    "text": "Research methods 1 This study preserves research evidence and exact numerical measurements. Participants compared methods across three independent source documents. The measured value is 92.5 percent; source key SAMPLE-2026-041 is unchanged. Long prose should remain an editable paragraph that wraps when it is revised. Synthetic fixture: no real participant or experiment data.",
+    "charactersOutsidePage": 0
+  },
+  {
+    "name": "list",
+    "success": true,
+    "warningCodes": [
+      "FONT_SUBSTITUTION",
+      "FORMULAS_AND_REFERENCES",
+      "READING_ORDER_REVIEW",
+      "STRUCTURED_REFLOW"
+    ],
+    "compileWarnings": [],
+    "pages": 1,
+    "text": "Research methods 1 This study preserves research evidence and exact numerical measurements. Participants compared methods across three independent source documents. The measured value is 92.5 percent; source key SAMPLE-2026-041 is unchanged. Long prose should remain an editable paragraph that wraps when it is revised. Study objectives 1. Preserve source evidence 2. Keep all numeric results 3. Review every interpretation Synthetic fixture: no real participant or experiment data.",
+    "charactersOutsidePage": 0
+  },
+  {
+    "name": "equation",
+    "success": true,
+    "warningCodes": [
+      "FONT_SUBSTITUTION",
+      "FORMULAS_AND_REFERENCES",
+      "READING_ORDER_REVIEW",
+      "STRUCTURED_REFLOW"
+    ],
+    "compileWarnings": [],
+    "pages": 1,
+    "text": "Research methods 1 Thisstudypreservesresearchevidenceandexactnumerical measurements. Participantscomparedmethodsacrossthree independentsourcedocuments. Themeasuredvalueis92.5percent; sourcekeySAMPLE-2026-041isunchanged. Longproseshouldremain aneditableparagraphthatwrapswhenitisrevised. E=mc^2 Equationisprintedsourcetext;nosymbolicreconstructionis assumed. Syntheticfixture: norealparticipantorexperimentdata.",
+    "charactersOutsidePage": 0
+  },
+  {
+    "name": "scan-vie",
+    "success": true,
+    "warningCodes": [
+      "FONT_SUBSTITUTION",
+      "FORMULAS_AND_REFERENCES",
+      "OCR_REVIEW_PAGE:1",
+      "READING_ORDER_REVIEW",
+      "SCAN_GRAPHICS_REVIEW_PAGE:1",
+      "STRUCTURED_REFLOW"
+    ],
+    "compileWarnings": [],
+    "pages": 1,
+    "text": "PHIẾU KIEM THỬ NGHIÊN CỨU Mã đơn: TEST -2026-041 Số lượng: 3 Tổng tiền: 1.275.000 VND Ghi chú: kiểm tra dữ liệu gốc.",
+    "charactersOutsidePage": 0
+  },
+  {
+    "name": "multipage",
+    "success": true,
+    "warningCodes": [
+      "FONT_SUBSTITUTION",
+      "FORMULAS_AND_REFERENCES",
+      "READING_ORDER_REVIEW",
+      "STRUCTURED_REFLOW"
+    ],
+    "compileWarnings": [],
+    "pages": 3,
+    "text": "Research methods 1 This study preserves research evidence and exact numerical measurements. Participants compared methods across three independent source documents. The measured value is 92.5 percent; source key SAMPLE-2026-041 is unchanged. Long prose should remain an editable paragraph that wraps when it is revised. Synthetic fixture: no real participant or experiment data. Research methods 2 This study preserves research evidence and exact numerical measurements. Participants compared methods across three independent source documents. The measured value is 92.5 percent; source key SAMPLE-2026-041 is unchanged. Long prose should remain an editable paragraph that wraps when it is revised. Synthetic fixture: no real participant or experiment data. Research methods 3 This study preserves research evidence and exact numerical measurements. Participants compared methods across three independent source documents. The measured value is 92.5 percent; source key SAMPLE-2026-041 is unchanged. Long prose should remain an editable paragraph that wraps when it is revised. Synthetic fixture: no real participant or experiment data.",
+    "charactersOutsidePage": 0
+  },
+  {
+    "name": "figure",
+    "success": true,
+    "warningCodes": [
+      "FONT_SUBSTITUTION",
+      "FORMULAS_AND_REFERENCES",
+      "READING_ORDER_REVIEW",
+      "STRUCTURED_REFLOW"
+    ],
+    "compileWarnings": [],
+    "pages": 1,
+    "text": "Research methods 1 This study preserves research evidence and exact numerical measurements. Participants compared methods across three independent source documents. The measured value is 92.5 percent; source key SAMPLE-2026-041 is unchanged. Long prose should remain an editable paragraph that wraps when it is revised. Figure 1. Synthetic research illustration. Synthetic fixture: no real participant or experiment data.",
+    "charactersOutsidePage": 0
+  },
+  {
+    "name": "special",
+    "success": true,
+    "warningCodes": [
+      "FONT_SUBSTITUTION",
+      "FORMULAS_AND_REFERENCES",
+      "READING_ORDER_REVIEW",
+      "STRUCTURED_REFLOW"
+    ],
+    "compileWarnings": [],
+    "pages": 1,
+    "text": "Research methods 1 This study preserves research evidence and exact numerical measurements. Participants compared methods across three independent source documents. The measured value is 92.5 percent; source key SAMPLE-2026-041 is unchanged. Long prose should remain an editable paragraph that wraps when it is revised. Source contains 50% & sample_1 #2 {group} $5 and \\input{evil}. Synthetic fixture: no real participant or experiment data.",
+    "charactersOutsidePage": 0
+  },
+  {
+    "name": "merged",
+    "success": true,
+    "warningCodes": [
+      "FONT_SUBSTITUTION",
+      "FORMULAS_AND_REFERENCES",
+      "MULTICOLUMN_REVIEW_PAGE:1",
+      "READING_ORDER_REVIEW",
+      "STRUCTURED_REFLOW"
+    ],
+    "compileWarnings": [],
+    "pages": 1,
+    "text": "Research methods 1 Research evidence Amount Shared group Sample A 125.00 Sample B 250.00 Other group Sample C 375.00",
+    "charactersOutsidePage": 0
+  },
+  {
+    "name": "receipt-edit",
+    "success": true,
+    "warningCodes": [
+      "FONT_SUBSTITUTION",
+      "FORMULAS_AND_REFERENCES",
+      "MIXED_INLINE_STYLE_REVIEW_PAGE:1",
+      "MULTICOLUMN_REVIEW_PAGE:1",
+      "READING_ORDER_REVIEW",
+      "STRUCTURED_REFLOW"
+    ],
+    "compileWarnings": [],
+    "pages": 1,
+    "text": "PHIẾU MUA HÀNG Đoạn văn bổ sung để kiểm tra văn bản tự xuống dòng sau khi chỉnh sửa. Đoạn văn bổ sung để kiểm tra văn bản tự xuống dòng sau khi chỉnh sửa. Đoạn văn bổ sung để kiểm tra văn bản tự xuống dòng sau khi chỉnh sửa. Đoạn văn bổ sung để kiểm tra văn bản tự xuống dòng sau khi chỉnh sửa. Đoạn văn bổ sung để kiểm tra văn bản tự xuống dòng sau khi chỉnh sửa. Đoạn văn bổ sung để kiểm tra văn bản tự xuống dòng sau khi chỉnh sửa. Mã đơn hàng: TEST-2026-041 Ngày: 20/10/2026 Khách hàng: Nguyễn An Địa chỉ: Nhóm nghiên cứu giả lập T ên sản phẩm Đơn giá Số lượng Thành tiền Sổ ghi chép nghiên cứu với mô tả dài hơn để kiểm tra khả năng tự xuống dòng trong ô bảng 125.000 3 375.000 Bộ tài liệu tiếng Việt có tên dài cần tự xuống dòng 250.000 2 500.000 Bút đánh dấu 40.000 10 400.000 Thước kẻ nghiên cứu bổ sung 75.000 2 150.000 Tổng tiền: 1.275.000 VND Ghi chú: Kiểm tra đúng số lượng, mã đơn hàng và dấu tiếng Việt. Cảm ơn bạn. Dữ liệu chỉ phục vụ kiểm thử chuyển đổi PDF .",
+    "charactersOutsidePage": 0,
+    "newRowPreserved": true,
+    "longCellPreserved": true,
+    "longParagraphPreserved": true
+  }
+]

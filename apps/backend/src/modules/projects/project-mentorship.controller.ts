@@ -8,11 +8,16 @@ export const mentorshipParamsSchema = z.object({
   relationshipId: z.string().uuid(),
 });
 
-export const requestMentorshipSchema = z.object({
+const requestBody = z.object({
   mentorUserId: databaseIdSchema,
-  message: z.string().trim().min(1).max(1000),
+  message: z.string().trim().max(1000).default(""),
+  mentorRole: z.enum(["PRIMARY", "SECONDARY"]).default("PRIMARY"),
+  attachmentIds: z.array(z.string().uuid()).max(5).refine(ids => new Set(ids).size === ids.length).default([]),
   idempotencyKey: z.string().uuid().optional(),
 }).strict();
+const hasContent = (input: { message: string; attachmentIds: string[] }) => Boolean(input.message || input.attachmentIds.length);
+export const requestMentorshipSchema = requestBody.refine(hasContent, "Add a message or an attachment to your invitation");
+export const suggestMentorSchema = z.object({ mentorUserId: databaseIdSchema, message: z.string().trim().min(1).max(1000) }).strict();
 
 export const academicSearchSchema = z.object({
   q: z.string().trim().max(160).optional(),
@@ -23,7 +28,7 @@ export const academicSearchSchema = z.object({
   position: z.string().trim().max(160).optional(),
   view: z.enum(["all", "incoming", "outgoing", "active", "history"]).optional(),
 }).strict();
-export const mentorshipOfferSchema = requestMentorshipSchema.omit({ mentorUserId: true });
+export const mentorshipOfferSchema = requestBody.omit({ mentorUserId: true }).refine(hasContent, "Add a message or an attachment to your invitation");
 
 export const respondMentorshipSchema = z.object({
   note: z.string().trim().max(1000).optional(),

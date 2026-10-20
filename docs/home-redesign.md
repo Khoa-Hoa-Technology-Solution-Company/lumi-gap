@@ -14,7 +14,10 @@ feedback requires a contemporary homepage that uses LumiGap's own identity.
   Below 1280px, use the navigation menu so larger labels never crowd controls.
 - Featured literature replaces the old introductory workflow tabs. It uses real
   recent, highly cited library papers and provides automatic horizontal scrolling
-  with manual navigation, pause, hover/focus pause and reduced-motion support.
+  at a slow continuous pace, with manual navigation, hover/focus pause and
+  reduced-motion support. Do not show an Auto scroll or play/pause control.
+  Animate the inner list with compositor transforms; avoid writing scrollLeft
+  every frame. Preserve the visual position when handing back to native scrolling.
 - A research question canvas follows the paper strip. Keep the reference's
   central headline and surrounding questions, expressed in LumiGap blue and navy
   on cool paper surfaces. Use `--home-*` tokens and the existing Source Sans 3
@@ -118,6 +121,15 @@ page for both guest and authenticated users.
   `artifacts/home-redesign/home-search-medicine-mobile.png`.
 
 ## Discovery sections
+
+### Featured literature refinement
+
+The featured rail uses open columns divided by fine rules, with journal,
+full article title, authors, publication year and citation count. Remove
+decorative rankings, repeated taxonomy labels, colored card tops and rounded
+frames. The header states the citation ordering and publication window.
+Keep automatic scrolling, pause on focus/hover and reduced-motion support.
+Article metadata comes directly from the library.
 
 1. **Research workflow:** three keyboard-accessible tabs explain discovering
    literature, connecting evidence and exploring candidate research gaps.

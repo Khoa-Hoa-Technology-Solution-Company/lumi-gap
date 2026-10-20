@@ -14,12 +14,13 @@ export function notFoundHandler(req: Request, res: Response): void {
   });
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function errorHandler(err: unknown, _req: Request, res: Response, _next: NextFunction): void {
   if (isMulterError(err)) {
     const message =
       err.code === "LIMIT_FILE_SIZE"
-        ? _req.originalUrl.includes("/academic-profiles/me/cover")
+        ? _req.originalUrl.includes("/academic-support/content/attachments")
+          ? "Use PDF, DOCX, JPEG, PNG or WebP files up to 5 MB"
+          : _req.originalUrl.includes("/academic-profiles/me/cover")
           ? "Cover image is too large. Maximum size is 5MB."
           : "PDF file is too large. Maximum size is 10MB."
         : `Invalid file upload: ${err.message}`;

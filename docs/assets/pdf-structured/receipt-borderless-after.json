@@ -1,0 +1,26 @@
+{
+  "success": true,
+  "warnings": [
+    "FONT_SUBSTITUTION",
+    "FORMULAS_AND_REFERENCES",
+    "INFERRED_TABLE_REVIEW_PAGE:1",
+    "MIXED_INLINE_STYLE_REVIEW_PAGE:1",
+    "MULTICOLUMN_REVIEW_PAGE:1",
+    "READING_ORDER_REVIEW",
+    "STRUCTURED_REFLOW"
+  ],
+  "wordCount": 99,
+  "sourceCharacters": 4149,
+  "semanticTables": 1,
+  "compileWarnings": [],
+  "pages": 1,
+  "dimensions": [
+    [
+      595.28,
+      708.66
+    ]
+  ],
+  "characters": 494,
+  "text": "PHIẾU MUA HÀNG\nBản dữ liệu thử nghiệm, không phải giao dịch thật\nMã đơn hàng: TEST-2026-041 Ngày: 20/10/2026\nKhách hàng: Nguyễn An\nĐịa chỉ: Nhóm nghiên cứu giả lập\nT ên sản phẩm Đơn giá Số lượng Thành tiền\nSổ ghi chép nghiên cứu 125.000 3 375.000\nBộ tài liệu tiếng Việt có tên dài cần tự xuống\ndòng\n250.000 2 500.000\nBút đánh dấu 40.000 10 400.000\nTổng tiền: 1.275.000 VND\nGhi chú: Kiểm tra đúng số lượng, mã đơn hàng và dấu tiếng Việt.\nCảm ơn bạn. Dữ liệu chỉ phục vụ kiểm thử chuyển đổi PDF .",
+  "detectedRuledTables": 0
+}

@@ -143,6 +143,7 @@ model MentorshipRequest {
   mentorUserId String    @map("mentor_user_id") @db.Uuid
   requestedBy  String    @map("requested_by") @db.Uuid
   direction    String    @default("PROJECT_TO_LECTURER") @db.VarChar(32)
+  mentorRole   String    @default("PRIMARY") @map("mentor_role") @db.VarChar(16)
   respondedAt  DateTime? @map("responded_at") @db.Timestamptz(6)
   expiresAt    DateTime? @map("expires_at") @db.Timestamptz(6)
   status       String    @default("PENDING") @db.VarChar(24)
@@ -183,6 +184,7 @@ model MentorRelationship {
   projectId       String    @map("project_id") @db.Uuid
   mentorUserId    String    @map("mentor_user_id") @db.Uuid
   sourceRequestId String    @unique @map("source_request_id") @db.Uuid
+  mentorRole      String    @default("PRIMARY") @map("mentor_role") @db.VarChar(16)
   status          String    @default("ACTIVE") @db.VarChar(24)
   startedAt       DateTime  @default(now()) @map("started_at") @db.Timestamptz(6)
   endedAt         DateTime? @map("ended_at") @db.Timestamptz(6)
@@ -776,12 +778,16 @@ model DraftWorkspace {
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
   writingMode   String   @default("LEGACY") @map("writing_mode") @db.VarChar(16)
+  compilerEngine String? @map("compiler_engine") @db.VarChar(16)
+  compilerRelease String? @map("compiler_release") @db.VarChar(4)
+  compilerRevision Int @default(1) @map("compiler_revision")
   documentType  String   @default("RESEARCH_PAPER") @map("document_type") @db.VarChar(32)
   template      String   @default("ARTICLE") @db.VarChar(32)
   description   String   @default("")
   version       Int      @default(1)
   mainFileId    String?  @map("main_file_id") @db.Uuid
   archivedAt    DateTime? @map("archived_at") @db.Timestamptz(6)
+  deletedAt     DateTime? @map("deleted_at") @db.Timestamptz(6)
   clientKey     String?  @map("client_key") @db.Uuid
   researchLink  Json?    @map("research_link")
 

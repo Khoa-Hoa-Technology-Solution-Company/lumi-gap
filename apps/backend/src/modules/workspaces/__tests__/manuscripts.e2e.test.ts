@@ -115,7 +115,8 @@ describe.skipIf(!isolated).sequential("two actual manuscript sessions in Chromiu
     expect(await pageA.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await pageA.screenshot({ path: `${screenshots}/files-mobile.png`, fullPage: true });
     await pageA.getByRole("button", { name: "Editor", exact: true }).click(); await pageA.screenshot({ path: `${screenshots}/editor-mobile.png`, fullPage: true });
-    await pageA.getByRole("button", { name: "Compile PDF", exact: true }).first().click(); await uiExpect(pageA.getByRole("heading", { name: "PDF compiler unavailable" })).toBeVisible();
+    await uiExpect(pageA.getByRole("button", { name: "Compile PDF", exact: true }).first()).toBeDisabled();
+    await uiExpect(pageA.getByText("PDF compilation is not available on this server.")).toBeVisible();
     await pageA.evaluate(() => { localStorage.setItem("lumigap.uiLanguage", "vi"); localStorage.setItem("lumigap-ui-language", "vi"); }); await pageA.reload();
     await uiExpect(pageA.getByRole("button", { name: "Biên dịch PDF", exact: true }).first()).toBeVisible();
     await uiExpect(pageA.getByRole("status").filter({ hasText: "Đã lưu" })).toBeVisible();
