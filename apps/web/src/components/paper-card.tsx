@@ -34,6 +34,8 @@ export interface PaperCardProps {
   rerankScore?: number;
   taxonomyBoostScore?: number;
   searchMode?: "semantic" | "keyword";
+  /** Query string (with leading "?") appended to the detail link so the paper page knows where the reader came from. */
+  detailSearch?: string;
 }
 
 export function PaperCard({
@@ -60,6 +62,7 @@ export function PaperCard({
   rerankScore,
   taxonomyBoostScore,
   searchMode = "semantic",
+  detailSearch = "",
 }: PaperCardProps) {
   const navigate = useNavigate();
   const currentUser = useAuthStore((state) => state.user);
@@ -116,7 +119,7 @@ export function PaperCard({
           <div className="flex-1 min-w-0">
             <Link
               data-testid="paper-detail-link"
-              to={`/papers/${id}`}
+              to={`/papers/${id}${detailSearch}`}
               className="text-[19px] font-extrabold text-slate-800 dark:text-slate-100 leading-snug hover:text-indigo-600 dark:hover:text-indigo-400 cursor-pointer block mb-2 transition-colors duration-200"
             >
               {title}

@@ -21,8 +21,10 @@ import { researchHomeEn } from "./research-home-en";
 import { trustSafetyRagStrings } from "./trust-safety-rag";
 import { trendEvidenceStrings } from "./trend-evidence";
 import { trendVerdictStrings } from "./trend-verdict";
+import { qualityEvaluationEn } from "./quality-evaluation";
 
 export const en = {
+  ...qualityEvaluationEn,
   ...researchTasksEn,
   ...livingPlanEn,
   ...projectSettingsEn,
