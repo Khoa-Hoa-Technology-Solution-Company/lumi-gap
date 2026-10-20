@@ -42,7 +42,7 @@ export async function workspaceEvent(context: WorkspaceContext, type: string, en
   const version = metadata && typeof metadata === "object" && !Array.isArray(metadata) && "version" in metadata && typeof metadata.version === "number" ? metadata.version : undefined;
   return context.tx.projectActivity.create({ data: { projectId: context.project.id, actorId: context.actorId, type, entityKind, entityId, metadata, sourceModule: entityKind.slice(0, 32), artifactVersion: version, idempotencyKey: requestKey ?? (version ? `${type}:${entityId}:${version}` : undefined) } });
 }
-export async function workspaceRevision(context: WorkspaceContext, entityKind: string, row: { id: string; version: number }, creationInput?: unknown) {
+export async function workspaceRevision<T extends { id: string; version: number }>(context: WorkspaceContext, entityKind: string, row: T, creationInput?: unknown) {
   return context.tx.projectWorkspaceRevision.create({ data: { projectId: context.project.id, entityKind, entityId: row.id, version: row.version, actorId: context.actorId, snapshot: jsonSnapshot(creationInput ? { ...row, creationInput } : row) } });
 }
 /** Compare the original request, even if collaborators have since edited the resource. */
@@ -77,6 +77,9 @@ export async function assertWorkspaceLink(context: WorkspaceContext, link: Works
       valid = Array.isArray(plan?.questions) && plan.questions.some(question => question && typeof question === "object" && !Array.isArray(question) && question.id === link.id); break;
     }
     case "MANUSCRIPT": valid = Boolean(await tx.draftWorkspace.findFirst({ where: { id: link.id, projectId: project.id } })); break;
+    case "MANUSCRIPT_SNAPSHOT": valid = Boolean(await tx.manuscriptSnapshot.findFirst({ where: { id: link.id, projectId: project.id } })); break;
+    case "MENTOR_FEEDBACK": valid = Boolean(await tx.projectDiscussion.findFirst({ where: { id: link.id, projectId: project.id, targetKind: { in: ["MANUSCRIPT_SNAPSHOT", "PLAN_REVISION"] }, mentorRelationshipId: { not: null } } })); break;
+    case "PLAN": valid = Boolean(await tx.researchPlan.findFirst({ where: { id: link.id, projectId: project.id } })); break;
     case "REVIEW_REQUEST": valid = Boolean(await tx.reviewRequest.findFirst({ where: { id: link.id, projectId: project.id } })); break;
     case "PLAN_REVISION": valid = Boolean(await tx.planRevision.findFirst({ where: { id: link.id, projectId: project.id } })); break;
     case "REPORT": valid = Boolean(await tx.report.findFirst({ where: { id: link.id, projectId: project.id } })); break;
@@ -89,5 +92,6 @@ export async function workspaceNotify(context: WorkspaceContext, recipients: str
   const ids = new Set(allowed.map(row => row.userId));
   if (recipients.includes(context.project.ownerId)) ids.add(context.project.ownerId);
   ids.delete(context.actorId);
-  for (const userId of ids) await notificationService.create({ userId, type: `PROJECT_WORKSPACE_${type}`, title: "Research workspace update", message: type === "ASSIGNMENT" ? "A research task was assigned to you." : type === "MENTION" ? "A teammate requested your response." : type === "MENTOR_FEEDBACK" ? "New mentor feedback is ready in your workspace." : "A project milestone changed. Review your upcoming work.", targetKind: "project", targetId: context.project.id, eventKey: `WORKSPACE:${type}:${entityId}:${version}:${userId}`, emailStatus: "SKIPPED" }, context.tx);
+  const messages: Record<string, string> = { ASSIGNMENT: "A research task was assigned to you.", REASSIGNMENT: "A research task was reassigned. Review the task history.", MENTION: "A teammate requested your response.", MENTOR_FEEDBACK: "New mentor feedback is ready in your workspace.", TASK_BLOCKED: "A research task needs help with a blocker.", TASK_UNBLOCKED: "A research task is ready to continue.", TASK_DEADLINE: "A research task deadline changed." };
+  for (const userId of ids) await notificationService.create({ userId, type: `PROJECT_WORKSPACE_${type}`, title: "Research workspace update", message: messages[type] ?? "A project milestone changed. Review your upcoming work.", targetKind: "project", targetId: context.project.id, eventKey: `WORKSPACE:${type}:${entityId}:${version}:${userId}`, emailStatus: "SKIPPED" }, context.tx);
 }

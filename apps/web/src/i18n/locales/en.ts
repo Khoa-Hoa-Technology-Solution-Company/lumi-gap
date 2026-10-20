@@ -1,3 +1,7 @@
+import { confirmationsEn } from "./confirmations";
+import { researchTasksEn } from "./research-tasks";
+import { livingPlanEn } from "./living-plan";
+import { projectSettingsEn } from "./project-settings";
 import { researchWorkflowStrings } from "./research-workflow";
 import { contributionsEn } from "./project-contributions";
 import { manuscriptsEn } from "./manuscripts";
@@ -21,6 +25,9 @@ import { qualityEvaluationEn } from "./quality-evaluation";
 
 export const en = {
   ...qualityEvaluationEn,
+  ...researchTasksEn,
+  ...livingPlanEn,
+  ...projectSettingsEn,
   ...manuscriptsEn,
   ...researchWorkflowStrings,
   ...workspaceCoordinationStrings,
@@ -1818,4 +1825,5 @@ export const en = {
   "YTD": "YTD",
   "Load More": "Load More",
   "Loading...": "Loading...",
+  ...confirmationsEn,
 } as const;

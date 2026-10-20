@@ -1,3 +1,7 @@
+import { confirmationsVi } from "./confirmations";
+import { researchTasksVi } from "./research-tasks";
+import { livingPlanVi } from "./living-plan";
+import { projectSettingsVi } from "./project-settings";
 import { researchWorkflowVi } from "./research-workflow";
 import { contributionsVi } from "./project-contributions";
 import { manuscriptsVi } from "./manuscripts";
@@ -2489,4 +2493,8 @@ export const vi: Record<keyof typeof en, string> = {
   "Invitation cancelled": "Đã hủy lời mời",
   "Could not cancel invitation": "Không thể hủy lời mời",
   "Invite expires": "Hết hạn",
+  ...projectSettingsVi,
+  ...livingPlanVi,
+  ...researchTasksVi,
+  ...confirmationsVi,
 };

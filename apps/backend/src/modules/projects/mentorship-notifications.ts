@@ -5,7 +5,7 @@ import { notificationService } from "../notifications/notification.service.js";
 
 export type MentorshipEvent = "MENTORSHIP_REQUEST_RECEIVED" | "MENTORSHIP_OFFER_RECEIVED" | "MENTORSHIP_REQUEST_ACCEPTED"
   | "MENTORSHIP_OFFER_ACCEPTED" | "MENTORSHIP_REQUEST_DECLINED" | "MENTORSHIP_OFFER_DECLINED"
-  | "MENTORSHIP_CANCELLED" | "MENTORSHIP_EXPIRED" | "MENTORSHIP_ENDED";
+  | "MENTORSHIP_CANCELLED" | "MENTORSHIP_EXPIRED" | "MENTORSHIP_ENDED" | "MENTORSHIP_SUGGESTED" | "MENTORSHIP_POSITION_FILLED";
 export interface MentorshipEmailPayload { event: MentorshipEvent; projectId: string; projectTitle: string; actorName: string }
 
 // Persist through the existing Notification store inside the domain transaction.
@@ -18,6 +18,8 @@ export async function mentorshipNotification(tx: Prisma.TransactionClient, input
     const preference = await tx.academicProfile.findUnique({ where: { userId }, select: { notificationLocale: true } });
     const vi = preference?.notificationLocale === "vi";
     const labels: Record<MentorshipEvent, [string, string]> = {
+      MENTORSHIP_POSITION_FILLED: ["Mentor position assigned", "Vị trí mentor đã có người nhận"],
+      MENTORSHIP_SUGGESTED: ["Mentor suggested by your team", "Thành viên đề xuất cố vấn"],
       MENTORSHIP_REQUEST_RECEIVED: ["Mentorship invitation", "Lời mời hướng dẫn"], MENTORSHIP_OFFER_RECEIVED: ["Mentorship offer", "Đề nghị hướng dẫn"],
       MENTORSHIP_REQUEST_ACCEPTED: ["Mentorship invitation accepted", "Đã chấp nhận lời mời hướng dẫn"], MENTORSHIP_OFFER_ACCEPTED: ["Mentorship offer accepted", "Đã chấp nhận đề nghị hướng dẫn"],
       MENTORSHIP_REQUEST_DECLINED: ["Mentorship invitation declined", "Đã từ chối lời mời hướng dẫn"], MENTORSHIP_OFFER_DECLINED: ["Mentorship offer declined", "Đã từ chối đề nghị hướng dẫn"],
@@ -28,7 +30,7 @@ export async function mentorshipNotification(tx: Prisma.TransactionClient, input
       targetKind: "project", targetId: input.projectId, eventKey: `${input.event}:${input.recordId}:${userId}`,
       emailPayload: payload as unknown as Prisma.InputJsonValue,
       // Cancellation/expiry are in-app only; principal consent changes also send email.
-      emailStatus: ["MENTORSHIP_CANCELLED", "MENTORSHIP_EXPIRED"].includes(input.event) ? "SKIPPED" : "PENDING",
+      emailStatus: ["MENTORSHIP_CANCELLED", "MENTORSHIP_EXPIRED", "MENTORSHIP_SUGGESTED", "MENTORSHIP_POSITION_FILLED"].includes(input.event) ? "SKIPPED" : "PENDING",
     }, tx);
   }
 }

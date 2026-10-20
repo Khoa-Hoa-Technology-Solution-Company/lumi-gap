@@ -13,12 +13,14 @@ import { canAccessProjectAsMentor } from "../projects/academic-relationship-acce
 import { assertReviewerInTransaction } from "../reviews/peer-review-access.js";
 import { notificationService } from "../notifications/notification.service.js";
 import { hashBytes, sourceState, sourceDocument, sourceText, validateDocument, manuscriptPath, manuscriptTemplate, citationKey, bibtexEntry, MAX_CRDT_BYTES } from "./manuscript-source.js";
+import type { ManuscriptEngine, CreateManuscriptSnapshot } from "@trend/shared-types";
+import { compilerAvailability, compilationDto, compilationSelect, enqueueCompilation } from "./manuscript-compiler.js";
 
 type Db = Prisma.TransactionClient;
 type Draft = NonNullable<Awaited<ReturnType<Db["draftWorkspace"]["findUnique"]>>>;
 type File = NonNullable<Awaited<ReturnType<Db["manuscriptFile"]["findUnique"]>>>;
 export const manuscriptEvents = new EventEmitter();
-export const compilerAvailability = { available: false, reason: "COMPILER_ISOLATION_REQUIRED" } as const;
+export { compilerAvailability } from "./manuscript-compiler.js";
 const fileSelect = { id: true, path: true, kind: true, version: true, sequence: true, sizeBytes: true, mimeType: true, checksum: true, updatedAt: true } as const;
 function fileDto(row: Pick<File, keyof typeof fileSelect>): ManuscriptFile { return { ...row, kind: row.kind as ManuscriptFile["kind"], updatedAt: row.updatedAt.toISOString() }; }
 function draftDto(row: Draft, canWrite: boolean): ManuscriptSummary { return { id: row.id, projectId: row.projectId, title: row.name, description: row.description, documentType: row.documentType as ManuscriptSummary["documentType"], template: row.template as ManuscriptSummary["template"], version: row.version, mainFileId: row.mainFileId, archived: Boolean(row.archivedAt), createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString(), canWrite: canWrite && !row.archivedAt }; }
@@ -254,12 +256,11 @@ export const manuscriptService = {
       return rows.map(row => ({ id: row.id, label: row.label, sourceVersion: row.sourceVersion, checksum: row.checksum, createdAt: row.createdAt.toISOString(), createdBy: workspacePerson(people, row.createdById), submissionId: sealed.find(r => r.manuscriptSnapshotId === row.id)?.submissionId ?? null }));
     });
   },
-  async snapshot(projectId: string, actorId: string, id: string, input: { label: string; clientKey: string; minimumSequences: Record<string, number> }) {
+  async snapshot(projectId: string, actorId: string, id: string, input: CreateManuscriptSnapshot) {
     return withWorkspace(projectId, actorId, { write: true }, async context => {
       const draft = await manuscript(context, id, true);
       const prior = await context.tx.manuscriptSnapshot.findUnique({ where: { workspaceId_createdById_clientKey: { workspaceId: id, createdById: actorId, clientKey: input.clientKey } } });
       if (prior) { if (prior.label !== input.label) throw AppError.conflict("This snapshot request key was already used"); return { id: prior.id, sourceVersion: prior.sourceVersion }; }
-      if (await context.tx.manuscriptSnapshot.count({ where: { workspaceId: id } }) >= 100) throw AppError.badRequest("Manuscript snapshot limit reached");
       if (!draft.mainFileId) throw AppError.badRequest("Set a main LaTeX file before creating a snapshot");
       const files = await context.tx.manuscriptFile.findMany({ where: { workspaceId: id, deletedAt: null }, orderBy: { path: "asc" } });
       for (const [fileId, sequence] of Object.entries(input.minimumSequences)) {
@@ -267,7 +268,13 @@ export const manuscriptService = {
         if (!row || row.sequence < sequence) throw AppError.conflict("Wait for source changes to be durably saved before creating a snapshot");
       }
       const manifest: ManuscriptManifest = { title: draft.name, documentType: draft.documentType as ManuscriptManifest["documentType"], mainFileId: draft.mainFileId, files: files.map(f => ({ id: f.id, path: f.path, kind: f.kind as ManuscriptFile["kind"], sequence: f.sequence, checksum: f.checksum, sizeBytes: f.sizeBytes, mimeType: f.mimeType, ...(f.crdtState ? { text: sourceText(f.crdtState) } : {}) })) };
-      const row = await context.tx.manuscriptSnapshot.create({ data: { workspaceId: id, projectId: context.project.id, label: input.label, sourceVersion: draft.version, manifest: jsonSnapshot(manifest), checksum: hashBytes(JSON.stringify(manifest)), createdById: actorId, clientKey: input.clientKey } });
+      const checksum = hashBytes(JSON.stringify(manifest));
+      if (input.reuseUnchanged) {
+        const unchanged = await context.tx.manuscriptSnapshot.findFirst({ where: { workspaceId: id, projectId: context.project.id, sourceVersion: draft.version, checksum }, orderBy: { createdAt: "desc" }, select: { id: true, sourceVersion: true } });
+        if (unchanged) return unchanged;
+      }
+      if (await context.tx.manuscriptSnapshot.count({ where: { workspaceId: id } }) >= 100) throw AppError.badRequest("Manuscript snapshot limit reached");
+      const row = await context.tx.manuscriptSnapshot.create({ data: { workspaceId: id, projectId: context.project.id, label: input.label, sourceVersion: draft.version, manifest: jsonSnapshot(manifest), checksum, createdById: actorId, clientKey: input.clientKey } });
       const assets = files.filter(f => f.assetData);
       if (assets.length) await context.tx.manuscriptSnapshotAsset.createMany({ data: assets.map(f => ({ snapshotId: row.id, fileId: f.id, data: f.assetData! })) });
       await workspaceEvent(context, "MANUSCRIPT_SNAPSHOT_CREATED", "MANUSCRIPT", id, { snapshotId: row.id, version: draft.version, attribution: "SNAPSHOT_CREATOR_ONLY" }, `manuscript:snapshot:${row.id}`);
@@ -454,14 +461,47 @@ export const manuscriptService = {
       return { submissionId: submission.id, revisionId: revision.id };
     });
   },
-  async compile(projectId: string, actorId: string, id: string, snapshotId: string) {
-    return withWorkspace(projectId, actorId, { write: true }, async context => {
+  async compile(projectId: string, actorId: string, id: string, snapshotId: string, engine: ManuscriptEngine = "pdflatex") {
+    const result = await withWorkspace(projectId, actorId, { write: true }, async context => {
       await manuscript(context, id, true);
-      const row = await context.tx.manuscriptSnapshot.findFirst({ where: { id: snapshotId, workspaceId: id, projectId } });
+      const row = await context.tx.manuscriptSnapshot.findFirst({ where: { id: snapshotId, workspaceId: id, projectId: context.project.id } });
       if (!row) throw AppError.notFound("Snapshot not found");
-      const prior = await context.tx.manuscriptCompilation.findFirst({ where: { snapshotId, requestedById: actorId, status: "BLOCKED" } });
-      const job = prior ?? await context.tx.manuscriptCompilation.create({ data: { snapshotId, requestedById: actorId, status: "BLOCKED", diagnostics: compilerAvailability.reason, completedAt: new Date() } });
-      return { id: job.id, status: job.status, diagnostics: job.diagnostics, snapshotId };
+      if (!compilerAvailability.available) throw AppError.serviceUnavailable("The manuscript compiler is not configured.");
+      // Project lock in withWorkspace serializes duplicate requests, including multiple team members.
+      const prior = await context.tx.manuscriptCompilation.findFirst({ where: { snapshotId, toolchain: { startsWith: engine }, status: { in: ["QUEUED", "COMPILING", "SUCCESS"] } }, orderBy: { createdAt: "desc" }, select: compilationSelect });
+      if (prior) return { job: compilationDto(prior, row.sourceVersion), enqueue: prior.status === "QUEUED" };
+      const snapshots = await context.tx.manuscriptSnapshot.findMany({ where: { workspaceId: id }, select: { id: true } });
+      if (await context.tx.manuscriptCompilation.count({ where: { snapshotId: { in: snapshots.map(s => s.id) }, status: { in: ["QUEUED", "COMPILING"] } } })) throw AppError.conflict("A compilation is already in progress for this manuscript.");
+      if (await context.tx.manuscriptCompilation.count({ where: { requestedById: context.actorId, status: { in: ["QUEUED", "COMPILING"] } } }) >= 3) throw AppError.tooMany("Wait for your existing compilations to finish.");
+      const job = await context.tx.manuscriptCompilation.create({ data: { snapshotId, requestedById: context.actorId, status: "QUEUED", toolchain: engine }, select: compilationSelect });
+      return { job: compilationDto(job, row.sourceVersion), enqueue: true };
+    });
+    if (result.enqueue) await enqueueCompilation(result.job.id);
+    return result.job;
+  },
+  async compilations(projectId: string, actorId: string, id: string, snapshotId?: string) {
+    const read = async (tx: Db) => {
+      const snapshots = await tx.manuscriptSnapshot.findMany({ where: { workspaceId: id, projectId, ...(snapshotId ? { id: snapshotId } : {}) }, select: { id: true, sourceVersion: true } });
+      const scope = { snapshotId: { in: snapshots.map(s => s.id) } };
+      // A terminated worker cannot leave the UI permanently spinning.
+      await tx.manuscriptCompilation.updateMany({ where: { ...scope, status: { in: ["QUEUED", "COMPILING"] }, createdAt: { lt: new Date(Date.now() - 15 * 60000) } }, data: { status: "FAILED", completedAt: new Date(), diagnostics: "Compilation timed out. Please compile again." } });
+      const latest = await tx.manuscriptCompilation.findFirst({ where: scope, orderBy: { createdAt: "desc" }, select: compilationSelect });
+      const successful = await tx.manuscriptCompilation.findFirst({ where: { ...scope, status: "SUCCESS" }, orderBy: { createdAt: "desc" }, select: compilationSelect });
+      const dto = (row: typeof latest) => row ? compilationDto(row, snapshots.find(s => s.id === row.snapshotId)!.sourceVersion) : null;
+      return { latest: dto(latest), successful: dto(successful) };
+    };
+    const state = snapshotId ? await withSnapshot(projectId, actorId, id, snapshotId, read) : await withWorkspace(projectId, actorId, {}, async context => { await manuscript(context, id); return read(context.tx); });
+    // Repair the small commit/enqueue gap if the API process stopped after saving a queued job.
+    if (state.latest?.status === "QUEUED") await enqueueCompilation(state.latest.id);
+    return state;
+  },
+  async compilationPdf(projectId: string, actorId: string, id: string, compilationId: string) {
+    const job = await getPrisma().manuscriptCompilation.findUnique({ where: { id: compilationId }, select: { snapshotId: true } });
+    if (!job) throw AppError.notFound("PDF not found");
+    return withSnapshot(projectId, actorId, id, job.snapshotId, async tx => {
+      const output = await tx.manuscriptCompilation.findFirst({ where: { id: compilationId, status: "SUCCESS" }, select: { pdfData: true } });
+      if (!output?.pdfData) throw AppError.notFound("PDF not found");
+      return output.pdfData;
     });
   },
 };

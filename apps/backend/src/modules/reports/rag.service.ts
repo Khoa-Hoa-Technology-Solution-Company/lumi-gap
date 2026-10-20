@@ -3,6 +3,8 @@ import { env } from "../../config/env.js";
 import { logger } from "../../infrastructure/logger.js";
 import { parseDatabaseId, publicDatabaseId } from "../../infrastructure/database/database-id.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
+import type { Prisma } from "../../generated/prisma/client.js";
+import { withWorkspace } from "../projects/workspace-access.js";
 import { gapsService } from "../gaps/gaps.service.js";
 import { getEmbeddingProvider } from "../embeddings/embedding.factory.js";
 import {
@@ -75,6 +77,7 @@ export async function runRagPipeline(job: ReportJob): Promise<void> {
     await gapsService.enqueueReportGapFanout(report.id);
     return;
   }
+  if (report.projectId) await withWorkspace(report.projectId, report.userId, { write: true }, async () => undefined);
 
   // Claim atomically: a report failed and refunded by the startup sweep must not run (and finish) anyway.
   const claimed = await getPrisma().report.updateMany({ where: { id: report.id, status: { in: ["queued", "generating"] } }, data: { status: "generating" } });
@@ -112,7 +115,9 @@ export async function runRagPipeline(job: ReportJob): Promise<void> {
     fillWithRetrieved: selectedPaperIds.length === 0,
   });
   const papers = evidence.papers;
-  await getPrisma().report.update({ where: { id: report.id }, data: { evidenceSnapshot: papers as never } });
+  const saveEvidence = (tx: Prisma.TransactionClient) => tx.report.update({ where: { id: report.id }, data: { evidenceSnapshot: papers as never } });
+  if (report.projectId) await withWorkspace(report.projectId, report.userId, { write: true }, context => saveEvidence(context.tx));
+  else await saveEvidence(getPrisma());
   const searchMs = Date.now() - t1;
 
   // ③ No evidence → permanent failure (retrying won't grow the corpus).
@@ -277,12 +282,15 @@ export async function runRagPipeline(job: ReportJob): Promise<void> {
       confidence: 0,
       probe: normalizeProbe(g.probe),
     }));
-  await getPrisma().$transaction(async (tx) => {
+  const persist = async (tx: Prisma.TransactionClient) => {
     await tx.report.update({ where: { id: report.id }, data: { markdown: output.markdown, researchGapSnapshots: researchGaps as never, modelVersion: model, promptVersion: PROMPT_VERSION, cacheKey: effectiveCacheKey, groundingChecks: groundingChecks as never, status: "ready", completedAt: new Date(), errorMessage: null } });
     await tx.reportPaper.deleteMany({ where: { reportId: report.id, kind: "grounding" } });
     const resolved = await Promise.all(papers.map(async (paper) => { const parsed = parseDatabaseId(paper.id); if (!parsed) return null; return getPrisma().paper.findUnique({ where: parsed.kind === "uuid" ? { id: parsed.value } : { legacyMongoId: parsed.value }, select: { id: true } }); }));
     await tx.reportPaper.createMany({ data: resolved.flatMap((paper, position) => paper ? [{ reportId: report.id, paperId: paper.id, kind: "grounding", position }] : []), skipDuplicates: true });
-  });
+  };
+  // Recheck under the project lock after generation, since archive or membership may have changed during the LLM call.
+  if (report.projectId) await withWorkspace(report.projectId, report.userId, { write: true }, context => persist(context.tx));
+  else await getPrisma().$transaction(persist);
 
   // If it was a cache hit, refund the credits charged during create()
   if (cacheHit && report.creditTransactionId) {

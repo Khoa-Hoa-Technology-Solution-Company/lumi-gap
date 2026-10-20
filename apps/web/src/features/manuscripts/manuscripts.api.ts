@@ -1,14 +1,18 @@
 import type { CreateManuscript, ManuscriptSummary, ManuscriptDetail, ManuscriptContext, ManuscriptSnapshot, ManuscriptComment } from "@trend/shared-types";
 import { api } from "@/services/api-client";
+import type { ManuscriptCompilation, ManuscriptCompilationState, ManuscriptEngine, CreateManuscriptSnapshot } from "@trend/shared-types";
 const root = (project: string, id?: string) => `/projects/${encodeURIComponent(project)}/manuscripts${id ? `/${encodeURIComponent(id)}` : ""}`;
 export const manuscriptsApi = {
+  compile: async (project: string, id: string, snapshotId: string, engine: ManuscriptEngine) => (await api.post<{ data: ManuscriptCompilation }>(`${root(project, id)}/snapshots/${snapshotId}/compile`, { engine })).data.data,
+  compilations: async (project: string, id: string, snapshotId?: string) => (await api.get<{ data: ManuscriptCompilationState }>(`${root(project, id)}/compilations`, { params: { snapshotId } })).data.data,
+  pdf: async (project: string, id: string, compilationId: string) => (await api.get<Blob>(`${root(project, id)}/compilations/${compilationId}/pdf`, { responseType: "blob" })).data,
   list: async (project: string) => (await api.get<{ data: ManuscriptSummary[] }>(root(project))).data.data,
   create: async (project: string, input: CreateManuscript) => (await api.post<{ data: ManuscriptSummary }>(root(project), input)).data.data,
   detail: async (project: string, id: string) => (await api.get<{ data: ManuscriptDetail }>(root(project, id))).data.data,
   context: async (project: string, id: string) => (await api.get<{ data: ManuscriptContext }>(`${root(project, id)}/context`)).data.data,
   insertCitation: async (project: string, id: string, paperId: string) => (await api.post<{ data: { key: string } }>(`${root(project, id)}/citations`, { paperId })).data.data,
   snapshots: async (project: string, id: string) => (await api.get<{ data: ManuscriptSnapshot[] }>(`${root(project, id)}/snapshots`)).data.data,
-  snapshot: async (project: string, id: string, input: { label: string; clientKey: string; minimumSequences: Record<string, number> }) => (await api.post<{ data: { id: string; sourceVersion: number } }>(`${root(project, id)}/snapshots`, input)).data.data,
+  snapshot: async (project: string, id: string, input: CreateManuscriptSnapshot) => (await api.post<{ data: { id: string; sourceVersion: number } }>(`${root(project, id)}/snapshots`, input)).data.data,
   viewSnapshot: async (project: string, id: string, snapshotId: string) => (await api.get<{ data: ManuscriptSnapshot }>(`${root(project, id)}/snapshots/${encodeURIComponent(snapshotId)}`)).data.data,
   restore: async (project: string, id: string, snapshotId: string, title: string, clientKey: string) => (await api.post<{ data: ManuscriptSummary }>(`${root(project, id)}/snapshots/${snapshotId}/restore`, { title, clientKey })).data.data,
   publish: async (project: string, id: string, snapshotId: string, authorIds: string[]) => (await api.post<{ data: { submissionId: string; revisionId: string } }>(`${root(project, id)}/snapshots/${snapshotId}/publish`, { authorIds })).data.data,

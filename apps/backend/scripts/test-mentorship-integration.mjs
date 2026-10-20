@@ -25,6 +25,7 @@ const lecturerOnly = process.argv.includes("--lecturer-verification");
 let redisCreated = false, databaseCreated = false;
 const childEnv = { ...process.env, ...local, DATABASE_URL: url.href, NODE_ENV: "test", EMAIL_DELIVERY_MODE: "disabled", STORAGE_PROVIDER: "local", LOG_LEVEL: "error", MENTORSHIP_INTEGRATION: "1", STUDENT_AFFILIATION_INTEGRATION: "1" };
 if (lecturerOnly) childEnv.LECTURER_VERIFICATION_INTEGRATION = "1";
+if (process.argv.includes("--browser")) childEnv.MENTORSHIP_BROWSER = "1";
 function run(args) {
   const result = spawnSync("pnpm", ["--filter", "backend", ...args], { cwd: root, env: childEnv, shell: process.platform === "win32", windowsHide: true, stdio: args.includes("migrate") ? "pipe" : "inherit" });
   if (result.status !== 0 && args.includes("migrate")) console.error(result.stdout?.toString(), result.stderr?.toString()); if (result.error || result.status !== 0) throw new Error(`Mentorship test step failed (${result.status ?? "process error"})`);
@@ -74,6 +75,8 @@ try {
     console.log("Legacy migration assertions passed: request IDs/messages, active/ended history, multi-mentor preservation, expiry, guidance attribution and audit privacy.");
   } finally { await client.end(); }
   const suites = lecturerOnly ? ["src/modules/academic-profiles/__tests__/adaptive-lecturer.persistence.test.ts"] : ["src/modules/projects/__tests__/mentorship-workflow.persistence.test.ts", "src/modules/projects/__tests__/academic-relationships.persistence.test.ts", "src/modules/projects/__tests__/project-workspace.persistence.test.ts", "src/modules/reviews/__tests__/peer-review.persistence.test.ts", "src/modules/home/__tests__/home-research.test.ts"];
+  if (!lecturerOnly) suites.push("src/modules/projects/__tests__/mentorship-http.persistence.test.ts");
+  if (process.argv.includes("--http-only")) suites.splice(0, suites.length, "src/modules/projects/__tests__/mentorship-http.persistence.test.ts");
   run(["test", ...suites, "--maxWorkers=1", "--minWorkers=1", "--testTimeout=15000"]);
 } finally { cleanupFixtures(); }
 

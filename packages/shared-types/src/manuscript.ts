@@ -23,6 +23,17 @@ export interface ManuscriptDetail extends ManuscriptSummary {
   files: ManuscriptFile[]; collaborators: Array<{ id: string; name: string }>;
   compiler: { available: boolean; reason: string };
 }
+export type ManuscriptEngine = "pdflatex" | "xelatex";
+export interface ManuscriptCompilation {
+  id: string; snapshotId: string; sourceVersion: number; engine: ManuscriptEngine;
+  status: "QUEUED" | "COMPILING" | "SUCCESS" | "FAILED" | "BLOCKED" | "TIMED_OUT";
+  diagnostics: string; toolchain: string | null; checksum: string | null;
+  createdAt: string; completedAt: string | null;
+}
+export interface ManuscriptCompilationState {
+  latest: ManuscriptCompilation | null;
+  successful: ManuscriptCompilation | null;
+}
 export interface CreateManuscript {
   title: string; documentType: ManuscriptType; template: ManuscriptTemplate; description: string;
   clientKey: string; researchLink?: { kind: "QUESTION" | "GAP"; id: string } | null;
@@ -32,6 +43,11 @@ export interface SnapshotFile {
   text?: string; sizeBytes: number; mimeType: string | null;
 }
 export interface ManuscriptManifest { title: string; documentType: ManuscriptType; mainFileId: string; files: SnapshotFile[]; }
+export interface CreateManuscriptSnapshot {
+  label: string; clientKey: string; minimumSequences: Record<string, number>;
+  /** Reuse an identical saved source version when compiling repeatedly. */
+  reuseUnchanged?: boolean;
+}
 export interface ManuscriptSnapshot {
   id: string; label: string; sourceVersion: number; checksum: string; createdAt: string;
   createdBy: { id: string; name: string }; manifest?: ManuscriptManifest;

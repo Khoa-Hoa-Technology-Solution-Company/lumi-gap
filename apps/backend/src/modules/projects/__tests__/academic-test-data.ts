@@ -30,6 +30,7 @@ export async function removeCreatedAcademicData({ userIds, institutionIds, paper
   await db.auditLog.deleteMany({ where: { OR: [{ userId: { in: userIds } }, { targetRecordId: { in: relatedIds } }] } });
   await db.notification.deleteMany({ where: { OR: [{ userId: { in: userIds } }, ...evidenceIds.map((id) => ({ eventKey: { endsWith: id } }))] } });
   await db.mentorRelationship.deleteMany({ where: { OR: [{ projectId: { in: projectIds } }, { mentorUserId: { in: userIds } }] } });
+  await db.mentorSuggestion.deleteMany({ where: { OR: [{ projectId: { in: projectIds } }, { mentorUserId: { in: userIds } }, { suggestedBy: { in: userIds } }] } });
   await db.mentorshipRequest.deleteMany({ where: { OR: [{ projectId: { in: projectIds } }, { mentorUserId: { in: userIds } }, { requestedBy: { in: userIds } }] } });
   await db.projectInvitation.deleteMany({ where: { OR: [{ projectId: { in: projectIds } }, { invitedById: { in: userIds } }] } });
   await db.projectActivity.deleteMany({ where: { projectId: { in: projectIds } } });

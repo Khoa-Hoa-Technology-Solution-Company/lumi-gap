@@ -8,11 +8,16 @@ export const mentorshipParamsSchema = z.object({
   relationshipId: z.string().uuid(),
 });
 
-export const requestMentorshipSchema = z.object({
+const requestBody = z.object({
   mentorUserId: databaseIdSchema,
-  message: z.string().trim().min(1).max(1000),
+  message: z.string().trim().max(1000).default(""),
+  mentorRole: z.enum(["PRIMARY", "SECONDARY"]).default("PRIMARY"),
+  attachmentIds: z.array(z.string().uuid()).max(5).refine(ids => new Set(ids).size === ids.length).default([]),
   idempotencyKey: z.string().uuid().optional(),
 }).strict();
+const hasContent = (input: { message: string; attachmentIds: string[] }) => Boolean(input.message || input.attachmentIds.length);
+export const requestMentorshipSchema = requestBody.refine(hasContent, "Add a message or an attachment to your invitation");
+export const suggestMentorSchema = z.object({ mentorUserId: databaseIdSchema, message: z.string().trim().min(1).max(1000) }).strict();
 
 export const academicSearchSchema = z.object({
   q: z.string().trim().max(160).optional(),
@@ -21,8 +26,9 @@ export const academicSearchSchema = z.object({
   institution: z.string().trim().max(200).optional(),
   area: z.string().trim().max(120).optional(), interest: z.string().trim().max(120).optional(),
   position: z.string().trim().max(160).optional(),
+  view: z.enum(["all", "incoming", "outgoing", "active", "history"]).optional(),
 }).strict();
-export const mentorshipOfferSchema = requestMentorshipSchema.omit({ mentorUserId: true });
+export const mentorshipOfferSchema = requestBody.omit({ mentorUserId: true }).refine(hasContent, "Add a message or an attachment to your invitation");
 
 export const respondMentorshipSchema = z.object({
   note: z.string().trim().max(1000).optional(),
@@ -30,7 +36,7 @@ export const respondMentorshipSchema = z.object({
 
 export const projectMentorshipController = {
   async list(req: Request, res: Response) {
-    const data = await projectMentorshipService.list(req.params.id as string, req.user!.sub, academicSearchSchema.parse(req.query));
+    const data = await projectMentorshipService.list(req.params.id as string, req.user!.sub, req.query as unknown as z.infer<typeof academicSearchSchema>);
     res.json({ success: true, data });
   },
 

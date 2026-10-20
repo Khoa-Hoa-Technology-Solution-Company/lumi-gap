@@ -13,6 +13,7 @@ const HIGH_QUEUE_LATENCY_MS = 10 * 60_000;
 const WORKER_HEARTBEAT_STALE_MS = 2 * 60_000;
 
 export type PipelineQueueName =
+  | "manuscript-compile"
   | "api-sync"
   | "openalex-ingest"
   | "corpus-validation"

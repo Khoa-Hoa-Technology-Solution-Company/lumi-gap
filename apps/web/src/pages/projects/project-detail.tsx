@@ -55,8 +55,8 @@ export function ProjectDetailPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get("tab");
   const activeTab: ProjectTab = ["overview", "plan", "tasks", "papers", "members", "contributions", "reports", "gaps", "chat", "support", "submissions", "manuscripts"].includes(tabParam ?? "") ? tabParam as ProjectTab : "overview";
-  const setActiveTab = (tab: ProjectTab, settings = false) => {
-    if (!canLeaveWorkspace()) return;
+  const setActiveTab = async (tab: ProjectTab, settings = false) => {
+    if (!(await canLeaveWorkspace())) return;
     const params = new URLSearchParams(searchParams);
     params.set("tab", tab);
     params.delete("submission");
@@ -801,7 +801,7 @@ function GapsTab({
           <select aria-label={t("Team assessment")} value={assessment} onChange={e => { setAssessment(e.target.value as GapAssessment | ""); setPage(1); }} className="h-10 rounded-md border bg-white px-3 text-sm">
             <option value="">{t("All candidates")}</option>{Object.entries(assessmentLabels).map(([value, label]) => <option key={value} value={value}>{t(label)}</option>)}
           </select>
-          {!readOnly && <Button variant="outline" onClick={() => { if (canLeaveWorkspace()) setPropose(value => !value); }}>{t("Propose candidate")}</Button>}
+          {!readOnly && <Button variant="outline" onClick={async () => { if ((await canLeaveWorkspace())) setPropose(value => !value); }}>{t("Propose candidate")}</Button>}
           <Button size="sm" className="rounded-full shadow-sm shrink-0" onClick={() => setOpen((current) => !current)} disabled={readOnly || Boolean(activeAnalysisId)}>
             <Sparkles className="w-4 h-4 mr-2" /> {open ? t("Close gap analysis") : t("New Gap Analysis")}
           </Button>

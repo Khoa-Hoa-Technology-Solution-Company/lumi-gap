@@ -13,7 +13,7 @@ import "../project-research.css";
 export function ResearchLiterature({ projectId, readOnly, children }: { projectId: string; readOnly: boolean; children: ReactNode }) {
   const { t } = useI18n(); const [params, setParams] = useSearchParams();
   const view = params.get("view") ?? "library";
-  const change = (value: string) => { if (!canLeaveWorkspace()) return; const next = new URLSearchParams(params); next.set("view", value); setParams(next, { replace: true }); };
+  const change = async (value: string) => { if (!(await canLeaveWorkspace())) return; const next = new URLSearchParams(params); next.set("view", value); setParams(next, { replace: true }); };
   return <div className="research-workflow" data-no-i18n>
     <nav className="research-views" aria-label={t("Literature workflow")}>
       {[["library", "Library"], ["screening", "Screening"], ["evidence", "Evidence matrix"]].map(([value, label]) => <button type="button" key={value} aria-current={view === value ? "page" : undefined} onClick={() => change(value!)}>{t(label!)}</button>)}

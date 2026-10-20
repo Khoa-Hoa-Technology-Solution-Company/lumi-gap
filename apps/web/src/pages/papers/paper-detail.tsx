@@ -1,3 +1,4 @@
+import { confirmAction } from "@/services/confirmation";
 import { useState, useEffect, useMemo } from "react";
 import { useParams, Link } from "react-router-dom";
 import {
@@ -272,7 +273,7 @@ export function PaperDetailPage() {
   };
 
   const handleAcceptPdf = async () => {
-    if (!confirm("Are you sure you want to approve this PDF?")) return;
+    if (!(await confirmAction({ kind: "approve", description: "Are you sure you want to approve this PDF?" }))) return;
     setAccepting(true);
     try {
       await api.patch(`/papers/${id}/accept-pdf`);
@@ -286,7 +287,7 @@ export function PaperDetailPage() {
   };
 
   const handleRejectPdf = async () => {
-    if (!confirm("Are you sure you want to reject this PDF? The file will be deleted and the uploader will lose points.")) return;
+    if (!(await confirmAction({ kind: "reject", description: "Are you sure you want to reject this PDF? The file will be deleted and the uploader will lose points." }))) return;
     setRejecting(true);
     try {
       await api.patch(`/papers/${id}/reject-pdf`);
@@ -300,7 +301,7 @@ export function PaperDetailPage() {
   };
 
   const handleDeletePdf = async () => {
-    if (!confirm("Are you sure you want to delete this PDF? This is an admin action.")) return;
+    if (!(await confirmAction({ kind: "delete", description: "Are you sure you want to delete this PDF? This is an admin action." }))) return;
     setDeletingPdf(true);
     try {
       await api.delete(`/papers/${id}/pdf`);
