@@ -29,6 +29,7 @@ enforcePostgresOnlyRuntime();
 /** Generic user-facing failure text — raw error internals stay in server logs. */
 const USER_FACING_FAILURE = "Gap analysis failed. Please try again later.";
 const USER_FACING_CLOSURE_FAILURE = "Gap closure check failed. Please try again later.";
+const USER_FACING_FANOUT_FAILURE = "Research gaps could not be created from this report. Please try again later.";
 
 async function main() {
   await connectPostgres();
@@ -84,8 +85,12 @@ async function main() {
     // the raw error stays in the log line above.
     const exhausted = job && job.attemptsMade >= (job.opts.attempts ?? 1);
     const unrecoverable = err instanceof UnrecoverableError;
-    // A failed fan-out leaves the ready report intact; the error log above is enough.
-    if (job && job.name === GAP_CLOSURE_JOB && (exhausted || unrecoverable)) {
+    // A failed fan-out leaves the ready report intact, but its owner is told the gaps were not created.
+    // Only our own non-retryable errors carry a user-facing message; anything else gets the generic text.
+    if (job && job.name === REPORT_GAP_FANOUT_JOB && (exhausted || unrecoverable)) {
+      const { reportId } = job.data as ReportGapFanoutJob;
+      void gapsService.notifyReportGapFanoutFailed(reportId, unrecoverable ? err.message : USER_FACING_FANOUT_FAILURE).catch((error) => logger.error({ err: error, reportId }, "could not notify report gap fan-out failure"));
+    } else if (job && job.name === GAP_CLOSURE_JOB && (exhausted || unrecoverable)) {
       const { checkId } = job.data as GapClosureJob;
       void markClosureCheckFailed(checkId, USER_FACING_CLOSURE_FAILURE).catch((error) => logger.error({ err: error, checkId }, "could not mark gap closure check failed"));
     } else if (job && job.name !== REPORT_GAP_FANOUT_JOB && (exhausted || unrecoverable)) {

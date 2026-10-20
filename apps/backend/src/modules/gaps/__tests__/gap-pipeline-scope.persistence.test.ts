@@ -6,6 +6,7 @@ import { getPrisma } from "../../../infrastructure/database/prisma.js";
 import { getEmbeddingProvider } from "../../embeddings/embedding.factory.js";
 import { cachedGenerateJSON } from "../../llm/llm.run.js";
 import { countOpenAlexIntersection } from "../gap-global-evidence.js";
+import { computeGapEvidence } from "../gap-evidence.js";
 import { gapsService } from "../gaps.service.js";
 
 // Embedding fails on purpose: the pipeline then retrieves by keyword, which is an existing path.
@@ -13,6 +14,11 @@ vi.mock("../../embeddings/embedding.factory.js", () => ({ getEmbeddingProvider: 
 vi.mock("../../llm/llm.run.js", () => ({ cachedGenerateJSON: vi.fn() }));
 // Never reach OpenAlex from tests.
 vi.mock("../gap-global-evidence.js", () => ({ countOpenAlexIntersection: vi.fn().mockResolvedValue(null) }));
+// Spy on the signal so a test can read the Bonferroni family size k the pipeline passes in.
+vi.mock("../gap-evidence.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../gap-evidence.js")>();
+  return { ...actual, computeGapEvidence: vi.fn(actual.computeGapEvidence) };
+});
 // Never enqueue real jobs from tests: a running dev worker would call Gemini.
 vi.mock("../../../infrastructure/queue.js", () => ({ gapsQueue: { add: vi.fn().mockResolvedValue(undefined) } }));
 
@@ -201,6 +207,37 @@ describe.sequential("gap pipeline probe scope (PostgreSQL)", () => {
     expect(gaps[0]!.evidenceScopeSize).toBeGreaterThanOrEqual(15);
     expect(gaps[0]!.evidenceScopeSize).toBeLessThan((await getPrisma().paper.count({ where: { dataStatus: "active" } })));
   });
+  it("counts the sample size N inside the probe's own year window", async () => {
+    // No window chosen by the user; the probe narrows to 2024-2025, i.e. 2 years x 5 papers.
+    vi.mocked(cachedGenerateJSON).mockResolvedValueOnce({
+      gaps: [{ title: `Narrow probe ${m}`, description: "d", rationale: "r", supportingEvidence: [1], confidence: 0.5, probe: { topicA, topicB, yearFrom: 2024 } }],
+    } as never);
+
+    const { done, gaps } = await runAnalysis({ evidenceMode: "hybrid" });
+
+    expect(done.status).toBe("ready");
+    expect(gaps[0]!.parentCounts).toEqual({ a: 10, b: 10 });
+    // N must cover the same window as nA and nB, not the whole corpus.
+    expect(gaps[0]!.evidenceScopeSize).toBeGreaterThanOrEqual(10);
+    expect(gaps[0]!.evidenceScopeSize).toBeLessThan(await getPrisma().paper.count({ where: { dataStatus: "active" } }));
+  });
+
+  it("uses only grounded probes as the Bonferroni family size", async () => {
+    vi.mocked(computeGapEvidence).mockClear();
+    vi.mocked(cachedGenerateJSON).mockResolvedValueOnce({
+      gaps: [
+        { title: `Grounded ${m}`, description: "d", rationale: "r", supportingEvidence: [1], confidence: 0.5, probe: { topicA, topicB } },
+        { title: `Invented ${m}`, description: "d", rationale: "r", supportingEvidence: [1], confidence: 0.5, probe: { topicA, topicB: `inventedtopic${m}k` } },
+      ],
+    } as never);
+
+    const { done, gaps } = await runAnalysis({ evidenceMode: "hybrid" });
+
+    expect(done.status).toBe("ready");
+    expect(gaps).toHaveLength(2);
+    expect(vi.mocked(computeGapEvidence).mock.calls.map(([input]) => input.probeCount)).toEqual([1]);
+  });
+
   it("rejects a changed project corpus after generation rather than saving a stale candidate", async () => {
     const db = getPrisma();
     const analysis = await db.gapAnalysis.create({ data: { userId, projectId, topic: `${topicA} ${topicB}`, status: "queued", evidenceMode: "hybrid" } }); analysisIds.push(analysis.id);

@@ -21,6 +21,44 @@ describe("poissonCdf", () => {
 });
 
 describe("computeGapEvidence (under-explored ranking signal)", () => {
+  describe("OpenAlex veto", () => {
+    // Local worked example (1 paper where 6 are expected) is under-explored on its own.
+    const local = input(20000, 400, 300, 1);
+    const openAlex = (scopeSize: number | undefined, a: number, b: number, intersectionCount: number) =>
+      ({ source: "openalex" as const, intersectionCount, parentCounts: { a, b }, scopeSize, fetchedAt: "2026-10-20T00:00:00.000Z" });
+
+    it("overrules the corpus when OpenAlex finds the intersection well covered", () => {
+      // E = 50000 * 40000 / 1e7 = 200, observed 180: R = 0.9.
+      const e = computeGapEvidence({ ...local, globalEvidence: openAlex(10_000_000, 50_000, 40_000, 180) }, T);
+      expect(e.vetoedByGlobal).toBe(true);
+      expect(e.underExplored).toBe(false);
+      expect(e.global).toMatchObject({ expected: 200, underExplored: false });
+      expect(e.global!.ratio).toBeCloseTo(0.9, 10);
+      expect(e.evidenceConfidence).toBeLessThan(0.5);
+      // The local numbers are still reported as they are.
+      expect(e.ratio).toBeCloseTo(1 / 6, 10);
+    });
+
+    it("keeps the signal when OpenAlex agrees", () => {
+      const e = computeGapEvidence({ ...local, globalEvidence: openAlex(10_000_000, 50_000, 40_000, 20) }, T);
+      expect(e.vetoedByGlobal).toBe(false);
+      expect(e.underExplored).toBe(true);
+      expect(e.global!.underExplored).toBe(true);
+    });
+
+    it("does not overrule when OpenAlex has too few papers per topic to judge", () => {
+      const e = computeGapEvidence({ ...local, globalEvidence: openAlex(10_000_000, 3, 40_000, 3) }, T);
+      expect(e.vetoedByGlobal).toBe(false);
+      expect(e.underExplored).toBe(true);
+    });
+
+    it("keeps the local signal for rows saved before OpenAlex N was recorded, or without OpenAlex counts", () => {
+      expect(computeGapEvidence({ ...local, globalEvidence: openAlex(undefined, 50_000, 40_000, 180) }, T)).toMatchObject({ underExplored: true, vetoedByGlobal: false });
+      expect(computeGapEvidence({ ...local, globalEvidence: openAlex(undefined, 50_000, 40_000, 180) }, T).global).toBeUndefined();
+      expect(computeGapEvidence({ ...local, globalEvidence: null }, T)).toMatchObject({ underExplored: true, vetoedByGlobal: false });
+    });
+  });
+
   it("worked example: 1 paper where 6 would be expected is under-explored", () => {
     const e = computeGapEvidence(input(20000, 400, 300, 1), T);
     expect(e.expected).toBeCloseTo(6, 10);

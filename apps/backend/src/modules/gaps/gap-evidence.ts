@@ -10,6 +10,11 @@
  *   R = nAB / E            observed / expected
  *   p = P(X <= nAB), X ~ Poisson(E)
  * under-explored = N > 0 AND min(nA, nB) >= minParentPapers AND R <= maxRatio AND p <= alpha / k (Bonferroni, k probes).
+ *
+ * OpenAlex veto: when the same counts from OpenAlex (the whole literature) come with their own N, the test is repeated
+ * on them. If OpenAlex has enough papers per topic and does NOT find the intersection under-explored, the local signal
+ * is overruled: a pair that looks rare in a small corpus is often well studied elsewhere. Without OpenAlex counts (or
+ * without their N, as in rows saved before it was recorded) the local signal stands.
  */
 import type { GapGlobalEvidence, YearlyCount } from "@trend/shared-types";
 import { cagrPct, linearSlope, yoyGrowthPct } from "../trends/trend.formulas.js";
@@ -21,8 +26,9 @@ export interface GapEvidenceInput {
   parentCounts: { a: number; b: number };
   /** k: number of probes tested together (Bonferroni family size); values below 1 count as 1. */
   probeCount?: number;
-  /** Legacy/context fields accepted for callers that persist them; the O/E signal does not use parent growth. */
+  /** Legacy/context field accepted for callers that persist it; the O/E signal does not use parent growth. */
   parentRising?: boolean;
+  /** OpenAlex counts of the same probe; with their scopeSize they can overrule the local signal (see above). */
   globalEvidence?: GapGlobalEvidence | null;
 }
 
@@ -50,6 +56,10 @@ export interface GapEvidence {
   lowSample: boolean;
   /** Ranking score 0..1 (stored in evidence_confidence). */
   evidenceConfidence: number;
+  /** The same test on the OpenAlex counts; absent when they (or their N) are missing or cannot speak to the probe. */
+  global?: { expected: number; ratio: number; pValue: number; underExplored: boolean };
+  /** OpenAlex finds the intersection well covered, so the local signal was overruled. */
+  vetoedByGlobal: boolean;
 }
 
 export const GAP_UNDEREXPLORED_DEFAULTS = { maxRatio: 0.5, alpha: 0.05 } as const;
@@ -74,22 +84,34 @@ export function poissonCdf(n: number, lambda: number): number {
   return Math.min(1, Math.exp(max + Math.log(sum)));
 }
 
-export function computeGapEvidence(input: GapEvidenceInput, t: GapThresholds): GapEvidence {
-  const { evidenceScopeSize: N, intersectionCount: nAB, parentCounts } = input;
+/** O/E test on one set of counts. Null when the scope is empty or a topic has no papers (the counts cannot speak). */
+function observedVsExpected(N: number, nAB: number, parentCounts: { a: number; b: number }, k: number, t: GapThresholds) {
   const minParent = Math.min(parentCounts.a, parentCounts.b);
-  // An empty scope or a parent topic with no papers: the corpus cannot speak to this gap at all, and an empty
-  // intersection is missing data, not evidence.
-  if (!(N > 0) || minParent <= 0) {
-    return { intersectionCount: nAB, parentCounts, expected: 0, ratio: 1, pValue: 1, underExplored: false, lowSample: true, evidenceConfidence: 0 };
-  }
+  if (!(N > 0) || minParent <= 0) return null;
   const expected = (parentCounts.a * parentCounts.b) / N;
   const ratio = nAB / expected;
   const pValue = poissonCdf(nAB, expected);
   const lowSample = minParent < t.minParentPapers;
+  return { expected, ratio, pValue, lowSample, underExplored: !lowSample && ratio <= t.maxRatio && pValue <= t.alpha / k };
+}
+
+export function computeGapEvidence(input: GapEvidenceInput, t: GapThresholds): GapEvidence {
+  const { evidenceScopeSize: N, intersectionCount: nAB, parentCounts } = input;
   const k = Math.max(1, Math.floor(input.probeCount ?? 1));
-  const underExplored = !lowSample && ratio <= t.maxRatio && pValue <= t.alpha / k;
-  const evidenceConfidence = underExplored ? 0.5 + 0.5 * clamp01(1 - ratio) : 0.25 * clamp01(1 - ratio);
-  return { intersectionCount: nAB, parentCounts, expected, ratio, pValue, underExplored, lowSample, evidenceConfidence: round2(clamp01(evidenceConfidence)) };
+  const local = observedVsExpected(N, nAB, parentCounts, k, t);
+  // An empty scope or a parent topic with no papers: the corpus cannot speak to this gap at all, and an empty
+  // intersection is missing data, not evidence.
+  if (!local) {
+    return { intersectionCount: nAB, parentCounts, expected: 0, ratio: 1, pValue: 1, underExplored: false, lowSample: true, evidenceConfidence: 0, vetoedByGlobal: false };
+  }
+  const g = input.globalEvidence;
+  const globalTest = g && g.scopeSize !== undefined ? observedVsExpected(g.scopeSize, g.intersectionCount, g.parentCounts, k, t) : null;
+  const global = globalTest ? { expected: globalTest.expected, ratio: globalTest.ratio, pValue: globalTest.pValue, underExplored: globalTest.underExplored } : undefined;
+  // OpenAlex overrules only when it has enough papers per topic to judge.
+  const vetoedByGlobal = local.underExplored && !!globalTest && !globalTest.lowSample && !globalTest.underExplored;
+  const underExplored = local.underExplored && !vetoedByGlobal;
+  const evidenceConfidence = underExplored ? 0.5 + 0.5 * clamp01(1 - local.ratio) : 0.25 * clamp01(1 - local.ratio);
+  return { intersectionCount: nAB, parentCounts, expected: local.expected, ratio: local.ratio, pValue: local.pValue, underExplored, lowSample: local.lowSample, evidenceConfidence: round2(clamp01(evidenceConfidence)), ...(global ? { global } : {}), vetoedByGlobal };
 }
 
 /** Trend of a parent topic over complete years: CAGR when defined, otherwise the slope decides (growth from a zero base). */

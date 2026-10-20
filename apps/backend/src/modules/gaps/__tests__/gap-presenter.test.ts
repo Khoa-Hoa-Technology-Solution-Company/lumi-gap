@@ -266,6 +266,18 @@ describe("under-explored signal recomputed from stored counts", () => {
     const ordered = sortGapRows([row("stale-high", 6, 0.99), row("real-shortfall", 1, 0.1)], "recommended", 5).map((item) => item.id);
     expect(ordered).toEqual(["real-shortfall", "stale-high"]);
   });
+
+  it("is not confirmed when OpenAlex finds the intersection well covered, and ranks behind an agreeing gap", () => {
+    const openAlex = (intersectionCount: number) => ({ source: "openalex" as const, intersectionCount, parentCounts: { a: 50_000, b: 40_000 }, scopeSize: 10_000_000, fetchedAt: "2026-10-20T00:00:00.000Z" });
+    const doc = { ...base, intersectionCount: 1, evidenceScopeSize: 20000, parentCounts: { a: 400, b: 300 } };
+    const vetoed = toGapListItem({ ...doc, globalEvidence: openAlex(180) }, new Map(), { minParentPapers: 5 });
+    expect(vetoed.evidenceStatus).toBe("weak");
+    expect(vetoed.underExplored).toMatchObject({ vetoedByGlobal: true, global: { expected: 200 } });
+    expect(toGapListItem({ ...doc, globalEvidence: openAlex(20) }, new Map(), { minParentPapers: 5 }).evidenceStatus).toBe("confirmed");
+
+    const row = (id: string, globalEvidence: ReturnType<typeof openAlex>): GapSortRow => ({ id, confidence: 0, evidenceConfidence: null, evidenceScopeSize: 20000, intersectionCount: 1, createdAt: new Date("2026-01-01T00:00:00Z"), source: "standalone", probe: base.probe, parentCounts: { a: 400, b: 300 }, globalEvidence, supportingCount: 0 });
+    expect(sortGapRows([row("vetoed", openAlex(180)), row("agreed", openAlex(20))], "recommended", 5).map((item) => item.id)).toEqual(["agreed", "vetoed"]);
+  });
 });
 
 describe("isGapLowSample", () => {
@@ -311,8 +323,13 @@ describe("sortGapRows", () => {
     expect(ids(sortGapRows(rows, "evidence", 5))).toEqual(["confirmed", "confident", "newest", "ai-only"]);
   });
 
-  it("orders by the AI's own confidence for the confidence sort", () => {
-    expect(ids(sortGapRows(rows, "confidence", 5))).toEqual(["confident", "ai-only", "confirmed", "newest"]);
+  it("orders by the shown score for the confidence sort, breaking ties with the legacy AI confidence", () => {
+    expect(ids(sortGapRows(rows, "confidence", 5))).toEqual(["confirmed", "confident", "newest", "ai-only"]);
+    // New gaps store the LLM placeholder 0, so it cannot outrank an evidence score.
+    const placeholder = row("placeholder", { evidenceConfidence: 0.3, confidence: 0 });
+    const legacy = row("legacy", { evidenceConfidence: 0.3, confidence: 0.8 });
+    const unscored = row("unscored", { evidenceConfidence: null, confidence: 0.9 });
+    expect(ids(sortGapRows([unscored, placeholder, legacy], "confidence", 5))).toEqual(["legacy", "placeholder", "unscored"]);
   });
 
   it("orders by supporting papers, newest first, and AI-only last", () => {

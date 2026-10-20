@@ -1,5 +1,5 @@
 import { CheckCircle2, AlertCircle } from "lucide-react";
-import type { GapGlobalEvidence } from "@trend/shared-types";
+import type { GapGlobalEvidence, ResearchGapItem } from "@trend/shared-types";
 import { useI18n } from "@/i18n";
 import { formatNumber } from "@/utils/format";
 
@@ -34,7 +34,7 @@ export function GapSignalNote({
   underExplored,
 }: {
   intersectionCount?: number;
-  underExplored?: { expected: number; ratio: number; pValue: number };
+  underExplored?: ResearchGapItem["underExplored"];
 }) {
   const { t } = useI18n();
   if (!underExplored) return null;
@@ -51,6 +51,16 @@ export function GapSignalNote({
           ? t("{{count}} paper where {{expected}} would be expected (ratio {{ratio}}, p {{p}})", values)
           : t("{{count}} papers where {{expected}} would be expected (ratio {{ratio}}, p {{p}})", values)}
       </p>
+      {underExplored.global && (
+        <p>
+          {t("OpenAlex: ratio {{ratio}}, p {{p}}", { ratio: underExplored.global.ratio.toFixed(2), p: formatPValue(underExplored.global.pValue) })}
+        </p>
+      )}
+      {underExplored.vetoedByGlobal && (
+        <p className="font-medium text-amber-700 dark:text-amber-400">
+          {t("Rare in this corpus, but OpenAlex finds the intersection well covered, so it is not marked under-explored.")}
+        </p>
+      )}
       <p className="text-[10px] italic text-slate-500 dark:text-slate-400">
         {t("A ranking signal, not proof. Run a closure check to decide whether the gap is open.")}
       </p>
@@ -64,7 +74,7 @@ interface GapEvidenceSummaryProps {
   intersectionCount?: number;
   parentCounts?: { a: number; b: number };
   parentTrend?: { topic: string; growthRatePct: number; cagrPct?: number | null } | null;
-  underExplored?: { expected: number; ratio: number; pValue: number };
+  underExplored?: ResearchGapItem["underExplored"];
   globalEvidence?: GapGlobalEvidence | null;
 }
 

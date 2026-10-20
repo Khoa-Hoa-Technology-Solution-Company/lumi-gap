@@ -17,7 +17,7 @@ vi.mock("../../../infrastructure/cache.js", async (importOriginal) => ({
 // The real client would call api.openalex.org.
 vi.mock("../../api-sync/providers/openalex.client.js", () => ({ fetchOpenAlexGroupCounts: vi.fn() }));
 
-const totals = (filter?: string) => (filter?.includes("alpha") && filter.includes("beta") ? 7 : filter?.includes("alpha") ? 1000 : 2000);
+const totals = (filter?: string) => (filter?.includes("alpha") && filter.includes("beta") ? 7 : filter?.includes("alpha") ? 1000 : filter?.includes("beta") ? 2000 : 5_000_000);
 
 beforeEach(() => {
   settings.enabled = true;
@@ -55,16 +55,24 @@ describe("buildIntersectionFilter", () => {
 });
 
 describe("countOpenAlexIntersection", () => {
-  it("counts the intersection and both parents, then caches the result", async () => {
+  it("counts the intersection, both parents and all works in the window, then caches the result", async () => {
     const result = await countOpenAlexIntersection("alpha", "beta", { yearFrom: 2020, yearTo: 2024 });
 
-    expect(result).toMatchObject({ source: "openalex", intersectionCount: 7, parentCounts: { a: 1000, b: 2000 }, yearFrom: 2020, yearTo: 2024 });
+    expect(result).toMatchObject({ source: "openalex", intersectionCount: 7, parentCounts: { a: 1000, b: 2000 }, scopeSize: 5_000_000, yearFrom: 2020, yearTo: 2024 });
     const filters = vi.mocked(fetchOpenAlexGroupCounts).mock.calls.map(([params]) => params.filterExpression);
-    expect(filters).toHaveLength(3);
+    expect(filters).toHaveLength(4);
+    expect(filters).toContain("publication_year:2020-2024");
     expect(filters).toContain("title_and_abstract.search:alpha,title_and_abstract.search:beta,publication_year:2020-2024");
     expect(filters).toContain("title_and_abstract.search:alpha,publication_year:2020-2024");
     expect(filters).toContain("title_and_abstract.search:beta,publication_year:2020-2024");
-    expect(cache.set).toHaveBeenCalledWith(expect.stringMatching(/^gap:openalex:v1:/), result, expect.any(Number));
+    expect(cache.set).toHaveBeenCalledWith(expect.stringMatching(/^gap:openalex:v2:/), result, expect.any(Number));
+  });
+
+  it("counts every work when no year window is chosen", async () => {
+    const result = await countOpenAlexIntersection("alpha", "beta", {});
+
+    expect(result?.scopeSize).toBe(5_000_000);
+    expect(vi.mocked(fetchOpenAlexGroupCounts).mock.calls.map(([params]) => params.filterExpression)).toContain("");
   });
 
   it("returns a cached result without calling OpenAlex", async () => {
