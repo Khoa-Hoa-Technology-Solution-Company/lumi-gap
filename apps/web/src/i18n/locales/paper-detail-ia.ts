@@ -1,7 +1,7 @@
 export const paperDetailIaStrings = {
   "; original available.": "; original available.",
-  "A deterministic platform score used for data quality and upload workflows; it is not a peer-review verdict.":
-    "A deterministic platform score used for data quality and upload workflows; it is not a peer-review verdict.",
+  "Checks how complete the uploaded metadata is (fields, DOI or source, duplicates, classification). It sets credit cost and reward; it does not judge scientific quality.":
+    "Checks how complete the uploaded metadata is (fields, DOI or source, duplicates, classification). It sets credit cost and reward; it does not judge scientific quality.",
   "Advisory LLM": "Advisory LLM",
   "AI abstract review": "AI abstract review",
   "citations indexed (": "citations indexed (",
@@ -55,7 +55,13 @@ export const paperDetailIaStrings = {
   "LumiGap matches title and abstract meaning. This is independent of citations and OpenAlex relations.":
     "LumiGap matches title and abstract meaning. This is independent of citations and OpenAlex relations.",
   "papers, but none are currently indexed in LumiGap.": "papers, but none are currently indexed in LumiGap.",
-  "Platform quality rubric": "Platform quality rubric",
+  "Upload data completeness": "Upload data completeness",
+  "Required metadata": "Required metadata",
+  "Source and DOI": "Source and DOI",
+  "Duplicate check": "Duplicate check",
+  "Topic classification": "Topic classification",
+  "Publication type": "Publication type",
+  "Methods, data or code described": "Methods, data or code described",
   "Publication": "Publication",
   "Rating:": "Rating:",
   "Ratings & reviews": "Ratings & reviews",
@@ -90,8 +96,8 @@ export const paperDetailIaStrings = {
 export const paperDetailIaViStrings: Record<keyof typeof paperDetailIaStrings, string> = {
   ...paperDetailIaStrings,
   "; original available.": "; bản gốc vẫn khả dụng.",
-  "A deterministic platform score used for data quality and upload workflows; it is not a peer-review verdict.":
-    "Thang điểm chất lượng dữ liệu và quy trình tải lên; không phải đánh giá phản biện chuyên gia.",
+  "Checks how complete the uploaded metadata is (fields, DOI or source, duplicates, classification). It sets credit cost and reward; it does not judge scientific quality.":
+    "Kiểm tra mức độ đầy đủ của dữ liệu bài tải lên (trường thông tin, DOI hoặc nguồn, trùng lặp, phân loại). Kết quả quyết định chi phí và thưởng tín dụng; không đánh giá chất lượng khoa học.",
   "Advisory LLM": "AI tham vấn",
   "AI abstract review": "Đánh giá tóm tắt bởi AI",
   "citations indexed (": "trích dẫn được đánh chỉ mục (",
@@ -145,7 +151,13 @@ export const paperDetailIaViStrings: Record<keyof typeof paperDetailIaStrings, s
   "LumiGap matches title and abstract meaning. This is independent of citations and OpenAlex relations.":
     "LumiGap khớp nối ý nghĩa tiêu đề và tóm tắt. Khái niệm này độc lập với trích dẫn và liên kết OpenAlex.",
   "papers, but none are currently indexed in LumiGap.": "bài báo, nhưng chưa có bài nào được đánh chỉ mục trong LumiGap.",
-  "Platform quality rubric": "Thang điểm chất lượng nền tảng",
+  "Upload data completeness": "Kiểm tra dữ liệu bài tải lên",
+  "Required metadata": "Thông tin bắt buộc",
+  "Source and DOI": "Nguồn và DOI",
+  "Duplicate check": "Kiểm tra trùng lặp",
+  "Topic classification": "Phân loại chủ đề",
+  "Publication type": "Loại xuất bản",
+  "Methods, data or code described": "Mô tả phương pháp, dữ liệu hoặc mã nguồn",
   "Publication": "Xuất bản",
   "Rating:": "Đánh giá:",
   "Ratings & reviews": "Đánh giá & Nhận xét",

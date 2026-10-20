@@ -1,4 +1,14 @@
 const DOI_PATTERN = /^10\.\d{4,9}\/\S+$/i;
+// Whole words only, so "decode"/"encoded" or "codebook" never count as released code.
+const UTILITY_ARTIFACT_PATTERN = /\b(?:datasets?|benchmarks?|code)\b/i;
+// Leading boundary only: "methodology", "experimental", "results" still count.
+const UTILITY_METHOD_PATTERN = /\b(?:method|experiment|result)/i;
+
+// Sum of the component maxima: metadata 15 + source 15 + duplicate 20 +
+// relevance 15 + prestige 15 + utility 15. The raw sum is normalized to 0..100
+// (see calculatePaperQuality) so the top tier band (92-100) is reachable; before
+// normalization the best possible paper scored 95 and Elite needed 92 of 95.
+export const QUALITY_RAW_MAX = 95;
 
 export interface QualityResult {
   metadataScore: number;
@@ -119,10 +129,10 @@ function scoreUtility(paper: any): number {
   const kind = String(paper.paperKind || "").toLowerCase();
   const abstract = String(paper.abstractText || "").toLowerCase();
 
-  if (kind.includes("data") || kind.includes("software") || /dataset|benchmark|code/i.test(abstract)) {
+  if (kind.includes("data") || kind.includes("software") || UTILITY_ARTIFACT_PATTERN.test(abstract)) {
     return 15;
   }
-  if (/method|experiment|result/i.test(abstract)) {
+  if (UTILITY_METHOD_PATTERN.test(abstract)) {
     return 12;
   }
   if (kind === "review") {
@@ -139,6 +149,10 @@ export function getQualityTier(score: number): typeof QUALITY_TIERS[number] {
   return found || QUALITY_TIERS[0]!;
 }
 
+// Upload metadata-completeness check: only user uploads are scored (paper.service
+// create). Synced OpenAlex/arXiv papers are never scored here because the tier sets
+// downloadCost and uploadCreditReward. Component scores keep their raw scale; only
+// qualityScore is normalized to 0..100.
 export function calculatePaperQuality(paper: any): QualityResult {
   const meta = scoreMetadata(paper);
   const src = scoreSource(paper);
@@ -147,7 +161,8 @@ export function calculatePaperQuality(paper: any): QualityResult {
   const prestige = scorePrestige(paper);
   const util = scoreUtility(paper);
 
-  const qualityScore = meta + src + dup + rel + prestige + util;
+  const rawScore = meta + src + dup + rel + prestige + util;
+  const qualityScore = Math.round((rawScore / QUALITY_RAW_MAX) * 100);
   const tier = getQualityTier(qualityScore);
 
   return {
