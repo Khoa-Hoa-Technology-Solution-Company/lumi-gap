@@ -46,10 +46,10 @@ This subsection is about **ranking** candidate gaps. It is not the decision rule
 
 LumiGap counts the papers in its own corpus that mention both topics of a probe and compares that count with what chance would produce. Let
 
-- `N`: active papers in the scope the counts are taken over (the corpus inside the chosen years),
-- `nA`, `nB`: papers that mention topic A, topic B,
+- `N`: active papers in the scope the counts are taken over (the corpus inside the chosen years, narrowed to the probe's own years when it gives any, the same window as `nA`, `nB`, `nAB`),
+- `nA`, `nB`: papers that mention topic A, topic B (their words, or, when `GAP_PROBE_SEMANTIC_MIN_SIMILARITY > 0`, an embedding at least that close to the topic's; the gap then records the threshold),
 - `nAB`: papers that mention both (the intersection),
-- `k`: number of probes tested together (the gaps of one analysis or report that carry a probe).
+- `k`: number of probes tested together (the gaps of one analysis or report whose probe survived grounding, i.e. both topics occur in the evidence papers).
 
 Then
 
@@ -72,6 +72,8 @@ The ranking score stored with the gap (`evidenceConfidence`, 0 to 1) is `0.5 + 0
 | Worked example | 20,000 | 400 | 300 | 1 | 6 | 0.167 | 0.0174 | Yes with `k = 1` (0.0174 <= 0.05). No with `k = 5` (0.0174 > 0.01). |
 | False alarm | 1,000 | 20 | 15 | 0 | 0.3 | 0 | 0.7408 | No. An empty intersection is what chance predicts here. |
 | Large topics | 20,000 | 5,000 | 4,000 | 200 | 1,000 | 0.2 | below 10^-100 | Yes. 200 papers is a lot, but 1,000 were expected. |
+
+**OpenAlex veto.** When OpenAlex is reachable, LumiGap takes the same four counts there (`N` is every OpenAlex work in the same years) and runs the same test on them with the same `k`. If OpenAlex has at least `GAP_MIN_PARENT_PAPERS` papers per topic and does **not** flag the probe, the corpus signal is overruled: the gap is not marked under-explored, and the score falls back to `0.25 * max(0, 1 - R)` of the corpus `R`. A pair that is rare in a small corpus is often well studied elsewhere (see the ESV-Gap case above). Without OpenAlex counts, or for gaps saved before OpenAlex `N` was recorded, the corpus signal stands.
 
 The first row reads "1 paper where 6 would be expected". The old rule counted only `nAB`, ignored `N`, and would have called the false-alarm row "scarce" (0 papers) and the large-topics row "common" (200 papers). Both verdicts are wrong in the sense that matters: the signal depends on how many papers chance would put in the intersection.
 

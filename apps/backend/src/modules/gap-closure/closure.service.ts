@@ -194,7 +194,8 @@ export const closureService = {
     // epsHat measures one version of the procedure; it says nothing about a check run under another version.
     if (calibration && calibration.protocolVersion !== check.protocolVersion) throw AppError.conflict(`The selected calibration measured protocol ${calibration.protocolVersion}, but this check ran under ${check.protocolVersion}`);
 
-    const paperLinks = await prisma.researchGapPaper.findMany({ where: { gapId: gap.id }, select: { paperId: true } });
+    // Automatically found possible counter-evidence is not what the gap was derived from, so it may still corroborate it.
+    const paperLinks = await prisma.researchGapPaper.findMany({ where: { gapId: gap.id, kind: { not: "possible_counter" } }, select: { paperId: true } });
     const result = decideClosure({
       documents,
       searchErrors,

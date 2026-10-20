@@ -29,6 +29,8 @@ export interface GapGlobalEvidence {
   source: "openalex";
   intersectionCount: number;
   parentCounts: { a: number; b: number };
+  /** All OpenAlex works in the same year window: N of the observed/expected test. Absent on rows saved before it was recorded. */
+  scopeSize?: number;
   yearFrom?: number;
   yearTo?: number;
   fetchedAt: string;
@@ -48,6 +50,9 @@ export interface ResearchGapItem {
   /** Papers an expert linked as counter-evidence (kept apart from the pipeline's evidence and supporting papers). */
   counterPaperIds?: string[];
   counterPapers?: GapSupportingPaper[];
+  /** Corpus papers close to the gap's own text, found automatically: they may already answer it. Review before trusting the gap. */
+  possibleCounterPaperIds?: string[];
+  possibleCounterPapers?: GapSupportingPaper[];
   /** Complete reviewed input set the AI read when producing this gap. */
   evidencePaperIds: string[];
   /** Resolved papers in the same order as evidencePaperIds. */
@@ -62,7 +67,7 @@ export interface ResearchGapItem {
   userId: string;
   status: GapStatus;
   createdAt: string;
-  probe?: { topicA: string; topicB: string; yearFrom?: number; yearTo?: number };
+  probe?: { topicA: string; topicB: string; yearFrom?: number; yearTo?: number; semanticMinSimilarity?: number };
   intersectionCount?: number;
   parentCounts?: { a: number; b: number };
   parentTrend?: { topic: string; growthRatePct: number; cagrPct?: number | null; slope?: number } | null;
@@ -75,7 +80,11 @@ export interface ResearchGapItem {
    * expected = nA * nB / N (intersection if the topics were independent), ratio = observed / expected, pValue = Poisson P(X <= observed).
    * evidenceStatus "confirmed" means this signal is met; it ranks gaps and does not prove one is open (see closureStatus).
    */
-  underExplored?: { expected: number; ratio: number; pValue: number };
+  /**
+   * Observed vs expected papers at the intersection. `global` is the same test on OpenAlex counts; `vetoedByGlobal`
+   * means OpenAlex finds the intersection well covered, so the corpus signal was overruled.
+   */
+  underExplored?: { expected: number; ratio: number; pValue: number; global?: { expected: number; ratio: number; pValue: number }; vetoedByGlobal?: boolean };
   /** Active corpus papers the probe counts above were taken over; absent on gaps created before it was recorded. */
   evidenceScopeSize?: number;
   /** Same probe scored inside the project's INCLUDED papers. Context only: it never decides the under-explored signal. */

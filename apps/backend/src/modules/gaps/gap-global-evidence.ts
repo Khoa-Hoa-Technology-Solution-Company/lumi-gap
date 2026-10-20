@@ -34,18 +34,21 @@ function withTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
   return Promise.race([work, timeout]).finally(() => clearTimeout(timer));
 }
 
-/** Counts papers about A, about B and about both in OpenAlex. Null when disabled, unusable phrases, or on any failure. */
+/**
+ * Counts papers about A, about B, about both, and all works in the window (N, for the O/E test) in OpenAlex.
+ * Null when disabled, unusable phrases, or on any failure.
+ */
 export async function countOpenAlexIntersection(topicA: string, topicB: string, years: YearRange): Promise<GapGlobalEvidence | null> {
   if (!env.GAP_GLOBAL_EVIDENCE_ENABLED) return null;
   const a = openAlexSearchValue(topicA), b = openAlexSearchValue(topicB);
   if (!a || !b) return null;
-  const key = `gap:openalex:v1:${hashKey({ a: a.toLowerCase(), b: b.toLowerCase(), yearFrom: years.yearFrom, yearTo: years.yearTo })}`;
+  const key = `gap:openalex:v2:${hashKey({ a: a.toLowerCase(), b: b.toLowerCase(), yearFrom: years.yearFrom, yearTo: years.yearTo })}`;
   try {
     const cached = await cache.get<GapGlobalEvidence>(key);
     if (cached) return cached;
     const count = async (topics: string[]) => (await fetchOpenAlexGroupCounts({ filterExpression: buildIntersectionFilter(topics, years), groupBy: "publication_year" })).total;
-    const [intersectionCount, countA, countB] = await withTimeout(Promise.all([count([a, b]), count([a]), count([b])]), env.GAP_GLOBAL_EVIDENCE_TIMEOUT_MS);
-    const evidence: GapGlobalEvidence = { source: "openalex", intersectionCount, parentCounts: { a: countA, b: countB }, ...(years.yearFrom !== undefined ? { yearFrom: years.yearFrom } : {}), ...(years.yearTo !== undefined ? { yearTo: years.yearTo } : {}), fetchedAt: new Date().toISOString() };
+    const [intersectionCount, countA, countB, scopeSize] = await withTimeout(Promise.all([count([a, b]), count([a]), count([b]), count([])]), env.GAP_GLOBAL_EVIDENCE_TIMEOUT_MS);
+    const evidence: GapGlobalEvidence = { source: "openalex", intersectionCount, parentCounts: { a: countA, b: countB }, scopeSize, ...(years.yearFrom !== undefined ? { yearFrom: years.yearFrom } : {}), ...(years.yearTo !== undefined ? { yearTo: years.yearTo } : {}), fetchedAt: new Date().toISOString() };
     await cache.set(key, evidence, LLM_CACHE_TTL_SECONDS);
     return evidence;
   } catch (err) {

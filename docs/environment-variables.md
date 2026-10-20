@@ -123,6 +123,10 @@ Users can also save multiple personal API connections in Settings → AI Connect
 | `GAPS_TOP_K` | `EnvSchema` / backend | Default / optional (see template) |
 | `GAPS_MAX_PER_HOUR` | `EnvSchema` / backend | Default / optional (see template) |
 | `GAPS_MAX_OUTPUT_TOKENS` | `EnvSchema` / backend | Default / optional (see template) |
+| `GAPS_EVIDENCE_MMR_LAMBDA` | `EnvSchema` / backend | Default / optional (default 0.7): MMR trade-off for the gap evidence pack; 1 keeps pure relevance order, lower values pick more diverse papers |
+| `GAP_COUNTER_MIN_SIMILARITY` | `EnvSchema` / backend | Default / optional (default 0.75): cosine similarity between a generated gap's text and a corpus paper above which the paper is linked as possible counter-evidence; tune on real data |
+| `GAP_PROBE_SEMANTIC_MIN_SIMILARITY` | `EnvSchema` / backend | Default / optional (default 0 = off): a paper also counts for a probe topic when its embedding is at least this close (cosine) to the topic, so synonyms are counted; calibrate with `pnpm --filter backend eval:gaps` before enabling |
+| `GAP_COUNTER_PER_GAP` | `EnvSchema` / backend | Default / optional (default 3): most possible counter-evidence papers linked per gap; 0 disables the search |
 | `GAP_UNDEREXPLORED_MAX_RATIO` | `EnvSchema` / backend | Default / optional (default 0.5): largest observed/expected ratio for the under-explored ranking signal |
 | `GAP_UNDEREXPLORED_ALPHA` | `EnvSchema` / backend | Default / optional (default 0.05): family-wise level of the Poisson test, divided by the number of probes tested together |
 | `GAP_MIN_PARENT_PAPERS` | `EnvSchema` / backend | Default / optional (see template) |

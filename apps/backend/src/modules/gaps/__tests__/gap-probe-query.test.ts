@@ -9,6 +9,24 @@ describe("stemProbeWord", () => {
     expect(stemProbeWord("curriculum")).toBe(stemProbeWord("curricula"));
   });
 
+  it("reduces analysis and analyses to the same stem", () => {
+    expect(stemProbeWord("analysis")).toBe("analys");
+    expect(stemProbeWord("analyses")).toBe("analys");
+  });
+
+  it("does not strip the s of singular words ending in ss, us or is", () => {
+    expect(stemProbeWord("class")).toBe("class");
+    expect(stemProbeWord("process")).toBe("process");
+    expect(stemProbeWord("corpus")).toBe("corpus");
+    expect(stemProbeWord("basis")).toBe("basis");
+    expect(stemProbeWord("processes")).toBe("process");
+  });
+
+  it("strips a final a only from longer words", () => {
+    expect(stemProbeWord("media")).toBe("media");
+    expect(stemProbeWord("criteria")).toBe("criteri");
+  });
+
   it("keeps short words intact", () => {
     expect(stemProbeWord("llms")).toBe("llms");
     expect(stemProbeWord("data")).toBe("data");
@@ -17,11 +35,11 @@ describe("stemProbeWord", () => {
 
 describe("buildProbeTsQuery", () => {
   it("ANDs every word as a prefix term", () => {
-    expect(buildProbeTsQuery("longitudinal study")).toBe("longitudinal:* & stud:*");
+    expect(buildProbeTsQuery("longitudinal study")).toBe("longitudinal:* & (study:* | studi:*)");
   });
 
   it("matches two-letter acronyms exactly and longer ones as prefixes", () => {
-    expect(buildProbeTsQuery("AI literacy")).toBe("ai & literac:*");
+    expect(buildProbeTsQuery("AI literacy")).toBe("ai & (literacy:* | literaci:*)");
     expect(buildProbeTsQuery("LLM")).toBe("llm:*");
   });
 
@@ -43,9 +61,9 @@ describe("buildProbeTsQuery", () => {
 describe("probeTerms", () => {
   it("drops stopwords, stems long words, keeps short tokens exact and dedupes", () => {
     expect(probeTerms("The studies of AI literacy and AI")).toEqual([
-      { term: "stud", exact: false },
+      { term: "study", exact: false, alt: "studi" },
       { term: "ai", exact: true },
-      { term: "literac", exact: false },
+      { term: "literacy", exact: false, alt: "literaci" },
     ]);
   });
 
@@ -57,6 +75,15 @@ describe("probeTerms", () => {
 describe("probeAppearsIn", () => {
   it("matches plural and singular forms", () => {
     expect(probeAppearsIn("longitudinal study", ["Longitudinal studies of teachers"])).toBe(true);
+  });
+
+  it("matches both inflections of a consonant + y word without hitting look-alikes", () => {
+    expect(probeAppearsIn("study", ["Studies of reading"])).toBe(true);
+    expect(probeAppearsIn("studies", ["A pilot study"])).toBe(true);
+    expect(probeAppearsIn("study", ["Students and teachers"])).toBe(false);
+    expect(probeAppearsIn("analysis", ["Meta-analyses of tutoring"])).toBe(true);
+    expect(probeAppearsIn("class", ["Image classification"])).toBe(true); // prefixes still widen; only the stem is fixed
+    expect(probeAppearsIn("media", ["Medical imaging"])).toBe(false);
   });
 
   it("matches a short acronym exactly, not as a prefix", () => {

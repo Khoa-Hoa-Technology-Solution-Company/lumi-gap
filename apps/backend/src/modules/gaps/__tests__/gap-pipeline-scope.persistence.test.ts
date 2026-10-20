@@ -6,13 +6,21 @@ import { getPrisma } from "../../../infrastructure/database/prisma.js";
 import { getEmbeddingProvider } from "../../embeddings/embedding.factory.js";
 import { cachedGenerateJSON } from "../../llm/llm.run.js";
 import { countOpenAlexIntersection } from "../gap-global-evidence.js";
+import { computeGapEvidence } from "../gap-evidence.js";
 import { gapsService } from "../gaps.service.js";
+import { vectorParameter } from "../../../infrastructure/database/postgres-paper-search.js";
+import { loadPaperEmbeddings } from "../gap-vector-queries.js";
 
 // Embedding fails on purpose: the pipeline then retrieves by keyword, which is an existing path.
 vi.mock("../../embeddings/embedding.factory.js", () => ({ getEmbeddingProvider: vi.fn() }));
 vi.mock("../../llm/llm.run.js", () => ({ cachedGenerateJSON: vi.fn() }));
 // Never reach OpenAlex from tests.
 vi.mock("../gap-global-evidence.js", () => ({ countOpenAlexIntersection: vi.fn().mockResolvedValue(null) }));
+// Spy on the signal so a test can read the Bonferroni family size k the pipeline passes in.
+vi.mock("../gap-evidence.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../gap-evidence.js")>();
+  return { ...actual, computeGapEvidence: vi.fn(actual.computeGapEvidence) };
+});
 // Never enqueue real jobs from tests: a running dev worker would call Gemini.
 vi.mock("../../../infrastructure/queue.js", () => ({ gapsQueue: { add: vi.fn().mockResolvedValue(undefined) } }));
 
@@ -201,6 +209,102 @@ describe.sequential("gap pipeline probe scope (PostgreSQL)", () => {
     expect(gaps[0]!.evidenceScopeSize).toBeGreaterThanOrEqual(15);
     expect(gaps[0]!.evidenceScopeSize).toBeLessThan((await getPrisma().paper.count({ where: { dataStatus: "active" } })));
   });
+  it("counts the sample size N inside the probe's own year window", async () => {
+    // No window chosen by the user; the probe narrows to 2024-2025, i.e. 2 years x 5 papers.
+    vi.mocked(cachedGenerateJSON).mockResolvedValueOnce({
+      gaps: [{ title: `Narrow probe ${m}`, description: "d", rationale: "r", supportingEvidence: [1], confidence: 0.5, probe: { topicA, topicB, yearFrom: 2024 } }],
+    } as never);
+
+    const { done, gaps } = await runAnalysis({ evidenceMode: "hybrid" });
+
+    expect(done.status).toBe("ready");
+    expect(gaps[0]!.parentCounts).toEqual({ a: 10, b: 10 });
+    // N must cover the same window as nA and nB, not the whole corpus.
+    expect(gaps[0]!.evidenceScopeSize).toBeGreaterThanOrEqual(10);
+    expect(gaps[0]!.evidenceScopeSize).toBeLessThan(await getPrisma().paper.count({ where: { dataStatus: "active" } }));
+  });
+
+  it("uses only grounded probes as the Bonferroni family size", async () => {
+    vi.mocked(computeGapEvidence).mockClear();
+    vi.mocked(cachedGenerateJSON).mockResolvedValueOnce({
+      gaps: [
+        { title: `Grounded ${m}`, description: "d", rationale: "r", supportingEvidence: [1], confidence: 0.5, probe: { topicA, topicB } },
+        { title: `Invented ${m}`, description: "d", rationale: "r", supportingEvidence: [1], confidence: 0.5, probe: { topicA, topicB: `inventedtopic${m}k` } },
+      ],
+    } as never);
+
+    const { done, gaps } = await runAnalysis({ evidenceMode: "hybrid" });
+
+    expect(done.status).toBe("ready");
+    expect(gaps).toHaveLength(2);
+    expect(vi.mocked(computeGapEvidence).mock.calls.map(([input]) => input.probeCount)).toEqual([1]);
+  });
+
+  it("links a corpus paper close to the gap's own text as possible counter-evidence, never a paper it read", async () => {
+    // A random direction: only the paper given this exact embedding is close to it.
+    const gapVector = Array.from({ length: 768 }, () => Math.random() - 0.5);
+    const prisma = getPrisma();
+    // Its words do not match the topic, so keyword retrieval leaves it out of the evidence pack.
+    const answer = await prisma.paper.create({ data: { title: `Unrelated wording ${m}`, abstractText: "A study that already answers the question.", publicationYear: 2024, primaryProvider: "user", dataStatus: "active" } });
+    paperIds.push(answer.id);
+    await prisma.$executeRaw`UPDATE papers SET embedding = ${vectorParameter(gapVector)}::vector WHERE id = ${answer.id}::uuid`;
+    expect((await loadPaperEmbeddings([answer.id])).get(answer.id)?.[0]).toBeCloseTo(gapVector[0]!, 5);
+
+    const original = vi.mocked(getEmbeddingProvider).getMockImplementation();
+    vi.mocked(getEmbeddingProvider).mockReturnValue({
+      embed: async () => { throw new Error("embedding unavailable in test"); },
+      embedBatch: async (texts: string[]) => texts.map(() => gapVector),
+    } as unknown as ReturnType<typeof getEmbeddingProvider>);
+    try {
+      const { done, gaps } = await runAnalysis({ evidenceMode: "hybrid" });
+
+      expect(done.status).toBe("ready");
+      const links = await prisma.researchGapPaper.findMany({ where: { gapId: gaps[0]!.id } });
+      expect(links.filter((link) => link.kind === "possible_counter").map((link) => link.paperId)).toEqual([answer.id]);
+      const evidence = links.filter((link) => link.kind === "evidence").map((link) => link.paperId);
+      expect(evidence).not.toContain(answer.id);
+    } finally {
+      if (original) vi.mocked(getEmbeddingProvider).mockImplementation(original);
+      await prisma.$executeRaw`UPDATE papers SET embedding = NULL WHERE id = ${answer.id}::uuid`;
+    }
+  });
+
+  it("counts a paper whose embedding is close to both topics when semantic matching is on, and records the threshold", async () => {
+    const prisma = getPrisma();
+    const unit = (v: number[]) => { const n = Math.hypot(...v); return v.map((x) => x / n); };
+    const vA = unit(Array.from({ length: 768 }, () => Math.random() - 0.5)), vB = unit(Array.from({ length: 768 }, () => Math.random() - 0.5));
+    // About 0.71 cosine to each topic (random vA, vB are nearly orthogonal), and none of the probe words: only semantic matching can count it.
+    const synonym = await prisma.paper.create({ data: { title: `Synonym wording ${m}`, abstractText: "Different vocabulary for the same pair of ideas.", publicationYear: 2023, primaryProvider: "user", dataStatus: "active" } });
+    paperIds.push(synonym.id);
+    await prisma.$executeRaw`UPDATE papers SET embedding = ${vectorParameter(unit(vA.map((x, i) => x + vB[i]!)))}::vector WHERE id = ${synonym.id}::uuid`;
+
+    const original = vi.mocked(getEmbeddingProvider).getMockImplementation();
+    vi.mocked(getEmbeddingProvider).mockReturnValue({
+      embed: async () => { throw new Error("embedding unavailable in test"); },
+      embedBatch: async (texts: string[]) => texts.map((text) => (text === topicA ? vA : text === topicB ? vB : Array.from({ length: 768 }, () => Math.random() - 0.5))),
+    } as unknown as ReturnType<typeof getEmbeddingProvider>);
+    const settings = env as { GAP_PROBE_SEMANTIC_MIN_SIMILARITY: number }, previous = settings.GAP_PROBE_SEMANTIC_MIN_SIMILARITY;
+    settings.GAP_PROBE_SEMANTIC_MIN_SIMILARITY = 0.6; // cosine is about 0.71 give or take the random overlap of vA and vB
+    try {
+      const { done, gaps } = await runAnalysis({ evidenceMode: "hybrid" });
+
+      expect(done.status).toBe("ready");
+      expect(gaps[0]!.parentCounts).toEqual({ a: PAPER_COUNT + 1, b: PAPER_COUNT + 1 });
+      expect(gaps[0]!.intersectionCount).toBe(PAPER_COUNT + 1);
+      expect(gaps[0]!.probe).toMatchObject({ topicA, topicB, semanticMinSimilarity: 0.6 });
+    } finally {
+      settings.GAP_PROBE_SEMANTIC_MIN_SIMILARITY = previous;
+      if (original) vi.mocked(getEmbeddingProvider).mockImplementation(original);
+      await prisma.$executeRaw`UPDATE papers SET embedding = NULL WHERE id = ${synonym.id}::uuid`;
+    }
+  });
+
+  it("counts probe words only while semantic matching is off (the default)", async () => {
+    const { gaps } = await runAnalysis({ evidenceMode: "hybrid" });
+    expect(gaps[0]!.parentCounts).toEqual({ a: PAPER_COUNT, b: PAPER_COUNT });
+    expect(gaps[0]!.probe).not.toHaveProperty("semanticMinSimilarity");
+  });
+
   it("rejects a changed project corpus after generation rather than saving a stale candidate", async () => {
     const db = getPrisma();
     const analysis = await db.gapAnalysis.create({ data: { userId, projectId, topic: `${topicA} ${topicB}`, status: "queued", evidenceMode: "hybrid" } }); analysisIds.push(analysis.id);
