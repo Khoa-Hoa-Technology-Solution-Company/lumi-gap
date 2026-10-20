@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { AiEvaluation } from "@/components/ai-evaluation";
+import { PaperReadingContextCard } from "./paper-reading-context-card";
 import type { Paper, PaperAiScore } from "@trend/shared-types";
 
 export interface PaperResearchSignalsSectionProps {
@@ -54,6 +55,8 @@ export function PaperResearchSignalsSection({
       {/* C1. Deterministic Research Signal */}
       {paper.aiScore && <DeterministicResearchSignalCard aiScore={paper.aiScore} />}
 
+      <PaperReadingContextCard paperId={paper.id} />
+
       {/* C2. Public Quality Rubric */}
       <PlatformQualityRubricCard paper={paper} />
 
@@ -71,7 +74,7 @@ function DeterministicResearchSignalCard({ aiScore }: { aiScore: PaperAiScore })
   const metadataPct = Math.round(aiScore.metadataQualityScore * 100);
 
   return (
-    <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-xs dark:border-slate-800 dark:bg-[#11161F] space-y-5">
+    <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-xs sm:p-6 dark:border-slate-800 dark:bg-[#11161F] space-y-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <div className="flex items-center gap-2">
@@ -179,7 +182,7 @@ function PlatformQualityRubricCard({ paper }: { paper: Paper }) {
   const qualityScore = paper.qualityScore;
 
   return (
-    <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-xs dark:border-slate-800 dark:bg-[#11161F] space-y-4">
+    <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-xs sm:p-6 dark:border-slate-800 dark:bg-[#11161F] space-y-4">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <div className="flex items-center gap-2">
@@ -234,7 +237,7 @@ function AiAbstractReviewCard({
   currentUser?: { id: string } | null;
 }) {
   return (
-    <div className="rounded-2xl border border-purple-200/60 bg-gradient-to-b from-purple-50/20 to-transparent p-6 shadow-xs dark:border-purple-900/40 dark:from-purple-950/10 space-y-4">
+    <div className="rounded-2xl border border-purple-200/60 bg-gradient-to-b from-purple-50/20 to-transparent p-4 shadow-xs sm:p-6 dark:border-purple-900/40 dark:from-purple-950/10 space-y-4">
       <div>
         <div className="flex items-center gap-2">
           <h3 className="text-base font-bold tracking-tight text-slate-900 dark:text-white">
@@ -252,6 +255,7 @@ function AiAbstractReviewCard({
       <AiEvaluation
         targetKind="paper"
         targetId={paper.id}
+        className="max-sm:rounded-none max-sm:border-0 max-sm:bg-transparent max-sm:p-0 dark:max-sm:bg-transparent"
         enabled={Boolean(currentUser && paper.abstractText?.trim())}
         disabledHint={
           currentUser

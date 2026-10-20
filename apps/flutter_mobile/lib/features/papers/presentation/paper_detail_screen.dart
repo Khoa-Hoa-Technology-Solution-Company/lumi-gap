@@ -9,14 +9,20 @@ import 'package:flutter_mobile/features/papers/data/papers_api.dart';
 import 'package:flutter_mobile/features/papers/data/papers_models.dart';
 import 'package:flutter_mobile/features/projects/data/projects_api.dart';
 import 'package:flutter_mobile/features/quality/data/quality_api.dart';
+import 'package:flutter_mobile/features/quality/presentation/quality_panel.dart';
+import 'package:flutter_mobile/features/quality/presentation/quality_reading_context_card.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class PaperDetailScreen extends ConsumerStatefulWidget {
-  const PaperDetailScreen({required this.id, super.key});
+  const PaperDetailScreen({required this.id, this.topic, this.query, super.key});
 
   final String id;
+
+  /// Trend topic / search query the reader arrived from (`?topic=` / `?q=`).
+  final String? topic;
+  final String? query;
 
   @override
   ConsumerState<PaperDetailScreen> createState() => _PaperDetailScreenState();
@@ -72,21 +78,6 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to submit review: $e')),
-        );
-      }
-    }
-  }
-
-  Future<void> _runAiEvaluation() async {
-    final api = ref.read(qualityApiProvider);
-    final target = QualityTarget('paper', widget.id);
-    try {
-      await api.evaluate('paper', widget.id);
-      ref.invalidate(qualityViewProvider(target));
-    } on Exception catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('AI evaluation failed: $e')),
         );
       }
     }
@@ -1007,44 +998,16 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        children: [
-                          _QualityBadge(
-                            label: 'Overall',
-                            score: view.evaluation?.overall,
-                          ),
-                          const SizedBox(width: 6),
-                          _QualityBadge(
-                            label: 'Relevance',
-                            score: view.evaluation?.relevance,
-                          ),
-                          const SizedBox(width: 6),
-                          _QualityBadge(
-                            label: 'Groundedness',
-                            score: view.evaluation?.groundedness,
-                          ),
-                        ],
+                      QualityReadingContextCard(
+                        paperId: widget.id,
+                        topic: widget.topic,
+                        query: widget.query,
                       ),
-                      if (view.evaluation != null) ...[
-                        const SizedBox(height: 10),
-                        Text(
-                          view.evaluation!.rationale,
-                          style: const TextStyle(fontSize: 12, height: 1.4),
-                        ),
-                      ] else ...[
-                        const SizedBox(height: 10),
-                        SizedBox(
-                          width: double.infinity,
-                          child: OutlinedButton.icon(
-                            onPressed: _runAiEvaluation,
-                            icon: const Icon(Icons.refresh, size: 14),
-                            label: const Text(
-                              'Generate AI Quality Critique',
-                              style: TextStyle(fontSize: 12),
-                            ),
-                          ),
-                        ),
-                      ],
+                      QualityPanel(
+                        targetKind: 'paper',
+                        targetId: widget.id,
+                        showRatings: false,
+                      ),
 
                       const Divider(height: 32),
 
@@ -1242,48 +1205,6 @@ class _ActionButton extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _QualityBadge extends StatelessWidget {
-  const _QualityBadge({required this.label, required this.score});
-
-  final String label;
-  final double? score;
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: const Color(0xFF06B6D4).withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              label,
-              style: const TextStyle(
-                color: Color(0xFF0891B2),
-                fontSize: 10,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              score?.toStringAsFixed(1) ?? 'Insufficient evidence',
-              style: TextStyle(
-                color: Theme.of(context).textTheme.bodyMedium?.color,
-                fontSize: 18,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }

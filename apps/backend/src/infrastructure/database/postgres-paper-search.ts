@@ -227,3 +227,39 @@ export function buildHybridSearchSql(input: {
 export async function searchPapersHybrid(input: Parameters<typeof buildHybridSearchSql>[0]): Promise<PostgresPaperSearchRow[]> {
   return getPrisma().$queryRaw<PostgresPaperSearchRow[]>(buildHybridSearchSql(input));
 }
+
+export type PaperNeighbourRow = {
+  id: string;
+  legacyMongoId: string | null;
+  title: string;
+  publicationYear: number | null;
+  citationCount: number | null;
+  similarity: number;
+};
+
+/**
+ * Nearest active papers to a paper's own stored embedding (cosine, 0..1). Reuses the vector already in
+ * PostgreSQL, so no embedding API call is made; returns [] when the paper has no embedding yet.
+ * The source vector is read first and passed as a parameter so the ORDER BY can use the vector index.
+ */
+export async function findPaperEmbeddingNeighbours(paperId: string, limit: number): Promise<PaperNeighbourRow[]> {
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw new Error("limit must be an integer between 1 and 100");
+  const [source] = await getPrisma().$queryRaw<{ embedding: string }[]>(Prisma.sql`
+    SELECT embedding::text AS embedding FROM papers WHERE id = ${paperId}::uuid AND embedding IS NOT NULL
+  `);
+  if (!source) return [];
+  const vector = Prisma.sql`CAST(${source.embedding} AS vector)`;
+  return getPrisma().$queryRaw<PaperNeighbourRow[]>(Prisma.sql`
+    SELECT
+      p.id,
+      p.legacy_mongo_id AS "legacyMongoId",
+      p.title,
+      p.publication_year AS "publicationYear",
+      p.citation_count AS "citationCount",
+      (1 - ((p.embedding <=> ${vector}) / 2.0))::double precision AS similarity
+    FROM papers p
+    WHERE p.embedding IS NOT NULL AND p.data_status = 'active' AND p.id <> ${paperId}::uuid
+    ORDER BY p.embedding <=> ${vector}, p.id
+    LIMIT ${limit}
+  `);
+}

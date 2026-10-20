@@ -480,7 +480,7 @@ export function AITab({
                           <span>{driver.text}</span>
                           <div className="mt-1 flex flex-wrap gap-1">
                             {(driver.papers ?? driver.paperIds.map((id) => ({ id, title: id }))).map((paper) => (
-                              <Link key={paper.id} to={`/papers/${paper.id}`} className="rounded-full border border-violet-100 bg-white px-2 py-0.5 text-[10px] font-semibold text-violet-700 hover:underline dark:border-violet-900/40 dark:bg-violet-950/20 dark:text-violet-300">{paper.title}</Link>
+                              <Link key={paper.id} to={`/papers/${paper.id}${activeFocusTopic ? `?topic=${encodeURIComponent(activeFocusTopic)}` : ""}`} className="rounded-full border border-violet-100 bg-white px-2 py-0.5 text-[10px] font-semibold text-violet-700 hover:underline dark:border-violet-900/40 dark:bg-violet-950/20 dark:text-violet-300">{paper.title}</Link>
                             ))}
                           </div>
                         </li>

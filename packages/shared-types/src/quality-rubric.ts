@@ -1,7 +1,13 @@
 import type { QualityCriterion, QualityCriterionId, QualityLanguage, QualityRubric, QualityTargetKind } from "./quality.js";
 
-/** Change this version whenever the rubric or its score anchors change. */
-export const QUALITY_RUBRIC_VERSION = "quality-v2";
+/**
+ * Change this version whenever the rubric, its score anchors or the assessment shape change.
+ * v3: paper assessments add a reading card (facts) and reading guidance.
+ */
+export const QUALITY_RUBRIC_VERSION = "quality-v3";
+
+/** Version of the project-mode assessment (QualityProjectAssessment). */
+export const QUALITY_PROJECT_ASSESSMENT_VERSION = "quality-project-v1";
 
 type Wording = [en: string, vi: string];
 type CriterionDefinition = { id: QualityCriterionId; title: Wording; question: Wording; anchors: Wording[] };

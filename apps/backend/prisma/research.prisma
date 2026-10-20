@@ -500,6 +500,25 @@ model QualityEvaluation {
   @@map("quality_evaluations")
 }
 
+// Project mode of AI quality evaluation: how one paper serves one project's plan (shared by its members).
+// Foreign keys to projects/papers (ON DELETE CASCADE) are declared in the SQL migration.
+model QualityProjectAssessment {
+  id               String   @id @default(uuid()) @db.Uuid
+  projectId        String   @map("project_id") @db.Uuid
+  paperId          String   @map("paper_id") @db.Uuid
+  assessment       Json     @db.JsonB
+  inputFingerprint String   @map("input_fingerprint") @db.VarChar(64)
+  model            String   @default("")
+  promptVersion    String   @map("prompt_version") @db.VarChar(64)
+  language         String   @default("en") @db.VarChar(8)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([projectId, paperId])
+  @@index([paperId])
+  @@map("quality_project_assessments")
+}
+
 model UserRating {
   id            String   @id @default(uuid()) @db.Uuid
   legacyMongoId String?  @unique @map("legacy_mongo_id") @db.VarChar(24)

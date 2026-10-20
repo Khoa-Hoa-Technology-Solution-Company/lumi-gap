@@ -2,7 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { ChevronRight, Loader2, Sparkles } from "lucide-react";
 import { getQualityRubric, type QualityCriterionId, type QualityEvaluation, type QualityEvaluationTask, type QualityLanguage, type QualityTargetKind, type QualityView } from "@trend/shared-types";
 import { Button } from "@/components/ui/button";
+import { qualityErrorMessage, qualityRequestError } from "@/components/quality-errors";
 import { QualityEvaluationDetails, QualityScore } from "@/components/quality-evaluation-details";
+import { QualityReadingCard } from "@/components/quality-reading-card";
+import { QualityProjectMode } from "@/components/quality-project-mode";
 import { api } from "@/services/api-client";
 import { toast } from "sonner";
 import { useI18n } from "@/i18n";
@@ -35,6 +38,7 @@ function AiEvaluationBody({ targetKind, targetId, enabled = true, disabledHint, 
   const [error, setError] = useState("");
   const [pollError, setPollError] = useState("");
   const [pollAttempt, setPollAttempt] = useState(0);
+  const [mode, setMode] = useState<"reference" | "project">("reference");
   const [dialogMode, setDialogMode] = useState<"rubric" | "assessment" | null>(null);
   const [selectedCriterion, setSelectedCriterion] = useState<QualityCriterionId>();
   const alive = useRef(true);
@@ -43,6 +47,8 @@ function AiEvaluationBody({ targetKind, targetId, enabled = true, disabledHint, 
   const rubric = getQualityRubric(targetKind, language);
   const pending = task?.status === "queued" || task?.status === "running";
   const busy = starting || pending;
+  const canUseProjects = targetKind === "paper" && enabled;
+  const projectMode = canUseProjects && mode === "project";
 
   useEffect(() => {
     alive.current = true;
@@ -58,7 +64,7 @@ function AiEvaluationBody({ targetKind, targetId, enabled = true, disabledHint, 
       setEvaluation(res.data.data?.evaluation ?? null);
       const savedTask = res.data.data?.evaluationTask;
       setTask(savedTask ?? null);
-      if (savedTask?.status === "failed") setError(savedTask.error ?? t("Failed to evaluate quality."));
+      if (savedTask?.status === "failed") setError(qualityErrorMessage(savedTask.errorCode, savedTask.error ?? t("Failed to evaluate quality."), t));
     }).catch(() => {
       if (!controller.signal.aborted) setError(t("Unable to load the saved assessment. Try again before requesting a new evaluation."));
     }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
@@ -82,7 +88,7 @@ function AiEvaluationBody({ targetKind, targetId, enabled = true, disabledHint, 
           setEvaluation(next.evaluation); setTask(null);
           toast.success(t("AI evaluation completed."));
         } else if (next.status === "failed") {
-          setTask(next); setError(next.error ?? t("Failed to evaluate quality."));
+          setTask(next); setError(qualityErrorMessage(next.errorCode, next.error ?? t("Failed to evaluate quality."), t));
         } else {
           setTask(next);
           timer = setTimeout(poll, ++polls > 15 ? 5000 : 1800);
@@ -111,8 +117,7 @@ function AiEvaluationBody({ targetKind, targetId, enabled = true, disabledHint, 
       } else { setTask(next); setPollAttempt((value) => value + 1); }
     } catch (err: unknown) {
       if (!alive.current || controller.signal.aborted) return;
-      const message = (err as { response?: { data?: { error?: { message?: string } } } }).response?.data?.error?.message;
-      setError(message || t("Failed to evaluate quality."));
+      setError(qualityRequestError(err, t("Failed to evaluate quality."), t));
     } finally { if (alive.current && !controller.signal.aborted) setStarting(false); }
   };
 
@@ -120,12 +125,14 @@ function AiEvaluationBody({ targetKind, targetId, enabled = true, disabledHint, 
   const isFlat = variant === "flat";
   return <section aria-label={t("AI Quality Evaluation")} aria-busy={busy || loading} className={cn("min-w-0 space-y-4 text-slate-800 [overflow-wrap:anywhere] dark:text-slate-200", !isFlat && "rounded-2xl border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-[#121212] sm:p-6", className)}>
     <div className="flex flex-wrap items-center justify-between gap-3">
-      <div className="flex items-center gap-2"><Sparkles aria-hidden="true" className="h-4 w-4 shrink-0 text-indigo-600 dark:text-indigo-400" /><h3 className="text-sm font-bold">{t("AI Quality Evaluation")}</h3><span className="text-xs text-slate-500 dark:text-slate-400">{t("AI Advisory")}</span></div>
-      <Button onClick={() => void handleEvaluate()} disabled={busy || loading || !enabled} title={enabled ? undefined : disabledHint} variant="outline" className="min-h-10 gap-2 border-indigo-200 text-xs font-semibold text-indigo-700 dark:border-indigo-900 dark:text-indigo-300">
+      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1"><Sparkles aria-hidden="true" className="h-4 w-4 shrink-0 text-indigo-600 dark:text-indigo-400" /><h3 className="text-sm font-bold">{t("AI Quality Evaluation")}</h3><span className="whitespace-nowrap text-xs text-slate-500 dark:text-slate-400">{t("AI Advisory")}</span></div>
+      {!projectMode && <Button onClick={() => void handleEvaluate()} disabled={busy || loading || !enabled} title={enabled ? undefined : disabledHint} variant="outline" className="min-h-10 gap-2 border-indigo-200 text-xs font-semibold text-indigo-700 dark:border-indigo-900 dark:text-indigo-300">
         {busy && <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin motion-reduce:animate-none" />}{busy ? t("Evaluating...") : evaluation ? t("Re-evaluate") : t("Evaluate Quality")}
-      </Button>
+      </Button>}
     </div>
     <div className="space-y-1"><p className="text-xs leading-relaxed text-slate-500 dark:text-slate-400" data-no-i18n>{rubric.scope}</p><button type="button" onClick={(event) => { returnFocus.current = event.currentTarget; setSelectedCriterion(undefined); setDialogMode("rubric"); }} className="min-h-9 rounded-sm text-left text-xs font-medium text-indigo-700 underline underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-500 dark:text-indigo-300">{t("View criteria and scoring scale")}</button></div>
+    {canUseProjects && <div role="group" aria-label={t("Reading mode")} className="grid grid-cols-1 gap-1 rounded-lg bg-slate-100 p-1 min-[360px]:grid-cols-2 dark:bg-slate-900">{(["reference", "project"] as const).map((value) => <button key={value} type="button" aria-pressed={mode === value} onClick={() => setMode(value)} className={cn("min-h-10 whitespace-nowrap rounded-md px-2 text-sm font-medium sm:px-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-500", mode === value ? "bg-white text-indigo-800 shadow-sm dark:bg-slate-800 dark:text-indigo-200" : "text-slate-600 dark:text-slate-400")}>{value === "reference" ? t("Reference reading") : t("For a project")}</button>)}</div>}
+    {projectMode ? <QualityProjectMode paperId={targetId} language={language} enabled={enabled} /> : <>
     {loading && <p role="status" className="text-sm text-slate-500">{t("Loading saved assessment...")}</p>}
     {!enabled ? <p className="text-sm text-slate-500 dark:text-slate-400">{disabledHint ?? t("Insufficient data for AI evaluation.")}</p> : <>
       {pending && <p role="status" className="rounded-lg bg-indigo-50 p-3 text-sm text-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-200">{task.status === "queued" ? t("Assessment queued. You can leave and return here to see the result.") : t("Reading sources and preparing the assessment. You can return here later.")}</p>}
@@ -135,6 +142,7 @@ function AiEvaluationBody({ targetKind, targetId, enabled = true, disabledHint, 
         {!details ? <><p className="text-xs leading-relaxed text-amber-800 dark:text-amber-200">{t("This older evaluation saved only scores and a short note. Re-evaluate to get evidence, criteria and practical next steps.")}</p><p className="text-sm leading-relaxed" data-no-i18n>{evaluation.rationale}</p></> : <>
           {details.rubric.language !== language && <p className="text-xs text-amber-800 dark:text-amber-200">{t("This assessment was saved in another language. Re-evaluate to use your current language.")}</p>}
           <p className="text-sm leading-relaxed" data-no-i18n>{details.summary}</p>
+          {details.facts ? <QualityReadingCard facts={details.facts} guidance={details.guidance} /> : targetKind === "paper" && <p className="text-xs leading-relaxed text-amber-800 dark:text-amber-200">{t("This older evaluation has no reading card. Re-evaluate to add facts, reading purposes and a caution.")}</p>}
           <div className="divide-y divide-slate-200 border-y border-slate-200 dark:divide-slate-800 dark:border-slate-800">{details.criteria.map((item) => <button type="button" key={item.id} onClick={(event) => openAssessment(item.id, event.currentTarget)} aria-haspopup="dialog" className="flex w-full items-start gap-3 rounded-sm py-3 text-left hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-500 dark:hover:bg-slate-900">
             <div className="min-w-0 flex-1"><p className="text-sm font-semibold" data-no-i18n>{details.rubric.criteria.find((criterion) => criterion.id === item.id)?.title}</p><p className="mt-1 line-clamp-2 text-xs leading-relaxed text-slate-500 dark:text-slate-400" data-no-i18n>{item.finding}</p></div><QualityScore score={item.score} /><ChevronRight aria-hidden="true" className="mt-1 h-4 w-4 shrink-0 text-slate-400" />
           </button>)}</div>
@@ -143,6 +151,7 @@ function AiEvaluationBody({ targetKind, targetId, enabled = true, disabledHint, 
         </>}
         <Button type="button" variant="outline" onClick={(event) => openAssessment(undefined, event.currentTarget)} aria-haspopup="dialog" className="min-h-11 w-full justify-between gap-2 text-sm sm:w-auto">{t("View detailed assessment")}<ChevronRight aria-hidden="true" className="h-4 w-4" /></Button>
       </div> : !loading && <div className="space-y-3"><p className="text-sm text-slate-600 dark:text-slate-400">{t("Get a reading assessment with evidence, missing information and practical research next steps.")}</p><ul className="list-disc space-y-1 pl-5 text-xs text-slate-500 dark:text-slate-400" data-no-i18n>{rubric.criteria.map((criterion) => <li key={criterion.id}>{criterion.title}</li>)}</ul></div>}
+    </>}
     </>}
     <QualityEvaluationDetails open={dialogMode !== null} onOpenChange={(open) => { if (!open) setDialogMode(null); }} mode={dialogMode ?? "rubric"} evaluation={evaluation} rubric={rubric} selectedCriterion={selectedCriterion} returnFocus={returnFocus.current} />
   </section>;

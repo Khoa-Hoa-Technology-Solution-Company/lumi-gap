@@ -4,12 +4,16 @@ import { databaseIdSchema } from "../../../common/validation/database-id.js";
 const TargetKind = z.enum(["report", "gap", "paper"]);
 const ObjectId = databaseIdSchema;
 
+const Language = z.enum(["en", "vi"]);
+
 export const EvaluateSchema = z.object({
   targetKind: TargetKind,
   targetId: ObjectId,
   force: z.boolean().optional(),
-  language: z.enum(["en", "vi"]).optional(),
-});
+  language: Language.optional(),
+  /** Paper only: evaluate against this project's research plan (caller must be a current member). */
+  projectId: z.string().uuid().optional(),
+}).refine((value) => !value.projectId || value.targetKind === "paper", { path: ["projectId"], message: "Project mode is only available for papers" });
 export type EvaluateInput = z.infer<typeof EvaluateSchema>;
 
 export const RateSchema = z.object({
@@ -25,5 +29,18 @@ export const TargetParamsSchema = z.object({
   targetId: ObjectId,
 });
 export type TargetParamsInput = z.infer<typeof TargetParamsSchema>;
+
+export const ViewQuerySchema = z.object({
+  language: Language.optional(),
+  projectId: z.string().uuid().optional(),
+});
+export type ViewQueryInput = z.infer<typeof ViewQuerySchema>;
+
+export const ReadingContextParamsSchema = z.object({ paperId: ObjectId });
+export const ReadingContextQuerySchema = z.object({
+  topic: z.string().trim().max(200).optional(),
+  query: z.string().trim().max(200).optional(),
+});
+export type ReadingContextQueryInput = z.infer<typeof ReadingContextQuerySchema>;
 
 export const EvaluationJobParamsSchema = z.object({ jobId: z.string().regex(/^quality-[a-f0-9]{40}$/) });
