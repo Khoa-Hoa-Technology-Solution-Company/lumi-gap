@@ -48,8 +48,8 @@ describe("buildReportPrompt", () => {
   it("truncates long abstracts to MAX_ABSTRACT_CHARS", () => {
     const longAbstract = "x".repeat(MAX_ABSTRACT_CHARS + 500);
     const prompt = buildReportPrompt("q?", [paper({ abstractText: longAbstract })]);
-    expect(prompt).toContain("x".repeat(MAX_ABSTRACT_CHARS));
-    expect(prompt).not.toContain("x".repeat(MAX_ABSTRACT_CHARS + 1));
+    expect(prompt).toContain("x".repeat(MAX_ABSTRACT_CHARS - 3) + "...");
+    expect(prompt).not.toContain("x".repeat(MAX_ABSTRACT_CHARS - 2));
   });
 
   it("shows first 3 authors + et al. for longer lists", () => {
@@ -105,7 +105,7 @@ describe("REPORT_SYSTEM_PROMPT", () => {
 
 describe("report language resolution", () => {
   it("bumps prompt version when report language behavior changes", () => {
-    expect(PROMPT_VERSION).toBe("report-v5-full-text");
+    expect(PROMPT_VERSION).toBe("report-v7-trend-metrics");
   });
 
   it("detects English from ASCII academic questions", () => {
@@ -170,5 +170,27 @@ describe("buildReportCacheKey", () => {
       buildReportCacheKey(base),
     );
     expect(buildReportCacheKey({ ...base, yearFrom: 2020 })).not.toBe(buildReportCacheKey(base));
+  });
+});
+
+describe("trend metrics block", () => {
+  const trendMetrics = { topic: "LLM", yearFrom: 2020, yearTo: 2025, lastCompleteYear: 2024, totalPapers: 120, yearlyBreakdown: [{ year: 2024, count: 40 }], growthRatePct: 33.3, cagr3yPct: 41.2, momentum: 6.5 };
+
+  it("adds the fenced block after the evidence when metrics are given", () => {
+    const prompt = buildReportPrompt("q?", [paper()], { trendMetrics });
+    expect(prompt).toContain("<<<TREND_METRICS>>>");
+    expect(prompt).toContain("<<<END_TREND_METRICS>>>");
+    expect(prompt).toContain('"growthRatePct": 33.3');
+    expect(prompt.indexOf("<<<TREND_METRICS>>>")).toBeGreaterThan(prompt.indexOf("EVIDENCE PAPERS"));
+    expect(prompt.indexOf("<<<TREND_METRICS>>>")).toBeLessThan(prompt.indexOf("TASK:"));
+  });
+
+  it("leaves the block out without metrics", () => {
+    expect(buildReportPrompt("q?", [paper()])).not.toContain("TREND_METRICS");
+  });
+
+  it("tells the model where corpus-level figures may come from", () => {
+    expect(REPORT_SYSTEM_PROMPT).toContain("may only come from the TREND METRICS block");
+    expect(REPORT_SYSTEM_PROMPT).toContain("do not state corpus-level growth percentages");
   });
 });

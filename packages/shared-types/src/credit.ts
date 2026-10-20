@@ -15,6 +15,7 @@ export type CreditAction =
   | "deep_mcp_report"
   | "generate_gaps"
   | "generate_directions"
+  | "gap_closure_check"
   | "project_chat_message"
   | "paper_request"
   | "paper_download"
@@ -80,5 +81,6 @@ export const AI_CREDIT_COSTS_CLIENT = {
   deep_mcp_report: 100,
   generate_gaps: 30,
   generate_directions: 15,
+  gap_closure_check: 10,
   project_chat_message: 1,
 } as const;

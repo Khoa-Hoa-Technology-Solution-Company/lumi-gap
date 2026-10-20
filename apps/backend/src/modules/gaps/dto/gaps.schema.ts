@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { databaseIdSchema } from "../../../common/validation/database-id.js";
+import { QuestionFacetsSchema } from "../../gap-closure/dto/closure.schema.js";
 
 const ObjectIdSchema = databaseIdSchema;
 const SelectedPaperIdsSchema = z
@@ -107,6 +108,8 @@ export const GapCandidateSchema = z.object({
   missingEvidence: z.string().trim().min(10).max(10000),
   significanceExplanation: z.string().trim().min(10).max(10000),
   suggestedResearchQuestion: z.string().trim().max(5000).optional(),
+  /** PICOC facets of suggestedResearchQuestion (each <= 300 chars), used by the closure check. */
+  questionFacets: QuestionFacetsSchema.optional(),
   gapConfidence: z.enum(["LOW", "MODERATE", "HIGH"]),
   researchPriority: z.enum(["LOW", "MODERATE", "HIGH"]),
 }).strict();

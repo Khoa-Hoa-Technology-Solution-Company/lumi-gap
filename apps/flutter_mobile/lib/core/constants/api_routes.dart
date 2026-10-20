@@ -41,6 +41,7 @@ class ApiRoutes {
   static String qualityView(String targetKind, String targetId) =>
       '/quality/$targetKind/$targetId';
   static const String qualityEvaluate = '/quality/evaluate';
+  static String qualityEvaluationJob(String jobId) => '/quality/evaluation-jobs/$jobId';
   static const String qualityRate = '/quality/rate';
   static String qualityDeleteRate(String ratingId) => '/quality/rate/$ratingId';
 

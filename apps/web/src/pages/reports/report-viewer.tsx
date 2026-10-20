@@ -14,6 +14,7 @@ import { api } from "@/services/api-client";
 import { toast } from "sonner";
 import { AiEvaluation } from "@/components/ai-evaluation";
 import { useAuthStore } from "@/stores/auth-store";
+import { useI18n } from "@/i18n";
 import { useQueryClient } from "@tanstack/react-query";
 import { isAdminSystemRole, type PaperRef } from "@trend/shared-types";
 
@@ -108,6 +109,7 @@ const RosePetals = () => {
 export function ReportViewerPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { t } = useI18n();
   const [showRoses, setShowRoses] = useState(true);
   const currentUser = useAuthStore((s) => s.user);
   const isAdmin = isAdminSystemRole(currentUser?.systemRole);
@@ -275,6 +277,11 @@ export function ReportViewerPage() {
 
           <div className="prose prose-slate dark:prose-invert max-w-none prose-headings:font-bold prose-headings:tracking-tight prose-a:text-blue-600 dark:prose-a:text-blue-400">
             
+            {report?.groundingChecks?.unsupportedPercents?.length ? (
+              <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300">
+                {t("Some percentages could not be matched to the evidence: {{list}}", { list: report.groundingChecks.unsupportedPercents.join(", ") })}
+              </p>
+            ) : null}
             {report?.markdown ? (
               <div className="text-slate-600 dark:text-slate-300 text-[15px] leading-[1.7] mb-10 prose-h2:text-[22px] prose-h2:font-semibold prose-h2:text-slate-900 dark:prose-h2:text-white prose-h2:mb-4 prose-h2:mt-8 prose-h3:text-[18px] prose-h3:font-semibold prose-h3:text-slate-900 dark:prose-h3:text-white prose-h3:mt-6 prose-p:mb-4 prose-ul:list-disc prose-ul:pl-6 prose-ol:list-decimal prose-ol:pl-6 prose-li:mb-2 prose-strong:font-bold prose-strong:text-slate-900 dark:prose-strong:text-white">
                 <ReactMarkdown

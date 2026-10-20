@@ -33,6 +33,7 @@ const MAX_ABSTRACT_CHARS = 1200;
 export const COMPARE_SYSTEM_PROMPT = [
   "You compare academic papers ONLY from the title, abstract, and structured analysis provided.",
   UNTRUSTED_DATA_PREAMBLE,
+  "AI-extracted notes are machine summaries that may be wrong. Use them only for orientation; every claim must be supported by the abstract or a Source chunk.",
   'Do not invent facts not present in the provided evidence. If the evidence lacks info for a dimension, write "not stated".',
   `Compare across exactly these dimensions: ${COMPARE_DIMENSIONS.join(", ")}.`,
   "Return ONLY valid JSON, no fences:",
@@ -48,9 +49,9 @@ export function buildComparePrompt(papers: CompareCandidate[]): string {
       abstractText: buildPaperEvidenceText({
         abstractText: p.abstractText,
         aiAnalysis: p.aiAnalysis,
-      }),
+      }, { abstractChars: Math.floor(MAX_ABSTRACT_CHARS * 0.6), notesChars: Math.floor(MAX_ABSTRACT_CHARS * 0.4) }),
     })),
-    { maxAbstractChars: MAX_ABSTRACT_CHARS },
+    { maxAbstractChars: MAX_ABSTRACT_CHARS + 20 },
   );
   return `Compare these ${papers.length} papers using ONLY the DATA blocks below:\n\n${evidence.text}`;
 }

@@ -1,5 +1,6 @@
 import React from "react";
 import { Loader2, RotateCcw, LayoutGrid, Calendar } from "lucide-react";
+import type { TrendDataSource } from "@trend/shared-types";
 import { formatNumber } from "@/utils";
 
 interface DatasetScopeImpactCardProps {
@@ -12,6 +13,7 @@ interface DatasetScopeImpactCardProps {
   yearFrom: number;
   yearTo: number;
   lastCompleteYear?: number;
+  dataSource?: TrendDataSource;
 }
 
 export function DatasetScopeImpactCard({
@@ -23,8 +25,10 @@ export function DatasetScopeImpactCard({
   scopeString,
   yearFrom,
   yearTo,
-  lastCompleteYear
+  lastCompleteYear,
+  dataSource
 }: DatasetScopeImpactCardProps) {
+  const isOpenAlex = dataSource === "openalex";
   const isYtd = lastCompleteYear ? yearTo > lastCompleteYear : false;
 
   return (
@@ -69,7 +73,9 @@ export function DatasetScopeImpactCard({
               ? "Refreshing filtered scope"
               : hasAnyFilter
                 ? "Current filtered scope"
-                : "Full active dataset"}
+                : isOpenAlex
+                  ? "All OpenAlex works"
+                  : "Full active dataset"}
           </p>
         </div>
         <div>
@@ -98,7 +104,9 @@ export function DatasetScopeImpactCard({
               Applying filters. The previous dataset remains visible until the new scoped counts finish loading.
             </span>
           ) : !hasAnyFilter ? (
-            <span>You are analyzing the full active corpus. Add a research area or metadata filter to focus the trend analysis.</span>
+            isOpenAlex
+              ? <span>You are analyzing all OpenAlex works in the year range. Add a research area or metadata filter to focus the trend analysis.</span>
+              : <span>You are analyzing the full active corpus. Add a research area or metadata filter to focus the trend analysis.</span>
           ) : totalInWindow < 500 ? (
             <span className="text-amber-700 dark:text-amber-400 font-bold">This scope is narrow. Treat growth signals as exploratory unless supporting evidence volume is high.</span>
           ) : (

@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { AiEvaluation } from "@/components/ai-evaluation";
+import { PaperReadingContextCard } from "./paper-reading-context-card";
 import type { Paper, PaperAiScore } from "@trend/shared-types";
 
 export interface PaperResearchSignalsSectionProps {
@@ -30,6 +31,25 @@ export function formatImpactScoreBasis(basis: PaperAiScore["scoreBasis"]): strin
       return "Citation impact normalization";
   }
 }
+
+/**
+ * The upload completeness check (paper-quality.ts on the backend) only runs when a
+ * user uploads a paper. Synced OpenAlex/arXiv papers keep the DB defaults
+ * (score 0, tier "Invalid"), so showing the card for them would be misleading.
+ */
+export function isUserUploadedPaper(paper: Pick<Paper, "primaryProvider">): boolean {
+  return paper.primaryProvider === "user";
+}
+
+/** Component scores and their raw maxima (they sum to 95; the total is normalized to 100). */
+export const UPLOAD_COMPLETENESS_COMPONENTS = [
+  { key: "metadataScore", label: "Required metadata", max: 15 },
+  { key: "sourceScore", label: "Source and DOI", max: 15 },
+  { key: "duplicateScore", label: "Duplicate check", max: 20 },
+  { key: "relevanceScore", label: "Topic classification", max: 15 },
+  { key: "prestigeScore", label: "Publication type", max: 15 },
+  { key: "utilityScore", label: "Methods, data or code described", max: 15 },
+] as const satisfies ReadonlyArray<{ key: keyof Paper; label: string; max: number }>;
 
 export function formatResearchSignalScore(finalScore: number): string {
   return `${Math.round(finalScore * 100)} / 100`;
@@ -54,8 +74,10 @@ export function PaperResearchSignalsSection({
       {/* C1. Deterministic Research Signal */}
       {paper.aiScore && <DeterministicResearchSignalCard aiScore={paper.aiScore} />}
 
-      {/* C2. Public Quality Rubric */}
-      <PlatformQualityRubricCard paper={paper} />
+      <PaperReadingContextCard paperId={paper.id} />
+
+      {/* C2. Upload data completeness (user uploads only) */}
+      {isUserUploadedPaper(paper) && <UploadCompletenessCard paper={paper} />}
 
       {/* C3. AI Abstract Review */}
       <AiAbstractReviewCard paper={paper} currentUser={currentUser} />
@@ -71,7 +93,7 @@ function DeterministicResearchSignalCard({ aiScore }: { aiScore: PaperAiScore })
   const metadataPct = Math.round(aiScore.metadataQualityScore * 100);
 
   return (
-    <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-xs dark:border-slate-800 dark:bg-[#11161F] space-y-5">
+    <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-xs sm:p-6 dark:border-slate-800 dark:bg-[#11161F] space-y-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <div className="flex items-center gap-2">
@@ -175,16 +197,16 @@ function MetricCard({
   );
 }
 
-function PlatformQualityRubricCard({ paper }: { paper: Paper }) {
+function UploadCompletenessCard({ paper }: { paper: Paper }) {
   const qualityScore = paper.qualityScore;
 
   return (
-    <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-xs dark:border-slate-800 dark:bg-[#11161F] space-y-4">
+    <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-xs sm:p-6 dark:border-slate-800 dark:bg-[#11161F] space-y-4">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <div className="flex items-center gap-2">
             <h3 className="text-base font-bold tracking-tight text-slate-900 dark:text-white">
-              Platform quality rubric
+              Upload data completeness
             </h3>
             {paper.qualityTierName && (
               <Badge variant="secondary" className="font-semibold text-xs">
@@ -193,7 +215,7 @@ function PlatformQualityRubricCard({ paper }: { paper: Paper }) {
             )}
           </div>
           <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-            A deterministic platform score used for data quality and upload workflows; it is not a peer-review verdict.
+            Checks how complete the uploaded metadata is (fields, DOI or source, duplicates, classification). It sets credit cost and reward; it does not judge scientific quality.
           </p>
         </div>
 
@@ -206,6 +228,20 @@ function PlatformQualityRubricCard({ paper }: { paper: Paper }) {
           </div>
         )}
       </div>
+
+      <dl className="grid gap-2 sm:grid-cols-2">
+        {UPLOAD_COMPLETENESS_COMPONENTS.map(({ key, label, max }) => (
+          <div
+            key={key}
+            className="flex items-center justify-between rounded-lg border border-slate-200/60 bg-slate-50/40 px-3 py-2 dark:border-slate-800/60 dark:bg-slate-900/30"
+          >
+            <dt className="text-xs font-semibold text-slate-700 dark:text-slate-300">{label}</dt>
+            <dd className="font-mono text-xs font-bold text-slate-900 dark:text-slate-100">
+              {paper[key] ?? 0} / {max}
+            </dd>
+          </div>
+        ))}
+      </dl>
 
       {/* Reward / Download Cost details if available */}
       <div className="flex flex-wrap items-center gap-4 text-xs font-semibold pt-1 text-slate-600 dark:text-slate-400">
@@ -234,7 +270,7 @@ function AiAbstractReviewCard({
   currentUser?: { id: string } | null;
 }) {
   return (
-    <div className="rounded-2xl border border-purple-200/60 bg-gradient-to-b from-purple-50/20 to-transparent p-6 shadow-xs dark:border-purple-900/40 dark:from-purple-950/10 space-y-4">
+    <div className="rounded-2xl border border-purple-200/60 bg-gradient-to-b from-purple-50/20 to-transparent p-4 shadow-xs sm:p-6 dark:border-purple-900/40 dark:from-purple-950/10 space-y-4">
       <div>
         <div className="flex items-center gap-2">
           <h3 className="text-base font-bold tracking-tight text-slate-900 dark:text-white">
@@ -252,6 +288,7 @@ function AiAbstractReviewCard({
       <AiEvaluation
         targetKind="paper"
         targetId={paper.id}
+        className="max-sm:rounded-none max-sm:border-0 max-sm:bg-transparent max-sm:p-0 dark:max-sm:bg-transparent"
         enabled={Boolean(currentUser && paper.abstractText?.trim())}
         disabledHint={
           currentUser

@@ -22,9 +22,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
 import { GapOrigin } from "./gap-origin";
-import { GapScopeNote } from "./gap-evidence-summary";
+import { GapScopeNote, GapSignalNote } from "./gap-evidence-summary";
 import { GapDirectionsPanel } from "./gap-directions";
 import { GapExpertValidationPanel } from "./gap-expert-validation";
+import { ClosureStatusBadge, GapClosurePanel } from "@/features/gap-closure";
 import { ResearchGapEvaluation } from "@/features/projects/components/research-gap-evaluation";
 import { ResearchGapDrawer } from "@/features/projects/components/research-gap-drawer";
 import { AiEvaluation } from "@/components/ai-evaluation";
@@ -68,11 +69,11 @@ export function GapDetailDrawer({ gap, isOpen, onClose, onDraftProposal, researc
   let strengthTooltip = "";
 
   if (gap.evidenceStatus === "confirmed") {
-    strengthLabel = t("Corpus signal available");
+    strengthLabel = t("Under-explored");
     strengthColor = "bg-emerald-500/10 text-emerald-700 border-emerald-500/20 dark:text-emerald-400";
-    strengthTooltip = t("A corpus comparison produced a heuristic signal. This is not scientific validation.");
+    strengthTooltip = t("Far fewer papers cover both topics than independence would predict. A ranking signal, not proof that the gap is open.");
   } else if (gap.evidenceStatus === "weak") {
-    strengthLabel = t("Weak corpus evidence");
+    strengthLabel = t("Weak signal");
     strengthColor = "bg-amber-500/10 text-amber-700 border-amber-500/20 dark:text-amber-400";
     strengthTooltip = t("The system found a possible gap, but corpus evidence is sparse or inconclusive.");
   } else {
@@ -88,7 +89,7 @@ export function GapDetailDrawer({ gap, isOpen, onClose, onDraftProposal, researc
         <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
         
         {/* Right side slide-over drawer content */}
-        <DialogPrimitive.Content className="fixed right-0 top-0 z-50 h-full w-full max-w-xl border-l border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1c1f26] p-0 shadow-2xl duration-300 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right flex flex-col focus:outline-none">
+        <DialogPrimitive.Content className="fixed right-0 top-0 z-50 h-full w-full max-w-xl lg:max-w-2xl border-l border-slate-200 dark:border-slate-800 bg-white dark:bg-[#1c1f26] p-0 shadow-2xl duration-300 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right flex flex-col focus:outline-none">
           
           {/* Scrollable Container */}
           <div className="flex-1 overflow-y-auto p-6 space-y-6">
@@ -130,6 +131,7 @@ export function GapDetailDrawer({ gap, isOpen, onClose, onDraftProposal, researc
                   <Badge variant="outline" className={cn("rounded-lg text-[9px] font-extrabold uppercase tracking-wider px-2.5 py-0.5 border", strengthColor)}>
                     {strengthLabel}
                   </Badge>
+                  <ClosureStatusBadge status={gap.closureStatus} bound={gap.latestClosureCheck?.bound} className="rounded-lg px-2.5 text-[9px] font-extrabold" />
                   <span className="text-[10px] text-slate-500 dark:text-slate-500 font-medium">
                     {strengthTooltip}
                   </span>
@@ -232,8 +234,29 @@ export function GapDetailDrawer({ gap, isOpen, onClose, onDraftProposal, researc
                         <TrendingUp className="w-3.5 h-3.5" />
                         {gap.parentTrend ? `${Math.round(gap.parentTrend.growthRatePct)}%` : "0%"}
                       </span>
-                      <span className="text-[9px] text-slate-400 block mt-0.5">{t("/year")}</span>
+                      <span className="text-[9px] text-slate-400 block mt-0.5">{gap.parentTrend?.cagrPct != null ? ` ${t("CAGR")}` : t("/year")}</span>
                     </div>
+                  </div>
+
+                  <GapSignalNote intersectionCount={gap.intersectionCount} underExplored={gap.underExplored} />
+                  <div className="space-y-1 rounded-xl border border-slate-100/50 bg-white p-3 text-xs leading-relaxed text-slate-600 dark:border-slate-800/40 dark:bg-slate-900/30 dark:text-slate-400" title={gap.globalEvidence ? undefined : t("OpenAlex count unavailable")}>
+                    <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">{t("OpenAlex (whole literature)")}</span>
+                    {gap.globalEvidence ? (
+                      <>
+                        <span className="block">
+                          {t("Intersection: {{intersection}} · Topic A: {{a}} · Topic B: {{b}}", {
+                            intersection: formatNumber(gap.globalEvidence.intersectionCount),
+                            a: formatNumber(gap.globalEvidence.parentCounts.a),
+                            b: formatNumber(gap.globalEvidence.parentCounts.b),
+                          })}
+                        </span>
+                        {(gap.globalEvidence.yearFrom !== undefined || gap.globalEvidence.yearTo !== undefined) && (
+                          <span className="block text-slate-400">{t("Years: {{range}}", { range: `${gap.globalEvidence.yearFrom ?? "…"}–${gap.globalEvidence.yearTo ?? "…"}` })}</span>
+                        )}
+                      </>
+                    ) : (
+                      <span className="block italic text-slate-400">{t("OpenAlex count unavailable")}</span>
+                    )}
                   </div>
 
                   {gap.parentTrend && gap.parentCounts && (
@@ -260,7 +283,7 @@ export function GapDetailDrawer({ gap, isOpen, onClose, onDraftProposal, researc
                         })}
                       </span>
                       <span className="block italic text-slate-400">
-                        {t("Context only. Corpus comparisons describe the saved collection and do not establish scientific validity.")}
+                        {t("Context only. It does not decide the under-explored signal, which always uses the whole corpus.")}
                       </span>
                     </div>
                   )}
@@ -336,6 +359,37 @@ export function GapDetailDrawer({ gap, isOpen, onClose, onDraftProposal, researc
               )}
             </div>
 
+            {gap.counterPapers?.length ? (
+              <div className="space-y-3">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">{t("Counter-evidence")}</h3>
+                <ul className="space-y-2">
+                  {gap.counterPapers.map((paper) => (
+                    <li key={paper.id} className="rounded-xl border border-rose-100 bg-rose-50/50 p-2.5 text-xs dark:border-rose-500/20 dark:bg-rose-500/5">
+                      <Link to={`/papers/${paper.id}`} className="font-semibold text-slate-800 hover:underline dark:text-slate-200">{paper.title}</Link>
+                      {paper.publicationYear ? <span className="ml-2 text-slate-400">{paper.publicationYear}</span> : null}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
+            {gap.possibleCounterPapers?.length ? (
+              <div className="space-y-3">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">{t("Possible counter-evidence")}</h3>
+                <p className="text-xs leading-relaxed text-amber-700 dark:text-amber-400">
+                  {t("Found automatically: these corpus papers are close to this gap and may already answer it. Read them before relying on the gap.")}
+                </p>
+                <ul className="space-y-2">
+                  {gap.possibleCounterPapers.map((paper) => (
+                    <li key={paper.id} className="rounded-xl border border-amber-100 bg-amber-50/50 p-2.5 text-xs dark:border-amber-500/20 dark:bg-amber-500/5">
+                      <Link to={`/papers/${paper.id}`} className="font-semibold text-slate-800 hover:underline dark:text-slate-200">{paper.title}</Link>
+                      {paper.publicationYear ? <span className="ml-2 text-slate-400">{paper.publicationYear}</span> : null}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
             {/* AI Research Directions */}
             <div className="space-y-4 border-t border-slate-100 pt-5 dark:border-slate-800/60">
               <div className="flex flex-wrap items-start justify-between gap-3">
@@ -400,6 +454,14 @@ export function GapDetailDrawer({ gap, isOpen, onClose, onDraftProposal, researc
                   {forumGapCopy.unavailable}
                 </div>
               )}
+            </div>
+
+            {/* Gap Closure Protocol: logged search, screening, and a bounded false-novelty decision */}
+            <div className="space-y-4 border-t border-slate-100 pt-5 dark:border-slate-800/60">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                {t("Closure check")}
+              </h3>
+              <GapClosurePanel gap={gap} />
             </div>
 
             {researchProjectId && <ResearchGapEvaluation key={gap.id} projectId={researchProjectId} gapId={gap.id} />}

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import type { CorpusPaperEvidence, GapAssessmentLevel, LiteratureCorpus, ResearchGapType } from "@trend/shared-types";
+import type { CorpusPaperEvidence, GapAssessmentLevel, LiteratureCorpus, QuestionFacets, ResearchGapType } from "@trend/shared-types";
 import { BookOpenCheck, FileSearch, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -20,6 +20,7 @@ import {
 } from "@/features/literature/hooks/use-literature";
 import { api } from "@/services/api-client";
 import { useCreateGapCandidate } from "@/features/gaps";
+import { compactFacets, FacetInputs } from "@/features/gap-closure";
 
 type SearchPaper = { _id: string; title: string; publicationYear?: number; journalName?: string };
 const gapTypes: ResearchGapType[] = ["COVERAGE_GAP", "EMPIRICAL_VALIDATION_GAP", "CONTRADICTORY_EVIDENCE_GAP", "CONTEXT_GAP", "METHODOLOGICAL_GAP", "OUTCOME_GAP", "TEMPORAL_GAP", "EMERGING_GAP", "MISSING_CONNECTION_GAP", "ASSUMPTION_GAP", "OTHER"];
@@ -94,11 +95,12 @@ function CandidateGapDialog({ corpus }: { corpus: LiteratureCorpus }) {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ title: "", gapType: "COVERAGE_GAP" as ResearchGapType, establishedKnowledge: "", observedLimitation: "", missingEvidence: "", significanceExplanation: "", suggestedResearchQuestion: "", gapConfidence: "LOW" as GapAssessmentLevel, researchPriority: "MODERATE" as GapAssessmentLevel });
+  const [facets, setFacets] = useState<QuestionFacets>({});
   const update = <K extends keyof typeof form>(key: K, value: typeof form[K]) => setForm((current) => ({ ...current, [key]: value }));
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     try {
-      await create.mutateAsync({ topic: corpus.topic, corpusId: corpus._id, projectId: corpus.projectId, scope: Object.values(corpus.picoc).filter(Boolean).join("; ") || undefined, ...form });
+      await create.mutateAsync({ topic: corpus.topic, corpusId: corpus._id, projectId: corpus.projectId, scope: Object.values(corpus.picoc).filter(Boolean).join("; ") || undefined, ...form, questionFacets: compactFacets(facets) });
       toast.success("Candidate research gap created");
       setOpen(false);
       navigate("/research-gaps");
@@ -108,6 +110,7 @@ function CandidateGapDialog({ corpus }: { corpus: LiteratureCorpus }) {
     <div className="grid gap-4 sm:grid-cols-2"><div className="space-y-2"><Label htmlFor="gap-title">Title</Label><Input id="gap-title" value={form.title} onChange={(event) => update("title", event.target.value)} minLength={3} required /></div><div className="space-y-2"><Label htmlFor="gap-type">Gap type</Label><select id="gap-type" value={form.gapType} onChange={(event) => update("gapType", event.target.value as ResearchGapType)} className="h-10 w-full rounded-md border bg-background px-3 text-sm">{gapTypes.map((type) => <option key={type} value={type}>{type.replaceAll("_", " ")}</option>)}</select></div></div>
     {(["establishedKnowledge", "observedLimitation", "missingEvidence", "significanceExplanation"] as const).map((key) => <div key={key} className="space-y-2"><Label htmlFor={`gap-${key}`}>{({ establishedKnowledge: "What is established", observedLimitation: "Observed limitation", missingEvidence: "Missing evidence", significanceExplanation: "Why it matters" })[key]}</Label><textarea id={`gap-${key}`} value={form[key]} onChange={(event) => update(key, event.target.value)} minLength={10} required className="min-h-20 w-full rounded-md border bg-background px-3 py-2 text-sm" /></div>)}
     <div className="space-y-2"><Label htmlFor="gap-rq">Suggested research question</Label><Input id="gap-rq" value={form.suggestedResearchQuestion} onChange={(event) => update("suggestedResearchQuestion", event.target.value)} /></div>
+    <fieldset className="space-y-2 rounded-md border p-3"><legend className="px-1 text-sm font-medium">PICOC facets of the question (optional)</legend><p className="text-xs text-muted-foreground">A closure check treats a paper as an answer only if every facet you fill in matches. Leave a facet empty to ignore it.</p><FacetInputs value={facets} onChange={setFacets} idPrefix="gap-facet" disabled={create.isPending} /></fieldset>
     <div className="grid gap-4 sm:grid-cols-2">{(["gapConfidence", "researchPriority"] as const).map((key) => <div key={key} className="space-y-2"><Label htmlFor={`gap-${key}`}>{key === "gapConfidence" ? "Gap confidence" : "Research priority"}</Label><select id={`gap-${key}`} value={form[key]} onChange={(event) => update(key, event.target.value as GapAssessmentLevel)} className="h-10 w-full rounded-md border bg-background px-3 text-sm">{(["LOW", "MODERATE", "HIGH"] as const).map((level) => <option key={level}>{level}</option>)}</select></div>)}</div>
     <DialogFooter><Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button type="submit" disabled={create.isPending}>{create.isPending ? "Creating..." : "Create candidate"}</Button></DialogFooter>
   </form></DialogContent></Dialog>;

@@ -24,6 +24,11 @@ export interface EvaluationCorpusMetrics {
   invalidCitationReports: number;
   activeGaps: number;
   evidenceBackedGaps: number;
+  /** Ready reports with citation-coverage stats (saved at generation time, or computed from the markdown for older reports). */
+  citationCoverageReports: number;
+  avgCitationCoveragePct: number;
+  /** Reports whose saved grounding checks found percentages that match neither the evidence nor the trend metrics. */
+  reportsWithUnsupportedPercents: number;
   embeddingCoveragePct: number;
   aiAnalysisCoveragePct: number;
   reportGroundingCoveragePct: number;

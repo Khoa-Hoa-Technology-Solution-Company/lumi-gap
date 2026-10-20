@@ -87,6 +87,8 @@ export interface GapProbe {
   yearTo?: number;
   scopeFilters?: ReportScopeFilters;
   language?: ReportLanguage;
+  /** Set when the counts also include papers whose embedding is at least this close (cosine) to a topic, not only word matches. */
+  semanticMinSimilarity?: number;
 }
 
 export interface ResearchGap {
@@ -106,6 +108,15 @@ export interface ResearchGap {
   parentTrend?: { topic: string; growthRatePct: number } | null;
   /** v2 — deterministic confidence from scarcity + parent activity (replaces `confidence`). */
   evidenceConfidence?: number; // 0..1
+}
+
+/** Soft checks run on a finished report; they never block it. Absent on reports created before they existed. */
+export interface ReportGroundingChecks {
+  version?: number;
+  citationCoverage: { paragraphs: number; cited: number; pct: number };
+  /** Percentages stated in the markdown that match neither the evidence nor the trend metrics. */
+  unsupportedPercents: string[];
+  trendMetricsProvided: boolean;
 }
 
 export interface AnalyticalReport {
@@ -137,6 +148,7 @@ export interface AnalyticalReport {
   researchGaps: ResearchGap[];
   modelVersion: string;
   promptVersion: string;
+  groundingChecks?: ReportGroundingChecks | null;
   deepAnalysis: boolean; // NEW — Phase D
   fast?: boolean; // Fast mode — generated with the Flash model
   selectedPaperIds?: string[];

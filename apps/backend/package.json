@@ -29,6 +29,8 @@
     "workers:verify:heartbeats": "tsx scripts/verify-worker-heartbeats.ts",
     "gemini:probe": "tsx scripts/probe-gemini.ts",
     "eval:community-suggest": "tsx scripts/community-suggest-eval.ts",
+    "eval:gap-closure-retro": "tsx scripts/gap-closure-retro-eval.ts",
+    "eval:gaps": "tsx scripts/gap-eval.ts",
     "worker:sync": "tsx src/workers/sync.worker.ts",
     "worker:openalex-ingest": "tsx src/workers/openalex-ingest.worker.ts",
     "worker:corpus-validation": "tsx src/workers/corpus-validation.worker.ts",

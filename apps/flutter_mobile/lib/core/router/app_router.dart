@@ -157,7 +157,11 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/paper/:id',
         name: 'paper_detail',
-        builder: (context, state) => PaperDetailScreen(id: state.pathParameters['id'] ?? ''),
+        builder: (context, state) => PaperDetailScreen(
+          id: state.pathParameters['id'] ?? '',
+          topic: state.uri.queryParameters['topic'],
+          query: state.uri.queryParameters['q'],
+        ),
       ),
       GoRoute(
         path: '/trends',

@@ -3,6 +3,8 @@ import type { PaperTopic } from "@trend/shared-types";
 import {
   formatImpactScoreBasis,
   formatResearchSignalScore,
+  isUserUploadedPaper,
+  UPLOAD_COMPLETENESS_COMPONENTS,
 } from "@/features/papers/components/paper-detail/paper-research-signals-section";
 import { formatIndexedCitationCoverage } from "@/features/papers/components/paper-detail/paper-relationships-section";
 import {
@@ -16,6 +18,15 @@ describe("Paper Detail Information Architecture Contracts & Formats", () => {
     expect(formatResearchSignalScore(0.84)).toBe("84 / 100");
     expect(formatResearchSignalScore(0.999)).toBe("100 / 100");
     expect(formatResearchSignalScore(0.001)).toBe("0 / 100");
+  });
+
+  it("shows the upload completeness check only for user-uploaded papers", () => {
+    expect(isUserUploadedPaper({ primaryProvider: "user" })).toBe(true);
+    expect(isUserUploadedPaper({ primaryProvider: "openalex" })).toBe(false);
+  });
+
+  it("lists upload completeness components whose maxima match the backend raw max of 95", () => {
+    expect(UPLOAD_COMPLETENESS_COMPONENTS.reduce((sum, c) => sum + c.max, 0)).toBe(95);
   });
 
   it("formats score basis string accurately per OpenAlex authority", () => {

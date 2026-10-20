@@ -175,6 +175,36 @@ export async function searchOpenAlexWorks(query: string, signal?: AbortSignal): 
   return (page.results ?? []).slice(0, 20);
 }
 
+/**
+ * Worker-side search for a gap closure check (docs/gap-closure-protocol.md). Retries like the sync pages and
+ * throws on final failure: the caller logs the error and the check abstains, never treating it as "no results".
+ */
+export async function searchOpenAlexWorksForClosure(params: { query: string; perPage: number; yearFrom?: number; yearTo?: number }): Promise<OpenAlexWork[]> {
+  const query = params.query.trim();
+  if (query.length < 3 || query.length > 300) throw new Error("Invalid closure search query");
+  const filters = [
+    params.yearFrom !== undefined ? `from_publication_date:${params.yearFrom}-01-01` : undefined,
+    params.yearTo !== undefined ? `to_publication_date:${params.yearTo}-12-31` : undefined,
+  ].filter(Boolean).join(",");
+  const url = buildOpenAlexPageUrl({ searchText: query, cursor: "*", perPage: params.perPage, filterExpression: filters || undefined });
+  const json = await fetchWithRetry(url.toString());
+  return (json.results ?? []).slice(0, params.perPage);
+}
+
+/** Look up to 50 DOIs in one request (filter=doi:a|b). DOIs must already be normalized ("10.x/..."). */
+export async function fetchOpenAlexWorksByDois(dois: string[], select = "id,doi,title,publication_year"): Promise<OpenAlexWork[]> {
+  if (dois.length === 0) return [];
+  if (dois.length > 50) throw new Error("At most 50 DOIs per OpenAlex request");
+  if (dois.some((doi) => doi.length > 300 || !/^10\.\d{4,9}\/[^\s|,]+$/i.test(doi))) throw new Error("Invalid DOI");
+  const url = new URL(BASE_URL);
+  url.searchParams.set("filter", `doi:${dois.map((doi) => `https://doi.org/${doi}`).join("|")}`);
+  url.searchParams.set("select", select);
+  url.searchParams.set("per_page", String(Math.min(dois.length, OPENALEX_MAX_PER_PAGE)));
+  appendOpenAlexIdentity(url);
+  const json = await fetchWithRetry(url.toString());
+  return json.results ?? [];
+}
+
 export async function fetchOpenAlexWorkById(id: string): Promise<OpenAlexWork | null> {
   if (!/^W\d{1,20}$/.test(id)) throw new Error("Invalid OpenAlex work identifier");
   const url = new URL(`${BASE_URL}/${id}`);

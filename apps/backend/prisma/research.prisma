@@ -30,6 +30,7 @@ model Report {
   modelVersion         String    @default("") @map("model_version")
   promptVersion        String    @default("") @map("prompt_version")
   cacheKey             String?   @map("cache_key")
+  groundingChecks      Json?     @map("grounding_checks")
   yearFrom             Int?      @map("year_from")
   yearTo               Int?      @map("year_to")
   scopeFilters         Json      @default("{}") @map("scope_filters")
@@ -161,6 +162,7 @@ model ResearchGap {
   intersectionCount         Int?     @map("intersection_count")
   parentCounts              Json?    @map("parent_counts")
   parentTrend               Json?    @map("parent_trend")
+  globalEvidence            Json?    @map("global_evidence")
   evidenceConfidence        Float?   @map("evidence_confidence")
   evidenceScopeSize         Int?     @map("evidence_scope_size")
   projectEvidence           Json?    @map("project_evidence")
@@ -172,12 +174,18 @@ model ResearchGap {
   corpusId                  String?  @map("corpus_id") @db.Uuid
   status                    String   @default("active") @db.VarChar(16)
   forumShareable            Boolean  @default(false) @map("forum_shareable")
+  /// Gap Closure Protocol result: NOT_CHECKED | CLOSED | OPEN_CERTIFIED | ABSTAIN.
+  closureStatus             String   @default("NOT_CHECKED") @map("closure_status") @db.VarChar(24)
+  /// PICOC facets of the gap research question ({ population, intervention, comparison, outcome, context }).
+  questionFacets            Json?    @map("question_facets")
+  latestClosureCheckId      String?  @map("latest_closure_check_id") @db.Uuid
   createdAt                 DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt                 DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@index([normalizedTopic, confidence])
   @@index([userId, createdAt])
   @@index([status, createdAt])
+  @@index([closureStatus])
   @@index([validationStatus, gapType, createdAt])
   @@index([analysisId])
   @@index([projectId])
@@ -278,6 +286,155 @@ model GapValidation {
   @@map("gap_validations")
 }
 
+/// One run of the Gap Closure Protocol for a gap or a calibration question (targetKind + targetId).
+model GapClosureCheck {
+  id                  String    @id @default(uuid()) @db.Uuid
+  targetKind          String    @map("target_kind") @db.VarChar(24)
+  targetId            String    @map("target_id") @db.Uuid
+  protocolVersion     String    @map("protocol_version") @db.VarChar(32)
+  status              String    @default("QUEUED") @db.VarChar(16)
+  question            String
+  facets              Json      @default("{}")
+  queries             Json      @default("[]")
+  yearFrom            Int?      @map("year_from")
+  yearTo              Int?      @map("year_to")
+  judgeKind           String?   @map("judge_kind") @db.VarChar(16)
+  coverageCheckId     String?   @map("coverage_check_id") @db.Uuid
+  calibrationId       String?   @map("calibration_id") @db.Uuid
+  delta               Float?
+  epsHat              Float?    @map("eps_hat")
+  pHat                Float?    @map("p_hat")
+  bound               Float?
+  maxFalseNovelty     Float?    @map("max_false_novelty")
+  decision            String?   @db.VarChar(24)
+  decisionReasons     Json      @default("[]") @map("decision_reasons")
+  witnessDocumentId   String?   @map("witness_document_id") @db.Uuid
+  corroborated        Boolean   @default(false)
+  errorMessage        String?   @map("error_message")
+  createdById         String    @map("created_by_id") @db.Uuid
+  decidedById         String?   @map("decided_by_id") @db.Uuid
+  decidedAt           DateTime? @map("decided_at") @db.Timestamptz(6)
+  creditTransactionId String?   @map("credit_transaction_id") @db.Uuid
+  creditCost          Int?      @map("credit_cost")
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([targetKind, targetId, createdAt])
+  @@index([status, updatedAt])
+  @@map("gap_closure_checks")
+}
+
+/// A document screened by a closure check: a corpus paper or an OpenAlex snapshot.
+model GapClosureDocument {
+  id                  String    @id @default(uuid()) @db.Uuid
+  checkId             String    @map("check_id") @db.Uuid
+  /// Paper id, else "openalex:<id>", else "doi:<doi>"; one row per document per check.
+  dedupeKey           String    @map("dedupe_key")
+  paperId             String?   @map("paper_id") @db.Uuid
+  openalexId          String?   @map("openalex_id")
+  doi                 String?
+  title               String
+  abstractText        String?   @map("abstract_text")
+  publicationYear     Int?      @map("publication_year")
+  retrievedFrom       String    @map("retrieved_from") @db.VarChar(16)
+  queryIndex          Int       @map("query_index")
+  rank                Int
+  aiLabel             String?   @map("ai_label") @db.VarChar(16)
+  aiQuote             String?   @map("ai_quote")
+  aiFacets            Json?     @map("ai_facets")
+  aiQuoteVerified     Boolean   @default(false) @map("ai_quote_verified")
+  humanLabel          String?   @map("human_label") @db.VarChar(16)
+  humanQuote          String?   @map("human_quote")
+  humanFacets         Json?     @map("human_facets")
+  reviewerId          String?   @map("reviewer_id") @db.Uuid
+  reviewedAt          DateTime? @map("reviewed_at") @db.Timestamptz(6)
+  secondLabel         String?   @map("second_label") @db.VarChar(16)
+  secondReviewerId    String?   @map("second_reviewer_id") @db.Uuid
+  secondReviewedAt    DateTime? @map("second_reviewed_at") @db.Timestamptz(6)
+  /// The quoted sentence states a limitation or future work (source of corroboration).
+  limitationStatement Boolean   @default(false) @map("limitation_statement")
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([checkId, dedupeKey])
+  @@index([paperId])
+  @@map("gap_closure_documents")
+}
+
+/// Coverage estimate: m reference DOIs from an independent source, x of them missing from LumiGap and OpenAlex.
+model CoverageCheck {
+  id              String   @id @default(uuid()) @db.Uuid
+  topic           String   @db.VarChar(300)
+  normalizedTopic String   @map("normalized_topic") @db.VarChar(300)
+  projectId       String?  @map("project_id") @db.Uuid
+  referenceSource String   @map("reference_source")
+  m               Int
+  x               Int
+  delta           Float
+  pHat            Float    @map("p_hat")
+  createdById     String   @map("created_by_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([normalizedTopic, createdAt])
+  @@index([projectId])
+  @@map("coverage_checks")
+}
+
+model CoverageCheckItem {
+  coverageCheckId String  @map("coverage_check_id") @db.Uuid
+  doi             String
+  position        Int
+  title           String?
+  foundLocal      Boolean @map("found_local")
+  foundOpenAlex   Boolean @map("found_openalex")
+  paperId         String? @map("paper_id") @db.Uuid
+  openalexId      String? @map("openalex_id")
+
+  @@id([coverageCheckId, doi])
+  @@map("coverage_check_items")
+}
+
+/// Miss rate of the whole search + screening procedure, measured on questions known to be answered.
+model ClosureCalibration {
+  id              String    @id @default(uuid()) @db.Uuid
+  name            String    @db.VarChar(200)
+  domain          String    @db.VarChar(200)
+  judgeKind       String    @map("judge_kind") @db.VarChar(16)
+  protocolVersion String    @map("protocol_version") @db.VarChar(32)
+  status          String    @default("DRAFT") @db.VarChar(16)
+  delta           Float
+  n               Int       @default(0)
+  misses          Int       @default(0)
+  epsHat          Float?    @map("eps_hat")
+  createdById     String    @map("created_by_id") @db.Uuid
+  computedAt      DateTime? @map("computed_at") @db.Timestamptz(6)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([domain, judgeKind])
+  @@map("closure_calibrations")
+}
+
+model CalibrationQuestion {
+  id             String   @id @default(uuid()) @db.Uuid
+  calibrationId  String   @map("calibration_id") @db.Uuid
+  question       String
+  facets         Json     @default("{}")
+  witnessDoi     String   @map("witness_doi")
+  witnessQuote   String?  @map("witness_quote")
+  labelSource    String   @map("label_source") @db.VarChar(24)
+  labelSourceRef String?  @map("label_source_ref")
+  result         String   @default("PENDING") @db.VarChar(16)
+  closureCheckId String?  @map("closure_check_id") @db.Uuid
+  createdById    String   @map("created_by_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([calibrationId])
+  @@map("calibration_questions")
+}
+
 model LiteratureCorpus {
   id             String   @id @default(uuid()) @db.Uuid
   legacyMongoId  String?  @unique @map("legacy_mongo_id") @db.VarChar(24)
@@ -325,13 +482,15 @@ model QualityEvaluation {
   paperId       String?  @map("paper_id") @db.Uuid
   reportId      String?  @map("report_id") @db.Uuid
   gapId         String?  @map("gap_id") @db.Uuid
-  relevance     Int
-  groundedness  Int
-  completeness  Int
-  overall       Int
+  relevance     Int?
+  groundedness  Int?
+  completeness  Int?
+  overall       Float?
   rationale     String   @default("")
   model         String   @default("")
   promptVersion String   @default("") @map("prompt_version")
+  assessment    Json?    @db.JsonB
+  inputFingerprint String? @map("input_fingerprint") @db.VarChar(64)
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -339,6 +498,25 @@ model QualityEvaluation {
   @@index([reportId])
   @@index([gapId])
   @@map("quality_evaluations")
+}
+
+// Project mode of AI quality evaluation: how one paper serves one project's plan (shared by its members).
+// Foreign keys to projects/papers (ON DELETE CASCADE) are declared in the SQL migration.
+model QualityProjectAssessment {
+  id               String   @id @default(uuid()) @db.Uuid
+  projectId        String   @map("project_id") @db.Uuid
+  paperId          String   @map("paper_id") @db.Uuid
+  assessment       Json     @db.JsonB
+  inputFingerprint String   @map("input_fingerprint") @db.VarChar(64)
+  model            String   @default("")
+  promptVersion    String   @map("prompt_version") @db.VarChar(64)
+  language         String   @default("en") @db.VarChar(8)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([projectId, paperId])
+  @@index([paperId])
+  @@map("quality_project_assessments")
 }
 
 model UserRating {

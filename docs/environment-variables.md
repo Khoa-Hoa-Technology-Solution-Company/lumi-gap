@@ -123,11 +123,21 @@ Users can also save multiple personal API connections in Settings → AI Connect
 | `GAPS_TOP_K` | `EnvSchema` / backend | Default / optional (see template) |
 | `GAPS_MAX_PER_HOUR` | `EnvSchema` / backend | Default / optional (see template) |
 | `GAPS_MAX_OUTPUT_TOKENS` | `EnvSchema` / backend | Default / optional (see template) |
-| `GAP_SCARCE_ABS` | `EnvSchema` / backend | Default / optional (see template) |
-| `GAP_SCARCE_PCT` | `EnvSchema` / backend | Default / optional (see template) |
-| `GAP_PARENT_RISING_MIN` | `EnvSchema` / backend | Default / optional (see template) |
+| `GAPS_EVIDENCE_MMR_LAMBDA` | `EnvSchema` / backend | Default / optional (default 0.7): MMR trade-off for the gap evidence pack; 1 keeps pure relevance order, lower values pick more diverse papers |
+| `GAP_COUNTER_MIN_SIMILARITY` | `EnvSchema` / backend | Default / optional (default 0.75): cosine similarity between a generated gap's text and a corpus paper above which the paper is linked as possible counter-evidence; tune on real data |
+| `GAP_PROBE_SEMANTIC_MIN_SIMILARITY` | `EnvSchema` / backend | Default / optional (default 0 = off): a paper also counts for a probe topic when its embedding is at least this close (cosine) to the topic, so synonyms are counted; calibrate with `pnpm --filter backend eval:gaps` before enabling |
+| `GAP_COUNTER_PER_GAP` | `EnvSchema` / backend | Default / optional (default 3): most possible counter-evidence papers linked per gap; 0 disables the search |
+| `GAP_UNDEREXPLORED_MAX_RATIO` | `EnvSchema` / backend | Default / optional (default 0.5): largest observed/expected ratio for the under-explored ranking signal |
+| `GAP_UNDEREXPLORED_ALPHA` | `EnvSchema` / backend | Default / optional (default 0.05): family-wise level of the Poisson test, divided by the number of probes tested together |
 | `GAP_MIN_PARENT_PAPERS` | `EnvSchema` / backend | Default / optional (see template) |
+| `GAP_GLOBAL_EVIDENCE_ENABLED` | `EnvSchema` / backend | Default / optional (default true): also count each gap probe in OpenAlex; a failure only skips the OpenAlex check |
+| `GAP_GLOBAL_EVIDENCE_TIMEOUT_MS` | `EnvSchema` / backend | Default / optional (default 15000): time budget for the three OpenAlex count calls of one probe |
 | `GAP_VALIDATION_QUORUM` | `EnvSchema` / backend | Default / optional (default 2): distinct experts needed to validate or reject a gap |
+| `GAP_MAX_FALSE_NOVELTY` | `EnvSchema` / backend | Default / optional (default 0.2): largest false-novelty bound for OPEN_CERTIFIED |
+| `GAP_CLOSURE_DELTA` | `EnvSchema` / backend | Default / optional (default 0.05): 1 minus the confidence of the Clopper-Pearson bounds |
+| `GAP_CLOSURE_LOCAL_TOP_K` | `EnvSchema` / backend | Default / optional (default 20): corpus papers screened per closure check |
+| `GAP_CLOSURE_OPENALEX_PER_QUERY` | `EnvSchema` / backend | Default / optional (default 10): OpenAlex results per query, 0 disables |
+| `GAP_CLOSURE_MAX_QUERIES` | `EnvSchema` / backend | Default / optional (default 3): search queries per closure check |
 | `COMPARE_MAX_PAPERS` | `EnvSchema` / backend | Default / optional (see template) |
 | `COMPARE_PROMPT_VERSION` | `EnvSchema` / backend | Default / optional (see template) |
 | `COMPARE_MAX_PER_HOUR` | `EnvSchema` / backend | Default / optional (see template) |

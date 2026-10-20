@@ -6,6 +6,9 @@ import { makeConnection, QUEUE_NAMES } from "../infrastructure/queue.js";
 import { logger } from "../infrastructure/logger.js";
 import { startWorkerHeartbeat } from "../infrastructure/worker-heartbeat.js";
 import { sweepStuckGapAnalyses } from "../modules/gaps/gap-sweep.js";
+import { markClosureCheckFailed, runGapClosureCheck } from "../modules/gap-closure/closure.runner.js";
+import { GAP_CLOSURE_JOB, type GapClosureJob } from "../modules/gap-closure/closure.rules.js";
+import { sweepStuckClosureChecks } from "../modules/gap-closure/closure.sweep.js";
 import { gapsService, REPORT_GAP_FANOUT_JOB, type GapJob, type ReportGapFanoutJob } from "../modules/gaps/gaps.service.js";
 import { withUserAi } from "../modules/user-ai/user-ai.runtime.js";
 import { projectSynthesisService } from "../modules/projects/project-synthesis.service.js";
@@ -19,13 +22,16 @@ enforcePostgresOnlyRuntime();
  *
  * Consumes the "gaps" BullMQ queue: each "gap-analysis" job is one gap-analysis
  * pipeline run (embed → vector search → Gemini → persist); each "report-gap-fanout"
- * job copies a finished report's gaps into research_gaps. Concurrency 1 keeps us inside the
+ * job copies a finished report's gaps into research_gaps; each "gap-closure-check" job is one logged
+ * search + AI screening of the Gap Closure Protocol (it never decides). Concurrency 1 keeps us inside the
  * Gemini free-tier rate limit; BullMQ retries transient failures (5 attempts,
  * exponential backoff). Non-retryable errors short-circuit via UnrecoverableError.
  */
 
 /** Generic user-facing failure text — raw error internals stay in server logs. */
 const USER_FACING_FAILURE = "Gap analysis failed. Please try again later.";
+const USER_FACING_CLOSURE_FAILURE = "Gap closure check failed. Please try again later.";
+const USER_FACING_FANOUT_FAILURE = "Research gaps could not be created from this report. Please try again later.";
 
 async function main() {
   await connectPostgres();
@@ -36,6 +42,11 @@ async function main() {
   await projectSynthesisService.sweep();
   if (swept > 0) {
     logger.warn({ swept }, "swept stuck gap analyses");
+  }
+
+  const sweptClosure = await sweepStuckClosureChecks();
+  if (sweptClosure > 0) {
+    logger.warn({ swept: sweptClosure }, "swept stuck gap closure checks");
   }
 
   const worker = new Worker(
@@ -51,6 +62,13 @@ async function main() {
         // Report fan-out only copies stored gaps and scores probes — no LLM call, so no personal AI binding.
         if (job.name === REPORT_GAP_FANOUT_JOB) {
           await gapsService.fanOutGapsFromReport(job.data as ReportGapFanoutJob);
+          return;
+        }
+        if (job.name === GAP_CLOSURE_JOB) {
+          const closure = job.data as GapClosureJob;
+          const check = await getPrisma().gapClosureCheck.findUnique({ where: { id: closure.checkId }, select: { createdById: true } });
+          if (check) await withUserAi(check.createdById, () => runGapClosureCheck(closure));
+          else await runGapClosureCheck(closure);
           return;
         }
         const input = job.data as GapJob;
@@ -79,8 +97,15 @@ async function main() {
       if (exhausted || unrecoverable) void projectSynthesisService.fail(job.data as SynthesisJob).catch(error => logger.error({ err: error }, "Synthesis failure cleanup failed"));
       return;
     }
-    // A failed fan-out leaves the ready report intact; the error log above is enough.
-    if (job && job.name !== REPORT_GAP_FANOUT_JOB && (exhausted || unrecoverable)) {
+    // A failed fan-out leaves the ready report intact, but its owner is told the gaps were not created.
+    // Only our own non-retryable errors carry a user-facing message; anything else gets the generic text.
+    if (job && job.name === REPORT_GAP_FANOUT_JOB && (exhausted || unrecoverable)) {
+      const { reportId } = job.data as ReportGapFanoutJob;
+      void gapsService.notifyReportGapFanoutFailed(reportId, unrecoverable ? err.message : USER_FACING_FANOUT_FAILURE).catch((error) => logger.error({ err: error, reportId }, "could not notify report gap fan-out failure"));
+    } else if (job && job.name === GAP_CLOSURE_JOB && (exhausted || unrecoverable)) {
+      const { checkId } = job.data as GapClosureJob;
+      void markClosureCheckFailed(checkId, USER_FACING_CLOSURE_FAILURE).catch((error) => logger.error({ err: error, checkId }, "could not mark gap closure check failed"));
+    } else if (job && job.name !== REPORT_GAP_FANOUT_JOB && (exhausted || unrecoverable)) {
       const { analysisId } = job.data as GapJob;
       void gapsService.markAnalysisFailed(analysisId, USER_FACING_FAILURE);
     }

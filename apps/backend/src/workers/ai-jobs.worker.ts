@@ -12,6 +12,7 @@ import { withUserAi } from "../modules/user-ai/user-ai.runtime.js";
 import { MANUSCRIPT_AI_JOB, manuscriptAiService } from "../modules/workspaces/manuscript-ai.service.js";
 import { PDF_IMPORT_JOB, manuscriptPdfImport } from "../modules/workspaces/manuscript-pdf-import.js";
 import { AI_PRE_REVIEW_JOB, aiPreReviewJobId, submissionService, type AiPreReviewJob } from "../modules/submissions/submission.service.js";
+import { QUALITY_EVALUATION_JOB, qualityJobs, type QualityEvaluationPayload } from "../modules/quality/quality.jobs.js";
 
 enforcePostgresOnlyRuntime();
 
@@ -117,6 +118,8 @@ async function main() {
     QUEUE_NAMES.aiJobs,
     async (job) => job.name === PDF_IMPORT_JOB ? manuscriptPdfImport.process(job.id!) : job.name === MANUSCRIPT_AI_JOB ? manuscriptAiService.process(job.data.runId as string) : job.name === AI_PRE_REVIEW_JOB
       ? submissionService.processAiPreReview(job.data as AiPreReviewJob)
+      : job.name === QUALITY_EVALUATION_JOB
+      ? qualityJobs.process(job.data as QualityEvaluationPayload)
       : processAiRun(job.data as AiJobPayload),
     { connection: makeConnection(), concurrency: 2 },
   );

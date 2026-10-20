@@ -29,7 +29,7 @@ from app.storage_maintenance import StorageMaintenance
 from app.admin_routes import admin_router
 from app.security import Security, app_origin, production
 from app.server_lock import server_lock
-from app.pdf_utils import extract_pdf
+from app.pdf_utils import NoTextLayerError, extract_pdf
 from app.reviewer import GeminiReviewProvider, write_artifacts, safe_slug
 from starlette.background import BackgroundTask
 
@@ -310,13 +310,19 @@ def run_review_job(review_id: int, paper_id: int, path: Path, strictness: str, a
             paper_type=profile.get("paper_type", "Other"),
         )
         database.complete_review(review_id, paper_id, scores, report, str(output_dir.resolve()))
+    except NoTextLayerError as exc:
+        _fail_review_job(review_id, paper_id, output_dir, f"{exc} Credit đã được hoàn.")
     except Exception:
-        try:
-            storage.register_outputs(paper_id, review_id, output_dir)
-        except Exception:
-            logging.getLogger(__name__).warning('Review %s artifacts need storage reconciliation', review_id)
-        finally:
-            database.fail_review(review_id, paper_id, "Không thể hoàn tất review. Kiểm tra Gemini key hoặc thử lại; credit đã được hoàn.")
+        _fail_review_job(review_id, paper_id, output_dir, "Không thể hoàn tất review. Kiểm tra Gemini key hoặc thử lại; credit đã được hoàn.")
+
+
+def _fail_review_job(review_id: int, paper_id: int, output_dir: Path, message: str) -> None:
+    try:
+        storage.register_outputs(paper_id, review_id, output_dir)
+    except Exception:
+        logging.getLogger(__name__).warning('Review %s artifacts need storage reconciliation', review_id)
+    finally:
+        database.fail_review(review_id, paper_id, message)
 
 
 def public_review(review):

@@ -305,6 +305,9 @@ pnpm --filter backend worker:notifications | worker:ai-jobs | worker:community-s
 # read-only similarity report to tune COMMUNITY_SUGGEST_MIN_SIMILARITY (needs a real GEMINI_API_KEY)
 pnpm --filter backend eval:community-suggest "machine learning" "học máy"   # or: --file queries.txt
 
+# read-only report to tune GAP_PROBE_SEMANTIC_MIN_SIMILARITY and GAP_COUNTER_MIN_SIMILARITY (needs a real GEMINI_API_KEY)
+pnpm --filter backend eval:gaps "federated learning" "học liên kết"        # or: --file phrases.txt
+
 # build
 pnpm build
 

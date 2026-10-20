@@ -3,7 +3,7 @@ import { cache, hashKey, LLM_CACHE_TTL_SECONDS } from "../../infrastructure/cach
 import { generateJSON, generateText, type GenerateOptions } from "./gemini.client.js";
 import { aiCacheNamespace, personalAiRuntime } from "../user-ai/user-ai.runtime.js";
 
-export type LlmTask = "rerank" | "extract" | "chat" | "report" | "gap" | "judge" | "compare" | "directions" | "trend" | "summary";
+export type LlmTask = "rerank" | "extract" | "chat" | "report" | "gap" | "judge" | "compare" | "directions" | "trend" | "summary" | "gap-closure-queries" | "gap-closure-screen";
 
 interface CachedGenerateBase<T> {
   task: LlmTask;

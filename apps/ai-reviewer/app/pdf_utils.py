@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from pathlib import Path
 from typing import Any
 
@@ -14,12 +15,52 @@ def clean_text(value: str) -> str:
     return value.strip()
 
 
-def extract_pdf(path: Path) -> tuple[dict[str, Any], str]:
+_QUOTE_TRANSLATION = str.maketrans({
+    "\u201c": '"', "\u201d": '"', "\u201e": '"',
+    "\u2018": "'", "\u2019": "'",
+    "\u2013": "-", "\u2014": "-",
+})
+
+
+def normalize_for_match(text: str) -> str:
+    """Canonical form used to check that an AI quote really appears in the PDF text."""
+    text = unicodedata.normalize("NFKC", text or "")
+    text = re.sub(r"(\w)-\s*\n\s*(\w)", r"\1\2", text)
+    text = text.translate(_QUOTE_TRANSLATION)
+    return re.sub(r"\s+", " ", text).lower().strip()
+
+
+def split_pages(manuscript: str) -> dict[int, str]:
+    """Split text carrying `[[PAGE n]]` markers (as built by extract_pdf) into {page: text}."""
+    parts = re.split(r"\[\[PAGE (\d+)\]\]", manuscript)
+    return {int(parts[i]): parts[i + 1].strip() for i in range(1, len(parts) - 1, 2)}
+
+
+class NoTextLayerError(ValueError):
+    """The PDF has no usable text layer (likely a scan)."""
+
+
+MIN_TOTAL_CHARS = 1500
+MIN_PAGE_CHARS = 50
+
+
+def assert_text_layer(page_texts: list[str]) -> None:
+    counts = [sum(ch.isalnum() for ch in text) for text in page_texts]
+    empty_pages = sum(1 for count in counts if count < MIN_PAGE_CHARS)
+    if sum(counts) < MIN_TOTAL_CHARS or empty_pages * 2 > len(counts):
+        raise NoTextLayerError("PDF không có lớp văn bản (có thể là bản scan). Hãy dùng PDF có thể chọn/copy chữ.")
+
+
+def extract_pdf(path: Path, require_text_layer: bool = False) -> tuple[dict[str, Any], str]:
     reader = PdfReader(str(path))
     pages: list[str] = []
+    raw_pages: list[str] = []
     for number, page in enumerate(reader.pages, start=1):
         page_text = clean_text(page.extract_text() or "")
+        raw_pages.append(page_text)
         pages.append(f"[[PAGE {number}]]\n{page_text}")
+    if require_text_layer:
+        assert_text_layer(raw_pages)
     text = "\n\n".join(pages)
     first_page = pages[0] if pages else ""
     metadata = reader.metadata or {}

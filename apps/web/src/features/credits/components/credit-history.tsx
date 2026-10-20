@@ -35,6 +35,7 @@ const ACTION_LABELS: Record<CreditAction, string> = {
   deep_mcp_report: "Deep MCP report",
   generate_gaps: "Research gap analysis",
   generate_directions: "Research directions",
+  gap_closure_check: "Gap closure check",
   project_chat_message: "Project AI chat",
   paper_request: "Paper request",
   paper_download: "Paper download",

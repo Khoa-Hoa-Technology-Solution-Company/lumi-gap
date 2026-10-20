@@ -96,6 +96,8 @@ class ResearchGapItem {
     this.supportingPapers = const [],
     this.parentTrendSignal = 0,
     this.evidenceCount = 0,
+    this.closureStatus = GapClosureStatus.notChecked,
+    this.latestClosureCheck,
   });
 
   factory ResearchGapItem.fromJson(Map<String, dynamic> json) {
@@ -117,6 +119,8 @@ class ResearchGapItem {
           .toList(),
       parentTrendSignal: (json['parentTrendSignal'] as num?)?.toDouble() ?? 0,
       evidenceCount: (json['evidenceCount'] as num?)?.toInt() ?? (json['supportingPapers'] as List<dynamic>? ?? []).length,
+      closureStatus: GapClosureStatus.parse(json['closureStatus']),
+      latestClosureCheck: GapClosureSummary.tryParse(json['latestClosureCheck']),
     );
   }
 
@@ -134,6 +138,73 @@ class ResearchGapItem {
   final List<GapSupportingPaper> supportingPapers;
   final double parentTrendSignal;
   final int evidenceCount;
+
+  /// Gap Closure Protocol result; [GapClosureStatus.notChecked] when the API omits it.
+  final GapClosureStatus closureStatus;
+  final GapClosureSummary? latestClosureCheck;
+}
+
+/// Result of the latest closure check of a gap (`GapClosureStatus` in shared-types).
+enum GapClosureStatus {
+  notChecked,
+  closed,
+  openCertified,
+  abstain;
+
+  /// Unknown or missing values fall back to [notChecked] so an older or newer API never breaks the list.
+  static GapClosureStatus parse(Object? raw) {
+    switch (raw?.toString().toUpperCase()) {
+      case 'CLOSED':
+        return GapClosureStatus.closed;
+      case 'OPEN_CERTIFIED':
+        return GapClosureStatus.openCertified;
+      case 'ABSTAIN':
+        return GapClosureStatus.abstain;
+      default:
+        return GapClosureStatus.notChecked;
+    }
+  }
+}
+
+/// Short form of the latest closure check embedded in a gap (`GapClosureSummary` in shared-types).
+@immutable
+class GapClosureSummary {
+  const GapClosureSummary({
+    required this.checkId,
+    required this.status,
+    this.decision,
+    this.bound,
+    this.judgeKind,
+    this.decidedAt,
+  });
+
+  /// Returns null when [raw] is not an object.
+  static GapClosureSummary? tryParse(Object? raw) {
+    if (raw is! Map) return null;
+    final json = Map<String, dynamic>.from(raw);
+    final decisionRaw = json['decision']?.toString();
+    return GapClosureSummary(
+      checkId: (json['checkId'] ?? '').toString(),
+      status: (json['status'] ?? '').toString(),
+      decision: decisionRaw == null ? null : GapClosureStatus.parse(decisionRaw),
+      bound: (json['bound'] as num?)?.toDouble(),
+      judgeKind: json['judgeKind']?.toString().toUpperCase(),
+      decidedAt: json['decidedAt'] == null ? null : DateTime.tryParse(json['decidedAt'].toString()),
+    );
+  }
+
+  final String checkId;
+
+  /// QUEUED | SEARCHING | SCREENING | DECIDED | FAILED
+  final String status;
+  final GapClosureStatus? decision;
+
+  /// False-novelty bound B = epsHat + pHat in [0, 1].
+  final double? bound;
+
+  /// AI | HUMAN
+  final String? judgeKind;
+  final DateTime? decidedAt;
 }
 
 class GapSupportingPaper {

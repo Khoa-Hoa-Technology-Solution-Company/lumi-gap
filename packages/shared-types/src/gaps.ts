@@ -24,6 +24,18 @@ export interface GapProjectEvidence {
   evidenceConfidence: number;
 }
 
+/** Probe counts taken from OpenAlex (the whole literature, not just the local corpus). Absent when OpenAlex was unavailable. */
+export interface GapGlobalEvidence {
+  source: "openalex";
+  intersectionCount: number;
+  parentCounts: { a: number; b: number };
+  /** All OpenAlex works in the same year window: N of the observed/expected test. Absent on rows saved before it was recorded. */
+  scopeSize?: number;
+  yearFrom?: number;
+  yearTo?: number;
+  fetchedAt: string;
+}
+
 export interface ResearchGapItem {
   assessmentStatus?: import("./project-research.js").GapAssessment;
   version?: number;
@@ -35,6 +47,12 @@ export interface ResearchGapItem {
   rationale: string;
   supportingPaperIds: string[];
   supportingPapers: GapSupportingPaper[];
+  /** Papers an expert linked as counter-evidence (kept apart from the pipeline's evidence and supporting papers). */
+  counterPaperIds?: string[];
+  counterPapers?: GapSupportingPaper[];
+  /** Corpus papers close to the gap's own text, found automatically: they may already answer it. Review before trusting the gap. */
+  possibleCounterPaperIds?: string[];
+  possibleCounterPapers?: GapSupportingPaper[];
   /** Complete reviewed input set the AI read when producing this gap. */
   evidencePaperIds: string[];
   /** Resolved papers in the same order as evidencePaperIds. */
@@ -49,16 +67,29 @@ export interface ResearchGapItem {
   userId: string;
   status: GapStatus;
   createdAt: string;
-  probe?: { topicA: string; topicB: string; yearFrom?: number; yearTo?: number };
+  probe?: { topicA: string; topicB: string; yearFrom?: number; yearTo?: number; semanticMinSimilarity?: number };
   intersectionCount?: number;
   parentCounts?: { a: number; b: number };
-  parentTrend?: { topic: string; growthRatePct: number } | null;
+  parentTrend?: { topic: string; growthRatePct: number; cagrPct?: number | null; slope?: number } | null;
+  /** OpenAlex counts for the same probe; null/absent when OpenAlex was disabled or failed. */
+  globalEvidence?: GapGlobalEvidence | null;
+  /** Ranking score 0..1 of the under-explored signal (not a probability that the gap is open). */
   evidenceConfidence?: number;
+  /**
+   * Observed/expected numbers behind the under-explored ranking signal, when the counts and the scope size are recorded:
+   * expected = nA * nB / N (intersection if the topics were independent), ratio = observed / expected, pValue = Poisson P(X <= observed).
+   * evidenceStatus "confirmed" means this signal is met; it ranks gaps and does not prove one is open (see closureStatus).
+   */
+  /**
+   * Observed vs expected papers at the intersection. `global` is the same test on OpenAlex counts; `vetoedByGlobal`
+   * means OpenAlex finds the intersection well covered, so the corpus signal was overruled.
+   */
+  underExplored?: { expected: number; ratio: number; pValue: number; global?: { expected: number; ratio: number; pValue: number }; vetoedByGlobal?: boolean };
   /** Active corpus papers the probe counts above were taken over; absent on gaps created before it was recorded. */
   evidenceScopeSize?: number;
-  /** Same probe scored inside the project's INCLUDED papers. Context only: it never decides the Confirmed label. */
+  /** Same probe scored inside the project's INCLUDED papers. Context only: it never decides the under-explored signal. */
   projectEvidence?: GapProjectEvidence;
-  /** A probe topic has too few papers for the evidence score to be meaningful. */
+  /** A probe topic has too few papers for the under-explored signal to be meaningful. */
   lowSample?: boolean;
   gapType?: ResearchGapType;
   scope?: string;
@@ -75,6 +106,10 @@ export interface ResearchGapItem {
   validationQuorum?: number;
   /** The viewer may resolve or dismiss this gap (its creator, or the owner of its project). */
   canManage?: boolean;
+  /** Gap Closure Protocol result. NOT_CHECKED until a closure check is decided. */
+  closureStatus?: import("./gap-closure.js").GapClosureStatus;
+  questionFacets?: import("./gap-closure.js").QuestionFacets;
+  latestClosureCheck?: import("./gap-closure.js").GapClosureSummary;
 }
 
 export interface GapAnalysisResult {
@@ -184,6 +219,8 @@ export interface CreateGapCandidateRequest {
   missingEvidence: string;
   significanceExplanation: string;
   suggestedResearchQuestion?: string;
+  /** PICOC facets of suggestedResearchQuestion; needed for a closure check. */
+  questionFacets?: import("./gap-closure.js").QuestionFacets;
   gapConfidence: GapAssessmentLevel;
   researchPriority: GapAssessmentLevel;
 }

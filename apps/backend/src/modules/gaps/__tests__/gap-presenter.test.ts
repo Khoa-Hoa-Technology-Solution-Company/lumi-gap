@@ -220,6 +220,66 @@ describe("toGapListItem", () => {
   });
 });
 
+describe("under-explored signal recomputed from stored counts", () => {
+  const base = {
+    _id: "gap-signal",
+    topic: "AI education",
+    normalizedTopic: "ai education",
+    title: "Signal gap",
+    description: "desc",
+    rationale: "why",
+    supportingPaperIds: [],
+    confidence: 0.4,
+    source: "standalone" as const,
+    userId: "user-1",
+    status: "active" as const,
+    createdAt: new Date("2026-07-01T00:00:00.000Z"),
+    probe: { topicA: "federated learning", topicB: "medical imaging" },
+  };
+
+  it("re-ranks an old row whose stored score came from the co-mention rule", () => {
+    // Stored 0.95 under the old rule, but 0 papers where 0.3 would be expected is chance.
+    const item = toGapListItem({ ...base, evidenceConfidence: 0.95, evidenceScopeSize: 1000, intersectionCount: 0, parentCounts: { a: 20, b: 15 } }, new Map(), { minParentPapers: 5 });
+    expect(item.evidenceStatus).toBe("weak");
+    expect(item.evidenceConfidence).toBe(0.25);
+    expect(item.underExplored?.expected).toBeCloseTo(0.3, 10);
+    expect(item.underExplored?.pValue).toBeCloseTo(0.7408, 4);
+  });
+
+  it("exposes expected, ratio and p for a significant shortfall", () => {
+    const item = toGapListItem({ ...base, evidenceConfidence: 0.1, evidenceScopeSize: 20000, intersectionCount: 1, parentCounts: { a: 400, b: 300 } }, new Map(), { minParentPapers: 5 });
+    expect(item.evidenceStatus).toBe("confirmed");
+    expect(item.evidenceConfidence).toBe(0.92);
+    expect(item.underExplored?.ratio).toBeCloseTo(1 / 6, 10);
+    expect(item.underExplored?.pValue).toBeCloseTo(0.0174, 4);
+  });
+
+  it("falls back to the stored score when a count is missing", () => {
+    const item = toGapListItem({ ...base, evidenceConfidence: 0.8, evidenceScopeSize: 1000, parentCounts: { a: 20, b: 15 } }, new Map(), { minParentPapers: 5 });
+    expect(item.evidenceStatus).toBe("confirmed");
+    expect(item.evidenceConfidence).toBe(0.8);
+    expect(item.underExplored).toBeUndefined();
+  });
+
+  it("ranks by the recomputed signal", () => {
+    const row = (id: string, intersectionCount: number, stored: number): GapSortRow => ({ id, confidence: 0.5, evidenceConfidence: stored, evidenceScopeSize: 20000, intersectionCount, createdAt: new Date("2026-01-01T00:00:00Z"), source: "standalone", probe: base.probe, parentCounts: { a: 400, b: 300 }, supportingCount: 0 });
+    const ordered = sortGapRows([row("stale-high", 6, 0.99), row("real-shortfall", 1, 0.1)], "recommended", 5).map((item) => item.id);
+    expect(ordered).toEqual(["real-shortfall", "stale-high"]);
+  });
+
+  it("is not confirmed when OpenAlex finds the intersection well covered, and ranks behind an agreeing gap", () => {
+    const openAlex = (intersectionCount: number) => ({ source: "openalex" as const, intersectionCount, parentCounts: { a: 50_000, b: 40_000 }, scopeSize: 10_000_000, fetchedAt: "2026-10-20T00:00:00.000Z" });
+    const doc = { ...base, intersectionCount: 1, evidenceScopeSize: 20000, parentCounts: { a: 400, b: 300 } };
+    const vetoed = toGapListItem({ ...doc, globalEvidence: openAlex(180) }, new Map(), { minParentPapers: 5 });
+    expect(vetoed.evidenceStatus).toBe("weak");
+    expect(vetoed.underExplored).toMatchObject({ vetoedByGlobal: true, global: { expected: 200 } });
+    expect(toGapListItem({ ...doc, globalEvidence: openAlex(20) }, new Map(), { minParentPapers: 5 }).evidenceStatus).toBe("confirmed");
+
+    const row = (id: string, globalEvidence: ReturnType<typeof openAlex>): GapSortRow => ({ id, confidence: 0, evidenceConfidence: null, evidenceScopeSize: 20000, intersectionCount: 1, createdAt: new Date("2026-01-01T00:00:00Z"), source: "standalone", probe: base.probe, parentCounts: { a: 400, b: 300 }, globalEvidence, supportingCount: 0 });
+    expect(sortGapRows([row("vetoed", openAlex(180)), row("agreed", openAlex(20))], "recommended", 5).map((item) => item.id)).toEqual(["agreed", "vetoed"]);
+  });
+});
+
 describe("isGapLowSample", () => {
   it("flags gaps whose smaller probe topic is under the threshold", () => {
     expect(isGapLowSample({ parentCounts: { a: 1, b: 40 } }, 5)).toBe(true);
@@ -252,20 +312,38 @@ describe("sortGapRows", () => {
     row("newest", { evidenceConfidence: 0.2, confidence: 0.2, createdAt: new Date("2026-06-01T00:00:00Z") }),
   ];
 
-  it("ranks by evidence score, falling back to AI confidence", () => {
-    expect(ids(sortGapRows(rows, "recommended", 5))).toEqual(["ai-only", "confirmed", "confident", "newest"]);
+  it("ranks by evidence score and puts unscored gaps last regardless of AI confidence", () => {
+    expect(ids(sortGapRows(rows, "recommended", 5))).toEqual(["confirmed", "confident", "newest", "ai-only"]);
+    const unscored = row("unscored", { evidenceConfidence: null, confidence: 0.9 });
+    const scored = row("scored", { evidenceConfidence: 0.3, confidence: 0.1 });
+    expect(ids(sortGapRows([unscored, scored], "recommended", 5))).toEqual(["scored", "unscored"]);
+  });
+
+  it("ranks a gap with counter-evidence (confirmed or possible) after gaps without", () => {
+    const contested = row("contested", { evidenceConfidence: 0.7, counterCount: 1 });
+    const clean = row("clean", { evidenceConfidence: 0.3, counterCount: 0 });
+    expect(ids(sortGapRows([contested, clean], "recommended", 5))).toEqual(["clean", "contested"]);
+    // The evidence sort groups by evidence status first; within one status the contested gap comes last.
+    const contestedWeak = row("contested-weak", { evidenceConfidence: 0.3, counterCount: 2 });
+    const cleanWeak = row("clean-weak", { evidenceConfidence: 0.2, counterCount: 0 });
+    expect(ids(sortGapRows([contestedWeak, cleanWeak], "evidence", 5))).toEqual(["clean-weak", "contested-weak"]);
   });
 
   it("puts confirmed evidence first for the evidence sort", () => {
     expect(ids(sortGapRows(rows, "evidence", 5))).toEqual(["confirmed", "confident", "newest", "ai-only"]);
   });
 
-  it("orders by the AI's own confidence for the confidence sort", () => {
-    expect(ids(sortGapRows(rows, "confidence", 5))).toEqual(["confident", "ai-only", "confirmed", "newest"]);
+  it("orders by the shown score for the confidence sort, breaking ties with the legacy AI confidence", () => {
+    expect(ids(sortGapRows(rows, "confidence", 5))).toEqual(["confirmed", "confident", "newest", "ai-only"]);
+    // New gaps store the LLM placeholder 0, so it cannot outrank an evidence score.
+    const placeholder = row("placeholder", { evidenceConfidence: 0.3, confidence: 0 });
+    const legacy = row("legacy", { evidenceConfidence: 0.3, confidence: 0.8 });
+    const unscored = row("unscored", { evidenceConfidence: null, confidence: 0.9 });
+    expect(ids(sortGapRows([unscored, placeholder, legacy], "confidence", 5))).toEqual(["legacy", "placeholder", "unscored"]);
   });
 
   it("orders by supporting papers, newest first, and AI-only last", () => {
-    expect(ids(sortGapRows(rows, "papers", 5))).toEqual(["confident", "confirmed", "ai-only", "newest"]);
+    expect(ids(sortGapRows(rows, "papers", 5))).toEqual(["confident", "confirmed", "newest", "ai-only"]);
     expect(ids(sortGapRows(rows, "newest", 5))[0]).toBe("newest");
     expect(ids(sortGapRows(rows, "ai_only_last", 5))).toEqual(["confirmed", "confident", "newest", "ai-only"]);
   });
@@ -278,5 +356,56 @@ describe("sortGapRows", () => {
   it("treats a low-sample probe as weak evidence", () => {
     const lowSample = row("low-sample", { evidenceConfidence: 0.9, parentCounts: { a: 1, b: 40 } });
     expect(ids(sortGapRows([lowSample, rows[0]!], "evidence", 5))).toEqual(["confirmed", "low-sample"]);
+  });
+});
+
+describe("counter-evidence and OpenAlex counts", () => {
+  const base = {
+    _id: "gap-9",
+    topic: "AI education",
+    normalizedTopic: "ai education",
+    title: "Counter gap",
+    description: "desc",
+    rationale: "why",
+    supportingPaperIds: ["paper-1"],
+    confidence: 0.7,
+    source: "standalone" as const,
+    userId: "user-1",
+    status: "active" as const,
+    createdAt: new Date("2026-07-01T00:00:00.000Z"),
+  };
+  const papers = new Map([
+    ["paper-1", { id: "paper-1", title: "Supports" }],
+    ["paper-2", { id: "paper-2", title: "Contradicts", publicationYear: 2023 }],
+  ]);
+
+  it("keeps counter papers apart from supporting papers", () => {
+    const item = toGapListItem({ ...base, counterPaperIds: ["paper-2"] }, papers);
+
+    expect(item.counterPaperIds).toEqual(["paper-2"]);
+    expect(item.counterPapers).toEqual([{ id: "paper-2", title: "Contradicts", publicationYear: 2023 }]);
+    expect(item.supportingPapers.map((paper) => paper.id)).toEqual(["paper-1"]);
+  });
+
+  it("has no counter papers by default", () => {
+    const item = toGapListItem(base, papers);
+
+    expect(item.counterPaperIds).toEqual([]);
+    expect(item.counterPapers).toEqual([]);
+  });
+
+  it("passes the OpenAlex counts and the richer parent trend through", () => {
+    const globalEvidence = { source: "openalex" as const, intersectionCount: 4, parentCounts: { a: 900, b: 700 }, yearFrom: 2020, yearTo: 2024, fetchedAt: "2026-10-16T00:00:00.000Z" };
+    const item = toGapListItem({ ...base, globalEvidence, parentTrend: { topic: "AI", growthRatePct: 31.2, cagrPct: 31.2, slope: 4 } }, papers);
+
+    expect(item.globalEvidence).toEqual(globalEvidence);
+    expect(item.parentTrend).toEqual({ topic: "AI", growthRatePct: 31.2, cagrPct: 31.2, slope: 4 });
+  });
+
+  it("reports missing OpenAlex counts as null and keeps the old trend shape", () => {
+    const item = toGapListItem({ ...base, parentTrend: { topic: "AI", growthRatePct: 12 } }, papers);
+
+    expect(item.globalEvidence).toBeNull();
+    expect(item.parentTrend).toEqual({ topic: "AI", growthRatePct: 12 });
   });
 });

@@ -20,6 +20,8 @@ export function personalAiRuntime() { return context.getStore() ?? null; }
 export function aiModel(tier: "fast" | "deep" = "fast") {
   return personalAiRuntime()?.model ?? (tier === "deep" ? env.GEMINI_MODEL_DEEP : env.GEMINI_MODEL_FAST);
 }
+/** Runs `operation` on the platform AI key and cache namespace, ignoring any personal connection bound to the request. */
+export function withPlatformAi<T>(operation: () => T): T { return context.run(null, operation); }
 export function aiCacheNamespace() { return personalAiRuntime()?.cacheNamespace ?? "platform"; }
 
 export async function withUserAi<T>(userInput: string, operation: () => T): Promise<Awaited<T>> {
