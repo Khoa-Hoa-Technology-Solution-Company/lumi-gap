@@ -12,6 +12,8 @@ const mocks = vi.hoisted(() => {
   return { db, paper, document, source: vi.fn(), llm: vi.fn(), embedBatch: vi.fn() };
 });
 vi.mock("../../../infrastructure/database/prisma.js", () => ({ getPrisma: () => mocks.db }));
+// The partial env above has no LOG_LEVEL; the LLM routing modules import the logger.
+vi.mock("../../../infrastructure/logger.js", () => ({ logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn() } }));
 vi.mock("../../../config/env.js", () => ({ env: { RAG_CHUNK_CHARS: 2400, RAG_MAX_CHUNKS: 300, GEMINI_MODEL_FAST: "test", PAPER_ANALYSIS_MAX_OUTPUT_TOKENS: 4096 } }));
 vi.mock("../../embeddings/embedding.factory.js", () => ({ getEmbeddingProvider: () => ({ dimensions: 768, embedBatch: mocks.embedBatch }) }));
 vi.mock("../../llm/llm.run.js", () => ({ cachedGenerateJSON: mocks.llm }));

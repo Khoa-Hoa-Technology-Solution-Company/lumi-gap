@@ -2,7 +2,8 @@ import { GoogleGenAI } from "@google/genai";
 import { env } from "../../config/env.js";
 import { logger } from "../../infrastructure/logger.js";
 import { AppError } from "../../common/exceptions/app-error.js";
-import { aiModel, personalAiRuntime } from "../user-ai/user-ai.runtime.js";
+import { aiModel, personalAiRuntime, resolveAiConnection } from "../user-ai/user-ai.runtime.js";
+import { refreshPlatformAi } from "../user-ai/platform-ai.runtime.js";
 import { personalGenerate, personalOpenAiTools } from "../user-ai/personal-ai.client.js";
 
 /**
@@ -110,8 +111,10 @@ export class LlmContentError extends Error {
 }
 
 export async function generateText(prompt: string, opts: GenerateOptions = {}): Promise<string> {
-  const personal = personalAiRuntime();
-  const model = personal?.model ?? opts.model ?? aiModel();
+  await refreshPlatformAi();
+  const model = personalAiRuntime()?.model ?? opts.model ?? aiModel();
+  // Personal connection, else the admin's platform connection; null = env Gemini key through the SDK.
+  const personal = resolveAiConnection(model);
   const maxOutputTokens = opts.maxOutputTokens ?? 1024;
   const t0 = Date.now();
   try {
@@ -195,8 +198,9 @@ export async function generateWithTools(
   executor: (call: { name: string; args: Record<string, unknown> }) => Promise<unknown>,
   opts: GenerateOptions & { maxTurns?: number } = {},
 ): Promise<string> {
-  const personal = personalAiRuntime();
-  const model = personal?.model ?? opts.model ?? aiModel("deep");
+  await refreshPlatformAi();
+  const model = personalAiRuntime()?.model ?? opts.model ?? aiModel("deep");
+  const personal = resolveAiConnection(model);
   const maxOutputTokens = opts.maxOutputTokens ?? env.DEEP_ANALYSIS_MAX_OUTPUT_TOKENS;
   const maxTurns = opts.maxTurns ?? env.DEEP_ANALYSIS_MAX_TURNS;
 

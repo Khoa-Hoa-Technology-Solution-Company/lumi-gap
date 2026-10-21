@@ -32,6 +32,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useGapEvidencePreview } from "../hooks/use-gaps";
+import { CorpusCoverageNotice } from "./corpus-coverage-notice";
 import { searchApi } from "@/features/search/api/search.api";
 import { papersApi } from "@/features/papers/api/papers.api";
 import { formatNumber } from "@/utils/format";
@@ -366,6 +367,14 @@ export function GapAnalysisWorkflow({
                 {papers.length} / {preview.maxEvidencePapers} {t("papers")}
               </Badge>
             </div>
+
+            {preview.coverage && (
+              <CorpusCoverageNotice
+                coverage={preview.coverage}
+                topic={topic.trim()}
+                onEnriched={() => void loadPreview(papers.filter((paper) => paper.source === "selected").map((paper) => paper.id))}
+              />
+            )}
 
             {preview.warnings.map((warning) => (
               <div key={warning} className="flex gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-300">

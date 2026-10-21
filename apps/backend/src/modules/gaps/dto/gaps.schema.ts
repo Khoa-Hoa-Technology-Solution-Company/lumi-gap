@@ -47,6 +47,13 @@ export const PreviewGapEvidenceSchema = z
     { message: "yearFrom must be <= yearTo", path: ["yearFrom"] },
   );
 
+/** Body of POST /api/v1/gaps/enrich-corpus. */
+export const EnrichGapCorpusSchema = z.object({ topic: z.string().trim().min(3).max(200) }).strict();
+export type EnrichGapCorpusDto = z.infer<typeof EnrichGapCorpusSchema>;
+
+/** Params of GET /api/v1/gaps/enrich-corpus/:jobId. */
+export const EnrichGapCorpusJobParamsSchema = z.object({ jobId: z.string().regex(/^gap-enrich-[a-f0-9]{8,64}-\d+$/) });
+
 /** Query params of GET /api/v1/gaps/analyze/active. Without projectId only personal runs are returned. */
 export const ActiveGapAnalysisQuerySchema = z.object({
   projectId: databaseIdSchema.optional(),

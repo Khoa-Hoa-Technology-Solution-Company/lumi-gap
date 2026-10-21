@@ -11,6 +11,8 @@ import {
   GapIdParamsSchema,
   DirectionsBodySchema,
   PreviewGapEvidenceSchema,
+  EnrichGapCorpusSchema,
+  EnrichGapCorpusJobParamsSchema,
   GapCandidateSchema,
   GapEvidenceRecordSchema,
   GapValidationSchema,
@@ -85,6 +87,19 @@ gapsRouter.post(
   validate(PreviewGapEvidenceSchema),
   gapsController.previewEvidence,
 );
+/** Ingesting from OpenAlex writes to the shared corpus, so it gets its own, tighter hourly budget. */
+const enrichCorpusLimiter = createRateLimiter("gaps:enrichCorpusLimiter", {
+  windowMs: 60 * 60 * 1000,
+  limit: Math.max(env.GAPS_MAX_PER_HOUR, 5),
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.user?.sub ?? (req.ip || "anonymous"),
+  handler: (_req, res) =>
+    res.status(429).json({ success: false, error: { code: "TOO_MANY_REQUESTS", message: "Corpus enrichment rate limit exceeded — try again later." } }),
+});
+
+gapsRouter.post("/enrich-corpus", enrichCorpusLimiter, validate(EnrichGapCorpusSchema), gapsController.enrichCorpus);
+gapsRouter.get("/enrich-corpus/:jobId", validate(EnrichGapCorpusJobParamsSchema, "params"), gapsController.enrichCorpusStatus);
 gapsRouter.post("/analyze", analyzeGapLimiter, validate(AnalyzeGapSchema), gapsController.analyze);
 gapsRouter.get("/analyze/active", validate(ActiveGapAnalysisQuerySchema, "query"), gapsController.getActiveAnalysis);
 gapsRouter.post(

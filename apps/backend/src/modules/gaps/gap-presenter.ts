@@ -3,6 +3,7 @@ import type {
   GapClosureSummary,
   GapEvidenceStatus,
   GapGlobalEvidence,
+  GapNextStep,
   GapProjectEvidence,
   GapSource,
   GapStatus,
@@ -141,6 +142,35 @@ export function getGapEvidenceStatus(gap: Pick<GapListDoc, "source" | "probe" | 
   return Number(gap.evidenceConfidence ?? 0) >= 0.5 ? "confirmed" : "weak";
 }
 
+export interface GapNextStepInput {
+  evidenceStatus: GapEvidenceStatus;
+  /** Confirmed plus possible counter-evidence papers. */
+  counterCount: number;
+  /** OpenAlex has enough papers per topic and does not find the intersection under-explored (whatever the corpus says). */
+  globalWellCovered: boolean;
+  /** A probe topic has fewer corpus papers than GAP_MIN_PARENT_PAPERS. */
+  lowSample: boolean;
+  globalEvidence?: GapGlobalEvidence | null;
+  minParentPapers: number;
+  /** A closure check already decided: its decision answers the question. */
+  closureDecided: boolean;
+}
+
+/**
+ * What to do with a gap now (see GapNextStep). Order matters: a paper that may already answer the gap outranks every
+ * count; a thin corpus makes the counts meaningless; only then does the corpus signal decide.
+ */
+export function gapNextStep(input: GapNextStepInput): GapNextStep | undefined {
+  if (input.closureDecided) return undefined;
+  const base = { counterCount: input.counterCount, globalWellCovered: input.globalWellCovered };
+  if (input.counterCount > 0 || input.globalWellCovered) return { kind: "likely_studied", ...base };
+  const global = input.globalEvidence?.parentCounts;
+  const openAlexHasTopics = !!global && Math.min(global.a, global.b) >= Math.max(input.minParentPapers, 1);
+  if (input.lowSample && openAlexHasTopics) return { kind: "thin_corpus", ...base };
+  if (input.evidenceStatus === "confirmed") return { kind: "run_closure", ...base };
+  return { kind: "refine", ...base };
+}
+
 export type GapSortKey = "recommended" | "evidence" | "confidence" | "papers" | "newest" | "ai_only_last";
 
 /** Minimal gap fields needed to order a list before loading full rows for one page. */
@@ -213,6 +243,16 @@ export function toGapListItem(
     : doc.supportingPaperIds ?? []
   ).map(String);
   const createdAt = doc.createdAt instanceof Date ? doc.createdAt.toISOString() : String(doc.createdAt);
+  const evidenceStatus = getGapEvidenceStatus(doc, lowSample, config);
+  const nextStep = gapNextStep({
+    evidenceStatus,
+    counterCount: counterPaperIds.length + possibleCounterPaperIds.length,
+    globalWellCovered: !!signal?.global && !signal.global.lowSample && !signal.global.underExplored,
+    lowSample: lowSample ?? false,
+    globalEvidence: doc.globalEvidence,
+    minParentPapers: options.minParentPapers ?? 0,
+    closureDecided: Boolean(doc.latestClosureCheck?.decision),
+  });
 
   return {
     id: String(doc._id),
@@ -240,7 +280,8 @@ export function toGapListItem(
       .map((id) => supportingPapersById.get(id))
       .filter((paper): paper is GapSupportingPaper => Boolean(paper)),
     confidence: doc.confidence,
-    evidenceStatus: getGapEvidenceStatus(doc, lowSample, config),
+    evidenceStatus,
+    ...(nextStep ? { nextStep } : {}),
     source: doc.source,
     sourceReportId: doc.sourceReportId ? String(doc.sourceReportId) : undefined,
     analysisId: doc.analysisId ? String(doc.analysisId) : undefined,

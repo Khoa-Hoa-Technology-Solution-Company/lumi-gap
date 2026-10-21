@@ -17,11 +17,24 @@ import type {
   GapValidationRecord,
   GapEvidenceRecordView,
   ResponseMeta,
+  EnrichGapCorpusResponse,
+  EnrichGapCorpusStatus,
 } from "@trend/shared-types";
 
 export const gapsApi = {
   async previewEvidence(payload: PreviewGapEvidenceRequest): Promise<PreviewGapEvidenceResponse> {
     const res = await api.post(API_ROUTES.gaps.evidencePreview, payload);
+    return res.data.data;
+  },
+
+  /** Queues ingestion of the topic's most relevant OpenAlex papers that the corpus is missing. */
+  async enrichCorpus(topic: string): Promise<EnrichGapCorpusResponse> {
+    const res = await api.post(API_ROUTES.gaps.enrichCorpus, { topic });
+    return res.data.data;
+  },
+
+  async getCorpusEnrichmentStatus(jobId: string): Promise<EnrichGapCorpusStatus> {
+    const res = await api.get(API_ROUTES.gaps.enrichCorpusStatus(jobId));
     return res.data.data;
   },
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canAccessGap, isGapLowSample, sortGapRows, toGapListItem, type GapSortRow } from "../gap-presenter.js";
+import { canAccessGap, gapNextStep, isGapLowSample, sortGapRows, toGapListItem, type GapSortRow } from "../gap-presenter.js";
 
 describe("canAccessGap", () => {
   it("allows the gap owner", () => {
@@ -273,10 +273,37 @@ describe("under-explored signal recomputed from stored counts", () => {
     const vetoed = toGapListItem({ ...doc, globalEvidence: openAlex(180) }, new Map(), { minParentPapers: 5 });
     expect(vetoed.evidenceStatus).toBe("weak");
     expect(vetoed.underExplored).toMatchObject({ vetoedByGlobal: true, global: { expected: 200 } });
+    expect(vetoed.nextStep).toMatchObject({ kind: "likely_studied", globalWellCovered: true });
     expect(toGapListItem({ ...doc, globalEvidence: openAlex(20) }, new Map(), { minParentPapers: 5 }).evidenceStatus).toBe("confirmed");
 
     const row = (id: string, globalEvidence: ReturnType<typeof openAlex>): GapSortRow => ({ id, confidence: 0, evidenceConfidence: null, evidenceScopeSize: 20000, intersectionCount: 1, createdAt: new Date("2026-01-01T00:00:00Z"), source: "standalone", probe: base.probe, parentCounts: { a: 400, b: 300 }, globalEvidence, supportingCount: 0 });
     expect(sortGapRows([row("vetoed", openAlex(180)), row("agreed", openAlex(20))], "recommended", 5).map((item) => item.id)).toEqual(["agreed", "vetoed"]);
+  });
+});
+
+describe("gapNextStep", () => {
+  const input = { evidenceStatus: "weak" as const, counterCount: 0, globalWellCovered: false, lowSample: false, globalEvidence: null, minParentPapers: 5, closureDecided: false };
+  const openAlex = { source: "openalex" as const, intersectionCount: 271, parentCounts: { a: 2841, b: 1527607 }, scopeSize: 36_000_000, fetchedAt: "2026-10-21T00:00:00.000Z" };
+
+  it("says a gap with papers that may answer it is probably already studied, before any count", () => {
+    expect(gapNextStep({ ...input, evidenceStatus: "confirmed", counterCount: 2 })).toEqual({ kind: "likely_studied", counterCount: 2, globalWellCovered: false });
+    // A weak corpus signal does not hide what OpenAlex shows.
+    expect(gapNextStep({ ...input, globalWellCovered: true })?.kind).toBe("likely_studied");
+  });
+
+  it("says the corpus is too thin when a probe topic is rare locally but common in OpenAlex", () => {
+    expect(gapNextStep({ ...input, lowSample: true, globalEvidence: openAlex })?.kind).toBe("thin_corpus");
+    // Rare everywhere: a thin corpus is not the explanation.
+    expect(gapNextStep({ ...input, lowSample: true, globalEvidence: { ...openAlex, parentCounts: { a: 2, b: 40 } } })?.kind).toBe("refine");
+  });
+
+  it("sends a confirmed, uncontested gap to the closure check and everything else to refinement", () => {
+    expect(gapNextStep({ ...input, evidenceStatus: "confirmed" })?.kind).toBe("run_closure");
+    expect(gapNextStep(input)?.kind).toBe("refine");
+  });
+
+  it("has no next step once a closure check decided", () => {
+    expect(gapNextStep({ ...input, counterCount: 3, closureDecided: true })).toBeUndefined();
   });
 });
 

@@ -39,6 +39,7 @@ import {
 } from "../modules/reviews/review.routes.js";
 import { literatureRouter } from "../modules/literature/literature.routes.js";
 import { userAiRouter } from "../modules/user-ai/user-ai.routes.js";
+import { platformAiRouter } from "../modules/user-ai/platform-ai.routes.js";
 
 export const apiRouter: Router = Router();
 apiRouter.use("/projects/:projectId/manuscripts", manuscriptRouter);
@@ -77,5 +78,6 @@ apiRouter.use("/admin", syncRouter); // /admin/sync
 apiRouter.use("/admin", embeddingRouter); // /admin/embed
 apiRouter.use("/admin", pipelineRouter); // /admin/pipeline/status
 apiRouter.use("/admin", evaluationRouter); // /admin/evaluation/summary
+apiRouter.use("/admin/ai-connections", platformAiRouter); // platform-wide AI connection (admins)
 apiRouter.use("/admin", adminRouter); // /admin/users, /admin/stats — user management
 apiRouter.use("/admin", academicProfileAdminRouter);

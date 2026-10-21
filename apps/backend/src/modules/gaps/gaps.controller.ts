@@ -3,6 +3,7 @@ import { gapsService } from "./gaps.service.js";
 import type {
   ActiveGapAnalysisQuery,
   AnalyzeGapDto,
+  EnrichGapCorpusDto,
   PatchGapDto,
   PreviewGapEvidenceDto,
 } from "./dto/gaps.schema.js";
@@ -17,6 +18,18 @@ export const gapsController = {
   /** POST /api/v1/gaps/evidence-preview — retrieve evidence without charging credits. */
   async previewEvidence(req: Request<unknown, unknown, PreviewGapEvidenceDto>, res: Response) {
     const data = await gapsService.previewEvidence(req.user!.sub, req.body);
+    res.json({ success: true, data });
+  },
+
+  /** POST /api/v1/gaps/enrich-corpus — 202 Accepted; the gaps worker ingests the topic's missing OpenAlex works. */
+  async enrichCorpus(req: Request<unknown, unknown, EnrichGapCorpusDto>, res: Response) {
+    const data = await gapsService.enqueueCorpusEnrichment(req.body.topic);
+    res.status(202).json({ success: true, data });
+  },
+
+  /** GET /api/v1/gaps/enrich-corpus/:jobId — state of an enrichment job. */
+  async enrichCorpusStatus(req: Request, res: Response) {
+    const data = await gapsService.corpusEnrichmentStatus(req.params["jobId"] as string);
     res.json({ success: true, data });
   },
 
