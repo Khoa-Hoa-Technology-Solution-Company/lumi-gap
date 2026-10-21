@@ -1,8 +1,8 @@
 # ADR 0001: native collaborative LaTeX with durable snapshots and isolated compilation
 
-Date: **2026-10-14**. Status: **proposed; conditional on the proof and release gates below**. This is an architecture decision for future implementation. No editor, gateway, compiler, vendor subscription or infrastructure is installed by this audit.
+Date: **2026-10-14**. Status: **accepted; Option A is implemented** with CodeMirror 6 + Yjs in `apps/web` and a custom authenticated `ws` WebSocket gateway in `apps/backend/src/modules/workspaces/manuscript-collaboration.ts` (Hocuspocus, the first candidate named below, is not used; it is not a dependency). The comparison and release-gate sections below are the original decision record and have not been re-verified against the implementation; where they describe the repository as lacking a CRDT gateway or compiler, that was true on the decision date only. See `docs/manuscript-compilation.md` for the compiler.
 
-Related: [repository audit](../research-workspace-architecture-audit.md), [API contracts](../research-workspace-api-contracts.md), [implementation plan](../research-workspace-implementation-plan.md).
+Related (original proposal documents, since removed from the repository): the workspace architecture audit, API contracts and implementation plan dated 2026-10-14.
 
 ## Context and decision
 

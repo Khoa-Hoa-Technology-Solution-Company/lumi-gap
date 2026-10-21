@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="852" viewBox="0 0 1000 852" font-family="Segoe UI, Arial, sans-serif">
+<defs><marker id="open" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto"><path d="M1 1 L9 5 L1 9" fill="none" stroke="#4A5A6A" stroke-width="1.6"/></marker></defs>
+<rect width="1000" height="852" fill="#fff"/>
+<text x="500" y="32" text-anchor="middle" font-size="20" font-weight="700" fill="#1B2A3A">Use Case Diagram 2(a) - Reports, research gaps and AI review</text>
+<rect x="335" y="62" width="340" height="760" rx="12" fill="#F7F9FC" stroke="#2F6DB5" stroke-width="1.6"/>
+<text x="505" y="84" text-anchor="middle" font-size="15" font-weight="700" fill="#2F6DB5">LumiGap</text>
+<line x1="118.0" y1="618.5" x2="380.0" y2="132.0" stroke="#4A5A6A" stroke-width="1.5"/>
+<line x1="118.0" y1="618.5" x2="380.0" y2="356.0" stroke="#4A5A6A" stroke-width="1.5"/>
+<line x1="118.0" y1="618.5" x2="380.0" y2="580.0" stroke="#4A5A6A" stroke-width="1.5"/>
+<line x1="118.0" y1="618.5" x2="380.0" y2="670.0" stroke="#4A5A6A" stroke-width="1.5"/>
+<line x1="118.0" y1="618.5" x2="380.0" y2="760.0" stroke="#4A5A6A" stroke-width="1.5"/>
+<line x1="118.0" y1="338.5" x2="380.0" y2="356.0" stroke="#4A5A6A" stroke-width="1.5"/>
+<line x1="118.0" y1="478.5" x2="380.0" y2="490.0" stroke="#4A5A6A" stroke-width="1.5"/>
+<line x1="892.0" y1="274.0" x2="630.0" y2="132.0" stroke="#4A5A6A" stroke-width="1.5"/>
+<line x1="892.0" y1="274.0" x2="630.0" y2="356.0" stroke="#4A5A6A" stroke-width="1.5"/>
+<line x1="892.0" y1="745.0" x2="630.0" y2="670.0" stroke="#4A5A6A" stroke-width="1.5"/>
+<line x1="892.0" y1="745.0" x2="630.0" y2="760.0" stroke="#4A5A6A" stroke-width="1.5"/>
+<line x1="505.0" y1="164.0" x2="505.0" y2="234.0" stroke="#4A5A6A" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#open)"/>
+<rect x="513.0" y="190" width="86" height="18" fill="#F7F9FC"/><text x="517.0" y="203" font-size="12.5" fill="#4A5A6A">&#171;include&#187;</text>
+<line x1="505.0" y1="458.0" x2="505.0" y2="388.0" stroke="#4A5A6A" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#open)"/>
+<rect x="513.0" y="414" width="78" height="18" fill="#F7F9FC"/><text x="517.0" y="427" font-size="12.5" fill="#4A5A6A">&#171;extend&#187;</text>
+<ellipse cx="505.0" cy="132.0" rx="125.0" ry="32.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
+<text x="505.0" y="129.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A" font-weight="600">UC-12</text>
+<text x="505.0" y="145.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A">Generate research report</text>
+<ellipse cx="505.0" cy="266.0" rx="125.0" ry="32.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
+<text x="505.0" y="271.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A" font-weight="600">Preview evidence</text>
+<ellipse cx="505.0" cy="356.0" rx="125.0" ry="32.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
+<text x="505.0" y="353.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A" font-weight="600">UC-13</text>
+<text x="505.0" y="369.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A">Discover research gaps</text>
+<ellipse cx="505.0" cy="490.0" rx="125.0" ry="32.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
+<text x="505.0" y="487.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A" font-weight="600">UC-14</text>
+<text x="505.0" y="503.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A">Validate research gap</text>
+<ellipse cx="505.0" cy="580.0" rx="125.0" ry="32.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
+<text x="505.0" y="577.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A" font-weight="600">UC-15</text>
+<text x="505.0" y="593.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A">Check gap closure</text>
+<ellipse cx="505.0" cy="670.0" rx="125.0" ry="32.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
+<text x="505.0" y="667.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A" font-weight="600">UC-23</text>
+<text x="505.0" y="683.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A">Obtain AI paper review</text>
+<ellipse cx="505.0" cy="760.0" rx="125.0" ry="32.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
+<text x="505.0" y="757.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A" font-weight="600">UC-24</text>
+<text x="505.0" y="773.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A">Check paper format</text>
+<g stroke="#1B2A3A" stroke-width="2" fill="none"><circle cx="100.0" cy="598.5333333333333" r="10" fill="#fff"/><line x1="100.0" y1="608.5333333333333" x2="100.0" y2="634.5333333333333"/><line x1="83.0" y1="618.5333333333333" x2="117.0" y2="618.5333333333333"/><line x1="100.0" y1="634.5333333333333" x2="86.0" y2="654.5333333333333"/><line x1="100.0" y1="634.5333333333333" x2="114.0" y2="654.5333333333333"/></g>
+<text x="100.0" y="673" text-anchor="middle" font-size="13.5" fill="#1B2A3A">User</text>
+<g stroke="#1B2A3A" stroke-width="2" fill="none"><circle cx="100.0" cy="318.5333333333333" r="10" fill="#fff"/><line x1="100.0" y1="328.5333333333333" x2="100.0" y2="354.5333333333333"/><line x1="83.0" y1="338.5333333333333" x2="117.0" y2="338.5333333333333"/><line x1="100.0" y1="354.5333333333333" x2="86.0" y2="374.5333333333333"/><line x1="100.0" y1="354.5333333333333" x2="114.0" y2="374.5333333333333"/></g>
+<text x="100.0" y="393" text-anchor="middle" font-size="13.5" fill="#1B2A3A">Project member</text>
+<g stroke="#1B2A3A" stroke-width="2" fill="none"><circle cx="100.0" cy="458.5333333333333" r="10" fill="#fff"/><line x1="100.0" y1="468.5333333333333" x2="100.0" y2="494.5333333333333"/><line x1="83.0" y1="478.5333333333333" x2="117.0" y2="478.5333333333333"/><line x1="100.0" y1="494.5333333333333" x2="86.0" y2="514.5333333333333"/><line x1="100.0" y1="494.5333333333333" x2="114.0" y2="514.5333333333333"/></g>
+<text x="100.0" y="533" text-anchor="middle" font-size="13.5" fill="#1B2A3A">Gap validation</text>
+<text x="100.0" y="549" text-anchor="middle" font-size="13.5" fill="#1B2A3A">expert</text>
+<g stroke="#C62828" stroke-width="2" fill="none"><circle cx="910.0" cy="254.0" r="10" fill="#FDECEA"/><line x1="910.0" y1="264.0" x2="910.0" y2="290.0"/><line x1="893.0" y1="274.0" x2="927.0" y2="274.0"/><line x1="910.0" y1="290.0" x2="896.0" y2="310.0"/><line x1="910.0" y1="290.0" x2="924.0" y2="310.0"/></g>
+<text x="910.0" y="328" text-anchor="middle" font-size="13.5" fill="#1B2A3A">LLM provider</text>
+<text x="910.0" y="238" text-anchor="middle" font-size="11.5" font-style="italic" fill="#C62828">&#171;external system&#187;</text>
+<g stroke="#C62828" stroke-width="2" fill="none"><circle cx="910.0" cy="725.0" r="10" fill="#FDECEA"/><line x1="910.0" y1="735.0" x2="910.0" y2="761.0"/><line x1="893.0" y1="745.0" x2="927.0" y2="745.0"/><line x1="910.0" y1="761.0" x2="896.0" y2="781.0"/><line x1="910.0" y1="761.0" x2="924.0" y2="781.0"/></g>
+<text x="910.0" y="799" text-anchor="middle" font-size="13.5" fill="#1B2A3A">AI Reviewer</text>
+<text x="910.0" y="815" text-anchor="middle" font-size="13.5" fill="#1B2A3A">service</text>
+<text x="910.0" y="709" text-anchor="middle" font-size="11.5" font-style="italic" fill="#C62828">&#171;external system&#187;</text>
+</svg>

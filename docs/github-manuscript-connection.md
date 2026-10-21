@@ -104,20 +104,6 @@ StrictMode handling and the existing PAT transport. Provider responses in these
 checks are synthetic; persistence checks use disposable PostgreSQL and random
 short-lived Redis keys. Live authorization requires the app registration above.
 
-Verified 2026-10-20: 113 manuscript frontend tests, nine PostgreSQL/Redis OAuth
-persistence tests, nine crypto/HTTP/schema/route tests and four PostgreSQL runtime
-boundary tests passed (135 total). Shared-types/backend/web builds, targeted ESLint
-and scoped whitespace checks passed. The additive migration was applied locally;
-backend/web images were updated and `/ready` confirmed PostgreSQL and Redis.
-
-A disposable browser project confirmed the Vietnamese connection dialog and its
-explicit unconfigured state, with PAT entry collapsed under Advanced. The actual
-local server has no registered GitHub App credentials, so the Connect action is
-disabled until the administrator supplies the configuration. No real account was
-linked and no repository was published during verification.
-
-![GitHub setup state in the verified dialog](assets/manuscript-editor/github-connection-setup.png)
-
 References: [GitHub App user authorization](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-a-user-access-token-for-a-github-app),
 [refresh rotation](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/refreshing-user-access-tokens),
 [repository API](https://docs.github.com/en/rest/repos/repos#list-repositories-for-the-authenticated-user).

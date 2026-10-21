@@ -1,0 +1,30 @@
+%%{init: {"flowchart": {"curve": "linear", "nodeSpacing": 30, "rankSpacing": 70}}}%%
+flowchart LR
+  Dash["Dashboard"]:::acct
+  Lit["Literature search"]:::pub
+  PD["Paper detail"]:::pub
+  Rep["Reports<br/>/reports"]:::res
+  RV["Report viewer<br/>/reports/:id"]:::res
+  RG["Research gaps<br/>/research-gaps"]:::res
+  GV["Gap validation<br/>/research-gaps/validation"]:::res
+  GC["Gap closure<br/>/gap-closure"]:::res
+  GD["Gap discover<br/>/research-gap/discover"]:::res
+  PRv["AI paper review<br/>/papers/review"]:::res
+  FC["Format checker<br/>/papers/format-check"]:::res
+  SP["Settings: submit-paper, my-papers<br/>/settings/:section"]:::acct
+  Dash --> Rep --> RV
+  Dash --> RG
+  RG --> GV
+  RG --> GC
+  RG --> GD
+  Dash --> PRv
+  Dash --> FC
+  Dash --> SP
+  Lit --> PD --> Rep
+  PD --> RG
+  classDef pub fill:#EAF2FB,stroke:#2F6DB5,stroke-width:1.5px
+  classDef auth fill:#FFF4E5,stroke:#E08A00,stroke-width:1.5px
+  classDef acct fill:#E8F5E9,stroke:#2E7D32,stroke-width:1.5px
+  classDef res fill:#F3E5F5,stroke:#7B1FA2,stroke-width:1.5px
+  classDef com fill:#E0F2F1,stroke:#00796B,stroke-width:1.5px
+  classDef adm fill:#FDECEA,stroke:#C62828,stroke-width:1.5px

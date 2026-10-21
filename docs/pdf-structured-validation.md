@@ -47,7 +47,7 @@ Root validation additionally passed 23 relevant backend tests, six frontend test
 
 ## Application persistence and authorization integration
 
-The final scratch-environment run passed **11 integration tests**, with one external-AI test intentionally skipped, in 25.07 seconds. It used real PostgreSQL, Redis, the reviewer and manuscript compiler. Disposable resources were cleaned after the completed run. The final log is `apps/backend/uploads/pdf-structured-final-integration.log`.
+The final scratch-environment run passed **11 integration tests**, with one external-AI test intentionally skipped, in 25.07 seconds. It used real PostgreSQL, Redis, the reviewer and manuscript compiler. Disposable resources were cleaned after the completed run.
 
 The run verifies real structured conversion → compilation → PDF comparison → private preview → persisted manuscript import, including editable tables. It also covers requester isolation, permission revocation, duplicate acceptance, expiry, failed/unavailable compilation, and unavailable comparison retaining the actual compiled preview. The 100-page case converted, previewed and imported all 100 pages, including its final page. It does not substitute the source PDF when generated-source compilation fails.
 
@@ -92,7 +92,7 @@ The comparison images use the same physical scale for original, old output and n
 - `assets/pdf-structured/receipt-ruled-comparison.png`
 - `assets/pdf-structured/receipt-borderless-comparison.png`
 
-The exact compiled PDFs, reconstructed TeX, source archives and measurements are adjacent. Final deployed comparison results are saved in `assets/pdf-structured/receipt-comparison-metrics.json`; the upstream research/implementation report `pdf-to-latex-layout-upgrade-research.md` explains their limits. Text and numeric overlap are 1.000 for both upgraded receipts. Coarse visual similarity improved from 0.7776 to 0.9627 for the ruled receipt and from 0.5585 to 0.9283 for the borderless receipt. Both have zero coarse content-bound deviation. This is a fixture result, not a general accuracy guarantee.
+The exact compiled PDFs, reconstructed TeX, source archives and measurements are adjacent. Final deployed comparison results are saved in `assets/pdf-structured/receipt-comparison-metrics.json`. Text and numeric overlap are 1.000 for both upgraded receipts. Coarse visual similarity improved from 0.7776 to 0.9627 for the ruled receipt and from 0.5585 to 0.9283 for the borderless receipt. Both have zero coarse content-bound deviation. This is a fixture result, not a general accuracy guarantee.
 
 ## Remaining limits
 

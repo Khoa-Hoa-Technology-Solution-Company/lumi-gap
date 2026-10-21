@@ -1,0 +1,108 @@
+@startuml
+!pragma layout smetana
+skinparam dpi 150
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam BorderColor #2F6DB5
+skinparam BackgroundColor #FFFFFF
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam entity {
+  BackgroundColor #F7FAFD
+  BorderColor #2F6DB5
+}
+skinparam entity<<ref>> {
+  BackgroundColor #F3E5F5
+  BorderColor #7B1FA2
+}
+skinparam linetype ortho
+hide circle
+title Review templates and human reviews (ERD, 3 of 3)
+entity review_templates #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  active_version_id : uuid <<FK>>
+  owner_id : uuid <<FK>>
+  project_id : uuid <<FK>>
+  name : string
+  source : string
+  status : string
+}
+entity review_template_versions #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  created_by_id : uuid <<FK>>
+  template_id : uuid <<FK>>
+  version_number : int
+  review_mode : string
+  status : string
+}
+entity human_reviews #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  assignment_id : uuid <<FK>>
+  reviewer_id : uuid <<FK>>
+  revision_id : uuid <<FK>>
+  submission_id : uuid <<FK>>
+  template_id : uuid <<FK>>
+  template_version_id : uuid <<FK>>
+  round_number : int
+  status : string
+  overall_assessment : string
+}
+entity review_responses #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  review_id : uuid <<FK>>
+  criterion_key : string
+  comment : string
+  assessment : string
+}
+entity review_revision_items #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  review_id : uuid <<FK>>
+  priority : string
+  description : string
+  status : string
+}
+entity review_revision_responses #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  revision_item_id : uuid <<FK>>
+  submission_revision_id : uuid <<FK>>
+  response_text : string
+  status : string
+}
+entity projects <<ref>> #F3E5F5 {
+  * id : uuid <<PK>>
+}
+entity reviewer_assignments <<ref>> #F3E5F5 {
+  * id : uuid <<PK>>
+}
+entity submission_revisions <<ref>> #F3E5F5 {
+  * id : uuid <<PK>>
+}
+entity submissions <<ref>> #F3E5F5 {
+  * id : uuid <<PK>>
+}
+human_reviews ||--o{ review_responses
+human_reviews ||--o{ review_revision_items
+projects |o--o{ review_templates
+review_revision_items ||--o{ review_revision_responses
+review_template_versions |o--o{ human_reviews
+review_template_versions |o--o{ review_templates
+review_templates |o--o{ human_reviews
+review_templates ||--o{ review_template_versions
+reviewer_assignments ||--o{ human_reviews
+submission_revisions ||--o{ human_reviews
+submission_revisions ||--o{ review_revision_responses
+submissions ||--o{ human_reviews
+legend bottom
+Columns such as user_id and *_by_id reference users (not drawn). Purple entities are shown by id only.
+endlegend
+@enduml

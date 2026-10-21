@@ -1,0 +1,59 @@
+' Rendered image produced by ucdraw.py from R3_UseCase_1b_Paper_Discovery.uc.json; this file is the canonical UML source
+@startuml
+!pragma layout smetana
+skinparam dpi 150
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam BorderColor #2F6DB5
+skinparam BackgroundColor #FFFFFF
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam usecase {
+  BackgroundColor #EAF2FB
+  BorderColor #2F6DB5
+}
+skinparam actor {
+  BackgroundColor #FFFFFF
+  BorderColor #1B2A3A
+}
+skinparam entity {
+  BackgroundColor #F7FAFD
+  BorderColor #2F6DB5
+}
+skinparam rectangle {
+  BackgroundColor #F7F9FC
+  BorderColor #2F6DB5
+}
+skinparam actorStyle awesome
+skinparam actor<<System>> {
+  BackgroundColor #FDECEA
+  BorderColor #C62828
+}
+left to right direction
+title Use Case Diagram 1(b) - Paper discovery
+actor "Guest" as G
+actor "User\n(Student / Researcher)" as U
+rectangle "LumiGap" {
+  usecase "UC-05\nSearch papers" as UC05
+  usecase "UC-06\nView paper details" as UC06
+  usecase "UC-09\nExplore trends" as UC09
+  usecase "UC-07\nTranslate paper" as UC07
+  usecase "UC-08\nCompare papers" as UC08
+  usecase "UC-10\nManage bookmarks" as UC10
+  usecase "UC-11\nRequest paper addition" as UC11
+}
+G -- UC05
+G -- UC06
+G -- UC09
+U -- UC05
+U -- UC06
+U -- UC09
+U -- UC07
+U -- UC08
+U -- UC10
+U -- UC11
+@enduml

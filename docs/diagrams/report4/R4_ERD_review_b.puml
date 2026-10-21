@@ -1,0 +1,72 @@
+@startuml
+!pragma layout smetana
+skinparam dpi 150
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam BorderColor #2F6DB5
+skinparam BackgroundColor #FFFFFF
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam entity {
+  BackgroundColor #F7FAFD
+  BorderColor #2F6DB5
+}
+skinparam entity<<ref>> {
+  BackgroundColor #F3E5F5
+  BorderColor #7B1FA2
+}
+skinparam linetype ortho
+hide circle
+title Review requests and assignments (ERD, 2 of 3)
+entity review_requests #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  artifact_revision_id : uuid <<FK>>
+  project_id : uuid <<FK>>
+  requester_id : uuid <<FK>>
+  submission_id : uuid <<FK>>
+  template_version_id : uuid <<FK>>
+  status : string
+  origin : string
+  message : string
+}
+entity reviewer_assignments #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  artifact_revision_id : uuid <<FK>>
+  assigned_by_id : uuid <<FK>>
+  review_request_id : uuid <<FK>>
+  reviewer_id : uuid <<FK>>
+  submission_id : uuid <<FK>>
+  anonymous_code : string <<UK>>
+  status : string
+  decision : string
+  due_at : timestamptz
+}
+entity projects <<ref>> #F3E5F5 {
+  * id : uuid <<PK>>
+}
+entity submissions <<ref>> #F3E5F5 {
+  * id : uuid <<PK>>
+}
+entity submission_revisions <<ref>> #F3E5F5 {
+  * id : uuid <<PK>>
+}
+entity review_template_versions <<ref>> #F3E5F5 {
+  * id : uuid <<PK>>
+}
+projects ||--o{ review_requests
+review_requests |o--o| reviewer_assignments
+review_template_versions ||--o{ review_requests
+submission_revisions |o--o{ reviewer_assignments
+submission_revisions ||--o{ review_requests
+submissions ||--o{ review_requests
+submissions ||--o{ reviewer_assignments
+legend bottom
+Columns such as user_id and *_by_id reference users (not drawn). Purple entities are shown by id only.
+endlegend
+@enduml

@@ -1,0 +1,112 @@
+@startuml
+!pragma layout elk
+skinparam dpi 150
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam BorderColor #2F6DB5
+skinparam BackgroundColor #FFFFFF
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam usecase {
+  BackgroundColor #EAF2FB
+  BorderColor #2F6DB5
+}
+skinparam actor {
+  BackgroundColor #FFFFFF
+  BorderColor #1B2A3A
+}
+skinparam entity {
+  BackgroundColor #F7FAFD
+  BorderColor #2F6DB5
+}
+skinparam rectangle {
+  BackgroundColor #F7F9FC
+  BorderColor #2F6DB5
+}
+
+hide circle
+hide empty methods
+skinparam ArrowFontSize 11
+skinparam ArrowFontColor #4A5A6A
+skinparam class {
+  BackgroundColor #F7FAFD
+  BorderColor #2F6DB5
+  HeaderBackgroundColor #DCE8F6
+}
+skinparam entity {
+  BackgroundColor #F7FAFD
+  BorderColor #2F6DB5
+}
+skinparam stereotypeFontSize 10
+title
+ERD 4(c) - Review templates and versions
+<size:11><color:#4A5A6A>FK -> User / Project : relation to the User / Project entity is shown as an FK annotation</color></size>
+end title
+entity ReviewTemplate {
+  * id : uuid <<PK>>
+  --
+  # active_version_id : uuid <<FK>>
+  # owner_id : uuid <<FK>> -> User
+  # project_id : uuid <<FK>> -> Project
+  ..
+  name : text
+  source : text
+}
+entity ReviewTemplateVersion {
+  * id : uuid <<PK>>
+  --
+  # created_by_id : uuid <<FK>> -> User
+  # template_id : uuid <<FK>>
+  ..
+  review_mode : text
+  status : text
+}
+entity ReviewRequest {
+  * id : uuid <<PK>>
+  --
+  # artifact_revision_id : uuid <<FK>>
+  # project_id : uuid <<FK>> -> Project
+  # requester_id : uuid <<FK>> -> User
+  # submission_id : uuid <<FK>>
+  # template_version_id : uuid <<FK>>
+  ..
+  status : text
+  due_at : timestamp
+  expires_at : timestamp
+}
+entity HumanReview {
+  * id : uuid <<PK>>
+  --
+  # assignment_id : uuid <<FK>>
+  # reviewer_id : uuid <<FK>> -> User
+  # revision_id : uuid <<FK>>
+  # submission_id : uuid <<FK>>
+  # template_id : uuid <<FK>>
+  # template_version_id : uuid <<FK>>
+  ..
+  status : text
+}
+entity ExternalReviewInvitation {
+  * id : uuid <<PK>>
+  --
+  # artifact_revision_id : uuid <<FK>>
+  # invited_user_id : uuid <<FK>> -> User
+  # project_id : uuid <<FK>> -> Project
+  # requester_id : uuid <<FK>> -> User
+  # submission_id : uuid <<FK>>
+  # template_version_id : uuid <<FK>>
+  ..
+  reviewer_email : text
+  status : text
+}
+ReviewTemplate |o--o{ HumanReview : template_id
+ReviewTemplate ||--o{ ReviewTemplateVersion : template_id
+ReviewTemplateVersion |o--o{ ReviewTemplate : active_version_id
+ReviewTemplateVersion ||--o{ ReviewRequest : template_version_id
+ReviewTemplateVersion |o--o{ HumanReview : template_version_id
+ReviewTemplateVersion ||--o{ ExternalReviewInvitation : template_version_id
+@enduml

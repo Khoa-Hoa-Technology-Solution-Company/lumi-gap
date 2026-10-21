@@ -1,0 +1,123 @@
+@startuml
+!pragma layout smetana
+skinparam dpi 150
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam BorderColor #2F6DB5
+skinparam BackgroundColor #FFFFFF
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam entity {
+  BackgroundColor #F7FAFD
+  BorderColor #2F6DB5
+}
+skinparam entity<<ref>> {
+  BackgroundColor #F3E5F5
+  BorderColor #7B1FA2
+}
+skinparam linetype ortho
+hide circle
+title Submissions, revisions and external invitations (ERD, 1 of 3)
+entity submissions #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  created_by_id : uuid <<FK>>
+  current_revision_id : uuid <<FK>>
+  project_id : uuid <<FK>>
+  source_report_id : uuid <<UK>>
+  title : string
+  submission_type : string
+  status : string
+}
+entity submission_authors #F7FAFD {
+  * submission_id : uuid <<PK,FK>>
+  * user_id : uuid <<PK>>
+  --
+  position : int
+}
+entity submission_revisions #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  source_revision_id : uuid <<FK>>
+  submission_id : uuid <<FK>>
+  uploaded_by_id : uuid <<FK>>
+  revision_number : int
+  content_type : string
+  checksum_sha256 : string
+}
+entity ai_pre_reviews #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  requested_by_id : uuid <<FK>>
+  submission_id : uuid <<FK>>
+  status : string
+  provider : string
+  model : string
+}
+entity ai_runs #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  owner_id : uuid <<FK>>
+  project_id : uuid <<FK>>
+  job_type : string
+  status : string
+  attempts : int
+}
+entity research_contributions #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  contributor_id : uuid <<FK>>
+  project_id : uuid <<FK>>
+  source_review_assignment_id : uuid <<FK>>
+  submission_id : uuid <<FK>>
+  verified_by_id : uuid <<FK>>
+  contribution_type : string
+  verification_status : string
+  visibility : string
+}
+entity external_review_invitations #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  artifact_revision_id : uuid <<FK>>
+  invited_user_id : uuid <<FK>>
+  project_id : uuid <<FK>>
+  requester_id : uuid <<FK>>
+  submission_id : uuid <<FK>>
+  template_version_id : uuid <<FK>>
+  reviewer_email : string
+  status : string
+  expires_at : timestamptz
+}
+entity projects <<ref>> #F3E5F5 {
+  * id : uuid <<PK>>
+}
+entity reviewer_assignments <<ref>> #F3E5F5 {
+  * id : uuid <<PK>>
+}
+entity review_template_versions <<ref>> #F3E5F5 {
+  * id : uuid <<PK>>
+}
+projects |o--o{ ai_runs
+projects |o--o{ research_contributions
+projects ||--o{ external_review_invitations
+projects ||--o{ submissions
+review_template_versions ||--o{ external_review_invitations
+reviewer_assignments |o--o| research_contributions
+submission_revisions |o--o{ reviewer_assignments
+submission_revisions |o--o{ submission_revisions : source_revision_id
+submission_revisions |o--o{ submissions
+submission_revisions ||--o{ external_review_invitations
+submissions |o--o{ research_contributions
+submissions ||--o{ ai_pre_reviews
+submissions ||--o{ external_review_invitations
+submissions ||--o{ reviewer_assignments
+submissions ||--o{ submission_authors
+submissions ||--o{ submission_revisions
+legend bottom
+Columns such as user_id and *_by_id reference users (not drawn). Purple entities are shown by id only.
+endlegend
+@enduml

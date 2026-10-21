@@ -1,0 +1,87 @@
+@startuml
+!pragma layout smetana
+skinparam dpi 150
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam BorderColor #2F6DB5
+skinparam BackgroundColor #FFFFFF
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam entity {
+  BackgroundColor #F7FAFD
+  BorderColor #2F6DB5
+}
+skinparam entity<<ref>> {
+  BackgroundColor #F3E5F5
+  BorderColor #7B1FA2
+}
+skinparam linetype ortho
+hide circle
+title Reports and retrieval (ERD, 1 of 2)
+entity reports #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  credit_transaction_id : uuid <<FK>>
+  project_id : uuid <<FK>>
+  user_id : uuid <<FK>>
+  title : string
+  query : string
+  status : string
+}
+entity report_papers #F7FAFD {
+  * report_id : uuid <<PK,FK>>
+  * paper_id : uuid <<PK,FK>>
+  * kind : string <<PK>>
+  --
+  position : int
+}
+entity rag_queries #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  report_id : uuid <<FK>>
+  user_id : uuid <<FK>>
+  query_text : string
+  top_k : int
+  embedding_ms : int
+}
+entity rag_query_results #F7FAFD {
+  * query_id : uuid <<PK,FK>>
+  * paper_id : uuid <<PK,FK>>
+  --
+  score : float
+  rank : int
+}
+entity bookmarks #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  paper_id : uuid <<FK>>
+  report_id : uuid <<FK>>
+  user_id : uuid <<FK>>
+  note : string
+}
+entity papers <<ref>> #F3E5F5 {
+  * id : uuid <<PK>>
+}
+entity projects <<ref>> #F3E5F5 {
+  * id : uuid <<PK>>
+}
+entity credit_transactions <<ref>> #F3E5F5 {
+  * id : uuid <<PK>>
+}
+credit_transactions |o--o{ reports
+papers |o--o{ bookmarks
+papers ||--o{ rag_query_results
+papers ||--o{ report_papers
+projects |o--o{ reports
+rag_queries ||--o{ rag_query_results
+reports |o--o{ bookmarks
+reports ||--o{ rag_queries
+reports ||--o{ report_papers
+legend bottom
+Columns such as user_id and *_by_id reference users (not drawn). Purple entities are shown by id only.
+endlegend
+@enduml

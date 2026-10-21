@@ -1,0 +1,153 @@
+@startuml
+!pragma layout elk
+skinparam dpi 150
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam BorderColor #2F6DB5
+skinparam BackgroundColor #FFFFFF
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam usecase {
+  BackgroundColor #EAF2FB
+  BorderColor #2F6DB5
+}
+skinparam actor {
+  BackgroundColor #FFFFFF
+  BorderColor #1B2A3A
+}
+skinparam entity {
+  BackgroundColor #F7FAFD
+  BorderColor #2F6DB5
+}
+skinparam rectangle {
+  BackgroundColor #F7F9FC
+  BorderColor #2F6DB5
+}
+
+hide circle
+hide empty methods
+skinparam ArrowFontSize 11
+skinparam ArrowFontColor #4A5A6A
+skinparam class {
+  BackgroundColor #F7FAFD
+  BorderColor #2F6DB5
+  HeaderBackgroundColor #DCE8F6
+}
+skinparam entity {
+  BackgroundColor #F7FAFD
+  BorderColor #2F6DB5
+}
+skinparam stereotypeFontSize 10
+title
+ERD 2(a) - Papers, reports and AI services
+<size:11><color:#4A5A6A>FK -> User : relation to the User entity is shown as an FK annotation</color></size>
+end title
+entity Paper {
+  * id : uuid <<PK>>
+  --
+  # journal_id : uuid <<FK>>
+  # requested_by_id : uuid <<FK>> -> User
+  # uploaded_by_id : uuid <<FK>> -> User
+  ..
+  doi : text
+  title : text
+  paper_status : text
+  data_status : text
+}
+entity Author {
+  * id : uuid <<PK>>
+  --
+}
+entity PaperAuthor {
+  --
+  # author_id : uuid <<FK>>
+  # paper_id : uuid <<FK>>
+  ..
+  position : int
+}
+entity Journal {
+  * id : uuid <<PK>>
+  --
+}
+entity Bookmark {
+  * id : uuid <<PK>>
+  --
+  # paper_id : uuid <<FK>>
+  # report_id : uuid <<FK>>
+  # user_id : uuid <<FK>> -> User
+}
+entity Report {
+  * id : uuid <<PK>>
+  --
+  # credit_transaction_id : uuid <<FK>>
+  # project_id : uuid <<FK>>
+  # user_id : uuid <<FK>> -> User
+  ..
+  status : text
+  artifact_status : text
+  credit_cost : int
+  credit_refunded_at : timestamp
+}
+entity ReportPaper {
+  --
+  # paper_id : uuid <<FK>>
+  # report_id : uuid <<FK>>
+  ..
+  kind : text
+}
+entity PaperReview {
+  * id : uuid <<PK>>
+  --
+  # paper_id : uuid <<FK>>
+  # user_id : uuid <<FK>> -> User
+  ..
+  status : text
+  strictness : text
+  credits_charged : int
+}
+entity PaperFormatCheck {
+  * id : uuid <<PK>>
+  --
+  # user_id : uuid <<FK>> -> User
+  ..
+  preset : text
+  passed : bool
+}
+entity CreditTransaction {
+  * id : uuid <<PK>>
+  --
+  # refunded_transaction_id : uuid <<FK>> (self)
+  # user_id : uuid <<FK>> -> User
+  ..
+  type : text
+  action : text
+  amount : int
+  status : text
+  idempotency_key : text
+}
+entity Project {
+  * id : uuid <<PK>>
+  --
+  # created_by_id : uuid <<FK>> -> User
+  # owner_id : uuid <<FK>> -> User
+  ..
+  title : text
+  status : text
+  visibility : text
+  version : int
+}
+Journal |o--o{ Paper : journal_id
+Paper ||--o{ PaperAuthor : paper_id
+Author |o--o{ PaperAuthor : author_id
+Paper |o--o{ PaperReview : paper_id
+Paper |o--o{ Bookmark : paper_id
+Report |o--o{ Bookmark : report_id
+Project |o--o{ Report : project_id
+CreditTransaction |o--o{ Report : credit_transaction_id
+Report ||--o{ ReportPaper : report_id
+Paper ||--o{ ReportPaper : paper_id
+@enduml

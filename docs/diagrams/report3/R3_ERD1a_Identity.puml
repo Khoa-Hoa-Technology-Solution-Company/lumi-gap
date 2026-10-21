@@ -1,0 +1,124 @@
+@startuml
+!pragma layout elk
+skinparam dpi 150
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam BorderColor #2F6DB5
+skinparam BackgroundColor #FFFFFF
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam usecase {
+  BackgroundColor #EAF2FB
+  BorderColor #2F6DB5
+}
+skinparam actor {
+  BackgroundColor #FFFFFF
+  BorderColor #1B2A3A
+}
+skinparam entity {
+  BackgroundColor #F7FAFD
+  BorderColor #2F6DB5
+}
+skinparam rectangle {
+  BackgroundColor #F7F9FC
+  BorderColor #2F6DB5
+}
+
+hide circle
+hide empty methods
+skinparam ArrowFontSize 11
+skinparam ArrowFontColor #4A5A6A
+skinparam class {
+  BackgroundColor #F7FAFD
+  BorderColor #2F6DB5
+  HeaderBackgroundColor #DCE8F6
+}
+skinparam entity {
+  BackgroundColor #F7FAFD
+  BorderColor #2F6DB5
+}
+skinparam stereotypeFontSize 10
+title ERD 1(a) - Identity and academic profile
+entity User {
+  * id : uuid <<PK>>
+  --
+  # account_status_changed_by_id : uuid <<FK>> (self)
+  ..
+  email : text
+  system_role : text
+  account_status : text
+  academic_profile_type : text
+  credits : int
+}
+entity UserEmail {
+  * id : uuid <<PK>>
+  --
+  # user_id : uuid <<FK>>
+  ..
+  normalized_email : text
+  purpose : text
+}
+entity OAuthAccount {
+  * id : uuid <<PK>>
+  --
+  # user_id : uuid <<FK>>
+  ..
+  provider : text
+}
+entity RefreshToken {
+  * id : uuid <<PK>>
+  --
+  # user_id : uuid <<FK>>
+  ..
+  family_id : text
+  revoked_at : timestamp
+}
+entity AcademicProfile {
+  * id : uuid <<PK>>
+  --
+  # rejected_by_id : uuid <<FK>>
+  # role_verified_by_id : uuid <<FK>>
+  # user_id : uuid <<FK>>
+  # verified_by_id : uuid <<FK>>
+  ..
+  academic_role : text
+  role_verification_status : text
+  position_status : text
+}
+entity VerificationEvidence {
+  * id : uuid <<PK>>
+  --
+  # academic_profile_id : uuid <<FK>>
+  # previous_request_id : uuid <<FK>> (self)
+  # reviewed_by_id : uuid <<FK>>
+  # user_id : uuid <<FK>>
+  ..
+  verification_type : text
+  status : text
+}
+entity UserCapability {
+  * id : uuid <<PK>>
+  --
+  # granted_by_id : uuid <<FK>>
+  # user_id : uuid <<FK>>
+  ..
+  capability : text
+  status : text
+}
+User ||--o{ RefreshToken : user_id
+User ||--o{ AcademicProfile : user_id
+User |o--o{ AcademicProfile : verified_by_id
+User |o--o{ AcademicProfile : rejected_by_id
+User ||--o{ VerificationEvidence : user_id
+AcademicProfile |o--o{ VerificationEvidence : academic_profile_id
+User |o--o{ VerificationEvidence : reviewed_by_id
+User ||--o{ UserCapability : user_id
+User |o--o{ UserCapability : granted_by_id
+User ||--o{ OAuthAccount : user_id
+User ||--o{ UserEmail : user_id
+User |o--o{ AcademicProfile : role_verified_by_id
+@enduml

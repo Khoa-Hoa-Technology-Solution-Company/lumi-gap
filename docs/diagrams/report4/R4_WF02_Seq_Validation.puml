@@ -1,0 +1,93 @@
+@startuml
+skinparam dpi 150
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam BorderColor #2F6DB5
+skinparam BackgroundColor #FFFFFF
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam usecase {
+  BackgroundColor #EAF2FB
+  BorderColor #2F6DB5
+}
+skinparam actor {
+  BackgroundColor #FFFFFF
+  BorderColor #1B2A3A
+}
+skinparam class {
+  BackgroundColor #F7FAFD
+  BorderColor #2F6DB5
+  HeaderBackgroundColor #DCE8F6
+}
+skinparam state {
+  BackgroundColor #EAF2FB
+  BorderColor #2F6DB5
+}
+skinparam activity {
+  BackgroundColor #EAF2FB
+  BorderColor #2F6DB5
+  DiamondBackgroundColor #FFF4E5
+}
+skinparam swimlane {
+  BorderColor #9DB3CC
+  TitleBackgroundColor #DCE8F6
+}
+skinparam sequence {
+  ParticipantBackgroundColor #EAF2FB
+  ParticipantBorderColor #2F6DB5
+  LifeLineBorderColor #9DB3CC
+  GroupBackgroundColor #F4F7FA
+}
+skinparam package {
+  BackgroundColor #F7F9FC
+  BorderColor #9DB3CC
+}
+skinparam note {
+  BackgroundColor #FFF9E5
+  BorderColor #E0B200
+}
+skinparam entity {
+  BackgroundColor #F7FAFD
+  BorderColor #2F6DB5
+}
+skinparam rectangle {
+  BackgroundColor #F7F9FC
+  BorderColor #2F6DB5
+}
+title WF02 Expert validation of a research gap - sequence
+skinparam maxMessageSize 170
+skinparam ParticipantPadding 2
+skinparam BoxPadding 2
+skinparam sequenceMessageAlign left
+autonumber
+actor "Gap owner\n(project owner)" as O
+actor "Expert\n(GAP_VALIDATION capability)" as X
+boundary "Web\ngap-expert-validation" as W
+control "gapsRouter" as R
+control "gapValidationService" as V
+control "capabilityService" as K
+database "PostgreSQL" as DB
+O -> W : Request expert validation
+W -> R : POST /gaps/:id/request-validation
+R -> V : requestValidation(gapId, userId)
+V -> DB : recordGapPacket, update validation_status to\nUNDER_VALIDATION (from DRAFT, CANDIDATE or REFINED)
+X -> W : open validation queue
+W -> R : GET /gaps/validation-queue
+R -> V : listValidationQueue\n(excludes own and same-project gaps)
+X -> W : choose action and comment
+W -> R : POST /gaps/:id/validations
+R -> V : addValidation(gapId, reviewerId, input)
+activate V
+V -> K : assertExpert\n(active account, GAP_VALIDATION, no code path grants it)
+V -> DB : tx lock research_gaps row FOR UPDATE
+V -> DB : check open for validation, version,\nproject not archived
+V -> DB : insert gap_validations (gapVersion)
+V -> V : resolveValidationStatus(decisions, action, quorum)
+V -> DB : update research_gaps.validation_status\n(VALIDATED, REJECTED, REFINED or UNDER_VALIDATION)
+V --> W : validation record
+deactivate V
+@enduml

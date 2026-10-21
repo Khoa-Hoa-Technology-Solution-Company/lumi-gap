@@ -1,0 +1,88 @@
+@startuml
+!pragma layout smetana
+skinparam dpi 150
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam BorderColor #2F6DB5
+skinparam BackgroundColor #FFFFFF
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam entity {
+  BackgroundColor #F7FAFD
+  BorderColor #2F6DB5
+}
+skinparam entity<<ref>> {
+  BackgroundColor #F3E5F5
+  BorderColor #7B1FA2
+}
+skinparam linetype ortho
+hide circle
+title Users, sessions and academic profiles (ERD, 1 of 2)
+entity users #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  account_status_changed_by_id : uuid <<FK>>
+  email : string <<UK>>
+  full_name : string
+  system_role : string
+  academic_profile_type : string
+}
+entity user_emails #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  user_id : uuid <<FK>>
+  normalized_email : string <<UK>>
+  is_primary : bool
+  purpose : string
+  verified_at : timestamptz
+}
+entity refresh_tokens #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  user_id : uuid <<FK>>
+  token_hash : string
+  family_id : uuid
+  expires_at : timestamptz
+}
+entity oauth_accounts #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  user_id : uuid <<FK>>
+  provider : string
+  provider_account_id : string
+}
+entity user_capabilities #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  granted_by_id : uuid <<FK>>
+  user_id : uuid <<FK>>
+  capability : string
+  status : string
+  source : string
+}
+entity academic_profiles #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  rejected_by_id : uuid <<FK>>
+  role_verified_by_id : uuid <<FK>>
+  user_id : uuid <<FK>>
+  verified_by_id : uuid <<FK>>
+  academic_role : string
+  role_verification_status : string
+  position_status : string
+}
+users |o--o{ academic_profiles : rejected_by_id
+users |o--o{ academic_profiles : role_verified_by_id
+users |o--o{ academic_profiles : verified_by_id
+users |o--o{ user_capabilities : granted_by_id
+users |o--o{ users : account_status_changed_by_id
+users ||--o{ oauth_accounts
+users ||--o{ refresh_tokens
+users ||--o{ user_capabilities : user_id
+users ||--o{ user_emails
+users ||--o| academic_profiles : user_id
+@enduml

@@ -1,0 +1,105 @@
+@startuml
+!pragma layout smetana
+skinparam dpi 150
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam BorderColor #2F6DB5
+skinparam BackgroundColor #FFFFFF
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam entity {
+  BackgroundColor #F7FAFD
+  BorderColor #2F6DB5
+}
+skinparam entity<<ref>> {
+  BackgroundColor #F3E5F5
+  BorderColor #7B1FA2
+}
+skinparam linetype ortho
+hide circle
+title Mentorship, recruitment and evidence (ERD, 2 of 2)
+entity mentorship_requests #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  mentor_user_id : uuid <<FK>>
+  project_id : uuid <<FK>>
+  requested_by : uuid <<FK>>
+  direction : string
+  mentor_role : string
+  status : string
+}
+entity mentor_relationships #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  mentor_user_id : uuid <<FK>>
+  project_id : uuid <<FK>>
+  source_request_id : uuid <<FK>>
+  mentor_role : string
+  status : string
+  started_at : timestamptz
+}
+entity recruitment_openings #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  created_by_id : uuid <<FK>>
+  project_id : uuid <<FK>>
+  title : string
+  capacity : int
+  accepted_count : int
+}
+entity recruitment_applications #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  applicant_id : uuid <<FK>>
+  decided_by_id : uuid <<FK>>
+  opening_id : uuid <<FK>>
+  project_id : uuid <<FK>>
+  status : string
+  cover_letter : string
+  decided_at : timestamptz
+}
+entity project_screening_decisions #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  paper_id : uuid <<FK>>
+  project_id : uuid <<FK>>
+  reviewer_id : uuid <<FK>>
+  phase : string
+  decision : string
+  reason : string
+}
+entity project_evidence_items #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  extracted_by_id : uuid <<FK>>
+  paper_id : uuid <<FK>>
+  project_id : uuid <<FK>>
+  reviewed_by_id : uuid <<FK>>
+  claim : string
+  locator : string
+  review_state : string
+}
+entity projects <<ref>> #F3E5F5 {
+  * id : uuid <<PK>>
+}
+entity papers <<ref>> #F3E5F5 {
+  * id : uuid <<PK>>
+}
+mentorship_requests ||--o| mentor_relationships
+papers ||--o{ project_evidence_items
+papers ||--o{ project_screening_decisions
+projects ||--o{ mentor_relationships
+projects ||--o{ mentorship_requests
+projects ||--o{ project_evidence_items
+projects ||--o{ project_screening_decisions
+projects ||--o{ recruitment_applications
+projects ||--o{ recruitment_openings
+recruitment_openings ||--o{ recruitment_applications
+legend bottom
+Columns such as user_id and *_by_id reference users (not drawn). Purple entities are shown by id only.
+endlegend
+@enduml

@@ -1,0 +1,81 @@
+@startuml
+!pragma layout smetana
+skinparam dpi 150
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam BorderColor #2F6DB5
+skinparam BackgroundColor #FFFFFF
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam entity {
+  BackgroundColor #F7FAFD
+  BorderColor #2F6DB5
+}
+skinparam entity<<ref>> {
+  BackgroundColor #F3E5F5
+  BorderColor #7B1FA2
+}
+skinparam linetype ortho
+hide circle
+title External sync and corpus ingestion (ERD, 2 of 2)
+entity api_providers #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  provider_name : string <<UK>>
+  base_url : string
+  provider_status : string
+}
+entity api_sync_configs #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  created_by_id : uuid <<FK>>
+  provider_id : uuid <<FK>>
+  config_name : string
+  search_text : string
+  config_status : string
+}
+entity api_sync_runs #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  provider_id : uuid <<FK>>
+  sync_config_id : uuid <<FK>>
+  run_status : string
+  total_fetched : int
+  total_inserted : int
+}
+entity openalex_ingest_campaigns #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  campaign_key : string <<UK>>
+  state : string
+  target_unique_works : int
+}
+entity openalex_ingest_partitions #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  campaign_id : uuid <<FK>>
+  partition_key : string
+  state : string
+  accepted_count : int
+}
+entity corpus_validation_runs #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  campaign_id : uuid <<FK>>
+  state : string
+  overall_status : string
+  decision : string
+}
+api_providers ||--o{ api_sync_configs
+api_providers ||--o{ api_sync_runs
+api_sync_configs |o--o{ api_sync_runs
+openalex_ingest_campaigns ||--o{ corpus_validation_runs
+openalex_ingest_campaigns ||--o{ openalex_ingest_partitions
+legend bottom
+Columns such as user_id and *_by_id reference users (not drawn).
+endlegend
+@enduml

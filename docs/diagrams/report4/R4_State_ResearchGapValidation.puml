@@ -1,0 +1,84 @@
+@startuml
+!pragma layout smetana
+skinparam dpi 150
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam BorderColor #2F6DB5
+skinparam BackgroundColor #FFFFFF
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam usecase {
+  BackgroundColor #EAF2FB
+  BorderColor #2F6DB5
+}
+skinparam actor {
+  BackgroundColor #FFFFFF
+  BorderColor #1B2A3A
+}
+skinparam class {
+  BackgroundColor #F7FAFD
+  BorderColor #2F6DB5
+  HeaderBackgroundColor #DCE8F6
+}
+skinparam state {
+  BackgroundColor #EAF2FB
+  BorderColor #2F6DB5
+}
+skinparam activity {
+  BackgroundColor #EAF2FB
+  BorderColor #2F6DB5
+  DiamondBackgroundColor #FFF4E5
+}
+skinparam swimlane {
+  BorderColor #9DB3CC
+  TitleBackgroundColor #DCE8F6
+}
+skinparam sequence {
+  ParticipantBackgroundColor #EAF2FB
+  ParticipantBorderColor #2F6DB5
+  LifeLineBorderColor #9DB3CC
+  GroupBackgroundColor #F4F7FA
+}
+skinparam package {
+  BackgroundColor #F7F9FC
+  BorderColor #9DB3CC
+}
+skinparam note {
+  BackgroundColor #FFF9E5
+  BorderColor #E0B200
+}
+skinparam entity {
+  BackgroundColor #F7FAFD
+  BorderColor #2F6DB5
+}
+skinparam rectangle {
+  BackgroundColor #F7F9FC
+  BorderColor #2F6DB5
+}
+title ResearchGap validation status (research_gaps.validation_status)
+[*] --> CANDIDATE : createCandidate(), AI fan-out\n(column default)
+CANDIDATE --> UNDER_VALIDATION : requestValidation()
+REFINED --> UNDER_VALIDATION : requestValidation()
+UNDER_VALIDATION --> REFINED : addValidation()\naction REFINE_SCOPE
+REFINED --> REFINED : addValidation()\nREFINE_SCOPE
+UNDER_VALIDATION --> VALIDATED : quorum of VALIDATE\nand no blocking vote
+UNDER_VALIDATION --> REJECTED : quorum of REJECT
+REFINED --> VALIDATED : quorum of VALIDATE\nand no blocking vote
+REFINED --> REJECTED : quorum of REJECT
+UNDER_VALIDATION --> UNDER_VALIDATION : other votes (CHALLENGE,\nREQUEST_EVIDENCE, SUGGEST_EVIDENCE)
+UNDER_VALIDATION --> CANDIDATE : content or evidence\nedited (version +1)
+REFINED --> CANDIDATE : content or evidence edited
+VALIDATED --> CANDIDATE : content or evidence edited
+REJECTED --> CANDIDATE : content or evidence edited
+state DRAFT #F5F5F5
+state ARCHIVED #F5F5F5
+note right of DRAFT
+  <b>Dead values</b>: DRAFT and ARCHIVED are allowed by the
+  type and the requestValidation() filter, but no service
+  ever writes them.
+end note
+@enduml

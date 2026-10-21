@@ -1,0 +1,104 @@
+@startuml
+!pragma layout elk
+skinparam dpi 150
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam BorderColor #2F6DB5
+skinparam BackgroundColor #FFFFFF
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam usecase {
+  BackgroundColor #EAF2FB
+  BorderColor #2F6DB5
+}
+skinparam actor {
+  BackgroundColor #FFFFFF
+  BorderColor #1B2A3A
+}
+skinparam entity {
+  BackgroundColor #F7FAFD
+  BorderColor #2F6DB5
+}
+skinparam rectangle {
+  BackgroundColor #F7F9FC
+  BorderColor #2F6DB5
+}
+
+hide circle
+hide empty methods
+skinparam ArrowFontSize 11
+skinparam ArrowFontColor #4A5A6A
+skinparam class {
+  BackgroundColor #F7FAFD
+  BorderColor #2F6DB5
+  HeaderBackgroundColor #DCE8F6
+}
+skinparam entity {
+  BackgroundColor #F7FAFD
+  BorderColor #2F6DB5
+}
+skinparam stereotypeFontSize 10
+title ERD 1(b) - Credits, payments and notifications
+entity User {
+  * id : uuid <<PK>>
+  --
+  # account_status_changed_by_id : uuid <<FK>> (self)
+  ..
+  email : text
+  system_role : text
+  account_status : text
+  academic_profile_type : text
+  credits : int
+}
+entity CreditTransaction {
+  * id : uuid <<PK>>
+  --
+  # refunded_transaction_id : uuid <<FK>> (self)
+  # user_id : uuid <<FK>>
+  ..
+  type : text
+  action : text
+  amount : int
+  status : text
+  idempotency_key : text
+}
+entity PaymentOrder {
+  * id : uuid <<PK>>
+  --
+  # user_id : uuid <<FK>>
+  ..
+  order_code : bigint
+  amount : int
+  credits : int
+  status : text
+}
+entity Notification {
+  * id : uuid <<PK>>
+  --
+  # user_id : uuid <<FK>>
+  ..
+  type : text
+  title : text
+}
+entity DeviceToken {
+  * id : uuid <<PK>>
+  --
+  # user_id : uuid <<FK>>
+  ..
+  platform : text
+}
+entity AuditLog {
+  * id : uuid <<PK>>
+  --
+  # user_id : uuid <<FK>>
+}
+User ||--o{ CreditTransaction : user_id
+User ||--o{ PaymentOrder : user_id
+User |o--o{ Notification : user_id
+User ||--o{ DeviceToken : user_id
+User |o--o{ AuditLog : user_id
+@enduml

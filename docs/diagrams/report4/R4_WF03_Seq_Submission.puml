@@ -1,0 +1,101 @@
+@startuml
+skinparam dpi 150
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam BorderColor #2F6DB5
+skinparam BackgroundColor #FFFFFF
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam usecase {
+  BackgroundColor #EAF2FB
+  BorderColor #2F6DB5
+}
+skinparam actor {
+  BackgroundColor #FFFFFF
+  BorderColor #1B2A3A
+}
+skinparam class {
+  BackgroundColor #F7FAFD
+  BorderColor #2F6DB5
+  HeaderBackgroundColor #DCE8F6
+}
+skinparam state {
+  BackgroundColor #EAF2FB
+  BorderColor #2F6DB5
+}
+skinparam activity {
+  BackgroundColor #EAF2FB
+  BorderColor #2F6DB5
+  DiamondBackgroundColor #FFF4E5
+}
+skinparam swimlane {
+  BorderColor #9DB3CC
+  TitleBackgroundColor #DCE8F6
+}
+skinparam sequence {
+  ParticipantBackgroundColor #EAF2FB
+  ParticipantBorderColor #2F6DB5
+  LifeLineBorderColor #9DB3CC
+  GroupBackgroundColor #F4F7FA
+}
+skinparam package {
+  BackgroundColor #F7F9FC
+  BorderColor #9DB3CC
+}
+skinparam note {
+  BackgroundColor #FFF9E5
+  BorderColor #E0B200
+}
+skinparam entity {
+  BackgroundColor #F7FAFD
+  BorderColor #2F6DB5
+}
+skinparam rectangle {
+  BackgroundColor #F7F9FC
+  BorderColor #2F6DB5
+}
+title WF03 Submission and AI pre-review - sequence
+skinparam maxMessageSize 170
+skinparam ParticipantPadding 2
+skinparam BoxPadding 2
+skinparam sequenceMessageAlign left
+autonumber
+actor "Author\n(project member)" as A
+boundary "Web\nsubmission-new,\nuseRunAiPreReview" as W
+control "submissionRouter" as R
+control "submissionService" as S
+control "pdfStorageService" as ST
+database "PostgreSQL" as DB
+queue "BullMQ ai-jobs queue" as Q
+control "ai-jobs.worker.ts" as K <<worker>>
+participant "aiReviewerClient and\nai-reviewer (FastAPI)" as AI <<external>>
+A -> W : fill metadata, attach PDF
+W -> R : POST /submissions (multipart)
+R -> S : create(input, file, actor)
+S -> ST : savePdf (local, R2 or Cloudinary)
+S -> DB : tx insert submissions (submitted),\nauthors, revision 1
+S --> W : submission\n(POST /submissions does not start a pre-review)
+A -> W : Run AI pre-review
+W -> R : POST /submissions/:id/ai-pre-review\n(separate request)
+R -> S : runAiPreReview()
+S -> DB : lock submission, insert ai_pre_reviews (QUEUED)
+alt a run is already QUEUED or PROCESSING
+  S --> W : 409 conflict
+else accepted
+  S -> Q : add submission-pre-review\n(attempts 3, backoff 5000 ms)
+  S --> W : 202 Accepted (QUEUED record)
+end
+Q -> K : job
+K -> S : processAiPreReview()
+activate S
+S -> DB : claim PROCESSING
+S -> AI : preReview(metadata, manuscript text,\nrelated papers)
+AI --> S : structured analysis
+S -> DB : tx ai_pre_reviews COMPLETED,\nsubmissions submitted to ready_for_review
+deactivate S
+note over S, DB : CANCELLED if the submission was closed before the run
+@enduml

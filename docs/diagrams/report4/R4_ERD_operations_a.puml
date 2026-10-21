@@ -1,0 +1,83 @@
+@startuml
+!pragma layout smetana
+skinparam dpi 150
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam BorderColor #2F6DB5
+skinparam BackgroundColor #FFFFFF
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam entity {
+  BackgroundColor #F7FAFD
+  BorderColor #2F6DB5
+}
+skinparam entity<<ref>> {
+  BackgroundColor #F3E5F5
+  BorderColor #7B1FA2
+}
+skinparam linetype ortho
+hide circle
+title Notifications, logs and tool runs (ERD, 1 of 2)
+entity notifications #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  paper_id : uuid <<FK>>
+  user_id : uuid <<FK>>
+  event_key : string <<UK>>
+  type : string
+  title : string
+  is_read : bool
+}
+entity device_tokens #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  user_id : uuid <<FK>>
+  token : string <<UK>>
+  platform : string
+  disabled_at : timestamptz
+}
+entity audit_logs #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  user_id : uuid <<FK>>
+  action_name : string
+  target_table_name : string
+  target_record_id : string
+}
+entity search_logs #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  user_id : uuid <<FK>>
+  query : string
+  mode : string
+  result_count : int
+}
+entity mcp_tool_runs #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  report_id : uuid <<FK>>
+  user_id : uuid <<FK>>
+  tool_name : string
+  duration_ms : int
+}
+entity trend_explanations #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  user_id : uuid <<FK>>
+}
+entity papers <<ref>> #F3E5F5 {
+  * id : uuid <<PK>>
+}
+entity reports <<ref>> #F3E5F5 {
+  * id : uuid <<PK>>
+}
+papers |o--o{ notifications
+reports |o--o{ mcp_tool_runs
+legend bottom
+Columns such as user_id and *_by_id reference users (not drawn). Purple entities are shown by id only.
+endlegend
+@enduml

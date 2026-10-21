@@ -1,0 +1,106 @@
+@startuml
+!pragma layout elk
+skinparam dpi 150
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam BorderColor #2F6DB5
+skinparam BackgroundColor #FFFFFF
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam usecase {
+  BackgroundColor #EAF2FB
+  BorderColor #2F6DB5
+}
+skinparam actor {
+  BackgroundColor #FFFFFF
+  BorderColor #1B2A3A
+}
+skinparam entity {
+  BackgroundColor #F7FAFD
+  BorderColor #2F6DB5
+}
+skinparam rectangle {
+  BackgroundColor #F7F9FC
+  BorderColor #2F6DB5
+}
+
+hide circle
+hide empty methods
+skinparam ArrowFontSize 11
+skinparam ArrowFontColor #4A5A6A
+skinparam class {
+  BackgroundColor #F7FAFD
+  BorderColor #2F6DB5
+  HeaderBackgroundColor #DCE8F6
+}
+skinparam entity {
+  BackgroundColor #F7FAFD
+  BorderColor #2F6DB5
+}
+skinparam stereotypeFontSize 10
+title
+ERD 3(b) - Mentoring and recruitment
+<size:11><color:#4A5A6A>FK -> User : relation to the User entity is shown as an FK annotation</color></size>
+end title
+entity Project {
+  * id : uuid <<PK>>
+  --
+  # created_by_id : uuid <<FK>> -> User
+  # owner_id : uuid <<FK>> -> User
+  ..
+  title : text
+  status : text
+  visibility : text
+  version : int
+}
+entity MentorshipRequest {
+  * id : uuid <<PK>>
+  --
+  # mentor_user_id : uuid <<FK>> -> User
+  # project_id : uuid <<FK>>
+  # requested_by : uuid <<FK>> -> User
+  ..
+  direction : text
+  status : text
+  expires_at : timestamp
+}
+entity MentorRelationship {
+  * id : uuid <<PK>>
+  --
+  # mentor_user_id : uuid <<FK>> -> User
+  # project_id : uuid <<FK>>
+  # source_request_id : uuid <<FK>>
+  ..
+  status : text
+}
+entity RecruitmentOpening {
+  * id : uuid <<PK>>
+  --
+  # created_by_id : uuid <<FK>> -> User
+  # project_id : uuid <<FK>>
+  ..
+  title : text
+  status : text
+  capacity : int
+}
+entity RecruitmentApplication {
+  * id : uuid <<PK>>
+  --
+  # applicant_id : uuid <<FK>> -> User
+  # decided_by_id : uuid <<FK>> -> User
+  # opening_id : uuid <<FK>>
+  # project_id : uuid <<FK>>
+  ..
+  status : text
+}
+Project ||--o{ RecruitmentOpening : project_id
+RecruitmentOpening ||--o{ RecruitmentApplication : opening_id
+Project ||--o{ RecruitmentApplication : project_id
+Project ||--o{ MentorRelationship : project_id
+Project ||--o{ MentorshipRequest : project_id
+MentorshipRequest ||--o{ MentorRelationship : source_request_id
+@enduml

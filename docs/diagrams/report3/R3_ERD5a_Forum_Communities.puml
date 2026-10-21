@@ -1,0 +1,157 @@
+@startuml
+!pragma layout elk
+skinparam dpi 150
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam BorderColor #2F6DB5
+skinparam BackgroundColor #FFFFFF
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam usecase {
+  BackgroundColor #EAF2FB
+  BorderColor #2F6DB5
+}
+skinparam actor {
+  BackgroundColor #FFFFFF
+  BorderColor #1B2A3A
+}
+skinparam entity {
+  BackgroundColor #F7FAFD
+  BorderColor #2F6DB5
+}
+skinparam rectangle {
+  BackgroundColor #F7F9FC
+  BorderColor #2F6DB5
+}
+
+hide circle
+hide empty methods
+skinparam ArrowFontSize 11
+skinparam ArrowFontColor #4A5A6A
+skinparam class {
+  BackgroundColor #F7FAFD
+  BorderColor #2F6DB5
+  HeaderBackgroundColor #DCE8F6
+}
+skinparam entity {
+  BackgroundColor #F7FAFD
+  BorderColor #2F6DB5
+}
+skinparam stereotypeFontSize 10
+title
+ERD 5(a) - Communities and forum
+<size:11><color:#4A5A6A>FK -> User : relation to the User entity is shown as an FK annotation</color></size>
+end title
+entity Community {
+  * id : uuid <<PK>>
+  --
+  # owner_id : uuid <<FK>> -> User
+  # reviewed_by_id : uuid <<FK>> -> User
+  ..
+  name : text
+  visibility : text
+  status : text
+}
+entity CommunityMembership {
+  * id : uuid <<PK>>
+  --
+  # community_id : uuid <<FK>>
+  # user_id : uuid <<FK>> -> User
+  ..
+  role : text
+  status : text
+}
+entity ForumPost {
+  * id : uuid <<PK>>
+  --
+  # accepted_comment_id : uuid <<FK>>
+  # author_id : uuid <<FK>> -> User
+  # community_id : uuid <<FK>>
+  # linked_paper_id : uuid <<FK>>
+  # linked_project_id : uuid <<FK>>
+  # linked_research_gap_id : uuid <<FK>>
+  # research_gap_id : uuid <<FK>>
+  ..
+  type : text
+  title : text
+  status : text
+}
+entity ForumComment {
+  * id : uuid <<PK>>
+  --
+  # author_id : uuid <<FK>> -> User
+  # parent_comment_id : uuid <<FK>> (self)
+  # post_id : uuid <<FK>>
+  ..
+  status : text
+}
+entity ForumVote {
+  * id : uuid <<PK>>
+  --
+  # comment_id : uuid <<FK>>
+  # post_id : uuid <<FK>>
+  # user_id : uuid <<FK>> -> User
+  ..
+  value : int
+}
+entity ForumTag {
+  * id : uuid <<PK>>
+  --
+  name : text
+}
+entity ForumPostTag {
+  --
+  # post_id : uuid <<FK>>
+  # tag_id : uuid <<FK>>
+}
+entity Paper {
+  * id : uuid <<PK>>
+  --
+  # requested_by_id : uuid <<FK>> -> User
+  # uploaded_by_id : uuid <<FK>> -> User
+  ..
+  doi : text
+  title : text
+  paper_status : text
+  data_status : text
+}
+entity Project {
+  * id : uuid <<PK>>
+  --
+  # created_by_id : uuid <<FK>> -> User
+  # owner_id : uuid <<FK>> -> User
+  ..
+  title : text
+  status : text
+  visibility : text
+  version : int
+}
+entity ResearchGap {
+  * id : uuid <<PK>>
+  --
+  # project_id : uuid <<FK>>
+  # user_id : uuid <<FK>> -> User
+  ..
+  title : text
+  status : text
+  validation_status : text
+  version : int
+}
+Community ||--o{ CommunityMembership : community_id
+Community |o--o{ ForumPost : community_id
+ResearchGap |o--o{ ForumPost : research_gap_id
+Paper |o--o{ ForumPost : linked_paper_id
+ResearchGap |o--o{ ForumPost : linked_research_gap_id
+Project |o--o{ ForumPost : linked_project_id
+ForumPost ||--o{ ForumComment : post_id
+ForumComment |o--o{ ForumPost : accepted_comment_id
+ForumPost |o--o{ ForumVote : post_id
+ForumComment |o--o{ ForumVote : comment_id
+Project |o--o{ ResearchGap : project_id
+ForumPost ||--o{ ForumPostTag : post_id
+ForumTag ||--o{ ForumPostTag : tag_id
+@enduml

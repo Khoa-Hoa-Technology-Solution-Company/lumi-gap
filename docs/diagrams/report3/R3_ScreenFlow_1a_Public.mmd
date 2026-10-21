@@ -1,0 +1,26 @@
+%%{init: {"flowchart": {"curve": "linear", "nodeSpacing": 30, "rankSpacing": 70}}}%%
+flowchart LR
+  Home["Home<br/>/home"]:::pub
+  Lit["Literature search<br/>/literature"]:::pub
+  PD["Paper detail<br/>/papers/:id"]:::pub
+  Tr["Trends<br/>/trends"]:::pub
+  Tt["Trend topic<br/>/trends/:topic"]:::pub
+  Docs["Docs<br/>/docs"]:::pub
+  Lec["Lecturer directory<br/>/lecturers"]:::pub
+  Pub["Public academic profile<br/>/u/:handle"]:::pub
+  FA["Forum activity<br/>/u/:handle/activity"]:::com
+  CA["Contribution archive<br/>/profile/:handle/contributions"]:::com
+  Bm["Bookmarks<br/>/bookmarks"]:::acct
+  Home --> Lit --> PD
+  PD --> Bm
+  Home --> Tr --> Tt
+  Home --> Docs
+  Home --> Lec --> Pub
+  Pub --> FA
+  Pub --> CA
+  classDef pub fill:#EAF2FB,stroke:#2F6DB5,stroke-width:1.5px
+  classDef auth fill:#FFF4E5,stroke:#E08A00,stroke-width:1.5px
+  classDef acct fill:#E8F5E9,stroke:#2E7D32,stroke-width:1.5px
+  classDef res fill:#F3E5F5,stroke:#7B1FA2,stroke-width:1.5px
+  classDef com fill:#E0F2F1,stroke:#00796B,stroke-width:1.5px
+  classDef adm fill:#FDECEA,stroke:#C62828,stroke-width:1.5px

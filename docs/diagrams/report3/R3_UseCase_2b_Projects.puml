@@ -1,0 +1,62 @@
+' Rendered image produced by ucdraw.py from R3_UseCase_2b_Projects.uc.json; this file is the canonical UML source
+@startuml
+!pragma layout smetana
+skinparam dpi 150
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam BorderColor #2F6DB5
+skinparam BackgroundColor #FFFFFF
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam usecase {
+  BackgroundColor #EAF2FB
+  BorderColor #2F6DB5
+}
+skinparam actor {
+  BackgroundColor #FFFFFF
+  BorderColor #1B2A3A
+}
+skinparam entity {
+  BackgroundColor #F7FAFD
+  BorderColor #2F6DB5
+}
+skinparam rectangle {
+  BackgroundColor #F7F9FC
+  BorderColor #2F6DB5
+}
+skinparam actorStyle awesome
+skinparam actor<<System>> {
+  BackgroundColor #FDECEA
+  BorderColor #C62828
+}
+left to right direction
+title Use Case Diagram 2(b) - Research projects and collaboration
+actor "User" as U
+actor "Project owner" as PO
+actor "Project member" as PM
+actor "LLM provider" as LLM <<System>>
+actor "GitHub" as GH <<System>>
+rectangle "LumiGap" {
+  usecase "UC-16\nManage research project" as UC16
+  usecase "UC-18\nManage members and invitations" as UC18
+  usecase "UC-22\nManage recruitment openings" as UC22
+  usecase "UC-17\nManage project literature" as UC17
+  usecase "UC-19\nConsult project AI assistant" as UC19
+  usecase "UC-20\nChat with team" as UC20
+  usecase "UC-21\nWrite manuscript collaboratively" as UC21
+}
+U -- UC16
+PO -- UC16
+PO -- UC18
+PO -- UC22
+PM -- UC17
+PM -- UC19
+PM -- UC20
+PM -- UC21
+UC19 -- LLM
+UC21 -- GH
+@enduml

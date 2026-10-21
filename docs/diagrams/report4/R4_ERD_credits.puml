@@ -1,0 +1,74 @@
+@startuml
+!pragma layout smetana
+skinparam dpi 150
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam BorderColor #2F6DB5
+skinparam BackgroundColor #FFFFFF
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam entity {
+  BackgroundColor #F7FAFD
+  BorderColor #2F6DB5
+}
+skinparam entity<<ref>> {
+  BackgroundColor #F3E5F5
+  BorderColor #7B1FA2
+}
+skinparam linetype ortho
+hide circle
+title Credits, payments and user AI connections (ERD)
+entity credit_transactions #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  refunded_transaction_id : uuid <<FK>>
+  user_id : uuid <<FK>>
+  idempotency_key : string <<UK>>
+  type : string
+  action : string
+  amount : int
+}
+entity payment_orders #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  user_id : uuid <<FK>>
+  order_code : bigint <<UK>>
+  amount : int
+  credits : int
+  status : string
+}
+entity user_ai_connections #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  user_id : uuid <<FK>>
+  name : string
+  provider : string
+  base_url : string
+}
+entity user_ai_preferences #F7FAFD {
+  * user_id : uuid <<PK>>
+  --
+  connection_id : uuid <<FK>>
+}
+entity reports #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  credit_transaction_id : uuid <<FK>>
+}
+entity gap_analyses #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  credit_transaction_id : uuid <<FK>>
+}
+credit_transactions |o--o{ credit_transactions : refunded_transaction_id
+credit_transactions |o--o{ gap_analyses
+credit_transactions |o--o{ reports
+user_ai_connections |o--o{ user_ai_preferences
+legend bottom
+Columns such as user_id and *_by_id reference users (not drawn).
+endlegend
+@enduml

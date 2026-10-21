@@ -1,0 +1,79 @@
+@startmindmap
+!pragma layout smetana
+skinparam dpi 150
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam BorderColor #2F6DB5
+skinparam BackgroundColor #FFFFFF
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+<style>
+mindmapDiagram {
+  node { FontSize 13
+    RoundCorner 10
+    LineThickness 1.2
+    Padding 6
+    MaximumWidth 260 }
+  :depth(0) { BackgroundColor #1F4E8C
+    FontColor #FFFFFF
+    LineColor #1F4E8C
+    FontStyle bold
+    FontSize 15 }
+  .g1 { BackgroundColor #DCE8F6
+    LineColor #2F6DB5 }
+  .g2 { BackgroundColor #F8D7D5
+    LineColor #B85450 }
+  .g3 { BackgroundColor #DDEFC4
+    LineColor #6A8F00 }
+  .g4 { BackgroundColor #FFE6CC
+    LineColor #D79B00 }
+  .g5 { BackgroundColor #F8D7D5
+    LineColor #B85450 }
+  .g6 { BackgroundColor #FFF6B3
+    LineColor #B8A800 }
+  .g7 { BackgroundColor #E6DAEE
+    LineColor #9673A6 }
+  .g8 { BackgroundColor #D5E8D4
+    LineColor #82B366 }
+  .new { BackgroundColor #FFD54F
+    LineColor #C0392B
+    LineThickness 3
+    FontStyle bold }
+}
+</style>
+title LumiGap - Part 2: Community, Account and Administration
+* LumiGap\nPart 2: Community, Account\nand Administration
+** Academic Community <<g5>>
+*** Academic Posts <<g5>>
+*** Academic Q&A <<g5>>
+*** Communities <<g5>>
+*** Comments and Voting <<g5>>
+*** Content Reporting <<g5>>
+*** Academic Discussions <<g5>>
+** Academic Identity and Support <<g6>>
+*** Academic Profile <<g6>>
+*** Research Interests and Expertise <<g6>>
+*** Find Research Collaborators <<g6>>
+*** Request Lecturer Support <<g6>>
+*** Offer Research Support <<g6>>
+*** Structured Academic Review <<g6>>
+left side
+** Account and Engagement <<g7>>
+*** Register / Login (Email, Google) <<g7>>
+*** Profile and Settings <<g7>>
+*** Notifications <<g7>>
+*** Bookmarks <<g7>>
+*** Credits (PayOS Purchase and Usage) <<g7>>
+*** Ranking and Leaderboard <<g7>>
+** Administration <<g8>>
+*** User Management <<g8>>
+*** Paper Management <<g8>>
+*** Scholarly Data Synchronization <<g8>>
+*** Ingestion and Processing Pipeline <<g8>>
+*** AI / Corpus Evaluation <<g8>>
+*** Community Management and Moderation <<g8>>
+@endmindmap

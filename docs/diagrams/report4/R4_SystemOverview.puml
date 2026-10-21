@@ -1,0 +1,84 @@
+@startuml
+!pragma layout smetana
+skinparam dpi 150
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam BorderColor #2F6DB5
+skinparam BackgroundColor #FFFFFF
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam entity {
+  BackgroundColor #F7FAFD
+  BorderColor #2F6DB5
+}
+skinparam entity<<ref>> {
+  BackgroundColor #F3E5F5
+  BorderColor #7B1FA2
+}
+skinparam package {
+  BackgroundColor #F7F9FC
+  BorderColor #9DB3CC
+  FontStyle bold
+}
+skinparam rectangle {
+  FontSize 12
+}
+skinparam ArrowFontSize 12
+skinparam ArrowFontColor #1B2A3A
+title LumiGap system architecture
+package "Clients" as L1 {
+  rectangle "React web SPA\nVite build served by nginx" as WEB #EAF2FB;line:2F6DB5
+  rectangle "Flutter mobile app\noutside evaluated baseline" as FLU #EAF2FB;line:2F6DB5
+}
+package "LumiGap backend (Node 22, TypeScript)" as L2 {
+  rectangle "Express 5 REST API\n/api/v1, /health, /ready\nWebSocket for Yjs collaboration" as API #E8F5E9;line:2E7D32
+  rectangle "BullMQ workers (separate processes)\nreport, gaps, ai-jobs, embedding,\npaper-analysis, notification, corpus-validation,\ncommunity-summary, manuscript-compile,\nsync, openalex-ingest" as WK #FFF4E5;line:E08A00
+}
+package "Sidecar services" as L3 {
+  rectangle "ai-reviewer (Python FastAPI)\npre-review, format check,\nPDF to text and LaTeX" as AIR #E8F5E9;line:2E7D32
+  database "SQLite\nreview_agent.db" as SQL #F3E5F5;line:7B1FA2
+  rectangle "LaTeX compiler service\napps/backend/compiler" as TEX #E8F5E9;line:2E7D32
+  rectangle "LibreTranslate" as LT #E8F5E9;line:2E7D32
+}
+package "Data stores" as L4 {
+  database "PostgreSQL 16\n+ pgvector" as PG #F3E5F5;line:7B1FA2
+  database "Redis 7\nqueues, LLM cache, rate limits" as RD #F3E5F5;line:7B1FA2
+  database "File storage\nlocal, Cloudflare R2, Cloudinary" as FS #F3E5F5;line:7B1FA2
+}
+package "External services" as L5 {
+  rectangle EXT #FDECEA;line:C62828 [
+    |= External service |= Flows (caller) |
+    | AI providers: Google Gemini, Ollama, user-supplied endpoint | 11 LLM, embeddings, search trends (API); 12 LLM, embeddings (workers); 13 LLM (ai-reviewer) |
+    | OpenAlex | 21 search, trends (API); 22 sync, ingest (workers) |
+    | Google OAuth | 14 sign-in (API) |
+    | PayOS | 15 create payment link (API); 16 webhook to API |
+    | SMTP | 17 mail (API); 18 email, push (workers) |
+    | GitHub | 20 repository sync (API) |
+    | Expo push | 19 push (workers) |
+  ]
+}
+WEB -down-> API : "1 HTTPS JSON + JWT;\nWebSocket"
+FLU -down-> API : "1 HTTPS JSON"
+WK -[hidden]left-> API
+API -down-> PG : "2 Prisma"
+API -down-> RD : "3 enqueue, cache,\nrate limit"
+API -down-> FS : "4 PDF and\nevidence files"
+RD -up-> WK : "5 jobs"
+WK -down-> PG : "6 Prisma"
+API -down-> AIR : "7 internal HTTP,\nX-Internal-Key"
+WK -down-> AIR : "8 pre-review"
+AIR -down-> SQL
+WK -down-> TEX : "9 compile LaTeX"
+API -down-> LT : "10 translate"
+API -down-> EXT : "11, 14, 15, 17, 20, 21"
+WK -down-> EXT : "12, 18, 19, 22"
+AIR -down-> EXT : "13 LLM"
+EXT -up-> API : "16 PayOS webhook"
+L3 -[hidden]right-> L4
+L2 -[hidden]down-> L3
+L3 -[hidden]down-> L5
+@enduml

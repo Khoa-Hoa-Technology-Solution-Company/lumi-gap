@@ -1,0 +1,116 @@
+@startuml
+!pragma layout smetana
+skinparam dpi 150
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam BorderColor #2F6DB5
+skinparam BackgroundColor #FFFFFF
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam entity {
+  BackgroundColor #F7FAFD
+  BorderColor #2F6DB5
+}
+skinparam entity<<ref>> {
+  BackgroundColor #F3E5F5
+  BorderColor #7B1FA2
+}
+skinparam linetype ortho
+hide circle
+title Communities and forum content (ERD, 1 of 2)
+entity communities #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  owner_id : uuid <<FK>>
+  reviewed_by_id : uuid <<FK>>
+  slug : string <<UK>>
+  name : string
+  status : string
+  visibility : string
+}
+entity community_memberships #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  community_id : uuid <<FK>>
+  user_id : uuid <<FK>>
+  role : string
+  status : string
+  joined_at : timestamptz
+}
+entity forum_posts #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  accepted_comment_id : uuid <<FK>>
+  author_id : uuid <<FK>>
+  community_id : uuid <<FK>>
+  linked_paper_id : uuid <<FK>>
+  linked_project_id : uuid <<FK>>
+  linked_research_gap_id : uuid <<FK>>
+  research_gap_id : uuid <<FK>>
+  type : string
+  title : string
+  status : string
+}
+entity forum_comments #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  author_id : uuid <<FK>>
+  parent_comment_id : uuid <<FK>>
+  post_id : uuid <<FK>>
+  post_number : int
+  status : string
+  visibility_status : string
+}
+entity forum_tags #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  slug : string <<UK>>
+  name : string
+}
+entity forum_post_tags #F7FAFD {
+  * post_id : uuid <<PK,FK>>
+  * tag_id : uuid <<PK,FK>>
+  --
+}
+entity forum_references #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  comment_id : uuid <<FK>>
+  created_by_id : uuid <<FK>>
+  paper_id : uuid <<FK>>
+  post_id : uuid <<FK>>
+  doi : string
+  url : string
+  title : string
+}
+entity papers <<ref>> #F3E5F5 {
+  * id : uuid <<PK>>
+}
+entity research_gaps <<ref>> #F3E5F5 {
+  * id : uuid <<PK>>
+}
+entity projects <<ref>> #F3E5F5 {
+  * id : uuid <<PK>>
+}
+communities |o--o{ forum_posts
+communities ||--o{ community_memberships
+forum_comments |o--o{ forum_comments : parent_comment_id
+forum_comments |o--o{ forum_posts
+forum_comments |o--o{ forum_references
+forum_posts |o--o{ forum_references
+forum_posts ||--o{ forum_comments
+forum_posts ||--o{ forum_post_tags
+forum_tags ||--o{ forum_post_tags
+papers |o--o{ forum_posts
+papers |o--o{ forum_references
+projects |o--o{ forum_posts
+research_gaps |o--o{ forum_posts : linked_research_gap_id
+research_gaps |o--o{ forum_posts : research_gap_id
+legend bottom
+Columns such as user_id and *_by_id reference users (not drawn). Purple entities are shown by id only.
+endlegend
+@enduml

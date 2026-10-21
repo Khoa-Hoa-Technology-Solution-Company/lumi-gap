@@ -1,0 +1,27 @@
+%%{init: {"flowchart": {"curve": "linear", "nodeSpacing": 30, "rankSpacing": 70}}}%%
+flowchart LR
+  PDt["Project detail"]:::res
+  AS["Academic support<br/>/academic-support"]:::com
+  Dir["Lecturer directory"]:::pub
+  Sub["Submissions<br/>/submissions"]:::res
+  SN["New submission<br/>/submissions/new"]:::res
+  SD["Submission detail<br/>/submissions/:id"]:::res
+  RRD["Review request<br/>/review-requests/:requestId"]:::auth
+  RO["Review opportunities<br/>/review-opportunities"]:::auth
+  RD["Reviews<br/>/reviews"]:::auth
+  RW["Review workspace<br/>/reviews/:assignmentId"]:::auth
+  RT["Review templates<br/>/review-templates"]:::acct
+  RB["Template builder<br/>/review-templates/new"]:::acct
+  PDt --> AS
+  Dir --> PDt
+  Sub --> SN
+  Sub --> SD --> RRD
+  RRD --> RW
+  RO --> RD --> RW
+  RT --> RB
+  classDef pub fill:#EAF2FB,stroke:#2F6DB5,stroke-width:1.5px
+  classDef auth fill:#FFF4E5,stroke:#E08A00,stroke-width:1.5px
+  classDef acct fill:#E8F5E9,stroke:#2E7D32,stroke-width:1.5px
+  classDef res fill:#F3E5F5,stroke:#7B1FA2,stroke-width:1.5px
+  classDef com fill:#E0F2F1,stroke:#00796B,stroke-width:1.5px
+  classDef adm fill:#FDECEA,stroke:#C62828,stroke-width:1.5px

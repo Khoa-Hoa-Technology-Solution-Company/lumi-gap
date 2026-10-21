@@ -1,6 +1,6 @@
-# Publication Trend — Design Language
+# LumiGap — Design Language
 
-> Single source of truth cho mọi quyết định visual của project. Stitch generate theo doc này. shadcn theme follow doc này. Team build component đồng nhất theo doc này.
+> Hướng dẫn visual cho web app (`apps/web`). Giá trị token thật nằm trong `apps/web/src/theme/globals.css` và `apps/web/tailwind.config.js`; khi tài liệu này khác code thì code đúng.
 
 ---
 
@@ -28,66 +28,40 @@ Không dùng trắng ngả vàng, kem, ivory, beige hoặc trắng ấm, trừ k
 yêu cầu rõ ràng. Bề mặt phụ cần phân cấp có thể dùng xám trung tính; không tự
 pha sắc vàng vào nền. Quy tắc này áp dụng cho các thiết kế và chỉnh sửa UI sau này.
 
-```
-Background        #FFFFFF      pure white — main surface
-Card              #FFFFFF      same as background, distinguished by border
-Border            #E5E7EB      neutral-200 — subtle dividers
-Foreground        #0F172A      slate-900 — primary text
-Muted             #F8FAFC      slate-50 — section backgrounds
-Muted Foreground  #64748B      slate-500 — metadata, captions
+Token thật (CSS variables, định dạng HSL của shadcn, `:root` trong `globals.css`):
 
-Primary           #1E40AF      blue-800 — academic blue, CTA buttons
-Primary FG        #FFFFFF      white text on primary
-Secondary         #F1F5F9      slate-100 — secondary buttons bg
-Secondary FG      #0F172A      slate-900 — text on secondary
-Accent            #0891B2      cyan-600 — highlights, links, charts
-Destructive       #DC2626      red-600 — delete, errors
-Success           #16A34A      green-600 — success states, AI-verified
-Warning           #D97706      amber-600 — low-quality data warnings
+```
+--background / --card / --popover   0 0% 100%          trắng tinh
+--foreground                        222.2 84% 4.9%     gần đen xanh navy
+--primary                           222.2 47.4% 11.2%  navy đậm (nút chính)
+--primary-foreground                210 40% 98%
+--secondary / --muted / --accent    210 40% 96.1%
+--muted-foreground                  215.4 16.3% 46.9%
+--destructive                       0 84.2% 60.2%
+--border / --input                  214.3 31.8% 91.4%
+--ring                              222.2 84% 4.9%
+--radius                            0.5rem
 ```
 
 ### 2.2. Dark Mode (Premium feel — code at night)
 
-```
-Background        #0F1B2D      deep navy — NOT pure black
-Card              #1A2332      slightly lighter than bg
-Border            #1E293B      slate-800 — subtle on dark
-Foreground        #F8FAFC      slate-50 — primary text
-Muted             #1E293B      slate-800 — section bg
-Muted Foreground  #94A3B8      slate-400 — metadata
-
-Primary           #60A5FA      blue-400 — lighter for contrast
-Primary FG        #0F1B2D      navy text on primary
-Secondary         #1E293B      slate-800
-Secondary FG      #F8FAFC      white text
-Accent            #22D3EE      cyan-400 — glow effect on dark
-Destructive       #EF4444      red-500
-Success           #22C55E      green-500
-Warning           #F59E0B      amber-500
-```
-
-### 2.3. Data Visualization Palette (Charts)
-
-Dùng cho line/bar/area charts. Color-blind safe, work in both modes:
+Token thật (`.dark` trong `globals.css`):
 
 ```
-Series 1 (primary)    #3B82F6   blue-500
-Series 2              #06B6D4   cyan-500
-Series 3              #8B5CF6   violet-500
-Series 4              #10B981   emerald-500
-Series 5              #F59E0B   amber-500
-Series 6              #EC4899   pink-500
+--background / --card / --popover   222.2 84% 4.9%     navy rất đậm, không dùng đen thuần
+--foreground                        210 40% 98%
+--primary                           210 40% 98%
+--primary-foreground                222.2 47.4% 11.2%
+--secondary / --muted / --accent    217.2 32.6% 17.5%
+--muted-foreground                  215 20.2% 65.1%
+--destructive                       0 62.8% 30.6%
+--border / --input                  217.2 32.6% 17.5%
+--ring                              212.7 26.8% 83.9%
 ```
 
-### 2.4. AI Score Badge Colors (Match `paper_ai_scores.finalScore`)
+### 2.3. Biểu đồ và badge điểm AI
 
-```
-0.9 – 1.0    #16A34A    green-600       Excellent match
-0.7 – 0.9    #84CC16    lime-500        Good match
-0.5 – 0.7    #F59E0B    amber-500       Moderate match
-0.3 – 0.5    #F97316    orange-500      Low match
-0.0 – 0.3    #94A3B8    slate-400       Poor / not analyzed
-```
+Bảng màu biểu đồ (Recharts) và thang màu badge điểm AI không được định nghĩa thành token trong `globals.css`; màu nằm trong từng component. Bảng hex trước đây trong tài liệu này không khớp code nên đã bị gỡ. Khi thêm màu mới cho series hoặc badge, đặt thành token và ghi lại ở đây; luôn kèm số hoặc icon, không truyền đạt thông tin chỉ bằng màu.
 
 ---
 
@@ -98,7 +72,7 @@ Series 6              #EC4899   pink-500
 ```
 Primary:    Source Sans 3 (self-hosted) — UI text, headings
 Body:       Source Sans 3 — abstracts, descriptions
-Mono:       JetBrains Mono — code, citation IDs, DOIs
+Mono:       system monospace stack (`ui-monospace, SFMono-Regular, Menlo, monospace`) — code, citation IDs, DOIs; no mono webfont is bundled
 ```
 
 Source Sans 3 là font đang được ứng dụng tải và sử dụng qua `--forum-font`. Dùng cùng font cho homepage và workspace; tạo khác biệt bằng scale, weight và layout. Không tự đổi sang Georgia/Times hoặc font serif để mô phỏng một ảnh tham khảo.
@@ -152,15 +126,14 @@ Follow **8px grid** (Tailwind default). Each step doubles.
 ## 5. Border Radius
 
 ```
-sm    6px    badges, tooltips
-md    8px    inputs, buttons (default)
-lg    12px   cards (DEFAULT for content cards)
-xl    16px   modals, hero images, AI report viewer
-2xl   24px   prominent feature cards
+sm    calc(var(--radius) - 4px) = 4px
+md    calc(var(--radius) - 2px) = 6px
+lg    var(--radius)             = 8px   (cards, inputs, buttons)
+xl+   Tailwind defaults (12px, 16px, ...) for modals and large surfaces
 full  9999px avatars, pills, status dots
 ```
 
-**Trong CSS:** `--radius: 0.75rem` (12px) — đã set trong `globals.css`.
+**Trong CSS:** `--radius: 0.5rem` (8px) trong `globals.css`; `tailwind.config.js` suy ra `sm/md/lg` từ biến này.
 
 ---
 
@@ -278,7 +251,6 @@ Homepage có thể dùng carousel tự lướt khi người dùng yêu cầu. Ph
 - Chữ display có thể lớn hơn type scale của dashboard. Chữ nội dung và câu hỏi vẫn dễ đọc; không dùng chữ metadata bé để thay cho nội dung chính.
 - Hover/focus có thể làm thẻ nổi rõ và mở hướng khám phá. Không dùng chuyển động nền liên tục làm mất tập trung.
 - Kiểm tra screenshot ở desktop, laptop nhỏ và điện thoại; không chồng nội dung trung tâm, không tràn ngang document. Mobile có thể đổi phần bao quanh thành một dải thẻ kéo ngang.
-- Hướng dẫn riêng của homepage được ghi trong `docs/home-redesign.md`; phản hồi mới nhất của người dùng có ưu tiên cao hơn các ghi chú lịch sử.
 
 ---
 
@@ -316,37 +288,13 @@ Rule: **icon size = font size × 1**. body text 16px → icon 16px (h-4 w-4).
 
 ---
 
-## 11. Mobile Adaptations (Android-First)
+## 11. Mobile (Flutter)
 
-Mobile build bằng **Expo + React Native + NativeWind**. Team chỉ test trên **Android** (Android Studio emulator + Expo Go Android). Code vẫn cross-platform nhưng iOS không trong scope test.
+Mobile client là Flutter (`apps/flutter_mobile`, Dart); app React Native/Expo cũ đã bị gỡ. Màu của mobile nằm trong `apps/flutter_mobile/lib/core/theme/app_colors.dart` và không tự đồng bộ với CSS variables của web, nên đổi màu phải sửa cả hai nơi.
 
-Mobile inherit cùng design tokens với web, nhưng:
-
-- **Frame chuẩn để design:** Pixel 6 (412×892dp). Tránh frame iPhone vì sai aspect ratio.
-- **Touch targets:** Min **48dp × 48dp** (Material 3 accessibility minimum — strict hơn iOS 44pt)
-- **System bars:**
-  - Top: status bar ~28dp (clock, signal)
-  - Bottom: navigation bar ~48dp (3-button) hoặc ~24dp (gesture)
-- **Safe area:** dùng `react-native-safe-area-context` để handle cả 2 nav modes
-- **Hardware back button:** Android có. Header back chevron vẫn giữ cho one-handed reach
-- **Bottom sheets > Modals:** Modals khó dùng mobile, dùng `@gorhom/bottom-sheet` hoặc Drawer
-- **Tab bar bottom:** Floating pill (custom) — KHÔNG dùng Material 3 NavigationBar default
-- **No hover states:** Replace với `:active` press states (opacity-70 hoặc background change)
-- **Cards full-width:** No multi-column trên mobile
-- **Status bar style:** Light icons trên dark mode, dark icons trên light mode (`StatusBar` API)
-- **Edge-to-edge content:** Set `android:windowLayoutInDisplayCutoutMode` để fill notch area (Pixel 7+)
-- **Soft keyboard:** Form screens cần `KeyboardAvoidingView` với `behavior="height"` (Android) thay vì `padding` (iOS)
-
-### Android-Specific Gotchas Cần Nhớ Khi Code
-
-| Trap | Fix |
-|---|---|
-| Text input không scroll khi keyboard mở | Wrap với `KeyboardAvoidingView behavior="height"` |
-| Status bar đè lên header | `<StatusBar style="light" />` + `SafeAreaView` |
-| Tab bar bị system gesture nav che | `useSafeAreaInsets()` bottom padding |
-| Swipe gesture conflict (Android có back gesture) | Test swipe-to-delete chỉ từ right-to-left |
-| Ripple effect mặc định | NativeWind không tự có — dùng `Pressable` với `android_ripple` prop |
-| Font không load đúng | Dùng `expo-font` + preload trong `_layout.tsx` |
+- Team test trên Android (emulator hoặc thiết bị thật); code Flutter vẫn đa nền tảng.
+- Touch target tối thiểu 48dp (Material 3).
+- Giữ các nguyên tắc chung: skeleton thay spinner cho danh sách, không truyền đạt thông tin chỉ bằng màu, hỗ trợ light và dark.
 
 ---
 
@@ -359,7 +307,7 @@ Trước khi build component mới, đối chiếu:
 - [ ] Typography token (text-base, text-lg...), KHÔNG `style={{fontSize}}`
 - [ ] Component dùng shadcn primitive nếu có (Button, Card, Input...)
 - [ ] Test cả light + dark mode (`<html class="dark">`)
-- [ ] Mobile responsive (sm:, md:, lg: breakpoints)
+- [ ] Responsive (sm:, md:, lg: breakpoints)
 - [ ] Có loading state (skeleton)
 - [ ] Có empty state (cho lists)
 - [ ] Có error state (cho async)
@@ -384,11 +332,11 @@ Trước khi build component mới, đối chiếu:
 
 CSS variables nằm trong:
 ```
-apps/web/src/theme/globals.css     (web — đã wire next-themes)
-apps/mobile/src/theme/colors.ts    (mobile — màu cho non-className usage)
+apps/web/src/theme/globals.css                       (web — đã wire next-themes)
+apps/flutter_mobile/lib/core/theme/app_colors.dart   (mobile Flutter)
 ```
 
-Update color → sửa 2 file này → mọi component tự cập nhật.
+Đổi màu web → sửa `globals.css`; component dùng token sẽ tự cập nhật. Mobile sửa riêng trong file Dart.
 
 ---
 
@@ -440,7 +388,7 @@ Update color → sửa 2 file này → mọi component tự cập nhật.
 | Date | Decision | Reason |
 |---|---|---|
 | 2026-05-25 | Dual-mode (light + dark) | Academic users đọc paper dài → cần light. Dark cho premium feel |
-| 2026-05-25 | Inter làm primary font | Hỗ trợ Vietnamese, industry standard SaaS, free OSS |
-| 2026-05-25 | `--radius: 0.75rem` (12px) | Cân bằng giữa playful (16px+) và sterile (4px-) |
+| 2026-05-25 | Inter làm primary font (đã thay) | Hiện nay app dùng Source Sans 3 (xem §3.1) |
+| 2026-05-25 | `--radius: 0.75rem` (đã thay) | Hiện `--radius: 0.5rem` trong `globals.css` |
 | 2026-05-25 | Recharts cho charts | Already in package.json, React-friendly, theme-aware |
 | 2026-05-25 | Skeleton thay vì spinner | List-heavy app, skeleton giảm perceived load time |

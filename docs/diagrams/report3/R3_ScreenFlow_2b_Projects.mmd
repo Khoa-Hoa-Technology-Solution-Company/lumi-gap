@@ -1,0 +1,24 @@
+%%{init: {"flowchart": {"curve": "linear", "nodeSpacing": 30, "rankSpacing": 70}}}%%
+flowchart LR
+  Dash["Dashboard"]:::acct
+  PW["Projects<br/>/projects"]:::res
+  PDt["Project detail<br/>/projects/:id"]:::res
+  PR["Plan review<br/>/projects/:id/plan-review"]:::res
+  AL["Allocation<br/>/projects/:id/allocation"]:::res
+  CR["Contribution review<br/>/projects/:id/contribution-review"]:::res
+  ME["Manuscript editor<br/>/projects/:projectId/manuscripts/:id"]:::res
+  RG["Research gaps"]:::res
+  Rep["Reports"]:::res
+  Dash --> PW --> PDt
+  PDt --> PR
+  PDt --> AL
+  PDt --> CR
+  PDt --> ME
+  PDt --> RG
+  PDt --> Rep
+  classDef pub fill:#EAF2FB,stroke:#2F6DB5,stroke-width:1.5px
+  classDef auth fill:#FFF4E5,stroke:#E08A00,stroke-width:1.5px
+  classDef acct fill:#E8F5E9,stroke:#2E7D32,stroke-width:1.5px
+  classDef res fill:#F3E5F5,stroke:#7B1FA2,stroke-width:1.5px
+  classDef com fill:#E0F2F1,stroke:#00796B,stroke-width:1.5px
+  classDef adm fill:#FDECEA,stroke:#C62828,stroke-width:1.5px

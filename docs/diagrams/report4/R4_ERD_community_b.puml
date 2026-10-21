@@ -1,0 +1,89 @@
+@startuml
+!pragma layout smetana
+skinparam dpi 150
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam BorderColor #2F6DB5
+skinparam BackgroundColor #FFFFFF
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam entity {
+  BackgroundColor #F7FAFD
+  BorderColor #2F6DB5
+}
+skinparam entity<<ref>> {
+  BackgroundColor #F3E5F5
+  BorderColor #7B1FA2
+}
+skinparam linetype ortho
+hide circle
+title Forum moderation (ERD, 2 of 2)
+entity forum_content_reports #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  comment_id : uuid <<FK>>
+  community_id : uuid <<FK>>
+  post_id : uuid <<FK>>
+  reporter_id : uuid <<FK>>
+  reviewed_by_id : uuid <<FK>>
+  target_type : string
+  reason : string
+  status : string
+}
+entity forum_moderation_actions #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  actor_id : uuid <<FK>>
+  comment_id : uuid <<FK>>
+  community_id : uuid <<FK>>
+  post_id : uuid <<FK>>
+  report_id : uuid <<FK>>
+  action : string
+  target_type : string
+  reason : string
+}
+entity moderation_appeals #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  status : string
+  reason : string
+  submitted_at : timestamptz
+}
+entity copyright_claims #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  claimant_email : string
+  status : string
+  submitted_at : timestamptz
+}
+entity forum_restrictions #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  scope : string
+  restriction_type : string
+  starts_at : timestamptz
+}
+entity communities <<ref>> #F3E5F5 {
+  * id : uuid <<PK>>
+}
+entity forum_posts <<ref>> #F3E5F5 {
+  * id : uuid <<PK>>
+}
+entity forum_comments <<ref>> #F3E5F5 {
+  * id : uuid <<PK>>
+}
+communities |o--o{ forum_content_reports
+communities |o--o{ forum_moderation_actions
+forum_comments |o--o{ forum_content_reports
+forum_comments |o--o{ forum_moderation_actions
+forum_content_reports |o--o{ forum_moderation_actions
+forum_posts |o--o{ forum_content_reports
+forum_posts |o--o{ forum_moderation_actions
+legend bottom
+Columns such as user_id and *_by_id reference users (not drawn). Purple entities are shown by id only.
+endlegend
+@enduml

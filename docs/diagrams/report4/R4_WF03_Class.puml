@@ -1,0 +1,190 @@
+@startuml
+!pragma layout smetana
+skinparam dpi 150
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam BorderColor #2F6DB5
+skinparam BackgroundColor #FFFFFF
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam usecase {
+  BackgroundColor #EAF2FB
+  BorderColor #2F6DB5
+}
+skinparam actor {
+  BackgroundColor #FFFFFF
+  BorderColor #1B2A3A
+}
+skinparam class {
+  BackgroundColor #F7FAFD
+  BorderColor #2F6DB5
+  HeaderBackgroundColor #DCE8F6
+}
+skinparam state {
+  BackgroundColor #EAF2FB
+  BorderColor #2F6DB5
+}
+skinparam activity {
+  BackgroundColor #EAF2FB
+  BorderColor #2F6DB5
+  DiamondBackgroundColor #FFF4E5
+}
+skinparam swimlane {
+  BorderColor #9DB3CC
+  TitleBackgroundColor #DCE8F6
+}
+skinparam sequence {
+  ParticipantBackgroundColor #EAF2FB
+  ParticipantBorderColor #2F6DB5
+  LifeLineBorderColor #9DB3CC
+  GroupBackgroundColor #F4F7FA
+}
+skinparam package {
+  BackgroundColor #F7F9FC
+  BorderColor #9DB3CC
+}
+skinparam note {
+  BackgroundColor #FFF9E5
+  BorderColor #E0B200
+}
+skinparam entity {
+  BackgroundColor #F7FAFD
+  BorderColor #2F6DB5
+}
+skinparam rectangle {
+  BackgroundColor #F7F9FC
+  BorderColor #2F6DB5
+}
+title WF03 Submission and peer review - class diagram
+hide empty members
+hide circle
+package "Web" {
+  class SubmissionPages <<page>> {
+    pages/submissions (list, new, detail)
+    pages/reviews (dashboard, request-detail, workspace)
+  }
+  class UseSubmissions <<hook>> {
+    useCreateSubmission()
+    useRunAiPreReview()
+  }
+  class UseReviews <<hook>> {
+    useCreateReviewRequest()
+    useReviewRequestAction()
+    useSubmitReview()
+  }
+}
+package "Backend routes" {
+  class submissionRouter <<route>> {
+    POST /submissions
+    POST /submissions/:id/ai-pre-review
+    POST /submissions/:id/versions
+  }
+  class reviewRequestRouter <<route>> {
+    POST /review-requests
+    POST /:id/accept, decline, cancel, resubmit
+  }
+  class humanReviewRouter <<route>> {
+    GET /reviews/:assignmentId
+    POST /reviews/:assignmentId/submit
+  }
+}
+package "Services" {
+  class submissionService <<service>> {
+    create()
+    runAiPreReview()
+    processAiPreReview()
+    createVersion()
+    addRevision()
+  }
+  class reviewRequestService <<service>> {
+    create()
+    accept()
+    decline()
+    cancel()
+    resubmit()
+    acceptExternalInvitation()
+  }
+  class reviewService <<service>> {
+    saveReview(assignmentId, reviewerId, input, submit)
+    getReview()
+  }
+  class peerReviewAccess <<service>> {
+    assertPeerReviewer()
+    assertReviewAdmission()
+    refreshSubmissionReviewStatus()
+  }
+  class academicReviewRules <<rules>> {
+    reviewOutcome()
+    canCancelReviewRequest()
+    submissionReviewStatus()
+  }
+  class aiReviewerClient <<client>> {
+    preReview()
+  }
+  class notificationService <<service>>
+}
+package "Worker and external" {
+  class aiJobsWorker <<worker>> {
+    workers/ai-jobs.worker.ts
+  }
+  class aiReviewerService <<external>> {
+    Python FastAPI
+    /internal/pre-review
+  }
+}
+package "Data model (Prisma)" {
+  class Submission <<model>> {
+    submissions
+  }
+  class SubmissionRevision <<model>> {
+    submission_revisions
+  }
+  class AiPreReview <<model>> {
+    ai_pre_reviews
+  }
+  class ReviewRequest <<model>> {
+    review_requests
+  }
+  class ReviewerAssignment <<model>> {
+    reviewer_assignments
+  }
+  class HumanReview <<model>> {
+    human_reviews
+  }
+  class ReviewRevisionItem <<model>> {
+    review_revision_items
+  }
+}
+SubmissionPages --> UseSubmissions
+SubmissionPages --> UseReviews
+UseSubmissions --> submissionRouter : HTTP
+UseReviews --> reviewRequestRouter : HTTP
+UseReviews --> humanReviewRouter : HTTP
+submissionRouter --> submissionService
+reviewRequestRouter --> reviewRequestService
+humanReviewRouter --> reviewService
+submissionService --> reviewRequestService
+submissionService --> AiPreReview
+submissionService --> Submission
+submissionService --> SubmissionRevision
+aiJobsWorker --> submissionService
+submissionService --> aiReviewerClient
+aiReviewerClient --> aiReviewerService : HTTP
+reviewRequestService --> peerReviewAccess
+reviewService --> peerReviewAccess
+reviewService --> academicReviewRules
+reviewRequestService --> academicReviewRules
+reviewRequestService --> ReviewRequest
+reviewRequestService --> ReviewerAssignment
+reviewRequestService --> notificationService
+reviewService --> HumanReview
+reviewService --> ReviewRevisionItem
+Submission "1" --> "*" ReviewRequest
+ReviewRequest "1" --> "1" ReviewerAssignment
+ReviewerAssignment "1" --> "*" HumanReview : rounds
+HumanReview "1" --> "*" ReviewRevisionItem
+@enduml

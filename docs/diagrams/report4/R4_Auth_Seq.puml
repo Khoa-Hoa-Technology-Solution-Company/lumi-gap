@@ -1,0 +1,98 @@
+@startuml
+skinparam dpi 150
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam BorderColor #2F6DB5
+skinparam BackgroundColor #FFFFFF
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam usecase {
+  BackgroundColor #EAF2FB
+  BorderColor #2F6DB5
+}
+skinparam actor {
+  BackgroundColor #FFFFFF
+  BorderColor #1B2A3A
+}
+skinparam class {
+  BackgroundColor #F7FAFD
+  BorderColor #2F6DB5
+  HeaderBackgroundColor #DCE8F6
+}
+skinparam state {
+  BackgroundColor #EAF2FB
+  BorderColor #2F6DB5
+}
+skinparam activity {
+  BackgroundColor #EAF2FB
+  BorderColor #2F6DB5
+  DiamondBackgroundColor #FFF4E5
+}
+skinparam swimlane {
+  BorderColor #9DB3CC
+  TitleBackgroundColor #DCE8F6
+}
+skinparam sequence {
+  ParticipantBackgroundColor #EAF2FB
+  ParticipantBorderColor #2F6DB5
+  LifeLineBorderColor #9DB3CC
+  GroupBackgroundColor #F4F7FA
+}
+skinparam package {
+  BackgroundColor #F7F9FC
+  BorderColor #9DB3CC
+}
+skinparam note {
+  BackgroundColor #FFF9E5
+  BorderColor #E0B200
+}
+skinparam entity {
+  BackgroundColor #F7FAFD
+  BorderColor #2F6DB5
+}
+skinparam rectangle {
+  BackgroundColor #F7F9FC
+  BorderColor #2F6DB5
+}
+title Authentication - login, Google OIDC and token refresh
+skinparam maxMessageSize 170
+skinparam ParticipantPadding 2
+skinparam BoxPadding 2
+skinparam sequenceMessageAlign left
+autonumber
+actor "User" as U
+boundary "Web\nlogin.tsx, api-client\ninterceptors" as W
+control "authRouter" as R
+control "authService" as A
+control "google-oidc.service" as G
+participant "Google OAuth" as GO <<external>>
+database "PostgreSQL" as DB
+== Email and password ==
+U -> W : email and password
+W -> R : POST /auth/login
+R -> A : login()
+activate A
+A -> DB : find users, verify Argon2 or bcrypt hash
+A -> DB : insert refresh_tokens (SHA-256 hash, family id)
+A --> W : RS256 access token (15 min) and refresh token
+deactivate A
+== Google sign-in ==
+U -> W : Continue with Google
+W -> R : GET /auth/google
+R -> G : build authorization URL
+R --> W : redirect to Google
+GO --> R : GET /auth/google/callback (code)
+R -> G : handle callback
+G -> GO : exchange code, verify ID token via JWKS
+G -> A : googleLogin(identity)
+A -> DB : find or create users, oauth_accounts
+R --> W : redirect /auth/oauth-callback (exchange)
+== Token refresh ==
+W -> R : POST /auth/refresh when access token expires
+R -> A : refresh()
+A -> DB : rotate refresh_tokens, detect reuse
+@enduml

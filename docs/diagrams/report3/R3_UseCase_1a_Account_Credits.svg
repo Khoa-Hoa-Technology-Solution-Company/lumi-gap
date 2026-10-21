@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="898" viewBox="0 0 1000 898" font-family="Segoe UI, Arial, sans-serif">
+<defs><marker id="open" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto"><path d="M1 1 L9 5 L1 9" fill="none" stroke="#4A5A6A" stroke-width="1.6"/></marker></defs>
+<rect width="1000" height="898" fill="#fff"/>
+<text x="500" y="32" text-anchor="middle" font-size="20" font-weight="700" fill="#1B2A3A">Use Case Diagram 1(a) - Account, profile and credits</text>
+<rect x="335" y="62" width="340" height="806" rx="12" fill="#F7F9FC" stroke="#2F6DB5" stroke-width="1.6"/>
+<text x="505" y="84" text-anchor="middle" font-size="15" font-weight="700" fill="#2F6DB5">LumiGap</text>
+<line x1="118.0" y1="281.3" x2="380.0" y2="132.0" stroke="#4A5A6A" stroke-width="1.5"/>
+<line x1="118.0" y1="281.3" x2="380.0" y2="266.0" stroke="#4A5A6A" stroke-width="1.5"/>
+<line x1="118.0" y1="281.3" x2="380.0" y2="356.0" stroke="#4A5A6A" stroke-width="1.5"/>
+<line x1="118.0" y1="566.0" x2="380.0" y2="266.0" stroke="#4A5A6A" stroke-width="1.5"/>
+<line x1="118.0" y1="566.0" x2="380.0" y2="356.0" stroke="#4A5A6A" stroke-width="1.5"/>
+<line x1="118.0" y1="566.0" x2="380.0" y2="446.0" stroke="#4A5A6A" stroke-width="1.5"/>
+<line x1="118.0" y1="566.0" x2="380.0" y2="536.0" stroke="#4A5A6A" stroke-width="1.5"/>
+<line x1="118.0" y1="566.0" x2="380.0" y2="626.0" stroke="#4A5A6A" stroke-width="1.5"/>
+<line x1="118.0" y1="566.0" x2="380.0" y2="716.0" stroke="#4A5A6A" stroke-width="1.5"/>
+<line x1="118.0" y1="566.0" x2="380.0" y2="806.0" stroke="#4A5A6A" stroke-width="1.5"/>
+<line x1="892.0" y1="419.3" x2="630.0" y2="356.0" stroke="#4A5A6A" stroke-width="1.5"/>
+<rect x="708" y="366" width="80" height="16" fill="#fff"/><text x="748" y="378" text-anchor="middle" font-size="12" font-style="italic" fill="#4A5A6A">via Google</text>
+<line x1="892.0" y1="279.3" x2="630.0" y2="266.0" stroke="#4A5A6A" stroke-width="1.5"/>
+<line x1="892.0" y1="639.3" x2="630.0" y2="626.0" stroke="#4A5A6A" stroke-width="1.5"/>
+<line x1="505.0" y1="164.0" x2="505.0" y2="234.0" stroke="#4A5A6A" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#open)"/>
+<rect x="513.0" y="190" width="86" height="18" fill="#F7F9FC"/><text x="517.0" y="203" font-size="12.5" fill="#4A5A6A">&#171;include&#187;</text>
+<ellipse cx="505.0" cy="132.0" rx="125.0" ry="32.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
+<text x="505.0" y="129.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A" font-weight="600">UC-01</text>
+<text x="505.0" y="145.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A">Register account</text>
+<ellipse cx="505.0" cy="266.0" rx="125.0" ry="32.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
+<text x="505.0" y="255.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A" font-weight="600">UC-03</text>
+<text x="505.0" y="271.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A">Verify email / recover</text>
+<text x="505.0" y="287.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A">password</text>
+<ellipse cx="505.0" cy="356.0" rx="125.0" ry="32.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
+<text x="505.0" y="353.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A" font-weight="600">UC-02</text>
+<text x="505.0" y="369.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A">Sign in</text>
+<ellipse cx="505.0" cy="446.0" rx="125.0" ry="32.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
+<text x="505.0" y="435.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A" font-weight="600">UC-04</text>
+<text x="505.0" y="451.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A">Complete onboarding,</text>
+<text x="505.0" y="467.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A">manage profile</text>
+<ellipse cx="505.0" cy="536.0" rx="125.0" ry="32.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
+<text x="505.0" y="533.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A" font-weight="600">UC-25</text>
+<text x="505.0" y="549.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A">View credits</text>
+<ellipse cx="505.0" cy="626.0" rx="125.0" ry="32.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
+<text x="505.0" y="623.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A" font-weight="600">UC-26</text>
+<text x="505.0" y="639.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A">Top up credits</text>
+<ellipse cx="505.0" cy="716.0" rx="125.0" ry="32.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
+<text x="505.0" y="713.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A" font-weight="600">UC-27</text>
+<text x="505.0" y="729.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A">Manage notifications</text>
+<ellipse cx="505.0" cy="806.0" rx="125.0" ry="32.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
+<text x="505.0" y="803.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A" font-weight="600">UC-28</text>
+<text x="505.0" y="819.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A">View rankings</text>
+<g stroke="#1B2A3A" stroke-width="2" fill="none"><circle cx="100.0" cy="261.33333333333337" r="10" fill="#fff"/><line x1="100.0" y1="271.33333333333337" x2="100.0" y2="297.33333333333337"/><line x1="83.0" y1="281.33333333333337" x2="117.0" y2="281.33333333333337"/><line x1="100.0" y1="297.33333333333337" x2="86.0" y2="317.33333333333337"/><line x1="100.0" y1="297.33333333333337" x2="114.0" y2="317.33333333333337"/></g>
+<text x="100.0" y="335" text-anchor="middle" font-size="13.5" fill="#1B2A3A">Guest</text>
+<g stroke="#1B2A3A" stroke-width="2" fill="none"><circle cx="100.0" cy="546.0" r="10" fill="#fff"/><line x1="100.0" y1="556.0" x2="100.0" y2="582.0"/><line x1="83.0" y1="566.0" x2="117.0" y2="566.0"/><line x1="100.0" y1="582.0" x2="86.0" y2="602.0"/><line x1="100.0" y1="582.0" x2="114.0" y2="602.0"/></g>
+<text x="100.0" y="620" text-anchor="middle" font-size="13.5" fill="#1B2A3A">User</text>
+<text x="100.0" y="636" text-anchor="middle" font-size="13.5" fill="#1B2A3A">(Student /</text>
+<text x="100.0" y="652" text-anchor="middle" font-size="13.5" fill="#1B2A3A">Researcher)</text>
+<g stroke="#C62828" stroke-width="2" fill="none"><circle cx="910.0" cy="399.3333333333333" r="10" fill="#FDECEA"/><line x1="910.0" y1="409.3333333333333" x2="910.0" y2="435.3333333333333"/><line x1="893.0" y1="419.3333333333333" x2="927.0" y2="419.3333333333333"/><line x1="910.0" y1="435.3333333333333" x2="896.0" y2="455.3333333333333"/><line x1="910.0" y1="435.3333333333333" x2="924.0" y2="455.3333333333333"/></g>
+<text x="910.0" y="473" text-anchor="middle" font-size="13.5" fill="#1B2A3A">Google OIDC</text>
+<text x="910.0" y="383" text-anchor="middle" font-size="11.5" font-style="italic" fill="#C62828">&#171;external system&#187;</text>
+<g stroke="#C62828" stroke-width="2" fill="none"><circle cx="910.0" cy="259.33333333333337" r="10" fill="#FDECEA"/><line x1="910.0" y1="269.33333333333337" x2="910.0" y2="295.33333333333337"/><line x1="893.0" y1="279.33333333333337" x2="927.0" y2="279.33333333333337"/><line x1="910.0" y1="295.33333333333337" x2="896.0" y2="315.33333333333337"/><line x1="910.0" y1="295.33333333333337" x2="924.0" y2="315.33333333333337"/></g>
+<text x="910.0" y="333" text-anchor="middle" font-size="13.5" fill="#1B2A3A">SMTP mail server</text>
+<text x="910.0" y="243" text-anchor="middle" font-size="11.5" font-style="italic" fill="#C62828">&#171;external system&#187;</text>
+<g stroke="#C62828" stroke-width="2" fill="none"><circle cx="910.0" cy="619.3333333333333" r="10" fill="#FDECEA"/><line x1="910.0" y1="629.3333333333333" x2="910.0" y2="655.3333333333333"/><line x1="893.0" y1="639.3333333333333" x2="927.0" y2="639.3333333333333"/><line x1="910.0" y1="655.3333333333333" x2="896.0" y2="675.3333333333333"/><line x1="910.0" y1="655.3333333333333" x2="924.0" y2="675.3333333333333"/></g>
+<text x="910.0" y="693" text-anchor="middle" font-size="13.5" fill="#1B2A3A">PayOS</text>
+<text x="910.0" y="603" text-anchor="middle" font-size="11.5" font-style="italic" fill="#C62828">&#171;external system&#187;</text>
+</svg>

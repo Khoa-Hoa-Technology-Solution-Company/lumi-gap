@@ -1,0 +1,28 @@
+%%{init: {"flowchart": {"curve": "linear", "nodeSpacing": 30, "rankSpacing": 70}}}%%
+flowchart LR
+  FL["Forum<br/>/forum"]:::com
+  FD["Forum thread<br/>/forum/:id"]:::com
+  FN["New post<br/>/forum/new"]:::com
+  FCat["Categories<br/>/forum/categories"]:::com
+  FCr["Copyright notice<br/>/forum/copyright"]:::com
+  CV["Copyright verify<br/>/copyright/verify"]:::com
+  FM["Moderation<br/>/forum/moderation"]:::adm
+  FCm["Manage categories<br/>/forum/categories/manage"]:::adm
+  CL["Communities<br/>/communities"]:::com
+  CD["Community<br/>/communities/:slug"]:::com
+  CMg["Manage<br/>/communities/:slug/manage"]:::adm
+  CN["New community<br/>/communities/new"]:::com
+  FL --> FD
+  FL --> FN
+  FL --> FCat
+  FL --> FCr --> CV
+  FL --> FM
+  FL --> FCm
+  CL --> CD --> CMg
+  CL --> CN
+  classDef pub fill:#EAF2FB,stroke:#2F6DB5,stroke-width:1.5px
+  classDef auth fill:#FFF4E5,stroke:#E08A00,stroke-width:1.5px
+  classDef acct fill:#E8F5E9,stroke:#2E7D32,stroke-width:1.5px
+  classDef res fill:#F3E5F5,stroke:#7B1FA2,stroke-width:1.5px
+  classDef com fill:#E0F2F1,stroke:#00796B,stroke-width:1.5px
+  classDef adm fill:#FDECEA,stroke:#C62828,stroke-width:1.5px

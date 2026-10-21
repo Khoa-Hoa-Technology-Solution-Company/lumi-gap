@@ -1,0 +1,122 @@
+@startuml
+!pragma layout elk
+skinparam dpi 150
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam BorderColor #2F6DB5
+skinparam BackgroundColor #FFFFFF
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam usecase {
+  BackgroundColor #EAF2FB
+  BorderColor #2F6DB5
+}
+skinparam actor {
+  BackgroundColor #FFFFFF
+  BorderColor #1B2A3A
+}
+skinparam entity {
+  BackgroundColor #F7FAFD
+  BorderColor #2F6DB5
+}
+skinparam rectangle {
+  BackgroundColor #F7F9FC
+  BorderColor #2F6DB5
+}
+
+hide circle
+hide empty methods
+skinparam ArrowFontSize 11
+skinparam ArrowFontColor #4A5A6A
+skinparam class {
+  BackgroundColor #F7FAFD
+  BorderColor #2F6DB5
+  HeaderBackgroundColor #DCE8F6
+}
+skinparam entity {
+  BackgroundColor #F7FAFD
+  BorderColor #2F6DB5
+}
+skinparam stereotypeFontSize 10
+title
+ERD 3(a) - Projects, members and literature
+<size:11><color:#4A5A6A>FK -> User : relation to the User entity is shown as an FK annotation</color></size>
+end title
+entity Project {
+  * id : uuid <<PK>>
+  --
+  # created_by_id : uuid <<FK>> -> User
+  # owner_id : uuid <<FK>> -> User
+  ..
+  title : text
+  status : text
+  visibility : text
+  version : int
+}
+entity ProjectMember {
+  * id : uuid <<PK>>
+  --
+  # project_id : uuid <<FK>>
+  # user_id : uuid <<FK>> -> User
+  ..
+  role : text
+  status : text
+}
+entity ProjectPaper {
+  * id : uuid <<PK>>
+  --
+  # added_by_id : uuid <<FK>> -> User
+  # paper_id : uuid <<FK>>
+  # project_id : uuid <<FK>>
+  ..
+  screening_status : text
+  reading_status : text
+}
+entity Paper {
+  * id : uuid <<PK>>
+  --
+  # requested_by_id : uuid <<FK>> -> User
+  # uploaded_by_id : uuid <<FK>> -> User
+  ..
+  doi : text
+  title : text
+  paper_status : text
+  data_status : text
+}
+entity ProjectInvitation {
+  * id : uuid <<PK>>
+  --
+  # invited_by_id : uuid <<FK>> -> User
+  # invited_user_id : uuid <<FK>> -> User
+  # project_id : uuid <<FK>>
+  ..
+  status : text
+  expires_at : timestamp
+}
+entity ProjectChatMessage {
+  * id : uuid <<PK>>
+  --
+  # pinned_by_id : uuid <<FK>> -> User
+  # project_id : uuid <<FK>>
+  # user_id : uuid <<FK>> -> User
+  ..
+  scope : text
+}
+entity ProjectTeamMessage {
+  * id : uuid <<PK>>
+  --
+  # deleted_by_id : uuid <<FK>> -> User
+  # project_id : uuid <<FK>>
+  # sender_id : uuid <<FK>> -> User
+}
+Project ||--o{ ProjectMember : project_id
+Project ||--o{ ProjectPaper : project_id
+Paper ||--o{ ProjectPaper : paper_id
+Project ||--o{ ProjectChatMessage : project_id
+Project ||--o{ ProjectTeamMessage : project_id
+Project ||--o{ ProjectInvitation : project_id
+@enduml

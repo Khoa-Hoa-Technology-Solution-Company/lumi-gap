@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="705" height="764" viewBox="0 0 705 764" font-family="Segoe UI, Arial, sans-serif">
+<defs><marker id="open" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto"><path d="M1 1 L9 5 L1 9" fill="none" stroke="#4A5A6A" stroke-width="1.6"/></marker></defs>
+<rect width="705" height="764" fill="#fff"/>
+<text x="352" y="32" text-anchor="middle" font-size="20" font-weight="700" fill="#1B2A3A">Use Case Diagram 1(b) - Paper discovery</text>
+<rect x="335" y="62" width="340" height="672" rx="12" fill="#F7F9FC" stroke="#2F6DB5" stroke-width="1.6"/>
+<text x="505" y="84" text-anchor="middle" font-size="15" font-weight="700" fill="#2F6DB5">LumiGap</text>
+<line x1="118.0" y1="252.0" x2="380.0" y2="132.0" stroke="#4A5A6A" stroke-width="1.5"/>
+<line x1="118.0" y1="252.0" x2="380.0" y2="222.0" stroke="#4A5A6A" stroke-width="1.5"/>
+<line x1="118.0" y1="252.0" x2="380.0" y2="312.0" stroke="#4A5A6A" stroke-width="1.5"/>
+<line x1="118.0" y1="432.0" x2="380.0" y2="132.0" stroke="#4A5A6A" stroke-width="1.5"/>
+<line x1="118.0" y1="432.0" x2="380.0" y2="222.0" stroke="#4A5A6A" stroke-width="1.5"/>
+<line x1="118.0" y1="432.0" x2="380.0" y2="312.0" stroke="#4A5A6A" stroke-width="1.5"/>
+<line x1="118.0" y1="432.0" x2="380.0" y2="402.0" stroke="#4A5A6A" stroke-width="1.5"/>
+<line x1="118.0" y1="432.0" x2="380.0" y2="492.0" stroke="#4A5A6A" stroke-width="1.5"/>
+<line x1="118.0" y1="432.0" x2="380.0" y2="582.0" stroke="#4A5A6A" stroke-width="1.5"/>
+<line x1="118.0" y1="432.0" x2="380.0" y2="672.0" stroke="#4A5A6A" stroke-width="1.5"/>
+<ellipse cx="505.0" cy="132.0" rx="125.0" ry="32.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
+<text x="505.0" y="129.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A" font-weight="600">UC-05</text>
+<text x="505.0" y="145.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A">Search papers</text>
+<ellipse cx="505.0" cy="222.0" rx="125.0" ry="32.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
+<text x="505.0" y="219.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A" font-weight="600">UC-06</text>
+<text x="505.0" y="235.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A">View paper details</text>
+<ellipse cx="505.0" cy="312.0" rx="125.0" ry="32.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
+<text x="505.0" y="309.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A" font-weight="600">UC-09</text>
+<text x="505.0" y="325.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A">Explore trends</text>
+<ellipse cx="505.0" cy="402.0" rx="125.0" ry="32.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
+<text x="505.0" y="399.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A" font-weight="600">UC-07</text>
+<text x="505.0" y="415.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A">Translate paper</text>
+<ellipse cx="505.0" cy="492.0" rx="125.0" ry="32.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
+<text x="505.0" y="489.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A" font-weight="600">UC-08</text>
+<text x="505.0" y="505.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A">Compare papers</text>
+<ellipse cx="505.0" cy="582.0" rx="125.0" ry="32.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
+<text x="505.0" y="579.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A" font-weight="600">UC-10</text>
+<text x="505.0" y="595.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A">Manage bookmarks</text>
+<ellipse cx="505.0" cy="672.0" rx="125.0" ry="32.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
+<text x="505.0" y="669.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A" font-weight="600">UC-11</text>
+<text x="505.0" y="685.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A">Request paper addition</text>
+<g stroke="#1B2A3A" stroke-width="2" fill="none"><circle cx="100.0" cy="232.0" r="10" fill="#fff"/><line x1="100.0" y1="242.0" x2="100.0" y2="268.0"/><line x1="83.0" y1="252.0" x2="117.0" y2="252.0"/><line x1="100.0" y1="268.0" x2="86.0" y2="288.0"/><line x1="100.0" y1="268.0" x2="114.0" y2="288.0"/></g>
+<text x="100.0" y="306" text-anchor="middle" font-size="13.5" fill="#1B2A3A">Guest</text>
+<g stroke="#1B2A3A" stroke-width="2" fill="none"><circle cx="100.0" cy="412.0" r="10" fill="#fff"/><line x1="100.0" y1="422.0" x2="100.0" y2="448.0"/><line x1="83.0" y1="432.0" x2="117.0" y2="432.0"/><line x1="100.0" y1="448.0" x2="86.0" y2="468.0"/><line x1="100.0" y1="448.0" x2="114.0" y2="468.0"/></g>
+<text x="100.0" y="486" text-anchor="middle" font-size="13.5" fill="#1B2A3A">User</text>
+<text x="100.0" y="502" text-anchor="middle" font-size="13.5" fill="#1B2A3A">(Student /</text>
+<text x="100.0" y="518" text-anchor="middle" font-size="13.5" fill="#1B2A3A">Researcher)</text>
+</svg>

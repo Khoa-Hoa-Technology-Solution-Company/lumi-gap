@@ -1,5 +1,7 @@
 # Phase A Design — OpenAlex Sync Pipeline + Phase A Mongoose Models
 
+> **Historical document (2026-05-25).** Written for the original MongoDB/Mongoose and Expo architecture. The repository now uses PostgreSQL + pgvector with Prisma (`apps/backend/prisma/*.prisma`, `apps/backend/prisma/migrations`) and a Flutter mobile client (`apps/flutter_mobile`). Collection names, Mongoose schemas, `_id` fields and Expo notes below are obsolete; the Prisma schema is the source of truth. Kept only because the root `CLAUDE.md` links to it.
+
 **Status:** Approved (brainstorming complete)
 **Date:** 2026-05-25
 **Owner:** hoangtira

@@ -1,0 +1,115 @@
+@startuml
+!pragma layout smetana
+skinparam dpi 150
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam BorderColor #2F6DB5
+skinparam BackgroundColor #FFFFFF
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam entity {
+  BackgroundColor #F7FAFD
+  BorderColor #2F6DB5
+}
+skinparam entity<<ref>> {
+  BackgroundColor #F3E5F5
+  BorderColor #7B1FA2
+}
+skinparam linetype ortho
+hide circle
+title Projects, members and planning (ERD, 1 of 2)
+entity projects #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  created_by_id : uuid <<FK>>
+  owner_id : uuid <<FK>>
+  title : string
+  status : string
+  visibility : string
+}
+entity project_members #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  project_id : uuid <<FK>>
+  user_id : uuid <<FK>>
+  role : string
+  status : string
+  joined_at : timestamptz
+}
+entity project_invitations #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  invited_by_id : uuid <<FK>>
+  invited_user_id : uuid <<FK>>
+  project_id : uuid <<FK>>
+  email : string
+  purpose : string
+  status : string
+}
+entity project_papers #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  added_by_id : uuid <<FK>>
+  paper_id : uuid <<FK>>
+  project_id : uuid <<FK>>
+  screening_status : string
+  reading_status : string
+  inclusion_reason : string
+}
+entity research_plans #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  project_id : uuid <<FK>>
+  updated_by_id : uuid <<FK>>
+  approach : string
+  problem : string
+  methodology : string
+}
+entity project_tasks #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  assignee_id : uuid <<FK>>
+  completed_by_id : uuid <<FK>>
+  created_by_id : uuid <<FK>>
+  project_id : uuid <<FK>>
+  title : string
+  status : string
+  due_at : timestamptz
+}
+entity project_milestones #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  created_by_id : uuid <<FK>>
+  project_id : uuid <<FK>>
+  title : string
+  status : string
+  due_at : timestamptz
+}
+entity project_activities #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  actor_id : uuid <<FK>>
+  project_id : uuid <<FK>>
+  type : string
+  entity_kind : string
+  entity_id : string
+}
+entity papers <<ref>> #F3E5F5 {
+  * id : uuid <<PK>>
+}
+papers ||--o{ project_papers
+projects ||--o{ project_activities
+projects ||--o{ project_invitations
+projects ||--o{ project_members
+projects ||--o{ project_milestones
+projects ||--o{ project_papers
+projects ||--o{ project_tasks
+projects ||--o| research_plans
+legend bottom
+Columns such as user_id and *_by_id reference users (not drawn). Purple entities are shown by id only.
+endlegend
+@enduml

@@ -1,0 +1,106 @@
+@startuml
+!pragma layout smetana
+skinparam dpi 150
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam BorderColor #2F6DB5
+skinparam BackgroundColor #FFFFFF
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam entity {
+  BackgroundColor #F7FAFD
+  BorderColor #2F6DB5
+}
+skinparam entity<<ref>> {
+  BackgroundColor #F3E5F5
+  BorderColor #7B1FA2
+}
+skinparam linetype ortho
+hide circle
+title Institutions, affiliations and verification evidence (ERD, 2 of 2)
+entity institutions #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  slug : string <<UK>>
+  name : string
+  status : string
+  host_institution : bool
+}
+entity institution_domains #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  institution_id : uuid <<FK>>
+  domain : string <<UK>>
+  trusted : bool
+  status : string
+  type : string
+}
+entity campuses #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  institution_id : uuid <<FK>>
+}
+entity affiliations #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  campus_id : uuid <<FK>>
+  institution_id : uuid <<FK>>
+  user_id : uuid <<FK>>
+  verified_by_id : uuid <<FK>>
+  institution_name : string
+  verification_status : string
+  position_status : string
+}
+entity verification_evidence #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  academic_profile_id : uuid <<FK>>
+  institution_id : uuid <<FK>>
+  previous_request_id : uuid <<FK>>
+  reviewed_by_id : uuid <<FK>>
+  user_id : uuid <<FK>>
+  verification_type : string
+  source_type : string
+  status : string
+}
+entity verification_evidence_sources #F7FAFD {
+  * id : uuid <<PK>>
+  --
+  email_identity_id : uuid <<FK>>
+  previous_source_id : uuid <<FK>>
+  request_id : uuid <<FK>>
+  slot : int
+  type : string
+  source_kind : string
+}
+entity users <<ref>> #F3E5F5 {
+  * id : uuid <<PK>>
+}
+entity academic_profiles <<ref>> #F3E5F5 {
+  * id : uuid <<PK>>
+}
+entity user_emails <<ref>> #F3E5F5 {
+  * id : uuid <<PK>>
+}
+academic_profiles |o--o{ verification_evidence
+campuses |o--o{ affiliations
+institutions |o--o{ verification_evidence
+institutions ||--o{ affiliations
+institutions ||--o{ campuses
+institutions ||--o{ institution_domains
+user_emails |o--o{ verification_evidence_sources
+users |o--o{ affiliations : verified_by_id
+users |o--o{ verification_evidence : reviewed_by_id
+users ||--o{ affiliations : user_id
+users ||--o{ verification_evidence : user_id
+verification_evidence |o--o{ verification_evidence : previous_request_id
+verification_evidence ||--o{ verification_evidence_sources
+verification_evidence_sources |o--o{ verification_evidence_sources : previous_source_id
+legend bottom
+Purple entities are shown by id only.
+endlegend
+@enduml
