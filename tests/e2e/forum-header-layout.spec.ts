@@ -37,7 +37,9 @@ test("keeps the shared floating header clear of the sticky forum sidebar", async
     return { image: style.backgroundImage, size: style.backgroundSize, position: style.backgroundPosition };
   });
   const initialMenuColor = await header.evaluate(node => getComputedStyle(node).backgroundColor);
-  expect(await panel.evaluate(node => parseFloat(getComputedStyle(node).borderTopLeftRadius))).toBeGreaterThanOrEqual(18);
+  // The Community area shares one flat surface: no illustration behind the header, and 12px panels.
+  expect(initialBackground.image).toBe("none");
+  expect(await panel.evaluate(node => parseFloat(getComputedStyle(node).borderTopLeftRadius))).toBe(12);
   expect(await shellNode.evaluate(node => getComputedStyle(node, "::after").opacity)).toBe("0");
   expect((await page.getByRole("heading", { name: "Research Forum", exact: true }).boundingBox())!.y).toBeLessThan(155);
   expect((await page.locator(".forum-topic-toolbar").boundingBox())!.y).toBeLessThan(290);
