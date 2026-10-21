@@ -38,6 +38,6 @@ describe("Discussion creation button", () => {
     // The display toggle uses this accent too, but is not a creation entry point.
     const creationButtons = list.replace(/<Button\b[^>]*className="forum-topic-view-toggle[^"]*"[^>]*>/g, "");
     expect(creationButtons.match(/variant="discussion"/g)).toHaveLength(3);
-    expect(community.match(/variant="discussion"/g)).toHaveLength(2);
+    expect(community.match(/variant="discussion"/g)).toHaveLength(4);
   });
 });

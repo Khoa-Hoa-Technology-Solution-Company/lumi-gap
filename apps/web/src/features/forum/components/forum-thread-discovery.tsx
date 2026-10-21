@@ -34,7 +34,7 @@ export function ForumThreadDiscoveryView({ data, loading, error, onRetry }: { da
   const topics = data?.[tab] ?? [];
   const tabs = ["suggested", "related"] as const;
   return (
-    <section aria-label={t("More discussions")} className="mt-10 border-t border-border pt-5">
+    <section aria-label={t("More discussions")} className="mt-8 border-t border-border pt-6">
       <div role="tablist" aria-label={t("Discover discussions")} className="flex gap-5 border-b border-border">
         {tabs.map((value) => <button key={value} id={`${id}-${value}`} type="button" role="tab" aria-label={`${t(value === "suggested" ? "Suggested" : "Related")}${data ? ` (${formatForumNumber(data[value].length, language)})` : ""}`} aria-selected={tab === value} aria-controls={`${id}-panel`} tabIndex={tab === value ? 0 : -1} onClick={() => setTab(value)} onKeyDown={(event) => {
           if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;

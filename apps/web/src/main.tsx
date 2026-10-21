@@ -10,6 +10,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/theme-provider";
 import { I18nProvider } from "@/i18n";
 import "./theme/globals.css";
+import "./theme/lumi-surface.css";
 
 const LecturerDeliveryNotice = lazy(() =>
   import("@/features/academic-profile/components/lecturer-delivery-notice").then((module) => ({

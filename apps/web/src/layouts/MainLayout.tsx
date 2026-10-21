@@ -160,6 +160,7 @@ export function MainLayout() {
   const isHomeSurface = location.pathname === "/home" || location.pathname === "/" || location.pathname === "/literature";
   const isProjectsSurface = location.pathname === "/projects" || location.pathname.startsWith("/projects/");
   const isForumSurface = location.pathname === "/forum" || location.pathname.startsWith("/forum/") || /^\/(?:u|academics)\/[^/]+\/(?:activity|summary)\/?$/.test(location.pathname);
+  const isCommunitySurface = /^\/communities(\/|$)/.test(location.pathname);
   const [isHeaderScrolled, setIsHeaderScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [activeDesktopMenu, setActiveDesktopMenu] = useState<string | null>(null);
@@ -239,7 +240,7 @@ export function MainLayout() {
 
   return (
     <div
-      className={cn("lumi-app-shell flex min-h-screen flex-col", isForumSurface ? "forum-app-shell bg-background" : "bg-slate-50 dark:bg-[#09090b]", isForumSurface && isHeaderScrolled && "forum-app-shell--scrolled", isHomeSurface && "home-app-shell", isProjectsSurface && "projects-app-shell")}
+      className={cn("lumi-app-shell flex min-h-screen flex-col", isForumSurface || isCommunitySurface ? "lumi-surface" : "bg-slate-50 dark:bg-[#09090b]", isForumSurface && "forum-app-shell", isForumSurface && isHeaderScrolled && "forum-app-shell--scrolled", isHomeSurface && "home-app-shell", isProjectsSurface && "projects-app-shell")}
     >
       <header className={cn("lumi-app-header sticky z-50 h-[var(--app-header-height)] shrink-0", isAuthed && "lumi-app-header--authed", isForumSurface && "forum-app-header")}>
         <div className="lumi-app-nav-inner mx-auto grid h-full w-full min-w-0 grid-cols-[minmax(0,auto)_1fr_auto] items-center gap-1 sm:gap-4">
@@ -261,7 +262,7 @@ export function MainLayout() {
             className="hidden items-center justify-self-center gap-0.5 whitespace-nowrap min-[1180px]:flex"
           >
             {navGroups.map((group) => (
-              group.label === "Community" ? <Link key={group.label} to="/forum" className={cn("rounded-md px-3 py-2 text-sm font-medium transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", location.pathname.startsWith("/forum") && "bg-muted text-primary")}>{t(group.label)}</Link> :
+              group.label === "Community" ? <Link key={group.label} to="/forum" aria-current={isForumSurface || isCommunitySurface ? "page" : undefined} className={cn("rounded-md px-3 py-2 text-sm font-medium transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", (isForumSurface || isCommunitySurface) && "bg-muted text-primary")}>{t(group.label)}</Link> :
               <DesktopNavDropdown
                 key={group.label}
                 label={t(group.label)}
@@ -349,7 +350,7 @@ export function MainLayout() {
           <RouteTransition><Outlet /></RouteTransition>
         </Suspense>
       </main>
-      {!isForumSurface && !isProjectsSurface ? <footer className="border-t bg-white py-6 mt-auto dark:bg-[#0f0f11]">
+      {!isForumSurface && !isProjectsSurface ? <footer className={isCommunitySurface ? "border-t bg-white py-6 mt-auto font-sans dark:bg-[var(--lumi-surface)]" : "border-t bg-white py-6 mt-auto dark:bg-[#0f0f11]"}>
         <div className="container mx-auto flex flex-col items-center justify-between px-4 text-center text-xs text-slate-500 sm:px-6 md:flex-row md:text-left lg:px-8 dark:text-slate-400">
           <p className="max-w-full break-words">&copy; {new Date().getFullYear()} {t("Tori Team. All rights reserved.")}</p>
           <div className="mt-4 flex flex-wrap justify-center gap-x-4 gap-y-2 md:mt-0 md:justify-end">

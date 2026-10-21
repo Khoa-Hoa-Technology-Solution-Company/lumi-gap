@@ -78,7 +78,7 @@ export function ForumComposer({ onSubmit, replyTo, onCancelReply, availablePaper
   const citationButton = <Button type="button" variant="ghost" size={compact ? "icon" : "sm"} className={compact ? "forum-reply-citation" : "-ml-2"} aria-label={t("Add citation")} title={t("Add citation")} aria-expanded={showCitations} aria-controls="reply-citations" onClick={() => setShowCitations((value) => !value)}><BookOpen className={cn("h-4 w-4", !compact && "mr-1.5")} />{!compact ? t("Add citation") : null}{selectedPaperId || doi ? <span>{" · " + [selectedPaperId, doi].filter(Boolean).length}</span> : null}</Button>;
   const actions = <>
     <Button type="button" variant="ghost" onClick={requestDiscard}>{t("Cancel")}</Button>
-    <Button type="submit" disabled={!content.trim() || disabled || isSubmitting} className={cn("gap-2", compact && "forum-reply-submit")}>{isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : !compact ? <Send className="h-4 w-4" /> : null}{t(isSubmitting ? "Posting…" : "Post reply")}</Button>
+    <Button type="submit" variant="discussion" disabled={!content.trim() || disabled || isSubmitting} className={cn("gap-2", compact && "forum-reply-submit")}>{isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : !compact ? <Send className="h-4 w-4" /> : null}{t(isSubmitting ? "Posting…" : "Post reply")}</Button>
   </>;
   return (
     <form id={compact ? "forum-reply-form" : undefined} onSubmit={handleSubmit} onReset={(event) => { event.preventDefault(); requestDiscard(); }} aria-labelledby="composer-heading" className={cn("border-t border-border pt-7", compact && "forum-reply-form-compact")}>
