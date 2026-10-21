@@ -12,10 +12,12 @@ export function CommunityMembersTab({ community }: { community: CommunityView })
   if (community.contentRestricted) return <p className="rounded-xl border border-dashed px-6 py-12 text-center text-sm text-muted-foreground">{t("Request membership to see who belongs to this community.")}</p>;
   if (members.isLoading) return <div className="space-y-2">{[0, 1, 2].map((item) => <div key={item} className="h-16 animate-pulse rounded-lg bg-muted" />)}</div>;
   if (members.error) return <p className="text-sm text-red-600">{t("Unable to load members.")}</p>;
-  if (!members.data?.length) return <p className="text-sm text-muted-foreground">{t("No members yet.")}</p>;
+  const rows = members.data?.pages.flatMap((page) => page.data) ?? [];
+  if (!rows.length) return <p className="text-sm text-muted-foreground">{t("No members yet.")}</p>;
 
-  return <ul className="divide-y overflow-hidden rounded-xl border bg-card">
-    {members.data.map((member) => <li key={member.id} className="flex items-center gap-3 p-4">
+  return <div className="space-y-3">
+  <ul className="divide-y overflow-hidden rounded-xl border bg-card">
+    {rows.map((member) => <li key={member.id} className="flex items-center gap-3 p-4">
       <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted text-xs font-semibold">
         {member.avatarUrl ? <img src={member.avatarUrl} alt="" className="h-full w-full object-cover" /> : initials(member.fullName)}
       </div>
@@ -25,5 +27,7 @@ export function CommunityMembersTab({ community }: { community: CommunityView })
       </div>
       {member.role !== "member" ? <Badge variant="outline" className="font-normal">{t(member.role)}</Badge> : null}
     </li>)}
-  </ul>;
+  </ul>
+  {members.hasNextPage ? <button type="button" disabled={members.isFetchingNextPage} onClick={() => void members.fetchNextPage()} className="w-full rounded-lg border px-3 py-2 text-sm text-muted-foreground hover:text-foreground disabled:opacity-50">{t(members.isFetchingNextPage ? "Loading…" : "Load more")}</button> : null}
+  </div>;
 }

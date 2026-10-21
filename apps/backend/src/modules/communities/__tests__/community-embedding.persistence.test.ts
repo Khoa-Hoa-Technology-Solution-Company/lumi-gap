@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { PAPER_EMBEDDING_DIMENSIONS, vectorParameter } from "../../../infrastructure/database/postgres-paper-search.js";
 import { getPrisma } from "../../../infrastructure/database/prisma.js";
 import { getEmbeddingProvider } from "../../embeddings/embedding.factory.js";
-import { runCommunityEmbedding } from "../community-embedding.service.js";
+import { nearestCommunityIds, runCommunityEmbedding } from "../community-embedding.service.js";
 import { communityService } from "../community.service.js";
 
 vi.mock("../../embeddings/embedding.factory.js", () => ({ getEmbeddingProvider: vi.fn() }));
@@ -213,6 +213,18 @@ describe.sequential("community embedding suggestions (PostgreSQL)", () => {
     expect(embedBatch).toHaveBeenCalledTimes(1);
     expect(await embeddingIsNull(other.id)).toBe(false);
     expect(await embeddingIsNull(edited.id)).toBe(true);
+  });
+
+  it("nearestCommunityIds() hides private communities unless a viewer is given", async () => {
+    const options = { limit: 100, minSimilarity: 0.99 };
+    const idsOf = async (extra: Partial<Parameters<typeof nearestCommunityIds>[1]> = {}) =>
+      (await nearestCommunityIds(near, { ...options, ...extra })).map((row) => row.id);
+    const anonymous = await idsOf();
+    expect(anonymous).toContain(c.near);
+    expect(anonymous).not.toContain(c.priv);
+    expect(await idsOf({ viewer: { isAdmin: false, memberCommunityIds: [] } })).not.toContain(c.priv);
+    expect(await idsOf({ viewer: { isAdmin: false, memberCommunityIds: [c.priv] } })).toContain(c.priv);
+    expect(await idsOf({ viewer: { isAdmin: true, memberCommunityIds: [] } })).toContain(c.priv);
   });
 
   it("update() clears the embedding when embedded content changes, but not for other fields", async () => {

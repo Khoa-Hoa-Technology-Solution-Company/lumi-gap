@@ -42,6 +42,7 @@ export type ForumCommentView = {
 export type ForumRevisionAuthor = { id: string; fullName: string; avatarUrl?: string };
 export type ForumPostRevisionView = { id: string; revision: number; title: string; content: string; tags: string[]; editedBy: ForumRevisionAuthor; createdAt: string };
 export type ForumCommentRevisionView = { id: string; revision: number; content: string; editedBy: ForumRevisionAuthor; createdAt: string };
+export type CommunityPublicMembersPage = { data: CommunityPublicMember[]; meta: { page: number; pageSize: number; total: number; totalPages: number } };
 export type ForumCommentsPage = { data: ForumCommentView[]; meta: { page: number; pageSize: number; total: number; totalPages: number } };
 export type ForumDiscoveryReason = "SAME_PAPER" | "SAME_GAP" | "SHARED_TAGS" | "SIMILAR_TOPIC" | "SAME_COMMUNITY" | "RECENT_DISCUSSION";
 export type ForumDiscoveryTopic = Pick<ForumPostView, "id" | "publicSlug" | "title" | "type" | "community" | "replyCount" | "viewCount" | "lastActivityAt" | "createdAt"> & { reason: ForumDiscoveryReason };
@@ -290,7 +291,7 @@ export const forumApi = {
   async setCommunityStatus(communityId: string, status: "ACTIVE" | "ARCHIVED"): Promise<CommunityView> { const response = await api.patch(API_ROUTES.communities.status(communityId), { status }); return normalizeCommunity(response.data.data); },
   async resubmitCommunity(communityId: string): Promise<CommunityView> { const response = await api.post(API_ROUTES.communities.resubmit(communityId)); return normalizeCommunity(response.data.data); },
   async transferCommunityOwnership(communityId: string, userId: string): Promise<CommunityView> { const response = await api.post(API_ROUTES.communities.transferOwnership(communityId), { userId }); return normalizeCommunity(response.data.data); },
-  async publicCommunityMembers(communityId: string): Promise<CommunityPublicMember[]> { const response = await api.get(API_ROUTES.communities.publicMembers(communityId)); return response.data.data; },
+  async publicCommunityMembers(communityId: string, page = 1, pageSize = 50): Promise<CommunityPublicMembersPage> { const response = await api.get(API_ROUTES.communities.publicMembers(communityId), { params: { page, pageSize } }); return { data: response.data.data, meta: response.data.meta }; },
   async relatedPapers(communityId: string): Promise<CommunityRelatedPaper[]> { const response = await api.get(API_ROUTES.communities.relatedPapers(communityId)); return response.data.data; },
   async relatedGaps(communityId: string): Promise<CommunityRelatedGap[]> { const response = await api.get(API_ROUTES.communities.relatedGaps(communityId)); return response.data.data; },
   async joinCommunity(communityId: string): Promise<CommunityMembershipView> { const response = await api.post(API_ROUTES.communities.join(communityId)); return response.data.data; },

@@ -21,7 +21,7 @@ import { useI18n } from "@/i18n";
 import { cn } from "@/utils/cn";
 
 type Tab = "settings" | "requests" | "members" | "moderation";
-type MemberChange = { role?: "moderator" | "member"; status?: "pending" | "active" | "declined" | "banned" };
+type MemberChange = { role?: "moderator" | "member"; status?: "active" | "declined" | "banned" };
 
 const splitValues = (value: string) => [...new Set(value.split(/[\n,]/).map((item) => item.trim()).filter(Boolean))];
 const requestError = (error: unknown, fallback: string) => (error as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message ?? fallback;
