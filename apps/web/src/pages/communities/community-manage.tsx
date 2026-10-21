@@ -49,7 +49,7 @@ export function CommunityManagePage() {
     <Link to={`/communities/${community.slug}`} className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-blue-700"><ArrowLeft className="h-4 w-4" />{t("Back to community")}</Link>
     <header className="mt-5 border-b pb-6">
       <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-700">{t("Community management")}</p>
-      <h1 className="mt-2 text-3xl font-bold tracking-tight">{community.name}</h1>
+      <h1 className="lumi-page-title mt-2">{community.name}</h1>
       <p className="mt-2 text-sm text-muted-foreground">{t("Manage membership, moderation, and community settings within your permission scope.")}</p>
     </header>
     <nav className="mt-5 flex gap-1 overflow-x-auto border-b" aria-label={t("Community management sections")}>
@@ -132,7 +132,7 @@ function Settings({ community }: { community: CommunityView }) {
         </Field> : null}
       </div>
       {message ? <p role="status" className={`text-sm ${message.error ? "text-red-600" : "text-emerald-700"}`}>{message.text}</p> : null}
-      <Button type="submit" disabled={busy || name.trim().length < 2 || !description.trim()}>{t(busy ? "Saving…" : "Save settings")}</Button>
+      <Button variant="discussion" type="submit" disabled={busy || name.trim().length < 2 || !description.trim()}>{t(busy ? "Saving…" : "Save settings")}</Button>
     </form>
     {(community.isOwner || community.isAdmin) && community.status === "ACTIVE" ? <TransferOwnership community={community} /> : null}
   </section>;
