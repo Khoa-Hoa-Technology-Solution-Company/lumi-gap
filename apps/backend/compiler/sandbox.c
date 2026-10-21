@@ -34,6 +34,9 @@ int main(int argc, char **argv) {
     if (rules < 0) fail("sandbox creation");
     const char *readonly[] = {"/usr", "/lib", "/lib64", "/etc/texmf", "/etc/fonts", "/var/lib/texmf", "/var/cache/fontconfig", NULL};
     for (int i = 0; readonly[i]; i++) allow_path(rules, readonly[i], read | LANDLOCK_ACCESS_FS_EXECUTE);
+    /* libpaper 2 (Debian 13) resolves named formats through paperspecs. */
+    allow_path(rules, "/etc/paperspecs", LANDLOCK_ACCESS_FS_READ_FILE);
+    allow_path(rules, "/etc/papersize", LANDLOCK_ACCESS_FS_READ_FILE);
     allow_path(rules, "/dev/null", LANDLOCK_ACCESS_FS_READ_FILE | LANDLOCK_ACCESS_FS_WRITE_FILE);
     allow_path(rules, "/dev/urandom", LANDLOCK_ACCESS_FS_READ_FILE);
     allow_path(rules, argv[1], all & (read | LANDLOCK_ACCESS_FS_WRITE_FILE | LANDLOCK_ACCESS_FS_REMOVE_FILE | LANDLOCK_ACCESS_FS_REMOVE_DIR | LANDLOCK_ACCESS_FS_MAKE_REG | LANDLOCK_ACCESS_FS_MAKE_DIR | LANDLOCK_ACCESS_FS_TRUNCATE | LANDLOCK_ACCESS_FS_REFER));

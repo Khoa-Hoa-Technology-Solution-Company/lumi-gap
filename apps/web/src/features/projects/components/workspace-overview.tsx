@@ -1,5 +1,6 @@
+import { useMemo } from "react";
 import { Link } from "react-router-dom";
-import type { IProject, ResearchStage } from "@trend/shared-types";
+import type { IProject, ResearchStage, WorkspaceOverview } from "@trend/shared-types";
 import {
   ArrowUpRight,
   Flag,
@@ -18,12 +19,20 @@ import {
   TrendingUp,
   Layers,
   FileText,
+  Globe2,
+  LockKeyhole,
+  Clock3,
+  Settings2,
+  Trophy,
+  Award,
+  Plus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useAuthStore } from "@/stores/auth-store";
 import { useI18n } from "@/i18n";
 import { workspaceApi } from "../api/workspace.api";
 import { useWorkspaceCommand, useWorkspaceOverview } from "../hooks/use-workspace";
-import { approachLabels, projectSectionHref, stageLabels, taskLabels, WorkspaceDate, WorkspaceError, WorkspaceLoading } from "./workspace-common";
+import { approachLabels, formatRelativeActivity, projectSectionHref, stageLabels, taskLabels, WorkspaceDate, WorkspaceError, WorkspaceLoading } from "./workspace-common";
 
 export function WorkspaceStageSelector({ projectId }: { projectId: string }) {
   const { t } = useI18n();
@@ -125,8 +134,34 @@ const activityLabels: Record<string, string> = {
   MILESTONE_CREATED: "Created a milestone", MILESTONE_UPDATED: "Updated a milestone", DISCUSSION_CREATED: "Started a discussion", DISCUSSION_UPDATED: "Updated a discussion", DISCUSSION_RESOLVED: "Recorded a discussion conclusion", DISCUSSION_REOPENED: "Reopened a discussion", DISCUSSION_REPLY: "Replied to a discussion", DECISION_CREATED: "Recorded a research decision", DECISION_UPDATED: "Revised a research decision", WORKSPACE_COMMENT_ADDED: "Left a comment", MENTOR_PLAN_FEEDBACK: "Left mentor feedback", PROJECT_CREATED: "Created the project", PROJECT_UPDATED: "Updated project details", PAPER_ADDED: "Added a paper", PAPER_REMOVED: "Removed a paper", MEMBER_JOINED: "Joined the project", MEMBER_INVITED: "Invited a team member",
 };
 
+function getTopContributors(data: WorkspaceOverview) {
+  if (data.topContributors && data.topContributors.length > 0) {
+    return data.topContributors;
+  }
+  // Fallback: aggregate from activity items
+  const activityMap = new Map<string, { person: typeof data.members[0]; count: number }>();
+  for (const act of data.activity) {
+    if (!act.actor) continue;
+    const existing = activityMap.get(act.actor.id);
+    if (existing) {
+      existing.count += 1;
+    } else {
+      activityMap.set(act.actor.id, { person: act.actor, count: 1 });
+    }
+  }
+  const list = Array.from(activityMap.values()).sort((a, b) => b.count - a.count);
+  const totalActs = list.reduce((sum, item) => sum + item.count, 0);
+  return list.slice(0, 5).map((item, index) => ({
+    person: item.person,
+    count: item.count,
+    percentage: totalActs > 0 ? Math.round((item.count / totalActs) * 100) : 0,
+    rank: index + 1,
+  }));
+}
+
 export function WorkspaceOverviewPanel({ project }: { project: IProject }) {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
+  const currentUserId = useAuthStore(state => state.user?.id);
   const id = project._id;
   const overview = useWorkspaceOverview(id);
 
@@ -134,6 +169,8 @@ export function WorkspaceOverviewPanel({ project }: { project: IProject }) {
   if (!overview.data) return <WorkspaceError error={overview.error} retry={() => void overview.refetch()} />;
 
   const data = overview.data;
+  const topContributors = getTopContributors(data);
+
   const attention = [
     { count: data.attention.mentorFeedback, label: "Mentor feedback is waiting for a team response", tab: "plan" },
     { count: data.attention.overdueTasks, label: "Overdue tasks", tab: "tasks" },
@@ -209,22 +246,65 @@ export function WorkspaceOverviewPanel({ project }: { project: IProject }) {
   return (
     <div className="coord-overview space-y-7" data-no-i18n>
       {/* Overview Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-1">
-        <div>
-          <div className="flex items-center gap-2.5">
-            <h2 className="text-3xl font-extrabold tracking-tight text-foreground">{t("Overview")}</h2>
-            <span className="px-3 py-1 rounded-full text-xs font-bold bg-primary/10 text-primary border border-primary/20">
-              {t("Workspace")}
-            </span>
+      <div className="bg-card rounded-2xl border border-border/80 p-5 sm:p-6 shadow-xs relative overflow-hidden">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
+          <div className="space-y-2 min-w-0">
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground leading-tight">
+                {project.title}
+              </h1>
+              <span className="project-status-tag" data-status={project.status}>
+                {t({ ACTIVE: "Active", PLANNING: "Planning", ON_HOLD: "On hold", COMPLETED: "Completed", ARCHIVED: "Archived" }[project.status])}
+              </span>
+              {project.researchField ? (
+                <span className="project-detail-scope">
+                  <Compass className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                  <span>{project.researchField}</span>
+                </span>
+              ) : null}
+            </div>
+
+            <div className="flex items-center gap-3.5 text-xs font-medium text-muted-foreground flex-wrap pt-0.5">
+              <span className="inline-flex items-center gap-1.5">
+                {["PUBLIC", "PUBLIC_SUMMARY"].includes(project.visibility) ? (
+                  <Globe2 className="h-3.5 w-3.5 text-emerald-500" aria-hidden="true" />
+                ) : project.visibility === "INVITE_ONLY" ? (
+                  <UsersRound className="h-3.5 w-3.5 text-blue-500" aria-hidden="true" />
+                ) : (
+                  <LockKeyhole className="h-3.5 w-3.5 text-amber-500" aria-hidden="true" />
+                )}
+                {t(project.visibility === "PRIVATE" ? "Private" : project.visibility === "INVITE_ONLY" ? "Invite only" : "Public summary")}
+              </span>
+              <span>•</span>
+              <span className="inline-flex items-center gap-1.5">
+                <Clock3 className="h-3.5 w-3.5 text-muted-foreground/70" aria-hidden="true" />
+                {t("Updated {{time}}", { time: formatRelativeActivity(project.updatedAt, language, t) })}
+              </span>
+              {project.accessRole ? (
+                <>
+                  <span>•</span>
+                  <Link
+                    to={projectSectionHref(id, "members", { team: "settings" })}
+                    className="inline-flex items-center gap-1.5 hover:text-primary transition-colors font-semibold"
+                  >
+                    <Settings2 className="h-3.5 w-3.5" />
+                    <span>{t("Project settings")}</span>
+                  </Link>
+                </>
+              ) : null}
+            </div>
           </div>
-          <p className="mt-1.5 text-base text-muted-foreground">{t("Research direction, next steps and recent team activity.")}</p>
+
+          <div className="flex items-center gap-3 flex-wrap lg:self-center shrink-0">
+            <WorkspaceStageSelector projectId={id} />
+            <Button asChild size="default" className="project-primary-action h-9 px-4 text-xs font-semibold shadow-xs">
+              <Link to={projectSectionHref(id, "plan")}>
+                {t(data.plan.problem ? "About project" : "Describe your research")}
+                <ArrowUpRight className="ml-1.5 h-3.5 w-3.5" />
+              </Link>
+            </Button>
+          </div>
         </div>
-        <Button asChild size="default" className="project-primary-action h-10 px-5 text-sm font-semibold shadow-sm">
-          <Link to={projectSectionHref(id, "plan")}>
-            {t(data.plan.problem ? "Open research plan" : "Describe your research")}
-            <ArrowUpRight className="ml-1.5 h-4 w-4" />
-          </Link>
-        </Button>
       </div>
 
       {/* Main Grid: Left Column (8 cols) and Right Column (4 cols) */}
@@ -469,6 +549,132 @@ export function WorkspaceOverviewPanel({ project }: { project: IProject }) {
                 <span className="h-2 w-2 rounded-full bg-primary" />
                 {t("Open mentor questions")} · {data.attention.mentorQuestions}
               </Link>
+            )}
+          </section>
+
+          {/* Card: Top Contributors / Bảng vinh danh đóng góp */}
+          <section className="bg-card rounded-2xl border border-border/80 p-6 shadow-xs relative overflow-hidden">
+            <div className="absolute -top-10 -right-10 w-32 h-32 rounded-full bg-amber-500/10 dark:bg-amber-400/5 pointer-events-none blur-2xl" />
+
+            <div className="flex items-center justify-between gap-2 mb-4">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="h-8 w-8 rounded-lg bg-amber-100 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                  <Trophy className="h-4.5 w-4.5" />
+                </div>
+                <h3 className="font-bold text-base text-foreground whitespace-nowrap">{t("Top contributors")}</h3>
+              </div>
+              <Link
+                to={projectSectionHref(id, "contributions")}
+                className="text-sm font-semibold text-primary hover:underline shrink-0"
+              >
+                {t("View")}
+              </Link>
+            </div>
+
+            {topContributors.length > 0 ? (
+              <div className="space-y-3">
+                {topContributors.map((item, idx) => {
+                  const isCurrentUser = item.person.id === currentUserId;
+                  const isOwner = item.person.id === project.ownerId;
+                  const medal = idx === 0 ? "🥇" : idx === 1 ? "🥈" : idx === 2 ? "🥉" : null;
+                  const rankClass = idx === 0
+                    ? "bg-gradient-to-br from-amber-400 to-amber-600 text-white font-black shadow-xs ring-2 ring-amber-300 dark:ring-amber-700"
+                    : idx === 1
+                    ? "bg-slate-400 text-white font-bold"
+                    : idx === 2
+                    ? "bg-amber-700 text-white font-bold"
+                    : "bg-muted text-muted-foreground font-semibold";
+                  const barColor = idx === 0
+                    ? "from-amber-400 via-amber-500 to-yellow-500"
+                    : idx === 1
+                    ? "from-slate-400 to-indigo-500"
+                    : idx === 2
+                    ? "from-amber-600 to-amber-700"
+                    : "from-primary/60 to-primary";
+
+                  return (
+                    <div
+                      key={item.person.id}
+                      className={`group p-3 rounded-xl border transition-all ${
+                        isCurrentUser
+                          ? "bg-amber-50/50 dark:bg-amber-950/20 border-amber-200/80 dark:border-amber-900/60 shadow-2xs"
+                          : "bg-card/70 border-border/60 hover:border-border hover:bg-muted/30"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2 mb-2">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          {/* Rank indicator */}
+                          <span
+                            className={`h-5 w-5 rounded-full flex items-center justify-center text-[11px] shrink-0 ${rankClass}`}
+                            title={`Hạng ${idx + 1}`}
+                          >
+                            {medal || idx + 1}
+                          </span>
+
+                          {/* Member Name & Badges */}
+                          <div className="min-w-0 flex items-center gap-1.5 flex-wrap">
+                            <span className="font-semibold text-sm text-foreground truncate">
+                              {item.person.name}
+                            </span>
+                            {isCurrentUser && (
+                              <span className="px-1.5 py-0.2 rounded-md bg-amber-200/80 dark:bg-amber-900/70 text-amber-800 dark:text-amber-200 text-[10px] font-bold">
+                                {t("You")}
+                              </span>
+                            )}
+                            {isOwner && (
+                              <span className="px-1.5 py-0.2 rounded-md bg-blue-100 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300 text-[10px] font-semibold">
+                                {t("Leader")}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Contribution metric */}
+                        <div className="text-right shrink-0">
+                          <span className="text-xs font-bold text-foreground">
+                            {item.count} <span className="text-[11px] font-normal text-muted-foreground">{t("activities")}</span>
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Percentage progress bar */}
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 h-2 rounded-full bg-muted/60 overflow-hidden">
+                          <div
+                            className={`h-full rounded-full bg-gradient-to-r ${barColor} transition-all duration-500`}
+                            style={{ width: `${Math.max(item.percentage, 8)}%` }}
+                          />
+                        </div>
+                        <span className="text-[11px] font-semibold text-muted-foreground w-8 text-right tabular-nums">
+                          {item.percentage}%
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {/* Motivational Footnote */}
+                <div className="pt-2 text-[11.5px] text-muted-foreground/90 flex items-start gap-1.5 leading-relaxed border-t border-border/50">
+                  <Sparkles className="h-3.5 w-3.5 text-amber-500 shrink-0 mt-0.5" />
+                  <span>{t("Every research action (screening, evidence extraction, manuscripts) is automatically recorded.")}</span>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-dashed border-border/80 p-5 text-center bg-muted/20">
+                <div className="h-10 w-10 rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center mx-auto mb-2.5">
+                  <Award className="h-5 w-5" />
+                </div>
+                <p className="text-sm font-semibold text-foreground">{t("No recorded contributions yet")}</p>
+                <p className="text-xs text-muted-foreground mt-1 max-w-xs mx-auto leading-relaxed">
+                  {t("Be the first to add papers, screen literature, or complete tasks to lead the team board!")}
+                </p>
+                <Button asChild variant="outline" size="sm" className="mt-3.5 text-xs font-semibold rounded-lg">
+                  <Link to={projectSectionHref(id, "contributions", { contributionTab: "work" })}>
+                    <Plus className="mr-1 h-3.5 w-3.5" />
+                    {t("Record work contribution")}
+                  </Link>
+                </Button>
+              </div>
             )}
           </section>
 

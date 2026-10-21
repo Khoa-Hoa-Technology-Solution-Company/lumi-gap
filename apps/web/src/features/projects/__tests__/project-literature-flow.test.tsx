@@ -27,11 +27,15 @@ let root: Root, container: HTMLDivElement, client: QueryClient;
 const included: IProject["papers"][number] = { id: "link1", targetKind: "Paper", targetId: { _id: "p1", title: "Included paper", authors: [] }, screeningStatus: "INCLUDED", readingStatus: "NOT_STARTED", evidenceCount: 1, addedAt: "2026-10-01T00:00:00Z", updatedAt: "2026-10-01T00:00:00Z" };
 const undecided = { ...included, targetId: { _id: "p2", title: "Unscreened paper", authors: [] }, screeningStatus: "UNDECIDED", evidenceCount: 0 } as IProject["papers"][number];
 const callbacks = { onRequestAddPaper: vi.fn(), onNavigateToReports: vi.fn(), onNavigateToGaps: vi.fn(), onViewEvidence: vi.fn() };
-const workspace = (props: Partial<React.ComponentProps<typeof ProjectLiteratureWorkspace>> = {}) => <ProjectLiteratureWorkspace projectId="project" papers={[]} isOwner readOnly={false} criteria={{ inclusion: [], exclusion: [] }} {...callbacks} {...props} />;
+const workspace = (props: Partial<React.ComponentProps<typeof ProjectLiteratureWorkspace>> = {}) => <ProjectLiteratureWorkspace projectId="project" papers={[]} readOnly={false} {...callbacks} {...props} />;
 async function render(node: ReactNode) { await act(async () => root.render(<QueryClientProvider client={client}><MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>{node}</MemoryRouter></QueryClientProvider>)); }
 async function click(text: string) {
   const button = [...document.querySelectorAll<HTMLButtonElement>("button")].find(item => item.getAttribute("aria-label") === text || item.textContent === text);
   expect(button, text).toBeDefined(); await act(async () => button!.click());
+}
+async function chooseGroup(label: string) {
+  const button = [...container.querySelectorAll<HTMLButtonElement>('.project-literature-groups button')].find(item => item.textContent?.startsWith(label));
+  expect(button).toBeDefined(); await act(async () => button!.click());
 }
 async function flushQueries() { await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)); }); }
 beforeEach(() => {
@@ -57,7 +61,7 @@ it("routes independent screening to its assigned workflow while keeping reading 
   await click("Read Unscreened paper");
   const dialog = document.querySelector('[role="dialog"]')!;
   expect(dialog.textContent).toContain("Independent reviewers");
-  expect([...dialog.querySelectorAll("button")].some(button => button.textContent === "Include")).toBe(false);
+  expect([...dialog.querySelectorAll("button")].some(button => button.textContent === "Relevant")).toBe(false);
   expect([...dialog.querySelectorAll("button")].some(button => button.textContent === "Add note")).toBe(true);
   expect(dialog.querySelector('select[aria-label="Reading status"]')).not.toBeNull();
   await click("Independent reviewers · Screening");
@@ -66,16 +70,63 @@ it("routes independent screening to its assigned workflow while keeping reading 
 it("records uncertainty as MAYBE rather than resetting to not screened", async () => {
   await render(workspace({ papers: [undecided] }));
   await click("Read Unscreened paper");
-  await click("Not sure");
+  await click("Considering");
   expect(mocks.update).toHaveBeenCalledWith({ paperId: "p2", data: { screeningStatus: "MAYBE", expectedUpdatedAt: undecided.updatedAt } });
 });
-it("prevents archived workspaces from adding papers or editing criteria", async () => {
+it("combines contributor and relevance filters and clears both together", async () => {
+  const alice = { _id: "alice", fullName: "Alice Nguyen" }, bao = { _id: "bao", fullName: "Bao Tran" };
+  await render(workspace({ papers: [{ ...included, addedBy: alice, screenedBy: bao }, { ...undecided, addedBy: bao }] }));
+  expect(container.textContent).toContain("Added by Alice Nguyen");
+  expect(container.textContent).toContain("Reviewed by Bao Tran");
+  const contributor = container.querySelector<HTMLSelectElement>('[aria-label="Filter by who added the paper"]')!;
+  await act(async () => { contributor.value = "bao"; contributor.dispatchEvent(new Event("change", { bubbles: true })); });
+  expect(container.querySelector('[aria-label="Read Included paper"]')).toBeNull();
+  expect(container.querySelector('[aria-label="Read Unscreened paper"]')).not.toBeNull();
+  await chooseGroup("Relevant");
+  expect(container.textContent).toContain("No papers match these filters");
+  await click("Clear filters");
+  expect(contributor.value).toBe(""); expect(container.querySelector('.project-literature-groups [aria-pressed="true"]')?.textContent).toContain("All papers");
+  expect(container.querySelectorAll(".project-paper-row")).toHaveLength(2);
+});
+it("saves a quick relevance decision without opening the paper", async () => {
+  await render(workspace({ papers: [undecided] }));
+  const decision = container.querySelector<HTMLSelectElement>('[aria-label="Relevance of Unscreened paper"]')!;
+  await act(async () => { decision.value = "INCLUDED"; decision.dispatchEvent(new Event("change", { bubbles: true })); });
+  expect(mocks.update).toHaveBeenCalledWith({ paperId: "p2", data: { screeningStatus: "INCLUDED", expectedUpdatedAt: undecided.updatedAt } });
+  expect(document.querySelector('[role="dialog"]')).toBeNull();
+});
+it("requires a reason for a quick rejection and preserves an undecided paper on cancel", async () => {
+  await render(workspace({ papers: [undecided] }));
+  const decision = container.querySelector<HTMLSelectElement>('[aria-label="Relevance of Unscreened paper"]')!;
+  await act(async () => { decision.value = "EXCLUDED"; decision.dispatchEvent(new Event("change", { bubbles: true })); });
+  expect(mocks.update).not.toHaveBeenCalled();
+  expect(document.querySelector('[role="dialog"]')).not.toBeNull();
+  await click("Cancel");
+  await flushQueries();
+  expect(document.activeElement).toBe(decision);
+  expect(decision.value).toBe("UNDECIDED"); expect(mocks.update).not.toHaveBeenCalled();
+});
+it("removes optional tools and prevents quick edits in independent screening", async () => {
+  await render(workspace({ papers: [undecided], screeningMode: "INDEPENDENT" }));
+  expect(container.querySelector(".project-literature-options")).toBeNull();
+  expect(container.textContent).not.toContain("Review criteria (optional)");
+  expect(container.textContent).not.toContain("Create artifact");
+  expect(container.textContent).not.toContain("Evidence matrix");
+  expect(container.querySelector('[aria-label="Relevance of Unscreened paper"]')).toBeNull();
+  expect(container.textContent).not.toContain("No screening criteria yet.");
+  expect(container.querySelector(".project-screening-summary")).toBeNull();
+});
+it("removes a paper only after confirmation without deleting its library record", async () => {
+  await render(workspace({ papers: [undecided] }));
+  await click("Remove Unscreened paper from project");
+  expect(mocks.remove).not.toHaveBeenCalled();
+  expect(document.querySelector('[role="dialog"]')?.textContent).toContain("The saved paper itself will not be deleted.");
+  await click("Remove paper"); expect(mocks.remove).toHaveBeenCalledWith("p2");
+});
+it("prevents archived workspaces from adding papers", async () => {
   await render(workspace({ readOnly: true }));
   expect(container.textContent).toContain("This project is read-only.");
   expect(container.textContent).not.toContain("Find papers");
-  await click("View criteria");
-  expect(document.querySelector<HTMLTextAreaElement>("#project-inclusion-criteria")?.disabled).toBe(true);
-  expect([...document.querySelectorAll("button")].some(button => button.textContent === "Save criteria")).toBe(false);
   await render(<ProjectPaperPickerDialog projectId="project" papers={[]} open readOnly onOpenChange={vi.fn()} />);
   expect(document.querySelector('[role="dialog"]')).toBeNull();
   expect(mocks.list).not.toHaveBeenCalled(); expect(mocks.add).not.toHaveBeenCalled();
@@ -86,11 +137,11 @@ it("shows all literature initially and views evidence without starting new analy
   await click("Read Included paper");
   await click("View evidence"); expect(callbacks.onViewEvidence).toHaveBeenCalledOnce(); expect(callbacks.onNavigateToGaps).not.toHaveBeenCalled();
   await click("Close");
-  await click("Create artifact"); expect(callbacks.onNavigateToReports).toHaveBeenCalledOnce();
+  expect(container.textContent).not.toContain("Create artifact");
 });
 it("requires an exclusion reason and retains the form if the decision fails", async () => {
   mocks.update.mockRejectedValue(new Error("offline"));
-  await render(workspace({ papers: [undecided] })); await click("Read Unscreened paper"); await click("Exclude");
+  await render(workspace({ papers: [undecided] })); await click("Read Unscreened paper"); await click("Not relevant");
   const save = [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Exclude paper")!;
   expect(save.disabled).toBe(true); expect(mocks.update).not.toHaveBeenCalled();
   await act(async () => document.querySelector<HTMLInputElement>('input[value="WRONG_RESEARCH_TOPIC"]')!.click());
@@ -122,10 +173,9 @@ it("keeps bulk selection separate from opening a paper", async () => {
 });
 it("retains the open paper after screening moves it out of the filter", async () => {
   await render(workspace({ papers: [undecided] }));
-  const filter = container.querySelector<HTMLSelectElement>('select[aria-label="Screening status"]')!;
-  await act(async () => { filter.value = "UNDECIDED"; filter.dispatchEvent(new Event("change", { bubbles: true })); });
+  await chooseGroup("Not reviewed");
   await click("Read Unscreened paper");
-  await click("Include");
+  await click("Relevant");
   await render(workspace({ papers: [{ ...undecided, screeningStatus: "INCLUDED" }] }));
   expect(document.querySelector('[role="dialog"] h2')?.textContent).toBe("Unscreened paper");
   expect(container.querySelector('[aria-label="Read Unscreened paper"]')).toBeNull();
@@ -138,15 +188,42 @@ it("allows archived papers to be read while keeping reader mutations disabled", 
   await click("Read Included paper");
   const dialog = document.querySelector('[role="dialog"]')!;
   const buttons = [...dialog.querySelectorAll<HTMLButtonElement>("button")];
-  for (const label of ["Include", "Not sure", "Exclude", "Add note"]) expect(buttons.find(button => button.textContent === label)?.disabled).toBe(true);
+  for (const label of ["Relevant", "Considering", "Not relevant", "Add note"]) expect(buttons.find(button => button.textContent === label)?.disabled).toBe(true);
   expect(dialog.querySelector<HTMLSelectElement>('select[aria-label="Reading status"]')?.disabled).toBe(true);
   expect(mocks.update).not.toHaveBeenCalled();
 });
-it("keeps output actions disabled until literature has been included", async () => {
+it("filters each relevance outcome directly and keeps reading progress separate", async () => {
+  const excluded = { ...undecided, id: "link3", targetId: { _id: "p3", title: "Excluded paper", authors: [] }, screeningStatus: "EXCLUDED" } as IProject["papers"][number];
+  const considering = { ...undecided, id: "link4", targetId: { _id: "p4", title: "Considering paper", authors: [] }, screeningStatus: "MAYBE" } as IProject["papers"][number];
+  await render(workspace({ papers: [included, { ...undecided, readingStatus: "REVIEWED" }, excluded, considering] }));
+  expect(container.querySelector('.project-literature-groups')?.textContent).toContain("Relevant 1");
+  await chooseGroup("Not reviewed");
+  expect(container.querySelectorAll(".project-paper-row")).toHaveLength(1);
+  expect(container.querySelector(".project-paper-list")?.textContent).toContain("Unscreened paper");
+  await chooseGroup("Considering");
+  expect(container.querySelector(".project-paper-list")?.textContent).toContain("Considering paper");
+  await chooseGroup("Relevant");
+  expect(container.querySelectorAll(".project-paper-row")).toHaveLength(1);
+  expect(container.querySelector(".project-paper-list")?.textContent).toContain("Included paper");
+  await chooseGroup("Not relevant");
+  expect(container.querySelectorAll(".project-paper-row")).toHaveLength(1);
+  expect(container.querySelector(".project-paper-list")?.textContent).toContain("Excluded paper");
+});
+it("moves a paper between review groups after a saved decision", async () => {
   await render(workspace({ papers: [undecided] }));
-  const output = [...container.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Create artifact")!;
-  expect(output.disabled).toBe(true);
-  await act(async () => output.click()); expect(callbacks.onNavigateToReports).not.toHaveBeenCalled();
+  await chooseGroup("Not reviewed");
+  const decision = container.querySelector<HTMLSelectElement>('[aria-label="Relevance of Unscreened paper"]')!;
+  await act(async () => { decision.value = "MAYBE"; decision.dispatchEvent(new Event("change", { bubbles: true })); });
+  await render(workspace({ papers: [{ ...undecided, screeningStatus: "MAYBE" }] }));
+  expect(container.querySelectorAll(".project-paper-row")).toHaveLength(0);
+  await chooseGroup("Considering");
+  expect(container.querySelectorAll(".project-paper-row")).toHaveLength(1);
+  const considering = container.querySelector<HTMLSelectElement>('[aria-label="Relevance of Unscreened paper"]')!;
+  await act(async () => { considering.value = "INCLUDED"; considering.dispatchEvent(new Event("change", { bubbles: true })); });
+  await render(workspace({ papers: [{ ...undecided, screeningStatus: "INCLUDED" }] }));
+  expect(container.querySelectorAll(".project-paper-row")).toHaveLength(0);
+  await chooseGroup("Relevant");
+  expect(container.querySelectorAll(".project-paper-row")).toHaveLength(1);
 });
 it("opens the library directly and retains only failed additions for retry", async () => {
   mocks.bookmarks = [{ targetKind: "paper", targetId: "p1" }, { targetKind: "paper", targetId: "p2" }];
@@ -186,12 +263,12 @@ it("supports keyboard navigation within and between project section groups", asy
   await render(<Fixture />);
   expect(container.querySelector('[role="tablist"]')?.getAttribute("aria-orientation")).toBe("vertical");
   await act(async () => container.querySelector("#project-tab-papers")!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true })));
-  expect(container.querySelector('[role="tab"][aria-selected="true"]')?.id).toBe("project-tab-plan");
-  await act(async () => container.querySelector("#project-tab-plan")!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })));
+  expect(container.querySelector('[role="tab"][aria-selected="true"]')?.id).toBe("project-tab-overview");
+  await act(async () => container.querySelector("#project-tab-overview")!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })));
   expect(document.activeElement?.id).toBe("project-tab-papers");
   await act(async () => container.querySelector("#project-tab-papers")!.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true })));
-  expect(container.querySelector('[role="tab"][aria-selected="true"]')?.id).toBe("project-tab-contributions");
-  expect(document.activeElement?.id).toBe("project-tab-contributions");
+  expect(container.querySelector('[role="tab"][aria-selected="true"]')?.id).toBe("project-tab-plan");
+  expect(document.activeElement?.id).toBe("project-tab-plan");
   await act(async () => container.querySelector<HTMLButtonElement>("#project-tab-submissions")!.click());
   await act(async () => container.querySelector("#project-tab-submissions")!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })));
   expect(document.activeElement?.id).toBe("project-tab-members");
@@ -201,10 +278,10 @@ it("supports keyboard navigation within and between project section groups", asy
 it("reveals a selected section without moving focus out of the workspace navigation", async () => {
   function Fixture() { const [tab, setTab] = useState<ProjectTab>("papers"); return <ProjectSectionNav activeTab={tab} onChange={setTab} paperCount={0} memberCount={1} />; }
   await render(<Fixture />);
-  const last = container.querySelector<HTMLElement>("#project-tab-contributions")!;
+  const last = container.querySelector<HTMLElement>("#project-tab-plan")!;
   const reveal = vi.fn(); last.scrollIntoView = reveal;
   await act(async () => container.querySelector("#project-tab-papers")!.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true })));
-  expect(reveal).toHaveBeenCalledWith({ block: "nearest", inline: "nearest" });
+  expect(reveal).toHaveBeenCalledWith({ block: "nearest", inline: "nearest", behavior: "smooth" });
   expect(document.activeElement).toBe(last);
   await act(async () => last.dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true })));
   expect(container.querySelector('[aria-selected="true"]')?.id).toBe("project-tab-overview");

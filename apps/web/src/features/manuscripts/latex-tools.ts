@@ -10,7 +10,7 @@ export const manuscriptUndoKeymap: readonly KeyBinding[] = yUndoManagerKeymap.ma
 }));
 
 export type LatexAction = "bold" | "italic" | "section" | "list" | "math";
-export const sourceLanguage = (filename: string) => /\.(tex|sty)$/i.test(filename) ? "LaTeX" : /\.bib$/i.test(filename) ? "BibTeX" : "Plain text";
+export const sourceLanguage = (filename: string) => /\.(tex|sty|cls)$/i.test(filename) ? "LaTeX" : /\.bib$/i.test(filename) ? "BibTeX" : "Plain text";
 const wrappers: Record<LatexAction, [string, string, string]> = {
   bold: ["\\textbf{", "}", "text"],
   italic: ["\\textit{", "}", "text"],

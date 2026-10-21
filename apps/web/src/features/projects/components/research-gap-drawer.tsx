@@ -12,7 +12,7 @@ import { useResearchResource } from "../hooks/use-project-research";
 export function ResearchGapDrawer({ gap: initialGap, projectId, open, onClose }: { gap: ResearchGapItem; projectId: string; open: boolean; onClose: () => void }) {
   const { t } = useI18n();
   const packet = useResearchResource(projectId, ["gap", initialGap.id], () => researchApi.gap(projectId, initialGap.id), open);
-  const gap: ResearchGapItem = packet.data ? { ...initialGap, ...packet.data.gap, scope: packet.data.gap.scope ?? undefined, validationStatus: packet.data.gap.validationStatus as ResearchGapItem["validationStatus"], origin: packet.data.gap.origin as ResearchGapItem["origin"] } : initialGap;
+  const gap: ResearchGapItem = packet.data ? { ...initialGap, ...packet.data.gap, analysisId: packet.data.gap.analysisId ?? undefined, scope: packet.data.gap.scope ?? undefined, validationStatus: packet.data.gap.validationStatus as ResearchGapItem["validationStatus"], origin: packet.data.gap.origin as ResearchGapItem["origin"] } : initialGap;
   const close = async () => { if ((await canLeaveWorkspace())) onClose(); };
   return <Dialog.Root open={open} onOpenChange={value => { if (!value) close(); }}><Dialog.Portal>
     <Dialog.Overlay className="fixed inset-0 z-50 bg-black/35" />

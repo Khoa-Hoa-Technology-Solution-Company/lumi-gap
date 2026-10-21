@@ -1,0 +1,66 @@
+[
+  {
+    "name": "receipt-ruled",
+    "stage": "baseline",
+    "status": "compared",
+    "sourcePages": 1,
+    "generatedPages": 1,
+    "comparedPages": 1,
+    "warnings": [
+      "VISUAL_COMPARISON_LIMITED",
+      "NUMERIC_CONTENT_REVIEW",
+      "LAYOUT_DIFFERENCE"
+    ],
+    "textCoverage": 1,
+    "numericCoverage": 0.9375,
+    "visualSimilarity": 0.7776,
+    "contentBoundsDeviation": 0.0391
+  },
+  {
+    "name": "receipt-ruled",
+    "stage": "after",
+    "status": "compared",
+    "sourcePages": 1,
+    "generatedPages": 1,
+    "comparedPages": 1,
+    "warnings": [
+      "VISUAL_COMPARISON_LIMITED"
+    ],
+    "textCoverage": 1,
+    "numericCoverage": 1,
+    "visualSimilarity": 0.9627,
+    "contentBoundsDeviation": 0
+  },
+  {
+    "name": "receipt-borderless",
+    "stage": "baseline",
+    "status": "compared",
+    "sourcePages": 1,
+    "generatedPages": 1,
+    "comparedPages": 1,
+    "warnings": [
+      "VISUAL_COMPARISON_LIMITED",
+      "NUMERIC_CONTENT_REVIEW",
+      "LAYOUT_DIFFERENCE"
+    ],
+    "textCoverage": 1,
+    "numericCoverage": 0.9375,
+    "visualSimilarity": 0.5585,
+    "contentBoundsDeviation": 0.0742
+  },
+  {
+    "name": "receipt-borderless",
+    "stage": "after",
+    "status": "compared",
+    "sourcePages": 1,
+    "generatedPages": 1,
+    "comparedPages": 1,
+    "warnings": [
+      "VISUAL_COMPARISON_LIMITED"
+    ],
+    "textCoverage": 1,
+    "numericCoverage": 1,
+    "visualSimilarity": 0.9283,
+    "contentBoundsDeviation": 0
+  }
+]

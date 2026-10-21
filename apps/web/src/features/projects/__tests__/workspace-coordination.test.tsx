@@ -5,8 +5,10 @@ import { createRoot, type Root } from "react-dom/client";
 import { Link, MemoryRouter, useLocation } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import type { ResearchPlanView } from "@trend/shared-types";
+import type { ResearchPlanContent, ResearchPlanView } from "@trend/shared-types";
 import { WorkspacePlanPanel } from "../components/workspace-plan";
+import { PlanDocument } from "../components/plan-document";
+import { usePlanDraft } from "../hooks/use-plan-draft";
 import { WorkspaceTasksPanel } from "../components/workspace-tasks";
 import { WorkspaceDiscussionsPanel } from "../components/workspace-discussions";
 import { WorkspaceDecisions } from "../components/workspace-decisions";
@@ -21,6 +23,10 @@ vi.mock("@/stores/auth-store", () => ({ useAuthStore: (select: (state: { user: {
 vi.mock("@/i18n", () => ({ useI18n: () => ({ language: "en", t: (key: string, values?: Record<string, unknown>) => key.replace(/\{\{(\w+)\}\}/g, (_, name) => String(values?.[name] ?? "")) }) }));
 const empty = { items: [], total: 0, page: 1, pageSize: 20, hasNext: false };
 const plan: ResearchPlanView = { projectId: "p", projectTitle: "Research", version: 1, currentRevisionId: "r1", canEdit: true, canShare: false, archived: false, access: "TEAM", content: { approach: "UNDECIDED", problem: "Initial question", objectives: [], questions: [], scope: "", methodology: "Interviews", searchStrategy: "Retained search", deliverables: [], inclusionCriteria: [], exclusionCriteria: [] } };
+function StructuredDraft({ content }: { content: ResearchPlanContent }) {
+  const state = usePlanDraft("p", { ...plan, content });
+  return <PlanDocument projectId="p" content={state.draft} editable version={state.version} archived={false} mentor={false} field={state.field} />;
+}
 let root: Root, container: HTMLDivElement, client: QueryClient;
 async function render(node: ReactNode, path = "/projects/p?tab=plan") {
   await act(async () => root.render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[path]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>{node}<ConfirmationDialog /></MemoryRouter></QueryClientProvider>));
@@ -29,8 +35,10 @@ async function render(node: ReactNode, path = "/projects/p?tab=plan") {
 async function click(text: string) { const button = [...document.body.querySelectorAll<HTMLButtonElement>("button")].find(item => item.textContent === text); expect(button, text).toBeDefined(); await act(async () => button!.click()); await act(async () => { await new Promise(resolve => setTimeout(resolve, 25)); }); }
 async function autosave() { await act(async () => { await new Promise(resolve => setTimeout(resolve, 1050)); }); }
 async function fill(label: string, value: string) {
+  if (container.querySelector(".project-about") && [...container.querySelectorAll("button")].some(button => button.textContent === "Edit")) await click("Edit");
   const parent = [...document.body.querySelectorAll("label")].find(item => item.textContent?.startsWith(label));
-  const input = document.body.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(`[aria-label="${label}"]`) ?? parent?.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>("input, textarea, select"); expect(input, label).toBeDefined();
+  const input = document.body.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(`input[aria-label="${label}"], textarea[aria-label="${label}"], select[aria-label="${label}"]`) ?? parent?.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>("input, textarea, select"); expect(input, label).toBeDefined();
+  for (let parent = input?.parentElement; parent; parent = parent.parentElement) if (parent instanceof HTMLDetailsElement) parent.open = true;
   await act(async () => { const prototype = input instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : input instanceof HTMLSelectElement ? HTMLSelectElement.prototype : HTMLInputElement.prototype; Object.getOwnPropertyDescriptor(prototype, "value")!.set!.call(input, value); input!.dispatchEvent(new Event(input instanceof HTMLSelectElement ? "change" : "input", { bubbles: true })); });
 }
 beforeEach(() => {
@@ -46,8 +54,84 @@ beforeEach(() => {
 });
 afterEach(async () => { await act(async () => root.unmount()); client.clear(); container.remove(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
-it("saves incomplete research plans without destroying hidden approach fields", async () => {
+
+it("opens the about document for reading and saves only the introduction when editing finishes", async () => {
   await render(<WorkspacePlanPanel projectId="p" />);
+  expect(container.querySelector(".project-readme-filename")?.textContent).toBe("README.md");
+  expect(container.querySelector(".about-project-story")?.textContent).toBe("Initial question");
+  expect(container.querySelector("textarea")).toBeNull();
+  expect(container.querySelector("details, .about-project-footer")).toBeNull();
+  await fill("Project introduction", "We explore how research teams evaluate conflicting evidence.");
+  expect(container.querySelectorAll("textarea")).toHaveLength(1);
+  await click("Done editing");
+  expect(mocks.updatePlanDraft).toHaveBeenCalledWith("p", expect.objectContaining({ changes: { problem: "We explore how research teams evaluate conflicting evidence." }, base: { problem: "Initial question" } }));
+  expect(container.querySelector("textarea")).toBeNull();
+  expect(container.querySelector(".about-project-story")?.textContent).toContain("conflicting evidence");
+});
+it("starts an empty project with a single README editor", async () => {
+  mocks.plan!.mockResolvedValue({ ...plan, content: { ...plan.content, problem: "", methodology: "", searchStrategy: "" } });
+  await render(<WorkspacePlanPanel projectId="p" />);
+  expect(container.querySelector("textarea")).toBeNull();
+  expect(container.querySelector(".about-project-direction")).toBeNull();
+  await click("Edit");
+  expect(container.querySelector<HTMLTextAreaElement>("#plan-problem")?.value).toBe("");
+  expect(container.querySelectorAll("textarea")).toHaveLength(1);
+  expect(container.querySelector("details, select")).toBeNull();
+  expect(mocks.updatePlanDraft).not.toHaveBeenCalled();
+});
+it("keeps the editor and introduction open when finishing cannot save", async () => {
+  mocks.updatePlanDraft!.mockRejectedValue(new Error("Network interrupted"));
+  await render(<WorkspacePlanPanel projectId="p" />);
+  await fill("Project introduction", "Keep this description until it is saved.");
+  await click("Done editing");
+  expect(container.querySelector<HTMLTextAreaElement>("#plan-problem")?.value).toBe("Keep this description until it is saved.");
+  expect(container.querySelector('[role="alert"]')).not.toBeNull();
+});
+it("renders archived introductions safely without edit controls", async () => {
+  const problem = '<img src=x onerror="alert(1)">';
+  mocks.plan!.mockResolvedValue({ ...plan, canEdit: false, archived: true, content: { ...plan.content, problem } });
+  await render(<WorkspacePlanPanel projectId="p" />);
+  expect(container.querySelector(".about-project-story")?.textContent).toBe(problem);
+  expect(container.querySelector("img, textarea")).toBeNull();
+  expect([...container.querySelectorAll("button")].some(button => button.textContent === "Edit")).toBe(false);
+});
+it("opens existing research questions when following a direct question link", async () => {
+  mocks.plan!.mockResolvedValue({ ...plan, content: { ...plan.content, questions: [{ id: "q1", text: "Which evidence is reproducible?" }] } });
+  await render(<WorkspacePlanPanel projectId="p" />, "/projects/p?tab=plan&question=q1#question-q1");
+  expect(container.querySelector<HTMLDetailsElement>(".about-project-direction")?.open).toBe(true);
+  expect(container.querySelector("#question-q1")?.textContent).toContain("Which evidence is reproducible?");
+  expect(container.querySelector("textarea")).toBeNull();
+});
+
+it("renders README Markdown and previews edits without exposing research forms", async () => {
+  const problem = "# LumiGap\n\nA **collaborative** research workspace.\n\n- Find evidence\n- Discuss findings\n\n[Docs](https://example.org/docs)";
+  mocks.plan!.mockResolvedValue({ ...plan, content: { ...plan.content, problem } });
+  await render(<WorkspacePlanPanel projectId="p" />);
+  expect(container.querySelector(".project-readme-content h1")?.textContent).toBe("LumiGap");
+  expect(container.querySelector(".project-readme-content strong")?.textContent).toBe("collaborative");
+  expect(container.querySelectorAll(".project-readme-content li")).toHaveLength(2);
+  expect(container.querySelector<HTMLAnchorElement>(".project-readme-content a")?.rel).toContain("noopener");
+  expect(container.textContent).not.toContain("Methods & supporting details");
+  expect(container.textContent).not.toContain("Versions & mentor feedback");
+  expect(container.textContent).not.toContain("Draft saved");
+  await fill("Project introduction", "## Research focus\n\nA simpler introduction.");
+  await click("Preview");
+  expect(container.querySelector(".project-readme-content h2")?.textContent).toBe("Research focus");
+  expect(container.querySelector("textarea")).toBeNull();
+  await click("Write");
+  expect(container.querySelector("textarea")?.value).toContain("## Research focus");
+  await click("Done editing");
+  expect(mocks.updatePlanDraft).toHaveBeenCalledWith("p", expect.objectContaining({ changes: { problem: "## Research focus\n\nA simpler introduction." } }));
+});
+it("blocks executable Markdown links and raw HTML", async () => {
+  mocks.plan!.mockResolvedValue({ ...plan, content: { ...plan.content, problem: '[Unsafe](javascript:alert%281%29)\n\n<script>alert(1)</script>' } });
+  await render(<WorkspacePlanPanel projectId="p" />);
+  expect(container.querySelector("script")).toBeNull();
+  expect(container.querySelector(".project-readme-content a")?.getAttribute("href")).not.toMatch(/^javascript:/);
+});
+
+it("saves incomplete research plans without destroying hidden approach fields", async () => {
+  await render(<StructuredDraft content={plan.content} />);
   await fill("Research approach", "EMPIRICAL"); await autosave();
   expect(mocks.updatePlanDraft).toHaveBeenCalledWith("p", expect.objectContaining({ changes: { approach: "EMPIRICAL" }, base: { approach: "UNDECIDED" }, expectedVersion: 1 }));
   expect(container.querySelector<HTMLTextAreaElement>('#plan-methodology')?.value).toBe("Interviews");
@@ -56,20 +140,20 @@ it("refreshes connected research queries after a plan command without invalidati
   client.setQueryDefaults(["project-research"], { gcTime: Infinity });
   client.setQueryData(["project-research", "actor", "p", "evidence"], empty);
   client.setQueryData(["project-research", "actor", "other", "evidence"], empty);
-  await render(<WorkspacePlanPanel projectId="p" />); await fill("Research problem", "A revised question"); await autosave();
+  await render(<WorkspacePlanPanel projectId="p" />); await fill("Project introduction", "A revised question"); await autosave();
   expect(client.getQueryState(["project-research", "actor", "p", "evidence"])?.isInvalidated).toBe(true);
   expect(client.getQueryState(["project-research", "actor", "other", "evidence"])?.isInvalidated).toBe(false);
 });
 it("keeps the local plan draft when saving fails", async () => {
   mocks.updatePlanDraft!.mockRejectedValue(new Error("Network interrupted")); await render(<WorkspacePlanPanel projectId="p" />);
-  await fill("Research problem", "Local unsaved research problem"); await autosave();
+  await fill("Project introduction", "Local unsaved research problem"); await autosave();
   expect(container.querySelector("textarea")?.value).toBe("Local unsaved research problem"); expect(container.querySelector('[role="alert"]')).not.toBeNull();
   expect(container.textContent).not.toContain("Research plan saved");
 });
 it("keeps question provenance in plan saves and shows contradictory source evidence", async () => {
   const question = { id: "q1", text: "Does it replicate?", sourceGapId: "g1", evidenceIds: ["e1"] };
   mocks.plan!.mockResolvedValue({ ...plan, content: { ...plan.content, questions: [question] } });
-  await render(<WorkspacePlanPanel projectId="p" />);
+  await render(<StructuredDraft content={{ ...plan.content, questions: [question] }} />);
   const sources = [...container.querySelectorAll("details")].find(item => item.querySelector("summary")?.textContent?.startsWith("Question sources")); expect(sources).toBeDefined();
   await act(async () => { sources!.open = true; sources!.dispatchEvent(new Event("toggle")); });
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); });
@@ -81,7 +165,7 @@ it("keeps question provenance in plan saves and shows contradictory source evide
   expect(container.querySelector<HTMLTextAreaElement>('[aria-label="Question 1"]')?.value).toBe(question.text);
 });
 it("retains the original edit version and draft across a collaborator's background update", async () => {
-  await render(<WorkspacePlanPanel projectId="p" />); await fill("Research problem", "My local draft");
+  await render(<WorkspacePlanPanel projectId="p" />); await fill("Project introduction", "My local draft");
   mocks.plan!.mockResolvedValue({ ...plan, version: 2, currentRevisionId: "r2", content: { ...plan.content, problem: "Teammate's version" } });
   await act(async () => { await client.invalidateQueries({ queryKey: ["project-workspace", "actor", "p", "plan"] }); });
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); });
@@ -98,9 +182,9 @@ it("shows mentors only a shared plan reader and comments", async () => {
 it("preserves typing during a pending autosave and sends it after acknowledgment", async () => {
   let acknowledge!: (value: unknown) => void;
   mocks.updatePlanDraft!.mockImplementationOnce(() => new Promise(resolve => { acknowledge = resolve; }));
-  await render(<WorkspacePlanPanel projectId="p" />); await fill("Research problem", "First edit"); await autosave();
+  await render(<WorkspacePlanPanel projectId="p" />); await fill("Project introduction", "First edit"); await autosave();
   expect(container.querySelector('[role="status"]')?.textContent).toContain("Saving…");
-  await fill("Research problem", "New typing during save");
+  await fill("Project introduction", "New typing during save");
   await act(async () => acknowledge({ version: 2, content: { ...plan.content, problem: "First edit" } }));
   expect(container.querySelector("textarea")?.value).toBe("New typing during save");
   await autosave();
@@ -108,35 +192,38 @@ it("preserves typing during a pending autosave and sends it after acknowledgment
 });
 it("retries the exact uncertain request before saving newer edits", async () => {
   mocks.updatePlanDraft!.mockRejectedValueOnce(new Error("Response lost"));
-  await render(<WorkspacePlanPanel projectId="p" />); await fill("Research problem", "Possibly persisted"); await autosave();
+  await render(<WorkspacePlanPanel projectId="p" />); await fill("Project introduction", "Possibly persisted"); await autosave();
   const input = mocks.updatePlanDraft!.mock.calls[0]![1];
-  await fill("Research problem", "Later local edit");
+  await fill("Project introduction", "Later local edit");
   expect(container.querySelector('[role="status"]')?.textContent).toContain("Could not sync changes");
   await click("Retry sync"); expect(mocks.updatePlanDraft!.mock.calls[1]![1]).toEqual(input);
   expect(container.querySelector("textarea")?.value).toBe("Later local edit");
   await autosave(); expect(mocks.updatePlanDraft!.mock.calls[2]![1].changes).toEqual({ problem: "Later local edit" });
 });
-it("requires an explicit choice for conflicting content and keeps independent local changes", async () => {
+it("requires an explicit choice for conflicting README content", async () => {
   mocks.updatePlanDraft!.mockRejectedValueOnce({ response: { status: 409, data: { error: { message: "Conflict", details: { fields: ["problem"] } } } } });
   await render(<WorkspacePlanPanel projectId="p" />);
   mocks.plan!.mockResolvedValue({ ...plan, version: 2, content: { ...plan.content, problem: "Saved by teammate" } });
-  await fill("Research problem", "My interpretation"); await fill("Research methodology", "Local methods"); await autosave();
+  await fill("Project introduction", "My interpretation"); await autosave();
   expect(container.textContent).toContain("Resolve overlapping changes");
   const merge = [...container.querySelectorAll("button")].find(button => button.textContent === "Merge and continue")!;
   expect(merge.disabled).toBe(true);
   await act(async () => container.querySelector<HTMLInputElement>('input[type="radio"]')!.click());
   await click("Merge and continue"); await autosave();
-  expect(mocks.updatePlanDraft!.mock.calls[1]![1]).toMatchObject({ expectedVersion: 2, base: { problem: "Saved by teammate", methodology: "Interviews" }, changes: { problem: "My interpretation", methodology: "Local methods" } });
+  expect(mocks.updatePlanDraft!.mock.calls[1]![1]).toMatchObject({ expectedVersion: 2, base: { problem: "Saved by teammate" }, changes: { problem: "My interpretation" } });
 });
 it("preserves imported whitespace without saving an untouched plan", async () => {
   mocks.plan!.mockResolvedValue({ ...plan, content: { ...plan.content, problem: "  Imported wording  ", objectives: [" Original goal "] } });
   await render(<WorkspacePlanPanel projectId="p" />); await autosave();
   expect(mocks.updatePlanDraft).not.toHaveBeenCalled();
+  expect(container.querySelector(".about-project-story")?.textContent).toBe("Imported wording");
+  expect(container.querySelector("textarea")).toBeNull();
+  await click("Edit");
   expect(container.querySelector("textarea")?.value).toBe("  Imported wording  ");
 });
 it("recovers an expired-session edit after the original account signs in again in the same tab", async () => {
   mocks.updatePlanDraft!.mockRejectedValueOnce({ response: { status: 401 } });
-  await render(<WorkspacePlanPanel projectId="p" />); await fill("Research problem", "Kept through sign-in"); await autosave();
+  await render(<WorkspacePlanPanel projectId="p" />); await fill("Project introduction", "Kept through sign-in"); await autosave();
   await act(async () => root.unmount()); client.clear(); root = createRoot(container);
   await render(<WorkspacePlanPanel projectId="p" />);
   expect(container.querySelector("textarea")?.value).toBe("Kept through sign-in");
@@ -146,7 +233,7 @@ it("recovers an expired-session edit after the original account signs in again i
 it("reorders objectives and enforces the list limit", async () => {
   const objectives = Array.from({ length: 20 }, (_, index) => `Goal ${index + 1}`);
   mocks.plan!.mockResolvedValue({ ...plan, content: { ...plan.content, objectives } });
-  await render(<WorkspacePlanPanel projectId="p" />);
+  await render(<StructuredDraft content={{ ...plan.content, objectives }} />);
   expect([...container.querySelectorAll("button")].find(button => button.textContent === "Add objective")?.disabled).toBe(true);
   await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Move Research objectives 1 down"]')!.click());
   await autosave(); expect(mocks.updatePlanDraft!.mock.calls[0]![1].changes.objectives.slice(0, 2)).toEqual(["Goal 2", "Goal 1"]);

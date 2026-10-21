@@ -39,12 +39,14 @@ import {
 } from "../modules/reviews/review.routes.js";
 import { literatureRouter } from "../modules/literature/literature.routes.js";
 import { userAiRouter } from "../modules/user-ai/user-ai.routes.js";
+import { githubRouter } from "../modules/github/github.routes.js";
 
 export const apiRouter: Router = Router();
 apiRouter.use("/projects/:projectId/manuscripts", manuscriptRouter);
 
 apiRouter.use("/auth", authRouter);
 apiRouter.use("/user-ai", userAiRouter);
+apiRouter.use("/integrations/github", githubRouter);
 apiRouter.use("/home", homeRouter);
 apiRouter.use("/projects", projectRouter);
 apiRouter.use("/papers", paperRouter);

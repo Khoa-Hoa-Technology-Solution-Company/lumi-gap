@@ -1,10 +1,10 @@
-import { Suspense, useMemo } from "react";
+import { Suspense, useMemo, useRef, useEffect } from "react";
 import { Navigate, Outlet, useLocation, useParams, useSearchParams } from "react-router-dom";
 import { FolderOpen, ChevronRight } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuthStore } from "@/stores/auth-store";
 import { useI18n } from "@/i18n";
-import { useProjects } from "@/features/projects/hooks/use-projects";
+import { useProject, useProjects } from "@/features/projects/hooks/use-projects";
 import { readProjectSearchFilters, selectDirectoryProjects } from "@/features/projects/utils/project-directory";
 import { projectWorkspaceHref } from "@/features/projects/utils/project-workspace-navigation";
 import { ProjectsListPage } from "./projects-list";
@@ -35,16 +35,53 @@ export function ProjectsWorkspacePage() {
 }
 
 function WorkspaceSidebar() {
-  const { id } = useParams(); const { t } = useI18n(); const { data: projects } = useProjects(); const [params, setParams] = useSearchParams();
-  const project = projects?.find(item => item._id === id);
+  const { id } = useParams();
+  const { t } = useI18n();
+  const { data: projects, isLoading: projectsLoading } = useProjects();
+  const { data: currentProject, isLoading: projectLoading } = useProject(id);
+  const [params, setParams] = useSearchParams();
+  const detailsRef = useRef<HTMLDetailsElement>(null);
+
+  const project = projects?.find(item => item._id === id) ?? (currentProject?.accessRole ? currentProject : undefined);
+  const loading = !!id && !project && (projectsLoading || projectLoading);
   const active = projectSections.some(section => section.key === params.get("tab")) ? params.get("tab") as ProjectTab : "overview";
   const navigate = async (tab: ProjectTab) => {
     if (!(await canLeaveWorkspace())) return;
-    const next = new URLSearchParams(); next.set("tab", tab); if (params.get("q")) next.set("q", params.get("q")!);
+    const next = new URLSearchParams();
+    next.set("tab", tab);
+    if (params.get("q")) next.set("q", params.get("q")!);
     setParams(next);
   };
+
+  useEffect(() => {
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (detailsRef.current?.open && !detailsRef.current.contains(target)) {
+        detailsRef.current.removeAttribute("open");
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && detailsRef.current?.open) {
+        detailsRef.current.removeAttribute("open");
+      }
+    };
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, []);
+
+  const handlePopoverClick = (event: React.MouseEvent) => {
+    const target = event.target as HTMLElement;
+    if (target.closest("a") || target.closest(".project-switcher-item")) {
+      detailsRef.current?.removeAttribute("open");
+    }
+  };
+
   return <>
-    <details className="coord-project-picker" open={!id || undefined} key={id ? "selected" : "directory"}>
+    <details ref={detailsRef} className="coord-project-picker" open={!id || undefined} key={id ? "selected" : "directory"}>
       <summary className="group">
         <div className="flex items-center gap-2.5 min-w-0">
           <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-blue-600 via-indigo-600 to-violet-600 flex items-center justify-center text-white shrink-0 shadow-xs">
@@ -57,11 +94,11 @@ function WorkspaceSidebar() {
         </div>
         <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0 group-hover:text-foreground transition-transform group-open:rotate-90" />
       </summary>
-      <div className="mt-2 pt-2 border-t border-border/60">
+      <div className="coord-project-picker-popover" onClick={handlePopoverClick}>
         <ProjectsListPage compact />
       </div>
     </details>
-    {id && project && <ProjectSectionNav activeTab={active} onChange={navigate} paperCount={project.paperCount ?? 0} memberCount={project.memberCount ?? 0} />}
+    {id && (project || loading) && <ProjectSectionNav activeTab={active} onChange={navigate} paperCount={project?.paperCount ?? 0} memberCount={project?.memberCount ?? 0} loading={loading} />}
   </>;
 }
 

@@ -4,7 +4,7 @@ import type { z } from "zod";
 import type { assessGapSchema, reviseGapSchema, linkGapEvidenceSchema, deriveQuestionSchema } from "./dto/project-research.schema.js";
 import { AppError } from "../../common/exceptions/app-error.js";
 import { withWorkspace, workspaceEvent, expectWorkspaceVersion, jsonSnapshot, workspaceId, type WorkspaceContext } from "./workspace-access.js";
-import { evidenceItem, researchPaper } from "./project-evidence.service.js";
+import { evidenceItem, researchPaper, reviewEvidenceInContext, discoveryEvidenceIsCurrent } from "./project-evidence.service.js";
 
 import { recordGapPacket } from "./gap-revision.js";
 import { notificationService } from "../notifications/notification.service.js";
@@ -25,7 +25,7 @@ async function eligibleEvidence(context: WorkspaceContext, gapId: string) {
     if (!link.evidenceItemId || !link.evidenceRevisionId) continue;
     const item = await evidenceItem(context, link.evidenceItemId), source = await researchPaper(context, item.paperId);
     const revision = await context.tx.projectWorkspaceRevision.findUnique({ where: { id: link.evidenceRevisionId } });
-    if (item.reviewState === "ACCEPTED" && item.version === revision?.version && source.screeningStatus === "INCLUDED") checked.push(link);
+    if (item.reviewState === "ACCEPTED" && item.version === revision?.version && source.screeningStatus === "INCLUDED" && await discoveryEvidenceIsCurrent(context, item)) checked.push(link);
   }
   if (links.some(link => link.evidenceItemId && !checked.some(item => item.id === link.id))) throw AppError.conflict("A linked extraction changed. Review and relink all current evidence revisions");
   return checked;
@@ -67,10 +67,12 @@ export const projectGapResearchService = {
       const relatedLinks = await context.tx.researchGapPaper.findMany({ where: { gapId: gap.id } });
       const relatedSources = await context.tx.projectPaper.findMany({ where: { projectId: context.project.id, paperId: { in: relatedLinks.map(row => row.paperId) } }, select: { paperId: true } });
       const relatedLiterature = await context.tx.paper.findMany({ where: { id: { in: relatedSources.map(row => row.paperId) } }, select: { id: true, title: true, publicationYear: true } });
+      const currentItems = new Set<string>();
+      for (const item of items) if (await discoveryEvidenceIsCurrent(context, item)) currentItems.add(item.id);
       return { gap: jsonSnapshot(gap), relatedLiterature: relatedLiterature.map(row => ({ paperId: row.id, title: row.title, publicationYear: row.publicationYear || null, suggestedSupport: relatedLinks.some(link => link.paperId === row.id && link.kind === "supporting") })), canContribute: context.project.status !== "ARCHIVED", canRequestExpertReview: context.role === "OWNER" && context.project.status !== "ARCHIVED", discussions, guidance: feedback.map(row => ({ id: row.id, author: authors.find(user => user.id === row.actorId)?.fullName ?? "Researcher", createdAt: row.createdAt.toISOString(), ...(row.metadata as { note: string; gapVersion: number; attribution: string }) })), questions, history: jsonSnapshot(history), evidence: evidence.map(row => {
         const item = items.find(candidate => candidate.id === row.evidenceItemId), revision = revisions.find(candidate => candidate.id === row.evidenceRevisionId);
         const snapshot = revision?.snapshot as { reviewState?: string } | undefined;
-        return { ...row, sourceTitle: papers.find(paper => paper.id === row.paperId)?.title ?? "", reviewed: snapshot?.reviewState === "ACCEPTED", sourceChanged: Boolean(item && (item.version !== revision?.version || item.reviewState !== "ACCEPTED" || sources.find(source => source.paperId === row.paperId)?.screeningStatus !== "INCLUDED")) };
+        return { ...row, sourceTitle: papers.find(paper => paper.id === row.paperId)?.title ?? "", reviewed: snapshot?.reviewState === "ACCEPTED", evidenceVersion: item?.version, reviewState: item?.reviewState, discovery: Boolean((item?.sourceSnapshot as { analysisId?: string } | undefined)?.analysisId), claim: item?.claim, methodology: item?.methodology, limitations: item?.limitations, sourceChanged: Boolean(item && (item.version !== revision?.version || !currentItems.has(item.id) || sources.find(source => source.paperId === row.paperId)?.screeningStatus !== "INCLUDED")) };
       }) } as unknown as GapResearchView;
     });
   },
@@ -102,6 +104,19 @@ export const projectGapResearchService = {
   async assess(projectId: string, actorId: string, gapId: string, input: z.infer<typeof assessGapSchema>) {
     return withWorkspace(projectId, actorId, { write: true }, async context => {
       const gap = await projectGap(context, gapId); gapId = gap.id; expectWorkspaceVersion(gap.version, input.expectedVersion);
+      if (input.reviewedEvidence?.length) {
+        if (new Set(input.reviewedEvidence.map(item => item.id)).size !== input.reviewedEvidence.length) throw AppError.badRequest("Select each evidence revision once");
+        if (input.status !== "TEAM_SUPPORTED") throw AppError.badRequest("Evidence confirmation is only used when recording team support");
+        const links = await context.tx.gapEvidenceRecord.findMany({ where: { gapId } });
+        for (const selection of input.reviewedEvidence) {
+          const link = links.find(link => link.evidenceItemId === selection.id);
+          const item = await evidenceItem(context, selection.id);
+          if (!link || item.origin !== "AI_SUGGESTED" || !(item.sourceSnapshot as { analysisId?: string }).analysisId) throw AppError.badRequest("Review only this candidate's discovery evidence");
+          const reviewed = await reviewEvidenceInContext(context, item.id, { state: "ACCEPTED", expectedVersion: selection.version, rationale: input.rationale });
+          const revision = await context.tx.projectWorkspaceRevision.findFirstOrThrow({ where: { projectId: context.project.id, entityKind: "EXTRACTION", entityId: reviewed.id, version: reviewed.version } });
+          await context.tx.gapEvidenceRecord.update({ where: { id: link.id }, data: { evidenceRevisionId: revision.id } });
+        }
+      }
       if (input.status === "TEAM_SUPPORTED" && !(await eligibleEvidence(context, gapId)).some(row => row.evidenceKind === "SUPPORTING")) throw AppError.badRequest("Review and link supporting evidence before recording team support");
       await captureGapRevision(context, gapId);
       const next = await context.tx.researchGap.update({ where: { id: gapId }, data: { assessmentStatus: input.status, assessmentRationale: input.rationale, version: { increment: 1 }, validationStatus: "CANDIDATE" } });

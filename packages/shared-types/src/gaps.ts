@@ -113,6 +113,8 @@ export interface ResearchGapItem {
 }
 
 export interface GapAnalysisResult {
+  promptVersion?: string;
+  discovery?: ProjectGapDiscoveryResult;
   evidenceSnapshot?: import("./knowledge.js").PaperEvidenceSnapshot[];
   id: string;
   topic: string;
@@ -157,6 +159,10 @@ export interface PreviewGapEvidenceResponse {
 }
 
 export interface AnalyzeGapRequest {
+  /** Analyze included project papers directly; human review happens on candidates. */
+  projectDiscovery?: boolean;
+  /** Accepted, current project synthesis revision. Required for new project analyses. */
+  synthesisRevisionId?: string;
   topic: string;
   projectId?: string;
   yearFrom?: number;
@@ -165,6 +171,30 @@ export interface AnalyzeGapRequest {
   selectedPaperIds?: string[];
   /** auto retrieves, selected freezes user choice, hybrid pins user choice and fills remaining slots. */
   evidenceMode?: GapEvidenceMode;
+}
+
+export interface DiscoveryPaperResult {
+  relations?: Array<{ kind: string; quote: string; chunkId: string; pageNumber: number | null }>;
+  id: string;
+  title: string;
+  analysis: import("./paper.js").PaperAiAnalysis;
+  sourceKind: string;
+  contentHash: string;
+  warnings: string[];
+  passages: Array<{ id: string; pageNumber: number | null; text: string }>;
+}
+export interface ProjectGapDiscoveryResult {
+  stage: "queued" | "extracting" | "synthesizing" | "generating" | "ready";
+  completed: number;
+  total: number;
+  papers: DiscoveryPaperResult[];
+  synthesis?: import("./project-research.js").SynthesisContent;
+}
+export interface ProjectGapDiscoveryOverview {
+  eligibleCount: number;
+  maxPapers: number;
+  minPapers: number;
+  latestAnalysis: GapAnalysisResult | null;
 }
 
 export interface ListGapsResponse {

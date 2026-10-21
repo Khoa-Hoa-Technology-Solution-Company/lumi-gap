@@ -8,7 +8,7 @@ export const projectOverviewService = {
   async get(projectId: string, actorId: string): Promise<WorkspaceOverview> {
     return withWorkspace(projectId, actorId, {}, async context => {
       const { tx, project } = context, now = new Date(new Date().toISOString().slice(0, 10));
-      const [plan, members, mentorRows, paperCounts, evidence, gaps, overdueTasks, blockedTasks, mentorQuestions, reviewResponses, myTasks, reports, manuscripts, nextMilestone, events, feedback, memberCount] = await Promise.all([
+      const [plan, members, mentorRows, paperCounts, evidence, gaps, overdueTasks, blockedTasks, mentorQuestions, reviewResponses, myTasks, reports, manuscripts, nextMilestone, events, feedback, memberCount, topContributorCounts] = await Promise.all([
         tx.researchPlan.findUniqueOrThrow({ where: { projectId: project.id } }),
         tx.projectMember.findMany({ where: { projectId: project.id, status: "ACTIVE" }, orderBy: { joinedAt: "asc" }, take: 100 }),
         tx.mentorRelationship.findMany({ where: { projectId: project.id, status: "ACTIVE" } }),
@@ -51,6 +51,14 @@ export const projectOverviewService = {
             JOIN plan_shares s ON s.revision_id=x.target_id AND s.relationship_id=m.id AND s.revoked_at IS NULL
           ) SELECT count(DISTINCT key) AS n FROM awaiting`,
         tx.projectMember.count({ where: { projectId: project.id, status: "ACTIVE" } }),
+        tx.$queryRaw<Array<{ actorId: string; count: bigint }>>`
+          SELECT actor_id AS "actorId", count(*) AS count
+          FROM project_activities
+          WHERE project_id = ${project.id}::uuid AND actor_id IS NOT NULL
+          GROUP BY actor_id
+          ORDER BY count DESC
+          LIMIT 5
+        `,
       ]);
       const mentorIds = mentorRows.map(row => row.mentorUserId);
       const [mentorUsers, mentorProfiles] = await Promise.all([
@@ -58,7 +66,23 @@ export const projectOverviewService = {
         tx.academicProfile.findMany({ where: { userId: { in: mentorIds } }, select: { userId: true, academicRole: true, roleVerificationStatus: true, positionStatus: true } }),
       ]);
       const mentors = mentorRows.filter(row => isVerifiedLecturer(mentorUsers.find(user => user.id === row.mentorUserId) ?? null, mentorProfiles.find(profile => profile.userId === row.mentorUserId) ?? null));
-      const people = await workspacePeople(tx, [...members.map(row => row.userId), ...mentors.map(row => row.mentorUserId), ...myTasks.map(row => row.createdById), ...events.flatMap(row => row.actorId ? [row.actorId] : [])]);
+      const people = await workspacePeople(tx, [
+        ...members.map(row => row.userId),
+        ...mentors.map(row => row.mentorUserId),
+        ...myTasks.map(row => row.createdById),
+        ...events.flatMap(row => row.actorId ? [row.actorId] : []),
+        ...topContributorCounts.map(row => row.actorId),
+      ]);
+      const totalTopActivities = topContributorCounts.reduce((sum, r) => sum + Number(r.count), 0);
+      const topContributors = topContributorCounts.map((row, index) => {
+        const count = Number(row.count);
+        return {
+          person: workspacePerson(people, row.actorId),
+          count,
+          percentage: totalTopActivities > 0 ? Math.round((count / totalTopActivities) * 100) : 0,
+          rank: index + 1,
+        };
+      });
       const mutable = project.status !== "ARCHIVED";
       return {
         project: { id: project.id, title: project.title, status: project.status as WorkspaceOverview["project"]["status"], researchStage: project.researchStage as ResearchStage | null, version: project.version },
@@ -71,6 +95,7 @@ export const projectOverviewService = {
         recentArtifacts: [...reports.map(row => ({ id: row.id, title: row.topic ?? "Research report", kind: "REPORT" as const, updatedAt: row.updatedAt.toISOString() })), ...manuscripts.map(row => ({ id: row.id, title: row.name, kind: "MANUSCRIPT" as const, updatedAt: row.updatedAt.toISOString() }))].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 3),
         nextMilestone: nextMilestone ? { id: nextMilestone.id, title: nextMilestone.title, description: nextMilestone.description, dueAt: nextMilestone.dueAt?.toISOString() ?? null, status: "PLANNED", version: nextMilestone.version } : null,
         activity: events.map(row => ({ id: row.id, type: row.type, actor: row.actorId ? workspacePerson(people, row.actorId) : null, createdAt: row.createdAt.toISOString(), entityKind: row.entityKind, entityId: row.entityId })),
+        topContributors,
       };
     });
   },

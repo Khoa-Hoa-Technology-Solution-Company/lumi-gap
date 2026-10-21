@@ -25,6 +25,7 @@ const EnvSchema = z.object({
 
   REDIS_URL: z.string().url().or(z.string().startsWith("redis")),
   MANUSCRIPT_COMPILER_URL: optionalEnvUrl,
+  MANUSCRIPT_COMPILER_2025_URL: optionalEnvUrl,
 
   // Binary storage. local keeps the existing development behavior; r2 stores
   // PDFs/images in Cloudflare R2 via the S3-compatible API; cloudinary stores
@@ -66,6 +67,16 @@ const EnvSchema = z.object({
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
   GOOGLE_CALLBACK_URL: z.string().default("http://localhost:4000/api/v1/auth/google/callback"),
+
+  GITHUB_CLIENT_ID: optionalEnvString,
+  GITHUB_CLIENT_SECRET: optionalEnvString,
+  GITHUB_APP_SLUG: z.preprocess(value => value === "" ? undefined : value, z.string().regex(/^[a-z0-9][a-z0-9-]{0,99}$/).optional()),
+  GITHUB_CALLBACK_URL: z.string().url().default("http://localhost:8080/integrations/github/callback").refine(value => {
+    const url = new URL(value);
+    return !url.username && !url.password && !url.search && !url.hash && url.pathname === "/integrations/github/callback"
+      && (url.protocol === "https:" || url.protocol === "http:" && ["localhost", "127.0.0.1"].includes(url.hostname));
+  }, "GitHub callback must use HTTPS (or localhost HTTP) and /integrations/github/callback"),
+  GITHUB_CONNECTION_ENCRYPTION_KEY: z.preprocess(value => value === "" ? undefined : value, z.string().min(32).optional()),
 
   // Transactional email for security-sensitive verification messages. "log" is
   // an explicit local-development transport and is forbidden in production.

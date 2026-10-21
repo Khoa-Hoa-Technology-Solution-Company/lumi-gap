@@ -104,4 +104,5 @@ export interface WorkspaceOverview {
   recentArtifacts: Array<{ id: string; title: string; kind: "REPORT" | "MANUSCRIPT"; updatedAt: string }>;
   nextMilestone: WorkspaceMilestone | null;
   activity: Array<{ id: string; type: string; actor: WorkspacePerson | null; createdAt: string; entityKind: string | null; entityId: string | null }>;
+  topContributors?: Array<{ person: WorkspacePerson; count: number; percentage: number; rank: number }>;
 }

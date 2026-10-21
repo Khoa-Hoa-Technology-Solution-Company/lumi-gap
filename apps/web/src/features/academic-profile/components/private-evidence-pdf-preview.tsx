@@ -7,7 +7,7 @@ import { useI18n } from "@/i18n";
 GlobalWorkerOptions.workerSrc = workerUrl;
 
 /** Render pixels only: no scripting, annotation links, forms, attachments or iframe document. */
-export default function PrivateEvidencePdfPreview({ blob, zoomable = false, compact = false, continuous = false }: { blob: Blob; zoomable?: boolean; compact?: boolean; continuous?: boolean }) {
+export default function PrivateEvidencePdfPreview({ blob, zoomable = false, compact = false, continuous = false, target, onPoint }: { blob: Blob; zoomable?: boolean; compact?: boolean; continuous?: boolean; target?: { page: number; x: number; y: number; key: number }; onPoint?: (page: number, x: number, y: number) => void }) {
   const { t } = useI18n();
   const [document, setDocument] = useState<PDFDocumentProxy>(), [page, setPage] = useState(1), [error, setError] = useState(false);
   const [zoom, setZoom] = useState(1), [fitWidth, setFitWidth] = useState(true), [fitScale, setFitScale] = useState(1);
@@ -31,6 +31,20 @@ export default function PrivateEvidencePdfPreview({ blob, zoomable = false, comp
     setPage(anchor.page);
   }, [zoom, fitWidth]);
   useEffect(() => { if (scrollRoot.current) scrollRoot.current.scrollTop = 0; }, [document]);
+  useEffect(() => {
+    if (!target || !document || !continuous) return;
+    const root = scrollRoot.current, element = root?.querySelector<HTMLElement>(`[data-pdf-page="${target.page}"]`);
+    if (!root || !element) return;
+    let cancelled = false;
+    void document.getPage(target.page).then(pdfPage => {
+      if (cancelled) return;
+      const height = pdfPage.getViewport({ scale: 1 }).height;
+      const rect = element.getBoundingClientRect();
+      root.scrollTop += rect.top - root.getBoundingClientRect().top + rect.height * Math.min(1, target.y / height) - root.clientHeight / 3;
+      setPage(target.page);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [target, document, continuous]);
   const currentScale = fitWidth ? fitScale : zoom;
   const changeZoom = (step: number) => { rememberPosition(); setZoom(Math.max(0.25, Math.min(3, Math.round((currentScale + step) * 4) / 4))); setFitWidth(false); };
   const fitToWidth = () => { rememberPosition(); setFitWidth(true); };
@@ -66,12 +80,12 @@ export default function PrivateEvidencePdfPreview({ blob, zoomable = false, comp
       const current = pages.find(element => element.getBoundingClientRect().bottom > readingLine);
       if (current) setPage(Number(current.dataset.pdfPage));
     } : undefined}>
-      {continuous ? <div className="writing-pdf-pages">{Array.from({ length: document.numPages }, (_, index) => <PdfPage key={index + 1} document={document} page={index + 1} zoom={zoomable ? zoom : undefined} fitWidth={fitWidth} onFitScale={index + 1 === page ? setFitScale : undefined} scrollRoot={scrollRoot} />)}</div> : <PdfPage key={page} document={document} page={page} zoom={zoomable ? zoom : undefined} fitWidth={fitWidth} onFitScale={setFitScale} />}
+      {continuous ? <div className="writing-pdf-pages">{Array.from({ length: document.numPages }, (_, index) => <PdfPage key={index + 1} document={document} page={index + 1} zoom={zoomable ? zoom : undefined} fitWidth={fitWidth} onFitScale={index + 1 === page ? setFitScale : undefined} scrollRoot={scrollRoot} onPoint={onPoint} />)}</div> : <PdfPage key={page} document={document} page={page} zoom={zoomable ? zoom : undefined} fitWidth={fitWidth} onFitScale={setFitScale} onPoint={onPoint} />}
     </div>
   </div>;
 }
 
-function PdfPage({ document, page, zoom, fitWidth, onFitScale, scrollRoot }: { document: PDFDocumentProxy; page: number; zoom?: number; fitWidth: boolean; onFitScale?: (scale: number) => void; scrollRoot?: RefObject<HTMLDivElement> }) {
+function PdfPage({ document, page, zoom, fitWidth, onFitScale, scrollRoot, onPoint }: { document: PDFDocumentProxy; page: number; zoom?: number; fitWidth: boolean; onFitScale?: (scale: number) => void; scrollRoot?: RefObject<HTMLDivElement>; onPoint?: (page: number, x: number, y: number) => void }) {
   const { t } = useI18n();
   const canvas = useRef<HTMLCanvasElement>(null), [error, setError] = useState(false);
   const [width, setWidth] = useState(680);
@@ -113,6 +127,11 @@ function PdfPage({ document, page, zoom, fitWidth, onFitScale, scrollRoot }: { d
     })();
     return () => { cancelled = true; render?.cancel(); };
   }, [document, page, width, zoom, fitWidth, onFitScale, scrollRoot, visible]);
-  const content = error ? <p role="alert" className="text-sm text-destructive">{t("Could not render this page. Download the private document to inspect it.")}</p> : !scrollRoot || visible ? <canvas ref={canvas} role="img" aria-label={t("Private PDF page {{page}}", { page })} className={`mx-auto h-auto ${zoom === undefined ? "max-w-full" : "max-w-none"} bg-white`} /> : null;
+  const locate = (element: HTMLCanvasElement, clientX: number, clientY: number) => {
+    const rect = element.getBoundingClientRect();
+    if (!onPoint || rect.width <= 0 || rect.height <= 0) return;
+    void document.getPage(page).then(pdfPage => { const size = pdfPage.getViewport({ scale: 1 }); onPoint(page, Math.max(0, (clientX - rect.left) / rect.width * size.width), Math.max(0, (clientY - rect.top) / rect.height * size.height)); }).catch(() => {});
+  };
+  const content = error ? <p role="alert" className="text-sm text-destructive">{t("Could not render this page. Download the private document to inspect it.")}</p> : !scrollRoot || visible ? <canvas ref={canvas} role="img" aria-label={t("Private PDF page {{page}}", { page })} tabIndex={onPoint ? 0 : undefined} title={onPoint ? t("Double-click to find source; press Enter for page center.") : undefined} onDoubleClick={event => locate(event.currentTarget, event.clientX, event.clientY)} onKeyDown={event => { if (event.key === "Enter" && onPoint) { event.preventDefault(); const rect = event.currentTarget.getBoundingClientRect(); locate(event.currentTarget, rect.left + rect.width / 2, rect.top + rect.height / 2); } }} className={`mx-auto h-auto ${zoom === undefined ? "max-w-full" : "max-w-none"} bg-white`} /> : null;
   return scrollRoot ? <div ref={slot} className="writing-pdf-page" data-pdf-page={page} style={{ width: naturalSize.width * displayScale, minHeight: naturalSize.height * displayScale }}>{content}</div> : content;
 }

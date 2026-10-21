@@ -1,10 +1,13 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import * as Y from "yjs";
 import sharp from "sharp";
-import { unzipSync, strFromU8 } from "fflate";
+import { unzipSync, strFromU8, zipSync, strToU8 } from "fflate";
 import { getPrisma } from "../../../infrastructure/database/prisma.js";
 import { createProjectFixture } from "../../../test-utils/project-fixture.js";
 import { manuscriptService as writing } from "../manuscript.service.js";
+import { manuscriptSuggestions as suggestions } from "../manuscript-suggestions.js";
+import { manuscriptRepository as repository } from "../manuscript-repository.js";
+import { manuscriptSync } from "../manuscript-sync.js";
 import { citationKey, hashBytes, sourceDocument, sourceText } from "../manuscript-source.js";
 import { projectDiscussionsService as discussions } from "../../projects/project-discussions.service.js";
 import { reviewTemplateService } from "../../reviews/review-template.service.js";
@@ -32,6 +35,206 @@ describe.skipIf(!isolated).sequential("manuscripts in disposable PostgreSQL", ()
     return { input, result: await writing.applyUpdate(d.project, user, d.id, fileId, input) };
   }
   beforeAll(async () => { owner = await actor("Owner"); member = await actor("Member"); outsider = await actor("Outsider"); mentor = await actor("Mentor", true); reviewer = await actor("Reviewer", true); });
+
+  it("persists manuscript-specific compiler settings with revision checks and revoked access", async () => {
+    const d = await draft(), other = await draft();
+    const previous = d.detail.compilerSettings!;
+    const saved = await writing.compilerSettings(d.project, owner, d.id, { engine: "xelatex", texLiveVersion: "2022", expectedRevision: previous.revision });
+    expect((await writing.detail(d.project, member, d.id)).compilerSettings).toEqual(saved);
+    expect((await writing.detail(d.project, owner, d.id)).version).toBe(d.detail.version);
+    expect((await writing.detail(other.project, owner, other.id)).compilerSettings?.engine).toBe("pdflatex");
+    await expect(writing.compilerSettings(d.project, member, d.id, { engine: "lualatex", texLiveVersion: "2022", expectedRevision: previous.revision })).rejects.toMatchObject({ statusCode: 409 });
+    await db.projectMember.update({ where: { projectId_userId: { projectId: d.project, userId: member } }, data: { status: "REMOVED" } });
+    await expect(writing.compilerSettings(d.project, member, d.id, { engine: "pdflatex", texLiveVersion: "2022", expectedRevision: saved.revision })).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it("restores comments, replies and pending suggestions with original authors and usable anchors", async () => {
+    const d = await draft(), input = await proposal(d);
+    await writing.compilerSettings(d.project, owner, d.id, { engine: "xelatex", texLiveVersion: "2022", expectedRevision: 1 });
+    await suggestions.create(d.project, member, d.id, input);
+    const doc = sourceDocument(Buffer.from((await writing.fileContent(d.project, owner, d.id, d.file)).state!, "base64"));
+    const start = Y.createRelativePositionFromTypeIndex(doc.getText("source"), input.from), end = Y.createRelativePositionFromTypeIndex(doc.getText("source"), input.to);
+    const thread = await writing.comment(d.project, member, d.id, { body: "Team-only comment", clientKey: crypto.randomUUID(), fileId: d.file, quote: input.original, start, end }); doc.destroy();
+    await discussions.reply(d.project, owner, thread.id, { body: "Review reply", clientKey: crypto.randomUUID(), mentions: [], replyToId: null });
+    const version = await writing.snapshot(d.project, owner, d.id, { label: "Full collaboration", clientKey: crypto.randomUUID(), minimumSequences: {} });
+    await writing.compilerSettings(d.project, owner, d.id, { engine: "lualatex", texLiveVersion: "2022", expectedRevision: 2 });
+    expect((await writing.snapshots(d.project, owner, d.id))[0]?.collaboration).toEqual({ comments: 1, suggestions: 1 });
+    const exported = await repository.source(d.project, owner, d.id, version.id);
+    expect(JSON.stringify(exported)).not.toContain("Team-only comment");
+    const restored = await writing.restore(d.project, owner, d.id, version.id, { title: "Restored collaboration", clientKey: crypto.randomUUID() });
+    expect((await writing.detail(d.project, owner, restored.id)).compilerSettings?.engine).toBe("xelatex");
+    const comments = await writing.comments(d.project, owner, restored.id), proposals = await suggestions.list(d.project, owner, restored.id);
+    expect(comments[0]?.author.id).toBe(member); expect(comments[0]?.messages[0]?.body).toBe("Review reply");
+    expect(comments[0]?.context.fileId).toBe(restored.mainFileId);
+    expect(proposals[0]?.author.id).toBe(member);
+    await suggestions.resolve(d.project, owner, restored.id, proposals[0]!.id, "ACCEPTED", proposals[0]!.revision);
+    expect(sourceText(Buffer.from((await writing.fileContent(d.project, owner, restored.id, restored.mainFileId!)).state!, "base64"))).toContain(input.replacement);
+    expect((await suggestions.list(d.project, owner, d.id))[0]?.status).toBe("PENDING");
+  });
+
+  it("applies an inspected bundle atomically, rejects stale versions, and keeps a recoverable source snapshot", async () => {
+    const d = await draft(), sealed = await writing.snapshot(d.project, owner, d.id, { label: "Before remote pull", clientKey: crypto.randomUUID(), minimumSequences: {} });
+    const bundle = await repository.source(d.project, owner, d.id, sealed.id);
+    const files = bundle.files.filter(file => file.path !== "lumigap-version.json").map(file => file.path === "main.tex" ? { ...file, content: Buffer.from(Buffer.from(file.content, "base64").toString("utf8") + "\n% Incoming remote change\n").toString("base64") } : file);
+    const bytes = Buffer.from(JSON.stringify({ files })), input = { expectedVersion: d.detail.version, mainFile: "main.tex", clientKey: crypto.randomUUID() };
+    const applied = await manuscriptSync.apply(d.project, owner, d.id, input, bytes);
+    expect(applied.version).toBe(d.detail.version + 1);
+    expect((await manuscriptSync.apply(d.project, owner, d.id, input, bytes)).version).toBe(applied.version);
+    expect(sourceText(Buffer.from((await writing.fileContent(d.project, member, d.id, d.file)).state!, "base64"))).toContain("Incoming remote change");
+    await expect(manuscriptSync.apply(d.project, owner, d.id, { ...input, clientKey: crypto.randomUUID() }, bytes)).rejects.toMatchObject({ statusCode: 409 });
+    expect((await writing.viewSnapshot(d.project, owner, d.id, sealed.id)).manifest?.files.find(file => file.id === d.file)?.text).not.toContain("Incoming remote change");
+    const binding = { repository: "team/research", branch: "main", head: "a".repeat(40), baseline: [{ path: "figures/figure.png", sha: "b".repeat(40) }], expectedRevision: 0, expectedVersion: applied.version };
+    await expect(manuscriptSync.bind(d.project, owner, d.id, { ...binding, baseline: [{ path: "../secret.tex", sha: "b".repeat(40) }] })).rejects.toMatchObject({ statusCode: 400 });
+    const saved = await manuscriptSync.bind(d.project, owner, d.id, binding);
+    expect((await manuscriptSync.binding(d.project, member, d.id))?.revision).toBe(saved.revision);
+    await expect(manuscriptSync.bind(d.project, owner, d.id, binding)).rejects.toMatchObject({ statusCode: 409 });
+    await expect(manuscriptSync.binding(d.project, outsider, d.id)).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it("retains large tracked scopes without changing canonical source before acceptance", async () => {
+    const d = await draft(); await update(d, owner, text => { text.delete(0, text.length); text.insert(0, "A".repeat(20000)); });
+    const row = await writing.fileContent(d.project, owner, d.id, d.file);
+    const result = await suggestions.create(d.project, member, d.id, { fileId: d.file, sourceSequence: row.sequence, from: 0, to: 20000, original: "A".repeat(20000), replacement: "B".repeat(20000), note: "Large tracked edit", clientKey: crypto.randomUUID() });
+    expect((await writing.fileContent(d.project, owner, d.id, d.file)).state).toBe(row.state);
+    await suggestions.resolve(d.project, owner, d.id, result.id, "ACCEPTED", result.revision);
+    expect(sourceText(Buffer.from((await writing.fileContent(d.project, owner, d.id, d.file)).state!, "base64"))).toBe("B".repeat(20000));
+  });
+
+  async function proposal(d: Awaited<ReturnType<typeof draft>>, replacement = "Revised title", range?: { from: number; to: number }) {
+    const row = await writing.fileContent(d.project, owner, d.id, d.file), source = sourceText(Buffer.from(row.state!, "base64"));
+    const from = range?.from ?? source.indexOf("Methods study"), to = range?.to ?? from + "Methods study".length;
+    return { fileId: d.file, from, to, original: source.slice(from, to), replacement, sourceSequence: row.sequence, note: "Clarify the title", clientKey: crypto.randomUUID() };
+  }
+  it("round-trips repository source through a sealed bundle and atomic import without granting access", async () => {
+    const d = await draft(), version = await writing.snapshot(d.project, owner, d.id, { label: "Repository export", clientKey: crypto.randomUUID(), minimumSequences: {} });
+    const bundle = await repository.source(d.project, member, d.id, version.id);
+    const importInput = { title: "Imported source", mainFile: "", clientKey: crypto.randomUUID() };
+    const imported = await repository.import(d.project, member, importInput, Buffer.from(JSON.stringify(bundle)));
+    expect((await repository.import(d.project, member, importInput, Buffer.from(JSON.stringify(bundle)))).id).toBe(imported.id);
+    expect((await writing.detail(d.project, owner, imported.id)).files.filter(file => file.kind !== "FOLDER").map(file => file.path)).toEqual(d.detail.files.filter(file => file.kind !== "FOLDER").map(file => file.path));
+    await expect(repository.source(d.project, outsider, d.id, version.id)).rejects.toMatchObject({ statusCode: 404 });
+    await expect(repository.import(d.project, member, { title: "Unsafe import", mainFile: "", clientKey: crypto.randomUUID() }, Buffer.from(JSON.stringify({ files: [{ path: "../main.tex", content: Buffer.from("test").toString("base64") }] })))).rejects.toMatchObject({ statusCode: 400 });
+    await db.projectMember.update({ where: { projectId_userId: { projectId: d.project, userId: member } }, data: { status: "REMOVED" } });
+    await expect(repository.source(d.project, member, d.id, version.id)).rejects.toMatchObject({ statusCode: 404 });
+  });
+  it("persists suggestions without changing source, preserves retry identity, and records one atomic acceptance", async () => {
+    const d = await draft(), input = await proposal(d), before = await writing.fileContent(d.project, owner, d.id, d.file);
+    const suggested = await suggestions.create(d.project, member, d.id, input);
+    expect((await suggestions.create(d.project, member, d.id, input)).id).toBe(suggested.id);
+    await expect(suggestions.create(d.project, member, d.id, { ...input, note: "Changed" })).rejects.toMatchObject({ statusCode: 409 });
+    expect((await writing.fileContent(d.project, owner, d.id, d.file)).state).toBe(before.state);
+    const concurrent = await Promise.all([suggestions.resolve(d.project, owner, d.id, suggested.id, "ACCEPTED"), suggestions.resolve(d.project, member, d.id, suggested.id, "ACCEPTED")]);
+    expect(concurrent.filter(result => result.source)).toHaveLength(1);
+    const after = await writing.fileContent(d.project, owner, d.id, d.file);
+    expect(after.sequence).toBe(before.sequence + 1);
+    expect(sourceText(Buffer.from(after.state!, "base64"))).toContain("Revised title");
+    const [entry] = await suggestions.list(d.project, owner, d.id);
+    expect(entry).toMatchObject({ author: { id: member }, status: "ACCEPTED" });
+    expect(entry?.resolvedBy?.id).toBeTruthy();
+    await expect(suggestions.resolve(d.project, owner, d.id, suggested.id, "REJECTED")).rejects.toMatchObject({ statusCode: 409 });
+  });
+  it("rejects without editing, refuses stale or removed source, and rebases unrelated edits safely", async () => {
+    const d = await draft(), rejected = await suggestions.create(d.project, owner, d.id, await proposal(d));
+    const before = await writing.fileContent(d.project, owner, d.id, d.file);
+    await suggestions.resolve(d.project, member, d.id, rejected.id, "REJECTED");
+    expect((await writing.fileContent(d.project, owner, d.id, d.file)).state).toBe(before.state);
+    const proposed = await suggestions.create(d.project, member, d.id, await proposal(d));
+    await update(d, owner, text => text.insert(text.length, "\n% Unrelated edit\n"));
+    await suggestions.resolve(d.project, owner, d.id, proposed.id, "ACCEPTED");
+    const staleInput = await proposal(d, "Third title", { from: 0, to: 20 }), stale = await suggestions.create(d.project, member, d.id, staleInput);
+    await update(d, owner, text => text.insert(2, "changed"));
+    await expect(suggestions.resolve(d.project, owner, d.id, stale.id, "ACCEPTED")).rejects.toMatchObject({ statusCode: 409 });
+    expect((await suggestions.list(d.project, owner, d.id)).find(row => row.id === stale.id)?.status).toBe("PENDING");
+    await expect(suggestions.create(d.project, member, d.id, { ...staleInput, clientKey: crypto.randomUUID() })).rejects.toMatchObject({ statusCode: 409 });
+  });
+  it("autosaves only the author's pending proposal and refuses acceptance of an unseen revision", async () => {
+    const d = await draft(), input = await proposal(d), created = await suggestions.create(d.project, member, d.id, input);
+    const before = await writing.fileContent(d.project, owner, d.id, d.file);
+    await expect(suggestions.update(d.project, owner, d.id, created.id, { expectedRevision: 1, replacement: "Not my proposal" })).rejects.toMatchObject({ statusCode: 404 });
+    const saved = await suggestions.update(d.project, member, d.id, created.id, { expectedRevision: 1, replacement: "Autosaved title" });
+    expect(saved.revision).toBe(2);
+    expect(await suggestions.update(d.project, member, d.id, created.id, { expectedRevision: 1, replacement: "Autosaved title" })).toEqual(saved);
+    expect((await writing.fileContent(d.project, owner, d.id, d.file)).state).toBe(before.state);
+    await expect(suggestions.resolve(d.project, owner, d.id, created.id, "ACCEPTED", 1)).rejects.toMatchObject({ statusCode: 409 });
+    await suggestions.resolve(d.project, owner, d.id, created.id, "ACCEPTED", 2);
+    expect(sourceText(Buffer.from((await writing.fileContent(d.project, owner, d.id, d.file)).state!, "base64"))).toContain("Autosaved title");
+    await expect(suggestions.update(d.project, member, d.id, created.id, { expectedRevision: 2, replacement: "Too late" })).rejects.toMatchObject({ statusCode: 409 });
+  });
+  it("serializes competing autosaves and rejects reverted proposals without changing source", async () => {
+    const d = await draft(), input = await proposal(d), row = await suggestions.create(d.project, member, d.id, input);
+    const results = await Promise.allSettled([suggestions.update(d.project, member, d.id, row.id, { expectedRevision: 1, replacement: "First window" }), suggestions.update(d.project, member, d.id, row.id, { expectedRevision: 1, replacement: "Second window" })]);
+    expect(results.filter(result => result.status === "fulfilled")).toHaveLength(1);
+    expect((results.find(result => result.status === "rejected") as PromiseRejectedResult).reason).toMatchObject({ statusCode: 409 });
+    const reverted = await suggestions.update(d.project, member, d.id, row.id, { expectedRevision: 2, replacement: input.original });
+    expect(reverted.revision).toBe(3);
+    const before = await writing.fileContent(d.project, owner, d.id, d.file);
+    await expect(suggestions.resolve(d.project, owner, d.id, row.id, "ACCEPTED", 3)).rejects.toMatchObject({ statusCode: 409 });
+    await suggestions.resolve(d.project, owner, d.id, row.id, "REJECTED", 3);
+    expect((await writing.fileContent(d.project, owner, d.id, d.file)).state).toBe(before.state);
+  });
+  it("locks autosave against source edits, revocation and review resolution", async () => {
+    const d = await draft(), row = await suggestions.create(d.project, member, d.id, await proposal(d));
+    const results = await Promise.allSettled([suggestions.update(d.project, member, d.id, row.id, { expectedRevision: 1, replacement: "Updated during review" }), suggestions.resolve(d.project, owner, d.id, row.id, "ACCEPTED", 1)]);
+    expect(results.filter(result => result.status === "fulfilled")).toHaveLength(1);
+    const [saved] = await suggestions.list(d.project, owner, d.id);
+    expect(saved?.status === "ACCEPTED" ? saved.replacement : saved?.revision).toBe(saved?.status === "ACCEPTED" ? "Revised title" : 2);
+    const stale = await suggestions.create(d.project, member, d.id, await proposal(d, "New", { from: 0, to: 10 }));
+    await update(d, owner, text => text.insert(3, "Changed"));
+    await expect(suggestions.update(d.project, member, d.id, stale.id, { expectedRevision: 1, replacement: "Stale" })).rejects.toMatchObject({ statusCode: 409 });
+    await db.projectMember.update({ where: { projectId_userId: { projectId: d.project, userId: member } }, data: { status: "REMOVED" } });
+    await expect(suggestions.update(d.project, member, d.id, stale.id, { expectedRevision: 1, replacement: "Revoked" })).rejects.toMatchObject({ statusCode: 404 });
+  });
+  it("blocks outsiders, revoked members, cross-project files and archived manuscript suggestions", async () => {
+    const d = await draft(), other = await draft(), input = await proposal(d);
+    await expect(suggestions.create(d.project, outsider, d.id, input)).rejects.toMatchObject({ statusCode: 404 });
+    await expect(suggestions.list(d.project, outsider, d.id)).rejects.toMatchObject({ statusCode: 404 });
+    await expect(suggestions.create(d.project, member, d.id, { ...input, fileId: other.file })).rejects.toMatchObject({ statusCode: 404 });
+    const row = await suggestions.create(d.project, member, d.id, input);
+    await db.projectMember.update({ where: { projectId_userId: { projectId: d.project, userId: member } }, data: { status: "REMOVED" } });
+    await expect(suggestions.resolve(d.project, member, d.id, row.id, "ACCEPTED")).rejects.toMatchObject({ statusCode: 404 });
+    await db.draftWorkspace.update({ where: { id: d.id }, data: { archivedAt: new Date() } });
+    await expect(suggestions.resolve(d.project, owner, d.id, row.id, "ACCEPTED")).rejects.toMatchObject({ statusCode: 409 });
+  });
+
+  it("imports a source ZIP atomically, preserves paths and citations, deduplicates retries, exports and searches authorized source", async () => {
+    const d = await draft();
+    const jpeg = await sharp({ create: { width: 5, height: 5, channels: 3, background: "white" } }).jpeg().toBuffer();
+    const source = "\\documentclass{article}\n\\begin{document}\n\\input{sections/intro}\n\\end{document}\n";
+    const zip = zipSync({ "main.tex": strToU8(source), "sections/intro.tex": strToU8("Evidence from the shared team.\n\\cite{team2026}\n"), "references.bib": strToU8("@misc{team2026,title={Synthetic Reference}}"), "figures/Research (1).jpg": jpeg, "README.md": strToU8("Ignored README") });
+    const input = { title: "Imported team research", mainFile: "", clientKey: crypto.randomUUID() };
+    const imported = await writing.importZip(d.project, owner, input, zip);
+    expect(await writing.importZip(d.project, owner, input, zip)).toMatchObject({ id: imported.id, ignoredFiles: ["README.md"] });
+    await expect(writing.importZip(d.project, owner, { ...input, title: "Different" }, zip)).rejects.toMatchObject({ statusCode: 409 });
+    const detail = await writing.detail(d.project, member, imported.id);
+    expect(detail.files).toHaveLength(4);
+    expect(detail.files.find(file => file.id === detail.mainFileId)?.path).toBe("main.tex");
+    const output = unzipSync(await writing.export(d.project, member, imported.id));
+    expect(strFromU8(output["main.tex"]!)).toBe(source);
+    expect(output["figures/Research (1).jpg"]?.subarray(0, 2)).toEqual(new Uint8Array([0xff, 0xd8]));
+    expect(await writing.search(d.project, member, imported.id, "shared team")).toMatchObject({ truncated: false, matches: [{ path: "sections/intro.tex", line: 1 }] });
+    await expect(writing.search(d.project, outsider, imported.id, "shared team")).rejects.toMatchObject({ statusCode: 404 });
+    await expect(writing.importZip(d.project, mentor, { ...input, clientKey: crypto.randomUUID() }, zip)).rejects.toMatchObject({ statusCode: 404 });
+    await db.projectMember.update({ where: { projectId_userId: { projectId: d.project, userId: member } }, data: { status: "REMOVED" } });
+    await expect(writing.search(d.project, member, imported.id, "shared team")).rejects.toMatchObject({ statusCode: 404 });
+    const before = await db.draftWorkspace.count({ where: { projectId: d.project } });
+    await expect(writing.importZip(d.project, owner, { ...input, clientKey: crypto.randomUUID() }, zipSync({ "main.tex": strToU8("a".repeat(500001)) }))).rejects.toThrow();
+    expect(await db.draftWorkspace.count({ where: { projectId: d.project } })).toBe(before);
+  });
+
+  it("persists custom class and bibliography style files through snapshots, source export and restore", async () => {
+    const d = await draft();
+    const sources = [
+      { path: "teamarticle.cls", content: "\\ProvidesClass{teamarticle}\\LoadClass{article}" },
+      { path: "teamstyle.bst", content: "% A project-local BibTeX style\nENTRY { title } {} {}\nREAD\n" },
+    ];
+    for (const source of sources) await writing.createFile(d.project, owner, d.id, { ...source, kind: "TEXT", clientKey: crypto.randomUUID() });
+    const sealed = await writing.snapshot(d.project, member, d.id, { label: "Template sources", clientKey: crypto.randomUUID(), minimumSequences: {} });
+    const zip = unzipSync(await writing.export(d.project, member, d.id, sealed.id));
+    for (const source of sources) expect(strFromU8(zip[source.path]!)).toBe(source.content);
+    const restored = await writing.restore(d.project, owner, d.id, sealed.id, { title: "Restored template", clientKey: crypto.randomUUID() });
+    const detail = await writing.detail(d.project, member, restored.id);
+    expect(detail.files.map(file => file.path)).toEqual(expect.arrayContaining(sources.map(source => source.path)));
+  });
   it("creates multiple canonical manuscripts, preserves legacy workspace uniqueness and retries", async () => {
     const d = await draft(), input = { title: "Second manuscript", description: "", documentType: "THESIS" as const, template: "REPORT" as const, clientKey: crypto.randomUUID() };
     const second = await writing.create(d.project, member, input); expect((await writing.list(d.project, owner))).toHaveLength(2);

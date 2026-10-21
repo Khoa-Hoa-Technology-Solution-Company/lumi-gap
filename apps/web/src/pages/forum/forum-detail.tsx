@@ -462,7 +462,7 @@ export function ForumDetailPage() {
     >
         <ForumSurface className="forum-detail-surface forum-content-ready px-4 pb-8 pt-4">
               <div className="mb-3 flex min-h-11 items-center pl-12 lg:hidden"><Link to="/forum" className="rounded text-sm font-semibold text-muted-foreground hover:text-primary focus-visible:ring-2 focus-visible:ring-ring">{t("Research Forum")}</Link></div>
-              <header id="thread-title" className="forum-detail-title scroll-mt-[calc(var(--app-header-height)+1rem)] pb-4">
+              <header id="thread-title" className="forum-detail-title scroll-mt-[calc(var(--app-header-offset)+1rem)] pb-4">
                 <h1 className="forum-thread-title max-w-full break-words">{post.title}</h1>
                 <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[13px] text-muted-foreground">
                   <ForumPostTypeBadge type={post.type} size="sm" className="border-0 p-0 font-normal" />
@@ -477,7 +477,7 @@ export function ForumDetailPage() {
               {filteredAuthorId ? <div role="status" className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded border border-border bg-muted/30 p-3 text-sm"><span>{t("Showing posts by")} {post.author.id === filteredAuthorId ? post.author.fullName : comments.find((comment) => comment.author.id === filteredAuthorId)?.author.fullName}</span><button type="button" onClick={() => setFilteredAuthorId(undefined)} className="inline-flex items-center gap-1 text-primary hover:underline"><X className="h-3.5 w-3.5" />{t("Show all posts")}</button></div> : null}
               {locked ? <div role="status" className="mb-6 flex gap-3 rounded-md border border-border bg-muted/30 p-4"><Lock className="mt-0.5 h-4 w-4 shrink-0" /><div><p className="text-sm font-semibold">{t("This discussion is locked.")}</p><p className="mt-1 text-sm text-muted-foreground">{t("Existing responses remain visible, but new replies cannot be added.")}</p></div></div> : null}
               {removed || post.status === "hidden" ? <p role="status" className="mb-5 text-sm text-muted-foreground">{t(removed ? "This discussion was removed. Existing responses remain visible." : "This discussion is hidden from the forum.")}</p> : null}
-              {showOpening ? <article id="opening-post" data-thread-post tabIndex={-1} className="forum-thread-post scroll-mt-[calc(var(--app-header-height)+1rem)] border-t border-border py-4 outline-none">
+              {showOpening ? <article id="opening-post" data-thread-post tabIndex={-1} className="forum-thread-post scroll-mt-[calc(var(--app-header-offset)+1rem)] border-t border-border py-4 outline-none">
                 <div className="grid grid-cols-[40px_minmax(0,1fr)] gap-x-3 sm:grid-cols-[44px_minmax(0,1fr)] sm:gap-x-4">
                   <ForumAuthorPopover className="forum-post-avatar" author={post.author} canReply={!readOnly && (!isAuthed || canReply)} onReply={() => openComposer()} onFilterPosts={() => filterAuthor(post.author.id)} authorTopicPostCount={authorTopicPostCount(post.author.id)}>
                     <ForumAuthorAvatar author={post.author} size="md" />
@@ -519,7 +519,7 @@ export function ForumDetailPage() {
                 </div>
               </article> : null}
               {!filteredAuthorId ? <ForumTopicStats key={`${post.id}-opening`} post={post} comments={comments} hasMore={commentsQuery.hasNextPage} loadingMore={commentsQuery.isFetchingNextPage} onLoadMore={() => void commentsQuery.fetchNextPage()} onFilterAuthor={filterAuthor} onJumpToPost={jumpToPost} /> : null}
-              <section id="responses-section" tabIndex={-1} className="scroll-mt-[calc(var(--app-header-height)+1rem)] outline-none" aria-label={t("Replies")}>
+              <section id="responses-section" tabIndex={-1} className="scroll-mt-[calc(var(--app-header-offset)+1rem)] outline-none" aria-label={t("Replies")}>
                 <h2 className="sr-only">{t("Replies")}</h2>
                 {commentsQuery.isLoading ? <div className="h-32 animate-pulse border-t bg-muted/30" aria-label={t("Loading replies")} /> : null}
                 {commentsQuery.isError ? <div role="alert" className="border-t py-6 text-sm"><p>{t("Could not load replies.")}</p><Button variant="outline" size="sm" className="mt-3" onClick={() => commentsQuery.refetch()}>{t("Try again")}</Button></div> : null}

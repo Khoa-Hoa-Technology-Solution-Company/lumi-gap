@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { percentBasisPoints, AllocationRevisionDetail } from "../components/contribution-allocation";
-import { heatmapDays, ContributionActivityPanel } from "../components/contribution-activity";
+import { heatmapDays, heatmapCalendar, ContributionActivityPanel } from "../components/contribution-activity";
 import { WorkDetail } from "../components/work-contributions";
 import { contributionDate } from "../utils/contribution-date";
 import type { AllocationRevisionView, WorkContribution } from "@trend/shared-types";
@@ -65,6 +65,17 @@ describe("contribution UI governance", () => {
   it("keeps calendar labels consistent across UTC and the research team's midnight", () => { expect(contributionDate("2026-10-13T17:30:00Z")).toBe("2026-10-14"); expect(contributionDate("2026-10-13T17:30:00Z", "UTC")).toBe("2026-10-13"); });
   it("converts two-decimal percentages exactly and rejects floating input beyond that precision", () => { expect(percentBasisPoints("33.33")).toBe(3333); expect(percentBasisPoints("100.00")).toBe(10000); for (const invalid of ["33.333", "100.01", "-1", "1e2", "NaN", ""]) expect(percentBasisPoints(invalid)).toBeNull(); });
   it("uses a calendar range across a leap day", () => { expect(heatmapDays("2024-02-28", "2024-03-01")).toEqual(["2024-02-28", "2024-02-29", "2024-03-01"]); });
+  it("aligns calendar columns to Monday and pads partial weeks without inventing dates", () => {
+    expect(heatmapCalendar([])).toEqual([]);
+    const days = heatmapDays("2026-09-30", "2026-10-05");
+    const cells = heatmapCalendar(days);
+    expect(cells).toHaveLength(14);
+    expect(cells.slice(0, 3)).toEqual([null, null, "2026-09-30"]);
+    expect(cells[6]).toBe("2026-10-04");
+    expect(cells[7]).toBe("2026-10-05");
+    expect(cells.filter(Boolean)).toEqual(days);
+    expect(cells.slice(8)).toEqual(Array(6).fill(null));
+  });
   it("shows persisted empty activity and requests selected-day details from the server", async () => { await render(<ContributionActivityPanel projectId="p" />); expect(container.textContent).toContain("Meaningful research actions will appear here as your team works."); expect(container.textContent).toContain("Recorded activity does not automatically determine contribution percentages."); const cell = container.querySelector<HTMLButtonElement>('[aria-label*="recorded activities"]'); expect(cell).not.toBeNull(); await act(async () => cell!.click()); await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); }); expect(mocks.activity).toHaveBeenLastCalledWith("p", expect.objectContaining({ eventDay: expect.any(String), page: 1 })); });
   it("does not display unresolved shares as a final agreement or offer owner finalization", async () => {
     const item: AllocationRevisionView = { id: "r", revision: 2, draftVersion: 1, status: "AWAITING_APPROVAL", period: { id: "period", title: "Writing phase", description: "Phase description", scope: "Research writing effort", periodStart: "2026-10-01T00:00:00Z", periodEnd: "2026-10-14T00:00:00Z", policyVersion: "CORE_TEAM_UNANIMOUS_V1", roster: [], historyIncomplete: false }, rationale: "Team proposal based on documented work", roster: [{ id: "me", name: "Researcher with a long name", reasons: ["MEMBERSHIP_DURING_PERIOD"], unavailable: false }], shares: [{ userId: "me", basisPoints: 10000, rationale: "Phase work" }], approvals: [], evidenceSummary: [], submittedAt: "2026-10-14T01:00:00Z", finalizedAt: null, selfAcknowledged: true, canManage: true, canRespond: true, rosterChallenges: [], canChallengeRoster: true };

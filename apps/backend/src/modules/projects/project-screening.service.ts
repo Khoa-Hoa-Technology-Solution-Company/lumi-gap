@@ -38,7 +38,7 @@ export const projectScreeningService = {
       const [links, total, members] = await Promise.all([tx.projectPaper.findMany({ where, orderBy: [{ createdAt: "desc" }, { id: "desc" }], skip: (query.page - 1) * query.pageSize, take: query.pageSize }), tx.projectPaper.count({ where }), tx.projectMember.findMany({ where: { projectId: project.id, status: "ACTIVE" }, select: { userId: true } })]);
       const people = await tx.user.findMany({ where: { id: { in: [...new Set([project.ownerId, ...members.map(row => row.userId)])] }, isActive: true, accountStatus: "ACTIVE" }, select: { id: true, fullName: true } });
       const [papers, files, votes, authors] = await Promise.all([
-        tx.paper.findMany({ where: { id: { in: links.map(row => row.paperId) } }, select: { id: true, title: true, doi: true, publicationYear: true, journalName: true, abstractText: true, paperLink: true } }),
+        tx.paper.findMany({ where: { id: { in: links.map(row => row.paperId) } }, select: { id: true, title: true, doi: true, publicationYear: true, journalName: true, abstractText: true, paperLink: true, dataStatus: true } }),
         tx.projectPaperFile.findMany({ where: { projectId: project.id, paperId: { in: links.map(row => row.paperId) } }, select: { id: true, paperId: true, sha256: true, byteSize: true, createdAt: true } }),
         tx.projectScreeningDecision.findMany({ where: { projectId: project.id, paperId: { in: links.map(row => row.paperId) }, assigned: true, reviewerId: { in: people.map(person => person.id) } } }),
         tx.paperAuthor.findMany({ where: { paperId: { in: links.map(row => row.paperId) } }, orderBy: { position: "asc" }, select: { paperId: true, displayName: true } }),

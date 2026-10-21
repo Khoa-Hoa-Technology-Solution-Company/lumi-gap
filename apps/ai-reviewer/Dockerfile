@@ -7,6 +7,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     REVIEW_APP_PORT=8000 \
     REVIEW_APP_RELOAD=false
 WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-eng tesseract-ocr-vie \
+    && rm -rf /var/lib/apt/lists/*
 COPY requirements.txt ./
 RUN python -m pip install --no-cache-dir -r requirements.txt \
     && groupadd --gid 10001 paperscope \

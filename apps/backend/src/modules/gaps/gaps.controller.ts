@@ -26,7 +26,7 @@ export const gapsController = {
     res.status(202).json({ success: true, data: { analysisId } });
   },
 
-  /** GET /api/v1/gaps/analyze/:id — poll the analysis status, owner only. */
+  /** GET /api/v1/gaps/analyze/:id — personal owner or current project members. */
   async getAnalysis(req: Request, res: Response) {
     const data = await gapsService.getAnalysis(req.user!.sub, req.params["id"] as string);
     res.json({ success: true, data });

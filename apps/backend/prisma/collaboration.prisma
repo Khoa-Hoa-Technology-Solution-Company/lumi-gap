@@ -778,12 +778,16 @@ model DraftWorkspace {
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
   writingMode   String   @default("LEGACY") @map("writing_mode") @db.VarChar(16)
+  compilerEngine String? @map("compiler_engine") @db.VarChar(16)
+  compilerRelease String? @map("compiler_release") @db.VarChar(4)
+  compilerRevision Int @default(1) @map("compiler_revision")
   documentType  String   @default("RESEARCH_PAPER") @map("document_type") @db.VarChar(32)
   template      String   @default("ARTICLE") @db.VarChar(32)
   description   String   @default("")
   version       Int      @default(1)
   mainFileId    String?  @map("main_file_id") @db.Uuid
   archivedAt    DateTime? @map("archived_at") @db.Timestamptz(6)
+  deletedAt     DateTime? @map("deleted_at") @db.Timestamptz(6)
   clientKey     String?  @map("client_key") @db.Uuid
   researchLink  Json?    @map("research_link")
 

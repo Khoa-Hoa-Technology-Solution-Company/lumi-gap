@@ -45,6 +45,7 @@ describe("sanitizePaperAnalysis", () => {
     });
 
     expect(out).toEqual({
+      researchQuestions: [],
       summary: "compact summary",
       methods: null,
       dataset: "Classroom logs",
@@ -58,6 +59,7 @@ describe("sanitizePaperAnalysis", () => {
 
   it("uses nulls and arrays instead of guessing missing fields", () => {
     expect(sanitizePaperAnalysis(null)).toEqual({
+      researchQuestions: [],
       summary: null,
       methods: null,
       dataset: null,

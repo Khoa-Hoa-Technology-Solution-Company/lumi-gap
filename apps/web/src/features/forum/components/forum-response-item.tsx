@@ -59,7 +59,7 @@ export function ForumResponseItem({ comment, isQuestion, isPostOwner, isCommentO
     try { await navigator.clipboard.writeText(url.href); toast.success(t("Copied link to clipboard")); } catch { toast.info(url.href); }
   };
   return (
-    <article id={`comment-${comment.id}`} tabIndex={-1} data-thread-post className="forum-thread-post scroll-mt-[calc(var(--app-header-height)+1rem)] border-t border-border py-4 outline-none">
+    <article id={`comment-${comment.id}`} tabIndex={-1} data-thread-post className="forum-thread-post scroll-mt-[calc(var(--app-header-offset)+1rem)] border-t border-border py-4 outline-none">
       <div className="grid grid-cols-[40px_minmax(0,1fr)] gap-x-3 sm:grid-cols-[44px_minmax(0,1fr)] sm:gap-x-4">
         <ForumAuthorPopover className="forum-post-avatar" author={comment.author} authorTopicPostCount={authorTopicPostCount} canReply={!readOnly && (!isAuthed || canReply)} onReply={() => onReply(comment)} onFilterPosts={onFilterAuthor ? () => onFilterAuthor(comment.author.id) : undefined}>
           <ForumAuthorAvatar author={comment.author} size="md" />

@@ -9,6 +9,8 @@ import { startWorkerHeartbeat } from "../infrastructure/worker-heartbeat.js";
 import { completeAiRun, failAiRun, markAiRunStarted, type AiJobType } from "../modules/ai-jobs/ai-run.service.js";
 import { getLlmProvider } from "../modules/llm/llm.factory.js";
 import { withUserAi } from "../modules/user-ai/user-ai.runtime.js";
+import { MANUSCRIPT_AI_JOB, manuscriptAiService } from "../modules/workspaces/manuscript-ai.service.js";
+import { PDF_IMPORT_JOB, manuscriptPdfImport } from "../modules/workspaces/manuscript-pdf-import.js";
 import { AI_PRE_REVIEW_JOB, aiPreReviewJobId, submissionService, type AiPreReviewJob } from "../modules/submissions/submission.service.js";
 import { QUALITY_EVALUATION_JOB, qualityJobs, type QualityEvaluationPayload } from "../modules/quality/quality.jobs.js";
 
@@ -114,7 +116,7 @@ async function main() {
   await sweepStuckPreReviews();
   const worker = new Worker(
     QUEUE_NAMES.aiJobs,
-    async (job) => job.name === AI_PRE_REVIEW_JOB
+    async (job) => job.name === PDF_IMPORT_JOB ? manuscriptPdfImport.process(job.id!) : job.name === MANUSCRIPT_AI_JOB ? manuscriptAiService.process(job.data.runId as string) : job.name === AI_PRE_REVIEW_JOB
       ? submissionService.processAiPreReview(job.data as AiPreReviewJob)
       : job.name === QUALITY_EVALUATION_JOB
       ? qualityJobs.process(job.data as QualityEvaluationPayload)

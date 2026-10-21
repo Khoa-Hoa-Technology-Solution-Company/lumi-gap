@@ -50,6 +50,8 @@ export function createApp(): Express {
     }),
   );
   app.use(compression());
+  // Git blob uploads contain bounded base64 source/figures (5 MB decoded).
+  app.use("/api/v1/integrations/github/repository", express.json({ limit: "8mb" }));
   app.use(express.json({ limit: "1mb" }));
   app.use(express.urlencoded({ extended: true }));
   app.use(pinoHttp({ logger }));

@@ -60,7 +60,7 @@ it("reviews the version the human opened even if a collaborator changes the extr
 });
 it("keeps read-only evidence free of edit actions and renders research text safely", async () => {
   mocks.evidence!.mockResolvedValue({ ...page, items: [{ ...item, claim: "<script>untrusted()</script>", relatedQuestions: [{ id: "q", text: "Does it replicate?" }] }] }); await render(<ResearchEvidence projectId="p" readOnly />);
-  expect(container.textContent).toContain("<script>untrusted()</script>"); expect(container.querySelector("script")).toBeNull(); expect(container.textContent).toContain("AI suggestion, preserved provenance"); expect(container.textContent).toContain("Awaiting human review"); expect(container.textContent).not.toContain("Review extraction"); expect(container.querySelector('a[href="/projects/p?tab=plan"]')?.textContent).toBe("Does it replicate?");
+  expect(container.textContent).toContain("<script>untrusted()</script>"); expect(container.querySelector("script")).toBeNull(); expect(container.textContent).toContain("AI suggestion, preserved provenance"); expect(container.textContent).toContain("Awaiting human review"); expect(container.textContent).not.toContain("Review extraction"); expect(container.querySelector('a[href="/projects/p?tab=gaps&research=questions"]')?.textContent).toBe("Does it replicate?");
 });
 it("opens a linked extraction, shows its related gap and can return to the full matrix", async () => {
   mocks.evidence!.mockResolvedValue({ ...page, items: [{ ...item, relatedGaps: [{ id: "g", title: "The linked gap" }] }] });
@@ -90,6 +90,26 @@ it("does not rebase a drafted team assessment onto a newer gap revision", async 
 it("shows source changes and counterevidence without presenting team support as scientific proof", async () => {
   mocks.gap!.mockResolvedValue({ ...gap, evidence: [{ id: "link", evidenceKind: "COUNTER", sourceTitle: "Contradictory study", explanation: "Different reported result", sourceChanged: true, reviewed: true }] }); await render(<ResearchGapEvaluation projectId="p" gapId="g" />);
   expect(container.textContent).toContain("not scientific proof"); expect(container.textContent).toContain("Contradictory study"); expect(container.textContent).toContain("The source or extraction changed");
+});
+it("requires source confirmation and sends the exact evidence versions when recording support", async () => {
+  const source = { id: "link", paperId: "paper", evidenceItemId: "e1", evidenceVersion: 2, evidenceKind: "SUPPORTING", sourceTitle: "Source study", excerpt: "Exact source passage", claim: "AI interpretation", discovery: true, reviewState: "PENDING", sourceChanged: false, reviewed: false };
+  mocks.gap!.mockResolvedValue({ ...gap, evidence: [source] });
+  await render(<ResearchGapEvaluation projectId="p" gapId="g" />); await fill("Assessment", "TEAM_SUPPORTED"); await fill("Assessment rationale", "Checked the paper and its interpretation");
+  const save = [...container.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Save team assessment")!;
+  expect(save.disabled).toBe(true); expect(container.textContent).toContain("AI extraction awaiting source review");
+  await act(async () => container.querySelector<HTMLInputElement>('.gap-source-confirm input')!.click());
+  expect(save.disabled).toBe(false); await click("Save team assessment");
+  expect(mocks.assessGap).toHaveBeenCalledWith("p", "g", expect.objectContaining({ expectedVersion: 3, reviewedEvidence: [{ id: "e1", version: 2 }], status: "TEAM_SUPPORTED" }));
+});
+it("does not silently re-confirm an AI extraction changed by another member", async () => {
+  const source = { id: "link", evidenceItemId: "e1", evidenceVersion: 2, evidenceKind: "SUPPORTING", sourceTitle: "Source study", discovery: true, reviewState: "PENDING", sourceChanged: false, reviewed: false };
+  mocks.gap!.mockResolvedValue({ ...gap, evidence: [source] });
+  await render(<ResearchGapEvaluation projectId="p" gapId="g" />); await fill("Assessment", "TEAM_SUPPORTED"); await fill("Assessment rationale", "Checked the old source interpretation");
+  await act(async () => container.querySelector<HTMLInputElement>('.gap-source-confirm input')!.click());
+  await act(async () => client.setQueryData(["project-research", "actor", "p", "gap", "g"], { ...gap, gap: { ...gap.gap, version: 4 }, evidence: [{ ...source, evidenceVersion: 3, sourceChanged: true }] }));
+  await settle();
+  expect(container.querySelector<HTMLInputElement>('.gap-source-confirm input')?.checked).toBe(false); expect(container.querySelector<HTMLInputElement>('.gap-source-confirm input')?.disabled).toBe(true);
+  const save = [...container.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Save team assessment")!; expect(save.disabled).toBe(true);
 });
 it("opens scoped mentor feedback and preserves the revision the author started commenting on", async () => {
   await render(<ResearchGapEvaluation projectId="p" gapId="g" />);

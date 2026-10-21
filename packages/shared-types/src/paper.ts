@@ -137,6 +137,7 @@ export interface PaperAiScore {
 }
 
 export interface PaperAiAnalysis {
+  researchQuestions?: string[];
   summary: string | null;
   methods: string | null;
   dataset: string | null;

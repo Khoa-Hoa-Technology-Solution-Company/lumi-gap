@@ -12,7 +12,17 @@ const params = validate(workspaceParams, "params"), item = validate(workspacePar
 const gapParams = validate(workspaceParams.extend({ itemId: databaseIdSchema }), "params");
 const writes = createRateLimiter("projects:research-writes", { windowMs: 3600000, limit: 300, keyGenerator: req => req.user!.sub });
 const uploads = createRateLimiter("projects:private-source-uploads", { windowMs: 3600000, limit: 20, keyGenerator: req => req.user!.sub });
+const synthesisAi = createRateLimiter("projects:research-synthesis-ai", { windowMs: 3600000, limit: 10, keyGenerator: req => req.user!.sub });
+projectResearchRouter.get("/synthesis", params, c.synthesis);
+projectResearchRouter.get("/discovery", params, c.discovery);
+projectResearchRouter.get("/synthesis/history", params, c.synthesisHistory);
+projectResearchRouter.put("/synthesis", writes, params, validate(s.saveSynthesisSchema), c.saveSynthesis);
+projectResearchRouter.post("/synthesis/generate", synthesisAi, params, validate(s.synthesisSourcesSchema), c.generateSynthesis);
+projectResearchRouter.post("/synthesis/accept", writes, params, validate(s.reviewSynthesisSchema), c.acceptSynthesis);
+projectResearchRouter.get("/questions", params, c.researchQuestions);
 projectResearchRouter.get("/papers", params, validate(s.researchPageSchema, "query"), c.library);
+projectResearchRouter.get("/papers/:itemId/analysis", gapParams, c.paperAnalysis);
+projectResearchRouter.post("/papers/:itemId/analysis", synthesisAi, gapParams, c.requestPaperAnalysis);
 projectResearchRouter.get("/papers/:itemId/suggestions", item, c.suggestions);
 projectResearchRouter.post("/papers", writes, params, validate(s.importPaperSchema), c.import);
 projectResearchRouter.patch("/papers/:itemId", writes, item, validate(s.organizePaperSchema), c.organize);

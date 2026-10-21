@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { FileCode2, Plus, ArrowUpRight, X } from "lucide-react";
-import { MANUSCRIPT_TYPES, MANUSCRIPT_TEMPLATES, type ManuscriptType, type ManuscriptTemplate } from "@trend/shared-types";
+import { MANUSCRIPT_TYPES, MANUSCRIPT_TEMPLATES, type ManuscriptSummary, type ManuscriptType, type ManuscriptTemplate } from "@trend/shared-types";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { canLeaveWorkspace, useUnsavedWorkspace } from "@/features/projects/components/workspace-common";
@@ -11,9 +11,14 @@ import { useI18n } from "@/i18n";
 import { useAuthStore } from "@/stores/auth-store";
 import { manuscriptsApi } from "./manuscripts.api";
 import { ManuscriptFeedbackLink } from "./manuscript-feedback-link";
+import { ImportManuscript } from "./manuscript-import";
+import { ManuscriptTemplates } from "./manuscript-templates";
+import { ManuscriptGithub } from "./manuscript-github";
+import { ImportManuscriptPdf } from "./manuscript-pdf-import";
+import { DeleteManuscript } from "./manuscript-delete";
 import "./manuscripts.css";
 export const typeLabel: Record<ManuscriptType, string> = { RESEARCH_PAPER: "Research paper", RESEARCH_PROPOSAL: "Research proposal", THESIS: "Thesis", TECHNICAL_REPORT: "Technical report" };
-export const templateLabel: Record<ManuscriptTemplate, string> = { ARTICLE: "Article template", PROPOSAL: "Proposal template", REPORT: "Report template" };
+export const templateLabel: Record<ManuscriptTemplate, string> = { ARTICLE: "Article template", PROPOSAL: "Proposal template", REPORT: "Report template", IEEE_CONFERENCE: "IEEE conference", PRESENTATION: "Beamer presentation", THESIS: "Thesis template", ELSEVIER: "Elsevier article", SPRINGER: "Springer proceedings", APS: "Physics article", BLANK: "Blank document" };
 
 export function ManuscriptsPanel({ projectId, readOnly }: { projectId: string; readOnly: boolean }) {
   const { t } = useI18n(), navigate = useNavigate(), client = useQueryClient();
@@ -21,14 +26,14 @@ export function ManuscriptsPanel({ projectId, readOnly }: { projectId: string; r
   const query = useQuery({ queryKey: ["manuscripts", userId, projectId], queryFn: () => manuscriptsApi.list(projectId), refetchInterval: 15000 });
   const [form, setForm] = useState(false);
   return <Dialog open={form} onOpenChange={open => { if (open) setForm(true); }}><section className="writing-overview" data-no-i18n>
-    <header className="writing-section-heading"><div><h2>{t("Manuscripts")}</h2><p>{t("Write together, keep source versions and request academic feedback.")}</p></div>{!readOnly ? <DialogTrigger asChild><Button><Plus className="h-4 w-4" />{t("Create manuscript")}</Button></DialogTrigger> : null}</header>
+    <header className="writing-section-heading"><div><h2>{t("Manuscripts")}</h2><p>{t("Write together, keep source versions and request academic feedback.")}</p></div>{!readOnly ? <div className="writing-actions"><ManuscriptGithub project={projectId} /><ImportManuscriptPdf project={projectId} onImported={id => { void client.invalidateQueries({ queryKey: ["manuscripts", userId, projectId] }); navigate(`/projects/${projectId}/manuscripts/${id}`); }} /><ImportManuscript project={projectId} onImported={id => { void client.invalidateQueries({ queryKey: ["manuscripts", userId, projectId] }); navigate(`/projects/${projectId}/manuscripts/${id}`); }} /><DialogTrigger asChild><Button><Plus className="h-4 w-4" />{t("Create manuscript")}</Button></DialogTrigger></div> : null}</header>
     {readOnly ? <p className="writing-notice">{t("This project is read-only.")}</p> : null}
     {form ? <CreateManuscriptDialog projectId={projectId} readOnly={readOnly} onClose={() => setForm(false)} onCreated={id => {
       setForm(false);
       void client.invalidateQueries({ queryKey: ["manuscripts", userId, projectId] });
       navigate(`/projects/${projectId}/manuscripts/${id}`);
     }} /> : null}
-    {query.isLoading ? <div aria-busy="true" className="writing-skeleton">{t("Loading manuscripts…")}</div> : query.error ? <div role="alert" className="writing-notice"><p>{t("Manuscripts are unavailable or you do not have access.")}</p><Button variant="outline" onClick={() => void query.refetch()}>{t("Try again")}</Button></div> : query.data?.length ? <div className="writing-manuscript-list">{query.data.map(row => <article key={row.id} className="writing-manuscript-item"><Link to={`/projects/${projectId}/manuscripts/${row.id}`} className="writing-manuscript-row"><FileCode2 aria-hidden="true" /><div><h3>{row.title}</h3><p>{t(typeLabel[row.documentType])} · {row.archived ? t("Read-only") : t("Working draft")} · {t("Edited")} {new Date(row.updatedAt).toLocaleString()}</p>{row.description ? <p>{row.description}</p> : null}{row.collaborators?.length ? <p>{t("Project collaborators")}: {row.collaborators.map(person => person.name).join(", ")}</p> : null}</div><ArrowUpRight aria-hidden="true" /></Link>{row.latestFeedback ? <p className="writing-feedback-row"><ManuscriptFeedbackLink projectId={projectId} manuscriptId={row.id} feedback={row.latestFeedback} /></p> : null}</article>)}</div> : <div className="writing-empty"><FileCode2 aria-hidden="true" /><h3>{t("Start your first manuscript")}</h3><p>{t("Create a LaTeX draft when your team is ready. Literature, evidence and research questions remain available as you write.")}</p></div>}
+    {query.isLoading ? <div aria-busy="true" className="writing-skeleton">{t("Loading manuscripts…")}</div> : query.error ? <div role="alert" className="writing-notice"><p>{t("Manuscripts are unavailable or you do not have access.")}</p><Button variant="outline" onClick={() => void query.refetch()}>{t("Try again")}</Button></div> : query.data?.length ? <div className="writing-manuscript-list">{query.data.map(row => <article key={row.id} className="writing-manuscript-item"><Link to={`/projects/${projectId}/manuscripts/${row.id}`} className="writing-manuscript-row"><FileCode2 aria-hidden="true" /><div><h3>{row.title}</h3><p>{t(typeLabel[row.documentType])} · {row.archived ? t("Read-only") : t("Working draft")} · {t("Edited")} {new Date(row.updatedAt).toLocaleString()}</p>{row.description ? <p>{row.description}</p> : null}{row.collaborators?.length ? <p>{t("Project collaborators")}: {row.collaborators.map(person => person.name).join(", ")}</p> : null}</div><ArrowUpRight aria-hidden="true" /></Link>{!readOnly ? <DeleteManuscript projectId={projectId} manuscript={row} onRefresh={() => void query.refetch()} onDeleted={() => { client.setQueryData<ManuscriptSummary[]>(["manuscripts", userId, projectId], rows => rows?.filter(item => item.id !== row.id)); void client.invalidateQueries({ queryKey: ["manuscripts", userId, projectId] }); void client.invalidateQueries({ queryKey: ["manuscript", userId, projectId, row.id] }); }} /> : null}{row.latestFeedback ? <p className="writing-feedback-row"><ManuscriptFeedbackLink projectId={projectId} manuscriptId={row.id} feedback={row.latestFeedback} /></p> : null}</article>)}</div> : <div className="writing-empty"><FileCode2 aria-hidden="true" /><h3>{t("Start your first manuscript")}</h3><p>{t("Create a LaTeX draft when your team is ready. Literature, evidence and research questions remain available as you write.")}</p></div>}
   </section></Dialog>;
 }
 
@@ -60,6 +65,7 @@ function CreateManuscriptDialog({ projectId, readOnly, onClose, onCreated }: { p
         <label>{t("Manuscript title")}<Input autoFocus required minLength={2} maxLength={160} value={title} onChange={e => setTitle(e.target.value)} /></label>
         <div className="writing-form-row"><label>{t("Document type")}<select value={type} onChange={e => setType(e.target.value as ManuscriptType)}>{MANUSCRIPT_TYPES.map(value => <option key={value} value={value}>{t(typeLabel[value])}</option>)}</select></label><label>{t("Template")}<select value={template} onChange={e => setTemplate(e.target.value as ManuscriptTemplate)}>{MANUSCRIPT_TEMPLATES.map(value => <option key={value} value={value}>{t(templateLabel[value])}</option>)}</select></label></div>
         <label>{t("Short description (optional)")}<textarea maxLength={2000} rows={3} value={description} onChange={e => setDescription(e.target.value)} /></label>
+        <ManuscriptTemplates value={template} onChange={setTemplate} />
       </fieldset>
       {error ? <p role="alert" className="writing-error">{error}</p> : null}
       <div className="writing-create-actions"><Button type="button" variant="outline" disabled={busy} onClick={() => void close()}>{t("Cancel")}</Button><Button type="submit" disabled={busy || readOnly || title.trim().length < 2}>{busy ? t("Creating…") : t("Create and open editor")}</Button></div>

@@ -41,6 +41,7 @@ model ManuscriptSnapshot {
   label String @db.VarChar(160)
   sourceVersion Int @map("source_version")
   manifest Json
+  collaborationState Json? @map("collaboration_state")
   checksum String @db.Char(64)
   createdById String @map("created_by_id") @db.Uuid
   clientKey String @map("client_key") @db.Uuid
@@ -60,16 +61,51 @@ model ManuscriptSnapshotAsset {
 }
 
 model ManuscriptCompilation {
+  texLiveVersion String @default("2022") @map("tex_live_version") @db.VarChar(4)
   id String @id @default(uuid()) @db.Uuid
   snapshotId String @map("snapshot_id") @db.Uuid
   requestedById String @map("requested_by_id") @db.Uuid
   status String @default("BLOCKED") @db.VarChar(24)
   diagnostics String @default("")
   pdfData Bytes? @map("pdf_data")
+  syncTexData Bytes? @map("synctex_data")
   checksum String? @db.Char(64)
   toolchain String? @db.VarChar(200)
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   completedAt DateTime? @map("completed_at") @db.Timestamptz(6)
   @@index([snapshotId, createdAt])
   @@map("manuscript_compilations")
+}
+
+model ManuscriptSuggestion {
+  id String @id @default(uuid()) @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  fileId String @map("file_id") @db.Uuid
+  authorId String @map("author_id") @db.Uuid
+  clientKey String @map("client_key") @db.Uuid
+  original String
+  replacement String
+  note String @default("") @db.VarChar(2000)
+  anchor Json
+  sourceSequence Int @map("source_sequence")
+  status String @default("PENDING") @db.VarChar(16)
+  revision Int @default(1)
+  resolvedById String? @map("resolved_by_id") @db.Uuid
+  resolvedAt DateTime? @map("resolved_at") @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@unique([workspaceId, authorId, clientKey])
+  @@index([workspaceId, status, createdAt])
+  @@map("manuscript_suggestions")
+}
+
+model ManuscriptRemoteBinding {
+  workspaceId String @id @map("workspace_id") @db.Uuid
+  repository String @db.VarChar(201)
+  branch String @db.VarChar(200)
+  head String @db.Char(40)
+  baseline Json
+  revision Int @default(1)
+  updatedById String @map("updated_by_id") @db.Uuid
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  @@map("manuscript_remote_bindings")
 }

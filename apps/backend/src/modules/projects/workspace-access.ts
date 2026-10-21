@@ -76,7 +76,7 @@ export async function assertWorkspaceLink(context: WorkspaceContext, link: Works
       const plan = await tx.researchPlan.findUnique({ where: { projectId: project.id } });
       valid = Array.isArray(plan?.questions) && plan.questions.some(question => question && typeof question === "object" && !Array.isArray(question) && question.id === link.id); break;
     }
-    case "MANUSCRIPT": valid = Boolean(await tx.draftWorkspace.findFirst({ where: { id: link.id, projectId: project.id } })); break;
+    case "MANUSCRIPT": valid = Boolean(await tx.draftWorkspace.findFirst({ where: { id: link.id, projectId: project.id, deletedAt: null } })); break;
     case "MANUSCRIPT_SNAPSHOT": valid = Boolean(await tx.manuscriptSnapshot.findFirst({ where: { id: link.id, projectId: project.id } })); break;
     case "MENTOR_FEEDBACK": valid = Boolean(await tx.projectDiscussion.findFirst({ where: { id: link.id, projectId: project.id, targetKind: { in: ["MANUSCRIPT_SNAPSHOT", "PLAN_REVISION"] }, mentorRelationshipId: { not: null } } })); break;
     case "PLAN": valid = Boolean(await tx.researchPlan.findFirst({ where: { id: link.id, projectId: project.id } })); break;
