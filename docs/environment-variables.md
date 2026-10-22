@@ -82,7 +82,7 @@ Users can also save multiple personal API connections in Settings → AI Connect
 | `MIN_TOPUP_VND` | `EnvSchema` / backend | Default / optional (see template) |
 | `VITE_API_BASE` | Vite / Docker web build | Default / optional (see template) |
 | `API_BASE_URL` | Flutter launcher | Default / optional (see template) |
-| `MIGRATION_BATCH_SIZE` | `EnvSchema` / backend | Default 500 (10-5000); declared in the schema but not read anywhere else in `apps/` (left over from the removed MongoDB copy tooling) |
+| `MIGRATION_BATCH_SIZE` | `EnvSchema` / backend | Default 500 (10-5000); declared in the schema but not read anywhere else in `apps/` (unused; left from an earlier data-import tool) |
 | `CHAT_MAX_PER_HOUR` | `EnvSchema` / backend | Default / optional (see template) |
 | `TEAM_CHAT_MAX_PER_MINUTE` | `EnvSchema` / backend | Default / optional (see template) |
 | `CHAT_CONTEXT_PAPERS` | `EnvSchema` / backend | Default / optional (see template) |

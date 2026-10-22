@@ -58,4 +58,4 @@ a fresh database and Redis per run, and also replay the migrations.
 - Record the id of every row you create and delete them in `afterAll`, children first. Many foreign keys to users and
   projects are `RESTRICT`, so a bare `user.deleteMany` fails. The helper in
   `modules/projects/__tests__/academic-test-data.ts` covers users, projects, mentorships, papers and institutions.
-- Never hard-code values for unique columns (for example `legacyMongoId`); the suite must pass when run twice.
+- Never hard-code values for unique columns (for example the legacy identifier column); the suite must pass when run twice.

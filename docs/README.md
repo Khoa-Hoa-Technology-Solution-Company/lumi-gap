@@ -15,7 +15,6 @@ Code is the source of truth (`apps/**/src`, `apps/backend/prisma`, `docker-compo
 - [API_INTEGRATION_GUIDE.md](API_INTEGRATION_GUIDE.md) - base URLs, response envelope, auth and paper endpoints, admin sync.
 - [DESIGN_LANGUAGE.md](DESIGN_LANGUAGE.md) - visual language and design tokens of the web app.
 - [adr/0001-collaborative-latex.md](adr/0001-collaborative-latex.md) - architecture decision record for collaborative LaTeX writing.
-- [superpowers/specs/2026-05-25-phase-a-design.md](superpowers/specs/2026-05-25-phase-a-design.md) - historical Phase A design (MongoDB era, kept because `CLAUDE.md` links to it).
 - [superpowers/specs/2026-10-15-gap-closure-protocol-design.md](superpowers/specs/2026-10-15-gap-closure-protocol-design.md) - Gap Closure Protocol software design (referenced from backend code comments).
 - [superpowers/specs/2026-10-16-trend-methodology-design.md](superpowers/specs/2026-10-16-trend-methodology-design.md) - trend verdict methodology (referenced from backend and web code comments).
 

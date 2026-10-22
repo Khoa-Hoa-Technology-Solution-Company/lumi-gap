@@ -34,4 +34,4 @@ Backend defaults are `RAG_MAX_CHUNKS=300`, `RAG_CHUNK_CHARS=2400` and `RAG_PASSA
 4. Configure the backend Gemini key/models and existing PDF storage credentials. Rebuild backend, shared types and web. Run the API plus `worker:paper-analysis`, `worker:report` and `worker:gaps`. For local file uploads, the analysis worker must see the same uploads directory as the API; Compose mounts it read-only.
 5. For Compose, use root `.env` and the default workers after migration. The analysis worker depends on healthy PostgreSQL, Redis and reviewer services.
 
-The existing Jenkinsfile still contains legacy MongoDB vector commands and lacks a Prisma migration/reviewer deployment stage. Update that deployment pipeline before production rollout; re-check it against `package.json` (the `mongo:*` scripts it calls no longer exist) before relying on it.
+The existing Jenkinsfile still calls removed vector-index scripts (pipeline cleanup pending) and lacks a Prisma migration/reviewer deployment stage. Update that deployment pipeline before production rollout; re-check it against `package.json` before relying on it.
