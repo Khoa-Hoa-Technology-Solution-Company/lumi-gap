@@ -1,6 +1,6 @@
 # Diagrams (Reports 1–4)
 
-Canonical sources of the diagrams used in the capstone reports, drawn from the code at commit ab1a6c5. Each diagram has a PlantUML (`.puml`) or Mermaid (`.mmd`) source and a rendered `.svg`.
+Canonical sources of the diagrams used in the capstone reports, drawn from the code at commit c006ee1. Each diagram has a PlantUML (`.puml`) or Mermaid (`.mmd`) source and a rendered `.svg`.
 
 | Folder | Report | Diagrams |
 |---|---|---|
