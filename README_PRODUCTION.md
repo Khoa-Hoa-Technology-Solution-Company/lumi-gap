@@ -16,8 +16,8 @@ Browser
                                                        |
                   +------------------------------------+------------------+
                   |                    |               |                  |
-               MongoDB          Self-hosted Redis   LibreTranslate       BullMQ workers
-             metadata/data       cache + queues     paper translation   async processing
+             PostgreSQL 16       Self-hosted Redis   LibreTranslate       BullMQ workers
+          + pgvector (Prisma)    cache + queues     paper translation   async processing
 ```
 
 Jenkins checks out `main`, builds immutable Docker images tagged with the Git
@@ -31,7 +31,7 @@ Public endpoints:
 | Web application | `https://lumigap.uk` |
 | API base | `https://api.lumigap.uk/api/v1` |
 | Process liveness | `https://api.lumigap.uk/health` |
-| MongoDB/Redis readiness | `https://api.lumigap.uk/ready` |
+| PostgreSQL/Redis readiness | `https://api.lumigap.uk/ready` |
 | API documentation | `https://api.lumigap.uk/api-docs` |
 | Google OAuth callback | `https://api.lumigap.uk/api/v1/auth/google/callback` |
 
@@ -71,7 +71,7 @@ environment into GitHub, a pull request, an issue, a screenshot, or build logs.
 - `lumigap.uk` A record points to the deployment server.
 - `api.lumigap.uk` A record points to the same deployment server.
 - Public firewall permits only required services such as `80` and `443`.
-- MongoDB, Redis, ports `9000`, and `9001` are not exposed to the public
+- PostgreSQL, Redis, ports `9000`, and `9001` are not exposed to the public
   Internet. Nginx Proxy Manager is the public entry point.
 
 ### TLS and reverse proxy
@@ -157,8 +157,14 @@ Replace **every value enclosed in angle brackets**, including:
 - `<required-...>`
 - `<operator-email-address>`
 
-Required runtime secrets include MongoDB, the self-hosted Redis password, two different JWT secrets,
+Required runtime secrets include the PostgreSQL connection URL (`DATABASE_URL`), the self-hosted Redis password,
 Gemini, Google OAuth, and R2 when `STORAGE_PROVIDER=r2`.
+
+Access tokens are signed with an RS256 key pair (`JWT_PRIVATE_KEY_PATH` /
+`JWT_PUBLIC_KEY_PATH`; `apps/backend/scripts/jwt-keys.mjs` generates it). The
+`JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET` variables in
+`.env.production.example` are deprecated in `apps/backend/src/config/env.ts`
+and are not used to sign or verify tokens.
 
 The Jenkins browser gate checks that legacy `/search` URLs redirect to the home
 research composer. It does not require a dedicated account or paper fixture.
@@ -298,7 +304,8 @@ gaps require their workers, while most AI features require Redis queues.
 ```
 
 All must return `200`. `/health` means the Express process is alive. `/ready`
-also pings MongoDB and Redis and returns `503` when either dependency is down.
+also checks PostgreSQL (`SELECT 1`) and Redis (`PING`), each with a 2 s timeout
+(results cached for 5 s), and returns `503` when either dependency is down.
 
 ### CORS
 
@@ -375,13 +382,16 @@ Emergency rollback:
 4. Follow with a Git revert so the server and repository return to the same
    version.
 
-Never roll back MongoDB data blindly. Application rollback and data restore are
+Never roll back PostgreSQL data (Prisma migrations) blindly. Application rollback and data restore are
 separate decisions.
 
 ## 11. Backup, Recovery, and Secret Rotation
 
-- MongoDB backup/replication is owned by the database operator. Record retention
-  and test a restore before a large migration or million-paper campaign.
+- PostgreSQL (with pgvector) backup/restore procedure: to be documented by the
+  operator; no backup script exists in this repository. Record retention and
+  test a restore before a large migration or million-paper campaign.
+- ai-reviewer SQLite data and the file volumes (uploads/outputs) are likewise
+  to be documented by the operator.
 - R2 object versioning/retention is owned by the storage operator.
 - Redis is not the source of truth for papers, users, reports, or credits. Queue
   loss still affects pending jobs, so monitor failed/dead-letter jobs.
@@ -405,4 +415,4 @@ A production deployment is accepted only when:
 - [ ] A report job leaves `queued`.
 - [ ] No secret appears in Git diff or Jenkins logs.
 - [ ] Previous known-good image tags remain available for rollback.
-- [ ] MongoDB backup/restore ownership is documented before data migration.
+- [ ] PostgreSQL backup/restore ownership is documented before data migration.
