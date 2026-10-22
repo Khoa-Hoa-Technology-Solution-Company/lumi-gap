@@ -7,7 +7,7 @@ import crypto from "node:crypto";
 import type { ResearchDirection } from "@trend/shared-types";
 import { buildPaperEvidenceText, type PaperStructuredAnalysis } from "../papers/paper-structured-context.js";
 
-export const DIRECTIONS_PROMPT_VERSION = "directions-v3";
+export const DIRECTIONS_PROMPT_VERSION = "directions-v4";
 
 export const DIRECTIONS_SYSTEM_PROMPT = [
   "You are a research advisor for an academic publication-trend platform.",
@@ -74,7 +74,8 @@ export function buildDirectionsPrompt(gap: DirectionGap, papers: DirectionPaper[
   }
   if (gap.parentTrend) {
     evidenceLines.push(
-      `rising parent topic: "${gap.parentTrend.topic}" (+${gap.parentTrend.growthRatePct}%)`,
+      // Raw paper-count growth, not normalised by the literature: context, not evidence that the topic is rising.
+      `parent topic with the larger raw paper-count growth (descriptive, not a trend test): "${gap.parentTrend.topic}" (${gap.parentTrend.growthRatePct >= 0 ? "+" : ""}${gap.parentTrend.growthRatePct}%/year)`,
     );
   }
   return [

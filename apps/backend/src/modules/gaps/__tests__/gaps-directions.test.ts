@@ -26,6 +26,12 @@ describe("buildDirectionsPrompt", () => {
     expect(prompt).toContain('[2] id=b "Second"');
   });
 
+  it("presents parent growth as descriptive raw growth, never as a rising topic (P1.3)", () => {
+    const prompt = buildDirectionsPrompt({ ...GAP, parentTrend: { topic: "Transformers", growthRatePct: 12.5 } }, [{ id: "a", title: "T" }]);
+    expect(prompt).toContain('raw paper-count growth (descriptive, not a trend test): "Transformers" (+12.5%/year)');
+    expect(prompt).not.toMatch(/rising/i);
+  });
+
   it("renders (no abstract) for a paper without one", () => {
     expect(buildDirectionsPrompt(GAP, [{ id: "a", title: "T" }])).toContain("(no abstract)");
   });

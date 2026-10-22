@@ -138,9 +138,28 @@ export function formatRelativeChange(classification: TrendClassification, t: Tra
 
 export function formatDataLine(classification: TrendClassification, source: TrendDataSource | undefined, t: Translate): string {
   const values = { years: classification.yearsUsed, papers: formatNumber(classification.totalPapers) };
-  if (source === "openalex") return t("Source: OpenAlex · {{years}} complete years · {{papers}} papers", values);
-  if (source === "local") return t("Source: local corpus · {{years}} complete years · {{papers}} papers", values);
-  return t("{{years}} complete years · {{papers}} papers", values);
+  const significance = formatSignificance(classification, t);
+  const line = source === "openalex"
+    ? t("Source: OpenAlex · {{years}} complete years · {{papers}} papers", values)
+    : source === "local"
+      ? t("Source: local corpus · {{years}} complete years · {{papers}} papers", values)
+      : t("{{years}} complete years · {{papers}} papers", values);
+  return significance ? `${line} · ${significance}` : line;
+}
+
+/** Which probability the verdict used: the BH q-value of a list (with its
+ *  family size) or the unadjusted Mann–Kendall p-value of a single topic. */
+export function formatSignificance(classification: TrendClassification, t: Translate): string | null {
+  const probability = (value: number) => (value < 0.001 ? "< 0.001" : `= ${value.toFixed(3)}`);
+  if (classification.qValue !== null) {
+    return classification.qFamilySize
+      ? t("q {{value}} (Benjamini–Hochberg across {{n}} topics)", { value: probability(classification.qValue), n: classification.qFamilySize })
+      : t("q {{value}} (Benjamini–Hochberg)", { value: probability(classification.qValue) });
+  }
+  if (classification.mannKendall) {
+    return t("p {{value}} (one topic, not adjusted for multiple tests)", { value: probability(classification.mannKendall.pValue) });
+  }
+  return null;
 }
 
 /** Primary number (relative change per year) and a one-line data note. */

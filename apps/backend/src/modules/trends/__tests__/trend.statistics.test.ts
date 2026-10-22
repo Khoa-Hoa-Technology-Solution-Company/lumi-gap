@@ -21,7 +21,12 @@ describe("mannKendall", () => {
     expect(result.s).toBe(41);
     expect(result.variance).toBe(125);
     expect(result.z).toBeCloseTo(3.5777087639996634, 10);
-    expect(result.pValue).toBeCloseTo(0.00034661935113455833, 6);
+    // pymannkendall's normal-approximation p (0.000347) is still what the
+    // normal tail gives; since P0.7 a series of n ≤ 10 without ties uses the
+    // exact null distribution: P(|S| ≥ 41 | n = 10) = 108/3 628 800 (G0).
+    expect(2 * (1 - normalCdf(Math.abs(result.z)))).toBeCloseTo(0.00034661935113455833, 6);
+    expect(result.pValueMethod).toBe("exact");
+    expect(result.pValue).toBeCloseTo(2.9761904761904762e-5, 12);
     expect(result.tau).toBeCloseTo(0.9111111111111111, 10);
   });
 

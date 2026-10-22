@@ -14,7 +14,11 @@ vi.mock("../trend.openalex-client.js", async (importOriginal) => ({
 const prisma = vi.hoisted(() => ({ $queryRaw: vi.fn(), paperKeyword: { findMany: vi.fn() } }));
 vi.mock("../../../infrastructure/database/prisma.js", () => ({ getPrisma: () => prisma }));
 
-import { computeTopicStatistics } from "../trend.evidence.js";
+import { Prisma } from "../../../generated/prisma/client.js";
+import { computeLocalTopicStatistics, computeOpenAlexTopicStatistics } from "../trend.evidence.js";
+
+/** The default Data Scope (no filters chosen): only the default work types. */
+const DEFAULT_SCOPE = { filter: "type:article|review|preprint|conference-paper|book-chapter", nonTaxonomyFilter: "type:article|review|preprint|conference-paper|book-chapter" };
 
 const years = [2016, 2017, 2018, 2019, 2020, 2021];
 const topicCounts = new Map(years.map((year, i) => [year, 10 + i * 10]));
@@ -31,7 +35,7 @@ beforeEach(() => {
   });
 });
 
-describe("computeTopicStatistics with OpenAlex counts", () => {
+describe("computeOpenAlexTopicStatistics", () => {
   it("tests the topic share of its field and the keyword shift between periods", async () => {
     client.openAlexGroupBy.mockImplementation(async (filter: string) =>
       filter.includes("publication_year:2016-2018")
@@ -39,18 +43,17 @@ describe("computeTopicStatistics with OpenAlex counts", () => {
         : { groups: [{ key: "nlp", name: "NLP", count: 50 }, { key: "svm", name: "SVM", count: 4 }], nextCursor: null },
     );
 
-    const stats = await computeTopicStatistics({
-      topic: "Machine learning",
+    const stats = await computeOpenAlexTopicStatistics({
       topicId: "https://openalex.org/T10028",
-      fieldId: "https://openalex.org/fields/17",
-      fieldName: "Computer Science",
-      papers: [],
+      taxonomy: { fieldId: "https://openalex.org/fields/17", fieldName: "Computer Science" },
+      scope: DEFAULT_SCOPE,
       yearFrom: 2016,
+      yearTo: 2021,
       lastCompleteYear: 2021,
     });
 
     expect(stats.source).toBe("openalex");
-    expect(stats.baseline).toEqual({ level: "field", label: "Computer Science" });
+    expect(stats.baseline).toEqual({ level: "field", id: "17", label: "Computer Science" });
     expect(stats.totalPapers).toBe(10 + 20 + 30 + 40 + 50 + 60);
     expect(stats).not.toHaveProperty("poisson");
     // Share 1%..6% over 6 years: S = 15, p ≈ 0.0085 → rising, medium (n < 8).
@@ -90,12 +93,12 @@ describe("computeTopicStatistics with OpenAlex counts", () => {
       return topicCounts;
     });
 
-    const stats = await computeTopicStatistics({
-      topic: "Machine learning",
+    const stats = await computeOpenAlexTopicStatistics({
       topicId: "T10028",
-      fieldId: "17",
-      papers: [],
+      taxonomy: { fieldId: "17" },
+      scope: DEFAULT_SCOPE,
       yearFrom: 2016,
+      yearTo: 2021,
       lastCompleteYear: 2021,
     });
 
@@ -103,15 +106,13 @@ describe("computeTopicStatistics with OpenAlex counts", () => {
     expect(stats.termShift!.rising[0]).toMatchObject({ term: "LLM", papersA: 1, papersB: 80 });
   });
 
-  it("falls back to the local corpus when OpenAlex fails", async () => {
-    client.openAlexYearCounts.mockRejectedValue(new Error("OpenAlex 503"));
+  it("local corpus statistics are descriptive only (LOCAL_CORPUS)", async () => {
     prisma.$queryRaw.mockResolvedValue([{ year: 2020, count: 10 }, { year: 2021, count: 10 }]);
     prisma.paperKeyword.findMany.mockResolvedValue([]);
 
-    const stats = await computeTopicStatistics({
-      topic: "Machine learning",
-      topicId: "T10028",
-      fieldId: "17",
+    const stats = await computeLocalTopicStatistics({
+      taxonomy: { fieldId: "17" },
+      scopeWhere: Prisma.sql`p.data_status = 'active'`,
       papers: [{ id: "p1", publicationYear: 2021, citationNormalizedPercentile: { isInTop10Percent: true } }],
       yearFrom: 2016,
       lastCompleteYear: 2021,

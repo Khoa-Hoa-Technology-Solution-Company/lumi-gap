@@ -4,7 +4,7 @@ import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianG
 import { Button } from "@/components/ui/button";
 import type { TrendsOverview } from "@trend/shared-types";
 import { KPICard, InsightCard } from "./trends-shared.components";
-import { DEFAULT_TREND_YEAR_FROM, DEFAULT_TREND_YEAR_TO, formatSigned } from "../../../pages/trends.insights";
+import { DEFAULT_TREND_YEAR_FROM, DEFAULT_TREND_YEAR_TO } from "../../../pages/trends.insights";
 import type { RisingKeywordLike, TrendTopicLike } from "../../../pages/trends.insights";
 import { formatCompactNumber, formatNumber } from "@/utils";
 import { useI18n } from "@/i18n";
@@ -53,26 +53,20 @@ interface OverviewTabProps {
 
 type Translate = ReturnType<typeof useI18n>["t"];
 
-/** One-sentence reading of the emerging keyword. With the shift test the
- *  verdict comes from q; without it (local fallback) the small-base rule applies. */
+/** One-sentence reading of the keyword shift. The keyword is only picked when
+ *  it carries the two-period test (getFastestKeyword), so q decides. */
 function describeKeywordInsight(keyword: RisingKeywordLike, t: Translate): string {
   const shift = keyword.shift;
-  if (shift) {
-    const values = { keyword: keyword.keyword, counts: formatShiftCounts(shift) };
-    return isShiftSignificant(shift)
-      ? t("{{keyword}} is a clearly rising keyword ({{counts}} papers).", values)
-      : t("{{keyword}} is rising, but not clearly enough ({{counts}} papers), so treat it as exploratory.", values);
-  }
-  const values = { keyword: keyword.keyword, growth: formatSigned(keyword.growthRatePct, 1), count: keyword.totalPapers };
-  return keyword.totalPapers < 15
-    ? t("{{keyword}} is an early keyword signal ({{growth}}% growth), but it has only {{count}} papers, so treat it as exploratory.", values)
-    : t("{{keyword}} is an early keyword signal ({{growth}}% growth).", values);
+  if (!shift) return "";
+  const values = { keyword: keyword.keyword, counts: formatShiftCounts(shift) };
+  return isShiftSignificant(shift)
+    ? t("{{keyword}} is a clearly rising keyword ({{counts}} papers).", values)
+    : t("{{keyword}} is rising, but not clearly enough ({{counts}} papers), so treat it as exploratory.", values);
 }
 
 function describeKeywordDetail(keyword: RisingKeywordLike): string {
   const shift = keyword.shift;
-  if (shift) return `${formatShiftCounts(shift)} papers`;
-  return `${formatSigned(keyword.growthRatePct, 1)}% growth · ${formatNumber(keyword.totalPapers)} papers`;
+  return shift ? `${formatShiftCounts(shift)} papers` : `${formatNumber(keyword.totalPapers)} papers`;
 }
 
 /** Data-driven reading of the chart: the highest complete year of the series. */
@@ -300,13 +294,11 @@ export function OverviewTab({
           onCompare={() => setActiveTab("compare")}
         />
         <InsightCard
-          label="Supplementary: emerging keyword"
+          label="Supplementary: keyword shift"
           variant="success"
           value={fastestKeyword?.keyword ?? "No keyword"}
           detail={fastestKeyword ? describeKeywordDetail(fastestKeyword) : "No data"}
-          meaning={fastestKeyword?.shift
-            ? "Keyword whose share of the topic's papers changed between two periods (log odds ratio test, Benjamini–Hochberg corrected)."
-            : "Fast-growing keyword from indexed paper keywords. Good for early research directions."}
+          meaning="Keyword whose share of papers changed between two periods (log odds ratio test, Benjamini–Hochberg corrected). Supplementary: it does not affect any topic verdict."
           badge={fastestKeyword?.shift ? (
             isShiftSignificant(fastestKeyword.shift) ? (
               <span className="text-[8px] bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 font-extrabold px-1.5 py-0.5 rounded border border-emerald-200/30 shrink-0">
@@ -320,15 +312,8 @@ export function OverviewTab({
                 Not significant
               </span>
             )
-          ) : fastestKeyword && fastestKeyword.totalPapers < 15 ? (
-            <span
-              className="text-[8px] bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 font-extrabold px-1.5 py-0.5 rounded border border-amber-200/30 cursor-help shrink-0"
-              title="High growth from a small number of papers, treat as exploratory."
-            >
-              Small base
-            </span>
           ) : undefined}
-          sourceHint={fastestKeyword?.shift ? "Keyword shift test" : "Keyword growth"}
+          sourceHint="Keyword shift test"
           actionLabel="Search keyword"
           onAction={() => fastestKeyword && navigate(getScopedSearchTarget(fastestKeyword.keyword))}
         />
@@ -393,7 +378,7 @@ export function OverviewTab({
               <span className="text-[9px] bg-blue-50 dark:bg-blue-950/20 text-blue-700 dark:text-blue-400 border border-blue-150 px-2 py-0.5 rounded font-bold uppercase tracking-wider">
                 {metricMode === "papers" ? "publication activity" : "citation impact"}
               </span>
-              <DataSourceBadge source={data.dataSource} />
+              <DataSourceBadge source={data.dataSource} provenance={data.dataProvenance} />
             </div>
             <p className="text-xs text-slate-500 mt-1">
               {metricMode === "pp_top10"

@@ -72,7 +72,7 @@ Users can also save multiple personal API connections in Settings → AI Connect
 | `TRANSLATION_MAX_PER_HOUR` | `EnvSchema` / backend | Default / optional (see template) |
 | `LIBRETRANSLATE_LOAD_ONLY` | Compose | Default / optional (see template) |
 | `OPENALEX_MAILTO` | `EnvSchema` / backend | Default / optional (see template) |
-| `OPENALEX_API_KEY` | `EnvSchema` / backend | Default / optional (see template) |
+| `OPENALEX_API_KEY` | `EnvSchema` / backend | Optional, **strongly recommended in production**: without it trends share the keyless OpenAlex budget (1 000 credits/day per IP) and cannot page with cursors; the backend logs a warning at start in production. Sent as `Authorization: Bearer` |
 | `SEMANTIC_SCHOLAR_API_KEY` | `EnvSchema` / backend | Default / optional (see template) |
 | `CROSSREF_MAILTO` | `EnvSchema` / backend | Default / optional (see template) |
 | `PAYOS_CLIENT_ID` | `EnvSchema` / backend | Default / optional (see template) |

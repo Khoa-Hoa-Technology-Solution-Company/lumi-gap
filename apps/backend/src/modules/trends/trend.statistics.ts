@@ -9,6 +9,12 @@
 /** Conventional significance level used to label results. */
 export const SIGNIFICANCE_LEVEL = 0.05;
 
+/** Largest n for which the exact null distribution of S is used (series
+ *  without ties). Helsel et al. (2020) recommend exact p-values for n ≤ 10. */
+export const MANN_KENDALL_EXACT_MAX_N = 10;
+
+export type MannKendallPValueMethod = "exact" | "normal";
+
 export interface MannKendallResult {
   n: number;
   /** S = Σ_{i<j} sgn(x_j − x_i). */
@@ -17,8 +23,10 @@ export interface MannKendallResult {
   variance: number;
   /** Continuity-corrected standard normal score. */
   z: number;
-  /** Two-sided p-value from the normal approximation. */
+  /** Two-sided p-value: exact when n ≤ MANN_KENDALL_EXACT_MAX_N and the series
+   *  has no ties, otherwise the normal approximation. */
   pValue: number;
+  pValueMethod: MannKendallPValueMethod;
   /** Kendall's τ = S / (n(n−1)/2). */
   tau: number;
 }
@@ -50,14 +58,65 @@ export function mannKendall(values: number[]): MannKendallResult | null {
   const variance = (n * (n - 1) * (2 * n + 5) - tieTerm) / 18;
   if (!(variance > 0)) return null;
   const z = s > 0 ? (s - 1) / Math.sqrt(variance) : s < 0 ? (s + 1) / Math.sqrt(variance) : 0;
+  const exact = tieTerm === 0 && n <= MANN_KENDALL_EXACT_MAX_N;
   return {
     n,
     s,
     variance,
     z,
-    pValue: clampProbability(2 * (1 - normalCdf(Math.abs(z)))),
+    pValue: exact ? mannKendallExactPValue(n, s) : clampProbability(2 * (1 - normalCdf(Math.abs(z)))),
+    pValueMethod: exact ? "exact" : "normal",
     tau: s / ((n * (n - 1)) / 2),
   };
+}
+
+/**
+ * Exact two-sided p-value P(|S| ≥ |s|) of the Mann–Kendall S for n values
+ * without ties, under H0 (every ordering equally likely).
+ *
+ * S = n(n−1)/2 − 2·I, where I is the number of inversions of the ordering, so
+ * the null distribution of S is the distribution of I: the Mahonian numbers
+ * M(n, k) = #orderings of n items with k inversions, divided by n!. They follow
+ * M(i, k) = Σ_{j=0}^{min(k, i−1)} M(i−1, k−j), computed once per n with prefix
+ * sums in O(n · n²) and cached; a p-value is then a sum over ≤ n(n−1)/2 + 1
+ * terms. No permutation is enumerated. Checked against a full enumeration of
+ * all n! orderings for n = 3…10 (golden dataset G0).
+ */
+export function mannKendallExactPValue(n: number, s: number): number {
+  const counts = mahonianNumbers(n);
+  const pairs = (n * (n - 1)) / 2;
+  const target = Math.abs(s);
+  let tail = 0;
+  let total = 0;
+  for (let inversions = 0; inversions <= pairs; inversions++) {
+    const count = counts[inversions]!;
+    total += count;
+    if (Math.abs(pairs - 2 * inversions) >= target) tail += count;
+  }
+  return clampProbability(tail / total);
+}
+
+const mahonianCache = new Map<number, number[]>();
+
+function mahonianNumbers(n: number): number[] {
+  const cached = mahonianCache.get(n);
+  if (cached) return cached;
+  let row = [1]; // n = 1: one ordering, no inversion
+  for (let i = 2; i <= n; i++) {
+    const maxInversions = (i * (i - 1)) / 2;
+    const prefix = [0];
+    for (const value of row) prefix.push(prefix.at(-1)! + value);
+    const next: number[] = [];
+    for (let k = 0; k <= maxInversions; k++) {
+      // Σ_{j=0}^{min(k, i−1)} row[k−j] = prefix over row indices [k−(i−1), k] ∩ [0, row.length−1]
+      const hi = Math.min(k, row.length - 1);
+      const lo = Math.max(0, k - (i - 1));
+      next.push(hi >= lo ? prefix[hi + 1]! - prefix[lo]! : 0);
+    }
+    row = next;
+  }
+  mahonianCache.set(n, row);
+  return row;
 }
 
 /**

@@ -15,6 +15,7 @@ import { resolveMetricMode, type TimelinePoint, type TrendMetricMode } from "@/f
 import {
   DEFAULT_TREND_SORT,
   formatMetricValue,
+  formatSigned,
   getFastestKeyword,
   getTopRisingTopic,
   getTopicMetric,
@@ -281,10 +282,9 @@ export function TrendsPage() {
     return data.risingKeywords.map((k) => ({
       keyword: k.keyword,
       growthRatePct: k.growthRatePct,
-      growth: `+${k.growthRatePct}%`,
+      growth: `${formatSigned(k.growthRatePct, 1)}%`,
       totalPapers: k.totalPapers,
       yearlyBreakdown: k.yearlyBreakdown,
-      status: k.growthRatePct > 100 ? "Hot" : "Rising",
       shift: k.shift,
     }));
   }, [data]);
@@ -545,7 +545,7 @@ export function TrendsPage() {
         <div>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
             <h1 className="text-2xl font-bold text-slate-900 dark:text-white leading-tight">Research Trend Workbench</h1>
-            <DataSourceBadge source={data?.dataSource} />
+            <DataSourceBadge source={data?.dataSource} provenance={data?.dataProvenance} />
           </div>
           <p className="text-xs text-slate-500 mt-1">
             Find rising research topics, validate whether the signal is reliable, and move from trend to papers, reports, or AI explanation.</p>

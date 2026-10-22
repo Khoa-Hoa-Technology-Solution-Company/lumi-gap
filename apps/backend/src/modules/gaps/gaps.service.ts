@@ -107,10 +107,10 @@ async function countProbeMatches(phrases: ProbePhrase[], scope: ProbeScope) {
 
 async function conceptGrowth(phrase: ProbePhrase, scope: ProbeScope) {
   const now = new Date().getFullYear(), yearTo = scope.yearTo ?? now, yearFrom = scope.yearFrom ?? yearTo - GAP_WINDOW_YEARS;
-  const where = probeMatchSql([phrase], { paperIds: scope.paperIds, yearFrom, yearTo }); if (!where) return parentGrowth([], env.GAP_PARENT_RISING_MIN);
+  const where = probeMatchSql([phrase], { paperIds: scope.paperIds, yearFrom, yearTo }); if (!where) return parentGrowth([]);
   const rows = await getPrisma().$queryRaw<Array<{ year: number; count: number }>>(Prisma.sql`SELECT "publication_year" AS year, count(*)::int AS count FROM "papers" WHERE ${where} GROUP BY "publication_year" ORDER BY "publication_year"`);
   const series = fillMissingYears(rows, yearFrom, yearTo);
-  return parentGrowth(truncateToCompleteYears(series, Math.min(yearTo, now - 1)), env.GAP_PARENT_RISING_MIN);
+  return parentGrowth(truncateToCompleteYears(series, Math.min(yearTo, now - 1)));
 }
 
 /** Embeddings of a probe's two topics for semantic matching; none when it is off or embedding fails (keyword-only). */

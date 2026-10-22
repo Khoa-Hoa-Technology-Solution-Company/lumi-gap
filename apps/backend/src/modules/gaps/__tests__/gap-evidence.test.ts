@@ -131,17 +131,20 @@ describe("computeGapEvidence (under-explored ranking signal)", () => {
 
 describe("parentGrowth", () => {
   it("uses CAGR when the starting count is non-zero", () => {
-    const growth = parentGrowth([10, 12, 15, 20].map((count, index) => ({ year: 2020 + index, count })), 10);
+    const growth = parentGrowth([10, 12, 15, 20].map((count, index) => ({ year: 2020 + index, count })));
     expect(growth.cagrPct).toBeGreaterThan(10);
     expect(growth.growthRatePct).toBe(growth.cagrPct);
-    expect(growth.rising).toBe(true);
   });
 
-  it("falls back to slope when CAGR has a zero base", () => {
-    const growth = parentGrowth([0, 0, 1, 2].map((count, index) => ({ year: 2020 + index, count })), 10);
+  it("falls back to year-over-year growth when CAGR has a zero base", () => {
+    const growth = parentGrowth([0, 0, 1, 2].map((count, index) => ({ year: 2020 + index, count })));
     expect(growth.cagrPct).toBeNull();
     expect(growth.slope).toBeGreaterThan(0);
-    expect(growth.rising).toBe(true);
+  });
+
+  it("is descriptive only: no rising/falling conclusion from raw counts (P1.3)", () => {
+    const growth = parentGrowth([10, 12, 15, 20].map((count, index) => ({ year: 2020 + index, count })));
+    expect(Object.keys(growth).sort()).toEqual(["cagrPct", "growthRatePct", "slope"]);
   });
 });
 

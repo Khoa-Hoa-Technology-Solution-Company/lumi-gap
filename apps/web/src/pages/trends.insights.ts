@@ -1,4 +1,4 @@
-import type { RisingKeyword, TrendClassification, TrendTopicTaxonomy, TrendVerdict } from "@trend/shared-types";
+import { resolveTrendWindow, type RisingKeyword, type TrendClassification, type TrendTopicTaxonomy, type TrendVerdict } from "@trend/shared-types";
 import { formatNumber } from "@/utils";
 import { isShiftSignificant } from "@/features/trends/trend-source";
 
@@ -78,23 +78,20 @@ export function getTopRisingTopic<T extends TrendSortable>(topics: readonly T[])
   return sortTopics(topics, "trend").find((topic) => topic.classification?.verdict === "rising") ?? null;
 }
 
-/** The keyword with the strongest significant shift (largest z, q < 0.05) when
- *  the data carries the test; otherwise the fastest growing keyword. */
+/** The tested keyword with the largest effect (log odds ratio), significant
+ *  shifts first. Keywords without the shift test are never picked: raw YoY
+ *  growth is descriptive and does not select or label keywords. */
 export function getFastestKeyword(keywords: RisingKeywordLike[]): RisingKeywordLike | null {
-  const significant = keywords.filter((keyword) => keyword.shift && isShiftSignificant(keyword.shift));
-  if (significant.length > 0) {
-    return [...significant].sort((a, b) => (b.shift?.z ?? 0) - (a.shift?.z ?? 0))[0] ?? null;
-  }
-  return [...keywords].sort((a, b) => b.growthRatePct - a.growthRatePct)[0] ?? null;
+  const tested = keywords.filter((keyword) => keyword.shift && keyword.shift.z > 0);
+  return [...tested].sort((a, b) =>
+    Number(isShiftSignificant(b.shift!)) - Number(isShiftSignificant(a.shift!)) || b.shift!.logOddsRatio - a.shift!.logOddsRatio,
+  )[0] ?? null;
 }
 
-/** Small-base heuristic for data without the shift test (local fallback). */
-export function isSmallBaseKeyword(keyword: RisingKeywordLike): boolean {
-  if (keyword.shift) return false;
-  return keyword.totalPapers < 10 && keyword.growthRatePct >= 100;
-}
-
-/** Default analysis window: the last ten years, the same window the topic page
- *  uses, so share tests are not stretched over decades before a topic existed. */
-export const DEFAULT_TREND_YEAR_TO = new Date().getFullYear();
-export const DEFAULT_TREND_YEAR_FROM = DEFAULT_TREND_YEAR_TO - 10;
+/** Default analysis window: the last ten COMPLETE years plus the current
+ *  year-to-date, computed by the same function as the backend
+ *  (resolveTrendWindow), so share tests are not stretched over decades before a
+ *  topic existed. */
+const DEFAULT_TREND_WINDOW = resolveTrendWindow({});
+export const DEFAULT_TREND_YEAR_TO = DEFAULT_TREND_WINDOW.yearTo;
+export const DEFAULT_TREND_YEAR_FROM = DEFAULT_TREND_WINDOW.yearFrom;

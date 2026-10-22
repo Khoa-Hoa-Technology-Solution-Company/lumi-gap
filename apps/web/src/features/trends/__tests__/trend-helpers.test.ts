@@ -13,9 +13,9 @@ const localTrend: YearlyCitationMetric[] = [
   { year: 2024, count: 6, totalCitations: 10, avgCitations: 10 / 6 },
 ];
 
-function shift(z: number, qValue: number): KeywordShift {
+function shift(z: number, qValue: number, logOddsRatio = 1, papersB = 40): KeywordShift {
   return {
-    term: "x", papersA: 10, papersB: 40, logOddsRatio: 1, z, pValue: qValue, qValue,
+    term: "x", papersA: 10, papersB, logOddsRatio, z, pValue: qValue, qValue,
     periodA: { yearFrom: 2016, yearTo: 2020 }, periodB: { yearFrom: 2021, yearTo: 2025 },
   };
 }
@@ -42,10 +42,12 @@ describe("trend impact helpers", () => {
 });
 
 describe("keyword shift helpers", () => {
-  it("is significant only for a positive shift with q below 0.05", () => {
+  it("is significant only for a positive shift with q below 0.05 and enough papers in period B", () => {
     expect(isShiftSignificant(shift(3, 0.01))).toBe(true);
     expect(isShiftSignificant(shift(3, 0.2))).toBe(false);
     expect(isShiftSignificant(shift(-3, 0.01))).toBe(false);
+    // P0.5: below KEYWORD_SHIFT_MIN_PAPERS (30) in period B it is not a finding.
+    expect(isShiftSignificant(shift(3, 0.01, 1, 12))).toBe(false);
   });
 
   it("formats q and the A to B counts", () => {
@@ -54,12 +56,18 @@ describe("keyword shift helpers", () => {
     expect(formatShiftCounts(shift(2, 0.5))).toBe("10 → 40");
   });
 
-  it("picks the keyword with the largest significant z, ignoring raw growth", () => {
+  it("picks the significant keyword with the largest effect size, ignoring raw growth", () => {
     const keywords = [
-      { keyword: "hot but noisy", totalPapers: 5, growthRatePct: 900, yearlyBreakdown: [], shift: shift(1.2, 0.4) },
-      { keyword: "solid", totalPapers: 200, growthRatePct: 30, yearlyBreakdown: [], shift: shift(6, 0.001) },
+      { keyword: "hot but noisy", totalPapers: 5, growthRatePct: 900, yearlyBreakdown: [], shift: shift(1.2, 0.4, 3) },
+      { keyword: "frequent", totalPapers: 9000, growthRatePct: 10, yearlyBreakdown: [], shift: shift(40, 0.0001, 0.2) },
+      { keyword: "solid", totalPapers: 200, growthRatePct: 30, yearlyBreakdown: [], shift: shift(6, 0.001, 1.5) },
     ];
+    // Not the largest z ("frequent"), not the largest raw growth ("hot but noisy").
     expect(getFastestKeyword(keywords)?.keyword).toBe("solid");
-    expect(getFastestKeyword(keywords.map(({ shift: _s, ...k }) => k))?.keyword).toBe("hot but noisy");
+  });
+
+  it("never picks a keyword without the shift test (raw growth only)", () => {
+    const untested = [{ keyword: "hot", totalPapers: 5, growthRatePct: 900, yearlyBreakdown: [] }];
+    expect(getFastestKeyword(untested)).toBeNull();
   });
 });

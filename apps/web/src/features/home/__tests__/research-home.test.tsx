@@ -154,6 +154,12 @@ describe("Focused research home", () => {
     await act(async () => Array.from(container.querySelectorAll("button")).find((button) => button.textContent === "Citations")!.click());
     expect(container.querySelector(".home-chart-selection")?.textContent).toBe("20citations to papers published in 2025");
   });
+  it("says the home chart counts library papers, not research trends (P0.3)", async () => {
+    mocks.query.data = { ...overview, trends: { ...overview.trends, dataSource: "local" } };
+    await render();
+    const note = container.querySelector(".home-library-note")?.textContent ?? "";
+    expect(note).toContain("These counts describe the library, not research trends.");
+  });
   it("changes the reading prompt and keeps the example clearly labelled", async () => {
     await render();
     const controls = container.querySelectorAll<HTMLButtonElement>(".home-lens-controls button");

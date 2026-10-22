@@ -1,3 +1,4 @@
+import { DEFAULT_TREND_BASELINE, resolveTrendWindow } from "@trend/shared-types";
 import type {
   RisingKeyword,
   TrendFacetBucket,
@@ -16,8 +17,11 @@ import { openAlexKeywordCounts } from "./trend.evidence.js";
 import { openAlexGet, openAlexGroupBy, openAlexYearCounts, shortId, type OpenAlexGroup } from "./trend.openalex-client.js";
 import { buildOpenAlexScope, withScope, yearsClause } from "./trend.openalex-scope.js";
 import { benjaminiHochberg, logOddsRatio2x2 } from "./trend.statistics.js";
+import { baselineKey, openAlexBaselineFilter, resolveBaseline } from "./trend.baseline.js";
+import { computeGgt } from "./trend.ggt.js";
+import { buildShareRows } from "./trend.series.js";
 import { mapWithConcurrency, range } from "./trend.utils.js";
-import { buildRecommendedComparisons, classifyTrend, compareByTotal, compareByTrend, shareTrendStatistics, type ShareTrendStatistics } from "./trend.verdict.js";
+import { buildRecommendedComparisons, classifyTrend, compareByTotal, compareByTrend, rankKeywordShifts, shareTrendStatistics, type ShareTrendStatistics } from "./trend.verdict.js";
 
 /**
  * GET /trends computed from OpenAlex aggregate counts over the whole OpenAlex
@@ -31,7 +35,6 @@ import { buildRecommendedComparisons, classifyTrend, compareByTotal, compareByTr
  * and 10 keyword series). Every response is cached for 7 days by the client.
  */
 
-const DEFAULT_WINDOW_YEARS = 10;
 const CONCURRENCY = 6;
 const RISING_KEYWORDS_LIMIT = 10;
 /** OpenAlex accepts up to 100 OR values per filter. */
@@ -71,9 +74,7 @@ type TopicEntity = {
 
 export async function getOpenAlexTrendsOverview(query: TrendsOverviewQuery): Promise<TrendsOverview> {
   const now = new Date();
-  const yearTo = query.yearTo ?? now.getFullYear();
-  const yearFrom = query.yearFrom ?? yearTo - DEFAULT_WINDOW_YEARS;
-  const lastCompleteYear = Math.min(yearTo, now.getFullYear() - 1);
+  const { yearFrom, yearTo, lastCompleteYear } = resolveTrendWindow(query, now.getFullYear());
   const scope = await buildOpenAlexScope(query);
   const years = yearsClause(yearFrom, yearTo);
   const base = withScope(scope.filter, years);
@@ -109,6 +110,7 @@ export async function getOpenAlexTrendsOverview(query: TrendsOverviewQuery): Pro
 
   return {
     dataSource: "openalex",
+    baselineLevel: query.baseline ?? DEFAULT_TREND_BASELINE,
     scopeNotice: scope.notice,
     yearFrom,
     yearTo,
@@ -170,31 +172,21 @@ async function buildTopics(
   const entities = new Map((results.slice(candidates.length) as TopicEntity[][]).flat().map((entity) => [shortId(entity.id).toUpperCase(), entity]));
 
   const taxonomies = candidates.map((candidate) => topicTaxonomy(candidate.key, entities.get(candidate.key)));
-  const fieldIds = [...new Set(taxonomies.map((taxonomy) => taxonomy.fieldId).filter((id): id is string => Boolean(id)))];
-  const populations = new Map(
-    (await runAll(fieldIds.map((fieldId) => () => openAlexYearCounts(withScope(scope.nonTaxonomyFilter, `primary_topic.field.id:${fieldId}`, years)))))
-      .map((counts, index) => [fieldIds[index]!, counts]),
-  );
+  // Reference population N_t of each topic at the requested level
+  // (trend.baseline.ts): same Data Scope without taxonomy clauses. Topics that
+  // share a baseline share one request.
+  const baselines = taxonomies.map((taxonomy) => resolveBaseline(query.baseline, taxonomy));
+  const uniqueBaselines = [...new Map(baselines.map((baseline) => [baselineKey(baseline), baseline])).values()];
+  const populationCounts = await runAll(uniqueBaselines.map((baseline) => () => openAlexYearCounts(openAlexBaselineFilter(scope.nonTaxonomyFilter, baseline, years))));
+  const populations = new Map(uniqueBaselines.map((baseline, index) => [baselineKey(baseline), populationCounts[index]!]));
 
-  // Share of the topic's field: n_t = topic papers, N_t = field papers of the
-  // same scope (without the taxonomy clauses), complete years with N_t > 0.
-  const shareStats: ShareTrendStatistics[] = candidates.map((_candidate, index) => {
-    const fieldId = taxonomies[index]!.fieldId;
-    const population = fieldId ? populations.get(fieldId) : undefined;
-    const counts = topicYears[index]!;
-    return shareTrendStatistics(
-      population
-        ? range(yearFrom, lastCompleteYear)
-            .filter((year) => (population.get(year) ?? 0) > 0)
-            .map((year) => {
-              const count = counts.get(year) ?? 0;
-              return { year, count, sharePct: (count / Math.max(population.get(year) ?? 0, count)) * 100 };
-            })
-        : [],
-    );
-  });
+  // Share of the reference population: n_t / N_t over complete years with N_t > 0.
+  const shareRows = candidates.map((_candidate, index) => buildShareRows(topicYears[index]!, populations.get(baselineKey(baselines[index]!))!, yearFrom, lastCompleteYear));
+  const shareStats: ShareTrendStatistics[] = shareRows.map((rows) => shareTrendStatistics(rows));
   // Benjamini–Hochberg across every listed candidate tested in this request.
-  const qValues = benjaminiHochberg(shareStats.map((stats) => stats.mannKendall?.pValue ?? null));
+  const pValues = shareStats.map((stats) => stats.mannKendall?.pValue ?? null);
+  const qValues = benjaminiHochberg(pValues);
+  const qFamilySize = pValues.filter((p) => p !== null).length;
 
   const topics: TrendingTopic[] = candidates.map((candidate, index) => {
     const yearlyBreakdown = fillMissingYearsFromCounts(toSeries(topicYears[index]!), yearFrom, yearTo);
@@ -204,7 +196,8 @@ async function buildTopics(
       totalPapers: yearlyBreakdown.reduce((sum, row) => sum + row.count, 0),
       yearlyBreakdown,
       ...computeMetrics(yearlyBreakdown, lastCompleteYear),
-      classification: classifyTrend({ ...shareStats[index]!, source: "openalex", qValue: qValues[index] ?? null }),
+      classification: classifyTrend({ ...shareStats[index]!, source: "openalex", qValue: qValues[index] ?? null, qFamilySize }),
+      ggt: computeGgt(shareRows[index]!),
     };
   });
 
@@ -238,7 +231,8 @@ function topicTaxonomy(topicId: string, entity: TopicEntity | undefined): TrendT
  * Splits the complete years that have papers into an earlier half A and a
  * later half B, tests every frequent keyword with the 2×2 log odds ratio
  * (totals = scope papers of each period), adjusts with Benjamini–Hochberg and
- * keeps the keywords that rose (z > 0), strongest first.
+ * keeps the keywords that rose (z > 0), ordered by rankKeywordShifts (effect
+ * size, supported shifts first).
  */
 async function buildRisingKeywords(
   scopeFilter: string,
@@ -274,10 +268,7 @@ async function buildRisingKeywords(
     pValue: result.pValue,
     qValue: qValues[index] ?? 1,
   }));
-  const rising = shifts
-    .filter((shift) => shift.z > 0 && keys.has(shift.term))
-    .sort((a, b) => b.z - a.z)
-    .slice(0, RISING_KEYWORDS_LIMIT);
+  const rising = rankKeywordShifts(shifts.filter((shift) => keys.has(shift.term)), "rising").slice(0, RISING_KEYWORDS_LIMIT);
 
   const series = await runAll(rising.map((shift) => () => openAlexYearCounts(withScope(base, `keywords.id:${keys.get(shift.term)}`))));
   const periods = {

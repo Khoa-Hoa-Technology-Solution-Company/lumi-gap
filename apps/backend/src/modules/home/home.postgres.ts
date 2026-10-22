@@ -11,7 +11,10 @@ export async function getPostgresHomeOverview(user?: AuthClaims): Promise<HomeOv
     prisma.searchLog.count(),
     prisma.paper.count({ where: { dataStatus: "active" } }),
     prisma.user.count(),
-    getPostgresTrendsOverview({ limit: 6, minPapers: 3, sortBy: "trend" }),
+    // Local corpus only: every verdict is "insufficient" (LOCAL_CORPUS), so a
+    // "trend" order would only reflect what has been synced. Order by size and
+    // say where the numbers come from.
+    getPostgresTrendsOverview({ limit: 6, minPapers: 3, sortBy: "total" }),
     getRecentPapers(),
   ]);
 
@@ -25,6 +28,7 @@ export async function getPostgresHomeOverview(user?: AuthClaims): Promise<HomeOv
     generatedAt: new Date().toISOString(),
     summary: { totalSearches, totalPapers, uniqueUsers },
     trends: {
+      dataSource: "local",
       yearFrom: trendsOverview.yearFrom,
       yearTo: trendsOverview.yearTo,
       lastCompleteYear: trendsOverview.lastCompleteYear,

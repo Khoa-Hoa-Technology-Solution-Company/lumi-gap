@@ -133,6 +133,20 @@ describe("getOpenAlexTrendsOverview", () => {
     expect(client.openAlexYearCounts.mock.calls.filter((call) => String(call[0]).includes("primary_topic.field.id:17,publication_year"))).toHaveLength(1);
   });
 
+  it("baseline=global: one population request for every topic, and GGT against it (P1.1, P1.3)", async () => {
+    const overview = await getOpenAlexTrendsOverview(query({ domainIds: "3", baseline: "global" }));
+    expect(overview.baselineLevel).toBe("global");
+    const populations = client.openAlexYearCounts.mock.calls.map((call) => String(call[0])).filter((filter) => filter.includes("primary_topic.id:!null"));
+    expect(populations).toEqual(["type:article|review|preprint|conference-paper|book-chapter,primary_topic.id:!null,publication_year:2016-2021"]);
+    expect(client.openAlexYearCounts.mock.calls.some((call) => String(call[0]).includes("primary_topic.field.id:17,publication_year"))).toBe(false);
+    const rising = overview.topics.find((topic) => topic.topic === "Rising topic")!;
+    // n = 10, 20, … 60 against a constant N = 1000: GGT_2017 = (20 − 10)/10 × 100.
+    expect(rising.ggt!.annual[1]).toMatchObject({ year: 2017, nullReason: null });
+    expect(rising.ggt!.annual[1]!.ggtPct).toBeCloseTo(100, 10);
+    expect(rising.ggt!.conditions.allAnnualBelow100Pct).toBe(false);
+    expect(rising.ggt!.nelisClass).toBeNull();
+  });
+
   it("sorts by verdict, slices to limit and recommends only rising topics", async () => {
     const byTrend = await getOpenAlexTrendsOverview(query({ limit: "1" }));
     expect(byTrend.topics.map((topic) => topic.topic)).toEqual(["Rising topic"]);

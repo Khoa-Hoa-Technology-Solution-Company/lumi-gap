@@ -1,5 +1,9 @@
 import { z } from "zod";
+import { TREND_BASELINE_LEVELS } from "@trend/shared-types";
 import { TREND_CITATION_BANDS } from "../trend.filters.js";
+
+/** Reference population N_t (trend.baseline.ts). Absent = DEFAULT_TREND_BASELINE ("field"), the P0 numbers. */
+const baselineSchema = z.enum(TREND_BASELINE_LEVELS).optional();
 
 const csvListSchema = z.preprocess(
   (value) => {
@@ -56,6 +60,7 @@ export const TrendsOverviewQuerySchema = z
       (value) => (value === "momentum" || value === "growth" ? "trend" : value),
       z.enum(["trend", "total"]).default("trend"),
     ),
+    baseline: baselineSchema,
     ...trendFacetFiltersSchema,
   })
   .refine((q) => q.yearFrom === undefined || q.yearTo === undefined || q.yearFrom <= q.yearTo, {
@@ -70,6 +75,7 @@ export const TopicTrendQuerySchema = z
     topicId: z.string().trim().min(1).max(80).optional(),
     yearFrom: z.coerce.number().int().min(1900).max(2100).optional(),
     yearTo: z.coerce.number().int().min(1900).max(2100).optional(),
+    baseline: baselineSchema,
     ...trendFacetFiltersSchema,
   })
   .refine((q) => q.yearFrom === undefined || q.yearTo === undefined || q.yearFrom <= q.yearTo, {

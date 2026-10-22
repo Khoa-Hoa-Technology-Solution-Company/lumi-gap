@@ -2,11 +2,14 @@ import type { SearchSummary } from "./analytics.js";
 import type { Paper } from "./paper.js";
 import type { ReportStatus } from "./report.js";
 import type { AcademicRole } from "./user.js";
-import type { RisingKeyword, TrendingTopic, YearlyCitationMetric, YearlyCount } from "./trend.js";
+import type { RisingKeyword, TrendDataSource, TrendingTopic, YearlyCitationMetric, YearlyCount } from "./trend.js";
 
 export type HomeOverviewMode = "guest" | "user" | "admin";
 
 export interface HomeTrendSnapshot {
+  /** "local": counts of the papers synced into this library. They describe the
+   *  library, not research trends; topics are ordered by paper count. */
+  dataSource?: TrendDataSource;
   yearFrom: number;
   yearTo: number;
   lastCompleteYear: number;

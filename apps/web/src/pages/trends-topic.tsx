@@ -73,7 +73,7 @@ export function TopicDetailPage() {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white capitalize tracking-tight">{decodedTopic}</h1>
-              <DataSourceBadge source={dataSource} />
+              <DataSourceBadge source={dataSource} provenance={data.dataProvenance} />
             </div>
             <p className="text-slate-500 dark:text-slate-400 mt-2 text-sm max-w-2xl leading-relaxed">
               {dataSource === "openalex"

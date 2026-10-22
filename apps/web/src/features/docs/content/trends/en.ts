@@ -222,7 +222,7 @@ export const trendsEn: DocsModuleContent<TrendSectionId> = {
         {
           kind: "callout",
           tone: "limitation",
-          text: "USGS recommends tables of exact p-values when n ≤ 10 and the normal approximation only when n > 10 [@usgs-helsel-2020]. LumiGap uses the normal approximation with continuity correction for every n (the default window is 10 years), so p is **approximate**. Example with n = 5, S = 10: exact p = 2/120 ≈ 0.017, normal approximation ≈ 0.027. With ties only the approximation exists.",
+          text: "USGS recommends exact p-values when n ≤ 10 and the normal approximation only when n > 10 [@usgs-helsel-2020]. LumiGap follows this: for n ≤ 10 years without ties, p is **exact**, computed from the exact distribution of S (the number of orderings of n years with each S, divided by n!). For n > 10, or when two years have exactly the same share, p comes from the normal approximation with continuity correction. Example with n = 5, S = 10: exact p = 2/120 ≈ 0.017, normal approximation ≈ 0.027.",
         },
         {
           kind: "callout",
@@ -536,8 +536,8 @@ export const trendsEn: DocsModuleContent<TrendSectionId> = {
         {
           kind: "callout",
           tone: "limitation",
-          heading: "6. p is approximate for short series",
-          text: `For n ≤ 10 USGS recommends exact p-values; LumiGap uses the normal approximation. See ${link("Mann–Kendall", S.trendMannKendall, "min-years")}.`,
+          heading: "6. p is approximate only for long or tied series",
+          text: `For n ≤ 10 years without ties p is exact, as USGS recommends. For n > 10, or with tied years, it is the normal approximation. See ${link("Mann–Kendall", S.trendMannKendall, "min-years")}.`,
         },
       ],
     },

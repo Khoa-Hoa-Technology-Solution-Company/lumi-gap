@@ -468,7 +468,7 @@ export function CompareTab({
           </p>
         </div>
         <div className="text-right shrink-0 flex flex-col items-end gap-1.5">
-          <DataSourceBadge source={compareQuery.data?.dataSource ?? data.dataSource} />
+          <DataSourceBadge source={compareQuery.data?.dataSource ?? data.dataSource} provenance={compareQuery.data?.dataProvenance ?? data.dataProvenance} />
           <span className={`inline-block text-[10px] font-extrabold px-3 py-1 rounded-xl border select-none ${
             isRefetching
               ? "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/20 dark:text-blue-400 dark:border-blue-900/50 animate-pulse"

@@ -1,4 +1,4 @@
-import type { RisingKeyword, TrendDataSource, TrendScopeNotice } from "@trend/shared-types";
+import { KEYWORD_SHIFT_MIN_PAPERS, type RisingKeyword, type TrendDataSource, type TrendScopeNotice } from "@trend/shared-types";
 import { formatNumber } from "@/utils";
 
 export type KeywordShift = NonNullable<RisingKeyword["shift"]>;
@@ -7,9 +7,11 @@ export type IgnoredFilter = TrendScopeNotice["ignoredFilters"][number];
 /** Benjamini–Hochberg q threshold used to call a keyword shift significant. */
 export const SHIFT_SIGNIFICANCE_LEVEL = 0.05;
 
-/** A keyword is a significant riser when the shift is positive and q < 0.05. */
+/** A keyword is a significant riser when the shift is positive, q < 0.05 and
+ *  the later period has at least KEYWORD_SHIFT_MIN_PAPERS papers carrying it
+ *  (same rule as the backend's rankKeywordShifts). */
 export function isShiftSignificant(shift: KeywordShift): boolean {
-  return shift.z > 0 && shift.qValue < SHIFT_SIGNIFICANCE_LEVEL;
+  return shift.z > 0 && shift.qValue < SHIFT_SIGNIFICANCE_LEVEL && shift.papersB >= KEYWORD_SHIFT_MIN_PAPERS;
 }
 
 export function formatQValue(q: number): string {
@@ -22,7 +24,7 @@ export function formatShiftCounts(shift: KeywordShift): string {
 }
 
 export function formatShiftStats(shift: KeywordShift): string {
-  return `z = ${shift.z.toFixed(2)}, ${formatQValue(shift.qValue)}`;
+  return `log OR = ${shift.logOddsRatio.toFixed(2)}, ${formatQValue(shift.qValue)}`;
 }
 
 export function formatShiftPeriods(shift: KeywordShift): string {

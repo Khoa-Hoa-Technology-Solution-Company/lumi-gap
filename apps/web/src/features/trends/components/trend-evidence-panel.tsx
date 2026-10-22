@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { ChevronDown } from "lucide-react";
-import type { TopicTrendStatistics, TrendTermShift } from "@trend/shared-types";
+import type { TopicTrendStatistics, TrendBaseline, TrendGgt, TrendGgtClass, TrendTermShift } from "@trend/shared-types";
 import { DOCS_SECTIONS } from "@/features/docs";
 import { useI18n } from "@/i18n";
 import { formatNumber } from "@/utils";
@@ -18,9 +18,8 @@ export function TrendEvidencePanel({ statistics }: { statistics: TopicTrendStati
   const mk = statistics.mannKendall;
   const first = statistics.yearsUsed[0];
   const last = statistics.yearsUsed[statistics.yearsUsed.length - 1];
-  const baselineLabel = statistics.baseline.level === "field"
-    ? t("Field: {{name}}", { name: statistics.baseline.label })
-    : t(statistics.baseline.label);
+  const baselineLabel = useBaselineLabel(statistics.baseline);
+  const { fallbackFrom, unclassifiedSharePct } = statistics.baseline;
   const ci = classification.senSlopeCi95;
 
   const shareData = statistics.shareSeries.map((row) => ({ year: String(row.year), share: Number(row.sharePct.toFixed(3)), count: row.count, total: row.total }));
@@ -28,7 +27,7 @@ export function TrendEvidencePanel({ statistics }: { statistics: TopicTrendStati
   const hasImpact = impactData.some((row) => row.pp !== null);
 
   const rows: Array<{ label: string; value: string }> = [
-    { label: t("p-value"), value: mk ? formatPValue(mk.pValue) : "—" },
+    { label: t("p-value (one topic, not adjusted)"), value: mk ? formatPValue(mk.pValue) : "—" },
     {
       label: t("Sen's slope of share"),
       value: classification.senSlope === null
@@ -43,6 +42,9 @@ export function TrendEvidencePanel({ statistics }: { statistics: TopicTrendStati
     },
     { label: t("Papers in the years used"), value: formatNumber(classification.totalPapers) },
     { label: t("Reference population"), value: baselineLabel },
+    ...(unclassifiedSharePct != null
+      ? [{ label: t("Works without a primary topic (outside the population)"), value: `${unclassifiedSharePct.toFixed(1)}%` }]
+      : []),
   ];
 
   return (
@@ -57,6 +59,7 @@ export function TrendEvidencePanel({ statistics }: { statistics: TopicTrendStati
           <TrendFigures classification={classification} source={statistics.source} />
         </div>
         <TrendReasons classification={classification} className="mt-2" />
+        {fallbackFrom && <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">{t(BASELINE_FALLBACK[fallbackFrom])}</p>}
       </div>
 
       {/* 2. Share series */}
@@ -110,11 +113,85 @@ export function TrendEvidencePanel({ statistics }: { statistics: TopicTrendStati
               <p className="flex h-full items-center justify-center text-xs italic text-slate-500">{t("No citation percentile data for these papers.")}</p>
             )}
           </ChartCard>
+          {statistics.ggt && <GgtSection ggt={statistics.ggt} />}
           <TermShiftSection statistics={statistics} />
           <TrendHowLink section={DOCS_SECTIONS.trendSupplementary} anchor="" />
         </div>
       </Collapsible>
     </section>
+  );
+}
+
+const BASELINE_FALLBACK: Record<NonNullable<TrendBaseline["fallbackFrom"]>, string> = {
+  global: "The global population was requested.",
+  domain: "This topic has no domain, so all works with a primary topic are used.",
+  field: "This topic has no field, so all works with a primary topic are used.",
+  subfield: "This topic has no subfield, so all works with a primary topic are used.",
+};
+
+/** Name of the reference population N_t at the level actually used. */
+function useBaselineLabel(baseline: TrendBaseline): string {
+  const { t } = useI18n();
+  switch (baseline.level) {
+    case "field": return t("Field: {{name}}", { name: baseline.label });
+    case "domain": return t("Domain: {{name}}", { name: baseline.label });
+    case "subfield": return t("Subfield: {{name}}", { name: baseline.label });
+    case "global": return t("All works with a primary topic");
+    default: return t(baseline.label);
+  }
+}
+
+const GGT_CLASS_LABEL: Record<TrendGgtClass, string> = {
+  consistent_decrease: "Consistent decrease",
+  no_consistent_growth: "No consistent growth",
+  consistent_growth: "Consistent growth",
+  consistent_strong_growth: "Consistent strong growth",
+  consistent_intense_growth: "Consistent intense growth",
+  unsustainable_growth: "Unsustainable growth",
+  unclassified: "Between the classes of the paper",
+};
+
+/** General Growth Tendency (Nelis et al. 2022): descriptive, never the verdict. */
+function GgtSection({ ggt }: { ggt: TrendGgt }) {
+  const { t } = useI18n();
+  const defined = ggt.annual.filter((row) => row.ggtPct !== null);
+  const summary = ggt.meanPct === null
+    ? "—"
+    : ggt.semPct === null
+      ? `${formatSigned(ggt.meanPct, 1)}%`
+      : `${formatSigned(ggt.meanPct, 1)}% ± ${ggt.semPct.toFixed(1)}%`;
+  const classNote = ggt.nelisClass
+    ? t(GGT_CLASS_LABEL[ggt.nelisClass])
+    : ggt.conditions.atLeast50PapersEveryYear === false
+      ? t("Not given: a year has fewer than 50 papers")
+      : ggt.conditions.allAnnualBelow100Pct === false
+        ? t("Not given: an annual GGT is 100% or more")
+        : t("Not given: too few years");
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-[#121212]">
+      <h3 className="text-[15px] font-bold text-slate-900 dark:text-white">{t("General Growth Tendency (GGT)")}</h3>
+      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+        {t("How much faster the topic grew than its reference population each year (Nelis et al., 2022). Descriptive: it does not change the verdict.")}
+      </p>
+      <dl className="mt-3 grid grid-cols-1 gap-x-6 gap-y-2 text-xs sm:grid-cols-2">
+        <div className="flex justify-between gap-3 border-b border-slate-100 py-1.5 dark:border-slate-800">
+          <dt className="text-slate-500 dark:text-slate-400">{t("Mean GGT ± SEM ({{n}} years)", { n: ggt.n })}</dt>
+          <dd className="text-right font-mono text-slate-900 dark:text-white">{summary}</dd>
+        </div>
+        <div className="flex justify-between gap-3 border-b border-slate-100 py-1.5 dark:border-slate-800">
+          <dt className="text-slate-500 dark:text-slate-400">{t("Class (Nelis et al.)")}</dt>
+          <dd className="text-right text-slate-900 dark:text-white">{classNote}</dd>
+        </div>
+      </dl>
+      {defined.length > 0 && (
+        <p className="mt-3 font-mono text-[11px] text-slate-600 dark:text-slate-300">
+          {defined.map((row) => `${row.year}: ${formatSigned(row.ggtPct!, 1)}%`).join(" · ")}
+        </p>
+      )}
+      <p className="mt-2 text-[11px] italic text-slate-500 dark:text-slate-400">
+        {t("The paper's 50% year-to-year stability rule is not defined precisely, so it is not applied.")}
+      </p>
+    </div>
   );
 }
 

@@ -36,7 +36,8 @@ export function PaperReadingContextCard({ paperId }: { paperId: string }) {
   if (!trend && related.length === 0) return null;
   const linkSearch = topic ? `?topic=${encodeURIComponent(topic)}` : query ? `?q=${encodeURIComponent(query)}` : "";
   const figures = trend ? [
-    trend.growthRatePct !== null && t("Growth {{pct}}", { pct: pct(trend.growthRatePct)! }),
+    // Raw paper counts (descriptive, P1.3): the trend verdict lives on the topic page.
+    trend.growthRatePct !== null && t("Raw growth {{pct}}", { pct: pct(trend.growthRatePct)! }),
     trend.cagr3yPct != null && t("3-year CAGR {{pct}}", { pct: pct(trend.cagr3yPct)! }),
     trend.momentum !== null && t("Momentum {{value}}", { value: trend.momentum.toFixed(2) }),
   ].filter(Boolean) as string[] : [];
@@ -59,6 +60,7 @@ export function PaperReadingContextCard({ paperId }: { paperId: string }) {
       {trend.paperYear !== null && <p className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400"><span aria-hidden="true" className="inline-block h-2.5 w-2.5 rounded-full bg-orange-700" />{t("Paper published in {{year}}", { year: trend.paperYear })}</p>}
       {trend.partialYear != null && <p className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400"><span aria-hidden="true" className="inline-block h-2.5 w-2.5 rounded-full border-2 border-dashed border-slate-500" />{t("Data for {{year}} is still incomplete", { year: trend.partialYear })}</p>}
       {figures.length > 0 && <ul className="flex flex-wrap gap-x-4 gap-y-1 text-xs font-medium text-slate-700 dark:text-slate-300">{figures.map((item) => <li key={item}>{item}</li>)}</ul>}
+      {figures.length > 0 && <p className="text-[11px] text-slate-500 dark:text-slate-400">{t("Raw paper counts, which also grow with the whole literature. Not a trend test.")}</p>}
     </div>}
     {related.length > 0 && <div className="space-y-2">
       <h4 className="text-sm font-semibold">{t("Keep reading")}</h4>

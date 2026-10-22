@@ -22,7 +22,7 @@ export const MCP_TOOL_DEFS = [
   {
     name: "get_trends",
     description:
-      "Get publication trend metrics for a topic: YoY growth, CAGR, momentum score, yearly paper counts.",
+      "Get publication trend evidence for a topic: the trend verdict (Mann–Kendall on the topic's share of its reference population, statistics.classification), the General Growth Tendency (statistics.ggt) and yearly paper counts. YoY growth, CAGR and momentum are raw counts that grow with the whole literature: descriptive only, never evidence that a topic is rising.",
     parameters: {
       type: "object",
       properties: {

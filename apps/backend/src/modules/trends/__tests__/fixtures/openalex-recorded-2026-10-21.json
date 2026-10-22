@@ -1,0 +1,116 @@
+{
+ "_recordedAt": "2026-10-21",
+ "_how": "Read-only GET requests to https://api.openalex.org without an API key (shared keyless budget). Values copied from responses; nothing edited except dropping meta.notice/x_query.",
+ "keylessGroupByHeaders": {
+  "X-RateLimit-Cost-USD": "0.0001",
+  "X-RateLimit-Credits-Used": "1",
+  "X-RateLimit-Limit": "1000",
+  "X-RateLimit-Limit-USD": "0.1",
+  "X-RateLimit-Onetime-Remaining": "0",
+  "X-RateLimit-Prepaid-Remaining-USD": "0",
+  "X-RateLimit-Remaining": "987",
+  "X-RateLimit-Remaining-USD": "0.0987",
+  "X-RateLimit-Reset": "56994"
+ },
+ "cursorPage2WithoutKey": {
+  "status": 401,
+  "body": {
+   "error": "API key required for cursor paging"
+  }
+ },
+ "topicT10028YearCounts": {
+  "filter": "primary_topic.id:T10028,publication_year:2016-2025,type:article|review|preprint",
+  "note": "3 work types (NOT the 5 default types of the app)",
+  "counts": {
+   "2016": 1018,
+   "2017": 1167,
+   "2018": 1665,
+   "2019": 2375,
+   "2020": 2913,
+   "2021": 3265,
+   "2022": 3169,
+   "2023": 4775,
+   "2024": 8422,
+   "2025": 11864
+  }
+ },
+ "classifiedSplitByYear": {
+  "filter": "type:article|review|preprint|conference-paper|book-chapter,publication_year:2016-2025",
+  "total": {
+   "2016": 8277739,
+   "2017": 8030137,
+   "2018": 8039930,
+   "2019": 8331561,
+   "2020": 8692972,
+   "2021": 8170615,
+   "2022": 7738825,
+   "2023": 8148838,
+   "2024": 8737187,
+   "2025": 9911950
+  },
+  "primaryTopicNull": {
+   "2016": 259684,
+   "2017": 216062,
+   "2018": 228502,
+   "2019": 213938,
+   "2020": 228681,
+   "2021": 185900,
+   "2022": 233800,
+   "2023": 233991,
+   "2024": 196364,
+   "2025": 171148
+  },
+  "primaryTopicNotNull": {
+   "2016": 8018055,
+   "2017": 7814075,
+   "2018": 7811428,
+   "2019": 8117623,
+   "2020": 8464291,
+   "2021": 7984715,
+   "2022": 7505025,
+   "2023": 7914847,
+   "2024": 8540823,
+   "2025": 9740802
+  }
+ },
+ "cursorFirstPage2024": {
+  "filter": "publication_year:2024,type:article|review|preprint|conference-paper|book-chapter",
+  "groupBy": "primary_topic.id:include_unknown",
+  "metaCount": 8737187,
+  "groupsOnPage": 200,
+  "firstKeys": [
+   "unknown",
+   "T10001",
+   "T10002"
+  ],
+  "unknownCount": 196364
+ },
+ "corpusCoreVsDefault": {
+  "filter": "primary_topic.id:T10028,publication_year:2016-2025,type:article|review|preprint|conference-paper|book-chapter",
+  "groupBy": "publication_year",
+  "withoutCorpusParam": {
+   "2016": 2451,
+   "2017": 2743,
+   "2018": 4013,
+   "2019": 5145,
+   "2020": 6298,
+   "2021": 7382,
+   "2022": 7501,
+   "2023": 10349,
+   "2024": 16302,
+   "2025": 22044
+  },
+  "withCorpusCore": {
+   "2016": 2451,
+   "2017": 2743,
+   "2018": 4013,
+   "2019": 5145,
+   "2020": 6298,
+   "2021": 7382,
+   "2022": 7501,
+   "2023": 10349,
+   "2024": 16302,
+   "2025": 22044
+  }
+ }
+}

@@ -1,3 +1,4 @@
+import { resolveTrendWindow } from "@trend/shared-types";
 import type {
   PublicationTrend,
   TopItem,
@@ -31,7 +32,6 @@ import { mapWithConcurrency } from "./trend.utils.js";
  * "this topic is not an OpenAlex topic", which triggers the same fallback.
  */
 
-const WINDOW = 10;
 const CONCURRENCY = 5;
 const BREAKDOWN_CONCURRENCY = 6;
 const TOP_LIST_SIZE = 5;
@@ -85,9 +85,7 @@ type ResponseTaxonomy = TrendTopicTaxonomy & { topicId: string; topicName: strin
 type Span = { yearFrom: number; yearTo: number; lastCompleteYear: number };
 
 function resolveSpan(input: { yearFrom?: number; yearTo?: number }): Span {
-  const now = new Date().getFullYear();
-  const yearTo = input.yearTo ?? now;
-  return { yearTo, yearFrom: input.yearFrom ?? yearTo - WINDOW, lastCompleteYear: Math.min(yearTo, now - 1) };
+  return resolveTrendWindow(input);
 }
 
 /**
@@ -96,11 +94,21 @@ function resolveSpan(input: { yearFrom?: number; yearTo?: number }): Span {
  * that dimension and keeping both would intersect to an empty set.
  */
 async function scopeFilter(query: TrendScopeFilters): Promise<string> {
+  return (await topicScope(query)).filter;
+}
+
+/** The Data Scope of a one-topic request in both forms the statistics need:
+ *  `filter` (taxonomy clauses kept, primary_topic.id dropped) for the topic
+ *  series and `nonTaxonomyFilter` for the reference population. */
+export async function topicScope(query: TrendScopeFilters): Promise<{ filter: string; nonTaxonomyFilter: string }> {
   const scope = await buildOpenAlexScope(query);
-  return scope.filter
-    .split(",")
-    .filter((clause) => clause && !clause.startsWith("primary_topic.id:"))
-    .join(",");
+  return {
+    filter: scope.filter
+      .split(",")
+      .filter((clause) => clause && !clause.startsWith("primary_topic.id:"))
+      .join(","),
+    nonTaxonomyFilter: scope.nonTaxonomyFilter,
+  };
 }
 
 // --------------------------------------------------------------------------

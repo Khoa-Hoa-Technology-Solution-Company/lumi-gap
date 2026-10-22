@@ -24,11 +24,11 @@ export type TrendBarChartDatum = TrendBarDatum & {
 
 export type RisingKeywordRow = {
   keyword: string;
+  /** Raw year-over-year growth: descriptive only, never a label or a rank. */
   growthRatePct: number;
   growth: string;
   totalPapers: number;
   yearlyBreakdown: TrendingTopic["yearlyBreakdown"];
-  status: "Hot" | "Rising";
   /** Log odds ratio test between two periods; present for OpenAlex data. */
   shift?: RisingKeyword["shift"];
 };

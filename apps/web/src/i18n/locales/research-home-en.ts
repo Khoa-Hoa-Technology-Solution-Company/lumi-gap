@@ -154,6 +154,7 @@ const researchHomeKeys = [
   "Citations",
   "Loading library trends",
   "Based on indexed literature. The current year is incomplete.",
+  "Papers in the LumiGap library (synced locally). These counts describe the library, not research trends. The current year is incomplete.",
   "papers published in {{year}}",
   "citations to papers published in {{year}}",
   "Citations by publication year",

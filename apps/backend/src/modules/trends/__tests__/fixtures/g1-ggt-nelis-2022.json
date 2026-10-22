@@ -1,0 +1,1428 @@
+{
+ "_about": "Golden dataset G1 (P1.0). Annual GGT values of the five fields are the authors' own cached GGT column (fraction) from the supplementary workbooks; the engine must reproduce them. Mean/SEM: see claims[] (only partly reproducible). Hand examples computed in Python (stdlib).",
+ "_license": "Supplementary data of Nelis et al. (2022), PLOS ONE 17(5): e0268433, doi:10.1371/journal.pone.0268433, CC BY 4.0. Values copied unchanged.",
+ "_formula": "GGT_y = [(PS_y - PS_{y-1})/PS_{y-1} - (PO_y - PO_{y-1})/PO_{y-1}] x 100%  (Eq (i); template S3: N = C - I)",
+ "fields": [
+  {
+   "source": "S2 (journal.pone.0268433.s002.xlsx), sheet 'Microplastics'",
+   "name": "Microplastics",
+   "rows": [
+    {
+     "year": 1991,
+     "unitCount": 12,
+     "baselineCount": 613887,
+     "authorsGgtFraction": null
+    },
+    {
+     "year": 1992,
+     "unitCount": 17,
+     "baselineCount": 620988,
+     "authorsGgtFraction": 0.4050993912560455
+    },
+    {
+     "year": 1993,
+     "unitCount": 18,
+     "baselineCount": 630237,
+     "authorsGgtFraction": 0.04392952179809101
+    },
+    {
+     "year": 1994,
+     "unitCount": 8,
+     "baselineCount": 657456,
+     "authorsGgtFraction": -0.5987440703523701
+    },
+    {
+     "year": 1995,
+     "unitCount": 23,
+     "baselineCount": 690717,
+     "authorsGgtFraction": 1.824409542235526
+    },
+    {
+     "year": 1996,
+     "unitCount": 23,
+     "baselineCount": 772532,
+     "authorsGgtFraction": -0.11844937941298679
+    },
+    {
+     "year": 1997,
+     "unitCount": 13,
+     "baselineCount": 782706,
+     "authorsGgtFraction": -0.4479522896926853
+    },
+    {
+     "year": 1998,
+     "unitCount": 33,
+     "baselineCount": 799108,
+     "authorsGgtFraction": 1.5175060328182957
+    },
+    {
+     "year": 1999,
+     "unitCount": 15,
+     "baselineCount": 813476,
+     "authorsGgtFraction": -0.5634345932077903
+    },
+    {
+     "year": 2000,
+     "unitCount": 12,
+     "baselineCount": 831188,
+     "authorsGgtFraction": -0.2217732299416332
+    },
+    {
+     "year": 2001,
+     "unitCount": 22,
+     "baselineCount": 831250,
+     "authorsGgtFraction": 0.8332587413036121
+    },
+    {
+     "year": 2002,
+     "unitCount": 12,
+     "baselineCount": 850273,
+     "authorsGgtFraction": -0.4774302665755297
+    },
+    {
+     "year": 2003,
+     "unitCount": 15,
+     "baselineCount": 887909,
+     "authorsGgtFraction": 0.20573656931362044
+    },
+    {
+     "year": 2004,
+     "unitCount": 16,
+     "baselineCount": 928466,
+     "authorsGgtFraction": 0.020989688507868864
+    },
+    {
+     "year": 2005,
+     "unitCount": 20,
+     "baselineCount": 975801,
+     "authorsGgtFraction": 0.199018057742556
+    },
+    {
+     "year": 2006,
+     "unitCount": 22,
+     "baselineCount": 1028489,
+     "authorsGgtFraction": 0.04600538429454367
+    },
+    {
+     "year": 2007,
+     "unitCount": 22,
+     "baselineCount": 1080067,
+     "authorsGgtFraction": -0.05014929668669281
+    },
+    {
+     "year": 2008,
+     "unitCount": 18,
+     "baselineCount": 1157715,
+     "authorsGgtFraction": -0.25371001815796446
+    },
+    {
+     "year": 2009,
+     "unitCount": 25,
+     "baselineCount": 1208865,
+     "authorsGgtFraction": 0.3447070306595319
+    },
+    {
+     "year": 2010,
+     "unitCount": 31,
+     "baselineCount": 1250557,
+     "authorsGgtFraction": 0.20551145082370653
+    },
+    {
+     "year": 2011,
+     "unitCount": 27,
+     "baselineCount": 1329956,
+     "authorsGgtFraction": -0.19252316651571028
+    },
+    {
+     "year": 2012,
+     "unitCount": 41,
+     "baselineCount": 1398825,
+     "authorsGgtFraction": 0.46673560239196993
+    },
+    {
+     "year": 2013,
+     "unitCount": 61,
+     "baselineCount": 1475713,
+     "authorsGgtFraction": 0.4328387457591803
+    },
+    {
+     "year": 2014,
+     "unitCount": 98,
+     "baselineCount": 1518344,
+     "authorsGgtFraction": 0.5776689685307218
+    },
+    {
+     "year": 2015,
+     "unitCount": 154,
+     "baselineCount": 1575988,
+     "authorsGgtFraction": 0.5334635252993675
+    },
+    {
+     "year": 2016,
+     "unitCount": 224,
+     "baselineCount": 1636059,
+     "authorsGgtFraction": 0.4164290475677364
+    },
+    {
+     "year": 2017,
+     "unitCount": 362,
+     "baselineCount": 1695968,
+     "authorsGgtFraction": 0.5794535559885938
+    },
+    {
+     "year": 2018,
+     "unitCount": 617,
+     "baselineCount": 1776579,
+     "authorsGgtFraction": 0.6568889219373367
+    },
+    {
+     "year": 2019,
+     "unitCount": 1103,
+     "baselineCount": 1980020,
+     "authorsGgtFraction": 0.6731695539746863
+    },
+    {
+     "year": 2020,
+     "unitCount": 1368,
+     "baselineCount": 1489830,
+     "authorsGgtFraction": 0.4878220595095869
+    }
+   ]
+  },
+  {
+   "source": "S2 (journal.pone.0268433.s002.xlsx), sheet 'NAFLD'",
+   "name": "NAFLD",
+   "rows": [
+    {
+     "year": 1970,
+     "unitCount": 1,
+     "baselineCount": 256982,
+     "authorsGgtFraction": 0
+    },
+    {
+     "year": 1971,
+     "unitCount": 1,
+     "baselineCount": 272869,
+     "authorsGgtFraction": -0.06182145052960908
+    },
+    {
+     "year": 1972,
+     "unitCount": 1,
+     "baselineCount": 293951,
+     "authorsGgtFraction": -0.0772605169513576
+    },
+    {
+     "year": 1973,
+     "unitCount": 1,
+     "baselineCount": 297168,
+     "authorsGgtFraction": -0.010944000870893448
+    },
+    {
+     "year": 1974,
+     "unitCount": 2,
+     "baselineCount": 322421,
+     "authorsGgtFraction": 0.9150211328272223
+    },
+    {
+     "year": 1975,
+     "unitCount": 3,
+     "baselineCount": 336812,
+     "authorsGgtFraction": 0.4553658105396361
+    },
+    {
+     "year": 1976,
+     "unitCount": 1,
+     "baselineCount": 360168,
+     "authorsGgtFraction": -0.7360109893155034
+    },
+    {
+     "year": 1977,
+     "unitCount": 1,
+     "baselineCount": 412549,
+     "authorsGgtFraction": -0.1454349081539726
+    },
+    {
+     "year": 1978,
+     "unitCount": 1,
+     "baselineCount": 426967,
+     "authorsGgtFraction": -0.03494857580554068
+    },
+    {
+     "year": 1979,
+     "unitCount": 2,
+     "baselineCount": 434598,
+     "authorsGgtFraction": 0.9821274243676912
+    },
+    {
+     "year": 1980,
+     "unitCount": 4,
+     "baselineCount": 445592,
+     "authorsGgtFraction": 0.9747030589188169
+    },
+    {
+     "year": 1981,
+     "unitCount": 2,
+     "baselineCount": 465919,
+     "authorsGgtFraction": -0.5456179644158782
+    },
+    {
+     "year": 1982,
+     "unitCount": 2,
+     "baselineCount": 486266,
+     "authorsGgtFraction": -0.04367068095527334
+    },
+    {
+     "year": 1983,
+     "unitCount": 3,
+     "baselineCount": 512151,
+     "authorsGgtFraction": 0.4467678184368227
+    },
+    {
+     "year": 1984,
+     "unitCount": 3,
+     "baselineCount": 526251,
+     "authorsGgtFraction": -0.027530943022663238
+    },
+    {
+     "year": 1985,
+     "unitCount": 10,
+     "baselineCount": 533206,
+     "authorsGgtFraction": 2.3201172064281113
+    },
+    {
+     "year": 1986,
+     "unitCount": 3,
+     "baselineCount": 536097,
+     "authorsGgtFraction": -0.7054219194832766
+    },
+    {
+     "year": 1987,
+     "unitCount": 8,
+     "baselineCount": 551253,
+     "authorsGgtFraction": 1.6383956634713495
+    },
+    {
+     "year": 1988,
+     "unitCount": 7,
+     "baselineCount": 563194,
+     "authorsGgtFraction": -0.14666156011849368
+    },
+    {
+     "year": 1989,
+     "unitCount": 6,
+     "baselineCount": 580728,
+     "authorsGgtFraction": -0.173990287031264
+    },
+    {
+     "year": 1990,
+     "unitCount": 6,
+     "baselineCount": 596845,
+     "authorsGgtFraction": -0.027753096113843315
+    },
+    {
+     "year": 1991,
+     "unitCount": 45,
+     "baselineCount": 613887,
+     "authorsGgtFraction": 6.471446522966599
+    },
+    {
+     "year": 1992,
+     "unitCount": 42,
+     "baselineCount": 620988,
+     "authorsGgtFraction": -0.07823394207728784
+    },
+    {
+     "year": 1993,
+     "unitCount": 46,
+     "baselineCount": 630237,
+     "authorsGgtFraction": 0.08034408762442154
+    },
+    {
+     "year": 1994,
+     "unitCount": 55,
+     "baselineCount": 657456,
+     "authorsGgtFraction": 0.15246365911622894
+    },
+    {
+     "year": 1995,
+     "unitCount": 43,
+     "baselineCount": 690717,
+     "authorsGgtFraction": -0.26877227594629216
+    },
+    {
+     "year": 1996,
+     "unitCount": 54,
+     "baselineCount": 772532,
+     "authorsGgtFraction": 0.13736457407538533
+    },
+    {
+     "year": 1997,
+     "unitCount": 57,
+     "baselineCount": 782706,
+     "authorsGgtFraction": 0.04238587455852242
+    },
+    {
+     "year": 1998,
+     "unitCount": 52,
+     "baselineCount": 799108,
+     "authorsGgtFraction": -0.10867480388885684
+    },
+    {
+     "year": 1999,
+     "unitCount": 68,
+     "baselineCount": 813476,
+     "authorsGgtFraction": 0.28971225993906286
+    },
+    {
+     "year": 2000,
+     "unitCount": 81,
+     "baselineCount": 831188,
+     "authorsGgtFraction": 0.1694032406466021
+    },
+    {
+     "year": 2001,
+     "unitCount": 99,
+     "baselineCount": 831250,
+     "authorsGgtFraction": 0.2221476301925009
+    },
+    {
+     "year": 2002,
+     "unitCount": 137,
+     "baselineCount": 850273,
+     "authorsGgtFraction": 0.3609535718083086
+    },
+    {
+     "year": 2003,
+     "unitCount": 193,
+     "baselineCount": 887909,
+     "authorsGgtFraction": 0.3644956934012117
+    },
+    {
+     "year": 2004,
+     "unitCount": 262,
+     "baselineCount": 928466,
+     "authorsGgtFraction": 0.31183597520907785
+    },
+    {
+     "year": 2005,
+     "unitCount": 365,
+     "baselineCount": 975801,
+     "authorsGgtFraction": 0.3421478287349224
+    },
+    {
+     "year": 2006,
+     "unitCount": 395,
+     "baselineCount": 1028489,
+     "authorsGgtFraction": 0.02819716511646147
+    },
+    {
+     "year": 2007,
+     "unitCount": 529,
+     "baselineCount": 1080067,
+     "authorsGgtFraction": 0.2890912096424211
+    },
+    {
+     "year": 2008,
+     "unitCount": 620,
+     "baselineCount": 1157715,
+     "authorsGgtFraction": 0.10013084797023629
+    },
+    {
+     "year": 2009,
+     "unitCount": 763,
+     "baselineCount": 1208865,
+     "authorsGgtFraction": 0.18646330306096562
+    },
+    {
+     "year": 2010,
+     "unitCount": 855,
+     "baselineCount": 1250557,
+     "authorsGgtFraction": 0.08608812185909318
+    },
+    {
+     "year": 2011,
+     "unitCount": 994,
+     "baselineCount": 1329956,
+     "authorsGgtFraction": 0.09908219096401052
+    },
+    {
+     "year": 2012,
+     "unitCount": 1150,
+     "baselineCount": 1398825,
+     "authorsGgtFraction": 0.10515873377284783
+    },
+    {
+     "year": 2013,
+     "unitCount": 1367,
+     "baselineCount": 1475713,
+     "authorsGgtFraction": 0.13372951988431284
+    },
+    {
+     "year": 2014,
+     "unitCount": 1573,
+     "baselineCount": 1518344,
+     "authorsGgtFraction": 0.12180654393216328
+    },
+    {
+     "year": 2015,
+     "unitCount": 1789,
+     "baselineCount": 1575988,
+     "authorsGgtFraction": 0.09935218209711522
+    },
+    {
+     "year": 2016,
+     "unitCount": 2023,
+     "baselineCount": 1636059,
+     "authorsGgtFraction": 0.09268292225649095
+    },
+    {
+     "year": 2017,
+     "unitCount": 2209,
+     "baselineCount": 1695968,
+     "authorsGgtFraction": 0.05532478683387313
+    },
+    {
+     "year": 2018,
+     "unitCount": 2535,
+     "baselineCount": 1776579,
+     "authorsGgtFraction": 0.10004712206789249
+    },
+    {
+     "year": 2019,
+     "unitCount": 2945,
+     "baselineCount": 1980020,
+     "authorsGgtFraction": 0.047222920298343074
+    },
+    {
+     "year": 2020,
+     "unitCount": 2412,
+     "baselineCount": 1489830,
+     "authorsGgtFraction": 0.06658348651757715
+    }
+   ]
+  },
+  {
+   "source": "S2 (journal.pone.0268433.s002.xlsx), sheet 'Proteomics'",
+   "name": "Proteomics",
+   "rows": [
+    {
+     "year": 2000,
+     "unitCount": 420,
+     "baselineCount": 831188,
+     "authorsGgtFraction": null
+    },
+    {
+     "year": 2001,
+     "unitCount": 881,
+     "baselineCount": 831250,
+     "authorsGgtFraction": 1.0975444555893263
+    },
+    {
+     "year": 2002,
+     "unitCount": 1384,
+     "baselineCount": 850273,
+     "authorsGgtFraction": 0.5480572992071552
+    },
+    {
+     "year": 2003,
+     "unitCount": 1914,
+     "baselineCount": 887909,
+     "authorsGgtFraction": 0.33868454619223315
+    },
+    {
+     "year": 2004,
+     "unitCount": 2827,
+     "baselineCount": 928466,
+     "authorsGgtFraction": 0.43133451609407575
+    },
+    {
+     "year": 2005,
+     "unitCount": 3353,
+     "baselineCount": 975801,
+     "authorsGgtFraction": 0.135081022015637
+    },
+    {
+     "year": 2006,
+     "unitCount": 4136,
+     "baselineCount": 1028489,
+     "authorsGgtFraction": 0.1795276032029839
+    },
+    {
+     "year": 2007,
+     "unitCount": 4515,
+     "baselineCount": 1080067,
+     "authorsGgtFraction": 0.04148513271369404
+    },
+    {
+     "year": 2008,
+     "unitCount": 4874,
+     "baselineCount": 1157715,
+     "authorsGgtFraction": 0.007620898986906197
+    },
+    {
+     "year": 2009,
+     "unitCount": 5424,
+     "baselineCount": 1208865,
+     "authorsGgtFraction": 0.06866180200864057
+    },
+    {
+     "year": 2010,
+     "unitCount": 6115,
+     "baselineCount": 1250557,
+     "authorsGgtFraction": 0.09290820598594843
+    },
+    {
+     "year": 2011,
+     "unitCount": 6462,
+     "baselineCount": 1329956,
+     "authorsGgtFraction": -0.006745201174006905
+    },
+    {
+     "year": 2012,
+     "unitCount": 7240,
+     "baselineCount": 1398825,
+     "authorsGgtFraction": 0.06861324605234344
+    },
+    {
+     "year": 2013,
+     "unitCount": 7163,
+     "baselineCount": 1475713,
+     "authorsGgtFraction": -0.0656014914056223
+    },
+    {
+     "year": 2014,
+     "unitCount": 7270,
+     "baselineCount": 1518344,
+     "authorsGgtFraction": -0.013950533326499858
+    },
+    {
+     "year": 2015,
+     "unitCount": 7709,
+     "baselineCount": 1575988,
+     "authorsGgtFraction": 0.022420098299957017
+    },
+    {
+     "year": 2016,
+     "unitCount": 8092,
+     "baselineCount": 1636059,
+     "authorsGgtFraction": 0.011565782670744727
+    },
+    {
+     "year": 2017,
+     "unitCount": 8176,
+     "baselineCount": 1695968,
+     "authorsGgtFraction": -0.026237249745464486
+    },
+    {
+     "year": 2018,
+     "unitCount": 8378,
+     "baselineCount": 1776579,
+     "authorsGgtFraction": -0.022824509639789756
+    },
+    {
+     "year": 2019,
+     "unitCount": 9343,
+     "baselineCount": 1980020,
+     "authorsGgtFraction": 0.0006698412517370245
+    },
+    {
+     "year": 2020,
+     "unitCount": 7087,
+     "baselineCount": 1489830,
+     "authorsGgtFraction": 0.0061040085866129745
+    }
+   ]
+  },
+  {
+   "source": "S1 (journal.pone.0268433.s001.xlsx), sheet 'Sensor arrays'",
+   "name": "Sensor arrays",
+   "rows": [
+    {
+     "year": 1997,
+     "unitCount": 1087,
+     "baselineCount": 782706,
+     "authorsGgtFraction": null
+    },
+    {
+     "year": 1998,
+     "unitCount": 1239,
+     "baselineCount": 799108,
+     "authorsGgtFraction": 0.11887890098049225
+    },
+    {
+     "year": 1999,
+     "unitCount": 1223,
+     "baselineCount": 813476,
+     "authorsGgtFraction": -0.030893687785528968
+    },
+    {
+     "year": 2000,
+     "unitCount": 1478,
+     "baselineCount": 831188,
+     "authorsGgtFraction": 0.18673044953506346
+    },
+    {
+     "year": 2001,
+     "unitCount": 1604,
+     "baselineCount": 831250,
+     "authorsGgtFraction": 0.08517574626527191
+    },
+    {
+     "year": 2002,
+     "unitCount": 1604,
+     "baselineCount": 850273,
+     "authorsGgtFraction": -0.022884812030075186
+    },
+    {
+     "year": 2003,
+     "unitCount": 2140,
+     "baselineCount": 887909,
+     "authorsGgtFraction": 0.28990115784229875
+    },
+    {
+     "year": 2004,
+     "unitCount": 2387,
+     "baselineCount": 928466,
+     "authorsGgtFraction": 0.06974358258886575
+    },
+    {
+     "year": 2005,
+     "unitCount": 2683,
+     "baselineCount": 975801,
+     "authorsGgtFraction": 0.07302308497338969
+    },
+    {
+     "year": 2006,
+     "unitCount": 3117,
+     "baselineCount": 1028489,
+     "authorsGgtFraction": 0.10776460904295962
+    },
+    {
+     "year": 2007,
+     "unitCount": 3352,
+     "baselineCount": 1080067,
+     "authorsGgtFraction": 0.025243709408911935
+    },
+    {
+     "year": 2008,
+     "unitCount": 3667,
+     "baselineCount": 1157715,
+     "authorsGgtFraction": 0.02208191067692382
+    },
+    {
+     "year": 2009,
+     "unitCount": 3835,
+     "baselineCount": 1208865,
+     "authorsGgtFraction": 0.0016321586781968891
+    },
+    {
+     "year": 2010,
+     "unitCount": 4115,
+     "baselineCount": 1250557,
+     "authorsGgtFraction": 0.03852318485238971
+    },
+    {
+     "year": 2011,
+     "unitCount": 4441,
+     "baselineCount": 1329956,
+     "authorsGgtFraction": 0.015731448778453477
+    },
+    {
+     "year": 2012,
+     "unitCount": 4922,
+     "baselineCount": 1398825,
+     "authorsGgtFraction": 0.0565260233015082
+    },
+    {
+     "year": 2013,
+     "unitCount": 5056,
+     "baselineCount": 1475713,
+     "authorsGgtFraction": -0.027741426885293005
+    },
+    {
+     "year": 2014,
+     "unitCount": 5652,
+     "baselineCount": 1518344,
+     "authorsGgtFraction": 0.08899133831698451
+    },
+    {
+     "year": 2015,
+     "unitCount": 5954,
+     "baselineCount": 1575988,
+     "authorsGgtFraction": 0.015467367175820847
+    },
+    {
+     "year": 2016,
+     "unitCount": 6405,
+     "baselineCount": 1636059,
+     "authorsGgtFraction": 0.03763098973037729
+    },
+    {
+     "year": 2017,
+     "unitCount": 6598,
+     "baselineCount": 1695968,
+     "authorsGgtFraction": -0.006485163761601315
+    },
+    {
+     "year": 2018,
+     "unitCount": 6959,
+     "baselineCount": 1776579,
+     "authorsGgtFraction": 0.007182581995047108
+    },
+    {
+     "year": 2019,
+     "unitCount": 6780,
+     "baselineCount": 1980020,
+     "authorsGgtFraction": -0.14023486640557759
+    },
+    {
+     "year": 2020,
+     "unitCount": 4188,
+     "baselineCount": 1489830,
+     "authorsGgtFraction": -0.13473267857399848
+    }
+   ]
+  },
+  {
+   "source": "S1 (journal.pone.0268433.s001.xlsx), sheet 'Climate Change'",
+   "name": "Climate Change",
+   "rows": [
+    {
+     "year": 1997,
+     "unitCount": 1163,
+     "baselineCount": 782706,
+     "authorsGgtFraction": 0.18703671735178007
+    },
+    {
+     "year": 1998,
+     "unitCount": 1199,
+     "baselineCount": 799108,
+     "authorsGgtFraction": 0.00999892255968067
+    },
+    {
+     "year": 1999,
+     "unitCount": 1475,
+     "baselineCount": 813476,
+     "authorsGgtFraction": 0.21221177876885688
+    },
+    {
+     "year": 2000,
+     "unitCount": 1593,
+     "baselineCount": 831188,
+     "authorsGgtFraction": 0.05822677005836681
+    },
+    {
+     "year": 2001,
+     "unitCount": 1695,
+     "baselineCount": 831250,
+     "authorsGgtFraction": 0.06395553979702068
+    },
+    {
+     "year": 2002,
+     "unitCount": 1886,
+     "baselineCount": 850273,
+     "authorsGgtFraction": 0.08979955375163573
+    },
+    {
+     "year": 2003,
+     "unitCount": 2136,
+     "baselineCount": 887909,
+     "authorsGgtFraction": 0.08829224269644123
+    },
+    {
+     "year": 2004,
+     "unitCount": 2474,
+     "baselineCount": 928466,
+     "authorsGgtFraction": 0.11256272221573403
+    },
+    {
+     "year": 2005,
+     "unitCount": 2828,
+     "baselineCount": 975801,
+     "authorsGgtFraction": 0.09210617415322699
+    },
+    {
+     "year": 2006,
+     "unitCount": 3373,
+     "baselineCount": 1028489,
+     "authorsGgtFraction": 0.13872108443598638
+    },
+    {
+     "year": 2007,
+     "unitCount": 4328,
+     "baselineCount": 1080067,
+     "authorsGgtFraction": 0.2329814474579855
+    },
+    {
+     "year": 2008,
+     "unitCount": 5530,
+     "baselineCount": 1157715,
+     "authorsGgtFraction": 0.2058345961925649
+    },
+    {
+     "year": 2009,
+     "unitCount": 6595,
+     "baselineCount": 1208865,
+     "authorsGgtFraction": 0.1484040368881837
+    },
+    {
+     "year": 2010,
+     "unitCount": 8293,
+     "baselineCount": 1250557,
+     "authorsGgtFraction": 0.22297922944387333
+    },
+    {
+     "year": 2011,
+     "unitCount": 9760,
+     "baselineCount": 1329956,
+     "authorsGgtFraction": 0.11340526904790146
+    },
+    {
+     "year": 2012,
+     "unitCount": 11337,
+     "baselineCount": 1398825,
+     "authorsGgtFraction": 0.10979495272591046
+    },
+    {
+     "year": 2013,
+     "unitCount": 13279,
+     "baselineCount": 1475713,
+     "authorsGgtFraction": 0.11633138910053828
+    },
+    {
+     "year": 2014,
+     "unitCount": 14334,
+     "baselineCount": 1518344,
+     "authorsGgtFraction": 0.05056034515275165
+    },
+    {
+     "year": 2015,
+     "unitCount": 17177,
+     "baselineCount": 1575988,
+     "authorsGgtFraction": 0.16037456598186067
+    },
+    {
+     "year": 2016,
+     "unitCount": 19596,
+     "baselineCount": 1636059,
+     "authorsGgtFraction": 0.10271144421864913
+    },
+    {
+     "year": 2017,
+     "unitCount": 21491,
+     "baselineCount": 1695968,
+     "authorsGgtFraction": 0.060085536276116076
+    },
+    {
+     "year": 2018,
+     "unitCount": 24608,
+     "baselineCount": 1776579,
+     "authorsGgtFraction": 0.09750648997493996
+    },
+    {
+     "year": 2019,
+     "unitCount": 28074,
+     "baselineCount": 1980020,
+     "authorsGgtFraction": 0.026335724652469833
+    },
+    {
+     "year": 2020,
+     "unitCount": 54,
+     "baselineCount": 1489830,
+     "authorsGgtFraction": -0.750508305693476
+    }
+   ]
+  }
+ ],
+ "claims": [
+  {
+   "claim": "text: average GGT (2012–2018) = 51% ± 4%",
+   "sheet": "S2:Microplastics",
+   "convention": "years a..b",
+   "n": 7,
+   "mean": 52.335,
+   "meanMatches": false,
+   "sampleSD": 8.838,
+   "sampleSEM": 3.34,
+   "populationSEM": 3.093,
+   "spreadMatches": []
+  },
+  {
+   "claim": "text: average GGT (2012–2018) = 51% ± 4%",
+   "sheet": "S2:Microplastics",
+   "convention": "years a+1..b",
+   "n": 6,
+   "mean": 53.279,
+   "meanMatches": false,
+   "sampleSD": 9.287,
+   "sampleSEM": 3.791,
+   "populationSEM": 3.461,
+   "spreadMatches": [
+    "sampleSEM"
+   ]
+  },
+  {
+   "claim": "abstract: 51% ± 10% between 2012 and 2018",
+   "sheet": "S2:Microplastics",
+   "convention": "years a..b",
+   "n": 7,
+   "mean": 52.335,
+   "meanMatches": false,
+   "sampleSD": 8.838,
+   "sampleSEM": 3.34,
+   "populationSEM": 3.093,
+   "spreadMatches": []
+  },
+  {
+   "claim": "abstract: 51% ± 10% between 2012 and 2018",
+   "sheet": "S2:Microplastics",
+   "convention": "years a+1..b",
+   "n": 6,
+   "mean": 53.279,
+   "meanMatches": false,
+   "sampleSD": 9.287,
+   "sampleSEM": 3.791,
+   "populationSEM": 3.461,
+   "spreadMatches": []
+  },
+  {
+   "claim": "text: 2005–2011 (GGT = 4% ± 8%)",
+   "sheet": "S2:Microplastics",
+   "convention": "years a..b",
+   "n": 7,
+   "mean": 4.269,
+   "meanMatches": true,
+   "sampleSD": 22.135,
+   "sampleSEM": 8.366,
+   "populationSEM": 7.746,
+   "spreadMatches": [
+    "sampleSEM",
+    "populationSEM"
+   ]
+  },
+  {
+   "claim": "text: 2005–2011 (GGT = 4% ± 8%)",
+   "sheet": "S2:Microplastics",
+   "convention": "years a+1..b",
+   "n": 6,
+   "mean": 1.664,
+   "meanMatches": false,
+   "sampleSD": 23.042,
+   "sampleSEM": 9.407,
+   "populationSEM": 8.587,
+   "spreadMatches": []
+  },
+  {
+   "claim": "text: average GGT over 2008–2018 = 2.3% ± 1.7%",
+   "sheet": "S1:Sensor arrays",
+   "convention": "years a..b",
+   "n": 11,
+   "mean": 2.269,
+   "meanMatches": true,
+   "sampleSD": 3.193,
+   "sampleSEM": 0.963,
+   "populationSEM": 0.918,
+   "spreadMatches": []
+  },
+  {
+   "claim": "text: average GGT over 2008–2018 = 2.3% ± 1.7%",
+   "sheet": "S1:Sensor arrays",
+   "convention": "years a+1..b",
+   "n": 10,
+   "mean": 2.275,
+   "meanMatches": true,
+   "sampleSD": 3.365,
+   "sampleSEM": 1.064,
+   "populationSEM": 1.01,
+   "spreadMatches": []
+  },
+  {
+   "claim": "text: GGT over 2008–2018 (31% ± 6%)",
+   "sheet": "S1:Microbiome",
+   "convention": "years a..b",
+   "n": 11,
+   "mean": 31.589,
+   "meanMatches": false,
+   "sampleSD": 17.624,
+   "sampleSEM": 5.314,
+   "populationSEM": 5.066,
+   "spreadMatches": []
+  },
+  {
+   "claim": "text: GGT over 2008–2018 (31% ± 6%)",
+   "sheet": "S1:Microbiome",
+   "convention": "years a+1..b",
+   "n": 10,
+   "mean": 35.019,
+   "meanMatches": false,
+   "sampleSD": 14.189,
+   "sampleSEM": 4.487,
+   "populationSEM": 4.257,
+   "spreadMatches": []
+  },
+  {
+   "claim": "text: stable GGTs of 12% ± 2% over 2008–2018",
+   "sheet": "S1:Climate Change",
+   "convention": "years a..b",
+   "n": 11,
+   "mean": 12.618,
+   "meanMatches": false,
+   "sampleSD": 5.419,
+   "sampleSEM": 1.634,
+   "populationSEM": 1.558,
+   "spreadMatches": [
+    "sampleSEM",
+    "populationSEM"
+   ]
+  },
+  {
+   "claim": "text: stable GGTs of 12% ± 2% over 2008–2018",
+   "sheet": "S1:Climate Change",
+   "convention": "years a+1..b",
+   "n": 10,
+   "mean": 11.822,
+   "meanMatches": true,
+   "sampleSD": 4.987,
+   "sampleSEM": 1.577,
+   "populationSEM": 1.496,
+   "spreadMatches": [
+    "sampleSEM"
+   ]
+  },
+  {
+   "claim": "text: GGT (1996–2018) = 1.5% ± 2.2%",
+   "sheet": "S1:Celiac Disease",
+   "convention": "years a..b",
+   "n": 22,
+   "mean": 2.056,
+   "meanMatches": false,
+   "sampleSD": 9.901,
+   "sampleSEM": 2.111,
+   "populationSEM": 2.062,
+   "spreadMatches": []
+  },
+  {
+   "claim": "text: GGT (1996–2018) = 1.5% ± 2.2%",
+   "sheet": "S1:Celiac Disease",
+   "convention": "years a+1..b",
+   "n": 22,
+   "mean": 2.056,
+   "meanMatches": false,
+   "sampleSD": 9.901,
+   "sampleSEM": 2.111,
+   "populationSEM": 2.062,
+   "spreadMatches": []
+  },
+  {
+   "claim": "text: genomics (GGT = 0.8% ± 0.4%) 2008–2018",
+   "sheet": "S2:Genomics",
+   "convention": "years a..b",
+   "n": 11,
+   "mean": 0.836,
+   "meanMatches": true,
+   "sampleSD": 1.768,
+   "sampleSEM": 0.533,
+   "populationSEM": 0.508,
+   "spreadMatches": []
+  },
+  {
+   "claim": "text: genomics (GGT = 0.8% ± 0.4%) 2008–2018",
+   "sheet": "S2:Genomics",
+   "convention": "years a+1..b",
+   "n": 10,
+   "mean": 0.909,
+   "meanMatches": false,
+   "sampleSD": 1.846,
+   "sampleSEM": 0.584,
+   "populationSEM": 0.554,
+   "spreadMatches": []
+  },
+  {
+   "claim": "text: proteomics (GGT = 1.2% ± 1.4%)",
+   "sheet": "S2:Proteomics",
+   "convention": "years a..b",
+   "n": 11,
+   "mean": 1.24,
+   "meanMatches": true,
+   "sampleSD": 4.776,
+   "sampleSEM": 1.44,
+   "populationSEM": 1.373,
+   "spreadMatches": [
+    "sampleSEM",
+    "populationSEM"
+   ]
+  },
+  {
+   "claim": "text: proteomics (GGT = 1.2% ± 1.4%)",
+   "sheet": "S2:Proteomics",
+   "convention": "years a+1..b",
+   "n": 10,
+   "mean": 1.288,
+   "meanMatches": false,
+   "sampleSD": 5.032,
+   "sampleSEM": 1.591,
+   "populationSEM": 1.509,
+   "spreadMatches": []
+  },
+  {
+   "claim": "text: metabolomics (GGT = 16% ± 2%)",
+   "sheet": "S2:Metabolomics",
+   "convention": "years a..b",
+   "n": 11,
+   "mean": 16.849,
+   "meanMatches": false,
+   "sampleSD": 7.337,
+   "sampleSEM": 2.212,
+   "populationSEM": 2.109,
+   "spreadMatches": [
+    "sampleSEM",
+    "populationSEM"
+   ]
+  },
+  {
+   "claim": "text: metabolomics (GGT = 16% ± 2%)",
+   "sheet": "S2:Metabolomics",
+   "convention": "years a+1..b",
+   "n": 10,
+   "mean": 15.378,
+   "meanMatches": false,
+   "sampleSD": 5.778,
+   "sampleSEM": 1.827,
+   "populationSEM": 1.733,
+   "spreadMatches": [
+    "sampleSEM",
+    "populationSEM"
+   ]
+  },
+  {
+   "claim": "text: transcriptomics (GGT = 17% ± 2%)",
+   "sheet": "S2:Transcriptomics",
+   "convention": "years a..b",
+   "n": 11,
+   "mean": 16.018,
+   "meanMatches": false,
+   "sampleSD": 7.067,
+   "sampleSEM": 2.131,
+   "populationSEM": 2.032,
+   "spreadMatches": [
+    "sampleSEM",
+    "populationSEM"
+   ]
+  },
+  {
+   "claim": "text: transcriptomics (GGT = 17% ± 2%)",
+   "sheet": "S2:Transcriptomics",
+   "convention": "years a+1..b",
+   "n": 10,
+   "mean": 15.724,
+   "meanMatches": false,
+   "sampleSD": 7.378,
+   "sampleSEM": 2.333,
+   "populationSEM": 2.214,
+   "spreadMatches": [
+    "sampleSEM",
+    "populationSEM"
+   ]
+  },
+  {
+   "claim": "text: NAFLD 1999–2005 (GGT = 29% ±3%)",
+   "sheet": "S2:NAFLD",
+   "convention": "years a..b",
+   "n": 7,
+   "mean": 29.439,
+   "meanMatches": true,
+   "sampleSD": 7.393,
+   "sampleSEM": 2.794,
+   "populationSEM": 2.587,
+   "spreadMatches": [
+    "sampleSEM",
+    "populationSEM"
+   ]
+  },
+  {
+   "claim": "text: NAFLD 1999–2005 (GGT = 29% ±3%)",
+   "sheet": "S2:NAFLD",
+   "convention": "years a+1..b",
+   "n": 6,
+   "mean": 29.516,
+   "meanMatches": false,
+   "sampleSD": 8.095,
+   "sampleSEM": 3.305,
+   "populationSEM": 3.017,
+   "spreadMatches": [
+    "sampleSEM",
+    "populationSEM"
+   ]
+  }
+ ],
+ "handExamples": {
+  "edgeCases": {
+   "rows": [
+    {
+     "year": 2016,
+     "unitCount": 40,
+     "baselineCount": 1000
+    },
+    {
+     "year": 2017,
+     "unitCount": 50,
+     "baselineCount": 1040
+    },
+    {
+     "year": 2018,
+     "unitCount": 0,
+     "baselineCount": 1080
+    },
+    {
+     "year": 2019,
+     "unitCount": 30,
+     "baselineCount": 1100
+    },
+    {
+     "year": 2021,
+     "unitCount": 45,
+     "baselineCount": 1200
+    },
+    {
+     "year": 2022,
+     "unitCount": 60,
+     "baselineCount": 0
+    }
+   ],
+   "annual": [
+    {
+     "year": 2016,
+     "ggtPct": null,
+     "reason": "MISSING_PREVIOUS_YEAR"
+    },
+    {
+     "year": 2017,
+     "ggtPct": 21.0,
+     "reason": null
+    },
+    {
+     "year": 2018,
+     "ggtPct": -103.84615384615385,
+     "reason": null
+    },
+    {
+     "year": 2019,
+     "ggtPct": null,
+     "reason": "ZERO_PREVIOUS_UNIT"
+    },
+    {
+     "year": 2021,
+     "ggtPct": null,
+     "reason": "MISSING_PREVIOUS_YEAR"
+    },
+    {
+     "year": 2022,
+     "ggtPct": null,
+     "reason": "ZERO_BASELINE"
+    }
+   ]
+  },
+  "clean": {
+   "rows": [
+    {
+     "year": 2016,
+     "unitCount": 100,
+     "baselineCount": 10000
+    },
+    {
+     "year": 2017,
+     "unitCount": 120,
+     "baselineCount": 10400
+    },
+    {
+     "year": 2018,
+     "unitCount": 150,
+     "baselineCount": 10900
+    },
+    {
+     "year": 2019,
+     "unitCount": 160,
+     "baselineCount": 11300
+    },
+    {
+     "year": 2020,
+     "unitCount": 210,
+     "baselineCount": 11900
+    },
+    {
+     "year": 2021,
+     "unitCount": 260,
+     "baselineCount": 12300
+    }
+   ],
+   "annual": [
+    {
+     "year": 2016,
+     "ggtPct": null,
+     "reason": "MISSING_PREVIOUS_YEAR"
+    },
+    {
+     "year": 2017,
+     "ggtPct": 16.0,
+     "reason": null
+    },
+    {
+     "year": 2018,
+     "ggtPct": 20.192307692307693,
+     "reason": null
+    },
+    {
+     "year": 2019,
+     "ggtPct": 2.9969418960244645,
+     "reason": null
+    },
+    {
+     "year": 2020,
+     "ggtPct": 25.940265486725668,
+     "reason": null
+    },
+    {
+     "year": 2021,
+     "ggtPct": 20.448179271708682,
+     "reason": null
+    }
+   ],
+   "summary": {
+    "n": 5,
+    "meanPct": 17.1155388693533,
+    "sdPct": 8.646213127389993,
+    "semPct": 3.8667040601590146
+   }
+  }
+ },
+ "nelisClasses": [
+  {
+   "label": "consistent_decrease",
+   "range": "GGT < -10%"
+  },
+  {
+   "label": "no_consistent_growth",
+   "range": "-5% < GGT < 5%"
+  },
+  {
+   "label": "consistent_growth",
+   "range": "5% < GGT < 15%"
+  },
+  {
+   "label": "consistent_strong_growth",
+   "range": "15% < GGT < 40%"
+  },
+  {
+   "label": "consistent_intense_growth",
+   "range": "40% < GGT < 80%"
+  },
+  {
+   "label": "unsustainable_growth",
+   "range": "GGT > 80%"
+  },
+  {
+   "label": "unclassified",
+   "range": "-10% <= GGT <= -5%, or exactly on a bound (the paper's inequalities are strict)"
+  }
+ ]
+}

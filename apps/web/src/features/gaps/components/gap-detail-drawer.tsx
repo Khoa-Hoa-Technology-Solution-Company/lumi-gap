@@ -5,7 +5,6 @@ import {
   Zap, 
   ExternalLink,
   X,
-  TrendingUp,
   GitBranch,
   ArrowUpRight,
   MessageSquare,
@@ -228,11 +227,11 @@ export function GapDetailDrawer({ gap, isOpen, onClose, onDraftProposal, researc
                       </span>
                       <span className="text-[9px] text-slate-400 block mt-0.5">{t("papers")}</span>
                     </div>
-                    <div className="text-center p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800">
-                      <span className="text-[9px] text-slate-405 font-bold uppercase block">{t("Growth Trend")}</span>
-                      <span className="text-sm font-extrabold text-emerald-600 dark:text-emerald-400 flex items-center justify-center gap-0.5">
-                        <TrendingUp className="w-3.5 h-3.5" />
-                        {gap.parentTrend ? `${Math.round(gap.parentTrend.growthRatePct)}%` : "0%"}
+                    {/* Raw paper-count growth of a parent topic: context only, not a trend test (P1.3). */}
+                    <div className="text-center p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800" title={t("Raw paper counts, which also grow with the whole literature. Not a trend test.")}>
+                      <span className="text-[9px] text-slate-405 font-bold uppercase block">{t("Parent raw growth")}</span>
+                      <span className="text-sm font-extrabold text-slate-900 dark:text-white flex items-center justify-center gap-0.5">
+                        {gap.parentTrend ? `${gap.parentTrend.growthRatePct >= 0 ? "+" : ""}${Math.round(gap.parentTrend.growthRatePct)}%` : "—"}
                       </span>
                       <span className="text-[9px] text-slate-400 block mt-0.5">{gap.parentTrend?.cagrPct != null ? ` ${t("CAGR")}` : t("/year")}</span>
                     </div>

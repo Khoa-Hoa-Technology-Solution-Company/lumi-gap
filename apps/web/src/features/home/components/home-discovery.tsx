@@ -148,7 +148,7 @@ function LibraryInsights() {
     {query.isLoading ? <div role="status" className="home-insights-state" aria-label={t("Loading library trends")}><Skeleton className="h-6 w-48" /><Skeleton className="h-44 w-full" /></div>
       : query.isError || !data ? <div role="alert" className="home-insights-state"><p>{t("The library is taking a moment.")}</p><span>{t("You can still search while we reconnect to the latest literature.")}</span><button type="button" onClick={() => { void query.refetch(); }}>{t("Retry")}</button></div>
       : <PublicationChart data={data} metric={activeMetric} />}
-    <p className="home-library-note">{t("Based on indexed literature. The current year is incomplete.")}</p>
+    <p className="home-library-note">{t(data?.trends.dataSource === "openalex" ? "Based on indexed literature. The current year is incomplete." : "Papers in the LumiGap library (synced locally). These counts describe the library, not research trends. The current year is incomplete.")}</p>
   </div>;
 }
 

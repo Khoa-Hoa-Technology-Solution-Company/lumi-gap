@@ -125,7 +125,8 @@ export function GapEvidenceSummary({
               "{parentTrend.topic}"
             </code>{" "}
             {t("has")} <strong className="text-slate-900 dark:text-white">{formatNumber(parentPaperCount ?? 0)}</strong> {t("papers")} (
-            <strong className="text-emerald-600 dark:text-emerald-400">
+            {t("raw growth")}{" "}
+            <strong className="text-slate-900 dark:text-white" title={t("Raw paper counts, which also grow with the whole literature. Not a trend test.")}>
               {parentTrend.growthRatePct >= 0 ? "+" : ""}
               {Math.round(parentTrend.growthRatePct)}%
             </strong>

@@ -211,8 +211,10 @@ describe("getOpenAlexTopicDetail", () => {
     client.openAlexYearCounts.mockResolvedValue(new Map());
     const detail = (await getOpenAlexTopicDetail("Topic Modeling", { topicId: "T10028", yearTo: 2024 } as never))!;
     expect(detail.totalPapers).toBe(0);
-    expect(detail.yearlyBreakdown).toHaveLength(11);
-    expect(detail.yearlyBreakdown[0]!.year).toBe(2014);
+    // yearTo 2024 is complete, so the window is the 10 complete years 2015–2024
+    // (P0.4). The old rule yearTo − 10 gave 2014–2024: 11 complete years.
+    expect(detail.yearlyBreakdown).toHaveLength(10);
+    expect(detail.yearlyBreakdown[0]!.year).toBe(2015);
     expect(detail.facets.citationBands).toEqual([]);
     expect(client.openAlexGroupBy).not.toHaveBeenCalled();
   });

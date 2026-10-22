@@ -1,14 +1,19 @@
 import { AlertTriangle, Database, Info } from "lucide-react";
-import type { TrendDataSource, TrendScopeNotice } from "@trend/shared-types";
+import type { TrendDataProvenance, TrendDataSource, TrendScopeNotice } from "@trend/shared-types";
 import { useI18n } from "@/i18n";
 import { ignoredFilterLabel } from "../trend-source";
 
-/** Says where the numbers come from. Renders nothing when the backend does not
- *  report a source (older API responses). */
-export function DataSourceBadge({ source, className = "" }: { source?: TrendDataSource; className?: string }) {
-  const { t } = useI18n();
+/** Says where the numbers come from and, for OpenAlex, when they were fetched.
+ *  Renders nothing when the backend does not report a source (older API
+ *  responses). */
+export function DataSourceBadge({ source, provenance, className = "" }: { source?: TrendDataSource; provenance?: TrendDataProvenance; className?: string }) {
+  const { t, language } = useI18n();
   if (!source) return null;
   const openalex = source === "openalex";
+  const fetchedAt = openalex && provenance?.fetchedAt ? new Date(provenance.fetchedAt) : null;
+  const fetchedLabel = fetchedAt && !Number.isNaN(fetchedAt.getTime())
+    ? t("OpenAlex data fetched {{date}}", { date: fetchedAt.toLocaleString(language === "vi" ? "vi-VN" : "en-US", { dateStyle: "medium", timeStyle: "short" }) })
+    : null;
   const tone = openalex
     ? "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900/40 dark:bg-blue-950/30 dark:text-blue-300"
     : "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-300";
@@ -22,6 +27,7 @@ export function DataSourceBadge({ source, className = "" }: { source?: TrendData
     >
       {openalex ? <Database className="h-3 w-3 shrink-0" /> : <AlertTriangle className="h-3 w-3 shrink-0" />}
       {openalex ? t("Data: OpenAlex (whole database)") : t("Data: local corpus (OpenAlex unavailable)")}
+      {fetchedLabel ? <span className="font-medium opacity-80">· {fetchedLabel}</span> : null}
     </span>
   );
 }

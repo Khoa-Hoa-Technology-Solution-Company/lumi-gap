@@ -6,9 +6,12 @@ import type {
 } from "@trend/shared-types";
 import { Prisma } from "../../generated/prisma/client.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
-import { logger } from "../../infrastructure/logger.js";
-import { isOpenAlexBudgetAvailable, openAlexGroupBy, openAlexYearCounts, shortId } from "./trend.openalex-client.js";
-import { DEFAULT_WORK_TYPES_CLAUSE, withScope } from "./trend.openalex-scope.js";
+import type { TrendBaseline, TrendBaselineLevel } from "@trend/shared-types";
+import { baselineKey, localBaselineYearCounts, localClassifiedSplit, openAlexBaselineFilter, resolveBaseline, unclassifiedSharePct } from "./trend.baseline.js";
+import { openAlexGroupBy, openAlexYearCounts, shortId } from "./trend.openalex-client.js";
+import { computeGgt } from "./trend.ggt.js";
+import { buildShareRows } from "./trend.series.js";
+import { withScope, yearsClause } from "./trend.openalex-scope.js";
 import {
   SIGNIFICANCE_LEVEL,
   benjaminiHochberg,
@@ -16,8 +19,8 @@ import {
   mannKendall,
   senSlope,
 } from "./trend.statistics.js";
-import { mapWithConcurrency, range } from "./trend.utils.js";
-import { classifyTrend, shareTrendStatistics } from "./trend.verdict.js";
+import { mapWithConcurrency } from "./trend.utils.js";
+import { classifyTrend, rankKeywordShifts, shareTrendStatistics } from "./trend.verdict.js";
 
 /** Most frequent keywords taken from each period before merging. */
 const KEYWORD_CANDIDATES_PER_PERIOD = 50;
@@ -25,65 +28,84 @@ const TERMS_PER_DIRECTION = 10;
 const LOOKUP_CONCURRENCY = 4;
 
 type EvidencePaper = { id: string; publicationYear: number; citationNormalizedPercentile: unknown };
+/** Taxonomy ids/names of the topic, used to pick its baseline unit. */
+type BaselineTaxonomy = { domainId?: string | null; domainName?: string | null; fieldId?: string | null; fieldName?: string | null; subfieldId?: string | null; subfieldName?: string | null };
 
 /** Papers per year and keyword counts per period, from one data source. */
 interface EvidenceCounts {
   source: TrendDataSource;
-  baseline: TopicTrendStatistics["baseline"];
+  baseline: TrendBaseline;
   topic: Map<number, number>;
   population: Map<number, number>;
+  /** Global baseline only: works of the scope with / without a primary topic. */
+  classifiedSplit?: { classified: Map<number, number>; unclassified: Map<number, number> };
   topCited: Map<number, number>;
   /** Papers of each period carrying each candidate keyword. */
   keywords: (periodA: number[], periodB: number[]) => Promise<Array<{ term: string; papersA: number; papersB: number }>>;
 }
 
+/** OpenAlex filter clauses of the request's Data Scope (trend.openalex-scope.ts),
+ *  without any `primary_topic.id` clause and without publication_year. */
+export interface EvidenceScope {
+  filter: string;
+  nonTaxonomyFilter: string;
+}
+
 /**
- * Statistical evidence for one topic. Counts come from OpenAlex aggregate
- * queries (whole population) when the topic has an OpenAlex id and the daily
- * budget allows it, otherwise from the local corpus. Both run the same tests.
+ * Statistical evidence for one topic from OpenAlex aggregate counts, with the
+ * same Data Scope and the same filter strings as the topic chart and the
+ * overview list, so all three test the same share series. Errors are not
+ * caught: the caller falls back to the local corpus for the whole response, so
+ * a response never mixes the two sources.
  */
-export async function computeTopicStatistics(input: {
-  topic: string;
-  topicId?: string;
-  fieldId?: string;
-  fieldName?: string;
+export async function computeOpenAlexTopicStatistics(input: {
+  topicId: string;
+  taxonomy?: BaselineTaxonomy;
+  baseline?: TrendBaselineLevel;
+  scope: EvidenceScope;
+  yearFrom: number;
+  yearTo: number;
+  lastCompleteYear: number;
+}): Promise<TopicTrendStatistics> {
+  const counts = await openAlexCounts({ ...input, topicId: shortId(input.topicId).toUpperCase() });
+  return buildStatistics(counts, input.yearFrom, input.lastCompleteYear);
+}
+
+/** Statistical evidence for one topic from the local corpus (the verdict is
+ *  always insufficient: LOCAL_CORPUS). `papers` are the topic's papers in the
+ *  Data Scope; `scopeWhere` is the scope WITHOUT taxonomy clauses (alias `p`,
+ *  years included), the same predicate the local overview uses for N_t. */
+export async function computeLocalTopicStatistics(input: {
+  taxonomy?: BaselineTaxonomy;
+  baseline?: TrendBaselineLevel;
+  scopeWhere: Prisma.Sql;
   papers: EvidencePaper[];
   yearFrom: number;
   lastCompleteYear: number;
 }): Promise<TopicTrendStatistics> {
-  const openAlexTopic = input.topicId ? shortId(input.topicId) : undefined;
-  let counts: EvidenceCounts | null = null;
-  if (openAlexTopic && /^T\d+$/i.test(openAlexTopic) && isOpenAlexBudgetAvailable()) {
-    try {
-      counts = await openAlexCounts({ ...input, topicId: openAlexTopic.toUpperCase() });
-    } catch (err) {
-      logger.warn({ err, topic: input.topic }, "openalex trend counts unavailable; using local corpus");
-    }
-  }
-  counts ??= await localCounts(input);
-  return buildStatistics(counts, input.yearFrom, input.lastCompleteYear);
+  return buildStatistics(await localCounts(input), input.yearFrom, input.lastCompleteYear);
 }
 
 async function buildStatistics(counts: EvidenceCounts, yearFrom: number, lastCompleteYear: number): Promise<TopicTrendStatistics> {
   // Years without any paper of the population carry no information.
-  const yearsUsed = range(yearFrom, lastCompleteYear).filter((year) => (counts.population.get(year) ?? 0) > 0);
-  const shareSeries = yearsUsed.map((year) => {
-    const count = counts.topic.get(year) ?? 0;
-    const total = Math.max(counts.population.get(year) ?? 0, count);
-    return { year, count, total, sharePct: (count / total) * 100 };
-  });
+  const shareSeries = buildShareRows(counts.topic, counts.population, yearFrom, lastCompleteYear);
+  const yearsUsed = shareSeries.map((row) => row.year);
+  const baseline: TrendBaseline = counts.classifiedSplit
+    ? { ...counts.baseline, unclassifiedSharePct: unclassifiedSharePct(counts.classifiedSplit.classified, counts.classifiedSplit.unclassified, yearsUsed) }
+    : counts.baseline;
 
   return {
     source: counts.source,
     significanceLevel: SIGNIFICANCE_LEVEL,
     totalPapers: shareSeries.reduce((sum, row) => sum + row.count, 0),
     yearsUsed,
-    baseline: counts.baseline,
+    baseline,
     shareSeries,
     mannKendall: mannKendall(shareSeries.map((row) => row.sharePct)),
     senSlopePctPoints: senSlope(shareSeries.map((row) => ({ x: row.year, y: row.sharePct }))),
     // One topic, one hypothesis: the verdict uses the Mann–Kendall p-value.
     classification: classifyTrend({ ...shareTrendStatistics(shareSeries), source: counts.source }),
+    ggt: computeGgt(shareSeries),
     impact: yearsUsed.map((year) => {
       const papers = counts.topic.get(year) ?? 0;
       const topPapers = counts.topCited.get(year) ?? 0;
@@ -126,8 +148,8 @@ async function termShift(counts: EvidenceCounts, yearsUsed: number[]): Promise<T
     periodA: { yearFrom: periodA[0]!, yearTo: periodA.at(-1)!, papers: totalA },
     periodB: { yearFrom: periodB[0]!, yearTo: periodB.at(-1)!, papers: totalB },
     termsTested: shifts.length,
-    rising: shifts.filter((row) => row.z > 0).sort((a, b) => b.z - a.z).slice(0, TERMS_PER_DIRECTION),
-    falling: shifts.filter((row) => row.z < 0).sort((a, b) => a.z - b.z).slice(0, TERMS_PER_DIRECTION),
+    rising: rankKeywordShifts(shifts, "rising").slice(0, TERMS_PER_DIRECTION),
+    falling: rankKeywordShifts(shifts, "falling").slice(0, TERMS_PER_DIRECTION),
   };
 }
 
@@ -137,26 +159,31 @@ async function termShift(counts: EvidenceCounts, yearsUsed: number[]): Promise<T
 
 async function openAlexCounts(input: {
   topicId: string;
-  fieldId?: string;
-  fieldName?: string;
+  taxonomy?: BaselineTaxonomy;
+  baseline?: TrendBaselineLevel;
+  scope: EvidenceScope;
   yearFrom: number;
-  lastCompleteYear: number;
+  yearTo: number;
 }): Promise<EvidenceCounts> {
-  const years = `publication_year:${input.yearFrom}-${input.lastCompleteYear}`;
-  const topicFilter = `${DEFAULT_WORK_TYPES_CLAUSE},primary_topic.id:${input.topicId}`;
-  const fieldId = input.fieldId ? shortId(input.fieldId) : undefined;
-  const [topic, population, topCited] = await Promise.all([
-    openAlexYearCounts(`${topicFilter},${years}`),
-    openAlexYearCounts(fieldId ? `${DEFAULT_WORK_TYPES_CLAUSE},primary_topic.field.id:${fieldId},${years}` : `${DEFAULT_WORK_TYPES_CLAUSE},${years}`),
-    openAlexYearCounts(`${topicFilter},${years},citation_normalized_percentile.is_in_top_10_percent:true`),
+  // Built exactly like the overview (trend.openalex-overview.ts buildTopics)
+  // and the topic chart (trend.openalex-detail.ts topicBase), so the cached
+  // responses are shared and the numbers cannot differ.
+  const years = yearsClause(input.yearFrom, input.yearTo);
+  const topicFilter = withScope(input.scope.filter, `primary_topic.id:${input.topicId}`);
+  const baseline = resolveBaseline(input.baseline, input.taxonomy);
+  const global = baseline.level === "global";
+  const [topic, population, topCited, unclassified] = await Promise.all([
+    openAlexYearCounts(withScope(topicFilter, years)),
+    openAlexYearCounts(openAlexBaselineFilter(input.scope.nonTaxonomyFilter, baseline, years)),
+    openAlexYearCounts(withScope(topicFilter, years, "citation_normalized_percentile.is_in_top_10_percent:true")),
+    global ? openAlexYearCounts(withScope(input.scope.nonTaxonomyFilter, "primary_topic.id:null", years)) : Promise.resolve(null),
   ]);
   return {
     source: "openalex",
-    baseline: fieldId
-      ? { level: "field", label: input.fieldName ?? fieldId }
-      : { level: "corpus", label: "All OpenAlex works" },
+    baseline,
     topic,
     population,
+    ...(unclassified ? { classifiedSplit: { classified: population, unclassified } } : {}),
     topCited,
     keywords: (periodA, periodB) => openAlexKeywordCounts(topicFilter, periodA, periodB),
   };
@@ -212,9 +239,9 @@ async function keywordRanking(periodFilter: string) {
 // ---------------------------------------------------------------------------
 
 async function localCounts(input: {
-  topicId?: string;
-  fieldId?: string;
-  fieldName?: string;
+  taxonomy?: BaselineTaxonomy;
+  baseline?: TrendBaselineLevel;
+  scopeWhere: Prisma.Sql;
   papers: EvidencePaper[];
   yearFrom: number;
   lastCompleteYear: number;
@@ -227,36 +254,17 @@ async function localCounts(input: {
       topCited.set(paper.publicationYear, (topCited.get(paper.publicationYear) ?? 0) + 1);
     }
   }
+  const baseline = resolveBaseline(input.baseline, input.taxonomy);
+  const population = (await localBaselineYearCounts(input.scopeWhere, [baseline])).get(baselineKey(baseline)) ?? new Map<number, number>();
   return {
     source: "local",
-    baseline: input.fieldId
-      ? { level: "field", label: input.fieldName ?? input.fieldId }
-      : { level: "corpus", label: "All active papers" },
+    baseline,
     topic,
-    population: await localPopulation(input.fieldId, input.yearFrom, input.lastCompleteYear),
+    population,
+    ...(baseline.level === "global" ? { classifiedSplit: await localClassifiedSplit(input.scopeWhere) } : {}),
     topCited,
     keywords: (periodA, periodB) => localKeywordCounts(input.papers, periodA, periodB),
   };
-}
-
-async function localPopulation(fieldId: string | undefined, yearFrom: number, yearTo: number) {
-  const rows = fieldId
-    ? await getPrisma().$queryRaw<Array<{ year: number; count: number }>>(Prisma.sql`
-        SELECT p.publication_year AS year, COUNT(DISTINCT p.id)::int AS count
-        FROM papers p
-        JOIN paper_topics pt ON pt.paper_id = p.id
-        WHERE p.data_status = 'active'
-          AND p.publication_year BETWEEN ${yearFrom} AND ${yearTo}
-          AND pt.field_id = ${fieldId}
-        GROUP BY p.publication_year
-      `)
-    : await getPrisma().$queryRaw<Array<{ year: number; count: number }>>(Prisma.sql`
-        SELECT p.publication_year AS year, COUNT(*)::int AS count
-        FROM papers p
-        WHERE p.data_status = 'active' AND p.publication_year BETWEEN ${yearFrom} AND ${yearTo}
-        GROUP BY p.publication_year
-      `);
-  return new Map(rows.map((row) => [Number(row.year), Number(row.count)]));
 }
 
 async function localKeywordCounts(papers: EvidencePaper[], periodA: number[], periodB: number[]) {

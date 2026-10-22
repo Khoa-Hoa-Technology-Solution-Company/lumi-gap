@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { env } from "../../config/env.js";
 import { cache, hashKey } from "../../infrastructure/cache.js";
 import { logger } from "../../infrastructure/logger.js";
@@ -12,11 +13,31 @@ import { logger } from "../../infrastructure/logger.js";
 
 const BASE_URL = "https://api.openalex.org";
 const CACHE_TTL_SECONDS = 7 * 24 * 3600;
-const CACHE_VERSION = "v2";
+/**
+ * Bump when the query logic changes or OpenAlex announces a data change.
+ * v3 (2026-10-21): the cached value now carries `fetchedAt`, and OpenAlex
+ * replaced its topic classifier "in October 2026" with no exact date given
+ * (help.openalex.org/data/topics), so older entries may hold pre-change counts.
+ */
+export const OPENALEX_CACHE_VERSION = "v3";
+/** Value of the `corpus` parameter sent to /works (OpenAlex default: core). */
+export const OPENALEX_CORPUS = "core";
 const REQUEST_TIMEOUT_MS = 20_000;
 const MAX_RETRIES = 2;
-/** Leave this many daily credits to sync and ingest, which share the key. */
-const MIN_REMAINING_CREDITS = 1000;
+/**
+ * Share of the daily budget (`X-RateLimit-Limit`) left to sync and ingest,
+ * which use the same key. Project convention. A fraction, not a fixed number of
+ * credits: the keyless limit is 1 000 credits a day and a free key 10 000
+ * (OpenAlex Authentication/Pricing docs, read 2026-10-21), so a fixed reserve
+ * of 1 000 locked trends out after the first keyless request.
+ */
+export const BUDGET_RESERVE_FRACTION = 0.2;
+
+if (env.NODE_ENV === "production" && !env.OPENALEX_API_KEY) {
+  logger.warn(
+    "OPENALEX_API_KEY is not set: trends share the keyless OpenAlex budget (1 000 credits a day per IP) and cannot page with cursors; counts will often fall back to the local corpus",
+  );
+}
 
 export interface OpenAlexGroup {
   /** Short id: "2024", "T10028", "large-language-models". */
@@ -34,6 +55,15 @@ export class OpenAlexBudgetError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "OpenAlexBudgetError";
+  }
+}
+
+/** A non-retryable HTTP answer. The message stays "OpenAlex <status>" because
+ *  callers match on it (e.g. a 404 means "unknown topic"). */
+export class OpenAlexHttpError extends Error {
+  constructor(readonly status: number) {
+    super(`OpenAlex ${status}`);
+    this.name = "OpenAlexHttpError";
   }
 }
 
@@ -61,21 +91,55 @@ export async function openAlexGroupBy(filter: string, groupBy: string, cursor?: 
 /**
  * Cached GET on any OpenAlex endpoint, e.g. ("topics", { search: "nlp" }) or
  * ("topics/T10028", {}). Use only for small responses (entities, group_by).
+ * The cache keeps the time of the original request with the body, so a cached
+ * answer still reports when OpenAlex produced it (see withOpenAlexProvenance).
  */
 export async function openAlexGet<T>(path: string, params: Record<string, string>): Promise<T> {
-  const cacheKey = `trends:openalex:${CACHE_VERSION}:${hashKey({ path, params })}`;
-  const cached = await cache.get<T>(cacheKey);
-  if (cached) return cached;
+  const cleanPath = path.replace(/^\/+/, "");
+  // `corpus` exists on /works only; sent explicitly so the scope is visible and
+  // does not change if OpenAlex changes its default.
+  const query = cleanPath === "works" ? { ...params, corpus: OPENALEX_CORPUS } : params;
+  const cacheKey = `trends:openalex:${OPENALEX_CACHE_VERSION}:${hashKey({ path: cleanPath, params: query })}`;
+  const cached = await cache.get<CachedResponse<T>>(cacheKey);
+  if (cached) {
+    recordFetchedAt(cached.fetchedAt);
+    return cached.body;
+  }
   if (!isOpenAlexBudgetAvailable()) throw new OpenAlexBudgetError("OpenAlex daily budget reserved for sync");
 
-  const url = new URL(`${BASE_URL}/${path.replace(/^\/+/, "")}`);
-  for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
-  if (env.OPENALEX_MAILTO) url.searchParams.set("mailto", env.OPENALEX_MAILTO);
-  if (env.OPENALEX_API_KEY) url.searchParams.set("api_key", env.OPENALEX_API_KEY);
+  // No mailto: OpenAlex ignores it since the polite pool was replaced by API keys.
+  const url = new URL(`${BASE_URL}/${cleanPath}`);
+  for (const [key, value] of Object.entries(query)) url.searchParams.set(key, value);
 
-  const json = (await fetchJson(url)) as T;
-  await cache.set(cacheKey, json, CACHE_TTL_SECONDS);
-  return json;
+  const fetchedAt = new Date().toISOString();
+  const body = (await fetchJson(url)) as T;
+  await cache.set<CachedResponse<T>>(cacheKey, { fetchedAt, body }, CACHE_TTL_SECONDS);
+  recordFetchedAt(fetchedAt);
+  return body;
+}
+
+type CachedResponse<T> = { fetchedAt: string; body: T };
+
+// ---------------------------------------------------------------------------
+// Provenance: what a response can truthfully say about its OpenAlex data.
+// OpenAlex exposes no data or classifier version, so only observed facts are
+// reported: when the counts were fetched, the cache version and the corpus.
+// ---------------------------------------------------------------------------
+
+const provenanceStore = new AsyncLocalStorage<{ oldestFetchedAt: string | null }>();
+
+function recordFetchedAt(fetchedAt: string | undefined): void {
+  const collector = provenanceStore.getStore();
+  if (!collector || !fetchedAt) return;
+  if (collector.oldestFetchedAt === null || fetchedAt < collector.oldestFetchedAt) collector.oldestFetchedAt = fetchedAt;
+}
+
+/** Runs fn and returns the oldest fetch time of every OpenAlex answer it used
+ *  (null when it used none). */
+export async function withOpenAlexProvenance<T>(fn: () => Promise<T>): Promise<{ result: T; fetchedAt: string | null }> {
+  const collector = { oldestFetchedAt: null as string | null };
+  const result = await provenanceStore.run(collector, fn);
+  return { result, fetchedAt: collector.oldestFetchedAt };
 }
 
 /** Counts per publication year for one filter, as a year → count map. */
@@ -91,31 +155,75 @@ type GroupByResponse = {
 
 async function fetchJson(url: URL, attempt = 1): Promise<unknown> {
   try {
-    const res = await fetch(url, {
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-      headers: { Accept: "application/json" },
-    });
+    const headers: Record<string, string> = { Accept: "application/json" };
+    if (env.OPENALEX_API_KEY) headers.Authorization = `Bearer ${env.OPENALEX_API_KEY}`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS), headers });
     trackBudget(res.headers);
-    if ((res.status === 429 || res.status >= 500) && attempt <= MAX_RETRIES) {
-      await new Promise((resolve) => setTimeout(resolve, 1000 * attempt));
+    if (res.status === 429) {
+      // 429 means either "too many requests per second" or "daily budget spent".
+      // Retrying only helps the first; the second resets at midnight UTC.
+      if (isDailyBudgetSpent(res.headers)) {
+        lockUntilReset(res.headers, "openalex daily budget spent; trends fall back to cache/local data");
+        throw new OpenAlexBudgetError("OpenAlex daily budget spent");
+      }
+      if (attempt <= MAX_RETRIES) {
+        await wait(retryAfterMs(res.headers) ?? 1000 * attempt);
+        return fetchJson(url, attempt + 1);
+      }
+    }
+    if (res.status >= 500 && attempt <= MAX_RETRIES) {
+      await wait(1000 * attempt);
       return fetchJson(url, attempt + 1);
     }
-    if (!res.ok) throw new Error(`OpenAlex ${res.status}`);
+    if (!res.ok) throw new OpenAlexHttpError(res.status);
     return await res.json();
   } catch (err) {
-    if (err instanceof OpenAlexBudgetError || attempt > MAX_RETRIES) throw err;
-    await new Promise((resolve) => setTimeout(resolve, 1000 * attempt));
+    // Network errors and timeouts are retried; HTTP answers and budget stops are final.
+    if (err instanceof OpenAlexBudgetError || err instanceof OpenAlexHttpError || attempt > MAX_RETRIES) throw err;
+    await wait(1000 * attempt);
     return fetchJson(url, attempt + 1);
   }
 }
 
+function headerNumber(headers: Headers, name: string): number | null {
+  const raw = headers.get(name);
+  if (raw === null || raw.trim() === "") return null;
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : null;
+}
+
+/** Stop using OpenAlex for trends once less than BUDGET_RESERVE_FRACTION of
+ *  today's budget is left. `X-RateLimit-Remaining` and `-Limit` are credits. */
 function trackBudget(headers: Headers): void {
-  const remaining = Number(headers.get("x-ratelimit-remaining"));
-  const resetSeconds = Number(headers.get("x-ratelimit-reset"));
-  if (Number.isFinite(remaining) && remaining < MIN_REMAINING_CREDITS) {
-    budgetExhaustedUntil = Date.now() + (Number.isFinite(resetSeconds) && resetSeconds > 0 ? resetSeconds * 1000 : 3600_000);
-    logger.warn({ remaining, resetSeconds }, "openalex trend budget low; trends fall back to cache/local data");
+  const remaining = headerNumber(headers, "x-ratelimit-remaining");
+  const limit = headerNumber(headers, "x-ratelimit-limit");
+  if (remaining === null || limit === null || limit <= 0) return;
+  if (remaining / limit < BUDGET_RESERVE_FRACTION) {
+    lockUntilReset(headers, "openalex trend budget reserve reached; trends fall back to cache/local data");
   }
+}
+
+function isDailyBudgetSpent(headers: Headers): boolean {
+  const remaining = headerNumber(headers, "x-ratelimit-remaining");
+  return remaining !== null && remaining < 1;
+}
+
+function lockUntilReset(headers: Headers, message: string): void {
+  const resetSeconds = headerNumber(headers, "x-ratelimit-reset");
+  budgetExhaustedUntil = Date.now() + (resetSeconds !== null && resetSeconds > 0 ? resetSeconds * 1000 : 3600_000);
+  logger.warn(
+    { remaining: headers.get("x-ratelimit-remaining"), limit: headers.get("x-ratelimit-limit"), resetSeconds },
+    message,
+  );
+}
+
+function retryAfterMs(headers: Headers): number | null {
+  const seconds = headerNumber(headers, "retry-after");
+  return seconds !== null && seconds >= 0 ? Math.min(seconds, 10) * 1000 : null;
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /** "https://openalex.org/T10028" → "T10028"; "https://openalex.org/fields/17" → "17". */

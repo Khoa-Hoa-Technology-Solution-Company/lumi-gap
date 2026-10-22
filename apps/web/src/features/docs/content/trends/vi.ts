@@ -223,7 +223,7 @@ export const trendsVi: DocsModuleContent<TrendSectionId> = {
         {
           kind: "callout",
           tone: "limitation",
-          text: "USGS khuyến nghị dùng bảng p chính xác khi n ≤ 10 và chỉ dùng xấp xỉ chuẩn khi n > 10 [@usgs-helsel-2020]. LumiGap dùng xấp xỉ chuẩn có hiệu chỉnh liên tục cho mọi n (cửa sổ mặc định 10 năm), nên p là **xấp xỉ**. Ví dụ với n = 5, S = 10: p chính xác = 2/120 ≈ 0,017, xấp xỉ chuẩn ≈ 0,027. Khi có giá trị trùng, chỉ có phiên bản xấp xỉ.",
+          text: "USGS khuyến nghị dùng p chính xác khi n ≤ 10 và chỉ dùng xấp xỉ chuẩn khi n > 10 [@usgs-helsel-2020]. LumiGap làm đúng như vậy: với n ≤ 10 năm và không có năm trùng giá trị, p là **chính xác**, tính từ phân phối chính xác của S (số cách sắp xếp n năm cho mỗi giá trị S, chia cho n!). Khi n > 10 hoặc có hai năm cùng thị phần, p dùng xấp xỉ chuẩn có hiệu chỉnh liên tục. Ví dụ với n = 5, S = 10: p chính xác = 2/120 ≈ 0,017, xấp xỉ chuẩn ≈ 0,027.",
         },
         {
           kind: "callout",
@@ -537,8 +537,8 @@ export const trendsVi: DocsModuleContent<TrendSectionId> = {
         {
           kind: "callout",
           tone: "limitation",
-          heading: "6. p là xấp xỉ với chuỗi ngắn",
-          text: `Với n ≤ 10, USGS khuyến nghị p chính xác; LumiGap dùng xấp xỉ chuẩn. Xem ${link("Mann–Kendall", S.trendMannKendall, "min-years")}.`,
+          heading: "6. p chỉ là xấp xỉ với chuỗi dài hoặc có năm trùng",
+          text: `Với n ≤ 10 năm không có năm trùng, p là chính xác như USGS khuyến nghị. Khi n > 10 hoặc có năm trùng giá trị, p dùng xấp xỉ chuẩn. Xem ${link("Mann–Kendall", S.trendMannKendall, "min-years")}.`,
         },
       ],
     },

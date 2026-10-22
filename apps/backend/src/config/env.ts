@@ -214,7 +214,7 @@ const EnvSchema = z.object({
   // Legacy scarcity/trend thresholds are retained for old rows and trend context. They do not replace O/E + Poisson.
   GAP_SCARCE_ABS: z.coerce.number().int().nonnegative().default(5),
   GAP_SCARCE_PCT: z.coerce.number().min(0).max(1).default(0.02),
-  // A parent topic is rising when its CAGR (last 3 complete years) is above this %; with no CAGR (zero base) a positive slope counts.
+  // Deprecated (P1.3): no longer read. Raw CAGR no longer decides whether a parent topic is rising; kept so existing .env files stay valid.
   GAP_PARENT_RISING_MIN: z.coerce.number().default(10),
   GAP_GLOBAL_EVIDENCE_ENABLED: z.enum(["true", "false"]).default("true").transform((value) => value === "true"), // count probes in OpenAlex too (best-effort)
   GAP_GLOBAL_EVIDENCE_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120000).default(15000),

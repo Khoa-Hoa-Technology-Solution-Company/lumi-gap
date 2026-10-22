@@ -7,6 +7,7 @@ import type {
   TrendVerdict,
   TrendingTopic,
 } from "@trend/shared-types";
+import { KEYWORD_SHIFT_MIN_PAPERS } from "@trend/shared-types";
 import { SIGNIFICANCE_LEVEL, mannKendall, senSlope, senSlopeCi95 } from "./trend.statistics.js";
 
 /**
@@ -65,7 +66,7 @@ export function shareTrendStatistics(series: ShareYear[]): ShareTrendStatistics 
   return {
     yearsUsed: sorted.length,
     totalPapers: sorted.reduce((sum, row) => sum + row.count, 0),
-    mannKendall: mk ? { s: mk.s, z: mk.z, tau: mk.tau, pValue: mk.pValue } : null,
+    mannKendall: mk ? { s: mk.s, z: mk.z, tau: mk.tau, pValue: mk.pValue, pValueMethod: mk.pValueMethod } : null,
     senSlope: slope,
     senSlopeCi95: senSlopeCi95(points),
     relativeChangePct: slope !== null && typicalShare !== null && typicalShare > 0 ? (slope / typicalShare) * 100 : null,
@@ -87,13 +88,14 @@ export function shareTrendStatistics(series: ShareYear[]): ShareTrendStatistics 
  * first, so the UI can say all of them; the verdict itself is the same.
  * The numbers are always filled, even when the verdict is insufficient.
  */
-export function classifyTrend(input: ShareTrendStatistics & { source: TrendDataSource; qValue?: number | null }): TrendClassification {
+export function classifyTrend(input: ShareTrendStatistics & { source: TrendDataSource; qValue?: number | null; qFamilySize?: number | null }): TrendClassification {
   const qValue = input.qValue ?? null;
   const base = {
     yearsUsed: input.yearsUsed,
     totalPapers: input.totalPapers,
     mannKendall: input.mannKendall,
     qValue,
+    qFamilySize: qValue === null ? null : input.qFamilySize ?? null,
     senSlope: input.senSlope,
     senSlopeCi95: input.senSlopeCi95,
     relativeChangePct: input.relativeChangePct,
@@ -162,6 +164,25 @@ export function buildRecommendedComparisons(topics: TrendingTopic[]): Recommende
       })),
     },
   ];
+}
+
+type RankableShift = { papersA: number; papersB: number; logOddsRatio: number; z: number; qValue: number };
+
+/**
+ * Orders keyword shifts by effect size (log odds ratio), not by z. z grows with
+ * √N, so with OpenAlex-sized periods ranking by z put the most frequent
+ * keywords first whatever their change. Supported shifts (q < α and at least
+ * KEYWORD_SHIFT_MIN_PAPERS papers in the period the keyword grew into) come
+ * first; the others follow, also by effect size. "rising" keeps z > 0 and sorts
+ * log OR descending; "falling" keeps z < 0 and sorts it ascending.
+ */
+export function rankKeywordShifts<T extends RankableShift>(shifts: T[], direction: "rising" | "falling"): T[] {
+  const rising = direction === "rising";
+  const supported = (shift: T) =>
+    shift.qValue < SIGNIFICANCE_LEVEL && (rising ? shift.papersB : shift.papersA) >= KEYWORD_SHIFT_MIN_PAPERS;
+  return shifts
+    .filter((shift) => (rising ? shift.z > 0 : shift.z < 0))
+    .sort((a, b) => Number(supported(b)) - Number(supported(a)) || (rising ? b.logOddsRatio - a.logOddsRatio : a.logOddsRatio - b.logOddsRatio));
 }
 
 /** Comparator on a nullable number; nulls go after every number either way. */

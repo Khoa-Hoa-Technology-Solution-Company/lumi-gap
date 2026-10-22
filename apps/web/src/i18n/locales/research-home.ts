@@ -161,6 +161,7 @@ export const researchHomeVi = {
   "Citations": "Trích dẫn",
   "Loading library trends": "Đang tải xu hướng thư viện",
   "Based on indexed literature. The current year is incomplete.": "Dựa trên tài liệu đã lập chỉ mục. Năm hiện tại chưa có dữ liệu đầy đủ.",
+  "Papers in the LumiGap library (synced locally). These counts describe the library, not research trends. The current year is incomplete.": "Số bài trong thư viện LumiGap (đã đồng bộ về hệ thống). Các con số này mô tả thư viện, không phải xu hướng nghiên cứu. Năm hiện tại chưa đầy đủ.",
   "papers published in {{year}}": "bài báo xuất bản năm {{year}}",
   "citations to papers published in {{year}}": "trích dẫn đến bài báo xuất bản năm {{year}}",
   "Citations by publication year": "Trích dẫn theo năm xuất bản",

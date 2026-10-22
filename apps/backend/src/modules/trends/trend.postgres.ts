@@ -1,3 +1,4 @@
+import { DEFAULT_TREND_BASELINE, resolveTrendWindow } from "@trend/shared-types";
 import type {
   RisingKeyword,
   TrendFacetBucket,
@@ -17,12 +18,17 @@ import {
   fillMissingYearsFromCounts,
 } from "./trend.intelligence.js";
 import { computeMetrics, fillMissingYears, truncateToCompleteYears, yoyGrowthPct } from "./trend.formulas.js";
-import { benjaminiHochberg } from "./trend.statistics.js";
-import { buildRecommendedComparisons, classifyTrend, compareByTotal, compareByTrend, shareTrendStatistics } from "./trend.verdict.js";
+import { benjaminiHochberg, logOddsRatio2x2 } from "./trend.statistics.js";
+import { range } from "./trend.utils.js";
+import { baselineKey, localBaselineYearCounts, resolveBaseline } from "./trend.baseline.js";
+import type { TrendScopeFilters } from "./trend.openalex-scope.js";
+import { computeGgt } from "./trend.ggt.js";
+import { buildShareRows } from "./trend.series.js";
+import { buildRecommendedComparisons, classifyTrend, compareByTotal, compareByTrend, rankKeywordShifts, shareTrendStatistics } from "./trend.verdict.js";
 import type { TrendsOverviewQuery } from "./dto/trends.schema.js";
 
-const DEFAULT_WINDOW_YEARS = 5;
-const MIN_RISING_PREV_BASE = 2;
+/** Keywords listed, as in the OpenAlex overview. */
+const RISING_KEYWORDS_LIMIT = 10;
 
 type CountRow = { id: string | null; name: string | null; count: number };
 type YearRow = { year: number; count: number; totalCitations: number };
@@ -32,9 +38,7 @@ type KeywordYearRow = { keyword: string; year: number; count: number };
 export async function getPostgresTrendsOverview(query: TrendsOverviewQuery): Promise<TrendsOverview> {
   const prisma = getPrisma();
   const now = new Date();
-  const yearTo = query.yearTo ?? now.getFullYear();
-  const yearFrom = query.yearFrom ?? yearTo - DEFAULT_WINDOW_YEARS;
-  const lastCompleteYear = Math.min(yearTo, now.getFullYear() - 1);
+  const { yearFrom, yearTo, lastCompleteYear } = resolveTrendWindow(query, now.getFullYear());
   const baseWhere = buildPaperWhere(query, yearFrom, yearTo);
   const topicWhere = buildTopicWhere(query, Prisma.sql`pt`);
 
@@ -78,7 +82,9 @@ export async function getPostgresTrendsOverview(query: TrendsOverviewQuery): Pro
         COUNT(DISTINCT p.id)::int AS count
       FROM papers p
       JOIN paper_topics pt ON pt.paper_id = p.id
-      WHERE ${baseWhere} AND ${topicWhere}
+      -- One topic per paper (the primary one), as in OpenAlex primary_topic:
+      -- counting every assigned topic would put a paper in up to 3+ topics.
+      WHERE ${baseWhere} AND ${topicWhere} AND pt.is_primary = TRUE
       GROUP BY
         pt.topic_name, pt.openalex_topic_id, pt.domain_id, pt.domain_name,
         pt.field_id, pt.field_name, pt.subfield_id, pt.subfield_name,
@@ -117,8 +123,13 @@ export async function getPostgresTrendsOverview(query: TrendsOverviewQuery): Pro
     yearFrom,
     yearTo,
   );
-  const topics = buildTopics(topicRows, yearlyRows, yearFrom, yearTo, lastCompleteYear, query.minPapers, query.sortBy);
-  const risingKeywords = buildRisingKeywords(keywordRows, yearFrom, yearTo, lastCompleteYear);
+  // N_t per topic: the same reference population as the local topic page
+  // (trend.baseline.ts), not the whole filtered corpus.
+  const groupedTopics = groupTopicRows(topicRows);
+  const baselines = new Map([...groupedTopics].map(([topic, group]) => [topic, resolveBaseline(query.baseline, group.taxonomy)]));
+  const populations = await localBaselineYearCounts(buildPaperWhere(query, yearFrom, yearTo, { taxonomy: false }), [...baselines.values()]);
+  const topics = buildTopics(groupedTopics, (topic) => populations.get(baselineKey(baselines.get(topic)!)) ?? new Map(), yearFrom, yearTo, lastCompleteYear, query.minPapers, query.sortBy);
+  const risingKeywords = buildRisingKeywords(keywordRows, yearlyRows, yearFrom, yearTo, lastCompleteYear);
   const totalPapersInWindow = yearlyRows.reduce((sum, row) => sum + Number(row.count), 0);
 
   const facets: TrendFacets = {
@@ -135,6 +146,7 @@ export async function getPostgresTrendsOverview(query: TrendsOverviewQuery): Pro
   };
 
   return {
+    baselineLevel: query.baseline ?? DEFAULT_TREND_BASELINE,
     yearFrom,
     yearTo,
     lastCompleteYear,
@@ -151,7 +163,13 @@ export async function getPostgresTrendsOverview(query: TrendsOverviewQuery): Pro
   };
 }
 
-function buildPaperWhere(query: TrendsOverviewQuery, yearFrom: number, yearTo: number): Prisma.Sql {
+/**
+ * Paper predicate (alias `p`) of a Data Scope and year range. With
+ * `taxonomy: false` the domain/field/subfield/topic clauses are left out: that
+ * is the scope of the reference population N_t (trend.baseline.ts), shared by
+ * the local overview and the local topic page.
+ */
+export function buildPaperWhere(query: TrendScopeFilters, yearFrom: number, yearTo: number, options: { taxonomy?: boolean } = {}): Prisma.Sql {
   const conditions: Prisma.Sql[] = [
     Prisma.sql`p.data_status = 'active'`,
     Prisma.sql`p.publication_year >= ${yearFrom}`,
@@ -168,7 +186,7 @@ function buildPaperWhere(query: TrendsOverviewQuery, yearFrom: number, yearTo: n
     conditions.push(Prisma.sql`(${Prisma.join(bands, " OR ")})`);
   }
 
-  const topicConditions = buildTopicConditions(query, Prisma.sql`scope_pt`);
+  const topicConditions = options.taxonomy === false ? [] : buildTopicConditions(query, Prisma.sql`scope_pt`);
   if (topicConditions.length > 0) {
     conditions.push(Prisma.sql`
       EXISTS (
@@ -180,12 +198,12 @@ function buildPaperWhere(query: TrendsOverviewQuery, yearFrom: number, yearTo: n
   return Prisma.join(conditions, " AND ");
 }
 
-function buildTopicWhere(query: TrendsOverviewQuery, alias: Prisma.Sql): Prisma.Sql {
+function buildTopicWhere(query: TrendScopeFilters, alias: Prisma.Sql): Prisma.Sql {
   const conditions = buildTopicConditions(query, alias);
   return conditions.length > 0 ? Prisma.join(conditions, " AND ") : Prisma.sql`TRUE`;
 }
 
-function buildTopicConditions(query: TrendsOverviewQuery, alias: Prisma.Sql): Prisma.Sql[] {
+function buildTopicConditions(query: TrendScopeFilters, alias: Prisma.Sql): Prisma.Sql[] {
   const conditions: Prisma.Sql[] = [];
   addInCondition(conditions, Prisma.sql`${alias}.domain_name`, query.domains);
   addInCondition(conditions, Prisma.sql`${alias}.field_name`, query.fields);
@@ -338,28 +356,33 @@ async function taxonomyCoverage(where: Prisma.Sql): Promise<TrendTaxonomyCoverag
   };
 }
 
+type TopicGroup = { taxonomy?: TrendTopicTaxonomy; years: Map<number, number> };
+
+function groupTopicRows(rows: TopicYearRow[]): Map<string, TopicGroup> {
+  const groups = new Map<string, TopicGroup>();
+  for (const row of rows) {
+    const group = groups.get(row.topic) ?? { taxonomy: compactTaxonomy(row), years: new Map<number, number>() };
+    group.years.set(row.year, (group.years.get(row.year) ?? 0) + Number(row.count));
+    groups.set(row.topic, group);
+  }
+  return groups;
+}
+
 /**
- * Topics of the local corpus with their share trend. N_t is the filtered
- * corpus of each year (what has been synced, not the field), so the verdict
- * is always insufficient (LOCAL_CORPUS); the numbers are still filled and
- * BH-adjusted across the tested topics.
+ * Topics of the local corpus with their share of the reference population
+ * (same N_t as the local topic page). The local corpus is what has been synced,
+ * not the literature, so the verdict is always insufficient (LOCAL_CORPUS); the
+ * numbers are still filled and BH-adjusted across the tested topics.
  */
 function buildTopics(
-  rows: TopicYearRow[],
-  yearlyRows: YearRow[],
+  groups: Map<string, TopicGroup>,
+  populationOf: (topic: string) => Map<number, number>,
   yearFrom: number,
   yearTo: number,
   lastCompleteYear: number,
   minPapers: number,
   sortBy: TrendsOverviewQuery["sortBy"],
 ): TrendingTopic[] {
-  const groups = new Map<string, { taxonomy?: TrendTopicTaxonomy; years: Map<number, number> }>();
-  for (const row of rows) {
-    const group = groups.get(row.topic) ?? { taxonomy: compactTaxonomy(row), years: new Map<number, number>() };
-    group.years.set(row.year, (group.years.get(row.year) ?? 0) + Number(row.count));
-    groups.set(row.topic, group);
-  }
-  const totals = new Map(yearlyRows.map((row) => [Number(row.year), Number(row.count)]));
   const built = [];
   for (const [topic, group] of groups) {
     const yearlyBreakdown = fillMissingYears(
@@ -369,9 +392,7 @@ function buildTopics(
     );
     const totalPapers = yearlyBreakdown.reduce((sum, row) => sum + row.count, 0);
     if (totalPapers < minPapers) continue;
-    const shareSeries = truncateToCompleteYears(yearlyBreakdown, lastCompleteYear)
-      .filter((row) => (totals.get(row.year) ?? 0) > 0)
-      .map((row) => ({ year: row.year, count: row.count, sharePct: (row.count / Math.max(totals.get(row.year) ?? 0, row.count)) * 100 }));
+    const shareSeries = buildShareRows(group.years, populationOf(topic), yearFrom, lastCompleteYear);
     built.push({
       topic: {
         topic,
@@ -381,50 +402,92 @@ function buildTopics(
         ...computeMetrics(yearlyBreakdown, lastCompleteYear),
       },
       stats: shareTrendStatistics(shareSeries),
+      ggt: computeGgt(shareSeries),
     });
   }
-  const qValues = benjaminiHochberg(built.map((row) => row.stats.mannKendall?.pValue ?? null));
+  const pValues = built.map((row) => row.stats.mannKendall?.pValue ?? null);
+  const qValues = benjaminiHochberg(pValues);
+  const qFamilySize = pValues.filter((p) => p !== null).length;
   const topics: TrendingTopic[] = built.map((row, index) => ({
     ...row.topic,
-    classification: classifyTrend({ ...row.stats, source: "local", qValue: qValues[index] ?? null }),
+    classification: classifyTrend({ ...row.stats, source: "local", qValue: qValues[index] ?? null, qFamilySize }),
+    ggt: row.ggt,
   }));
   topics.sort(sortBy === "total" ? compareByTotal : compareByTrend);
   return topics;
 }
 
+/**
+ * Same test as the OpenAlex overview (trend.openalex-overview.ts
+ * buildRisingKeywords): the complete years with papers are split into an
+ * earlier half A and a later half B, every keyword gets the 2×2 log odds ratio
+ * against the papers of each period, Benjamini–Hochberg across the keywords,
+ * ordered by rankKeywordShifts. Raw YoY growth is kept as a descriptive number
+ * only; it no longer selects or orders keywords.
+ */
 function buildRisingKeywords(
   rows: KeywordYearRow[],
+  yearlyRows: YearRow[],
   yearFrom: number,
   yearTo: number,
   lastCompleteYear: number,
 ): RisingKeyword[] {
+  const totals = new Map(yearlyRows.map((row) => [Number(row.year), Number(row.count)]));
+  const usable = range(yearFrom, lastCompleteYear).filter((year) => (totals.get(year) ?? 0) > 0);
+  if (usable.length < 2) return [];
+  const half = Math.floor(usable.length / 2);
+  const periodA = usable.slice(0, half);
+  const periodB = usable.slice(half);
+  const sumYears = (counts: Map<number, number>, years: number[]) => years.reduce((sum, year) => sum + (counts.get(year) ?? 0), 0);
+  const totalA = sumYears(totals, periodA);
+  const totalB = sumYears(totals, periodB);
+
   const groups = new Map<string, Map<number, number>>();
   for (const row of rows) {
     const years = groups.get(row.keyword) ?? new Map<number, number>();
-    years.set(row.year, Number(row.count));
+    years.set(Number(row.year), Number(row.count));
     groups.set(row.keyword, years);
   }
-  return [...groups]
-    .map(([keyword, years]) => {
-      const yearlyBreakdown = fillMissingYears(
-        [...years].map(([year, count]) => ({ year, count })),
-        yearFrom,
-        yearTo,
-      );
-      const complete = truncateToCompleteYears(yearlyBreakdown, lastCompleteYear);
-      const prevBase = complete.length >= 2 ? complete.at(-2)?.count ?? 0 : 0;
+  const tested = [...groups].flatMap(([keyword, years]) => {
+    const papersA = sumYears(years, periodA);
+    const papersB = sumYears(years, periodB);
+    const result = logOddsRatio2x2({ withB: papersB, totalB, withA: papersA, totalA });
+    return result ? [{ keyword, years, papersA, papersB, result }] : [];
+  });
+  const qValues = benjaminiHochberg(tested.map((item) => item.result.pValue));
+  const shifts = tested.map((item, index) => ({
+    ...item,
+    term: item.keyword,
+    logOddsRatio: item.result.logOddsRatio,
+    z: item.result.z,
+    pValue: item.result.pValue,
+    qValue: qValues[index] ?? 1,
+  }));
+  const periods = {
+    periodA: { yearFrom: periodA[0]!, yearTo: periodA.at(-1)! },
+    periodB: { yearFrom: periodB[0]!, yearTo: periodB.at(-1)! },
+  };
+  return rankKeywordShifts(shifts, "rising")
+    .slice(0, RISING_KEYWORDS_LIMIT)
+    .map((shift) => {
+      const yearlyBreakdown = fillMissingYears([...shift.years].map(([year, count]) => ({ year, count })), yearFrom, yearTo);
       return {
-        keyword,
+        keyword: shift.keyword,
         totalPapers: yearlyBreakdown.reduce((sum, row) => sum + row.count, 0),
-        growthRatePct: yoyGrowthPct(complete),
+        growthRatePct: yoyGrowthPct(truncateToCompleteYears(yearlyBreakdown, lastCompleteYear)),
         yearlyBreakdown,
-        prevBase,
+        shift: {
+          term: shift.term,
+          papersA: shift.papersA,
+          papersB: shift.papersB,
+          logOddsRatio: shift.logOddsRatio,
+          z: shift.z,
+          pValue: shift.pValue,
+          qValue: shift.qValue,
+          ...periods,
+        },
       };
-    })
-    .filter((row) => row.growthRatePct > 0 && row.prevBase >= MIN_RISING_PREV_BASE)
-    .sort((a, b) => b.growthRatePct - a.growthRatePct || a.totalPapers - b.totalPapers)
-    .slice(0, 10)
-    .map(({ prevBase: _internal, ...row }) => row);
+    });
 }
 
 function toFacetBucket(row: CountRow): TrendFacetBucket {

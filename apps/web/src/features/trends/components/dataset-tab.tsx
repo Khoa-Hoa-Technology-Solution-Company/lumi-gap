@@ -196,7 +196,7 @@ export function DatasetTab({
           <div className="space-y-0.5">
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-lg font-extrabold text-slate-900 dark:text-white leading-none">Dataset Scope Builder</h2>
-              <DataSourceBadge source={data.dataSource} />
+              <DataSourceBadge source={data.dataSource} provenance={data.dataProvenance} />
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold leading-relaxed animate-fadeIn">
               Choose the paper dataset used by every Trends tab. Then continue to signals, comparison, search, or reports with the same scope.

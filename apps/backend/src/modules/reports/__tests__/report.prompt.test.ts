@@ -105,7 +105,7 @@ describe("REPORT_SYSTEM_PROMPT", () => {
 
 describe("report language resolution", () => {
   it("bumps prompt version when report language behavior changes", () => {
-    expect(PROMPT_VERSION).toBe("report-v7-trend-metrics");
+    expect(PROMPT_VERSION).toBe("report-v8-trend-verdict");
   });
 
   it("detects English from ASCII academic questions", () => {
@@ -192,5 +192,13 @@ describe("trend metrics block", () => {
   it("tells the model where corpus-level figures may come from", () => {
     expect(REPORT_SYSTEM_PROMPT).toContain("may only come from the TREND METRICS block");
     expect(REPORT_SYSTEM_PROMPT).toContain("do not state corpus-level growth percentages");
+  });
+
+  it("makes raw growth descriptive and the trend verdict the only basis for rising/declining (P1.3)", () => {
+    expect(REPORT_SYSTEM_PROMPT).toContain("report them only as descriptive figures");
+    expect(REPORT_SYSTEM_PROMPT).toContain("only when trendVerdict.verdict says so");
+    const prompt = buildReportPrompt("q?", [paper()], { trendMetrics: { ...trendMetrics, trendVerdict: { verdict: "stable", confidence: null, pValue: 0.4, senSlopePctPointsPerYear: 0.01, baseline: "Computer Science" }, ggt: { meanPct: 2.1, semPct: 1.3, years: 5, nelisClass: null } } });
+    expect(prompt).toContain('"verdict": "stable"');
+    expect(prompt).toContain('"meanPct": 2.1');
   });
 });

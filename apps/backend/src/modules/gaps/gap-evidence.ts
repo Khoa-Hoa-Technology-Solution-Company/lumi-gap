@@ -114,10 +114,14 @@ export function computeGapEvidence(input: GapEvidenceInput, t: GapThresholds): G
   return { intersectionCount: nAB, parentCounts, expected: local.expected, ratio: local.ratio, pValue: local.pValue, underExplored, lowSample: local.lowSample, evidenceConfidence: round2(clamp01(evidenceConfidence)), ...(global ? { global } : {}), vetoedByGlobal };
 }
 
-/** Trend of a parent topic over complete years: CAGR when defined, otherwise the slope decides (growth from a zero base). */
-export function parentGrowth(series: YearlyCount[], risingMin: number): { growthRatePct: number; cagrPct: number | null; slope: number; rising: boolean } {
+/**
+ * Raw growth of a parent topic over complete years (CAGR when defined, else year-over-year), with the slope.
+ * Descriptive context only (P1.3): raw counts are not normalised by the literature, so nothing here says
+ * whether the topic is rising; that is the trend verdict (trends module, Mann–Kendall on the share).
+ */
+export function parentGrowth(series: YearlyCount[]): { growthRatePct: number; cagrPct: number | null; slope: number } {
   const cagr = cagrPct(series), slope = linearSlope(series);
-  return { growthRatePct: cagr ?? yoyGrowthPct(series), cagrPct: cagr, slope, rising: cagr !== null ? cagr > risingMin : slope > 0 };
+  return { growthRatePct: cagr ?? yoyGrowthPct(series), cagrPct: cagr, slope };
 }
 
 export interface YearRange { yearFrom?: number; yearTo?: number }

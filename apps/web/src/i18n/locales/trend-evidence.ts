@@ -107,6 +107,7 @@ const trendEvidenceKeys = [
   "{{topic}} is the strongest rising topic in this dataset ({{momentum}} papers/year).",
   "No strong trend signals detected in the current scope.",
   "This topic leads both momentum and volume in this dataset.",
+  "OpenAlex data fetched {{date}}",
 ] as const;
 
 export const trendEvidenceStrings = Object.fromEntries(trendEvidenceKeys.map((key) => [key, key])) as Record<(typeof trendEvidenceKeys)[number], string>;
@@ -217,4 +218,5 @@ export const trendEvidenceViStrings: Record<(typeof trendEvidenceKeys)[number], 
   "{{topic}} is the strongest rising topic in this dataset ({{momentum}} papers/year).": "{{topic}} là chủ đề tăng mạnh nhất trong bộ dữ liệu này ({{momentum}} bài/năm).",
   "No strong trend signals detected in the current scope.": "Chưa phát hiện tín hiệu xu hướng rõ rệt trong phạm vi hiện tại.",
   "This topic leads both momentum and volume in this dataset.": "Chủ đề này dẫn đầu cả về động lượng lẫn số lượng bài trong bộ dữ liệu này.",
+  "OpenAlex data fetched {{date}}": "Dữ liệu OpenAlex lấy lúc {{date}}",
 };

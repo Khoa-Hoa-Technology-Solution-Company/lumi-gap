@@ -146,7 +146,7 @@ describe("reading context card", () => {
     expect(mocks.get).toHaveBeenCalledWith("/quality/paper/paper-a/reading-context", expect.objectContaining({ params: { topic: "writing feedback" } }));
     const text = container.textContent!;
     expect(text).toContain("Topic: Writing feedback"); expect(text).toContain("1,240 papers");
-    expect(text).toContain("Growth +14.2%"); expect(text).toContain("3-year CAGR +9.5%"); expect(text).toContain("Paper published in 2022");
+    expect(text).toContain("Raw growth +14.2%"); expect(text).toContain("Not a trend test"); expect(text).toContain("3-year CAGR +9.5%"); expect(text).toContain("Paper published in 2022");
     expect(container.querySelector('[role="img"]')).not.toBeNull();
     expect(text).toContain("Newer work on the same topic"); expect(text).toContain("Most cited on the same topic");
     expect(container.querySelector('a[href="/papers/paper-b?topic=writing%20feedback"]')?.textContent).toBe("Automated feedback at scale");
@@ -159,7 +159,7 @@ describe("reading context card", () => {
   it("notes an incomplete year and hides a null CAGR", async () => {
     const context = makeReadingContext(); context.trend!.partialYear = 2024; context.trend!.cagr3yPct = null;
     mocks.get.mockResolvedValue(response(context)); await renderCard();
-    expect(container.textContent).toContain("Data for 2024 is still incomplete"); expect(container.textContent).not.toContain("CAGR"); expect(container.textContent).toContain("Growth +14.2%");
+    expect(container.textContent).toContain("Data for 2024 is still incomplete"); expect(container.textContent).not.toContain("CAGR"); expect(container.textContent).toContain("Raw growth +14.2%");
   });
   it("hides itself when the request fails", async () => {
     mocks.get.mockRejectedValue(new Error("offline")); await renderCard(); expect(container.textContent).toBe("");
