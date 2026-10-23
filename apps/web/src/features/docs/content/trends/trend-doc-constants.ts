@@ -18,9 +18,11 @@ export const TREND_DOC_CONSTANTS = {
   highConfidenceMinYears: 8,
   /** Default analysis window in years. */
   defaultWindowYears: 10,
-  /** Range of candidate topics on the overview (first OpenAlex group_by page). */
+  /** Range of candidate topics on the overview (largest of the scope plus the largest per field). */
   overviewCandidatesMin: 30,
   overviewCandidatesMax: 200,
+  /** Largest topics taken from every field (or subfield of a one-field scope); backend PER_STRATUM. */
+  overviewTopicsPerStratum: 3,
 } as const;
 
 /** Format a number with a decimal comma (vi) or point (en). */

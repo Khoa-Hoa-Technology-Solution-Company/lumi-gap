@@ -13,7 +13,7 @@ beforeEach(() => {
 describe("buildOpenAlexScope", () => {
   it("counts only research publication types without filters", async () => {
     const scope = await buildOpenAlexScope({});
-    expect(scope).toEqual({ filter: "type:article|review|preprint|conference-paper|book-chapter", nonTaxonomyFilter: "type:article|review|preprint|conference-paper|book-chapter", notice: { ignoredFilters: [] } });
+    expect(scope).toEqual({ filter: "type:article|review|preprint|conference-paper|book-chapter", nonTaxonomyFilter: "type:article|review|preprint|conference-paper|book-chapter", narrowestTaxonomy: null, notice: { ignoredFilters: [] } });
     expect(withScope(scope.filter, yearsClause(2016, 2025))).toBe("type:article|review|preprint|conference-paper|book-chapter,publication_year:2016-2025");
   });
 

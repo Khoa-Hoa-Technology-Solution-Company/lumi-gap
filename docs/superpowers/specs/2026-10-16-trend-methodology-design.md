@@ -113,7 +113,7 @@ Mọi hằng số khai báo một chỗ (export từ `trend.verdict.ts`). Trang 
 
 1. **Tự tương quan.** Mann–Kendall giả định các năm độc lập. Thị phần năm sau thường gần năm trước, nên p có thể nhỏ hơn thực tế. USGS nêu hạn chế này. Với cửa sổ 10 năm, dự án không hiệu chỉnh.
 2. **Dữ liệu local không đại diện.** Khi OpenAlex không khả dụng, `N_t` là số bài đã sync. Con số này phản ánh việc sync, không phản ánh khoa học thực tế, nên verdict luôn là `insufficient`.
-3. **Ứng viên thiên về chủ đề lớn.** Overview chỉ xét 30–200 chủ đề lớn nhất trong phạm vi (trang `group_by` đầu tiên của OpenAlex). Chủ đề nhỏ mới nổi có thể không xuất hiện.
+3. **Ứng viên thiên về chủ đề lớn.** Overview kiểm định tối đa 200 chủ đề: 30 chủ đề lớn nhất của phạm vi (`GLOBAL_CANDIDATES`, cố định, không phụ thuộc `limit`) cộng 3 chủ đề lớn nhất (≥ 30 bài) của **mỗi field** (mỗi subfield khi phạm vi là một field; phạm vi subfield/topic không phân tầng). Trước 2026-10-21 chỉ lấy trang `group_by` đầu tiên nên các field nhỏ bị loại hết. Bên trong một field, chủ đề nhỏ mới nổi vẫn có thể không xuất hiện. Xem §8.
 4. **Phân loại chủ đề của OpenAlex** được gán tự động. Một bài chỉ tính vào chủ đề chính (`primary_topic`).
 5. **Xu hướng là mô tả quá khứ**, không phải dự báo.
 6. **p xấp xỉ chuẩn.** USGS khuyến nghị p chính xác khi n ≤ 10; dự án dùng xấp xỉ chuẩn cho mọi n nên p là gần đúng (n = 5, S = 10: chính xác 0.017, xấp xỉ 0.027). Quy tắc n ≥ 5 vẫn đúng với p chính xác.
@@ -200,7 +200,19 @@ Trang tài liệu phân mục, có thể mở rộng cho các chức năng khác
 
 ---
 
-## 8. Tài liệu tham khảo
+## 8. Bổ sung 2026-10-21: ứng viên phân tầng và xu hướng theo tháng/quý
+
+**Ứng viên phân tầng** (`trend.openalex-topics.ts` `selectTopicCandidates`). Trang `group_by` đầu của OpenAlex chỉ có 200 chủ đề lớn nhất, nên khi không lọc taxonomy, các field nhỏ (Social Sciences, Arts and Humanities…) không có ứng viên nào và verdict của phạm vi chỉ phản ánh các field lớn. Ứng viên = `GLOBAL_CANDIDATES = 30` chủ đề lớn nhất của phạm vi ∪ `PER_STRATUM = 3` chủ đề lớn nhất (≥ `MIN_PAPERS`) của mỗi tầng; tầng = field (không lọc hoặc lọc domain), subfield (lọc một field), không phân tầng (lọc subfield/topic). Tối đa 200. BH hiệu chỉnh trên toàn bộ ứng viên. Response có `candidateStrata`.
+
+**Lọc theo kết luận và phân trang** (`verdict`, `offset` trên `GET /trends` và `GET /trends/periods`). `verdictCounts` và `testedTopicCount` luôn tính trên toàn bộ chủ đề đã kiểm định; `topics` là trang `[offset, offset + limit)` của các chủ đề có `verdict` (hoặc tất cả), `matchedTopicCount` là tổng của nhóm đó. Vì vậy số ứng viên không được phụ thuộc `limit` (trước đây là `limit × 3`): nếu phụ thuộc, đổi cỡ trang sẽ đổi tập chủ đề được kiểm định và số trên thẻ sẽ không khớp với bảng. Các trang sau chỉ đọc lại cache Redis, không tốn thêm credit OpenAlex.
+
+**Đếm gộp theo kỳ.** Số bài của chủ đề lấy bằng một request mỗi kỳ cho tối đa 100 chủ đề (`primary_topic.id:T1|…|T100`, `group_by=primary_topic.id`), quần thể `N_t` bằng một request mỗi kỳ cho mọi field (`group_by=primary_topic.field.id`). Cùng số liệu như trước, ít request hơn, nên phân tầng không làm tăng chi phí nhiều.
+
+**`GET /trends/periods`** (`granularity = month | quarter`, `window = rolling | year-to-date`, `periods` 5–24, mặc định 12 tháng / 8 quý). Cùng định nghĩa §2 và hàm `classifyTrend`, thay "năm" bằng "kỳ": `yearsUsed` là số kỳ hoàn chỉnh, Sen's slope tính theo điểm %/kỳ, `TOO_FEW_YEARS` nghĩa là < 5 kỳ. Kỳ đang diễn ra hiển thị nhưng không kiểm định. Lọc theo `from_publication_date` / `to_publication_date`.
+
+Hạn chế riêng của kỳ ngắn: (a) bài chỉ có năm xuất bản mang ngày 1/1, làm phồng tháng 1; (b) các tháng gần nhất chưa lập chỉ mục đủ. Cả hai tác động lên tử số và mẫu số của thị phần nên phần lớn tự triệt tiêu, đây là lý do kiểm định thị phần chứ không phải số bài thô. (c) Tự tương quan và mùa vụ mạnh hơn theo năm; kết luận theo tháng là biến động gần đây, không phải xu hướng lâu dài. (d) "Năm nay" theo quý có tối đa 3 quý hoàn chỉnh, theo tháng chỉ đủ 5 tháng từ tháng 6: trước đó mọi chủ đề là `insufficient` và UI gợi ý chọn khoảng trượt (12 tháng gần nhất).
+
+## 9. Tài liệu tham khảo
 
 **Khung chính:**
 
