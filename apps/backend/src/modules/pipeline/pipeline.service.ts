@@ -23,7 +23,8 @@ export type PipelineQueueName =
   | "gaps"
   | "notifications"
   | "ai-jobs"
-  | "community-summary";
+  | "community-summary"
+  | "trends-snapshot";
 
 export interface PipelineQueueStatus {
   name: PipelineQueueName;

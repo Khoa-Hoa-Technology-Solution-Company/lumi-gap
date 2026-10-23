@@ -18,6 +18,7 @@ const WORKER_KEYS = [
   "worker:ai-jobs",
   "worker:community-summary",
   "worker:manuscript-compile",
+  "worker:trends",
 ] as const;
 
 export type WorkerName = (typeof WORKER_KEYS)[number];

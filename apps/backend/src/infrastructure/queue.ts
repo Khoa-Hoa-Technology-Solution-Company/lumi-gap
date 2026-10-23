@@ -33,6 +33,7 @@ export const QUEUE_NAMES = {
   aiJobs: "ai-jobs",
   communitySummary: "community-summary",
   manuscriptCompile: "manuscript-compile",
+  trendsSnapshot: "trends-snapshot",
 } as const;
 
 export const manuscriptCompileQueue = new Queue(QUEUE_NAMES.manuscriptCompile, {
@@ -48,6 +49,12 @@ export const apiSyncQueue = new Queue(QUEUE_NAMES.apiSync, {
 export const openAlexIngestQueue = new Queue(QUEUE_NAMES.openAlexIngest, {
   connection: makeConnection(),
   defaultJobOptions,
+});
+
+/** Research Trends snapshots (P2.1). Retries are for transient errors; a budget pause re-enqueues itself. */
+export const trendsSnapshotQueue = new Queue(QUEUE_NAMES.trendsSnapshot, {
+  connection: makeConnection(),
+  defaultJobOptions: { ...defaultJobOptions, backoff: { type: "exponential", delay: 30_000 } },
 });
 
 export const corpusValidationQueue = new Queue(QUEUE_NAMES.corpusValidation, {

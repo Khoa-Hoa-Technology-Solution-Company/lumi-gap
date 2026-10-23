@@ -169,6 +169,14 @@ const EnvSchema = z.object({
   // a campaign must be explicitly planned and started by an admin.
   OPENALEX_INGEST_LEASE_SECONDS: z.coerce.number().int().min(30).max(3600).default(180),
   OPENALEX_INGEST_CONCURRENCY: z.coerce.number().int().min(1).max(4).default(1),
+  // Research Trends P2.1 snapshot worker (worker:trends). Trend collection may spend at most this share of the
+  // key's daily credits per UTC day (approved cap 30%); the client's 20% key reserve applies on top.
+  TRENDS_COLLECTION_BUDGET_FRACTION: z.coerce.number().min(0).max(0.3).default(0.3),
+  TRENDS_COLLECTION_LEASE_SECONDS: z.coerce.number().int().min(30).max(3600).default(300),
+  // Pause between pages; ≥ 35 ms keeps one worker under OpenAlex's 30 requests/second.
+  TRENDS_COLLECTION_PAGE_DELAY_MS: z.coerce.number().int().min(35).max(10_000).default(100),
+  // No default: the worker schedules nothing until a cron is set (e.g. "30 1 * * *").
+  TRENDS_COLLECTION_CRON: optionalEnvString,
 
   // Phase B — embedding worker.
   EMBED_CRON: z.string().default("0 3 * * *"),

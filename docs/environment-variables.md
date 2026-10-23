@@ -106,6 +106,10 @@ Users can also save multiple personal API connections in Settings → AI Connect
 | `SYNC_STORE_RAW_METADATA` | `EnvSchema` / backend | Default / optional (see template) |
 | `OPENALEX_INGEST_LEASE_SECONDS` | `EnvSchema` / backend | Default / optional (see template) |
 | `OPENALEX_INGEST_CONCURRENCY` | `EnvSchema` / backend | Default / optional (see template) |
+| `TRENDS_COLLECTION_BUDGET_FRACTION` | `EnvSchema` / `worker:trends` | Default 0.3, max 0.3: share of the key's daily credits trend snapshots may spend per UTC day (all runs together); the 20% key reserve of the trends client applies on top |
+| `TRENDS_COLLECTION_LEASE_SECONDS` | `EnvSchema` / `worker:trends` | Default 300: lease of one snapshot job; an expired lease lets another worker resume from the checkpoint |
+| `TRENDS_COLLECTION_PAGE_DELAY_MS` | `EnvSchema` / `worker:trends` | Default 100, min 35: pause between OpenAlex pages |
+| `TRENDS_COLLECTION_CRON` | `EnvSchema` / `worker:trends` | Optional, no default: when set, the worker schedules a daily snapshot job; unset means no automatic collection |
 | `EMBED_CRON` | `EnvSchema` / backend | Default / optional (see template) |
 | `EMBED_BATCH_SIZE` | `EnvSchema` / backend | Default / optional (see template) |
 | `EMBED_MAX_PAPERS_PER_RUN` | `EnvSchema` / backend | Default / optional (see template) |

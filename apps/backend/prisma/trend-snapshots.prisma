@@ -1,0 +1,157 @@
+// Research Trends P2.1: precomputed OpenAlex topic statistics.
+// A snapshot is one collection of yearly counts for one Data Scope and window,
+// collected with group_by + cursor paging, validated, then activated with its
+// precomputed analytics. Only an `is_active` snapshot is read by the app.
+// Constraints Prisma cannot express (CHECKs, the partial unique "one active
+// snapshot per scope" index) live in the SQL migration (docs/prisma-migrations.md).
+
+model TrendSnapshot {
+  id                 String    @id @default(uuid()) @db.Uuid
+  /// Deterministic identity: scope + window + collection version + UTC collection day.
+  snapshotKey        String    @unique @map("snapshot_key")
+  scopeHash          String    @map("scope_hash")
+  scopeFilter        String    @map("scope_filter")
+  workTypes          Json      @map("work_types")
+  corpus             String    @db.VarChar(16)
+  yearFrom           Int       @map("year_from")
+  yearTo             Int       @map("year_to")
+  lastCompleteYear   Int       @map("last_complete_year")
+  collectionDay      String    @map("collection_day") @db.VarChar(10)
+  collectionVersion  String    @map("collection_version") @db.VarChar(32)
+  analyticsVersion   String?   @map("analytics_version") @db.VarChar(32)
+  /// collecting | paused_budget | failed | validation_failed | validated | active | superseded
+  status             String    @default("collecting") @db.VarChar(24)
+  isActive           Boolean   @default(false) @map("is_active")
+  leaseOwnerId       String?   @map("lease_owner_id")
+  leaseExpiresAt     DateTime? @map("lease_expires_at") @db.Timestamptz(6)
+  requests           Int       @default(0)
+  creditsUsed        Int       @default(0) @map("credits_used")
+  pausedReason       String?   @map("paused_reason")
+  resumeAfter        DateTime? @map("resume_after") @db.Timestamptz(6)
+  failureReason      String?   @map("failure_reason")
+  validation         Json?
+  firstFetchedAt     DateTime? @map("first_fetched_at") @db.Timestamptz(6)
+  lastFetchedAt      DateTime? @map("last_fetched_at") @db.Timestamptz(6)
+  collectedAt        DateTime? @map("collected_at") @db.Timestamptz(6)
+  validatedAt        DateTime? @map("validated_at") @db.Timestamptz(6)
+  activatedAt        DateTime? @map("activated_at") @db.Timestamptz(6)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([scopeHash, status, createdAt])
+  @@map("trend_snapshots")
+}
+
+/// One collection unit: the topic catalogue (level "catalogue", year 0) or one
+/// group_by level for one publication year. Holds the cursor checkpoint.
+model TrendSnapshotUnit {
+  id                String    @id @default(uuid()) @db.Uuid
+  snapshotId        String    @map("snapshot_id") @db.Uuid
+  level             String    @db.VarChar(16)
+  year              Int
+  /// pending | complete
+  status            String    @default("pending") @db.VarChar(16)
+  /// Next cursor to request ("*" before the first page); null once complete.
+  cursor            String?   @default("*")
+  pagesFetched      Int       @default(0) @map("pages_fetched")
+  groupsFetched     Int       @default(0) @map("groups_fetched")
+  /// meta.count of the first page (all works matching the filter, incl. unknown).
+  metaCount         Int?      @map("meta_count")
+  checkpointVersion Int       @default(0) @map("checkpoint_version")
+  completedAt       DateTime? @map("completed_at") @db.Timestamptz(6)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([snapshotId, level, year])
+  @@map("trend_snapshot_units")
+}
+
+/// Every committed page (diagnostics: duplicate/missing pages, credits, timing).
+model TrendSnapshotPage {
+  id           String   @id @default(uuid()) @db.Uuid
+  snapshotId   String   @map("snapshot_id") @db.Uuid
+  unitId       String   @map("unit_id") @db.Uuid
+  pageIndex    Int      @map("page_index")
+  cursorIn     String   @map("cursor_in")
+  cursorOut    String?  @map("cursor_out")
+  groupCount   Int      @map("group_count")
+  firstKey     String?  @map("first_key")
+  lastKey      String?  @map("last_key")
+  metaCount    Int?     @map("meta_count")
+  responseHash String   @map("response_hash") @db.VarChar(64)
+  creditsUsed  Int      @map("credits_used")
+  remaining    Int?
+  fetchedAt    DateTime @map("fetched_at") @db.Timestamptz(6)
+
+  @@unique([unitId, pageIndex])
+  @@index([snapshotId])
+  @@index([fetchedAt])
+  @@map("trend_snapshot_pages")
+}
+
+/// Yearly works per unit of a level ("topic" | "domain" | "field" | "subfield");
+/// unitKey "unknown" holds the works without a primary topic.
+model TrendSnapshotCount {
+  snapshotId  String @map("snapshot_id") @db.Uuid
+  level       String @db.VarChar(16)
+  unitKey     String @map("unit_key")
+  year        Int
+  count       Int
+  displayName String @map("display_name")
+
+  @@id([snapshotId, level, unitKey, year])
+  @@map("trend_snapshot_counts")
+}
+
+/// Topic taxonomy as OpenAlex reported it when the snapshot was collected.
+model TrendSnapshotTopic {
+  snapshotId   String @map("snapshot_id") @db.Uuid
+  topicId      String @map("topic_id")
+  topicName    String @map("topic_name")
+  subfieldId   String @map("subfield_id")
+  subfieldName String @map("subfield_name")
+  fieldId      String @map("field_id")
+  fieldName    String @map("field_name")
+  domainId     String @map("domain_id")
+  domainName   String @map("domain_name")
+
+  @@id([snapshotId, topicId])
+  @@map("trend_snapshot_topics")
+}
+
+/// Precomputed P1 analytics of one topic against one reference population.
+model TrendSnapshotResult {
+  snapshotId        String  @map("snapshot_id") @db.Uuid
+  baselineLevel     String  @map("baseline_level") @db.VarChar(16)
+  topicId           String  @map("topic_id")
+  /// Baseline unit id (field id for "field"; "all" for "global").
+  baselineUnit      String  @map("baseline_unit")
+  totalPapers       Int     @map("total_papers")
+  yearsUsed         Int     @map("years_used")
+  shareSeries       Json    @map("share_series")
+  mannKendall       Json?   @map("mann_kendall")
+  senSlope          Float?  @map("sen_slope")
+  senSlopeCi95      Json?   @map("sen_slope_ci95")
+  relativeChangePct Float?  @map("relative_change_pct")
+  pValue            Float?  @map("p_value")
+  qValue            Float?  @map("q_value")
+  /// BH family: every topic with a p-value in the same baseline unit.
+  qFamilyKey        String  @map("q_family_key")
+  qFamilySize       Int     @map("q_family_size")
+  verdict           String  @db.VarChar(16)
+  confidence        String? @db.VarChar(16)
+  reasons           Json
+  ggt               Json
+  ggtMeanPct        Float?  @map("ggt_mean_pct")
+  ggtSemPct         Float?  @map("ggt_sem_pct")
+  ggtYears          Int     @map("ggt_years")
+  /// Both unambiguous Nelis conditions hold (every annual GGT < 100%, ≥ 50 papers every year).
+  ggtConditionsMet  Boolean @map("ggt_conditions_met")
+  /// Nelis threshold group; NOT a verified "consistent" class (stability rule never checked).
+  nelisThresholdGroup String? @map("nelis_threshold_group") @db.VarChar(32)
+  stabilityChecked  Boolean @default(false) @map("stability_checked")
+
+  @@id([snapshotId, baselineLevel, topicId])
+  @@index([snapshotId, baselineLevel, verdict])
+  @@map("trend_snapshot_results")
+}

@@ -112,13 +112,70 @@ export async function openAlexGet<T>(path: string, params: Record<string, string
   for (const [key, value] of Object.entries(query)) url.searchParams.set(key, value);
 
   const fetchedAt = new Date().toISOString();
-  const body = (await fetchJson(url)) as T;
+  const body = (await fetchJson(url)).body as T;
   await cache.set<CachedResponse<T>>(cacheKey, { fetchedAt, body }, CACHE_TTL_SECONDS);
   recordFetchedAt(fetchedAt);
   return body;
 }
 
 type CachedResponse<T> = { fetchedAt: string; body: T };
+
+/** Rate-limit headers of one OpenAlex answer (credits; null when absent). */
+export interface OpenAlexRateLimitHeaders {
+  limit: number | null;
+  remaining: number | null;
+  creditsUsed: number | null;
+  resetSeconds: number | null;
+}
+
+export interface OpenAlexLiveResponse<T> {
+  body: T;
+  rateLimit: OpenAlexRateLimitHeaders;
+  fetchedAt: string;
+}
+
+/**
+ * Uncached GET for collection jobs (P2.1 trend snapshots): a snapshot must hold
+ * what OpenAlex answered during the collection, not a week-old cached page.
+ * Same 429 / budget-reserve handling as openAlexGet, plus the rate-limit
+ * headers so the caller can account for real credits. `baseUrl` exists for the
+ * mock server in tests.
+ */
+export async function openAlexGetLive<T>(path: string, params: Record<string, string>, options: { baseUrl?: string } = {}): Promise<OpenAlexLiveResponse<T>> {
+  if (!isOpenAlexBudgetAvailable()) throw new OpenAlexBudgetError("OpenAlex daily budget reserved for sync");
+  const cleanPath = path.replace(/^\/+/, "");
+  const query = cleanPath === "works" ? { ...params, corpus: OPENALEX_CORPUS } : params;
+  const url = new URL(`${options.baseUrl ?? BASE_URL}/${cleanPath}`);
+  for (const [key, value] of Object.entries(query)) url.searchParams.set(key, value);
+  const fetchedAt = new Date().toISOString();
+  const { body, headers } = await fetchJson(url);
+  return {
+    body: body as T,
+    fetchedAt,
+    rateLimit: {
+      limit: headerNumber(headers, "x-ratelimit-limit"),
+      remaining: headerNumber(headers, "x-ratelimit-remaining"),
+      creditsUsed: headerNumber(headers, "x-ratelimit-credits-used"),
+      resetSeconds: headerNumber(headers, "x-ratelimit-reset"),
+    },
+  };
+}
+
+/** Today's usage of the key from `/rate-limit` (free, 0 credits), including
+ *  what other processes sharing the key spent. Null when OpenAlex omits it. */
+export async function openAlexRateLimitStatus(options: { baseUrl?: string } = {}): Promise<{ creditsLimit: number; creditsUsed: number; creditsRemaining: number; resetsAt: string | null } | null> {
+  const url = new URL(`${options.baseUrl ?? BASE_URL}/rate-limit`);
+  const { body } = await fetchJson(url);
+  const r = (body as { rate_limit?: Record<string, unknown> } | null)?.rate_limit;
+  const limit = Number(r?.credits_limit), used = Number(r?.credits_used), remaining = Number(r?.credits_remaining);
+  if (!Number.isFinite(limit) || !Number.isFinite(used) || !Number.isFinite(remaining)) return null;
+  return { creditsLimit: limit, creditsUsed: used, creditsRemaining: remaining, resetsAt: typeof r?.resets_at === "string" ? r.resets_at : null };
+}
+
+/** Clears the in-process budget lock. Tests only (the lock otherwise expires at the reset time). */
+export function resetOpenAlexBudgetLockForTests(): void {
+  budgetExhaustedUntil = 0;
+}
 
 // ---------------------------------------------------------------------------
 // Provenance: what a response can truthfully say about its OpenAlex data.
@@ -153,7 +210,7 @@ type GroupByResponse = {
   group_by?: Array<{ key: string; key_display_name?: string; count: number }>;
 };
 
-async function fetchJson(url: URL, attempt = 1): Promise<unknown> {
+async function fetchJson(url: URL, attempt = 1): Promise<{ body: unknown; headers: Headers }> {
   try {
     const headers: Record<string, string> = { Accept: "application/json" };
     if (env.OPENALEX_API_KEY) headers.Authorization = `Bearer ${env.OPENALEX_API_KEY}`;
@@ -176,7 +233,7 @@ async function fetchJson(url: URL, attempt = 1): Promise<unknown> {
       return fetchJson(url, attempt + 1);
     }
     if (!res.ok) throw new OpenAlexHttpError(res.status);
-    return await res.json();
+    return { body: await res.json(), headers: res.headers };
   } catch (err) {
     // Network errors and timeouts are retried; HTTP answers and budget stops are final.
     if (err instanceof OpenAlexBudgetError || err instanceof OpenAlexHttpError || attempt > MAX_RETRIES) throw err;
