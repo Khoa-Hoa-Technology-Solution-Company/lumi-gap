@@ -1,0 +1,849 @@
+{
+ "firstRun": [
+  "2026-10-22T02:10:09.492Z",
+  "2026-10-22T02:13:43.704Z"
+ ],
+ "secondRun": [
+  "2026-10-23T03:57:09.566Z",
+  "2026-10-23T04:00:50.073Z"
+ ],
+ "hoursApart": 25.72,
+ "years": [
+  "2016",
+  "2017",
+  "2018",
+  "2019",
+  "2020",
+  "2021",
+  "2022",
+  "2023",
+  "2024",
+  "2025"
+ ],
+ "cost": {
+  "first": {
+   "requests": 310,
+   "credits": 310,
+   "usd": 0.031
+  },
+  "second": {
+   "requests": 310,
+   "credits": 310,
+   "usd": 0.031
+  }
+ },
+ "perYear": {
+  "2016": {
+   "topicsCompared": 4414,
+   "topicsChanged": 1077,
+   "changedPct": 24.4,
+   "up": 583,
+   "down": 494,
+   "appeared": 0,
+   "disappeared": 0,
+   "classifiedFirst": 8018260,
+   "classifiedSecond": 8018439,
+   "classifiedDelta": 179,
+   "classifiedDeltaPct": 0.0022,
+   "unknownFirst": 259684,
+   "unknownSecond": 259705,
+   "unknownDelta": 21,
+   "sumAbsTopicDelta": 1437,
+   "sumAbsTopicDeltaPctOfClassified": 0.0179
+  },
+  "2017": {
+   "topicsCompared": 4414,
+   "topicsChanged": 1141,
+   "changedPct": 25.85,
+   "up": 620,
+   "down": 521,
+   "appeared": 0,
+   "disappeared": 0,
+   "classifiedFirst": 7814149,
+   "classifiedSecond": 7814425,
+   "classifiedDelta": 276,
+   "classifiedDeltaPct": 0.0035,
+   "unknownFirst": 216057,
+   "unknownSecond": 216198,
+   "unknownDelta": 141,
+   "sumAbsTopicDelta": 1706,
+   "sumAbsTopicDeltaPctOfClassified": 0.0218
+  },
+  "2018": {
+   "topicsCompared": 4413,
+   "topicsChanged": 1301,
+   "changedPct": 29.48,
+   "up": 735,
+   "down": 566,
+   "appeared": 0,
+   "disappeared": 0,
+   "classifiedFirst": 7811594,
+   "classifiedSecond": 7811997,
+   "classifiedDelta": 403,
+   "classifiedDeltaPct": 0.0052,
+   "unknownFirst": 228494,
+   "unknownSecond": 228613,
+   "unknownDelta": 119,
+   "sumAbsTopicDelta": 1913,
+   "sumAbsTopicDeltaPctOfClassified": 0.0245
+  },
+  "2019": {
+   "topicsCompared": 4413,
+   "topicsChanged": 1260,
+   "changedPct": 28.55,
+   "up": 670,
+   "down": 590,
+   "appeared": 0,
+   "disappeared": 0,
+   "classifiedFirst": 8117737,
+   "classifiedSecond": 8117915,
+   "classifiedDelta": 178,
+   "classifiedDeltaPct": 0.0022,
+   "unknownFirst": 213912,
+   "unknownSecond": 213968,
+   "unknownDelta": 56,
+   "sumAbsTopicDelta": 1694,
+   "sumAbsTopicDeltaPctOfClassified": 0.0209
+  },
+  "2020": {
+   "topicsCompared": 4411,
+   "topicsChanged": 1291,
+   "changedPct": 29.27,
+   "up": 680,
+   "down": 611,
+   "appeared": 0,
+   "disappeared": 0,
+   "classifiedFirst": 8464451,
+   "classifiedSecond": 8464609,
+   "classifiedDelta": 158,
+   "classifiedDeltaPct": 0.0019,
+   "unknownFirst": 228704,
+   "unknownSecond": 228798,
+   "unknownDelta": 94,
+   "sumAbsTopicDelta": 1800,
+   "sumAbsTopicDeltaPctOfClassified": 0.0213
+  },
+  "2021": {
+   "topicsCompared": 4413,
+   "topicsChanged": 1253,
+   "changedPct": 28.39,
+   "up": 717,
+   "down": 536,
+   "appeared": 0,
+   "disappeared": 0,
+   "classifiedFirst": 7985114,
+   "classifiedSecond": 7985471,
+   "classifiedDelta": 357,
+   "classifiedDeltaPct": 0.0045,
+   "unknownFirst": 185902,
+   "unknownSecond": 185928,
+   "unknownDelta": 26,
+   "sumAbsTopicDelta": 1781,
+   "sumAbsTopicDeltaPctOfClassified": 0.0223
+  },
+  "2022": {
+   "topicsCompared": 4411,
+   "topicsChanged": 1315,
+   "changedPct": 29.81,
+   "up": 779,
+   "down": 536,
+   "appeared": 0,
+   "disappeared": 0,
+   "classifiedFirst": 7505418,
+   "classifiedSecond": 7505977,
+   "classifiedDelta": 559,
+   "classifiedDeltaPct": 0.0074,
+   "unknownFirst": 233799,
+   "unknownSecond": 233883,
+   "unknownDelta": 84,
+   "sumAbsTopicDelta": 1883,
+   "sumAbsTopicDeltaPctOfClassified": 0.0251
+  },
+  "2023": {
+   "topicsCompared": 4415,
+   "topicsChanged": 1393,
+   "changedPct": 31.55,
+   "up": 845,
+   "down": 548,
+   "appeared": 0,
+   "disappeared": 0,
+   "classifiedFirst": 7915621,
+   "classifiedSecond": 7916246,
+   "classifiedDelta": 625,
+   "classifiedDeltaPct": 0.0079,
+   "unknownFirst": 233997,
+   "unknownSecond": 234078,
+   "unknownDelta": 81,
+   "sumAbsTopicDelta": 2037,
+   "sumAbsTopicDeltaPctOfClassified": 0.0257
+  },
+  "2024": {
+   "topicsCompared": 4412,
+   "topicsChanged": 1537,
+   "changedPct": 34.84,
+   "up": 995,
+   "down": 542,
+   "appeared": 0,
+   "disappeared": 0,
+   "classifiedFirst": 8541959,
+   "classifiedSecond": 8543158,
+   "classifiedDelta": 1199,
+   "classifiedDeltaPct": 0.014,
+   "unknownFirst": 196376,
+   "unknownSecond": 196406,
+   "unknownDelta": 30,
+   "sumAbsTopicDelta": 2507,
+   "sumAbsTopicDeltaPctOfClassified": 0.0293
+  },
+  "2025": {
+   "topicsCompared": 4412,
+   "topicsChanged": 1906,
+   "changedPct": 43.2,
+   "up": 1377,
+   "down": 529,
+   "appeared": 0,
+   "disappeared": 0,
+   "classifiedFirst": 9742868,
+   "classifiedSecond": 9745828,
+   "classifiedDelta": 2960,
+   "classifiedDeltaPct": 0.0304,
+   "unknownFirst": 171162,
+   "unknownSecond": 171259,
+   "unknownDelta": 97,
+   "sumAbsTopicDelta": 4542,
+   "sumAbsTopicDeltaPctOfClassified": 0.0466
+  }
+ },
+ "levels": {
+  "domain": {
+   "2016": {
+    "units": 4,
+    "unitsChanged": 4,
+    "maxAbsDelta": 146,
+    "maxAbsRelPct": 0.0048,
+    "newOrMissing": []
+   },
+   "2017": {
+    "units": 4,
+    "unitsChanged": 4,
+    "maxAbsDelta": 299,
+    "maxAbsRelPct": 0.0101,
+    "newOrMissing": []
+   },
+   "2018": {
+    "units": 4,
+    "unitsChanged": 4,
+    "maxAbsDelta": 338,
+    "maxAbsRelPct": 0.0114,
+    "newOrMissing": []
+   },
+   "2019": {
+    "units": 4,
+    "unitsChanged": 4,
+    "maxAbsDelta": 203,
+    "maxAbsRelPct": 0.0067,
+    "newOrMissing": []
+   },
+   "2020": {
+    "units": 4,
+    "unitsChanged": 4,
+    "maxAbsDelta": 73,
+    "maxAbsRelPct": 0.0042,
+    "newOrMissing": []
+   },
+   "2021": {
+    "units": 4,
+    "unitsChanged": 4,
+    "maxAbsDelta": 251,
+    "maxAbsRelPct": 0.0088,
+    "newOrMissing": []
+   },
+   "2022": {
+    "units": 4,
+    "unitsChanged": 4,
+    "maxAbsDelta": 353,
+    "maxAbsRelPct": 0.0136,
+    "newOrMissing": []
+   },
+   "2023": {
+    "units": 4,
+    "unitsChanged": 4,
+    "maxAbsDelta": 459,
+    "maxAbsRelPct": 0.0165,
+    "newOrMissing": []
+   },
+   "2024": {
+    "units": 4,
+    "unitsChanged": 4,
+    "maxAbsDelta": 800,
+    "maxAbsRelPct": 0.0272,
+    "newOrMissing": []
+   },
+   "2025": {
+    "units": 4,
+    "unitsChanged": 4,
+    "maxAbsDelta": 1995,
+    "maxAbsRelPct": 0.0577,
+    "newOrMissing": []
+   }
+  },
+  "field": {
+   "2016": {
+    "units": 26,
+    "unitsChanged": 26,
+    "maxAbsDelta": 63,
+    "maxAbsRelPct": 0.0126,
+    "newOrMissing": []
+   },
+   "2017": {
+    "units": 26,
+    "unitsChanged": 25,
+    "maxAbsDelta": 116,
+    "maxAbsRelPct": 0.0241,
+    "newOrMissing": []
+   },
+   "2018": {
+    "units": 26,
+    "unitsChanged": 25,
+    "maxAbsDelta": 156,
+    "maxAbsRelPct": 0.0196,
+    "newOrMissing": []
+   },
+   "2019": {
+    "units": 26,
+    "unitsChanged": 25,
+    "maxAbsDelta": 93,
+    "maxAbsRelPct": 0.0142,
+    "newOrMissing": []
+   },
+   "2020": {
+    "units": 26,
+    "unitsChanged": 23,
+    "maxAbsDelta": 72,
+    "maxAbsRelPct": 0.0143,
+    "newOrMissing": []
+   },
+   "2021": {
+    "units": 26,
+    "unitsChanged": 24,
+    "maxAbsDelta": 158,
+    "maxAbsRelPct": 0.0246,
+    "newOrMissing": []
+   },
+   "2022": {
+    "units": 26,
+    "unitsChanged": 26,
+    "maxAbsDelta": 174,
+    "maxAbsRelPct": 0.0412,
+    "newOrMissing": []
+   },
+   "2023": {
+    "units": 26,
+    "unitsChanged": 25,
+    "maxAbsDelta": 265,
+    "maxAbsRelPct": 0.0203,
+    "newOrMissing": []
+   },
+   "2024": {
+    "units": 26,
+    "unitsChanged": 25,
+    "maxAbsDelta": 397,
+    "maxAbsRelPct": 0.038,
+    "newOrMissing": []
+   },
+   "2025": {
+    "units": 26,
+    "unitsChanged": 25,
+    "maxAbsDelta": 1008,
+    "maxAbsRelPct": 0.0655,
+    "newOrMissing": []
+   }
+  },
+  "subfield": {
+   "2016": {
+    "units": 252,
+    "unitsChanged": 161,
+    "maxAbsDelta": 33,
+    "maxAbsRelPct": 0.1566,
+    "newOrMissing": []
+   },
+   "2017": {
+    "units": 252,
+    "unitsChanged": 178,
+    "maxAbsDelta": 61,
+    "maxAbsRelPct": 0.1524,
+    "newOrMissing": []
+   },
+   "2018": {
+    "units": 252,
+    "unitsChanged": 180,
+    "maxAbsDelta": 79,
+    "maxAbsRelPct": 1.7241,
+    "newOrMissing": []
+   },
+   "2019": {
+    "units": 252,
+    "unitsChanged": 183,
+    "maxAbsDelta": 35,
+    "maxAbsRelPct": 1.4286,
+    "newOrMissing": []
+   },
+   "2020": {
+    "units": 252,
+    "unitsChanged": 185,
+    "maxAbsDelta": 42,
+    "maxAbsRelPct": 0.1901,
+    "newOrMissing": []
+   },
+   "2021": {
+    "units": 252,
+    "unitsChanged": 172,
+    "maxAbsDelta": 47,
+    "maxAbsRelPct": 1.6667,
+    "newOrMissing": []
+   },
+   "2022": {
+    "units": 252,
+    "unitsChanged": 189,
+    "maxAbsDelta": 46,
+    "maxAbsRelPct": 0.3354,
+    "newOrMissing": []
+   },
+   "2023": {
+    "units": 252,
+    "unitsChanged": 186,
+    "maxAbsDelta": 84,
+    "maxAbsRelPct": 0.3697,
+    "newOrMissing": []
+   },
+   "2024": {
+    "units": 252,
+    "unitsChanged": 200,
+    "maxAbsDelta": 133,
+    "maxAbsRelPct": 0.2345,
+    "newOrMissing": []
+   },
+   "2025": {
+    "units": 252,
+    "unitsChanged": 209,
+    "maxAbsDelta": 344,
+    "maxAbsRelPct": 0.3314,
+    "newOrMissing": []
+   }
+  }
+ },
+ "notable": [
+  {
+   "id": "T12671",
+   "year": 2024,
+   "first": 1336,
+   "second": 1396,
+   "delta": 60,
+   "relPct": 4.491
+  },
+  {
+   "id": "T12375",
+   "year": 2024,
+   "first": 490,
+   "second": 524,
+   "delta": 34,
+   "relPct": 6.939
+  }
+ ],
+ "taxonomyConsistency": {
+  "2016": {
+   "domain": {
+    "sumDiffVsTopics": 0,
+    "unknownDiffVsTopics": 0
+   },
+   "field": {
+    "sumDiffVsTopics": 0,
+    "unknownDiffVsTopics": 0
+   },
+   "subfield": {
+    "sumDiffVsTopics": 0,
+    "unknownDiffVsTopics": 0
+   }
+  },
+  "2017": {
+   "domain": {
+    "sumDiffVsTopics": 0,
+    "unknownDiffVsTopics": 0
+   },
+   "field": {
+    "sumDiffVsTopics": 0,
+    "unknownDiffVsTopics": 0
+   },
+   "subfield": {
+    "sumDiffVsTopics": 0,
+    "unknownDiffVsTopics": 0
+   }
+  },
+  "2018": {
+   "domain": {
+    "sumDiffVsTopics": 0,
+    "unknownDiffVsTopics": 0
+   },
+   "field": {
+    "sumDiffVsTopics": 0,
+    "unknownDiffVsTopics": 0
+   },
+   "subfield": {
+    "sumDiffVsTopics": 0,
+    "unknownDiffVsTopics": 0
+   }
+  },
+  "2019": {
+   "domain": {
+    "sumDiffVsTopics": 0,
+    "unknownDiffVsTopics": 0
+   },
+   "field": {
+    "sumDiffVsTopics": 0,
+    "unknownDiffVsTopics": 0
+   },
+   "subfield": {
+    "sumDiffVsTopics": 0,
+    "unknownDiffVsTopics": 0
+   }
+  },
+  "2020": {
+   "domain": {
+    "sumDiffVsTopics": 0,
+    "unknownDiffVsTopics": 0
+   },
+   "field": {
+    "sumDiffVsTopics": 0,
+    "unknownDiffVsTopics": 0
+   },
+   "subfield": {
+    "sumDiffVsTopics": 0,
+    "unknownDiffVsTopics": 0
+   }
+  },
+  "2021": {
+   "domain": {
+    "sumDiffVsTopics": 0,
+    "unknownDiffVsTopics": 0
+   },
+   "field": {
+    "sumDiffVsTopics": 0,
+    "unknownDiffVsTopics": 0
+   },
+   "subfield": {
+    "sumDiffVsTopics": 0,
+    "unknownDiffVsTopics": 0
+   }
+  },
+  "2022": {
+   "domain": {
+    "sumDiffVsTopics": 0,
+    "unknownDiffVsTopics": 0
+   },
+   "field": {
+    "sumDiffVsTopics": 0,
+    "unknownDiffVsTopics": 0
+   },
+   "subfield": {
+    "sumDiffVsTopics": 0,
+    "unknownDiffVsTopics": 0
+   }
+  },
+  "2023": {
+   "domain": {
+    "sumDiffVsTopics": 0,
+    "unknownDiffVsTopics": 0
+   },
+   "field": {
+    "sumDiffVsTopics": 0,
+    "unknownDiffVsTopics": 0
+   },
+   "subfield": {
+    "sumDiffVsTopics": 0,
+    "unknownDiffVsTopics": 0
+   }
+  },
+  "2024": {
+   "domain": {
+    "sumDiffVsTopics": 0,
+    "unknownDiffVsTopics": 0
+   },
+   "field": {
+    "sumDiffVsTopics": 0,
+    "unknownDiffVsTopics": 0
+   },
+   "subfield": {
+    "sumDiffVsTopics": 0,
+    "unknownDiffVsTopics": 0
+   }
+  },
+  "2025": {
+   "domain": {
+    "sumDiffVsTopics": 0,
+    "unknownDiffVsTopics": 0
+   },
+   "field": {
+    "sumDiffVsTopics": 0,
+    "unknownDiffVsTopics": 0
+   },
+   "subfield": {
+    "sumDiffVsTopics": 0,
+    "unknownDiffVsTopics": 0
+   }
+  }
+ },
+ "volatility": {
+  "topicYearCellsChanged": 13474,
+  "absRelPctQuantiles": {
+   "p50": 0.0598,
+   "p90": 0.2012,
+   "p99": 0.6192,
+   "max": 6.9388
+  },
+  "largestAbs": [
+   {
+    "id": "T12671",
+    "year": 2024,
+    "first": 1336,
+    "second": 1396,
+    "delta": 60,
+    "relPct": 4.491017964071856
+   },
+   {
+    "id": "T14309",
+    "year": 2025,
+    "first": 26320,
+    "second": 26372,
+    "delta": 52,
+    "relPct": 0.19756838905775076
+   },
+   {
+    "id": "T12522",
+    "year": 2025,
+    "first": 20242,
+    "second": 20288,
+    "delta": 46,
+    "relPct": 0.2272502717122814
+   },
+   {
+    "id": "T12931",
+    "year": 2025,
+    "first": 11161,
+    "second": 11201,
+    "delta": 40,
+    "relPct": 0.35839082519487503
+   },
+   {
+    "id": "T10749",
+    "year": 2025,
+    "first": 7763,
+    "second": 7724,
+    "delta": -39,
+    "relPct": -0.5023830993172742
+   },
+   {
+    "id": "T11365",
+    "year": 2025,
+    "first": 18632,
+    "second": 18669,
+    "delta": 37,
+    "relPct": 0.19858308286818377
+   },
+   {
+    "id": "T14495",
+    "year": 2025,
+    "first": 11851,
+    "second": 11886,
+    "delta": 35,
+    "relPct": 0.29533372711163614
+   },
+   {
+    "id": "T12375",
+    "year": 2024,
+    "first": 490,
+    "second": 524,
+    "delta": 34,
+    "relPct": 6.938775510204081
+   },
+   {
+    "id": "T11796",
+    "year": 2017,
+    "first": 2289,
+    "second": 2257,
+    "delta": -32,
+    "relPct": -1.397990388816077
+   },
+   {
+    "id": "T10647",
+    "year": 2022,
+    "first": 3677,
+    "second": 3707,
+    "delta": 30,
+    "relPct": 0.8158825129181397
+   },
+   {
+    "id": "T11299",
+    "year": 2025,
+    "first": 11574,
+    "second": 11602,
+    "delta": 28,
+    "relPct": 0.2419215482979091
+   },
+   {
+    "id": "T13520",
+    "year": 2025,
+    "first": 1881,
+    "second": 1908,
+    "delta": 27,
+    "relPct": 1.4354066985645932
+   },
+   {
+    "id": "T14244",
+    "year": 2025,
+    "first": 17328,
+    "second": 17355,
+    "delta": 27,
+    "relPct": 0.15581717451523547
+   },
+   {
+    "id": "T13053",
+    "year": 2025,
+    "first": 15833,
+    "second": 15858,
+    "delta": 25,
+    "relPct": 0.15789806101181078
+   },
+   {
+    "id": "T14449",
+    "year": 2025,
+    "first": 14747,
+    "second": 14772,
+    "delta": 25,
+    "relPct": 0.16952600528921136
+   }
+  ],
+  "largestRel": [
+   {
+    "id": "T12375",
+    "year": 2024,
+    "first": 490,
+    "second": 524,
+    "delta": 34,
+    "relPct": 6.938775510204081
+   },
+   {
+    "id": "T12671",
+    "year": 2024,
+    "first": 1336,
+    "second": 1396,
+    "delta": 60,
+    "relPct": 4.491017964071856
+   },
+   {
+    "id": "T13637",
+    "year": 2024,
+    "first": 50,
+    "second": 51,
+    "delta": 1,
+    "relPct": 2
+   },
+   {
+    "id": "T10168",
+    "year": 2018,
+    "first": 52,
+    "second": 51,
+    "delta": -1,
+    "relPct": -1.9230769230769231
+   },
+   {
+    "id": "T13202",
+    "year": 2018,
+    "first": 58,
+    "second": 57,
+    "delta": -1,
+    "relPct": -1.7241379310344827
+   },
+   {
+    "id": "T13906",
+    "year": 2021,
+    "first": 59,
+    "second": 60,
+    "delta": 1,
+    "relPct": 1.694915254237288
+   },
+   {
+    "id": "T14514",
+    "year": 2021,
+    "first": 60,
+    "second": 61,
+    "delta": 1,
+    "relPct": 1.6666666666666667
+   },
+   {
+    "id": "T14490",
+    "year": 2025,
+    "first": 182,
+    "second": 179,
+    "delta": -3,
+    "relPct": -1.6483516483516483
+   },
+   {
+    "id": "T13769",
+    "year": 2018,
+    "first": 62,
+    "second": 63,
+    "delta": 1,
+    "relPct": 1.6129032258064515
+   },
+   {
+    "id": "T12080",
+    "year": 2024,
+    "first": 855,
+    "second": 868,
+    "delta": 13,
+    "relPct": 1.5204678362573099
+   },
+   {
+    "id": "T13892",
+    "year": 2018,
+    "first": 66,
+    "second": 65,
+    "delta": -1,
+    "relPct": -1.5151515151515151
+   },
+   {
+    "id": "T14001",
+    "year": 2021,
+    "first": 209,
+    "second": 212,
+    "delta": 3,
+    "relPct": 1.4354066985645932
+   },
+   {
+    "id": "T13520",
+    "year": 2025,
+    "first": 1881,
+    "second": 1908,
+    "delta": 27,
+    "relPct": 1.4354066985645932
+   },
+   {
+    "id": "T13202",
+    "year": 2019,
+    "first": 70,
+    "second": 71,
+    "delta": 1,
+    "relPct": 1.4285714285714286
+   },
+   {
+    "id": "T14378",
+    "year": 2023,
+    "first": 71,
+    "second": 72,
+    "delta": 1,
+    "relPct": 1.408450704225352
+   }
+  ]
+ },
+ "notableCount": 2
+}

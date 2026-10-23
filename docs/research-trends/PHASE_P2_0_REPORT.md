@@ -207,13 +207,15 @@ Cùng filter, đo bằng `per_page=1` (`meta.count`) và bằng `group_by` theo 
 | Ngân sách lần chạy đầy đủ ≤ 30% quota ngày | **PASS** | §8: 310 credit thực đo (đối soát quota) = 3,1%; ≈ 3,4% gồm danh mục | Chỉ đúng với thiết kế `group_by` theo năm; thiết kế theo topic ≈ 45% → không đạt |
 | ~~Kiểm soát ngân sách: giả lập `Remaining` thấp → worker dừng sạch, ghi tiến độ, chạy tiếp hôm sau~~ | **CHUYỂN SANG P2.1** (hiệu chỉnh kế hoạch 2026-10-22, được duyệt trong chat) | Không chạy, không đánh PASS. Xem `P2_0_FINAL_GATE.md` §5 và `05_IMPLEMENTATION_PLAN.md` §P2.1 | Phải đạt ở P2.1 trước khi worker gọi OpenAlex thật |
 | Bảo vệ ngân sách của OpenAlex client (tiêu chí thay thế, hiệu chỉnh 2026-10-22) | **PASS** | Header thật dùng đơn vị credit (`x-ratelimit-limit: 10000`, `-remaining`, `-credits-used: 1`), khớp logic `Remaining / Limit` của client. Test client 15/15 PASS (chạy lại 2026-10-22), gồm: dừng dưới 20%; dùng `Limit` thật của key; 429 hết ngân sách → 0 retry + khóa tới reset; 429 tốc độ → retry; key chỉ ở header | 429 chỉ kiểm bằng phản hồi giả lập; không gặp 429 thật và không cố ý gây ra |
-| Ổn định: 2 lần chạy cách nhau ≥ 1 ngày, báo cáo khác biệt | **PENDING** | Tổng theo năm 10-21 → 10-22 đã so (§9). Lần chạy đầy đủ thứ nhất kết thúc 2026-10-22T02:13:44Z (`evidence/p2_0_fullrun_snapshot_2026-10-22.json`). Lần thứ hai **chưa chạy**: lúc kiểm tra (02:20Z) mới qua 0,11 giờ; `p2_0_preflight.mjs` từ chối (`atLeast24h: false`). Sớm nhất: **2026-10-23T02:13:44Z** | Công cụ đã sẵn sàng: `p2_0_preflight.mjs`, `p2_0_fullrun.mjs`, `p2_0_compare.mjs` (§13) |
+| Ổn định: 2 lần chạy cách nhau ≥ 1 ngày, báo cáo khác biệt | **PASS** (cập nhật 2026-10-23) | Lần 2 chạy 2026-10-23T03:57:10Z → 04:00:50Z, cách lần 1 **25,72 giờ**, sau khi preflight PASS. Đã báo cáo khác biệt theo topic × năm, theo cấp và theo analytics (§14). Lần 1 (2026-10-22): `p2_0_preflight.mjs` từ chối lúc 02:20Z vì mới qua 0,11 giờ | Biến động nhỏ nhưng thường xuyên, xem §14 |
 | Baseline nhất quán (yêu cầu bổ sung của Checkpoint này) | **PASS** | §6: 4/26/252 đơn vị, 0 lệch; thành viên topic → cây phân loại 0 lệch | — |
 | So sánh GGT trực tiếp với engine P1 (yêu cầu bổ sung) | **PASS** | §7: 16/16 tổ hợp khớp tuyệt đối | Kết quả khoa học phụ thuộc baseline (§7) |
 
 ## 12. Quyết định cổng
 
-**CONDITIONAL — chưa sẵn sàng bắt đầu P2.1.**
+> **Cập nhật 2026-10-23 (§14): READY FOR P2.1** (đề xuất, chờ duyệt). Mọi tiêu chí P2.0 đã hiệu chỉnh đều PASS. Lần thu thập thứ hai đã chạy và được so sánh. Tiêu chí worker đã chuyển hợp lệ sang P2.1. Phần dưới đây giữ nguyên như lúc viết để làm lịch sử.
+
+**CONDITIONAL — chưa sẵn sàng bắt đầu P2.1.** *(quyết định ban đầu, 2026-10-22)*
 
 > **Cập nhật 2026-10-22 (final gate, §13):** dòng (2) dưới đây đã được chuyển hợp lệ sang P2.1 theo hiệu chỉnh kế hoạch được duyệt. Chỉ còn dòng (1) PENDING. Quyết định vẫn là **CONDITIONAL** (`P2_0_FINAL_GATE.md`).
 
@@ -241,3 +243,79 @@ Mọi dòng còn lại PASS với bằng chứng số: key, đủ topic, `meta.c
   - `p2_0_compare.mjs`: so sánh từng topic × năm, các cấp domain/field/subfield, tỷ lệ topic thay đổi, phân vị biến động, topic có biến động đáng kể, nhất quán cây taxonomy của lần thứ hai.
   - Đã kiểm `p2_0_compare.mjs` bằng 2 phép thử công cụ (không phải dữ liệu quan sát): (a) so lần thứ nhất với chính nó → 0 thay đổi; (b) một bản sửa nhân tạo trong thư mục tạm → phát hiện đúng +100, −1, topic biến mất và lệch taxonomy 4.483.
 - Chi tiết và quyết định: `P2_0_FINAL_GATE.md`.
+
+## 14. Lần thu thập thứ hai và so sánh (2026-10-23)
+
+**Trình tự** (từ commit `bd88032`, working tree sạch):
+- Preflight lúc 2026-10-23T03:57:02Z: PASS (exit 0).
+  - 25,72 giờ kể từ lần 1.
+  - Key hoạt động; còn 9.239/10.000 credit.
+  - Đã dùng hôm nay 761 + dự kiến 335 = 1.096 ≤ trần 3.000.
+- Lần thu thập 2: `p2_0_fullrun.mjs`.
+- So sánh: `p2_0_compare.mjs`.
+- Kiểm tra tổng: 2 request `!null` / `null`.
+- Ổn định analytics: tính lại bằng engine P1 không sửa, trên 2 snapshot, không gọi mạng.
+
+**Bằng chứng mới** (bằng chứng lần 1 giữ nguyên):
+- `evidence/p2_0_fullrun_snapshot_2026-10-23.json`
+- `evidence/p2_0_compare_2026-10-23.json`
+- `evidence/p2_0_analytics_stability_2026-10-23.json`
+
+### 14.1 Chi phí lần 2
+| | Request | Credit | USD | Thời gian | Trạng thái |
+|---|---:|---:|---:|---|---|
+| Lần thu thập 2 | 310 | 310 | 0,031 | 220,5 s (trung vị 628 ms) | 310 × 200 |
+| Kiểm tra tổng `!null` / `null` | 2 | 2 | 0,0002 | — | 2 × 200 |
+| Preflight (`/rate-limit`, ×2) | 2 | 0 | 0 | — | 200 |
+
+- Đối soát quota: 761 → 1.071 credit trong lần thu thập, đúng 310.
+- **761 credit đã được dùng trong ngày (từ 00:00 UTC) trước khi phiên này chạy bất kỳ request nào.** Đây là bằng chứng mạnh rằng key được một tiến trình khác dùng chung. Mức đó vẫn trong trần 30%, nhưng P2.1 phải đọc `credits_used` trước mỗi lần chạy (như preflight), không giả định cả quota dành cho trends.
+
+### 14.2 Độ đầy đủ và nhất quán taxonomy (lần 2)
+- Số nhóm topic mỗi năm **giống hệt** lần 1: 4.414, 4.414, 4.413, 4.413, 4.411, 4.413, 4.411, 4.415, 4.412, 4.412. 0 topic xuất hiện hoặc biến mất.
+- 10/10 năm: Σ nhóm topic = `primary_topic.id:!null` và `unknown` = `primary_topic.id:null`, sai lệch 0 (đo độc lập lúc 04:02Z).
+- 10/10 năm × 3 cấp: Σ domain / field / subfield = Σ topic; `unknown` bằng nhau ở cả 4 cấp. 0 lệch.
+- Không có đơn vị domain/field/subfield mới hoặc mất.
+
+### 14.3 Biến động theo năm (lần 1 → lần 2)
+| Năm | Topic thay đổi | Tăng / giảm | Δ đã phân loại | Δ chưa phân loại | Σ\|Δ topic\| (% đã phân loại) |
+|---|---:|---|---:|---:|---:|
+| 2016 | 1.077 / 4.414 (24,4%) | 583 / 494 | +179 (+0,002%) | +21 | 1.437 (0,018%) |
+| 2017 | 1.141 / 4.414 (25,9%) | 620 / 521 | +276 (+0,004%) | +141 | 1.706 (0,022%) |
+| 2018 | 1.301 / 4.413 (29,5%) | 735 / 566 | +403 (+0,005%) | +119 | 1.913 (0,025%) |
+| 2019 | 1.260 / 4.413 (28,6%) | 670 / 590 | +178 (+0,002%) | +56 | 1.694 (0,021%) |
+| 2020 | 1.291 / 4.411 (29,3%) | 680 / 611 | +158 (+0,002%) | +94 | 1.800 (0,021%) |
+| 2021 | 1.253 / 4.413 (28,4%) | 717 / 536 | +357 (+0,004%) | +26 | 1.781 (0,022%) |
+| 2022 | 1.315 / 4.411 (29,8%) | 779 / 536 | +559 (+0,007%) | +84 | 1.883 (0,025%) |
+| 2023 | 1.393 / 4.415 (31,6%) | 845 / 548 | +625 (+0,008%) | +81 | 2.037 (0,026%) |
+| 2024 | 1.537 / 4.412 (34,8%) | 995 / 542 | +1.199 (+0,014%) | +30 | 2.507 (0,029%) |
+| 2025 | 1.906 / 4.412 (43,2%) | 1.377 / 529 | +2.960 (+0,030%) | +97 | 4.542 (0,047%) |
+
+- 13.474 ô topic × năm thay đổi. |Δ| tương đối: p50 0,060%, p90 0,20%, p99 0,62%, max 6,94%.
+- **Khoảng 500–600 topic giảm số bài mỗi năm, kể cả năm cũ (2016):** OpenAlex có xóa, gộp hoặc phân loại lại công trình, chứ không chỉ thêm mới. Chuỗi năm không đơn điệu theo thời gian thu thập.
+- **Biến động đáng kể** (|Δ| ≥ 20 và ≥ 2%, [QUY ƯỚC]): chỉ 2 ô. T12671 năm 2024: 1.336 → 1.396 (+60, +4,49%). T12375 năm 2024: 490 → 524 (+34, +6,94%).
+- |Δ| tuyệt đối lớn nhất khác đều ở năm 2025 và < 0,6%, ví dụ T14309: 26.320 → 26.372 (+0,20%).
+- Domain: thay đổi tối đa 0,058% (2025). Field: tối đa 0,066%. Subfield: tối đa 1,72% (đơn vị nhỏ).
+
+### 14.4 Ảnh hưởng tới analytics P1
+Engine P1 không sửa; baseline global (Σ topic đã phân loại); cửa sổ 2016–2025; BH trên 4.426 topic.
+
+| Đo | Kết quả |
+|---|---|
+| Verdict lần 1 / lần 2 | rising 834 / 833; stable 1.646 / 1.649; declining 1.924 / 1.922; insufficient 22 / 22 |
+| **Verdict đổi** | **7 / 4.426 (0,16%)**: declining→stable 4, stable→declining 2, rising→stable 1 |
+| q của các topic đổi verdict | Mọi trường hợp nằm ở ngưỡng: q 0,0459 ↔ 0,0702 (α = 0,05) |
+| Confidence đổi (cùng verdict) | 265 |
+| Nhóm Nelis đổi | 5, đều do mean GGT nằm sát biên −5% (−4,99 ↔ −5,00) |
+| \|Δ mean GGT\| (điểm %) | p50 0,004; p90 0,023; p99 0,10; max 11,1 |
+
+- **7 verdict đổi chỉ có 2 cặp q.** p Mann–Kendall chính xác (n = 10) có nhiều giá trị trùng, nên một thay đổi nhỏ làm cả một khối topic có cùng p vượt qua α cùng lúc qua bước BH.
+- Max \|Δ mean GGT\| 11,1 điểm: T12916 có 5, 6, 2, 1 bài rồi 1.683 bài, nên mean GGT ≈ 18.660%. +1 bài đổi mean 11 điểm (0,06% tương đối). Topic này không được xếp nhóm Nelis (< 50 bài/năm, GGT năm ≥ 100%).
+
+### 14.5 Hệ quả cho P2.1 (ghi nhận, chưa triển khai)
+- Snapshot phải ghi `fetchedAt`. Không coi một lần chạy là lịch sử cố định. Không giả định count chỉ tăng.
+- Verdict sát ngưỡng có thể đổi qua ngày mà không có thay đổi khoa học. P2.2 nên hiển thị q, không trình bày việc đổi verdict ở ngưỡng như một xu hướng mới.
+- Kiểm tra quota phải tính phần đã dùng bởi tiến trình khác (§14.1).
+
+### 14.6 Quyết định cổng (cập nhật)
+**READY FOR P2.1**, đề xuất, **chờ duyệt**. Xem `P2_0_FINAL_GATE.md`.

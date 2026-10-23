@@ -1,0 +1,524 @@
+{
+ "baseline": "global (Σ classified topic groups per year)",
+ "window": "2016–2025, lastCompleteYear 2025",
+ "topics": 4426,
+ "verdictCountsFirst": {
+  "declining": 1924,
+  "stable": 1646,
+  "rising": 834,
+  "insufficient": 22
+ },
+ "verdictCountsSecond": {
+  "declining": 1922,
+  "stable": 1649,
+  "rising": 833,
+  "insufficient": 22
+ },
+ "verdictFlips": 7,
+ "verdictFlipList": [
+  {
+   "id": "T10149",
+   "from": "declining",
+   "to": "stable",
+   "qFrom": 0.04589541850528621,
+   "qTo": 0.07021147218606671,
+   "total": 21435
+  },
+  {
+   "id": "T11664",
+   "from": "stable",
+   "to": "declining",
+   "qFrom": 0.07028321415355929,
+   "qTo": 0.045945377233702706,
+   "total": 17738
+  },
+  {
+   "id": "T11893",
+   "from": "declining",
+   "to": "stable",
+   "qFrom": 0.04589541850528621,
+   "qTo": 0.07021147218606671,
+   "total": 89888
+  },
+  {
+   "id": "T12724",
+   "from": "rising",
+   "to": "stable",
+   "qFrom": 0.04589541850528621,
+   "qTo": 0.07021147218606671,
+   "total": 6676
+  },
+  {
+   "id": "T14057",
+   "from": "stable",
+   "to": "declining",
+   "qFrom": 0.07028321415355929,
+   "qTo": 0.045945377233702706,
+   "total": 715
+  },
+  {
+   "id": "T14172",
+   "from": "declining",
+   "to": "stable",
+   "qFrom": 0.04589541850528621,
+   "qTo": 0.07021147218606671,
+   "total": 3675
+  },
+  {
+   "id": "T14272",
+   "from": "declining",
+   "to": "stable",
+   "qFrom": 0.04589541850528621,
+   "qTo": 0.07021147218606671,
+   "total": 2549
+  }
+ ],
+ "confidenceFlips": 265,
+ "confidenceFlipList": [
+  {
+   "id": "T10008",
+   "verdict": "declining",
+   "from": "high",
+   "to": "medium",
+   "qFrom": 0.009997318374025201,
+   "qTo": 0.010006963640184415
+  },
+  {
+   "id": "T10016",
+   "verdict": "rising",
+   "from": "high",
+   "to": "medium",
+   "qFrom": 0.009997318374025201,
+   "qTo": 0.010006963640184415
+  },
+  {
+   "id": "T10039",
+   "verdict": "declining",
+   "from": "high",
+   "to": "medium",
+   "qFrom": 0.009997318374025201,
+   "qTo": 0.010006963640184415
+  },
+  {
+   "id": "T10044",
+   "verdict": "declining",
+   "from": "high",
+   "to": "medium",
+   "qFrom": 0.009997318374025201,
+   "qTo": 0.010006963640184415
+  },
+  {
+   "id": "T10047",
+   "verdict": "declining",
+   "from": "high",
+   "to": "medium",
+   "qFrom": 0.009997318374025201,
+   "qTo": 0.010006963640184415
+  },
+  {
+   "id": "T10058",
+   "verdict": "rising",
+   "from": "high",
+   "to": "medium",
+   "qFrom": 0.009997318374025201,
+   "qTo": 0.010006963640184415
+  },
+  {
+   "id": "T10059",
+   "verdict": "declining",
+   "from": "high",
+   "to": "medium",
+   "qFrom": 0.009997318374025201,
+   "qTo": 0.010006963640184415
+  },
+  {
+   "id": "T10084",
+   "verdict": "rising",
+   "from": "high",
+   "to": "medium",
+   "qFrom": 0.009997318374025201,
+   "qTo": 0.010006963640184415
+  },
+  {
+   "id": "T10158",
+   "verdict": "rising",
+   "from": "high",
+   "to": "medium",
+   "qFrom": 0.009997318374025201,
+   "qTo": 0.010006963640184415
+  },
+  {
+   "id": "T10167",
+   "verdict": "declining",
+   "from": "high",
+   "to": "medium",
+   "qFrom": 0.009997318374025201,
+   "qTo": 0.010006963640184415
+  },
+  {
+   "id": "T10177",
+   "verdict": "declining",
+   "from": "high",
+   "to": "medium",
+   "qFrom": 0.009997318374025201,
+   "qTo": 0.010006963640184415
+  },
+  {
+   "id": "T10193",
+   "verdict": "declining",
+   "from": "high",
+   "to": "medium",
+   "qFrom": 0.009997318374025201,
+   "qTo": 0.010006963640184415
+  },
+  {
+   "id": "T10194",
+   "verdict": "rising",
+   "from": "high",
+   "to": "medium",
+   "qFrom": 0.009997318374025201,
+   "qTo": 0.017438056558157763
+  },
+  {
+   "id": "T10214",
+   "verdict": "declining",
+   "from": "high",
+   "to": "medium",
+   "qFrom": 0.009997318374025201,
+   "qTo": 0.010006963640184415
+  },
+  {
+   "id": "T10224",
+   "verdict": "declining",
+   "from": "high",
+   "to": "medium",
+   "qFrom": 0.009997318374025201,
+   "qTo": 0.010006963640184415
+  },
+  {
+   "id": "T10225",
+   "verdict": "rising",
+   "from": "high",
+   "to": "medium",
+   "qFrom": 0.009997318374025201,
+   "qTo": 0.010006963640184415
+  },
+  {
+   "id": "T10232",
+   "verdict": "declining",
+   "from": "high",
+   "to": "medium",
+   "qFrom": 0.009997318374025201,
+   "qTo": 0.010006963640184415
+  },
+  {
+   "id": "T10279",
+   "verdict": "declining",
+   "from": "high",
+   "to": "medium",
+   "qFrom": 0.009997318374025201,
+   "qTo": 0.010006963640184415
+  },
+  {
+   "id": "T10317",
+   "verdict": "declining",
+   "from": "high",
+   "to": "medium",
+   "qFrom": 0.009997318374025201,
+   "qTo": 0.010006963640184415
+  },
+  {
+   "id": "T10327",
+   "verdict": "rising",
+   "from": "high",
+   "to": "medium",
+   "qFrom": 0.009997318374025201,
+   "qTo": 0.010006963640184415
+  },
+  {
+   "id": "T10339",
+   "verdict": "declining",
+   "from": "high",
+   "to": "medium",
+   "qFrom": 0.009997318374025201,
+   "qTo": 0.010006963640184415
+  },
+  {
+   "id": "T10356",
+   "verdict": "rising",
+   "from": "high",
+   "to": "medium",
+   "qFrom": 0.009997318374025201,
+   "qTo": 0.010006963640184415
+  },
+  {
+   "id": "T10362",
+   "verdict": "declining",
+   "from": "high",
+   "to": "medium",
+   "qFrom": 0.009997318374025201,
+   "qTo": 0.010006963640184415
+  },
+  {
+   "id": "T10413",
+   "verdict": "declining",
+   "from": "high",
+   "to": "medium",
+   "qFrom": 0.009997318374025201,
+   "qTo": 0.010006963640184415
+  },
+  {
+   "id": "T10466",
+   "verdict": "declining",
+   "from": "high",
+   "to": "medium",
+   "qFrom": 0.009997318374025201,
+   "qTo": 0.010006963640184415
+  },
+  {
+   "id": "T10499",
+   "verdict": "declining",
+   "from": "high",
+   "to": "medium",
+   "qFrom": 0.009997318374025201,
+   "qTo": 0.010006963640184415
+  },
+  {
+   "id": "T10512",
+   "verdict": "declining",
+   "from": "high",
+   "to": "medium",
+   "qFrom": 0.009997318374025201,
+   "qTo": 0.010006963640184415
+  },
+  {
+   "id": "T10519",
+   "verdict": "declining",
+   "from": "high",
+   "to": "medium",
+   "qFrom": 0.009997318374025201,
+   "qTo": 0.010006963640184415
+  },
+  {
+   "id": "T10521",
+   "verdict": "declining",
+   "from": "high",
+   "to": "medium",
+   "qFrom": 0.009997318374025201,
+   "qTo": 0.010006963640184415
+  },
+  {
+   "id": "T10536",
+   "verdict": "rising",
+   "from": "high",
+   "to": "medium",
+   "qFrom": 0.009997318374025201,
+   "qTo": 0.010006963640184415
+  },
+  {
+   "id": "T10552",
+   "verdict": "rising",
+   "from": "high",
+   "to": "medium",
+   "qFrom": 0.009997318374025201,
+   "qTo": 0.010006963640184415
+  },
+  {
+   "id": "T10555",
+   "verdict": "rising",
+   "from": "high",
+   "to": "medium",
+   "qFrom": 0.009997318374025201,
+   "qTo": 0.010006963640184415
+  },
+  {
+   "id": "T10572",
+   "verdict": "declining",
+   "from": "high",
+   "to": "medium",
+   "qFrom": 0.009997318374025201,
+   "qTo": 0.010006963640184415
+  },
+  {
+   "id": "T10574",
+   "verdict": "declining",
+   "from": "high",
+   "to": "medium",
+   "qFrom": 0.009997318374025201,
+   "qTo": 0.010006963640184415
+  },
+  {
+   "id": "T10596",
+   "verdict": "rising",
+   "from": "high",
+   "to": "medium",
+   "qFrom": 0.009997318374025201,
+   "qTo": 0.010006963640184415
+  },
+  {
+   "id": "T10602",
+   "verdict": "declining",
+   "from": "high",
+   "to": "medium",
+   "qFrom": 0.009997318374025201,
+   "qTo": 0.010006963640184415
+  },
+  {
+   "id": "T10625",
+   "verdict": "declining",
+   "from": "high",
+   "to": "medium",
+   "qFrom": 0.009997318374025201,
+   "qTo": 0.010006963640184415
+  },
+  {
+   "id": "T10683",
+   "verdict": "declining",
+   "from": "high",
+   "to": "medium",
+   "qFrom": 0.009997318374025201,
+   "qTo": 0.010006963640184415
+  },
+  {
+   "id": "T10684",
+   "verdict": "rising",
+   "from": "high",
+   "to": "medium",
+   "qFrom": 0.009997318374025201,
+   "qTo": 0.010006963640184415
+  },
+  {
+   "id": "T10691",
+   "verdict": "declining",
+   "from": "high",
+   "to": "medium",
+   "qFrom": 0.009997318374025201,
+   "qTo": 0.010006963640184415
+  },
+  {
+   "id": "T10740",
+   "verdict": "declining",
+   "from": "high",
+   "to": "medium",
+   "qFrom": 0.009997318374025201,
+   "qTo": 0.010006963640184415
+  },
+  {
+   "id": "T10767",
+   "verdict": "declining",
+   "from": "high",
+   "to": "medium",
+   "qFrom": 0.009997318374025201,
+   "qTo": 0.010006963640184415
+  },
+  {
+   "id": "T10776",
+   "verdict": "declining",
+   "from": "high",
+   "to": "medium",
+   "qFrom": 0.009997318374025201,
+   "qTo": 0.010006963640184415
+  },
+  {
+   "id": "T10787",
+   "verdict": "declining",
+   "from": "high",
+   "to": "medium",
+   "qFrom": 0.009997318374025201,
+   "qTo": 0.010006963640184415
+  },
+  {
+   "id": "T10793",
+   "verdict": "rising",
+   "from": "high",
+   "to": "medium",
+   "qFrom": 0.009997318374025201,
+   "qTo": 0.010006963640184415
+  },
+  {
+   "id": "T10798",
+   "verdict": "declining",
+   "from": "high",
+   "to": "medium",
+   "qFrom": 0.009997318374025201,
+   "qTo": 0.010006963640184415
+  },
+  {
+   "id": "T10802",
+   "verdict": "declining",
+   "from": "high",
+   "to": "medium",
+   "qFrom": 0.009997318374025201,
+   "qTo": 0.010006963640184415
+  },
+  {
+   "id": "T10807",
+   "verdict": "declining",
+   "from": "high",
+   "to": "medium",
+   "qFrom": 0.009997318374025201,
+   "qTo": 0.010006963640184415
+  },
+  {
+   "id": "T10854",
+   "verdict": "declining",
+   "from": "high",
+   "to": "medium",
+   "qFrom": 0.009997318374025201,
+   "qTo": 0.010006963640184415
+  },
+  {
+   "id": "T10911",
+   "verdict": "declining",
+   "from": "high",
+   "to": "medium",
+   "qFrom": 0.009997318374025201,
+   "qTo": 0.010006963640184415
+  }
+ ],
+ "nelisClassFlips": 5,
+ "nelisClassFlipList": [
+  {
+   "id": "T10056",
+   "from": "no_consistent_growth",
+   "to": "unclassified",
+   "meanFrom": -4.999156146273777,
+   "meanTo": -5.001153744484532
+  },
+  {
+   "id": "T11474",
+   "from": "unclassified",
+   "to": "no_consistent_growth",
+   "meanFrom": -5.004678277637612,
+   "meanTo": -4.991020662219646
+  },
+  {
+   "id": "T11721",
+   "from": "unclassified",
+   "to": "no_consistent_growth",
+   "meanFrom": -5.000801842801826,
+   "meanTo": -4.994505034360535
+  },
+  {
+   "id": "T12375",
+   "from": "no_consistent_growth",
+   "to": "unclassified",
+   "meanFrom": -4.5649434151181305,
+   "meanTo": -5.074488350607846
+  },
+  {
+   "id": "T13025",
+   "from": "no_consistent_growth",
+   "to": "unclassified",
+   "meanFrom": -4.992944448233706,
+   "meanTo": -5.022565215465192
+  }
+ ],
+ "absDeltaMeanGgtPctPoints": {
+  "n": 4424,
+  "p50": 0.004244,
+  "p90": 0.02291,
+  "p99": 0.1009,
+  "max": 11.1
+ }
+}
