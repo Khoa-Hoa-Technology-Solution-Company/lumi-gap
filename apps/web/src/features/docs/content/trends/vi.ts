@@ -520,7 +520,7 @@ export const trendsVi: DocsModuleContent<TrendSectionId> = {
           kind: "callout",
           tone: "limitation",
           heading: "3. Danh sách ứng viên thiên về chủ đề lớn",
-          text: `Trang tổng quan chỉ xét ${C.overviewCandidatesMin}–${C.overviewCandidatesMax} chủ đề lớn nhất trong phạm vi (trang \`group_by\` đầu tiên của OpenAlex). Chủ đề nhỏ mới nổi có thể không xuất hiện; hãy tìm trực tiếp chủ đề đó để xem trang chi tiết.`,
+          text: `Trang tổng quan kiểm định tối đa ${C.overviewCandidatesMax} chủ đề: các chủ đề lớn nhất của phạm vi cộng ${C.overviewTopicsPerStratum} chủ đề lớn nhất của mỗi lĩnh vực (mỗi lĩnh vực con khi phạm vi là một lĩnh vực), nên các lĩnh vực nhỏ cũng được kiểm định. Bên trong một lĩnh vực, chủ đề nhỏ mới nổi vẫn có thể không xuất hiện; hãy tìm trực tiếp chủ đề đó để xem trang chi tiết.`,
         },
         {
           kind: "callout",
@@ -539,6 +539,12 @@ export const trendsVi: DocsModuleContent<TrendSectionId> = {
           tone: "limitation",
           heading: "6. p là xấp xỉ với chuỗi ngắn",
           text: `Với n ≤ 10, USGS khuyến nghị p chính xác; LumiGap dùng xấp xỉ chuẩn. Xem ${link("Mann–Kendall", S.trendMannKendall, "min-years")}.`,
+        },
+        {
+          kind: "callout",
+          tone: "limitation",
+          heading: "7. Theo tháng và quý",
+          text: `Tab "Theo tháng / quý" chạy cùng phép kiểm định trên thị phần theo tháng hoặc quý (cần ít nhất ${C.minYears} kỳ hoàn chỉnh; kỳ đang diễn ra không bao giờ được kiểm định). Bài chỉ có năm xuất bản được xếp vào tháng 1 và các tháng gần nhất còn đang được lập chỉ mục; thị phần trong lĩnh vực triệt tiêu phần lớn hai sai lệch này. Kỳ ngắn nhiễu và tự tương quan hơn năm, nên hãy đọc kết luận theo tháng là biến động gần đây, không phải xu hướng lâu dài.`,
         },
       ],
     },

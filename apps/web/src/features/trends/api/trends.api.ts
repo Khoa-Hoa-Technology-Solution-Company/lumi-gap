@@ -5,6 +5,10 @@ import type {
   TrendTopicCandidatesResponse,
   TopicRelationshipResponse,
   TrendCompareResponse,
+  TrendGranularity,
+  TrendPeriodWindow,
+  TrendPeriodsOverview,
+  TrendVerdict,
   TrendsOverview,
 } from "@trend/shared-types";
 import { api } from "@/services/api-client";
@@ -16,6 +20,10 @@ export interface TrendsOverviewParams {
   limit?: number;
   minPapers?: number;
   sortBy?: "trend" | "total";
+  /** Only topics with this verdict in `topics` (counts stay over all tested topics). */
+  verdict?: TrendVerdict;
+  /** First topic of the page, for paging with `limit`. */
+  offset?: number;
   paperKinds?: string[];
   openAccessStatuses?: string[];
   providers?: string[];
@@ -32,26 +40,33 @@ export interface TrendsOverviewParams {
   topicIds?: string[];
 }
 
-export interface TrendCompareParams extends Omit<TrendsOverviewParams, "limit" | "minPapers" | "sortBy"> {
+export interface TrendPeriodsParams extends Omit<TrendsOverviewParams, "yearFrom" | "yearTo"> {
+  granularity?: TrendGranularity;
+  window?: TrendPeriodWindow;
+  /** Complete periods of a rolling window (5–24). */
+  periods?: number;
+}
+
+export interface TrendCompareParams extends Omit<TrendsOverviewParams, "limit" | "minPapers" | "sortBy" | "verdict" | "offset"> {
   topics: string[];
   yearFrom?: number;
   yearTo?: number;
 }
 
-export interface TrendTopicCandidatesParams extends Omit<TrendsOverviewParams, "sortBy"> {
+export interface TrendTopicCandidatesParams extends Omit<TrendsOverviewParams, "sortBy" | "verdict" | "offset"> {
   q: string;
   limit?: number;
   minPapers?: number;
 }
 
-export interface TrendRelationshipParams extends Omit<TrendsOverviewParams, "limit" | "minPapers" | "sortBy"> {
+export interface TrendRelationshipParams extends Omit<TrendsOverviewParams, "limit" | "minPapers" | "sortBy" | "verdict" | "offset"> {
   topic: string;
   yearFrom?: number;
   yearTo?: number;
   limit?: number;
 }
 
-export interface TrendExplainInput extends Omit<TrendsOverviewParams, "limit" | "minPapers" | "sortBy"> {
+export interface TrendExplainInput extends Omit<TrendsOverviewParams, "limit" | "minPapers" | "sortBy" | "verdict" | "offset"> {
   topic?: string;
   yearFrom?: number;
   yearTo?: number;
@@ -83,6 +98,13 @@ function serializeTrendParams(params: Record<string, unknown>): string {
 export const trendsApi = {
   async overview(params?: TrendsOverviewParams): Promise<TrendsOverview> {
     const res = await api.get("/trends", {
+      params,
+      paramsSerializer: { serialize: serializeTrendParams },
+    });
+    return res.data.data;
+  },
+  async periods(params?: TrendPeriodsParams): Promise<TrendPeriodsOverview> {
+    const res = await api.get("/trends/periods", {
       params,
       paramsSerializer: { serialize: serializeTrendParams },
     });

@@ -5,6 +5,7 @@ import {
   TopicTrendQuerySchema,
   TrendCompareQuerySchema,
   TrendExplainBodySchema,
+  TrendPeriodsQuerySchema,
   TrendRelationshipQuerySchema,
   TrendTopicCandidatesQuerySchema,
   TrendsOverviewQuerySchema,
@@ -24,6 +25,18 @@ export const trendController = {
     }
 
     const data = await trendService.overview(parsed.data);
+    res.json({ success: true, data });
+  },
+
+  /** GET /api/v1/trends/periods?granularity=month|quarter&window=rolling|year-to-date&periods= */
+  async periods(req: Request, res: Response, next: NextFunction) {
+    const parsed = TrendPeriodsQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      next(parsed.error);
+      return;
+    }
+
+    const data = await trendService.periods(parsed.data);
     res.json({ success: true, data });
   },
 

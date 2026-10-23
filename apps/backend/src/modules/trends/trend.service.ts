@@ -1,4 +1,4 @@
-import type { TrendCompareQuery, TrendExplainBody, TrendExplainHistoryQuery, TrendRelationshipQuery, TrendTopicCandidatesQuery, TopicTrendQuery, TrendsOverviewQuery } from "./dto/trends.schema.js";
+import type { TrendCompareQuery, TrendExplainBody, TrendExplainHistoryQuery, TrendPeriodsQuery, TrendRelationshipQuery, TrendTopicCandidatesQuery, TopicTrendQuery, TrendsOverviewQuery } from "./dto/trends.schema.js";
 import { AppError } from "../../common/exceptions/app-error.js";
 import { parseDatabaseId, publicDatabaseId } from "../../infrastructure/database/database-id.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
@@ -14,7 +14,8 @@ import { computeTopicStatistics } from "./trend.evidence.js";
 import { isOpenAlexBudgetAvailable } from "./trend.openalex-client.js";
 import { getOpenAlexCompare, getOpenAlexRelationships, getOpenAlexTopicCandidates, getOpenAlexTopicDetail } from "./trend.openalex-detail.js";
 import { getOpenAlexTrendsOverview } from "./trend.openalex-overview.js";
-import { getPostgresTrendsOverview } from "./trend.postgres.js";
+import { getOpenAlexTrendPeriods } from "./trend.openalex-periods.js";
+import { getPostgresTrendPeriods, getPostgresTrendsOverview } from "./trend.postgres.js";
 
 const WINDOW = 10;
 const EMPTY_FACETS = { paperKinds: [], openAccessStatuses: [], providers: [], topSources: [], languages: [], citationBands: [], domains: [], fields: [], subfields: [], topics: [] };
@@ -47,6 +48,7 @@ async function preferOpenAlex<T extends object>(label: string, openAlex: () => P
 
 export const trendService = {
   overview(query: TrendsOverviewQuery) { return preferOpenAlex("overview", () => getOpenAlexTrendsOverview(query), () => getPostgresTrendsOverview(query)); },
+  periods(query: TrendPeriodsQuery) { return preferOpenAlex("periods", () => getOpenAlexTrendPeriods(query), () => getPostgresTrendPeriods(query)); },
   async topic(topic: string, query: TopicTrendQuery) {
     const span = years(query);
     const local = await topicRows(topic, query);
@@ -64,7 +66,7 @@ export const trendService = {
   async localRelationships(query: TrendRelationshipQuery) { const { span, papers } = await topicRows(query.topic, query); const sourceIds = new Set(papers.map((paper) => paper.id)); const rows = await getPrisma().paperTopic.findMany({ where: { paperId: { in: [...sourceIds] }, topicName: { not: query.topic } } }); const grouped = new Map<string, Set<string>>(); for (const row of rows) { const ids = grouped.get(row.topicName) ?? new Set(); ids.add(row.paperId); grouped.set(row.topicName, ids); } const related = [...grouped].map(([name, ids]) => ({ name, count: ids.size })).sort((a, b) => b.count - a.count).slice(0, query.limit); return { topic: query.topic, yearFrom: span.yearFrom, yearTo: span.yearTo, nodes: [{ id: query.topic, label: query.topic, count: papers.length }, ...related.map((row) => ({ id: row.name, label: row.name, count: row.count }))], edges: related.map((row) => ({ source: query.topic, target: row.name, count: row.count })), computedAt: new Date().toISOString() }; },
   async explain(input: TrendExplainBody, userId?: string): Promise<TrendExplanationResponse> {
     const span = years(input), { topic, language, ...filters } = input, window = { yearFrom: span.yearFrom, yearTo: span.yearTo };
-    const overview = await this.overview({ ...filters, ...window, limit: 10, minPapers: 3, sortBy: "trend" });
+    const overview = await this.overview({ ...filters, ...window, limit: 10, minPapers: 3, sortBy: "trend", offset: 0 });
     const topicDetail = topic ? await this.topic(topic, window).catch(() => null) : null;
     const relationships = topic ? await this.relationships({ topic, ...window, limit: 8 }).catch(() => null) : null;
     // Representative papers are context for "possible drivers" only; they never supply figures.

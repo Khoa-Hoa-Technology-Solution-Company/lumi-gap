@@ -5,6 +5,7 @@ import { trendController } from "./trend.controller.js";
 export const trendRouter: Router = Router();
 
 trendRouter.get("/", trendController.overview);
+trendRouter.get("/periods", trendController.periods);
 trendRouter.get("/compare", trendController.compare);
 trendRouter.get("/topic-candidates", trendController.topicCandidates);
 trendRouter.get("/relationships", trendController.relationships);
