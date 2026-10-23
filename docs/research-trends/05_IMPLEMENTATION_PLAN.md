@@ -151,6 +151,10 @@ Nếu một dòng không đạt → báo cáo và dừng, không làm P2.1+.
 ### P2.2 API & UI Discover
 - Danh sách phát hành ở P2: **Trending** (verdict rising), **Fastest Growing** (mean GGT trong rising, đạt điều kiện cứng của Nelis), **Trending by Field**. Không có "Bùng phát gần đây", "Emerging".
 - **Acceptance:** trang chủ dùng precompute OpenAlex khi có; đổi `limit` không đổi verdict (test).
+- **Yêu cầu bắt buộc [HIỆU CHỈNH 2026-10-23, được duyệt trong chat tại cổng P2.1]:**
+  1. **Provenance:** lưu ở cấp snapshot và cấp trang (`trend_snapshots`, `trend_snapshot_pages`), không thêm cột lặp trên từng dòng kết quả. API P2.2 phải trả kèm **mọi** kết quả provenance của snapshot chứa nó: `first/last_fetched_at`, `collection_version`, `analytics_version`, scope, `corpus`, cửa sổ năm, baseline. Test: mọi phần tử của response có provenance.
+  2. **Nhãn Nelis:** khi `stabilityChecked = false`, web **không** được hiển thị nhãn không có điều kiện như "Consistent growth". Phải nói rõ "theo ngưỡng Nelis, chưa kiểm tra ổn định", hoặc ẩn nhóm. Dữ liệu API (`nelis_threshold_group`, `ggt`) và công thức GGT giữ nguyên. Test component cho mọi giá trị nhóm.
+  - Đề xuất (chưa duyệt), từ lần chạy thật P2.1: với baseline subfield, topic là topic duy nhất của subfield (30 subfield) có share = 100% mọi năm, nên MK không xác định và verdict "stable". P2.2 không nên trình bày đây là "ổn định"; nên ghi "baseline không thông tin". Xem `P2_1_FINAL_GATE.md`.
 
 ### P2 — Exit criteria
 - [ ] Báo cáo P2.0 đạt mọi dòng; P2.1–P2.2 đạt; `PHASE_P2_REPORT.md`. **Dừng, chờ duyệt.**

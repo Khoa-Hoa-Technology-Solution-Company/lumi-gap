@@ -27,7 +27,7 @@
 - `apps/backend/prisma/migrations/20261023000100_trend_snapshots/migration.sql`: viết tay theo `docs/prisma-migrations.md`.
 - `apps/backend/src/modules/trends/trend.snapshot-collector.ts`: thu thập, lease, checkpoint, quy tắc độ tươi, tạm dừng/lỗi.
 - `.../trend.snapshot-budget.ts`: ngân sách credit (thuần).
-- `.../trend.snapshot-validation.ts`: 9 kiểm tra bắt buộc.
+- `.../trend.snapshot-validation.ts`: 8 kiểm tra bắt buộc (đính chính 2026-10-23: bản đầu ghi nhầm là 9).
 - `.../trend.snapshot-analytics.ts`: analytics từ các hàm P1 (thuần).
 - `.../trend.snapshot.service.ts`: điều phối job, kích hoạt nguyên tử, hàm đọc snapshot active.
 - `apps/backend/src/workers/trends.worker.ts`: BullMQ worker; script `worker:trends`.
