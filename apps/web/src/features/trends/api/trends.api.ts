@@ -10,6 +10,8 @@ import type {
   TrendPeriodsOverview,
   TrendVerdict,
   TrendsOverview,
+  ProjectTrendSnapshot,
+  TrendTopicFollow,
 } from "@trend/shared-types";
 import { api } from "@/services/api-client";
 import { API_ROUTES } from "@/constants";
@@ -71,6 +73,14 @@ export interface TrendExplainInput extends Omit<TrendsOverviewParams, "limit" | 
   yearFrom?: number;
   yearTo?: number;
   language?: "en" | "vi";
+}
+
+export interface ProjectTrendSnapshotInput {
+  topic: string;
+  openalexTopicId?: string;
+  yearFrom?: number;
+  yearTo?: number;
+  note?: string;
 }
 
 export interface TrendExplainHistoryParams {
@@ -145,5 +155,31 @@ export const trendsApi = {
   async explainHistory(params?: TrendExplainHistoryParams): Promise<TrendExplanationHistoryResponse> {
     const res = await api.get("/trends/explain/history", { params });
     return res.data.data;
+  },
+  async follows(): Promise<TrendTopicFollow[]> {
+    const res = await api.get("/trends/follows");
+    return res.data.data;
+  },
+  async followStatus(topic: string): Promise<{ following: boolean; follow?: TrendTopicFollow }> {
+    const res = await api.get("/trends/follows/check", { params: { topic } });
+    return res.data.data;
+  },
+  async follow(input: { topic: string; openalexTopicId?: string }): Promise<TrendTopicFollow> {
+    const res = await api.post("/trends/follows", input);
+    return res.data.data;
+  },
+  async unfollow(followId: string): Promise<void> {
+    await api.delete(`/trends/follows/${encodeURIComponent(followId)}`);
+  },
+  async projectSnapshots(projectId: string): Promise<ProjectTrendSnapshot[]> {
+    const res = await api.get(`/projects/${encodeURIComponent(projectId)}/trend-snapshots`);
+    return res.data.data;
+  },
+  async addProjectSnapshot(projectId: string, input: ProjectTrendSnapshotInput): Promise<ProjectTrendSnapshot> {
+    const res = await api.post(`/projects/${encodeURIComponent(projectId)}/trend-snapshots`, input);
+    return res.data.data;
+  },
+  async removeProjectSnapshot(projectId: string, snapshotId: string): Promise<void> {
+    await api.delete(`/projects/${encodeURIComponent(projectId)}/trend-snapshots/${encodeURIComponent(snapshotId)}`);
   },
 };

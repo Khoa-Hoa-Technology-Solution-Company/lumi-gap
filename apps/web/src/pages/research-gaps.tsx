@@ -19,6 +19,7 @@ import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
+import { TrendContextCard } from "@/features/trends/components/trend-context-card";
 import {
   useGaps,
   useAnalyzeGap,
@@ -362,6 +363,8 @@ export function ResearchGapsPage() {
           isRetrying={isRetrying}
         />
       )}
+
+      {urlTopic && <TrendContextCard topic={urlTopic} yearFrom={urlYear("yearFrom")} yearTo={urlYear("yearTo")} />}
 
       <GapAnalysisWorkflow
         isAnalyzing={isPending}

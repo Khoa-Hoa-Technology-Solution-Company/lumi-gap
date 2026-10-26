@@ -14,6 +14,7 @@ import { formatPercent, hasCitationTotals, hasPpTop10, WORLD_AVERAGE_PP_TOP10, t
 import { formatShiftCounts, isShiftSignificant } from "../trend-source";
 import { DataSourceBadge } from "./trend-data-source";
 import { TrendFigures, TrendHowLink, TrendIntro, TrendVerdictBadge, formatRelativeChange, verdictLabel } from "./trend-verdict-badge";
+import { buildTrendScopedUrl } from "../trend-navigation";
 import { DOCS_SECTIONS } from "@/features/docs";
 
 interface OverviewTabProps {
@@ -157,37 +158,7 @@ export function OverviewTab({
     }
   };
 
-  const buildScopedUrl = (path: string, baseParams: Record<string, string>) => {
-    const params = new URLSearchParams(baseParams);
-
-    if (scopeParams) {
-      params.set("yearFrom", String(scopeParams.yearFrom));
-      params.set("yearTo", String(scopeParams.yearTo));
-
-      const addList = (key: string, values: string[]) => {
-        const cleaned = values.map((value) => value.trim()).filter(Boolean);
-        if (cleaned.length > 0) params.set(key, cleaned.join(","));
-      };
-
-      addList("domainIds", scopeParams.domainIds);
-      addList("domains", scopeParams.domains);
-      addList("fieldIds", scopeParams.fieldIds);
-      addList("fields", scopeParams.fields);
-      addList("subfieldIds", scopeParams.subfieldIds);
-      addList("subfields", scopeParams.subfields);
-      addList("topicIds", scopeParams.topicIds);
-      addList("topics", scopeParams.topicsFilter);
-      addList("topicsFilter", scopeParams.topicsFilter);
-      addList("paperKinds", scopeParams.paperKinds);
-      addList("openAccessStatuses", scopeParams.openAccessStatuses);
-      addList("providers", scopeParams.providers);
-      addList("sources", scopeParams.sources);
-      addList("languages", scopeParams.languages);
-      addList("citationBands", scopeParams.citationBands);
-    }
-
-    return `${path}?${params.toString()}`;
-  };
+  const buildScopedUrl = (path: string, baseParams: Record<string, string>) => buildTrendScopedUrl(path, baseParams, scopeParams);
 
   const getScopedSearchTarget = (query: string) => {
     return scopeParams

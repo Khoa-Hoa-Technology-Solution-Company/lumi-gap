@@ -1,6 +1,7 @@
-import { useInfiniteQuery, useMutation, useQuery, keepPreviousData } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import {
   trendsApi,
+  type ProjectTrendSnapshotInput,
   type TrendExplainInput,
   type TrendExplainHistoryParams,
   type TrendPeriodsParams,
@@ -104,5 +105,48 @@ export function useTrendExplainHistory(params?: TrendExplainHistoryParams, enabl
     queryFn: () => trendsApi.explainHistory(params),
     enabled,
     placeholderData: keepPreviousData,
+  });
+}
+
+export function useTrendFollows(enabled = true) {
+  return useQuery({ queryKey: ["trendFollows"], queryFn: () => trendsApi.follows(), enabled });
+}
+
+export function useTrendFollowStatus(topic: string, enabled = true) {
+  return useQuery({ queryKey: ["trendFollowStatus", topic.trim().toLowerCase()], queryFn: () => trendsApi.followStatus(topic), enabled: enabled && topic.trim().length > 0 });
+}
+
+/** Follow or unfollow a topic; refreshes the follow list and the status of that topic. */
+export function useToggleTrendFollow() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { topic: string; openalexTopicId?: string; followId?: string }) => {
+      if (input.followId) await trendsApi.unfollow(input.followId);
+      else await trendsApi.follow({ topic: input.topic, openalexTopicId: input.openalexTopicId });
+    },
+    onSuccess: (_data, input) => {
+      void queryClient.invalidateQueries({ queryKey: ["trendFollows"] });
+      void queryClient.invalidateQueries({ queryKey: ["trendFollowStatus", input.topic.trim().toLowerCase()] });
+    },
+  });
+}
+
+export function useProjectTrendSnapshots(projectId: string | undefined) {
+  return useQuery({ queryKey: ["projectTrendSnapshots", projectId], queryFn: () => trendsApi.projectSnapshots(projectId!), enabled: Boolean(projectId) });
+}
+
+export function useAddProjectTrendSnapshot() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ projectId, input }: { projectId: string; input: ProjectTrendSnapshotInput }) => trendsApi.addProjectSnapshot(projectId, input),
+    onSuccess: (_data, { projectId }) => void queryClient.invalidateQueries({ queryKey: ["projectTrendSnapshots", projectId] }),
+  });
+}
+
+export function useRemoveProjectTrendSnapshot(projectId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (snapshotId: string) => trendsApi.removeProjectSnapshot(projectId, snapshotId),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["projectTrendSnapshots", projectId] }),
   });
 }

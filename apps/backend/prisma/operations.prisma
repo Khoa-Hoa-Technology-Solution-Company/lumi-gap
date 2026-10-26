@@ -169,6 +169,47 @@ model TrendExplanation {
   @@map("trend_explanations")
 }
 
+/// A user follows a trend topic; the daily check notifies them when its verdict changes.
+model TrendTopicFollow {
+  id              String    @id @default(uuid()) @db.Uuid
+  userId          String    @map("user_id") @db.Uuid
+  topic           String    @db.VarChar(300)
+  /// lower(btrim(topic)); one follow per user and topic.
+  topicKey        String    @map("topic_key") @db.VarChar(300)
+  openalexTopicId String?   @map("openalex_topic_id") @db.VarChar(64)
+  note            String?   @db.VarChar(500)
+  lastVerdict     String?   @map("last_verdict") @db.VarChar(24)
+  lastDataSource  String?   @map("last_data_source") @db.VarChar(16)
+  lastCheckedAt   DateTime? @map("last_checked_at") @db.Timestamptz(6)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([userId, topicKey])
+  @@index([lastCheckedAt])
+  @@map("trend_topic_follows")
+}
+
+/// Trend evidence a project member attached to a project (frozen at the time it was added).
+model ProjectTrendSnapshot {
+  id              String   @id @default(uuid()) @db.Uuid
+  projectId       String   @map("project_id") @db.Uuid
+  createdById     String   @map("created_by_id") @db.Uuid
+  topic           String   @db.VarChar(300)
+  openalexTopicId String?  @map("openalex_topic_id") @db.VarChar(64)
+  yearFrom        Int      @map("year_from")
+  yearTo          Int      @map("year_to")
+  verdict         String   @db.VarChar(24)
+  dataSource      String   @map("data_source") @db.VarChar(16)
+  totalPapers     Int      @map("total_papers")
+  /// TrendClassification plus baseline label at the time of the snapshot.
+  statistics      Json
+  note            String?  @db.VarChar(1000)
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([projectId, createdAt])
+  @@map("project_trend_snapshots")
+}
+
 model ApiProvider {
   id              String   @id @default(uuid()) @db.Uuid
   legacyMongoId   String?  @unique @map("legacy_mongo_id") @db.VarChar(24)

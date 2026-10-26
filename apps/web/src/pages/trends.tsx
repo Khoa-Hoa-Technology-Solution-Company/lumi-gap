@@ -3,7 +3,7 @@ import { Sparkles, Search, Loader2, ChevronDown, ChevronRight, AlertCircle, X } 
 import { Button } from "@/components/ui/button";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTrendsOverview, useTrendCompare, useTrendRelationships, useExplainTrend, useTrendExplainHistory } from "@/features/trends/hooks/use-trends";
-import { getRisingKeywordTarget, getTopicTrendTarget } from "./trends.navigation";
+import { getRisingKeywordTarget, getTopicTrendTarget } from "@/features/trends/trend-navigation";
 import { FilterChip, type RisingKeywordRow, type TrendBarChartDatum } from "@/features/trends/components/trends-shared.components";
 import { OverviewTab } from "@/features/trends/components/overview-tab";
 import { TopicsTab } from "@/features/trends/components/topics-tab";
@@ -225,7 +225,8 @@ export function TrendsPage() {
   // PP(top 10%) replaces the citation sums when the source reports it; sums are
   // dropped when the source cannot provide them.
   const resolvedMetricMode = useMemo(() => resolveMetricMode(metricMode, data?.citationTrend), [metricMode, data?.citationTrend]);
-  const [focusTopic, setFocusTopic] = useState<string>("");
+  // `focus` lets another page (e.g. topic detail) open the AI tab on its topic.
+  const [focusTopic, setFocusTopic] = useState<string>(() => searchParams.get("focus")?.trim() ?? "");
 
   // Calculated displayed topics yearly sum
   const displayedTopicsYearlyData = useMemo(() => {

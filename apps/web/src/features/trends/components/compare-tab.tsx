@@ -14,6 +14,7 @@ import { formatNumber } from "@/utils";
 import { useI18n } from "@/i18n";
 import { aggregatePpTop10, averageCitations, formatPercent, hasCitationTotals, hasPpTop10, sumCitations, WORLD_AVERAGE_PP_TOP10 } from "../trend-impact";
 import { DataSourceBadge } from "./trend-data-source";
+import { buildTrendScopedUrl } from "../trend-navigation";
 import { TrendIntro, TrendVerdictBadge, formatRelativeChange, verdictLabel } from "./trend-verdict-badge";
 
 type DatasetTrendTab = "overview" | "topics" | "dataset" | "compare" | "ai";
@@ -89,37 +90,7 @@ export function CompareTab({
   const [searchTerm, setSearchTerm] = React.useState("");
   const [showAllCandidates, setShowAllCandidates] = React.useState(false);
 
-  // URL query builder carrying all 15 scope parameters
-  const buildScopedUrl = (path: string, baseParams: Record<string, string>) => {
-    const params = new URLSearchParams(baseParams);
-    params.set("yearFrom", String(yearFrom));
-    params.set("yearTo", String(yearTo));
-
-    if (scopeParams) {
-      const addList = (key: string, values: string[]) => {
-        const cleaned = values.map((value) => value.trim()).filter(Boolean);
-        if (cleaned.length > 0) params.set(key, cleaned.join(","));
-      };
-
-      addList("domainIds", scopeParams.domainIds);
-      addList("domains", scopeParams.domains);
-      addList("fieldIds", scopeParams.fieldIds);
-      addList("fields", scopeParams.fields);
-      addList("subfieldIds", scopeParams.subfieldIds);
-      addList("subfields", scopeParams.subfields);
-      addList("topicIds", scopeParams.topicIds);
-      addList("topics", scopeParams.topicsFilter); // Map topicsFilter to topics for target pages
-      addList("topicsFilter", scopeParams.topicsFilter);
-      addList("paperKinds", scopeParams.paperKinds);
-      addList("openAccessStatuses", scopeParams.openAccessStatuses);
-      addList("providers", scopeParams.providers);
-      addList("sources", scopeParams.sources);
-      addList("languages", scopeParams.languages);
-      addList("citationBands", scopeParams.citationBands);
-    }
-
-    return `${path}?${params.toString()}`;
-  };
+  const buildScopedUrl = (path: string, baseParams: Record<string, string>) => buildTrendScopedUrl(path, baseParams, { ...scopeParams, yearFrom, yearTo });
 
   // Helper taxonomy lookups
   const getDomainName = (id: string) => data.facets?.domains?.find(d => d.openalexId === id || d.id === id)?.name || id;

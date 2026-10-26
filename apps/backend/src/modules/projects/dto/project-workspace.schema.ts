@@ -6,7 +6,7 @@ const lines = z.array(z.string().trim().min(1).max(500)).max(20);
 const planQuestionSchema = z.object({ id: z.string().uuid(), text: z.string().trim().min(1).max(1000), sourceGapId: z.string().uuid().optional(), evidenceIds: z.array(z.string().uuid()).max(30).refine(ids => new Set(ids).size === ids.length, "Evidence references must be unique").optional(), sourceGapVersion: z.number().int().positive().optional(), sourceEvidenceRevisionIds: z.array(z.string().uuid()).max(30).optional() }).strict();
 export const workspaceParams = z.object({ id: databaseIdSchema, itemId: z.string().uuid().optional() });
 export const workspacePageSchema = z.object({ page: z.coerce.number().int().min(1).max(10000).default(1), pageSize: z.coerce.number().int().min(1).max(50).default(20) });
-export const workspaceLinkSchema = z.object({ kind: z.enum(["PAPER", "SCREENING", "EVIDENCE", "GAP", "QUESTION", "MANUSCRIPT", "MANUSCRIPT_SNAPSHOT", "MENTOR_FEEDBACK", "PLAN", "REVIEW_REQUEST", "PLAN_REVISION", "REPORT"]), id: z.string().uuid() }).strict().nullable();
+export const workspaceLinkSchema = z.object({ kind: z.enum(["PAPER", "SCREENING", "EVIDENCE", "GAP", "QUESTION", "MANUSCRIPT", "MANUSCRIPT_SNAPSHOT", "MENTOR_FEEDBACK", "PLAN", "REVIEW_REQUEST", "PLAN_REVISION", "REPORT", "TREND"]), id: z.string().uuid() }).strict().nullable();
 export const researchStageSchema = z.object({ expectedVersion: z.number().int().positive(), stage: z.enum(["DISCOVERY", "SCREENING", "EXTRACTION", "GAP_VALIDATION", "DESIGN", "WRITING", "REVIEW"]).nullable() }).strict();
 export const savePlanSchema = z.object({
   expectedVersion: z.number().int().positive(), approach: z.enum(["EXPLORATORY", "LITERATURE_REVIEW", "EMPIRICAL", "UNDECIDED"]),

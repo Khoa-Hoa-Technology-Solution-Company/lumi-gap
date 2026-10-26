@@ -18,6 +18,8 @@ import { getOpenAlexTrendPeriods } from "./trend.openalex-periods.js";
 import { getPostgresTrendPeriods, getPostgresTrendsOverview } from "./trend.postgres.js";
 
 const WINDOW = 10;
+/** Papers listed on the topic detail page so the reader can go from the trend to its literature. */
+const TOP_PAPERS = 6;
 const EMPTY_FACETS = { paperKinds: [], openAccessStatuses: [], providers: [], topSources: [], languages: [], citationBands: [], domains: [], fields: [], subfields: [], topics: [] };
 function years(input: { yearFrom?: number; yearTo?: number }) { const yearTo = input.yearTo ?? new Date().getFullYear(); return { yearTo, yearFrom: input.yearFrom ?? yearTo - WINDOW, lastCompleteYear: Math.min(yearTo, new Date().getFullYear() - 1) }; }
 async function topicRows(topic: string, input: { yearFrom?: number; yearTo?: number; topicId?: string }) { const span = years(input); const topics = await getPrisma().paperTopic.findMany({ where: input.topicId ? { openalexTopicId: { contains: input.topicId, mode: "insensitive" } } : { topicName: { equals: topic, mode: "insensitive" } } }); const ids = [...new Set(topics.map((row) => row.paperId))]; const papers = await getPrisma().paper.findMany({ where: { id: { in: ids }, dataStatus: "active", publicationYear: { gte: span.yearFrom, lte: span.yearTo } } }); return { span, papers, topics }; }
@@ -55,7 +57,8 @@ export const trendService = {
     const detail = await preferOpenAlex("topic", () => getOpenAlexTopicDetail(topic, query), async () => (await topicDetail(topic, query)).detail);
     const scope = (detail.taxonomy ?? taxonomy(local.topics)) as { topicId?: string; openalexTopicId?: string; fieldId?: string; fieldName?: string } | undefined;
     const statistics = await computeTopicStatistics({ topic, topicId: scope?.topicId ?? scope?.openalexTopicId ?? query.topicId, fieldId: scope?.fieldId, fieldName: scope?.fieldName, papers: local.papers, yearFrom: span.yearFrom, lastCompleteYear: span.lastCompleteYear });
-    return { ...detail, statistics };
+    const topPapers = [...local.papers].sort((a, b) => b.citationCount - a.citationCount).slice(0, TOP_PAPERS).map((paper) => ({ id: publicDatabaseId(paper), title: paper.title, publicationYear: paper.publicationYear, citationCount: paper.citationCount }));
+    return { ...detail, statistics, topPapers };
   },
   async topicDetailOnly(topic: string, query: TopicTrendQuery) { return (await topicDetail(topic, query)).detail; },
   compare(query: TrendCompareQuery) { return preferOpenAlex("compare", () => getOpenAlexCompare(query), () => this.localCompare(query)); },
