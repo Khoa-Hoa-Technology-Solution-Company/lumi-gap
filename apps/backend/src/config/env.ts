@@ -248,6 +248,8 @@ const EnvSchema = z.object({
   // throttle stops an unauthenticated loop from draining the Gemini quota.
   RERANK_MAX_PER_HOUR: z.coerce.number().int().positive().default(30),
   SEMANTIC_SEARCH_MAX_PER_MINUTE: z.coerce.number().int().positive().default(60),
+  // POST /trends/explain is open to anonymous users and every new scope is an uncached LLM call.
+  TREND_EXPLAIN_MAX_PER_HOUR: z.coerce.number().int().positive().default(20),
   // Community "did you mean" suggestions embed the raw query on every cache miss
   // (Gemini, shared quota), so the route is throttled per user/IP.
   COMMUNITY_SUGGEST_MAX_PER_MINUTE: z.coerce.number().int().min(1).default(20),

@@ -82,6 +82,7 @@ export function TrendsPage() {
   // Controlled states synchronized with URL search params (with safety bounds)
   const [yearFrom, setYearFrom] = useState<number>(() => parseNumberParam(searchParams, "yearFrom", DEFAULT_TREND_YEAR_FROM, { min: 1900 }));
   const [yearTo, setYearTo] = useState<number>(() => parseNumberParam(searchParams, "yearTo", DEFAULT_TREND_YEAR_TO, { min: 1900 }));
+  const openTopicTarget = (topic: string, openalexTopicId?: string) => getTopicTrendTarget(topic, openalexTopicId, { yearFrom, yearTo });
   // Legacy ?sortBy=momentum|growth (and ?sort=) links map to the verdict ranking.
   const [sortBy, setSortBy] = useState<TrendSortKey>(() => parseTrendSortKey(searchParams.get("sortBy") ?? searchParams.get("sort")));
   const [minPapers, setMinPapers] = useState<number>(() => parseNumberParam(searchParams, "minPapers", 2, { min: 1 }));
@@ -596,7 +597,7 @@ export function TrendsPage() {
                 onClick={(e) => {
                   const input = e.currentTarget.nextElementSibling as HTMLInputElement;
                   const val = input.value.trim();
-                  if (val) navigate(`/trends/${encodeURIComponent(val)}`);
+                  if (val) navigate(openTopicTarget(val));
                 }}
               >
                 <Search className="w-4 h-4" />
@@ -608,7 +609,7 @@ export function TrendsPage() {
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
                     const val = e.currentTarget.value.trim();
-                    if (val) navigate(`/trends/${encodeURIComponent(val)}`);
+                    if (val) navigate(openTopicTarget(val));
                   }
                 }}
               />
@@ -1034,7 +1035,7 @@ export function TrendsPage() {
                 fastestKeyword={fastestKeyword}
                 navigate={navigate}
                 setActiveTab={setActiveTab}
-                getTopicTrendTarget={getTopicTrendTarget}
+                getTopicTrendTarget={openTopicTarget}
                 getRisingKeywordTarget={getRisingKeywordTarget}
                 setYearFrom={setYearFrom}
                 setYearTo={setYearTo}
@@ -1067,7 +1068,7 @@ export function TrendsPage() {
                 keywordsData={keywordsData}
                 sortBy={sortBy}
                 navigate={navigate}
-                getTopicTrendTarget={getTopicTrendTarget}
+                getTopicTrendTarget={openTopicTarget}
                 getRisingKeywordTarget={getRisingKeywordTarget}
                 selectedTopics={selectedTopics}
                 setSelectedTopics={setSelectedTopics}
@@ -1099,7 +1100,7 @@ export function TrendsPage() {
 
             {activeTab === "periods" && (
               <PeriodsTab
-                onOpenTopic={(topic, openalexTopicId) => navigate(getTopicTrendTarget(topic, openalexTopicId))}
+                onOpenTopic={(topic, openalexTopicId) => navigate(openTopicTarget(topic, openalexTopicId))}
                 scope={{
                   sortBy,
                   minPapers,
