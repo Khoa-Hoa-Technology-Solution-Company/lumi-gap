@@ -10,6 +10,7 @@ import { TopicsTab } from "@/features/trends/components/topics-tab";
 import { DatasetTab } from "@/features/trends/components/dataset-tab";
 import { CompareTab } from "@/features/trends/components/compare-tab";
 import { AITab } from "@/features/trends/components/ai-tab";
+import { DiscoverTab } from "@/features/trends/components/discover-tab";
 import { DataSourceBadge, ScopeNotice } from "@/features/trends/components/trend-data-source";
 import { resolveMetricMode, type TimelinePoint, type TrendMetricMode } from "@/features/trends/trend-impact";
 import {
@@ -31,10 +32,11 @@ import { useI18n } from "@/i18n";
 
 type CitationBand = "0-9" | "10-49" | "50-99" | "100-499" | "500-999" | "1000+";
 const CITATION_BANDS = ["0-9", "10-49", "50-99", "100-499", "500-999", "1000+"] as const;
-type TrendTab = "overview" | "topics" | "dataset" | "compare" | "ai";
+type TrendTab = "overview" | "discover" | "topics" | "dataset" | "compare" | "ai";
 
 const TREND_TABS: Array<{ id: TrendTab; label: string }> = [
   { id: "overview", label: "Start here" },
+  { id: "discover", label: "Discover trends" },
   { id: "topics", label: "Find signals" },
   { id: "dataset", label: "Data Scope" },
   { id: "compare", label: "Compare topics" },
@@ -67,7 +69,7 @@ function parseCitationBandsParam(params: URLSearchParams, key: string): Citation
 function parseTabParam(params: URLSearchParams): TrendTab {
   const tab = params.get("tab");
   if (tab === "scope") return "dataset";
-  if (tab === "topics" || tab === "dataset" || tab === "compare" || tab === "ai") return tab;
+  if (tab === "discover" || tab === "topics" || tab === "dataset" || tab === "compare" || tab === "ai") return tab;
   return "overview";
 }
 
@@ -1038,6 +1040,9 @@ export function TrendsPage() {
                 }}
               />
             )}
+
+            {/* Precomputed OpenAlex snapshot (P2.2): independent of the Data Scope filters above. */}
+            {activeTab === "discover" && <DiscoverTab />}
 
             {activeTab === "topics" && (
               <TopicsTab

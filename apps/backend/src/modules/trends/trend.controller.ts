@@ -7,8 +7,10 @@ import {
   TrendExplainBodySchema,
   TrendRelationshipQuerySchema,
   TrendTopicCandidatesQuerySchema,
+  TrendsDiscoverQuerySchema,
   TrendsOverviewQuerySchema,
 } from "./dto/trends.schema.js";
+import { getTrendsDiscover } from "./trend.discover.service.js";
 
 /**
  * Trends endpoints. Query is parsed inline (not via the validate() middleware)
@@ -24,6 +26,18 @@ export const trendController = {
     }
 
     const data = await trendService.overview(parsed.data);
+    res.json({ success: true, data });
+  },
+
+  /** GET /api/v1/trends/discover?collection=trending|fastest_growing|by_field&baseline=&page=&pageSize=&perField=&fieldId= */
+  async discover(req: Request, res: Response, next: NextFunction) {
+    const parsed = TrendsDiscoverQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      next(parsed.error);
+      return;
+    }
+
+    const data = await getTrendsDiscover(parsed.data);
     res.json({ success: true, data });
   },
 

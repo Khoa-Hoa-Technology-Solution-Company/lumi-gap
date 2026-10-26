@@ -1,12 +1,13 @@
 import type { ReactNode } from "react";
 import { Bar, BarChart, CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { ChevronDown } from "lucide-react";
-import type { TopicTrendStatistics, TrendBaseline, TrendGgt, TrendGgtClass, TrendTermShift } from "@trend/shared-types";
+import type { TopicTrendStatistics, TrendBaseline, TrendGgt, TrendTermShift } from "@trend/shared-types";
 import { DOCS_SECTIONS } from "@/features/docs";
 import { useI18n } from "@/i18n";
 import { formatNumber } from "@/utils";
 import { formatSigned } from "../../../pages/trends.insights";
-import { TrendFigures, TrendHowLink, TrendReasons, TrendVerdictBadge } from "./trend-verdict-badge";
+import { GGT_THRESHOLD_BAND_LABEL } from "../trend-ggt-labels";
+import { isTrendNotAssessable, TrendFigures, TrendHowLink, TrendReasons, TrendVerdictBadge } from "./trend-verdict-badge";
 
 export function formatPValue(p: number): string {
   return p < 0.001 ? "< 0.001" : p.toFixed(3);
@@ -58,7 +59,11 @@ export function TrendEvidencePanel({ statistics }: { statistics: TopicTrendStati
         <div className="mt-3">
           <TrendFigures classification={classification} source={statistics.source} />
         </div>
-        <TrendReasons classification={classification} className="mt-2" />
+        {isTrendNotAssessable(classification) ? (
+          <NotAssessableNotice soleMember={statistics.shareSeries.length > 0 && statistics.shareSeries.every((row) => row.count === row.total)} />
+        ) : (
+          <TrendReasons classification={classification} className="mt-2" />
+        )}
         {fallbackFrom && <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">{t(BASELINE_FALLBACK[fallbackFrom])}</p>}
       </div>
 
@@ -141,16 +146,6 @@ function useBaselineLabel(baseline: TrendBaseline): string {
   }
 }
 
-const GGT_CLASS_LABEL: Record<TrendGgtClass, string> = {
-  consistent_decrease: "Consistent decrease",
-  no_consistent_growth: "No consistent growth",
-  consistent_growth: "Consistent growth",
-  consistent_strong_growth: "Consistent strong growth",
-  consistent_intense_growth: "Consistent intense growth",
-  unsustainable_growth: "Unsustainable growth",
-  unclassified: "Between the classes of the paper",
-};
-
 /** General Growth Tendency (Nelis et al. 2022): descriptive, never the verdict. */
 function GgtSection({ ggt }: { ggt: TrendGgt }) {
   const { t } = useI18n();
@@ -161,7 +156,7 @@ function GgtSection({ ggt }: { ggt: TrendGgt }) {
       ? `${formatSigned(ggt.meanPct, 1)}%`
       : `${formatSigned(ggt.meanPct, 1)}% ± ${ggt.semPct.toFixed(1)}%`;
   const classNote = ggt.nelisClass
-    ? t(GGT_CLASS_LABEL[ggt.nelisClass])
+    ? t(GGT_THRESHOLD_BAND_LABEL[ggt.nelisClass])
     : ggt.conditions.atLeast50PapersEveryYear === false
       ? t("Not given: a year has fewer than 50 papers")
       : ggt.conditions.allAnnualBelow100Pct === false
@@ -179,7 +174,7 @@ function GgtSection({ ggt }: { ggt: TrendGgt }) {
           <dd className="text-right font-mono text-slate-900 dark:text-white">{summary}</dd>
         </div>
         <div className="flex justify-between gap-3 border-b border-slate-100 py-1.5 dark:border-slate-800">
-          <dt className="text-slate-500 dark:text-slate-400">{t("Class (Nelis et al.)")}</dt>
+          <dt className="text-slate-500 dark:text-slate-400">{t("Nelis threshold band (stability not verified)")}</dt>
           <dd className="text-right text-slate-900 dark:text-white">{classNote}</dd>
         </div>
       </dl>
@@ -190,6 +185,21 @@ function GgtSection({ ggt }: { ggt: TrendGgt }) {
       )}
       <p className="mt-2 text-[11px] italic text-slate-500 dark:text-slate-400">
         {t("The paper's 50% year-to-year stability rule is not defined precisely, so it is not applied.")}
+      </p>
+    </div>
+  );
+}
+
+/** Shown instead of the reasons when no trend test could run (the legacy verdict is "stable"). */
+export function NotAssessableNotice({ soleMember }: { soleMember: boolean }) {
+  const { t } = useI18n();
+  return (
+    <div role="note" className="mt-2 rounded-lg border border-dashed border-slate-300 p-3 text-xs text-slate-600 dark:border-slate-700 dark:text-slate-400">
+      <p className="font-semibold text-slate-800 dark:text-slate-200">{t("Trend not assessable against this baseline")}</p>
+      <p className="mt-1">
+        {soleMember
+          ? t("The topic is the whole reference population, so its share is 100% every year and no trend test can run. This is not evidence that the topic is stable; choose a wider baseline.")
+          : t("The share never changes, so no trend test can run. This is not evidence that the topic is stable.")}
       </p>
     </div>
   );

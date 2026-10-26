@@ -29,6 +29,18 @@ const VERDICT_STYLE: Record<TrendVerdict, { icon: LucideIcon; classes: string }>
   },
 };
 
+/**
+ * A "stable" verdict without a Mann–Kendall result: the share never changed
+ * (e.g. the topic is its whole reference population, share = 100% every
+ * year), so no trend test ran. The API keeps "stable" for compatibility; the
+ * UI must not present it as evidence of stability (P2.2).
+ */
+export function isTrendNotAssessable(classification: Pick<TrendClassification, "verdict" | "mannKendall">): boolean {
+  return classification.verdict === "stable" && classification.mannKendall === null;
+}
+
+const NOT_ASSESSABLE_STYLE = "border-dashed border-slate-400 bg-white text-slate-600 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-400";
+
 export function verdictLabel(verdict: TrendVerdict, t: Translate): string {
   switch (verdict) {
     case "rising": return t("Rising");
@@ -70,8 +82,9 @@ export function TrendVerdictBadge({
   className?: string;
 }) {
   const { t } = useI18n();
-  const { icon: Icon, classes } = VERDICT_STYLE[classification.verdict];
-  const label = verdictLabel(classification.verdict, t);
+  const notAssessable = isTrendNotAssessable(classification);
+  const { icon: Icon, classes } = notAssessable ? { icon: CircleHelp, classes: NOT_ASSESSABLE_STYLE } : VERDICT_STYLE[classification.verdict];
+  const label = notAssessable ? t("Not assessable") : verdictLabel(classification.verdict, t);
   const confidence = classification.confidence ? confidenceLabel(classification.confidence, t) : null;
   const sizing = size === "sm" ? "gap-1 px-2 py-0.5 text-[10.5px]" : "gap-1.5 px-2.5 py-1 text-xs";
   return (
@@ -79,7 +92,7 @@ export function TrendVerdictBadge({
       <TooltipTrigger asChild>
         <span
           tabIndex={0}
-          data-verdict={classification.verdict}
+          data-verdict={notAssessable ? "not_assessable" : classification.verdict}
           className={`inline-flex cursor-help items-center whitespace-nowrap rounded-full border font-bold leading-none select-none ${sizing} ${classes} ${className}`}
         >
           <Icon className={size === "sm" ? "h-3 w-3 shrink-0" : "h-3.5 w-3.5 shrink-0"} aria-hidden="true" />
@@ -88,11 +101,15 @@ export function TrendVerdictBadge({
         </span>
       </TooltipTrigger>
       <TooltipContent className="max-w-xs space-y-1 bg-popover p-2.5 text-xs text-popover-foreground">
-        <ul className="list-disc space-y-1 pl-4">
-          {classification.reasons.map((code) => (
-            <li key={code}>{reasonText(code, t)}</li>
-          ))}
-        </ul>
+        {notAssessable ? (
+          <p>{t("Trend not assessable against this baseline: the share never changes, so no trend test can run.")}</p>
+        ) : (
+          <ul className="list-disc space-y-1 pl-4">
+            {classification.reasons.map((code) => (
+              <li key={code}>{reasonText(code, t)}</li>
+            ))}
+          </ul>
+        )}
       </TooltipContent>
     </Tooltip>
   );

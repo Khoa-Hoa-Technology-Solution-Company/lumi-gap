@@ -155,7 +155,10 @@ describe("reference population and GGT in the evidence panel (P1.1, P1.3)", () =
     const text = await render(<TrendEvidencePanel statistics={statistics({ ggt })} />);
     expect(text).toContain("General Growth Tendency (GGT)");
     expect(text).toContain("Mean GGT ± SEM (2 years)+9.5% ± 0.5%");
-    expect(text).toContain("Consistent growth");
+    // P2.2: the threshold band by its bounds, never the paper's "Consistent growth" while stability is unchecked.
+    expect(text).toContain("Mean GGT between 5% and 15%");
+    expect(text).toContain("Nelis threshold band (stability not verified)");
+    expect(text).not.toMatch(/consistent/i);
     expect(text).toContain("2021: +10.0% · 2022: +9.1%");
     expect(text).toContain("Descriptive: it does not change the verdict.");
     expect(text).toContain("not applied");

@@ -21,6 +21,15 @@
 .academic-text-link { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; color: var(--home-accent); font-weight: 600; font-size: 15px; }
 .academic-text-link:hover svg { transform: translate(2px, -2px); }
 .academic-text-link svg { width: 18px; height: 18px; transition: transform 180ms; }
+/* Discover Trends teaser (P2.2): precomputed OpenAlex snapshot. */
+.home-discover-trends { margin-top: 20px; border-top: 1px solid var(--home-line); padding-top: 16px; }
+.home-discover-trends h3 { font-size: 13px; font-weight: 700; letter-spacing: .02em; text-transform: uppercase; color: var(--home-muted); }
+.home-discover-trends ol { margin-top: 10px; display: grid; gap: 10px; }
+.home-discover-trends li { display: grid; gap: 2px; }
+.home-discover-trends li a { font-weight: 600; color: var(--home-ink); overflow-wrap: anywhere; }
+.home-discover-trends li a:hover { text-decoration: underline; }
+.home-discover-trends li span, .home-discover-trends > p { font-size: 12px; color: var(--home-muted); }
+.home-discover-trends > p { margin-top: 10px; }
 .academic-overview { position: relative; border-bottom: 1px solid var(--home-line); }
 .academic-overview-inner { position: relative; padding-block: 76px 72px; }
 .academic-overview-copy { max-width: 960px; margin-bottom: 40px; }

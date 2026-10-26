@@ -1,0 +1,557 @@
+{
+ "snapshotId": "2ad0ad73-87a8-400c-95e1-7f600b79033b",
+ "checkedAt": "2026-10-23T05:43:52.774Z",
+ "trending_global": {
+  "total": 833,
+  "excluded": {
+   "insufficientData": 22,
+   "notAssessable": 0
+  },
+  "top3": [
+   {
+    "rank": 1,
+    "topicId": "T13424",
+    "topicName": "Ukraine: War, Education, Health",
+    "rel": 262.42185617630895,
+    "q": 0.02883667994244291,
+    "family": 4426,
+    "field": "Environmental Science"
+   },
+   {
+    "rank": 2,
+    "topicId": "T14414",
+    "topicName": "Artificial Intelligence in Education",
+    "rel": 83.73868264996845,
+    "q": 0.000012320070190440561,
+    "family": 4426,
+    "field": "Computer Science"
+   },
+   {
+    "rank": 3,
+    "topicId": "T11297",
+    "topicName": "Ferroptosis and cancer prognosis",
+    "rel": 50.23089013419537,
+    "q": 0.000012320070190440561,
+    "family": 4426,
+    "field": "Medicine"
+   }
+  ]
+ },
+ "trending_domain": {
+  "total": 801,
+  "excluded": {
+   "insufficientData": 22,
+   "notAssessable": 0
+  },
+  "top3": [
+   {
+    "rank": 1,
+    "topicId": "T13424",
+    "topicName": "Ukraine: War, Education, Health",
+    "rel": 248.4126878532999,
+    "q": 0.03984611344537815,
+    "family": 1539,
+    "field": "Environmental Science"
+   },
+   {
+    "rank": 2,
+    "topicId": "T14414",
+    "topicName": "Artificial Intelligence in Education",
+    "rel": 79.0855510125641,
+    "q": 0.000007068452380952381,
+    "family": 1539,
+    "field": "Computer Science"
+   },
+   {
+    "rank": 3,
+    "topicId": "T11297",
+    "topicName": "Ferroptosis and cancer prognosis",
+    "rel": 51.20145598180189,
+    "q": 0.000017848663681997013,
+    "family": 842,
+    "field": "Medicine"
+   }
+  ]
+ },
+ "trending_field": {
+  "total": 781,
+  "excluded": {
+   "insufficientData": 22,
+   "notAssessable": 0
+  },
+  "top3": [
+   {
+    "rank": 1,
+    "topicId": "T13424",
+    "topicName": "Ukraine: War, Education, Health",
+    "rel": 247.31785347159655,
+    "q": 0.04132477219282775,
+    "family": 195,
+    "field": "Environmental Science"
+   },
+   {
+    "rank": 2,
+    "topicId": "T14414",
+    "topicName": "Artificial Intelligence in Education",
+    "rel": 70.8007699421623,
+    "q": 0.0000029190345548370237,
+    "family": 286,
+    "field": "Computer Science"
+   },
+   {
+    "rank": 3,
+    "topicId": "T11297",
+    "topicName": "Ferroptosis and cancer prognosis",
+    "rel": 52.209462092489275,
+    "q": 0.000018135340555975478,
+    "family": 691,
+    "field": "Medicine"
+   }
+  ]
+ },
+ "trending_subfield": {
+  "total": 823,
+  "excluded": {
+   "insufficientData": 22,
+   "notAssessable": 30
+  },
+  "top3": [
+   {
+    "rank": 1,
+    "topicId": "T13424",
+    "topicName": "Ukraine: War, Education, Health",
+    "rel": 266.337434622389,
+    "q": 0.02333256172839506,
+    "family": 28,
+    "field": "Environmental Science"
+   },
+   {
+    "rank": 2,
+    "topicId": "T14414",
+    "topicName": "Artificial Intelligence in Education",
+    "rel": 70.79863102044284,
+    "q": 0.00000804673721340388,
+    "family": 73,
+    "field": "Computer Science"
+   },
+   {
+    "rank": 3,
+    "topicId": "T11297",
+    "topicName": "Ferroptosis and cancer prognosis",
+    "rel": 53.14704167970079,
+    "q": 0.000014329805996472663,
+    "family": 52,
+    "field": "Medicine"
+   }
+  ]
+ },
+ "fastest_field": {
+  "total": 743,
+  "ggtConditionsNotMet": 38,
+  "top3": [
+   {
+    "topicId": "T12128",
+    "topicName": "AI in Service Interactions",
+    "mean": 45.78942341462707,
+    "sem": 10.54593080026601,
+    "years": 9,
+    "group": "consistent_intense_growth"
+   },
+   {
+    "topicId": "T13053",
+    "topicName": "SMEs Development and Digital Marketing",
+    "mean": 40.128044337045814,
+    "sem": 9.430634770542733,
+    "years": 9,
+    "group": "consistent_intense_growth"
+   },
+   {
+    "topicId": "T10883",
+    "topicName": "Ethics and Social Impacts of AI",
+    "mean": 39.13419833326217,
+    "sem": 5.717571734071856,
+    "years": 9,
+    "group": "consistent_strong_growth"
+   }
+  ]
+ },
+ "by_field": [
+  {
+   "field": "Agricultural and Biological Sciences",
+   "topics": 233,
+   "family": 233,
+   "rising": 42
+  },
+  {
+   "field": "Arts and Humanities",
+   "topics": 265,
+   "family": 265,
+   "rising": 40
+  },
+  {
+   "field": "Biochemistry, Genetics and Molecular Biology",
+   "topics": 246,
+   "family": 246,
+   "rising": 43
+  },
+  {
+   "field": "Business, Management and Accounting",
+   "topics": 142,
+   "family": 142,
+   "rising": 28
+  },
+  {
+   "field": "Chemical Engineering",
+   "topics": 13,
+   "family": 13,
+   "rising": 3
+  },
+  {
+   "field": "Chemistry",
+   "topics": 101,
+   "family": 101,
+   "rising": 20
+  },
+  {
+   "field": "Computer Science",
+   "topics": 286,
+   "family": 286,
+   "rising": 59
+  },
+  {
+   "field": "Decision Sciences",
+   "topics": 56,
+   "family": 56,
+   "rising": 9
+  },
+  {
+   "field": "Dentistry",
+   "topics": 13,
+   "family": 13,
+   "rising": 1
+  },
+  {
+   "field": "Earth and Planetary Sciences",
+   "topics": 57,
+   "family": 57,
+   "rising": 12
+  },
+  {
+   "field": "Economics, Econometrics and Finance",
+   "topics": 103,
+   "family": 103,
+   "rising": 22
+  },
+  {
+   "field": "Energy",
+   "topics": 27,
+   "family": 27,
+   "rising": 7
+  },
+  {
+   "field": "Engineering",
+   "topics": 555,
+   "family": 555,
+   "rising": 109
+  },
+  {
+   "field": "Environmental Science",
+   "topics": 195,
+   "family": 195,
+   "rising": 46
+  },
+  {
+   "field": "Health Professions",
+   "topics": 106,
+   "family": 106,
+   "rising": 16
+  },
+  {
+   "field": "Immunology and Microbiology",
+   "topics": 44,
+   "family": 44,
+   "rising": 6
+  },
+  {
+   "field": "Materials Science",
+   "topics": 123,
+   "family": 123,
+   "rising": 27
+  },
+  {
+   "field": "Mathematics",
+   "topics": 79,
+   "family": 79,
+   "rising": 8
+  },
+  {
+   "field": "Medicine",
+   "topics": 691,
+   "family": 691,
+   "rising": 75
+  },
+  {
+   "field": "Neuroscience",
+   "topics": 62,
+   "family": 62,
+   "rising": 12
+  },
+  {
+   "field": "Nursing",
+   "topics": 21,
+   "family": 21,
+   "rising": 5
+  },
+  {
+   "field": "Pharmacology, Toxicology and Pharmaceutics",
+   "topics": 25,
+   "family": 25,
+   "rising": 5
+  },
+  {
+   "field": "Physics and Astronomy",
+   "topics": 103,
+   "family": 103,
+   "rising": 21
+  },
+  {
+   "field": "Psychology",
+   "topics": 143,
+   "family": 143,
+   "rising": 24
+  },
+  {
+   "field": "Social Sciences",
+   "topics": 726,
+   "family": 726,
+   "rising": 141
+  },
+  {
+   "field": "Veterinary",
+   "topics": 11,
+   "family": 11,
+   "rising": 0
+  }
+ ],
+ "checks": [
+  {
+   "name": "trending global: total = stored rising",
+   "ok": true,
+   "detail": {
+    "total": 833,
+    "rising": 833,
+    "risingWithPQ": 833
+   }
+  },
+  {
+   "name": "trending global: provenance = active snapshot",
+   "ok": true
+  },
+  {
+   "name": "trending global: excluded.notAssessable = stored rows without p (not insufficient)",
+   "ok": true,
+   "detail": {
+    "api": 0,
+    "stored": 0
+   }
+  },
+  {
+   "name": "trending global: pageSize 7 vs 100 give the same ranking and statistics",
+   "ok": true,
+   "detail": {
+    "n": 833
+   }
+  },
+  {
+   "name": "trending global: documented order",
+   "ok": true
+  },
+  {
+   "name": "trending global: each item's BH family size = topics with p in its baseline unit",
+   "ok": true
+  },
+  {
+   "name": "trending domain: total = stored rising",
+   "ok": true,
+   "detail": {
+    "total": 801,
+    "rising": 801,
+    "risingWithPQ": 801
+   }
+  },
+  {
+   "name": "trending domain: provenance = active snapshot",
+   "ok": true
+  },
+  {
+   "name": "trending domain: excluded.notAssessable = stored rows without p (not insufficient)",
+   "ok": true,
+   "detail": {
+    "api": 0,
+    "stored": 0
+   }
+  },
+  {
+   "name": "trending domain: pageSize 7 vs 100 give the same ranking and statistics",
+   "ok": true,
+   "detail": {
+    "n": 801
+   }
+  },
+  {
+   "name": "trending domain: documented order",
+   "ok": true
+  },
+  {
+   "name": "trending domain: each item's BH family size = topics with p in its baseline unit",
+   "ok": true
+  },
+  {
+   "name": "trending field: total = stored rising",
+   "ok": true,
+   "detail": {
+    "total": 781,
+    "rising": 781,
+    "risingWithPQ": 781
+   }
+  },
+  {
+   "name": "trending field: provenance = active snapshot",
+   "ok": true
+  },
+  {
+   "name": "trending field: excluded.notAssessable = stored rows without p (not insufficient)",
+   "ok": true,
+   "detail": {
+    "api": 0,
+    "stored": 0
+   }
+  },
+  {
+   "name": "trending field: pageSize 7 vs 100 give the same ranking and statistics",
+   "ok": true,
+   "detail": {
+    "n": 781
+   }
+  },
+  {
+   "name": "trending field: documented order",
+   "ok": true
+  },
+  {
+   "name": "trending field: each item's BH family size = topics with p in its baseline unit",
+   "ok": true
+  },
+  {
+   "name": "trending subfield: total = stored rising",
+   "ok": true,
+   "detail": {
+    "total": 823,
+    "rising": 823,
+    "risingWithPQ": 823
+   }
+  },
+  {
+   "name": "trending subfield: provenance = active snapshot",
+   "ok": true
+  },
+  {
+   "name": "trending subfield: excluded.notAssessable = stored rows without p (not insufficient)",
+   "ok": true,
+   "detail": {
+    "api": 30,
+    "stored": 30
+   }
+  },
+  {
+   "name": "trending subfield: pageSize 7 vs 100 give the same ranking and statistics",
+   "ok": true,
+   "detail": {
+    "n": 823
+   }
+  },
+  {
+   "name": "trending subfield: documented order",
+   "ok": true
+  },
+  {
+   "name": "trending subfield: each item's BH family size = topics with p in its baseline unit",
+   "ok": true
+  },
+  {
+   "name": "fastest field: total = rising ∩ Nelis conditions ∩ mean±SEM",
+   "ok": true,
+   "detail": {
+    "api": 743,
+    "stored": 743
+   }
+  },
+  {
+   "name": "fastest field: every item rising, conditions met, stabilityChecked false",
+   "ok": true
+  },
+  {
+   "name": "fastest field: ordered by mean GGT",
+   "ok": true
+  },
+  {
+   "name": "fastest field: no topic with mean GGT > 100% (small-base artefacts) is ranked",
+   "ok": true,
+   "detail": {
+    "topicsWithMeanGgtAbove100": 25
+   }
+  },
+  {
+   "name": "by_field: baseline forced to field",
+   "ok": true
+  },
+  {
+   "name": "by_field: one group per catalogue field",
+   "ok": true,
+   "detail": {
+    "groups": 26,
+    "catalogue": 26
+   }
+  },
+  {
+   "name": "by_field: per field topics, BH family size and rising count = stored; topics belong to the field",
+   "ok": true
+  },
+  {
+   "name": "sole members: 30 found",
+   "ok": true,
+   "detail": {
+    "n": 30
+   }
+  },
+  {
+   "name": "sole members: none ranked in any subfield collection",
+   "ok": true
+  },
+  {
+   "name": "sole members: all classified not_assessable_sole_member",
+   "ok": true,
+   "detail": {
+    "classes": [
+     "not_assessable_sole_member"
+    ]
+   }
+  },
+  {
+   "name": "sole members: counted in excluded.notAssessable (subfield)",
+   "ok": true,
+   "detail": {
+    "api": 30
+   }
+  },
+  {
+   "name": "unsupported collections rejected (no Emerging/Hot/Burst)",
+   "ok": true
+  }
+ ],
+ "summary": {
+  "passed": 36,
+  "failed": 0
+ },
+ "_about": "P2.2 read-only verification of GET /api/v1/trends/discover (through createApp) against the live-canary snapshot in the isolated test DB lumigap_p1_test. GET requests and SELECT counts only. Script: p2_2_verify_discover.mts."
+}

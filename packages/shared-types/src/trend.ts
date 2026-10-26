@@ -560,3 +560,111 @@ export interface PublicationTrend extends TrendMetrics {
   statistics?: TopicTrendStatistics;
   computedAt: string;
 }
+
+// ---------------------------------------------------------------------------
+// Discover Trends (P2.2): read-only views of the active precomputed OpenAlex
+// snapshot (P2.1). Nothing here is recomputed per request: verdicts, p/q and
+// GGT are the stored values, BH families are the full families of the snapshot.
+// ---------------------------------------------------------------------------
+
+export const TREND_DISCOVER_COLLECTIONS = ["trending", "fastest_growing", "by_field"] as const;
+export type TrendDiscoverCollection = (typeof TREND_DISCOVER_COLLECTIONS)[number];
+
+/** Where every number of a Discover response comes from. Sent once per
+ *  response and repeated on every item (required by the P2.2 plan). */
+export interface TrendSnapshotProvenance {
+  source: "openalex";
+  snapshotId: string;
+  snapshotStatus: "active";
+  scopeFilter: string;
+  workTypes: string[];
+  corpus: string;
+  baselineLevel: TrendBaselineLevel;
+  yearFrom: number;
+  yearTo: number;
+  lastCompleteYear: number;
+  /** Collection window of the live API data (not a frozen historical snapshot). */
+  firstFetchedAt: string | null;
+  lastFetchedAt: string | null;
+  activatedAt: string | null;
+  collectionVersion: string;
+  analyticsVersion: string;
+  /** OpenAlex revises historical counts; the UI must say so. Always true. */
+  historicalCountsMayChange: true;
+}
+
+/**
+ * Whether a trend test is meaningful for this topic against this baseline.
+ * - assessable: Mann–Kendall ran on a non-constant share series.
+ * - insufficient_data: too few years or papers (verdict "insufficient").
+ * - not_assessable_sole_member: the topic is the whole reference population
+ *   (share = 100% every year), so the test is undefined (p, q null).
+ * - not_assessable_constant_share: the share never changes for another reason.
+ * The stored verdict of the last two is "stable" for API compatibility; it is
+ * NOT evidence of stability and is never ranked.
+ */
+export type TrendAssessability = "assessable" | "insufficient_data" | "not_assessable_sole_member" | "not_assessable_constant_share";
+
+export interface TrendDiscoverItem {
+  rank: number;
+  topicId: string;
+  topicName: string;
+  taxonomy: { domainId: string; domainName: string; fieldId: string; fieldName: string; subfieldId: string; subfieldName: string };
+  baselineUnit: { level: TrendBaselineLevel; id: string; name: string };
+  totalPapers: number;
+  yearsUsed: number;
+  shareSeries: TrendShareYear[];
+  verdict: TrendVerdict;
+  confidence: TrendConfidence | null;
+  assessability: TrendAssessability;
+  mannKendall: { s: number; z: number; tau: number; pValue: number; pValueMethod?: "exact" | "normal" } | null;
+  qValue: number | null;
+  /** BH family of qValue: every topic with a p-value in the same baseline unit. */
+  qFamilyKey: string;
+  qFamilySize: number;
+  senSlopePctPoints: number | null;
+  senSlopeCi95: [number, number] | null;
+  relativeChangePct: number | null;
+  ggt: {
+    meanPct: number | null;
+    semPct: number | null;
+    years: number;
+    /** Both unambiguous Nelis conditions (every annual GGT < 100%, ≥ 50 papers every year). */
+    conditionsMet: boolean;
+    /** Internal threshold code from P1 (e.g. "consistent_growth"). Never shown as a conclusion while stabilityChecked is false. */
+    nelisThresholdGroup: TrendGgtClass | null;
+    stabilityChecked: false;
+  };
+  provenance: TrendSnapshotProvenance;
+}
+
+export interface TrendDiscoverFieldGroup {
+  fieldId: string;
+  fieldName: string;
+  /** Topics of the field in the snapshot (the field's BH family includes those with a p-value). */
+  topicsInField: number;
+  qFamilySize: number;
+  risingTopics: number;
+  /** Top rising topics of the field by the Trending rule (perField of them). */
+  topics: TrendDiscoverItem[];
+}
+
+export interface TrendsDiscoverResponse {
+  status: "available" | "unavailable";
+  /** Why no data is shown; set when status is "unavailable". */
+  unavailableReason?: "NO_ACTIVE_SNAPSHOT" | "SNAPSHOT_STORE_UNAVAILABLE";
+  collection: TrendDiscoverCollection;
+  baselineLevel: TrendBaselineLevel;
+  provenance: TrendSnapshotProvenance | null;
+  /** Documented ranking rule of this collection. */
+  rankingRule: string;
+  page: number;
+  pageSize: number;
+  /** Eligible topics in the whole snapshot (before paging). */
+  total: number;
+  items: TrendDiscoverItem[];
+  /** by_field only. */
+  fields?: TrendDiscoverFieldGroup[];
+  /** Topics left out of the ranking and why (whole snapshot, this baseline). */
+  excluded: { insufficientData: number; notAssessable: number; ggtConditionsNotMet?: number };
+}

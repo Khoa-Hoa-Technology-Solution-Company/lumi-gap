@@ -6,6 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useHomeOverview } from "@/features/home/hooks/use-home-overview";
 import { useI18n } from "@/i18n";
 import { formatNumber } from "@/utils";
+import { HomeDiscoverTrends } from "./home-discover-trends";
 import { HomeFeaturedPapers } from "./home-featured-papers";
 import { HomeFeaturedResearchers } from "./home-featured-researchers";
 import { HomeQuestionSpace } from "./home-question-space";
@@ -92,6 +93,7 @@ export function HomeDiscovery() {
         <h2 id="home-insights-heading">{t("See the field.")}<br /><span>{t("Find your direction.")}</span></h2>
         <p>{t("Understand how the literature changes over time before choosing where to investigate next.")}</p>
         <Link to="/trends" className="academic-text-link">{t("Explore publication trends")}<ArrowUpRight aria-hidden="true" /></Link>
+        <HomeDiscoverTrends />
       </div>
       <LibraryInsights />
     </section>

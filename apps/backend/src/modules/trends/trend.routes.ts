@@ -5,6 +5,8 @@ import { trendController } from "./trend.controller.js";
 export const trendRouter: Router = Router();
 
 trendRouter.get("/", trendController.overview);
+// Before "/:topic", which would otherwise read "discover" as a topic name.
+trendRouter.get("/discover", trendController.discover);
 trendRouter.get("/compare", trendController.compare);
 trendRouter.get("/topic-candidates", trendController.topicCandidates);
 trendRouter.get("/relationships", trendController.relationships);

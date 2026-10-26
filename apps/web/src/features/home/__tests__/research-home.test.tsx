@@ -11,6 +11,8 @@ const mocks = vi.hoisted(() => ({ query: { data: undefined as HomeOverview | und
 vi.mock("@/stores/auth-store", () => ({ useAuthStore: (select: (state: unknown) => unknown) => select({ tokens: { accessToken: "local-test" } }) }));
 vi.mock("@/features/home/hooks/use-home-overview", () => ({ useHomeOverview: () => mocks.query }));
 vi.mock("@/features/home/hooks/use-home-featured-papers", () => ({ useHomeFeaturedPapers: () => ({ ...mocks.query, data: mocks.query.data ? { papers: mocks.query.data.recentPapers } : undefined }) }));
+// Discover Trends teaser (P2.2): no active snapshot here, so it renders nothing (its own tests: trend-discover-ui.test.tsx).
+vi.mock("@/features/trends", async (importOriginal) => ({ ...(await importOriginal<typeof import("@/features/trends")>()), useTrendsDiscover: () => ({ data: { status: "unavailable", unavailableReason: "NO_ACTIVE_SNAPSHOT", items: [] }, isLoading: false, isError: false }) }));
 vi.mock("@/i18n", () => ({ useI18n: () => ({ language: "en", t: (key: string, values?: Record<string, unknown>) => key.replace(/\{\{(\w+)\}\}/g, (_, name) => String(values?.[name] ?? "")) }) }));
 
 let root: Root | undefined;

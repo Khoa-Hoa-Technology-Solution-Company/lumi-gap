@@ -6,6 +6,7 @@ import {
   type TrendCompareParams,
   type TrendRelationshipParams,
   type TrendTopicCandidatesParams,
+  type TrendsDiscoverParams,
   type TrendsOverviewParams,
 } from "../api/trends.api";
 
@@ -15,6 +16,17 @@ export function useTrendsOverview(params?: TrendsOverviewParams, options?: { ena
     queryFn: () => trendsApi.overview(params),
     enabled: options?.enabled ?? true,
     placeholderData: keepPreviousData,
+  });
+}
+
+export function useTrendsDiscover(params: TrendsDiscoverParams, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: ["trendsDiscover", params],
+    queryFn: () => trendsApi.discover(params),
+    enabled: options?.enabled ?? true,
+    placeholderData: keepPreviousData,
+    // A snapshot changes at most once a day.
+    staleTime: 10 * 60_000,
   });
 }
 

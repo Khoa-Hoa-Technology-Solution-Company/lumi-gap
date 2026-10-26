@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { TREND_BASELINE_LEVELS } from "@trend/shared-types";
+import { DEFAULT_TREND_BASELINE, TREND_BASELINE_LEVELS, TREND_DISCOVER_COLLECTIONS } from "@trend/shared-types";
 import { TREND_CITATION_BANDS } from "../trend.filters.js";
 
 /** Reference population N_t (trend.baseline.ts). Absent = DEFAULT_TREND_BASELINE ("field"), the P0 numbers. */
@@ -147,3 +147,18 @@ export const TrendExplainHistoryQuerySchema = z.object({
 });
 
 export type TrendExplainHistoryQuery = z.infer<typeof TrendExplainHistoryQuerySchema>;
+
+/** GET /trends/discover (P2.2). Reads the active precomputed snapshot only: no
+ *  Data Scope filters (the snapshot is the default scope) and no year window
+ *  (the snapshot's own window is reported in the response). */
+export const TrendsDiscoverQuerySchema = z.object({
+  collection: z.enum(TREND_DISCOVER_COLLECTIONS).default("trending"),
+  baseline: z.enum(TREND_BASELINE_LEVELS).default(DEFAULT_TREND_BASELINE),
+  page: z.coerce.number().int().min(1).max(10_000).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(20),
+  /** by_field: topics shown per field when no fieldId is given. */
+  perField: z.coerce.number().int().min(1).max(20).default(5),
+  /** by_field: one field's full ranking, paged. */
+  fieldId: z.string().trim().regex(/^\d{1,6}$/).optional(),
+});
+export type TrendsDiscoverQuery = z.infer<typeof TrendsDiscoverQuerySchema>;

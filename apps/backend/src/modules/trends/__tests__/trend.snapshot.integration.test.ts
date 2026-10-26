@@ -18,6 +18,8 @@ import { computeSnapshotAnalytics } from "../trend.snapshot-analytics.js";
 import { getActiveTrendSnapshot, runTrendSnapshotJob } from "../trend.snapshot.service.js";
 import type { CollectorOptions } from "../trend.snapshot-collector.js";
 import { expectedPages, makeDataset, startMockOpenAlex, type MockOpenAlex } from "./helpers/mock-openalex-server.js";
+// The P2.2 Discover API suite shares the snapshot tables: it runs in this file so the two never overlap.
+import "./trend.discover.integration.suite.js";
 
 const enabled = process.env.TRENDS_INTEGRATION === "1";
 if (enabled && !new URL(process.env.DATABASE_URL!).pathname.endsWith("_test")) throw new Error("Use an isolated _test database");

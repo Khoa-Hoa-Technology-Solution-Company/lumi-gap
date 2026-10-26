@@ -5,6 +5,9 @@ import type {
   TrendTopicCandidatesResponse,
   TopicRelationshipResponse,
   TrendCompareResponse,
+  TrendBaselineLevel,
+  TrendDiscoverCollection,
+  TrendsDiscoverResponse,
   TrendsOverview,
 } from "@trend/shared-types";
 import { api } from "@/services/api-client";
@@ -56,6 +59,16 @@ export interface TrendExplainInput extends Omit<TrendsOverviewParams, "limit" | 
   yearFrom?: number;
   yearTo?: number;
   language?: "en" | "vi";
+}
+
+/** GET /trends/discover: the active precomputed OpenAlex snapshot (P2.2). */
+export interface TrendsDiscoverParams {
+  collection: TrendDiscoverCollection;
+  baseline?: TrendBaselineLevel;
+  page?: number;
+  pageSize?: number;
+  perField?: number;
+  fieldId?: string;
 }
 
 export interface TrendExplainHistoryParams {
@@ -118,6 +131,10 @@ export const trendsApi = {
   },
   async explain(input: TrendExplainInput): Promise<TrendExplanationResponse> {
     const res = await api.post("/trends/explain", input);
+    return res.data.data;
+  },
+  async discover(params: TrendsDiscoverParams): Promise<TrendsDiscoverResponse> {
+    const res = await api.get("/trends/discover", { params });
     return res.data.data;
   },
   async explainHistory(params?: TrendExplainHistoryParams): Promise<TrendExplanationHistoryResponse> {
