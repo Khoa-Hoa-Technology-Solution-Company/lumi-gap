@@ -1,5 +1,5 @@
 @startuml
-skinparam dpi 150
+skinparam dpi 200
 skinparam defaultFontName "Segoe UI"
 skinparam defaultFontSize 13
 skinparam shadowing false
@@ -58,33 +58,39 @@ skinparam rectangle {
   BackgroundColor #F7F9FC
   BorderColor #2F6DB5
 }
-title WF04 Lecturer verification - admin decision (part b)
-skinparam maxMessageSize 170
-skinparam ParticipantPadding 2
+skinparam maxMessageSize 100
+skinparam ParticipantPadding 0
 skinparam BoxPadding 2
 skinparam sequenceMessageAlign left
+skinparam responseMessageBelowArrow true
+skinparam SequenceGroupBodyBackgroundColor transparent
+skinparam SequenceGroupBackgroundColor #F4F7FA
+skinparam SequenceDividerBackgroundColor #DCE8F6
+skinparam NoteFontSize 12
+hide footbox
 autonumber
-actor "Administrator" as AD
-boundary "Web\nlecturer-verification-status,\nadmin page" as W
-control "academicProfile\nRouter" as R
-control "academicProfile\nService" as P
-control "lecturerVerification\nService" as LV
-participant "verificationEvidence\nStorage" as ST
-database "PostgreSQL" as DB
-control "capability\nService" as C
-control "notification\nService" as N
-AD -> W : open queue and evidence
-W -> R : GET /admin/academic-verifications, evidence file
-AD -> W : decision approve, more_info or reject
-W -> R : PATCH /admin/academic-verifications/:requestId
-R -> P : decideVerification(requestId, input, adminId)
-activate P
-P -> DB : tx lock users, re-check profile unchanged
-P -> LV : reviewLecturerEvidence() per source\n(VALID, INVALID, INCONCLUSIVE)
-P -> DB : update evidence PENDING to VERIFIED,\nNEEDS_MORE_INFORMATION or REJECTED
-P -> DB : update academic_profiles and affiliations statuses
-P -> C : evaluate(userId) re-applies policyCapabilities\n(REVIEW_ARTIFACT, STRUCTURED_REVIEW,\nMENTOR_PROJECT for a verified lecturer)
-P -> N : notify lecturer
-P --> W : updated profile
-deactivate P
+title WF04 Lecturer verification (b): submit request
+boundary "Web app" as W #DCEAFB
+control "academicProfile\nRouter" as R #E3F2E5
+control "academicProfile\nService" as P #E3F2E5
+control "lecturer\nVerification\nService" as LV #E3F2E5
+database "PostgreSQL" as DB #EFE6F8
+control "notification\nService" as N #E3F2E5
+W -> R : POST /academic-profiles/me/\nverification-request
+activate R
+R -> P : requestVerification\n(userId, input)
+P -> LV : submitLecturer-\nVerification()
+activate LV
+LV -> DB : tx: lock user,\ncheck for PENDING
+alt a PENDING request already exists
+  LV --> R : AppError 409
+  R --> W : 409 Conflict
+else none
+  LV -> DB : supersede NEEDS_MORE_INFO,\ninsert verification_evidence\n(PENDING) and sources,\nprofile PENDING
+  LV ->> N : LECTURER_VERIFICATION\n_SUBMITTED
+  LV --> R : request
+  R --> W : 201 PENDING
+end
+deactivate LV
+deactivate R
 @enduml

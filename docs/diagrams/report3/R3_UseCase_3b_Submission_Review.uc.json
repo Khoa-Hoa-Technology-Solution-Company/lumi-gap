@@ -1,0 +1,89 @@
+{
+ "title": "Use Case Diagram 3(b) - Submission and peer review",
+ "ucs": [
+  [
+   "UC40",
+   "UC-40 Create submission and request AI pre-review"
+  ],
+  [
+   "UC41",
+   "UC-41 Request peer review"
+  ],
+  [
+   "UC43",
+   "UC-43 Manage review templates"
+  ],
+  [
+   "UC42",
+   "UC-42 Perform structured review"
+  ],
+  [
+   "UC44",
+   "UC-44 View contribution archive"
+  ]
+ ],
+ "actors": [
+  [
+   "U",
+   "User"
+  ],
+  [
+   "A",
+   "Author\n(project member)"
+  ],
+  [
+   "L",
+   "Lecturer"
+  ],
+  [
+   "XR",
+   "External reviewer\n(invitation token)"
+  ],
+  [
+   "G",
+   "Guest"
+  ]
+ ],
+ "gens": [
+  [
+   "A",
+   "U"
+  ],
+  [
+   "L",
+   "U"
+  ],
+  [
+   "XR",
+   "U"
+  ]
+ ],
+ "exts": [],
+ "links": [
+  [
+   "A",
+   "UC40"
+  ],
+  [
+   "A",
+   "UC41"
+  ],
+  [
+   "L",
+   "UC43"
+  ],
+  [
+   "L",
+   "UC42"
+  ],
+  [
+   "XR",
+   "UC42"
+  ],
+  [
+   "G",
+   "UC44"
+  ]
+ ],
+ "rels": []
+}

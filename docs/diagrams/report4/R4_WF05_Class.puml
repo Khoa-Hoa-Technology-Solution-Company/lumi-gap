@@ -1,6 +1,6 @@
 @startuml
 !pragma layout smetana
-skinparam dpi 150
+skinparam dpi 200
 skinparam defaultFontName "Segoe UI"
 skinparam defaultFontSize 13
 skinparam shadowing false
@@ -59,58 +59,83 @@ skinparam rectangle {
   BackgroundColor #F7F9FC
   BorderColor #2F6DB5
 }
-title WF05 Credit top-up - class diagram
-hide empty members
 skinparam classAttributeIconSize 0
 skinparam ClassFontSize 12
+skinparam ClassAttributeFontSize 12
+skinparam nodesep 25
+skinparam ranksep 40
+skinparam class<<page>> { 
+  BackgroundColor #DCEAFB
+}
+skinparam class<<hook>> {
+  BackgroundColor #DCEAFB
+}
+skinparam class<<api client>> {
+  BackgroundColor #DCEAFB
+}
+skinparam class<<route>> {
+  BackgroundColor #E3F2E5
+}
+skinparam class<<controller>> {
+  BackgroundColor #E3F2E5
+}
+skinparam class<<service>> {
+  BackgroundColor #E3F2E5
+}
+skinparam class<<rules>> {
+  BackgroundColor #E3F2E5
+}
+skinparam class<<client>> {
+  BackgroundColor #F0F1F3
+}
+skinparam class<<worker>> {
+  BackgroundColor #FFF1DC
+}
+skinparam class<<job>> {
+  BackgroundColor #FFF1DC
+}
+skinparam class<<model>> {
+  BackgroundColor #EFE6F8
+}
+skinparam class<<external>> {
+  BackgroundColor #F0F1F3
+}
+title WF05 Credit top-up - class diagram
+hide empty members
+hide circle
 package "Web" {
   class CreditHistory <<page>> {
-    features/credits/components/credit-history.tsx
+    credit-history.tsx
     useCreditBalance(), usePaymentOrders()
-  }
-  class CreditsApi <<api client>> {
-    createPaymentLink(amountVnd)
-    listOrders()
-    getBalance()
+    CreditsApi.createPaymentLink()
   }
 }
-package "Backend routes" {
+package "Backend" {
   class creditRouter <<route>> {
     POST /credits/payos/create-payment-link
     POST /credits/payos/webhook (public)
-    GET /credits/balance, summary, transactions, orders
+    GET /credits/balance, orders
+    (creditController)
   }
-  class creditController <<controller>> {
-    createPaymentLink()
-    handlePayosWebhook()
-    listOrders()
-  }
-}
-package "Backend services" {
   class payosService <<service>> {
     createPaymentLink(params)
     handleWebhook(body)
     getUserOrders()
-    generatePayosSignature()
   }
   class creditService <<service>> {
     rewardCreditsOnce()
     chargeCreditsChecked()
     refundCreditsOnce()
-    getSummary()
-  }
-  class creditPolicy <<service>> {
-    credit actions and costs
   }
 }
 package "Data model (Prisma)" {
   class PaymentOrder <<model>> {
     payment_orders
-    orderCode, amount, credits, status
+    orderCode, amount, status
   }
   class CreditTransaction <<model>> {
     credit_transactions
-    idempotencyKey, type, status
+    idempotencyKey
   }
   class User <<model>> {
     users
@@ -120,17 +145,14 @@ package "Data model (Prisma)" {
 class PayOS <<external>> {
   api-merchant.payos.vn
 }
-CreditHistory --> CreditsApi
-CreditsApi --> creditRouter : HTTP
-creditRouter --> creditController
-creditController --> payosService
-payosService --> creditService
-payosService --> PayOS : create link
-PayOS --> creditRouter : webhook
-payosService --> PaymentOrder
-creditService --> CreditTransaction
-creditService --> User
-creditService --> creditPolicy
-User "1" --> "*" PaymentOrder
-User "1" --> "*" CreditTransaction
+CreditHistory ..> creditRouter : HTTP
+creditRouter ..> payosService
+payosService ..> creditService
+payosService ..> PayOS : create link
+PayOS ..> creditRouter : webhook
+payosService ..> PaymentOrder
+creditService ..> CreditTransaction
+creditService ..> User
+User "1" -- "0..*" PaymentOrder
+User "1" -- "0..*" CreditTransaction
 @enduml

@@ -1,6 +1,6 @@
 @startuml
 !pragma layout smetana
-skinparam dpi 150
+skinparam dpi 200
 skinparam defaultFontName "Segoe UI"
 skinparam defaultFontSize 13
 skinparam shadowing false
@@ -60,29 +60,24 @@ skinparam rectangle {
   BorderColor #2F6DB5
 }
 title VerificationEvidence status (verification_evidence.status)
-[*] --> PENDING : submitLecturerVerification(),\nrequestVerification(),\nstudent-affiliation submit
-[*] --> VERIFIED : institutional email domain match\n(affiliation.service)
-PENDING --> VERIFIED : decideVerification()\napprove
-PENDING --> NEEDS_MORE_INFORMATION : decideVerification()\nmore_info
-PENDING --> REJECTED : decideVerification()\nreject
-PENDING --> INVALIDATED : profile position, institution\nor identity changed
-NEEDS_MORE_INFORMATION --> INVALIDATED : position or affiliation\ntarget changed
-NEEDS_MORE_INFORMATION --> NEEDS_MORE_INFORMATION : superseded (supersededAt set)\nwhen user resubmits
-VERIFIED --> VERIFIED : position change sets\ninvalidatedAt only
+[*] --> PENDING : submitLecturerVerification() /\nrequestVerification() /\nstudent-affiliation submit
+[*] --> VERIFIED : [institutional email domain\nmatch] (affiliation.service)
+PENDING --> VERIFIED : decideVerification()\n[approve]
+PENDING --> NEEDS_MORE_INFORMATION : decideVerification()\n[more_info]
+PENDING --> REJECTED : decideVerification() [reject]
+PENDING --> INVALIDATED : [profile position, institution\nor identity changed]
+NEEDS_MORE_INFORMATION --> INVALIDATED : [position or affiliation\ntarget changed]
+NEEDS_MORE_INFORMATION --> NEEDS_MORE_INFORMATION : user resubmits\n/ supersededAt set
+VERIFIED --> VERIFIED : [position change]\n/ invalidatedAt set only
 REJECTED --> [*]
 INVALIDATED --> [*]
-state UNVERIFIED #F5F5F5
-state NOT_SUBMITTED #F5F5F5
-state EXPIRED #F5F5F5
-note right of PENDING
+legend bottom
   Rows are created directly as PENDING (or VERIFIED by email
   domain match). Resubmission after NEEDS_MORE_INFORMATION
   creates a NEW row (revision+1, previousRequestId) in PENDING.
-end note
-note bottom of NOT_SUBMITTED
-  <b>Dead values</b>: UNVERIFIED, NOT_SUBMITTED and EXPIRED are
-  allowed by the DB CHECK constraint but no code writes them
-  on this table. Retention cleanup removes files only; it
-  does not set EXPIRED.
-end note
+
+  <b>Dead values</b>: UNVERIFIED, NOT_SUBMITTED and EXPIRED are allowed by the DB CHECK constraint but
+  no code writes them on this table. Retention cleanup removes
+  files only; it does not set EXPIRED.
+endlegend
 @enduml

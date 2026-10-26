@@ -1,6 +1,6 @@
 @startuml
 !pragma layout smetana
-skinparam dpi 150
+skinparam dpi 200
 skinparam defaultFontName "Segoe UI"
 skinparam defaultFontSize 13
 skinparam shadowing false
@@ -60,27 +60,24 @@ skinparam rectangle {
   BorderColor #2F6DB5
 }
 title Submission status (submissions.status)
-[*] --> submitted : submissionService.create()\n(column default)
-[*] --> ready_for_review : ensureReportSubmission()\n(artifact from a report)
-submitted --> ready_for_review : processAiPreReview()\ncompleted
-submitted --> under_review : review request created /\nexternal invitation accepted
+[*] --> submitted : submissionService.create()\n/ column default
+[*] --> ready_for_review : ensureReportSubmission()\n[artifact from a report]
+submitted --> ready_for_review : processAiPreReview()\n[pre-review completed]
+submitted --> under_review : [review request created or\nexternal invitation accepted]
 ready_for_review --> under_review : reviewRequestService.create()
-revised --> under_review : create() /\nacceptExternalInvitation()
-under_review --> revision_requested : refreshSubmissionReviewStatus()
-under_review --> completed : refreshSubmissionReviewStatus()
-under_review --> ready_for_review : refresh after decline,\ncancel, expiry
-revision_requested --> revised : createVersion(),\naddRevision()
-completed --> revised : new revision or no review\nof current revision
-ready_for_review --> revised : createVersion(),\naddRevision()
-under_review --> revised : createVersion(),\naddRevision()
-revised --> under_review : resubmit()\nwith active request
-state accepted #F5F5F5
-state rejected #F5F5F5
-state withdrawn #F5F5F5
-note right of accepted
-  <b>Dead values</b>: accepted, rejected and withdrawn are only
-  checked as closed states (read-only guards). No service
-  function sets them. Derived statuses come from
-  submissionReviewStatus() in academic-review.rules.ts.
-end note
+revised --> under_review : create() or\nacceptExternalInvitation()
+under_review --> revision_requested : refreshSubmissionReviewStatus()\n[revision requested]
+under_review --> completed : refreshSubmissionReviewStatus()\n[review completed]
+under_review --> ready_for_review : refreshSubmissionReviewStatus()\n[declined, cancelled, expired]
+revision_requested --> revised : createVersion() or addRevision()
+completed --> revised : [new revision, or no review\nof current revision]
+ready_for_review --> revised : createVersion() or addRevision()
+under_review --> revised : createVersion() or addRevision()
+revised --> under_review : resubmit()\n[active request]
+legend bottom
+  <b>Dead values</b>: accepted, rejected and withdrawn are only checked as closed states
+  (read-only guards). No service function sets them.
+  Derived statuses come from submissionReviewStatus()
+  in academic-review.rules.ts.
+endlegend
 @enduml

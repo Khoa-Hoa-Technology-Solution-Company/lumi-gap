@@ -1,43 +1,44 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="705" height="737" viewBox="0 0 705 737" font-family="Segoe UI, Arial, sans-serif">
-<defs><marker id="open" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto"><path d="M1 1 L9 5 L1 9" fill="none" stroke="#4A5A6A" stroke-width="1.6"/></marker></defs>
-<rect width="705" height="737" fill="#fff"/>
-<text x="352" y="32" text-anchor="middle" font-size="20" font-weight="700" fill="#1B2A3A">Use Case Diagram 3(b) - Submission and peer review</text>
-<rect x="335" y="62" width="340" height="580" rx="12" fill="#F7F9FC" stroke="#2F6DB5" stroke-width="1.6"/>
-<text x="505" y="84" text-anchor="middle" font-size="15" font-weight="700" fill="#2F6DB5">LumiGap</text>
-<line x1="118.0" y1="158.0" x2="380.0" y2="132.0" stroke="#4A5A6A" stroke-width="1.5"/>
-<line x1="118.0" y1="158.0" x2="380.0" y2="222.0" stroke="#4A5A6A" stroke-width="1.5"/>
-<line x1="118.0" y1="382.0" x2="380.0" y2="356.0" stroke="#4A5A6A" stroke-width="1.5"/>
-<line x1="118.0" y1="382.0" x2="380.0" y2="446.0" stroke="#4A5A6A" stroke-width="1.5"/>
-<line x1="118.0" y1="522.0" x2="380.0" y2="446.0" stroke="#4A5A6A" stroke-width="1.5"/>
-<line x1="118.0" y1="662.0" x2="380.0" y2="580.0" stroke="#4A5A6A" stroke-width="1.5"/>
-<line x1="505.0" y1="254.0" x2="505.0" y2="324.0" stroke="#4A5A6A" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#open)"/>
-<rect x="513.0" y="280" width="86" height="18" fill="#F7F9FC"/><text x="517.0" y="293" font-size="12.5" fill="#4A5A6A">&#171;include&#187;</text>
-<line x1="505.0" y1="548.0" x2="505.0" y2="478.0" stroke="#4A5A6A" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#open)"/>
-<rect x="513.0" y="504" width="78" height="18" fill="#F7F9FC"/><text x="517.0" y="517" font-size="12.5" fill="#4A5A6A">&#171;extend&#187;</text>
-<ellipse cx="505.0" cy="132.0" rx="125.0" ry="32.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
-<text x="505.0" y="121.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A" font-weight="600">UC-40</text>
-<text x="505.0" y="137.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A">Create submission with AI</text>
-<text x="505.0" y="153.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A">pre-review</text>
-<ellipse cx="505.0" cy="222.0" rx="125.0" ry="32.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
-<text x="505.0" y="219.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A" font-weight="600">UC-41</text>
-<text x="505.0" y="235.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A">Request peer review</text>
-<ellipse cx="505.0" cy="356.0" rx="125.0" ry="32.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
-<text x="505.0" y="353.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A" font-weight="600">UC-43</text>
-<text x="505.0" y="369.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A">Manage review templates</text>
-<ellipse cx="505.0" cy="446.0" rx="125.0" ry="32.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
-<text x="505.0" y="443.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A" font-weight="600">UC-42</text>
-<text x="505.0" y="459.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A">Perform structured review</text>
-<ellipse cx="505.0" cy="580.0" rx="125.0" ry="32.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
-<text x="505.0" y="577.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A" font-weight="600">UC-44</text>
-<text x="505.0" y="593.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A">View contribution archive</text>
-<g stroke="#1B2A3A" stroke-width="2" fill="none"><circle cx="100.0" cy="138.0" r="10" fill="#fff"/><line x1="100.0" y1="148.0" x2="100.0" y2="174.0"/><line x1="83.0" y1="158.0" x2="117.0" y2="158.0"/><line x1="100.0" y1="174.0" x2="86.0" y2="194.0"/><line x1="100.0" y1="174.0" x2="114.0" y2="194.0"/></g>
-<text x="100.0" y="212" text-anchor="middle" font-size="13.5" fill="#1B2A3A">Author</text>
-<text x="100.0" y="228" text-anchor="middle" font-size="13.5" fill="#1B2A3A">(project member)</text>
-<g stroke="#1B2A3A" stroke-width="2" fill="none"><circle cx="100.0" cy="362.0" r="10" fill="#fff"/><line x1="100.0" y1="372.0" x2="100.0" y2="398.0"/><line x1="83.0" y1="382.0" x2="117.0" y2="382.0"/><line x1="100.0" y1="398.0" x2="86.0" y2="418.0"/><line x1="100.0" y1="398.0" x2="114.0" y2="418.0"/></g>
-<text x="100.0" y="436" text-anchor="middle" font-size="13.5" fill="#1B2A3A">Lecturer</text>
-<g stroke="#1B2A3A" stroke-width="2" fill="none"><circle cx="100.0" cy="502.0" r="10" fill="#fff"/><line x1="100.0" y1="512.0" x2="100.0" y2="538.0"/><line x1="83.0" y1="522.0" x2="117.0" y2="522.0"/><line x1="100.0" y1="538.0" x2="86.0" y2="558.0"/><line x1="100.0" y1="538.0" x2="114.0" y2="558.0"/></g>
-<text x="100.0" y="576" text-anchor="middle" font-size="13.5" fill="#1B2A3A">External reviewer</text>
-<text x="100.0" y="592" text-anchor="middle" font-size="13.5" fill="#1B2A3A">(email token)</text>
-<g stroke="#1B2A3A" stroke-width="2" fill="none"><circle cx="100.0" cy="642.0" r="10" fill="#fff"/><line x1="100.0" y1="652.0" x2="100.0" y2="678.0"/><line x1="83.0" y1="662.0" x2="117.0" y2="662.0"/><line x1="100.0" y1="678.0" x2="86.0" y2="698.0"/><line x1="100.0" y1="678.0" x2="114.0" y2="698.0"/></g>
-<text x="100.0" y="716" text-anchor="middle" font-size="13.5" fill="#1B2A3A">User</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="780" viewBox="0 0 760 780" font-family="Segoe UI, Arial, sans-serif">
+<defs><marker id="open" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto"><path d="M1 1 L9 5 L1 9" fill="none" stroke="#4A5A6A" stroke-width="1.6"/></marker><marker id="tri" viewBox="0 0 12 12" refX="11" refY="6" markerWidth="11" markerHeight="11" orient="auto"><path d="M1 1 L11 6 L1 11 z" fill="#fff" stroke="#4A5A6A" stroke-width="1.5"/></marker></defs>
+<rect width="760" height="780" fill="#fff"/>
+<text x="380" y="32" text-anchor="middle" font-size="20" font-weight="700" fill="#1B2A3A">Use Case Diagram 3(b) - Submission and peer review</text>
+<rect x="408" y="111" width="322" height="490" rx="12" fill="#F7F9FC" stroke="#2F6DB5" stroke-width="1.6"/>
+<text x="569" y="133" text-anchor="middle" font-size="15" font-weight="700" fill="#2F6DB5">LumiGap</text>
+<polyline points="228.0,151 143.0,151 143.0,291 224.0,291" fill="none" stroke="#4A5A6A" stroke-width="1.6" marker-end="url(#tri)"/>
+<polyline points="228.0,431 127.0,431 127.0,291 224.0,291" fill="none" stroke="#4A5A6A" stroke-width="1.6" marker-end="url(#tri)"/>
+<polyline points="228.0,571 111.0,571 111.0,291 224.0,291" fill="none" stroke="#4A5A6A" stroke-width="1.6" marker-end="url(#tri)"/>
+<line x1="266.0" y1="145.0" x2="438.0" y2="183.8" stroke="#4A5A6A" stroke-width="1.5"/>
+<line x1="266.0" y1="145.0" x2="438.0" y2="271.8" stroke="#4A5A6A" stroke-width="1.5"/>
+<line x1="266.0" y1="425.0" x2="438.0" y2="359.8" stroke="#4A5A6A" stroke-width="1.5"/>
+<line x1="266.0" y1="425.0" x2="438.0" y2="447.8" stroke="#4A5A6A" stroke-width="1.5"/>
+<line x1="266.0" y1="565.0" x2="438.0" y2="447.8" stroke="#4A5A6A" stroke-width="1.5"/>
+<line x1="266.0" y1="705.0" x2="438.0" y2="535.8" stroke="#4A5A6A" stroke-width="1.5"/>
+<ellipse cx="569.0" cy="183.8" rx="131.0" ry="35.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
+<text x="569.0" y="169.8" text-anchor="middle" font-size="16.5" fill="#1B2A3A" font-weight="600">UC-40</text>
+<text x="569.0" y="188.8" text-anchor="middle" font-size="16.5" fill="#1B2A3A">Create submission and</text>
+<text x="569.0" y="207.8" text-anchor="middle" font-size="16.5" fill="#1B2A3A">request AI pre-review</text>
+<ellipse cx="569.0" cy="271.8" rx="131.0" ry="35.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
+<text x="569.0" y="267.3" text-anchor="middle" font-size="16.5" fill="#1B2A3A" font-weight="600">UC-41</text>
+<text x="569.0" y="286.3" text-anchor="middle" font-size="16.5" fill="#1B2A3A">Request peer review</text>
+<ellipse cx="569.0" cy="359.8" rx="131.0" ry="35.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
+<text x="569.0" y="355.3" text-anchor="middle" font-size="16.5" fill="#1B2A3A" font-weight="600">UC-43</text>
+<text x="569.0" y="374.3" text-anchor="middle" font-size="16.5" fill="#1B2A3A">Manage review templates</text>
+<ellipse cx="569.0" cy="447.8" rx="131.0" ry="35.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
+<text x="569.0" y="443.3" text-anchor="middle" font-size="16.5" fill="#1B2A3A" font-weight="600">UC-42</text>
+<text x="569.0" y="462.3" text-anchor="middle" font-size="16.5" fill="#1B2A3A">Perform structured review</text>
+<ellipse cx="569.0" cy="535.8" rx="131.0" ry="35.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
+<text x="569.0" y="531.3" text-anchor="middle" font-size="16.5" fill="#1B2A3A" font-weight="600">UC-44</text>
+<text x="569.0" y="550.3" text-anchor="middle" font-size="16.5" fill="#1B2A3A">View contribution archive</text>
+<g stroke="#1B2A3A" stroke-width="2" fill="none"><circle cx="248.0" cy="265.0" r="10" fill="#fff"/><line x1="248.0" y1="275.0" x2="248.0" y2="301.0"/><line x1="231.0" y1="285.0" x2="265.0" y2="285.0"/><line x1="248.0" y1="301.0" x2="234.0" y2="321.0"/><line x1="248.0" y1="301.0" x2="262.0" y2="321.0"/></g>
+<text x="248.0" y="339" text-anchor="middle" font-size="16.5" fill="#1B2A3A">User</text>
+<g stroke="#1B2A3A" stroke-width="2" fill="none"><circle cx="248.0" cy="125.00000000000001" r="10" fill="#fff"/><line x1="248.0" y1="135.0" x2="248.0" y2="161.0"/><line x1="231.0" y1="145.0" x2="265.0" y2="145.0"/><line x1="248.0" y1="161.0" x2="234.0" y2="181.0"/><line x1="248.0" y1="161.0" x2="262.0" y2="181.0"/></g>
+<text x="248.0" y="199" text-anchor="middle" font-size="16.5" fill="#1B2A3A">Author</text>
+<text x="248.0" y="218" text-anchor="middle" font-size="16.5" fill="#1B2A3A">(project member)</text>
+<g stroke="#1B2A3A" stroke-width="2" fill="none"><circle cx="248.0" cy="405.0" r="10" fill="#fff"/><line x1="248.0" y1="415.0" x2="248.0" y2="441.0"/><line x1="231.0" y1="425.0" x2="265.0" y2="425.0"/><line x1="248.0" y1="441.0" x2="234.0" y2="461.0"/><line x1="248.0" y1="441.0" x2="262.0" y2="461.0"/></g>
+<text x="248.0" y="479" text-anchor="middle" font-size="16.5" fill="#1B2A3A">Lecturer</text>
+<g stroke="#1B2A3A" stroke-width="2" fill="none"><circle cx="248.0" cy="545.0" r="10" fill="#fff"/><line x1="248.0" y1="555.0" x2="248.0" y2="581.0"/><line x1="231.0" y1="565.0" x2="265.0" y2="565.0"/><line x1="248.0" y1="581.0" x2="234.0" y2="601.0"/><line x1="248.0" y1="581.0" x2="262.0" y2="601.0"/></g>
+<text x="248.0" y="619" text-anchor="middle" font-size="16.5" fill="#1B2A3A">External reviewer</text>
+<text x="248.0" y="638" text-anchor="middle" font-size="16.5" fill="#1B2A3A">(invitation token)</text>
+<g stroke="#1B2A3A" stroke-width="2" fill="none"><circle cx="248.0" cy="685.0" r="10" fill="#fff"/><line x1="248.0" y1="695.0" x2="248.0" y2="721.0"/><line x1="231.0" y1="705.0" x2="265.0" y2="705.0"/><line x1="248.0" y1="721.0" x2="234.0" y2="741.0"/><line x1="248.0" y1="721.0" x2="262.0" y2="741.0"/></g>
+<text x="248.0" y="759" text-anchor="middle" font-size="16.5" fill="#1B2A3A">Guest</text>
 </svg>

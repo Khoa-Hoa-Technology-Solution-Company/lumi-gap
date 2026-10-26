@@ -1,139 +1,95 @@
 @startuml
 !pragma layout elk
-skinparam dpi 150
+skinparam dpi 200
 skinparam defaultFontName "Segoe UI"
 skinparam defaultFontSize 13
 skinparam shadowing false
 skinparam roundCorner 10
+skinparam backgroundColor #FFFFFF
 skinparam ArrowColor #4A5A6A
 skinparam ArrowThickness 1.2
-skinparam BorderColor #2F6DB5
-skinparam BackgroundColor #FFFFFF
+skinparam ArrowFontSize 12
+skinparam ArrowFontColor #4A5A6A
 skinparam TitleFontSize 16
 skinparam TitleFontStyle bold
-skinparam usecase {
-  BackgroundColor #EAF2FB
-  BorderColor #2F6DB5
-}
-skinparam actor {
-  BackgroundColor #FFFFFF
-  BorderColor #1B2A3A
-}
 skinparam entity {
-  BackgroundColor #F7FAFD
-  BorderColor #2F6DB5
+  BackgroundColor #EFE6F8
+  BorderColor #6A3FA0
 }
-skinparam rectangle {
-  BackgroundColor #F7F9FC
-  BorderColor #2F6DB5
-}
-
-hide circle
-hide empty methods
-skinparam ArrowFontSize 11
-skinparam ArrowFontColor #4A5A6A
-skinparam class {
-  BackgroundColor #F7FAFD
-  BorderColor #2F6DB5
-  HeaderBackgroundColor #DCE8F6
-}
-skinparam entity {
-  BackgroundColor #F7FAFD
-  BorderColor #2F6DB5
+skinparam legend {
+  BackgroundColor #FFF8E1
+  BorderColor #C9B36B
+  FontSize 12
 }
 skinparam stereotypeFontSize 10
-title
-ERD 4(b) - Peer review workflow
-<size:11><color:#4A5A6A>FK -> User / Project / ReviewTemplate / ReviewTemplateVersion : relation to the User / Project / ReviewTemplate / ReviewTemplateVersion entity is shown as an FK annotation</color></size>
-end title
-entity Submission {
-  * id : uuid <<PK>>
+hide circle
+hide empty methods
+title Logical ERD 4(b) - Review requests and assignments
+entity ReviewRequest #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
   --
-  # created_by_id : uuid <<FK>> -> User
-  # current_revision_id : uuid <<FK>>
-  # project_id : uuid <<FK>> -> Project
-  # source_report_id : uuid <<FK>>
+  submissionId <<FK>>
+  projectId <<FK>>
+  requesterId <<FK User>>
+  templateVersionId <<FK>>
+  artifactRevisionId <<FK>>
   ..
-  title : text
-  status : text
-  current_revision_number : int
+  status
+  origin
 }
-entity SubmissionRevision {
-  * id : uuid <<PK>>
+entity ReviewerAssignment #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
   --
-  # source_revision_id : uuid <<FK>> (self)
-  # submission_id : uuid <<FK>>
-  # uploaded_by_id : uuid <<FK>> -> User
+  submissionId <<FK>>
+  reviewRequestId <<FK,UK>>
+  artifactRevisionId <<FK>>
+  reviewerId <<FK User>>
+  assignedById <<FK User>>
+  anonymousCode <<UK>>
   ..
-  revision_number : int
+  status
+  decision
 }
-entity ReviewRequest {
-  * id : uuid <<PK>>
+entity ExternalReviewInvitation #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
   --
-  # artifact_revision_id : uuid <<FK>>
-  # project_id : uuid <<FK>> -> Project
-  # requester_id : uuid <<FK>> -> User
-  # submission_id : uuid <<FK>>
-  # template_version_id : uuid <<FK>> -> ReviewTemplateVersion
+  invitedUserId <<FK User>>
+  requesterId <<FK User>>
+  submissionId <<FK>>
+  projectId <<FK>>
+  templateVersionId <<FK>>
+  artifactRevisionId <<FK>>
+  tokenHash <<UK>>
   ..
-  status : text
-  due_at : timestamp
-  expires_at : timestamp
+  reviewerEmail
+  status
 }
-entity ReviewerAssignment {
-  * id : uuid <<PK>>
-  --
-  # artifact_revision_id : uuid <<FK>>
-  # assigned_by_id : uuid <<FK>> -> User
-  # review_request_id : uuid <<FK>>
-  # reviewer_id : uuid <<FK>> -> User
-  # submission_id : uuid <<FK>>
-  ..
-  status : text
+entity Project #FFFFFF;line:6A3FA0;line.dashed {
+  * id <<PK>>
 }
-entity HumanReview {
-  * id : uuid <<PK>>
-  --
-  # assignment_id : uuid <<FK>>
-  # reviewer_id : uuid <<FK>> -> User
-  # revision_id : uuid <<FK>>
-  # submission_id : uuid <<FK>>
-  # template_id : uuid <<FK>> -> ReviewTemplate
-  # template_version_id : uuid <<FK>> -> ReviewTemplateVersion
-  ..
-  status : text
+entity Submission #FFFFFF;line:6A3FA0;line.dashed {
+  * id <<PK>>
 }
-entity ReviewResponse {
-  * id : uuid <<PK>>
-  --
-  # review_id : uuid <<FK>>
-  ..
-  criterion_key : text
+entity SubmissionRevision #FFFFFF;line:6A3FA0;line.dashed {
+  * id <<PK>>
 }
-entity ExternalReviewInvitation {
-  * id : uuid <<PK>>
-  --
-  # artifact_revision_id : uuid <<FK>>
-  # invited_user_id : uuid <<FK>> -> User
-  # project_id : uuid <<FK>> -> Project
-  # requester_id : uuid <<FK>> -> User
-  # submission_id : uuid <<FK>>
-  # template_version_id : uuid <<FK>> -> ReviewTemplateVersion
-  ..
-  reviewer_email : text
-  status : text
+entity ReviewTemplateVersion #FFFFFF;line:6A3FA0;line.dashed {
+  * id <<PK>>
 }
-Submission ||--o{ SubmissionRevision : submission_id
-SubmissionRevision |o--o{ Submission : current_revision_id
-Submission ||--o{ ReviewerAssignment : submission_id
-ReviewerAssignment ||--o{ HumanReview : assignment_id
-Submission ||--o{ HumanReview : submission_id
-SubmissionRevision ||--o{ HumanReview : revision_id
-HumanReview ||--o{ ReviewResponse : review_id
-Submission ||--o{ ReviewRequest : submission_id
-SubmissionRevision ||--o{ ReviewRequest : artifact_revision_id
-ReviewRequest |o--o{ ReviewerAssignment : review_request_id
-Submission ||--o{ ExternalReviewInvitation : submission_id
-SubmissionRevision ||--o{ ExternalReviewInvitation : artifact_revision_id
-SubmissionRevision |o--o{ ReviewerAssignment : artifact_revision_id
+Project ||--o{ ExternalReviewInvitation
+Project ||--o{ ReviewRequest
+ReviewRequest |o--o| ReviewerAssignment
+ReviewTemplateVersion ||--o{ ExternalReviewInvitation
+ReviewTemplateVersion ||--o{ ReviewRequest
+SubmissionRevision ||--o{ ExternalReviewInvitation
+SubmissionRevision ||--o{ ReviewRequest
+SubmissionRevision |o--o{ ReviewerAssignment
+Submission ||--o{ ExternalReviewInvitation
+Submission ||--o{ ReviewRequest
+Submission ||--o{ ReviewerAssignment
+legend bottom
+Crow's-foot notation. PK primary key, FK foreign key, UK unique key.
+FK <name>: the foreign key references an entity that is not drawn here.
+Dashed boxes belong to another diagram (key only).
+endlegend
 @enduml

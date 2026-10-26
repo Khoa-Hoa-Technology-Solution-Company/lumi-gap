@@ -1,54 +1,55 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="777" viewBox="0 0 1000 777" font-family="Segoe UI, Arial, sans-serif">
-<defs><marker id="open" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto"><path d="M1 1 L9 5 L1 9" fill="none" stroke="#4A5A6A" stroke-width="1.6"/></marker></defs>
-<rect width="1000" height="777" fill="#fff"/>
-<text x="500" y="32" text-anchor="middle" font-size="20" font-weight="700" fill="#1B2A3A">Use Case Diagram 2(b) - Research projects and collaboration</text>
-<rect x="335" y="62" width="340" height="672" rx="12" fill="#F7F9FC" stroke="#2F6DB5" stroke-width="1.6"/>
-<text x="505" y="84" text-anchor="middle" font-size="15" font-weight="700" fill="#2F6DB5">LumiGap</text>
-<line x1="118.0" y1="145.3" x2="380.0" y2="132.0" stroke="#4A5A6A" stroke-width="1.5"/>
-<line x1="118.0" y1="285.3" x2="380.0" y2="132.0" stroke="#4A5A6A" stroke-width="1.5"/>
-<line x1="118.0" y1="285.3" x2="380.0" y2="222.0" stroke="#4A5A6A" stroke-width="1.5"/>
-<line x1="118.0" y1="285.3" x2="380.0" y2="312.0" stroke="#4A5A6A" stroke-width="1.5"/>
-<line x1="118.0" y1="550.3" x2="380.0" y2="402.0" stroke="#4A5A6A" stroke-width="1.5"/>
-<line x1="118.0" y1="550.3" x2="380.0" y2="492.0" stroke="#4A5A6A" stroke-width="1.5"/>
-<line x1="118.0" y1="550.3" x2="380.0" y2="582.0" stroke="#4A5A6A" stroke-width="1.5"/>
-<line x1="118.0" y1="550.3" x2="380.0" y2="672.0" stroke="#4A5A6A" stroke-width="1.5"/>
-<line x1="892.0" y1="522.0" x2="630.0" y2="492.0" stroke="#4A5A6A" stroke-width="1.5"/>
-<line x1="892.0" y1="702.0" x2="630.0" y2="672.0" stroke="#4A5A6A" stroke-width="1.5"/>
-<ellipse cx="505.0" cy="132.0" rx="125.0" ry="32.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
-<text x="505.0" y="129.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A" font-weight="600">UC-16</text>
-<text x="505.0" y="145.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A">Manage research project</text>
-<ellipse cx="505.0" cy="222.0" rx="125.0" ry="32.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
-<text x="505.0" y="211.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A" font-weight="600">UC-18</text>
-<text x="505.0" y="227.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A">Manage members and</text>
-<text x="505.0" y="243.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A">invitations</text>
-<ellipse cx="505.0" cy="312.0" rx="125.0" ry="32.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
-<text x="505.0" y="301.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A" font-weight="600">UC-22</text>
-<text x="505.0" y="317.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A">Manage recruitment</text>
-<text x="505.0" y="333.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A">openings</text>
-<ellipse cx="505.0" cy="402.0" rx="125.0" ry="32.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
-<text x="505.0" y="399.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A" font-weight="600">UC-17</text>
-<text x="505.0" y="415.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A">Manage project literature</text>
-<ellipse cx="505.0" cy="492.0" rx="125.0" ry="32.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
-<text x="505.0" y="481.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A" font-weight="600">UC-19</text>
-<text x="505.0" y="497.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A">Consult project AI</text>
-<text x="505.0" y="513.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A">assistant</text>
-<ellipse cx="505.0" cy="582.0" rx="125.0" ry="32.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
-<text x="505.0" y="579.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A" font-weight="600">UC-20</text>
-<text x="505.0" y="595.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A">Chat with team</text>
-<ellipse cx="505.0" cy="672.0" rx="125.0" ry="32.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
-<text x="505.0" y="661.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A" font-weight="600">UC-21</text>
-<text x="505.0" y="677.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A">Write manuscript</text>
-<text x="505.0" y="693.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A">collaboratively</text>
-<g stroke="#1B2A3A" stroke-width="2" fill="none"><circle cx="100.0" cy="125.33333333333333" r="10" fill="#fff"/><line x1="100.0" y1="135.33333333333331" x2="100.0" y2="161.33333333333331"/><line x1="83.0" y1="145.33333333333331" x2="117.0" y2="145.33333333333331"/><line x1="100.0" y1="161.33333333333331" x2="86.0" y2="181.33333333333331"/><line x1="100.0" y1="161.33333333333331" x2="114.0" y2="181.33333333333331"/></g>
-<text x="100.0" y="199" text-anchor="middle" font-size="13.5" fill="#1B2A3A">User</text>
-<g stroke="#1B2A3A" stroke-width="2" fill="none"><circle cx="100.0" cy="265.33333333333337" r="10" fill="#fff"/><line x1="100.0" y1="275.33333333333337" x2="100.0" y2="301.33333333333337"/><line x1="83.0" y1="285.33333333333337" x2="117.0" y2="285.33333333333337"/><line x1="100.0" y1="301.33333333333337" x2="86.0" y2="321.33333333333337"/><line x1="100.0" y1="301.33333333333337" x2="114.0" y2="321.33333333333337"/></g>
-<text x="100.0" y="339" text-anchor="middle" font-size="13.5" fill="#1B2A3A">Project owner</text>
-<g stroke="#1B2A3A" stroke-width="2" fill="none"><circle cx="100.0" cy="530.3333333333333" r="10" fill="#fff"/><line x1="100.0" y1="540.3333333333333" x2="100.0" y2="566.3333333333333"/><line x1="83.0" y1="550.3333333333333" x2="117.0" y2="550.3333333333333"/><line x1="100.0" y1="566.3333333333333" x2="86.0" y2="586.3333333333333"/><line x1="100.0" y1="566.3333333333333" x2="114.0" y2="586.3333333333333"/></g>
-<text x="100.0" y="604" text-anchor="middle" font-size="13.5" fill="#1B2A3A">Project member</text>
-<g stroke="#C62828" stroke-width="2" fill="none"><circle cx="910.0" cy="502.0" r="10" fill="#FDECEA"/><line x1="910.0" y1="512.0" x2="910.0" y2="538.0"/><line x1="893.0" y1="522.0" x2="927.0" y2="522.0"/><line x1="910.0" y1="538.0" x2="896.0" y2="558.0"/><line x1="910.0" y1="538.0" x2="924.0" y2="558.0"/></g>
-<text x="910.0" y="576" text-anchor="middle" font-size="13.5" fill="#1B2A3A">LLM provider</text>
-<text x="910.0" y="486" text-anchor="middle" font-size="11.5" font-style="italic" fill="#C62828">&#171;external system&#187;</text>
-<g stroke="#C62828" stroke-width="2" fill="none"><circle cx="910.0" cy="682.0" r="10" fill="#FDECEA"/><line x1="910.0" y1="692.0" x2="910.0" y2="718.0"/><line x1="893.0" y1="702.0" x2="927.0" y2="702.0"/><line x1="910.0" y1="718.0" x2="896.0" y2="738.0"/><line x1="910.0" y1="718.0" x2="924.0" y2="738.0"/></g>
-<text x="910.0" y="756" text-anchor="middle" font-size="13.5" fill="#1B2A3A">GitHub</text>
-<text x="910.0" y="666" text-anchor="middle" font-size="11.5" font-style="italic" fill="#C62828">&#171;external system&#187;</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="944" height="768" viewBox="0 0 944 768" font-family="Segoe UI, Arial, sans-serif">
+<defs><marker id="open" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto"><path d="M1 1 L9 5 L1 9" fill="none" stroke="#4A5A6A" stroke-width="1.6"/></marker><marker id="tri" viewBox="0 0 12 12" refX="11" refY="6" markerWidth="11" markerHeight="11" orient="auto"><path d="M1 1 L11 6 L1 11 z" fill="#fff" stroke="#4A5A6A" stroke-width="1.5"/></marker></defs>
+<rect width="944" height="768" fill="#fff"/>
+<text x="472" y="32" text-anchor="middle" font-size="20" font-weight="700" fill="#1B2A3A">Use Case Diagram 2(b) - Research projects and collaboration</text>
+<rect x="392" y="62" width="322" height="666" rx="12" fill="#F7F9FC" stroke="#2F6DB5" stroke-width="1.6"/>
+<text x="553" y="84" text-anchor="middle" font-size="15" font-weight="700" fill="#2F6DB5">LumiGap</text>
+<polyline points="212.0,564 127.0,564 127.0,168 208.0,168" fill="none" stroke="#4A5A6A" stroke-width="1.6" marker-end="url(#tri)"/>
+<polyline points="212.0,308 111.0,308 111.0,564 208.0,564" fill="none" stroke="#4A5A6A" stroke-width="1.6" marker-end="url(#tri)"/>
+<line x1="250.0" y1="162.3" x2="422.0" y2="135.0" stroke="#4A5A6A" stroke-width="1.5"/>
+<line x1="250.0" y1="302.3" x2="422.0" y2="223.0" stroke="#4A5A6A" stroke-width="1.5"/>
+<line x1="250.0" y1="302.3" x2="422.0" y2="311.0" stroke="#4A5A6A" stroke-width="1.5"/>
+<line x1="250.0" y1="558.3" x2="422.0" y2="399.0" stroke="#4A5A6A" stroke-width="1.5"/>
+<line x1="250.0" y1="558.3" x2="422.0" y2="487.0" stroke="#4A5A6A" stroke-width="1.5"/>
+<line x1="250.0" y1="558.3" x2="422.0" y2="575.0" stroke="#4A5A6A" stroke-width="1.5"/>
+<line x1="250.0" y1="558.3" x2="422.0" y2="663.0" stroke="#4A5A6A" stroke-width="1.5"/>
+<line x1="836.0" y1="517.0" x2="684.0" y2="487.0" stroke="#4A5A6A" stroke-width="1.5"/>
+<line x1="836.0" y1="693.0" x2="684.0" y2="663.0" stroke="#4A5A6A" stroke-width="1.5"/>
+<ellipse cx="553.0" cy="135.0" rx="131.0" ry="35.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
+<text x="553.0" y="130.5" text-anchor="middle" font-size="16.5" fill="#1B2A3A" font-weight="600">UC-16</text>
+<text x="553.0" y="149.5" text-anchor="middle" font-size="16.5" fill="#1B2A3A">Manage research project</text>
+<ellipse cx="553.0" cy="223.0" rx="131.0" ry="35.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
+<text x="553.0" y="209.0" text-anchor="middle" font-size="16.5" fill="#1B2A3A" font-weight="600">UC-18</text>
+<text x="553.0" y="228.0" text-anchor="middle" font-size="16.5" fill="#1B2A3A">Manage members and</text>
+<text x="553.0" y="247.0" text-anchor="middle" font-size="16.5" fill="#1B2A3A">invitations</text>
+<ellipse cx="553.0" cy="311.0" rx="131.0" ry="35.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
+<text x="553.0" y="297.0" text-anchor="middle" font-size="16.5" fill="#1B2A3A" font-weight="600">UC-22</text>
+<text x="553.0" y="316.0" text-anchor="middle" font-size="16.5" fill="#1B2A3A">Manage recruitment</text>
+<text x="553.0" y="335.0" text-anchor="middle" font-size="16.5" fill="#1B2A3A">openings</text>
+<ellipse cx="553.0" cy="399.0" rx="131.0" ry="35.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
+<text x="553.0" y="394.5" text-anchor="middle" font-size="16.5" fill="#1B2A3A" font-weight="600">UC-17</text>
+<text x="553.0" y="413.5" text-anchor="middle" font-size="16.5" fill="#1B2A3A">Manage project literature</text>
+<ellipse cx="553.0" cy="487.0" rx="131.0" ry="35.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
+<text x="553.0" y="473.0" text-anchor="middle" font-size="16.5" fill="#1B2A3A" font-weight="600">UC-19</text>
+<text x="553.0" y="492.0" text-anchor="middle" font-size="16.5" fill="#1B2A3A">Consult project AI</text>
+<text x="553.0" y="511.0" text-anchor="middle" font-size="16.5" fill="#1B2A3A">assistant</text>
+<ellipse cx="553.0" cy="575.0" rx="131.0" ry="35.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
+<text x="553.0" y="570.5" text-anchor="middle" font-size="16.5" fill="#1B2A3A" font-weight="600">UC-20</text>
+<text x="553.0" y="589.5" text-anchor="middle" font-size="16.5" fill="#1B2A3A">Chat with team</text>
+<ellipse cx="553.0" cy="663.0" rx="131.0" ry="35.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
+<text x="553.0" y="649.0" text-anchor="middle" font-size="16.5" fill="#1B2A3A" font-weight="600">UC-21</text>
+<text x="553.0" y="668.0" text-anchor="middle" font-size="16.5" fill="#1B2A3A">Write manuscript</text>
+<text x="553.0" y="687.0" text-anchor="middle" font-size="16.5" fill="#1B2A3A">collaboratively</text>
+<g stroke="#1B2A3A" stroke-width="2" fill="none"><circle cx="232.0" cy="142.33333333333334" r="10" fill="#fff"/><line x1="232.0" y1="152.33333333333334" x2="232.0" y2="178.33333333333334"/><line x1="215.0" y1="162.33333333333334" x2="249.0" y2="162.33333333333334"/><line x1="232.0" y1="178.33333333333334" x2="218.0" y2="198.33333333333334"/><line x1="232.0" y1="178.33333333333334" x2="246.0" y2="198.33333333333334"/></g>
+<text x="232.0" y="216" text-anchor="middle" font-size="16.5" fill="#1B2A3A">User</text>
+<g stroke="#1B2A3A" stroke-width="2" fill="none"><circle cx="232.0" cy="538.3333333333333" r="10" fill="#fff"/><line x1="232.0" y1="548.3333333333333" x2="232.0" y2="574.3333333333333"/><line x1="215.0" y1="558.3333333333333" x2="249.0" y2="558.3333333333333"/><line x1="232.0" y1="574.3333333333333" x2="218.0" y2="594.3333333333333"/><line x1="232.0" y1="574.3333333333333" x2="246.0" y2="594.3333333333333"/></g>
+<text x="232.0" y="612" text-anchor="middle" font-size="16.5" fill="#1B2A3A">Project member</text>
+<g stroke="#1B2A3A" stroke-width="2" fill="none"><circle cx="232.0" cy="282.33333333333337" r="10" fill="#fff"/><line x1="232.0" y1="292.33333333333337" x2="232.0" y2="318.33333333333337"/><line x1="215.0" y1="302.33333333333337" x2="249.0" y2="302.33333333333337"/><line x1="232.0" y1="318.33333333333337" x2="218.0" y2="338.33333333333337"/><line x1="232.0" y1="318.33333333333337" x2="246.0" y2="338.33333333333337"/></g>
+<text x="232.0" y="356" text-anchor="middle" font-size="16.5" fill="#1B2A3A">Project owner</text>
+<g stroke="#6B7078" stroke-width="2" fill="none"><circle cx="854.0" cy="497.0" r="10" fill="#F0F1F3"/><line x1="854.0" y1="507.0" x2="854.0" y2="533.0"/><line x1="837.0" y1="517.0" x2="871.0" y2="517.0"/><line x1="854.0" y1="533.0" x2="840.0" y2="553.0"/><line x1="854.0" y1="533.0" x2="868.0" y2="553.0"/></g>
+<text x="854.0" y="571" text-anchor="middle" font-size="16.5" fill="#1B2A3A">LLM provider</text>
+<text x="854.0" y="481" text-anchor="middle" font-size="14" font-style="italic" fill="#6B7078">&#171;external system&#187;</text>
+<g stroke="#6B7078" stroke-width="2" fill="none"><circle cx="854.0" cy="673.0" r="10" fill="#F0F1F3"/><line x1="854.0" y1="683.0" x2="854.0" y2="709.0"/><line x1="837.0" y1="693.0" x2="871.0" y2="693.0"/><line x1="854.0" y1="709.0" x2="840.0" y2="729.0"/><line x1="854.0" y1="709.0" x2="868.0" y2="729.0"/></g>
+<text x="854.0" y="747" text-anchor="middle" font-size="16.5" fill="#1B2A3A">GitHub</text>
+<text x="854.0" y="657" text-anchor="middle" font-size="14" font-style="italic" fill="#6B7078">&#171;external system&#187;</text>
 </svg>

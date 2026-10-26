@@ -1,45 +1,40 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="674" viewBox="0 0 1000 674" font-family="Segoe UI, Arial, sans-serif">
-<defs><marker id="open" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto"><path d="M1 1 L9 5 L1 9" fill="none" stroke="#4A5A6A" stroke-width="1.6"/></marker></defs>
-<rect width="1000" height="674" fill="#fff"/>
-<text x="500" y="32" text-anchor="middle" font-size="20" font-weight="700" fill="#1B2A3A">Use Case Diagram 4 - Administration</text>
-<rect x="335" y="62" width="340" height="582" rx="12" fill="#F7F9FC" stroke="#2F6DB5" stroke-width="1.6"/>
-<text x="505" y="84" text-anchor="middle" font-size="15" font-weight="700" fill="#2F6DB5">LumiGap</text>
-<line x1="118.0" y1="387.0" x2="380.0" y2="132.0" stroke="#4A5A6A" stroke-width="1.5"/>
-<line x1="118.0" y1="387.0" x2="380.0" y2="222.0" stroke="#4A5A6A" stroke-width="1.5"/>
-<line x1="118.0" y1="387.0" x2="380.0" y2="312.0" stroke="#4A5A6A" stroke-width="1.5"/>
-<line x1="118.0" y1="387.0" x2="380.0" y2="402.0" stroke="#4A5A6A" stroke-width="1.5"/>
-<line x1="118.0" y1="387.0" x2="380.0" y2="492.0" stroke="#4A5A6A" stroke-width="1.5"/>
-<line x1="118.0" y1="387.0" x2="380.0" y2="582.0" stroke="#4A5A6A" stroke-width="1.5"/>
-<line x1="892.0" y1="294.5" x2="630.0" y2="312.0" stroke="#4A5A6A" stroke-width="1.5"/>
-<line x1="892.0" y1="434.5" x2="630.0" y2="312.0" stroke="#4A5A6A" stroke-width="1.5"/>
-<line x1="892.0" y1="434.5" x2="630.0" y2="402.0" stroke="#4A5A6A" stroke-width="1.5"/>
-<ellipse cx="505.0" cy="132.0" rx="125.0" ry="32.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
-<text x="505.0" y="129.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A" font-weight="600">UC-29</text>
-<text x="505.0" y="145.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A">Manage user accounts</text>
-<ellipse cx="505.0" cy="222.0" rx="125.0" ry="32.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
-<text x="505.0" y="219.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A" font-weight="600">UC-30</text>
-<text x="505.0" y="235.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A">Manage paper corpus</text>
-<ellipse cx="505.0" cy="312.0" rx="125.0" ry="32.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
-<text x="505.0" y="309.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A" font-weight="600">UC-31</text>
-<text x="505.0" y="325.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A">Operate sync and ingestion</text>
-<ellipse cx="505.0" cy="402.0" rx="125.0" ry="32.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
-<text x="505.0" y="391.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A" font-weight="600">UC-32</text>
-<text x="505.0" y="407.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A">Monitor pipeline and</text>
-<text x="505.0" y="423.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A">evaluate quality</text>
-<ellipse cx="505.0" cy="492.0" rx="125.0" ry="32.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
-<text x="505.0" y="481.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A" font-weight="600">UC-33</text>
-<text x="505.0" y="497.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A">Review lecturer</text>
-<text x="505.0" y="513.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A">verification</text>
-<ellipse cx="505.0" cy="582.0" rx="125.0" ry="32.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
-<text x="505.0" y="571.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A" font-weight="600">UC-36</text>
-<text x="505.0" y="587.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A">Report and moderate</text>
-<text x="505.0" y="603.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A">content</text>
-<g stroke="#1B2A3A" stroke-width="2" fill="none"><circle cx="100.0" cy="367.0" r="10" fill="#fff"/><line x1="100.0" y1="377.0" x2="100.0" y2="403.0"/><line x1="83.0" y1="387.0" x2="117.0" y2="387.0"/><line x1="100.0" y1="403.0" x2="86.0" y2="423.0"/><line x1="100.0" y1="403.0" x2="114.0" y2="423.0"/></g>
-<text x="100.0" y="441" text-anchor="middle" font-size="13.5" fill="#1B2A3A">Administrator</text>
-<g stroke="#C62828" stroke-width="2" fill="none"><circle cx="910.0" cy="274.5" r="10" fill="#FDECEA"/><line x1="910.0" y1="284.5" x2="910.0" y2="310.5"/><line x1="893.0" y1="294.5" x2="927.0" y2="294.5"/><line x1="910.0" y1="310.5" x2="896.0" y2="330.5"/><line x1="910.0" y1="310.5" x2="924.0" y2="330.5"/></g>
-<text x="910.0" y="348" text-anchor="middle" font-size="13.5" fill="#1B2A3A">OpenAlex</text>
-<text x="910.0" y="258" text-anchor="middle" font-size="11.5" font-style="italic" fill="#C62828">&#171;external system&#187;</text>
-<g stroke="#C62828" stroke-width="2" fill="none"><circle cx="910.0" cy="414.5" r="10" fill="#FDECEA"/><line x1="910.0" y1="424.5" x2="910.0" y2="450.5"/><line x1="893.0" y1="434.5" x2="927.0" y2="434.5"/><line x1="910.0" y1="450.5" x2="896.0" y2="470.5"/><line x1="910.0" y1="450.5" x2="924.0" y2="470.5"/></g>
-<text x="910.0" y="488" text-anchor="middle" font-size="13.5" fill="#1B2A3A">Background workers</text>
-<text x="910.0" y="398" text-anchor="middle" font-size="11.5" font-style="italic" fill="#C62828">&#171;external system&#187;</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="812" height="670" viewBox="0 0 812 670" font-family="Segoe UI, Arial, sans-serif">
+<defs><marker id="open" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto"><path d="M1 1 L9 5 L1 9" fill="none" stroke="#4A5A6A" stroke-width="1.6"/></marker><marker id="tri" viewBox="0 0 12 12" refX="11" refY="6" markerWidth="11" markerHeight="11" orient="auto"><path d="M1 1 L11 6 L1 11 z" fill="#fff" stroke="#4A5A6A" stroke-width="1.5"/></marker></defs>
+<rect width="812" height="670" fill="#fff"/>
+<text x="406" y="32" text-anchor="middle" font-size="20" font-weight="700" fill="#1B2A3A">Use Case Diagram 4 - Administration</text>
+<rect x="260" y="62" width="322" height="578" rx="12" fill="#F7F9FC" stroke="#2F6DB5" stroke-width="1.6"/>
+<text x="421" y="84" text-anchor="middle" font-size="15" font-weight="700" fill="#2F6DB5">LumiGap</text>
+<line x1="118.0" y1="385.0" x2="290.0" y2="135.0" stroke="#4A5A6A" stroke-width="1.5"/>
+<line x1="118.0" y1="385.0" x2="290.0" y2="223.0" stroke="#4A5A6A" stroke-width="1.5"/>
+<line x1="118.0" y1="385.0" x2="290.0" y2="311.0" stroke="#4A5A6A" stroke-width="1.5"/>
+<line x1="118.0" y1="385.0" x2="290.0" y2="399.0" stroke="#4A5A6A" stroke-width="1.5"/>
+<line x1="118.0" y1="385.0" x2="290.0" y2="487.0" stroke="#4A5A6A" stroke-width="1.5"/>
+<line x1="118.0" y1="385.0" x2="290.0" y2="575.0" stroke="#4A5A6A" stroke-width="1.5"/>
+<line x1="704.0" y1="341.0" x2="552.0" y2="311.0" stroke="#4A5A6A" stroke-width="1.5"/>
+<ellipse cx="421.0" cy="135.0" rx="131.0" ry="35.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
+<text x="421.0" y="130.5" text-anchor="middle" font-size="16.5" fill="#1B2A3A" font-weight="600">UC-29</text>
+<text x="421.0" y="149.5" text-anchor="middle" font-size="16.5" fill="#1B2A3A">Manage user accounts</text>
+<ellipse cx="421.0" cy="223.0" rx="131.0" ry="35.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
+<text x="421.0" y="218.5" text-anchor="middle" font-size="16.5" fill="#1B2A3A" font-weight="600">UC-30</text>
+<text x="421.0" y="237.5" text-anchor="middle" font-size="16.5" fill="#1B2A3A">Manage paper corpus</text>
+<ellipse cx="421.0" cy="311.0" rx="131.0" ry="35.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
+<text x="421.0" y="306.5" text-anchor="middle" font-size="16.5" fill="#1B2A3A" font-weight="600">UC-31</text>
+<text x="421.0" y="325.5" text-anchor="middle" font-size="16.5" fill="#1B2A3A">Operate sync and ingestion</text>
+<ellipse cx="421.0" cy="399.0" rx="131.0" ry="35.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
+<text x="421.0" y="385.0" text-anchor="middle" font-size="16.5" fill="#1B2A3A" font-weight="600">UC-32</text>
+<text x="421.0" y="404.0" text-anchor="middle" font-size="16.5" fill="#1B2A3A">Monitor pipeline and</text>
+<text x="421.0" y="423.0" text-anchor="middle" font-size="16.5" fill="#1B2A3A">evaluate quality</text>
+<ellipse cx="421.0" cy="487.0" rx="131.0" ry="35.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
+<text x="421.0" y="473.0" text-anchor="middle" font-size="16.5" fill="#1B2A3A" font-weight="600">UC-33</text>
+<text x="421.0" y="492.0" text-anchor="middle" font-size="16.5" fill="#1B2A3A">Review lecturer</text>
+<text x="421.0" y="511.0" text-anchor="middle" font-size="16.5" fill="#1B2A3A">verification</text>
+<ellipse cx="421.0" cy="575.0" rx="131.0" ry="35.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
+<text x="421.0" y="561.0" text-anchor="middle" font-size="16.5" fill="#1B2A3A" font-weight="600">UC-36</text>
+<text x="421.0" y="580.0" text-anchor="middle" font-size="16.5" fill="#1B2A3A">Report and moderate</text>
+<text x="421.0" y="599.0" text-anchor="middle" font-size="16.5" fill="#1B2A3A">content</text>
+<g stroke="#1B2A3A" stroke-width="2" fill="none"><circle cx="100.0" cy="365.0" r="10" fill="#fff"/><line x1="100.0" y1="375.0" x2="100.0" y2="401.0"/><line x1="83.0" y1="385.0" x2="117.0" y2="385.0"/><line x1="100.0" y1="401.0" x2="86.0" y2="421.0"/><line x1="100.0" y1="401.0" x2="114.0" y2="421.0"/></g>
+<text x="100.0" y="439" text-anchor="middle" font-size="16.5" fill="#1B2A3A">Administrator</text>
+<g stroke="#6B7078" stroke-width="2" fill="none"><circle cx="722.0" cy="321.0" r="10" fill="#F0F1F3"/><line x1="722.0" y1="331.0" x2="722.0" y2="357.0"/><line x1="705.0" y1="341.0" x2="739.0" y2="341.0"/><line x1="722.0" y1="357.0" x2="708.0" y2="377.0"/><line x1="722.0" y1="357.0" x2="736.0" y2="377.0"/></g>
+<text x="722.0" y="395" text-anchor="middle" font-size="16.5" fill="#1B2A3A">OpenAlex</text>
+<text x="722.0" y="305" text-anchor="middle" font-size="14" font-style="italic" fill="#6B7078">&#171;external system&#187;</text>
 </svg>

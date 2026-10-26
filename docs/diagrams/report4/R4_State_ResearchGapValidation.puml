@@ -1,6 +1,6 @@
 @startuml
 !pragma layout smetana
-skinparam dpi 150
+skinparam dpi 200
 skinparam defaultFontName "Segoe UI"
 skinparam defaultFontSize 13
 skinparam shadowing false
@@ -60,25 +60,23 @@ skinparam rectangle {
   BorderColor #2F6DB5
 }
 title ResearchGap validation status (research_gaps.validation_status)
-[*] --> CANDIDATE : createCandidate(), AI fan-out\n(column default)
+[*] --> CANDIDATE : createCandidate() or AI fan-out\n/ column default
 CANDIDATE --> UNDER_VALIDATION : requestValidation()
 REFINED --> UNDER_VALIDATION : requestValidation()
-UNDER_VALIDATION --> REFINED : addValidation()\naction REFINE_SCOPE
-REFINED --> REFINED : addValidation()\nREFINE_SCOPE
-UNDER_VALIDATION --> VALIDATED : quorum of VALIDATE\nand no blocking vote
-UNDER_VALIDATION --> REJECTED : quorum of REJECT
-REFINED --> VALIDATED : quorum of VALIDATE\nand no blocking vote
-REFINED --> REJECTED : quorum of REJECT
-UNDER_VALIDATION --> UNDER_VALIDATION : other votes (CHALLENGE,\nREQUEST_EVIDENCE, SUGGEST_EVIDENCE)
-UNDER_VALIDATION --> CANDIDATE : content or evidence\nedited (version +1)
-REFINED --> CANDIDATE : content or evidence edited
-VALIDATED --> CANDIDATE : content or evidence edited
-REJECTED --> CANDIDATE : content or evidence edited
-state DRAFT #F5F5F5
-state ARCHIVED #F5F5F5
-note right of DRAFT
+UNDER_VALIDATION --> REFINED : addValidation()\n[action REFINE_SCOPE]
+REFINED --> REFINED : addValidation() [REFINE_SCOPE]
+UNDER_VALIDATION --> VALIDATED : addValidation()\n[VALIDATE quorum, no blocking vote]
+UNDER_VALIDATION --> REJECTED : addValidation()\n[REJECT quorum]
+REFINED --> VALIDATED : addValidation()\n[VALIDATE quorum, no blocking vote]
+REFINED --> REJECTED : addValidation() [REJECT quorum]
+UNDER_VALIDATION --> UNDER_VALIDATION : addValidation()\n[CHALLENGE, REQUEST_ or\nSUGGEST_EVIDENCE]
+UNDER_VALIDATION --> CANDIDATE : [content or evidence edited]\n/ version + 1
+REFINED --> CANDIDATE : [content or evidence edited]
+VALIDATED --> CANDIDATE : [content or evidence edited]
+REJECTED --> CANDIDATE : [content or evidence edited]
+legend bottom
   <b>Dead values</b>: DRAFT and ARCHIVED are allowed by the
   type and the requestValidation() filter, but no service
   ever writes them.
-end note
+endlegend
 @enduml

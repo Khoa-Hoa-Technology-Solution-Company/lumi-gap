@@ -1,88 +1,98 @@
 @startuml
-!pragma layout smetana
-skinparam dpi 150
+!pragma layout elk
+skinparam dpi 200
 skinparam defaultFontName "Segoe UI"
 skinparam defaultFontSize 13
 skinparam shadowing false
 skinparam roundCorner 10
+skinparam backgroundColor #FFFFFF
 skinparam ArrowColor #4A5A6A
 skinparam ArrowThickness 1.2
-skinparam BorderColor #2F6DB5
-skinparam BackgroundColor #FFFFFF
+skinparam ArrowFontSize 12
+skinparam ArrowFontColor #4A5A6A
 skinparam TitleFontSize 16
 skinparam TitleFontStyle bold
 skinparam entity {
-  BackgroundColor #F7FAFD
-  BorderColor #2F6DB5
+  BackgroundColor #EFE6F8
+  BorderColor #6A3FA0
 }
-skinparam entity<<ref>> {
-  BackgroundColor #F3E5F5
-  BorderColor #7B1FA2
+skinparam legend {
+  BackgroundColor #FFF8E1
+  BorderColor #C9B36B
+  FontSize 12
 }
-skinparam linetype ortho
+skinparam stereotypeFontSize 10
 hide circle
-title Users, sessions and academic profiles (ERD, 1 of 2)
-entity users #F7FAFD {
+hide empty methods
+title Physical ERD - Users, sessions and academic profiles (1 of 3)
+entity users #EFE6F8;line:6A3FA0 {
   * id : uuid <<PK>>
   --
   account_status_changed_by_id : uuid <<FK>>
-  email : string <<UK>>
-  full_name : string
-  system_role : string
-  academic_profile_type : string
+  email : varchar(320) <<UK>>
+  google_id : text <<UK>>
+  ..
+  full_name : varchar(300)
+  role : varchar(32)
 }
-entity user_emails #F7FAFD {
+entity user_emails #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  user_id : uuid <<FK,UK*>>
+  normalized_email : varchar(320) <<UK>>
+  ..
+  is_primary : boolean
+  purpose : varchar(32)
+}
+entity refresh_tokens #EFE6F8;line:6A3FA0 {
   * id : uuid <<PK>>
   --
   user_id : uuid <<FK>>
-  normalized_email : string <<UK>>
-  is_primary : bool
-  purpose : string
-  verified_at : timestamptz
-}
-entity refresh_tokens #F7FAFD {
-  * id : uuid <<PK>>
-  --
-  user_id : uuid <<FK>>
-  token_hash : string
+  ..
   family_id : uuid
-  expires_at : timestamptz
+  rotated_to_id : uuid
 }
-entity oauth_accounts #F7FAFD {
+entity oauth_accounts #EFE6F8;line:6A3FA0 {
   * id : uuid <<PK>>
   --
   user_id : uuid <<FK>>
-  provider : string
-  provider_account_id : string
+  ..
+  provider : varchar(32)
+  provider_account_id : varchar(255)
 }
-entity user_capabilities #F7FAFD {
+entity user_capabilities #EFE6F8;line:6A3FA0 {
   * id : uuid <<PK>>
   --
+  user_id : uuid <<FK>>
   granted_by_id : uuid <<FK>>
-  user_id : uuid <<FK>>
-  capability : string
-  status : string
-  source : string
+  ..
+  capability : varchar(48)
+  status : varchar(24)
 }
-entity academic_profiles #F7FAFD {
+entity academic_profiles #EFE6F8;line:6A3FA0 {
   * id : uuid <<PK>>
   --
-  rejected_by_id : uuid <<FK>>
+  user_id : uuid <<FK,UK>>
   role_verified_by_id : uuid <<FK>>
-  user_id : uuid <<FK>>
   verified_by_id : uuid <<FK>>
-  academic_role : string
-  role_verification_status : string
-  position_status : string
+  rejected_by_id : uuid <<FK>>
+  public_handle : varchar(40) <<UK>>
+  ..
+  avatar_mime_type : varchar(64)
+  cover_mime_type : varchar(64)
 }
 users |o--o{ academic_profiles : rejected_by_id
 users |o--o{ academic_profiles : role_verified_by_id
+users ||--o| academic_profiles : user_id
 users |o--o{ academic_profiles : verified_by_id
-users |o--o{ user_capabilities : granted_by_id
-users |o--o{ users : account_status_changed_by_id
 users ||--o{ oauth_accounts
 users ||--o{ refresh_tokens
+users |o--o{ user_capabilities : granted_by_id
 users ||--o{ user_capabilities : user_id
 users ||--o{ user_emails
-users ||--o| academic_profiles : user_id
+users |o--o{ users : account_status_changed_by_id
+legend bottom
+Crow's-foot notation. PK primary key, FK foreign key, UK unique key.
+UK*: partial unique index (unique only for rows matching its WHERE condition).
+endlegend
 @enduml

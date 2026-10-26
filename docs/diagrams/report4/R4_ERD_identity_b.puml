@@ -1,106 +1,80 @@
 @startuml
-!pragma layout smetana
-skinparam dpi 150
+!pragma layout elk
+skinparam dpi 200
 skinparam defaultFontName "Segoe UI"
 skinparam defaultFontSize 13
 skinparam shadowing false
 skinparam roundCorner 10
+skinparam backgroundColor #FFFFFF
 skinparam ArrowColor #4A5A6A
 skinparam ArrowThickness 1.2
-skinparam BorderColor #2F6DB5
-skinparam BackgroundColor #FFFFFF
+skinparam ArrowFontSize 12
+skinparam ArrowFontColor #4A5A6A
 skinparam TitleFontSize 16
 skinparam TitleFontStyle bold
 skinparam entity {
-  BackgroundColor #F7FAFD
-  BorderColor #2F6DB5
+  BackgroundColor #EFE6F8
+  BorderColor #6A3FA0
 }
-skinparam entity<<ref>> {
-  BackgroundColor #F3E5F5
-  BorderColor #7B1FA2
+skinparam legend {
+  BackgroundColor #FFF8E1
+  BorderColor #C9B36B
+  FontSize 12
 }
-skinparam linetype ortho
+skinparam stereotypeFontSize 10
 hide circle
-title Institutions, affiliations and verification evidence (ERD, 2 of 2)
-entity institutions #F7FAFD {
+hide empty methods
+title Physical ERD - Institutions and affiliations (2 of 3)
+entity institutions #EFE6F8;line:6A3FA0 {
   * id : uuid <<PK>>
   --
-  slug : string <<UK>>
-  name : string
-  status : string
-  host_institution : bool
+  slug : varchar(160) <<UK>>
+  ..
+  name : varchar(200)
+  status : varchar(24)
 }
-entity institution_domains #F7FAFD {
+entity institution_domains #EFE6F8;line:6A3FA0 {
   * id : uuid <<PK>>
   --
   institution_id : uuid <<FK>>
-  domain : string <<UK>>
-  trusted : bool
-  status : string
-  type : string
+  domain : varchar(255) <<UK>>
+  ..
+  status : varchar(24)
+  type : varchar(16)
 }
-entity campuses #F7FAFD {
+entity campuses #EFE6F8;line:6A3FA0 {
   * id : uuid <<PK>>
   --
   institution_id : uuid <<FK>>
+  ..
+  code : varchar(40)
+  name : varchar(160)
 }
-entity affiliations #F7FAFD {
+entity affiliations #EFE6F8;line:6A3FA0 {
   * id : uuid <<PK>>
   --
+  user_id : uuid <<FK,UK*>>
+  institution_id : uuid <<FK>>
   campus_id : uuid <<FK>>
-  institution_id : uuid <<FK>>
-  user_id : uuid <<FK>>
+  program_id : uuid <<FK academic_programs>>
   verified_by_id : uuid <<FK>>
-  institution_name : string
-  verification_status : string
-  position_status : string
+  ..
+  institution_name : varchar(200)
+  academic_title : varchar(120)
 }
-entity verification_evidence #F7FAFD {
-  * id : uuid <<PK>>
-  --
-  academic_profile_id : uuid <<FK>>
-  institution_id : uuid <<FK>>
-  previous_request_id : uuid <<FK>>
-  reviewed_by_id : uuid <<FK>>
-  user_id : uuid <<FK>>
-  verification_type : string
-  source_type : string
-  status : string
-}
-entity verification_evidence_sources #F7FAFD {
-  * id : uuid <<PK>>
-  --
-  email_identity_id : uuid <<FK>>
-  previous_source_id : uuid <<FK>>
-  request_id : uuid <<FK>>
-  slot : int
-  type : string
-  source_kind : string
-}
-entity users <<ref>> #F3E5F5 {
+entity users #FFFFFF;line:6A3FA0;line.dashed {
   * id : uuid <<PK>>
 }
-entity academic_profiles <<ref>> #F3E5F5 {
-  * id : uuid <<PK>>
-}
-entity user_emails <<ref>> #F3E5F5 {
-  * id : uuid <<PK>>
-}
-academic_profiles |o--o{ verification_evidence
 campuses |o--o{ affiliations
-institutions |o--o{ verification_evidence
 institutions ||--o{ affiliations
 institutions ||--o{ campuses
 institutions ||--o{ institution_domains
-user_emails |o--o{ verification_evidence_sources
-users |o--o{ affiliations : verified_by_id
-users |o--o{ verification_evidence : reviewed_by_id
 users ||--o{ affiliations : user_id
-users ||--o{ verification_evidence : user_id
-verification_evidence |o--o{ verification_evidence : previous_request_id
-verification_evidence ||--o{ verification_evidence_sources
-verification_evidence_sources |o--o{ verification_evidence_sources : previous_source_id
+users |o--o{ affiliations : verified_by_id
 legend bottom
-Purple entities are shown by id only.
+Crow's-foot notation. PK primary key, FK foreign key, UK unique key.
+FK <name>: the foreign key references a table that is not drawn here.
+Dashed boxes belong to another diagram (key only).
+UK*: partial unique index (unique only for rows matching its WHERE condition).
 endlegend
 @enduml

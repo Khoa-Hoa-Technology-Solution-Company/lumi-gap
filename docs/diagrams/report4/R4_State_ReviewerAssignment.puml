@@ -1,6 +1,6 @@
 @startuml
 !pragma layout smetana
-skinparam dpi 150
+skinparam dpi 200
 skinparam defaultFontName "Segoe UI"
 skinparam defaultFontSize 13
 skinparam shadowing false
@@ -64,11 +64,11 @@ title ReviewerAssignment status (reviewer_assignments.status)
 [*] --> accepted : acceptExternalInvitation()
 assigned --> accepted : accept()
 assigned --> declined : decline()
-assigned --> cancelled : cancel() or\nrequest expired
-accepted --> declined : decline() withdraw
-accepted --> cancelled : cancel() after deadline
-accepted --> completed : saveReview(submit)\nwith COMPLETED outcome
-completed --> accepted : resubmit()\nreopens a new round
+assigned --> cancelled : cancel() or\n[request expired]
+accepted --> declined : decline() / withdraw
+accepted --> cancelled : cancel() [after deadline]
+accepted --> completed : saveReview(submit)\n[outcome COMPLETED]
+completed --> accepted : resubmit() / reopen a new round
 declined --> [*]
 cancelled --> [*]
 note right of accepted

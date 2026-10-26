@@ -1,6 +1,6 @@
 @startuml
 !pragma layout smetana
-skinparam dpi 150
+skinparam dpi 200
 skinparam defaultFontName "Segoe UI"
 skinparam defaultFontSize 13
 skinparam shadowing false
@@ -60,24 +60,24 @@ skinparam rectangle {
   BorderColor #2F6DB5
 }
 title ContentReport status (content_reports.status)
-[*] --> open : report()\nnormal reporter
-[*] --> escalated : report()\ncopyright concern or staff author
-open --> claimed : forumModerationService.claim()
-escalated --> claimed : claim() (admin)
-claimed --> claimed : claim()\nrenew or lease expired
-open --> resolved : applyAction() /\nreviewReport()
-claimed --> resolved : applyAction() /\nreviewReport()
+[*] --> open : report() [normal reporter]
+[*] --> escalated : report()\n[copyright concern or staff author]
+open --> claimed : claim()
+escalated --> claimed : claim() [admin]
+claimed --> claimed : claim()\n[renew or lease expired]
+open --> resolved : applyAction() or reviewReport()
+claimed --> resolved : applyAction() or reviewReport()
 open --> dismissed : DISMISS_REPORT
 claimed --> dismissed : DISMISS_REPORT
 claimed --> escalated : ESCALATE_REPORT
 open --> escalated : ESCALATE_REPORT
-claimed --> reviewed : reviewReport()\nstatus reviewed
+claimed --> reviewed : reviewReport()\n[status reviewed]
 escalated --> resolved : admin action
 escalated --> dismissed : admin action
 resolved --> [*]
 dismissed --> [*]
 reviewed --> [*]
-state under_review #F5F5F5
+state under_review #EEEEEE
 note right of under_review
   <b>Dead value</b>: under_review is accepted by the claim()
   filter and the list API but is never written.

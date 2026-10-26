@@ -1,116 +1,73 @@
 @startuml
 !pragma layout elk
-skinparam dpi 150
+skinparam dpi 200
 skinparam defaultFontName "Segoe UI"
 skinparam defaultFontSize 13
 skinparam shadowing false
 skinparam roundCorner 10
+skinparam backgroundColor #FFFFFF
 skinparam ArrowColor #4A5A6A
 skinparam ArrowThickness 1.2
-skinparam BorderColor #2F6DB5
-skinparam BackgroundColor #FFFFFF
+skinparam ArrowFontSize 12
+skinparam ArrowFontColor #4A5A6A
 skinparam TitleFontSize 16
 skinparam TitleFontStyle bold
-skinparam usecase {
-  BackgroundColor #EAF2FB
-  BorderColor #2F6DB5
-}
-skinparam actor {
-  BackgroundColor #FFFFFF
-  BorderColor #1B2A3A
-}
 skinparam entity {
-  BackgroundColor #F7FAFD
-  BorderColor #2F6DB5
+  BackgroundColor #EFE6F8
+  BorderColor #6A3FA0
 }
-skinparam rectangle {
-  BackgroundColor #F7F9FC
-  BorderColor #2F6DB5
-}
-
-hide circle
-hide empty methods
-skinparam ArrowFontSize 11
-skinparam ArrowFontColor #4A5A6A
-skinparam class {
-  BackgroundColor #F7FAFD
-  BorderColor #2F6DB5
-  HeaderBackgroundColor #DCE8F6
-}
-skinparam entity {
-  BackgroundColor #F7FAFD
-  BorderColor #2F6DB5
+skinparam legend {
+  BackgroundColor #FFF8E1
+  BorderColor #C9B36B
+  FontSize 12
 }
 skinparam stereotypeFontSize 10
-title
-ERD 5(b) - Content reports and moderation
-<size:11><color:#4A5A6A>FK -> User : relation to the User entity is shown as an FK annotation</color></size>
-end title
-entity Community {
-  * id : uuid <<PK>>
+hide circle
+hide empty methods
+title Logical ERD 5(b) - Content reports and moderation
+entity ContentReport #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
   --
-  # owner_id : uuid <<FK>> -> User
-  # reviewed_by_id : uuid <<FK>> -> User
+  reporterId <<FK User>>
+  postId <<FK>>
+  commentId <<FK>>
+  communityId <<FK>>
+  reviewedById <<FK User>>
   ..
-  name : text
-  visibility : text
-  status : text
+  targetType
+  status
 }
-entity ForumPost {
-  * id : uuid <<PK>>
+entity ForumModerationAction #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
   --
-  # accepted_comment_id : uuid <<FK>>
-  # author_id : uuid <<FK>> -> User
-  # community_id : uuid <<FK>>
-  # linked_paper_id : uuid <<FK>>
-  # linked_project_id : uuid <<FK>>
-  # linked_research_gap_id : uuid <<FK>>
-  # research_gap_id : uuid <<FK>>
+  actorId <<FK User>>
+  communityId <<FK>>
+  postId <<FK>>
+  commentId <<FK>>
+  reportId <<FK>>
   ..
-  type : text
-  title : text
-  status : text
+  targetType
+  policyRuleCode
 }
-entity ForumComment {
-  * id : uuid <<PK>>
-  --
-  # author_id : uuid <<FK>> -> User
-  # parent_comment_id : uuid <<FK>> (self)
-  # post_id : uuid <<FK>>
-  ..
-  status : text
+entity Community #FFFFFF;line:6A3FA0;line.dashed {
+  * id <<PK>>
 }
-entity ContentReport {
-  * id : uuid <<PK>>
-  --
-  # comment_id : uuid <<FK>>
-  # community_id : uuid <<FK>>
-  # post_id : uuid <<FK>>
-  # reporter_id : uuid <<FK>> -> User
-  # reviewed_by_id : uuid <<FK>> -> User
-  ..
-  reason : text
-  status : text
+entity ForumPost #FFFFFF;line:6A3FA0;line.dashed {
+  * id <<PK>>
 }
-entity ForumModerationAction {
-  * id : uuid <<PK>>
-  --
-  # actor_id : uuid <<FK>> -> User
-  # comment_id : uuid <<FK>>
-  # community_id : uuid <<FK>>
-  # post_id : uuid <<FK>>
-  # report_id : uuid <<FK>>
-  ..
-  action : text
+entity ForumComment #FFFFFF;line:6A3FA0;line.dashed {
+  * id <<PK>>
 }
-Community |o--o{ ForumPost : community_id
-ForumPost ||--o{ ForumComment : post_id
-ForumComment |o--o{ ForumPost : accepted_comment_id
-ForumPost |o--o{ ContentReport : post_id
-ForumComment |o--o{ ContentReport : comment_id
-Community |o--o{ ContentReport : community_id
-Community |o--o{ ForumModerationAction : community_id
-ForumPost |o--o{ ForumModerationAction : post_id
-ForumComment |o--o{ ForumModerationAction : comment_id
-ContentReport |o--o{ ForumModerationAction : report_id
+Community |o--o{ ContentReport
+Community |o--o{ ForumModerationAction
+ForumComment |o--o{ ContentReport
+ForumComment |o--o{ ForumModerationAction
+ContentReport |o--o{ ForumModerationAction
+ForumPost |o--o{ ContentReport
+ForumPost |o--o{ ForumModerationAction
+legend bottom
+Crow's-foot notation. PK primary key, FK foreign key, UK unique key.
+FK <name>: the foreign key references an entity that is not drawn here.
+Dashed boxes belong to another diagram (key only).
+endlegend
 @enduml

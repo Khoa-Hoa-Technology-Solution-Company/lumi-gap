@@ -1,6 +1,6 @@
 @startuml
 !pragma layout smetana
-skinparam dpi 150
+skinparam dpi 200
 skinparam defaultFontName "Segoe UI"
 skinparam defaultFontSize 13
 skinparam shadowing false
@@ -59,42 +59,71 @@ skinparam rectangle {
   BackgroundColor #F7F9FC
   BorderColor #2F6DB5
 }
+skinparam classAttributeIconSize 0
+skinparam ClassFontSize 12
+skinparam ClassAttributeFontSize 12
+skinparam nodesep 25
+skinparam ranksep 40
+skinparam class<<page>> { 
+  BackgroundColor #DCEAFB
+}
+skinparam class<<hook>> {
+  BackgroundColor #DCEAFB
+}
+skinparam class<<api client>> {
+  BackgroundColor #DCEAFB
+}
+skinparam class<<route>> {
+  BackgroundColor #E3F2E5
+}
+skinparam class<<controller>> {
+  BackgroundColor #E3F2E5
+}
+skinparam class<<service>> {
+  BackgroundColor #E3F2E5
+}
+skinparam class<<rules>> {
+  BackgroundColor #E3F2E5
+}
+skinparam class<<client>> {
+  BackgroundColor #F0F1F3
+}
+skinparam class<<worker>> {
+  BackgroundColor #FFF1DC
+}
+skinparam class<<job>> {
+  BackgroundColor #FFF1DC
+}
+skinparam class<<model>> {
+  BackgroundColor #EFE6F8
+}
+skinparam class<<external>> {
+  BackgroundColor #F0F1F3
+}
 title WF01 Generate research report - class diagram (a) request path
 hide empty members
 hide circle
 package "Web" {
-  class ReportsListPage <<page>> {
-    pages/reports/reports-list.tsx
-  }
-  class UseReports <<hook>> {
-    useCreateReport()
-    useReport(id)
-    useReports()
-  }
-  class ReportsApi <<api client>> {
-    create(payload)
-    detail(id)
-    updateArtifactStatus(id, status)
+  class ReportsUi <<page>> {
+    reports-list.tsx
+    useCreateReport(), useReport(id)
+    ReportsApi.create(), detail()
   }
 }
-package "Backend routes" {
+package "Backend" {
   class reportRouter <<route>> {
     POST /reports
     GET /reports/:id
     PATCH /reports/:id/artifact-status
   }
   class reportController <<controller>> {
-    create()
-    getById()
+    create(), getById()
     updateArtifactStatus()
   }
-}
-package "Services" {
   class reportService <<service>> {
     create(userId, input)
     getById(userId, id)
     updateArtifactStatus()
-    -resolveReportEvidenceScope()
   }
   class creditService <<service>> {
     chargeCreditsChecked()
@@ -107,9 +136,6 @@ package "Services" {
 package "Data model (Prisma)" {
   class Report <<model>> {
     reports
-    id, userId, projectId
-    status, artifactStatus
-    markdown, creditTransactionId
   }
   class ReportPaper <<model>> {
     report_papers
@@ -118,14 +144,13 @@ package "Data model (Prisma)" {
     credit_transactions
   }
 }
-ReportsListPage --> UseReports
-UseReports --> ReportsApi
-ReportsApi --> reportRouter : HTTP
-reportRouter --> reportController
-reportController --> reportService
-reportService --> creditService
-reportService --> creditPolicy
-reportService --> Report
-reportService --> ReportPaper
-creditService --> CreditTransaction
+ReportsUi ..> reportRouter : HTTP
+reportRouter ..> reportController
+reportController ..> reportService
+reportService ..> creditService
+reportService ..> creditPolicy
+reportService ..> Report
+reportService ..> ReportPaper
+creditService ..> CreditTransaction
+Report "1" -- "0..*" ReportPaper
 @enduml

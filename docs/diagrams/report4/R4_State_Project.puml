@@ -1,6 +1,6 @@
 @startuml
 !pragma layout smetana
-skinparam dpi 150
+skinparam dpi 200
 skinparam defaultFontName "Segoe UI"
 skinparam defaultFontSize 13
 skinparam shadowing false
@@ -62,10 +62,10 @@ skinparam rectangle {
 title Project status (projects.status)
 state "Not archived\n(PLANNING, ACTIVE, ON_HOLD, COMPLETED)" as Open
 state ARCHIVED
-[*] --> Open : createProject()\ndefault status PLANNING
-Open --> Open : updateProject() sets any of the four values\n(no transition matrix)
+[*] --> Open : createProject()\n/ default status PLANNING
+Open --> Open : updateProject()\n[any of the four values]\n(no transition matrix)
 Open --> ARCHIVED : archiveProject()
-ARCHIVED --> Open : restoreProject()\nprevious status (default PLANNING)
+ARCHIVED --> Open : restoreProject()\n/ previous status (default PLANNING)
 note right of ARCHIVED
   Read-only: pending invitations cancelled,
   mentorship discovery closed.

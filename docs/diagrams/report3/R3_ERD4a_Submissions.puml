@@ -1,133 +1,97 @@
 @startuml
 !pragma layout elk
-skinparam dpi 150
+skinparam dpi 200
 skinparam defaultFontName "Segoe UI"
 skinparam defaultFontSize 13
 skinparam shadowing false
 skinparam roundCorner 10
+skinparam backgroundColor #FFFFFF
 skinparam ArrowColor #4A5A6A
 skinparam ArrowThickness 1.2
-skinparam BorderColor #2F6DB5
-skinparam BackgroundColor #FFFFFF
+skinparam ArrowFontSize 12
+skinparam ArrowFontColor #4A5A6A
 skinparam TitleFontSize 16
 skinparam TitleFontStyle bold
-skinparam usecase {
-  BackgroundColor #EAF2FB
-  BorderColor #2F6DB5
-}
-skinparam actor {
-  BackgroundColor #FFFFFF
-  BorderColor #1B2A3A
-}
 skinparam entity {
-  BackgroundColor #F7FAFD
-  BorderColor #2F6DB5
+  BackgroundColor #EFE6F8
+  BorderColor #6A3FA0
 }
-skinparam rectangle {
-  BackgroundColor #F7F9FC
-  BorderColor #2F6DB5
-}
-
-hide circle
-hide empty methods
-skinparam ArrowFontSize 11
-skinparam ArrowFontColor #4A5A6A
-skinparam class {
-  BackgroundColor #F7FAFD
-  BorderColor #2F6DB5
-  HeaderBackgroundColor #DCE8F6
-}
-skinparam entity {
-  BackgroundColor #F7FAFD
-  BorderColor #2F6DB5
+skinparam legend {
+  BackgroundColor #FFF8E1
+  BorderColor #C9B36B
+  FontSize 12
 }
 skinparam stereotypeFontSize 10
-title
-ERD 4(a) - Submissions and contributions
-<size:11><color:#4A5A6A>FK -> User : relation to the User entity is shown as an FK annotation</color></size>
-end title
-entity Project {
-  * id : uuid <<PK>>
+hide circle
+hide empty methods
+title Logical ERD 4(a) - Submissions and contributions
+entity Submission #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
   --
-  # created_by_id : uuid <<FK>> -> User
-  # owner_id : uuid <<FK>> -> User
+  projectId <<FK>>
+  sourceReportId <<FK,UK>>
+  createdById <<FK User>>
+  currentRevisionId <<FK>>
   ..
-  title : text
-  status : text
-  visibility : text
-  version : int
+  title
+  submissionType
 }
-entity Report {
-  * id : uuid <<PK>>
+entity SubmissionRevision #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
   --
-  # project_id : uuid <<FK>>
-  # user_id : uuid <<FK>> -> User
+  submissionId <<FK>>
+  uploadedById <<FK User>>
+  sourceRevisionId <<FK>>
+  manuscriptSnapshotId <<FK ManuscriptSnapshot>>
   ..
-  status : text
-  artifact_status : text
-  credit_cost : int
-  credit_refunded_at : timestamp
+  originalFileName
+  contentType
 }
-entity Submission {
-  * id : uuid <<PK>>
+entity AiPreReview #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
   --
-  # created_by_id : uuid <<FK>> -> User
-  # current_revision_id : uuid <<FK>>
-  # project_id : uuid <<FK>>
-  # source_report_id : uuid <<FK>>
+  submissionId <<FK>>
+  requestedById <<FK User>>
   ..
-  title : text
-  status : text
-  current_revision_number : int
+  provider
+  status
 }
-entity SubmissionRevision {
-  * id : uuid <<PK>>
+entity ResearchContribution #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
   --
-  # source_revision_id : uuid <<FK>> (self)
-  # submission_id : uuid <<FK>>
-  # uploaded_by_id : uuid <<FK>> -> User
+  contributorId <<FK User>>
+  projectId <<FK>>
+  submissionId <<FK>>
+  verifiedById <<FK User>>
+  sourceReviewAssignmentId <<FK,UK>>
+  sourceProjectContributionId <<FK ProjectContributionProposal>>
   ..
-  revision_number : int
+  contributionType
+  verificationStatus
 }
-entity AiPreReview {
-  * id : uuid <<PK>>
-  --
-  # requested_by_id : uuid <<FK>> -> User
-  # submission_id : uuid <<FK>>
-  ..
-  status : text
+entity Project #FFFFFF;line:6A3FA0;line.dashed {
+  * id <<PK>>
 }
-entity ResearchContribution {
-  * id : uuid <<PK>>
-  --
-  # contributor_id : uuid <<FK>> -> User
-  # project_id : uuid <<FK>>
-  # source_review_assignment_id : uuid <<FK>>
-  # submission_id : uuid <<FK>>
-  # verified_by_id : uuid <<FK>> -> User
-  ..
-  contribution_type : text
+entity Report #FFFFFF;line:6A3FA0;line.dashed {
+  * id <<PK>>
 }
-entity ReviewerAssignment {
-  * id : uuid <<PK>>
-  --
-  # artifact_revision_id : uuid <<FK>>
-  # assigned_by_id : uuid <<FK>> -> User
-  # review_request_id : uuid <<FK>>
-  # reviewer_id : uuid <<FK>> -> User
-  # submission_id : uuid <<FK>>
-  ..
-  status : text
+entity ReviewerAssignment #FFFFFF;line:6A3FA0;line.dashed {
+  * id <<PK>>
 }
-Project |o--o{ Report : project_id
-Project ||--o{ Submission : project_id
-Submission ||--o{ SubmissionRevision : submission_id
-SubmissionRevision |o--o{ Submission : current_revision_id
-Submission ||--o{ ReviewerAssignment : submission_id
-Submission ||--o{ AiPreReview : submission_id
-Project |o--o{ ResearchContribution : project_id
-Submission |o--o{ ResearchContribution : submission_id
-ReviewerAssignment |o--o{ ResearchContribution : source_review_assignment_id
-Report |o--o{ Submission : source_report_id
-SubmissionRevision |o--o{ ReviewerAssignment : artifact_revision_id
+Project |o--o{ ResearchContribution
+Project ||--o{ Submission
+Report |o--o| Submission
+ReviewerAssignment |o--o| ResearchContribution
+SubmissionRevision |o--o{ ReviewerAssignment
+SubmissionRevision |o--o{ SubmissionRevision : sourceRevisionId
+SubmissionRevision |o--o{ Submission : currentRevisionId
+Submission ||--o{ AiPreReview
+Submission |o--o{ ResearchContribution
+Submission ||--o{ ReviewerAssignment
+Submission ||--o{ SubmissionRevision : submissionId
+legend bottom
+Crow's-foot notation. PK primary key, FK foreign key, UK unique key.
+FK <name>: the foreign key references an entity that is not drawn here.
+Dashed boxes belong to another diagram (key only).
+endlegend
 @enduml

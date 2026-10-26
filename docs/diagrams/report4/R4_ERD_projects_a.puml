@@ -1,115 +1,100 @@
 @startuml
-!pragma layout smetana
-skinparam dpi 150
+!pragma layout elk
+skinparam dpi 200
 skinparam defaultFontName "Segoe UI"
 skinparam defaultFontSize 13
 skinparam shadowing false
 skinparam roundCorner 10
+skinparam backgroundColor #FFFFFF
 skinparam ArrowColor #4A5A6A
 skinparam ArrowThickness 1.2
-skinparam BorderColor #2F6DB5
-skinparam BackgroundColor #FFFFFF
+skinparam ArrowFontSize 12
+skinparam ArrowFontColor #4A5A6A
 skinparam TitleFontSize 16
 skinparam TitleFontStyle bold
 skinparam entity {
-  BackgroundColor #F7FAFD
-  BorderColor #2F6DB5
+  BackgroundColor #EFE6F8
+  BorderColor #6A3FA0
 }
-skinparam entity<<ref>> {
-  BackgroundColor #F3E5F5
-  BorderColor #7B1FA2
+skinparam legend {
+  BackgroundColor #FFF8E1
+  BorderColor #C9B36B
+  FontSize 12
 }
-skinparam linetype ortho
+skinparam stereotypeFontSize 10
 hide circle
-title Projects, members and planning (ERD, 1 of 2)
-entity projects #F7FAFD {
+hide empty methods
+title Physical ERD - Projects, members and planning (1 of 3)
+entity projects #EFE6F8;line:6A3FA0 {
   * id : uuid <<PK>>
   --
-  created_by_id : uuid <<FK>>
-  owner_id : uuid <<FK>>
-  title : string
-  status : string
-  visibility : string
+  created_by_id : uuid <<FK users>>
+  owner_id : uuid <<FK users>>
+  ..
+  title : varchar(100)
+  status : varchar(24)
 }
-entity project_members #F7FAFD {
+entity project_members #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  project_id : uuid <<FK,UK*>>
+  user_id : uuid <<FK users>>
+  ..
+  role : varchar(24)
+  status : varchar(24)
+}
+entity project_invitations #EFE6F8;line:6A3FA0 {
   * id : uuid <<PK>>
   --
   project_id : uuid <<FK>>
-  user_id : uuid <<FK>>
-  role : string
-  status : string
-  joined_at : timestamptz
+  invited_user_id : uuid <<FK users>>
+  invited_by_id : uuid <<FK users>>
+  token_hash : varchar(128) <<UK*>>
+  ..
+  email : varchar(320)
+  purpose : varchar(48)
 }
-entity project_invitations #F7FAFD {
+entity project_papers #EFE6F8;line:6A3FA0 {
   * id : uuid <<PK>>
   --
-  invited_by_id : uuid <<FK>>
-  invited_user_id : uuid <<FK>>
   project_id : uuid <<FK>>
-  email : string
-  purpose : string
-  status : string
-}
-entity project_papers #F7FAFD {
-  * id : uuid <<PK>>
-  --
-  added_by_id : uuid <<FK>>
   paper_id : uuid <<FK>>
-  project_id : uuid <<FK>>
-  screening_status : string
-  reading_status : string
-  inclusion_reason : string
+  added_by_id : uuid <<FK users>>
+  ..
+  screening_status : varchar(24)
+  reading_status : varchar(24)
 }
-entity research_plans #F7FAFD {
+entity research_plans #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  project_id : uuid <<FK,UK>>
+  updated_by_id : uuid <<FK users>>
+  ..
+  approach : varchar(32)
+  problem : text
+}
+entity project_activities #EFE6F8;line:6A3FA0 {
   * id : uuid <<PK>>
   --
   project_id : uuid <<FK>>
-  updated_by_id : uuid <<FK>>
-  approach : string
-  problem : string
-  methodology : string
+  actor_id : uuid <<FK users>>
+  ..
+  type : varchar(48)
+  entity_kind : varchar(32)
 }
-entity project_tasks #F7FAFD {
-  * id : uuid <<PK>>
-  --
-  assignee_id : uuid <<FK>>
-  completed_by_id : uuid <<FK>>
-  created_by_id : uuid <<FK>>
-  project_id : uuid <<FK>>
-  title : string
-  status : string
-  due_at : timestamptz
-}
-entity project_milestones #F7FAFD {
-  * id : uuid <<PK>>
-  --
-  created_by_id : uuid <<FK>>
-  project_id : uuid <<FK>>
-  title : string
-  status : string
-  due_at : timestamptz
-}
-entity project_activities #F7FAFD {
-  * id : uuid <<PK>>
-  --
-  actor_id : uuid <<FK>>
-  project_id : uuid <<FK>>
-  type : string
-  entity_kind : string
-  entity_id : string
-}
-entity papers <<ref>> #F3E5F5 {
+entity papers #FFFFFF;line:6A3FA0;line.dashed {
   * id : uuid <<PK>>
 }
 papers ||--o{ project_papers
 projects ||--o{ project_activities
 projects ||--o{ project_invitations
 projects ||--o{ project_members
-projects ||--o{ project_milestones
 projects ||--o{ project_papers
-projects ||--o{ project_tasks
 projects ||--o| research_plans
 legend bottom
-Columns such as user_id and *_by_id reference users (not drawn). Purple entities are shown by id only.
+Crow's-foot notation. PK primary key, FK foreign key, UK unique key.
+FK <name>: the foreign key references a table that is not drawn here.
+Dashed boxes belong to another diagram (key only).
+UK*: partial unique index (unique only for rows matching its WHERE condition).
 endlegend
 @enduml

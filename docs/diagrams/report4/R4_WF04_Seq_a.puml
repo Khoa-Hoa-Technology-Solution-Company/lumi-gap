@@ -1,5 +1,5 @@
 @startuml
-skinparam dpi 150
+skinparam dpi 200
 skinparam defaultFontName "Segoe UI"
 skinparam defaultFontSize 13
 skinparam shadowing false
@@ -58,30 +58,25 @@ skinparam rectangle {
   BackgroundColor #F7F9FC
   BorderColor #2F6DB5
 }
-title WF04 Lecturer verification - submission (part a)
-skinparam maxMessageSize 170
-skinparam ParticipantPadding 2
+skinparam maxMessageSize 100
+skinparam ParticipantPadding 0
 skinparam BoxPadding 2
 skinparam sequenceMessageAlign left
+skinparam responseMessageBelowArrow true
+skinparam SequenceGroupBodyBackgroundColor transparent
+skinparam SequenceGroupBackgroundColor #F4F7FA
+skinparam SequenceDividerBackgroundColor #DCE8F6
+skinparam NoteFontSize 12
+hide footbox
 autonumber
+title WF04 Lecturer verification (a): stage evidence
 actor "Lecturer" as L
-boundary "Web\nlecturer-verification-status,\nadmin page" as W
-control "academicProfile\nRouter" as R
-control "academicProfile\nService" as P
-control "lecturerVerification\nService" as LV
-participant "verificationEvidence\nStorage" as ST
-database "PostgreSQL" as DB
-control "capability\nService" as C
-control "notification\nService" as N
-L -> W : choose path, institution evidence\n(profile URL, document)
-W -> R : POST /academic-profiles/me/verification-evidence\n(stage file)
+boundary "Web app" as W #DCEAFB
+control "academicProfile\nRouter" as R #E3F2E5
+control "verification\nEvidenceStorage" as ST #E3F2E5
+L -> W : choose institution evidence\n(URL, document)
+W -> R : POST /academic-profiles/me/\nverification-evidence
 R -> ST : save private object
-W -> R : POST /academic-profiles/me/verification-request
-R -> P : requestVerification(userId, input)
-P -> LV : submitLecturerVerification()
-activate LV
-LV -> DB : tx lock user, check no PENDING,\nsupersede NEEDS_MORE_INFORMATION
-LV -> DB : insert verification_evidence (PENDING) and sources,\nprofile statuses PENDING
-LV -> N : LECTURER_VERIFICATION_SUBMITTED
-deactivate LV
+ST --> R : stored reference
+R --> W : 200 staged file
 @enduml

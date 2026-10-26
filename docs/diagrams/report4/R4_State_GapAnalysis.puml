@@ -1,6 +1,6 @@
 @startuml
 !pragma layout smetana
-skinparam dpi 150
+skinparam dpi 200
 skinparam defaultFontName "Segoe UI"
 skinparam defaultFontSize 13
 skinparam shadowing false
@@ -60,13 +60,13 @@ skinparam rectangle {
   BorderColor #2F6DB5
 }
 title GapAnalysis status (gap_analyses.status)
-[*] --> queued : gapsService.enqueue()\nafter credit charge
-queued --> analyzing : runGapPipeline()\natomic claim
-analyzing --> analyzing : BullMQ retry\nre-claims
-analyzing --> ready : persist() creates\nresearch_gaps
-queued --> failed : enqueue error, sweep,\nor markAnalysisFailed()
-analyzing --> failed : not enough evidence,\nretries exhausted, sweep
-failed --> [*] : credits refunded once
+[*] --> queued : gapsService.enqueue()\n[credits charged]
+queued --> analyzing : runGapPipeline()\n[atomic claim succeeds]
+analyzing --> analyzing : BullMQ retry / re-claim
+analyzing --> ready : persist() / create research_gaps
+queued --> failed : [enqueue error, sweep] or\nmarkAnalysisFailed()\n/ refund credits once
+analyzing --> failed : [not enough evidence,\nretries exhausted, sweep]\n/ refund credits once
+failed --> [*]
 ready --> [*]
 note right of failed
   <b>No retry transition.</b> retryAnalysis() does NOT move

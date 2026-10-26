@@ -1,153 +1,128 @@
 @startuml
 !pragma layout elk
-skinparam dpi 150
+skinparam dpi 200
 skinparam defaultFontName "Segoe UI"
 skinparam defaultFontSize 13
 skinparam shadowing false
 skinparam roundCorner 10
+skinparam backgroundColor #FFFFFF
 skinparam ArrowColor #4A5A6A
 skinparam ArrowThickness 1.2
-skinparam BorderColor #2F6DB5
-skinparam BackgroundColor #FFFFFF
+skinparam ArrowFontSize 12
+skinparam ArrowFontColor #4A5A6A
 skinparam TitleFontSize 16
 skinparam TitleFontStyle bold
-skinparam usecase {
-  BackgroundColor #EAF2FB
-  BorderColor #2F6DB5
-}
-skinparam actor {
-  BackgroundColor #FFFFFF
-  BorderColor #1B2A3A
-}
 skinparam entity {
-  BackgroundColor #F7FAFD
-  BorderColor #2F6DB5
+  BackgroundColor #EFE6F8
+  BorderColor #6A3FA0
 }
-skinparam rectangle {
-  BackgroundColor #F7F9FC
-  BorderColor #2F6DB5
-}
-
-hide circle
-hide empty methods
-skinparam ArrowFontSize 11
-skinparam ArrowFontColor #4A5A6A
-skinparam class {
-  BackgroundColor #F7FAFD
-  BorderColor #2F6DB5
-  HeaderBackgroundColor #DCE8F6
-}
-skinparam entity {
-  BackgroundColor #F7FAFD
-  BorderColor #2F6DB5
+skinparam legend {
+  BackgroundColor #FFF8E1
+  BorderColor #C9B36B
+  FontSize 12
 }
 skinparam stereotypeFontSize 10
-title
-ERD 2(a) - Papers, reports and AI services
-<size:11><color:#4A5A6A>FK -> User : relation to the User entity is shown as an FK annotation</color></size>
-end title
-entity Paper {
-  * id : uuid <<PK>>
+hide circle
+hide empty methods
+title Logical ERD 2(a) - Papers, reports and AI services
+entity Paper #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
   --
-  # journal_id : uuid <<FK>>
-  # requested_by_id : uuid <<FK>> -> User
-  # uploaded_by_id : uuid <<FK>> -> User
+  journalId <<FK>>
+  requestedById <<FK User>>
+  uploadedById <<FK User>>
+  doi <<UK>>
   ..
-  doi : text
-  title : text
-  paper_status : text
-  data_status : text
+  title
+  journalName
 }
-entity Author {
-  * id : uuid <<PK>>
+entity Author #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
   --
-}
-entity PaperAuthor {
-  --
-  # author_id : uuid <<FK>>
-  # paper_id : uuid <<FK>>
+  openalexId <<UK>>
   ..
-  position : int
+  orcid
+  displayName
 }
-entity Journal {
-  * id : uuid <<PK>>
+entity PaperAuthor #EFE6F8;line:6A3FA0 {
+  * paperId <<PK,FK>>
+  * position <<PK>>
   --
-}
-entity Bookmark {
-  * id : uuid <<PK>>
-  --
-  # paper_id : uuid <<FK>>
-  # report_id : uuid <<FK>>
-  # user_id : uuid <<FK>> -> User
-}
-entity Report {
-  * id : uuid <<PK>>
-  --
-  # credit_transaction_id : uuid <<FK>>
-  # project_id : uuid <<FK>>
-  # user_id : uuid <<FK>> -> User
+  authorId <<FK>>
   ..
-  status : text
-  artifact_status : text
-  credit_cost : int
-  credit_refunded_at : timestamp
+  displayName
+  isCorresponding
 }
-entity ReportPaper {
+entity Journal #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
   --
-  # paper_id : uuid <<FK>>
-  # report_id : uuid <<FK>>
+  openalexId <<UK>>
   ..
-  kind : text
+  name
+  type
 }
-entity PaperReview {
-  * id : uuid <<PK>>
+entity Bookmark #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
   --
-  # paper_id : uuid <<FK>>
-  # user_id : uuid <<FK>> -> User
+  userId <<FK User>>
+  paperId <<FK>>
+  reportId <<FK>>
   ..
-  status : text
-  strictness : text
-  credits_charged : int
+  note
 }
-entity PaperFormatCheck {
-  * id : uuid <<PK>>
+entity Report #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
   --
-  # user_id : uuid <<FK>> -> User
+  userId <<FK User>>
+  projectId <<FK>>
+  creditTransactionId <<FK>>
   ..
-  preset : text
-  passed : bool
+  title
+  status
 }
-entity CreditTransaction {
-  * id : uuid <<PK>>
+entity ReportPaper #EFE6F8;line:6A3FA0 {
+  * reportId <<PK,FK>>
+  * paperId <<PK,FK>>
+  * kind <<PK>>
   --
-  # refunded_transaction_id : uuid <<FK>> (self)
-  # user_id : uuid <<FK>> -> User
-  ..
-  type : text
-  action : text
-  amount : int
-  status : text
-  idempotency_key : text
+  position
 }
-entity Project {
-  * id : uuid <<PK>>
+entity PaperReview #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
   --
-  # created_by_id : uuid <<FK>> -> User
-  # owner_id : uuid <<FK>> -> User
+  userId <<FK User>>
+  paperId <<FK>>
   ..
-  title : text
-  status : text
-  visibility : text
-  version : int
+  fileName
+  status
 }
-Journal |o--o{ Paper : journal_id
-Paper ||--o{ PaperAuthor : paper_id
-Author |o--o{ PaperAuthor : author_id
-Paper |o--o{ PaperReview : paper_id
-Paper |o--o{ Bookmark : paper_id
-Report |o--o{ Bookmark : report_id
-Project |o--o{ Report : project_id
-CreditTransaction |o--o{ Report : credit_transaction_id
-Report ||--o{ ReportPaper : report_id
-Paper ||--o{ ReportPaper : paper_id
+entity PaperFormatCheck #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
+  --
+  userId <<FK User>>
+  ..
+  fileName
+  preset
+}
+entity CreditTransaction #FFFFFF;line:6A3FA0;line.dashed {
+  * id <<PK>>
+}
+entity Project #FFFFFF;line:6A3FA0;line.dashed {
+  * id <<PK>>
+}
+Author |o--o{ PaperAuthor
+CreditTransaction |o--o{ Report
+Journal |o--o{ Paper
+Paper |o--o{ Bookmark
+Paper ||--o{ PaperAuthor
+Paper |o--o{ PaperReview
+Paper ||--o{ ReportPaper
+Project |o--o{ Report
+Report |o--o{ Bookmark
+Report ||--o{ ReportPaper
+legend bottom
+Crow's-foot notation. PK primary key, FK foreign key, UK unique key.
+FK <name>: the foreign key references an entity that is not drawn here.
+Dashed boxes belong to another diagram (key only).
+endlegend
 @enduml

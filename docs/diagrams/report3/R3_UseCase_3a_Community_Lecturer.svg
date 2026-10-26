@@ -1,63 +1,68 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="705" height="921" viewBox="0 0 705 921" font-family="Segoe UI, Arial, sans-serif">
-<defs><marker id="open" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto"><path d="M1 1 L9 5 L1 9" fill="none" stroke="#4A5A6A" stroke-width="1.6"/></marker></defs>
-<rect width="705" height="921" fill="#fff"/>
-<text x="352" y="32" text-anchor="middle" font-size="20" font-weight="700" fill="#1B2A3A">Use Case Diagram 3(a) - Community, lecturer verification and mentoring</text>
-<rect x="335" y="62" width="340" height="806" rx="12" fill="#F7F9FC" stroke="#2F6DB5" stroke-width="1.6"/>
-<text x="505" y="84" text-anchor="middle" font-size="15" font-weight="700" fill="#2F6DB5">LumiGap</text>
-<line x1="118.0" y1="257.0" x2="380.0" y2="132.0" stroke="#4A5A6A" stroke-width="1.5"/>
-<line x1="118.0" y1="257.0" x2="380.0" y2="222.0" stroke="#4A5A6A" stroke-width="1.5"/>
-<line x1="118.0" y1="257.0" x2="380.0" y2="312.0" stroke="#4A5A6A" stroke-width="1.5"/>
-<line x1="118.0" y1="257.0" x2="380.0" y2="402.0" stroke="#4A5A6A" stroke-width="1.5"/>
-<line x1="118.0" y1="397.0" x2="380.0" y2="402.0" stroke="#4A5A6A" stroke-width="1.5"/>
-<line x1="118.0" y1="537.0" x2="380.0" y2="312.0" stroke="#4A5A6A" stroke-width="1.5"/>
-<line x1="118.0" y1="537.0" x2="380.0" y2="402.0" stroke="#4A5A6A" stroke-width="1.5"/>
-<line x1="118.0" y1="537.0" x2="380.0" y2="492.0" stroke="#4A5A6A" stroke-width="1.5"/>
-<line x1="118.0" y1="706.0" x2="380.0" y2="626.0" stroke="#4A5A6A" stroke-width="1.5"/>
-<line x1="118.0" y1="706.0" x2="380.0" y2="716.0" stroke="#4A5A6A" stroke-width="1.5"/>
-<line x1="118.0" y1="706.0" x2="380.0" y2="806.0" stroke="#4A5A6A" stroke-width="1.5"/>
-<line x1="118.0" y1="846.0" x2="380.0" y2="806.0" stroke="#4A5A6A" stroke-width="1.5"/>
-<line x1="505.0" y1="594.0" x2="505.0" y2="524.0" stroke="#4A5A6A" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#open)"/>
-<rect x="513.0" y="550" width="86" height="18" fill="#F7F9FC"/><text x="517.0" y="563" font-size="12.5" fill="#4A5A6A">&#171;include&#187;</text>
-<ellipse cx="505.0" cy="132.0" rx="125.0" ry="32.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
-<text x="505.0" y="121.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A" font-weight="600">UC-34</text>
-<text x="505.0" y="137.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A">Participate in academic</text>
-<text x="505.0" y="153.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A">forum</text>
-<ellipse cx="505.0" cy="222.0" rx="125.0" ry="32.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
-<text x="505.0" y="219.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A" font-weight="600">UC-45</text>
-<text x="505.0" y="235.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A">Browse lecturer directory</text>
-<ellipse cx="505.0" cy="312.0" rx="125.0" ry="32.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
-<text x="505.0" y="309.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A" font-weight="600">UC-35</text>
-<text x="505.0" y="325.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A">Manage communities</text>
-<ellipse cx="505.0" cy="402.0" rx="125.0" ry="32.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
-<text x="505.0" y="391.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A" font-weight="600">UC-36</text>
-<text x="505.0" y="407.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A">Report and moderate</text>
-<text x="505.0" y="423.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A">content</text>
-<ellipse cx="505.0" cy="492.0" rx="125.0" ry="32.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
-<text x="505.0" y="481.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A" font-weight="600">UC-33</text>
-<text x="505.0" y="497.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A">Review lecturer</text>
-<text x="505.0" y="513.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A">verification</text>
-<ellipse cx="505.0" cy="626.0" rx="125.0" ry="32.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
-<text x="505.0" y="615.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A" font-weight="600">UC-37</text>
-<text x="505.0" y="631.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A">Submit lecturer</text>
-<text x="505.0" y="647.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A">verification</text>
-<ellipse cx="505.0" cy="716.0" rx="125.0" ry="32.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
-<text x="505.0" y="705.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A" font-weight="600">UC-38</text>
-<text x="505.0" y="721.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A">Manage academic profile</text>
-<text x="505.0" y="737.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A">and review availability</text>
-<ellipse cx="505.0" cy="806.0" rx="125.0" ry="32.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
-<text x="505.0" y="795.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A" font-weight="600">UC-39</text>
-<text x="505.0" y="811.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A">Request or offer lecturer</text>
-<text x="505.0" y="827.0" text-anchor="middle" font-size="13.5" fill="#1B2A3A">mentoring</text>
-<g stroke="#1B2A3A" stroke-width="2" fill="none"><circle cx="100.0" cy="237.0" r="10" fill="#fff"/><line x1="100.0" y1="247.0" x2="100.0" y2="273.0"/><line x1="83.0" y1="257.0" x2="117.0" y2="257.0"/><line x1="100.0" y1="273.0" x2="86.0" y2="293.0"/><line x1="100.0" y1="273.0" x2="114.0" y2="293.0"/></g>
-<text x="100.0" y="311" text-anchor="middle" font-size="13.5" fill="#1B2A3A">User</text>
-<g stroke="#1B2A3A" stroke-width="2" fill="none"><circle cx="100.0" cy="377.0" r="10" fill="#fff"/><line x1="100.0" y1="387.0" x2="100.0" y2="413.0"/><line x1="83.0" y1="397.0" x2="117.0" y2="397.0"/><line x1="100.0" y1="413.0" x2="86.0" y2="433.0"/><line x1="100.0" y1="413.0" x2="114.0" y2="433.0"/></g>
-<text x="100.0" y="451" text-anchor="middle" font-size="13.5" fill="#1B2A3A">Community</text>
-<text x="100.0" y="467" text-anchor="middle" font-size="13.5" fill="#1B2A3A">moderator</text>
-<g stroke="#1B2A3A" stroke-width="2" fill="none"><circle cx="100.0" cy="517.0" r="10" fill="#fff"/><line x1="100.0" y1="527.0" x2="100.0" y2="553.0"/><line x1="83.0" y1="537.0" x2="117.0" y2="537.0"/><line x1="100.0" y1="553.0" x2="86.0" y2="573.0"/><line x1="100.0" y1="553.0" x2="114.0" y2="573.0"/></g>
-<text x="100.0" y="591" text-anchor="middle" font-size="13.5" fill="#1B2A3A">Administrator</text>
-<g stroke="#1B2A3A" stroke-width="2" fill="none"><circle cx="100.0" cy="686.0" r="10" fill="#fff"/><line x1="100.0" y1="696.0" x2="100.0" y2="722.0"/><line x1="83.0" y1="706.0" x2="117.0" y2="706.0"/><line x1="100.0" y1="722.0" x2="86.0" y2="742.0"/><line x1="100.0" y1="722.0" x2="114.0" y2="742.0"/></g>
-<text x="100.0" y="760" text-anchor="middle" font-size="13.5" fill="#1B2A3A">Lecturer</text>
-<g stroke="#1B2A3A" stroke-width="2" fill="none"><circle cx="100.0" cy="826.0" r="10" fill="#fff"/><line x1="100.0" y1="836.0" x2="100.0" y2="862.0"/><line x1="83.0" y1="846.0" x2="117.0" y2="846.0"/><line x1="100.0" y1="862.0" x2="86.0" y2="882.0"/><line x1="100.0" y1="862.0" x2="114.0" y2="882.0"/></g>
-<text x="100.0" y="900" text-anchor="middle" font-size="13.5" fill="#1B2A3A">Author</text>
-<text x="100.0" y="916" text-anchor="middle" font-size="13.5" fill="#1B2A3A">(project member)</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="776" height="920" viewBox="0 0 776 920" font-family="Segoe UI, Arial, sans-serif">
+<defs><marker id="open" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto"><path d="M1 1 L9 5 L1 9" fill="none" stroke="#4A5A6A" stroke-width="1.6"/></marker><marker id="tri" viewBox="0 0 12 12" refX="11" refY="6" markerWidth="11" markerHeight="11" orient="auto"><path d="M1 1 L11 6 L1 11 z" fill="#fff" stroke="#4A5A6A" stroke-width="1.5"/></marker></defs>
+<rect width="776" height="920" fill="#fff"/>
+<text x="388" y="32" text-anchor="middle" font-size="20" font-weight="700" fill="#1B2A3A">Use Case Diagram 3(a) - Community, lecturer verification and mentoring</text>
+<rect x="424" y="82" width="322" height="754" rx="12" fill="#F7F9FC" stroke="#2F6DB5" stroke-width="1.6"/>
+<text x="585" y="104" text-anchor="middle" font-size="15" font-weight="700" fill="#2F6DB5">LumiGap</text>
+<polyline points="244.0,291 159.0,291 159.0,151 240.0,151" fill="none" stroke="#4A5A6A" stroke-width="1.6" marker-end="url(#tri)"/>
+<polyline points="244.0,431 143.0,431 143.0,291 240.0,291" fill="none" stroke="#4A5A6A" stroke-width="1.6" marker-end="url(#tri)"/>
+<polyline points="244.0,711 127.0,711 127.0,291 240.0,291" fill="none" stroke="#4A5A6A" stroke-width="1.6" marker-end="url(#tri)"/>
+<polyline points="244.0,851 111.0,851 111.0,291 240.0,291" fill="none" stroke="#4A5A6A" stroke-width="1.6" marker-end="url(#tri)"/>
+<line x1="282.0" y1="145.0" x2="454.0" y2="242.6" stroke="#4A5A6A" stroke-width="1.5"/>
+<line x1="282.0" y1="285.0" x2="454.0" y2="154.6" stroke="#4A5A6A" stroke-width="1.5"/>
+<line x1="282.0" y1="285.0" x2="454.0" y2="330.6" stroke="#4A5A6A" stroke-width="1.5"/>
+<line x1="282.0" y1="285.0" x2="454.0" y2="418.6" stroke="#4A5A6A" stroke-width="1.5"/>
+<line x1="282.0" y1="425.0" x2="454.0" y2="330.6" stroke="#4A5A6A" stroke-width="1.5"/>
+<line x1="282.0" y1="425.0" x2="454.0" y2="418.6" stroke="#4A5A6A" stroke-width="1.5"/>
+<line x1="282.0" y1="705.0" x2="454.0" y2="506.6" stroke="#4A5A6A" stroke-width="1.5"/>
+<line x1="282.0" y1="705.0" x2="454.0" y2="682.6" stroke="#4A5A6A" stroke-width="1.5"/>
+<line x1="282.0" y1="705.0" x2="454.0" y2="770.6" stroke="#4A5A6A" stroke-width="1.5"/>
+<line x1="282.0" y1="845.0" x2="454.0" y2="770.6" stroke="#4A5A6A" stroke-width="1.5"/>
+<line x1="282.0" y1="565.0" x2="454.0" y2="330.6" stroke="#4A5A6A" stroke-width="1.5"/>
+<line x1="282.0" y1="565.0" x2="454.0" y2="418.6" stroke="#4A5A6A" stroke-width="1.5"/>
+<line x1="282.0" y1="565.0" x2="454.0" y2="594.6" stroke="#4A5A6A" stroke-width="1.5"/>
+<ellipse cx="585.0" cy="154.6" rx="131.0" ry="35.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
+<text x="585.0" y="140.6" text-anchor="middle" font-size="16.5" fill="#1B2A3A" font-weight="600">UC-34</text>
+<text x="585.0" y="159.6" text-anchor="middle" font-size="16.5" fill="#1B2A3A">Participate in academic</text>
+<text x="585.0" y="178.6" text-anchor="middle" font-size="16.5" fill="#1B2A3A">forum</text>
+<ellipse cx="585.0" cy="242.6" rx="131.0" ry="35.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
+<text x="585.0" y="238.1" text-anchor="middle" font-size="16.5" fill="#1B2A3A" font-weight="600">UC-45</text>
+<text x="585.0" y="257.1" text-anchor="middle" font-size="16.5" fill="#1B2A3A">Browse lecturer directory</text>
+<ellipse cx="585.0" cy="330.6" rx="131.0" ry="35.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
+<text x="585.0" y="326.1" text-anchor="middle" font-size="16.5" fill="#1B2A3A" font-weight="600">UC-35</text>
+<text x="585.0" y="345.1" text-anchor="middle" font-size="16.5" fill="#1B2A3A">Manage communities</text>
+<ellipse cx="585.0" cy="418.6" rx="131.0" ry="35.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
+<text x="585.0" y="404.6" text-anchor="middle" font-size="16.5" fill="#1B2A3A" font-weight="600">UC-36</text>
+<text x="585.0" y="423.6" text-anchor="middle" font-size="16.5" fill="#1B2A3A">Report and moderate</text>
+<text x="585.0" y="442.6" text-anchor="middle" font-size="16.5" fill="#1B2A3A">content</text>
+<ellipse cx="585.0" cy="506.6" rx="131.0" ry="35.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
+<text x="585.0" y="492.6" text-anchor="middle" font-size="16.5" fill="#1B2A3A" font-weight="600">UC-37</text>
+<text x="585.0" y="511.6" text-anchor="middle" font-size="16.5" fill="#1B2A3A">Submit lecturer</text>
+<text x="585.0" y="530.6" text-anchor="middle" font-size="16.5" fill="#1B2A3A">verification</text>
+<ellipse cx="585.0" cy="594.6" rx="131.0" ry="35.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
+<text x="585.0" y="580.6" text-anchor="middle" font-size="16.5" fill="#1B2A3A" font-weight="600">UC-33</text>
+<text x="585.0" y="599.6" text-anchor="middle" font-size="16.5" fill="#1B2A3A">Review lecturer</text>
+<text x="585.0" y="618.6" text-anchor="middle" font-size="16.5" fill="#1B2A3A">verification</text>
+<ellipse cx="585.0" cy="682.6" rx="131.0" ry="35.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
+<text x="585.0" y="668.6" text-anchor="middle" font-size="16.5" fill="#1B2A3A" font-weight="600">UC-38</text>
+<text x="585.0" y="687.6" text-anchor="middle" font-size="16.5" fill="#1B2A3A">Manage academic profile</text>
+<text x="585.0" y="706.6" text-anchor="middle" font-size="16.5" fill="#1B2A3A">and review availability</text>
+<ellipse cx="585.0" cy="770.6" rx="131.0" ry="35.0" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="1.5"/>
+<text x="585.0" y="756.6" text-anchor="middle" font-size="16.5" fill="#1B2A3A" font-weight="600">UC-39</text>
+<text x="585.0" y="775.6" text-anchor="middle" font-size="16.5" fill="#1B2A3A">Request or offer lecturer</text>
+<text x="585.0" y="794.6" text-anchor="middle" font-size="16.5" fill="#1B2A3A">mentoring</text>
+<g stroke="#1B2A3A" stroke-width="2" fill="none"><circle cx="264.0" cy="125.0" r="10" fill="#fff"/><line x1="264.0" y1="135.0" x2="264.0" y2="161.0"/><line x1="247.0" y1="145.0" x2="281.0" y2="145.0"/><line x1="264.0" y1="161.0" x2="250.0" y2="181.0"/><line x1="264.0" y1="161.0" x2="278.0" y2="181.0"/></g>
+<text x="264.0" y="199" text-anchor="middle" font-size="16.5" fill="#1B2A3A">Guest</text>
+<g stroke="#1B2A3A" stroke-width="2" fill="none"><circle cx="264.0" cy="265.0" r="10" fill="#fff"/><line x1="264.0" y1="275.0" x2="264.0" y2="301.0"/><line x1="247.0" y1="285.0" x2="281.0" y2="285.0"/><line x1="264.0" y1="301.0" x2="250.0" y2="321.0"/><line x1="264.0" y1="301.0" x2="278.0" y2="321.0"/></g>
+<text x="264.0" y="339" text-anchor="middle" font-size="16.5" fill="#1B2A3A">User</text>
+<g stroke="#1B2A3A" stroke-width="2" fill="none"><circle cx="264.0" cy="405.0" r="10" fill="#fff"/><line x1="264.0" y1="415.0" x2="264.0" y2="441.0"/><line x1="247.0" y1="425.0" x2="281.0" y2="425.0"/><line x1="264.0" y1="441.0" x2="250.0" y2="461.0"/><line x1="264.0" y1="441.0" x2="278.0" y2="461.0"/></g>
+<text x="264.0" y="479" text-anchor="middle" font-size="16.5" fill="#1B2A3A">Community</text>
+<text x="264.0" y="498" text-anchor="middle" font-size="16.5" fill="#1B2A3A">moderator</text>
+<text x="264.0" y="517" text-anchor="middle" font-size="16.5" fill="#1B2A3A">(community role)</text>
+<g stroke="#1B2A3A" stroke-width="2" fill="none"><circle cx="264.0" cy="685.0" r="10" fill="#fff"/><line x1="264.0" y1="695.0" x2="264.0" y2="721.0"/><line x1="247.0" y1="705.0" x2="281.0" y2="705.0"/><line x1="264.0" y1="721.0" x2="250.0" y2="741.0"/><line x1="264.0" y1="721.0" x2="278.0" y2="741.0"/></g>
+<text x="264.0" y="759" text-anchor="middle" font-size="16.5" fill="#1B2A3A">Lecturer</text>
+<g stroke="#1B2A3A" stroke-width="2" fill="none"><circle cx="264.0" cy="825.0" r="10" fill="#fff"/><line x1="264.0" y1="835.0" x2="264.0" y2="861.0"/><line x1="247.0" y1="845.0" x2="281.0" y2="845.0"/><line x1="264.0" y1="861.0" x2="250.0" y2="881.0"/><line x1="264.0" y1="861.0" x2="278.0" y2="881.0"/></g>
+<text x="264.0" y="899" text-anchor="middle" font-size="16.5" fill="#1B2A3A">Project member</text>
+<g stroke="#1B2A3A" stroke-width="2" fill="none"><circle cx="264.0" cy="545.0" r="10" fill="#fff"/><line x1="264.0" y1="555.0" x2="264.0" y2="581.0"/><line x1="247.0" y1="565.0" x2="281.0" y2="565.0"/><line x1="264.0" y1="581.0" x2="250.0" y2="601.0"/><line x1="264.0" y1="581.0" x2="278.0" y2="601.0"/></g>
+<text x="264.0" y="619" text-anchor="middle" font-size="16.5" fill="#1B2A3A">Administrator</text>
 </svg>

@@ -1,6 +1,6 @@
 @startuml
 !pragma layout smetana
-skinparam dpi 150
+skinparam dpi 200
 skinparam defaultFontName "Segoe UI"
 skinparam defaultFontSize 13
 skinparam shadowing false
@@ -61,13 +61,14 @@ skinparam rectangle {
 }
 title AiPreReview status (ai_pre_reviews.status)
 left to right direction
-[*] --> QUEUED : runAiPreReview()
-QUEUED --> PROCESSING : processAiPreReview()\nclaim
-PROCESSING --> COMPLETED : aiReviewerClient.preReview()\nsucceeds
-PROCESSING --> CANCELLED : submission closed\nbefore run
-QUEUED --> FAILED : enqueue error
-QUEUED --> FAILED : failAiPreReview()\nretries exhausted
-PROCESSING --> FAILED : failAiPreReview()\nretries exhausted
+[*] --> QUEUED : runAiPreReview()\n[no active run] / enqueue job
+QUEUED --> PROCESSING : processAiPreReview()\n/ claim
+PROCESSING --> PROCESSING : BullMQ retry / re-claim
+PROCESSING --> COMPLETED : aiReviewerClient.preReview()\n[succeeds]
+PROCESSING --> CANCELLED : [submission closed\nbefore run]
+QUEUED --> FAILED : [enqueue error]
+QUEUED --> FAILED : failAiPreReview()\n[retries exhausted]
+PROCESSING --> FAILED : failAiPreReview()\n[retries exhausted]
 COMPLETED --> [*]
 FAILED --> [*]
 CANCELLED --> [*]

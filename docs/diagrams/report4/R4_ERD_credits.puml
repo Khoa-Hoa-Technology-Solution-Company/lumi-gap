@@ -1,74 +1,88 @@
 @startuml
-!pragma layout smetana
-skinparam dpi 150
+!pragma layout elk
+skinparam dpi 200
 skinparam defaultFontName "Segoe UI"
 skinparam defaultFontSize 13
 skinparam shadowing false
 skinparam roundCorner 10
+skinparam backgroundColor #FFFFFF
 skinparam ArrowColor #4A5A6A
 skinparam ArrowThickness 1.2
-skinparam BorderColor #2F6DB5
-skinparam BackgroundColor #FFFFFF
+skinparam ArrowFontSize 12
+skinparam ArrowFontColor #4A5A6A
 skinparam TitleFontSize 16
 skinparam TitleFontStyle bold
 skinparam entity {
-  BackgroundColor #F7FAFD
-  BorderColor #2F6DB5
+  BackgroundColor #EFE6F8
+  BorderColor #6A3FA0
 }
-skinparam entity<<ref>> {
-  BackgroundColor #F3E5F5
-  BorderColor #7B1FA2
+skinparam legend {
+  BackgroundColor #FFF8E1
+  BorderColor #C9B36B
+  FontSize 12
 }
-skinparam linetype ortho
+skinparam stereotypeFontSize 10
 hide circle
-title Credits, payments and user AI connections (ERD)
-entity credit_transactions #F7FAFD {
+hide empty methods
+title Physical ERD - Credits, payments and user AI connections
+entity credit_transactions #EFE6F8;line:6A3FA0 {
   * id : uuid <<PK>>
   --
+  user_id : uuid <<FK users>>
   refunded_transaction_id : uuid <<FK>>
-  user_id : uuid <<FK>>
-  idempotency_key : string <<UK>>
-  type : string
-  action : string
-  amount : int
+  idempotency_key : text <<UK>>
+  ..
+  type : varchar(16)
+  amount : integer
 }
-entity payment_orders #F7FAFD {
+entity payment_orders #EFE6F8;line:6A3FA0 {
   * id : uuid <<PK>>
   --
-  user_id : uuid <<FK>>
+  user_id : uuid <<FK users>>
   order_code : bigint <<UK>>
-  amount : int
-  credits : int
-  status : string
+  ..
+  amount : integer
+  status : varchar(16)
 }
-entity user_ai_connections #F7FAFD {
+entity user_ai_connections #EFE6F8;line:6A3FA0 {
   * id : uuid <<PK>>
   --
-  user_id : uuid <<FK>>
-  name : string
-  provider : string
-  base_url : string
+  user_id : uuid <<FK users>>
+  ..
+  name : varchar(100)
+  provider : varchar(24)
 }
-entity user_ai_preferences #F7FAFD {
-  * user_id : uuid <<PK>>
+entity user_ai_preferences #EFE6F8;line:6A3FA0 {
+  * user_id : uuid <<PK,FK users>>
   --
   connection_id : uuid <<FK>>
 }
-entity reports #F7FAFD {
+entity reports #EFE6F8;line:6A3FA0 {
   * id : uuid <<PK>>
   --
+  user_id : uuid <<FK users>>
+  project_id : uuid <<FK projects>>
   credit_transaction_id : uuid <<FK>>
+  ..
+  title : varchar(240)
+  status : varchar(24)
 }
-entity gap_analyses #F7FAFD {
+entity gap_analyses #EFE6F8;line:6A3FA0 {
   * id : uuid <<PK>>
   --
+  user_id : uuid <<FK users>>
+  project_id : uuid <<FK projects>>
   credit_transaction_id : uuid <<FK>>
+  ..
+  topic : text
+  status : varchar(24)
 }
 credit_transactions |o--o{ credit_transactions : refunded_transaction_id
 credit_transactions |o--o{ gap_analyses
 credit_transactions |o--o{ reports
 user_ai_connections |o--o{ user_ai_preferences
 legend bottom
-Columns such as user_id and *_by_id reference users (not drawn).
+Crow's-foot notation. PK primary key, FK foreign key, UK unique key.
+FK <name>: the foreign key references a table that is not drawn here.
 endlegend
 @enduml

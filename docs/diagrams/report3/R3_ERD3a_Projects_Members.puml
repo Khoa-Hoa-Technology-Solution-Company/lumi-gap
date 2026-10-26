@@ -1,122 +1,106 @@
 @startuml
 !pragma layout elk
-skinparam dpi 150
+skinparam dpi 200
 skinparam defaultFontName "Segoe UI"
 skinparam defaultFontSize 13
 skinparam shadowing false
 skinparam roundCorner 10
+skinparam backgroundColor #FFFFFF
 skinparam ArrowColor #4A5A6A
 skinparam ArrowThickness 1.2
-skinparam BorderColor #2F6DB5
-skinparam BackgroundColor #FFFFFF
+skinparam ArrowFontSize 12
+skinparam ArrowFontColor #4A5A6A
 skinparam TitleFontSize 16
 skinparam TitleFontStyle bold
-skinparam usecase {
-  BackgroundColor #EAF2FB
-  BorderColor #2F6DB5
-}
-skinparam actor {
-  BackgroundColor #FFFFFF
-  BorderColor #1B2A3A
-}
 skinparam entity {
-  BackgroundColor #F7FAFD
-  BorderColor #2F6DB5
+  BackgroundColor #EFE6F8
+  BorderColor #6A3FA0
 }
-skinparam rectangle {
-  BackgroundColor #F7F9FC
-  BorderColor #2F6DB5
-}
-
-hide circle
-hide empty methods
-skinparam ArrowFontSize 11
-skinparam ArrowFontColor #4A5A6A
-skinparam class {
-  BackgroundColor #F7FAFD
-  BorderColor #2F6DB5
-  HeaderBackgroundColor #DCE8F6
-}
-skinparam entity {
-  BackgroundColor #F7FAFD
-  BorderColor #2F6DB5
+skinparam legend {
+  BackgroundColor #FFF8E1
+  BorderColor #C9B36B
+  FontSize 12
 }
 skinparam stereotypeFontSize 10
-title
-ERD 3(a) - Projects, members and literature
-<size:11><color:#4A5A6A>FK -> User : relation to the User entity is shown as an FK annotation</color></size>
-end title
-entity Project {
-  * id : uuid <<PK>>
+hide circle
+hide empty methods
+title Logical ERD 3(a) - Projects, members and literature
+entity Project #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
   --
-  # created_by_id : uuid <<FK>> -> User
-  # owner_id : uuid <<FK>> -> User
+  createdById <<FK User>>
+  ownerId <<FK User>>
   ..
-  title : text
-  status : text
-  visibility : text
-  version : int
+  title
+  status
 }
-entity ProjectMember {
-  * id : uuid <<PK>>
+entity ProjectMember #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
   --
-  # project_id : uuid <<FK>>
-  # user_id : uuid <<FK>> -> User
+  projectId <<FK,UK*>>
+  userId <<FK User>>
   ..
-  role : text
-  status : text
+  role
+  status
 }
-entity ProjectPaper {
-  * id : uuid <<PK>>
+entity ProjectPaper #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
   --
-  # added_by_id : uuid <<FK>> -> User
-  # paper_id : uuid <<FK>>
-  # project_id : uuid <<FK>>
+  projectId <<FK>>
+  paperId <<FK>>
+  addedById <<FK User>>
   ..
-  screening_status : text
-  reading_status : text
+  screeningStatus
+  readingStatus
 }
-entity Paper {
-  * id : uuid <<PK>>
+entity ProjectInvitation #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
   --
-  # requested_by_id : uuid <<FK>> -> User
-  # uploaded_by_id : uuid <<FK>> -> User
+  projectId <<FK>>
+  invitedUserId <<FK User>>
+  invitedById <<FK User>>
+  tokenHash <<UK*>>
   ..
-  doi : text
-  title : text
-  paper_status : text
-  data_status : text
+  email
+  purpose
 }
-entity ProjectInvitation {
-  * id : uuid <<PK>>
+entity ProjectChatMessage #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
   --
-  # invited_by_id : uuid <<FK>> -> User
-  # invited_user_id : uuid <<FK>> -> User
-  # project_id : uuid <<FK>>
+  projectId <<FK>>
+  userId <<FK User>>
+  creditTransactionId <<FK CreditTransaction>>
+  pinnedById <<FK User>>
   ..
-  status : text
-  expires_at : timestamp
+  scope
+  role
 }
-entity ProjectChatMessage {
-  * id : uuid <<PK>>
+entity ProjectTeamMessage #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
   --
-  # pinned_by_id : uuid <<FK>> -> User
-  # project_id : uuid <<FK>>
-  # user_id : uuid <<FK>> -> User
+  projectId <<FK>>
+  senderId <<FK User>>
+  threadId <<FK ProjectDiscussion>>
+  replyToId <<FK>>
+  deletedById <<FK User>>
   ..
-  scope : text
+  clientKey
+  content
 }
-entity ProjectTeamMessage {
-  * id : uuid <<PK>>
-  --
-  # deleted_by_id : uuid <<FK>> -> User
-  # project_id : uuid <<FK>>
-  # sender_id : uuid <<FK>> -> User
+entity Paper #FFFFFF;line:6A3FA0;line.dashed {
+  * id <<PK>>
 }
-Project ||--o{ ProjectMember : project_id
-Project ||--o{ ProjectPaper : project_id
-Paper ||--o{ ProjectPaper : paper_id
-Project ||--o{ ProjectChatMessage : project_id
-Project ||--o{ ProjectTeamMessage : project_id
-Project ||--o{ ProjectInvitation : project_id
+Paper ||--o{ ProjectPaper
+ProjectTeamMessage |o--o{ ProjectTeamMessage : replyToId
+Project ||--o{ ProjectChatMessage
+Project ||--o{ ProjectInvitation
+Project ||--o{ ProjectMember
+Project ||--o{ ProjectPaper
+Project ||--o{ ProjectTeamMessage
+legend bottom
+Crow's-foot notation. PK primary key, FK foreign key, UK unique key.
+FK <name>: the foreign key references an entity that is not drawn here.
+Dashed boxes belong to another diagram (key only).
+UK*: partial unique index (unique only for rows matching its WHERE condition).
+endlegend
 @enduml

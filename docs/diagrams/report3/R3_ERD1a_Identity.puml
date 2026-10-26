@@ -1,124 +1,82 @@
 @startuml
 !pragma layout elk
-skinparam dpi 150
+skinparam dpi 200
 skinparam defaultFontName "Segoe UI"
 skinparam defaultFontSize 13
 skinparam shadowing false
 skinparam roundCorner 10
+skinparam backgroundColor #FFFFFF
 skinparam ArrowColor #4A5A6A
 skinparam ArrowThickness 1.2
-skinparam BorderColor #2F6DB5
-skinparam BackgroundColor #FFFFFF
+skinparam ArrowFontSize 12
+skinparam ArrowFontColor #4A5A6A
 skinparam TitleFontSize 16
 skinparam TitleFontStyle bold
-skinparam usecase {
-  BackgroundColor #EAF2FB
-  BorderColor #2F6DB5
-}
-skinparam actor {
-  BackgroundColor #FFFFFF
-  BorderColor #1B2A3A
-}
 skinparam entity {
-  BackgroundColor #F7FAFD
-  BorderColor #2F6DB5
+  BackgroundColor #EFE6F8
+  BorderColor #6A3FA0
 }
-skinparam rectangle {
-  BackgroundColor #F7F9FC
-  BorderColor #2F6DB5
-}
-
-hide circle
-hide empty methods
-skinparam ArrowFontSize 11
-skinparam ArrowFontColor #4A5A6A
-skinparam class {
-  BackgroundColor #F7FAFD
-  BorderColor #2F6DB5
-  HeaderBackgroundColor #DCE8F6
-}
-skinparam entity {
-  BackgroundColor #F7FAFD
-  BorderColor #2F6DB5
+skinparam legend {
+  BackgroundColor #FFF8E1
+  BorderColor #C9B36B
+  FontSize 12
 }
 skinparam stereotypeFontSize 10
-title ERD 1(a) - Identity and academic profile
-entity User {
-  * id : uuid <<PK>>
+hide circle
+hide empty methods
+title Logical ERD 1(a) - Users, sessions and capabilities
+entity User #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
   --
-  # account_status_changed_by_id : uuid <<FK>> (self)
+  accountStatusChangedById <<FK>>
+  email <<UK>>
+  googleId <<UK>>
   ..
-  email : text
-  system_role : text
-  account_status : text
-  academic_profile_type : text
-  credits : int
+  fullName
+  role
 }
-entity UserEmail {
-  * id : uuid <<PK>>
+entity UserEmail #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
   --
-  # user_id : uuid <<FK>>
+  userId <<FK,UK*>>
+  normalizedEmail <<UK>>
   ..
-  normalized_email : text
-  purpose : text
+  isPrimary
+  purpose
 }
-entity OAuthAccount {
-  * id : uuid <<PK>>
+entity OAuthAccount #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
   --
-  # user_id : uuid <<FK>>
+  userId <<FK>>
   ..
-  provider : text
+  provider
+  providerAccountId
 }
-entity RefreshToken {
-  * id : uuid <<PK>>
+entity RefreshToken #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
   --
-  # user_id : uuid <<FK>>
+  userId <<FK>>
   ..
-  family_id : text
-  revoked_at : timestamp
+  familyId
+  rotatedToId
 }
-entity AcademicProfile {
-  * id : uuid <<PK>>
+entity UserCapability #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
   --
-  # rejected_by_id : uuid <<FK>>
-  # role_verified_by_id : uuid <<FK>>
-  # user_id : uuid <<FK>>
-  # verified_by_id : uuid <<FK>>
+  userId <<FK>>
+  grantedById <<FK>>
   ..
-  academic_role : text
-  role_verification_status : text
-  position_status : text
+  capability
+  status
 }
-entity VerificationEvidence {
-  * id : uuid <<PK>>
-  --
-  # academic_profile_id : uuid <<FK>>
-  # previous_request_id : uuid <<FK>> (self)
-  # reviewed_by_id : uuid <<FK>>
-  # user_id : uuid <<FK>>
-  ..
-  verification_type : text
-  status : text
-}
-entity UserCapability {
-  * id : uuid <<PK>>
-  --
-  # granted_by_id : uuid <<FK>>
-  # user_id : uuid <<FK>>
-  ..
-  capability : text
-  status : text
-}
-User ||--o{ RefreshToken : user_id
-User ||--o{ AcademicProfile : user_id
-User |o--o{ AcademicProfile : verified_by_id
-User |o--o{ AcademicProfile : rejected_by_id
-User ||--o{ VerificationEvidence : user_id
-AcademicProfile |o--o{ VerificationEvidence : academic_profile_id
-User |o--o{ VerificationEvidence : reviewed_by_id
-User ||--o{ UserCapability : user_id
-User |o--o{ UserCapability : granted_by_id
-User ||--o{ OAuthAccount : user_id
-User ||--o{ UserEmail : user_id
-User |o--o{ AcademicProfile : role_verified_by_id
+User ||--o{ OAuthAccount
+User ||--o{ RefreshToken
+User |o--o{ UserCapability : grantedById
+User ||--o{ UserCapability : userId
+User ||--o{ UserEmail
+User |o--o{ User : accountStatusChangedById
+legend bottom
+Crow's-foot notation. PK primary key, FK foreign key, UK unique key.
+UK*: partial unique index (unique only for rows matching its WHERE condition).
+endlegend
 @enduml

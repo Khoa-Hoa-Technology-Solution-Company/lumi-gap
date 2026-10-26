@@ -1,6 +1,6 @@
 @startuml
 !pragma layout smetana
-skinparam dpi 150
+skinparam dpi 200
 skinparam defaultFontName "Segoe UI"
 skinparam defaultFontSize 13
 skinparam shadowing false
@@ -60,9 +60,9 @@ skinparam rectangle {
   BorderColor #2F6DB5
 }
 title PaymentOrder status (payment_orders.status)
-[*] --> pending : payosService.createPaymentLink()
-pending --> paid : handleWebhook()\nvalid signature, code 00,\namount matches
-pending --> pending : webhook with code other than 00\n(no change)
+[*] --> pending : payosService.createPaymentLink()\n[amount valid]
+pending --> paid : handleWebhook()\n[code 00, amount matches,\nsignature ok if key set]\n/ rewardCreditsOnce()
+pending --> pending : handleWebhook() [code is not 00]
 paid --> [*]
 note bottom of pending
   <b>Dead values</b>: cancelled and expired exist in the

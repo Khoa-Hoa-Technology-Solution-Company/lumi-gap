@@ -1,157 +1,98 @@
 @startuml
 !pragma layout elk
-skinparam dpi 150
+skinparam dpi 200
 skinparam defaultFontName "Segoe UI"
 skinparam defaultFontSize 13
 skinparam shadowing false
 skinparam roundCorner 10
+skinparam backgroundColor #FFFFFF
 skinparam ArrowColor #4A5A6A
 skinparam ArrowThickness 1.2
-skinparam BorderColor #2F6DB5
-skinparam BackgroundColor #FFFFFF
+skinparam ArrowFontSize 12
+skinparam ArrowFontColor #4A5A6A
 skinparam TitleFontSize 16
 skinparam TitleFontStyle bold
-skinparam usecase {
-  BackgroundColor #EAF2FB
-  BorderColor #2F6DB5
-}
-skinparam actor {
-  BackgroundColor #FFFFFF
-  BorderColor #1B2A3A
-}
 skinparam entity {
-  BackgroundColor #F7FAFD
-  BorderColor #2F6DB5
+  BackgroundColor #EFE6F8
+  BorderColor #6A3FA0
 }
-skinparam rectangle {
-  BackgroundColor #F7F9FC
-  BorderColor #2F6DB5
-}
-
-hide circle
-hide empty methods
-skinparam ArrowFontSize 11
-skinparam ArrowFontColor #4A5A6A
-skinparam class {
-  BackgroundColor #F7FAFD
-  BorderColor #2F6DB5
-  HeaderBackgroundColor #DCE8F6
-}
-skinparam entity {
-  BackgroundColor #F7FAFD
-  BorderColor #2F6DB5
+skinparam legend {
+  BackgroundColor #FFF8E1
+  BorderColor #C9B36B
+  FontSize 12
 }
 skinparam stereotypeFontSize 10
-title
-ERD 5(a) - Communities and forum
-<size:11><color:#4A5A6A>FK -> User : relation to the User entity is shown as an FK annotation</color></size>
-end title
-entity Community {
-  * id : uuid <<PK>>
+hide circle
+hide empty methods
+title Logical ERD 5(a) - Communities and forum posts
+entity Community #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
   --
-  # owner_id : uuid <<FK>> -> User
-  # reviewed_by_id : uuid <<FK>> -> User
+  ownerId <<FK User>>
+  reviewedById <<FK User>>
+  slug <<UK>>
   ..
-  name : text
-  visibility : text
-  status : text
+  name
+  visibility
 }
-entity CommunityMembership {
-  * id : uuid <<PK>>
+entity CommunityMembership #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
   --
-  # community_id : uuid <<FK>>
-  # user_id : uuid <<FK>> -> User
+  communityId <<FK,UK*>>
+  userId <<FK User>>
   ..
-  role : text
-  status : text
+  role
+  status
 }
-entity ForumPost {
-  * id : uuid <<PK>>
+entity ForumPost #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
   --
-  # accepted_comment_id : uuid <<FK>>
-  # author_id : uuid <<FK>> -> User
-  # community_id : uuid <<FK>>
-  # linked_paper_id : uuid <<FK>>
-  # linked_project_id : uuid <<FK>>
-  # linked_research_gap_id : uuid <<FK>>
-  # research_gap_id : uuid <<FK>>
+  authorId <<FK User>>
+  communityId <<FK>>
+  researchGapId <<FK>>
+  linkedPaperId <<FK>>
+  linkedResearchGapId <<FK>>
+  linkedProjectId <<FK>>
+  acceptedCommentId <<FK>>
+  publicSlug <<UK>>
   ..
-  type : text
-  title : text
-  status : text
+  type
+  title
 }
-entity ForumComment {
-  * id : uuid <<PK>>
+entity ForumComment #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
   --
-  # author_id : uuid <<FK>> -> User
-  # parent_comment_id : uuid <<FK>> (self)
-  # post_id : uuid <<FK>>
+  postId <<FK>>
+  authorId <<FK User>>
+  parentCommentId <<FK>>
   ..
-  status : text
+  status
+  visibilityStatus
 }
-entity ForumVote {
-  * id : uuid <<PK>>
-  --
-  # comment_id : uuid <<FK>>
-  # post_id : uuid <<FK>>
-  # user_id : uuid <<FK>> -> User
-  ..
-  value : int
+entity Paper #FFFFFF;line:6A3FA0;line.dashed {
+  * id <<PK>>
 }
-entity ForumTag {
-  * id : uuid <<PK>>
-  --
-  name : text
+entity Project #FFFFFF;line:6A3FA0;line.dashed {
+  * id <<PK>>
 }
-entity ForumPostTag {
-  --
-  # post_id : uuid <<FK>>
-  # tag_id : uuid <<FK>>
+entity ResearchGap #FFFFFF;line:6A3FA0;line.dashed {
+  * id <<PK>>
 }
-entity Paper {
-  * id : uuid <<PK>>
-  --
-  # requested_by_id : uuid <<FK>> -> User
-  # uploaded_by_id : uuid <<FK>> -> User
-  ..
-  doi : text
-  title : text
-  paper_status : text
-  data_status : text
-}
-entity Project {
-  * id : uuid <<PK>>
-  --
-  # created_by_id : uuid <<FK>> -> User
-  # owner_id : uuid <<FK>> -> User
-  ..
-  title : text
-  status : text
-  visibility : text
-  version : int
-}
-entity ResearchGap {
-  * id : uuid <<PK>>
-  --
-  # project_id : uuid <<FK>>
-  # user_id : uuid <<FK>> -> User
-  ..
-  title : text
-  status : text
-  validation_status : text
-  version : int
-}
-Community ||--o{ CommunityMembership : community_id
-Community |o--o{ ForumPost : community_id
-ResearchGap |o--o{ ForumPost : research_gap_id
-Paper |o--o{ ForumPost : linked_paper_id
-ResearchGap |o--o{ ForumPost : linked_research_gap_id
-Project |o--o{ ForumPost : linked_project_id
-ForumPost ||--o{ ForumComment : post_id
-ForumComment |o--o{ ForumPost : accepted_comment_id
-ForumPost |o--o{ ForumVote : post_id
-ForumComment |o--o{ ForumVote : comment_id
-Project |o--o{ ResearchGap : project_id
-ForumPost ||--o{ ForumPostTag : post_id
-ForumTag ||--o{ ForumPostTag : tag_id
+Community ||--o{ CommunityMembership
+Community |o--o{ ForumPost
+ForumComment |o--o{ ForumComment : parentCommentId
+ForumComment |o--o{ ForumPost : acceptedCommentId
+ForumPost ||--o{ ForumComment : postId
+Paper |o--o{ ForumPost
+Project |o--o{ ForumPost
+ResearchGap |o--o{ ForumPost : linkedResearchGapId
+ResearchGap |o--o{ ForumPost : researchGapId
+legend bottom
+Crow's-foot notation. PK primary key, FK foreign key, UK unique key.
+FK <name>: the foreign key references an entity that is not drawn here.
+Dashed boxes belong to another diagram (key only).
+UK*: partial unique index (unique only for rows matching its WHERE condition).
+Community.name is not a UK: communities_active_name_key is a partial unique index on
+   the normalised name expression.
+endlegend
 @enduml

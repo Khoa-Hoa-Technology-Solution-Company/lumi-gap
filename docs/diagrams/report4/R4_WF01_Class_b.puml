@@ -1,6 +1,6 @@
 @startuml
 !pragma layout smetana
-skinparam dpi 150
+skinparam dpi 200
 skinparam defaultFontName "Segoe UI"
 skinparam defaultFontSize 13
 skinparam shadowing false
@@ -58,6 +58,47 @@ skinparam entity {
 skinparam rectangle {
   BackgroundColor #F7F9FC
   BorderColor #2F6DB5
+}
+skinparam classAttributeIconSize 0
+skinparam ClassFontSize 12
+skinparam ClassAttributeFontSize 12
+skinparam nodesep 25
+skinparam ranksep 40
+skinparam class<<page>> { 
+  BackgroundColor #DCEAFB
+}
+skinparam class<<hook>> {
+  BackgroundColor #DCEAFB
+}
+skinparam class<<api client>> {
+  BackgroundColor #DCEAFB
+}
+skinparam class<<route>> {
+  BackgroundColor #E3F2E5
+}
+skinparam class<<controller>> {
+  BackgroundColor #E3F2E5
+}
+skinparam class<<service>> {
+  BackgroundColor #E3F2E5
+}
+skinparam class<<rules>> {
+  BackgroundColor #E3F2E5
+}
+skinparam class<<client>> {
+  BackgroundColor #F0F1F3
+}
+skinparam class<<worker>> {
+  BackgroundColor #FFF1DC
+}
+skinparam class<<job>> {
+  BackgroundColor #FFF1DC
+}
+skinparam class<<model>> {
+  BackgroundColor #EFE6F8
+}
+skinparam class<<external>> {
+  BackgroundColor #F0F1F3
 }
 title WF01 Generate research report - class diagram (b) generation pipeline
 hide empty members
@@ -119,16 +160,18 @@ package "Data model (Prisma)" {
     credit_transactions
   }
 }
-reportWorker --> ragService
-ragService --> reportEvidence
-ragService --> reportPrompt
-ragService --> llmRun
-llmRun --> geminiClient
-ragService --> embeddingProvider
-ragService --> Report
-ragService --> RagQuery
-ragService --> creditService
-ragService --> gapsService
-ragService --> notificationService
-creditService --> CreditTransaction
+reportWorker ..> ragService
+ragService ..> reportEvidence
+ragService ..> reportPrompt
+ragService ..> llmRun
+llmRun ..> geminiClient
+ragService ..> embeddingProvider
+ragService ..> Report
+ragService ..> RagQuery
+ragService ..> creditService
+ragService ..> gapsService
+ragService ..> notificationService
+creditService ..> CreditTransaction
+
+Report "1" -- "0..*" RagQuery
 @enduml

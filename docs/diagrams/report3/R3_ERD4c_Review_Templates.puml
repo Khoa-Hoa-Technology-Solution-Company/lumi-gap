@@ -1,112 +1,67 @@
 @startuml
 !pragma layout elk
-skinparam dpi 150
+skinparam dpi 200
 skinparam defaultFontName "Segoe UI"
 skinparam defaultFontSize 13
 skinparam shadowing false
 skinparam roundCorner 10
+skinparam backgroundColor #FFFFFF
 skinparam ArrowColor #4A5A6A
 skinparam ArrowThickness 1.2
-skinparam BorderColor #2F6DB5
-skinparam BackgroundColor #FFFFFF
+skinparam ArrowFontSize 12
+skinparam ArrowFontColor #4A5A6A
 skinparam TitleFontSize 16
 skinparam TitleFontStyle bold
-skinparam usecase {
-  BackgroundColor #EAF2FB
-  BorderColor #2F6DB5
-}
-skinparam actor {
-  BackgroundColor #FFFFFF
-  BorderColor #1B2A3A
-}
 skinparam entity {
-  BackgroundColor #F7FAFD
-  BorderColor #2F6DB5
+  BackgroundColor #EFE6F8
+  BorderColor #6A3FA0
 }
-skinparam rectangle {
-  BackgroundColor #F7F9FC
-  BorderColor #2F6DB5
-}
-
-hide circle
-hide empty methods
-skinparam ArrowFontSize 11
-skinparam ArrowFontColor #4A5A6A
-skinparam class {
-  BackgroundColor #F7FAFD
-  BorderColor #2F6DB5
-  HeaderBackgroundColor #DCE8F6
-}
-skinparam entity {
-  BackgroundColor #F7FAFD
-  BorderColor #2F6DB5
+skinparam legend {
+  BackgroundColor #FFF8E1
+  BorderColor #C9B36B
+  FontSize 12
 }
 skinparam stereotypeFontSize 10
-title
-ERD 4(c) - Review templates and versions
-<size:11><color:#4A5A6A>FK -> User / Project : relation to the User / Project entity is shown as an FK annotation</color></size>
-end title
-entity ReviewTemplate {
-  * id : uuid <<PK>>
+hide circle
+hide empty methods
+title Logical ERD 4(c) - Review templates and versions
+entity ReviewTemplate #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
   --
-  # active_version_id : uuid <<FK>>
-  # owner_id : uuid <<FK>> -> User
-  # project_id : uuid <<FK>> -> Project
+  ownerId <<FK User>>
+  projectId <<FK Project>>
+  activeVersionId <<FK>>
   ..
-  name : text
-  source : text
+  name
+  submissionType
 }
-entity ReviewTemplateVersion {
-  * id : uuid <<PK>>
+entity ReviewTemplateVersion #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
   --
-  # created_by_id : uuid <<FK>> -> User
-  # template_id : uuid <<FK>>
+  templateId <<FK>>
+  createdById <<FK User>>
   ..
-  review_mode : text
-  status : text
+  versionNumber
+  status
 }
-entity ReviewRequest {
-  * id : uuid <<PK>>
-  --
-  # artifact_revision_id : uuid <<FK>>
-  # project_id : uuid <<FK>> -> Project
-  # requester_id : uuid <<FK>> -> User
-  # submission_id : uuid <<FK>>
-  # template_version_id : uuid <<FK>>
-  ..
-  status : text
-  due_at : timestamp
-  expires_at : timestamp
+entity ReviewRequest #FFFFFF;line:6A3FA0;line.dashed {
+  * id <<PK>>
 }
-entity HumanReview {
-  * id : uuid <<PK>>
-  --
-  # assignment_id : uuid <<FK>>
-  # reviewer_id : uuid <<FK>> -> User
-  # revision_id : uuid <<FK>>
-  # submission_id : uuid <<FK>>
-  # template_id : uuid <<FK>>
-  # template_version_id : uuid <<FK>>
-  ..
-  status : text
+entity HumanReview #FFFFFF;line:6A3FA0;line.dashed {
+  * id <<PK>>
 }
-entity ExternalReviewInvitation {
-  * id : uuid <<PK>>
-  --
-  # artifact_revision_id : uuid <<FK>>
-  # invited_user_id : uuid <<FK>> -> User
-  # project_id : uuid <<FK>> -> Project
-  # requester_id : uuid <<FK>> -> User
-  # submission_id : uuid <<FK>>
-  # template_version_id : uuid <<FK>>
-  ..
-  reviewer_email : text
-  status : text
+entity ExternalReviewInvitation #FFFFFF;line:6A3FA0;line.dashed {
+  * id <<PK>>
 }
-ReviewTemplate |o--o{ HumanReview : template_id
-ReviewTemplate ||--o{ ReviewTemplateVersion : template_id
-ReviewTemplateVersion |o--o{ ReviewTemplate : active_version_id
-ReviewTemplateVersion ||--o{ ReviewRequest : template_version_id
-ReviewTemplateVersion |o--o{ HumanReview : template_version_id
-ReviewTemplateVersion ||--o{ ExternalReviewInvitation : template_version_id
+ReviewTemplateVersion ||--o{ ExternalReviewInvitation
+ReviewTemplateVersion |o--o{ HumanReview
+ReviewTemplateVersion ||--o{ ReviewRequest
+ReviewTemplateVersion |o--o{ ReviewTemplate : activeVersionId
+ReviewTemplate |o--o{ HumanReview
+ReviewTemplate ||--o{ ReviewTemplateVersion : templateId
+legend bottom
+Crow's-foot notation. PK primary key, FK foreign key, UK unique key.
+FK <name>: the foreign key references an entity that is not drawn here.
+Dashed boxes belong to another diagram (key only).
+endlegend
 @enduml

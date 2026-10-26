@@ -1,83 +1,84 @@
 @startuml
-!pragma layout smetana
-skinparam dpi 150
+!pragma layout elk
+skinparam dpi 200
 skinparam defaultFontName "Segoe UI"
 skinparam defaultFontSize 13
 skinparam shadowing false
 skinparam roundCorner 10
+skinparam backgroundColor #FFFFFF
 skinparam ArrowColor #4A5A6A
 skinparam ArrowThickness 1.2
-skinparam BorderColor #2F6DB5
-skinparam BackgroundColor #FFFFFF
+skinparam ArrowFontSize 12
+skinparam ArrowFontColor #4A5A6A
 skinparam TitleFontSize 16
 skinparam TitleFontStyle bold
 skinparam entity {
-  BackgroundColor #F7FAFD
-  BorderColor #2F6DB5
+  BackgroundColor #EFE6F8
+  BorderColor #6A3FA0
 }
-skinparam entity<<ref>> {
-  BackgroundColor #F3E5F5
-  BorderColor #7B1FA2
+skinparam legend {
+  BackgroundColor #FFF8E1
+  BorderColor #C9B36B
+  FontSize 12
 }
-skinparam linetype ortho
+skinparam stereotypeFontSize 10
 hide circle
-title Notifications, logs and tool runs (ERD, 1 of 2)
-entity notifications #F7FAFD {
+hide empty methods
+title Physical ERD - Notifications, logs and tool runs (1 of 2)
+entity notifications #EFE6F8;line:6A3FA0 {
   * id : uuid <<PK>>
   --
+  user_id : uuid <<FK users>>
   paper_id : uuid <<FK>>
-  user_id : uuid <<FK>>
-  event_key : string <<UK>>
-  type : string
-  title : string
-  is_read : bool
+  event_key : varchar(200) <<UK>>
+  ..
+  role : varchar(32)
+  title : text
 }
-entity device_tokens #F7FAFD {
+entity audit_logs #EFE6F8;line:6A3FA0 {
   * id : uuid <<PK>>
   --
-  user_id : uuid <<FK>>
-  token : string <<UK>>
-  platform : string
-  disabled_at : timestamptz
+  user_id : uuid <<FK users>>
+  ..
+  action_name : text
+  target_table_name : text
 }
-entity audit_logs #F7FAFD {
+entity search_logs #EFE6F8;line:6A3FA0 {
   * id : uuid <<PK>>
   --
-  user_id : uuid <<FK>>
-  action_name : string
-  target_table_name : string
-  target_record_id : string
+  user_id : uuid <<FK users>>
+  ..
+  query : text
+  mode : varchar(32)
 }
-entity search_logs #F7FAFD {
-  * id : uuid <<PK>>
-  --
-  user_id : uuid <<FK>>
-  query : string
-  mode : string
-  result_count : int
-}
-entity mcp_tool_runs #F7FAFD {
+entity mcp_tool_runs #EFE6F8;line:6A3FA0 {
   * id : uuid <<PK>>
   --
   report_id : uuid <<FK>>
-  user_id : uuid <<FK>>
-  tool_name : string
-  duration_ms : int
+  user_id : uuid <<FK users>>
+  ..
+  tool_name : text
+  duration_ms : integer
 }
-entity trend_explanations #F7FAFD {
+entity trend_explanations #EFE6F8;line:6A3FA0 {
   * id : uuid <<PK>>
   --
-  user_id : uuid <<FK>>
+  user_id : uuid <<FK users>>
+  ..
+  topic : text
+  language : varchar(8)
 }
-entity papers <<ref>> #F3E5F5 {
+entity papers #FFFFFF;line:6A3FA0;line.dashed {
   * id : uuid <<PK>>
 }
-entity reports <<ref>> #F3E5F5 {
+entity reports #FFFFFF;line:6A3FA0;line.dashed {
   * id : uuid <<PK>>
 }
 papers |o--o{ notifications
 reports |o--o{ mcp_tool_runs
 legend bottom
-Columns such as user_id and *_by_id reference users (not drawn). Purple entities are shown by id only.
+Crow's-foot notation. PK primary key, FK foreign key, UK unique key.
+FK <name>: the foreign key references a table that is not drawn here.
+Dashed boxes belong to another diagram (key only).
 endlegend
 @enduml

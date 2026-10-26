@@ -1,6 +1,6 @@
 @startuml
 !pragma layout smetana
-skinparam dpi 150
+skinparam dpi 200
 skinparam defaultFontName "Segoe UI"
 skinparam defaultFontSize 13
 skinparam shadowing false
@@ -60,14 +60,14 @@ skinparam rectangle {
   BorderColor #2F6DB5
 }
 title Report generation status (reports.status)
-[*] --> queued : create() charges credits,\ninserts row, enqueues job
-queued --> generating : runRagPipeline()\natomic claim
-generating --> generating : BullMQ retry\nre-claims
-generating --> ready : persist() after LLM output\npasses citation checks
-generating --> failed : markReportFailed()\n(no evidence, retries exhausted,\nunrecoverable)
-queued --> failed : startup sweep (job lost)\nor markReportFailed()
-generating --> failed : startup sweep\n(worker died)
-failed --> [*] : credits refunded once
+[*] --> queued : create() / charge credits,\ninsert row, enqueue job
+queued --> generating : runRagPipeline()\n[atomic claim succeeds]
+generating --> generating : BullMQ retry / re-claim
+generating --> ready : persist()\n[LLM output passes citation checks]
+generating --> failed : markReportFailed()\n[no evidence, retries exhausted,\nunrecoverable] / refund credits once
+queued --> failed : startup sweep [job lost] or\nmarkReportFailed() / refund credits once
+generating --> failed : startup sweep [worker died]\n/ refund credits once
+failed --> [*]
 ready --> [*]
 note right of failed
   No transition leaves failed or ready.

@@ -1,170 +1,90 @@
 @startuml
 !pragma layout elk
-skinparam dpi 150
+skinparam dpi 200
 skinparam defaultFontName "Segoe UI"
 skinparam defaultFontSize 13
 skinparam shadowing false
 skinparam roundCorner 10
+skinparam backgroundColor #FFFFFF
 skinparam ArrowColor #4A5A6A
 skinparam ArrowThickness 1.2
-skinparam BorderColor #2F6DB5
-skinparam BackgroundColor #FFFFFF
+skinparam ArrowFontSize 12
+skinparam ArrowFontColor #4A5A6A
 skinparam TitleFontSize 16
 skinparam TitleFontStyle bold
-skinparam usecase {
-  BackgroundColor #EAF2FB
-  BorderColor #2F6DB5
-}
-skinparam actor {
-  BackgroundColor #FFFFFF
-  BorderColor #1B2A3A
-}
 skinparam entity {
-  BackgroundColor #F7FAFD
-  BorderColor #2F6DB5
+  BackgroundColor #EFE6F8
+  BorderColor #6A3FA0
 }
-skinparam rectangle {
-  BackgroundColor #F7F9FC
-  BorderColor #2F6DB5
-}
-
-hide circle
-hide empty methods
-skinparam ArrowFontSize 11
-skinparam ArrowFontColor #4A5A6A
-skinparam class {
-  BackgroundColor #F7FAFD
-  BorderColor #2F6DB5
-  HeaderBackgroundColor #DCE8F6
-}
-skinparam entity {
-  BackgroundColor #F7FAFD
-  BorderColor #2F6DB5
+skinparam legend {
+  BackgroundColor #FFF8E1
+  BorderColor #C9B36B
+  FontSize 12
 }
 skinparam stereotypeFontSize 10
-title
-ERD 2(b) - Research gaps and validation
-<size:11><color:#4A5A6A>FK -> User : relation to the User entity is shown as an FK annotation</color></size>
-end title
-entity Paper {
-  * id : uuid <<PK>>
+hide circle
+hide empty methods
+title Logical ERD 2(b) - Research gaps and analyses
+entity GapAnalysis #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
   --
-  # journal_id : uuid <<FK>>
-  # requested_by_id : uuid <<FK>> -> User
-  # uploaded_by_id : uuid <<FK>> -> User
+  userId <<FK User>>
+  projectId <<FK>>
+  creditTransactionId <<FK>>
   ..
-  doi : text
-  title : text
-  paper_status : text
-  data_status : text
+  topic
+  status
 }
-entity Report {
-  * id : uuid <<PK>>
+entity GapAnalysisPaper #EFE6F8;line:6A3FA0 {
+  * analysisId <<PK,FK>>
+  * paperId <<PK,FK>>
   --
-  # credit_transaction_id : uuid <<FK>>
-  # project_id : uuid <<FK>>
-  # user_id : uuid <<FK>> -> User
+  position
+}
+entity ResearchGap #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
+  --
+  sourceReportId <<FK>>
+  analysisId <<FK>>
+  userId <<FK User>>
+  projectId <<FK>>
+  corpusId <<FK LiteratureCorpus>>
+  latestClosureCheckId <<FK GapClosureCheck>>
   ..
-  status : text
-  artifact_status : text
-  credit_cost : int
-  credit_refunded_at : timestamp
+  title
+  gapType
 }
-entity Project {
-  * id : uuid <<PK>>
+entity ResearchGapPaper #EFE6F8;line:6A3FA0 {
+  * gapId <<PK,FK>>
+  * paperId <<PK,FK>>
+  * kind <<PK>>
   --
-  # created_by_id : uuid <<FK>> -> User
-  # owner_id : uuid <<FK>> -> User
-  ..
-  title : text
-  status : text
-  visibility : text
-  version : int
+  position
 }
-entity CreditTransaction {
-  * id : uuid <<PK>>
-  --
-  # refunded_transaction_id : uuid <<FK>> (self)
-  # user_id : uuid <<FK>> -> User
-  ..
-  type : text
-  action : text
-  amount : int
-  status : text
-  idempotency_key : text
+entity Paper #FFFFFF;line:6A3FA0;line.dashed {
+  * id <<PK>>
 }
-entity GapAnalysis {
-  * id : uuid <<PK>>
-  --
-  # credit_transaction_id : uuid <<FK>>
-  # project_id : uuid <<FK>>
-  # user_id : uuid <<FK>> -> User
-  ..
-  topic : text
-  status : text
-  credit_cost : int
+entity Report #FFFFFF;line:6A3FA0;line.dashed {
+  * id <<PK>>
 }
-entity GapAnalysisPaper {
-  --
-  # analysis_id : uuid <<FK>>
-  # paper_id : uuid <<FK>>
+entity Project #FFFFFF;line:6A3FA0;line.dashed {
+  * id <<PK>>
 }
-entity ResearchGap {
-  * id : uuid <<PK>>
-  --
-  # analysis_id : uuid <<FK>>
-  # project_id : uuid <<FK>>
-  # source_report_id : uuid <<FK>>
-  # user_id : uuid <<FK>> -> User
-  ..
-  title : text
-  status : text
-  validation_status : text
-  version : int
+entity CreditTransaction #FFFFFF;line:6A3FA0;line.dashed {
+  * id <<PK>>
 }
-entity ResearchGapPaper {
-  --
-  # gap_id : uuid <<FK>>
-  # paper_id : uuid <<FK>>
-}
-entity GapDirections {
-  * id : uuid <<PK>>
-  --
-  # credit_transaction_id : uuid <<FK>>
-  # gap_id : uuid <<FK>>
-}
-entity GapValidation {
-  * id : uuid <<PK>>
-  --
-  # gap_id : uuid <<FK>>
-  # reviewer_id : uuid <<FK>> -> User
-  ..
-  action : text
-  gap_version : int
-}
-entity GapEvidenceRecord {
-  * id : uuid <<PK>>
-  --
-  # added_by_id : uuid <<FK>> -> User
-  # gap_id : uuid <<FK>>
-  # paper_id : uuid <<FK>>
-  ..
-  evidence_kind : text
-}
-Project |o--o{ Report : project_id
-CreditTransaction |o--o{ Report : credit_transaction_id
-Project |o--o{ GapAnalysis : project_id
-CreditTransaction |o--o{ GapAnalysis : credit_transaction_id
-GapAnalysis ||--o{ GapAnalysisPaper : analysis_id
-Paper ||--o{ GapAnalysisPaper : paper_id
-Report |o--o{ ResearchGap : source_report_id
-GapAnalysis |o--o{ ResearchGap : analysis_id
-Project |o--o{ ResearchGap : project_id
-ResearchGap ||--o{ ResearchGapPaper : gap_id
-Paper ||--o{ ResearchGapPaper : paper_id
-ResearchGap ||--o{ GapDirections : gap_id
-CreditTransaction |o--o{ GapDirections : credit_transaction_id
-ResearchGap ||--o{ GapEvidenceRecord : gap_id
-Paper ||--o{ GapEvidenceRecord : paper_id
-ResearchGap ||--o{ GapValidation : gap_id
+CreditTransaction |o--o{ GapAnalysis
+GapAnalysis ||--o{ GapAnalysisPaper
+GapAnalysis |o--o{ ResearchGap
+Paper ||--o{ GapAnalysisPaper
+Paper ||--o{ ResearchGapPaper
+Project |o--o{ GapAnalysis
+Project |o--o{ ResearchGap
+Report |o--o{ ResearchGap
+ResearchGap ||--o{ ResearchGapPaper
+legend bottom
+Crow's-foot notation. PK primary key, FK foreign key, UK unique key.
+FK <name>: the foreign key references an entity that is not drawn here.
+Dashed boxes belong to another diagram (key only).
+endlegend
 @enduml

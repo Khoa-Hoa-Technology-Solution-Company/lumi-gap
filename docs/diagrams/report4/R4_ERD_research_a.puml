@@ -1,75 +1,79 @@
 @startuml
-!pragma layout smetana
-skinparam dpi 150
+!pragma layout elk
+skinparam dpi 200
 skinparam defaultFontName "Segoe UI"
 skinparam defaultFontSize 13
 skinparam shadowing false
 skinparam roundCorner 10
+skinparam backgroundColor #FFFFFF
 skinparam ArrowColor #4A5A6A
 skinparam ArrowThickness 1.2
-skinparam BorderColor #2F6DB5
-skinparam BackgroundColor #FFFFFF
+skinparam ArrowFontSize 12
+skinparam ArrowFontColor #4A5A6A
 skinparam TitleFontSize 16
 skinparam TitleFontStyle bold
 skinparam entity {
-  BackgroundColor #F7FAFD
-  BorderColor #2F6DB5
+  BackgroundColor #EFE6F8
+  BorderColor #6A3FA0
 }
-skinparam entity<<ref>> {
-  BackgroundColor #F3E5F5
-  BorderColor #7B1FA2
+skinparam legend {
+  BackgroundColor #FFF8E1
+  BorderColor #C9B36B
+  FontSize 12
 }
-skinparam linetype ortho
+skinparam stereotypeFontSize 10
 hide circle
-title Reports and retrieval (ERD, 1 of 2)
-entity reports #F7FAFD {
+hide empty methods
+title Physical ERD - Reports and retrieval (1 of 3)
+entity reports #EFE6F8;line:6A3FA0 {
   * id : uuid <<PK>>
   --
-  credit_transaction_id : uuid <<FK>>
+  user_id : uuid <<FK users>>
   project_id : uuid <<FK>>
-  user_id : uuid <<FK>>
-  title : string
-  query : string
-  status : string
+  credit_transaction_id : uuid <<FK>>
+  ..
+  title : varchar(240)
+  status : varchar(24)
 }
-entity report_papers #F7FAFD {
+entity report_papers #EFE6F8;line:6A3FA0 {
   * report_id : uuid <<PK,FK>>
   * paper_id : uuid <<PK,FK>>
-  * kind : string <<PK>>
+  * kind : varchar(16) <<PK>>
   --
-  position : int
+  position : integer
 }
-entity rag_queries #F7FAFD {
+entity rag_queries #EFE6F8;line:6A3FA0 {
   * id : uuid <<PK>>
   --
   report_id : uuid <<FK>>
-  user_id : uuid <<FK>>
-  query_text : string
-  top_k : int
-  embedding_ms : int
+  user_id : uuid <<FK users>>
+  ..
+  query_text : text
+  top_k : integer
 }
-entity rag_query_results #F7FAFD {
+entity rag_query_results #EFE6F8;line:6A3FA0 {
   * query_id : uuid <<PK,FK>>
   * paper_id : uuid <<PK,FK>>
   --
-  score : float
-  rank : int
+  score : double precision
+  rank : integer
 }
-entity bookmarks #F7FAFD {
+entity bookmarks #EFE6F8;line:6A3FA0 {
   * id : uuid <<PK>>
   --
+  user_id : uuid <<FK users>>
   paper_id : uuid <<FK>>
   report_id : uuid <<FK>>
-  user_id : uuid <<FK>>
-  note : string
+  ..
+  note : varchar(500)
 }
-entity papers <<ref>> #F3E5F5 {
+entity papers #FFFFFF;line:6A3FA0;line.dashed {
   * id : uuid <<PK>>
 }
-entity projects <<ref>> #F3E5F5 {
+entity projects #FFFFFF;line:6A3FA0;line.dashed {
   * id : uuid <<PK>>
 }
-entity credit_transactions <<ref>> #F3E5F5 {
+entity credit_transactions #FFFFFF;line:6A3FA0;line.dashed {
   * id : uuid <<PK>>
 }
 credit_transactions |o--o{ reports
@@ -82,6 +86,8 @@ reports |o--o{ bookmarks
 reports ||--o{ rag_queries
 reports ||--o{ report_papers
 legend bottom
-Columns such as user_id and *_by_id reference users (not drawn). Purple entities are shown by id only.
+Crow's-foot notation. PK primary key, FK foreign key, UK unique key.
+FK <name>: the foreign key references a table that is not drawn here.
+Dashed boxes belong to another diagram (key only).
 endlegend
 @enduml

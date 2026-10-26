@@ -1,6 +1,6 @@
 @startuml
 !pragma layout smetana
-skinparam dpi 150
+skinparam dpi 200
 skinparam defaultFontName "Segoe UI"
 skinparam defaultFontSize 13
 skinparam shadowing false
@@ -60,15 +60,16 @@ skinparam rectangle {
   BorderColor #2F6DB5
 }
 title Report artifact status (reports.artifact_status)
-[*] --> DRAFT : create()\ndefault artifactStatus
-DRAFT -left-> REVIEWING : markArtifactReviewing()\non review request
-REVIEWING -right-> DRAFT : releaseArtifactReviewing()\nno active or completed review
-DRAFT -right-> FINAL : updateArtifactStatus()\nneeds 1 completed review
-FINAL -left-> DRAFT : updateArtifactStatus()\nwhile no active review
-DRAFT -down-> ARCHIVED : updateArtifactStatus()
-FINAL -down-> ARCHIVED : updateArtifactStatus()
-ARCHIVED -up-> DRAFT : updateArtifactStatus()
-note bottom of REVIEWING
+[*] --> DRAFT : create()\n/ default artifactStatus
+DRAFT --> REVIEWING : markArtifactReviewing()\n/ on review request
+REVIEWING --> DRAFT : releaseArtifactReviewing()\n[no active or completed review]
+DRAFT --> FINAL : updateArtifactStatus()\n[1 completed review]
+FINAL --> DRAFT : updateArtifactStatus()\n[no active review]
+DRAFT --> ARCHIVED : updateArtifactStatus()
+FINAL --> ARCHIVED : updateArtifactStatus()
+ARCHIVED --> DRAFT : updateArtifactStatus()
+ARCHIVED --> FINAL : updateArtifactStatus()\n[1 completed review]
+note right of REVIEWING
   Set by review-request.service only.
   While review requests are active, updateArtifactStatus()
   allows only REVIEWING (artifactStatusChangeError).

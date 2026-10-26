@@ -17,7 +17,7 @@ mindmapDiagram {
     RoundCorner 10
     LineThickness 1.2
     Padding 6
-    MaximumWidth 260 }
+    MaximumWidth 190 }
   :depth(0) { BackgroundColor #1F4E8C
     FontColor #FFFFFF
     LineColor #1F4E8C

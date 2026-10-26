@@ -1,0 +1,70 @@
+@startuml
+!pragma layout elk
+skinparam dpi 200
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam backgroundColor #FFFFFF
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam ArrowFontSize 12
+skinparam ArrowFontColor #4A5A6A
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam entity {
+  BackgroundColor #EFE6F8
+  BorderColor #6A3FA0
+}
+skinparam legend {
+  BackgroundColor #FFF8E1
+  BorderColor #C9B36B
+  FontSize 12
+}
+skinparam stereotypeFontSize 10
+hide circle
+hide empty methods
+title Physical ERD - Forum tags and references (3 of 3)
+entity forum_tags #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  slug : varchar(80) <<UK>>
+  ..
+  name : varchar(80)
+}
+entity forum_post_tags #EFE6F8;line:6A3FA0 {
+  * post_id : uuid <<PK,FK>>
+  * tag_id : uuid <<PK,FK>>
+  --
+}
+entity forum_references #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  post_id : uuid <<FK>>
+  comment_id : uuid <<FK>>
+  paper_id : uuid <<FK>>
+  created_by_id : uuid <<FK users>>
+  ..
+  doi : text
+  title : text
+}
+entity forum_posts #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+entity forum_comments #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+entity papers #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+forum_comments |o--o{ forum_references
+forum_posts ||--o{ forum_post_tags
+forum_posts |o--o{ forum_references
+forum_tags ||--o{ forum_post_tags
+papers |o--o{ forum_references
+legend bottom
+Crow's-foot notation. PK primary key, FK foreign key, UK unique key.
+FK <name>: the foreign key references a table that is not drawn here.
+Dashed boxes belong to another diagram (key only).
+endlegend
+@enduml

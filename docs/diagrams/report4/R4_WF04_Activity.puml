@@ -1,5 +1,5 @@
 @startuml
-skinparam dpi 150
+skinparam dpi 200
 skinparam defaultFontName "Segoe UI"
 skinparam defaultFontSize 13
 skinparam shadowing false
@@ -61,29 +61,35 @@ skinparam rectangle {
 title WF04 Lecturer verification - activity
 |Lecturer|
 start
-:Complete academic profile and verify account email;
+:Complete profile and
+verify account email;
 repeat
-  :Select institution and provide staff evidence\n(official profile URL or document);
-  :Submit verification request;
+  :Select institution,
+provide staff evidence;
+  :Submit request;
   |LumiGap platform|
-  :Check eligibility, store evidence privately,\nmark PENDING;
-  :Notify administrators queue;
+  :Check eligibility, store
+evidence, mark PENDING;
+  :Notify administrators;
   |Administrator|
-  :Open pending request and evidence;
-  :Check each source;
-  :Decide: approve, ask more info or reject;
+  :Open request, check
+each source;
+  :Decide: approve,
+more info or reject;
   |LumiGap platform|
-  :Apply decision to profile and capabilities,\nnotify lecturer;
+  :Apply decision to profile
+and capabilities;
   |Lecturer|
   :Read decision;
-repeat while (Outcome?) is (more information) not (verified or rejected)
-if (Verified?) then (verified)
-  :Can accept reviews, mentor, validate gaps;
-else (rejected)
+repeat while (More info requested?) is ([yes]) not ([no])
+if (Verified?) then ([approved])
+  :Can accept reviews,
+mentor, validate gaps;
+else ([rejected])
 endif
 stop
 note right
-  Platform invalidates a pending request
+  A pending request is invalidated
   if position or institution changes.
 end note
 @enduml

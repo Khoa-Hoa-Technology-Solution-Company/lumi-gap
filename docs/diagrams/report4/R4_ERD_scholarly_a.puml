@@ -1,0 +1,109 @@
+@startuml
+!pragma layout elk
+skinparam dpi 200
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam backgroundColor #FFFFFF
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam ArrowFontSize 12
+skinparam ArrowFontColor #4A5A6A
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam entity {
+  BackgroundColor #EFE6F8
+  BorderColor #6A3FA0
+}
+skinparam legend {
+  BackgroundColor #FFF8E1
+  BorderColor #C9B36B
+  FontSize 12
+}
+skinparam stereotypeFontSize 10
+hide circle
+hide empty methods
+title Physical ERD - Scholarly corpus: papers, authors and topics (1 of 2)
+entity papers #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  journal_id : uuid <<FK>>
+  requested_by_id : uuid <<FK users>>
+  uploaded_by_id : uuid <<FK users>>
+  doi : text <<UK>>
+  ..
+  title : text
+  journal_name : text
+}
+entity authors #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  openalex_id : text <<UK>>
+  ..
+  orcid : text
+  display_name : text
+}
+entity paper_authors #EFE6F8;line:6A3FA0 {
+  * paper_id : uuid <<PK,FK>>
+  * position : integer <<PK>>
+  --
+  author_id : uuid <<FK>>
+  ..
+  display_name : text
+  is_corresponding : boolean
+}
+entity journals #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  openalex_id : text <<UK>>
+  ..
+  name : text
+  type : varchar(32)
+}
+entity research_topics #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  parent_topic_id : uuid <<FK>>
+  ..
+  topic_name : text
+  description : text
+}
+entity paper_topics #EFE6F8;line:6A3FA0 {
+  * paper_id : uuid <<PK,FK>>
+  * position : integer <<PK>>
+  --
+  topic_id : uuid <<FK>>
+  ..
+  topic_name : text
+  subfield_name : text
+}
+entity keywords #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  normalized_name : text <<UK>>
+  ..
+  keyword_name : text
+}
+entity paper_keywords #EFE6F8;line:6A3FA0 {
+  * paper_id : uuid <<PK,FK>>
+  * position : integer <<PK>>
+  --
+  keyword_id : uuid <<FK>>
+  ..
+  keyword_name : text
+  detected_by : varchar(24)
+}
+authors |o--o{ paper_authors
+journals |o--o{ papers
+keywords |o--o{ paper_keywords
+papers ||--o{ paper_authors
+papers ||--o{ paper_keywords
+papers ||--o{ paper_topics
+research_topics |o--o{ paper_topics
+research_topics |o--o{ research_topics : parent_topic_id
+legend bottom
+Crow's-foot notation. PK primary key, FK foreign key, UK unique key.
+FK <name>: the foreign key references a table that is not drawn here.
+endlegend
+@enduml

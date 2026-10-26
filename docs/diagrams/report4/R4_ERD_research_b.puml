@@ -1,116 +1,90 @@
 @startuml
-!pragma layout smetana
-skinparam dpi 150
+!pragma layout elk
+skinparam dpi 200
 skinparam defaultFontName "Segoe UI"
 skinparam defaultFontSize 13
 skinparam shadowing false
 skinparam roundCorner 10
+skinparam backgroundColor #FFFFFF
 skinparam ArrowColor #4A5A6A
 skinparam ArrowThickness 1.2
-skinparam BorderColor #2F6DB5
-skinparam BackgroundColor #FFFFFF
+skinparam ArrowFontSize 12
+skinparam ArrowFontColor #4A5A6A
 skinparam TitleFontSize 16
 skinparam TitleFontStyle bold
 skinparam entity {
-  BackgroundColor #F7FAFD
-  BorderColor #2F6DB5
+  BackgroundColor #EFE6F8
+  BorderColor #6A3FA0
 }
-skinparam entity<<ref>> {
-  BackgroundColor #F3E5F5
-  BorderColor #7B1FA2
+skinparam legend {
+  BackgroundColor #FFF8E1
+  BorderColor #C9B36B
+  FontSize 12
 }
-skinparam linetype ortho
+skinparam stereotypeFontSize 10
 hide circle
-title Research gaps (ERD, 2 of 2)
-entity gap_analyses #F7FAFD {
+hide empty methods
+title Physical ERD - Research gaps and analyses (2 of 3)
+entity gap_analyses #EFE6F8;line:6A3FA0 {
   * id : uuid <<PK>>
   --
-  credit_transaction_id : uuid <<FK>>
+  user_id : uuid <<FK users>>
   project_id : uuid <<FK>>
-  user_id : uuid <<FK>>
-  topic : string
-  year_from : int
-  year_to : int
+  credit_transaction_id : uuid <<FK>>
+  ..
+  topic : text
+  status : varchar(24)
 }
-entity gap_analysis_papers #F7FAFD {
+entity gap_analysis_papers #EFE6F8;line:6A3FA0 {
   * analysis_id : uuid <<PK,FK>>
   * paper_id : uuid <<PK,FK>>
   --
-  position : int
+  position : integer
 }
-entity research_gaps #F7FAFD {
+entity research_gaps #EFE6F8;line:6A3FA0 {
   * id : uuid <<PK>>
   --
-  analysis_id : uuid <<FK>>
-  latest_closure_check_id : uuid <<FK>>
-  project_id : uuid <<FK>>
   source_report_id : uuid <<FK>>
-  user_id : uuid <<FK>>
-  title : string
-  gap_type : string
-  validation_status : string
+  analysis_id : uuid <<FK>>
+  user_id : uuid <<FK users>>
+  project_id : uuid <<FK>>
+  corpus_id : uuid <<FK literature_corpora>>
+  latest_closure_check_id : uuid <<FK gap_closure_checks>>
+  ..
+  title : varchar(200)
+  gap_type : varchar(64)
 }
-entity research_gap_papers #F7FAFD {
+entity research_gap_papers #EFE6F8;line:6A3FA0 {
   * gap_id : uuid <<PK,FK>>
   * paper_id : uuid <<PK,FK>>
-  * kind : string <<PK>>
+  * kind : varchar(16) <<PK>>
   --
-  position : int
+  position : integer
 }
-entity gap_evidence_records #F7FAFD {
-  * id : uuid <<PK>>
-  --
-  added_by_id : uuid <<FK>>
-  gap_id : uuid <<FK>>
-  paper_id : uuid <<FK>>
-  evidence_kind : string
-  evidence_type : string
-  excerpt : string
-}
-entity gap_validations #F7FAFD {
-  * id : uuid <<PK>>
-  --
-  gap_id : uuid <<FK>>
-  reviewer_id : uuid <<FK>>
-  gap_version : int
-  action : string
-  comment : string
-}
-entity gap_closure_checks #F7FAFD {
-  * id : uuid <<PK>>
-  --
-  created_by_id : uuid <<FK>>
-  decided_by_id : uuid <<FK>>
-  status : string
-  decision : string
-  protocol_version : string
-}
-entity papers <<ref>> #F3E5F5 {
+entity papers #FFFFFF;line:6A3FA0;line.dashed {
   * id : uuid <<PK>>
 }
-entity projects <<ref>> #F3E5F5 {
+entity projects #FFFFFF;line:6A3FA0;line.dashed {
   * id : uuid <<PK>>
 }
-entity credit_transactions <<ref>> #F3E5F5 {
+entity credit_transactions #FFFFFF;line:6A3FA0;line.dashed {
   * id : uuid <<PK>>
 }
-entity reports <<ref>> #F3E5F5 {
+entity reports #FFFFFF;line:6A3FA0;line.dashed {
   * id : uuid <<PK>>
 }
 credit_transactions |o--o{ gap_analyses
-gap_analyses |o--o{ research_gaps
 gap_analyses ||--o{ gap_analysis_papers
-gap_closure_checks |o--o{ research_gaps
+gap_analyses |o--o{ research_gaps
 papers ||--o{ gap_analysis_papers
-papers ||--o{ gap_evidence_records
 papers ||--o{ research_gap_papers
 projects |o--o{ gap_analyses
 projects |o--o{ research_gaps
 reports |o--o{ research_gaps
-research_gaps ||--o{ gap_evidence_records
-research_gaps ||--o{ gap_validations
 research_gaps ||--o{ research_gap_papers
 legend bottom
-Columns such as user_id and *_by_id reference users (not drawn). Purple entities are shown by id only.
+Crow's-foot notation. PK primary key, FK foreign key, UK unique key.
+FK <name>: the foreign key references a table that is not drawn here.
+Dashed boxes belong to another diagram (key only).
 endlegend
 @enduml

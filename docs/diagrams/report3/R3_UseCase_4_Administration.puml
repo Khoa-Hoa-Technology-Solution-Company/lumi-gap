@@ -1,4 +1,4 @@
-' Rendered image produced by ucdraw.py from R3_UseCase_4_Administration.uc.json; this file is the canonical UML source
+' Rendered image produced by ucdraw2.py from R3_UseCase_4_Administration.uc.json; this file is the canonical UML source
 @startuml
 !pragma layout smetana
 skinparam dpi 150
@@ -29,15 +29,14 @@ skinparam rectangle {
   BorderColor #2F6DB5
 }
 skinparam actorStyle awesome
-skinparam actor<<System>> {
-  BackgroundColor #FDECEA
-  BorderColor #C62828
+skinparam actor<<external system>> {
+  BackgroundColor #F0F1F3
+  BorderColor #8A8F98
 }
 left to right direction
 title Use Case Diagram 4 - Administration
 actor "Administrator" as AD
-actor "OpenAlex" as OA <<System>>
-actor "Background workers" as WK <<System>>
+actor "OpenAlex" as OA <<external system>>
 rectangle "LumiGap" {
   usecase "UC-29\nManage user accounts" as UC29
   usecase "UC-30\nManage paper corpus" as UC30
@@ -53,6 +52,4 @@ AD -- UC32
 AD -- UC33
 AD -- UC36
 UC31 -- OA
-UC31 -- WK
-UC32 -- WK
 @enduml

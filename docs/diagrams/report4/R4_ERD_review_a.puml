@@ -1,123 +1,105 @@
 @startuml
-!pragma layout smetana
-skinparam dpi 150
+!pragma layout elk
+skinparam dpi 200
 skinparam defaultFontName "Segoe UI"
 skinparam defaultFontSize 13
 skinparam shadowing false
 skinparam roundCorner 10
+skinparam backgroundColor #FFFFFF
 skinparam ArrowColor #4A5A6A
 skinparam ArrowThickness 1.2
-skinparam BorderColor #2F6DB5
-skinparam BackgroundColor #FFFFFF
+skinparam ArrowFontSize 12
+skinparam ArrowFontColor #4A5A6A
 skinparam TitleFontSize 16
 skinparam TitleFontStyle bold
 skinparam entity {
-  BackgroundColor #F7FAFD
-  BorderColor #2F6DB5
+  BackgroundColor #EFE6F8
+  BorderColor #6A3FA0
 }
-skinparam entity<<ref>> {
-  BackgroundColor #F3E5F5
-  BorderColor #7B1FA2
+skinparam legend {
+  BackgroundColor #FFF8E1
+  BorderColor #C9B36B
+  FontSize 12
 }
-skinparam linetype ortho
+skinparam stereotypeFontSize 10
 hide circle
-title Submissions, revisions and external invitations (ERD, 1 of 3)
-entity submissions #F7FAFD {
+hide empty methods
+title Physical ERD - Submissions, revisions and AI pre-review (1 of 4)
+entity submissions #EFE6F8;line:6A3FA0 {
   * id : uuid <<PK>>
   --
-  created_by_id : uuid <<FK>>
+  project_id : uuid <<FK projects>>
+  source_report_id : uuid <<FK,UK reports>>
+  created_by_id : uuid <<FK users>>
   current_revision_id : uuid <<FK>>
-  project_id : uuid <<FK>>
-  source_report_id : uuid <<UK>>
-  title : string
-  submission_type : string
-  status : string
+  ..
+  title : varchar(300)
+  submission_type : varchar(40)
 }
-entity submission_authors #F7FAFD {
+entity submission_authors #EFE6F8;line:6A3FA0 {
   * submission_id : uuid <<PK,FK>>
-  * user_id : uuid <<PK>>
+  * user_id : uuid <<PK,FK users>>
   --
-  position : int
+  position : integer
 }
-entity submission_revisions #F7FAFD {
+entity submission_revisions #EFE6F8;line:6A3FA0 {
   * id : uuid <<PK>>
   --
+  submission_id : uuid <<FK>>
+  uploaded_by_id : uuid <<FK users>>
   source_revision_id : uuid <<FK>>
-  submission_id : uuid <<FK>>
-  uploaded_by_id : uuid <<FK>>
-  revision_number : int
-  content_type : string
-  checksum_sha256 : string
+  manuscript_snapshot_id : uuid <<FK manuscript_snapshots>>
+  ..
+  original_file_name : varchar(255)
+  content_type : varchar(16)
 }
-entity ai_pre_reviews #F7FAFD {
+entity ai_pre_reviews #EFE6F8;line:6A3FA0 {
   * id : uuid <<PK>>
   --
-  requested_by_id : uuid <<FK>>
   submission_id : uuid <<FK>>
-  status : string
-  provider : string
-  model : string
+  requested_by_id : uuid <<FK users>>
+  ..
+  provider : varchar(80)
+  status : varchar(24)
 }
-entity ai_runs #F7FAFD {
+entity ai_runs #EFE6F8;line:6A3FA0 {
   * id : uuid <<PK>>
   --
-  owner_id : uuid <<FK>>
-  project_id : uuid <<FK>>
-  job_type : string
-  status : string
-  attempts : int
+  owner_id : uuid <<FK users>>
+  project_id : uuid <<FK projects>>
+  workspace_id : uuid <<FK draft_workspaces>>
+  ..
+  job_type : varchar(32)
+  status : varchar(24)
 }
-entity research_contributions #F7FAFD {
+entity research_contributions #EFE6F8;line:6A3FA0 {
   * id : uuid <<PK>>
   --
-  contributor_id : uuid <<FK>>
-  project_id : uuid <<FK>>
-  source_review_assignment_id : uuid <<FK>>
+  contributor_id : uuid <<FK users>>
+  project_id : uuid <<FK projects>>
   submission_id : uuid <<FK>>
-  verified_by_id : uuid <<FK>>
-  contribution_type : string
-  verification_status : string
-  visibility : string
+  verified_by_id : uuid <<FK users>>
+  source_review_assignment_id : uuid <<FK,UK>>
+  source_project_contribution_id : uuid <<FK project_contribution_proposals>>
+  ..
+  contribution_type : varchar(48)
+  verification_status : varchar(32)
 }
-entity external_review_invitations #F7FAFD {
-  * id : uuid <<PK>>
-  --
-  artifact_revision_id : uuid <<FK>>
-  invited_user_id : uuid <<FK>>
-  project_id : uuid <<FK>>
-  requester_id : uuid <<FK>>
-  submission_id : uuid <<FK>>
-  template_version_id : uuid <<FK>>
-  reviewer_email : string
-  status : string
-  expires_at : timestamptz
-}
-entity projects <<ref>> #F3E5F5 {
+entity reviewer_assignments #FFFFFF;line:6A3FA0;line.dashed {
   * id : uuid <<PK>>
 }
-entity reviewer_assignments <<ref>> #F3E5F5 {
-  * id : uuid <<PK>>
-}
-entity review_template_versions <<ref>> #F3E5F5 {
-  * id : uuid <<PK>>
-}
-projects |o--o{ ai_runs
-projects |o--o{ research_contributions
-projects ||--o{ external_review_invitations
-projects ||--o{ submissions
-review_template_versions ||--o{ external_review_invitations
 reviewer_assignments |o--o| research_contributions
 submission_revisions |o--o{ reviewer_assignments
 submission_revisions |o--o{ submission_revisions : source_revision_id
-submission_revisions |o--o{ submissions
-submission_revisions ||--o{ external_review_invitations
-submissions |o--o{ research_contributions
+submission_revisions |o--o{ submissions : current_revision_id
 submissions ||--o{ ai_pre_reviews
-submissions ||--o{ external_review_invitations
+submissions |o--o{ research_contributions
 submissions ||--o{ reviewer_assignments
 submissions ||--o{ submission_authors
-submissions ||--o{ submission_revisions
+submissions ||--o{ submission_revisions : submission_id
 legend bottom
-Columns such as user_id and *_by_id reference users (not drawn). Purple entities are shown by id only.
+Crow's-foot notation. PK primary key, FK foreign key, UK unique key.
+FK <name>: the foreign key references a table that is not drawn here.
+Dashed boxes belong to another diagram (key only).
 endlegend
 @enduml

@@ -1,0 +1,74 @@
+@startuml
+!pragma layout elk
+skinparam dpi 200
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam backgroundColor #FFFFFF
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam ArrowFontSize 12
+skinparam ArrowFontColor #4A5A6A
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam entity {
+  BackgroundColor #EFE6F8
+  BorderColor #6A3FA0
+}
+skinparam legend {
+  BackgroundColor #FFF8E1
+  BorderColor #C9B36B
+  FontSize 12
+}
+skinparam stereotypeFontSize 10
+hide circle
+hide empty methods
+title Physical ERD - Verification evidence (3 of 3)
+entity verification_evidence #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  user_id : uuid <<FK,UK*>>
+  academic_profile_id : uuid <<FK>>
+  reviewed_by_id : uuid <<FK>>
+  previous_request_id : uuid <<FK>>
+  institution_id : uuid <<FK>>
+  ..
+  verification_type : varchar(40)
+  source_type : varchar(48)
+}
+entity verification_evidence_sources #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  request_id : uuid <<FK>>
+  previous_source_id : uuid <<FK>>
+  email_identity_id : uuid <<FK user_emails>>
+  checked_by_id : uuid <<FK>>
+  ..
+  type : varchar(48)
+  source_kind : varchar(16)
+}
+entity users #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+entity academic_profiles #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+entity institutions #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+academic_profiles |o--o{ verification_evidence
+institutions |o--o{ verification_evidence
+users |o--o{ verification_evidence : reviewed_by_id
+users ||--o{ verification_evidence : user_id
+users |o--o{ verification_evidence_sources
+verification_evidence |o--o{ verification_evidence : previous_request_id
+verification_evidence ||--o{ verification_evidence_sources
+verification_evidence_sources |o--o{ verification_evidence_sources : previous_source_id
+legend bottom
+Crow's-foot notation. PK primary key, FK foreign key, UK unique key.
+FK <name>: the foreign key references a table that is not drawn here.
+Dashed boxes belong to another diagram (key only).
+UK*: partial unique index (unique only for rows matching its WHERE condition).
+endlegend
+@enduml
