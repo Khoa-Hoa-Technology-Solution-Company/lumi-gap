@@ -1,3 +1,5 @@
+import type { ISODateString } from "./common.js";
+
 /** One point of a yearly time series. */
 export interface YearlyCount {
   year: number;
@@ -483,5 +485,38 @@ export interface PublicationTrend extends TrendMetrics {
   topAuthors: TopItem[];
   topKeywords: TopItem[];
   statistics?: TopicTrendStatistics;
+  /** Most-cited papers of the topic in the local corpus and window (openable in the app); absent when none. */
+  topPapers?: Array<{ id: string; title: string; publicationYear: number; citationCount: number }>;
   computedAt: string;
+}
+
+/** A trend topic the user follows (GET /trends/follows). */
+export interface TrendTopicFollow {
+  id: string;
+  topic: string;
+  openalexTopicId?: string;
+  note?: string;
+  /** Verdict at the last check (default 10-year window); absent until it could be computed. */
+  lastVerdict?: TrendVerdict;
+  lastDataSource?: TrendDataSource;
+  lastCheckedAt?: ISODateString;
+  createdAt: ISODateString;
+}
+
+/** Trend evidence frozen into a project (GET /projects/:id/trend-snapshots). */
+export interface ProjectTrendSnapshot {
+  id: string;
+  projectId: string;
+  createdById: string;
+  topic: string;
+  openalexTopicId?: string;
+  yearFrom: number;
+  yearTo: number;
+  verdict: TrendVerdict;
+  dataSource: TrendDataSource;
+  totalPapers: number;
+  classification: TrendClassification;
+  baseline?: { level: "field" | "corpus"; label: string };
+  note?: string;
+  createdAt: ISODateString;
 }

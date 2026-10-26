@@ -35,6 +35,49 @@ export function getTopicActionTargets(topic: string, window?: TrendYearWindow) {
     search: build("/home", { q: topic }),
     gaps: build("/research-gaps", { topic }),
     compare: build("/trends", { tab: "compare", compare: topic }),
+    explain: build("/trends", { tab: "ai", focus: topic }),
     report: build("/reports", { topic, create: "true" }),
   };
+}
+
+/** The trends page scope (year window + every filter) that links to search, reports and gaps carry along. */
+export interface TrendScopeParams {
+  yearFrom: number;
+  yearTo: number;
+  domainIds: string[];
+  domains: string[];
+  fieldIds: string[];
+  fields: string[];
+  subfieldIds: string[];
+  subfields: string[];
+  topicIds: string[];
+  topicsFilter: string[];
+  paperKinds: string[];
+  openAccessStatuses: string[];
+  providers: string[];
+  sources: string[];
+  languages: string[];
+  citationBands: string[];
+}
+
+const SCOPE_LIST_KEYS = ["domainIds", "domains", "fieldIds", "fields", "subfieldIds", "subfields", "topicIds"] as const;
+const FACET_LIST_KEYS = ["paperKinds", "openAccessStatuses", "providers", "sources", "languages", "citationBands"] as const;
+
+/** `path?base&scope`; without a scope only the base parameters are kept. */
+export function buildTrendScopedUrl(path: string, base: Record<string, string>, scope?: Partial<TrendScopeParams>): string {
+  const params = new URLSearchParams(base);
+  if (scope) {
+    if (scope.yearFrom) params.set("yearFrom", String(scope.yearFrom));
+    if (scope.yearTo) params.set("yearTo", String(scope.yearTo));
+    const add = (key: string, values?: string[]) => {
+      const cleaned = (values ?? []).map((value) => value.trim()).filter(Boolean);
+      if (cleaned.length > 0) params.set(key, cleaned.join(","));
+    };
+    for (const key of SCOPE_LIST_KEYS) add(key, scope[key]);
+    // Target pages (home search, reports) read `topics`; the trends page itself reads `topicsFilter`.
+    add("topics", scope.topicsFilter);
+    add("topicsFilter", scope.topicsFilter);
+    for (const key of FACET_LIST_KEYS) add(key, scope[key]);
+  }
+  return `${path}?${params.toString()}`;
 }

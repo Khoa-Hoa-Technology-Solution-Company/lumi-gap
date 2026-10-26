@@ -134,6 +134,7 @@ export const projectOverviewService = {
         }
         case "GAP": return (await tx.researchGap.findMany({ where: { projectId: project.id, title: query }, take: 50, orderBy: { updatedAt: "desc" }, select: { id: true, title: true } })).map(row => ({ kind, id: row.id, label: row.title }));
         case "REPORT": return (await tx.report.findMany({ where: { projectId: project.id, topic: query }, take: 50, orderBy: { updatedAt: "desc" }, select: { id: true, topic: true } })).map(row => ({ kind, id: row.id, label: row.topic ?? "Research report" }));
+        case "TREND": return (await tx.projectTrendSnapshot.findMany({ where: { projectId: project.id, topic: query }, take: 50, orderBy: { createdAt: "desc" }, select: { id: true, topic: true, yearFrom: true, yearTo: true, verdict: true } })).map(row => ({ kind, id: row.id, label: `${row.topic} (${row.verdict}, ${row.yearFrom}-${row.yearTo})` }));
         case "MANUSCRIPT": return (await tx.draftWorkspace.findMany({ where: { projectId: project.id, name: query }, take: 50, select: { id: true, name: true } })).map(row => ({ kind, id: row.id, label: row.name }));
         case "MANUSCRIPT_SNAPSHOT": return (await tx.manuscriptSnapshot.findMany({ where: { projectId: project.id, label: query }, take: 50, orderBy: { createdAt: "desc" }, select: { id: true, label: true } })).map(row => ({ ...row, kind }));
         case "MENTOR_FEEDBACK": return (await tx.projectDiscussion.findMany({ where: { projectId: project.id, title: query, targetKind: { in: ["MANUSCRIPT_SNAPSHOT", "PLAN_REVISION"] }, mentorRelationshipId: { not: null } }, take: 50, orderBy: { createdAt: "desc" }, select: { id: true, title: true } })).map(row => ({ kind, id: row.id, label: row.title }));
@@ -164,6 +165,7 @@ export const projectOverviewService = {
         }
         return { href: `${base}?tab=discussions&thread=${thread.id}` };
       }
+      if (link.kind === "TREND") return { href: `${base}?tab=overview&trend=${link.id}` };
       return { href: link.kind === "MANUSCRIPT" ? `${base}/manuscripts/${link.id}` : `${base}?tab=plan` };
     });
   },

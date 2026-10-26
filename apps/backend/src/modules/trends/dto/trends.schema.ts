@@ -164,3 +164,26 @@ export const TrendExplainHistoryQuerySchema = z.object({
 });
 
 export type TrendExplainHistoryQuery = z.infer<typeof TrendExplainHistoryQuerySchema>;
+
+/** POST /trends/follows */
+export const CreateTrendFollowSchema = z.object({
+  topic: z.string().trim().min(1).max(300),
+  openalexTopicId: z.string().trim().min(1).max(64).optional(),
+  note: z.string().max(500).nullable().optional(),
+}).strict();
+
+export type CreateTrendFollowBody = z.infer<typeof CreateTrendFollowSchema>;
+
+/** GET /trends/follows/check?topic= */
+export const TrendFollowCheckQuerySchema = z.object({ topic: z.string().trim().min(1).max(300) });
+
+/** POST /projects/:projectId/trend-snapshots */
+export const CreateProjectTrendSnapshotSchema = z.object({
+  topic: z.string().trim().min(1).max(300),
+  openalexTopicId: z.string().trim().min(1).max(64).optional(),
+  yearFrom: z.coerce.number().int().min(1900).max(2100).optional(),
+  yearTo: z.coerce.number().int().min(1900).max(2100).optional(),
+  note: z.string().trim().max(1000).nullable().optional(),
+}).strict().refine((q) => q.yearFrom === undefined || q.yearTo === undefined || q.yearFrom <= q.yearTo, { message: "yearFrom must be <= yearTo", path: ["yearFrom"] });
+
+export type CreateProjectTrendSnapshotBody = z.infer<typeof CreateProjectTrendSnapshotSchema>;

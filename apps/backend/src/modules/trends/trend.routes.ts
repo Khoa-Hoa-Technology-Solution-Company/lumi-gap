@@ -24,6 +24,10 @@ trendRouter.get("/compare", trendController.compare);
 trendRouter.get("/topic-candidates", trendController.topicCandidates);
 trendRouter.get("/relationships", trendController.relationships);
 trendRouter.get("/explain/history", requireAuth, trendController.explainHistory);
+trendRouter.get("/follows", requireAuth, trendController.listFollows);
+trendRouter.get("/follows/check", requireAuth, trendController.checkFollow);
+trendRouter.post("/follows", requireAuth, trendController.createFollow);
+trendRouter.delete("/follows/:id", requireAuth, trendController.deleteFollow);
 // optionalAuth runs first so the limiter keys signed-in users by account rather than IP.
 trendRouter.post("/explain", optionalAuth, explainLimiter, trendController.explain);
 trendRouter.get("/:topic", trendController.topic);

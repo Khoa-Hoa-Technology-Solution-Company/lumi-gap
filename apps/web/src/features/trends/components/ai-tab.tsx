@@ -8,6 +8,7 @@ import type { UseMutationResult, UseQueryResult } from "@tanstack/react-query";
 import { useTrendTopicCandidates } from "@/features/trends/hooks/use-trends";
 import type { TrendExplainInput, TrendsOverviewParams, TrendTopicCandidatesParams } from "@/features/trends/api/trends.api";
 import { formatNumber } from "@/utils";
+import { buildTrendScopedUrl } from "../trend-navigation";
 import { useI18n } from "@/i18n";
 
 type CitationBandFilter = NonNullable<TrendsOverviewParams["citationBands"]>;
@@ -147,34 +148,7 @@ export function AITab({
     ].join("\n");
     await navigator.clipboard?.writeText(markdown);
   };
-  const buildScopedUrl = (path: string, baseParams: Record<string, string>) => {
-    const params = new URLSearchParams(baseParams);
-    params.set("yearFrom", String(yearFrom));
-    params.set("yearTo", String(yearTo));
-
-    const addList = (key: string, values: string[]) => {
-      const cleaned = values.map((value) => value.trim()).filter(Boolean);
-      if (cleaned.length > 0) params.set(key, cleaned.join(","));
-    };
-
-    addList("domainIds", domainIds);
-    addList("domains", domains);
-    addList("fieldIds", fieldIds);
-    addList("fields", fields);
-    addList("subfieldIds", subfieldIds);
-    addList("subfields", subfields);
-    addList("topicIds", topicIds);
-    addList("topics", topicsFilter);
-    addList("topicsFilter", topicsFilter);
-    addList("paperKinds", paperKinds);
-    addList("openAccessStatuses", openAccessStatuses);
-    addList("providers", providers);
-    addList("sources", sources);
-    addList("languages", languages);
-    addList("citationBands", citationBands);
-
-    return `${path}?${params.toString()}`;
-  };
+  const buildScopedUrl = (path: string, baseParams: Record<string, string>) => buildTrendScopedUrl(path, baseParams, { yearFrom, yearTo, domainIds, domains, fieldIds, fields, subfieldIds, subfields, topicIds, topicsFilter, paperKinds, openAccessStatuses, providers, sources, languages, citationBands });
 
   return (
     <div className="space-y-6">

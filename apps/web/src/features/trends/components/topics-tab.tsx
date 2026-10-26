@@ -28,6 +28,7 @@ import {
   ArrowUpDown
 } from "lucide-react";
 import { toast } from "sonner";
+import { buildTrendScopedUrl } from "../trend-navigation";
 import {
   Tooltip,
   TooltipContent,
@@ -102,37 +103,7 @@ export function TopicsTab({
   const matchedTopicCount = topicPages.data?.pages[0]?.matchedTopicCount ?? pagedTopics.length;
   // Rows from OpenAlex carry the log odds ratio test; the local fallback does not.
   const usesKeywordTest = keywordsData.some((row) => row.shift);
-  const buildScopedUrl = (path: string, baseParams: Record<string, string>) => {
-    const params = new URLSearchParams(baseParams);
-
-    if (scopeParams) {
-      params.set("yearFrom", String(scopeParams.yearFrom));
-      params.set("yearTo", String(scopeParams.yearTo));
-
-      const addList = (key: string, values: string[]) => {
-        const cleaned = values.map((value) => value.trim()).filter(Boolean);
-        if (cleaned.length > 0) params.set(key, cleaned.join(","));
-      };
-
-      addList("domainIds", scopeParams.domainIds);
-      addList("domains", scopeParams.domains);
-      addList("fieldIds", scopeParams.fieldIds);
-      addList("fields", scopeParams.fields);
-      addList("subfieldIds", scopeParams.subfieldIds);
-      addList("subfields", scopeParams.subfields);
-      addList("topicIds", scopeParams.topicIds);
-      addList("topics", scopeParams.topicsFilter);
-      addList("topicsFilter", scopeParams.topicsFilter);
-      addList("paperKinds", scopeParams.paperKinds);
-      addList("openAccessStatuses", scopeParams.openAccessStatuses);
-      addList("providers", scopeParams.providers);
-      addList("sources", scopeParams.sources);
-      addList("languages", scopeParams.languages);
-      addList("citationBands", scopeParams.citationBands);
-    }
-
-    return `${path}?${params.toString()}`;
-  };
+  const buildScopedUrl = (path: string, baseParams: Record<string, string>) => buildTrendScopedUrl(path, baseParams, scopeParams);
 
   const getScopedSearchTarget = (query: string) => {
     return scopeParams

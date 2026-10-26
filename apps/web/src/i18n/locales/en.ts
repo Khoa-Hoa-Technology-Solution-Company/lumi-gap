@@ -21,6 +21,7 @@ import { researchHomeEn } from "./research-home-en";
 import { trustSafetyRagStrings } from "./trust-safety-rag";
 import { trendEvidenceStrings } from "./trend-evidence";
 import { trendVerdictStrings } from "./trend-verdict";
+import { trendResearchLinkStrings } from "./trend-research-links";
 import { trendPeriodsStrings } from "./trend-periods";
 import { qualityEvaluationEn } from "./quality-evaluation";
 
@@ -48,6 +49,7 @@ export const en = {
   ...paperDetailIaStrings,
   ...trendEvidenceStrings,
   ...trendVerdictStrings,
+  ...trendResearchLinkStrings,
   ...trendPeriodsStrings,
   "-day period.": "-day period.",
   "— whereas": "— whereas",

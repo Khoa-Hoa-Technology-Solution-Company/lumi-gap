@@ -28,6 +28,7 @@ import { projectMemberTranslations } from "./project-members";
 import { projectWorkspaceVi } from "./project-workspace";
 import { trendEvidenceViStrings } from "./trend-evidence";
 import { trendVerdictViStrings } from "./trend-verdict";
+import { trendResearchLinkViStrings } from "./trend-research-links";
 import { trendPeriodsViStrings } from "./trend-periods";
 import { qualityEvaluationVi } from "./quality-evaluation";
 
@@ -40,6 +41,7 @@ export const vi: Record<keyof typeof en, string> = {
   ...trustSafetyRagViStrings,
   ...trendEvidenceViStrings,
   ...trendVerdictViStrings,
+  ...trendResearchLinkViStrings,
   ...trendPeriodsViStrings,
   ...researchHomeVi,
   ...projectInvitationStrings,

@@ -14,8 +14,12 @@ import { notificationQueue } from "../infrastructure/queue.js";
 import { deliverProjectInvitationEmail, recoverProjectInvitationEmails } from "../modules/projects/project-invitation-delivery.js";
 import { canDeliverWorkspaceNotification } from "../modules/projects/workspace-notification-access.js";
 import { deliverContributionsEmail } from "../modules/projects/contributions-mail.service.js";
+import { trendFollowService } from "../modules/trends/trend-follow.service.js";
+import { env } from "../config/env.js";
 
 enforcePostgresOnlyRuntime();
+
+const TREND_FOLLOW_JOB = "check-trend-follows";
 
 interface NotificationJob {
   notificationId: string;
@@ -129,6 +133,11 @@ async function main() {
   const worker = new Worker(
     QUEUE_NAMES.notifications,
     async (job) => {
+      if (job.name === TREND_FOLLOW_JOB) {
+        const result = await trendFollowService.checkFollowedTopics();
+        logger.info({ jobId: job.id, ...result }, "followed trend topics checked");
+        return;
+      }
       const { notificationId } = job.data as NotificationJob;
       logger.info({ jobId: job.id, notificationId, attempt: job.attemptsMade + 1 }, "notification push job received");
       await sendPush(notificationId);
@@ -140,6 +149,9 @@ async function main() {
   worker.on("failed", (job, err) => {
     logger.error({ jobId: job?.id, attempt: job?.attemptsMade, err }, "notification push job failed");
   });
+
+  // Daily verdict check of followed trend topics. BullMQ dedups by repeat key, so restarts do not stack schedules.
+  await notificationQueue.add(TREND_FOLLOW_JOB, {}, { repeat: { pattern: env.TREND_FOLLOW_CRON } });
 
   let maintenanceRunning = false;
   const maintenance = async () => {
