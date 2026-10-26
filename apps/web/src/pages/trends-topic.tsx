@@ -9,6 +9,12 @@ import { DataSourceBadge } from "@/features/trends/components/trend-data-source"
 import type { TrendFacetBucket } from "@trend/shared-types";
 import { formatNumber } from "@/utils";
 import { useI18n } from "@/i18n";
+import { getTopicActionTargets } from "./trends.navigation";
+
+function yearParam(params: URLSearchParams, key: string): number | undefined {
+  const value = Number(params.get(key));
+  return Number.isInteger(value) && value >= 1900 && value <= 2100 ? value : undefined;
+}
 
 export function TopicDetailPage() {
   const { t } = useI18n();
@@ -17,8 +23,11 @@ export function TopicDetailPage() {
   const [searchParams] = useSearchParams();
   const decodedTopic = decodeURIComponent(topic || "");
   const topicId = searchParams.get("topicId") ?? undefined;
+  const yearFrom = yearParam(searchParams, "yearFrom");
+  const yearTo = yearParam(searchParams, "yearTo");
+  const targets = getTopicActionTargets(decodedTopic, { yearFrom, yearTo });
 
-  const { data, isLoading, isError } = useTopicTrend(decodedTopic, topicId ? { topicId } : undefined);
+  const { data, isLoading, isError } = useTopicTrend(decodedTopic, topicId || yearFrom || yearTo ? { topicId, yearFrom, yearTo } : undefined);
 
   // Chart 1: Publication breakdown
   const pubChartData = useMemo(() => {
@@ -51,7 +60,7 @@ export function TopicDetailPage() {
         <AlertCircle className="w-12 h-12 text-red-500 mb-4" />
         <p className="text-red-500 font-bold mb-2">Failed to load topic data.</p>
         <p className="text-sm text-slate-500 mb-4">The topic "{decodedTopic}" might not have enough active papers or does not exist.</p>
-        <Button onClick={() => navigate("/trends")} variant="outline" className="rounded-full">Back to Trends</Button>
+        <Button onClick={() => navigate(targets.trends)} variant="outline" className="rounded-full">Back to Trends</Button>
       </div>
     );
   }
@@ -63,7 +72,7 @@ export function TopicDetailPage() {
       {/* Navigation & Header */}
       <div className="mb-8">
         <button
-          onClick={() => navigate("/trends")}
+          onClick={() => navigate(targets.trends)}
           className="flex items-center gap-2 text-xs font-bold text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 transition-colors mb-4 group"
         >
           <ArrowLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" /> Back to Trends Overview
@@ -88,7 +97,7 @@ export function TopicDetailPage() {
               variant="outline"
               size="sm"
               className="h-9 px-3 rounded-lg font-bold gap-1.5 text-xs border-slate-200 dark:border-slate-800 shadow-sm"
-              onClick={() => navigate(`/home?q=${encodeURIComponent(decodedTopic)}`)}
+              onClick={() => navigate(targets.search)}
             >
               <Search className="w-3.5 h-3.5 text-slate-500" /> Search Papers
             </Button>
@@ -96,7 +105,7 @@ export function TopicDetailPage() {
               variant="outline"
               size="sm"
               className="h-9 px-3 rounded-lg font-bold gap-1.5 text-xs border-amber-250 dark:border-amber-900/30 hover:bg-amber-50/50 dark:hover:bg-amber-950/10 shadow-sm text-slate-700 dark:text-slate-350"
-              onClick={() => navigate(`/research-gaps?topic=${encodeURIComponent(decodedTopic)}`)}
+              onClick={() => navigate(targets.gaps)}
             >
               <BookOpen className="w-3.5 h-3.5 text-amber-600" /> Find Gaps
             </Button>
@@ -104,17 +113,13 @@ export function TopicDetailPage() {
               variant="outline"
               size="sm"
               className="h-9 px-3 rounded-lg font-bold gap-1.5 text-xs border-slate-200 dark:border-slate-800 shadow-sm"
-              onClick={() =>
-                navigate(
-                  `/trends?compare=${encodeURIComponent(decodedTopic)}&focus=${encodeURIComponent(decodedTopic)}`,
-                )
-              }
+              onClick={() => navigate(targets.compare)}
             >
               <Users className="w-3.5 h-3.5 text-blue-600" /> Compare Topic
             </Button>
             <Button
               className="h-9 px-3.5 bg-[#001b69] hover:bg-[#001040] text-white shadow-sm rounded-lg text-xs font-bold gap-1.5 border border-blue-900/10"
-              onClick={() => navigate(`/reports?topic=${encodeURIComponent(decodedTopic)}&create=true`)}
+              onClick={() => navigate(targets.report)}
             >
               <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-pulse" fill="currentColor" /> Generate AI Report
             </Button>
