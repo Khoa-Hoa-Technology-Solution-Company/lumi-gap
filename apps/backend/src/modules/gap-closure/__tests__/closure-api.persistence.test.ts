@@ -188,6 +188,23 @@ describe.sequential("Gap Closure Protocol API (PostgreSQL)", () => {
     expect(markdown.filename).toMatch(/^gap-closure-[0-9a-f]{8}\.md$/);
   });
 
+  it("certifies with an in-situ calibration alone (B = epsHat) and records the formula on the check", async () => {
+    const { check } = await seedChecked({ labels: [{ aiLabel: "UNRELATED" }] });
+    const created = await calibrationService.create(adminId, { name: "In situ", domain: "t", judgeKind: "AI", mode: "IN_SITU" });
+    calibrationIds.push(created.id);
+    expect(created.mode).toBe("IN_SITU");
+    await prisma.closureCalibration.update({ where: { id: created.id }, data: { status: "COMPUTED", n: 30, misses: 0, epsHat: 0.0951, computedAt: new Date() } });
+
+    const certified = await closureService.decide(ownerId, check.id, { calibrationId: created.id });
+    expect(certified).toMatchObject({ decision: "OPEN_CERTIFIED", decisionReasons: [], epsHat: 0.0951, bound: 0.0951, boundMode: "IN_SITU", calibrationId: created.id });
+    expect((await prisma.gapClosureCheck.findUniqueOrThrow({ where: { id: check.id } })).boundMode).toBe("IN_SITU");
+
+    const dossier = await closureService.getDossier(ownerId, check.id);
+    expect(dossier.calibration?.mode).toBe("IN_SITU");
+    expect(dossier.arithmetic.at(-1)).toBe("B = epsHat = 0.0951 <= 0.2");
+    expect((await closureService.getDossierMarkdown(ownerId, check.id)).markdown).toContain("P(false novelty) <= epsHat holds with probability >= 1 - delta");
+  });
+
   it("creates a coverage check: local + OpenAlex lookup, pHat from x, and nothing stored when OpenAlex fails", async () => {
     await prisma.paper.update({ where: { id: paperId }, data: { doi: `10.1000/LOCAL-${marker}` } });
     fetchByDois.mockResolvedValueOnce([{ id: "https://openalex.org/W42", doi: `https://doi.org/10.1000/remote-${marker}`, title: "Remote paper" }]);
