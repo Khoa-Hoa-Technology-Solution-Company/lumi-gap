@@ -1,4 +1,6 @@
 export const academicSupportEn = {
+  "Expert guidance and academic critique for your research.": "Expert guidance and academic critique for your research.",
+  "Connect with verified lecturers and research experts to receive guidance and academic critique.": "Connect with verified lecturers and research experts to receive guidance and academic critique.",
   "No questions shared yet": "No questions shared yet",
   "The team can share questions from a shared plan version. You can leave general guidance in the project overview.": "The team can share questions from a shared plan version. You can leave general guidance in the project overview.",
   "Leave general guidance": "Leave general guidance",
@@ -734,6 +736,8 @@ export const academicSupportEn = {
 } as const;
 
 export const academicSupportVi = {
+  "Expert guidance and academic critique for your research.": "Hướng dẫn chuyên môn và phản biện học thuật cho nghiên cứu của bạn.",
+  "Connect with verified lecturers and research experts to receive guidance and academic critique.": "Kết nối với giảng viên đã xác minh và chuyên gia nghiên cứu để nhận hướng dẫn chuyên môn và phản biện học thuật.",
   "No questions shared yet": "Nhóm chưa chia sẻ câu hỏi",
   "The team can share questions from a shared plan version. You can leave general guidance in the project overview.": "Nhóm có thể chia sẻ câu hỏi từ phiên bản kế hoạch đã gửi cho bạn. Bạn vẫn có thể góp ý chung trong phần tổng quan dự án.",
   "Leave general guidance": "Góp ý chung cho nhóm",

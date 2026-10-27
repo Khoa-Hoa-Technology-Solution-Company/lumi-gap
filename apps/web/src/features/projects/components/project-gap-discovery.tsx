@@ -627,8 +627,8 @@ export function ProjectGapDiscovery({
               </div>
               <div className="gap-readiness-labels">
                 <span>0</span>
-                <span className="gap-readiness-min-tag">Min {minimum}</span>
-                <span>Max {maximum}</span>
+                <span className="gap-readiness-min-tag">{t("Min")} {minimum}</span>
+                <span>{t("Max")} {maximum}</span>
               </div>
             </div>
 
