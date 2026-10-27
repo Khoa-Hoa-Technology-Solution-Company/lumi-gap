@@ -55,6 +55,54 @@ describe.sequential("peer-review versions and authorization (PostgreSQL)", () =>
   const input = (assessment: AcademicReviewInput["overallAssessment"] = "STRONG", level = highLevel): AcademicReviewInput => ({ overallAssessment: assessment, responses: [{ criterionKey: "method", performanceLevelId: level, comment: "Method evidence" }, { criterionKey: "evidence", performanceLevelId: otherLevel, comment: "Cited evidence" }], requiredRevisions: assessment === "MAJOR_REVISION" ? [{ priority: "MAJOR", description: "Explain the sampling method" }] : [] });
   async function invite(submissionId: string, reviewerId = externalLecturer) { return reviewRequestService.create({ submissionId, reviewerId, templateVersionId: version }, author); }
 
+  it("reports action permissions separately for the owner, an author and an archived project", async () => {
+    const { submission } = await article();
+    const db = getPrisma();
+    expect(await submissionService.history(submission.id, author, "user")).toMatchObject({ canRequestReview: true, canRunAiPreReview: true });
+    await db.projectMember.create({ data: { projectId: submission.projectId, userId: student, status: "ACTIVE" } });
+    await db.submissionAuthor.create({ data: { submissionId: submission.id, userId: student, position: 1 } });
+    expect(await submissionService.history(submission.id, student, "user")).toMatchObject({ canManage: true, canRequestReview: false, canRunAiPreReview: true });
+    await db.submissionAuthor.deleteMany({ where: { submissionId: submission.id, userId: author } });
+    expect(await submissionService.history(submission.id, author, "user")).toMatchObject({ canRequestReview: true, canRunAiPreReview: false });
+    await db.project.update({ where: { id: submission.projectId }, data: { status: "ARCHIVED" } });
+    expect(await submissionService.history(submission.id, author, "user")).toMatchObject({ canManage: false, canRequestReview: false, canRunAiPreReview: false });
+  });
+
+  it("tracks project requests while limiting blind reviewers to their own request", async () => {
+    const { submission } = await article();
+    const first = await invite(submission.id);
+    const second = await invite(submission.id, outsider);
+    const db = getPrisma();
+    try {
+      await db.projectMember.create({ data: { projectId: submission.projectId, userId: student, status: "ACTIVE" } });
+      const ownerHistory = await submissionService.history(submission.id, author, "user");
+      expect(ownerHistory.reviewRequests).toEqual(expect.arrayContaining([
+        expect.objectContaining({ id: first.id, status: "REQUESTED", revisionNumber: 1, canView: true }),
+        expect.objectContaining({ id: second.id, canView: true }),
+      ]));
+      const memberHistory = await submissionService.history(submission.id, student, "user");
+      expect(memberHistory.reviewRequests).toHaveLength(2);
+      expect(memberHistory.reviewRequests.every(item => !item.canView)).toBe(true);
+      await reviewRequestService.accept(first.id, externalLecturer);
+      const blindHistory = await submissionService.history(submission.id, externalLecturer, "user");
+      expect(blindHistory.reviewRequests).toEqual([expect.objectContaining({ id: first.id, reviewerName: "Your review", canView: true })]);
+      expect(blindHistory.canRequestReview).toBe(false);
+      await db.reviewRequest.update({ where: { id: second.id }, data: { expiresAt: new Date(0) } });
+      expect((await submissionService.history(submission.id, author, "user")).reviewRequests).toContainEqual(expect.objectContaining({ id: second.id, status: "EXPIRED" }));
+    } finally {
+      // These extra invitations must not consume another test's per-owner request budget.
+      await db.reviewerAssignment.deleteMany({ where: { reviewRequestId: { in: [first.id, second.id] } } });
+      await db.reviewRequest.deleteMany({ where: { id: { in: [first.id, second.id] } } });
+    }
+  });
+
+  it("rejects reopening a terminal submission for review", async () => {
+    const { submission } = await article();
+    await getPrisma().submission.update({ where: { id: submission.id }, data: { status: "accepted" } });
+    await expect(submissionService.setOpenForReview(submission.id, true, author, "user")).rejects.toThrow("This research no longer accepts reviews");
+    expect((await getPrisma().submission.findUniqueOrThrow({ where: { id: submission.id } })).openForReview).toBe(false);
+  });
+
   it("requires Project Owner authority and hides content while request is pending or expired", async () => {
     const { submission } = await article();
     await getPrisma().projectMember.create({ data: { projectId: submission.projectId, userId: student, status: "ACTIVE" } });

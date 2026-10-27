@@ -204,12 +204,14 @@ describe.skipIf(!enabled).sequential("adaptive Lecturer verification with Postgr
   });
   it("links verified work email to the SAME User while preserving login and Profile", async () => {
     const user = await account(), work = `work-${randomUUID()}@${domain}`, profile = await db.academicProfile.findUniqueOrThrow({ where: { userId: user.id } });
-    const count = await db.user.count(); await emails.requestChallenge(user.id, work);
+    // Other persistence suites create users concurrently. Only these identities belong to this operation.
+    const identityScope = { email: { in: [user.email, work] } };
+    const count = await db.user.count({ where: identityScope }); await emails.requestChallenge(user.id, work);
     const code = delivery.mock.calls.at(-1)![0].code;
     await expect(emails.verifyChallenge(user.id, "invalid")).rejects.toMatchObject({ statusCode: 400 });
     const result = await emails.verifyChallenge(user.id, code); expect(result).toMatchObject({ verified: true, source: "LINKED", email: work });
     await expect(emails.verifyChallenge(user.id, code)).rejects.toMatchObject({ statusCode: 400 });
-    expect(await db.user.count()).toBe(count); expect((await db.user.findUniqueOrThrow({ where: { id: user.id } })).email).toBe(user.email);
+    expect(await db.user.count({ where: identityScope })).toBe(count); expect((await db.user.findUniqueOrThrow({ where: { id: user.id } })).email).toBe(user.email);
     expect((await db.academicProfile.findUniqueOrThrow({ where: { userId: user.id } })).id).toBe(profile.id);
     expect(await db.userEmail.findUnique({ where: { normalizedEmail: work } })).toMatchObject({ userId: user.id, isPrimary: false });
     await profiles.requestVerification(user.id, standard()); expect((await pending(user.id)).metadata?.identitySource).toBe("LINKED");

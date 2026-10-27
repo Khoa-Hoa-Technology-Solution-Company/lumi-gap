@@ -99,4 +99,19 @@ describe.sequential("retriever filters and hybrid search (PostgreSQL)", () => {
     const results = await retrieve({ queryText: rareToken, topK: 5 });
     expect(results.map((paper) => paper.id)).toContain(keywordPaperId);
   });
+
+  it.each([[], [1], ...[NaN, Infinity, 0, 1e100, 1e30, 1e-30, Number.MIN_VALUE].map((value) => Array(768).fill(value))].map((vector, i) => ({ vector, i })))("falls back from malformed supplied vector $i without requesting another embedding", async ({ vector }) => {
+      vi.mocked(getEmbeddingProvider).mockClear();
+      const results = await retrieve({ queryVector: vector, queryText: rareToken, topK: 5 });
+      expect(results.map((paper) => paper.id)).toContain(keywordPaperId);
+      expect(results.every((paper) => Number.isFinite(paper.score))).toBe(true);
+      expect(getEmbeddingProvider).not.toHaveBeenCalled();
+    });
+
+  it.each([[1], ...[NaN, 0, 1e100, 1e30, 1e-30, Number.MIN_VALUE].map((value) => Array(768).fill(value))].map((vector, i) => ({ vector, i })))("falls back when the provider returns malformed vector $i", async ({ vector }) => {
+      vi.mocked(getEmbeddingProvider).mockReturnValue({ embed: vi.fn().mockResolvedValue(vector) } as unknown as ReturnType<typeof getEmbeddingProvider>);
+      const results = await retrieve({ queryText: rareToken, topK: 5 });
+      expect(results.map((paper) => paper.id)).toContain(keywordPaperId);
+      expect(results.every((paper) => Number.isFinite(paper.score))).toBe(true);
+    });
 });

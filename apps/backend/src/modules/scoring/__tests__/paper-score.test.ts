@@ -5,6 +5,32 @@ const NOW = 2026;
 const AT = "2026-06-27T00:00:00.000Z";
 
 describe("computePaperScore (v3)", () => {
+  it.each([NaN, Infinity, -Infinity, -100, Number.MAX_VALUE])("keeps all output scores finite and bounded for abnormal input %s", (value) => {
+    const result = computePaperScore({ publicationYear: value, citationCount: value, dataQualityScore: value, fwci: value, citationNormalizedPercentile: { value } }, NOW, AT);
+    for (const [key, score] of Object.entries(result)) {
+      if (key.endsWith("Score") && score !== undefined) {
+        expect(Number.isFinite(score)).toBe(true);
+        expect(score).toBeGreaterThanOrEqual(0);
+        expect(score).toBeLessThanOrEqual(1);
+      }
+    }
+  });
+
+  it("treats invalid metadata as missing rather than awarding recency or impact", () => {
+    const score = computePaperScore({ publicationYear: Infinity, citationCount: -20, dataQualityScore: NaN }, NOW, AT);
+    expect(score).toMatchObject({ recencyScore: 0, citationImpactScore: 0, metadataQualityScore: 0, finalScore: 0 });
+  });
+
+  it("citation fallback is monotonic and saturates at the cap", () => {
+    const scores = [0, 1, 10, 50, 100, 1e6, Number.MAX_VALUE].map((citationCount) => computePaperScore({ publicationYear: NOW, citationCount, dataQualityScore: 1 }, NOW, AT).citationImpactScore);
+    expect(scores).toEqual([...scores].sort((a, b) => a - b));
+    expect(scores.at(-1)).toBe(1);
+  });
+
+  it.each([NaN, Infinity, 0, -1, 2026.5])("rejects an invalid reference year %s", (year) => {
+    expect(() => computePaperScore({ publicationYear: 2026, citationCount: 1, dataQualityScore: 1 }, year, AT)).toThrow(RangeError);
+  });
+
   it("uses OpenAlex normalized citation percentile before raw citations when available", () => {
     const highFieldImpact = computePaperScore(
       {

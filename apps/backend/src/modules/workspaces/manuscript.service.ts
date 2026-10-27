@@ -4,7 +4,7 @@ import { EventEmitter } from "node:events";
 import { isDeepStrictEqual } from "node:util";
 import { zipSync, strToU8 } from "fflate";
 import type { CreateManuscript, ManuscriptSummary, ManuscriptDetail, ManuscriptFile, ManuscriptManifest, ManuscriptSnapshot, ManuscriptContext, ManuscriptComment, ManuscriptFeedbackSummary } from "@trend/shared-types";
-import type { Prisma } from "../../generated/prisma/client.js";
+import { Prisma } from "../../generated/prisma/client.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { AppError } from "../../common/exceptions/app-error.js";
 import { withWorkspace, jsonSnapshot, workspacePeople, workspacePerson, workspaceEvent, workspaceRevision, assertWorkspaceLink, type WorkspaceContext } from "../projects/workspace-access.js";
@@ -38,6 +38,12 @@ async function file(context: WorkspaceContext, workspaceId: string, fileId: stri
   if (!row) throw AppError.notFound("Manuscript file not found"); return row;
 }
 function expected(actual: number, expectedVersion: number) { if (actual !== expectedVersion) throw AppError.conflict("This item changed. Refresh before trying again"); }
+function assertMinimumSequences(files: Array<{ id: string; sequence: number }>, minimumSequences: Record<string, number>) {
+  for (const [fileId, sequence] of Object.entries(minimumSequences)) {
+    const row = files.find(f => f.id === fileId);
+    if (!row || row.sequence < sequence) throw AppError.conflict("Wait for source changes to be durably saved before creating a snapshot");
+  }
+}
 async function changed(tx: Db, id: string) { return tx.draftWorkspace.update({ where: { id }, data: { version: { increment: 1 } } }); }
 function notifyChange(projectId: string, id: string) { manuscriptEvents.emit("changed", { projectId, manuscriptId: id }); }
 async function pathsAvailable(tx: Db, workspaceId: string, paths: Array<{ path: string; kind: string }>, ignore: string[] = []) {
@@ -331,13 +337,14 @@ export const manuscriptService = {
     return withWorkspace(projectId, actorId, { write: true }, async context => {
       const draft = await manuscript(context, id, true);
       const prior = await context.tx.manuscriptSnapshot.findUnique({ where: { workspaceId_createdById_clientKey: { workspaceId: id, createdById: actorId, clientKey: input.clientKey } } });
-      if (prior) { if (prior.label !== input.label) throw AppError.conflict("This snapshot request key was already used"); return { id: prior.id, sourceVersion: prior.sourceVersion }; }
+      if (prior) {
+        if (prior.label !== input.label) throw AppError.conflict("This snapshot request key was already used");
+        assertMinimumSequences((prior.manifest as unknown as ManuscriptManifest).files, input.minimumSequences);
+        return { id: prior.id, sourceVersion: prior.sourceVersion };
+      }
       if (!draft.mainFileId) throw AppError.badRequest("Set a main LaTeX file before creating a snapshot");
       const files = await context.tx.manuscriptFile.findMany({ where: { workspaceId: id, deletedAt: null }, orderBy: { path: "asc" } });
-      for (const [fileId, sequence] of Object.entries(input.minimumSequences)) {
-        const row = files.find(f => f.id === fileId);
-        if (!row || row.sequence < sequence) throw AppError.conflict("Wait for source changes to be durably saved before creating a snapshot");
-      }
+      assertMinimumSequences(files, input.minimumSequences);
       const manifest: ManuscriptManifest = { title: draft.name, documentType: draft.documentType as ManuscriptManifest["documentType"], mainFileId: draft.mainFileId, files: files.map(f => ({ id: f.id, path: f.path, kind: f.kind as ManuscriptFile["kind"], sequence: f.sequence, checksum: f.checksum, sizeBytes: f.sizeBytes, mimeType: f.mimeType, ...(f.crdtState ? { text: sourceText(f.crdtState) } : {}) })) };
       const checksum = hashBytes(JSON.stringify(manifest));
       if (input.reuseUnchanged) {
@@ -355,9 +362,8 @@ export const manuscriptService = {
   async viewSnapshot(projectId: string, actorId: string, id: string, snapshotId: string): Promise<ManuscriptSnapshot> {
     return withSnapshot(projectId, actorId, id, snapshotId, async (tx, row, grant) => {
       const people = await workspacePeople(tx, [row.createdById]);
-      const project = await tx.project.findUniqueOrThrow({ where: { id: projectId } });
       const revision = grant.reviewer ? await tx.reviewerAssignment.findFirst({ where: { reviewerId: actorId, artifactRevisionId: { in: (await tx.submissionRevision.findMany({ where: { manuscriptSnapshotId: snapshotId }, select: { id: true } })).map(r => r.id) }, status: { in: ["accepted", "in_review", "completed"] } }, select: { id: true, artifactRevisionId: true } }) : null;
-      return { id: row.id, label: row.label, sourceVersion: row.sourceVersion, checksum: row.checksum, createdAt: row.createdAt.toISOString(), createdBy: workspacePerson(people, row.createdById), manifest: row.manifest as unknown as ManuscriptManifest, canComment: !grant.reviewer && project.status !== "ARCHIVED", canResolve: grant.member && project.status !== "ARCHIVED", formalRevisionId: revision?.artifactRevisionId ?? null, formalAssignmentId: revision?.id ?? null };
+      return { id: row.id, label: row.label, sourceVersion: row.sourceVersion, checksum: row.checksum, createdAt: row.createdAt.toISOString(), createdBy: workspacePerson(people, row.createdById), manifest: row.manifest as unknown as ManuscriptManifest, canComment: !grant.reviewer && !grant.readOnly, canResolve: grant.member && !grant.readOnly, formalRevisionId: revision?.artifactRevisionId ?? null, formalAssignmentId: revision?.id ?? null };
     });
   },
   async export(projectId: string, actorId: string, id: string, snapshotId?: string) {
@@ -465,14 +471,34 @@ export const manuscriptService = {
       return result;
     });
   },
-  async comments(projectId: string, actorId: string, id: string, snapshotId?: string): Promise<ManuscriptComment[]> {
+  async commentPage(projectId: string, actorId: string, id: string, snapshotId?: string, cursor?: string): Promise<import("@trend/shared-types").ManuscriptCommentPage> {
+    const items = await this.comments(projectId, actorId, id, snapshotId, { cursor, pageSize: 20 });
+    const hasMore = items.length > 20;
+    if (hasMore) items.pop();
+    return { items, nextCursor: hasMore ? items.at(-1)!.id : null };
+  },
+  async comments(projectId: string, actorId: string, id: string, snapshotId?: string, page?: { cursor?: string; pageSize: number }): Promise<ManuscriptComment[]> {
     const run = async (tx: Db, mentorId?: string | null) => {
-      const threads = await tx.projectDiscussion.findMany({ where: { projectId, ...(snapshotId ? { targetKind: "MANUSCRIPT_SNAPSHOT", targetId: snapshotId, ...(mentorId ? { mentorRelationshipId: mentorId } : {}) } : { targetKind: "MANUSCRIPT", targetId: id }) }, orderBy: { createdAt: "asc" }, take: 200 });
-      const messages = await tx.projectTeamMessage.findMany({ where: { threadId: { in: threads.map(t => t.id) }, isDeleted: false }, orderBy: { createdAt: "asc" }, take: 1000 });
+      const where = { projectId, ...(snapshotId ? { targetKind: "MANUSCRIPT_SNAPSHOT", targetId: snapshotId, ...(mentorId ? { mentorRelationshipId: mentorId } : {}) } : { targetKind: "MANUSCRIPT", targetId: id }) };
+      if (page?.cursor && !await tx.projectDiscussion.findFirst({ where: { ...where, id: page.cursor }, select: { id: true } })) throw AppError.notFound("Comment cursor not found");
+      const threads = await tx.projectDiscussion.findMany({ where, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: page ? page.pageSize + 1 : 200, ...(page?.cursor ? { cursor: { id: page.cursor }, skip: 1 } : {}) });
+      if (!page) threads.reverse();
+      // A busy thread must not consume every other thread's reply budget.
+      const messages = threads.length ? await tx.$queryRaw<Array<{ id: string; threadId: string; senderId: string; content: string; createdAt: Date }>>`
+        SELECT recent.id, recent.thread_id AS "threadId", recent.sender_id AS "senderId", recent.content, recent.created_at AS "createdAt"
+        FROM (VALUES ${Prisma.join(threads.map(thread => Prisma.sql`(${thread.id}::uuid)`))}) AS selected(thread_id)
+        CROSS JOIN LATERAL (
+          SELECT id, thread_id, sender_id, content, created_at FROM project_team_messages
+          WHERE project_id = ${projectId}::uuid AND thread_id = selected.thread_id AND NOT is_deleted
+          ORDER BY created_at DESC, id DESC LIMIT 21
+        ) recent ORDER BY recent.created_at ASC, recent.id ASC
+      ` : [];
       const people = await workspacePeople(tx, [...threads.map(t => t.authorId), ...messages.map(m => m.senderId)]);
-      return threads.map(t => ({ id: t.id, title: t.title, body: t.body, status: t.status as ManuscriptComment["status"], version: t.version, author: workspacePerson(people, t.authorId), context: t.context as ManuscriptComment["context"], mentorRelationshipId: t.mentorRelationshipId, messages: messages.filter(m => m.threadId === t.id).map(m => ({ id: m.id, body: m.content, author: workspacePerson(people, m.senderId), createdAt: m.createdAt.toISOString() })) }));
+      const byThread = new Map<string, typeof messages>();
+      for (const message of messages) { const rows = byThread.get(message.threadId) ?? []; rows.push(message); byThread.set(message.threadId, rows); }
+      return threads.map(t => ({ id: t.id, title: t.title, body: t.body, status: t.status as ManuscriptComment["status"], conclusion: t.conclusion, version: t.version, author: workspacePerson(people, t.authorId), context: t.context as ManuscriptComment["context"], mentorRelationshipId: t.mentorRelationshipId, hasMoreMessages: (byThread.get(t.id)?.length ?? 0) > 20, messages: (byThread.get(t.id) ?? []).slice(-20).map(m => ({ id: m.id, body: m.content, author: workspacePerson(people, m.senderId), createdAt: m.createdAt.toISOString() })) }));
     };
-    if (snapshotId) return withSnapshot(projectId, actorId, id, snapshotId, async (tx, _row, grant) => run(tx, grant.mentorRelationshipId));
+    if (snapshotId) return withSnapshot(projectId, actorId, id, snapshotId, async (tx, _row, grant) => grant.reviewer ? [] : run(tx, grant.mentorRelationshipId));
     return withWorkspace(projectId, actorId, {}, async context => { await manuscript(context, id); return run(context.tx); });
   },
   async comment(projectId: string, actorId: string, id: string, input: { body: string; clientKey: string; fileId?: string; snapshotId?: string; quote?: string; start?: unknown; end?: unknown; mentorRelationshipId?: string }) {
@@ -509,6 +535,7 @@ export const manuscriptService = {
     if (input.snapshotId) return withSnapshot(projectId, actorId, id, input.snapshotId, async (tx, _row, grant) => {
       const project = await tx.project.findUniqueOrThrow({ where: { id: projectId } });
       if (project.status === "ARCHIVED" || grant.reviewer) throw AppError.forbidden("This version is read-only");
+      if (grant.readOnly) throw AppError.conflict("Archived manuscripts are read-only");
       return run({ tx, project, actorId, role: grant.member ? project.ownerId === actorId ? "OWNER" : "MEMBER" : null });
     });
     return withWorkspace(projectId, actorId, { write: true }, async context => { await manuscript(context, id, true); return run(context); });
@@ -621,7 +648,7 @@ export const manuscriptService = {
 };
 
 type Snapshot = NonNullable<Awaited<ReturnType<Db["manuscriptSnapshot"]["findUnique"]>>>;
-async function withSnapshot<T>(projectId: string, actorId: string, id: string, snapshotId: string, run: (tx: Db, snapshot: Snapshot, grant: { member: boolean; mentorRelationshipId: string | null; reviewer: boolean }) => Promise<T>) {
+async function withSnapshot<T>(projectId: string, actorId: string, id: string, snapshotId: string, run: (tx: Db, snapshot: Snapshot, grant: { member: boolean; mentorRelationshipId: string | null; reviewer: boolean; readOnly: boolean }) => Promise<T>) {
   return getPrisma().$transaction(async tx => {
     await lockProjectAccounts(tx, [actorId], projectId); await assertActiveProjectAccount(tx, actorId);
     const snapshot = await tx.manuscriptSnapshot.findFirst({ where: { id: snapshotId, workspaceId: id, projectId } });
@@ -642,8 +669,9 @@ async function withSnapshot<T>(projectId: string, actorId: string, id: string, s
       }
       if (!mentorRelationshipId && !reviewer) throw AppError.notFound("Snapshot not found");
     }
-    if (!reviewer && !await tx.draftWorkspace.findFirst({ where: { id, projectId, writingMode: "LATEX", deletedAt: null }, select: { id: true } })) throw AppError.notFound("Manuscript not found");
-    return run(tx, snapshot, { member, mentorRelationshipId, reviewer });
+    const draft = await tx.draftWorkspace.findFirst({ where: { id, projectId, writingMode: "LATEX", deletedAt: null }, select: { archivedAt: true } });
+    if (!reviewer && !draft) throw AppError.notFound("Manuscript not found");
+    return run(tx, snapshot, { member, mentorRelationshipId, reviewer, readOnly: project.status === "ARCHIVED" || Boolean(draft?.archivedAt) });
   }, { maxWait: 10000, timeout: 20000 });
 }
 function exportZip(manifest: ManuscriptManifest, assets: Map<string, Uint8Array>, metadata: object) {

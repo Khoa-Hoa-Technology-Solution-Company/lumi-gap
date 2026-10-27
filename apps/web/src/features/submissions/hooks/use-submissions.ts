@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect } from "react";
 import type { StructuredSubmissionInput } from "@trend/shared-types";
 import { submissionsApi } from "../api/submissions.api";
 
@@ -25,12 +26,22 @@ export function useAddSubmissionRevision(id: string) {
     client.invalidateQueries({ queryKey: ["submissions", id] });
     client.invalidateQueries({ queryKey: ["submissions", "list"] });
     client.invalidateQueries({ queryKey: ["submissions", id, "revisions"] });
+    client.invalidateQueries({ queryKey: ["review-opportunities"] });
   } });
 }
 
 export function useAiPreReviews(id: string, enabled = true) {
+  const client = useQueryClient();
   // Pre-reviews run in a worker; poll while the latest one is still queued or processing.
-  return useQuery({ queryKey: ["submissions", id, "ai-pre-reviews"], queryFn: () => submissionsApi.aiPreReviews(id), enabled: Boolean(id) && enabled, refetchInterval: (query) => ["QUEUED", "PROCESSING"].includes(query.state.data?.[0]?.status ?? "") ? 3000 : false });
+  const query = useQuery({ queryKey: ["submissions", id, "ai-pre-reviews"], queryFn: () => submissionsApi.aiPreReviews(id), enabled: Boolean(id) && enabled, refetchInterval: (query) => ["QUEUED", "PROCESSING"].includes(query.state.data?.[0]?.status ?? "") ? 3000 : false });
+  const latestId = query.data?.[0]?.id;
+  const latestStatus = query.data?.[0]?.status;
+  useEffect(() => {
+    if (!enabled || latestStatus !== "COMPLETED") return;
+    void client.invalidateQueries({ queryKey: ["submissions", id, "detail"] });
+    void client.invalidateQueries({ queryKey: ["submissions", "list"] });
+  }, [client, id, enabled, latestId, latestStatus]);
+  return query;
 }
 
 export function useRunAiPreReview(id: string) {

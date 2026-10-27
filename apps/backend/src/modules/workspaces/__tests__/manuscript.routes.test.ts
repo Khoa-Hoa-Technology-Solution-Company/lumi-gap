@@ -13,7 +13,7 @@ vi.mock("../manuscript-pdf-import.js", async importOriginal => ({ ...await impor
 const proposalMocks = vi.hoisted(() => ({ update: vi.fn(), resolve: vi.fn() }));
 vi.mock("../manuscript-suggestions.js", () => ({ manuscriptSuggestions: proposalMocks }));
 
-const mocks = vi.hoisted(() => ({ actor: "20000000-0000-4000-8000-000000000001", user: vi.fn(), project: vi.fn(), list: vi.fn(), create: vi.fn(), detail: vi.fn(), remove: vi.fn(), fileContent: vi.fn(), ticket: vi.fn() }));
+const mocks = vi.hoisted(() => ({ actor: "20000000-0000-4000-8000-000000000001", user: vi.fn(), project: vi.fn(), list: vi.fn(), create: vi.fn(), detail: vi.fn(), remove: vi.fn(), fileContent: vi.fn(), ticket: vi.fn(), commentPage: vi.fn() }));
 vi.mock("../../../common/middleware/auth.js", () => ({ requireAuth: (req: any, _res: any, next: () => void) => { req.user = { sub: mocks.actor, sessionId: "30000000-0000-4000-8000-000000000001" }; next(); } }));
 vi.mock("../../authorization/authorization.middleware.js", () => ({ requireResearchWorkflow: (_req: any, _res: any, next: () => void) => next() }));
 vi.mock("../../../common/middleware/rate-limit.js", () => ({ createRateLimiter: () => (_req: any, _res: any, next: () => void) => next() }));
@@ -47,6 +47,17 @@ describe("manuscript HTTP project identifiers", () => {
     mocks.ticket.mockReturnValue("signed-ticket");
   });
   const call = (project: string, path = "", body?: unknown) => fetch(`${origin}/projects/${project}/manuscripts${path}`, { method: body ? "POST" : "GET", headers: body ? { "Content-Type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined });
+  it("validates comment cursors and preserves snapshot and account scope", async () => {
+    const cursor = crypto.randomUUID(), snapshot = crypto.randomUUID();
+    for (const query of ["cursor=invalid", "snapshotId=invalid", `cursor=${cursor}&actorId=${actor}`]) expect((await call(legacy, `/${manuscript}/comment-pages?${query}`)).status).toBe(400);
+    expect(mocks.commentPage).not.toHaveBeenCalled();
+    mocks.commentPage.mockResolvedValue({ items: [], nextCursor: null });
+    const response = await call(legacy, `/${manuscript}/comment-pages?cursor=${cursor}&snapshotId=${snapshot}`);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toContain("no-store");
+    expect(await response.json()).toEqual({ success: true, data: { items: [], nextCursor: null } });
+    expect(mocks.commentPage).toHaveBeenCalledWith(canonical, actor, manuscript, snapshot, cursor);
+  });
   it("validates deletion, resolves legacy IDs and propagates permission/version errors", async () => {
     const remove = (body: unknown, id = manuscript) => fetch(`${origin}/projects/${legacy}/manuscripts/${id}`, { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     for (const body of [{}, { expectedVersion: 0 }, { expectedVersion: 1, actor: "injected" }]) expect((await remove(body)).status).toBe(400);

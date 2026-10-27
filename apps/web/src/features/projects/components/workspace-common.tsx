@@ -120,11 +120,11 @@ export function CommentItems({ items }: { items: WorkspaceComment[] }) {
   return items.length ? <ol className="coord-comment-list">{items.map(item => <li key={item.id}><div><strong>{item.author.name}</strong><WorkspaceDate value={item.createdAt} /></div><p>{item.body}</p></li>)}</ol> : <p className="coord-muted">{t("No comments yet. Leave a question or a suggestion for the team.")}</p>;
 }
 export function WorkspaceComposer({ projectId, allowMentions = true, pending, error, onSubmit }: { projectId: string; allowMentions?: boolean; pending: boolean; error: unknown; onSubmit: (data: { body: string; mentions: string[]; clientKey: string }) => Promise<unknown> }) {
-  const { t } = useI18n(); const [body, setBody] = useState(""); const [mentions, setMentions] = useState<string[]>([]); const clientKey = useRef(crypto.randomUUID()); const busy = useRef(false);
-  useUnsavedWorkspace(Boolean(body.trim()));
-  return <form className="coord-composer" onSubmit={async e => { e.preventDefault(); if (busy.current || !body.trim()) return; busy.current = true; try { await onSubmit({ body, mentions, clientKey: clientKey.current }); setBody(""); setMentions([]); clientKey.current = crypto.randomUUID(); } catch { /* Input remains available for retry. */ } finally { busy.current = false; } }}>
+  const { t } = useI18n(); const [body, setBody] = useState(""); const [mentions, setMentions] = useState<string[]>([]); const attempt = useRef<{ content: string; key: string }>(); const busy = useRef(false);
+  useUnsavedWorkspace(Boolean(body.trim()) || pending);
+  return <form className="coord-composer" onSubmit={async e => { e.preventDefault(); if (pending || busy.current || !body.trim()) return; const content = JSON.stringify({ body, mentions }); if (attempt.current?.content !== content) attempt.current = { content, key: crypto.randomUUID() }; busy.current = true; try { await onSubmit({ body, mentions, clientKey: attempt.current.key }); setBody(""); setMentions([]); attempt.current = undefined; } catch { /* Input remains available for retry. */ } finally { busy.current = false; } }}>
     <label>{t("Add a comment")}<textarea value={body} onChange={e => setBody(e.target.value)} maxLength={10000} rows={3} required disabled={pending} /></label>
-    {allowMentions && <details><summary>{t("Notify a teammate")}</summary><WorkspacePeoplePicker projectId={projectId} value={mentions} onChange={setMentions} multiple /></details>}
+    {allowMentions && <fieldset disabled={pending}><details><summary>{t("Notify a teammate")}</summary><WorkspacePeoplePicker projectId={projectId} value={mentions} onChange={setMentions} multiple /></details></fieldset>}
     {Boolean(error) && <WorkspaceError error={error} />}<Button size="sm" disabled={pending || !body.trim()}>{t(pending ? "Sending…" : "Send comment")}</Button>
   </form>;
 }

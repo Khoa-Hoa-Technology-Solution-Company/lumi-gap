@@ -29,10 +29,10 @@ async function render(tab: ProjectTab, children: ReactNode = <p>{tab}</p>) {
 }
 
 it("keeps initial content and same-section draft updates stationary", async () => {
-  await render("reports", <input defaultValue="Draft proposal" />);
+  await render("manuscripts", <input defaultValue="Draft proposal" />);
   const input = container.querySelector("input")!;
   input.value = "My unsaved edits";
-  await render("reports", <><input defaultValue="Draft proposal" /><p>Background data refreshed</p></>);
+  await render("manuscripts", <><input defaultValue="Draft proposal" /><p>Background data refreshed</p></>);
   expect(container.querySelector("input")).toBe(input);
   expect(input.value).toBe("My unsaved edits");
   expect(animate).not.toHaveBeenCalled();

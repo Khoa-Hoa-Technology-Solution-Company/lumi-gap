@@ -8,7 +8,7 @@ import { useProject, useProjects } from "@/features/projects/hooks/use-projects"
 import { readProjectSearchFilters, selectDirectoryProjects } from "@/features/projects/utils/project-directory";
 import { projectWorkspaceHref } from "@/features/projects/utils/project-workspace-navigation";
 import { ProjectsListPage } from "./projects-list";
-import { ProjectSectionNav, projectSections, type ProjectTab } from "@/features/projects/components/project-section-nav";
+import { ProjectSectionNav, resolveProjectTab, type ProjectTab } from "@/features/projects/components/project-section-nav";
 import { canLeaveWorkspace } from "@/features/projects/components/workspace-common";
 import "@/features/projects/project-browser.css";
 import "@/features/projects/workspace-coordination.css";
@@ -36,15 +36,26 @@ export function ProjectsWorkspacePage() {
 
 function WorkspaceSidebar() {
   const { id } = useParams();
-  const { t } = useI18n();
-  const { data: projects, isLoading: projectsLoading } = useProjects();
-  const { data: currentProject, isLoading: projectLoading } = useProject(id);
+  const { t, language } = useI18n();
+  const userId = useAuthStore(state => state.user?.id);
+  const { data: projects, isLoading: projectsLoading, isFetching: projectsFetching, isError: projectsError } = useProjects();
+  const { data: currentProject, isLoading: projectLoading, error: projectError } = useProject(id);
   const [params, setParams] = useSearchParams();
   const detailsRef = useRef<HTMLDetailsElement>(null);
 
-  const project = projects?.find(item => item._id === id) ?? (currentProject?.accessRole ? currentProject : undefined);
-  const loading = !!id && !project && (projectsLoading || projectLoading);
-  const active = projectSections.some(section => section.key === params.get("tab")) ? params.get("tab") as ProjectTab : "overview";
+  // Detail carries fresh counts and access after mutations; the library may
+  // still contain an older row while its background refresh is in progress.
+  const status = (projectError as { response?: { status?: number } } | null)?.response?.status;
+  const unavailable = status === 403 || status === 404;
+  const project = unavailable ? undefined : currentProject ? (currentProject.accessRole ? currentProject : undefined) : projects?.find(item => item._id === id);
+  const loading = !!id && !unavailable && !project && (projectsLoading || projectLoading);
+  // The directory redirects as soon as its query settles. Opening its picker
+  // before that decision flashes a dropdown on the first visit.
+  const directoryNeedsChoice = !id && !projectsLoading && !projectsFetching && (
+    projectsError || params.get("create") === "1" ||
+    !selectDirectoryProjects(projects ?? [], readProjectSearchFilters(params), userId, language).length
+  );
+  const active = resolveProjectTab(params.get("tab"));
   const navigate = async (tab: ProjectTab) => {
     if (!(await canLeaveWorkspace())) return;
     const next = new URLSearchParams();
@@ -81,7 +92,7 @@ function WorkspaceSidebar() {
   };
 
   return <>
-    <details ref={detailsRef} className="coord-project-picker" open={!id || undefined} key={id ? "selected" : "directory"}>
+    <details ref={detailsRef} className="coord-project-picker" open={directoryNeedsChoice || undefined} key={id ? "selected" : "directory"}>
       <summary className="group">
         <div className="flex items-center gap-2.5 min-w-0">
           <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-blue-600 via-indigo-600 to-violet-600 flex items-center justify-center text-white shrink-0 shadow-xs">

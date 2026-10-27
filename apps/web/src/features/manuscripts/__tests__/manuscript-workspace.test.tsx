@@ -5,7 +5,7 @@ import { EditorView } from "@codemirror/view";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeAll, expect, it, vi } from "vitest";
-import type { ManuscriptFile, ManuscriptComment, ManuscriptCompilationState, ManuscriptReference } from "@trend/shared-types";
+import type { ManuscriptFile, ManuscriptComment, ManuscriptCompilationState, ManuscriptReference, ManuscriptSnapshot } from "@trend/shared-types";
 import { ManuscriptPanes } from "../manuscript-panes";
 import { ManuscriptFileTree } from "../manuscript-file-tree";
 import { ManuscriptEditorPage } from "../manuscript-editor";
@@ -30,29 +30,33 @@ vi.mock("../collaboration-provider", async () => {
   }
   return { ManuscriptProvider: Provider };
 });
+vi.mock("@/features/projects/api/workspace.api", () => ({ workspaceApi: { discussion: data.discussion } }));
 vi.mock("@/features/academic-profile/components/private-evidence-pdf-preview", () => ({ default: () => <div>Rendered private PDF</div> }));
-const data = vi.hoisted(() => ({ userId: "", canWrite: true, available: false, extraFiles: [] as ManuscriptFile[], references: [] as ManuscriptReference[], insertCitation: vi.fn(), state: { latest: null, successful: null } as ManuscriptCompilationState, compile: vi.fn(), snapshot: vi.fn(), assist: vi.fn(), aiRun: vi.fn(), comments: [] as ManuscriptComment[], comment: vi.fn(), reply: vi.fn() }));
+const data = vi.hoisted(() => ({ userId: "", canWrite: true, available: false, detailFailed: false, removedFiles: [] as string[], changeFile: vi.fn(), olderComments: [] as ManuscriptComment[], discussion: vi.fn(), versions: [] as ManuscriptSnapshot[], viewSnapshot: vi.fn(), extraFiles: [] as ManuscriptFile[], references: [] as ManuscriptReference[], insertCitation: vi.fn(), state: { latest: null, successful: null } as ManuscriptCompilationState, compile: vi.fn(), snapshot: vi.fn(), assist: vi.fn(), aiRun: vi.fn(), comments: [] as ManuscriptComment[], comment: vi.fn(), reply: vi.fn() }));
 const file = (id: string, path: string, kind: ManuscriptFile["kind"] = "TEXT"): ManuscriptFile => ({ id, path, kind, version: 1, sequence: 0, sizeBytes: 0, mimeType: null, checksum: null, updatedAt: "2026-10-19" });
 vi.mock("../manuscripts.api", () => ({ manuscriptsApi: {
-  detail: async () => ({ id: "draft", title: "Team research paper", files: [{ id: "main", path: "main.tex", kind: "TEXT", version: 1 }, { id: "intro", path: "sections/introduction.tex", kind: "TEXT", version: 1 }, ...data.extraFiles], collaborators: [], compiler: { available: data.available, reason: "READY" }, version: 2, mainFileId: "main", canWrite: data.canWrite }),
+  detail: async () => { if (data.detailFailed) throw new Error("Network interrupted"); return { id: "draft", title: "Team research paper", files: [{ id: "main", path: "main.tex", kind: "TEXT", version: 1 }, { id: "intro", path: "sections/introduction.tex", kind: "TEXT", version: 1 }, ...data.extraFiles].filter(file => !data.removedFiles.includes(file.id)), collaborators: [], compiler: { available: data.available, reason: "READY" }, version: 2, mainFileId: "main", canWrite: data.canWrite }; },
+  changeFile: data.changeFile,
   compilations: async () => data.state, compile: data.compile, snapshot: data.snapshot,
   assist: data.assist, aiRun: data.aiRun,
   pdf: async () => new Blob(["%PDF-fixture"], { type: "application/pdf" }),
   context: async () => ({ references: data.references, gaps: [], evidence: [] }), insertCitation: data.insertCitation,
-  comments: async () => data.comments, comment: data.comment, reply: data.reply, snapshots: async () => [], mentors: async () => [], suggestions: async () => [],
+  comments: async () => data.comments, commentPage: async (_project: string, _id: string, _snapshot?: string, cursor?: string) => ({ items: cursor ? data.olderComments : data.comments, nextCursor: !cursor && data.olderComments.length ? "older" : null }), comment: data.comment, reply: data.reply, snapshots: async () => data.versions, viewSnapshot: data.viewSnapshot, mentors: async () => [], suggestions: async () => [],
 }, saveDownload: vi.fn() }));
 
 let cleanup: (() => Promise<void>) | undefined;
+let workspaceClient: QueryClient;
 // jsdom has no layout; selected-text tests exercise anchors rather than geometry.
 beforeAll(() => {
   Range.prototype.getClientRects = () => [] as unknown as DOMRectList;
   Range.prototype.getBoundingClientRect = () => new DOMRect();
 });
-afterEach(async () => { await cleanup?.(); vi.unstubAllGlobals(); data.userId = ""; data.canWrite = true; data.available = false; data.state = { latest: null, successful: null }; data.comments = []; data.extraFiles = []; data.references = []; vi.clearAllMocks(); });
+afterEach(async () => { await cleanup?.(); vi.unstubAllGlobals(); data.userId = ""; data.canWrite = true; data.available = false; data.detailFailed = false; data.removedFiles = []; data.olderComments = []; data.versions = []; data.state = { latest: null, successful: null }; data.comments = []; data.extraFiles = []; data.references = []; vi.clearAllMocks(); });
 async function render(node: React.ReactNode) {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  workspaceClient = client;
   await act(async () => { root.render(<QueryClientProvider client={client}><MemoryRouter initialEntries={["/projects/project/manuscripts/draft"]}>{node}</MemoryRouter></QueryClientProvider>); });
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)); });
   cleanup = async () => { await act(async () => root.unmount()); client.clear(); host.remove(); };
@@ -60,6 +64,145 @@ async function render(node: React.ReactNode) {
 }
 const button = (host: HTMLElement, label: string) => host.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)!;
 const workspace = () => <Routes><Route path="/projects/:projectId/manuscripts/:id" element={<ManuscriptEditorPage />} /></Routes>;
+
+it("retries an initial manuscript request after a network failure", async () => {
+  data.detailFailed = true;
+  const host = await render(workspace());
+  expect(host.textContent).toContain("Manuscript unavailable");
+  data.detailFailed = false;
+  await act(async () => [...host.querySelectorAll<HTMLButtonElement>("button")].find(node => node.textContent === "Try again")!.click());
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); });
+  expect(host.querySelector("h1")?.textContent).toBe("Team research paper");
+});
+
+it.each(["RENAME", "DELETE"])("keeps the %s form bound to the file that opened it after selection changes", async operation => {
+  const host = await render(workspace());
+  await act(async () => [...host.querySelectorAll<HTMLButtonElement>(".writing-files footer button")].find(node => node.textContent === (operation === "RENAME" ? "Rename / move" : "Delete"))!.click());
+  await act(async () => host.querySelector<HTMLButtonElement>('.writing-file[title="sections/introduction.tex"]')!.click());
+  expect(host.querySelector(".writing-file-form")?.textContent).toContain("main.tex");
+  if (operation === "RENAME") {
+    const input = host.querySelector<HTMLInputElement>('[aria-label="File path"]')!;
+    await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "renamed-main.tex"); input.dispatchEvent(new Event("input", { bubbles: true })); });
+  }
+  await act(async () => host.querySelector<HTMLFormElement>(".writing-file-form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+  expect(data.changeFile).toHaveBeenCalledWith("project", "draft", "main", { expectedVersion: 1, ...(operation === "RENAME" ? { path: "renamed-main.tex" } : { delete: true }) });
+});
+
+it("retains and disables a local visual draft when a teammate removes its source file", async () => {
+  data.userId = "writer";
+  const host = await render(workspace());
+  await act(async () => [...host.querySelectorAll<HTMLButtonElement>("button")].find(node => node.textContent === "Visual writing")!.click());
+  await act(async () => [...host.querySelectorAll<HTMLButtonElement>(".writing-visual button")].find(node => node.textContent === "Edit block")!.click());
+  const draft = host.querySelector<HTMLElement>(".writing-visual-draft")!;
+  expect(draft).not.toBeNull();
+  data.removedFiles = ["main"];
+  await act(async () => { await workspaceClient.invalidateQueries({ queryKey: ["manuscript", "writer", "project", "draft"], exact: true }); });
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); });
+  expect(host.querySelector(".writing-visual-draft")).toBe(draft);
+  expect(draft.textContent).toContain("Main source quotation");
+  expect(draft.querySelector('[contenteditable="false"]')).not.toBeNull();
+  expect([...draft.querySelectorAll<HTMLButtonElement>("button")].find(node => node.textContent === "Save block")!.disabled).toBe(true);
+  expect(host.textContent).toContain("A file was removed while this tab had unsaved edits.");
+  expect(EditorView.findFromDOM(host.querySelector<HTMLElement>(".writing-source-code-host .cm-editor")!)!.state.readOnly).toBe(true);
+  await act(async () => [...draft.querySelectorAll<HTMLButtonElement>("button")].find(node => node.textContent === "Cancel")!.click());
+  expect(host.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toBe("introduction.tex");
+});
+
+it("keeps an unfinished tracked buffer on its removed file and blocks proposal saves", async () => {
+  data.userId = "writer";
+  const host = await render(workspace());
+  await act(async () => [...host.querySelectorAll<HTMLButtonElement>("button")].find(node => node.textContent === "Track changes")!.click());
+  const proposal = EditorView.findFromDOM(host.querySelector<HTMLElement>(".writing-tracked-editing .cm-editor")!)!;
+  await act(async () => proposal.dispatch({ changes: { from: 0, insert: "Retain this proposal " } }));
+  data.removedFiles = ["main"];
+  await act(async () => { await workspaceClient.invalidateQueries({ queryKey: ["manuscript", "writer", "project", "draft"], exact: true }); });
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); });
+  expect(EditorView.findFromDOM(host.querySelector<HTMLElement>(".writing-tracked-editing .cm-editor")!)).toBe(proposal);
+  expect(proposal.state.doc.toString()).toContain("Retain this proposal");
+  expect(proposal.state.readOnly).toBe(true);
+  expect([...host.querySelectorAll<HTMLButtonElement>(".writing-tracked-editing button")].find(node => node.textContent === "Save proposal")!.disabled).toBe(true);
+  expect(host.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toBe("main.tex");
+});
+
+it("loads older comment pages and opens the complete paginated conversation", async () => {
+  const author = { id: "writer", name: "Writer" };
+  data.comments = [{ id: "new-thread", title: "Latest", body: "Latest comment", status: "OPEN", version: 1, author, context: {}, mentorRelationshipId: null, hasMoreMessages: true, messages: [{ id: "recent-reply", body: "Recent reply", author, createdAt: new Date().toISOString() }] }];
+  data.olderComments = [{ ...data.comments[0]!, id: "old-thread", body: "Older comment", hasMoreMessages: false, messages: [] }];
+  data.discussion.mockImplementation(async (_project, _thread, page) => ({ messages: { items: [{ id: `reply-${page}`, body: `Full conversation page ${page}`, author }], hasNext: page === 1 } }));
+  const host = await render(workspace());
+  await act(async () => button(host, "Comments").click());
+  await act(async () => [...host.querySelectorAll<HTMLButtonElement>("button")].find(node => node.textContent === "Load older comments")!.click());
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); });
+  expect(host.textContent).toContain("Older comment"); expect(host.textContent).toContain("Latest comment");
+  await act(async () => [...host.querySelectorAll<HTMLButtonElement>("button")].find(node => node.textContent === "View all replies")!.click());
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); });
+  expect(host.textContent).toContain("Full conversation page 1");
+  await act(async () => [...host.querySelectorAll<HTMLButtonElement>("button")].find(node => node.textContent === "Next page")!.click());
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); });
+  expect(data.discussion).toHaveBeenLastCalledWith("project", "new-thread", 2);
+  expect(host.textContent).toContain("Full conversation page 2");
+});
+
+it("retains an unsent reply when changing panels or filtering comments", async () => {
+  data.comments = [{ id: "thread", title: "Review", body: "Clarify this argument", status: "OPEN", version: 1, author: { id: "writer", name: "Writer" }, context: {}, mentorRelationshipId: null, messages: [] }];
+  const host = await render(workspace());
+  await act(async () => button(host, "Comments").click());
+  const input = host.querySelector<HTMLInputElement>(".writing-comment form input")!;
+  await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "Unsent reasoning"); input.dispatchEvent(new Event("input", { bubbles: true })); });
+  await act(async () => button(host, "Research context").click());
+  await act(async () => button(host, "Comments").click());
+  expect(host.querySelector<HTMLInputElement>(".writing-comment form input")?.value).toBe("Unsent reasoning");
+  const filter = host.querySelector<HTMLSelectElement>(".writing-context select")!;
+  await act(async () => { filter.value = "RESOLVED"; filter.dispatchEvent(new Event("change", { bubbles: true })); });
+  expect(host.querySelector<HTMLElement>(".writing-comment")?.hidden).toBe(true);
+  await act(async () => { filter.value = "ALL"; filter.dispatchEvent(new Event("change", { bubbles: true })); });
+  expect(host.querySelector<HTMLInputElement>(".writing-comment form input")?.value).toBe("Unsent reasoning");
+});
+
+it("pauses hidden comment conversations when switching mobile panes and follows desktop visibility after resizing", async () => {
+  let compact = true;
+  const media = new EventTarget();
+  Object.defineProperty(media, "matches", { get: () => compact });
+  vi.stubGlobal("matchMedia", vi.fn(() => media));
+  data.comments = [{ id: "thread", title: "Review", body: "Keep this discussion", status: "OPEN", version: 1, author: { id: "writer", name: "Writer" }, context: {}, mentorRelationshipId: null, messages: [] }];
+  const host = await render(workspace());
+  await act(async () => button(host, "Comments").click());
+  const thread = host.querySelector<HTMLElement>(".writing-comment")!;
+  expect(thread.hidden).toBe(false);
+  await act(async () => [...host.querySelectorAll<HTMLButtonElement>(".writing-mobile-tabs button")].find(node => node.textContent === "Editor")!.click());
+  expect(thread.hidden).toBe(true);
+  await act(async () => { compact = false; media.dispatchEvent(new Event("change")); });
+  expect(thread.hidden).toBe(false);
+  await act(async () => button(host, "Hide information panel").click());
+  expect(thread.hidden).toBe(true);
+  await act(async () => { compact = true; media.dispatchEvent(new Event("change")); });
+  await act(async () => [...host.querySelectorAll<HTMLButtonElement>(".writing-mobile-tabs button")].find(node => node.textContent === "Preview")!.click());
+  expect(thread.hidden).toBe(false);
+});
+
+it("keeps the unsaved tracked buffer mounted when a background metadata refresh fails", async () => {
+  data.userId = "writer";
+  const host = await render(workspace());
+  await act(async () => [...host.querySelectorAll<HTMLButtonElement>("button")].find(node => node.textContent === "Track changes")!.click());
+  const proposal = EditorView.findFromDOM(host.querySelector<HTMLElement>(".writing-tracked-editing .cm-editor")!)!;
+  await act(async () => proposal.dispatch({ changes: { from: 0, insert: "Unfinished proposal " } }));
+  data.detailFailed = true;
+  await act(async () => { await workspaceClient.invalidateQueries({ queryKey: ["manuscript", "writer", "project", "draft"], exact: true }); });
+  expect(host.querySelector(".writing-tracked-editing .cm-content")?.textContent).toContain("Unfinished proposal");
+  expect(host.textContent).not.toContain("Manuscript unavailable");
+});
+
+it("uses only the immutable source for the outline after opening a saved version", async () => {
+  data.userId = "writer";
+  const version = { id: "saved", label: "Saved version", sourceVersion: 1, createdAt: new Date().toISOString(), createdBy: { id: "writer", name: "Writer" }, checksum: "snapshot" };
+  data.versions = [version];
+  data.viewSnapshot.mockResolvedValue({ ...version, manifest: { title: "Team research paper", documentType: "RESEARCH_PAPER", mainFileId: "main", files: [{ ...file("main", "main.tex"), text: "\\section{Archived introduction}" }] } });
+  const host = await render(workspace());
+  await act(async () => button(host, "Version history").click());
+  await act(async () => [...host.querySelectorAll<HTMLAnchorElement>("a")].find(node => node.textContent?.includes("View version"))!.click());
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)); });
+  expect(host.querySelector(".writing-outline")?.textContent).toContain("Archived introduction");
+});
 
 it("mounts suggested edits when opened through the side-panel selector", async () => {
   const host = await render(workspace());

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowDown, CheckCheck, FileText, Lightbulb, Loader2, LockKeyhole, SendHorizonal, Trash2, Users, XCircle } from "lucide-react";
+import { ArrowDown, CheckCheck, FileText, Lightbulb, Loader2, SendHorizonal, Trash2, Users, XCircle } from "lucide-react";
 import { isAdminSystemRole, type ProjectTeamChatMessage } from "@trend/shared-types";
 import { Button } from "@/components/ui/button";
 import { useAuthStore } from "@/stores/auth-store";
@@ -13,9 +13,10 @@ interface ProjectTeamChatPanelProps {
   ownerId?: string;
   draft?: string;
   onDraftChange?: (value: string) => void;
+  onSent?: (content: string) => void;
 }
 
-export function ProjectTeamChatPanel({ projectId, ownerId, draft, onDraftChange }: ProjectTeamChatPanelProps) {
+export function ProjectTeamChatPanel({ projectId, ownerId, draft, onDraftChange, onSent }: ProjectTeamChatPanelProps) {
   const { t, language } = useI18n();
   const currentUser = useAuthStore((s) => s.user);
   const queryClient = useQueryClient();
@@ -25,6 +26,8 @@ export function ProjectTeamChatPanel({ projectId, ownerId, draft, onDraftChange 
   const [liveStatus, setLiveStatus] = useState<"connecting" | "live" | "reconnecting" | "offline">("connecting");
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const lastMarkedReadRef = useRef<string | null>(null);
+  const sending = useRef(false), receipt = useRef<{ content: string; key: string }>();
+  const [olderMessages, setOlderMessages] = useState<ProjectTeamChatMessage[]>([]), [historyComplete, setHistoryComplete] = useState(false);
   const queryKey = useMemo(() => ["project-team-chat", projectId, currentUser?.id] as const, [projectId, currentUser?.id]);
 
   const teamStarters = [
@@ -59,17 +62,21 @@ export function ProjectTeamChatPanel({ projectId, ownerId, draft, onDraftChange 
   });
 
   const sendMutation = useMutation({
-    mutationFn: (content: string) =>
-      projectTeamChatApi.sendMessage(projectId, content),
-    onSuccess: (sent) => {
+    mutationFn: (content: string) => {
+      if (receipt.current?.content !== content) receipt.current = { content, key: crypto.randomUUID() };
+      return projectTeamChatApi.sendMessage(projectId, content, receipt.current.key);
+    },
+    onSuccess: (sent, content) => {
       queryClient.setQueryData<ProjectTeamChatMessage[]>(queryKey, (current = []) =>
         current.some(item => item.id === sent.id) ? current.map(item => item.id === sent.id ? sent : item) : [...current, sent],
       );
-      setMessage("");
+      if (onSent) onSent(content); else setMessage("");
+      receipt.current = undefined;
       void queryClient.invalidateQueries({
         queryKey,
       });
     },
+    onSettled: () => { sending.current = false; },
   });
 
   useEffect(() => {
@@ -124,7 +131,15 @@ export function ProjectTeamChatPanel({ projectId, ownerId, draft, onDraftChange 
     },
   });
 
-  const messages = historyQuery.data ?? [];
+  const messages = useMemo(() => {
+    const merged = new Map(olderMessages.map(item => [item.id, item]));
+    for (const item of historyQuery.data ?? []) merged.set(item.id, item);
+    return [...merged.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+  }, [olderMessages, historyQuery.data]);
+  const older = useMutation({ mutationFn: () => projectTeamChatApi.listMessages(projectId, { limit: 50, beforeId: messages[0]!.id }), onSuccess: items => {
+    setOlderMessages(current => [...items, ...current]);
+    if (items.length < 50) setHistoryComplete(true);
+  } });
   const pendingUserMessage = sendMutation.isPending
     ? ({
         id: "pending-team-msg",
@@ -213,7 +228,8 @@ export function ProjectTeamChatPanel({ projectId, ownerId, draft, onDraftChange 
 
   const submit = () => {
     const text = message.trim();
-    if (!text || sendMutation.isPending || historyQuery.isError) return;
+    if (!text || sending.current || sendMutation.isPending || historyQuery.isError || historyQuery.isLoading) return;
+    sending.current = true;
     jumpToLatest();
     sendMutation.mutate(text);
   };
@@ -231,14 +247,15 @@ export function ProjectTeamChatPanel({ projectId, ownerId, draft, onDraftChange 
   return (
     <div className="project-team-chat-panel project-chat-surface">
       <div className="project-chat-context">
-        <span><LockKeyhole size={14} aria-hidden="true" />{t("Only project members can read this conversation.")}</span>
-        <span className="project-chat-connection" data-live={liveStatus === "live"} role="status">
+        <span className="project-chat-connection ml-auto" data-live={liveStatus === "live"} role="status">
           <i aria-hidden="true" />{t(liveStatusLabel(liveStatus))}
         </span>
       </div>
       <div className="project-chat-body">
         <div className="project-chat-feed-region">
         <div ref={containerRef} onScroll={onScroll} className="project-chat-feed" role="log" aria-label={t("Team messages")} aria-live="polite" aria-relevant="additions" aria-busy={historyQuery.isLoading} tabIndex={0}>
+          {!historyComplete && (olderMessages.length > 0 || (historyQuery.data?.length ?? 0) >= 50) && <Button type="button" size="sm" variant="ghost" disabled={older.isPending} onClick={() => older.mutate()}>{t(older.isPending ? "Loading…" : "Load older messages")}</Button>}
+          {older.isError && <p role="alert">{t("Could not load team messages")}</p>}
           {historyQuery.isLoading ? (
             <div className="project-chat-empty"><Loader2 className="h-5 w-5 animate-spin" /><p>{t("Loading team messages…")}</p></div>
           ) : historyQuery.isError ? (

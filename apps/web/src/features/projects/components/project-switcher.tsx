@@ -4,6 +4,7 @@ import type { IProject } from "@trend/shared-types";
 import { useI18n } from "@/i18n";
 import { PROJECT_STATUS_LABELS } from "../utils/project-directory";
 import { projectWorkspaceHref } from "../utils/project-workspace-navigation";
+import { canLeaveWorkspace } from "./workspace-common";
 
 export function ProjectSwitcher({ projects, allProjects, selectedId }: {
   projects: IProject[]; allProjects: IProject[]; selectedId?: string;
@@ -17,7 +18,7 @@ export function ProjectSwitcher({ projects, allProjects, selectedId }: {
     <div className="project-switcher-mobile">
       <label htmlFor="project-switcher-select" className="sr-only">{t("Switch project")}</label>
       <select id="project-switcher-select" value={allProjects.some(project => project._id === selectedId) ? selectedId : ""}
-        onChange={event => { if (event.target.value) navigate(projectWorkspaceHref(event.target.value, params)); }}>
+        onChange={async event => { const next = event.target.value; if (next && next !== selectedId && await canLeaveWorkspace()) navigate(projectWorkspaceHref(next, params)); }}>
         <option value="" disabled>{t("Choose a project")}</option>
         {allProjects.map(project => <option value={project._id} key={project._id}>{project.title}</option>)}
       </select>

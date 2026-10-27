@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { isAxiosError } from "axios";
 import { Link, useSearchParams } from "react-router-dom";
 import type { ResearchPlanView } from "@trend/shared-types";
 import { Check, History, Pencil, Plus } from "lucide-react";
@@ -15,10 +16,12 @@ import { PlanHistory, PlanSharing } from "./plan-history-panel";
 import "../research-plan.css";
 
 export function WorkspacePlanPanel({ projectId, mentor = false }: { projectId: string; mentor?: boolean }) {
+  const { t } = useI18n();
   const [params, setParams] = useSearchParams();
   const revision = params.get("revision");
   const plan = useWorkspaceResource(projectId, "plan", () => workspaceApi.plan(projectId, revision ?? undefined), revision);
   if (plan.isLoading) return <WorkspaceLoading />;
+  if (mentor && isAxiosError(plan.error) && plan.error.response?.data?.error?.message === "No research plan has been shared with you") return <div className="space-y-3 rounded-lg border border-dashed p-6" role="status" data-no-i18n><h2 className="text-lg font-semibold">{t("No shared plan yet")}</h2><p className="max-w-2xl text-sm leading-6 text-muted-foreground">{t("Ask the team leader to create a plan version and share it with your mentoring role. Their working draft remains private until shared.")}</p><Button variant="outline" size="sm" onClick={() => void plan.refetch()}>{t("Check for a shared plan")}</Button></div>;
   if (!plan.data || plan.isError) return <WorkspaceError error={plan.error} retry={() => void plan.refetch()} />;
   if (!mentor && !params.has("question")) return <ProjectReadme key={`${projectId}:${revision ?? "draft"}`} projectId={projectId} view={plan.data} />;
   return <LivingPlan key={`${projectId}:${revision ?? "draft"}`} projectId={projectId} mentor={mentor} view={plan.data} revision={revision} onRevision={async (id, saved = false) => {

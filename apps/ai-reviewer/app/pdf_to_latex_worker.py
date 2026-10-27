@@ -8,10 +8,14 @@ def main():
     try:
         os.environ["OPENBLAS_NUM_THREADS"] = "1"
         os.environ["OMP_NUM_THREADS"] = "1"
-        import resource
-        resource.setrlimit(resource.RLIMIT_AS, (1_500_000_000, 1_500_000_000))
-        resource.setrlimit(resource.RLIMIT_CPU, (240, 240))
-        resource.setrlimit(resource.RLIMIT_FSIZE, (25_000_000, 25_000_000))
+        # resource is POSIX-only. Windows still uses the parent process's
+        # timeout, input/output size bounds and single-conversion semaphore.
+        if os.name == "posix":
+            import resource
+            resource.setrlimit(resource.RLIMIT_AS, (1_500_000_000, 1_500_000_000))
+            resource.setrlimit(resource.RLIMIT_CPU, (240, 240))
+            resource.setrlimit(resource.RLIMIT_FSIZE, (25_000_000, 25_000_000))
+        sys.stdout.reconfigure(encoding="utf-8")
         if sys.argv[1] == "compare":
             import base64
             from app.pdf_comparison import compare_pdfs

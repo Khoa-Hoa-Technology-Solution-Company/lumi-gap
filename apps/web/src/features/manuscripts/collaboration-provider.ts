@@ -25,12 +25,15 @@ export class ManuscriptProvider {
   private stopped = false;
   private retry: ReturnType<typeof setTimeout> | undefined;
   private renewal: ReturnType<typeof setTimeout> | undefined;
+  private responseTimer: ReturnType<typeof setTimeout> | undefined;
+  private livenessTimer: ReturnType<typeof setTimeout> | undefined;
   private failures = 0;
   private listeners = new Set<() => void>();
   private controller = new AbortController();
   private unsubscribeAuth: () => void;
   private recoveryRecords: Awaited<ReturnType<typeof manuscriptRecovery.load>> = [];
   private recoveryWork: Promise<unknown> = Promise.resolve();
+  private recoveryRevision = 0;
   private get recoveryScope() { return `${this.userId}:${this.projectId}:${this.manuscriptId}:${this.fileId}`; }
   private state: State = { status: "CONNECTING", canWrite: false, ready: false, pending: 0, sequence: 0, fileVersion: 1, error: null };
   constructor(readonly projectId: string, readonly manuscriptId: string, readonly fileId: string, readonly userId: string, private metadata: () => void) {
@@ -57,10 +60,14 @@ export class ManuscriptProvider {
     await this.connect();
   }
   private persistRecovery() {
+    const revision = ++this.recoveryRevision;
     const queue = this.queue.map(update => ({ ...update }));
     const recovered = [...this.recoveryRecords];
     const record = queue.length ? { id: this.clientSessionId, scope: this.recoveryScope, user: this.userId, updated: Date.now(), state: encodeBytes(Y.encodeStateAsUpdate(this.doc)), queue } : null;
     this.recoveryWork = this.recoveryWork.then(async () => {
+      // A newer complete checkpoint supersedes a queued local write. Keep the
+      // IndexedDB queue bounded when typing is faster than disk transactions.
+      if (revision !== this.recoveryRevision) return;
       if (record) await manuscriptRecovery.save(record);
       else { await manuscriptRecovery.remove(this.clientSessionId); await Promise.all(recovered.map(record => manuscriptRecovery.removeIfUnchanged(record))); }
     }).catch(() => { if (!this.stopped) this.set({ recoveryError: true }); });
@@ -80,7 +87,27 @@ export class ManuscriptProvider {
   };
   private flush() {
     if (this.sent || !this.state.ready || !this.state.canWrite || this.socket?.readyState !== WebSocket.OPEN || !this.queue.length || this.stopped) return;
-    this.sent = true; this.socket.send(JSON.stringify(this.queue[0]));
+    this.sent = true; this.socket.send(JSON.stringify(this.queue[0])); this.expectResponse(this.socket);
+  }
+  private expectResponse(socket: WebSocket) {
+    clearTimeout(this.responseTimer);
+    this.responseTimer = setTimeout(() => {
+      if (this.stopped || this.socket !== socket) return;
+      this.set({ ready: false, error: "NETWORK_INTERRUPTED" });
+      // Replay the same receipt after reconnect; a missing reply is not proof
+      // that the transaction failed or permission to discard the local edit.
+      socket.close(4000, "Synchronization response timed out");
+    }, 10000);
+  }
+  private watchConnection(socket: WebSocket) {
+    clearTimeout(this.livenessTimer);
+    // The gateway sends permission heartbeats every five seconds. An idle
+    // connection must also recover when it silently stops receiving updates.
+    this.livenessTimer = setTimeout(() => {
+      if (this.stopped || this.socket !== socket) return;
+      this.set({ ready: false, error: "NETWORK_INTERRUPTED" });
+      socket.close(4000, "Collaboration heartbeat timed out");
+    }, 15000);
   }
   private async connect() {
     if (this.stopped || useAuthStore.getState().user?.id !== this.userId) return;
@@ -92,25 +119,29 @@ export class ManuscriptProvider {
       const url = new URL(`${base.pathname.replace(/\/$/, "")}/manuscript-collaboration`, base.origin);
       url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
       const socket = new WebSocket(url); this.socket = socket;
+      this.expectResponse(socket);
       socket.onopen = () => socket.send(JSON.stringify({ type: "hello", ticket: response.data.data.ticket, clientId: this.doc.clientID }));
       socket.onmessage = event => {
         if (this.stopped || this.socket !== socket) return;
         try {
           const frame = JSON.parse(String(event.data));
+          this.watchConnection(socket);
           if (frame.type === "state") {
+            clearTimeout(this.responseTimer);
             Y.applyUpdate(this.doc, decodeBytes(frame.update), this);
             this.sent = false; this.failures = 0;
             this.awareness.setLocalStateField("user", frame.user);
-            this.set({ ready: true, canWrite: frame.canWrite, sequence: frame.sequence, fileVersion: frame.fileVersion, status: !frame.canWrite ? "READ_ONLY" : this.queue.length ? "SYNCING" : "SAVED", error: null });
+            this.set({ ready: true, canWrite: frame.canWrite, sequence: Math.max(this.state.sequence, frame.sequence), fileVersion: Math.max(this.state.fileVersion, frame.fileVersion), status: !frame.canWrite ? "READ_ONLY" : this.queue.length ? "SYNCING" : "SAVED", error: null });
             this.onAwareness({ added: [], updated: [this.doc.clientID] }, null); this.flush();
           } else if (frame.type === "receipt") {
             if (frame.clientSessionId !== this.queue[0]?.clientSessionId || frame.clientSequence !== this.queue[0]?.clientSequence) return;
+            clearTimeout(this.responseTimer);
             Y.applyUpdate(this.doc, decodeBytes(frame.update), this);
             this.queue.shift(); this.sent = false;
             this.persistRecovery();
-            this.set({ sequence: Math.max(this.state.sequence, frame.sequence), fileVersion: frame.fileVersion, status: this.queue.length ? "SYNCING" : "SAVED", error: null }); this.flush();
+            this.set({ sequence: Math.max(this.state.sequence, frame.sequence), fileVersion: Math.max(this.state.fileVersion, frame.fileVersion), status: !this.state.canWrite ? "READ_ONLY" : this.queue.length ? "SYNCING" : "SAVED", error: null }); this.flush();
           } else if (frame.type === "update") {
-            Y.applyUpdate(this.doc, decodeBytes(frame.update), this); this.set({ sequence: Math.max(this.state.sequence, frame.sequence), fileVersion: frame.fileVersion });
+            Y.applyUpdate(this.doc, decodeBytes(frame.update), this); this.set({ sequence: Math.max(this.state.sequence, frame.sequence), fileVersion: Math.max(this.state.fileVersion, frame.fileVersion) });
           } else if (frame.type === "presence") {
             const encoder = encoding.createEncoder(); encoding.writeVarUint(encoder, frame.entries.length);
             for (const entry of frame.entries) { encoding.writeVarUint(encoder, entry.clientId); encoding.writeVarUint(encoder, entry.clock); encoding.writeVarString(encoder, JSON.stringify(entry.state)); }
@@ -122,7 +153,7 @@ export class ManuscriptProvider {
       };
       socket.onclose = () => {
         if (this.socket !== socket || this.stopped) return;
-        clearTimeout(this.renewal); this.sent = false;
+        clearTimeout(this.renewal); clearTimeout(this.responseTimer); clearTimeout(this.livenessTimer); this.sent = false;
         removeAwarenessStates(this.awareness, [...this.awareness.getStates().keys()].filter(id => id !== this.doc.clientID), this);
         this.set({ ready: false, status: navigator.onLine ? "RECONNECTING" : "OFFLINE" });
         this.retry = setTimeout(() => void this.connect(), Math.min(1000 * 2 ** this.failures++, 10000));
@@ -145,6 +176,6 @@ export class ManuscriptProvider {
     });
   }
   destroy() {
-    if (this.stopped) return; this.stopped = true; this.controller.abort(); clearTimeout(this.retry); clearTimeout(this.renewal); this.socket?.close(); this.unsubscribeAuth(); this.doc.off("update", this.onUpdate); this.awareness.off("update", this.onAwareness); this.undoManager.destroy(); this.awareness.destroy(); this.doc.destroy(); this.listeners.clear();
+    if (this.stopped) return; this.stopped = true; this.controller.abort(); clearTimeout(this.retry); clearTimeout(this.renewal); clearTimeout(this.responseTimer); clearTimeout(this.livenessTimer); this.socket?.close(); this.unsubscribeAuth(); this.doc.off("update", this.onUpdate); this.awareness.off("update", this.onAwareness); this.undoManager.destroy(); this.awareness.destroy(); this.doc.destroy(); this.listeners.clear();
   }
 }

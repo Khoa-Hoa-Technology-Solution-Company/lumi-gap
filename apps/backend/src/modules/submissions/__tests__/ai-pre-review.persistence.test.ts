@@ -48,7 +48,7 @@ describe.sequential("AI pre-review run by the ai-jobs worker (PostgreSQL)", () =
   beforeAll(async () => {
     vi.spyOn(auditService, "log").mockResolvedValue(undefined);
     vi.spyOn(aiReviewerClient, "preReview").mockResolvedValue(aiResponse);
-    const user = await prisma.user.create({ data: { fullName: "Pre-review user", email: `pre-review-${marker}@example.test` } });
+    const user = await prisma.user.create({ data: { fullName: "Pre-review user", email: `pre-review-${marker}@example.test`, systemRole: "ADMIN" } });
     userId = user.id;
     projectId = (await createProjectFixture({ data: { title: `Pre-review ${marker.slice(0, 8)}`, ownerId: userId } })).id;
   });
@@ -144,5 +144,37 @@ describe.sequential("AI pre-review run by the ai-jobs worker (PostgreSQL)", () =
     await submissionService.failAiPreReview(record.id);
 
     expect((await prisma.aiPreReview.findUniqueOrThrow({ where: { id: record.id } })).status).toBe("COMPLETED");
+  });
+
+  it("rejects new AI jobs and cancels queued jobs when the project is archived", async () => {
+    const submission = await createSubmission("submitted");
+    const record = await queuedRecord(submission.id);
+    await prisma.project.update({ where: { id: projectId }, data: { status: "ARCHIVED" } });
+    vi.mocked(aiJobsQueue.add).mockClear();
+    vi.mocked(aiReviewerClient.preReview).mockClear();
+    try {
+      await expect(submissionService.runAiPreReview(submission.id, userId, "admin")).rejects.toThrow("Archived projects are read-only");
+      expect(aiJobsQueue.add).not.toHaveBeenCalled();
+      await submissionService.processAiPreReview({ preReviewId: record.id });
+      expect((await prisma.aiPreReview.findUniqueOrThrow({ where: { id: record.id } })).status).toBe("CANCELLED");
+      expect(aiReviewerClient.preReview).not.toHaveBeenCalled();
+    } finally {
+      await prisma.project.update({ where: { id: projectId }, data: { status: "ACTIVE" } });
+    }
+  });
+
+  it("pins queued analysis to its input revision when a newer version is uploaded", async () => {
+    const submission = await createSubmission("submitted");
+    const first = await prisma.submissionRevision.create({ data: { submissionId: submission.id, revisionNumber: 1, uploadedById: userId, contentType: "MARKDOWN", contentSnapshot: "Original manuscript", sizeBytes: 19 } });
+    await prisma.submission.update({ where: { id: submission.id }, data: { currentRevisionId: first.id } });
+    const queued = await submissionService.runAiPreReview(submission.id, userId, "admin");
+    expect(queued).toMatchObject({ sourceRevisionId: first.id, sourceRevisionNumber: 1 });
+    const second = await prisma.submissionRevision.create({ data: { submissionId: submission.id, revisionNumber: 2, uploadedById: userId, contentType: "MARKDOWN", contentSnapshot: "Updated manuscript", sizeBytes: 18 } });
+    await prisma.submission.update({ where: { id: submission.id }, data: { currentRevisionId: second.id, currentRevisionNumber: 2, status: "revised" } });
+    vi.mocked(aiReviewerClient.preReview).mockClear();
+    await submissionService.processAiPreReview({ preReviewId: queued.id });
+    expect(aiReviewerClient.preReview).toHaveBeenCalledWith(expect.objectContaining({ manuscript_text: "Original manuscript" }));
+    expect((await submissionService.listAiPreReviews(submission.id, userId, "admin"))[0]).toMatchObject({ status: "COMPLETED", sourceRevisionId: first.id, sourceRevisionNumber: 1 });
+    expect((await prisma.submission.findUniqueOrThrow({ where: { id: submission.id } })).status).toBe("revised");
   });
 });

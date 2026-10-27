@@ -22,7 +22,6 @@ pipeline {
     BACKEND_IMAGE = 'user1-liemresearch-backend'
     WEB_IMAGE = 'user1-liemresearch-web'
     E2E_IMAGE = 'user1-liemresearch-e2e'
-    PAPER_VECTOR_INDEX_NAME = 'paper_vector_index_v2'
     BACKEND_CONTAINER = 'user1-liemresearch-backend'
     WEB_CONTAINER = 'user1-liemresearch-web'
     REDIS_IMAGE = 'redis:7-alpine'
@@ -159,7 +158,7 @@ pipeline {
       }
     }
 
-    stage('Ensure filtered vector index') {
+    stage('Apply and verify PostgreSQL migrations') {
       steps {
         withCredentials([string(credentialsId: 'lumigap-backend-env-b64', variable: 'BACKEND_ENV_B64')]) {
           sh '''
@@ -171,17 +170,15 @@ pipeline {
               --network "$APP_NETWORK" \
               --env-file .env.runtime \
               -e NODE_ENV=production \
-              -e MONGODB_VECTOR_INDEX_NAME="$PAPER_VECTOR_INDEX_NAME" \
               "$BACKEND_IMAGE:$IMAGE_TAG" \
-              pnpm --filter backend mongo:ensure-paper-vector-index-v2
+              pnpm --filter backend db:migrate:deploy
 
             docker run --rm \
               --network "$APP_NETWORK" \
               --env-file .env.runtime \
               -e NODE_ENV=production \
-              -e MONGODB_VECTOR_INDEX_NAME="$PAPER_VECTOR_INDEX_NAME" \
               "$BACKEND_IMAGE:$IMAGE_TAG" \
-              pnpm --filter backend mongo:vector-smoke
+              pnpm --filter backend db:migrate:status
           '''
         }
       }
@@ -204,7 +201,6 @@ pipeline {
               -e NODE_ENV=production \
               -e PORT=4000 \
               -e CORS_ORIGIN=https://lumigap.uk \
-              -e MONGODB_VECTOR_INDEX_NAME="$PAPER_VECTOR_INDEX_NAME" \
               -e GOOGLE_CALLBACK_URL=https://api.lumigap.uk/api/v1/auth/google/callback \
               -e TRANSLATION_PROVIDER=libretranslate \
               -e LIBRETRANSLATE_URL=http://libretranslate:5000 \
@@ -237,7 +233,6 @@ pipeline {
               -e NODE_ENV=production \
               -e PORT=4000 \
               -e CORS_ORIGIN=https://lumigap.uk \
-              -e MONGODB_VECTOR_INDEX_NAME="$PAPER_VECTOR_INDEX_NAME" \
               -e GOOGLE_CALLBACK_URL=https://api.lumigap.uk/api/v1/auth/google/callback \
               -e TRANSLATION_PROVIDER=libretranslate \
               -e LIBRETRANSLATE_URL=http://libretranslate:5000 \
@@ -295,7 +290,6 @@ pipeline {
                 --network "$APP_NETWORK" \
                 --env-file .env.runtime \
                 -e NODE_ENV=production \
-                -e MONGODB_VECTOR_INDEX_NAME="$PAPER_VECTOR_INDEX_NAME" \
                 "$BACKEND_IMAGE:$IMAGE_TAG" \
                 pnpm --filter backend "$command"
             done

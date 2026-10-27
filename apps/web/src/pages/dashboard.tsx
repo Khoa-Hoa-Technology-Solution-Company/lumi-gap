@@ -278,7 +278,7 @@ export function DashboardPage() {
               </div>
               <Button
                 onClick={() => navigate("/admin")}
-                className="w-full sm:w-auto h-9 px-4 bg-slate-800 hover:bg-slate-900 text-white dark:bg-zinc-800 dark:hover:bg-zinc-700 font-extrabold rounded-full text-xs shadow gap-1.5 flex justify-center items-center"
+                className="w-full sm:w-auto h-9 px-4 bg-primary hover:bg-primary/90 text-primary-foreground font-bold rounded-full text-xs shadow gap-1.5 flex justify-center items-center transition-all hover:shadow-md hover:-translate-y-0.5"
               >
                 Open Admin Overview <ArrowRight className="w-3.5 h-3.5" />
               </Button>

@@ -1,4 +1,4 @@
-import { useDeferredValue, useMemo, useState } from "react";
+import { useDeferredValue, useMemo, useRef, useState } from "react";
 import { BookOpenCheck, CalendarDays, Check, Search, Send, UserRoundCheck } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { useCreateReviewRequest, useReviewerCandidates, useReviewTemplates } from "@/features/reviews";
+
+import { useI18n } from "@/i18n";
 
 interface SubmitReviewDialogProps {
   reportId?: string;
@@ -22,6 +24,8 @@ const DEFAULT_DUE_DAYS = 14;
 const MAX_DUE_DAYS = 180; // backend limit
 
 export function SubmitReviewDialog({ reportId, submissionId, artifactTitle, artifactType, trigger, onSubmitted }: SubmitReviewDialogProps) {
+  const { t } = useI18n();
+  const sending = useRef(false);
   const [open, setOpen] = useState(false);
   const [templateVersionId, setTemplateVersionId] = useState("");
   const [reviewerId, setReviewerId] = useState("");
@@ -41,9 +45,23 @@ export function SubmitReviewDialog({ reportId, submissionId, artifactTitle, arti
   const selectedTemplate = (templates.data ?? []).find((item) => item.activeVersion?.id === templateVersionId);
   const selectedReviewer = (reviewers.data ?? []).find((item) => item.id === reviewerId);
 
+  const feedbackPrompts = [
+    { label: "Overall feedback", text: "Please give overall feedback on the manuscript and suggest the most important improvements." },
+    { label: "Research methods", text: "Please review whether the research methods fit the research question." },
+    { label: "Claims and evidence", text: "Please check the reasoning, supporting evidence and citations." },
+  ];
+  const toggleFocus = (text: string) => setMessage(current => {
+    const lines = current.split("\n");
+    if (lines.includes(text)) return lines.filter(line => line !== text).join("\n");
+    const next = current ? `${current}\n${text}` : text;
+    return next.length <= 3000 ? next : current;
+  });
+
   async function submit() {
+    if (sending.current || create.isPending) return;
     if (!templateVersionId || !reviewerId) return toast.error("Select a review template and reviewer");
     if (!dueAt) return toast.error("Select a due date for the review");
+    sending.current = true;
     try {
       await create.mutateAsync({
         reportId, submissionId, reviewerId, templateVersionId,
@@ -56,7 +74,7 @@ export function SubmitReviewDialog({ reportId, submissionId, artifactTitle, arti
     } catch (error) {
       const message = (error as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message;
       toast.error(message || "Could not send this review request");
-    }
+    } finally { sending.current = false; }
   }
 
   return <Dialog open={open} onOpenChange={setOpen}>
@@ -76,7 +94,16 @@ export function SubmitReviewDialog({ reportId, submissionId, artifactTitle, arti
           {selectedReviewer && !selectedReviewer.availableForReview ? <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">This reviewer has the required capability but is not currently advertising open availability. They may still decline.</p> : null}
         </fieldset>
 
-        <div className="grid gap-4 sm:grid-cols-2"><label className="text-sm font-medium">Optional message<textarea value={message} onChange={(event) => setMessage(event.target.value)} maxLength={3000} className="mt-2 min-h-24 w-full rounded-md border bg-background px-3 py-2 text-sm" placeholder="Context or focus for the reviewer" /></label><label className="text-sm font-medium">Due date<div className="relative mt-2"><CalendarDays className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input type="date" required min={dateInput(0)} max={dateInput(MAX_DUE_DAYS - 1)} value={dueAt} onChange={(event) => setDueAt(event.target.value)} className="pl-9" /></div><span className="mt-1 block text-xs font-normal text-muted-foreground">Once the reviewer accepts, you can only cancel after this date.</span></label></div>
+        <fieldset disabled={create.isPending} className="min-w-0 space-y-3">
+          <label htmlFor="review-request-message" className="text-sm font-medium">{t("What would you like feedback on?")} <span className="font-normal text-muted-foreground">{t("Optional")}</span></label>
+          <div className="flex flex-wrap gap-2" role="group" aria-label={t("Feedback suggestions")}>{feedbackPrompts.map(prompt => {
+            const text = t(prompt.text), selected = message.split("\n").includes(text);
+            return <button key={prompt.label} type="button" aria-pressed={selected} disabled={!selected && (message.length + text.length + (message ? 1 : 0) > 3000)} onClick={() => toggleFocus(text)} className={`rounded-full border px-3 py-2 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 ${selected ? "border-primary bg-primary/10 text-primary" : "border-input hover:bg-muted"}`}>{t(prompt.label)}</button>;
+          })}</div>
+          <textarea id="review-request-message" value={message} onChange={event => setMessage(event.target.value)} maxLength={3000} rows={4} className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm leading-6 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" placeholder={t("For example: Please focus on our methodology and whether the conclusions are supported by the data.")} />
+          <p className="text-xs leading-5 text-muted-foreground">{t("Choose a suggestion or write freely. You can edit the message before sending; it is saved with the review request.")}</p>
+        </fieldset>
+        <div className="grid gap-4 sm:grid-cols-2"><label className="text-sm font-medium">Due date<div className="relative mt-2"><CalendarDays className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input type="date" required min={dateInput(0)} max={dateInput(MAX_DUE_DAYS - 1)} value={dueAt} onChange={(event) => setDueAt(event.target.value)} className="pl-9" /></div><span className="mt-1 block text-xs font-normal text-muted-foreground">Once the reviewer accepts, you can only cancel after this date.</span></label></div>
       </div>
       <DialogFooter><Button type="button" variant="ghost" onClick={() => setOpen(false)}>Cancel</Button><Button type="button" onClick={submit} disabled={!templateVersionId || !reviewerId || create.isPending}>{create.isPending ? "Sending…" : "Send review request"}</Button></DialogFooter>
     </DialogContent>

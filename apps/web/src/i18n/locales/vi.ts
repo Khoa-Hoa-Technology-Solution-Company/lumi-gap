@@ -1,3 +1,4 @@
+import { submissionWorkflowVi } from "./submission-workflow";
 import { confirmationsVi } from "./confirmations";
 import { researchTasksVi } from "./research-tasks";
 import { livingPlanVi } from "./living-plan";
@@ -2518,4 +2519,5 @@ export const vi: Record<keyof typeof en, string> = {
   "Left": "Trái",
   "Center": "Giữa",
   "Right": "Phải",
+  ...submissionWorkflowVi,
 };

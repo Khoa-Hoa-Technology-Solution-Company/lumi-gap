@@ -2,7 +2,24 @@ import axios, { type AxiosError, type InternalAxiosRequestConfig } from "axios";
 import { useAuthStore } from "@/stores/auth-store";
 
 declare module "axios" {
-  interface AxiosRequestConfig { expectedUserId?: string; }
+  interface AxiosRequestConfig {
+    expectedUserId?: string;
+    _authSession?: { version: number; userId: string | null };
+    _accessToken?: string;
+    _retry?: boolean;
+  }
+}
+
+type AuthSession = NonNullable<InternalAxiosRequestConfig["_authSession"]>;
+
+function currentSession(): AuthSession {
+  const state = useAuthStore.getState();
+  return { version: state.sessionVersion, userId: state.user?.id ?? null };
+}
+
+function ownsSession(session: AuthSession): boolean {
+  const current = currentSession();
+  return current.version === session.version && current.userId === session.userId;
 }
 
 const rawBaseURL = import.meta.env.VITE_API_BASE?.trim();
@@ -15,15 +32,20 @@ if (import.meta.env.DEV) {
 }
 
 api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
+  if (config._authSession && !ownsSession(config._authSession)) {
+    throw new axios.CanceledError("The original sign-in session has ended.");
+  }
   if (config.expectedUserId && useAuthStore.getState().user?.id !== config.expectedUserId) {
     throw new axios.CanceledError("Delivery paused until the original account signs in.");
   }
   const token = useAuthStore.getState().tokens?.accessToken;
+  config._authSession ??= currentSession();
+  config._accessToken = token;
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
 
-let refreshPromise: Promise<string | null> | null = null;
+let activeRefresh: { session: AuthSession; promise: Promise<string | null> } | null = null;
 
 function isProtectedRequest(config?: InternalAxiosRequestConfig): boolean {
   const url = config?.url ?? "";
@@ -38,21 +60,30 @@ function isProtectedRequest(config?: InternalAxiosRequestConfig): boolean {
 api.interceptors.response.use(
   (r) => r,
   async (error: AxiosError) => {
-    const original = error.config as (InternalAxiosRequestConfig & { _retry?: boolean }) | undefined;
-    const refreshToken = useAuthStore.getState().tokens?.refreshToken;
+    const original = error.config;
+    const session = original?._authSession;
+    if (!session || !ownsSession(session)) return Promise.reject(error);
+    const tokens = useAuthStore.getState().tokens;
+    const refreshToken = tokens?.refreshToken;
     if (original?.expectedUserId && useAuthStore.getState().user?.id !== original.expectedUserId) return Promise.reject(error);
 
     if (error.response?.status === 401 && original && refreshToken && !original._retry && isProtectedRequest(original)) {
       original._retry = true;
-      refreshPromise ??= refreshAccessToken(refreshToken).finally(() => {
-        refreshPromise = null;
-      });
-      const newAccess = await refreshPromise;
+      // A concurrent request may already have rotated these tokens.
+      if (tokens.accessToken && tokens.accessToken !== original._accessToken) return api(original);
+      if (!activeRefresh || !ownsSession(activeRefresh.session)) {
+        const refresh = { session, promise: refreshAccessToken(refreshToken, session) };
+        activeRefresh = refresh;
+        void refresh.promise.finally(() => {
+          if (activeRefresh === refresh) activeRefresh = null;
+        });
+      }
+      const newAccess = await activeRefresh.promise;
+      if (!ownsSession(session)) return Promise.reject(error);
       if (newAccess) {
         original.headers.Authorization = `Bearer ${newAccess}`;
         return api(original);
       }
-      useAuthStore.getState().clear();
     }
 
     // A legacy/missing refresh token must not leave the app stuck with a
@@ -65,11 +96,12 @@ api.interceptors.response.use(
   },
 );
 
-async function refreshAccessToken(refreshToken: string): Promise<string | null> {
+async function refreshAccessToken(refreshToken: string, session: AuthSession): Promise<string | null> {
   try {
     const res = await axios.post(`${API_BASE_URL}/auth/refresh`, { refreshToken });
     const tokens = res.data?.data;
-    if (tokens) {
+    if (ownsSession(session) && useAuthStore.getState().tokens?.refreshToken === refreshToken
+      && typeof tokens?.accessToken === "string" && typeof tokens?.refreshToken === "string") {
       useAuthStore.getState().setTokens(tokens);
       return tokens.accessToken as string;
     }

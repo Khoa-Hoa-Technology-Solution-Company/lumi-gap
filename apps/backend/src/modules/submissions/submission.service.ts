@@ -1,4 +1,4 @@
-import { currentProjectMembership } from "../authorization/project-membership.js";
+import { currentProjectIds, currentProjectMembership } from "../authorization/project-membership.js";
 import crypto from "node:crypto";
 import type { UserRole } from "@trend/shared-types";
 import { AppError } from "../../common/exceptions/app-error.js";
@@ -15,6 +15,8 @@ import { retrieve } from "../retrieval/retriever.js";
 import { logger } from "../../infrastructure/logger.js";
 import { buildManuscriptText, MAX_MANUSCRIPT_CHARS } from "./pre-review-input.js";
 import { aiJobsQueue } from "../../infrastructure/queue.js";
+import type { Prisma } from "../../generated/prisma/client.js";
+import { lockProjectAccounts } from "../projects/project-transaction.js";
 
 type UploadedPdf = { buffer: Buffer; originalname: string; size: number };
 /** Job name on the ai-jobs queue that runs one AI pre-review. */
@@ -44,8 +46,7 @@ async function resolveUsers(inputs: string[]) {
   return users;
 }
 
-async function getProjectForAccess(projectInput: string, userId: string, role: UserRole) {
-  const prisma = getPrisma();
+async function getProjectForAccess(projectInput: string, userId: string, role: UserRole, prisma: Prisma.TransactionClient = getPrisma()) {
   const project = await prisma.project.findFirst({ where: idWhere(projectInput) });
   if (!project) throw AppError.notFound("Project not found");
   if (project.ownerId !== userId && !hasPermission(role, "review:assign")) {
@@ -77,13 +78,12 @@ async function assertSubmissionAccess(submission: SubmissionRow, userId: string,
   throw AppError.forbidden("You do not have access to this submission");
 }
 
-async function canManageSubmission(submission: SubmissionRow, userId: string, role: UserRole) {
-  const state = await getPrisma().project.findUnique({ where: { id: submission.projectId }, select: { status: true } });
+async function canManageSubmission(submission: SubmissionRow, userId: string, role: UserRole, prisma: Prisma.TransactionClient = getPrisma()) {
+  const state = await prisma.project.findUnique({ where: { id: submission.projectId }, select: { status: true } });
   if (!state || state.status === "ARCHIVED") return false;
   if (hasPermission(role, "review:assign")) return true;
-  if (!await currentProjectMembership(submission.projectId, userId)) return false;
+  if (!await currentProjectMembership(submission.projectId, userId, prisma)) return false;
   if (submission.createdById === userId) return true;
-  const prisma = getPrisma();
   const [author, project] = await Promise.all([
     prisma.submissionAuthor.findUnique({ where: { submissionId_userId: { submissionId: submission.id, userId } } }),
     prisma.project.findUnique({ where: { id: submission.projectId } }),
@@ -106,7 +106,14 @@ async function persistFile(file: UploadedPdf) {
 
 function submissionDto(row: SubmissionRow) { return { ...row, _id: publicDatabaseId(row), id: publicDatabaseId(row), projectId: row.projectId, createdBy: row.createdById, abstract: row.abstractText, currentRevisionId: row.currentRevisionId ?? undefined }; }
 function revisionDto(row: { id: string; legacyMongoId: string | null; submissionId: string; revisionNumber: number; uploadedById: string; responseToReview: string | null; checksumSha256: string | null; sizeBytes: number; originalFileName: string | null; storageUri?: string | null; contentSnapshot?: string | null; contentType?: string; createdAt: Date; updatedAt: Date }) { return { ...row, _id: publicDatabaseId(row), id: publicDatabaseId(row), storageUri: undefined, uploadedBy: row.uploadedById, responseToReview: row.responseToReview ?? undefined }; }
-function aiReviewDto(row: { id: string; legacyMongoId: string | null; [key: string]: unknown }) { return { ...row, id: publicDatabaseId(row) }; }
+// Keep the immutable input revision alongside the existing structured output, including while queued.
+function preReviewSource(raw: unknown): { sourceRevisionId?: string; sourceRevisionNumber?: number } {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const value = raw as Record<string, unknown>;
+  return typeof value.sourceRevisionId === "string" && typeof value.sourceRevisionNumber === "number"
+    ? { sourceRevisionId: value.sourceRevisionId, sourceRevisionNumber: value.sourceRevisionNumber } : {};
+}
+function aiReviewDto(row: { id: string; legacyMongoId: string | null; [key: string]: unknown }) { return { ...row, ...preReviewSource(row.rawStructuredOutput), id: publicDatabaseId(row) }; }
 
 async function hydrateSubmission(submission: SubmissionRow) {
   const prisma = getPrisma();
@@ -126,7 +133,7 @@ async function loadManuscriptText(submission: { id: string; currentRevisionId: s
       ? await getPrisma().submissionRevision.findUnique({ where: { id: submission.currentRevisionId } })
       : await getPrisma().submissionRevision.findFirst({ where: { submissionId: submission.id }, orderBy: { revisionNumber: "desc" } });
     if (!revision) return undefined;
-    if (revision.contentType === "MARKDOWN" && revision.contentSnapshot) return revision.contentSnapshot.slice(0, MAX_MANUSCRIPT_CHARS);
+    if (["MARKDOWN", "LATEX"].includes(revision.contentType) && revision.contentSnapshot) return revision.contentSnapshot.slice(0, MAX_MANUSCRIPT_CHARS);
     if (!revision.storageUri) return undefined;
     const extracted = await extractPdfPages(await readStoredPdf(revision.storageUri));
     return buildManuscriptText(extracted.pages) || undefined;
@@ -146,6 +153,19 @@ async function loadRelatedEvidence(submission: { title: string; abstractText: st
   }
 }
 
+async function preReviewUnavailableReason(submission: SubmissionRow | null, requesterId: string, prisma: Prisma.TransactionClient = getPrisma()) {
+  if (!submission || AI_PRE_REVIEW_CLOSED_STATUSES.includes(submission.status)) return "The submission was closed before the pre-review completed.";
+  const [project, requester] = await Promise.all([
+    prisma.project.findUnique({ where: { id: submission.projectId } }),
+    prisma.user.findUnique({ where: { id: requesterId } }),
+  ]);
+  if (!project || project.status === "ARCHIVED") return "The project was archived before the pre-review completed.";
+  if (!requester?.isActive || requester.accountStatus !== "ACTIVE") return "The requester no longer has access to this submission.";
+  if (requester.systemRole === "ADMIN") return null;
+  if (!await currentProjectMembership(submission.projectId, requesterId, prisma) || !await prisma.submissionAuthor.findUnique({ where: { submissionId_userId: { submissionId: submission.id, userId: requesterId } } })) return "The requester no longer has access to this submission.";
+  return null;
+}
+
 export const submissionService = {
   async create(input: CreateSubmissionInput, file: UploadedPdf, actorInput: string, actorRole: UserRole) {
     const actor = await resolveUser(actorInput); const project = await getProjectForAccess(input.projectId, actor.id, actorRole);
@@ -157,6 +177,9 @@ export const submissionService = {
     const { checksumSha256, stored } = await persistFile(file);
     try {
       const result = await getPrisma().$transaction(async (tx) => {
+        await lockProjectAccounts(tx, [actor.id], project.id);
+        const liveProject = await getProjectForAccess(project.id, actor.id, actorRole, tx);
+        if (liveProject.status === "ARCHIVED") throw AppError.conflict("Archived projects are read-only");
         const submission = await tx.submission.create({ data: { projectId: project.id, createdById: actor.id, title: input.title, abstractText: input.abstract, submissionType: input.submissionType, researchField: input.researchField, researchGoal: input.researchGoal, researchQuestions: ids(input.researchQuestions), claimedResearchGap: input.claimedResearchGap, claimedContribution: input.claimedContribution, methodology: input.methodology, scope: input.scope, keywords: ids(input.keywords), expectedReviewWorkload: input.expectedReviewWorkload, currentRevisionNumber: 1 } });
         await tx.submissionAuthor.createMany({ data: authorIds.map((userId, position) => ({ submissionId: submission.id, userId, position })) });
         if (conflictIds.length) await tx.submissionDeclaredConflict.createMany({ data: conflictIds.map((userId) => ({ submissionId: submission.id, userId })) });
@@ -177,13 +200,15 @@ export const submissionService = {
       return rows.map(submissionDto);
     }
     const authorLinks = hasPermission(actorRole, "review:assign") ? [] : await prisma.submissionAuthor.findMany({ where: { userId: actor.id }, select: { submissionId: true } });
-    const rows = await prisma.submission.findMany({ where: hasPermission(actorRole, "review:assign") ? {} : { OR: [{ createdById: actor.id }, { id: { in: authorLinks.map((row) => row.submissionId) } }] }, orderBy: { updatedAt: "desc" }, take: 100 });
+    const projects = hasPermission(actorRole, "review:assign") ? undefined : await currentProjectIds(actor.id);
+    const rows = await prisma.submission.findMany({ where: projects ? { projectId: { in: projects }, OR: [{ createdById: actor.id }, { id: { in: authorLinks.map((row) => row.submissionId) } }] } : {}, orderBy: { updatedAt: "desc" }, take: 100 });
     return rows.map(submissionDto);
   },
 
   async listAiPreReviews(submissionInput: string, actorInput: string, actorRole: UserRole) {
-    const actor = await resolveUser(actorInput); const submission = await getSubmissionOrThrow(submissionInput); await assertSubmissionAccess(submission, actor.id, actorRole);
-    return (await getPrisma().aiPreReview.findMany({ where: { submissionId: submission.id }, orderBy: { createdAt: "desc" }, take: 20 })).map(aiReviewDto);
+    const actor = await resolveUser(actorInput); const submission = await getSubmissionOrThrow(submissionInput); const access = await assertSubmissionAccess(submission, actor.id, actorRole);
+    const allowed = access === "blind" ? await accessibleRevisionIds(submission.id, actor.id) : undefined;
+    return (await getPrisma().aiPreReview.findMany({ where: { submissionId: submission.id, ...(allowed ? { OR: allowed.map(revisionId => ({ rawStructuredOutput: { path: ["sourceRevisionId"], equals: revisionId } })) } : {}) }, orderBy: { createdAt: "desc" }, take: 20 })).map(aiReviewDto);
   },
 
   /** Queue an advisory AI pre-review; the ai-jobs worker runs it (processAiPreReview). Returns the QUEUED record. */
@@ -195,9 +220,19 @@ export const submissionService = {
     if (AI_PRE_REVIEW_CLOSED_STATUSES.includes(submission.status)) throw AppError.conflict("This submission no longer accepts pre-review analysis");
     // Lock the submission row so two clicks cannot both see "nothing running" and queue twice.
     const record = await getPrisma().$transaction(async (tx) => {
+      await lockProjectAccounts(tx, [actor.id]);
       await tx.$queryRaw`SELECT id FROM submissions WHERE id = ${submission.id}::uuid FOR UPDATE`;
+      const live = await tx.submission.findUniqueOrThrow({ where: { id: submission.id } });
+      await tx.$queryRaw`SELECT id FROM projects WHERE id = ${live.projectId}::uuid FOR SHARE`;
+      const project = await tx.project.findUniqueOrThrow({ where: { id: live.projectId } });
+      if (project.status === "ARCHIVED") throw AppError.conflict("Archived projects are read-only");
+      if (!hasPermission(actorRole, "review:assign")) {
+        if (!await currentProjectMembership(live.projectId, actor.id, tx)) throw AppError.forbidden("Project membership is required");
+        if (!await tx.submissionAuthor.findUnique({ where: { submissionId_userId: { submissionId: live.id, userId: actor.id } } })) throw AppError.forbidden("Only an author or review manager can request AI pre-review");
+      }
+      if (AI_PRE_REVIEW_CLOSED_STATUSES.includes(live.status)) throw AppError.conflict("This submission no longer accepts pre-review analysis");
       if (await tx.aiPreReview.findFirst({ where: { submissionId: submission.id, status: { in: ["QUEUED", "PROCESSING"] } } })) throw AppError.conflict("An AI pre-review is already running");
-      return tx.aiPreReview.create({ data: { submissionId: submission.id, requestedById: actor.id, status: "QUEUED" } });
+      return tx.aiPreReview.create({ data: { submissionId: submission.id, requestedById: actor.id, status: "QUEUED", ...(live.currentRevisionId ? { rawStructuredOutput: { sourceRevisionId: live.currentRevisionId, sourceRevisionNumber: live.currentRevisionNumber } } : {}) } });
     });
     try {
       await aiJobsQueue.add(AI_PRE_REVIEW_JOB, { preReviewId: record.id } satisfies AiPreReviewJob, { jobId: aiPreReviewJobId(record.id), attempts: 3, backoff: { type: "exponential", delay: 5000 } });
@@ -215,20 +250,46 @@ export const submissionService = {
     if (!claimed.count) return;
     const record = await getPrisma().aiPreReview.findUniqueOrThrow({ where: { id: job.preReviewId } });
     const submission = await getPrisma().submission.findUnique({ where: { id: record.submissionId } });
-    if (!submission || AI_PRE_REVIEW_CLOSED_STATUSES.includes(submission.status)) {
-      await getPrisma().aiPreReview.update({ where: { id: record.id }, data: { status: "CANCELLED", errorMessage: "The submission was closed before the pre-review ran." } });
+    const unavailable = await preReviewUnavailableReason(submission, record.requestedById);
+    if (!submission || unavailable) {
+      await getPrisma().aiPreReview.updateMany({ where: { id: record.id, status: "PROCESSING" }, data: { status: "CANCELLED", errorMessage: unavailable } });
       return;
     }
-    const manuscriptText = await loadManuscriptText(submission);
+    const source = preReviewSource(record.rawStructuredOutput);
+    const sourceRevision = await getPrisma().submissionRevision.findFirst({ where: { submissionId: submission.id, ...(source.sourceRevisionId ? { id: source.sourceRevisionId } : submission.currentRevisionId ? { id: submission.currentRevisionId } : {}) }, orderBy: { revisionNumber: "desc" } });
+    if (source.sourceRevisionId && !sourceRevision) {
+      await getPrisma().aiPreReview.update({ where: { id: record.id }, data: { status: "CANCELLED", errorMessage: "The source revision is no longer available." } });
+      return;
+    }
+    const sourceContext = sourceRevision ? { sourceRevisionId: sourceRevision.id, sourceRevisionNumber: sourceRevision.revisionNumber } : {};
+    const manuscriptText = await loadManuscriptText({ id: submission.id, currentRevisionId: sourceRevision?.id ?? null });
     const relatedEvidence = await loadRelatedEvidence(submission);
+    // Extraction and evidence retrieval can outlive project membership or archival.
+    const beforeProvider = await preReviewUnavailableReason(await getPrisma().submission.findUnique({ where: { id: submission.id } }), record.requestedById);
+    if (beforeProvider) {
+      await getPrisma().aiPreReview.updateMany({ where: { id: record.id, status: "PROCESSING" }, data: { status: "CANCELLED", errorMessage: beforeProvider } });
+      return;
+    }
     const result = await aiReviewerClient.preReview({ title: submission.title, abstract: submission.abstractText ?? undefined, submission_type: submission.submissionType ?? undefined, research_goal: submission.researchGoal ?? undefined, research_questions: submission.researchQuestions, claimed_gap: submission.claimedResearchGap ?? undefined, claimed_contribution: submission.claimedContribution ?? undefined, methodology: submission.methodology ?? undefined, ...(manuscriptText ? { manuscript_text: manuscriptText } : {}), related_evidence: relatedEvidence });
     const analysis = result.analysis;
     const completed = await getPrisma().$transaction(async (tx) => {
-      const updated = await tx.aiPreReview.update({ where: { id: record.id }, data: { provider: result.provider, model: result.model, status: "COMPLETED", summary: analysis.summary, goalAlignment: analysis.goal_alignment as never, rqCoverage: analysis.rq_coverage as never, unsupportedClaims: analysis.unsupported_claims as never, citationIssues: analysis.citation_issues, contributionComparison: analysis.contribution_comparison, reviewFocusAreas: analysis.review_focus_areas, limitations: analysis.limitations, rawStructuredOutput: analysis as never, errorMessage: null, completedAt: new Date() } });
+      await lockProjectAccounts(tx, [record.requestedById]);
+      await tx.$queryRaw`SELECT id FROM submissions WHERE id = ${submission.id}::uuid FOR UPDATE`;
+      await tx.$queryRaw`SELECT id FROM projects WHERE id = ${submission.projectId}::uuid FOR SHARE`;
+      await tx.$queryRaw`SELECT id FROM ai_pre_reviews WHERE id = ${record.id}::uuid FOR UPDATE`;
+      const current = await tx.aiPreReview.findUnique({ where: { id: record.id } });
+      if (current?.status !== "PROCESSING") return null;
+      const afterProvider = await preReviewUnavailableReason(await tx.submission.findUnique({ where: { id: submission.id } }), record.requestedById, tx);
+      if (afterProvider) {
+        await tx.aiPreReview.update({ where: { id: record.id }, data: { status: "CANCELLED", errorMessage: afterProvider } });
+        return null;
+      }
+      const updated = await tx.aiPreReview.update({ where: { id: record.id }, data: { provider: result.provider, model: result.model, status: "COMPLETED", summary: analysis.summary, goalAlignment: analysis.goal_alignment as never, rqCoverage: analysis.rq_coverage as never, unsupportedClaims: analysis.unsupported_claims as never, citationIssues: analysis.citation_issues, contributionComparison: analysis.contribution_comparison, reviewFocusAreas: analysis.review_focus_areas, limitations: analysis.limitations, rawStructuredOutput: { ...analysis, ...sourceContext } as never, errorMessage: null, completedAt: new Date() } });
       // Only a fresh submission moves forward; one already under review or revised keeps its status.
       await tx.submission.updateMany({ where: { id: submission.id, status: "submitted" }, data: { status: "ready_for_review" } });
       return updated;
     });
+    if (!completed) return;
     await auditService.log("submission.ai_pre_review.completed", { userId: record.requestedById, targetTableName: "ai_pre_reviews", targetRecordId: completed.id, details: { submissionId: submission.id, provider: result.provider, model: result.model } });
   },
 
@@ -254,14 +315,32 @@ export const submissionService = {
     const allowed = access === "blind" ? await accessibleRevisionIds(submission.id, actor.id) : undefined;
     const reviews = await prisma.humanReview.findMany({ where: { submissionId: submission.id, status: "SUBMITTED", ...(access === "blind" ? { reviewerId: actor.id } : {}) }, orderBy: [{ submittedAt: "asc" }, { roundNumber: "asc" }] });
     const assignments = await prisma.reviewerAssignment.findMany({ where: { submissionId: submission.id } });
-    const users = await prisma.user.findMany({ where: { id: { in: reviews.map((item) => item.reviewerId) } }, select: { id: true, fullName: true } });
+    const visibleAssignments = access === "blind" ? assignments.filter((item) => item.reviewerId === actor.id) : assignments;
+    const requests = await prisma.reviewRequest.findMany({ where: { submissionId: submission.id, ...(access === "blind" ? { id: { in: visibleAssignments.flatMap((item) => item.reviewRequestId ? [item.reviewRequestId] : []) } } : {}) }, orderBy: { createdAt: "desc" } });
+    const users = await prisma.user.findMany({ where: { id: { in: [...new Set([...reviews.map((item) => item.reviewerId), ...visibleAssignments.map((item) => item.reviewerId)])] } }, select: { id: true, fullName: true } });
     const userMap = new Map(users.map((item) => [item.id, item.fullName]));
     const versions = await prisma.submissionRevision.findMany({ where: { submissionId: submission.id, ...(allowed ? { id: { in: allowed } } : {}) }, orderBy: { revisionNumber: "desc" } });
     const reviewDetails = await Promise.all(reviews.map(async (review) => ({ id: review.id, reviewerId: review.reviewerId, reviewerName: access === "blind" ? "Your review" : userMap.get(review.reviewerId) ?? "Reviewer", reviewerAcademicRole: review.reviewerAcademicRole, revisionId: review.revisionId, roundNumber: review.roundNumber, templateVersionId: review.templateVersionId, weightedScore: review.weightedScore, overallAssessment: review.overallAssessment, keyStrengths: review.keyStrengths, keyConcerns: review.keyConcerns, overallComment: review.overallComment, submittedAt: review.submittedAt, requestId: assignments.find((item) => item.id === review.assignmentId)?.reviewRequestId,
       responses: await prisma.reviewResponse.findMany({ where: { reviewId: review.id } }),
       requiredRevisions: await Promise.all((await prisma.reviewRevisionItem.findMany({ where: { reviewId: review.id }, orderBy: { position: "asc" } })).map(async (item) => ({ ...item, responses: await prisma.reviewRevisionResponse.findMany({ where: { revisionItemId: item.id }, orderBy: { createdAt: "asc" } }) }))),
     })));
-    return { canManage: await canManageSubmission(submission, actor.id, actorRole), openForReview: submission.openForReview, currentRevisionId: submission.currentRevisionId, currentRevisionNumber: submission.currentRevisionNumber,
+    const [project, author] = await Promise.all([
+      prisma.project.findUniqueOrThrow({ where: { id: submission.projectId } }),
+      prisma.submissionAuthor.findUnique({ where: { submissionId_userId: { submissionId: submission.id, userId: actor.id } } }),
+    ]);
+    const writable = access === "full" && project.status !== "ARCHIVED";
+    const assignmentByRequest = new Map(visibleAssignments.flatMap((item) => item.reviewRequestId ? [[item.reviewRequestId, item] as const] : []));
+    const revisionNumbers = new Map(versions.map((item) => [item.id, item.revisionNumber]));
+    return { canManage: await canManageSubmission(submission, actor.id, actorRole),
+      canRunAiPreReview: writable && !AI_PRE_REVIEW_CLOSED_STATUSES.includes(submission.status) && Boolean(author || hasPermission(actorRole, "review:assign")),
+      canRequestReview: writable && !["accepted", "rejected", "withdrawn"].includes(submission.status) && Boolean(submission.currentRevisionId) && project.ownerId === actor.id && actor.accountStatus === "ACTIVE" && Boolean(actor.emailVerifiedAt),
+      reviewRequests: requests.flatMap((request) => {
+        const assignment = assignmentByRequest.get(request.id);
+        const revisionNumber = revisionNumbers.get(request.artifactRevisionId);
+        if (!assignment || revisionNumber === undefined) return [];
+        return [{ id: request.id, reviewerName: access === "blind" ? "Your review" : userMap.get(assignment.reviewerId) ?? "Reviewer", status: request.status === "REQUESTED" && request.expiresAt && request.expiresAt <= new Date() ? "EXPIRED" : request.status, revisionNumber, dueAt: request.dueAt, canView: request.requesterId === actor.id || assignment.reviewerId === actor.id }];
+      }),
+      openForReview: submission.openForReview, currentRevisionId: submission.currentRevisionId, currentRevisionNumber: submission.currentRevisionNumber,
       latestReviewedRevisionId: versions.find((item) => reviews.some((review) => review.revisionId === item.id))?.id ?? null,
       versions: versions.map((item) => ({ id: item.id, revisionNumber: item.revisionNumber, contentType: item.contentType, contentSnapshot: item.contentSnapshot, checksumSha256: item.checksumSha256, sizeBytes: item.sizeBytes, sourceRevisionId: item.sourceRevisionId, responseToReview: item.responseToReview, createdAt: item.createdAt, hasPdf: Boolean(item.storageUri), reviews: reviewDetails.filter((review) => review.revisionId === item.id) })),
       contributions: [...new Set(reviews.map((item) => item.reviewerId))].map((reviewerId) => ({ reviewerId, name: userMap.get(reviewerId) ?? "Reviewer", type: "REVIEW", status: assignments.some((item) => item.reviewerId === reviewerId && item.status === "accepted" && item.decision?.includes("revision")) ? "FOLLOWING_REVISION" : assignments.some((item) => item.reviewerId === reviewerId && ["assigned", "accepted"].includes(item.status)) ? "IN_REVIEW" : "COMPLETED", rounds: reviewDetails.filter((item) => item.reviewerId === reviewerId).map((item) => ({ reviewId: item.id, revisionId: item.revisionId, roundNumber: item.roundNumber, submittedAt: item.submittedAt, academicRole: item.reviewerAcademicRole })) })),
@@ -271,7 +350,17 @@ export const submissionService = {
   async setOpenForReview(submissionInput: string, enabled: boolean, actorInput: string, actorRole: UserRole) {
     const actor = await resolveUser(actorInput); const submission = await getSubmissionOrThrow(submissionInput);
     if (!await canManageSubmission(submission, actor.id, actorRole)) throw AppError.forbidden();
-    await getPrisma().submission.update({ where: { id: submission.id }, data: { openForReview: enabled } });
+    await getPrisma().$transaction(async (tx) => {
+      await lockProjectAccounts(tx, [actor.id]);
+      await tx.$queryRaw`SELECT id FROM submissions WHERE id = ${submission.id}::uuid FOR UPDATE`;
+      const live = await tx.submission.findUniqueOrThrow({ where: { id: submission.id } });
+      await tx.$queryRaw`SELECT id FROM projects WHERE id = ${live.projectId}::uuid FOR SHARE`;
+      const project = await tx.project.findUniqueOrThrow({ where: { id: live.projectId } });
+      if (project.status === "ARCHIVED") throw AppError.conflict("Archived projects are read-only");
+      if (!await canManageSubmission(live, actor.id, actorRole, tx)) throw AppError.forbidden();
+      if (enabled && ["accepted", "rejected", "withdrawn"].includes(live.status)) throw AppError.conflict("This research no longer accepts reviews");
+      await tx.submission.update({ where: { id: submission.id }, data: { openForReview: enabled } });
+    });
     await auditService.log("submission.open_review.changed", { userId: actor.id, targetTableName: "submissions", targetRecordId: submission.id, details: { enabled } });
   },
 
@@ -279,17 +368,20 @@ export const submissionService = {
     const actor = await resolveUser(actorInput); const submission = await getSubmissionOrThrow(submissionInput);
     if (!await canManageSubmission(submission, actor.id, actorRole)) throw AppError.forbidden();
     const revision = await getPrisma().$transaction(async (tx) => {
+      await lockProjectAccounts(tx, [actor.id]);
       await tx.$queryRaw`SELECT id FROM submissions WHERE id = ${submission.id}::uuid FOR UPDATE`;
       const live = await tx.submission.findUniqueOrThrow({ where: { id: submission.id } });
+      await tx.$queryRaw`SELECT id FROM projects WHERE id = ${live.projectId}::uuid FOR SHARE`;
       const project = await tx.project.findUniqueOrThrow({ where: { id: live.projectId } });
       if (project.status === "ARCHIVED" || ["accepted", "rejected", "withdrawn"].includes(live.status)) throw AppError.conflict("Research is read-only");
+      if (!await canManageSubmission(live, actor.id, actorRole, tx)) throw AppError.forbidden();
       if (live.currentRevisionNumber !== input.expectedRevisionNumber) throw AppError.conflict("A newer version exists. Refresh before saving.");
       const source = input.sourceRevisionId ? await tx.submissionRevision.findFirst({ where: { ...idWhere(input.sourceRevisionId), submissionId: submission.id } }) : null;
       if (input.sourceRevisionId && !source) throw AppError.notFound("Source revision not found");
       const content = input.content ?? source?.contentSnapshot;
       if (!content && !source?.storageUri) throw AppError.badRequest("Provide Markdown content or an existing revision to restore");
       const created = await tx.submissionRevision.create({ data: { submissionId: live.id, revisionNumber: live.currentRevisionNumber + 1, uploadedById: actor.id, sourceRevisionId: source?.id ?? live.currentRevisionId, responseToReview: input.summary,
-        contentSnapshot: content, contentType: input.content !== undefined ? "MARKDOWN" : source?.contentType ?? "MARKDOWN", storageUri: input.content !== undefined ? null : source?.storageUri,
+        contentSnapshot: content, contentType: input.content !== undefined ? "MARKDOWN" : source?.contentType ?? "MARKDOWN", storageUri: input.content !== undefined ? null : source?.storageUri, manuscriptSnapshotId: input.content !== undefined ? null : source?.manuscriptSnapshotId,
         checksumSha256: content ? crypto.createHash("sha256").update(content).digest("hex") : source?.checksumSha256, sizeBytes: content ? Buffer.byteLength(content) : source?.sizeBytes ?? 0, originalFileName: input.content !== undefined ? null : source?.originalFileName,
       } });
       await tx.submission.update({ where: { id: live.id }, data: { currentRevisionId: created.id, currentRevisionNumber: created.revisionNumber, status: "revised" } });
@@ -306,7 +398,21 @@ export const submissionService = {
     if (["accepted", "rejected", "withdrawn"].includes(submission.status)) throw AppError.conflict("This submission no longer accepts revisions");
     const { checksumSha256, stored } = await persistFile(file); const nextRevision = submission.currentRevisionNumber + 1;
     try {
-      const result = await getPrisma().$transaction(async (tx) => { await tx.$queryRaw`SELECT id FROM submissions WHERE id = ${submission.id}::uuid FOR UPDATE`; const live = await tx.submission.findUniqueOrThrow({ where: { id: submission.id } }); const project = await tx.project.findUniqueOrThrow({ where: { id: live.projectId } }); if (project.status === "ARCHIVED" || ["accepted", "rejected", "withdrawn"].includes(live.status) || live.currentRevisionNumber !== submission.currentRevisionNumber) throw AppError.conflict("The research is read-only or its version changed; refresh before uploading"); const revision = await tx.submissionRevision.create({ data: { sourceRevisionId: submission.currentRevisionId, submissionId: submission.id, revisionNumber: nextRevision, uploadedById: actor.id, responseToReview, storageUri: stored.uri, checksumSha256, sizeBytes: file.size, originalFileName: file.originalname } }); const changed = await tx.submission.updateMany({ where: { id: submission.id, currentRevisionNumber: submission.currentRevisionNumber }, data: { currentRevisionId: revision.id, currentRevisionNumber: { increment: 1 }, status: "revised" } }); if (!changed.count) throw AppError.conflict("Another revision was uploaded at the same time; retry the request"); await refreshSubmissionReviewStatus(tx, submission.id); const updated = await tx.submission.findUniqueOrThrow({ where: { id: submission.id } }); return { submission: updated, revision }; }, { isolationLevel: "Serializable" });
+      const result = await getPrisma().$transaction(async (tx) => {
+        await lockProjectAccounts(tx, [actor.id]);
+        await tx.$queryRaw`SELECT id FROM submissions WHERE id = ${submission.id}::uuid FOR UPDATE`;
+        const live = await tx.submission.findUniqueOrThrow({ where: { id: submission.id } });
+        await tx.$queryRaw`SELECT id FROM projects WHERE id = ${live.projectId}::uuid FOR SHARE`;
+        const project = await tx.project.findUniqueOrThrow({ where: { id: live.projectId } });
+        if (project.status === "ARCHIVED" || ["accepted", "rejected", "withdrawn"].includes(live.status) || live.currentRevisionNumber !== submission.currentRevisionNumber) throw AppError.conflict("The research is read-only or its version changed; refresh before uploading");
+        if (!await canManageSubmission(live, actor.id, actorRole, tx)) throw AppError.forbidden();
+        const revision = await tx.submissionRevision.create({ data: { sourceRevisionId: submission.currentRevisionId, submissionId: submission.id, revisionNumber: nextRevision, uploadedById: actor.id, responseToReview, storageUri: stored.uri, checksumSha256, sizeBytes: file.size, originalFileName: file.originalname } });
+        const changed = await tx.submission.updateMany({ where: { id: submission.id, currentRevisionNumber: submission.currentRevisionNumber }, data: { currentRevisionId: revision.id, currentRevisionNumber: { increment: 1 }, status: "revised" } });
+        if (!changed.count) throw AppError.conflict("Another revision was uploaded at the same time; retry the request");
+        await refreshSubmissionReviewStatus(tx, submission.id);
+        const updated = await tx.submission.findUniqueOrThrow({ where: { id: submission.id } });
+        return { submission: updated, revision };
+      }, { isolationLevel: "Serializable" });
       await auditService.log("submission.revision.created", { userId: actor.id, targetTableName: "submission_revisions", targetRecordId: result.revision.id, details: { submissionId: submission.id, revisionNumber: nextRevision, checksumSha256 } }); return { submission: submissionDto(result.submission), revision: revisionDto(result.revision) };
     } catch (error) { await pdfStorageService.deletePdf(stored.uri).catch(() => undefined); if (isUniqueViolation(error)) throw AppError.conflict("Another revision was uploaded at the same time; retry the request"); throw error; }
   },

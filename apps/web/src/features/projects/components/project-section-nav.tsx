@@ -2,7 +2,7 @@ import { useRef, type ComponentType, type KeyboardEvent } from "react";
 import { BookOpen, Compass, FileText, Send, MessageSquare, Users, Award, GraduationCap, LayoutDashboard, ListChecks, NotebookPen } from "lucide-react";
 import { useI18n } from "@/i18n";
 
-export type ProjectTab = "overview" | "plan" | "tasks" | "papers" | "members" | "contributions" | "reports" | "gaps" | "chat" | "support" | "submissions" | "manuscripts";
+export type ProjectTab = "overview" | "plan" | "tasks" | "papers" | "members" | "contributions" | "gaps" | "chat" | "support" | "submissions" | "manuscripts";
 
 export const projectSections: Array<{
   key: ProjectTab;
@@ -17,13 +17,17 @@ export const projectSections: Array<{
   { key: "tasks", label: "Tasks & milestones", group: "Collaboration", icon: ListChecks, iconColor: "text-emerald-500" },
   { key: "chat", label: "Team chat & AI", group: "Collaboration", icon: MessageSquare, iconColor: "text-cyan-500" },
   { key: "support", label: "Find Mentors", group: "Collaboration", icon: GraduationCap, iconColor: "text-purple-500" },
-  { key: "reports", label: "Research outputs", group: "Writing & review", icon: FileText, iconColor: "text-rose-500" },
   { key: "manuscripts", label: "Manuscripts", group: "Writing & review", icon: FileText, iconColor: "text-indigo-500" },
   { key: "submissions", label: "Submissions", group: "Writing & review", icon: Send, iconColor: "text-teal-500" },
   { key: "members", label: "Team & settings", group: "Team", icon: Users, iconColor: "text-slate-500" },
   { key: "contributions", label: "Contributions", group: "Team", icon: Award, iconColor: "text-yellow-600" },
   { key: "plan", label: "About project", group: "Team", icon: NotebookPen, iconColor: "text-violet-500" },
 ];
+
+export function resolveProjectTab(value: string | null): ProjectTab {
+  if (value === "reports") return "manuscripts";
+  return projectSections.find(section => section.key === value)?.key ?? "overview";
+}
 
 const groups = ["Workspace", "Research", "Collaboration", "Writing & review", "Team"];
 

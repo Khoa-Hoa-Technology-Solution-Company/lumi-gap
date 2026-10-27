@@ -93,9 +93,12 @@ export interface ManuscriptContext {
 }
 export interface ManuscriptComment {
   id: string; title: string; body: string; status: "OPEN" | "RESOLVED"; version: number;
+  conclusion?: string;
   author: { id: string; name: string }; context: { fileId?: string; snapshotId?: string; quote?: string; start?: unknown; end?: unknown };
   mentorRelationshipId: string | null; messages: Array<{ id: string; body: string; author: { id: string; name: string }; createdAt: string }>;
+  hasMoreMessages?: boolean;
 }
+export interface ManuscriptCommentPage { items: ManuscriptComment[]; nextCursor: string | null }
 export type ManuscriptSyncState = "CONNECTING" | "SYNCING" | "SAVED" | "RECONNECTING" | "OFFLINE" | "SYNC_ERROR" | "READ_ONLY";
 export interface CreateManuscriptSuggestion {
   fileId: string; sourceSequence: number; from: number; to: number;

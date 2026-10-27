@@ -19,8 +19,8 @@ export function MentorDiscoverySettings({ projectId, ...options }: { projectId: 
   const userId = useAuthStore(s => s.user?.id);
   const settings = useQuery({ queryKey: ["academic-support", userId, "discovery-settings", projectId], queryFn: () => academicSupportApi.settings(projectId) });
   if (settings.isLoading) return <Skeleton className="h-16 w-full" />;
-  if (!settings.data || settings.isError) return <div role="alert" className="space-y-2 text-sm"><p>{t("Could not load mentor discovery settings.")}</p><Button type="button" size="sm" variant="outline" onClick={() => void settings.refetch()}>{t("Try again")}</Button></div>;
-  return <DiscoveryEditor key={projectId} settings={settings.data} {...options} />;
+  if (!settings.data) return <div role="alert" className="space-y-2 text-sm"><p>{t("Could not load mentor discovery settings.")}</p><Button type="button" size="sm" variant="outline" onClick={() => void settings.refetch()}>{t("Try again")}</Button></div>;
+  return <>{settings.isError && <p role="alert">{t("Could not load mentor discovery settings.")}</p>}<DiscoveryEditor key={`${userId}:${projectId}`} settings={settings.data} {...options} /></>;
 }
 const valueOf = (s: Settings) => ({ discovery: s.discovery, summary: s.summary, expertise: s.expertise, researchAreas: s.researchAreas, mentoringNeeds: s.mentoringNeeds });
 function DiscoveryEditor({ settings, startEditing = false, onDone, onEditingChange }: { settings: Settings } & EditorOptions) {

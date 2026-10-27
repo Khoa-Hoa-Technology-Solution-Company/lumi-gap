@@ -126,6 +126,15 @@ describe("UI string collection", () => {
     `, strings);
     expect([...strings].sort()).toEqual(["Mentorship active", "Request pending", "Review decision"]);
   });
+
+  it("ignores computation inputs inside rendered expressions", () => {
+    const strings = new Set<string>();
+    scanSourceText("fixture.tsx", `
+      const view = <>{["authorId", "projectId"].map(key => <span>{labels[key]}</span>)}
+        {event.type.startsWith("PLAN_") ? "Plan activity" : "Other activity"}</>;
+    `, strings);
+    expect([...strings].sort()).toEqual(["Other activity", "Plan activity"]);
+  });
 });
 
 function collectUiStrings(root: string) {
@@ -215,6 +224,12 @@ function isInJsxChildExpression(node: ts.Node) {
   while (current) {
     if (ts.isJsxExpression(current)) return !nearestJsxAttribute(current);
     if (ts.isJsxAttribute(current)) return false;
+    // Receiver values and non-translation call arguments are inputs to a
+    // computation, rather than text returned to React (e.g. .map or .includes).
+    if (ts.isPropertyAccessExpression(current) && current.expression === child) return false;
+    if (ts.isCallExpression(current) && current.arguments.some(argument => argument === child)
+      && !ts.isArrowFunction(child) && !ts.isFunctionExpression(child)
+      && !(ts.isIdentifier(current.expression) && current.expression.text === "t")) return false;
     if (ts.isConditionalExpression(current) && current.condition === child) return false;
     if (ts.isBinaryExpression(current)) {
       const operator = current.operatorToken.kind;

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, useState, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useSearchParams } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { IProject, Paper } from "@trend/shared-types";
 import { beforeEach, afterEach, expect, it, vi } from "vitest";
@@ -28,7 +28,7 @@ const included: IProject["papers"][number] = { id: "link1", targetKind: "Paper",
 const undecided = { ...included, targetId: { _id: "p2", title: "Unscreened paper", authors: [] }, screeningStatus: "UNDECIDED", evidenceCount: 0 } as IProject["papers"][number];
 const callbacks = { onRequestAddPaper: vi.fn(), onNavigateToReports: vi.fn(), onNavigateToGaps: vi.fn(), onViewEvidence: vi.fn() };
 const workspace = (props: Partial<React.ComponentProps<typeof ProjectLiteratureWorkspace>> = {}) => <ProjectLiteratureWorkspace projectId="project" papers={[]} readOnly={false} {...callbacks} {...props} />;
-async function render(node: ReactNode) { await act(async () => root.render(<QueryClientProvider client={client}><MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>{node}</MemoryRouter></QueryClientProvider>)); }
+async function render(node: ReactNode, path = "/") { await act(async () => root.render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[path]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>{node}</MemoryRouter></QueryClientProvider>)); }
 async function click(text: string) {
   const button = [...document.querySelectorAll<HTMLButtonElement>("button")].find(item => item.getAttribute("aria-label") === text || item.textContent === text);
   expect(button, text).toBeDefined(); await act(async () => button!.click());
@@ -72,6 +72,24 @@ it("records uncertainty as MAYBE rather than resetting to not screened", async (
   await click("Read Unscreened paper");
   await click("Considering");
   expect(mocks.update).toHaveBeenCalledWith({ paperId: "p2", data: { screeningStatus: "MAYBE", expectedUpdatedAt: undecided.updatedAt } });
+});
+it("navigates seamlessly between papers inside the reader dialog without closing it", async () => {
+  await render(workspace({ papers: [included, undecided] }));
+  await click("Read Included paper");
+  const dialog = document.querySelector('[role="dialog"]')!;
+  expect(dialog.textContent).toContain("Included paper");
+  expect(dialog.querySelector<HTMLButtonElement>('[aria-label="Previous paper"]')?.disabled).toBe(true);
+  expect(dialog.querySelector<HTMLButtonElement>('[aria-label="Next paper"]')?.disabled).toBe(false);
+
+  // Click Next paper to switch to the second paper without closing dialog
+  await click("Next paper");
+  expect(dialog.textContent).toContain("Unscreened paper");
+  expect(dialog.querySelector<HTMLButtonElement>('[aria-label="Previous paper"]')?.disabled).toBe(false);
+  expect(dialog.querySelector<HTMLButtonElement>('[aria-label="Next paper"]')?.disabled).toBe(true);
+
+  // Click Previous paper to go back
+  await click("Previous paper");
+  expect(dialog.textContent).toContain("Included paper");
 });
 it("combines contributor and relevance filters and clears both together", async () => {
   const alice = { _id: "alice", fullName: "Alice Nguyen" }, bao = { _id: "bao", fullName: "Bao Tran" };
@@ -163,6 +181,48 @@ it("opens only the chosen paper on demand and returns focus to its row", async (
   await flushQueries(); // Radix restores focus after unmounting its focus scope.
   expect(document.querySelector('[role="dialog"]')).toBeNull();
   expect(document.activeElement).toBe(row);
+});
+it("shows a single loading layout then reveals the complete reader together", async () => {
+  mocks.paper.mockReturnValue({ data: undefined, isLoading: true, isError: false });
+  await render(workspace({ papers: [included] }));
+  await click("Read Included paper");
+  const dialog = document.querySelector('[role="dialog"]')!;
+  expect(dialog.querySelector('[aria-busy="true"]')).not.toBeNull();
+  expect(dialog.querySelector('[role="status"][aria-label="Loading..."]')).not.toBeNull();
+  expect(dialog.querySelector("h2")?.textContent).toBe("Included paper");
+  expect(dialog.querySelector(".project-reader-header")).toBeNull();
+  expect(dialog.textContent).not.toContain("No abstract is available for this paper.");
+  expect(dialog.textContent).not.toContain("No notes yet.");
+  mocks.paper.mockReturnValue({ data: { id: "p1", title: "Full paper title", authors: [{ displayName: "Researcher" }], abstractText: "Complete abstract", topics: [{ topicName: "Biology" }] }, isLoading: false, isError: false });
+  await render(workspace({ papers: [included] }));
+  expect(dialog.querySelector(".project-reader-loading")).toBeNull();
+  for (const text of ["Full paper title", "Researcher", "Complete abstract", "Biology", "No notes yet."]) expect(dialog.textContent).toContain(text);
+  expect(dialog.querySelector(".project-paper-analysis")).toBeNull();
+});
+it("shows the summary and honest unavailable state after paper loading fails", async () => {
+  mocks.paper.mockReturnValue({ data: undefined, isLoading: false, isError: true });
+  await render(workspace({ papers: [included] }));
+  await click("Read Included paper");
+  const dialog = document.querySelector('[role="dialog"]')!;
+  expect(dialog.querySelector(".project-reader-loading")).toBeNull();
+  expect(dialog.textContent).toContain("Could not load the full paper record. Showing the project summary instead.");
+  expect(dialog.querySelector("h2")?.textContent).toBe("Included paper");
+  expect(dialog.textContent).toContain("No abstract is available for this paper.");
+});
+it("opens an analyzed source deep link and clears its source parameter on reader close", async () => {
+  function Location() { const [params] = useSearchParams(); return <output>{params.toString()}</output>; }
+  await render(<>{workspace({ papers: [included, undecided] })}<Location /></>, "/projects/project?tab=papers&source=p2");
+  expect(document.querySelector('[role="dialog"] h2')?.textContent).toBe("Unscreened paper");
+  expect(mocks.paper).toHaveBeenLastCalledWith("p2");
+  await click("Close"); await flushQueries();
+  expect(document.querySelector('[role="dialog"]')).toBeNull();
+  expect(container.querySelector("output")?.textContent).toBe("tab=papers");
+});
+it("resolves an analyzed source UUID while the library exposes its legacy paper identifier", async () => {
+  const legacy = { ...undecided, targetId: { id: "canonical-paper", _id: "legacy-paper", title: "Unscreened paper", authors: [] } };
+  await render(workspace({ papers: [legacy] }), "/projects/project?tab=papers&source=canonical-paper");
+  expect(document.querySelector('[role="dialog"] h2')?.textContent).toBe("Unscreened paper");
+  expect(mocks.paper).toHaveBeenLastCalledWith("legacy-paper");
 });
 it("keeps bulk selection separate from opening a paper", async () => {
   await render(workspace({ papers: [included, undecided] }));

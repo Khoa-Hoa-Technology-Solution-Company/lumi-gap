@@ -33,6 +33,16 @@ export interface ResearchVersion {
 
 export interface SubmissionHistory {
   canManage: boolean;
+  canRunAiPreReview?: boolean;
+  canRequestReview?: boolean;
+  reviewRequests?: Array<{
+    id: string;
+    reviewerName: string;
+    status: string;
+    revisionNumber: number;
+    dueAt: string | null;
+    canView: boolean;
+  }>;
   openForReview: boolean;
   currentRevisionId: string | null;
   currentRevisionNumber: number;

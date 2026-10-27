@@ -6,6 +6,7 @@ Compilation/render checks are recorded separately in docs/pdf-structured-validat
 import base64
 import json
 import re
+import shutil
 import unittest
 from io import BytesIO
 from zipfile import ZipFile
@@ -130,6 +131,7 @@ class StructuredLayoutTests(unittest.TestCase):
             self.assertGreater(len(files[name]), 30)
         self.assertNotIn("background.pdf", source)
 
+    @unittest.skipUnless(shutil.which("tesseract"), "Local OCR binary required")
     def test_scan_ocr_retains_identifiers_and_amounts_with_review_warning(self):
         result, _, source = unpack(vietnamese_scan())
         self.assertIn("OCR_REVIEW_PAGE:1", result["warnings"])

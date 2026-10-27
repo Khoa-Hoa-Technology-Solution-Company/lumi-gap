@@ -2,6 +2,7 @@ import { aiModel } from "../user-ai/user-ai.runtime.js";
 import { randomUUID } from "node:crypto";
 import { env } from "../../config/env.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
+import { isUsableSearchVector } from "../../infrastructure/database/postgres-paper-search.js";
 import { getEmbeddingProvider } from "../embeddings/embedding.factory.js";
 import { cachedGenerateJSON } from "../llm/llm.run.js";
 import { sanitizeForPrompt, UNTRUSTED_DATA_PREAMBLE } from "../llm/grounding.js";
@@ -61,7 +62,7 @@ export async function indexPaper(paperId: string, force = false) {
       });
       analyses.push(result.analysis); relations.push(...result.relations);
       const embedded = await provider.embedBatch(batch.map((chunk) => chunk.text));
-      if (embedded.length !== batch.length || embedded.some((vector) => vector.length !== 768 || vector.some((n) => !Number.isFinite(n)))) throw new Error("Invalid passage embeddings");
+      if (embedded.length !== batch.length || embedded.some((vector) => !isUsableSearchVector(vector))) throw new Error("Invalid passage embeddings");
       vectors.push(...embedded);
       const heartbeat = await prisma.paperDocument.updateMany({ where: { id: document.id, indexingToken, status: "processing" }, data: { updatedAt: new Date() } });
       if (!heartbeat.count) throw new Error("Paper index lease was superseded by a source update or another job");

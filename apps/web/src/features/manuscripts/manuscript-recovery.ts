@@ -15,9 +15,9 @@ async function transaction<T>(mode: IDBTransactionMode, run: (store: IDBObjectSt
 export const manuscriptRecovery = {
   load: async (scope: string) => {
     const rows = await transaction<Recovery[]>("readonly", store => store.index("scope").getAll(scope));
-    const valid = rows.filter(row => row.updated > Date.now() - 7 * 86400000 && row.state.length <= 2_800_000 && row.queue.length <= 1000);
-    await Promise.all(rows.filter(row => !valid.includes(row)).map(row => transaction("readwrite", store => store.delete(row.id))));
-    return valid;
+    // These are unacknowledged writes, not a cache. Age or typing volume cannot
+    // establish that the server has saved them. Only receipts/logout remove them.
+    return rows.sort((left, right) => left.updated - right.updated || left.id.localeCompare(right.id));
   },
   save: (record: Recovery) => transaction("readwrite", store => store.put(record)),
   remove: (id: string) => transaction("readwrite", store => store.delete(id)),

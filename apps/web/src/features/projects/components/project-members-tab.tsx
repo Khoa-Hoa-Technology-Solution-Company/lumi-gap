@@ -14,6 +14,7 @@ import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { useI18n } from "@/i18n";
 import { api } from "@/services/api-client";
 import { useAuthStore } from "@/stores/auth-store";
+import { cn } from "@/utils/cn";
 import { useCancelProjectInvitation, useResendProjectInvitation, useInviteProjectMember, useRemoveMemberFromProject, useTransferProjectOwnership } from "../hooks/use-projects";
 
 interface SearchUser { id: string; fullName: string | null; email: string; }
@@ -79,11 +80,19 @@ export function ProjectMembersTab({ projectId, projectTitle, members, pendingInv
     } finally { submitLock.current = false; }
   };
 
-  return <div className="space-y-5" data-no-i18n>
-    <header className="flex flex-wrap items-start justify-between gap-3">
-      <div><h3 className="text-lg font-semibold">{t("Project Members")}</h3><p className="mt-1 text-sm text-muted-foreground">{t("Collaborators join only after accepting an invitation.")}</p></div>
+  return <div className="project-members-card rounded-2xl border border-border/80 bg-card p-6 shadow-xs space-y-6" data-no-i18n>
+    <header className="flex flex-wrap items-center justify-between gap-4 pb-5 border-b border-border/60">
+      <div>
+        <div className="flex items-center gap-2.5">
+          <h3 className="text-lg font-bold text-foreground">{t("Project Members")}</h3>
+          <Badge variant="secondary" className="font-semibold text-xs py-0.5 px-2 bg-muted/80">
+            {members.length}
+          </Badge>
+        </div>
+        <p className="mt-1 text-sm text-muted-foreground leading-relaxed">{t("Collaborators join only after accepting an invitation.")}</p>
+      </div>
       {canManage && <Dialog open={open} onOpenChange={changeOpen}>
-        <DialogTrigger asChild><Button size="sm"><Plus className="mr-2 h-4 w-4" />{t("Invite collaborator")}</Button></DialogTrigger>
+        <DialogTrigger asChild><Button size="sm" className="font-semibold shadow-xs"><Plus className="mr-2 h-4 w-4" />{t("Invite collaborator")}</Button></DialogTrigger>
         <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg" closeLabel={t("Close")} data-no-i18n>
           <DialogHeader><DialogTitle>{t("Invite collaborator")}</DialogTitle><DialogDescription>{t("Choose how this person will collaborate on the project.")}</DialogDescription></DialogHeader>
           <fieldset disabled={invite.isPending} className="space-y-2">
@@ -127,30 +136,78 @@ export function ProjectMembersTab({ projectId, projectTitle, members, pendingInv
       </Dialog>}
     </header>
 
-    {isOwner && Boolean(pendingInvitations?.length) && <section className="space-y-2">
-      <h4 className="text-sm font-semibold">{t("Pending invitations")}</h4><p className="text-xs text-muted-foreground">{t("Invitations expire automatically after 7 days.")}</p>
-      <div className="divide-y border-y">{pendingInvitations?.map(invitation => <div key={invitation.id} className="flex flex-wrap items-center justify-between gap-3 p-3">
-        <div className="min-w-0"><p className="break-all text-sm font-medium">{invitation.invitedUser?.fullName || invitation.email}</p><p className="break-all text-xs text-muted-foreground">{invitation.email} · {t("Invite expires")}: {new Date(invitation.expiresAt).toLocaleDateString(language)}</p></div>
-        {canManage ? <div className="flex shrink-0 items-center gap-2">
-          {invitation.resendAvailableAt && new Date(invitation.resendAvailableAt).getTime() > now ? <span className="text-xs text-muted-foreground">{t("Resend in {{seconds}}s", { seconds: Math.ceil((new Date(invitation.resendAvailableAt).getTime() - now) / 1000) })}</span> : null}
-          <DropdownMenu><DropdownMenuTrigger asChild><Button type="button" size="icon" variant="ghost" aria-label={t("Invitation actions for {{email}}", { email: invitation.email })}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end">
-            <DropdownMenuItem disabled={resend.isPending || Boolean(invitation.resendAvailableAt && new Date(invitation.resendAvailableAt).getTime() > now)} onSelect={() => { void resend.mutateAsync(invitation.id).then(() => toast.success(t("Invitation resent"))).catch(() => toast.error(t("Could not resend invitation. Please wait and try again."))); }}>{t("Resend invitation")}</DropdownMenuItem>
-            <DropdownMenuSeparator /><DropdownMenuItem className="text-destructive" onSelect={() => setCancelId(invitation.id)}>{t("Cancel invitation")}</DropdownMenuItem>
-          </DropdownMenuContent></DropdownMenu>
-        </div> : null}
-      </div>)}</div>
+    {isOwner && Boolean(pendingInvitations?.length) && <section className="space-y-3 rounded-xl border border-amber-500/30 bg-amber-500/5 p-4.5">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <span className="flex h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+          <h4 className="text-sm font-semibold text-foreground">{t("Pending invitations")}</h4>
+          <Badge variant="outline" className="border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300 text-xs py-0 px-1.5">
+            {pendingInvitations?.length}
+          </Badge>
+        </div>
+        <p className="text-xs text-muted-foreground">{t("Invitations expire automatically after 7 days.")}</p>
+      </div>
+      <div className="divide-y divide-amber-500/20 rounded-lg border border-amber-500/20 bg-card/60 overflow-hidden">
+        {pendingInvitations?.map(invitation => <div key={invitation.id} className="flex flex-wrap items-center justify-between gap-3 p-3.5 transition-colors hover:bg-muted/40">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-500/10 text-amber-600 border border-amber-500/20">
+              <Mail className="h-4 w-4" />
+            </div>
+            <div className="min-w-0">
+              <p className="break-all text-sm font-semibold text-foreground">{invitation.invitedUser?.fullName || invitation.email}</p>
+              <p className="break-all text-xs text-muted-foreground flex items-center gap-1.5 mt-0.5">
+                <span>{invitation.email}</span>
+                <span>·</span>
+                <span>{t("Invite expires")}: {new Date(invitation.expiresAt).toLocaleDateString(language)}</span>
+              </p>
+            </div>
+          </div>
+          {canManage ? <div className="flex shrink-0 items-center gap-2">
+            {invitation.resendAvailableAt && new Date(invitation.resendAvailableAt).getTime() > now ? <span className="text-xs text-muted-foreground tabular-nums">{t("Resend in {{seconds}}s", { seconds: Math.ceil((new Date(invitation.resendAvailableAt).getTime() - now) / 1000) })}</span> : null}
+            <DropdownMenu><DropdownMenuTrigger asChild><Button type="button" size="icon" variant="ghost" className="h-8 w-8 rounded-lg" aria-label={t("Invitation actions for {{email}}", { email: invitation.email })}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end">
+              <DropdownMenuItem disabled={resend.isPending || Boolean(invitation.resendAvailableAt && new Date(invitation.resendAvailableAt).getTime() > now)} onSelect={() => { void resend.mutateAsync(invitation.id).then(() => toast.success(t("Invitation resent"))).catch(() => toast.error(t("Could not resend invitation. Please wait and try again."))); }}>{t("Resend invitation")}</DropdownMenuItem>
+              <DropdownMenuSeparator /><DropdownMenuItem className="text-destructive font-medium" onSelect={() => setCancelId(invitation.id)}>{t("Cancel invitation")}</DropdownMenuItem>
+            </DropdownMenuContent></DropdownMenu>
+          </div> : null}
+        </div>)}
+      </div>
     </section>}
 
-    {!members.length ? <p className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">{t("Invite researchers to collaborate on this project.")}</p> : <ul className="divide-y border-y">
+    {!members.length ? <div className="rounded-xl border border-dashed border-border/80 p-8 text-center bg-muted/10"><Users className="mx-auto h-8 w-8 text-muted-foreground/50 mb-2" /><p className="text-sm font-medium text-foreground">{t("No project members yet")}</p><p className="text-xs text-muted-foreground mt-1">{t("Invite researchers to collaborate on this project.")}</p></div> : <ul className="space-y-3" role="list">
       {members.map(member => {
         const user = typeof member.targetId === "string" ? null : member.targetId;
         const id = user?._id ?? String(member.targetId);
         const primaryOwner = id === ownerId;
         const name = user?.fullName || t("Unknown User");
-        return <li key={id} className="flex min-w-0 items-center gap-3 py-4">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 font-semibold text-primary" aria-hidden="true">{user?.fullName?.trim().charAt(0) || <Users className="h-4 w-4" />}</div>
-          <div className="min-w-0 flex-1"><Link to={`/academics/${encodeURIComponent(id)}`} className="block truncate text-sm font-semibold hover:underline">{name}</Link><p className="mt-1 break-all text-xs text-muted-foreground">{user?.email}</p><Badge variant={primaryOwner ? "secondary" : "outline"} className="mt-2 font-medium">{t(primaryOwner ? "Project owner" : "Member")}</Badge></div>
-          {canManage && !primaryOwner && <DropdownMenu><DropdownMenuTrigger asChild><Button type="button" variant="ghost" size="icon" aria-label={t("Member actions for {{name}}", { name })}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem disabled={transferOwnership.isPending} onSelect={() => setTransfer({ id, name })}>{t("Transfer ownership")}</DropdownMenuItem><DropdownMenuSeparator /><DropdownMenuItem className="text-destructive" onSelect={() => setRemoveId(id)}>{t("Remove member")}</DropdownMenuItem></DropdownMenuContent></DropdownMenu>}
+        const initial = user?.fullName?.trim().charAt(0) || "";
+        return <li key={id} className="group flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-xl border border-border/70 bg-card hover:border-primary/30 hover:shadow-xs transition-all duration-150">
+          <div className="flex items-center gap-3.5 min-w-0">
+            <div className={cn("relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full font-bold text-base shadow-2xs transition-transform duration-150 group-hover:scale-105", primaryOwner ? "bg-amber-500/10 text-amber-700 dark:text-amber-400 ring-2 ring-amber-500/30" : "bg-primary/10 text-primary ring-2 ring-primary/20")} aria-hidden="true">
+              {initial || <Users className="h-5 w-5" />}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <Link to={`/academics/${encodeURIComponent(id)}`} className="text-sm font-bold text-foreground hover:text-primary transition-colors hover:underline truncate">
+                  {name}
+                </Link>
+                <Badge variant={primaryOwner ? "secondary" : "outline"} className={cn("font-semibold text-xs py-0.5 px-2.5 rounded-full inline-flex items-center gap-1 shrink-0", primaryOwner ? "border-amber-500/30 bg-amber-500/15 text-amber-800 dark:text-amber-300" : "border-border/80 bg-muted/50 text-muted-foreground")}>
+                  {t(primaryOwner ? "Project owner" : "Member")}
+                </Badge>
+              </div>
+              <div className="flex items-center gap-1.5 mt-1 text-xs text-muted-foreground truncate">
+                <Mail className="h-3 w-3 shrink-0 text-muted-foreground/60" aria-hidden="true" />
+                <span className="truncate">{user?.email}</span>
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 self-end sm:self-center">
+            <Button asChild variant="ghost" size="sm" className="h-8 text-xs font-medium text-muted-foreground hover:text-foreground">
+              <Link to={`/academics/${encodeURIComponent(id)}`}>
+                {t("View profile")}
+              </Link>
+            </Button>
+            {canManage && !primaryOwner && <DropdownMenu><DropdownMenuTrigger asChild><Button type="button" variant="ghost" size="icon" className="h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground" aria-label={t("Member actions for {{name}}", { name })}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem disabled={transferOwnership.isPending} onSelect={() => setTransfer({ id, name })}>{t("Transfer ownership")}</DropdownMenuItem><DropdownMenuSeparator /><DropdownMenuItem className="text-destructive font-medium" onSelect={() => setRemoveId(id)}>{t("Remove member")}</DropdownMenuItem></DropdownMenuContent></DropdownMenu>}
+          </div>
         </li>;
       })}
     </ul>}

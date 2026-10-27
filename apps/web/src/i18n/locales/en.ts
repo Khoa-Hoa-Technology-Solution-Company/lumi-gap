@@ -1,3 +1,4 @@
+import { submissionWorkflowStrings } from "./submission-workflow";
 import { confirmationsEn } from "./confirmations";
 import { researchTasksEn } from "./research-tasks";
 import { livingPlanEn } from "./living-plan";
@@ -1845,4 +1846,5 @@ export const en = {
   "Left": "Left",
   "Center": "Center",
   "Right": "Right",
+  ...submissionWorkflowStrings,
 } as const;

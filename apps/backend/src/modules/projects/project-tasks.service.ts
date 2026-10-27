@@ -181,15 +181,26 @@ export const projectTasksService = {
       return pageOf(rows.map(milestoneDto), total, query);
     });
   },
-  async saveMilestone(projectId: string, actorId: string, input: Omit<WorkspaceMilestone, "id" | "version"> & { expectedVersion?: number }, id?: string) {
+  async saveMilestone(projectId: string, actorId: string, input: Omit<WorkspaceMilestone, "id" | "version"> & { expectedVersion?: number; clientKey?: string }, id?: string) {
     return withWorkspace(projectId, actorId, { write: true }, async context => {
+      const creationInput = { title: input.title, description: input.description, dueAt: input.dueAt ? new Date(input.dueAt).toISOString() : null, status: input.status };
+      const requestKey = !id && input.clientKey ? `MILESTONE_CREATE:${context.actorId}:${input.clientKey}` : undefined;
+      if (requestKey) {
+        const receipt = await context.tx.projectActivity.findFirst({ where: { projectId: context.project.id, idempotencyKey: requestKey } });
+        if (receipt?.entityId) {
+          await assertWorkspaceRetry(context, "MILESTONE", receipt.entityId, creationInput);
+          const existing = await context.tx.projectMilestone.findFirst({ where: { id: receipt.entityId, projectId: context.project.id } });
+          if (!existing) throw AppError.conflict("This milestone was removed");
+          return milestoneDto(existing);
+        }
+      }
       const previous = id ? await context.tx.projectMilestone.findFirst({ where: { id, projectId: context.project.id } }) : null;
       if (id && !previous) throw AppError.notFound("Milestone not found");
       if (previous) expectWorkspaceVersion(previous.version, input.expectedVersion!);
       const fields = { title: input.title, description: input.description, dueAt: input.dueAt ? new Date(input.dueAt) : null, status: input.status };
       const row = previous ? await context.tx.projectMilestone.update({ where: { id }, data: { ...fields, version: { increment: 1 } } }) : await context.tx.projectMilestone.create({ data: { ...fields, projectId: context.project.id, createdById: context.actorId } });
-      await workspaceRevision(context, "MILESTONE", row);
-      await workspaceEvent(context, previous ? "MILESTONE_UPDATED" : "MILESTONE_CREATED", "MILESTONE", row.id);
+      await workspaceRevision(context, "MILESTONE", row, previous ? undefined : creationInput);
+      await workspaceEvent(context, previous ? "MILESTONE_UPDATED" : "MILESTONE_CREATED", "MILESTONE", row.id, {}, requestKey);
       if (previous && previous.dueAt?.toISOString() !== row.dueAt?.toISOString()) {
         const tasks = await context.tx.projectTask.findMany({ where: { projectId: context.project.id, milestoneId: row.id, deletedAt: null, status: { not: "DONE" }, assigneeId: { not: null } }, distinct: ["assigneeId"], select: { assigneeId: true } });
         await workspaceNotify(context, tasks.flatMap(task => task.assigneeId ? [task.assigneeId] : []), "MILESTONE", row.id, row.version);

@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-import os
 import shutil
 import tempfile
 import uuid
 from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel
 
 from app.config import ALLOWED_STRICTNESS, OUTPUT_DIR, UPLOAD_DIR
@@ -17,12 +16,7 @@ from app.security import Security
 from app.pdf_utils import NoTextLayerError
 from app.pre_review import PreReviewRequest, run_pre_review
 from app.rag_routes import rag_router
-
-
-def verify_internal_key(x_internal_key: Optional[str] = Header(None)) -> None:
-    expected = os.getenv("INTERNAL_SERVICE_KEY")
-    if expected and x_internal_key != expected:
-        raise HTTPException(status_code=403, detail="Invalid internal service key")
+from app.internal_auth import verify_internal_key
 
 
 def internal_router(database, security: Security) -> APIRouter:

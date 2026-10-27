@@ -39,7 +39,7 @@ export const workspaceApi = {
   saveTask: (id: string, data: SaveWorkspaceTask & { expectedVersion?: number; clientKey?: string }, taskId?: string) => write<{ id: string; version: number }>(id, taskId ? `tasks/${taskId}` : "tasks", taskId ? "patch" : "post", data),
   deleteTask: (id: string, taskId: string, expectedVersion: number) => write(id, `tasks/${taskId}`, "delete", { expectedVersion }),
   milestones: (id: string, page = 1) => get<WorkspacePage<WorkspaceMilestone>>(id, "milestones", { page, pageSize: 50 }),
-  saveMilestone: (id: string, data: Omit<WorkspaceMilestone, "id" | "version"> & { expectedVersion?: number }, milestoneId?: string) => write<WorkspaceMilestone>(id, milestoneId ? `milestones/${milestoneId}` : "milestones", milestoneId ? "patch" : "post", data),
+  saveMilestone: (id: string, data: Omit<WorkspaceMilestone, "id" | "version"> & { expectedVersion?: number; clientKey?: string }, milestoneId?: string) => write<WorkspaceMilestone>(id, milestoneId ? `milestones/${milestoneId}` : "milestones", milestoneId ? "patch" : "post", data),
   comments: (id: string, targetKind: "TASK" | "PLAN_REVISION", targetId: string, page: number) => get<WorkspacePage<WorkspaceComment>>(id, "workspace/comments", { targetKind, targetId, page }),
   comment: (id: string, data: { targetKind: "TASK" | "PLAN_REVISION"; targetId: string; body: string; clientKey: string; mentions: string[] }) => write<WorkspaceComment>(id, "workspace/comments", "post", data),
   discussions: (id: string, query: Query) => get<WorkspacePage<WorkspaceDiscussion>>(id, "discussions", query),
