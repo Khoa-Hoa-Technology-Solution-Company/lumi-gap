@@ -1,4 +1,6 @@
 export const researchWorkflowVi = {
+  "Min": "Tối thiểu",
+  "Max": "Tối đa",
   "Search relevant papers": "Tìm trong các bài phù hợp",
   "Search title or DOI": "Tìm tiêu đề hoặc DOI",
   "Select shown": "Chọn các bài đang hiển thị",

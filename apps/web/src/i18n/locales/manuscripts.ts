@@ -1,4 +1,7 @@
 export const manuscriptsVi = {
+  "Manuscript Workspace": "Không gian bản thảo",
+  "All document types": "Tất cả loại tài liệu",
+  "No manuscripts match your search.": "Không có bản thảo phù hợp với tìm kiếm.",
   "Load older comments": "Tải bình luận trước",
   "View all replies": "Xem tất cả trả lời",
   "Latest replies": "Trả lời mới nhất",
