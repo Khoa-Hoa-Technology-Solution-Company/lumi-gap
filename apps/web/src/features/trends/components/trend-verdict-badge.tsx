@@ -42,18 +42,19 @@ export function confidenceLabel(confidence: TrendConfidence, t: Translate): stri
   return confidence === "high" ? t("High confidence") : t("Medium confidence");
 }
 
-export function reasonText(code: TrendReasonCode, t: Translate): string {
+/** `unit` "period": the verdict was computed on months or quarters (GET /trends/periods). */
+export function reasonText(code: TrendReasonCode, t: Translate, unit: "year" | "period" = "year"): string {
   switch (code) {
     case "LOCAL_CORPUS":
       return t("Data comes from the local corpus, so only descriptive figures are shown.");
     case "TOO_FEW_YEARS":
-      return t("Fewer than 5 complete years of data.");
+      return unit === "period" ? t("Fewer than 5 complete periods of data.") : t("Fewer than 5 complete years of data.");
     case "TOO_FEW_PAPERS":
       return t("Fewer than 30 papers.");
     case "SIGNIFICANT_INCREASE":
-      return t("Its share of the field grew clearly over the years.");
+      return unit === "period" ? t("Its share of the field grew clearly over these periods.") : t("Its share of the field grew clearly over the years.");
     case "SIGNIFICANT_DECREASE":
-      return t("Its share of the field shrank clearly over the years.");
+      return unit === "period" ? t("Its share of the field shrank clearly over these periods.") : t("Its share of the field shrank clearly over the years.");
     default:
       return t("No clear change in its share of the field.");
   }
@@ -63,10 +64,12 @@ export function reasonText(code: TrendReasonCode, t: Translate): string {
 export function TrendVerdictBadge({
   classification,
   size = "md",
+  unit = "year",
   className = "",
 }: {
   classification: TrendClassification;
   size?: "sm" | "md";
+  unit?: "year" | "period";
   className?: string;
 }) {
   const { t } = useI18n();
@@ -90,7 +93,7 @@ export function TrendVerdictBadge({
       <TooltipContent className="max-w-xs space-y-1 bg-popover p-2.5 text-xs text-popover-foreground">
         <ul className="list-disc space-y-1 pl-4">
           {classification.reasons.map((code) => (
-            <li key={code}>{reasonText(code, t)}</li>
+            <li key={code}>{reasonText(code, t, unit)}</li>
           ))}
         </ul>
       </TooltipContent>

@@ -1,0 +1,46 @@
+/*
+ * Shared palette for the Community area (forum + communities).
+ * Values mirror the Projects workspace palette (features/projects/project-workspace.css) but live in their own
+ * scope so neither area depends on the other. The global shadcn tokens in globals.css are intentionally untouched.
+ */
+.lumi-surface {
+  --lumi-surface: #ffffff;
+  --lumi-soft: #f8fafc;
+  --lumi-line: #e2e8f0;
+  --lumi-accent: #2563eb;
+  --lumi-accent-hover: #1d4ed8;
+  --lumi-accent-active: #1e40af;
+  --lumi-accent-foreground: #ffffff;
+  --lumi-muted: #64748b;
+  background: var(--lumi-surface);
+  color: hsl(var(--foreground));
+  font-family: var(--forum-font);
+}
+
+.dark .lumi-surface {
+  --lumi-surface: #0b1120;
+  --lumi-soft: #131c31;
+  --lumi-line: #1e293b;
+  --lumi-accent: #60a5fa;
+  --lumi-accent-hover: #93c5fd;
+  --lumi-accent-active: #3b82f6;
+  --lumi-accent-foreground: #0b1120;
+  --lumi-muted: #94a3b8;
+}
+
+/* Page titles in the Community area share one scale. */
+.lumi-page-title {
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+@media (min-width: 640px) {
+  .lumi-page-title { font-size: 2.25rem; }
+}
+
+/* Keep anchors, focus and in-page jumps clear of the floating header (WCAG 2.2 Focus Not Obscured).
+   = --app-header-offset + 8px; that variable lives on .lumi-app-shell so html cannot read it (92px + 8 on mobile, 120px + 8 on desktop). */
+html { scroll-padding-top: 100px; }
+@media (min-width: 768px) { html { scroll-padding-top: 128px; } }

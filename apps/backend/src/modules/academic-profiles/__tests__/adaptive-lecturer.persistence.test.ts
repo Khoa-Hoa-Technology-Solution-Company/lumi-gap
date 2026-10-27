@@ -45,7 +45,7 @@ describe.skipIf(!enabled).sequential("adaptive Lecturer verification with Postgr
     institutionId = (await db.institution.create({ data: { name: "Fixture University", slug: `lecturer-${marker}`, status: "ACTIVE", isActive: true } })).id;
     await db.institutionDomain.create({ data: { institutionId, domain, type: "BOTH", allowSubdomains: true, trusted: true, status: "ACTIVE", verifiedAt: new Date() } });
     admin = (await account("PERSONAL", "ADMIN")).id; admin2 = (await account("PERSONAL", "ADMIN")).id; moderator = (await account()).id;
-    communityId = (await db.community.create({ data: { name: "Verification test community", slug: `lecturer-${marker}`, ownerId: admin, isForumCategory: true } })).id;
+    communityId = (await db.community.create({ data: { name: `Verification test community ${marker}`, slug: `lecturer-${marker}`, ownerId: admin, isForumCategory: true } })).id;
     await db.communityMembership.create({ data: { communityId, userId: moderator, role: "moderator", status: "active" } });
     server = createApp().listen(0, "127.0.0.1"); await new Promise<void>(resolve => server.on("listening", resolve)); base = `http://127.0.0.1:${(server.address() as { port: number }).port}/api/v1`;
   });

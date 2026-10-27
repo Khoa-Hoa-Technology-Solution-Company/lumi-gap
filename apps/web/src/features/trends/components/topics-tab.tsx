@@ -1,12 +1,15 @@
 import React, { useMemo, useState } from "react";
 import { ResponsiveContainer, Area, AreaChart } from "recharts";
-import type { TrendsOverview, YearlyCount } from "@trend/shared-types";
+import type { TrendingTopic, TrendsOverview, YearlyCount } from "@trend/shared-types";
 import { type RisingKeywordRow, type TrendBarChartDatum } from "./trends-shared.components";
 import { getTopRisingTopic, isSmallBaseKeyword, sortTopics, type TrendSortKey } from "../../../pages/trends.insights";
 import { TrendIntro, TrendVerdictBadge, formatRelativeChange } from "./trend-verdict-badge";
 import { formatNumber } from "@/utils";
 import { useI18n } from "@/i18n";
 import { formatShiftCounts, formatShiftPeriods, formatShiftStats, isShiftSignificant } from "../trend-source";
+import { useTrendsOverviewPages } from "../hooks/use-trends";
+import type { TrendsOverviewParams } from "../api/trends.api";
+import { VERDICT_PAGE_SIZE, VerdictFilterChips, useVerdictListCaption, type VerdictFilter } from "./verdict-filter";
 import {
   Compass,
   LineChart,
@@ -25,6 +28,7 @@ import {
   ArrowUpDown
 } from "lucide-react";
 import { toast } from "sonner";
+import { buildTrendScopedUrl } from "../trend-navigation";
 import {
   Tooltip,
   TooltipContent,
@@ -46,6 +50,11 @@ interface TopicsTabProps {
   setSelectedTopics: (topics: string[]) => void;
   setActiveTab: (tab: TrendTabId) => void;
   setFocusTopic: (topic: string) => void;
+  /** Verdict shown in the topic table ("all" = every tested topic). */
+  verdictFilter: VerdictFilter;
+  setVerdictFilter: (value: VerdictFilter) => void;
+  /** Same scope as the overview request; the table pages through it. */
+  overviewParams: TrendsOverviewParams;
   scopeParams?: {
     yearFrom: number;
     yearTo: number;
@@ -78,42 +87,23 @@ export function TopicsTab({
   setSelectedTopics,
   setActiveTab,
   setFocusTopic,
+  verdictFilter,
+  setVerdictFilter,
+  overviewParams,
   scopeParams,
 }: TopicsTabProps) {
   const { t } = useI18n();
+  const verdictCaption = useVerdictListCaption();
+  const topicPages = useTrendsOverviewPages({
+    ...overviewParams,
+    limit: VERDICT_PAGE_SIZE,
+    ...(verdictFilter === "all" ? {} : { verdict: verdictFilter }),
+  });
+  const pagedTopics = useMemo(() => topicPages.data?.pages.flatMap((page) => page.topics) ?? [], [topicPages.data]);
+  const matchedTopicCount = topicPages.data?.pages[0]?.matchedTopicCount ?? pagedTopics.length;
   // Rows from OpenAlex carry the log odds ratio test; the local fallback does not.
   const usesKeywordTest = keywordsData.some((row) => row.shift);
-  const buildScopedUrl = (path: string, baseParams: Record<string, string>) => {
-    const params = new URLSearchParams(baseParams);
-
-    if (scopeParams) {
-      params.set("yearFrom", String(scopeParams.yearFrom));
-      params.set("yearTo", String(scopeParams.yearTo));
-
-      const addList = (key: string, values: string[]) => {
-        const cleaned = values.map((value) => value.trim()).filter(Boolean);
-        if (cleaned.length > 0) params.set(key, cleaned.join(","));
-      };
-
-      addList("domainIds", scopeParams.domainIds);
-      addList("domains", scopeParams.domains);
-      addList("fieldIds", scopeParams.fieldIds);
-      addList("fields", scopeParams.fields);
-      addList("subfieldIds", scopeParams.subfieldIds);
-      addList("subfields", scopeParams.subfields);
-      addList("topicIds", scopeParams.topicIds);
-      addList("topics", scopeParams.topicsFilter);
-      addList("topicsFilter", scopeParams.topicsFilter);
-      addList("paperKinds", scopeParams.paperKinds);
-      addList("openAccessStatuses", scopeParams.openAccessStatuses);
-      addList("providers", scopeParams.providers);
-      addList("sources", scopeParams.sources);
-      addList("languages", scopeParams.languages);
-      addList("citationBands", scopeParams.citationBands);
-    }
-
-    return `${path}?${params.toString()}`;
-  };
+  const buildScopedUrl = (path: string, baseParams: Record<string, string>) => buildTrendScopedUrl(path, baseParams, scopeParams);
 
   const getScopedSearchTarget = (query: string) => {
     return scopeParams
@@ -150,7 +140,12 @@ export function TopicsTab({
   // 2. State & Logic cho Quick Sort nội bộ
   const [localSortBy, setLocalSortBy] = useState<TrendSortKey>(sortBy);
 
-  const sortedTopics = useMemo(() => sortTopics(barChartData, localSortBy), [barChartData, localSortBy]);
+  // Before the first page arrives, show the overview's own top topics.
+  const sortedTopics = useMemo(() => {
+    const rows: Array<Pick<TrendingTopic, "topic" | "taxonomy" | "totalPapers" | "classification">> =
+      topicPages.data ? pagedTopics : verdictFilter === "all" ? barChartData : [];
+    return sortTopics(rows, localSortBy);
+  }, [topicPages.data, pagedTopics, barChartData, verdictFilter, localSortBy]);
 
   // 3. Logic cho các nút hành động
   const handleCompare = (topic: string) => {
@@ -401,16 +396,24 @@ export function TopicsTab({
                     Top Ranked Topics by Scope
                   </h3>
                   <p className="text-xs text-slate-550 dark:text-slate-400 mt-0.5 font-medium">
-                    Showing top {formatNumber(sortedTopics.length)} of {formatNumber(data.uniqueTopicsInScope ?? data.topics.length)} unique topics in this scope. Use Compare topic search to browse more.
+                    {verdictCaption(sortedTopics.length, matchedTopicCount, verdictFilter)}.{" "}
+                    {t("Topics tested: the largest overall and per field. Use Compare topic search to browse more.")}
                   </p>
                 </div>
                 <span className="text-[9px] bg-blue-500/10 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border border-blue-200/30 px-2 py-1 rounded font-bold uppercase tracking-wider">
                   {t("Active sort")}: {localSortBy === "total" ? t("Total papers") : t("Trend")}
                 </span>
               </div>
+              <VerdictFilterChips
+                className="mt-3"
+                value={verdictFilter}
+                onChange={setVerdictFilter}
+                counts={data.verdictCounts}
+                tested={data.testedTopicCount ?? data.topics.length}
+              />
             </div>
 
-            <div className="flex-1 overflow-x-auto select-text">
+            <div id="trend-topic-table" className="flex-1 overflow-x-auto select-text scroll-mt-24">
               <table className="w-full min-w-[880px] text-sm text-left">
                 <thead className="text-xs text-slate-500 uppercase bg-slate-50/50 dark:bg-slate-900/20 border-b border-slate-100 dark:border-slate-800 select-none">
                   <tr>
@@ -567,7 +570,22 @@ export function TopicsTab({
                   })}
                 </tbody>
               </table>
+              {topicPages.data && sortedTopics.length === 0 && (
+                <p className="p-5 text-sm text-slate-500 dark:text-slate-400">{t("No tested topic has this verdict in this scope.")}</p>
+              )}
             </div>
+            {topicPages.hasNextPage && (
+              <div className="border-t border-slate-100 p-3 text-center dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => void topicPages.fetchNextPage()}
+                  disabled={topicPages.isFetchingNextPage}
+                  className="h-9 rounded-lg border border-slate-200 px-4 text-xs font-bold text-blue-700 transition-colors hover:border-blue-300 hover:bg-blue-50 disabled:opacity-60 dark:border-slate-800 dark:text-blue-400 dark:hover:bg-blue-950/20"
+                >
+                  {topicPages.isFetchingNextPage ? t("Loading...") : t("Show more topics")}
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Right: Emerging Keywords Table (5 columns) */}

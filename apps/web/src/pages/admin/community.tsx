@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { ForumModerationQueue } from "@/features/forum/components/forum-moderation-queue";
-import { type CommunityView, type ForumPostView, useCommunities, useCommunityList, useForumPosts, useModerateForumContent, useSetCommunityStatus } from "@/features/forum";
+import { type CommunityView, type ForumPostView, useCommunities, useForumPosts, useModerateForumContent, useSetCommunityStatus } from "@/features/forum";
 import { CommunityProposalQueue } from "./community-proposal-queue";
 import { useI18n } from "@/i18n";
 import { cn } from "@/utils/cn";

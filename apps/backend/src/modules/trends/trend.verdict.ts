@@ -145,6 +145,26 @@ export function compareByTotal(a: { topic: string; totalPapers: number }, b: { t
   return b.totalPapers - a.totalPapers || a.topic.localeCompare(b.topic);
 }
 
+/**
+ * The requested page of the sorted tested topics: only `verdict` when given,
+ * `limit` topics from `offset`. `matchedTopicCount` counts the topics of that
+ * verdict (all tested topics when none), so the page can say "x of N".
+ */
+export function pageTopics<T extends { classification: TrendClassification }>(
+  topics: T[],
+  query: { verdict?: TrendVerdict; offset: number; limit: number },
+): { topics: T[]; matchedTopicCount: number } {
+  const matched = query.verdict ? topics.filter((topic) => topic.classification.verdict === query.verdict) : topics;
+  return { topics: matched.slice(query.offset, query.offset + query.limit), matchedTopicCount: matched.length };
+}
+
+/** Number of topics per verdict, every verdict present (0 when none). */
+export function countVerdicts(topics: Array<{ classification: TrendClassification }>): Record<TrendVerdict, number> {
+  const counts: Record<TrendVerdict, number> = { rising: 0, stable: 0, declining: 0, insufficient: 0 };
+  for (const topic of topics) counts[topic.classification.verdict]++;
+  return counts;
+}
+
 /** The first (at most 3) rising topics in trend order; none when fewer than 2. */
 export function buildRecommendedComparisons(topics: TrendingTopic[]): RecommendedTrendComparison[] {
   const top = [...topics].sort(compareByTrend).filter((topic) => topic.classification.verdict === "rising").slice(0, 3);

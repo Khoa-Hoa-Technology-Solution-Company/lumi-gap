@@ -46,6 +46,9 @@ interface GapAnalysisWorkflowProps {
   /** The project's papers; only INCLUDED ones can be added as evidence. Required with projectId. */
   projectPapers?: IProjectPaper[];
   defaultTopic?: string;
+  /** Year window carried over from the page that opened this form (e.g. a trend topic). */
+  defaultYearFrom?: number;
+  defaultYearTo?: number;
 }
 
 type PaperSearchCandidate = Pick<Paper, "id" | "title"> & {
@@ -66,13 +69,15 @@ export function GapAnalysisWorkflow({
   projectId,
   projectPapers,
   defaultTopic,
+  defaultYearFrom,
+  defaultYearTo,
 }: GapAnalysisWorkflowProps) {
   const currentYear = new Date().getFullYear();
   const { t } = useI18n();
   const inProject = Boolean(projectId);
   const [topic, setTopic] = useState(defaultTopic ?? "");
-  const [yearFrom, setYearFrom] = useState("");
-  const [yearTo, setYearTo] = useState("");
+  const [yearFrom, setYearFrom] = useState(defaultYearFrom ? String(defaultYearFrom) : "");
+  const [yearTo, setYearTo] = useState(defaultYearTo ? String(defaultYearTo) : "");
   const [preview, setPreview] = useState<PreviewGapEvidenceResponse | null>(null);
   const [papers, setPapers] = useState<GapEvidencePaper[]>([]);
   const [manuallyAddedPaperIds, setManuallyAddedPaperIds] = useState<string[]>([]);

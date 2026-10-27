@@ -45,9 +45,14 @@ export const idParamsSchema = z.object({ id: objectIdSchema });
 export const lookupParamsSchema = z.object({ idOrSlug: z.string().trim().min(1).max(120) });
 export const memberParamsSchema = z.object({ id: objectIdSchema, userId: objectIdSchema });
 
+export const publicMembersQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(50),
+});
+
 export const updateMemberSchema = z.object({
   role: z.enum(["moderator", "member"]).optional(),
-  status: z.enum(["pending", "active", "declined", "banned"]).optional(),
+  status: z.enum(["active", "declined", "banned"]).optional(),
 }).refine((value) => value.role !== undefined || value.status !== undefined);
 
 export type CommunityListQuery = z.infer<typeof listQuerySchema>;

@@ -1,4 +1,5 @@
 import React from "react";
+import { buildTrendScopedUrl } from "../trend-navigation";
 import { Compass, TrendingUp, GitCompare, Search, FileText, ChevronRight, Filter, Globe, Loader2 } from "lucide-react";
 
 type DatasetTrendTab = "overview" | "topics" | "dataset" | "compare" | "ai";
@@ -57,35 +58,7 @@ export function DatasetScopeNextActions({
   hasAnyFilter
 }: DatasetScopeNextActionsProps) {
 
-  // URL query builder carrying all 15 scope parameters
-  const buildScopedUrl = (path: string, baseParams: Record<string, string>) => {
-    const params = new URLSearchParams(baseParams);
-    params.set("yearFrom", String(yearFrom));
-    params.set("yearTo", String(yearTo));
-
-    const addList = (key: string, values: string[]) => {
-      const cleaned = values.map((value) => value.trim()).filter(Boolean);
-      if (cleaned.length > 0) params.set(key, cleaned.join(","));
-    };
-
-    addList("domainIds", domainIds);
-    addList("domains", domains);
-    addList("fieldIds", fieldIds);
-    addList("fields", fields);
-    addList("subfieldIds", subfieldIds);
-    addList("subfields", subfields);
-    addList("topicIds", topicIds);
-    addList("topics", topicsFilter); // Keep the active scope available to the home search composer and reports.
-    addList("topicsFilter", topicsFilter); // Fallback keep url sync intact
-    addList("paperKinds", paperKinds);
-    addList("openAccessStatuses", openAccessStatuses);
-    addList("providers", providers);
-    addList("sources", sources);
-    addList("languages", languages);
-    addList("citationBands", citationBands);
-
-    return `${path}?${params.toString()}`;
-  };
+  const buildScopedUrl = (path: string, baseParams: Record<string, string>) => buildTrendScopedUrl(path, baseParams, { yearFrom, yearTo, domainIds, domains, fieldIds, fields, subfieldIds, subfields, topicIds, topicsFilter, paperKinds, openAccessStatuses, providers, sources, languages, citationBands });
 
   const isDisabled = isUpdating || totalInWindow === 0;
 

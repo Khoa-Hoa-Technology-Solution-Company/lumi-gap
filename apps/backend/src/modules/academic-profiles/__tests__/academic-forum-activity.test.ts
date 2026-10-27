@@ -14,8 +14,8 @@ describe.sequential("Public forum activity visibility and pagination", () => {
     await prisma.user.createMany({ data: [ownerId, viewerId].map((id) => ({ id, email: `${id}@activity-test.invalid`, fullName: "Activity test member" })) });
     await prisma.academicProfile.create({ data: { userId: ownerId, profileVisibility: "PUBLIC" } });
     await prisma.community.createMany({ data: [
-      { id: publicId, ownerId, name: "Public activity test", slug: `activity-public-${marker}`, visibility: "public" },
-      { id: privateId, ownerId, name: "Private activity test", slug: `activity-private-${marker}`, visibility: "private" },
+      { id: publicId, ownerId, name: `Public activity test ${marker}`, slug: `activity-public-${marker}`, visibility: "public" },
+      { id: privateId, ownerId, name: `Private activity test ${marker}`, slug: `activity-private-${marker}`, visibility: "private" },
     ] });
     await prisma.communityMembership.create({ data: { communityId: privateId, userId: viewerId, status: "active" } });
     await prisma.forumPost.createMany({ data: [

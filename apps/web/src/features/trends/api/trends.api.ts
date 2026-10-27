@@ -5,7 +5,13 @@ import type {
   TrendTopicCandidatesResponse,
   TopicRelationshipResponse,
   TrendCompareResponse,
+  TrendGranularity,
+  TrendPeriodWindow,
+  TrendPeriodsOverview,
+  TrendVerdict,
   TrendsOverview,
+  ProjectTrendSnapshot,
+  TrendTopicFollow,
 } from "@trend/shared-types";
 import { api } from "@/services/api-client";
 import { API_ROUTES } from "@/constants";
@@ -16,6 +22,10 @@ export interface TrendsOverviewParams {
   limit?: number;
   minPapers?: number;
   sortBy?: "trend" | "total";
+  /** Only topics with this verdict in `topics` (counts stay over all tested topics). */
+  verdict?: TrendVerdict;
+  /** First topic of the page, for paging with `limit`. */
+  offset?: number;
   paperKinds?: string[];
   openAccessStatuses?: string[];
   providers?: string[];
@@ -32,30 +42,45 @@ export interface TrendsOverviewParams {
   topicIds?: string[];
 }
 
-export interface TrendCompareParams extends Omit<TrendsOverviewParams, "limit" | "minPapers" | "sortBy"> {
+export interface TrendPeriodsParams extends Omit<TrendsOverviewParams, "yearFrom" | "yearTo"> {
+  granularity?: TrendGranularity;
+  window?: TrendPeriodWindow;
+  /** Complete periods of a rolling window (5–24). */
+  periods?: number;
+}
+
+export interface TrendCompareParams extends Omit<TrendsOverviewParams, "limit" | "minPapers" | "sortBy" | "verdict" | "offset"> {
   topics: string[];
   yearFrom?: number;
   yearTo?: number;
 }
 
-export interface TrendTopicCandidatesParams extends Omit<TrendsOverviewParams, "sortBy"> {
+export interface TrendTopicCandidatesParams extends Omit<TrendsOverviewParams, "sortBy" | "verdict" | "offset"> {
   q: string;
   limit?: number;
   minPapers?: number;
 }
 
-export interface TrendRelationshipParams extends Omit<TrendsOverviewParams, "limit" | "minPapers" | "sortBy"> {
+export interface TrendRelationshipParams extends Omit<TrendsOverviewParams, "limit" | "minPapers" | "sortBy" | "verdict" | "offset"> {
   topic: string;
   yearFrom?: number;
   yearTo?: number;
   limit?: number;
 }
 
-export interface TrendExplainInput extends Omit<TrendsOverviewParams, "limit" | "minPapers" | "sortBy"> {
+export interface TrendExplainInput extends Omit<TrendsOverviewParams, "limit" | "minPapers" | "sortBy" | "verdict" | "offset"> {
   topic?: string;
   yearFrom?: number;
   yearTo?: number;
   language?: "en" | "vi";
+}
+
+export interface ProjectTrendSnapshotInput {
+  topic: string;
+  openalexTopicId?: string;
+  yearFrom?: number;
+  yearTo?: number;
+  note?: string;
 }
 
 export interface TrendExplainHistoryParams {
@@ -83,6 +108,13 @@ function serializeTrendParams(params: Record<string, unknown>): string {
 export const trendsApi = {
   async overview(params?: TrendsOverviewParams): Promise<TrendsOverview> {
     const res = await api.get("/trends", {
+      params,
+      paramsSerializer: { serialize: serializeTrendParams },
+    });
+    return res.data.data;
+  },
+  async periods(params?: TrendPeriodsParams): Promise<TrendPeriodsOverview> {
+    const res = await api.get("/trends/periods", {
       params,
       paramsSerializer: { serialize: serializeTrendParams },
     });
@@ -123,5 +155,31 @@ export const trendsApi = {
   async explainHistory(params?: TrendExplainHistoryParams): Promise<TrendExplanationHistoryResponse> {
     const res = await api.get("/trends/explain/history", { params });
     return res.data.data;
+  },
+  async follows(): Promise<TrendTopicFollow[]> {
+    const res = await api.get("/trends/follows");
+    return res.data.data;
+  },
+  async followStatus(topic: string): Promise<{ following: boolean; follow?: TrendTopicFollow }> {
+    const res = await api.get("/trends/follows/check", { params: { topic } });
+    return res.data.data;
+  },
+  async follow(input: { topic: string; openalexTopicId?: string }): Promise<TrendTopicFollow> {
+    const res = await api.post("/trends/follows", input);
+    return res.data.data;
+  },
+  async unfollow(followId: string): Promise<void> {
+    await api.delete(`/trends/follows/${encodeURIComponent(followId)}`);
+  },
+  async projectSnapshots(projectId: string): Promise<ProjectTrendSnapshot[]> {
+    const res = await api.get(`/projects/${encodeURIComponent(projectId)}/trend-snapshots`);
+    return res.data.data;
+  },
+  async addProjectSnapshot(projectId: string, input: ProjectTrendSnapshotInput): Promise<ProjectTrendSnapshot> {
+    const res = await api.post(`/projects/${encodeURIComponent(projectId)}/trend-snapshots`, input);
+    return res.data.data;
+  },
+  async removeProjectSnapshot(projectId: string, snapshotId: string): Promise<void> {
+    await api.delete(`/projects/${encodeURIComponent(projectId)}/trend-snapshots/${encodeURIComponent(snapshotId)}`);
   },
 };

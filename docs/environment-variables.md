@@ -147,6 +147,9 @@ Users can also save multiple personal API connections in Settings → AI Connect
 | `RERANK_CANDIDATES` | `EnvSchema` / backend | Default / optional (see template) |
 | `RERANK_MAX_PER_HOUR` | `EnvSchema` / backend | Default / optional (see template) |
 | `SEMANTIC_SEARCH_MAX_PER_MINUTE` | `EnvSchema` / backend | Default / optional (see template) |
+| `TREND_EXPLAIN_MAX_PER_HOUR` | `EnvSchema` / backend | Default / optional (see template) |
+| `TREND_FOLLOW_CRON` | `EnvSchema` / notification worker | Default / optional (see template) |
+| `TREND_FOLLOW_CHECK_BATCH` | `EnvSchema` / notification worker | Default / optional (see template) |
 | `RATE_LIMIT_STORE` | `EnvSchema` / backend | Default / optional (see template) |
 | `QUALITY_EVAL_MAX_PER_HOUR` | `EnvSchema` / backend | Default / optional (see template) |
 | `DIRECTIONS_MAX_PER_HOUR` | `EnvSchema` / backend | Default / optional (see template) |

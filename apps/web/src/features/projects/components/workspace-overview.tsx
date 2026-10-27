@@ -32,6 +32,7 @@ import { useAuthStore } from "@/stores/auth-store";
 import { useI18n } from "@/i18n";
 import { workspaceApi } from "../api/workspace.api";
 import { useWorkspaceCommand, useWorkspaceOverview } from "../hooks/use-workspace";
+import { ProjectTrendEvidence } from "@/features/trends/components/project-trend-evidence";
 import { approachLabels, formatRelativeActivity, projectSectionHref, stageLabels, taskLabels, WorkspaceDate, WorkspaceError, WorkspaceLoading } from "./workspace-common";
 
 export function WorkspaceStageSelector({ projectId }: { projectId: string }) {
@@ -369,6 +370,8 @@ export function WorkspaceOverviewPanel({ project }: { project: IProject }) {
               </div>
             )}
           </section>
+
+          <ProjectTrendEvidence projectId={id} currentUserId={currentUserId} ownerId={project.ownerId} />
 
           {/* Card 2: Research Progress KPI Metrics Dashboard */}
           <section className="bg-card rounded-2xl border border-border/80 p-6 sm:p-7 shadow-xs">

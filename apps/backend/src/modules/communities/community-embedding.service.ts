@@ -147,9 +147,10 @@ export async function nearestCommunityIds(
     ? Prisma.sql`AND id <> ALL(${[...options.excludeIds]}::uuid[])`
     : Prisma.empty;
   const viewer = options.viewer;
-  const visibility = options.publicOnly
+  // Fail closed: without a viewer, only public communities. Admins must pass `viewer.isAdmin` to see everything.
+  const visibility = options.publicOnly || !viewer
     ? Prisma.sql`AND visibility = 'public'`
-    : viewer && !viewer.isAdmin
+    : !viewer.isAdmin
       ? viewer.memberCommunityIds.length
         ? Prisma.sql`AND (visibility = 'public' OR id = ANY(${[...viewer.memberCommunityIds]}::uuid[]))`
         : Prisma.sql`AND visibility = 'public'`
