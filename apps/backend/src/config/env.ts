@@ -25,6 +25,7 @@ const EnvSchema = z.object({
 
   REDIS_URL: z.string().url().or(z.string().startsWith("redis")),
   MANUSCRIPT_COMPILER_URL: optionalEnvUrl,
+  MANUSCRIPT_COMPILER_2025_URL: optionalEnvUrl,
 
   // Binary storage. local keeps the existing development behavior; r2 stores
   // PDFs/images in Cloudflare R2 via the S3-compatible API; cloudinary stores
@@ -66,6 +67,16 @@ const EnvSchema = z.object({
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
   GOOGLE_CALLBACK_URL: z.string().default("http://localhost:4000/api/v1/auth/google/callback"),
+
+  GITHUB_CLIENT_ID: optionalEnvString,
+  GITHUB_CLIENT_SECRET: optionalEnvString,
+  GITHUB_APP_SLUG: z.preprocess(value => value === "" ? undefined : value, z.string().regex(/^[a-z0-9][a-z0-9-]{0,99}$/).optional()),
+  GITHUB_CALLBACK_URL: z.string().url().default("http://localhost:8080/integrations/github/callback").refine(value => {
+    const url = new URL(value);
+    return !url.username && !url.password && !url.search && !url.hash && url.pathname === "/integrations/github/callback"
+      && (url.protocol === "https:" || url.protocol === "http:" && ["localhost", "127.0.0.1"].includes(url.hostname));
+  }, "GitHub callback must use HTTPS (or localhost HTTP) and /integrations/github/callback"),
+  GITHUB_CONNECTION_ENCRYPTION_KEY: z.preprocess(value => value === "" ? undefined : value, z.string().min(32).optional()),
 
   // Transactional email for security-sensitive verification messages. "log" is
   // an explicit local-development transport and is forbidden in production.
@@ -251,6 +262,11 @@ const EnvSchema = z.object({
   // throttle stops an unauthenticated loop from draining the Gemini quota.
   RERANK_MAX_PER_HOUR: z.coerce.number().int().positive().default(30),
   SEMANTIC_SEARCH_MAX_PER_MINUTE: z.coerce.number().int().positive().default(60),
+  // POST /trends/explain is open to anonymous users and every new scope is an uncached LLM call.
+  TREND_EXPLAIN_MAX_PER_HOUR: z.coerce.number().int().positive().default(20),
+  // Daily re-check of followed trend topics (notification worker); each run checks at most the batch size.
+  TREND_FOLLOW_CRON: z.string().default("0 4 * * *"),
+  TREND_FOLLOW_CHECK_BATCH: z.coerce.number().int().min(1).max(1000).default(100),
   // Community "did you mean" suggestions embed the raw query on every cache miss
   // (Gemini, shared quota), so the route is throttled per user/IP.
   COMMUNITY_SUGGEST_MAX_PER_MINUTE: z.coerce.number().int().min(1).default(20),

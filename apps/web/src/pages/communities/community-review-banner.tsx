@@ -31,7 +31,7 @@ export function CommunityReviewBanner({ community }: { community: CommunityView 
     </div> : null}
     {!pending && community.isOwner ? <div className="mt-3 space-y-2">
       <p className="leading-6">{t("Update the community details in Manage, then send it back for review.")}</p>
-      <Button size="sm" disabled={resubmit.isPending} onClick={() => resubmit.mutate(community.id)}>{t(resubmit.isPending ? "Working…" : "Resubmit proposal")}</Button>
+      <Button variant="discussion" size="sm" disabled={resubmit.isPending} onClick={() => resubmit.mutate(community.id)}>{t(resubmit.isPending ? "Working…" : "Resubmit proposal")}</Button>
       {resubmit.error ? <p role="alert" className="text-red-600">{requestError(resubmit.error, t("Could not resubmit this proposal."))}</p> : null}
     </div> : null}
   </div>;

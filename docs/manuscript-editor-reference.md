@@ -246,3 +246,25 @@ directions (1/4 through 4/4), offscreen canvas release and retaining page 4 duri
 zoom. Updated frontend installed in local Docker.
 
 - [Continuous PDF scrolling, synthetic browser fixture](assets/manuscript-editor/pdf-continuous-scroll.png)
+
+## Delete manuscripts
+
+The manuscript list shows a Delete action to the project owner and the manuscript's
+creator while they retain active project access. A confirmation dialog identifies
+the manuscript before deletion. Archived projects remain read-only.
+
+Deletion removes the draft from the list and blocks further editing, AI requests,
+compilation access and source synchronization. A version check rejects deletion
+when someone has edited the source since the confirmation opened. Retried and
+concurrent deletions produce one activity entry.
+
+Sources and history are retained through soft deletion. Assigned academic reviewers
+retain access to their sealed submissions; deletion does not erase a formal review.
+
+Verification: five disposable PostgreSQL tests, fourteen route tests and two
+frontend confirmation tests passed, together with web/backend builds and targeted
+frontend ESLint. Browser verification covered opening the confirmation dialog and
+cancelling without removing the draft. The migration and updated runtime were
+installed in local Docker.
+
+- [Delete confirmation, synthetic browser fixture](assets/manuscript-editor/manuscript-delete.png)

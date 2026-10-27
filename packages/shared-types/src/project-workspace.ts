@@ -6,7 +6,7 @@ export type WorkspaceTaskPriority = "LOW" | "MEDIUM" | "HIGH" | "URGENT";
 export interface TaskChecklistItem { id: string; text: string; done: boolean }
 export interface MoveWorkspaceTask { expectedVersion: number; expectedBoardVersion: number; status: WorkspaceTaskStatus; beforeId: string | null; blockedReason: string; clientKey: string }
 export type DiscussionCategory = "GENERAL" | "RESEARCH_QUESTION" | "EVIDENCE" | "DECISION_NEEDED" | "MENTOR_QUESTION";
-export type WorkspaceLinkKind = "PAPER" | "SCREENING" | "EVIDENCE" | "GAP" | "QUESTION" | "MANUSCRIPT" | "MANUSCRIPT_SNAPSHOT" | "MENTOR_FEEDBACK" | "PLAN" | "REVIEW_REQUEST" | "PLAN_REVISION" | "REPORT";
+export type WorkspaceLinkKind = "PAPER" | "SCREENING" | "EVIDENCE" | "GAP" | "QUESTION" | "MANUSCRIPT" | "MANUSCRIPT_SNAPSHOT" | "MENTOR_FEEDBACK" | "PLAN" | "REVIEW_REQUEST" | "PLAN_REVISION" | "REPORT" | "TREND";
 export interface WorkspaceLink { kind: WorkspaceLinkKind; id: string; label?: string }
 export interface WorkspacePerson { id: string; name: string }
 export interface WorkspacePage<T> { items: T[]; page: number; pageSize: number; total: number; hasNext: boolean }
@@ -104,4 +104,5 @@ export interface WorkspaceOverview {
   recentArtifacts: Array<{ id: string; title: string; kind: "REPORT" | "MANUSCRIPT"; updatedAt: string }>;
   nextMilestone: WorkspaceMilestone | null;
   activity: Array<{ id: string; type: string; actor: WorkspacePerson | null; createdAt: string; entityKind: string | null; entityId: string | null }>;
+  topContributors?: Array<{ person: WorkspacePerson; count: number; percentage: number; rank: number }>;
 }

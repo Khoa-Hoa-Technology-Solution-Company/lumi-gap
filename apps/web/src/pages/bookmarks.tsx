@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useBookmarks, useDeleteBookmark, useUpdateBookmarkNote } from "@/features/bookmarks";
+import { FollowedTopicsPanel } from "@/features/trends/components/followed-topics-panel";
 import { Bookmark, Search, FileText, Sparkles, Pencil, Trash2, FileDown, Quote } from "lucide-react";
 import { toast } from "sonner";
 
@@ -102,6 +103,8 @@ export function BookmarksPage() {
         title="My Library"
         description="Manage saved papers and AI reports."
       />
+
+      <FollowedTopicsPanel />
 
       {/* Toolbar / Filters */}
       <div className="flex flex-col md:flex-row gap-4 items-center justify-between mb-8">

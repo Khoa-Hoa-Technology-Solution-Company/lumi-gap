@@ -1,8 +1,8 @@
 import * as Y from "yjs";
+import { captureHistory, historySummary, retainedHistory, restoreHistory } from "./manuscript-history.js";
 import { EventEmitter } from "node:events";
 import { isDeepStrictEqual } from "node:util";
 import { zipSync, strToU8 } from "fflate";
-import sharp from "sharp";
 import type { CreateManuscript, ManuscriptSummary, ManuscriptDetail, ManuscriptFile, ManuscriptManifest, ManuscriptSnapshot, ManuscriptContext, ManuscriptComment, ManuscriptFeedbackSummary } from "@trend/shared-types";
 import type { Prisma } from "../../generated/prisma/client.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
@@ -13,8 +13,11 @@ import { canAccessProjectAsMentor } from "../projects/academic-relationship-acce
 import { assertReviewerInTransaction } from "../reviews/peer-review-access.js";
 import { notificationService } from "../notifications/notification.service.js";
 import { hashBytes, sourceState, sourceDocument, sourceText, validateDocument, manuscriptPath, manuscriptTemplate, citationKey, bibtexEntry, MAX_CRDT_BYTES } from "./manuscript-source.js";
-import type { ManuscriptEngine, CreateManuscriptSnapshot } from "@trend/shared-types";
-import { compilerAvailability, compilationDto, compilationSelect, enqueueCompilation } from "./manuscript-compiler.js";
+import type { ManuscriptEngine, CreateManuscriptSnapshot, ManuscriptSyncQuery, ManuscriptSyncLocation } from "@trend/shared-types";
+import { env } from "../../config/env.js";
+import { z } from "zod";
+import { compilerEndpoint, compilerAvailability, compilationDto, compilationSelect, enqueueCompilation } from "./manuscript-compiler.js";
+import { readSourceZip, prepareFigure } from "./manuscript-import.js";
 
 type Db = Prisma.TransactionClient;
 type Draft = NonNullable<Awaited<ReturnType<Db["draftWorkspace"]["findUnique"]>>>;
@@ -25,7 +28,7 @@ const fileSelect = { id: true, path: true, kind: true, version: true, sequence: 
 function fileDto(row: Pick<File, keyof typeof fileSelect>): ManuscriptFile { return { ...row, kind: row.kind as ManuscriptFile["kind"], updatedAt: row.updatedAt.toISOString() }; }
 function draftDto(row: Draft, canWrite: boolean): ManuscriptSummary { return { id: row.id, projectId: row.projectId, title: row.name, description: row.description, documentType: row.documentType as ManuscriptSummary["documentType"], template: row.template as ManuscriptSummary["template"], version: row.version, mainFileId: row.mainFileId, archived: Boolean(row.archivedAt), createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString(), canWrite: canWrite && !row.archivedAt }; }
 async function manuscript(context: WorkspaceContext, id: string, write = false) {
-  const row = await context.tx.draftWorkspace.findFirst({ where: { id, projectId: context.project.id, writingMode: "LATEX" } });
+  const row = await context.tx.draftWorkspace.findFirst({ where: { id, projectId: context.project.id, writingMode: "LATEX", deletedAt: null } });
   if (!row) throw AppError.notFound("Manuscript not found");
   if (write && row.archivedAt) throw AppError.conflict("Archived manuscripts are read-only");
   return row;
@@ -96,24 +99,88 @@ async function latestFeedback(tx: Db, projectId: string, workspaceId?: string) {
   return new Map(rows.map(row => [row.workspaceId, { snapshotId: row.snapshotId, snapshotLabel: row.snapshotLabel, status: row.status, requestedAt: row.requestedAt.toISOString() }]));
 }
 export const manuscriptService = {
+  async importZip(projectId: string, actorId: string, input: { title: string; mainFile: string; clientKey: string; engine?: ManuscriptEngine }, bytes: Uint8Array) {
+    await withWorkspace(projectId, actorId, { write: true }, async () => undefined);
+    const archive = readSourceZip(bytes, input.mainFile);
+    for (const source of archive.files) if (source.kind === "ASSET") {
+      const clean = await prepareFigure(source.path, source.bytes); source.bytes = clean.bytes; source.mimeType = clean.mimeType;
+    }
+    if (archive.files.reduce((sum, file) => sum + file.bytes.length, 0) > 20_000_000) throw AppError.badRequest("Imported manuscript exceeds 20 MB");
+    const receipt = { ...input, archiveChecksum: hashBytes(bytes) };
+    const result = await withWorkspace(projectId, actorId, { write: true }, async context => {
+      const prior = await context.tx.draftWorkspace.findFirst({ where: { projectId: context.project.id, createdById: actorId, clientKey: input.clientKey } });
+      if (prior) {
+        if (prior.deletedAt) throw AppError.conflict("This manuscript was deleted. Start a new import.");
+        const revision = await context.tx.projectWorkspaceRevision.findFirst({ where: { entityKind: "MANUSCRIPT", entityId: prior.id, version: 1 } });
+        if (!isDeepStrictEqual((revision?.snapshot as { creationInput?: unknown })?.creationInput, receipt)) throw AppError.conflict("This import request key was already used");
+        return draftDto(prior, true);
+      }
+      if (await context.tx.draftWorkspace.count({ where: { projectId: context.project.id, writingMode: "LATEX", deletedAt: null } }) >= 100) throw AppError.badRequest("Project manuscript limit reached");
+      const row = await context.tx.draftWorkspace.create({ data: { projectId: context.project.id, name: input.title, documentType: "RESEARCH_PAPER", template: "ARTICLE", writingMode: "LATEX", clientKey: input.clientKey, createdById: actorId, ...(input.engine ? { compilerEngine: input.engine, compilerRelease: env.MANUSCRIPT_COMPILER_2025_URL ? "2025" : "2022" } : {}) } });
+      await pathsAvailable(context.tx, row.id, archive.files);
+      let mainFileId = "";
+      for (const source of archive.files) {
+        const created = source.kind === "TEXT" ? await createText(context, row.id, source.path, source.text!) : await context.tx.manuscriptFile.create({ data: { workspaceId: row.id, path: source.path, kind: "ASSET", assetData: new Uint8Array(source.bytes), mimeType: source.mimeType!, sizeBytes: source.bytes.length, checksum: hashBytes(source.bytes), createdById: actorId } });
+        if (source.path === archive.mainFile) mainFileId = created.id;
+      }
+      const created = await context.tx.draftWorkspace.update({ where: { id: row.id }, data: { mainFileId } });
+      await workspaceRevision(context, "MANUSCRIPT", created, receipt);
+      await workspaceEvent(context, "MANUSCRIPT_IMPORTED", "MANUSCRIPT", row.id, { files: archive.files.length, ignored: archive.ignored.length }, `manuscript:import:${row.id}`);
+      return draftDto(created, true);
+    });
+    notifyChange(projectId, result.id); return { ...result, ignoredFiles: archive.ignored };
+  },
+  async search(projectId: string, actorId: string, id: string, query: string, caseSensitive = false) {
+    return withWorkspace(projectId, actorId, {}, async context => {
+      await manuscript(context, id);
+      const files = await context.tx.manuscriptFile.findMany({ where: { workspaceId: id, kind: "TEXT", deletedAt: null }, select: { id: true, path: true, crdtState: true }, orderBy: { path: "asc" } });
+      const matches: Array<{ fileId: string; path: string; line: number; text: string }> = [];
+      const needle = caseSensitive ? query : query.toLowerCase();
+      for (const file of files) {
+        const lines = sourceText(file.crdtState!).split("\n");
+        for (let index = 0; index < lines.length; index++) if ((caseSensitive ? lines[index]! : lines[index]!.toLowerCase()).includes(needle)) {
+          const position = (caseSensitive ? lines[index]! : lines[index]!.toLowerCase()).indexOf(needle);
+          matches.push({ fileId: file.id, path: file.path, line: index + 1, text: lines[index]!.slice(Math.max(0, position - 60), position + query.length + 180) });
+          if (matches.length === 101) return { matches: matches.slice(0, 100), truncated: true };
+        }
+      }
+      return { matches, truncated: false };
+    });
+  },
   async list(projectId: string, actorId: string) {
     return withWorkspace(projectId, actorId, {}, async context => {
-      const rows = await context.tx.draftWorkspace.findMany({ where: { projectId: context.project.id, writingMode: "LATEX" }, orderBy: [{ updatedAt: "desc" }, { id: "desc" }], take: 100 });
+      const rows = await context.tx.draftWorkspace.findMany({ where: { projectId: context.project.id, writingMode: "LATEX", deletedAt: null }, orderBy: [{ updatedAt: "desc" }, { id: "desc" }], take: 100 });
       const members = await context.tx.projectMember.findMany({ where: { projectId: context.project.id, status: "ACTIVE" }, select: { userId: true } });
       const [people, feedback] = await Promise.all([workspacePeople(context.tx, [context.project.ownerId, ...members.map(m => m.userId)]), latestFeedback(context.tx, context.project.id)]);
-      return rows.map(row => ({ ...draftDto(row, context.project.status !== "ARCHIVED"), collaborators: [...people.values()], latestFeedback: feedback.get(row.id) ?? null }));
+      return rows.map(row => ({ ...draftDto(row, context.project.status !== "ARCHIVED"), canDelete: context.project.status !== "ARCHIVED" && (context.role === "OWNER" || row.createdById === context.actorId), collaborators: [...people.values()], latestFeedback: feedback.get(row.id) ?? null }));
     });
+  },
+  async remove(projectId: string, actorId: string, id: string, expectedVersion: number) {
+    const result = await withWorkspace(projectId, actorId, { write: true }, async context => {
+      const row = await context.tx.draftWorkspace.findFirst({ where: { id, projectId: context.project.id, writingMode: "LATEX" } });
+      if (!row) throw AppError.notFound("Manuscript not found");
+      if (context.role !== "OWNER" && row.createdById !== context.actorId) throw AppError.forbidden("Only the project owner or manuscript creator can delete this manuscript");
+      if (row.deletedAt) return { id };
+      expected(row.version, expectedVersion);
+      const removed = await context.tx.draftWorkspace.update({ where: { id }, data: { deletedAt: new Date(), version: { increment: 1 } } });
+      await workspaceRevision(context, "MANUSCRIPT", removed);
+      await workspaceEvent(context, "MANUSCRIPT_DELETED", "MANUSCRIPT", id, { version: removed.version });
+      return { id };
+    });
+    notifyChange(projectId, id);
+    return result;
   },
   async create(projectId: string, actorId: string, input: CreateManuscript) {
     const result = await withWorkspace(projectId, actorId, { write: true }, async context => {
       const prior = await context.tx.draftWorkspace.findFirst({ where: { projectId: context.project.id, createdById: actorId, clientKey: input.clientKey } });
       if (prior) {
+        if (prior.deletedAt) throw AppError.conflict("This manuscript was deleted. Start a new request.");
         const receipt = await context.tx.projectWorkspaceRevision.findFirst({ where: { entityKind: "MANUSCRIPT", entityId: prior.id, version: 1 } });
         const creation = (receipt?.snapshot as { creationInput?: unknown })?.creationInput;
         if (!isDeepStrictEqual(creation, jsonSnapshot(input))) throw AppError.conflict("This manuscript request key was already used");
         return draftDto(prior, true);
       }
-      if (await context.tx.draftWorkspace.count({ where: { projectId: context.project.id, writingMode: "LATEX" } }) >= 100) throw AppError.badRequest("Project manuscript limit reached");
+      if (await context.tx.draftWorkspace.count({ where: { projectId: context.project.id, writingMode: "LATEX", deletedAt: null } }) >= 100) throw AppError.badRequest("Project manuscript limit reached");
       await assertWorkspaceLink(context, input.researchLink ?? null);
       const row = await context.tx.draftWorkspace.create({ data: { projectId: context.project.id, name: input.title, description: input.description, documentType: input.documentType, template: input.template, writingMode: "LATEX", clientKey: input.clientKey, researchLink: input.researchLink ? jsonSnapshot(input.researchLink) : undefined, createdById: actorId } });
       await context.tx.manuscriptFile.create({ data: { workspaceId: row.id, path: "sections", kind: "FOLDER", createdById: actorId } });
@@ -131,10 +198,24 @@ export const manuscriptService = {
   async detail(projectId: string, actorId: string, id: string): Promise<ManuscriptDetail> {
     return withWorkspace(projectId, actorId, {}, async context => {
       const row = await manuscript(context, id);
+      if (!row.compilerEngine || !row.compilerRelease) {
+        const last = await context.tx.manuscriptCompilation.findFirst({ where: { snapshotId: { in: (await context.tx.manuscriptSnapshot.findMany({ where: { workspaceId: id }, select: { id: true } })).map(s => s.id) } }, orderBy: { createdAt: "desc" } });
+        row.compilerEngine ??= last?.toolchain?.match(/^(pdflatex|xelatex|lualatex)/)?.[1] ?? null; row.compilerRelease ??= last?.texLiveVersion ?? null;
+      }
       const [files, members] = await Promise.all([context.tx.manuscriptFile.findMany({ where: { workspaceId: id, deletedAt: null }, select: fileSelect, orderBy: { path: "asc" } }), context.tx.projectMember.findMany({ where: { projectId: context.project.id, status: "ACTIVE" }, select: { userId: true } })]);
       const [people, feedback] = await Promise.all([workspacePeople(context.tx, [context.project.ownerId, ...members.map(m => m.userId)]), latestFeedback(context.tx, context.project.id, id)]);
-      return { ...draftDto(row, context.project.status !== "ARCHIVED"), files: files.map(fileDto), collaborators: [...people.values()], latestFeedback: feedback.get(id) ?? null, compiler: compilerAvailability };
+      return { ...draftDto(row, context.project.status !== "ARCHIVED"), files: files.map(fileDto), collaborators: [...people.values()], latestFeedback: feedback.get(id) ?? null, compiler: compilerAvailability, compilerSettings: { engine: (row.compilerEngine ?? "pdflatex") as ManuscriptEngine, texLiveVersion: (row.compilerRelease ?? "2022") as import("@trend/shared-types").ManuscriptTexLive, revision: row.compilerRevision } };
     });
+  },
+  async compilerSettings(projectId: string, actorId: string, id: string, input: { engine: ManuscriptEngine; texLiveVersion: import("@trend/shared-types").ManuscriptTexLive; expectedRevision: number }) {
+    const result = await withWorkspace(projectId, actorId, { write: true }, async context => {
+      const row = await manuscript(context, id, true);
+      if (!compilerEndpoint(input.texLiveVersion)) throw AppError.badRequest("This compiler release is unavailable");
+      expected(row.compilerRevision, input.expectedRevision);
+      const saved = await context.tx.draftWorkspace.update({ where: { id }, data: { compilerEngine: input.engine, compilerRelease: input.texLiveVersion, compilerRevision: { increment: 1 } } });
+      await workspaceEvent(context, "MANUSCRIPT_COMPILER_SETTINGS", "MANUSCRIPT", id, { engine: input.engine, texLiveVersion: input.texLiveVersion, revision: saved.compilerRevision });
+      return { engine: input.engine, texLiveVersion: input.texLiveVersion, revision: saved.compilerRevision };
+    }); notifyChange(projectId, id); return result;
   },
   async createFile(projectId: string, actorId: string, id: string, input: { path: string; kind: "TEXT" | "FOLDER"; content: string; clientKey: string }) {
     const result = await withWorkspace(projectId, actorId, { write: true }, async context => {
@@ -176,26 +257,16 @@ export const manuscriptService = {
   },
   async asset(projectId: string, actorId: string, id: string, input: { path: string; data: string; replaceId?: string; expectedVersion?: number }) {
     const bytes = Buffer.from(input.data, "base64");
-    if (!bytes.length || bytes.length > 5_000_000) throw AppError.badRequest("Images must be smaller than 5 MB");
-    // Decode and reencode raster uploads: no SVG/script, spoofed media or hidden original metadata.
-    let clean: Buffer;
-    try {
-      const image = sharp(bytes, { limitInputPixels: 20_000_000, failOn: "warning" });
-      const metadata = await image.metadata();
-      if (!["png", "jpeg", "webp"].includes(metadata.format ?? "") || (metadata.pages ?? 1) > 1) throw new Error("Unsupported raster format");
-      clean = await image.rotate().png().toBuffer();
-    }
-    catch { throw AppError.badRequest("Upload a valid PNG, JPEG or WebP image"); }
-    if (clean.length > 5_000_000) throw AppError.badRequest("Decoded image exceeds the asset limit");
+    const path = manuscriptPath(input.path.replace(/\.(jpg|jpeg|webp)$/, ".png"), "ASSET");
+    const figure = await prepareFigure(path, bytes), clean = figure.bytes;
     const result = await withWorkspace(projectId, actorId, { write: true }, async context => {
       await manuscript(context, id, true);
-      const path = manuscriptPath(input.path.replace(/\.(jpg|jpeg|webp)$/, ".png"), "ASSET");
       const prior = input.replaceId ? await file(context, id, input.replaceId) : null;
       if (prior && prior.kind !== "ASSET") throw AppError.badRequest("Only image assets can be replaced");
       if (prior) expected(prior.version, input.expectedVersion!);
       await enforceQuota(context.tx, id, prior ? 0 : 1, clean.length - (prior?.sizeBytes ?? 0));
       await pathsAvailable(context.tx, id, [{ path, kind: "ASSET" }], prior ? [prior.id] : []);
-      const data = { path, assetData: new Uint8Array(clean), sizeBytes: clean.length, mimeType: "image/png", checksum: hashBytes(clean) };
+      const data = { path, assetData: new Uint8Array(clean), sizeBytes: clean.length, mimeType: figure.mimeType, checksum: hashBytes(clean) };
       const row = prior ? await context.tx.manuscriptFile.update({ where: { id: prior.id }, data: { ...data, version: { increment: 1 } } }) : await context.tx.manuscriptFile.create({ data: { ...data, kind: "ASSET", workspaceId: id, createdById: actorId } });
       await changed(context.tx, id); return fileDto(row);
     }); notifyChange(projectId, id); return result;
@@ -253,7 +324,7 @@ export const manuscriptService = {
       const rows = await context.tx.manuscriptSnapshot.findMany({ where: { workspaceId: id }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 100 });
       const people = await workspacePeople(context.tx, rows.map(r => r.createdById));
       const sealed = await context.tx.submissionRevision.findMany({ where: { manuscriptSnapshotId: { in: rows.map(r => r.id) } }, select: { manuscriptSnapshotId: true, submissionId: true } });
-      return rows.map(row => ({ id: row.id, label: row.label, sourceVersion: row.sourceVersion, checksum: row.checksum, createdAt: row.createdAt.toISOString(), createdBy: workspacePerson(people, row.createdById), submissionId: sealed.find(r => r.manuscriptSnapshotId === row.id)?.submissionId ?? null }));
+      return rows.map(row => ({ id: row.id, label: row.label, sourceVersion: row.sourceVersion, checksum: row.checksum, collaboration: historySummary(row.collaborationState), createdAt: row.createdAt.toISOString(), createdBy: workspacePerson(people, row.createdById), submissionId: sealed.find(r => r.manuscriptSnapshotId === row.id)?.submissionId ?? null }));
     });
   },
   async snapshot(projectId: string, actorId: string, id: string, input: CreateManuscriptSnapshot) {
@@ -274,7 +345,7 @@ export const manuscriptService = {
         if (unchanged) return unchanged;
       }
       if (await context.tx.manuscriptSnapshot.count({ where: { workspaceId: id } }) >= 100) throw AppError.badRequest("Manuscript snapshot limit reached");
-      const row = await context.tx.manuscriptSnapshot.create({ data: { workspaceId: id, projectId: context.project.id, label: input.label, sourceVersion: draft.version, manifest: jsonSnapshot(manifest), checksum, createdById: actorId, clientKey: input.clientKey } });
+      const row = await context.tx.manuscriptSnapshot.create({ data: { workspaceId: id, projectId: context.project.id, label: input.label, sourceVersion: draft.version, manifest: jsonSnapshot(manifest), collaborationState: (await captureHistory(context.tx, projectId, id, files, { engine: draft.compilerEngine, release: draft.compilerRelease, template: draft.template })) ?? undefined, checksum, createdById: actorId, clientKey: input.clientKey } });
       const assets = files.filter(f => f.assetData);
       if (assets.length) await context.tx.manuscriptSnapshotAsset.createMany({ data: assets.map(f => ({ snapshotId: row.id, fileId: f.id, data: f.assetData! })) });
       await workspaceEvent(context, "MANUSCRIPT_SNAPSHOT_CREATED", "MANUSCRIPT", id, { snapshotId: row.id, version: draft.version, attribution: "SNAPSHOT_CREATOR_ONLY" }, `manuscript:snapshot:${row.id}`);
@@ -310,20 +381,25 @@ export const manuscriptService = {
       const prior = await context.tx.draftWorkspace.findFirst({ where: { projectId: context.project.id, createdById: actorId, clientKey: input.clientKey } });
       if (prior) {
         const receipt = await context.tx.projectActivity.findFirst({ where: { idempotencyKey: `manuscript:restore:${prior.id}`, projectId: context.project.id } });
+        if (prior.deletedAt) throw AppError.conflict("This restored manuscript was deleted. Start a new restore request.");
         if ((receipt?.metadata as { snapshotId?: string; title?: string })?.snapshotId !== snapshotId || (receipt?.metadata as { title?: string })?.title !== input.title) throw AppError.conflict("This restore request key was already used");
         return draftDto(prior, true);
       }
-      if (await context.tx.draftWorkspace.count({ where: { projectId: context.project.id, writingMode: "LATEX" } }) >= 100) throw AppError.badRequest("Project manuscript limit reached");
+      if (await context.tx.draftWorkspace.count({ where: { projectId: context.project.id, writingMode: "LATEX", deletedAt: null } }) >= 100) throw AppError.badRequest("Project manuscript limit reached");
       const manifest = snapshot.manifest as unknown as ManuscriptManifest;
       const assets = await context.tx.manuscriptSnapshotAsset.findMany({ where: { snapshotId } });
-      const row = await context.tx.draftWorkspace.create({ data: { projectId: context.project.id, name: input.title, documentType: manifest.documentType, writingMode: "LATEX", template: "ARTICLE", createdById: actorId, clientKey: input.clientKey } });
+      const history = retainedHistory(snapshot.collaborationState), fileIds = new Map<string, string>();
+      const original = await manuscript(context, id);
+      const row = await context.tx.draftWorkspace.create({ data: { compilerEngine: history?.settings ? history.settings.engine : original.compilerEngine, compilerRelease: history?.settings ? history.settings.release : original.compilerRelease, projectId: context.project.id, name: input.title, documentType: manifest.documentType, writingMode: "LATEX", template: history?.settings?.template ?? original.template ?? "ARTICLE", createdById: actorId, clientKey: input.clientKey } });
       let mainFileId = "";
       for (const source of manifest.files) {
-        const state = source.kind === "TEXT" ? sourceState(source.text ?? "") : null;
+        const state = source.kind === "TEXT" ? history?.states[source.id] ? new Uint8Array(Buffer.from(history.states[source.id]!, "base64")) : sourceState(source.text ?? "") : null;
         const asset = assets.find(a => a.fileId === source.id)?.data ?? null;
         const created = await context.tx.manuscriptFile.create({ data: { workspaceId: row.id, path: source.path, kind: source.kind, crdtState: state, assetData: asset, mimeType: source.mimeType, sizeBytes: source.sizeBytes, checksum: state ? hashBytes(state) : source.checksum, createdById: actorId } });
+        fileIds.set(source.id, created.id);
         if (source.id === manifest.mainFileId) mainFileId = created.id;
       }
+      if (history) await restoreHistory(context.tx, context.project.id, row.id, snapshotId, history, fileIds);
       const restored = await context.tx.draftWorkspace.update({ where: { id: row.id }, data: { mainFileId } });
       await workspaceEvent(context, "MANUSCRIPT_RESTORED", "MANUSCRIPT", row.id, { snapshotId, title: input.title }, `manuscript:restore:${row.id}`);
       return draftDto(restored, true);
@@ -344,11 +420,12 @@ export const manuscriptService = {
       return { references: papers.map(p => { const names = authors.filter(a => a.paperId === p.id).map(a => a.displayName), key = citationKey(p, names); return { id: p.id, title: p.title, authors: names, year: p.publicationYear || null, doi: p.doi, citationKey: key, bibtex: bibtexEntry(p, names, key) }; }), plan: plan ? { title: context.project.title, objective: plan.objectives.join("\n"), questions: plan.questions } : null, gaps: gaps.map(g => ({ id: g.id, title: g.title, description: g.description, status: g.assessmentStatus, limitations: g.assumptions })), evidence: [...evidence.map(e => ({ id: e.id, claim: e.claim, interpretation: e.context, status: e.reviewState, evidenceRole: "EXTRACTED", limitations: e.limitations })), ...gapEvidence.map(e => ({ id: e.id, gapId: e.gapId, claim: e.excerpt ?? e.explanation, interpretation: e.explanation, status: evidence.find(item => item.id === e.evidenceItemId)?.reviewState ?? "UNVERIFIED", evidenceRole: e.evidenceKind, limitations: evidence.find(item => item.id === e.evidenceItemId)?.limitations ?? "" }))] };
     });
   },
-  async insertCitation(projectId: string, actorId: string, id: string, paperId: string) {
+  async insertCitation(projectId: string, actorId: string, id: string, paperId: string, requireIncluded = false) {
     const result = await withWorkspace(projectId, actorId, { write: true }, async context => {
       await manuscript(context, id, true);
-      if (!await context.tx.projectPaper.findFirst({ where: { projectId, paperId } })) throw AppError.notFound("Project reference not found");
+      if (!await context.tx.projectPaper.findFirst({ where: { projectId, paperId, ...(requireIncluded ? { screeningStatus: "INCLUDED" } : {}) } })) throw AppError.notFound("Project reference not found");
       const paper = await context.tx.paper.findUniqueOrThrow({ where: { id: paperId } });
+      if (requireIncluded && paper.dataStatus !== "active") throw AppError.conflict("The AI source is no longer available");
       const authors = await context.tx.paperAuthor.findMany({ where: { paperId }, orderBy: { position: "asc" } });
       let row = await context.tx.manuscriptFile.findFirst({ where: { workspaceId: id, path: "references.bib", deletedAt: null, kind: "TEXT" } });
       if (!row) {
@@ -461,19 +538,25 @@ export const manuscriptService = {
       return { submissionId: submission.id, revisionId: revision.id };
     });
   },
-  async compile(projectId: string, actorId: string, id: string, snapshotId: string, engine: ManuscriptEngine = "pdflatex") {
+  async compile(projectId: string, actorId: string, id: string, snapshotId: string, requestedEngine?: ManuscriptEngine, requestedRelease?: import("@trend/shared-types").ManuscriptTexLive) {
     const result = await withWorkspace(projectId, actorId, { write: true }, async context => {
-      await manuscript(context, id, true);
+      const draft = await manuscript(context, id, true);
+        if (!draft.compilerEngine || !draft.compilerRelease) {
+          const last = await context.tx.manuscriptCompilation.findFirst({ where: { snapshotId: { in: (await context.tx.manuscriptSnapshot.findMany({ where: { workspaceId: id }, select: { id: true } })).map(s => s.id) } }, orderBy: { createdAt: "desc" } });
+          draft.compilerEngine ??= last?.toolchain?.match(/^(pdflatex|xelatex|lualatex)/)?.[1] ?? null; draft.compilerRelease ??= last?.texLiveVersion ?? null;
+        }
+      const engine = requestedEngine ?? (draft.compilerEngine as ManuscriptEngine | null) ?? "pdflatex";
+      const texLiveVersion = requestedRelease ?? (draft.compilerRelease as import("@trend/shared-types").ManuscriptTexLive | null) ?? "2022";
       const row = await context.tx.manuscriptSnapshot.findFirst({ where: { id: snapshotId, workspaceId: id, projectId: context.project.id } });
       if (!row) throw AppError.notFound("Snapshot not found");
-      if (!compilerAvailability.available) throw AppError.serviceUnavailable("The manuscript compiler is not configured.");
+      compilerEndpoint(texLiveVersion);
       // Project lock in withWorkspace serializes duplicate requests, including multiple team members.
-      const prior = await context.tx.manuscriptCompilation.findFirst({ where: { snapshotId, toolchain: { startsWith: engine }, status: { in: ["QUEUED", "COMPILING", "SUCCESS"] } }, orderBy: { createdAt: "desc" }, select: compilationSelect });
+      const prior = await context.tx.manuscriptCompilation.findFirst({ where: { snapshotId, texLiveVersion, toolchain: { startsWith: engine }, status: { in: ["QUEUED", "COMPILING", "SUCCESS"] } }, orderBy: { createdAt: "desc" }, select: compilationSelect });
       if (prior) return { job: compilationDto(prior, row.sourceVersion), enqueue: prior.status === "QUEUED" };
       const snapshots = await context.tx.manuscriptSnapshot.findMany({ where: { workspaceId: id }, select: { id: true } });
       if (await context.tx.manuscriptCompilation.count({ where: { snapshotId: { in: snapshots.map(s => s.id) }, status: { in: ["QUEUED", "COMPILING"] } } })) throw AppError.conflict("A compilation is already in progress for this manuscript.");
       if (await context.tx.manuscriptCompilation.count({ where: { requestedById: context.actorId, status: { in: ["QUEUED", "COMPILING"] } } }) >= 3) throw AppError.tooMany("Wait for your existing compilations to finish.");
-      const job = await context.tx.manuscriptCompilation.create({ data: { snapshotId, requestedById: context.actorId, status: "QUEUED", toolchain: engine }, select: compilationSelect });
+      const job = await context.tx.manuscriptCompilation.create({ data: { snapshotId, requestedById: context.actorId, texLiveVersion, status: "QUEUED", toolchain: engine }, select: compilationSelect });
       return { job: compilationDto(job, row.sourceVersion), enqueue: true };
     });
     if (result.enqueue) await enqueueCompilation(result.job.id);
@@ -504,6 +587,37 @@ export const manuscriptService = {
       return output.pdfData;
     });
   },
+  async syncTex(projectId: string, actorId: string, id: string, compilationId: string, query: ManuscriptSyncQuery) {
+    const job = await getPrisma().manuscriptCompilation.findUnique({ where: { id: compilationId }, select: { snapshotId: true } });
+    if (!job) throw AppError.notFound("Compilation not found");
+    const authorized = await withSnapshot(projectId, actorId, id, job.snapshotId, async (tx, snapshot) => {
+      const row = await tx.manuscriptCompilation.findFirst({ where: { id: compilationId, status: "SUCCESS" }, select: { syncTexData: true, texLiveVersion: true } });
+      if (!row?.syncTexData) throw AppError.badRequest("Compile again to enable SyncTeX for this PDF.");
+      const files = (snapshot.manifest as unknown as ManuscriptManifest).files.filter(file => file.kind === "TEXT");
+      if (query.direction === "forward" && !files.some(file => file.path === query.path)) throw AppError.notFound("Source not in this PDF version");
+      return { bytes: row.syncTexData, files, texLiveVersion: row.texLiveVersion };
+    });
+    const endpoint = compilerEndpoint(authorized.texLiveVersion);
+    const response = await fetch(new URL("synctex", `${endpoint.replace(/\/$/, "")}/`), { method: "POST", headers: { "Content-Type": "application/json", "X-Internal-Key": env.INTERNAL_SERVICE_KEY }, body: JSON.stringify({ ...query, synctex: Buffer.from(authorized.bytes).toString("base64") }), signal: AbortSignal.timeout(10000), redirect: "error" });
+    if (!response.ok || !response.body) throw AppError.serviceUnavailable("SyncTeX unavailable");
+    const chunks: Uint8Array[] = []; let size = 0;
+    for await (const chunk of response.body) { size += chunk.length; if (size > 64000) throw AppError.serviceUnavailable("Invalid SyncTeX response"); chunks.push(chunk); }
+    const raw = z.object({ locations: z.array(z.record(z.string().max(1000))).max(40) }).safeParse(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+    if (!raw.success) throw AppError.serviceUnavailable("SyncTeX unavailable");
+    const locations: ManuscriptSyncLocation[] = [];
+    for (const item of raw.data.locations) {
+      if (query.direction === "forward") {
+        const page = Number(item.Page), x = Number(item.h) + Number(item.W ?? 0) / 2, y = Math.max(0, Number(item.v) - Number(item.H ?? 0) / 2);
+        if (Number.isInteger(page) && page > 0 && page <= 10000 && [x, y].every(value => Number.isFinite(value) && value >= 0 && value <= 20000)) locations.push({ page, x, y });
+      } else {
+        const path = item.Input?.replace(/^\.\//, ""), line = Number(item.Line);
+        if (path && authorized.files.some(file => file.path === path) && Number.isInteger(line) && line > 0 && line <= 500000) locations.push({ path, line });
+      }
+    }
+    // Authorization may have changed while the compiler was queried.
+    await withSnapshot(projectId, actorId, id, job.snapshotId, async () => undefined);
+    return locations;
+  },
 };
 
 type Snapshot = NonNullable<Awaited<ReturnType<Db["manuscriptSnapshot"]["findUnique"]>>>;
@@ -528,6 +642,7 @@ async function withSnapshot<T>(projectId: string, actorId: string, id: string, s
       }
       if (!mentorRelationshipId && !reviewer) throw AppError.notFound("Snapshot not found");
     }
+    if (!reviewer && !await tx.draftWorkspace.findFirst({ where: { id, projectId, writingMode: "LATEX", deletedAt: null }, select: { id: true } })) throw AppError.notFound("Manuscript not found");
     return run(tx, snapshot, { member, mentorRelationshipId, reviewer });
   }, { maxWait: 10000, timeout: 20000 });
 }

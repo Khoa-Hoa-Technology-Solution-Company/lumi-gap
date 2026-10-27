@@ -28,17 +28,21 @@ import { projectMemberTranslations } from "./project-members";
 import { projectWorkspaceVi } from "./project-workspace";
 import { trendEvidenceViStrings } from "./trend-evidence";
 import { trendVerdictViStrings } from "./trend-verdict";
+import { trendResearchLinkViStrings } from "./trend-research-links";
+import { trendPeriodsViStrings } from "./trend-periods";
 import { qualityEvaluationVi } from "./quality-evaluation";
 
 export const vi: Record<keyof typeof en, string> = {
   ...en,
   ...qualityEvaluationVi,
   ...manuscriptsVi,
-  ...researchWorkflowVi,
   ...contributionsVi,
+  ...researchWorkflowVi,
   ...trustSafetyRagViStrings,
   ...trendEvidenceViStrings,
   ...trendVerdictViStrings,
+  ...trendResearchLinkViStrings,
+  ...trendPeriodsViStrings,
   ...researchHomeVi,
   ...projectInvitationStrings,
   ...peerReviewVersionStrings,
@@ -2497,4 +2501,25 @@ export const vi: Record<keyof typeof en, string> = {
   ...livingPlanVi,
   ...researchTasksVi,
   ...confirmationsVi,
+  "Future work": researchWorkflowVi["Future work"],
+  "Research workflow": researchWorkflowVi["Research workflow"],
+  "Table editor": "Soạn bảng",
+  "Equation editor": "Soạn công thức",
+  "Preview the source, then apply. TeX compilation remains the final check.": "Xem trước rồi áp dụng vào mã nguồn. Biên dịch LaTeX để kiểm tra kết quả cuối cùng.",
+  "This structure uses unsupported formatting. Edit it in the source editor to preserve its commands.": "Cấu trúc này có định dạng phức tạp. Hãy sửa trong mã nguồn để bảo toàn các lệnh.",
+  "Plain text cells. LaTeX special characters are escaped automatically.": "Nhập văn bản vào ô. Ký tự đặc biệt được chuyển sang LaTeX tự động.",
+  "This equation cannot be previewed. Check the syntax or use the source editor.": "Chưa thể xem trước công thức. Kiểm tra cú pháp hoặc sửa trong mã nguồn.",
+  "Could not load equation preview.": "Không tải được phần xem trước công thức.",
+  "The source or your access changed. Close this preview and reopen it from the current source.": "Mã nguồn hoặc quyền truy cập đã thay đổi. Đóng và mở lại công cụ từ mã nguồn hiện tại.",
+  "Equation source": "Mã công thức",
+  "Equation preview": "Xem trước công thức",
+  "LaTeX source": "Mã LaTeX",
+  "Apply to source": "Áp dụng vào mã nguồn",
+  "Rows": "Số hàng",
+  "Columns": "Số cột",
+  "Alignment": "Căn lề",
+  "Cell": "Ô",
+  "Left": "Trái",
+  "Center": "Giữa",
+  "Right": "Phải",
 };

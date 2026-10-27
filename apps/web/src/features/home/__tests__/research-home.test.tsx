@@ -106,7 +106,8 @@ describe("Focused research home", () => {
     await render();
     expect(container.querySelector("h1")?.textContent).toBe("What are you researching today?");
     expect(container.querySelector('form[role="search"] input[type="search"]')).not.toBeNull();
-    expect(container.querySelector("img")).toBeNull();
+    expect(container.querySelector("img:not(.home-scholar-portrait)")).toBeNull();
+    expect(container.querySelectorAll(".home-scholar-portrait")).toHaveLength(8);
     expect(container.querySelector("#home-featured-heading")).not.toBeNull();
     expect(container.querySelector("#home-research-bridge-heading")).not.toBeNull();
     expect(container.querySelector("#home-question-space-heading")).not.toBeNull();

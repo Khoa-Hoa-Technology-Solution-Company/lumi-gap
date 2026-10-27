@@ -31,6 +31,7 @@ model User {
   personalGeminiKey        String?                 @map("personal_gemini_key")
   aiConnections           UserAiConnection[]
   aiPreference            UserAiPreference?
+  githubConnection        GithubConnection?
   createdAt                DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt                DateTime                @updatedAt @map("updated_at") @db.Timestamptz(6)
 

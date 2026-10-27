@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { Layers, Menu, SquarePen, Shield } from "lucide-react";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
@@ -53,8 +53,21 @@ export function ForumSidebar({
   const { sort, type } = parseForumListParams(params);
   const categoryFilter = params.get("category") ?? params.get("community") ?? "";
   const [open, setOpen] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
   const close = () => setOpen(false);
   const newDiscussionHref = `/forum/new${categoryFilter ? `?category=${encodeURIComponent(categoryFilter)}` : ""}`;
+
+  // Keep the selected entry inside the sidebar's own viewport after navigation. Scrolls only the panel, never the page.
+  useEffect(() => {
+    const panel = panelRef.current;
+    const active = panel?.querySelectorAll<HTMLElement>('[aria-current="page"]');
+    const current = active?.length ? active[active.length - 1] : null; // deepest active entry (type or category over feed)
+    if (!panel || !current) return;
+    const top = current.offsetTop; // the sticky panel is the offsetParent
+    const bottom = top + current.offsetHeight;
+    if (top < panel.scrollTop) panel.scrollTop = top;
+    else if (bottom > panel.scrollTop + panel.clientHeight) panel.scrollTop = bottom - panel.clientHeight;
+  }, [location.pathname, location.search, communities.length]);
 
   const itemClass =
     "forum-sidebar-item group flex min-h-9 w-full items-center gap-2.5 rounded-md px-3 py-1.5 text-left text-sm leading-5 text-muted-foreground transition-colors hover:bg-muted/70 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
@@ -195,7 +208,7 @@ export function ForumSidebar({
   return (
     <>
       <aside className="forum-sidebar-shell hidden w-[var(--forum-sidebar-width)] shrink-0 border-r border-border/70 bg-background lg:block">
-        <div className="forum-sidebar-panel sticky top-[var(--app-header-height)] max-h-[calc(100dvh-var(--app-header-height))] overflow-y-auto overscroll-y-contain px-2.5 pb-6 pt-5">
+        <div ref={panelRef} className="forum-sidebar-panel sticky top-[var(--app-header-offset)] max-h-[calc(100dvh-var(--app-header-offset)-1rem)] overflow-y-auto overscroll-y-contain px-2.5 pb-6 pt-5">
           {navigation}
         </div>
       </aside>

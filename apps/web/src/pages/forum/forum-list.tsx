@@ -151,7 +151,7 @@ export function ForumListPage() {
           />
         }
       >
-        <section ref={contentTop} className="min-w-0 scroll-mt-[calc(var(--app-header-height)+1rem)]" aria-label={t("Forum discussions")}>
+        <section ref={contentTop} className="min-w-0 scroll-mt-[calc(var(--app-header-offset)+1rem)]" aria-label={t("Forum discussions")}>
           <header className={cn("forum-list-header relative border-b border-border/70 px-4 py-3.5 sm:px-6", categoryContext && categoryPresentation.accentClassName)}>
             {categoryContext ? <span aria-hidden="true" className={cn("forum-category-context-icon", categoryPresentation.iconClassName)}><CategoryIcon className="h-5 w-5" /></span> : null}
             <h1 className="text-xl font-semibold tracking-tight">{selectedCommunity ? t(selectedCommunity.name) : t("Research Forum")}</h1>

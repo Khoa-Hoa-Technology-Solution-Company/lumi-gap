@@ -1,7 +1,5 @@
 # Publication Trend — Design Language
 
-> Tài liệu lịch sử: mobile Expo đã được gỡ, mobile hiện tại là Flutter (`apps/flutter_mobile`).
-
 > Single source of truth cho mọi quyết định visual của project. Stitch generate theo doc này. shadcn theme follow doc này. Team build component đồng nhất theo doc này.
 
 ---
@@ -24,6 +22,11 @@
 Project hỗ trợ **cả light + dark mode** (toggle qua `next-themes`). Mỗi mode có 1 palette riêng nhưng cùng visual identity.
 
 ### 2.1. Light Mode (Default — đọc paper dài)
+
+**Quy tắc nền:** Nền trang và bề mặt trắng mặc định phải là trắng tinh `#FFFFFF`.
+Không dùng trắng ngả vàng, kem, ivory, beige hoặc trắng ấm, trừ khi người dùng
+yêu cầu rõ ràng. Bề mặt phụ cần phân cấp có thể dùng xám trung tính; không tự
+pha sắc vàng vào nền. Quy tắc này áp dụng cho các thiết kế và chỉnh sửa UI sau này.
 
 ```
 Background        #FFFFFF      pure white — main surface
@@ -256,7 +259,7 @@ Inline trong markdown:
 | Button hover | 150ms | ease-out |
 | Modal open | 200ms | ease-out (fade + scale 0.95 → 1) |
 | Tooltip | 100ms | ease-out |
-| Page transitions | NONE — instant (data-heavy app) |
+| Page transitions | Instant by default; project section changes use a 200ms opacity reveal, as requested |
 | Skeleton pulse | 1500ms loop | ease-in-out |
 | Toast slide-in | 250ms | spring |
 
@@ -393,14 +396,44 @@ Update color → sửa 2 file này → mọi component tự cập nhật.
 
 ### Project workspace (2026-10-13)
 
-- Dùng tab ngang cho trang chi tiết dự án, dành toàn bộ chiều rộng cho nội dung.
-  Trên điện thoại, dùng select có nhãn và nhóm nghiên cứu/cộng tác.
+- Danh sách dự án nằm bên trái để đổi dự án và mở nội dung ngay bên phải.
+  `/projects` mở sẵn dự án cập nhật gần nhất chưa lưu trữ. Dùng tab ngang cho
+  các mục của dự án; trên điện thoại hoặc vùng nội dung hẹp, dùng select có nhãn.
+  Trên điện thoại, danh sách dự án cũng chuyển thành bộ chọn phía trên nội dung.
 - Danh sách dự án trình bày tên, mục tiêu và thao tác mở dự án rõ ràng; số bài báo
   và thành viên là dữ liệu thực, không thêm biểu đồ hoặc số liệu trang trí.
-- Tiêu đề trang 40px desktop, 32px mobile; nội dung và thao tác chính 16–18px.
+- Tiêu đề dự án 36px desktop, 32px mobile; nội dung và thao tác chính 16–18px.
   Giữ Source Sans 3 và màu xanh/navy LumiGap, có light/dark cùng cấu trúc.
 - Empty state phải có đường bắt đầu: tìm tài liệu, chọn bài đã lưu hoặc thêm DOI.
-  Hướng dẫn nghiên cứu nằm bên dưới, không tạo thêm sidebar.
+  Căn trái lời giới thiệu và nút tìm chính; bài đã lưu và DOI là hai hàng thao tác
+  phụ có mô tả cụ thể. Tiêu chí sàng lọc và hướng dẫn nằm cạnh phần thêm tài liệu
+  trên màn hình rộng, chuyển xuống dưới khi vùng nội dung hẹp.
+- Literature dùng xanh cho tìm bài và DOI, cam dịu cho bài đã lưu và tiêu chí
+  sàng lọc. Nhấn màu ở icon, thao tác và trạng thái hover/focus; tiêu đề navy,
+  nội dung trung tính, nền trang trắng tinh. Không phủ màu rộng lên workspace.
+- Bài báo trong dự án hiển thị thành các hàng rộng, không chia đôi danh sách
+  và phần đọc. Toolbar chỉ giữ tìm kiếm và một bộ chọn trạng thái sàng lọc;
+  mặc định xếp theo bài mới thêm. Số lượng chỉ xuất hiện ở dòng tóm tắt dưới
+  tiêu đề, không lặp bằng thẻ thống kê, tab trạng thái hay thanh tiến độ.
+  Không thêm bộ lọc nâng cao và bộ chọn sắp xếp nếu chưa được yêu cầu.
+  Bấm vào bài mở cửa sổ đọc với tóm tắt, ghi chú và quyết định
+  sàng lọc. Cửa sổ nền trắng tinh ở light mode, chữ nội dung 16–17px; phần đọc
+  cuộn độc lập để thao tác sàng lọc luôn nhìn thấy. Checkbox chọn nhiều bài
+  tách khỏi thao tác mở bài; đóng cửa sổ trả focus về hàng đã chọn hoặc ô tìm.
+- Sidebar dự án ưu tiên ô tìm kiếm, sau đó là danh sách sắp theo cập nhật gần nhất.
+  Chỉ giữ tiêu đề, nút Tạo, ô tìm và danh sách; không thêm bảng lọc quyền sở hữu,
+  trạng thái hay sắp xếp trừ khi người dùng yêu cầu. Bỏ tham số lọc cũ trong URL
+  để tránh ẩn dự án khi không còn điều khiển tương ứng. Tìm kiếm hỗ trợ nhiều từ
+  không cần đúng thứ tự, khoảng trắng thừa hoặc dấu tiếng Việt. Giữ dự án và tab
+  đang mở khi tìm hoặc xóa từ khóa. Số bài báo và thành viên ghi kèm danh từ.
+- Giảm cảm giác cứng: bỏ nhãn Workspace và Research project lặp, icon có khung,
+  đường kẻ dọc và footer đếm khi chưa lọc. Tab chọn dùng nền xám trung tính nhỏ;
+  chỉ giữ đường phân cách giúp nhận biết navigation và tiêu chí sàng lọc.
+- Navigation dự án chia hai nhóm có nhãn: Nghiên cứu theo thứ tự Tài liệu,
+  Cơ hội nghiên cứu, Sản phẩm, Gửi bài; Cộng tác theo thứ tự Trò chuyện,
+  Thành viên, Đóng góp, Hỗ trợ học thuật. Giữ từng mục mở bằng một lần bấm;
+  dùng hai hàng gọn, chữ dễ đọc và gạch chân ở mục đang chọn. Trên điện thoại,
+  bộ chọn trang giữ nguyên hai nhóm và thứ tự đó.
 - Không bọc toàn bộ workspace trong khung bo tròn lớn. Dùng độ tương phản nền,
   đường phân cách và khoảng cách để tạo phân cấp, không làm giao diện nhạt và nhỏ.
 

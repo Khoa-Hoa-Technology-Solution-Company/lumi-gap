@@ -4,7 +4,7 @@ import {
   UNTRUSTED_DATA_PREAMBLE,
 } from "../llm/grounding.js";
 
-export const PAPER_AI_ANALYSIS_PROMPT_VERSION = "paper-ai-analysis-v1";
+export const PAPER_AI_ANALYSIS_PROMPT_VERSION = "paper-ai-analysis-v2-questions";
 
 export interface PaperAnalysisInput {
   title: string;
@@ -12,6 +12,7 @@ export interface PaperAnalysisInput {
 }
 
 export interface PaperAnalysisContent {
+  researchQuestions?: string[];
   summary: string | null;
   methods: string | null;
   dataset: string | null;
@@ -60,6 +61,7 @@ export function buildPaperAnalysisPrompt(input: PaperAnalysisInput): string {
     "",
     "Return JSON exactly shaped as:",
     JSON.stringify({
+      researchQuestions: ["string (only explicitly stated research questions)"],
       summary: "string|null",
       methods: "string|null",
       dataset: "string|null",
@@ -75,6 +77,7 @@ export function buildPaperAnalysisPrompt(input: PaperAnalysisInput): string {
 export function sanitizePaperAnalysis(raw: unknown): PaperAnalysisContent {
   const obj = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
   return {
+    researchQuestions: cleanList(obj.researchQuestions),
     summary: cleanScalar(obj.summary),
     methods: cleanScalar(obj.methods),
     dataset: cleanScalar(obj.dataset),

@@ -72,19 +72,18 @@ describe("Route transitions", () => {
     await act(async () => root.render(<MemoryRouter initialEntries={["/projects/first"]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><RouteTransition><Routes><Route path="/projects" element={<Workspace />}><Route path=":id" element={<Project />} /></Route></Routes></RouteTransition></MemoryRouter>));
     const sidebar = container.querySelector("aside");
     await act(async () => container.querySelector<HTMLAnchorElement>('a[href="/projects/second"]')!.click());
-    expect(animate.mock.instances.at(-1)).toBe(container.querySelector(".project-browser-panel"));
+    expect(animate).not.toHaveBeenCalled();
     expect(container.querySelector("aside")).toBe(sidebar);
     const count = animate.mock.calls.length;
     await act(async () => container.querySelector<HTMLAnchorElement>('a[href$="?tab=members"]')!.click());
     expect(animate).toHaveBeenCalledTimes(count);
   });
 
-  it("enters a project and returns in opposite directions without replaying on project tab changes", async () => {
+  it("opens and returns from project pages without an entrance animation", async () => {
     function Project() { const navigate = useNavigate(); return <div className="project-detail-page"><Link to="?tab=members">Members</Link><button onClick={() => navigate(-1)}>Back</button></div>; }
     await act(async () => root.render(<MemoryRouter initialEntries={["/projects"]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><RouteTransition><Routes><Route path="/projects" element={<div className="project-directory-page"><Link to="/projects/example">Project</Link></div>} /><Route path="/projects/:id" element={<Project />} /></Routes></RouteTransition></MemoryRouter>));
     await act(async () => container.querySelector<HTMLAnchorElement>("a")!.click());
-    expect(animate).toHaveBeenLastCalledWith(expect.arrayContaining([expect.objectContaining({ transform: "translateX(14px)" })]), expect.anything());
-    expect(animate.mock.instances.at(-1)).toBe(container.querySelector(".project-detail-page"));
+    expect(animate).not.toHaveBeenCalled();
     expect(scroll).toHaveBeenCalledOnce();
     const count = animate.mock.calls.length;
     await act(async () => container.querySelector<HTMLAnchorElement>("a")!.click());
@@ -92,8 +91,7 @@ describe("Route transitions", () => {
     await act(async () => container.querySelector<HTMLButtonElement>("button")!.click());
     expect(animate).toHaveBeenCalledTimes(count);
     await act(async () => container.querySelector<HTMLButtonElement>("button")!.click());
-    expect(animate).toHaveBeenLastCalledWith(expect.arrayContaining([expect.objectContaining({ transform: "translateX(-14px)" })]), expect.anything());
-    expect(animate.mock.instances.at(-1)).toBe(container.querySelector(".project-directory-page"));
+    expect(animate).not.toHaveBeenCalled();
     expect(scroll).toHaveBeenCalledOnce();
   });
 });

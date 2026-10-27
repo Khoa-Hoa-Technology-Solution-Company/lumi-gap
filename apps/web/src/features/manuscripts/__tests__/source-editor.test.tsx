@@ -7,6 +7,8 @@ import * as Y from "yjs";
 import { Awareness } from "y-protocols/awareness";
 import type { ManuscriptProvider } from "../collaboration-provider";
 import { SourceEditor } from "../source-editor";
+import { captureAiSelection } from "../ai-selection";
+import type { ManuscriptSuggestion } from "@trend/shared-types";
 
 vi.mock("@/i18n", () => ({ useI18n: () => ({ t: (key: string) => key }) }));
 const providers: Array<ReturnType<typeof fixture>> = [];
@@ -71,4 +73,22 @@ it("blocks undo and redo while read-only, preserving history if write permission
   await act(async () => provider.permission(true));
   await act(async () => { undo(true); });
   expect(provider.text.toString()).toBe("Original saved");
+});
+
+it("renders review controls without editing source and removes them when remote source changes", async () => {
+  const provider = fixture("Original paragraph"); providers.push(provider);
+  Object.assign(provider, { fileId: "file" });
+  await open(provider, "main.tex");
+  const anchor = JSON.parse(JSON.stringify(captureAiSelection("file", provider.text, 0, 8)));
+  const row = { id: "proposal", fileId: "file", status: "PENDING", original: "Original", replacement: "Improved", author: { id: "author", name: "<script>Author</script>" }, revision: 2, anchor } as ManuscriptSuggestion;
+  const review = vi.fn();
+  await act(async () => root!.render(<SourceEditor provider={provider as unknown as ManuscriptProvider} filename="main.tex" citationKeys={[]} proposals={[row]} onReview={review} onView={next => { view = next; }} />));
+  expect(host!.textContent).toContain("<script>Author</script>");
+  expect(host!.querySelector("script")).toBeNull();
+  expect(provider.text.toString()).toBe("Original paragraph");
+  await act(async () => host!.querySelector<HTMLButtonElement>(".writing-inline-proposal button")!.click());
+  expect(review).toHaveBeenCalledWith(row, "ACCEPTED");
+  expect(provider.text.toString()).toBe("Original paragraph");
+  await act(async () => provider.doc.transact(() => provider.text.insert(2, "remote change"), "remote-provider"));
+  expect(host!.querySelector(".writing-inline-proposal")).toBeNull();
 });

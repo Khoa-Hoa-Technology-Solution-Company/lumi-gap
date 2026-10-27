@@ -13,9 +13,17 @@ import { confirmUnsavedChanges } from "@/services/confirmation";
 export const stageLabels = { DISCOVERY: "Literature discovery", SCREENING: "Screening", EXTRACTION: "Evidence extraction", GAP_VALIDATION: "Gap validation", DESIGN: "Research design", WRITING: "Writing", REVIEW: "Review" } as const;
 export const taskLabels = { TODO: "To do", IN_PROGRESS: "In progress", BLOCKED: "Blocked", DONE: "Done" } as const;
 export const approachLabels = { UNDECIDED: "Undecided", EXPLORATORY: "Exploratory research", LITERATURE_REVIEW: "Literature review", EMPIRICAL: "Empirical research" } as const;
-export const linkLabels: Record<WorkspaceLinkKind, string> = { PAPER: "Paper", SCREENING: "Screening work item", EVIDENCE: "Evidence", GAP: "Research gap", QUESTION: "Research question", MANUSCRIPT: "Writing workspace", MANUSCRIPT_SNAPSHOT: "Manuscript snapshot", MENTOR_FEEDBACK: "Mentor feedback request", PLAN: "Research plan", REVIEW_REQUEST: "Review request", PLAN_REVISION: "Plan revision", REPORT: "Research output" } as const;
+export const linkLabels: Record<WorkspaceLinkKind, string> = { PAPER: "Paper", SCREENING: "Screening work item", EVIDENCE: "Evidence", GAP: "Research gap", QUESTION: "Research question", MANUSCRIPT: "Writing workspace", MANUSCRIPT_SNAPSHOT: "Manuscript snapshot", MENTOR_FEEDBACK: "Mentor feedback request", PLAN: "About project", REVIEW_REQUEST: "Review request", PLAN_REVISION: "Plan revision", REPORT: "Research output", TREND: "Trend evidence" } as const;
 export function projectSectionHref(id: string, tab: string, extra?: Record<string, string>) {
   return `/projects/${encodeURIComponent(id)}?${new URLSearchParams({ tab, ...extra })}`;
+}
+export function formatRelativeActivity(value: string, language: string, t: (key: string) => string): string {
+  const elapsed = Math.max(0, Date.now() - new Date(value).getTime());
+  if (!Number.isFinite(elapsed)) return t("Date unavailable");
+  const unit = elapsed < 60 * 60 * 1000 ? "minute" : elapsed < 24 * 60 * 60 * 1000 ? "hour" : "day";
+  const divisor = unit === "minute" ? 60_000 : unit === "hour" ? 3_600_000 : 86_400_000;
+  const amount = Math.max(1, Math.floor(elapsed / divisor));
+  return new Intl.RelativeTimeFormat(language, { numeric: "auto" }).format(-amount, unit);
 }
 export function useWorkspaceSelection(key: string) {
   const [params, setParams] = useSearchParams();
@@ -97,7 +105,7 @@ export function WorkspaceArtifactLink({ projectId, link }: { projectId: string; 
   const resolved = useWorkspaceResource(projectId, "artifact-href", () => workspaceApi.artifactHref(projectId, link!), link, needsResolution);
   if (!link) return null;
   if (needsResolution) return resolved.data ? <Link className="coord-inline-link" to={resolved.data.href}><Link2 size={14} aria-hidden="true" />{t(linkLabels[link.kind])}</Link> : <span className="coord-muted">{t(resolved.isError ? "Linked artifact is unavailable" : "Loading linked artifact…")}</span>;
-  const url = link.kind === "PLAN" ? projectSectionHref(projectId, "plan") : link.kind === "MANUSCRIPT" ? `/projects/${encodeURIComponent(projectId)}/manuscripts/${encodeURIComponent(link.id)}` : link.kind === "EVIDENCE" ? projectSectionHref(projectId, "papers", { view: "evidence", evidence: link.id }) : link.kind === "PAPER" ? projectSectionHref(projectId, "papers", { paper: link.id }) : link.kind === "REPORT" ? `/reports/${encodeURIComponent(link.id)}` : link.kind === "REVIEW_REQUEST" ? `/review-requests/${encodeURIComponent(link.id)}` : link.kind === "QUESTION" ? projectSectionHref(projectId, "plan", { question: link.id }) + `#question-${link.id}` : link.kind === "PLAN_REVISION" ? projectSectionHref(projectId, "plan", { revision: link.id }) : projectSectionHref(projectId, link.kind === "GAP" ? "gaps" : link.kind === "SCREENING" ? "papers" : "manuscripts");
+  const url = link.kind === "PLAN" ? projectSectionHref(projectId, "plan") : link.kind === "MANUSCRIPT" ? `/projects/${encodeURIComponent(projectId)}/manuscripts/${encodeURIComponent(link.id)}` : link.kind === "EVIDENCE" ? projectSectionHref(projectId, "papers", { view: "evidence", evidence: link.id }) : link.kind === "PAPER" ? projectSectionHref(projectId, "papers", { paper: link.id }) : link.kind === "REPORT" ? `/reports/${encodeURIComponent(link.id)}` : link.kind === "TREND" ? projectSectionHref(projectId, "overview", { trend: link.id }) + `#trend-${link.id}` : link.kind === "REVIEW_REQUEST" ? `/review-requests/${encodeURIComponent(link.id)}` : link.kind === "QUESTION" ? projectSectionHref(projectId, "plan", { question: link.id }) + `#question-${link.id}` : link.kind === "PLAN_REVISION" ? projectSectionHref(projectId, "plan", { revision: link.id }) : projectSectionHref(projectId, link.kind === "GAP" ? "gaps" : link.kind === "SCREENING" ? "papers" : "manuscripts");
   return <Link className="coord-inline-link" to={url}><Link2 size={14} aria-hidden="true" />{t(linkLabels[link.kind])}</Link>;
 }
 export function WorkspaceComments({ projectId, targetKind, targetId, readOnly, mentor = false }: { projectId: string; targetKind: "TASK" | "PLAN_REVISION"; targetId: string; readOnly: boolean; mentor?: boolean }) {

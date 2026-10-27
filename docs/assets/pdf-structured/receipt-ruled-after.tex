@@ -1,0 +1,92 @@
+% FILE: pages/page-1.tex
+% Source page 1; editable semantic reconstruction.
+\LGpage{595.280}{708.660}{42.520}{38.235}{42.507}{31.624}
+% Source page 1; block p1b0; heading
+\begin{LGblock}{0.000}{0.000}{510.253}{14.346}{16.498}{1}{1}{1}
+\LGheading{p1b0}{PHIẾU MUA HÀNG}
+\end{LGblock}
+% Source page 1; block p1b1; paragraph
+\begin{LGblock}{4.926}{0.000}{510.253}{9.963}{11.457}{1}{1}{0}
+\LGparagraph{p1b1}{Bản dữ liệu thử nghiệm, không phải giao dịch thật}
+\end{LGblock}
+% Source page 1; block p1b2; metadata
+\par\addvspace{18.807bp}\noindent
+\begin{minipage}[t]{172.176bp}\vspace{0pt}
+\begin{LGblock}{0.000}{0.000}{172.176}{10.909}{12.545}{1}{0}{0}
+\LGmetadata{p1b2}{Mã đơn hàng: TEST-2026-041}
+\end{LGblock}
+\end{minipage}\hfill
+% Source page 1; block p1b3; metadata
+\begin{minipage}[t]{99.596bp}\vspace{0pt}
+\begin{LGblock}{0.000}{0.000}{99.596}{10.909}{12.545}{1}{2}{0}
+\LGmetadata{p1b3}{Ngày: 20/10/2026}
+\end{LGblock}
+\end{minipage}\par
+% Source page 1; block p1b4; metadata
+\begin{LGblock}{6.625}{0.000}{331.665}{10.909}{12.545}{1}{0}{1}
+\LGmetadata{p1b4}{Khách hàng: Nguyễn An}
+\end{LGblock}
+% Source page 1; block p1b5; metadata
+\begin{LGblock}{6.626}{0.000}{331.665}{10.909}{12.545}{1}{0}{0}
+\LGmetadata{p1b5}{Địa chỉ: Nhóm nghiên cứu giả lập}
+\end{LGblock}
+% Source page 1; block p1b6; table
+\begin{LGblock}{10.857}{0.199}{509.838}{10.909}{12.545}{1}{0}{0}
+\begingroup\setlength{\tabcolsep}{3bp}\renewcommand{\arraystretch}{1.08}
+\begin{tabular}{|>{\raggedright\arraybackslash}p{252.292bp}|>{\raggedleft\arraybackslash}p{84.357bp}|>{\centering\arraybackslash}p{57.452bp}|>{\raggedleft\arraybackslash}p{89.737bp}|}
+\hline
+\textbf{Tên sản phẩm} & \textbf{Đơn giá} & \textbf{Số lượng} & \textbf{Thành tiền} \\
+\hline
+Sổ ghi chép nghiên cứu & 125.000 & 3 & 375.000 \\
+\hline
+Bộ tài liệu tiếng Việt có tên dài cần tự xuống dòng & 250.000 & 2 & 500.000 \\
+\hline
+Bút đánh dấu & 40.000 & 10 & 400.000 \\
+\hline
+\end{tabular}
+\endgroup
+\end{LGblock}
+% Source page 1; block p1b7; total
+\begin{LGblock}{12.812}{0.000}{510.253}{10.909}{12.545}{1}{2}{1}
+\LGtotal{p1b7}{Tổng tiền: 1.275.000 VND}
+\end{LGblock}
+% Source page 1; block p1b8; note
+\begin{LGblock}{6.626}{0.000}{361.876}{10.909}{12.545}{1}{0}{0}
+\LGnote{p1b8}{Ghi chú: Kiểm tra đúng số lượng, mã đơn hàng và dấu tiếng Việt.}
+\end{LGblock}
+% Source page 1; block p1b9; footer
+\par\vfill
+\begin{LGblock}{0.000}{0.000}{331.665}{9.963}{11.457}{1}{0}{0}
+\LGfooter{p1b9}{Cảm ơn bạn. Dữ liệu chỉ phục vụ kiểm thử chuyển đổi PDF.}
+\end{LGblock}
+% FILE: main.tex
+% Layout-aware editable reconstruction. Compare with original.pdf before use.
+% XeLaTeX or LuaLaTeX; fonts are substituted by family, never downloaded.
+\documentclass{article}
+\usepackage{fontspec,graphicx,booktabs,array,longtable,multirow,enumitem,amsmath}
+\usepackage[paperwidth=595.280bp,paperheight=708.660bp,left=42.520bp,top=38.235bp,right=42.507bp,bottom=31.624bp]{geometry}
+\setmainfont{DejaVu Serif}\setsansfont{DejaVu Sans}\setmonofont{DejaVu Sans Mono}
+\pagestyle{empty}\setlength{\parindent}{0pt}\setlength{\parskip}{0pt}
+\setlength{\emergencystretch}{2em}\raggedbottom
+\newcommand{\LGparagraph}[2]{#2\par}
+\newcommand{\LGheading}[2]{#2\par}
+\newcommand{\LGmetadata}[2]{#2\par}
+\newcommand{\LGnote}[2]{#2\par}
+\newcommand{\LGfooter}[2]{#2\par}
+\newcommand{\LGtotal}[2]{#2\par}
+\newcommand{\LGpage}[6]{\clearpage\setlength{\paperwidth}{#1bp}\setlength{\paperheight}{#2bp}%
+\newgeometry{left=#3bp,top=#4bp,right=#5bp,bottom=#6bp}%
+\special{papersize=#1bp,#2bp}}
+\newenvironment{LGblock}[8]{\par\addvspace{#1bp}%
+\begin{list}{}{\setlength{\leftmargin}{#2bp}\setlength{\rightmargin}{\dimexpr\linewidth-#2bp-#3bp\relax}%
+\setlength{\topsep}{0pt}\setlength{\partopsep}{0pt}\setlength{\parsep}{0pt}\setlength{\itemsep}{0pt}}\item[]%
+\fontsize{#4}{#5}\selectfont\ifcase#6\rmfamily\or\sffamily\or\ttfamily\fi%
+\ifcase#7\raggedright\or\centering\or\raggedleft\fi%
+\ifcase#8\or\bfseries\or\itshape\or\bfseries\itshape\fi}{\par\end{list}}
+\begin{document}
+\input{pages/page-1.tex}
+\end{document}
+
+% FILE: original-layout.tex
+\documentclass{article}\usepackage{pdfpages}
+\begin{document}\includepdf[pages=-,fitpaper=true]{original.pdf}\end{document}

@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Link, Navigate, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { LogOut, User, Bookmark, ChevronDown, KeyRound, Menu, Trophy, X } from "lucide-react";
+import { LogOut, User, Bookmark, ChevronDown, Coins, KeyRound, Menu, Trophy, X } from "lucide-react";
 
 import logoImage from "@/assets/logo.png";
 import logoDarkImage from "@/assets/logo-dark.png";
@@ -22,7 +22,7 @@ import { useBookmarks } from "@/features/bookmarks";
 import { useNotifications } from "@/features/notifications";
 import { cn } from "@/utils/cn";
 import { avatars, getLevel } from "@/utils/level";
-import { formatNumber } from "@/utils";
+import { formatCompactNumber, formatNumber } from "@/utils";
 import { LanguageSwitcher, useI18n } from "@/i18n";
 import { isAdminSystemRole } from "@trend/shared-types";
 import "./app-header.css";
@@ -160,10 +160,20 @@ export function MainLayout() {
   const isHomeSurface = location.pathname === "/home" || location.pathname === "/" || location.pathname === "/literature";
   const isProjectsSurface = location.pathname === "/projects" || location.pathname.startsWith("/projects/");
   const isForumSurface = location.pathname === "/forum" || location.pathname.startsWith("/forum/") || /^\/(?:u|academics)\/[^/]+\/(?:activity|summary)\/?$/.test(location.pathname);
+  const isCommunitySurface = /^\/communities(\/|$)/.test(location.pathname);
+  const [isHeaderScrolled, setIsHeaderScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [activeDesktopMenu, setActiveDesktopMenu] = useState<string | null>(null);
   const desktopMenuCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { t } = useI18n();
+
+  useEffect(() => {
+    if (!isForumSurface) return;
+    const updateHeader = () => setIsHeaderScrolled(window.scrollY > 24);
+    updateHeader();
+    window.addEventListener("scroll", updateHeader, { passive: true });
+    return () => window.removeEventListener("scroll", updateHeader);
+  }, [isForumSurface]);
 
   const cancelDesktopMenuClose = useCallback(() => {
     if (desktopMenuCloseTimer.current) {
@@ -200,6 +210,9 @@ export function MainLayout() {
   const { data: notifications, isLoading: notificationsLoading } = useNotifications({ enabled: isAuthed && !currentUserQuery.isFetching && !!currentUserQuery.data?.user });
   const currentUserData = currentUserQuery.data;
   const activeUser = currentUserData?.user ?? user;
+  const { data: balanceData } = useCreditBalance({ enabled: isAuthed && !currentUserQuery.isFetching && !!currentUserData?.user });
+  const credits = balanceData?.credits ?? activeUser?.credits;
+  const creditBalanceLabel = `${t("Balance:")} ${credits === undefined ? "—" : formatNumber(credits)} ${t("credits")}`;
 
   const unreadCount = notifications?.filter((n) => !n.isRead).length || 0;
 
@@ -221,11 +234,15 @@ export function MainLayout() {
     }
   }
 
+  if (/^\/projects\/[^/]+\/manuscripts\/[^/]+\/?$/.test(location.pathname)) {
+    return <main className="min-w-0"><Suspense fallback={<PageLoadingFallback />}><Outlet /></Suspense></main>;
+  }
+
   return (
     <div
-      className={cn("lumi-app-shell flex min-h-screen flex-col", isForumSurface ? "forum-app-shell bg-background" : "bg-slate-50 dark:bg-[#09090b]", isHomeSurface && "home-app-shell", isProjectsSurface && "projects-app-shell")}
+      className={cn("lumi-app-shell flex min-h-screen flex-col", isForumSurface || isCommunitySurface ? "lumi-surface" : "bg-slate-50 dark:bg-[#09090b]", isForumSurface && "forum-app-shell", isForumSurface && isHeaderScrolled && "forum-app-shell--scrolled", isHomeSurface && "home-app-shell", isProjectsSurface && "projects-app-shell")}
     >
-      <header className={cn("lumi-app-header sticky z-50 h-[var(--app-header-height)] shrink-0", isForumSurface && "forum-app-header")}>
+      <header className={cn("lumi-app-header sticky z-50 h-[var(--app-header-height)] shrink-0", isAuthed && "lumi-app-header--authed", isForumSurface && "forum-app-header")}>
         <div className="lumi-app-nav-inner mx-auto grid h-full w-full min-w-0 grid-cols-[minmax(0,auto)_1fr_auto] items-center gap-1 sm:gap-4">
           <Link to="/" className="forum-app-brand flex h-full min-w-0 shrink select-none items-center">
             <img
@@ -245,7 +262,7 @@ export function MainLayout() {
             className="hidden items-center justify-self-center gap-0.5 whitespace-nowrap min-[1180px]:flex"
           >
             {navGroups.map((group) => (
-              group.label === "Community" ? <Link key={group.label} to="/forum" className={cn("rounded-md px-3 py-2 text-sm font-medium transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", location.pathname.startsWith("/forum") && "bg-muted text-primary")}>{t(group.label)}</Link> :
+              group.label === "Community" ? <Link key={group.label} to="/forum" aria-current={isForumSurface || isCommunitySurface ? "page" : undefined} className={cn("rounded-md px-3 py-2 text-sm font-medium transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", (isForumSurface || isCommunitySurface) && "bg-muted text-primary")}>{t(group.label)}</Link> :
               <DesktopNavDropdown
                 key={group.label}
                 label={t(group.label)}
@@ -260,14 +277,20 @@ export function MainLayout() {
           </nav>
 
           <div className="forum-app-controls flex min-w-0 shrink-0 items-center gap-0.5 sm:gap-2">
+            {isAuthed && <Link to="/settings/credits" className="header-credit-balance" aria-label={creditBalanceLabel} title={`${creditBalanceLabel} · ${t("Wallet & credit history")}`}>
+              <Coins aria-hidden="true" />
+              <span className="header-credit-full">{credits === undefined ? "—" : formatNumber(credits)}</span>
+              <span className="header-credit-compact" aria-hidden="true">{credits === undefined ? "—" : formatCompactNumber(credits)}</span>
+              <span className="header-credit-label">{t("credits")}</span>
+            </Link>}
             <div className="hidden sm:block"><ThemeToggle /></div>
-            <div className="hidden min-[360px]:block"><LanguageSwitcher /></div>
+            <div className="hidden sm:block"><LanguageSwitcher /></div>
             {isAuthed && (
               <Suspense fallback={<span className="h-10 w-10" aria-hidden="true" />}>
                 <NotificationMenu notifications={notifications} isLoading={notificationsLoading} unreadCount={unreadCount} isAdmin={isAdminSystemRole(activeUser?.systemRole)} />
               </Suspense>
             )}
-            <UserMenu bookmarkCount={validBookmarksCount} />
+            <UserMenu bookmarkCount={validBookmarksCount} credits={credits} />
 
             <Button
               variant="ghost"
@@ -292,7 +315,7 @@ export function MainLayout() {
               <div className="flex min-h-11 items-center justify-between gap-3 rounded-lg border bg-slate-50 px-3 sm:hidden dark:bg-zinc-900">
                 <span className="text-sm font-medium text-slate-600 dark:text-slate-300">{t("Preferences")}</span>
                 <div className="flex items-center gap-2">
-                  <div className="min-[360px]:hidden"><LanguageSwitcher /></div>
+                  <LanguageSwitcher />
                   <ThemeToggle />
                 </div>
               </div>
@@ -327,7 +350,7 @@ export function MainLayout() {
           <RouteTransition><Outlet /></RouteTransition>
         </Suspense>
       </main>
-      {!isForumSurface ? <footer className="border-t bg-white py-6 mt-auto dark:bg-[#0f0f11]">
+      {!isForumSurface && !isProjectsSurface ? <footer className={isCommunitySurface ? "border-t bg-white py-6 mt-auto font-sans dark:bg-[var(--lumi-surface)]" : "border-t bg-white py-6 mt-auto dark:bg-[#0f0f11]"}>
         <div className="container mx-auto flex flex-col items-center justify-between px-4 text-center text-xs text-slate-500 sm:px-6 md:flex-row md:text-left lg:px-8 dark:text-slate-400">
           <p className="max-w-full break-words">&copy; {new Date().getFullYear()} {t("Tori Team. All rights reserved.")}</p>
           <div className="mt-4 flex flex-wrap justify-center gap-x-4 gap-y-2 md:mt-0 md:justify-end">
@@ -341,14 +364,13 @@ export function MainLayout() {
   );
 }
 
-function UserMenu({ bookmarkCount }: { bookmarkCount: number }) {
+function UserMenu({ bookmarkCount, credits }: { bookmarkCount: number; credits?: number }) {
   const navigate = useNavigate();
   const { t } = useI18n();
   const isAuthed = useAuthStore((s) => !!s.tokens?.accessToken);
   const currentUserQuery = useCurrentUser();
   const data = currentUserQuery.data;
   const logout = useLogout();
-  const { data: balanceData } = useCreditBalance({ enabled: isAuthed && !currentUserQuery.isFetching && !!data?.user });
 
   if (!isAuthed) {
     return (
@@ -366,7 +388,6 @@ function UserMenu({ bookmarkCount }: { bookmarkCount: number }) {
   const email = data?.user?.email ?? t("Account");
   const fullName = data?.user?.fullName || email;
   const systemRole = data?.user?.systemRole;
-  const credits = balanceData?.credits ?? data?.user?.credits ?? 0;
   const points = data?.user?.points ?? 0;
   const currentLevel = getLevel(points);
   const levelAvatar = avatars[currentLevel];
@@ -408,7 +429,7 @@ function UserMenu({ bookmarkCount }: { bookmarkCount: number }) {
               </div>
               <div className="flex justify-between items-center">
                 <span>{t("Balance:")}</span>
-                <span className="text-indigo-600 dark:text-indigo-400 font-bold">{formatNumber(credits)} {t("credits")}</span>
+                <span className="text-indigo-600 dark:text-indigo-400 font-bold">{credits === undefined ? "—" : formatNumber(credits)} {t("credits")}</span>
               </div>
               <div className="flex justify-between items-center">
                 <span>{t("Points:")}</span>

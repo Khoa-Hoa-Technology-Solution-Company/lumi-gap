@@ -17,7 +17,7 @@ describe("Forum workspace layout", () => {
       </ForumLayout>,
     );
 
-    expect(markup).toContain("--app-header-height");
+    expect(markup).toContain("--app-header-offset");
     expect(markup).toContain("lg:grid-cols-[var(--forum-sidebar-width)_minmax(0,1fr)]");
     expect(markup).toContain("forum-workspace");
     expect(markup).toContain("Local navigation");
@@ -34,8 +34,8 @@ describe("Forum workspace layout", () => {
       </StaticRouter>,
     );
 
-    expect(markup).toContain("sticky top-[var(--app-header-height)]");
-    expect(markup).toContain("max-h-[calc(100dvh-var(--app-header-height))]");
+    expect(markup).toContain("sticky top-[var(--app-header-offset)]");
+    expect(markup).toContain("max-h-[calc(100dvh-var(--app-header-offset)-1rem)]");
     expect(markup).toContain("overflow-y-auto");
     expect(markup).toContain("overscroll-y-contain");
     expect(markup).toContain('aria-label="Forum navigation"');
@@ -65,7 +65,7 @@ describe("Forum workspace layout", () => {
     );
 
     expect(markup).toContain('aria-label="Discussion timeline"');
-    expect(markup).toContain("sticky top-[calc(var(--app-header-height)+2rem)]");
+    expect(markup).toContain("sticky top-[calc(var(--app-header-offset)+1rem)]");
     expect(markup).not.toContain("overflow-y-auto");
   });
 });

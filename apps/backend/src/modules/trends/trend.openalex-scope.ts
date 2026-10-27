@@ -29,6 +29,8 @@ export interface OpenAlexScope {
   /** Scope without the taxonomy clauses (domain/field/subfield/topic), used
    *  for reference populations that set their own taxonomy filter. */
   nonTaxonomyFilter: string;
+  /** Narrowest taxonomy level the scope filters on, null when none. */
+  narrowestTaxonomy: (typeof TAXONOMY_LEVELS)[number]["column"] | null;
   notice: TrendScopeNotice;
 }
 
@@ -65,6 +67,7 @@ export async function buildOpenAlexScope(query: TrendScopeFilters): Promise<Open
   const plain: string[] = [];
   const taxonomy: string[] = [];
   const ignored: TrendScopeNotice["ignoredFilters"] = [];
+  let narrowestTaxonomy: OpenAlexScope["narrowestTaxonomy"] = null;
 
   if (query.paperKinds?.length) addOr(plain, "type", query.paperKinds);
   else plain.push(DEFAULT_WORK_TYPES_CLAUSE);
@@ -94,11 +97,13 @@ export async function buildOpenAlexScope(query: TrendScopeFilters): Promise<Open
       }
     }
     addOr(taxonomy, level.filter, [...ids].map((id) => (level.column === "topic" ? id.toUpperCase() : id)));
+    if (ids.size > 0) narrowestTaxonomy = level.column;
   }
 
   return {
     filter: [...plain, ...taxonomy].join(","),
     nonTaxonomyFilter: plain.join(","),
+    narrowestTaxonomy,
     notice: { ignoredFilters: ignored },
   };
 }
@@ -110,6 +115,11 @@ export function withScope(...clauses: Array<string | undefined>): string {
 
 export function yearsClause(yearFrom: number, yearTo: number): string {
   return `publication_year:${yearFrom}-${yearTo}`;
+}
+
+/** Inclusive publication date range, dates as YYYY-MM-DD. */
+export function datesClause(from: string, to: string): string {
+  return `from_publication_date:${from},to_publication_date:${to}`;
 }
 
 function addOr(clauses: string[], key: string, values?: string[]) {

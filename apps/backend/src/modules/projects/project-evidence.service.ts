@@ -1,6 +1,7 @@
 import { invalidateSourceAssessments } from "./gap-revision.js";
-import type { EvidenceContent, PlanQuestion, ProjectEvidence, SaveProjectEvidence } from "@trend/shared-types";
+import type { EvidenceContent, ExtractionSuggestion, PaperAiAnalysis, PlanQuestion, ProjectEvidence, SaveProjectEvidence } from "@trend/shared-types";
 import { createHash } from "node:crypto";
+import { RAG_INDEX_VERSION, sourceFingerprint } from "../knowledge/knowledge.text.js";
 import { AppError } from "../../common/exceptions/app-error.js";
 import { withWorkspace, workspaceRevision, workspaceEvent, expectWorkspaceVersion, assertWorkspaceRetry, jsonSnapshot, type WorkspaceContext } from "./workspace-access.js";
 
@@ -14,18 +15,47 @@ export async function evidenceItem(context: WorkspaceContext, id: string) {
   if (!row) throw AppError.notFound("Evidence item not found");
   return row;
 }
+export async function discoveryEvidenceIsCurrent(context: WorkspaceContext, row: { paperId: string; sourceSnapshot: unknown }) {
+  const snapshot = row.sourceSnapshot as { analysisId?: string; sourceFingerprint?: string; contentHash?: string };
+  if (!snapshot.analysisId) return true;
+  await context.tx.$queryRaw`SELECT id FROM papers WHERE id = ${row.paperId}::uuid FOR SHARE`;
+  await context.tx.$queryRaw`SELECT id FROM paper_documents WHERE paper_id = ${row.paperId}::uuid FOR SHARE`;
+  const [paper, document] = await Promise.all([
+    context.tx.paper.findUnique({ where: { id: row.paperId } }),
+    context.tx.paperDocument.findUnique({ where: { paperId: row.paperId } }),
+  ]);
+  return Boolean(paper?.dataStatus === "active" && document?.status === "ready" && snapshot.sourceFingerprint === sourceFingerprint(paper) && document.sourceHash === snapshot.sourceFingerprint && document.contentHash === snapshot.contentHash);
+}
+export async function reviewEvidenceInContext(context: WorkspaceContext, id: string, input: { expectedVersion: number; state: "ACCEPTED" | "REJECTED"; rationale: string }) {
+  const row = await evidenceItem(context, id); expectWorkspaceVersion(row.version, input.expectedVersion);
+  const link = await researchPaper(context, row.paperId);
+  if (input.state === "ACCEPTED" && link.screeningStatus !== "INCLUDED") throw AppError.conflict("The source is no longer included in this project's synthesis");
+  if (input.state === "ACCEPTED" && !await discoveryEvidenceIsCurrent(context, row)) throw AppError.conflict("The analyzed source changed. Run a new analysis before accepting this extraction");
+  await invalidateSourceAssessments(context.tx, context.project.id, context.actorId, { evidenceItemId: id });
+  const next = await context.tx.projectEvidenceItem.update({ where: { id }, data: { reviewState: input.state, reviewRationale: input.rationale, reviewedById: context.actorId, reviewedAt: new Date(), version: { increment: 1 } } });
+  await workspaceRevision(context, "EXTRACTION", next); await workspaceEvent(context, "EVIDENCE_REVIEWED", "EXTRACTION", id, { state: input.state }); return next;
+}
 export const projectEvidenceService = {
   async suggestions(projectId: string, actorId: string, paperId: string) {
     return withWorkspace(projectId, actorId, {}, async context => {
       await researchPaper(context, paperId);
       const corpora = await context.tx.literatureCorpus.findMany({ where: { projectId: context.project.id }, select: { id: true } });
       const rows = await context.tx.corpusPaper.findMany({ where: { paperId, included: true, corpusId: { in: corpora.map(row => row.id) } }, orderBy: { id: "asc" }, take: 20 });
-      return rows.flatMap(row => {
+      const suggestions: ExtractionSuggestion[] = rows.flatMap(row => {
         const raw = row.evidence as Record<string, unknown> | null;
         const field = (key: string) => typeof raw?.[key] === "string" ? raw[key].slice(0, 5000) : "";
         if (!field("findings")) return [];
-        return [{ corpusPaperId: row.id, paperId, content: { claim: field("findings"), quotation: "", locator: "", context: field("context"), methodology: field("methodology"), population: field("population") || field("dataset"), results: field("outcome"), limitations: field("limitations"), themes: [] }, provenance: "CORPUS_EXTRACTION_UNREVIEWED" }];
+        return [{ corpusPaperId: row.id, paperId, content: { claim: field("findings"), quotation: "", locator: "", context: field("context"), methodology: field("methodology"), population: field("population") || field("dataset"), results: field("outcome"), limitations: field("limitations"), themes: [] }, provenance: "CORPUS_EXTRACTION_UNREVIEWED" as const }];
       });
+      const paper = await context.tx.paper.findUniqueOrThrow({ where: { id: paperId } });
+      const document = await context.tx.paperDocument.findUnique({ where: { paperId } });
+      const analysis = paper.aiAnalysis as unknown as PaperAiAnalysis | null;
+      if (analysis && Array.isArray(analysis.findings) && document?.status === "ready" && document.indexVersion === RAG_INDEX_VERSION && document.sourceHash === sourceFingerprint(paper)) {
+        const analysisHash = createHash("sha256").update(JSON.stringify(paper.aiAnalysis)).digest("hex");
+        for (const claim of analysis.findings.slice(0, 8)) if (typeof claim === "string") suggestions.push({ paperId, analysisHash, provenance: "PAPER_ANALYSIS_UNREVIEWED",
+          content: { claim: claim.slice(0, 5000), quotation: "", locator: "", context: "", methodology: analysis.methods ?? "", population: analysis.dataset ?? "", results: claim.slice(0, 5000), limitations: (analysis.limitations ?? []).join("\n"), themes: (analysis.keyTerms ?? []).slice(0, 12) } });
+      }
+      return suggestions;
     });
   },
   async list(projectId: string, actorId: string, query: { page: number; pageSize: number; q: string; state?: string; itemId?: string }) {
@@ -55,7 +85,7 @@ export const projectEvidenceService = {
       if (prior) { await assertWorkspaceRetry(context, "EXTRACTION", prior.id, input); return prior; }
       const link = await researchPaper(context, input.paperId);
       if (link.screeningStatus !== "INCLUDED") throw AppError.badRequest("Include the paper before extracting synthesis evidence");
-      const paper = await tx.paper.findUniqueOrThrow({ where: { id: input.paperId }, select: { id: true, title: true, doi: true, abstractText: true, publicationYear: true } });
+      const paper = await tx.paper.findUniqueOrThrow({ where: { id: input.paperId } });
       const source: Record<string, unknown> = { paperId: paper.id, title: paper.title, doi: paper.doi, publicationYear: paper.publicationYear, screeningStatus: link.screeningStatus, screenedAt: link.screenedAt?.toISOString() ?? null, quoteCheckedAgainstIndexedSource: false };
       if (input.sourceChunkId) {
         const chunk = await tx.paperChunk.findUnique({ where: { id: input.sourceChunkId }, include: { document: true } });
@@ -64,14 +94,19 @@ export const projectEvidenceService = {
       } else if (input.quotation && paper.abstractText?.includes(input.quotation)) {
         Object.assign(source, { sourceKind: "ABSTRACT", sourceText: paper.abstractText, contentHash: createHash("sha256").update(paper.abstractText).digest("hex"), quoteCheckedAgainstIndexedSource: true });
       }
-      if (input.origin === "AI_SUGGESTED" && !input.corpusPaperId) throw AppError.badRequest("Choose an existing project extraction suggestion");
+      if (input.origin === "AI_SUGGESTED" && !input.corpusPaperId && !input.analysisHash) throw AppError.badRequest("Choose an existing project extraction suggestion");
+      if (input.analysisHash) {
+        const document = await tx.paperDocument.findUnique({ where: { paperId: paper.id } });
+        if (input.origin !== "AI_SUGGESTED" || !paper.aiAnalysis || createHash("sha256").update(JSON.stringify(paper.aiAnalysis)).digest("hex") !== input.analysisHash || document?.status !== "ready" || document.indexVersion !== RAG_INDEX_VERSION || document.sourceHash !== sourceFingerprint(paper)) throw AppError.conflict("Paper analysis changed. Reload the suggestion before saving");
+        Object.assign(source, { analysisHash: input.analysisHash, originalSuggestion: paper.aiAnalysis });
+      }
       if (input.corpusPaperId) {
         const corpusPaper = await tx.corpusPaper.findUnique({ where: { id: input.corpusPaperId } });
         const corpus = corpusPaper ? await tx.literatureCorpus.findUnique({ where: { id: corpusPaper.corpusId } }) : null;
         if (!corpusPaper || corpus?.projectId !== project.id || corpusPaper.paperId !== input.paperId || input.origin !== "AI_SUGGESTED") throw AppError.badRequest("Choose an extraction suggestion from this project source");
         Object.assign(source, { corpusPaperId: corpusPaper.id, originalSuggestion: corpusPaper.evidence });
       }
-      const { clientKey, paperId, origin, sourceChunkId: _chunk, corpusPaperId: _corpus, ...content } = input;
+      const { clientKey, paperId, origin, sourceChunkId: _chunk, corpusPaperId: _corpus, analysisHash: _analysis, ...content } = input;
       const row = await tx.projectEvidenceItem.create({ data: { ...content, projectId: project.id, paperId, origin, clientKey, extractedById: context.actorId, sourceSnapshot: jsonSnapshot(source) } });
       await workspaceRevision(context, "EXTRACTION", row, input);
       await workspaceEvent(context, "EVIDENCE_EXTRACTED", "EXTRACTION", row.id);
@@ -91,14 +126,7 @@ export const projectEvidenceService = {
     });
   },
   async review(projectId: string, actorId: string, id: string, input: { expectedVersion: number; state: "ACCEPTED" | "REJECTED"; rationale: string }) {
-    return withWorkspace(projectId, actorId, { write: true }, async context => {
-      const row = await evidenceItem(context, id); expectWorkspaceVersion(row.version, input.expectedVersion);
-      const link = await researchPaper(context, row.paperId);
-      if (input.state === "ACCEPTED" && link.screeningStatus !== "INCLUDED") throw AppError.conflict("The source is no longer included in this project's synthesis");
-      await invalidateSourceAssessments(context.tx, context.project.id, context.actorId, { evidenceItemId: id });
-      const next = await context.tx.projectEvidenceItem.update({ where: { id }, data: { reviewState: input.state, reviewRationale: input.rationale, reviewedById: context.actorId, reviewedAt: new Date(), version: { increment: 1 } } });
-      await workspaceRevision(context, "EXTRACTION", next); await workspaceEvent(context, "EVIDENCE_REVIEWED", "EXTRACTION", id, { state: input.state }); return next;
-    });
+    return withWorkspace(projectId, actorId, { write: true }, context => reviewEvidenceInContext(context, id, input));
   },
   async history(projectId: string, actorId: string, id: string) {
     return withWorkspace(projectId, actorId, {}, async context => { await evidenceItem(context, id); return context.tx.projectWorkspaceRevision.findMany({ where: { projectId: context.project.id, entityKind: "EXTRACTION", entityId: id }, orderBy: { version: "desc" }, take: 100 }); });

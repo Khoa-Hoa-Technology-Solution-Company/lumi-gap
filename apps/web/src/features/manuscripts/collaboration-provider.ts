@@ -4,11 +4,12 @@ import * as encoding from "lib0/encoding";
 import type { ManuscriptSyncState } from "@trend/shared-types";
 import { api, API_BASE_URL } from "@/services/api-client";
 import { useAuthStore } from "@/stores/auth-store";
+import { manuscriptRecovery, type PendingSourceUpdate } from "./manuscript-recovery";
 
 export const encodeBytes = (bytes: Uint8Array) => { let value = ""; for (const byte of bytes) value += String.fromCharCode(byte); return btoa(value); };
 export const decodeBytes = (value: string) => Uint8Array.from(atob(value), char => char.charCodeAt(0));
-type Pending = { type: "update"; clientSessionId: string; clientSequence: number; update: string };
-type State = { status: ManuscriptSyncState; canWrite: boolean; ready: boolean; pending: number; sequence: number; fileVersion: number; error: string | null };
+type Pending = PendingSourceUpdate;
+type State = { status: ManuscriptSyncState; canWrite: boolean; ready: boolean; pending: number; sequence: number; fileVersion: number; error: string | null; recoveryError?: boolean };
 
 /** A Yjs provider with application-level PostgreSQL receipts, independent of awareness/sync. */
 export class ManuscriptProvider {
@@ -28,12 +29,41 @@ export class ManuscriptProvider {
   private listeners = new Set<() => void>();
   private controller = new AbortController();
   private unsubscribeAuth: () => void;
+  private recoveryRecords: Awaited<ReturnType<typeof manuscriptRecovery.load>> = [];
+  private recoveryWork: Promise<unknown> = Promise.resolve();
+  private get recoveryScope() { return `${this.userId}:${this.projectId}:${this.manuscriptId}:${this.fileId}`; }
   private state: State = { status: "CONNECTING", canWrite: false, ready: false, pending: 0, sequence: 0, fileVersion: 1, error: null };
   constructor(readonly projectId: string, readonly manuscriptId: string, readonly fileId: string, readonly userId: string, private metadata: () => void) {
     this.doc.on("update", this.onUpdate);
     this.awareness.on("update", this.onAwareness);
-    this.unsubscribeAuth = useAuthStore.subscribe(state => { if (state.user?.id !== userId) this.destroy(); });
-    void this.connect();
+    this.unsubscribeAuth = useAuthStore.subscribe(state => { if (state.user?.id !== userId) { this.destroy(); void this.recoveryWork.finally(() => manuscriptRecovery.clearUser(userId)).catch(() => {}); } });
+    void this.restoreAndConnect();
+  }
+  private async restoreAndConnect() {
+    try {
+      const recovered = await manuscriptRecovery.load(this.recoveryScope);
+      if (this.stopped || useAuthStore.getState().user?.id !== this.userId) return;
+      const receipts = new Set<string>();
+      for (const record of recovered) {
+        Y.applyUpdate(this.doc, decodeBytes(record.state), this);
+        for (const update of record.queue) {
+          const receipt = `${update.clientSessionId}:${update.clientSequence}`;
+          if (!receipts.has(receipt)) { receipts.add(receipt); this.queue.push(update); }
+        }
+        this.recoveryRecords.push(record);
+      }
+      this.set({});
+    } catch { if (!this.stopped) this.set({ recoveryError: true }); }
+    await this.connect();
+  }
+  private persistRecovery() {
+    const queue = this.queue.map(update => ({ ...update }));
+    const recovered = [...this.recoveryRecords];
+    const record = queue.length ? { id: this.clientSessionId, scope: this.recoveryScope, user: this.userId, updated: Date.now(), state: encodeBytes(Y.encodeStateAsUpdate(this.doc)), queue } : null;
+    this.recoveryWork = this.recoveryWork.then(async () => {
+      if (record) await manuscriptRecovery.save(record);
+      else { await manuscriptRecovery.remove(this.clientSessionId); await Promise.all(recovered.map(record => manuscriptRecovery.removeIfUnchanged(record))); }
+    }).catch(() => { if (!this.stopped) this.set({ recoveryError: true }); });
   }
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   getSnapshot = () => this.state;
@@ -41,6 +71,7 @@ export class ManuscriptProvider {
   private onUpdate = (update: Uint8Array, origin: unknown) => {
     if (origin === this || this.stopped) return;
     this.queue.push({ type: "update", clientSessionId: this.clientSessionId, clientSequence: this.nextSequence++, update: encodeBytes(update) });
+    this.persistRecovery();
     this.set({ status: this.socket?.readyState === WebSocket.OPEN ? "SYNCING" : "OFFLINE" }); this.flush();
   };
   private onAwareness = ({ added, updated }: { added: number[]; updated: number[] }, origin: unknown) => {
@@ -73,9 +104,10 @@ export class ManuscriptProvider {
             this.set({ ready: true, canWrite: frame.canWrite, sequence: frame.sequence, fileVersion: frame.fileVersion, status: !frame.canWrite ? "READ_ONLY" : this.queue.length ? "SYNCING" : "SAVED", error: null });
             this.onAwareness({ added: [], updated: [this.doc.clientID] }, null); this.flush();
           } else if (frame.type === "receipt") {
-            if (frame.clientSessionId !== this.clientSessionId || frame.clientSequence !== this.queue[0]?.clientSequence) return;
+            if (frame.clientSessionId !== this.queue[0]?.clientSessionId || frame.clientSequence !== this.queue[0]?.clientSequence) return;
             Y.applyUpdate(this.doc, decodeBytes(frame.update), this);
             this.queue.shift(); this.sent = false;
+            this.persistRecovery();
             this.set({ sequence: Math.max(this.state.sequence, frame.sequence), fileVersion: frame.fileVersion, status: this.queue.length ? "SYNCING" : "SAVED", error: null }); this.flush();
           } else if (frame.type === "update") {
             Y.applyUpdate(this.doc, decodeBytes(frame.update), this); this.set({ sequence: Math.max(this.state.sequence, frame.sequence), fileVersion: frame.fileVersion });

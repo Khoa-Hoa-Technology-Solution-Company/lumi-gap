@@ -10,16 +10,32 @@ import { approachLabels, projectSectionHref, WorkspaceArtifactLink, WorkspaceArt
 import { PlanSectionFeedback } from "./plan-section-feedback";
 import { planSectionLabels } from "./plan-section-labels";
 
-type Props = { projectId: string; content: ResearchPlanContent; editable: boolean; revisionId?: string; version: number; archived: boolean; mentor: boolean; field: <K extends keyof ResearchPlanContent>(key: K, value: ResearchPlanContent[K]) => void };
-export function PlanDocument({ projectId, content, editable, revisionId, version, archived, mentor, field }: Props) {
+type Props = { projectId: string; content: ResearchPlanContent; editable: boolean; revisionId?: string; version: number; archived: boolean; mentor: boolean; onEdit?: () => void; field: <K extends keyof ResearchPlanContent>(key: K, value: ResearchPlanContent[K]) => void };
+export function PlanDocument({ projectId, content, editable, revisionId, version, archived, mentor, onEdit, field }: Props) {
   const { t } = useI18n(); const [section, setSection] = useState<PlanSection | null>(null); const [params] = useSearchParams();
-  const text = (key: "problem" | "scope" | "methodology" | "searchStrategy", rows: number, maxLength: number, placeholder: string) => editable ? <textarea id={`plan-${key}`} aria-label={t(planSectionLabels[key])} rows={rows} maxLength={maxLength} value={content[key]} placeholder={t(placeholder)} onChange={event => field(key, event.target.value)} /> : <p className="living-plan-prose">{content[key] || t("Not drafted yet")}</p>;
+  const text = (key: "problem" | "scope" | "methodology" | "searchStrategy", rows: number, maxLength: number, placeholder: string) => editable ? <textarea id={`plan-${key}`} aria-label={t(planSectionLabels[key])} rows={rows} autoFocus={key === "problem"} maxLength={maxLength} value={content[key]} placeholder={t(placeholder)} onChange={event => field(key, event.target.value)} /> : <p className="living-plan-prose">{content[key] || t("Not drafted yet")}</p>;
   const heading = (key: PlanSection) => <div className="living-plan-section-heading"><h3 id={`plan-${key}-heading`}>{t(planSectionLabels[key])}</h3><Button type="button" size="icon" variant="ghost" title={t("Comments on {{section}}", { section: t(planSectionLabels[key]) })} aria-label={t("Comments on {{section}}", { section: t(planSectionLabels[key]) })} onClick={() => setSection(key)}><MessageSquare size={16} aria-hidden="true" /></Button></div>;
+  const hasDirection = content.objectives.length > 0 || content.questions.length > 0;
+  const hasMethods = content.approach !== "UNDECIDED" || Boolean(content.scope || content.methodology || content.searchStrategy || content.deliverables.length || content.inclusionCriteria.length || content.exclusionCriteria.length);
   return <>
-    <div className="living-plan-document">
-      <section aria-labelledby="plan-problem-heading">{heading("problem")}{text("problem", 4, 5000, "What problem is your team exploring, and why is it worth investigating?")}</section>
-      <section aria-labelledby="plan-objectives-heading">{heading("objectives")}{editable ? <OrderedPlanList label="Research objectives" values={content.objectives} max={20} limit={500} onChange={values => field("objectives", values)} /> : <ReadList values={content.objectives} />}</section>
-      <section id="plan-questions" aria-labelledby="plan-questions-heading">{heading("questions")}
+    <article className="living-plan-document about-project-document" aria-label={t("Project introduction")}>
+      <section className="about-project-introduction" aria-labelledby="plan-problem-heading">
+        {heading("problem")}
+        {editable ? <>
+          <p className="about-project-writing-hint">{t("Write freely. Explain the topic, why it matters and what your team wants to explore.")}</p>
+          {text("problem", 12, 5000, "What is your project about? Start with a few paragraphs…")}
+          <span className="about-project-character-count">{content.problem.length.toLocaleString()} / 5,000</span>
+        </> : content.problem ? <p className="living-plan-prose about-project-story">{content.problem}</p> : <div className="about-project-empty">
+          <h3>{t("Tell the story of your project")}</h3>
+          <p>{t("Introduce the topic you are researching, the idea behind it and what you hope to find out.")}</p>
+          {onEdit && <Button type="button" variant="outline" onClick={onEdit}>{t("Write introduction")}</Button>}
+        </div>}
+      </section>
+      {(editable || hasDirection || params.has("question")) && <details className="living-plan-details about-project-direction" open={params.has("question") || undefined}>
+        <summary><span>{t("Goals & research questions")}</span><small>{t("Optional, add structure when it helps.")}</small></summary>
+        <div className="living-plan-detail-content">
+      {(editable || content.objectives.length > 0) && <section aria-labelledby="plan-objectives-heading">{heading("objectives")}{editable ? <OrderedPlanList label="Research objectives" values={content.objectives} max={20} limit={500} onChange={values => field("objectives", values)} /> : <ReadList values={content.objectives} />}</section>}
+      {(editable || content.questions.length > 0) && <section id="plan-questions" aria-labelledby="plan-questions-heading">{heading("questions")}
         {!content.questions.length && <p className="living-plan-empty">{t("Add questions as literature and evidence clarify your direction.")}</p>}
         <ol className="living-plan-question-list">{content.questions.map((question, index) => <li id={`question-${question.id}`} key={question.id} tabIndex={-1} className={params.get("question") === question.id ? "living-plan-question-focus" : ""}>
           <div className="living-plan-question-heading"><a href={`#question-${question.id}`} className="text-sm font-semibold">RQ{index + 1}</a>{editable && <ListActions index={index} count={content.questions.length} label={t("Question {{number}}", { number: index + 1 })} move={offset => { const items = [...content.questions]; [items[index], items[index + offset]] = [items[index + offset]!, items[index]!]; field("questions", items); }} remove={() => field("questions", content.questions.filter(item => item.id !== question.id))} />}</div>
@@ -29,8 +45,10 @@ export function PlanDocument({ projectId, content, editable, revisionId, version
           {!editable && question.sourceGapVersion && <p className="text-xs text-muted-foreground">{t("Source gap revision {{version}}", { version: question.sourceGapVersion })} · {t("{{count}} captured evidence references", { count: question.sourceEvidenceRevisionIds?.length ?? question.evidenceIds?.length ?? 0 })}</p>}
         </li>)}</ol>
         {editable && <Button type="button" size="sm" variant="outline" disabled={content.questions.length >= 20} onClick={() => field("questions", [...content.questions, { id: crypto.randomUUID(), text: "" }])}><Plus size={14} className="mr-2" />{t("Add research question")}</Button>}
-      </section>
-      <details className="living-plan-details"><summary><span>{t("Methods, scope & outcomes")}</span><small>{t("Approach, boundaries, screening criteria and expected outcomes")}</small></summary><div className="living-plan-detail-content">
+      </section>}
+        </div>
+      </details>}
+      {(editable || hasMethods) && <details className="living-plan-details"><summary><span>{t("Methods & supporting details")}</span><small>{t("Keep methods, scope and screening criteria here when you need them.")}</small></summary><div className="living-plan-detail-content">
         <label className="living-plan-approach">{t("Research approach")}{editable ? <select aria-label={t("Research approach")} value={content.approach} onChange={event => field("approach", event.target.value as ResearchApproach)}>{Object.entries(approachLabels).map(([value, label]) => <option key={value} value={value}>{t(label)}</option>)}</select> : <span>{t(approachLabels[content.approach])}</span>}</label>
         <section aria-labelledby="plan-scope-heading">{heading("scope")}{text("scope", 3, 5000, "Population, context and boundaries of the research…")}</section>
         <section aria-labelledby="plan-methodology-heading">{heading("methodology")}{text("methodology", 5, 20000, "How does your team intend to study and evaluate the problem?")}</section>
@@ -38,8 +56,8 @@ export function PlanDocument({ projectId, content, editable, revisionId, version
           <div className="grid gap-4 sm:grid-cols-2">{(["inclusionCriteria", "exclusionCriteria"] as const).map(key => <label key={key}>{t(key === "inclusionCriteria" ? "Inclusion criteria" : "Exclusion criteria")}{editable ? <textarea rows={3} value={content[key].join("\n")} onChange={event => field(key, event.target.value.split("\n"))} /> : <ReadList values={content[key]} />}</label>)}</div><p className="text-xs text-muted-foreground">{t("These criteria are shared with project screening. They are optional while planning.")}</p>
         </section>
         <section aria-labelledby="plan-deliverables-heading">{heading("deliverables")}{editable ? <OrderedPlanList label="Expected outcomes" values={content.deliverables} max={20} limit={500} onChange={values => field("deliverables", values)} /> : <ReadList values={content.deliverables} />}{!mentor && <Link className="text-sm text-primary" to={projectSectionHref(projectId, "tasks")}>{t("View tasks and milestones")}</Link>}</section>
-      </div></details>
-    </div>
+      </div></details>}
+    </article>
     {section && <PlanSectionFeedback key={`${revisionId ?? "draft"}:${section}`} projectId={projectId} section={section} revisionId={revisionId} version={version} archived={archived} mentor={mentor} onClose={() => { setSection(null); document.getElementById(`plan-${section}-heading`)?.scrollIntoView({ block: "nearest" }); }} />}
   </>;
 }

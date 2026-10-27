@@ -1,6 +1,27 @@
+export interface ManuscriptPdfImport {
+  mode?: "layout" | "structured";
+  id: string;
+  status: "queued" | "processing" | "ready" | "failed";
+  phase?: "converting" | "compiling" | "comparing";
+  compilation?: { status: "success" | "failed" | "unavailable"; diagnostics?: string };
+  expiresAt: string;
+  pageCount?: number;
+  wordCount?: number;
+  warnings?: string[];
+  preview?: string;
+  error?: string;
+  layout?: { pageCount: number; tableCount: number; blockCount: number; unmappedBlocks: number; warnings?: string[] };
+  comparison?: {
+    status: "compared" | "unavailable";
+    sourcePages?: number; generatedPages?: number; comparedPages?: number;
+    textCoverage?: number; numericCoverage?: number; visualSimilarity?: number; contentBoundsDeviation?: number;
+    warnings?: string[];
+  };
+}
+
 export const MANUSCRIPT_TYPES = ["RESEARCH_PAPER", "RESEARCH_PROPOSAL", "THESIS", "TECHNICAL_REPORT"] as const;
 export type ManuscriptType = typeof MANUSCRIPT_TYPES[number];
-export const MANUSCRIPT_TEMPLATES = ["ARTICLE", "PROPOSAL", "REPORT"] as const;
+export const MANUSCRIPT_TEMPLATES = ["ARTICLE", "PROPOSAL", "REPORT", "IEEE_CONFERENCE", "PRESENTATION", "THESIS", "ELSEVIER", "SPRINGER", "APS", "BLANK"] as const;
 export type ManuscriptTemplate = typeof MANUSCRIPT_TEMPLATES[number];
 export interface ManuscriptSourceVersionLink { projectId: string; manuscriptId: string; snapshotId: string; }
 export type ManuscriptFileKind = "TEXT" | "ASSET" | "FOLDER";
@@ -16,16 +37,21 @@ export interface ManuscriptSummary {
   id: string; projectId: string; title: string; description: string; documentType: ManuscriptType;
   template: ManuscriptTemplate; version: number; mainFileId: string | null; archived: boolean;
   createdAt: string; updatedAt: string; canWrite: boolean;
+  canDelete?: boolean;
   collaborators?: Array<{ id: string; name: string }>;
   latestFeedback?: ManuscriptFeedbackSummary | null;
 }
 export interface ManuscriptDetail extends ManuscriptSummary {
+  compilerSettings?: { engine: ManuscriptEngine; texLiveVersion: ManuscriptTexLive; revision: number };
   files: ManuscriptFile[]; collaborators: Array<{ id: string; name: string }>;
-  compiler: { available: boolean; reason: string };
+  compiler: { available: boolean; reason: string; versions?: ManuscriptTexLive[] };
 }
-export type ManuscriptEngine = "pdflatex" | "xelatex";
+export type ManuscriptTexLive = "2022" | "2025";
+export type ManuscriptEngine = "pdflatex" | "xelatex" | "lualatex";
+export type ManuscriptSyncQuery = { direction: "forward"; path: string; line: number } | { direction: "inverse"; page: number; x: number; y: number };
+export interface ManuscriptSyncLocation { path?: string; line?: number; page?: number; x?: number; y?: number }
 export interface ManuscriptCompilation {
-  id: string; snapshotId: string; sourceVersion: number; engine: ManuscriptEngine;
+  id: string; snapshotId: string; sourceVersion: number; engine: ManuscriptEngine; texLiveVersion?: ManuscriptTexLive;
   status: "QUEUED" | "COMPILING" | "SUCCESS" | "FAILED" | "BLOCKED" | "TIMED_OUT";
   diagnostics: string; toolchain: string | null; checksum: string | null;
   createdAt: string; completedAt: string | null;
@@ -49,6 +75,7 @@ export interface CreateManuscriptSnapshot {
   reuseUnchanged?: boolean;
 }
 export interface ManuscriptSnapshot {
+  collaboration?: { comments: number; suggestions: number } | null;
   id: string; label: string; sourceVersion: number; checksum: string; createdAt: string;
   createdBy: { id: string; name: string }; manifest?: ManuscriptManifest;
   canComment?: boolean; canResolve?: boolean; formalRevisionId?: string | null;
@@ -70,4 +97,37 @@ export interface ManuscriptComment {
   mentorRelationshipId: string | null; messages: Array<{ id: string; body: string; author: { id: string; name: string }; createdAt: string }>;
 }
 export type ManuscriptSyncState = "CONNECTING" | "SYNCING" | "SAVED" | "RECONNECTING" | "OFFLINE" | "SYNC_ERROR" | "READ_ONLY";
+export interface CreateManuscriptSuggestion {
+  fileId: string; sourceSequence: number; from: number; to: number;
+  original: string; replacement: string; note: string; clientKey: string;
+}
+export interface ManuscriptSuggestion {
+  anchor?: { start: Record<string, unknown>; end: Record<string, unknown>; before: string; after: string } | null;
+  id: string; fileId: string; path: string; original: string; replacement: string; note: string;
+  revision: number;
+  status: "PENDING" | "ACCEPTED" | "REJECTED"; createdAt: string; resolvedAt: string | null;
+  author: { id: string; name: string }; resolvedBy: { id: string; name: string } | null;
+}
 export interface CollaboratorPresence { clientId: number; user: { id: string; name: string; color: string; colorLight: string }; cursor: unknown | null; }
+
+export const MANUSCRIPT_AI_ACTIONS = ["improve", "continue", "rewrite", "expand", "shorten", "grammar", "translate", "repair", "explain", "citations", "custom"] as const;
+export type ManuscriptAiAction = typeof MANUSCRIPT_AI_ACTIONS[number];
+export interface ManuscriptAiInput {
+  fileId: string; action: ManuscriptAiAction; from: number; to: number; original: string;
+  sourceSequence?: number;
+  regenerateOf?: string;
+  instruction: string; language: string;
+}
+export interface ManuscriptAiResult {
+  text: string; explanation: string;
+  needsContext?: boolean;
+  citations: Array<ManuscriptReference & { reason: string; evidenceStatus: "PROJECT_SOURCE" | "REVIEWED_EVIDENCE"; support?: { quote: string; locator: string; kind: "ABSTRACT" | "REVIEWED_EXCERPT" } }>;
+  warnings: string[];
+  scope?: { fileId: string; path: string; sourceSequence: number; sourceVersion: number };
+  /** Server assessment; compiler success is never inferred from model prose. */
+  repair?: { outcome: "COMPILED" | "WARNINGS" | "NO_CHANGE" | "PROPOSED_FIX"; sourceVersion: number; compilationId: string | null };
+}
+export interface ManuscriptAiRun {
+  id: string; status: "queued" | "running" | "completed" | "failed" | "cancelled";
+  input: ManuscriptAiInput; result: ManuscriptAiResult | null; error: string | null;
+}

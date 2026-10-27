@@ -462,7 +462,7 @@ export function ForumDetailPage() {
     >
         <ForumSurface className="forum-detail-surface forum-content-ready px-4 pb-8 pt-4">
               <div className="mb-3 flex min-h-11 items-center pl-12 lg:hidden"><Link to="/forum" className="rounded text-sm font-semibold text-muted-foreground hover:text-primary focus-visible:ring-2 focus-visible:ring-ring">{t("Research Forum")}</Link></div>
-              <header id="thread-title" className="forum-detail-title scroll-mt-[calc(var(--app-header-height)+1rem)] pb-4">
+              <header id="thread-title" className="forum-detail-title scroll-mt-[calc(var(--app-header-offset)+1rem)] pb-4">
                 <h1 className="forum-thread-title max-w-full break-words">{post.title}</h1>
                 <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[13px] text-muted-foreground">
                   <ForumPostTypeBadge type={post.type} size="sm" className="border-0 p-0 font-normal" />
@@ -477,7 +477,7 @@ export function ForumDetailPage() {
               {filteredAuthorId ? <div role="status" className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded border border-border bg-muted/30 p-3 text-sm"><span>{t("Showing posts by")} {post.author.id === filteredAuthorId ? post.author.fullName : comments.find((comment) => comment.author.id === filteredAuthorId)?.author.fullName}</span><button type="button" onClick={() => setFilteredAuthorId(undefined)} className="inline-flex items-center gap-1 text-primary hover:underline"><X className="h-3.5 w-3.5" />{t("Show all posts")}</button></div> : null}
               {locked ? <div role="status" className="mb-6 flex gap-3 rounded-md border border-border bg-muted/30 p-4"><Lock className="mt-0.5 h-4 w-4 shrink-0" /><div><p className="text-sm font-semibold">{t("This discussion is locked.")}</p><p className="mt-1 text-sm text-muted-foreground">{t("Existing responses remain visible, but new replies cannot be added.")}</p></div></div> : null}
               {removed || post.status === "hidden" ? <p role="status" className="mb-5 text-sm text-muted-foreground">{t(removed ? "This discussion was removed. Existing responses remain visible." : "This discussion is hidden from the forum.")}</p> : null}
-              {showOpening ? <article id="opening-post" data-thread-post tabIndex={-1} className="forum-thread-post scroll-mt-[calc(var(--app-header-height)+1rem)] border-t border-border py-4 outline-none">
+              {showOpening ? <article id="opening-post" data-thread-post tabIndex={-1} className="forum-thread-post scroll-mt-[calc(var(--app-header-offset)+1rem)] border-t border-border py-4 outline-none">
                 <div className="grid grid-cols-[40px_minmax(0,1fr)] gap-x-3 sm:grid-cols-[44px_minmax(0,1fr)] sm:gap-x-4">
                   <ForumAuthorPopover className="forum-post-avatar" author={post.author} canReply={!readOnly && (!isAuthed || canReply)} onReply={() => openComposer()} onFilterPosts={() => filterAuthor(post.author.id)} authorTopicPostCount={authorTopicPostCount(post.author.id)}>
                     <ForumAuthorAvatar author={post.author} size="md" />
@@ -519,7 +519,7 @@ export function ForumDetailPage() {
                 </div>
               </article> : null}
               {!filteredAuthorId ? <ForumTopicStats key={`${post.id}-opening`} post={post} comments={comments} hasMore={commentsQuery.hasNextPage} loadingMore={commentsQuery.isFetchingNextPage} onLoadMore={() => void commentsQuery.fetchNextPage()} onFilterAuthor={filterAuthor} onJumpToPost={jumpToPost} /> : null}
-              <section id="responses-section" tabIndex={-1} className="scroll-mt-[calc(var(--app-header-height)+1rem)] outline-none" aria-label={t("Replies")}>
+              <section id="responses-section" tabIndex={-1} className="scroll-mt-[calc(var(--app-header-offset)+1rem)] outline-none" aria-label={t("Replies")}>
                 <h2 className="sr-only">{t("Replies")}</h2>
                 {commentsQuery.isLoading ? <div className="h-32 animate-pulse border-t bg-muted/30" aria-label={t("Loading replies")} /> : null}
                 {commentsQuery.isError ? <div role="alert" className="border-t py-6 text-sm"><p>{t("Could not load replies.")}</p><Button variant="outline" size="sm" className="mt-3" onClick={() => commentsQuery.refetch()}>{t("Try again")}</Button></div> : null}
@@ -539,11 +539,11 @@ export function ForumDetailPage() {
                   onAccept={() => comment.isAccepted ? unaccept.mutate(post.id, { onError: () => toast.error(t("Could not update accepted response.")) }) : accept.mutate({ postId: post.id, commentId: comment.id }, { onError: () => toast.error(t("Could not update accepted response.")) })}
                 />)}
                 {commentsQuery.hasNextPage ? <div ref={repliesSentinel} className="border-t py-5">{(legacyCommentId || requestedPostNumber) && !deepLinkSettled ? <p role="status" className="mb-3 text-sm text-muted-foreground">{t("This reply is not loaded yet. Load more replies to reach it.")}</p> : null}<Button variant="outline" disabled={commentsQuery.isFetchingNextPage} onClick={() => commentsQuery.fetchNextPage()}>{t(commentsQuery.isFetchingNextPage ? "Loading…" : "Load more replies")}</Button></div> : null}
-                {!commentsQuery.isLoading && !commentsQuery.isError && !post.replyCount && !comments.length ? <p className="border-t py-8 text-sm text-muted-foreground">{t("No replies yet. Start the conversation with a question or a reference.")}</p> : null}
+                {!commentsQuery.isLoading && !commentsQuery.isError && !post.replyCount && !comments.length ? <p className="border-t py-6 text-sm text-muted-foreground">{t("No replies yet. Start the conversation with a question or a reference.")}</p> : null}
               </section>
               <div id="thread-end" tabIndex={-1} className="scroll-mt-24 outline-none">
                 {!filteredAuthorId && comments.length ? <ForumTopicStats key={`${post.id}-end`} post={post} comments={comments} hasMore={commentsQuery.hasNextPage} loadingMore={commentsQuery.isFetchingNextPage} onLoadMore={() => void commentsQuery.fetchNextPage()} onJumpToPost={jumpToPost} compact /> : null}
-                <div className="flex flex-wrap items-center justify-end gap-2 py-5"><Button type="button" size="sm" disabled={readOnly || (isAuthed && !canReply)} onClick={() => openComposer()} className="gap-1.5 rounded-full"><Reply className="h-4 w-4" aria-hidden="true" />{t("Reply")}</Button><Button type="button" variant="outline" size="sm" aria-pressed={post.isFollowing} disabled={follow.isPending || removed || post.status === "hidden"} onClick={() => { if (!isAuthed) { navigate(`/login?returnTo=${encodeURIComponent(forumPostHref(post))}`); return; } follow.mutate({ postId: post.id, following: !post.isFollowing }, { onError: () => toast.error(t("Could not update follow status.")) }); }}>{t(post.isFollowing ? "Following" : "Follow")}</Button>{notificationControl(true)}</div>
+                <div className="flex flex-wrap items-center justify-end gap-2 py-4"><Button type="button" variant="discussion" size="sm" disabled={readOnly || (isAuthed && !canReply)} onClick={() => openComposer()} className="gap-1.5 rounded-full"><Reply className="h-4 w-4" aria-hidden="true" />{t("Reply")}</Button><Button type="button" variant="outline" size="sm" aria-pressed={post.isFollowing} disabled={follow.isPending || removed || post.status === "hidden"} onClick={() => { if (!isAuthed) { navigate(`/login?returnTo=${encodeURIComponent(forumPostHref(post))}`); return; } follow.mutate({ postId: post.id, following: !post.isFollowing }, { onError: () => toast.error(t("Could not update follow status.")) }); }}>{t(post.isFollowing ? "Following" : "Follow")}</Button>{notificationControl(true)}</div>
                 <div id="response-composer" className="scroll-mt-24">
                   {isAuthed && !removed && post.status !== "hidden" ? <>
                     {canReply ? (
@@ -574,7 +574,7 @@ export function ForumDetailPage() {
                       </div>
                     ) : !locked ? <p className="border-t py-6 text-sm text-muted-foreground">{t("This category is read-only or replying is unavailable.")} {post.community ? <Link to={`/forum?category=${encodeURIComponent(post.community.slug)}`} className="text-primary hover:underline">{t("View category")}</Link> : null}</p> : null}
                     {canReply && !composerOpen && focusRequest > 0 ? <button type="button" className="forum-reply-resume" onClick={() => { setComposerOpen(true); setFocusRequest((value) => value + 1); }}><Reply className="h-4 w-4" aria-hidden="true" />{t("Continue reply")}</button> : null}
-                  </> : !isAuthed && !readOnly ? <div className="border-t py-7"><p className="text-sm text-muted-foreground">{t("Sign in to join the discussion.")}</p><Button asChild size="sm" className="mt-3"><Link to={`/login?returnTo=${encodeURIComponent(forumPostHref(post))}`}>{t("Sign in")}</Link></Button></div> : null}
+                  </> : !isAuthed && !readOnly ? <div className="border-t py-6"><p className="text-sm text-muted-foreground">{t("Sign in to join the discussion.")}</p><Button asChild variant="discussion" size="sm" className="mt-3"><Link to={`/login?returnTo=${encodeURIComponent(forumPostHref(post))}`}>{t("Sign in")}</Link></Button></div> : null}
                 </div>
               </div>
               {!removed && post.status !== "hidden" ? <ForumThreadDiscovery key={post.id} postId={post.id} /> : null}

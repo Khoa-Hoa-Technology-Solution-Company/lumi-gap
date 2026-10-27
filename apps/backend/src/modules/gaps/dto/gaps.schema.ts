@@ -13,6 +13,8 @@ export const AnalyzeGapSchema = z
   .object({
     topic: z.string().trim().min(3).max(200),
     projectId: z.string().optional(),
+    synthesisRevisionId: z.string().uuid().optional(),
+    projectDiscovery: z.boolean().optional(),
     yearFrom: z.coerce.number().int().min(1900).max(2100).optional(),
     yearTo: z.coerce.number().int().min(1900).max(2100).optional(),
     selectedPaperIds: SelectedPaperIdsSchema.optional(),
@@ -20,13 +22,16 @@ export const AnalyzeGapSchema = z
     evidenceMode: z.enum(["auto", "selected", "hybrid"]).default("hybrid"),
   })
   .superRefine((body, ctx) => {
+    if (body.projectId && !body.projectDiscovery && !body.synthesisRevisionId) ctx.addIssue({ code: "custom", message: "Review the project synthesis before finding gaps", path: ["synthesisRevisionId"] });
+    if (body.projectDiscovery && (!body.projectId || body.evidenceMode !== "selected" || body.synthesisRevisionId)) ctx.addIssue({ code: "custom", message: "Project discovery requires selected project papers", path: ["projectDiscovery"] });
+    if (body.synthesisRevisionId && (!body.projectId || body.evidenceMode !== "selected")) ctx.addIssue({ code: "custom", message: "A project synthesis requires selected evidence mode", path: ["synthesisRevisionId"] });
     if (body.yearFrom !== undefined && body.yearTo !== undefined && body.yearFrom > body.yearTo) {
       ctx.addIssue({ code: "custom", message: "yearFrom must be <= yearTo", path: ["yearFrom"] });
     }
-    if (body.evidenceMode === "selected" && (body.selectedPaperIds?.length ?? 0) < 3) {
+    if (body.evidenceMode === "selected" && (body.selectedPaperIds?.length ?? 0) < (body.projectDiscovery ? 2 : 3)) {
       ctx.addIssue({
         code: "custom",
-        message: "Select at least 3 evidence papers",
+        message: body.projectDiscovery ? "Select at least 2 relevant papers" : "Select at least 3 evidence papers",
         path: ["selectedPaperIds"],
       });
     }
@@ -61,6 +66,7 @@ export const ActiveGapAnalysisQuerySchema = z.object({
 
 /** Query params of GET /api/v1/gaps. */
 export const ListGapsQuerySchema = z.object({
+  analysisId: databaseIdSchema.optional(),
   assessmentStatus: z.enum(["PROPOSED", "IN_REVIEW", "NEEDS_MORE_EVIDENCE", "TEAM_SUPPORTED", "REJECTED"]).optional(),
   topic: z.string().trim().max(200).optional(),
   search: z.string().trim().max(200).optional(),

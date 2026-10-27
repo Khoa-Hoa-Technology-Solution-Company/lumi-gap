@@ -13,6 +13,7 @@ import {
   listQuerySchema,
   lookupParamsSchema,
   memberParamsSchema,
+  publicMembersQuerySchema,
   reviewSchema,
   suggestQuerySchema,
   transferOwnershipSchema,
@@ -45,7 +46,7 @@ communityRouter.patch("/:id", requireAuth, validate(idParamsSchema, "params"), v
 communityRouter.patch("/:id/status", requireAuth, validate(idParamsSchema, "params"), validate(communityStatusSchema), communityController.setStatus);
 communityRouter.post("/:id/resubmit", requireAuth, validate(idParamsSchema, "params"), communityController.resubmit);
 communityRouter.post("/:id/transfer-ownership", requireAuth, validate(idParamsSchema, "params"), validate(transferOwnershipSchema), communityController.transferOwnership);
-communityRouter.get("/:id/members/public", optionalAuth, validate(idParamsSchema, "params"), communityController.publicMembers);
+communityRouter.get("/:id/members/public", optionalAuth, validate(idParamsSchema, "params"), validate(publicMembersQuerySchema, "query"), communityController.publicMembers);
 communityRouter.get("/:id/related-papers", optionalAuth, validate(idParamsSchema, "params"), communityController.relatedPapers);
 communityRouter.get("/:id/related-gaps", optionalAuth, validate(idParamsSchema, "params"), communityController.relatedGaps);
 communityRouter.post("/:id/review", requireAuth, validate(idParamsSchema, "params"), validate(reviewSchema), communityController.review);

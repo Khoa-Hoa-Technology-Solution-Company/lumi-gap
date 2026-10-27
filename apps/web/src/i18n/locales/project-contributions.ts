@@ -1,4 +1,7 @@
 export const contributionsVi = {
+  "Select a day to filter the activity list.": "Chọn một ngày để xem các hoạt động trong ngày đó.",
+  "Recorded activities": "Hoạt động được ghi nhận", "Active days": "Ngày có hoạt động", "Vietnam": "Việt Nam",
+  "Review team activity, document work and agree on contribution shares.": "Theo dõi hoạt động, ghi nhận công việc và thống nhất tỷ lệ đóng góp trong nhóm.",
   "Record created": "Đã tạo bản ghi", "Record corrected": "Đã chỉnh sửa bản ghi", "Submitted for acknowledgement": "Đã gửi để xác nhận",
   "Complete the roster, total exactly 100%, and explain the proposal and any zero share before submission.": "Điền đủ thành viên, đảm bảo tổng đúng 100%, giải thích đề xuất và mọi tỷ lệ 0% trước khi gửi.",
   "Related task": "Công việc liên quan", "Find a related task": "Tìm công việc liên quan", "Choose a task": "Chọn công việc", "Link task deliverable": "Liên kết kết quả công việc",

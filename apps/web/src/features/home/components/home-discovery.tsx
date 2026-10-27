@@ -7,6 +7,7 @@ import { useHomeOverview } from "@/features/home/hooks/use-home-overview";
 import { useI18n } from "@/i18n";
 import { formatNumber } from "@/utils";
 import { HomeFeaturedPapers } from "./home-featured-papers";
+import { HomeFeaturedResearchers } from "./home-featured-researchers";
 import { HomeQuestionSpace } from "./home-question-space";
 import { HomeResearchBridge } from "./home-research-bridge";
 import { HomeReadingLens } from "./home-reading-lens";
@@ -77,6 +78,8 @@ export function HomeDiscovery() {
     revealDestination(event.target as HTMLElement);
   }}>
     <HomeFeaturedPapers />
+
+    <HomeFeaturedResearchers />
 
     <HomeResearchBridge />
 

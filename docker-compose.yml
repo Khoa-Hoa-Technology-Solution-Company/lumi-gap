@@ -159,6 +159,8 @@ services:
 
   web:
     image: lumigap-web:local
+    # Rebuild on every `up` like backend, so the static bundle follows the code.
+    pull_policy: build
     build:
       context: .
       dockerfile: Dockerfile.web

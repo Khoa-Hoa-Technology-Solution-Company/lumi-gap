@@ -10,7 +10,7 @@ import { authorizeProjectTransaction, lockProjectAccounts } from "../projects/pr
 const manager = (role: UserRole) => role === "moderator" || role === "admin";
 function whereId(value: string): { id: string } | { legacyMongoId: string } { const parsed = parseDatabaseId(value); if (!parsed) throw AppError.badRequest("Invalid identifier"); return parsed.kind === "uuid" ? { id: parsed.value } : { legacyMongoId: parsed.value }; }
 async function uid(value: string) { const row = await getPrisma().user.findUnique({ where: whereId(value), select: { id: true } }); if (!row) throw AppError.notFound("User not found"); return row.id; }
-async function workspace(value: string) { const row = await getPrisma().draftWorkspace.findUnique({ where: whereId(value) }); if (!row) throw AppError.notFound("Draft workspace not found"); return row; }
+async function workspace(value: string) { const row = await getPrisma().draftWorkspace.findUnique({ where: whereId(value) }); if (!row || row.deletedAt) throw AppError.notFound("Draft workspace not found"); return row; }
 async function project(value: string) { const row = await getPrisma().project.findUnique({ where: whereId(value) }); if (!row) throw AppError.notFound("Project not found"); return row; }
 async function access(workspaceId: string, actorId: string, _role: UserRole, mutable = false) {
   const [row, actor] = await Promise.all([workspace(workspaceId), uid(actorId)]);

@@ -5,9 +5,21 @@ import { projectEvidenceService as evidence } from "./project-evidence.service.j
 import { projectScreeningService as screening } from "./project-screening.service.js";
 import { projectSourcesService as sources } from "./project-sources.service.js";
 import { projectGapResearchService as gaps } from "./project-gap-research.service.js";
+import { projectSynthesisService as synthesis } from "./project-synthesis.service.js";
+import { projectPaperAnalysisService as paperAnalysis } from "./project-paper-analysis.service.js";
+import { gapsService } from "../gaps/gaps.service.js";
 const id = (req: Request) => String(req.params.id), item = (req: Request) => String(req.params.itemId), actor = (req: Request) => req.user!.sub;
 const send = (res: Response, data: unknown, status = 200) => res.status(status).json({ success: true, data });
 export const projectResearchController = {
+  discovery: async (req: Request, res: Response) => send(res, await gapsService.projectDiscoveryOverview(id(req), actor(req))),
+  paperAnalysis: async (req: Request, res: Response) => send(res, await paperAnalysis.get(id(req), actor(req), item(req))),
+  requestPaperAnalysis: async (req: Request, res: Response) => send(res, await paperAnalysis.request(id(req), actor(req), item(req)), 202),
+  synthesis: async (req: Request, res: Response) => send(res, await synthesis.get(id(req), actor(req))),
+  synthesisHistory: async (req: Request, res: Response) => send(res, await synthesis.history(id(req), actor(req))),
+  saveSynthesis: async (req: Request, res: Response) => send(res, await synthesis.save(id(req), actor(req), req.body)),
+  generateSynthesis: async (req: Request, res: Response) => send(res, await synthesis.generate(id(req), actor(req), req.body), 202),
+  acceptSynthesis: async (req: Request, res: Response) => send(res, await synthesis.accept(id(req), actor(req), req.body)),
+  researchQuestions: async (req: Request, res: Response) => send(res, await synthesis.questions(id(req), actor(req))),
   suggestions: async (req: Request, res: Response) => send(res, await evidence.suggestions(id(req), actor(req), item(req))),
   library: async (req: Request, res: Response) => send(res, await screening.library(id(req), actor(req), researchPageSchema.parse(req.query))),
   policy: async (req: Request, res: Response) => send(res, await screening.policy(id(req), actor(req), req.body)),

@@ -5,11 +5,11 @@
   width: calc(100% - 64px);
   max-width: 1360px;
   margin-inline: auto;
-  padding-block: 28px 60px;
+  padding-block: 20px 60px;
 }
 .project-browser-sidebar {
   position: sticky;
-  top: 104px;
+  top: 120px;
   align-self: start;
   min-width: 0;
   padding-right: 18px;

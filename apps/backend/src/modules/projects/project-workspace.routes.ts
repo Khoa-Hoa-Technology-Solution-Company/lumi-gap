@@ -4,6 +4,7 @@ import { validate } from "../../common/middleware/validate.js";
 import { createRateLimiter } from "../../common/middleware/rate-limit.js";
 import { projectWorkspaceController as c } from "./project-workspace.controller.js";
 import * as s from "./dto/project-workspace.schema.js";
+import { CreateProjectTrendSnapshotSchema } from "../trends/dto/trends.schema.js";
 
 export const projectWorkspaceRouter = Router({ mergeParams: true });
 const params = validate(s.workspaceParams, "params");
@@ -16,6 +17,10 @@ projectWorkspaceRouter.patch("/workspace/stage", writes, params, validate(s.rese
 projectWorkspaceRouter.get("/workspace/people", params, validate(s.discussionQuerySchema, "query"), c.people);
 projectWorkspaceRouter.get("/workspace/artifacts", params, validate(s.artifactQuerySchema, "query"), c.artifacts);
 projectWorkspaceRouter.get("/workspace/artifacts/:itemId", item, validate(s.artifactQuerySchema, "query"), c.artifactHref);
+projectWorkspaceRouter.get("/trend-snapshots", params, c.trendSnapshots);
+// Each snapshot runs the trend statistics (OpenAlex), so it shares the workspace write budget.
+projectWorkspaceRouter.post("/trend-snapshots", writes, params, validate(CreateProjectTrendSnapshotSchema), c.createTrendSnapshot);
+projectWorkspaceRouter.delete("/trend-snapshots/:itemId", writes, item, c.deleteTrendSnapshot);
 projectWorkspaceRouter.get("/plan", params, validate(s.planQuerySchema, "query"), c.plan);
 projectWorkspaceRouter.put("/plan", writes, params, validate(s.savePlanSchema), c.savePlan);
 projectWorkspaceRouter.patch("/plan/draft", writes, params, validate(s.planDraftSchema), c.updatePlanDraft);

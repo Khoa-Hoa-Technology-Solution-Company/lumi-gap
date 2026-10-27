@@ -5,7 +5,7 @@ import { EditorView } from "@codemirror/view";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeAll, expect, it, vi } from "vitest";
-import type { ManuscriptFile, ManuscriptComment, ManuscriptCompilationState } from "@trend/shared-types";
+import type { ManuscriptFile, ManuscriptComment, ManuscriptCompilationState, ManuscriptReference } from "@trend/shared-types";
 import { ManuscriptPanes } from "../manuscript-panes";
 import { ManuscriptFileTree } from "../manuscript-file-tree";
 import { ManuscriptEditorPage } from "../manuscript-editor";
@@ -31,14 +31,15 @@ vi.mock("../collaboration-provider", async () => {
   return { ManuscriptProvider: Provider };
 });
 vi.mock("@/features/academic-profile/components/private-evidence-pdf-preview", () => ({ default: () => <div>Rendered private PDF</div> }));
-const data = vi.hoisted(() => ({ userId: "", canWrite: true, available: false, state: { latest: null, successful: null } as ManuscriptCompilationState, compile: vi.fn(), snapshot: vi.fn(), comments: [] as ManuscriptComment[], comment: vi.fn(), reply: vi.fn() }));
+const data = vi.hoisted(() => ({ userId: "", canWrite: true, available: false, extraFiles: [] as ManuscriptFile[], references: [] as ManuscriptReference[], insertCitation: vi.fn(), state: { latest: null, successful: null } as ManuscriptCompilationState, compile: vi.fn(), snapshot: vi.fn(), assist: vi.fn(), aiRun: vi.fn(), comments: [] as ManuscriptComment[], comment: vi.fn(), reply: vi.fn() }));
 const file = (id: string, path: string, kind: ManuscriptFile["kind"] = "TEXT"): ManuscriptFile => ({ id, path, kind, version: 1, sequence: 0, sizeBytes: 0, mimeType: null, checksum: null, updatedAt: "2026-10-19" });
 vi.mock("../manuscripts.api", () => ({ manuscriptsApi: {
-  detail: async () => ({ id: "draft", title: "Team research paper", files: [{ id: "main", path: "main.tex", kind: "TEXT", version: 1 }, { id: "intro", path: "sections/introduction.tex", kind: "TEXT", version: 1 }], collaborators: [], compiler: { available: data.available, reason: "READY" }, version: 2, mainFileId: "main", canWrite: data.canWrite }),
+  detail: async () => ({ id: "draft", title: "Team research paper", files: [{ id: "main", path: "main.tex", kind: "TEXT", version: 1 }, { id: "intro", path: "sections/introduction.tex", kind: "TEXT", version: 1 }, ...data.extraFiles], collaborators: [], compiler: { available: data.available, reason: "READY" }, version: 2, mainFileId: "main", canWrite: data.canWrite }),
   compilations: async () => data.state, compile: data.compile, snapshot: data.snapshot,
+  assist: data.assist, aiRun: data.aiRun,
   pdf: async () => new Blob(["%PDF-fixture"], { type: "application/pdf" }),
-  context: async () => ({ references: [], gaps: [], evidence: [] }),
-  comments: async () => data.comments, comment: data.comment, reply: data.reply, snapshots: async () => [], mentors: async () => [],
+  context: async () => ({ references: data.references, gaps: [], evidence: [] }), insertCitation: data.insertCitation,
+  comments: async () => data.comments, comment: data.comment, reply: data.reply, snapshots: async () => [], mentors: async () => [], suggestions: async () => [],
 }, saveDownload: vi.fn() }));
 
 let cleanup: (() => Promise<void>) | undefined;
@@ -47,7 +48,7 @@ beforeAll(() => {
   Range.prototype.getClientRects = () => [] as unknown as DOMRectList;
   Range.prototype.getBoundingClientRect = () => new DOMRect();
 });
-afterEach(async () => { await cleanup?.(); vi.unstubAllGlobals(); data.userId = ""; data.canWrite = true; data.available = false; data.state = { latest: null, successful: null }; data.comments = []; vi.clearAllMocks(); });
+afterEach(async () => { await cleanup?.(); vi.unstubAllGlobals(); data.userId = ""; data.canWrite = true; data.available = false; data.state = { latest: null, successful: null }; data.comments = []; data.extraFiles = []; data.references = []; vi.clearAllMocks(); });
 async function render(node: React.ReactNode) {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
@@ -59,6 +60,81 @@ async function render(node: React.ReactNode) {
 }
 const button = (host: HTMLElement, label: string) => host.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)!;
 const workspace = () => <Routes><Route path="/projects/:projectId/manuscripts/:id" element={<ManuscriptEditorPage />} /></Routes>;
+
+it("mounts suggested edits when opened through the side-panel selector", async () => {
+  const host = await render(workspace());
+  await act(async () => {
+    const selector = host.querySelector<HTMLSelectElement>("#writing-context-panel")!;
+    selector.value = "suggestions";
+    selector.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  expect(host.querySelector(".writing-suggestions")?.textContent).toContain("Proposals keep the source unchanged until a team member accepts.");
+});
+
+it("keeps tracked typing out of shared source and blocks hidden citation edits", async () => {
+  data.userId = "writer";
+  data.references = [{ id: "paper", title: "Project source", authors: ["Demo"], year: 2026, doi: null, citationKey: "demo", bibtex: "" }];
+  const host = await render(workspace());
+  const shared = EditorView.findFromDOM(host.querySelector<HTMLElement>(".cm-editor")!)!;
+  const original = shared.state.doc.toString();
+  await act(async () => [...host.querySelectorAll<HTMLButtonElement>("button")].find(node => node.textContent === "Track changes")!.click());
+  const proposal = EditorView.findFromDOM(host.querySelector<HTMLElement>(".writing-tracked-editing .cm-editor")!)!;
+  await act(async () => proposal.dispatch({ changes: { from: 0, insert: "Proposed only " } }));
+  expect(shared.state.doc.toString()).toBe(original);
+  await act(async () => button(host, "Research context").click());
+  expect([...host.querySelectorAll<HTMLButtonElement>("button")].find(node => node.textContent === "Insert citation")!.disabled).toBe(true);
+  expect(data.insertCitation).not.toHaveBeenCalled();
+});
+
+it("exits a saved tracked scope when navigating to a comment in the same file", async () => {
+  data.userId = "writer";
+  data.comments = [{ id: "thread", title: "Review", body: "Clarify", status: "OPEN", version: 1, author: { id: "member", name: "Member" }, context: { fileId: "main" }, mentorRelationshipId: null, messages: [] }];
+  const host = await render(workspace());
+  await act(async () => [...host.querySelectorAll<HTMLButtonElement>("button")].find(node => node.textContent === "Track changes")!.click());
+  expect(host.querySelector(".writing-tracked-editing")).not.toBeNull();
+  await act(async () => button(host, "Comments").click());
+  await act(async () => [...host.querySelectorAll<HTMLButtonElement>("button")].find(node => node.textContent === "Open commented file")!.click());
+  expect(host.querySelector(".writing-tracked-editing")).toBeNull();
+  expect(host.querySelector<HTMLElement>(".writing-source-code-host")!.hidden).toBe(false);
+});
+
+async function citationWorkspace() {
+  data.userId = "writer";
+  data.references = [{ id: "paper", title: "Project source", authors: ["Demo"], year: 2026, doi: null, citationKey: "demo", bibtex: "" }];
+  const host = await render(workspace());
+  await act(async () => button(host, "Research context").click());
+  const editor = EditorView.findFromDOM(host.querySelector<HTMLElement>(".cm-editor")!)!;
+  return { host, editor, insert: () => [...host.querySelectorAll<HTMLButtonElement>("button")].find(node => node.textContent === "Insert citation")! };
+}
+it("inserts a citation at the captured selection even if the cursor moves during the request", async () => {
+  const { editor, insert } = await citationWorkspace();
+  let finish!: (value: { key: string }) => void;
+  data.insertCitation.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+  await act(async () => editor.dispatch({ selection: { anchor: 5, head: 11 } }));
+  await act(async () => insert().click());
+  expect(data.insertCitation).toHaveBeenCalledOnce();
+  await act(async () => editor.dispatch({ selection: { anchor: editor.state.doc.length } }));
+  await act(async () => finish({ key: "demo" }));
+  expect(editor.state.doc.toString()).toBe("Main \\cite{demo} quotation");
+});
+it("does not overwrite source edited during a pending manual citation request", async () => {
+  const { host, editor, insert } = await citationWorkspace();
+  let finish!: (value: { key: string }) => void;
+  data.insertCitation.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+  await act(async () => editor.dispatch({ selection: { anchor: 5, head: 11 } }));
+  await act(async () => insert().click());
+  await act(async () => editor.dispatch({ changes: { from: 5, to: 11, insert: "updated" } }));
+  await act(async () => finish({ key: "demo" }));
+  expect(editor.state.doc.toString()).toBe("Main updated quotation");
+  expect(host.querySelector('[role="alert"]')).not.toBeNull();
+});
+it.each(["references.bib", "notes.txt", "teamstyle.sty"])("does not insert prose citation commands into %s", async path => {
+  data.extraFiles = [file("support", path)];
+  const { host, insert } = await citationWorkspace();
+  await act(async () => [...host.querySelectorAll<HTMLButtonElement>(".writing-files button")].find(node => node.textContent === path)!.click());
+  expect(insert().disabled).toBe(true);
+  expect(data.insertCitation).not.toHaveBeenCalled();
+});
 
 it("supports keyboard resizing while reserving room for the editor", async () => {
   const host = await render(<ManuscriptPanes files={<aside>Files</aside>} editor={<section>Editor</section>} aside={<aside>PDF</aside>} filesOpen asideOpen activePane="editor" />);
@@ -155,7 +231,7 @@ it("seals saved source and starts a real compile API job, then shows queued stat
   expect(button(host, "Compile PDF").disabled).toBe(false);
   await act(async () => button(host, "Compile PDF").click());
   expect(data.snapshot).toHaveBeenCalledWith("project", "draft", expect.objectContaining({ minimumSequences: {}, reuseUnchanged: true }));
-  expect(data.compile).toHaveBeenCalledWith("project", "draft", "sealed", "pdflatex");
+  expect(data.compile).toHaveBeenCalledWith("project", "draft", "sealed", "pdflatex", "2022");
   expect(host.textContent).toContain("Waiting for compiler…");
   expect(button(host, "Compile PDF").disabled).toBe(true);
 });
@@ -171,12 +247,46 @@ it("keeps successful PDF visible with a source warning when a later compilation 
 it("extracts source file and line without turning compiler text into HTML", () => {
   expect(latexErrors("./sections/intro.tex:12: Undefined control sequence.\n<svg onload=evil()>\nmain.tex:8: Missing $ inserted.")).toEqual([{ path: "sections/intro.tex", line: 12, message: "Undefined control sequence." }, { path: "main.tex", line: 8, message: "Missing $ inserted." }]);
 });
+it("locates errors in project-local class and package files", () => {
+  expect(latexErrors("teamarticle.cls:8: Undefined control sequence.\nteamstyle.sty:4: Missing } inserted.")).toEqual([
+    { path: "teamarticle.cls", line: 8, message: "Undefined control sequence." },
+    { path: "teamstyle.sty", line: 4, message: "Missing } inserted." },
+  ]);
+});
 it("shows the actionable abstract error without repeating the fatal summary", async () => {
   data.available = true; data.state = { successful: compiled, latest: { ...compiled, id: "failed", status: "FAILED", sourceVersion: 2, diagnostics: "main.tex:10: LaTeX Error: Environment abstract abc undefined.\nmain.tex:10: ==> Fatal error occurred, no output PDF file produced!" } };
   const host = await render(workspace());
   for (let attempt = 0; attempt < 50 && !host.querySelector(".writing-error-hint"); attempt++) await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)); });
-  expect(host.querySelectorAll(".writing-compile-errors button")).toHaveLength(1);
+  expect(host.querySelectorAll(".writing-compile-errors button:not(.writing-ai-repair-button)")).toHaveLength(1);
   expect(host.querySelector(".writing-error-hint")?.textContent).toContain("\\begin{abstract}");
+});
+it("opens the errored file and requests a whole-file AI repair without editing source automatically", async () => {
+  data.userId = "writer"; data.available = true;
+  data.state = { successful: null, latest: { ...compiled, id: "failed", status: "FAILED", diagnostics: "sections/introduction.tex:2: LaTeX Error: Missing \\begin{document}." } };
+  data.assist.mockImplementation(async (_project, _id, input) => ({ id: "repair", status: "queued", input, result: null }));
+  data.aiRun.mockImplementation(async () => ({ id: "repair", status: "completed", input: data.assist.mock.calls.at(-1)![2], result: { text: "Fixed source", explanation: "Fixed environment ordering", citations: [], warnings: [] } }));
+  const host = await render(workspace());
+  for (let i = 0; i < 30 && !button(host, "Ask AI to fix errors"); i++) await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)); });
+  await act(async () => button(host, "Ask AI to fix errors").click());
+  expect(host.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toBe("introduction.tex");
+  expect(host.querySelector<HTMLSelectElement>(".writing-ai form select")?.value).toBe("repair");
+  expect(host.querySelector(".writing-error-hint")).toBeNull();
+  const analyze = [...host.querySelectorAll<HTMLButtonElement>("button")].find(node => node.textContent === "Analyze LaTeX errors")!;
+  await act(async () => analyze.click());
+  expect(data.assist.mock.calls[0]![2]).toMatchObject({ action: "repair", fileId: "intro", from: 0, to: 17, original: "Other file source" });
+  expect(host.querySelector(".cm-content")?.textContent).toContain("Other file source");
+  for (let i = 0; i < 30 && !host.textContent?.includes("Apply proposed fix"); i++) await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)); });
+  await act(async () => [...host.querySelectorAll<HTMLButtonElement>("button")].find(node => node.textContent === "Apply proposed fix")!.click());
+  expect(host.querySelector(".cm-content")?.textContent).toBe("Fixed source");
+  expect(data.compile).not.toHaveBeenCalled();
+});
+it("does not offer AI repairs in a read-only manuscript", async () => {
+  data.canWrite = false;
+  data.state = { successful: null, latest: { ...compiled, status: "FAILED", diagnostics: "main.tex:9: LaTeX Error: Missing \\begin{document}." } };
+  const host = await render(workspace());
+  for (let i = 0; i < 30 && !host.querySelector(".writing-error-hint"); i++) await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)); });
+  expect(button(host, "Ask AI to fix errors")).toBeNull();
+  expect(host.querySelector(".writing-error-hint")?.textContent).toContain("after \\begin{document}");
 });
 it("opens and closes file tabs without deleting project files", async () => {
   const host = await render(workspace());

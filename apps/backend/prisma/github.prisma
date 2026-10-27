@@ -1,0 +1,14 @@
+model GithubConnection {
+  userId                String    @id @map("user_id") @db.Uuid
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  githubUserId          String?   @map("github_user_id") @db.VarChar(32)
+  login                 String?   @db.VarChar(100)
+  encryptedAccessToken  String?   @map("encrypted_access_token")
+  encryptedRefreshToken String?   @map("encrypted_refresh_token")
+  expiresAt             DateTime? @map("expires_at") @db.Timestamptz(6)
+  refreshExpiresAt      DateTime? @map("refresh_expires_at") @db.Timestamptz(6)
+  revision              Int       @default(0)
+  updatedAt             DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("github_connections")
+}

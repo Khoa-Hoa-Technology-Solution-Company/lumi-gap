@@ -25,6 +25,12 @@ const citationBandListSchema = z.preprocess(
   z.array(z.enum(TREND_CITATION_BANDS)).max(TREND_CITATION_BANDS.length).optional(),
 );
 
+/** Page of the tested topics: only one verdict (optional), from `offset`. */
+const topicPageSchema = {
+  verdict: z.enum(["rising", "stable", "declining", "insufficient"]).optional(),
+  offset: z.coerce.number().int().min(0).max(1000).default(0),
+};
+
 const trendFacetFiltersSchema = {
   paperKinds: csvListSchema,
   openAccessStatuses: csvListSchema,
@@ -56,6 +62,7 @@ export const TrendsOverviewQuerySchema = z
       (value) => (value === "momentum" || value === "growth" ? "trend" : value),
       z.enum(["trend", "total"]).default("trend"),
     ),
+    ...topicPageSchema,
     ...trendFacetFiltersSchema,
   })
   .refine((q) => q.yearFrom === undefined || q.yearTo === undefined || q.yearFrom <= q.yearTo, {
@@ -63,6 +70,22 @@ export const TrendsOverviewQuerySchema = z
   });
 
 export type TrendsOverviewQuery = z.infer<typeof TrendsOverviewQuerySchema>;
+
+/** Query params for GET /api/v1/trends/periods (trends by month or quarter). */
+export const TrendPeriodsQuerySchema = z.object({
+  granularity: z.enum(["month", "quarter"]).default("month"),
+  window: z.enum(["rolling", "year-to-date"]).default("rolling"),
+  /** Complete periods of a rolling window; default 12 months or 8 quarters.
+   *  Ignored for year-to-date. */
+  periods: z.coerce.number().int().min(5).max(24).optional(),
+  limit: z.coerce.number().int().min(1).max(50).default(10),
+  minPapers: z.coerce.number().int().min(1).max(1000).default(3),
+  sortBy: z.enum(["trend", "total"]).default("trend"),
+  ...topicPageSchema,
+  ...trendFacetFiltersSchema,
+});
+
+export type TrendPeriodsQuery = z.infer<typeof TrendPeriodsQuerySchema>;
 
 /** Query params for GET /api/v1/trends/:topic (topic deep dive). */
 export const TopicTrendQuerySchema = z
@@ -141,3 +164,26 @@ export const TrendExplainHistoryQuerySchema = z.object({
 });
 
 export type TrendExplainHistoryQuery = z.infer<typeof TrendExplainHistoryQuerySchema>;
+
+/** POST /trends/follows */
+export const CreateTrendFollowSchema = z.object({
+  topic: z.string().trim().min(1).max(300),
+  openalexTopicId: z.string().trim().min(1).max(64).optional(),
+  note: z.string().max(500).nullable().optional(),
+}).strict();
+
+export type CreateTrendFollowBody = z.infer<typeof CreateTrendFollowSchema>;
+
+/** GET /trends/follows/check?topic= */
+export const TrendFollowCheckQuerySchema = z.object({ topic: z.string().trim().min(1).max(300) });
+
+/** POST /projects/:projectId/trend-snapshots */
+export const CreateProjectTrendSnapshotSchema = z.object({
+  topic: z.string().trim().min(1).max(300),
+  openalexTopicId: z.string().trim().min(1).max(64).optional(),
+  yearFrom: z.coerce.number().int().min(1900).max(2100).optional(),
+  yearTo: z.coerce.number().int().min(1900).max(2100).optional(),
+  note: z.string().trim().max(1000).nullable().optional(),
+}).strict().refine((q) => q.yearFrom === undefined || q.yearTo === undefined || q.yearFrom <= q.yearTo, { message: "yearFrom must be <= yearTo", path: ["yearFrom"] });
+
+export type CreateProjectTrendSnapshotBody = z.infer<typeof CreateProjectTrendSnapshotSchema>;

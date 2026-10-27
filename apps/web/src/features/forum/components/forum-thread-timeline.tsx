@@ -134,7 +134,7 @@ export function ForumThreadTimeline({ postIds, postDates, total, createdAt, last
   };
   return (
     <><aside aria-label={t("Discussion timeline")} className="forum-thread-timeline hidden pt-4 xl:block">
-      <nav className="forum-timeline-nav sticky top-[calc(var(--app-header-height)+2rem)] text-sm text-muted-foreground">
+      <nav className="forum-timeline-nav sticky top-[calc(var(--app-header-offset)+1rem)] text-sm text-muted-foreground">
         <button type="button" onClick={() => jump(postIds[0])} title={`${t("Jump to opening post")}: ${new Date(createdAt).toLocaleString(language)}`} className="forum-timeline-date focus-visible:ring-2 focus-visible:ring-ring">
           <time dateTime={createdAt}>{date(createdAt)}</time>
         </button>

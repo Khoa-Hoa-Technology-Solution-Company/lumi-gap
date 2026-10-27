@@ -1,0 +1,71 @@
+% FILE: pages/page-1.tex
+% Source page 1; block p1b0
+
+\LGheading{p1b0}{PHIẾU MUA HÀNG}
+
+% Source page 1; block p1b1
+
+\LGparagraph{p1b1}{Bản dữ liệu thử nghiệm, không phải giao dịch thật}
+
+% Source page 1; block p1b2
+
+\LGparagraph{p1b2}{Mã đơn hàng: TEST-2026-041 Ngày: 20/10/2026}
+
+% Source page 1; block p1b3
+
+\LGparagraph{p1b3}{Khách hàng: Nguyễn An}
+
+% Source page 1; block p1b4
+
+\LGparagraph{p1b4}{Địa chỉ: Nhóm nghiên cứu giả lập}
+
+% Source page 1; block p1b5
+
+\LGparagraph{p1b5}{Tên sản phẩm Đơn giá Số Thành tiền}
+
+% Source page 1; block p1b6
+
+\LGparagraph{p1b6}{lượng}
+
+% Source page 1; block p1b7
+
+\LGparagraph{p1b7}{Sổ ghi chép nghiên cứu 125.000 3 375.000}
+
+% Source page 1; block p1b8
+
+\LGparagraph{p1b8}{Bộ tài liệu tiếng Việt có tên dài cần tự xuống 250.000 2 500.000}
+
+% Source page 1; block p1b9
+
+\LGparagraph{p1b9}{dòng}
+
+% Source page 1; block p1b10
+
+\LGparagraph{p1b10}{Bút đánh dấu 40.000 10 400.000}
+
+% Source page 1; block p1b11
+
+\LGparagraph{p1b11}{Tổng tiền: 1.275.000 VND}
+
+% Source page 1; block p1b12
+
+\LGparagraph{p1b12}{Ghi chú: Kiểm tra đúng số lượng, mã đơn hàng và dấu tiếng Việt.}
+
+% Source page 1; block p1b13
+
+\LGparagraph{p1b13}{Cảm ơn bạn. Dữ liệu chỉ phục vụ kiểm thử chuyển đổi PDF.}
+% FILE: main.tex
+% Editable reconstruction using Docling Core. Verify against original.pdf.
+\documentclass[11pt]{article}
+\usepackage{fontspec,graphicx,booktabs,array}
+\usepackage[margin=22mm]{geometry}
+\setmainfont{DejaVu Serif}
+\newcommand{\LGparagraph}[2]{#2\par\medskip}
+\newcommand{\LGheading}[2]{\section*{#2}}
+\begin{document}
+\input{pages/page-1.tex}
+\end{document}
+
+% FILE: original-layout.tex
+\documentclass{article}\usepackage{pdfpages}
+\begin{document}\includepdf[pages=-,fitpaper=true]{original.pdf}\end{document}
