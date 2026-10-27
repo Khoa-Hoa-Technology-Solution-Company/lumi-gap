@@ -32,12 +32,30 @@ export interface GapCorpusCoverage {
 }
 
 /**
- * What to do with a gap now, derived from its evidence. `likely_studied`: papers (found automatically or by a person)
+ * Self-check of a generated gap against papers that may already answer it. `drop`: a paper answers it (the quote was
+ * found verbatim in that paper); the gap is saved dismissed. `narrow`: rewritten to the part the papers leave open
+ * (`original` keeps the first version). `keep`: the papers do not address it.
+ */
+export interface GapRefinement {
+  action: "keep" | "narrow" | "drop";
+  reason: string;
+  /** How many related papers the check read. */
+  counterCount: number;
+  answeredByPaperId?: string;
+  quote?: string;
+  original?: { title: string; description: string };
+  promptVersion: string;
+}
+
+/**
+ * What to do with a gap now, derived from its evidence. `refined`: the self-check narrowed it to what related papers
+ * leave open, so the closure check is next. `busy_area`: OpenAlex finds the two broad topics well studied together,
+ * but the gap's specific claim is narrower and unchecked. `likely_studied`: papers (found automatically or by a person)
  * may already answer it, or OpenAlex finds the intersection well covered (even when the corpus signal is weak). `thin_corpus`: the corpus has too few papers
  * on a probe topic to judge. `run_closure`: the corpus signal holds, so a closure check is the next step.
  * `refine`: the signal is weak; sharpen the question before spending a check on it.
  */
-export type GapNextStepKind = "likely_studied" | "thin_corpus" | "run_closure" | "refine";
+export type GapNextStepKind = "likely_studied" | "refined" | "busy_area" | "thin_corpus" | "run_closure" | "refine";
 
 export interface GapNextStep {
   kind: GapNextStepKind;
@@ -45,6 +63,8 @@ export interface GapNextStep {
   counterCount: number;
   /** OpenAlex has enough papers on both topics and does not find their intersection under-explored. */
   globalWellCovered: boolean;
+  /** The broad probe area, for `busy_area`. */
+  broadArea?: { topicA: string; topicB: string; openAlexCount: number };
 }
 
 /** Probe counts taken from OpenAlex (the whole literature, not just the local corpus). Absent when OpenAlex was unavailable. */
@@ -78,6 +98,7 @@ export interface ResearchGapItem {
   possibleCounterPapers?: GapSupportingPaper[];
   /** Absent once a closure check has decided: its decision is the next step's answer. */
   nextStep?: GapNextStep;
+  refinement?: GapRefinement;
   /** Complete reviewed input set the AI read when producing this gap. */
   evidencePaperIds: string[];
   /** Resolved papers in the same order as evidencePaperIds. */

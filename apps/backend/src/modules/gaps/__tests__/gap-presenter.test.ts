@@ -273,7 +273,8 @@ describe("under-explored signal recomputed from stored counts", () => {
     const vetoed = toGapListItem({ ...doc, globalEvidence: openAlex(180) }, new Map(), { minParentPapers: 5 });
     expect(vetoed.evidenceStatus).toBe("weak");
     expect(vetoed.underExplored).toMatchObject({ vetoedByGlobal: true, global: { expected: 200 } });
-    expect(vetoed.nextStep).toMatchObject({ kind: "likely_studied", globalWellCovered: true });
+    // Only the broad probe area is known to be busy, not the gap's own claim.
+    expect(vetoed.nextStep).toMatchObject({ kind: "busy_area", globalWellCovered: true, broadArea: { openAlexCount: 180 } });
     expect(toGapListItem({ ...doc, globalEvidence: openAlex(20) }, new Map(), { minParentPapers: 5 }).evidenceStatus).toBe("confirmed");
 
     const row = (id: string, globalEvidence: ReturnType<typeof openAlex>): GapSortRow => ({ id, confidence: 0, evidenceConfidence: null, evidenceScopeSize: 20000, intersectionCount: 1, createdAt: new Date("2026-01-01T00:00:00Z"), source: "standalone", probe: base.probe, parentCounts: { a: 400, b: 300 }, globalEvidence, supportingCount: 0 });
@@ -287,8 +288,8 @@ describe("gapNextStep", () => {
 
   it("says a gap with papers that may answer it is probably already studied, before any count", () => {
     expect(gapNextStep({ ...input, evidenceStatus: "confirmed", counterCount: 2 })).toEqual({ kind: "likely_studied", counterCount: 2, globalWellCovered: false });
-    // A weak corpus signal does not hide what OpenAlex shows.
-    expect(gapNextStep({ ...input, globalWellCovered: true })?.kind).toBe("likely_studied");
+    // OpenAlex alone only shows the broad area is busy; it does not say the gap is answered.
+    expect(gapNextStep({ ...input, globalWellCovered: true, probe: { topicA: "a", topicB: "b" }, globalEvidence: { source: "openalex", intersectionCount: 1138, parentCounts: { a: 9, b: 9 }, fetchedAt: "" } })).toMatchObject({ kind: "busy_area", broadArea: { topicA: "a", topicB: "b", openAlexCount: 1138 } });
   });
 
   it("says the corpus is too thin when a probe topic is rare locally but common in OpenAlex", () => {
@@ -300,6 +301,13 @@ describe("gapNextStep", () => {
   it("sends a confirmed, uncontested gap to the closure check and everything else to refinement", () => {
     expect(gapNextStep({ ...input, evidenceStatus: "confirmed" })?.kind).toBe("run_closure");
     expect(gapNextStep(input)?.kind).toBe("refine");
+  });
+
+  it("follows the self-check: narrowed gaps go to closure, kept ones no longer count the papers, dropped ones need nothing", () => {
+    const refinement = (action: "keep" | "narrow" | "drop") => ({ action, reason: "r", counterCount: 3, promptVersion: "v" });
+    expect(gapNextStep({ ...input, counterCount: 3, refinement: refinement("narrow") })?.kind).toBe("refined");
+    expect(gapNextStep({ ...input, counterCount: 3, refinement: refinement("keep") })?.kind).toBe("refine");
+    expect(gapNextStep({ ...input, counterCount: 3, refinement: refinement("drop") })).toBeUndefined();
   });
 
   it("has no next step once a closure check decided", () => {

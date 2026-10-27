@@ -274,6 +274,39 @@ describe.sequential("gap pipeline probe scope (PostgreSQL)", () => {
     }
   });
 
+  it("narrows or drops gaps with the self-check before saving, keeping the first version and the quote", async () => {
+    const prisma = getPrisma();
+    const quote = `This trial shows ${topicA} improves ${topicB} in practice.`;
+    const answer = await prisma.paper.create({ data: { title: `Prior trial ${m}`, abstractText: quote, publicationYear: 2010, primaryProvider: "user", dataStatus: "active" } });
+    paperIds.push(answer.id);
+    vi.mocked(findOpenAlexCounterPapers).mockResolvedValue([answer.id]);
+    vi.mocked(cachedGenerateJSON)
+      .mockResolvedValueOnce({ gaps: [
+        { title: `Answered gap ${m}`, description: "d", rationale: "r", supportingEvidence: [1], confidence: 0, probe: { topicA, topicB } },
+        { title: `Broad gap ${m}`, description: "d", rationale: "r", supportingEvidence: [1], confidence: 0, probe: { topicA, topicB } },
+      ] } as never)
+      .mockResolvedValueOnce({ decisions: [
+        { gap: 1, action: "drop", answeredBy: "C1", quote, reason: "The trial answers it." },
+        { gap: 2, action: "narrow", reason: "Covered for adults only.", title: `Narrow gap ${m}`, description: "Children were not studied.", suggestedResearchQuestion: `Does ${topicA} improve ${topicB} for children?`, questionFacets: { population: "children" } },
+      ] } as never);
+    try {
+      const { done, gaps } = await runAnalysis({ evidenceMode: "hybrid", yearFrom: 2021 });
+
+      expect(done.status).toBe("ready");
+      const dropped = gaps.find((row) => row.title === `Answered gap ${m}`)!;
+      expect(dropped.status).toBe("dismissed");
+      expect(dropped.refinement).toMatchObject({ action: "drop", answeredByPaperId: answer.id, quote });
+      const narrowed = gaps.find((row) => row.title === `Narrow gap ${m}`)!;
+      expect(narrowed.status).toBe("active");
+      expect(narrowed.suggestedResearchQuestion).toBe(`Does ${topicA} improve ${topicB} for children?`);
+      expect(narrowed.refinement).toMatchObject({ action: "narrow", original: { title: `Broad gap ${m}` } });
+    } finally {
+      vi.mocked(findOpenAlexCounterPapers).mockResolvedValue([]);
+      await prisma.paper.update({ where: { id: answer.id }, data: { dataStatus: "low-quality" } });
+      mockLlm();
+    }
+  });
+
   it("saves the LLM's research question and PICOC facets, asks OpenAlex with that question and links what it finds", async () => {
     const question = `Does ${topicA} improve ${topicB} outcomes compared with usual practice?`;
     vi.mocked(cachedGenerateJSON).mockResolvedValueOnce({

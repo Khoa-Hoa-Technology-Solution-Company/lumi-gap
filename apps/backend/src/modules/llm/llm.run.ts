@@ -3,7 +3,7 @@ import { generateJSON, generateText, type GenerateOptions } from "./gemini.clien
 import { aiCacheNamespace, aiModel, personalAiRuntime } from "../user-ai/user-ai.runtime.js";
 import { platformAiRuntime, refreshPlatformAi } from "../user-ai/platform-ai.runtime.js";
 
-export type LlmTask = "rerank" | "extract" | "chat" | "report" | "gap" | "judge" | "compare" | "directions" | "trend" | "summary" | "gap-closure-queries" | "gap-closure-screen";
+export type LlmTask = "rerank" | "extract" | "chat" | "report" | "gap" | "judge" | "compare" | "directions" | "trend" | "summary" | "gap-closure-queries" | "gap-closure-screen" | "gap-refine";
 
 interface CachedGenerateBase<T> {
   task: LlmTask;
@@ -23,7 +23,7 @@ export function routeLlmModel(task: LlmTask, override?: string): string {
   if (personalAiRuntime()) return personalAiRuntime()!.model;
   if (override) return override;
   // aiModel falls back from the platform connection to the env defaults.
-  return aiModel(task === "report" || task === "gap" || task === "trend" ? "deep" : "fast");
+  return aiModel(task === "report" || task === "gap" || task === "gap-refine" || task === "trend" ? "deep" : "fast");
 }
 
 export function buildLlmCacheKey(args: {

@@ -1,4 +1,4 @@
-import { ArrowRight, BookOpenCheck, DatabaseZap, PencilLine, SearchCheck } from "lucide-react";
+import { ArrowRight, BookOpenCheck, DatabaseZap, Layers, PencilLine, Scissors, SearchCheck } from "lucide-react";
 import type { GapNextStep as GapNextStepData } from "@trend/shared-types";
 import { useI18n } from "@/i18n";
 import { cn } from "@/utils/cn";
@@ -17,6 +17,20 @@ export function GapNextStep({ step, compact = false }: { step?: GapNextStepData;
         : step.counterCount > 1
         ? t("{{count}} papers may already answer this gap. Read them: if one does, dismiss the gap; if they only cover part of it, narrow the question to the part they leave out.", { count: step.counterCount })
         : t("OpenAlex finds this combination well studied. Narrow the question (population, outcome or method) before relying on it."),
+    },
+    refined: {
+      icon: Scissors,
+      tone: "border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200",
+      title: t("Narrowed to what related papers leave open"),
+      body: t("The self-check compared this gap with {{count}} related papers and rewrote it to the part they do not cover. Run the closure check below: its question is already filled in.", { count: step.counterCount }),
+    },
+    busy_area: {
+      icon: Layers,
+      tone: "border-amber-200 bg-amber-50/60 text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200",
+      title: t("Busy research area, specific claim unchecked"),
+      body: step.broadArea
+        ? t("OpenAlex has {{count}} papers combining {{topicA}} and {{topicB}}, so the broad area is well studied. This gap's specific claim is narrower and has not been checked yet: run the closure check before relying on it.", { count: step.broadArea.openAlexCount.toLocaleString(), topicA: `"${step.broadArea.topicA}"`, topicB: `"${step.broadArea.topicB}"` })
+        : t("OpenAlex finds the broad area well studied. This gap's specific claim is narrower and has not been checked yet: run the closure check before relying on it."),
     },
     thin_corpus: {
       icon: DatabaseZap,

@@ -106,6 +106,8 @@ export const CreateClosureCalibrationSchema = z
     name: z.string().trim().min(3).max(200),
     domain: z.string().trim().min(2).max(200),
     judgeKind: z.enum(["AI", "HUMAN"]),
+    // IN_SITU: B = epsHat, no coverage check (docs/gap-closure-protocol.md, section 3 step 5).
+    mode: z.enum(["IN_SITU", "TRANSFER"]).default("TRANSFER"),
   })
   .strict();
 export type CreateClosureCalibrationDto = z.infer<typeof CreateClosureCalibrationSchema>;

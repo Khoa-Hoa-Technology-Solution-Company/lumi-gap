@@ -199,7 +199,8 @@ export function ClosureResultCard({ check }: { check: GapClosureCheckView }) {
           <dd>
             {arithmetic.pHat
               ? t("{{value}} (upper bound of {{ratio}} reference papers missing from the corpus and OpenAlex)", { value: formatRate(arithmetic.pHat.value), ratio: formatCount(arithmetic.pHat.x, arithmetic.pHat.m) })
-              : t("not available: no coverage check")}
+              : arithmetic.mode === "IN_SITU" ? t("not needed: in-situ calibration") : t("not available: no coverage check")}
+            {arithmetic.pHat && arithmetic.mode === "IN_SITU" && ` ${t("(not part of B: the in-situ calibration already counts answers missing from the sources)")}`}
           </dd>
           <dt className="font-bold">B</dt>
           <dd>
@@ -209,13 +210,15 @@ export function ClosureResultCard({ check }: { check: GapClosureCheckView }) {
                 {arithmetic.withinMax ? <CheckCircle2 className="ml-1 inline h-3.5 w-3.5" /> : <XCircle className="ml-1 inline h-3.5 w-3.5" />}
               </span>
             ) : (
-              t("not available: both numbers are needed")
+              arithmetic.mode === "IN_SITU" ? t("not available: no computed calibration") : t("not available: both numbers are needed")
             )}
           </dd>
         </dl>
         {confidence !== undefined && (
           <p className="text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
-            {t("Both upper bounds hold with {{confidence}}% confidence each. B is the largest chance that a closed question is wrongly called open.", { confidence })}
+            {arithmetic.mode === "IN_SITU"
+              ? t("In-situ calibration: the calibration questions were searched in the same sources, so B = epsHat holds with {{confidence}}% confidence. B is the largest chance that a closed question is wrongly called open.", { confidence })
+              : t("Both upper bounds hold with {{confidence}}% confidence each. B is the largest chance that a closed question is wrongly called open.", { confidence })}
           </p>
         )}
       </div>

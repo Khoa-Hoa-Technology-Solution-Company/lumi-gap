@@ -123,6 +123,7 @@ Users can also save multiple personal API connections in Settings → AI Connect
 | `GAPS_TOP_K` | `EnvSchema` / backend | Default / optional (see template) |
 | `GAPS_MAX_PER_HOUR` | `EnvSchema` / backend | Default / optional (see template) |
 | `GAPS_MAX_OUTPUT_TOKENS` | `EnvSchema` / backend | Default / optional (see template) |
+| `AI_PROVIDER_TIMEOUT_MS` | `EnvSchema` / backend | Default / optional (default 180000): how long a personal or platform AI connection may take to answer a generation request; reasoning models writing long outputs often need more than a minute |
 | `GAPS_EVIDENCE_MMR_LAMBDA` | `EnvSchema` / backend | Default / optional (default 0.7): MMR trade-off for the gap evidence pack; 1 keeps pure relevance order, lower values pick more diverse papers |
 | `GAP_COUNTER_MIN_SIMILARITY` | `EnvSchema` / backend | Default / optional (default 0.8): cosine similarity between a generated gap's text and a corpus paper above which the paper is linked as possible counter-evidence; the paper must also mention both probe topics when the gap has a probe. From `eval:gaps`: generic surveys sit at 0.81–0.83 but lack the probe words |
 | `GAP_PROBE_SEMANTIC_MIN_SIMILARITY` | `EnvSchema` / backend | Default / optional (default 0 = off): a paper also counts for a probe topic when its embedding is at least this close (cosine) to the topic, so synonyms are counted; calibrate with `pnpm --filter backend eval:gaps` before enabling |

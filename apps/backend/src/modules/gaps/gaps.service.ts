@@ -26,6 +26,7 @@ import { buildDirectionsPrompt, buildDirectionsEvidenceHash, sanitizeDirections,
 import { buildGapsCacheKey, buildGapsPrompt, GAP_PROMPT_VERSION, GAPS_SYSTEM_PROMPT, type GapEvidencePaper, type GapsLlmOutput } from "./gaps.prompt.js";
 import type { AnalyzeGapDto, ListGapsQuery, PatchGapDto, PreviewGapEvidenceDto } from "./dto/gaps.schema.js";
 import { selectByMmr } from "./gap-mmr.js";
+import { applyRefinement, buildRefinePrompt, GAP_REFINE_PROMPT_VERSION, GAP_REFINE_SYSTEM_PROMPT, type RefineGapInput, type RefineLlmOutput, type RefineResult } from "./gap-refine.js";
 import { expandTopicQueries, fuseByRrf } from "./gap-query-expansion.js";
 import { findPossibleCounterPapers, loadPaperEmbeddings } from "./gap-vector-queries.js";
 import { enrichCorpusForTopic, findOpenAlexCounterPapers, measureTopicCoverage } from "./gap-literature.js";
@@ -149,6 +150,40 @@ async function searchPossibleCounters(items: CounterSearchItem[], excludeIds: st
   };
   const [corpus, openAlex] = await Promise.all([local(), Promise.all(items.map((item) => findOpenAlexCounterPapers(item.question, item.probe, excludeIds)))]);
   return items.map((_, index) => [...new Set([...(corpus[index] ?? []), ...(openAlex[index] ?? [])])]);
+}
+
+/**
+ * Self-check (gap-refine.ts): every gap with possible counter-evidence is sent back to the model with those papers'
+ * abstracts, to be kept, narrowed to what they leave open, or dropped with a verbatim quote. One call for the whole run.
+ * Best-effort: if the call fails, the gaps are saved as proposed, without a refinement.
+ */
+async function refineGaps(items: Array<{ gap: { title?: unknown; description?: unknown; rationale?: unknown; suggestedResearchQuestion?: unknown }; counterIds: string[] }>, context: { analysisId?: string }): Promise<Array<RefineResult | undefined>> {
+  const checked = items.map((item, index) => ({ item, index })).filter(({ item }) => item.counterIds.length > 0);
+  if (!checked.length) return items.map(() => undefined);
+  const ids = [...new Set(checked.flatMap(({ item }) => item.counterIds))];
+  const rows = await getPrisma().paper.findMany({ where: { id: { in: ids } }, select: { id: true, title: true, abstractText: true, publicationYear: true } });
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  const inputs: RefineGapInput[] = checked.map(({ item }) => ({
+    title: String(item.gap.title ?? ""), description: String(item.gap.description ?? ""), rationale: String(item.gap.rationale ?? ""),
+    suggestedResearchQuestion: typeof item.gap.suggestedResearchQuestion === "string" ? item.gap.suggestedResearchQuestion : undefined,
+    counters: item.counterIds.flatMap((id, position) => { const row = byId.get(id); return row ? [{ ref: `C${position + 1}`, paperId: row.id, title: row.title, abstractText: row.abstractText, publicationYear: row.publicationYear }] : []; }),
+  }));
+  try {
+    const output = await cachedGenerateJSON<RefineLlmOutput>({
+      task: "gap-refine", promptVersion: GAP_REFINE_PROMPT_VERSION, model: aiModel("deep"),
+      keyParts: { gaps: inputs.map((input) => [input.title, input.description, input.suggestedResearchQuestion ?? ""]), counters: inputs.map((input) => input.counters.map((paper) => paper.paperId)) },
+      prompt: buildRefinePrompt(inputs),
+      options: { system: GAP_REFINE_SYSTEM_PROMPT, temperature: 0.1, maxOutputTokens: env.GAPS_MAX_OUTPUT_TOKENS },
+    });
+    const results = applyRefinement(inputs, output);
+    const out: Array<RefineResult | undefined> = items.map(() => undefined);
+    checked.forEach(({ index }, position) => { out[index] = results[position]; });
+    logger.info({ ...context, checked: checked.length, actions: results.map((result) => result.refinement.action) }, "gap self-check done");
+    return out;
+  } catch (error) {
+    logger.warn({ err: error, ...context }, "gap self-check failed; saving gaps as proposed");
+    return items.map(() => undefined);
+  }
 }
 
 /** The question a counter-evidence search asks: the gap's own research question, else its probe topics, else its title. */
@@ -332,7 +367,10 @@ export const gapsService = {
     for (const row of paperRows) { paperMap.set(publicDatabaseId(row), row.id); paperMap.set(row.id, row.id); }
     // Search the corpus with each gap's own text for papers that may already answer it; the LLM only saw the pack.
     const possibleCounters = await searchPossibleCounters(grounded.map(({ gap, probe }) => ({ text: gapText(gap), question: counterQuestion(gap, probe), probe })), [...new Set(paperMap.values())], { analysisId: analysis.id });
-    const prepared = await Promise.all(grounded.map(async ({ gap, probe }, index) => ({ gap, evidence: await scoreScopes(probe), possibleCounterIds: possibleCounters[index] ?? [] })));
+    const scoredGaps = await Promise.all(grounded.map(async ({ gap, probe }, index) => ({ gap, evidence: await scoreScopes(probe), possibleCounterIds: possibleCounters[index] ?? [] })));
+    // Before anything is saved: drop gaps a paper already answers, narrow the ones papers partly cover.
+    const refinements = await refineGaps(scoredGaps.map((item) => ({ gap: item.gap, counterIds: item.possibleCounterIds })), { analysisId: analysis.id });
+    const prepared = scoredGaps.map((item, index) => ({ ...item, refine: refinements[index] }));
     const persist = async (db: Prisma.TransactionClient) => {
       if (project) {
         const currentSources = await db.projectPaper.findMany({ where: { projectId: project.id, screeningStatus: "INCLUDED" }, orderBy: { paperId: "asc" }, select: { paperId: true, updatedAt: true } });
@@ -342,8 +380,10 @@ export const gapsService = {
       if (old.length) return old;
       const created = [];
       for (const item of prepared) {
-        const gap = item.gap, scored = item.evidence, possibleCounterIds = item.possibleCounterIds;
-        const row = await db.researchGap.create({ data: { topic: analysis.topic, normalizedTopic, analysisId: analysis.id, title: String(gap.title ?? "").slice(0, 200), description: String(gap.description ?? ""), rationale: String(gap.rationale ?? ""), confidence: analysis.projectId ? 0 : clamp01(gap.confidence), assumptions: typeof gap.assumptions === "string" ? gap.assumptions.slice(0, 5000) : "", suggestedResearchQuestion: typeof gap.suggestedResearchQuestion === "string" && gap.suggestedResearchQuestion.trim() ? gap.suggestedResearchQuestion.trim().slice(0, 5000) : undefined, questionFacets: cleanFacets(gap.questionFacets) as never, probe: scored?.probe as never, intersectionCount: scored?.intersectionCount, parentCounts: scored?.parentCounts as never, parentTrend: (scored?.parentTrend ?? null) as never, globalEvidence: (scored?.globalEvidence ?? Prisma.DbNull) as never, evidenceConfidence: analysis.projectId ? 0 : scored?.evidenceConfidence ?? null, evidenceScopeSize: scored?.evidenceScopeSize, projectEvidence: scored?.projectEvidence as never, source: "standalone", userId: analysis.userId, projectId: analysis.projectId } });
+        const scored = item.evidence, possibleCounterIds = item.possibleCounterIds, refine = item.refine;
+        // A narrowed gap is saved in its rewritten form; the first version stays in refinement.original.
+        const gap = refine?.narrowed ? { ...item.gap, ...refine.narrowed } : item.gap;
+        const row = await db.researchGap.create({ data: { topic: analysis.topic, normalizedTopic, analysisId: analysis.id, title: String(gap.title ?? "").slice(0, 200), description: String(gap.description ?? ""), rationale: String(gap.rationale ?? ""), confidence: analysis.projectId ? 0 : clamp01(gap.confidence), assumptions: typeof gap.assumptions === "string" ? gap.assumptions.slice(0, 5000) : "", suggestedResearchQuestion: typeof gap.suggestedResearchQuestion === "string" && gap.suggestedResearchQuestion.trim() ? gap.suggestedResearchQuestion.trim().slice(0, 5000) : undefined, questionFacets: cleanFacets(gap.questionFacets) as never, probe: scored?.probe as never, intersectionCount: scored?.intersectionCount, parentCounts: scored?.parentCounts as never, parentTrend: (scored?.parentTrend ?? null) as never, globalEvidence: (scored?.globalEvidence ?? Prisma.DbNull) as never, evidenceConfidence: analysis.projectId ? 0 : scored?.evidenceConfidence ?? null, evidenceScopeSize: scored?.evidenceScopeSize, projectEvidence: scored?.projectEvidence as never, source: "standalone", userId: analysis.userId, projectId: analysis.projectId, ...(refine ? { refinement: refine.refinement as never } : {}), ...(refine?.refinement.action === "drop" ? { status: "dismissed" } : {}) } });
         const evidenceIds = papers.flatMap((paper) => { const id = paperMap.get(paper.id); return id ? [id] : []; });
         const supportingIds = (gap.supportingEvidence ?? []).filter((index) => Number.isInteger(index) && index >= 1 && index <= papers.length).flatMap((index) => { const paper = papers[index - 1]; const id = paper ? paperMap.get(paper.id) : undefined; return id ? [id] : []; });
         await db.researchGapPaper.createMany({ data: [...new Set(evidenceIds)].map((paperId, position) => ({ gapId: row.id, paperId, kind: "evidence", position })).concat([...new Set(supportingIds)].map((paperId, position) => ({ gapId: row.id, paperId, kind: "supporting", position }))).concat(possibleCounterIds.map((paperId, position) => ({ gapId: row.id, paperId, kind: "possible_counter", position }))), skipDuplicates: true });
@@ -405,11 +445,11 @@ export const gapsService = {
     if (query.search) filters.push({ OR: [{ title: { contains: query.search, mode: "insensitive" } }, { description: { contains: query.search, mode: "insensitive" } }, { topic: { contains: query.search, mode: "insensitive" } }] });
     const where: Prisma.ResearchGapWhereInput = { ...(project ? { projectId: project.id } : { userId: user.id }), status: query.status, ...(query.assessmentStatus ? { assessmentStatus: query.assessmentStatus } : {}), ...(query.topic ? { normalizedTopic: { contains: normalizeTopicStr(query.topic), mode: "insensitive" } } : {}), ...(query.source ? { source: query.source } : {}), ...(filters.length ? { AND: filters } : {}) };
     // Rank on light columns only, then load full rows for the requested page.
-    const candidates = await getPrisma().researchGap.findMany({ where, select: { id: true, confidence: true, evidenceConfidence: true, evidenceScopeSize: true, intersectionCount: true, createdAt: true, source: true, probe: true, parentCounts: true, globalEvidence: true } });
+    const candidates = await getPrisma().researchGap.findMany({ where, select: { id: true, confidence: true, evidenceConfidence: true, evidenceScopeSize: true, intersectionCount: true, createdAt: true, source: true, probe: true, parentCounts: true, globalEvidence: true, refinement: true } });
     const linkCounts = candidates.length ? await getPrisma().researchGapPaper.groupBy({ by: ["gapId", "kind"], where: { gapId: { in: candidates.map((row) => row.id) }, kind: { in: ["supporting", "counter", "possible_counter"] } }, _count: { _all: true } }) : [];
     const linkCount = (gapId: string, kinds: string[]) => linkCounts.filter((row) => row.gapId === gapId && kinds.includes(row.kind)).reduce((sum, row) => sum + row._count._all, 0);
     const signalConfig = { minParentPapers: env.GAP_MIN_PARENT_PAPERS, maxRatio: env.GAP_UNDEREXPLORED_MAX_RATIO, alpha: env.GAP_UNDEREXPLORED_ALPHA };
-    const sortRows = candidates.map((row) => ({ ...row, source: row.source as GapSource, probe: row.probe as GapListDoc["probe"], parentCounts: row.parentCounts as GapListDoc["parentCounts"], globalEvidence: row.globalEvidence as GapListDoc["globalEvidence"], supportingCount: linkCount(row.id, ["supporting"]), counterCount: linkCount(row.id, ["counter", "possible_counter"]) }));
+    const sortRows = candidates.map((row) => ({ ...row, source: row.source as GapSource, probe: row.probe as GapListDoc["probe"], parentCounts: row.parentCounts as GapListDoc["parentCounts"], globalEvidence: row.globalEvidence as GapListDoc["globalEvidence"], refinement: row.refinement as GapListDoc["refinement"], supportingCount: linkCount(row.id, ["supporting"]), counterCount: linkCount(row.id, ["counter", "possible_counter"]) }));
     // Filter on the same score the list ranks by (recomputed from the stored counts), not the LLM's placeholder confidence.
     const filtered = !project && query.minConfidence ? sortRows.filter((row) => gapRankingScore(row, signalConfig) >= query.minConfidence!) : sortRows;
     const ranked = sortGapRows(filtered, project ? "newest" : query.sortBy, signalConfig.minParentPapers, { maxRatio: signalConfig.maxRatio, alpha: signalConfig.alpha });
@@ -428,7 +468,7 @@ export const gapsService = {
       const counterIds = selectedLinks.filter((link) => link.gapId === row.id && link.kind === "counter").flatMap((link) => { const paper = publicPaper.get(link.paperId); return paper ? [paper.id] : []; });
       const possibleCounterIds = selectedLinks.filter((link) => link.gapId === row.id && link.kind === "possible_counter").flatMap((link) => { const paper = publicPaper.get(link.paperId); return paper ? [paper.id] : []; });
       const probe = row.probe as GapListDoc["probe"], parentCounts = row.parentCounts as GapListDoc["parentCounts"], parentTrend = row.parentTrend as GapListDoc["parentTrend"];
-      return toGapListItem({ version: row.version, assessmentStatus: row.assessmentStatus as GapListDoc["assessmentStatus"], _id: publicDatabaseId(row), topic: row.topic, normalizedTopic: row.normalizedTopic, title: row.title, description: row.description, rationale: row.rationale, evidencePaperIds: evidenceIds, supportingPaperIds: supportingIds, counterPaperIds: counterIds, possibleCounterPaperIds: possibleCounterIds, globalEvidence: row.globalEvidence as GapListDoc["globalEvidence"], confidence: row.confidence, probe, intersectionCount: row.intersectionCount ?? undefined, parentCounts, parentTrend, evidenceConfidence: row.evidenceConfidence ?? undefined, evidenceScopeSize: row.evidenceScopeSize ?? undefined, projectEvidence: (row.projectEvidence ?? undefined) as GapListDoc["projectEvidence"], source: row.source as "report" | "standalone", sourceReportId: row.sourceReportId, analysisId: row.analysisId, projectId: row.projectId, userId: row.userId, status: row.status as "active" | "resolved" | "dismissed", createdAt: row.createdAt, gapType: row.gapType as never, scope: row.scope ?? undefined, establishedKnowledge: row.establishedKnowledge ?? undefined, observedLimitation: row.observedLimitation ?? undefined, missingEvidence: row.missingEvidence ?? undefined, significanceExplanation: row.significanceExplanation ?? undefined, suggestedResearchQuestion: row.suggestedResearchQuestion ?? undefined, validationStatus: row.validationStatus as never, gapConfidence: row.gapConfidence as never, researchPriority: row.researchPriority as never, origin: row.origin as never, closureStatus: row.closureStatus as never, questionFacets: (row.questionFacets ?? undefined) as GapListDoc["questionFacets"], latestClosureCheck: row.latestClosureCheckId ? closureChecks.get(row.latestClosureCheckId) : undefined }, supportingPapersById, { minParentPapers: env.GAP_MIN_PARENT_PAPERS, maxRatio: env.GAP_UNDEREXPLORED_MAX_RATIO, alpha: env.GAP_UNDEREXPLORED_ALPHA, validationQuorum: env.GAP_VALIDATION_QUORUM, canManage: row.userId === user.id || isProjectOwner });
+      return toGapListItem({ version: row.version, assessmentStatus: row.assessmentStatus as GapListDoc["assessmentStatus"], _id: publicDatabaseId(row), topic: row.topic, normalizedTopic: row.normalizedTopic, title: row.title, description: row.description, rationale: row.rationale, evidencePaperIds: evidenceIds, supportingPaperIds: supportingIds, counterPaperIds: counterIds, possibleCounterPaperIds: possibleCounterIds, globalEvidence: row.globalEvidence as GapListDoc["globalEvidence"], confidence: row.confidence, probe, intersectionCount: row.intersectionCount ?? undefined, parentCounts, parentTrend, evidenceConfidence: row.evidenceConfidence ?? undefined, evidenceScopeSize: row.evidenceScopeSize ?? undefined, projectEvidence: (row.projectEvidence ?? undefined) as GapListDoc["projectEvidence"], source: row.source as "report" | "standalone", sourceReportId: row.sourceReportId, analysisId: row.analysisId, projectId: row.projectId, userId: row.userId, status: row.status as "active" | "resolved" | "dismissed", createdAt: row.createdAt, gapType: row.gapType as never, scope: row.scope ?? undefined, establishedKnowledge: row.establishedKnowledge ?? undefined, observedLimitation: row.observedLimitation ?? undefined, missingEvidence: row.missingEvidence ?? undefined, significanceExplanation: row.significanceExplanation ?? undefined, suggestedResearchQuestion: row.suggestedResearchQuestion ?? undefined, validationStatus: row.validationStatus as never, gapConfidence: row.gapConfidence as never, researchPriority: row.researchPriority as never, origin: row.origin as never, closureStatus: row.closureStatus as never, questionFacets: (row.questionFacets ?? undefined) as GapListDoc["questionFacets"], refinement: row.refinement as GapListDoc["refinement"], latestClosureCheck: row.latestClosureCheckId ? closureChecks.get(row.latestClosureCheckId) : undefined }, supportingPapersById, { minParentPapers: env.GAP_MIN_PARENT_PAPERS, maxRatio: env.GAP_UNDEREXPLORED_MAX_RATIO, alpha: env.GAP_UNDEREXPLORED_ALPHA, validationQuorum: env.GAP_VALIDATION_QUORUM, canManage: row.userId === user.id || isProjectOwner });
     });
     return { gaps, total };
   },

@@ -63,9 +63,9 @@ export const calibrationService = {
     const userId = await resolveUserId(sub);
     await assertCanManageCalibrations(userId);
     const row = await getPrisma().closureCalibration.create({
-      data: { name: body.name, domain: body.domain, judgeKind: body.judgeKind, protocolVersion: GAP_CLOSURE_PROTOCOL_VERSION, status: "DRAFT", delta: env.GAP_CLOSURE_DELTA, createdById: userId },
+      data: { name: body.name, domain: body.domain, judgeKind: body.judgeKind, mode: body.mode, protocolVersion: GAP_CLOSURE_PROTOCOL_VERSION, status: "DRAFT", delta: env.GAP_CLOSURE_DELTA, createdById: userId },
     });
-    await auditService.log("gap_closure.calibration.created", { userId: sub, targetTableName: "closure_calibrations", targetRecordId: row.id, details: { domain: body.domain, judgeKind: body.judgeKind } });
+    await auditService.log("gap_closure.calibration.created", { userId: sub, targetTableName: "closure_calibrations", targetRecordId: row.id, details: { domain: body.domain, judgeKind: body.judgeKind, mode: body.mode } });
     return toCalibrationView(row);
   },
 

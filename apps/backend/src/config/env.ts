@@ -86,6 +86,9 @@ const EnvSchema = z.object({
   AI_CONNECTION_ENCRYPTION_KEY: z.preprocess((value) => value === "" ? undefined : value, z.string().min(32).optional()),
   AI_ALLOWED_BASE_URLS: z.string().default(""),
   AI_ALLOW_LOCAL_ENDPOINTS: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
+  // How long a personal/platform AI connection may take to answer a generation request. Reasoning models writing
+  // several thousand tokens (research gaps, reports) often need more than a minute.
+  AI_PROVIDER_TIMEOUT_MS: z.coerce.number().int().min(10_000).max(600_000).default(180_000),
   AI_LOCALHOST_HOST: z.string().regex(/^(?:[a-zA-Z0-9.-]+)?$/, "AI_LOCALHOST_HOST must be a hostname without a port or path").default(""),
   // Keep generative models configurable as provider availability changes.
   // Embeddings use their own model; changing these preserves existing vectors.
@@ -183,7 +186,9 @@ const EnvSchema = z.object({
   // Phase D — Research Gaps
   GAPS_TOP_K: z.coerce.number().int().min(3).max(10).default(10),
   GAPS_MAX_PER_HOUR: z.coerce.number().int().positive().default(10),
-  GAPS_MAX_OUTPUT_TOKENS: z.coerce.number().int().positive().default(2048),
+  // v8 gap prompts return a research question and PICOC facets per gap, and reasoning models spend output tokens on
+  // thinking, so 2048 truncated real runs.
+  GAPS_MAX_OUTPUT_TOKENS: z.coerce.number().int().positive().default(8192),
   // MMR trade-off for the evidence pack: 1 = pure relevance (old behaviour), lower = more diverse papers.
   GAPS_EVIDENCE_MMR_LAMBDA: z.coerce.number().min(0).max(1).default(0.7),
   // Possible counter-evidence: corpus papers whose embedding is this close (cosine) to a generated gap's text, and
@@ -217,7 +222,8 @@ const EnvSchema = z.object({
   GAP_GLOBAL_EVIDENCE_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120000).default(15000),
   GAP_VALIDATION_QUORUM: z.coerce.number().int().min(1).default(2), // distinct experts that must agree (VALIDATE or REJECT) before a gap reaches a final status
   // Gap Closure Protocol (docs/gap-closure-protocol.md): a gap is OPEN_CERTIFIED only when the false-novelty bound
-  // epsHat + pHat is at most GAP_MAX_FALSE_NOVELTY; both are one-sided Clopper-Pearson upper bounds at 1 - GAP_CLOSURE_DELTA.
+  // (epsHat for an IN_SITU calibration, epsHat + pHat for a TRANSFER one) is at most GAP_MAX_FALSE_NOVELTY; both are
+  // one-sided Clopper-Pearson upper bounds at 1 - GAP_CLOSURE_DELTA.
   GAP_MAX_FALSE_NOVELTY: z.coerce.number().gt(0).max(1).default(0.2),
   GAP_CLOSURE_DELTA: z.coerce.number().gt(0).lt(0.5).default(0.05),
   GAP_CLOSURE_LOCAL_TOP_K: z.coerce.number().int().min(1).max(50).default(20), // corpus papers screened per check

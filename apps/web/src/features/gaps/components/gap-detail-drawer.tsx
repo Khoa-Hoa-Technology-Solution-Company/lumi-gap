@@ -36,6 +36,7 @@ import { useI18n } from "@/i18n";
 import { formatNumber } from "@/utils/format";
 import { forumGapCopy } from "@/features/forum/forum-gap-copy";
 import { GapNextStep } from "./gap-next-step";
+import { GapRefinementNote } from "./gap-refinement-note";
 
 interface GapDetailDrawerProps {
   researchProjectId?: string;
@@ -168,6 +169,7 @@ export function GapDetailDrawer({ gap, isOpen, onClose, onDraftProposal, researc
               </div>
             </div>
 
+            <GapRefinementNote refinement={gap.refinement} papers={gap.possibleCounterPapers} />
             <GapNextStep step={gap.nextStep} />
 
             {/* Rationale & Description */}

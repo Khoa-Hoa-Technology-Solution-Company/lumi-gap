@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { GapEvidenceSummary } from "./gap-evidence-summary";
 import { GapNextStep } from "./gap-next-step";
+import { GapRefinementNote } from "./gap-refinement-note";
 import { SupportingPaperList } from "./supporting-paper-list";
 import { usePatchGapStatus } from "../hooks/use-gaps";
 import type { ResearchGapItem, GapStatus } from "@trend/shared-types";
@@ -275,6 +276,7 @@ export function GapCard({
 
       {/* 3. Evidence Check & Papers */}
       <div className="space-y-3.5 mb-4 border-t border-slate-100 dark:border-slate-800/60 pt-3 relative z-10">
+        <GapRefinementNote refinement={gap.refinement} papers={gap.possibleCounterPapers} />
         <GapNextStep step={gap.nextStep} compact />
         <GapEvidenceSummary 
           probe={gap.probe} 

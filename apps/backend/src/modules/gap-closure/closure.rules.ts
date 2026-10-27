@@ -6,10 +6,18 @@
  *   (1) every answering document is missing from the searched sources   — probability <= p (coverage), or
  *   (2) an answering document is present but the search or the screening misses it — probability <= eps (calibration).
  * By the union bound, P(false novelty) <= eps + p, so with one-sided Clopper-Pearson upper bounds epsHat and pHat
- * (each at confidence 1 - delta) the bound B = epsHat + pHat holds with probability >= 1 - 2 delta.
+ * (each at confidence 1 - delta) the bound B = epsHat + pHat holds with probability >= 1 - 2 delta (TRANSFER mode).
+ *
+ * IN_SITU mode (GapClose, Theorem 1): when the calibration questions are searched in the same sources as the checks,
+ * a witness that is missing from them is already counted as a miss, so eps measures (1) and (2) together. Then
+ * B = epsHat alone holds with probability >= 1 - delta, and no coverage check is needed. It assumes the calibration
+ * questions are exchangeable with the screened ones, were searched with the same settings (sources, years, query and
+ * result budget), and that the sources have not changed much since the calibration: losing papers turns finds into
+ * misses, and because only the top results are screened, many new papers can also push a witness out of reach.
  */
 import type {
   ClosureAbstainReason,
+  ClosureCalibrationMode,
   ClosureJudgeKind,
   ClosureLabel,
   GapClosureDecision,
@@ -30,6 +38,11 @@ export interface GapClosureJob {
 }
 
 export const CLOSURE_LABELS: readonly ClosureLabel[] = ["ANSWERS", "PARTIAL", "UNRELATED"];
+export const CALIBRATION_MODES: readonly ClosureCalibrationMode[] = ["IN_SITU", "TRANSFER"];
+/** Unknown or missing modes (rows written before the mode existed) are TRANSFER, the conservative formula. */
+export function calibrationModeOf(value: unknown): ClosureCalibrationMode {
+  return value === "IN_SITU" ? "IN_SITU" : "TRANSFER";
+}
 /** A quote shorter than this cannot show that a document answers anything. */
 export const MIN_QUOTE_CHARS = 20;
 
@@ -85,7 +98,7 @@ export function clopperPearsonUpper(x: number, m: number, delta: number): number
   return Math.min(1, Math.ceil(p * 1e4 - 1e-9) / 1e4);
 }
 
-/** B = epsHat + pHat, capped at 1, rounded to 4 decimals. */
+/** B = epsHat + pHat (TRANSFER; pass pHat = 0 for IN_SITU), capped at 1, rounded to 4 decimals. */
 export function falseNoveltyBound(epsHat: number, pHat: number): number {
   return Math.min(1, Math.round((epsHat + pHat) * 1e4) / 1e4);
 }
@@ -156,7 +169,8 @@ export interface ClosureDecisionInput {
   /** Number of queries that failed; any failure means absence is unproven. */
   searchErrors: number;
   coverage?: { pHat: number } | null;
-  calibration?: { epsHat: number | null; judgeKind: ClosureJudgeKind | string } | null;
+  /** `mode` absent means TRANSFER. */
+  calibration?: { epsHat: number | null; judgeKind: ClosureJudgeKind | string; mode?: ClosureCalibrationMode | string | null } | null;
   maxFalseNovelty: number;
   /** Papers that cannot corroborate the gap (the papers it was derived from). */
   excludeCorroborationPaperIds?: string[];
@@ -167,6 +181,8 @@ export interface ClosureDecisionResult {
   reasons: ClosureAbstainReason[];
   judgeKind: ClosureJudgeKind;
   bound?: number;
+  /** Formula of `bound`; set exactly when `bound` is. */
+  boundMode?: ClosureCalibrationMode;
   witnessDocumentId?: string;
   corroborated: boolean;
 }
@@ -175,7 +191,9 @@ export interface ClosureDecisionResult {
  * CLOSED when any document effectively ANSWERS (its quote is the witness; a person-confirmed one is preferred).
  * Otherwise OPEN_CERTIFIED only when nothing below applies, else ABSTAIN with every reason that applies:
  * a failed query, a document waiting for a person, no coverage, no calibration (or one for another judge kind),
- * or a bound above maxFalseNovelty. Fail-closed: missing information never counts as absence of evidence.
+ * or a bound above maxFalseNovelty. With an IN_SITU calibration B = epsHat and no coverage check is required (one that
+ * is supplied stays out of the bound); with TRANSFER B = epsHat + pHat and a coverage check is required.
+ * Fail-closed: missing information never counts as absence of evidence.
  */
 export function decideClosure(input: ClosureDecisionInput): ClosureDecisionResult {
   const judgeKind = judgeKindOf(input.documents);
@@ -188,18 +206,21 @@ export function decideClosure(input: ClosureDecisionInput): ClosureDecisionResul
     return { decision: "CLOSED", reasons: [], judgeKind, witnessDocumentId: witness.id, corroborated };
   }
   const reasons: ClosureAbstainReason[] = [];
+  const mode = calibrationModeOf(input.calibration?.mode);
   if (input.searchErrors > 0) reasons.push("SEARCH_ERRORS");
   if (labelled.some(({ label }) => label === undefined)) reasons.push("PENDING_REVIEW");
-  if (!input.coverage) reasons.push("NO_COVERAGE");
+  if (mode === "TRANSFER" && !input.coverage) reasons.push("NO_COVERAGE");
   const epsHat = input.calibration?.epsHat;
   if (!input.calibration || epsHat === null || epsHat === undefined) reasons.push("NO_CALIBRATION");
   else if (input.calibration.judgeKind !== judgeKind) reasons.push("CALIBRATION_JUDGE_MISMATCH");
   let bound: number | undefined;
-  if (input.coverage && epsHat !== null && epsHat !== undefined) {
-    bound = falseNoveltyBound(epsHat, input.coverage.pHat);
+  let boundMode: ClosureCalibrationMode | undefined;
+  if (epsHat !== null && epsHat !== undefined && (mode === "IN_SITU" || input.coverage)) {
+    bound = falseNoveltyBound(epsHat, mode === "IN_SITU" ? 0 : input.coverage!.pHat);
+    boundMode = mode;
     if (bound > input.maxFalseNovelty) reasons.push("BOUND_EXCEEDS_MAX");
   }
-  return { decision: reasons.length ? "ABSTAIN" : "OPEN_CERTIFIED", reasons, judgeKind, bound, corroborated };
+  return { decision: reasons.length ? "ABSTAIN" : "OPEN_CERTIFIED", reasons, judgeKind, bound, boundMode, corroborated };
 }
 
 /** Calibration questions are known to be answered: FOUND when the procedure closes them, MISSED when it does not. */
@@ -229,7 +250,7 @@ export function cohenKappa(pairs: Array<[ClosureLabel, ClosureLabel]>): number |
 }
 
 export interface BoundArithmeticInput {
-  calibration?: { n: number; misses: number; epsHat: number | null } | null;
+  calibration?: { n: number; misses: number; epsHat: number | null; mode?: ClosureCalibrationMode | string | null } | null;
   coverage?: { m: number; x: number; pHat: number } | null;
   delta: number;
   bound?: number;
@@ -240,13 +261,17 @@ export interface BoundArithmeticInput {
 export function describeBoundArithmetic(input: BoundArithmeticInput): string[] {
   const lines: string[] = [];
   const confidence = `${Math.round((1 - input.delta) * 100)}%`;
+  const inSitu = calibrationModeOf(input.calibration?.mode) === "IN_SITU";
   if (input.calibration && input.calibration.epsHat !== null) {
-    lines.push(`epsHat = Clopper-Pearson upper ${confidence} of ${input.calibration.misses}/${input.calibration.n} missed calibration questions = ${input.calibration.epsHat}`);
+    lines.push(`epsHat = Clopper-Pearson upper ${confidence} of ${input.calibration.misses}/${input.calibration.n} missed calibration questions = ${input.calibration.epsHat}${inSitu ? " (in-situ: a miss includes an answer absent from the searched sources)" : ""}`);
   } else lines.push("epsHat: no computed calibration");
   if (input.coverage) {
-    lines.push(`pHat = Clopper-Pearson upper ${confidence} of ${input.coverage.x}/${input.coverage.m} reference DOIs not found = ${input.coverage.pHat}`);
-  } else lines.push("pHat: no coverage check");
-  if (input.bound !== undefined && input.calibration?.epsHat != null && input.coverage) {
+    lines.push(`pHat = Clopper-Pearson upper ${confidence} of ${input.coverage.x}/${input.coverage.m} reference DOIs not found = ${input.coverage.pHat}${inSitu ? " (not part of the bound: the in-situ calibration already counts missing answers)" : ""}`);
+  } else lines.push(inSitu ? "pHat: not needed (in-situ calibration)" : "pHat: no coverage check");
+  if (input.bound !== undefined && input.calibration?.epsHat != null && inSitu) {
+    const ok = input.bound <= input.maxFalseNovelty;
+    lines.push(`B = epsHat = ${input.bound} ${ok ? "<=" : ">"} ${input.maxFalseNovelty}`);
+  } else if (input.bound !== undefined && input.calibration?.epsHat != null && input.coverage) {
     const ok = input.bound <= input.maxFalseNovelty;
     lines.push(`B = ${input.calibration.epsHat} + ${input.coverage.pHat} = ${input.bound} ${ok ? "<=" : ">"} ${input.maxFalseNovelty}`);
   }
