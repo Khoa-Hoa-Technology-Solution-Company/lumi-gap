@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import type { IProject, ProjectStatus } from "@trend/shared-types";
 import { MoreHorizontal, SlidersHorizontal, Users, Shield, RotateCcw } from "lucide-react";
@@ -43,30 +43,39 @@ export function ProjectTeamSettings({ project }: { project: IProject }) {
   const [page, setPage] = useState(1);
   const [invitationPage, setInvitationPage] = useState(1);
   const team = useProjectTeam(project._id, page, invitationPage);
+  useEffect(() => {
+    if (!team.data) return;
+    setPage(current => Math.min(current, Math.max(1, team.data.memberMeta.totalPages)));
+    setInvitationPage(current => Math.min(current, Math.max(1, team.data.invitationMeta.totalPages)));
+  }, [team.data]);
 
   return (
     <div className="project-team-settings space-y-6" data-no-i18n>
-      <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-border/60">
-        <div className="flex items-start gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary border border-primary/20 shadow-xs shrink-0 mt-0.5">
+      <header className="project-team-hero rounded-2xl border border-border/80 bg-card p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-5">
+        <div className="flex items-start gap-3.5">
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary border border-primary/20 shadow-xs shrink-0 mt-0.5">
             <SlidersHorizontal className="h-5 w-5" />
           </div>
-          <div>
+          <div className="space-y-1">
+            <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary px-2.5 py-0.5 rounded-full bg-primary/10 border border-primary/20 mb-1">
+              <Shield className="h-3 w-3" />
+              <span>{t("Team & Workspace")}</span>
+            </div>
             <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground">{t("Team & settings")}</h2>
-            <p className="mt-1 text-sm text-muted-foreground">{t("Manage who works here and how your project is shared.")}</p>
+            <p className="text-sm text-muted-foreground leading-relaxed">{t("Manage who works here and how your project is shared.")}</p>
           </div>
         </div>
-        <div className="flex items-center gap-2 self-start sm:self-center">
-          <Badge variant="outline" className="gap-1.5 font-medium py-1 px-2.5 bg-background/60 shadow-xs">
+        <div className="flex items-center gap-2.5 self-start md:self-center flex-wrap">
+          <Badge variant="outline" className="gap-1.5 font-medium py-1.5 px-3 bg-card border-border/80 shadow-xs">
             <Shield className="h-3.5 w-3.5 text-primary" />
             <span>{project.accessRole === "OWNER" ? t("Owner") : t("Member")}</span>
           </Badge>
-          <Badge variant="secondary" className="gap-1.5 font-medium py-1 px-2.5">
+          <Badge variant="secondary" className="gap-2 font-medium py-1.5 px-3 border border-border/40">
             <span
               className={cn(
                 "h-2 w-2 rounded-full",
                 project.status === "ACTIVE"
-                  ? "bg-emerald-500"
+                  ? "bg-emerald-500 animate-pulse"
                   : project.status === "COMPLETED"
                   ? "bg-blue-500"
                   : project.status === "ARCHIVED"
@@ -108,6 +117,11 @@ export function ProjectTeamSettings({ project }: { project: IProject }) {
           >
             {value ? <SlidersHorizontal className="h-4 w-4" /> : <Users className="h-4 w-4" />}
             <span>{t(value ? "Project settings" : "People")}</span>
+            {!value && team.data?.members?.length ? (
+              <span className="ml-1 px-1.5 py-0.5 rounded-full text-xs font-semibold bg-primary/10 text-primary">
+                {team.data.memberMeta.total || team.data.members.length}
+              </span>
+            ) : null}
           </button>
         ))}
       </div>

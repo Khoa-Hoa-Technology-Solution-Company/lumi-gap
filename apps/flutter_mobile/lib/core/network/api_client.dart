@@ -12,107 +12,154 @@ final apiClientProvider = Provider<ApiClient>((ref) {
 });
 
 class ApiClient {
-
   ApiClient(this._tokenStore) {
     const baseUrl = AppConfig.apiBaseUrl;
 
-    _dio = Dio(BaseOptions(
-      baseUrl: baseUrl,
-      connectTimeout: const Duration(seconds: 120),
-      receiveTimeout: const Duration(seconds: 120),
-    ));
+    _dio = Dio(
+      BaseOptions(
+        baseUrl: baseUrl,
+        connectTimeout: const Duration(seconds: 120),
+        receiveTimeout: const Duration(seconds: 120),
+      ),
+    );
 
-    _dio.interceptors.add(InterceptorsWrapper(
-      onRequest: (options, handler) async {
-        final tokens = await _tokenStore.read();
-        if (tokens != null && tokens.accessToken.isNotEmpty) {
-          options.headers['Authorization'] = 'Bearer ${tokens.accessToken}';
-        }
-        return handler.next(options);
-      },
-      onError: (e, handler) async {
-        // Handle 401 Unauthorized
-        if (e.response?.statusCode == 401 && !e.requestOptions.path.contains('/auth/refresh')) {
+    _dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) async {
+          final version =
+              options.extra['_authSession'] as int? ??
+              _tokenStore.sessionVersion;
           final tokens = await _tokenStore.read();
-          if (tokens != null && tokens.refreshToken.isNotEmpty) {
-            try {
-              final newAccessToken = await _refreshAccessToken(tokens.refreshToken);
-              if (newAccessToken != null) {
-                // Retry original request
-                final opts = Options(
-                  method: e.requestOptions.method,
-                  headers: e.requestOptions.headers,
-                );
-                opts.headers?['Authorization'] = 'Bearer $newAccessToken';
-                final cloneReq = await _dio.request<dynamic>(
-                  e.requestOptions.path,
-                  options: opts,
-                  data: e.requestOptions.data,
-                  queryParameters: e.requestOptions.queryParameters,
-                );
-                return handler.resolve(cloneReq);
+          if (version != _tokenStore.sessionVersion) {
+            return handler.reject(
+              DioException(
+                requestOptions: options,
+                type: DioExceptionType.cancel,
+                error: 'The original sign-in session has ended.',
+              ),
+            );
+          }
+          options.extra['_authSession'] = version;
+          options.extra['_accessToken'] = tokens?.accessToken;
+          if (tokens != null && tokens.accessToken.isNotEmpty) {
+            options.headers['Authorization'] = 'Bearer ${tokens.accessToken}';
+          }
+          return handler.next(options);
+        },
+        onError: (e, handler) async {
+          // Handle 401 Unauthorized
+          final version = e.requestOptions.extra['_authSession'] as int?;
+          final ownsSession =
+              version != null && version == _tokenStore.sessionVersion;
+          if (e.response?.statusCode == 401 &&
+              ownsSession &&
+              _isProtected(e.requestOptions)) {
+            final tokens = await _tokenStore.read();
+            if (version != _tokenStore.sessionVersion) return handler.next(e);
+            if (tokens != null &&
+                tokens.refreshToken.isNotEmpty &&
+                e.requestOptions.extra['_authRetry'] != true) {
+              e.requestOptions.extra['_authRetry'] = true;
+              try {
+                final newAccessToken =
+                    tokens.accessToken != e.requestOptions.extra['_accessToken']
+                    ? tokens.accessToken
+                    : await _refreshAccessToken(tokens.refreshToken, version);
+                if (version != _tokenStore.sessionVersion) {
+                  return handler.next(e);
+                }
+                if (newAccessToken != null) {
+                  e.requestOptions.headers['Authorization'] =
+                      'Bearer $newAccessToken';
+                  final data = e.requestOptions.data;
+                  if (data is FormData) e.requestOptions.data = data.clone();
+                  final cloneReq = await _dio.fetch<dynamic>(e.requestOptions);
+                  return handler.resolve(cloneReq);
+                }
+              } on DioException catch (retryError) {
+                // The retry interceptor handles its own 401. A transient failure
+                // after refreshing must not delete a valid session.
+                return handler.next(retryError);
               }
-            } on Exception {
-              await _tokenStore.delete();
-              // In UI logic, this will trigger router redirect since token is gone.
+            }
+            await _tokenStore.deleteForSession(version);
+          }
+
+          // Parse backend errors into ApiException
+          ApiErrorDetail? apiError;
+          if (e.response?.data != null &&
+              e.response?.data is Map<String, dynamic>) {
+            try {
+              final data = e.response!.data as Map<String, dynamic>;
+              if (data.containsKey('error')) {
+                apiError = ApiErrorDetail.fromJson(
+                  data['error'] as Map<String, dynamic>,
+                );
+              }
+            } on Object catch (_) {
+              // Ignore parse errors
             }
           }
-        }
 
-        // Parse backend errors into ApiException
-        ApiErrorDetail? apiError;
-        if (e.response?.data != null && e.response?.data is Map<String, dynamic>) {
-          try {
-            final data = e.response!.data as Map<String, dynamic>;
-            if (data.containsKey('error')) {
-              apiError = ApiErrorDetail.fromJson(data['error'] as Map<String, dynamic>);
-            }
-          } on Object catch (_) {
-            // Ignore parse errors
-          }
-        }
-
-        return handler.next(
-          DioException(
-            requestOptions: e.requestOptions,
-            response: e.response,
-            type: e.type,
-            error: ApiException(
-              message: apiError?.message ?? e.message ?? 'Unknown error',
-              errorDetail: apiError,
-              statusCode: e.response?.statusCode,
+          return handler.next(
+            DioException(
+              requestOptions: e.requestOptions,
+              response: e.response,
+              type: e.type,
+              error: ApiException(
+                message: apiError?.message ?? e.message ?? 'Unknown error',
+                errorDetail: apiError,
+                statusCode: e.response?.statusCode,
+              ),
             ),
-          ),
-        );
-      },
-    ));
+          );
+        },
+      ),
+    );
   }
   late final Dio _dio;
   final SecureTokenStore _tokenStore;
   Future<String?>? _refreshFuture;
+  int? _refreshVersion;
 
   Dio get dio => _dio;
 
-  Future<String?> _refreshAccessToken(String refreshToken) async {
-    if (_refreshFuture != null) {
+  bool _isProtected(RequestOptions options) {
+    return ![
+      '/auth/login',
+      '/auth/register',
+      '/auth/refresh',
+      '/auth/oauth/exchange',
+      '/auth/password/',
+      '/auth/email/',
+    ].any(options.path.contains);
+  }
+
+  Future<String?> _refreshAccessToken(String refreshToken, int version) async {
+    if (_refreshFuture != null && _refreshVersion == version) {
       return _refreshFuture;
     }
 
+    _refreshVersion = version;
     return _refreshFuture = () async {
       try {
-        final response = await _dio.post<Map<String, dynamic>>(ApiRoutes.authRefresh, data: {
-          'refreshToken': refreshToken,
-        });
-        
+        final response = await _dio.post<Map<String, dynamic>>(
+          ApiRoutes.authRefresh,
+          data: {
+            'refreshToken': refreshToken,
+          },
+        );
+
         final dataMap = (response.data ?? {})['data'] as Map<String, dynamic>;
         final tokens = AuthTokens.fromJson(dataMap);
-        
-        await _tokenStore.save(tokens);
-        return tokens.accessToken;
-      } on Exception {
-        rethrow;
+
+        return await _tokenStore.saveForSession(tokens, version)
+            ? tokens.accessToken
+            : null;
+      } on Object {
+        return null;
       } finally {
-        _refreshFuture = null;
+        if (_refreshVersion == version) _refreshFuture = null;
       }
     }();
   }

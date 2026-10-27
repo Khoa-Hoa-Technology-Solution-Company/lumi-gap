@@ -1,7 +1,7 @@
 import type { ScoredPaper } from "@trend/shared-types";
 import { normalizeAcademicTitle } from "../../common/text/academic-text.js";
 import { publicDatabaseId } from "../../infrastructure/database/database-id.js";
-import { PAPER_EMBEDDING_DIMENSIONS, searchPapersHybrid, type PostgresPaperSearchFilters } from "../../infrastructure/database/postgres-paper-search.js";
+import { isUsableSearchVector, searchPapersHybrid, type PostgresPaperSearchFilters } from "../../infrastructure/database/postgres-paper-search.js";
 import { logger } from "../../infrastructure/logger.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { getEmbeddingProvider } from "../embeddings/embedding.factory.js";
@@ -131,11 +131,14 @@ function toSqlFilters(filters: RetrieveFilters | undefined): PostgresPaperSearch
 
 /** Returns the query embedding, or undefined to degrade to keyword-only search. */
 async function resolveQueryVector(opts: RetrieveOptions, query: string | undefined): Promise<number[] | undefined> {
-  if (opts.queryVector?.length) return opts.queryVector.length === PAPER_EMBEDDING_DIMENSIONS ? opts.queryVector : undefined;
+  if (opts.queryVector !== undefined) return isUsableSearchVector(opts.queryVector) ? opts.queryVector : undefined;
   if (opts.keywordOnly) return undefined;
   if (!query) throw new Error("retrieve requires queryText or queryVector");
   try {
-    return await getEmbeddingProvider().embed(query);
+    const vector = await getEmbeddingProvider().embed(query);
+    if (isUsableSearchVector(vector)) return vector;
+    logger.warn("Query embedding is invalid; falling back to keyword-only retrieval");
+    return undefined;
   } catch (error) {
     logger.warn({ err: error }, "Query embedding failed; falling back to keyword-only retrieval");
     return undefined;

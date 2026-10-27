@@ -21,7 +21,7 @@ export const projectOverviewService = {
         tx.reviewRequest.count({ where: { projectId: project.id, status: "REVISION_REQUESTED" } }),
         tx.projectTask.findMany({ where: { projectId: project.id, deletedAt: null, assigneeId: context.actorId, status: { not: "DONE" } }, orderBy: [{ dueAt: { sort: "asc", nulls: "last" } }, { updatedAt: "desc" }], take: 5 }),
         tx.report.findMany({ where: { projectId: project.id }, select: { id: true, topic: true, updatedAt: true }, orderBy: { updatedAt: "desc" }, take: 3 }),
-        tx.draftWorkspace.findMany({ where: { projectId: project.id }, select: { id: true, name: true, updatedAt: true }, take: 1 }),
+        tx.draftWorkspace.findMany({ where: { projectId: project.id, writingMode: "LATEX", deletedAt: null }, select: { id: true, name: true, updatedAt: true }, orderBy: [{ updatedAt: "desc" }, { id: "desc" }], take: 3 }),
         tx.projectMilestone.findFirst({ where: { projectId: project.id, status: "PLANNED" }, orderBy: [{ dueAt: { sort: "asc", nulls: "last" } }, { createdAt: "asc" }] }),
         tx.projectActivity.findMany({ where: { projectId: project.id }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 12 }),
         tx.$queryRaw<Array<{ n: bigint }>>`
@@ -135,8 +135,11 @@ export const projectOverviewService = {
         case "GAP": return (await tx.researchGap.findMany({ where: { projectId: project.id, title: query }, take: 50, orderBy: { updatedAt: "desc" }, select: { id: true, title: true } })).map(row => ({ kind, id: row.id, label: row.title }));
         case "REPORT": return (await tx.report.findMany({ where: { projectId: project.id, topic: query }, take: 50, orderBy: { updatedAt: "desc" }, select: { id: true, topic: true } })).map(row => ({ kind, id: row.id, label: row.topic ?? "Research report" }));
         case "TREND": return (await tx.projectTrendSnapshot.findMany({ where: { projectId: project.id, topic: query }, take: 50, orderBy: { createdAt: "desc" }, select: { id: true, topic: true, yearFrom: true, yearTo: true, verdict: true } })).map(row => ({ kind, id: row.id, label: `${row.topic} (${row.verdict}, ${row.yearFrom}-${row.yearTo})` }));
-        case "MANUSCRIPT": return (await tx.draftWorkspace.findMany({ where: { projectId: project.id, name: query }, take: 50, select: { id: true, name: true } })).map(row => ({ kind, id: row.id, label: row.name }));
-        case "MANUSCRIPT_SNAPSHOT": return (await tx.manuscriptSnapshot.findMany({ where: { projectId: project.id, label: query }, take: 50, orderBy: { createdAt: "desc" }, select: { id: true, label: true } })).map(row => ({ ...row, kind }));
+        case "MANUSCRIPT": return (await tx.draftWorkspace.findMany({ where: { projectId: project.id, writingMode: "LATEX", deletedAt: null, name: query }, take: 50, orderBy: [{ updatedAt: "desc" }, { id: "desc" }], select: { id: true, name: true } })).map(row => ({ kind, id: row.id, label: row.name }));
+        case "MANUSCRIPT_SNAPSHOT": {
+          const drafts = await tx.draftWorkspace.findMany({ where: { projectId: project.id, writingMode: "LATEX", deletedAt: null }, select: { id: true } });
+          return (await tx.manuscriptSnapshot.findMany({ where: { projectId: project.id, workspaceId: { in: drafts.map(draft => draft.id) }, label: query }, take: 50, orderBy: { createdAt: "desc" }, select: { id: true, label: true } })).map(row => ({ ...row, kind }));
+        }
         case "MENTOR_FEEDBACK": return (await tx.projectDiscussion.findMany({ where: { projectId: project.id, title: query, targetKind: { in: ["MANUSCRIPT_SNAPSHOT", "PLAN_REVISION"] }, mentorRelationshipId: { not: null } }, take: 50, orderBy: { createdAt: "desc" }, select: { id: true, title: true } })).map(row => ({ kind, id: row.id, label: row.title }));
         case "PLAN": { const plan = await tx.researchPlan.findUniqueOrThrow({ where: { projectId: project.id } }); return [{ kind, id: plan.id, label: project.title }]; }
         case "REVIEW_REQUEST": return (await tx.reviewRequest.findMany({ where: { projectId: project.id }, take: 50, orderBy: { createdAt: "desc" }, select: { id: true, status: true } })).map(row => ({ kind, id: row.id, label: row.status }));

@@ -37,7 +37,9 @@ export interface SubmissionRevision {
 }
 
 export interface AiPreReview {
-  _id: string;
+  id: string;
+  sourceRevisionId?: string;
+  sourceRevisionNumber?: number;
   status: "QUEUED" | "PROCESSING" | "COMPLETED" | "FAILED" | "CANCELLED";
   provider?: string;
   model?: string;

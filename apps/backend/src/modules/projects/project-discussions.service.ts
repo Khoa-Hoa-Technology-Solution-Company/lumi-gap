@@ -8,6 +8,9 @@ import { workspaceHistory } from "./project-tasks.service.js";
 
 type Page = { page: number; pageSize: number };
 const paging = (query: Page) => ({ take: query.pageSize, skip: (query.page - 1) * query.pageSize });
+function retainsArtifactContext(row: Pick<ProjectDiscussion, "context" | "targetKind">) {
+  return Boolean((row.context as { planSection?: unknown }).planSection || row.targetKind === "MANUSCRIPT_SNAPSHOT" || (row.targetKind === "MANUSCRIPT" && Object.keys(row.context as object).length));
+}
 export function discussionDto(row: ProjectDiscussion, people: Map<string, WorkspacePerson>, replies = 0): WorkspaceDiscussion {
   const context = row.context as { planSection?: PlanThreadContext };
   return { id: row.id, title: row.title, body: row.body, category: row.category as WorkspaceDiscussion["category"], status: row.status as WorkspaceDiscussion["status"], conclusion: row.conclusion, author: workspacePerson(people, row.authorId), link: row.targetId && row.targetKind && row.targetKind !== "PLAN_DRAFT" ? { kind: row.targetKind as NonNullable<WorkspaceDiscussion["link"]>["kind"], id: row.targetId } : null, mentorRelationshipId: row.mentorRelationshipId, version: row.version, replyCount: replies, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString(), ...(context.planSection ? { planContext: context.planSection } : {}) };
@@ -20,14 +23,33 @@ async function mentorThreadScope(context: WorkspaceContext): Promise<Prisma.Proj
   const shares = await context.tx.planShare.findMany({ where: { projectId: context.project.id, revokedAt: null, relationshipId: { in: relations.map(row => row.id) } }, select: { relationshipId: true, revisionId: true } });
   return [...shares.map(share => ({ mentorRelationshipId: share.relationshipId, targetKind: "PLAN_REVISION", targetId: share.revisionId })), { mentorRelationshipId: null, targetKind: "PLAN_REVISION", targetId: { in: shares.map(share => share.revisionId) }, context: { path: ["planSection", "section"], string_starts_with: "" } }, { mentorRelationshipId: { in: relations.map(r => r.id) }, targetKind: "MANUSCRIPT_SNAPSHOT" }];
 }
-async function requireDiscussion(context: WorkspaceContext, id: string) {
+async function availableManuscriptThreads(context: WorkspaceContext): Promise<Prisma.ProjectDiscussionWhereInput> {
+  const drafts = await context.tx.draftWorkspace.findMany({ where: { projectId: context.project.id, deletedAt: null }, select: { id: true } });
+  const ids = drafts.map(draft => draft.id);
+  const snapshots = ids.length ? await context.tx.manuscriptSnapshot.findMany({ where: { projectId: context.project.id, workspaceId: { in: ids } }, select: { id: true } }) : [];
+  return { OR: [{ targetKind: null }, { targetKind: { notIn: ["MANUSCRIPT", "MANUSCRIPT_SNAPSHOT"] } }, { targetKind: "MANUSCRIPT", targetId: { in: ids } }, { targetKind: "MANUSCRIPT_SNAPSHOT", targetId: { in: snapshots.map(snapshot => snapshot.id) } }] };
+}
+async function manuscriptDiscussionReadOnly(context: WorkspaceContext, row: { targetKind: string | null; targetId: string | null }, write = false) {
+  let archived = false;
+  if (row.targetKind === "MANUSCRIPT" || row.targetKind === "MANUSCRIPT_SNAPSHOT") {
+    if (!row.targetId) throw AppError.notFound("Discussion not found");
+    const workspaceId = row.targetKind === "MANUSCRIPT" ? row.targetId : (await context.tx.manuscriptSnapshot.findFirst({ where: { id: row.targetId, projectId: context.project.id }, select: { workspaceId: true } }))?.workspaceId;
+    const draft = workspaceId ? await context.tx.draftWorkspace.findFirst({ where: { id: workspaceId, projectId: context.project.id, deletedAt: null }, select: { archivedAt: true } }) : null;
+    if (!draft) throw AppError.notFound("Discussion not found");
+    archived = Boolean(draft.archivedAt);
+    if (write && archived) throw AppError.conflict("Archived manuscripts are read-only");
+  }
+  return context.project.status === "ARCHIVED" || archived;
+}
+async function requireDiscussion(context: WorkspaceContext, id: string, write = false) {
   const scopes = context.role ? undefined : await mentorThreadScope(context);
   const row = await context.tx.projectDiscussion.findFirst({ where: { id, projectId: context.project.id, ...(scopes ? { OR: scopes } : {}) } });
   if (!row) throw AppError.notFound("Discussion not found");
-  return row;
+  return { ...row, readOnly: await manuscriptDiscussionReadOnly(context, row, write) };
 }
 async function checkDiscussionShare(context: WorkspaceContext, input: SaveWorkspaceDiscussion) {
   await assertWorkspaceLink(context, input.link);
+  if (input.link) await manuscriptDiscussionReadOnly(context, { targetKind: input.link.kind, targetId: input.link.id }, true);
   if (!input.mentorRelationshipId) return;
   if (context.role !== "OWNER") throw AppError.forbidden("Only the project owner can share a mentor discussion");
   if (input.category !== "MENTOR_QUESTION" || input.link?.kind !== "PLAN_REVISION") throw AppError.badRequest("Mentor discussions require a shared plan revision");
@@ -41,7 +63,8 @@ export const projectDiscussionsService = {
   async list(projectId: string, actorId: string, query: Page & { q?: string; status?: string }): Promise<WorkspacePage<WorkspaceDiscussion>> {
     return withWorkspace(projectId, actorId, { mentor: true }, async context => {
       const scopes = context.role ? undefined : await mentorThreadScope(context);
-      const where: Prisma.ProjectDiscussionWhereInput = { projectId: context.project.id, ...(query.q ? { title: { contains: query.q, mode: "insensitive" } } : {}), ...(query.status ? { status: query.status } : {}), ...(scopes ? { OR: scopes } : {}) };
+      const available = await availableManuscriptThreads(context);
+      const where: Prisma.ProjectDiscussionWhereInput = { projectId: context.project.id, ...(query.q ? { title: { contains: query.q, mode: "insensitive" } } : {}), ...(query.status ? { status: query.status } : {}), AND: [available, ...(scopes ? [{ OR: scopes }] : [])] };
       const [rows, total] = await Promise.all([context.tx.projectDiscussion.findMany({ where, ...paging(query), orderBy: [{ updatedAt: "desc" }, { id: "desc" }] }), context.tx.projectDiscussion.count({ where })]);
       const [people, counts] = await Promise.all([workspacePeople(context.tx, rows.map(row => row.authorId)), context.tx.projectTeamMessage.groupBy({ by: ["threadId"], where: { threadId: { in: rows.map(row => row.id) }, isDeleted: false }, _count: true })]);
       return { items: rows.map(row => discussionDto(row, people, counts.find(count => count.threadId === row.id)?._count ?? 0)), ...query, total, hasNext: query.page * query.pageSize < total };
@@ -54,19 +77,19 @@ export const projectDiscussionsService = {
       const [rows, total] = await Promise.all([context.tx.projectTeamMessage.findMany({ where, ...paging(query), orderBy: [{ createdAt: "asc" }, { id: "asc" }] }), context.tx.projectTeamMessage.count({ where })]);
       const people = await workspacePeople(context.tx, [thread.authorId, ...rows.map(row => row.senderId)]);
       await context.tx.projectTeamMessageRead.createMany({ data: rows.map(row => ({ messageId: row.id, userId: context.actorId })), skipDuplicates: true });
-      return { thread: discussionDto(thread, people, total), messages: { items: rows.map(row => ({ id: row.id, body: row.content, author: workspacePerson(people, row.senderId), replyToId: row.replyToId, createdAt: row.createdAt.toISOString() })), ...query, total, hasNext: query.page * query.pageSize < total }, canResolve: Boolean(context.role && context.project.status !== "ARCHIVED"), canReply: context.project.status !== "ARCHIVED" && thread.status === "OPEN", canEdit: Boolean(!(thread.context as { planSection?: unknown }).planSection && context.role && context.project.status !== "ARCHIVED" && (context.role === "OWNER" || thread.authorId === context.actorId)) };
+      return { thread: discussionDto(thread, people, total), messages: { items: rows.map(row => ({ id: row.id, body: row.content, author: workspacePerson(people, row.senderId), replyToId: row.replyToId, createdAt: row.createdAt.toISOString() })), ...query, total, hasNext: query.page * query.pageSize < total }, canResolve: Boolean(context.role && !thread.readOnly), canReply: !thread.readOnly && thread.status === "OPEN", canEdit: Boolean(!retainsArtifactContext(thread) && context.role && !thread.readOnly && (context.role === "OWNER" || thread.authorId === context.actorId)) };
     });
   },
   async save(projectId: string, actorId: string, input: SaveWorkspaceDiscussion & { clientKey?: string; expectedVersion?: number; mentions: string[] }, id?: string) {
     return withWorkspace(projectId, actorId, { write: true, accounts: input.mentions }, async context => {
-      const previous = id ? await requireDiscussion(context, id) : input.clientKey ? await context.tx.projectDiscussion.findUnique({ where: { projectId_authorId_clientKey: { projectId: context.project.id, authorId: context.actorId, clientKey: input.clientKey } } }) : null;
+      const previous = id ? await requireDiscussion(context, id, true) : input.clientKey ? await context.tx.projectDiscussion.findUnique({ where: { projectId_authorId_clientKey: { projectId: context.project.id, authorId: context.actorId, clientKey: input.clientKey } } }) : null;
       const creationInput = { title: input.title, body: input.body, category: input.category, link: input.link, mentorRelationshipId: input.mentorRelationshipId, mentions: [...new Set(input.mentions)].sort() };
       if (!id && previous) {
         await assertWorkspaceRetry(context, "DISCUSSION", previous.id, creationInput);
         return { id: previous.id, version: previous.version };
       }
       if (previous) {
-        if ((previous.context as { planSection?: unknown }).planSection || previous.targetKind === "MANUSCRIPT_SNAPSHOT" || (previous.targetKind === "MANUSCRIPT" && Object.keys(previous.context as object).length)) throw AppError.conflict("Artifact comments retain their original context; reply or resolve the thread instead");
+        if (retainsArtifactContext(previous)) throw AppError.conflict("Artifact comments retain their original context; reply or resolve the thread instead");
         expectWorkspaceVersion(previous.version, input.expectedVersion!);
         if (previous.authorId !== context.actorId && context.role !== "OWNER") throw AppError.forbidden("Only the author or project owner can edit a discussion");
       }
@@ -86,7 +109,7 @@ export const projectDiscussionsService = {
   },
   async reply(projectId: string, actorId: string, id: string, input: { body: string; replyToId: string | null; clientKey: string; mentions: string[] }) {
     return withWorkspace(projectId, actorId, { write: true, mentor: true, accounts: input.mentions }, async context => {
-      const thread = await requireDiscussion(context, id);
+      const thread = await requireDiscussion(context, id, true);
       if (thread.status !== "OPEN") throw AppError.conflict("Reopen this discussion before replying");
       if (!context.role && input.mentions.length) throw AppError.forbidden("Mentors cannot mention private project members");
       for (const userId of input.mentions) await assertWorkspaceAssignee(context, userId);
@@ -107,7 +130,7 @@ export const projectDiscussionsService = {
   },
   async resolve(projectId: string, actorId: string, id: string, input: { expectedVersion: number; status: "OPEN" | "RESOLVED"; conclusion: string }) {
     return withWorkspace(projectId, actorId, { write: true }, async context => {
-      const previous = await requireDiscussion(context, id);
+      const previous = await requireDiscussion(context, id, true);
       expectWorkspaceVersion(previous.version, input.expectedVersion);
       if (input.status === "RESOLVED" && !input.conclusion.trim()) throw AppError.badRequest("Record a conclusion before resolving");
       const row = await context.tx.projectDiscussion.update({ where: { id }, data: { status: input.status, conclusion: input.conclusion, version: { increment: 1 } } });

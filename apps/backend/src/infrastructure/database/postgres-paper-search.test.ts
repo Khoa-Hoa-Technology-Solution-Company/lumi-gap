@@ -1,8 +1,18 @@
 import { describe, expect, it } from "vitest";
 
-import { PAPER_EMBEDDING_DIMENSIONS, buildHybridSearchSql, filterSql, vectorParameter } from "./postgres-paper-search.js";
+import { PAPER_EMBEDDING_DIMENSIONS, buildHybridSearchSql, filterSql, isUsableSearchVector, vectorParameter } from "./postgres-paper-search.js";
 
 describe("PostgreSQL vector query input", () => {
+  it.each([1e100, 1e30, 1e-30, Number.MIN_VALUE, 0, NaN, Infinity])("rejects cosine vectors unusable in float32: %s", (value) => {
+    expect(isUsableSearchVector([value, ...Array(767).fill(0)])).toBe(false);
+  });
+
+  it("accepts ordinary embeddings and representable non-unit vectors", () => {
+    for (const value of [0.25, 1e-10, 1e10]) expect(isUsableSearchVector(Array(768).fill(value))).toBe(true);
+    expect(isUsableSearchVector(undefined)).toBe(false);
+    expect(isUsableSearchVector([1])).toBe(false);
+  });
+
   it("serializes exactly 768 finite dimensions", () => {
     const vector = vectorParameter(Array.from({ length: PAPER_EMBEDDING_DIMENSIONS }, () => 0.25));
     expect(vector.startsWith("[0.25,0.25")).toBe(true);

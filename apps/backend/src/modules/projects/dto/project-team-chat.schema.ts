@@ -13,6 +13,7 @@ export const ProjectTeamChatMessageParamsSchema = ProjectTeamChatParamsSchema.ex
 
 export const SendProjectTeamChatMessageSchema = z.object({
   content: z.string().trim().min(1).max(2000),
+  clientKey: z.string().uuid().optional(),
 });
 
 export const DeleteProjectTeamChatMessageSchema = z.object({
@@ -22,6 +23,7 @@ export const DeleteProjectTeamChatMessageSchema = z.object({
 export const ListProjectTeamChatQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
   before: z.string().datetime().optional(),
+  beforeId: objectId.optional(),
 });
 
 export type SendProjectTeamChatMessageInput = z.infer<typeof SendProjectTeamChatMessageSchema>;

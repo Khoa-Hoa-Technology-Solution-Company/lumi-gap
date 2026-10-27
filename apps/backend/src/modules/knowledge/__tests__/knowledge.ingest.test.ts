@@ -36,6 +36,14 @@ beforeEach(() => {
 });
 
 describe("paper ingestion lifecycle", () => {
+  it.each([0, 1e100, 1e30, 1e-30, Number.MIN_VALUE])("does not publish unusable cosine vectors (%s) or replace old chunks", async (value) => {
+    mocks.embedBatch.mockResolvedValue([[value, ...Array(767).fill(0)]]);
+    await expect(indexPaper(mocks.paper.id)).rejects.toThrow("Invalid passage embeddings");
+    expect(mocks.db.paperChunk.deleteMany).not.toHaveBeenCalled();
+    expect(mocks.db.$executeRaw).not.toHaveBeenCalled();
+    expect(mocks.db.paperDocument.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "failed" }) }));
+  });
+
   it("indexes pages, validates graph quotes and publishes an atomic ready result", async () => {
     await indexPaper(mocks.paper.id);
     expect(mocks.db.$executeRaw).toHaveBeenCalledOnce();

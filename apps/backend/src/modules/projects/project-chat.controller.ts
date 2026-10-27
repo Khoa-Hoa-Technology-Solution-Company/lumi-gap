@@ -3,6 +3,7 @@ import type { ProjectChatEvent } from "@trend/shared-types";
 import { projectChatEventHub } from "./project-chat.events.js";
 import { projectChatService } from "./project-chat.service.js";
 import { assertLiveRequestSession } from "../../common/middleware/auth.js";
+import type { ListProjectChatQuery } from "./dto/project-chat.schema.js";
 
 export class ProjectChatController {
   async sendMessage(req: Request, res: Response) {
@@ -16,8 +17,8 @@ export class ProjectChatController {
   async listHistory(req: Request, res: Response) {
     const projectId = req.params.id as string;
     const userId = req.user!.sub;
-    const { limit, scope = "private" } = req.query as unknown as { limit: number; scope?: "private" | "team" };
-    const messages = await projectChatService.listHistory(projectId, userId, limit, scope);
+    const { limit, scope, beforeId } = req.query as unknown as ListProjectChatQuery;
+    const messages = await projectChatService.listHistory(projectId, userId, limit, scope, beforeId);
     res.json({ success: true, data: { messages }, meta: { count: messages.length } });
   }
 

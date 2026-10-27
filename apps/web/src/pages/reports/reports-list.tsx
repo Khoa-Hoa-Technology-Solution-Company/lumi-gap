@@ -935,7 +935,7 @@ export function ReportsListPage() {
             <Button
               onClick={handleOpenPaperPicker}
               disabled={previewEvidence.isPending || previewData.papers.length >= previewData.maxEvidencePapers}
-              className="bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-slate-100 text-white dark:text-black text-xs font-bold px-4 h-9 rounded-lg shadow-sm"
+              className="bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-semibold px-4 h-9 rounded-lg shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5"
             >
               <Search className="h-3.5 w-3.5 mr-2" />
               Add Papers

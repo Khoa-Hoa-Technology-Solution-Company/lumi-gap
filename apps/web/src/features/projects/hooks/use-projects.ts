@@ -15,10 +15,17 @@ import type {
   MentorRelationship, MentorshipRequest,
 } from "@trend/shared-types";
 
+function refreshProject(client: QueryClient, id: string) {
+  return Promise.all([
+    client.invalidateQueries({ queryKey: ["projects"] }),
+    client.invalidateQueries({ predicate: query => query.queryKey[0] === "project" &&
+      (query.queryKey[1] === id || (query.state.data as { _id?: string } | undefined)?._id === id) }),
+    client.invalidateQueries({ predicate: query => ["project-research", "project-workspace"].includes(String(query.queryKey[0])) && query.queryKey[2] === id }),
+  ]);
+}
 function refreshProjectLiterature(client: QueryClient, id: string) {
   return Promise.all([
-    client.invalidateQueries({ queryKey: ["project", id] }),
-    client.invalidateQueries({ predicate: query => ["project-research", "project-workspace"].includes(String(query.queryKey[0])) && query.queryKey[2] === id }),
+    refreshProject(client, id),
     client.invalidateQueries({ queryKey: ["gaps"] }),
   ]);
 }
@@ -55,8 +62,7 @@ export function useUpdateProject(id: string) {
     mutationFn: (data: UpdateProjectRequest) => projectsApi.update(id, data),
     onSuccess: (project) => {
       queryClient.setQueryData(["project", id], project);
-      queryClient.invalidateQueries({ queryKey: ["project", id] });
-      queryClient.invalidateQueries({ queryKey: ["projects"] });
+      return refreshProject(queryClient, id);
     },
   });
 }
@@ -93,7 +99,7 @@ export function useAddMemberToProject(id: string) {
   return useMutation({
     mutationFn: (data: AddProjectMemberRequest) => projectsApi.addMember(id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["project", id] });
+      return refreshProject(queryClient, id);
     },
   });
 }
@@ -103,7 +109,7 @@ export function useRemoveMemberFromProject(id: string) {
   return useMutation({
     mutationFn: (memberId: string) => projectsApi.removeMember(id, memberId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["project", id] });
+      return refreshProject(queryClient, id);
     },
   });
 }
@@ -118,17 +124,17 @@ export function useUpdateProjectPaper(id: string) {
 
 export function useInviteProjectMember(id: string) {
   const queryClient = useQueryClient();
-  return useMutation({ mutationFn: (data: InviteProjectMemberRequest) => projectsApi.inviteMember(id, data), onSuccess: () => queryClient.invalidateQueries({ queryKey: ["project", id] }) });
+  return useMutation({ mutationFn: (data: InviteProjectMemberRequest) => projectsApi.inviteMember(id, data), onSuccess: () => refreshProject(queryClient, id) });
 }
 
 export function useCancelProjectInvitation(id: string) {
   const queryClient = useQueryClient();
-  return useMutation({ mutationFn: (invitationId: string) => projectsApi.cancelInvitation(id, invitationId), onSuccess: () => queryClient.invalidateQueries({ queryKey: ["project", id] }) });
+  return useMutation({ mutationFn: (invitationId: string) => projectsApi.cancelInvitation(id, invitationId), onSuccess: () => refreshProject(queryClient, id) });
 }
 
 export function useResendProjectInvitation(id: string) {
   const client = useQueryClient();
-  return useMutation({ mutationFn: (invitationId: string) => projectsApi.resendInvitation(id, invitationId), onSuccess: () => client.invalidateQueries({ queryKey: ["project", id] }) });
+  return useMutation({ mutationFn: (invitationId: string) => projectsApi.resendInvitation(id, invitationId), onSuccess: () => refreshProject(client, id) });
 }
 
 export function useProjectTeam(id: string, page: number, invitationPage: number) {
@@ -137,7 +143,7 @@ export function useProjectTeam(id: string, page: number, invitationPage: number)
 
 export function useRestoreProject(id: string) {
   const client = useQueryClient();
-  return useMutation({ mutationFn: () => projectsApi.restore(id), onSuccess: () => { client.invalidateQueries({ queryKey: ["project", id] }); client.invalidateQueries({ queryKey: ["projects"] }); } });
+  return useMutation({ mutationFn: () => projectsApi.restore(id), onSuccess: () => refreshProject(client, id) });
 }
 
 export function useMyProjectInvitations() {
@@ -173,7 +179,7 @@ export function useRespondToProjectInvitationToken(token: string) {
 
 export function useArchiveProject(id: string) {
   const queryClient = useQueryClient();
-  return useMutation({ mutationFn: () => projectsApi.archive(id), onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["project", id] }); queryClient.invalidateQueries({ queryKey: ["projects"] }); } });
+  return useMutation({ mutationFn: () => projectsApi.archive(id), onSuccess: () => refreshProject(queryClient, id) });
 }
 
 export function useLeaveProject(id: string) {
@@ -183,7 +189,7 @@ export function useLeaveProject(id: string) {
 
 export function useTransferProjectOwnership(id: string) {
   const queryClient = useQueryClient();
-  return useMutation({ mutationFn: (userId: string) => projectsApi.transferOwnership(id, userId), onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["project", id] }); queryClient.invalidateQueries({ queryKey: ["projects"] }); } });
+  return useMutation({ mutationFn: (userId: string) => projectsApi.transferOwnership(id, userId), onSuccess: () => refreshProject(queryClient, id) });
 }
 
 export function useProjectActivity(id: string) {

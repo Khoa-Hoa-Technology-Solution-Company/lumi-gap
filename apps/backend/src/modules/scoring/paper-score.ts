@@ -12,7 +12,7 @@ const W_IMPACT = 0.75;
 const W_RECENCY = 0.2;
 const W_METADATA = 0.05;
 
-const clamp01 = (n: number): number => Math.max(0, Math.min(1, n));
+const clamp01 = (n: number): number => Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : 0;
 const round2 = (n: number): number => Math.round(n * 100) / 100;
 
 export interface ScoreInput {
@@ -37,14 +37,16 @@ export function computePaperScore(
   currentYear: number,
   computedAt: string,
 ): PaperAiScore {
-  const year = input.publicationYear || 0;
+  if (!Number.isInteger(currentYear) || currentYear <= 0) throw new RangeError("currentYear must be a positive integer");
+  const year = Number.isInteger(input.publicationYear) && input.publicationYear > 0 ? input.publicationYear : 0;
   // `Math.max(0, …)` clamps the age floor at 0 so a future-dated paper (OpenAlex
   // often tags next year for in-press works) scores recency 1, not >1.
   const recencyScore = year > 0 ? clamp01(1 - Math.max(0, currentYear - year) / RECENCY_WINDOW) : 0;
   // Age-fair impact: citations PER YEAR on a log scale, so a 2024 paper isn't
   // punished for not having had a decade to accumulate citations.
   const age = Math.max(1, currentYear - year);
-  const perYear = (input.citationCount ?? 0) / age;
+  const citations = Number.isFinite(input.citationCount) ? Math.max(0, input.citationCount) : 0;
+  const perYear = citations / age;
   const citationImpactScore = clamp01(
     Math.log10(perYear + 1) / Math.log10(CITATION_PER_YEAR_CAP + 1),
   );

@@ -42,7 +42,7 @@ export const creditController = {
   /** POST /api/v1/credits/payos/create-payment-link */
   async createPaymentLink(req: Request, res: Response, next: NextFunction) {
     try {
-      const amountVnd = Number(req.body.amountVnd || req.body.amount);
+      const amountVnd = req.body.amountVnd;
       const returnUrl = req.body.returnUrl;
       const cancelUrl = req.body.cancelUrl;
 

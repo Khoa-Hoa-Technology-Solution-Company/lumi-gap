@@ -119,7 +119,7 @@ export function LecturerVerificationStatusPage() {
       </div>
       <footer className="lv-privacy"><ShieldCheck size={16} aria-hidden="true" /><p>{t("Evidence is private to you and authorized administrators.")}</p></footer>
     </div>
-    {open && profile.data && <PositionVerificationPanel profile={profile.data} editable trackingMode open={open} onOpenChange={setOpen} supplement={action === "SUPPLEMENT" && request ? request : undefined} onEditPosition={() => navigate("/settings/academic?tab=affiliation")} />}
+    {open && profile.data && <PositionVerificationPanel profile={profile.data} editable trackingMode open={open} onOpenChange={setOpen} supplement={action === "SUPPLEMENT" && request ? request : undefined} onEditPosition={() => navigate("/profile?edit=affiliation")} />}
     <Dialog open={Boolean(preview)} onOpenChange={value => { if (!value) setPreview(undefined); }}><DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-3xl"><DialogHeader><DialogTitle className="break-all">{preview?.name}</DialogTitle></DialogHeader>{preview && <PrivatePreview key={`${preview.requestId}:${preview.sourceId}`} requestId={preview.requestId} sourceId={preview.sourceId} />}</DialogContent></Dialog>
   </main>;
 }

@@ -1,0 +1,18 @@
+.mentor-project-guidance { min-width: 0; padding: 22px; border: 1px solid hsl(var(--border)); border-radius: 10px; background: hsl(var(--card)); }
+.mentor-project-guidance > h2 { font-size: 17px; font-weight: 600; line-height: 1.5; letter-spacing: -.02em; }
+.mentor-project-guidance > p { margin-top: 7px; color: hsl(var(--muted-foreground)); font-size: 13px; line-height: 1.75; }
+.mentor-project-guidance form { margin-top: 16px; }
+.mentor-project-guidance textarea { width: 100%; resize: vertical; border: 1px solid hsl(var(--border)); border-radius: 7px; padding: 11px; font-size: 14px; line-height: 1.7; background: hsl(var(--background)); }
+.mentor-project-guidance textarea:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
+.mentor-project-guidance form > div:first-of-type { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-top: 9px; }
+.mentor-project-guidance form > div:first-of-type > span { color: hsl(var(--muted-foreground)); font-size: 11px; font-variant-numeric: tabular-nums; }
+.mentor-project-guidance button { gap: 7px; }
+.mentor-project-guidance form > p[role="status"] { margin-top: 12px; font-size: 13px; }
+.mentor-project-guidance > h3 { margin-top: 26px; padding-top: 20px; border-top: 1px solid hsl(var(--border)); font-size: 13px; font-weight: 600; }
+.mentor-project-guidance .mentor-project-no-guidance, .mentor-project-guidance .mentor-project-readonly { margin-top: 9px; font-size: 13px; line-height: 1.75; }
+.mentor-project-guidance ol > li { margin-top: 18px; padding-bottom: 17px; border-bottom: 1px solid hsl(var(--border)); }
+.mentor-project-guidance ol > li:last-child { border-bottom: 0; padding-bottom: 0; }
+.mentor-project-guidance li > div { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 9px; font-size: 12px; }
+.mentor-project-guidance li > div > span, .mentor-project-guidance time { color: hsl(var(--muted-foreground)); font-size: 11px; }
+.mentor-project-guidance li > p { margin-block: 7px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; line-height: 1.8; }
+@media (max-width: 600px) { .mentor-project-guidance { padding: 18px; } }

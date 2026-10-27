@@ -90,9 +90,20 @@ export class ProjectChatService {
     return Promise.all(rows.map((row) => this.toHistoryMessage(row, users, users)));
   }
 
-  async listHistory(projectIdInput: string, userIdInput: string, limit: number, scope: ProjectChatScope = "private"): Promise<ProjectChatHistoryMessage[]> {
+  async listHistory(projectIdInput: string, userIdInput: string, limit: number, scope: ProjectChatScope = "private", beforeId?: string): Promise<ProjectChatHistoryMessage[]> {
     const access = await this.assertCanAccess(projectIdInput, userIdInput);
-    const rows = await getPrisma().projectChatMessage.findMany({ where: buildChatHistoryFilter(access.project.id, access.user.id, scope), orderBy: { createdAt: "desc" }, take: limit });
+    const db = getPrisma();
+    const where = buildChatHistoryFilter(access.project.id, access.user.id, scope);
+    const cursor = beforeId ? await db.projectChatMessage.findFirst({ where: { ...idWhere(beforeId), ...where }, select: { id: true } }) : null;
+    if (beforeId && !cursor) throw AppError.notFound("AI chat history cursor not found");
+    // Reverse chronological order also reverses the user-before-assistant tie
+    // order. A database cursor retains the full timestamptz precision.
+    const rows = await db.projectChatMessage.findMany({
+      where,
+      orderBy: [{ createdAt: "desc" }, { role: "asc" }, { id: "desc" }],
+      take: limit,
+      ...(cursor ? { cursor: { id: cursor.id }, skip: 1 } : {}),
+    });
     const requesters = await this.loadUserSummaries(rows.map((row) => row.userId));
     const pinnedBy = await this.loadUserSummaries(rows.flatMap((row) => row.pinnedById ? [row.pinnedById] : []));
     return Promise.all(rows.reverse().map((row) => this.toHistoryMessage(row, requesters, pinnedBy)));
@@ -119,7 +130,7 @@ export class ProjectChatService {
   private async loadRecentHistory(projectId: string, userId: string, scope: ProjectChatScope): Promise<ChatHistoryTurn[]> {
     const limit = env.CHAT_HISTORY_TURNS * 2;
     if (limit === 0) return [];
-    const rows = await getPrisma().projectChatMessage.findMany({ where: buildChatHistoryFilter(projectId, userId, scope), orderBy: { createdAt: "desc" }, take: limit, select: { role: true, content: true } });
+    const rows = await getPrisma().projectChatMessage.findMany({ where: buildChatHistoryFilter(projectId, userId, scope), orderBy: [{ createdAt: "desc" }, { role: "asc" }, { id: "desc" }], take: limit, select: { role: true, content: true } });
     return rows.reverse().map((row) => ({ role: row.role as "user" | "assistant", content: row.content }));
   }
 

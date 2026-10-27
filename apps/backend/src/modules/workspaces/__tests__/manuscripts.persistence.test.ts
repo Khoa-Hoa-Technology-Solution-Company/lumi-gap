@@ -322,6 +322,7 @@ describe.skipIf(!isolated).sequential("manuscripts in disposable PostgreSQL", ()
     expect((await writing.list(d.project, owner))[0]!.latestFeedback?.status).toBe("RESPONDED");
     await writing.comment(d.project, mentor, d.id, { body: "Explain inclusion criteria", clientKey: crypto.randomUUID(), snapshotId: v1.id });
     await discussions.resolve(d.project, owner, thread.id, { expectedVersion: 1, status: "RESOLVED", conclusion: "Updated sampling rationale" });
+    expect((await writing.comments(d.project, member, d.id, v1.id)).find(comment => comment.id === thread.id)).toMatchObject({ status: "RESOLVED", conclusion: "Updated sampling rationale" });
     expect((await writing.list(d.project, member))[0]!.latestFeedback?.status).toBe("RESOLVED");
     await discussions.resolve(d.project, owner, thread.id, { expectedVersion: 2, status: "OPEN", conclusion: "" });
     expect((await writing.list(d.project, member))[0]!.latestFeedback?.status).toBe("RESPONDED");
@@ -338,6 +339,65 @@ describe.skipIf(!isolated).sequential("manuscripts in disposable PostgreSQL", ()
     await expect(writing.viewSnapshot(d.project, mentor, d.id, v1.id)).rejects.toMatchObject({ statusCode: 404 });
     await expect(writing.list(d.project, outsider)).rejects.toMatchObject({ statusCode: 404 });
   });
+  it("checks the requested durability minimum when retrying an existing snapshot", async () => {
+    const d = await draft(), input = { label: "Durable retry", clientKey: crypto.randomUUID(), minimumSequences: {} };
+    const version = await writing.snapshot(d.project, owner, d.id, input);
+    const edit = await update(d, member, text => text.insert(0, "% saved after the version\n"));
+    await expect(writing.snapshot(d.project, owner, d.id, { ...input, minimumSequences: { [d.file]: edit.result.sequence } })).rejects.toMatchObject({ statusCode: 409 });
+    expect((await writing.snapshot(d.project, owner, d.id, input)).id).toBe(version.id);
+    expect(await db.manuscriptSnapshot.count({ where: { workspaceId: d.id } })).toBe(1);
+  });
+  it("advertises editing only for manuscript discussions whose original context may be changed", async () => {
+    const d = await draft(), version = await writing.snapshot(d.project, owner, d.id, { label: "Comment capabilities", clientKey: crypto.randomUUID(), minimumSequences: {} });
+    const live = await writing.comment(d.project, member, d.id, { body: "Anchored live comment", clientKey: crypto.randomUUID(), fileId: d.file });
+    const snapshot = await writing.comment(d.project, member, d.id, { body: "Snapshot comment", clientKey: crypto.randomUUID(), snapshotId: version.id });
+    const input = { title: "Linked discussion", body: "General manuscript discussion", category: "GENERAL" as const, link: { kind: "MANUSCRIPT" as const, id: d.id }, mentorRelationshipId: null, mentions: [], clientKey: crypto.randomUUID() };
+    for (const thread of [live, snapshot]) {
+      expect(await discussions.detail(d.project, member, thread.id, { page: 1, pageSize: 20 })).toMatchObject({ canEdit: false, canReply: true, canResolve: true });
+      await expect(discussions.save(d.project, member, { ...input, expectedVersion: 1 }, thread.id)).rejects.toMatchObject({ statusCode: 409 });
+    }
+    const editable = await discussions.save(d.project, member, input);
+    expect(await discussions.detail(d.project, member, editable.id, { page: 1, pageSize: 20 })).toMatchObject({ canEdit: true });
+    expect(await discussions.save(d.project, member, { ...input, body: "Updated general discussion", expectedVersion: 1 }, editable.id)).toMatchObject({ id: editable.id, version: 2 });
+  });
+  it("keeps archived manuscript comments and snapshot feedback read-only through every discussion route", async () => {
+    const d = await draft(), req = await db.mentorshipRequest.create({ data: { projectId: d.project, mentorUserId: mentor, requestedBy: owner, direction: "PROJECT_TO_LECTURER", status: "ACCEPTED", expiresAt: new Date(Date.now() + 86400000) } });
+    const relation = await db.mentorRelationship.create({ data: { projectId: d.project, mentorUserId: mentor, sourceRequestId: req.id } });
+    const version = await writing.snapshot(d.project, owner, d.id, { label: "Archived feedback", clientKey: crypto.randomUUID(), minimumSequences: {} });
+    const live = await writing.comment(d.project, member, d.id, { body: "Live comment", clientKey: crypto.randomUUID() });
+    const shared = await writing.comment(d.project, owner, d.id, { body: "Snapshot feedback", clientKey: crypto.randomUUID(), snapshotId: version.id, mentorRelationshipId: relation.id });
+    await db.draftWorkspace.update({ where: { id: d.id }, data: { archivedAt: new Date() } });
+    for (const actor of [owner, mentor]) {
+      expect(await writing.viewSnapshot(d.project, actor, d.id, version.id)).toMatchObject({ canComment: false, canResolve: false });
+      await expect(writing.comment(d.project, actor, d.id, { body: "Archived mutation", clientKey: crypto.randomUUID(), snapshotId: version.id })).rejects.toMatchObject({ statusCode: 409 });
+    }
+    for (const [actor, thread] of [[owner, live.id], [owner, shared.id], [mentor, shared.id]] as const) {
+      expect(await discussions.detail(d.project, actor, thread, { page: 1, pageSize: 20 })).toMatchObject({ canReply: false, canResolve: false, canEdit: false });
+      await expect(discussions.reply(d.project, actor, thread, { body: "Archived reply", clientKey: crypto.randomUUID(), mentions: [], replyToId: null })).rejects.toMatchObject({ statusCode: 409 });
+    }
+    await expect(discussions.resolve(d.project, owner, shared.id, { expectedVersion: 1, status: "RESOLVED", conclusion: "Archived resolution" })).rejects.toMatchObject({ statusCode: 409 });
+    for (const link of [{ kind: "MANUSCRIPT" as const, id: d.id }, { kind: "MANUSCRIPT_SNAPSHOT" as const, id: version.id }]) await expect(discussions.save(d.project, owner, { title: "Archived linked comment", body: "Archived linked body", category: "GENERAL", link, mentorRelationshipId: null, mentions: [], clientKey: crypto.randomUUID() })).rejects.toMatchObject({ statusCode: 409 });
+    expect(await db.projectTeamMessage.count({ where: { projectId: d.project } })).toBe(0);
+  });
+  it("revokes deleted manuscript feedback access through generic discussion lists and routes", async () => {
+    const d = await draft(), req = await db.mentorshipRequest.create({ data: { projectId: d.project, mentorUserId: mentor, requestedBy: owner, direction: "PROJECT_TO_LECTURER", status: "ACCEPTED", expiresAt: new Date(Date.now() + 86400000) } });
+    const relation = await db.mentorRelationship.create({ data: { projectId: d.project, mentorUserId: mentor, sourceRequestId: req.id } });
+    const version = await writing.snapshot(d.project, owner, d.id, { label: "Deleted feedback", clientKey: crypto.randomUUID(), minimumSequences: {} });
+    const live = await writing.comment(d.project, member, d.id, { body: "Deleted live comment", clientKey: crypto.randomUUID() });
+    const shared = await writing.comment(d.project, owner, d.id, { body: "Deleted snapshot feedback", clientKey: crypto.randomUUID(), snapshotId: version.id, mentorRelationshipId: relation.id });
+    await writing.remove(d.project, owner, d.id, d.detail.version);
+    for (const actor of [owner, member, mentor]) expect(await discussions.list(d.project, actor, { page: 1, pageSize: 20 })).toMatchObject({ items: [], total: 0 });
+    for (const [actor, thread] of [[owner, live.id], [owner, shared.id], [mentor, shared.id]] as const) {
+      await expect(discussions.detail(d.project, actor, thread, { page: 1, pageSize: 20 })).rejects.toMatchObject({ statusCode: 404 });
+      await expect(discussions.reply(d.project, actor, thread, { body: "Deleted reply", clientKey: crypto.randomUUID(), mentions: [], replyToId: null })).rejects.toMatchObject({ statusCode: 404 });
+      await expect(discussions.history(d.project, actor, "DISCUSSION", thread, { page: 1, pageSize: 20 })).rejects.toMatchObject({ statusCode: 404 });
+    }
+    await expect(discussions.resolve(d.project, owner, shared.id, { expectedVersion: 1, status: "RESOLVED", conclusion: "Deleted resolution" })).rejects.toMatchObject({ statusCode: 404 });
+    expect(await db.projectDiscussion.count({ where: { projectId: d.project } })).toBe(2);
+    const ordinary = await discussions.save(d.project, owner, { title: "General project discussion", body: "Independent from the deleted manuscript", category: "GENERAL", link: null, mentorRelationshipId: null, mentions: [], clientKey: crypto.randomUUID() });
+    const available = await discussions.list(d.project, member, { page: 1, pageSize: 20 });
+    expect(available.items.map(thread => thread.id)).toEqual([ordinary.id]); expect(available.total).toBe(1);
+  });
   it("executes formal request, acceptance and structured review against the sealed source only", async () => {
     const d = await draft(), v1 = await writing.snapshot(d.project, owner, d.id, { label: "Submission v1", clientKey: crypto.randomUUID(), minimumSequences: {} });
     const sealed = await writing.publish(d.project, member, d.id, v1.id, [owner, member]);
@@ -346,6 +406,10 @@ describe.skipIf(!isolated).sequential("manuscripts in disposable PostgreSQL", ()
     const request = await reviewRequestService.create({ submissionId: sealed.submissionId, reviewerId: reviewer, templateVersionId: template.activeVersion!.id }, owner);
     await expect(writing.viewSnapshot(d.project, reviewer, d.id, v1.id)).rejects.toMatchObject({ statusCode: 404 });
     await reviewRequestService.accept(request.id, reviewer);
+    await writing.comment(d.project, member, d.id, { body: "Private team preparation notes", clientKey: crypto.randomUUID(), snapshotId: v1.id });
+    expect(await writing.comments(d.project, member, d.id, v1.id)).toHaveLength(1);
+    expect(await writing.comments(d.project, reviewer, d.id, v1.id)).toEqual([]);
+    expect(await writing.commentPage(d.project, reviewer, d.id, v1.id)).toEqual({ items: [], nextCursor: null });
     expect((await reviewService.getReview(request.assignment.id, reviewer)).manuscriptSource).toEqual({ projectId: d.project, manuscriptId: d.id, snapshotId: v1.id });
     const view = await writing.viewSnapshot(d.project, reviewer, d.id, v1.id); expect(view.canComment).toBe(false); expect(view.formalRevisionId).toBe(sealed.revisionId);
     await update(d, member, text => text.insert(0, "% live source changed after review started\n"));
@@ -366,5 +430,30 @@ describe.skipIf(!isolated).sequential("manuscripts in disposable PostgreSQL", ()
     await db.project.update({ where: { id: d.project }, data: { status: "ARCHIVED" } });
     expect((await writing.detail(d.project, member, d.id)).canWrite).toBe(false);
     await expect(writing.createFile(d.project, member, d.id, { path: "archived.tex", kind: "TEXT", content: "", clientKey: crypto.randomUUID() })).rejects.toMatchObject({ statusCode: 409 });
+  });
+
+  it("pages every comment and keeps the latest replies in a busy thread", async () => {
+    const d = await draft(), base = Date.now() - 10000;
+    const threads = Array.from({ length: 201 }, (_, index) => ({ id: crypto.randomUUID(), projectId: d.project, authorId: owner, category: "GENERAL", title: `Comment ${index}`, body: `Comment ${index}`, targetKind: "MANUSCRIPT", targetId: d.id, clientKey: crypto.randomUUID(), createdAt: new Date(base + index) }));
+    await db.projectDiscussion.createMany({ data: threads });
+    const thread = threads[200]!;
+    await db.projectTeamMessage.createMany({ data: Array.from({ length: 1001 }, (_, index) => ({ projectId: d.project, threadId: thread.id, senderId: member, content: `Reply ${index}`, clientKey: crypto.randomUUID(), createdAt: new Date(base + 500 + index) })) });
+    const first = await writing.commentPage(d.project, owner, d.id);
+    expect(first.items).toHaveLength(20);
+    expect(first.items[0]).toMatchObject({ body: "Comment 200", hasMoreMessages: true });
+    expect(first.items[0]?.messages.at(-1)?.body).toBe("Reply 1000");
+    expect(first.items[0]?.messages).toHaveLength(20);
+    const ids = first.items.map(row => row.id);
+    let cursor = first.nextCursor;
+    while (cursor) {
+      const page = await writing.commentPage(d.project, owner, d.id, undefined, cursor);
+      ids.push(...page.items.map(row => row.id)); cursor = page.nextCursor;
+    }
+    expect(ids).toHaveLength(201); expect(new Set(ids).size).toBe(201);
+    const conversation = await discussions.detail(d.project, owner, thread.id, { page: 51, pageSize: 20 });
+    expect(conversation.messages.items.at(-1)?.body).toBe("Reply 1000");
+    await expect(writing.commentPage(d.project, outsider, d.id)).rejects.toMatchObject({ statusCode: 404 });
+    const other = await draft(), foreign = await writing.comment(other.project, owner, other.id, { body: "Other project", clientKey: crypto.randomUUID() });
+    await expect(writing.commentPage(d.project, owner, d.id, undefined, foreign.id)).rejects.toMatchObject({ statusCode: 404 });
   });
 });

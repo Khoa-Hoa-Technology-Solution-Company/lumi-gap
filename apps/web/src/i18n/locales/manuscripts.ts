@@ -1,4 +1,8 @@
 export const manuscriptsVi = {
+  "Load older comments": "Tải bình luận trước",
+  "View all replies": "Xem tất cả trả lời",
+  "Latest replies": "Trả lời mới nhất",
+  "Replies pages": "Các trang trả lời",
   "Rebuild editable paragraphs and tables, using source page size, spacing and alignment. Complex layouts may still change.": "Dựng lại đoạn văn và bảng dễ chỉnh sửa theo khổ trang, khoảng cách và căn lề gốc. Bố cục phức tạp vẫn có thể thay đổi.",
   "Text reflows when edited. Tables keep separate cells; Vietnamese/English scans use local OCR.": "Văn bản tự dàn lại khi sửa. Bảng có từng ô riêng; bản scan dùng OCR Việt/Anh cục bộ.",
   "Use AI to identify document structure": "AI hỗ trợ nhận diện cấu trúc tài liệu",

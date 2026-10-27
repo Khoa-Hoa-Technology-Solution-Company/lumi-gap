@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQueryClient, type InfiniteData } from "@tanstack/react-query";
 import {
   ArrowDown,
   LockKeyhole,
@@ -37,6 +37,7 @@ interface ProjectChatPanelProps {
   onAddPapers?: () => void;
   draft?: string;
   onDraftChange?: (val: string) => void;
+  onSent?: (content: string) => void;
 }
 
 export function ProjectChatPanel({
@@ -47,6 +48,7 @@ export function ProjectChatPanel({
   onAddPapers,
   draft,
   onDraftChange,
+  onSent,
 }: ProjectChatPanelProps) {
   const { t } = useI18n();
   const queryClient = useQueryClient();
@@ -57,6 +59,7 @@ export function ProjectChatPanel({
     "idle" | "connecting" | "live" | "reconnecting" | "offline"
   >("idle");
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const sending = useRef(false);
 
   const smartPrompts = [
     {
@@ -130,9 +133,11 @@ export function ProjectChatPanel({
   }, [message]);
 
   const chatQueryKey = useMemo(() => ["project-chat", projectId, scope, currentUser?.id], [projectId, scope, currentUser?.id]);
-  const historyQuery = useQuery({
+  const historyQuery = useInfiniteQuery({
     queryKey: chatQueryKey,
-    queryFn: () => projectChatApi.listHistory(projectId, 50, scope),
+    queryFn: ({ pageParam }) => projectChatApi.listHistory(projectId, 50, scope, pageParam),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (page) => page.length >= 50 ? page[0]?.id : undefined,
     retry: false,
     refetchInterval: scope === "team" && streamStatus !== "live" ? 5000 : false,
   });
@@ -161,9 +166,9 @@ export function ProjectChatPanel({
           onOpen: () => setStreamStatus("live"),
           onEvent: (event) => {
             if (!event.message) return;
-            queryClient.setQueryData<ProjectChatMessage[]>(
+            queryClient.setQueryData<InfiniteData<ProjectChatMessage[]>>(
               chatQueryKey,
-              (current = []) => upsertMessage(current, event.message!),
+              (current) => upsertHistoryMessage(current, event.message!),
             );
           },
         })
@@ -186,13 +191,14 @@ export function ProjectChatPanel({
   const sendMutation = useMutation({
     mutationFn: (text: string) =>
       projectChatApi.sendMessage(projectId, text, scope),
-    onSuccess: () => {
-      setMessage("");
+    onSuccess: (_result, content) => {
+      if (onSent) onSent(content); else setMessage("");
       void queryClient.invalidateQueries({
         queryKey: chatQueryKey,
       });
       void queryClient.invalidateQueries({ queryKey: ["credits"] });
     },
+    onSettled: () => { sending.current = false; },
   });
 
   useEffect(() => {
@@ -208,9 +214,9 @@ export function ProjectChatPanel({
       pinned: boolean;
     }) => projectChatApi.pinMessage(projectId, messageId, pinned),
     onSuccess: (updated) => {
-      queryClient.setQueryData<ProjectChatMessage[]>(
+      queryClient.setQueryData<InfiniteData<ProjectChatMessage[]>>(
         chatQueryKey,
-        (current = []) => upsertMessage(current, updated),
+        (current) => upsertHistoryMessage(current, updated),
       );
     },
   });
@@ -224,25 +230,15 @@ export function ProjectChatPanel({
     }, 2000);
   };
 
-  const rawMessages = historyQuery.data ?? [];
-
-  const sortedMessages = useMemo(() => {
-    const list = [...rawMessages];
-    return list.sort((a, b) => {
-      const timeA = new Date(a.createdAt).getTime();
-      const timeB = new Date(b.createdAt).getTime();
-
-      if (Math.abs(timeA - timeB) > 5000) {
-        return timeA - timeB;
-      }
-
-      if (a.role !== b.role) {
-        return a.role === "user" ? -1 : 1;
-      }
-
-      return timeA - timeB;
-    });
-  }, [rawMessages]);
+  const historyMessages = useMemo(() => {
+    // Pages arrive newest first. Keep the server's full-precision timestamp
+    // order; serialized dates can collapse separate turns to one millisecond.
+    const messages = new Map<string, ProjectChatMessage>();
+    for (const page of [...(historyQuery.data?.pages ?? [])].reverse()) {
+      for (const item of page) messages.set(item.id, item);
+    }
+    return [...messages.values()];
+  }, [historyQuery.data]);
 
   const pendingUserMessage = sendMutation.isPending
     ? ({
@@ -266,16 +262,18 @@ export function ProjectChatPanel({
   const visibleMessages = useMemo(
     () =>
       pendingUserMessage
-        ? [...sortedMessages, pendingUserMessage]
-        : sortedMessages,
-    [sortedMessages, pendingUserMessage],
+        ? [...historyMessages, pendingUserMessage]
+        : historyMessages,
+    [historyMessages, pendingUserMessage],
   );
 
   const { containerRef, atBottom, hasNewMessages, onScroll, jumpToLatest } = useChatScroll(visibleMessages.at(-1)?.id);
+  const historyUnavailable = historyQuery.isError && !historyQuery.data;
 
   const submit = () => {
     const text = message.trim();
-    if (!text || sendMutation.isPending || paperCount === 0 || historyQuery.isError || historyQuery.isLoading) return;
+    if (!text || sending.current || sendMutation.isPending || paperCount === 0 || historyUnavailable || historyQuery.isLoading) return;
+    sending.current = true;
     jumpToLatest();
     sendMutation.mutate(text);
   };
@@ -285,12 +283,14 @@ export function ProjectChatPanel({
     return name.charAt(0).toUpperCase();
   };
 
-  const isDisabled = sendMutation.isPending || paperCount === 0 || historyQuery.isError || historyQuery.isLoading;
+  const isDisabled = sendMutation.isPending || paperCount === 0 || historyUnavailable || historyQuery.isLoading;
 
   return (
     <div className="project-chat-panel overflow-hidden rounded-2xl border border-border/80 bg-background shadow-xs dark:border-white/10 flex flex-col">
       <div className="project-chat-context">
-        <span><LockKeyhole size={14} aria-hidden="true" />{t(scope === "private" ? "Only you can see this AI conversation." : "Visible to all project members.")}</span>
+        {scope === "private" ? (
+          <span><LockKeyhole size={14} aria-hidden="true" />{t("Only you can see this AI conversation.")}</span>
+        ) : <span />}
         <span>{paperCount} {t("papers grounded")}{scope === "team" && <span className="project-chat-connection" data-live={streamStatus === "live"} role="status"><i aria-hidden="true" />{t(streamStatus === "live" ? "Connected" : streamStatus === "reconnecting" ? "Reconnecting" : "Connecting")}</span>}</span>
       </div>
       <div className="project-chat-body">
@@ -302,12 +302,14 @@ export function ProjectChatPanel({
           className="project-chat-feed project-ai-feed"
           role="log" aria-label={t("AI conversation")} aria-live="polite" aria-relevant="additions" tabIndex={0}
         >
+          {historyQuery.hasNextPage && <Button type="button" size="sm" variant="ghost" disabled={historyQuery.isFetching} onClick={() => void historyQuery.fetchNextPage()}>{t(historyQuery.isFetchingNextPage ? "Loading…" : "Load older messages")}</Button>}
+          {historyQuery.isFetchNextPageError && <p role="alert">{t("Could not load this conversation")}</p>}
           {historyQuery.isLoading ? (
             <div className="flex h-full flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="h-6 w-6 animate-spin text-indigo-600" />
               <span>{t("Loading conversation history…")}</span>
             </div>
-          ) : historyQuery.isError ? (
+          ) : historyUnavailable ? (
             <div className="project-chat-empty" role="alert"><XCircle size={24} /><h4>{t("Could not load this conversation")}</h4><p>{t("Check your connection and project access, then try again.")}</p><Button variant="outline" size="sm" onClick={() => void historyQuery.refetch()}>{t("Try again")}</Button></div>
           ) : visibleMessages.length === 0 && paperCount === 0 ? (
             <div className="flex h-full flex-col items-center justify-center px-4 text-center">
@@ -611,14 +613,14 @@ export function ProjectChatPanel({
                         )}
 
                         <Link
-                          to={`/reports?projectId=${projectId}&fromAiMessage=${item.id}`}
+                          to={`/projects/${encodeURIComponent(projectId)}?tab=manuscripts`}
                           className="inline-flex items-center gap-1 rounded-full border border-border/80 bg-background/80 px-2.5 py-1 text-[11px] font-semibold text-muted-foreground transition hover:border-indigo-300 hover:text-indigo-600 dark:border-white/10 shadow-2xs"
                         >
                           <FileText className="h-3 w-3" />
-                          Use in report
+                          {t("Open manuscripts")}
                         </Link>
                         <Link
-                          to={`/research-gaps?projectId=${projectId}&fromAiMessage=${item.id}`}
+                          to={`/projects/${encodeURIComponent(projectId)}?tab=gaps`}
                           className="inline-flex items-center gap-1 rounded-full border border-border/80 bg-background/80 px-2.5 py-1 text-[11px] font-semibold text-muted-foreground transition hover:border-indigo-300 hover:text-indigo-600 dark:border-white/10 shadow-2xs"
                         >
                           <Search className="h-3 w-3" />
@@ -712,11 +714,16 @@ export function ProjectChatPanel({
   );
 }
 
-function upsertMessage(
-  messages: ProjectChatMessage[],
+function upsertHistoryMessage(
+  history: InfiniteData<ProjectChatMessage[]> | undefined,
   next: ProjectChatMessage,
-): ProjectChatMessage[] {
-  const index = messages.findIndex((message) => message.id === next.id);
-  if (index === -1) return [...messages, next];
-  return messages.map((message) => (message.id === next.id ? next : message));
+): InfiniteData<ProjectChatMessage[]> {
+  if (!history) return { pages: [[next]], pageParams: [undefined] };
+  const exists = history.pages.some(page => page.some(message => message.id === next.id));
+  return {
+    ...history,
+    pages: history.pages.map((page, index) => exists
+      ? page.map(message => message.id === next.id ? next : message)
+      : index === 0 ? [...page, next] : page),
+  };
 }

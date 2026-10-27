@@ -7,6 +7,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { DiscoveryResults, ProjectGapDiscovery } from "../components/project-gap-discovery";
 import { ProjectResearchWorkspace } from "../components/project-research-workspace";
+import { ProjectGapProgress } from "../components/project-gap-progress";
+import type { GapAnalysisResult } from "@trend/shared-types";
 
 const mocks = vi.hoisted(() => ({ discovery: vi.fn(), library: vi.fn(), analyze: vi.fn(), getAnalysisStatus: vi.fn() }));
 vi.mock("../api/project-research.api", () => ({ researchApi: mocks }));
@@ -27,7 +29,7 @@ beforeEach(() => {
 afterEach(async () => { await act(async () => root.unmount()); client.clear(); host.remove(); vi.unstubAllGlobals(); });
 async function settle() { await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)); }); }
 async function render(node: ReactNode = <ProjectGapDiscovery projectId="p" defaultTopic="Learning" />) { await act(async () => root.render(<QueryClientProvider client={client}><MemoryRouter>{node}</MemoryRouter></QueryClientProvider>)); await settle(); }
-function button(text = "Analyze papers") { return [...host.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === text)!; }
+function button(text = "Analyze papers") { return [...host.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent?.startsWith(text))!; }
 async function click(text?: string) { await act(async () => button(text).click()); await settle(); }
 
 it("shows the eligible count and one primary action without competing workflow tabs", async () => {
@@ -57,6 +59,77 @@ it("submits only selected eligible papers into the existing analyze API", async 
 it("resumes team progress after reload and disables a duplicate run", async () => {
   mocks.discovery.mockResolvedValue({ eligibleCount: 3, minPapers: 2, maxPapers: 10, latestAnalysis: { ...ready, status: "analyzing", discovery: { ...result, stage: "synthesizing" } } });
   await render(); expect(host.textContent).toContain("Comparing findings across papers"); expect(button("Analysis in progress").disabled).toBe(true); expect(mocks.analyze).not.toHaveBeenCalled();
+  const progress = host.querySelector('[aria-label="Analysis progress"]')!;
+  expect(progress.compareDocumentPosition(host.querySelector(".gap-discovery-workbench")!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(progress.querySelector('[aria-current="step"]')?.textContent).toContain("Compare findings");
+  expect(progress.textContent).toContain("The papers have been read.");
+  expect(progress.textContent).toContain("Step 2 of 3");
+  expect(progress.textContent).toContain("You can leave this page.");
+  expect(progress.querySelector('[role="progressbar"]')).toBeNull();
+});
+
+it("shows paper progress only for extraction, using the run total rather than the current selection", async () => {
+  mocks.discovery.mockResolvedValue({ eligibleCount: 3, minPapers: 2, maxPapers: 10, latestAnalysis: { ...ready, status: "analyzing", discovery: { ...result, stage: "extracting", completed: 1 } } });
+  await render();
+  const progress = host.querySelector('[role="progressbar"]')!;
+  expect(progress.getAttribute("aria-valuenow")).toBe("1");
+  expect(progress.getAttribute("aria-valuemax")).toBe("2");
+  expect(progress.getAttribute("aria-valuetext")).toBe("1 / 2 papers analyzed");
+  expect(host.querySelector('[aria-current="step"]')?.textContent).toContain("Analyze source papers");
+});
+
+it("shows the final generation step as still running even after all papers were analyzed", async () => {
+  mocks.discovery.mockResolvedValue({ eligibleCount: 3, minPapers: 2, maxPapers: 10, latestAnalysis: { ...ready, status: "analyzing", discovery: { ...result, stage: "generating" } } });
+  await render();
+  expect(host.textContent).toContain("Step 3 of 3");
+  expect(host.querySelector('[aria-current="step"]')?.textContent).toContain("Identify research gaps");
+  expect(host.querySelectorAll('[data-state="complete"]')).toHaveLength(2);
+  expect(host.querySelector('[role="progressbar"]')).toBeNull();
+  expect(button("Analysis in progress").disabled).toBe(true);
+  expect(host.textContent).not.toContain("candidate gaps found");
+});
+
+it("distinguishes a pending request from an accepted job and the previous completed stage", async () => {
+  mocks.discovery.mockResolvedValue({ eligibleCount: 3, minPapers: 2, maxPapers: 10, latestAnalysis: ready });
+  mocks.analyze.mockImplementation(() => new Promise(() => {}));
+  await render(); await click("Change paper selection"); await click();
+  const progress = host.querySelector('[aria-label="Analysis progress"]')!;
+  expect(progress.textContent).toContain("Starting analysis");
+  expect(progress.textContent).toContain("Keep this page open until your request is accepted.");
+  expect(progress.textContent).not.toContain("You can leave this page.");
+  expect(progress.textContent).not.toContain("2 / 2 papers analyzed");
+  expect(progress.querySelectorAll('[data-state="complete"]')).toHaveLength(0);
+  expect(button("Analysis in progress").disabled).toBe(true);
+  expect(host.textContent).not.toContain("candidate gaps found");
+});
+
+it("can show queued progress before paper counts are available", async () => {
+  await render(<ProjectGapProgress analysis={{ status: "queued" } as GapAnalysisResult} selectedCount={0} />);
+  expect(host.textContent).toContain("Waiting for analysis");
+  expect(host.textContent).not.toContain("0 / 0");
+  expect(host.querySelector('[role="progressbar"]')).toBeNull();
+});
+
+it("collapses the selector when saved results are ready and preserves edits when reopened", async () => {
+  mocks.discovery.mockResolvedValue({ eligibleCount: 3, minPapers: 2, maxPapers: 10, latestAnalysis: ready });
+  await render();
+  const workbench = host.querySelector<HTMLElement>(".gap-discovery-workbench")!;
+  expect(workbench.hidden).toBe(true);
+  expect(button("Change paper selection").getAttribute("aria-expanded")).toBe("false");
+  await click("Change paper selection");
+  expect(workbench.hidden).toBe(false);
+  await act(async () => host.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')[1]!.click());
+  await click("Hide paper selection");
+  expect(workbench.hidden).toBe(true);
+  await click("Change paper selection");
+  expect(host.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')[1]!.checked).toBe(false);
+  expect(mocks.analyze).not.toHaveBeenCalled();
+});
+
+it("uses the saved source count even when extraction details are not in the overview", async () => {
+  mocks.discovery.mockResolvedValue({ eligibleCount: 3, minPapers: 2, maxPapers: 10, latestAnalysis: { ...ready, selectedPaperIds: ["p1", "p2", "p3"], discovery: { ...result, papers: [] } } });
+  await render();
+  expect(host.querySelector(".gap-discovery-source-summary")?.textContent).toContain("Based on 3 analyzed papers");
 });
 it("retains selections after a failed enqueue", async () => {
   mocks.analyze.mockRejectedValue(new Error("Offline")); await render(); await click();
@@ -66,6 +139,7 @@ it("retains selections after a failed enqueue", async () => {
 it("shows source passages, coverage, missing fields and synthesis in saved results", async () => {
   mocks.discovery.mockResolvedValue({ eligibleCount: 3, minPapers: 2, maxPapers: 10, latestAnalysis: ready }); await render();
   expect(host.textContent).toContain("2 candidate gaps found"); expect(host.textContent).not.toContain("Analysis results and source evidence");
+  expect(host.querySelector('[aria-label="Analysis progress"]')).toBeNull();
   await render(<DiscoveryResults projectId="p" result={result} />); expect(host.textContent).toContain("Similar outcomes [1] [2]"); expect(host.textContent).toContain("Does it replicate?");
   expect(host.textContent).toContain("Not reported in the available sources"); expect(host.textContent).toContain("Abstract-only coverage"); expect(host.textContent).toContain("chunk-1");
   expect(host.querySelector("script")).toBeNull(); expect(host.textContent).toContain("<script>bad()</script>");
@@ -73,6 +147,7 @@ it("shows source passages, coverage, missing fields and synthesis in saved resul
 it("keeps a failed run compact without presenting partial extraction as results", async () => {
   mocks.discovery.mockResolvedValue({ eligibleCount: 3, minPapers: 2, maxPapers: 10, latestAnalysis: { ...ready, status: "failed", errorMessage: "Source changed" } }); await render();
   expect(host.textContent).toContain("Source changed"); expect(host.textContent).not.toContain("First source"); expect(button().disabled).toBe(false);
+  expect(host.querySelector('[aria-label="Analysis progress"]')).toBeNull();
 });
 it("blocks writes for archived projects and shows loading and API error states", async () => {
   await render(<ProjectGapDiscovery projectId="p" defaultTopic="Learning" readOnly />); expect(button().disabled).toBe(true);
@@ -110,8 +185,30 @@ it("preserves selections while searching and keeps the analysis payload scoped t
   await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "Relevant study 2"); input.dispatchEvent(new Event("input", { bubbles: true })); });
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 300)); }); await settle();
   expect(mocks.library).toHaveBeenLastCalledWith("p", { state: "INCLUDED", page: 1, pageSize: 50, q: "Relevant study 2" });
-  expect(host.textContent).toContain("Selected outside this view"); expect(host.textContent).toContain("3 selected for analysis");
+  await click("Selected papers");
+  const chosen = host.querySelector('[role="group"][aria-label="Selected papers"]')!;
+  expect(chosen.textContent).toContain("Relevant study 1"); expect(chosen.textContent).toContain("Relevant study 3");
+  expect(host.textContent).toContain("3 selected for analysis");
   await click(); expect(mocks.analyze.mock.calls[0]?.[0].selectedPaperIds).toEqual(["p1", "p2", "p3"]);
+});
+it("lets the user review and remove selected papers without a second list or confirmation", async () => {
+  await render();
+  await act(async () => host.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')[1]!.click());
+  await click("Selected papers");
+  expect(host.querySelectorAll('input[type="checkbox"]')).toHaveLength(2);
+  expect(host.querySelector('[role="group"][aria-label="Selected papers"]')?.textContent).not.toContain("Relevant study 2");
+  await click("Relevant papers");
+  expect(host.querySelectorAll('input[type="checkbox"]')).toHaveLength(3);
+  expect(host.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')[1]!.checked).toBe(false);
+  await click();
+  expect(mocks.analyze.mock.calls[0]?.[0].selectedPaperIds).toEqual(["p1", "p3"]);
+});
+it("keeps a paper-loading failure visible in the document list", async () => {
+  mocks.library.mockRejectedValue(new Error("Library unavailable"));
+  await render();
+  expect(host.querySelector('[role="alert"]')?.closest('[hidden]')).toBeNull();
+  expect(host.querySelector('[role="alert"]')).not.toBeNull();
+  expect(button().disabled).toBe(true);
 });
 it("explains that changed selections do not change already saved results", async () => {
   mocks.discovery.mockResolvedValue({ eligibleCount: 3, minPapers: 2, maxPapers: 10, latestAnalysis: ready });

@@ -176,7 +176,7 @@ export function WorkspaceOverviewPanel({ project }: { project: IProject }) {
     { count: data.attention.mentorFeedback, label: "Mentor feedback is waiting for a team response", tab: "plan" },
     { count: data.attention.overdueTasks, label: "Overdue tasks", tab: "tasks" },
     { count: data.attention.blockedTasks, label: "Blocked tasks", tab: "tasks" },
-    { count: data.attention.reviewResponses, label: "Review responses requiring action", tab: "reports" },
+    { count: data.attention.reviewResponses, label: "Review responses requiring action", tab: "reviews" },
   ].filter(item => item.count > 0);
 
   // 6 KPI Metric Cards
@@ -489,7 +489,7 @@ export function WorkspaceOverviewPanel({ project }: { project: IProject }) {
                   {data.recentArtifacts.map(item => (
                     <li key={item.id}>
                       <Link
-                        to={item.kind === "REPORT" ? `/reports/${encodeURIComponent(item.id)}` : projectSectionHref(id, "reports")}
+                        to={item.kind === "REPORT" ? `/reports/${encodeURIComponent(item.id)}` : `/projects/${encodeURIComponent(id)}/manuscripts/${encodeURIComponent(item.id)}`}
                         className="group flex items-center justify-between gap-3 p-3 rounded-xl border border-border/60 hover:border-primary/40 hover:bg-muted/40 transition-all text-sm"
                       >
                         <span className="font-semibold text-foreground group-hover:text-primary truncate">{item.title}</span>
@@ -529,7 +529,7 @@ export function WorkspaceOverviewPanel({ project }: { project: IProject }) {
                 {attention.map(item => (
                   <li key={item.label}>
                     <Link
-                      to={projectSectionHref(id, item.tab)}
+                      to={item.tab === "reviews" ? "/reviews" : projectSectionHref(id, item.tab)}
                       className="flex items-center gap-3 p-2.5 rounded-xl bg-card/80 border border-amber-200 dark:border-amber-800 hover:border-amber-400 text-sm text-foreground transition-all"
                     >
                       <span className="h-5 min-w-[22px] px-2 rounded-full bg-amber-500 text-white font-bold flex items-center justify-center text-xs">
