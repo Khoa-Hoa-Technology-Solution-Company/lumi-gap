@@ -1,0 +1,54 @@
+@startuml
+!pragma layout elk
+skinparam dpi 200
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam backgroundColor #FFFFFF
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam ArrowFontSize 12
+skinparam ArrowFontColor #4A5A6A
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam entity {
+  BackgroundColor #EFE6F8
+  BorderColor #6A3FA0
+}
+skinparam legend {
+  BackgroundColor #FFF8E1
+  BorderColor #C9B36B
+  FontSize 12
+}
+skinparam stereotypeFontSize 10
+hide circle
+hide empty methods
+title Physical ERD - Research contributions (6 of 7)
+entity research_contributions #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  contributor_id : uuid <<FK users>>
+  project_id : uuid <<FK projects>>
+  submission_id : uuid <<FK>>
+  verified_by_id : uuid <<FK users>>
+  source_review_assignment_id : uuid <<FK,UK>>
+  source_project_contribution_id : uuid <<FK project_contribution_proposals>>
+  ..
+  contribution_type : varchar(48)
+  verification_status : varchar(32)
+}
+entity submissions #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+entity reviewer_assignments #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+reviewer_assignments |o--o| research_contributions
+submissions |o--o{ research_contributions
+legend bottom
+Crow's-foot notation. PK primary key, FK foreign key, UK unique key.
+FK <name>: the foreign key references a table that is not drawn here.
+Dashed boxes belong to another diagram (key only).
+endlegend
+@enduml

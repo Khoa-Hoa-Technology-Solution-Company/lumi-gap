@@ -24,7 +24,7 @@ skinparam legend {
 skinparam stereotypeFontSize 10
 hide circle
 hide empty methods
-title Physical ERD - Projects, members and planning (1 of 3)
+title Physical ERD - Projects, members and planning (1 of 9)
 entity projects #EFE6F8;line:6A3FA0 {
   * id : uuid <<PK>>
   --

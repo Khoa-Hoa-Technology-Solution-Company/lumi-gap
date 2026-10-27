@@ -24,7 +24,7 @@ skinparam legend {
 skinparam stereotypeFontSize 10
 hide circle
 hide empty methods
-title Physical ERD - Review requests, assignments and external invitations (2 of 4)
+title Physical ERD - Review requests and assignments (2 of 7)
 entity review_requests #EFE6F8;line:6A3FA0 {
   * id : uuid <<PK>>
   --
@@ -50,20 +50,6 @@ entity reviewer_assignments #EFE6F8;line:6A3FA0 {
   status : varchar(24)
   decision : varchar(24)
 }
-entity external_review_invitations #EFE6F8;line:6A3FA0 {
-  * id : uuid <<PK>>
-  --
-  invited_user_id : uuid <<FK users>>
-  requester_id : uuid <<FK users>>
-  submission_id : uuid <<FK>>
-  project_id : uuid <<FK>>
-  template_version_id : uuid <<FK>>
-  artifact_revision_id : uuid <<FK>>
-  token_hash : varchar(128) <<UK>>
-  ..
-  reviewer_email : varchar(320)
-  status : varchar(24)
-}
 entity projects #FFFFFF;line:6A3FA0;line.dashed {
   * id : uuid <<PK>>
 }
@@ -76,15 +62,11 @@ entity submission_revisions #FFFFFF;line:6A3FA0;line.dashed {
 entity review_template_versions #FFFFFF;line:6A3FA0;line.dashed {
   * id : uuid <<PK>>
 }
-projects ||--o{ external_review_invitations
 projects ||--o{ review_requests
 review_requests |o--o| reviewer_assignments
-review_template_versions ||--o{ external_review_invitations
 review_template_versions ||--o{ review_requests
-submission_revisions ||--o{ external_review_invitations
 submission_revisions ||--o{ review_requests
 submission_revisions |o--o{ reviewer_assignments
-submissions ||--o{ external_review_invitations
 submissions ||--o{ review_requests
 submissions ||--o{ reviewer_assignments
 legend bottom

@@ -2,12 +2,12 @@
  "title": "Use Case Diagram 3(a) - Community, lecturer verification and mentoring",
  "ucs": [
   [
-   "UC34",
-   "UC-34 Participate in academic forum"
-  ],
-  [
    "UC45",
    "UC-45 Browse lecturer directory"
+  ],
+  [
+   "UC34",
+   "UC-34 Participate in academic forum"
   ],
   [
    "UC35",
@@ -18,12 +18,12 @@
    "UC-36 Report and moderate content"
   ],
   [
-   "UC37",
-   "UC-37 Submit lecturer verification"
-  ],
-  [
    "UC33",
    "UC-33 Review lecturer verification"
+  ],
+  [
+   "UC37",
+   "UC-37 Submit lecturer verification"
   ],
   [
    "UC38",

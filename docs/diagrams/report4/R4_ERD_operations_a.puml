@@ -24,7 +24,7 @@ skinparam legend {
 skinparam stereotypeFontSize 10
 hide circle
 hide empty methods
-title Physical ERD - Notifications, logs and tool runs (1 of 2)
+title Physical ERD - Notifications, logs and tool runs (1 of 3)
 entity notifications #EFE6F8;line:6A3FA0 {
   * id : uuid <<PK>>
   --
@@ -34,6 +34,12 @@ entity notifications #EFE6F8;line:6A3FA0 {
   ..
   role : varchar(32)
   title : text
+}
+entity notification_reads #EFE6F8;line:6A3FA0 {
+  * notification_id : uuid <<PK,FK>>
+  * user_id : uuid <<PK,FK users>>
+  --
+  read_at : timestamptz
 }
 entity audit_logs #EFE6F8;line:6A3FA0 {
   * id : uuid <<PK>>
@@ -74,6 +80,7 @@ entity papers #FFFFFF;line:6A3FA0;line.dashed {
 entity reports #FFFFFF;line:6A3FA0;line.dashed {
   * id : uuid <<PK>>
 }
+notifications ||--o{ notification_reads
 papers |o--o{ notifications
 reports |o--o{ mcp_tool_runs
 legend bottom

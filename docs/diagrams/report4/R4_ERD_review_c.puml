@@ -24,7 +24,7 @@ skinparam legend {
 skinparam stereotypeFontSize 10
 hide circle
 hide empty methods
-title Physical ERD - Review templates and versions (3 of 4)
+title Physical ERD - Review templates and versions (3 of 7)
 entity review_templates #EFE6F8;line:6A3FA0 {
   * id : uuid <<PK>>
   --
@@ -44,6 +44,23 @@ entity review_template_versions #EFE6F8;line:6A3FA0 {
   version_number : integer
   status : varchar(16)
 }
+entity review_criteria #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  template_id : uuid <<FK>>
+  version_id : uuid <<FK>>
+  ..
+  key : varchar(80)
+  label : varchar(160)
+}
+entity review_criterion_levels #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  criterion_id : uuid <<FK>>
+  ..
+  label : varchar(120)
+  description : text
+}
 entity projects #FFFFFF;line:6A3FA0;line.dashed {
   * id : uuid <<PK>>
 }
@@ -56,12 +73,19 @@ entity review_requests #FFFFFF;line:6A3FA0;line.dashed {
 entity external_review_invitations #FFFFFF;line:6A3FA0;line.dashed {
   * id : uuid <<PK>>
 }
+entity review_responses #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
 projects |o--o{ review_templates
+review_criteria ||--o{ review_criterion_levels
+review_criterion_levels |o--o{ review_responses
 review_template_versions ||--o{ external_review_invitations
 review_template_versions |o--o{ human_reviews
+review_template_versions ||--o{ review_criteria
 review_template_versions ||--o{ review_requests
 review_template_versions |o--o{ review_templates : active_version_id
 review_templates |o--o{ human_reviews
+review_templates ||--o{ review_criteria
 review_templates ||--o{ review_template_versions : template_id
 legend bottom
 Crow's-foot notation. PK primary key, FK foreign key, UK unique key.

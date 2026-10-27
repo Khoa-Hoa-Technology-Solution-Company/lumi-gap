@@ -24,7 +24,7 @@ skinparam legend {
 skinparam stereotypeFontSize 10
 hide circle
 hide empty methods
-title Physical ERD - Submissions, revisions and AI pre-review (1 of 4)
+title Physical ERD - Submissions, revisions and AI pre-review (1 of 7)
 entity submissions #EFE6F8;line:6A3FA0 {
   * id : uuid <<PK>>
   --
@@ -62,38 +62,13 @@ entity ai_pre_reviews #EFE6F8;line:6A3FA0 {
   provider : varchar(80)
   status : varchar(24)
 }
-entity ai_runs #EFE6F8;line:6A3FA0 {
-  * id : uuid <<PK>>
-  --
-  owner_id : uuid <<FK users>>
-  project_id : uuid <<FK projects>>
-  workspace_id : uuid <<FK draft_workspaces>>
-  ..
-  job_type : varchar(32)
-  status : varchar(24)
-}
-entity research_contributions #EFE6F8;line:6A3FA0 {
-  * id : uuid <<PK>>
-  --
-  contributor_id : uuid <<FK users>>
-  project_id : uuid <<FK projects>>
-  submission_id : uuid <<FK>>
-  verified_by_id : uuid <<FK users>>
-  source_review_assignment_id : uuid <<FK,UK>>
-  source_project_contribution_id : uuid <<FK project_contribution_proposals>>
-  ..
-  contribution_type : varchar(48)
-  verification_status : varchar(32)
-}
 entity reviewer_assignments #FFFFFF;line:6A3FA0;line.dashed {
   * id : uuid <<PK>>
 }
-reviewer_assignments |o--o| research_contributions
 submission_revisions |o--o{ reviewer_assignments
 submission_revisions |o--o{ submission_revisions : source_revision_id
 submission_revisions |o--o{ submissions : current_revision_id
 submissions ||--o{ ai_pre_reviews
-submissions |o--o{ research_contributions
 submissions ||--o{ reviewer_assignments
 submissions ||--o{ submission_authors
 submissions ||--o{ submission_revisions : submission_id

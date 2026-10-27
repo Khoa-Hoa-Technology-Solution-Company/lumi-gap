@@ -1,0 +1,74 @@
+@startuml
+!pragma layout elk
+skinparam dpi 200
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam backgroundColor #FFFFFF
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam ArrowFontSize 12
+skinparam ArrowFontColor #4A5A6A
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam entity {
+  BackgroundColor #EFE6F8
+  BorderColor #6A3FA0
+}
+skinparam legend {
+  BackgroundColor #FFF8E1
+  BorderColor #C9B36B
+  FontSize 12
+}
+skinparam stereotypeFontSize 10
+hide circle
+hide empty methods
+title Physical ERD - Academic programs and verification uploads (6 of 7)
+entity academic_programs #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  institution_id : uuid <<FK>>
+  campus_id : uuid <<FK>>
+  ..
+  code : varchar(64)
+  name : varchar(200)
+}
+entity verification_evidence_uploads #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  user_id : uuid <<FK>>
+  institution_id : uuid <<FK>>
+  storage_key : varchar(240) <<UK>>
+  ..
+  position_title : varchar(160)
+  file_name : varchar(180)
+}
+entity verification_evidence_deletions #EFE6F8;line:6A3FA0 {
+  * storage_key : varchar(240) <<PK>>
+  --
+  user_id : uuid
+  not_before : timestamptz
+}
+entity users #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+entity institutions #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+entity campuses #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+entity affiliations #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+academic_programs |o--o{ affiliations
+campuses |o--o{ academic_programs
+institutions ||--o{ academic_programs
+institutions ||--o{ verification_evidence_uploads
+users ||--o{ verification_evidence_uploads
+legend bottom
+Crow's-foot notation. PK primary key, FK foreign key, UK unique key.
+Dashed boxes belong to another diagram (key only).
+endlegend
+@enduml

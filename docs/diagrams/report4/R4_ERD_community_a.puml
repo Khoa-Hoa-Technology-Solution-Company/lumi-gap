@@ -24,7 +24,7 @@ skinparam legend {
 skinparam stereotypeFontSize 10
 hide circle
 hide empty methods
-title Physical ERD - Communities and forum content (1 of 3)
+title Physical ERD - Communities and forum content (1 of 5)
 entity communities #EFE6F8;line:6A3FA0 {
   * id : uuid <<PK>>
   --

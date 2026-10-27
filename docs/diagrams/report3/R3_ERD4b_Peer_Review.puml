@@ -50,20 +50,6 @@ entity ReviewerAssignment #EFE6F8;line:6A3FA0 {
   status
   decision
 }
-entity ExternalReviewInvitation #EFE6F8;line:6A3FA0 {
-  * id <<PK>>
-  --
-  invitedUserId <<FK User>>
-  requesterId <<FK User>>
-  submissionId <<FK>>
-  projectId <<FK>>
-  templateVersionId <<FK>>
-  artifactRevisionId <<FK>>
-  tokenHash <<UK>>
-  ..
-  reviewerEmail
-  status
-}
 entity Project #FFFFFF;line:6A3FA0;line.dashed {
   * id <<PK>>
 }
@@ -76,15 +62,11 @@ entity SubmissionRevision #FFFFFF;line:6A3FA0;line.dashed {
 entity ReviewTemplateVersion #FFFFFF;line:6A3FA0;line.dashed {
   * id <<PK>>
 }
-Project ||--o{ ExternalReviewInvitation
 Project ||--o{ ReviewRequest
 ReviewRequest |o--o| ReviewerAssignment
-ReviewTemplateVersion ||--o{ ExternalReviewInvitation
 ReviewTemplateVersion ||--o{ ReviewRequest
-SubmissionRevision ||--o{ ExternalReviewInvitation
 SubmissionRevision ||--o{ ReviewRequest
 SubmissionRevision |o--o{ ReviewerAssignment
-Submission ||--o{ ExternalReviewInvitation
 Submission ||--o{ ReviewRequest
 Submission ||--o{ ReviewerAssignment
 legend bottom

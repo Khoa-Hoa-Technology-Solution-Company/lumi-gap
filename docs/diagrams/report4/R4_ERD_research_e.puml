@@ -1,0 +1,69 @@
+@startuml
+!pragma layout elk
+skinparam dpi 200
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam backgroundColor #FFFFFF
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam ArrowFontSize 12
+skinparam ArrowFontColor #4A5A6A
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam entity {
+  BackgroundColor #EFE6F8
+  BorderColor #6A3FA0
+}
+skinparam legend {
+  BackgroundColor #FFF8E1
+  BorderColor #C9B36B
+  FontSize 12
+}
+skinparam stereotypeFontSize 10
+hide circle
+hide empty methods
+title Physical ERD - Gap directions (5 of 7)
+entity gap_directions #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  gap_id : uuid <<FK,UK>>
+  credit_transaction_id : uuid <<FK>>
+  ..
+  model : text
+  prompt_version : text
+}
+entity gap_direction_items #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  directions_id : uuid <<FK>>
+  ..
+  title : text
+  rationale : text
+}
+entity gap_direction_papers #EFE6F8;line:6A3FA0 {
+  * direction_id : uuid <<PK,FK>>
+  * paper_id : uuid <<PK,FK>>
+  --
+  position : integer
+}
+entity research_gaps #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+entity credit_transactions #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+entity papers #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+credit_transactions |o--o{ gap_directions
+gap_direction_items ||--o{ gap_direction_papers
+gap_directions ||--o{ gap_direction_items
+papers ||--o{ gap_direction_papers
+research_gaps ||--o| gap_directions
+legend bottom
+Crow's-foot notation. PK primary key, FK foreign key, UK unique key.
+Dashed boxes belong to another diagram (key only).
+endlegend
+@enduml

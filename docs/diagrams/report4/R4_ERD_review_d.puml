@@ -24,7 +24,7 @@ skinparam legend {
 skinparam stereotypeFontSize 10
 hide circle
 hide empty methods
-title Physical ERD - Human reviews and revision items (4 of 4)
+title Physical ERD - Human reviews and revision items (4 of 7)
 entity human_reviews #EFE6F8;line:6A3FA0 {
   * id : uuid <<PK>>
   --

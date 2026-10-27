@@ -1,0 +1,85 @@
+@startuml
+!pragma layout elk
+skinparam dpi 200
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam backgroundColor #FFFFFF
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam ArrowFontSize 12
+skinparam ArrowFontColor #4A5A6A
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam entity {
+  BackgroundColor #EFE6F8
+  BorderColor #6A3FA0
+}
+skinparam legend {
+  BackgroundColor #FFF8E1
+  BorderColor #C9B36B
+  FontSize 12
+}
+skinparam stereotypeFontSize 10
+hide circle
+hide empty methods
+title Physical ERD - Project files, comments and membership history (8 of 9)
+entity project_membership_periods #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  project_id : uuid <<FK>>
+  user_id : uuid <<FK users>>
+  ..
+  joined_at : timestamptz
+  left_at : timestamptz
+}
+entity project_paper_files #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  project_id : uuid <<FK>>
+  paper_id : uuid <<FK>>
+  uploaded_by_id : uuid <<FK users>>
+  ..
+  sha256 : varchar(64)
+  byte_size : integer
+}
+entity project_workspace_comments #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  project_id : uuid <<FK>>
+  author_id : uuid <<FK users>>
+  ..
+  target_kind : varchar(32)
+  target_id : uuid
+}
+entity project_workspace_revisions #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  project_id : uuid <<FK>>
+  actor_id : uuid <<FK users>>
+  ..
+  entity_kind : varchar(32)
+  entity_id : uuid
+}
+entity projects #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+entity project_papers #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+entity papers #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+papers ||--o{ project_paper_files
+project_papers ||--o{ project_paper_files
+projects ||--o{ project_membership_periods
+projects ||--o{ project_paper_files
+projects ||--o{ project_workspace_comments
+projects ||--o{ project_workspace_revisions
+legend bottom
+Crow's-foot notation. PK primary key, FK foreign key, UK unique key.
+FK <name>: the foreign key references a table that is not drawn here.
+Dashed boxes belong to another diagram (key only).
+endlegend
+@enduml

@@ -24,7 +24,7 @@ skinparam legend {
 skinparam stereotypeFontSize 10
 hide circle
 hide empty methods
-title Physical ERD - Research gaps and analyses (2 of 3)
+title Physical ERD - Research gaps and analyses (2 of 7)
 entity gap_analyses #EFE6F8;line:6A3FA0 {
   * id : uuid <<PK>>
   --

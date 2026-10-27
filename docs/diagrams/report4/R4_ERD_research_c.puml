@@ -24,7 +24,7 @@ skinparam legend {
 skinparam stereotypeFontSize 10
 hide circle
 hide empty methods
-title Physical ERD - Gap evidence, validation and closure (3 of 3)
+title Physical ERD - Gap evidence, validation and closure (3 of 7)
 entity gap_evidence_records #EFE6F8;line:6A3FA0 {
   * id : uuid <<PK>>
   --

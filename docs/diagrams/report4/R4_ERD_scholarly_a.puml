@@ -24,7 +24,7 @@ skinparam legend {
 skinparam stereotypeFontSize 10
 hide circle
 hide empty methods
-title Physical ERD - Scholarly corpus: papers, authors and topics (1 of 2)
+title Physical ERD - Scholarly corpus: papers, authors and topics (1 of 4)
 entity papers #EFE6F8;line:6A3FA0 {
   * id : uuid <<PK>>
   --

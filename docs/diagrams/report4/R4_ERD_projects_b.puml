@@ -24,7 +24,7 @@ skinparam legend {
 skinparam stereotypeFontSize 10
 hide circle
 hide empty methods
-title Physical ERD - Mentorship, recruitment and evidence (2 of 3)
+title Physical ERD - Mentorship, recruitment and evidence (2 of 9)
 entity mentorship_requests #EFE6F8;line:6A3FA0 {
   * id : uuid <<PK>>
   --
