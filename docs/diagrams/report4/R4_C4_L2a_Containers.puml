@@ -1,0 +1,34 @@
+@startuml R4_C4_L2a_Containers
+!pragma layout smetana
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam wrapWidth 260
+skinparam rectangle {
+  roundCorner 12
+}
+title Container diagram (C4 level 2a): LumiGap core runtime
+rectangle "LumiGap [Software System]" as N0 #line.dashed {
+  rectangle "Web SPA\n[React, Vite, nginx]\nStatic build; API + WebSocket" as N2
+  rectangle "Express API\n[Node 22, Express 5, Prisma]\nREST /api/v1, /health, /ready\nWebSocket (Yjs editor)\nJWT auth, rate limiting\n39 module folders" as N3
+  database "Redis 7\n[BullMQ queues]\nLLM cache, rate limits" as N4
+  rectangle "BullMQ workers\n[Node 22, 11 entry files]\nsrc/workers: report, gaps, ai-jobs, embedding, paper-analysis, notification, corpus-validation, community-summary, manuscript-compile, sync, openalex-ingest" as N5
+  database "File storage\n[local | R2 | Cloudinary]\nPDFs, evidence, images" as N6
+  database "PostgreSQL 16 + pgvector\n[pgvector:0.8.1-pg16]\nSystem of record, embeddings" as N7
+}
+actor "Users\n[Person]\nGuest, researcher, lecturer, admin" as N1
+N1 --> N2 : "uses\n[HTTPS]"
+N2 --> N3 : "REST\n[HTTPS, WSS]"
+N3 --> N4 : "enqueue\n[Redis]"
+N4 --> N5 : "jobs\n[BullMQ]"
+N3 --> N6 : "files"
+N3 --> N7 : "SQL\n[Prisma]"
+N5 --> N7 : "SQL\n[Prisma]"
+legend bottom
+Legend
+Person
+Web / client
+API
+Workers
+Data store
+endlegend
+@enduml

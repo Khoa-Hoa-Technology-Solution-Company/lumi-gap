@@ -22,7 +22,7 @@ from FPT policy/legal owners before production launch:
 
 Copyright intake stores bounded text and URLs only. Forum posts do not accept
 arbitrary file uploads. Policy pages and final retention/legal durations remain
-operational product work and are not invented in this implementation.
+operational product work and are not defined here.
 
 ## Completed moderation workflows
 
@@ -77,10 +77,3 @@ operational product work and are not invented in this implementation.
   keeps legacy response reports in the new community. Report creation locks
   content before taking its snapshot so a concurrent move cannot leave an
   active report in an outdated community.
-
-Verification: backend Forum 68/68, frontend Forum/Home 157/157; backend/web
-TypeScript, targeted frontend ESLint and production web build pass. Initial
-bundle graph is 862.3 KiB against the 900 KiB budget. Live browser checks cover
-the Vietnamese missing-token state and its return-to-Forum link. Privileged
-decisions and concurrent database behavior are covered with isolated test
-fixtures. Real email delivery was mocked in those tests.

@@ -1,0 +1,98 @@
+{
+ "title": "Use Case Diagram 2(a) - Reports, research gaps and AI paper review",
+ "ucs": [
+  [
+   "UC12",
+   "UC-12 Generate research report"
+  ],
+  [
+   "UC13",
+   "UC-13 Discover research gaps"
+  ],
+  [
+   "UC14",
+   "UC-14 Validate research gap"
+  ],
+  [
+   "UC15",
+   "UC-15 Check gap closure"
+  ],
+  [
+   "UC23",
+   "UC-23 Obtain AI paper review"
+  ],
+  [
+   "UC24",
+   "UC-24 Check paper format"
+  ]
+ ],
+ "actors": [
+  [
+   "U",
+   "User"
+  ],
+  [
+   "GE",
+   "Gap validation expert\n(capability)"
+  ]
+ ],
+ "gens": [
+  [
+   "GE",
+   "U"
+  ]
+ ],
+ "exts": [
+  [
+   "LLM",
+   "LLM provider"
+  ],
+  [
+   "OA",
+   "OpenAlex"
+  ]
+ ],
+ "links": [
+  [
+   "U",
+   "UC12"
+  ],
+  [
+   "U",
+   "UC13"
+  ],
+  [
+   "U",
+   "UC15"
+  ],
+  [
+   "U",
+   "UC23"
+  ],
+  [
+   "U",
+   "UC24"
+  ],
+  [
+   "GE",
+   "UC14"
+  ],
+  [
+   "UC12",
+   "LLM"
+  ],
+  [
+   "UC13",
+   "LLM"
+  ],
+  [
+   "UC15",
+   "OA"
+  ],
+  [
+   "UC15",
+   "LLM"
+  ]
+ ],
+ "rels": []
+}

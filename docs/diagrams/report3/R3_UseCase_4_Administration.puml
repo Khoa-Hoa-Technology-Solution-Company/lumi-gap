@@ -1,0 +1,55 @@
+' Rendered image produced by ucdraw2.py from R3_UseCase_4_Administration.uc.json; this file is the canonical UML source
+@startuml
+!pragma layout smetana
+skinparam dpi 150
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam BorderColor #2F6DB5
+skinparam BackgroundColor #FFFFFF
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam usecase {
+  BackgroundColor #EAF2FB
+  BorderColor #2F6DB5
+}
+skinparam actor {
+  BackgroundColor #FFFFFF
+  BorderColor #1B2A3A
+}
+skinparam entity {
+  BackgroundColor #F7FAFD
+  BorderColor #2F6DB5
+}
+skinparam rectangle {
+  BackgroundColor #F7F9FC
+  BorderColor #2F6DB5
+}
+skinparam actorStyle awesome
+skinparam actor<<external system>> {
+  BackgroundColor #F0F1F3
+  BorderColor #8A8F98
+}
+left to right direction
+title Use Case Diagram 4 - Administration
+actor "Administrator" as AD
+actor "OpenAlex" as OA <<external system>>
+rectangle "LumiGap" {
+  usecase "UC-29\nManage user accounts" as UC29
+  usecase "UC-30\nManage paper corpus" as UC30
+  usecase "UC-31\nOperate sync and ingestion" as UC31
+  usecase "UC-32\nMonitor pipeline and evaluate quality" as UC32
+  usecase "UC-33\nReview lecturer verification" as UC33
+  usecase "UC-36\nReport and moderate content" as UC36
+}
+AD -- UC29
+AD -- UC30
+AD -- UC31
+AD -- UC32
+AD -- UC33
+AD -- UC36
+UC31 -- OA
+@enduml

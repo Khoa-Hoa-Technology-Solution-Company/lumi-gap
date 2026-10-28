@@ -1,0 +1,69 @@
+@startuml
+!pragma layout elk
+skinparam dpi 200
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam backgroundColor #FFFFFF
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam ArrowFontSize 12
+skinparam ArrowFontColor #4A5A6A
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam entity {
+  BackgroundColor #EFE6F8
+  BorderColor #6A3FA0
+}
+skinparam legend {
+  BackgroundColor #FFF8E1
+  BorderColor #C9B36B
+  FontSize 12
+}
+skinparam stereotypeFontSize 10
+hide circle
+hide empty methods
+title Logical ERD 1(c) - Academic profile and verification evidence
+entity AcademicProfile #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
+  --
+  userId <<FK,UK>>
+  roleVerifiedById <<FK>>
+  verifiedById <<FK>>
+  rejectedById <<FK>>
+  publicHandle <<UK>>
+  ..
+  avatarMimeType
+  coverMimeType
+}
+entity VerificationEvidence #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
+  --
+  userId <<FK,UK*>>
+  academicProfileId <<FK>>
+  reviewedById <<FK>>
+  previousRequestId <<FK>>
+  institutionId <<FK Institution>>
+  ..
+  verificationType
+  sourceType
+}
+entity User #FFFFFF;line:6A3FA0;line.dashed {
+  * id <<PK>>
+}
+AcademicProfile |o--o{ VerificationEvidence
+User |o--o{ AcademicProfile : rejectedById
+User |o--o{ AcademicProfile : roleVerifiedById
+User ||--o| AcademicProfile : userId
+User |o--o{ AcademicProfile : verifiedById
+User |o--o{ VerificationEvidence : reviewedById
+User ||--o{ VerificationEvidence : userId
+VerificationEvidence |o--o{ VerificationEvidence : previousRequestId
+legend bottom
+Crow's-foot notation. PK primary key, FK foreign key, UK unique key.
+FK <name>: the foreign key references an entity that is not drawn here.
+Dashed boxes belong to another diagram (key only).
+UK*: partial unique index (unique only for rows matching its WHERE condition).
+endlegend
+@enduml

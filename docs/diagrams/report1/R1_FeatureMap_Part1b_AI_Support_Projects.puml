@@ -1,0 +1,71 @@
+@startmindmap
+!pragma layout smetana
+skinparam dpi 150
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam BorderColor #2F6DB5
+skinparam BackgroundColor #FFFFFF
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+<style>
+mindmapDiagram {
+  node { FontSize 13
+    RoundCorner 10
+    LineThickness 1.2
+    Padding 6
+    MaximumWidth 190 }
+  :depth(0) { BackgroundColor #1F4E8C
+    FontColor #FFFFFF
+    LineColor #1F4E8C
+    FontStyle bold
+    FontSize 15 }
+  .g1 { BackgroundColor #DCE8F6
+    LineColor #2F6DB5 }
+  .g2 { BackgroundColor #F8D7D5
+    LineColor #B85450 }
+  .g3 { BackgroundColor #DDEFC4
+    LineColor #6A8F00 }
+  .g4 { BackgroundColor #FFE6CC
+    LineColor #D79B00 }
+  .g5 { BackgroundColor #F8D7D5
+    LineColor #B85450 }
+  .g6 { BackgroundColor #FFF6B3
+    LineColor #B8A800 }
+  .g7 { BackgroundColor #E6DAEE
+    LineColor #9673A6 }
+  .g8 { BackgroundColor #D5E8D4
+    LineColor #82B366 }
+  .new { BackgroundColor #FFD54F
+    LineColor #C0392B
+    LineThickness 3
+    FontStyle bold }
+}
+</style>
+title LumiGap - Part 1(b): AI Paper Support and Research Projects
+* LumiGap\nPart 1(b): AI Paper Support\nand Research Projects
+** AI Paper Support <<g3>>
+*** AI Paper Review <<g3>>
+*** Paper Format Checking <<g3>>
+*** Upload and Analyze PDF <<g3>>
+*** View Review Results <<g3>>
+*** Review History <<g3>>
+*** User-supplied AI Connections\n(own provider key / endpoint)\n«new» <<new>>
+left side
+** Research Projects <<g4>>
+*** Create Project <<g4>>
+*** Manage Project Information <<g4>>
+*** Manage Literature <<g4>>
+*** Manage Members <<g4>>
+*** Team Chat <<g4>>
+*** Project AI Assistant <<g4>>
+*** Collaborative LaTeX Manuscript Editor\n(real-time editing, compile,\ntracked suggestions)\n«new» <<new>>
+*** GitHub Repository Connection\nfor Manuscripts\n«new» <<new>>
+legend right
+  <back:#FFD54F>  <b>«new»</b>  </back> = new sub-feature (thick red outline)
+  Each colour = one feature group
+endlegend
+@endmindmap

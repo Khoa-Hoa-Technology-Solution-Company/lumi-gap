@@ -2,7 +2,6 @@
 
 How to decide whether a research gap is real, in a way that a lecturer can audit and that anyone can repeat by hand without the software.
 
-Vietnamese version: [gap-closure-protocol.vi.md](gap-closure-protocol.vi.md).
 Software design and API contract: [superpowers/specs/2026-10-15-gap-closure-protocol-design.md](superpowers/specs/2026-10-15-gap-closure-protocol-design.md).
 The rules are implemented in `apps/backend/src/modules/gap-closure/closure.rules.ts`; every number in this document is produced by that file and can be recomputed with a pencil or a spreadsheet.
 

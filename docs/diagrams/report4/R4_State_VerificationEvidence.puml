@@ -1,0 +1,83 @@
+@startuml
+!pragma layout smetana
+skinparam dpi 200
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam BorderColor #2F6DB5
+skinparam BackgroundColor #FFFFFF
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam usecase {
+  BackgroundColor #EAF2FB
+  BorderColor #2F6DB5
+}
+skinparam actor {
+  BackgroundColor #FFFFFF
+  BorderColor #1B2A3A
+}
+skinparam class {
+  BackgroundColor #F7FAFD
+  BorderColor #2F6DB5
+  HeaderBackgroundColor #DCE8F6
+}
+skinparam state {
+  BackgroundColor #EAF2FB
+  BorderColor #2F6DB5
+}
+skinparam activity {
+  BackgroundColor #EAF2FB
+  BorderColor #2F6DB5
+  DiamondBackgroundColor #FFF4E5
+}
+skinparam swimlane {
+  BorderColor #9DB3CC
+  TitleBackgroundColor #DCE8F6
+}
+skinparam sequence {
+  ParticipantBackgroundColor #EAF2FB
+  ParticipantBorderColor #2F6DB5
+  LifeLineBorderColor #9DB3CC
+  GroupBackgroundColor #F4F7FA
+}
+skinparam package {
+  BackgroundColor #F7F9FC
+  BorderColor #9DB3CC
+}
+skinparam note {
+  BackgroundColor #FFF9E5
+  BorderColor #E0B200
+}
+skinparam entity {
+  BackgroundColor #F7FAFD
+  BorderColor #2F6DB5
+}
+skinparam rectangle {
+  BackgroundColor #F7F9FC
+  BorderColor #2F6DB5
+}
+title VerificationEvidence status (verification_evidence.status)
+[*] --> PENDING : submitLecturerVerification() /\nrequestVerification() /\nstudent-affiliation submit
+[*] --> VERIFIED : [institutional email domain\nmatch] (affiliation.service)
+PENDING --> VERIFIED : decideVerification()\n[approve]
+PENDING --> NEEDS_MORE_INFORMATION : decideVerification()\n[more_info]
+PENDING --> REJECTED : decideVerification() [reject]
+PENDING --> INVALIDATED : [profile position, institution\nor identity changed]
+NEEDS_MORE_INFORMATION --> INVALIDATED : [position or affiliation\ntarget changed]
+NEEDS_MORE_INFORMATION --> NEEDS_MORE_INFORMATION : user resubmits\n/ supersededAt set
+VERIFIED --> VERIFIED : [position change]\n/ invalidatedAt set only
+REJECTED --> [*]
+INVALIDATED --> [*]
+legend bottom
+  Rows are created directly as PENDING (or VERIFIED by email
+  domain match). Resubmission after NEEDS_MORE_INFORMATION
+  creates a NEW row (revision+1, previousRequestId) in PENDING.
+
+  <b>Dead values</b>: UNVERIFIED, NOT_SUBMITTED and EXPIRED are allowed by the DB CHECK constraint but
+  no code writes them on this table. Retention cleanup removes
+  files only; it does not set EXPIRED.
+endlegend
+@enduml

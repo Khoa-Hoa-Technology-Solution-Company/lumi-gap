@@ -1,0 +1,91 @@
+@startuml
+!pragma layout elk
+skinparam dpi 200
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam backgroundColor #FFFFFF
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam ArrowFontSize 12
+skinparam ArrowFontColor #4A5A6A
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam entity {
+  BackgroundColor #EFE6F8
+  BorderColor #6A3FA0
+}
+skinparam legend {
+  BackgroundColor #FFF8E1
+  BorderColor #C9B36B
+  FontSize 12
+}
+skinparam stereotypeFontSize 10
+hide circle
+hide empty methods
+title Physical ERD - Notifications, logs and tool runs (1 of 3)
+entity notifications #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  user_id : uuid <<FK users>>
+  paper_id : uuid <<FK>>
+  event_key : varchar(200) <<UK>>
+  ..
+  role : varchar(32)
+  title : text
+}
+entity notification_reads #EFE6F8;line:6A3FA0 {
+  * notification_id : uuid <<PK,FK>>
+  * user_id : uuid <<PK,FK users>>
+  --
+  read_at : timestamptz
+}
+entity audit_logs #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  user_id : uuid <<FK users>>
+  ..
+  action_name : text
+  target_table_name : text
+}
+entity search_logs #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  user_id : uuid <<FK users>>
+  ..
+  query : text
+  mode : varchar(32)
+}
+entity mcp_tool_runs #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  report_id : uuid <<FK>>
+  user_id : uuid <<FK users>>
+  ..
+  tool_name : text
+  duration_ms : integer
+}
+entity trend_explanations #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  user_id : uuid <<FK users>>
+  ..
+  topic : text
+  language : varchar(8)
+}
+entity papers #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+entity reports #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+notifications ||--o{ notification_reads
+papers |o--o{ notifications
+reports |o--o{ mcp_tool_runs
+legend bottom
+Crow's-foot notation. PK primary key, FK foreign key, UK unique key.
+FK <name>: the foreign key references a table that is not drawn here.
+Dashed boxes belong to another diagram (key only).
+endlegend
+@enduml

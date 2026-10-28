@@ -1,0 +1,43 @@
+@startuml R3_ScreenFlow_1a_Public
+!pragma layout smetana
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam wrapWidth 260
+skinparam rectangle {
+  roundCorner 12
+}
+rectangle "Header - Explore menu" as N0 {
+  rectangle "Trends\n/trends" as N2
+  rectangle "Docs\n/docs" as N3
+}
+rectangle "Home\n/home" as N1
+rectangle "Literature search\n/literature" as N4
+rectangle "Trend topic\n/trends/:topic" as N5
+rectangle "Docs section\n/docs/:sectionId" as N6
+rectangle "Paper detail\n/papers/:id" as N7
+rectangle "Research gaps\n/research-gaps" as N8
+rectangle "Reports\n/reports" as N9
+rectangle "Lecturer directory\n/lecturers" as N10
+rectangle "Public academic profile\n/u/:handle" as N11
+rectangle "Forum activity\n/u/:handle/activity" as N12
+rectangle "Contribution archive\n/​profile/​:handle/​contributions" as N13
+N1 --> N4 : "search"
+N4 --> N1 : "home"
+N4 --> N7 : "open paper"
+N2 --> N5 : "select topic"
+N5 --> N1 : "find papers"
+N5 --> N8 : "explore gaps"
+N7 --> N5 : "topic chip"
+N7 --> N9 : "reports citing paper"
+N3 --> N6 : "open section"
+N10 --> N11 : "open profile"
+N11 --> N12 : "activity"
+N12 --> N11 : "profile"
+N13 --> N11 : "back"
+legend bottom
+Screen flow 1(a) - Public discovery and academic profiles
+Screen (web client route)
+Frame = group of screens opened from one header menu / layout
+Dashed grey = screen drawn in another diagram, or route with no in-app link found
+endlegend
+@enduml

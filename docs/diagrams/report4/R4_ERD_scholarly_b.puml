@@ -1,0 +1,87 @@
+@startuml
+!pragma layout elk
+skinparam dpi 200
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam backgroundColor #FFFFFF
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam ArrowFontSize 12
+skinparam ArrowFontColor #4A5A6A
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam entity {
+  BackgroundColor #EFE6F8
+  BorderColor #6A3FA0
+}
+skinparam legend {
+  BackgroundColor #FFF8E1
+  BorderColor #C9B36B
+  FontSize 12
+}
+skinparam stereotypeFontSize 10
+hide circle
+hide empty methods
+title Physical ERD - Scholarly corpus: documents and source records (2 of 4)
+entity paper_documents #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  paper_id : uuid <<FK,UK>>
+  ..
+  status : varchar(24)
+  source_kind : varchar(24)
+}
+entity paper_chunks #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  document_id : uuid <<FK>>
+  ..
+  position : integer
+  page_number : integer
+}
+entity paper_source_records #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  paper_id : uuid <<FK>>
+  provider_id : uuid <<FK>>
+  ..
+  external_record_id : text
+  fetched_at : timestamptz
+}
+entity paper_translations #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  paper_id : uuid <<FK>>
+  ..
+  translated_title : text
+  provider : text
+}
+entity paper_reviews #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  user_id : uuid <<FK users>>
+  paper_id : uuid <<FK>>
+  ..
+  file_name : text
+  status : varchar(24)
+}
+entity papers #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+entity api_providers #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+api_providers ||--o{ paper_source_records
+paper_documents ||--o{ paper_chunks
+papers ||--o| paper_documents
+papers |o--o{ paper_reviews
+papers ||--o{ paper_source_records
+papers ||--o{ paper_translations
+legend bottom
+Crow's-foot notation. PK primary key, FK foreign key, UK unique key.
+FK <name>: the foreign key references a table that is not drawn here.
+Dashed boxes belong to another diagram (key only).
+endlegend
+@enduml

@@ -1,0 +1,90 @@
+@startuml
+!pragma layout elk
+skinparam dpi 200
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam backgroundColor #FFFFFF
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam ArrowFontSize 12
+skinparam ArrowFontColor #4A5A6A
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam entity {
+  BackgroundColor #EFE6F8
+  BorderColor #6A3FA0
+}
+skinparam legend {
+  BackgroundColor #FFF8E1
+  BorderColor #C9B36B
+  FontSize 12
+}
+skinparam stereotypeFontSize 10
+hide circle
+hide empty methods
+title Logical ERD 2(b) - Research gaps and analyses
+entity GapAnalysis #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
+  --
+  userId <<FK User>>
+  projectId <<FK>>
+  creditTransactionId <<FK>>
+  ..
+  topic
+  status
+}
+entity GapAnalysisPaper #EFE6F8;line:6A3FA0 {
+  * analysisId <<PK,FK>>
+  * paperId <<PK,FK>>
+  --
+  position
+}
+entity ResearchGap #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
+  --
+  sourceReportId <<FK>>
+  analysisId <<FK>>
+  userId <<FK User>>
+  projectId <<FK>>
+  corpusId <<FK LiteratureCorpus>>
+  latestClosureCheckId <<FK GapClosureCheck>>
+  ..
+  title
+  gapType
+}
+entity ResearchGapPaper #EFE6F8;line:6A3FA0 {
+  * gapId <<PK,FK>>
+  * paperId <<PK,FK>>
+  * kind <<PK>>
+  --
+  position
+}
+entity Paper #FFFFFF;line:6A3FA0;line.dashed {
+  * id <<PK>>
+}
+entity Report #FFFFFF;line:6A3FA0;line.dashed {
+  * id <<PK>>
+}
+entity Project #FFFFFF;line:6A3FA0;line.dashed {
+  * id <<PK>>
+}
+entity CreditTransaction #FFFFFF;line:6A3FA0;line.dashed {
+  * id <<PK>>
+}
+CreditTransaction |o--o{ GapAnalysis
+GapAnalysis ||--o{ GapAnalysisPaper
+GapAnalysis |o--o{ ResearchGap
+Paper ||--o{ GapAnalysisPaper
+Paper ||--o{ ResearchGapPaper
+Project |o--o{ GapAnalysis
+Project |o--o{ ResearchGap
+Report |o--o{ ResearchGap
+ResearchGap ||--o{ ResearchGapPaper
+legend bottom
+Crow's-foot notation. PK primary key, FK foreign key, UK unique key.
+FK <name>: the foreign key references an entity that is not drawn here.
+Dashed boxes belong to another diagram (key only).
+endlegend
+@enduml

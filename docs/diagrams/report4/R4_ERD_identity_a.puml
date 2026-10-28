@@ -1,0 +1,98 @@
+@startuml
+!pragma layout elk
+skinparam dpi 200
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam backgroundColor #FFFFFF
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam ArrowFontSize 12
+skinparam ArrowFontColor #4A5A6A
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam entity {
+  BackgroundColor #EFE6F8
+  BorderColor #6A3FA0
+}
+skinparam legend {
+  BackgroundColor #FFF8E1
+  BorderColor #C9B36B
+  FontSize 12
+}
+skinparam stereotypeFontSize 10
+hide circle
+hide empty methods
+title Physical ERD - Users, sessions and academic profiles (1 of 7)
+entity users #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  account_status_changed_by_id : uuid <<FK>>
+  email : varchar(320) <<UK>>
+  google_id : text <<UK>>
+  ..
+  full_name : varchar(300)
+  role : varchar(32)
+}
+entity user_emails #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  user_id : uuid <<FK,UK*>>
+  normalized_email : varchar(320) <<UK>>
+  ..
+  is_primary : boolean
+  purpose : varchar(32)
+}
+entity refresh_tokens #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  user_id : uuid <<FK>>
+  ..
+  family_id : uuid
+  rotated_to_id : uuid
+}
+entity oauth_accounts #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  user_id : uuid <<FK>>
+  ..
+  provider : varchar(32)
+  provider_account_id : varchar(255)
+}
+entity user_capabilities #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  user_id : uuid <<FK>>
+  granted_by_id : uuid <<FK>>
+  ..
+  capability : varchar(48)
+  status : varchar(24)
+}
+entity academic_profiles #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  user_id : uuid <<FK,UK>>
+  role_verified_by_id : uuid <<FK>>
+  verified_by_id : uuid <<FK>>
+  rejected_by_id : uuid <<FK>>
+  public_handle : varchar(40) <<UK>>
+  ..
+  avatar_mime_type : varchar(64)
+  cover_mime_type : varchar(64)
+}
+users |o--o{ academic_profiles : rejected_by_id
+users |o--o{ academic_profiles : role_verified_by_id
+users ||--o| academic_profiles : user_id
+users |o--o{ academic_profiles : verified_by_id
+users ||--o{ oauth_accounts
+users ||--o{ refresh_tokens
+users |o--o{ user_capabilities : granted_by_id
+users ||--o{ user_capabilities : user_id
+users ||--o{ user_emails
+users |o--o{ users : account_status_changed_by_id
+legend bottom
+Crow's-foot notation. PK primary key, FK foreign key, UK unique key.
+UK*: partial unique index (unique only for rows matching its WHERE condition).
+endlegend
+@enduml

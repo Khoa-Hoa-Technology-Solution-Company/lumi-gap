@@ -1,0 +1,43 @@
+@startuml R3_ScreenFlow_4_Admin
+!pragma layout smetana
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam wrapWidth 260
+skinparam rectangle {
+  roundCorner 12
+}
+rectangle "User management" as N0 {
+  rectangle "Users\n/admin/users" as N6
+  rectangle "Affiliation verification\n/​admin/​academic-verifications" as N7
+}
+rectangle "AI operations" as N1 {
+  rectangle "AI jobs and analysis\n/admin/ai-jobs" as N8
+  rectangle "Quality evaluation\n/admin/evaluation" as N9
+}
+rectangle "Research data" as N2 {
+  rectangle "Papers in corpus\n/admin/papers" as N11
+  rectangle "Add paper\n/admin/papers/new" as N12
+  rectangle "OpenAlex sync\n/admin/sync" as N13
+  rectangle "Ingestion pipeline\n/admin/pipeline" as N14
+  rectangle "Corpus validation\n/​admin/​corpus-validation" as N15
+}
+rectangle "Community" as N3 {
+  rectangle "Community and moderation\n/admin/community" as N16
+  rectangle "Trust and safety\n/admin/trust-safety" as N17
+}
+rectangle "System" as N4 {
+  rectangle "Audit logs\n/admin/audit-logs" as N18
+  rectangle "Workers and fleet\n/admin/workers" as N19
+  rectangle "Platform settings\n/admin/settings" as N20
+}
+rectangle "Overview\n/admin" as N5
+rectangle "Analytics\n/admin/analytics" as N10
+N11 --> N12 : "add paper"
+legend bottom
+Screen flow 4 - Administration console
+Screen (web client route)
+Frame = group of screens opened from one header menu / layout
+Dashed grey = screen drawn in another diagram, or route with no in-app link found
+AdminLayout sidebar: every admin screen can open every other one (frames = sidebar sections)
+endlegend
+@enduml

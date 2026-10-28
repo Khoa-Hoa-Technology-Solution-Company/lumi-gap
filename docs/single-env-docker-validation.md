@@ -1,5 +1,7 @@
 # Nghiệm thu Docker và root `.env`
 
+> **Bản ghi lịch sử (2026-10-05).** Các con số (45 migration, 7 workers, số test) không còn đúng với repo hiện tại: hiện có 93 thư mục migration và 9 worker mặc định trong `docker-compose.yml`. Cấu hình hiện hành xem [DEPLOY_WITH_DOCKER.md](DEPLOY_WITH_DOCKER.md) và [environment-variables.md](environment-variables.md).
+
 Ngày kiểm thử: 2026-10-05, Windows / Docker Desktop Linux containers.
 Nhánh: `refactor/single-env-docker`. Các lựa chọn D1–D6 đã được áp dụng.
 
@@ -45,7 +47,7 @@ kiểm thử qua Turbo; không cần thay đổi script của repo.
 | Frozen lockfile | Đạt, 1775 dependency entries |
 | Setup chạy lặp lại | 2 test đạt: không đổi `.env`/JWT, secrets độc lập, khóa hợp lệ |
 | Loader/config | 9 test đạt: root path, expansion, biến injected và production validator |
-| Expo/Flutter launcher | Help chạy được; Flutter hỗ trợ dart-define-from-file; chỉ truyền API URL công khai |
+| Flutter launcher (`scripts/run-mobile.mjs`) | Help chạy được; Flutter hỗ trợ dart-define-from-file; chỉ truyền API URL công khai |
 | Jenkins | Không thay đổi nội dung so với lúc bắt đầu task |
 
 Jenkinsfile đã có thay đổi của người dùng trước task. SHA256 trước/sau:

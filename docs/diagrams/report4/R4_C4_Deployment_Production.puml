@@ -1,0 +1,25 @@
+@startuml R4_C4_Deployment_Production
+!pragma layout smetana
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam wrapWidth 260
+skinparam rectangle {
+  roundCorner 12
+}
+title Deployment diagram (C4): production as defined by the Jenkinsfile
+rectangle "Jenkins pipeline\n[Jenkinsfile, branch main]\nbuilds images tagged with the 12-char git SHA, validates the env file, docker run, checks /ready" as N0
+rectangle "Reverse proxy (Nginx Proxy Manager)\n[docker network nginx-network]\nlumigap.uk to web:80 ; api.lumigap.uk to backend:4000" as N1
+rectangle "Network user1-liemresearch" as N2 #line.dashed {
+  rectangle "user1-liemresearch-web\n[web image, nginx]\n127.0.0.1:9001 to 80" as N3
+  rectangle "user1-liemresearch-backend\n[backend image, Node 22]\n127.0.0.1:9000 to 4000" as N4
+  database "user1-liemresearch-redis\n[redis:7-alpine]\nAOF, requirepass, named volume" as N5
+  rectangle "libretranslate\n[libretranslate:v1.9.6]\nalias libretranslate, two volumes" as N6
+  rectangle "user1-liemresearch-worker-* (6 containers)\n[backend image]\nreport, gaps, notifications, embedding, paper-analysis, corpus-validation" as N7
+}
+rectangle "Not defined in Jenkinsfile, compose, Dockerfiles or deploy/\nStaging environment: not defined (one production environment).\nProduction PostgreSQL host: not in the Jenkinsfile (env file from credential lumigap-backend-env-b64).\nProduction ai-reviewer and LaTeX compiler: not deployed by the Jenkinsfile.\nHosting provider, server name: not stated." as N8
+N0 ..> N2 : "docker run"
+N1 --> N3 : "lumigap.uk\n[HTTPS to :80]"
+N1 --> N4 : "api.lumigap.uk\n[HTTPS to :4000]"
+N4 --> N5 : "queues\n[Redis]"
+N7 --> N5 : "jobs\n[BullMQ]"
+@enduml

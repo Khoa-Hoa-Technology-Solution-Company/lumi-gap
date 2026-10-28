@@ -1,0 +1,80 @@
+@startuml
+!pragma layout elk
+skinparam dpi 200
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam backgroundColor #FFFFFF
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam ArrowFontSize 12
+skinparam ArrowFontColor #4A5A6A
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam entity {
+  BackgroundColor #EFE6F8
+  BorderColor #6A3FA0
+}
+skinparam legend {
+  BackgroundColor #FFF8E1
+  BorderColor #C9B36B
+  FontSize 12
+}
+skinparam stereotypeFontSize 10
+hide circle
+hide empty methods
+title Physical ERD - Literature corpora and project quality assessments (6 of 7)
+entity literature_corpora #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  owner_id : uuid <<FK users>>
+  project_id : uuid <<FK>>
+  ..
+  name : varchar(200)
+  status : varchar(16)
+}
+entity corpus_papers #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  corpus_id : uuid <<FK>>
+  paper_id : uuid <<FK>>
+  added_by_id : uuid <<FK users>>
+  ..
+  included : boolean
+  exclusion_reason : text
+}
+entity quality_project_assessments #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  project_id : uuid <<FK>>
+  paper_id : uuid <<FK>>
+  ..
+  input_fingerprint : varchar(64)
+  model : text
+}
+entity projects #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+entity papers #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+entity research_gaps #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+entity gap_evidence_records #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+corpus_papers |o--o{ gap_evidence_records
+literature_corpora ||--o{ corpus_papers
+literature_corpora |o--o{ research_gaps
+papers ||--o{ corpus_papers
+papers ||--o{ quality_project_assessments
+projects |o--o{ literature_corpora
+projects ||--o{ quality_project_assessments
+legend bottom
+Crow's-foot notation. PK primary key, FK foreign key, UK unique key.
+FK <name>: the foreign key references a table that is not drawn here.
+Dashed boxes belong to another diagram (key only).
+endlegend
+@enduml

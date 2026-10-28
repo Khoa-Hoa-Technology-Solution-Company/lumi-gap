@@ -1,0 +1,80 @@
+@startuml
+!pragma layout elk
+skinparam dpi 200
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam backgroundColor #FFFFFF
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam ArrowFontSize 12
+skinparam ArrowFontColor #4A5A6A
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam entity {
+  BackgroundColor #EFE6F8
+  BorderColor #6A3FA0
+}
+skinparam legend {
+  BackgroundColor #FFF8E1
+  BorderColor #C9B36B
+  FontSize 12
+}
+skinparam stereotypeFontSize 10
+hide circle
+hide empty methods
+title Physical ERD - Scholarly corpus: paper identities and knowledge graph (4 of 4)
+entity paper_identities #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  paper_id : uuid <<FK>>
+  first_seen_campaign_id : uuid <<FK>>
+  ..
+  provider : varchar(32)
+  normalized_value : text
+}
+entity paper_cohort_memberships #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  paper_id : uuid <<FK>>
+  campaign_id : uuid <<FK>>
+  ..
+  cohort_id : text
+  stratum_key : text
+}
+entity knowledge_entities #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  kind : varchar(32)
+  normalized_name : text
+}
+entity knowledge_relations #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  chunk_id : uuid <<FK>>
+  entity_id : uuid <<FK>>
+  ..
+  kind : varchar(32)
+  quote : text
+}
+entity papers #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+entity paper_chunks #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+entity openalex_ingest_campaigns #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+knowledge_entities ||--o{ knowledge_relations
+openalex_ingest_campaigns ||--o{ paper_cohort_memberships
+openalex_ingest_campaigns |o--o{ paper_identities
+paper_chunks ||--o{ knowledge_relations
+papers ||--o{ paper_cohort_memberships
+papers ||--o{ paper_identities
+legend bottom
+Crow's-foot notation. PK primary key, FK foreign key, UK unique key.
+Dashed boxes belong to another diagram (key only).
+endlegend
+@enduml

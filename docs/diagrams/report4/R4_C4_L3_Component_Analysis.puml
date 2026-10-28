@@ -1,0 +1,45 @@
+@startuml R4_C4_L3_Component_Analysis
+!pragma layout smetana
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam wrapWidth 260
+skinparam rectangle {
+  roundCorner 12
+}
+title Component diagram (C4 level 3b): API, AI and research analysis
+rectangle "Analysis modules" as N0 {
+  rectangle "reports\nRAG analytical reports, artifacts" as N1
+  rectangle "gaps\nResearch-gap analysis, validation" as N2
+  rectangle "gap-closure\nGap Closure Protocol, dossier" as N3
+  rectangle "quality\nLLM-judge quality evaluation" as N4
+  rectangle "mcp\nMCP tools: search_papers, get_trends" as N5
+  rectangle "ai-jobs\nAiRun tracking (/ai-runs)" as N6
+}
+rectangle "Shared services (3a)" as N7 {
+  rectangle "retrieval\nsee diagram 3a" as N8
+  rectangle "knowledge\nsee diagram 3a" as N9
+  rectangle "embeddings\nsee diagram 3a" as N10
+  rectangle "llm\nsee diagram 3a" as N11
+  rectangle "api-sync\nsee diagram 3a" as N12
+}
+rectangle "Other contexts\n[credits, projects, notifications]\ncharge, refund, notify" as N13
+rectangle "BullMQ workers\n[report, gaps, ai-jobs]\nrun the long jobs from Redis queues" as N14
+rectangle "LLM providers\n[HTTPS]\nGemini; optional Ollama" as N15
+rectangle "OpenAlex\n[HTTPS]\ngap evidence" as N16
+database "PostgreSQL + pgvector\n[Prisma]\nreports, gaps" as N17
+N14 --> N0 : "jobs\n[BullMQ]"
+N0 --> N7 : "uses"
+N0 --> N13 : "uses"
+N10 --> N17 : "vectors\n[Prisma]"
+N11 --> N15 : "prompts\n[HTTPS]"
+N12 --> N16 : "sync\n[HTTPS]"
+legend bottom
+Legend
+Module (component)
+Workers
+Data store
+External system
+Module shown in diagram 3a
+Arrows summarise module imports (non-test sources, origin/main).
+endlegend
+@enduml

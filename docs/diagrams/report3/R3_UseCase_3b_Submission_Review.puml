@@ -1,0 +1,59 @@
+' Rendered image produced by ucdraw2.py from R3_UseCase_3b_Submission_Review.uc.json; this file is the canonical UML source
+@startuml
+!pragma layout smetana
+skinparam dpi 150
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam BorderColor #2F6DB5
+skinparam BackgroundColor #FFFFFF
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam usecase {
+  BackgroundColor #EAF2FB
+  BorderColor #2F6DB5
+}
+skinparam actor {
+  BackgroundColor #FFFFFF
+  BorderColor #1B2A3A
+}
+skinparam entity {
+  BackgroundColor #F7FAFD
+  BorderColor #2F6DB5
+}
+skinparam rectangle {
+  BackgroundColor #F7F9FC
+  BorderColor #2F6DB5
+}
+skinparam actorStyle awesome
+skinparam actor<<external system>> {
+  BackgroundColor #F0F1F3
+  BorderColor #8A8F98
+}
+left to right direction
+title Use Case Diagram 3(b) - Submission and peer review
+actor "User" as U
+actor "Author\n(project member)" as A
+actor "Lecturer" as L
+actor "External reviewer\n(invitation token)" as XR
+actor "Guest" as G
+rectangle "LumiGap" {
+  usecase "UC-40\nCreate submission and request AI pre-review" as UC40
+  usecase "UC-41\nRequest peer review" as UC41
+  usecase "UC-43\nManage review templates" as UC43
+  usecase "UC-42\nPerform structured review" as UC42
+  usecase "UC-44\nView contribution archive" as UC44
+}
+A --|> U
+L --|> U
+XR --|> U
+A -- UC40
+A -- UC41
+L -- UC43
+L -- UC42
+XR -- UC42
+G -- UC44
+@enduml

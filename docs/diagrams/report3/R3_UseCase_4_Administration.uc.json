@@ -1,0 +1,73 @@
+{
+ "title": "Use Case Diagram 4 - Administration",
+ "ucs": [
+  [
+   "UC29",
+   "UC-29 Manage user accounts"
+  ],
+  [
+   "UC30",
+   "UC-30 Manage paper corpus"
+  ],
+  [
+   "UC31",
+   "UC-31 Operate sync and ingestion"
+  ],
+  [
+   "UC32",
+   "UC-32 Monitor pipeline and evaluate quality"
+  ],
+  [
+   "UC33",
+   "UC-33 Review lecturer verification"
+  ],
+  [
+   "UC36",
+   "UC-36 Report and moderate content"
+  ]
+ ],
+ "actors": [
+  [
+   "AD",
+   "Administrator"
+  ]
+ ],
+ "gens": [],
+ "exts": [
+  [
+   "OA",
+   "OpenAlex"
+  ]
+ ],
+ "links": [
+  [
+   "AD",
+   "UC29"
+  ],
+  [
+   "AD",
+   "UC30"
+  ],
+  [
+   "AD",
+   "UC31"
+  ],
+  [
+   "AD",
+   "UC32"
+  ],
+  [
+   "AD",
+   "UC33"
+  ],
+  [
+   "AD",
+   "UC36"
+  ],
+  [
+   "UC31",
+   "OA"
+  ]
+ ],
+ "rels": []
+}

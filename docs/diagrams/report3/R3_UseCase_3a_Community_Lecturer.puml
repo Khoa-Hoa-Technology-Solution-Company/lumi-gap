@@ -1,0 +1,71 @@
+' Rendered image produced by ucdraw2.py from R3_UseCase_3a_Community_Lecturer.uc.json; this file is the canonical UML source
+@startuml
+!pragma layout smetana
+skinparam dpi 150
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam BorderColor #2F6DB5
+skinparam BackgroundColor #FFFFFF
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam usecase {
+  BackgroundColor #EAF2FB
+  BorderColor #2F6DB5
+}
+skinparam actor {
+  BackgroundColor #FFFFFF
+  BorderColor #1B2A3A
+}
+skinparam entity {
+  BackgroundColor #F7FAFD
+  BorderColor #2F6DB5
+}
+skinparam rectangle {
+  BackgroundColor #F7F9FC
+  BorderColor #2F6DB5
+}
+skinparam actorStyle awesome
+skinparam actor<<external system>> {
+  BackgroundColor #F0F1F3
+  BorderColor #8A8F98
+}
+left to right direction
+title Use Case Diagram 3(a) - Community, lecturer verification and mentoring
+actor "Guest" as G
+actor "User" as U
+actor "Community moderator\n(community role)" as M
+actor "Lecturer" as L
+actor "Project member" as PM
+actor "Administrator" as AD
+rectangle "LumiGap" {
+  usecase "UC-45\nBrowse lecturer directory" as UC45
+  usecase "UC-34\nParticipate in academic forum" as UC34
+  usecase "UC-35\nManage communities" as UC35
+  usecase "UC-36\nReport and moderate content" as UC36
+  usecase "UC-33\nReview lecturer verification" as UC33
+  usecase "UC-37\nSubmit lecturer verification" as UC37
+  usecase "UC-38\nManage academic profile and review availability" as UC38
+  usecase "UC-39\nRequest or offer lecturer mentoring" as UC39
+}
+U --|> G
+M --|> U
+L --|> U
+PM --|> U
+G -- UC45
+U -- UC34
+U -- UC35
+U -- UC36
+M -- UC35
+M -- UC36
+L -- UC37
+L -- UC38
+L -- UC39
+PM -- UC39
+AD -- UC35
+AD -- UC36
+AD -- UC33
+@enduml

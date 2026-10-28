@@ -1,0 +1,128 @@
+@startuml
+!pragma layout elk
+skinparam dpi 200
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam backgroundColor #FFFFFF
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam ArrowFontSize 12
+skinparam ArrowFontColor #4A5A6A
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam entity {
+  BackgroundColor #EFE6F8
+  BorderColor #6A3FA0
+}
+skinparam legend {
+  BackgroundColor #FFF8E1
+  BorderColor #C9B36B
+  FontSize 12
+}
+skinparam stereotypeFontSize 10
+hide circle
+hide empty methods
+title Logical ERD 2(a) - Papers, reports and AI services
+entity Paper #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
+  --
+  journalId <<FK>>
+  requestedById <<FK User>>
+  uploadedById <<FK User>>
+  doi <<UK>>
+  ..
+  title
+  journalName
+}
+entity Author #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
+  --
+  openalexId <<UK>>
+  ..
+  orcid
+  displayName
+}
+entity PaperAuthor #EFE6F8;line:6A3FA0 {
+  * paperId <<PK,FK>>
+  * position <<PK>>
+  --
+  authorId <<FK>>
+  ..
+  displayName
+  isCorresponding
+}
+entity Journal #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
+  --
+  openalexId <<UK>>
+  ..
+  name
+  type
+}
+entity Bookmark #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
+  --
+  userId <<FK User>>
+  paperId <<FK>>
+  reportId <<FK>>
+  ..
+  note
+}
+entity Report #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
+  --
+  userId <<FK User>>
+  projectId <<FK>>
+  creditTransactionId <<FK>>
+  ..
+  title
+  status
+}
+entity ReportPaper #EFE6F8;line:6A3FA0 {
+  * reportId <<PK,FK>>
+  * paperId <<PK,FK>>
+  * kind <<PK>>
+  --
+  position
+}
+entity PaperReview #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
+  --
+  userId <<FK User>>
+  paperId <<FK>>
+  ..
+  fileName
+  status
+}
+entity PaperFormatCheck #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
+  --
+  userId <<FK User>>
+  ..
+  fileName
+  preset
+}
+entity CreditTransaction #FFFFFF;line:6A3FA0;line.dashed {
+  * id <<PK>>
+}
+entity Project #FFFFFF;line:6A3FA0;line.dashed {
+  * id <<PK>>
+}
+Author |o--o{ PaperAuthor
+CreditTransaction |o--o{ Report
+Journal |o--o{ Paper
+Paper |o--o{ Bookmark
+Paper ||--o{ PaperAuthor
+Paper |o--o{ PaperReview
+Paper ||--o{ ReportPaper
+Project |o--o{ Report
+Report |o--o{ Bookmark
+Report ||--o{ ReportPaper
+legend bottom
+Crow's-foot notation. PK primary key, FK foreign key, UK unique key.
+FK <name>: the foreign key references an entity that is not drawn here.
+Dashed boxes belong to another diagram (key only).
+endlegend
+@enduml

@@ -1,0 +1,88 @@
+@startuml
+!pragma layout elk
+skinparam dpi 200
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam backgroundColor #FFFFFF
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam ArrowFontSize 12
+skinparam ArrowFontColor #4A5A6A
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam entity {
+  BackgroundColor #EFE6F8
+  BorderColor #6A3FA0
+}
+skinparam legend {
+  BackgroundColor #FFF8E1
+  BorderColor #C9B36B
+  FontSize 12
+}
+skinparam stereotypeFontSize 10
+hide circle
+hide empty methods
+title Physical ERD - Manuscript workspaces and files (1 of 3)
+entity draft_workspaces #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  project_id : uuid <<FK,UK*>>
+  created_by_id : uuid <<FK users>>
+  main_file_id : uuid <<FK>>
+  ..
+  name : varchar(160)
+  document_type : varchar(32)
+}
+entity draft_workspace_members #EFE6F8;line:6A3FA0 {
+  * workspace_id : uuid <<PK,FK>>
+  * user_id : uuid <<PK,FK users>>
+  --
+}
+entity manuscript_files #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  workspace_id : uuid <<FK>>
+  created_by_id : uuid <<FK users>>
+  ..
+  kind : varchar(16)
+  mime_type : varchar(80)
+}
+entity manuscript_updates #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  file_id : uuid <<FK>>
+  actor_id : uuid <<FK users>>
+  ..
+  client_session_id : uuid
+  client_sequence : integer
+}
+entity manuscript_suggestions #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  workspace_id : uuid <<FK>>
+  file_id : uuid <<FK>>
+  author_id : uuid <<FK users>>
+  resolved_by_id : uuid <<FK users>>
+  ..
+  client_key : uuid
+  status : varchar(16)
+}
+entity projects #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+draft_workspaces ||--o{ draft_workspace_members
+draft_workspaces ||--o{ manuscript_files : workspace_id
+draft_workspaces ||--o{ manuscript_suggestions
+manuscript_files |o--o{ draft_workspaces : main_file_id
+manuscript_files ||--o{ manuscript_suggestions
+manuscript_files ||--o{ manuscript_updates
+projects ||--o{ draft_workspaces
+legend bottom
+Crow's-foot notation. PK primary key, FK foreign key, UK unique key.
+FK <name>: the foreign key references a table that is not drawn here.
+Dashed boxes belong to another diagram (key only).
+UK*: partial unique index (unique only for rows matching its WHERE condition).
+endlegend
+@enduml

@@ -1,0 +1,80 @@
+@startuml
+!pragma layout elk
+skinparam dpi 200
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam backgroundColor #FFFFFF
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam ArrowFontSize 12
+skinparam ArrowFontColor #4A5A6A
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam entity {
+  BackgroundColor #EFE6F8
+  BorderColor #6A3FA0
+}
+skinparam legend {
+  BackgroundColor #FFF8E1
+  BorderColor #C9B36B
+  FontSize 12
+}
+skinparam stereotypeFontSize 10
+hide circle
+hide empty methods
+title Physical ERD - Institutions and affiliations (2 of 7)
+entity institutions #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  slug : varchar(160) <<UK>>
+  ..
+  name : varchar(200)
+  status : varchar(24)
+}
+entity institution_domains #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  institution_id : uuid <<FK>>
+  domain : varchar(255) <<UK>>
+  ..
+  status : varchar(24)
+  type : varchar(16)
+}
+entity campuses #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  institution_id : uuid <<FK>>
+  ..
+  code : varchar(40)
+  name : varchar(160)
+}
+entity affiliations #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  user_id : uuid <<FK,UK*>>
+  institution_id : uuid <<FK>>
+  campus_id : uuid <<FK>>
+  program_id : uuid <<FK academic_programs>>
+  verified_by_id : uuid <<FK>>
+  ..
+  institution_name : varchar(200)
+  academic_title : varchar(120)
+}
+entity users #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+campuses |o--o{ affiliations
+institutions ||--o{ affiliations
+institutions ||--o{ campuses
+institutions ||--o{ institution_domains
+users ||--o{ affiliations : user_id
+users |o--o{ affiliations : verified_by_id
+legend bottom
+Crow's-foot notation. PK primary key, FK foreign key, UK unique key.
+FK <name>: the foreign key references a table that is not drawn here.
+Dashed boxes belong to another diagram (key only).
+UK*: partial unique index (unique only for rows matching its WHERE condition).
+endlegend
+@enduml

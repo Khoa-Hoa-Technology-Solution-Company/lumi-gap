@@ -1,0 +1,66 @@
+@startuml
+!pragma layout elk
+skinparam dpi 200
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam backgroundColor #FFFFFF
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam ArrowFontSize 12
+skinparam ArrowFontColor #4A5A6A
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam entity {
+  BackgroundColor #EFE6F8
+  BorderColor #6A3FA0
+}
+skinparam legend {
+  BackgroundColor #FFF8E1
+  BorderColor #C9B36B
+  FontSize 12
+}
+skinparam stereotypeFontSize 10
+hide circle
+hide empty methods
+title Physical ERD - Plan sharing (7 of 9)
+entity plan_revisions #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  project_id : uuid <<FK>>
+  plan_id : uuid <<FK>>
+  changed_by_id : uuid <<FK users>>
+  ..
+  change_summary : varchar(500)
+}
+entity plan_shares #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  project_id : uuid <<FK>>
+  revision_id : uuid <<FK>>
+  relationship_id : uuid <<FK>>
+  shared_by_id : uuid <<FK users>>
+  ..
+  revoked_at : timestamptz
+}
+entity projects #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+entity research_plans #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+entity mentor_relationships #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+mentor_relationships ||--o{ plan_shares
+plan_revisions ||--o{ plan_shares
+projects ||--o{ plan_revisions
+projects ||--o{ plan_shares
+research_plans ||--o{ plan_revisions
+legend bottom
+Crow's-foot notation. PK primary key, FK foreign key, UK unique key.
+FK <name>: the foreign key references a table that is not drawn here.
+Dashed boxes belong to another diagram (key only).
+endlegend
+@enduml

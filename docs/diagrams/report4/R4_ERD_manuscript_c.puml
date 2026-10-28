@@ -1,0 +1,72 @@
+@startuml
+!pragma layout elk
+skinparam dpi 200
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam backgroundColor #FFFFFF
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam ArrowFontSize 12
+skinparam ArrowFontColor #4A5A6A
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam entity {
+  BackgroundColor #EFE6F8
+  BorderColor #6A3FA0
+}
+skinparam legend {
+  BackgroundColor #FFF8E1
+  BorderColor #C9B36B
+  FontSize 12
+}
+skinparam stereotypeFontSize 10
+hide circle
+hide empty methods
+title Physical ERD - Workspace sections and comments (3 of 3)
+entity workspace_sections #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  workspace_id : uuid <<FK>>
+  created_by_id : uuid <<FK users>>
+  updated_by_id : uuid <<FK users>>
+  ..
+  title : varchar(240)
+  content : text
+}
+entity workspace_comments #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  workspace_id : uuid <<FK>>
+  section_id : uuid <<FK>>
+  author_id : uuid <<FK users>>
+  resolved_by_id : uuid <<FK users>>
+  ..
+  body : text
+  status : varchar(16)
+}
+entity section_revisions #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  workspace_id : uuid <<FK>>
+  section_id : uuid <<FK>>
+  changed_by_id : uuid <<FK users>>
+  ..
+  title : varchar(240)
+  content : text
+}
+entity draft_workspaces #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+draft_workspaces ||--o{ section_revisions
+draft_workspaces ||--o{ workspace_comments
+draft_workspaces ||--o{ workspace_sections
+workspace_sections ||--o{ section_revisions
+workspace_sections ||--o{ workspace_comments
+legend bottom
+Crow's-foot notation. PK primary key, FK foreign key, UK unique key.
+FK <name>: the foreign key references a table that is not drawn here.
+Dashed boxes belong to another diagram (key only).
+endlegend
+@enduml

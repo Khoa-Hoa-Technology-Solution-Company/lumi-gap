@@ -1,0 +1,121 @@
+{
+ "title": "Use Case Diagram 1(a) - Account, profile and credits",
+ "ucs": [
+  [
+   "UC01",
+   "UC-01 Register account"
+  ],
+  [
+   "UC03",
+   "UC-03 Verify email / recover password"
+  ],
+  [
+   "UC02",
+   "UC-02 Sign in"
+  ],
+  [
+   "UC04",
+   "UC-04 Complete onboarding, manage profile"
+  ],
+  [
+   "UC25",
+   "UC-25 View credits"
+  ],
+  [
+   "UC26",
+   "UC-26 Top up credits"
+  ],
+  [
+   "UC27",
+   "UC-27 Manage notifications"
+  ],
+  [
+   "UC28",
+   "UC-28 View rankings"
+  ]
+ ],
+ "actors": [
+  [
+   "G",
+   "Guest"
+  ],
+  [
+   "U",
+   "User\n(Student / Researcher)"
+  ]
+ ],
+ "gens": [
+  [
+   "U",
+   "G"
+  ]
+ ],
+ "exts": [
+  [
+   "GO",
+   "Google OIDC"
+  ],
+  [
+   "SM",
+   "E-mail delivery (SMTP)"
+  ],
+  [
+   "PO",
+   "PayOS"
+  ]
+ ],
+ "links": [
+  [
+   "G",
+   "UC01"
+  ],
+  [
+   "G",
+   "UC03"
+  ],
+  [
+   "G",
+   "UC02"
+  ],
+  [
+   "U",
+   "UC04"
+  ],
+  [
+   "U",
+   "UC25"
+  ],
+  [
+   "U",
+   "UC26"
+  ],
+  [
+   "U",
+   "UC27"
+  ],
+  [
+   "U",
+   "UC28"
+  ],
+  [
+   "UC02",
+   "GO",
+   "via Google"
+  ],
+  [
+   "UC03",
+   "SM"
+  ],
+  [
+   "UC26",
+   "PO"
+  ]
+ ],
+ "rels": [
+  [
+   "UC01",
+   "UC03",
+   "include"
+  ]
+ ]
+}

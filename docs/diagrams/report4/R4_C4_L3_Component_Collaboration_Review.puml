@@ -1,0 +1,49 @@
+@startuml R4_C4_L3_Component_Collaboration_Review
+!pragma layout smetana
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam wrapWidth 260
+skinparam rectangle {
+  roundCorner 12
+}
+title Component diagram (C4 level 3c): API, collaboration and review
+rectangle "Collaboration" as N0 {
+  rectangle "projects\nProjects, team, mentorship, plan, tasks" as N1
+  rectangle "workspaces\nManuscript editor (Yjs), compile, AI" as N2
+  rectangle "communities\nCommunities, membership, summaries" as N3
+  rectangle "forum\nThreads, posts, moderation, appeals" as N4
+  rectangle "recruitment\nOpenings and applications" as N5
+}
+rectangle "Submission, review, profiles" as N6 {
+  rectangle "submissions\nSubmissions, revisions, AI pre-review" as N7
+  rectangle "reviews\nPeer review, requests, templates" as N8
+  rectangle "academic-profiles\nProfiles, lecturer verification" as N9
+  rectangle "github\nGitHub connection for manuscripts" as N10
+}
+rectangle "Other contexts used\n[auth, authorization, notifications, credits, identity, llm, knowledge, papers]" as N11
+rectangle "SMTP server\n[SMTP]\ninvitation mail" as N12
+rectangle "LaTeX compiler «optional»\n[HTTP]\nmanuscript compile" as N13
+rectangle "BullMQ workers\n[community-summary, ai-jobs]\njobs" as N14
+rectangle "ai-reviewer\n[HTTP]\nAI pre-review" as N15
+database "PostgreSQL\n[Prisma]\nall modules" as N16
+rectangle "File storage\n[local | R2 | Cloudinary]\nevidence files" as N17
+rectangle "GitHub «optional»\n[HTTPS]\nrepo sync" as N18
+N1 --> N12 : "mail\n[SMTP]"
+N2 --> N13 : "compile\n[HTTP]"
+N14 --> N3 : "jobs\n[BullMQ]"
+N0 --> N6 : "uses"
+N7 --> N15 : "pre-review\n[HTTP]"
+N8 --> N16 : "SQL\n[Prisma]"
+N9 --> N17 : "files"
+N10 --> N18 : "sync\n[HTTPS]"
+N0 --> N11 : "uses"
+N6 --> N11 : "uses"
+legend bottom
+Legend
+Module (component)
+Workers
+Data store
+External system
+Arrows summarise module imports (non-test sources, origin/main).
+endlegend
+@enduml

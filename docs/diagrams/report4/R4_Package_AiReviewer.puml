@@ -1,0 +1,31 @@
+@startuml R4_Package_AiReviewer
+!pragma layout smetana
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam wrapWidth 260
+skinparam rectangle {
+  roundCorner 12
+}
+title UML package diagram: ai-reviewer service (apps/ai-reviewer/app)
+package "main.py\nFastAPI app, router wiring" as N0
+package "Internal API (X-Internal-Key)\ninternal_routes.py, rag_routes.py" as N1
+package "Standalone reviewer UI APIs\naccount_routes, admin_routes, format_routes, storage_routes" as N2
+package "PDF processing\npdf_utils, rag_extraction, pdf_comparison, importer, pdf_to_latex*, pdf_structured_*, pdf_to_latex_worker" as N3
+package "Review and format logic\npre_review, reviewer, review_types, format_checker, format_db" as N4
+package "Account and storage support\nsecurity, storage, storage_subscription, storage_mail, storage_maintenance, server_lock" as N5
+package "config\nconfig.py (settings)" as N6
+package "Persistence (SQLite)\ndb, accounts_db, admin_db, storage_db" as N7
+N0 ..> N1 : "«use»"
+N0 ..> N2 : "«use»"
+N1 ..> N3 : "«use»"
+N1 ..> N4 : "«use»"
+N2 ..> N4 : "«use»"
+N2 ..> N5 : "«use»"
+N4 ..> N3 : "«use»"
+N4 ..> N6 : "«use»"
+N7 ..> N6 : "«use»"
+N7 ..> N5 : "«use»"
+legend bottom
+Derived from the imports in apps/ai-reviewer/app/*.py (origin/main); not every edge is drawn (main.py also uses the persistence package; security and config are used by several packages). Green = service code, purple = data store, grey = config.
+endlegend
+@enduml

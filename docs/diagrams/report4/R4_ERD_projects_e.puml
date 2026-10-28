@@ -1,0 +1,79 @@
+@startuml
+!pragma layout elk
+skinparam dpi 200
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam backgroundColor #FFFFFF
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam ArrowFontSize 12
+skinparam ArrowFontColor #4A5A6A
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam entity {
+  BackgroundColor #EFE6F8
+  BorderColor #6A3FA0
+}
+skinparam legend {
+  BackgroundColor #FFF8E1
+  BorderColor #C9B36B
+  FontSize 12
+}
+skinparam stereotypeFontSize 10
+hide circle
+hide empty methods
+title Physical ERD - Contribution proposals (5 of 9)
+entity project_contribution_proposals #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  project_id : uuid <<FK>>
+  contributor_id : uuid <<FK users>>
+  proposed_by_id : uuid <<FK users>>
+  confirmed_by_id : uuid <<FK users>>
+  rejected_by_id : uuid <<FK users>>
+  ..
+  title : varchar(240)
+  visibility : varchar(16)
+}
+entity contribution_participants #EFE6F8;line:6A3FA0 {
+  * proposal_id : uuid <<PK,FK>>
+  * user_id : uuid <<PK,FK users>>
+  --
+}
+entity contribution_reviews #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  proposal_id : uuid <<FK>>
+  user_id : uuid <<FK users>>
+  ..
+  decision : varchar(24)
+  note : text
+}
+entity project_contribution_history #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  proposal_id : uuid <<FK>>
+  actor_id : uuid <<FK users>>
+  ..
+  action : varchar(24)
+  note : text
+}
+entity projects #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+entity research_contributions #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+project_contribution_proposals ||--o{ contribution_participants
+project_contribution_proposals ||--o{ contribution_reviews
+project_contribution_proposals ||--o{ project_contribution_history
+project_contribution_proposals |o--o{ research_contributions
+projects ||--o{ project_contribution_proposals
+legend bottom
+Crow's-foot notation. PK primary key, FK foreign key, UK unique key.
+FK <name>: the foreign key references a table that is not drawn here.
+Dashed boxes belong to another diagram (key only).
+endlegend
+@enduml

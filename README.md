@@ -94,8 +94,8 @@ This repo is a fork of [thiennhat-ctrl/LiemResearch](https://github.com/thiennha
 | Android Studio | only for mobile Android emulator | https://developer.android.com/studio |
 | Xcode | only for mobile iOS simulator (Mac only) | App Store |
 
-> PostgreSQL with pgvector is the only supported runtime database. MongoDB is
-> not required for the backend, API, or workers.
+> PostgreSQL 16 with pgvector is the only runtime database for the backend,
+> API, and workers.
 
 ---
 

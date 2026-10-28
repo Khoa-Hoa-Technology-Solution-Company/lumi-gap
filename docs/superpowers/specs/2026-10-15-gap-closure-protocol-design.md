@@ -104,7 +104,7 @@ Gap list (`GET /api/v1/gaps`) items gain `closureStatus`, `questionFacets`, `lat
 | **runner** | `modules/gap-closure/closure.runner.ts`, `closure.search.ts`, `closure.queries.prompt.ts`, `closure.screening.prompt.ts`, `closure.sweep.ts`, their `__tests__`, `workers/gaps.worker.ts` |
 | **api** | `modules/gap-closure/closure.routes.ts`, `closure.controller.ts`, `closure.service.ts`, `closure.access.ts`, `coverage.service.ts`, `calibration.service.ts`, `dossier.ts`, `dto/closure.schema.ts`, their `__tests__`, `routes/index.ts`, `modules/gaps/gap-presenter.ts`, `modules/gaps/gaps.service.ts` (list mapping only), `modules/gaps/dto/gaps.schema.ts`, `modules/gaps/gap-validation.service.ts` (createCandidate only) |
 | **web** | `apps/web/src/features/gap-closure/**`, `apps/web/src/constants/api.ts`, `features/gaps/components/gap-card.tsx`, `gap-detail-drawer.tsx`, the manual gap form, `routes/app-routes.tsx`, new page under `pages/`, `i18n/locales/*` |
-| **docs** | `docs/gap-closure-protocol.md`, `docs/gap-closure-protocol.vi.md` |
+| **docs** | `docs/gap-closure-protocol.md` |
 
 Wave 2 (after wave 1): replace `computeGapEvidence` with an observed/expected + Poisson ranking signal and
 relabel "Confirmed" as "Under-explored" (done: signal in `gaps/gap-evidence.ts`, presenter re-ranks old rows from stored

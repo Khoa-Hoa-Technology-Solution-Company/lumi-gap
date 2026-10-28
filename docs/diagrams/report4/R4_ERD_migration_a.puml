@@ -1,0 +1,63 @@
+@startuml
+!pragma layout elk
+skinparam dpi 200
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam backgroundColor #FFFFFF
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam ArrowFontSize 12
+skinparam ArrowFontColor #4A5A6A
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam entity {
+  BackgroundColor #EFE6F8
+  BorderColor #6A3FA0
+}
+skinparam legend {
+  BackgroundColor #FFF8E1
+  BorderColor #C9B36B
+  FontSize 12
+}
+skinparam stereotypeFontSize 10
+hide circle
+hide empty methods
+title Physical ERD - Data migration control
+entity data_migration_runs #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  migration_key : varchar(120) <<UK>>
+  ..
+  source_database : varchar(160)
+  status : varchar(24)
+}
+entity data_migration_checkpoints #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  run_id : uuid <<FK>>
+  ..
+  source_collection : varchar(120)
+  phase : varchar(40)
+}
+entity data_migration_failures #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  run_id : uuid <<FK>>
+  ..
+  source_collection : varchar(120)
+  error_code : varchar(80)
+}
+entity data_migration_id_maps #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  source_collection : varchar(120)
+  source_id : varchar(64)
+}
+data_migration_runs ||--o{ data_migration_checkpoints
+data_migration_runs ||--o{ data_migration_failures
+legend bottom
+Crow's-foot notation. PK primary key, FK foreign key, UK unique key.
+endlegend
+@enduml
