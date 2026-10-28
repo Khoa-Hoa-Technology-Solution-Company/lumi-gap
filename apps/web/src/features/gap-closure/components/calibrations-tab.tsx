@@ -163,7 +163,7 @@ function CreateCalibrationForm({ onCreated }: { onCreated: (calibration: Closure
         </p>
       )}
       <form onSubmit={(event) => void submit(event)} className="space-y-4 rounded-2xl border bg-card p-4">
-        <div className="grid gap-4 sm:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <div className="space-y-1.5">
             <Label htmlFor="calibration-name">{t("Name")}</Label>
             <Input id="calibration-name" value={name} onChange={(event) => setName(event.target.value)} maxLength={120} />
