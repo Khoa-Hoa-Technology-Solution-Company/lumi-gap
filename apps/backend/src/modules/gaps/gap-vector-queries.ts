@@ -23,19 +23,23 @@ export async function loadPaperEmbeddings(ids: string[]): Promise<Map<string, nu
   return vectors;
 }
 
-export interface PossibleCounterPaper { paperId: string; similarity: number }
+export interface PossibleCounterPaper { paperId: string; similarity: number; title: string; abstractText: string | null }
+
+/** Candidates read per gap before the probe-topic filter keeps GAP_COUNTER_PER_GAP of them. */
+const COUNTER_CANDIDATE_FACTOR = 5;
 
 /**
  * Active corpus papers whose embedding is close to the gap's own text (cosine >= GAP_COUNTER_MIN_SIMILARITY), nearest
- * first, at most GAP_COUNTER_PER_GAP. They MAY already answer the gap; a person has to read them. Papers the LLM read
- * (`excludeIds`, internal ids) are skipped. No year filter: an older paper can answer the question too.
+ * first, with their text so the caller can require the probe topics. They MAY already answer the gap; a person has to
+ * read them. Papers the LLM read (`excludeIds`, internal ids) are skipped. No year filter: an older paper can answer
+ * the question too.
  */
 export async function findPossibleCounterPapers(gapVector: number[], excludeIds: string[]): Promise<PossibleCounterPaper[]> {
   const vector = vectorParameter(gapVector);
-  const rows = await getPrisma().$queryRaw<Array<{ id: string; similarity: number }>>(Prisma.sql`
-    SELECT id, (1 - (embedding <=> ${vector}::vector))::double precision AS similarity FROM papers
+  const rows = await getPrisma().$queryRaw<Array<{ id: string; similarity: number; title: string; abstractText: string | null }>>(Prisma.sql`
+    SELECT id, title, abstract_text AS "abstractText", (1 - (embedding <=> ${vector}::vector))::double precision AS similarity FROM papers
     WHERE data_status = 'active' AND embedding IS NOT NULL AND NOT (id = ANY(${excludeIds}::uuid[]))
     ORDER BY embedding <=> ${vector}::vector, id
-    LIMIT ${env.GAP_COUNTER_PER_GAP}`);
-  return rows.filter((row) => row.similarity >= env.GAP_COUNTER_MIN_SIMILARITY).map((row) => ({ paperId: row.id, similarity: row.similarity }));
+    LIMIT ${env.GAP_COUNTER_PER_GAP * COUNTER_CANDIDATE_FACTOR}`);
+  return rows.filter((row) => row.similarity >= env.GAP_COUNTER_MIN_SIMILARITY).map((row) => ({ paperId: row.id, similarity: row.similarity, title: row.title, abstractText: row.abstractText }));
 }

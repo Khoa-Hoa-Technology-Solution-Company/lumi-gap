@@ -57,7 +57,7 @@ export interface GapEvidence {
   /** Ranking score 0..1 (stored in evidence_confidence). */
   evidenceConfidence: number;
   /** The same test on the OpenAlex counts; absent when they (or their N) are missing or cannot speak to the probe. */
-  global?: { expected: number; ratio: number; pValue: number; underExplored: boolean };
+  global?: { expected: number; ratio: number; pValue: number; underExplored: boolean; lowSample: boolean };
   /** OpenAlex finds the intersection well covered, so the local signal was overruled. */
   vetoedByGlobal: boolean;
 }
@@ -106,7 +106,7 @@ export function computeGapEvidence(input: GapEvidenceInput, t: GapThresholds): G
   }
   const g = input.globalEvidence;
   const globalTest = g && g.scopeSize !== undefined ? observedVsExpected(g.scopeSize, g.intersectionCount, g.parentCounts, k, t) : null;
-  const global = globalTest ? { expected: globalTest.expected, ratio: globalTest.ratio, pValue: globalTest.pValue, underExplored: globalTest.underExplored } : undefined;
+  const global = globalTest ? { expected: globalTest.expected, ratio: globalTest.ratio, pValue: globalTest.pValue, underExplored: globalTest.underExplored, lowSample: globalTest.lowSample } : undefined;
   // OpenAlex overrules only when it has enough papers per topic to judge.
   const vetoedByGlobal = local.underExplored && !!globalTest && !globalTest.lowSample && !globalTest.underExplored;
   const underExplored = local.underExplored && !vetoedByGlobal;

@@ -1,5 +1,6 @@
 import type {
   ClosureAbstainReason,
+  ClosureCalibrationMode,
   ClosureCalibrationView,
   ClosureFacetMatch,
   ClosureLabel,
@@ -76,30 +77,38 @@ export function abstainReasonKey(reason: ClosureAbstainReason): string {
 }
 
 export interface BoundArithmetic {
+  /** IN_SITU: B = epsHat and pHat stays out of the bound; TRANSFER: B = epsHat + pHat. */
+  mode: ClosureCalibrationMode;
   epsHat?: { value: number; misses?: number; n?: number };
   pHat?: { value: number; x?: number; m?: number };
   bound?: number;
   max?: number;
   /** B <= max, only when all three numbers are known. */
   withinMax?: boolean;
-  /** Confidence level of both Clopper-Pearson bounds, e.g. 95. */
+  /** Confidence level of each Clopper-Pearson bound, e.g. 95. */
   confidencePercent?: number;
 }
 
-/** Collects the numbers of the decision rule; counts come from the calibration and coverage when they are loaded. */
+/**
+ * Collects the numbers of the decision rule; counts come from the calibration and coverage when they are loaded.
+ * The formula is the one the decision used (check.boundMode), else the calibration's mode, else TRANSFER.
+ */
 export function buildBoundArithmetic(
-  check: Pick<GapClosureCheckView, "epsHat" | "pHat" | "bound" | "maxFalseNovelty" | "delta">,
+  check: Pick<GapClosureCheckView, "epsHat" | "pHat" | "bound" | "maxFalseNovelty" | "delta"> & Partial<Pick<GapClosureCheckView, "boundMode">>,
   coverage?: Pick<CoverageCheckView, "x" | "m"> | null,
-  calibration?: Pick<ClosureCalibrationView, "misses" | "n"> | null,
+  calibration?: Pick<ClosureCalibrationView, "misses" | "n"> & Partial<Pick<ClosureCalibrationView, "mode">> | null,
 ): BoundArithmetic {
-  const result: BoundArithmetic = {};
+  const result: BoundArithmetic = { mode: check.boundMode ?? calibration?.mode ?? "TRANSFER" };
   if (check.epsHat !== undefined && check.epsHat !== null) {
     result.epsHat = { value: check.epsHat, misses: calibration?.misses, n: calibration?.n };
   }
   if (check.pHat !== undefined && check.pHat !== null) {
     result.pHat = { value: check.pHat, x: coverage?.x, m: coverage?.m };
   }
-  const bound = check.bound ?? (result.epsHat && result.pHat ? Math.min(1, result.epsHat.value + result.pHat.value) : undefined);
+  const fallback = result.mode === "IN_SITU"
+    ? result.epsHat?.value
+    : result.epsHat && result.pHat ? Math.min(1, result.epsHat.value + result.pHat.value) : undefined;
+  const bound = check.bound ?? fallback;
   if (bound !== undefined) result.bound = bound;
   if (check.maxFalseNovelty !== undefined && check.maxFalseNovelty !== null) result.max = check.maxFalseNovelty;
   if (result.bound !== undefined && result.max !== undefined) result.withinMax = result.bound <= result.max + 1e-12;
@@ -112,23 +121,25 @@ export function formatCount(numerator: number | undefined, denominator: number |
   return numerator === undefined || denominator === undefined ? "-" : `${numerator} / ${denominator}`;
 }
 
-/** "0.0951 + 0.0582 = 0.1533" or undefined when a term is missing. */
+/** "0.0951 + 0.0582 = 0.1533" (TRANSFER), "0.0951" (IN_SITU), or undefined when a term is missing. */
 export function formatSum(arithmetic: BoundArithmetic): string | undefined {
-  if (!arithmetic.epsHat || !arithmetic.pHat || arithmetic.bound === undefined) return undefined;
+  if (!arithmetic.epsHat || arithmetic.bound === undefined) return undefined;
+  if (arithmetic.mode === "IN_SITU") return formatRate(arithmetic.bound);
+  if (!arithmetic.pHat) return undefined;
   return `${formatRate(arithmetic.epsHat.value)} + ${formatRate(arithmetic.pHat.value)} = ${formatRate(arithmetic.bound)}`;
 }
 
-/** "B = epsHat + pHat = 0.0951 + 0.0582 = 0.1533 <= 0.2000" (the sum is already formatted). */
-export function boundEquation(sum: string, arithmetic: Pick<BoundArithmetic, "withinMax" | "max">): string {
-  return `B = epsHat + pHat = ${sum} ${arithmetic.withinMax ? "≤" : ">"} ${formatRate(arithmetic.max)}`;
+/** "B = epsHat + pHat = 0.0951 + 0.0582 = 0.1533 ≤ 0.2000" or, in situ, "B = epsHat = 0.0951 ≤ 0.2000". */
+export function boundEquation(sum: string, arithmetic: Pick<BoundArithmetic, "withinMax" | "max"> & Partial<Pick<BoundArithmetic, "mode">>): string {
+  return `B = ${arithmetic.mode === "IN_SITU" ? "epsHat" : "epsHat + pHat"} = ${sum} ${arithmetic.withinMax ? "≤" : ">"} ${formatRate(arithmetic.max)}`;
 }
 
 export function coverageOptionLabel(item: Pick<CoverageCheckView, "referenceSource" | "x" | "m" | "pHat">): string {
   return `${item.referenceSource} · ${item.x}/${item.m} · pHat ${formatRate(item.pHat)}`;
 }
 
-export function calibrationOptionLabel(item: Pick<ClosureCalibrationView, "name" | "judgeKind" | "misses" | "n" | "epsHat">): string {
-  return `${item.name} · ${item.judgeKind} · ${item.misses}/${item.n} · epsHat ${formatRate(item.epsHat)}`;
+export function calibrationOptionLabel(item: Pick<ClosureCalibrationView, "name" | "judgeKind" | "misses" | "n" | "epsHat"> & Partial<Pick<ClosureCalibrationView, "mode">>): string {
+  return `${item.name} · ${item.judgeKind}${item.mode === "IN_SITU" ? " · in-situ" : ""} · ${item.misses}/${item.n} · epsHat ${formatRate(item.epsHat)}`;
 }
 
 /* ---------------------------- quotes and text ---------------------------- */

@@ -78,7 +78,7 @@ function docRow(id: string, overrides: Partial<DocumentRow> = {}): DocumentRow {
 }
 
 const coverage: CoverageCheckView = { id: "cov", topic: "telehealth", referenceSource: "Survey reference list", m: 50, x: 0, delta: 0.05, pHat: 0.058, createdById: "u1", createdAt: now.toISOString(), items: [{ doi: "10.1/a", position: 0, foundLocal: true, foundOpenAlex: true }, { doi: "10.1/b", position: 1, foundLocal: false, foundOpenAlex: true }] };
-const calibration: ClosureCalibrationView = { id: "cal", name: "Cardiology", domain: "cardiology", judgeKind: "AI", protocolVersion: "gcp-v1", status: "COMPUTED", delta: 0.05, n: 30, misses: 0, epsHat: 0.095, createdById: "u1", createdAt: now.toISOString(), questions: [{ id: "q1", calibrationId: "cal", question: "Does X reduce Y?", facets: {}, witnessDoi: "10.1/w", labelSource: "SURVEY", result: "FOUND", createdAt: now.toISOString() }] };
+const calibration: ClosureCalibrationView = { id: "cal", name: "Cardiology", domain: "cardiology", judgeKind: "AI", mode: "TRANSFER", protocolVersion: "gcp-v1", status: "COMPUTED", delta: 0.05, n: 30, misses: 0, epsHat: 0.095, createdById: "u1", createdAt: now.toISOString(), questions: [{ id: "q1", calibrationId: "cal", question: "Does X reduce Y?", facets: {}, witnessDoi: "10.1/w", labelSource: "SURVEY", result: "FOUND", createdAt: now.toISOString() }] };
 
 describe("row mappers", () => {
   it("maps a check row, keeping only valid facets and the query log", () => {
@@ -144,6 +144,21 @@ describe("buildDossier", () => {
   it("uses the stored values and flags a calibration recomputed after the decision", () => {
     const dossier = buildDossier({ generatedAt: now, check: toCheckView(checkRow({ epsHat: 0.2 }), []), coverage, calibration, defaults: { delta: 0.05, maxFalseNovelty: 0.2 } });
     expect(dossier.arithmetic.join("\n")).toContain("recomputed after this decision");
+  });
+
+  it("explains an in-situ bound from the formula the check recorded", () => {
+    const check = toCheckView(checkRow({ bound: 0.095, boundMode: "IN_SITU" }), []);
+    expect(check.boundMode).toBe("IN_SITU");
+    const dossier = buildDossier({ generatedAt: now, check, coverage, calibration: { ...calibration, mode: "IN_SITU" }, defaults: { delta: 0.05, maxFalseNovelty: 0.2 } });
+    expect(dossier.arithmetic.join("\n")).toContain("not part of the bound");
+    expect(dossier.arithmetic.at(-1)).toBe("B = epsHat = 0.095 <= 0.2");
+    const markdown = dossierMarkdown(dossier);
+    expect(markdown).toContain("P(false novelty) <= epsHat holds with probability >= 1 - delta");
+    expect(markdown).toContain("mode IN_SITU");
+  });
+
+  it("reads rows without a bound mode as having none", () => {
+    expect(toCheckView(checkRow(), []).boundMode).toBeUndefined();
   });
 
   it("states what is missing for a check that was never decided", () => {

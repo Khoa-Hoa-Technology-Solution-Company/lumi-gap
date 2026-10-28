@@ -23,3 +23,24 @@ model UserAiPreference {
 
   @@map("user_ai_preferences")
 }
+
+/**
+ * Platform-wide AI connection chosen by an admin (same protocols as UserAiConnection, plus a fast and a deep model).
+ * At most one is active (partial unique index in SQL). Without an active one the env GEMINI_* settings are used.
+ * Text generation only: embeddings stay on the env Gemini key so stored 768-dim vectors remain comparable.
+ */
+model PlatformAiConnection {
+  id           String   @id @default(uuid()) @db.Uuid
+  name         String   @db.VarChar(100)
+  provider     String   @db.VarChar(24)
+  baseUrl      String   @map("base_url")
+  encryptedKey String?  @map("encrypted_key")
+  fastModel    String   @map("fast_model")
+  deepModel    String   @map("deep_model")
+  isActive     Boolean  @default(false) @map("is_active")
+  createdById  String?  @map("created_by_id") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("platform_ai_connections")
+}

@@ -26,7 +26,7 @@ export async function resolveAiDraft(userId: string, input: AiConnectionDraft) {
   if (input.provider === "gemini" && !apiKey) throw AppError.badRequest("Enter a Gemini API key. Changing the Base URL requires entering the key again.");
   return { existing, baseUrl, apiKey, provider: input.provider };
 }
-async function discoverModels(connection: { baseUrl: string; apiKey: string; provider: string }): Promise<AiModelOption[]> {
+export async function discoverModels(connection: { baseUrl: string; apiKey: string; provider: string }): Promise<AiModelOption[]> {
   const { baseUrl, apiKey, provider } = connection;
   const models: AiModelOption[] = [];
   if (provider === "gemini") {

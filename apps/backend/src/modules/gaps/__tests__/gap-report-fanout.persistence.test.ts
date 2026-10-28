@@ -6,6 +6,8 @@ import { createProjectFixture } from "../../../test-utils/project-fixture.js";
 
 // Never reach OpenAlex from tests.
 vi.mock("../gap-global-evidence.js", () => ({ countOpenAlexIntersection: vi.fn().mockResolvedValue(null) }));
+// Never reach OpenAlex from tests: coverage, corpus enrichment and OpenAlex counter-evidence are stubbed.
+vi.mock("../gap-literature.js", () => ({ measureTopicCoverage: vi.fn().mockResolvedValue(null), enrichCorpusForTopic: vi.fn(), findOpenAlexCounterPapers: vi.fn().mockResolvedValue([]) }));
 // Never enqueue real jobs from tests.
 vi.mock("../../../infrastructure/queue.js", () => ({ gapsQueue: { add: vi.fn().mockResolvedValue(undefined) }, notificationQueue: { add: vi.fn().mockResolvedValue(undefined) } }));
 

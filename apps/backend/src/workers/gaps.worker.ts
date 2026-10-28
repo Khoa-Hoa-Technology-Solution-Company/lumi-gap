@@ -9,7 +9,7 @@ import { sweepStuckGapAnalyses } from "../modules/gaps/gap-sweep.js";
 import { markClosureCheckFailed, runGapClosureCheck } from "../modules/gap-closure/closure.runner.js";
 import { GAP_CLOSURE_JOB, type GapClosureJob } from "../modules/gap-closure/closure.rules.js";
 import { sweepStuckClosureChecks } from "../modules/gap-closure/closure.sweep.js";
-import { gapsService, REPORT_GAP_FANOUT_JOB, type GapJob, type ReportGapFanoutJob } from "../modules/gaps/gaps.service.js";
+import { GAP_CORPUS_ENRICH_JOB, gapsService, REPORT_GAP_FANOUT_JOB, type GapCorpusEnrichJob, type GapJob, type ReportGapFanoutJob } from "../modules/gaps/gaps.service.js";
 import { withUserAi } from "../modules/user-ai/user-ai.runtime.js";
 import { projectSynthesisService } from "../modules/projects/project-synthesis.service.js";
 import { SYNTHESIS_JOB, type SynthesisJob } from "../modules/projects/research-synthesis.js";
@@ -64,6 +64,8 @@ async function main() {
           await gapsService.fanOutGapsFromReport(job.data as ReportGapFanoutJob);
           return;
         }
+        // Corpus enrichment only reads OpenAlex and writes papers — no LLM call, so no personal AI binding.
+        if (job.name === GAP_CORPUS_ENRICH_JOB) return await gapsService.runCorpusEnrichment(job.data as GapCorpusEnrichJob);
         if (job.name === GAP_CLOSURE_JOB) {
           const closure = job.data as GapClosureJob;
           const check = await getPrisma().gapClosureCheck.findUnique({ where: { id: closure.checkId }, select: { createdById: true } });
@@ -105,7 +107,7 @@ async function main() {
     } else if (job && job.name === GAP_CLOSURE_JOB && (exhausted || unrecoverable)) {
       const { checkId } = job.data as GapClosureJob;
       void markClosureCheckFailed(checkId, USER_FACING_CLOSURE_FAILURE).catch((error) => logger.error({ err: error, checkId }, "could not mark gap closure check failed"));
-    } else if (job && job.name !== REPORT_GAP_FANOUT_JOB && (exhausted || unrecoverable)) {
+    } else if (job && job.name !== REPORT_GAP_FANOUT_JOB && job.name !== GAP_CORPUS_ENRICH_JOB && (exhausted || unrecoverable)) {
       const { analysisId } = job.data as GapJob;
       void gapsService.markAnalysisFailed(analysisId, USER_FACING_FAILURE);
     }

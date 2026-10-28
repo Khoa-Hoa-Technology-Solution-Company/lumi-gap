@@ -1,6 +1,7 @@
 // packages/shared-types/src/gap-closure.ts
 // Gap Closure Protocol (docs/gap-closure-protocol.md): a gap is called open only after a logged search,
-// a rubric-based screening of every document found, and a false-novelty bound B = epsHat + pHat.
+// a rubric-based screening of every document found, and a false-novelty bound B (epsHat for an in-situ calibration,
+// epsHat + pHat for a transfer calibration).
 
 /** Result of the latest closure check of a gap. */
 export type GapClosureStatus = "NOT_CHECKED" | "CLOSED" | "OPEN_CERTIFIED" | "ABSTAIN";
@@ -20,6 +21,13 @@ export type ClosureDocumentSource = "LOCAL" | "OPENALEX";
 export type CalibrationLabelSource = "EXPERT_VALIDATION" | "SURVEY";
 export type CalibrationQuestionResult = "PENDING" | "FOUND" | "MISSED";
 export type ClosureCalibrationStatus = "DRAFT" | "RUNNING" | "COMPUTED";
+/**
+ * How the calibration's miss rate enters the bound.
+ * IN_SITU   the calibration questions were searched in the same sources as the checks, so a witness missing from them
+ *           already counts as a miss: B = epsHat, no coverage check needed (GapClose, Theorem 1).
+ * TRANSFER  B = epsHat + pHat, with pHat from a coverage check (union bound; the conservative default).
+ */
+export type ClosureCalibrationMode = "IN_SITU" | "TRANSFER";
 
 /** Why a check ended in ABSTAIN (several can apply). */
 export type ClosureAbstainReason =
@@ -96,8 +104,10 @@ export interface GapClosureCheckView {
   delta?: number;
   epsHat?: number;
   pHat?: number;
-  /** False-novelty bound: epsHat + pHat, capped at 1. */
+  /** False-novelty bound, capped at 1: epsHat (IN_SITU) or epsHat + pHat (TRANSFER), see boundMode. */
   bound?: number;
+  /** Mode of the calibration that produced `bound`. */
+  boundMode?: ClosureCalibrationMode;
   maxFalseNovelty?: number;
   decision?: GapClosureDecision;
   decisionReasons: ClosureAbstainReason[];
@@ -204,6 +214,7 @@ export interface ClosureCalibrationView {
   name: string;
   domain: string;
   judgeKind: ClosureJudgeKind;
+  mode: ClosureCalibrationMode;
   protocolVersion: string;
   status: ClosureCalibrationStatus;
   delta: number;
@@ -221,6 +232,8 @@ export interface CreateClosureCalibrationRequest {
   name: string;
   domain: string;
   judgeKind: ClosureJudgeKind;
+  /** Defaults to TRANSFER. */
+  mode?: ClosureCalibrationMode;
 }
 
 export interface CreateCalibrationQuestionRequest {

@@ -175,12 +175,19 @@ export async function searchOpenAlexWorks(query: string, signal?: AbortSignal): 
   return (page.results ?? []).slice(0, 20);
 }
 
+/** Search text without the wildcards (`*`, `?`) the default stemmed search rejects, spaces collapsed. */
+export function openAlexSearchText(query: string): string {
+  return query.replace(/[*?]/g, " ").replace(/\s+/g, " ").trim();
+}
+
 /**
  * Worker-side search for a gap closure check (docs/gap-closure-protocol.md). Retries like the sync pages and
  * throws on final failure: the caller logs the error and the check abstains, never treating it as "no results".
  */
 export async function searchOpenAlexWorksForClosure(params: { query: string; perPage: number; yearFrom?: number; yearTo?: number }): Promise<OpenAlexWork[]> {
-  const query = params.query.trim();
+  // `*` and `?` are wildcards that the stemmed default search rejects with HTTP 400 ("Does X improve Y?" is a
+  // natural research question), so they are dropped; the words still match.
+  const query = openAlexSearchText(params.query);
   if (query.length < 3 || query.length > 300) throw new Error("Invalid closure search query");
   const filters = [
     params.yearFrom !== undefined ? `from_publication_date:${params.yearFrom}-01-01` : undefined,
