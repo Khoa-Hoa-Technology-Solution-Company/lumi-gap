@@ -78,6 +78,20 @@ describe("followed trend topics", () => {
     expect(mocks.prisma.trendTopicFollow.update).toHaveBeenCalledWith({ where: { id: "f1" }, data: { lastVerdict: "rising", lastDataSource: "openalex", lastCheckedAt: NOW } });
   });
 
+  it("keeps the baseline when the notification cannot be sent, so the next run retries it", async () => {
+    mocks.prisma.trendTopicFollow.findMany.mockResolvedValue([follow("f1", USER_A, "stable")]);
+    mocks.topic.mockResolvedValue(detail("rising"));
+    mocks.notify.mockRejectedValueOnce(new Error("redis down")).mockResolvedValue({});
+
+    expect(await trendFollowService.checkFollowedTopics(NOW)).toEqual({ topics: 1, changed: 0 });
+    expect(mocks.prisma.trendTopicFollow.update).not.toHaveBeenCalled();
+
+    expect(await trendFollowService.checkFollowedTopics(NOW)).toEqual({ topics: 1, changed: 1 });
+    // Both attempts use one event key, so a partly sent first attempt is not duplicated.
+    expect(mocks.notify.mock.calls[0]![0].eventKey).toBe(mocks.notify.mock.calls[1]![0].eventKey);
+    expect(mocks.prisma.trendTopicFollow.update).toHaveBeenCalledWith({ where: { id: "f1" }, data: { lastVerdict: "rising", lastDataSource: "openalex", lastCheckedAt: NOW } });
+  });
+
   it("keeps the previous verdict when the trend cannot be computed", async () => {
     mocks.prisma.trendTopicFollow.findMany.mockResolvedValue([follow("f1", USER_A, "stable")]);
     mocks.topic.mockRejectedValue(new Error("OpenAlex down"));
