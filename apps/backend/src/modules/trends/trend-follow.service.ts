@@ -108,15 +108,22 @@ export const trendFollowService = {
           continue;
         }
         if (row.lastVerdict && row.lastVerdict !== current.verdict) {
+          try {
+            await notificationService.create({
+              userId: row.userId,
+              type: "TREND_VERDICT_CHANGED",
+              title: `Trend changed: ${row.topic}`,
+              message: `"${row.topic}" is now ${VERDICT_LABEL[current.verdict]} (was ${VERDICT_LABEL[row.lastVerdict as TrendVerdict] ?? row.lastVerdict}).`,
+              // Keyed by the baseline, not the run date: a retry of a failed send reuses the notification row.
+              eventKey: `TREND_VERDICT:${row.id}:${row.lastVerdict}:${current.verdict}:${row.lastCheckedAt?.toISOString() ?? "initial"}`,
+              emailPayload: { topic: row.topic, openalexTopicId: row.openalexTopicId, from: row.lastVerdict, to: current.verdict },
+            });
+          } catch (err) {
+            // Keep the old baseline so the next run detects the change again and retries the notification.
+            logger.warn({ err, followId: row.id }, "trend follow: notification failed; will retry on the next run");
+            continue;
+          }
           changed++;
-          await notificationService.create({
-            userId: row.userId,
-            type: "TREND_VERDICT_CHANGED",
-            title: `Trend changed: ${row.topic}`,
-            message: `"${row.topic}" is now ${VERDICT_LABEL[current.verdict]} (was ${VERDICT_LABEL[row.lastVerdict as TrendVerdict] ?? row.lastVerdict}).`,
-            eventKey: `TREND_VERDICT:${row.id}:${row.lastVerdict}:${current.verdict}:${now.toISOString().slice(0, 10)}`,
-            emailPayload: { topic: row.topic, openalexTopicId: row.openalexTopicId, from: row.lastVerdict, to: current.verdict },
-          }).catch((err) => logger.warn({ err, followId: row.id }, "trend follow: notification failed"));
         }
         await prisma.trendTopicFollow.update({ where: { id: row.id }, data: { lastVerdict: current.verdict, lastDataSource: current.dataSource, lastCheckedAt: now } });
       }

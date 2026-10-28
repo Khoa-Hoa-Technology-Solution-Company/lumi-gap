@@ -22,7 +22,8 @@ export function TopicDetailPage() {
   const { topic } = useParams<{ topic: string }>();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const decodedTopic = decodeURIComponent(topic || "");
+  // useParams already returns the decoded segment; decoding again throws on names containing "%".
+  const decodedTopic = topic ?? "";
   const topicId = searchParams.get("topicId") ?? undefined;
   const yearFrom = yearParam(searchParams, "yearFrom");
   const yearTo = yearParam(searchParams, "yearTo");
