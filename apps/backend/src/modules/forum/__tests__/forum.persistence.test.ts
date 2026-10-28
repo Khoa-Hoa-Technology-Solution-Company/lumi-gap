@@ -775,8 +775,9 @@ describe.sequential("research forum persistence and authorization", () => {
       await expect(forumService.listPosts({ communityId: community.slug }, 1, 20, outsiderId, "user")).rejects.toMatchObject({ statusCode: 404 });
       await expect(forumService.follow(topic.id, outsiderId, true)).rejects.toMatchObject({ statusCode: 403 });
       await expect(forumService.follow(topic.id, outsiderId, true, "admin")).resolves.toEqual({ following: true });
-      expect((await listCommunities(undefined, 1, 100)).data.some((row) => row.id === communityId)).toBe(false);
-      expect((await listCommunities(outsiderId, 1, 100, "user")).data.some((row) => row.id === communityId)).toBe(false);
+      // A private community is discoverable (join-by-request), but its content stays locked for outsiders.
+      expect((await listCommunities(undefined, 1, 100)).data.find((row) => row.id === communityId)).toMatchObject({ visibility: "private", contentRestricted: true });
+      expect((await listCommunities(outsiderId, 1, 100, "user")).data.find((row) => row.id === communityId)).toMatchObject({ visibility: "private", contentRestricted: true });
       expect((await listCommunities(authorId, 1, 100, "user")).data.some((row) => row.id === communityId)).toBe(true);
       await prisma.community.update({ where: { id: communityId }, data: { status: "ARCHIVED" } });
       expect((await forumService.listPosts({ query }, 1, 20, authorId, "user")).data).toEqual([]);

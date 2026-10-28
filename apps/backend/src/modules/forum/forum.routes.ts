@@ -30,6 +30,7 @@ const postBaseSchema = z.object({
   body: z.string().trim().min(1).max(20000).optional(),
   categoryId: objectIdSchema.optional(),
   communityId: objectIdSchema.optional(),
+  researchCommunityId: objectIdSchema.optional(),
   tags: z.array(z.string().trim().min(1).max(80)).max(12).default([]),
   linkedPaperId: objectIdSchema.optional(),
   linkedResearchGapId: objectIdSchema.optional(),
@@ -66,6 +67,7 @@ const postQuerySchema = paginationSchema.extend({
   // Read filters accept stable slugs; write contracts still require database IDs.
   communityId: z.union([objectIdSchema, z.string().max(120).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)]).optional(),
   category: z.union([objectIdSchema, z.string().max(120).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)]).optional(),
+  researchCommunityId: z.union([objectIdSchema, z.string().max(120).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)]).optional(),
   linkedResearchGapId: objectIdSchema.optional(),
   researchGapId: objectIdSchema.optional(),
   linkedPaperId: objectIdSchema.optional(),
@@ -214,7 +216,7 @@ forumRouter.post("/papers/doi/attach", requireAuth, requirePermission("forum:wri
 });
 const categorySchema = z.object({ name: z.string().trim().min(2).max(120), slug: z.string().trim().min(2).max(120).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/), description: z.string().trim().max(2000).optional(), sortOrder: z.number().int().min(0).max(10000).optional(), status: z.enum(["ACTIVE", "ARCHIVED"]).optional() }).strict();
 forumRouter.get("/categories", optionalAuth, validate(z.object({ all: z.enum(["true", "false"]).optional() }).strict(), "query"), async (req, res) => {
-  res.json({ success: true, data: await forumCategoryService.list(req.query.all === "true", req.user?.role) });
+  res.json({ success: true, data: await forumCategoryService.list(req.query.all === "true", req.user?.role, req.user?.sub) });
 });
 forumRouter.post("/categories", requireAuth, forumWriteLimiter, validate(categorySchema), async (req, res) => {
   res.status(201).json({ success: true, data: await forumCategoryService.create(req.body, req.user!.sub, req.user!.role) });
@@ -234,7 +236,7 @@ forumRouter.delete("/categories/:id/moderators/:userId", requireAuth, forumWrite
   res.json({ success: true });
 });
 forumRouter.get("/tags", optionalAuth, validate(z.object({ q: z.string().trim().max(80).optional() }).strict(), "query"), async (req, res) => {
-  res.json({ success: true, data: await forumService.tagOptions(req.query.q as string | undefined) });
+  res.json({ success: true, data: await forumService.tagOptions(req.query.q as string | undefined, req.user?.sub, req.user?.role) });
 });
 forumRouter.get("/posts", optionalAuth, validate(postQuerySchema, "query"), async (req, res) => {
   const { page, pageSize, researchGapId, linkedResearchGapId, includeModerated, feed, category, ...filter } = req.query as unknown as z.infer<typeof postQuerySchema>;
@@ -287,7 +289,7 @@ forumRouter.get("/posts/:postId/comments", optionalAuth, validate(readCommentsPa
   res.json({ success: true, ...(await forumService.listComments(req.params.postId as string, page, pageSize, req.user?.sub, req.user?.role)) });
 });
 forumRouter.post("/posts/:postId/comments", requireAuth, responseLimiter, validate(postIdParamsSchema, "params"), validateCommentInput, async (req, res) => {
-  res.status(201).json({ success: true, data: await forumService.addComment(req.params.postId as string, req.body, req.user!.sub) });
+  res.status(201).json({ success: true, data: await forumService.addComment(req.params.postId as string, req.body, req.user!.sub, req.user!.role) });
 });
 forumRouter.patch("/comments/:id", requireAuth, forumWriteLimiter, validate(idParamsSchema, "params"), validate(commentUpdateSchema), async (req, res) => {
   res.json({ success: true, data: await forumService.updateComment(req.params.id as string, req.body, req.user!.sub) });

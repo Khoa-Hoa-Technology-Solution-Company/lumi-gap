@@ -208,10 +208,19 @@ export function formatForumMarkdown(content: string, start: number, end: number,
 }
 
 export type ForumDiscussionDraft = {
-  type: ForumPostType; communityId: string; title: string; content: string; tags: string;
+  type: ForumPostType; communityId: string; researchCommunityId?: string; title: string; content: string; tags: string;
   linkedPaperId: string; linkedGapId: string;
   references: ForumReferenceView[];
 };
+
+const DEFAULT_CATEGORY_SLUG = "general-research";
+const plain = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim().toLowerCase();
+/** Category to pre-select for a research community: the one named like its research field, else General Research. */
+export function forumCategoryForCommunity(community: { researchField?: string | null } | undefined, categories: Array<{ id: string; name: string; slug: string; status?: string }>): string | undefined {
+  const active = categories.filter((category) => !category.status || category.status === "ACTIVE");
+  const field = community?.researchField ? plain(community.researchField) : "";
+  return (field ? active.find((category) => plain(category.name) === field) : undefined)?.id ?? active.find((category) => category.slug === DEFAULT_CATEGORY_SLUG)?.id;
+}
 
 export const FORUM_DISCUSSION_TAG_LIMIT = 5;
 export function forumDiscussionTags(value: string): string[] {
@@ -245,7 +254,7 @@ export function buildForumDiscussionInput(draft: ForumDiscussionDraft, categorie
   }));
   if (references.some((reference) => !reference.paperId && (!reference.doi || !reference.title))) return { error: "Attach a paper from LumiGap before adding a citation." };
   return { input: {
-    type: draft.type, communityId: draft.communityId, title, content, tags,
+    type: draft.type, communityId: draft.communityId, researchCommunityId: draft.researchCommunityId || undefined, title, content, tags,
     linkedPaperId: draft.type === "PAPER_DISCUSSION" ? draft.linkedPaperId : undefined,
     linkedResearchGapId: draft.type === "RESEARCH_GAP_DISCUSSION" ? draft.linkedGapId : undefined,
     references,

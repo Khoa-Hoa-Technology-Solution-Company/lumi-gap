@@ -7,13 +7,17 @@ import { describe, expect, it, vi } from "vitest";
 import { ForumDiscussionComposer } from "@/pages/forum/forum-new";
 import { ForumTagInput } from "../components/forum-tag-input";
 
-const mocks = vi.hoisted(() => ({ create: vi.fn(async (_input: unknown) => ({ id: "posted", publicSlug: "posted" })) }));
+const mocks = vi.hoisted(() => ({
+  create: vi.fn(async (_input: unknown) => ({ id: "posted", publicSlug: "posted" })),
+  mine: [{ id: "cm1", slug: "se-lab", name: "SE Lab", visibility: "private", status: "ACTIVE", researchField: "software  ENGINEERING", viewerMembership: { status: "active", role: "member" } }] as unknown[],
+}));
 vi.mock("@/i18n", () => ({ useI18n: () => ({ t: (key: string, values?: Record<string, string>) => key.replace("{tag}", values?.tag ?? ""), language: "en" }) }));
 vi.mock("@/features/forum/hooks/use-forum", () => ({
   useForumPaperSearch: () => ({ data: [], isLoading: false, isError: false }),
   useForumContext: () => ({ data: { papers: [{ id: "paper", title: "Study", publicationYear: 2026 }], gaps: [{ id: "gap", title: "Candidate", forumShareable: true }] }, isLoading: false, isError: false }),
   useCreateForumPost: () => ({ isPending: false, mutateAsync: mocks.create }),
   useShareForumGap: () => ({ isPending: false, mutateAsync: vi.fn() }),
+  useCommunityList: () => ({ data: { pages: [{ items: mocks.mine }] } }),
 }));
 vi.mock("@/features/forum/hooks/use-forum-categories", () => ({
   useForumCategories: () => ({ data: [{ id: "category", name: "Software Engineering", status: "ACTIVE" }], isLoading: false, isError: false }),
@@ -55,6 +59,21 @@ describe("Discussion source and tag fields", () => {
       expect(payload).not.toHaveProperty("linkedProjectId");
       expect(published).toHaveBeenCalledWith("posted");
     } finally { await act(async () => root.unmount()); client.clear(); container.remove(); localStorage.removeItem(key); vi.unstubAllGlobals(); }
+  });
+  it("lists only the user's communities and pre-fills the category from the community's research field", async () => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    const container = document.createElement("div"); document.body.append(container);
+    const root = createRoot(container);
+    const client = new QueryClient();
+    try {
+      await act(async () => { root.render(<QueryClientProvider client={client}><MemoryRouter initialEntries={["/forum/new?community=se-lab"]}><ForumDiscussionComposer embedded /></MemoryRouter></QueryClientProvider>); });
+      const community = container.querySelector<HTMLSelectElement>('select[aria-label="Post in community"]')!;
+      expect(Array.from(community.options).map((option) => option.textContent)).toEqual(["Post in community (optional)", "🔒 SE Lab"]);
+      // The URL names the community: it is selected and the category follows its research field (accent/case/space-insensitive).
+      expect(community.value).toBe("cm1");
+      expect(container.querySelector<HTMLSelectElement>('select[aria-label="Category"]')!.value).toBe("category");
+      expect(container.textContent).toContain("Only members of this private community can read this discussion.");
+    } finally { await act(async () => root.unmount()); client.clear(); container.remove(); vi.unstubAllGlobals(); }
   });
   it("autocompletes existing tags, prevents a sixth tag and lets the user remove a tag", async () => {
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);

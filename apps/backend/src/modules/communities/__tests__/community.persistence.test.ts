@@ -540,3 +540,167 @@ describe.sequential("community fixes round 2 (private content, join cooldown, mo
     expect(() => translateNameConflict(other)).toThrow(other);
   });
 });
+
+const activeCountOf = (communityId: string) => getPrisma().communityMembership.count({ where: { communityId, status: "active" } });
+
+describe.sequential("community flow consistency (private discoverable, archive frozen, private->public approves)", () => {
+  const marker = crypto.randomUUID().slice(0, 8);
+  const userIds: string[] = [];
+  const communityIds: string[] = [];
+  const ids = { admin: "", owner: "", mod: "", member: "", outsider: "", pendingA: "", pendingB: "" };
+  const topic = `zqtopic${marker}`;
+
+  const makeUser = async (key: keyof typeof ids, data: Record<string, unknown> = {}) => {
+    const user = await getPrisma().user.create({ data: { email: `cflow-${key}-${marker}@example.test`, fullName: `Cflow ${key}`, ...data } });
+    userIds.push(user.id);
+    ids[key] = user.id;
+  };
+  /** Active community owned by a regular user (admin-created ones would be owned by the admin). */
+  const fixture = async (key: string, data: Record<string, unknown> = {}) => {
+    const prisma = getPrisma();
+    const community = await prisma.community.create({ data: { name: `Cflow ${key} ${marker}`, slug: `cflow-${key}-${marker}`, ownerId: ids.owner, status: "ACTIVE", memberCount: 3, ...data } as never });
+    communityIds.push(community.id);
+    await prisma.communityMembership.createMany({ data: [
+      { communityId: community.id, userId: ids.owner, role: "owner", status: "active" },
+      { communityId: community.id, userId: ids.mod, role: "moderator", status: "active" },
+      { communityId: community.id, userId: ids.member, role: "member", status: "active" },
+    ] });
+    return community;
+  };
+  const listFor = async (viewer: string | undefined, role: "user" | "admin", extra: Partial<CommunityListQuery> = {}) =>
+    (await communityService.list(viewer, { ...LIST_DEFAULTS, q: marker, ...extra }, role)).data;
+  const named = <T extends { name: string }>(rows: T[], key: string) => rows.find((row) => row.name === `Cflow ${key} ${marker}`);
+
+  beforeAll(async () => {
+    await makeUser("admin", { role: "admin", systemRole: "ADMIN" });
+    for (const key of ["owner", "mod", "member", "outsider", "pendingA", "pendingB"] as const) await makeUser(key);
+  });
+
+  afterAll(async () => {
+    const prisma = getPrisma();
+    // Only ids this suite created; an empty list must never reach a filter.
+    if (communityIds.length) {
+      await prisma.notification.deleteMany({ where: { targetUuid: { in: communityIds } } });
+      await prisma.communityMembership.deleteMany({ where: { communityId: { in: communityIds } } });
+      await prisma.community.deleteMany({ where: { id: { in: communityIds } } });
+    }
+    if (userIds.length) {
+      await prisma.notification.deleteMany({ where: { userId: { in: userIds } } });
+      await prisma.communityMembership.deleteMany({ where: { userId: { in: userIds } } });
+      await prisma.user.deleteMany({ where: { id: { in: userIds } } });
+    }
+  });
+
+  it("an outsider lists a private ACTIVE community, with its content locked", async () => {
+    await fixture("privlist", { visibility: "private", description: "Closed group", rules: ["Secret rule"], researchTopics: [topic] });
+    const row = named(await listFor(ids.outsider, "user"), "privlist");
+    expect(row).toMatchObject({ visibility: "private", status: "ACTIVE", contentRestricted: true, researchTopics: [], rules: [], description: "Closed group", memberCount: 3 });
+    expect(named(await listFor(undefined, "user"), "privlist")?.contentRestricted).toBe(true);
+    expect(named(await listFor(ids.member, "user"), "privlist")).toMatchObject({ contentRestricted: false, rules: ["Secret rule"], researchTopics: [topic] });
+  });
+
+  it("text search does not leak the topics of a private community to outsiders", async () => {
+    await fixture("pubtopic", { visibility: "public", researchTopics: [topic] });
+    const find = async (viewer: string, role: "user" | "admin" = "user") => (await communityService.list(viewer, { ...LIST_DEFAULTS, q: topic }, role)).data.map((row) => row.name);
+    const asOutsider = await find(ids.outsider);
+    expect(asOutsider).toContain(`Cflow pubtopic ${marker}`);
+    expect(asOutsider).not.toContain(`Cflow privlist ${marker}`);
+    expect(await find(ids.member)).toContain(`Cflow privlist ${marker}`);
+    expect(await find(ids.admin, "admin")).toContain(`Cflow privlist ${marker}`);
+    // Name, description and field stay searchable for outsiders.
+    const byName = await communityService.list(ids.outsider, { ...LIST_DEFAULTS, q: `privlist ${marker}` }, "user");
+    expect(byName.data.map((row) => row.name)).toContain(`Cflow privlist ${marker}`);
+  });
+
+  it("the roster and related research of a private community stay 403 for outsiders", async () => {
+    const privateCommunity = await getPrisma().community.findUniqueOrThrow({ where: { slug: `cflow-privlist-${marker}` } });
+    await expect(communityService.publicMembers(privateCommunity.id, ids.outsider, "user")).rejects.toMatchObject({ statusCode: 403 });
+    await expect(communityRelatedService.papers(privateCommunity.id, ids.outsider, "user")).rejects.toMatchObject({ statusCode: 403 });
+    await expect(communityService.publicMembers(privateCommunity.id, ids.member, "user")).resolves.toMatchObject({ meta: { page: 1 } });
+  });
+
+  it("an archived public community stays reachable by link, leaves discovery, and stays in its members' lists", async () => {
+    const community = await fixture("archpub", { visibility: "public", rules: ["Be kind"] });
+    await communityService.setStatus(community.id, "ARCHIVED", ids.admin, "admin");
+    expect(await communityService.get(community.slug, ids.outsider, "user")).toMatchObject({ status: "ARCHIVED", rules: ["Be kind"] });
+    expect(await communityService.get(community.slug, undefined, undefined)).toMatchObject({ status: "ARCHIVED" });
+    expect(named(await listFor(ids.outsider, "user"), "archpub")).toBeUndefined();
+    expect(named(await listFor(ids.outsider, "user", { status: "ARCHIVED" }), "archpub")).toBeUndefined();
+    expect(named(await listFor(ids.member, "user"), "archpub")).toMatchObject({ status: "ARCHIVED" });
+    expect(named(await listFor(ids.admin, "admin"), "archpub")).toMatchObject({ status: "ARCHIVED" });
+  });
+
+  it("an archived private community shows basics to outsiders and everything to members", async () => {
+    const community = await fixture("archpriv", { visibility: "private", rules: ["Members only"] });
+    await communityService.setStatus(community.id, "ARCHIVED", ids.admin, "admin");
+    expect(await communityService.get(community.slug, ids.outsider, "user")).toMatchObject({ status: "ARCHIVED", contentRestricted: true, rules: [] });
+    expect(await communityService.get(community.slug, ids.member, "user")).toMatchObject({ status: "ARCHIVED", contentRestricted: false, rules: ["Members only"] });
+  });
+
+  it("archived communities are frozen: no join, no member changes (except admins), members may leave", async () => {
+    const community = await fixture("frozen", { visibility: "public" });
+    await getPrisma().communityMembership.create({ data: { communityId: community.id, userId: ids.pendingA, role: "member", status: "active" } });
+    await communityService.setStatus(community.id, "ARCHIVED", ids.admin, "admin");
+
+    await expect(communityService.join(community.id, ids.outsider)).rejects.toMatchObject({ statusCode: 409 });
+    await expect(communityService.updateMember(community.id, ids.member, { status: "banned" }, ids.mod)).rejects.toMatchObject({ statusCode: 409 });
+    await expect(communityService.update(community.id, { description: "new" }, ids.owner, "user")).rejects.toMatchObject({ statusCode: 409 });
+    await expect(communityService.transferOwnership(community.id, ids.mod, ids.owner, "user")).rejects.toMatchObject({ statusCode: 409 });
+    expect(await getPrisma().communityMembership.findFirstOrThrow({ where: { communityId: community.id, userId: ids.member } })).toMatchObject({ status: "active" });
+
+    await expect(communityService.updateMember(community.id, ids.member, { status: "banned" }, ids.admin, "admin")).resolves.toMatchObject({ status: "banned" });
+    await expect(communityService.leave(community.id, ids.pendingA)).resolves.toBeUndefined();
+    expect(await getPrisma().communityMembership.findFirst({ where: { communityId: community.id, userId: ids.pendingA } })).toBeNull();
+  });
+
+  it("archiving declines this community's pending requests only, and notifies the requesters", async () => {
+    const spy = vi.spyOn(notificationService, "create");
+    try {
+      const target = await fixture("closing", { visibility: "private" });
+      const other = await fixture("staying", { visibility: "private" });
+      await communityService.join(target.id, ids.pendingA);
+      await communityService.join(other.id, ids.pendingB);
+      spy.mockClear();
+
+      await communityService.setStatus(target.id, "ARCHIVED", ids.admin, "admin");
+      const status = (communityId: string, userId: string) => getPrisma().communityMembership.findFirstOrThrow({ where: { communityId, userId } }).then((row) => row.status);
+      expect(await status(target.id, ids.pendingA)).toBe("declined");
+      expect(await status(other.id, ids.pendingB)).toBe("pending");
+      const declined = spy.mock.calls.map(([input]) => input).filter((input) => input.type === "COMMUNITY_MEMBER_DECLINED");
+      expect(declined).toHaveLength(1);
+      expect(declined[0]).toMatchObject({ userId: ids.pendingA, title: "Community archived", targetId: target.id });
+      // Active members are untouched.
+      expect(await activeCountOf(target.id)).toBe(3);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("private -> public approves every pending request and recounts members; public -> private changes nothing", async () => {
+    const spy = vi.spyOn(notificationService, "create");
+    try {
+      const community = await fixture("opening", { visibility: "private" });
+      await communityService.join(community.id, ids.pendingA);
+      await communityService.join(community.id, ids.pendingB);
+      const declinedBefore = await getPrisma().communityMembership.create({ data: { communityId: community.id, userId: ids.outsider, role: "member", status: "declined" } });
+      spy.mockClear();
+
+      await communityService.update(community.id, { visibility: "public" }, ids.admin, "admin");
+      const rows = await getPrisma().communityMembership.findMany({ where: { communityId: community.id } });
+      expect(rows.filter((row) => row.status === "pending")).toHaveLength(0);
+      expect(rows.find((row) => row.userId === ids.pendingA)?.status).toBe("active");
+      expect(rows.find((row) => row.userId === ids.pendingB)?.status).toBe("active");
+      expect(rows.find((row) => row.id === declinedBefore.id)?.status).toBe("declined");
+      const refreshed = await getPrisma().community.findUniqueOrThrow({ where: { id: community.id } });
+      expect(refreshed.memberCount).toBe(await activeCountOf(community.id));
+      expect(refreshed.memberCount).toBe(5);
+      const approved = spy.mock.calls.map(([input]) => input).filter((input) => input.type === "COMMUNITY_MEMBER_APPROVED").map((input) => input.userId);
+      expect(approved.sort()).toEqual([ids.pendingA, ids.pendingB].sort());
+
+      await communityService.update(community.id, { visibility: "private" }, ids.admin, "admin");
+      expect(await activeCountOf(community.id)).toBe(5);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});

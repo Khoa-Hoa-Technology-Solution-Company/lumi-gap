@@ -1,6 +1,6 @@
 import { useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, Check, Inbox, Shield, UserRoundCog, X } from "lucide-react";
+import { ArrowLeft, Check, Inbox, Shield, ShieldAlert, UserRoundCog, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -18,8 +18,9 @@ import {
 } from "@/features/forum";
 import { useI18n } from "@/i18n";
 import { cn } from "@/utils/cn";
+import { CommunityModerationTab } from "./community-moderation-tab";
 
-type Tab = "settings" | "requests" | "members";
+type Tab = "settings" | "requests" | "members" | "moderation";
 type MemberChange = { role?: "moderator" | "member"; status?: "active" | "declined" | "banned" };
 
 const splitValues = (value: string) => [...new Set(value.split(/[\n,]/).map((item) => item.trim()).filter(Boolean))];
@@ -41,6 +42,7 @@ export function CommunityManagePage() {
     ...(community.canEditCommunity ? [{ value: "settings" as const, label: "Settings and rules", icon: Shield }] : []),
     { value: "requests", label: "Join requests", icon: Inbox, badge: pending },
     { value: "members", label: "Members", icon: UserRoundCog },
+    { value: "moderation", label: "Moderation", icon: ShieldAlert },
   ];
 
   return <main className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
@@ -60,7 +62,8 @@ export function CommunityManagePage() {
     <div className="mt-7">
       {tab === "settings" && community.canEditCommunity ? <Settings community={community} />
         : tab === "requests" ? <MemberList community={community} mode="requests" />
-          : <MemberList community={community} mode="members" />}
+          : tab === "moderation" ? <CommunityModerationTab community={community} frozen={community.status === "ARCHIVED" && !community.isAdmin} />
+            : <MemberList community={community} mode="members" />}
     </div>
   </main>;
 }
@@ -89,6 +92,7 @@ function Settings({ community }: { community: CommunityView }) {
   const [message, setMessage] = useState<{ text: string; error?: boolean }>();
   const canChangeStatus = community.isAdmin && (community.status === "ACTIVE" || community.status === "ARCHIVED");
   const busy = update.isPending || setStatusMutation.isPending;
+  const frozen = community.status === "ARCHIVED" && !community.isAdmin;
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -105,7 +109,9 @@ function Settings({ community }: { community: CommunityView }) {
   return <section className="max-w-3xl">
     <div className="flex items-center gap-2"><Shield className="h-4 w-4 text-blue-700" /><h2 className="text-lg font-semibold">{t("Settings and rules")}</h2></div>
     <p className="mt-1 text-sm text-muted-foreground">{t("Owners and administrators can edit this community. Only administrators can archive it.")}</p>
-    <form onSubmit={submit} className="mt-5 space-y-5">
+    {frozen ? <p role="status" className="mt-3 text-sm text-muted-foreground">{t("This community is archived, so its settings are read-only. Only an administrator can change them.")}</p> : null}
+    <form onSubmit={submit} className="mt-5">
+      <fieldset disabled={frozen} className="min-w-0 space-y-5 border-0 p-0">
       <Field label={t("Community name")}><Input required minLength={2} maxLength={120} value={name} onChange={(event) => setName(event.target.value)} /></Field>
       <div className="grid gap-5 sm:grid-cols-[1fr_180px]">
         <Field label={t("Research field")}><Input maxLength={160} value={researchField} onChange={(event) => setResearchField(event.target.value)} /></Field>
@@ -117,19 +123,20 @@ function Settings({ community }: { community: CommunityView }) {
       <div className="grid gap-5 sm:grid-cols-2">
         <Field label={t("Visibility")}>
           <select value={visibility} onChange={(event) => setVisibility(event.target.value as "public" | "private")} className="h-10 w-full rounded-md border bg-background px-3 text-sm">
-            <option value="public">{t("Public, anyone can read")}</option>
-            <option value="private">{t("Private, approved members only")}</option>
+            <option value="public">{t("Public, anyone can view")}</option>
+            <option value="private">{t("Private, approval required to join")}</option>
           </select>
         </Field>
         {canChangeStatus ? <Field label={t("Status")}>
           <select value={status} onChange={(event) => setStatus(event.target.value as "ACTIVE" | "ARCHIVED")} className="h-10 w-full rounded-md border bg-background px-3 text-sm">
             <option value="ACTIVE">{t("Active")}</option>
-            <option value="ARCHIVED">{t("Archived — read only")}</option>
+            <option value="ARCHIVED">{t("Archived, read-only")}</option>
           </select>
         </Field> : null}
       </div>
       {message ? <p role="status" className={`text-sm ${message.error ? "text-red-600" : "text-emerald-700"}`}>{message.text}</p> : null}
       <Button variant="discussion" type="submit" disabled={busy || name.trim().length < 2 || !description.trim()}>{t(busy ? "Saving…" : "Save settings")}</Button>
+      </fieldset>
     </form>
     {(community.isOwner || community.isAdmin) && community.status === "ACTIVE" ? <TransferOwnership community={community} /> : null}
   </section>;
@@ -189,6 +196,7 @@ function MemberList({ community, mode }: { community: CommunityView; mode: "requ
   const update = useUpdateCommunityMember();
   const [error, setError] = useState("");
   const canAssignModerators = community.isOwner || community.isAdmin;
+  const frozen = community.status === "ARCHIVED" && !community.isAdmin;
   const rows = useMemo(() => (members.data ?? []).filter((member) => (mode === "requests" ? member.status === "pending" : member.status !== "pending")), [members.data, mode]);
 
   async function change(userId: string, input: MemberChange) {
@@ -201,11 +209,12 @@ function MemberList({ community, mode }: { community: CommunityView; mode: "requ
   return <section>
     <div className="flex items-center gap-2">{mode === "requests" ? <Inbox className="h-4 w-4 text-blue-700" /> : <UserRoundCog className="h-4 w-4 text-blue-700" />}<h2 className="text-lg font-semibold">{t(title)}</h2></div>
     <p className="mt-1 text-sm text-muted-foreground">{t(hint)}</p>
+    {frozen ? <p role="status" className="mt-3 text-sm text-muted-foreground">{t("This community is archived, so membership can no longer be changed. Only an administrator can change it.")}</p> : null}
     {error ? <p role="alert" className="mt-4 text-sm text-red-600">{error}</p> : null}
     {members.isLoading ? <div className="mt-5 space-y-2">{Array.from({ length: 4 }).map((_, index) => <div key={index} className="h-20 animate-pulse rounded-lg bg-muted" />)}</div>
       : members.error ? <p className="mt-5 text-sm text-red-600">{t("Unable to load members.")}</p>
         : rows.length === 0 ? <p className="mt-6 text-sm text-muted-foreground">{t(mode === "requests" ? "No pending join requests." : "No members yet.")}</p>
-          : <div className="mt-5 divide-y border-y">{rows.map((member) => <MemberRow key={member.id} member={member} busy={update.isPending} canAssignModerators={canAssignModerators} onChange={change} />)}</div>}
+          : <div className="mt-5 divide-y border-y">{rows.map((member) => <MemberRow key={member.id} member={member} busy={update.isPending || frozen} canAssignModerators={canAssignModerators} onChange={change} />)}</div>}
   </section>;
 }
 
