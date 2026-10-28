@@ -7,8 +7,15 @@ import {
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatNumber } from "@/utils";
+import { platformAiApi } from "@/features/admin/api/platform-ai.api";
 
 export function AdminAiJobsPage() {
+  // The models actually in use: the active platform connection, else the server defaults.
+  const { data: aiSettings } = useQuery({ queryKey: ["admin", "ai-connections"], queryFn: platformAiApi.get });
+  const activeAi = aiSettings?.connections.find((connection) => connection.isActive);
+  const fastModel = activeAi?.fastModel ?? aiSettings?.environmentDefaults.fastModel;
+  const deepModel = activeAi?.deepModel ?? aiSettings?.environmentDefaults.deepModel;
+
   const { data: reports, isLoading: isReportsLoading } = useQuery({
     queryKey: ["admin", "ai-reports"],
     queryFn: async () => {
@@ -47,7 +54,7 @@ export function AdminAiJobsPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">AI Operations & Jobs</h1>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            Monitor Gemini 2.5 synthesis runs, automated research gap validations, and LLM judge calibrations.
+            Monitor AI synthesis runs, automated research gap validations, and LLM judge calibrations.
           </p>
         </div>
       </div>
@@ -81,8 +88,10 @@ export function AdminAiJobsPage() {
             <span>Active Model Version</span>
             <Cpu className="h-4 w-4 text-blue-600" />
           </div>
-          <div className="text-xl font-bold text-slate-900 dark:text-white font-mono">gemini-2.5-flash</div>
-          <p className="text-[11px] text-slate-400">Primary model for fast synthesis & grading</p>
+          <div className="text-xl font-bold text-slate-900 dark:text-white font-mono break-all">{fastModel ?? "…"}</div>
+          <p className="text-[11px] text-slate-400">
+            Fast model{deepModel && deepModel !== fastModel ? <> · deep: <span className="font-mono">{deepModel}</span></> : null} · {activeAi ? `platform connection "${activeAi.name}"` : "server defaults (.env)"}
+          </p>
         </div>
       </div>
 
@@ -99,7 +108,7 @@ export function AdminAiJobsPage() {
                 <div className="min-w-0 pr-4">
                   <p className="font-bold text-slate-900 dark:text-white truncate">{r.query || r.topic || "Research Synthesis"}</p>
                   <p className="text-[11px] text-slate-400 mt-0.5">
-                    Model: {r.modelVersion || "gemini-2.5-flash"} • {new Date(r.createdAt).toLocaleDateString()}
+                    Model: {r.modelVersion || "unknown"} • {new Date(r.createdAt).toLocaleDateString()}
                   </p>
                 </div>
                 <div className="flex items-center gap-3 shrink-0">

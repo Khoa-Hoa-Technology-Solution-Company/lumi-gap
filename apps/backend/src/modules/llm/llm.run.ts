@@ -1,9 +1,9 @@
-import { env } from "../../config/env.js";
 import { cache, hashKey, LLM_CACHE_TTL_SECONDS } from "../../infrastructure/cache.js";
 import { generateJSON, generateText, type GenerateOptions } from "./gemini.client.js";
-import { aiCacheNamespace, personalAiRuntime } from "../user-ai/user-ai.runtime.js";
+import { aiCacheNamespace, aiModel, personalAiRuntime } from "../user-ai/user-ai.runtime.js";
+import { platformAiRuntime, refreshPlatformAi } from "../user-ai/platform-ai.runtime.js";
 
-export type LlmTask = "rerank" | "extract" | "chat" | "report" | "gap" | "judge" | "compare" | "directions" | "trend" | "summary" | "gap-closure-queries" | "gap-closure-screen";
+export type LlmTask = "rerank" | "extract" | "chat" | "report" | "gap" | "judge" | "compare" | "directions" | "trend" | "summary" | "gap-closure-queries" | "gap-closure-screen" | "gap-refine";
 
 interface CachedGenerateBase<T> {
   task: LlmTask;
@@ -22,8 +22,8 @@ interface CachedGenerateBase<T> {
 export function routeLlmModel(task: LlmTask, override?: string): string {
   if (personalAiRuntime()) return personalAiRuntime()!.model;
   if (override) return override;
-  if (task === "report" || task === "gap" || task === "trend") return env.GEMINI_MODEL_DEEP;
-  return env.GEMINI_MODEL_FAST;
+  // aiModel falls back from the platform connection to the env defaults.
+  return aiModel(task === "report" || task === "gap" || task === "gap-refine" || task === "trend" ? "deep" : "fast");
 }
 
 export function buildLlmCacheKey(args: {
@@ -34,7 +34,7 @@ export function buildLlmCacheKey(args: {
   inputHash?: string;
 }): string {
   return `llm:${args.task}:${args.promptVersion}:${hashKey({
-    ...(personalAiRuntime() ? { providerScope: aiCacheNamespace() } : {}),
+    ...(personalAiRuntime() || platformAiRuntime() ? { providerScope: aiCacheNamespace() } : {}),
     model: args.model,
     keyParts: args.keyParts,
     inputHash: args.inputHash ?? null,
@@ -42,6 +42,7 @@ export function buildLlmCacheKey(args: {
 }
 
 export async function cachedGenerate<T>(args: CachedGenerateBase<T>): Promise<T> {
+  await refreshPlatformAi();
   const model = routeLlmModel(args.task, args.model);
   const cacheKey = buildLlmCacheKey({
     task: args.task,

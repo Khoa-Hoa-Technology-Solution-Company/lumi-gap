@@ -178,6 +178,8 @@ model ResearchGap {
   closureStatus             String   @default("NOT_CHECKED") @map("closure_status") @db.VarChar(24)
   /// PICOC facets of the gap research question ({ population, intervention, comparison, outcome, context }).
   questionFacets            Json?    @map("question_facets")
+  /** Self-check against possible counter-evidence (keep / narrow / drop), see gap-refine.ts. */
+  refinement                Json?
   latestClosureCheckId      String?  @map("latest_closure_check_id") @db.Uuid
   createdAt                 DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt                 DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -305,6 +307,7 @@ model GapClosureCheck {
   epsHat              Float?    @map("eps_hat")
   pHat                Float?    @map("p_hat")
   bound               Float?
+  boundMode           String?   @map("bound_mode") @db.VarChar(16)
   maxFalseNovelty     Float?    @map("max_false_novelty")
   decision            String?   @db.VarChar(24)
   decisionReasons     Json      @default("[]") @map("decision_reasons")
@@ -401,6 +404,8 @@ model ClosureCalibration {
   name            String    @db.VarChar(200)
   domain          String    @db.VarChar(200)
   judgeKind       String    @map("judge_kind") @db.VarChar(16)
+  /// IN_SITU: B = epsHat (the calibration ran on the same sources, so its misses include missing answers); TRANSFER: B = epsHat + pHat.
+  mode            String    @default("TRANSFER") @db.VarChar(16)
   protocolVersion String    @map("protocol_version") @db.VarChar(32)
   status          String    @default("DRAFT") @db.VarChar(16)
   delta           Float

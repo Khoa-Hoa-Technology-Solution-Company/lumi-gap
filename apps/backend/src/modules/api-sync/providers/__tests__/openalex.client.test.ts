@@ -1,8 +1,19 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { buildOpenAlexPageUrl, OPENALEX_MAX_PER_PAGE, searchOpenAlexWorks, fetchOpenAlexWorkById } from "../openalex.client.js";
+import { buildOpenAlexPageUrl, OPENALEX_MAX_PER_PAGE, openAlexSearchText, searchOpenAlexWorks, searchOpenAlexWorksForClosure, fetchOpenAlexWorkById } from "../openalex.client.js";
 
 describe("OpenAlex Works request contract", () => {
+  it("drops the wildcards OpenAlex rejects from a research-question search", async () => {
+    expect(openAlexSearchText("Does X improve Y?  * test ")).toBe("Does X improve Y test");
+    const request = vi.fn(async () => new Response(JSON.stringify({ results: [] }), { status: 200 }));
+    vi.stubGlobal("fetch", request);
+    try {
+      await searchOpenAlexWorksForClosure({ query: "Does feedback help novices?", perPage: 5 });
+      const [url] = request.mock.calls[0] as unknown as [string];
+      expect(new URL(url).searchParams.get("search")).toBe("Does feedback help novices");
+    } finally { vi.unstubAllGlobals(); }
+  });
+
   it("encodes interactive search on a fixed host and rejects arbitrary attach URLs", async () => {
     const request = vi.fn(async () => new Response(JSON.stringify({ results: [{ id: "https://openalex.org/W123" }] }), { status: 200 }));
     vi.stubGlobal("fetch", request);

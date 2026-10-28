@@ -128,6 +128,7 @@ Làm lần lượt theo từng bước. Hãy cố định các thiết lập ở
 | Khoảng năm tìm kiếm (tùy chọn) | không giới hạn | |
 | Người đánh giá 1 / Người đánh giá 2 | | |
 | Loại người phán xét (judge kind) | HUMAN khi bạn tự gán nhãn mọi tài liệu | |
+| Chế độ hiệu chuẩn (Bước 5) | TRANSFER; chỉ dùng IN_SITU khi thỏa các điều kiện ở Bước 5 | |
 
 ### Bước 1. Câu hỏi và các khía cạnh (Phiếu 1)
 
@@ -173,6 +174,8 @@ Quy tắc gán nhãn:
 ### Bước 4. Kiểm tra độ phủ (Phiếu 4)
 
 Độ phủ cho biết khả năng một bài báo có câu trả lời đơn giản là không có trong các nguồn bạn đã tìm.
+
+Bước này chỉ cần cho hiệu chuẩn **TRANSFER** (Bước 5). Hiệu chuẩn **IN_SITU** đã đo phần mất này nên có thể bỏ qua bước này; nếu vẫn làm, hãy ghi `pHat` để tham khảo nhưng không cộng vào `B`.
 
 1. Lấy `m` DOI tham chiếu của các bài cùng chủ đề từ một nguồn **độc lập với lượt tìm kiếm của bạn**: danh mục tài liệu tham khảo của một bài tổng quan (survey) hoặc tổng quan hệ thống gần đây, hoặc danh sách do chuyên gia cung cấp. Nên dùng ít nhất 50. Không lấy từ kết quả tìm ở Bước 2.
 2. Với mỗi DOI, kiểm tra xem bài đó có tìm thấy trong các nguồn bạn đã tìm ở Bước 2 không (tra theo DOI). DOI không tìm thấy ở nguồn nào là "thiếu".
@@ -226,6 +229,15 @@ Với mỗi câu hỏi, chạy Bước 2 và Bước 3. Câu hỏi là **FOUND**
 
 Lưu ý: một câu hỏi cũng được tính là MISSED khi witness của nó hoàn toàn không có trong các nguồn đã tìm. Điều này là chủ ý (xem mục 6).
 
+**Chế độ hiệu chuẩn.** Chọn khi tạo hiệu chuẩn, trước khi chạy câu hỏi nào; sau đó không đổi được.
+
+| Chế độ | Cận | Dùng khi |
+|---|---|---|
+| `IN_SITU` | `B = epsHat` | Thỏa cả ba: (1) câu hỏi và DOI witness được viết từ một survey, tổng quan hệ thống hoặc ghi chú chuyên gia, **không** nhìn vào các nguồn sẽ tìm (quy tắc 1 ở trên), nên witness có khả năng vắng mặt trong nguồn giống như lời giải của một khoảng trống thật; (2) hiệu chuẩn chạy trên cùng nguồn, cùng khoảng năm, cùng ngân sách truy vấn và kết quả với các lần kiểm tra sẽ dùng nó; (3) các nguồn chưa thay đổi nhiều kể từ đó (chạy lại hiệu chuẩn sau một đợt nhập dữ liệu lớn hoặc sau thời gian dài). |
+| `TRANSFER` | `B = epsHat + pHat` | Mọi trường hợp khác. Đây là mặc định, cần kiểm tra độ phủ (Bước 4), và vẫn hợp lệ khi nguồn đã thay đổi. |
+
+Vì sao `IN_SITU` không cần kiểm tra độ phủ: câu hỏi có witness vắng mặt được tính là MISSED, nên `epsHat` đã đo *cả hai* cách một câu hỏi đã có lời giải bị gọi là mở (lời giải vắng mặt, lời giải có mặt nhưng bị bỏ sót). Đây là ý tưởng hiệu chuẩn tại chỗ trong bài báo của nhóm (Định lý 1). Xem mục 6.
+
 ### Bước 6. Quyết định (Phiếu 6)
 
 Áp dụng các quy tắc theo thứ tự này và dừng ở quy tắc đầu tiên thỏa mãn.
@@ -237,14 +249,14 @@ Lưu ý: một câu hỏi cũng được tính là MISSED khi witness của nó 
 |---|---|---|
 | `SEARCH_ERRORS` | có ít nhất một truy vấn lỗi, quá thời gian hoặc bị bỏ qua | |
 | `PENDING_REVIEW` | có ít nhất một tài liệu chưa có nhãn hiệu lực (kể cả nhãn `ANSWERS` hoặc `PARTIAL` của AI mà trích dẫn không tìm thấy nguyên văn) | |
-| `NO_COVERAGE` | chưa có kiểm tra độ phủ (Bước 4) | |
+| `NO_COVERAGE` | hiệu chuẩn là `TRANSFER` và chưa có kiểm tra độ phủ (Bước 4) | |
 | `NO_CALIBRATION` | chưa có hiệu chuẩn đã tính (Bước 5) | |
 | `CALIBRATION_JUDGE_MISMATCH` | hiệu chuẩn được chạy với loại người phán xét khác với lần kiểm tra này (xem bên dưới) | |
-| `BOUND_EXCEEDS_MAX` | `B = epsHat + pHat` lớn hơn `Bmax` | |
+| `BOUND_EXCEEDS_MAX` | `B` (`epsHat` với `IN_SITU`, `epsHat + pHat` với `TRANSFER`) lớn hơn `Bmax` | |
 
 3. Nếu không điều kiện nào thỏa mãn, quyết định là `OPEN_CERTIFIED`. Nếu có ít nhất một điều kiện thỏa mãn, quyết định là `ABSTAIN`, và danh sách lý do là một phần của kết quả.
 
-Tính `B = epsHat + pHat`, làm tròn 4 chữ số thập phân (tối đa 1). Vì hai thành phần đã được làm tròn lên tới 4 chữ số, cứ cộng đúng như đã ghi.
+Tính `B`: với hiệu chuẩn `IN_SITU` thì `B = epsHat`; với hiệu chuẩn `TRANSFER` thì `B = epsHat + pHat`, làm tròn 4 chữ số thập phân (tối đa 1). Vì hai thành phần đã được làm tròn lên tới 4 chữ số, cứ cộng đúng như đã ghi.
 
 **Loại người phán xét.** Lần kiểm tra là `HUMAN` chỉ khi một người đã gán nhãn **mọi** tài liệu; ngược lại là `AI`. Lần kiểm tra không sàng lọc tài liệu nào (không có tài liệu) được tính là `AI`, vì chỉ các truy vấn quyết định; khi làm thủ công, hãy coi tìm kiếm rỗng là dấu hiệu truy vấn quá hẹp và viết lại. Hiệu chuẩn phải cùng loại người phán xét với lần kiểm tra.
 
@@ -252,7 +264,7 @@ Tính `B = epsHat + pHat`, làm tròn 4 chữ số thập phân (tối đa 1). V
 |---|---|
 | Quyết định | CLOSED / OPEN_CERTIFIED / ABSTAIN |
 | Tài liệu witness và trích dẫn (nếu CLOSED) | |
-| `epsHat` + `pHat` = `B` | |
+| Chế độ hiệu chuẩn; `epsHat` (+ `pHat` nếu TRANSFER) = `B` | |
 | `B <= Bmax`? | |
 | Các lý do (nếu ABSTAIN) | |
 | Có đồng thuận bổ trợ (corroborated)? (một tài liệu `PARTIAL` có cờ hạn chế, từ bài mà khoảng trống **không** được suy ra) | |
@@ -298,6 +310,7 @@ Với `m`, `x` hoặc `delta` khác, hãy dùng công thức bảng tính.
 - `n = 30` câu hỏi hiệu chuẩn với 0 lần bỏ sót (`epsHat = 0,0951`) và `m = 50` tham chiếu với 0 bị thiếu (`pHat = 0,0582`): `B = 0,1533`, đạt chứng nhận. Chỉ cần một lần bỏ sót trong 30 câu (`epsHat = 0,1486`) thì `B = 0,2068`, đã quá lớn.
 - `n = 50` với tối đa 2 lần bỏ sót (0,1207) cộng `m = 50`, `x = 0` (0,0582): `B = 0,1789`, đạt. Với 3 lần bỏ sót (0,1479): `B = 0,2061`, quá lớn.
 - Dưới khoảng 20 câu hỏi ở mỗi phía thì không thể đạt `Bmax = 0,20` ngay cả khi không bỏ sót lần nào (`n = 20`, `m = 20`, không sự kiện: `B = 0,1392 + 0,1392 = 0,2784`).
+- Với hiệu chuẩn `IN_SITU` thì không phải trả phần `pHat`: `n = 20` không bỏ sót cho `B = 0,1392`, `n = 30` bỏ sót 1 cho `B = 0,1486`, `n = 50` bỏ sót tối đa 5 cho `B <= 0,1989`, đều đạt chứng nhận. Cái giá là các điều kiện ở Bước 5.
 
 Cận này trung thực với mẫu nhỏ: muốn chứng nhận khoảng trống thì phải đầu tư vào bộ hiệu chuẩn và danh sách tham chiếu lớn hơn.
 
@@ -334,7 +347,7 @@ B = epsHat + pHat = 0.0951 + 0.0582 = 0.1533
 0.1533 <= 0.20
 ```
 
-Không lỗi tìm kiếm, không tài liệu đang chờ, có độ phủ, có hiệu chuẩn cùng loại người phán xét, cận nằm trong mức tối đa: **OPEN_CERTIFIED**, `B = 0,1533`. Phát biểu là: "nếu câu hỏi này đã có lời giải thì quy trình gọi nó là mở với xác suất tối đa 0,1533, ở độ tin cậy ít nhất 90%" (ý nghĩa chính xác xem mục 6). Khoảng trống này còn được **corroborated** (hai tài liệu nêu câu hỏi như hướng nghiên cứu tương lai).
+Không lỗi tìm kiếm, không tài liệu đang chờ, có độ phủ, có hiệu chuẩn cùng loại người phán xét, cận nằm trong mức tối đa: **OPEN_CERTIFIED**, `B = 0,1533`. (Nếu 30 câu hỏi được chạy như hiệu chuẩn `IN_SITU` thỏa các điều kiện ở Bước 5 thì không cần kiểm tra độ phủ và `B = epsHat = 0,0951`.) Phát biểu là: "nếu câu hỏi này đã có lời giải thì quy trình gọi nó là mở với xác suất tối đa 0,1533, ở độ tin cậy ít nhất 90%" (ý nghĩa chính xác xem mục 6). Khoảng trống này còn được **corroborated** (hai tài liệu nêu câu hỏi như hướng nghiên cứu tương lai).
 
 ### Ví dụ (b): CLOSED với trích dẫn witness
 
@@ -408,6 +421,17 @@ q đã có lời giải; W = tập tài liệu trả lời (ít nhất 1); p = x
 
 Với `delta = 0,05` mặc định, phát biểu đúng với độ tin cậy 90%.
 
+**Hiệu chuẩn tại chỗ (`IN_SITU`).** Các câu hỏi hiệu chuẩn đi qua đúng quy trình sẽ phán xét khoảng trống: cùng nguồn, khoảng năm, ngân sách truy vấn, ngân sách kết quả, tiêu chí và loại người phán xét. Một câu hỏi hiệu chuẩn chỉ là FOUND khi có tài liệu trả lời hiện diện **và** được gán nhãn `ANSWERS`, nên MISSED bao gồm cả A lẫn E:
+
+```
+eps* = P(A hoặc E) với một câu hỏi đã có lời giải   (đại lượng hiệu chuẩn đo trực tiếp)
+(1) P(false novelty) = eps*
+(2) epsHat >= eps* với xác suất >= 1 - delta   (Clopper-Pearson trên misses / n)
+(3) =>  P(false novelty) <= epsHat = B, với độ tin cậy 1 - delta (mặc định 95%)
+```
+
+Không cần cận hợp, nên đảm bảo vừa chặt hơn vừa có độ tin cậy cao hơn. Nó dựa trên việc các câu hỏi hiệu chuẩn hoán đổi được với các câu hỏi khoảng trống **kể cả khả năng lời giải của chúng bị thiếu**: vì vậy witness phải lấy từ ngoài các nguồn được tìm, và phải chạy lại hiệu chuẩn khi nguồn thay đổi. Trong bài báo của nhóm, đây là Định lý 1, đúng với mọi tỉ lệ thiếu, kể cả khi không biết tỉ lệ đó.
+
 **Phát biểu này có nghĩa là gì.** `B` chặn trên xác suất một câu hỏi *đã có lời giải* bị gọi nhầm là mở, với các câu hỏi cùng loại với bộ hiệu chuẩn. Đó là phát biểu về sai số dài hạn của quy trình trên các câu hỏi đã có lời giải. Nó **không** phải xác suất một khoảng trống cụ thể đã được chứng nhận là sai; điều đó phụ thuộc vào việc có bao nhiêu câu hỏi ứng viên thực sự còn mở, mà giao thức không biết.
 
 **Các giả định** (đảm bảo chỉ tốt bằng các giả định này):
@@ -417,9 +441,9 @@ Với `delta = 0,05` mặc định, phát biểu đúng với độ tin cậy 90
 3. **Cùng loại người phán xét và cùng quy trình.** Hiệu chuẩn dùng cùng loại người phán xét (người hoặc AI) và cùng ngân sách truy vấn, nguồn, số kết quả, tiêu chí như lần kiểm tra khoảng trống. Phần mềm từ chối chứng nhận nếu khác (`CALIBRATION_JUDGE_MISMATCH`).
 4. **Mẫu độ phủ mang tính đại diện.** Các DOI tham chiếu là mẫu công bằng của những bài có thể trả lời các câu hỏi như vậy, và độc lập với lượt tìm kiếm.
 
-**Một chi tiết mang tính thận trọng.** Một câu hỏi hiệu chuẩn mà witness vắng mặt trong các nguồn được tính là MISSED. Vì vậy `epsHat` đã bao gồm một phần phần mất do độ phủ, và cộng thêm `pHat` đếm trùng một phần. Tổng này do đó phóng đại sai số thực thay vì đánh giá thấp. Ta giữ phép cộng vì nó đơn giản, dễ giải thích và vẫn hợp lệ.
+**Một chi tiết mang tính thận trọng (TRANSFER).** Một câu hỏi hiệu chuẩn mà witness vắng mặt trong các nguồn được tính là MISSED. Vì vậy `epsHat` đã bao gồm một phần phần mất do độ phủ, và cộng thêm `pHat` đếm trùng một phần. Tổng này do đó phóng đại sai số thực thay vì đánh giá thấp. `TRANSFER` giữ phép cộng vì nó vẫn hợp lệ khi hiệu chuẩn và lần kiểm tra không nhìn cùng một tập nguồn; khi chúng cùng nguồn, hãy dùng `IN_SITU` và bỏ `pHat`.
 
-**Quan hệ với bài báo của nhóm.** Các định lý GapClose hiệu chuẩn một *ngưỡng* trên điểm đóng liên tục và đơn điệu bằng conformal prediction (hiệu chuẩn tại chỗ, Định lý 1; chuyển giao với cận trên của tỉ lệ thiếu, Định lý 2), và hệ quả của chúng cho `P(false novelty) <= alpha + delta` khi tỉ lệ thiếu được ước lượng bằng cận Clopper-Pearson. Giao thức này không dùng điểm số hay ngưỡng: nó làm việc với nhãn rời rạc (một tiêu chí do người hoặc AI áp dụng), đo trực tiếp tỉ lệ bỏ sót của quy trình, và kết hợp hai cận bằng phép cận hợp (union bound) thuần túy. Đây là **sự điều chỉnh** của nhóm cho ý tưởng đó trên nhãn rời rạc do người hoặc AI gán. Nó liên quan tới, nhưng **không đồng nhất với** các định lý trong bài báo của nhóm, và dạng cận hợp đơn giản hóa này **chưa được bình duyệt**. Bài báo của nhóm đang được bình duyệt (bản nộp ICAI-FAI 2026). Hãy trình bày với giảng viên như một lập luận minh bạch, kiểm tra được, không phải một định lý đã công bố.
+**Quan hệ với bài báo của nhóm.** Các định lý GapClose hiệu chuẩn một *ngưỡng* trên điểm đóng liên tục và đơn điệu bằng conformal prediction (hiệu chuẩn tại chỗ, Định lý 1; chuyển giao với cận trên của tỉ lệ thiếu, Định lý 2), và hệ quả của chúng cho `P(false novelty) <= alpha + delta` khi tỉ lệ thiếu được ước lượng bằng cận Clopper-Pearson. Giao thức này không dùng điểm số hay ngưỡng: nó làm việc với nhãn rời rạc (một tiêu chí do người hoặc AI áp dụng) và đo trực tiếp tỉ lệ bỏ sót của quy trình. `IN_SITU` theo lập luận của Định lý 1 (hiệu chuẩn dưới cùng mức thiếu hụt, không cần ước lượng tỉ lệ thiếu); `TRANSFER` kết hợp hai cận bằng phép cận hợp (union bound) thuần túy. Đây là **sự điều chỉnh** của nhóm cho ý tưởng đó trên nhãn rời rạc do người hoặc AI gán. Nó liên quan tới, nhưng **không đồng nhất với** các định lý trong bài báo của nhóm, và dạng cận hợp đơn giản hóa này **chưa được bình duyệt**. Bài báo của nhóm đang được bình duyệt (bản nộp ICAI-FAI 2026). Hãy trình bày với giảng viên như một lập luận minh bạch, kiểm tra được, không phải một định lý đã công bố.
 
 ---
 
@@ -442,7 +466,7 @@ Ví dụ với 4 tài liệu, nhãn (người 1, người 2): (ANSWERS, ANSWERS)
 - mọi tài liệu cùng nhãn và trích dẫn của AI, nhãn, trích dẫn và khía cạnh của người đánh giá, nhãn của người đánh giá thứ hai và cờ hạn chế;
 - kiểm tra độ phủ (nguồn tham chiếu, từng DOI có hay thiếu) và hiệu chuẩn (từng câu hỏi, witness DOI và FOUND hay MISSED);
 - `epsHat`, `pHat`, `B`, quyết định, trích dẫn witness hoặc danh sách lý do abstain, cờ corroboration và kappa của Cohen;
-- phép tính bằng các dòng dễ đọc, ví dụ `B = 0.0951 + 0.0582 = 0.1533 <= 0.2`.
+- chế độ hiệu chuẩn và phép tính bằng các dòng dễ đọc, ví dụ `B = 0.0951 + 0.0582 = 0.1533 <= 0.2` (TRANSFER) hoặc `B = epsHat = 0.0951 <= 0.2` (IN_SITU).
 
 **AI được dùng như thế nào.** AI chỉ làm hai việc: **đề xuất truy vấn tìm kiếm** (tối đa ba, người dùng có thể thay hoặc sửa) và **gán nhãn sơ bộ** cho mọi tài liệu theo tiêu chí, kèm một câu trích dẫn. Phần mềm sau đó kiểm tra mỗi trích dẫn của AI có thực sự xuất hiện nguyên văn trong tiêu đề hoặc tóm tắt không; nhãn `ANSWERS` hay `PARTIAL` của AI mà trích dẫn không tìm thấy thì không được tính cho tới khi một người rà soát. Nhãn của người luôn ghi đè nhãn của AI. AI không bao giờ tính `epsHat`, `pHat` hay `B`, và không bao giờ đưa ra quyết định: những việc đó do các quy tắc tất định và người bấm "decide" (người tạo khoảng trống hoặc chủ dự án) thực hiện. Vì AI là tùy chọn, mọi thứ trong tài liệu này đều có thể làm mà không cần nó.
 

@@ -127,9 +127,14 @@ export async function providerJson(urlValue: string, apiKey: string, provider: s
         catch { reject(AppError.serviceUnavailable("AI provider returned an invalid JSON response")); }
       });
     });
-    const timer = setTimeout(() => req.destroy(new Error("request timed out")), body ? 60000 : 20000);
+    const timeoutMs = body ? env.AI_PROVIDER_TIMEOUT_MS : 20000;
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; req.destroy(new Error("request timed out")); }, timeoutMs);
     req.on("close", () => clearTimeout(timer));
-    req.on("error", () => reject(AppError.serviceUnavailable("Could not connect to the AI provider. Check the Base URL or try again later.")));
+    // A slow answer is not a connection problem: say which one happened.
+    req.on("error", () => reject(timedOut
+      ? AppError.serviceUnavailable(`The AI provider did not answer within ${Math.round(timeoutMs / 1000)} seconds. Try again, choose a faster model, or raise AI_PROVIDER_TIMEOUT_MS.`)
+      : AppError.serviceUnavailable("Could not connect to the AI provider. Check the Base URL or try again later.")));
     req.end(payload);
   });
 }

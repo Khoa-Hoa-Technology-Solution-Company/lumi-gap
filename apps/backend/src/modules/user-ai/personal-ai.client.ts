@@ -1,3 +1,4 @@
+import { logger } from "../../infrastructure/logger.js";
 import type { PersonalAiRuntime } from "./user-ai.runtime.js";
 import { providerJson } from "./provider-http.js";
 import { AppError } from "../../common/exceptions/app-error.js";
@@ -24,7 +25,11 @@ export async function personalGenerate(config: PersonalAiRuntime, contents: unkn
     ...(tools ? { tools: tools.map((tool) => ({ type: "function", function: tool })) } : {}),
   });
   const choice = result.choices?.[0];
-  if (!choice?.message) throw AppError.serviceUnavailable("AI provider returned no assistant response");
+  if (!choice?.message) {
+    // Shape only (never content or credentials), so an empty answer from a gateway can be diagnosed.
+    logger.warn({ model: config.model, keys: Object.keys(result ?? {}), choices: Array.isArray(result?.choices) ? result.choices.length : null, finishReason: choice?.finish_reason ?? null, providerError: typeof result?.error?.message === "string" ? result.error.message.slice(0, 300) : null, usage: result?.usage ?? null }, "AI provider returned no assistant message");
+    throw AppError.serviceUnavailable("The AI provider returned an empty answer. Long tasks on slow reasoning models can hit the provider's own time limit: try again, or choose a faster model for this connection.");
+  }
   const message = choice.message;
   return { text: typeof message.content === "string" ? message.content : "", message,
     candidates: [{ finishReason: choice.finish_reason === "length" ? "MAX_TOKENS" : "STOP" }] };
