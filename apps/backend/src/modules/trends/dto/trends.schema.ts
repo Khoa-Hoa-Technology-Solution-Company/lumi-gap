@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { TREND_CITATION_BANDS } from "../trend.filters.js";
+import { TREND_CITATION_BANDS } from "@trend/shared-types";
 
 const csvListSchema = z.preprocess(
   (value) => {
@@ -150,6 +150,8 @@ export const TrendExplainBodySchema = z
     yearFrom: z.coerce.number().int().min(1900).max(2100).optional(),
     yearTo: z.coerce.number().int().min(1900).max(2100).optional(),
     language: z.enum(["en", "vi"]).default("en"),
+    /** Same threshold as the overview the reader is looking at, so the explanation is grounded on those topics. */
+    minPapers: z.coerce.number().int().min(1).max(1000).optional(),
     ...trendFacetFiltersSchema,
   })
   .refine((q) => q.yearFrom === undefined || q.yearTo === undefined || q.yearFrom <= q.yearTo, {

@@ -1,4 +1,4 @@
-import type { TrendCitationBand } from "../trends/trend.filters.js";
+import type { TrendCitationBand } from "@trend/shared-types";
 
 export interface PaperFilterInput {
   yearFrom?: number;

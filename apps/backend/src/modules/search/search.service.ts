@@ -8,7 +8,7 @@ import { generateJSON } from "../llm/gemini.client.js";
 import { cachedGenerate } from "../llm/llm.run.js";
 import { retrieveScored } from "../retrieval/retriever.js";
 import type { SearchSortKey } from "../papers/dto/paper-filters.schema.js";
-import type { TrendCitationBand } from "../trends/trend.filters.js";
+import type { TrendCitationBand } from "@trend/shared-types";
 import {
   buildRerankPrompt,
   buildRerankChargeKey,

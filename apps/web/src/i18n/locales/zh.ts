@@ -155,6 +155,7 @@ export const zh: Record<keyof typeof en, string> = {
   "A technical acceptance dashboard showing whether AI/BE logic is deterministic, grounded, and ready for demo.": "技术验收仪表板，用于显示 AI/BE 逻辑是否确定、可溯源并已准备好演示。",
   "AI Explainer is ready.": "AI 解释器已准备就绪。",
   "AI explanation failed. You can still inspect the charts and facets.": "AI解释失败。您仍然可以检查图表和方面。",
+  "The AI model is busy right now. Please try again in a minute. You can still inspect the charts and facets.": "AI 模型当前繁忙。请一分钟后重试。您仍然可以查看图表和分面。",
   "AI explanation is grounded in aggregate trend metrics, not individual paper-level citations. Generated at": "人工智能的解释基于总体趋势指标，而不是单个论文级别的引用。生成于",
   "AI is generating your report...": "AI 正在生成您的报告...",
   "AI is reading project papers...": "AI 正在阅读项目论文...",

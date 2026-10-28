@@ -68,7 +68,7 @@ export interface TrendRelationshipParams extends Omit<TrendsOverviewParams, "lim
   limit?: number;
 }
 
-export interface TrendExplainInput extends Omit<TrendsOverviewParams, "limit" | "minPapers" | "sortBy" | "verdict" | "offset"> {
+export interface TrendExplainInput extends Omit<TrendsOverviewParams, "limit" | "sortBy" | "verdict" | "offset"> {
   topic?: string;
   yearFrom?: number;
   yearTo?: number;

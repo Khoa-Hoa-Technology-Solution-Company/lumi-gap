@@ -10,6 +10,7 @@ import type { TrendExplainInput, TrendsOverviewParams, TrendTopicCandidatesParam
 import { formatNumber } from "@/utils";
 import { buildTrendScopedUrl } from "../trend-navigation";
 import { useI18n } from "@/i18n";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
 
 type CitationBandFilter = NonNullable<TrendsOverviewParams["citationBands"]>;
 
@@ -36,17 +37,13 @@ interface AITabProps {
   sources: string[];
   languages: string[];
   citationBands: CitationBandFilter;
+  /** Overview threshold the reader is looking at; the explanation is grounded on the same topics. */
+  minPapers: number;
 }
 
-function useDebouncedValue<T>(value: T, delayMs: number): T {
-  const [debouncedValue, setDebouncedValue] = React.useState(value);
-
-  React.useEffect(() => {
-    const timer = window.setTimeout(() => setDebouncedValue(value), delayMs);
-    return () => window.clearTimeout(timer);
-  }, [value, delayMs]);
-
-  return debouncedValue;
+/** The backend answers LLM_UNAVAILABLE when the model is overloaded; retrying a little later usually works. */
+function isModelBusy(error: unknown): boolean {
+  return (error as { response?: { data?: { error?: { code?: string } } } } | null)?.response?.data?.error?.code === "LLM_UNAVAILABLE";
 }
 
 export function AITab({
@@ -72,6 +69,7 @@ export function AITab({
   sources,
   languages,
   citationBands,
+  minPapers,
 }: AITabProps) {
   const navigate = useNavigate();
   const { t } = useI18n();
@@ -363,6 +361,7 @@ export function AITab({
                   sources,
                   languages,
                   citationBands,
+                  minPapers,
                   language: "en"
                 });
               }}
@@ -405,7 +404,9 @@ export function AITab({
               </div>
             ) : explainMutation.isError ? (
               <div className="p-4 bg-red-50 dark:bg-red-950/20 border border-red-200/50 dark:border-red-900/30 rounded-xl text-xs font-semibold text-red-600 leading-relaxed select-text">
-                AI explanation failed. You can still inspect the charts and facets.
+                {isModelBusy(explainMutation.error)
+                  ? "The AI model is busy right now. Please try again in a minute. You can still inspect the charts and facets."
+                  : "AI explanation failed. You can still inspect the charts and facets."}
               </div>
             ) : currentExplanation ? (
               <div className="space-y-4 text-xs leading-relaxed select-text">

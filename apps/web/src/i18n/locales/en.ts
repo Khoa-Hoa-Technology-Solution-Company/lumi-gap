@@ -234,6 +234,7 @@ export const en = {
   "A technical acceptance dashboard showing whether AI/BE logic is deterministic, grounded, and ready for demo.": "A technical acceptance dashboard showing whether AI/BE logic is deterministic, grounded, and ready for demo.",
   "AI Explainer is ready.": "AI Explainer is ready.",
   "AI explanation failed. You can still inspect the charts and facets.": "AI explanation failed. You can still inspect the charts and facets.",
+  "The AI model is busy right now. Please try again in a minute. You can still inspect the charts and facets.": "The AI model is busy right now. Please try again in a minute. You can still inspect the charts and facets.",
   "AI explanation is grounded in aggregate trend metrics, not individual paper-level citations. Generated at": "AI explanation is grounded in aggregate trend metrics, not individual paper-level citations. Generated at",
   "AI is generating your report...": "AI is generating your report...",
   "AI is reading project papers...": "AI is reading project papers...",

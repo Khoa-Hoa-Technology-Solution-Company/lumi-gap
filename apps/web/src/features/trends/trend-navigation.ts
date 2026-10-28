@@ -24,12 +24,7 @@ export function getRisingKeywordTarget(keyword: string): string {
 
 /** Links from a topic detail page to the next research step, carrying the topic and the year window. */
 export function getTopicActionTargets(topic: string, window?: TrendYearWindow) {
-  const build = (path: string, base: Record<string, string>) => {
-    const params = new URLSearchParams(base);
-    setWindow(params, window);
-    const query = params.toString();
-    return query ? `${path}?${query}` : path;
-  };
+  const build = (path: string, base: Record<string, string>) => buildTrendScopedUrl(path, base, window);
   return {
     trends: build("/trends", {}),
     search: build("/home", { q: topic }),
@@ -63,12 +58,11 @@ export interface TrendScopeParams {
 const SCOPE_LIST_KEYS = ["domainIds", "domains", "fieldIds", "fields", "subfieldIds", "subfields", "topicIds"] as const;
 const FACET_LIST_KEYS = ["paperKinds", "openAccessStatuses", "providers", "sources", "languages", "citationBands"] as const;
 
-/** `path?base&scope`; without a scope only the base parameters are kept. */
+/** `path?base&scope`; without a scope only the base parameters are kept, and without any parameter just `path`. */
 export function buildTrendScopedUrl(path: string, base: Record<string, string>, scope?: Partial<TrendScopeParams>): string {
   const params = new URLSearchParams(base);
   if (scope) {
-    if (scope.yearFrom) params.set("yearFrom", String(scope.yearFrom));
-    if (scope.yearTo) params.set("yearTo", String(scope.yearTo));
+    setWindow(params, scope);
     const add = (key: string, values?: string[]) => {
       const cleaned = (values ?? []).map((value) => value.trim()).filter(Boolean);
       if (cleaned.length > 0) params.set(key, cleaned.join(","));
@@ -79,5 +73,6 @@ export function buildTrendScopedUrl(path: string, base: Record<string, string>, 
     add("topicsFilter", scope.topicsFilter);
     for (const key of FACET_LIST_KEYS) add(key, scope[key]);
   }
-  return `${path}?${params.toString()}`;
+  const query = params.toString();
+  return query ? `${path}?${query}` : path;
 }

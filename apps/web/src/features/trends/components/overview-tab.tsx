@@ -1,6 +1,6 @@
 import React from "react";
 import type { TrendVerdict } from "@trend/shared-types";
-import { VerdictCountButton } from "./verdict-filter";
+import { VERDICT_ORDER, VerdictCountButton } from "./verdict-filter";
 import { FileText, BookOpen, Sparkles, Calendar } from "lucide-react";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid, ReferenceLine } from "recharts";
 import { Button } from "@/components/ui/button";
@@ -630,8 +630,6 @@ export function OverviewTab({
     </div>
   );
 }
-
-const VERDICT_ORDER = ["rising", "stable", "declining", "insufficient"] as const;
 
 /** Counts of each verdict over every tested topic (not only the listed ones) and the first rising topic, with the numbers behind it. */
 function TrendVerdictSummaryCard({

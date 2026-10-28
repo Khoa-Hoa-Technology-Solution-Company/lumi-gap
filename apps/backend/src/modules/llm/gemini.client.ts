@@ -45,6 +45,29 @@ export class LlmQuotaError extends AppError {
   }
 }
 
+/**
+ * The provider is overloaded or failing on its side (HTTP 500/502/503/504) and our retries did not get through.
+ * Shown as 503 with a "try again" message instead of an internal error. Not marked nonRetryable: a BullMQ
+ * job may succeed on its next attempt.
+ */
+export class LlmUnavailableError extends AppError {
+  constructor(model: string, readonly providerStatus: number) {
+    super(503, "LLM_UNAVAILABLE", `The AI model (${model}) is temporarily overloaded or unavailable. Please try again in a minute.`);
+    this.name = "LlmUnavailableError";
+  }
+}
+
+const PROVIDER_UNAVAILABLE_STATUSES = new Set([500, 502, 503, 504]);
+
+/** Provider SDK error after retries → a displayable AppError when it is a quota or availability failure; else unchanged. */
+function toProviderError(error: unknown, model: string): unknown {
+  if (error instanceof AppError) return error;
+  const quotaError = exhaustedQuota(error, model);
+  if (quotaError) return quotaError;
+  const status = (error as { status?: unknown } | null)?.status;
+  return typeof status === "number" && PROVIDER_UNAVAILABLE_STATUSES.has(status) ? new LlmUnavailableError(model, status) : error;
+}
+
 function generationRetryDelay(error: unknown, attempt: number): number | undefined {
   const providerError = (error ?? {}) as { status?: number; message?: string; retryDelayMs?: number; nonRetryable?: boolean };
   if (providerError.nonRetryable) return undefined;
@@ -133,7 +156,7 @@ export async function generateText(prompt: string, opts: GenerateOptions = {}): 
           const quotaError = exhaustedQuota(error, model);
           if (quotaError) throw quotaError;
           const delayMs = generationRetryDelay(error, attempt);
-          if (attempt >= 2 || delayMs === undefined) throw error;
+          if (attempt >= 2 || delayMs === undefined) throw toProviderError(error, model);
           logger.warn({ model, attempt: attempt + 1, delayMs }, "gemini temporarily unavailable; retrying");
           await new Promise((resolve) => setTimeout(resolve, delayMs));
         }
@@ -221,7 +244,7 @@ export async function generateWithTools(
         maxOutputTokens,
         tools: [{ functionDeclarations: tools as unknown as object[] }],
       },
-    });
+    }).catch((error: unknown) => { throw toProviderError(error, model); });
 
     const finishReason = String(result.candidates?.[0]?.finishReason ?? "");
     if (finishReason === "MAX_TOKENS") {

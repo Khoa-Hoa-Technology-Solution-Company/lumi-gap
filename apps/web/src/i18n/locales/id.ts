@@ -155,6 +155,7 @@ export const id: Record<keyof typeof en, string> = {
   "A technical acceptance dashboard showing whether AI/BE logic is deterministic, grounded, and ready for demo.": "Dasbor penerimaan teknis yang menunjukkan apakah logika AI/BE deterministik, berdasar, dan siap untuk demo.",
   "AI Explainer is ready.": "Penjelasan AI sudah siap.",
   "AI explanation failed. You can still inspect the charts and facets.": "Penjelasan AI gagal. Anda masih dapat memeriksa grafik dan aspek.",
+  "The AI model is busy right now. Please try again in a minute. You can still inspect the charts and facets.": "Model AI sedang sibuk. Silakan coba lagi dalam satu menit. Anda masih dapat memeriksa grafik dan aspek.",
   "AI explanation is grounded in aggregate trend metrics, not individual paper-level citations. Generated at": "Penjelasan AI didasarkan pada metrik tren agregat, bukan kutipan di tingkat kertas individual. Dihasilkan di",
   "AI is generating your report...": "AI sedang membuat laporan Anda...",
   "AI is reading project papers...": "AI sedang membaca makalah proyek...",

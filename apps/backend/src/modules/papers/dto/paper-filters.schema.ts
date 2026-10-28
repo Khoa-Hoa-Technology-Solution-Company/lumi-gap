@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { TREND_CITATION_BANDS } from "../../trends/trend.filters.js";
+import { TREND_CITATION_BANDS } from "@trend/shared-types";
 
 /**
  * Shared paper-filter vocabulary + Zod shape, reused by GET /search (semantic)

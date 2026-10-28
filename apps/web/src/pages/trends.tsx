@@ -2,6 +2,7 @@ import React, { useMemo, useState, useEffect } from "react";
 import { Sparkles, Search, Loader2, ChevronDown, ChevronRight, AlertCircle, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { TREND_CITATION_BANDS, type TrendCitationBand } from "@trend/shared-types";
 import { useTrendsOverview, useTrendCompare, useTrendRelationships, useExplainTrend, useTrendExplainHistory } from "@/features/trends/hooks/use-trends";
 import { getRisingKeywordTarget, getTopicTrendTarget } from "@/features/trends/trend-navigation";
 import { FilterChip, type RisingKeywordRow, type TrendBarChartDatum } from "@/features/trends/components/trends-shared.components";
@@ -31,8 +32,7 @@ import { formatNumber } from "@/utils";
 import { formatLanguageName } from "@/utils/language";
 import { useI18n } from "@/i18n";
 
-type CitationBand = "0-9" | "10-49" | "50-99" | "100-499" | "500-999" | "1000+";
-const CITATION_BANDS = ["0-9", "10-49", "50-99", "100-499", "500-999", "1000+"] as const;
+type CitationBand = TrendCitationBand;
 type TrendTab = "overview" | "topics" | "periods" | "dataset" | "compare" | "ai";
 
 const TREND_TABS: Array<{ id: TrendTab; label: string }> = [
@@ -45,7 +45,7 @@ const TREND_TABS: Array<{ id: TrendTab; label: string }> = [
 ];
 
 function isCitationBand(value: string): value is CitationBand {
-  return CITATION_BANDS.includes(value as CitationBand);
+  return (TREND_CITATION_BANDS as readonly string[]).includes(value);
 }
 
 function parseNumberParam(params: URLSearchParams, key: string, defaultValue: number, options?: { min?: number }): number {
@@ -1208,6 +1208,7 @@ export function TrendsPage() {
                 sources={sources}
                 languages={languages}
                 citationBands={citationBands}
+                minPapers={minPapers}
               />
             )}
           </div>

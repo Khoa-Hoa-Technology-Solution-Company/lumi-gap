@@ -12,7 +12,7 @@ const mocks = vi.hoisted(() => ({
   notify: vi.fn(),
 }));
 vi.mock("../../../infrastructure/database/prisma.js", () => ({ getPrisma: () => mocks.prisma }));
-vi.mock("../trend.service.js", () => ({ trendService: { topic: mocks.topic } }));
+vi.mock("../trend.service.js", () => ({ trendService: { topic: mocks.topic }, findUserId: (id: string) => Promise.resolve(id) }));
 vi.mock("../../notifications/notification.service.js", () => ({ notificationService: { create: mocks.notify } }));
 
 import { trendFollowService } from "../trend-follow.service.js";
@@ -58,6 +58,24 @@ describe("followed trend topics", () => {
     expect(mocks.notify.mock.calls[0]![0]).toMatchObject({ userId: USER_A, type: "TREND_VERDICT_CHANGED", emailPayload: { topic: "Graph Neural Networks", from: "stable", to: "rising" } });
     // A follow without a baseline records one silently.
     expect(mocks.prisma.trendTopicFollow.update).toHaveBeenCalledWith({ where: { id: "f3" }, data: { lastVerdict: "declining", lastDataSource: "openalex", lastCheckedAt: NOW } });
+  });
+
+  it("does not notify when the verdict comes from the local corpus while the baseline is from OpenAlex", async () => {
+    mocks.prisma.trendTopicFollow.findMany.mockResolvedValue([follow("f1", USER_A, "rising")]);
+    mocks.topic.mockResolvedValue({ dataSource: "local", statistics: { classification: { verdict: "insufficient" } } });
+
+    expect(await trendFollowService.checkFollowedTopics(NOW)).toEqual({ topics: 1, changed: 0 });
+    expect(mocks.notify).not.toHaveBeenCalled();
+    expect(mocks.prisma.trendTopicFollow.update).toHaveBeenCalledWith({ where: { id: "f1" }, data: { lastCheckedAt: NOW } });
+  });
+
+  it("replaces a local baseline with the OpenAlex verdict without notifying", async () => {
+    mocks.prisma.trendTopicFollow.findMany.mockResolvedValue([{ ...follow("f1", USER_A, "insufficient"), lastDataSource: "local" }]);
+    mocks.topic.mockResolvedValue(detail("rising"));
+
+    expect(await trendFollowService.checkFollowedTopics(NOW)).toEqual({ topics: 1, changed: 0 });
+    expect(mocks.notify).not.toHaveBeenCalled();
+    expect(mocks.prisma.trendTopicFollow.update).toHaveBeenCalledWith({ where: { id: "f1" }, data: { lastVerdict: "rising", lastDataSource: "openalex", lastCheckedAt: NOW } });
   });
 
   it("keeps the previous verdict when the trend cannot be computed", async () => {
