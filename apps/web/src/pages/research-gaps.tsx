@@ -364,7 +364,7 @@ export function ResearchGapsPage() {
         />
       )}
 
-      {urlTopic && <TrendContextCard topic={urlTopic} yearFrom={urlYear("yearFrom")} yearTo={urlYear("yearTo")} />}
+      {urlTopic && <TrendContextCard topic={urlTopic} topicId={searchParams.get("topicId") ?? undefined} yearFrom={urlYear("yearFrom")} yearTo={urlYear("yearTo")} />}
 
       <GapAnalysisWorkflow
         isAnalyzing={isPending}

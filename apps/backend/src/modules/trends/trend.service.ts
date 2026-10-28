@@ -231,13 +231,13 @@ export const trendService = {
 
   async explain(input: TrendExplainBody, userId?: string): Promise<TrendExplanationResponse> {
     const span = years(input);
-    const { topic, language, minPapers, ...filters } = input;
+    const { topic, topicId, language, minPapers, ...filters } = input;
     const window = { yearFrom: span.yearFrom, yearTo: span.yearTo };
     // The three lookups are independent; a failing topic lookup only drops the topic part of the explanation.
     const [overview, topicResult, relationships] = await Promise.all([
       this.overview({ ...filters, ...window, ...EXPLAIN_OVERVIEW, minPapers: minPapers ?? EXPLAIN_OVERVIEW.minPapers, sortBy: "trend", offset: 0 }),
-      topic ? topicWithRows(topic, window).catch(() => null) : null,
-      topic ? this.relationships({ topic, ...window, limit: 8 }).catch(() => null) : null,
+      topic ? topicWithRows(topic, { ...window, topicId }).catch(() => null) : null,
+      topic ? this.relationships({ topic, topicId, ...window, limit: 8 }).catch(() => null) : null,
     ]);
     const topicDetail = topicResult?.detail ?? null;
     // Representative papers are context for "possible drivers" only; they never supply figures.
@@ -251,7 +251,7 @@ export const trendService = {
     const allowedPaperIds = new Set(papers.map((paper) => paper.id));
     let explanation: TrendExplanationResponse;
     try {
-      const keyParts = { topic: topic ?? null, yearFrom: window.yearFrom, yearTo: window.yearTo, language, ...(minPapers !== undefined ? { minPapers } : {}), filters, paperIds: [...allowedPaperIds] };
+      const keyParts = { topic: topic ?? null, yearFrom: window.yearFrom, yearTo: window.yearTo, language, ...(minPapers !== undefined ? { minPapers } : {}), ...(topicId ? { topicId } : {}), filters, paperIds: [...allowedPaperIds] };
       explanation = await generateTrendExplanationWithRetry(
         (prompt, { bypassCache }) =>
           cachedGenerateJSON<TrendExplanationResponse>({

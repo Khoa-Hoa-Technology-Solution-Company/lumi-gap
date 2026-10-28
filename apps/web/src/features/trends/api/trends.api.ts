@@ -63,6 +63,8 @@ export interface TrendTopicCandidatesParams extends Omit<TrendsOverviewParams, "
 
 export interface TrendRelationshipParams extends Omit<TrendsOverviewParams, "limit" | "minPapers" | "sortBy" | "verdict" | "offset"> {
   topic: string;
+  /** Exact OpenAlex topic; without it the topic is resolved by name. */
+  topicId?: string;
   yearFrom?: number;
   yearTo?: number;
   limit?: number;
@@ -70,6 +72,8 @@ export interface TrendRelationshipParams extends Omit<TrendsOverviewParams, "lim
 
 export interface TrendExplainInput extends Omit<TrendsOverviewParams, "limit" | "sortBy" | "verdict" | "offset"> {
   topic?: string;
+  /** Exact OpenAlex topic; without it the topic is resolved by name. */
+  topicId?: string;
   yearFrom?: number;
   yearTo?: number;
   language?: "en" | "vi";

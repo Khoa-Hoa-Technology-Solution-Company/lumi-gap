@@ -250,6 +250,8 @@ const EnvSchema = z.object({
   SEMANTIC_SEARCH_MAX_PER_MINUTE: z.coerce.number().int().positive().default(60),
   // POST /trends/explain is open to anonymous users and every new scope is an uncached LLM call.
   TREND_EXPLAIN_MAX_PER_HOUR: z.coerce.number().int().positive().default(20),
+  // Public trend reads (overview, topic, compare, ...) spend OpenAlex credits shared with sync; per user/IP per minute.
+  TREND_READ_MAX_PER_MINUTE: z.coerce.number().int().positive().default(120),
   // Daily re-check of followed trend topics (notification worker); each run checks at most the batch size.
   TREND_FOLLOW_CRON: z.string().default("0 4 * * *"),
   TREND_FOLLOW_CHECK_BATCH: z.coerce.number().int().min(1).max(1000).default(100),

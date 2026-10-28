@@ -5,6 +5,7 @@ import { useI18n } from "@/i18n";
 import { useToggleTrendFollow, useTrendFollows } from "../hooks/use-trends";
 import { getTopicTrendTarget } from "../trend-navigation";
 import { verdictLabel } from "./trend-verdict-badge";
+import { DEFAULT_TREND_YEAR_FROM, DEFAULT_TREND_YEAR_TO } from "../../../pages/trends.insights";
 
 /** The user's followed trend topics with their last verdict; renders nothing until the user follows one. */
 export function FollowedTopicsPanel() {
@@ -18,7 +19,7 @@ export function FollowedTopicsPanel() {
       <div className="mb-3 flex items-center gap-2">
         <Bell className="h-4 w-4 text-blue-600" />
         <h2 id="followed-topics-title" className="text-sm font-bold text-slate-900 dark:text-white">{t("Followed topics")}</h2>
-        <span className="text-xs text-slate-500">{t("You are notified when a followed topic's trend verdict changes.")}</span>
+        <span className="text-xs text-slate-500">{t("Each topic is checked daily over {{yearFrom}}–{{yearTo}}; you are notified when its trend verdict changes.", { yearFrom: DEFAULT_TREND_YEAR_FROM, yearTo: DEFAULT_TREND_YEAR_TO })}</span>
       </div>
       <ul className="flex flex-wrap gap-2">
         {follows.map((follow) => (

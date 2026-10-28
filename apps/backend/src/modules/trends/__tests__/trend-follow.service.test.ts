@@ -41,6 +41,14 @@ describe("followed trend topics", () => {
     expect(created).toMatchObject({ topic: "Graph Neural Networks", lastVerdict: "rising" });
   });
 
+  it("answers 409 when a concurrent request followed the topic first", async () => {
+    mocks.prisma.trendTopicFollow.findUnique.mockResolvedValue(null);
+    mocks.topic.mockResolvedValue(detail("rising"));
+    mocks.prisma.trendTopicFollow.create.mockRejectedValue(Object.assign(new Error("Unique constraint failed"), { code: "P2002" }));
+
+    await expect(trendFollowService.create(USER_A, { topic: "Graph Neural Networks" })).rejects.toMatchObject({ statusCode: 409 });
+  });
+
   it("rejects following the same topic twice", async () => {
     mocks.prisma.trendTopicFollow.findUnique.mockResolvedValue({ id: "f1" });
     await expect(trendFollowService.create(USER_A, { topic: "graph neural networks" })).rejects.toBeInstanceOf(AppError);

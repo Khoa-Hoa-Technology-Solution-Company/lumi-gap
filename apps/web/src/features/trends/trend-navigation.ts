@@ -22,15 +22,16 @@ export function getRisingKeywordTarget(keyword: string): string {
   return `/home?q=${encodeURIComponent(keyword)}`;
 }
 
-/** Links from a topic detail page to the next research step, carrying the topic and the year window. */
-export function getTopicActionTargets(topic: string, window?: TrendYearWindow) {
+/** Links from a topic detail page to the next research step, carrying the topic, its OpenAlex id and the year window. */
+export function getTopicActionTargets(topic: string, window?: TrendYearWindow, openalexTopicId?: string) {
+  const id: Record<string, string> = openalexTopicId ? { topicId: openalexTopicId } : {};
   const build = (path: string, base: Record<string, string>) => buildTrendScopedUrl(path, base, window);
   return {
     trends: build("/trends", {}),
     search: build("/home", { q: topic }),
-    gaps: build("/research-gaps", { topic }),
+    gaps: build("/research-gaps", { topic, ...id }),
     compare: build("/trends", { tab: "compare", compare: topic }),
-    explain: build("/trends", { tab: "ai", focus: topic }),
+    explain: build("/trends", { tab: "ai", focus: topic, ...(openalexTopicId ? { focusTopicId: openalexTopicId } : {}) }),
     report: build("/reports", { topic, create: "true" }),
   };
 }

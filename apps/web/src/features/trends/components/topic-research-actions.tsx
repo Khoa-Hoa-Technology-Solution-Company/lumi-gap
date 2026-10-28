@@ -8,13 +8,17 @@ import { useProjects } from "@/features/projects/hooks/use-projects";
 import { useI18n } from "@/i18n";
 import { useAuthStore } from "@/stores/auth-store";
 import { useAddProjectTrendSnapshot, useToggleTrendFollow, useTrendFollowStatus } from "../hooks/use-trends";
+import { DEFAULT_TREND_YEAR_FROM, DEFAULT_TREND_YEAR_TO } from "../../../pages/trends.insights";
 
 function errorMessage(error: unknown, fallback: string) {
   const message = (error as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message;
   return message || fallback;
 }
 
-/** Follow a topic: the daily check notifies the user when its trend verdict changes. */
+/**
+ * Follow a topic: the daily check notifies the user when its trend verdict changes. The check always uses the default
+ * rolling window (a fixed past window would never change), and the messages say which window that is.
+ */
 export function FollowTopicButton({ topic, openalexTopicId }: { topic: string; openalexTopicId?: string }) {
   const { t } = useI18n();
   const signedIn = useAuthStore((state) => Boolean(state.user));
@@ -31,7 +35,7 @@ export function FollowTopicButton({ topic, openalexTopicId }: { topic: string; o
     toggle.mutate(
       { topic, openalexTopicId, followId },
       {
-        onSuccess: () => toast.success(following ? t("Stopped following this topic.") : t("Following. You will be notified when its trend changes.")),
+        onSuccess: () => toast.success(following ? t("Stopped following this topic.") : t("Following. Its trend over {{yearFrom}}–{{yearTo}} is checked daily and you are notified when the verdict changes.", { yearFrom: DEFAULT_TREND_YEAR_FROM, yearTo: DEFAULT_TREND_YEAR_TO })),
         onError: (error) => toast.error(errorMessage(error, t("Could not update the followed topic."))),
       },
     );

@@ -17,6 +17,8 @@ type CitationBandFilter = NonNullable<TrendsOverviewParams["citationBands"]>;
 interface AITabProps {
   data: TrendsOverview;
   activeFocusTopic: string;
+  /** OpenAlex id of the focus topic when known (opened from a topic page). */
+  activeFocusTopicId?: string;
   setFocusTopic: (topic: string) => void;
   relationshipsQuery: Pick<UseQueryResult<TopicRelationshipResponse, Error>, "data" | "isLoading" | "isError">;
   explainMutation: UseMutationResult<TrendExplanationResponse, Error, TrendExplainInput, unknown>;
@@ -49,6 +51,7 @@ function isModelBusy(error: unknown): boolean {
 export function AITab({
   data,
   activeFocusTopic,
+  activeFocusTopicId,
   setFocusTopic,
   relationshipsQuery,
   explainMutation,
@@ -345,6 +348,7 @@ export function AITab({
                 setSelectedHistoryExplanation(null);
                 explainMutation.mutate({
                   topic: activeFocusTopic,
+                  topicId: activeFocusTopicId,
                   yearFrom,
                   yearTo,
                   domains,
