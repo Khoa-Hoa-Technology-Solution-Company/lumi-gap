@@ -336,7 +336,7 @@ export function AdminHomePage() {
                 { to: "/admin/settings", label: "Platform Policies & System Settings", desc: "Credit allocations, institutions, API limits", icon: Settings },
                 { to: "/admin/academic-verifications", label: "Lecturer & Position Verification", desc: "Evidence review, institutional domain checks", icon: ShieldCheck },
                 { to: "/admin/pipeline", label: "OpenAlex Large-Scale Ingest", desc: "Campaign partitions, checkpoints, dead-letters", icon: Activity },
-                { to: "/admin/community", label: "Community & Moderation", desc: "Discussions, reported contents, forum channels", icon: MessageSquare },
+                { to: "/admin/community", label: "Communities & Forum", desc: "Communities, proposals and forum discussions", icon: MessageSquare },
                 { to: "/admin/workers", label: "Worker Fleet & BullMQ Queues", desc: "Background processors, heartbeats, jobs", icon: Server },
               ].map(({ to, label, desc, icon: Icon }) => (
                 <Link

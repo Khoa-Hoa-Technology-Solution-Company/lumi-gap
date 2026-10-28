@@ -91,7 +91,7 @@ export function AdminLayout() {
     {
       title: "Community",
       items: [
-        { to: "/admin/community", label: "Community & Moderation", icon: MessageSquare },
+        { to: "/admin/community", label: "Communities & Forum", icon: MessageSquare },
         { to: "/admin/trust-safety", label: "Trust & Safety", icon: ShieldCheck },
       ],
     },
