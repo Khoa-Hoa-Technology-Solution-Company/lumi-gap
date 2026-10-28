@@ -1,6 +1,5 @@
 import { Link } from "react-router-dom";
 import { BookOpen, Lightbulb } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { useCommunityRelatedGaps, useCommunityRelatedPapers, type CommunityView } from "@/features/forum";
 import { useI18n } from "@/i18n";
 
@@ -9,7 +8,6 @@ export function CommunityRelatedCard({ community }: { community: CommunityView }
   const { t } = useI18n();
   const papers = useCommunityRelatedPapers(community.id);
   const gaps = useCommunityRelatedGaps(community.id);
-  const canDiscuss = community.status === "ACTIVE" && community.viewerMembership?.status === "active";
 
   return <>
     <section className="rounded-xl border bg-card p-5">
@@ -28,9 +26,6 @@ export function CommunityRelatedCard({ community }: { community: CommunityView }
         : gaps.data?.length ? <ul className="mt-3 space-y-4">{gaps.data.map((gap) => <li key={gap.id}>
           <p className="text-sm font-medium leading-5">{gap.title}</p>
           <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">{gap.description}</p>
-          {canDiscuss ? <Button asChild size="sm" variant="outline" className="mt-2 h-8">
-            <Link to={`/forum/new?community=${community.id}&gap=${gap.id}&gapTitle=${encodeURIComponent(gap.title)}`}>{t("Discuss this gap")}</Link>
-          </Button> : null}
         </li>)}</ul>
           : <p className="mt-3 text-sm text-muted-foreground">{t("No shared research gaps yet.")}</p>}
     </section>

@@ -716,6 +716,8 @@ const forumKeyList = [
   "Only LumiGap administrators can create research communities. You can browse and join existing communities.",
   "Create a research community", "Define a focused research field, discussion scope, and concise participation rules.",
   "Manage membership, moderation, and community settings within your permission scope.", "Community management sections",
+  "Manage membership and community settings within your permission scope.", "This community is private",
+  "Request membership to see its members and related research.",
   "Only administrators can edit or archive a research community.", "Community settings saved.",
   "Could not save community settings.", "Could not update this member.", "Approve private-community requests and maintain community access.",
   "Status", "Active", "Archived", "Archived — read only", "Approve", "moderator", "pending", "active", "declined", "banned",

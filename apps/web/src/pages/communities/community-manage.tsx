@@ -1,12 +1,11 @@
 import { useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, Check, Inbox, Shield, ShieldAlert, UserRoundCog, X } from "lucide-react";
+import { ArrowLeft, Check, Inbox, Shield, UserRoundCog, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ForumModerationQueue } from "@/features/forum/components/forum-moderation-queue";
 import {
   type CommunityMemberView,
   type CommunityView,
@@ -20,7 +19,7 @@ import {
 import { useI18n } from "@/i18n";
 import { cn } from "@/utils/cn";
 
-type Tab = "settings" | "requests" | "members" | "moderation";
+type Tab = "settings" | "requests" | "members";
 type MemberChange = { role?: "moderator" | "member"; status?: "active" | "declined" | "banned" };
 
 const splitValues = (value: string) => [...new Set(value.split(/[\n,]/).map((item) => item.trim()).filter(Boolean))];
@@ -42,7 +41,6 @@ export function CommunityManagePage() {
     ...(community.canEditCommunity ? [{ value: "settings" as const, label: "Settings and rules", icon: Shield }] : []),
     { value: "requests", label: "Join requests", icon: Inbox, badge: pending },
     { value: "members", label: "Members", icon: UserRoundCog },
-    { value: "moderation", label: "Moderation", icon: ShieldAlert },
   ];
 
   return <main className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
@@ -50,7 +48,7 @@ export function CommunityManagePage() {
     <header className="mt-5 border-b pb-6">
       <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-700">{t("Community management")}</p>
       <h1 className="lumi-page-title mt-2">{community.name}</h1>
-      <p className="mt-2 text-sm text-muted-foreground">{t("Manage membership, moderation, and community settings within your permission scope.")}</p>
+      <p className="mt-2 text-sm text-muted-foreground">{t("Manage membership and community settings within your permission scope.")}</p>
     </header>
     <nav className="mt-5 flex gap-1 overflow-x-auto border-b" aria-label={t("Community management sections")}>
       {tabs.map(({ value, label, icon: Icon, badge }) => <button key={value} type="button" onClick={() => setTab(value)}
@@ -62,8 +60,7 @@ export function CommunityManagePage() {
     <div className="mt-7">
       {tab === "settings" && community.canEditCommunity ? <Settings community={community} />
         : tab === "requests" ? <MemberList community={community} mode="requests" />
-          : tab === "members" ? <MemberList community={community} mode="members" />
-            : <ForumModerationQueue communityId={community.id} />}
+          : <MemberList community={community} mode="members" />}
     </div>
   </main>;
 }
