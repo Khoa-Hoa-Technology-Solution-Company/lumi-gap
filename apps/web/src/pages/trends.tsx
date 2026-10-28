@@ -28,6 +28,7 @@ import {
   DEFAULT_TREND_YEAR_FROM,
   DEFAULT_TREND_YEAR_TO,
 } from "./trends.insights";
+import { buildTrendsPageParams, DEFAULT_TREND_MIN_PAPERS } from "./trends.url";
 import { formatNumber } from "@/utils";
 import { formatLanguageName } from "@/utils/language";
 import { useI18n } from "@/i18n";
@@ -85,7 +86,7 @@ export function TrendsPage() {
   const openTopicTarget = (topic: string, openalexTopicId?: string) => getTopicTrendTarget(topic, openalexTopicId, { yearFrom, yearTo });
   // Legacy ?sortBy=momentum|growth (and ?sort=) links map to the verdict ranking.
   const [sortBy, setSortBy] = useState<TrendSortKey>(() => parseTrendSortKey(searchParams.get("sortBy") ?? searchParams.get("sort")));
-  const [minPapers, setMinPapers] = useState<number>(() => parseNumberParam(searchParams, "minPapers", 2, { min: 1 }));
+  const [minPapers, setMinPapers] = useState<number>(() => parseNumberParam(searchParams, "minPapers", DEFAULT_TREND_MIN_PAPERS, { min: 1 }));
   const [yearFromInput, setYearFromInput] = useState(() => String(yearFrom));
   const [yearToInput, setYearToInput] = useState(() => String(yearTo));
   const [minPapersInput, setMinPapersInput] = useState(() => String(minPapers));
@@ -112,6 +113,7 @@ export function TrendsPage() {
 
   const [activeTab, setActiveTab] = useState<TrendTab>(() => parseTabParam(searchParams));
   const [selectedTopics, setSelectedTopics] = useState<string[]>(() => parseArrayParam(searchParams, "compare").slice(0, 5));
+  const [focusTopic, setFocusTopic] = useState<string>(() => searchParams.get("focus")?.trim() ?? "");
   const [verdictFilter, setVerdictFilter] = useState<VerdictFilter>(() => {
     const raw = searchParams.get("verdict");
     return isVerdictFilter(raw) ? raw : "all";
@@ -151,36 +153,15 @@ export function TrendsPage() {
 
   // Synchronize state changes back to searchParams
   useEffect(() => {
-    const nextParams = new URLSearchParams();
-    if (yearFrom !== DEFAULT_TREND_YEAR_FROM) nextParams.set("yearFrom", String(yearFrom));
-    if (yearTo !== DEFAULT_TREND_YEAR_TO) nextParams.set("yearTo", String(yearTo));
-    if (sortBy !== DEFAULT_TREND_SORT) nextParams.set("sortBy", sortBy);
-    if (minPapers !== 2) nextParams.set("minPapers", String(minPapers));
-    if (activeTab !== "overview") nextParams.set("tab", activeTab);
-    if (activeTab === "topics" && verdictFilter !== "all") nextParams.set("verdict", verdictFilter);
-
-    if (domains.length > 0) nextParams.set("domains", domains.join(","));
-    if (fields.length > 0) nextParams.set("fields", fields.join(","));
-    if (subfields.length > 0) nextParams.set("subfields", subfields.join(","));
-    if (topicsFilter.length > 0) nextParams.set("topicsFilter", topicsFilter.join(","));
-
-    if (domainIds.length > 0) nextParams.set("domainIds", domainIds.join(","));
-    if (fieldIds.length > 0) nextParams.set("fieldIds", fieldIds.join(","));
-    if (subfieldIds.length > 0) nextParams.set("subfieldIds", subfieldIds.join(","));
-    if (topicIds.length > 0) nextParams.set("topicIds", topicIds.join(","));
-
-    if (paperKinds.length > 0) nextParams.set("paperKinds", paperKinds.join(","));
-    if (openAccessStatuses.length > 0) nextParams.set("openAccessStatuses", openAccessStatuses.join(","));
-    if (providers.length > 0) nextParams.set("providers", providers.join(","));
-    if (sources.length > 0) nextParams.set("sources", sources.join(","));
-    if (languages.length > 0) nextParams.set("languages", languages.join(","));
-    if (citationBands.length > 0) nextParams.set("citationBands", citationBands.join(","));
-
-    if (selectedTopics.length > 0) nextParams.set("compare", selectedTopics.join(","));
-
-    setSearchParams(nextParams, { replace: true });
+    setSearchParams(buildTrendsPageParams({
+      yearFrom, yearTo, sortBy, minPapers, activeTab, verdictFilter, focusTopic,
+      domains, fields, subfields, topicsFilter,
+      domainIds, fieldIds, subfieldIds, topicIds,
+      paperKinds, openAccessStatuses, providers, sources, languages, citationBands,
+      selectedTopics,
+    }), { replace: true });
   }, [
-    yearFrom, yearTo, sortBy, minPapers, activeTab, verdictFilter,
+    yearFrom, yearTo, sortBy, minPapers, activeTab, verdictFilter, focusTopic,
     domains, fields, subfields, topicsFilter,
     domainIds, fieldIds, subfieldIds, topicIds,
     paperKinds, openAccessStatuses, providers, sources, languages, citationBands,
@@ -226,7 +207,6 @@ export function TrendsPage() {
   // dropped when the source cannot provide them.
   const resolvedMetricMode = useMemo(() => resolveMetricMode(metricMode, data?.citationTrend), [metricMode, data?.citationTrend]);
   // `focus` lets another page (e.g. topic detail) open the AI tab on its topic.
-  const [focusTopic, setFocusTopic] = useState<string>(() => searchParams.get("focus")?.trim() ?? "");
 
   // Calculated displayed topics yearly sum
   const displayedTopicsYearlyData = useMemo(() => {
