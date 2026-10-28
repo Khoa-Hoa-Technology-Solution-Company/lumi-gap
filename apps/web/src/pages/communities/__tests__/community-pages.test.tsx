@@ -7,11 +7,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CommunityDetailPage } from "../community-detail";
 import { CommunityListPage } from "../community-list";
 import { CommunityManagePage } from "../community-manage";
+import { CommunityNewPage } from "../community-new";
 
 const mutation = { mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false, error: null };
-const mocks = vi.hoisted(() => ({ community: vi.fn(), posts: vi.fn(), list: vi.fn() }));
+const mocks = vi.hoisted(() => ({ community: vi.fn(), posts: vi.fn(), list: vi.fn(), members: vi.fn(), canPropose: vi.fn(), leave: vi.fn() }));
 vi.mock("@/features/forum", () => ({
-  canProposeCommunity: () => false,
+  canProposeCommunity: mocks.canPropose,
+  proposalBlockReason: () => undefined,
+  useCreateCommunity: () => mutation,
   useCommunity: mocks.community,
   useForumPosts: mocks.posts,
   useCommunityList: mocks.list,
@@ -19,17 +22,18 @@ vi.mock("@/features/forum", () => ({
   useCommunityRecommendations: () => ({ data: [] }),
   useCommunitySuggestions: () => ({ data: [] }),
   useJoinCommunity: () => mutation,
-  useLeaveCommunity: () => mutation,
+  useLeaveCommunity: () => ({ ...mutation, mutate: mocks.leave }),
   useUpdateCommunity: () => mutation,
   useSetCommunityStatus: () => mutation,
   useTransferCommunityOwnership: () => mutation,
   useUpdateCommunityMember: () => mutation,
-  useCommunityMembers: () => ({ data: [], isLoading: false, error: null }),
+  useCommunityMembers: mocks.members,
   useCommunityPublicMembers: () => ({ data: { pages: [] }, isLoading: false, error: null, hasNextPage: false }),
   useCommunityRelatedPapers: () => ({ data: [], isLoading: false }),
   useCommunityRelatedGaps: () => ({ data: [], isLoading: false }),
 }));
-vi.mock("@/features/auth", () => ({ useCurrentUser: () => ({ data: undefined }) }));
+vi.mock("@/features/auth", () => ({ useCurrentUser: () => ({ data: { user: { systemRole: "USER" } }, isLoading: false }) }));
+vi.mock("@/stores/auth-store", () => ({ useAuthStore: (select: (state: unknown) => unknown) => select({ tokens: { accessToken: "token" } }) }));
 vi.mock("@/i18n", () => ({ useI18n: () => ({ t: (key: string) => key }) }));
 
 const base = {
@@ -44,6 +48,9 @@ beforeEach(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   mocks.community.mockReset().mockReturnValue({ data: base, isLoading: false, error: null });
   mocks.posts.mockReset().mockReturnValue({ data: undefined, isLoading: false, error: new Error("404") });
+  mocks.members.mockReset().mockReturnValue({ data: [], isLoading: false, error: null });
+  mocks.canPropose.mockReset().mockReturnValue(false);
+  mocks.leave.mockReset();
   mocks.list.mockReset().mockReturnValue({ data: { pages: [{ items: [base], total: 1 }] }, isLoading: false, error: null, hasNextPage: false, isFetchingNextPage: false });
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   container = document.createElement("div"); document.body.append(container); root = createRoot(container);
@@ -85,6 +92,37 @@ describe("community detail page", () => {
   });
 });
 
+describe("archived community", () => {
+  const archived = { ...base, status: "ARCHIVED" };
+  const buttons = () => Array.from(container.querySelectorAll("button, a")).map((item) => item.textContent?.trim());
+
+  it("shows a read-only banner and no Join button to a non-member", async () => {
+    mocks.community.mockReturnValue({ data: { ...archived, canManage: false, canEditCommunity: false, viewerMembership: undefined }, isLoading: false, error: null });
+    await render("/communities/machine-learning", <CommunityDetailPage />, "/communities/:slug");
+    expect(container.textContent).toContain("This community is archived. Content is read-only and it no longer accepts members.");
+    expect(buttons().some((label) => /^(Join Community|Request to join|Sign in to join)$/.test(label ?? ""))).toBe(false);
+  });
+
+  it("keeps Leave community available to an active member", async () => {
+    mocks.community.mockReturnValue({ data: { ...archived, canManage: false, canEditCommunity: false }, isLoading: false, error: null });
+    await render("/communities/machine-learning", <CommunityDetailPage />, "/communities/:slug");
+    const joined = Array.from(container.querySelectorAll("button")).find((item) => item.textContent?.includes("Joined"))!;
+    expect(joined.disabled).toBe(false);
+    await act(async () => { joined.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); });
+    const leave = Array.from(document.body.querySelectorAll('[role="menuitem"]')).find((item) => item.textContent === "Leave community") as HTMLElement;
+    expect(leave).toBeTruthy();
+    await act(async () => leave.click());
+    expect(mocks.leave).toHaveBeenCalledWith("community-1");
+  });
+
+  it("still offers Join on an active community", async () => {
+    mocks.community.mockReturnValue({ data: { ...base, canManage: false, viewerMembership: undefined }, isLoading: false, error: null });
+    await render("/communities/machine-learning", <CommunityDetailPage />, "/communities/:slug");
+    expect(buttons()).toContain("Join Community");
+    expect(container.textContent).not.toContain("This community is archived");
+  });
+});
+
 describe("community list page", () => {
   it("shows member counts only and no discussions sort option", async () => {
     await render("/communities", <CommunityListPage />, "/communities");
@@ -105,9 +143,49 @@ describe("community manage page", () => {
     expect(container.textContent).not.toContain("Moderation");
   });
 
+  const member = { id: "mem-1", role: "member", status: "active", user: { id: "u1", fullName: "Grace Hopper", email: "g@example.test" } };
+  const tabButton = (label: string) => Array.from(container.querySelectorAll<HTMLButtonElement>("nav button")).find((item) => item.textContent?.includes(label))!;
+
+  it("disables settings and member actions on an archived community for a non-admin", async () => {
+    mocks.members.mockReturnValue({ data: [member], isLoading: false, error: null });
+    mocks.community.mockReturnValue({ data: { ...base, status: "ARCHIVED", isOwner: true, isAdmin: false }, isLoading: false, error: null });
+    await render("/communities/machine-learning/manage", <CommunityManagePage />, "/communities/:slug/manage");
+    await act(async () => tabButton("Settings").click());
+    expect(container.textContent).toContain("This community is archived, so its settings are read-only.");
+    const controls = Array.from(container.querySelectorAll<HTMLInputElement>("fieldset input, fieldset textarea, fieldset select, fieldset button"));
+    expect(controls.length).toBeGreaterThan(4);
+    expect(controls.every((control) => control.matches(":disabled"))).toBe(true);
+    await act(async () => tabButton("Members").click());
+    expect(container.textContent).toContain("membership can no longer be changed");
+    const actions = Array.from(container.querySelectorAll<HTMLButtonElement>("button")).filter((item) => /Ban member|Make moderator/.test(item.textContent ?? ""));
+    expect(actions).toHaveLength(2);
+    expect(actions.every((item) => item.disabled)).toBe(true);
+  });
+
+  it("keeps everything enabled for an admin on an archived community", async () => {
+    mocks.members.mockReturnValue({ data: [member], isLoading: false, error: null });
+    mocks.community.mockReturnValue({ data: { ...base, status: "ARCHIVED", isOwner: false, isAdmin: true }, isLoading: false, error: null });
+    await render("/communities/machine-learning/manage", <CommunityManagePage />, "/communities/:slug/manage");
+    await act(async () => tabButton("Settings").click());
+    expect(container.textContent).not.toContain("its settings are read-only");
+    expect(container.querySelector<HTMLInputElement>("fieldset input")!.disabled).toBe(false);
+    await act(async () => tabButton("Members").click());
+    expect(Array.from(container.querySelectorAll<HTMLButtonElement>("button")).find((item) => item.textContent?.includes("Ban member"))!.disabled).toBe(false);
+  });
+
   it("drops the Settings tab when the viewer cannot edit the community", async () => {
     mocks.community.mockReturnValue({ data: { ...base, canEditCommunity: false }, isLoading: false, error: null });
     await render("/communities/machine-learning/manage", <CommunityManagePage />, "/communities/:slug/manage");
     expect(tabLabels("Community management sections")).toEqual(["Join requests", "Members"]);
+  });
+});
+
+describe("create community form", () => {
+  it("describes both visibilities without mentioning discussions", async () => {
+    mocks.canPropose.mockReturnValue(true);
+    await render("/communities/new", <CommunityNewPage />, "/communities/new");
+    expect(container.textContent).toContain("Anyone can see the members, rules and related research. Members join immediately.");
+    expect(container.textContent).toContain("Anyone can find the community and read its description. Members, rules and related research are visible after a moderator approves the request.");
+    expect(container.textContent).not.toMatch(/discussions/i);
   });
 });

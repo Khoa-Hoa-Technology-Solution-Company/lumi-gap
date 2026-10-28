@@ -106,6 +106,18 @@ describe("admin communities page", () => {
   });
 });
 
+describe("archive dialog", () => {
+  it("explains that archiving freezes the community and closes pending requests", async () => {
+    await render("/admin/community", <AdminCommunityPage />);
+    const trigger = container.querySelectorAll('button[aria-label="More actions"]')[0]!;
+    await act(async () => { trigger.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); });
+    await act(async () => (document.body.querySelector('[role="menuitem"]') as HTMLElement).click());
+    const dialog = document.body.querySelector('[role="dialog"]');
+    expect(dialog?.textContent).toContain("Archiving freezes the community: members can still view it, but it leaves the directory, accepts no new members and cannot be edited. Pending join requests are closed.");
+    expect(dialog?.textContent).not.toContain("become read-only");
+  });
+});
+
 describe("trust and safety page", () => {
   it("shows human labels, never the raw enum values", async () => {
     await render("/admin/trust-safety?tab=reports", <AdminTrustSafetyPage />);
