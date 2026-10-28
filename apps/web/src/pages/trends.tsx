@@ -15,6 +15,7 @@ import { PeriodsTab } from "@/features/trends/components/periods-tab";
 import { isVerdictFilter, type VerdictFilter } from "@/features/trends/components/verdict-filter";
 import type { TrendsOverviewParams } from "@/features/trends/api/trends.api";
 import { DataSourceBadge, ScopeNotice } from "@/features/trends/components/trend-data-source";
+import { StaleDataNotice } from "@/features/trends/components/stale-data-notice";
 import { resolveMetricMode, type TimelinePoint, type TrendMetricMode } from "@/features/trends/trend-impact";
 import {
   DEFAULT_TREND_SORT,
@@ -199,7 +200,9 @@ export function TrendsPage() {
     yearFrom, yearTo, sortBy, minPapers, domains, fields, subfields, topicsFilter,
     domainIds, fieldIds, subfieldIds, topicIds, paperKinds, openAccessStatuses, providers, sources, languages, citationBands,
   ]);
-  const { data, isLoading, isFetching, isError } = useTrendsOverview(overviewParams);
+  const { data, isLoading, isFetching, isError, isPlaceholderData } = useTrendsOverview(overviewParams);
+  // keepPreviousData shows the last result while new filters load; it must not pass for the new answer.
+  const showingStaleData = Boolean(data) && isPlaceholderData && isFetching;
 
   /** A verdict count was clicked: open the topic table filtered to it. */
   const openVerdictList = (verdict: VerdictFilter) => {
@@ -949,6 +952,8 @@ export function TrendsPage() {
         </div>
       ) : (
         <>
+          {showingStaleData && data && <StaleDataNotice requested={{ yearFrom, yearTo }} shown={{ yearFrom: data.yearFrom, yearTo: data.yearTo }} />}
+          <div aria-busy={showingStaleData} className={`transition-opacity duration-200 ${showingStaleData ? "pointer-events-none select-none opacity-40" : ""}`}>
           {/* Current analysis dataset strip (Guided UX) */}
           {data && (
             <div className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 mb-6 text-xs text-slate-600 dark:text-slate-400 select-none">
@@ -956,7 +961,6 @@ export function TrendsPage() {
                 <div className="space-y-1">
                   <p className="font-bold text-slate-900 dark:text-slate-200">Current analysis dataset basis</p>
                   <p className="font-medium text-slate-650 dark:text-slate-350">
-                    {isFetching && !isLoading ? "Updating scoped dataset... " : ""}
                     Analyzing <strong className="text-blue-600 dark:text-blue-400 font-extrabold">{formatNumber(data.totalPapersInWindow)}</strong> active papers across <strong className="text-blue-600 dark:text-blue-400 font-extrabold">{formatNumber(data.uniqueTopicsInScope ?? data.topics.length)}</strong> unique topics. Trend metrics use complete years through <strong className="text-slate-900 dark:text-slate-100 font-extrabold">{data.lastCompleteYear}</strong>; {yearTo > data.lastCompleteYear ? `${yearTo} is shown as YTD.` : ""}.
                   </p>
                   <p className="text-[11px] text-slate-500 dark:text-slate-450">
@@ -980,6 +984,7 @@ export function TrendsPage() {
               </div>
             </div>
           )}
+          </div>
 
           {/* 4. Tabs Navigation (Premium Segmented Control) */}
           <div
@@ -1013,7 +1018,7 @@ export function TrendsPage() {
           </div>
 
           {/* 5. Tab Panels (Senior Component Split) */}
-          <div id="trends-tab-panels" className="w-full scroll-mt-24">
+          <div id="trends-tab-panels" aria-busy={showingStaleData} className={`w-full scroll-mt-24 transition-opacity duration-200 ${showingStaleData ? "pointer-events-none select-none opacity-40" : ""}`}>
             {activeTab === "overview" && (
               <OverviewTab
                 data={data}

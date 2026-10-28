@@ -37,6 +37,10 @@ const trendResearchLinkKeys = [
   "Most-cited papers in the corpus",
   "Search all papers on this topic",
   "No papers of this topic in the local corpus yet. Search to find and import them.",
+  "Loading trends for {{yearFrom}}–{{yearTo}}…",
+  "The figures below are for the previous filters and are replaced when loading finishes.",
+  "The figures below are still for {{yearFrom}}–{{yearTo}} and are replaced when loading finishes.",
+  "A scope used for the first time is computed from OpenAlex and can take up to about 20 seconds.",
 ] as const;
 
 export const trendResearchLinkStrings = Object.fromEntries(trendResearchLinkKeys.map((key) => [key, key])) as Record<(typeof trendResearchLinkKeys)[number], string>;
@@ -79,4 +83,8 @@ export const trendResearchLinkViStrings: Record<(typeof trendResearchLinkKeys)[n
   "Most-cited papers in the corpus": "Bài được trích dẫn nhiều nhất trong kho dữ liệu",
   "Search all papers on this topic": "Tìm tất cả bài về chủ đề này",
   "No papers of this topic in the local corpus yet. Search to find and import them.": "Kho dữ liệu chưa có bài nào của chủ đề này. Hãy tìm kiếm để tìm và nhập bài.",
+  "Loading trends for {{yearFrom}}–{{yearTo}}…": "Đang tải xu hướng giai đoạn {{yearFrom}}–{{yearTo}}…",
+  "The figures below are for the previous filters and are replaced when loading finishes.": "Số liệu bên dưới là của bộ lọc trước và sẽ được thay khi tải xong.",
+  "The figures below are still for {{yearFrom}}–{{yearTo}} and are replaced when loading finishes.": "Số liệu bên dưới vẫn là của giai đoạn {{yearFrom}}–{{yearTo}} và sẽ được thay khi tải xong.",
+  "A scope used for the first time is computed from OpenAlex and can take up to about 20 seconds.": "Phạm vi dùng lần đầu được tính từ OpenAlex và có thể mất khoảng 20 giây.",
 };

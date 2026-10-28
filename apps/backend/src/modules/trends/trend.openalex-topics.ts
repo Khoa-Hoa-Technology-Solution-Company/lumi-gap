@@ -1,5 +1,5 @@
 import type { TrendCandidateStrata, TrendClassification, TrendGranularity, TrendPeriodWindow, TrendTopicTaxonomy } from "@trend/shared-types";
-import { openAlexGet, openAlexGroupBy, shortId, type OpenAlexGroup } from "./trend.openalex-client.js";
+import { openAlexGet, openAlexGroupBy, openAlexYearCounts, shortId, type OpenAlexGroup } from "./trend.openalex-client.js";
 import { datesClause, withScope, type OpenAlexScope } from "./trend.openalex-scope.js";
 import { benjaminiHochberg } from "./trend.statistics.js";
 import { mapWithConcurrency, range } from "./trend.utils.js";
@@ -169,18 +169,15 @@ export async function totalsByPeriod(filter: string, periods: AnalysisPeriod[]):
  * Each candidate's share of its OpenAlex field per period, s_t = n_t / N_t · 100
  * (N_t = field papers of the scope without its taxonomy clauses), tested with
  * Mann–Kendall over the complete periods with N_t > 0 and BH-adjusted across
- * the candidates. Requests: periods × ⌈candidates / 10⌉ for the topics,
- * one per period for every field population, one per 100 topic entities.
+ * the candidates. Requests: see yearlyShareCounts (years) and periodShareCounts
+ * (months, quarters), plus one per 100 topic entities.
  */
 export async function buildShareTopics(scope: OpenAlexScope, periods: AnalysisPeriod[], candidates: OpenAlexGroup[]): Promise<ShareTopic[]> {
   if (candidates.length === 0) return [];
   const ids = candidates.map((candidate) => candidate.key);
-  const [topicCounts, populations, entityLists] = await Promise.all([
-    countsByPeriod(scope.filter, periods, "primary_topic.id", chunk(ids, MAX_WORKS_TOPIC_OR_VALUES).map((group) => `primary_topic.id:${group.join("|")}`)),
-    countsByPeriod(scope.nonTaxonomyFilter, periods, "primary_topic.field.id"),
-    runAll(chunk(ids, MAX_OR_VALUES).map((group) => () => fetchTopicEntities(group))),
-  ]);
-  const entities = new Map(entityLists.flat().map((entity) => [shortId(entity.id).toUpperCase(), entity]));
+  const { topicCounts, populations, entities } = isYearly(periods)
+    ? await yearlyShareCounts(scope, periods, ids)
+    : await periodShareCounts(scope, periods, ids);
 
   const built = candidates.map((candidate) => {
     const taxonomy = topicTaxonomy(candidate.key, entities.get(candidate.key));
@@ -205,6 +202,54 @@ export async function buildShareTopics(scope: OpenAlexScope, periods: AnalysisPe
     counts: row.counts,
     classification: classifyTrend({ ...row.stats, source: "openalex", qValue: qValues[index] ?? null }),
   }));
+}
+
+type ShareCounts = { topicCounts: Map<string, number[]>; populations: Map<string, number[]>; entities: Map<string, TopicEntity> };
+
+/** First year of the fixed span the yearly series are fetched over (the window schema's lower bound). */
+const SERIES_FIRST_YEAR = 1900;
+
+function isYearly(periods: AnalysisPeriod[]): boolean {
+  return periods.every((period) => period.clause === `publication_year:${period.key}`);
+}
+
+async function topicEntities(ids: string[]): Promise<Map<string, TopicEntity>> {
+  const lists = await runAll(chunk(ids, MAX_OR_VALUES).map((group) => () => fetchTopicEntities(group)));
+  return new Map(lists.flat().map((entity) => [shortId(entity.id).toUpperCase(), entity]));
+}
+
+/**
+ * Months or quarters: one request per period and OR chunk of ≤ 10 topics, one per period for the field populations.
+ * The cache only helps an identical window.
+ */
+async function periodShareCounts(scope: OpenAlexScope, periods: AnalysisPeriod[], ids: string[]): Promise<ShareCounts> {
+  const [topicCounts, populations, entities] = await Promise.all([
+    countsByPeriod(scope.filter, periods, "primary_topic.id", chunk(ids, MAX_WORKS_TOPIC_OR_VALUES).map((group) => `primary_topic.id:${group.join("|")}`)),
+    countsByPeriod(scope.nonTaxonomyFilter, periods, "primary_topic.field.id"),
+    topicEntities(ids),
+  ]);
+  return { topicCounts, populations, entities };
+}
+
+/**
+ * Years: one `publication_year` series per topic and per field population, over a fixed span rather than the window.
+ * The cached series therefore serve every window: changing the years only fetches the topics that were not
+ * candidates before, instead of re-counting every year (periods × ⌈candidates / 10⌉ requests).
+ */
+async function yearlyShareCounts(scope: OpenAlexScope, periods: AnalysisPeriod[], ids: string[]): Promise<ShareCounts> {
+  const span = `publication_year:${SERIES_FIRST_YEAR}-${new Date().getUTCFullYear()}`;
+  const entities = await topicEntities(ids);
+  const fieldIds = [...new Set([...entities.values()].flatMap((entity) => (entity.field ? [shortId(entity.field.id).toUpperCase()] : [])))];
+  const pick = (counts: Map<number, number>) => periods.map((period) => counts.get(Number(period.key)) ?? 0);
+  const [topicSeries, fieldSeries] = await Promise.all([
+    runAll(ids.map((id) => () => openAlexYearCounts(withScope(scope.filter, `primary_topic.id:${id}`, span)))),
+    runAll(fieldIds.map((id) => () => openAlexYearCounts(withScope(scope.nonTaxonomyFilter, `primary_topic.field.id:${id}`, span)))),
+  ]);
+  return {
+    topicCounts: new Map(ids.map((id, index) => [id, pick(topicSeries[index]!)])),
+    populations: new Map(fieldIds.map((id, index) => [id, pick(fieldSeries[index]!)])),
+    entities,
+  };
 }
 
 async function fetchTopicEntities(ids: string[]): Promise<TopicEntity[]> {
