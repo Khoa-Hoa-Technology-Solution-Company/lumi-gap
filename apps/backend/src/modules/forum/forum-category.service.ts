@@ -4,6 +4,7 @@ import { parseDatabaseId, publicDatabaseId } from "../../infrastructure/database
 import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { auditService } from "../audit/audit.service.js";
 import { cleanForumText } from "./forum.rules.js";
+import { forumPostVisibilityWhere } from "./forum-visibility.js";
 
 type CategoryInput = { name: string; slug: string; description?: string; sortOrder?: number; status?: "ACTIVE" | "ARCHIVED" };
 const idWhere = (value: string) => parseDatabaseId(value)?.kind === "uuid" ? { id: value } : { legacyMongoId: value };
@@ -33,11 +34,11 @@ const present = (row: Awaited<ReturnType<typeof resolveForumCategory>>) => ({
 });
 
 export const forumCategoryService = {
-  async list(all = false, role?: UserRole) {
+  async list(all = false, role?: UserRole, viewerId?: string) {
     if (all) assertAdmin(role!);
     const rows = await getPrisma().community.findMany({ where: { isForumCategory: true, visibility: "public", status: all ? { in: ["ACTIVE", "ARCHIVED"] } : "ACTIVE" }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }, { id: "asc" }] });
     if (!rows.length) return [];
-    const visibleTopics = { communityId: { in: rows.map((row) => row.id) }, status: { in: ["active", "locked"] }, visibilityStatus: "ACTIVE" };
+    const visibleTopics = { communityId: { in: rows.map((row) => row.id) }, status: { in: ["active", "locked"] }, visibilityStatus: "ACTIVE", AND: [await forumPostVisibilityWhere({ userId: viewerId, role })] };
     const [totals, recent] = await Promise.all([
       getPrisma().forumPost.groupBy({ by: ["communityId"], where: visibleTopics, _count: { _all: true } }),
       getPrisma().forumPost.groupBy({ by: ["communityId"], where: { ...visibleTopics, createdAt: { gte: new Date(Date.now() - 7 * 24 * 60 * 60_000) } }, _count: { _all: true } }),

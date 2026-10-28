@@ -31,7 +31,8 @@ export type ForumPostView = {
   linkedProject?: { id: string; title: string };
   references: ForumReferenceView[]; author: ForumAuthorView;
   reactionCounts?: Record<ForumReactionName, number>; viewerReactions?: ForumReactionName[]; reactionUsers?: Partial<Record<ForumReactionName, ForumReactionUser[]>>;
-  community?: { id: string; name: string; slug: string }; createdAt: string; updatedAt?: string;
+  community?: { id: string; name: string; slug: string }; researchCommunity?: { id: string; name: string; slug: string; visibility: "public" | "private" };
+  createdAt: string; updatedAt?: string;
 };
 export type ForumCommentView = {
   id: string; postId: string; postNumber?: number; content: string; voteScore: number; viewerVote: -1 | 0 | 1;
@@ -57,11 +58,11 @@ export type CommunityMemberView = CommunityMember;
 export type CommunityListParams = { status?: CommunityStatus; q?: string; field?: string; sort?: CommunitySort; scope?: "all" | "mine"; page?: number; pageSize?: number };
 export type CommunityPage = { items: CommunityView[]; page: number; totalPages: number; total: number };
 export type ForumPostInput = {
-  type: ForumPostType; title: string; content: string; communityId: string; tags: string[];
+  type: ForumPostType; title: string; content: string; communityId: string; researchCommunityId?: string; tags: string[];
   linkedPaperId?: string; linkedResearchGapId?: string; linkedProjectId?: string; references?: ForumReferenceView[];
 };
 export type ForumPostFilters = {
-  page?: number; pageSize?: number; query?: string; category?: string; communityId?: string; type?: ForumPostType;
+  page?: number; pageSize?: number; query?: string; category?: string; communityId?: string; researchCommunityId?: string; type?: ForumPostType;
   tag?: string; sort?: ForumSort; linkedPaperId?: string; linkedResearchGapId?: string; includeModerated?: boolean;
 };
 export type ForumReportView = {
@@ -108,6 +109,10 @@ function normalizeResearchContext(value: unknown): { id: string; title: string; 
   const row = record(value); const contextId = id(row); if (!contextId) return undefined;
   return { id: contextId, title: text(row.title) ?? "", topic: text(row.topic), doi: text(row.doi), publicationYear: typeof row.publicationYear === "number" ? row.publicationYear : undefined, validationStatus: text(row.validationStatus), status: text(row.status) };
 }
+function normalizeResearchCommunity(value: unknown): ForumPostView["researchCommunity"] {
+  const row = record(value); const communityId = id(row); if (!communityId) return undefined;
+  return { id: communityId, name: text(row.name) ?? "Community", slug: text(row.slug) ?? communityId, visibility: row.visibility === "public" ? "public" : "private" };
+}
 function normalizePost(value: unknown): ForumPostView {
   const row = record(value); const community = record(row.community ?? row.communityId); const author = row.author ?? row.authorId;
   const rawType = String(row.type ?? "DISCUSSION").toUpperCase();
@@ -124,6 +129,7 @@ function normalizePost(value: unknown): ForumPostView {
     references: Array.isArray(row.references) ? row.references.map(normalizeReference) : [], author: normalizeAuthor(author),
     reactionCounts: normalizeReactionCounts(row.reactionCounts), viewerReactions: normalizeReactionList(row.viewerReactions), reactionUsers: normalizeReactionUsers(row.reactionUsers),
     community: row.communityId || row.community ? { id: id(community), name: text(community.name) ?? "Community", slug: text(community.slug) ?? id(community) } : undefined,
+    researchCommunity: normalizeResearchCommunity(row.researchCommunity),
     notificationLevel: ["WATCHING", "TRACKING", "NORMAL", "MUTED"].includes(String(row.notificationLevel)) ? row.notificationLevel as ForumNotificationLevel : row.isFollowing === true ? "WATCHING" : "NORMAL",
     likeCount: typeof row.likeCount === "number" ? row.likeCount : undefined,
     readingTimeMinutes: typeof row.readingTimeMinutes === "number" ? row.readingTimeMinutes : undefined,

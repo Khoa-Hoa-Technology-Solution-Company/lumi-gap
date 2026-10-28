@@ -11,10 +11,10 @@ import { ForumBodyEditor } from "@/features/forum/components/forum-body-editor";
 import { ForumDoiLookup } from "@/features/forum/components/forum-doi-lookup";
 import { ForumTagInput } from "@/features/forum/components/forum-tag-input";
 import { ForumSidebar } from "@/features/forum/components/forum-sidebar";
-import { useCreateForumPost, useForumContext, useForumPaperSearch, useShareForumGap } from "@/features/forum/hooks/use-forum";
+import { useCommunityList, useCreateForumPost, useForumContext, useForumPaperSearch, useShareForumGap } from "@/features/forum/hooks/use-forum";
 import { forumPaperApi, type ForumPaperSearchResult } from "@/features/forum/api/forum-paper.api";
 import type { ForumReferenceView } from "@/features/forum/api/forum.api";
-import { buildForumDiscussionInput, forumInitialDiscussionType, forumDiscussionTags, FORUM_DISCUSSION_TAG_LIMIT } from "@/features/forum/utils/forum-discussion-editor";
+import { buildForumDiscussionInput, forumCategoryForCommunity, forumInitialDiscussionType, forumDiscussionTags, FORUM_DISCUSSION_TAG_LIMIT } from "@/features/forum/utils/forum-discussion-editor";
 import { useForumCategories } from "@/features/forum/hooks/use-forum-categories";
 import { isValidDoi, normalizeDoi } from "@/features/projects/utils/doi";
 import { useI18n } from "@/i18n";
@@ -56,6 +56,7 @@ type ForumDiscussionComposerProps = {
 type ForumDiscussionDraftStorage = {
   type: ForumPostType;
   communityId: string;
+  researchCommunityId?: string;
   title: string;
   content: string;
   tags: string;
@@ -99,6 +100,11 @@ export function ForumDiscussionComposer({ embedded = false, onClose, onPublished
   const joined = useMemo(() => (communitiesQuery.data ?? []).filter((community) => community.status === "ACTIVE"), [communitiesQuery.data]);
 
   const [communityId, setCommunityId] = useState("");
+  const [researchCommunityId, setResearchCommunityId] = useState("");
+  const categoryTouched = useRef(false);
+  const myCommunitiesQuery = useCommunityList({ scope: "mine", sort: "name" }, isAuthed);
+  // Only ACTIVE communities the user belongs to can receive a post.
+  const myCommunities = useMemo(() => (myCommunitiesQuery.data?.pages.flatMap((page) => page.items) ?? []).filter((community) => community.status === "ACTIVE" && community.viewerMembership?.status === "active"), [myCommunitiesQuery.data]);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [tags, setTags] = useState("");
@@ -114,6 +120,7 @@ export function ForumDiscussionComposer({ embedded = false, onClose, onPublished
   const [draftHydrated, setDraftHydrated] = useState(false);
   const submittingRef = useRef(false);
   const initializedCommunity = useRef(false);
+  const initializedResearchCommunity = useRef(false);
   const initializedGap = useRef(false);
   const initializedPaper = useRef(false);
   const draftKey = useMemo(() => {
@@ -134,8 +141,16 @@ export function ForumDiscussionComposer({ embedded = false, onClose, onPublished
     initializedCommunity.current = true;
     const requested = (searchParams.get("category") ?? searchParams.get("community"));
     const community = joined.find((item) => item.id === requested || item.slug === requested);
-    if (community) setCommunityId(community.id);
+    if (community) { setCommunityId(community.id); categoryTouched.current = true; }
   }, [communitiesQuery.data, joined, searchParams]);
+  // `?community=<slug>` may name a research community (a forum category of that name keeps working above).
+  useEffect(() => {
+    if (initializedResearchCommunity.current || !communitiesQuery.data || !myCommunitiesQuery.data) return;
+    initializedResearchCommunity.current = true;
+    const requested = searchParams.get("community");
+    const community = myCommunities.find((item) => item.id === requested || item.slug === requested);
+    if (community) selectResearchCommunity(community.id);
+  }, [communitiesQuery.data, myCommunitiesQuery.data, myCommunities, searchParams]);
   useEffect(() => {
     if (initializedGap.current || !context || type !== "RESEARCH_GAP_DISCUSSION") return;
     initializedGap.current = true;
@@ -155,6 +170,7 @@ export function ForumDiscussionComposer({ embedded = false, onClose, onPublished
         const draft = JSON.parse(raw) as Partial<ForumDiscussionDraftStorage>;
         if (draft.type && THREAD_TYPES.some((option) => option.value === draft.type)) setType(draft.type);
         if (typeof draft.communityId === "string") setCommunityId(draft.communityId);
+        if (typeof draft.researchCommunityId === "string") setResearchCommunityId(draft.researchCommunityId);
         if (typeof draft.title === "string") setTitle(draft.title);
         if (typeof draft.content === "string") setContent(draft.content);
         if (typeof draft.tags === "string") setTags(draft.tags);
@@ -167,6 +183,13 @@ export function ForumDiscussionComposer({ embedded = false, onClose, onPublished
     setDraftHydrated(true);
   }, [draftKey]);
 
+  // Choosing a community fills the category from its research field; the user can still change it.
+  function selectResearchCommunity(value: string) {
+    setResearchCommunityId(value);
+    if (!value || categoryTouched.current) return;
+    const category = forumCategoryForCommunity(myCommunities.find((item) => item.id === value), joined);
+    if (category) setCommunityId(category);
+  }
   const selectedGap = contextGaps.find((gap) => gap.id === linkedGapId);
   const selectedCommunity = joined.find((community) => community.id === communityId);
   const canPublish = Boolean(communityId && joined.some((community) => community.id === communityId) && title.trim().length >= 3 && content.trim() && tagInputValid && forumDiscussionTags(tags).length <= FORUM_DISCUSSION_TAG_LIMIT && (type !== "PAPER_DISCUSSION" || linkedPaperId) && (type !== "RESEARCH_GAP_DISCUSSION" || selectedGap?.forumShareable));
@@ -179,11 +202,11 @@ export function ForumDiscussionComposer({ embedded = false, onClose, onPublished
     const timer = window.setTimeout(() => {
       try {
         if (!hasDraft) { window.localStorage.removeItem(draftKey); return; }
-        window.localStorage.setItem(draftKey, JSON.stringify({ type, communityId, title, content, tags, linkedPaperId, linkedPaperLabel, linkedGapId, references } satisfies ForumDiscussionDraftStorage));
+        window.localStorage.setItem(draftKey, JSON.stringify({ type, communityId, researchCommunityId, title, content, tags, linkedPaperId, linkedPaperLabel, linkedGapId, references } satisfies ForumDiscussionDraftStorage));
       } catch { /* Quota and private browsing failures must not block publishing. */ }
     }, 400);
     return () => window.clearTimeout(timer);
-  }, [communityId, content, draftHydrated, draftKey, hasDraft, linkedGapId, linkedPaperId, linkedPaperLabel, references, tags, title, type]);
+  }, [communityId, researchCommunityId, content, draftHydrated, draftKey, hasDraft, linkedGapId, linkedPaperId, linkedPaperLabel, references, tags, title, type]);
 
   const selectPaper = (paper: { id: string; title: string }) => {
     setLinkedPaperId(paper.id);
@@ -224,7 +247,7 @@ export function ForumDiscussionComposer({ embedded = false, onClose, onPublished
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (submittingRef.current || create.isPending) return;
-    const result = buildForumDiscussionInput({ type, communityId, title, content, tags, linkedPaperId, linkedGapId, references }, joined, contextGaps);
+    const result = buildForumDiscussionInput({ type, communityId, researchCommunityId, title, content, tags, linkedPaperId, linkedGapId, references }, joined, contextGaps);
     if ("error" in result) { setError(t(result.error)); return; }
     setError("");
     submittingRef.current = true;
@@ -255,7 +278,7 @@ export function ForumDiscussionComposer({ embedded = false, onClose, onPublished
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="min-w-0">
               <span className="sr-only">{t("Category")} *</span>
-              <select aria-label={t("Category")} required value={communityId} onChange={(event) => setCommunityId(event.target.value)} disabled={communitiesQuery.isLoading || communitiesQuery.isError} className={cn(fieldClass, "h-12 rounded-lg font-medium")}>
+              <select aria-label={t("Category")} required value={communityId} onChange={(event) => { categoryTouched.current = true; setCommunityId(event.target.value); }} disabled={communitiesQuery.isLoading || communitiesQuery.isError} className={cn(fieldClass, "h-12 rounded-lg font-medium")}>
                 <option value="">{t("Select a category")}</option>
                 {joined.map((community) => <option key={community.id} value={community.id}>{t(community.name)}</option>)}
               </select>
@@ -266,6 +289,13 @@ export function ForumDiscussionComposer({ embedded = false, onClose, onPublished
                 {THREAD_TYPES.map((option) => <option key={option.value} value={option.value}>{t(option.label)}</option>)}
               </select>
             </label>
+            {myCommunities.length ? <label className="min-w-0 sm:col-span-2">
+              <span className="sr-only">{t("Post in community")}</span>
+              <select aria-label={t("Post in community")} value={researchCommunityId} onChange={(event) => selectResearchCommunity(event.target.value)} className={cn(fieldClass, "h-12 rounded-lg font-medium")}>
+                <option value="">{t("Post in community (optional)")}</option>
+                {myCommunities.map((community) => <option key={community.id} value={community.id}>{community.visibility === "private" ? `🔒 ${community.name}` : community.name}</option>)}
+              </select>
+            </label> : null}
           </div>
           <div className="relative min-w-0">
             <label htmlFor="discussion-title" className="sr-only">{t("Discussion title")}</label>
@@ -303,7 +333,7 @@ export function ForumDiscussionComposer({ embedded = false, onClose, onPublished
         </div>
         </div>
         <footer className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-border bg-background px-5 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6">
-          <p className="hidden text-sm text-muted-foreground sm:block">{selectedCommunity ? t("Anyone can read this discussion.") : t("Select a category before publishing.")}</p>
+          <p className="hidden text-sm text-muted-foreground sm:block">{!selectedCommunity ? t("Select a category before publishing.") : researchCommunityId && myCommunities.find((item) => item.id === researchCommunityId)?.visibility === "private" ? t("Only members of this private community can read this discussion.") : t("Anyone can read this discussion.")}</p>
           <div className="ml-auto flex items-center gap-2">
             <Button type="button" variant="ghost" className="h-11 text-base text-muted-foreground" onClick={cancel}>{t("Discard")}</Button>
             <Button type="submit" disabled={create.isPending || !canPublish} className="h-11 min-w-32 text-base shadow-none"><Send className="h-4 w-4" />{t(create.isPending ? "Publishing…" : "Publish discussion")}</Button>

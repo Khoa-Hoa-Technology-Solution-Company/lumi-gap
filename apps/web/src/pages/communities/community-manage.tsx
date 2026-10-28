@@ -1,6 +1,6 @@
 import { useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, Check, Inbox, Shield, UserRoundCog, X } from "lucide-react";
+import { ArrowLeft, Check, Inbox, Shield, ShieldAlert, UserRoundCog, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -18,8 +18,9 @@ import {
 } from "@/features/forum";
 import { useI18n } from "@/i18n";
 import { cn } from "@/utils/cn";
+import { CommunityModerationTab } from "./community-moderation-tab";
 
-type Tab = "settings" | "requests" | "members";
+type Tab = "settings" | "requests" | "members" | "moderation";
 type MemberChange = { role?: "moderator" | "member"; status?: "active" | "declined" | "banned" };
 
 const splitValues = (value: string) => [...new Set(value.split(/[\n,]/).map((item) => item.trim()).filter(Boolean))];
@@ -41,6 +42,7 @@ export function CommunityManagePage() {
     ...(community.canEditCommunity ? [{ value: "settings" as const, label: "Settings and rules", icon: Shield }] : []),
     { value: "requests", label: "Join requests", icon: Inbox, badge: pending },
     { value: "members", label: "Members", icon: UserRoundCog },
+    { value: "moderation", label: "Moderation", icon: ShieldAlert },
   ];
 
   return <main className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
@@ -60,7 +62,8 @@ export function CommunityManagePage() {
     <div className="mt-7">
       {tab === "settings" && community.canEditCommunity ? <Settings community={community} />
         : tab === "requests" ? <MemberList community={community} mode="requests" />
-          : <MemberList community={community} mode="members" />}
+          : tab === "moderation" ? <CommunityModerationTab community={community} frozen={community.status === "ARCHIVED" && !community.isAdmin} />
+            : <MemberList community={community} mode="members" />}
     </div>
   </main>;
 }

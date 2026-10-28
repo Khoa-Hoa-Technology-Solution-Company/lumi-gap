@@ -622,6 +622,19 @@ export const forumRefinementVi = {
   "You do not have permission to manage this community.": "Bạn không có quyền quản lý cộng đồng này.",
   "A focused academic community for exchanging evidence, questions and research practice.": "Một cộng đồng học thuật tập trung để trao đổi bằng chứng, câu hỏi và thực hành nghiên cứu.",
   "A focused space for researchers working in this field.": "Không gian tập trung dành cho các nhà nghiên cứu trong lĩnh vực này.",
+  "AI summary": "Tóm tắt bằng AI",
+  "Could not load this community's discussions.": "Không thể tải các thảo luận của cộng đồng này.",
+  "Generated on request from the last 30 days of discussions in this community.": "Được tạo theo yêu cầu từ các thảo luận trong 30 ngày qua của cộng đồng này.",
+  "Moderation": "Kiểm duyệt",
+  "Only members of this private community can read this discussion.": "Chỉ thành viên của cộng đồng riêng tư này mới đọc được thảo luận này.",
+  "Pin, lock or hide discussions posted in this community.": "Ghim, khóa hoặc ẩn các thảo luận được đăng trong cộng đồng này.",
+  "Post in community": "Đăng trong cộng đồng",
+  "Summarize recent discussions": "Tóm tắt các thảo luận gần đây",
+  "Post in community (optional)": "Đăng trong cộng đồng (tùy chọn)",
+  "Reason (required)": "Lý do (bắt buộc)",
+  "Recent discussions summary": "Tóm tắt các thảo luận gần đây",
+  "Request membership to read this community's discussions.": "Hãy gửi yêu cầu tham gia để đọc các thảo luận của cộng đồng này.",
+  "This community is archived, so its discussions can no longer be moderated here. Only an administrator can.": "Cộng đồng này đã được lưu trữ nên không thể kiểm duyệt các thảo luận tại đây nữa. Chỉ quản trị viên mới làm được.",
 } as const;
 
 // Shared English fallbacks register the same forum keys for every locale.
