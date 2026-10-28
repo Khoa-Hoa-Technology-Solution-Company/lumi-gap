@@ -794,6 +794,7 @@ export const vi: Record<keyof typeof en, string> = {
   "A technical acceptance dashboard showing whether AI/BE logic is deterministic, grounded, and ready for demo.": "Bảng kiểm tra nghiệm thu kỹ thuật cho biết logic AI/BE có xác định, có căn cứ và sẵn sàng demo hay không.",
   "AI Explainer is ready.": "AI Giải thích đã sẵn sàng.",
   "AI explanation failed. You can still inspect the charts and facets.": "Giải thích AI không thành công. Bạn vẫn có thể kiểm tra các biểu đồ và các khía cạnh.",
+  "The AI model is busy right now. Please try again in a minute. You can still inspect the charts and facets.": "Mô hình AI đang quá tải. Vui lòng thử lại sau khoảng một phút. Bạn vẫn có thể xem các biểu đồ và khía cạnh.",
   "AI explanation is grounded in aggregate trend metrics, not individual paper-level citations. Generated at": "Lời giải thích của AI dựa trên các số liệu xu hướng tổng hợp chứ không phải các trích dẫn cấp giấy riêng lẻ. Được tạo vào lúc",
   "AI is generating your report...": "AI đang tạo báo cáo của bạn...",
   "AI is reading project papers...": "AI đang đọc tài liệu dự án...",

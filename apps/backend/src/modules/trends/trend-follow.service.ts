@@ -6,7 +6,7 @@ import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { logger } from "../../infrastructure/logger.js";
 import { notificationService } from "../notifications/notification.service.js";
 import type { CreateTrendFollowBody } from "./dto/trends.schema.js";
-import { trendService } from "./trend.service.js";
+import { findUserId, trendService } from "./trend.service.js";
 
 type FollowRow = Awaited<ReturnType<ReturnType<typeof getPrisma>["trendTopicFollow"]["findFirstOrThrow"]>>;
 
@@ -18,11 +18,9 @@ export const topicKey = (topic: string) => topic.trim().toLowerCase();
 const VERDICT_LABEL: Record<TrendVerdict, string> = { rising: "rising", declining: "declining", stable: "stable", insufficient: "insufficient data" };
 
 async function owner(userId: string) {
-  const parsed = parseDatabaseId(userId);
-  if (!parsed) throw AppError.unauthorized();
-  const row = await getPrisma().user.findUnique({ where: parsed.kind === "uuid" ? { id: parsed.value } : { legacyMongoId: parsed.value }, select: { id: true } });
-  if (!row) throw AppError.unauthorized();
-  return row.id;
+  const id = await findUserId(userId);
+  if (!id) throw AppError.unauthorized();
+  return id;
 }
 
 function toDto(row: FollowRow): TrendTopicFollow {
@@ -102,6 +100,13 @@ export const trendFollowService = {
       const current = await currentVerdict(first.topic, rows.find((row) => row.openalexTopicId)?.openalexTopicId);
       if (!current) continue;
       for (const row of rows) {
+        // A verdict from another data source (the local corpus while OpenAlex is down) is not comparable with the
+        // baseline: an OpenAlex verdict replaces a local baseline silently, a local one only marks the row checked.
+        if (row.lastVerdict && row.lastDataSource && row.lastDataSource !== current.dataSource) {
+          const data = current.dataSource === "openalex" ? { lastVerdict: current.verdict, lastDataSource: current.dataSource, lastCheckedAt: now } : { lastCheckedAt: now };
+          await prisma.trendTopicFollow.update({ where: { id: row.id }, data });
+          continue;
+        }
         if (row.lastVerdict && row.lastVerdict !== current.verdict) {
           changed++;
           await notificationService.create({

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { QualityErrorCode } from "@trend/shared-types";
 import { AppError } from "../../common/exceptions/app-error.js";
-import { LlmContentError, LlmQuotaError, LlmTruncationError } from "../llm/gemini.client.js";
+import { LlmContentError, LlmQuotaError, LlmTruncationError, LlmUnavailableError } from "../llm/gemini.client.js";
 import { QualityStructureError } from "./quality.assessment.js";
 
 const MESSAGES: Record<QualityErrorCode, { status: number; message: string }> = {
@@ -34,6 +34,7 @@ function providerStatus(error: unknown): number | undefined {
 }
 /** Provider overload, rate limiting, 5xx and network failures can recover with a later retry. */
 export function isTransientProviderFailure(error: unknown) {
+  if (error instanceof LlmUnavailableError) return true;
   if (error instanceof LlmQuotaError || error instanceof AppError) return false;
   const status = providerStatus(error);
   if (status !== undefined && TRANSIENT_STATUS.has(status)) return true;
@@ -52,6 +53,7 @@ export function describeFailure(error: unknown) {
 /** Map any failure of an evaluation to a coded AppError; existing AppErrors (404, 400, ...) pass through. */
 export function toQualityError(error: unknown): AppError {
   if (error instanceof LlmQuotaError) return qualityError("AI_EVALUATION_QUOTA", error.message);
+  if (error instanceof LlmUnavailableError) return qualityError("AI_EVALUATION_BUSY");
   if (error instanceof AppError) return error;
   if (isStructuralFailure(error) || error instanceof LlmTruncationError) return qualityError("AI_EVALUATION_INVALID_OUTPUT");
   if (isTransientProviderFailure(error)) return qualityError("AI_EVALUATION_BUSY");

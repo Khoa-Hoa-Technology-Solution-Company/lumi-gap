@@ -115,6 +115,11 @@ export interface MannKendallTrend {
 }
 
 /** Trend verdict of a topic's yearly share of its field (Mann–Kendall). */
+/** Citation-count bands used by the trend, search and report filters. */
+export const TREND_CITATION_BANDS = ["0-9", "10-49", "50-99", "100-499", "500-999", "1000+"] as const;
+
+export type TrendCitationBand = (typeof TREND_CITATION_BANDS)[number];
+
 export type TrendVerdict = "rising" | "declining" | "stable" | "insufficient";
 
 /** Only set for rising / declining. */

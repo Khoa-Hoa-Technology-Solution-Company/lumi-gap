@@ -16,7 +16,6 @@ import { getPrisma } from "../../infrastructure/database/prisma.js";
 import {
   buildCitationMetric,
   fillMissingCitationYears,
-  fillMissingYearsFromCounts,
 } from "./trend.intelligence.js";
 import { computeMetrics, fillMissingYears, truncateToCompleteYears, yoyGrowthPct } from "./trend.formulas.js";
 import { benjaminiHochberg } from "./trend.statistics.js";
@@ -114,7 +113,7 @@ export async function getPostgresTrendsOverview(query: TrendsOverviewQuery): Pro
     taxonomyCoverage(baseWhere),
   ]);
 
-  const yearlyTotalPapers = fillMissingYearsFromCounts(
+  const yearlyTotalPapers = fillMissingYears(
     yearlyRows.map((row) => ({ year: row.year, count: Number(row.count) })),
     yearFrom,
     yearTo,

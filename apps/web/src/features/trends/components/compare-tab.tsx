@@ -12,6 +12,7 @@ import { getTopicMetric, formatMetricValue } from "../../../pages/trends.insight
 import type { TrendSortKey } from "../../../pages/trends.insights";
 import { formatNumber } from "@/utils";
 import { useI18n } from "@/i18n";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { aggregatePpTop10, averageCitations, formatPercent, hasCitationTotals, hasPpTop10, sumCitations, WORLD_AVERAGE_PP_TOP10 } from "../trend-impact";
 import { DataSourceBadge } from "./trend-data-source";
 import { buildTrendScopedUrl } from "../trend-navigation";
@@ -57,17 +58,6 @@ interface CompareTabProps {
     languages: string[];
     citationBands: string[];
   };
-}
-
-function useDebouncedValue<T>(value: T, delayMs: number): T {
-  const [debouncedValue, setDebouncedValue] = React.useState(value);
-
-  React.useEffect(() => {
-    const timer = window.setTimeout(() => setDebouncedValue(value), delayMs);
-    return () => window.clearTimeout(timer);
-  }, [value, delayMs]);
-
-  return debouncedValue;
 }
 
 export function CompareTab({
