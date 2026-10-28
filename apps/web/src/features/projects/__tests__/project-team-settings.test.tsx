@@ -71,3 +71,17 @@ it("supports keyboard section switching and recovers a failed team load", async 
   await act(async () => retry.click());
   expect(mocks.retry).toHaveBeenCalledOnce();
 });
+
+it.each(["Member pages", "Invitation pages"])("returns to an available page when %s shrink after a team update", async label => {
+  let totalPages = 2;
+  mocks.team.mockImplementation((_id: string, page: number, invitationPage: number) => ({
+    isLoading: false, isError: false,
+    data: { members: [], invitations: [], memberMeta: { page, totalPages: label === "Member pages" ? totalPages : 1 }, invitationMeta: { page: invitationPage, totalPages: label === "Invitation pages" ? totalPages : 1 } },
+  }));
+  await render(project, "/projects/project?tab=members");
+  await act(async () => container.querySelector<HTMLButtonElement>(`nav[aria-label="${label}"] button:last-child`)!.click());
+  expect(mocks.team).toHaveBeenLastCalledWith("project", label === "Member pages" ? 2 : 1, label === "Invitation pages" ? 2 : 1);
+  totalPages = 1;
+  await render(project, "/projects/project?tab=members");
+  expect(mocks.team).toHaveBeenLastCalledWith("project", 1, 1);
+});

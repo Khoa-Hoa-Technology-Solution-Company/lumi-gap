@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { adminApi } from "@/features/admin";
 import { Building2, CheckCircle2, CreditCard, Globe, Save } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PlatformAiSettings } from "@/features/admin/components/platform-ai-settings";
 
 export function AdminSettingsPage() {
   const { data: settings, isLoading } = useQuery({
@@ -43,6 +44,8 @@ export function AdminSettingsPage() {
           {savedMessage}
         </div>
       )}
+
+      <PlatformAiSettings />
 
       {/* Credit & Registration Policies */}
       <div className="space-y-4 rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm sm:p-6 dark:border-slate-800 dark:bg-slate-900">

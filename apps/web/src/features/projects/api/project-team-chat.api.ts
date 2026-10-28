@@ -15,7 +15,7 @@ interface StreamTeamChatEventsOptions {
 }
 
 export const projectTeamChatApi = {
-  async listMessages(projectId: string, params?: { limit?: number; before?: string }): Promise<ProjectTeamChatMessage[]> {
+  async listMessages(projectId: string, params?: { limit?: number; before?: string; beforeId?: string }): Promise<ProjectTeamChatMessage[]> {
     const res = await api.get<{
       success: boolean;
       data: ProjectTeamChatHistoryResponse;
@@ -24,12 +24,12 @@ export const projectTeamChatApi = {
     return res.data.data.messages;
   },
 
-  async sendMessage(projectId: string, content: string): Promise<ProjectTeamChatMessage> {
+  async sendMessage(projectId: string, content: string, clientKey?: string): Promise<ProjectTeamChatMessage> {
     const res = await api.post<{
       success: boolean;
       data: SendProjectTeamChatMessageResponse;
       meta: null;
-    }>(API_ROUTES.projects.teamChat.send(projectId), { content });
+    }>(API_ROUTES.projects.teamChat.send(projectId), { content, clientKey });
     return res.data.data.message;
   },
 

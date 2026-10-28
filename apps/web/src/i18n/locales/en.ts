@@ -1,3 +1,4 @@
+import { submissionWorkflowStrings } from "./submission-workflow";
 import { confirmationsEn } from "./confirmations";
 import { researchTasksEn } from "./research-tasks";
 import { livingPlanEn } from "./living-plan";
@@ -21,6 +22,8 @@ import { researchHomeEn } from "./research-home-en";
 import { trustSafetyRagStrings } from "./trust-safety-rag";
 import { trendEvidenceStrings } from "./trend-evidence";
 import { trendVerdictStrings } from "./trend-verdict";
+import { trendResearchLinkStrings } from "./trend-research-links";
+import { trendPeriodsStrings } from "./trend-periods";
 import { qualityEvaluationEn } from "./quality-evaluation";
 
 export const en = {
@@ -47,6 +50,8 @@ export const en = {
   ...paperDetailIaStrings,
   ...trendEvidenceStrings,
   ...trendVerdictStrings,
+  ...trendResearchLinkStrings,
+  ...trendPeriodsStrings,
   "-day period.": "-day period.",
   "— whereas": "— whereas",
   "; the next sync or PDF update will publish the full breakdown.": "; the next sync or PDF update will publish the full breakdown.",
@@ -229,6 +234,7 @@ export const en = {
   "A technical acceptance dashboard showing whether AI/BE logic is deterministic, grounded, and ready for demo.": "A technical acceptance dashboard showing whether AI/BE logic is deterministic, grounded, and ready for demo.",
   "AI Explainer is ready.": "AI Explainer is ready.",
   "AI explanation failed. You can still inspect the charts and facets.": "AI explanation failed. You can still inspect the charts and facets.",
+  "The AI model is busy right now. Please try again in a minute. You can still inspect the charts and facets.": "The AI model is busy right now. Please try again in a minute. You can still inspect the charts and facets.",
   "AI explanation is grounded in aggregate trend metrics, not individual paper-level citations. Generated at": "AI explanation is grounded in aggregate trend metrics, not individual paper-level citations. Generated at",
   "AI is generating your report...": "AI is generating your report...",
   "AI is reading project papers...": "AI is reading project papers...",
@@ -1845,4 +1851,5 @@ export const en = {
   "Left": "Left",
   "Center": "Center",
   "Right": "Right",
+  ...submissionWorkflowStrings,
 } as const;

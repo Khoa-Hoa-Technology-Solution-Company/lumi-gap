@@ -5,10 +5,13 @@ import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { ResearchEvidence } from "../components/research-evidence";
+import { ResearchScreening } from "../components/research-screening";
 import { ResearchGapEvaluation } from "../components/research-gap-evaluation";
 import { WorkspaceArtifactLink } from "../components/workspace-common";
 
-const mocks = vi.hoisted(() => Object.fromEntries(["evidence", "library", "suggestions", "createEvidence", "editEvidence", "reviewEvidence", "evidenceHistory", "gap", "assessGap", "linkEvidence", "guidance", "plan"].map(key => [key, vi.fn()])));
+const mocks = vi.hoisted(() => Object.fromEntries(["evidence", "library", "suggestions", "createEvidence", "editEvidence", "reviewEvidence", "evidenceHistory", "gap", "assessGap", "linkEvidence", "guidance", "plan", "confirm", "updatePaper"].map(key => [key, vi.fn()])));
+vi.mock("@/services/confirmation", () => ({ confirmUnsavedChanges: mocks.confirm }));
+vi.mock("../hooks/use-projects", () => ({ useUpdateProjectPaper: () => ({ mutateAsync: mocks.updatePaper, isPending: false }) }));
 vi.mock("../api/project-research.api", () => ({ researchApi: mocks }));
 vi.mock("../api/workspace.api", () => ({ workspaceApi: { plan: mocks.plan } }));
 vi.mock("@/stores/auth-store", () => ({ useAuthStore: (select: (state: { user: { id: string } }) => unknown) => select({ user: { id: "actor" } }) }));
@@ -29,9 +32,11 @@ async function fill(label: string, value: string) {
   await act(async () => { const prototype = input instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : input instanceof HTMLSelectElement ? HTMLSelectElement.prototype : HTMLInputElement.prototype; Object.getOwnPropertyDescriptor(prototype, "value")!.set!.call(input, value); input!.dispatchEvent(new Event(input instanceof HTMLSelectElement ? "change" : "input", { bubbles: true })); }); await settle();
 }
 async function submit() { await act(async () => container.querySelector("form.research-editor")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }))); await settle(); }
+async function chooseFilter(label: string, value: string) { const select = container.querySelector<HTMLSelectElement>(`select[aria-label="${label}"]`)!; await act(async () => { select.value = value; select.dispatchEvent(new Event("change", { bubbles: true })); }); await settle(); }
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true); vi.resetAllMocks(); Object.values(mocks).forEach(mock => mock.mockResolvedValue(undefined));
   mocks.evidence!.mockResolvedValue(page); mocks.evidenceHistory!.mockResolvedValue([]); mocks.library!.mockResolvedValue({ ...page, items: [{ paperId: "paper", title: "Source study" }] }); mocks.suggestions!.mockResolvedValue([]); mocks.gap!.mockResolvedValue(gap); mocks.plan!.mockResolvedValue({ version: 1, canEdit: true });
+  mocks.confirm!.mockResolvedValue(true);
   client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } } }); container = document.createElement("div"); document.body.append(container); root = createRoot(container);
 });
 afterEach(async () => { await act(async () => root.unmount()); client.clear(); container.remove(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
@@ -52,6 +57,37 @@ it("explains why extraction has no eligible sources and prevents saving without 
 it("keeps a failed extraction draft, including comma-separated themes, for correction and retry", async () => {
   mocks.createEvidence!.mockRejectedValue(new Error("Conflict")); await render(<ResearchEvidence projectId="p" readOnly={false} />); await click("Extract evidence"); await fill("Source paper", "paper"); await fill("Finding or claim", "My retained interpretation"); await fill("Research themes", "transfer, replication,"); await submit();
   const textarea = container.querySelector<HTMLTextAreaElement>("textarea"); expect(textarea?.value).toBe("My retained interpretation"); expect(container.querySelector('[role="alert"]')).not.toBeNull(); expect(mocks.createEvidence).toHaveBeenCalledWith("p", expect.objectContaining({ themes: ["transfer", "replication"] }));
+});
+it("keeps a drafted extraction when source-switch confirmation is declined", async () => {
+  mocks.library!.mockResolvedValue({ ...page, items: [{ paperId: "paper", title: "Source study" }, { paperId: "other", title: "Another study" }] });
+  await render(<ResearchEvidence projectId="p" readOnly={false} />); await click("Extract evidence"); await fill("Source paper", "paper"); await fill("Finding or claim", "Keep my source interpretation");
+  mocks.confirm!.mockResolvedValue(false);
+  await fill("Source paper", "other");
+  expect(mocks.confirm).toHaveBeenCalledOnce();
+  expect(container.querySelector<HTMLTextAreaElement>("textarea")?.value).toBe("Keep my source interpretation");
+  expect([...container.querySelectorAll("label")].find(label => label.textContent?.startsWith("Source paper"))?.querySelector("select")?.value).toBe("paper");
+  await submit(); expect(mocks.createEvidence).toHaveBeenCalledWith("p", expect.objectContaining({ paperId: "paper", claim: "Keep my source interpretation" }));
+});
+it.each(["filter", "page", "search"])("protects a written evidence-review rationale before changing the %s", async action => {
+  mocks.evidence!.mockImplementation(async (_id, params) => ({ ...page, hasNext: true, items: params.state || params.page > 1 || params.q ? [] : [item] }));
+  await render(<ResearchEvidence projectId="p" readOnly={false} />); await click("Review extraction"); await fill("Review rationale", "Keep my source review");
+  mocks.confirm!.mockResolvedValue(false); const calls = mocks.evidence!.mock.calls.length;
+  if (action === "filter") await chooseFilter("Evidence review state", "ACCEPTED");
+  else if (action === "page") await click("Next");
+  else { const input = container.querySelector<HTMLInputElement>('[aria-label="Search evidence"]')!; await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "another"); input.dispatchEvent(new Event("input", { bubbles: true })); }); await click("Search"); }
+  expect(mocks.confirm).toHaveBeenCalledOnce(); expect(mocks.evidence!.mock.calls.length).toBe(calls);
+  expect(container.querySelector<HTMLTextAreaElement>(".research-review textarea")?.value).toBe("Keep my source review");
+});
+it.each(["filter", "page", "search"])("protects a screening rationale before changing the %s", async action => {
+  const source = { id: "source", paperId: "paper", title: "Source study", tags: [], collectionName: null, screeningStatus: "UNDECIDED", updatedAt: "2026-10-23T00:00:00Z", votes: [], files: [] };
+  mocks.library!.mockImplementation(async (_id, params) => ({ ...page, hasNext: true, mode: "EXPLORATORY", canManage: false, people: [], items: params.state || params.page > 1 || params.q ? [] : [source] }));
+  await render(<ResearchScreening projectId="p" readOnly={false} />); await act(async () => container.querySelector<HTMLButtonElement>(".research-source-title")!.click()); await settle(); await fill("Decision rationale", "Keep my screening rationale");
+  mocks.confirm!.mockResolvedValue(false); const calls = mocks.library!.mock.calls.length;
+  if (action === "filter") await chooseFilter("Screening state", "INCLUDED");
+  else if (action === "page") await click("Next");
+  else { const input = container.querySelector<HTMLInputElement>('[aria-label="Search project sources"]')!; await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "another"); input.dispatchEvent(new Event("input", { bubbles: true })); }); await click("Search"); }
+  expect(mocks.confirm).toHaveBeenCalledOnce(); expect(mocks.library!.mock.calls.length).toBe(calls);
+  expect(container.querySelector<HTMLTextAreaElement>("textarea")?.value).toBe("Keep my screening rationale");
 });
 it("reviews the version the human opened even if a collaborator changes the extraction during review", async () => {
   mocks.evidence!.mockResolvedValue({ ...page, items: [item] }); await render(<ResearchEvidence projectId="p" readOnly={false} />); await click("Review extraction"); await fill("Review rationale", "I read the source");

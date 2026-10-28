@@ -18,12 +18,12 @@ interface StreamProjectChatEventsOptions {
 }
 
 export const projectChatApi = {
-  async listHistory(projectId: string, limit = 50, scope: ProjectChatScope = "private"): Promise<ProjectChatMessage[]> {
+  async listHistory(projectId: string, limit = 50, scope: ProjectChatScope = "private", beforeId?: string): Promise<ProjectChatMessage[]> {
     const res = await api.get<{
       success: boolean;
       data: ProjectChatHistoryResponse;
       meta: { count: number };
-    }>(API_ROUTES.projects.chat.history(projectId), { params: { limit, scope } });
+    }>(API_ROUTES.projects.chat.history(projectId), { params: { limit, scope, beforeId } });
     return res.data.data.messages;
   },
 

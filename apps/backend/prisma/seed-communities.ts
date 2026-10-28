@@ -144,9 +144,12 @@ const slugOf = (tag: string) => tag.toLowerCase().replace(/[^a-z0-9]+/g, "-").re
 
 /**
  * Idempotent: communities are keyed by a fixed slug, memberships by (community, user) and
- * posts by (community, title). Re-running converges to the same data and counters.
+ * posts by (research community, title). Every post also needs a forum category: the `general-research`
+ * category (created like migration 20261003000300 if missing). Re-running converges to the same data and counters.
  */
 export async function seedCommunities(prisma: PrismaClient, users: { lecturer: SeedUser; student: SeedUser; admin: SeedUser }): Promise<void> {
+  const defaultCategory = await prisma.community.findFirst({ where: { slug: "general-research", isForumCategory: true }, select: { id: true } })
+    ?? await prisma.community.create({ data: { slug: "general-research", name: "General Research", description: "Research discussions across fields.", ownerId: users.admin.id, isForumCategory: true, sortOrder: 6 }, select: { id: true } });
   for (const seed of COMMUNITIES) {
     const status = seed.status ?? "ACTIVE";
     const community = await prisma.community.upsert({
@@ -174,11 +177,13 @@ export async function seedCommunities(prisma: PrismaClient, users: { lecturer: S
 
     const authors = { lecturer: users.lecturer.id, student: users.student.id };
     for (const post of seed.posts) {
-      const existing = await prisma.forumPost.findFirst({ where: { communityId: community.id, title: post.title }, select: { id: true } });
-      const data = { type: post.type, body: post.body, tags: post.tags, isPinned: Boolean(post.pinned), pinnedAt: post.pinned ? new Date() : null };
+      // Older seeds filed the post directly under the research community; convert it instead of duplicating it.
+      const existing = await prisma.forumPost.findFirst({ where: { researchCommunityId: community.id, title: post.title }, select: { id: true } })
+        ?? await prisma.forumPost.findFirst({ where: { communityId: community.id, title: post.title }, select: { id: true } });
+      const data = { type: post.type, body: post.body, tags: post.tags, isPinned: Boolean(post.pinned), pinnedAt: post.pinned ? new Date() : null, communityId: defaultCategory.id, researchCommunityId: community.id };
       const saved = existing
         ? await prisma.forumPost.update({ where: { id: existing.id }, data })
-        : await prisma.forumPost.create({ data: { ...data, title: post.title, authorId: authors[post.author], communityId: community.id } });
+        : await prisma.forumPost.create({ data: { ...data, title: post.title, authorId: authors[post.author] } });
       for (const tag of post.tags) {
         const row = await prisma.forumTag.upsert({ where: { slug: slugOf(tag) }, create: { name: tag, slug: slugOf(tag) }, update: {} });
         await prisma.forumPostTag.upsert({ where: { postId_tagId: { postId: saved.id, tagId: row.id } }, create: { postId: saved.id, tagId: row.id }, update: {} });
@@ -187,7 +192,7 @@ export async function seedCommunities(prisma: PrismaClient, users: { lecturer: S
 
     const [memberCount, threadCount] = await Promise.all([
       prisma.communityMembership.count({ where: { communityId: community.id, status: "active" } }),
-      prisma.forumPost.count({ where: { communityId: community.id, status: { not: "deleted" } } }),
+      prisma.forumPost.count({ where: { researchCommunityId: community.id, status: { in: ["active", "locked"] }, visibilityStatus: "ACTIVE" } }),
     ]);
     await prisma.community.update({ where: { id: community.id }, data: { memberCount, threadCount } });
   }

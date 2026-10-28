@@ -62,33 +62,7 @@
 
 /* Forum uses the shared floating navigation, with space for its reading tools. */
 .lumi-app-shell.forum-app-shell {
-  --forum-canvas: oklch(.981 .005 270);
-  --forum-scenery: url("../assets/forum/research-connections.svg"), linear-gradient(180deg, oklch(.956 .023 280), oklch(.972 .013 275) 65%, oklch(.981 .005 270));
-  --forum-scenery-size: 1200px 420px, 100% 400px;
-  --forum-scenery-position: right top, center top;
   position: relative;
-  background: var(--forum-canvas);
-}
-.forum-app-shell::before,
-.forum-app-shell::after {
-  background-color: var(--forum-canvas);
-  background-image: var(--forum-scenery);
-  background-position: var(--forum-scenery-position);
-  background-size: var(--forum-scenery-size);
-  background-repeat: no-repeat;
-}
-.forum-app-shell::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto;
-  height: 400px;
-  pointer-events: none;
-}
-.dark .lumi-app-shell.forum-app-shell {
-  --forum-canvas: oklch(.19 .01 280);
-  --forum-scenery: linear-gradient(oklch(.19 .01 280 / .78), oklch(.19 .01 280 / .78)), url("../assets/forum/research-connections.svg"), linear-gradient(180deg, oklch(.25 .035 275), oklch(.19 .01 280));
-  --forum-scenery-size: 100% 400px, 1200px 420px, 100% 400px;
-  --forum-scenery-position: center top, right top, center top;
 }
 .forum-app-shell::after {
   content: "";
@@ -97,18 +71,19 @@
   height: var(--app-header-offset);
   z-index: 40;
   pointer-events: none;
-  border-bottom: 1px solid hsl(var(--border) / .6);
+  background: var(--lumi-surface);
+  border-bottom: 1px solid var(--lumi-line);
   opacity: 0;
 }
 .forum-app-shell--scrolled::after { opacity: 1; }
 .forum-app-header { background: oklch(.986 .007 252); }
 .dark .forum-app-header { background: oklch(.22 .027 252); }
-.forum-app-shell .forum-sidebar-shell { background: transparent; border: 0; padding: 0 0 16px 8px; }
-.forum-app-shell .forum-sidebar-panel { background: hsl(var(--background)); border: 1px solid hsl(var(--border) / .7); border-radius: 20px; }
+.forum-app-shell .forum-sidebar-shell { background: transparent; border: 0; padding: 0 16px 16px; }
+.forum-app-shell .forum-sidebar-panel { scrollbar-width: thin; scrollbar-color: var(--lumi-line) transparent; background: var(--lumi-surface); border: 1px solid var(--lumi-line); border-radius: 12px; }
 .forum-app-shell .forum-feed-workspace:not(.forum-category-workspace),
 .forum-app-shell .forum-feed-workspace:not(.forum-category-workspace) .forum-feed-content { background: transparent; }
 .forum-app-shell .forum-feed-workspace:not(.forum-category-workspace) .forum-list-header p { max-width: 48ch; }
-.forum-app-shell .forum-feed-workspace .forum-topics.forum-surface { border: 1px solid hsl(var(--border) / .7); box-shadow: 0 8px 32px oklch(.35 .025 270 / .035); }
+.forum-app-shell .forum-feed-workspace .forum-topics.forum-surface { border: 1px solid var(--lumi-line); box-shadow: none; }
 .forum-app-shell > main { padding-top: 12px; }
 .forum-app-shell .forum-feed-workspace:not(.forum-category-workspace) .forum-feed-content { padding-top: 1.25rem; }
 .forum-app-shell .forum-feed-workspace:not(.forum-category-workspace) .forum-list-header { padding-bottom: 1.5rem; }
@@ -116,15 +91,6 @@
   max-height: calc(100dvh - var(--app-header-offset) - 12px);
 }
 @media (max-width: 767px) {
-  .lumi-app-shell.forum-app-shell {
-    --forum-scenery-position: left 100px top -30px, center top;
-    --forum-scenery-size: 900px 315px, 100% 360px;
-  }
-  .dark .lumi-app-shell.forum-app-shell {
-    --forum-scenery-position: center top, left 100px top -30px, center top;
-    --forum-scenery-size: 100% 360px, 900px 315px, 100% 360px;
-  }
-  .forum-app-shell::before { height: 360px; }
   .forum-app-shell > main { padding-top: 12px; }
   .forum-app-header .lumi-app-nav-inner { grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
   .forum-app-header .forum-app-controls { grid-column: 2; }

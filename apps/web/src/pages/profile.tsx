@@ -1,5 +1,5 @@
 import { useState, FormEvent, useEffect } from "react";
-import { useParams } from "react-router-dom";
+import { Navigate, useParams } from "react-router-dom";
 import { User, Lock, Settings2, Save, Key, ShieldAlert, Plus, X, GraduationCap, Mail, FileText, Upload, Award, ReceiptText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,18 +11,16 @@ import { MyPapersPage } from "./papers/my-papers";
 import { avatars, getLevel, getLevelProgress, getNextLevelPoints } from "@/utils/level";
 import { formatNumber } from "@/utils";
 import { CreditHistory } from "@/features/credits";
-import { AcademicProfileSection } from "@/features/academic-profile";
 import { isAdminSystemRole } from "@trend/shared-types";
 import { checkPasswordPolicy } from "@/features/auth/utils/password-policy";
 import { useI18n } from "@/i18n";
 import { SettingsPanelTransition } from "@/components/settings-panel-transition";
 import { UserAiSettings } from "@/features/user-ai/user-ai-settings";
 
-type SettingsSection = "profile" | "academic" | "credits" | "security" | "preferences" | "ai" | "submit-paper" | "my-papers";
+type SettingsSection = "profile" | "credits" | "security" | "preferences" | "ai" | "submit-paper" | "my-papers";
 
 function settingsSectionFromRoute(section: string | undefined, isAdmin: boolean): SettingsSection {
   if (section === "ai") return "ai";
-  if (["academic", "academic-profile"].includes(section ?? "") && !isAdmin) return "academic";
   if (["security", "account"].includes(section ?? "")) return "security";
   if (["credits", "credit-history"].includes(section ?? "")) return "credits";
   if (["preferences", "customization", "notifications"].includes(section ?? "")) return "preferences";
@@ -141,6 +139,10 @@ export function AccountSettingsPage() {
     }
   };
 
+  if (section === "academic" || section === "academic-profile") {
+    return <Navigate to="/profile" replace />;
+  }
+
   if (isUserLoading) {
     return (
       <div className="container py-20 text-center text-slate-500">
@@ -177,21 +179,6 @@ export function AccountSettingsPage() {
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left text-sm font-semibold transition-all ${activeSection === "ai" ? "bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400" : "text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/40"}`}>
             <Key className="w-4 h-4" />AI Connections
           </button>
-
-          {!isAdmin && (
-            <button
-              aria-current={activeSection === "academic" ? "page" : undefined}
-              onClick={() => { setActiveSection("academic"); setSuccessMessage(""); setErrorMessage(""); }}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left text-sm font-semibold transition-all ${
-                activeSection === "academic"
-                  ? "bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400"
-                  : "text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/40"
-              }`}
-            >
-              <GraduationCap className="w-4 h-4" />
-              Academic Profile
-            </button>
-          )}
 
           {!isAdmin && (
             <>
@@ -467,9 +454,6 @@ export function AccountSettingsPage() {
               </form>
             </div>
           )}
-
-          {/* Section 2: Credit ledger */}
-          {activeSection === "academic" && !isAdmin && <AcademicProfileSection />}
 
           {/* Section 2: Credit ledger */}
           {activeSection === "credits" && <CreditHistory />}

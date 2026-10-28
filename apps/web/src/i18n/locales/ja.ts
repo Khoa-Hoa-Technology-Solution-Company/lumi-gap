@@ -155,6 +155,7 @@ export const ja: Record<keyof typeof en, string> = {
   "A technical acceptance dashboard showing whether AI/BE logic is deterministic, grounded, and ready for demo.": "AI/BE ロジックが決定的で根拠に基づき、デモ準備ができているかを示す技術受け入れダッシュボードです。",
   "AI Explainer is ready.": "AI 解説者が準備ができました。",
   "AI explanation failed. You can still inspect the charts and facets.": "AIの説明は失敗しました。引き続きチャートとファセットを検査できます。",
+  "The AI model is busy right now. Please try again in a minute. You can still inspect the charts and facets.": "AIモデルは現在混雑しています。1分ほどしてから再度お試しください。チャートとファセットは引き続き確認できます。",
   "AI explanation is grounded in aggregate trend metrics, not individual paper-level citations. Generated at": "AI の説明は、個々の論文レベルの引用ではなく、集計された傾向指標に基づいています。生成場所",
   "AI is generating your report...": "AI がレポートを生成しています...",
   "AI is reading project papers...": "AI がプロジェクトの書類を読んでいます...",

@@ -32,6 +32,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useGapEvidencePreview } from "../hooks/use-gaps";
+import { CorpusCoverageNotice } from "./corpus-coverage-notice";
 import { searchApi } from "@/features/search/api/search.api";
 import { papersApi } from "@/features/papers/api/papers.api";
 import { formatNumber } from "@/utils/format";
@@ -46,6 +47,9 @@ interface GapAnalysisWorkflowProps {
   /** The project's papers; only INCLUDED ones can be added as evidence. Required with projectId. */
   projectPapers?: IProjectPaper[];
   defaultTopic?: string;
+  /** Year window carried over from the page that opened this form (e.g. a trend topic). */
+  defaultYearFrom?: number;
+  defaultYearTo?: number;
 }
 
 type PaperSearchCandidate = Pick<Paper, "id" | "title"> & {
@@ -66,13 +70,15 @@ export function GapAnalysisWorkflow({
   projectId,
   projectPapers,
   defaultTopic,
+  defaultYearFrom,
+  defaultYearTo,
 }: GapAnalysisWorkflowProps) {
   const currentYear = new Date().getFullYear();
   const { t } = useI18n();
   const inProject = Boolean(projectId);
   const [topic, setTopic] = useState(defaultTopic ?? "");
-  const [yearFrom, setYearFrom] = useState("");
-  const [yearTo, setYearTo] = useState("");
+  const [yearFrom, setYearFrom] = useState(defaultYearFrom ? String(defaultYearFrom) : "");
+  const [yearTo, setYearTo] = useState(defaultYearTo ? String(defaultYearTo) : "");
   const [preview, setPreview] = useState<PreviewGapEvidenceResponse | null>(null);
   const [papers, setPapers] = useState<GapEvidencePaper[]>([]);
   const [manuallyAddedPaperIds, setManuallyAddedPaperIds] = useState<string[]>([]);
@@ -366,6 +372,14 @@ export function GapAnalysisWorkflow({
                 {papers.length} / {preview.maxEvidencePapers} {t("papers")}
               </Badge>
             </div>
+
+            {preview.coverage && (
+              <CorpusCoverageNotice
+                coverage={preview.coverage}
+                topic={topic.trim()}
+                onEnriched={() => void loadPreview(papers.filter((paper) => paper.source === "selected").map((paper) => paper.id))}
+              />
+            )}
 
             {preview.warnings.map((warning) => (
               <div key={warning} className="flex gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-300">

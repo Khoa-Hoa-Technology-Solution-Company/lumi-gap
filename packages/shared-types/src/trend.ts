@@ -1,3 +1,5 @@
+import type { ISODateString } from "./common.js";
+
 /** One point of a yearly time series. */
 export interface YearlyCount {
   year: number;
@@ -113,6 +115,11 @@ export interface MannKendallTrend {
 }
 
 /** Trend verdict of a topic's yearly share of its field (Mann–Kendall). */
+/** Citation-count bands used by the trend, search and report filters. */
+export const TREND_CITATION_BANDS = ["0-9", "10-49", "50-99", "100-499", "500-999", "1000+"] as const;
+
+export type TrendCitationBand = (typeof TREND_CITATION_BANDS)[number];
+
 export type TrendVerdict = "rising" | "declining" | "stable" | "insufficient";
 
 /** Only set for rising / declining. */
@@ -272,6 +279,19 @@ export interface TrendsOverview {
   /** Distinct topic names available in the current active corpus window after
    *  Data Scope filters are applied. This is NOT limited by the overview `limit`. */
   uniqueTopicsInScope: number;
+  /** Topics that went through the trend test in this request, before `topics`
+   *  is paged. OpenAlex: the 30 largest topics of the scope plus the largest of
+   *  every field or subfield (see candidateStrata), at most 200. Local corpus:
+   *  every topic with at least minPapers. Does not depend on limit/offset. */
+  testedTopicCount: number;
+  /** Tested topics of the requested `verdict` (all of them without one);
+   *  `topics` is the page [offset, offset + limit) of these. */
+  matchedTopicCount?: number;
+  /** How OpenAlex candidates were stratified; null when they were not (local
+   *  corpus, or a subfield/topic scope that fits in one page). */
+  candidateStrata?: TrendCandidateStrata | null;
+  /** Verdicts of all tested topics, not only of the `topics` returned. */
+  verdictCounts: Record<TrendVerdict, number>;
   yearlyTotalPapers: YearlyCount[];
   citationTrend: YearlyCitationMetric[];
   facets: TrendFacets;
@@ -279,6 +299,70 @@ export interface TrendsOverview {
   recommendedComparisons: RecommendedTrendComparison[];
   topics: TrendingTopic[];
   risingKeywords: RisingKeyword[];
+  computedAt: string;
+}
+
+/** Candidates taken from every field (or every subfield of a one-field scope)
+ *  so the smaller fields are tested too, not only the 200 largest topics. */
+export interface TrendCandidateStrata {
+  level: "field" | "subfield";
+  /** Fields or subfields of the scope that were queried. */
+  strata: number;
+  /** Largest topics taken from each of them. */
+  perStratum: number;
+}
+
+/** Period length of GET /trends/periods. */
+export type TrendGranularity = "month" | "quarter";
+
+/** "rolling": the last N complete periods; "year-to-date": the complete
+ *  periods of the current calendar year. */
+export type TrendPeriodWindow = "rolling" | "year-to-date";
+
+export interface TrendPeriod {
+  /** "2026-09" (month) or "2026-Q3" (quarter). */
+  key: string;
+  /** Inclusive publication dates, YYYY-MM-DD. */
+  from: string;
+  to: string;
+  /** False for the period still running: shown, never tested. */
+  complete: boolean;
+}
+
+export interface PeriodCount {
+  period: string;
+  count: number;
+}
+
+/** One topic of GET /trends/periods. Its classification is the same test as
+ *  the yearly one on monthly or quarterly shares: `yearsUsed` counts complete
+ *  periods, Sen's slope is in percentage points per period, and the reason
+ *  TOO_FEW_YEARS means fewer than 5 complete periods. */
+export interface TrendingPeriodTopic {
+  topic: string;
+  taxonomy?: TrendTopicTaxonomy;
+  /** Papers over every period of the window, the running one included. */
+  totalPapers: number;
+  periodBreakdown: PeriodCount[];
+  classification: TrendClassification;
+}
+
+/** Response shape of GET /api/v1/trends/periods (trends by month or quarter). */
+export interface TrendPeriodsOverview {
+  dataSource?: TrendDataSource;
+  scopeNotice?: TrendScopeNotice;
+  granularity: TrendGranularity;
+  window: TrendPeriodWindow;
+  /** Oldest first; the last one is the running period (complete = false). */
+  periods: TrendPeriod[];
+  periodTotalPapers: PeriodCount[];
+  totalPapersInWindow: number;
+  testedTopicCount: number;
+  /** Same as TrendsOverview.matchedTopicCount. */
+  matchedTopicCount?: number;
+  candidateStrata: TrendCandidateStrata | null;
+  verdictCounts: Record<TrendVerdict, number>;
+  topics: TrendingPeriodTopic[];
   computedAt: string;
 }
 
@@ -406,5 +490,38 @@ export interface PublicationTrend extends TrendMetrics {
   topAuthors: TopItem[];
   topKeywords: TopItem[];
   statistics?: TopicTrendStatistics;
+  /** Most-cited papers of the topic in the local corpus and window (openable in the app); absent when none. */
+  topPapers?: Array<{ id: string; title: string; publicationYear: number; citationCount: number }>;
   computedAt: string;
+}
+
+/** A trend topic the user follows (GET /trends/follows). */
+export interface TrendTopicFollow {
+  id: string;
+  topic: string;
+  openalexTopicId?: string;
+  note?: string;
+  /** Verdict at the last check (default 10-year window); absent until it could be computed. */
+  lastVerdict?: TrendVerdict;
+  lastDataSource?: TrendDataSource;
+  lastCheckedAt?: ISODateString;
+  createdAt: ISODateString;
+}
+
+/** Trend evidence frozen into a project (GET /projects/:id/trend-snapshots). */
+export interface ProjectTrendSnapshot {
+  id: string;
+  projectId: string;
+  createdById: string;
+  topic: string;
+  openalexTopicId?: string;
+  yearFrom: number;
+  yearTo: number;
+  verdict: TrendVerdict;
+  dataSource: TrendDataSource;
+  totalPapers: number;
+  classification: TrendClassification;
+  baseline?: { level: "field" | "corpus"; label: string };
+  note?: string;
+  createdAt: ISODateString;
 }

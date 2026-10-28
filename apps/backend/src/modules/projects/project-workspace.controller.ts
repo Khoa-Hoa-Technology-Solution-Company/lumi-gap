@@ -5,6 +5,7 @@ import { projectPlanDraftService as draft } from "./project-plan-draft.service.j
 import { projectPlanFeedbackService as feedback } from "./project-plan-feedback.service.js";
 import { projectTasksService as tasks } from "./project-tasks.service.js";
 import { projectDiscussionsService as discussions } from "./project-discussions.service.js";
+import { projectTrendsService as trends } from "./project-trends.service.js";
 import { artifactQuerySchema, commentQuerySchema, discussionQuerySchema, planQuerySchema, planThreadsQuerySchema, taskQuerySchema, taskBoardQuerySchema, workspacePageSchema } from "./dto/project-workspace.schema.js";
 
 const id = (req: Request) => String(req.params.id);
@@ -13,6 +14,9 @@ const actor = (req: Request) => req.user!.sub;
 const send = (res: Response, data: unknown, status = 200) => res.status(status).json({ success: true, data });
 export const projectWorkspaceController = {
   overview: async (req: Request, res: Response) => send(res, await overview.get(id(req), actor(req))),
+  trendSnapshots: async (req: Request, res: Response) => send(res, await trends.list(id(req), actor(req))),
+  createTrendSnapshot: async (req: Request, res: Response) => send(res, await trends.create(id(req), actor(req), req.body), 201),
+  deleteTrendSnapshot: async (req: Request, res: Response) => { await trends.remove(id(req), actor(req), item(req)); return send(res, { ok: true }); },
   stage: async (req: Request, res: Response) => send(res, await overview.stage(id(req), actor(req), req.body)),
   people: async (req: Request, res: Response) => { const query = discussionQuerySchema.parse(req.query); return send(res, await overview.people(id(req), actor(req), query)); },
   artifacts: async (req: Request, res: Response) => { const query = artifactQuerySchema.parse(req.query); return send(res, await overview.artifacts(id(req), actor(req), query.kind, query.q)); },

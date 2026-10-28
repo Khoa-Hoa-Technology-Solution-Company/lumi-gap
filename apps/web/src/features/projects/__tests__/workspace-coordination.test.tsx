@@ -244,6 +244,8 @@ it("keeps a new task and its retry key after an API failure", async () => {
   await fill("Task title", "Read the conflicting study"); await click("Save task"); await click("Save task");
   expect(document.body.querySelector<HTMLInputElement>(".task-title-field textarea")?.value).toBe("Read the conflicting study");
   const first = mocks.saveTask!.mock.calls[0]![1]; const second = mocks.saveTask!.mock.calls[1]![1]; expect(first.clientKey).toBe(second.clientKey); expect(mocks.saveTask).toHaveBeenCalledTimes(2);
+  await fill("Task title", "Read a revised study"); await click("Save task");
+  expect(mocks.saveTask!.mock.calls[2]![1].clientKey).not.toBe(first.clientKey);
 });
 it("hides archive write actions even on a direct new-task URL", async () => {
   await render(<WorkspaceTasksPanel projectId="p" readOnly />, "/projects/p?tab=tasks&task=new");
@@ -261,6 +263,42 @@ it("opens milestones in a dialog and keeps the draft on save failure and cancele
   await click("Save milestone");
   expect(document.body.querySelector('[role="dialog"]')).toBeNull();
   expect(mocks.saveMilestone).toHaveBeenLastCalledWith("p", expect.objectContaining({ title: "Finish evidence screening" }), undefined);
+});
+it("retries a new milestone with the same receipt and rotates it after editing", async () => {
+  mocks.saveMilestone!.mockRejectedValue(new Error("Uncertain send"));
+  await render(<WorkspaceTasksPanel projectId="p" readOnly={false} />, "/projects/p?tab=tasks&view=milestones");
+  await click("New milestone"); await fill("Milestone title", "First target");
+  await click("Save milestone"); await click("Save milestone");
+  const key = mocks.saveMilestone!.mock.calls[0]![1].clientKey;
+  expect(key).toEqual(expect.any(String)); expect(mocks.saveMilestone!.mock.calls[1]![1].clientKey).toBe(key);
+  await fill("Milestone title", "Revised target"); await click("Save milestone");
+  expect(mocks.saveMilestone!.mock.calls[2]![1].clientKey).not.toBe(key);
+});
+it("retains a milestone draft on version conflict and explicitly reloads the latest version", async () => {
+  const milestone = { id: "m1", title: "Original target", description: "", dueAt: null, status: "PLANNED", version: 1 };
+  mocks.milestones!.mockResolvedValue({ ...empty, items: [milestone], total: 1 });
+  mocks.saveMilestone!.mockImplementationOnce(async () => {
+    mocks.milestones!.mockResolvedValue({ ...empty, items: [{ ...milestone, title: "Team updated target", version: 2 }], total: 1 });
+    throw { response: { status: 409 } };
+  });
+  await render(<WorkspaceTasksPanel projectId="p" readOnly={false} />, "/projects/p?tab=tasks&view=milestones");
+  await act(async () => document.body.querySelector<HTMLButtonElement>(".coord-action-list button")!.click());
+  await fill("Milestone title", "My unsaved target"); await click("Save milestone");
+  expect(document.body.querySelector<HTMLInputElement>('[role="dialog"] input')?.value).toBe("My unsaved target");
+  expect(document.body.textContent).toContain("A newer version is available");
+  await click("Load latest version"); await click("Leave without saving");
+  expect(document.body.querySelector<HTMLInputElement>('[role="dialog"] input')?.value).toBe("Team updated target");
+  await click("Save milestone");
+  expect(mocks.saveMilestone).toHaveBeenLastCalledWith("p", expect.objectContaining({ title: "Team updated target", expectedVersion: 2 }), "m1");
+});
+it("disables an open milestone editor when project write access changes", async () => {
+  await render(<WorkspaceTasksPanel projectId="p" readOnly={false} />, "/projects/p?tab=tasks&view=milestones");
+  await click("New milestone"); await fill("Milestone title", "Retained target");
+  await render(<WorkspaceTasksPanel projectId="p" readOnly />, "/projects/p?tab=tasks&view=milestones");
+  expect(document.body.querySelector<HTMLFieldSetElement>('[role="dialog"] fieldset')?.disabled).toBe(true);
+  expect(document.body.querySelector<HTMLInputElement>('[role="dialog"] input')?.value).toBe("Retained target");
+  await act(async () => document.body.querySelector(".milestone-dialog-form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+  expect(mocks.saveMilestone).not.toHaveBeenCalled();
 });
 it("renders discussion content as text and denies mentor editing or team decisions", async () => {
   mocks.discussion!.mockResolvedValue({ thread: { id: "thread", title: "Source question", body: '<img src=x onerror="alert(1)">', category: "MENTOR_QUESTION", status: "OPEN", conclusion: "", author: { id: "owner", name: "Owner" }, link: null, mentorRelationshipId: "relationship", version: 1, replyCount: 0, createdAt: "2026-10-14T10:00:00Z", updatedAt: "2026-10-14T10:00:00Z" }, messages: empty, canResolve: false, canReply: true, canEdit: false });

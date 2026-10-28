@@ -168,6 +168,13 @@ export const API_ROUTES = {
     me: "/analytics/search/me",
   },
   admin: {
+    aiConnections: {
+      root: "/admin/ai-connections",
+      models: "/admin/ai-connections/models",
+      connections: "/admin/ai-connections/connections",
+      connection: (id: string) => `/admin/ai-connections/connections/${id}`,
+      active: "/admin/ai-connections/active",
+    },
     sync: "/admin/sync",
     syncRuns: "/admin/sync/runs",
     embedStatus: "/admin/embed/status",
@@ -198,6 +205,8 @@ export const API_ROUTES = {
   },
   gaps: {
     evidencePreview: "/gaps/evidence-preview",
+    enrichCorpus: "/gaps/enrich-corpus",
+    enrichCorpusStatus: (jobId: string) => `/gaps/enrich-corpus/${jobId}`,
     analyze: "/gaps/analyze",
     analyzeStatus: (id: string) => `/gaps/analyze/${id}`,
     retryAnalysis: (id: string) => `/gaps/analyze/${id}/retry`,

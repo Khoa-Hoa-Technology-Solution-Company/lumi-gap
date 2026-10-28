@@ -155,6 +155,7 @@ export const es: Record<keyof typeof en, string> = {
   "A technical acceptance dashboard showing whether AI/BE logic is deterministic, grounded, and ready for demo.": "Un panel técnico de aceptación que muestra si la lógica de IA/BE es determinista, fundamentada y lista para la demostración.",
   "AI Explainer is ready.": "El Explicador de IA está listo.",
   "AI explanation failed. You can still inspect the charts and facets.": "La explicación de la IA falló. Aún puedes inspeccionar los gráficos y las facetas.",
+  "The AI model is busy right now. Please try again in a minute. You can still inspect the charts and facets.": "El modelo de IA está ocupado en este momento. Inténtalo de nuevo en un minuto. Aún puedes inspeccionar los gráficos y las facetas.",
   "AI explanation is grounded in aggregate trend metrics, not individual paper-level citations. Generated at": "La explicación de la IA se basa en métricas de tendencias agregadas, no en citas individuales a nivel de artículo. Generado en",
   "AI is generating your report...": "La IA está generando su informe...",
   "AI is reading project papers...": "La IA está leyendo artículos de proyectos...",

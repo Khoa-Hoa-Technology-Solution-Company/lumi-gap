@@ -4,6 +4,8 @@ import type {
   TrendFacets,
   TrendTaxonomyCoverage,
   TrendTopicTaxonomy,
+  TrendPeriodsOverview,
+  TrendingPeriodTopic,
   TrendingTopic,
   TrendsOverview,
   YearlyCitationMetric,
@@ -14,12 +16,14 @@ import { getPrisma } from "../../infrastructure/database/prisma.js";
 import {
   buildCitationMetric,
   fillMissingCitationYears,
-  fillMissingYearsFromCounts,
 } from "./trend.intelligence.js";
 import { computeMetrics, fillMissingYears, truncateToCompleteYears, yoyGrowthPct } from "./trend.formulas.js";
 import { benjaminiHochberg } from "./trend.statistics.js";
-import { buildRecommendedComparisons, classifyTrend, compareByTotal, compareByTrend, shareTrendStatistics } from "./trend.verdict.js";
-import type { TrendsOverviewQuery } from "./dto/trends.schema.js";
+import { buildRecommendedComparisons, classifyTrend, compareByTotal, compareByTrend, countVerdicts, pageTopics, shareTrendStatistics } from "./trend.verdict.js";
+import type { TrendPeriodsQuery, TrendsOverviewQuery } from "./dto/trends.schema.js";
+import type { TrendScopeFilters } from "./trend.openalex-scope.js";
+import { DEFAULT_PERIODS } from "./trend.openalex-periods.js";
+import { subYearPeriods } from "./trend.openalex-topics.js";
 
 const DEFAULT_WINDOW_YEARS = 5;
 const MIN_RISING_PREV_BASE = 2;
@@ -28,6 +32,8 @@ type CountRow = { id: string | null; name: string | null; count: number };
 type YearRow = { year: number; count: number; totalCitations: number };
 type TopicYearRow = TrendTopicTaxonomy & { topic: string; year: number; count: number };
 type KeywordYearRow = { keyword: string; year: number; count: number };
+type PeriodRow = { period: string; count: number };
+type TopicPeriodRow = TrendTopicTaxonomy & { topic: string; period: string; count: number };
 
 export async function getPostgresTrendsOverview(query: TrendsOverviewQuery): Promise<TrendsOverview> {
   const prisma = getPrisma();
@@ -107,7 +113,7 @@ export async function getPostgresTrendsOverview(query: TrendsOverviewQuery): Pro
     taxonomyCoverage(baseWhere),
   ]);
 
-  const yearlyTotalPapers = fillMissingYearsFromCounts(
+  const yearlyTotalPapers = fillMissingYears(
     yearlyRows.map((row) => ({ year: row.year, count: Number(row.count) })),
     yearFrom,
     yearTo,
@@ -140,23 +146,122 @@ export async function getPostgresTrendsOverview(query: TrendsOverviewQuery): Pro
     lastCompleteYear,
     totalPapersInWindow,
     uniqueTopicsInScope: new Set(topicRows.map((row) => row.topic)).size,
+    testedTopicCount: topics.length,
+    candidateStrata: null,
+    verdictCounts: countVerdicts(topics),
     yearlyTotalPapers,
     citationTrend,
     facets,
     taxonomyCoverage: coverage,
     recommendedComparisons: buildRecommendedComparisons(topics),
-    topics: topics.slice(0, query.limit),
+    ...pageTopics(topics, query),
     risingKeywords,
     computedAt: now.toISOString(),
   };
 }
 
-function buildPaperWhere(query: TrendsOverviewQuery, yearFrom: number, yearTo: number): Prisma.Sql {
-  const conditions: Prisma.Sql[] = [
-    Prisma.sql`p.data_status = 'active'`,
-    Prisma.sql`p.publication_year >= ${yearFrom}`,
-    Prisma.sql`p.publication_year <= ${yearTo}`,
-  ];
+/**
+ * GET /trends/periods from the local corpus (fallback when OpenAlex is not
+ * available). Like the yearly local overview, N_t is the filtered corpus of
+ * each period, so every verdict is insufficient (LOCAL_CORPUS); the counts and
+ * statistics are still filled. Papers without a publication date are left out.
+ */
+export async function getPostgresTrendPeriods(query: TrendPeriodsQuery): Promise<TrendPeriodsOverview> {
+  const prisma = getPrisma();
+  const now = new Date();
+  const periods = subYearPeriods(query.granularity, query.window, query.periods ?? DEFAULT_PERIODS[query.granularity], now);
+  const where = buildScopedWhere(query, [
+    Prisma.sql`p.publication_date >= ${periods[0]!.from}::date`,
+    Prisma.sql`p.publication_date <= ${periods.at(-1)!.to}::date`,
+  ]);
+  const topicWhere = buildTopicWhere(query, Prisma.sql`pt`);
+  const periodKey = query.granularity === "month" ? Prisma.sql`to_char(p.publication_date, 'YYYY-MM')` : Prisma.sql`to_char(p.publication_date, 'YYYY-"Q"Q')`;
+
+  const [totalRows, topicRows] = await Promise.all([
+    prisma.$queryRaw<PeriodRow[]>(Prisma.sql`
+      SELECT ${periodKey} AS period, COUNT(*)::int AS count
+      FROM papers p
+      WHERE ${where}
+      GROUP BY 1
+    `),
+    prisma.$queryRaw<TopicPeriodRow[]>(Prisma.sql`
+      SELECT
+        pt.topic_name AS topic,
+        pt.openalex_topic_id AS "openalexTopicId",
+        pt.domain_id AS "domainId",
+        pt.domain_name AS "domainName",
+        pt.field_id AS "fieldId",
+        pt.field_name AS "fieldName",
+        pt.subfield_id AS "subfieldId",
+        pt.subfield_name AS "subfieldName",
+        ${periodKey} AS period,
+        COUNT(DISTINCT p.id)::int AS count
+      FROM papers p
+      JOIN paper_topics pt ON pt.paper_id = p.id
+      WHERE ${where} AND ${topicWhere}
+      GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9
+    `),
+  ]);
+
+  const index = new Map(periods.map((period, i) => [period.key, i]));
+  const totals = periods.map(() => 0);
+  for (const row of totalRows) {
+    const i = index.get(row.period);
+    if (i !== undefined) totals[i] = Number(row.count);
+  }
+  const groups = new Map<string, { taxonomy?: TrendTopicTaxonomy; counts: number[] }>();
+  for (const row of topicRows) {
+    const i = index.get(row.period);
+    if (i === undefined) continue;
+    const group = groups.get(row.topic) ?? { taxonomy: compactTaxonomy(row), counts: periods.map(() => 0) };
+    group.counts[i] = (group.counts[i] ?? 0) + Number(row.count);
+    groups.set(row.topic, group);
+  }
+
+  const built = [...groups]
+    .map(([topic, group]) => ({ topic, group, totalPapers: group.counts.reduce((sum, count) => sum + count, 0) }))
+    .filter((row) => row.totalPapers >= query.minPapers)
+    .map((row) => ({
+      ...row,
+      // The ordinal stands in for the year: Sen's slope is then per period.
+      stats: shareTrendStatistics(
+        periods.flatMap((period, i) => {
+          const total = totals[i] ?? 0;
+          const count = row.group.counts[i] ?? 0;
+          return period.complete && total > 0 ? [{ year: i, count, sharePct: (count / Math.max(total, count)) * 100 }] : [];
+        }),
+      ),
+    }));
+  const qValues = benjaminiHochberg(built.map((row) => row.stats.mannKendall?.pValue ?? null));
+  const topics: TrendingPeriodTopic[] = built.map((row, i) => ({
+    topic: row.topic,
+    ...(row.group.taxonomy ? { taxonomy: row.group.taxonomy } : {}),
+    totalPapers: row.totalPapers,
+    periodBreakdown: periods.map((period, p) => ({ period: period.key, count: row.group.counts[p] ?? 0 })),
+    classification: classifyTrend({ ...row.stats, source: "local", qValue: qValues[i] ?? null }),
+  }));
+  topics.sort(query.sortBy === "total" ? compareByTotal : compareByTrend);
+
+  return {
+    granularity: query.granularity,
+    window: query.window,
+    periods: periods.map(({ key, from, to, complete }) => ({ key, from, to, complete })),
+    periodTotalPapers: periods.map((period, i) => ({ period: period.key, count: totals[i] ?? 0 })),
+    totalPapersInWindow: totals.reduce((sum, count) => sum + count, 0),
+    testedTopicCount: topics.length,
+    candidateStrata: null,
+    verdictCounts: countVerdicts(topics),
+    ...pageTopics(topics, query),
+    computedAt: now.toISOString(),
+  };
+}
+
+function buildPaperWhere(query: TrendScopeFilters, yearFrom: number, yearTo: number): Prisma.Sql {
+  return buildScopedWhere(query, [Prisma.sql`p.publication_year >= ${yearFrom}`, Prisma.sql`p.publication_year <= ${yearTo}`]);
+}
+
+function buildScopedWhere(query: TrendScopeFilters, windowConditions: Prisma.Sql[]): Prisma.Sql {
+  const conditions: Prisma.Sql[] = [Prisma.sql`p.data_status = 'active'`, ...windowConditions];
   addInCondition(conditions, Prisma.sql`p.paper_kind`, query.paperKinds);
   addInCondition(conditions, Prisma.sql`p.open_access_status`, query.openAccessStatuses);
   addInCondition(conditions, Prisma.sql`p.primary_provider`, query.providers);
@@ -180,12 +285,12 @@ function buildPaperWhere(query: TrendsOverviewQuery, yearFrom: number, yearTo: n
   return Prisma.join(conditions, " AND ");
 }
 
-function buildTopicWhere(query: TrendsOverviewQuery, alias: Prisma.Sql): Prisma.Sql {
+function buildTopicWhere(query: TrendScopeFilters, alias: Prisma.Sql): Prisma.Sql {
   const conditions = buildTopicConditions(query, alias);
   return conditions.length > 0 ? Prisma.join(conditions, " AND ") : Prisma.sql`TRUE`;
 }
 
-function buildTopicConditions(query: TrendsOverviewQuery, alias: Prisma.Sql): Prisma.Sql[] {
+function buildTopicConditions(query: TrendScopeFilters, alias: Prisma.Sql): Prisma.Sql[] {
   const conditions: Prisma.Sql[] = [];
   addInCondition(conditions, Prisma.sql`${alias}.domain_name`, query.domains);
   addInCondition(conditions, Prisma.sql`${alias}.field_name`, query.fields);
@@ -437,7 +542,7 @@ function toFacetBucket(row: CountRow): TrendFacetBucket {
   };
 }
 
-function compactTaxonomy(row: TopicYearRow): TrendTopicTaxonomy | undefined {
+function compactTaxonomy(row: TrendTopicTaxonomy): TrendTopicTaxonomy | undefined {
   const taxonomy: TrendTopicTaxonomy = {};
   for (const key of [
     "openalexTopicId",

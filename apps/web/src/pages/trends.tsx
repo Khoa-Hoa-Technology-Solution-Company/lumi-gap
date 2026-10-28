@@ -2,15 +2,20 @@ import React, { useMemo, useState, useEffect } from "react";
 import { Sparkles, Search, Loader2, ChevronDown, ChevronRight, AlertCircle, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { TREND_CITATION_BANDS, type TrendCitationBand } from "@trend/shared-types";
 import { useTrendsOverview, useTrendCompare, useTrendRelationships, useExplainTrend, useTrendExplainHistory } from "@/features/trends/hooks/use-trends";
-import { getRisingKeywordTarget, getTopicTrendTarget } from "./trends.navigation";
+import { getRisingKeywordTarget, getTopicTrendTarget } from "@/features/trends/trend-navigation";
 import { FilterChip, type RisingKeywordRow, type TrendBarChartDatum } from "@/features/trends/components/trends-shared.components";
 import { OverviewTab } from "@/features/trends/components/overview-tab";
 import { TopicsTab } from "@/features/trends/components/topics-tab";
 import { DatasetTab } from "@/features/trends/components/dataset-tab";
 import { CompareTab } from "@/features/trends/components/compare-tab";
 import { AITab } from "@/features/trends/components/ai-tab";
+import { PeriodsTab } from "@/features/trends/components/periods-tab";
+import { isVerdictFilter, type VerdictFilter } from "@/features/trends/components/verdict-filter";
+import type { TrendsOverviewParams } from "@/features/trends/api/trends.api";
 import { DataSourceBadge, ScopeNotice } from "@/features/trends/components/trend-data-source";
+import { StaleDataNotice } from "@/features/trends/components/stale-data-notice";
 import { resolveMetricMode, type TimelinePoint, type TrendMetricMode } from "@/features/trends/trend-impact";
 import {
   DEFAULT_TREND_SORT,
@@ -24,24 +29,26 @@ import {
   DEFAULT_TREND_YEAR_FROM,
   DEFAULT_TREND_YEAR_TO,
 } from "./trends.insights";
+import { buildTrendsPageParams, DEFAULT_TREND_MIN_PAPERS } from "./trends.url";
 import { formatNumber } from "@/utils";
 import { formatLanguageName } from "@/utils/language";
 import { useI18n } from "@/i18n";
+import { useAuthStore } from "@/stores/auth-store";
 
-type CitationBand = "0-9" | "10-49" | "50-99" | "100-499" | "500-999" | "1000+";
-const CITATION_BANDS = ["0-9", "10-49", "50-99", "100-499", "500-999", "1000+"] as const;
-type TrendTab = "overview" | "topics" | "dataset" | "compare" | "ai";
+type CitationBand = TrendCitationBand;
+type TrendTab = "overview" | "topics" | "periods" | "dataset" | "compare" | "ai";
 
 const TREND_TABS: Array<{ id: TrendTab; label: string }> = [
   { id: "overview", label: "Start here" },
   { id: "topics", label: "Find signals" },
+  { id: "periods", label: "By month / quarter" },
   { id: "dataset", label: "Data Scope" },
   { id: "compare", label: "Compare topics" },
   { id: "ai", label: "Explain trend" },
 ];
 
 function isCitationBand(value: string): value is CitationBand {
-  return CITATION_BANDS.includes(value as CitationBand);
+  return (TREND_CITATION_BANDS as readonly string[]).includes(value);
 }
 
 function parseNumberParam(params: URLSearchParams, key: string, defaultValue: number, options?: { min?: number }): number {
@@ -66,7 +73,7 @@ function parseCitationBandsParam(params: URLSearchParams, key: string): Citation
 function parseTabParam(params: URLSearchParams): TrendTab {
   const tab = params.get("tab");
   if (tab === "scope") return "dataset";
-  if (tab === "topics" || tab === "dataset" || tab === "compare" || tab === "ai") return tab;
+  if (tab === "topics" || tab === "periods" || tab === "dataset" || tab === "compare" || tab === "ai") return tab;
   return "overview";
 }
 
@@ -78,9 +85,10 @@ export function TrendsPage() {
   // Controlled states synchronized with URL search params (with safety bounds)
   const [yearFrom, setYearFrom] = useState<number>(() => parseNumberParam(searchParams, "yearFrom", DEFAULT_TREND_YEAR_FROM, { min: 1900 }));
   const [yearTo, setYearTo] = useState<number>(() => parseNumberParam(searchParams, "yearTo", DEFAULT_TREND_YEAR_TO, { min: 1900 }));
+  const openTopicTarget = (topic: string, openalexTopicId?: string) => getTopicTrendTarget(topic, openalexTopicId, { yearFrom, yearTo });
   // Legacy ?sortBy=momentum|growth (and ?sort=) links map to the verdict ranking.
   const [sortBy, setSortBy] = useState<TrendSortKey>(() => parseTrendSortKey(searchParams.get("sortBy") ?? searchParams.get("sort")));
-  const [minPapers, setMinPapers] = useState<number>(() => parseNumberParam(searchParams, "minPapers", 2, { min: 1 }));
+  const [minPapers, setMinPapers] = useState<number>(() => parseNumberParam(searchParams, "minPapers", DEFAULT_TREND_MIN_PAPERS, { min: 1 }));
   const [yearFromInput, setYearFromInput] = useState(() => String(yearFrom));
   const [yearToInput, setYearToInput] = useState(() => String(yearTo));
   const [minPapersInput, setMinPapersInput] = useState(() => String(minPapers));
@@ -107,6 +115,17 @@ export function TrendsPage() {
 
   const [activeTab, setActiveTab] = useState<TrendTab>(() => parseTabParam(searchParams));
   const [selectedTopics, setSelectedTopics] = useState<string[]>(() => parseArrayParam(searchParams, "compare").slice(0, 5));
+  const [focusTopic, setFocusTopic] = useState<string>(() => searchParams.get("focus")?.trim() ?? "");
+  // OpenAlex id of the focus topic when a topic page linked here; dropped as soon as the user picks another topic.
+  const [focusTopicId, setFocusTopicId] = useState<string>(() => searchParams.get("focusTopicId")?.trim() ?? "");
+  const chooseFocusTopic = (topic: string) => {
+    setFocusTopic(topic);
+    setFocusTopicId("");
+  };
+  const [verdictFilter, setVerdictFilter] = useState<VerdictFilter>(() => {
+    const raw = searchParams.get("verdict");
+    return isVerdictFilter(raw) ? raw : "all";
+  });
 
   useEffect(() => {
     setYearFromInput(String(yearFrom));
@@ -142,35 +161,15 @@ export function TrendsPage() {
 
   // Synchronize state changes back to searchParams
   useEffect(() => {
-    const nextParams = new URLSearchParams();
-    if (yearFrom !== DEFAULT_TREND_YEAR_FROM) nextParams.set("yearFrom", String(yearFrom));
-    if (yearTo !== DEFAULT_TREND_YEAR_TO) nextParams.set("yearTo", String(yearTo));
-    if (sortBy !== DEFAULT_TREND_SORT) nextParams.set("sortBy", sortBy);
-    if (minPapers !== 2) nextParams.set("minPapers", String(minPapers));
-    if (activeTab !== "overview") nextParams.set("tab", activeTab);
-
-    if (domains.length > 0) nextParams.set("domains", domains.join(","));
-    if (fields.length > 0) nextParams.set("fields", fields.join(","));
-    if (subfields.length > 0) nextParams.set("subfields", subfields.join(","));
-    if (topicsFilter.length > 0) nextParams.set("topicsFilter", topicsFilter.join(","));
-
-    if (domainIds.length > 0) nextParams.set("domainIds", domainIds.join(","));
-    if (fieldIds.length > 0) nextParams.set("fieldIds", fieldIds.join(","));
-    if (subfieldIds.length > 0) nextParams.set("subfieldIds", subfieldIds.join(","));
-    if (topicIds.length > 0) nextParams.set("topicIds", topicIds.join(","));
-
-    if (paperKinds.length > 0) nextParams.set("paperKinds", paperKinds.join(","));
-    if (openAccessStatuses.length > 0) nextParams.set("openAccessStatuses", openAccessStatuses.join(","));
-    if (providers.length > 0) nextParams.set("providers", providers.join(","));
-    if (sources.length > 0) nextParams.set("sources", sources.join(","));
-    if (languages.length > 0) nextParams.set("languages", languages.join(","));
-    if (citationBands.length > 0) nextParams.set("citationBands", citationBands.join(","));
-
-    if (selectedTopics.length > 0) nextParams.set("compare", selectedTopics.join(","));
-
-    setSearchParams(nextParams, { replace: true });
+    setSearchParams(buildTrendsPageParams({
+      yearFrom, yearTo, sortBy, minPapers, activeTab, verdictFilter, focusTopic, focusTopicId,
+      domains, fields, subfields, topicsFilter,
+      domainIds, fieldIds, subfieldIds, topicIds,
+      paperKinds, openAccessStatuses, providers, sources, languages, citationBands,
+      selectedTopics,
+    }), { replace: true });
   }, [
-    yearFrom, yearTo, sortBy, minPapers, activeTab,
+    yearFrom, yearTo, sortBy, minPapers, activeTab, verdictFilter, focusTopic, focusTopicId,
     domains, fields, subfields, topicsFilter,
     domainIds, fieldIds, subfieldIds, topicIds,
     paperKinds, openAccessStatuses, providers, sources, languages, citationBands,
@@ -178,7 +177,7 @@ export function TrendsPage() {
   ]);
 
   // Hook query: Trends Overview with all active filters
-  const { data, isLoading, isFetching, isError } = useTrendsOverview({
+  const overviewParams = useMemo<TrendsOverviewParams>(() => ({
     yearFrom,
     yearTo,
     sortBy,
@@ -197,14 +196,27 @@ export function TrendsPage() {
     sources,
     languages,
     citationBands,
-  });
+  }), [
+    yearFrom, yearTo, sortBy, minPapers, domains, fields, subfields, topicsFilter,
+    domainIds, fieldIds, subfieldIds, topicIds, paperKinds, openAccessStatuses, providers, sources, languages, citationBands,
+  ]);
+  const { data, isLoading, isFetching, isError, isPlaceholderData } = useTrendsOverview(overviewParams);
+  // keepPreviousData shows the last result while new filters load; it must not pass for the new answer.
+  const showingStaleData = Boolean(data) && isPlaceholderData && isFetching;
+
+  /** A verdict count was clicked: open the topic table filtered to it. */
+  const openVerdictList = (verdict: VerdictFilter) => {
+    setVerdictFilter(verdict);
+    setActiveTab("topics");
+    window.setTimeout(() => document.getElementById("trend-topic-table")?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
+  };
 
   const [datasetMode, setDatasetMode] = useState<"corpus" | "displayed">("corpus");
   const [metricMode, setMetricMode] = useState<TrendMetricMode>("papers");
   // PP(top 10%) replaces the citation sums when the source reports it; sums are
   // dropped when the source cannot provide them.
   const resolvedMetricMode = useMemo(() => resolveMetricMode(metricMode, data?.citationTrend), [metricMode, data?.citationTrend]);
-  const [focusTopic, setFocusTopic] = useState<string>("");
+  // `focus` lets another page (e.g. topic detail) open the AI tab on its topic.
 
   // Calculated displayed topics yearly sum
   const displayedTopicsYearlyData = useMemo(() => {
@@ -352,9 +364,11 @@ export function TrendsPage() {
     selectedTopics.length >= 2
   );
 
+  const activeFocusTopicId = focusTopic && focusTopicId ? focusTopicId : undefined;
   const relationshipsQuery = useTrendRelationships(
     {
       topic: activeFocusTopic,
+      topicId: activeFocusTopicId,
       yearFrom,
       yearTo,
       limit: 12,
@@ -377,7 +391,9 @@ export function TrendsPage() {
   );
 
   const explainMutation = useExplainTrend();
-  const explainHistoryQuery = useTrendExplainHistory({ topic: activeFocusTopic, limit: 5 }, activeTab === "ai" && !!activeFocusTopic);
+  // Explain history is per account; signed-out visitors would only get 401s.
+  const signedIn = useAuthStore((state) => Boolean(state.user));
+  const explainHistoryQuery = useTrendExplainHistory({ topic: activeFocusTopic, limit: 5 }, signedIn && activeTab === "ai" && !!activeFocusTopic);
 
 
   // Taxonomy selector clear and toggle actions
@@ -576,7 +592,7 @@ export function TrendsPage() {
                 onClick={(e) => {
                   const input = e.currentTarget.nextElementSibling as HTMLInputElement;
                   const val = input.value.trim();
-                  if (val) navigate(`/trends/${encodeURIComponent(val)}`);
+                  if (val) navigate(openTopicTarget(val));
                 }}
               >
                 <Search className="w-4 h-4" />
@@ -588,7 +604,7 @@ export function TrendsPage() {
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
                     const val = e.currentTarget.value.trim();
-                    if (val) navigate(`/trends/${encodeURIComponent(val)}`);
+                    if (val) navigate(openTopicTarget(val));
                   }
                 }}
               />
@@ -936,6 +952,8 @@ export function TrendsPage() {
         </div>
       ) : (
         <>
+          {showingStaleData && data && <StaleDataNotice requested={{ yearFrom, yearTo }} shown={{ yearFrom: data.yearFrom, yearTo: data.yearTo }} />}
+          <div aria-busy={showingStaleData} className={`transition-opacity duration-200 ${showingStaleData ? "pointer-events-none select-none opacity-40" : ""}`}>
           {/* Current analysis dataset strip (Guided UX) */}
           {data && (
             <div className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 mb-6 text-xs text-slate-600 dark:text-slate-400 select-none">
@@ -943,7 +961,6 @@ export function TrendsPage() {
                 <div className="space-y-1">
                   <p className="font-bold text-slate-900 dark:text-slate-200">Current analysis dataset basis</p>
                   <p className="font-medium text-slate-650 dark:text-slate-350">
-                    {isFetching && !isLoading ? "Updating scoped dataset... " : ""}
                     Analyzing <strong className="text-blue-600 dark:text-blue-400 font-extrabold">{formatNumber(data.totalPapersInWindow)}</strong> active papers across <strong className="text-blue-600 dark:text-blue-400 font-extrabold">{formatNumber(data.uniqueTopicsInScope ?? data.topics.length)}</strong> unique topics. Trend metrics use complete years through <strong className="text-slate-900 dark:text-slate-100 font-extrabold">{data.lastCompleteYear}</strong>; {yearTo > data.lastCompleteYear ? `${yearTo} is shown as YTD.` : ""}.
                   </p>
                   <p className="text-[11px] text-slate-500 dark:text-slate-450">
@@ -967,6 +984,7 @@ export function TrendsPage() {
               </div>
             </div>
           )}
+          </div>
 
           {/* 4. Tabs Navigation (Premium Segmented Control) */}
           <div
@@ -993,14 +1011,14 @@ export function TrendsPage() {
                       : "text-slate-650 dark:text-slate-400 hover:text-blue-700 hover:bg-blue-100/30 dark:hover:bg-slate-800/50"
                   }`}
                 >
-                  {tab.label}
+                  {t(tab.label)}
                 </button>
               );
             })}
           </div>
 
           {/* 5. Tab Panels (Senior Component Split) */}
-          <div id="trends-tab-panels" className="w-full scroll-mt-24">
+          <div id="trends-tab-panels" aria-busy={showingStaleData} className={`w-full scroll-mt-24 transition-opacity duration-200 ${showingStaleData ? "pointer-events-none select-none opacity-40" : ""}`}>
             {activeTab === "overview" && (
               <OverviewTab
                 data={data}
@@ -1014,10 +1032,11 @@ export function TrendsPage() {
                 fastestKeyword={fastestKeyword}
                 navigate={navigate}
                 setActiveTab={setActiveTab}
-                getTopicTrendTarget={getTopicTrendTarget}
+                getTopicTrendTarget={openTopicTarget}
                 getRisingKeywordTarget={getRisingKeywordTarget}
                 setYearFrom={setYearFrom}
                 setYearTo={setYearTo}
+                onSelectVerdict={openVerdictList}
                 scopeParams={{
                   yearFrom,
                   yearTo,
@@ -1046,12 +1065,15 @@ export function TrendsPage() {
                 keywordsData={keywordsData}
                 sortBy={sortBy}
                 navigate={navigate}
-                getTopicTrendTarget={getTopicTrendTarget}
+                getTopicTrendTarget={openTopicTarget}
                 getRisingKeywordTarget={getRisingKeywordTarget}
                 selectedTopics={selectedTopics}
                 setSelectedTopics={setSelectedTopics}
                 setActiveTab={setActiveTab}
-                setFocusTopic={setFocusTopic}
+                setFocusTopic={chooseFocusTopic}
+                verdictFilter={verdictFilter}
+                setVerdictFilter={setVerdictFilter}
+                overviewParams={overviewParams}
                 scopeParams={{
                   yearFrom,
                   yearTo,
@@ -1063,6 +1085,30 @@ export function TrendsPage() {
                   subfields,
                   topicIds,
                   topicsFilter,
+                  paperKinds,
+                  openAccessStatuses,
+                  providers,
+                  sources,
+                  languages,
+                  citationBands,
+                }}
+              />
+            )}
+
+            {activeTab === "periods" && (
+              <PeriodsTab
+                onOpenTopic={(topic, openalexTopicId) => navigate(openTopicTarget(topic, openalexTopicId))}
+                scope={{
+                  sortBy,
+                  minPapers,
+                  domains,
+                  fields,
+                  subfields,
+                  topics: topicsFilter,
+                  domainIds,
+                  fieldIds,
+                  subfieldIds,
+                  topicIds,
                   paperKinds,
                   openAccessStatuses,
                   providers,
@@ -1110,7 +1156,7 @@ export function TrendsPage() {
                 yearFrom={yearFrom}
                 yearTo={yearTo}
                 sortBy={sortBy}
-                setFocusTopic={setFocusTopic}
+                setFocusTopic={chooseFocusTopic}
                 setActiveTab={setActiveTab}
                 clearAllFilters={clearAllFilters}
                 scopeParams={{
@@ -1138,7 +1184,8 @@ export function TrendsPage() {
               <AITab
                 data={data}
                 activeFocusTopic={activeFocusTopic}
-                setFocusTopic={setFocusTopic}
+                activeFocusTopicId={activeFocusTopicId}
+                setFocusTopic={chooseFocusTopic}
                 relationshipsQuery={relationshipsQuery}
                 explainMutation={explainMutation}
                 explainHistoryQuery={explainHistoryQuery}
@@ -1158,6 +1205,7 @@ export function TrendsPage() {
                 sources={sources}
                 languages={languages}
                 citationBands={citationBands}
+                minPapers={minPapers}
               />
             )}
           </div>

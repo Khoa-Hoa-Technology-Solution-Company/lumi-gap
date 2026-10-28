@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   binomialCdf,
+  calibrationModeOf,
   calibrationOutcome,
   clopperPearsonUpper,
   cohenKappa,
@@ -114,6 +115,37 @@ describe("decideClosure", () => {
     expect(decideClosure({ ...base, documents: [doc("a", { humanLabel: "UNRELATED" })] }).reasons).toEqual(["CALIBRATION_JUDGE_MISMATCH"]);
   });
 
+  it("TRANSFER is the default: B = epsHat + pHat and the formula is recorded", () => {
+    expect(decideClosure({ ...base, documents: [] })).toMatchObject({ bound: 0.1533, boundMode: "TRANSFER" });
+    expect(decideClosure({ ...base, calibration: { ...base.calibration, mode: "TRANSFER" }, documents: [] })).toMatchObject({ bound: 0.1533, boundMode: "TRANSFER" });
+  });
+
+  it("IN_SITU certifies with B = epsHat and needs no coverage check", () => {
+    const calibration = { epsHat: 0.0951, judgeKind: "AI", mode: "IN_SITU" };
+    const result = decideClosure({ ...base, calibration, coverage: null, documents: [doc("a", { aiLabel: "UNRELATED" })] });
+    expect(result).toMatchObject({ decision: "OPEN_CERTIFIED", bound: 0.0951, boundMode: "IN_SITU", reasons: [] });
+  });
+
+  it("IN_SITU keeps a supplied coverage check out of the bound", () => {
+    const calibration = { epsHat: 0.0951, judgeKind: "AI", mode: "IN_SITU" };
+    expect(decideClosure({ ...base, calibration, coverage: { pHat: 0.5 }, documents: [] })).toMatchObject({ decision: "OPEN_CERTIFIED", bound: 0.0951 });
+  });
+
+  it("IN_SITU still abstains on a large epsHat, a judge mismatch or a missing epsHat", () => {
+    expect(decideClosure({ ...base, coverage: null, calibration: { epsHat: 0.2386, judgeKind: "AI", mode: "IN_SITU" }, documents: [] }).reasons).toEqual(["BOUND_EXCEEDS_MAX"]);
+    expect(decideClosure({ ...base, coverage: null, calibration: { epsHat: 0.0951, judgeKind: "HUMAN", mode: "IN_SITU" }, documents: [] }).reasons).toEqual(["CALIBRATION_JUDGE_MISMATCH"]);
+    const pending = decideClosure({ ...base, coverage: null, calibration: { epsHat: null, judgeKind: "AI", mode: "IN_SITU" }, documents: [] });
+    expect(pending.reasons).toEqual(["NO_CALIBRATION"]);
+    expect(pending.bound).toBeUndefined();
+    expect(pending.boundMode).toBeUndefined();
+  });
+
+  it("a bound of 0.0951 + 0.0582 that fails as TRANSFER can pass as IN_SITU", () => {
+    const tight = { ...base, maxFalseNovelty: 0.1, documents: [] };
+    expect(decideClosure(tight).decision).toBe("ABSTAIN");
+    expect(decideClosure({ ...tight, calibration: { ...base.calibration, mode: "IN_SITU" } }).decision).toBe("OPEN_CERTIFIED");
+  });
+
   it("counts corroboration only from limitation statements of other papers", () => {
     const docs = [doc("a", { paperId: "p1", humanLabel: "PARTIAL", limitationStatement: true })];
     expect(decideClosure({ ...base, documents: docs }).corroborated).toBe(true);
@@ -151,5 +183,22 @@ describe("falseNoveltyBound and describeBoundArithmetic", () => {
   it("prints the arithmetic a person can redo", () => {
     const lines = describeBoundArithmetic({ calibration: { n: 30, misses: 0, epsHat: 0.0951 }, coverage: { m: 50, x: 0, pHat: 0.0582 }, delta: 0.05, bound: 0.1533, maxFalseNovelty: 0.2 });
     expect(lines.at(-1)).toBe("B = 0.0951 + 0.0582 = 0.1533 <= 0.2");
+  });
+  it("prints B = epsHat for an in-situ calibration and says why pHat is left out", () => {
+    const withCoverage = describeBoundArithmetic({ calibration: { n: 30, misses: 0, epsHat: 0.0951, mode: "IN_SITU" }, coverage: { m: 50, x: 0, pHat: 0.0582 }, delta: 0.05, bound: 0.0951, maxFalseNovelty: 0.2 });
+    expect(withCoverage[1]).toContain("not part of the bound");
+    expect(withCoverage.at(-1)).toBe("B = epsHat = 0.0951 <= 0.2");
+    const without = describeBoundArithmetic({ calibration: { n: 30, misses: 0, epsHat: 0.0951, mode: "IN_SITU" }, delta: 0.05, bound: 0.0951, maxFalseNovelty: 0.2 });
+    expect(without).toContain("pHat: not needed (in-situ calibration)");
+    expect(without.at(-1)).toBe("B = epsHat = 0.0951 <= 0.2");
+  });
+});
+
+describe("calibrationModeOf", () => {
+  it("reads IN_SITU and treats anything else as TRANSFER", () => {
+    expect(calibrationModeOf("IN_SITU")).toBe("IN_SITU");
+    expect(calibrationModeOf("TRANSFER")).toBe("TRANSFER");
+    expect(calibrationModeOf(undefined)).toBe("TRANSFER");
+    expect(calibrationModeOf("in_situ")).toBe("TRANSFER");
   });
 });

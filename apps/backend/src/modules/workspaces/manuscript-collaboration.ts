@@ -64,8 +64,16 @@ export function attachManuscriptCollaboration(server: Server) {
           const name = await getPrisma().user.findUnique({ where: { id: scope.actorId }, select: { fullName: true } });
           const color = colors[parseInt(scope.actorId.slice(0, 8), 16) % colors.length]!;
           const client: Client = { socket, ticket: frame.ticket, scope, clientId: frame.clientId, clock: 0, cursor: null, canWrite: false, user: { id: scope.actorId, name: name?.fullName || "Researcher", color, colorLight: `${color}30` } };
-          const content = await authorize(client);
+          await authorize(client);
+          if (socket.readyState !== WebSocket.OPEN) return;
+          if ([...clients.values()].filter(c => c.scope.actorId === scope.actorId).length >= 40) throw new AppError(429, "RATE_LIMITED", "Account collaboration connection limit reached");
+          if ([...clients.values()].some(c => room(c) === room(client) && c.clientId === frame.clientId)) throw AppError.conflict("Duplicate collaboration client identity");
           clients.set(socket, client); clearTimeout(handshake);
+          // A commit can occur after the first checkpoint was read but before
+          // room admission. Once registered, read again: earlier commits are in
+          // this checkpoint and later commits reach this socket by broadcast.
+          const content = await authorize(client);
+          if (socket.readyState !== WebSocket.OPEN) return;
           send(socket, { type: "state", update: content.state, sequence: content.sequence, fileVersion: content.version, canWrite: content.canWrite, user: client.user });
           const peers = [...clients.values()].filter(c => c !== client && room(c) === room(client)).map(c => presence(c));
           send(socket, { type: "presence", entries: peers });

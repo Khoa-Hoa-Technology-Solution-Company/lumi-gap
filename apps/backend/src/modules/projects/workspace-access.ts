@@ -83,6 +83,7 @@ export async function assertWorkspaceLink(context: WorkspaceContext, link: Works
     case "REVIEW_REQUEST": valid = Boolean(await tx.reviewRequest.findFirst({ where: { id: link.id, projectId: project.id } })); break;
     case "PLAN_REVISION": valid = Boolean(await tx.planRevision.findFirst({ where: { id: link.id, projectId: project.id } })); break;
     case "REPORT": valid = Boolean(await tx.report.findFirst({ where: { id: link.id, projectId: project.id } })); break;
+    case "TREND": valid = Boolean(await tx.projectTrendSnapshot.findFirst({ where: { id: link.id, projectId: project.id } })); break;
   }
   if (!valid) throw AppError.badRequest("The linked item does not belong to this project or is unavailable");
 }

@@ -47,7 +47,8 @@ export const communityController = {
   },
 
   async publicMembers(req: Request, res: Response) {
-    res.json({ success: true, data: await communityService.publicMembers(req.params.id as string, req.user?.sub, req.user?.role) });
+    const paging = req.query as unknown as { page: number; pageSize: number };
+    res.json({ success: true, ...(await communityService.publicMembers(req.params.id as string, req.user?.sub, req.user?.role, paging)) });
   },
 
   async relatedPapers(req: Request, res: Response) {

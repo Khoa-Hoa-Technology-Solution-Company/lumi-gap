@@ -5,6 +5,7 @@ import { useI18n } from "@/i18n";
 import { ProjectTeamChatPanel } from "./project-team-chat-panel";
 import { ProjectChatPanel } from "./project-chat-panel";
 import "../project-chat.css";
+import { useUnsavedWorkspace } from "./workspace-common";
 
 interface ProjectDiscussionPanelProps {
   projectId: string;
@@ -26,7 +27,9 @@ function DiscussionChannels({ projectId, paperCount, ownerId, onAddPapers }: Pro
   const currentUser = useAuthStore((s) => s.user);
   const [activeMode, setActiveMode] = useState<ChatMode>("team-chat");
   const [drafts, setDrafts] = useState<Record<ChatMode, string>>({ "team-chat": "", "private-ai": "", "team-ai": "" });
+  useUnsavedWorkspace(Object.values(drafts).some(value => Boolean(value.trim())));
   const setDraft = (mode: ChatMode, value: string) => setDrafts(current => ({ ...current, [mode]: value }));
+  const clearSentDraft = (mode: ChatMode, content: string) => setDrafts(current => current[mode].trim() === content ? { ...current, [mode]: "" } : current);
   const channels = [
     { id: "team-chat" as const, label: t("Team Chat"), icon: Users },
     { id: "private-ai" as const, label: t("My AI"), icon: Sparkles },
@@ -64,7 +67,7 @@ function DiscussionChannels({ projectId, paperCount, ownerId, onAddPapers }: Pro
         })}
       </div>
       <div id={`${id}-panel`} role="tabpanel" aria-labelledby={`${id}-${activeMode}`} key={activeMode}>
-        {activeMode === "team-chat" ? <ProjectTeamChatPanel projectId={projectId} ownerId={ownerId} draft={drafts[activeMode]} onDraftChange={value => setDraft(activeMode, value)} /> : (
+        {activeMode === "team-chat" ? <ProjectTeamChatPanel projectId={projectId} ownerId={ownerId} draft={drafts[activeMode]} onDraftChange={value => setDraft(activeMode, value)} onSent={content => clearSentDraft("team-chat", content)} /> : (
           <ProjectChatPanel
             projectId={projectId}
             paperCount={paperCount}
@@ -73,6 +76,7 @@ function DiscussionChannels({ projectId, paperCount, ownerId, onAddPapers }: Pro
             onAddPapers={onAddPapers}
             draft={drafts[activeMode]}
             onDraftChange={value => setDraft(activeMode, value)}
+            onSent={content => clearSentDraft(activeMode, content)}
           />
         )}
       </div>

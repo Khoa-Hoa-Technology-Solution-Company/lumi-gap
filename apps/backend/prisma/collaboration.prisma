@@ -372,6 +372,7 @@ model ForumPost {
   legacyMongoId       String?   @unique @map("legacy_mongo_id") @db.VarChar(24)
   authorId            String    @map("author_id") @db.Uuid
   communityId         String?   @map("community_id") @db.Uuid
+  researchCommunityId String?   @map("research_community_id") @db.Uuid
   researchGapId       String?   @map("research_gap_id") @db.Uuid
   linkedPaperId       String?   @map("linked_paper_id") @db.Uuid
   linkedResearchGapId String?   @map("linked_research_gap_id") @db.Uuid
@@ -401,6 +402,7 @@ model ForumPost {
   dailyViews ForumPostDailyView[]
 
   @@index([communityId, status, isPinned, updatedAt])
+  @@index([researchCommunityId, status, createdAt(sort: Desc)])
   @@index([status, isPinned, lastActivityAt])
   @@index([researchGapId, status, createdAt])
   @@index([type, status, createdAt])

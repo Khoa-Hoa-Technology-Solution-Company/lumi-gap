@@ -6,7 +6,7 @@ const lines = z.array(z.string().trim().min(1).max(500)).max(20);
 const planQuestionSchema = z.object({ id: z.string().uuid(), text: z.string().trim().min(1).max(1000), sourceGapId: z.string().uuid().optional(), evidenceIds: z.array(z.string().uuid()).max(30).refine(ids => new Set(ids).size === ids.length, "Evidence references must be unique").optional(), sourceGapVersion: z.number().int().positive().optional(), sourceEvidenceRevisionIds: z.array(z.string().uuid()).max(30).optional() }).strict();
 export const workspaceParams = z.object({ id: databaseIdSchema, itemId: z.string().uuid().optional() });
 export const workspacePageSchema = z.object({ page: z.coerce.number().int().min(1).max(10000).default(1), pageSize: z.coerce.number().int().min(1).max(50).default(20) });
-export const workspaceLinkSchema = z.object({ kind: z.enum(["PAPER", "SCREENING", "EVIDENCE", "GAP", "QUESTION", "MANUSCRIPT", "MANUSCRIPT_SNAPSHOT", "MENTOR_FEEDBACK", "PLAN", "REVIEW_REQUEST", "PLAN_REVISION", "REPORT"]), id: z.string().uuid() }).strict().nullable();
+export const workspaceLinkSchema = z.object({ kind: z.enum(["PAPER", "SCREENING", "EVIDENCE", "GAP", "QUESTION", "MANUSCRIPT", "MANUSCRIPT_SNAPSHOT", "MENTOR_FEEDBACK", "PLAN", "REVIEW_REQUEST", "PLAN_REVISION", "REPORT", "TREND"]), id: z.string().uuid() }).strict().nullable();
 export const researchStageSchema = z.object({ expectedVersion: z.number().int().positive(), stage: z.enum(["DISCOVERY", "SCREENING", "EXTRACTION", "GAP_VALIDATION", "DESIGN", "WRITING", "REVIEW"]).nullable() }).strict();
 export const savePlanSchema = z.object({
   expectedVersion: z.number().int().positive(), approach: z.enum(["EXPLORATORY", "LITERATURE_REVIEW", "EMPIRICAL", "UNDECIDED"]),
@@ -36,7 +36,7 @@ export const taskQuerySchema = workspacePageSchema.extend({ q: text(200).default
 export const taskBoardQuerySchema = taskQuerySchema.omit({ page: true, status: true, parentTaskId: true }).extend({ todoPage: workspacePageSchema.shape.page, progressPage: workspacePageSchema.shape.page, blockedPage: workspacePageSchema.shape.page, donePage: workspacePageSchema.shape.page }).strict();
 export const moveTaskSchema = z.object({ expectedVersion: z.number().int().positive(), expectedBoardVersion: z.number().int().positive(), status: taskStatus, beforeId: z.string().uuid().nullable(), blockedReason: text(2000), clientKey: z.string().uuid() }).strict().refine(blocked, { path: ["blockedReason"], message: "Explain what is blocking this task" });
 export const versionSchema = z.object({ expectedVersion: z.number().int().positive() }).strict();
-export const milestoneFieldsSchema = z.object({ title: z.string().trim().min(1).max(240), description: text(5000), dueAt: z.string().datetime().nullable(), status: z.enum(["PLANNED", "COMPLETE"]) }).strict();
+export const milestoneFieldsSchema = z.object({ title: z.string().trim().min(1).max(240), description: text(5000), dueAt: z.string().datetime().nullable(), status: z.enum(["PLANNED", "COMPLETE"]), clientKey: z.string().uuid().optional() }).strict();
 export const updateMilestoneSchema = milestoneFieldsSchema.extend({ expectedVersion: z.number().int().positive() }).strict();
 export const commentSchema = z.object({ body: z.string().trim().min(1).max(10000), clientKey: z.string().uuid(), mentions: z.array(z.string().uuid()).max(20).default([]) }).strict();
 export const commentQuerySchema = workspacePageSchema.extend({ targetKind: z.enum(["TASK", "PLAN_REVISION"]), targetId: z.string().uuid() }).strict();

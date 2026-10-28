@@ -3,6 +3,7 @@ import { persist } from "zustand/middleware";
 import type { AuthTokens, User } from "@trend/shared-types";
 
 interface AuthState {
+  sessionVersion: number;
   user: User | null;
   tokens: AuthTokens | null;
   setAuth: (payload: { user: User; tokens: AuthTokens }) => void;
@@ -36,15 +37,17 @@ function isCurrentAuthState(value: unknown): value is PersistedAuthState {
 export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
+      sessionVersion: 0,
       user: null,
       tokens: null,
-      setAuth: ({ user, tokens }) => set({ user, tokens }),
+      setAuth: ({ user, tokens }) => set(state => ({ user, tokens, sessionVersion: state.sessionVersion + 1 })),
       setTokens: (tokens) => set({ tokens }),
-      clear: () => set({ user: null, tokens: null }),
+      clear: () => set(state => ({ user: null, tokens: null, sessionVersion: state.sessionVersion + 1 })),
     }),
     {
       name: "trend-auth",
       version: 1,
+      partialize: ({ user, tokens }) => ({ user, tokens }),
       migrate: (persistedState) =>
         isCurrentAuthState(persistedState)
           ? persistedState

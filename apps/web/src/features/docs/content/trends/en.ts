@@ -519,7 +519,7 @@ export const trendsEn: DocsModuleContent<TrendSectionId> = {
           kind: "callout",
           tone: "limitation",
           heading: "3. Candidate list favours large topics",
-          text: `The overview only considers the ${C.overviewCandidatesMin}–${C.overviewCandidatesMax} largest topics in scope (the first OpenAlex \`group_by\` page). Small emerging topics may not appear; search for such a topic directly to open its detail page.`,
+          text: `The overview tests at most ${C.overviewCandidatesMax} topics: the largest of the scope plus the ${C.overviewTopicsPerStratum} largest of every field (of every subfield when the scope is one field), so smaller fields are tested too. Inside a field, small emerging topics may still not appear; search for such a topic directly to open its detail page.`,
         },
         {
           kind: "callout",
@@ -538,6 +538,12 @@ export const trendsEn: DocsModuleContent<TrendSectionId> = {
           tone: "limitation",
           heading: "6. p is approximate for short series",
           text: `For n ≤ 10 USGS recommends exact p-values; LumiGap uses the normal approximation. See ${link("Mann–Kendall", S.trendMannKendall, "min-years")}.`,
+        },
+        {
+          kind: "callout",
+          tone: "limitation",
+          heading: "7. Months and quarters",
+          text: `The "By month / quarter" tab runs the same test on monthly or quarterly shares (at least ${C.minYears} complete periods; the running one is never tested). Works dated only by year are filed under January and the latest months are still being indexed; the share of the field cancels most of both. Short periods are noisier and more autocorrelated than years, so read a monthly verdict as recent movement, not a lasting trend.`,
         },
       ],
     },

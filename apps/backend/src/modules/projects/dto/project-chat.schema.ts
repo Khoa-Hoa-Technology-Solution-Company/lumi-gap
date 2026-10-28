@@ -21,7 +21,10 @@ export const SendProjectChatMessageSchema = z.object({
 export const ListProjectChatQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
   scope: ProjectChatScopeSchema,
+  beforeId: objectId.optional(),
 });
+
+export type ListProjectChatQuery = z.infer<typeof ListProjectChatQuerySchema>;
 
 export const StreamProjectChatQuerySchema = z.object({
   scope: ProjectChatScopeSchema.default("team"),

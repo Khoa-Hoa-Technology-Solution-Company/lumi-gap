@@ -1,25 +1,16 @@
 from __future__ import annotations
 
 import asyncio
-import hmac
 import os
 import json
 import sys
 import signal
 import base64
 from typing import Literal
-from typing import Optional
-from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from app.internal_auth import verify_internal_key as require_extraction_key
 from app.rag_extraction import MAX_BYTES, extract_rag_pages
 from app.pdf_to_latex import MAX_BYTES as LATEX_MAX_BYTES
-
-
-def require_extraction_key(x_internal_key: Optional[str] = Header(None)) -> None:
-    expected = os.getenv("INTERNAL_SERVICE_KEY")
-    if not expected:
-        raise HTTPException(status_code=503, detail="Internal service key is required for extraction")
-    if not x_internal_key or not hmac.compare_digest(expected, x_internal_key):
-        raise HTTPException(status_code=403, detail="Invalid internal service key")
 
 
 rag_router = APIRouter(dependencies=[Depends(require_extraction_key)])

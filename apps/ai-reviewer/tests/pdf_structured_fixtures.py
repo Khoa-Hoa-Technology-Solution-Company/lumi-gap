@@ -99,7 +99,11 @@ def vietnamese_scan():
     from PIL import Image, ImageDraw, ImageFont
     image = Image.new("RGB", (1240, 1754), "white")
     draw = ImageDraw.Draw(image)
-    font = ImageFont.truetype("DejaVuSans.ttf", 34)
+    try:
+        font = ImageFont.truetype("DejaVuSans.ttf", 34)
+    except OSError:
+        # Windows does not ship DejaVu; Arial also covers Vietnamese.
+        font = ImageFont.truetype("arial.ttf", 34)
     for index, line in enumerate(["PHIẾU KIỂM THỬ NGHIÊN CỨU", "Mã đơn: TEST-2026-041", "Số lượng: 3", "Tổng tiền: 1.275.000 VND", "Ghi chú: kiểm tra dữ liệu gốc."]):
         draw.text((85, 120 + index * 85), line, fill="black", font=font)
     output = BytesIO(); image.save(output, format="PDF", resolution=150)

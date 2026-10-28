@@ -7,11 +7,12 @@ import type { IProject } from "@trend/shared-types";
 import { ProjectsWorkspacePage, ProjectWorkspaceStart } from "@/pages/projects/projects-workspace";
 import { projectWorkspaceHref } from "../utils/project-workspace-navigation";
 
-const mocks = vi.hoisted(() => ({ projects: vi.fn(), user: { id: "me", systemRole: "USER", emailVerifiedAt: "2026-01-01" } as { id: string; systemRole: string; emailVerifiedAt: string } | null }));
+const mocks = vi.hoisted(() => ({ projects: vi.fn(), project: vi.fn(), user: { id: "me", systemRole: "USER", emailVerifiedAt: "2026-01-01" } as { id: string; systemRole: string; emailVerifiedAt: string } | null }));
 vi.mock("@/i18n", () => ({ useI18n: () => ({ language: "en", t: (key: string, values?: Record<string, string | number>) => key.replace(/\{\{(\w+)\}\}/g, (_, name) => String(values?.[name] ?? "")) }) }));
 vi.mock("@/stores/auth-store", () => ({ useAuthStore: (selector: (state: { user: typeof mocks.user }) => unknown) => selector({ user: mocks.user }) }));
 vi.mock("../hooks/use-projects", () => ({
   useProjects: mocks.projects,
+  useProject: mocks.project,
   useCreateProject: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useMyProjectInvitations: () => ({ data: [], refetch: vi.fn() }),
   useRespondToProjectInvitation: () => ({ mutateAsync: vi.fn() }),
@@ -43,6 +44,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.user = { id: "me", systemRole: "USER", emailVerifiedAt: "2026-01-01" };
   mocks.projects.mockReturnValue({ data: [owned, shared, archived], isLoading: false, isFetching: false, isError: false });
+  mocks.project.mockReturnValue({ data: undefined, isLoading: false });
   container = document.createElement("div"); document.body.append(container); root = createRoot(container);
 });
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); vi.unstubAllGlobals(); });
@@ -126,6 +128,25 @@ it("waits for invalidated project data before auto-opening, including after leav
   expect(container.querySelector("output")?.textContent).toBe("/projects/owned");
 });
 
+it("keeps the project picker closed during the first directory load and automatic project selection", async () => {
+  mocks.projects.mockReturnValue({ data: undefined, isLoading: true, isFetching: true, isError: false });
+  await render();
+  expect(container.querySelector<HTMLDetailsElement>(".coord-project-picker")?.open).toBe(false);
+  mocks.projects.mockReturnValue({ data: [owned, shared], isLoading: false, isFetching: true, isError: false });
+  await render();
+  expect(container.querySelector<HTMLDetailsElement>(".coord-project-picker")?.open).toBe(false);
+  mocks.projects.mockReturnValue({ data: [owned, shared], isLoading: false, isFetching: false, isError: false });
+  await render();
+  expect(container.querySelector("output")?.textContent).toBe("/projects/shared");
+  expect(container.querySelector<HTMLDetailsElement>(".coord-project-picker")?.open).toBe(false);
+});
+
+it("opens the project picker after loading only when the directory needs an explicit choice", async () => {
+  await render("/projects?q=missing");
+  expect(container.querySelector<HTMLDetailsElement>(".coord-project-picker")?.open).toBe(true);
+  expect(container.querySelector("output")?.textContent).toBe("/projects?q=missing");
+});
+
 it("shows an empty workspace without inventing a selected project", async () => {
   mocks.projects.mockReturnValue({ data: [], isLoading: false, isFetching: false, isError: false });
   await render();
@@ -136,4 +157,25 @@ it("shows an empty workspace without inventing a selected project", async () => 
 
 it("escapes project IDs and strips creation and record-specific parameters from switch links", () => {
   expect(projectWorkspaceHref("a/b?c", new URLSearchParams("create=1&tab=papers&submission=other&screening=EXCLUDED&q=hello&scope=SHARED&status=ARCHIVED&sort=NAME"))).toBe("/projects/a%2Fb%3Fc?q=hello&tab=papers");
+});
+
+it("uses fresh project detail for the selected sidebar title and counts while the directory refreshes", async () => {
+  mocks.project.mockReturnValue({ data: { ...shared, title: "Updated team study", paperCount: 4, memberCount: 3 }, isLoading: false });
+  await render("/projects/shared?tab=papers");
+  expect(container.querySelector(".coord-project-picker summary")?.textContent).toContain("Updated team study");
+  expect(container.querySelector("#project-tab-papers small")?.textContent).toBe("4");
+  expect(container.querySelector("#project-tab-members small")?.textContent).toBe("3");
+});
+
+it("does not offer private sections when a fresh detail is a public summary despite an old library row", async () => {
+  mocks.project.mockReturnValue({ data: { ...shared, accessRole: undefined, isPublicSummary: true }, isLoading: false });
+  await render("/projects/shared");
+  expect(container.querySelector(".coord-workspace-nav")).toBeNull();
+});
+
+it.each([403, 404])("hides cached private navigation after the detail reports unavailable (%s)", async status => {
+  mocks.project.mockReturnValue({ data: shared, isLoading: false, error: { response: { status } } });
+  await render("/projects/shared");
+  expect(container.querySelector(".coord-workspace-nav")).toBeNull();
+  expect(container.querySelector(".coord-project-picker summary")?.textContent).not.toContain(shared.title);
 });

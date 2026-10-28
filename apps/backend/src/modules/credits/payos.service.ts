@@ -5,32 +5,14 @@ import { parseDatabaseId, publicDatabaseId } from "../../infrastructure/database
 import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { logger } from "../../infrastructure/logger.js";
 import { creditService } from "./credit.service.js";
+import type { PayosWebhookBody } from "./dto/credit.schema.js";
+export type { PayosWebhookBody } from "./dto/credit.schema.js";
 
 export interface CreatePaymentLinkParams {
   userId: string;
   amountVnd: number;
   returnUrl?: string;
   cancelUrl?: string;
-}
-
-export interface PayosWebhookData {
-  orderCode: number;
-  amount: number;
-  description: string;
-  accountNumber: string;
-  reference: string;
-  transactionDateTime: string;
-  currency: string;
-  paymentLinkId: string;
-  code: string;
-  desc: string;
-}
-
-export interface PayosWebhookBody {
-  code: string;
-  desc: string;
-  data: PayosWebhookData;
-  signature: string;
 }
 
 function sortDataByKey(data: Record<string, unknown>): Record<string, unknown> {
@@ -49,7 +31,14 @@ export function generatePayosSignature(
 ): string {
   const sorted = sortDataByKey(data);
   const queryString = Object.keys(sorted)
-    .map((k) => `${k}=${sorted[k]}`)
+    .filter(key => sorted[key] !== undefined)
+    .map(key => {
+      const value = sorted[key];
+      const normalized = value === null || value === "null" || value === "undefined" ? ""
+        : Array.isArray(value) ? JSON.stringify(value.map(item => sortDataByKey(item as Record<string, unknown>)))
+        : String(value);
+      return `${key}=${normalized}`;
+    })
     .join("&");
   return crypto.createHmac("sha256", checksumKey).update(queryString).digest("hex");
 }
@@ -60,6 +49,13 @@ export const payosService = {
    */
   async createPaymentLink(params: CreatePaymentLinkParams) {
     const { userId, amountVnd, returnUrl, cancelUrl } = params;
+
+    if (!Number.isSafeInteger(amountVnd) || amountVnd <= 0 || amountVnd > 2_147_483_647) {
+      throw AppError.badRequest("Số tiền thanh toán không hợp lệ");
+    }
+    if (env.NODE_ENV === "production" && !(env.PAYOS_CLIENT_ID && env.PAYOS_API_KEY && env.PAYOS_CHECKSUM_KEY)) {
+      throw AppError.serviceUnavailable("Cổng thanh toán PayOS chưa được cấu hình");
+    }
 
     if (amountVnd < env.MIN_TOPUP_VND) {
       throw AppError.badRequest(
@@ -74,11 +70,12 @@ export const payosService = {
     }
 
     const creditsToAdd = Math.floor(amountVnd / env.CREDIT_PRICE_VND);
-    const orderCode = Number(Date.now().toString().slice(-8) + Math.floor(Math.random() * 10));
+    const orderCode = Date.now() * 1000 + crypto.randomInt(1000);
 
     const description = `Nap ${creditsToAdd} credit`;
-    const defaultReturn = returnUrl || `${env.CORS_ORIGIN}/profile?tab=credits&status=success`;
-    const defaultCancel = cancelUrl || `${env.CORS_ORIGIN}/profile?tab=credits&status=cancelled`;
+    const webOrigin = env.CORS_ORIGIN.split(",")[0]!.trim();
+    const defaultReturn = returnUrl || `${webOrigin}/profile?tab=credits&status=success`;
+    const defaultCancel = cancelUrl || `${webOrigin}/profile?tab=credits&status=cancelled`;
 
     let checkoutUrl = "";
     let qrCode = "";
@@ -157,19 +154,24 @@ export const payosService = {
    * Xử lý webhook từ PayOS khi thanh toán thành công
    */
   async handleWebhook(body: PayosWebhookBody) {
-    if (env.PAYOS_CHECKSUM_KEY) {
+    if (!env.PAYOS_CHECKSUM_KEY) {
+      throw AppError.serviceUnavailable("Cổng thanh toán PayOS chưa được cấu hình");
+    }
+    {
       const computedSignature = generatePayosSignature(
         body.data as unknown as Record<string, unknown>,
         env.PAYOS_CHECKSUM_KEY,
       );
-      if (computedSignature !== body.signature) {
-        logger.warn({ expected: body.signature, computed: computedSignature }, "Invalid PayOS webhook signature");
+      const received = /^[a-f\d]{64}$/i.test(body.signature) ? Buffer.from(body.signature, "hex") : Buffer.alloc(0);
+      const computed = Buffer.from(computedSignature, "hex");
+      if (received.length !== computed.length || !crypto.timingSafeEqual(computed, received)) {
+        logger.warn("Invalid PayOS webhook signature");
         throw AppError.badRequest("Chữ ký webhook PayOS không hợp lệ");
       }
     }
 
     const { orderCode, amount } = body.data;
-    if (body.code !== "00") {
+    if (body.code !== "00" || body.data.code !== "00" || !body.success || body.data.currency !== "VND") {
       logger.info({ orderCode, code: body.code }, "PayOS transaction not successful");
       return { success: false };
     }
@@ -182,6 +184,12 @@ export const payosService = {
 
     if (order.status === "paid") {
       return { success: true, message: "Order already paid" };
+    }
+    if (order.status !== "pending") {
+      throw AppError.badRequest("Đơn nạp credit không còn chờ thanh toán");
+    }
+    if (order.paymentLinkId && body.data.paymentLinkId !== order.paymentLinkId) {
+      throw AppError.badRequest("Mã thanh toán không khớp với đơn nạp credit");
     }
     if (amount !== order.amount) {
       logger.warn({ orderCode, expectedAmount: order.amount, receivedAmount: amount }, "PayOS amount mismatch");

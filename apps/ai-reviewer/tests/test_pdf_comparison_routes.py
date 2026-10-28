@@ -31,7 +31,7 @@ class ComparisonRouteTests(unittest.TestCase):
             process.wait = AsyncMock()
             with patch("app.rag_routes.pdf_conversion_slots", asyncio.Semaphore(1)) as slots, \
                     patch("app.rag_routes.asyncio.create_subprocess_exec", AsyncMock(return_value=process)), \
-                    patch("app.rag_routes.os.killpg") as kill:
+                    patch("app.rag_routes.os.killpg", create=True) as kill:
                 with self.assertRaises(HTTPException) as error:
                     await pdf_comparison(source, output)
                 self.assertEqual(error.exception.status_code, 422)

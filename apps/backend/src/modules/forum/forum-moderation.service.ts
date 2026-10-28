@@ -10,12 +10,13 @@ import { env } from "../../config/env.js";
 import { authMailService } from "../auth/auth-mail.service.js";
 import { assertForumPinCapacity } from "./forum-locks.js";
 import { normalizeForumPostType } from "./forum.rules.js";
+import { assertForumPostReadable, filterReportsByPostVisibility, syncResearchThreadCount } from "./forum-visibility.js";
 
 const REPORT_REASONS = ["SPAM", "HARASSMENT", "OFF_TOPIC", "PRIVACY", "PLAGIARISM_CONCERN", "COPYRIGHT_CONCERN", "INAPPROPRIATE_CONTENT", "OTHER"] as const;
 const APPEALABLE_ACTIONS = ["HIDE_CONTENT", "REMOVE_CONTENT", "LOCK_THREAD", "PIN_THREAD", "RESTRICT_USER", "THREAD_HIDDEN", "THREAD_LOCKED", "THREAD_PINNED", "RESPONSE_HIDDEN"];
 const requiresAdminReview = (report: { status: string; reason: string; escalatedAt: Date | null }) => report.status === "escalated" || Boolean(report.escalatedAt) || report.reason === "COPYRIGHT_CONCERN";
 type TargetType = "THREAD" | "RESPONSE";
-type Target = { type: TargetType; id: string; postId: string; authorId: string; communityId: string | null; title?: string; body: string; status: string; visibilityStatus: string };
+type Target = { type: TargetType; id: string; postId: string; authorId: string; communityId: string | null; researchCommunityId: string | null; title?: string; body: string; status: string; visibilityStatus: string };
 
 const idWhere = (value: string) => {
   const parsed = parseDatabaseId(value);
@@ -50,30 +51,33 @@ async function target(type: "post" | "comment" | TargetType, value: string): Pro
   const prisma = getPrisma();
   const normalized = type === "post" || type === "THREAD" ? "THREAD" : "RESPONSE";
   if (normalized === "THREAD") {
-    const row = await prisma.forumPost.findUnique({ where: idWhere(value), select: { id: true, authorId: true, communityId: true, title: true, body: true, status: true, visibilityStatus: true } });
+    const row = await prisma.forumPost.findUnique({ where: idWhere(value), select: { id: true, authorId: true, communityId: true, researchCommunityId: true, title: true, body: true, status: true, visibilityStatus: true } });
     if (!row) throw AppError.notFound("Forum discussion not found");
-    return { type: normalized, id: row.id, postId: row.id, authorId: row.authorId, communityId: row.communityId, title: row.title, body: row.body, status: row.status, visibilityStatus: row.visibilityStatus };
+    return { type: normalized, id: row.id, postId: row.id, authorId: row.authorId, communityId: row.communityId, researchCommunityId: row.researchCommunityId, title: row.title, body: row.body, status: row.status, visibilityStatus: row.visibilityStatus };
   }
   const row = await prisma.forumComment.findUnique({ where: idWhere(value), select: { id: true, postId: true, authorId: true, body: true, status: true, visibilityStatus: true } });
   if (!row) throw AppError.notFound("Forum response not found");
-  const post = await prisma.forumPost.findUnique({ where: { id: row.postId }, select: { communityId: true, title: true } });
+  const post = await prisma.forumPost.findUnique({ where: { id: row.postId }, select: { communityId: true, researchCommunityId: true, title: true } });
   if (!post) throw AppError.notFound("Forum discussion not found");
-  return { type: normalized, id: row.id, postId: row.postId, authorId: row.authorId, communityId: post.communityId, title: post.title, body: row.body, status: row.status, visibilityStatus: row.visibilityStatus };
+  return { type: normalized, id: row.id, postId: row.postId, authorId: row.authorId, communityId: post.communityId, researchCommunityId: post.researchCommunityId, title: post.title, body: row.body, status: row.status, visibilityStatus: row.visibilityStatus };
 }
 
 async function assertScope(targetRow: Target, actorId: string, actorRole: UserRole, escalationOnly = false) {
   const actor = await userId(actorId);
   if (actorRole === "admin") return actor;
-  if (!targetRow.communityId || !(await isCommunityModerator(targetRow.communityId, actor))) throw AppError.forbidden("Community moderator access is required for this content");
+  // The category's moderators and the research community's own owner/moderators may act on a scoped post.
+  const scopeId = targetRow.communityId && (await isCommunityModerator(targetRow.communityId, actor)) ? targetRow.communityId
+    : targetRow.researchCommunityId && (await isCommunityModerator(targetRow.researchCommunityId, actor)) ? targetRow.researchCommunityId : null;
+  if (!scopeId) throw AppError.forbidden("Community moderator access is required for this content");
   if (escalationOnly) return actor;
   const [author, actorMembership] = await Promise.all([
     getPrisma().user.findUnique({ where: { id: targetRow.authorId }, select: { systemRole: true } }),
-    getPrisma().communityMembership.findUnique({ where: { communityId_userId: { communityId: targetRow.communityId, userId: actor } }, select: { role: true, status: true } }),
+    getPrisma().communityMembership.findUnique({ where: { communityId_userId: { communityId: scopeId, userId: actor } }, select: { role: true, status: true } }),
   ]);
   if (targetRow.authorId === actor) throw AppError.forbidden("Moderators cannot take action on their own content");
   if (author?.systemRole && author.systemRole !== "USER") throw AppError.conflict("Content authored by an administrator requires Admin review");
   if (actorMembership?.role === "moderator") {
-    const peer = await getPrisma().communityMembership.findFirst({ where: { communityId: targetRow.communityId, userId: targetRow.authorId, status: "active", role: { in: ["owner", "moderator"] } }, select: { id: true } });
+    const peer = await getPrisma().communityMembership.findFirst({ where: { communityId: scopeId, userId: targetRow.authorId, status: "active", role: { in: ["owner", "moderator"] } }, select: { id: true } });
     if (peer) throw AppError.conflict("A peer moderator report must be escalated to Admin");
   }
   return actor;
@@ -114,6 +118,8 @@ export const forumModerationService = {
     await this.assertForumRestriction(reporter, "REPORTING", row.communityId ?? undefined);
     if (!["active", "locked"].includes(row.status) || row.visibilityStatus !== "ACTIVE") throw AppError.notFound("Report target not found");
     const reporterId = await userId(reporter);
+    const reporterRole = (await getPrisma().user.findUniqueOrThrow({ where: { id: reporterId }, select: { role: true } })).role;
+    await assertForumPostReadable({ id: row.postId, researchCommunityId: row.researchCommunityId }, { userId: reporterId, role: reporterRole === "admin" ? "admin" : "user" });
     if (row.communityId) {
       const [community, reporterUser, membership] = await Promise.all([
         getPrisma().community.findUniqueOrThrow({ where: { id: row.communityId }, select: { visibility: true } }),
@@ -163,7 +169,7 @@ export const forumModerationService = {
     if (actorRole !== "admin") ids = (await getPrisma().communityMembership.findMany({ where: { userId: actor, status: "active", role: { in: ["owner", "moderator"] }, ...(scopeId ? { communityId: scopeId } : {}) }, select: { communityId: true } })).map((r) => r.communityId);
     const where = { ...(status === "all" ? {} : { status }), ...(scopeId ? { communityId: scopeId } : ids ? { communityId: { in: ids } } : {}) };
     if (actorRole !== "admin" && !ids?.length) return [];
-    const rows = await getPrisma().contentReport.findMany({ where, orderBy: [{ createdAt: "asc" }], take: 200 });
+    const rows = await filterReportsByPostVisibility(await getPrisma().contentReport.findMany({ where, orderBy: [{ createdAt: "asc" }], take: 200 }), { userId: actor, role: actorRole });
     const responses = await getPrisma().forumComment.findMany({ where: { id: { in: rows.flatMap((row) => row.commentId ? [row.commentId] : []) } }, select: { id: true, legacyMongoId: true, postId: true } });
     const responseById = new Map(responses.map((response) => [response.id, response]));
     const posts = await getPrisma().forumPost.findMany({ where: { id: { in: [...rows.flatMap((row) => row.postId ? [row.postId] : []), ...responses.map((response) => response.postId)] } }, select: { id: true, legacyMongoId: true } });
@@ -318,6 +324,7 @@ export const forumModerationService = {
           await tx.forumPost.update({ where: { id: row.id }, data: { status: removed ? "deleted" : hidden ? "hidden" : thread!.isLocked ? "locked" : "active", visibilityStatus: removed ? "REMOVED" : hidden ? "HIDDEN" : "ACTIVE", isPinned: hidden || removed ? false : undefined, pinnedAt: hidden || removed ? null : undefined, moderationVersion: { increment: 1 } } });
           if (row.communityId && contentIsVisible && (hidden || removed)) await tx.community.updateMany({ where: { id: row.communityId, threadCount: { gt: 0 } }, data: { threadCount: { decrement: 1 } } });
           if (row.communityId && !contentIsVisible && !hidden && !removed) await tx.community.update({ where: { id: row.communityId }, data: { threadCount: { increment: 1 } } });
+          await syncResearchThreadCount(tx, thread!.researchCommunityId);
         } else {
           await tx.forumComment.update({ where: { id: row.id }, data: { status: removed ? "deleted" : hidden ? "hidden" : "active", visibilityStatus: removed ? "REMOVED" : hidden ? "HIDDEN" : "ACTIVE", moderationVersion: { increment: 1 } } });
           if (contentIsVisible && (hidden || removed)) {
@@ -472,6 +479,7 @@ export const forumModerationService = {
               if (shouldPin && becomesVisible) await assertForumPinCapacity(tx, content.communityId, action.postId);
               await tx.forumPost.update({ where: { id: action.postId }, data: { status: restoredStatus, visibilityStatus: restoredVisibility, isLocked: previous.isLocked === true || restoredStatus === "locked", isPinned: shouldPin, pinnedAt: shouldPin && typeof previous.pinnedAt === "string" ? new Date(previous.pinnedAt) : null, moderationVersion: { increment: 1 } } });
               if (!wasVisible && becomesVisible && content.communityId) await tx.community.update({ where: { id: content.communityId }, data: { threadCount: { increment: 1 } } });
+              await syncResearchThreadCount(tx, content.researchCommunityId);
             }
           } else if (action.postId && !action.commentId) {
             if (inverse === "UNLOCK_THREAD" && content.status !== "locked") throw AppError.conflict("This discussion is no longer locked");

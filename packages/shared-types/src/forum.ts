@@ -143,6 +143,8 @@ export interface ForumPost {
   publicSlug?: string;
   author: ForumAuthorSummary;
   community?: Pick<Community, "id" | "name" | "slug">;
+  /** Optional research community the post is additionally scoped to (private ones are members-only). */
+  researchCommunity?: Pick<Community, "id" | "name" | "slug" | "visibility">;
   type: ForumPostType;
   title: string;
   content: string;

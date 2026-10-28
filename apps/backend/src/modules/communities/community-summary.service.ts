@@ -81,7 +81,7 @@ export function buildCommunitySummaryPrompt(community: { name: string; researchF
 async function recentPosts(communityId: string): Promise<RecentPost[]> {
   const since = new Date(Date.now() - COMMUNITY_SUMMARY_WINDOW_DAYS * 24 * 3600 * 1000);
   return getPrisma().forumPost.findMany({
-    where: { communityId, status: "active", createdAt: { gte: since } },
+    where: { researchCommunityId: communityId, status: "active", visibilityStatus: "ACTIVE", createdAt: { gte: since } },
     orderBy: { createdAt: "desc" },
     take: MAX_POSTS,
     select: { id: true, updatedAt: true },
@@ -159,7 +159,7 @@ export const communitySummaryService = {
     const [community, posts] = await Promise.all([
       getPrisma().community.findUniqueOrThrow({ where: { id: communityId }, select: { name: true, researchField: true } }),
       getPrisma().forumPost.findMany({
-        where: { id: { in: postIds }, communityId, status: "active" },
+        where: { id: { in: postIds }, researchCommunityId: communityId, status: "active", visibilityStatus: "ACTIVE" },
         orderBy: { createdAt: "asc" },
         select: { id: true, updatedAt: true, title: true, body: true, type: true, tags: true, commentCount: true },
       }),

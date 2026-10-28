@@ -3,7 +3,7 @@ import { cache, hashKey } from "../../infrastructure/cache.js";
 import { publicDatabaseId } from "../../infrastructure/database/database-id.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { Prisma } from "../../generated/prisma/client.js";
-import { loadViewableCommunity } from "./community.service.js";
+import { assertCommunityContentAccess, loadViewableCommunity } from "./community.service.js";
 
 const CACHE_TTL_SECONDS = 3600;
 const MAX_TOPICS = 10;
@@ -35,7 +35,8 @@ function matchingTopics(community: { researchTopics: string[]; researchField: st
 /** Research data linked to a community's topics. Pure PostgreSQL full-text search, never an LLM call. */
 export const communityRelatedService = {
   async papers(idOrSlug: string, userId?: string, role?: UserRole): Promise<RelatedPaper[]> {
-    const { community } = await loadViewableCommunity(idOrSlug, userId, role);
+    const { community, viewerUserId } = await loadViewableCommunity(idOrSlug, userId, role);
+    await assertCommunityContentAccess(community, viewerUserId, role);
     const topics = matchingTopics(community);
     if (topics.length === 0) return [];
     const key = `community:related-papers:v1:${community.id}:${hashKey(topics)}`;
@@ -61,7 +62,8 @@ export const communityRelatedService = {
   },
 
   async gaps(idOrSlug: string, userId?: string, role?: UserRole): Promise<RelatedGap[]> {
-    const { community } = await loadViewableCommunity(idOrSlug, userId, role);
+    const { community, viewerUserId } = await loadViewableCommunity(idOrSlug, userId, role);
+    await assertCommunityContentAccess(community, viewerUserId, role);
     const topics = matchingTopics(community);
     if (topics.length === 0) return [];
     const key = `community:related-gaps:v1:${community.id}:${hashKey(topics)}`;

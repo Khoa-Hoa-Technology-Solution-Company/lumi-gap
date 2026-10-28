@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
-import { Link, useSearchParams, useNavigate } from "react-router-dom";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import type { AcademicPageMeta, AvailableMentor, MentorshipPerson, MentorRole, MentorshipCollection } from "@trend/shared-types";
+import { useEffect, useState, useMemo, useRef } from "react";
+import { Link, Navigate, useSearchParams, useNavigate } from "react-router-dom";
+import { keepPreviousData, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import type { AcademicPageMeta, AvailableMentor, MentorshipPerson, MentorRole } from "@trend/shared-types";
 import { useI18n } from "@/i18n";
 import { useAcademicProfile } from "@/features/academic-profile/hooks/use-academic-profile";
 import { PositionVerificationPanel } from "@/features/academic-profile/components/position-verification-panel";
@@ -15,12 +15,16 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { canLeaveWorkspace } from "@/features/projects/components/workspace-common";
 import { MentorPreviewContent, MentorInvitationSender } from "@/features/projects/components/mentor-preview";
+import { MentorGuidance } from "@/features/projects/components/mentor-guidance";
+import { MentorSearchPagination } from "@/features/projects/components/mentor-search-pagination";
 import { projectsApi } from "@/features/projects/api/projects.api";
 import { useAuthStore } from "@/stores/auth-store";
-import { BadgeCheck, Building2, Mail, Search, SlidersHorizontal, X } from "lucide-react";
+import { ArrowUpRight, BadgeCheck, Building2, Check, ChevronDown, Compass, Globe, GraduationCap, History, Inbox, Lock, Mail, Search, Send, Settings2, SlidersHorizontal, Sparkles, Tag, Target, Users, X } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { toast } from "sonner";
 import { useInvitationContent, InvitationAttachments, InvitationUpload } from "@/features/projects/components/mentorship-invitation-content";
 import "@/features/projects/mentor-discovery.css";
+import "./academic-support.css";
 
 function useSupportRefresh() {
   const cache = useQueryClient();
@@ -45,33 +49,53 @@ export function AcademicSupportPage() {
   const { t } = useI18n(), navigate = useNavigate(), profile = useAcademicProfile(), pref = useMentoringPreferences();
   const lecturer = profile.data?.academicRole === "LECTURER";
   const userId = useAuthStore(s => s.user?.id);
-  const [view, setView] = useState<NonNullable<AcademicSearch["view"]>>("incoming"), [area, setArea] = useState("");
+  const [area, setArea] = useState("");
+  const [showArea, setShowArea] = useState(false);
   const [offerProject, setOfferProject] = useState<MentorPreview>();
   const deferredArea = useDebouncedValue(area, 300);
   const [search, setSearch] = useState(""), q = useDebouncedValue(search, 300), [page, setPage] = useState(1), [opportunityPage, setOpportunityPage] = useState(1);
   const [params, setParams] = useSearchParams(), projectId = params.get("projectId");
-  const mine = useQuery({ queryKey: ["academic-support", userId, "mine", view, page], queryFn: () => academicSupportApi.mine({ page, view }) });
-  const opportunities = useQuery({ queryKey: ["academic-support", userId, "opportunities", q, deferredArea, opportunityPage], queryFn: () => academicSupportApi.opportunities({ q, area: deferredArea || undefined, page: opportunityPage }), enabled: pref.data?.acceptingMentorships === true });
-  return <main className="mx-auto w-full max-w-5xl space-y-6 px-4 py-7 sm:px-6" data-no-i18n>
-    <header><h1 className="text-2xl font-semibold tracking-tight">{t(lecturer ? "Lecturer workspace" : "Academic Support")}</h1><p className="mt-2 text-sm text-muted-foreground">{t("Mentoring provides project guidance. Formal review requires a separate artifact request.")}</p></header>
-    {lecturer && profile.data && !pref.data?.canEnable && <div className="rounded-lg border bg-card p-4"><PositionVerificationPanel profile={profile.data} editable onEditPosition={() => navigate("/settings/academic")} /></div>}
-    <div id="mentoring-settings" className="scroll-mt-24"><MentoringPreferencesPanel lecturer={lecturer} /></div>
-    <div className="flex flex-wrap items-center gap-3"><Button asChild variant="outline" size="sm"><Link to="/reviews">{t("Academic Reviews")}</Link></Button><Button asChild variant="ghost" size="sm"><Link to="/projects">{t("Your projects")}</Link></Button>
-      <p className="text-sm text-muted-foreground">{t("Incoming Requests")}: {mine.data?.counts.incoming ?? 0} · {t("Active Teams")}: {mine.data?.counts.active ?? 0}</p></div>
-    <section className="space-y-3"><h2 className="text-base font-semibold">{t("Mentoring requests & relationships")}</h2>
-      <div className="flex flex-wrap gap-1" role="group" aria-label={t("Mentoring requests & relationships")}>{(["incoming", "outgoing", "active", "history"] as const).map(tab => <Button key={tab} size="sm" variant={view === tab ? "secondary" : "ghost"} aria-pressed={view === tab} onClick={() => { setView(tab); setPage(1); }}>{t({ incoming: "Incoming Requests", outgoing: "Outgoing Requests", active: "Active Mentorships", history: "Mentoring history" }[tab])}</Button>)}</div>
-      {mine.isLoading ? <p role="status">{t("Loading…")}</p> : mine.isError ? <p role="alert">{t("Unable to load mentorship requests.")}</p> : <>
-        <MentoringItems items={[...(mine.data?.relationships ?? []), ...(mine.data?.requests ?? [])]} onOpen={id => setParams({ projectId: id })} />
+  const requestedView = params.get("view");
+  const view = requestedView === "discover" && lecturer ? "discover" : (["incoming", "outgoing", "active", "history"] as const).find(tab => tab === requestedView) ?? "incoming";
+  const requestView = view === "discover" ? "incoming" : view;
+  const changeView = (next: string) => { setPage(1); setParams(current => { const updated = new URLSearchParams(current); updated.set("view", next); updated.delete("projectId"); return updated; }); };
+  const mine = useQuery({ queryKey: ["academic-support", userId, "mine", requestView, page], queryFn: () => academicSupportApi.mine({ page, view: requestView }), enabled: Boolean(userId) });
+  const opportunities = useQuery({ queryKey: ["academic-support", userId, "opportunities", q, deferredArea, opportunityPage], queryFn: () => academicSupportApi.opportunities({ q, area: deferredArea || undefined, page: opportunityPage }), enabled: lecturer && view === "discover" && pref.data?.acceptingMentorships === true });
+  const tabs = [...(lecturer ? ["discover" as const] : []), "incoming", "active", "outgoing", "history"] as const;
+  const tabLabels = { discover: "Find teams to mentor", incoming: "Incoming Requests", active: lecturer ? "Teams you mentor" : "Active Mentorships", outgoing: lecturer ? "Sent mentorship offers" : "Outgoing Requests", history: "Mentoring history" };
+  const tabIcons = { discover: Search, incoming: Inbox, active: Users, outgoing: Send, history: History };
+  const clearFilters = () => { setSearch(""); setArea(""); setOpportunityPage(1); };
+  const openProject = (id: string) => { if (lecturer) navigate(`/academic-support/projects/${encodeURIComponent(id)}`); else setParams(current => { const next = new URLSearchParams(current); next.set("projectId", id); return next; }); };
+  if (profile.isLoading) return <main className="mx-auto w-full max-w-5xl px-4 py-7"><p role="status">{t("Loading…")}</p></main>;
+  if (profile.isError) return <main className="mx-auto w-full max-w-5xl space-y-3 px-4 py-7"><p role="alert">{t("Unable to load your profile.")}</p><Button variant="outline" onClick={() => void profile.refetch()}>{t("Try again")}</Button></main>;
+  if (lecturer && projectId) return <Navigate to={`/academic-support/projects/${encodeURIComponent(projectId)}`} replace />;
+  return <main className={`academic-support-page ${lecturer ? "lecturer-workspace" : ""}`} data-no-i18n>
+    <header className="academic-support-heading"><div><h1>{t(lecturer ? "Lecturer workspace" : "Academic Support")}</h1><p>{t(lecturer ? "Connect with student teams and guide their next research step." : "Mentoring provides project guidance. Formal review requires a separate artifact request.")}</p></div>{lecturer && <a className="lecturer-availability" href="#mentoring-settings" onClick={() => { const settings = document.querySelector<HTMLDetailsElement>("#mentoring-settings"); if (settings) settings.open = true; }}><span data-enabled={pref.data?.acceptingMentorships === true} aria-hidden="true" />{t(pref.isError ? "Availability unavailable" : pref.isLoading ? "Loading…" : pref.data?.acceptingMentorships ? "Accepting new teams" : "Not accepting new teams")}<Settings2 size={15} aria-hidden="true" /></a>}</header>
+    <div className="academic-support-layout"><aside className="academic-support-sidebar"><nav className="academic-support-nav" aria-label={t("Mentoring workspace")}>
+      {tabs.map(tab => { const Icon = tabIcons[tab]; return <button type="button" key={tab} aria-current={view === tab ? "page" : undefined} onClick={() => changeView(tab)}><Icon size={18} aria-hidden="true" /><span>{t(tabLabels[tab])}</span>{(tab === "incoming" || tab === "active") && mine.data && <span className="academic-nav-count">{tab === "incoming" ? mine.data.counts.incoming : mine.data.counts.active}</span>}</button>; })}
+    </nav><div className="academic-support-links"><Link to="/reviews">{t("Academic Reviews")}<ArrowUpRight size={14} aria-hidden="true" /></Link><Link to="/projects">{t("Your projects")}<ArrowUpRight size={14} aria-hidden="true" /></Link></div></aside>
+    <div className="academic-support-content">
+    {view === "discover" ? <section className="space-y-4" aria-label={t("Find teams to mentor")}><div className="academic-section-heading"><div><h2>{t("Find teams to mentor")}</h2><p>{t("Explore shared research interests and the support each team needs.")}</p></div></div>
+      {pref.isLoading ? <p role="status">{t("Loading…")}</p> : pref.isError ? <div role="alert" className="space-y-2"><p>{t("Unable to load mentoring preferences.")}</p><Button variant="outline" onClick={() => void pref.refetch()}>{t("Try again")}</Button></div> : !pref.data?.acceptingMentorships ? <div className="space-y-3 rounded-lg border bg-muted/30 p-4"><p className="text-sm">{t(pref.data?.canEnable ? "Enable mentoring availability below to discover teams and receive invitations." : "Lecturer verification is required before accepting official mentorships.")}</p><a className="text-sm font-medium text-primary underline underline-offset-4" href="#mentoring-settings">{t("Mentoring availability")}</a></div> : <>
+      <div className="mentor-search-controls"><div className="mentor-search-input"><Search size={18} aria-hidden="true" /><Input aria-label={t("Search mentor opportunities")} placeholder={t("Search by project or topic")} value={search} maxLength={160} onChange={e => { setSearch(e.target.value); setOpportunityPage(1); }} />{search && <Button size="icon" variant="ghost" aria-label={t("Clear search")} onClick={() => { setSearch(""); setOpportunityPage(1); }}><X size={16} aria-hidden="true" /></Button>}</div><Button variant="outline" aria-expanded={showArea} aria-controls="team-area-filter" onClick={() => setShowArea(value => !value)}><SlidersHorizontal size={16} aria-hidden="true" />{t("Research Area")}{area && <span className="mentor-filter-count">1</span>}</Button></div>
+      <div id="team-area-filter" hidden={!showArea} className="team-area-filter"><label htmlFor="team-area-input">{t("Filter by research area")}</label><Input id="team-area-input" placeholder={t("For example: Artificial Intelligence")} value={area} maxLength={120} onChange={e => { setArea(e.target.value); setOpportunityPage(1); }} /></div>
+      <div className="team-results-summary" role="status" aria-live="polite"><span>{opportunities.isFetching ? t("Finding teams…") : opportunities.isSuccess ? `${opportunities.data.meta.total} ${t("teams seeking guidance")}` : ""}</span>{(search || area) ? <Button variant="ghost" size="sm" onClick={clearFilters}><X size={14} aria-hidden="true" />{t("Clear filters")}</Button> : <span>{t("Shared interests first")}</span>}</div>
+      {opportunities.isLoading && <div aria-label={t("Loading…")} className="space-y-3"><Skeleton className="h-48 w-full rounded-xl" /><Skeleton className="h-48 w-full rounded-xl" /></div>}{opportunities.isError && <div role="alert" className="academic-empty"><p>{t(mentorshipError(opportunities.error))}</p><Button variant="outline" size="sm" onClick={() => void opportunities.refetch()}>{t("Try again")}</Button></div>}
+      {opportunities.isSuccess && !opportunities.isFetching && !opportunities.data.items.length && <div className="academic-empty"><Search size={24} aria-hidden="true" /><p>{t(q || deferredArea ? "No teams match these filters. Try another topic or clear the filters." : "No projects are seeking mentors right now.")}</p>{(search || area) && <Button variant="outline" size="sm" onClick={clearFilters}>{t("Clear filters")}</Button>}</div>}
+      <div className="team-opportunities" aria-busy={opportunities.isFetching}>{!opportunities.isError && opportunities.data?.items.map(p => <Opportunity key={p.id} preview={p} onOffer={() => setOfferProject(p)} />)}</div><Pager meta={opportunities.data?.meta} onPage={setOpportunityPage} />
+    </> }</section> : <section className="space-y-4" aria-label={t(tabLabels[view])}><div className="academic-section-heading"><div><h2>{t(tabLabels[view])}</h2>
+      {lecturer && <p>{t(view === "incoming" ? "Review the team's request before accepting a mentoring role." : view === "active" ? "Open a team to review its research and provide guidance." : view === "outgoing" ? "Follow the offers you have sent. Teams decide whether to accept." : "Review previous requests and completed mentorships.")}</p>}</div></div>
+      {mine.isLoading ? <p role="status">{t("Loading…")}</p> : mine.isError ? <div role="alert" className="space-y-2"><p>{t("Unable to load mentorship requests.")}</p><Button variant="outline" size="sm" onClick={() => void mine.refetch()}>{t("Try again")}</Button></div> : <>
+        {mine.data && !mine.data.requests.length && !mine.data.relationships.length ? <p className="rounded-lg border border-dashed p-6 text-sm leading-6 text-muted-foreground">{t(view === "incoming" ? "No incoming mentorship invitations. Teams can invite you from your profile when you are accepting new teams." : view === "outgoing" ? "No outgoing mentorship requests yet." : view === "active" ? "No active mentorships yet. Accepted invitations and offers will appear here." : "No mentorship history yet.")}</p> : <MentoringItems items={[...(mine.data?.relationships ?? []), ...(mine.data?.requests ?? [])]} onOpen={openProject} />}
         <Pager meta={mine.data && (mine.data.requestMeta.totalPages >= mine.data.relationshipMeta.totalPages ? mine.data.requestMeta : mine.data.relationshipMeta)} onPage={setPage} /></>}
-    </section>
-    <ProjectMentorFinder onSelect={id => setParams(id ? { projectId: id } : {})} selected={projectId ?? ""} />
-    {projectId && <MentorProjectPanel key={projectId} projectId={projectId} />}
-    {pref.data?.acceptingMentorships && <section className="space-y-4 border-t pt-6"><h2 className="font-semibold">{t("Discover Projects")}</h2>
-      <div className="grid gap-3 sm:grid-cols-[2fr_1fr]"><Input aria-label={t("Search mentor opportunities")} placeholder={t("Search mentor opportunities")} value={search} maxLength={160} onChange={e => { setSearch(e.target.value); setOpportunityPage(1); }} /><Input aria-label={t("Filter by research area")} placeholder={t("Filter by research area")} value={area} maxLength={120} onChange={e => { setArea(e.target.value); setOpportunityPage(1); }} /></div>
-      {opportunities.isLoading && <p role="status">{t("Loading…")}</p>}{opportunities.isError && <p role="alert">{t(mentorshipError(opportunities.error))}</p>}
-      {!opportunities.isFetching && !opportunities.data?.items.length && <p className="text-sm text-muted-foreground">{t("No projects are seeking mentors right now.")}</p>}
-      <div className="space-y-3">{opportunities.data?.items.map(p => <Opportunity key={p.id} preview={p} onOffer={() => setOfferProject(p)} />)}</div><Pager meta={opportunities.data?.meta} onPage={setOpportunityPage} />
     </section>}
+    {!lecturer && <ProjectMentorFinder onSelect={id => setParams(id ? { projectId: id } : {})} selected={projectId ?? ""} />}
+    {projectId && <MentorProjectPanel key={projectId} projectId={projectId} />}
+    </div></div>
+    <details id="mentoring-settings" open={lecturer && pref.data && !pref.data.acceptingMentorships || undefined} className="academic-support-settings scroll-mt-24"><summary><Settings2 size={17} aria-hidden="true" />{t("Mentoring availability & notifications")}<ChevronDown size={16} aria-hidden="true" /></summary><div className="mt-4 space-y-4">
+      {lecturer && profile.data && pref.data && !pref.data.canEnable && <PositionVerificationPanel profile={profile.data} editable onEditPosition={() => navigate("/profile?edit=affiliation")} />}
+      <MentoringPreferencesPanel lecturer={lecturer} />
+    </div></details>
     {offerProject && <ConsentComposer project={offerProject} onClose={() => setOfferProject(undefined)} />}
   </main>;
 }
@@ -93,7 +117,7 @@ export function ConsentComposer({ project, mentor, suggestion = false, onClose }
     if (!suggestion) await content.persist();
     const payload = { mentorRole: content.mentorRole, attachmentIds: content.attachments.map(a => a.id) };
     return mentor ? suggestion ? academicSupportApi.suggest(project.id, mentor._id, content.message) : academicSupportApi.request(project.id, mentor._id, content.message, key, payload) : academicSupportApi.offer(project.id, content.message, key, payload);
-  }, onSuccess: () => { refresh(); onClose(); }, onError: refresh });
+  }, onSuccess: () => { if (!mentor) toast.success(t("Mentorship offer sent. Track the team's response in Sent mentorship offers.")); refresh(); onClose(); }, onError: refresh });
   const close = async () => {
     if (send.isPending || closing || content.uploading || editingBrief && !await canLeaveWorkspace()) return;
     setClosing(true);
@@ -125,26 +149,33 @@ export function ConsentComposer({ project, mentor, suggestion = false, onClose }
 }
 function Opportunity({ preview, onOffer }: { preview: MentorPreview; onOffer: () => void }) {
   const { t } = useI18n();
-  return <article className="min-w-0 space-y-3 border-b py-4"><h3 className="font-medium">{preview.title}</h3><p className="text-xs text-muted-foreground">{preview.researchAreas.join(" · ")}</p><p className="line-clamp-2 text-sm leading-6 text-muted-foreground">{preview.summary}</p><details><summary className="cursor-pointer text-sm text-primary">{t("View Project Preview")}</summary><div className="mt-3"><MentorPreviewContent preview={preview} /></div></details><Button variant="outline" size="sm" onClick={onOffer}>{t("Offer Mentorship")}</Button></article>;
+  const [expanded, setExpanded] = useState(false);
+  const stages = { PLANNING: "Planning", ACTIVE: "Active", ON_HOLD: "On hold", COMPLETED: "Completed", ARCHIVED: "Archived" };
+  return <article className="team-opportunity"><div className="team-opportunity-top"><div className="team-opportunity-areas">{preview.researchAreas.map(term => <span key={term}>{t(term)}</span>)}</div><span className="team-opportunity-stage">{t(stages[preview.stage])}</span></div>
+    <h3>{preview.title}</h3><p className={expanded ? "team-opportunity-summary" : "team-opportunity-summary line-clamp-2"}>{preview.summary || t("No public description yet.")}</p>
+    <div className="team-opportunity-need"><p>{t("Where you can help")}</p><p>{preview.mentoringNeeds || t("Discuss the team's mentoring needs before agreeing to guide them.")}</p></div>
+    <div id={`team-detail-${preview.id}`} hidden={!expanded} className="team-opportunity-detail">{preview.expertise.length > 0 && <div><p>{t("Expertise requested")}</p><div className="team-expertise">{preview.expertise.map(term => <span key={term}>{t(term)}</span>)}</div></div>}{Boolean(preview.availableRoles?.length) && <p>{t("Available mentoring roles")}: {preview.availableRoles!.map(role => t(role === "PRIMARY" ? "Primary mentor" : "Secondary mentor")).join(" · ")}</p>}<p>{t("The team leader reviews your offer before you receive project access.")}</p></div>
+    <div className="team-opportunity-actions"><button type="button" aria-expanded={expanded} aria-controls={`team-detail-${preview.id}`} onClick={() => setExpanded(value => !value)}>{t(expanded ? "Show less" : "View team details")}<ChevronDown size={16} aria-hidden="true" /></button><Button size="sm" onClick={onOffer}>{t("Offer Mentorship")}<ArrowUpRight size={15} aria-hidden="true" /></Button></div></article>;
 }
 export function MentorshipList({ items, onOpen }: { items: MentorshipItem[]; onOpen?: (id: string) => void }) {
   const { t } = useI18n(), refresh = useSupportRefresh();
+  const userId = useAuthStore(s => s.user?.id);
   const [action, setAction] = useState<{ item: MentorshipItem; kind: "accept" | "decline" | "cancel" | "end"; open: boolean }>(), [note, setNote] = useState(""), [preview, setPreview] = useState<MentorshipItem>();
   const closeAction = () => setAction(current => current && { ...current, open: false });
-  const response = useMutation({ mutationFn: () => academicSupportApi.respond(action!.item, action!.kind, note), onSuccess: () => { closeAction(); setNote(""); refresh(); }, onError: refresh });
+  const response = useMutation({ mutationFn: () => academicSupportApi.respond(action!.item, action!.kind, note), onSuccess: () => { if (action?.kind === "accept") toast.success(t("Mentorship accepted. Open Active Mentorships to work with the team.")); closeAction(); setNote(""); refresh(); }, onError: refresh });
   function choose(item: MentorshipItem, kind: "accept" | "decline" | "cancel" | "end") { response.reset(); setNote(""); setAction({ item, kind, open: true }); }
   if (!items.length) return <p className="text-sm text-muted-foreground">{t("No mentorship requests or active mentors.")}</p>;
-  return <><ul className="divide-y rounded-lg border bg-card">{items.map(item => <li key={`${item.kind}-${item.id}`} className="space-y-2 p-4">
-    <div className="flex flex-wrap items-start justify-between gap-3"><div><Link target="_blank" rel="noopener noreferrer" to={`/academics/${encodeURIComponent(item.mentorUser._id)}`} className="text-sm font-medium hover:underline">{item.mentorUser.fullName}</Link>
-      <p className="mt-1 text-xs text-muted-foreground">{[item.mentorUser.positionTitle, item.mentorUser.institutionName].filter(Boolean).join(" · ")}{item.mentorUser.verifiedLecturer && ` · ${t("Verified Lecturer")}`}</p>
-      <p className="mt-1 text-xs text-muted-foreground">{item.project?.title} · {t(item.mentorRole === "SECONDARY" ? "Secondary mentor" : "Primary mentor")} · {t(item.kind === "RELATIONSHIP" ? item.status === "ACTIVE" ? "Mentorship active" : "Mentorship ended" : item.status)} · {t(item.kind === "REQUEST" ? item.direction === "LECTURER_TO_PROJECT" ? "Mentorship offer" : "Mentorship request" : "Academic Mentor")}</p>
+  return <><ul className="mentorship-list divide-y rounded-lg border bg-card">{items.map(item => <li key={`${item.kind}-${item.id}`} className="space-y-2 p-4">
+    <div className="flex flex-wrap items-start justify-between gap-3"><div>{item.mentorUser._id === userId ? <h3 className="text-base font-semibold">{item.project?.title ?? t("Research project")}</h3> : <Link target="_blank" rel="noopener noreferrer" to={`/academics/${encodeURIComponent(item.mentorUser._id)}`} className="text-sm font-medium hover:underline">{item.mentorUser.fullName}</Link>}
+      {item.mentorUser._id !== userId && <p className="mt-1 text-xs text-muted-foreground">{[item.mentorUser.positionTitle, item.mentorUser.institutionName, item.mentorUser.verifiedLecturer ? t("Verified Lecturer") : undefined].filter(Boolean).join(" · ")}</p>}
+      <p className="mt-1 text-xs leading-5 text-muted-foreground">{[item.mentorUser._id !== userId ? item.project?.title : undefined, t(item.mentorRole === "SECONDARY" ? "Secondary mentor" : "Primary mentor"), t(item.kind === "RELATIONSHIP" ? item.status === "ACTIVE" ? "Mentorship active" : "Mentorship ended" : item.status), t(item.kind === "REQUEST" ? item.direction === "LECTURER_TO_PROJECT" ? "Mentorship offer" : "Mentorship request" : "Academic Mentor")].filter(Boolean).join(" · ")}</p>
       {item.kind === "RELATIONSHIP" && <p className="mt-1 text-xs text-muted-foreground">{t("Mentoring since")} {new Date(item.startedAt).toLocaleDateString()}</p>}
     </div><div className="flex flex-wrap gap-2">
       {item.kind === "REQUEST" && <Button variant="ghost" size="sm" onClick={() => setPreview(item)}>{t("View Project Preview")}</Button>}
       {item.actions.cancel && <Button variant="ghost" size="sm" onClick={() => choose(item, "cancel")}>{t("Cancel request")}</Button>}
       {item.actions.decline && <Button variant="outline" size="sm" onClick={() => choose(item, "decline")}>{t("Decline")}</Button>}
       {item.actions.accept && <Button size="sm" onClick={() => choose(item, "accept")}>{t("Accept")}</Button>}
-      {item.actions.openProject && (onOpen ? <Button variant="outline" size="sm" onClick={() => onOpen(item.projectId)}>{t("Open project")}</Button> : <Button variant="outline" size="sm" asChild><Link to={`/academic-support?projectId=${encodeURIComponent(item.projectId)}`}>{t("Open project")}</Link></Button>)}
+      {item.actions.openProject && (onOpen ? <Button variant="outline" size="sm" onClick={() => onOpen(item.projectId)}>{t("Open project")}</Button> : <Button variant="outline" size="sm" asChild><Link to={item.mentorUser._id === userId ? `/academic-support/projects/${encodeURIComponent(item.projectId)}` : `/academic-support?projectId=${encodeURIComponent(item.projectId)}`}>{t("Open project")}</Link></Button>)}
       {item.actions.end && <Button variant="ghost" size="sm" onClick={() => choose(item, "end")}>{t("End mentorship")}</Button>}
     </div></div>
     {item.kind === "REQUEST" && <><p className="text-xs text-muted-foreground">{t("Requested by")}: {item.requestedBy.fullName} · {[item.requestedBy.academicRole && t(item.requestedBy.academicRole), item.requestedBy.institutionName].filter(Boolean).join(" · ")}</p>{item.message && <p className="whitespace-pre-wrap break-words text-sm text-muted-foreground">{item.message}</p>}{Boolean(item.attachments?.length) && <InvitationAttachments attachments={item.attachments!} />}{item.responseNote && <p className="text-xs text-muted-foreground">{item.responseNote}</p>}{item.closeReason === "MENTOR_POSITION_FILLED" && <p className="text-xs text-muted-foreground">{t("The mentor position has been filled.")}</p>}{item.status === "PENDING" && item.expiresAt && <p className="text-xs text-muted-foreground">{t("Expires")}: {new Date(item.expiresAt).toLocaleDateString()}</p>}</>}
@@ -157,6 +188,9 @@ export function MentorshipList({ items, onOpen }: { items: MentorshipItem[]; onO
 }
 function MentorSearch({ project, disabled, canInvite }: { project: MentorPreview; disabled: boolean; canInvite: boolean }) {
   const { t } = useI18n(), [filters, setFilters] = useState<AcademicSearch>({}), deferred = useDebouncedValue(filters, 300), [page, setPage] = useState(1), [selected, setSelected] = useState<AvailableMentor>();
+  const [pageSize, setPageSize] = useState(6);
+  const resultsHeading = useRef<HTMLDivElement>(null);
+  const showPage = (next: number) => { setPage(next); resultsHeading.current?.scrollIntoView?.({ block: "start" }); };
   const [showFilters, setShowFilters] = useState(false);
   const [editingPreferences, setEditingPreferences] = useState(false);
   const taxonomy = useQuery({ queryKey: ["onboarding-options"], queryFn: () => authApi.academicOnboardingOptions() });
@@ -164,49 +198,350 @@ function MentorSearch({ project, disabled, canInvite }: { project: MentorPreview
   const settings = useQuery({ queryKey: ["academic-support", userId, "discovery-settings", project.id], queryFn: () => academicSupportApi.settings(project.id), enabled: canInvite });
   const preferences = settings.data ?? project;
   const terms = [...new Set([...preferences.researchAreas, ...preferences.expertise])];
-  const search = useQuery({ queryKey: ["academic-support", userId, "mentor-search", project.id, deferred, page], queryFn: () => academicSupportApi.mentors(project.id, { ...deferred, page }) });
+  const search = useQuery({ queryKey: ["academic-support", userId, "mentor-search", project.id, deferred, page, pageSize], queryFn: () => academicSupportApi.mentors(project.id, { ...deferred, page, pageSize }), placeholderData: keepPreviousData });
+  const lastPage = Math.max(1, search.data?.meta.totalPages ?? 1);
+  const correctingPage = search.data?.meta.page === page && page > lastPage;
+  useEffect(() => { if (correctingPage) setPage(lastPage); }, [correctingPage, lastPage]);
   const change = (field: keyof AcademicSearch, value: string) => { setFilters(current => ({ ...current, [field]: value || undefined })); setPage(1); };
   const filterCount = [filters.area, filters.interest, filters.institution, filters.position].filter(Boolean).length;
   const filtered = Boolean(filters.q?.trim() || filterCount);
   const clear = () => { setFilters({}); setPage(1); };
+
+  const suggestedTopics = useMemo(() => {
+    const topicMap = new Map<string, { name: string; isProjectTopic: boolean; count: number }>();
+    terms.forEach(term => {
+      const trimmed = term.trim();
+      if (trimmed) {
+        topicMap.set(trimmed.toLowerCase(), { name: trimmed, isProjectTopic: true, count: 0 });
+      }
+    });
+
+    if (search.data?.items) {
+      search.data.items.forEach(m => {
+        m.matchedTerms?.forEach(term => {
+          const key = term.trim().toLowerCase();
+          const existing = topicMap.get(key);
+          if (existing) {
+            existing.count += 1;
+          } else {
+            topicMap.set(key, { name: term.trim(), isProjectTopic: true, count: 1 });
+          }
+        });
+        m.expertiseAreas?.forEach(area => {
+          const key = area.trim().toLowerCase();
+          const existing = topicMap.get(key);
+          if (existing) {
+            existing.count += 1;
+          } else if (topicMap.size < 10) {
+            topicMap.set(key, { name: area.trim(), isProjectTopic: false, count: 1 });
+          }
+        });
+      });
+    }
+
+    if (taxonomy.data?.researchAreas && topicMap.size < 5) {
+      taxonomy.data.researchAreas.forEach(area => {
+        const key = area.trim().toLowerCase();
+        if (!topicMap.has(key) && topicMap.size < 8) {
+          topicMap.set(key, { name: area.trim(), isProjectTopic: false, count: 0 });
+        }
+      });
+    }
+
+    return Array.from(topicMap.values()).sort((a, b) => {
+      if (a.isProjectTopic && !b.isProjectTopic) return -1;
+      if (!a.isProjectTopic && b.isProjectTopic) return 1;
+      return b.count - a.count;
+    });
+  }, [terms, search.data?.items, taxonomy.data?.researchAreas]);
+
   return <section aria-label={t("Find Mentors")} className="mentor-search">
-    <div className="mentor-search-brief"><div className="mentor-search-brief-copy"><h3>{t("Mentor preferences")}</h3>{settings.isLoading && canInvite ? <Skeleton className="mt-2 h-5 w-48" /> : terms.length ? <div className="mentor-preference-terms">{terms.map(term => <span key={term}>{t(term)}</span>)}</div> : <p>{t("Tell us which fields and expertise your team needs. We will prioritize matching lecturers.")}</p>}{preferences.mentoringNeeds && <p className="mentor-brief-needs">{preferences.mentoringNeeds}</p>}<p className="mentor-discovery-status"><span aria-hidden="true" data-enabled={preferences.discovery === "SEEKING_MENTOR"} />{t(preferences.discovery === "SEEKING_MENTOR" ? "Verified lecturers can discover your shared project preview." : "Only lecturers you invite will see this preview. Project discovery is off.")}</p></div>{canInvite && <Button size="sm" variant="outline" onClick={() => setEditingPreferences(true)}><SlidersHorizontal size={15} aria-hidden="true" />{t(terms.length ? "Edit preferences" : "Set up mentor preferences")}</Button>}</div>
     {settings.isError && <p role="alert" className="mb-3 text-sm text-destructive">{t("Could not load mentor discovery settings.")}</p>}
-    <div className="mentor-search-controls"><div className="mentor-search-input"><Search size={19} aria-hidden="true" /><Input aria-label={t("Search available mentors")} placeholder={t("Name, institution, research area or interest")} maxLength={160} value={filters.q ?? ""} onChange={e => change("q", e.target.value)} />{filters.q && <Button size="icon" variant="ghost" aria-label={t("Clear search")} onClick={() => change("q", "")}><X size={16} aria-hidden="true" /></Button>}</div><Button variant="outline" aria-expanded={showFilters} aria-controls={`mentor-filters-${project.id}`} onClick={() => setShowFilters(value => !value)}><SlidersHorizontal size={16} aria-hidden="true" />{t("Filters")}{filterCount > 0 && <span className="mentor-filter-count">{filterCount}</span>}</Button></div>
-    <div id={`mentor-filters-${project.id}`} hidden={!showFilters} className="mentor-search-filters"><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{(["area", "interest", "institution", "position"] as const).map(field => <label key={field} className="space-y-1.5 text-sm"><span>{t({ institution: "Institution", area: "Research Area", interest: "Research Interest", position: "Current Position" }[field])}</span><Input value={filters[field] ?? ""} list={field === "area" ? `mentor-area-options-${project.id}` : undefined} maxLength={field === "institution" ? 200 : 120} onChange={e => change(field, e.target.value)} /></label>)}</div><datalist id={`mentor-area-options-${project.id}`}>{taxonomy.data?.researchAreas.map(area => <option key={area} value={area} />)}</datalist></div>
-    {filtered && <div className="mentor-active-filters">{(["area", "interest", "institution", "position"] as const).filter(field => filters[field]).map(field => <button key={field} type="button" onClick={() => change(field, "")} aria-label={`${t("Remove filter")}: ${filters[field]}`}>{filters[field]}<X size={13} aria-hidden="true" /></button>)}<Button size="sm" variant="ghost" onClick={clear}>{t("Clear filters")}</Button></div>}
-    <div className="mentor-results-heading"><h3>{t(filtered ? "Search results" : "Lecturers for your project")}{search.data && <span> ({search.data.meta.total})</span>}</h3><p>{t("Relevant expertise first")}</p></div>
+
+    <div className="mentor-discovery-hub">
+      <div className="mentor-hub-header">
+        <div className="mentor-hub-header-left">
+          <div className="mentor-hub-icon" aria-hidden="true">
+            <Compass size={16} />
+          </div>
+          <div className="mentor-hub-title-group">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="mentor-hub-title">{t("Mentor preferences")}</h3>
+              <span className="mentor-brief-status-pill" data-mode={preferences.discovery}>
+                {preferences.discovery === "SEEKING_MENTOR" ? (
+                  <>
+                    <Globe size={11} className="shrink-0" />
+                    <span>{t("Seeking Mentor")}</span>
+                  </>
+                ) : (
+                  <>
+                    <Lock size={11} className="shrink-0" />
+                    <span>{t("Private")}</span>
+                  </>
+                )}
+              </span>
+            </div>
+            <p className="mentor-hub-sub">
+              {preferences.discovery === "SEEKING_MENTOR"
+                ? t("Verified lecturers can discover your shared project preview.")
+                : t("Only lecturers you invite will see this preview. Project discovery is off.")}
+            </p>
+          </div>
+        </div>
+
+        {canInvite && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="mentor-hub-edit-btn"
+            onClick={() => setEditingPreferences(true)}
+          >
+            <SlidersHorizontal size={13} aria-hidden="true" />
+            <span>{t(terms.length ? "Edit preferences" : "Set up mentor preferences")}</span>
+          </Button>
+        )}
+      </div>
+
+      {preferences.mentoringNeeds && (
+        <div className="mentor-hub-needs-strip">
+          <Sparkles size={13} className="text-amber-500 shrink-0" aria-hidden="true" />
+          <span className="mentor-hub-needs-label">{t("Mentoring support needed:")}</span>
+          <span className="mentor-hub-needs-text">{preferences.mentoringNeeds}</span>
+        </div>
+      )}
+
+      <div className="mentor-hub-search-row">
+        <div className="mentor-search-input">
+          <Search size={16} aria-hidden="true" />
+          <Input
+            aria-label={t("Search available mentors")}
+            placeholder={t("Name, institution, research area or interest")}
+            maxLength={160}
+            value={filters.q ?? ""}
+            onChange={e => change("q", e.target.value)}
+          />
+          {filters.q && (
+            <Button size="icon" variant="ghost" aria-label={t("Clear search")} onClick={() => change("q", "")}>
+              <X size={15} aria-hidden="true" />
+            </Button>
+          )}
+        </div>
+        <Button
+          variant="outline"
+          className="mentor-hub-filter-btn"
+          aria-expanded={showFilters}
+          aria-controls={`mentor-filters-${project.id}`}
+          onClick={() => setShowFilters(value => !value)}
+        >
+          <SlidersHorizontal size={14} aria-hidden="true" />
+          <span>{t("Filters")}</span>
+          {filterCount > 0 && <span className="mentor-filter-count">{filterCount}</span>}
+        </Button>
+      </div>
+
+      <div className="mentor-hub-topics-bar" aria-label={t("Suggested research topics")}>
+        <div className="mentor-hub-topics-label">
+          <Tag size={12} className="text-primary shrink-0" aria-hidden="true" />
+          <span>{t("Suggested research topics")}:</span>
+        </div>
+        <div className="mentor-topic-chips-scroll">
+          <button
+            type="button"
+            className={`mentor-topic-chip ${!filters.area ? "active" : ""}`}
+            onClick={() => change("area", "")}
+          >
+            <span>{t("All")}</span>
+            {search.data && <span className="mentor-chip-count">{search.data.meta.total}</span>}
+          </button>
+          {suggestedTopics.map(topic => {
+            const isSelected = filters.area === topic.name;
+            return (
+              <button
+                key={topic.name}
+                type="button"
+                className={`mentor-topic-chip ${isSelected ? "active" : ""} ${topic.isProjectTopic ? "highlight" : ""}`}
+                onClick={() => change("area", isSelected ? "" : topic.name)}
+                title={topic.isProjectTopic ? t("Team's research topic") : undefined}
+              >
+                {topic.isProjectTopic ? (
+                  <Target size={12} className="shrink-0 text-amber-500" aria-hidden="true" />
+                ) : (
+                  <Tag size={11} className="shrink-0 opacity-60" aria-hidden="true" />
+                )}
+                <span>{topic.name}</span>
+                {topic.count > 0 && <span className="mentor-chip-count">{topic.count}</span>}
+                {isSelected && <X size={12} className="shrink-0 ml-1 opacity-75" aria-hidden="true" />}
+              </button>
+            );
+          })}
+        </div>
+        {filters.area && (
+          <button
+            type="button"
+            className="mentor-hub-clear-area-btn"
+            onClick={() => change("area", "")}
+          >
+            {t("View all areas")}
+          </button>
+        )}
+      </div>
+
+      <div id={`mentor-filters-${project.id}`} hidden={!showFilters} className="mentor-search-filters">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {(["area", "interest", "institution", "position"] as const).map(field => (
+            <label key={field} className="space-y-1.5 text-sm">
+              <span>{t({ institution: "Institution", area: "Research Area", interest: "Research Interest", position: "Current Position" }[field])}</span>
+              <Input
+                value={filters[field] ?? ""}
+                list={field === "area" ? `mentor-area-options-${project.id}` : undefined}
+                maxLength={field === "institution" ? 200 : 120}
+                onChange={e => change(field, e.target.value)}
+              />
+            </label>
+          ))}
+        </div>
+        <datalist id={`mentor-area-options-${project.id}`}>
+          {taxonomy.data?.researchAreas.map(area => <option key={area} value={area} />)}
+        </datalist>
+      </div>
+    </div>
+
+    {filtered && (
+      <div className="mentor-active-filters">
+        {(["area", "interest", "institution", "position"] as const).filter(field => filters[field]).map(field => (
+          <button key={field} type="button" onClick={() => change(field, "")} aria-label={`${t("Remove filter")}: ${filters[field]}`}>
+            {filters[field]}
+            <X size={13} aria-hidden="true" />
+          </button>
+        ))}
+        <Button size="sm" variant="ghost" onClick={clear}>{t("Clear filters")}</Button>
+      </div>
+    )}
+
+    <div className="mentor-results-heading" ref={resultsHeading}>
+      <div className="flex items-center gap-2">
+        <GraduationCap className="h-5 w-5 text-primary" aria-hidden="true" />
+        <h3>{t(filtered ? "Search results" : "Lecturers for your project")}{search.data && <span> ({search.data.meta.total})</span>}</h3>
+      </div>
+      <p>{t("Relevant expertise first")}</p>
+    </div>
+
     {disabled && <p role="status" className="mentor-ranking-note">{t("The project has reached its mentor or pending request limit.")}</p>}
     {editingPreferences && <p role="status" className="mentor-ranking-note">{t("Save or cancel your preference changes before choosing a lecturer.")}</p>}
     {!canInvite && <p className="mentor-ranking-note">{t("Members can suggest lecturers. The project owner sends invitations.")}</p>}
+
     <div className="mentor-results" aria-busy={search.isFetching}>
       {search.isLoading && <div role="status" aria-label={t("Loading…")}>{[1, 2, 3].map(key => <div key={key} className="flex gap-4 py-5"><Skeleton className="h-14 w-14 shrink-0 rounded-full" /><div className="flex-1 space-y-3"><Skeleton className="h-5 w-1/3" /><Skeleton className="h-4 w-2/3" /><Skeleton className="h-4 w-1/2" /></div></div>)}</div>}
       {search.isError && <div role="alert" className="mentor-search-empty"><p>{t(mentorshipError(search.error))}</p><Button variant="outline" size="sm" onClick={() => void search.refetch()}>{t("Try again")}</Button></div>}
-      {search.data?.items.map(mentor => <article key={mentor._id} className="mentor-result">
-        <div className="mentor-avatar" aria-hidden="true">{mentor.avatarUrl ? <img src={mentor.avatarUrl} alt="" loading="lazy" referrerPolicy="no-referrer" /> : mentor.fullName?.split(/\s+/).filter(Boolean).slice(-2).map(part => part[0]).join("") || "?"}</div>
-        <div className="mentor-result-body"><div className="mentor-result-name"><Link target="_blank" rel="noopener noreferrer" to={`/academics/${encodeURIComponent(mentor._id)}`}>{mentor.fullName}</Link><BadgeCheck size={17} aria-label={t("Verified Lecturer")} /></div>{mentor.positionTitle && <p className="mentor-position">{mentor.positionTitle}</p>}{mentor.institutionName && <p className="mentor-institution"><Building2 size={14} aria-hidden="true" />{mentor.institutionName}</p>}
-          <div className="mentor-expertise">{mentor.expertiseAreas.slice(0, 4).map(term => <span key={term}>{term}</span>)}{mentor.expertiseAreas.length > 4 && <span title={mentor.expertiseAreas.slice(4).join(" · ")}>+{mentor.expertiseAreas.length - 4}</span>}</div>
-          {mentor.matchedTerms.length > 0 && <p className="mentor-match"><BadgeCheck size={14} aria-hidden="true" />{t("Matches your project")}: {mentor.matchedTerms.join(" · ")}</p>}{mentor.sameInstitution && <p className="mentor-match">{t("Same institution as your project owner")}</p>}
-          {mentor.researchInterests.some(term => !mentor.expertiseAreas.some(area => area.toLocaleLowerCase() === term.toLocaleLowerCase())) && <p className="mentor-interests">{t("Research Interest")}: {mentor.researchInterests.filter(term => !mentor.expertiseAreas.some(area => area.toLocaleLowerCase() === term.toLocaleLowerCase())).join(" · ")}</p>}
-        </div><div className="mentor-result-actions"><span className="mentor-available">{t("Accepting new teams")}</span><Button size="sm" disabled={disabled || editingPreferences} onClick={() => setSelected(mentor)}>{t(canInvite ? "Invite as Mentor" : "Suggest Mentor")}</Button><Link target="_blank" rel="noopener noreferrer" to={`/academics/${encodeURIComponent(mentor._id)}`}>{t("View profile")}</Link></div>
-      </article>)}
-      {search.data && !search.data.items.length && <div className="mentor-search-empty"><Search size={26} aria-hidden="true" /><h4>{t(filtered ? "No available Mentors match these filters." : "No lecturers are available right now.")}</h4><p>{t(filtered ? "Try a broader search or remove a filter." : "Lecturers appear here when they are verified and accepting new teams.")}</p>{filtered && <Button variant="outline" size="sm" onClick={clear}>{t("Clear filters")}</Button>}</div>}
-    </div><Pager meta={search.data?.meta} onPage={setPage} />
+      {search.data?.items.map(mentor => {
+        const cleanName = mentor.fullName?.replace(/\([^)]*\)/g, "").replace(/\b(TS|ThS|GS|PGS|Dr|Prof)\b\.?/gi, "").trim() || mentor.fullName || "";
+        const nameParts = cleanName.split(/\s+/).filter(Boolean);
+        const p1 = nameParts[nameParts.length - 2] ?? "";
+        const p2 = nameParts[nameParts.length - 1] ?? "";
+        const initials = nameParts.length >= 2
+          ? `${p1[0] ?? ""}${p2[0] ?? ""}`.toUpperCase() || "?"
+          : nameParts[0]?.slice(0, 2).toUpperCase() || "?";
+        const hasTopicMatch = mentor.matchedTerms.length > 0;
+        const colorThemes = ["avatar-theme-indigo", "avatar-theme-emerald", "avatar-theme-amber", "avatar-theme-sky", "avatar-theme-rose", "avatar-theme-purple"];
+        const themeIndex = Math.abs((mentor._id || mentor.fullName || "").split("").reduce((acc, c) => acc + c.charCodeAt(0), 0)) % colorThemes.length;
+        const avatarThemeClass = colorThemes[themeIndex];
+        const nonMatchedExpertise = mentor.expertiseAreas.filter(
+          area => !mentor.matchedTerms.some(m => m.toLowerCase() === area.toLowerCase())
+        );
+        return (
+          <article key={mentor._id} className={`mentor-result ${hasTopicMatch ? "has-topic-match" : ""}`}>
+            <div className={`mentor-avatar ${avatarThemeClass}`} aria-hidden="true">{mentor.avatarUrl ? <img src={mentor.avatarUrl} alt="" loading="lazy" referrerPolicy="no-referrer" /> : initials}</div>
+            <div className="mentor-result-body">
+              <div className="mentor-result-header">
+                <div className="mentor-result-name">
+                  <Link target="_blank" rel="noopener noreferrer" to={`/academics/${encodeURIComponent(mentor._id)}`}>{mentor.fullName}</Link>
+                  <BadgeCheck size={18} className="text-blue-600 dark:text-blue-400 shrink-0" aria-label={t("Verified Lecturer")} />
+                </div>
+              </div>
+
+              {(mentor.positionTitle || mentor.institutionName) && (
+                <p className="mentor-academic-meta">
+                  <Building2 size={13.5} className="text-muted-foreground shrink-0" aria-hidden="true" />
+                  <span>
+                    {mentor.positionTitle ? `${mentor.positionTitle} · ` : ""}
+                    {mentor.institutionName}
+                  </span>
+                </p>
+              )}
+
+              {hasTopicMatch ? (
+                <div className="mentor-expertise-clean">
+                  <div className="mentor-field-group">
+                    <span className="mentor-field-label">
+                      <Sparkles size={12} className="text-emerald-600 dark:text-emerald-400 shrink-0" aria-hidden="true" />
+                      {t("Matches team topic:")}
+                    </span>
+                    <div className="mentor-chips-wrap">
+                      {mentor.matchedTerms.map(term => (
+                        <span key={term} className="mentor-tag-matched">
+                          <Check size={11} className="mr-1 text-emerald-600 dark:text-emerald-400 shrink-0" aria-hidden="true" />
+                          {term}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  {nonMatchedExpertise.length > 0 && (
+                    <div className="mentor-field-group">
+                      <span className="mentor-field-label-sub">{t("Other expertise")}:</span>
+                      <div className="mentor-chips-wrap">
+                        {nonMatchedExpertise.slice(0, 4).map(term => (
+                          <span key={term} className="mentor-tag-neutral">{term}</span>
+                        ))}
+                        {nonMatchedExpertise.length > 4 && (
+                          <span className="mentor-tag-more" title={nonMatchedExpertise.slice(4).join(" · ")}>
+                            +{nonMatchedExpertise.length - 4}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="mentor-expertise-clean">
+                  <div className="mentor-field-group">
+                    <span className="mentor-field-label-sub">{t("Areas of expertise")}:</span>
+                    <div className="mentor-chips-wrap">
+                      {mentor.expertiseAreas.slice(0, 5).map(term => (
+                        <span key={term} className="mentor-tag-neutral">{term}</span>
+                      ))}
+                      {mentor.expertiseAreas.length > 5 && (
+                        <span className="mentor-tag-more" title={mentor.expertiseAreas.slice(5).join(" · ")}>
+                          +{mentor.expertiseAreas.length - 5}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {mentor.sameInstitution && <p className="mentor-match"><Building2 size={13} aria-hidden="true" />{t("Same institution as your project owner")}</p>}
+              {mentor.researchInterests.some(term => !mentor.expertiseAreas.some(area => area.toLocaleLowerCase() === term.toLocaleLowerCase())) && (
+                <p className="mentor-interests"><span className="font-medium text-foreground/80">{t("Research Interest")}:</span> {mentor.researchInterests.filter(term => !mentor.expertiseAreas.some(area => area.toLocaleLowerCase() === term.toLocaleLowerCase())).join(" · ")}</p>
+              )}
+            </div>
+            <div className="mentor-result-actions">
+              <div className="mentor-action-top-row">
+                <span className="mentor-available">
+                  <span className="mentor-avail-dot" aria-hidden="true" />
+                  {t("Accepting new teams")}
+                </span>
+                <Button size="sm" disabled={disabled || editingPreferences || search.isFetching} onClick={() => setSelected(mentor)}>{t(canInvite ? "Invite as Mentor" : "Suggest Mentor")}</Button>
+              </div>
+              <Link target="_blank" rel="noopener noreferrer" to={`/academics/${encodeURIComponent(mentor._id)}`}>{t("View profile")}<ArrowUpRight size={13} className="inline ml-1" aria-hidden="true" /></Link>
+            </div>
+          </article>
+        );
+      })}
+      {search.data && !search.isError && !correctingPage && !search.data.items.length && <div className="mentor-search-empty"><Search size={26} aria-hidden="true" /><h4>{t(filtered ? "No available Mentors match these filters." : "No lecturers are available right now.")}</h4><p>{t(filtered ? "Try a broader search or remove a filter." : "Lecturers appear here when they are verified and accepting new teams.")}</p>{filtered && <Button variant="outline" size="sm" onClick={clear}>{t("Clear filters")}</Button>}</div>}
+    </div>{search.data && !search.isError && !correctingPage && <MentorSearchPagination meta={search.data.meta} busy={search.isFetching} onPage={showPage} onPageSize={size => { setPageSize(size); showPage(1); }} />}
     {selected && <ConsentComposer project={project} mentor={selected} suggestion={!canInvite} onClose={() => setSelected(undefined)} />}
     <Dialog open={editingPreferences} onOpenChange={async open => { if (open || await canLeaveWorkspace()) setEditingPreferences(open); }}><DialogContent className="mentor-preferences-dialog max-h-[88dvh] overflow-y-auto sm:max-w-2xl" data-no-i18n><DialogHeader className="pr-6 text-left"><DialogTitle>{t("Mentor preferences")}</DialogTitle><DialogDescription>{t("Saved fields and expertise are used to rank lecturers. Describe the support you need in your invitation.")}</DialogDescription></DialogHeader>{editingPreferences && <MentorDiscoverySettings projectId={project.id} startEditing onDone={() => setEditingPreferences(false)} />}</DialogContent></Dialog>
-  </section>;
-}
-function MentorPositionSummary({ collection }: { collection: MentorshipCollection }) {
-  const { t } = useI18n();
-  if (!collection.positions) return null;
-  const labels = { LOCKED: "Requires a primary mentor", VACANT: "Position available", INVITING: "Invitations pending", ASSIGNED: "Mentor assigned" } as const;
-  return <section aria-label={t("Mentor assignments")} className="mentor-position-summary">
-    <ol className="mentor-position-list">{(["PRIMARY", "SECONDARY"] as const).map(role => {
-      const position = collection.positions![role], relationship = collection.relationships.find(r => r.status === "ACTIVE" && r.mentorRole === role);
-      return <li key={role} data-status={position.status}><div className="mentor-position-label"><span className="mentor-position-dot" aria-hidden="true" /><p>{t(role === "PRIMARY" ? "Primary mentor" : "Secondary mentor")}</p>{role === "SECONDARY" && <span className="mentor-position-optional">{t("Optional")}</span>}</div>
-        <div className="mentor-position-value">{relationship ? <Link target="_blank" rel="noopener noreferrer" to={`/academics/${encodeURIComponent(relationship.mentorUser._id)}`}>{relationship.mentorUser.fullName}</Link> : <span>{t(labels[position.status])}</span>}{position.pendingRequests > 0 && <span className="mentor-position-pending">{position.pendingRequests}/3 {t("pending requests")}</span>}</div>
-      </li>;
-    })}</ol>
   </section>;
 }
 export function MentorProjectPanel({ projectId }: { projectId: string }) {
@@ -216,7 +551,7 @@ export function MentorProjectPanel({ projectId }: { projectId: string }) {
   const list = useQuery({ queryKey: ["academic-support", userId, "project", projectId, requestPage], queryFn: () => academicSupportApi.list(projectId, { page: requestPage }) });
   useEffect(() => { setTab("find"); setRequestPage(1); }, [projectId]);
   if (workspace.isLoading) return <div className="mentor-workspace space-y-5" role="status" aria-label={t("Loading academic support…")}><Skeleton className="h-8 w-48" /><Skeleton className="h-20 w-full" /><Skeleton className="h-12 w-full" /><Skeleton className="h-44 w-full" /></div>;
-  if (!workspace.data || workspace.isError) return <div role="alert" className="mentor-workspace space-y-3 text-sm text-muted-foreground"><p>{t("Academic Support is available to the project team and active verified mentors.")}</p><Button variant="outline" size="sm" onClick={() => void workspace.refetch()}>{t("Try again")}</Button></div>;
+  if (!workspace.data) return <div role="alert" className="mentor-workspace space-y-3 text-sm text-muted-foreground"><p>{t("Academic Support is available to the project team and active verified mentors.")}</p><Button variant="outline" size="sm" onClick={() => void workspace.refetch()}>{t("Try again")}</Button></div>;
   const data = workspace.data, canFind = data.accessRole === "TEAM" && data.canProvideFeedback;
   const activeTab = canFind ? tab : "requests";
   const unavailable = !list.data || list.isError || (list.data.positions ? !Object.values(list.data.positions).some(p => ["VACANT", "INVITING"].includes(p.status) && p.pendingRequests < (list.data!.policy.maxPendingPerRole ?? 3)) : list.data.counts.active >= list.data.policy.maxActiveMentors || list.data.counts.pending >= list.data.policy.maxPendingRequests);
@@ -226,10 +561,12 @@ export function MentorProjectPanel({ projectId }: { projectId: string }) {
     if (focus) document.getElementById(`mentor-${next}-tab-${projectId}`)?.focus();
   };
   return <section className="mentor-workspace" data-no-i18n>
-    <header className="mentor-page-heading"><p className="mentor-project-name">{data.project.title}</p><h2>{t(canFind ? "Find Mentors" : "Invitations & mentors")}</h2><p>{t(canFind ? "Find the right expertise for your team. Invite a lecturer or review incoming offers." : "Academic mentors are separate from project members.")}</p>
+    {workspace.isError && <div role="alert"><p>{t("Academic Support is available to the project team and active verified mentors.")}</p><Button variant="outline" size="sm" onClick={() => void workspace.refetch()}>{t("Try again")}</Button></div>}
+    <header className="mentor-page-heading">
+      <p className="mentor-project-name">{data.project.title}</p>
+      <h2>{t(canFind ? "Find Mentors" : "Invitations & mentors")}</h2>
       {data.accessRole === "MENTOR" && <Link className="mt-3 inline-flex text-sm text-primary underline underline-offset-4" to={`/projects/${encodeURIComponent(projectId)}/plan-review`}>{t("Open shared plan and questions")}</Link>}
     </header>
-    {list.data ? <MentorPositionSummary collection={list.data} /> : !list.isError && <Skeleton className="my-5 h-20 w-full" />}
     {canFind && <div role="tablist" aria-label={t("Project mentorship")} className="mentor-workspace-tabs" onKeyDown={event => {
       if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
       event.preventDefault();
@@ -238,11 +575,12 @@ export function MentorProjectPanel({ projectId }: { projectId: string }) {
       <button type="button" role="tab" id={`mentor-find-tab-${projectId}`} aria-selected={activeTab === "find"} aria-controls={`mentor-find-panel-${projectId}`} tabIndex={activeTab === "find" ? 0 : -1} onClick={() => void changeTab("find")}><Search size={17} aria-hidden="true" />{t("Find Mentors")}</button>
       <button type="button" role="tab" id={`mentor-requests-tab-${projectId}`} aria-selected={activeTab === "requests"} aria-controls={`mentor-requests-panel-${projectId}`} tabIndex={activeTab === "requests" ? 0 : -1} onClick={() => void changeTab("requests")}><Mail size={17} aria-hidden="true" />{t("Invitations & mentors")}{Boolean(list.data?.counts.pending) && <span className="mentor-tab-count">{list.data!.counts.pending}</span>}</button>
     </div>}
-    {canFind && <div role="tabpanel" id={`mentor-find-panel-${projectId}`} aria-labelledby={`mentor-find-tab-${projectId}`} hidden={activeTab !== "find"}><MentorSearch project={data.project} canInvite={data.canManage} disabled={unavailable} /></div>}
+    {canFind && <div role="tabpanel" id={`mentor-find-panel-${projectId}`} aria-labelledby={`mentor-find-tab-${projectId}`} hidden={activeTab !== "find"}><MentorSearch key={projectId} project={data.project} canInvite={data.canManage} disabled={unavailable} /></div>}
     <div role={canFind ? "tabpanel" : undefined} id={`mentor-requests-panel-${projectId}`} aria-labelledby={canFind ? `mentor-requests-tab-${projectId}` : undefined} hidden={activeTab !== "requests"} className="mentor-requests-panel">
       {list.isLoading && <Skeleton className="h-36 w-full" />}
       {list.data && <><div className="mentor-requests-heading"><h3>{t("Invitations & mentors")}</h3><p>{list.data.counts.active} {t("active mentors")} · {list.data.counts.pending} {t("pending requests")}</p></div><MentoringItems items={[...list.data.relationships, ...list.data.requests]} /><Pager meta={list.data.requestMeta.totalPages >= list.data.relationshipMeta.totalPages ? list.data.requestMeta : list.data.relationshipMeta} onPage={setRequestPage} /></>}
     </div>
     {list.isError && <div role="alert" className="mt-4 flex flex-wrap items-center gap-3 text-sm text-destructive"><p>{t("Unable to load mentorship requests.")}</p><Button size="sm" variant="outline" onClick={() => void list.refetch()}>{t("Try again")}</Button></div>}
+    {data.accessRole === "TEAM" && <details className="mt-6 border-t pt-5" open={data.guidance.length > 0 || undefined}><summary className="cursor-pointer text-sm font-medium">{t("Guidance & team updates")}</summary><div className="mt-4"><MentorGuidance projectId={projectId} data={data} /></div></details>}
   </section>;
 }

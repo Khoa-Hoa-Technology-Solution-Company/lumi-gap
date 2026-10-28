@@ -11,6 +11,19 @@ import { getPrisma } from "./prisma.js";
 
 export const PAPER_EMBEDDING_DIMENSIONS = 768;
 
+/** pgvector stores float32 values and accumulates cosine norms in float32. */
+export function isUsableSearchVector(vector: readonly number[] | undefined): vector is readonly number[] {
+  if (vector?.length !== PAPER_EMBEDDING_DIMENSIONS) return false;
+  let squaredNorm = 0;
+  for (const value of vector) {
+    const float = Math.fround(value);
+    if (!Number.isFinite(float)) return false;
+    squaredNorm = Math.fround(squaredNorm + Math.fround(float * float));
+    if (!Number.isFinite(squaredNorm)) return false;
+  }
+  return squaredNorm > 0;
+}
+
 /** Reciprocal Rank Fusion constant (Cormack et al.). */
 export const RRF_K = 60;
 

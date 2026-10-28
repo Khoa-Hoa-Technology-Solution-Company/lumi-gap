@@ -10,6 +10,7 @@ import { computeGapEvidence } from "../gap-evidence.js";
 import { gapsService } from "../gaps.service.js";
 import { vectorParameter } from "../../../infrastructure/database/postgres-paper-search.js";
 import { loadPaperEmbeddings } from "../gap-vector-queries.js";
+import { findOpenAlexCounterPapers } from "../gap-literature.js";
 
 // Embedding fails on purpose: the pipeline then retrieves by keyword, which is an existing path.
 vi.mock("../../embeddings/embedding.factory.js", () => ({ getEmbeddingProvider: vi.fn() }));
@@ -21,6 +22,8 @@ vi.mock("../gap-evidence.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../gap-evidence.js")>();
   return { ...actual, computeGapEvidence: vi.fn(actual.computeGapEvidence) };
 });
+// Never reach OpenAlex from tests: coverage, corpus enrichment and OpenAlex counter-evidence are stubbed.
+vi.mock("../gap-literature.js", () => ({ measureTopicCoverage: vi.fn().mockResolvedValue(null), enrichCorpusForTopic: vi.fn(), findOpenAlexCounterPapers: vi.fn().mockResolvedValue([]) }));
 // Never enqueue real jobs from tests: a running dev worker would call Gemini.
 vi.mock("../../../infrastructure/queue.js", () => ({ gapsQueue: { add: vi.fn().mockResolvedValue(undefined) } }));
 
@@ -267,14 +270,15 @@ describe.sequential("gap pipeline probe scope (PostgreSQL)", () => {
     expect(vi.mocked(computeGapEvidence).mock.calls.map(([input]) => input.probeCount)).toEqual([1]);
   });
 
-  it("links a corpus paper close to the gap's own text as possible counter-evidence, never a paper it read", async () => {
-    // A random direction: only the paper given this exact embedding is close to it.
+  it("links a corpus paper close to the gap that mentions both probe topics, not a generic look-alike or a paper it read", async () => {
+    // A random direction: only the papers given this exact embedding are close to it.
     const gapVector = Array.from({ length: 768 }, () => Math.random() - 0.5);
     const prisma = getPrisma();
-    // Its words do not match the topic, so keyword retrieval leaves it out of the evidence pack.
-    const answer = await prisma.paper.create({ data: { title: `Unrelated wording ${m}`, abstractText: "A study that already answers the question.", publicationYear: 2024, primaryProvider: "user", dataStatus: "active" } });
-    paperIds.push(answer.id);
-    await prisma.$executeRaw`UPDATE papers SET embedding = ${vectorParameter(gapVector)}::vector WHERE id = ${answer.id}::uuid`;
+    // Published before the analysis window, so retrieval leaves both out of the evidence pack; the counter search has no window.
+    const answer = await prisma.paper.create({ data: { title: `Earlier study ${m}`, abstractText: `We measured ${topicA} together with ${topicB} and report the effect.`, publicationYear: 2010, primaryProvider: "user", dataStatus: "active" } });
+    const generic = await prisma.paper.create({ data: { title: `A broad survey ${m}`, abstractText: "An overview of the whole field with no specific result.", publicationYear: 2010, primaryProvider: "user", dataStatus: "active" } });
+    paperIds.push(answer.id, generic.id);
+    for (const id of [answer.id, generic.id]) await prisma.$executeRaw`UPDATE papers SET embedding = ${vectorParameter(gapVector)}::vector WHERE id = ${id}::uuid`;
     expect((await loadPaperEmbeddings([answer.id])).get(answer.id)?.[0]).toBeCloseTo(gapVector[0]!, 5);
 
     const original = vi.mocked(getEmbeddingProvider).getMockImplementation();
@@ -283,7 +287,7 @@ describe.sequential("gap pipeline probe scope (PostgreSQL)", () => {
       embedBatch: async (texts: string[]) => texts.map(() => gapVector),
     } as unknown as ReturnType<typeof getEmbeddingProvider>);
     try {
-      const { done, gaps } = await runAnalysis({ evidenceMode: "hybrid" });
+      const { done, gaps } = await runAnalysis({ evidenceMode: "hybrid", yearFrom: 2021 });
 
       expect(done.status).toBe("ready");
       const links = await prisma.researchGapPaper.findMany({ where: { gapId: gaps[0]!.id } });
@@ -292,8 +296,60 @@ describe.sequential("gap pipeline probe scope (PostgreSQL)", () => {
       expect(evidence).not.toContain(answer.id);
     } finally {
       if (original) vi.mocked(getEmbeddingProvider).mockImplementation(original);
-      await prisma.$executeRaw`UPDATE papers SET embedding = NULL WHERE id = ${answer.id}::uuid`;
+      // Out of the active corpus again, so later tests' probe counts are not shifted by the answer paper's words.
+      await prisma.$executeRaw`UPDATE papers SET embedding = NULL, data_status = 'low-quality' WHERE id IN (${answer.id}::uuid, ${generic.id}::uuid)`;
     }
+  });
+
+  it("narrows or drops gaps with the self-check before saving, keeping the first version and the quote", async () => {
+    const prisma = getPrisma();
+    const quote = `This trial shows ${topicA} improves ${topicB} in practice.`;
+    const answer = await prisma.paper.create({ data: { title: `Prior trial ${m}`, abstractText: quote, publicationYear: 2010, primaryProvider: "user", dataStatus: "active" } });
+    paperIds.push(answer.id);
+    vi.mocked(findOpenAlexCounterPapers).mockResolvedValue([answer.id]);
+    vi.mocked(cachedGenerateJSON)
+      .mockResolvedValueOnce({ gaps: [
+        { title: `Answered gap ${m}`, description: "d", rationale: "r", supportingEvidence: [1], confidence: 0, probe: { topicA, topicB } },
+        { title: `Broad gap ${m}`, description: "d", rationale: "r", supportingEvidence: [1], confidence: 0, probe: { topicA, topicB } },
+      ] } as never)
+      .mockResolvedValueOnce({ decisions: [
+        { gap: 1, action: "drop", answeredBy: "C1", quote, reason: "The trial answers it." },
+        { gap: 2, action: "narrow", reason: "Covered for adults only.", title: `Narrow gap ${m}`, description: "Children were not studied.", suggestedResearchQuestion: `Does ${topicA} improve ${topicB} for children?`, questionFacets: { population: "children" } },
+      ] } as never);
+    try {
+      const { done, gaps } = await runAnalysis({ evidenceMode: "hybrid", yearFrom: 2021 });
+
+      expect(done.status).toBe("ready");
+      const dropped = gaps.find((row) => row.title === `Answered gap ${m}`)!;
+      expect(dropped.status).toBe("dismissed");
+      expect(dropped.refinement).toMatchObject({ action: "drop", answeredByPaperId: answer.id, quote });
+      const narrowed = gaps.find((row) => row.title === `Narrow gap ${m}`)!;
+      expect(narrowed.status).toBe("active");
+      expect(narrowed.suggestedResearchQuestion).toBe(`Does ${topicA} improve ${topicB} for children?`);
+      expect(narrowed.refinement).toMatchObject({ action: "narrow", original: { title: `Broad gap ${m}` } });
+    } finally {
+      vi.mocked(findOpenAlexCounterPapers).mockResolvedValue([]);
+      await prisma.paper.update({ where: { id: answer.id }, data: { dataStatus: "low-quality" } });
+      mockLlm();
+    }
+  });
+
+  it("saves the LLM's research question and PICOC facets, asks OpenAlex with that question and links what it finds", async () => {
+    const question = `Does ${topicA} improve ${topicB} outcomes compared with usual practice?`;
+    vi.mocked(cachedGenerateJSON).mockResolvedValueOnce({
+      gaps: [{ title: `Question gap ${m}`, description: "d", rationale: "r", supportingEvidence: [1], confidence: 0.5, probe: { topicA, topicB }, suggestedResearchQuestion: question, questionFacets: { intervention: topicA, outcome: `${topicB} outcomes`, population: "  ", extra: "dropped" } }],
+    } as never);
+    // An already-ingested OpenAlex work, as findOpenAlexCounterPapers returns it (internal id).
+    vi.mocked(findOpenAlexCounterPapers).mockResolvedValueOnce([paperIds[PAPER_COUNT - 1]!]);
+
+    const { done, gaps } = await runAnalysis({ evidenceMode: "hybrid" });
+
+    expect(done.status).toBe("ready");
+    expect(gaps[0]!.suggestedResearchQuestion).toBe(question);
+    expect(gaps[0]!.questionFacets).toEqual({ intervention: topicA, outcome: `${topicB} outcomes` });
+    expect(findOpenAlexCounterPapers).toHaveBeenLastCalledWith(question, expect.objectContaining({ topicA, topicB }), expect.any(Array));
+    const links = await getPrisma().researchGapPaper.findMany({ where: { gapId: gaps[0]!.id, kind: "possible_counter" } });
+    expect(links.map((link) => link.paperId)).toContain(paperIds[PAPER_COUNT - 1]);
   });
 
   it("counts a paper whose embedding is close to both topics when semantic matching is on, and records the threshold", async () => {

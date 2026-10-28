@@ -19,6 +19,7 @@ import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
+import { TrendContextCard } from "@/features/trends/components/trend-context-card";
 import {
   useGaps,
   useAnalyzeGap,
@@ -184,6 +185,10 @@ export function ResearchGapsPage() {
   // Sync with URL params
   const urlSource = searchParams.get("source") as GapSource | null;
   const urlTopic = searchParams.get("topic") || "";
+  const urlYear = (key: "yearFrom" | "yearTo") => {
+    const value = Number(searchParams.get(key));
+    return Number.isInteger(value) && value >= 1900 && value <= 2100 ? value : undefined;
+  };
 
   useEffect(() => {
     if (urlSource) {
@@ -359,7 +364,15 @@ export function ResearchGapsPage() {
         />
       )}
 
-      <GapAnalysisWorkflow isAnalyzing={isPending} onAnalyze={handleAnalyze} />
+      {urlTopic && <TrendContextCard topic={urlTopic} topicId={searchParams.get("topicId") ?? undefined} yearFrom={urlYear("yearFrom")} yearTo={urlYear("yearTo")} />}
+
+      <GapAnalysisWorkflow
+        isAnalyzing={isPending}
+        onAnalyze={handleAnalyze}
+        defaultTopic={urlTopic || undefined}
+        defaultYearFrom={urlYear("yearFrom")}
+        defaultYearTo={urlYear("yearTo")}
+      />
 
       {/* Unified Filters & Research Workflow Toolbar */}
       <div className="relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm transition-all duration-300 dark:border-slate-800 dark:bg-[#12161f] space-y-4">

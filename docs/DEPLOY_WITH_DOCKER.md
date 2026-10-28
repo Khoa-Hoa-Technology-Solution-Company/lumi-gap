@@ -23,6 +23,19 @@ Docker creates its own RS256 key pair in a persistent named volume.
 API/workers wait for successful migration, JWT initialization, and healthy Redis.
 Web waits for a healthy API; failed initializers block dependent services.
 
+When updating backend code, rebuild its image so `apps/backend/prisma/migrations`
+is updated along with the application and generated Prisma client. Copying only
+`dist` onto an old image can leave the database missing columns required by the
+new code. `prisma migrate status` compares the database with migration files
+inside the image, so an old image can report “up to date” while omitting newer
+repository migrations. Check status using the rebuilt image:
+
+```bash
+docker compose build backend
+docker compose run --rm --no-deps migrate
+docker compose run --rm --no-deps migrate pnpm --filter backend db:migrate:status
+```
+
 Open **http://localhost:8080**. Health: **http://localhost:4000/health**;
 readiness: **http://localhost:4000/ready**; docs: **http://localhost:4000/api-docs**.
 Host ports are `WEB_PORT`, `API_PORT`, `POSTGRES_HOST_PORT`, `REDIS_HOST_PORT`.

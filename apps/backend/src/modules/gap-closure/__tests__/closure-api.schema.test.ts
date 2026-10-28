@@ -108,6 +108,13 @@ describe("coverage and calibration bodies", () => {
     expect(CreateClosureCalibrationSchema.safeParse({ name: "Nursing 2026", domain: "nursing", judgeKind: "ROBOT" }).success).toBe(false);
   });
 
+  it("calibration mode defaults to TRANSFER and accepts IN_SITU", () => {
+    const body = { name: "Nursing 2026", domain: "nursing", judgeKind: "AI" };
+    expect(CreateClosureCalibrationSchema.parse(body).mode).toBe("TRANSFER");
+    expect(CreateClosureCalibrationSchema.parse({ ...body, mode: "IN_SITU" }).mode).toBe("IN_SITU");
+    expect(CreateClosureCalibrationSchema.safeParse({ ...body, mode: "CONFORMAL" }).success).toBe(false);
+  });
+
   it("calibration question normalizes the witness DOI and rejects invalid ones", () => {
     const body = { question: "Does intervention X improve outcome Y?", witnessDoi: "https://doi.org/10.1000/ABC", labelSource: "SURVEY" };
     expect(CreateCalibrationQuestionSchema.parse(body).witnessDoi).toBe("10.1000/abc");

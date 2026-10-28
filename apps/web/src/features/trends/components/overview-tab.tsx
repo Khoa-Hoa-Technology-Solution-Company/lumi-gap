@@ -1,4 +1,6 @@
 import React from "react";
+import type { TrendVerdict } from "@trend/shared-types";
+import { VERDICT_ORDER, VerdictCountButton } from "./verdict-filter";
 import { FileText, BookOpen, Sparkles, Calendar } from "lucide-react";
 import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid, ReferenceLine } from "recharts";
 import { Button } from "@/components/ui/button";
@@ -12,6 +14,7 @@ import { formatPercent, hasCitationTotals, hasPpTop10, WORLD_AVERAGE_PP_TOP10, t
 import { formatShiftCounts, isShiftSignificant } from "../trend-source";
 import { DataSourceBadge } from "./trend-data-source";
 import { TrendFigures, TrendHowLink, TrendIntro, TrendVerdictBadge, formatRelativeChange, verdictLabel } from "./trend-verdict-badge";
+import { buildTrendScopedUrl } from "../trend-navigation";
 import { DOCS_SECTIONS } from "@/features/docs";
 
 interface OverviewTabProps {
@@ -31,6 +34,8 @@ interface OverviewTabProps {
   getRisingKeywordTarget: (keyword: string) => string;
   setYearFrom?: (year: number) => void;
   setYearTo?: (year: number) => void;
+  /** Opens the list of the tested topics with this verdict. */
+  onSelectVerdict?: (verdict: TrendVerdict) => void;
   scopeParams?: {
     yearFrom: number;
     yearTo: number;
@@ -117,6 +122,7 @@ export function OverviewTab({
   getRisingKeywordTarget,
   setYearFrom,
   setYearTo,
+  onSelectVerdict,
   scopeParams,
 }: OverviewTabProps) {
   const { t } = useI18n();
@@ -152,37 +158,7 @@ export function OverviewTab({
     }
   };
 
-  const buildScopedUrl = (path: string, baseParams: Record<string, string>) => {
-    const params = new URLSearchParams(baseParams);
-
-    if (scopeParams) {
-      params.set("yearFrom", String(scopeParams.yearFrom));
-      params.set("yearTo", String(scopeParams.yearTo));
-
-      const addList = (key: string, values: string[]) => {
-        const cleaned = values.map((value) => value.trim()).filter(Boolean);
-        if (cleaned.length > 0) params.set(key, cleaned.join(","));
-      };
-
-      addList("domainIds", scopeParams.domainIds);
-      addList("domains", scopeParams.domains);
-      addList("fieldIds", scopeParams.fieldIds);
-      addList("fields", scopeParams.fields);
-      addList("subfieldIds", scopeParams.subfieldIds);
-      addList("subfields", scopeParams.subfields);
-      addList("topicIds", scopeParams.topicIds);
-      addList("topics", scopeParams.topicsFilter);
-      addList("topicsFilter", scopeParams.topicsFilter);
-      addList("paperKinds", scopeParams.paperKinds);
-      addList("openAccessStatuses", scopeParams.openAccessStatuses);
-      addList("providers", scopeParams.providers);
-      addList("sources", scopeParams.sources);
-      addList("languages", scopeParams.languages);
-      addList("citationBands", scopeParams.citationBands);
-    }
-
-    return `${path}?${params.toString()}`;
-  };
+  const buildScopedUrl = (path: string, baseParams: Record<string, string>) => buildTrendScopedUrl(path, baseParams, scopeParams);
 
   const getScopedSearchTarget = (query: string) => {
     return scopeParams
@@ -294,10 +270,13 @@ export function OverviewTab({
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <TrendVerdictSummaryCard
           topics={data.topics}
+          verdictCounts={data.verdictCounts}
+          testedTopicCount={data.testedTopicCount}
           topRisingTopic={topRisingTopic}
           source={data.dataSource}
           onOpenTrend={(topic) => navigate(getTopicTrendTarget(topic))}
           onCompare={() => setActiveTab("compare")}
+          onSelectVerdict={onSelectVerdict}
         />
         <InsightCard
           label="Supplementary: emerging keyword"
@@ -347,7 +326,7 @@ export function OverviewTab({
             <span className="w-1.5 h-1.5 rounded-full bg-slate-300 dark:bg-slate-700"></span>
             Topics shown: <span className="text-slate-900 dark:text-white font-extrabold">{formatNumber(data.topics?.length || 0)}</span>
             <span className="text-[10px] text-slate-400 font-medium">
-              of {formatNumber(data.uniqueTopicsInScope ?? data.topics?.length ?? 0)} unique topics
+              {t("of {{count}} topics tested", { count: formatNumber(data.testedTopicCount ?? data.topics?.length ?? 0) })}
             </span>
           </span>
           <span className="text-slate-300">·</span>
@@ -652,41 +631,58 @@ export function OverviewTab({
   );
 }
 
-const VERDICT_ORDER = ["rising", "stable", "declining", "insufficient"] as const;
-
-/** Counts of each verdict in the listed topics and the first rising topic, with the numbers behind it. */
+/** Counts of each verdict over every tested topic (not only the listed ones) and the first rising topic, with the numbers behind it. */
 function TrendVerdictSummaryCard({
   topics,
+  verdictCounts,
+  testedTopicCount,
   topRisingTopic,
   source,
   onOpenTrend,
   onCompare,
+  onSelectVerdict,
 }: {
   topics: TrendsOverview["topics"];
+  verdictCounts?: TrendsOverview["verdictCounts"];
+  testedTopicCount?: number;
   topRisingTopic: TrendTopicLike | null;
   source: TrendsOverview["dataSource"];
   onOpenTrend: (topic: string) => void;
   onCompare: () => void;
+  onSelectVerdict?: (verdict: TrendVerdict) => void;
 }) {
   const { t } = useI18n();
+  // An older backend sends no verdictCounts: fall back to the listed topics.
   const counts = VERDICT_ORDER.map((verdict) => ({
     verdict,
-    count: topics.filter((topic) => topic.classification.verdict === verdict).length,
+    count: verdictCounts?.[verdict] ?? topics.filter((topic) => topic.classification.verdict === verdict).length,
   }));
+  const tested = verdictCounts ? testedTopicCount ?? topics.length : topics.length;
   return (
     <div className="lg:col-span-2 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-[#121212]">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-[10px] font-extrabold uppercase tracking-widest text-blue-600 dark:text-blue-400">{t("Trend verdicts in this scope")}</p>
+        <div>
+          <p className="text-[10px] font-extrabold uppercase tracking-widest text-blue-600 dark:text-blue-400">{t("Trend verdicts in this scope")}</p>
+          <p className="mt-0.5 text-[11px] font-medium text-slate-500 dark:text-slate-400">{t("Among the {{count}} topics tested (the largest overall and per field)", { count: formatNumber(tested) })}</p>
+        </div>
         <TrendHowLink section={DOCS_SECTIONS.trendVerdict} anchor="rules" />
       </div>
-      <dl className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {counts.map(({ verdict, count }) => (
-          <div key={verdict} className="rounded-xl border border-slate-100 bg-slate-50/60 px-3 py-2 dark:border-slate-800 dark:bg-slate-900/30">
-            <dt className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">{verdictLabel(verdict, t)}</dt>
-            <dd className="text-xl font-black text-slate-900 dark:text-white">{formatNumber(count)}</dd>
-          </div>
-        ))}
-      </dl>
+      {onSelectVerdict ? (
+        <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {counts.map(({ verdict, count }) => (
+            <VerdictCountButton key={verdict} verdict={verdict} count={count} onSelect={onSelectVerdict} />
+          ))}
+        </div>
+      ) : (
+        <dl className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {counts.map(({ verdict, count }) => (
+            <div key={verdict} className="rounded-xl border border-slate-100 bg-slate-50/60 px-3 py-2 dark:border-slate-800 dark:bg-slate-900/30">
+              <dt className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">{verdictLabel(verdict, t)}</dt>
+              <dd className="text-xl font-black text-slate-900 dark:text-white">{formatNumber(count)}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
       <div className="mt-4 border-t border-slate-100 pt-4 dark:border-slate-800/60">
         {topRisingTopic?.classification ? (
           <div className="flex flex-wrap items-start justify-between gap-3">

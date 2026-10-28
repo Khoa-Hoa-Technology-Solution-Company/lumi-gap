@@ -17,6 +17,8 @@ const REQUEST_TIMEOUT_MS = 20_000;
 const MAX_RETRIES = 2;
 /** Leave this many daily credits to sync and ingest, which share the key. */
 const MIN_REMAINING_CREDITS = 1000;
+/** OpenAlex allows 10 requests per second per client; stay just under it. */
+const MIN_REQUEST_INTERVAL_MS = 110;
 
 export interface OpenAlexGroup {
   /** Short id: "2024", "T10028", "large-language-models". */
@@ -91,31 +93,66 @@ type GroupByResponse = {
 
 async function fetchJson(url: URL, attempt = 1): Promise<unknown> {
   try {
+    await waitForRequestSlot();
     const res = await fetch(url, {
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       headers: { Accept: "application/json" },
     });
-    trackBudget(res.headers);
+    // A 429 for going too fast also reports 0 remaining credits: only a
+    // successful response says how much of the daily budget is left.
+    if (res.ok) trackBudget(res.headers);
     if ((res.status === 429 || res.status >= 500) && attempt <= MAX_RETRIES) {
-      await new Promise((resolve) => setTimeout(resolve, 1000 * attempt));
+      const retryAfter = Number(res.headers.get("retry-after"));
+      await sleep(Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 1000 * attempt);
       return fetchJson(url, attempt + 1);
     }
     if (!res.ok) throw new Error(`OpenAlex ${res.status}`);
     return await res.json();
   } catch (err) {
     if (err instanceof OpenAlexBudgetError || attempt > MAX_RETRIES) throw err;
-    await new Promise((resolve) => setTimeout(resolve, 1000 * attempt));
+    await sleep(1000 * attempt);
     return fetchJson(url, attempt + 1);
   }
 }
 
-function trackBudget(headers: Headers): void {
-  const remaining = Number(headers.get("x-ratelimit-remaining"));
+let nextRequestAt = 0;
+
+/** Spaces request starts by MIN_REQUEST_INTERVAL_MS across the process. */
+async function waitForRequestSlot(): Promise<void> {
+  const now = Date.now();
+  const at = Math.max(now, nextRequestAt);
+  nextRequestAt = at + MIN_REQUEST_INTERVAL_MS;
+  if (at > now) await sleep(at - now);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export function trackBudget(headers: Headers): void {
+  // A missing header (e.g. on a 401) is unknown, not 0 credits left.
+  const remaining = numericHeader(headers, "x-ratelimit-remaining");
+  const limit = numericHeader(headers, "x-ratelimit-limit");
   const resetSeconds = Number(headers.get("x-ratelimit-reset"));
-  if (Number.isFinite(remaining) && remaining < MIN_REMAINING_CREDITS) {
+  // Without an API key the daily limit is 1000 credits: reserve a fifth of it,
+  // not the whole of it.
+  const reserve = limit !== null ? Math.min(MIN_REMAINING_CREDITS, Math.floor(limit / 5)) : MIN_REMAINING_CREDITS;
+  if (remaining !== null && remaining < reserve) {
     budgetExhaustedUntil = Date.now() + (Number.isFinite(resetSeconds) && resetSeconds > 0 ? resetSeconds * 1000 : 3600_000);
     logger.warn({ remaining, resetSeconds }, "openalex trend budget low; trends fall back to cache/local data");
   }
+}
+
+function numericHeader(headers: Headers, name: string): number | null {
+  const raw = headers.get(name);
+  if (raw === null || raw.trim() === "") return null;
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : null;
+}
+
+/** Test hook: clears a budget lock set by trackBudget. */
+export function resetOpenAlexBudget(): void {
+  budgetExhaustedUntil = 0;
 }
 
 /** "https://openalex.org/T10028" → "T10028"; "https://openalex.org/fields/17" → "17". */

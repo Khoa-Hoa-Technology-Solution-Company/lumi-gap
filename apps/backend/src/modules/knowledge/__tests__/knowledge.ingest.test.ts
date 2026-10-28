@@ -12,6 +12,8 @@ const mocks = vi.hoisted(() => {
   return { db, paper, document, source: vi.fn(), llm: vi.fn(), embedBatch: vi.fn() };
 });
 vi.mock("../../../infrastructure/database/prisma.js", () => ({ getPrisma: () => mocks.db }));
+// The partial env above has no LOG_LEVEL; the LLM routing modules import the logger.
+vi.mock("../../../infrastructure/logger.js", () => ({ logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn() } }));
 vi.mock("../../../config/env.js", () => ({ env: { RAG_CHUNK_CHARS: 2400, RAG_MAX_CHUNKS: 300, GEMINI_MODEL_FAST: "test", PAPER_ANALYSIS_MAX_OUTPUT_TOKENS: 4096 } }));
 vi.mock("../../embeddings/embedding.factory.js", () => ({ getEmbeddingProvider: () => ({ dimensions: 768, embedBatch: mocks.embedBatch }) }));
 vi.mock("../../llm/llm.run.js", () => ({ cachedGenerateJSON: mocks.llm }));
@@ -36,6 +38,14 @@ beforeEach(() => {
 });
 
 describe("paper ingestion lifecycle", () => {
+  it.each([0, 1e100, 1e30, 1e-30, Number.MIN_VALUE])("does not publish unusable cosine vectors (%s) or replace old chunks", async (value) => {
+    mocks.embedBatch.mockResolvedValue([[value, ...Array(767).fill(0)]]);
+    await expect(indexPaper(mocks.paper.id)).rejects.toThrow("Invalid passage embeddings");
+    expect(mocks.db.paperChunk.deleteMany).not.toHaveBeenCalled();
+    expect(mocks.db.$executeRaw).not.toHaveBeenCalled();
+    expect(mocks.db.paperDocument.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "failed" }) }));
+  });
+
   it("indexes pages, validates graph quotes and publishes an atomic ready result", async () => {
     await indexPaper(mocks.paper.id);
     expect(mocks.db.$executeRaw).toHaveBeenCalledOnce();

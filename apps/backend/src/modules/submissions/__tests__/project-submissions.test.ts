@@ -1,5 +1,5 @@
 import { beforeEach, expect, it, vi } from "vitest";
-const db = vi.hoisted(() => ({ user: { findFirst: vi.fn() }, project: { findFirst: vi.fn() }, projectMember: { findFirst: vi.fn() }, submission: { findMany: vi.fn(), findFirst: vi.fn() }, submissionAuthor: { findMany: vi.fn() } }));
+const db = vi.hoisted(() => ({ user: { findFirst: vi.fn() }, project: { findFirst: vi.fn(), findMany: vi.fn() }, projectMember: { findFirst: vi.fn(), findMany: vi.fn() }, submission: { findMany: vi.fn(), findFirst: vi.fn() }, submissionAuthor: { findMany: vi.fn() } }));
 const savePdf = vi.hoisted(() => vi.fn());
 vi.mock("../../../infrastructure/database/prisma.js", () => ({ getPrisma: () => db }));
 vi.mock("../../../infrastructure/pdf-storage.service.js", () => ({ pdfStorageService: { savePdf } }));
@@ -18,6 +18,8 @@ beforeEach(() => {
   db.user.findFirst.mockResolvedValue({ id: actor, isActive: true });
   db.project.findFirst.mockResolvedValue({ id: project, legacyMongoId: legacy, ownerId: actor, status: "ACTIVE" });
   db.projectMember.findFirst.mockResolvedValue(null);
+  db.projectMember.findMany.mockResolvedValue([]);
+  db.project.findMany.mockResolvedValue([{ id: project }]);
   db.submission.findMany.mockResolvedValue([]);
   db.submissionAuthor.findMany.mockResolvedValue([]);
 });
@@ -42,7 +44,7 @@ it("denies outsiders before reading submissions even for a public project", asyn
 it("retains author filtering for the personal submissions endpoint", async () => {
   await submissionService.listMine(actor, "student");
   expect(db.project.findFirst).not.toHaveBeenCalled();
-  expect(db.submission.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { OR: [{ createdById: actor }, { id: { in: [] } }] } }));
+  expect(db.submission.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { projectId: { in: [project] }, OR: [{ createdById: actor }, { id: { in: [] } }] } }));
 });
 it("rejects a detail belonging to another project before hydrating authors or revisions", async () => {
   db.submission.findFirst.mockResolvedValue({ id: actor, projectId: "another-project" });

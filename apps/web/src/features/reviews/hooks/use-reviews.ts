@@ -62,7 +62,7 @@ export function useReviewRequest(requestId?: string) { return useQuery({ queryKe
 export function useReviewerCandidates(query = "", scope: { reportId?: string; submissionId?: string } = {}) { return useQuery({ queryKey: ["review-reviewers", query, scope.reportId ?? null, scope.submissionId ?? null], queryFn: () => reviewsApi.reviewerCandidates(query || undefined, scope), staleTime: 30_000 }); }
 export function useCreateReviewRequest() {
   const client = useQueryClient();
-  return useMutation({ mutationFn: (input: CreateReviewRequestInput) => reviewsApi.createRequest(input), onSuccess: () => Promise.all([client.invalidateQueries({ queryKey: ["review-center"] }), client.invalidateQueries({ queryKey: ["reports"] })]) });
+  return useMutation({ mutationFn: (input: CreateReviewRequestInput) => reviewsApi.createRequest(input), onSuccess: () => Promise.all([client.invalidateQueries({ queryKey: ["review-center"] }), client.invalidateQueries({ queryKey: ["reports"] }), client.invalidateQueries({ queryKey: ["submissions"] }), client.invalidateQueries({ queryKey: ["review-opportunities"] })]) });
 }
 export function useReviewRequestAction() {
   const client = useQueryClient();
@@ -71,6 +71,8 @@ export function useReviewRequestAction() {
     client.invalidateQueries({ queryKey: ["review-center"] }),
     client.invalidateQueries({ queryKey: ["review-requests"] }),
     client.invalidateQueries({ queryKey: ["reports"] }),
+    client.invalidateQueries({ queryKey: ["submissions"] }),
+    client.invalidateQueries({ queryKey: ["review-opportunities"] }),
   ]);
   return {
     accept: useMutation({ mutationFn: reviewsApi.acceptRequest, onSuccess: refresh }),

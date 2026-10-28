@@ -8,13 +8,17 @@ import type { UseMutationResult, UseQueryResult } from "@tanstack/react-query";
 import { useTrendTopicCandidates } from "@/features/trends/hooks/use-trends";
 import type { TrendExplainInput, TrendsOverviewParams, TrendTopicCandidatesParams } from "@/features/trends/api/trends.api";
 import { formatNumber } from "@/utils";
+import { buildTrendScopedUrl } from "../trend-navigation";
 import { useI18n } from "@/i18n";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
 
 type CitationBandFilter = NonNullable<TrendsOverviewParams["citationBands"]>;
 
 interface AITabProps {
   data: TrendsOverview;
   activeFocusTopic: string;
+  /** OpenAlex id of the focus topic when known (opened from a topic page). */
+  activeFocusTopicId?: string;
   setFocusTopic: (topic: string) => void;
   relationshipsQuery: Pick<UseQueryResult<TopicRelationshipResponse, Error>, "data" | "isLoading" | "isError">;
   explainMutation: UseMutationResult<TrendExplanationResponse, Error, TrendExplainInput, unknown>;
@@ -35,22 +39,19 @@ interface AITabProps {
   sources: string[];
   languages: string[];
   citationBands: CitationBandFilter;
+  /** Overview threshold the reader is looking at; the explanation is grounded on the same topics. */
+  minPapers: number;
 }
 
-function useDebouncedValue<T>(value: T, delayMs: number): T {
-  const [debouncedValue, setDebouncedValue] = React.useState(value);
-
-  React.useEffect(() => {
-    const timer = window.setTimeout(() => setDebouncedValue(value), delayMs);
-    return () => window.clearTimeout(timer);
-  }, [value, delayMs]);
-
-  return debouncedValue;
+/** The backend answers LLM_UNAVAILABLE when the model is overloaded; retrying a little later usually works. */
+function isModelBusy(error: unknown): boolean {
+  return (error as { response?: { data?: { error?: { code?: string } } } } | null)?.response?.data?.error?.code === "LLM_UNAVAILABLE";
 }
 
 export function AITab({
   data,
   activeFocusTopic,
+  activeFocusTopicId,
   setFocusTopic,
   relationshipsQuery,
   explainMutation,
@@ -71,6 +72,7 @@ export function AITab({
   sources,
   languages,
   citationBands,
+  minPapers,
 }: AITabProps) {
   const navigate = useNavigate();
   const { t } = useI18n();
@@ -147,34 +149,7 @@ export function AITab({
     ].join("\n");
     await navigator.clipboard?.writeText(markdown);
   };
-  const buildScopedUrl = (path: string, baseParams: Record<string, string>) => {
-    const params = new URLSearchParams(baseParams);
-    params.set("yearFrom", String(yearFrom));
-    params.set("yearTo", String(yearTo));
-
-    const addList = (key: string, values: string[]) => {
-      const cleaned = values.map((value) => value.trim()).filter(Boolean);
-      if (cleaned.length > 0) params.set(key, cleaned.join(","));
-    };
-
-    addList("domainIds", domainIds);
-    addList("domains", domains);
-    addList("fieldIds", fieldIds);
-    addList("fields", fields);
-    addList("subfieldIds", subfieldIds);
-    addList("subfields", subfields);
-    addList("topicIds", topicIds);
-    addList("topics", topicsFilter);
-    addList("topicsFilter", topicsFilter);
-    addList("paperKinds", paperKinds);
-    addList("openAccessStatuses", openAccessStatuses);
-    addList("providers", providers);
-    addList("sources", sources);
-    addList("languages", languages);
-    addList("citationBands", citationBands);
-
-    return `${path}?${params.toString()}`;
-  };
+  const buildScopedUrl = (path: string, baseParams: Record<string, string>) => buildTrendScopedUrl(path, baseParams, { yearFrom, yearTo, domainIds, domains, fieldIds, fields, subfieldIds, subfields, topicIds, topicsFilter, paperKinds, openAccessStatuses, providers, sources, languages, citationBands });
 
   return (
     <div className="space-y-6">
@@ -373,6 +348,7 @@ export function AITab({
                 setSelectedHistoryExplanation(null);
                 explainMutation.mutate({
                   topic: activeFocusTopic,
+                  topicId: activeFocusTopicId,
                   yearFrom,
                   yearTo,
                   domains,
@@ -389,6 +365,7 @@ export function AITab({
                   sources,
                   languages,
                   citationBands,
+                  minPapers,
                   language: "en"
                 });
               }}
@@ -411,7 +388,8 @@ export function AITab({
         </div>
 
         {/* Cột Phải: AI "Why This Trend Matters" (7 columns) */}
-        <div className="lg:col-span-7 bg-white dark:bg-[#121212] border border-slate-200 dark:border-slate-800 rounded-xl p-6 shadow-sm flex flex-col min-h-[460px]">
+        {/* lg: h-0 + min-h-full pins the card to the row height set by the left column, so the body scrolls inside it */}
+        <div className="lg:col-span-7 bg-white dark:bg-[#121212] border border-slate-200 dark:border-slate-800 rounded-xl p-6 shadow-sm flex flex-col min-h-[460px] lg:h-0 lg:min-h-full">
           <div className="border-b border-slate-100 dark:border-slate-800/50 pb-4 mb-4 select-none">
             <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
               <Cpu className="w-5 h-5 text-blue-600" />
@@ -420,7 +398,7 @@ export function AITab({
             <p className="text-xs text-slate-500 mt-1">Get an instant AI overview on why the selected focus topic is trending.</p>
           </div>
 
-          <div className="flex-1 overflow-y-auto max-h-[480px] pr-1 space-y-4">
+          <div className="flex-1 min-h-0 overflow-y-auto max-h-[480px] lg:max-h-none pr-1 space-y-4">
             {explainMutation.isPending ? (
               <div className="space-y-4">
                 <Skeleton className="h-4 w-32" />
@@ -430,7 +408,9 @@ export function AITab({
               </div>
             ) : explainMutation.isError ? (
               <div className="p-4 bg-red-50 dark:bg-red-950/20 border border-red-200/50 dark:border-red-900/30 rounded-xl text-xs font-semibold text-red-600 leading-relaxed select-text">
-                AI explanation failed. You can still inspect the charts and facets.
+                {isModelBusy(explainMutation.error)
+                  ? "The AI model is busy right now. Please try again in a minute. You can still inspect the charts and facets."
+                  : "AI explanation failed. You can still inspect the charts and facets."}
               </div>
             ) : currentExplanation ? (
               <div className="space-y-4 text-xs leading-relaxed select-text">

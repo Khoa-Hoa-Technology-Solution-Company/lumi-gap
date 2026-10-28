@@ -22,7 +22,7 @@ describe.sequential("forum report decisions, restrictions and appeals", () => {
     const users = await Promise.all(["admin", "reviewer", "moderator", "author", "reporter", "outsider"].map((name) => prisma.user.create({ data: { fullName: name, email: "moderation-" + name + "-" + marker + "@example.test", ...(name === "admin" || name === "reviewer" ? { role: "admin", systemRole: "ADMIN" } : {}) } })));
     userIds = users.map((user) => user.id);
     [admin, reviewer, moderator, author, reporter, outsider] = userIds;
-    const communities = await Promise.all(["source", "destination"].map((name) => prisma.community.create({ data: { name: "Moderation " + name, slug: "moderation-" + name + "-" + marker, ownerId: moderator, isForumCategory: true } })));
+    const communities = await Promise.all(["source", "destination"].map((name) => prisma.community.create({ data: { name: "Moderation " + name + " " + marker, slug: "moderation-" + name + "-" + marker, ownerId: moderator, isForumCategory: true } })));
     [community, destination] = communities.map((row) => row.id);
     await prisma.communityMembership.createMany({ data: [community, destination].flatMap((communityId) => [moderator, author, reporter].map((userId) => ({ communityId, userId, status: "active", role: userId === moderator ? "owner" : "member" }))) });
   });
