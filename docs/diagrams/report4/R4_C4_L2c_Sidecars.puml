@@ -1,0 +1,29 @@
+@startuml R4_C4_L2c_Sidecars
+!pragma layout smetana
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam wrapWidth 260
+skinparam rectangle {
+  roundCorner 12
+}
+title Container diagram (C4 level 2c): sidecar services
+rectangle "LumiGap [Software System]" as N0 #line.dashed {
+  rectangle "Express API\n[Node 22, Express 5]\npre-review, format check; manuscript compile" as N1
+  rectangle "BullMQ workers\n[ai-jobs, manuscript-compile]\nai-jobs: submission pre-review; manuscript-compile and PDF import: LaTeX" as N2
+  rectangle "ai-reviewer\n[Python 3.12, FastAPI, port 8001]\nInternal API (X-Internal-Key): pre-review, format check, PDF to text / LaTeX" as N3
+  rectangle "LaTeX compiler «optional»\n[Python, sandbox.c, port 8020]\napps/backend/compiler; compose overlay, isolated network, read-only" as N4
+  database "SQLite\n[review_agent.db]\nReviews, accounts, storage records" as N5
+}
+N1 --> N3 : "pre-review,\nformat check\n[HTTP, X-Internal-Key]"
+N2 --> N3 : "pre-review\n[HTTP]"
+N2 --> N4 : "compile\n[HTTP]"
+N1 --> N4 : "availability,\ncompile\n[HTTP]"
+N3 --> N5 : "reads / writes\n[sqlite3]"
+legend bottom
+Legend
+API / services
+Workers
+Data store
+API and workers are the containers of diagram L2a; shown here only with their sidecar calls.
+endlegend
+@enduml

@@ -1,0 +1,31 @@
+@startuml R4_Package_Backend
+!pragma layout smetana
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam wrapWidth 260
+skinparam rectangle {
+  roundCorner 12
+}
+title UML package diagram: backend (apps/backend/src)
+package "workers\nreport, gaps, ai-jobs, embedding, paper-analysis, notification, corpus-validation, community-summary, manuscript-compile, sync, openalex-ingest (11 entry files)" as N0
+rectangle "modules (39 folders, grouped by bounded context)" as N1 #line.dashed {
+  package "Submission and review\nsubmissions\nreviews" as N2
+  package "Collaboration\nprojects, workspaces, recruitment, communities, forum" as N3
+  package "AI and analysis\nllm, mcp, reports, gaps, gap-closure, quality, ai-jobs" as N4
+  package "Scholarly corpus\npapers, search, retrieval, embeddings, knowledge, scoring, literature, api-sync, trends, bookmarks" as N5
+  package "Platform services\nIdentity and access: auth, academic-profiles, identity, verification, authorization, user-ai, github\nOperations: credits, notifications, admin, pipeline, evaluation, analytics, audit, home" as N6
+}
+package "Core and cross-cutting\nconfig, common (middleware, exceptions, validation), infrastructure (database, queue, redis, cache, storage, logger), generated Prisma client" as N7
+N0 ..> N1 : "«use»"
+N1 ..> N7 : "«use» (every module)"
+N2 <..> N3 : "2 / 1"
+N3 <..> N4 : "6 / 2"
+N4 <..> N5 : "18 / 6"
+N2 ..> N6 : "«use»"
+N3 ..> N6
+N4 ..> N6
+N5 ..> N6
+legend bottom
+Pair labels: distinct module-to-module import pairs per direction (left to right / right to left), non-test sources, origin/main. Also: Collaboration to Corpus 5 pairs, Submission to Corpus 3 pairs. Cycles exist (AI and corpus import each other; platform modules import back into upper packages). Green = API modules, orange = workers, grey = shared core.
+endlegend
+@enduml

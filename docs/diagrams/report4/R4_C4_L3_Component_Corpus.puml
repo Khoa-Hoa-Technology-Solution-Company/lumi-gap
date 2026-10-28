@@ -1,0 +1,45 @@
+@startuml R4_C4_L3_Component_Corpus
+!pragma layout smetana
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam wrapWidth 260
+skinparam rectangle {
+  roundCorner 12
+}
+title Component diagram (C4 level 3a): API, scholarly corpus and retrieval
+rectangle "Feature modules" as N0 {
+  rectangle "papers\nPaper CRUD, upload, compare, AI review" as N1
+  rectangle "search\nKeyword / semantic search, rerank" as N2
+  rectangle "trends\nPublication trends, OpenAlex overview" as N3
+  rectangle "bookmarks\nPaper and report bookmarks" as N4
+  rectangle "literature\nLiterature corpora" as N5
+}
+rectangle "Retrieval services" as N6 {
+  rectangle "retrieval\nHybrid retriever over papers and chunks" as N7
+  rectangle "knowledge\nRAG documents, chunks, PDF text" as N8
+  rectangle "scoring\nPaper scoring" as N9
+}
+rectangle "LLM, embedding, sync" as N10 {
+  rectangle "llm\nGemini / Ollama clients, Redis cache" as N11
+  rectangle "user-ai\nPersonal AI connections, encrypted keys" as N12
+  rectangle "embeddings\nEmbedding provider, vector writes" as N13
+  rectangle "api-sync\nOpenAlex sync and bulk ingest" as N14
+}
+rectangle "Other contexts\n[credits, notifications, projects]\ncharge, notify" as N15
+rectangle "LLM providers\n[HTTPS]\nGemini; optional Ollama" as N16
+database "PostgreSQL + pgvector\n[Prisma]\nvectors, all tables" as N17
+rectangle "OpenAlex\n[HTTPS]\napi.openalex.org" as N18
+N0 --> N6 : "uses"
+N6 --> N10 : "uses"
+N0 --> N15 : "uses"
+N11 --> N16 : "prompts\n[HTTPS]"
+N13 --> N17 : "vectors\n[Prisma]"
+N14 --> N18 : "sync\n[HTTPS]"
+legend bottom
+Legend
+Module (component)
+Data store
+External system
+Arrows summarise module imports (non-test sources, origin/main); papers also calls ai-reviewer.
+endlegend
+@enduml

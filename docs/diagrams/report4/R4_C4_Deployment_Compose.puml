@@ -1,0 +1,30 @@
+@startuml R4_C4_Deployment_Compose
+!pragma layout smetana
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam wrapWidth 260
+skinparam rectangle {
+  roundCorner 12
+}
+title Deployment diagram (C4): Docker Compose stack (docker-compose.yml)
+rectangle "Deployment node: Docker host, project 'lumi-gap'" as N0 {
+  rectangle "web\n[nginx:1.27-alpine]\nhost 8080 to 80; proxies /api/v1 to backend:4000" as N1
+  rectangle "backend\n[lumigap-backend:local]\nNode 22, port 4000; healthcheck /health" as N2
+  rectangle "ai-reviewer\n[lumigap-ai-reviewer:local]\nPython 3.12, port 8001, volume ai-reviewer-data" as N3
+  database "postgres\n[pgvector/pgvector:0.8.1-pg16]\n127.0.0.1:5433 to 5432, volume postgres-data" as N4
+  database "redis\n[redis:7-alpine]\n127.0.0.1:6379, AOF, volume redis-data" as N5
+  rectangle "worker-* (10 services)\n[same image as backend]\nsync, report, gaps, ai-jobs, embedding, paper-analysis, notifications, corpus-validation, community-summary, openalex-ingest (profile)" as N6
+  rectangle "libretranslate «optional»\n[libretranslate:v1.9.6]\nprofile 'translation'; 127.0.0.1:5000" as N7
+  rectangle "jwt-keys, migrate, seed\n[one-shot containers]\nkeys, db migrate; seed only with profile 'seed'" as N8
+  rectangle "manuscript-compiler «optional»\n[lumigap-tex:2022 / 2025, port 8020]\noverlay apps/backend/compiler/compose.yml" as N9
+}
+N1 --> N2 : "proxy\n[HTTP]"
+N2 --> N3 : "internal\n[HTTP]"
+N2 --> N5 : "queues\n[Redis]"
+N2 --> N4 : "SQL\n[Prisma]"
+N6 --> N5 : "jobs\n[BullMQ]"
+legend bottom
+Named volumes: jwt-keys, postgres-data, redis-data, libretranslate-share, libretranslate-cache, backend-uploads, ai-reviewer-data, shared-storage-uploads, shared-storage-outputs.
+All workers run the backend image with another command.
+endlegend
+@enduml

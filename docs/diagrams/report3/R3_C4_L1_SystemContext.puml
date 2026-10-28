@@ -1,0 +1,41 @@
+@startuml R3_C4_L1_SystemContext
+!pragma layout smetana
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam wrapWidth 260
+skinparam rectangle {
+  roundCorner 12
+}
+title System Context (C4 level 1): LumiGap
+actor "Guest\n[Person]\nNo token: public search, trends, forum" as N0
+actor "Researcher / Student\n[Person]\nToken role user; profile student or researcher" as N1
+actor "Lecturer / Reviewer\n[Person]\nToken role user; profile lecturer" as N2
+actor "Administrator\n[Person]\nToken role admin" as N3
+rectangle "LumiGap\n[Software system]\nResearch-support platform:\npaper search and trends, AI research-gap analysis and reports, projects with a collaborative manuscript editor, submissions and peer review, forum and communities, credit ledger" as N4
+rectangle "Google OAuth / OIDC\n[External system]\nSign-in" as N5
+rectangle "SMTP server\n[External system]\nE-mail" as N6
+rectangle "GitHub «optional»\n[External system]\nManuscript repository" as N7
+rectangle "LibreTranslate «optional»\n[External system]\nAbstract translation" as N8
+rectangle "R2 / Cloudinary «optional»\n[External system]\nObject storage" as N9
+rectangle "OpenAlex\n[External system]\nScholarly metadata" as N10
+rectangle "LLM providers\n[External system]\nGemini; optional Ollama, user-supplied" as N11
+rectangle "PayOS\n[External system]\nVND top-up" as N12
+N0 --> N4 : "browse\n[HTTPS]"
+N1 --> N4 : "research,\nbuy credits\n[HTTPS]"
+N2 --> N4 : "mentor,\nreview\n[HTTPS]"
+N3 --> N4 : "administer\n[HTTPS]"
+N4 --> N5 : "sign-in\n[OIDC]"
+N4 --> N6 : "e-mail\n[SMTP]"
+N4 --> N7 : "sync\n[HTTPS]"
+N4 --> N8 : "translate\n[HTTP]"
+N4 --> N9 : "files\n[S3 API]"
+N4 --> N10 : "metadata\n[HTTPS]"
+N4 --> N11 : "prompts\n[HTTPS]"
+N4 <--> N12 : "payment\n[HTTPS]"
+legend bottom
+Legend
+Person
+System in scope
+External system
+endlegend
+@enduml

@@ -1,0 +1,36 @@
+@startuml R3_ScreenFlow_3b_Submissions_Review
+!pragma layout smetana
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam wrapWidth 260
+skinparam rectangle {
+  roundCorner 12
+}
+rectangle "Header - Workspace menu" as N0 {
+  rectangle "Review center\n/reviews" as N1
+  rectangle "Review templates\n/review-templates" as N2
+  rectangle "Academic support\n/academic-support" as N3
+}
+rectangle "Review request\n/​review-requests/​:requestId" as N4
+rectangle "Template builder\n/​review-templates/​new, /​:id/​edit" as N5
+rectangle "Public academic profile\n/academics/:userId" as N6
+rectangle "Review workspace\n/reviews/:assignmentId" as N7
+rectangle "Submission detail\n/submissions/:id" as N8
+rectangle "Manuscript editor\n/​projects/​:projectId/​manuscripts/​:id" as N9
+rectangle "Submissions tab\n/​projects/​:id?tab=submissions" as N10
+rectangle "Review opportunities\n/review-opportunities" as N11
+N1 <--> N4 : "request item"
+N4 --> N7 : "assignment"
+N7 --> N9 : "open manuscript"
+N4 --> N8 : "open submission"
+N2 <--> N5 : "new / edit"
+N3 --> N6 : "mentor profile"
+N1 --> N2 : "templates"
+N10 <--> N8 : "open"
+legend bottom
+Screen flow 3(b) - Submissions, peer review and academic support
+Screen (web client route)
+Frame = group of screens opened from one header menu / layout
+Dashed grey = screen drawn in another diagram, or route with no in-app link found
+endlegend
+@enduml

@@ -10,8 +10,9 @@ Canonical sources of the diagrams used in the capstone reports, drawn from the c
 | `report4/` | Report 4 – SDD | C4 container / component / deployment views, package diagrams, physical ERDs, state machines, class / sequence / activity diagrams for WF-01..WF-05 |
 
 Source formats:
-- `.puml` — PlantUML (UML diagrams and ERDs): `java -jar plantuml.jar -tsvg <file>.puml`
-- `.drawio` — draw.io (C4 views, package diagrams, screen flows): open in draw.io, or `draw.io -x -f svg -o <file>.svg <file>.drawio`
+- `.puml` — PlantUML source. **Every diagram has one** (`java -jar plantuml.jar -tsvg <file>.puml`).
+- `.drawio` — draw.io layout used for the figures in the reports (C4 views, package, state, class diagrams, screen flows, some ERDs): open in draw.io, or `draw.io -x -f svg -o <file>.svg <file>.drawio`. The `.puml` of the same name holds the same elements, relationships and labels; only the layout differs.
 - `.uc.json` + `.puml` — use cases (the `.puml` is the canonical UML source; the image was laid out from the `.uc.json`)
+- `.svg` — rendered figure as used in the report.
 
 Update a diagram whenever the related code (schema, status values, routes, services) changes. ERDs follow the foreign keys of the SQL migrations in `apps/backend/prisma/migrations`.

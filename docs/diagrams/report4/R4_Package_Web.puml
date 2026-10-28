@@ -1,0 +1,30 @@
+@startuml R4_Package_Web
+!pragma layout smetana
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam wrapWidth 260
+skinparam rectangle {
+  roundCorner 12
+}
+title UML package diagram: web client (apps/web/src)
+package "Application shell\nmain.tsx, App.tsx" as N0
+package "routes\napp-routes.tsx (lazy-loaded pages)" as N1
+package "layouts\nMainLayout, AdminLayout" as N2
+package "pages\nroute components" as N3
+package "features\nacademic-profile, admin, analytics, auth, bookmarks, compare, contributions, credits, docs, forum, gap-closure, gaps, home, literature, manuscripts, notifications, papers, projects, reports, reviews, search, submissions, trends, user-ai" as N4
+package "components\nshared UI (shadcn-style)" as N5
+package "Foundation\nservices (api-client, query-client), stores (Zustand), hooks, utils, constants, i18n, theme" as N6
+package "@trend/shared-types\npackages/shared-types" as N7
+rectangle "Backend API\n[HTTP /api/v1]\ncalled by services/api-client (axios)" as N8
+N0 ..> N1 : "«use»"
+N1 ..> N2 : "«use»"
+N1 ..> N3 : "«use»"
+N3 <..> N4 : "252 / 7"
+N4 <..> N5 : "293 / 5"
+N5 ..> N6 : "«use» (all layers)"
+N4 ..> N7 : "217 files"
+N6 --> N8 : "axios"
+legend bottom
+Pair labels: import statements per direction (non-test, origin/main). Pages and features also import Foundation directly; pages import components (190); layouts import components (8) and features (6). Blue = web, grey = shared / external.
+endlegend
+@enduml

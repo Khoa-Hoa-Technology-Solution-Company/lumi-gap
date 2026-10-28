@@ -1,0 +1,42 @@
+@startuml R3_ScreenFlow_1b_Auth
+!pragma layout smetana
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam wrapWidth 260
+skinparam rectangle {
+  roundCorner 12
+}
+rectangle "Authentication screens (AuthLayout)" as N0 {
+  rectangle "Register\n/register" as N2
+  rectangle "Login\n/login" as N3
+  rectangle "OAuth callback\n/auth/oauth-callback" as N4
+  rectangle "Forgot password\n/forgot-password" as N5
+  rectangle "Reset password\n/reset-password" as N6
+}
+rectangle "Project invitation\n/invitations/:token" as N1
+rectangle "Admin home\n/admin" as N7
+rectangle "Post-sign-in redirect rule\nresolvePostAuthPath" as N8
+rectangle "Verify email\n/verify-email" as N9
+rectangle "Academic onboarding\n/​onboarding/​academic-profile" as N10
+rectangle "Home\n/home" as N11
+N1 --> N2 : "create account"
+N1 --> N3 : "sign in"
+N2 <--> N3 : "or"
+N3 --> N4 : "Google"
+N3 --> N5 : "forgot"
+N5 --> N6 : "e-mail link"
+N0 --> N8 : "sign-in succeeds"
+N8 --> N7 : "admin"
+N8 --> N9 : "e-mail not verified"
+N8 --> N10 : "profile incomplete"
+N8 --> N11 : "member"
+N9 --> N10 : "profile needed"
+N10 --> N11 : "saved"
+legend bottom
+Screen flow 1(b) - Sign-in, registration and onboarding
+Screen (web client route)
+Redirect rule applied after every successful sign-in (resolvePostAuthPath)
+Frame = group of screens opened from one header menu / layout
+Dashed grey = screen drawn in another diagram, or route with no in-app link found
+endlegend
+@enduml

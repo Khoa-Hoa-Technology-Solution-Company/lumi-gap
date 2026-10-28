@@ -1,0 +1,38 @@
+@startuml R3_ScreenFlow_2b_Projects
+!pragma layout smetana
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam wrapWidth 260
+skinparam rectangle {
+  roundCorner 12
+}
+rectangle "Header - Workspace menu" as N0 {
+  rectangle "Projects\n/projects" as N2
+}
+rectangle "Project invitation\n/invitations/:token" as N1
+rectangle "Plan review\n/​projects/​:id/​plan-review" as N3
+rectangle "Project detail\n/projects/:id?tab=..." as N4
+rectangle "Manuscript editor\n/​projects/​:projectId/​manuscripts/​:id" as N5
+rectangle "Research gaps\n/research-gaps" as N6
+rectangle "Report viewer\n/reports/:id" as N7
+rectangle "Submissions tab\n/​projects/​:id?tab=submissions" as N8
+rectangle "Allocation review\n/​projects/​:id/​allocation" as N9
+rectangle "Notification menu\nheader bell" as N10
+rectangle "Contribution review\n/​projects/​:id/​contribution-review" as N11
+N1 --> N2 : "go to projects"
+N1 --> N4 : "already a member"
+N2 --> N4 : "open project"
+N4 --> N3 : "shared plan"
+N4 <--> N5 : "open manuscript"
+N4 --> N6 : "from AI chat"
+N4 --> N7 : "open report"
+N4 --> N8 : "submissions tab"
+N10 --> N9 : "allocation"
+N10 --> N11 : "contribution"
+legend bottom
+Screen flow 2(b) - Research projects and collaboration
+Screen (web client route)
+Frame = group of screens opened from one header menu / layout
+Dashed grey = screen drawn in another diagram, or route with no in-app link found
+endlegend
+@enduml

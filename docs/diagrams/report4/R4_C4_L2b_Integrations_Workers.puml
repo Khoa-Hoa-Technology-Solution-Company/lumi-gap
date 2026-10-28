@@ -1,0 +1,27 @@
+@startuml R4_C4_L2b_Integrations_Workers
+!pragma layout smetana
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam wrapWidth 260
+skinparam rectangle {
+  roundCorner 12
+}
+title Container diagram (C4 level 2b-2): external integrations of workers and ai-reviewer
+rectangle "SMTP server\n[External system]\nnotification e-mail" as N0
+rectangle "LumiGap [Software System]" as N1 #line.dashed {
+  rectangle "BullMQ workers\n[src/workers]\nnotification, sync, openalex-ingest, embedding, report, gaps, ai-jobs ..." as N2
+  rectangle "ai-reviewer\n[Python FastAPI]\nits own LLM calls (gemini | openai)" as N3
+}
+rectangle "OpenAlex\n[External system]\nsync and bulk ingest" as N4
+rectangle "LLM providers\n[External system]\nGemini (generation, embeddings); optional Ollama, user-supplied endpoint" as N5
+N2 --> N0 : "e-mail\n[SMTP]"
+N2 --> N4 : "sync, ingest\n[HTTPS]"
+N2 --> N5 : "prompts,\nembeddings\n[HTTPS]"
+N3 --> N5 : "prompts\n[HTTPS]"
+legend bottom
+Legend
+Workers
+Service container
+External system
+endlegend
+@enduml

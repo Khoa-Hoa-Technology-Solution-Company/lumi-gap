@@ -1,0 +1,32 @@
+@startuml R3_ScreenFlow_1c_Account
+!pragma layout smetana
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam wrapWidth 260
+skinparam rectangle {
+  roundCorner 12
+}
+rectangle "Header - user menu" as N0 {
+  rectangle "Profile\n/profile" as N2
+  rectangle "Account settings\n/settings/:section" as N3
+  rectangle "Bookmarks\n/bookmarks" as N4
+  rectangle "Rankings\n/rankings" as N5
+  rectangle "Admin home\n/admin" as N6
+}
+rectangle "Header - notification bell" as N1 {
+  rectangle "Notifications\n/notifications" as N8
+}
+rectangle "Lecturer verification\n/​settings/​verification/​lecturer" as N7
+rectangle "Target of the notification\ndepends on type (see 2b, 3b, 4)" as N9
+rectangle "Paper detail / Report viewer\n/​papers/​:id, /​reports/​:id" as N10
+N2 --> N3 : "Settings"
+N3 --> N7 : "lecturer"
+N4 --> N10 : "open item"
+N8 --> N9 : "open notification"
+legend bottom
+Screen flow 1(c) - Account area, notifications and bookmarks
+Screen (web client route)
+Frame = group of screens opened from one header menu / layout
+Dashed grey = screen drawn in another diagram, or route with no in-app link found
+endlegend
+@enduml
