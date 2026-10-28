@@ -147,6 +147,8 @@ export type TrendRelationshipQuery = z.infer<typeof TrendRelationshipQuerySchema
 export const TrendExplainBodySchema = z
   .object({
     topic: z.string().trim().min(1).max(200).optional(),
+    /** Exact OpenAlex topic of `topic`; without it the topic is resolved by name. */
+    topicId: z.string().trim().min(1).max(80).optional(),
     yearFrom: z.coerce.number().int().min(1900).max(2100).optional(),
     yearTo: z.coerce.number().int().min(1900).max(2100).optional(),
     language: z.enum(["en", "vi"]).default("en"),

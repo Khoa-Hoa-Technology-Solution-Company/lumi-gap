@@ -30,6 +30,11 @@ describe("trends page URL", () => {
     expect(params.get("yearFrom")).toBe("2018");
   });
 
+  it("keeps the focus topic's OpenAlex id only while that topic is focused", () => {
+    expect(build({ activeTab: "ai", focusTopic: "Topic Modeling", focusTopicId: "T10028" })).toBe("tab=ai&focus=Topic+Modeling&focusTopicId=T10028");
+    expect(build({ activeTab: "ai", focusTopic: "", focusTopicId: "T10028" })).toBe("tab=ai");
+  });
+
   it("leaves out an empty focus topic", () => {
     expect(build({ activeTab: "ai", focusTopic: "  " })).toBe("tab=ai");
   });

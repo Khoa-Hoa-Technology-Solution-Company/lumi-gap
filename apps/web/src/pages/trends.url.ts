@@ -13,6 +13,8 @@ export interface TrendsPageUrlState {
   verdictFilter: string;
   /** Topic chosen for the AI tab (`?focus=`); empty when the page picks one itself. */
   focusTopic: string;
+  /** OpenAlex id of the focus topic (`?focusTopicId=`), kept only while that topic is focused. */
+  focusTopicId?: string;
   domains: string[];
   fields: string[];
   subfields: string[];
@@ -47,6 +49,8 @@ export function buildTrendsPageParams(state: TrendsPageUrlState): URLSearchParam
   if (state.activeTab === "topics" && state.verdictFilter !== "all") params.set("verdict", state.verdictFilter);
   const focus = state.focusTopic.trim();
   if (focus) params.set("focus", focus);
+  const focusTopicId = state.focusTopicId?.trim();
+  if (focus && focusTopicId) params.set("focusTopicId", focusTopicId);
   for (const key of LIST_KEYS) if (state[key].length > 0) params.set(key, state[key].join(","));
   if (state.selectedTopics.length > 0) params.set("compare", state.selectedTopics.join(","));
   return params;

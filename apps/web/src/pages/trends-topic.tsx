@@ -27,9 +27,8 @@ export function TopicDetailPage() {
   const topicId = searchParams.get("topicId") ?? undefined;
   const yearFrom = yearParam(searchParams, "yearFrom");
   const yearTo = yearParam(searchParams, "yearTo");
-  const targets = getTopicActionTargets(decodedTopic, { yearFrom, yearTo });
-
   const { data, isLoading, isError } = useTopicTrend(decodedTopic, topicId || yearFrom || yearTo ? { topicId, yearFrom, yearTo } : undefined);
+  const targets = getTopicActionTargets(decodedTopic, { yearFrom, yearTo }, topicId ?? data?.taxonomy?.openalexTopicId);
 
   // Chart 1: Publication breakdown
   const pubChartData = useMemo(() => {

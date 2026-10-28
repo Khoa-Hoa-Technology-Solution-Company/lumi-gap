@@ -65,10 +65,16 @@ export const trendFollowService = {
     if (await prisma.trendTopicFollow.findUnique({ where: { userId_topicKey: { userId: id, topicKey: key } }, select: { id: true } })) throw AppError.conflict("Topic is already followed");
     // The verdict at follow time is the baseline the daily check compares against.
     const baseline = await currentVerdict(input.topic, input.openalexTopicId);
-    const row = await prisma.trendTopicFollow.create({
-      data: { userId: id, topic: input.topic.trim(), topicKey: key, openalexTopicId: input.openalexTopicId ?? null, note: input.note?.trim() || null, lastVerdict: baseline?.verdict ?? null, lastDataSource: baseline?.dataSource ?? null, lastCheckedAt: baseline ? new Date() : null },
-    });
-    return toDto(row);
+    try {
+      const row = await prisma.trendTopicFollow.create({
+        data: { userId: id, topic: input.topic.trim(), topicKey: key, openalexTopicId: input.openalexTopicId ?? null, note: input.note?.trim() || null, lastVerdict: baseline?.verdict ?? null, lastDataSource: baseline?.dataSource ?? null, lastCheckedAt: baseline ? new Date() : null },
+      });
+      return toDto(row);
+    } catch (error) {
+      // A concurrent request (another tab or device) followed the topic while the baseline was being computed.
+      if ((error as { code?: string }).code === "P2002") throw AppError.conflict("Topic is already followed");
+      throw error;
+    }
   },
 
   async remove(userId: string, followId: string): Promise<void> {

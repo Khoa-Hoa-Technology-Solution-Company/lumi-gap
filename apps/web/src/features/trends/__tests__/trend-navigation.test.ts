@@ -28,6 +28,13 @@ describe("trends navigation", () => {
     expect(targets.report).toBe("/reports?topic=graph+learning&create=true&yearFrom=2018&yearTo=2024");
   });
 
+  it("carries the OpenAlex topic id into gap analysis and the AI explanation", () => {
+    const targets = getTopicActionTargets("graph learning", { yearFrom: 2018 }, "T10012");
+    expect(targets.gaps).toBe("/research-gaps?topic=graph+learning&topicId=T10012&yearFrom=2018");
+    expect(targets.explain).toBe("/trends?tab=ai&focus=graph+learning&focusTopicId=T10012&yearFrom=2018");
+    expect(targets.search).toBe("/home?q=graph+learning&yearFrom=2018");
+  });
+
   it("omits the window when the detail page was opened without one", () => {
     expect(getTopicActionTargets("nlp").trends).toBe("/trends");
   });

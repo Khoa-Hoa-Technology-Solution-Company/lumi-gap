@@ -32,6 +32,7 @@ import { buildTrendsPageParams, DEFAULT_TREND_MIN_PAPERS } from "./trends.url";
 import { formatNumber } from "@/utils";
 import { formatLanguageName } from "@/utils/language";
 import { useI18n } from "@/i18n";
+import { useAuthStore } from "@/stores/auth-store";
 
 type CitationBand = TrendCitationBand;
 type TrendTab = "overview" | "topics" | "periods" | "dataset" | "compare" | "ai";
@@ -114,6 +115,12 @@ export function TrendsPage() {
   const [activeTab, setActiveTab] = useState<TrendTab>(() => parseTabParam(searchParams));
   const [selectedTopics, setSelectedTopics] = useState<string[]>(() => parseArrayParam(searchParams, "compare").slice(0, 5));
   const [focusTopic, setFocusTopic] = useState<string>(() => searchParams.get("focus")?.trim() ?? "");
+  // OpenAlex id of the focus topic when a topic page linked here; dropped as soon as the user picks another topic.
+  const [focusTopicId, setFocusTopicId] = useState<string>(() => searchParams.get("focusTopicId")?.trim() ?? "");
+  const chooseFocusTopic = (topic: string) => {
+    setFocusTopic(topic);
+    setFocusTopicId("");
+  };
   const [verdictFilter, setVerdictFilter] = useState<VerdictFilter>(() => {
     const raw = searchParams.get("verdict");
     return isVerdictFilter(raw) ? raw : "all";
@@ -154,14 +161,14 @@ export function TrendsPage() {
   // Synchronize state changes back to searchParams
   useEffect(() => {
     setSearchParams(buildTrendsPageParams({
-      yearFrom, yearTo, sortBy, minPapers, activeTab, verdictFilter, focusTopic,
+      yearFrom, yearTo, sortBy, minPapers, activeTab, verdictFilter, focusTopic, focusTopicId,
       domains, fields, subfields, topicsFilter,
       domainIds, fieldIds, subfieldIds, topicIds,
       paperKinds, openAccessStatuses, providers, sources, languages, citationBands,
       selectedTopics,
     }), { replace: true });
   }, [
-    yearFrom, yearTo, sortBy, minPapers, activeTab, verdictFilter, focusTopic,
+    yearFrom, yearTo, sortBy, minPapers, activeTab, verdictFilter, focusTopic, focusTopicId,
     domains, fields, subfields, topicsFilter,
     domainIds, fieldIds, subfieldIds, topicIds,
     paperKinds, openAccessStatuses, providers, sources, languages, citationBands,
@@ -354,9 +361,11 @@ export function TrendsPage() {
     selectedTopics.length >= 2
   );
 
+  const activeFocusTopicId = focusTopic && focusTopicId ? focusTopicId : undefined;
   const relationshipsQuery = useTrendRelationships(
     {
       topic: activeFocusTopic,
+      topicId: activeFocusTopicId,
       yearFrom,
       yearTo,
       limit: 12,
@@ -379,7 +388,9 @@ export function TrendsPage() {
   );
 
   const explainMutation = useExplainTrend();
-  const explainHistoryQuery = useTrendExplainHistory({ topic: activeFocusTopic, limit: 5 }, activeTab === "ai" && !!activeFocusTopic);
+  // Explain history is per account; signed-out visitors would only get 401s.
+  const signedIn = useAuthStore((state) => Boolean(state.user));
+  const explainHistoryQuery = useTrendExplainHistory({ topic: activeFocusTopic, limit: 5 }, signedIn && activeTab === "ai" && !!activeFocusTopic);
 
 
   // Taxonomy selector clear and toggle actions
@@ -1054,7 +1065,7 @@ export function TrendsPage() {
                 selectedTopics={selectedTopics}
                 setSelectedTopics={setSelectedTopics}
                 setActiveTab={setActiveTab}
-                setFocusTopic={setFocusTopic}
+                setFocusTopic={chooseFocusTopic}
                 verdictFilter={verdictFilter}
                 setVerdictFilter={setVerdictFilter}
                 overviewParams={overviewParams}
@@ -1140,7 +1151,7 @@ export function TrendsPage() {
                 yearFrom={yearFrom}
                 yearTo={yearTo}
                 sortBy={sortBy}
-                setFocusTopic={setFocusTopic}
+                setFocusTopic={chooseFocusTopic}
                 setActiveTab={setActiveTab}
                 clearAllFilters={clearAllFilters}
                 scopeParams={{
@@ -1168,7 +1179,8 @@ export function TrendsPage() {
               <AITab
                 data={data}
                 activeFocusTopic={activeFocusTopic}
-                setFocusTopic={setFocusTopic}
+                activeFocusTopicId={activeFocusTopicId}
+                setFocusTopic={chooseFocusTopic}
                 relationshipsQuery={relationshipsQuery}
                 explainMutation={explainMutation}
                 explainHistoryQuery={explainHistoryQuery}
