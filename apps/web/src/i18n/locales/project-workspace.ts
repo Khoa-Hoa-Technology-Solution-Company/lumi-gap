@@ -2,6 +2,8 @@ import { projectTeamVi } from "./project-team";
 import { workspaceCoordinationVi } from "./workspace-coordination";
 
 export const projectWorkspaceVi = {
+  "No project members yet": "Dự án chưa có thành viên",
+  "Team & Workspace": "Nhóm & không gian làm việc",
   "Load older messages": "Tải tin nhắn trước",
   "Open manuscripts": "Mở bản thảo",
   "2025/dev · Debian 13": "2025/dev · Debian 13",
