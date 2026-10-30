@@ -45,10 +45,10 @@ export function computeTaxonomyBoost(query: string, paper: TaxonomyPaper): numbe
   return round2(Math.min(MAX_TAXONOMY_BOOST, boost));
 }
 
-type TagBoostPaper = Pick<ScoredPaper, "topics" | "keywords" | "taxonomyBoostScore">;
+type TagBoostPaper = Pick<ScoredPaper, "topics" | "keywords" | "taxonomyBoostScore" | "tagIds">;
 
 /**
- * Lift papers that carry the taxonomy nodes / keywords the query was resolved to. Each matched tag adds
+ * Lift papers that carry the taxonomy nodes / keywords / curated tags the query was resolved to. Each matched tag adds
  * 0.05 x its confidence on top of the name-overlap boost; the combined value is capped at 0.12.
  * A no-op (same array content) when there are no tags.
  */
@@ -66,7 +66,7 @@ export function applyDetectedTagBoost<T extends TagBoostPaper>(papers: T[], tags
   });
 }
 
-/** True when the paper carries the tag's taxonomy node or keyword (same rule the boost uses). */
+/** True when the paper carries the tag's taxonomy node, keyword or curated tag (same rule the boost uses). */
 export function paperCarriesTag(paper: TagBoostPaper, tag: DetectedTag): boolean {
   return paperMatchesTag(paper, tag, keywordPhrases(tag));
 }
@@ -82,6 +82,7 @@ function keywordPhrases(tag: DetectedTag): Set<string> {
 }
 
 function paperMatchesTag(paper: TagBoostPaper, tag: DetectedTag, phrases: Set<string>): boolean {
+  if (tag.kind === "tag") return (paper.tagIds ?? []).includes(tag.id);
   if (tag.kind === "keyword") {
     return (paper.keywords ?? []).some((raw) => {
       const keyword = raw as unknown as string | { keywordId?: string; keywordName?: string };

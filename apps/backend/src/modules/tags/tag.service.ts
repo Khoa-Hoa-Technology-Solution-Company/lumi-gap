@@ -4,10 +4,12 @@ import type {
 import { AppError } from "../../common/exceptions/app-error.js";
 import { Prisma } from "../../generated/prisma/client.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
+import { invalidateTaxonomyDictionary } from "../taxonomy/query-tag-resolver.js";
 import { slugifyTag } from "../taxonomy/taxonomy.normalize.js";
 import type {
   CreateTagInput, ListTagsQuery, ReplaceRulesInput, UpdateTagInput,
 } from "./dto/tag.schema.js";
+import { loadTagRuleMatch, tagAssignmentService } from "./tag-assignment.service.js";
 
 type PrismaClientLike = ReturnType<typeof getPrisma>;
 /** Either the client or a transaction client. */
@@ -26,9 +28,6 @@ interface ResolvedRule {
 const PREVIEW_SAMPLE = 10;
 const MERGE_HOPS = 5;
 const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
-
-/** paper_topics column that carries each taxonomy level's short OpenAlex id (topic nodes use topic_id). */
-const LEVEL_COLUMN = { subfield: "subfield_id", field: "field_id", domain: "domain_id" } as const;
 
 function toTag(row: TagRow, ruleCount: number): Tag {
   return {
@@ -158,28 +157,10 @@ function isUniqueViolation(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
 }
 
-/** One EXISTS per taxonomy level / keyword set, OR-ed together. Null when the rules name nothing. */
-function matchSql(
-  topics: ReadonlyArray<{ id: string; level: string; openalexId: string | null }>,
-  keywordIds: readonly string[],
-): Prisma.Sql | null {
-  const parts: Prisma.Sql[] = [];
-  const topicNodeIds = topics.filter((t) => t.level === "topic").map((t) => t.id);
-  if (topicNodeIds.length) {
-    parts.push(Prisma.sql`EXISTS (SELECT 1 FROM paper_topics pt WHERE pt.paper_id = p.id AND pt.topic_id = ANY(${topicNodeIds}::uuid[]))`);
-  }
-  for (const [level, column] of Object.entries(LEVEL_COLUMN)) {
-    const ids = topics
-      .filter((t) => t.level === level && t.openalexId)
-      .map((t) => t.openalexId as string);
-    if (ids.length) {
-      parts.push(Prisma.sql`EXISTS (SELECT 1 FROM paper_topics pt WHERE pt.paper_id = p.id AND ${Prisma.raw(`pt.${column}`)} = ANY(${ids}::text[]))`);
-    }
-  }
-  if (keywordIds.length) {
-    parts.push(Prisma.sql`EXISTS (SELECT 1 FROM paper_keywords pk WHERE pk.paper_id = p.id AND pk.keyword_id = ANY(${[...keywordIds]}::uuid[]))`);
-  }
-  return parts.length ? Prisma.sql`(${Prisma.join(parts, " OR ")})` : null;
+/** After an admin write: the query resolver sees the new tag, and the worker re-applies the tag (best effort). */
+async function afterTagWrite(tagId: string): Promise<void> {
+  invalidateTaxonomyDictionary();
+  await tagAssignmentService.tryEnqueueApplyTag(tagId);
 }
 
 export const tagService = {
@@ -243,7 +224,9 @@ export const tagService = {
         }
         return tag.id;
       });
-      return await detail(id);
+      const created = await detail(id);
+      await afterTagWrite(id);
+      return created;
     } catch (error) {
       if (isUniqueViolation(error)) throw AppError.conflict("A tag with this slug already exists", { slug });
       throw error;
@@ -263,6 +246,7 @@ export const tagService = {
     if (input.color !== undefined) data.color = input.color;
     if (input.status !== undefined) data.status = input.status;
     const row = await prisma.tag.update({ where: { id }, data });
+    if (input.name !== undefined || input.status !== undefined) await afterTagWrite(id);
     return toTag(row, await ruleCount(id));
   },
 
@@ -276,6 +260,7 @@ export const tagService = {
         await tx.tagRule.createMany({ data: rules.map((r) => ({ tagId: id, ...r })) });
       }
     });
+    await afterTagWrite(id);
     return detail(id);
   },
 
@@ -284,6 +269,7 @@ export const tagService = {
     const prisma = getPrisma();
     await loadTag(id, prisma);
     const row = await prisma.tag.update({ where: { id }, data: { status: "archived" } });
+    await afterTagWrite(id);
     return toTag(row, await ruleCount(id));
   },
 
@@ -291,25 +277,8 @@ export const tagService = {
   async preview(id: string): Promise<TagPreview> {
     const prisma = getPrisma();
     await loadTag(id, prisma);
-    const rules = await prisma.tagRule.findMany({ where: { tagId: id } });
-    const topicIds = [...new Set(rules.flatMap((r) => (r.researchTopicId ? [r.researchTopicId] : [])))];
-    const nodes = topicIds.length
-      ? await prisma.researchTopic.findMany({
-        where: { id: { in: topicIds } }, select: { id: true, level: true, openalexId: true },
-      })
-      : [];
-    const nodeById = new Map(nodes.map((n) => [n.id, n]));
-    const pick = (effect: string) => ({
-      topics: rules
-        .filter((r) => r.effect === effect && r.researchTopicId && nodeById.has(r.researchTopicId))
-        .map((r) => nodeById.get(r.researchTopicId as string)!),
-      keywordIds: rules.filter((r) => r.effect === effect && r.keywordId).map((r) => r.keywordId as string),
-    });
-    const include = pick("include");
-    const exclude = pick("exclude");
-    const includeSql = matchSql(include.topics, include.keywordIds);
+    const { include: includeSql, exclude: excludeSql } = await loadTagRuleMatch(id, prisma);
     if (!includeSql) return { matchedPapers: 0, sample: [] };
-    const excludeSql = matchSql(exclude.topics, exclude.keywordIds);
     const where = Prisma.sql`p.data_status = 'active' AND ${includeSql}${excludeSql ? Prisma.sql` AND NOT ${excludeSql}` : Prisma.empty}`;
 
     const [counts, sample] = await Promise.all([

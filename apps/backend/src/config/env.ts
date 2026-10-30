@@ -294,6 +294,15 @@ const EnvSchema = z.object({
   // i.e. (1 + cos) / 2, so 0.75 corresponds to a cosine of 0.5. Tune on real embeddings.
   COMMUNITY_SUGGEST_MIN_SIMILARITY: z.coerce.number().min(0).max(1).default(0.75),
 
+  // Automatic tagging (tagging worker). Rules always run; embedding expansion adds papers whose embedding is within
+  // TAG_EMBEDDING_MIN_SIMILARITY (cosine) of the centroid of the tag's rule/manual papers, once at least
+  // TAG_EMBEDDING_MIN_SEED of those have an embedding, at most TAG_EMBEDDING_MAX_PAPERS per tag per run.
+  TAGGING_CRON: z.string().default("15 3 * * *"),
+  TAG_EMBEDDING_ENABLED: z.enum(["true", "false"]).default("true").transform((value) => value === "true"),
+  TAG_EMBEDDING_MIN_SEED: z.coerce.number().int().min(1).default(10),
+  TAG_EMBEDDING_MIN_SIMILARITY: z.coerce.number().min(0).max(1).default(0.82),
+  TAG_EMBEDDING_MAX_PAPERS: z.coerce.number().int().min(1).default(300),
+
   // Quality & Feedback — per-user/hour cap on the on-demand LLM-judge (a generate call).
   QUALITY_EVAL_MAX_PER_HOUR: z.coerce.number().int().positive().default(20),
 

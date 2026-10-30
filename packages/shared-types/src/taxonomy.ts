@@ -98,6 +98,39 @@ export interface TagPreview {
   sample: Array<{ id: string; title: string; publicationYear: number }>;
 }
 
+/** How a paper got into a tag. `blocked` = an admin took it out; automatic tagging leaves it out. */
+export type PaperTagSource = "rule" | "embedding" | "manual" | "blocked";
+
+export interface TaggedPaper {
+  paperId: string;
+  title: string;
+  publicationYear: number;
+  citationCount: number;
+  source: PaperTagSource;
+  /** Cosine similarity to the tag centroid for `embedding` rows; null otherwise. */
+  confidence: number | null;
+  taggedAt: ISODateString;
+}
+
+/** Outcome of applying one tag's rules (and embedding expansion) to the corpus. */
+export interface TagApplyResult {
+  tagId: string;
+  ruleTagged: number;
+  embeddingTagged: number;
+  manual: number;
+  blocked: number;
+  /** Active papers now carrying the tag (rule + embedding + manual). */
+  paperCount: number;
+  /** Why embedding expansion did not run, when it did not (disabled, too few seed papers with embeddings). */
+  embeddingSkippedReason: string | null;
+}
+
+/** 202 body of the apply endpoints: the work runs in the tagging worker. */
+export interface TagApplyJob {
+  jobId: string;
+  tagId: string | null;
+}
+
 export interface TaxonomyStats {
   /** Active papers. */
   papers: number;

@@ -76,6 +76,31 @@ describe("filterSql", () => {
     expect(text).toContain("paper_keywords pk");
   });
 
+  it("filters by tag ids with an EXISTS over paper_tags that skips blocked rows", () => {
+    const a = "123e4567-e89b-42d3-a456-426614174000";
+    const b = "123E4567-E89B-42D3-A456-426614174001";
+    const { text, values } = render({ tagIds: [a, "not-a-uuid", b, a] });
+    expect(text).toContain(
+      "EXISTS ( SELECT 1 FROM paper_tags ptg WHERE ptg.paper_id = p.id AND ptg.tag_id = ANY(",
+    );
+    expect(text).toContain("::uuid[]) AND ptg.source <> 'blocked' )");
+    expect(values).toContainEqual([a, b.toLowerCase()]);
+  });
+
+  it("matches nothing when tag ids were requested but none is a UUID, and nothing when empty", () => {
+    expect(render({ tagIds: ["nope"] }).text).toContain("FALSE");
+    expect(render({ tagIds: [] }).text).toBe("");
+    expect(render({ tagIds: undefined }).text).toBe("");
+  });
+
+  it("combines tag ids with keyword ids (AND)", () => {
+    const id = "123e4567-e89b-42d3-a456-426614174000";
+    const { text } = render({ keywordIds: [id], tagIds: [id] });
+    expect(text.match(/EXISTS/g)).toHaveLength(2);
+    expect(text).toContain("paper_keywords pk");
+    expect(text).toContain("paper_tags ptg");
+  });
+
   it("splits paperIds into uuid and legacy id predicates, and matches nothing for invalid ids", () => {
     const uuid = "123e4567-e89b-42d3-a456-426614174000";
     const legacy = "0123456789abcdef01234567";

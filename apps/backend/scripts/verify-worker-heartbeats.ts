@@ -8,6 +8,7 @@ const REQUIRED_WORKERS: WorkerName[] = [
   "worker:embedding",
   "worker:paper-analysis",
   "worker:corpus-validation",
+  "worker:tagging",
 ];
 
 const MAX_AGE_MS = 90_000;

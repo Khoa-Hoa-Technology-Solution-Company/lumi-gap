@@ -106,6 +106,16 @@ async function listWhere(input: ListPapersParams): Promise<Record<string, unknow
     const taxonomyPaperIds = (where.id as { in?: string[] } | undefined)?.in;
     where.id = { in: taxonomyPaperIds ? taxonomyPaperIds.filter((id) => keywordPaperIds.has(id)) : [...keywordPaperIds] };
   }
+  if (input.tagIds?.length) {
+    // Papers carrying ANY requested curated tag (blocked rows do not count); intersected with the matches above.
+    const tagIds = [...new Set(input.tagIds.map((id) => id.trim().toLowerCase()).filter((id) => UUID_PATTERN.test(id)))];
+    const rows = tagIds.length
+      ? await getPrisma().paperTag.findMany({ where: { tagId: { in: tagIds }, source: { not: "blocked" } }, select: { paperId: true } })
+      : [];
+    const tagPaperIds = new Set(rows.map((row) => row.paperId));
+    const previous = (where.id as { in?: string[] } | undefined)?.in;
+    where.id = { in: previous ? previous.filter((id) => tagPaperIds.has(id)) : [...tagPaperIds] };
+  }
   return where;
 }
 

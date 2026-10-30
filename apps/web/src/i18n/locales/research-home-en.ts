@@ -393,6 +393,7 @@ const researchHomeKeys = [
   "Filtered by field: {{name}}",
   "Filtered by domain: {{name}}",
   "Filtered by keyword: {{name}}",
+  "Filtered by tag: {{name}}",
   "Remove filter: {{name}}",
   "Showing papers in {{name}} ({{count}} papers)",
   "Search all papers instead",

@@ -19,9 +19,9 @@ export function SearchUnderstandingBar({ understanding, searchParams, onChange }
   const pinned = homeTagFilter(searchParams);
   const autoTagsOff = searchParams.get("autoTags") === "false";
 
-  const kindLabel = (kind: DetectedTagKind) => t(kind === "topic" ? "Topic" : kind === "keyword" ? "Keyword" : kind === "subfield" ? "Research subfield" : kind === "field" ? "Research field" : "Research domain");
+  const kindLabel = (kind: DetectedTagKind) => t(kind === "topic" ? "Topic" : kind === "keyword" ? "Keyword" : kind === "tag" ? "Tag" : kind === "subfield" ? "Research subfield" : kind === "field" ? "Research field" : "Research domain");
   const pinnedText = (key: DetectedTagFilterKey, name: string) => t(
-    key === "topicIds" ? "Filtered by topic: {{name}}" : key === "keywordIds" ? "Filtered by keyword: {{name}}" : key === "subfieldIds" ? "Filtered by subfield: {{name}}" : key === "fieldIds" ? "Filtered by field: {{name}}" : "Filtered by domain: {{name}}",
+    key === "topicIds" ? "Filtered by topic: {{name}}" : key === "keywordIds" ? "Filtered by keyword: {{name}}" : key === "tagIds" ? "Filtered by tag: {{name}}" : key === "subfieldIds" ? "Filtered by subfield: {{name}}" : key === "fieldIds" ? "Filtered by field: {{name}}" : "Filtered by domain: {{name}}",
     { name },
   );
 

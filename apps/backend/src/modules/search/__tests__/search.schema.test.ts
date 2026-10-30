@@ -52,6 +52,14 @@ describe("SearchQuerySchema autoTags and keywordIds", () => {
     }
   });
 
+  it("parses tagIds like keywordIds and caps them at 50", () => {
+    const id = "123e4567-e89b-42d3-a456-426614174000";
+    expect(SearchQuerySchema.parse({ q: "x", tagIds: `${id},${id}` }).tagIds).toEqual([id]);
+    expect(SearchQuerySchema.parse({ q: "x" }).tagIds).toBeUndefined();
+    const many = Array.from({ length: 51 }, (_, i) => `t${i}`).join(",");
+    expect(SearchQuerySchema.safeParse({ q: "x", tagIds: many }).success).toBe(false);
+  });
+
   it("parses keywordIds like the other id lists and caps them at 50", () => {
     const id = "123e4567-e89b-42d3-a456-426614174000";
     expect(SearchQuerySchema.parse({ q: "x", keywordIds: `${id},${id}` }).keywordIds).toEqual([id]);

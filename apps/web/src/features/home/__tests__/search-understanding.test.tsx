@@ -23,15 +23,18 @@ describe("query understanding URL helpers", () => {
     expect(homeSearchRequest(new URLSearchParams("q=lda&keywordIds=k1,k2")).request.keywordIds).toEqual(["k1", "k2"]);
     expect(homeSearchRequest(new URLSearchParams("q=lda")).request.autoTags).toBeUndefined();
   });
-  it("ignores unknown tag keys, empty values and keyword mode", () => {
+  it("ignores unknown tag keys and empty values; keyword mode keeps the pinned tag but not autoTags", () => {
     for (const tagValue of ["bogus:1", "topicIds:", "topicIds", ":x", "journalIds:1"]) {
       const { request } = homeSearchRequest(new URLSearchParams({ q: "lda", tag: tagValue }));
       expect(request.topicIds).toBeUndefined();
       expect(homeTagFilter(new URLSearchParams({ tag: tagValue }))).toBeNull();
     }
     const keyword = homeSearchRequest(new URLSearchParams("q=lda&mode=keyword&tag=topicIds:T1&autoTags=false"));
-    expect(keyword.request.topicIds).toBeUndefined();
+    expect(keyword.request.topicIds).toEqual(["T1"]);
     expect(keyword.request.autoTags).toBeUndefined();
+    const browse = homeSearchRequest(new URLSearchParams("tag=tagIds:abc&tagLabel=ML"));
+    expect(browse.mode).toBe("keyword");
+    expect(browse.request.tagIds).toEqual(["abc"]);
   });
   it("sets, clears and toggles the tag state and always resets the page", () => {
     const base = new URLSearchParams("q=lda&page=4");

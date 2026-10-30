@@ -53,6 +53,8 @@ export interface SemanticSearchParams {
   topicIds?: string[];
   /** keywords.id values; a paper must carry at least one. */
   keywordIds?: string[];
+  /** tags.id values of curated tags; a paper must carry at least one (not blocked). */
+  tagIds?: string[];
   minScore?: number;
   sort?: SearchSortKey;
   /** Opt-in LLM re-ranking of the top candidate pool. */
@@ -299,6 +301,7 @@ async function fetchScoredPool(
       subfieldIds: params.subfieldIds,
       topicIds: params.topicIds,
       keywordIds: params.keywordIds,
+      tagIds: params.tagIds,
       minScore: params.minScore,
     },
   });
@@ -310,11 +313,11 @@ function resolveSearchPoolSize(_params: SemanticSearchParams, minimum: number): 
   return Math.min(MAX_POOL, Math.max(env.SEARCH_FILTER_POOL, minimum));
 }
 
-/** True when the caller already narrowed by taxonomy or keyword, so the query must not be reinterpreted. */
+/** True when the caller already narrowed by taxonomy, keyword or curated tag, so the query must not be reinterpreted. */
 function hasExplicitTaxonomyFilter(params: SemanticSearchParams): boolean {
   return [
     params.topics, params.topicIds, params.subfields, params.subfieldIds,
-    params.fields, params.fieldIds, params.domains, params.domainIds, params.keywordIds,
+    params.fields, params.fieldIds, params.domains, params.domainIds, params.keywordIds, params.tagIds,
   ].some((values) => (values?.length ?? 0) > 0);
 }
 
@@ -418,6 +421,7 @@ function getSearchFilterKeyParts(
     subfieldIds: params.subfieldIds ?? [],
     topicIds: params.topicIds ?? [],
     keywordIds: params.keywordIds ?? [],
+    tagIds: params.tagIds ?? [],
     autoTagFilter: appliedTag ? appliedTag.filter : null,
     minScore: params.minScore ?? 0,
   };

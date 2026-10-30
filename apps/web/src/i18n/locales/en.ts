@@ -25,8 +25,10 @@ import { trendVerdictStrings } from "./trend-verdict";
 import { trendResearchLinkStrings } from "./trend-research-links";
 import { trendPeriodsStrings } from "./trend-periods";
 import { qualityEvaluationEn } from "./quality-evaluation";
+import { adminCatalogEn } from "./admin-catalog";
 
 export const en = {
+  ...adminCatalogEn,
   ...qualityEvaluationEn,
   ...researchTasksEn,
   ...livingPlanEn,

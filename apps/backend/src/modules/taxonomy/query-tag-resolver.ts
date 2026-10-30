@@ -8,7 +8,7 @@ import { normalizeTerm } from "./taxonomy.normalize.js";
 
 /**
  * Query understanding: resolve a search query to catalogue entries (OpenAlex taxonomy nodes in
- * research_topics and keywords) WITHOUT an LLM. Phrases are matched deterministically against an
+ * research_topics, keywords and admin-curated tags) WITHOUT an LLM. Phrases are matched deterministically against an
  * in-memory dictionary, with a trigram fallback for typos.
  *
  * `search.service.ts` decides what to do with the result (hard filter vs boost).
@@ -46,7 +46,7 @@ interface Candidate {
  * Bump when the matching algorithm, confidences or the output shape change: cached results of an
  * older algorithm must not be served.
  */
-const CACHE_VERSION = "v2";
+const CACHE_VERSION = "v3";
 const CACHE_TTL_SECONDS = 600;
 
 const MAX_TAGS = 5;
@@ -58,6 +58,12 @@ const FUZZY_MIN_SIMILARITY = 0.5;
 const FUZZY_CONFIDENCE_FACTOR = 0.8;
 const FUZZY_LIMIT_PER_TABLE = 5;
 const BROAD_LEVEL_FACTOR = 0.9;
+/**
+ * Curated tags are maintained by admins, so when a tag and a taxonomy node / keyword answer the same
+ * phrase the tag wins: kind "tag" gets this bonus (capped at confidence 1). Because the cap makes an exact
+ * name match tie with other exact matches, finalize() also orders kind "tag" first among equal confidences.
+ */
+const TAG_CONFIDENCE_BONUS = 0.01;
 
 const SOURCE_CONFIDENCE: Record<BaseSource, number> = {
   name: 1,
@@ -121,7 +127,7 @@ function addEntry(map: Dictionary, phrase: string, entry: DictionaryEntry): void
 async function loadDictionary(): Promise<Dictionary> {
   const started = Date.now();
   const prisma = getPrisma();
-  const [topics, keywords, activePapers] = await Promise.all([
+  const [topics, keywords, tags, activePapers] = await Promise.all([
     // Entries without local papers can neither filter nor boost anything, so they are left out.
     prisma.researchTopic.findMany({
       where: { status: "active", paperCount: { gte: 1 } },
@@ -132,6 +138,10 @@ async function loadDictionary(): Promise<Dictionary> {
     prisma.keyword.findMany({
       where: { status: "active", paperCount: { gte: 1 } },
       select: { id: true, keywordName: true, normalizedName: true, aliases: true, paperCount: true },
+    }),
+    prisma.tag.findMany({
+      where: { status: "active", paperCount: { gte: 1 } },
+      select: { id: true, slug: true, name: true, paperCount: true },
     }),
     prisma.paper.count({ where: { dataStatus: "active" } }),
   ]);
@@ -168,9 +178,21 @@ async function loadDictionary(): Promise<Dictionary> {
     addEntry(map, row.normalizedName || normalizeTerm(row.keywordName), { ...base, source: "name" });
     for (const alias of row.aliases) addEntry(map, alias, { ...base, source: "alias" });
   }
+  for (const row of tags) {
+    const base = {
+      kind: "tag" as const,
+      id: row.id,
+      name: row.name,
+      paperCount: row.paperCount,
+      filter: { key: "tagIds" as const, value: row.id },
+    };
+    addEntry(map, normalizeTerm(row.name), { ...base, source: "name" });
+    // The slug ("machine-learning") is the tag's stable alias.
+    addEntry(map, normalizeTerm(row.slug.replace(/-/g, " ")), { ...base, source: "alias" });
+  }
 
   logger.info(
-    { phrases: map.size, topics: topics.length, keywords: keywords.length, ms: Date.now() - started },
+    { phrases: map.size, topics: topics.length, keywords: keywords.length, tags: tags.length, ms: Date.now() - started },
     "taxonomy dictionary loaded",
   );
   return map;
@@ -217,7 +239,11 @@ function round3(value: number): number {
 
 function confidenceFor(entry: DictionaryEntry, coverage: number): number {
   const level = entry.kind === "domain" || entry.kind === "field" ? BROAD_LEVEL_FACTOR : 1;
-  return round3(SOURCE_CONFIDENCE[entry.source] * coverage * level);
+  return round3(applyTagBonus(entry.kind, SOURCE_CONFIDENCE[entry.source] * coverage * level));
+}
+
+function applyTagBonus(kind: DetectedTagKind, confidence: number): number {
+  return kind === "tag" ? Math.min(1, confidence + TAG_CONFIDENCE_BONUS) : confidence;
 }
 
 function keepBest(candidates: Map<string, Candidate>, candidate: Candidate): void {
@@ -290,6 +316,14 @@ async function fuzzyCandidates(nq: string): Promise<Map<string, Candidate>> {
        AND lower(t.topic_name) % ${nq} AND similarity(lower(t.topic_name), ${nq}) >= ${FUZZY_MIN_SIMILARITY}
      ORDER BY similarity DESC, t.paper_count DESC
      LIMIT ${FUZZY_LIMIT_PER_TABLE})
+    UNION ALL
+    (SELECT 'tag' AS kind, g.id::text AS id, NULL::text AS openalex_id, g.name AS name,
+            g.paper_count::int AS paper_count, similarity(lower(g.name), ${nq})::float8 AS similarity
+     FROM tags g
+     WHERE g.status = 'active' AND g.paper_count >= 1
+       AND lower(g.name) % ${nq} AND similarity(lower(g.name), ${nq}) >= ${FUZZY_MIN_SIMILARITY}
+     ORDER BY similarity DESC, g.paper_count DESC
+     LIMIT ${FUZZY_LIMIT_PER_TABLE})
   `);
 
   const candidates = new Map<string, Candidate>();
@@ -297,6 +331,7 @@ async function fuzzyCandidates(nq: string): Promise<Map<string, Candidate>> {
     const kind = row.kind as DetectedTagKind;
     let filter: DetectedTag["filter"];
     if (kind === "keyword") filter = { key: "keywordIds", value: row.id };
+    else if (kind === "tag") filter = { key: "tagIds", value: row.id };
     else {
       const key = FILTER_KEY_BY_LEVEL[kind];
       if (!key || !row.openalex_id) continue;
@@ -310,7 +345,7 @@ async function fuzzyCandidates(nq: string): Promise<Map<string, Candidate>> {
         ...(row.openalex_id ? { openalexId: row.openalex_id } : {}),
         name: row.name,
         paperCount: Number(row.paper_count),
-        confidence: round3(Number(row.similarity) * FUZZY_CONFIDENCE_FACTOR),
+        confidence: round3(applyTagBonus(kind, Number(row.similarity) * FUZZY_CONFIDENCE_FACTOR)),
         source: "fuzzy",
         matchedText: nq,
         filter,
@@ -322,7 +357,12 @@ async function fuzzyCandidates(nq: string): Promise<Map<string, Candidate>> {
 
 function finalize(candidates: Map<string, Candidate>): ResolveQueryTagsResult {
   const ranked = [...candidates.values()]
-    .sort((a, b) => b.tag.confidence - a.tag.confidence || b.tag.paperCount - a.tag.paperCount)
+    .sort(
+      (a, b) =>
+        b.tag.confidence - a.tag.confidence
+        || Number(b.tag.kind === "tag") - Number(a.tag.kind === "tag")
+        || b.tag.paperCount - a.tag.paperCount,
+    )
     .slice(0, MAX_TAGS);
   const top = ranked[0];
   return {

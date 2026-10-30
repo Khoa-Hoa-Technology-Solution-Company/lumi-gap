@@ -57,7 +57,7 @@ corpus validation, community summary. Begin with roughly 8 GB Docker memory,
 then adjust to measured workload. Stop workers on a smaller machine:
 
 ```bash
-docker compose stop worker-sync worker-report worker-gaps worker-ai-jobs worker-embedding worker-paper-analysis worker-notifications worker-corpus-validation worker-community-summary
+docker compose stop worker-sync worker-report worker-gaps worker-ai-jobs worker-embedding worker-paper-analysis worker-notifications worker-corpus-validation worker-community-summary worker-tagging
 ```
 
 They start again on the next full `up`. Optional profiles:

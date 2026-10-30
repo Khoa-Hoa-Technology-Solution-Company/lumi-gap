@@ -38,3 +38,16 @@ export type UpdateTagInput = z.infer<typeof UpdateTagSchema>;
 
 export const ReplaceRulesSchema = z.object({ rules: rulesSchema });
 export type ReplaceRulesInput = z.infer<typeof ReplaceRulesSchema>;
+
+export const ListTagPapersQuerySchema = paginationSchema.extend({
+  source: z.enum(["rule", "embedding", "manual", "blocked"]).optional(),
+  q: z.string().trim().max(200).optional(),
+});
+export type ListTagPapersQuery = z.infer<typeof ListTagPapersQuerySchema>;
+
+export const AddTagPapersSchema = z.object({
+  paperIds: z.array(catalogIdSchema).min(1).max(100),
+});
+export type AddTagPapersInput = z.infer<typeof AddTagPapersSchema>;
+
+export const TagPaperParamsSchema = z.object({ id: catalogIdSchema, paperId: catalogIdSchema });

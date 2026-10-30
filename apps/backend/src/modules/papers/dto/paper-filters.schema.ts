@@ -98,5 +98,7 @@ export const paperFilterShape = {
   topicIds: z.preprocess(toCsvList, z.array(z.string()).max(50).optional()),
   /** keywords.id values (UUIDs); non-UUID entries are ignored by the SQL filter. */
   keywordIds: z.preprocess(toCsvList, z.array(z.string()).max(50).optional()),
+  /** tags.id values (UUIDs) of curated tags; a paper matches when it carries any (blocked rows excluded). */
+  tagIds: z.preprocess(toCsvList, z.array(z.string()).max(50).optional()),
   sort: z.enum(SEARCH_SORT_KEYS).default("relevance"),
 } as const;

@@ -400,6 +400,7 @@ export const researchHomeVi = {
   "Filtered by field: {{name}}": "Đang lọc theo lĩnh vực: {{name}}",
   "Filtered by domain: {{name}}": "Đang lọc theo ngành: {{name}}",
   "Filtered by keyword: {{name}}": "Đang lọc theo từ khóa: {{name}}",
+  "Filtered by tag: {{name}}": "Đang lọc theo thẻ: {{name}}",
   "Remove filter: {{name}}": "Bỏ bộ lọc: {{name}}",
   "Showing papers in {{name}} ({{count}} papers)": "Hiển thị bài báo trong {{name}} ({{count}} bài)",
   "Search all papers instead": "Tìm trong tất cả bài báo",

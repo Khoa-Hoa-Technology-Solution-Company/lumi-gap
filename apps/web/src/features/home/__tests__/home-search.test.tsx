@@ -194,10 +194,16 @@ describe("literature search navigation", () => {
       expect(mocks.semantic.mock.calls.at(-1)![0]).toMatchObject({ fieldIds: ["12"], keywordIds: ["k1"] });
       expect(mocks.semantic.mock.calls.at(-1)![0].autoTags).toBeUndefined();
     });
-    it("never shows the bar in keyword mode", async () => {
-      await render("/literature?q=lda&mode=keyword&autoTags=false&tag=topicIds:T1");
+    it("hides the bar in keyword mode without a pinned tag", async () => {
+      await render("/literature?q=lda&mode=keyword&autoTags=false");
       await settle(() => mocks.keyword.mock.calls.length > 0);
       expect(container.querySelector('[data-testid="search-understanding"]')).toBeNull();
+    });
+    it("keeps the pinned tag in keyword mode", async () => {
+      await render("/literature?q=lda&mode=keyword&tag=topicIds:T1&tagLabel=LDA");
+      await settle(() => mocks.keyword.mock.calls.length > 0);
+      expect(mocks.keyword.mock.calls.at(-1)?.[0]).toMatchObject({ topicIds: ["T1"] });
+      expect(container.querySelector('[data-testid="search-understanding"]')?.textContent).toContain("LDA");
     });
   });
 });

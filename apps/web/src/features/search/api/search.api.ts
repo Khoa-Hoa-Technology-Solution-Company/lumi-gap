@@ -29,6 +29,8 @@ export interface SearchParams {
   subfieldIds?: string[];
   topicIds?: string[];
   keywordIds?: string[];
+  /** Admin-curated tags (paper_tags), CSV of UUIDs. */
+  tagIds?: string[];
   /** Set to false to switch off automatic tag detection (sent only when false). */
   autoTags?: boolean;
   /** Cosine similarity floor 0..1 (semantic only). */
@@ -65,6 +67,7 @@ export const searchApi = {
       "subfieldIds",
       "topicIds",
       "keywordIds",
+      "tagIds",
     ] as const) {
       const values = query[key];
       if (Array.isArray(values)) {

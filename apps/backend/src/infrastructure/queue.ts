@@ -33,7 +33,13 @@ export const QUEUE_NAMES = {
   aiJobs: "ai-jobs",
   communitySummary: "community-summary",
   manuscriptCompile: "manuscript-compile",
+  tagging: "tagging",
 } as const;
+
+export const taggingQueue = new Queue(QUEUE_NAMES.tagging, {
+  connection: makeConnection(),
+  defaultJobOptions: { ...defaultJobOptions, attempts: 3 },
+});
 
 export const manuscriptCompileQueue = new Queue(QUEUE_NAMES.manuscriptCompile, {
   connection: makeConnection(), defaultJobOptions,

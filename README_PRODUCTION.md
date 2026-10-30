@@ -242,6 +242,7 @@ The committed `Jenkinsfile` deploys:
 | `worker-embedding` | Gemini embedding jobs |
 | `worker-paper-analysis` | Structured paper knowledge extraction |
 | `worker-corpus-validation` | Corpus validation jobs |
+| `worker-tagging` | Applies curated tag rules to papers, on admin edits and nightly |
 
 The regular deployment intentionally does **not** start:
 

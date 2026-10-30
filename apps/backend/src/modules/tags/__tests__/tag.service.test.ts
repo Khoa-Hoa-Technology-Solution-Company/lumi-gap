@@ -2,15 +2,18 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { tagService } from "../tag.service.js";
 
 const m = vi.hoisted(() => ({
-  tagFind: vi.fn(), tagCreate: vi.fn(),
+  tagFind: vi.fn(), tagCreate: vi.fn(), tagUpdate: vi.fn(),
   topicFindMany: vi.fn(), kwFindMany: vi.fn(),
   ruleFindMany: vi.fn(), ruleCreateMany: vi.fn(), ruleDeleteMany: vi.fn(), ruleCount: vi.fn(),
-  queryRaw: vi.fn(),
+  queryRaw: vi.fn(), queueAdd: vi.fn(), invalidate: vi.fn(),
 }));
+
+vi.mock("../../../infrastructure/queue.js", () => ({ taggingQueue: { add: m.queueAdd } }));
+vi.mock("../../taxonomy/query-tag-resolver.js", () => ({ invalidateTaxonomyDictionary: m.invalidate }));
 
 vi.mock("../../../infrastructure/database/prisma.js", () => {
   const client = {
-    tag: { findUnique: m.tagFind, create: m.tagCreate },
+    tag: { findUnique: m.tagFind, create: m.tagCreate, update: m.tagUpdate },
     researchTopic: { findMany: m.topicFindMany },
     keyword: { findMany: m.kwFindMany },
     tagRule: { findMany: m.ruleFindMany, createMany: m.ruleCreateMany, deleteMany: m.ruleDeleteMany, count: m.ruleCount },
@@ -36,6 +39,7 @@ beforeEach(() => {
   m.ruleFindMany.mockResolvedValue([]);
   m.topicFindMany.mockResolvedValue([]);
   m.kwFindMany.mockResolvedValue([]);
+  m.queueAdd.mockResolvedValue({ id: "job-1" });
 });
 
 describe("tag create", () => {
@@ -138,5 +142,39 @@ describe("tag preview", () => {
     expect(await tagService.preview(TAG)).toEqual({
       matchedPapers: 12, sample: [{ id: "p1", title: "A paper", publicationYear: 2024 }],
     });
+  });
+});
+
+describe("tag writes re-apply the tag", () => {
+  it("create enqueues apply-tag and invalidates the query dictionary", async () => {
+    m.tagFind.mockImplementation(async ({ where }) => (where.id ? tagRow() : null));
+    m.tagCreate.mockResolvedValue(tagRow());
+    await tagService.create(USER, { name: "LLM in education" });
+    expect(m.queueAdd).toHaveBeenCalledWith("apply-tag", { tagId: TAG });
+    expect(m.invalidate).toHaveBeenCalled();
+  });
+
+  it("replaceRules enqueues apply-tag", async () => {
+    m.tagFind.mockResolvedValue(tagRow());
+    await tagService.replaceRules(TAG, { rules: [] });
+    expect(m.queueAdd).toHaveBeenCalledWith("apply-tag", { tagId: TAG });
+    expect(m.invalidate).toHaveBeenCalled();
+  });
+
+  it("update re-applies on a name or status change but not for colour only", async () => {
+    m.tagFind.mockResolvedValue(tagRow());
+    m.tagUpdate.mockResolvedValue(tagRow({ status: "archived" }));
+    await tagService.update(TAG, { status: "archived" });
+    expect(m.queueAdd).toHaveBeenCalledTimes(1);
+    m.queueAdd.mockClear();
+    await tagService.update(TAG, { color: "#112233" });
+    expect(m.queueAdd).not.toHaveBeenCalled();
+  });
+
+  it("does not fail the write when the queue is down", async () => {
+    m.tagFind.mockResolvedValue(tagRow());
+    m.queueAdd.mockRejectedValue(new Error("redis down"));
+    await expect(tagService.replaceRules(TAG, { rules: [] })).resolves.toMatchObject({ id: TAG });
+    expect(m.invalidate).toHaveBeenCalled();
   });
 });

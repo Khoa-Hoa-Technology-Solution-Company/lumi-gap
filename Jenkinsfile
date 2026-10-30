@@ -277,6 +277,7 @@ pipeline {
               embedding|worker:embedding
               paper-analysis|worker:paper-analysis
               corpus-validation|worker:corpus-validation
+              tagging|worker:tagging
             '
             printf '%s\n' "$worker_specs" | while IFS='|' read -r suffix command; do
               suffix=$(printf '%s' "$suffix" | xargs)

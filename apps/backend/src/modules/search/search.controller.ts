@@ -41,6 +41,7 @@ export const searchController = {
       subfieldIds,
       topicIds,
       keywordIds,
+      tagIds,
       minScore,
       sort,
       rerank,
@@ -70,6 +71,7 @@ export const searchController = {
       subfieldIds,
       topicIds,
       keywordIds,
+      tagIds,
       minScore,
       sort,
       rerank,
@@ -104,6 +106,7 @@ export const searchController = {
         subfieldIds,
         topicIds,
         keywordIds,
+        tagIds,
         // Best effort: what query understanding did, so search analytics can see how often it filters.
         understandingMode: understanding.mode,
         appliedTag: understanding.appliedTag?.name ?? null,

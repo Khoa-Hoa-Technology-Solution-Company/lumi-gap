@@ -3,12 +3,12 @@ import type { SearchParams } from "@/features/search/api/search.api";
 
 export const LITERATURE_PATH = "/literature";
 
-export const HOME_SCOPE_FILTERS = ["paperKinds", "openAccessStatuses", "providers", "sources", "languages", "citationBands", "domains", "fields", "subfields", "topics", "domainIds", "fieldIds", "subfieldIds", "topicIds", "keywordIds"] as const;
+export const HOME_SCOPE_FILTERS = ["paperKinds", "openAccessStatuses", "providers", "sources", "languages", "citationBands", "domains", "fields", "subfields", "topics", "domainIds", "fieldIds", "subfieldIds", "topicIds", "keywordIds", "tagIds"] as const;
 const filterKeys = ["yearFrom", "yearTo", "type", "paperKind", "provider", "openAccess", "minScore", "tag", ...HOME_SCOPE_FILTERS];
 
 /** URL params owned by query understanding; a brand-new query must start without them. */
 export const HOME_TAG_PARAMS = ["tag", "tagLabel", "autoTags"] as const;
-const TAG_FILTER_KEYS: readonly DetectedTagFilterKey[] = ["domainIds", "fieldIds", "subfieldIds", "topicIds", "keywordIds"];
+const TAG_FILTER_KEYS: readonly DetectedTagFilterKey[] = ["domainIds", "fieldIds", "subfieldIds", "topicIds", "keywordIds", "tagIds"];
 
 export interface HomeTagFilter { key: DetectedTagFilterKey; value: string; label: string }
 
@@ -93,11 +93,9 @@ export function homeSearchRequest(params: URLSearchParams) {
     ...(mode === "semantic" ? { rerank: params.get("rerank") === "true" || undefined, minScore: Number.isFinite(minScore) && minScore > 0 && minScore <= 1 ? minScore : undefined } : {}),
   };
   for (const key of HOME_SCOPE_FILTERS) { const list = values(key); if (list.length) request[key] = list; }
-  if (mode === "semantic") {
-    // Query understanding only exists for semantic search.
-    const tag = homeTagFilter(params);
-    if (tag) request[tag.key] = [...new Set([...(request[tag.key] ?? []), tag.value])];
-    if (params.get("autoTags") === "false") request.autoTags = false;
-  }
+  // A pinned tag is an explicit filter in both modes; automatic detection only exists for semantic search.
+  const tag = homeTagFilter(params);
+  if (tag) request[tag.key] = [...new Set([...(request[tag.key] ?? []), tag.value])];
+  if (mode === "semantic" && params.get("autoTags") === "false") request.autoTags = false;
   return { mode, request: { ...request, page: request.page ?? 1 } } as const;
 }

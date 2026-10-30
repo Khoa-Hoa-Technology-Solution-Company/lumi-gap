@@ -245,6 +245,11 @@ services:
     <<: *backend-common
     command: ["pnpm", "--filter", "backend", "worker:community-summary"]
 
+  # Applies tag rules after admin edits and re-tags every active tag on TAGGING_CRON.
+  worker-tagging:
+    <<: *backend-common
+    command: ["pnpm", "--filter", "backend", "worker:tagging"]
+
   # The campaign is explicit and needs OPENALEX_API_KEY. It never starts a
   # campaign by itself; an admin must first plan and start one through the API.
   worker-openalex-ingest:

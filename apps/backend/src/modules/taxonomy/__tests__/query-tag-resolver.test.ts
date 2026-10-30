@@ -4,6 +4,7 @@ import { invalidateTaxonomyDictionary, resolveQueryTags } from "../query-tag-res
 const m = vi.hoisted(() => ({
   topicFindMany: vi.fn(),
   keywordFindMany: vi.fn(),
+  tagFindMany: vi.fn(),
   paperCount: vi.fn(),
   queryRaw: vi.fn(),
   cacheGet: vi.fn(),
@@ -14,6 +15,7 @@ vi.mock("../../../infrastructure/database/prisma.js", () => ({
   getPrisma: () => ({
     researchTopic: { findMany: m.topicFindMany },
     keyword: { findMany: m.keywordFindMany },
+    tag: { findMany: m.tagFindMany },
     paper: { count: m.paperCount },
     $queryRaw: m.queryRaw,
   }),
@@ -33,6 +35,10 @@ function topic(over: Record<string, unknown>) {
 }
 function keyword(over: Record<string, unknown>) {
   return { id: "k-id", keywordName: "x", normalizedName: "x", aliases: [], paperCount: 10, ...over };
+}
+
+function customTag(over: Record<string, unknown>) {
+  return { id: "g-id", slug: "x", name: "x", paperCount: 10, ...over };
 }
 
 const TOPICS = [
@@ -57,6 +63,7 @@ beforeEach(() => {
   invalidateTaxonomyDictionary();
   m.topicFindMany.mockResolvedValue(TOPICS);
   m.keywordFindMany.mockResolvedValue(KEYWORDS);
+  m.tagFindMany.mockResolvedValue([]);
   m.paperCount.mockResolvedValue(4200);
   m.queryRaw.mockResolvedValue([]);
   m.cacheGet.mockResolvedValue(null);
@@ -195,6 +202,59 @@ describe("resolveQueryTags matching", () => {
   });
 });
 
+describe("resolveQueryTags curated tags", () => {
+  it("loads only active tags that own papers", async () => {
+    await resolveQueryTags("education");
+
+    expect(m.tagFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { status: "active", paperCount: { gte: 1 } } }),
+    );
+  });
+
+  it("resolves a custom tag by name and by slug, with a tagIds filter and no openalexId", async () => {
+    m.tagFindMany.mockResolvedValue([
+      customTag({ id: "g-nlp", slug: "natural-language-processing", name: "NLP Essentials", paperCount: 60 }),
+    ]);
+
+    const byName = await resolveQueryTags("NLP essentials");
+    expect(byName.best).toMatchObject({
+      kind: "tag", id: "g-nlp", name: "NLP Essentials", source: "name", confidence: 1, paperCount: 60,
+      matchedText: "nlp essentials", filter: { key: "tagIds", value: "g-nlp" },
+    });
+    expect(byName.best).not.toHaveProperty("openalexId");
+    expect(byName.coversQuery).toBe(true);
+
+    const bySlug = await resolveQueryTags("natural language processing");
+    expect(bySlug.best).toMatchObject({ kind: "tag", id: "g-nlp", source: "alias", confidence: 0.96 });
+  });
+
+  it("wins ties against a taxonomy node and a keyword with the same phrase", async () => {
+    // The topic (40 papers) and the keyword (25) would rank by size; the tag is smaller but curated.
+    m.tagFindMany.mockResolvedValue([customTag({ id: "g-tm", slug: "topic-modeling", name: "Topic Modeling", paperCount: 3 })]);
+
+    const result = await resolveQueryTags("topic modeling");
+
+    expect(result.detectedTags.map((t) => [t.kind, t.id])).toEqual([
+      ["tag", "g-tm"],
+      ["topic", "t-tm"],
+      ["keyword", "k-tm"],
+    ]);
+    expect(result.best).toMatchObject({ kind: "tag", confidence: 1 });
+  });
+
+  it("adds a 0.01 bonus (capped at 1) when the tag matches below full confidence", async () => {
+    m.tagFindMany.mockResolvedValue([customTag({ id: "g-hm", slug: "hm", name: "Hoc may", paperCount: 4 })]);
+    m.keywordFindMany.mockResolvedValue([
+      keyword({ id: "k-hm", keywordName: "Hoc may", normalizedName: "hoc may", paperCount: 400 }),
+    ]);
+    m.topicFindMany.mockResolvedValue([]);
+
+    // Half the query is covered: keyword 0.5, tag 0.5 + 0.01.
+    const result = await resolveQueryTags("hoc may sieu am");
+    expect(result.detectedTags.map((t) => [t.kind, t.confidence])).toEqual([["tag", 0.51], ["keyword", 0.5]]);
+  });
+});
+
 describe("resolveQueryTags fuzzy fallback", () => {
   const fuzzyRows = [
     { kind: "keyword", id: "k-ml", openalex_id: null, name: "Machine learning", paper_count: 500, similarity: 0.83 },
@@ -213,6 +273,22 @@ describe("resolveQueryTags fuzzy fallback", () => {
     });
     expect(result.detectedTags[1]).toMatchObject({ kind: "subfield", confidence: 0.48, filter: { key: "subfieldIds", value: "1702" } });
     expect(result.coversQuery).toBe(false);
+  });
+
+  it("includes custom tags in the trigram query and maps them to a tagIds filter", async () => {
+    m.queryRaw.mockResolvedValue([
+      { kind: "tag", id: "g-ml", openalex_id: null, name: "Machine Learning Basics", paper_count: 12, similarity: 0.75 },
+    ]);
+
+    const result = await resolveQueryTags("machine learnin basics");
+
+    const sql = (m.queryRaw.mock.calls[0]![0] as { sql: string }).sql;
+    expect(sql).toMatch(/FROM tags g/);
+    expect(sql).toMatch(/g\.status = 'active'/);
+    expect(result.best).toMatchObject({
+      kind: "tag", id: "g-ml", source: "fuzzy", confidence: 0.61, filter: { key: "tagIds", value: "g-ml" },
+    });
+    expect(result.best).not.toHaveProperty("openalexId");
   });
 
   it("is skipped for a single unmatched token and when an exact phrase matched", async () => {
@@ -285,7 +361,7 @@ describe("resolver cache", () => {
 
     // Once the dictionary was invalidated in this process the key also carries the invalidation epoch.
     expect(m.cacheSet).toHaveBeenCalledWith(
-      expect.stringMatching(/^search:qtags:v2:h\(.*topic modeling.*\)$/),
+      expect.stringMatching(/^search:qtags:v3:h\(.*topic modeling.*\)$/),
       expect.objectContaining({ coversQuery: true }),
       600,
     );

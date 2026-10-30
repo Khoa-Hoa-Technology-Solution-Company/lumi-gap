@@ -185,6 +185,11 @@ Users can also save multiple personal API connections in Settings → AI Connect
 | `MAX_PENDING_MENTOR_REQUESTS_PER_PROJECT` | `EnvSchema` / backend | Default 5 (1-20) |
 | `COMMUNITY_SUGGEST_MAX_PER_MINUTE` | `EnvSchema` / backend | Default 20 |
 | `COMMUNITY_SUGGEST_MIN_SIMILARITY` | `EnvSchema` / backend | Default 0.75 (0-1); tune with `pnpm --filter backend eval:community-suggest` |
+| `TAGGING_CRON` | `EnvSchema` / backend | Default `15 3 * * *`; cron of the tagging worker's `apply-all-tags` job |
+| `TAG_EMBEDDING_ENABLED` | `EnvSchema` / backend | Default `true`; `false` turns off embedding expansion (rules still run) |
+| `TAG_EMBEDDING_MIN_SEED` | `EnvSchema` / backend | Default 10; rule/manual papers with an embedding needed before a tag is expanded by embedding |
+| `TAG_EMBEDDING_MIN_SIMILARITY` | `EnvSchema` / backend | Default 0.82 (0-1); cosine similarity to the tag centroid |
+| `TAG_EMBEDDING_MAX_PAPERS` | `EnvSchema` / backend | Default 300; most papers one tag gains from embedding expansion per run |
 | `GAP_SCARCE_ABS` | `EnvSchema` / backend | Default 5 |
 | `GAP_SCARCE_PCT` | `EnvSchema` / backend | Default 0.02 (0-1) |
 | `GAP_PARENT_RISING_MIN` | `EnvSchema` / backend | Default 10 |

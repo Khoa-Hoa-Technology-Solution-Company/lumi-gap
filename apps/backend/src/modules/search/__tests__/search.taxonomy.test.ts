@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DetectedTag } from "@trend/shared-types";
-import { applyDetectedTagBoost, computeTaxonomyBoost, effectiveRelevanceScore, relevanceSortScore } from "../search.taxonomy.js";
+import { applyDetectedTagBoost, computeTaxonomyBoost, effectiveRelevanceScore, paperCarriesTag, relevanceSortScore } from "../search.taxonomy.js";
 
 describe("computeTaxonomyBoost", () => {
   it("boosts papers whose OpenAlex taxonomy matches the query", () => {
@@ -109,6 +109,24 @@ describe("applyDetectedTagBoost", () => {
 
     const fuzzy = { ...kw, source: "fuzzy" as const, matchedText: "machin lerning" };
     expect(applyDetectedTagBoost([paper({ keywords: ["machin lerning"] })], [fuzzy])[0]!.taxonomyBoostScore).toBe(0);
+  });
+
+  it("matches curated tags on the paper's tagIds only", () => {
+    const curated = tag({
+      kind: "tag", id: "g-1", openalexId: undefined, name: "My Tag", confidence: 1,
+      filter: { key: "tagIds", value: "g-1" },
+    });
+    const papers = [
+      paper({ tagIds: ["g-9", "g-1"] }),
+      paper({ tagIds: ["g-9"] }),
+      paper({}),
+      // A matching name or keyword is not enough: only the tag assignment counts.
+      paper({ keywords: ["My Tag"], topics: [{ topicName: "My Tag" }] }),
+    ];
+
+    expect(applyDetectedTagBoost(papers, [curated]).map((p) => p.taxonomyBoostScore)).toEqual([0.05, 0, 0, 0]);
+    expect(paperCarriesTag(papers[0]!, curated)).toBe(true);
+    expect(paperCarriesTag(papers[1]!, curated)).toBe(false);
   });
 
   it("stacks on the name-overlap boost but caps the combined value at 0.12", () => {

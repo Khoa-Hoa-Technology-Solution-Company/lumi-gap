@@ -151,7 +151,8 @@ model TagRule {
 model PaperTag {
   paperId    String   @map("paper_id") @db.Uuid
   tagId      String   @map("tag_id") @db.Uuid
-  /// rule | embedding | manual. Manual rows are never replaced by automatic tagging.
+  /// rule | embedding | manual | blocked. Manual and blocked rows are never replaced by automatic tagging;
+  /// blocked rows keep an admin-removed paper out of the tag and never count as tagged.
   source     String   @db.VarChar(16)
   confidence Float?
   createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)

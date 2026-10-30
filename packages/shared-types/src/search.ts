@@ -21,16 +21,18 @@ export interface ScoredPaper extends Paper {
   hybridScore?: number;
   rerankScore?: number;
   taxonomyBoostScore?: number;
+  /** Active curated tags (tags.id) the paper carries; blocked assignments are not listed. */
+  tagIds?: string[];
 }
 
 /** Catalogue entry a search query was resolved to (taxonomy node or keyword). */
-export type DetectedTagKind = "domain" | "field" | "subfield" | "topic" | "keyword";
+export type DetectedTagKind = "domain" | "field" | "subfield" | "topic" | "keyword" | "tag";
 
 /** How the query text met the entry: its name, an admin alias, an OpenAlex topic keyword, or trigram similarity. */
 export type DetectedTagSource = "name" | "alias" | "openalex-keyword" | "fuzzy";
 
 /** Explicit filter param that reproduces a detected tag, so the client can pin or drop it. */
-export type DetectedTagFilterKey = "domainIds" | "fieldIds" | "subfieldIds" | "topicIds" | "keywordIds";
+export type DetectedTagFilterKey = "domainIds" | "fieldIds" | "subfieldIds" | "topicIds" | "keywordIds" | "tagIds";
 
 export interface DetectedTag {
   kind: DetectedTagKind;

@@ -94,6 +94,30 @@ describe("searchService.semantic query understanding", () => {
     expect(filtersOf(0).topicIds).toBeUndefined();
   });
 
+  it("filter mode with a curated tag sends tagIds", async () => {
+    const curated = tag({ kind: "tag", id: "g-1", openalexId: undefined, filter: { key: "tagIds", value: "g-1" } });
+    m.resolveQueryTags.mockResolvedValue(resolution(curated));
+
+    await searchService.semantic(base);
+
+    expect(filtersOf(0).tagIds).toEqual(["g-1"]);
+    expect(filtersOf(0).topicIds).toBeUndefined();
+  });
+
+  it("boost mode lifts papers whose tagIds carry the detected curated tag", async () => {
+    const curated = tag({ kind: "tag", id: "g-1", openalexId: undefined, confidence: 0.6, filter: { key: "tagIds", value: "g-1" } });
+    m.resolveQueryTags.mockResolvedValue(resolution(curated, false));
+    m.retrieveScored.mockResolvedValue([
+      hit("plain", { score: 0.5, hybridScore: 0.5 }),
+      hit("tagged", { score: 0.5, hybridScore: 0.49, tagIds: ["g-1"] }),
+    ]);
+
+    const result = await searchService.semantic(base);
+
+    expect(result.understanding.mode).toBe("boost");
+    expect(result.papers.map((p) => p.id)).toEqual(["tagged", "plain"]);
+  });
+
   it("falls back to an unfiltered boost search when the filtered pool is too small", async () => {
     const best = tag();
     m.resolveQueryTags.mockResolvedValue(resolution(best));
@@ -169,6 +193,7 @@ describe("searchService.semantic query understanding", () => {
     ["fields", { fields: ["CS"] }],
     ["domains", { domains: ["Physical Sciences"] }],
     ["keywordIds", { keywordIds: ["123e4567-e89b-42d3-a456-426614174000"] }],
+    ["tagIds", { tagIds: ["123e4567-e89b-42d3-a456-426614174001"] }],
   ])("explicit %s disables auto tags", async (_name, explicit) => {
     m.resolveQueryTags.mockResolvedValue(resolution(tag()));
 
@@ -206,6 +231,13 @@ describe("searchService.semantic query understanding", () => {
 
     expect(result.understanding.mode).toBe("none");
     expect(result.total).toBe(30);
+  });
+
+  it("passes an explicit tagIds filter through to the retriever", async () => {
+    const ids = ["123e4567-e89b-42d3-a456-426614174000"];
+    await searchService.semantic({ ...base, tagIds: ids });
+
+    expect(filtersOf(0).tagIds).toEqual(ids);
   });
 
   it("passes an explicit keywordIds filter through to the retriever", async () => {
