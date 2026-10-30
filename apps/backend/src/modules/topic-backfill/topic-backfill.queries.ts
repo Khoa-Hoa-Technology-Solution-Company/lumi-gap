@@ -58,6 +58,17 @@ export function keywordQuery(name: string): BackfillQuery | null {
 }
 
 /**
+ * The query as one filter, for campaign partitions and group counts, which take no separate search parameter.
+ * Title and abstract only: a campaign samples at random, and `default.search` also matches full text, which brings in
+ * papers that merely mention the phrase. A filter value cannot hold its own separators, so they become spaces.
+ */
+export function filterOnlyExpression(query: BackfillQuery): string {
+  if (!query.searchText) return query.filterExpression;
+  const phrase = query.searchText.replace(/[,|:]/g, " ").replace(/\s+/g, " ");
+  return `title_and_abstract.search:${phrase},${query.filterExpression}`;
+}
+
+/**
  * Queries for a tag from its INCLUDE rules: the taxonomy nodes grouped by level (ids OR-ed with "|", chunked), then
  * one phrase query per keyword rule, at most MAX_TAG_KEYWORD_QUERIES.
  * Exclude rules are NOT translated: OpenAlex cannot express "not in this topic" across levels, and the re-tagging

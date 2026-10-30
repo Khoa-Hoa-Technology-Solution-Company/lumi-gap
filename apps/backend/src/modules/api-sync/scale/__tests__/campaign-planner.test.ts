@@ -54,4 +54,18 @@ describe("campaign planner", () => {
     expect(first.reduce((sum, partition) => sum + partition.plannedPopulation, 0)).toBe(25_000);
     expect(first.every((partition) => partition.targetCount <= 100 && partition.seed > 0)).toBe(true);
   });
+
+  it("keeps every seed within the partition's INTEGER column", () => {
+    const seeds = splitSeededSampleQuota({
+      partitionPrefix: "q1",
+      stratumKey: "tag:1:q1",
+      filterExpression: "has_abstract:true",
+      population: 1_000_000,
+      quota: 100_000,
+      seedNamespace: "tag-workplace-behavior-20261030144153",
+    }).map((partition) => partition.seed);
+
+    expect(seeds).toHaveLength(1000);
+    expect(seeds.every((seed) => seed >= 1 && seed <= 2_147_483_647)).toBe(true);
+  });
 });

@@ -210,6 +210,10 @@ export const API_ROUTES = {
       request: "/admin/topic-backfill",
       runs: "/admin/topic-backfill/runs",
     },
+    tagCampaigns: {
+      preflight: "/admin/openalex-ingest/tag-campaigns/preflight",
+      list: "/admin/openalex-ingest/tag-campaigns",
+    },
     taxonomy: {
       stats: "/admin/taxonomy/stats",
       nodes: "/admin/taxonomy/nodes",

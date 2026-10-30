@@ -198,6 +198,7 @@ Users can also save multiple personal API connections in Settings → AI Connect
 | `TOPIC_BACKFILL_USER_MAX_PER_HOUR` | `EnvSchema` / backend | Default 5; backfill requests per user per hour |
 | `TOPIC_BACKFILL_COOLDOWN_HOURS` | `EnvSchema` / backend | Default 24; hours before search can start another backfill of the same entry |
 | `TOPIC_BACKFILL_DAILY_MAX_PAPERS` | `EnvSchema` / backend | Default 2000; papers search-triggered runs may import in 24 hours across all users |
+| `TAG_CAMPAIGN_MAX_WORKS` | `EnvSchema` / backend | Default 5000; largest sample an admin may plan from one tag in a single campaign |
 | `GAP_SCARCE_ABS` | `EnvSchema` / backend | Default 5 |
 | `GAP_SCARCE_PCT` | `EnvSchema` / backend | Default 0.02 (0-1) |
 | `GAP_PARENT_RISING_MIN` | `EnvSchema` / backend | Default 10 |

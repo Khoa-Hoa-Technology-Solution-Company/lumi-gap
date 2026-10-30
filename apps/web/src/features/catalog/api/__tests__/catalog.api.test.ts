@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), put: vi.fn(), patch: vi.fn(), delete: vi.fn() }));
 vi.mock("@/services/api-client", () => ({ api: mocks }));
 
-import { taxonomyApi, tagsApi } from "../catalog.api";
+import { taxonomyApi, tagsApi, tagCampaignsApi } from "../catalog.api";
 
 const meta = { page: 1, pageSize: 20, total: 1, totalPages: 1 };
 const envelope = (data: unknown, withMeta = false) => ({ data: { success: true, data, ...(withMeta ? { meta } : {}) } });
@@ -99,5 +99,25 @@ describe("tagsApi", () => {
     mocks.post.mockResolvedValue(envelope({ jobId: "j2", tagId: "t1" }));
     await tagsApi.unblockPaper("t1", "p1");
     expect(mocks.post).toHaveBeenLastCalledWith("/admin/tags/t1/papers/p1/unblock");
+  });
+});
+
+describe("tagCampaignsApi", () => {
+  it("runs the preflight with the tag id", async () => {
+    mocks.post.mockResolvedValue(envelope({ population: 5 }));
+    expect(await tagCampaignsApi.preflight("t1")).toEqual({ population: 5 });
+    expect(mocks.post).toHaveBeenCalledWith("/admin/openalex-ingest/tag-campaigns/preflight", { tagId: "t1" });
+  });
+
+  it("plans a campaign with the tag id and target", async () => {
+    mocks.post.mockResolvedValue(envelope({ id: "c1", state: "planned" }));
+    expect(await tagCampaignsApi.plan("t1", 250)).toEqual({ id: "c1", state: "planned" });
+    expect(mocks.post).toHaveBeenCalledWith("/admin/openalex-ingest/tag-campaigns", { tagId: "t1", targetUniqueWorks: 250 });
+  });
+
+  it("lists the campaigns of one tag", async () => {
+    mocks.get.mockResolvedValue(envelope([{ id: "c1" }]));
+    expect(await tagCampaignsApi.list("t1")).toEqual([{ id: "c1" }]);
+    expect(mocks.get).toHaveBeenCalledWith("/admin/openalex-ingest/tag-campaigns", { params: { tagId: "t1" } });
   });
 });

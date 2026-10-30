@@ -5,6 +5,8 @@ import type {
   TaggedPaper,
   Tag,
   TagApplyJob,
+  TagCampaign,
+  TagCampaignPreflight,
   TagDetail,
   TagPreview,
   TagRuleInput,
@@ -179,5 +181,20 @@ export const tagsApi = {
   async unblockPaper(id: string, paperId: string): Promise<TagApplyJob> {
     const res = await api.post(API_ROUTES.admin.tags.unblock(id, paperId));
     return res.data.data as TagApplyJob;
+  },
+};
+
+export const tagCampaignsApi = {
+  async preflight(tagId: string): Promise<TagCampaignPreflight> {
+    const res = await api.post(API_ROUTES.admin.tagCampaigns.preflight, { tagId });
+    return res.data.data as TagCampaignPreflight;
+  },
+  async plan(tagId: string, targetUniqueWorks: number): Promise<TagCampaign> {
+    const res = await api.post(API_ROUTES.admin.tagCampaigns.list, { tagId, targetUniqueWorks });
+    return res.data.data as TagCampaign;
+  },
+  async list(tagId: string): Promise<TagCampaign[]> {
+    const res = await api.get(API_ROUTES.admin.tagCampaigns.list, { params: { tagId } });
+    return res.data.data as TagCampaign[];
   },
 };

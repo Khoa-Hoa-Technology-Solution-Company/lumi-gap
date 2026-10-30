@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArchiveRestore, ArrowLeft, Archive, DatabaseZap, Pencil, RefreshCw, Search } from "lucide-react";
+import { ArchiveRestore, ArrowLeft, Archive, CalendarClock, DatabaseZap, Pencil, RefreshCw, Search } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -9,6 +9,8 @@ import { BackfillRunsSection } from "@/features/catalog/components/backfill-runs
 import { StatusBadge } from "@/features/catalog/components/catalog-badges";
 import { apiErr, ErrorState } from "@/features/catalog/components/catalog-ui";
 import { EditTagDialog, RETAG_TOAST } from "@/features/catalog/components/tag-dialogs";
+import { TagCampaignDialog } from "@/features/catalog/components/tag-campaign-dialog";
+import { TagCampaignsSection } from "@/features/catalog/components/tag-campaigns-section";
 import { TagPapersSection } from "@/features/catalog/components/tag-papers-section";
 import { TagPreviewSection } from "@/features/catalog/components/tag-preview-section";
 import { TagRulesSection } from "@/features/catalog/components/tag-rules-section";
@@ -28,6 +30,7 @@ export function AdminTagDetailPage() {
   const query = useAdminTag(id);
   const [editOpen, setEditOpen] = useState(false);
   const [fetchOpen, setFetchOpen] = useState(false);
+  const [campaignOpen, setCampaignOpen] = useState(false);
   const apply = useApplyTag();
   const archive = useArchiveTag();
   const update = useUpdateTag();
@@ -113,6 +116,10 @@ export function AdminTagDetailPage() {
                 <DatabaseZap className="h-4 w-4" />
                 {t("Fetch from OpenAlex")}
               </Button>
+              <Button variant="outline" size="sm" onClick={() => setCampaignOpen(true)} disabled={tag.status === "archived"}>
+                <CalendarClock className="h-4 w-4" />
+                {t("Plan campaign")}
+              </Button>
               <Button variant="outline" size="sm" onClick={toggleArchive} disabled={archive.isPending || update.isPending}>
                 {tag.status === "archived" ? <ArchiveRestore className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
                 {tag.status === "archived" ? t("Restore") : t("Archive")}
@@ -129,11 +136,16 @@ export function AdminTagDetailPage() {
           <TagRulesSection key={tag.id} tag={tag} />
           <TagPreviewSection tagId={tag.id} />
           <BackfillRunsSection targetKind="tag" targetId={tag.id} />
+          <TagCampaignsSection tagId={tag.id} />
           <TagPapersSection tag={tag} />
           <EditTagDialog tag={tag} open={editOpen} onOpenChange={setEditOpen} />
           <BackfillDialog
             target={fetchOpen ? { kind: "tag", id: tag.id, name: tag.name } : undefined}
             onClose={() => setFetchOpen(false)}
+          />
+          <TagCampaignDialog
+            tag={campaignOpen ? { id: tag.id, name: tag.name } : undefined}
+            onClose={() => setCampaignOpen(false)}
           />
         </>
       )}

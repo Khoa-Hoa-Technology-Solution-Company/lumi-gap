@@ -314,10 +314,13 @@ model OpenAlexIngestCampaign {
   completedAt       DateTime? @map("completed_at") @db.Timestamptz(6)
   failureReason     String?   @map("failure_reason")
   completionNote    String?   @map("completion_note")
+  /// Set when the campaign was planned from a tag; at most one live campaign per tag (partial unique index in SQL).
+  targetTagId       String?   @map("target_tag_id") @db.Uuid
   createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@index([state, createdAt])
+  @@index([targetTagId, createdAt(sort: Desc)])
   @@map("openalex_ingest_campaigns")
 }
 

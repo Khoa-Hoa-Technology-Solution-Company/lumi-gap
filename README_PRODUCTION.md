@@ -252,7 +252,8 @@ The regular deployment intentionally does **not** start:
 
 Those workers change the corpus and must be started only for an approved sync or
 ingestion campaign. This prevents every web deployment from silently importing
-more papers.
+more papers. A campaign planned from a tag is one of these: it stays `planned`
+until an admin starts it on the pipeline page with `worker:openalex-ingest` running.
 
 `worker-topic-backfill` also adds papers, but it has no schedule: it only runs a
 request from an admin or a signed-in user on a search with thin coverage. Each

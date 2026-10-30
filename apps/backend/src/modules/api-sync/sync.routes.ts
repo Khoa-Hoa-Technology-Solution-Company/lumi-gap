@@ -4,7 +4,7 @@ import { requireAuth, requireRole } from "../../common/middleware/auth.js";
 import { validate } from "../../common/middleware/validate.js";
 import { logger } from "../../infrastructure/logger.js";
 import { syncController } from "./sync.controller.js";
-import { CorpusValidationParamsSchema, IngestCampaignParamsSchema, PlanOpenAlexCampaignSchema, TriggerCorpusValidationSchema, TriggerSyncSchema } from "./dto/trigger-sync.schema.js";
+import { CorpusValidationParamsSchema, IngestCampaignParamsSchema, PlanOpenAlexCampaignSchema, PlanTagCampaignSchema, TagCampaignTargetSchema, TriggerCorpusValidationSchema, TriggerSyncSchema } from "./dto/trigger-sync.schema.js";
 
 /**
  * Admin sync routes. Gated by requireAuth + requireRole("admin").
@@ -29,6 +29,9 @@ syncRouter.get("/sync/runs", ...adminGuard, syncController.listRuns);
 syncRouter.get("/openalex-ingest/campaigns", ...adminGuard, syncController.listIngestCampaigns);
 syncRouter.post("/openalex-ingest/preflight", ...adminGuard, syncController.preflightOpenAlexIngest);
 syncRouter.post("/openalex-ingest/campaigns/plan", ...adminGuard, validate(PlanOpenAlexCampaignSchema), syncController.planOpenAlexIngestCampaign);
+syncRouter.post("/openalex-ingest/tag-campaigns/preflight", ...adminGuard, validate(TagCampaignTargetSchema), syncController.preflightTagCampaign);
+syncRouter.post("/openalex-ingest/tag-campaigns", ...adminGuard, validate(PlanTagCampaignSchema), syncController.planTagCampaign);
+syncRouter.get("/openalex-ingest/tag-campaigns", ...adminGuard, validate(TagCampaignTargetSchema, "query"), syncController.listTagCampaigns);
 syncRouter.get("/openalex-ingest/campaigns/:campaignId", ...adminGuard, validate(IngestCampaignParamsSchema, "params"), syncController.getIngestCampaign);
 syncRouter.post(
   "/openalex-ingest/campaigns/:campaignId/validations",

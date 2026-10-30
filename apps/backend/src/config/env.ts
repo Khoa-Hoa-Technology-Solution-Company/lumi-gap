@@ -315,6 +315,8 @@ const EnvSchema = z.object({
   TOPIC_BACKFILL_USER_MAX_PER_HOUR: z.coerce.number().int().positive().default(5),
   TOPIC_BACKFILL_COOLDOWN_HOURS: z.coerce.number().int().min(0).default(24),
   TOPIC_BACKFILL_DAILY_MAX_PAPERS: z.coerce.number().int().min(1).default(2000),
+  // Largest random sample an admin may plan from one tag in a single campaign.
+  TAG_CAMPAIGN_MAX_WORKS: z.coerce.number().int().min(1).default(5000),
 
   // Quality & Feedback — per-user/hour cap on the on-demand LLM-judge (a generate call).
   QUALITY_EVAL_MAX_PER_HOUR: z.coerce.number().int().positive().default(20),

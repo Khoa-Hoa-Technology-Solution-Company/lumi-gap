@@ -68,6 +68,31 @@ export function BackfillStateBadge({ state }: { state: TopicBackfillState }) {
   return <Badge variant="outline" className={TONES[BACKFILL_STATE_TONES[state]]}>{t(BACKFILL_STATE_LABELS[state])}</Badge>;
 }
 
+const CAMPAIGN_STATE_LABELS: Record<string, string> = {
+  planned: "Planned",
+  running: "Running",
+  paused: "Paused",
+  completed: "Completed",
+  cancelled: "Cancelled",
+  failed: "Failed",
+};
+
+const CAMPAIGN_STATE_TONES: Record<string, keyof typeof TONES> = {
+  planned: "slate",
+  running: "blue",
+  paused: "amber",
+  completed: "green",
+  cancelled: "slate",
+  failed: "rose",
+};
+
+/** State of an OpenAlex ingest campaign; an unknown state is shown as it came from the server. */
+export function CampaignStateBadge({ state }: { state: string }) {
+  const { t } = useI18n();
+  const label = CAMPAIGN_STATE_LABELS[state];
+  return <Badge variant="outline" className={TONES[CAMPAIGN_STATE_TONES[state] ?? "slate"]}>{label ? t(label) : state}</Badge>;
+}
+
 export const SOURCE_LABELS: Record<PaperTagSource, string> = {
   rule: "Rule",
   embedding: "Embedding",

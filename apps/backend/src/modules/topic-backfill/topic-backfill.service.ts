@@ -151,20 +151,21 @@ function assertHasQueries(target: BackfillTarget): void {
   throw new AppError(409, "TOPIC_NOT_BACKFILLABLE", "This entry cannot be searched in OpenAlex");
 }
 
-/** Best-effort follow-up of a run that imported papers; one failing step never fails the run. */
-async function runPostSteps(run: { id: string; targetKind: string; targetId: string }): Promise<void> {
+/**
+ * Best-effort follow-up of anything that imported papers; one failing step never fails the import.
+ * Re-tags only `tagId` when the import was for one tag, every active tag otherwise.
+ */
+export async function runImportFollowUps(context: Record<string, unknown>, tagId?: string): Promise<void> {
   const step = async (name: string, action: () => Promise<unknown>) => {
     try { await action(); } catch (error) {
-      logger.warn({ runId: run.id, step: name, message: scrubErrorMessage(error) }, "topic backfill post-step failed");
+      logger.warn({ ...context, step: name, message: scrubErrorMessage(error) }, "import follow-up failed");
     }
   };
   // Search results show tag counts from these columns, which an import leaves stale.
   await step("refreshCounts", () => taxonomyBackfillService.refreshCounts());
   await step("embeddings", () => embeddingQueue.add("manual-embedding", {}));
   await step("paper-analysis", () => paperAnalysisQueue.add("synced-paper-knowledge", {}));
-  await step("retag", () => (run.targetKind === "tag"
-    ? tagAssignmentService.enqueueApplyTag(run.targetId)
-    : tagAssignmentService.enqueueApplyAll()));
+  await step("retag", () => (tagId ? tagAssignmentService.enqueueApplyTag(tagId) : tagAssignmentService.enqueueApplyAll()));
 }
 
 export const topicBackfillService = {
@@ -291,7 +292,7 @@ export const topicBackfillService = {
 
     // Completed means the counts and the re-tagging are queued, so a search that polls this run sees fresh numbers.
     // Cumulative, so a retry that only found what an earlier attempt imported still does the follow-up.
-    if (inserted > 0) await runPostSteps(run);
+    if (inserted > 0) await runImportFollowUps({ runId: run.id }, run.targetKind === "tag" ? run.targetId : undefined);
     await prisma.topicBackfillRun.update({
       where: { id: runId }, data: { state: "completed", finishedAt: new Date(), errorMessage: null },
     });

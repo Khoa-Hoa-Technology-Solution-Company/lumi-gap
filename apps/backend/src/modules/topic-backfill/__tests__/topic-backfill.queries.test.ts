@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  buildTagQueries, keywordQuery, loadBackfillTarget, MAX_TAG_KEYWORD_QUERIES, nodeQuery, TAG_FILTER_VALUES_PER_QUERY,
+  buildTagQueries, filterOnlyExpression, keywordQuery, loadBackfillTarget, MAX_TAG_KEYWORD_QUERIES, nodeQuery, TAG_FILTER_VALUES_PER_QUERY,
 } from "../topic-backfill.queries.js";
 
 const m = vi.hoisted(() => ({
@@ -170,5 +170,23 @@ describe("loadBackfillTarget", () => {
     expect((await loadBackfillTarget("tag", ID))!.queries).toEqual([]);
     expect(m.topicFindMany).not.toHaveBeenCalled();
     expect(m.keywordFindMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("filterOnlyExpression", () => {
+  it("returns a filter query unchanged", () => {
+    const query = nodeQuery("topic", "T10028")!;
+    expect(filterOnlyExpression(query)).toBe("topics.id:T10028,has_abstract:true");
+  });
+
+  it("turns a keyword query into a title_and_abstract.search filter", () => {
+    expect(filterOnlyExpression(keywordQuery("prompt engineering")!)).toBe("title_and_abstract.search:\"prompt engineering\",has_abstract:true");
+  });
+
+  it("turns commas, pipes and colons in the phrase into single spaces so they cannot split the filter", () => {
+    const expression = filterOnlyExpression({ searchText: "\"a,b|c:d  e\"", filterExpression: "has_abstract:true" });
+    expect(expression).toBe("title_and_abstract.search:\"a b c d e\",has_abstract:true");
+    // the only separator left between filters is the one the function adds
+    expect(expression.split(",")).toHaveLength(2);
   });
 });

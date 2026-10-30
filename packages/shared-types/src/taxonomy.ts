@@ -169,6 +169,49 @@ export interface TopicBackfillRequestResult {
   created: boolean;
 }
 
+/** A planned OpenAlex campaign that samples one tag's works. Start, pause and cancel live on the pipeline page. */
+export interface TagCampaign {
+  id: string;
+  campaignKey: string;
+  /** planned | running | paused | completed | cancelled | failed */
+  state: string;
+  targetUniqueWorks: number;
+  /** Works stored so far, counting those already in the corpus. */
+  uniqueWorks: number;
+  plannedPartitions: number;
+  completedPartitions: number;
+  createdAt: ISODateString;
+  startedAt: ISODateString | null;
+  completedAt: ISODateString | null;
+}
+
+/** One OpenAlex request a campaign would sample from. */
+export interface TagCampaignQuery {
+  filterExpression: string;
+  /** Works in OpenAlex matching the filter. */
+  population: number;
+}
+
+/** What a campaign from this tag would draw on. Planning it creates nothing and downloads no works. */
+export interface TagCampaignPreflight {
+  tag: { id: string; name: string; paperCount: number };
+  planningAsOf: ISODateString;
+  queries: TagCampaignQuery[];
+  /** Sum over the queries: an upper bound, because one work can match several of them. */
+  population: number;
+  /** Include rules on keywords that get no query: hidden keywords, or past the per-tag limit. */
+  keywordRulesSkipped: number;
+  /** Exclude rules OpenAlex cannot apply: such works may be imported, and are then left untagged. */
+  excludeRuleCount: number;
+  maxTarget: number;
+  openAlexKeyConfigured: boolean;
+  ingestWorkerOnline: boolean;
+  /** Active papers still waiting for an embedding, and how many get one per nightly run. */
+  embeddingBacklog: { pendingPapers: number; papersPerDay: number };
+  /** Blocks planning another campaign until it finishes or is cancelled. */
+  liveCampaign: TagCampaign | null;
+}
+
 export interface TaxonomyStats {
   /** Active papers. */
   papers: number;

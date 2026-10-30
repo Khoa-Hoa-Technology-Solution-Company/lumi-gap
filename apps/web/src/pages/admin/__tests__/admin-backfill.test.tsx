@@ -7,7 +7,7 @@ import type { CatalogKeyword, TagDetail, TopicBackfillRun } from "@trend/shared-
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { toast } from "sonner";
 
-const mocks = vi.hoisted(() => ({ adminRequest: vi.fn(), adminRuns: vi.fn(), getRun: vi.fn(), keywords: vi.fn(), tag: vi.fn() }));
+const mocks = vi.hoisted(() => ({ adminRequest: vi.fn(), adminRuns: vi.fn(), getRun: vi.fn(), keywords: vi.fn(), tag: vi.fn(), campaignPreflight: vi.fn(), campaignPlan: vi.fn(), campaignList: vi.fn() }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock("@/i18n", () => ({
   useI18n: () => ({
@@ -18,6 +18,10 @@ vi.mock("@/i18n", () => ({
 vi.mock("@/features/topic-backfill/api/topic-backfill.api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/features/topic-backfill/api/topic-backfill.api")>()),
   topicBackfillApi: { adminRequest: mocks.adminRequest, adminRuns: mocks.adminRuns, getRun: mocks.getRun },
+}));
+vi.mock("@/features/catalog/api/catalog.api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/features/catalog/api/catalog.api")>()),
+  tagCampaignsApi: { preflight: mocks.campaignPreflight, plan: mocks.campaignPlan, list: mocks.campaignList },
 }));
 vi.mock("@/features/catalog/hooks/use-taxonomy", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/features/catalog/hooks/use-taxonomy")>()),
@@ -60,6 +64,7 @@ beforeEach(() => {
   vi.mocked(toast.success).mockReset();
   vi.mocked(toast.error).mockReset();
   mocks.adminRuns.mockResolvedValue({ data: [], meta: { page: 1, pageSize: 5, total: 0, totalPages: 1 } });
+  mocks.campaignList.mockResolvedValue([]);
   client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   container = document.createElement("div");
   document.body.append(container);
@@ -134,7 +139,9 @@ describe("tag detail fetch action", () => {
     expect(sections[0]).toBe("rules");
     expect(sections[1]).toBe("preview");
     expect(sections[2]).toContain("OpenAlex imports");
-    expect(sections[3]).toBe("papers");
+    expect(sections[3]).toContain("OpenAlex campaigns");
+    expect(sections[4]).toBe("papers");
+    expect(mocks.campaignList).toHaveBeenCalledWith("t1");
   });
 
   it("asks for the budget and reports a tag without include rules", async () => {
@@ -154,5 +161,31 @@ describe("tag detail fetch action", () => {
     mocks.tag.mockReturnValue({ data: { ...tag, status: "archived" }, isError: false, refetch: vi.fn() });
     await renderTag();
     expect((Array.from(container.querySelectorAll("button")).find((item) => item.textContent?.trim() === "Fetch from OpenAlex") as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("puts Plan campaign next to Fetch from OpenAlex and opens the dialog with a preflight", async () => {
+    mocks.tag.mockReturnValue({ data: tag, isError: false, refetch: vi.fn() });
+    mocks.campaignPreflight.mockResolvedValue({
+      tag: { id: "t1", name: "Machine learning", paperCount: 42 }, planningAsOf: "2026-10-30T00:00:00Z",
+      queries: [{ filterExpression: "topics.id:T1", population: 900 }], population: 900, keywordRulesSkipped: 0, excludeRuleCount: 0,
+      maxTarget: 1000, openAlexKeyConfigured: true, ingestWorkerOnline: true,
+      embeddingBacklog: { pendingPapers: 0, papersPerDay: 500 }, liveCampaign: null,
+    });
+    await renderTag();
+    const labels = Array.from(container.querySelectorAll("header button, header a")).map((item) => item.textContent?.trim());
+    expect(labels.indexOf("Plan campaign")).toBe(labels.indexOf("Fetch from OpenAlex") + 1);
+    expect(mocks.campaignPreflight).not.toHaveBeenCalled();
+    await click(button("Plan campaign"));
+    expect(mocks.campaignPreflight).toHaveBeenCalledWith("t1");
+    const dialog = document.querySelector("[role='dialog']")!;
+    expect(dialog.textContent).toContain("Plan an OpenAlex campaign");
+    expect(dialog.textContent).toContain("topics.id:T1");
+    expect(dialog.querySelector<HTMLInputElement>("#tag-campaign-target")?.value).toBe("100");
+  });
+
+  it("disables Plan campaign for an archived tag", async () => {
+    mocks.tag.mockReturnValue({ data: { ...tag, status: "archived" }, isError: false, refetch: vi.fn() });
+    await renderTag();
+    expect((Array.from(container.querySelectorAll("button")).find((item) => item.textContent?.trim() === "Plan campaign") as HTMLButtonElement).disabled).toBe(true);
   });
 });

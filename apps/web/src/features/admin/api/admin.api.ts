@@ -56,6 +56,8 @@ export interface OpenAlexIngestCampaign {
   completedAt?: string;
   failureReason?: string;
   completionNote?: string;
+  /** Planning snapshot; `tag` is set on campaigns planned from a catalogue tag. */
+  manifest?: { tag?: { id?: string; name?: string } } | null;
   createdAt: string;
   updatedAt: string;
 }

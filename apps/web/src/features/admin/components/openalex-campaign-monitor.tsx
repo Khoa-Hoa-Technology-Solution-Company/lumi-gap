@@ -53,6 +53,7 @@ export function OpenAlexCampaignMonitor({
   const campaign = detailQuery.data?.campaign ?? campaigns.find((item) => item._id === selectedId);
   const pendingAction = start.isPending || pause.isPending || cancel.isPending || preflight.isPending;
   const detailUnavailable = Boolean(selectedId && detailQuery.isError);
+  const tagName = campaign?.manifest?.tag?.name;
 
   useEffect(() => setConfirmingCancel(false), [selectedId]);
 
@@ -145,6 +146,7 @@ export function OpenAlexCampaignMonitor({
               </select>
             </label>
             <div className="flex flex-wrap items-center gap-2">
+              {tagName && <Badge variant="secondary" className="max-w-[16rem] truncate font-normal" title={tagName}>{tagName}</Badge>}
               <CampaignStateBadge state={campaign.state} />
               {(campaign.state === "planned" || campaign.state === "paused") && (
                 <Button size="sm" disabled={pendingAction || ingestWorkerStatus !== "alive" || detailUnavailable} onClick={() => void runAction("start")}>
