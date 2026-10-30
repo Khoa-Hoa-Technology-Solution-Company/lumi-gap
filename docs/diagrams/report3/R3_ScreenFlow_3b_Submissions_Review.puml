@@ -19,6 +19,8 @@ rectangle "Submission detail\n/submissions/:id" as N8
 rectangle "Manuscript editor\n/​projects/​:projectId/​manuscripts/​:id" as N9
 rectangle "Submissions tab\n/​projects/​:id?tab=submissions" as N10
 rectangle "Review opportunities\n/review-opportunities" as N11
+rectangle "Mentor project guidance\n/academic-support/projects/:projectId" as N12
+N3 --> N12 : "open project"
 N1 <--> N4 : "request item"
 N4 --> N7 : "assignment"
 N7 --> N9 : "open manuscript"
