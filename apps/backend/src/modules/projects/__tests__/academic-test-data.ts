@@ -17,6 +17,9 @@ export const newCreatedAcademicData = (): CreatedAcademicData => ({ userIds: [],
 export async function removeCreatedAcademicData({ userIds, institutionIds, paperIds }: CreatedAcademicData) {
   const db = getPrisma();
   if (!userIds.length) return;
+  // Consent now has immutable audit records. Keep those fixtures in the isolated
+  // database rather than disabling production history triggers to clean them up.
+  if (await db.mentorAccess.count({ where: { OR: [{ mentorUserId: { in: userIds } }, { configuredById: { in: userIds } }] } })) return;
   for (const userId of userIds) {
     for (const source of await db.verificationEvidenceSource.findMany({ where: { request: { userId } } })) {
       if (source.storageKey) await verificationEvidenceStorage.remove(source.storageKey, userId);

@@ -229,6 +229,7 @@ export function ProjectGapDiscovery({
         <p>{t("Select papers, analyze and explore research gaps.")}</p>
       </header>
 
+      {latest?.analysisMode === "DRAFT" && <p className="screening-notice">Phân tích nháp — kết quả sơ bộ, chưa xác nhận tập bài chính thức.</p>}
       {(running || analyze.isPending) && (
         <ProjectGapProgress
           analysis={

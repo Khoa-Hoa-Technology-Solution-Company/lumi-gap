@@ -1,7 +1,8 @@
 import * as Y from "yjs";
+import { captureWritingChange } from "./manuscript-writing.calculator.js";
 import type { CreateManuscriptSuggestion, ManuscriptSuggestion } from "@trend/shared-types";
 import { AppError } from "../../common/exceptions/app-error.js";
-import { withWorkspace, workspaceEvent, workspacePeople, workspacePerson, type WorkspaceContext } from "../projects/workspace-access.js";
+import { withWorkspace, workspaceEvent, workspacePeople, workspacePerson, jsonSnapshot, type WorkspaceContext } from "../projects/workspace-access.js";
 import { hashBytes, sourceDocument, validateDocument } from "./manuscript-source.js";
 import { notificationService } from "../notifications/notification.service.js";
 
@@ -95,8 +96,11 @@ export const manuscriptSuggestions = {
           const state = validateDocument(doc), update = Y.encodeStateAsUpdate(doc, vector), sizeBytes = Buffer.byteLength(text.toString());
           const total = await context.tx.manuscriptFile.aggregate({ where: { workspaceId: id, deletedAt: null }, _sum: { sizeBytes: true } });
           if ((total._sum.sizeBytes ?? 0) + sizeBytes - file.sizeBytes > 20_000_000) throw AppError.badRequest("Manuscript quota exceeded");
-          const saved = await context.tx.manuscriptFile.update({ where: { id: file.id }, data: { crdtState: state, checksum: hashBytes(state), sizeBytes, sequence: { increment: 1 }, version: { increment: 1 } } });
-          await context.tx.manuscriptUpdate.create({ data: { fileId: file.id, actorId: context.actorId, clientSessionId: row.id, clientSequence: 1, serverSequence: saved.sequence, update: new Uint8Array(update), checksum: hashBytes(update) } });
+          const original = sourceDocument(file.crdtState);
+          let captured;
+          try { captured = captureWritingChange(original, doc, row.authorId, file.writingBaseline); } finally { original.destroy(); }
+          const saved = await context.tx.manuscriptFile.update({ where: { id: file.id }, data: { crdtState: state, checksum: hashBytes(state), sizeBytes, sequence: { increment: 1 }, version: { increment: 1 }, writingBaseline: jsonSnapshot(captured.baseline) } });
+          await context.tx.manuscriptUpdate.create({ data: { fileId: file.id, actorId: context.actorId, clientSessionId: row.id, clientSequence: 1, serverSequence: saved.sequence, update: new Uint8Array(update), checksum: hashBytes(update), writingSpans: jsonSnapshot(captured.spans) } });
           await context.tx.draftWorkspace.update({ where: { id }, data: { version: { increment: 1 } } });
           source = { fileId: file.id, update: Buffer.from(update).toString("base64"), sequence: saved.sequence, fileVersion: saved.version };
         } finally { doc.destroy(); }

@@ -11,6 +11,11 @@ grant project membership, or share a project owner's credentials with teammates.
 Every member connects their own GitHub account. The selected repo/branch binding
 is manuscript data; credentials are private to each LumiGap user.
 
+The Client ID/Secret belong to the LumiGap deployment and are configured once by
+its operator. Ordinary users do not create an app, enter these secrets or generate
+a PAT: they use **Kết nối GitHub**, approve access on GitHub and return to the
+manuscript. The optional PAT field stays collapsed under Advanced.
+
 ## Register and configure once per deployment
 
 Register a **GitHub App** in the GitHub account/organization that operates LumiGap.
@@ -116,8 +121,67 @@ local server has no registered GitHub App credentials, so the Connect action is
 disabled until the administrator supplies the configuration. No real account was
 linked and no repository was published during verification.
 
+### Recheck 2026-10-30
+
+The user's actual manuscript on port 8080 displays **Kết nối GitHub** with the
+manual token fallback collapsed. The running backend has no `GITHUB_CLIENT_ID`,
+`GITHUB_CLIENT_SECRET` or `GITHUB_APP_SLUG` configured, so authorization is correctly
+disabled. The operator confirmed that a GitHub App already exists and will supply
+the backend configuration. Do not substitute fake credentials or claim a completed
+live authorization until those values are loaded and a user approves on GitHub.
+
+Executed again: nine backend crypto/HTTP/schema/route tests and eleven frontend
+callback/connection/connected-client/Git transport tests passed (20/20). These
+checks use synthetic provider responses; PostgreSQL OAuth persistence tests were
+not rerun in this recheck. No manuscript content, GitHub permission or repository
+was changed. No new OAuth implementation was necessary.
+
+After setting the server environment, recreate the backend with the same Compose
+overrides used to launch it (including the isolated compiler configuration); a
+plain container restart does not reload `env_file`. Refresh the manuscript and
+open GitHub to load the configuration status. The registered user authorization
+callback must exactly match `http://localhost:8080/integrations/github/callback`.
+
+Later on 2026-10-30, at the operator's explicit request, the supplied Client ID,
+Client Secret, app slug and frontend callback URL were written to the ignored
+local `.env`, after a local backup. The backend was recreated with the existing
+compiler-network override. Presence of all four settings was verified inside the
+running container without printing the secret; `/ready` and the frontend callback
+page returned HTTP 200. No RSA private key was stored or used by this user OAuth
+flow. The registration's Callback URL still needs to match the frontend URL above;
+an actual GitHub authorization/exchange has not been performed in this recheck.
+Credentials disclosed in chat must be revoked/rotated in GitHub and replaced
+locally; do not copy them into this document or version control.
+
 ![GitHub setup state in the verified dialog](assets/manuscript-editor/github-connection-setup.png)
 
 References: [GitHub App user authorization](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-a-user-access-token-for-a-github-app),
 [refresh rotation](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/refreshing-user-access-tokens),
 [repository API](https://docs.github.com/en/rest/repos/repos#list-repositories-for-the-authenticated-user).
+
+
+## Manuscript GitHub tab (2026-10-30)
+
+### Team model
+
+- One manuscript has one shared repository and branch, stored in its remote binding.
+- A GitHub connection belongs to a LumiGap user. Connecting or disconnecting it does not grant or revoke GitHub access for other members.
+- One person coordinating synchronization is sufficient. Team members who only write in LumiGap need no GitHub connection. Additional editors may connect their own accounts; there is no project-wide shared credential or mandatory connection count.
+- Synchronizing requires manuscript write permission and the project's existing source export policy. Pushing additionally requires the caller's own GitHub Contents write permission. GitHub read-only access can receive changes.
+- Under the current policy, any eligible editor can select or change the shared target. The UI requires explicit confirmation before applying a plan targeting a different repository or branch. This is a coordination recommendation, not a new exclusive coordinator role.
+
+### Interface and workflow
+
+1. Open the **GitHub** tab beside **PDF preview**, or the GitHub toolbar action. Read-only members can view the shared binding.
+2. Connect a personal GitHub account. The saved-source preparation runs before OAuth redirect. Returning from OAuth selects the GitHub tab, without automatically synchronizing.
+3. Choose an authorized repository and source branch. App installation and GitHub repository permissions remain managed by GitHub.
+4. **Inspect synchronization** creates/reuses a recovery snapshot and compares local source, remote source and the last shared baseline. This step does not push or apply incoming source.
+5. Review counts and per-file changes. Resolve every conflict explicitly. A different existing shared target requires confirmation.
+6. **Pull merged source** applies the chosen merge in LumiGap. **Push merged source** applies the chosen merge locally and sends it to GitHub. These operations preserve the existing merge semantics: receiving does not discard local-only changes, and sending includes the resolved merge.
+7. Recheck local source revision, GitHub branch head and binding revision before applying. Conflicting concurrent changes require inspection again. A successful operation updates the shared baseline and commit link. Compile after receiving source.
+
+The tab keeps an ongoing transfer mounted when changing editor panels. It clears a manually entered token and a stale comparison after leaving the tab once the transfer finishes. Closing the page can still interrupt a transfer; existing snapshots and non-force Git commits provide recovery, and errors instruct the user to inspect again. Local database updates and GitHub commits are separate systems, not one atomic transaction.
+
+### Verification scope
+
+Tests cover reader visibility, OAuth return selecting the tab, keyboard tab navigation, comparison without remote/local source application, explicit target-change confirmation, unresolved conflicts, GitHub read-only access, stale local revision/remote head/shared binding, revoked manuscript write access and panel switching during a transfer. Live GitHub authorization and repository writes require an authorized user account and are not simulated against a real manuscript.

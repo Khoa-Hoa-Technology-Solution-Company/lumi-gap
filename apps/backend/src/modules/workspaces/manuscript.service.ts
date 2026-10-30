@@ -1,15 +1,17 @@
 import * as Y from "yjs";
-import { captureHistory, historySummary, retainedHistory, restoreHistory } from "./manuscript-history.js";
-import { EventEmitter } from "node:events";
+import { captureWritingChange, type WritingSpan, type WritingBaseline } from "./manuscript-writing.calculator.js";
+import { captureHistory, captureWritingHistory, retainedWritingHistory, historySummary, retainedHistory, restoreHistory } from "./manuscript-history.js";
 import { isDeepStrictEqual } from "node:util";
 import { zipSync, strToU8 } from "fflate";
+import { manuscriptEvents } from "./manuscript-events.js";
+import { assertCanExportProjectSource, researchLedgerService } from "../audit/research-ledger.service.js";
+import { assertVerifiedAttributionForPublish } from "./manuscript-attribution.service.js";
 import type { CreateManuscript, ManuscriptSummary, ManuscriptDetail, ManuscriptFile, ManuscriptManifest, ManuscriptSnapshot, ManuscriptContext, ManuscriptComment, ManuscriptFeedbackSummary } from "@trend/shared-types";
 import { Prisma } from "../../generated/prisma/client.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { AppError } from "../../common/exceptions/app-error.js";
 import { withWorkspace, jsonSnapshot, workspacePeople, workspacePerson, workspaceEvent, workspaceRevision, assertWorkspaceLink, type WorkspaceContext } from "../projects/workspace-access.js";
 import { lockProjectAccounts, assertActiveProjectAccount } from "../projects/project-transaction.js";
-import { canAccessProjectAsMentor } from "../projects/academic-relationship-access.js";
 import { assertReviewerInTransaction } from "../reviews/peer-review-access.js";
 import { notificationService } from "../notifications/notification.service.js";
 import { hashBytes, sourceState, sourceDocument, sourceText, validateDocument, manuscriptPath, manuscriptTemplate, citationKey, bibtexEntry, MAX_CRDT_BYTES } from "./manuscript-source.js";
@@ -22,7 +24,7 @@ import { readSourceZip, prepareFigure } from "./manuscript-import.js";
 type Db = Prisma.TransactionClient;
 type Draft = NonNullable<Awaited<ReturnType<Db["draftWorkspace"]["findUnique"]>>>;
 type File = NonNullable<Awaited<ReturnType<Db["manuscriptFile"]["findUnique"]>>>;
-export const manuscriptEvents = new EventEmitter();
+export { manuscriptEvents } from "./manuscript-events.js";
 export { compilerAvailability } from "./manuscript-compiler.js";
 const fileSelect = { id: true, path: true, kind: true, version: true, sequence: true, sizeBytes: true, mimeType: true, checksum: true, updatedAt: true } as const;
 function fileDto(row: Pick<File, keyof typeof fileSelect>): ManuscriptFile { return { ...row, kind: row.kind as ManuscriptFile["kind"], updatedAt: row.updatedAt.toISOString() }; }
@@ -305,7 +307,13 @@ export const manuscriptService = {
       if (history && (history.bytes + BigInt(update.length) > 100_000_000n || history.updates >= 100_000n)) throw AppError.badRequest("Collaborative history quota reached; create a new draft from a snapshot");
       const doc = sourceDocument(row.crdtState);
       let state: Uint8Array<ArrayBuffer>;
-      try { Y.applyUpdate(doc, update); state = validateDocument(doc); }
+      let writingSpans: WritingSpan[] = [];
+      let writingBaseline: WritingBaseline | undefined;
+      try {
+        Y.applyUpdate(doc, update); state = validateDocument(doc);
+        const original = sourceDocument(row.crdtState);
+        try { const captured = captureWritingChange(original, doc, context.actorId, row.writingBaseline); writingSpans = captured.spans; writingBaseline = captured.baseline; } finally { original.destroy(); }
+      }
       catch (error) { if (error instanceof AppError) throw error; throw AppError.badRequest("Invalid CRDT update"); }
       finally { doc.destroy(); }
       const nextHash = hashBytes(state), actualChange = nextHash !== row.checksum;
@@ -313,12 +321,12 @@ export const manuscriptService = {
       if (actualChange) {
         const sizeBytes = Buffer.byteLength(sourceText(state));
         await enforceQuota(context.tx, id, 0, sizeBytes - row.sizeBytes);
-        const updated = await context.tx.manuscriptFile.update({ where: { id: fileId }, data: { crdtState: state, sizeBytes, checksum: nextHash, sequence: { increment: 1 }, version: { increment: 1 } } });
+        const updated = await context.tx.manuscriptFile.update({ where: { id: fileId }, data: { crdtState: state, sizeBytes, checksum: nextHash, sequence: { increment: 1 }, version: { increment: 1 }, writingBaseline: jsonSnapshot(writingBaseline) } });
         sequence = updated.sequence; fileVersion = updated.version; await changed(context.tx, id);
         const eventKey = `manuscript:writing:${fileId}:${actorId}:${input.clientSessionId}`;
         if (!await context.tx.projectActivity.findFirst({ where: { projectId: context.project.id, idempotencyKey: eventKey } })) await workspaceEvent(context, "MANUSCRIPT_WRITING_SESSION", "MANUSCRIPT", id, { fileId, attribution: "AUTHENTICATED_EDIT_SESSION_ONLY" }, eventKey);
       }
-      await context.tx.manuscriptUpdate.create({ data: { fileId, actorId, clientSessionId: input.clientSessionId, clientSequence: input.clientSequence, serverSequence: sequence, update, checksum } });
+      await context.tx.manuscriptUpdate.create({ data: { fileId, actorId, clientSessionId: input.clientSessionId, clientSequence: input.clientSequence, serverSequence: sequence, update, checksum, writingSpans: jsonSnapshot(writingSpans) } });
       return { sequence, fileVersion, state: Buffer.from(state).toString("base64"), replay: !actualChange };
     });
     if (!result.replay) notifyChange(projectId, id);
@@ -349,13 +357,16 @@ export const manuscriptService = {
       const checksum = hashBytes(JSON.stringify(manifest));
       if (input.reuseUnchanged) {
         const unchanged = await context.tx.manuscriptSnapshot.findFirst({ where: { workspaceId: id, projectId: context.project.id, sourceVersion: draft.version, checksum }, orderBy: { createdAt: "desc" }, select: { id: true, sourceVersion: true } });
-        if (unchanged) return unchanged;
+        if (unchanged && (!input.writingEvidence || retainedWritingHistory(await context.tx.manuscriptSnapshot.findUniqueOrThrow({ where: { id: unchanged.id } })))) return unchanged;
       }
       if (await context.tx.manuscriptSnapshot.count({ where: { workspaceId: id } }) >= 100) throw AppError.badRequest("Manuscript snapshot limit reached");
-      const row = await context.tx.manuscriptSnapshot.create({ data: { workspaceId: id, projectId: context.project.id, label: input.label, sourceVersion: draft.version, manifest: jsonSnapshot(manifest), collaborationState: (await captureHistory(context.tx, projectId, id, files, { engine: draft.compilerEngine, release: draft.compilerRelease, template: draft.template })) ?? undefined, checksum, createdById: actorId, clientKey: input.clientKey } });
+      const collaborationState = await captureHistory(context.tx, projectId, id, files, { engine: draft.compilerEngine, release: draft.compilerRelease, template: draft.template });
+      const writingState = collaborationState ? null : await captureWritingHistory(context.tx, files);
+      const row = await context.tx.manuscriptSnapshot.create({ data: { workspaceId: id, projectId: context.project.id, label: input.label, sourceVersion: draft.version, manifest: jsonSnapshot(manifest), collaborationState: collaborationState ?? undefined, writingState: writingState ? jsonSnapshot(writingState) : undefined, checksum, createdById: actorId, clientKey: input.clientKey } });
       const assets = files.filter(f => f.assetData);
       if (assets.length) await context.tx.manuscriptSnapshotAsset.createMany({ data: assets.map(f => ({ snapshotId: row.id, fileId: f.id, data: f.assetData! })) });
       await workspaceEvent(context, "MANUSCRIPT_SNAPSHOT_CREATED", "MANUSCRIPT", id, { snapshotId: row.id, version: draft.version, attribution: "SNAPSHOT_CREATOR_ONLY" }, `manuscript:snapshot:${row.id}`);
+      await researchLedgerService.record({ tx: context.tx, projectId: context.project.id, actorId, eventType: "MANUSCRIPT_SNAPSHOT_SAVED", resourceKind: "MANUSCRIPT_SNAPSHOT", resourceId: row.id, currentVersionRef: String(row.sourceVersion), checksumSha256: checksum, visibility: "PROJECT_TEAM", retentionClass: "RESEARCH_EVIDENCE", metadata: { manuscriptId: id, label: input.label } });
       return { id: row.id, sourceVersion: row.sourceVersion };
     });
   },
@@ -367,16 +378,24 @@ export const manuscriptService = {
     });
   },
   async export(projectId: string, actorId: string, id: string, snapshotId?: string) {
-    if (snapshotId) return withSnapshot(projectId, actorId, id, snapshotId, async (tx, row) => {
+    if (snapshotId) return withSnapshot(projectId, actorId, id, snapshotId, async (tx, row, grant) => {
+      if (grant.reviewer) throw AppError.forbidden("Peer reviewers cannot export raw LaTeX source archives");
+      const project = await tx.project.findUniqueOrThrow({ where: { id: projectId }, select: { id: true, ownerId: true, exportPolicy: true } });
+      assertCanExportProjectSource(project, actorId);
       const manifest = row.manifest as unknown as ManuscriptManifest;
       const assets = await tx.manuscriptSnapshotAsset.findMany({ where: { snapshotId } });
-      return exportZip(manifest, new Map(assets.map(a => [a.fileId, a.data])), { snapshotId, sourceVersion: row.sourceVersion, checksum: row.checksum });
+      const zip = exportZip(manifest, new Map(assets.map(a => [a.fileId, a.data])), { snapshotId, sourceVersion: row.sourceVersion, checksum: row.checksum });
+      await researchLedgerService.record({ tx, projectId, actorId, eventType: "MANUSCRIPT_SOURCE_EXPORTED", resourceKind: "MANUSCRIPT_SNAPSHOT", resourceId: snapshotId, currentVersionRef: String(row.sourceVersion), checksumSha256: hashBytes(zip), visibility: "PROJECT_TEAM", retentionClass: "SECURITY_AUDIT", metadata: { manuscriptId: id, snapshotId, byteSize: zip.length } });
+      return zip;
     });
     return withWorkspace(projectId, actorId, {}, async context => {
+      assertCanExportProjectSource(context.project, actorId);
       const draft = await manuscript(context, id);
       const files = await context.tx.manuscriptFile.findMany({ where: { workspaceId: id, deletedAt: null }, orderBy: { path: "asc" } });
       const manifest: ManuscriptManifest = { title: draft.name, documentType: draft.documentType as ManuscriptManifest["documentType"], mainFileId: draft.mainFileId!, files: files.map(f => ({ ...fileDto(f), ...(f.crdtState ? { text: sourceText(f.crdtState) } : {}) })) };
-      return exportZip(manifest, new Map(files.filter(f => f.assetData).map(f => [f.id, f.assetData!])), { sourceVersion: draft.version });
+      const zip = exportZip(manifest, new Map(files.filter(f => f.assetData).map(f => [f.id, f.assetData!])), { sourceVersion: draft.version });
+      await researchLedgerService.record({ tx: context.tx, projectId: context.project.id, actorId, eventType: "MANUSCRIPT_SOURCE_EXPORTED", resourceKind: "MANUSCRIPT", resourceId: id, currentVersionRef: String(draft.version), checksumSha256: hashBytes(zip), visibility: "PROJECT_TEAM", retentionClass: "SECURITY_AUDIT", metadata: { manuscriptId: id, byteSize: zip.length } });
+      return zip;
     });
   },
   async restore(projectId: string, actorId: string, id: string, snapshotId: string, input: { title: string; clientKey: string }) {
@@ -395,13 +414,14 @@ export const manuscriptService = {
       const manifest = snapshot.manifest as unknown as ManuscriptManifest;
       const assets = await context.tx.manuscriptSnapshotAsset.findMany({ where: { snapshotId } });
       const history = retainedHistory(snapshot.collaborationState), fileIds = new Map<string, string>();
+      const writingHistory = retainedWritingHistory(snapshot);
       const original = await manuscript(context, id);
       const row = await context.tx.draftWorkspace.create({ data: { compilerEngine: history?.settings ? history.settings.engine : original.compilerEngine, compilerRelease: history?.settings ? history.settings.release : original.compilerRelease, projectId: context.project.id, name: input.title, documentType: manifest.documentType, writingMode: "LATEX", template: history?.settings?.template ?? original.template ?? "ARTICLE", createdById: actorId, clientKey: input.clientKey } });
       let mainFileId = "";
       for (const source of manifest.files) {
-        const state = source.kind === "TEXT" ? history?.states[source.id] ? new Uint8Array(Buffer.from(history.states[source.id]!, "base64")) : sourceState(source.text ?? "") : null;
+        const state = source.kind === "TEXT" ? writingHistory?.states[source.id] ? new Uint8Array(Buffer.from(writingHistory.states[source.id]!, "base64")) : sourceState(source.text ?? "") : null;
         const asset = assets.find(a => a.fileId === source.id)?.data ?? null;
-        const created = await context.tx.manuscriptFile.create({ data: { workspaceId: row.id, path: source.path, kind: source.kind, crdtState: state, assetData: asset, mimeType: source.mimeType, sizeBytes: source.sizeBytes, checksum: state ? hashBytes(state) : source.checksum, createdById: actorId } });
+        const created = await context.tx.manuscriptFile.create({ data: { workspaceId: row.id, path: source.path, kind: source.kind, crdtState: state, assetData: asset, mimeType: source.mimeType, sizeBytes: source.sizeBytes, checksum: state ? hashBytes(state) : source.checksum, createdById: actorId, ...(writingHistory?.writingSpans?.[source.id] ? { writingBaseline: jsonSnapshot({ spans: writingHistory.writingSpans[source.id], deleted: writingHistory.writingRecovery?.[source.id] ?? [] }) } : {}) } });
         fileIds.set(source.id, created.id);
         if (source.id === manifest.mainFileId) mainFileId = created.id;
       }
@@ -464,11 +484,8 @@ export const manuscriptService = {
   async mentors(projectId: string, actorId: string, id: string) {
     return withWorkspace(projectId, actorId, {}, async context => {
       await manuscript(context, id);
-      const rows = await context.tx.mentorRelationship.findMany({ where: { projectId: context.project.id, status: "ACTIVE" }, select: { id: true, mentorUserId: true } });
-      const people = await workspacePeople(context.tx, rows.map(r => r.mentorUserId));
-      const result: Array<{ id: string; mentor: { id: string; name: string } }> = [];
-      for (const row of rows) if (await canAccessProjectAsMentor(context.project.id, row.mentorUserId, context.tx)) result.push({ id: row.id, mentor: workspacePerson(people, row.mentorUserId) });
-      return result;
+      // Whole-source snapshots are never a mentor sharing surface.
+      return [] as Array<{ id: string; mentor: { id: string; name: string } }>;
     });
   },
   async commentPage(projectId: string, actorId: string, id: string, snapshotId?: string, cursor?: string): Promise<import("@trend/shared-types").ManuscriptCommentPage> {
@@ -502,6 +519,7 @@ export const manuscriptService = {
     return withWorkspace(projectId, actorId, {}, async context => { await manuscript(context, id); return run(context.tx); });
   },
   async comment(projectId: string, actorId: string, id: string, input: { body: string; clientKey: string; fileId?: string; snapshotId?: string; quote?: string; start?: unknown; end?: unknown; mentorRelationshipId?: string }) {
+    if (input.mentorRelationshipId) throw AppError.badRequest("Chia sẻ từng phần bản thảo đã duyệt trong mục Tìm cố vấn của dự án");
     const run = async (context: WorkspaceContext) => {
       const prior = await context.tx.projectDiscussion.findUnique({ where: { projectId_authorId_clientKey: { projectId, authorId: actorId, clientKey: input.clientKey } } });
       const receipt = hashBytes(JSON.stringify(input));
@@ -515,8 +533,7 @@ export const manuscriptService = {
       let relationshipId = input.mentorRelationshipId ?? null;
       if (relationshipId) {
         if (!context.role || !input.snapshotId) throw AppError.forbidden("Only the team can share a snapshot for mentor feedback");
-        const relation = await context.tx.mentorRelationship.findFirst({ where: { id: relationshipId, projectId, status: "ACTIVE" } });
-        if (!relation || !await canAccessProjectAsMentor(projectId, relation.mentorUserId, context.tx)) throw AppError.badRequest("Choose an active verified project mentor");
+        throw AppError.badRequest("Chia sẻ phần bản thảo trong không gian cố vấn");
       } else if (!context.role) {
         const relationships = await context.tx.mentorRelationship.findMany({ where: { projectId, mentorUserId: actorId, status: "ACTIVE" }, select: { id: true } });
         const thread = await context.tx.projectDiscussion.findFirst({ where: { projectId, targetKind: "MANUSCRIPT_SNAPSHOT", targetId: input.snapshotId, mentorRelationshipId: { in: relationships.map(r => r.id) } } });
@@ -551,17 +568,17 @@ export const manuscriptService = {
         if (JSON.stringify(authors.map(a => a.userId)) !== JSON.stringify(authorIds)) throw AppError.conflict("This version is already sealed with a different declared author list");
         return { submissionId: prior.submissionId, revisionId: prior.id };
       }
+      const { checkId, eligibleAuthorIds } = await assertVerifiedAttributionForPublish(context.tx, projectId, id, snapshotId, authorIds);
       const manifest = snapshot.manifest as unknown as ManuscriptManifest;
       const content = manifest.files.filter(f => f.kind === "TEXT").map(f => `=== ${f.path} ===\n${f.text}`).join("\n\n");
       const submission = await context.tx.submission.create({ data: { projectId, createdById: actorId, title: `${manifest.title.slice(0, 135)} (${snapshot.label})`, submissionType: manifest.documentType, status: "submitted" } });
       const revision = await context.tx.submissionRevision.create({ data: { submissionId: submission.id, revisionNumber: 1, uploadedById: actorId, contentSnapshot: content, contentType: "LATEX", checksumSha256: hashBytes(content), sizeBytes: Buffer.byteLength(content), manuscriptSnapshotId: snapshotId } });
       await context.tx.submission.update({ where: { id: submission.id }, data: { currentRevisionId: revision.id } });
-      const members = await context.tx.projectMember.findMany({ where: { projectId, status: "ACTIVE" }, select: { userId: true } });
-      const eligible = new Set([context.project.ownerId, ...members.map(m => m.userId)]);
-      if (!authorIds.length || new Set(authorIds).size !== authorIds.length || authorIds.some(userId => !eligible.has(userId))) throw AppError.badRequest("Choose declared authors from the project team");
+      if (!authorIds.length || new Set(authorIds).size !== authorIds.length || authorIds.some(userId => !eligibleAuthorIds.has(userId))) throw AppError.badRequest("Choose declared authors from the project team or eligible contributors");
       for (const userId of authorIds) await assertActiveProjectAccount(context.tx, userId);
       await context.tx.submissionAuthor.createMany({ data: authorIds.map((userId, position) => ({ submissionId: submission.id, userId, position })) });
-      await workspaceEvent(context, "MANUSCRIPT_VERSION_SUBMITTED", "MANUSCRIPT", id, { snapshotId, revisionId: revision.id, attribution: "SUBMISSION_ACTOR_ONLY" }, `manuscript:publish:${snapshotId}`);
+      await workspaceEvent(context, "MANUSCRIPT_VERSION_SUBMITTED", "MANUSCRIPT", id, { snapshotId, revisionId: revision.id, attributionCheckId: checkId, attribution: "SUBMISSION_ACTOR_ONLY" }, `manuscript:publish:${snapshotId}`);
+      await researchLedgerService.record({ tx: context.tx, projectId, actorId, eventType: "MANUSCRIPT_SUBMISSION_SNAPSHOT_CREATED", resourceKind: "SUBMISSION_REVISION", resourceId: revision.id, currentVersionRef: "1", checksumSha256: revision.checksumSha256 ?? null, visibility: "PROJECT_TEAM", retentionClass: "ATTRIBUTION_RECORD", metadata: { manuscriptId: id, snapshotId, attributionCheckId: checkId, submissionId: submission.id, authorIds } });
       return { submissionId: submission.id, revisionId: revision.id };
     });
   },
@@ -611,6 +628,7 @@ export const manuscriptService = {
     return withSnapshot(projectId, actorId, id, job.snapshotId, async tx => {
       const output = await tx.manuscriptCompilation.findFirst({ where: { id: compilationId, status: "SUCCESS" }, select: { pdfData: true } });
       if (!output?.pdfData) throw AppError.notFound("PDF not found");
+      await researchLedgerService.record({ tx, projectId, actorId, eventType: "MANUSCRIPT_PDF_DOWNLOADED", resourceKind: "MANUSCRIPT_COMPILATION", resourceId: compilationId, checksumSha256: hashBytes(output.pdfData), visibility: "PROJECT_TEAM", retentionClass: "SECURITY_AUDIT", metadata: { manuscriptId: id, snapshotId: job.snapshotId, byteSize: output.pdfData.length } });
       return output.pdfData;
     });
   },
@@ -655,13 +673,11 @@ async function withSnapshot<T>(projectId: string, actorId: string, id: string, s
     if (!snapshot) throw AppError.notFound("Snapshot not found");
     const [project, membership] = await Promise.all([tx.project.findUniqueOrThrow({ where: { id: projectId } }), tx.projectMember.findUnique({ where: { projectId_userId: { projectId, userId: actorId } } })]);
     const member = project.ownerId === actorId || membership?.status === "ACTIVE";
-    let mentorRelationshipId: string | null = null, reviewer = false;
+    const mentorRelationshipId = null;
+    let reviewer = false;
     if (!member) {
-      if (await canAccessProjectAsMentor(projectId, actorId, tx)) {
-        const relationships = await tx.mentorRelationship.findMany({ where: { projectId, mentorUserId: actorId, status: "ACTIVE" }, select: { id: true } });
-        const share = await tx.projectDiscussion.findFirst({ where: { projectId, targetKind: "MANUSCRIPT_SNAPSHOT", targetId: snapshotId, mentorRelationshipId: { in: relationships.map(r => r.id) } } });
-        mentorRelationshipId = share?.mentorRelationshipId ?? null;
-      }
+      // Mentor consent never grants source/ZIP/assets or a whole snapshot.
+      // Approved sections are served only by mentor-access, as published text.
       if (!mentorRelationshipId) {
         const revisions = await tx.submissionRevision.findMany({ where: { manuscriptSnapshotId: snapshotId }, select: { id: true } });
         reviewer = Boolean(await tx.reviewerAssignment.findFirst({ where: { reviewerId: actorId, artifactRevisionId: { in: revisions.map(r => r.id) }, status: { in: ["accepted", "in_review", "completed"] } } }));

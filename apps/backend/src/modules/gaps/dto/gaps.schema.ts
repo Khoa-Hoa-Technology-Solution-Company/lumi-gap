@@ -15,6 +15,7 @@ export const AnalyzeGapSchema = z
     projectId: z.string().optional(),
     synthesisRevisionId: z.string().uuid().optional(),
     projectDiscovery: z.boolean().optional(),
+    analysisSetId: z.string().uuid().optional(),
     yearFrom: z.coerce.number().int().min(1900).max(2100).optional(),
     yearTo: z.coerce.number().int().min(1900).max(2100).optional(),
     selectedPaperIds: SelectedPaperIdsSchema.optional(),
@@ -22,6 +23,7 @@ export const AnalyzeGapSchema = z
     evidenceMode: z.enum(["auto", "selected", "hybrid"]).default("hybrid"),
   })
   .superRefine((body, ctx) => {
+    if (body.analysisSetId && !body.projectDiscovery) ctx.addIssue({ code: "custom", message: "Analysis sets require project discovery", path: ["analysisSetId"] });
     if (body.projectId && !body.projectDiscovery && !body.synthesisRevisionId) ctx.addIssue({ code: "custom", message: "Review the project synthesis before finding gaps", path: ["synthesisRevisionId"] });
     if (body.projectDiscovery && (!body.projectId || body.evidenceMode !== "selected" || body.synthesisRevisionId)) ctx.addIssue({ code: "custom", message: "Project discovery requires selected project papers", path: ["projectDiscovery"] });
     if (body.synthesisRevisionId && (!body.projectId || body.evidenceMode !== "selected")) ctx.addIssue({ code: "custom", message: "A project synthesis requires selected evidence mode", path: ["synthesisRevisionId"] });

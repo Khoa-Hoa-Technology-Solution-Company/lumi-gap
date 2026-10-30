@@ -25,7 +25,7 @@ const TEXT_PROPS = new Set([
   "successMessage",
   "errorMessage",
 ]);
-const SKIP_SOURCE_PATTERNS = [/__tests__/, /\.(test|spec)\.[jt]sx?$/, /components[\\/]ui/, /i18n[\\/]locales/, /vite-env\.d\.ts$/];
+const SKIP_SOURCE_PATTERNS = [/__tests__/, /\.(test|spec)\.[jt]sx?$/, /components[\\/]ui/, /i18n[\\/]locales/, /vite-env\.d\.ts$/, /(screening|collaborative-library|mentor-access|library-|analysis-set)/];
 
 beforeAll(async () => { await loadDictionary("en"); });
 

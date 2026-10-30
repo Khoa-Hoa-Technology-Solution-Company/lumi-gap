@@ -1,3 +1,4 @@
+import { revokeAdvancedScreeningAssignments } from "./screening-context.js";
 import { invalidateSourceAssessments } from "./gap-revision.js";
 import type { ProjectResearchLibrary, ScreeningPhase } from "@trend/shared-types";
 import type { z } from "zod";
@@ -10,12 +11,14 @@ function expectSourceVersion(actual: Date, expected: string) { if (actual.toISOS
 const changedAt = (before: Date) => new Date(Math.max(Date.now(), before.getTime() + 1));
 /** Revoking membership must not revive an old vote when that person rejoins. */
 export async function revokeProjectScreeningAssignments(tx: WorkspaceDb, projectId: string, reviewerId: string, actorId: string) {
+  await revokeAdvancedScreeningAssignments(tx, projectId, reviewerId, actorId);
   const assigned = await tx.projectScreeningDecision.findMany({ where: { projectId, reviewerId, assigned: true } });
   for (const row of assigned) {
     const revoked = await tx.projectScreeningDecision.update({ where: { id: row.id }, data: { assigned: false, version: { increment: 1 } } });
     await tx.projectWorkspaceRevision.create({ data: { projectId, entityKind: "SCREENING_VOTE", entityId: revoked.id, version: revoked.version, actorId, snapshot: jsonSnapshot(revoked) } });
   }
   for (const paperId of new Set(assigned.map(row => row.paperId))) {
+    if (await tx.screeningRound.count({ where: { projectId, paperId } })) continue;
     const source = await tx.projectPaper.findUniqueOrThrow({ where: { projectId_paperId: { projectId, paperId } } });
     await invalidateSourceAssessments(tx, projectId, actorId, { paperId });
     await tx.projectPaper.update({ where: { id: source.id }, data: { screeningStatus: "UNDECIDED", screenedById: null, screenedAt: null, inclusionReason: null, exclusionReason: null, exclusionNote: null, updatedAt: changedAt(source.updatedAt) } });
@@ -28,6 +31,9 @@ async function activeDecisions(context: WorkspaceContext, paperId: string, phase
   const accounts = await context.tx.user.findMany({ where: { id: { in: [...active] }, isActive: true, accountStatus: "ACTIVE" }, select: { id: true } });
   const available = new Set(accounts.map(user => user.id));
   return rows.filter(row => available.has(row.reviewerId));
+}
+async function assertLegacyScreening(context: WorkspaceContext) {
+  if (await context.tx.screeningSettings.count({ where: { projectId: context.project.id } }) || await context.tx.screeningRound.count({ where: { projectId: context.project.id } })) throw AppError.conflict("Dự án đã dùng quy trình mới. Mở Sàng lọc độc lập để thao tác; lịch sử cũ vẫn được giữ");
 }
 export const projectScreeningService = {
   async library(projectId: string, actorId: string, query: { page: number; pageSize: number; q: string; state?: string }): Promise<ProjectResearchLibrary> {
@@ -56,6 +62,8 @@ export const projectScreeningService = {
   },
   async policy(projectId: string, actorId: string, input: { mode: string; blinded: boolean; expectedVersion: number }) {
     return withWorkspace(projectId, actorId, { write: true, owner: true }, async context => {
+      await assertLegacyScreening(context);
+      if (!input.blinded) throw AppError.conflict("Cần dùng thao tác công bố sớm có lý do trong quy trình sàng lọc mới");
       expectWorkspaceVersion(context.project.version, input.expectedVersion);
       if (context.project.screeningMode !== input.mode && await context.tx.projectScreeningDecision.count({ where: { projectId: context.project.id } })) throw AppError.conflict("This project has independent screening records. Keep its screening method to preserve the review protocol");
       const next = await context.tx.project.update({ where: { id: context.project.id }, data: { screeningMode: input.mode, screeningBlinded: input.blinded, version: { increment: 1 } } });
@@ -64,6 +72,7 @@ export const projectScreeningService = {
   },
   async assign(projectId: string, actorId: string, paperId: string, input: z.infer<typeof assignScreeningSchema>) {
     return withWorkspace(projectId, actorId, { write: true, owner: true, accounts: input.reviewerIds }, async context => {
+      await assertLegacyScreening(context);
       if (context.project.screeningMode !== "INDEPENDENT") throw AppError.badRequest("Enable independent screening first");
       const link = await researchPaper(context, paperId); expectSourceVersion(link.updatedAt, input.expectedUpdatedAt);
       await Promise.all(input.reviewerIds.map(id => assertWorkspaceAssignee(context, id)));
@@ -87,6 +96,7 @@ export const projectScreeningService = {
   },
   async vote(projectId: string, actorId: string, paperId: string, input: z.infer<typeof voteScreeningSchema>) {
     return withWorkspace(projectId, actorId, { write: true }, async context => {
+      await assertLegacyScreening(context);
       if (context.project.screeningMode !== "INDEPENDENT") throw AppError.badRequest("Use the project's exploratory screening controls");
       const link = await researchPaper(context, paperId);
       const row = await context.tx.projectScreeningDecision.findUnique({ where: { projectId_paperId_reviewerId_phase: { projectId: context.project.id, paperId, reviewerId: context.actorId, phase: input.phase } } });
@@ -99,15 +109,11 @@ export const projectScreeningService = {
       await workspaceEvent(context, "SCREENING_VOTE_RECORDED", "PAPER", paperId); return next;
     });
   },
-  async resolve(projectId: string, actorId: string, paperId: string, input: z.infer<typeof resolveScreeningSchema>) {
+  async resolve(projectId: string, actorId: string, paperId: string, _input: z.infer<typeof resolveScreeningSchema>) {
     return withWorkspace(projectId, actorId, { write: true, owner: true }, async context => {
-      if (context.project.screeningMode !== "INDEPENDENT") throw AppError.badRequest("Independent screening is not enabled");
-      const link = await researchPaper(context, paperId); expectSourceVersion(link.updatedAt, input.expectedUpdatedAt);
-      const votes = await activeDecisions(context, paperId, input.phase);
-      if (votes.length < 2 || votes.some(vote => vote.decision === "UNDECIDED")) throw AppError.conflict("Wait for at least two assigned reviewers to complete this phase");
-      const next = await invalidateSourceAssessments(context.tx, context.project.id, context.actorId, { paperId });
-      await context.tx.projectPaper.update({ where: { id: link.id }, data: { screeningStatus: input.decision, inclusionReason: input.decision === "INCLUDED" ? input.reason : null, exclusionReason: input.decision === "EXCLUDED" ? "OTHER" : null, exclusionNote: input.decision === "EXCLUDED" ? input.reason : null, screenedById: context.actorId, screenedAt: new Date(), updatedAt: changedAt(link.updatedAt) } });
-      await workspaceEvent(context, "SCREENING_RESOLVED", "PAPER", paperId, { phase: input.phase, decision: input.decision, reason: input.reason, votes: votes.map(vote => ({ id: vote.id, version: vote.version })) }); return next;
+      await assertLegacyScreening(context);
+      await researchPaper(context, paperId);
+      throw AppError.conflict("Hãy dùng Đánh giá bài báo và quyết định cuối có phiên bản; endpoint cũ chỉ giữ lịch sử");
     });
   },
   async history(projectId: string, actorId: string, paperId: string) {

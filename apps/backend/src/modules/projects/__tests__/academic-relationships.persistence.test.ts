@@ -1,3 +1,4 @@
+import { mentorAccessService as access } from "../mentor-access.service.js";
 import { createProjectFixture } from "../../../test-utils/project-fixture.js";
 import { beforeEach, afterAll, describe, it, expect, vi } from "vitest";
 import { getPrisma, disconnectPostgres } from "../../../infrastructure/database/prisma.js";
@@ -45,15 +46,17 @@ describe.skipIf(!enabled).sequential("academic relationship consent (PostgreSQL)
     await expect(service.accept(project, request.id, owner)).rejects.toMatchObject({ statusCode: 403 });
     await service.accept(project, request.id, lecturer);
     expect(await canAccessProjectAsMentor(project, lecturer)).toBe(true);
-    const workspace = await service.workspace(project, lecturer, "Consider a control group");
-    expect(workspace.guidance[0].note).toBe("Consider a control group");
-    expect(workspace.context.description).toContain("CONFIDENTIAL");
+    const workspace = await access.workspace(project, lecturer);
+    expect(workspace.policies[0].shares).toEqual([]);
+    expect(JSON.stringify(workspace)).not.toContain("CONFIDENTIAL");
+    const grant = await getPrisma().mentorAccess.findUniqueOrThrow({ where: { requestId: request.id } });
+    await access.comment(project, lecturer, grant.id, { kind: "MESSAGE", body: "Consider a control group", shareId: null, replyToId: null, creditRoles: [], clientKey: crypto.randomUUID() });
     expect(await getPrisma().projectMember.count({ where: { projectId: project, userId: lecturer } })).toBe(0);
     await expect(submissionService.assignReviewer(project, { reviewerId: lecturer }, admin)).rejects.toMatchObject({ statusCode: 409 });
     await service.end(project, (await service.accept(project, request.id, lecturer)).relationshipId!, owner, "Study finished");
     expect(await canAccessProjectAsMentor(project, lecturer)).toBe(false);
     await expect(service.workspace(project, lecturer)).rejects.toMatchObject({ statusCode: 403 });
-    expect(await getPrisma().projectActivity.count({ where: { projectId: project, type: "MENTOR_GUIDANCE" } })).toBe(1);
+    expect(await getPrisma().mentorFeedback.count({ where: { projectId: project } })).toBe(1);
   });
 
   it("offers require discovery opt-in and owner acceptance without private content leaks", async () => {
@@ -111,7 +114,7 @@ describe.skipIf(!enabled).sequential("academic relationship consent (PostgreSQL)
     expect(request.projectId).toBe(legacy);
     expect(request.project?.id).toBe(legacy);
     await service.accept(legacy, request.id, lecturer);
-    expect((await service.workspace(legacy, lecturer)).project.id).toBe(legacy);
+    expect((await access.workspace(legacy, lecturer)).projectId).toBe(project);
   });
 
   it("removes current access on verification revocation or role changes and preserves history", async () => {

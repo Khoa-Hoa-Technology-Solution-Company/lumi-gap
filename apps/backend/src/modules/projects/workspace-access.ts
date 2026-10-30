@@ -14,7 +14,7 @@ export function workspaceId(value: string) {
   if (!id) throw AppError.badRequest("Invalid identifier");
   return id.kind === "uuid" ? { id: id.value } : { legacyMongoId: id.value };
 }
-export async function withWorkspace<T>(projectId: string, actorId: string, options: { write?: boolean; owner?: boolean; mentor?: boolean; accounts?: string[] }, run: (context: WorkspaceContext) => Promise<T>) {
+export async function withWorkspace<T>(projectId: string, actorId: string, options: { write?: boolean; owner?: boolean; mentor?: boolean; mentorScope?: "SHARED_RESOURCES"; accounts?: string[]; timeoutMs?: number }, run: (context: WorkspaceContext) => Promise<T>) {
   const db = getPrisma();
   const [project, actor] = await Promise.all([db.project.findUnique({ where: workspaceId(projectId) }), db.user.findUnique({ where: workspaceId(actorId) })]);
   if (!project || !actor) throw AppError.notFound("Project not found");
@@ -26,10 +26,10 @@ export async function withWorkspace<T>(projectId: string, actorId: string, optio
     const role = live.ownerId === actor.id ? "OWNER" as const : member?.status === "ACTIVE" ? "MEMBER" as const : null;
     if (role) {
       await authorizeProjectTransaction(tx, live.id, actor.id, options.owner ? "EDIT_SETTINGS" : options.write ? "CONTRIBUTE" : undefined);
-    } else if (!options.mentor || !await canAccessProjectAsMentor(live.id, actor.id, tx)) throw AppError.notFound("Project not found");
+    } else if (!options.mentor || options.mentorScope !== "SHARED_RESOURCES" || !await canAccessProjectAsMentor(live.id, actor.id, tx)) throw AppError.notFound("Mở không gian cố vấn để xem nội dung được chia sẻ");
     if (options.write && live.status === "ARCHIVED") throw AppError.conflict("Archived projects are read-only");
     return run({ tx, project: live, actorId: actor.id, role });
-  }, { maxWait: 10000, timeout: 20000 });
+  }, { maxWait: 10000, timeout: options.timeoutMs ?? 20000 });
 }
 export type WorkspaceContext = { tx: WorkspaceDb; project: NonNullable<Awaited<ReturnType<WorkspaceDb["project"]["findUnique"]>>>; actorId: string; role: "OWNER" | "MEMBER" | null };
 export function jsonSnapshot(value: unknown): Prisma.InputJsonValue { return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue; }

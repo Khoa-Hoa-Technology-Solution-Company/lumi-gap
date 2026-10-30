@@ -857,4 +857,56 @@
 .writing-github-connection details > label { display: grid; gap: .375rem; margin-top: .5rem; }
 .writing-github-confirm { display: flex; flex-wrap: wrap; gap: .5rem; padding: .75rem; border: 1px solid hsl(var(--border)); border-radius: .5rem; }
 .writing-github-confirm p { flex: 1 0 100%; }
+.writing-github-scroll { min-height: 0; flex: 1; overflow: auto; }
+.writing-integration-tabs { display: flex; flex: none; gap: 4px; padding: 5px 10px; border-bottom: 1px solid var(--ide-line); background: var(--ide-chrome); }
+.writing-integration-tabs button { display: flex; align-items: center; gap: 6px; min-height: 32px; padding: 5px 10px; border-radius: 4px; color: var(--ide-muted); font-size: 12px; }
+.writing-integration-tabs button svg { width: 14px; height: 14px; }
+.writing-integration-tabs button:hover, .writing-integration-tabs button[aria-selected=true] { background: var(--ide-layer); color: var(--ide-ink); }
+.writing-integration-tabs button[aria-selected=true] { font-weight: 600; box-shadow: inset 0 -2px hsl(var(--primary)); }
+.writing-integration-tabs button:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 1px; }
+.writing-preview-tabpanel { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.writing-github-scroll[hidden] { display: none; }
+.writing-github-panel { overflow: visible; padding: 18px 16px 28px; }
+.writing-github-heading { display: flex; align-items: flex-start; gap: 10px; }
+.writing-github-heading > svg { flex: none; margin-top: 2px; }
+.writing-github-heading h2 { margin: 0; font-size: 16px; }
+.writing-github-heading p, .writing-github-team p { color: hsl(var(--muted-foreground)); }
+.writing-github-team { margin: 12px 0 18px; }
+.writing-github-remote { padding: 14px; margin: 16px 0; border: 1px solid hsl(var(--border)); border-radius: 6px; background: hsl(var(--muted) / .4); }
+.writing-github-remote h3 { display: flex; align-items: center; gap: 6px; margin-bottom: 10px; }
+.writing-github-remote strong { display: block; overflow-wrap: anywhere; font-size: 13px; }
+.writing-github-remote a { text-decoration: underline; text-underline-offset: 3px; }
+.writing-github-panel .writing-create-form { margin: 0; }
+.writing-github-panel fieldset { min-width: 0; width: 100%; display: grid; gap: 12px; }
+.writing-github-panel .writing-github-connection h3 { font-size: 13px; font-weight: 600; }
+.writing-github-panel .writing-actions { flex-wrap: wrap; }
+.writing-github-steps { display: flex; flex-wrap: wrap; gap: 8px 14px; margin: 18px 0; padding: 0; list-style: none; }
+.writing-github-steps li { display: flex; align-items: center; gap: 6px; color: hsl(var(--muted-foreground)); font-size: 12px; }
+.writing-github-steps li span { display: grid; place-items: center; width: 20px; height: 20px; border: 1px solid hsl(var(--border)); border-radius: 50%; font-size: 11px; }
+.writing-github-steps li[aria-current=step] { color: hsl(var(--primary)); font-weight: 600; }
+.writing-github-steps li[aria-current=step] span { border-color: currentColor; }
+.writing-step-hint { margin: 10px 0; padding: 10px 14px; background: hsl(var(--muted)/0.4); border-radius: 8px; border: 1px dashed hsl(var(--border)); }
+.writing-compare-action { display: grid; gap: 8px; margin: 6px 0; }
+.writing-github-panel .writing-github-summary { display: flex !important; flex-wrap: wrap; gap: 6px 14px; padding: 10px 0; }
+.writing-github-target { align-items: flex-start !important; font-size: 12px; line-height: 1.6; margin: 14px 0; }
+.writing-github-target input { margin-top: 4px; flex: none; }
+.writing-github-readonly { padding: 10px 0; color: hsl(var(--muted-foreground)); }
+.writing-contributions { display: grid; align-content: start; gap: .875rem; min-width: 0; }
+.writing-contributions h2, .writing-contributions p { margin: 0; }
+.writing-contributions > button { justify-self: start; white-space: normal; height: auto; min-height: 2.25rem; text-align: left; }
+.writing-contributions label { display: grid; gap: .375rem; font-size: .8125rem; }
+.writing-contributions select { width: 100%; min-width: 0; border: 1px solid hsl(var(--input)); background: hsl(var(--background)); border-radius: .375rem; padding: .5rem; }
+.writing-contribution-result { display: grid; gap: .75rem; min-width: 0; }
+.writing-contribution-result progress { width: 100%; height: .375rem; appearance: none; border: 0; border-radius: .25rem; background: hsl(var(--muted)); overflow: hidden; }
+.writing-contribution-result progress::-webkit-progress-bar { background: hsl(var(--muted)); }
+.writing-contribution-result progress::-webkit-progress-value { background: hsl(var(--primary)); }
+.writing-contribution-result progress::-moz-progress-bar { background: hsl(var(--primary)); }
+.writing-contributor-list { list-style: none; padding: 0; margin: 0; }
+.writing-contributor-list li { display: grid; gap: .375rem; padding: .75rem 0; border-bottom: 1px solid hsl(var(--border)); }
+.writing-contributor-list li > div:first-child { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .25rem .75rem; }
+.writing-contributor-list span { font-size: .75rem; color: hsl(var(--muted-foreground)); font-variant-numeric: tabular-nums; }
+.writing-contributor-list strong { font-size: .875rem; overflow-wrap: anywhere; }
+.writing-contribution-result details { font-size: .8125rem; line-height: 1.6; }
+.writing-contribution-result details p { margin-top: .5rem; }
+.writing-pagination { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
 .writing-pdf-import-modes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.65rem}.writing-pdf-import-modes label{display:flex;align-items:flex-start;gap:.6rem;border:1px solid hsl(var(--border));border-radius:.65rem;padding:.8rem;cursor:pointer}.writing-pdf-import-modes label:has(input:checked){border-color:hsl(var(--primary));background:hsl(var(--primary)/.06)}.writing-pdf-import-modes input,.writing-pdf-import-ai input{width:1rem;height:1rem;flex-shrink:0;margin-top:.2rem;accent-color:hsl(var(--primary))}.writing-pdf-import-modes small,.writing-pdf-import-ai small{display:block;margin-top:.3rem;font-size:.8rem;line-height:1.5;color:hsl(var(--muted-foreground))}.writing-pdf-import-ai{display:flex!important;align-items:flex-start;gap:.6rem;font-size:.875rem}@media(max-width:600px){.writing-pdf-import-modes{grid-template-columns:1fr}}

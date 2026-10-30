@@ -1,10 +1,11 @@
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import * as Y from "yjs";
 import sharp from "sharp";
 import { unzipSync, strFromU8, zipSync, strToU8 } from "fflate";
 import { getPrisma } from "../../../infrastructure/database/prisma.js";
 import { createProjectFixture } from "../../../test-utils/project-fixture.js";
 import { manuscriptService as writing } from "../manuscript.service.js";
+import * as compiler from "../manuscript-compiler.js";
 import { manuscriptSuggestions as suggestions } from "../manuscript-suggestions.js";
 import { manuscriptRepository as repository } from "../manuscript-repository.js";
 import { manuscriptSync } from "../manuscript-sync.js";
@@ -13,9 +14,10 @@ import { projectDiscussionsService as discussions } from "../../projects/project
 import { reviewTemplateService } from "../../reviews/review-template.service.js";
 import { reviewRequestService } from "../../reviews/review-request.service.js";
 import { reviewService } from "../../reviews/review.service.js";
+import { manuscriptAttributionService } from "../manuscript-attribution.service.js";
 
 vi.mock("../../../infrastructure/queue.js", () => ({ notificationQueue: { add: vi.fn().mockResolvedValue({}) } }));
-const isolated = (process.env.NODE_ENV === "test" && process.env.MANUSCRIPT_COMPILER_INTEGRATION === "1" && /^postgres(?:ql)?:\/\/[^/]+@(127\.0\.0\.1|localhost):[0-9]+\/codex_mentorship_[a-f0-9]{12}_test(?:\?|$)/.test(process.env.DATABASE_URL ?? "")) || process.env.PROJECT_SLICE_TEST === "1" && process.env.DATABASE_URL?.includes("127.0.0.1:15439/lumigap_project_slice_test") && process.env.REDIS_URL === "redis://127.0.0.1:16389";
+const isolated = (process.env.MENTOR_ACCESS_INTEGRATION === "1" && /^postgres(?:ql)?:\/\/[^/]+@(127\.0\.0\.1|localhost):[0-9]+\/lumigap_mentor_access_v1_test(?:\?|$)/.test(process.env.DATABASE_URL ?? "")) || (process.env.NODE_ENV === "test" && process.env.MANUSCRIPT_COMPILER_INTEGRATION === "1" && /^postgres(?:ql)?:\/\/[^/]+@(127\.0\.0\.1|localhost):[0-9]+\/codex_mentorship_[a-f0-9]{12}_test(?:\?|$)/.test(process.env.DATABASE_URL ?? "")) || process.env.PROJECT_SLICE_TEST === "1" && process.env.DATABASE_URL?.includes("127.0.0.1:15439/lumigap_project_slice_test") && process.env.REDIS_URL === "redis://127.0.0.1:16389";
 describe.skipIf(!isolated).sequential("manuscripts in disposable PostgreSQL", () => {
   const db = getPrisma(); let owner: string, member: string, outsider: string, mentor: string, reviewer: string;
   async function actor(name: string, lecturer = false) {
@@ -35,8 +37,11 @@ describe.skipIf(!isolated).sequential("manuscripts in disposable PostgreSQL", ()
     return { input, result: await writing.applyUpdate(d.project, user, d.id, fileId, input) };
   }
   beforeAll(async () => { owner = await actor("Owner"); member = await actor("Member"); outsider = await actor("Outsider"); mentor = await actor("Mentor", true); reviewer = await actor("Reviewer", true); });
+  afterEach(() => vi.restoreAllMocks());
 
   it("persists manuscript-specific compiler settings with revision checks and revoked access", async () => {
+    // Registry lookup only; these persistence tests do not invoke a TeX service.
+    vi.spyOn(compiler, "compilerEndpoint").mockReturnValue("http://127.0.0.1:1");
     const d = await draft(), other = await draft();
     const previous = d.detail.compilerSettings!;
     const saved = await writing.compilerSettings(d.project, owner, d.id, { engine: "xelatex", texLiveVersion: "2022", expectedRevision: previous.revision });
@@ -49,6 +54,7 @@ describe.skipIf(!isolated).sequential("manuscripts in disposable PostgreSQL", ()
   });
 
   it("restores comments, replies and pending suggestions with original authors and usable anchors", async () => {
+    vi.spyOn(compiler, "compilerEndpoint").mockReturnValue("http://127.0.0.1:1");
     const d = await draft(), input = await proposal(d);
     await writing.compilerSettings(d.project, owner, d.id, { engine: "xelatex", texLiveVersion: "2022", expectedRevision: 1 });
     await suggestions.create(d.project, member, d.id, input);
@@ -308,36 +314,23 @@ describe.skipIf(!isolated).sequential("manuscripts in disposable PostgreSQL", ()
     await expect(writing.asset(d.project, member, d.id, { path: "evil.png", data: Buffer.from("<svg><script>alert(1)</script></svg>").toString("base64") })).rejects.toMatchObject({ statusCode: 400 });
     await expect(writing.compile(d.project, member, d.id, snap.id)).rejects.toMatchObject({ statusCode: 503 });
   });
-  it("scopes mentor feedback to shared immutable versions and preserves replies after v2", async () => {
+  it("retains legacy snapshot feedback for the team without granting mentors source access", async () => {
     const d = await draft(), req = await db.mentorshipRequest.create({ data: { projectId: d.project, mentorUserId: mentor, requestedBy: owner, direction: "PROJECT_TO_LECTURER", status: "ACCEPTED", expiresAt: new Date(Date.now() + 86400000) } });
     const relation = await db.mentorRelationship.create({ data: { projectId: d.project, mentorUserId: mentor, sourceRequestId: req.id } });
     const v1 = await writing.snapshot(d.project, owner, d.id, { label: "v1", clientKey: crypto.randomUUID(), minimumSequences: {} });
-    await expect(writing.viewSnapshot(d.project, mentor, d.id, v1.id)).rejects.toMatchObject({ statusCode: 404 });
-    const thread = await writing.comment(d.project, owner, d.id, { body: "Please evaluate sampling", clientKey: crypto.randomUUID(), snapshotId: v1.id, mentorRelationshipId: relation.id });
-    expect((await writing.detail(d.project, member, d.id)).latestFeedback).toMatchObject({ snapshotId: v1.id, snapshotLabel: "v1", status: "PENDING" });
-    expect((await writing.viewSnapshot(d.project, mentor, d.id, v1.id)).canComment).toBe(true);
+    await expect(writing.comment(d.project, owner, d.id, { body: "Please evaluate sampling", clientKey: crypto.randomUUID(), snapshotId: v1.id, mentorRelationshipId: relation.id })).rejects.toMatchObject({ statusCode: 400 });
+    // Historical row imported before the section-sharing policy; never a new access grant.
+    const thread = await db.projectDiscussion.create({ data: { projectId: d.project, authorId: owner, clientKey: crypto.randomUUID(), title: "Legacy feedback", body: "Please evaluate sampling", category: "MENTOR_QUESTION", targetKind: "MANUSCRIPT_SNAPSHOT", targetId: v1.id, mentorRelationshipId: relation.id } });
+    expect((await writing.detail(d.project, member, d.id)).latestFeedback).toMatchObject({ snapshotId: v1.id, status: "PENDING" });
     await discussions.reply(d.project, member, thread.id, { body: "We will clarify this", clientKey: crypto.randomUUID(), mentions: [], replyToId: null });
-    expect((await writing.list(d.project, owner))[0]!.latestFeedback?.status).toBe("PENDING");
-    await discussions.reply(d.project, mentor, thread.id, { body: "Check the sampling frame", clientKey: crypto.randomUUID(), mentions: [], replyToId: null });
-    expect((await writing.list(d.project, owner))[0]!.latestFeedback?.status).toBe("RESPONDED");
-    await writing.comment(d.project, mentor, d.id, { body: "Explain inclusion criteria", clientKey: crypto.randomUUID(), snapshotId: v1.id });
     await discussions.resolve(d.project, owner, thread.id, { expectedVersion: 1, status: "RESOLVED", conclusion: "Updated sampling rationale" });
     expect((await writing.comments(d.project, member, d.id, v1.id)).find(comment => comment.id === thread.id)).toMatchObject({ status: "RESOLVED", conclusion: "Updated sampling rationale" });
-    expect((await writing.list(d.project, member))[0]!.latestFeedback?.status).toBe("RESOLVED");
-    await discussions.resolve(d.project, owner, thread.id, { expectedVersion: 2, status: "OPEN", conclusion: "" });
-    expect((await writing.list(d.project, member))[0]!.latestFeedback?.status).toBe("RESPONDED");
     await update(d, member, text => text.insert(0, "% inclusion criteria\n"));
     const v2 = await writing.snapshot(d.project, member, d.id, { label: "v2", clientKey: crypto.randomUUID(), minimumSequences: {} });
     expect(await writing.comments(d.project, member, d.id, v2.id)).toHaveLength(0);
-    expect((await writing.comments(d.project, mentor, d.id, v1.id))).toHaveLength(2);
-    await expect(writing.detail(d.project, mentor, d.id)).rejects.toMatchObject({ statusCode: 404 });
-    await expect(writing.createFile(d.project, mentor, d.id, { path: "attack.tex", kind: "TEXT", content: "", clientKey: crypto.randomUUID() })).rejects.toMatchObject({ statusCode: 404 });
-    await writing.comment(d.project, owner, d.id, { body: "Please review the revised version", clientKey: crypto.randomUUID(), snapshotId: v2.id, mentorRelationshipId: relation.id });
-    expect((await writing.detail(d.project, member, d.id)).latestFeedback).toMatchObject({ snapshotId: v2.id, status: "PENDING" });
-    await db.mentorRelationship.update({ where: { id: relation.id }, data: { status: "ENDED" } });
-    expect((await writing.list(d.project, owner))[0]!.latestFeedback?.status).toBe("ENDED");
-    await expect(writing.viewSnapshot(d.project, mentor, d.id, v1.id)).rejects.toMatchObject({ statusCode: 404 });
-    await expect(writing.list(d.project, outsider)).rejects.toMatchObject({ statusCode: 404 });
+    expect(await writing.comments(d.project, member, d.id, v1.id)).toHaveLength(1);
+    for (const call of [() => writing.viewSnapshot(d.project, mentor, d.id, v1.id), () => writing.comments(d.project, mentor, d.id, v1.id), () => discussions.detail(d.project, mentor, thread.id, { page: 1, pageSize: 20 }), () => writing.detail(d.project, mentor, d.id), () => writing.createFile(d.project, mentor, d.id, { path: "attack.tex", kind: "TEXT", content: "", clientKey: crypto.randomUUID() })]) await expect(call()).rejects.toMatchObject({ statusCode: 404 });
+    expect(await writing.mentors(d.project, owner, d.id)).toEqual([]);
   });
   it("checks the requested durability minimum when retrying an existing snapshot", async () => {
     const d = await draft(), input = { label: "Durable retry", clientKey: crypto.randomUUID(), minimumSequences: {} };
@@ -365,13 +358,13 @@ describe.skipIf(!isolated).sequential("manuscripts in disposable PostgreSQL", ()
     const relation = await db.mentorRelationship.create({ data: { projectId: d.project, mentorUserId: mentor, sourceRequestId: req.id } });
     const version = await writing.snapshot(d.project, owner, d.id, { label: "Archived feedback", clientKey: crypto.randomUUID(), minimumSequences: {} });
     const live = await writing.comment(d.project, member, d.id, { body: "Live comment", clientKey: crypto.randomUUID() });
-    const shared = await writing.comment(d.project, owner, d.id, { body: "Snapshot feedback", clientKey: crypto.randomUUID(), snapshotId: version.id, mentorRelationshipId: relation.id });
+    const shared = await db.projectDiscussion.create({ data: { projectId: d.project, authorId: owner, clientKey: crypto.randomUUID(), title: "Legacy feedback", body: "Snapshot feedback", category: "MENTOR_QUESTION", targetKind: "MANUSCRIPT_SNAPSHOT", targetId: version.id, mentorRelationshipId: relation.id } });
     await db.draftWorkspace.update({ where: { id: d.id }, data: { archivedAt: new Date() } });
-    for (const actor of [owner, mentor]) {
+    for (const actor of [owner, member]) {
       expect(await writing.viewSnapshot(d.project, actor, d.id, version.id)).toMatchObject({ canComment: false, canResolve: false });
       await expect(writing.comment(d.project, actor, d.id, { body: "Archived mutation", clientKey: crypto.randomUUID(), snapshotId: version.id })).rejects.toMatchObject({ statusCode: 409 });
     }
-    for (const [actor, thread] of [[owner, live.id], [owner, shared.id], [mentor, shared.id]] as const) {
+    for (const [actor, thread] of [[owner, live.id], [owner, shared.id], [member, shared.id]] as const) {
       expect(await discussions.detail(d.project, actor, thread, { page: 1, pageSize: 20 })).toMatchObject({ canReply: false, canResolve: false, canEdit: false });
       await expect(discussions.reply(d.project, actor, thread, { body: "Archived reply", clientKey: crypto.randomUUID(), mentions: [], replyToId: null })).rejects.toMatchObject({ statusCode: 409 });
     }
@@ -384,9 +377,10 @@ describe.skipIf(!isolated).sequential("manuscripts in disposable PostgreSQL", ()
     const relation = await db.mentorRelationship.create({ data: { projectId: d.project, mentorUserId: mentor, sourceRequestId: req.id } });
     const version = await writing.snapshot(d.project, owner, d.id, { label: "Deleted feedback", clientKey: crypto.randomUUID(), minimumSequences: {} });
     const live = await writing.comment(d.project, member, d.id, { body: "Deleted live comment", clientKey: crypto.randomUUID() });
-    const shared = await writing.comment(d.project, owner, d.id, { body: "Deleted snapshot feedback", clientKey: crypto.randomUUID(), snapshotId: version.id, mentorRelationshipId: relation.id });
+    const shared = await db.projectDiscussion.create({ data: { projectId: d.project, authorId: owner, clientKey: crypto.randomUUID(), title: "Legacy feedback", body: "Deleted snapshot feedback", category: "MENTOR_QUESTION", targetKind: "MANUSCRIPT_SNAPSHOT", targetId: version.id, mentorRelationshipId: relation.id } });
     await writing.remove(d.project, owner, d.id, d.detail.version);
-    for (const actor of [owner, member, mentor]) expect(await discussions.list(d.project, actor, { page: 1, pageSize: 20 })).toMatchObject({ items: [], total: 0 });
+    await expect(discussions.list(d.project, mentor, { page: 1, pageSize: 20 })).rejects.toMatchObject({ statusCode: 404 });
+    for (const actor of [owner, member]) expect(await discussions.list(d.project, actor, { page: 1, pageSize: 20 })).toMatchObject({ items: [], total: 0 });
     for (const [actor, thread] of [[owner, live.id], [owner, shared.id], [mentor, shared.id]] as const) {
       await expect(discussions.detail(d.project, actor, thread, { page: 1, pageSize: 20 })).rejects.toMatchObject({ statusCode: 404 });
       await expect(discussions.reply(d.project, actor, thread, { body: "Deleted reply", clientKey: crypto.randomUUID(), mentions: [], replyToId: null })).rejects.toMatchObject({ statusCode: 404 });
@@ -400,6 +394,9 @@ describe.skipIf(!isolated).sequential("manuscripts in disposable PostgreSQL", ()
   });
   it("executes formal request, acceptance and structured review against the sealed source only", async () => {
     const d = await draft(), v1 = await writing.snapshot(d.project, owner, d.id, { label: "Submission v1", clientKey: crypto.randomUUID(), minimumSequences: {} });
+    await manuscriptAttributionService.saveAttributionCheck(d.project, owner, d.id, v1.id, { proposedAuthors: [{ userId: owner, order: 1, creditRoles: ["CONCEPTUALIZATION"] }, { userId: member, order: 2, creditRoles: ["WRITING_REVIEW_EDITING"] }], acknowledgements: [], omittedContributors: [] });
+    const checkView = await manuscriptAttributionService.getAttributionCheck(d.project, member, d.id, v1.id);
+    await manuscriptAttributionService.decideAttributionCheck(d.project, member, d.id, checkView.checkId!, { decision: "CONFIRM" });
     const sealed = await writing.publish(d.project, member, d.id, v1.id, [owner, member]);
     await expect(writing.publish(d.project, member, d.id, v1.id, [member])).rejects.toMatchObject({ statusCode: 409 });
     const template = await reviewTemplateService.create({ name: "Manuscript methods rubric", source: "PERSONAL", reviewMode: "RUBRIC_ASSESSMENT", publish: true, guidelines: [], criteria: [{ key: "method", title: "Method", weight: 1, required: true, levels: [{ label: "Clear", score: 4 }] }] }, owner, "USER");

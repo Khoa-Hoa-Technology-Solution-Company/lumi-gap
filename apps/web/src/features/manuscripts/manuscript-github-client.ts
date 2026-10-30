@@ -18,13 +18,13 @@ export async function gitHash(content: string) {
 }
 /** PATs stay in dialog memory; connected accounts use a server-side credential. */
 export class ManuscriptGithubClient {
-  constructor(readonly repository: string, private token: string, private signal: AbortSignal, private connectedUser?: string) { validateRepository(repository, "main"); }
+  constructor(readonly repository: string, private token: string, private signal: AbortSignal, private connectedUser?: string, private projectId?: string) { validateRepository(repository, "main"); }
   get authenticated() { return Boolean(this.token || this.connectedUser); }
   private async request<T>(path: string, method = "GET", body?: unknown): Promise<T> {
     if (path !== "" && !/^\/git\/(?:ref\/heads\/|refs(?:\/heads\/)?|commits(?:\/)?|trees(?:\/)?|blobs(?:\/)?)[A-Za-z0-9%?=._/-]*$/.test(path)) throw new Error("Invalid repository API path");
     if (this.connectedUser && !this.token) {
       const { api } = await import("@/services/api-client");
-      const response = await api.post<{ data: T }>("/integrations/github/repository", { repository: this.repository, path, method, ...(body !== undefined ? { body } : {}) }, { expectedUserId: this.connectedUser, signal: this.signal });
+      const response = await api.post<{ data: T }>("/integrations/github/repository", { repository: this.repository, path, method, ...(this.projectId ? { projectId: this.projectId } : {}), ...(body !== undefined ? { body } : {}) }, { expectedUserId: this.connectedUser, signal: this.signal });
       return response.data.data;
     }
     const response = await fetch(`https://api.github.com/repos/${this.repository}${path}`, { method, headers: { Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2026-03-10", ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}), ...(body ? { "Content-Type": "application/json" } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}), signal: AbortSignal.any([this.signal, AbortSignal.timeout(30000)]), credentials: "omit", redirect: "error", cache: "no-store", referrerPolicy: "no-referrer" });
@@ -101,5 +101,12 @@ export class ManuscriptGithubClient {
     if (updateExisting) await this.request(`/git/refs/heads/${encodeURIComponent(target)}`, "PATCH", { sha: commit.sha, force: false });
     else await this.request("/git/refs", "POST", { ref: `refs/heads/${target}`, sha: commit.sha });
     return `https://github.com/${this.repository}/commit/${commit.sha}`;
+  }
+  async createConflictBranch(head: RepositoryHead, files: RepositoryFile[], message?: string) {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    const conflictBranch = `lumigap/conflict-${timestamp}`;
+    const changed = await this.changes(head, files);
+    const commitUrl = await this.push(head, changed.length ? changed : files, conflictBranch, message ?? `LumiGap conflict resolution branch (${timestamp})`, () => undefined, false);
+    return { branch: conflictBranch, commitUrl };
   }
 }

@@ -1,10 +1,14 @@
 import type { Request, Response } from "express";
 import { z } from "zod";
 import { databaseIdSchema } from "../../common/validation/database-id.js";
+import { researchLedgerService } from "../audit/research-ledger.service.js";
 import { projectService } from "./project.service.js";
 
 const projectStatusSchema = z.enum(["PLANNING", "ACTIVE", "ON_HOLD", "COMPLETED", "ARCHIVED"]);
 const projectVisibilitySchema = z.enum(["PRIVATE", "PUBLIC", "INVITE_ONLY", "PUBLIC_SUMMARY"]);
+const projectExportPolicySchema = z.enum(["ALL_MEMBERS", "OWNER_ONLY"]);
+const projectAiDataPolicySchema = z.enum(["ALLOW_PERSONAL_AI", "PLATFORM_AI_ONLY", "DISABLED"]);
+const projectExternalLookupPolicySchema = z.enum(["ALLOW_PUBLIC_INDEX", "LOCAL_CORPUS_ONLY"]);
 const researchAreasSchema = z.array(z.string().trim().min(1).max(120)).max(3)
   .refine(areas => new Set(areas.map(area => area.toLocaleLowerCase())).size === areas.length, "Choose distinct research areas");
 const approachSchema = z.enum(["EXPLORATORY", "LITERATURE_REVIEW", "EMPIRICAL", "UNDECIDED"]);
@@ -32,6 +36,9 @@ export const updateProjectSchema = z.object({
   expectedVersion: z.number().int().positive().optional(),
   inclusionCriteria: z.array(z.string().trim().min(1).max(240)).max(20).optional(),
   exclusionCriteria: z.array(z.string().trim().min(1).max(240)).max(20).optional(),
+  exportPolicy: projectExportPolicySchema.optional(),
+  aiDataPolicy: projectAiDataPolicySchema.optional(),
+  externalLookupPolicy: projectExternalLookupPolicySchema.optional(),
 }).strict().refine((value) => Object.keys(value).some(key => key !== "expectedVersion"), "At least one field is required");
 
 /**
@@ -44,7 +51,7 @@ export const addMemberSchema = z.object({
   role: z.string().trim().toUpperCase().pipe(z.literal("MEMBER")).optional(),
 });
 
-export const addPaperSchema = z.object({ paperId: databaseIdSchema });
+export const addPaperSchema = z.object({ paperId: databaseIdSchema, proposalReason: z.string().trim().max(2000).optional() }).strict();
 
 export const updateProjectPaperSchema = z.object({
   expectedUpdatedAt: z.string().datetime().optional(),
@@ -62,6 +69,7 @@ export const inviteMemberSchema = z.object({
   message: z.string().trim().max(1000).optional(),
 }).strict().refine((value) => Boolean(value.userId) !== Boolean(value.email), "Select one user or enter one email address");
 
+export const removeMemberBodySchema = z.object({ reason: z.string().trim().max(1000).optional() }).strict().default({});
 export const transferOwnershipSchema = z.object({ userId: databaseIdSchema });
 export const activityQuerySchema = z.object({ limit: z.coerce.number().int().min(1).max(100).default(50) });
 export const projectDirectoryQuerySchema = z.object({
@@ -126,7 +134,7 @@ export class ProjectController {
   }
 
   async addPaper(req: Request, res: Response) {
-    const project = await projectService.addPaperToProject(req.params.id as string, req.body.paperId, req.user!.sub);
+    const project = await projectService.addPaperToProject(req.params.id as string, req.body.paperId, req.user!.sub, req.body.proposalReason);
     res.status(201).json({ success: true, data: project });
   }
 
@@ -187,7 +195,8 @@ export class ProjectController {
   }
 
   async removeMember(req: Request, res: Response) {
-    const project = await projectService.removeMemberFromProject(req.params.id as string, req.params.memberId as string, req.user!.sub);
+    const reason = typeof req.body?.reason === "string" ? req.body.reason : undefined;
+    const project = await projectService.removeMemberFromProject(req.params.id as string, req.params.memberId as string, req.user!.sub, reason);
     res.json({ success: true, data: project });
   }
 
@@ -199,6 +208,12 @@ export class ProjectController {
   async transferOwnership(req: Request, res: Response) {
     const project = await projectService.transferOwnership(req.params.id as string, req.body.userId, req.user!.sub);
     res.json({ success: true, data: project });
+  }
+
+  async getSecurityOverview(req: Request, res: Response) {
+    res.setHeader("Cache-Control", "private, no-store");
+    const overview = await researchLedgerService.getProjectSecurityOverview(String(req.params.id), req.user!.sub);
+    res.json({ success: true, data: overview });
   }
 
   async listActivity(req: Request, res: Response) {

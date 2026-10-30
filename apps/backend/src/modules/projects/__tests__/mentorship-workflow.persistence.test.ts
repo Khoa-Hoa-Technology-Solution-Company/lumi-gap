@@ -3,6 +3,7 @@ import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { getPrisma, disconnectPostgres } from "../../../infrastructure/database/prisma.js";
 import * as database from "../../../infrastructure/database/prisma.js";
 import { projectMentorshipService as service } from "../project-mentorship.service.js";
+import { mentorAccessService as access } from "../mentor-access.service.js";
 import { canAccessProjectAsMentor } from "../academic-relationship-access.js";
 import { academicProfileService } from "../../academic-profiles/academic-profile.service.js";
 import { projectService } from "../project.service.js";
@@ -69,7 +70,7 @@ describe.skipIf(!enabled).sequential("complete mentorship consent, access and de
     expect((await service.list(project, mentor)).requests[0].status).toBe("PENDING");
     await service.accept(project, request.id, mentor);
     expect(await canAccessProjectAsMentor(project, mentor)).toBe(true);
-    expect((await service.workspace(project, mentor)).accessRole).toBe("MENTOR");
+    expect((await access.workspace(project, mentor)).canManage).toBe(false);
   });
   it("changing a general support profile to Lecturer requires a fresh explicit mentoring opt-in", async () => {
     await academicProfileService.updateMine(owner, { supportAvailability: { enabled: true, types: [], preferredTopics: [] } });
@@ -162,7 +163,7 @@ describe.skipIf(!enabled).sequential("complete mentorship consent, access and de
     expect(await db.mentorSuggestion.findFirst({ where: { projectId: project } })).toMatchObject({ status: "INVITED", requestId: request.id, resolvedBy: owner });
     expect((await service.suggestions(project, member)).items).toEqual([]);
     await service.accept(project, request.id, mentor);
-    expect((await service.workspace(project, mentor, "Start with a controlled study")).guidance[0].attribution).toBe("MENTOR");
+    expect((await access.workspace(project, mentor)).policies[0].policy.effective).toBe(true);
     expect(await db.projectMember.count({ where: { projectId: project, userId: mentor } })).toBe(0);
   });
   it("suggestions require active membership and an available verified lecturer; only owner dismisses", async () => {
@@ -204,7 +205,7 @@ describe.skipIf(!enabled).sequential("complete mentorship consent, access and de
     await expect(service.workspace(project, mentor)).rejects.toMatchObject({ statusCode: 403 });
     const accepted = await service.accept(project, offer.id, owner);
     expect((await service.mine(mentor, { view: "active" })).relationships[0].id).toBe(accepted.relationshipId);
-    expect((await service.workspace(project, mentor, "Compare multiple baselines")).context.description).toBe("PRIVATE-RESEARCH-NOTES");
+    expect(JSON.stringify(await access.workspace(project, mentor))).not.toContain("PRIVATE-RESEARCH-NOTES");
     expect(await db.projectMember.count({ where: { projectId: project, userId: mentor } })).toBe(0);
     await expect(projectService.updateProject(project, { title: "Unauthorized edit" }, mentor)).rejects.toMatchObject({ statusCode: 403 });
     await service.end(project, accepted.relationshipId!, owner);
@@ -488,11 +489,10 @@ describe.skipIf(!enabled).sequential("complete mentorship consent, access and de
     const paper = await db.paper.create({ data: { title: "Study method", publicationYear: 2026, primaryProvider: "user", paperStatus: "downloaded", dataStatus: "active", abstractText: "Our study abstract" } });
     created.paperIds.push(paper.id);
     await db.projectPaper.create({ data: { projectId: project, paperId: paper.id, notes: "Team evidence note" } });
-    const context = await service.workspace(project, mentor, "Use a control group");
-    expect(context.context.items[0].body).toContain("Team evidence note"); expect(context.guidance[0].attribution).toBe("MENTOR"); expect(context.guidance[0].author?._id).toBe(mentor);
-    expect(context.guidance[0].note).toBe("Use a control group");
-    const audit = await db.auditLog.findFirstOrThrow({ where: { actionName: "MENTOR_GUIDANCE", targetRecordId: context.guidance[0].id } });
-    expect(audit.details).toEqual({ projectId: project, attribution: "MENTOR" });
+    await expect(service.workspace(project, mentor, "Use a control group")).rejects.toMatchObject({ statusCode: 403 });
+    const context = await access.workspace(project, mentor);
+    expect(context.policies[0].shares).toEqual([]);
+    expect(JSON.stringify(context)).not.toContain("Team evidence note");
     await expect(projectService.updateProject(project, { visibility: "PUBLIC_SUMMARY" }, mentor)).rejects.toMatchObject({ statusCode: 403 });
     await expect(projectService.deleteProject(project, mentor)).rejects.toMatchObject({ statusCode: 403 });
     await expect(projectService.removeMemberFromProject(project, member, mentor)).rejects.toMatchObject({ statusCode: 403 });
@@ -504,11 +504,12 @@ describe.skipIf(!enabled).sequential("complete mentorship consent, access and de
   });
   it.each(["owner", "mentor"])("%s can end mentorship, immediately revoking access and preserving history", async party => {
     const request = await invite(), accepted = await service.accept(project, request.id, mentor);
-    await service.workspace(project, mentor, "Preserve this guidance");
+    const grant = await db.mentorAccess.findUniqueOrThrow({ where: { requestId: request.id } });
+    await access.comment(project, mentor, grant.id, { kind: "MESSAGE", body: "Preserve this guidance", shareId: null, replyToId: null, creditRoles: ["SUPERVISION"], clientKey: crypto.randomUUID() });
     const id = accepted.relationshipId!; await service.end(project, id, party === "owner" ? owner : mentor, "Project completed");
     await service.end(project, id, party === "owner" ? owner : mentor);
     expect(await canAccessProjectAsMentor(project, mentor)).toBe(false); await expect(service.workspace(project, mentor)).rejects.toMatchObject({ statusCode: 403 });
-    expect((await service.workspace(project, owner)).guidance[0].note).toBe("Preserve this guidance");
+    expect((await access.feedback(project, owner, grant.id)).items[0].body).toBe("Preserve this guidance");
     expect(await db.auditLog.count({ where: { actionName: "MENTORSHIP_ENDED", targetRecordId: id } })).toBe(1);
     expect(await db.notification.count({ where: { type: "MENTORSHIP_ENDED", targetUuid: project } })).toBe(1);
   });
@@ -523,15 +524,16 @@ describe.skipIf(!enabled).sequential("complete mentorship consent, access and de
   });
   it("serializes termination against mentor feedback and rejects any subsequent guidance", async () => {
     const request = await invite(), accepted = await service.accept(project, request.id, mentor);
+    const grant = await db.mentorAccess.findUniqueOrThrow({ where: { requestId: request.id } });
     const [ended, feedback] = await Promise.allSettled([
       service.end(project, accepted.relationshipId!, owner),
-      service.workspace(project, mentor, "Guidance racing with termination"),
+      access.comment(project, mentor, grant.id, { kind: "MESSAGE", body: "Guidance racing with termination", shareId: null, replyToId: null, creditRoles: [], clientKey: crypto.randomUUID() }),
     ]);
     expect(ended.status).toBe("fulfilled");
-    if (feedback.status === "rejected") expect(feedback.reason).toMatchObject({ statusCode: 403 });
-    const history = await service.workspace(project, owner);
-    expect(history.guidance).toHaveLength(feedback.status === "fulfilled" ? 1 : 0);
-    if (feedback.status === "fulfilled") expect(history.guidance[0]).toMatchObject({ attribution: "MENTOR", note: "Guidance racing with termination" });
+    if (feedback.status === "rejected") expect(feedback.reason).toMatchObject({ statusCode: 404 });
+    const history = await access.feedback(project, owner, grant.id);
+    expect(history.items).toHaveLength(feedback.status === "fulfilled" ? 1 : 0);
+    if (feedback.status === "fulfilled") expect(history.items[0]).toMatchObject({ mentor: true, body: "Guidance racing with termination" });
     expect(await canAccessProjectAsMentor(project, mentor)).toBe(false);
     await expect(service.workspace(project, mentor, "Too late")).rejects.toMatchObject({ statusCode: 403 });
   });
@@ -543,8 +545,8 @@ describe.skipIf(!enabled).sequential("complete mentorship consent, access and de
   });
   it("archiving preserves relationship history and read context but prevents feedback", async () => {
     const request = await invite(); await service.accept(project, request.id, mentor); await projectService.archiveProject(project, owner);
-    expect((await service.workspace(project, mentor)).canProvideFeedback).toBe(false);
-    await expect(service.workspace(project, mentor, "New guidance")).rejects.toMatchObject({ statusCode: 409 });
+    expect((await access.workspace(project, mentor)).readOnly).toBe(true);
+    await expect(service.workspace(project, mentor, "New guidance")).rejects.toMatchObject({ statusCode: 403 });
     expect((await service.list(project, owner)).counts.active).toBe(1);
   });
   it("queue failure cannot roll back consent or duplicate notifications on retry", async () => {

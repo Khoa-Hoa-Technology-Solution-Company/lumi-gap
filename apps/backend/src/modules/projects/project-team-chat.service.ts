@@ -50,7 +50,7 @@ export class ProjectTeamChatService {
     return hydrated;
   }
   async markRead(projectIdInput: string, messageIdInput: string, userIdInput: string) { const { project: row, actor } = await this.assertCanAccess(projectIdInput, userIdInput); const message = await getPrisma().projectTeamMessage.findUnique({ where: whereId(messageIdInput) }); if (!message || message.projectId !== row.id || message.threadId !== null) throw AppError.notFound("Team message not found"); await getPrisma().projectTeamMessageRead.upsert({ where: { messageId_userId: { messageId: message.id, userId: actor.id } }, create: { messageId: message.id, userId: actor.id }, update: { readAt: new Date() } }); const result = await this.hydrate(message.id); projectTeamChatEventHub.publish({ type: "message.updated", projectId: projectIdInput, message: result, occurredAt: new Date().toISOString() }); return result; }
-  async assertCanOpenEvents(projectId: string, userId: string, userRole?: string) { await this.assertCanAccess(projectId, userId, { allowAdmin: userRole === "admin" }); }
+  async assertCanOpenEvents(projectId: string, userId: string, _userRole?: string) { await this.assertCanAccess(projectId, userId); }
   async deleteMessage(projectIdInput: string, messageIdInput: string, userIdInput: string, options: DeleteTeamMessageOptions | string = {}) {
     const reason = typeof options === "string" ? options : options.reason;
     const userRole = typeof options === "string" ? undefined : options.userRole;

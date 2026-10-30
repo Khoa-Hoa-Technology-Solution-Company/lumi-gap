@@ -1,5 +1,7 @@
 # Project contributions: audit and implementation
 
+Phần mở rộng đã triển khai: [Đặc tả gợi ý tỷ lệ đóng góp V1](project-contribution-evaluation-v1-spec.md) và [báo cáo kiểm thử/vận hành](project-contribution-evaluation-v1-implementation.md).
+
 ## Audit before implementation (14 October 2026)
 
 | Area | Finding | Reuse / gap |
@@ -255,3 +257,7 @@ This index maps every numbered requirement in the supplied request to persisted 
 | 34. Safe implementation stages | IMPLEMENTED | Audit/plan, additive migrations, domain, UI and persisted verification |
 | 35. Definition of Done | IMPLEMENTED | Passing persisted browser workflow; normal database rollout remains required |
 | 36. Final report | IMPLEMENTED | This report, code references, statuses, screenshots and verification limits |
+
+## Đánh giá đóng góp V1
+
+Phần mở rộng ngày 28/10/2026 bổ sung tab đánh giá, bộ tính trọng số theo phần tham gia đã xác nhận, snapshot và so sánh với phân bổ. Xem [báo cáo triển khai V1](project-contribution-evaluation-v1-implementation.md) để biết API, kiểm thử và bước migration còn cần cho bản Docker local.

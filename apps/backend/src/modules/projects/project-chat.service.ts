@@ -1,4 +1,4 @@
-import { aiModel } from "../user-ai/user-ai.runtime.js";
+import { aiModel, withProjectAi } from "../user-ai/user-ai.runtime.js";
 import type { ProjectChatScope } from "@trend/shared-types";
 import type { Prisma } from "../../generated/prisma/client.js";
 import { AppError } from "../../common/exceptions/app-error.js";
@@ -49,11 +49,17 @@ export class ProjectChatService {
     const { system, prompt } = buildChatPrompt({ question: message, evidence, history: fitted.history, abstractMaxChars: env.CHAT_ABSTRACT_MAX_CHARS });
     const provider = getLlmProvider();
     const model = provider.name === "ollama" ? env.OLLAMA_MODEL : aiModel();
+    const projPolicy = await getPrisma().project.findUnique({ where: { id: projectId }, select: { aiDataPolicy: true } });
+    if (projPolicy?.aiDataPolicy === "DISABLED") throw AppError.forbidden("External AI processing is disabled by this project's security policy");
     const tx = await creditService.chargeCreditsChecked({ userId, action: "project_chat_message", amount: 1, targetKind: "project_chat", targetId: projectId, idempotencyKey: `chat:${projectId}:${userId}:${crypto.randomUUID()}` });
     const txId = tx?.id;
     let result: SendProjectChatMessageResult;
     try {
-      result = await cachedGenerate<SendProjectChatMessageResult>({ task: "chat", promptVersion: PROJECT_CHAT_PROMPT_VERSION, keyParts: { projectId, scope, question: normalizeQuestion(message), paperIds: evidence.map((paper) => paper.id).sort(), provider: provider.name }, inputHash: hashKey({ system, prompt }), model, ttlSeconds: env.CHAT_CACHE_TTL_SECONDS, generate: async () => { const answer = (await provider.generate(prompt, { system, temperature: 0.25, maxOutputTokens: 1024 })).trim().slice(0, 4000); return { scope, answer, citedPaperIds: parseCitations(answer, evidence), creditCost: 1 }; } });
+      result = await withProjectAi(projectId, userId, async () => {
+        const activeProvider = getLlmProvider();
+        const activeModel = activeProvider.name === "ollama" ? env.OLLAMA_MODEL : aiModel();
+        return cachedGenerate<SendProjectChatMessageResult>({ task: "chat", promptVersion: PROJECT_CHAT_PROMPT_VERSION, keyParts: { projectId, scope, question: normalizeQuestion(message), paperIds: evidence.map((paper) => paper.id).sort(), provider: activeProvider.name }, inputHash: hashKey({ system, prompt }), model: activeModel, ttlSeconds: env.CHAT_CACHE_TTL_SECONDS, generate: async () => { const answer = (await activeProvider.generate(prompt, { system, temperature: 0.25, maxOutputTokens: 1024 })).trim().slice(0, 4000); return { scope, answer, citedPaperIds: parseCitations(answer, evidence), creditCost: 1 }; } });
+      });
     } catch (error) {
       if (txId) await creditService.refundCreditsOnce({ transactionId: txId, reason: "Project chat message LLM call failed" });
       logger.warn({ err: error, projectId, userId, provider: provider.name }, "project chat LLM failed");

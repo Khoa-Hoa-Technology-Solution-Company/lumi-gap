@@ -47,6 +47,7 @@ export function ProjectPaperPickerDialog({
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const addPaper = useAddPaperToProject(projectId);
+  const [proposalReason, setProposalReason] = useState("");
   const [isAdding, setIsAdding] = useState(false);
   const queryText = searchText.trim();
   const normalizedDoi = source === "doi" ? normalizeDoi(queryText) : "";
@@ -54,6 +55,7 @@ export function ProjectPaperPickerDialog({
   const effectiveSearchQuery = source === "doi" ? normalizedDoi : queryText;
   useEffect(() => {
     if (open) {
+      setProposalReason("");
       setSource(initialSource);
       setSearchText("");
       setSearchQuery("");
@@ -136,7 +138,7 @@ export function ProjectPaperPickerDialog({
     const failed: string[] = [];
     for (const paperId of selectedIds) {
       try {
-        await addPaper.mutateAsync({ paperId });
+        await addPaper.mutateAsync({ paperId, ...(proposalReason.trim() ? { proposalReason: proposalReason.trim() } : {}) });
         added += 1;
         setSelectedIds((current) => current.filter((id) => id !== paperId));
       } catch {
@@ -255,6 +257,7 @@ export function ProjectPaperPickerDialog({
             )}
           </div>
 
+          <label data-no-i18n className="grid gap-2 px-5 text-sm sm:px-6">Lý do đề xuất (không bắt buộc)<textarea className="rounded-md border border-input bg-background px-3 py-2" rows={2} maxLength={2000} value={proposalReason} onChange={e => setProposalReason(e.target.value)} disabled={isAdding} placeholder="Các bài này giúp trả lời câu hỏi nghiên cứu nào? Có thể bổ sung lý do riêng cho từng bài sau khi thêm." /></label>
           <DialogFooter className="shrink-0 flex-col items-stretch gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
             <span className="text-xs text-muted-foreground">{selectedIds.length ? t("{{count}} selected", { count: selectedIds.length }) : t("Select one or more papers")}</span>
             <div className="flex flex-wrap gap-2">

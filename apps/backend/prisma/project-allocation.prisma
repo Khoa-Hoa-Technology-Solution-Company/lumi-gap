@@ -57,11 +57,15 @@ model AllocationRevision {
   status String @default("DRAFT") @db.VarChar(24)
   rationale String @default("")
   roster Json
+  matrix Json?
   evidenceSummary Json @default("[]") @map("evidence_summary")
+  evaluationSnapshotId String? @map("evaluation_snapshot_id") @db.Uuid
+  evaluationReference Json? @map("evaluation_reference")
   createdById String @map("created_by_id") @db.Uuid
   clientKey String @map("client_key") @db.Uuid
   submittedAt DateTime? @map("submitted_at") @db.Timestamptz(6)
   finalizedAt DateTime? @map("finalized_at") @db.Timestamptz(6)
+  finalizedById String? @map("finalized_by_id") @db.Uuid
   selfAcknowledged Boolean @default(false) @map("self_acknowledged")
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   @@unique([periodId, revision])
@@ -89,4 +93,69 @@ model AllocationApproval {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   @@unique([revisionId, userId])
   @@map("allocation_approvals")
+}
+
+model ResearchIntegrityCase {
+  id String @id @default(uuid()) @db.Uuid
+  projectId String @map("project_id") @db.Uuid
+  kind String @db.VarChar(32)
+  status String @default("REPORTED") @db.VarChar(24)
+  reporterId String @map("reporter_id") @db.Uuid
+  respondentUserId String? @map("respondent_user_id") @db.Uuid
+  targetKind String @map("target_kind") @db.VarChar(32)
+  targetId String? @map("target_id") @db.VarChar(120)
+  title String @db.VarChar(200)
+  description String
+  evidenceRefs Json @default("[]") @map("evidence_refs")
+  preservedSnapshot Json? @map("preserved_snapshot")
+  containmentActions Json @default("[]") @map("containment_actions")
+  escalatedAt DateTime? @map("escalated_at") @db.Timestamptz(6)
+  resolvedAt DateTime? @map("resolved_at") @db.Timestamptz(6)
+  resolvedById String? @map("resolved_by_id") @db.Uuid
+  resolutionSummary String? @map("resolution_summary")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([id, projectId])
+  @@index([projectId, kind, status, createdAt])
+  @@index([reporterId, createdAt])
+  @@map("research_integrity_cases")
+}
+
+model ResearchIntegrityEvent {
+  id String @id @default(uuid()) @db.Uuid
+  caseId String @map("case_id") @db.Uuid
+  projectId String @map("project_id") @db.Uuid
+  actorId String @map("actor_id") @db.Uuid
+  action String @db.VarChar(32)
+  note String @default("")
+  metadata Json @default("{}")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([caseId, createdAt])
+  @@index([projectId, createdAt])
+  @@map("research_integrity_events")
+}
+
+model ResearchEvidenceEvent {
+  id String @id @default(uuid()) @db.Uuid
+  projectId String @map("project_id") @db.Uuid
+  actorId String? @map("actor_id") @db.Uuid
+  eventType String @map("event_type") @db.VarChar(48)
+  resourceKind String @map("resource_kind") @db.VarChar(32)
+  resourceId String? @map("resource_id") @db.VarChar(120)
+  artifactVersion String? @map("artifact_version") @db.VarChar(80)
+  previousVersionRef String? @map("previous_version_ref") @db.VarChar(120)
+  currentVersionRef String? @map("current_version_ref") @db.VarChar(120)
+  checksumSha256 String? @map("checksum_sha256") @db.Char(64)
+  reason String?
+  visibility String @default("PROJECT_TEAM") @db.VarChar(24)
+  retentionClass String @default("RESEARCH_EVIDENCE") @map("retention_class") @db.VarChar(32)
+  metadata Json @default("{}")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([projectId, createdAt])
+  @@index([projectId, eventType, createdAt])
+  @@index([actorId, createdAt])
+  @@map("research_evidence_events")
 }

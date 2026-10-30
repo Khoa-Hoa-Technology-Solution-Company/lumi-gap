@@ -69,10 +69,11 @@ export function cloudinaryPublicUrl(
   });
 }
 
-export function cloudinaryPrivateDownloadUrl(publicId: string): string {
+export function cloudinaryPrivateDownloadUrl(publicId: string, expiresInSeconds = 60): string {
   configureCloudinary();
+  const ttl = Math.max(15, Math.min(3600, Math.floor(expiresInSeconds)));
   return cloudinary.utils.private_download_url(publicId, "", {
     resource_type: "raw", type: "authenticated", attachment: true,
-    expires_at: Math.floor(Date.now() / 1000) + 60,
+    expires_at: Math.floor(Date.now() / 1000) + ttl,
   });
 }

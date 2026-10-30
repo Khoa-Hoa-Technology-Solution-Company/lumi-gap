@@ -1,0 +1,123 @@
+model ScreeningSettings {
+  reviewMode String @default("INDEPENDENT") @map("review_mode") @db.VarChar(24)
+  blindReview Boolean @default(true) @map("blind_review")
+  resolutionPolicy String @default("ADJUDICATION") @map("resolution_policy") @db.VarChar(24)
+  projectId String @id @map("project_id") @db.Uuid
+  version Int @default(1)
+  requiredReviewers Int @default(2) @map("required_reviewers")
+  consensusPolicy String @default("UNANIMOUS") @map("consensus_policy") @db.VarChar(24)
+  aiAssisted Boolean @default(false) @map("ai_assisted")
+  inclusionCriteria String[] @default([]) @map("inclusion_criteria")
+  exclusionCriteria String[] @default([]) @map("exclusion_criteria")
+  researchQuestions String[] @default([]) @map("research_questions")
+  stages String[] @default([])
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  @@map("screening_settings")
+}
+model ScreeningRound {
+  finalizerId String? @map("finalizer_id") @db.Uuid
+  id String @id @default(uuid()) @db.Uuid
+  projectId String @map("project_id") @db.Uuid
+  paperId String @map("paper_id") @db.Uuid
+  number Int
+  phase String @db.VarChar(24)
+  active Boolean @default(true)
+  settings Json
+  status String @default("NOT_REVIEWED") @db.VarChar(24)
+  version Int @default(1)
+  unblindedAt DateTime? @map("unblinded_at") @db.Timestamptz(6)
+  independenceCompromised Boolean @default(false) @map("independence_compromised")
+  createdById String @map("created_by_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@unique([id, projectId])
+  @@unique([projectId, paperId, number])
+  @@index([projectId, active, status])
+  @@map("screening_rounds")
+}
+model ScreeningAssignment {
+  id String @id @default(uuid()) @db.Uuid
+  projectId String @map("project_id") @db.Uuid
+  roundId String @map("round_id") @db.Uuid
+  reviewerId String @map("reviewer_id") @db.Uuid
+  active Boolean @default(true)
+  revision Int @default(1)
+  submittedAt DateTime? @map("submitted_at") @db.Timestamptz(6)
+  dueAt DateTime? @map("due_at") @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@unique([roundId, reviewerId])
+  @@unique([id, projectId])
+  @@index([projectId, reviewerId, active, submittedAt])
+  @@map("screening_assignments")
+}
+model ScreeningReview {
+  id String @id @default(uuid()) @db.Uuid
+  projectId String @map("project_id") @db.Uuid
+  assignmentId String @map("assignment_id") @db.Uuid
+  revision Int
+  decision String @db.VarChar(16)
+  exclusionReason String @default("") @map("exclusion_reason") @db.VarChar(500)
+  comment String @default("")
+  scope String? @db.VarChar(24)
+  fullTextReference String? @map("full_text_reference")
+  researchQuestions Json @default("[]") @map("research_questions")
+  submittedAt DateTime @default(now()) @map("submitted_at") @db.Timestamptz(6)
+  @@unique([assignmentId, revision])
+  @@index([projectId, assignmentId])
+  @@map("screening_reviews")
+}
+model ScreeningFinalDecision {
+  id String @id @default(uuid()) @db.Uuid
+  projectId String @map("project_id") @db.Uuid
+  roundId String @map("round_id") @db.Uuid
+  roundVersion Int @map("round_version")
+  decision String @db.VarChar(16)
+  source String @db.VarChar(16)
+  reason String
+  resolverId String? @map("resolver_id") @db.Uuid
+  reviewIds String[] @map("review_ids") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@unique([roundId, roundVersion])
+  @@index([projectId, roundId, createdAt])
+  @@map("screening_final_decisions")
+}
+model ScreeningAudit {
+  id String @id @default(uuid()) @db.Uuid
+  projectId String @map("project_id") @db.Uuid
+  roundId String? @map("round_id") @db.Uuid
+  actorId String @map("actor_id") @db.Uuid
+  type String @db.VarChar(48)
+  details Json @default("{}")
+  clientKey String? @map("client_key") @db.Uuid
+  requestHash String? @map("request_hash") @db.VarChar(64)
+  result Json @default("{}")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@unique([projectId, actorId, clientKey])
+  @@index([projectId, roundId, createdAt])
+  @@map("screening_audit")
+}
+model ScreeningLegacyRecord {
+  id String @id @default(uuid()) @db.Uuid
+  projectId String @map("project_id") @db.Uuid
+  paperId String @map("paper_id") @db.Uuid
+  snapshot Json
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@unique([projectId, paperId])
+  @@map("screening_legacy_records")
+}
+model ScreeningAiSuggestion {
+  id String @id @default(uuid()) @db.Uuid
+  projectId String @map("project_id") @db.Uuid
+  roundId String @map("round_id") @db.Uuid
+  actorId String @map("actor_id") @db.Uuid
+  clientKey String @map("client_key") @db.Uuid
+  status String @default("QUEUED") @db.VarChar(16)
+  input Json
+  inputHash String @map("input_hash") @db.VarChar(64)
+  result Json?
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  generatedAt DateTime? @map("generated_at") @db.Timestamptz(6)
+  @@unique([projectId, actorId, clientKey])
+  @@index([projectId, roundId, createdAt])
+  @@index([status, createdAt])
+  @@map("screening_ai_suggestions")
+}

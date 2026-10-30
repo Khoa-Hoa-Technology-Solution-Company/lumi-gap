@@ -25,6 +25,7 @@ export interface GapAccessProject {
 }
 
 export interface GapListDoc {
+  analysisMode?: "DRAFT" | "OFFICIAL";
   version?: number;
   assessmentStatus?: ResearchGapItem["assessmentStatus"];
   _id: IdLike;
@@ -216,6 +217,7 @@ export function toGapListItem(
 
   return {
     id: String(doc._id),
+    analysisMode: doc.analysisMode,
     version: doc.version,
     assessmentStatus: doc.assessmentStatus,
     topic: doc.topic,

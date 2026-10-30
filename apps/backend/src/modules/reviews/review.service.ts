@@ -276,12 +276,13 @@ export const reviewService = {
     ]), viewerId);
     const projectMap = new Map(works.filter(work => work.projectId).map(work => [work.projectId!, { id: work.projectId!, title: work.title }]));
     const submissionMap = new Map(works.filter(work => work.submissionId).map(work => [work.submissionId!, { id: work.submissionId!, title: work.title }]));
-    const sources = await prisma.project.findMany({ where: { id: { in: rows.flatMap(row => row.projectId ? [row.projectId] : []) } }, select: { id: true, legacyMongoId: true } });
+    const sources = await prisma.project.findMany({ where: { id: { in: rows.flatMap(row => row.projectId ? [row.projectId] : []) } }, select: { id: true, legacyMongoId: true, title: true } });
     const artifacts = await prisma.submission.findMany({ where: { id: { in: rows.flatMap(row => row.submissionId ? [row.submissionId] : []) } }, select: { id: true, legacyMongoId: true } });
+    const projectTitles = new Map(sources.map(row => [row.id, { id: publicDatabaseId(row), title: row.title }]));
     const projects = new Map(sources.map(row => [row.id, projectMap.get(publicDatabaseId(row))]));
     const submissions = new Map(artifacts.map(row => [row.id, submissionMap.get(publicDatabaseId(row))]));
     return rows.flatMap(row => {
-      const project = row.projectId ? projects.get(row.projectId) : undefined;
+      const project = row.projectId ? (projects.get(row.projectId) ?? (viewerId === user.id && row.contributionType !== "REVIEW" ? projectTitles.get(row.projectId) : undefined)) : undefined;
       const submission = row.submissionId ? submissions.get(row.submissionId) : undefined;
       // A PUBLIC contribution never publishes its underlying private artifact.
       if ((row.projectId && !project) || (row.submissionId && !submission)) return [];

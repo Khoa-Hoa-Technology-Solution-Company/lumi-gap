@@ -13,9 +13,10 @@ import { authApi } from "@/features/auth/api/auth.api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { canLeaveWorkspace } from "@/features/projects/components/workspace-common";
+import { canLeaveWorkspace, useUnsavedWorkspace } from "@/features/projects/components/workspace-common";
 import { MentorPreviewContent, MentorInvitationSender } from "@/features/projects/components/mentor-preview";
 import { MentorGuidance } from "@/features/projects/components/mentor-guidance";
+import { MentorAccessWorkspace, MentorPolicyFields, MentorPolicySummary, defaultMentorPolicy } from "@/features/projects/components/mentor-access-workspace";
 import { MentorSearchPagination } from "@/features/projects/components/mentor-search-pagination";
 import { projectsApi } from "@/features/projects/api/projects.api";
 import { useAuthStore } from "@/stores/auth-store";
@@ -112,14 +113,16 @@ export function ConsentComposer({ project, mentor, suggestion = false, onClose }
   const allowedRoles: MentorRole[] = positions.data?.positions ? (["PRIMARY", "SECONDARY"] as const).filter(role => ["VACANT", "INVITING"].includes(positions.data!.positions![role].status) && positions.data!.positions![role].pendingRequests < (positions.data!.policy.maxPendingPerRole ?? 3)) : project.availableRoles ?? ["PRIMARY"];
   const content = useInvitationContent(project.id, direction, !suggestion, allowedRoles);
   const [editingBrief, setEditingBrief] = useState(false), [closing, setClosing] = useState(false);
+  const [accessPolicy, setAccessPolicy] = useState(defaultMentorPolicy);
+  useUnsavedWorkspace(invitation && JSON.stringify(accessPolicy) !== JSON.stringify(defaultMentorPolicy()));
   const settings = useQuery({ queryKey: ["academic-support", userId, "discovery-settings", project.id], queryFn: () => academicSupportApi.settings(project.id), enabled: invitation });
   const send = useMutation({ mutationFn: async () => {
     if (!suggestion) await content.persist();
-    const payload = { mentorRole: content.mentorRole, attachmentIds: content.attachments.map(a => a.id) };
+    const payload = { mentorRole: content.mentorRole, attachmentIds: content.attachments.map(a => a.id), ...(invitation ? { access: accessPolicy } : {}) };
     return mentor ? suggestion ? academicSupportApi.suggest(project.id, mentor._id, content.message) : academicSupportApi.request(project.id, mentor._id, content.message, key, payload) : academicSupportApi.offer(project.id, content.message, key, payload);
   }, onSuccess: () => { if (!mentor) toast.success(t("Mentorship offer sent. Track the team's response in Sent mentorship offers.")); refresh(); onClose(); }, onError: refresh });
   const close = async () => {
-    if (send.isPending || closing || content.uploading || editingBrief && !await canLeaveWorkspace()) return;
+    if (send.isPending || closing || content.uploading || !await canLeaveWorkspace()) return;
     setClosing(true);
     try { await content.persist(); onClose(); } catch { setClosing(false); /* Keep unsaved input visible for recovery. */ }
   };
@@ -138,6 +141,7 @@ export function ConsentComposer({ project, mentor, suggestion = false, onClose }
     </>}
     {!content.ready && !suggestion ? <Skeleton className="h-28 w-full" /> : <label className="space-y-2 text-sm"><span className="font-medium">{t("Message")}{suggestion ? " *" : ""}</span><textarea aria-label={t("Message")} autoFocus className="min-h-32 w-full rounded-md border bg-background p-3 text-sm leading-6" value={content.message} disabled={send.isPending || closing} maxLength={1000} onChange={e => change({ message: e.target.value })} placeholder={t("Explain the guidance you are seeking or offering.")} /><span className="block text-right text-xs text-muted-foreground">{content.message.length}/1000</span></label>}
     {!suggestion && <>
+      {invitation && <details><summary className="cursor-pointer text-sm font-medium">Quyền và nội dung chia sẻ sau khi chấp nhận</summary><MentorPolicyFields projectId={project.id} value={accessPolicy} onChange={value => { setAccessPolicy(value); if (send.isError) { setKey(crypto.randomUUID()); send.reset(); } }} disabled={send.isPending || closing} /></details>}
       <InvitationAttachments attachments={content.attachments} onRemove={send.isPending || closing || content.uploading ? undefined : id => change({ attachments: content.attachments.filter(a => a.id !== id) })} />
       <InvitationUpload disabled={!content.ready || send.isPending || closing || content.attachments.length >= 5} uploading={content.uploading} onUpload={files => { if (send.isError) { setKey(crypto.randomUUID()); send.reset(); } void content.upload(files); }} />
       <p className="text-xs leading-5 text-muted-foreground">{t("Only files you attach here are shared with this invitation. Your project library stays private.")}</p>
@@ -181,9 +185,10 @@ export function MentorshipList({ items, onOpen }: { items: MentorshipItem[]; onO
     {item.kind === "REQUEST" && <><p className="text-xs text-muted-foreground">{t("Requested by")}: {item.requestedBy.fullName} · {[item.requestedBy.academicRole && t(item.requestedBy.academicRole), item.requestedBy.institutionName].filter(Boolean).join(" · ")}</p>{item.message && <p className="whitespace-pre-wrap break-words text-sm text-muted-foreground">{item.message}</p>}{Boolean(item.attachments?.length) && <InvitationAttachments attachments={item.attachments!} />}{item.responseNote && <p className="text-xs text-muted-foreground">{item.responseNote}</p>}{item.closeReason === "MENTOR_POSITION_FILLED" && <p className="text-xs text-muted-foreground">{t("The mentor position has been filled.")}</p>}{item.status === "PENDING" && item.expiresAt && <p className="text-xs text-muted-foreground">{t("Expires")}: {new Date(item.expiresAt).toLocaleDateString()}</p>}</>}
   </li>)}</ul>
   <Dialog open={action?.open ?? false} onOpenChange={open => { if (!open) closeAction(); }}><DialogContent><DialogHeader><DialogTitle>{t(action?.kind === "accept" ? "Accept mentorship" : action?.kind === "decline" ? "Decline mentorship" : action?.kind === "end" ? "End mentorship" : "Cancel mentorship request")}</DialogTitle><DialogDescription>{t(action?.kind === "end" ? "Mentor access will end immediately. Previous guidance remains in project history." : "Mentorship remains separate from formal academic review.")}</DialogDescription></DialogHeader>
+    {action?.kind === "accept" && <MentorPolicySummary policy={action.item.accessPolicy} />}
     <label className="space-y-1.5 text-sm"><span>{t("Optional note")}</span><textarea aria-label={t("Note")} className="min-h-20 w-full rounded-md border bg-background p-3 text-sm" value={note} maxLength={1000} onChange={e => setNote(e.target.value)} /></label>{response.error && <p role="alert" className="text-sm text-destructive">{t(mentorshipError(response.error))}</p>}<Button disabled={response.isPending} onClick={() => response.mutate()}>{t("Confirm")}</Button>
   </DialogContent></Dialog>
-  <Dialog open={Boolean(preview)} onOpenChange={open => { if (!open) setPreview(undefined); }}><DialogContent className="max-h-[85dvh] overflow-y-auto"><DialogHeader><DialogTitle>{t("View Project Preview")}</DialogTitle><DialogDescription>{t("Only the shared preview is available before acceptance.")}</DialogDescription></DialogHeader>{preview?.project && <MentorPreviewContent preview={preview.project} />}{preview?.kind === "REQUEST" && <><MentorInvitationSender sender={preview.requestedBy} /><p className="text-sm font-medium">{t(preview.mentorRole === "SECONDARY" ? "Secondary mentor" : "Primary mentor")}</p><InvitationAttachments attachments={preview.attachments ?? []} />{preview.message && <div><p className="text-xs font-medium text-muted-foreground">{t("Message")}</p><p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6">{preview.message}</p></div>}</>}</DialogContent></Dialog>
+  <Dialog open={Boolean(preview)} onOpenChange={open => { if (!open) setPreview(undefined); }}><DialogContent className="max-h-[85dvh] overflow-y-auto"><DialogHeader><DialogTitle>{t("View Project Preview")}</DialogTitle><DialogDescription>{t("Only the shared preview is available before acceptance.")}</DialogDescription></DialogHeader>{preview?.project && <MentorPreviewContent preview={preview.project} />}{preview?.kind === "REQUEST" && <><MentorPolicySummary policy={preview.accessPolicy} /><MentorInvitationSender sender={preview.requestedBy} /><p className="text-sm font-medium">{t(preview.mentorRole === "SECONDARY" ? "Secondary mentor" : "Primary mentor")}</p><InvitationAttachments attachments={preview.attachments ?? []} />{preview.message && <div><p className="text-xs font-medium text-muted-foreground">{t("Message")}</p><p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6">{preview.message}</p></div>}</>}</DialogContent></Dialog>
   </>;
 }
 function MentorSearch({ project, disabled, canInvite }: { project: MentorPreview; disabled: boolean; canInvite: boolean }) {
@@ -581,6 +586,7 @@ export function MentorProjectPanel({ projectId }: { projectId: string }) {
       {list.data && <><div className="mentor-requests-heading"><h3>{t("Invitations & mentors")}</h3><p>{list.data.counts.active} {t("active mentors")} · {list.data.counts.pending} {t("pending requests")}</p></div><MentoringItems items={[...list.data.relationships, ...list.data.requests]} /><Pager meta={list.data.requestMeta.totalPages >= list.data.relationshipMeta.totalPages ? list.data.requestMeta : list.data.relationshipMeta} onPage={setRequestPage} /></>}
     </div>
     {list.isError && <div role="alert" className="mt-4 flex flex-wrap items-center gap-3 text-sm text-destructive"><p>{t("Unable to load mentorship requests.")}</p><Button size="sm" variant="outline" onClick={() => void list.refetch()}>{t("Try again")}</Button></div>}
-    {data.accessRole === "TEAM" && <details className="mt-6 border-t pt-5" open={data.guidance.length > 0 || undefined}><summary className="cursor-pointer text-sm font-medium">{t("Guidance & team updates")}</summary><div className="mt-4"><MentorGuidance projectId={projectId} data={data} /></div></details>}
+    {data.accessRole === "TEAM" && <MentorAccessWorkspace projectId={projectId} />}
+    {data.accessRole === "TEAM" && data.guidance.length > 0 && <details className="mt-6 border-t pt-5"><summary className="cursor-pointer text-sm font-medium">Lịch sử hướng dẫn trước đây</summary><div className="mt-4"><MentorGuidance projectId={projectId} data={{ ...data, canProvideFeedback: false }} /></div></details>}
   </section>;
 }

@@ -17,7 +17,7 @@ function allocationRevisionId(row: { type: string; emailPayload: Prisma.JsonValu
 }
 function workContributionId(row: { type: string; emailPayload: Prisma.JsonValue | null }) {
   const payload = row.emailPayload;
-  if (row.type !== "PROJECT_CONTRIBUTION_UPDATE" || !payload || typeof payload !== "object" || Array.isArray(payload) || typeof payload.entityId !== "string") return undefined;
+  if (row.type !== "PROJECT_CONTRIBUTION_UPDATE" || !payload || typeof payload !== "object" || Array.isArray(payload) || payload.evaluation === true || typeof payload.entityId !== "string") return undefined;
   const id = parseDatabaseId(payload.entityId); return id?.kind === "uuid" ? id.value : undefined;
 }
 function manuscriptNotification(row: { type: string; emailPayload: Prisma.JsonValue | null }) {
@@ -25,6 +25,12 @@ function manuscriptNotification(row: { type: string; emailPayload: Prisma.JsonVa
   const manuscript = typeof row.emailPayload.manuscriptId === "string" ? parseDatabaseId(row.emailPayload.manuscriptId) : null;
   const snapshot = typeof row.emailPayload.snapshotId === "string" ? parseDatabaseId(row.emailPayload.snapshotId) : null;
   return manuscript?.kind === "uuid" && snapshot?.kind === "uuid" ? { manuscriptId: manuscript.value, manuscriptSnapshotId: snapshot.value } : {};
+}
+
+function evaluationNotification(row: { type: string; emailPayload: Prisma.JsonValue | null }) {
+  const p = row.emailPayload;
+  if (row.type !== "PROJECT_CONTRIBUTION_UPDATE" || !p || typeof p !== "object" || Array.isArray(p) || p.evaluation !== true || typeof p.entityId !== "string") return {};
+  const id = parseDatabaseId(p.entityId); return id?.kind === "uuid" ? { contributionEvaluationId: id.value } : {};
 }
 
 function trendNotification(row: { type: string; emailPayload: Prisma.JsonValue | null }) {
@@ -51,7 +57,7 @@ export const notificationService = {
     }
   },
   async registerDeviceToken(userId: string, input: RegisterDeviceTokenInput) { const owner = await user(userId); if (!owner) throw new Error("Device-token user does not exist"); return getPrisma().deviceToken.upsert({ where: { token: input.token }, create: { userId: owner.id, token: input.token, platform: input.platform, deviceName: input.deviceName, lastSeenAt: new Date() }, update: { userId: owner.id, platform: input.platform, deviceName: input.deviceName, lastSeenAt: new Date(), disabledAt: null } }); },
-  async list(userId: string, role: string) { const owner = await user(userId); if (!owner) return []; const prisma = getPrisma(); const rows = await prisma.notification.findMany({ where: role === "admin" ? { OR: [{ userId: owner.id }, { role: "admin" }] } : { userId: owner.id }, orderBy: { createdAt: "desc" } }); const readIds = role === "admin" ? new Set((await prisma.notificationRead.findMany({ where: { userId: owner.id, notificationId: { in: rows.map((row) => row.id) } }, select: { notificationId: true } })).map((entry) => entry.notificationId)) : new Set<string>(); return rows.map((row) => ({ id: publicDatabaseId(row), title: row.title, message: row.message, type: row.type, paperId: row.paperId, targetKind: row.targetKind ?? (row.paperId ? "paper" : null), targetId: row.targetLegacyMongoId ?? row.targetUuid ?? row.paperId, verificationRequestId: verificationRequestId(row), allocationRevisionId: allocationRevisionId(row), workContributionId: workContributionId(row), ...manuscriptNotification(row), ...trendNotification(row), isRead: row.role === "admin" ? readIds.has(row.id) : row.isRead, createdAt: row.createdAt })); },
+  async list(userId: string, role: string) { const owner = await user(userId); if (!owner) return []; const prisma = getPrisma(); const rows = await prisma.notification.findMany({ where: role === "admin" ? { OR: [{ userId: owner.id }, { role: "admin" }] } : { userId: owner.id }, orderBy: { createdAt: "desc" } }); const readIds = role === "admin" ? new Set((await prisma.notificationRead.findMany({ where: { userId: owner.id, notificationId: { in: rows.map((row) => row.id) } }, select: { notificationId: true } })).map((entry) => entry.notificationId)) : new Set<string>(); return rows.map((row) => ({ id: publicDatabaseId(row), title: row.title, message: row.message, type: row.type, paperId: row.paperId, targetKind: row.targetKind ?? (row.paperId ? "paper" : null), targetId: row.targetLegacyMongoId ?? row.targetUuid ?? row.paperId, verificationRequestId: verificationRequestId(row), allocationRevisionId: allocationRevisionId(row), workContributionId: workContributionId(row), ...manuscriptNotification(row), ...evaluationNotification(row), ...trendNotification(row), isRead: row.role === "admin" ? readIds.has(row.id) : row.isRead, createdAt: row.createdAt })); },
   async markAsRead(id: string, userId: string) { const parsed = parseDatabaseId(id); const owner = await user(userId); if (!parsed || !owner) return null; const row = await getPrisma().notification.findUnique({ where: parsed.kind === "uuid" ? { id: parsed.value } : { legacyMongoId: parsed.value } }); if (!row) return null; if (row.role === "admin") { await getPrisma().notificationRead.upsert({ where: { notificationId_userId: { notificationId: row.id, userId: owner.id } }, create: { notificationId: row.id, userId: owner.id }, update: { readAt: new Date() } }); return row; } if (row.userId !== owner.id) return null; return getPrisma().notification.update({ where: { id: row.id }, data: { isRead: true } }); },
   async markAllAsRead(userId: string, role: string) { const owner = await user(userId); if (!owner) return; const prisma = getPrisma(); await prisma.notification.updateMany({ where: { userId: owner.id, isRead: false }, data: { isRead: true } }); if (role === "admin") { const rows = await prisma.notification.findMany({ where: { role: "admin" }, select: { id: true } }); await prisma.notificationRead.createMany({ data: rows.map((row) => ({ notificationId: row.id, userId: owner.id })), skipDuplicates: true }); } },
 };

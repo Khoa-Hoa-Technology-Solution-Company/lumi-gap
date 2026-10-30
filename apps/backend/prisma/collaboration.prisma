@@ -18,6 +18,9 @@ model Project {
   exclusionCriteria String[]  @default([]) @map("exclusion_criteria")
   status            String    @default("PLANNING") @db.VarChar(24)
   visibility        String    @default("PRIVATE") @db.VarChar(24)
+  exportPolicy      String    @default("ALL_MEMBERS") @map("export_policy") @db.VarChar(24)
+  aiDataPolicy      String    @default("ALLOW_PERSONAL_AI") @map("ai_data_policy") @db.VarChar(24)
+  externalLookupPolicy String @default("ALLOW_PUBLIC_INDEX") @map("external_lookup_policy") @db.VarChar(24)
   mentorshipDiscovery String @default("CLOSED") @map("mentorship_discovery") @db.VarChar(24)
   mentorshipSummary String? @map("mentorship_summary") @db.VarChar(2000)
   mentorshipExpertise String[] @default([]) @map("mentorship_expertise")
@@ -70,6 +73,7 @@ model ProjectMember {
 }
 
 model ProjectPaper {
+  proposalReason String @default("") @map("proposal_reason")
   id              String    @id @default(uuid()) @db.Uuid
   projectId       String    @map("project_id") @db.Uuid
   paperId         String    @map("paper_id") @db.Uuid
@@ -269,6 +273,7 @@ model ProjectContributionProposal {
   roles                    String[]  @default([])
   description              String
   title                    String @default("") @db.VarChar(240)
+  category                 String @default("EXECUTION_VALIDATION") @db.VarChar(40)
   source                   String @default("LEGACY") @db.VarChar(24)
   workDate                 DateTime @default(now()) @map("work_date") @db.Timestamptz(6)
   version                  Int @default(1)

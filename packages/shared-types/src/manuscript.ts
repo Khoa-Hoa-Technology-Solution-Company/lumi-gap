@@ -73,6 +73,8 @@ export interface CreateManuscriptSnapshot {
   label: string; clientKey: string; minimumSequences: Record<string, number>;
   /** Reuse an identical saved source version when compiling repeatedly. */
   reuseUnchanged?: boolean;
+  /** An old snapshot without complete private writing state must not be reused for this analysis. */
+  writingEvidence?: boolean;
 }
 export interface ManuscriptSnapshot {
   collaboration?: { comments: number; suggestions: number } | null;

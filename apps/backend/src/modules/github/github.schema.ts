@@ -14,7 +14,20 @@ const treeBody = z.object({ base_tree: sha, tree: z.array(z.object({ path: sourc
 const commitBody = z.object({ message: z.string().trim().min(1).max(500), tree: sha, parents: z.array(sha).length(1) }).strict();
 const newRefBody = z.object({ ref: z.string().startsWith("refs/heads/").refine(value => branch.safeParse(value.slice(11)).success), sha }).strict();
 const updateRefBody = z.object({ sha, force: z.literal(false) }).strict();
-export const githubRequestSchema = z.object({ repository: githubRepository, path: z.string().max(400), method: z.enum(["GET", "POST", "PATCH"]), body: z.unknown().optional() }).strict().superRefine((value, ctx) => {
+export const githubCreateRepoSchema = z.object({
+  name: z.string().min(1).max(100).regex(/^[A-Za-z0-9._-]+$/),
+  description: z.string().max(500).optional(),
+  isPrivate: z.boolean().default(true),
+  projectId: z.string().uuid().optional(),
+}).strict();
+
+export const githubRequestSchema = z.object({
+  repository: githubRepository,
+  path: z.string().max(400),
+  method: z.enum(["GET", "POST", "PATCH"]),
+  projectId: z.string().uuid().optional(),
+  body: z.unknown().optional(),
+}).strict().superRefine((value, ctx) => {
   let valid = false;
   if (value.method === "GET" && value.body === undefined) {
     valid = value.path === "" || /^\/git\/(commits|blobs)\/[a-f0-9]{40}$/.test(value.path) || /^\/git\/trees\/[a-f0-9]{40}\?recursive=1$/.test(value.path);

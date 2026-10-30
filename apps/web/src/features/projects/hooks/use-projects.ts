@@ -107,7 +107,11 @@ export function useAddMemberToProject(id: string) {
 export function useRemoveMemberFromProject(id: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (memberId: string) => projectsApi.removeMember(id, memberId),
+    mutationFn: (input: string | { memberId: string; reason?: string }) => {
+      const memberId = typeof input === "string" ? input : input.memberId;
+      const reason = typeof input === "string" ? undefined : input.reason;
+      return projectsApi.removeMember(id, memberId, reason);
+    },
     onSuccess: () => {
       return refreshProject(queryClient, id);
     },

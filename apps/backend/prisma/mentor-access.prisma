@@ -1,0 +1,84 @@
+model MentorAccess {
+  id String @id @default(uuid()) @db.Uuid
+  projectId String @map("project_id") @db.Uuid
+  requestId String @unique @map("request_id") @db.Uuid
+  relationshipId String? @unique @map("relationship_id") @db.Uuid
+  mentorUserId String @map("mentor_user_id") @db.Uuid
+  preset String @default("ADVISOR") @db.VarChar(16)
+  permissions String[] @default([])
+  version Int @default(1)
+  expiresAt DateTime? @map("expires_at") @db.Timestamptz(6)
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(6)
+  configuredById String @map("configured_by_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  @@unique([id, projectId])
+  @@index([projectId, mentorUserId])
+  @@map("mentor_access")
+}
+model MentorResourceShare {
+  id String @id @default(uuid()) @db.Uuid
+  projectId String @map("project_id") @db.Uuid
+  accessId String @map("access_id") @db.Uuid
+  kind String @db.VarChar(24)
+  resourceId String @map("resource_id") @db.Uuid
+  sectionKey String @default("") @map("section_key") @db.VarChar(64)
+  title String @db.VarChar(240)
+  content String
+  sharedById String @map("shared_by_id") @db.Uuid
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@unique([id, accessId, projectId])
+  @@index([accessId, revokedAt])
+  @@map("mentor_resource_shares")
+}
+model MentorFeedback {
+  id String @id @default(uuid()) @db.Uuid
+  projectId String @map("project_id") @db.Uuid
+  accessId String @map("access_id") @db.Uuid
+  shareId String? @map("share_id") @db.Uuid
+  replyToId String? @map("reply_to_id") @db.Uuid
+  authorId String @map("author_id") @db.Uuid
+  kind String @db.VarChar(16)
+  body String
+  creditRoles String[] @default([]) @map("credit_roles")
+  status String @default("PENDING") @db.VarChar(16)
+  version Int @default(1)
+  handledById String? @map("handled_by_id") @db.Uuid
+  handledAt DateTime? @map("handled_at") @db.Timestamptz(6)
+  response String @default("")
+  resultingRevisionRef String? @map("resulting_revision_ref") @db.VarChar(120)
+  clientKey String @map("client_key") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@unique([accessId, authorId, clientKey])
+  @@unique([id, accessId, projectId])
+  @@index([accessId, createdAt])
+  @@map("mentor_feedback")
+}
+model MentorAgreement {
+  id String @id @default(uuid()) @db.Uuid
+  projectId String @map("project_id") @db.Uuid
+  accessId String @map("access_id") @db.Uuid
+  proposedById String @map("proposed_by_id") @db.Uuid
+  creditRoles String[] @map("credit_roles")
+  acknowledgement String
+  note String @default("")
+  status String @default("PROPOSED") @db.VarChar(16)
+  respondedById String? @map("responded_by_id") @db.Uuid
+  respondedAt DateTime? @map("responded_at") @db.Timestamptz(6)
+  clientKey String @map("client_key") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@unique([accessId, proposedById, clientKey])
+  @@map("mentor_agreements")
+}
+model MentorAccessEvent {
+  id String @id @default(uuid()) @db.Uuid
+  projectId String @map("project_id") @db.Uuid
+  accessId String @map("access_id") @db.Uuid
+  actorId String @map("actor_id") @db.Uuid
+  type String @db.VarChar(32)
+  details Json @default("{}")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@index([accessId, createdAt])
+  @@map("mentor_access_events")
+}

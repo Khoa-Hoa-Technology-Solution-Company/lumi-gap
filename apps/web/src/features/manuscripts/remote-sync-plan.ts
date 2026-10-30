@@ -14,6 +14,8 @@ export async function planSync(baseline: FileFingerprint[], local: RepositoryFil
     local: local.find(file => file.path === path), remote: remote.find(file => file.path === path),
   }));
 }
+export const hasIndependentHistories = (baseline: FileFingerprint[], local: RepositoryFile[], remote: RepositoryFile[]) => baseline.length === 0 && local.length > 0 && remote.length > 0;
+
 export function mergedFiles(changes: SyncChange[], choices: Record<string, "LOCAL" | "REMOTE">) {
   if (changes.some(change => change.kind === "CONFLICT" && !choices[change.path])) throw new Error("Resolve all conflicts first");
   return changes.flatMap(change => {

@@ -8,6 +8,7 @@ import {
   inviteMemberSchema,
   invitationTokenParamsSchema,
   projectController,
+  removeMemberBodySchema,
   transferOwnershipSchema,
   updateProjectPaperSchema,
   updateProjectSchema,
@@ -27,6 +28,7 @@ import { createRateLimiter } from "../../common/middleware/rate-limit.js";
 import { env } from "../../config/env.js";
 import { projectMentorshipService } from "./project-mentorship.service.js";
 import { mentorshipContentRouter } from "./mentorship-content.routes.js";
+import { mentorAccessRouter } from "./mentor-access.routes.js";
 import {
   contributionProposalParamsSchema,
   projectContributionController,
@@ -39,6 +41,15 @@ import {
   requestMentorshipSchema,
   respondMentorshipSchema,
 } from "./project-mentorship.controller.js";
+
+import {
+  researchIntegrityService,
+  createIntegrityCaseSchema,
+  respondIntegrityCaseSchema,
+  containLeakIncidentSchema,
+  escalateIntegrityCaseSchema,
+  resolveIntegrityCaseSchema,
+} from "./research-integrity.service.js";
 
 export const projectRouter: Router = Router();
 
@@ -92,6 +103,30 @@ projectRouter.get("/:id/team", validate(paramIdSchema, "params"), validate(teamQ
 projectRouter.post("/:id/leave", validate(paramIdSchema, "params"), projectController.leaveProject);
 projectRouter.post("/:id/transfer-ownership", validate(paramIdSchema, "params"), validate(transferOwnershipSchema, "body"), projectController.transferOwnership);
 projectRouter.get("/:id/activity", validate(paramIdSchema, "params"), validate(activityQuerySchema, "query"), projectController.listActivity);
+projectRouter.get("/:id/security", validate(paramIdSchema, "params"), projectController.getSecurityOverview);
+
+const caseParams = paramIdSchema.extend({ caseId: z.string().uuid() });
+projectRouter.get("/:id/integrity-cases", validate(paramIdSchema, "params"), async (req, res) => {
+  res.json({ success: true, data: await researchIntegrityService.listCases(String(req.params.id), req.user!.sub, req.user?.role) });
+});
+projectRouter.post("/:id/integrity-cases", projectWriteLimiter, validate(paramIdSchema, "params"), validate(createIntegrityCaseSchema), async (req, res) => {
+  res.status(201).json({ success: true, data: await researchIntegrityService.createCase(String(req.params.id), req.user!.sub, req.body) });
+});
+projectRouter.get("/:id/integrity-cases/:caseId", validate(caseParams, "params"), async (req, res) => {
+  res.json({ success: true, data: await researchIntegrityService.getCase(String(req.params.id), req.user!.sub, String(req.params.caseId), req.user?.role) });
+});
+projectRouter.post("/:id/integrity-cases/:caseId/responses", projectWriteLimiter, validate(caseParams, "params"), validate(respondIntegrityCaseSchema), async (req, res) => {
+  res.json({ success: true, data: await researchIntegrityService.respondCase(String(req.params.id), req.user!.sub, String(req.params.caseId), req.body, req.user?.role) });
+});
+projectRouter.post("/:id/integrity-cases/:caseId/contain", projectWriteLimiter, validate(caseParams, "params"), validate(containLeakIncidentSchema), async (req, res) => {
+  res.json({ success: true, data: await researchIntegrityService.containLeakIncident(String(req.params.id), req.user!.sub, String(req.params.caseId), req.body, req.user?.role) });
+});
+projectRouter.post("/:id/integrity-cases/:caseId/escalate", projectWriteLimiter, validate(caseParams, "params"), validate(escalateIntegrityCaseSchema), async (req, res) => {
+  res.json({ success: true, data: await researchIntegrityService.escalateCase(String(req.params.id), req.user!.sub, String(req.params.caseId), req.body, req.user?.role) });
+});
+projectRouter.post("/:id/integrity-cases/:caseId/resolve", projectWriteLimiter, validate(caseParams, "params"), validate(resolveIntegrityCaseSchema), async (req, res) => {
+  res.json({ success: true, data: await researchIntegrityService.resolveCase(String(req.params.id), req.user!.sub, String(req.params.caseId), req.body, req.user?.role) });
+});
 
 projectRouter.get("/:id/mentorships", validate(paramIdSchema, "params"), validate(academicSearchSchema, "query"), projectMentorshipController.list);
 projectRouter.get("/:id/mentor-suggestions", validate(paramIdSchema, "params"), validate(academicSearchSchema, "query"), async (req, res) => {
@@ -168,9 +203,10 @@ projectRouter.use("/:id/chat", projectChatRouter);
 projectRouter.use("/:id/team-chat", projectTeamChatRouter);
 projectRouter.use("/:id", projectWorkspaceRouter);
 projectRouter.use("/:id/research", projectResearchRouter);
+projectRouter.use("/:id/mentor-access", mentorAccessRouter);
 
 projectRouter.post("/:id/members", projectWriteLimiter, validate(paramIdSchema, "params"), validate(addMemberSchema, "body"), projectController.addMember);
-projectRouter.delete("/:id/members/:memberId", validate(paramMemberIdSchema, "params"), projectController.removeMember);
+projectRouter.delete("/:id/members/:memberId", validate(paramMemberIdSchema, "params"), validate(removeMemberBodySchema, "body"), projectController.removeMember);
 projectRouter.post("/:id/invitations", projectWriteLimiter, validate(paramIdSchema, "params"), validate(inviteMemberSchema, "body"), projectController.inviteMember);
 projectRouter.post("/:id/invitations/:invitationId/resend", projectWriteLimiter, validate(paramInvitationIdSchema, "params"), projectController.resendInvitation);
 projectRouter.post("/:id/invitations/:invitationId/accept", validate(paramInvitationIdSchema, "params"), projectController.acceptInvitation);

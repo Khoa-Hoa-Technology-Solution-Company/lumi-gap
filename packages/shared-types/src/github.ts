@@ -16,3 +16,25 @@ export interface GithubRepositories {
   page: number;
   hasMore: boolean;
 }
+
+export interface CreateGithubRepoInput {
+  name: string;
+  description?: string;
+  isPrivate?: boolean;
+  projectId?: string;
+}
+
+export interface CreatedGithubRepo {
+  fullName: string;
+  defaultBranch: string;
+  private: boolean;
+}
+
+export interface ManuscriptRemoteHistoryEntry {
+  id: string;
+  eventType: string;
+  currentVersionRef: string | null;
+  createdAt: string;
+  actor: { id: string; name: string } | null;
+  metadata: Record<string, unknown>;
+}

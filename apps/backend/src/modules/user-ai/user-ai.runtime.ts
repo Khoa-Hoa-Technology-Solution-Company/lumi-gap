@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import { AppError } from "../../common/exceptions/app-error.js";
 import { env } from "../../config/env.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { parseDatabaseId } from "../../infrastructure/database/database-id.js";
@@ -41,4 +42,28 @@ export async function withUserAi<T>(userInput: string, operation: () => T): Prom
     cacheNamespace: `${connection.userId}:${connection.id}:${connection.updatedAt.toISOString()}`,
   };
   return await context.run(runtime, operation);
+}
+
+/**
+ * Enforces a project's AI data-handling policy before sending unpublished project content to an LLM:
+ * - DISABLED: rejects external AI processing of project content.
+ * - PLATFORM_AI_ONLY: forces platform AI credentials, preventing a collaborator's custom third-party endpoint from receiving shared project text.
+ * - ALLOW_PERSONAL_AI: uses the caller's personal AI connection if configured, else platform AI.
+ */
+export async function withProjectAi<T>(projectInput: string | null | undefined, userInput: string, operation: () => T): Promise<Awaited<T>> {
+  if (!projectInput) return withUserAi(userInput, operation);
+  const parsedProject = parseDatabaseId(projectInput);
+  if (!parsedProject) return withUserAi(userInput, operation);
+  const project = await getPrisma().project.findUnique({
+    where: parsedProject.kind === "uuid" ? { id: parsedProject.value } : { legacyMongoId: parsedProject.value },
+    select: { aiDataPolicy: true },
+  });
+  const policy = project?.aiDataPolicy ?? "ALLOW_PERSONAL_AI";
+  if (policy === "DISABLED") {
+    throw AppError.forbidden("External AI processing is disabled by this project's security policy");
+  }
+  if (policy === "PLATFORM_AI_ONLY") {
+    return await withPlatformAi(operation);
+  }
+  return withUserAi(userInput, operation);
 }

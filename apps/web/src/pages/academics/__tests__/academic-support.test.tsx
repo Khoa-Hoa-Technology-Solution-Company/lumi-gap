@@ -6,6 +6,8 @@ import { MemoryRouter, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { AcademicSupportPage, MentorProjectPanel } from '../academic-support';
 const mocks=vi.hoisted(()=>({mine:vi.fn(),preferences:vi.fn(),savePreferences:vi.fn(),opportunities:vi.fn(),respond:vi.fn(),offer:vi.fn(),draft:vi.fn(),saveDraft:vi.fn(),projects:vi.fn(),workspace:vi.fn(),list:vi.fn(),mentors:vi.fn(),guidance:vi.fn()}));
+const accessMocks=vi.hoisted(()=>({workspace:vi.fn(),feedback:vi.fn(),history:vi.fn(),agreements:vi.fn(),comment:vi.fn()}));
+vi.mock('@/features/projects/api/mentor-access.api',()=>({mentorAccessApi:accessMocks}));
 const state=vi.hoisted(()=>({role:'LECTURER'}));
 vi.mock('@/features/projects/api/academic-support.api',()=>({academicSupportApi:mocks}));
 vi.mock('@/features/projects/api/projects.api',()=>({projectsApi:{list:mocks.projects}}));
@@ -27,6 +29,8 @@ async function mount(url='/academic-support?view=incoming'){await act(async()=>r
 function button(label:string){return [...document.querySelectorAll<HTMLButtonElement>('button')].find(b=>b.textContent?.startsWith(label))!;}
 async function click(label:string){await act(async()=>button(label).click());await tick();}
 beforeEach(()=>{vi.resetAllMocks();vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT',true);state.role='LECTURER';
+accessMocks.workspace.mockResolvedValue({viewerId:'mentor',projectId:'project',title:project.title,canManage:false,readOnly:false,policies:[],page:1,pageSize:20,total:0,hasNext:false});
+for (const method of ['feedback','history','agreements'] as const) accessMocks[method].mockResolvedValue({items:[],total:0,page:1,pageSize:20,hasNext:false});
 mocks.preferences.mockResolvedValue({canEnable:true,acceptingMentorships:true,emailEnabled:false,locale:'en'});
 mocks.mine.mockImplementation(async({view}:any)=>({requests:view==='incoming'?[invitation]:[],relationships:[],counts:{incoming:1,active:0,pending:1},requestMeta:meta,relationshipMeta:meta}));
 mocks.opportunities.mockResolvedValue({items:[project],meta});mocks.respond.mockResolvedValue({});mocks.offer.mockResolvedValue({});mocks.projects.mockResolvedValue([]);
@@ -95,10 +99,11 @@ it('keeps an unsent team update mounted when the mentor workspace background req
   mocks.workspace.mockResolvedValue({project:{...project,discovery:'CLOSED'},accessRole:'TEAM',canManage:false,canProvideFeedback:true,guidance:[]});
   mocks.list.mockResolvedValue({relationships:[],requests:[],counts:{active:0,pending:0},policy:{maxActiveMentors:2,maxPendingRequests:3},requestMeta:meta,relationshipMeta:meta});
   mocks.mentors.mockResolvedValue({items:[],meta});
-  await act(async()=>root.render(<QueryClientProvider client={client}><MemoryRouter><MentorProjectPanel projectId="project"/></MemoryRouter></QueryClientProvider>));await tick();
-  const note=host.querySelector<HTMLTextAreaElement>('#mentor-guidance-note')!;
+  accessMocks.workspace.mockResolvedValue({viewerId:'mentor',projectId:'project',title:project.title,canManage:false,readOnly:false,page:1,pageSize:20,total:1,hasNext:false,policies:[{mentorId:'lecturer',mentorName:'Lecturer',invitationState:'ACCEPTED',policy:{id:'access',requestId:'request',relationshipId:'relation',version:1,preset:'ADVISOR',permissions:['MENTOR_CHAT'],expiresAt:null,revokedAt:null,effective:true},shares:[]}]});
+  await act(async()=>root.render(<QueryClientProvider client={client}><MemoryRouter><MentorProjectPanel projectId="project"/></MemoryRouter></QueryClientProvider>));await tick();await tick();
+  const note=[...host.querySelectorAll('label')].find(l=>l.textContent?.startsWith('Nội dung phản hồi'))!.querySelector<HTMLTextAreaElement>('textarea')!;
   await act(async()=>{Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value')!.set!.call(note,'Keep this follow-up question');note.dispatchEvent(new Event('input',{bubbles:true}));});
-  mocks.workspace.mockRejectedValue(new Error('Background request interrupted'));
-  await act(async()=>{await client.invalidateQueries({queryKey:['academic-support','mentor','workspace','project']});});await tick();
-  expect(host.querySelector('#mentor-guidance-note')).toBe(note);expect(note.value).toBe('Keep this follow-up question');expect(host.querySelector('[role="alert"]')).not.toBeNull();
+  accessMocks.workspace.mockRejectedValue(new Error('Background request interrupted'));
+  await act(async()=>{await client.invalidateQueries({queryKey:['mentor-access','mentor','project','workspace']});});await tick();
+  expect(host.querySelector('textarea')).toBe(note);expect(note.value).toBe('Keep this follow-up question');expect(host.querySelector('[role="alert"]')).not.toBeNull();
 });

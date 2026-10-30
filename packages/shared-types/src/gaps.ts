@@ -37,6 +37,7 @@ export interface GapGlobalEvidence {
 }
 
 export interface ResearchGapItem {
+  analysisMode?: "DRAFT" | "OFFICIAL";
   assessmentStatus?: import("./project-research.js").GapAssessment;
   version?: number;
   id: string;
@@ -113,6 +114,7 @@ export interface ResearchGapItem {
 }
 
 export interface GapAnalysisResult {
+  analysisSetId?: string; analysisMode?: "DRAFT" | "OFFICIAL";
   promptVersion?: string;
   discovery?: ProjectGapDiscoveryResult;
   evidenceSnapshot?: import("./knowledge.js").PaperEvidenceSnapshot[];
@@ -161,6 +163,7 @@ export interface PreviewGapEvidenceResponse {
 export interface AnalyzeGapRequest {
   /** Analyze included project papers directly; human review happens on candidates. */
   projectDiscovery?: boolean;
+  analysisSetId?: string;
   /** Accepted, current project synthesis revision. Required for new project analyses. */
   synthesisRevisionId?: string;
   topic: string;

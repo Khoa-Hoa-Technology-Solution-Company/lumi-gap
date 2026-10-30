@@ -1,3 +1,4 @@
+import { AnalysisSetDiscovery } from "@/features/projects/components/analysis-set-discovery";
 import { lazy, Suspense, useState, useEffect } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -140,7 +141,7 @@ export function ProjectDetailPage() {
           </section>}
           {activeTab === "papers" && (
             <section id="project-panel-papers" role="tabpanel" aria-labelledby="project-tab-papers">
-              <ResearchLiterature projectId={project._id} readOnly={project.status === "ARCHIVED" || !project.accessRole}>
+              <ResearchLiterature onAddPaper={() => { setPaperPickerSource("search"); setPaperPickerOpen(true); }} projectId={project._id} readOnly={project.status === "ARCHIVED" || !project.accessRole}>
               <ProjectLiteratureWorkspace
                 projectId={project._id}
                 papers={project.papers}
@@ -235,6 +236,8 @@ function GapsTab({
   onDraftProposal?: (gap: ResearchGapItem) => void;
 }) {
   const [page, setPage] = useState(1);
+  const [gapParams] = useSearchParams();
+  const analysisSetId = gapParams.get("analysisSet");
   const [latestAnalysis, setLatestAnalysis] = useState<GapAnalysisResult | null>(null);
   const { data: currentProject } = useProject(projectId);
   const readOnly = currentProject?.status === "ARCHIVED";
@@ -248,7 +251,8 @@ function GapsTab({
 
   return (
     <div className="space-y-4 mt-2">
-      <ProjectGapDiscovery key={projectId} projectId={projectId} defaultTopic={defaultTopic} readOnly={readOnly} onAnalysisChange={setLatestAnalysis} />
+      {analysisSetId ? <AnalysisSetDiscovery key={`${projectId}:${analysisSetId}`} projectId={projectId} setId={analysisSetId} readOnly={readOnly} onAnalysisChange={setLatestAnalysis} /> : <ProjectGapDiscovery key={projectId} projectId={projectId} defaultTopic={defaultTopic} readOnly={readOnly} onAnalysisChange={setLatestAnalysis} />}
+      {latestAnalysis?.analysisMode === "DRAFT" && latestAnalysis.status === "ready" && <p className="screening-notice" data-no-i18n>Kết quả sơ bộ từ bộ bài nháp — cần kiểm chứng trước khi sử dụng trong nghiên cứu.</p>}
       {latestAnalysis?.status !== "ready" ? null : isLoading ? (
         <div className="py-12 flex justify-center"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground/50" /></div>
       ) : isError ? (<section className="gap-discovery-results-error" role="alert" data-no-i18n><h3>{t("Could not load research directions")}</h3><p>{t("Your analysis is saved. Reload the results without starting another analysis.")}</p><Button type="button" variant="outline" onClick={() => void refetch()}>{t("Reload results")}</Button></section>) : gapsData?.data && gapsData.data.length > 0 ? (

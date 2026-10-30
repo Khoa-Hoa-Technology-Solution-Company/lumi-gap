@@ -53,10 +53,10 @@ export async function proposeClosureQueries(question: string, facets: QuestionFa
   return sanitizeClosureQueries([question.slice(0, MAX_QUERY_CHARS)], 1);
 }
 
-async function runSearches(check: { id: string; yearFrom: number | null; yearTo: number | null }, queries: string[]) {
+async function runSearches(check: { id: string; yearFrom: number | null; yearTo: number | null }, queries: string[], allowExternalLookup = true) {
   const logs: ClosureQueryLog[] = [];
   const lists: ClosureDocumentDraft[][] = [];
-  const sources: ClosureDocumentSource[] = env.GAP_CLOSURE_OPENALEX_PER_QUERY > 0 ? ["LOCAL", "OPENALEX"] : ["LOCAL"];
+  const sources: ClosureDocumentSource[] = allowExternalLookup && env.GAP_CLOSURE_OPENALEX_PER_QUERY > 0 ? ["LOCAL", "OPENALEX"] : ["LOCAL"];
   for (const query of queries) {
     for (const source of sources) {
       // queryIndex is the position of this search in the log, so a document can point back to its query and source.
@@ -199,7 +199,10 @@ export async function runGapClosureCheck(job: GapClosureJob): Promise<void> {
     if (!queries.length) queries = await proposeClosureQueries(check.question, facets, env.GAP_CLOSURE_MAX_QUERIES);
     if (!queries.length) throw new ClosureRunError("The question is too short to build a search query from.");
 
-    const { logs, drafts } = await runSearches(check, queries);
+    const gapRow = check.targetId ? await prisma.researchGap.findUnique({ where: { id: check.targetId }, select: { projectId: true } }) : null;
+    const projRow = gapRow?.projectId ? await prisma.project.findUnique({ where: { id: gapRow.projectId }, select: { externalLookupPolicy: true } }) : null;
+    const allowExternalLookup = projRow?.externalLookupPolicy !== "LOCAL_CORPUS_ONLY";
+    const { logs, drafts } = await runSearches(check, queries, allowExternalLookup);
     await storeDocuments(check.id, logs, drafts);
 
     const documents = await prisma.gapClosureDocument.findMany({

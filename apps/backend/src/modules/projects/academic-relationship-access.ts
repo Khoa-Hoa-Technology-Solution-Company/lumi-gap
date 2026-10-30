@@ -22,12 +22,12 @@ export async function assertAcademicRelationshipManager(projectId: string, actor
   return project;
 }
 export async function canAccessProjectAsMentor(projectId: string, actorId: string, db: Db = getPrisma()) {
-  const [user, profile, relationship] = await Promise.all([
+  const [user, profile, policies] = await Promise.all([
     db.user.findUnique({ where: { id: actorId }, select: { isActive: true, accountStatus: true, emailVerifiedAt: true } }),
     db.academicProfile.findUnique({ where: { userId: actorId }, select: { academicRole: true, roleVerificationStatus: true, positionStatus: true } }),
-    db.mentorRelationship.findFirst({ where: { projectId, mentorUserId: actorId, status: "ACTIVE" } }),
+    db.mentorAccess.findMany({ where: { projectId, mentorUserId: actorId, relationshipId: { not: null }, revokedAt: null, OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] }, select: { relationshipId: true } }),
   ]);
-  return isVerifiedLecturer(user, profile) && Boolean(relationship);
+  return isVerifiedLecturer(user, profile) && Boolean(policies.length && await db.mentorRelationship.count({ where: { id: { in: policies.flatMap(p => p.relationshipId ? [p.relationshipId] : []) }, projectId, mentorUserId: actorId, status: "ACTIVE" } }));
 }
 export const assertVerifiedLecturer = assertReviewerInTransaction;
 export async function assertAcceptingNewMentorships(db: Db, userId: string) {

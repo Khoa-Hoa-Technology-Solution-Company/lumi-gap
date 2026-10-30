@@ -15,7 +15,13 @@ import {
 describe("gapAccessLevel", () => {
   it("makes the gap creator and the project owner managers", () => {
     expect(gapAccessLevel({ userId: "u1", gapOwnerId: "u1" })).toBe("manager");
+    expect(gapAccessLevel({ userId: "u1", gapOwnerId: "u1", projectOwnerId: "owner", isActiveProjectMember: true })).toBe("manager");
     expect(gapAccessLevel({ userId: "owner", gapOwnerId: "u1", projectOwnerId: "owner" })).toBe("manager");
+  });
+
+  it("revokes access for a removed project member even if they originally created the project gap", () => {
+    expect(gapAccessLevel({ userId: "u1", gapOwnerId: "u1", projectOwnerId: "owner", isActiveProjectMember: false })).toBe("none");
+    expect(gapAccessLevel({ userId: "u1", gapOwnerId: "u1", hasProject: true, isActiveProjectMember: false })).toBe("none");
   });
 
   it("lets ACTIVE project members read but not manage", () => {

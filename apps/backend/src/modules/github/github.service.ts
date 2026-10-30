@@ -8,7 +8,9 @@ import { redis } from "../../infrastructure/redis.js";
 import { AppError } from "../../common/exceptions/app-error.js";
 import { openGithubToken, sealGithubToken } from "./github.crypto.js";
 import { GithubHttpError, githubJson } from "./github.http.js";
-import { githubRequestSchema, githubReturnPath, type GithubRequest } from "./github.schema.js";
+import { githubCreateRepoSchema, githubRequestSchema, githubReturnPath, type GithubRequest } from "./github.schema.js";
+import { logger } from "../../infrastructure/logger.js";
+import { assertCanExportProjectSource, researchLedgerService } from "../audit/research-ledger.service.js";
 
 const tokenSchema = z.object({ access_token: z.string().min(1).max(2048), token_type: z.literal("bearer"), expires_in: z.number().int().positive().max(31_536_000).optional(), refresh_token: z.string().min(1).max(2048).optional(), refresh_token_expires_in: z.number().int().positive().max(31_536_000).optional() });
 const stateSchema = z.object({ userId: z.string().uuid(), sessionId: z.string(), verifier: z.string(), revision: z.number().int(), returnTo: z.string() });
@@ -85,6 +87,29 @@ async function provider(userId: string, path: string, method = "GET", body?: unk
   }
 }
 
+const repoPrivacyCache = new Map<string, { isPrivate: boolean; expiresAt: number }>();
+
+async function checkRepoPrivacy(userId: string, repository: string): Promise<boolean> {
+  const cacheKey = `${userId}:${repository}`;
+  const now = Date.now();
+  const cached = repoPrivacyCache.get(cacheKey);
+  if (cached && cached.expiresAt > now) {
+    return cached.isPrivate;
+  }
+  const repo = await provider(userId, `/repos/${repository}`);
+  const parsed = z.object({ private: z.boolean() }).safeParse(repo);
+  if (!parsed.success) {
+    throw AppError.serviceUnavailable("Unable to verify repository privacy status");
+  }
+  if (repoPrivacyCache.size > 500) {
+    for (const [k, v] of repoPrivacyCache.entries()) {
+      if (v.expiresAt <= now) repoPrivacyCache.delete(k);
+    }
+  }
+  repoPrivacyCache.set(cacheKey, { isPrivate: parsed.data.private, expiresAt: now + 60_000 });
+  return parsed.data.private;
+}
+
 export const githubService = {
   async status(input: string): Promise<GithubConnectionStatus> {
     const userId = await actor(input), row = await getPrisma().githubConnection.findUnique({ where: { userId } });
@@ -125,6 +150,42 @@ export const githubService = {
     if (!updated) throw AppError.conflict("Session or GitHub connection changed; start again");
     return { returnTo: saved.returnTo };
   },
+  async createRepository(input: string, data: z.infer<typeof githubCreateRepoSchema>) {
+    const userId = await actor(input);
+    if (data.projectId) {
+      const project = await getPrisma().project.findUnique({
+        where: { id: data.projectId },
+        select: { id: true, ownerId: true, visibility: true, exportPolicy: true },
+      });
+      if (!project) throw AppError.notFound("Project not found");
+      const membership = await getPrisma().projectMember.findFirst({
+        where: { projectId: data.projectId, userId, status: "ACTIVE" },
+      });
+      if (project.ownerId !== userId && !membership) throw AppError.forbidden("Project membership required");
+      assertCanExportProjectSource(project, userId);
+      if (project.visibility === "PRIVATE" && data.isPrivate === false) {
+        throw AppError.forbidden("Cannot export private project manuscript to a public repository");
+      }
+    }
+    const result = await provider(userId, "/user/repos", "POST", {
+      name: data.name,
+      description: data.description ?? "LumiGap manuscript repository",
+      private: data.isPrivate ?? true,
+      auto_init: true,
+    });
+    const parsed = z.object({
+      full_name: z.string(),
+      default_branch: z.string().default("main"),
+      private: z.boolean(),
+    }).safeParse(result);
+    if (!parsed.success) throw AppError.serviceUnavailable("GitHub repository creation failed");
+    return {
+      fullName: parsed.data.full_name,
+      defaultBranch: parsed.data.default_branch,
+      private: parsed.data.private,
+      writable: true,
+    };
+  },
   async repositories(input: string, page: number): Promise<GithubRepositories> {
     const userId = await actor(input);
     const value = z.array(z.object({ full_name: z.string(), default_branch: z.string(), private: z.boolean(), permissions: z.object({ push: z.boolean().optional() }).optional() })).safeParse(await provider(userId, `/user/repos?per_page=100&page=${page}&sort=updated`));
@@ -133,7 +194,56 @@ export const githubService = {
   },
   async request(input: string, request: GithubRequest) {
     const validated = githubRequestSchema.parse(request), userId = await actor(input);
-    return provider(userId, `/repos/${validated.repository}${validated.path}`, validated.method, validated.body);
+    const isMutation = validated.method === "POST" || validated.method === "PATCH";
+    if (isMutation && !validated.projectId) {
+      throw AppError.badRequest("Project identifier is required for source export or modification operations");
+    }
+    if (validated.projectId) {
+      const project = await getPrisma().project.findUnique({
+        where: { id: validated.projectId },
+        select: { id: true, ownerId: true, visibility: true, exportPolicy: true },
+      });
+      if (!project) throw AppError.notFound("Project not found");
+      const membership = await getPrisma().projectMember.findFirst({
+        where: { projectId: validated.projectId, userId, status: "ACTIVE" },
+      });
+      if (project.ownerId !== userId && !membership) throw AppError.forbidden("Project membership required");
+      if (isMutation) {
+        assertCanExportProjectSource(project, userId);
+        if (project.visibility === "PRIVATE") {
+          const isPrivate = await checkRepoPrivacy(userId, validated.repository);
+          if (!isPrivate) {
+            throw AppError.forbidden("Cannot export private project manuscript to a public repository");
+          }
+        }
+      }
+    }
+    const result = await provider(userId, `/repos/${validated.repository}${validated.path}`, validated.method, validated.body);
+    if (validated.projectId && ((validated.method === "POST" && validated.path === "/git/refs") || (validated.method === "PATCH" && validated.path.startsWith("/git/refs/heads/")))) {
+      const targetRef = (validated.body as Record<string, unknown> | undefined)?.ref;
+      const refName = typeof targetRef === "string" ? targetRef : validated.path;
+      const targetSha = (validated.body as Record<string, unknown> | undefined)?.sha;
+      const shaStr = typeof targetSha === "string" ? targetSha : null;
+      await researchLedgerService.record({
+        projectId: validated.projectId,
+        actorId: userId,
+        eventType: "MANUSCRIPT_SOURCE_EXPORTED",
+        resourceKind: "GITHUB_REPOSITORY",
+        resourceId: validated.repository,
+        visibility: "PROJECT_TEAM",
+        retentionClass: "SECURITY_AUDIT",
+        metadata: {
+          repository: validated.repository,
+          path: validated.path,
+          method: validated.method,
+          targetRef: refName,
+          sha: shaStr,
+        },
+      }).catch((err: unknown) => {
+        logger.warn({ err, repository: validated.repository }, "Failed to record GitHub export event");
+      });
+    }
+    return result;
   },
   async disconnect(input: string) {
     const userId = await actor(input), db = getPrisma();

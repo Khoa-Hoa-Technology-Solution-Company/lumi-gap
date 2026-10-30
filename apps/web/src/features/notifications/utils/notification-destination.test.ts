@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import { getNotificationDestination } from "./notification-destination";
 
 describe("getNotificationDestination", () => {
+  it("opens evaluation notifications through the restricted input-review page", () => {
+    expect(getNotificationDestination({ type: "PROJECT_CONTRIBUTION_UPDATE", targetKind: "project", targetId: "project/1", contributionEvaluationId: "evaluation/2" }, false)).toBe("/projects/project%2F1/contribution-review?evaluation=evaluation%2F2");
+  });
   it("opens only the explicitly shared manuscript snapshot for a mentor", () => {
     expect(getNotificationDestination({ type: "MANUSCRIPT_FEEDBACK_REQUEST", targetKind: "project", targetId: "project/1", manuscriptId: "manuscript/2", manuscriptSnapshotId: "version/3" }, false)).toBe("/projects/project%2F1/manuscripts/manuscript%2F2?snapshot=version%2F3");
   });

@@ -1,22 +1,25 @@
 import { AppError } from "../../common/exceptions/app-error.js";
+import { isDeepStrictEqual } from "node:util";
 import { parseDatabaseId, publicDatabaseId } from "../../infrastructure/database/database-id.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { env } from "../../config/env.js";
 import type { Prisma, MentorshipRequest, MentorRelationship, Project, User, AcademicProfile } from "../../generated/prisma/client.js";
 import { assertAcademicRelationshipManager, assertVerifiedLecturer, assertAcceptingNewMentorships,
-  canAccessProjectAsMentor, canManageAcademicRelationships, isVerifiedLecturer } from "./academic-relationship-access.js";
+  canManageAcademicRelationships, isVerifiedLecturer } from "./academic-relationship-access.js";
 import { dispatchMentorshipNotifications, mentorshipNotification, type MentorshipEvent } from "./mentorship-notifications.js";
 import { mentorshipDiscoveryService } from "./mentorship-discovery.service.js";
 import { mentorshipResearchContext, type ContextQuery } from "./mentorship-context.service.js";
 import { mentorPositions, assertMentorPosition, mentorshipPolicy } from "./mentorship-positions.js";
 import { invitationFiles, attachmentFields } from "./mentorship-content.service.js";
 import type { AcademicSupportSearch as AcademicSearch, MentorRole } from "@trend/shared-types";
+import { initializeMentorAccess, mentorAccessEvent, mentorPolicyDto } from "./mentor-access.service.js";
+import type { MentorPolicyInput } from "@trend/shared-types";
 export type { AcademicSupportSearch as AcademicSearch } from "@trend/shared-types";
 
 type Db = Prisma.TransactionClient;
 const emptyActions = { accept: false, decline: false, cancel: false, end: false, openProject: false };
 const policy = () => mentorshipPolicy;
-type RequestInput = { mentorUserId?: string; message: string; idempotencyKey?: string; mentorRole?: MentorRole; attachmentIds?: string[] };
+type RequestInput = { mentorUserId?: string; message: string; idempotencyKey?: string; mentorRole?: MentorRole; attachmentIds?: string[]; access?: MentorPolicyInput };
 export function pageMeta(total: number, input: AcademicSearch = {}) {
   const page = Math.max(1, input.page ?? 1), pageSize = Math.min(30, Math.max(1, input.pageSize ?? 10));
   return { page, pageSize, total, totalPages: Math.ceil(total / pageSize) };
@@ -85,6 +88,8 @@ async function present(requests: MentorshipRequest[], relationships: MentorRelat
   ]);
   const userMap = new Map(users.map(u => [u.id, u])), profileMap = new Map(profiles.map(p => [p.userId, p])), projectMap = new Map(projects.map(p => [p.id, p]));
   const positions = new Map(await Promise.all(projects.map(async p => [p.id, await mentorPositions(p.id, db)] as const)));
+  const accessRows = await db.mentorAccess.findMany({ where: { requestId: { in: [...requests.map(r => r.id), ...relationships.map(r => r.sourceRequestId)] } } });
+  const accessPolicies = new Map(await Promise.all(accessRows.map(async row => [row.requestId, await mentorPolicyDto(db, row)] as const)));
   const fileLinks = await db.mentorshipRequestAttachment.findMany({ where: { requestId: { in: requests.filter(r => r.requestedBy === actorId || r.mentorUserId === actorId || projectMap.get(r.projectId)?.ownerId === actorId).map(r => r.id) } } });
   const files = await db.mentorshipAttachment.findMany({ where: { id: { in: fileLinks.map(link => link.attachmentId) } }, select: attachmentFields });
   const person = (id: string) => mentorshipPerson(userMap.get(id), profileMap.get(id), id, actorId);
@@ -96,23 +101,23 @@ async function present(requests: MentorshipRequest[], relationships: MentorRelat
       const eligible = isVerifiedLecturer(userMap.get(r.mentorUserId) ?? null, profileMap.get(r.mentorUserId) ?? null);
       const role = r.mentorRole as MentorRole, position = positions.get(p.id)![role];
       return { kind: "REQUEST" as const, id: r.id, projectId: publicDatabaseId(p), project: mentorshipPreview(p), mentorUser: person(r.mentorUserId), requestedBy: person(r.requestedBy),
-        mentorRole: role, attachments: fileLinks.filter(l => l.requestId === r.id).flatMap(l => files.filter(f => f.id === l.attachmentId)),
+        mentorRole: role, accessPolicy: accessPolicies.get(r.id), attachments: fileLinks.filter(l => l.requestId === r.id).flatMap(l => files.filter(f => f.id === l.attachmentId)),
         direction: r.direction, status: r.status, message: r.message ?? undefined,
         responseNote: manager || mentor || r.requestedBy === actorId ? r.responseNote ?? undefined : undefined,
         closeReason: r.closeReason ?? undefined,
         relationshipId: linked.find(rel => rel.sourceRequestId === r.id)?.id,
         expiresAt: r.expiresAt?.toISOString(), respondedAt: r.respondedAt?.toISOString(), createdAt: r.createdAt.toISOString(), updatedAt: r.updatedAt.toISOString(),
         actions: { ...emptyActions, cancel: pending && sender, decline: pending && receiver,
-          accept: pending && receiver && eligible && !["ASSIGNED", "LOCKED"].includes(position.status) && !["ARCHIVED", "COMPLETED"].includes(p.status) && (r.direction !== "PROJECT_TO_LECTURER" || r.requestedBy === p.ownerId) },
+          accept: pending && receiver && eligible && !accessPolicies.get(r.id)?.revokedAt && (!accessPolicies.get(r.id)?.expiresAt || new Date(accessPolicies.get(r.id)!.expiresAt!) > new Date()) && !["ASSIGNED", "LOCKED"].includes(position.status) && !["ARCHIVED", "COMPLETED"].includes(p.status) && (r.direction !== "PROJECT_TO_LECTURER" || r.requestedBy === p.ownerId) },
       };
     }),
     relationships: relationships.map(r => {
       const p = projectMap.get(r.projectId)!, principal = p.ownerId === actorId || r.mentorUserId === actorId;
       const active = r.status === "ACTIVE", mentorEligible = isVerifiedLecturer(userMap.get(r.mentorUserId) ?? null, profileMap.get(r.mentorUserId) ?? null);
-      return { kind: "RELATIONSHIP" as const, id: r.id, mentorRole: r.mentorRole as MentorRole, sourceRequestId: r.sourceRequestId, projectId: publicDatabaseId(p), project: mentorshipPreview(p), mentorUser: person(r.mentorUserId), status: r.status,
+      return { kind: "RELATIONSHIP" as const, id: r.id, mentorRole: r.mentorRole as MentorRole, accessPolicy: accessPolicies.get(r.sourceRequestId), sourceRequestId: r.sourceRequestId, projectId: publicDatabaseId(p), project: mentorshipPreview(p), mentorUser: person(r.mentorUserId), status: r.status,
         startedAt: r.startedAt.toISOString(), endedAt: r.endedAt?.toISOString(), endedById: r.endedById ?? undefined,
         endReason: principal ? r.endReason ?? undefined : undefined,
-        createdAt: r.createdAt.toISOString(), updatedAt: r.updatedAt.toISOString(), actions: { ...emptyActions, end: active && principal, openProject: active && (p.ownerId === actorId || mentorEligible) } };
+        createdAt: r.createdAt.toISOString(), updatedAt: r.updatedAt.toISOString(), actions: { ...emptyActions, end: active && principal, openProject: active && (p.ownerId === actorId || mentorEligible && Boolean(accessPolicies.get(r.sourceRequestId)?.effective)) } };
     }),
   };
 }
@@ -252,11 +257,15 @@ export const projectMentorshipService = {
         if (previous) {
           const linked = await tx.mentorshipRequestAttachment.findMany({ where: { requestId: previous.id } });
           if (previous.projectId !== p.id || previous.mentorUserId !== mentor.id || previous.direction !== direction || previous.mentorRole !== mentorRole || previous.message !== input.message.trim() || JSON.stringify(linked.map(l => l.attachmentId).sort()) !== JSON.stringify([...attachmentIds].sort())) throw AppError.conflict("Idempotency key was already used for a different request");
+          const oldAccess = await tx.mentorAccess.findUnique({ where: { requestId: previous.id } });
+          const proposal = oldAccess ? await tx.mentorAccessEvent.findFirst({ where: { accessId: oldAccess.id, type: "ACCESS_PROPOSED" }, orderBy: { createdAt: "asc" } }) : null;
+          if (!isDeepStrictEqual((proposal?.details as { initialInput?: unknown } | undefined)?.initialInput ?? null, input.access ?? null)) throw AppError.conflict("Quyền trong lời mời đã khác yêu cầu gốc");
           return previous;
         }
       }
       if (direction === "PROJECT_TO_LECTURER") await assertAcademicRelationshipManager(p.id, a.id, tx);
       else {
+        if (input.access) throw AppError.forbidden("Chỉ chủ dự án được cấu hình quyền mời cố vấn");
         // Recheck the discovery eligibility when an offer is sent from a stale preview or directly by ID.
         await actor(live.ownerId, tx);
         if (live.mentorshipDiscovery !== "SEEKING_MENTOR") throw AppError.forbidden("This project is not seeking mentorship offers");
@@ -272,6 +281,7 @@ export const projectMentorshipService = {
       if (await tx.mentorshipRequest.findFirst({ where: { projectId: p.id, mentorUserId: mentor.id, status: { in: ["DECLINED", "CANCELLED", "CANCELED_BY_PROJECT"] }, respondedAt: { gt: new Date(now.getTime() - env.ACADEMIC_RELATIONSHIP_COOLDOWN_HOURS * 3600000) } } })) throw AppError.conflict("Wait before sending another mentorship request to this pair");
       if (await tx.mentorshipRequest.count({ where: { requestedBy: a.id, createdAt: { gt: new Date(now.getTime() - 3600000) } } }) >= env.ACADEMIC_RELATIONSHIP_REQUEST_LIMIT) throw AppError.conflict("Mentorship request limit reached; try later");
       const request = await tx.mentorshipRequest.create({ data: { projectId: p.id, mentorUserId: mentor.id, requestedBy: a.id, direction, mentorRole, message: input.message.trim(), idempotencyKey: input.idempotencyKey, expiresAt: new Date(now.getTime() + mentorshipPolicy.expiryDays * 86400000) } });
+      await initializeMentorAccess(tx, request, live.ownerId, input.access);
       if (attachmentIds.length) await tx.mentorshipRequestAttachment.createMany({ data: attachmentIds.map(attachmentId => ({ requestId: request.id, attachmentId })) });
       if (direction === "PROJECT_TO_LECTURER") await tx.mentorSuggestion.updateMany({ where: { projectId: p.id, mentorUserId: mentor.id, status: "PENDING" }, data: { status: "INVITED", requestId: request.id, resolvedBy: a.id, resolvedAt: now } });
       const event = direction === "PROJECT_TO_LECTURER" ? "MENTORSHIP_REQUEST_RECEIVED" : "MENTORSHIP_OFFER_RECEIVED";
@@ -280,7 +290,7 @@ export const projectMentorshipService = {
     });
     await dispatchMentorshipNotifications(); return (await present([row], [], a.id)).requests[0];
   },
-  async respond(projectInput: string, requestId: string, actorInput: string, action: "ACCEPTED" | "DECLINED" | "CANCELLED", note?: string) {
+  async respond(projectInput: string, requestId: string, actorInput: string, action: "ACCEPTED" | "DECLINED" | "CANCELLED", note?: string, expectedAccessVersion?: number) {
     const [p, a] = await Promise.all([project(projectInput), actor(actorInput)]);
     const row = await getPrisma().mentorshipRequest.findFirst({ where: { id: requestId, projectId: p.id } });
     if (!row) throw AppError.notFound("Mentorship request not found");
@@ -294,6 +304,9 @@ export const projectMentorshipService = {
       if (live.status === status) return live;
       if (live.status !== "PENDING" || live.expiresAt && live.expiresAt <= new Date()) throw AppError.conflict("This request has changed or expired");
       if (action === "ACCEPTED") {
+        const access = await tx.mentorAccess.findUnique({ where: { requestId: live.id } });
+        if (access?.revokedAt || access?.expiresAt && access.expiresAt <= new Date()) throw AppError.conflict("Quyền truy cập đề xuất đã hết hạn hoặc bị thu hồi");
+        if (access && (expectedAccessVersion !== undefined ? expectedAccessVersion !== access.version : access.version > 1)) throw AppError.conflict("Quyền đề xuất đã thay đổi. Xem lại lời mời trước khi chấp nhận");
         assertOpenProject(liveProject); await assertVerifiedLecturer(tx, live.mentorUserId);
         if (live.direction === "PROJECT_TO_LECTURER") { await actor(live.requestedBy, tx); if (live.requestedBy !== liveProject.ownerId) throw AppError.conflict("The requester no longer manages this project"); }
         const member = await tx.projectMember.findUnique({ where: { projectId_userId: { projectId: p.id, userId: live.mentorUserId } } });
@@ -307,6 +320,9 @@ export const projectMentorshipService = {
         await expireInProject(tx, liveProject);
         await tx.mentorSuggestion.updateMany({ where: { projectId: p.id, mentorUserId: live.mentorUserId, status: "PENDING" }, data: { status: "DISMISSED", resolvedBy: a.id, resolvedAt: now } });
         const relationship = await tx.mentorRelationship.create({ data: { projectId: p.id, mentorUserId: live.mentorUserId, mentorRole: live.mentorRole, sourceRequestId: live.id, startedAt: now } });
+        const access = await tx.mentorAccess.findUnique({ where: { requestId: live.id } }) ?? await initializeMentorAccess(tx, live, liveProject.ownerId);
+        await tx.mentorAccess.update({ where: { id: access.id }, data: { relationshipId: relationship.id, version: { increment: 1 } } });
+        await mentorAccessEvent(tx, access, a.id, "ACCESS_ACCEPTED", { relationshipId: relationship.id, acceptedPolicyVersion: access.version, preset: access.preset, permissions: access.permissions, expiresAt: access.expiresAt });
         await record(tx, liveProject, a.id, "MENTOR_JOINED_PROJECT", relationship.id);
         {
           const competing = await tx.mentorshipRequest.findMany({ where: { projectId: p.id, mentorRole: live.mentorRole, status: "PENDING" } });
@@ -324,7 +340,7 @@ export const projectMentorshipService = {
     });
     await dispatchMentorshipNotifications(); return (await present([updated], [], a.id)).requests[0];
   },
-  async accept(p: string, r: string, a: string, note?: string) { return this.respond(p, r, a, "ACCEPTED", note); },
+  async accept(p: string, r: string, a: string, note?: string, expectedAccessVersion?: number) { return this.respond(p, r, a, "ACCEPTED", note, expectedAccessVersion); },
   async decline(p: string, r: string, a: string, note?: string) { return this.respond(p, r, a, "DECLINED", note); },
   async cancel(p: string, r: string, a: string, note?: string) { return this.respond(p, r, a, "CANCELLED", note); },
   async end(projectInput: string, relationshipId: string, actorInput: string, reason?: string) {
@@ -337,6 +353,8 @@ export const projectMentorshipService = {
       if (a.id !== live.mentorUserId && a.id !== liveProject.ownerId) throw AppError.forbidden();
       if (live.status === "ENDED") return live;
       const result = await tx.mentorRelationship.update({ where: { id: live.id }, data: { status: "ENDED", endedAt: new Date(), endedById: a.id, endReason: reason?.trim() } });
+      const access = await tx.mentorAccess.findUnique({ where: { relationshipId: live.id } });
+      if (access) { await tx.mentorAccess.update({ where: { id: access.id }, data: { revokedAt: new Date(), version: { increment: 1 } } }); await mentorAccessEvent(tx, access, a.id, "ACCESS_REVOKED", { reason: reason ?? "Kết thúc cố vấn" }); }
       // Secondary assignments are never promoted. Pending secondary invitations
       // retain their history/expiry and cannot be accepted until a primary returns.
       await record(tx, liveProject, a.id, "MENTORSHIP_ENDED", live.id);
@@ -350,7 +368,7 @@ export const projectMentorshipService = {
       await locks(tx, p.id, [a.id]); await actor(a.id, tx);
       const live = await project(p.id, tx), member = await tx.projectMember.findUnique({ where: { projectId_userId: { projectId: p.id, userId: a.id } } });
       const team = live.ownerId === a.id || member?.status === "ACTIVE";
-      if (!team) { await assertVerifiedLecturer(tx, a.id); if (!await canAccessProjectAsMentor(p.id, a.id, tx)) throw AppError.forbidden("An active verified mentorship is required"); }
+      if (!team) throw AppError.forbidden("Mở không gian cố vấn giới hạn để xem tài nguyên được chia sẻ");
       if (note) {
         if (["ARCHIVED", "COMPLETED"].includes(live.status)) throw AppError.conflict("This project is read-only");
         if (note.trim().length > 2000) throw AppError.badRequest("Guidance is limited to 2000 characters");

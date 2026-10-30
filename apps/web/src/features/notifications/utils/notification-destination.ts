@@ -2,9 +2,10 @@ import type { NotificationItem } from "@trend/shared-types";
 import { getTopicTrendTarget } from "@/features/trends/trend-navigation";
 
 export function getNotificationDestination(
-  notification: Pick<NotificationItem, "type" | "targetKind" | "targetId"> & Partial<Pick<NotificationItem, "title" | "verificationRequestId" | "allocationRevisionId" | "workContributionId" | "manuscriptId" | "manuscriptSnapshotId" | "trendTopic" | "trendTopicId">>,
+  notification: Pick<NotificationItem, "type" | "targetKind" | "targetId"> & Partial<Pick<NotificationItem, "title" | "verificationRequestId" | "allocationRevisionId" | "workContributionId" | "contributionEvaluationId" | "manuscriptId" | "manuscriptSnapshotId" | "trendTopic" | "trendTopicId">>,
   isAdmin: boolean,
 ): string | null {
+  if (notification.type === "PROJECT_CONTRIBUTION_UPDATE" && notification.targetId && notification.contributionEvaluationId) return `/projects/${encodeURIComponent(notification.targetId)}/contribution-review?evaluation=${encodeURIComponent(notification.contributionEvaluationId)}`;
   if (notification.type === "MANUSCRIPT_FEEDBACK_REQUEST" && notification.targetId && notification.manuscriptId && notification.manuscriptSnapshotId) return `/projects/${encodeURIComponent(notification.targetId)}/manuscripts/${encodeURIComponent(notification.manuscriptId)}?snapshot=${encodeURIComponent(notification.manuscriptSnapshotId)}`;
   if (notification.type === "PROJECT_ALLOCATION_UPDATE" && notification.targetId && notification.allocationRevisionId) return `/projects/${encodeURIComponent(notification.targetId)}/allocation?revision=${encodeURIComponent(notification.allocationRevisionId)}`;
   if (notification.type === "PROJECT_CONTRIBUTION_UPDATE" && notification.targetId) return notification.workContributionId ? `/projects/${encodeURIComponent(notification.targetId)}/contribution-review?record=${encodeURIComponent(notification.workContributionId)}` : `/projects/${encodeURIComponent(notification.targetId)}?tab=contributions&contributionTab=work`;

@@ -17,6 +17,7 @@ import { useArchiveProject, useDeleteProject, useLeaveProject, useProjectTeam, u
 import { ProjectMembersTab } from "./project-members-tab";
 import { ProjectMentorSummary } from "./project-mentor-summary";
 import { ProjectGeneralSettings, ProjectPrivacySettings } from "./project-settings-form";
+import { ProjectSecurityPanel } from "./project-security-panel";
 import { canLeaveWorkspace, projectSectionHref } from "./workspace-common";
 
 function Pagination({ page, totalPages, onChange, label }: { page: number; totalPages: number; onChange: (page: number) => void; label: string }) {
@@ -130,7 +131,9 @@ export function ProjectTeamSettings({ project }: { project: IProject }) {
         <section id="project-settings-panel" role="tabpanel" aria-labelledby="project-settings-tab">
           <div className="max-w-2xl min-w-0 space-y-7">
         {project.accessRole !== "OWNER" && <p className="text-sm text-muted-foreground">{t("Only the owner can change project settings.")}</p>}
-        <ProjectGeneralSettings key={`general:${project._id}`} project={project} /><ProjectPrivacySettings key={`privacy:${project._id}`} project={project} />
+        <ProjectGeneralSettings key={`general:${project._id}`} project={project} />
+        <ProjectPrivacySettings key={`privacy:${project._id}`} project={project} />
+        <ProjectSecurityPanel project={project} />
         <p className="text-sm text-muted-foreground"><Link to={projectSectionHref(project._id, "support")} className="text-primary underline-offset-4 hover:underline">{t("Looking for a mentor? Manage discovery in Academic Support → Mentor.")}</Link></p>
         <ProjectLifecycle project={project} />
       </div>

@@ -8,6 +8,9 @@ export interface ProjectMemberUserSummary {
 export type ProjectStatus = "PLANNING" | "ACTIVE" | "ON_HOLD" | "COMPLETED" | "ARCHIVED";
 // Legacy visibility values remain readable during the client migration.
 export type ProjectVisibility = "PRIVATE" | "PUBLIC" | "INVITE_ONLY" | "PUBLIC_SUMMARY";
+export type ProjectExportPolicy = "ALL_MEMBERS" | "OWNER_ONLY";
+export type ProjectAiDataPolicy = "ALLOW_PERSONAL_AI" | "PLATFORM_AI_ONLY" | "DISABLED";
+export type ProjectExternalLookupPolicy = "ALLOW_PUBLIC_INDEX" | "LOCAL_CORPUS_ONLY";
 export type ResearchApproach = "EXPLORATORY" | "LITERATURE_REVIEW" | "EMPIRICAL" | "UNDECIDED";
 export type ProjectRole = "OWNER" | "MEMBER";
 export type ProjectMemberStatus = "ACTIVE" | "REMOVED" | "LEFT";
@@ -158,6 +161,7 @@ export interface MentorshipActions {
 }
 export interface MentorshipRequest {
   kind: "REQUEST";
+  accessPolicy?: import("./mentor-access.js").MentorAccessPolicy;
   mentorRole?: MentorRole;
   attachments?: MentorshipAttachment[];
   direction: "PROJECT_TO_LECTURER" | "LECTURER_TO_PROJECT";
@@ -179,6 +183,7 @@ export interface MentorshipRequest {
 }
 export interface MentorRelationship {
   kind: "RELATIONSHIP";
+  accessPolicy?: import("./mentor-access.js").MentorAccessPolicy;
   mentorRole?: MentorRole;
   id: string; projectId: string; sourceRequestId: string;
   project?: MentorProjectPreview; mentorUser: MentorshipPerson;
@@ -251,6 +256,9 @@ export interface IProject {
   };
   status: ProjectStatus;
   visibility: ProjectVisibility;
+  exportPolicy?: ProjectExportPolicy;
+  aiDataPolicy?: ProjectAiDataPolicy;
+  externalLookupPolicy?: ProjectExternalLookupPolicy;
   ownerId: string;
   owner?: ProjectMemberUserSummary;
   accessRole?: ProjectRole;
@@ -283,6 +291,9 @@ export interface UpdateProjectRequest {
   researchField?: string | null;
   status?: ProjectStatus;
   visibility?: ProjectVisibility;
+  exportPolicy?: ProjectExportPolicy;
+  aiDataPolicy?: ProjectAiDataPolicy;
+  externalLookupPolicy?: ProjectExternalLookupPolicy;
   publicSummary?: string;
   researchAreas?: string[];
   researchApproach?: ResearchApproach;
@@ -306,6 +317,7 @@ export interface AddProjectMemberRequest {
 
 export interface AddProjectPaperRequest {
   paperId: string;
+  proposalReason?: string;
 }
 
 export interface UpdateProjectPaperRequest {

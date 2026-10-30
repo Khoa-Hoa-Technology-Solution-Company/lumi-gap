@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import { z } from "zod";
 import { databaseIdSchema } from "../../common/validation/database-id.js";
 import { projectMentorshipService } from "./project-mentorship.service.js";
+import { mentorPolicySchema } from "./dto/mentor-access.schema.js";
 
 export const mentorshipParamsSchema = z.object({
   id: databaseIdSchema,
@@ -14,6 +15,7 @@ const requestBody = z.object({
   mentorRole: z.enum(["PRIMARY", "SECONDARY"]).default("PRIMARY"),
   attachmentIds: z.array(z.string().uuid()).max(5).refine(ids => new Set(ids).size === ids.length).default([]),
   idempotencyKey: z.string().uuid().optional(),
+  access: mentorPolicySchema.optional(),
 }).strict();
 const hasContent = (input: { message: string; attachmentIds: string[] }) => Boolean(input.message || input.attachmentIds.length);
 export const requestMentorshipSchema = requestBody.refine(hasContent, "Add a message or an attachment to your invitation");
@@ -28,10 +30,11 @@ export const academicSearchSchema = z.object({
   position: z.string().trim().max(160).optional(),
   view: z.enum(["all", "incoming", "outgoing", "active", "history"]).optional(),
 }).strict();
-export const mentorshipOfferSchema = requestBody.omit({ mentorUserId: true }).refine(hasContent, "Add a message or an attachment to your invitation");
+export const mentorshipOfferSchema = requestBody.omit({ mentorUserId: true, access: true }).refine(hasContent, "Add a message or an attachment to your invitation");
 
 export const respondMentorshipSchema = z.object({
   note: z.string().trim().max(1000).optional(),
+  expectedAccessVersion: z.number().int().positive().optional(),
 }).strict();
 
 export const projectMentorshipController = {
@@ -51,6 +54,7 @@ export const projectMentorshipController = {
       req.params.relationshipId as string,
       req.user!.sub,
       req.body.note,
+      req.body.expectedAccessVersion,
     );
     res.json({ success: true, data });
   },

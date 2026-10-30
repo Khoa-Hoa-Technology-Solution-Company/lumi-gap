@@ -1,11 +1,29 @@
+import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
-import type { AllocationDraftInput, AllocationPeriodInput, AllocationPeriodView, AllocationRevisionView, AllocationRosterPerson, AllocationShareInput } from "@trend/shared-types";
+import { researchLedgerService } from "../audit/research-ledger.service.js";
+import {
+  contributionCategories,
+  inferContributionCategoryFromRoles,
+  type AllocationDraftInput,
+  type AllocationPeriodInput,
+  type AllocationPeriodView,
+  type AllocationRevisionView,
+  type AllocationRosterPerson,
+  type AllocationShareInput,
+  type ContributionCategoryKey,
+  type ContributionMatrixCategoryInput,
+  type ContributionMatrixView,
+  type CreditRole,
+} from "@trend/shared-types";
 import type { AllocationPeriod, AllocationRevision } from "../../generated/prisma/client.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { AppError } from "../../common/exceptions/app-error.js";
 import { withWorkspace, workspaceId, workspacePeople, workspacePerson, jsonSnapshot, expectWorkspaceVersion, type WorkspaceContext } from "./workspace-access.js";
 import { assertActiveProjectAccount, lockProjectAccounts } from "./project-transaction.js";
 import { contributionsNotify } from "./contributions-notification.js";
+import { evaluationAllocationReference } from "./contribution-evaluation.service.js";
+import { calculateContributionMatrix } from "./contribution-matrix.calculator.js";
+import { Prisma } from "../../generated/prisma/client.js";
 
 export function assertAllocationShares(shares: AllocationShareInput[], roster: { id: string }[], submission = true) {
   const ids = shares.map(s => s.userId);
@@ -81,20 +99,47 @@ async function withAllocation<T>(projectId: string, actorId: string, periodId: s
 async function revisionViews(context: WorkspaceContext, rows: AllocationRevision[]): Promise<AllocationRevisionView[]> {
   if (!rows.length) return [];
   const ids = rows.map(row => row.id);
-  const [periods, shares, approvals, challenges] = await Promise.all([
+  const actorIds = [
+    ...rows.map(row => row.createdById),
+    ...rows.map(row => row.finalizedById).filter((id): id is string => Boolean(id)),
+  ];
+  const [periods, shares, approvals, challenges, people] = await Promise.all([
     context.tx.allocationPeriod.findMany({ where: { id: { in: [...new Set(rows.map(row => row.periodId))] }, projectId: context.project.id } }),
     context.tx.allocationShare.findMany({ where: { revisionId: { in: ids } }, orderBy: { userId: "asc" } }),
     context.tx.allocationApproval.findMany({ where: { revisionId: { in: ids } }, orderBy: { createdAt: "asc" } }),
     context.tx.projectActivity.findMany({ where: { projectId: context.project.id, entityId: { in: ids }, type: "ALLOCATION_ROSTER_CHALLENGED" }, orderBy: { createdAt: "asc" } }),
+    workspacePeople(context.tx, actorIds),
   ]);
   // Submitted history is presented from frozen rosters. Recomputing live
   // eligibility for each historical revision was both expensive and misleading.
   return rows.map(row => {
-  const period = periods.find(p => p.id === row.periodId)!;
-  const revisionShares = shares.filter(s => s.revisionId === row.id);
-  const revisionApprovals = approvals.filter(a => a.revisionId === row.id);
-  const roster = frozenRoster(row);
-  return { id: row.id, revision: row.revision, draftVersion: row.draftVersion, status: row.status as AllocationRevisionView["status"], period: { id: period.id, title: period.title, description: period.description, scope: period.scope, periodStart: period.periodStart.toISOString(), periodEnd: period.periodEnd.toISOString(), policyVersion: period.policyVersion, roster, historyIncomplete: roster.some(p => p.reasons.includes("LEGACY_RETAINED_MEMBERSHIP")) }, rationale: row.rationale, roster, shares: revisionShares, approvals: revisionApprovals.map(a => ({ userId: a.userId, decision: a.decision as "APPROVE" | "DISPUTE", explanation: a.explanation, createdAt: a.createdAt.toISOString() })), rosterChallenges: challenges.filter(c => c.entityId === row.id).map(c => ({ userId: c.actorId!, explanation: (c.metadata as { explanation: string }).explanation, createdAt: c.createdAt.toISOString() })), evidenceSummary: row.evidenceSummary as unknown as AllocationRevisionView["evidenceSummary"], submittedAt: row.submittedAt?.toISOString() ?? null, finalizedAt: row.finalizedAt?.toISOString() ?? null, selfAcknowledged: row.selfAcknowledged, canChallengeRoster: row.status === "AWAITING_APPROVAL" && context.project.status !== "ARCHIVED", canManage: context.role === "OWNER" && context.project.status !== "ARCHIVED", canRespond: row.status === "AWAITING_APPROVAL" && context.project.status !== "ARCHIVED" && roster.some(p => p.id === context.actorId) && !revisionApprovals.some(a => a.userId === context.actorId) };
+    const period = periods.find(p => p.id === row.periodId)!;
+    const revisionShares = shares.filter(s => s.revisionId === row.id);
+    const revisionApprovals = approvals.filter(a => a.revisionId === row.id);
+    const roster = frozenRoster(row);
+    return {
+      id: row.id,
+      revision: row.revision,
+      draftVersion: row.draftVersion,
+      status: row.status as AllocationRevisionView["status"],
+      period: { id: period.id, title: period.title, description: period.description, scope: period.scope, periodStart: period.periodStart.toISOString(), periodEnd: period.periodEnd.toISOString(), policyVersion: period.policyVersion, roster, historyIncomplete: roster.some(p => p.reasons.includes("LEGACY_RETAINED_MEMBERSHIP")) },
+      rationale: row.rationale,
+      roster,
+      shares: revisionShares,
+      matrix: (row.matrix as unknown as ContributionMatrixView | null) ?? null,
+      approvals: revisionApprovals.map(a => ({ userId: a.userId, decision: a.decision as "APPROVE" | "DISPUTE", explanation: a.explanation, createdAt: a.createdAt.toISOString() })),
+      rosterChallenges: challenges.filter(c => c.entityId === row.id).map(c => ({ userId: c.actorId!, explanation: (c.metadata as { explanation: string }).explanation, createdAt: c.createdAt.toISOString() })),
+      evidenceSummary: row.evidenceSummary as unknown as AllocationRevisionView["evidenceSummary"],
+      submittedAt: row.submittedAt?.toISOString() ?? null,
+      finalizedAt: row.finalizedAt?.toISOString() ?? null,
+      finalizedBy: row.finalizedById ? workspacePerson(people, row.finalizedById) : null,
+      proposedBy: workspacePerson(people, row.createdById),
+      selfAcknowledged: row.selfAcknowledged,
+      evaluationReference: row.evaluationReference as unknown as AllocationRevisionView["evaluationReference"],
+      canChallengeRoster: row.status === "AWAITING_APPROVAL" && context.project.status !== "ARCHIVED",
+      canManage: context.role === "OWNER" && context.project.status !== "ARCHIVED",
+      canRespond: row.status === "AWAITING_APPROVAL" && context.project.status !== "ARCHIVED" && roster.some(p => p.id === context.actorId) && !revisionApprovals.some(a => a.userId === context.actorId),
+    };
   });
 }
 async function revisionView(context: WorkspaceContext, row: AllocationRevision) { return (await revisionViews(context, [row]))[0]!; }
@@ -105,8 +150,59 @@ async function evidenceSummary(context: WorkspaceContext, period: AllocationPeri
   const rows = await context.tx.projectContributionProposal.findMany({ where: { projectId: context.project.id, workDate: { gte: period.periodStart, lte: period.periodEnd }, status: { in: ["ACCEPTED", "SELF_RECORDED", "SUBMITTED", "DISPUTED", "CONFIRMED"] } }, orderBy: { createdAt: "asc" }, take: 500 });
   const participants = await context.tx.contributionParticipant.findMany({ where: { proposalId: { in: rows.map(r => r.id) } } });
   // Deliberately omit private evidence URLs, artifact text and review explanations.
-  return rows.map(r => ({ id: r.id, title: r.title, status: r.status, participants: participants.filter(p => p.proposalId === r.id).map(p => p.userId) }));
+  return rows.map(r => {
+    const rawCat = (r as { category?: string | null }).category;
+    const category: ContributionCategoryKey =
+      r.source !== "LEGACY" && rawCat && (contributionCategories as readonly string[]).includes(rawCat)
+        ? (rawCat as ContributionCategoryKey)
+        : inferContributionCategoryFromRoles((r.roles ?? []) as CreditRole[]);
+    return {
+      id: r.id,
+      title: r.title,
+      category,
+      status: r.status,
+      source: (r.source === "WORKSPACE" ? "WORKSPACE" : "MANUAL") as "MANUAL" | "WORKSPACE",
+      workDate: r.workDate.toISOString(),
+      participants: participants.filter(p => p.proposalId === r.id).map(p => p.userId),
+    };
+  });
 }
+
+async function resolveAllocationSharesAndMatrix(
+  context: WorkspaceContext,
+  roster: AllocationRosterPerson[],
+  input: { shares?: AllocationShareInput[]; matrix?: { categories: ContributionMatrixCategoryInput[] } | null },
+  requireComplete: boolean,
+): Promise<{ shares: AllocationShareInput[]; matrix: ContributionMatrixView | null }> {
+  if (input.matrix) {
+    const projectProposals = await context.tx.projectContributionProposal.findMany({
+      where: { projectId: context.project.id },
+      select: { id: true },
+    });
+    const allowedEvidenceIds = new Set(projectProposals.map(p => p.id));
+    const calculated = calculateContributionMatrix({
+      rosterUserIds: roster.map(p => p.id),
+      categories: input.matrix.categories,
+      requireComplete,
+      allowedEvidenceIds,
+    });
+    const customRationales = new Map(
+      (input.shares ?? []).map(s => [s.userId, s.rationale.trim()]),
+    );
+    const mergedShares = calculated.shares.map(s => {
+      const custom = customRationales.get(s.userId);
+      return custom && custom.length >= 10 ? { ...s, rationale: custom } : s;
+    });
+    assertAllocationShares(mergedShares, roster, requireComplete);
+    return { shares: mergedShares, matrix: calculated.matrix };
+  }
+  if (!input.shares || input.shares.length === 0) {
+    throw AppError.badRequest("Provide allocation matrix or member shares");
+  }
+  assertAllocationShares(input.shares, roster, requireComplete);
+  return { shares: input.shares, matrix: null };
+}
+
 export const allocationService = {
   async periods(projectId: string, actorId: string) { return withWorkspace(projectId, actorId, {}, async context => Promise.all((await context.tx.allocationPeriod.findMany({ where: { projectId: context.project.id }, orderBy: { createdAt: "desc" }, take: 100 })).map(row => periodView(context, row)))); },
   async createPeriod(projectId: string, actorId: string, input: AllocationPeriodInput) {
@@ -141,22 +237,28 @@ export const allocationService = {
       const last = await context.tx.allocationRevision.findFirst({ where: { periodId }, orderBy: { revision: "desc" } });
       if (last && ["DRAFT", "AWAITING_APPROVAL"].includes(last.status)) throw AppError.conflict("Resolve the current proposal before creating a revision");
       const roster = await eligibleAllocationRoster(context, period);
-      assertAllocationShares(input.shares, roster, false);
-      const row = await context.tx.allocationRevision.create({ data: { periodId, projectId: context.project.id, revision: (last?.revision ?? 0) + 1, createdById: context.actorId, roster: jsonSnapshot(roster), rationale: input.rationale, clientKey: input.clientKey, evidenceSummary: jsonSnapshot(await evidenceSummary(context, period)), selfAcknowledged: roster.length === 1 } });
-      await context.tx.allocationShare.createMany({ data: input.shares.map(s => ({ ...s, revisionId: row.id })) });
+      const resolved = await resolveAllocationSharesAndMatrix(context, roster, input, false);
+      const reference = await evaluationAllocationReference(context, periodId, input.evaluationSnapshotId, resolved.shares);
+      const row = await context.tx.allocationRevision.create({ data: { evaluationSnapshotId: input.evaluationSnapshotId, ...(reference ? { evaluationReference: jsonSnapshot(reference) } : {}), ...(resolved.matrix ? { matrix: jsonSnapshot(resolved.matrix) } : {}), periodId, projectId: context.project.id, revision: (last?.revision ?? 0) + 1, createdById: context.actorId, roster: jsonSnapshot(roster), rationale: input.rationale, clientKey: input.clientKey, evidenceSummary: jsonSnapshot(await evidenceSummary(context, period)), selfAcknowledged: roster.length === 1 } });
+      await context.tx.allocationShare.createMany({ data: resolved.shares.map(s => ({ ...s, revisionId: row.id })) });
       await context.tx.projectActivity.create({ data: { projectId: context.project.id, actorId: context.actorId, type: "ALLOCATION_DRAFT_CREATED", entityKind: "ALLOCATION", entityId: row.id, metadata: jsonSnapshot({ input }) } });
       return revisionView(context, row);
     });
   },
-  async edit(projectId: string, actorId: string, id: string, input: { shares: AllocationShareInput[]; rationale: string; expectedVersion: number }) {
+  async edit(projectId: string, actorId: string, id: string, input: { shares?: AllocationShareInput[]; matrix?: { categories: ContributionMatrixCategoryInput[] } | null; rationale: string; expectedVersion: number; evaluationSnapshotId?: string | null }) {
     return withWorkspace(projectId, actorId, { write: true, owner: true }, async context => {
       const row = await requireRevision(context, id); expectWorkspaceVersion(row.draftVersion, input.expectedVersion);
       if (row.status !== "DRAFT") throw AppError.conflict("Submitted revisions are immutable; create a new revision");
       const roster = await eligibleAllocationRoster(context, await requirePeriod(context, row.periodId));
-      assertAllocationShares(input.shares, roster, false);
+      const resolved = await resolveAllocationSharesAndMatrix(context, roster, input, false);
+      const snapshotId = input.evaluationSnapshotId === undefined ? row.evaluationSnapshotId : input.evaluationSnapshotId;
+      const reference = await evaluationAllocationReference(context, row.periodId, snapshotId, resolved.shares);
       await context.tx.allocationShare.deleteMany({ where: { revisionId: id } });
-      await context.tx.allocationShare.createMany({ data: input.shares.map(s => ({ ...s, revisionId: id })) });
-      const next = await context.tx.allocationRevision.update({ where: { id }, data: { rationale: input.rationale, roster: jsonSnapshot(roster), draftVersion: { increment: 1 }, selfAcknowledged: roster.length === 1 } });
+      await context.tx.allocationShare.createMany({ data: resolved.shares.map(s => ({ ...s, revisionId: id })) });
+      const nextMatrix = input.matrix === undefined
+        ? (row.matrix ? jsonSnapshot(row.matrix) : Prisma.DbNull)
+        : (resolved.matrix ? jsonSnapshot(resolved.matrix) : Prisma.DbNull);
+      const next = await context.tx.allocationRevision.update({ where: { id }, data: { evaluationSnapshotId: snapshotId, evaluationReference: reference ? jsonSnapshot(reference) : Prisma.DbNull, matrix: nextMatrix, rationale: input.rationale, roster: jsonSnapshot(roster), draftVersion: { increment: 1 }, selfAcknowledged: roster.length === 1 } });
       return revisionView(context, next);
     });
   },
@@ -166,10 +268,25 @@ export const allocationService = {
       if (row.submittedAt) return revisionView(context, row);
       if (row.status !== "DRAFT") throw AppError.conflict("Only drafts can be submitted");
       const period = await requirePeriod(context, row.periodId), roster = await eligibleAllocationRoster(context, period);
-      const shares = await context.tx.allocationShare.findMany({ where: { revisionId: id } });
+      let shares = await context.tx.allocationShare.findMany({ where: { revisionId: id } });
+      let validatedMatrix: ContributionMatrixView | null = null;
+      if (row.matrix) {
+        const storedMatrix = row.matrix as unknown as ContributionMatrixView;
+        const resolved = await resolveAllocationSharesAndMatrix(
+          context,
+          roster,
+          { shares, matrix: { categories: storedMatrix.categories } },
+          true,
+        );
+        validatedMatrix = resolved.matrix;
+        await context.tx.allocationShare.deleteMany({ where: { revisionId: id } });
+        await context.tx.allocationShare.createMany({ data: resolved.shares.map(s => ({ ...s, revisionId: id })) });
+        shares = await context.tx.allocationShare.findMany({ where: { revisionId: id } });
+      }
       assertAllocationShares(shares, roster);
+      await evaluationAllocationReference(context, row.periodId, row.evaluationSnapshotId, shares);
       if (row.rationale.trim().length < 20) throw AppError.badRequest("Explain the effort distribution and evaluation scope");
-      const next = await context.tx.allocationRevision.update({ where: { id }, data: { status: "AWAITING_APPROVAL", submittedAt: new Date(), roster: jsonSnapshot(roster), evidenceSummary: jsonSnapshot(await evidenceSummary(context, period)), selfAcknowledged: roster.length === 1 } });
+      const next = await context.tx.allocationRevision.update({ where: { id }, data: { status: "AWAITING_APPROVAL", submittedAt: new Date(), ...(validatedMatrix ? { matrix: jsonSnapshot(validatedMatrix) } : {}), roster: jsonSnapshot(roster), evidenceSummary: jsonSnapshot(await evidenceSummary(context, period)), selfAcknowledged: roster.length === 1 } });
       await audit(context, next, "ALLOCATION_SUBMITTED");
       await contributionsNotify(context, roster.map(p => p.id), "ALLOCATION_SUBMITTED", id, row.revision, true);
       return revisionView(context, next);
@@ -215,7 +332,7 @@ export const allocationService = {
         if (roster.every(p => approvals.some(a => a.userId === p.id && a.decision === "APPROVE"))) {
           const former = await context.tx.allocationRevision.findFirst({ where: { periodId: row.periodId, status: "FINALIZED" } });
           if (former) { const superseded = await context.tx.allocationRevision.update({ where: { id: former.id }, data: { status: "SUPERSEDED" } }); await audit(context, superseded, "ALLOCATION_SUPERSEDED"); }
-          next = await context.tx.allocationRevision.update({ where: { id }, data: { status: "FINALIZED", finalizedAt: new Date() } });
+          next = await context.tx.allocationRevision.update({ where: { id }, data: { status: "FINALIZED", finalizedAt: new Date(), finalizedById: context.actorId } });
           await audit(context, next, "ALLOCATION_FINALIZED");
         } else await audit(context, row, "ALLOCATION_APPROVED");
       }
@@ -226,7 +343,12 @@ export const allocationService = {
   async export(projectId: string, actorId: string, id: string) {
     const result = await allocationService.detail(projectId, actorId, id);
     if (!["FINALIZED", "SUPERSEDED"].includes(result.status)) throw AppError.conflict("Only finalized historical allocations can be exported");
-    return { ...result, exportedAt: new Date().toISOString(), meaning: "Team-agreed effort distribution for this scope only. Not a grade, legal entitlement, authorship eligibility, author order or scientific quality score." };
+    const exported = { ...result, exportedAt: new Date().toISOString(), meaning: "Team-agreed effort distribution for this scope only. Not a grade, legal entitlement, authorship eligibility, author order or scientific quality score." };
+    const resolvedProjectId = (await getPrisma().allocationRevision.findUnique({ where: { id: result.id }, select: { projectId: true } }))?.projectId;
+    if (resolvedProjectId) {
+      await researchLedgerService.record({ projectId: resolvedProjectId, actorId, eventType: "ALLOCATION_EXPORTED", resourceKind: "ALLOCATION_REVISION", resourceId: result.id, currentVersionRef: String(result.revision), checksumSha256: createHash("sha256").update(JSON.stringify(result)).digest("hex"), visibility: "PROJECT_TEAM", retentionClass: "SECURITY_AUDIT", metadata: { periodId: result.period.id, status: result.status } });
+    }
+    return exported;
   },
   async challenge(projectId: string, actorId: string, periodId: string, input: { revisionId: string; explanation: string }) {
     return withAllocation(projectId, actorId, periodId, true, async context => {

@@ -4,7 +4,7 @@ import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { env } from "../config/env.js";
-import { cloudinaryPublicUrl, deleteCloudinaryAsset, uploadCloudinaryBuffer } from "./cloudinary-storage.service.js";
+import { cloudinaryPrivateDownloadUrl, deleteCloudinaryAsset, uploadCloudinaryBuffer } from "./cloudinary-storage.service.js";
 
 export type PdfStorageProvider = "local" | "r2" | "cloudinary";
 
@@ -149,7 +149,7 @@ export function createPdfStorageService(options: PdfStorageOptions): PdfStorageS
         const parsed = parseCloudinaryUri(uri);
         if (!parsed) return null;
         if (getSignedUrl) return getSignedUrl(parsed.key, expiresInSeconds);
-        return cloudinaryPublicUrl(parsed.key, { resource_type: "raw", type: "authenticated" });
+        return cloudinaryPrivateDownloadUrl(parsed.key, expiresInSeconds);
       },
       resolveLocalPath() {
         return null;

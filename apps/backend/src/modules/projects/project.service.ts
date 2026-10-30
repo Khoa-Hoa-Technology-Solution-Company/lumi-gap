@@ -1,4 +1,4 @@
-import { invalidateSourceAssessments } from "./gap-revision.js";
+import { projectPaperWithDoi } from "./project-paper-identity.js";
 import { revokeProjectScreeningAssignments } from "./project-screening.service.js";
 import type {
   AddProjectMemberRequest,
@@ -21,6 +21,8 @@ import type { ProjectAiFeature } from "./project-scope.js";
 import { assertProjectActionAllowed, canReadProjectSummary, invitationBelongsToUser } from "./project-workspace.rules.js";
 import { queueProjectInvitation } from "./project-invitation-delivery.js";
 import { lockProjectAccounts, authorizeProjectTransaction, assertActiveProjectAccount } from "./project-transaction.js";
+import { researchLedgerService } from "../audit/research-ledger.service.js";
+import { manuscriptEvents } from "../workspaces/manuscript-events.js";
 
 const ACTIVE = "ACTIVE";
 const INVITATION_DAYS = 7;
@@ -208,6 +210,9 @@ async function hydrate(row: Awaited<ReturnType<typeof resolveProject>>, viewerId
     screeningCriteria: publicSummary ? undefined : { inclusion: row.inclusionCriteria, exclusion: row.exclusionCriteria },
     status: row.status,
     visibility: row.visibility,
+    exportPolicy: publicSummary ? undefined : (row.exportPolicy as import("@trend/shared-types").ProjectExportPolicy),
+    aiDataPolicy: publicSummary ? undefined : (row.aiDataPolicy as import("@trend/shared-types").ProjectAiDataPolicy),
+    externalLookupPolicy: publicSummary ? undefined : (row.externalLookupPolicy as import("@trend/shared-types").ProjectExternalLookupPolicy),
     ownerId: owner ? publicDatabaseId(owner) : row.ownerId,
     owner: owner ? userSummary(owner, accessRole === "OWNER") : undefined,
     accessRole,
@@ -385,6 +390,9 @@ export class ProjectService {
         ...(data.publicSummary !== undefined ? { publicSummary: data.publicSummary || null } : {}),
         ...(data.inclusionCriteria !== undefined ? { inclusionCriteria: data.inclusionCriteria } : {}),
         ...(data.exclusionCriteria !== undefined ? { exclusionCriteria: data.exclusionCriteria } : {}),
+        ...(data.exportPolicy !== undefined ? { exportPolicy: data.exportPolicy } : {}),
+        ...(data.aiDataPolicy !== undefined ? { aiDataPolicy: data.aiDataPolicy } : {}),
+        ...(data.externalLookupPolicy !== undefined ? { externalLookupPolicy: data.externalLookupPolicy } : {}),
         version: { increment: 1 },
       } });
       if (changesPlan) {
@@ -392,6 +400,16 @@ export class ProjectService {
         await tx.projectActivity.create({ data: { projectId: row.id, actorId: actor.id, type: "PLAN_UPDATED", entityKind: "PLAN_DRAFT", entityId: draft.id, metadata: { version: draft.version, source: "PROJECT_SETTINGS" } } });
       }
       await tx.projectActivity.create({ data: { projectId: next.id, actorId: actor.id, type: "PROJECT_UPDATED", metadata: { fields: Object.keys(data).filter(key => key !== "expectedVersion") } } });
+      if (data.visibility !== undefined && next.visibility !== project.visibility) {
+        await researchLedgerService.record({ tx, projectId: next.id, actorId: actor.id, eventType: "PROJECT_VISIBILITY_CHANGED", resourceKind: "PROJECT", resourceId: next.id, previousVersionRef: project.visibility, currentVersionRef: next.visibility, visibility: "PROJECT_TEAM", retentionClass: "SECURITY_AUDIT", metadata: { from: project.visibility, to: next.visibility } });
+      }
+      if (
+        (data.exportPolicy !== undefined && next.exportPolicy !== project.exportPolicy) ||
+        (data.aiDataPolicy !== undefined && next.aiDataPolicy !== project.aiDataPolicy) ||
+        (data.externalLookupPolicy !== undefined && next.externalLookupPolicy !== project.externalLookupPolicy)
+      ) {
+        await researchLedgerService.record({ tx, projectId: next.id, actorId: actor.id, eventType: "PROJECT_SECURITY_POLICY_CHANGED", resourceKind: "PROJECT", resourceId: next.id, artifactVersion: next.version, visibility: "PROJECT_TEAM", retentionClass: "SECURITY_AUDIT", metadata: { exportPolicy: next.exportPolicy, aiDataPolicy: next.aiDataPolicy, externalLookupPolicy: next.externalLookupPolicy, previousExportPolicy: project.exportPolicy, previousAiDataPolicy: project.aiDataPolicy, previousExternalLookupPolicy: project.externalLookupPolicy } });
+      }
       return next;
     });
     return hydrate(updated, actor.id);
@@ -448,6 +466,8 @@ export class ProjectService {
           UNION ALL SELECT 1 FROM draft_workspaces h, target WHERE h.project_id = target.project_id
           UNION ALL SELECT 1 FROM manuscript_snapshots h, target WHERE h.project_id = target.project_id
           UNION ALL SELECT 1 FROM project_evidence_items h, target WHERE h.project_id = target.project_id
+          UNION ALL SELECT 1 FROM screening_settings h, target WHERE h.project_id = target.project_id
+          UNION ALL SELECT 1 FROM screening_rounds h, target WHERE h.project_id = target.project_id
           UNION ALL SELECT 1 FROM project_screening_decisions h, target WHERE h.project_id = target.project_id
           UNION ALL SELECT 1 FROM project_paper_files h, target WHERE h.project_id = target.project_id
           UNION ALL SELECT 1 FROM project_workspace_revisions h, target WHERE h.project_id = target.project_id
@@ -474,6 +494,9 @@ export class ProjectService {
           UNION ALL SELECT 1 FROM project_workspace_comments h, target WHERE h.project_id = target.project_id
           UNION ALL SELECT 1 FROM plan_shares h, target WHERE h.project_id = target.project_id
           UNION ALL SELECT 1 FROM plan_revisions h, target WHERE h.project_id = target.project_id AND h.version > 1
+          UNION ALL SELECT 1 FROM manuscript_attribution_checks h, target WHERE h.project_id = target.project_id
+          UNION ALL SELECT 1 FROM research_integrity_cases h, target WHERE h.project_id = target.project_id
+          UNION ALL SELECT 1 FROM research_evidence_events h, target WHERE h.project_id = target.project_id AND h.event_type NOT IN ('PROJECT_VISIBILITY_CHANGED','PROJECT_SECURITY_POLICY_CHANGED')
         ) AS has_history
       `;
       if (history?.has_history) throw AppError.conflict("This project contains research or collaboration history. Archive it to preserve the records");
@@ -482,15 +505,16 @@ export class ProjectService {
     });
   }
 
-  async addPaperToProject(projectId: string, paperId: string, userId: string) {
+  async addPaperToProject(projectId: string, paperId: string, userId: string, proposalReason = "") {
     const [rights, paper] = await Promise.all([access(projectId, userId), resolvePaper(paperId)]);
     assertMutable(rights);
     try {
       await getPrisma().$transaction(async (tx) => {
         await lockProjectAccounts(tx, [rights.actor.id], rights.row.id);
         await authorizeProjectTransaction(tx, rights.row.id, rights.actor.id, "CONTRIBUTE");
-        await tx.projectPaper.create({ data: { projectId: rights.row.id, paperId: paper.id, addedById: rights.actor.id } });
-        await tx.projectActivity.create({ data: { projectId: rights.row.id, actorId: rights.actor.id, type: "PAPER_ADDED", entityKind: "PAPER", entityId: publicDatabaseId(paper), metadata: { title: paper.title } } });
+        if (paper.doi && await projectPaperWithDoi(tx, rights.row.id, paper.doi)) throw AppError.conflict("Bài báo có DOI này đã được thêm vào dự án");
+        await tx.projectPaper.create({ data: { projectId: rights.row.id, paperId: paper.id, addedById: rights.actor.id, proposalReason } });
+        await tx.projectActivity.create({ data: { projectId: rights.row.id, actorId: rights.actor.id, type: "PAPER_ADDED", entityKind: "PAPER", entityId: publicDatabaseId(paper), metadata: { title: paper.title, proposalReason } } });
       });
     } catch (error) {
       if ((error as { code?: string }).code === "P2002") throw AppError.conflict("Paper already exists in this project");
@@ -509,30 +533,15 @@ export class ProjectService {
       await authorizeProjectTransaction(tx, rights.row.id, rights.actor.id, "CONTRIBUTE");
       const live = await tx.projectPaper.findUnique({ where: { id: link.id } });
       if (!live) throw AppError.notFound("Project paper not found");
-      const policy = await tx.project.findUniqueOrThrow({ where: { id: rights.row.id }, select: { screeningMode: true } });
-      if (policy.screeningMode === "INDEPENDENT" && [data.screeningStatus, data.inclusionReason, data.exclusionReason, data.exclusionNote].some(value => value !== undefined)) throw AppError.conflict("Use the assigned independent screening workflow and recorded team resolution");
+      const editsDecision = [data.screeningStatus, data.inclusionReason, data.exclusionReason, data.exclusionNote].some(value => value !== undefined);
+      if (editsDecision && rights.row.ownerId !== rights.actor.id) throw AppError.forbidden("Thành viên cần gửi phiếu trong Sàng lọc độc lập");
+      if (editsDecision) throw AppError.conflict("Kết quả cần được chốt trong Đánh giá bài báo sau khi reviewer gửi phiếu; lịch sử cũ vẫn được giữ");
       if (live.updatedAt.toISOString() !== (data.expectedUpdatedAt ?? link.updatedAt.toISOString())) throw AppError.conflict("This paper changed. Reload before saving your decision or notes");
-      const nextStatus = data.screeningStatus ?? live.screeningStatus;
-      const nextExclusionReason = data.exclusionReason === undefined ? live.exclusionReason : data.exclusionReason;
-      if (nextStatus === "EXCLUDED" && !nextExclusionReason?.trim()) throw AppError.badRequest("An exclusion reason is required");
-      if (data.inclusionReason !== undefined && nextStatus !== "INCLUDED") throw AppError.badRequest("Inclusion reasons are only valid for included papers");
-      if (data.exclusionReason !== undefined && nextStatus !== "EXCLUDED") throw AppError.badRequest("Exclusion reasons are only valid for excluded papers");
-      if (data.exclusionNote !== undefined && nextStatus !== "EXCLUDED") throw AppError.badRequest("Exclusion notes are only valid for excluded papers");
-      if (data.screeningStatus !== undefined && data.screeningStatus !== live.screeningStatus) await invalidateSourceAssessments(tx, rights.row.id, rights.actor.id, { paperId: paper.id });
       const next = await tx.projectPaper.update({ where: { id: link.id }, data: {
         updatedAt: new Date(Math.max(Date.now(), live.updatedAt.getTime() + 1)),
-        ...(data.screeningStatus !== undefined ? { screeningStatus: data.screeningStatus } : {}),
-        ...(data.screeningStatus !== undefined ? { screenedById: rights.actor.id, screenedAt: new Date() } : {}),
         ...(data.readingStatus !== undefined ? { readingStatus: data.readingStatus } : {}),
-        ...(data.inclusionReason !== undefined ? { inclusionReason: data.inclusionReason } : {}),
-        ...(data.exclusionReason !== undefined ? { exclusionReason: data.exclusionReason } : {}),
-        ...(data.exclusionNote !== undefined ? { exclusionNote: data.exclusionNote } : {}),
         ...(data.notes !== undefined ? { notes: data.notes } : {}),
-        ...(data.screeningStatus === "INCLUDED" || data.screeningStatus === "UNDECIDED" || data.screeningStatus === "MAYBE" ? { exclusionReason: null, exclusionNote: null } : {}),
-        ...(data.screeningStatus === "UNDECIDED" || data.screeningStatus === "MAYBE" ? { inclusionReason: null } : {}),
-        ...(data.screeningStatus === "EXCLUDED" ? { inclusionReason: null } : {}),
       } });
-      if (data.screeningStatus !== undefined || data.inclusionReason !== undefined || data.exclusionReason !== undefined || data.exclusionNote !== undefined) await tx.projectActivity.create({ data: { projectId: rights.row.id, actorId: rights.actor.id, type: "PAPER_SCREENED", entityKind: "PAPER", entityId: publicDatabaseId(paper), metadata: { paperId: paper.id, title: paper.title, from: live.screeningStatus, to: next.screeningStatus, before: { status: live.screeningStatus, inclusionReason: live.inclusionReason, exclusionReason: live.exclusionReason, exclusionNote: live.exclusionNote, reviewerId: live.screenedById, screenedAt: live.screenedAt?.toISOString() ?? null }, after: { status: next.screeningStatus, inclusionReason: next.inclusionReason, exclusionReason: next.exclusionReason, exclusionNote: next.exclusionNote, reviewerId: next.screenedById, screenedAt: next.screenedAt?.toISOString() ?? null } } } });
       if (data.readingStatus && data.readingStatus !== link.readingStatus) await tx.projectActivity.create({ data: { projectId: rights.row.id, actorId: rights.actor.id, type: "PAPER_READING_STATUS_CHANGED", entityKind: "PAPER", entityId: publicDatabaseId(paper), metadata: { title: paper.title, from: link.readingStatus, to: data.readingStatus } } });
       return next;
     });
@@ -544,6 +553,7 @@ export class ProjectService {
     const removed = await getPrisma().$transaction(async (tx) => {
       await lockProjectAccounts(tx, [rights.actor.id], rights.row.id);
       await authorizeProjectTransaction(tx, rights.row.id, rights.actor.id, "CONTRIBUTE");
+      if (await tx.screeningRound.count({ where: { projectId: rights.row.id, paperId: paper.id } }) || await tx.screeningLegacyRecord.count({ where: { projectId: rights.row.id, paperId: paper.id } })) throw AppError.conflict("Bài báo có lịch sử sàng lọc cần được lưu. Hãy loại bài bằng quy trình sàng lọc");
       const referenced = await tx.gapEvidenceRecord.findFirst({ where: { paperId: paper.id, gapId: { in: (await tx.researchGap.findMany({ where: { projectId: rights.row.id }, select: { id: true } })).map(gap => gap.id) } }, select: { id: true } });
       if (referenced) throw AppError.conflict("This paper supports recorded gap evidence. Keep the source in the project to preserve its provenance");
       if (await tx.projectEvidenceItem.count({ where: { projectId: rights.row.id, paperId: paper.id } }) || await tx.projectPaperFile.count({ where: { projectId: rights.row.id, paperId: paper.id } }) || await tx.projectScreeningDecision.count({ where: { projectId: rights.row.id, paperId: paper.id } })) throw AppError.conflict("This source has evidence, private files or screening history. Keep it in the project and use screening to exclude it");
@@ -695,6 +705,9 @@ export class ProjectService {
         update: { status: ACTIVE, role: project.ownerId === actor.id ? "OWNER" : "MEMBER", joinedAt: now },
       });
       await tx.projectActivity.create({ data: { projectId: row.id, actorId: actor.id, type: decision === "ACCEPTED" ? "MEMBER_JOINED" : "INVITATION_DECLINED", entityKind: "INVITATION", entityId: invite.id, metadata: {} } });
+      if (decision === "ACCEPTED" && !alreadyMember) {
+        await researchLedgerService.record({ tx, projectId: row.id, actorId: actor.id, eventType: "MEMBER_JOINED", resourceKind: "PROJECT_MEMBER", resourceId: actor.id, visibility: "PROJECT_TEAM", retentionClass: "SECURITY_AUDIT", metadata: { invitationId: invite.id } });
+      }
       return { status: decision, alreadyMember, projectId: publicDatabaseId(project) };
     });
     if ("expired" in result) throw AppError.conflict("This invitation has expired");
@@ -718,7 +731,7 @@ export class ProjectService {
     return this.inviteMember(projectId, target.includes("@") ? { email: target } : { userId: target }, userId);
   }
 
-  async removeMemberFromProject(projectId: string, targetId: string, userId: string) {
+  async removeMemberFromProject(projectId: string, targetId: string, userId: string, reason?: string) {
     const [row, actor, target] = await Promise.all([resolveProject(projectId), resolveUser(userId), resolveUser(targetId)]);
     const updated = await getPrisma().$transaction(async tx => {
       await lockProjectAccounts(tx, [actor.id, target.id], row.id);
@@ -728,9 +741,12 @@ export class ProjectService {
       if (!changed.count) throw AppError.notFound("Active project member not found");
       await revokeProjectScreeningAssignments(tx, row.id, target.id, actor.id);
       await tx.projectInvitation.updateMany({ where: { projectId: row.id, invitedUserId: target.id, status: "PENDING" }, data: { status: "CANCELLED", respondedAt: new Date() } });
-      await tx.projectActivity.create({ data: { projectId: row.id, actorId: actor.id, type: "MEMBER_REMOVED", entityKind: "USER", entityId: publicDatabaseId(target), metadata: {} } });
+      const cleanReason = reason?.trim() ? reason.trim().slice(0, 1000) : null;
+      await tx.projectActivity.create({ data: { projectId: row.id, actorId: actor.id, type: "MEMBER_REMOVED", entityKind: "USER", entityId: publicDatabaseId(target), metadata: cleanReason ? { reason: cleanReason } : {} } });
+      await researchLedgerService.record({ tx, projectId: row.id, actorId: actor.id, eventType: "MEMBER_REMOVED", resourceKind: "PROJECT_MEMBER", resourceId: target.id, reason: cleanReason, visibility: "PROJECT_TEAM", retentionClass: "SECURITY_AUDIT", metadata: { affectedUserId: target.id, historicalContributionsPreserved: true } });
       return project;
     });
+    manuscriptEvents.emit("member-revoked", { projectId: row.id, userId: target.id });
     return hydrate(updated, actor.id);
   }
 
@@ -742,7 +758,9 @@ export class ProjectService {
       await tx.projectMember.update({ where: { projectId_userId: { projectId: row.id, userId: actor.id } }, data: { status: "LEFT", role: "MEMBER" } });
       await revokeProjectScreeningAssignments(tx, row.id, actor.id, actor.id);
       await tx.projectActivity.create({ data: { projectId: row.id, actorId: actor.id, type: "MEMBER_LEFT", entityKind: "USER", entityId: publicDatabaseId(actor), metadata: {} } });
+      await researchLedgerService.record({ tx, projectId: row.id, actorId: actor.id, eventType: "MEMBER_LEFT", resourceKind: "PROJECT_MEMBER", resourceId: actor.id, visibility: "PROJECT_TEAM", retentionClass: "SECURITY_AUDIT", metadata: { historicalContributionsPreserved: true } });
     });
+    manuscriptEvents.emit("member-revoked", { projectId: row.id, userId: actor.id });
   }
 
   async transferOwnership(projectId: string, targetUserId: string, userId: string) {
@@ -759,6 +777,7 @@ export class ProjectService {
       await tx.projectMember.update({ where: { id: targetMember.id }, data: { role: "OWNER" } });
       const next = await tx.project.update({ where: { id: row.id }, data: { ownerId: target.id, version: { increment: 1 } } });
       await tx.projectActivity.create({ data: { projectId: row.id, actorId: actor.id, type: "OWNERSHIP_TRANSFERRED", entityKind: "USER", entityId: publicDatabaseId(target), metadata: {} } });
+      await researchLedgerService.record({ tx, projectId: row.id, actorId: actor.id, eventType: "OWNERSHIP_TRANSFERRED", resourceKind: "PROJECT", resourceId: row.id, previousVersionRef: actor.id, currentVersionRef: target.id, visibility: "PROJECT_TEAM", retentionClass: "SECURITY_AUDIT", metadata: { fromOwnerId: actor.id, toOwnerId: target.id } });
       return next;
     });
     return hydrate(updated, actor.id);

@@ -15,7 +15,7 @@ export function manuscriptPath(path: string, kind: "TEXT" | "ASSET" | "FOLDER") 
 export function sourceDocument(bytes?: Uint8Array | null) {
   const doc = new Y.Doc();
   doc.getText("source");
-  if (bytes) Y.applyUpdate(doc, bytes);
+  if (bytes && bytes.byteLength > 0) Y.applyUpdate(doc, bytes);
   return doc;
 }
 export function sourceState(text: string) {

@@ -1,6 +1,6 @@
 import { webcrypto } from "node:crypto";
 import { afterEach, expect, it, vi } from "vitest";
-import { fingerprints, planSync, mergedFiles } from "../remote-sync-plan";
+import { fingerprints, planSync, mergedFiles, hasIndependentHistories } from "../remote-sync-plan";
 const file = (path: string, value: string) => ({ path, content: Buffer.from(value).toString("base64") });
 afterEach(() => vi.unstubAllGlobals());
 it("distinguishes local and remote changes, deletions and identical concurrent edits", async () => {
@@ -19,4 +19,13 @@ it("blocks overlapping edits and delete/edit conflicts until the user chooses", 
   expect(changes.every(change => change.kind === "CONFLICT")).toBe(true);
   expect(() => mergedFiles(changes, {})).toThrow("Resolve all conflicts");
   expect(mergedFiles(changes, { "main.tex": "REMOTE", "figure.tex": "LOCAL" })).toEqual([file("main.tex", "remote")]);
+});
+it("detects independent unbaselined histories when linking two pre-existing populated sources", async () => {
+  vi.stubGlobal("crypto", webcrypto);
+  const local = [file("main.tex", "local-content")];
+  const remote = [file("intro.tex", "remote-content")];
+  expect(hasIndependentHistories([], local, remote)).toBe(true);
+  expect(hasIndependentHistories([{ path: "main.tex", sha: "abc" }], local, remote)).toBe(false);
+  expect(hasIndependentHistories([], [], remote)).toBe(false);
+  expect(hasIndependentHistories([], local, [])).toBe(false);
 });

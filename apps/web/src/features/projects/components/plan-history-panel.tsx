@@ -1,11 +1,12 @@
 import { useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import type { ResearchPlanContent, ResearchPlanView } from "@trend/shared-types";
 import { Button } from "@/components/ui/button";
 import { useI18n } from "@/i18n";
 import { workspaceApi } from "../api/workspace.api";
-import { useWorkspaceCommand, useWorkspaceOverview, useWorkspaceResource } from "../hooks/use-workspace";
+import { useWorkspaceCommand, useWorkspaceResource } from "../hooks/use-workspace";
 import { planFields } from "../hooks/use-plan-draft";
-import { canLeaveWorkspace, WorkspaceDate, WorkspaceError, WorkspaceLoading, WorkspacePager } from "./workspace-common";
+import { canLeaveWorkspace, projectSectionHref, WorkspaceDate, WorkspaceError, WorkspaceLoading, WorkspacePager } from "./workspace-common";
 
 export function PlanHistory({ projectId, current, onSelect }: { projectId: string; current: ResearchPlanView; onSelect: (id: string) => void }) {
   const { t } = useI18n(); const [page, setPage] = useState(1), [compare, setCompare] = useState<string[]>([]), [restoreId, setRestoreId] = useState("");
@@ -41,14 +42,14 @@ export function PlanHistory({ projectId, current, onSelect }: { projectId: strin
 }
 function readable(value: ResearchPlanContent[keyof ResearchPlanContent]) { return typeof value === "string" ? value : JSON.stringify(value, null, 2); }
 
-export function PlanSharing({ projectId, revisionId, version }: { projectId: string; revisionId: string; version: number }) {
-  const { t } = useI18n(); const overview = useWorkspaceOverview(projectId); const [relationshipId, setRelationshipId] = useState("");
+export function PlanSharing({ projectId }: { projectId: string; revisionId: string; version: number }) {
+  const { t } = useI18n();
   const shares = useWorkspaceResource(projectId, "plan-shares", () => workspaceApi.shares(projectId));
-  const share = useWorkspaceCommand(projectId, () => workspaceApi.share(projectId, { revisionId, relationshipId }));
   const revoke = useWorkspaceCommand(projectId, (id: string) => workspaceApi.revokeShare(projectId, id));
-  return <details className="living-plan-sharing"><summary>{t("Request mentor feedback")}</summary><div className="space-y-3 pt-4"><p className="text-sm text-muted-foreground">{t("Share this specific revision for feedback. Later edits stay private until you share them.")}</p>
-    {overview.data?.mentors.length ? <form className="flex flex-wrap items-end gap-3" onSubmit={event => { event.preventDefault(); if (relationshipId && !share.isPending) share.mutate(); }}><label className="min-w-0 grow text-sm">{t("Active mentor")}<select className="project-form-select" value={relationshipId} onChange={event => setRelationshipId(event.target.value)} required><option value="">{t("Choose a mentor")}</option>{overview.data.mentors.map(mentor => <option key={mentor.relationshipId} value={mentor.relationshipId}>{mentor.name}</option>)}</select></label><Button size="sm" disabled={!relationshipId || share.isPending}>{t("Share version {{version}}", { version })}</Button></form> : <p className="text-sm text-muted-foreground">{t("Connect an active mentor in Academic Support before sharing a plan.")}</p>}
-    {(share.error || revoke.error || shares.error) && <WorkspaceError error={share.error || revoke.error || shares.error} />}{share.isSuccess && <p role="status" className="text-sm">{t("Mentor feedback requested")}</p>}
+  return <details className="living-plan-sharing" data-no-i18n><summary>{t("Request mentor feedback")}</summary><div className="space-y-3 pt-4"><p className="text-sm text-muted-foreground">Chọn và duyệt nội dung tổng quan trong mục Tìm cố vấn. Chỉ nội dung được duyệt mới hiển thị trong không gian cố vấn.</p>
+    <Button size="sm" variant="outline" asChild><Link to={projectSectionHref(projectId, "support")}>Quản lý quyền và nội dung chia sẻ</Link></Button>
+    {(revoke.error || shares.error) && <WorkspaceError error={revoke.error || shares.error} />}
+    {shares.data?.some(item => !item.revokedAt) && <p className="text-sm text-muted-foreground">Các bản chia sẻ cũ dưới đây được giữ làm lịch sử, không mở quyền đọc trong không gian cố vấn mới.</p>}
     <ul className="space-y-2">{shares.data?.filter(item => !item.revokedAt).map(item => <li key={item.id} className="flex flex-wrap items-center justify-between gap-2 text-sm"><span>{item.mentor.name} · {t("Version {{version}}", { version: item.version })}</span><Button type="button" size="sm" variant="ghost" disabled={revoke.isPending} onClick={() => revoke.mutate(item.id)}>{t("Revoke access")}</Button></li>)}</ul>
     <p className="text-xs text-muted-foreground">{t("Mentor feedback is advisory. Formal academic review requires a separate assignment to an exact artifact version.")}</p>
     </div></details>;
