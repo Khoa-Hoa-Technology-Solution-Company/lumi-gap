@@ -1,6 +1,6 @@
 # 04 — Việc documentation tôi phải làm tiếp
 
-> [01 Tổng quan](01_PROJECT_COMPLETE_OVERVIEW.md) · [02 Toàn bộ luồng](02_PROJECT_ALL_FLOWS.md) · [03 Audit](03_DOCUMENTATION_AUDIT.md) · **04 Việc của tôi** · [05 Hỏi đáp](05_PROJECT_KNOWLEDGE_QA.md)
+> [01 Tổng quan](01_PROJECT_COMPLETE_OVERVIEW.md) · [02 Toàn bộ luồng](02_PROJECT_ALL_FLOWS.md) · [03 Audit](03_DOCUMENTATION_AUDIT.md) · **04 Việc của tôi** · [05 Hỏi đáp](05_PROJECT_KNOWLEDGE_QA.md) · [07 Nội dung tài liệu](07_REPORT_CONTENT_SUMMARY.md) · [08 Ký hiệu sơ đồ](08_DIAGRAM_NOTATION_GUIDE.md)
 >
 > Người phụ trách: Nguyễn Đức Hoàng (Requirements & Documentation Lead [R2 §4]). Lập ngày 28/10/2026.
 > Danh sách này chỉ gồm việc tài liệu có căn cứ (AU-xx ở [03](03_DOCUMENTATION_AUDIT.md), RF/SR trong BM02/BM04). **Không có việc lập trình hay tự kiểm thử.** Phần cần dev làm nằm ở Nhóm C, dưới dạng "yêu cầu nhóm kỹ thuật cung cấp".

@@ -1,6 +1,6 @@
 # 03 — Audit toàn bộ hệ thống tài liệu
 
-> [01 Tổng quan](01_PROJECT_COMPLETE_OVERVIEW.md) · [02 Toàn bộ luồng](02_PROJECT_ALL_FLOWS.md) · **03 Audit** · [04 Việc của tôi](04_MY_DOCUMENTATION_TASKS.md) · [05 Hỏi đáp](05_PROJECT_KNOWLEDGE_QA.md)
+> [01 Tổng quan](01_PROJECT_COMPLETE_OVERVIEW.md) · [02 Toàn bộ luồng](02_PROJECT_ALL_FLOWS.md) · **03 Audit** · [04 Việc của tôi](04_MY_DOCUMENTATION_TASKS.md) · [05 Hỏi đáp](05_PROJECT_KNOWLEDGE_QA.md) · [07 Nội dung tài liệu](07_REPORT_CONTENT_SUMMARY.md) · [08 Ký hiệu sơ đồ](08_DIAGRAM_NOTATION_GUIDE.md)
 >
 > Ngày audit: 28/10/2026. Chuẩn đối chiếu: hướng dẫn Review 2 [HD], các template báo cáo của môn (`Downloads/Report{2..5}_*.docx`, `SWP490_R2_BM0{1..4}_*.docx`) và đối chiếu chéo giữa các tài liệu với nhau.
 > Không đọc source code. Mã phát hiện **AU-xx** được [04](04_MY_DOCUMENTATION_TASKS.md) dẫn lại.

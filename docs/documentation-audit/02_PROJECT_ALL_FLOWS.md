@@ -1,6 +1,6 @@
 # 02 — Project Flow Atlas: toàn bộ luồng của LumiGap
 
-> [01 Tổng quan](01_PROJECT_COMPLETE_OVERVIEW.md) · **02 Toàn bộ luồng** · [03 Audit](03_DOCUMENTATION_AUDIT.md) · [04 Việc của tôi](04_MY_DOCUMENTATION_TASKS.md) · [05 Hỏi đáp](05_PROJECT_KNOWLEDGE_QA.md)
+> [01 Tổng quan](01_PROJECT_COMPLETE_OVERVIEW.md) · **02 Toàn bộ luồng** · [03 Audit](03_DOCUMENTATION_AUDIT.md) · [04 Việc của tôi](04_MY_DOCUMENTATION_TASKS.md) · [05 Hỏi đáp](05_PROJECT_KNOWLEDGE_QA.md) · [07 Nội dung tài liệu](07_REPORT_CONTENT_SUMMARY.md) · [08 Ký hiệu sơ đồ](08_DIAGRAM_NOTATION_GUIDE.md)
 >
 > Nguồn và ký hiệu như [01 §0](01_PROJECT_COMPLETE_OVERVIEW.md#0-cách-đọc-và-ký-hiệu-nguồn). Mọi sơ đồ Mermaid dưới đây vẽ **từ tài liệu**. Sơ đồ chuẩn để nộp nằm trong R3/R4: nguồn `.puml`/`.drawio` ở `docs/diagrams/` (nhánh `docs/review2-cleanup`).
 > Ký hiệu trạng thái: ✅ tài liệu ghi Implemented · 🟡 Partial · ⚠ chưa xác minh / tài liệu tự ghi TBD · ⛔ tài liệu ghi là không có.
