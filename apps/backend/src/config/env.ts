@@ -255,6 +255,20 @@ const EnvSchema = z.object({
   // is the honest ceiling of results for a single query.
   SEARCH_FILTER_POOL: z.coerce.number().int().min(50).max(1000).default(200),
 
+  // Query understanding in GET /search (deterministic, no LLM): resolve the query to OpenAlex taxonomy
+  // nodes / catalogue keywords, then hard-filter to the best one or boost papers that carry them.
+  SEARCH_AUTO_TAGS: z.enum(["true", "false"]).default("true").transform((value) => value === "true"),
+  // The best tag must reach this confidence (0..1) before it may act as a hard filter.
+  SEARCH_TAG_FILTER_MIN_CONFIDENCE: z.coerce.number().min(0).max(1).default(0.85),
+  // ...and own at least this many active papers, otherwise the filter would be too narrow to be useful.
+  SEARCH_TAG_FILTER_MIN_PAPERS: z.coerce.number().int().min(0).max(1_000_000).default(20),
+  // ...and own at most this share (0..1) of the active corpus; a broader tag narrows nothing and only boosts.
+  SEARCH_TAG_FILTER_MAX_SHARE: z.coerce.number().min(0).max(1).default(0.5),
+  // A filtered search returning fewer papers than this is re-run unfiltered with tag boosting instead.
+  SEARCH_TAG_FALLBACK_MIN_RESULTS: z.coerce.number().int().min(0).max(500).default(10),
+  // How long the in-memory taxonomy/keyword phrase dictionary is reused before it is reloaded.
+  TAXONOMY_DICTIONARY_TTL_SECONDS: z.coerce.number().int().min(1).max(86_400).default(600),
+
   // Phase B/C — LLM re-rank of semantic search. Size of the candidate pool the
   // LLM re-scores (bounded — re-ranking refines the head of the results).
   RERANK_CANDIDATES: z.coerce.number().int().min(2).max(50).default(20),

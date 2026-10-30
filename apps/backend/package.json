@@ -31,6 +31,7 @@
     "eval:community-suggest": "tsx scripts/community-suggest-eval.ts",
     "eval:gap-closure-retro": "tsx scripts/gap-closure-retro-eval.ts",
     "eval:gaps": "tsx scripts/gap-eval.ts",
+    "eval:search-tags": "tsx scripts/search-tags-eval.ts",
     "taxonomy:sync": "tsx scripts/taxonomy-sync.ts",
     "worker:sync": "tsx src/workers/sync.worker.ts",
     "worker:openalex-ingest": "tsx src/workers/openalex-ingest.worker.ts",

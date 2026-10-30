@@ -52,6 +52,30 @@ describe("filterSql", () => {
     expect(text).toContain("pt.domain_name = ANY(");
   });
 
+  it("filters by keyword ids with a single EXISTS over paper_keywords and ignores non-UUID values", () => {
+    const a = "123e4567-e89b-42d3-a456-426614174000";
+    const b = "123E4567-E89B-42D3-A456-426614174001";
+    const { text, values } = render({ keywordIds: [a, "not-a-uuid", b, a] });
+    expect(text).toContain(
+      "EXISTS ( SELECT 1 FROM paper_keywords pk WHERE pk.paper_id = p.id AND pk.keyword_id = ANY(",
+    );
+    expect(text).toContain("::uuid[]");
+    expect(values).toContainEqual([a, b.toLowerCase()]);
+  });
+
+  it("matches nothing when keyword ids were requested but none is a UUID, and nothing when empty", () => {
+    expect(render({ keywordIds: ["nope"] }).text).toContain("FALSE");
+    expect(render({ keywordIds: [] }).text).toBe("");
+    expect(render({ keywordIds: undefined }).text).toBe("");
+  });
+
+  it("combines keyword ids with taxonomy filters (AND)", () => {
+    const { text } = render({ topicIds: ["T1"], keywordIds: ["123e4567-e89b-42d3-a456-426614174000"] });
+    expect(text.match(/EXISTS/g)).toHaveLength(2);
+    expect(text).toContain("paper_topics pt");
+    expect(text).toContain("paper_keywords pk");
+  });
+
   it("splits paperIds into uuid and legacy id predicates, and matches nothing for invalid ids", () => {
     const uuid = "123e4567-e89b-42d3-a456-426614174000";
     const legacy = "0123456789abcdef01234567";

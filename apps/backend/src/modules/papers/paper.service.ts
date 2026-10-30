@@ -85,6 +85,8 @@ function citationWhere(bands?: string[]) {
   return clauses.length ? clauses : undefined;
 }
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 async function listWhere(input: ListPapersParams): Promise<Record<string, unknown>> {
   const where: Record<string, unknown> = { dataStatus: "active" };
   if (input.q) { const doi = normalizeDoiSearchQuery(input.q); where.OR = doi ? [{ doi }] : [{ title: { contains: input.q, mode: "insensitive" } }, { abstractText: { contains: input.q, mode: "insensitive" } }]; }
@@ -96,6 +98,14 @@ async function listWhere(input: ListPapersParams): Promise<Record<string, unknow
   const citation = citationWhere(input.citationBands as string[] | undefined); if (citation) where.AND = [{ OR: citation }];
   const topicFilters = [input.topics, input.domains, input.fields, input.subfields, input.topicIds, input.domainIds, input.fieldIds, input.subfieldIds].some((v) => v?.length);
   if (topicFilters) { const matches = await getPrisma().paperTopic.findMany({ where: { ...(input.topics?.length ? { topicName: { in: input.topics } } : {}), ...(input.domains?.length ? { domainName: { in: input.domains } } : {}), ...(input.fields?.length ? { fieldName: { in: input.fields } } : {}), ...(input.subfields?.length ? { subfieldName: { in: input.subfields } } : {}), ...(input.topicIds?.length ? { openalexTopicId: { in: input.topicIds } } : {}), ...(input.domainIds?.length ? { domainId: { in: input.domainIds } } : {}), ...(input.fieldIds?.length ? { fieldId: { in: input.fieldIds } } : {}), ...(input.subfieldIds?.length ? { subfieldId: { in: input.subfieldIds } } : {}) }, select: { paperId: true } }); where.id = { in: [...new Set(matches.map((row) => row.paperId))] }; }
+  if (input.keywordIds?.length) {
+    // Papers carrying ANY requested keyword; intersected with the taxonomy match above when both are given.
+    const keywordIds = [...new Set(input.keywordIds.map((id) => id.trim().toLowerCase()).filter((id) => UUID_PATTERN.test(id)))];
+    const rows = keywordIds.length ? await getPrisma().paperKeyword.findMany({ where: { keywordId: { in: keywordIds } }, select: { paperId: true } }) : [];
+    const keywordPaperIds = new Set(rows.map((row) => row.paperId));
+    const taxonomyPaperIds = (where.id as { in?: string[] } | undefined)?.in;
+    where.id = { in: taxonomyPaperIds ? taxonomyPaperIds.filter((id) => keywordPaperIds.has(id)) : [...keywordPaperIds] };
+  }
   return where;
 }
 

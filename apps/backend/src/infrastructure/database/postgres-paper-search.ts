@@ -46,6 +46,8 @@ export type PostgresPaperSearchFilters = {
   fieldIds?: string[];
   subfieldIds?: string[];
   topicIds?: string[];
+  /** keywords.id values; a paper matches when it carries any of them. Non-UUID values are ignored. */
+  keywordIds?: string[];
   paperIds?: string[];
 };
 
@@ -84,6 +86,21 @@ function taxonomyCondition(filters: PostgresPaperSearchFilters): Prisma.Sql | nu
   return Prisma.sql`EXISTS (
     SELECT 1 FROM paper_topics pt
     WHERE pt.paper_id = p.id AND ${Prisma.join(conditions, " AND ")}
+  )`;
+}
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function keywordCondition(filters: PostgresPaperSearchFilters): Prisma.Sql | null {
+  if (filters.keywordIds === undefined) return null;
+  const requested = uniqueStrings(filters.keywordIds);
+  if (!requested.length) return null;
+  const ids = requested.filter((id) => UUID_PATTERN.test(id)).map((id) => id.toLowerCase());
+  // Keywords were requested but none is usable: match nothing instead of silently dropping the filter.
+  if (!ids.length) return Prisma.sql`FALSE`;
+  return Prisma.sql`EXISTS (
+    SELECT 1 FROM paper_keywords pk
+    WHERE pk.paper_id = p.id AND pk.keyword_id = ANY(${ids}::uuid[])
   )`;
 }
 
@@ -141,6 +158,9 @@ export function filterSql(filters: PostgresPaperSearchFilters): Prisma.Sql {
 
   const taxonomy = taxonomyCondition(filters);
   if (taxonomy) conditions.push(taxonomy);
+
+  const keyword = keywordCondition(filters);
+  if (keyword) conditions.push(keyword);
 
   return conditions.length > 0 ? Prisma.sql`AND ${Prisma.join(conditions, " AND ")}` : Prisma.empty;
 }

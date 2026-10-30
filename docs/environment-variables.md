@@ -148,6 +148,12 @@ Users can also save multiple personal API connections in Settings → AI Connect
 | `DEEP_ANALYSIS_MAX_TURNS` | `EnvSchema` / backend | Default / optional (see template) |
 | `DEEP_ANALYSIS_MAX_OUTPUT_TOKENS` | `EnvSchema` / backend | Default / optional (see template) |
 | `SEARCH_FILTER_POOL` | `EnvSchema` / backend | Default / optional (see template) |
+| `SEARCH_AUTO_TAGS` | `EnvSchema` / backend | Default / optional (default true): resolve a `GET /search` query to taxonomy nodes / keywords and filter or boost by them (no LLM); `autoTags=false` turns it off per request |
+| `SEARCH_TAG_FILTER_MIN_CONFIDENCE` | `EnvSchema` / backend | Default / optional (default 0.85, 0..1): minimum confidence before the best detected tag becomes a hard filter |
+| `SEARCH_TAG_FILTER_MIN_PAPERS` | `EnvSchema` / backend | Default / optional (default 20): minimum active papers a tag must own to be used as a hard filter |
+| `SEARCH_TAG_FILTER_MAX_SHARE` | `EnvSchema` / backend | Default / optional (default 0.5): a tag owning more than this share of the active corpus only boosts, since filtering by it narrows almost nothing |
+| `SEARCH_TAG_FALLBACK_MIN_RESULTS` | `EnvSchema` / backend | Default / optional (default 10): a tag-filtered search returning fewer papers re-runs unfiltered with tag boosting |
+| `TAXONOMY_DICTIONARY_TTL_SECONDS` | `EnvSchema` / backend | Default / optional (default 600): lifetime of the in-memory taxonomy/keyword phrase dictionary used for query understanding |
 | `RERANK_CANDIDATES` | `EnvSchema` / backend | Default / optional (see template) |
 | `RERANK_MAX_PER_HOUR` | `EnvSchema` / backend | Default / optional (see template) |
 | `SEMANTIC_SEARCH_MAX_PER_MINUTE` | `EnvSchema` / backend | Default / optional (see template) |

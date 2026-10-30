@@ -71,6 +71,7 @@ function ResearchComposerForm({ id, canRerank, searchParams }: { id: string; can
     }
     if (openAccess) parameters.push("openAccess=true");
     types.forEach((type) => parameters.push(`type=${encodeURIComponent(type)}`));
+    // A new query starts fresh: `tag`, `tagLabel` and `autoTags` (query understanding) are deliberately not carried over; only raw scope filters are.
     for (const key of HOME_SCOPE_FILTERS) searchParams.getAll(key).forEach((value) => parameters.push(`${key}=${encodeURIComponent(value)}`));
     if (canRerank && mode === "semantic" && rerank) parameters.push("rerank=true");
     navigate(`${LITERATURE_PATH}${parameters.length ? `?${parameters.join("&")}` : ""}`);

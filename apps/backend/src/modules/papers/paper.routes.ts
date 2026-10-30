@@ -148,6 +148,7 @@ paperRouter.get("/", optionalAuth, async (req: Request, res: Response, next: Nex
       fieldIds,
       subfieldIds,
       topicIds,
+      keywordIds,
       sort,
     } = parsed.data;
     const { papers, total } = await paperService.list({
@@ -172,6 +173,7 @@ paperRouter.get("/", optionalAuth, async (req: Request, res: Response, next: Nex
       fieldIds,
       subfieldIds,
       topicIds,
+      keywordIds,
       sort,
     });
     res.json({

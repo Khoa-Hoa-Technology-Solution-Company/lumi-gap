@@ -19,6 +19,8 @@ export interface PaperFilterInput {
   fieldIds?: string[];
   subfieldIds?: string[];
   topicIds?: string[];
+  /** keywords.id values; a paper matches when it carries any of them. */
+  keywordIds?: string[];
   paperIds?: string[];
 }
 

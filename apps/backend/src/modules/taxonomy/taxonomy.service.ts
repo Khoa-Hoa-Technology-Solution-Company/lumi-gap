@@ -7,6 +7,7 @@ import { getPrisma } from "../../infrastructure/database/prisma.js";
 import type {
   ListKeywordsQuery, ListNodesQuery, UpdateKeywordInput, UpdateNodeInput,
 } from "./dto/taxonomy.schema.js";
+import { invalidateTaxonomyDictionary } from "./query-tag-resolver.js";
 import { normalizeAliases, normalizeTerm, TAXONOMY_LEVELS } from "./taxonomy.normalize.js";
 
 type TopicRow = Awaited<ReturnType<ReturnType<typeof getPrisma>["researchTopic"]["findFirstOrThrow"]>>;
@@ -137,6 +138,7 @@ export const taxonomyService = {
     if (input.status !== undefined) data.status = input.status;
     if (input.description !== undefined) data.description = input.description;
     const row = await prisma.researchTopic.update({ where: { id }, data });
+    invalidateTaxonomyDictionary();
     const counts = await childCounts([row.id]);
     return toNode(row, counts.get(row.id) ?? 0);
   },
@@ -181,7 +183,9 @@ export const taxonomyService = {
       data.aliases = normalizeAliases(input.aliases).filter((a) => a !== existing.normalizedName);
     }
     if (input.status !== undefined) data.status = input.status;
-    return toCatalogKeyword(await prisma.keyword.update({ where: { id }, data }));
+    const updated = await prisma.keyword.update({ where: { id }, data });
+    invalidateTaxonomyDictionary();
+    return toCatalogKeyword(updated);
   },
 
   /**
@@ -190,7 +194,7 @@ export const taxonomyService = {
    */
   async mergeKeywords(sourceId: string, targetId: string): Promise<CatalogKeyword> {
     if (sourceId === targetId) throw AppError.badRequest("A keyword cannot be merged into itself");
-    return getPrisma().$transaction(async (tx) => {
+    const merged = await getPrisma().$transaction(async (tx) => {
       const source = await tx.keyword.findUnique({ where: { id: sourceId } });
       const target = await tx.keyword.findUnique({ where: { id: targetId } });
       if (!source) throw AppError.notFound("Source keyword not found");
@@ -235,6 +239,8 @@ export const taxonomyService = {
         where: { id: target.id }, data: { aliases, paperCount },
       }));
     });
+    invalidateTaxonomyDictionary();
+    return merged;
   },
 
   async stats(): Promise<TaxonomyStats> {

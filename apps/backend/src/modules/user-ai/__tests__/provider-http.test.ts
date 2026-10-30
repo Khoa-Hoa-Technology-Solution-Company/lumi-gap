@@ -47,6 +47,19 @@ describe("personal AI endpoint requests", () => {
       await expect(providerJson("http://8.8.8.8/v1/models", "local-test-key", "openai-compatible")).rejects.toMatchObject({ statusCode: 400 });
     } finally { await Promise.all(servers.map(server => new Promise<void>(resolve => server.close(() => resolve())))); }
   });
+  it("falls back to IPv4 when localhost resolves to ::1 but the gateway only listens on 127.0.0.1", async () => {
+    const server = createServer((_req, res) => {
+      res.setHeader("content-type", "application/json");
+      res.end(JSON.stringify({ data: [{ id: "local-model" }] }));
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("Missing address");
+    env.AI_ALLOW_LOCAL_ENDPOINTS = true;
+    try {
+      expect(await providerJson(`http://localhost:${address.port}/v1/models`, "local-test-key", "openai-compatible")).toEqual({ data: [{ id: "local-model" }] });
+    } finally { await new Promise<void>((resolve) => server.close(() => resolve())); }
+  });
   it.each([
     ["RequestsPerDay", "5s", undefined],
     ["RequestsPerMinute", "5s", 6000],

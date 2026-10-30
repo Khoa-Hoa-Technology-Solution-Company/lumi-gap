@@ -41,3 +41,22 @@ describe("SearchQuerySchema language filters", () => {
     expect(parsed.citationBands).toEqual(["10-49", "1000+"]);
   });
 });
+
+describe("SearchQuerySchema autoTags and keywordIds", () => {
+  it("enables auto tagging by default and only an explicit false-like value disables it", () => {
+    expect(SearchQuerySchema.parse({ q: "x" }).autoTags).toBe(true);
+    expect(SearchQuerySchema.parse({ q: "x", autoTags: "true" }).autoTags).toBe(true);
+    expect(SearchQuerySchema.parse({ q: "x", autoTags: "" }).autoTags).toBe(true);
+    for (const off of ["false", "0", "off", "no", "FALSE"]) {
+      expect(SearchQuerySchema.parse({ q: "x", autoTags: off }).autoTags).toBe(false);
+    }
+  });
+
+  it("parses keywordIds like the other id lists and caps them at 50", () => {
+    const id = "123e4567-e89b-42d3-a456-426614174000";
+    expect(SearchQuerySchema.parse({ q: "x", keywordIds: `${id},${id}` }).keywordIds).toEqual([id]);
+    expect(SearchQuerySchema.parse({ q: "x" }).keywordIds).toBeUndefined();
+    const many = Array.from({ length: 51 }, (_, i) => `k${i}`).join(",");
+    expect(SearchQuerySchema.safeParse({ q: "x", keywordIds: many }).success).toBe(false);
+  });
+});

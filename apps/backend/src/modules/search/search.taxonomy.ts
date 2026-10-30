@@ -1,6 +1,11 @@
-import type { ScoredPaper } from "@trend/shared-types";
+import type { DetectedTag, ScoredPaper } from "@trend/shared-types";
+import { normalizeTerm } from "../taxonomy/taxonomy.normalize.js";
 
 const MAX_TAXONOMY_BOOST = 0.08;
+/** Cap on the existing name-overlap boost plus the detected-tag boost together. */
+const MAX_COMBINED_BOOST = 0.12;
+/** Boost per matched detected tag, scaled by the tag's confidence. */
+const DETECTED_TAG_WEIGHT = 0.05;
 
 const TAXONOMY_WEIGHTS = {
   topicName: 0.04,
@@ -38,6 +43,68 @@ export function computeTaxonomyBoost(query: string, paper: TaxonomyPaper): numbe
   }
 
   return round2(Math.min(MAX_TAXONOMY_BOOST, boost));
+}
+
+type TagBoostPaper = Pick<ScoredPaper, "topics" | "keywords" | "taxonomyBoostScore">;
+
+/**
+ * Lift papers that carry the taxonomy nodes / keywords the query was resolved to. Each matched tag adds
+ * 0.05 x its confidence on top of the name-overlap boost; the combined value is capped at 0.12.
+ * A no-op (same array content) when there are no tags.
+ */
+export function applyDetectedTagBoost<T extends TagBoostPaper>(papers: T[], tags: readonly DetectedTag[]): T[] {
+  if (tags.length === 0) return papers;
+  const prepared = tags.map((tag) => ({ tag, keywordPhrases: keywordPhrases(tag) }));
+  return papers.map((paper) => {
+    let tagBoost = 0;
+    for (const { tag, keywordPhrases: phrases } of prepared) {
+      if (paperMatchesTag(paper, tag, phrases)) tagBoost += DETECTED_TAG_WEIGHT * tag.confidence;
+    }
+    if (tagBoost === 0) return paper;
+    const combined = Math.min(MAX_COMBINED_BOOST, Number(paper.taxonomyBoostScore ?? 0) + tagBoost);
+    return { ...paper, taxonomyBoostScore: Math.round(combined * 1000) / 1000 };
+  });
+}
+
+/** True when the paper carries the tag's taxonomy node or keyword (same rule the boost uses). */
+export function paperCarriesTag(paper: TagBoostPaper, tag: DetectedTag): boolean {
+  return paperMatchesTag(paper, tag, keywordPhrases(tag));
+}
+
+/** Normalized strings a paper's keyword may carry to count as this keyword tag. */
+function keywordPhrases(tag: DetectedTag): Set<string> {
+  if (tag.kind !== "keyword") return new Set();
+  const phrases = new Set([normalizeTerm(tag.name)]);
+  // matchedText is the catalogue name/alias that met the query, except for fuzzy matches (it is the query then).
+  if (tag.source !== "fuzzy") phrases.add(tag.matchedText);
+  phrases.delete("");
+  return phrases;
+}
+
+function paperMatchesTag(paper: TagBoostPaper, tag: DetectedTag, phrases: Set<string>): boolean {
+  if (tag.kind === "keyword") {
+    return (paper.keywords ?? []).some((raw) => {
+      const keyword = raw as unknown as string | { keywordId?: string; keywordName?: string };
+      if (typeof keyword === "string") return phrases.has(normalizeTerm(keyword));
+      return keyword.keywordId === tag.id || phrases.has(normalizeTerm(keyword.keywordName ?? ""));
+    });
+  }
+  const wanted = shortOpenAlexId(tag.openalexId);
+  if (!wanted) return false;
+  return (paper.topics ?? []).some((topic) => {
+    switch (tag.kind) {
+      case "topic": return shortOpenAlexId(topic.openalexTopicId) === wanted;
+      case "subfield": return shortOpenAlexId(topic.subfieldId) === wanted;
+      case "field": return shortOpenAlexId(topic.fieldId) === wanted;
+      case "domain": return shortOpenAlexId(topic.domainId) === wanted;
+      default: return false;
+    }
+  });
+}
+
+/** "https://openalex.org/T10028" and "t10028" both reduce to "t10028". */
+function shortOpenAlexId(value: string | undefined): string {
+  return (value ?? "").split("/").filter(Boolean).at(-1)?.toLowerCase() ?? "";
 }
 
 /** Unrounded relevance used for sorting, so RRF order survives deep ranks. */

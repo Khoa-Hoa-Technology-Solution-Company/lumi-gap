@@ -40,12 +40,14 @@ export const searchController = {
       fieldIds,
       subfieldIds,
       topicIds,
+      keywordIds,
       minScore,
       sort,
       rerank,
+      autoTags,
     } = parsed.data;
     const t0 = Date.now();
-    const { papers, total, reranked } = await searchService.semantic({
+    const { papers, total, reranked, understanding } = await searchService.semantic({
       q,
       page,
       pageSize,
@@ -67,9 +69,11 @@ export const searchController = {
       fieldIds,
       subfieldIds,
       topicIds,
+      keywordIds,
       minScore,
       sort,
       rerank,
+      autoTags,
       userId: req.user?.sub,
     });
 
@@ -99,6 +103,10 @@ export const searchController = {
         fieldIds,
         subfieldIds,
         topicIds,
+        keywordIds,
+        // Best effort: what query understanding did, so search analytics can see how often it filters.
+        understandingMode: understanding.mode,
+        appliedTag: understanding.appliedTag?.name ?? null,
       },
     });
 
@@ -111,6 +119,7 @@ export const searchController = {
         total,
         totalPages: Math.ceil(total / pageSize),
         mode: reranked ? "semantic+rerank" : "semantic",
+        understanding,
       },
     });
   },

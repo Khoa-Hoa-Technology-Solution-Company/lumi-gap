@@ -125,6 +125,7 @@ function toSqlFilters(filters: RetrieveFilters | undefined): PostgresPaperSearch
     fieldIds: f.fieldIds,
     subfieldIds: f.subfieldIds,
     topicIds: f.topicIds,
+    keywordIds: f.keywordIds,
     paperIds: f.paperIds,
   };
 }
