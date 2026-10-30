@@ -303,6 +303,19 @@ const EnvSchema = z.object({
   TAG_EMBEDDING_MIN_SIMILARITY: z.coerce.number().min(0).max(1).default(0.82),
   TAG_EMBEDDING_MAX_PAPERS: z.coerce.number().int().min(1).default(300),
 
+  // On-demand topic backfill (topic-backfill worker). A run imports at most TOPIC_BACKFILL_DEFAULT_NEW_PAPERS papers the
+  // corpus is missing (admins may ask for up to TOPIC_BACKFILL_MAX_NEW_PAPERS), reading at most TOPIC_BACKFILL_MAX_PAGES
+  // OpenAlex pages. Below TOPIC_BACKFILL_THIN_MAX_PAPERS local papers, search offers signed-in users a backfill, limited
+  // per user/hour, by a cooldown per target and by a daily cap on papers imported from search across all users.
+  TOPIC_BACKFILL_SEARCH_ENABLED: z.enum(["true", "false"]).default("true").transform((value) => value === "true"),
+  TOPIC_BACKFILL_THIN_MAX_PAPERS: z.coerce.number().int().min(1).default(30),
+  TOPIC_BACKFILL_DEFAULT_NEW_PAPERS: z.coerce.number().int().min(1).max(1000).default(100),
+  TOPIC_BACKFILL_MAX_NEW_PAPERS: z.coerce.number().int().min(1).max(5000).default(1000),
+  TOPIC_BACKFILL_MAX_PAGES: z.coerce.number().int().min(1).max(100).default(10),
+  TOPIC_BACKFILL_USER_MAX_PER_HOUR: z.coerce.number().int().positive().default(5),
+  TOPIC_BACKFILL_COOLDOWN_HOURS: z.coerce.number().int().min(0).default(24),
+  TOPIC_BACKFILL_DAILY_MAX_PAPERS: z.coerce.number().int().min(1).default(2000),
+
   // Quality & Feedback — per-user/hour cap on the on-demand LLM-judge (a generate call).
   QUALITY_EVAL_MAX_PER_HOUR: z.coerce.number().int().positive().default(20),
 

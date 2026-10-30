@@ -1,5 +1,5 @@
 import { useDeferredValue, useEffect, useState } from "react";
-import { GitMerge, Pencil, Search } from "lucide-react";
+import { DatabaseZap, GitMerge, Pencil, Search } from "lucide-react";
 import type { CatalogKeyword, KeywordStatus } from "@trend/shared-types";
 import { PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
@@ -13,6 +13,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { BackfillDialog, type BackfillTarget } from "@/features/catalog/components/backfill-dialog";
+import { BackfillRunWatcher } from "@/features/catalog/components/backfill-runs-section";
 import { AliasBadges, StatusBadge } from "@/features/catalog/components/catalog-badges";
 import {
   ErrorState,
@@ -36,6 +38,8 @@ export function AdminKeywordsPage() {
   const [page, setPage] = useState(1);
   const [editing, setEditing] = useState<CatalogKeyword>();
   const [merging, setMerging] = useState<CatalogKeyword>();
+  const [fetching, setFetching] = useState<BackfillTarget>();
+  const [watchedRunId, setWatchedRunId] = useState<string>();
 
   useEffect(() => setPage(1), [q, status, sort]);
 
@@ -128,6 +132,12 @@ export function AdminKeywordsPage() {
                                 {t("Merge")}
                               </Button>
                             ) : null}
+                            {keyword.status === "active" ? (
+                              <Button variant="ghost" size="sm" aria-label={t("Fetch papers for keyword {{name}}", { name: keyword.keywordName })} onClick={() => setFetching({ kind: "keyword", id: keyword.id, name: keyword.keywordName })}>
+                                <DatabaseZap className="h-4 w-4" />
+                                {t("Fetch")}
+                              </Button>
+                            ) : null}
                           </div>
                         )}
                       </TableCell>
@@ -146,6 +156,8 @@ export function AdminKeywordsPage() {
 
       <EditKeywordDialog keyword={editing} onClose={() => setEditing(undefined)} />
       <MergeKeywordDialog keyword={merging} onClose={() => setMerging(undefined)} />
+      <BackfillDialog target={fetching} onClose={() => setFetching(undefined)} onStarted={(run) => setWatchedRunId(run.id)} />
+      <BackfillRunWatcher runId={watchedRunId} />
     </main>
   );
 }

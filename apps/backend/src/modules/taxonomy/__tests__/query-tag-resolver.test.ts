@@ -187,18 +187,174 @@ describe("resolveQueryTags matching", () => {
     expect(m.topicFindMany).not.toHaveBeenCalled();
   });
 
-  it("loads only active topics and keywords that own papers, and reports the corpus size", async () => {
+  it("loads active keywords that own papers, and topics that own papers or are empty topic/subfield nodes", async () => {
     const result = await resolveQueryTags("education");
 
     expect(result.corpusSize).toBe(4200);
     expect(m.paperCount).toHaveBeenCalledWith({ where: { dataStatus: "active" } });
 
     expect(m.topicFindMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { status: "active", paperCount: { gte: 1 } } }),
+      expect.objectContaining({
+        where: {
+          status: "active",
+          OR: [
+            { paperCount: { gte: 1 } },
+            { paperCount: 0, worksCount: { gt: 0 }, level: { in: ["topic", "subfield"] } },
+          ],
+        },
+      }),
     );
+    expect(m.topicFindMany.mock.calls[0]![0].select).toMatchObject({ worksCount: true, paperCount: true });
     expect(m.keywordFindMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { status: "active", paperCount: { gte: 1 } } }),
     );
+  });
+});
+
+describe("resolveQueryTags coverage target", () => {
+  const EMPTY_TOPIC = topic({
+    id: "t-q", openalexId: "T99", topicName: "Quantum Gravity", aliases: ["qgrav"], openalexKeywords: ["loop quantum"],
+    paperCount: 0, worksCount: 5000,
+  });
+  const THIN_TOPIC = topic({
+    id: "t-thin", openalexId: "T77", topicName: "Graph Databases", paperCount: 4, worksCount: 900,
+  });
+
+  beforeEach(() => {
+    m.topicFindMany.mockResolvedValue([...TOPICS, EMPTY_TOPIC, THIN_TOPIC]);
+  });
+
+  it("names a zero-paper topic by name without detecting or ranking it", async () => {
+    const result = await resolveQueryTags("Quantum Gravity");
+
+    expect(result.coverageTarget).toMatchObject({
+      kind: "topic", id: "t-q", openalexId: "T99", name: "Quantum Gravity", paperCount: 0, worksCount: 5000,
+      source: "name", confidence: 1,
+    });
+    expect(result.detectedTags).toEqual([]);
+    expect(result.best).toBeNull();
+    expect(result.coversQuery).toBe(false);
+  });
+
+  it("accepts an alias of a zero-paper topic", async () => {
+    const result = await resolveQueryTags("qgrav");
+
+    expect(result.coverageTarget).toMatchObject({ id: "t-q", source: "alias" });
+    expect(result.detectedTags).toEqual([]);
+  });
+
+  it("does not index the OpenAlex keywords of a zero-paper topic", async () => {
+    const result = await resolveQueryTags("loop quantum");
+
+    expect(result.coverageTarget).toBeNull();
+    expect(result.detectedTags).toEqual([]);
+  });
+
+  it("gives no target when the entry covers only part of the query", async () => {
+    const result = await resolveQueryTags("quantum gravity experiments");
+
+    expect(result.coverageTarget).toBeNull();
+    expect(result.detectedTags).toEqual([]);
+  });
+
+  it("gives no target for a fuzzy match", async () => {
+    m.queryRaw.mockResolvedValue([
+      { kind: "topic", id: "t-q", openalex_id: "T99", name: "Quantum Gravity", paper_count: 3, works_count: 5000, similarity: 0.9 },
+    ]);
+
+    const result = await resolveQueryTags("quantum gravit");
+
+    expect(result.best).toMatchObject({ source: "fuzzy", worksCount: 5000 });
+    expect(result.coverageTarget).toBeNull();
+  });
+
+  it("gives no target for an entry reached only through an OpenAlex keyword", async () => {
+    const result = await resolveQueryTags("latent dirichlet allocation");
+
+    expect(result.best).toMatchObject({ id: "t-tm", source: "openalex-keyword" });
+    expect(result.coverageTarget).toBeNull();
+  });
+
+  it("gives both a detected tag and a target for a thin entry with papers", async () => {
+    const result = await resolveQueryTags("graph databases");
+
+    expect(result.best).toMatchObject({ id: "t-thin", paperCount: 4, worksCount: 900 });
+    expect(result.detectedTags.map((t) => t.id)).toEqual(["t-thin"]);
+    expect(result.coverageTarget).toMatchObject({ id: "t-thin", worksCount: 900 });
+    expect(result.coversQuery).toBe(true);
+  });
+
+  it("targets a keyword (no worksCount) and breaks ties like the ranking", async () => {
+    m.keywordFindMany.mockResolvedValue([
+      keyword({ id: "k-gd", keywordName: "Graph databases", normalizedName: "graph databases", paperCount: 9 }),
+    ]);
+
+    const result = await resolveQueryTags("graph databases");
+
+    // Same confidence: the keyword has more local papers than the topic, as in detectedTags.
+    expect(result.detectedTags.map((t) => t.id)).toEqual(["k-gd", "t-thin"]);
+    expect(result.coverageTarget).toMatchObject({ kind: "keyword", id: "k-gd" });
+    expect(result.coverageTarget).not.toHaveProperty("worksCount");
+  });
+
+  it("has no target when a richer exact match of another kind or source exists", async () => {
+    m.topicFindMany.mockResolvedValue([
+      ...TOPICS,
+      topic({ id: "t-rich", openalexId: "T2", topicName: "Knowledge Graphs", openalexKeywords: ["Graph databases"], paperCount: 200 }),
+    ]);
+    m.keywordFindMany.mockResolvedValue([
+      keyword({ id: "k-gd", keywordName: "Graph databases", normalizedName: "graph databases", paperCount: 9 }),
+      keyword({ id: "k-cs", keywordName: "Computer science", normalizedName: "computer science", paperCount: 5 }),
+    ]);
+
+    expect((await resolveQueryTags("graph databases")).coverageTarget).toBeNull();
+    expect((await resolveQueryTags("computer science")).coverageTarget).toBeNull();
+  });
+
+  it("never targets a field, domain or curated tag", async () => {
+    m.tagFindMany.mockResolvedValue([customTag({ id: "g-e", slug: "edu", name: "Edu Tag", paperCount: 2 })]);
+
+    expect((await resolveQueryTags("computer science")).coverageTarget).toBeNull();
+    expect((await resolveQueryTags("physical sciences")).coverageTarget).toBeNull();
+    expect((await resolveQueryTags("edu tag")).coverageTarget).toBeNull();
+  });
+
+  it("is null when nothing matches or the query is blank", async () => {
+    expect((await resolveQueryTags("zzzz yyyy")).coverageTarget).toBeNull();
+    expect((await resolveQueryTags("   ")).coverageTarget).toBeNull();
+  });
+
+  it("does not let a zero-paper entry change ranking or suppress the fuzzy fallback", async () => {
+    m.topicFindMany.mockResolvedValue([
+      topic({ id: "t-a", openalexId: "T1", topicName: "Shared Phrase", paperCount: 6, worksCount: 100 }),
+      topic({ id: "t-0", level: "subfield", openalexId: "S1", topicName: "Shared Phrase", paperCount: 0, worksCount: 50 }),
+    ]);
+    const withEmpty = await resolveQueryTags("shared phrase");
+
+    expect(withEmpty.detectedTags.map((t) => t.id)).toEqual(["t-a"]);
+    expect(withEmpty.best?.id).toBe("t-a");
+    expect(withEmpty.coverageTarget?.id).toBe("t-a");
+
+    // With only the empty entry matching exactly, the trigram fallback still runs as before.
+    invalidateTaxonomyDictionary();
+    m.topicFindMany.mockResolvedValue([EMPTY_TOPIC]);
+    m.queryRaw.mockResolvedValue([
+      { kind: "keyword", id: "k-ml", openalex_id: null, name: "Quantum gravity theory", paper_count: 8, similarity: 0.7 },
+    ]);
+    const fuzzy = await resolveQueryTags("quantum gravity");
+
+    expect(m.queryRaw).toHaveBeenCalledTimes(1);
+    expect(fuzzy.best).toMatchObject({ id: "k-ml", source: "fuzzy" });
+    expect(fuzzy.best).not.toHaveProperty("worksCount");
+    expect(fuzzy.coverageTarget).toMatchObject({ id: "t-q", source: "name" });
+  });
+
+  it("selects works_count in the trigram query for taxonomy nodes", async () => {
+    m.queryRaw.mockResolvedValue([]);
+    await resolveQueryTags("zzzz yyyy");
+
+    const sql = (m.queryRaw.mock.calls[0]![0] as { sql: string }).sql;
+    expect(sql).toMatch(/t.works_count::int AS works_count/);
   });
 });
 
@@ -361,14 +517,14 @@ describe("resolver cache", () => {
 
     // Once the dictionary was invalidated in this process the key also carries the invalidation epoch.
     expect(m.cacheSet).toHaveBeenCalledWith(
-      expect.stringMatching(/^search:qtags:v3:h\(.*topic modeling.*\)$/),
+      expect.stringMatching(/^search:qtags:v4:h\(.*topic modeling.*\)$/),
       expect.objectContaining({ coversQuery: true }),
       600,
     );
   });
 
   it("serves a cached resolution without loading the catalogue", async () => {
-    const cached = { detectedTags: [], best: null, coversQuery: false };
+    const cached = { detectedTags: [], best: null, coversQuery: false, coverageTarget: null };
     m.cacheGet.mockResolvedValue(cached);
 
     expect(await resolveQueryTags("education")).toEqual(cached);

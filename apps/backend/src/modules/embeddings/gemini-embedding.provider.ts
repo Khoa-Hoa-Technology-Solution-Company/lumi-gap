@@ -21,6 +21,19 @@ function isQuotaExhausted(err: unknown): boolean {
   );
 }
 
+/** The free tier's 100 requests per minute clear by themselves, unlike a daily quota. */
+function isPerMinuteLimit(err: unknown): boolean {
+  const msg = String(err instanceof Error ? err.message : err).toLowerCase();
+  return msg.includes("perminute") && !msg.includes("perday");
+}
+
+/** The wait Gemini asks for, as `"retryDelay":"35s"` or "Please retry in 34.5s". */
+function retryDelayMs(err: unknown): number {
+  const msg = String(err instanceof Error ? err.message : err).toLowerCase();
+  const seconds = Number(/retry(?:delay| in)\W*(\d+(?:\.\d+)?)s/.exec(msg)?.[1] ?? 0);
+  return seconds > 0 ? Math.ceil(seconds) * 1000 + 1000 : 0;
+}
+
 /**
  * Gemini embedding provider. Uses `gemini-embedding-2` by default.
  *
@@ -56,8 +69,9 @@ export class GeminiEmbeddingProvider implements EmbeddingProvider {
   }
 
   /** Single embedding with exponential-backoff retry on 429/503 (free-tier
-   *  rate limits and transient server errors). */
-  private async embedWithRetry(text: string, attempt: number): Promise<number[]> {
+   *  rate limits and transient server errors). Only a batch may wait out the
+   *  per-minute limit: a search must fail fast and fall back to text retrieval. */
+  private async embedWithRetry(text: string, attempt: number, waitOutMinuteLimit = false): Promise<number[]> {
     try {
       const res = await withEmbedTimeout(
         geminiClient.models.embedContent({
@@ -69,15 +83,15 @@ export class GeminiEmbeddingProvider implements EmbeddingProvider {
       return this.validateVec(res.embeddings?.[0]?.values);
     } catch (err) {
       const status = (err as { status?: number }).status;
-      if (status === 429 && isQuotaExhausted(err)) {
+      if (status === 429 && isQuotaExhausted(err) && !(waitOutMinuteLimit && isPerMinuteLimit(err))) {
         logger.warn({ status }, "gemini embed quota exhausted; failing fast");
         throw AppError.serviceUnavailable("AI embedding quota exhausted. Retry later or use fallback retrieval.");
       }
       if ((status === 429 || status === 503) && attempt <= MAX_RETRIES) {
-        const backoff = 3000 * 2 ** (attempt - 1); // 3s, 6s, 12s, 24s
+        const backoff = Math.max(3000 * 2 ** (attempt - 1), retryDelayMs(err)); // 3s, 6s, 12s, 24s
         logger.warn({ status, attempt, backoffMs: backoff }, "gemini embed rate-limited — retrying");
         await sleep(backoff);
-        return this.embedWithRetry(text, attempt + 1);
+        return this.embedWithRetry(text, attempt + 1, waitOutMinuteLimit);
       }
       // Expired/invalid key is a server config problem, not the caller's fault —
       // surface an actionable 503 (raw error stays in the log, never the client).
@@ -98,7 +112,7 @@ export class GeminiEmbeddingProvider implements EmbeddingProvider {
     const out: number[][] = new Array(texts.length);
     for (let i = 0; i < texts.length; i += EMBED_CONCURRENCY) {
       const slice = texts.slice(i, i + EMBED_CONCURRENCY);
-      const vecs = await Promise.all(slice.map((t) => this.embed(t)));
+      const vecs = await Promise.all(slice.map((t) => this.embedWithRetry(t, 1, true)));
       vecs.forEach((v, j) => (out[i + j] = v));
     }
     return out;

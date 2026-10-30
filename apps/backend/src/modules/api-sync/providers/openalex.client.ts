@@ -23,6 +23,8 @@ export interface FetchPageParams {
   /** OpenAlex sample seed. Required whenever sample is supplied. */
   seed?: number;
   perPage?: number;
+  /** OpenAlex sort expression, e.g. "cited_by_count:desc". Omit for relevance (search) or default order (filter). */
+  sort?: string;
 }
 
 export interface FetchGroupCountsParams {
@@ -97,6 +99,7 @@ export function buildOpenAlexPageUrl(params: FetchPageParams): URL {
     (params.yearFrom ? `from_publication_date:${params.yearFrom}-01-01` : undefined);
   if (filterExpression) url.searchParams.set("filter", filterExpression);
   url.searchParams.set("per_page", String(perPage));
+  if (params.sort) url.searchParams.set("sort", params.sort);
   if (params.sample !== undefined) {
     if (!Number.isInteger(params.sample) || params.sample < 1 || params.sample > 10_000) {
       throw new Error("OpenAlex sample must be an integer between 1 and 10000");

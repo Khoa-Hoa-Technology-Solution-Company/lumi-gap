@@ -34,9 +34,16 @@ export const QUEUE_NAMES = {
   communitySummary: "community-summary",
   manuscriptCompile: "manuscript-compile",
   tagging: "tagging",
+  topicBackfill: "topic-backfill",
 } as const;
 
 export const taggingQueue = new Queue(QUEUE_NAMES.tagging, {
+  connection: makeConnection(),
+  defaultJobOptions: { ...defaultJobOptions, attempts: 3 },
+});
+
+/** On-demand OpenAlex imports for one thin catalogue entry (modules/topic-backfill). */
+export const topicBackfillQueue = new Queue(QUEUE_NAMES.topicBackfill, {
   connection: makeConnection(),
   defaultJobOptions: { ...defaultJobOptions, attempts: 3 },
 });

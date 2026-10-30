@@ -1,6 +1,6 @@
 import type { Job } from "bullmq";
 import type { Queue } from "bullmq";
-import { aiJobsQueue, apiSyncQueue, communitySummaryQueue, corpusValidationQueue, embeddingQueue, gapsQueue, notificationQueue, openAlexIngestQueue, paperAnalysisQueue, reportQueue, taggingQueue } from "../../infrastructure/queue.js";
+import { aiJobsQueue, apiSyncQueue, communitySummaryQueue, corpusValidationQueue, embeddingQueue, gapsQueue, notificationQueue, openAlexIngestQueue, paperAnalysisQueue, reportQueue, taggingQueue, topicBackfillQueue } from "../../infrastructure/queue.js";
 import { readWorkerHeartbeats, type WorkerHeartbeatRecord } from "../../infrastructure/worker-heartbeat.js";
 import { publicDatabaseId } from "../../infrastructure/database/database-id.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
@@ -24,7 +24,8 @@ export type PipelineQueueName =
   | "notifications"
   | "ai-jobs"
   | "community-summary"
-  | "tagging";
+  | "tagging"
+  | "topic-backfill";
 
 export interface PipelineQueueStatus {
   name: PipelineQueueName;
@@ -499,6 +500,7 @@ export const pipelineService = createPipelineStatusService({
     queueAdapter("ai-jobs", "AI Runs", aiJobsQueue),
     queueAdapter("community-summary", "Community Summaries", communitySummaryQueue),
     queueAdapter("tagging", "Paper Tagging", taggingQueue),
+    queueAdapter("topic-backfill", "Topic Backfill", topicBackfillQueue),
   ],
   corpusRepository: {
     countTotalPapers: () => getPrisma().paper.count(),
@@ -554,4 +556,5 @@ const EXPECTED_WORKERS: Array<{ workerName: string; queueName: PipelineQueueName
   { workerName: "worker:ai-jobs", queueName: "ai-jobs" },
   { workerName: "worker:community-summary", queueName: "community-summary" },
   { workerName: "worker:tagging", queueName: "tagging" },
+  { workerName: "worker:topic-backfill", queueName: "topic-backfill" },
 ];

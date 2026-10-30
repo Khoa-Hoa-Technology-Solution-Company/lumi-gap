@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { ChevronRight, FolderTree, Search } from "lucide-react";
+import { ChevronRight, DatabaseZap, FolderTree, Search } from "lucide-react";
 import { toast } from "sonner";
 import type { TaxonomyNode, TaxonomyNodeDetail, TaxonomyNodeStatus } from "@trend/shared-types";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useI18n } from "@/i18n";
 import { useTaxonomyNode, useUpdateTaxonomyNode } from "../hooks/use-taxonomy";
 import { nodeSearchHref } from "../utils/tag-rules";
+import { BackfillDialog } from "./backfill-dialog";
+import { BackfillRunsSection } from "./backfill-runs-section";
 import { LevelBadge } from "./catalog-badges";
 import { ChipInput } from "./chip-input";
 import { apiErr, ErrorState, formatCompact, SELECT_CLASS } from "./catalog-ui";
@@ -67,6 +69,9 @@ function NodeEditor({ node, onSelectNode, onBrowseChildren }: {
   const [aliases, setAliases] = useState(node.aliases);
   const [status, setStatus] = useState<TaxonomyNodeStatus>(node.status);
   const [description, setDescription] = useState(node.description ?? "");
+  const [fetchOpen, setFetchOpen] = useState(false);
+  // Only topics and subfields carry papers of their own that OpenAlex can be asked for.
+  const backfillKind = node.level === "topic" || node.level === "subfield" ? node.level : undefined;
 
   const dirty =
     status !== node.status ||
@@ -179,19 +184,36 @@ function NodeEditor({ node, onSelectNode, onBrowseChildren }: {
             </ul>
           )}
         </div>
+
+        {backfillKind ? <BackfillRunsSection embedded targetKind={backfillKind} targetId={node.id} /> : null}
       </div>
 
       <div className="flex flex-col gap-2 border-t p-4 sm:flex-row sm:items-center sm:justify-between">
-        <Button asChild variant="ghost" size="sm" className="justify-start">
-          <Link to={nodeSearchHref(node)}>
-            <Search className="h-4 w-4" />
-            {t("Search papers in this topic")}
-          </Link>
-        </Button>
+        <div className="flex flex-col gap-1 sm:flex-row sm:items-center">
+          <Button asChild variant="ghost" size="sm" className="justify-start">
+            <Link to={nodeSearchHref(node)}>
+              <Search className="h-4 w-4" />
+              {t("Search papers in this topic")}
+            </Link>
+          </Button>
+          {backfillKind ? (
+            <Button variant="ghost" size="sm" className="justify-start" onClick={() => setFetchOpen(true)}>
+              <DatabaseZap className="h-4 w-4" />
+              {t("Fetch from OpenAlex")}
+            </Button>
+          ) : null}
+        </div>
         <Button onClick={save} disabled={!dirty || update.isPending}>
           {update.isPending ? t("Saving…") : t("Save changes")}
         </Button>
       </div>
+
+      {backfillKind ? (
+        <BackfillDialog
+          target={fetchOpen ? { kind: backfillKind, id: node.id, name: node.name } : undefined}
+          onClose={() => setFetchOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }

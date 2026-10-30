@@ -32,6 +32,11 @@ export function formatDate(value?: string | null): string {
   return new Intl.DateTimeFormat("en", { dateStyle: "medium" }).format(new Date(value));
 }
 
+export function formatDateTime(value?: string | null): string {
+  if (!value) return "-";
+  return new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
+}
+
 /** Slug the way the backend validates it: lowercase words joined by single hyphens. */
 export function slugify(value: string): string {
   return value

@@ -1,5 +1,5 @@
 import { aiModel } from "../user-ai/user-ai.runtime.js";
-import type { DetectedTag, ScoredPaper, SearchUnderstanding } from "@trend/shared-types";
+import type { DetectedTag, ScoredPaper, SearchCoverageHint, SearchUnderstanding } from "@trend/shared-types";
 import { env } from "../../config/env.js";
 import { AppError } from "../../common/exceptions/app-error.js";
 import { logger } from "../../infrastructure/logger.js";
@@ -322,6 +322,26 @@ function hasExplicitTaxonomyFilter(params: SemanticSearchParams): boolean {
 }
 
 /**
+ * Thin-coverage hint: the query is exactly a topic, subfield or keyword the corpus holds few papers of (and, for
+ * taxonomy nodes, OpenAlex holds more). Independent of the filter/boost decision. Undefined when there is no hint.
+ */
+function coverageHint(target: DetectedTag | null | undefined): SearchCoverageHint | undefined {
+  if (!env.TOPIC_BACKFILL_SEARCH_ENABLED || !target) return undefined;
+  if (target.kind !== "topic" && target.kind !== "subfield" && target.kind !== "keyword") return undefined;
+  if (target.paperCount >= env.TOPIC_BACKFILL_THIN_MAX_PAPERS) return undefined;
+  // For keywords the OpenAlex size is unknown, so only taxonomy nodes can be compared.
+  if (target.kind !== "keyword" && !((target.worksCount ?? 0) > target.paperCount)) return undefined;
+  return {
+    targetKind: target.kind,
+    targetId: target.id,
+    name: target.name,
+    localPapers: target.paperCount,
+    openalexWorks: target.kind === "keyword" ? null : target.worksCount ?? null,
+    filter: target.filter,
+  };
+}
+
+/**
  * Deterministic query understanding (never an LLM): decide whether the query is a catalogue entry that
  * can hard-filter the search, or only a hint that boosts papers carrying it. Any failure degrades to
  * plain search.
@@ -333,7 +353,8 @@ async function understandQuery(params: SemanticSearchParams): Promise<SearchUnde
   const started = Date.now();
   let understanding: SearchUnderstanding;
   try {
-    const { detectedTags, best, coversQuery, corpusSize } = await resolveQueryTags(params.q);
+    const { detectedTags, best, coversQuery, corpusSize, coverageTarget } = await resolveQueryTags(params.q);
+    const coverage = coverageHint(coverageTarget);
     if (detectedTags.length === 0 || !best) {
       understanding = noUnderstanding();
     } else if (
@@ -346,6 +367,7 @@ async function understandQuery(params: SemanticSearchParams): Promise<SearchUnde
     } else {
       understanding = { mode: "boost", detectedTags, appliedTag: null, fellBack: false };
     }
+    if (coverage) understanding.coverage = coverage;
   } catch (err) {
     logger.warn({ err }, "query understanding failed; searching without tags");
     return noUnderstanding();
@@ -381,6 +403,7 @@ async function fetchUnderstoodPool(
   if (planned.mode === "filter" && planned.appliedTag) {
     hits = await fetchScoredPool(q, withTagFilter(params, planned.appliedTag), poolSize);
     if (hits.length < env.SEARCH_TAG_FALLBACK_MIN_RESULTS) {
+      // `...planned` carries the coverage hint over unchanged.
       understanding = { ...planned, mode: "boost", appliedTag: null, fellBack: true };
       hits = await fetchScoredPool(q, params, poolSize);
     }

@@ -140,6 +140,10 @@ export const API_ROUTES = {
   search: {
     semantic: "/search", 
   },
+  topicBackfill: {
+    request: "/topic-backfill",
+    run: (id: string) => `/topic-backfill/runs/${encodeURIComponent(id)}`,
+  },
   trends: {
     topic: (topic: string) => `/trends/${encodeURIComponent(topic)}`,
   },
@@ -202,6 +206,10 @@ export const API_ROUTES = {
     auditLogs: "/admin/audit-logs",
     workers: "/admin/workers",
     settings: "/admin/settings",
+    topicBackfill: {
+      request: "/admin/topic-backfill",
+      runs: "/admin/topic-backfill/runs",
+    },
     taxonomy: {
       stats: "/admin/taxonomy/stats",
       nodes: "/admin/taxonomy/nodes",

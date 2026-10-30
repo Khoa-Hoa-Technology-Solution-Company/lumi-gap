@@ -131,6 +131,44 @@ export interface TagApplyJob {
   tagId: string | null;
 }
 
+export type TopicBackfillTargetKind = "topic" | "subfield" | "keyword" | "tag";
+export type TopicBackfillState = "queued" | "running" | "completed" | "failed";
+/** admin: started from the catalogue. search: a signed-in user asked from a thin search result. */
+export type TopicBackfillTrigger = "admin" | "search";
+
+/** One on-demand OpenAlex import for a catalogue entry. */
+export interface TopicBackfillRun {
+  id: string;
+  targetKind: TopicBackfillTargetKind;
+  targetId: string;
+  targetName: string;
+  state: TopicBackfillState;
+  trigger: TopicBackfillTrigger;
+  /** Budget: the run stops after importing this many new papers. */
+  maxNewPapers: number;
+  /** Local papers under the entry when the run was requested. */
+  paperCountBefore: number;
+  fetchedCount: number;
+  /** New papers imported so far. */
+  insertedCount: number;
+  /** Works already in the corpus, left untouched. */
+  skippedCount: number;
+  rejectedCount: number;
+  pagesFetched: number;
+  /** Admin responses only; always null for other users. */
+  errorMessage: string | null;
+  startedAt: ISODateString | null;
+  finishedAt: ISODateString | null;
+  createdAt: ISODateString;
+}
+
+/** Body of the request endpoints. */
+export interface TopicBackfillRequestResult {
+  run: TopicBackfillRun;
+  /** False when the request attached to a live run, or (search only) a run finished within the cooldown. */
+  created: boolean;
+}
+
 export interface TaxonomyStats {
   /** Active papers. */
   papers: number;

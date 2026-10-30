@@ -23,7 +23,7 @@ import { probeAppearsIn } from "./gap-probe-query.js";
 
 /** Search results are stable for a day; caching keeps a preview and the enrichment job on the same list. */
 const SEARCH_CACHE_TTL_SECONDS = 24 * 60 * 60;
-const openAlexId = (work: OpenAlexWork) => (work.id ?? "").replace("https://openalex.org/", "");
+export const openAlexId = (work: OpenAlexWork) => (work.id ?? "").replace("https://openalex.org/", "");
 
 /** Top OpenAlex works for a query (relevance order), cached. Throws on failure; callers decide. */
 async function searchWorks(query: string, perPage: number): Promise<OpenAlexWork[]> {
@@ -36,7 +36,7 @@ async function searchWorks(query: string, perPage: number): Promise<OpenAlexWork
 }
 
 /** Local active papers among the given OpenAlex ids (as stored: "W123"). */
-async function presentInCorpus(ids: string[]): Promise<Set<string>> {
+export async function presentInCorpus(ids: string[]): Promise<Set<string>> {
   if (!ids.length) return new Set();
   const rows = await getPrisma().paper.findMany({ where: { openalexId: { in: ids }, dataStatus: "active" }, select: { openalexId: true } });
   return new Set(rows.flatMap((row) => (row.openalexId ? [row.openalexId] : [])));

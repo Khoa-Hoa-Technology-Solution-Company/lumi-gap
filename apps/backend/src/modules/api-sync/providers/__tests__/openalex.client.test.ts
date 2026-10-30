@@ -55,6 +55,18 @@ describe("OpenAlex Works request contract", () => {
     expect(url.searchParams.get("search")).toBe("natural language processing");
   });
 
+  it("sends sort only when asked, and keeps it beside a filter and cursor", () => {
+    const sorted = buildOpenAlexPageUrl({
+      filterExpression: "topics.id:T10028,has_abstract:true",
+      sort: "cited_by_count:desc",
+      cursor: "*",
+      perPage: 100,
+    });
+    expect(sorted.searchParams.get("sort")).toBe("cited_by_count:desc");
+    expect(sorted.searchParams.get("filter")).toBe("topics.id:T10028,has_abstract:true");
+    expect(buildOpenAlexPageUrl({ searchText: "x", cursor: "*" }).searchParams.has("sort")).toBe(false);
+  });
+
   it("uses a seeded sample without a cursor for a bounded planned stratum", () => {
     const url = buildOpenAlexPageUrl({
       filterExpression: "primary_topic.domain.id:4,from_publication_date:2020-01-01",

@@ -47,17 +47,24 @@ const base = { q: "topic modeling", page: 1, pageSize: 20 };
 const env2 = env as unknown as Record<string, unknown>;
 const original = {
   SEARCH_AUTO_TAGS: env.SEARCH_AUTO_TAGS,
+  TOPIC_BACKFILL_SEARCH_ENABLED: env.TOPIC_BACKFILL_SEARCH_ENABLED,
+  TOPIC_BACKFILL_THIN_MAX_PAPERS: env.TOPIC_BACKFILL_THIN_MAX_PAPERS,
 };
+function restoreEnv() {
+  env2.SEARCH_AUTO_TAGS = original.SEARCH_AUTO_TAGS;
+  env2.TOPIC_BACKFILL_SEARCH_ENABLED = original.TOPIC_BACKFILL_SEARCH_ENABLED;
+  env2.TOPIC_BACKFILL_THIN_MAX_PAPERS = original.TOPIC_BACKFILL_THIN_MAX_PAPERS;
+}
 
 beforeEach(() => {
   vi.resetAllMocks();
-  env2.SEARCH_AUTO_TAGS = original.SEARCH_AUTO_TAGS;
+  restoreEnv();
   m.retrieveScored.mockResolvedValue(hits(30));
   m.resolveQueryTags.mockResolvedValue({ detectedTags: [], best: null, coversQuery: false });
 });
 
 afterEach(() => {
-  env2.SEARCH_AUTO_TAGS = original.SEARCH_AUTO_TAGS;
+  restoreEnv();
 });
 
 const filtersOf = (call: number) => m.retrieveScored.mock.calls[call]![0].filters;
@@ -273,5 +280,145 @@ describe("searchService.semantic query understanding", () => {
 
     expect(result).toMatchObject({ papers: [], total: 0, reranked: false });
     expect(result.understanding).toMatchObject({ mode: "boost", fellBack: true });
+  });
+});
+
+describe("searchService.semantic thin-coverage hint", () => {
+  const thin = (over: Partial<DetectedTag> = {}) => tag({ paperCount: 25, worksCount: 4000, ...over });
+  const resolved = (best: DetectedTag | null, coverageTarget: DetectedTag | null, coversQuery = true) => ({
+    detectedTags: best ? [best] : [],
+    best,
+    coversQuery,
+    coverageTarget,
+  });
+  const expectedHint = {
+    targetKind: "topic", targetId: "t-tm", name: "Topic Modeling", localPapers: 25, openalexWorks: 4000,
+    filter: { key: "topicIds", value: "T10028" },
+  };
+
+  it("filter mode: a thin topic can still filter and carries the hint", async () => {
+    const t = thin();
+    m.resolveQueryTags.mockResolvedValue(resolved(t, t));
+
+    const result = await searchService.semantic(base);
+
+    expect(filtersOf(0).topicIds).toEqual(["T10028"]);
+    expect(result.understanding).toMatchObject({ mode: "filter", fellBack: false });
+    expect(result.understanding.coverage).toEqual(expectedHint);
+  });
+
+  it("boost mode carries the hint", async () => {
+    const t = thin({ paperCount: 5, confidence: 0.5 });
+    m.resolveQueryTags.mockResolvedValue(resolved(t, t, false));
+
+    const result = await searchService.semantic(base);
+
+    expect(result.understanding.mode).toBe("boost");
+    expect(result.understanding.coverage).toEqual({ ...expectedHint, localPapers: 5 });
+  });
+
+  it("mode none carries the hint for an entry with no local papers", async () => {
+    m.resolveQueryTags.mockResolvedValue(resolved(null, thin({ paperCount: 0 })));
+
+    const result = await searchService.semantic(base);
+
+    expect(result.understanding).toEqual({
+      mode: "none", detectedTags: [], appliedTag: null, fellBack: false,
+      coverage: { ...expectedHint, localPapers: 0 },
+    });
+    expect(m.retrieveScored).toHaveBeenCalledTimes(1);
+  });
+
+  it("survives the unfiltered fallback", async () => {
+    const t = thin();
+    m.resolveQueryTags.mockResolvedValue(resolved(t, t));
+    m.retrieveScored.mockResolvedValueOnce(hits(1)).mockResolvedValueOnce(hits(3));
+
+    const result = await searchService.semantic(base);
+
+    expect(result.understanding).toMatchObject({ mode: "boost", fellBack: true });
+    expect(result.understanding.coverage).toEqual(expectedHint);
+  });
+
+  it("survives the rerank path", async () => {
+    const t = thin();
+    m.resolveQueryTags.mockResolvedValue(resolved(t, t));
+    m.cachedGenerate.mockImplementation(async (args: { keyParts: { candidateIds: string[] } }) =>
+      Object.fromEntries(args.keyParts.candidateIds.map((id) => [id, 0.9])));
+
+    const result = await searchService.semantic({ ...base, rerank: true, userId: "u1" });
+
+    expect(result.understanding.coverage).toEqual(expectedHint);
+  });
+
+  it("a keyword has openalexWorks null and needs no works comparison", async () => {
+    const kw = tag({ kind: "keyword", id: "k-1", name: "Graph databases", openalexId: undefined, paperCount: 7, filter: { key: "keywordIds", value: "k-1" } });
+    m.resolveQueryTags.mockResolvedValue(resolved(kw, kw));
+
+    const result = await searchService.semantic(base);
+
+    expect(result.understanding.coverage).toEqual({
+      targetKind: "keyword", targetId: "k-1", name: "Graph databases", localPapers: 7, openalexWorks: null,
+      filter: { key: "keywordIds", value: "k-1" },
+    });
+  });
+
+  it("is absent when the feature is disabled", async () => {
+    env2.TOPIC_BACKFILL_SEARCH_ENABLED = false;
+    const t = thin();
+    m.resolveQueryTags.mockResolvedValue(resolved(t, t));
+
+    const result = await searchService.semantic(base);
+
+    expect(result.understanding).not.toHaveProperty("coverage");
+    expect(result.understanding.mode).toBe("filter");
+  });
+
+  it("is absent when there is no coverage target", async () => {
+    m.resolveQueryTags.mockResolvedValue(resolved(thin(), null));
+
+    expect(await searchService.semantic(base)).not.toHaveProperty("understanding.coverage");
+  });
+
+  it("is absent when the topic is not thin", async () => {
+    env2.TOPIC_BACKFILL_THIN_MAX_PAPERS = 30;
+    const t = thin({ paperCount: 30 });
+    m.resolveQueryTags.mockResolvedValue(resolved(t, t));
+
+    expect((await searchService.semantic(base)).understanding).not.toHaveProperty("coverage");
+
+    env2.TOPIC_BACKFILL_THIN_MAX_PAPERS = 100;
+    const result = await searchService.semantic(base);
+    expect(result.understanding.coverage).toMatchObject({ localPapers: 30 });
+  });
+
+  it.each([
+    ["worksCount equals paperCount", { paperCount: 10, worksCount: 10 }],
+    ["worksCount is below paperCount", { paperCount: 10, worksCount: 4 }],
+    ["worksCount is unknown", { paperCount: 10, worksCount: undefined }],
+  ])("is absent when %s", async (_label, over) => {
+    const t = thin(over);
+    m.resolveQueryTags.mockResolvedValue(resolved(t, t));
+
+    expect((await searchService.semantic(base)).understanding).not.toHaveProperty("coverage");
+  });
+
+  it("is absent for a target of another kind", async () => {
+    const t = thin({ kind: "field", filter: { key: "fieldIds", value: "17" } });
+    m.resolveQueryTags.mockResolvedValue(resolved(t, t));
+
+    expect((await searchService.semantic(base)).understanding).not.toHaveProperty("coverage");
+  });
+
+  it("is absent when auto tags are off, even for a thin target", async () => {
+    const t = thin();
+    m.resolveQueryTags.mockResolvedValue(resolved(t, t));
+
+    const result = await searchService.semantic({ ...base, autoTags: false });
+    const explicit = await searchService.semantic({ ...base, topicIds: ["T1"] });
+
+    expect(m.resolveQueryTags).not.toHaveBeenCalled();
+    expect(result.understanding).toEqual({ mode: "none", detectedTags: [], appliedTag: null, fellBack: false });
+    expect(explicit.understanding).not.toHaveProperty("coverage");
   });
 });

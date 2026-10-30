@@ -43,6 +43,8 @@ export interface DetectedTag {
   name: string;
   /** Active local papers under this entry. */
   paperCount: number;
+  /** Works in the whole of OpenAlex; taxonomy nodes only. */
+  worksCount?: number;
   /** 0..1; how strongly the query is about this entry. */
   confidence: number;
   source: DetectedTagSource;
@@ -58,6 +60,19 @@ export interface DetectedTag {
  */
 export type SearchUnderstandingMode = "filter" | "boost" | "none";
 
+/** The query is exactly a catalogue entry the corpus holds little of, so more papers can be requested from OpenAlex. */
+export interface SearchCoverageHint {
+  targetKind: "topic" | "subfield" | "keyword";
+  /** research_topics.id or keywords.id. */
+  targetId: string;
+  name: string;
+  localPapers: number;
+  /** Works in the whole of OpenAlex; null for keywords, where it is unknown. */
+  openalexWorks: number | null;
+  /** Lists the entry's papers. Fresh imports have no embeddings yet, so a text search may not reach them. */
+  filter: { key: DetectedTagFilterKey; value: string };
+}
+
 /** meta.understanding of GET /search. */
 export interface SearchUnderstanding {
   mode: SearchUnderstandingMode;
@@ -66,6 +81,8 @@ export interface SearchUnderstanding {
   appliedTag: DetectedTag | null;
   /** True when a filter was planned but returned too few papers, so the search re-ran unfiltered in boost mode. */
   fellBack: boolean;
+  /** Present when coverage is thin; can accompany any mode, including "none" for an entry with no local papers. */
+  coverage?: SearchCoverageHint;
 }
 
 export interface SearchFilters {

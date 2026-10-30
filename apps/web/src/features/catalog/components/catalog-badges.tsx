@@ -1,4 +1,4 @@
-import type { KeywordStatus, PaperTagSource, TagStatus, TaxonomyLevel, TaxonomyNodeStatus } from "@trend/shared-types";
+import type { KeywordStatus, PaperTagSource, TagStatus, TaxonomyLevel, TaxonomyNodeStatus, TopicBackfillState } from "@trend/shared-types";
 import { Badge } from "@/components/ui/badge";
 import { useI18n } from "@/i18n";
 
@@ -47,6 +47,25 @@ const STATUS_TONES: Record<TaxonomyNodeStatus | KeywordStatus | TagStatus, keyof
 export function StatusBadge({ status }: { status: TaxonomyNodeStatus | KeywordStatus | TagStatus }) {
   const { t } = useI18n();
   return <Badge variant="outline" className={TONES[STATUS_TONES[status]]}>{t(STATUS_LABELS[status])}</Badge>;
+}
+
+const BACKFILL_STATE_LABELS: Record<TopicBackfillState, string> = {
+  queued: "Queued",
+  running: "Running",
+  completed: "Completed",
+  failed: "Failed",
+};
+
+const BACKFILL_STATE_TONES: Record<TopicBackfillState, keyof typeof TONES> = {
+  queued: "slate",
+  running: "blue",
+  completed: "green",
+  failed: "rose",
+};
+
+export function BackfillStateBadge({ state }: { state: TopicBackfillState }) {
+  const { t } = useI18n();
+  return <Badge variant="outline" className={TONES[BACKFILL_STATE_TONES[state]]}>{t(BACKFILL_STATE_LABELS[state])}</Badge>;
 }
 
 export const SOURCE_LABELS: Record<PaperTagSource, string> = {

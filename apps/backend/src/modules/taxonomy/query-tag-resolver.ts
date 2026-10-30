@@ -22,6 +22,11 @@ export interface ResolveQueryTagsResult {
   coversQuery: boolean;
   /** Active papers in the corpus when the dictionary was loaded (0 when unknown), to judge how narrow a tag is. */
   corpusSize: number;
+  /**
+   * The topic, subfield or keyword the WHOLE query names exactly (by name or alias, never fuzzy), including entries
+   * with no local papers yet. It never feeds `detectedTags`/`best`; search uses it to offer fetching more papers.
+   */
+  coverageTarget: DetectedTag | null;
 }
 
 type BaseSource = Exclude<DetectedTagSource, "fuzzy">;
@@ -32,6 +37,8 @@ interface DictionaryEntry {
   openalexId?: string;
   name: string;
   paperCount: number;
+  /** Works in the whole of OpenAlex; taxonomy nodes only. */
+  worksCount?: number;
   source: BaseSource;
   filter: { key: DetectedTagFilterKey; value: string };
 }
@@ -46,7 +53,7 @@ interface Candidate {
  * Bump when the matching algorithm, confidences or the output shape change: cached results of an
  * older algorithm must not be served.
  */
-const CACHE_VERSION = "v3";
+const CACHE_VERSION = "v4";
 const CACHE_TTL_SECONDS = 600;
 
 const MAX_TAGS = 5;
@@ -70,6 +77,10 @@ const SOURCE_CONFIDENCE: Record<BaseSource, number> = {
   alias: 0.95,
   "openalex-keyword": 0.8,
 };
+/** Levels whose empty (zero-paper) entries are still indexed, so search can offer to fetch their papers. */
+const BACKFILL_LEVELS: readonly string[] = ["topic", "subfield"];
+/** Kinds a coverage hint can point at (a backfill can import papers for these). */
+const COVERAGE_KINDS: ReadonlySet<DetectedTagKind> = new Set<DetectedTagKind>(["topic", "subfield", "keyword"]);
 /** Rank used to keep the most trustworthy source when one entry reaches a phrase several ways. */
 const SOURCE_RANK: Record<BaseSource, number> = { name: 3, alias: 2, "openalex-keyword": 1 };
 
@@ -128,11 +139,19 @@ async function loadDictionary(): Promise<Dictionary> {
   const started = Date.now();
   const prisma = getPrisma();
   const [topics, keywords, tags, activePapers] = await Promise.all([
-    // Entries without local papers can neither filter nor boost anything, so they are left out.
+    // Keywords and tags without local papers can neither filter nor boost anything, so they are left out. Topics and
+    // subfields that OpenAlex knows but the corpus lacks are kept (indexed by name/alias only) for coverage hints.
     prisma.researchTopic.findMany({
-      where: { status: "active", paperCount: { gte: 1 } },
+      where: {
+        status: "active",
+        OR: [
+          { paperCount: { gte: 1 } },
+          { paperCount: 0, worksCount: { gt: 0 }, level: { in: [...BACKFILL_LEVELS] } },
+        ],
+      },
       select: {
-        id: true, level: true, openalexId: true, topicName: true, aliases: true, openalexKeywords: true, paperCount: true,
+        id: true, level: true, openalexId: true, topicName: true, aliases: true, openalexKeywords: true,
+        paperCount: true, worksCount: true,
       },
     }),
     prisma.keyword.findMany({
@@ -151,17 +170,21 @@ async function loadDictionary(): Promise<Dictionary> {
   for (const row of topics) {
     const filterKey = FILTER_KEY_BY_LEVEL[row.level];
     if (!filterKey || !row.openalexId) continue;
+    const empty = row.paperCount < 1;
+    if (empty && !(BACKFILL_LEVELS.includes(row.level) && (row.worksCount ?? 0) > 0)) continue;
     const base = {
       kind: row.level as DetectedTagKind,
       id: row.id,
       openalexId: row.openalexId,
       name: row.topicName,
       paperCount: row.paperCount,
+      ...(typeof row.worksCount === "number" ? { worksCount: row.worksCount } : {}),
       filter: { key: filterKey, value: row.openalexId },
     };
     addEntry(map, normalizeTerm(row.topicName), { ...base, source: "name" });
     for (const alias of row.aliases) addEntry(map, normalizeTerm(alias), { ...base, source: "alias" });
-    if (row.level === "topic") {
+    // Empty entries stay out of the OpenAlex keyword index: those phrases are too noisy to suggest an import.
+    if (row.level === "topic" && !empty) {
       for (const keyword of row.openalexKeywords) {
         addEntry(map, normalizeTerm(keyword), { ...base, source: "openalex-keyword" });
       }
@@ -277,6 +300,7 @@ function matchNgrams(map: Dictionary, tokens: string[]): Map<string, Candidate> 
             ...(entry.openalexId ? { openalexId: entry.openalexId } : {}),
             name: entry.name,
             paperCount: entry.paperCount,
+            ...(entry.worksCount === undefined ? {} : { worksCount: entry.worksCount }),
             confidence: confidenceFor(entry, coverage),
             source: entry.source,
             matchedText: phrase,
@@ -295,6 +319,7 @@ interface FuzzyRow {
   openalex_id: string | null;
   name: string;
   paper_count: number;
+  works_count?: number | null;
   similarity: number;
 }
 
@@ -302,7 +327,7 @@ interface FuzzyRow {
 async function fuzzyCandidates(nq: string): Promise<Map<string, Candidate>> {
   const rows = await getPrisma().$queryRaw<FuzzyRow[]>(Prisma.sql`
     (SELECT 'keyword' AS kind, k.id::text AS id, NULL::text AS openalex_id, k.keyword_name AS name,
-            k.paper_count::int AS paper_count, similarity(k.normalized_name, ${nq})::float8 AS similarity
+            k.paper_count::int AS paper_count, NULL::int AS works_count, similarity(k.normalized_name, ${nq})::float8 AS similarity
      FROM keywords k
      WHERE k.status = 'active' AND k.paper_count >= 1
        AND k.normalized_name % ${nq} AND similarity(k.normalized_name, ${nq}) >= ${FUZZY_MIN_SIMILARITY}
@@ -310,7 +335,7 @@ async function fuzzyCandidates(nq: string): Promise<Map<string, Candidate>> {
      LIMIT ${FUZZY_LIMIT_PER_TABLE})
     UNION ALL
     (SELECT t.level AS kind, t.id::text AS id, t.openalex_id AS openalex_id, t.topic_name AS name,
-            t.paper_count::int AS paper_count, similarity(lower(t.topic_name), ${nq})::float8 AS similarity
+            t.paper_count::int AS paper_count, t.works_count::int AS works_count, similarity(lower(t.topic_name), ${nq})::float8 AS similarity
      FROM research_topics t
      WHERE t.status = 'active' AND t.openalex_id IS NOT NULL AND t.paper_count >= 1
        AND lower(t.topic_name) % ${nq} AND similarity(lower(t.topic_name), ${nq}) >= ${FUZZY_MIN_SIMILARITY}
@@ -318,7 +343,7 @@ async function fuzzyCandidates(nq: string): Promise<Map<string, Candidate>> {
      LIMIT ${FUZZY_LIMIT_PER_TABLE})
     UNION ALL
     (SELECT 'tag' AS kind, g.id::text AS id, NULL::text AS openalex_id, g.name AS name,
-            g.paper_count::int AS paper_count, similarity(lower(g.name), ${nq})::float8 AS similarity
+            g.paper_count::int AS paper_count, NULL::int AS works_count, similarity(lower(g.name), ${nq})::float8 AS similarity
      FROM tags g
      WHERE g.status = 'active' AND g.paper_count >= 1
        AND lower(g.name) % ${nq} AND similarity(lower(g.name), ${nq}) >= ${FUZZY_MIN_SIMILARITY}
@@ -345,6 +370,7 @@ async function fuzzyCandidates(nq: string): Promise<Map<string, Candidate>> {
         ...(row.openalex_id ? { openalexId: row.openalex_id } : {}),
         name: row.name,
         paperCount: Number(row.paper_count),
+        ...(row.works_count == null || kind === "keyword" || kind === "tag" ? {} : { worksCount: Number(row.works_count) }),
         confidence: round3(applyTagBonus(kind, Number(row.similarity) * FUZZY_CONFIDENCE_FACTOR)),
         source: "fuzzy",
         matchedText: nq,
@@ -355,25 +381,45 @@ async function fuzzyCandidates(nq: string): Promise<Map<string, Candidate>> {
   return candidates;
 }
 
-function finalize(candidates: Map<string, Candidate>): ResolveQueryTagsResult {
-  const ranked = [...candidates.values()]
-    .sort(
-      (a, b) =>
-        b.tag.confidence - a.tag.confidence
-        || Number(b.tag.kind === "tag") - Number(a.tag.kind === "tag")
-        || b.tag.paperCount - a.tag.paperCount,
-    )
-    .slice(0, MAX_TAGS);
+function compareCandidates(a: Candidate, b: Candidate): number {
+  return b.tag.confidence - a.tag.confidence
+    || Number(b.tag.kind === "tag") - Number(a.tag.kind === "tag")
+    || b.tag.paperCount - a.tag.paperCount;
+}
+
+/**
+ * The best-populated entry whose exact name/alias is the whole query; zero-paper entries qualify. Coverage is about
+ * what the corpus holds on the query, so a richer exact match of any other kind or source (a field, a curated tag, a
+ * topic through its OpenAlex keywords) means it is not thin and there is no target.
+ */
+function pickCoverageTarget(candidates: Map<string, Candidate>): DetectedTag | null {
+  const exact = [...candidates.values()].filter((candidate) => candidate.coverage === 1 && candidate.tag.source !== "fuzzy");
+  const target = exact
+    .filter(({ tag }) => (tag.source === "name" || tag.source === "alias") && COVERAGE_KINDS.has(tag.kind))
+    .sort((a, b) => b.tag.paperCount - a.tag.paperCount || compareCandidates(a, b))[0]?.tag;
+  if (!target || exact.some(({ tag }) => tag.paperCount > target.paperCount)) return null;
+  return target;
+}
+
+/**
+ * `ranking` feeds detectedTags/best and only ever holds entries with local papers; `all` may also hold the
+ * zero-paper entries and is consulted for the coverage target alone.
+ */
+function finalize(ranking: Map<string, Candidate>, all: Map<string, Candidate> = ranking): ResolveQueryTagsResult {
+  const ranked = [...ranking.values()].sort(compareCandidates).slice(0, MAX_TAGS);
   const top = ranked[0];
   return {
     detectedTags: ranked.map((candidate) => candidate.tag),
     best: top?.tag ?? null,
     coversQuery: !!top && top.coverage === 1 && top.tag.source !== "fuzzy",
     corpusSize,
+    coverageTarget: pickCoverageTarget(all),
   };
 }
 
-const EMPTY: ResolveQueryTagsResult = { detectedTags: [], best: null, coversQuery: false, corpusSize: 0 };
+const EMPTY: ResolveQueryTagsResult = {
+  detectedTags: [], best: null, coversQuery: false, corpusSize: 0, coverageTarget: null,
+};
 
 function emptyResult(): ResolveQueryTagsResult {
   return { ...EMPTY, detectedTags: [] };
@@ -398,10 +444,13 @@ export async function resolveQueryTags(q: string): Promise<ResolveQueryTagsResul
   }
 
   const tokens = nq.split(" ");
-  let candidates = matchNgrams(await getDictionary(), tokens);
-  if (candidates.size === 0 && tokens.length >= 2) candidates = await fuzzyCandidates(nq);
-
-  const result = finalize(candidates);
+  const matched = matchNgrams(await getDictionary(), tokens);
+  // Zero-paper entries must not change ranking, so they are neither part of the ranking nor of the "nothing
+  // matched" test that triggers the fuzzy fallback.
+  const ranking = new Map([...matched].filter(([, candidate]) => candidate.tag.paperCount >= 1));
+  const result = ranking.size === 0 && tokens.length >= 2
+    ? finalize(await fuzzyCandidates(nq), matched)
+    : finalize(ranking, matched);
   try {
     await cache.set(key, result, CACHE_TTL_SECONDS);
   } catch (err) {

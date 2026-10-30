@@ -250,6 +250,12 @@ services:
     <<: *backend-common
     command: ["pnpm", "--filter", "backend", "worker:tagging"]
 
+  # Imports the OpenAlex works a thin catalogue entry is missing, one requested
+  # run at a time, within the TOPIC_BACKFILL_* budgets. It has no schedule.
+  worker-topic-backfill:
+    <<: *backend-common
+    command: ["pnpm", "--filter", "backend", "worker:topic-backfill"]
+
   # The campaign is explicit and needs OPENALEX_API_KEY. It never starts a
   # campaign by itself; an admin must first plan and start one through the API.
   worker-openalex-ingest:

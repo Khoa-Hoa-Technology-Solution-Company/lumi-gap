@@ -278,3 +278,19 @@
 .search-understanding-remove svg { width: 16px; height: 16px; }
 .search-understanding-hint { color: var(--home-muted); font-size: 13px; }
 .search-understanding-link { min-height: 32px; padding: 0 4px; border: 0; background: transparent; color: var(--home-accent); font-size: 13px; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+
+/* Thin-coverage notice (offer to import more papers from OpenAlex) */
+.search-coverage { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin-top: 16px; padding: 12px 14px; border: 1px solid var(--home-line); border-radius: 12px; background: var(--home-surface); color: var(--home-ink); font-size: 14px; line-height: 1.45; }
+.search-coverage-icon { flex: none; width: 18px; height: 18px; color: var(--home-accent); }
+.search-coverage-body { display: grid; gap: 4px; flex: 1 1 260px; min-width: 0; overflow-wrap: anywhere; }
+.search-coverage-summary { margin: 0; }
+.search-coverage-status { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 0; color: var(--home-muted); font-size: 13px; }
+.search-coverage-progress { color: var(--home-ink); font-weight: 600; }
+.search-coverage-spinner { width: 14px; height: 14px; flex: none; color: var(--home-accent); animation: search-coverage-spin 1s linear infinite; }
+.search-coverage-actions { display: flex; flex: none; }
+@keyframes search-coverage-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .search-coverage-spinner { animation: none; } }
+@media (max-width: 480px) {
+  .search-coverage-actions { flex: 1 1 100%; }
+  .search-coverage-actions > * { width: 100%; justify-content: center; }
+}

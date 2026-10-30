@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArchiveRestore, ArrowLeft, Archive, Pencil, RefreshCw, Search } from "lucide-react";
+import { ArchiveRestore, ArrowLeft, Archive, DatabaseZap, Pencil, RefreshCw, Search } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { BackfillDialog } from "@/features/catalog/components/backfill-dialog";
+import { BackfillRunsSection } from "@/features/catalog/components/backfill-runs-section";
 import { StatusBadge } from "@/features/catalog/components/catalog-badges";
 import { apiErr, ErrorState } from "@/features/catalog/components/catalog-ui";
 import { EditTagDialog, RETAG_TOAST } from "@/features/catalog/components/tag-dialogs";
@@ -25,6 +27,7 @@ export function AdminTagDetailPage() {
   const { id } = useParams<{ id: string }>();
   const query = useAdminTag(id);
   const [editOpen, setEditOpen] = useState(false);
+  const [fetchOpen, setFetchOpen] = useState(false);
   const apply = useApplyTag();
   const archive = useArchiveTag();
   const update = useUpdateTag();
@@ -106,6 +109,10 @@ export function AdminTagDetailPage() {
                 <RefreshCw className="h-4 w-4" />
                 {t("Re-tag now")}
               </Button>
+              <Button variant="outline" size="sm" onClick={() => setFetchOpen(true)} disabled={tag.status === "archived"}>
+                <DatabaseZap className="h-4 w-4" />
+                {t("Fetch from OpenAlex")}
+              </Button>
               <Button variant="outline" size="sm" onClick={toggleArchive} disabled={archive.isPending || update.isPending}>
                 {tag.status === "archived" ? <ArchiveRestore className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
                 {tag.status === "archived" ? t("Restore") : t("Archive")}
@@ -121,8 +128,13 @@ export function AdminTagDetailPage() {
 
           <TagRulesSection key={tag.id} tag={tag} />
           <TagPreviewSection tagId={tag.id} />
+          <BackfillRunsSection targetKind="tag" targetId={tag.id} />
           <TagPapersSection tag={tag} />
           <EditTagDialog tag={tag} open={editOpen} onOpenChange={setEditOpen} />
+          <BackfillDialog
+            target={fetchOpen ? { kind: "tag", id: tag.id, name: tag.name } : undefined}
+            onClose={() => setFetchOpen(false)}
+          />
         </>
       )}
     </main>

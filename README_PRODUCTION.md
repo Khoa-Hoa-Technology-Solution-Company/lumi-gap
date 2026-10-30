@@ -243,6 +243,7 @@ The committed `Jenkinsfile` deploys:
 | `worker-paper-analysis` | Structured paper knowledge extraction |
 | `worker-corpus-validation` | Corpus validation jobs |
 | `worker-tagging` | Applies curated tag rules to papers, on admin edits and nightly |
+| `worker-topic-backfill` | Imports the OpenAlex works a thin catalogue entry is missing, on request |
 
 The regular deployment intentionally does **not** start:
 
@@ -253,6 +254,12 @@ Those workers change the corpus and must be started only for an approved sync or
 ingestion campaign. This prevents every web deployment from silently importing
 more papers.
 
+`worker-topic-backfill` also adds papers, but it has no schedule: it only runs a
+request from an admin or a signed-in user on a search with thin coverage. Each
+run stops at its `TOPIC_BACKFILL_*` budget, and requests from search share a limit
+of 2,000 new papers a day by default. Set `TOPIC_BACKFILL_SEARCH_ENABLED=false` to
+leave only the admin path.
+
 The web image is built with:
 
 ```text
@@ -260,7 +267,7 @@ VITE_API_BASE=https://api.lumigap.uk/api/v1
 ```
 
 The backend candidate must pass `/ready` before the live API container is
-replaced. Worker containers must remain running and all six required Redis
+replaced. Worker containers must remain running and all eight required Redis
 heartbeats must be fresh before the image is tagged `latest`. Jenkins also
 creates and validates `paper_vector_index_v2` before cutover. This index
 pre-filters year, status, paper type, access status, provider, source, language,

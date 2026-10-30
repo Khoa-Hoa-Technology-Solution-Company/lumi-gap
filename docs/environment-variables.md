@@ -190,6 +190,14 @@ Users can also save multiple personal API connections in Settings → AI Connect
 | `TAG_EMBEDDING_MIN_SEED` | `EnvSchema` / backend | Default 10; rule/manual papers with an embedding needed before a tag is expanded by embedding |
 | `TAG_EMBEDDING_MIN_SIMILARITY` | `EnvSchema` / backend | Default 0.82 (0-1); cosine similarity to the tag centroid |
 | `TAG_EMBEDDING_MAX_PAPERS` | `EnvSchema` / backend | Default 300; most papers one tag gains from embedding expansion per run |
+| `TOPIC_BACKFILL_SEARCH_ENABLED` | `EnvSchema` / backend | Default `true`; `false` hides the search hint and rejects user requests (admins can still start a backfill) |
+| `TOPIC_BACKFILL_THIN_MAX_PAPERS` | `EnvSchema` / backend | Default 30; an entry with fewer local papers counts as thin |
+| `TOPIC_BACKFILL_DEFAULT_NEW_PAPERS` | `EnvSchema` / backend | Default 100; new papers a run imports unless an admin sets another budget |
+| `TOPIC_BACKFILL_MAX_NEW_PAPERS` | `EnvSchema` / backend | Default 1000; largest budget an admin may set |
+| `TOPIC_BACKFILL_MAX_PAGES` | `EnvSchema` / backend | Default 10; OpenAlex pages (100 works each) one run may read |
+| `TOPIC_BACKFILL_USER_MAX_PER_HOUR` | `EnvSchema` / backend | Default 5; backfill requests per user per hour |
+| `TOPIC_BACKFILL_COOLDOWN_HOURS` | `EnvSchema` / backend | Default 24; hours before search can start another backfill of the same entry |
+| `TOPIC_BACKFILL_DAILY_MAX_PAPERS` | `EnvSchema` / backend | Default 2000; papers search-triggered runs may import in 24 hours across all users |
 | `GAP_SCARCE_ABS` | `EnvSchema` / backend | Default 5 |
 | `GAP_SCARCE_PCT` | `EnvSchema` / backend | Default 0.02 (0-1) |
 | `GAP_PARENT_RISING_MIN` | `EnvSchema` / backend | Default 10 |
