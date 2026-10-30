@@ -64,26 +64,101 @@ model Keyword {
   legacyMongoId  String?  @unique @map("legacy_mongo_id") @db.VarChar(24)
   keywordName    String   @map("keyword_name")
   normalizedName String   @unique @map("normalized_name")
+  /// Extra spellings (abbreviations, Vietnamese names) resolved to this keyword; stored normalized.
+  aliases        String[] @default([])
+  /// active | hidden | merged. A merged keyword points at its survivor through mergedIntoId.
+  status         String   @default("active") @db.VarChar(16)
+  mergedIntoId   String?  @map("merged_into_id") @db.Uuid
+  /// Local papers linked through paper_keywords.keyword_id, refreshed by the taxonomy backfill.
+  paperCount     Int      @default(0) @map("paper_count")
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
+  @@index([status, paperCount])
+  @@index([mergedIntoId])
   @@map("keywords")
 }
 
+/// OpenAlex taxonomy node (domain > field > subfield > topic); parentTopicId links each level to the one above.
 model ResearchTopic {
-  id            String   @id @default(uuid()) @db.Uuid
-  legacyMongoId String?  @unique @map("legacy_mongo_id") @db.VarChar(24)
-  parentTopicId String?  @map("parent_topic_id") @db.Uuid
-  topicName     String   @map("topic_name")
-  description   String?
-  researchField String?  @map("research_field")
-  openalexId    String?  @map("openalex_id")
-  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id               String    @id @default(uuid()) @db.Uuid
+  legacyMongoId    String?   @unique @map("legacy_mongo_id") @db.VarChar(24)
+  parentTopicId    String?   @map("parent_topic_id") @db.Uuid
+  /// domain | field | subfield | topic
+  level            String    @default("topic") @db.VarChar(16)
+  topicName        String    @map("topic_name")
+  description      String?
+  researchField    String?   @map("research_field")
+  /// Short OpenAlex id ("T10028" for a topic, "17" for a field); unique within a level.
+  openalexId       String?   @map("openalex_id")
+  /// Extra spellings resolved to this node; stored normalized.
+  aliases          String[]  @default([])
+  /// Keywords OpenAlex publishes for the topic.
+  openalexKeywords String[]  @default([]) @map("openalex_keywords")
+  /// Works in the whole of OpenAlex, from the taxonomy sync.
+  worksCount       Int       @default(0) @map("works_count")
+  /// Local papers classified under this node (any descendant topic counts), refreshed by the backfill.
+  paperCount       Int       @default(0) @map("paper_count")
+  /// active | hidden
+  status           String    @default("active") @db.VarChar(16)
+  syncedAt         DateTime? @map("synced_at") @db.Timestamptz(6)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
+  @@unique([level, openalexId], map: "research_topics_level_openalex_id_key")
   @@index([parentTopicId, topicName])
   @@index([openalexId])
+  @@index([level, status, paperCount])
   @@map("research_topics")
+}
+
+/// Curated tag an admin defines on top of the taxonomy (e.g. "LLM in education").
+model Tag {
+  id          String   @id @default(uuid()) @db.Uuid
+  slug        String   @unique @db.VarChar(120)
+  name        String   @db.VarChar(200)
+  description String?
+  /// active | archived
+  status      String   @default("active") @db.VarChar(16)
+  color       String?  @db.VarChar(16)
+  paperCount  Int      @default(0) @map("paper_count")
+  createdById String?  @map("created_by_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([status, name])
+  @@map("tags")
+}
+
+/// A tag is the union of its include rules minus its exclude rules; each rule names one taxonomy node or one keyword.
+model TagRule {
+  id              String   @id @default(uuid()) @db.Uuid
+  tagId           String   @map("tag_id") @db.Uuid
+  /// topic | keyword
+  ruleKind        String   @map("rule_kind") @db.VarChar(16)
+  /// include | exclude
+  effect          String   @default("include") @db.VarChar(16)
+  researchTopicId String?  @map("research_topic_id") @db.Uuid
+  keywordId       String?  @map("keyword_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([tagId])
+  @@index([researchTopicId])
+  @@index([keywordId])
+  @@map("tag_rules")
+}
+
+model PaperTag {
+  paperId    String   @map("paper_id") @db.Uuid
+  tagId      String   @map("tag_id") @db.Uuid
+  /// rule | embedding | manual. Manual rows are never replaced by automatic tagging.
+  source     String   @db.VarChar(16)
+  confidence Float?
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@id([paperId, tagId])
+  @@index([tagId, paperId])
+  @@map("paper_tags")
 }
 
 model Paper {

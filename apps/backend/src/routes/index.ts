@@ -12,6 +12,8 @@ import { bookmarkRouter } from "../modules/bookmarks/bookmark.routes.js";
 import { analyticsRouter } from "../modules/analytics/analytics.routes.js";
 import { qualityRouter } from "../modules/quality/quality.routes.js";
 import { adminRouter } from "../modules/admin/admin.routes.js";
+import { tagRouter } from "../modules/tags/tag.routes.js";
+import { taxonomyRouter } from "../modules/taxonomy/taxonomy.routes.js";
 import { notificationRouter } from "../modules/notifications/notification.routes.js";
 import { projectRouter } from "../modules/projects/project.routes.js";
 import { homeRouter } from "../modules/home/home.routes.js";
@@ -80,6 +82,8 @@ apiRouter.use("/admin", syncRouter); // /admin/sync
 apiRouter.use("/admin", embeddingRouter); // /admin/embed
 apiRouter.use("/admin", pipelineRouter); // /admin/pipeline/status
 apiRouter.use("/admin", evaluationRouter); // /admin/evaluation/summary
+apiRouter.use("/admin/taxonomy", taxonomyRouter); // taxonomy nodes + keyword catalogue
+apiRouter.use("/admin/tags", tagRouter); // curated tags + rules
 apiRouter.use("/admin/ai-connections", platformAiRouter); // platform-wide AI connection (admins)
 apiRouter.use("/admin", adminRouter); // /admin/users, /admin/stats — user management
 apiRouter.use("/admin", academicProfileAdminRouter);

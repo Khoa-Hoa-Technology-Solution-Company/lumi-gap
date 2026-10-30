@@ -40,3 +40,4 @@ export * from "./forum-citations.js";
 export * from "./project-contributions.js";
 export * from "./manuscript.js";
 export * from "./github.js";
+export * from "./taxonomy.js";

@@ -3,6 +3,7 @@ import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { logger } from "../../infrastructure/logger.js";
 import { publicDatabaseId } from "../../infrastructure/database/database-id.js";
 import { auditService } from "../audit/audit.service.js";
+import { taxonomyBackfillService } from "../taxonomy/taxonomy-backfill.service.js";
 import { fetchOpenAlexPage } from "./providers/openalex.client.js";
 import { hasOpenAlexCitationMetadata, normalizeOpenAlexWork, type NormalizedPaper } from "./providers/openalex.normalizer.js";
 import type { OpenAlexWork } from "./providers/openalex.types.js";
@@ -44,5 +45,7 @@ async function upsertPaper(normalized: NormalizedPaper, purpose?: "citation"): P
   const data = { doi: normalized.externalIds.doi, openalexId: normalized.externalIds.openalexId, title: normalized.title, abstractText: normalized.abstractText, journalName: normalized.journalName, publicationYear: normalized.publicationYear, publicationDate: normalized.publicationDate, paperKind: normalized.paperKind, language: normalized.language, openAccessStatus: normalized.openAccessStatus, openAccessUrl: normalized.openAccessUrl, licenseName: normalized.licenseName, citationCount: normalized.citationCount, fwci: normalized.fwci, citationNormalizedPercentile: normalized.citationNormalizedPercentile as never, relatedWorksCount: normalized.relatedWorksCount, primaryProvider: "openalex", paperStatus: OPENALEX_PAPER_STATUS, dataStatus: isAiAnalyzable || publicCitationMetadata ? "active" : "low-quality", isAiAnalyzable, referencedWorks: normalized.referencedWorks, relatedWorks: normalized.relatedWorks };
   const paper = existing ? await prisma.paper.update({ where: { id: existing.id }, data: { ...data, citationCount: Math.max(existing.citationCount, normalized.citationCount) } }) : await prisma.paper.create({ data });
   await prisma.$transaction(async (tx) => { await Promise.all([tx.paperAuthor.deleteMany({ where: { paperId: paper.id } }), tx.paperKeyword.deleteMany({ where: { paperId: paper.id } }), tx.paperTopic.deleteMany({ where: { paperId: paper.id } })]); if (normalized.authors.length) await tx.paperAuthor.createMany({ data: normalized.authors.map((author) => ({ paperId: paper.id, displayName: author.displayName, position: author.position, isCorresponding: author.isCorresponding })) }); if (normalized.keywords.length) await tx.paperKeyword.createMany({ data: normalized.keywords.map((keyword, position) => ({ paperId: paper.id, keywordName: keyword.keywordName, detectedBy: keyword.detectedBy, confidence: keyword.confidence, position })) }); if (normalized.topics.length) await tx.paperTopic.createMany({ data: normalized.topics.map((topic, position) => ({ paperId: paper.id, ...topic, position })) }); });
+  // Best-effort: a failed link must not lose the ingested paper; the next taxonomy backfill links it.
+  try { await taxonomyBackfillService.linkPaperTaxonomy(prisma, paper.id); } catch (error) { logger.warn({ error, paperId: paper.id }, "taxonomy link failed; left for backfill"); }
   return { action: existing ? "update" : "insert", paper: { ...paper, _id: { toString: () => publicDatabaseId(paper) } } };
 }

@@ -149,7 +149,7 @@ export async function fetchOpenAlexWorksByIds(
   return json.results ?? [];
 }
 
-function appendOpenAlexIdentity(url: URL): void {
+export function appendOpenAlexIdentity(url: URL): void {
   if (env.OPENALEX_MAILTO) url.searchParams.set("mailto", env.OPENALEX_MAILTO);
   if (env.OPENALEX_API_KEY) url.searchParams.set("api_key", env.OPENALEX_API_KEY);
 }
@@ -222,7 +222,7 @@ export async function fetchOpenAlexWorkById(id: string): Promise<OpenAlexWork | 
   return await response.json() as OpenAlexWork;
 }
 
-async function fetchWithRetry(url: string, attempt = 1): Promise<OpenAlexPage> {
+export async function fetchWithRetry(url: string, attempt = 1): Promise<OpenAlexPage> {
   await sleep(RATE_LIMIT_DELAY_MS);
   const t0 = Date.now();
   try {
