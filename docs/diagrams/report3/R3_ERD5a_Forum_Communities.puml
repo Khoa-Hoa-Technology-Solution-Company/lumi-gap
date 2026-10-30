@@ -49,6 +49,7 @@ entity ForumPost #EFE6F8;line:6A3FA0 {
   --
   authorId <<FK User>>
   communityId <<FK>>
+  researchCommunityId <<FK>>
   researchGapId <<FK>>
   linkedPaperId <<FK>>
   linkedResearchGapId <<FK>>
@@ -79,7 +80,8 @@ entity ResearchGap #FFFFFF;line:6A3FA0;line.dashed {
   * id <<PK>>
 }
 Community ||--o{ CommunityMembership
-Community |o--o{ ForumPost
+Community |o--o{ ForumPost : communityId
+Community |o--o{ ForumPost : researchCommunityId
 ForumComment |o--o{ ForumComment : parentCommentId
 ForumComment |o--o{ ForumPost : acceptedCommentId
 ForumPost ||--o{ ForumComment : postId

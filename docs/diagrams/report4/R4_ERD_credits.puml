@@ -24,7 +24,7 @@ skinparam legend {
 skinparam stereotypeFontSize 10
 hide circle
 hide empty methods
-title Physical ERD - Credits, payments and user AI connections
+title Physical ERD - Credits, payments and AI connections (user and platform)
 entity credit_transactions #EFE6F8;line:6A3FA0 {
   * id : uuid <<PK>>
   --
@@ -57,6 +57,15 @@ entity user_ai_preferences #EFE6F8;line:6A3FA0 {
   --
   connection_id : uuid <<FK>>
 }
+entity platform_ai_connections #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  created_by_id : uuid <<FK users>>
+  is_active : boolean <<UK*>>
+  ..
+  name : varchar(100)
+  provider : varchar(24)
+}
 entity reports #EFE6F8;line:6A3FA0 {
   * id : uuid <<PK>>
   --
@@ -84,5 +93,7 @@ user_ai_connections |o--o{ user_ai_preferences
 legend bottom
 Crow's-foot notation. PK primary key, FK foreign key, UK unique key.
 FK <name>: the foreign key references a table that is not drawn here.
+UK*: partial unique index (unique only for rows matching its WHERE condition):
+   at most one platform AI connection is active.
 endlegend
 @enduml

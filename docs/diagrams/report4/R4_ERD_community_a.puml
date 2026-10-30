@@ -49,6 +49,7 @@ entity forum_posts #EFE6F8;line:6A3FA0 {
   --
   author_id : uuid <<FK users>>
   community_id : uuid <<FK>>
+  research_community_id : uuid <<FK>>
   research_gap_id : uuid <<FK>>
   linked_paper_id : uuid <<FK>>
   linked_research_gap_id : uuid <<FK>>
@@ -79,7 +80,8 @@ entity projects #FFFFFF;line:6A3FA0;line.dashed {
   * id : uuid <<PK>>
 }
 communities ||--o{ community_memberships
-communities |o--o{ forum_posts
+communities |o--o{ forum_posts : community_id
+communities |o--o{ forum_posts : research_community_id
 forum_comments |o--o{ forum_comments : parent_comment_id
 forum_comments |o--o{ forum_posts : accepted_comment_id
 forum_posts ||--o{ forum_comments : post_id
@@ -94,5 +96,7 @@ Dashed boxes belong to another diagram (key only).
 UK*: partial unique index (unique only for rows matching its WHERE condition).
 communities.name is not a UK: communities_active_name_key is a partial unique index
    on the normalised name expression.
+forum_posts.research_community_id must reference a research community,
+   not a forum category (trigger forum_posts_research_community_guard).
 endlegend
 @enduml

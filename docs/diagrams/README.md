@@ -1,6 +1,6 @@
 # Diagrams (Reports 1–4)
 
-Canonical sources of the diagrams used in the capstone reports, drawn from the code at commit ca8fe4d (main). Each diagram has an editable source and a rendered `.svg`.
+Canonical sources of the diagrams used in the capstone reports, drawn from the code at commit ca8fe4d (main). The database diagrams (ERDs) and screen flow 3(b) were updated to main 016d562 (28/10/2026: 99 migrations, 191 models). Each diagram has an editable source and a rendered `.svg`.
 
 | Folder | Report | Diagrams |
 |---|---|---|
