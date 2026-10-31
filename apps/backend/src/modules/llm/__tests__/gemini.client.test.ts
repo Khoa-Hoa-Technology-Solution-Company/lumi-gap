@@ -6,7 +6,7 @@ vi.mock("@google/genai", () => ({
 }));
 vi.mock("../../../config/env.js", () => ({ env: { GEMINI_API_KEY: "test", GEMINI_MODEL_FAST: "test-model" } }));
 vi.mock("../../../infrastructure/logger.js", () => ({ logger: { warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }));
-import { generateText, LlmQuotaError, LlmTruncationError } from "../gemini.client.js";
+import { generateText, generateWithTools, LlmQuotaError, LlmTruncationError, LlmUnavailableError } from "../gemini.client.js";
 
 beforeEach(() => { generate.mockReset(); });
 afterEach(() => vi.useRealTimers());
@@ -22,14 +22,24 @@ describe("Gemini generation recovery", () => {
     expect(generate).toHaveBeenCalledTimes(3);
   });
 
-  it("stops after three unsuccessful attempts", async () => {
+  it("stops after three unsuccessful attempts and reports the overload as 503", async () => {
     vi.useFakeTimers();
-    const error = { status: 503 };
-    generate.mockRejectedValue(error);
-    const assertion = expect(generateText("Evidence")).rejects.toBe(error);
+    generate.mockRejectedValue({ status: 503, message: "This model is currently experiencing high demand." });
+    const assertion = expect(generateText("Evidence")).rejects.toMatchObject({ name: "LlmUnavailableError", statusCode: 503, code: "LLM_UNAVAILABLE", providerStatus: 503 });
     await vi.runAllTimersAsync();
     await assertion;
     expect(generate).toHaveBeenCalledTimes(3);
+  });
+
+  it.each([500, 502, 504])("reports a provider %i as 503 without retrying it", async (status) => {
+    generate.mockRejectedValue({ status });
+    await expect(generateText("Evidence")).rejects.toBeInstanceOf(LlmUnavailableError);
+    expect(generate).toHaveBeenCalledOnce();
+  });
+
+  it("reports provider overload during a tool-calling run as 503", async () => {
+    generate.mockRejectedValue({ status: 503 });
+    await expect(generateWithTools("Evidence", [], async () => null, { maxTurns: 2, maxOutputTokens: 100 })).rejects.toMatchObject({ statusCode: 503, code: "LLM_UNAVAILABLE" });
   });
 
   it("honors the provider's retry delay for a per-minute quota", async () => {

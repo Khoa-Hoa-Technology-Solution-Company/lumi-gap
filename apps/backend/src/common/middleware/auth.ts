@@ -16,6 +16,8 @@ export interface AuthClaims extends AccessTokenClaims {
   academicProfileType?: AcademicProfileType;
   primaryPosition?: PrimaryPosition;
   capabilities?: UserCapability[];
+  /** `users.email_verified_at` is set. Loaded per request, never put in the JWT. */
+  emailVerified: boolean;
 }
 
 declare global {
@@ -31,7 +33,7 @@ async function hydrateClaims(claims: AccessTokenClaims): Promise<AuthClaims | nu
   const prisma = getPrisma();
   const user = await prisma.user.findUnique({
     where: parsedId.kind === "uuid" ? { id: parsedId.value } : { legacyMongoId: parsedId.value },
-    select: { id: true, systemRole: true, accountStatus: true, academicProfileType: true, isActive: true },
+    select: { id: true, systemRole: true, accountStatus: true, academicProfileType: true, isActive: true, emailVerifiedAt: true },
   });
   if (!user?.isActive || user.accountStatus !== "ACTIVE" || user.systemRole !== claims.systemRole) return null;
   const activeSession = await prisma.refreshToken.findFirst({
@@ -45,6 +47,7 @@ async function hydrateClaims(claims: AccessTokenClaims): Promise<AuthClaims | nu
     systemRole: user.systemRole as SystemRole,
     accountStatus: user.accountStatus as AccountStatus,
     role: isAdminSystemRole(user.systemRole) ? "admin" : "user",
+    emailVerified: Boolean(user.emailVerifiedAt),
     academicProfileType: user.academicProfileType as AcademicProfileType | null ?? undefined,
     primaryPosition: profile?.primaryPosition as PrimaryPosition | null ?? undefined,
   };

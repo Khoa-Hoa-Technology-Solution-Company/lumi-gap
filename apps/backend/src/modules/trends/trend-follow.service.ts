@@ -6,7 +6,7 @@ import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { logger } from "../../infrastructure/logger.js";
 import { notificationService } from "../notifications/notification.service.js";
 import type { CreateTrendFollowBody } from "./dto/trends.schema.js";
-import { trendService } from "./trend.service.js";
+import { findUserId, trendService } from "./trend.service.js";
 
 type FollowRow = Awaited<ReturnType<ReturnType<typeof getPrisma>["trendTopicFollow"]["findFirstOrThrow"]>>;
 
@@ -18,11 +18,9 @@ export const topicKey = (topic: string) => topic.trim().toLowerCase();
 const VERDICT_LABEL: Record<TrendVerdict, string> = { rising: "rising", declining: "declining", stable: "stable", insufficient: "insufficient data" };
 
 async function owner(userId: string) {
-  const parsed = parseDatabaseId(userId);
-  if (!parsed) throw AppError.unauthorized();
-  const row = await getPrisma().user.findUnique({ where: parsed.kind === "uuid" ? { id: parsed.value } : { legacyMongoId: parsed.value }, select: { id: true } });
-  if (!row) throw AppError.unauthorized();
-  return row.id;
+  const id = await findUserId(userId);
+  if (!id) throw AppError.unauthorized();
+  return id;
 }
 
 function toDto(row: FollowRow): TrendTopicFollow {
@@ -67,10 +65,16 @@ export const trendFollowService = {
     if (await prisma.trendTopicFollow.findUnique({ where: { userId_topicKey: { userId: id, topicKey: key } }, select: { id: true } })) throw AppError.conflict("Topic is already followed");
     // The verdict at follow time is the baseline the daily check compares against.
     const baseline = await currentVerdict(input.topic, input.openalexTopicId);
-    const row = await prisma.trendTopicFollow.create({
-      data: { userId: id, topic: input.topic.trim(), topicKey: key, openalexTopicId: input.openalexTopicId ?? null, note: input.note?.trim() || null, lastVerdict: baseline?.verdict ?? null, lastDataSource: baseline?.dataSource ?? null, lastCheckedAt: baseline ? new Date() : null },
-    });
-    return toDto(row);
+    try {
+      const row = await prisma.trendTopicFollow.create({
+        data: { userId: id, topic: input.topic.trim(), topicKey: key, openalexTopicId: input.openalexTopicId ?? null, note: input.note?.trim() || null, lastVerdict: baseline?.verdict ?? null, lastDataSource: baseline?.dataSource ?? null, lastCheckedAt: baseline ? new Date() : null },
+      });
+      return toDto(row);
+    } catch (error) {
+      // A concurrent request (another tab or device) followed the topic while the baseline was being computed.
+      if ((error as { code?: string }).code === "P2002") throw AppError.conflict("Topic is already followed");
+      throw error;
+    }
   },
 
   async remove(userId: string, followId: string): Promise<void> {
@@ -102,16 +106,30 @@ export const trendFollowService = {
       const current = await currentVerdict(first.topic, rows.find((row) => row.openalexTopicId)?.openalexTopicId);
       if (!current) continue;
       for (const row of rows) {
+        // A verdict from another data source (the local corpus while OpenAlex is down) is not comparable with the
+        // baseline: an OpenAlex verdict replaces a local baseline silently, a local one only marks the row checked.
+        if (row.lastVerdict && row.lastDataSource && row.lastDataSource !== current.dataSource) {
+          const data = current.dataSource === "openalex" ? { lastVerdict: current.verdict, lastDataSource: current.dataSource, lastCheckedAt: now } : { lastCheckedAt: now };
+          await prisma.trendTopicFollow.update({ where: { id: row.id }, data });
+          continue;
+        }
         if (row.lastVerdict && row.lastVerdict !== current.verdict) {
+          try {
+            await notificationService.create({
+              userId: row.userId,
+              type: "TREND_VERDICT_CHANGED",
+              title: `Trend changed: ${row.topic}`,
+              message: `"${row.topic}" is now ${VERDICT_LABEL[current.verdict]} (was ${VERDICT_LABEL[row.lastVerdict as TrendVerdict] ?? row.lastVerdict}).`,
+              // Keyed by the baseline, not the run date: a retry of a failed send reuses the notification row.
+              eventKey: `TREND_VERDICT:${row.id}:${row.lastVerdict}:${current.verdict}:${row.lastCheckedAt?.toISOString() ?? "initial"}`,
+              emailPayload: { topic: row.topic, openalexTopicId: row.openalexTopicId, from: row.lastVerdict, to: current.verdict },
+            });
+          } catch (err) {
+            // Keep the old baseline so the next run detects the change again and retries the notification.
+            logger.warn({ err, followId: row.id }, "trend follow: notification failed; will retry on the next run");
+            continue;
+          }
           changed++;
-          await notificationService.create({
-            userId: row.userId,
-            type: "TREND_VERDICT_CHANGED",
-            title: `Trend changed: ${row.topic}`,
-            message: `"${row.topic}" is now ${VERDICT_LABEL[current.verdict]} (was ${VERDICT_LABEL[row.lastVerdict as TrendVerdict] ?? row.lastVerdict}).`,
-            eventKey: `TREND_VERDICT:${row.id}:${row.lastVerdict}:${current.verdict}:${now.toISOString().slice(0, 10)}`,
-            emailPayload: { topic: row.topic, openalexTopicId: row.openalexTopicId, from: row.lastVerdict, to: current.verdict },
-          }).catch((err) => logger.warn({ err, followId: row.id }, "trend follow: notification failed"));
         }
         await prisma.trendTopicFollow.update({ where: { id: row.id }, data: { lastVerdict: current.verdict, lastDataSource: current.dataSource, lastCheckedAt: now } });
       }

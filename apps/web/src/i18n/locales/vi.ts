@@ -32,10 +32,12 @@ import { trendVerdictViStrings } from "./trend-verdict";
 import { trendResearchLinkViStrings } from "./trend-research-links";
 import { trendPeriodsViStrings } from "./trend-periods";
 import { qualityEvaluationVi } from "./quality-evaluation";
+import { adminCatalogVi } from "./admin-catalog";
 
 export const vi: Record<keyof typeof en, string> = {
   ...en,
   ...qualityEvaluationVi,
+  ...adminCatalogVi,
   ...manuscriptsVi,
   ...contributionsVi,
   ...researchWorkflowVi,
@@ -400,6 +402,9 @@ export const vi: Record<keyof typeof en, string> = {
     "Create a research community": "Tạo cộng đồng nghiên cứu",
     "Define a focused research field, discussion scope, and concise participation rules.": "Xác định lĩnh vực nghiên cứu, phạm vi thảo luận và quy tắc tham gia ngắn gọn.",
     "Manage membership, moderation, and community settings within your permission scope.": "Quản lý thành viên, kiểm duyệt và thiết lập cộng đồng trong phạm vi quyền của bạn.",
+    "Manage membership and community settings within your permission scope.": "Quản lý thành viên và thiết lập cộng đồng trong phạm vi quyền của bạn.",
+    "This community is private": "Cộng đồng này ở chế độ riêng tư",
+    "Request membership to see its members and related research.": "Hãy xin tham gia để xem thành viên và nghiên cứu liên quan.",
     "Community management sections": "Các mục quản lý cộng đồng",
     "Only administrators can edit or archive a research community.": "Chỉ quản trị viên có thể sửa hoặc lưu trữ cộng đồng nghiên cứu.",
     "Community settings saved.": "Đã lưu thiết lập cộng đồng.",
@@ -795,6 +800,7 @@ export const vi: Record<keyof typeof en, string> = {
   "A technical acceptance dashboard showing whether AI/BE logic is deterministic, grounded, and ready for demo.": "Bảng kiểm tra nghiệm thu kỹ thuật cho biết logic AI/BE có xác định, có căn cứ và sẵn sàng demo hay không.",
   "AI Explainer is ready.": "AI Giải thích đã sẵn sàng.",
   "AI explanation failed. You can still inspect the charts and facets.": "Giải thích AI không thành công. Bạn vẫn có thể kiểm tra các biểu đồ và các khía cạnh.",
+  "The AI model is busy right now. Please try again in a minute. You can still inspect the charts and facets.": "Mô hình AI đang quá tải. Vui lòng thử lại sau khoảng một phút. Bạn vẫn có thể xem các biểu đồ và khía cạnh.",
   "AI explanation is grounded in aggregate trend metrics, not individual paper-level citations. Generated at": "Lời giải thích của AI dựa trên các số liệu xu hướng tổng hợp chứ không phải các trích dẫn cấp giấy riêng lẻ. Được tạo vào lúc",
   "AI is generating your report...": "AI đang tạo báo cáo của bạn...",
   "AI is reading project papers...": "AI đang đọc tài liệu dự án...",

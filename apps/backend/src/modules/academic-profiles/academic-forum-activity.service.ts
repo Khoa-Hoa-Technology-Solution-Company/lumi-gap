@@ -1,6 +1,7 @@
 import type { ForumActivityFilter, PublicForumActivity, PublicForumActivityItem, UserRole } from "@trend/shared-types";
 import { Prisma } from "../../generated/prisma/client.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
+import { forumPostVisibilitySql } from "../forum/forum-visibility.js";
 import { academicProfileService } from "./academic-profile.service.js";
 
 type ActivityRow = Omit<PublicForumActivityItem, "createdAt"> & { createdAt: Date };
@@ -13,11 +14,12 @@ export async function publicForumActivity(userId: string, filter: ForumActivityF
   const ownerId = profile.userId;
   const prisma = getPrisma();
   const pageSize = 20;
+  const researchVisibility = await forumPostVisibilitySql({ userId: viewerId, role }, "p");
   const scope = Prisma.sql`
     WITH visible_posts AS (
       SELECT p.*, c.name AS community_name, c.slug AS community_slug
       FROM forum_posts p LEFT JOIN communities c ON c.id = p.community_id
-      WHERE p.status IN ('active', 'locked') AND p.visibility_status = 'ACTIVE'
+      WHERE p.status IN ('active', 'locked') AND p.visibility_status = 'ACTIVE' AND ${researchVisibility}
         AND (p.community_id IS NULL OR (c.status = 'ACTIVE' AND (
           c.visibility = 'public' OR ${role === "admin"} OR EXISTS (
             SELECT 1 FROM community_memberships m WHERE m.community_id = c.id

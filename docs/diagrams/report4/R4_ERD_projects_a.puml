@@ -1,0 +1,100 @@
+@startuml
+!pragma layout elk
+skinparam dpi 200
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam backgroundColor #FFFFFF
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam ArrowFontSize 12
+skinparam ArrowFontColor #4A5A6A
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam entity {
+  BackgroundColor #EFE6F8
+  BorderColor #6A3FA0
+}
+skinparam legend {
+  BackgroundColor #FFF8E1
+  BorderColor #C9B36B
+  FontSize 12
+}
+skinparam stereotypeFontSize 10
+hide circle
+hide empty methods
+title Physical ERD - Projects, members and planning (1 of 9)
+entity projects #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  created_by_id : uuid <<FK users>>
+  owner_id : uuid <<FK users>>
+  ..
+  title : varchar(100)
+  status : varchar(24)
+}
+entity project_members #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  project_id : uuid <<FK,UK*>>
+  user_id : uuid <<FK users>>
+  ..
+  role : varchar(24)
+  status : varchar(24)
+}
+entity project_invitations #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  project_id : uuid <<FK>>
+  invited_user_id : uuid <<FK users>>
+  invited_by_id : uuid <<FK users>>
+  token_hash : varchar(128) <<UK*>>
+  ..
+  email : varchar(320)
+  purpose : varchar(48)
+}
+entity project_papers #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  project_id : uuid <<FK>>
+  paper_id : uuid <<FK>>
+  added_by_id : uuid <<FK users>>
+  ..
+  screening_status : varchar(24)
+  reading_status : varchar(24)
+}
+entity research_plans #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  project_id : uuid <<FK,UK>>
+  updated_by_id : uuid <<FK users>>
+  ..
+  approach : varchar(32)
+  problem : text
+}
+entity project_activities #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  project_id : uuid <<FK>>
+  actor_id : uuid <<FK users>>
+  ..
+  type : varchar(48)
+  entity_kind : varchar(32)
+}
+entity papers #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+papers ||--o{ project_papers
+projects ||--o{ project_activities
+projects ||--o{ project_invitations
+projects ||--o{ project_members
+projects ||--o{ project_papers
+projects ||--o| research_plans
+legend bottom
+Crow's-foot notation. PK primary key, FK foreign key, UK unique key.
+FK <name>: the foreign key references a table that is not drawn here.
+Dashed boxes belong to another diagram (key only).
+UK*: partial unique index (unique only for rows matching its WHERE condition).
+endlegend
+@enduml

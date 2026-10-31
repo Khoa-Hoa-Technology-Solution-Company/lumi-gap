@@ -23,6 +23,8 @@ export interface FetchPageParams {
   /** OpenAlex sample seed. Required whenever sample is supplied. */
   seed?: number;
   perPage?: number;
+  /** OpenAlex sort expression, e.g. "cited_by_count:desc". Omit for relevance (search) or default order (filter). */
+  sort?: string;
 }
 
 export interface FetchGroupCountsParams {
@@ -97,6 +99,7 @@ export function buildOpenAlexPageUrl(params: FetchPageParams): URL {
     (params.yearFrom ? `from_publication_date:${params.yearFrom}-01-01` : undefined);
   if (filterExpression) url.searchParams.set("filter", filterExpression);
   url.searchParams.set("per_page", String(perPage));
+  if (params.sort) url.searchParams.set("sort", params.sort);
   if (params.sample !== undefined) {
     if (!Number.isInteger(params.sample) || params.sample < 1 || params.sample > 10_000) {
       throw new Error("OpenAlex sample must be an integer between 1 and 10000");
@@ -149,7 +152,7 @@ export async function fetchOpenAlexWorksByIds(
   return json.results ?? [];
 }
 
-function appendOpenAlexIdentity(url: URL): void {
+export function appendOpenAlexIdentity(url: URL): void {
   if (env.OPENALEX_MAILTO) url.searchParams.set("mailto", env.OPENALEX_MAILTO);
   if (env.OPENALEX_API_KEY) url.searchParams.set("api_key", env.OPENALEX_API_KEY);
 }
@@ -175,12 +178,19 @@ export async function searchOpenAlexWorks(query: string, signal?: AbortSignal): 
   return (page.results ?? []).slice(0, 20);
 }
 
+/** Search text without the wildcards (`*`, `?`) the default stemmed search rejects, spaces collapsed. */
+export function openAlexSearchText(query: string): string {
+  return query.replace(/[*?]/g, " ").replace(/\s+/g, " ").trim();
+}
+
 /**
  * Worker-side search for a gap closure check (docs/gap-closure-protocol.md). Retries like the sync pages and
  * throws on final failure: the caller logs the error and the check abstains, never treating it as "no results".
  */
 export async function searchOpenAlexWorksForClosure(params: { query: string; perPage: number; yearFrom?: number; yearTo?: number }): Promise<OpenAlexWork[]> {
-  const query = params.query.trim();
+  // `*` and `?` are wildcards that the stemmed default search rejects with HTTP 400 ("Does X improve Y?" is a
+  // natural research question), so they are dropped; the words still match.
+  const query = openAlexSearchText(params.query);
   if (query.length < 3 || query.length > 300) throw new Error("Invalid closure search query");
   const filters = [
     params.yearFrom !== undefined ? `from_publication_date:${params.yearFrom}-01-01` : undefined,
@@ -215,7 +225,7 @@ export async function fetchOpenAlexWorkById(id: string): Promise<OpenAlexWork | 
   return await response.json() as OpenAlexWork;
 }
 
-async function fetchWithRetry(url: string, attempt = 1): Promise<OpenAlexPage> {
+export async function fetchWithRetry(url: string, attempt = 1): Promise<OpenAlexPage> {
   await sleep(RATE_LIMIT_DELAY_MS);
   const t0 = Date.now();
   try {

@@ -1,0 +1,72 @@
+@startuml
+!pragma layout elk
+skinparam dpi 200
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam backgroundColor #FFFFFF
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam ArrowFontSize 12
+skinparam ArrowFontColor #4A5A6A
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam entity {
+  BackgroundColor #EFE6F8
+  BorderColor #6A3FA0
+}
+skinparam legend {
+  BackgroundColor #FFF8E1
+  BorderColor #C9B36B
+  FontSize 12
+}
+skinparam stereotypeFontSize 10
+hide circle
+hide empty methods
+title Physical ERD - Ingestion page attempts, dead letters and refresh watermarks (3 of 3)
+entity openalex_ingest_page_attempts #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  campaign_id : uuid <<FK>>
+  partition_id : uuid <<FK>>
+  ..
+  idempotency_key : text
+  cursor_before : text
+}
+entity ingest_dead_letters #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  campaign_id : uuid <<FK>>
+  partition_id : uuid <<FK>>
+  attempt_id : uuid <<FK>>
+  ..
+  state : varchar(16)
+  reason_code : text
+}
+entity openalex_refresh_watermarks #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  last_campaign_id : uuid <<FK>>
+  refresh_policy_key : text <<UK>>
+  ..
+  provider_name : text
+  last_successful_at : timestamptz
+}
+entity openalex_ingest_campaigns #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+entity openalex_ingest_partitions #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+openalex_ingest_campaigns ||--o{ ingest_dead_letters
+openalex_ingest_campaigns ||--o{ openalex_ingest_page_attempts
+openalex_ingest_campaigns |o--o{ openalex_refresh_watermarks
+openalex_ingest_page_attempts |o--o{ ingest_dead_letters
+openalex_ingest_partitions |o--o{ ingest_dead_letters
+openalex_ingest_partitions ||--o{ openalex_ingest_page_attempts
+legend bottom
+Crow's-foot notation. PK primary key, FK foreign key, UK unique key.
+Dashed boxes belong to another diagram (key only).
+endlegend
+@enduml

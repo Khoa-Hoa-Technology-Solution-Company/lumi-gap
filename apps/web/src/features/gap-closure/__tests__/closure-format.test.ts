@@ -83,6 +83,20 @@ describe("bound arithmetic", () => {
     expect(buildBoundArithmetic({ epsHat: 0.7, pHat: 0.6 }).bound).toBe(1);
   });
 
+  it("uses B = epsHat for an in-situ decision and leaves pHat out", () => {
+    const arithmetic = buildBoundArithmetic({ ...check, bound: 0.0951, boundMode: "IN_SITU" });
+    expect(arithmetic.mode).toBe("IN_SITU");
+    expect(formatSum(arithmetic)).toBe("0.0951");
+    expect(boundEquation(formatSum(arithmetic)!, arithmetic)).toBe("B = epsHat = 0.0951 ≤ 0.2000");
+  });
+
+  it("falls back to the calibration's mode and derives an in-situ B from epsHat alone", () => {
+    const arithmetic = buildBoundArithmetic({ epsHat: 0.0951 }, null, { misses: 0, n: 30, mode: "IN_SITU" });
+    expect(arithmetic.bound).toBe(0.0951);
+    expect(formatSum(arithmetic)).toBe("0.0951");
+    expect(buildBoundArithmetic({ epsHat: 0.1, pHat: 0.05 }).mode).toBe("TRANSFER");
+  });
+
   it("has no sum without both parts", () => {
     expect(formatSum(buildBoundArithmetic({ epsHat: 0.1 }))).toBeUndefined();
     expect(buildBoundArithmetic({}).withinMax).toBeUndefined();

@@ -17,7 +17,7 @@ import type {
   GapClosureDossier,
   QuestionFacets,
 } from "@trend/shared-types";
-import { cohenKappa, describeBoundArithmetic, effectiveLabel } from "./closure.rules.js";
+import { calibrationModeOf, cohenKappa, describeBoundArithmetic, effectiveLabel } from "./closure.rules.js";
 
 /* ------------------------------------------------------------------ */
 /*  Row shapes (structural, so Prisma rows assign without a cast)      */
@@ -41,6 +41,8 @@ export interface CheckRow {
   epsHat: number | null;
   pHat: number | null;
   bound: number | null;
+  /** Absent on rows read before the column existed. */
+  boundMode?: string | null;
   maxFalseNovelty: number | null;
   decision: string | null;
   decisionReasons: unknown;
@@ -107,6 +109,8 @@ export interface CalibrationRow {
   name: string;
   domain: string;
   judgeKind: string;
+  /** Absent on rows read before the column existed (TRANSFER). */
+  mode?: string | null;
   protocolVersion: string;
   status: string;
   delta: number;
@@ -224,6 +228,7 @@ export function toCheckView(row: CheckRow, documents: DocumentRow[] = []): GapCl
     epsHat: optional(row.epsHat),
     pHat: optional(row.pHat),
     bound: optional(row.bound),
+    boundMode: row.boundMode ? calibrationModeOf(row.boundMode) : undefined,
     maxFalseNovelty: optional(row.maxFalseNovelty),
     decision: optional(row.decision) as GapClosureCheckView["decision"],
     decisionReasons: parseReasons(row.decisionReasons),
@@ -287,6 +292,7 @@ export function toCalibrationView(row: CalibrationRow, questions?: CalibrationQu
     name: row.name,
     domain: row.domain,
     judgeKind: row.judgeKind as ClosureJudgeKind,
+    mode: calibrationModeOf(row.mode),
     protocolVersion: row.protocolVersion,
     status: row.status as ClosureCalibrationView["status"],
     delta: row.delta,
@@ -325,8 +331,10 @@ export function buildDossier(input: DossierInput): GapClosureDossier {
   const { check, coverage, calibration } = input;
   const epsHat = check.epsHat ?? calibration?.epsHat ?? null;
   const pHat = check.pHat ?? coverage?.pHat;
+  // The formula the decision used wins over the calibration's current mode.
+  const mode = check.boundMode ?? calibration?.mode;
   const arithmetic = describeBoundArithmetic({
-    calibration: calibration ? { n: calibration.n, misses: calibration.misses, epsHat } : null,
+    calibration: calibration ? { n: calibration.n, misses: calibration.misses, epsHat, mode } : null,
     coverage: coverage ? { m: coverage.m, x: coverage.x, pHat: pHat ?? coverage.pHat } : null,
     delta: check.delta ?? coverage?.delta ?? calibration?.delta ?? input.defaults.delta,
     bound: check.bound,
@@ -381,9 +389,14 @@ export function dossierMarkdown(dossier: GapClosureDossier): string {
   out.push("");
 
   out.push("## False-novelty bound", "", ...dossier.arithmetic.map((line) => `- ${line}`), "");
+  const inSitu = (check.boundMode ?? calibration?.mode) === "IN_SITU";
   out.push(
-    "Assumptions: answering documents are missing from the sources independently of the question, and the calibration questions are representative of real gap questions.",
-    "Guarantee: P(false novelty) <= epsHat + pHat holds with probability >= 1 - 2 delta.",
+    inSitu
+      ? "Assumptions: the calibration questions were searched in the same sources as this check and are representative of real gap questions, and the sources did not lose papers since the calibration."
+      : "Assumptions: answering documents are missing from the sources independently of the question, and the calibration questions are representative of real gap questions.",
+    inSitu
+      ? "Guarantee (in-situ calibration): P(false novelty) <= epsHat holds with probability >= 1 - delta."
+      : "Guarantee: P(false novelty) <= epsHat + pHat holds with probability >= 1 - 2 delta.",
     "",
   );
   if (dossier.interRaterKappa) out.push(`Inter-rater agreement (Cohen's kappa): ${dossier.interRaterKappa.kappa} over ${dossier.interRaterKappa.documents} documents.`, "");
@@ -414,7 +427,7 @@ export function dossierMarkdown(dossier: GapClosureDossier): string {
 
   out.push("## Calibration", "");
   if (calibration) {
-    out.push(`- ${cell(calibration.name)} (${cell(calibration.domain)}), judge ${calibration.judgeKind}, status ${calibration.status}`, `- n = ${calibration.n} questions known to be answered, ${calibration.misses} missed, epsHat = ${PCT(calibration.epsHat)}`, "");
+    out.push(`- ${cell(calibration.name)} (${cell(calibration.domain)}), judge ${calibration.judgeKind}, mode ${calibration.mode}, status ${calibration.status}`, `- n = ${calibration.n} questions known to be answered, ${calibration.misses} missed, epsHat = ${PCT(calibration.epsHat)}`, "");
     if (calibration.questions?.length) {
       out.push("| Question | Witness DOI | Source | Result |", "|---|---|---|---|");
       for (const question of calibration.questions) out.push(`| ${cell(question.question)} | ${cell(question.witnessDoi)} | ${question.labelSource} | ${question.result} |`);

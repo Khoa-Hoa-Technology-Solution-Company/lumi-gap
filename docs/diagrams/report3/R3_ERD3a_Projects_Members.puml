@@ -1,0 +1,106 @@
+@startuml
+!pragma layout elk
+skinparam dpi 200
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam backgroundColor #FFFFFF
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam ArrowFontSize 12
+skinparam ArrowFontColor #4A5A6A
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam entity {
+  BackgroundColor #EFE6F8
+  BorderColor #6A3FA0
+}
+skinparam legend {
+  BackgroundColor #FFF8E1
+  BorderColor #C9B36B
+  FontSize 12
+}
+skinparam stereotypeFontSize 10
+hide circle
+hide empty methods
+title Logical ERD 3(a) - Projects, members and literature
+entity Project #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
+  --
+  createdById <<FK User>>
+  ownerId <<FK User>>
+  ..
+  title
+  status
+}
+entity ProjectMember #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
+  --
+  projectId <<FK,UK*>>
+  userId <<FK User>>
+  ..
+  role
+  status
+}
+entity ProjectPaper #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
+  --
+  projectId <<FK>>
+  paperId <<FK>>
+  addedById <<FK User>>
+  ..
+  screeningStatus
+  readingStatus
+}
+entity ProjectInvitation #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
+  --
+  projectId <<FK>>
+  invitedUserId <<FK User>>
+  invitedById <<FK User>>
+  tokenHash <<UK*>>
+  ..
+  email
+  purpose
+}
+entity ProjectChatMessage #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
+  --
+  projectId <<FK>>
+  userId <<FK User>>
+  creditTransactionId <<FK CreditTransaction>>
+  pinnedById <<FK User>>
+  ..
+  scope
+  role
+}
+entity ProjectTeamMessage #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
+  --
+  projectId <<FK>>
+  senderId <<FK User>>
+  threadId <<FK ProjectDiscussion>>
+  replyToId <<FK>>
+  deletedById <<FK User>>
+  ..
+  clientKey
+  content
+}
+entity Paper #FFFFFF;line:6A3FA0;line.dashed {
+  * id <<PK>>
+}
+Paper ||--o{ ProjectPaper
+ProjectTeamMessage |o--o{ ProjectTeamMessage : replyToId
+Project ||--o{ ProjectChatMessage
+Project ||--o{ ProjectInvitation
+Project ||--o{ ProjectMember
+Project ||--o{ ProjectPaper
+Project ||--o{ ProjectTeamMessage
+legend bottom
+Crow's-foot notation. PK primary key, FK foreign key, UK unique key.
+FK <name>: the foreign key references an entity that is not drawn here.
+Dashed boxes belong to another diagram (key only).
+UK*: partial unique index (unique only for rows matching its WHERE condition).
+endlegend
+@enduml

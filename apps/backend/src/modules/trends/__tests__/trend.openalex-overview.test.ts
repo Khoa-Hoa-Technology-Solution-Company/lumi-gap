@@ -28,7 +28,13 @@ function query(raw: Record<string, string> = {}) {
   return TrendsOverviewQuerySchema.parse({ yearFrom: "2016", yearTo: "2021", ...raw });
 }
 
+/** Fixed span of the per-topic and per-field yearly series (window-independent, so cached across windows). */
+const SPAN = `publication_year:1900-${new Date().getUTCFullYear()}`;
+
 function yearCounts(filter: string): Map<number, number> {
+  const topic = filter.endsWith(SPAN) ? /primary_topic\.id:(T\d+),/.exec(filter)?.[1] : undefined;
+  if (topic) return new Map(YEARS.map((year) => [year, topicYearCount(topic, year)]));
+  if (filter.endsWith(`primary_topic.field.id:17,${SPAN}`)) return each(1000);
   if (filter.includes("keywords.id:large-language-models")) return new Map([[2018, 5], [2019, 40], [2020, 100], [2021, 160]]);
   if (filter.includes("is_in_top_10_percent")) return each(5);
   if (filter.includes("cited_by_count:0-9")) return new Map([[2016, 100]]);
@@ -125,10 +131,13 @@ describe("getOpenAlexTrendsOverview", () => {
     // A domain scope is stratified by field: one topic page per field.
     expect(client.openAlexGroupBy).toHaveBeenCalledWith(`${base},primary_topic.field.id:17`, "primary_topic.id");
     expect(overview.candidateStrata).toEqual({ level: "field", strata: 1, perStratum: 3 });
-    // Topic counts: one request per year for all candidates (OR list).
-    expect(client.openAlexGroupBy).toHaveBeenCalledWith("type:article|review|preprint|conference-paper|book-chapter,primary_topic.domain.id:3,primary_topic.id:T1|T2,publication_year:2016", "primary_topic.id");
-    // Population: every field per year, without the scope's taxonomy clauses.
-    expect(client.openAlexGroupBy).toHaveBeenCalledWith("type:article|review|preprint|conference-paper|book-chapter,publication_year:2016", "primary_topic.field.id");
+    // Topic counts: one yearly series per candidate over a fixed span, so a new window reuses the cached series.
+    expect(client.openAlexYearCounts).toHaveBeenCalledWith(`type:article|review|preprint|conference-paper|book-chapter,primary_topic.domain.id:3,primary_topic.id:T1,${SPAN}`);
+    expect(client.openAlexYearCounts).toHaveBeenCalledWith(`type:article|review|preprint|conference-paper|book-chapter,primary_topic.domain.id:3,primary_topic.id:T2,${SPAN}`);
+    // Population: one yearly series per field of the candidates, without the scope's taxonomy clauses.
+    expect(client.openAlexYearCounts).toHaveBeenCalledWith(`type:article|review|preprint|conference-paper|book-chapter,primary_topic.field.id:17,${SPAN}`);
+    // No per-year counting is left: nothing depends on the window but the candidate selection.
+    expect(client.openAlexGroupBy.mock.calls.some((call) => /publication_year:\d{4}(,|$)/.test(String(call[0])))).toBe(false);
     // T3 is below minPapers (3) and is neither fetched nor tested.
     expect(client.openAlexGet).toHaveBeenCalledTimes(1);
     expect(client.openAlexGet).toHaveBeenCalledWith("topics", expect.objectContaining({ filter: "id:T1|T2" }));
@@ -156,8 +165,8 @@ describe("getOpenAlexTrendsOverview", () => {
     const q = benjaminiHochberg([rising!.classification.mannKendall!.pValue, flat!.classification.mannKendall!.pValue]);
     expect(rising!.classification.qValue).toBeCloseTo(q[0]!, 12);
     expect(flat!.classification.qValue).toBeCloseTo(q[1]!, 12);
-    // One population request per year, whatever the number of fields.
-    expect(client.openAlexGroupBy.mock.calls.filter((call) => call[1] === "primary_topic.field.id" && /publication_year:\d{4}$/.test(String(call[0])))).toHaveLength(6);
+    // One population series for the candidates' single field, whatever the number of years.
+    expect(client.openAlexYearCounts.mock.calls.filter((call) => String(call[0]).includes(`primary_topic.field.id:17,${SPAN}`))).toHaveLength(1);
   });
 
   it("tests the largest topics of every field, not only the largest of the scope", async () => {
@@ -281,11 +290,22 @@ describe("getOpenAlexTrendsOverview", () => {
 
     expect(client.openAlexYearCounts).toHaveBeenCalledWith("type:article|review|preprint|conference-paper|book-chapter,publication_year:2016-2021");
     expect(evidence.openAlexKeywordCounts).toHaveBeenCalledWith("type:article|review|preprint|conference-paper|book-chapter", [2016, 2017, 2018], [2019, 2020, 2021]);
-    expect(client.openAlexGroupBy).toHaveBeenCalledWith("type:article|review|preprint|conference-paper|book-chapter,primary_topic.id:T1|T2,publication_year:2016", "primary_topic.id");
+    expect(client.openAlexYearCounts).toHaveBeenCalledWith(`type:article|review|preprint|conference-paper|book-chapter,primary_topic.id:T1,${SPAN}`);
     for (const filter of allFilters()) {
       expect(filter).not.toMatch(/^,|,,|,$/);
     }
     expect(overview.scopeNotice).toEqual({ ignoredFilters: [] });
+  });
+
+  it("asks for the same topic and field series whatever the window, so a year change reuses the cache", async () => {
+    const seriesFilters = () => client.openAlexYearCounts.mock.calls.map((call) => String(call[0])).filter((filter) => filter.endsWith(SPAN)).sort();
+    await getOpenAlexTrendsOverview(query());
+    const first = seriesFilters();
+    vi.clearAllMocks();
+    await getOpenAlexTrendsOverview(query({ yearFrom: "2017", yearTo: "2021" }));
+
+    expect(first.length).toBeGreaterThan(0);
+    expect(seriesFilters()).toEqual(first);
   });
 
   it("lets OpenAlex errors propagate so the caller can fall back to local data", async () => {

@@ -1,0 +1,98 @@
+{
+ "title": "Use Case Diagram 1(b) - Paper discovery",
+ "ucs": [
+  [
+   "UC05",
+   "UC-05 Search papers"
+  ],
+  [
+   "UC06",
+   "UC-06 View paper details"
+  ],
+  [
+   "UC09",
+   "UC-09 Explore trends"
+  ],
+  [
+   "UC07",
+   "UC-07 Translate paper"
+  ],
+  [
+   "UC08",
+   "UC-08 Compare papers"
+  ],
+  [
+   "UC10",
+   "UC-10 Manage bookmarks"
+  ],
+  [
+   "UC11",
+   "UC-11 Request paper addition"
+  ]
+ ],
+ "actors": [
+  [
+   "G",
+   "Guest"
+  ],
+  [
+   "U",
+   "User\n(Student / Researcher)"
+  ]
+ ],
+ "gens": [
+  [
+   "U",
+   "G"
+  ]
+ ],
+ "exts": [
+  [
+   "TP",
+   "Translation provider\n(optional)"
+  ],
+  [
+   "LLM",
+   "LLM provider"
+  ]
+ ],
+ "links": [
+  [
+   "G",
+   "UC05"
+  ],
+  [
+   "G",
+   "UC06"
+  ],
+  [
+   "G",
+   "UC09"
+  ],
+  [
+   "U",
+   "UC07"
+  ],
+  [
+   "U",
+   "UC08"
+  ],
+  [
+   "U",
+   "UC10"
+  ],
+  [
+   "U",
+   "UC11"
+  ],
+  [
+   "UC07",
+   "TP"
+  ],
+  [
+   "UC08",
+   "LLM"
+  ]
+ ],
+ "rels": []
+}

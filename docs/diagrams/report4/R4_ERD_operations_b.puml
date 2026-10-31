@@ -1,0 +1,90 @@
+@startuml
+!pragma layout elk
+skinparam dpi 200
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam backgroundColor #FFFFFF
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam ArrowFontSize 12
+skinparam ArrowFontColor #4A5A6A
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam entity {
+  BackgroundColor #EFE6F8
+  BorderColor #6A3FA0
+}
+skinparam legend {
+  BackgroundColor #FFF8E1
+  BorderColor #C9B36B
+  FontSize 12
+}
+skinparam stereotypeFontSize 10
+hide circle
+hide empty methods
+title Physical ERD - External sync and corpus ingestion (2 of 3)
+entity api_providers #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  provider_name : text <<UK>>
+  ..
+  provider_kind : varchar(32)
+  provider_status : varchar(16)
+}
+entity api_sync_configs #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  provider_id : uuid <<FK>>
+  created_by_id : uuid <<FK users>>
+  ..
+  config_name : text
+  config_status : varchar(16)
+}
+entity api_sync_runs #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  sync_config_id : uuid <<FK>>
+  provider_id : uuid <<FK>>
+  ..
+  run_status : varchar(16)
+  search_text : text
+}
+entity openalex_ingest_campaigns #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  campaign_key : text <<UK>>
+  ..
+  provider_name : text
+  campaign_kind : varchar(16)
+}
+entity openalex_ingest_partitions #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  campaign_id : uuid <<FK>>
+  ..
+  partition_key : text
+  cohort_id : text
+}
+entity corpus_validation_runs #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  campaign_id : uuid <<FK>>
+  idempotency_key : text <<UK>>
+  active_key : text <<UK*>>
+  ..
+  overall_status : varchar(24)
+  decision : varchar(32)
+}
+api_providers ||--o{ api_sync_configs
+api_providers ||--o{ api_sync_runs
+api_sync_configs |o--o{ api_sync_runs
+openalex_ingest_campaigns ||--o{ corpus_validation_runs
+openalex_ingest_campaigns ||--o{ openalex_ingest_partitions
+legend bottom
+Crow's-foot notation. PK primary key, FK foreign key, UK unique key.
+FK <name>: the foreign key references a table that is not drawn here.
+UK*: partial unique index (unique only for rows matching its WHERE condition).
+endlegend
+@enduml

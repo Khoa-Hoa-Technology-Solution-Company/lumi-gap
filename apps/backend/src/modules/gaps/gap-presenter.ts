@@ -3,6 +3,9 @@ import type {
   GapClosureSummary,
   GapEvidenceStatus,
   GapGlobalEvidence,
+  GapNextStep,
+  GapNextStepKind,
+  GapRefinement,
   GapProjectEvidence,
   GapSource,
   GapStatus,
@@ -67,6 +70,7 @@ export interface GapListDoc {
   researchPriority?: ResearchGapItem["researchPriority"];
   origin?: ResearchGapItem["origin"];
   closureStatus?: GapClosureStatus;
+  refinement?: GapRefinement | null;
   questionFacets?: QuestionFacets;
   latestClosureCheck?: GapClosureSummary;
 }
@@ -142,6 +146,50 @@ export function getGapEvidenceStatus(gap: Pick<GapListDoc, "source" | "probe" | 
   return Number(gap.evidenceConfidence ?? 0) >= 0.5 ? "confirmed" : "weak";
 }
 
+export interface GapNextStepInput {
+  evidenceStatus: GapEvidenceStatus;
+  /** Confirmed plus possible counter-evidence papers. */
+  counterCount: number;
+  /** OpenAlex has enough papers per topic and does not find the intersection under-explored (whatever the corpus says). */
+  globalWellCovered: boolean;
+  /** A probe topic has fewer corpus papers than GAP_MIN_PARENT_PAPERS. */
+  lowSample: boolean;
+  globalEvidence?: GapGlobalEvidence | null;
+  minParentPapers: number;
+  /** A closure check already decided: its decision answers the question. */
+  closureDecided: boolean;
+  /** Result of the self-check against the possible counter-evidence, when it ran. */
+  refinement?: GapRefinement | null;
+  probe?: GapListDoc["probe"] | null;
+}
+
+/**
+ * What to do with a gap now (see GapNextStep). Order matters: a paper that may already answer the gap outranks every
+ * count; a thin corpus makes the counts meaningless; only then does the corpus signal decide.
+ */
+export function gapNextStep(input: GapNextStepInput): GapNextStep | undefined {
+  // A decided closure check, or a self-check that found a paper answering the gap, already says what the gap is.
+  if (input.closureDecided || input.refinement?.action === "drop") return undefined;
+  const base = { counterCount: input.counterCount, globalWellCovered: input.globalWellCovered };
+  // Rewritten to what the related papers leave open: the closure check is next.
+  if (input.refinement?.action === "narrow") return { kind: "refined", ...base };
+  // The self-check read the related papers and found they do not address the gap, so they no longer count against it.
+  if (input.counterCount > 0 && input.refinement?.action !== "keep") return { kind: "likely_studied", ...base };
+  if (input.globalWellCovered) {
+    const { topicA, topicB } = input.probe ?? {};
+    // Only the two broad probe topics are known to be well studied together, not the gap's narrower claim.
+    return { kind: "busy_area", ...base, ...(topicA && topicB ? { broadArea: { topicA, topicB, openAlexCount: input.globalEvidence?.intersectionCount ?? 0 } } : {}) };
+  }
+  const global = input.globalEvidence?.parentCounts;
+  const openAlexHasTopics = !!global && Math.min(global.a, global.b) >= Math.max(input.minParentPapers, 1);
+  if (input.lowSample && openAlexHasTopics) return { kind: "thin_corpus", ...base };
+  if (input.evidenceStatus === "confirmed") return { kind: "run_closure", ...base };
+  return { kind: "refine", ...base };
+}
+
+/** Recommended order: what to act on first. */
+const NEXT_STEP_RANK: Record<GapNextStepKind | "none", number> = { run_closure: 0, refined: 0, refine: 1, none: 1, busy_area: 2, thin_corpus: 3, likely_studied: 4 };
+
 export type GapSortKey = "recommended" | "evidence" | "confidence" | "papers" | "newest" | "ai_only_last";
 
 /** Minimal gap fields needed to order a list before loading full rows for one page. */
@@ -157,8 +205,9 @@ export interface GapSortRow {
   parentCounts?: GapListDoc["parentCounts"] | null;
   globalEvidence?: GapGlobalEvidence | null;
   supportingCount: number;
-  /** Counter-evidence links (confirmed or possible); a gap with any ranks after gaps without. */
+  /** Counter-evidence links (confirmed or possible). */
   counterCount?: number;
+  refinement?: GapRefinement | null;
 }
 
 const EVIDENCE_RANK: Record<GapEvidenceStatus, number> = { confirmed: 2, weak: 1, ai_only: 0 };
@@ -183,8 +232,15 @@ export function sortGapRows<T extends GapSortRow>(rows: T[], sortBy: GapSortKey,
   const newest = (a: T, b: T) => b.createdAt.getTime() - a.createdAt.getTime();
   const score = (a: T, b: T) => gapRankingScore(b, config) - gapRankingScore(a, config);
   const papers = (a: T, b: T) => b.supportingCount - a.supportingCount;
-  // A paper that may already answer the gap is a stronger reason to doubt it than any co-mention count.
-  const contested = (a: T, b: T) => Number((a.counterCount ?? 0) > 0) - Number((b.counterCount ?? 0) > 0);
+  // What to act on first: closure-ready and refined gaps, then weak ones, then those probably already studied.
+  const stepRank = (row: T) => {
+    const lowSample = isGapLowSample({ parentCounts: row.parentCounts ?? undefined }, minParentPapers);
+    const doc = { source: row.source, probe: row.probe ?? undefined, evidenceConfidence: row.evidenceConfidence ?? undefined, evidenceScopeSize: row.evidenceScopeSize ?? undefined, intersectionCount: row.intersectionCount ?? undefined, parentCounts: row.parentCounts ?? undefined, globalEvidence: row.globalEvidence };
+    const signal = gapUnderExploredSignal(doc, config);
+    const step = gapNextStep({ evidenceStatus: getGapEvidenceStatus(doc, lowSample, config), counterCount: row.counterCount ?? 0, globalWellCovered: !!signal?.global && !signal.global.lowSample && !signal.global.underExplored, lowSample, globalEvidence: row.globalEvidence, minParentPapers, closureDecided: false, refinement: row.refinement, probe: row.probe });
+    return NEXT_STEP_RANK[step?.kind ?? "none"];
+  };
+  const contested = (a: T, b: T) => stepRank(a) - stepRank(b);
   const recommended = (a: T, b: T) => contested(a, b) || score(a, b) || newest(a, b);
   const compare: Record<GapSortKey, (a: T, b: T) => number> = {
     recommended,
@@ -214,6 +270,18 @@ export function toGapListItem(
     : doc.supportingPaperIds ?? []
   ).map(String);
   const createdAt = doc.createdAt instanceof Date ? doc.createdAt.toISOString() : String(doc.createdAt);
+  const evidenceStatus = getGapEvidenceStatus(doc, lowSample, config);
+  const nextStep = gapNextStep({
+    evidenceStatus,
+    counterCount: counterPaperIds.length + possibleCounterPaperIds.length,
+    globalWellCovered: !!signal?.global && !signal.global.lowSample && !signal.global.underExplored,
+    lowSample: lowSample ?? false,
+    globalEvidence: doc.globalEvidence,
+    minParentPapers: options.minParentPapers ?? 0,
+    closureDecided: Boolean(doc.latestClosureCheck?.decision),
+    refinement: doc.refinement,
+    probe: doc.probe,
+  });
 
   return {
     id: String(doc._id),
@@ -242,7 +310,9 @@ export function toGapListItem(
       .map((id) => supportingPapersById.get(id))
       .filter((paper): paper is GapSupportingPaper => Boolean(paper)),
     confidence: doc.confidence,
-    evidenceStatus: getGapEvidenceStatus(doc, lowSample, config),
+    evidenceStatus,
+    ...(nextStep ? { nextStep } : {}),
+    ...(doc.refinement ? { refinement: doc.refinement } : {}),
     source: doc.source,
     sourceReportId: doc.sourceReportId ? String(doc.sourceReportId) : undefined,
     analysisId: doc.analysisId ? String(doc.analysisId) : undefined,

@@ -30,7 +30,7 @@ docker compose --profile seed up seed
 ```
 
 Đăng nhập bằng `admin@liemresearch.com` / `Admin123456!`. Seed chỉ dành cho local.
-Bảy workers chạy mặc định; dự trù khoảng 8 GB RAM rồi điều chỉnh theo sử dụng thực tế.
+Chín workers chạy mặc định (worker OpenAlex ingest là tùy chọn, profile `ingest`); dự trù khoảng 8 GB RAM rồi điều chỉnh theo sử dụng thực tế.
 Cách tắt workers và bật dịch vụ tùy chọn nằm trong [hướng dẫn Docker](DEPLOY_WITH_DOCKER.md).
 
 ## 2. Backend/web native, database trong Docker
@@ -53,7 +53,7 @@ Mở terminal khác để chạy `pnpm --filter backend dev:workers` nếu cần
 AI Reviewer với backend native cần `docker compose up -d --build ai-reviewer`.
 Backend, Prisma và workers đọc root `.env` bằng đường dẫn tuyệt đối và bung
 `${...}` để ghép URL. Mật khẩu local chỉ dùng chữ và số. `pnpm setup` sinh mật khẩu
-hex, khóa nội bộ, OTP secret và khóa RSA nếu chưa có.
+hex (Postgres, Redis), `INTERNAL_SERVICE_KEY`, `ACADEMIC_EMAIL_OTP_SECRET`, `AI_CONNECTION_ENCRYPTION_KEY` và khóa RSA nếu chưa có.
 Vite chỉ đưa `VITE_*` vào bundle; giữ `VITE_API_BASE=/api/v1` để dùng proxy.
 
 ## 3. Mobile

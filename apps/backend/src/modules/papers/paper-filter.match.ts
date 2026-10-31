@@ -1,4 +1,4 @@
-import type { TrendCitationBand } from "../trends/trend.filters.js";
+import type { TrendCitationBand } from "@trend/shared-types";
 
 export interface PaperFilterInput {
   yearFrom?: number;
@@ -19,6 +19,10 @@ export interface PaperFilterInput {
   fieldIds?: string[];
   subfieldIds?: string[];
   topicIds?: string[];
+  /** keywords.id values; a paper matches when it carries any of them. */
+  keywordIds?: string[];
+  /** tags.id values; a paper matches when it carries any of them (not blocked). */
+  tagIds?: string[];
   paperIds?: string[];
 }
 

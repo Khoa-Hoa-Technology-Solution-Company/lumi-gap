@@ -9,9 +9,9 @@ import { TrendVerdictBadge } from "./trend-verdict-badge";
  * The trend verdict of the topic a page was opened for (e.g. gap analysis from a topic page). Context only: it does
  * not feed the gap signal, which is decided by its own observed/expected test. Renders nothing without trend data.
  */
-export function TrendContextCard({ topic, yearFrom, yearTo }: { topic: string; yearFrom?: number; yearTo?: number }) {
+export function TrendContextCard({ topic, topicId, yearFrom, yearTo }: { topic: string; topicId?: string; yearFrom?: number; yearTo?: number }) {
   const { t } = useI18n();
-  const { data } = useTopicTrend(topic, yearFrom || yearTo ? { yearFrom, yearTo } : undefined);
+  const { data } = useTopicTrend(topic, topicId || yearFrom || yearTo ? { topicId, yearFrom, yearTo } : undefined);
   const classification = data?.statistics?.classification;
   if (!classification) return null;
   const years = data.yearlyBreakdown;
@@ -26,7 +26,7 @@ export function TrendContextCard({ topic, yearFrom, yearTo }: { topic: string; y
         <TrendVerdictBadge classification={classification} size="sm" />
         {from && to && <span className="text-xs text-muted-foreground">{from}–{to}</span>}
       </div>
-      <Link to={getTopicTrendTarget(topic, data.taxonomy?.openalexTopicId, { yearFrom, yearTo })} className="text-xs font-bold text-blue-600 hover:underline">{t("Open trend")}</Link>
+      <Link to={getTopicTrendTarget(topic, topicId ?? data.taxonomy?.openalexTopicId, { yearFrom, yearTo })} className="text-xs font-bold text-blue-600 hover:underline">{t("Open trend")}</Link>
     </aside>
   );
 }

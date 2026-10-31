@@ -1,0 +1,112 @@
+@startuml
+!pragma layout elk
+skinparam dpi 200
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam backgroundColor #FFFFFF
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam ArrowFontSize 12
+skinparam ArrowFontColor #4A5A6A
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam entity {
+  BackgroundColor #EFE6F8
+  BorderColor #6A3FA0
+}
+skinparam legend {
+  BackgroundColor #FFF8E1
+  BorderColor #C9B36B
+  FontSize 12
+}
+skinparam stereotypeFontSize 10
+hide circle
+hide empty methods
+title Physical ERD - Discussions and team chat (4 of 9)
+entity project_discussions #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  project_id : uuid <<FK>>
+  author_id : uuid <<FK users>>
+  mentor_relationship_id : uuid <<FK>>
+  ..
+  title : varchar(240)
+  status : varchar(16)
+}
+entity project_decisions #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  project_id : uuid <<FK>>
+  thread_id : uuid <<FK>>
+  recorded_by_id : uuid <<FK users>>
+  ..
+  decision : varchar(500)
+  target_kind : varchar(32)
+}
+entity project_team_messages #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  project_id : uuid <<FK>>
+  sender_id : uuid <<FK users>>
+  thread_id : uuid <<FK>>
+  reply_to_id : uuid <<FK>>
+  deleted_by_id : uuid <<FK users>>
+  ..
+  client_key : uuid
+  content : text
+}
+entity project_team_message_reads #EFE6F8;line:6A3FA0 {
+  * message_id : uuid <<PK,FK>>
+  * user_id : uuid <<PK,FK users>>
+  --
+  read_at : timestamptz
+}
+entity project_chat_messages #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  project_id : uuid <<FK>>
+  user_id : uuid <<FK users>>
+  credit_transaction_id : uuid <<FK>>
+  pinned_by_id : uuid <<FK users>>
+  ..
+  scope : varchar(16)
+  role : varchar(16)
+}
+entity project_chat_citations #EFE6F8;line:6A3FA0 {
+  * message_id : uuid <<PK,FK>>
+  * paper_id : uuid <<PK,FK>>
+  --
+  position : integer
+}
+entity projects #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+entity mentor_relationships #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+entity papers #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+entity credit_transactions #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+credit_transactions |o--o{ project_chat_messages
+mentor_relationships |o--o{ project_discussions
+papers ||--o{ project_chat_citations
+project_chat_messages ||--o{ project_chat_citations
+project_discussions |o--o{ project_decisions
+project_discussions |o--o{ project_team_messages
+project_team_messages ||--o{ project_team_message_reads
+project_team_messages |o--o{ project_team_messages : reply_to_id
+projects ||--o{ project_chat_messages
+projects ||--o{ project_decisions
+projects ||--o{ project_discussions
+projects ||--o{ project_team_messages
+legend bottom
+Crow's-foot notation. PK primary key, FK foreign key, UK unique key.
+FK <name>: the foreign key references a table that is not drawn here.
+Dashed boxes belong to another diagram (key only).
+endlegend
+@enduml

@@ -4,7 +4,7 @@ import type { PublicAcademicProfile } from "./academic-profile.js";
 export type CommunityVisibility = "public" | "private";
 export type CommunityStatus = "ACTIVE" | "ARCHIVED" | "PENDING_APPROVAL" | "REJECTED";
 export type CommunityMembershipRole = "owner" | "moderator" | "member";
-export type CommunityMembershipStatus = "pending" | "active" | "declined" | "banned";
+export type CommunityMembershipStatus = "active" | "banned";
 export type ForumPostType = "QUESTION" | "DISCUSSION" | "PAPER_DISCUSSION" | "RESEARCH_GAP_DISCUSSION";
 export type ForumContentStatus = "active" | "hidden" | "locked" | "deleted";
 export type ForumReportStatus = "open" | "claimed" | "under_review" | "escalated" | "reviewed" | "resolved" | "dismissed";
@@ -34,7 +34,6 @@ export interface Community {
   researchField?: string;
   icon?: string;
   rules: string[];
-  visibility: CommunityVisibility;
   status: CommunityStatus;
   reviewNote?: string;
   reviewedAt?: ISODateString;
@@ -46,9 +45,8 @@ export interface Community {
   canEditCommunity: boolean;
   isOwner: boolean;
   isAdmin: boolean;
-  /** Only present for managers: requests waiting for approval. */
-  pendingRequestCount?: number;
-  contentRestricted: boolean;
+  /** Only in the admin list of proposals waiting for approval. */
+  proposer?: { id: string; fullName: string; academicProfileType?: string; roleVerificationStatus?: string };
   createdAt: ISODateString;
   updatedAt: ISODateString;
 }
@@ -76,12 +74,13 @@ export interface CommunitySuggestion extends Community {
 export interface CommunityInput {
   name: string;
   description?: string;
-  visibility?: CommunityVisibility;
   researchField?: string;
   icon?: string;
   researchTopics?: string[];
   rules?: string[];
 }
+
+export type CommunityRestrictionType = "CREATE_THREAD" | "REPLY" | "POSTING";
 
 export interface CommunityMember {
   id: string;
@@ -89,6 +88,8 @@ export interface CommunityMember {
   role: CommunityMembershipRole;
   status: CommunityMembershipStatus;
   joinedAt: ISODateString;
+  /** Restrictions currently in force in this community. */
+  restrictions?: Array<{ id: string; type: CommunityRestrictionType; expiresAt?: ISODateString }>;
 }
 
 export type CommunitySummary =
@@ -143,6 +144,8 @@ export interface ForumPost {
   publicSlug?: string;
   author: ForumAuthorSummary;
   community?: Pick<Community, "id" | "name" | "slug">;
+  /** Optional research community the post is additionally scoped to (private ones are members-only). */
+  researchCommunity?: Pick<Community, "id" | "name" | "slug">;
   type: ForumPostType;
   title: string;
   content: string;

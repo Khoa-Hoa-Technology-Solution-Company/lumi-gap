@@ -4,7 +4,7 @@ import { StaticRouter } from "react-router-dom/server";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ForumCategoryView } from "../api/forum.api";
-import { buildForumDiscussionInput, formatForumMarkdown, forumInitialDiscussionType, forumMarkdownShortcut, forumNewDiscussionHref, insertForumMarkdown, type ForumDiscussionDraft } from "../utils/forum-discussion-editor";
+import { buildForumDiscussionInput, forumCategoryForCommunity, formatForumMarkdown, forumInitialDiscussionType, forumMarkdownShortcut, forumNewDiscussionHref, insertForumMarkdown, type ForumDiscussionDraft } from "../utils/forum-discussion-editor";
 import { ForumNewPage } from "@/pages/forum/forum-new";
 import { ForumMarkdown } from "../components/forum-markdown";
 
@@ -15,7 +15,10 @@ vi.mock("@/features/forum/hooks/use-forum", () => ({
   useCreateForumPost: () => ({ isPending: state.pending, mutateAsync: vi.fn() }),
   useShareForumGap: () => ({ isPending: false, mutateAsync: vi.fn() }),
   useForumPaperSearch: () => ({ data: [], isLoading: false, isError: false, refetch: vi.fn() }),
+  useCommunityList: () => ({ data: { pages: [{ items: [] }] } }),
+  useCommunity: () => ({ data: undefined, isLoading: false }),
 }));
+vi.mock("@/features/auth", () => ({ useCurrentUser: () => ({ data: { user: { emailVerifiedAt: "2026-10-01T00:00:00.000Z", systemRole: "USER" } } }) }));
 vi.mock("@/features/forum/hooks/use-forum-categories", () => ({
   useForumCategories: () => ({ data: state.loading || state.error ? undefined : communities, isLoading: state.loading, isError: state.error, refetch: vi.fn() }),
   useForumTags: () => ({ data: [] }),
@@ -26,6 +29,26 @@ const communities = [joined, { ...joined, id: "pending", slug: "archived", name:
 const draft: ForumDiscussionDraft = { type: "QUESTION", communityId: "joined", title: "  A research question  ", content: "  Evidence and methods.  ", tags: "methods, evidence, methods", linkedPaperId: "", linkedGapId: "", references: [] };
 const render = (url = "/forum/new") => renderToStaticMarkup(<QueryClientProvider client={new QueryClient()}><StaticRouter location={url}><ForumNewPage /></StaticRouter></QueryClientProvider>);
 beforeEach(() => { state.loading = false; state.error = false; state.pending = false; });
+
+describe("research community scope", () => {
+  const categories = [{ id: "se", name: "Software Engineering", slug: "software-engineering", status: "ACTIVE" }, { id: "gen", name: "General Research", slug: "general-research", status: "ACTIVE" }, { id: "old", name: "Data Science", slug: "data-science", status: "ARCHIVED" }];
+  it("picks the category named like the community's research field, else General Research", () => {
+    expect(forumCategoryForCommunity({ researchField: "  software   engineering " }, categories)).toBe("se");
+    expect(forumCategoryForCommunity({ researchField: "Phần mềm" }, categories)).toBe("gen");
+    expect(forumCategoryForCommunity({ researchField: "Data Science" }, categories)).toBe("gen");
+    expect(forumCategoryForCommunity({ researchField: null }, categories)).toBe("gen");
+    expect(forumCategoryForCommunity(undefined, categories)).toBe("gen");
+    expect(forumCategoryForCommunity({ researchField: "Cybersecurity" }, [categories[0]!])).toBeUndefined();
+    expect(forumCategoryForCommunity({ researchField: "Crème Brûlée" }, [{ id: "x", name: "Creme Brulee", slug: "x" }])).toBe("x");
+  });
+  it("sends the optional community with the required category", () => {
+    const withScope = buildForumDiscussionInput({ ...draft, researchCommunityId: "community-1" }, communities, []);
+    expect(withScope).toMatchObject({ input: { communityId: "joined", researchCommunityId: "community-1" } });
+    const without = buildForumDiscussionInput(draft, communities, []);
+    expect("input" in without && without.input.researchCommunityId).toBeUndefined();
+    expect(buildForumDiscussionInput({ ...draft, communityId: "" , researchCommunityId: "community-1" }, communities, [])).toHaveProperty("error");
+  });
+});
 
 describe("New discussion composer", () => {
   it("keeps community/type defaults but does not carry list sorting or search into a new post", () => {

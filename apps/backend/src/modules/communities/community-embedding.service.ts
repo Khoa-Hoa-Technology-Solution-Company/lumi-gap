@@ -124,19 +124,15 @@ export interface NearestCommunity {
 }
 
 /**
- * Nearest ACTIVE communities by embedding similarity.
- * Visibility must be applied in SQL before LIMIT; post-filtering shrinks the
- * result set (same bug fixed in the retriever, issue #14).
+ * Nearest ACTIVE communities by embedding similarity. Archived communities and forum categories are excluded.
+ * Filters must be applied in SQL before LIMIT; post-filtering shrinks the result set (same bug fixed in the
+ * retriever, issue #14).
  */
 export async function nearestCommunityIds(
   embedding: readonly number[],
   options: {
     limit: number;
     excludeIds?: string[];
-    /** Only public communities (recommendations for someone who has not joined). */
-    publicOnly?: boolean;
-    /** Restrict to what this viewer may see: public, plus the communities they belong to. Admins see all. */
-    viewer?: { isAdmin: boolean; memberCommunityIds: string[] };
     /** Defaults to env.COMMUNITY_SUGGEST_MIN_SIMILARITY. */
     minSimilarity?: number;
   },
@@ -146,15 +142,6 @@ export async function nearestCommunityIds(
   const exclude = options.excludeIds?.length
     ? Prisma.sql`AND id <> ALL(${[...options.excludeIds]}::uuid[])`
     : Prisma.empty;
-  const viewer = options.viewer;
-  // Fail closed: without a viewer, only public communities. Admins must pass `viewer.isAdmin` to see everything.
-  const visibility = options.publicOnly || !viewer
-    ? Prisma.sql`AND visibility = 'public'`
-    : !viewer.isAdmin
-      ? viewer.memberCommunityIds.length
-        ? Prisma.sql`AND (visibility = 'public' OR id = ANY(${[...viewer.memberCommunityIds]}::uuid[]))`
-        : Prisma.sql`AND visibility = 'public'`
-      : Prisma.empty;
   return getPrisma().$queryRaw<NearestCommunity[]>(Prisma.sql`
     SELECT id, (1 - (embedding <=> ${vector}) / 2.0)::double precision AS similarity
     FROM communities
@@ -162,7 +149,6 @@ export async function nearestCommunityIds(
       AND status = 'ACTIVE'
       -- Forum categories live in this table but are not joinable communities; exclude them before LIMIT.
       AND is_forum_category = false
-      ${visibility}
       ${exclude}
       AND (1 - (embedding <=> ${vector}) / 2.0) >= ${minSimilarity}
     ORDER BY embedding <=> ${vector}, id

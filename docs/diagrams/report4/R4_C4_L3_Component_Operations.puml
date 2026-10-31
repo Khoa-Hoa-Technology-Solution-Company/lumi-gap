@@ -1,0 +1,40 @@
+@startuml R4_C4_L3_Component_Operations
+!pragma layout smetana
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam wrapWidth 260
+skinparam rectangle {
+  roundCorner 12
+}
+title Component diagram (C4 level 3e): API, commerce and operations
+rectangle "Commerce and operations modules" as N0 {
+  rectangle "credits\nCredit ledger, PayOS link and webhook" as N1
+  rectangle "pipeline\nPipeline and worker status" as N2
+  rectangle "notifications\nIn-app notifications, mail queue" as N3
+  rectangle "evaluation\nEvaluation summary" as N4
+  rectangle "audit\nAudit log" as N5
+  rectangle "analytics\nSearch analytics" as N6
+  rectangle "admin\nAdmin users and statistics" as N7
+  rectangle "github\nGitHub OAuth connection" as N8
+}
+rectangle "PayOS\n[HTTPS]\npayment link, webhook" as N9
+database "Redis\n[BullMQ queue]" as N10
+rectangle "Notification worker\n[BullMQ]\ne-mail" as N11
+rectangle "SMTP server\n[SMTP]\ne-mail" as N12
+database "PostgreSQL\n[Prisma]\nall modules" as N13
+rectangle "GitHub «optional»\n[HTTPS]\napi.github.com" as N14
+N1 <--> N9 : "payment\n[HTTPS]"
+N3 --> N10 : "enqueue"
+N10 --> N11 : "jobs"
+N11 --> N12 : "send"
+N0 --> N13 : "SQL\n[Prisma]"
+N8 --> N14 : "sync\n[HTTPS]"
+legend bottom
+Legend
+Module (component)
+Workers
+Data store
+External system
+evaluation imports gaps, llm, scoring, trends; admin imports auth, authorization (origin/main).
+endlegend
+@enduml

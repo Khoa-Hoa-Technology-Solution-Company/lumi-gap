@@ -57,6 +57,10 @@ const AdminAiJobsPage = lazy(() => import("@/pages/admin/ai-jobs").then((m) => (
 const AdminAuditLogsPage = lazy(() => import("@/pages/admin/audit-logs").then((m) => ({ default: m.AdminAuditLogsPage })));
 const AdminTrustSafetyPage = lazy(() => import("@/pages/admin/trust-safety").then((m) => ({ default: m.AdminTrustSafetyPage })));
 const AdminWorkersPage = lazy(() => import("@/pages/admin/workers").then((m) => ({ default: m.AdminWorkersPage })));
+const AdminTaxonomyPage = lazy(() => import("@/pages/admin/taxonomy").then((m) => ({ default: m.AdminTaxonomyPage })));
+const AdminKeywordsPage = lazy(() => import("@/pages/admin/keywords").then((m) => ({ default: m.AdminKeywordsPage })));
+const AdminTagsPage = lazy(() => import("@/pages/admin/tags").then((m) => ({ default: m.AdminTagsPage })));
+const AdminTagDetailPage = lazy(() => import("@/pages/admin/tag-detail").then((m) => ({ default: m.AdminTagDetailPage })));
 const AdminSettingsPage = lazy(() => import("@/pages/admin/settings").then((m) => ({ default: m.AdminSettingsPage })));
 const AdminHomePage = lazy(() => import("@/pages/admin").then((m) => ({ default: m.AdminHomePage })));
 const NotFoundPage = lazy(() => import("@/pages/not-found").then((m) => ({ default: m.NotFoundPage })));
@@ -122,6 +126,10 @@ export function AppRoutes() {
             <Route path="academic-verifications" element={<AdminAcademicVerificationsPage />} />
             <Route path="papers" element={<AdminPapersPage />} />
             <Route path="papers/new" element={<SubmitPaperPage />} />
+            <Route path="taxonomy" element={<AdminTaxonomyPage />} />
+            <Route path="keywords" element={<AdminKeywordsPage />} />
+            <Route path="tags" element={<AdminTagsPage />} />
+            <Route path="tags/:id" element={<AdminTagDetailPage />} />
             <Route path="sync" element={<AdminSyncPage />} />
             <Route path="pipeline" element={<AdminPipelinePage />} />
             <Route path="corpus-validation" element={<AdminCorpusValidationPage />} />

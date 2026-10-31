@@ -50,15 +50,6 @@ export function useTrendPeriodsPages(params: TrendPeriodsParams, options?: { ena
   });
 }
 
-export function useTrendPeriods(params?: TrendPeriodsParams, options?: { enabled?: boolean }) {
-  return useQuery({
-    queryKey: ["trendPeriods", params],
-    queryFn: () => trendsApi.periods(params),
-    enabled: options?.enabled ?? true,
-    placeholderData: keepPreviousData,
-  });
-}
-
 export function useTopicTrend(topic: string, params?: Parameters<typeof trendsApi.topic>[1]) {
   return useQuery({
     queryKey: ["topicTrend", topic, params],

@@ -155,6 +155,7 @@ export const ko: Record<keyof typeof en, string> = {
   "A technical acceptance dashboard showing whether AI/BE logic is deterministic, grounded, and ready for demo.": "AI/BE 로직이 결정적이고 근거가 있으며 데모 준비가 되었는지 보여주는 기술 승인 대시보드입니다.",
   "AI Explainer is ready.": "AI 설명자가 준비되었습니다.",
   "AI explanation failed. You can still inspect the charts and facets.": "AI 설명에 실패했습니다. 여전히 차트와 패싯을 검사할 수 있습니다.",
+  "The AI model is busy right now. Please try again in a minute. You can still inspect the charts and facets.": "AI 모델이 현재 사용량이 많습니다. 1분 후에 다시 시도해 주세요. 차트와 패싯은 계속 확인할 수 있습니다.",
   "AI explanation is grounded in aggregate trend metrics, not individual paper-level citations. Generated at": "AI 설명은 개별 논문 수준 인용이 아닌 집계된 추세 지표를 기반으로 합니다. 생성 날짜",
   "AI is generating your report...": "AI가 보고서를 생성하고 있습니다...",
   "AI is reading project papers...": "AI가 프로젝트 문서를 읽고 있습니다.",

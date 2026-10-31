@@ -1,0 +1,69 @@
+@startuml
+!pragma layout elk
+skinparam dpi 200
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam backgroundColor #FFFFFF
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam ArrowFontSize 12
+skinparam ArrowFontColor #4A5A6A
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam entity {
+  BackgroundColor #EFE6F8
+  BorderColor #6A3FA0
+}
+skinparam legend {
+  BackgroundColor #FFF8E1
+  BorderColor #C9B36B
+  FontSize 12
+}
+skinparam stereotypeFontSize 10
+hide circle
+hide empty methods
+title Physical ERD - Account security tokens and name changes (5 of 7)
+entity email_verification_tokens #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  user_id : uuid <<FK>>
+  user_email_id : uuid <<FK>>
+  token_hash : text <<UK>>
+  ..
+  expires_at : timestamptz
+  consumed_at : timestamptz
+}
+entity password_reset_tokens #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  user_id : uuid <<FK,UK*>>
+  token_hash : text <<UK>>
+  ..
+  expires_at : timestamptz
+  consumed_at : timestamptz
+}
+entity user_display_name_changes #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  user_id : uuid <<FK>>
+  ..
+  changed_at : timestamptz
+}
+entity users #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+entity user_emails #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+user_emails |o--o{ email_verification_tokens
+users ||--o{ email_verification_tokens
+users ||--o{ password_reset_tokens
+users ||--o{ user_display_name_changes
+legend bottom
+Crow's-foot notation. PK primary key, FK foreign key, UK unique key.
+Dashed boxes belong to another diagram (key only).
+UK*: partial unique index (unique only for rows matching its WHERE condition).
+endlegend
+@enduml

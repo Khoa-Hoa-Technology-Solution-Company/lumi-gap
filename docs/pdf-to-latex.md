@@ -131,23 +131,5 @@ files, history and collaborative editing. Existing manuscripts are not modified.
 Rebuild/recreate backend, web, worker-ai-jobs and ai-reviewer for deployment.
 The compiler Compose overlay grants `worker-ai-jobs` access to the isolated
 compiler network and its fixed endpoints for temporary preview compilation.
-No new environment variables or migrations are required. See
-[upstream evaluation](pdf-to-latex-upstream.md) for inspected revisions,
-licenses and the integration decision.
-
-The structured upgrade research and limitations are documented in
-[the layout audit](pdf-to-latex-layout-upgrade-research.md); measured before/after
-results are in [the validation report](pdf-structured-validation.md).
-
-Preview verification: 9 disposable PostgreSQL/Redis/compiler integration tests,
-14 route tests and 6 frontend tests passed; the optional external AI test was
-skipped. Tests exercise actual converted-source compilation, layout dimensions,
-private preview downloads, access revocation, expiry, compilation failure and
-explicit acceptance. Web/backend builds and targeted frontend ESLint passed.
-
-The 100-page extension was verified with 17 Python tests (including over 20,000
-words and rejection at 101 pages), 19 backend unit/route tests, 6 frontend tests,
-and the persistence/compiler suite. The real 100-page flow produced a 100-page
-preview and persisted `pages/page-100.tex`. One revocation test timed out during
-Docker recreation and passed when rerun separately after startup. Web/backend
-builds passed; the updated local services returned healthy HTTP responses.
+No new environment variables or migrations are required. Measured before/after
+results of the structured mode are in [the validation record](pdf-structured-validation.md).

@@ -1,0 +1,37 @@
+@startuml R3_ScreenFlow_2a_Reports_Gaps
+!pragma layout smetana
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam wrapWidth 260
+skinparam rectangle {
+  roundCorner 12
+}
+rectangle "Header - Workspace and Explore menus" as N0 {
+  rectangle "Reports\n/reports" as N2
+  rectangle "Research gaps\n/research-gaps" as N3
+  rectangle "Gap discovery\n/research-gap/discover" as N4
+}
+rectangle "Header - Paper Tools menu" as N1 {
+  rectangle "AI paper review\n/papers/review" as N10
+  rectangle "Format checker\n/papers/format-check" as N11
+}
+rectangle "Report viewer\n/reports/:id" as N5
+rectangle "Gap closure\n/gap-closure" as N6
+rectangle "Gap validation queue\n/​research-gaps/​validation" as N7
+rectangle "Paper detail\n/papers/:id" as N8
+rectangle "My papers\n/settings/my-papers" as N9
+rectangle "Submit paper\n/settings/submit-paper" as N12
+N2 <--> N5 : "open report"
+N5 --> N3 : "find gaps"
+N5 --> N8 : "open paper"
+N4 --> N3 : "gaps saved"
+N3 --> N6 : "closure check"
+N3 --> N7 : "expert queue"
+N9 <--> N12 : "new / edit"
+legend bottom
+Screen flow 2(a) - Reports, research gaps and paper tools
+Screen (web client route)
+Frame = group of screens opened from one header menu / layout
+Dashed grey = screen drawn in another diagram, or route with no in-app link found
+endlegend
+@enduml

@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
 import { ChevronLeft, ChevronRight, Search } from "lucide-react";
-import type { Paper, ScoredPaper } from "@trend/shared-types";
+import type { Paper, ScoredPaper, SearchUnderstanding } from "@trend/shared-types";
 import { PaperCard } from "@/components/paper-card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -11,7 +11,9 @@ import { papersApi } from "@/features/papers/api/papers.api";
 import { useBookmarks } from "@/features/bookmarks/hooks/use-bookmarks";
 import { useAuthStore } from "@/stores/auth-store";
 import { useI18n } from "@/i18n";
-import { homePaperKeywords, homeSearchRequest, LITERATURE_PATH } from "../utils/home-search";
+import { homePaperKeywords, homeSearchRequest, homeTagFilter, LITERATURE_PATH } from "../utils/home-search";
+import { SearchCoverageNotice } from "./search-coverage-notice";
+import { SearchUnderstandingBar } from "./search-understanding-bar";
 
 export function HomeSearchResults() {
   const [params, setParams] = useSearchParams();
@@ -36,6 +38,7 @@ export function HomeSearchResults() {
   const bookmarkByPaper = new Map(bookmarks.data?.filter((bookmark) => bookmark.targetKind === "paper").map((bookmark) => [bookmark.targetId, bookmark.id]));
   const papers = (results.data?.papers ?? []) as Array<Paper & Partial<ScoredPaper>>;
   const meta = results.data?.meta;
+  const understanding = meta && "understanding" in meta ? (meta.understanding as SearchUnderstanding | undefined) : undefined;
   const totalPages = Math.max(1, meta?.totalPages ?? 1);
   useEffect(() => {
     if (meta && request.page! > totalPages) setParams((previous) => { const next = new URLSearchParams(previous); next.set("page", String(totalPages)); return next; }, { replace: true });
@@ -52,6 +55,8 @@ export function HomeSearchResults() {
       <div><p className="home-section-kicker">{t(mode === "semantic" ? "Semantic" : "Keyword")}</p><h1 id="home-search-results-heading">{t(request.q ? "Literature for “{{query}}”" : "Explore the literature", { query: request.q })}</h1><p aria-live="polite">{results.isPending && !needsSignIn && !invalidQuery ? t("Searching literature…") : meta ? t("{{count}} papers found", { count: meta.total.toLocaleString(language) }) : null}</p></div>
       <label className="home-search-sort"><span>{t("Sort by:")}</span><select value={request.sort} onChange={(event) => update("sort", event.target.value)}><option value="relevance">{t("Relevance")}</option><option value="year">{t("Newest first")}</option><option value="citations">{t("Most cited")}</option></select></label>
     </header>
+    {(mode === "semantic" || homeTagFilter(params)) && !invalidQuery && !needsSignIn ? <SearchUnderstandingBar understanding={understanding} searchParams={params} onChange={(next) => setParams(next)} /> : null}
+    {mode === "semantic" && understanding?.coverage && !invalidQuery && !needsSignIn ? <SearchCoverageNotice coverage={understanding.coverage} authenticated={authenticated} signInHref={"/login?returnTo=" + encodeURIComponent(LITERATURE_PATH + "?" + params.toString())} /> : null}
     {invalidQuery ? <div className="home-search-state" role="alert"><p>{t("Search queries can contain at most 500 characters.")}</p></div>
       : needsSignIn ? <div className="home-search-state" role="status"><p>{t("Sign in to use AI reranking.")}</p><div><Button asChild><Link to={"/login?returnTo=" + encodeURIComponent(LITERATURE_PATH + "?" + params.toString())}>{t("Sign in")}</Link></Button><Button asChild variant="outline"><Link to={LITERATURE_PATH + "?" + withoutRerank.toString()}>{t("Search without AI reranking")}</Link></Button></div></div>
       : results.isPending ? <div role="status" aria-label={t("Searching literature…")} className="home-search-list">{[0, 1, 2].map((item) => <div key={item} className="home-search-skeleton"><Skeleton className="h-6 w-4/5" /><Skeleton className="h-4 w-1/2" /><Skeleton className="h-14 w-full" /></div>)}</div>

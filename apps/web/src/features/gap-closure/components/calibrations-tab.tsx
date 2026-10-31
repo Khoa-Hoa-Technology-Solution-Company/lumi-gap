@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import type {
   CalibrationLabelSource,
   CalibrationQuestionResult,
+  ClosureCalibrationMode,
   ClosureCalibrationView,
   ClosureJudgeKind,
   QuestionFacets,
@@ -46,11 +47,17 @@ function useJudgeNames(): Record<ClosureJudgeKind, string> {
   return { AI: t("AI judge"), HUMAN: t("Human judge") };
 }
 
+function useModeNames(): Record<ClosureCalibrationMode, string> {
+  const { t } = useI18n();
+  return { IN_SITU: t("In situ (B = epsHat)"), TRANSFER: t("Transfer (B = epsHat + pHat)") };
+}
+
 /** Calibrations: questions known to be answered, run through the procedure to measure how often it misses (epsHat). */
 export function CalibrationsTab() {
   const { t } = useI18n();
   const list = useClosureCalibrations();
   const judgeNames = useJudgeNames();
+  const modeNames = useModeNames();
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   return (
@@ -74,6 +81,7 @@ export function CalibrationsTab() {
                 <TableHead>{t("Name")}</TableHead>
                 <TableHead>{t("Domain")}</TableHead>
                 <TableHead>{t("Judge")}</TableHead>
+                <TableHead>{t("Mode")}</TableHead>
                 <TableHead>{t("Status")}</TableHead>
                 <TableHead className="text-right">{t("Missed / questions")}</TableHead>
                 <TableHead className="text-right">epsHat</TableHead>
@@ -86,6 +94,7 @@ export function CalibrationsTab() {
                   <TableCell className="font-semibold">{item.name}</TableCell>
                   <TableCell>{item.domain}</TableCell>
                   <TableCell>{judgeNames[item.judgeKind]}</TableCell>
+                  <TableCell>{modeNames[item.mode]}</TableCell>
                   <TableCell><CalibrationStatusBadge status={item.status} /></TableCell>
                   <TableCell className="text-right">{item.status === "COMPUTED" ? `${item.misses} / ${item.n}` : "-"}</TableCell>
                   <TableCell className="text-right font-semibold">{item.epsHat !== undefined && item.epsHat !== null ? formatRate(item.epsHat) : "-"}</TableCell>
@@ -116,11 +125,13 @@ function CreateCalibrationForm({ onCreated }: { onCreated: (calibration: Closure
   const { t } = useI18n();
   const friendly = useFriendlyError();
   const judgeNames = useJudgeNames();
+  const modeNames = useModeNames();
   const create = useCreateClosureCalibration();
   const canCreate = useAuthStore((state) => state.user?.systemRole === "ADMIN" || Boolean(state.user?.capabilities?.includes("GAP_VALIDATION")));
   const [name, setName] = useState("");
   const [domain, setDomain] = useState("");
   const [judgeKind, setJudgeKind] = useState<ClosureJudgeKind>("AI");
+  const [mode, setMode] = useState<ClosureCalibrationMode>("TRANSFER");
   const [error, setError] = useState<string | null>(null);
 
   const submit = async (event: React.FormEvent) => {
@@ -131,7 +142,7 @@ function CreateCalibrationForm({ onCreated }: { onCreated: (calibration: Closure
       return;
     }
     try {
-      const created = await create.mutateAsync({ name: name.trim(), domain: domain.trim(), judgeKind });
+      const created = await create.mutateAsync({ name: name.trim(), domain: domain.trim(), judgeKind, mode });
       toast.success(t("Calibration created. Add questions next."));
       setName("");
       setDomain("");
@@ -152,7 +163,7 @@ function CreateCalibrationForm({ onCreated }: { onCreated: (calibration: Closure
         </p>
       )}
       <form onSubmit={(event) => void submit(event)} className="space-y-4 rounded-2xl border bg-card p-4">
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <div className="space-y-1.5">
             <Label htmlFor="calibration-name">{t("Name")}</Label>
             <Input id="calibration-name" value={name} onChange={(event) => setName(event.target.value)} maxLength={120} />
@@ -168,7 +179,17 @@ function CreateCalibrationForm({ onCreated }: { onCreated: (calibration: Closure
               <option value="HUMAN">{judgeNames.HUMAN}</option>
             </select>
           </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="calibration-mode">{t("Mode")}</Label>
+            <select id="calibration-mode" value={mode} onChange={(event) => setMode(event.target.value as ClosureCalibrationMode)} className={SELECT_CLASS}>
+              <option value="TRANSFER">{modeNames.TRANSFER}</option>
+              <option value="IN_SITU">{modeNames.IN_SITU}</option>
+            </select>
+          </div>
         </div>
+        <p className="text-[11px] leading-relaxed text-muted-foreground">
+          {t("In situ: the questions are searched in the same sources as the checks, so a witness missing from them already counts as a miss and no coverage check is needed. Choose it only when the questions and their witness DOIs come from a survey or an expert, not from a LumiGap search, and are in the same field as the gaps. Transfer adds pHat from a coverage check and is the safe default. The mode cannot be changed later.")}
+        </p>
         <p className="text-[11px] leading-relaxed text-muted-foreground">
           {t("The judge kind must match the checks it will be used for: an AI calibration only applies to checks decided on AI labels, a human calibration to checks where a person confirmed every label.")}
         </p>
@@ -186,6 +207,7 @@ function CalibrationDetail({ id }: { id: string }) {
   const { t } = useI18n();
   const friendly = useFriendlyError();
   const judgeNames = useJudgeNames();
+  const modeNames = useModeNames();
   const userId = useAuthStore((state) => state.user?.id);
   const query = useClosureCalibration(id);
   const run = useRunCalibration(id);
@@ -232,7 +254,7 @@ function CalibrationDetail({ id }: { id: string }) {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-lg font-bold">{calibration.name}</h2>
-          <p className="text-xs text-muted-foreground">{calibration.domain} · {judgeNames[calibration.judgeKind]} · <CalibrationStatusBadge status={calibration.status} /></p>
+          <p className="text-xs text-muted-foreground">{calibration.domain} · {judgeNames[calibration.judgeKind]} · {modeNames[calibration.mode]} · <CalibrationStatusBadge status={calibration.status} /></p>
         </div>
         {isCreator && (
           <div className="flex flex-wrap gap-2">

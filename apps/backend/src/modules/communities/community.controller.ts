@@ -85,6 +85,14 @@ export const communityController = {
     res.json({ success: true, data: await communityService.listMembers(req.params.id as string, req.user!.sub, req.user!.role) });
   },
 
+  async restrictMember(req: Request, res: Response) {
+    res.status(201).json({ success: true, data: await communityService.restrictMember(req.params.id as string, req.params.userId as string, req.body, req.user!.sub, req.user!.role) });
+  },
+
+  async liftRestriction(req: Request, res: Response) {
+    res.json({ success: true, data: await communityService.liftRestriction(req.params.id as string, req.params.userId as string, req.params.restrictionId as string, req.user!.sub, req.user!.role) });
+  },
+
   async updateMember(req: Request, res: Response) {
     res.json({
       success: true,

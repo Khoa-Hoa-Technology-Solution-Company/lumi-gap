@@ -396,7 +396,7 @@ Phase E  Web pages + mobile screens + push notifications         ⏳ in progress
 
 These are the things that caused real bugs or near-misses. Keep them in mind:
 
-1. **PostgreSQL-only runtime.** Server, API routes, and workers use Prisma/PostgreSQL. Do not introduce Mongoose or MongoDB runtime imports.
+1. **PostgreSQL-only runtime.** Server, API routes, and workers use Prisma/PostgreSQL. Do not introduce any other database runtime; server, routes and workers use Prisma/PostgreSQL only.
 
 2. **pgvector stays in Docker locally.** Developers do not need a Windows pgvector installation. Local Compose exposes PostgreSQL on port `5433`.
 
@@ -408,7 +408,7 @@ These are the things that caused real bugs or near-misses. Keep them in mind:
 
 6. **Use deterministic, parameterized persistence.** Prefer Prisma queries and transactions; only use Prisma tagged SQL for pgvector or database capabilities Prisma cannot express.
 
-7. **Runtime audit must stay green.** `pnpm --filter backend runtime:audit:postgres` rejects server/worker import paths that reach Mongoose or legacy model files.
+7. **Runtime audit must stay green.** `pnpm --filter backend runtime:audit:postgres` rejects server/worker import paths that reach non-Prisma persistence code or legacy model files.
 
 8. **Worker is a separate Node process.** `pnpm worker:sync` runs `tsx src/workers/sync.worker.ts` in its own process. Dev terminal A: backend. Terminal B: worker. They share the Redis queue, nothing else.
 
@@ -434,7 +434,6 @@ These are the things that caused real bugs or near-misses. Keep them in mind:
 | [docs/PERSONAL_AI_CONNECTIONS.md](docs/PERSONAL_AI_CONNECTIONS.md) | Per-user AI provider connections (encrypted keys) |
 | [docs/environment-variables.md](docs/environment-variables.md) | Inventory of every env variable |
 | [docs/DEPLOY_WITH_DOCKER.md](docs/DEPLOY_WITH_DOCKER.md) | Docker deploy, troubleshooting, rate limits and scaling |
-| [docs/superpowers/specs/2026-05-25-phase-a-design.md](docs/superpowers/specs/2026-05-25-phase-a-design.md) | Full Phase A design (data flow, schemas, acceptance criteria) |
 
 ---
 

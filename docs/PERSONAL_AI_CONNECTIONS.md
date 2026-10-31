@@ -21,6 +21,26 @@ OpenAI-compatible providers must implement model listing and chat completions. G
 
 Personal connections apply to research gaps, reports, paper comparison/analysis/index extraction, quality scoring and AI chat. A connection selects one model for these tasks. Shared search embeddings and scheduled corpus jobs retain the platform configuration so stored vectors remain compatible. The separate Python manuscript **AI Reviewer** service still uses platform configuration.
 
+## Platform AI connection (admins)
+
+Admins configure the platform-wide AI the same way, in **Admin → Platform Settings → Platform AI connection**
+(`/api/v1/admin/ai-connections`): protocol, base URL, API key, and two models, a **fast** one (summaries, scoring,
+reranking, chat) and a **deep** one (reports, research gaps, trends). Several connections can be saved; at most one is
+active (a partial unique index enforces it). Every change is written to the audit log.
+
+Which connection a text-generation call uses, first match wins:
+
+1. the user's selected personal connection;
+2. the active platform connection;
+3. the server environment (`GEMINI_API_KEY`, `GEMINI_MODEL_FAST`, `GEMINI_MODEL_DEEP`).
+
+Platform keys use the same AES-256-GCM envelope as personal keys, bound to `platform:<connectionId>` instead of a user
+id, are decrypted only when a call is made, and are never returned. Each process (API and every worker) re-reads the
+active connection at most every 30 seconds, so a change applies everywhere within that time without a restart. Cached
+LLM output is scoped to the platform connection's id and last edit, so switching provider does not serve the previous
+provider's answers. Search embeddings always use the environment Gemini key: changing the embedding model would make
+stored 768-dimension vectors incomparable.
+
 ## Server environment
 
 - `GEMINI_API_KEY`, `GEMINI_BASE_URL`, `GEMINI_MODEL_FAST`, `GEMINI_MODEL_DEEP`: platform fallback. Existing installations continue to work without personal connections.

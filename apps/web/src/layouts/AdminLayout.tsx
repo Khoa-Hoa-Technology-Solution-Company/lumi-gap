@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, BadgeCheck, FileText, RefreshCw,
   Activity, CheckCircle, MessageSquare, Cpu, ClipboardCheck, History,
   Server, Settings, ShieldAlert, ChevronRight, Menu, X, ExternalLink,
-  LogOut, User, ArrowLeft, ShieldCheck
+  LogOut, User, ArrowLeft, ShieldCheck, Network, Tags, Tag
 } from "lucide-react";
 import logoImage from "@/assets/logo.png";
 import { useCurrentUser, useLogout } from "@/features/auth";
@@ -89,9 +89,17 @@ export function AdminLayout() {
       ],
     },
     {
+      title: "Catalogue",
+      items: [
+        { to: "/admin/taxonomy", label: "Taxonomy", icon: Network },
+        { to: "/admin/keywords", label: "Keywords", icon: Tags },
+        { to: "/admin/tags", label: "Tags", icon: Tag },
+      ],
+    },
+    {
       title: "Community",
       items: [
-        { to: "/admin/community", label: "Community & Moderation", icon: MessageSquare },
+        { to: "/admin/community", label: "Communities & Forum", icon: MessageSquare },
         { to: "/admin/trust-safety", label: "Trust & Safety", icon: ShieldCheck },
       ],
     },

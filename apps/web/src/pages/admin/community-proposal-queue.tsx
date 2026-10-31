@@ -40,9 +40,9 @@ export function CommunityProposalQueue() {
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <Link to={`/communities/${community.slug}`} className="font-semibold hover:text-blue-700">{community.name}</Link>
-            <Badge variant="outline">{t(community.visibility === "private" ? "Private" : "Public")}</Badge>
             {community.researchField ? <span className="text-xs font-medium text-blue-700">{community.researchField}</span> : null}
           </div>
+          {community.proposer ? <p className="mt-1 text-xs text-muted-foreground">{t("Proposed by")} <span className="font-medium text-foreground">{community.proposer.fullName}</span>{community.proposer.academicProfileType ? ` · ${community.proposer.academicProfileType}` : ""}{community.proposer.roleVerificationStatus ? ` · ${community.proposer.roleVerificationStatus}` : ""}</p> : null}
           <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{community.description}</p>
           {community.researchTopics.length ? <div className="mt-2 flex flex-wrap gap-1.5">{community.researchTopics.slice(0, 5).map((topic) => <Badge key={topic} variant="secondary" className="font-normal">{topic}</Badge>)}</div> : null}
         </div>

@@ -1,0 +1,34 @@
+@startuml R4_C4_L3_Component_Identity
+!pragma layout smetana
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam wrapWidth 260
+skinparam rectangle {
+  roundCorner 12
+}
+title Component diagram (C4 level 3d): API, identity and access
+rectangle "Identity and access modules" as N0 {
+  rectangle "auth\nLogin, tokens, verify, reset, Google OIDC" as N1
+  rectangle "authorization\nCapabilities, membership, access" as N2
+  rectangle "identity\nInstitution domains, admission rules" as N3
+  rectangle "verification\nAffiliation verification" as N4
+  rectangle "user-ai\nPersonal AI connections" as N5
+  rectangle "home\nHome dashboard aggregation" as N6
+}
+rectangle "Platform operations\ncredits, notifications, admin, pipeline, evaluation, analytics: diagram 3e" as N7
+rectangle "Web SPA\n[HTTPS JSON]\nREST /api/v1/auth" as N8
+rectangle "Google OAuth / OIDC\n[OIDC]\nsign-in" as N9
+database "PostgreSQL\n[Prisma]\nusers, tokens, profiles" as N10
+N8 --> N1 : "REST\n[HTTPS]"
+N1 --> N9 : "sign-in\n[OIDC]"
+N0 --> N7 : "uses"
+N3 --> N10 : "SQL\n[Prisma]"
+legend bottom
+Legend
+Client
+Module (component)
+Data store
+External system
+auth imports credits, notifications, communities, academic-profiles (origin/main).
+endlegend
+@enduml

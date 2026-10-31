@@ -13,6 +13,12 @@ export function isRerankRequested(v: unknown): boolean {
   return ["true", "1", "on", "yes", ""].includes(String(v).toLowerCase());
 }
 
+/** Unlike `rerank`, auto tagging is opt-out: only an explicit false-like value disables it. */
+export function isAutoTagsRequested(v: unknown): boolean {
+  if (typeof v === "boolean") return v;
+  return !["false", "0", "off", "no"].includes(String(Array.isArray(v) ? v.at(-1) : v).toLowerCase());
+}
+
 /**
  * Query params for GET /api/v1/search (semantic search).
  * Shares the complete paper-filter vocabulary with GET /papers. `minScore` is
@@ -30,6 +36,11 @@ export const SearchQuerySchema = z.object({
    * checkbox doesn't 400 the WHOLE search — only an explicit truthy enables it.
    */
   rerank: z.preprocess((v) => isRerankRequested(v), z.boolean()).default(false),
+  /**
+   * Query understanding: resolve `q` to taxonomy nodes / keywords and filter or boost by them
+   * (deterministic, no LLM). On by default; `?autoTags=false` (or `0`/`off`/`no`) opts out.
+   */
+  autoTags: z.preprocess((v) => (v === undefined ? true : isAutoTagsRequested(v)), z.boolean()).default(true),
 });
 
 export type SearchQueryInput = z.infer<typeof SearchQuerySchema>;

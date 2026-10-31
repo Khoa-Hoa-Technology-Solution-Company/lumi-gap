@@ -1,5 +1,5 @@
 import { aiModel } from "../user-ai/user-ai.runtime.js";
-import type { ScoredPaper } from "@trend/shared-types";
+import type { DetectedTag, ScoredPaper, SearchCoverageHint, SearchUnderstanding } from "@trend/shared-types";
 import { env } from "../../config/env.js";
 import { AppError } from "../../common/exceptions/app-error.js";
 import { logger } from "../../infrastructure/logger.js";
@@ -7,8 +7,9 @@ import { creditService } from "../credits/credit.service.js";
 import { generateJSON } from "../llm/gemini.client.js";
 import { cachedGenerate } from "../llm/llm.run.js";
 import { retrieveScored } from "../retrieval/retriever.js";
+import { resolveQueryTags } from "../taxonomy/query-tag-resolver.js";
 import type { SearchSortKey } from "../papers/dto/paper-filters.schema.js";
-import type { TrendCitationBand } from "../trends/trend.filters.js";
+import type { TrendCitationBand } from "@trend/shared-types";
 import {
   buildRerankPrompt,
   buildRerankChargeKey,
@@ -21,6 +22,7 @@ import {
 } from "./search.rerank.js";
 import {
   annotateTaxonomyBoost,
+  applyDetectedTagBoost,
   relevanceSortScore,
 } from "./search.taxonomy.js";
 
@@ -49,10 +51,20 @@ export interface SemanticSearchParams {
   fieldIds?: string[];
   subfieldIds?: string[];
   topicIds?: string[];
+  /** keywords.id values; a paper must carry at least one. */
+  keywordIds?: string[];
+  /** tags.id values of curated tags; a paper must carry at least one (not blocked). */
+  tagIds?: string[];
   minScore?: number;
   sort?: SearchSortKey;
   /** Opt-in LLM re-ranking of the top candidate pool. */
   rerank?: boolean;
+  /**
+   * Query understanding (default on): resolve `q` to taxonomy nodes / keywords and filter or boost by
+   * them. Skipped when `false`, when SEARCH_AUTO_TAGS is off or when an explicit taxonomy/keyword
+   * filter is present.
+   */
+  autoTags?: boolean;
   userId?: string;
 }
 
@@ -60,6 +72,11 @@ export interface SemanticSearchResult {
   papers: ScoredPaper[];
   total: number;
   reranked: boolean;
+  understanding: SearchUnderstanding;
+}
+
+function noUnderstanding(): SearchUnderstanding {
+  return { mode: "none", detectedTags: [], appliedTag: null, fellBack: false };
 }
 
 /**
@@ -86,18 +103,20 @@ export const searchService = {
   async semantic(params: SemanticSearchParams): Promise<SemanticSearchResult> {
     const { q, page, pageSize, sort = "relevance", rerank } = params;
 
+    const planned = await understandQuery(params);
+
     if (rerank) {
-      return rerankedSearch({ q, page, pageSize, params });
+      return rerankedSearch({ q, page, pageSize, params, planned });
     }
 
     // Plain semantic path: pull a FIXED-size filtered pool, sort, paginate in
     // memory. Pool size does NOT grow with `page` — so `total` is stable and a
     // deep `page` can't inflate the SQL LIMIT.
     const poolSize = resolveSearchPoolSize(params, pageSize);
-    const pool = annotateTaxonomyBoost(q, await fetchScoredPool(q, params, poolSize));
+    const { pool, understanding } = await fetchUnderstoodPool(q, params, poolSize, planned);
     const sorted = sortPapers(pool, sort);
     const { items, total } = slicePage(sorted, page, pageSize);
-    return { papers: items, total, reranked: false };
+    return { papers: items, total, reranked: false, understanding };
   },
 };
 
@@ -111,16 +130,17 @@ async function rerankedSearch(args: {
   page: number;
   pageSize: number;
   params: SemanticSearchParams;
+  planned: SearchUnderstanding;
 }): Promise<SemanticSearchResult> {
-  const { q, page, pageSize, params } = args;
+  const { q, page, pageSize, params, planned } = args;
 
   // FIXED candidate pool (covers a full first page of any pageSize, but does NOT
   // grow with `page`) — so a deep `page` can't inflate the Gemini prompt / token
   // cost, and `total` stays deterministic. Rerank refines the head; paginating
   // past the head is meaningless and is clamped in paginatePool.
   const poolSize = resolveSearchPoolSize(params, Math.max(env.RERANK_CANDIDATES, pageSize));
-  const pool = annotateTaxonomyBoost(q, await fetchScoredPool(q, params, poolSize));
-  if (pool.length === 0) return { papers: [], total: 0, reranked: false };
+  const { pool, understanding } = await fetchUnderstoodPool(q, params, poolSize, planned);
+  if (pool.length === 0) return { papers: [], total: 0, reranked: false, understanding };
 
   const rerankHead = pool.slice(0, env.RERANK_CANDIDATES);
   const candidates: RerankCandidate[] = rerankHead.map((p) => ({
@@ -136,7 +156,7 @@ async function rerankedSearch(args: {
 
   const rerankKeyParts = {
     query: q.trim().toLowerCase(),
-    filters: getSearchFilterKeyParts(params),
+    filters: getSearchFilterKeyParts(params, understanding.appliedTag),
     candidateIds: candidates.map((c) => c.id).sort(),
   };
   let ownedTxId: { toString(): string } | undefined;
@@ -197,7 +217,7 @@ async function rerankedSearch(args: {
     }
     // Re-rank is an enhancement, not a hard dependency — degrade gracefully.
     logger.warn({ err }, "rerank LLM call failed; falling back to vector order");
-    return paginatePool(pool, page, pageSize, false);
+    return paginatePool(pool, page, pageSize, false, understanding);
   }
 
   // Coverage validation above guarantees every candidate has an LLM score.
@@ -215,7 +235,7 @@ async function rerankedSearch(args: {
   // An all-empty score map (negative-cache hit or total LLM omission) means no
   // real re-ranking happened — report it honestly as plain semantic order.
   const reranked = Object.keys(scoreMap).length > 0;
-  return paginatePool(pool, page, pageSize, reranked);
+  return paginatePool(pool, page, pageSize, reranked, understanding);
 }
 
 function paginatePool(
@@ -223,9 +243,10 @@ function paginatePool(
   page: number,
   pageSize: number,
   reranked: boolean,
+  understanding: SearchUnderstanding,
 ): SemanticSearchResult {
   const { items, total } = slicePage(pool, page, pageSize);
-  return { papers: items, total, reranked };
+  return { papers: items, total, reranked, understanding };
 }
 
 /**
@@ -279,6 +300,8 @@ async function fetchScoredPool(
       fieldIds: params.fieldIds,
       subfieldIds: params.subfieldIds,
       topicIds: params.topicIds,
+      keywordIds: params.keywordIds,
+      tagIds: params.tagIds,
       minScore: params.minScore,
     },
   });
@@ -290,7 +313,117 @@ function resolveSearchPoolSize(_params: SemanticSearchParams, minimum: number): 
   return Math.min(MAX_POOL, Math.max(env.SEARCH_FILTER_POOL, minimum));
 }
 
-function getSearchFilterKeyParts(params: SemanticSearchParams): Record<string, unknown> {
+/** True when the caller already narrowed by taxonomy, keyword or curated tag, so the query must not be reinterpreted. */
+function hasExplicitTaxonomyFilter(params: SemanticSearchParams): boolean {
+  return [
+    params.topics, params.topicIds, params.subfields, params.subfieldIds,
+    params.fields, params.fieldIds, params.domains, params.domainIds, params.keywordIds, params.tagIds,
+  ].some((values) => (values?.length ?? 0) > 0);
+}
+
+/**
+ * Thin-coverage hint: the query is exactly a topic, subfield or keyword the corpus holds few papers of (and, for
+ * taxonomy nodes, OpenAlex holds more). Independent of the filter/boost decision. Undefined when there is no hint.
+ */
+function coverageHint(target: DetectedTag | null | undefined): SearchCoverageHint | undefined {
+  if (!env.TOPIC_BACKFILL_SEARCH_ENABLED || !target) return undefined;
+  if (target.kind !== "topic" && target.kind !== "subfield" && target.kind !== "keyword") return undefined;
+  if (target.paperCount >= env.TOPIC_BACKFILL_THIN_MAX_PAPERS) return undefined;
+  // For keywords the OpenAlex size is unknown, so only taxonomy nodes can be compared.
+  if (target.kind !== "keyword" && !((target.worksCount ?? 0) > target.paperCount)) return undefined;
+  return {
+    targetKind: target.kind,
+    targetId: target.id,
+    name: target.name,
+    localPapers: target.paperCount,
+    openalexWorks: target.kind === "keyword" ? null : target.worksCount ?? null,
+    filter: target.filter,
+  };
+}
+
+/**
+ * Deterministic query understanding (never an LLM): decide whether the query is a catalogue entry that
+ * can hard-filter the search, or only a hint that boosts papers carrying it. Any failure degrades to
+ * plain search.
+ */
+async function understandQuery(params: SemanticSearchParams): Promise<SearchUnderstanding> {
+  if (params.autoTags === false || !env.SEARCH_AUTO_TAGS || hasExplicitTaxonomyFilter(params)) {
+    return noUnderstanding();
+  }
+  const started = Date.now();
+  let understanding: SearchUnderstanding;
+  try {
+    const { detectedTags, best, coversQuery, corpusSize, coverageTarget } = await resolveQueryTags(params.q);
+    const coverage = coverageHint(coverageTarget);
+    if (detectedTags.length === 0 || !best) {
+      understanding = noUnderstanding();
+    } else if (
+      coversQuery
+      && best.confidence >= env.SEARCH_TAG_FILTER_MIN_CONFIDENCE
+      && best.paperCount >= env.SEARCH_TAG_FILTER_MIN_PAPERS
+      && !(corpusSize > 0 && best.paperCount > corpusSize * env.SEARCH_TAG_FILTER_MAX_SHARE)
+    ) {
+      understanding = { mode: "filter", detectedTags, appliedTag: best, fellBack: false };
+    } else {
+      understanding = { mode: "boost", detectedTags, appliedTag: null, fellBack: false };
+    }
+    if (coverage) understanding.coverage = coverage;
+  } catch (err) {
+    logger.warn({ err }, "query understanding failed; searching without tags");
+    return noUnderstanding();
+  }
+  const top = understanding.appliedTag ?? understanding.detectedTags[0];
+  logger.debug(
+    {
+      mode: understanding.mode,
+      best: top && { kind: top.kind, name: top.name, confidence: top.confidence, source: top.source },
+      ms: Date.now() - started,
+    },
+    "search query understanding",
+  );
+  return understanding;
+}
+
+function withTagFilter(params: SemanticSearchParams, tag: DetectedTag): SemanticSearchParams {
+  return { ...params, [tag.filter.key]: [tag.filter.value] };
+}
+
+/**
+ * Fetch the ranked pool for the planned understanding: a tag filter that leaves too few papers is
+ * dropped (fellBack) and the unfiltered pool is boosted instead.
+ */
+async function fetchUnderstoodPool(
+  q: string,
+  params: SemanticSearchParams,
+  poolSize: number,
+  planned: SearchUnderstanding,
+): Promise<{ pool: ScoredPaper[]; understanding: SearchUnderstanding }> {
+  let understanding = planned;
+  let hits: ScoredPaper[];
+  if (planned.mode === "filter" && planned.appliedTag) {
+    hits = await fetchScoredPool(q, withTagFilter(params, planned.appliedTag), poolSize);
+    if (hits.length < env.SEARCH_TAG_FALLBACK_MIN_RESULTS) {
+      // `...planned` carries the coverage hint over unchanged.
+      understanding = { ...planned, mode: "boost", appliedTag: null, fellBack: true };
+      hits = await fetchScoredPool(q, params, poolSize);
+    }
+  } else {
+    hits = await fetchScoredPool(q, params, poolSize);
+  }
+
+  let pool = annotateTaxonomyBoost(q, hits);
+  if (understanding.mode === "boost") {
+    pool = applyDetectedTagBoost(pool, understanding.detectedTags);
+    // Boosted papers must be able to enter the rerank head, so order the pool by the boosted relevance.
+    pool = [...pool].sort((a, b) => relevanceSortScore(b) - relevanceSortScore(a) || b.score - a.score);
+  }
+  return { pool, understanding };
+}
+
+function getSearchFilterKeyParts(
+  params: SemanticSearchParams,
+  appliedTag: DetectedTag | null = null,
+): Record<string, unknown> {
   return {
     yearFrom: params.yearFrom ?? null,
     yearTo: params.yearTo ?? null,
@@ -310,6 +443,9 @@ function getSearchFilterKeyParts(params: SemanticSearchParams): Record<string, u
     fieldIds: params.fieldIds ?? [],
     subfieldIds: params.subfieldIds ?? [],
     topicIds: params.topicIds ?? [],
+    keywordIds: params.keywordIds ?? [],
+    tagIds: params.tagIds ?? [],
+    autoTagFilter: appliedTag ? appliedTag.filter : null,
     minScore: params.minScore ?? 0,
   };
 }

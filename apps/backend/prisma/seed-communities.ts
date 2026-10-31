@@ -7,12 +7,11 @@ type SeedCommunity = {
   name: string;
   researchField: string;
   icon: string;
-  visibility: "public" | "private";
   status?: "ACTIVE" | "PENDING_APPROVAL";
   description: string;
   rules: string[];
   researchTopics: string[];
-  studentMembership?: "active" | "pending";
+  studentMembership?: "active";
   adminMember?: boolean;
   posts: SeedPost[];
 };
@@ -23,7 +22,6 @@ const COMMUNITIES: SeedCommunity[] = [
     name: "Machine Learning & AI",
     researchField: "Artificial Intelligence",
     icon: "brain",
-    visibility: "public",
     description: "Discuss learning algorithms, model evaluation and applied AI, from classical machine learning to large language models.",
     rules: ["Cite the paper or dataset behind factual claims", "Report evaluation setups so results can be compared", "Keep critique constructive and specific", "No self-promotion without a reproducible artifact"],
     researchTopics: ["machine learning", "deep learning", "transformers", "reinforcement learning", "model evaluation"],
@@ -40,7 +38,6 @@ const COMMUNITIES: SeedCommunity[] = [
     name: "Natural Language Processing",
     researchField: "Computer Science",
     icon: "message-square",
-    visibility: "public",
     description: "Language models, information extraction, low-resource languages and text mining for scientific literature.",
     rules: ["Name the language and dataset when sharing results", "Use standard metrics before proposing new ones", "Respect licences of shared corpora"],
     researchTopics: ["nlp", "language models", "information extraction", "low-resource languages", "text mining"],
@@ -56,7 +53,6 @@ const COMMUNITIES: SeedCommunity[] = [
     name: "Computer Vision",
     researchField: "Computer Science",
     icon: "eye",
-    visibility: "public",
     description: "Recognition, detection, segmentation and multimodal models, with an emphasis on reproducible experiments.",
     rules: ["State image resolution and augmentation used", "Share code or configs when claiming a new result", "Credit dataset authors"],
     researchTopics: ["computer vision", "object detection", "image segmentation", "multimodal learning", "medical imaging"],
@@ -70,7 +66,6 @@ const COMMUNITIES: SeedCommunity[] = [
     name: "Software Engineering Research",
     researchField: "Software Engineering",
     icon: "code",
-    visibility: "public",
     description: "Empirical software engineering, testing, code review, mining repositories and developer productivity.",
     rules: ["Describe the sampling of projects or participants", "Flag threats to validity", "Do not share confidential industry data"],
     researchTopics: ["software engineering", "software testing", "code review", "empirical study", "mining software repositories"],
@@ -86,7 +81,6 @@ const COMMUNITIES: SeedCommunity[] = [
     name: "Data Science & Analytics",
     researchField: "Data Science",
     icon: "bar-chart",
-    visibility: "public",
     description: "Statistical modelling, data quality, visualization and analytics pipelines for research data.",
     rules: ["Share data provenance and cleaning steps", "Prefer open datasets when asking for help", "Show uncertainty, not only point estimates"],
     researchTopics: ["data science", "statistics", "data visualization", "data quality", "time series"],
@@ -101,7 +95,6 @@ const COMMUNITIES: SeedCommunity[] = [
     name: "Educational Technology",
     researchField: "Education",
     icon: "graduation-cap",
-    visibility: "public",
     description: "Learning analytics, AI tutors, assessment and technology-enhanced teaching in higher education.",
     rules: ["Protect student privacy in every example", "Distinguish pilots from large-scale evidence", "Declare conflicts of interest with vendors"],
     researchTopics: ["educational technology", "learning analytics", "intelligent tutoring", "assessment", "higher education"],
@@ -116,11 +109,10 @@ const COMMUNITIES: SeedCommunity[] = [
     name: "Knowledge Graphs",
     researchField: "Computer Science",
     icon: "share-2",
-    visibility: "private",
-    description: "A closed group for ongoing work on academic knowledge graphs, entity linking and graph-based retrieval. Membership is by request.",
-    rules: ["Work-in-progress stays inside the group", "Credit collaborators when sharing results", "Ask before forwarding unpublished data"],
+    description: "A group for ongoing work on academic knowledge graphs, entity linking and graph-based retrieval.",
+    rules: ["Mark work-in-progress as such", "Credit collaborators when sharing results", "Ask before sharing unpublished data"],
     researchTopics: ["knowledge graphs", "entity linking", "graph neural networks", "ontology", "scholarly data"],
-    studentMembership: "pending",
+    studentMembership: "active",
     posts: [
       { type: "DISCUSSION", title: "Schema decisions for the scholarly graph", body: "Working thread on how to model authors, venues and topics so that citation queries stay fast.", tags: ["schema", "scholarly-data"], author: "lecturer", pinned: true },
       { type: "QUESTION", title: "Entity linking for author names with transliteration", body: "Vietnamese names appear with and without diacritics. What blocking strategy works best before pairwise matching?", tags: ["entity-linking"], author: "lecturer" },
@@ -131,7 +123,6 @@ const COMMUNITIES: SeedCommunity[] = [
     name: "Quantum Computing for Research",
     researchField: "Physics",
     icon: "atom",
-    visibility: "public",
     status: "PENDING_APPROVAL",
     description: "Proposed space for quantum algorithms and their use in optimisation and simulation. Waiting for administrator approval.",
     rules: ["Distinguish simulated from hardware results", "State qubit counts and noise assumptions"],
@@ -144,24 +135,27 @@ const slugOf = (tag: string) => tag.toLowerCase().replace(/[^a-z0-9]+/g, "-").re
 
 /**
  * Idempotent: communities are keyed by a fixed slug, memberships by (community, user) and
- * posts by (community, title). Re-running converges to the same data and counters.
+ * posts by (research community, title). Every post also needs a forum category: the `general-research`
+ * category (created like migration 20261003000300 if missing). Re-running converges to the same data and counters.
  */
 export async function seedCommunities(prisma: PrismaClient, users: { lecturer: SeedUser; student: SeedUser; admin: SeedUser }): Promise<void> {
+  const defaultCategory = await prisma.community.findFirst({ where: { slug: "general-research", isForumCategory: true }, select: { id: true } })
+    ?? await prisma.community.create({ data: { slug: "general-research", name: "General Research", description: "Research discussions across fields.", ownerId: users.admin.id, isForumCategory: true, sortOrder: 6 }, select: { id: true } });
   for (const seed of COMMUNITIES) {
     const status = seed.status ?? "ACTIVE";
     const community = await prisma.community.upsert({
       where: { slug: seed.slug },
       create: {
         slug: seed.slug, name: seed.name, description: seed.description, researchField: seed.researchField, icon: seed.icon,
-        researchTopics: seed.researchTopics, rules: seed.rules, visibility: seed.visibility, status, ownerId: users.lecturer.id,
+        researchTopics: seed.researchTopics, rules: seed.rules, visibility: "public", status, ownerId: users.lecturer.id,
       },
       update: {
         name: seed.name, description: seed.description, researchField: seed.researchField, icon: seed.icon,
-        researchTopics: seed.researchTopics, rules: seed.rules, visibility: seed.visibility, status, ownerId: users.lecturer.id,
+        researchTopics: seed.researchTopics, rules: seed.rules, visibility: "public", status, ownerId: users.lecturer.id,
       },
     });
 
-    const memberships: Array<{ userId: string; role: "owner" | "member"; status: "active" | "pending" }> = [{ userId: users.lecturer.id, role: "owner", status: "active" }];
+    const memberships: Array<{ userId: string; role: "owner" | "member"; status: "active" }> = [{ userId: users.lecturer.id, role: "owner", status: "active" }];
     if (seed.studentMembership) memberships.push({ userId: users.student.id, role: "member", status: seed.studentMembership });
     if (seed.adminMember) memberships.push({ userId: users.admin.id, role: "member", status: "active" });
     for (const membership of memberships) {
@@ -174,11 +168,13 @@ export async function seedCommunities(prisma: PrismaClient, users: { lecturer: S
 
     const authors = { lecturer: users.lecturer.id, student: users.student.id };
     for (const post of seed.posts) {
-      const existing = await prisma.forumPost.findFirst({ where: { communityId: community.id, title: post.title }, select: { id: true } });
-      const data = { type: post.type, body: post.body, tags: post.tags, isPinned: Boolean(post.pinned), pinnedAt: post.pinned ? new Date() : null };
+      // Older seeds filed the post directly under the research community; convert it instead of duplicating it.
+      const existing = await prisma.forumPost.findFirst({ where: { researchCommunityId: community.id, title: post.title }, select: { id: true } })
+        ?? await prisma.forumPost.findFirst({ where: { communityId: community.id, title: post.title }, select: { id: true } });
+      const data = { type: post.type, body: post.body, tags: post.tags, isPinned: Boolean(post.pinned), pinnedAt: post.pinned ? new Date() : null, communityId: defaultCategory.id, researchCommunityId: community.id };
       const saved = existing
         ? await prisma.forumPost.update({ where: { id: existing.id }, data })
-        : await prisma.forumPost.create({ data: { ...data, title: post.title, authorId: authors[post.author], communityId: community.id } });
+        : await prisma.forumPost.create({ data: { ...data, title: post.title, authorId: authors[post.author] } });
       for (const tag of post.tags) {
         const row = await prisma.forumTag.upsert({ where: { slug: slugOf(tag) }, create: { name: tag, slug: slugOf(tag) }, update: {} });
         await prisma.forumPostTag.upsert({ where: { postId_tagId: { postId: saved.id, tagId: row.id } }, create: { postId: saved.id, tagId: row.id }, update: {} });
@@ -187,7 +183,7 @@ export async function seedCommunities(prisma: PrismaClient, users: { lecturer: S
 
     const [memberCount, threadCount] = await Promise.all([
       prisma.communityMembership.count({ where: { communityId: community.id, status: "active" } }),
-      prisma.forumPost.count({ where: { communityId: community.id, status: { not: "deleted" } } }),
+      prisma.forumPost.count({ where: { researchCommunityId: community.id, status: { in: ["active", "locked"] }, visibilityStatus: "ACTIVE" } }),
     ]);
     await prisma.community.update({ where: { id: community.id }, data: { memberCount, threadCount } });
   }

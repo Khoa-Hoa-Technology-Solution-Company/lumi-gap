@@ -92,6 +92,8 @@ export const API_ROUTES = {
     leave: (id: string) => `/communities/${id}/membership`,
     members: (id: string) => `/communities/${id}/members`,
     member: (id: string, userId: string) => `/communities/${id}/members/${userId}`,
+    memberRestrictions: (id: string, userId: string) => `/communities/${id}/members/${userId}/restrictions`,
+    memberRestriction: (id: string, userId: string, restrictionId: string) => `/communities/${id}/members/${userId}/restrictions/${restrictionId}`,
     review: (id: string) => `/communities/${id}/review`,
     facets: "/communities/facets",
     status: (id: string) => `/communities/${id}/status`,
@@ -140,6 +142,10 @@ export const API_ROUTES = {
   search: {
     semantic: "/search", 
   },
+  topicBackfill: {
+    request: "/topic-backfill",
+    run: (id: string) => `/topic-backfill/runs/${encodeURIComponent(id)}`,
+  },
   trends: {
     topic: (topic: string) => `/trends/${encodeURIComponent(topic)}`,
   },
@@ -168,6 +174,13 @@ export const API_ROUTES = {
     me: "/analytics/search/me",
   },
   admin: {
+    aiConnections: {
+      root: "/admin/ai-connections",
+      models: "/admin/ai-connections/models",
+      connections: "/admin/ai-connections/connections",
+      connection: (id: string) => `/admin/ai-connections/connections/${id}`,
+      active: "/admin/ai-connections/active",
+    },
     sync: "/admin/sync",
     syncRuns: "/admin/sync/runs",
     embedStatus: "/admin/embed/status",
@@ -195,9 +208,38 @@ export const API_ROUTES = {
     auditLogs: "/admin/audit-logs",
     workers: "/admin/workers",
     settings: "/admin/settings",
+    topicBackfill: {
+      request: "/admin/topic-backfill",
+      runs: "/admin/topic-backfill/runs",
+    },
+    tagCampaigns: {
+      preflight: "/admin/openalex-ingest/tag-campaigns/preflight",
+      list: "/admin/openalex-ingest/tag-campaigns",
+    },
+    taxonomy: {
+      stats: "/admin/taxonomy/stats",
+      nodes: "/admin/taxonomy/nodes",
+      node: (id: string) => `/admin/taxonomy/nodes/${id}`,
+      keywords: "/admin/taxonomy/keywords",
+      keyword: (id: string) => `/admin/taxonomy/keywords/${id}`,
+      mergeKeyword: (id: string) => `/admin/taxonomy/keywords/${id}/merge`,
+    },
+    tags: {
+      root: "/admin/tags",
+      applyAll: "/admin/tags/apply-all",
+      tag: (id: string) => `/admin/tags/${id}`,
+      rules: (id: string) => `/admin/tags/${id}/rules`,
+      preview: (id: string) => `/admin/tags/${id}/preview`,
+      apply: (id: string) => `/admin/tags/${id}/apply`,
+      papers: (id: string) => `/admin/tags/${id}/papers`,
+      paper: (id: string, paperId: string) => `/admin/tags/${id}/papers/${paperId}`,
+      unblock: (id: string, paperId: string) => `/admin/tags/${id}/papers/${paperId}/unblock`,
+    },
   },
   gaps: {
     evidencePreview: "/gaps/evidence-preview",
+    enrichCorpus: "/gaps/enrich-corpus",
+    enrichCorpusStatus: (jobId: string) => `/gaps/enrich-corpus/${jobId}`,
     analyze: "/gaps/analyze",
     analyzeStatus: (id: string) => `/gaps/analyze/${id}`,
     retryAnalysis: (id: string) => `/gaps/analyze/${id}/retry`,

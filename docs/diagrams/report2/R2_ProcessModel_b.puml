@@ -1,0 +1,46 @@
+@startuml
+!pragma layout smetana
+skinparam dpi 200
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam BorderColor #2F6DB5
+skinparam BackgroundColor #FFFFFF
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam activity {
+  BackgroundColor #EAF2FB
+  BorderColor #2F6DB5
+  DiamondBackgroundColor #FFF4E5
+  DiamondBorderColor #E08A00
+}
+skinparam partition {
+  BorderColor #9DB3CC
+  BackgroundColor #F7F9FC
+}
+skinparam ConditionEndStyle hline
+skinparam defaultFontSize 12
+title Iterative two-week process (b): verify phase, steps 6-9, and release
+start
+:Build phase of the iteration done (a);
+repeat
+  partition "Verify: steps 6-9" #F7F9FC {
+    :6 Unit and integration tests;
+    :7 System tests;
+    :8 Acceptance and demo;
+    if (Work accepted?) then ([yes])
+    else ([no])
+      :Return work to the backlog (step 1);
+    endif
+    :9 Retrospective;
+  }
+repeat while (Next iteration, 6 in total?) is ([yes]) not ([no])
+:Supervisor milestone review
+(M1 W3, M2 W6, M3 W9, M4 W11, M5 W12);
+:Release candidate and
+final submission;
+stop
+@enduml

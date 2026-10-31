@@ -154,4 +154,56 @@ describe("literature search navigation", () => {
     await settle(() => Boolean(container.querySelector('a[href="/papers/medicine-paper"]')));
     expect(mocks.semantic.mock.calls[0]![0].rerank).toBeUndefined();
   });
+  describe("query understanding", () => {
+    const tag = (name: string, key: string, value: string, kind = "topic") => ({ kind, id: "id-" + value, name, paperCount: 42, confidence: 0.9, source: "name", matchedText: name.toLowerCase(), filter: { key, value } });
+    const withUnderstanding = (understanding: unknown) => ({ ...response(), meta: { ...response().meta, understanding } });
+    const locationText = () => container.querySelector("[data-location]")?.textContent;
+    const buttonNamed = (label: string) => container.querySelector<HTMLButtonElement>(`#home-search-results button[aria-label="${label}"]`)!;
+    it("shows the applied tag and refetches with autoTags=false when it is removed", async () => {
+      const applied = tag("Topic modelling", "topicIds", "T10028");
+      mocks.semantic.mockResolvedValue(withUnderstanding({ mode: "filter", detectedTags: [applied], appliedTag: applied, fellBack: false }));
+      await render("/literature?q=lda&page=1");
+      await settle(() => Boolean(container.querySelector('[data-testid="search-understanding"]')));
+      expect(container.querySelector('[data-testid="search-understanding"]')?.textContent).toContain("Showing papers in Topic modelling (42 papers)");
+      expect(mocks.semantic.mock.calls[0]![0].autoTags).toBeUndefined();
+      await act(async () => buttonNamed("Search all papers instead").click());
+      await settle(() => mocks.semantic.mock.calls.some(([request]) => request.autoTags === false));
+      expect(locationText()).toContain("autoTags=false");
+      expect(locationText()).not.toContain("page=");
+    });
+    it("pins a suggested tag, sends it as a filter, and drops it when a new query is submitted", async () => {
+      const related = tag("Machine learning", "subfieldIds", "1702", "subfield");
+      mocks.semantic.mockResolvedValue(withUnderstanding({ mode: "boost", detectedTags: [related], appliedTag: null, fellBack: false }));
+      await render("/literature?q=lda");
+      await settle(() => Boolean(buttonNamed("Filter results by Research subfield: Machine learning")));
+      await act(async () => buttonNamed("Filter results by Research subfield: Machine learning").click());
+      await settle(() => mocks.semantic.mock.calls.some(([request]) => request.subfieldIds?.includes("1702")));
+      expect(locationText()).toContain("tag=subfieldIds%3A1702");
+      expect(locationText()).toContain("tagLabel=Machine+learning");
+      await settle(() => Boolean(buttonNamed("Remove filter: Machine learning")));
+      await submit("Economics");
+      await settle(() => mocks.semantic.mock.calls.at(-1)?.[0].q === "Economics");
+      expect(locationText()).toBe("/literature?q=Economics");
+      expect(mocks.semantic.mock.calls.at(-1)![0].subfieldIds).toBeUndefined();
+    });
+    it("keeps raw scope filters but not tag state when submitting a new query", async () => {
+      await render("/literature?q=lda&tag=topicIds:T1&tagLabel=Graphs&autoTags=false&fieldIds=12&keywordIds=k1");
+      await submit("Economics");
+      await settle(() => mocks.semantic.mock.calls.at(-1)?.[0].q === "Economics");
+      expect(locationText()).toBe("/literature?q=Economics&fieldIds=12&keywordIds=k1");
+      expect(mocks.semantic.mock.calls.at(-1)![0]).toMatchObject({ fieldIds: ["12"], keywordIds: ["k1"] });
+      expect(mocks.semantic.mock.calls.at(-1)![0].autoTags).toBeUndefined();
+    });
+    it("hides the bar in keyword mode without a pinned tag", async () => {
+      await render("/literature?q=lda&mode=keyword&autoTags=false");
+      await settle(() => mocks.keyword.mock.calls.length > 0);
+      expect(container.querySelector('[data-testid="search-understanding"]')).toBeNull();
+    });
+    it("keeps the pinned tag in keyword mode", async () => {
+      await render("/literature?q=lda&mode=keyword&tag=topicIds:T1&tagLabel=LDA");
+      await settle(() => mocks.keyword.mock.calls.length > 0);
+      expect(mocks.keyword.mock.calls.at(-1)?.[0]).toMatchObject({ topicIds: ["T1"] });
+      expect(container.querySelector('[data-testid="search-understanding"]')?.textContent).toContain("LDA");
+    });
+  });
 });

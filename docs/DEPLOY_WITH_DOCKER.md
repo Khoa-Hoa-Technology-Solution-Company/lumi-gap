@@ -2,7 +2,7 @@
 
 Run commands from `lumi-gap/`. Docker Desktop must run Linux containers.
 The stack includes PostgreSQL 16/pgvector, Redis, API, nginx web, AI Reviewer,
-and eight workers. Docker serves production web bundles and `node dist`.
+and nine default workers (a tenth, OpenAlex ingest, is opt-in via the `ingest` profile). Docker serves production web bundles and `node dist`.
 Production keeps its Jenkins credential contract; see [production](../README_PRODUCTION.md).
 
 ## Configure and start
@@ -15,8 +15,8 @@ docker compose up -d --build
 ```
 
 PowerShell uses `Copy-Item .env.example .env`. No extra env-file option is needed.
-Node/pnpm are optional for Docker. If installed, `pnpm setup` generates four
-random secrets and native JWT keys; it preserves existing `.env` and keys.
+Node/pnpm are optional for Docker. If installed, `pnpm setup` generates five
+random secrets (Postgres and Redis passwords, `INTERNAL_SERVICE_KEY`, `ACADEMIC_EMAIL_OTP_SECRET`, `AI_CONNECTION_ENCRYPTION_KEY`) and native JWT keys; it preserves existing `.env` and keys.
 Docker creates its own RS256 key pair in a persistent named volume.
 
 `migrate` waits for PostgreSQL and applies all committed Prisma migrations.
@@ -52,12 +52,12 @@ Sign in with `admin@liemresearch.com` / `Admin123456!`. Seed runs in development
 mode because fixtures reject production. Use it only for local/demo data;
 repeated seed upserts fixtures and may reset demo passwords and fixture values.
 
-Default workers: topic sync, report, gaps, embedding, paper analysis, notifications,
-corpus validation, community summary. Begin with roughly 8 GB Docker memory,
+Default workers: topic sync, report, gaps, ai-jobs, embedding, paper analysis, notifications,
+corpus validation, community summary, tagging, topic backfill. Begin with roughly 8 GB Docker memory,
 then adjust to measured workload. Stop workers on a smaller machine:
 
 ```bash
-docker compose stop worker-sync worker-report worker-gaps worker-embedding worker-paper-analysis worker-notifications worker-corpus-validation worker-community-summary
+docker compose stop worker-sync worker-report worker-gaps worker-ai-jobs worker-embedding worker-paper-analysis worker-notifications worker-corpus-validation worker-community-summary worker-tagging worker-topic-backfill
 ```
 
 They start again on the next full `up`. Optional profiles:

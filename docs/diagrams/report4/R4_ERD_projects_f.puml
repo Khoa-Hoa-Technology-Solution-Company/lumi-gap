@@ -1,0 +1,76 @@
+@startuml
+!pragma layout elk
+skinparam dpi 200
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam backgroundColor #FFFFFF
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam ArrowFontSize 12
+skinparam ArrowFontColor #4A5A6A
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam entity {
+  BackgroundColor #EFE6F8
+  BorderColor #6A3FA0
+}
+skinparam legend {
+  BackgroundColor #FFF8E1
+  BorderColor #C9B36B
+  FontSize 12
+}
+skinparam stereotypeFontSize 10
+hide circle
+hide empty methods
+title Physical ERD - Contribution allocation (6 of 9)
+entity allocation_periods #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  project_id : uuid <<FK>>
+  created_by_id : uuid <<FK users>>
+  ..
+  title : varchar(240)
+  description : text
+}
+entity allocation_revisions #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  period_id : uuid <<FK,UK*>>
+  project_id : uuid <<FK>>
+  created_by_id : uuid <<FK users>>
+  ..
+  revision : integer
+  status : varchar(24)
+}
+entity allocation_shares #EFE6F8;line:6A3FA0 {
+  * revision_id : uuid <<PK,FK>>
+  * user_id : uuid <<PK,FK users>>
+  --
+  basis_points : integer
+  rationale : text
+}
+entity allocation_approvals #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  revision_id : uuid <<FK>>
+  user_id : uuid <<FK>>
+  ..
+  decision : varchar(16)
+  explanation : text
+}
+entity projects #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+allocation_periods ||--o{ allocation_revisions
+allocation_revisions ||--o{ allocation_shares
+allocation_shares ||--o| allocation_approvals
+projects ||--o{ allocation_periods
+legend bottom
+Crow's-foot notation. PK primary key, FK foreign key, UK unique key.
+FK <name>: the foreign key references a table that is not drawn here.
+Dashed boxes belong to another diagram (key only).
+UK*: partial unique index (unique only for rows matching its WHERE condition).
+endlegend
+@enduml

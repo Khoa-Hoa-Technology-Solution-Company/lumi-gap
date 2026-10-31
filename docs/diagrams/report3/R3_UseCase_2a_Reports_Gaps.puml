@@ -1,0 +1,61 @@
+' Rendered image produced by ucdraw2.py from R3_UseCase_2a_Reports_Gaps.uc.json; this file is the canonical UML source
+@startuml
+!pragma layout smetana
+skinparam dpi 150
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam BorderColor #2F6DB5
+skinparam BackgroundColor #FFFFFF
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam usecase {
+  BackgroundColor #EAF2FB
+  BorderColor #2F6DB5
+}
+skinparam actor {
+  BackgroundColor #FFFFFF
+  BorderColor #1B2A3A
+}
+skinparam entity {
+  BackgroundColor #F7FAFD
+  BorderColor #2F6DB5
+}
+skinparam rectangle {
+  BackgroundColor #F7F9FC
+  BorderColor #2F6DB5
+}
+skinparam actorStyle awesome
+skinparam actor<<external system>> {
+  BackgroundColor #F0F1F3
+  BorderColor #8A8F98
+}
+left to right direction
+title Use Case Diagram 2(a) - Reports, research gaps and AI paper review
+actor "User" as U
+actor "Gap validation expert\n(capability)" as GE
+actor "LLM provider" as LLM <<external system>>
+actor "OpenAlex" as OA <<external system>>
+rectangle "LumiGap" {
+  usecase "UC-12\nGenerate research report" as UC12
+  usecase "UC-13\nDiscover research gaps" as UC13
+  usecase "UC-14\nValidate research gap" as UC14
+  usecase "UC-15\nCheck gap closure" as UC15
+  usecase "UC-23\nObtain AI paper review" as UC23
+  usecase "UC-24\nCheck paper format" as UC24
+}
+GE --|> U
+U -- UC12
+U -- UC13
+U -- UC15
+U -- UC23
+U -- UC24
+GE -- UC14
+UC12 -- LLM
+UC13 -- LLM
+UC15 -- OA
+UC15 -- LLM
+@enduml

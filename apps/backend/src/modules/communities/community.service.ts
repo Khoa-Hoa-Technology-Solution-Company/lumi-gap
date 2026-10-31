@@ -3,7 +3,6 @@ import type { Community, CommunityRecommendation, CommunityStatus as SharedCommu
 import { AppError } from "../../common/exceptions/app-error.js";
 import { Prisma } from "../../generated/prisma/client.js";
 import { parseDatabaseId, publicDatabaseId } from "../../infrastructure/database/database-id.js";
-import { cache } from "../../infrastructure/cache.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { logger } from "../../infrastructure/logger.js";
 import { auditService } from "../audit/audit.service.js";
@@ -24,14 +23,13 @@ import type { CommunityListQuery } from "./dto/community.schema.js";
 type CommunityContent = {
   name: string;
   description?: string;
-  visibility?: "public" | "private";
   rules?: string[];
   researchTopics?: string[];
   researchField?: string;
   icon?: string;
 };
 export type CommunityStatus = "ACTIVE" | "ARCHIVED" | "PENDING_APPROVAL" | "REJECTED";
-type MemberStatus = "pending" | "active" | "declined" | "banned";
+type MemberStatus = "active" | "banned";
 type Tx = Prisma.TransactionClient;
 
 const REVIEW_PENDING_STATUS = "PENDING_APPROVAL";
@@ -44,7 +42,6 @@ const SORT_ORDERS = {
   discussions: { threadCount: "desc" },
   name: { name: "asc" },
 } as const;
-const JOIN_NOTIFY_COOLDOWN_SECONDS = 24 * 3600;
 const ROLE_ORDER: Record<string, number> = { owner: 0, moderator: 1, member: 2 };
 /** Edits to these fields change what a community is "about", so its embedding must be recomputed. */
 const EMBEDDED_FIELDS = ["name", "description", "researchField", "researchTopics"] as const;
@@ -60,22 +57,15 @@ async function embedQuerySafely(text: string): Promise<number[] | null> {
 }
 
 /**
- * Admins see everything. Everyone else sees ACTIVE communities that are public or that they belong to
- * (private communities are not discoverable by non-members), plus their own pending/rejected proposals.
+ * Admins see everything. Everyone else sees every ACTIVE or ARCHIVED community (all research communities are
+ * public; archived ones stay readable) and their own pending/rejected proposals.
  */
-async function activeMembershipIds(viewerUserId: string | undefined): Promise<string[]> {
-  if (!viewerUserId) return [];
-  const rows = await getPrisma().communityMembership.findMany({ where: { userId: viewerUserId, status: "active" }, select: { communityId: true } });
-  return rows.map((row) => row.communityId);
-}
-
-async function visibleWhere(role: UserRole | undefined, viewerUserId: string | undefined) {
+function visibleWhere(role: UserRole | undefined, viewerUserId: string | undefined) {
   if (role === "admin") return { isForumCategory: false };
-  const memberIds = await activeMembershipIds(viewerUserId);
   return {
     isForumCategory: false,
     OR: [
-      { status: "ACTIVE", OR: [{ visibility: "public" }, { id: { in: memberIds } }] },
+      { status: { in: ["ACTIVE", "ARCHIVED"] } },
       ...(viewerUserId ? [{ ownerId: viewerUserId, status: { in: OWNER_ONLY_STATUSES } }] : []),
     ],
   };
@@ -89,15 +79,6 @@ type MembershipSummary = {
 /** Notifications are best-effort: a failed push must never undo an already-committed state change. */
 async function notifySafely(input: Parameters<typeof notificationService.create>[0]): Promise<void> {
   try { await notificationService.create(input); } catch (error) { logger.warn({ error, type: input.type }, "community notification failed"); }
-}
-
-/** Redis trouble must never break `join`: on any cache error act as if there is no cooldown (fail open). */
-async function joinNotifyCoolingDown(key: string): Promise<boolean> {
-  try { return Boolean(await cache.get(key)); } catch (error) { logger.warn({ error, key }, "join-request cooldown read failed; notifying anyway"); return false; }
-}
-
-async function startJoinNotifyCooldown(key: string): Promise<void> {
-  try { await cache.set(key, true, JOIN_NOTIFY_COOLDOWN_SECONDS); } catch (error) { logger.warn({ error, key }, "join-request cooldown write failed"); }
 }
 
 function slugify(value: string): string {
@@ -162,6 +143,24 @@ async function syncMemberCount(tx: Tx, id: string): Promise<void> {
   await tx.community.update({ where: { id }, data: { memberCount } });
 }
 
+/**
+ * Upserts an `active` membership and refreshes the member count. The CALLER must already hold the community row
+ * lock (`lockCommunity`, or `SELECT ... FOR UPDATE` on the row) and has checked that the community is joinable.
+ * Banned users are refused; an existing active membership (any role) is returned untouched.
+ */
+export async function joinInTx(tx: Tx, communityId: string, userId: string) {
+  const existing = await tx.communityMembership.findUnique({ where: { communityId_userId: { communityId, userId } } });
+  if (existing?.status === "banned") throw AppError.forbidden("You are banned from this community");
+  if (existing?.status === "active") return { membership: existing, previousStatus: existing.status };
+  const membership = await tx.communityMembership.upsert({
+    where: { communityId_userId: { communityId, userId } },
+    create: { communityId, userId, role: "member", status: "active" },
+    update: { status: "active" },
+  });
+  await syncMemberCount(tx, communityId);
+  return { membership, previousStatus: existing?.status };
+}
+
 /** Serializes name checks so two requests cannot both pass `assertNameAvailable` for the same name. Held until the transaction ends. */
 async function lockNaming(tx: Tx): Promise<void> {
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('communities:name'))`;
@@ -215,7 +214,7 @@ async function searchCommunityIds(q: string): Promise<string[]> {
 
 function hiddenFromViewer(community: { status: string; ownerId: string }, viewerUserId: string | undefined, role: UserRole | undefined): boolean {
   if (role === "admin") return false;
-  return community.status === "ARCHIVED" || (OWNER_ONLY_STATUSES.includes(community.status) && community.ownerId !== viewerUserId);
+  return (OWNER_ONLY_STATUSES.includes(community.status) && community.ownerId !== viewerUserId);
 }
 
 /** Loads a community the viewer is allowed to see, or 404 (never leaks that a proposal exists). */
@@ -226,18 +225,6 @@ export async function loadViewableCommunity(idOrSlug: string, userId?: string, r
   const viewerUserId = userId ? await resolveUserId(userId) : undefined;
   if (hiddenFromViewer(community, viewerUserId, role)) throw AppError.notFound("Community not found");
   return { community, viewerUserId };
-}
-
-/**
- * Members-only content (roster, related research) of a private community is readable by admins and active
- * members only. A proposal's owner is an active member, so they are never locked out of their own community.
- */
-export async function assertCommunityContentAccess(community: { id: string; visibility: string }, viewerUserId: string | undefined, role: UserRole | undefined): Promise<void> {
-  if (narrowVisibility(community.visibility) !== "private" || role === "admin") return;
-  const viewer = viewerUserId
-    ? await getPrisma().communityMembership.findUnique({ where: { communityId_userId: { communityId: community.id, userId: viewerUserId } } })
-    : null;
-  if (viewer?.status !== "active") throw AppError.forbidden("This community is private");
 }
 
 const COMMUNITY_STATUS_VALUES: readonly SharedCommunityStatus[] = ["ACTIVE", "ARCHIVED", "PENDING_APPROVAL", "REJECTED"];
@@ -259,21 +246,18 @@ export function narrowVisibility(value: string): "public" | "private" {
 
 function presentCommunity(community: {
   id: string; legacyMongoId: string | null; name: string; slug: string; description: string;
-  researchTopics: string[]; researchField: string | null; icon: string | null; visibility: string; status: string;
+  researchTopics: string[]; researchField: string | null; icon: string | null; status: string;
   rules: string[]; memberCount: number; threadCount: number;
   ownerId: string; reviewNote: string | null; reviewedAt: Date | null;
   createdAt: Date; updatedAt: Date;
 }, membership?: MembershipSummary | null, actorRole?: UserRole, viewerUserId?: string): Community {
   const activeMembership = membership?.status === "active";
-  const visibility = narrowVisibility(community.visibility);
   const isAdmin = actorRole === "admin";
   const isOwner = viewerUserId !== undefined && viewerUserId === community.ownerId;
-  const contentRestricted = visibility === "private" && !isAdmin && !activeMembership;
   return {
     id: publicDatabaseId(community), name: community.name, slug: community.slug,
-    // Outsiders of a private community get the join-page basics only; rules and topics stay with members.
-    description: community.description, researchTopics: contentRestricted ? [] : community.researchTopics, researchField: community.researchField ?? undefined, icon: community.icon ?? undefined,
-    visibility, status: narrowStatus(community.status), rules: contentRestricted ? [] : community.rules, memberCount: community.memberCount, threadCount: community.threadCount,
+    description: community.description, researchTopics: community.researchTopics, researchField: community.researchField ?? undefined, icon: community.icon ?? undefined,
+    status: narrowStatus(community.status), rules: community.rules, memberCount: community.memberCount, threadCount: community.threadCount,
     viewerMembership: membership ? { role: membership.role, status: membership.status } : undefined,
     canManage: isAdmin || Boolean(activeMembership && ["owner", "moderator"].includes(membership!.role)),
     canEditCommunity: isAdmin || isOwner,
@@ -281,7 +265,6 @@ function presentCommunity(community: {
     isAdmin,
     reviewNote: isAdmin || isOwner ? community.reviewNote ?? undefined : undefined,
     reviewedAt: isAdmin || isOwner ? community.reviewedAt?.toISOString() : undefined,
-    contentRestricted,
     createdAt: community.createdAt.toISOString(), updatedAt: community.updatedAt.toISOString(),
   };
 }
@@ -322,8 +305,10 @@ export const communityService = {
     const prisma = getPrisma();
     const { page, pageSize, status, q, field, sort, scope, activeOnly } = query;
     const resolvedUserId = userId ? await resolveUserId(userId) : undefined;
-    const conditions: object[] = [await visibleWhere(role, resolvedUserId)];
+    const conditions: object[] = [visibleWhere(role, resolvedUserId)];
     if (status) conditions.push({ status });
+    // The directory hides archived communities unless asked for explicitly; "mine" keeps showing them.
+    else if (scope !== "mine") conditions.push({ status: { not: "ARCHIVED" } });
     if (activeOnly === "true") conditions.push({ status: "ACTIVE" });
     if (field) conditions.push({ researchField: { equals: field, mode: "insensitive" } });
     if (q) conditions.push({ id: { in: await searchCommunityIds(q) } });
@@ -342,7 +327,15 @@ export const communityService = {
       ? await prisma.communityMembership.findMany({ where: { userId: resolvedUserId, communityId: { in: communities.map((item) => item.id) } } })
       : [];
     const byCommunity = new Map(memberships.map((item) => [item.communityId, item as MembershipSummary]));
-    return { data: communities.map((community) => presentCommunity(community, byCommunity.get(community.id), role, resolvedUserId)), meta: { page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)) } };
+    // Admins reviewing proposals see who is asking: name, academic profile type and verification status.
+    const proposers = new Map<string, { id: string; fullName: string; academicProfileType?: string; roleVerificationStatus?: string }>();
+    if (role === "admin" && status === "PENDING_APPROVAL" && communities.length > 0) {
+      const owners = await prisma.user.findMany({ where: { id: { in: communities.map((item) => item.ownerId) } }, select: { id: true, legacyMongoId: true, fullName: true, academicProfileType: true } });
+      const profiles = await prisma.academicProfile.findMany({ where: { userId: { in: owners.map((owner) => owner.id) } }, select: { userId: true, roleVerificationStatus: true } });
+      const statusByUser = new Map(profiles.map((profile) => [profile.userId, profile.roleVerificationStatus]));
+      for (const owner of owners) proposers.set(owner.id, { id: publicDatabaseId(owner), fullName: owner.fullName, academicProfileType: owner.academicProfileType ?? undefined, roleVerificationStatus: statusByUser.get(owner.id) ?? undefined });
+    }
+    return { data: communities.map((community) => ({ ...presentCommunity(community, byCommunity.get(community.id), role, resolvedUserId), ...(proposers.has(community.ownerId) ? { proposer: proposers.get(community.ownerId) } : {}) })), meta: { page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)) } };
   },
 
   /** Research-field chips for the list filter, counted over what the viewer can see. */
@@ -350,7 +343,7 @@ export const communityService = {
     const resolvedUserId = userId ? await resolveUserId(userId) : undefined;
     const groups = await getPrisma().community.groupBy({
       by: ["researchField"],
-      where: { AND: [await visibleWhere(role, resolvedUserId), { researchField: { not: null } }] },
+      where: { AND: [visibleWhere(role, resolvedUserId), { status: "ACTIVE" }, { researchField: { not: null } }] },
       _count: { _all: true },
     });
     // `list` filters case-insensitively, so "AI" and "ai" must be one chip. Show the most common spelling.
@@ -370,7 +363,7 @@ export const communityService = {
       .slice(0, 30);
   },
 
-  /** Suggests public communities whose topics overlap the viewer's research interests, then fills up with semantic neighbours. */
+  /** Suggests ACTIVE communities whose topics overlap the viewer's research interests, then fills up with semantic neighbours. */
   async recommend(userId: string, limit = 6): Promise<CommunityRecommendation[]> {
     const resolvedUserId = await resolveUserId(userId);
     const prisma = getPrisma();
@@ -379,7 +372,7 @@ export const communityService = {
     if (interests.length === 0) return [];
     const [joined, candidates] = await Promise.all([
       prisma.communityMembership.findMany({ where: { userId: resolvedUserId }, select: { communityId: true } }),
-      prisma.community.findMany({ where: { status: "ACTIVE", visibility: "public", isForumCategory: false }, orderBy: [{ memberCount: "desc" }, { id: "asc" }], take: 300 }),
+      prisma.community.findMany({ where: { status: "ACTIVE", isForumCategory: false }, orderBy: [{ memberCount: "desc" }, { id: "asc" }], take: 300 }),
     ]);
     const excluded = new Set(joined.map((row) => row.communityId));
     const topicMatches = candidates
@@ -402,11 +395,10 @@ export const communityService = {
     const nearest = await nearestCommunityIds(vector, {
       limit: limit - byTopic.length,
       excludeIds: [...excluded, ...matchedIds],
-      publicOnly: true,
     });
     if (nearest.length === 0) return byTopic;
     const similarityById = new Map(nearest.map((row) => [row.id, row.similarity]));
-    const rows = await prisma.community.findMany({ where: { id: { in: nearest.map((row) => row.id) }, status: "ACTIVE", visibility: "public", isForumCategory: false } });
+    const rows = await prisma.community.findMany({ where: { id: { in: nearest.map((row) => row.id) }, status: "ACTIVE", isForumCategory: false } });
     const semantic = rows
       .sort((a, b) => (similarityById.get(b.id) ?? 0) - (similarityById.get(a.id) ?? 0))
       .map((community) => ({
@@ -423,14 +415,11 @@ export const communityService = {
     const resolvedUserId = userId ? await resolveUserId(userId) : undefined;
     const vector = await embedQuerySafely(q);
     if (!vector) return [];
-    const nearest = await nearestCommunityIds(vector, {
-      limit,
-      viewer: { isAdmin: role === "admin", memberCommunityIds: await activeMembershipIds(resolvedUserId) },
-    });
+    const nearest = await nearestCommunityIds(vector, { limit });
     if (nearest.length === 0) return [];
     const similarityById = new Map(nearest.map((row) => [row.id, row.similarity]));
-    // Visibility is already enforced in SQL; re-applying the normal rules is defence in depth.
-    const communities = await getPrisma().community.findMany({ where: { AND: [await visibleWhere(role, resolvedUserId), { id: { in: nearest.map((row) => row.id) } }] } });
+    // `nearestCommunityIds` only returns ACTIVE communities; re-applying the viewer rules is defence in depth.
+    const communities = await getPrisma().community.findMany({ where: { AND: [visibleWhere(role, resolvedUserId), { status: "ACTIVE" }, { id: { in: nearest.map((row) => row.id) } }] } });
     const memberships = resolvedUserId && communities.length > 0
       ? await getPrisma().communityMembership.findMany({ where: { userId: resolvedUserId, communityId: { in: communities.map((item) => item.id) } } })
       : [];
@@ -448,11 +437,9 @@ export const communityService = {
     const prisma = getPrisma();
     const membership = viewerUserId ? await prisma.communityMembership.findUnique({ where: { communityId_userId: { communityId: community.id, userId: viewerUserId } } }) : null;
     const presented = presentCommunity(community, membership as MembershipSummary | null, role, viewerUserId);
-    // Outsiders of a private community do not learn who runs it.
-    const moderatorMemberships = presented.contentRestricted ? [] : await prisma.communityMembership.findMany({ where: { communityId: community.id, role: { in: ["owner", "moderator"] }, status: "active" }, select: { userId: true } });
+    const moderatorMemberships = await prisma.communityMembership.findMany({ where: { communityId: community.id, role: { in: ["owner", "moderator"] }, status: "active" }, select: { userId: true } });
     const moderators = moderatorMemberships.length ? await prisma.user.findMany({ where: { id: { in: moderatorMemberships.map((item) => item.userId) } }, select: { id: true, legacyMongoId: true, fullName: true, avatarUrl: true } }) : [];
-    const pendingRequestCount = presented.canManage ? await prisma.communityMembership.count({ where: { communityId: community.id, status: "pending" } }) : undefined;
-    return { ...presented, pendingRequestCount, moderators: moderators.map((moderator) => ({ id: publicDatabaseId(moderator), fullName: moderator.fullName, avatarUrl: moderator.avatarUrl ?? undefined })) };
+    return { ...presented, moderators: moderators.map((moderator) => ({ id: publicDatabaseId(moderator), fullName: moderator.fullName, avatarUrl: moderator.avatarUrl ?? undefined })) };
   },
 
   /** Owner or admin edits content fields. Status changes go through `setStatus`/`review`. */
@@ -571,49 +558,17 @@ export const communityService = {
 
   async join(communityId: string, userId: string) {
     const [id, resolvedUserId] = await Promise.all([resolveCommunityId(communityId), resolveUserId(userId)]);
-    const { membership, previousStatus, communityName } = await getPrisma().$transaction(async (tx) => {
+    const { membership, previousStatus } = await getPrisma().$transaction(async (tx) => {
       await lockCommunity(tx, id);
-      const community = await tx.community.findUniqueOrThrow({ where: { id } });
+      const community = await tx.community.findUniqueOrThrow({ where: { id }, select: { isForumCategory: true, status: true } });
       if (community.isForumCategory) throw AppError.conflict("Forum categories do not require membership");
       if (community.status !== "ACTIVE") throw AppError.conflict("Only active communities can accept new members");
-      const existing = await tx.communityMembership.findUnique({ where: { communityId_userId: { communityId: id, userId: resolvedUserId } } });
-      if (existing?.status === "banned") throw AppError.forbidden("You are banned from this community");
-      // Joining never downgrades someone who is already an active member.
-      if (existing?.status === "active") return { membership: existing, previousStatus: existing.status, communityName: community.name };
-      const status = community.visibility === "public" ? "active" : "pending";
-      const saved = await tx.communityMembership.upsert({
-        where: { communityId_userId: { communityId: id, userId: resolvedUserId } },
-        create: { communityId: id, userId: resolvedUserId, role: "member", status },
-        update: { status },
-      });
-      await syncMemberCount(tx, id);
-      return { membership: saved, previousStatus: existing?.status, communityName: community.name };
+      return joinInTx(tx, id, resolvedUserId);
     });
-    // Request, cancel, request again (or decline, request again) must not ping moderators each time: one per cooldown window.
-    if (membership.status === "pending") {
-      const cooldownKey = `community:join-notify:v1:${id}:${resolvedUserId}`;
-      if (!(await joinNotifyCoolingDown(cooldownKey))) {
-        await this.notifyJoinRequest(id, communityName);
-        await startJoinNotifyCooldown(cooldownKey);
-      }
-    }
     if (previousStatus !== "active") {
       await auditService.log("community.joined", { userId, targetTableName: "community_memberships", targetRecordId: membership.id, details: { communityId: id, status: membership.status } });
     }
     return { role: membership.role, status: membership.status };
-  },
-
-  /** Tells the owner and moderators that someone asked to join a private community. */
-  async notifyJoinRequest(communityId: string, communityName: string) {
-    const managers = await getPrisma().communityMembership.findMany({ where: { communityId, status: "active", role: { in: ["owner", "moderator"] } }, select: { userId: true } });
-    await Promise.all(managers.map((manager) => notifySafely({
-      userId: manager.userId,
-      title: "New join request",
-      message: `Someone asked to join “${communityName}”.`,
-      type: "COMMUNITY_JOIN_REQUEST",
-      targetKind: "community",
-      targetId: communityId,
-    })));
   },
 
   async leave(communityId: string, userId: string) {
@@ -635,23 +590,92 @@ export const communityService = {
     await auditService.log("community.left", { userId, targetTableName: "community_memberships", targetRecordId: removed.id, details: { communityId: id } });
   },
 
-  /** Manager view: every membership (including pending requests) with contact details. */
+  /** Manager view: every membership with contact details. */
   async listMembers(communityId: string, actorId: string, actorRole?: UserRole) {
     const id = await resolveCommunityId(communityId);
     await assertCommunityModerator(id, actorId, actorRole);
     const memberships = await getPrisma().communityMembership.findMany({ where: { communityId: id }, orderBy: [{ createdAt: "asc" }] });
     const users = await getPrisma().user.findMany({ where: { id: { in: memberships.map((membership) => membership.userId) } }, select: { id: true, legacyMongoId: true, fullName: true, email: true, avatarUrl: true, role: true, institution: true } });
     const byId = new Map(users.map((user) => [user.id, { ...user, id: publicDatabaseId(user), _id: publicDatabaseId(user) }]));
+    const now = new Date();
+    const restrictions = await getPrisma().forumRestriction.findMany({
+      where: { scope: "COMMUNITY", communityId: id, userId: { in: memberships.map((membership) => membership.userId) }, revokedAt: null, startsAt: { lte: now }, OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
+      select: { id: true, userId: true, restrictionType: true, expiresAt: true },
+    });
     return memberships
       .sort((a, b) => (ROLE_ORDER[a.role] ?? 9) - (ROLE_ORDER[b.role] ?? 9))
-      .map((membership) => ({ ...membership, id: publicDatabaseId(membership), _id: publicDatabaseId(membership), userId: byId.get(membership.userId) }));
+      .map((membership) => ({
+        ...membership, id: publicDatabaseId(membership), _id: publicDatabaseId(membership), userId: byId.get(membership.userId),
+        restrictions: restrictions.filter((row) => row.userId === membership.userId).map((row) => ({ id: row.id, type: row.restrictionType, expiresAt: row.expiresAt?.toISOString() })),
+      }));
   },
 
-  /** Member-facing roster: active members only, no email addresses. */
+  /**
+   * Restricts a member from starting threads, replying or posting in THIS research community only, for 1, 7 or 30 days,
+   * without going through a report. Owners and moderators may restrict regular members; only the owner (or an admin)
+   * may restrict a moderator. The owner and administrators can never be restricted here.
+   */
+  async restrictMember(communityId: string, targetUserId: string, input: { type: "CREATE_THREAD" | "REPLY" | "POSTING"; durationDays: 1 | 7 | 30; reason: string }, actorId: string, actorRole?: UserRole) {
+    const [id, targetId, actorUserId] = await Promise.all([resolveCommunityId(communityId), resolveUserId(targetUserId), resolveUserId(actorId)]);
+    await assertCommunityModerator(id, actorId, actorRole);
+    if (targetId === actorUserId) throw AppError.badRequest("You cannot restrict yourself");
+    const { restriction, communityName } = await getPrisma().$transaction(async (tx) => {
+      await lockCommunity(tx, id);
+      // The actor may have been banned or demoted since the check above: use their live role.
+      let actorMemberRole: MembershipSummary["role"] = "owner"; // admins act as owner
+      if (actorRole !== "admin") {
+        const live = await tx.communityMembership.findUnique({ where: { communityId_userId: { communityId: id, userId: actorUserId } } });
+        if (live?.status !== "active" || !["owner", "moderator"].includes(live.role)) throw AppError.forbidden("Community moderator access is required");
+        actorMemberRole = live.role as MembershipSummary["role"];
+      }
+      const community = await tx.community.findUniqueOrThrow({ where: { id }, select: { name: true, isForumCategory: true, status: true } });
+      if (community.isForumCategory) throw AppError.forbidden("Use forum category administration to restrict users in a category");
+      if (community.status !== "ACTIVE" && actorRole !== "admin") throw AppError.conflict("Archived communities are read-only");
+      const membership = await tx.communityMembership.findUnique({ where: { communityId_userId: { communityId: id, userId: targetId } } });
+      if (!membership || membership.status !== "active") throw AppError.notFound("Active community member not found");
+      if (membership.role === "owner") throw AppError.forbidden("The community owner cannot be restricted");
+      if (membership.role === "moderator" && actorMemberRole !== "owner") throw AppError.forbidden("Only the community owner or an administrator can restrict a moderator");
+      const target = await tx.user.findUnique({ where: { id: targetId }, select: { systemRole: true } });
+      if (!target || target.systemRole !== "USER") throw AppError.forbidden("Administrators cannot be restricted here");
+      const now = new Date();
+      const duplicate = await tx.forumRestriction.findFirst({
+        where: { userId: targetId, scope: "COMMUNITY", communityId: id, restrictionType: input.type, revokedAt: null, OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
+        select: { id: true },
+      });
+      if (duplicate) throw AppError.conflict("This member already has an active restriction of this type");
+      const created = await tx.forumRestriction.create({
+        data: { userId: targetId, scope: "COMMUNITY", communityId: id, restrictionType: input.type, reason: input.reason, createdBy: actorUserId, expiresAt: new Date(now.getTime() + input.durationDays * 86_400_000) },
+      });
+      return { restriction: created, communityName: community.name };
+    });
+    await auditService.log("community.member.restricted", { userId: actorId, targetTableName: "forum_restrictions", targetRecordId: restriction.id, details: { communityId: id, memberId: targetId, type: input.type, durationDays: input.durationDays } });
+    const until = restriction.expiresAt!.toISOString().slice(0, 10);
+    await notifySafely({ userId: targetId, title: "Restricted in a community", message: `You cannot ${input.type === "REPLY" ? "reply" : input.type === "CREATE_THREAD" ? "start discussions" : "post"} in “${communityName}” until ${until}.`, type: "COMMUNITY_MEMBER_RESTRICTED", targetKind: "community", targetId: id });
+    return { id: restriction.id, type: restriction.restrictionType, expiresAt: restriction.expiresAt!.toISOString() };
+  },
+
+  /** Lifts a restriction early. Same rights as `restrictMember`: moderators lift restrictions on regular members. */
+  async liftRestriction(communityId: string, targetUserId: string, restrictionId: string, actorId: string, actorRole?: UserRole) {
+    const [id, targetId, actorUserId] = await Promise.all([resolveCommunityId(communityId), resolveUserId(targetUserId), resolveUserId(actorId)]);
+    const actorMembership = await assertCommunityModerator(id, actorId, actorRole);
+    const existing = await getPrisma().forumRestriction.findFirst({ where: { id: restrictionId, userId: targetId, scope: "COMMUNITY", communityId: id }, select: { id: true, revokedAt: true } });
+    if (!existing) throw AppError.notFound("Restriction not found");
+    if (actorMembership.role === "moderator") {
+      const membership = await getPrisma().communityMembership.findUnique({ where: { communityId_userId: { communityId: id, userId: targetId } }, select: { role: true } });
+      if (membership && membership.role !== "member") throw AppError.forbidden("Only the community owner or an administrator can lift a moderator's restriction");
+    }
+    const lifted = await getPrisma().forumRestriction.updateMany({ where: { id: existing.id, revokedAt: null }, data: { revokedAt: new Date(), revokedBy: actorUserId } });
+    if (!lifted.count) return { id: existing.id, lifted: false };
+    await auditService.log("community.member.restriction_lifted", { userId: actorId, targetTableName: "forum_restrictions", targetRecordId: existing.id, details: { communityId: id, memberId: targetId } });
+    const community = await getPrisma().community.findUniqueOrThrow({ where: { id }, select: { name: true } });
+    await notifySafely({ userId: targetId, title: "Restriction lifted", message: `You can take part in “${community.name}” again.`, type: "COMMUNITY_MEMBER_RESTRICTION_LIFTED", targetKind: "community", targetId: id });
+    return { id: existing.id, lifted: true };
+  },
+
+  /** Member-facing roster for signed-in users: active members only, no email addresses. */
   /** Owner and moderators always lead page 1 and are not paged; `meta.total` counts regular members only. */
   async publicMembers(communityId: string, userId?: string, role?: UserRole, paging: { page: number; pageSize: number } = { page: 1, pageSize: 50 }) {
-    const { community, viewerUserId } = await loadViewableCommunity(communityId, userId, role);
-    await assertCommunityContentAccess(community, viewerUserId, role);
+    const { community } = await loadViewableCommunity(communityId, userId, role);
     const { page, pageSize } = paging;
     const prisma = getPrisma();
     const regularWhere = { communityId: community.id, status: "active", role: "member" };
@@ -675,7 +699,7 @@ export const communityService = {
     return { data, meta: { page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)) } };
   },
 
-  async updateMember(communityId: string, targetUserId: string, input: { role?: "moderator" | "member"; status?: Exclude<MemberStatus, "pending"> }, actorId: string, actorRole?: UserRole) {
+  async updateMember(communityId: string, targetUserId: string, input: { role?: "moderator" | "member"; status?: MemberStatus }, actorId: string, actorRole?: UserRole) {
     const [id, resolvedTargetId] = await Promise.all([resolveCommunityId(communityId), resolveUserId(targetUserId)]);
     // Fail fast outside the transaction; the rights are read again under the lock below.
     await assertCommunityModerator(id, actorId, actorRole);
@@ -689,8 +713,9 @@ export const communityService = {
         if (live?.status !== "active" || !["owner", "moderator"].includes(live.role)) throw AppError.forbidden("Community moderator access is required");
         actorMemberRole = live.role as MembershipSummary["role"];
       }
-      const category = await tx.community.findUniqueOrThrow({ where: { id }, select: { isForumCategory: true } });
+      const category = await tx.community.findUniqueOrThrow({ where: { id }, select: { isForumCategory: true, status: true } });
       if (category.isForumCategory) throw AppError.forbidden("Use forum category administration to assign moderators");
+      if (category.status !== "ACTIVE" && actorRole !== "admin") throw AppError.conflict("Archived communities are read-only");
       const membership = await tx.communityMembership.findUnique({ where: { communityId_userId: { communityId: id, userId: resolvedTargetId } } });
       if (!membership) throw AppError.notFound("Community membership not found");
       if (membership.role === "owner") throw AppError.badRequest("The owner membership cannot be changed here");
@@ -711,12 +736,11 @@ export const communityService = {
       return { updated: result, target: membership, communityName: community.name };
     });
     await auditService.log("community.member.updated", { userId: actorId, targetTableName: "community_memberships", targetRecordId: target.id, details: input });
-    if (input.status && input.status !== target.status && ["active", "declined", "banned"].includes(input.status)) {
+    if (input.status && input.status !== target.status && ["active", "banned"].includes(input.status)) {
       const copy = {
-        active: { title: "Community request approved", message: `You can now take part in “${communityName}”.`, type: "COMMUNITY_MEMBER_APPROVED" },
-        declined: { title: "Community request declined", message: `Your request to join “${communityName}” was declined.`, type: "COMMUNITY_MEMBER_DECLINED" },
+        active: { title: "Community access restored", message: `You can take part in “${communityName}” again.`, type: "COMMUNITY_MEMBER_APPROVED" },
         banned: { title: "Removed from a community", message: `You were banned from “${communityName}”.`, type: "COMMUNITY_MEMBER_BANNED" },
-      }[input.status as "active" | "declined" | "banned"];
+      }[input.status as "active" | "banned"];
       await notifySafely({ userId: resolvedTargetId, ...copy, targetKind: "community", targetId: id });
     }
     if (input.role !== undefined && input.role !== target.role) {

@@ -12,7 +12,7 @@ const mocks = vi.hoisted(() => ({
   notify: vi.fn(),
 }));
 vi.mock("../../../infrastructure/database/prisma.js", () => ({ getPrisma: () => mocks.prisma }));
-vi.mock("../trend.service.js", () => ({ trendService: { topic: mocks.topic } }));
+vi.mock("../trend.service.js", () => ({ trendService: { topic: mocks.topic }, findUserId: (id: string) => Promise.resolve(id) }));
 vi.mock("../../notifications/notification.service.js", () => ({ notificationService: { create: mocks.notify } }));
 
 import { trendFollowService } from "../trend-follow.service.js";
@@ -41,6 +41,14 @@ describe("followed trend topics", () => {
     expect(created).toMatchObject({ topic: "Graph Neural Networks", lastVerdict: "rising" });
   });
 
+  it("answers 409 when a concurrent request followed the topic first", async () => {
+    mocks.prisma.trendTopicFollow.findUnique.mockResolvedValue(null);
+    mocks.topic.mockResolvedValue(detail("rising"));
+    mocks.prisma.trendTopicFollow.create.mockRejectedValue(Object.assign(new Error("Unique constraint failed"), { code: "P2002" }));
+
+    await expect(trendFollowService.create(USER_A, { topic: "Graph Neural Networks" })).rejects.toMatchObject({ statusCode: 409 });
+  });
+
   it("rejects following the same topic twice", async () => {
     mocks.prisma.trendTopicFollow.findUnique.mockResolvedValue({ id: "f1" });
     await expect(trendFollowService.create(USER_A, { topic: "graph neural networks" })).rejects.toBeInstanceOf(AppError);
@@ -58,6 +66,38 @@ describe("followed trend topics", () => {
     expect(mocks.notify.mock.calls[0]![0]).toMatchObject({ userId: USER_A, type: "TREND_VERDICT_CHANGED", emailPayload: { topic: "Graph Neural Networks", from: "stable", to: "rising" } });
     // A follow without a baseline records one silently.
     expect(mocks.prisma.trendTopicFollow.update).toHaveBeenCalledWith({ where: { id: "f3" }, data: { lastVerdict: "declining", lastDataSource: "openalex", lastCheckedAt: NOW } });
+  });
+
+  it("does not notify when the verdict comes from the local corpus while the baseline is from OpenAlex", async () => {
+    mocks.prisma.trendTopicFollow.findMany.mockResolvedValue([follow("f1", USER_A, "rising")]);
+    mocks.topic.mockResolvedValue({ dataSource: "local", statistics: { classification: { verdict: "insufficient" } } });
+
+    expect(await trendFollowService.checkFollowedTopics(NOW)).toEqual({ topics: 1, changed: 0 });
+    expect(mocks.notify).not.toHaveBeenCalled();
+    expect(mocks.prisma.trendTopicFollow.update).toHaveBeenCalledWith({ where: { id: "f1" }, data: { lastCheckedAt: NOW } });
+  });
+
+  it("replaces a local baseline with the OpenAlex verdict without notifying", async () => {
+    mocks.prisma.trendTopicFollow.findMany.mockResolvedValue([{ ...follow("f1", USER_A, "insufficient"), lastDataSource: "local" }]);
+    mocks.topic.mockResolvedValue(detail("rising"));
+
+    expect(await trendFollowService.checkFollowedTopics(NOW)).toEqual({ topics: 1, changed: 0 });
+    expect(mocks.notify).not.toHaveBeenCalled();
+    expect(mocks.prisma.trendTopicFollow.update).toHaveBeenCalledWith({ where: { id: "f1" }, data: { lastVerdict: "rising", lastDataSource: "openalex", lastCheckedAt: NOW } });
+  });
+
+  it("keeps the baseline when the notification cannot be sent, so the next run retries it", async () => {
+    mocks.prisma.trendTopicFollow.findMany.mockResolvedValue([follow("f1", USER_A, "stable")]);
+    mocks.topic.mockResolvedValue(detail("rising"));
+    mocks.notify.mockRejectedValueOnce(new Error("redis down")).mockResolvedValue({});
+
+    expect(await trendFollowService.checkFollowedTopics(NOW)).toEqual({ topics: 1, changed: 0 });
+    expect(mocks.prisma.trendTopicFollow.update).not.toHaveBeenCalled();
+
+    expect(await trendFollowService.checkFollowedTopics(NOW)).toEqual({ topics: 1, changed: 1 });
+    // Both attempts use one event key, so a partly sent first attempt is not duplicated.
+    expect(mocks.notify.mock.calls[0]![0].eventKey).toBe(mocks.notify.mock.calls[1]![0].eventKey);
+    expect(mocks.prisma.trendTopicFollow.update).toHaveBeenCalledWith({ where: { id: "f1" }, data: { lastVerdict: "rising", lastDataSource: "openalex", lastCheckedAt: NOW } });
   });
 
   it("keeps the previous verdict when the trend cannot be computed", async () => {

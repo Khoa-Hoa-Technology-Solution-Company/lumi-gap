@@ -93,9 +93,11 @@ export async function providerJson(urlValue: string, apiKey: string, provider: s
       method: payload ? "POST" : "GET",
       headers: { accept: "application/json", ...(payload ? { "content-type": "application/json" } : {}),
         ...(apiKey ? provider === "gemini" ? { "x-goog-api-key": apiKey } : { authorization: `Bearer ${apiKey}` } : {}) },
-      // Pin the validated DNS address so a second lookup cannot redirect credentials into a private network.
+      // Pin the validated DNS addresses so a second lookup cannot redirect credentials into a private network.
+      // Offer all of them: "localhost" resolves to ::1 first, and many local gateways only listen on 127.0.0.1;
+      // Node's default autoSelectFamily then tries the next address when one refuses the connection.
       lookup: (_host, options, callback) => {
-        if (typeof options === "object" && options.all) callback(null, [pinned] as never);
+        if (typeof options === "object" && options.all) callback(null, addresses as never);
         else callback(null, pinned.address, pinned.family);
       },
     }, (res) => {
@@ -127,9 +129,14 @@ export async function providerJson(urlValue: string, apiKey: string, provider: s
         catch { reject(AppError.serviceUnavailable("AI provider returned an invalid JSON response")); }
       });
     });
-    const timer = setTimeout(() => req.destroy(new Error("request timed out")), body ? 60000 : 20000);
+    const timeoutMs = body ? env.AI_PROVIDER_TIMEOUT_MS : 20000;
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; req.destroy(new Error("request timed out")); }, timeoutMs);
     req.on("close", () => clearTimeout(timer));
-    req.on("error", () => reject(AppError.serviceUnavailable("Could not connect to the AI provider. Check the Base URL or try again later.")));
+    // A slow answer is not a connection problem: say which one happened.
+    req.on("error", () => reject(timedOut
+      ? AppError.serviceUnavailable(`The AI provider did not answer within ${Math.round(timeoutMs / 1000)} seconds. Try again, choose a faster model, or raise AI_PROVIDER_TIMEOUT_MS.`)
+      : AppError.serviceUnavailable("Could not connect to the AI provider. Check the Base URL or try again later.")));
     req.end(payload);
   });
 }

@@ -10,8 +10,7 @@ import type {
   YearlyCount,
 } from "@trend/shared-types";
 import type { TrendsOverviewQuery } from "./dto/trends.schema.js";
-import { computeMetrics, truncateToCompleteYears, yoyGrowthPct } from "./trend.formulas.js";
-import { fillMissingYearsFromCounts } from "./trend.intelligence.js";
+import { computeMetrics, fillMissingYears, truncateToCompleteYears, yoyGrowthPct } from "./trend.formulas.js";
 import { openAlexKeywordCounts } from "./trend.evidence.js";
 import { openAlexGroupBy, openAlexYearCounts, type OpenAlexGroup } from "./trend.openalex-client.js";
 import { buildOpenAlexScope, withScope, yearsClause, type OpenAlexScope } from "./trend.openalex-scope.js";
@@ -86,7 +85,7 @@ export async function getOpenAlexTrendsOverview(query: TrendsOverviewQuery): Pro
     OpenAlexGroup[]
   >;
 
-  const yearlyTotalPapers = fillMissingYearsFromCounts(toSeries(baseYears), yearFrom, yearTo);
+  const yearlyTotalPapers = fillMissingYears(toSeries(baseYears), yearFrom, yearTo);
   const totalPapersInWindow = yearlyTotalPapers.reduce((sum, row) => sum + row.count, 0);
   const citationTrend: YearlyCitationMetric[] = yearlyTotalPapers.map(({ year, count }) => {
     const topCitedCount = topCitedYears.get(year) ?? 0;
@@ -225,7 +224,7 @@ async function buildRisingKeywords(
     periodB: { yearFrom: periodB[0]!, yearTo: periodB.at(-1)! },
   };
   return rising.map((shift, index) => {
-    const yearlyBreakdown = fillMissingYearsFromCounts(toSeries(series[index]!), yearFrom, yearTo);
+    const yearlyBreakdown = fillMissingYears(toSeries(series[index]!), yearFrom, yearTo);
     return {
       keyword: shift.term,
       totalPapers: yearlyBreakdown.reduce((sum, row) => sum + row.count, 0),

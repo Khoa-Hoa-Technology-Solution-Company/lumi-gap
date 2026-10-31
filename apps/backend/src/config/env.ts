@@ -97,6 +97,9 @@ const EnvSchema = z.object({
   AI_CONNECTION_ENCRYPTION_KEY: z.preprocess((value) => value === "" ? undefined : value, z.string().min(32).optional()),
   AI_ALLOWED_BASE_URLS: z.string().default(""),
   AI_ALLOW_LOCAL_ENDPOINTS: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
+  // How long a personal/platform AI connection may take to answer a generation request. Reasoning models writing
+  // several thousand tokens (research gaps, reports) often need more than a minute.
+  AI_PROVIDER_TIMEOUT_MS: z.coerce.number().int().min(10_000).max(600_000).default(180_000),
   AI_LOCALHOST_HOST: z.string().regex(/^(?:[a-zA-Z0-9.-]+)?$/, "AI_LOCALHOST_HOST must be a hostname without a port or path").default(""),
   // Keep generative models configurable as provider availability changes.
   // Embeddings use their own model; changing these preserves existing vectors.
@@ -144,6 +147,10 @@ const EnvSchema = z.object({
   FORUM_RATE_LIMIT_UNVERIFIED: z.coerce.number().int().min(1).max(1000).default(10),
   FORUM_RATE_LIMIT_VERIFIED: z.coerce.number().int().min(1).max(5000).default(60),
   FORUM_COPYRIGHT_PUBLIC_RATE_LIMIT: z.coerce.number().int().min(1).max(100).default(3),
+  FORUM_AUTO_HIDE_REPORT_THRESHOLD: z.coerce.number().int().min(2).max(100).default(3),
+  FORUM_AUTO_HIDE_MIN_ACCOUNT_AGE_HOURS: z.coerce.number().int().min(0).max(8760).default(24),
+  FORUM_NEW_ACCOUNT_MAX_LINKS: z.coerce.number().int().min(0).max(100).default(2),
+  FORUM_DUPLICATE_WINDOW_MINUTES: z.coerce.number().int().min(1).max(10080).default(60),
   FORUM_ALLOW_SOLE_ADMIN_APPEAL_REVIEW: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
 
   OPENALEX_MAILTO: optionalEnvEmail,
@@ -194,13 +201,23 @@ const EnvSchema = z.object({
   // Phase D — Research Gaps
   GAPS_TOP_K: z.coerce.number().int().min(3).max(10).default(10),
   GAPS_MAX_PER_HOUR: z.coerce.number().int().positive().default(10),
-  GAPS_MAX_OUTPUT_TOKENS: z.coerce.number().int().positive().default(2048),
+  // v8 gap prompts return a research question and PICOC facets per gap, and reasoning models spend output tokens on
+  // thinking, so 2048 truncated real runs.
+  GAPS_MAX_OUTPUT_TOKENS: z.coerce.number().int().positive().default(8192),
   // MMR trade-off for the evidence pack: 1 = pure relevance (old behaviour), lower = more diverse papers.
   GAPS_EVIDENCE_MMR_LAMBDA: z.coerce.number().min(0).max(1).default(0.7),
-  // Possible counter-evidence: corpus papers whose embedding is this close (cosine) to a generated gap's text are
-  // linked for review, at most GAP_COUNTER_PER_GAP per gap (0 disables the search). Tune on real data.
-  GAP_COUNTER_MIN_SIMILARITY: z.coerce.number().min(0).max(1).default(0.75),
+  // Possible counter-evidence: corpus papers whose embedding is this close (cosine) to a generated gap's text, and
+  // that mention both probe topics when the gap has one, are linked for review, at most GAP_COUNTER_PER_GAP per gap
+  // (0 disables the search). 0.8 from `eval:gaps`: generic surveys sit at 0.81-0.83 but lack the probe words.
+  GAP_COUNTER_MIN_SIMILARITY: z.coerce.number().min(0).max(1).default(0.8),
   GAP_COUNTER_PER_GAP: z.coerce.number().int().min(0).max(10).default(3),
+  // OpenAlex works found with a gap's research question that mention both probe topics are ingested and linked as
+  // possible counter-evidence too, at most this many per gap (0 disables).
+  GAP_COUNTER_OPENALEX_PER_GAP: z.coerce.number().int().min(0).max(10).default(3),
+  // Corpus coverage shown with the evidence preview: how many of the topic's top OpenAlex works the corpus holds
+  // (0 disables); below GAP_COVERAGE_MIN_SHARE the user is told to add the missing works before analysing.
+  GAP_COVERAGE_TOP_WORKS: z.coerce.number().int().min(0).max(50).default(25),
+  GAP_COVERAGE_MIN_SHARE: z.coerce.number().min(0).max(1).default(0.5),
   // Semantic probe matching: a paper also counts for a probe topic when its embedding is at least this close (cosine)
   // to the topic's embedding, so synonyms are not missed. 0 = keyword matching only (default until calibrated with
   // `pnpm --filter backend eval:gaps`).
@@ -220,7 +237,8 @@ const EnvSchema = z.object({
   GAP_GLOBAL_EVIDENCE_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120000).default(15000),
   GAP_VALIDATION_QUORUM: z.coerce.number().int().min(1).default(2), // distinct experts that must agree (VALIDATE or REJECT) before a gap reaches a final status
   // Gap Closure Protocol (docs/gap-closure-protocol.md): a gap is OPEN_CERTIFIED only when the false-novelty bound
-  // epsHat + pHat is at most GAP_MAX_FALSE_NOVELTY; both are one-sided Clopper-Pearson upper bounds at 1 - GAP_CLOSURE_DELTA.
+  // (epsHat for an IN_SITU calibration, epsHat + pHat for a TRANSFER one) is at most GAP_MAX_FALSE_NOVELTY; both are
+  // one-sided Clopper-Pearson upper bounds at 1 - GAP_CLOSURE_DELTA.
   GAP_MAX_FALSE_NOVELTY: z.coerce.number().gt(0).max(1).default(0.2),
   GAP_CLOSURE_DELTA: z.coerce.number().gt(0).lt(0.5).default(0.05),
   GAP_CLOSURE_LOCAL_TOP_K: z.coerce.number().int().min(1).max(50).default(20), // corpus papers screened per check
@@ -241,6 +259,20 @@ const EnvSchema = z.object({
   // is the honest ceiling of results for a single query.
   SEARCH_FILTER_POOL: z.coerce.number().int().min(50).max(1000).default(200),
 
+  // Query understanding in GET /search (deterministic, no LLM): resolve the query to OpenAlex taxonomy
+  // nodes / catalogue keywords, then hard-filter to the best one or boost papers that carry them.
+  SEARCH_AUTO_TAGS: z.enum(["true", "false"]).default("true").transform((value) => value === "true"),
+  // The best tag must reach this confidence (0..1) before it may act as a hard filter.
+  SEARCH_TAG_FILTER_MIN_CONFIDENCE: z.coerce.number().min(0).max(1).default(0.85),
+  // ...and own at least this many active papers, otherwise the filter would be too narrow to be useful.
+  SEARCH_TAG_FILTER_MIN_PAPERS: z.coerce.number().int().min(0).max(1_000_000).default(20),
+  // ...and own at most this share (0..1) of the active corpus; a broader tag narrows nothing and only boosts.
+  SEARCH_TAG_FILTER_MAX_SHARE: z.coerce.number().min(0).max(1).default(0.5),
+  // A filtered search returning fewer papers than this is re-run unfiltered with tag boosting instead.
+  SEARCH_TAG_FALLBACK_MIN_RESULTS: z.coerce.number().int().min(0).max(500).default(10),
+  // How long the in-memory taxonomy/keyword phrase dictionary is reused before it is reloaded.
+  TAXONOMY_DICTIONARY_TTL_SECONDS: z.coerce.number().int().min(1).max(86_400).default(600),
+
   // Phase B/C — LLM re-rank of semantic search. Size of the candidate pool the
   // LLM re-scores (bounded — re-ranking refines the head of the results).
   RERANK_CANDIDATES: z.coerce.number().int().min(2).max(50).default(20),
@@ -250,6 +282,8 @@ const EnvSchema = z.object({
   SEMANTIC_SEARCH_MAX_PER_MINUTE: z.coerce.number().int().positive().default(60),
   // POST /trends/explain is open to anonymous users and every new scope is an uncached LLM call.
   TREND_EXPLAIN_MAX_PER_HOUR: z.coerce.number().int().positive().default(20),
+  // Public trend reads (overview, topic, compare, ...) spend OpenAlex credits shared with sync; per user/IP per minute.
+  TREND_READ_MAX_PER_MINUTE: z.coerce.number().int().positive().default(120),
   // Daily re-check of followed trend topics (notification worker); each run checks at most the batch size.
   TREND_FOLLOW_CRON: z.string().default("0 4 * * *"),
   TREND_FOLLOW_CHECK_BATCH: z.coerce.number().int().min(1).max(1000).default(100),
@@ -263,6 +297,30 @@ const EnvSchema = z.object({
   // Minimum similarity for a semantic community match. Score = 1 - cosine_distance / 2,
   // i.e. (1 + cos) / 2, so 0.75 corresponds to a cosine of 0.5. Tune on real embeddings.
   COMMUNITY_SUGGEST_MIN_SIMILARITY: z.coerce.number().min(0).max(1).default(0.75),
+
+  // Automatic tagging (tagging worker). Rules always run; embedding expansion adds papers whose embedding is within
+  // TAG_EMBEDDING_MIN_SIMILARITY (cosine) of the centroid of the tag's rule/manual papers, once at least
+  // TAG_EMBEDDING_MIN_SEED of those have an embedding, at most TAG_EMBEDDING_MAX_PAPERS per tag per run.
+  TAGGING_CRON: z.string().default("15 3 * * *"),
+  TAG_EMBEDDING_ENABLED: z.enum(["true", "false"]).default("true").transform((value) => value === "true"),
+  TAG_EMBEDDING_MIN_SEED: z.coerce.number().int().min(1).default(10),
+  TAG_EMBEDDING_MIN_SIMILARITY: z.coerce.number().min(0).max(1).default(0.82),
+  TAG_EMBEDDING_MAX_PAPERS: z.coerce.number().int().min(1).default(300),
+
+  // On-demand topic backfill (topic-backfill worker). A run imports at most TOPIC_BACKFILL_DEFAULT_NEW_PAPERS papers the
+  // corpus is missing (admins may ask for up to TOPIC_BACKFILL_MAX_NEW_PAPERS), reading at most TOPIC_BACKFILL_MAX_PAGES
+  // OpenAlex pages. Below TOPIC_BACKFILL_THIN_MAX_PAPERS local papers, search offers signed-in users a backfill, limited
+  // per user/hour, by a cooldown per target and by a daily cap on papers imported from search across all users.
+  TOPIC_BACKFILL_SEARCH_ENABLED: z.enum(["true", "false"]).default("true").transform((value) => value === "true"),
+  TOPIC_BACKFILL_THIN_MAX_PAPERS: z.coerce.number().int().min(1).default(30),
+  TOPIC_BACKFILL_DEFAULT_NEW_PAPERS: z.coerce.number().int().min(1).max(1000).default(100),
+  TOPIC_BACKFILL_MAX_NEW_PAPERS: z.coerce.number().int().min(1).max(5000).default(1000),
+  TOPIC_BACKFILL_MAX_PAGES: z.coerce.number().int().min(1).max(100).default(10),
+  TOPIC_BACKFILL_USER_MAX_PER_HOUR: z.coerce.number().int().positive().default(5),
+  TOPIC_BACKFILL_COOLDOWN_HOURS: z.coerce.number().int().min(0).default(24),
+  TOPIC_BACKFILL_DAILY_MAX_PAPERS: z.coerce.number().int().min(1).default(2000),
+  // Largest random sample an admin may plan from one tag in a single campaign.
+  TAG_CAMPAIGN_MAX_WORKS: z.coerce.number().int().min(1).default(5000),
 
   // Quality & Feedback — per-user/hour cap on the on-demand LLM-judge (a generate call).
   QUALITY_EVAL_MAX_PER_HOUR: z.coerce.number().int().positive().default(20),

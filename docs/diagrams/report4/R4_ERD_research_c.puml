@@ -1,0 +1,81 @@
+@startuml
+!pragma layout elk
+skinparam dpi 200
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam backgroundColor #FFFFFF
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam ArrowFontSize 12
+skinparam ArrowFontColor #4A5A6A
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam entity {
+  BackgroundColor #EFE6F8
+  BorderColor #6A3FA0
+}
+skinparam legend {
+  BackgroundColor #FFF8E1
+  BorderColor #C9B36B
+  FontSize 12
+}
+skinparam stereotypeFontSize 10
+hide circle
+hide empty methods
+title Physical ERD - Gap evidence, validation and closure (3 of 7)
+entity gap_evidence_records #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  gap_id : uuid <<FK>>
+  paper_id : uuid <<FK>>
+  evidence_item_id : uuid <<FK project_evidence_items>>
+  evidence_revision_id : uuid <<FK project_workspace_revisions>>
+  project_paper_id : uuid <<FK project_papers>>
+  corpus_paper_id : uuid <<FK corpus_papers>>
+  forum_reference_id : uuid <<FK forum_references>>
+  forum_post_id : uuid <<FK forum_posts>>
+  forum_comment_id : uuid <<FK forum_comments>>
+  added_by_id : uuid <<FK users>>
+  ..
+  evidence_kind : varchar(16)
+  evidence_type : varchar(120)
+}
+entity gap_validations #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  gap_id : uuid <<FK>>
+  reviewer_id : uuid <<FK users>>
+  ..
+  gap_version : integer
+  action : varchar(32)
+}
+entity gap_closure_checks #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  coverage_check_id : uuid <<FK coverage_checks>>
+  calibration_id : uuid <<FK closure_calibrations>>
+  witness_document_id : uuid <<FK gap_closure_documents>>
+  created_by_id : uuid <<FK users>>
+  decided_by_id : uuid <<FK users>>
+  ..
+  target_kind : varchar(24)
+  status : varchar(16)
+}
+entity research_gaps #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+entity papers #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+gap_closure_checks |o--o{ research_gaps
+papers ||--o{ gap_evidence_records
+research_gaps ||--o{ gap_evidence_records
+research_gaps ||--o{ gap_validations
+legend bottom
+Crow's-foot notation. PK primary key, FK foreign key, UK unique key.
+FK <name>: the foreign key references a table that is not drawn here.
+Dashed boxes belong to another diagram (key only).
+endlegend
+@enduml

@@ -1,0 +1,102 @@
+@startuml
+skinparam dpi 200
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam BorderColor #2F6DB5
+skinparam BackgroundColor #FFFFFF
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam usecase {
+  BackgroundColor #EAF2FB
+  BorderColor #2F6DB5
+}
+skinparam actor {
+  BackgroundColor #FFFFFF
+  BorderColor #1B2A3A
+}
+skinparam class {
+  BackgroundColor #F7FAFD
+  BorderColor #2F6DB5
+  HeaderBackgroundColor #DCE8F6
+}
+skinparam state {
+  BackgroundColor #EAF2FB
+  BorderColor #2F6DB5
+}
+skinparam activity {
+  BackgroundColor #EAF2FB
+  BorderColor #2F6DB5
+  DiamondBackgroundColor #FFF4E5
+}
+skinparam swimlane {
+  BorderColor #9DB3CC
+  TitleBackgroundColor #DCE8F6
+}
+skinparam sequence {
+  ParticipantBackgroundColor #EAF2FB
+  ParticipantBorderColor #2F6DB5
+  LifeLineBorderColor #9DB3CC
+  GroupBackgroundColor #F4F7FA
+}
+skinparam package {
+  BackgroundColor #F7F9FC
+  BorderColor #9DB3CC
+}
+skinparam note {
+  BackgroundColor #FFF9E5
+  BorderColor #E0B200
+}
+skinparam entity {
+  BackgroundColor #F7FAFD
+  BorderColor #2F6DB5
+}
+skinparam rectangle {
+  BackgroundColor #F7F9FC
+  BorderColor #2F6DB5
+}
+skinparam maxMessageSize 100
+skinparam ParticipantPadding 0
+skinparam BoxPadding 2
+skinparam sequenceMessageAlign left
+skinparam responseMessageBelowArrow true
+skinparam SequenceGroupBodyBackgroundColor transparent
+skinparam SequenceGroupBackgroundColor #F4F7FA
+skinparam SequenceDividerBackgroundColor #DCE8F6
+skinparam NoteFontSize 12
+hide footbox
+autonumber
+title WF02 Gap analysis (b): worker pipeline
+queue "BullMQ\ngaps queue" as Q #EFE6F8
+control "gaps.worker" as K <<worker>> #FFF1DC
+control "gapsService" as S #E3F2E5
+database "PostgreSQL" as DB #EFE6F8
+participant "Gemini\n(llmRun)" as L <<external>> #F0F1F3
+Q ->> K : deliver job gap-analysis
+activate K
+K -> S : runGapPipeline(job)
+activate S
+S -> DB : claim: status queued to analyzing
+S -> DB : collectGapEvidence\n(vector search, MMR)
+DB --> S : evidence papers
+alt not enough evidence, or LLM error
+  S --> K : throw (BullMQ retries)
+else evidence ok
+  S -> L : cachedGenerateJSON(gap prompt)
+  L --> S : candidate gaps with probes
+  S -> DB : corpus probe counts,\ncounter papers
+  S -> DB : tx: insert research_gaps (CANDIDATE),\nresearch_gap_papers, status ready
+end
+S --> K : done
+deactivate S
+opt retries exhausted
+  K -> S : markAnalysisFailed()
+  S -> DB : status failed
+  S -> DB : refundCreditsOnce
+end
+K --> Q : job completed or failed
+deactivate K
+@enduml

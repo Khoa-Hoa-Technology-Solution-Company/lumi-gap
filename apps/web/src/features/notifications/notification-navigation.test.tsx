@@ -98,7 +98,7 @@ describe("notification navigation", () => {
       await act(async () => button("Copyright claims").click());
       expect(mocks.copyright).toHaveBeenCalled();
       await act(async () => button("History back").click());
-      expect(button("Appeals").getAttribute("aria-pressed")).toBe("true");
+      expect(button("Appeals").getAttribute("aria-selected")).toBe("true");
     } finally { await view.close(); }
   });
 
@@ -106,7 +106,7 @@ describe("notification navigation", () => {
     const view = await mount(<AdminTrustSafetyPage />, "/admin/trust-safety?tab=unknown&status=unknown");
     try {
       expect(mocks.queue).toHaveBeenCalledWith("open");
-      expect(button("Reports").getAttribute("aria-pressed")).toBe("true");
+      expect(button("Reports").getAttribute("aria-selected")).toBe("true");
     } finally { await view.close(); }
   });
 });

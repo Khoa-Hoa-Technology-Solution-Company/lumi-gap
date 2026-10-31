@@ -1,4 +1,4 @@
-import type { ScoredPaper, SearchResultMode, SearchSortKey } from "@trend/shared-types";
+import type { ScoredPaper, SearchResultMode, SearchSortKey, SearchUnderstanding } from "@trend/shared-types";
 import { api } from "@/services/api-client";
 import { API_ROUTES } from "@/constants";
 
@@ -28,6 +28,11 @@ export interface SearchParams {
   fieldIds?: string[];
   subfieldIds?: string[];
   topicIds?: string[];
+  keywordIds?: string[];
+  /** Admin-curated tags (paper_tags), CSV of UUIDs. */
+  tagIds?: string[];
+  /** Set to false to switch off automatic tag detection (sent only when false). */
+  autoTags?: boolean;
   /** Cosine similarity floor 0..1 (semantic only). */
   minScore?: number;
   sort?: SearchSortKey;
@@ -40,8 +45,9 @@ export const searchApi = {
    *  but each paper carries a relevance `score` (and `rerankScore` if rerank). */
   async semantic(params: SearchParams, signal?: AbortSignal) {
     // Flatten array filters → CSV for the query string.
-    const { paperKind, ...rest } = params;
+    const { paperKind, autoTags, ...rest } = params;
     const query: Record<string, unknown> = { ...rest };
+    if (autoTags === false) query.autoTags = false;
     if (paperKind && paperKind.length > 0) {
       query.paperKind = paperKind.join(",");
     }
@@ -60,6 +66,8 @@ export const searchApi = {
       "fieldIds",
       "subfieldIds",
       "topicIds",
+      "keywordIds",
+      "tagIds",
     ] as const) {
       const values = query[key];
       if (Array.isArray(values)) {
@@ -76,6 +84,7 @@ export const searchApi = {
         total: number;
         totalPages: number;
         mode: SearchResultMode;
+        understanding?: SearchUnderstanding;
       },
     };
   },

@@ -27,8 +27,9 @@ A gap is a **question** `q` with PICOC facets (population, intervention, compari
    evidence, or from a survey) run through steps 1–2 with the same judge kind. A question is MISSED when the
    procedure does not close it. `epsHat = clopperPearsonUpper(misses, n, delta)`.
 5. **Decision** (`decideClosure`): CLOSED if any document effectively ANSWERS (witness quote shown);
-   OPEN_CERTIFIED if no ANSWERS, no failed query, no pending document, coverage and a calibration of the same
-   judge kind exist and `B = epsHat + pHat <= GAP_MAX_FALSE_NOVELTY`; ABSTAIN otherwise with every reason.
+   OPEN_CERTIFIED if no ANSWERS, no failed query, no pending document, a calibration of the same judge kind exists
+   and `B <= GAP_MAX_FALSE_NOVELTY`, where `B = epsHat` for an IN_SITU calibration and `B = epsHat + pHat` (coverage
+   required) for a TRANSFER one; ABSTAIN otherwise with every reason. The check stores the formula as `boundMode`.
    Corroboration (a PARTIAL limitation statement from another paper) is reported, not required.
 
 Guarantee: a closed question is called open only if all its answering documents are missing (≤ p) or the
@@ -103,7 +104,7 @@ Gap list (`GET /api/v1/gaps`) items gain `closureStatus`, `questionFacets`, `lat
 | **runner** | `modules/gap-closure/closure.runner.ts`, `closure.search.ts`, `closure.queries.prompt.ts`, `closure.screening.prompt.ts`, `closure.sweep.ts`, their `__tests__`, `workers/gaps.worker.ts` |
 | **api** | `modules/gap-closure/closure.routes.ts`, `closure.controller.ts`, `closure.service.ts`, `closure.access.ts`, `coverage.service.ts`, `calibration.service.ts`, `dossier.ts`, `dto/closure.schema.ts`, their `__tests__`, `routes/index.ts`, `modules/gaps/gap-presenter.ts`, `modules/gaps/gaps.service.ts` (list mapping only), `modules/gaps/dto/gaps.schema.ts`, `modules/gaps/gap-validation.service.ts` (createCandidate only) |
 | **web** | `apps/web/src/features/gap-closure/**`, `apps/web/src/constants/api.ts`, `features/gaps/components/gap-card.tsx`, `gap-detail-drawer.tsx`, the manual gap form, `routes/app-routes.tsx`, new page under `pages/`, `i18n/locales/*` |
-| **docs** | `docs/gap-closure-protocol.md`, `docs/gap-closure-protocol.vi.md` |
+| **docs** | `docs/gap-closure-protocol.md` |
 
 Wave 2 (after wave 1): replace `computeGapEvidence` with an observed/expected + Poisson ranking signal and
 relabel "Confirmed" as "Under-explored" (done: signal in `gaps/gap-evidence.ts`, presenter re-ranks old rows from stored

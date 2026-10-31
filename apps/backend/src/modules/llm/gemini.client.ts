@@ -2,7 +2,8 @@ import { GoogleGenAI } from "@google/genai";
 import { env } from "../../config/env.js";
 import { logger } from "../../infrastructure/logger.js";
 import { AppError } from "../../common/exceptions/app-error.js";
-import { aiModel, personalAiRuntime } from "../user-ai/user-ai.runtime.js";
+import { aiModel, personalAiRuntime, resolveAiConnection } from "../user-ai/user-ai.runtime.js";
+import { refreshPlatformAi } from "../user-ai/platform-ai.runtime.js";
 import { personalGenerate, personalOpenAiTools } from "../user-ai/personal-ai.client.js";
 
 /**
@@ -43,6 +44,29 @@ export class LlmQuotaError extends AppError {
     super(429, "LLM_QUOTA_EXHAUSTED", message);
     this.name = "LlmQuotaError";
   }
+}
+
+/**
+ * The provider is overloaded or failing on its side (HTTP 500/502/503/504) and our retries did not get through.
+ * Shown as 503 with a "try again" message instead of an internal error. Not marked nonRetryable: a BullMQ
+ * job may succeed on its next attempt.
+ */
+export class LlmUnavailableError extends AppError {
+  constructor(model: string, readonly providerStatus: number) {
+    super(503, "LLM_UNAVAILABLE", `The AI model (${model}) is temporarily overloaded or unavailable. Please try again in a minute.`);
+    this.name = "LlmUnavailableError";
+  }
+}
+
+const PROVIDER_UNAVAILABLE_STATUSES = new Set([500, 502, 503, 504]);
+
+/** Provider SDK error after retries → a displayable AppError when it is a quota or availability failure; else unchanged. */
+function toProviderError(error: unknown, model: string): unknown {
+  if (error instanceof AppError) return error;
+  const quotaError = exhaustedQuota(error, model);
+  if (quotaError) return quotaError;
+  const status = (error as { status?: unknown } | null)?.status;
+  return typeof status === "number" && PROVIDER_UNAVAILABLE_STATUSES.has(status) ? new LlmUnavailableError(model, status) : error;
 }
 
 function generationRetryDelay(error: unknown, attempt: number): number | undefined {
@@ -110,8 +134,10 @@ export class LlmContentError extends Error {
 }
 
 export async function generateText(prompt: string, opts: GenerateOptions = {}): Promise<string> {
-  const personal = personalAiRuntime();
-  const model = personal?.model ?? opts.model ?? aiModel();
+  await refreshPlatformAi();
+  const model = personalAiRuntime()?.model ?? opts.model ?? aiModel();
+  // Personal connection, else the admin's platform connection; null = env Gemini key through the SDK.
+  const personal = resolveAiConnection(model);
   const maxOutputTokens = opts.maxOutputTokens ?? 1024;
   const t0 = Date.now();
   try {
@@ -133,7 +159,7 @@ export async function generateText(prompt: string, opts: GenerateOptions = {}): 
           const quotaError = exhaustedQuota(error, model);
           if (quotaError) throw quotaError;
           const delayMs = generationRetryDelay(error, attempt);
-          if (attempt >= 2 || delayMs === undefined) throw error;
+          if (attempt >= 2 || delayMs === undefined) throw toProviderError(error, model);
           logger.warn({ model, attempt: attempt + 1, delayMs }, "gemini temporarily unavailable; retrying");
           await new Promise((resolve) => setTimeout(resolve, delayMs));
         }
@@ -195,8 +221,9 @@ export async function generateWithTools(
   executor: (call: { name: string; args: Record<string, unknown> }) => Promise<unknown>,
   opts: GenerateOptions & { maxTurns?: number } = {},
 ): Promise<string> {
-  const personal = personalAiRuntime();
-  const model = personal?.model ?? opts.model ?? aiModel("deep");
+  await refreshPlatformAi();
+  const model = personalAiRuntime()?.model ?? opts.model ?? aiModel("deep");
+  const personal = resolveAiConnection(model);
   const maxOutputTokens = opts.maxOutputTokens ?? env.DEEP_ANALYSIS_MAX_OUTPUT_TOKENS;
   const maxTurns = opts.maxTurns ?? env.DEEP_ANALYSIS_MAX_TURNS;
 
@@ -221,7 +248,7 @@ export async function generateWithTools(
         maxOutputTokens,
         tools: [{ functionDeclarations: tools as unknown as object[] }],
       },
-    });
+    }).catch((error: unknown) => { throw toProviderError(error, model); });
 
     const finishReason = String(result.candidates?.[0]?.finishReason ?? "");
     if (finishReason === "MAX_TOKENS") {

@@ -1,10 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import express, { type NextFunction, type Request, type Response } from "express";
+import { once } from "node:events";
 import { getPrisma } from "../../../infrastructure/database/prisma.js";
-import { notificationService } from "../../notifications/notification.service.js";
 import { communityRelatedService } from "../community-related.service.js";
+import { communityRouter } from "../community.routes.js";
 import { communityService, translateNameConflict } from "../community.service.js";
 import type { CommunityActor } from "../community.rules.js";
-import { reviewSchema, updateMemberSchema, type CommunityListQuery } from "../dto/community.schema.js";
+import { communityCreateSchema, communityUpdateSchema, reviewSchema, updateMemberSchema, type CommunityListQuery } from "../dto/community.schema.js";
 
 // Community changes enqueue embedding jobs; keep tests from feeding a running dev worker.
 vi.mock("../../../infrastructure/queue.js", () => ({ embeddingQueue: { add: vi.fn().mockResolvedValue(undefined) } }));
@@ -117,6 +119,17 @@ describe.sequential("research community lifecycle, permissions and counters", ()
     await expect(communityService.create({ name: `Quota D ${marker}` }, lecturer())).rejects.toMatchObject({ statusCode: 409 });
   });
 
+  it("shows the proposer (name, profile type, verification) to admins listing proposals, and to nobody else", async () => {
+    const query = { ...LIST_DEFAULTS, status: "PENDING_APPROVAL" as const, q: `graph learning ${marker}` };
+    const asAdmin = (await communityService.list(ids.admin, query, "admin")).data[0] as { proposer?: { id: string; fullName: string; academicProfileType?: string; roleVerificationStatus?: string } } | undefined;
+    expect(asAdmin?.proposer).toMatchObject({ id: ids.lecturer, fullName: "Community lecturer", academicProfileType: "lecturer", roleVerificationStatus: "VERIFIED" });
+    const asOwner = (await communityService.list(ids.lecturer, query, "user")).data[0];
+    expect(asOwner).toBeDefined();
+    expect(asOwner).not.toHaveProperty("proposer");
+    const active = (await communityService.list(ids.admin, { ...LIST_DEFAULTS, status: "ACTIVE", q: `admin made ${marker}` }, "admin")).data[0];
+    expect(active).not.toHaveProperty("proposer");
+  });
+
   it("requires a note to reject, then lets the owner revise and resubmit", async () => {
     expect(reviewSchema.safeParse({ decision: "reject" }).success).toBe(false);
     expect(reviewSchema.safeParse({ decision: "reject", note: "Too broad" }).success).toBe(true);
@@ -137,26 +150,24 @@ describe.sequential("research community lifecycle, permissions and counters", ()
     await expect(communityService.review(proposal!.id, { decision: "approve" }, ids.admin, "admin")).rejects.toMatchObject({ statusCode: 409 });
   });
 
-  it("supports public and private joins, declines, re-requests and bans", async () => {
-    const publicCommunity = (await communityService.list(ids.member, { ...LIST_DEFAULTS, q: `graph learning ${marker}` }, "user")).data[0]!;
-    expect(await communityService.join(publicCommunity.id, ids.member)).toMatchObject({ role: "member", status: "active" });
-    expect(await communityService.join(publicCommunity.id, ids.member)).toMatchObject({ status: "active" });
-    expect(await activeCount(publicCommunity.id)).toBe(2);
+  it("joins instantly and idempotently, and refuses banned users", async () => {
+    const community = (await communityService.list(ids.member, { ...LIST_DEFAULTS, q: `graph learning ${marker}` }, "user")).data[0]!;
+    expect(await communityService.join(community.id, ids.member)).toMatchObject({ role: "member", status: "active" });
+    expect(await communityService.join(community.id, ids.member)).toMatchObject({ status: "active" });
+    expect(await activeCount(community.id)).toBe(2);
 
-    const privateCommunity = track(await communityService.create({ name: `Closed Lab ${marker}`, visibility: "private" }, admin()));
-    await communityService.update(privateCommunity.id, { description: "Members only" }, ids.admin, "admin");
-    expect(await communityService.join(privateCommunity.id, ids.member)).toMatchObject({ status: "pending" });
-    expect((await communityService.get(privateCommunity.id, ids.member, "user")).contentRestricted).toBe(true);
-    await communityService.updateMember(privateCommunity.id, ids.member, { status: "declined" }, ids.admin, "admin");
-    expect(await communityService.join(privateCommunity.id, ids.member)).toMatchObject({ status: "pending" });
-    await communityService.updateMember(privateCommunity.id, ids.member, { status: "active" }, ids.admin, "admin");
-    expect((await communityService.get(privateCommunity.id, ids.member, "user")).contentRestricted).toBe(false);
-    expect(await communityService.join(privateCommunity.id, ids.member)).toMatchObject({ status: "active" }); // never downgraded
+    await communityService.updateMember(community.id, ids.member, { status: "banned" }, ids.admin, "admin");
+    await expect(communityService.join(community.id, ids.member)).rejects.toMatchObject({ statusCode: 403 });
+    expect(await activeCount(community.id)).toBe(1);
+    expect((await getPrisma().community.findUniqueOrThrow({ where: { id: community.id } })).memberCount).toBe(1);
+    await communityService.updateMember(community.id, ids.member, { status: "active" }, ids.admin, "admin");
+    expect(await activeCount(community.id)).toBe(2);
+  });
 
-    await communityService.updateMember(privateCommunity.id, ids.member, { status: "banned" }, ids.admin, "admin");
-    await expect(communityService.join(privateCommunity.id, ids.member)).rejects.toMatchObject({ statusCode: 403 });
-    expect(await activeCount(privateCommunity.id)).toBe(1);
-    expect((await getPrisma().community.findUniqueOrThrow({ where: { id: privateCommunity.id } })).memberCount).toBe(1);
+  it("rejects a visibility field: research communities are always public", () => {
+    expect(communityCreateSchema.safeParse({ name: "Open Lab", visibility: "private" }).success).toBe(false);
+    expect(communityUpdateSchema.safeParse({ visibility: "public" }).success).toBe(false);
+    expect(communityCreateSchema.safeParse({ name: "Open Lab" }).success).toBe(true);
   });
 
   it("keeps memberCount exact under concurrent joins and leaves", async () => {
@@ -313,24 +324,9 @@ describe.sequential("community logic fixes (ban bypass, naming races, roster, jo
     expect(roster[0]).toMatchObject({ role: "owner", fullName: newest.fullName });
   });
 
-  it("C1: a declined user re-requesting does not notify moderators again", async () => {
-    const community = track(await communityService.create({ name: `Join Spam ${marker}`, visibility: "private" }, admin()));
-    const spy = vi.spyOn(notificationService, "create");
-    try {
-      for (let attempt = 0; attempt < 3; attempt += 1) {
-        expect(await communityService.join(community.id, memberId)).toMatchObject({ status: "pending" });
-        if (attempt < 2) await communityService.updateMember(community.id, memberId, { status: "declined" }, adminId, "admin");
-      }
-      const requests = spy.mock.calls.filter(([input]) => input.type === "COMMUNITY_JOIN_REQUEST" && input.targetId === community.id);
-      expect(requests).toHaveLength(1);
-    } finally {
-      spy.mockRestore();
-    }
-  });
-
-  it("C2: the member endpoint cannot move someone back to pending", () => {
-    expect(updateMemberSchema.safeParse({ status: "pending" }).success).toBe(false);
-    for (const status of ["active", "declined", "banned"]) expect(updateMemberSchema.safeParse({ status }).success).toBe(true);
+  it("C2: the member endpoint only accepts active and banned", () => {
+    for (const status of ["pending", "declined"]) expect(updateMemberSchema.safeParse({ status }).success).toBe(false);
+    for (const status of ["active", "banned"]) expect(updateMemberSchema.safeParse({ status }).success).toBe(true);
   });
 
   it("D1: research-field facets merge case variants into one chip", async () => {
@@ -342,7 +338,7 @@ describe.sequential("community logic fixes (ban bypass, naming races, roster, jo
   });
 });
 
-describe.sequential("community fixes round 2 (private content, join cooldown, moderator rechecks, roster paging, unique names)", () => {
+describe.sequential("community fixes round 2 (open content, instant join, moderator rechecks, roster paging, unique names)", () => {
   const marker = crypto.randomUUID().slice(0, 8);
   const userIds: string[] = [];
   const communityIds: string[] = [];
@@ -351,8 +347,6 @@ describe.sequential("community fixes round 2 (private content, join cooldown, mo
   let modId = "";
   let targetId = "";
   let outsiderId = "";
-  let pendingUserId = "";
-  let activeUserId = "";
 
   const admin = (): CommunityActor => ({ sub: adminId, role: "admin", systemRole: "ADMIN" });
   const lecturer = (): CommunityActor => ({ sub: lecturerId, role: "user", systemRole: "USER", academicProfileType: "lecturer" });
@@ -362,8 +356,7 @@ describe.sequential("community fixes round 2 (private content, join cooldown, mo
     userIds.push(user.id);
     return user;
   };
-  const joinRequests = (spy: { mock: { calls: Array<[{ type?: string; targetId?: string }]> } }, communityId: string) =>
-    spy.mock.calls.filter(([input]) => input.type === "COMMUNITY_JOIN_REQUEST" && input.targetId === communityId).length;
+  const memberCountOf = async (id: string) => (await getPrisma().community.findUniqueOrThrow({ where: { id } })).memberCount;
 
   beforeAll(async () => {
     adminId = (await makeUser("admin", { role: "admin", systemRole: "ADMIN" })).id;
@@ -371,8 +364,6 @@ describe.sequential("community fixes round 2 (private content, join cooldown, mo
     modId = (await makeUser("mod")).id;
     targetId = (await makeUser("target")).id;
     outsiderId = (await makeUser("outsider")).id;
-    pendingUserId = (await makeUser("pending")).id;
-    activeUserId = (await makeUser("active")).id;
     await getPrisma().academicProfile.create({ data: { userId: lecturerId, academicRole: "LECTURER", roleVerificationStatus: "VERIFIED" } });
   });
 
@@ -392,87 +383,36 @@ describe.sequential("community fixes round 2 (private content, join cooldown, mo
     }
   });
 
-  it("E4: outsiders of a private community see only the join-page basics", async () => {
-    const privateCommunity = track(await communityService.create({ name: `Hidden Lab ${marker}`, description: "Closed group", visibility: "private", rules: ["No sharing"], researchTopics: ["secret-topic"] }, admin()));
-    const publicCommunity = track(await communityService.create({ name: `Open Lab ${marker}`, rules: ["Be kind"], researchTopics: ["open-topic"] }, admin()));
-    await communityService.join(privateCommunity.id, pendingUserId); // private join => pending
-    await communityService.join(privateCommunity.id, activeUserId);
-    await communityService.updateMember(privateCommunity.id, activeUserId, { status: "active" }, adminId, "admin");
-
-    const asOutsider = await communityService.get(privateCommunity.id, outsiderId, "user");
-    expect(asOutsider).toMatchObject({ name: `Hidden Lab ${marker}`, description: "Closed group", memberCount: 2, contentRestricted: true });
-    expect(asOutsider.rules).toEqual([]);
-    expect(asOutsider.researchTopics).toEqual([]);
-    expect(asOutsider.moderators).toEqual([]);
-
-    const asPending = await communityService.get(privateCommunity.id, pendingUserId, "user");
-    expect(asPending.rules).toEqual([]);
-
-    for (const viewer of [outsiderId, pendingUserId]) {
-      await expect(communityRelatedService.papers(privateCommunity.id, viewer, "user")).rejects.toMatchObject({ statusCode: 403 });
-      await expect(communityRelatedService.gaps(privateCommunity.id, viewer, "user")).rejects.toMatchObject({ statusCode: 403 });
-    }
-    await expect(communityRelatedService.papers(privateCommunity.id, undefined, undefined)).rejects.toMatchObject({ statusCode: 403 });
-
-    const asMember = await communityService.get(privateCommunity.id, activeUserId, "user");
-    expect(asMember.rules).toEqual(["No sharing"]);
-    expect(asMember.researchTopics).toEqual(["secret-topic"]);
-    expect(asMember.moderators.length).toBeGreaterThan(0);
-    await expect(communityRelatedService.papers(privateCommunity.id, activeUserId, "user")).resolves.toBeInstanceOf(Array);
-
-    const asAdmin = await communityService.get(privateCommunity.id, adminId, "admin");
-    expect(asAdmin.rules).toEqual(["No sharing"]);
-    await expect(communityRelatedService.gaps(privateCommunity.id, adminId, "admin")).resolves.toBeInstanceOf(Array);
-
-    const publicView = await communityService.get(publicCommunity.id, outsiderId, "user");
-    expect(publicView.rules).toEqual(["Be kind"]);
-    expect(publicView.researchTopics).toEqual(["open-topic"]);
-    expect(publicView.moderators.length).toBeGreaterThan(0);
-    await expect(communityRelatedService.papers(publicCommunity.id, outsiderId, "user")).resolves.toBeInstanceOf(Array);
+  it("E4: anonymous viewers read topics, rules, moderators and related research of an ACTIVE community", async () => {
+    const community = track(await communityService.create({ name: `Open Lab ${marker}`, description: "Open group", rules: ["Be kind"], researchTopics: ["open-topic"] }, admin()));
+    const anonymous = await communityService.get(community.id, undefined, undefined);
+    expect(anonymous).toMatchObject({ name: `Open Lab ${marker}`, description: "Open group", status: "ACTIVE" });
+    expect(anonymous.rules).toEqual(["Be kind"]);
+    expect(anonymous.researchTopics).toEqual(["open-topic"]);
+    expect(anonymous.moderators.length).toBeGreaterThan(0);
+    expect(JSON.stringify(anonymous)).not.toMatch(/restricted|pendingRequest|visibility/i);
+    await expect(communityRelatedService.papers(community.id, undefined, undefined)).resolves.toBeInstanceOf(Array);
+    await expect(communityRelatedService.gaps(community.id, undefined, undefined)).resolves.toBeInstanceOf(Array);
   });
 
-  it("E4: the owner of a private proposal still sees everything", async () => {
-    const proposal = track(await communityService.create({ name: `Hidden Proposal ${marker}`, visibility: "private", rules: ["Owner rule"], researchTopics: ["owner-topic"] }, lecturer()));
+  it("E4: the owner of a pending proposal sees it, outsiders get 404", async () => {
+    const proposal = track(await communityService.create({ name: `Hidden Proposal ${marker}`, rules: ["Owner rule"], researchTopics: ["owner-topic"] }, lecturer()));
     expect(proposal.status).toBe("PENDING_APPROVAL");
-    expect(proposal.rules).toEqual(["Owner rule"]);
     const view = await communityService.get(proposal.id, lecturerId, "user");
     expect(view.rules).toEqual(["Owner rule"]);
     expect(view.researchTopics).toEqual(["owner-topic"]);
-    expect(view.moderators.length).toBeGreaterThan(0);
-    await expect(communityRelatedService.papers(proposal.id, lecturerId, "user")).resolves.toBeInstanceOf(Array);
+    await expect(communityService.get(proposal.id, outsiderId, "user")).rejects.toMatchObject({ statusCode: 404 });
+    await expect(communityRelatedService.papers(proposal.id, outsiderId, "user")).rejects.toMatchObject({ statusCode: 404 });
   });
 
-  it("E1: join requests notify once per 24h even through request-cancel-request", async () => {
-    const community = track(await communityService.create({ name: `Cooldown Lab ${marker}`, visibility: "private" }, admin()));
-    const spy = vi.spyOn(notificationService, "create");
-    try {
-      for (let attempt = 0; attempt < 3; attempt += 1) {
-        expect(await communityService.join(community.id, targetId)).toMatchObject({ status: "pending" });
-        if (attempt < 2) await communityService.leave(community.id, targetId);
-      }
-      expect(joinRequests(spy, community.id)).toBe(1); // one manager (the owner), one notification
-
-      // Once the cooldown has passed, asking again notifies again.
-      for (const key of [...cacheMock.store.keys()]) if (key.includes(community.id)) cacheMock.store.delete(key);
-      await communityService.leave(community.id, targetId);
-      await communityService.join(community.id, targetId);
-      expect(joinRequests(spy, community.id)).toBe(2);
-    } finally {
-      spy.mockRestore();
-    }
-  });
-
-  it("E1: a cache outage fails open (still notifies, join still succeeds)", async () => {
-    const community = track(await communityService.create({ name: `Cooldown Outage ${marker}`, visibility: "private" }, admin()));
-    const spy = vi.spyOn(notificationService, "create");
-    cacheMock.failing = true;
-    try {
-      expect(await communityService.join(community.id, outsiderId)).toMatchObject({ status: "pending" });
-      expect(joinRequests(spy, community.id)).toBe(1);
-    } finally {
-      cacheMock.failing = false;
-      spy.mockRestore();
-    }
+  it("E4: join is instant, banned is refused, a second join is idempotent", async () => {
+    const community = track(await communityService.create({ name: `Instant Join ${marker}` }, admin()));
+    expect(await communityService.join(community.id, targetId)).toMatchObject({ role: "member", status: "active" });
+    expect(await communityService.join(community.id, targetId)).toMatchObject({ role: "member", status: "active" });
+    expect(await memberCountOf(community.id)).toBe(2);
+    await communityService.updateMember(community.id, targetId, { status: "banned" }, adminId, "admin");
+    await expect(communityService.join(community.id, targetId)).rejects.toMatchObject({ statusCode: 403 });
+    expect(await memberCountOf(community.id)).toBe(1);
   });
 
   it("E5: moderator rights are rechecked at write time", async () => {
@@ -538,5 +478,117 @@ describe.sequential("community fixes round 2 (private content, join cooldown, mo
     expect(() => translateNameConflict(error)).toThrowError(expect.objectContaining({ statusCode: 409, message: "A community with this name already exists" }));
     const other = new Error("boom");
     expect(() => translateNameConflict(other)).toThrow(other);
+  });
+});
+
+const activeCountOf = (communityId: string) => getPrisma().communityMembership.count({ where: { communityId, status: "active" } });
+
+describe.sequential("community flow consistency (public only, archive frozen but readable)", () => {
+  const marker = crypto.randomUUID().slice(0, 8);
+  const userIds: string[] = [];
+  const communityIds: string[] = [];
+  const ids = { admin: "", owner: "", mod: "", member: "", outsider: "", pendingA: "", pendingB: "" };
+  const topic = `zqtopic${marker}`;
+
+  const makeUser = async (key: keyof typeof ids, data: Record<string, unknown> = {}) => {
+    const user = await getPrisma().user.create({ data: { email: `cflow-${key}-${marker}@example.test`, fullName: `Cflow ${key}`, ...data } });
+    userIds.push(user.id);
+    ids[key] = user.id;
+  };
+  /** Active community owned by a regular user (admin-created ones would be owned by the admin). */
+  const fixture = async (key: string, data: Record<string, unknown> = {}) => {
+    const prisma = getPrisma();
+    const community = await prisma.community.create({ data: { name: `Cflow ${key} ${marker}`, slug: `cflow-${key}-${marker}`, ownerId: ids.owner, status: "ACTIVE", memberCount: 3, ...data } as never });
+    communityIds.push(community.id);
+    await prisma.communityMembership.createMany({ data: [
+      { communityId: community.id, userId: ids.owner, role: "owner", status: "active" },
+      { communityId: community.id, userId: ids.mod, role: "moderator", status: "active" },
+      { communityId: community.id, userId: ids.member, role: "member", status: "active" },
+    ] });
+    return community;
+  };
+  const listFor = async (viewer: string | undefined, role: "user" | "admin", extra: Partial<CommunityListQuery> = {}) =>
+    (await communityService.list(viewer, { ...LIST_DEFAULTS, q: marker, ...extra }, role)).data;
+  const named = <T extends { name: string }>(rows: T[], key: string) => rows.find((row) => row.name === `Cflow ${key} ${marker}`);
+
+  beforeAll(async () => {
+    await makeUser("admin", { role: "admin", systemRole: "ADMIN" });
+    for (const key of ["owner", "mod", "member", "outsider", "pendingA", "pendingB"] as const) await makeUser(key);
+  });
+
+  afterAll(async () => {
+    const prisma = getPrisma();
+    // Only ids this suite created; an empty list must never reach a filter.
+    if (communityIds.length) {
+      await prisma.notification.deleteMany({ where: { targetUuid: { in: communityIds } } });
+      await prisma.communityMembership.deleteMany({ where: { communityId: { in: communityIds } } });
+      await prisma.community.deleteMany({ where: { id: { in: communityIds } } });
+    }
+    if (userIds.length) {
+      await prisma.notification.deleteMany({ where: { userId: { in: userIds } } });
+      await prisma.communityMembership.deleteMany({ where: { userId: { in: userIds } } });
+      await prisma.user.deleteMany({ where: { id: { in: userIds } } });
+    }
+  });
+
+  it("an anonymous viewer lists an ACTIVE community with its topics and rules", async () => {
+    await fixture("pubtopic", { description: "Open group", rules: ["Be kind"], researchTopics: [topic] });
+    expect(named(await listFor(undefined, "user"), "pubtopic")).toMatchObject({ status: "ACTIVE", researchTopics: [topic], rules: ["Be kind"], description: "Open group", memberCount: 3 });
+    expect(named(await listFor(ids.outsider, "user"), "pubtopic")).toMatchObject({ researchTopics: [topic] });
+  });
+
+  it("text search by topic matches for an anonymous viewer", async () => {
+    const names = (await communityService.list(undefined, { ...LIST_DEFAULTS, q: topic }, undefined)).data.map((row) => row.name);
+    expect(names).toContain(`Cflow pubtopic ${marker}`);
+  });
+
+  it("the roster requires a signed-in viewer (401 over HTTP); a signed-in non-member gets it", async () => {
+    const community = await getPrisma().community.findUniqueOrThrow({ where: { slug: `cflow-pubtopic-${marker}` } });
+    await expect(communityService.publicMembers(community.id, ids.outsider, "user")).resolves.toMatchObject({ meta: { page: 1 } });
+    const app = express(); app.use("/communities", communityRouter);
+    app.use((error: { statusCode?: number }, _req: Request, res: Response, _next: NextFunction) => res.status(error.statusCode ?? 500).json({ success: false }));
+    const server = app.listen(0, "127.0.0.1"); await once(server, "listening");
+    const address = server.address(); if (!address || typeof address === "string") throw new Error("Test server did not bind");
+    try {
+      expect((await fetch(`http://127.0.0.1:${address.port}/communities/${community.id}/members/public`)).status).toBe(401);
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
+  });
+
+  it("an archived community is readable by anyone, hidden from the default directory, listed by status, and not joinable", async () => {
+    const community = await fixture("archpub", { rules: ["Be kind"] });
+    await communityService.setStatus(community.id, "ARCHIVED", ids.admin, "admin");
+    expect(await communityService.get(community.slug, ids.outsider, "user")).toMatchObject({ status: "ARCHIVED", rules: ["Be kind"] });
+    expect(await communityService.get(community.slug, undefined, undefined)).toMatchObject({ status: "ARCHIVED", rules: ["Be kind"] });
+    for (const [viewer, role] of [[ids.outsider, "user"], [ids.member, "user"], [ids.admin, "admin"]] as const) {
+      expect(named(await listFor(viewer, role), "archpub")).toBeUndefined();
+      expect(named(await listFor(viewer, role, { status: "ARCHIVED" }), "archpub")).toMatchObject({ status: "ARCHIVED" });
+    }
+    expect(named(await listFor(ids.member, "user", { scope: "mine" }), "archpub")).toMatchObject({ status: "ARCHIVED" });
+    await expect(communityService.join(community.id, ids.outsider)).rejects.toMatchObject({ statusCode: 409 });
+  });
+
+  it("archived communities are frozen: no join, no member changes (except admins), members may leave", async () => {
+    const community = await fixture("frozen");
+    await getPrisma().communityMembership.create({ data: { communityId: community.id, userId: ids.pendingA, role: "member", status: "active" } });
+    await communityService.setStatus(community.id, "ARCHIVED", ids.admin, "admin");
+
+    await expect(communityService.join(community.id, ids.outsider)).rejects.toMatchObject({ statusCode: 409 });
+    await expect(communityService.updateMember(community.id, ids.member, { status: "banned" }, ids.mod)).rejects.toMatchObject({ statusCode: 409 });
+    await expect(communityService.update(community.id, { description: "new" }, ids.owner, "user")).rejects.toMatchObject({ statusCode: 409 });
+    await expect(communityService.transferOwnership(community.id, ids.mod, ids.owner, "user")).rejects.toMatchObject({ statusCode: 409 });
+    expect(await getPrisma().communityMembership.findFirstOrThrow({ where: { communityId: community.id, userId: ids.member } })).toMatchObject({ status: "active" });
+
+    await expect(communityService.updateMember(community.id, ids.member, { status: "banned" }, ids.admin, "admin")).resolves.toMatchObject({ status: "banned" });
+    await expect(communityService.leave(community.id, ids.pendingA)).resolves.toBeUndefined();
+    expect(await getPrisma().communityMembership.findFirst({ where: { communityId: community.id, userId: ids.pendingA } })).toBeNull();
+  });
+
+  it("archiving leaves memberships and member counts untouched", async () => {
+    const target = await fixture("closing");
+    await communityService.setStatus(target.id, "ARCHIVED", ids.admin, "admin");
+    expect(await activeCountOf(target.id)).toBe(3);
+    expect((await getPrisma().community.findUniqueOrThrow({ where: { id: target.id } })).memberCount).toBe(3);
   });
 });

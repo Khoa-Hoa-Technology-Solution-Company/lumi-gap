@@ -1,0 +1,100 @@
+@startuml
+!pragma layout elk
+skinparam dpi 200
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam backgroundColor #FFFFFF
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam ArrowFontSize 12
+skinparam ArrowFontColor #4A5A6A
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam entity {
+  BackgroundColor #EFE6F8
+  BorderColor #6A3FA0
+}
+skinparam legend {
+  BackgroundColor #FFF8E1
+  BorderColor #C9B36B
+  FontSize 12
+}
+skinparam stereotypeFontSize 10
+hide circle
+hide empty methods
+title Logical ERD 5(a) - Communities and forum posts
+entity Community #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
+  --
+  ownerId <<FK User>>
+  reviewedById <<FK User>>
+  slug <<UK>>
+  ..
+  name
+  visibility
+}
+entity CommunityMembership #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
+  --
+  communityId <<FK,UK*>>
+  userId <<FK User>>
+  ..
+  role
+  status
+}
+entity ForumPost #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
+  --
+  authorId <<FK User>>
+  communityId <<FK>>
+  researchCommunityId <<FK>>
+  researchGapId <<FK>>
+  linkedPaperId <<FK>>
+  linkedResearchGapId <<FK>>
+  linkedProjectId <<FK>>
+  acceptedCommentId <<FK>>
+  publicSlug <<UK>>
+  ..
+  type
+  title
+}
+entity ForumComment #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
+  --
+  postId <<FK>>
+  authorId <<FK User>>
+  parentCommentId <<FK>>
+  ..
+  status
+  visibilityStatus
+}
+entity Paper #FFFFFF;line:6A3FA0;line.dashed {
+  * id <<PK>>
+}
+entity Project #FFFFFF;line:6A3FA0;line.dashed {
+  * id <<PK>>
+}
+entity ResearchGap #FFFFFF;line:6A3FA0;line.dashed {
+  * id <<PK>>
+}
+Community ||--o{ CommunityMembership
+Community |o--o{ ForumPost : communityId
+Community |o--o{ ForumPost : researchCommunityId
+ForumComment |o--o{ ForumComment : parentCommentId
+ForumComment |o--o{ ForumPost : acceptedCommentId
+ForumPost ||--o{ ForumComment : postId
+Paper |o--o{ ForumPost
+Project |o--o{ ForumPost
+ResearchGap |o--o{ ForumPost : linkedResearchGapId
+ResearchGap |o--o{ ForumPost : researchGapId
+legend bottom
+Crow's-foot notation. PK primary key, FK foreign key, UK unique key.
+FK <name>: the foreign key references an entity that is not drawn here.
+Dashed boxes belong to another diagram (key only).
+UK*: partial unique index (unique only for rows matching its WHERE condition).
+Community.name is not a UK: communities_active_name_key is a partial unique index on
+   the normalised name expression.
+endlegend
+@enduml

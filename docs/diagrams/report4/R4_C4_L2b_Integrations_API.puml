@@ -1,0 +1,34 @@
+@startuml R4_C4_L2b_Integrations_API
+!pragma layout smetana
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam wrapWidth 260
+skinparam rectangle {
+  roundCorner 12
+}
+title Container diagram (C4 level 2b-1): external integrations of the API
+rectangle "LumiGap [Software System]" as N0 #line.dashed {
+  rectangle "Express API\n[Node 22, Express 5]\nAll request-time integrations" as N1
+}
+rectangle "Google OAuth / OIDC\n[External system]\naccounts.google.com" as N2
+rectangle "PayOS\n[External system]\nVND top-up" as N3
+rectangle "GitHub «optional»\n[External system]\napi.github.com" as N4
+rectangle "LibreTranslate «optional»\n[External system]\nself-hosted container" as N5
+rectangle "R2 / Cloudinary «optional»\n[External system]\nwhen STORAGE_PROVIDER is r2 or cloudinary" as N6
+rectangle "SMTP server\n[External system]\nverification, reset, OTP, invitations" as N7
+rectangle "OpenAlex\n[External system]\napi.openalex.org" as N8
+rectangle "LLM providers\n[External system]\nGemini; optional Ollama, user-supplied" as N9
+N1 --> N2 : "sign-in\n[OIDC]"
+N1 <--> N3 : "payment link,\nwebhook\n[HTTPS]"
+N1 --> N4 : "repo sync\n[HTTPS]"
+N1 --> N5 : "translate\n[HTTP]"
+N1 --> N6 : "files\n[S3 API]"
+N1 --> N7 : "e-mail\n[SMTP]"
+N1 --> N8 : "search, trends,\ngap evidence\n[HTTPS]"
+N1 --> N9 : "prompts,\nembeddings\n[HTTPS]"
+legend bottom
+Legend
+Service container
+External system («optional» = not core)
+endlegend
+@enduml

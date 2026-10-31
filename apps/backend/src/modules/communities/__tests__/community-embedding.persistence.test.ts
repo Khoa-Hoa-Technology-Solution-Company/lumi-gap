@@ -13,7 +13,7 @@ vi.mock("../../../infrastructure/queue.js", () => ({ embeddingQueue: { add: vi.f
 const unit = (axis: number) => Array.from({ length: PAPER_EMBEDDING_DIMENSIONS }, (_, i) => (i === axis ? 1 : 0));
 const near = unit(0);
 const orthogonal = unit(1);
-// Dedicated axis for the visibility-before-LIMIT cases so real data cannot interfere.
+// Dedicated axis for the filter-before-LIMIT cases so real data cannot interfere.
 const crowd = unit(5);
 const nearCrowd = crowd.map((value, i) => (i === 6 ? 0.3 : value));
 
@@ -63,7 +63,7 @@ describe.sequential("community embedding suggestions (PostgreSQL)", () => {
     await create("near", { status: "ACTIVE" });
     await create("far", { status: "ACTIVE" });
     await create("pending", { status: "PENDING_APPROVAL" });
-    await create("priv", { status: "ACTIVE", visibility: "private" });
+    await create("priv", { status: "ACTIVE" });
     await create("joined", { status: "ACTIVE" });
     await create("fresh", { status: "ACTIVE" });
     await create("pendingFresh", { status: "PENDING_APPROVAL" });
@@ -72,11 +72,11 @@ describe.sequential("community embedding suggestions (PostgreSQL)", () => {
     await Promise.all([c.near, c.pending, c.priv, c.joined].map((id) => setEmbedding(id, near)));
     await setEmbedding(c.far, orthogonal);
 
-    // Three private communities sit exactly on the query vector; two public ones are slightly
-    // farther but still above the threshold. Filtering visibility AFTER the LIMIT would return none.
-    await create("privA", { status: "ACTIVE", visibility: "private" });
-    await create("privB", { status: "ACTIVE", visibility: "private" });
-    await create("privC", { status: "ACTIVE", visibility: "private" });
+    // Three communities sit exactly on the query vector; two more are slightly farther but still above
+    // the threshold. Filtering AFTER the LIMIT would let forum categories crowd them out.
+    await create("privA", { status: "ACTIVE" });
+    await create("privB", { status: "ACTIVE" });
+    await create("privC", { status: "ACTIVE" });
     await create("pubA", { status: "ACTIVE" });
     await create("pubB", { status: "ACTIVE" });
     await Promise.all([c.privA, c.privB, c.privC].map((id) => setEmbedding(id, crowd)));
@@ -109,37 +109,37 @@ describe.sequential("community embedding suggestions (PostgreSQL)", () => {
     expect(result.find((row) => row.name === `Cemb near ${marker}`)?.similarity).toBe(1);
   });
 
-  it("suggest() hides pending communities and hides private ones from non-members", async () => {
+  it("suggest() hides pending communities and shows ACTIVE ones in full to everyone", async () => {
     mockProvider(async () => near);
-    const asOutsider = ours(await communityService.suggest("anything", outsiderId, "user", 10));
-    expect(asOutsider).not.toContain("Cemb pending");
-    expect(asOutsider).not.toContain("Cemb priv");
-    const asMember = ours(await communityService.suggest("anything", memberId, "user", 10));
-    expect(asMember).toContain("Cemb priv");
-    expect(asMember).not.toContain("Cemb pending");
+    for (const viewer of [outsiderId, memberId]) {
+      const result = await communityService.suggest("anything", viewer, "user", 10);
+      expect(ours(result)).not.toContain("Cemb pending");
+      const priv = result.find((row) => row.name === `Cemb priv ${marker}`);
+      expect(priv).toBeDefined();
+      expect(JSON.stringify(priv)).not.toMatch(/restricted|visibility/i);
+    }
   });
 
-  it("suggest() applies visibility before LIMIT so hidden communities never crowd out visible ones", async () => {
+  it("suggest() applies its filters before LIMIT so categories never crowd out real communities", async () => {
     mockProvider(async () => crowd);
     const result = await communityService.suggest("anything", outsiderId, "user", 2);
     expect(result).toHaveLength(2);
-    expect(ours(result).sort()).toEqual(["Cemb pubA", "Cemb pubB"]);
-  });
-
-  it("suggest() includes a private community the viewer belongs to, and everything for admins", async () => {
-    mockProvider(async () => crowd);
-    const asMember = ours(await communityService.suggest("anything", memberId, "user", 10));
-    expect(asMember).toContain("Cemb privA");
-    expect(asMember).not.toContain("Cemb privB");
-    const asAdmin = ours(await communityService.suggest("anything", ownerId, "admin", 10));
-    expect(asAdmin).toEqual(expect.arrayContaining(["Cemb privA", "Cemb privB", "Cemb privC", "Cemb pubA", "Cemb pubB"]));
-  });
-
-  it("suggest() never returns forum categories and still fills the limit with real communities", async () => {
-    mockProvider(async () => crowd);
-    const result = await communityService.suggest("anything", outsiderId, "user", 2);
     expect(ours(result)).not.toContain("Cemb catCrowd");
-    expect(ours(result).sort()).toEqual(["Cemb pubA", "Cemb pubB"]);
+    expect(ours(result).every((name) => /^Cemb (priv|pub)[ABC]$/.test(name))).toBe(true);
+  });
+
+  it("suggest() returns the same ACTIVE communities to members, outsiders and admins", async () => {
+    mockProvider(async () => crowd);
+    const expected = ["Cemb privA", "Cemb privB", "Cemb privC", "Cemb pubA", "Cemb pubB"];
+    expect(ours(await communityService.suggest("anything", memberId, "user", 10))).toEqual(expect.arrayContaining(expected));
+    expect(ours(await communityService.suggest("anything", outsiderId, "user", 10))).toEqual(expect.arrayContaining(expected));
+    expect(ours(await communityService.suggest("anything", ownerId, "admin", 10))).toEqual(expect.arrayContaining(expected));
+  });
+
+  it("suggest() never returns forum categories", async () => {
+    mockProvider(async () => crowd);
+    const result = await communityService.suggest("anything", outsiderId, "user", 10);
+    expect(ours(result)).not.toContain("Cemb catCrowd");
     mockProvider(async () => near);
     expect(ours(await communityService.suggest("anything", ownerId, "admin", 10))).not.toContain("Cemb catNear");
   });
@@ -164,14 +164,30 @@ describe.sequential("community embedding suggestions (PostgreSQL)", () => {
     await expect(communityService.suggest("anything", outsiderId, "user")).resolves.toEqual([]);
   });
 
-  it("recommend() falls back to semantic matches and skips joined and private communities", async () => {
+  it("recommend() falls back to semantic matches and skips joined ones", async () => {
     mockProvider(async () => near);
     const result = await communityService.recommend(outsiderId, 10);
     const names = ours(result);
     expect(names).toContain("Cemb near");
     expect(names).not.toContain("Cemb joined");
-    expect(names).not.toContain("Cemb priv");
+    expect(names).toContain("Cemb priv");
+    expect(result.find((row) => row.name === `Cemb priv ${marker}`)).toMatchObject({ matchReason: "semantic" });
     expect(result.filter((row) => row.name.endsWith(marker)).every((row) => row.matchReason === "semantic")).toBe(true);
+  });
+
+  it("recommend() matches every ACTIVE community by its topics", async () => {
+    const prisma = getPrisma();
+    const topic = `zzqx-${marker}`;
+    const [first, second] = await Promise.all([
+      prisma.community.create({ data: { name: `Cemb topicOne ${marker}`, slug: `cemb-topicone-${marker}`, ownerId, status: "ACTIVE", researchTopics: [topic] } }),
+      prisma.community.create({ data: { name: `Cemb topicTwo ${marker}`, slug: `cemb-topictwo-${marker}`, ownerId, status: "ACTIVE", researchTopics: [topic] } }),
+    ]);
+    communityIds.push(first.id, second.id);
+    mockProvider(async () => { throw new Error("no embedding needed"); });
+    const result = await communityService.recommend(outsiderId, 10);
+    const byName = new Map(result.map((row) => [row.name, row]));
+    expect(byName.get(`Cemb topicOne ${marker}`)?.matchReason).toBe("topic");
+    expect(byName.get(`Cemb topicTwo ${marker}`)?.matchReason).toBe("topic");
   });
 
   it("recommend() still resolves with string matches only when embedding fails", async () => {
@@ -215,16 +231,16 @@ describe.sequential("community embedding suggestions (PostgreSQL)", () => {
     expect(await embeddingIsNull(edited.id)).toBe(true);
   });
 
-  it("nearestCommunityIds() hides private communities unless a viewer is given", async () => {
-    const options = { limit: 100, minSimilarity: 0.99 };
-    const idsOf = async (extra: Partial<Parameters<typeof nearestCommunityIds>[1]> = {}) =>
-      (await nearestCommunityIds(near, { ...options, ...extra })).map((row) => row.id);
-    const anonymous = await idsOf();
-    expect(anonymous).toContain(c.near);
-    expect(anonymous).not.toContain(c.priv);
-    expect(await idsOf({ viewer: { isAdmin: false, memberCommunityIds: [] } })).not.toContain(c.priv);
-    expect(await idsOf({ viewer: { isAdmin: false, memberCommunityIds: [c.priv] } })).toContain(c.priv);
-    expect(await idsOf({ viewer: { isAdmin: true, memberCommunityIds: [] } })).toContain(c.priv);
+  it("nearestCommunityIds() excludes archived communities and categories", async () => {
+    const archived = await getPrisma().community.create({ data: { name: `Cemb archived ${marker}`, slug: `cemb-archived-${marker}`, ownerId, status: "ARCHIVED" } });
+    communityIds.push(archived.id);
+    await setEmbedding(archived.id, near);
+    const ids = (await nearestCommunityIds(near, { limit: 100, minSimilarity: 0.99 })).map((row) => row.id);
+    expect(ids).toContain(c.near);
+    expect(ids).toContain(c.priv);
+    expect(ids).not.toContain(archived.id);
+    expect(ids).not.toContain(c.catNear);
+    expect(ids).not.toContain(c.pending);
   });
 
   it("update() clears the embedding when embedded content changes, but not for other fields", async () => {

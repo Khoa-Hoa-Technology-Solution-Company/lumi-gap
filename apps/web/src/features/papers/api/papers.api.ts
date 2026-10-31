@@ -31,6 +31,9 @@ export interface PapersListParams {
   fieldIds?: string[];
   subfieldIds?: string[];
   topicIds?: string[];
+  keywordIds?: string[];
+  /** Admin-curated tags (paper_tags), CSV of UUIDs. */
+  tagIds?: string[];
   sort?: SearchSortKey;
 }
 
@@ -39,6 +42,8 @@ export const papersApi = {
     // Encode array filters consistently for both keyword and semantic routes.
     const { paperKind, ...rest } = params;
     const query: Record<string, unknown> = { ...rest };
+    // The API rejects an empty q; a filter-only browse simply omits it.
+    if (typeof query.q === "string" && !query.q.trim()) delete query.q;
     if (paperKind && paperKind.length > 0) {
       query.paperKind = paperKind.join(",");
     }
@@ -57,6 +62,8 @@ export const papersApi = {
       "fieldIds",
       "subfieldIds",
       "topicIds",
+      "keywordIds",
+      "tagIds",
     ];
     for (const key of csvKeys) {
       const value = params[key];

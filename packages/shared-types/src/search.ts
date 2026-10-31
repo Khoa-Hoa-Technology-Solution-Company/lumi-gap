@@ -21,6 +21,68 @@ export interface ScoredPaper extends Paper {
   hybridScore?: number;
   rerankScore?: number;
   taxonomyBoostScore?: number;
+  /** Active curated tags (tags.id) the paper carries; blocked assignments are not listed. */
+  tagIds?: string[];
+}
+
+/** Catalogue entry a search query was resolved to (taxonomy node or keyword). */
+export type DetectedTagKind = "domain" | "field" | "subfield" | "topic" | "keyword" | "tag";
+
+/** How the query text met the entry: its name, an admin alias, an OpenAlex topic keyword, or trigram similarity. */
+export type DetectedTagSource = "name" | "alias" | "openalex-keyword" | "fuzzy";
+
+/** Explicit filter param that reproduces a detected tag, so the client can pin or drop it. */
+export type DetectedTagFilterKey = "domainIds" | "fieldIds" | "subfieldIds" | "topicIds" | "keywordIds" | "tagIds";
+
+export interface DetectedTag {
+  kind: DetectedTagKind;
+  /** research_topics.id or keywords.id. */
+  id: string;
+  /** Short OpenAlex id for taxonomy nodes ("T10028", "17"). */
+  openalexId?: string;
+  name: string;
+  /** Active local papers under this entry. */
+  paperCount: number;
+  /** Works in the whole of OpenAlex; taxonomy nodes only. */
+  worksCount?: number;
+  /** 0..1; how strongly the query is about this entry. */
+  confidence: number;
+  source: DetectedTagSource;
+  /** The normalized query phrase that matched. */
+  matchedText: string;
+  filter: { key: DetectedTagFilterKey; value: string };
+}
+
+/**
+ * - filter: the best tag covers the whole query, so results were restricted to its papers.
+ * - boost: tags were found but not decisive; papers carrying them rank higher.
+ * - none: no tag matched, or auto tagging was off / explicit taxonomy filters were given.
+ */
+export type SearchUnderstandingMode = "filter" | "boost" | "none";
+
+/** The query is exactly a catalogue entry the corpus holds little of, so more papers can be requested from OpenAlex. */
+export interface SearchCoverageHint {
+  targetKind: "topic" | "subfield" | "keyword";
+  /** research_topics.id or keywords.id. */
+  targetId: string;
+  name: string;
+  localPapers: number;
+  /** Works in the whole of OpenAlex; null for keywords, where it is unknown. */
+  openalexWorks: number | null;
+  /** Lists the entry's papers. Fresh imports have no embeddings yet, so a text search may not reach them. */
+  filter: { key: DetectedTagFilterKey; value: string };
+}
+
+/** meta.understanding of GET /search. */
+export interface SearchUnderstanding {
+  mode: SearchUnderstandingMode;
+  detectedTags: DetectedTag[];
+  /** The tag used as a hard filter (mode "filter" only). */
+  appliedTag: DetectedTag | null;
+  /** True when a filter was planned but returned too few papers, so the search re-ran unfiltered in boost mode. */
+  fellBack: boolean;
+  /** Present when coverage is thin; can accompany any mode, including "none" for an entry with no local papers. */
+  coverage?: SearchCoverageHint;
 }
 
 export interface SearchFilters {

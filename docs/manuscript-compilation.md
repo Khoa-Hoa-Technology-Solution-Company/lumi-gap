@@ -31,9 +31,6 @@ The non-root compiler has no database, Redis, host volume or Docker socket. Its 
 
 Limits: 200 input files, 20 MB source, 20 MB PDF, 2 MB retained SyncTeX, 64 KB returned log, 60 seconds wall time, 30 seconds CPU per subprocess, 512 MB subprocess address space, 768 MB container memory, 64 container processes and 128 MB temporary storage. No arbitrary user shell commands, internet package installation or minted shell escape. The installed `texlive-publishers` and `texlive-science` packages support IEEEtran conference templates and algorithmic environments in addition to the LumiGap templates; missing packages appear in the compiler log. XeLaTeX and LuaLaTeX support Unicode and system fonts (including Vietnamese).
 
-Source ZIP import, PDF figures, templates, browser recovery, source comparison and
-bidirectional SyncTeX are described in [manuscript-overleaf-parity.md](manuscript-overleaf-parity.md).
-
 Project-local `.cls` and `.bst` text files are supported alongside `.tex`, `.sty`,
 `.bib` and `.txt`; they follow the same collaboration, snapshot, export and restore
 rules. New LumiGap templates select Latin Modern with T1/T5 encodings under

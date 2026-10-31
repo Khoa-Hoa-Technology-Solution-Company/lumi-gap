@@ -30,6 +30,7 @@ const postBaseSchema = z.object({
   body: z.string().trim().min(1).max(20000).optional(),
   categoryId: objectIdSchema.optional(),
   communityId: objectIdSchema.optional(),
+  researchCommunityId: objectIdSchema.optional(),
   tags: z.array(z.string().trim().min(1).max(80)).max(12).default([]),
   linkedPaperId: objectIdSchema.optional(),
   linkedResearchGapId: objectIdSchema.optional(),
@@ -66,6 +67,7 @@ const postQuerySchema = paginationSchema.extend({
   // Read filters accept stable slugs; write contracts still require database IDs.
   communityId: z.union([objectIdSchema, z.string().max(120).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)]).optional(),
   category: z.union([objectIdSchema, z.string().max(120).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)]).optional(),
+  researchCommunityId: z.union([objectIdSchema, z.string().max(120).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)]).optional(),
   linkedResearchGapId: objectIdSchema.optional(),
   researchGapId: objectIdSchema.optional(),
   linkedPaperId: objectIdSchema.optional(),
@@ -159,6 +161,7 @@ const moderationActionSchema = z.object({
   expectedVersion: z.number().int().nonnegative().optional(),
   policyRuleCode: z.string().trim().max(80).optional(),
   policyVersion: z.string().trim().max(40).optional(),
+  durationDays: z.union([z.literal(1), z.literal(7), z.literal(30)]).optional(),
 }).strict();
 const appealSchema = z.object({ reason: z.string().trim().min(3).max(5000) }).strict();
 const appealReviewSchema = z.object({ decision: z.enum(["UPHELD", "OVERTURNED"]), decisionReason: z.string().trim().min(3).max(5000) }).strict();
@@ -168,7 +171,7 @@ const copyrightClaimSchema = z.object({
   copyrightedWorkDescription: z.string().trim().min(10).max(10000), ownershipBasis: z.string().trim().min(10).max(5000), originalSourceUrl: z.string().url().max(2000).optional(), details: z.string().trim().min(10).max(10000), sourceReportId: objectIdSchema.optional(), honeypot: z.string().max(200).optional(),
 }).strict();
 const copyrightVerifySchema = z.object({ token: z.string().trim().min(32).max(256) }).strict();
-const accountLimit = (req: Request) => req.user?.accountStatus === "ACTIVE" ? env.FORUM_RATE_LIMIT_VERIFIED : env.FORUM_RATE_LIMIT_UNVERIFIED;
+const accountLimit = (req: Request) => req.user?.emailVerified || req.user?.role === "admin" ? env.FORUM_RATE_LIMIT_VERIFIED : env.FORUM_RATE_LIMIT_UNVERIFIED;
 const threadCreateLimiter = createRateLimiter("forum:threadCreateLimiter", { windowMs: 10 * 60_000, limit: accountLimit, keyGenerator: (req) => req.user?.sub ?? req.ip ?? "anonymous" });
 const responseLimiter = createRateLimiter("forum:responseLimiter", { windowMs: 60_000, limit: accountLimit, keyGenerator: (req) => req.user?.sub ?? req.ip ?? "anonymous" });
 const voteLimiter = createRateLimiter("forum:voteLimiter", { windowMs: 60_000, limit: 90, keyGenerator: (req) => req.user?.sub ?? req.ip ?? "anonymous" });
@@ -214,7 +217,7 @@ forumRouter.post("/papers/doi/attach", requireAuth, requirePermission("forum:wri
 });
 const categorySchema = z.object({ name: z.string().trim().min(2).max(120), slug: z.string().trim().min(2).max(120).regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/), description: z.string().trim().max(2000).optional(), sortOrder: z.number().int().min(0).max(10000).optional(), status: z.enum(["ACTIVE", "ARCHIVED"]).optional() }).strict();
 forumRouter.get("/categories", optionalAuth, validate(z.object({ all: z.enum(["true", "false"]).optional() }).strict(), "query"), async (req, res) => {
-  res.json({ success: true, data: await forumCategoryService.list(req.query.all === "true", req.user?.role) });
+  res.json({ success: true, data: await forumCategoryService.list(req.query.all === "true", req.user?.role, req.user?.sub) });
 });
 forumRouter.post("/categories", requireAuth, forumWriteLimiter, validate(categorySchema), async (req, res) => {
   res.status(201).json({ success: true, data: await forumCategoryService.create(req.body, req.user!.sub, req.user!.role) });
@@ -234,7 +237,7 @@ forumRouter.delete("/categories/:id/moderators/:userId", requireAuth, forumWrite
   res.json({ success: true });
 });
 forumRouter.get("/tags", optionalAuth, validate(z.object({ q: z.string().trim().max(80).optional() }).strict(), "query"), async (req, res) => {
-  res.json({ success: true, data: await forumService.tagOptions(req.query.q as string | undefined) });
+  res.json({ success: true, data: await forumService.tagOptions(req.query.q as string | undefined, req.user?.sub, req.user?.role) });
 });
 forumRouter.get("/posts", optionalAuth, validate(postQuerySchema, "query"), async (req, res) => {
   const { page, pageSize, researchGapId, linkedResearchGapId, includeModerated, feed, category, ...filter } = req.query as unknown as z.infer<typeof postQuerySchema>;
@@ -287,7 +290,7 @@ forumRouter.get("/posts/:postId/comments", optionalAuth, validate(readCommentsPa
   res.json({ success: true, ...(await forumService.listComments(req.params.postId as string, page, pageSize, req.user?.sub, req.user?.role)) });
 });
 forumRouter.post("/posts/:postId/comments", requireAuth, responseLimiter, validate(postIdParamsSchema, "params"), validateCommentInput, async (req, res) => {
-  res.status(201).json({ success: true, data: await forumService.addComment(req.params.postId as string, req.body, req.user!.sub) });
+  res.status(201).json({ success: true, data: await forumService.addComment(req.params.postId as string, req.body, req.user!.sub, req.user!.role) });
 });
 forumRouter.patch("/comments/:id", requireAuth, forumWriteLimiter, validate(idParamsSchema, "params"), validate(commentUpdateSchema), async (req, res) => {
   res.json({ success: true, data: await forumService.updateComment(req.params.id as string, req.body, req.user!.sub) });

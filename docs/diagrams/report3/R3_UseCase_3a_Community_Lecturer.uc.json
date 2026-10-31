@@ -1,0 +1,137 @@
+{
+ "title": "Use Case Diagram 3(a) - Community, lecturer verification and mentoring",
+ "ucs": [
+  [
+   "UC45",
+   "UC-45 Browse lecturer directory"
+  ],
+  [
+   "UC34",
+   "UC-34 Participate in academic forum"
+  ],
+  [
+   "UC35",
+   "UC-35 Manage communities"
+  ],
+  [
+   "UC36",
+   "UC-36 Report and moderate content"
+  ],
+  [
+   "UC33",
+   "UC-33 Review lecturer verification"
+  ],
+  [
+   "UC37",
+   "UC-37 Submit lecturer verification"
+  ],
+  [
+   "UC38",
+   "UC-38 Manage academic profile and review availability"
+  ],
+  [
+   "UC39",
+   "UC-39 Request or offer lecturer mentoring"
+  ]
+ ],
+ "actors": [
+  [
+   "G",
+   "Guest"
+  ],
+  [
+   "U",
+   "User"
+  ],
+  [
+   "M",
+   "Community moderator\n(community role)"
+  ],
+  [
+   "L",
+   "Lecturer"
+  ],
+  [
+   "PM",
+   "Project member"
+  ],
+  [
+   "AD",
+   "Administrator"
+  ]
+ ],
+ "gens": [
+  [
+   "U",
+   "G"
+  ],
+  [
+   "M",
+   "U"
+  ],
+  [
+   "L",
+   "U"
+  ],
+  [
+   "PM",
+   "U"
+  ]
+ ],
+ "exts": [],
+ "links": [
+  [
+   "G",
+   "UC45"
+  ],
+  [
+   "U",
+   "UC34"
+  ],
+  [
+   "U",
+   "UC35"
+  ],
+  [
+   "U",
+   "UC36"
+  ],
+  [
+   "M",
+   "UC35"
+  ],
+  [
+   "M",
+   "UC36"
+  ],
+  [
+   "L",
+   "UC37"
+  ],
+  [
+   "L",
+   "UC38"
+  ],
+  [
+   "L",
+   "UC39"
+  ],
+  [
+   "PM",
+   "UC39"
+  ],
+  [
+   "AD",
+   "UC35"
+  ],
+  [
+   "AD",
+   "UC36"
+  ],
+  [
+   "AD",
+   "UC33"
+  ]
+ ],
+ "rels": []
+}

@@ -106,6 +106,8 @@ async function loadCertification(rt: Runtime, args: RetroArgs): Promise<Certific
     if (row.status !== "COMPUTED" || row.epsHat === null) throw new Error("The calibration has not been computed yet");
     if (row.protocolVersion !== rt.GAP_CLOSURE_PROTOCOL_VERSION) throw new Error(`The calibration measured protocol ${row.protocolVersion}, this script runs ${rt.GAP_CLOSURE_PROTOCOL_VERSION}`);
     if (row.judgeKind !== "AI") throw new Error("This script screens with the AI only, so it needs a calibration whose judgeKind is AI");
+    // An in-situ epsHat was measured on today's sources; a window frozen at the cutoff has lost papers, so it does not apply.
+    if (row.mode === "IN_SITU") throw new Error("An IN_SITU calibration does not describe a literature frozen at the cutoff: use a TRANSFER calibration with --coverage-id");
     calibration = { id: row.id, epsHat: row.epsHat, judgeKind: row.judgeKind };
   }
   return { coverage, calibration };

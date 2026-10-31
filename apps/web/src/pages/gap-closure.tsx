@@ -24,7 +24,7 @@ export function GapClosurePage() {
         </div>
         <h1 className="mt-2 text-3xl font-bold tracking-tight">{t("Coverage and calibration")}</h1>
         <p className="mt-2 max-w-3xl text-muted-foreground">
-          {t("A gap is called open only when no paper answers the question and the chance of a wrong call is bounded: B = epsHat + pHat. Coverage gives pHat, calibration gives epsHat. Both come from data a person can check.")}
+          {t("A gap is called open only when no paper answers the question and the chance of a wrong call is bounded: B = epsHat for an in-situ calibration, B = epsHat + pHat for a transfer calibration. Calibration gives epsHat, coverage gives pHat. Both come from data a person can check.")}
         </p>
       </header>
 

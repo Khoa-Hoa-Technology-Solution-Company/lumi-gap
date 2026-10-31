@@ -1,0 +1,102 @@
+@startuml
+!pragma layout elk
+skinparam dpi 200
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam backgroundColor #FFFFFF
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam ArrowFontSize 12
+skinparam ArrowFontColor #4A5A6A
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam entity {
+  BackgroundColor #EFE6F8
+  BorderColor #6A3FA0
+}
+skinparam legend {
+  BackgroundColor #FFF8E1
+  BorderColor #C9B36B
+  FontSize 12
+}
+skinparam stereotypeFontSize 10
+hide circle
+hide empty methods
+title Physical ERD - Communities and forum content (1 of 5)
+entity communities #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  owner_id : uuid <<FK users>>
+  reviewed_by_id : uuid <<FK users>>
+  slug : varchar(120) <<UK>>
+  ..
+  name : varchar(120)
+  visibility : varchar(16)
+}
+entity community_memberships #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  community_id : uuid <<FK,UK*>>
+  user_id : uuid <<FK users>>
+  ..
+  role : varchar(16)
+  status : varchar(16)
+}
+entity forum_posts #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  author_id : uuid <<FK users>>
+  community_id : uuid <<FK>>
+  research_community_id : uuid <<FK>>
+  research_gap_id : uuid <<FK>>
+  linked_paper_id : uuid <<FK>>
+  linked_research_gap_id : uuid <<FK>>
+  linked_project_id : uuid <<FK>>
+  accepted_comment_id : uuid <<FK>>
+  public_slug : varchar(280) <<UK>>
+  ..
+  type : varchar(32)
+  title : varchar(240)
+}
+entity forum_comments #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  post_id : uuid <<FK>>
+  author_id : uuid <<FK users>>
+  parent_comment_id : uuid <<FK>>
+  ..
+  status : varchar(16)
+  visibility_status : varchar(16)
+}
+entity papers #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+entity research_gaps #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+entity projects #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+communities ||--o{ community_memberships
+communities |o--o{ forum_posts : community_id
+communities |o--o{ forum_posts : research_community_id
+forum_comments |o--o{ forum_comments : parent_comment_id
+forum_comments |o--o{ forum_posts : accepted_comment_id
+forum_posts ||--o{ forum_comments : post_id
+papers |o--o{ forum_posts
+projects |o--o{ forum_posts
+research_gaps |o--o{ forum_posts : linked_research_gap_id
+research_gaps |o--o{ forum_posts : research_gap_id
+legend bottom
+Crow's-foot notation. PK primary key, FK foreign key, UK unique key.
+FK <name>: the foreign key references a table that is not drawn here.
+Dashed boxes belong to another diagram (key only).
+UK*: partial unique index (unique only for rows matching its WHERE condition).
+communities.name is not a UK: communities_active_name_key is a partial unique index
+   on the normalised name expression.
+forum_posts.research_community_id must reference a research community,
+   not a forum category (trigger forum_posts_research_community_guard).
+endlegend
+@enduml

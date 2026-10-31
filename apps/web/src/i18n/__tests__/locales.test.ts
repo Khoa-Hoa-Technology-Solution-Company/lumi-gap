@@ -281,3 +281,16 @@ function normalizeUiString(value: string) {
   if (text.includes("const ") || text.includes("return ")) return "";
   return text;
 }
+
+describe("community pages in Vietnamese", () => {
+  it("translates the create form and manage/detail labels", async () => {
+    const vi = await loadDictionary("vi");
+    expect(vi["Community setup"]).toBe("Thiết lập cộng đồng");
+    expect(vi["Public community"]).toBe("Cộng đồng công khai");
+    expect(vi["Private community"]).toBe("Cộng đồng riêng tư");
+    for (const key of ["Settings and rules", "Leave community", "Sign in to join", "Ban member", "Save settings", "Community name"]) {
+      expect(vi[key]).toBeTruthy();
+      expect(vi[key]).not.toBe(key);
+    }
+  });
+});

@@ -1,0 +1,41 @@
+@startuml R3_ScreenFlow_3a_Forum_Communities
+!pragma layout smetana
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam wrapWidth 260
+skinparam rectangle {
+  roundCorner 12
+}
+rectangle "Header - Community menu" as N0 {
+  rectangle "Forum\n/forum" as N2
+}
+rectangle "Moderation\n/forum/moderation" as N1
+rectangle "Copyright notice\n/forum/copyright" as N3
+rectangle "Forum thread\n/​forum/​:id/​:postNumber?" as N4
+rectangle "New post\n/forum/new" as N5
+rectangle "Categories\n/forum/categories" as N6
+rectangle "Public academic profile\n/u/:handle" as N7
+rectangle "Home\n/home" as N8
+rectangle "Manage categories\n/​forum/​categories/​manage" as N9
+rectangle "Communities\n/communities" as N10
+rectangle "Community\n/communities/:slug" as N11
+rectangle "Manage community\n/​communities/​:slug/​manage" as N12
+rectangle "New community\n/communities/new" as N13
+N2 --> N1 : "moderation"
+N2 --> N3 : "copyright"
+N2 --> N4 : "open thread"
+N2 --> N5 : "new post"
+N2 --> N6 : "categories"
+N6 --> N9 : "manage"
+N4 --> N7 : "author profile"
+N10 --> N11 : "open community"
+N11 --> N12 : "manage"
+N10 --> N13 : "propose"
+N8 --> N10 : "Visit communities"
+legend bottom
+Screen flow 3(a) - Forum and communities
+Screen (web client route)
+Frame = group of screens opened from one header menu / layout
+Dashed grey = screen drawn in another diagram, or route with no in-app link found
+endlegend
+@enduml

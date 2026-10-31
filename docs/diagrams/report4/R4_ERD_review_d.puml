@@ -1,0 +1,96 @@
+@startuml
+!pragma layout elk
+skinparam dpi 200
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam backgroundColor #FFFFFF
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam ArrowFontSize 12
+skinparam ArrowFontColor #4A5A6A
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam entity {
+  BackgroundColor #EFE6F8
+  BorderColor #6A3FA0
+}
+skinparam legend {
+  BackgroundColor #FFF8E1
+  BorderColor #C9B36B
+  FontSize 12
+}
+skinparam stereotypeFontSize 10
+hide circle
+hide empty methods
+title Physical ERD - Human reviews and revision items (4 of 7)
+entity human_reviews #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  assignment_id : uuid <<FK>>
+  reviewer_id : uuid <<FK users>>
+  submission_id : uuid <<FK>>
+  revision_id : uuid <<FK>>
+  template_id : uuid <<FK>>
+  template_version_id : uuid <<FK>>
+  ..
+  status : varchar(16)
+  reviewer_academic_role : varchar(24)
+}
+entity review_responses #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  review_id : uuid <<FK>>
+  performance_level_id : uuid <<FK review_criterion_levels>>
+  ..
+  criterion_key : varchar(80)
+  comment : text
+}
+entity review_revision_items #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  review_id : uuid <<FK>>
+  ..
+  position : integer
+  status : varchar(16)
+}
+entity review_revision_responses #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  revision_item_id : uuid <<FK>>
+  submission_revision_id : uuid <<FK>>
+  ..
+  response_text : text
+  status : varchar(16)
+}
+entity reviewer_assignments #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+entity submission_revisions #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+entity submissions #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+entity review_templates #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+entity review_template_versions #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+human_reviews ||--o{ review_responses
+human_reviews ||--o{ review_revision_items
+review_revision_items ||--o{ review_revision_responses
+review_template_versions |o--o{ human_reviews
+review_templates |o--o{ human_reviews
+reviewer_assignments ||--o{ human_reviews
+submission_revisions ||--o{ human_reviews
+submission_revisions ||--o{ review_revision_responses
+submissions ||--o{ human_reviews
+legend bottom
+Crow's-foot notation. PK primary key, FK foreign key, UK unique key.
+FK <name>: the foreign key references a table that is not drawn here.
+Dashed boxes belong to another diagram (key only).
+endlegend
+@enduml

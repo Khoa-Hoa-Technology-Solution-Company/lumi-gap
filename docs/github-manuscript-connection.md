@@ -109,52 +109,6 @@ StrictMode handling and the existing PAT transport. Provider responses in these
 checks are synthetic; persistence checks use disposable PostgreSQL and random
 short-lived Redis keys. Live authorization requires the app registration above.
 
-Verified 2026-10-20: 113 manuscript frontend tests, nine PostgreSQL/Redis OAuth
-persistence tests, nine crypto/HTTP/schema/route tests and four PostgreSQL runtime
-boundary tests passed (135 total). Shared-types/backend/web builds, targeted ESLint
-and scoped whitespace checks passed. The additive migration was applied locally;
-backend/web images were updated and `/ready` confirmed PostgreSQL and Redis.
-
-A disposable browser project confirmed the Vietnamese connection dialog and its
-explicit unconfigured state, with PAT entry collapsed under Advanced. The actual
-local server has no registered GitHub App credentials, so the Connect action is
-disabled until the administrator supplies the configuration. No real account was
-linked and no repository was published during verification.
-
-### Recheck 2026-10-30
-
-The user's actual manuscript on port 8080 displays **Kết nối GitHub** with the
-manual token fallback collapsed. The running backend has no `GITHUB_CLIENT_ID`,
-`GITHUB_CLIENT_SECRET` or `GITHUB_APP_SLUG` configured, so authorization is correctly
-disabled. The operator confirmed that a GitHub App already exists and will supply
-the backend configuration. Do not substitute fake credentials or claim a completed
-live authorization until those values are loaded and a user approves on GitHub.
-
-Executed again: nine backend crypto/HTTP/schema/route tests and eleven frontend
-callback/connection/connected-client/Git transport tests passed (20/20). These
-checks use synthetic provider responses; PostgreSQL OAuth persistence tests were
-not rerun in this recheck. No manuscript content, GitHub permission or repository
-was changed. No new OAuth implementation was necessary.
-
-After setting the server environment, recreate the backend with the same Compose
-overrides used to launch it (including the isolated compiler configuration); a
-plain container restart does not reload `env_file`. Refresh the manuscript and
-open GitHub to load the configuration status. The registered user authorization
-callback must exactly match `http://localhost:8080/integrations/github/callback`.
-
-Later on 2026-10-30, at the operator's explicit request, the supplied Client ID,
-Client Secret, app slug and frontend callback URL were written to the ignored
-local `.env`, after a local backup. The backend was recreated with the existing
-compiler-network override. Presence of all four settings was verified inside the
-running container without printing the secret; `/ready` and the frontend callback
-page returned HTTP 200. No RSA private key was stored or used by this user OAuth
-flow. The registration's Callback URL still needs to match the frontend URL above;
-an actual GitHub authorization/exchange has not been performed in this recheck.
-Credentials disclosed in chat must be revoked/rotated in GitHub and replaced
-locally; do not copy them into this document or version control.
-
-![GitHub setup state in the verified dialog](assets/manuscript-editor/github-connection-setup.png)
-
 References: [GitHub App user authorization](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-a-user-access-token-for-a-github-app),
 [refresh rotation](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/refreshing-user-access-tokens),
 [repository API](https://docs.github.com/en/rest/repos/repos#list-repositories-for-the-authenticated-user).

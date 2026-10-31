@@ -1,4 +1,5 @@
 import type { ScoredPaper } from "@trend/shared-types";
+import { Prisma } from "../../generated/prisma/client.js";
 import { normalizeAcademicTitle } from "../../common/text/academic-text.js";
 import { publicDatabaseId } from "../../infrastructure/database/database-id.js";
 import { isUsableSearchVector, searchPapersHybrid, type PostgresPaperSearchFilters } from "../../infrastructure/database/postgres-paper-search.js";
@@ -68,17 +69,19 @@ async function retrievePostgres(opts: RetrieveOptions): Promise<Array<Record<str
 
   const prisma = getPrisma();
   const ids = hits.map((hit) => hit.id);
-  const [papers, authors, topics, keywords] = await Promise.all([
+  const [papers, authors, topics, keywords, paperTags] = await Promise.all([
     prisma.paper.findMany({ where: { id: { in: ids } } }),
     prisma.paperAuthor.findMany({ where: { paperId: { in: ids } }, orderBy: { position: "asc" } }),
     prisma.paperTopic.findMany({ where: { paperId: { in: ids } }, orderBy: { position: "asc" } }),
     prisma.paperKeyword.findMany({ where: { paperId: { in: ids } }, orderBy: { position: "asc" } }),
+    loadActiveTagIds(ids),
   ]);
   const paperById = new Map(papers.map((paper) => [paper.id, paper]));
   const hitById = new Map(hits.map((hit) => [hit.id, hit]));
   const authorsByPaper = groupBy(authors, (row) => row.paperId);
   const topicsByPaper = groupBy(topics, (row) => row.paperId);
   const keywordsByPaper = groupBy(keywords, (row) => row.paperId);
+  const tagIdsByPaper = groupBy(paperTags, (row) => row.paper_id);
   return hits.flatMap((hit) => {
     const paper = paperById.get(hit.id);
     if (!paper) return [];
@@ -90,11 +93,25 @@ async function retrievePostgres(opts: RetrieveOptions): Promise<Array<Record<str
       authors: (authorsByPaper.get(paper.id) ?? []).map((author) => ({ displayName: author.displayName })),
       topics: topicsByPaper.get(paper.id) ?? [],
       keywords: (keywordsByPaper.get(paper.id) ?? []).map((keyword) => keyword.keywordName),
+      tagIds: (tagIdsByPaper.get(paper.id) ?? []).map((row) => row.tag_id),
     };
     // minScore depends on the computed score, so it is the one JS-side cut; it
     // only trims the tail of an already-ranked list.
     return Number(document.score) >= (opts.filters?.minScore ?? 0) ? [document] : [];
   }).slice(0, Math.max(1, opts.topK));
+}
+
+/**
+ * Curated tags each paper of the page carries, in one query. Blocked rows mean "not in the tag" and
+ * archived tags are hidden, so neither reaches the result (the boost reads this list).
+ */
+async function loadActiveTagIds(paperIds: string[]): Promise<Array<{ paper_id: string; tag_id: string }>> {
+  return getPrisma().$queryRaw<Array<{ paper_id: string; tag_id: string }>>(Prisma.sql`
+    SELECT ptg.paper_id::text AS paper_id, ptg.tag_id::text AS tag_id
+    FROM paper_tags ptg
+    JOIN tags tg ON tg.id = ptg.tag_id AND tg.status = 'active'
+    WHERE ptg.paper_id = ANY(${paperIds}::uuid[]) AND ptg.source <> 'blocked'
+  `);
 }
 
 function groupBy<T>(rows: T[], key: (row: T) => string): Map<string, T[]> {
@@ -125,6 +142,8 @@ function toSqlFilters(filters: RetrieveFilters | undefined): PostgresPaperSearch
     fieldIds: f.fieldIds,
     subfieldIds: f.subfieldIds,
     topicIds: f.topicIds,
+    keywordIds: f.keywordIds,
+    tagIds: f.tagIds,
     paperIds: f.paperIds,
   };
 }

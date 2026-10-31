@@ -1,0 +1,106 @@
+{
+ "title": "Use Case Diagram 2(b) - Research projects and collaboration",
+ "ucs": [
+  [
+   "UC16",
+   "UC-16 Manage research project"
+  ],
+  [
+   "UC18",
+   "UC-18 Manage members and invitations"
+  ],
+  [
+   "UC22",
+   "UC-22 Manage recruitment openings"
+  ],
+  [
+   "UC17",
+   "UC-17 Manage project literature"
+  ],
+  [
+   "UC19",
+   "UC-19 Consult project AI assistant"
+  ],
+  [
+   "UC20",
+   "UC-20 Chat with team"
+  ],
+  [
+   "UC21",
+   "UC-21 Write manuscript collaboratively"
+  ]
+ ],
+ "actors": [
+  [
+   "U",
+   "User"
+  ],
+  [
+   "PM",
+   "Project member"
+  ],
+  [
+   "PO",
+   "Project owner"
+  ]
+ ],
+ "gens": [
+  [
+   "PM",
+   "U"
+  ],
+  [
+   "PO",
+   "PM"
+  ]
+ ],
+ "exts": [
+  [
+   "LLM",
+   "LLM provider"
+  ],
+  [
+   "GH",
+   "GitHub"
+  ]
+ ],
+ "links": [
+  [
+   "U",
+   "UC16"
+  ],
+  [
+   "PO",
+   "UC18"
+  ],
+  [
+   "PO",
+   "UC22"
+  ],
+  [
+   "PM",
+   "UC17"
+  ],
+  [
+   "PM",
+   "UC19"
+  ],
+  [
+   "PM",
+   "UC20"
+  ],
+  [
+   "PM",
+   "UC21"
+  ],
+  [
+   "UC19",
+   "LLM"
+  ],
+  [
+   "UC21",
+   "GH"
+  ]
+ ],
+ "rels": []
+}

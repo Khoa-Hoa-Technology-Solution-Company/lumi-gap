@@ -1,6 +1,6 @@
 # Prisma migrations: schema drift and the safe workflow
 
-Last checked: 2026-10-10, against `apps/backend/prisma/migrations` up to `20261010120000_research_gap_evidence_scope`.
+Counts below were measured on 2026-10-10 (migrations up to `20261010120000_research_gap_evidence_scope`). The repository now has 93 migration folders (latest `20261020070000_manuscript_deletion`), so treat the numbers as approximate; the workflow is unchanged.
 
 ## The problem
 
@@ -20,7 +20,7 @@ every foreign key, the vector index and the search indexes. The script is disabl
 
 Two more things block `migrate dev` today:
 
-- `prisma/migrations/migration_lock.toml` was missing (added with this document; `provider = "postgresql"`).
+- `prisma/migrations/migration_lock.toml` (`provider = "postgresql"`) was missing when this was written; it exists now.
 - `20260924000600_legacy_email_verification_recovery` reads `_prisma_migrations`, which does not exist in a
   shadow database, so replaying the migrations there fails (P3018). It is a data-only migration; do not edit
   it (that changes its checksum on databases where it already ran).

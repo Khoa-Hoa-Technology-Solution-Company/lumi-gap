@@ -2,7 +2,6 @@
 
 How to decide whether a research gap is real, in a way that a lecturer can audit and that anyone can repeat by hand without the software.
 
-Vietnamese version: [gap-closure-protocol.vi.md](gap-closure-protocol.vi.md).
 Software design and API contract: [superpowers/specs/2026-10-15-gap-closure-protocol-design.md](superpowers/specs/2026-10-15-gap-closure-protocol-design.md).
 The rules are implemented in `apps/backend/src/modules/gap-closure/closure.rules.ts`; every number in this document is produced by that file and can be recomputed with a pencil or a spreadsheet.
 
@@ -77,6 +76,15 @@ The ranking score stored with the gap (`evidenceConfidence`, 0 to 1) is `0.5 + 0
 
 The first row reads "1 paper where 6 would be expected". The old rule counted only `nAB`, ignored `N`, and would have called the false-alarm row "scarce" (0 papers) and the large-topics row "common" (200 papers). Both verdicts are wrong in the sense that matters: the signal depends on how many papers chance would put in the intersection.
 
+**Self-check before saving.** After the signal is computed, LumiGap searches for papers that may already answer each
+gap (corpus papers close to the gap's text and mentioning both probe topics, plus OpenAlex works found with the gap's
+research question). Every gap with such papers goes back to the model once, with their abstracts, and is **kept**,
+**narrowed** to the part they leave open (new title, question and facets; the first version is kept for reference), or
+**dropped**. A drop is accepted only with a quote found verbatim in the answering paper's title or abstract, the same
+rule as `ANSWERS` in section 2; a dropped gap is saved as dismissed with that quote. When only OpenAlex says the two broad
+probe topics are well studied together, that is reported as a busy area, not as an answered gap: the gap's narrower
+claim still needs the closure check.
+
 What the signal cannot do: it says nothing about papers that answer the question without using the probe terms, or that are absent from the corpus. That is exactly what the closure check searches for.
 
 ---
@@ -130,6 +138,7 @@ Do the steps in order. Fix the settings in Step 0 **before** you look at any res
 | Years searched (optional) | none | |
 | Reviewer 1 / Reviewer 2 | | |
 | Judge kind | HUMAN when you label every document yourself | |
+| Calibration mode (Step 5) | TRANSFER; IN_SITU only under the conditions of Step 5 | |
 
 ### Step 1. Question and facets (Worksheet 1)
 
@@ -175,6 +184,8 @@ Rules for the labels:
 ### Step 4. Coverage check (Worksheet 4)
 
 Coverage tells you how likely it is that an answering paper is simply not in the sources you searched.
+
+This step is needed only for a **TRANSFER** calibration (Step 5). An **IN_SITU** calibration already measures this loss, so you may skip the step; if you do it anyway, record `pHat` for information but leave it out of `B`.
 
 1. Get `m` reference DOIs of papers on the same topic from a source that is **independent of your search**: the reference list of a recent survey or systematic review, or a list from a domain expert. Use at least 50 if you can. Do not take them from the search results of Step 2.
 2. For each DOI, check whether the paper can be found in the sources you searched in Step 2 (look it up by DOI). A DOI that is found in none of them is "missing".
@@ -228,6 +239,15 @@ For each question, run Steps 2 and 3. The question is **FOUND** if some document
 
 Note: a question counts as MISSED also when its witness is not in the searched sources at all. That is deliberate (see section 6).
 
+**Calibration mode.** Choose it when you create the calibration, before running any question; it cannot be changed later.
+
+| Mode | Bound | Use it when |
+|---|---|---|
+| `IN_SITU` | `B = epsHat` | All of these hold: (1) the questions and their witness DOIs were written from a survey, a systematic review or an expert note, **without** looking at the searched sources (rule 1 above), so a witness is just as likely to be missing from the sources as the answer to a real gap; (2) the calibration ran on the same sources, with the same year window and query and result budget, as the checks it will be used for; (3) the sources have not changed much since (re-run the calibration after a large import or a long time). |
+| `TRANSFER` | `B = epsHat + pHat` | Any other case. It is the default, needs a coverage check (Step 4), and stays valid when the sources changed. |
+
+Why `IN_SITU` needs no coverage check: because a question whose witness is absent counts as MISSED, `epsHat` already measures *both* ways an answered question can be called open (answer absent, answer present but missed). This is the idea of in-situ calibration in the team's paper (Theorem 1). See section 6.
+
 ### Step 6. Decision (Worksheet 6)
 
 Apply the rules in this order and stop at the first that fires.
@@ -239,14 +259,14 @@ Apply the rules in this order and stop at the first that fires.
 |---|---|---|
 | `SEARCH_ERRORS` | at least one query failed, timed out or was skipped | |
 | `PENDING_REVIEW` | at least one document has no effective label (including an AI `ANSWERS` or `PARTIAL` whose quote was not found verbatim) | |
-| `NO_COVERAGE` | you have no coverage check (Step 4) | |
+| `NO_COVERAGE` | the calibration is `TRANSFER` and you have no coverage check (Step 4) | |
 | `NO_CALIBRATION` | you have no computed calibration (Step 5) | |
 | `CALIBRATION_JUDGE_MISMATCH` | the calibration was run with a different judge kind than this check (see below) | |
-| `BOUND_EXCEEDS_MAX` | `B = epsHat + pHat` is larger than `Bmax` | |
+| `BOUND_EXCEEDS_MAX` | `B` (`epsHat` for `IN_SITU`, `epsHat + pHat` for `TRANSFER`) is larger than `Bmax` | |
 
 3. If none applies, the decision is `OPEN_CERTIFIED`. If at least one applies, it is `ABSTAIN`, and the list of reasons is part of the result.
 
-Compute `B = epsHat + pHat`, rounded to 4 decimals (cap at 1). Because both parts are already rounded up to 4 decimals, add them as printed.
+Compute `B`: with an `IN_SITU` calibration `B = epsHat`; with a `TRANSFER` calibration `B = epsHat + pHat`, rounded to 4 decimals (cap at 1). Because both parts are already rounded up to 4 decimals, add them as printed.
 
 **Judge kind.** The check is `HUMAN` only if a person labelled **every** document; otherwise it is `AI`. A check in which nothing was screened (no documents at all) counts as `AI`, because only the queries decided; by hand, treat an empty search as a warning that the queries are too narrow and rewrite them. The calibration must have the same judge kind as the check.
 
@@ -254,7 +274,7 @@ Compute `B = epsHat + pHat`, rounded to 4 decimals (cap at 1). Because both part
 |---|---|
 | Decision | CLOSED / OPEN_CERTIFIED / ABSTAIN |
 | Witness document and quote (if CLOSED) | |
-| `epsHat` + `pHat` = `B` | |
+| Calibration mode; `epsHat` (+ `pHat` for TRANSFER) = `B` | |
 | `B <= Bmax`? | |
 | Reasons (if ABSTAIN) | |
 | Corroborated? (a `PARTIAL` document with the limitation flag, from a paper the gap was **not** derived from) | |
@@ -300,6 +320,7 @@ For other `m`, `x` or `delta`, use the spreadsheet formula.
 - `n = 30` calibration questions with 0 misses (`epsHat = 0.0951`) and `m = 50` coverage references with 0 missing (`pHat = 0.0582`): `B = 0.1533`, certified. One single miss in the 30 questions (`epsHat = 0.1486`) already gives `B = 0.2068`, which is too large.
 - `n = 50` with up to 2 misses (`0.1207`) plus `m = 50`, `x = 0` (`0.0582`): `B = 0.1789`, certified. With 3 misses (`0.1479`): `B = 0.2061`, too large.
 - Fewer than about 20 questions on either side cannot reach `Bmax = 0.20` even with no misses (`n = 20`, `m = 20`, no events: `B = 0.1392 + 0.1392 = 0.2784`).
+- With an `IN_SITU` calibration there is no `pHat` to pay: `n = 20` with no miss gives `B = 0.1392`, `n = 30` with one miss gives `B = 0.1486`, and `n = 50` with up to 5 misses gives `B <= 0.1989`, all certified. The price is the conditions of Step 5.
 
 The bound is honest about small samples: if you want to certify gaps you must invest in a larger calibration set and a larger reference list.
 
@@ -336,7 +357,7 @@ B = epsHat + pHat = 0.0951 + 0.0582 = 0.1533
 0.1533 <= 0.20
 ```
 
-No search error, no pending document, coverage present, calibration present with the same judge kind, bound within the maximum: **OPEN_CERTIFIED**, `B = 0.1533`. The statement is: "if this question were answered, the procedure would have called it open with probability at most 0.1533, with confidence at least 90%" (see section 6 for the exact meaning). It is also **corroborated** (two documents flag the question as future work).
+No search error, no pending document, coverage present, calibration present with the same judge kind, bound within the maximum: **OPEN_CERTIFIED**, `B = 0.1533`. (Had the 30 questions been run as an `IN_SITU` calibration under the conditions of Step 5, the coverage check would not be needed and `B = epsHat = 0.0951`.) The statement is: "if this question were answered, the procedure would have called it open with probability at most 0.1533, with confidence at least 90%" (see section 6 for the exact meaning). It is also **corroborated** (two documents flag the question as future work).
 
 ### Example (b): CLOSED with a witness quote
 
@@ -410,6 +431,17 @@ q is closed; W = answering documents (at least 1); p = chance that one document 
 
 With the default `delta = 0.05` the statement holds with confidence 90%.
 
+**In-situ calibration (`IN_SITU`).** The calibration questions go through the very procedure that will judge the gap: the same sources, years, query budget, result budget, rubric and judge kind. A calibration question is FOUND only if an answering document is present **and** labelled `ANSWERS`, so MISSED covers both A and E:
+
+```
+eps* = P(A or E) for an answered question   (what the calibration measures directly)
+(1) P(false novelty) = eps*
+(2) epsHat >= eps* with probability >= 1 - delta   (Clopper-Pearson on misses / n)
+(3) =>  P(false novelty) <= epsHat = B, with confidence 1 - delta (95% by default)
+```
+
+No union bound is needed, so the guarantee is both tighter and more confident. It rests on the calibration questions being exchangeable with the gap questions **including how likely their answers are to be missing**: that is why the witnesses must come from outside the searched sources, and why the calibration must be re-run when the sources change. In the team's paper this is Theorem 1, which holds for any, possibly unknown, missing rate.
+
 **What the statement means.** `B` bounds the probability that a question which *has* an answer is wrongly called open, for questions of the kind used in the calibration. It is a statement about the procedure's long-run error on answered questions. It is **not** the probability that one particular certified gap is wrong; that depends on how many candidate questions are truly open, which the protocol does not know.
 
 **Assumptions** (the guarantee is only as good as these):
@@ -419,9 +451,9 @@ With the default `delta = 0.05` the statement holds with confidence 90%.
 3. **Same judge kind and same procedure.** The calibration uses the same type of judge (human or AI) and the same query budget, sources, number of results and rubric as the gap check. The software refuses to certify otherwise (`CALIBRATION_JUDGE_MISMATCH`).
 4. **Representative coverage sample.** The reference DOIs are a fair sample of the papers that could answer such questions, and are independent of the search.
 
-**A conservative detail.** A calibration question whose witness is absent from the sources is counted as MISSED. So `epsHat` already includes part of the coverage loss, and adding `pHat` partly counts it twice. The sum therefore overstates the true error rather than understating it. We keep the sum because it is simple, easy to explain and still valid.
+**A conservative detail (TRANSFER).** A calibration question whose witness is absent from the sources is counted as MISSED. So `epsHat` already includes part of the coverage loss, and adding `pHat` partly counts it twice. The sum therefore overstates the true error rather than understating it. `TRANSFER` keeps the sum because it stays valid even when the calibration and the check did not see the same sources; when they did, use `IN_SITU` and drop `pHat`.
 
-**Relation to the team's paper.** The GapClose theorems calibrate a *threshold* on a continuous, monotone closure score by conformal prediction (in-situ calibration, Theorem 1; transfer with an upper bound on the missing rate, Theorem 2), and their corollary gives `P(false novelty) <= alpha + delta` when the missing rate is estimated with a Clopper-Pearson bound. This protocol does not use a score or a threshold: it works with discrete labels (a rubric applied by a person or an AI), measures the procedure's miss rate directly, and combines the two bounds by a plain union bound. It is the team's **adaptation** of the same idea to discrete human or AI labels. It is related to, but **not identical** to, the theorems of the team's paper, and this simplified union-bound form has **not itself been peer-reviewed**. The team's paper is under review (ICAI-FAI 2026 submission). Present it to your lecturer as a transparent, checkable argument, not as a published theorem.
+**Relation to the team's paper.** The GapClose theorems calibrate a *threshold* on a continuous, monotone closure score by conformal prediction (in-situ calibration, Theorem 1; transfer with an upper bound on the missing rate, Theorem 2), and their corollary gives `P(false novelty) <= alpha + delta` when the missing rate is estimated with a Clopper-Pearson bound. This protocol does not use a score or a threshold: it works with discrete labels (a rubric applied by a person or an AI) and measures the procedure's miss rate directly. `IN_SITU` follows the logic of Theorem 1 (calibrate under the same incompleteness, no estimate of the missing rate); `TRANSFER` combines the two bounds by a plain union bound. It is the team's **adaptation** of the same idea to discrete human or AI labels. It is related to, but **not identical** to, the theorems of the team's paper, and this simplified union-bound form has **not itself been peer-reviewed**. The team's paper is under review (ICAI-FAI 2026 submission). Present it to your lecturer as a transparent, checkable argument, not as a published theorem.
 
 ---
 
@@ -444,7 +476,7 @@ Example with 4 documents, labels (reviewer 1, reviewer 2): (ANSWERS, ANSWERS), (
 - every document with its AI label and quote, the reviewer's label, quote and facets, the second reviewer's label, and the limitation flag;
 - the coverage check (reference source, every DOI with found or missing) and the calibration (every question, witness DOI and FOUND or MISSED);
 - `epsHat`, `pHat`, `B`, the decision, the witness quote or the list of abstain reasons, the corroboration flag and Cohen's kappa;
-- the arithmetic in plain lines, for example `B = 0.0951 + 0.0582 = 0.1533 <= 0.2`.
+- the calibration mode and the arithmetic in plain lines, for example `B = 0.0951 + 0.0582 = 0.1533 <= 0.2` (TRANSFER) or `B = epsHat = 0.0951 <= 0.2` (IN_SITU).
 
 **How AI is used.** The AI does two things only: it **proposes search queries** (at most three, which a person can replace or edit) and it **pre-labels** every document with the rubric, quoting a sentence. The software then checks that each AI quote really appears verbatim in the title or abstract; an AI `ANSWERS` or `PARTIAL` whose quote cannot be found is not counted until a person reviews it. A person's label always overrides the AI label. The AI never computes `epsHat`, `pHat` or `B`, and never makes the decision: those come from the deterministic rules and the person who presses "decide" (the gap creator or the project owner). Because the AI is optional, everything in this document can be done without it.
 

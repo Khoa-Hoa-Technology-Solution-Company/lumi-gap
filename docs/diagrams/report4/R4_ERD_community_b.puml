@@ -1,0 +1,99 @@
+@startuml
+!pragma layout elk
+skinparam dpi 200
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam backgroundColor #FFFFFF
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam ArrowFontSize 12
+skinparam ArrowFontColor #4A5A6A
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam entity {
+  BackgroundColor #EFE6F8
+  BorderColor #6A3FA0
+}
+skinparam legend {
+  BackgroundColor #FFF8E1
+  BorderColor #C9B36B
+  FontSize 12
+}
+skinparam stereotypeFontSize 10
+hide circle
+hide empty methods
+title Physical ERD - Forum moderation (2 of 5)
+entity forum_content_reports #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  reporter_id : uuid <<FK users>>
+  post_id : uuid <<FK>>
+  comment_id : uuid <<FK>>
+  community_id : uuid <<FK>>
+  reviewed_by_id : uuid <<FK users>>
+  ..
+  target_type : varchar(16)
+  status : varchar(16)
+}
+entity forum_moderation_actions #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  actor_id : uuid <<FK users>>
+  community_id : uuid <<FK>>
+  post_id : uuid <<FK>>
+  comment_id : uuid <<FK>>
+  report_id : uuid <<FK>>
+  ..
+  target_type : varchar(16)
+  policy_rule_code : varchar(80)
+}
+entity moderation_appeals #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  moderation_action_id : uuid <<UK>>
+  ..
+  status : varchar(24)
+  decision_reason : text
+}
+entity copyright_claims #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  email_verification_token_hash : text <<UK*>>
+  ..
+  claimant_name : varchar(200)
+  claimant_email : varchar(320)
+}
+entity forum_restrictions #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  user_id : uuid
+  restriction_type : varchar(24)
+}
+entity communities #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+entity forum_posts #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+entity forum_comments #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+communities |o--o{ forum_content_reports
+communities |o--o{ forum_moderation_actions
+forum_comments |o--o{ forum_content_reports
+forum_comments |o--o{ forum_moderation_actions
+forum_content_reports |o--o{ forum_moderation_actions
+forum_posts |o--o{ forum_content_reports
+forum_posts |o--o{ forum_moderation_actions
+legend bottom
+Crow's-foot notation. PK primary key, FK foreign key, UK unique key.
+FK <name>: the foreign key references a table that is not drawn here.
+Dashed boxes belong to another diagram (key only).
+UK*: partial unique index (unique only for rows matching its WHERE condition).
+moderation_appeals, copyright_claims and forum_restrictions have no FK constraint in
+   the final schema (plain reference columns such as moderation_action_id,
+   target_type/target_id, user_id), so no relation is drawn for them.
+endlegend
+@enduml

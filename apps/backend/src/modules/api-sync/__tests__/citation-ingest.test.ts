@@ -12,6 +12,7 @@ vi.mock("../../../infrastructure/database/prisma.js", () => ({ getPrisma: () => 
   }),
 }) }));
 vi.mock("../../../infrastructure/logger.js", () => ({ logger: { error: vi.fn() } }));
+vi.mock("../../taxonomy/taxonomy-backfill.service.js", () => ({ taxonomyBackfillService: { linkPaperTaxonomy: vi.fn() } }));
 vi.mock("../../audit/audit.service.js", () => ({ auditService: { log: vi.fn() } }));
 const id = "00000000-0000-4000-8000-000000000123";
 const work = { id: "https://openalex.org/W123", doi: "https://doi.org/10.1038/171737a0", title: "Molecular Structure of Nucleic Acids", publication_year: 1953, authorships: [{ author: { display_name: "Watson" } }, { author: { display_name: "Crick" } }], abstract_inverted_index: null };

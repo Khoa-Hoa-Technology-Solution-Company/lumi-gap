@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { databaseIdSchema } from "../../../common/validation/database-id.js";
+import { catalogIdSchema } from "../../taxonomy/dto/taxonomy.schema.js";
 
 /** Body for POST /api/v1/admin/sync. */
 export const TriggerSyncSchema = z.object({
@@ -31,3 +32,12 @@ export const PlanOpenAlexCampaignSchema = z.object({
 });
 
 export type PlanOpenAlexCampaignInput = z.infer<typeof PlanOpenAlexCampaignSchema>;
+
+export const TagCampaignTargetSchema = z.object({ tagId: catalogIdSchema });
+export type TagCampaignTarget = z.infer<typeof TagCampaignTargetSchema>;
+
+/** The upper bound on targetUniqueWorks is TAG_CAMPAIGN_MAX_WORKS, enforced by the service (it is configuration). */
+export const PlanTagCampaignSchema = TagCampaignTargetSchema.extend({
+  targetUniqueWorks: z.coerce.number().int().min(1),
+});
+export type PlanTagCampaignInput = z.infer<typeof PlanTagCampaignSchema>;

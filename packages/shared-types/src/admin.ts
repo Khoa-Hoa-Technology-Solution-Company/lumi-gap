@@ -206,3 +206,28 @@ export interface AdminPlatformSettings {
     rateLimitPerMin: number;
   }>;
 }
+
+/** API protocol of an AI connection (personal or platform). */
+export type AiConnectionProvider = "gemini" | "openai-compatible";
+
+/** A platform-wide AI connection as shown to admins; the API key is never returned. */
+export interface PlatformAiConnection {
+  id: string;
+  name: string;
+  provider: AiConnectionProvider;
+  baseUrl: string;
+  /** Summaries, scoring, reranking, chat. */
+  fastModel: string;
+  /** Reports, research gaps, trends. */
+  deepModel: string;
+  hasApiKey: boolean;
+  isActive: boolean;
+  updatedAt: string;
+}
+
+/** GET /admin/ai-connections. Without an active connection, the environment defaults are used. */
+export interface PlatformAiSettings {
+  connections: PlatformAiConnection[];
+  activeConnectionId: string | null;
+  environmentDefaults: { provider: "gemini"; fastModel: string; deepModel: string };
+}
