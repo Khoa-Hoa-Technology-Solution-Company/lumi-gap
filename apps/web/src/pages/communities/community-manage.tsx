@@ -1,16 +1,20 @@
 import { useMemo, useState, type FormEvent, type ReactNode } from "react";
-import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, Check, Inbox, Shield, ShieldAlert, UserRoundCog, X } from "lucide-react";
+import { Link, useParams, useSearchParams } from "react-router-dom";
+import { toast } from "sonner";
+import { ArrowLeft, Shield, ShieldAlert, UserRoundCog } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import type { CommunityRestrictionType } from "@trend/shared-types";
 import {
   type CommunityMemberView,
   type CommunityView,
   useCommunity,
   useCommunityMembers,
+  useLiftCommunityRestriction,
+  useRestrictCommunityMember,
   useSetCommunityStatus,
   useTransferCommunityOwnership,
   useUpdateCommunity,
@@ -20,9 +24,10 @@ import { useI18n } from "@/i18n";
 import { cn } from "@/utils/cn";
 import { CommunityModerationTab } from "./community-moderation-tab";
 
-type Tab = "settings" | "requests" | "members" | "moderation";
-type MemberChange = { role?: "moderator" | "member"; status?: "active" | "declined" | "banned" };
+type Tab = "settings" | "members" | "moderation";
+type MemberChange = { role?: "moderator" | "member"; status?: "active" | "banned" };
 
+const splitLines = (value: string) => [...new Set(value.split("\n").map((item) => item.trim()).filter(Boolean))];
 const splitValues = (value: string) => [...new Set(value.split(/[\n,]/).map((item) => item.trim()).filter(Boolean))];
 const requestError = (error: unknown, fallback: string) => (error as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message ?? fallback;
 const initials = (name: string) => name.split(/\s+/).slice(0, 2).map((part) => part[0]).join("");
@@ -31,19 +36,22 @@ export function CommunityManagePage() {
   const { t } = useI18n();
   const { slug = "" } = useParams();
   const { data: community, isLoading, error } = useCommunity(slug);
-  const [tab, setTab] = useState<Tab>("requests");
+  const [params, setParams] = useSearchParams();
 
   if (isLoading) return <main className="mx-auto max-w-5xl px-4 py-8"><div className="h-80 animate-pulse rounded-xl bg-muted" /></main>;
   if (error || !community) return <Unavailable message={t("Community unavailable.")} />;
   if (!community.canManage) return <Unavailable message={t("You do not have permission to manage this community.")} community={community} />;
 
-  const pending = community.pendingRequestCount ?? 0;
-  const tabs: Array<{ value: Tab; label: string; icon: typeof Shield; badge?: number }> = [
+  const tabs: Array<{ value: Tab; label: string; icon: typeof Shield }> = [
     ...(community.canEditCommunity ? [{ value: "settings" as const, label: "Settings and rules", icon: Shield }] : []),
-    { value: "requests", label: "Join requests", icon: Inbox, badge: pending },
     { value: "members", label: "Members", icon: UserRoundCog },
     { value: "moderation", label: "Moderation", icon: ShieldAlert },
   ];
+
+  // The tab lives in the URL (`?tab=`), so links and Back work. An unknown or unavailable value falls back to the default tab.
+  const requested = params.get("tab");
+  const tab: Tab = tabs.some((item) => item.value === requested) ? requested as Tab : (community.canEditCommunity ? "settings" : "members");
+  const setTab = (value: Tab) => setParams((current) => { const next = new URLSearchParams(current); next.set("tab", value); return next; });
 
   return <main className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
     <Link to={`/communities/${community.slug}`} className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-blue-700"><ArrowLeft className="h-4 w-4" />{t("Back to community")}</Link>
@@ -53,17 +61,15 @@ export function CommunityManagePage() {
       <p className="mt-2 text-sm text-muted-foreground">{t("Manage membership and community settings within your permission scope.")}</p>
     </header>
     <nav className="mt-5 flex gap-1 overflow-x-auto border-b" aria-label={t("Community management sections")}>
-      {tabs.map(({ value, label, icon: Icon, badge }) => <button key={value} type="button" onClick={() => setTab(value)}
+      {tabs.map(({ value, label, icon: Icon }) => <button key={value} type="button" onClick={() => setTab(value)}
         className={cn("inline-flex items-center gap-2 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium", tab === value ? "border-blue-700 text-blue-700" : "border-transparent text-muted-foreground hover:text-foreground")}>
         <Icon className="h-4 w-4" />{t(label)}
-        {badge ? <span className="rounded-full bg-blue-700 px-1.5 text-[11px] font-semibold leading-5 text-white tabular-nums">{badge}</span> : null}
       </button>)}
     </nav>
     <div className="mt-7">
       {tab === "settings" && community.canEditCommunity ? <Settings community={community} />
-        : tab === "requests" ? <MemberList community={community} mode="requests" />
-          : tab === "moderation" ? <CommunityModerationTab community={community} frozen={community.status === "ARCHIVED" && !community.isAdmin} />
-            : <MemberList community={community} mode="members" />}
+        : tab === "moderation" ? <CommunityModerationTab community={community} frozen={community.status === "ARCHIVED" && !community.isAdmin} />
+          : <MemberList community={community} />}
     </div>
   </main>;
 }
@@ -85,7 +91,6 @@ function Settings({ community }: { community: CommunityView }) {
   const [description, setDescription] = useState(community.description);
   const [researchField, setResearchField] = useState(community.researchField ?? "");
   const [icon, setIcon] = useState(community.icon ?? "");
-  const [visibility, setVisibility] = useState(community.visibility);
   const [status, setStatus] = useState<"ACTIVE" | "ARCHIVED">(community.status === "ARCHIVED" ? "ARCHIVED" : "ACTIVE");
   const [topics, setTopics] = useState(community.researchTopics.join(", "));
   const [rules, setRules] = useState(community.rules.join("\n"));
@@ -98,7 +103,7 @@ function Settings({ community }: { community: CommunityView }) {
     event.preventDefault();
     setMessage(undefined);
     try {
-      await update.mutateAsync({ id: community.id, input: { name: name.trim(), description: description.trim(), researchField: researchField.trim() || undefined, icon: icon.trim() || undefined, visibility, researchTopics: splitValues(topics), rules: splitValues(rules) } });
+      await update.mutateAsync({ id: community.id, input: { name: name.trim(), description: description.trim(), researchField: researchField.trim() || undefined, icon: icon.trim() || undefined, researchTopics: splitValues(topics), rules: splitLines(rules) } });
       if (canChangeStatus && status !== community.status) await setStatusMutation.mutateAsync({ id: community.id, status });
       setMessage({ text: t("Community settings saved.") });
     } catch (reason) {
@@ -121,12 +126,6 @@ function Settings({ community }: { community: CommunityView }) {
       <Field label={t("Research topics")} hint={t("Comma separated")}><Input value={topics} onChange={(event) => setTopics(event.target.value)} /></Field>
       <Field label={t("Community rules")} hint={t("One rule per line")}><textarea value={rules} onChange={(event) => setRules(event.target.value)} className="min-h-32 w-full rounded-md border bg-background px-3 py-2 text-sm leading-6 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" /></Field>
       <div className="grid gap-5 sm:grid-cols-2">
-        <Field label={t("Visibility")}>
-          <select value={visibility} onChange={(event) => setVisibility(event.target.value as "public" | "private")} className="h-10 w-full rounded-md border bg-background px-3 text-sm">
-            <option value="public">{t("Public, anyone can view")}</option>
-            <option value="private">{t("Private, approval required to join")}</option>
-          </select>
-        </Field>
         {canChangeStatus ? <Field label={t("Status")}>
           <select value={status} onChange={(event) => setStatus(event.target.value as "ACTIVE" | "ARCHIVED")} className="h-10 w-full rounded-md border bg-background px-3 text-sm">
             <option value="ACTIVE">{t("Active")}</option>
@@ -190,37 +189,56 @@ function TransferOwnership({ community }: { community: CommunityView }) {
   </div>;
 }
 
-function MemberList({ community, mode }: { community: CommunityView; mode: "requests" | "members" }) {
+type MemberDialog =
+  | { kind: "ban" | "restore"; member: CommunityMemberView }
+  | { kind: "restrict"; member: CommunityMemberView }
+  | { kind: "lift"; member: CommunityMemberView; restriction: NonNullable<CommunityMemberView["restrictions"]>[number] };
+
+const RESTRICTION_LABELS: Record<CommunityRestrictionType, string> = { CREATE_THREAD: "Start discussions", REPLY: "Reply to discussions", POSTING: "Start discussions and reply" };
+const DURATIONS: Array<1 | 7 | 30> = [1, 7, 30];
+
+function MemberList({ community }: { community: CommunityView }) {
   const { t } = useI18n();
   const members = useCommunityMembers(community.id, community.canManage);
   const update = useUpdateCommunityMember();
+  const restrict = useRestrictCommunityMember();
+  const lift = useLiftCommunityRestriction();
   const [error, setError] = useState("");
-  const canAssignModerators = community.isOwner || community.isAdmin;
+  const [dialog, setDialog] = useState<MemberDialog>();
+  const canManageStaff = community.isOwner || community.isAdmin;
   const frozen = community.status === "ARCHIVED" && !community.isAdmin;
-  const rows = useMemo(() => (members.data ?? []).filter((member) => (mode === "requests" ? member.status === "pending" : member.status !== "pending")), [members.data, mode]);
+  const rows = members.data ?? [];
 
-  async function change(userId: string, input: MemberChange) {
+  async function change(userId: string, input: MemberChange, success?: string) {
     setError("");
-    try { await update.mutateAsync({ id: community.id, userId, input }); } catch (reason) { setError(requestError(reason, t("Could not update this member."))); }
+    try { await update.mutateAsync({ id: community.id, userId, input }); if (success) toast.success(t(success)); return true; }
+    catch (reason) { setError(requestError(reason, t("Could not update this member."))); return false; }
   }
 
-  const title = mode === "requests" ? "Join requests" : "Members";
-  const hint = mode === "requests" ? "Approve or decline people asking to join this private community." : "Maintain community access and moderators.";
   return <section>
-    <div className="flex items-center gap-2">{mode === "requests" ? <Inbox className="h-4 w-4 text-blue-700" /> : <UserRoundCog className="h-4 w-4 text-blue-700" />}<h2 className="text-lg font-semibold">{t(title)}</h2></div>
-    <p className="mt-1 text-sm text-muted-foreground">{t(hint)}</p>
+    <div className="flex items-center gap-2"><UserRoundCog className="h-4 w-4 text-blue-700" /><h2 className="text-lg font-semibold">{t("Members")}</h2></div>
+    <p className="mt-1 text-sm text-muted-foreground">{t("Maintain community access and moderators.")}</p>
     {frozen ? <p role="status" className="mt-3 text-sm text-muted-foreground">{t("This community is archived, so membership can no longer be changed. Only an administrator can change it.")}</p> : null}
     {error ? <p role="alert" className="mt-4 text-sm text-red-600">{error}</p> : null}
     {members.isLoading ? <div className="mt-5 space-y-2">{Array.from({ length: 4 }).map((_, index) => <div key={index} className="h-20 animate-pulse rounded-lg bg-muted" />)}</div>
       : members.error ? <p className="mt-5 text-sm text-red-600">{t("Unable to load members.")}</p>
-        : rows.length === 0 ? <p className="mt-6 text-sm text-muted-foreground">{t(mode === "requests" ? "No pending join requests." : "No members yet.")}</p>
-          : <div className="mt-5 divide-y border-y">{rows.map((member) => <MemberRow key={member.id} member={member} busy={update.isPending || frozen} canAssignModerators={canAssignModerators} onChange={change} />)}</div>}
+        : rows.length === 0 ? <p className="mt-6 text-sm text-muted-foreground">{t("No members yet.")}</p>
+          : <div className="mt-5 divide-y border-y">{rows.map((member) => <MemberRow key={member.id} member={member} busy={update.isPending || restrict.isPending || lift.isPending || frozen} canManageStaff={canManageStaff} onChange={(userId, input) => change(userId, input)} onDialog={setDialog} />)}</div>}
+    <MemberDialogs community={community} dialog={dialog} onClose={() => setDialog(undefined)} onBanOrRestore={async (member, status) => {
+        try { await update.mutateAsync({ id: community.id, userId: member.user.id, input: { status } }); toast.success(t(status === "banned" ? "Member banned" : "Access restored")); setDialog(undefined); return undefined; }
+        catch (reason) { return requestError(reason, t("Could not update this member.")); }
+      }}
+      updating={update.isPending}
+      restrict={restrict} lift={lift} />
   </section>;
 }
 
-function MemberRow({ member, busy, canAssignModerators, onChange }: { member: CommunityMemberView; busy: boolean; canAssignModerators: boolean; onChange: (userId: string, input: MemberChange) => void }) {
+function MemberRow({ member, busy, canManageStaff, onChange, onDialog }: { member: CommunityMemberView; busy: boolean; canManageStaff: boolean; onChange: (userId: string, input: MemberChange) => void; onDialog: (dialog: MemberDialog) => void }) {
   const { t } = useI18n();
   const isOwner = member.role === "owner";
+  // Mirror the API: only the owner or an admin can act on moderators; nobody acts on the owner.
+  const canActOn = !isOwner && (member.role === "member" || canManageStaff);
+  const restrictions = member.restrictions ?? [];
   return <div className="py-4">
     <div className="flex items-start gap-3">
       <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted text-xs font-semibold">
@@ -233,18 +251,105 @@ function MemberRow({ member, busy, canAssignModerators, onChange }: { member: Co
           <Badge variant="secondary" className="font-normal">{t(member.status)}</Badge>
         </div>
         <p className="mt-0.5 truncate text-xs text-muted-foreground">{member.user.email}{member.user.institution ? ` · ${member.user.institution}` : ""}</p>
+        {restrictions.length ? <ul className="mt-2 flex flex-wrap gap-2">{restrictions.map((restriction) => <li key={restriction.id} className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 py-1 pl-3 pr-1 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+          <span>{t(RESTRICTION_LABELS[restriction.type] ?? restriction.type)}{restriction.expiresAt ? ` · ${t("Restricted until")} ${new Date(restriction.expiresAt).toLocaleDateString()}` : ""}</span>
+          {canActOn ? <Button size="sm" variant="ghost" className="h-8 min-h-11 px-2 text-xs sm:min-h-8" disabled={busy} onClick={() => onDialog({ kind: "lift", member, restriction })}>{t("Lift")}</Button> : null}
+        </li>)}</ul> : null}
       </div>
     </div>
-    {isOwner ? null : <div className="mt-3 flex flex-wrap gap-2 pl-12">
-      {member.status === "pending" ? <>
-        <Button size="sm" variant="outline" disabled={busy} onClick={() => onChange(member.user.id, { status: "active" })}><Check className="h-3.5 w-3.5" />{t("Approve")}</Button>
-        <Button size="sm" variant="ghost" className="text-red-600" disabled={busy} onClick={() => onChange(member.user.id, { status: "declined" })}><X className="h-3.5 w-3.5" />{t("Decline")}</Button>
-      </> : ["banned", "declined"].includes(member.status)
-        ? <Button size="sm" variant="outline" disabled={busy} onClick={() => onChange(member.user.id, { status: "active" })}>{t("Restore access")}</Button>
-        : <Button size="sm" variant="ghost" className="text-red-600" disabled={busy} onClick={() => onChange(member.user.id, { status: "banned" })}>{t("Ban member")}</Button>}
-      {canAssignModerators && member.status === "active" ? <Button size="sm" variant="outline" disabled={busy} onClick={() => onChange(member.user.id, { role: member.role === "moderator" ? "member" : "moderator" })}>{t(member.role === "moderator" ? "Remove moderator" : "Make moderator")}</Button> : null}
-    </div>}
+    {canActOn ? <div className="mt-3 flex flex-wrap gap-2 pl-12">
+      {member.status === "banned"
+        ? <Button size="sm" variant="outline" className="min-h-11" disabled={busy} onClick={() => onDialog({ kind: "restore", member })}>{t("Restore access")}</Button>
+        : <>
+          <Button size="sm" variant="ghost" className="min-h-11 text-red-600" disabled={busy} onClick={() => onDialog({ kind: "ban", member })}>{t("Ban member")}</Button>
+          {member.status === "active" ? <Button size="sm" variant="outline" className="min-h-11" disabled={busy} onClick={() => onDialog({ kind: "restrict", member })}>{t("Restrict")}</Button> : null}
+        </>}
+      {canManageStaff && member.status === "active" ? <Button size="sm" variant="outline" className="min-h-11" disabled={busy} onClick={() => onChange(member.user.id, { role: member.role === "moderator" ? "member" : "moderator" })}>{t(member.role === "moderator" ? "Remove moderator" : "Make moderator")}</Button> : null}
+    </div> : null}
   </div>;
+}
+
+/** Confirmation dialogs for every access-changing member action: ban, restore, restrict and lift. */
+function MemberDialogs({ community, dialog, onClose, onBanOrRestore, updating, restrict, lift }: {
+  community: CommunityView; dialog?: MemberDialog; onClose: () => void;
+  /** Resolves to an error message when the change failed, so the dialog can show it where the user is looking. */
+  onBanOrRestore: (member: CommunityMemberView, status: "banned" | "active") => Promise<string | undefined>;
+  updating: boolean;
+  restrict: ReturnType<typeof useRestrictCommunityMember>; lift: ReturnType<typeof useLiftCommunityRestriction>;
+}) {
+  const { t } = useI18n();
+  const [type, setType] = useState<CommunityRestrictionType>("CREATE_THREAD");
+  const [days, setDays] = useState<1 | 7 | 30>(7);
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState("");
+  const reset = () => { setType("CREATE_THREAD"); setDays(7); setReason(""); setError(""); };
+  const close = () => { reset(); onClose(); };
+  const name = dialog?.member.user.fullName ?? "";
+
+  async function submitBanOrRestore(member: CommunityMemberView, status: "banned" | "active") {
+    setError("");
+    const failure = await onBanOrRestore(member, status);
+    if (failure) setError(failure); else reset();
+  }
+  async function submitRestriction(member: CommunityMemberView) {
+    setError("");
+    try { await restrict.mutateAsync({ id: community.id, userId: member.user.id, input: { type, durationDays: days, reason: reason.trim() } }); toast.success(t("Member restricted")); close(); }
+    catch (failure) { setError(requestError(failure, t("Could not restrict this member."))); }
+  }
+  async function submitLift(member: CommunityMemberView, restrictionId: string) {
+    setError("");
+    try { await lift.mutateAsync({ id: community.id, userId: member.user.id, restrictionId }); toast.success(t("Restriction lifted")); close(); }
+    catch (failure) { setError(requestError(failure, t("Could not update this member."))); }
+  }
+
+  return <Dialog open={Boolean(dialog)} onOpenChange={(open) => { if (!open) close(); }}>
+    <DialogContent>
+      {dialog?.kind === "ban" || dialog?.kind === "restore" ? <>
+        <DialogHeader>
+          <DialogTitle>{t(dialog.kind === "ban" ? "Ban this member?" : "Restore access?")}</DialogTitle>
+          <DialogDescription>{name} — {t(dialog.kind === "ban" ? "They will no longer be able to post or reply here until access is restored." : "They will be able to take part in this community again.")}</DialogDescription>
+        </DialogHeader>
+        {error ? <p role="alert" className="text-sm text-red-600">{error}</p> : null}
+        <DialogFooter>
+          <Button variant="ghost" className="min-h-11" onClick={close}>{t("Cancel")}</Button>
+          <Button variant={dialog.kind === "ban" ? "destructive" : "default"} className="min-h-11" disabled={updating} onClick={() => void submitBanOrRestore(dialog.member, dialog.kind === "ban" ? "banned" : "active")}>{t(updating ? "Working…" : dialog.kind === "ban" ? "Ban member" : "Restore access")}</Button>
+        </DialogFooter>
+      </> : dialog?.kind === "restrict" ? <>
+        <DialogHeader>
+          <DialogTitle>{t("Restrict this member")}</DialogTitle>
+          <DialogDescription>{name} — {t("The restriction applies in this community only and ends by itself.")}</DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="space-y-2 text-sm"><span className="font-medium">{t("Restriction type")}</span>
+            <select value={type} onChange={(event) => setType(event.target.value as CommunityRestrictionType)} className="h-11 w-full rounded-md border bg-background px-3 text-sm">
+              {(Object.keys(RESTRICTION_LABELS) as CommunityRestrictionType[]).map((value) => <option key={value} value={value}>{t(RESTRICTION_LABELS[value])}</option>)}
+            </select></label>
+          <label className="space-y-2 text-sm"><span className="font-medium">{t("Duration")}</span>
+            <select value={days} onChange={(event) => setDays(Number(event.target.value) as 1 | 7 | 30)} className="h-11 w-full rounded-md border bg-background px-3 text-sm">
+              {DURATIONS.map((value) => <option key={value} value={value}>{t(`${value} ${value === 1 ? "day" : "days"}`)}</option>)}
+            </select></label>
+        </div>
+        <label className="space-y-2 text-sm"><span className="font-medium">{t("Reason")}</span>
+          <Input value={reason} maxLength={500} onChange={(event) => setReason(event.target.value)} placeholder={t("Reason (at least 3 characters)")} className="h-11" aria-describedby="restrict-reason-hint" /></label>
+        {reason.trim().length < 3 ? <p id="restrict-reason-hint" role="status" className="text-sm text-muted-foreground">{t("Enter a reason of at least 3 characters to continue.")}</p> : null}
+        {error ? <p role="alert" className="text-sm text-red-600">{error}</p> : null}
+        <DialogFooter>
+          <Button variant="ghost" className="min-h-11" onClick={close}>{t("Cancel")}</Button>
+          <Button className="min-h-11" disabled={reason.trim().length < 3 || restrict.isPending} onClick={() => void submitRestriction(dialog.member)}>{t(restrict.isPending ? "Working…" : "Restrict member")}</Button>
+        </DialogFooter>
+      </> : dialog?.kind === "lift" ? <>
+        <DialogHeader>
+          <DialogTitle>{t("Lift this restriction?")}</DialogTitle>
+          <DialogDescription>{name} — {t(RESTRICTION_LABELS[dialog.restriction.type] ?? dialog.restriction.type)}. {t("The member will be able to post again straight away.")}</DialogDescription>
+        </DialogHeader>
+        {error ? <p role="alert" className="text-sm text-red-600">{error}</p> : null}
+        <DialogFooter>
+          <Button variant="ghost" className="min-h-11" onClick={close}>{t("Cancel")}</Button>
+          <Button className="min-h-11" disabled={lift.isPending} onClick={() => void submitLift(dialog.member, dialog.restriction.id)}>{t(lift.isPending ? "Working…" : "Lift restriction")}</Button>
+        </DialogFooter>
+      </> : null}
+    </DialogContent>
+  </Dialog>;
 }
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {

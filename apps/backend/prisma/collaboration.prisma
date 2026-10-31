@@ -395,6 +395,8 @@ model ForumPost {
   isPinned            Boolean   @default(false) @map("is_pinned")
   pinnedAt            DateTime? @map("pinned_at") @db.Timestamptz(6)
   editedAt            DateTime? @map("edited_at") @db.Timestamptz(6)
+  autoHideExemptAt    DateTime? @map("auto_hide_exempt_at") @db.Timestamptz(6)
+  bodyHash            String?   @map("body_hash") @db.VarChar(64)
   createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -403,6 +405,7 @@ model ForumPost {
 
   @@index([communityId, status, isPinned, updatedAt])
   @@index([researchCommunityId, status, createdAt(sort: Desc)])
+  @@index([authorId, bodyHash, createdAt])
   @@index([status, isPinned, lastActivityAt])
   @@index([researchGapId, status, createdAt])
   @@index([type, status, createdAt])
@@ -436,6 +439,7 @@ model ForumComment {
   score             Int       @default(0)
   voteScore         Int       @default(0) @map("vote_score")
   editedAt          DateTime? @map("edited_at") @db.Timestamptz(6)
+  autoHideExemptAt  DateTime? @map("auto_hide_exempt_at") @db.Timestamptz(6)
   createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -517,7 +521,8 @@ model ForumThreadFollow {
 
 model ForumModerationAction {
   id             String   @id @default(uuid()) @db.Uuid
-  actorId        String   @map("actor_id") @db.Uuid
+  /// Null for system actions such as auto-hide.
+  actorId        String?  @map("actor_id") @db.Uuid
   communityId    String?  @map("community_id") @db.Uuid
   postId         String?  @map("post_id") @db.Uuid
   commentId      String?  @map("comment_id") @db.Uuid
@@ -599,6 +604,7 @@ model ContentReport {
   postId             String?   @map("post_id") @db.Uuid
   commentId          String?   @map("comment_id") @db.Uuid
   communityId        String?   @map("community_id") @db.Uuid
+  researchCommunityId String?  @map("research_community_id") @db.Uuid
   targetType         String    @default("THREAD") @map("target_type") @db.VarChar(16)
   targetId           String?   @map("target_id") @db.Uuid
   reason             String    @db.VarChar(32)
@@ -620,6 +626,7 @@ model ContentReport {
   updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@index([communityId, status, createdAt])
+  @@index([researchCommunityId, status, createdAt])
   @@index([reporterId, status])
   @@index([assignedToId, status, createdAt])
   @@index([targetType, targetId, status])

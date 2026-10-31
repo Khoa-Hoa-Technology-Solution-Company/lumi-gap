@@ -1,33 +1,20 @@
 import type { UserRole } from "@trend/shared-types";
 import { Prisma } from "../../generated/prisma/client.js";
 import { AppError } from "../../common/exceptions/app-error.js";
-import { parseDatabaseId } from "../../infrastructure/database/database-id.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
 
 export type ForumViewer = { userId?: string; role?: UserRole };
 
-/** Tokens carry either the UUID or a legacy Mongo id; an unknown user simply has no memberships. */
-async function viewerUuid(value: string | undefined): Promise<string | undefined> {
-  const parsed = value ? parseDatabaseId(value) : null;
-  if (!parsed) return undefined;
-  if (parsed.kind === "uuid") return parsed.value;
-  return (await getPrisma().user.findUnique({ where: { legacyMongoId: parsed.value }, select: { id: true } }))?.id;
-}
-
 /**
- * Research communities whose posts this viewer must not see: every non-category community that is not
- * public (anything unknown fails closed) and that the viewer is not an active member of. Admins see all.
- * This is the single source of truth behind `forumPostVisibilityWhere` and `forumPostVisibilitySql`.
+ * Research communities whose posts this viewer must not see. Every research community is public, so only
+ * communities that are not readable by status (proposals under review or rejected) are locked; posts cannot
+ * normally exist there, so this is defensive. Admins see all. No membership lookup: the viewer is unused
+ * but kept so callers do not change. Single source of truth behind `forumPostVisibilityWhere` and `forumPostVisibilitySql`.
  */
 export async function forumLockedResearchCommunityIds(viewer: ForumViewer): Promise<string[]> {
   if (viewer.role === "admin") return [];
-  const prisma = getPrisma();
-  const userId = await viewerUuid(viewer.userId);
-  const memberships = userId
-    ? await prisma.communityMembership.findMany({ where: { userId, status: "active" }, select: { communityId: true } })
-    : [];
-  const rows = await prisma.community.findMany({
-    where: { isForumCategory: false, visibility: { not: "public" }, id: { notIn: memberships.map((row) => row.communityId) } },
+  const rows = await getPrisma().community.findMany({
+    where: { isForumCategory: false, status: { in: ["PENDING_APPROVAL", "REJECTED"] } },
     select: { id: true },
   });
   return rows.map((row) => row.id);
@@ -36,7 +23,7 @@ export async function forumLockedResearchCommunityIds(viewer: ForumViewer): Prom
 /**
  * The ONE visibility rule for forum posts scoped to a research community. Add it to the `where` of every
  * read of `forum_posts`: a post is visible when it has no research community, or when that community is
- * public or the viewer is an active member (admins see everything).
+ * readable (ACTIVE or ARCHIVED). Admins see everything.
  */
 export async function forumPostVisibilityWhere(viewer: ForumViewer): Promise<Prisma.ForumPostWhereInput> {
   const locked = await forumLockedResearchCommunityIds(viewer);
@@ -51,8 +38,8 @@ export async function forumPostVisibilitySql(viewer: ForumViewer, alias: string)
 }
 
 /**
- * Keeps only the reports whose target post this viewer may read. A category moderator is not necessarily a member
- * of the research community the reported post belongs to, so the queue must not show them a private post's text.
+ * Keeps only the reports whose target post this viewer may read. Posts of communities that are not readable
+ * (proposals under review) never reach the queue.
  */
 export async function filterReportsByPostVisibility<T extends { postId?: string | null; commentId?: string | null }>(reports: T[], viewer: ForumViewer): Promise<T[]> {
   if (viewer.role === "admin" || !reports.length) return reports;

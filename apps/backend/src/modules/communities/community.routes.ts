@@ -14,6 +14,8 @@ import {
   lookupParamsSchema,
   memberParamsSchema,
   publicMembersQuerySchema,
+  restrictMemberSchema,
+  restrictionParamsSchema,
   reviewSchema,
   suggestQuerySchema,
   transferOwnershipSchema,
@@ -46,7 +48,7 @@ communityRouter.patch("/:id", requireAuth, validate(idParamsSchema, "params"), v
 communityRouter.patch("/:id/status", requireAuth, validate(idParamsSchema, "params"), validate(communityStatusSchema), communityController.setStatus);
 communityRouter.post("/:id/resubmit", requireAuth, validate(idParamsSchema, "params"), communityController.resubmit);
 communityRouter.post("/:id/transfer-ownership", requireAuth, validate(idParamsSchema, "params"), validate(transferOwnershipSchema), communityController.transferOwnership);
-communityRouter.get("/:id/members/public", optionalAuth, validate(idParamsSchema, "params"), validate(publicMembersQuerySchema, "query"), communityController.publicMembers);
+communityRouter.get("/:id/members/public", requireAuth, validate(idParamsSchema, "params"), validate(publicMembersQuerySchema, "query"), communityController.publicMembers);
 communityRouter.get("/:id/related-papers", optionalAuth, validate(idParamsSchema, "params"), communityController.relatedPapers);
 communityRouter.get("/:id/related-gaps", optionalAuth, validate(idParamsSchema, "params"), communityController.relatedGaps);
 communityRouter.post("/:id/review", requireAuth, validate(idParamsSchema, "params"), validate(reviewSchema), communityController.review);
@@ -56,3 +58,5 @@ communityRouter.post("/:id/summary", requireAuth, requirePermission("ai-run:crea
 communityRouter.get("/:id/summary", requireAuth, validate(idParamsSchema, "params"), communityController.summaryStatus);
 communityRouter.get("/:id/members", requireAuth, validate(idParamsSchema, "params"), communityController.listMembers);
 communityRouter.patch("/:id/members/:userId", requireAuth, validate(memberParamsSchema, "params"), validate(updateMemberSchema), communityController.updateMember);
+communityRouter.post("/:id/members/:userId/restrictions", requireAuth, validate(memberParamsSchema, "params"), validate(restrictMemberSchema), communityController.restrictMember);
+communityRouter.delete("/:id/members/:userId/restrictions/:restrictionId", requireAuth, validate(restrictionParamsSchema, "params"), communityController.liftRestriction);

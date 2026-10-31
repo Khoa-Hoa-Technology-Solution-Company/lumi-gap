@@ -147,6 +147,10 @@ const EnvSchema = z.object({
   FORUM_RATE_LIMIT_UNVERIFIED: z.coerce.number().int().min(1).max(1000).default(10),
   FORUM_RATE_LIMIT_VERIFIED: z.coerce.number().int().min(1).max(5000).default(60),
   FORUM_COPYRIGHT_PUBLIC_RATE_LIMIT: z.coerce.number().int().min(1).max(100).default(3),
+  FORUM_AUTO_HIDE_REPORT_THRESHOLD: z.coerce.number().int().min(2).max(100).default(3),
+  FORUM_AUTO_HIDE_MIN_ACCOUNT_AGE_HOURS: z.coerce.number().int().min(0).max(8760).default(24),
+  FORUM_NEW_ACCOUNT_MAX_LINKS: z.coerce.number().int().min(0).max(100).default(2),
+  FORUM_DUPLICATE_WINDOW_MINUTES: z.coerce.number().int().min(1).max(10080).default(60),
   FORUM_ALLOW_SOLE_ADMIN_APPEAL_REVIEW: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
 
   OPENALEX_MAILTO: optionalEnvEmail,

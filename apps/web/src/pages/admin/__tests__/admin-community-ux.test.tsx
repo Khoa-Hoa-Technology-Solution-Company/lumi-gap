@@ -85,13 +85,13 @@ describe("admin communities page", () => {
     expect(link?.textContent).not.toMatch(/Open reports\s*0/);
   });
 
-  it("orders communities by status, filters by status and badges private ones", async () => {
+  it("orders communities by status, filters by status and shows no visibility badge", async () => {
     await render("/admin/community", <AdminCommunityPage />);
     expect(rowNames()).toEqual(["Beta", "Zeta", "Gamma", "Alpha"]);
     const zeta = Array.from(container.querySelectorAll(".divide-y > div")).find((row) => row.textContent?.includes("Zeta"));
     const beta = Array.from(container.querySelectorAll(".divide-y > div")).find((row) => row.textContent?.includes("Beta"));
-    expect(zeta?.textContent).toContain("Private");
-    expect(beta?.textContent).toContain("Public");
+    expect(zeta?.textContent).not.toMatch(/Private|Public/);
+    expect(beta?.textContent).not.toMatch(/Private|Public/);
     await act(async () => button("Rejected")!.click());
     expect(rowNames()).toEqual(["Alpha"]);
   });

@@ -4,7 +4,6 @@ import { objectIdSchema, paginationSchema } from "../../../common/validation/dat
 export const communityCreateSchema = z.object({
   name: z.string().trim().min(2).max(120),
   description: z.string().trim().max(2000).optional(),
-  visibility: z.enum(["public", "private"]).optional(),
   rules: z.array(z.string().trim().min(1).max(300)).max(30).optional(),
   researchTopics: z.array(z.string().trim().min(1).max(120)).max(50).optional(),
   researchField: z.string().trim().min(2).max(160).optional(),
@@ -52,7 +51,16 @@ export const publicMembersQuerySchema = z.object({
 
 export const updateMemberSchema = z.object({
   role: z.enum(["moderator", "member"]).optional(),
-  status: z.enum(["active", "declined", "banned"]).optional(),
+  status: z.enum(["active", "banned"]).optional(),
 }).refine((value) => value.role !== undefined || value.status !== undefined);
+
+export const restrictionParamsSchema = z.object({ id: objectIdSchema, userId: objectIdSchema, restrictionId: z.string().uuid() });
+
+/** A moderator restricts one member in this community only, for a fixed time. */
+export const restrictMemberSchema = z.object({
+  type: z.enum(["CREATE_THREAD", "REPLY", "POSTING"]),
+  durationDays: z.union([z.literal(1), z.literal(7), z.literal(30)]),
+  reason: z.string().trim().min(3).max(500),
+}).strict();
 
 export type CommunityListQuery = z.infer<typeof listQuerySchema>;

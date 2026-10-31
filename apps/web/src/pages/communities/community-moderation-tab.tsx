@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { useForumPosts, useModerateForumContent, type CommunityView, type ForumPostView } from "@/features/forum";
+import { ForumModerationQueue, useForumPosts, useModerateForumContent, type CommunityView, type ForumPostView } from "@/features/forum";
 import { useI18n } from "@/i18n";
 
 type Action = "THREAD_PINNED" | "THREAD_UNPINNED" | "THREAD_LOCKED" | "THREAD_UNLOCKED" | "THREAD_HIDDEN" | "THREAD_RESTORED";
@@ -56,5 +56,6 @@ export function CommunityModerationTab({ community, frozen }: { community: Commu
         </DialogFooter>
       </DialogContent>
     </Dialog>
+    <div className="mt-10 border-t pt-7"><ForumModerationQueue communityId={community.id} /></div>
   </section>;
 }

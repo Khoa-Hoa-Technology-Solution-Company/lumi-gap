@@ -5,7 +5,7 @@ import { getPrisma } from "../../../infrastructure/database/prisma.js";
 import { publicForumActivity } from "../../academic-profiles/academic-forum-activity.service.js";
 import { forumCategoryService } from "../forum-category.service.js";
 import { forumService } from "../forum.service.js";
-import { forumPostVisibilityWhere } from "../forum-visibility.js";
+import { forumLockedResearchCommunityIds } from "../forum-visibility.js";
 import { communitySummaryService } from "../../communities/community-summary.service.js";
 import { forumModerationService } from "../forum-moderation.service.js";
 
@@ -26,17 +26,17 @@ describe.sequential("forum posts scoped to a research community", () => {
   const communityIds: string[] = [];
   const postIds: string[] = [];
   const gapIds: string[] = [];
-  const ids = { admin: "", author: "", writer: "", mod: "", otherMod: "", catMod: "", banned: "", bannedPriv: "", pendingPriv: "", outsider: "" };
-  const c = { category: "", priv: "", pub: "", other: "" };
-  const posts = { priv: "", pub: "", otherPriv: "", extra: "", adminPub: "" };
+  const ids = { admin: "", author: "", writer: "", mod: "", otherMod: "", catMod: "", banned: "", bannedPriv: "", newcomer: "", outsider: "" };
+  const c = { category: "", priv: "", pub: "", other: "", join: "" };
+  const posts = { priv: "", pub: "", otherPriv: "", extra: "", adminPub: "", joined: "", bannedTry: "" };
   const gaps = { outsider: "", author: "" };
 
   const makeUser = async (key: keyof typeof ids, data: Record<string, unknown> = {}) => {
-    const user = await getPrisma().user.create({ data: { email: `frc-${key}-${marker}@example.test`, fullName: `Frc ${key}`, ...data } });
+    const user = await getPrisma().user.create({ data: { email: `frc-${key}-${marker}@example.test`, fullName: `Frc ${key}`, emailVerifiedAt: new Date(), ...data } });
     userIds.push(user.id);
     ids[key] = user.id;
   };
-  const makeCommunity = async (key: "priv" | "pub" | "other", data: Record<string, unknown>) => {
+  const makeCommunity = async (key: "priv" | "pub" | "other" | "join", data: Record<string, unknown>) => {
     const row = await getPrisma().community.create({ data: { name: `Frc ${key} ${marker}`, slug: `frc-${key}-${marker}`, ownerId: ids.author, status: "ACTIVE", ...data } as never });
     communityIds.push(row.id);
     c[key] = row.id;
@@ -55,19 +55,21 @@ describe.sequential("forum posts scoped to a research community", () => {
   beforeAll(async () => {
     const prisma = getPrisma();
     await makeUser("admin", { role: "admin", systemRole: "ADMIN" });
-    for (const key of ["author", "writer", "mod", "otherMod", "catMod", "banned", "bannedPriv", "pendingPriv", "outsider"] as const) await makeUser(key);
+    for (const key of ["author", "writer", "mod", "otherMod", "catMod", "banned", "bannedPriv", "newcomer", "outsider"] as const) await makeUser(key);
     await prisma.academicProfile.create({ data: { userId: ids.writer, profileVisibility: "PUBLIC" } });
     const category = await prisma.community.create({ data: { name: `Frc category ${marker}`, slug: `frc-category-${marker}`, ownerId: ids.admin, status: "ACTIVE", isForumCategory: true } });
     communityIds.push(category.id);
     c.category = category.id;
     await member(c.category, ids.catMod, "moderator");
-    await makeCommunity("priv", { visibility: "private", researchTopics: [word] });
-    await makeCommunity("pub", { visibility: "public" });
-    await makeCommunity("other", { visibility: "private" });
+    await makeCommunity("priv", { researchTopics: [word] });
+    await makeCommunity("pub", {});
+    await makeCommunity("other", {});
+    await makeCommunity("join", {});
     await Promise.all([
-      member(c.priv, ids.author, "owner"), member(c.priv, ids.mod, "moderator"), member(c.priv, ids.writer), member(c.priv, ids.bannedPriv, "member", "banned"), member(c.priv, ids.pendingPriv, "member", "pending"),
+      member(c.priv, ids.author, "owner"), member(c.priv, ids.mod, "moderator"), member(c.priv, ids.writer), member(c.priv, ids.bannedPriv, "member", "banned"),
       member(c.pub, ids.author, "owner"), member(c.pub, ids.writer), member(c.pub, ids.banned, "member", "banned"),
       member(c.other, ids.otherMod, "owner"), member(c.other, ids.author, "member"), member(c.other, ids.writer),
+      member(c.join, ids.author, "owner"), member(c.join, ids.banned, "member", "banned"),
     ]);
     const gap = (userId: string) => prisma.researchGap.create({ data: { topic: `Frc topic ${marker}`, normalizedTopic: `frc-${marker}-${userId.slice(0, 6)}`, title: `Gap about ${word} things`, description: "Candidate gap", rationale: "Test", source: "user", userId, forumShareable: true } });
     gaps.outsider = (await gap(ids.outsider)).id;
@@ -104,16 +106,27 @@ describe.sequential("forum posts scoped to a research community", () => {
     }
   });
 
-  it("only active members (and admins) may post into a community; categories are not research scopes", async () => {
-    await expect(createPost("priv", c.priv, `Outsider ${word}`, ids.outsider)).rejects.toMatchObject({ statusCode: 403 });
+  it("posting joins a non-member automatically; banned users are refused; categories are not research scopes", async () => {
     await expect(createPost("priv", c.category, `Category as scope ${word}`)).rejects.toMatchObject({ statusCode: 400 });
-    await expect(createPost("pub", c.pub, `Banned ${word}`, ids.banned)).rejects.toMatchObject({ statusCode: 403 });
+    await expect(createPost("bannedTry", c.pub, `Banned ${word}`, ids.banned)).rejects.toMatchObject({ statusCode: 403 });
+    expect(await getPrisma().forumPost.count({ where: { researchCommunityId: c.pub, authorId: ids.banned } })).toBe(0);
+
+    const prisma = getPrisma();
+    const activeBefore = await prisma.communityMembership.count({ where: { communityId: c.join, status: "active" } });
+    expect(await prisma.communityMembership.findFirst({ where: { communityId: c.join, userId: ids.newcomer } })).toBeNull();
+    await expect(createPost("bannedTry", c.join, `Banned join ${word}`, ids.banned)).rejects.toMatchObject({ statusCode: 403 });
+    await createPost("joined", c.join, `Newcomer topic ${word}`, ids.newcomer);
+    expect(await prisma.communityMembership.findFirstOrThrow({ where: { communityId: c.join, userId: ids.newcomer } })).toMatchObject({ role: "member", status: "active" });
+    expect((await prisma.community.findUniqueOrThrow({ where: { id: c.join } })).memberCount).toBe(activeBefore + 1);
+    expect((await prisma.forumPost.findUniqueOrThrow({ where: { id: posts.joined } })).researchCommunityId).toBe(c.join);
+
     await createPost("priv", c.priv, `Private topic ${word}`);
     await createPost("pub", c.pub, `Public topic ${word}`);
     await createPost("otherPriv", c.other, `Other private ${word}`);
     const adminPost = await createPost("adminPub", c.pub, `Admin topic ${word}`, ids.admin);
-    expect(adminPost.researchCommunity).toMatchObject({ slug: `frc-pub-${marker}`, visibility: "public" });
-    expect((await getPrisma().forumPost.findUniqueOrThrow({ where: { id: posts.priv } })).researchCommunityId).toBe(c.priv);
+    expect(adminPost.researchCommunity).toEqual({ id: expect.any(String), name: `Frc pub ${marker}`, slug: `frc-pub-${marker}` });
+    expect(await prisma.communityMembership.findFirst({ where: { communityId: c.pub, userId: ids.admin } })).toBeNull(); // admins are not auto-joined
+    expect((await prisma.forumPost.findUniqueOrThrow({ where: { id: posts.priv } })).researchCommunityId).toBe(c.priv);
   });
 
   it("the database trigger refuses a forum category as the research scope", async () => {
@@ -133,112 +146,86 @@ describe.sequential("forum posts scoped to a research community", () => {
     expect(await threadCount()).toBe(1);
   });
 
-  describe("an outsider never sees a private community post", () => {
-    it("feed and search", async () => {
-      expect(await feedIds(ids.outsider, "user")).not.toContain(posts.priv);
-      expect(await feedIds(undefined, undefined)).not.toContain(posts.priv);
-      expect(await feedIds(ids.outsider, "user", { communityId: `frc-category-${marker}` })).not.toContain(posts.priv);
-      expect(await feedIds(ids.outsider, "user")).toContain(posts.pub);
-      for (const sort of ["latest", "popular", "unanswered"] as const) expect(await feedIds(ids.outsider, "user", { sort })).not.toContain(posts.priv);
-      // Members, the community's moderators and admins do see it.
-      for (const [viewer, role] of [[ids.author, "user"], [ids.mod, "user"], [ids.admin, "admin"]] as const) expect(await feedIds(viewer, role)).toContain(posts.priv);
-      // A banned member is not an active member.
-      expect(await feedIds(ids.banned, "user")).not.toContain(posts.otherPriv);
-    });
-
-    it("a banned or pending member is not a member: no feed, search, detail, comments or activity", async () => {
-      for (const viewer of [ids.bannedPriv, ids.pendingPriv]) {
-        expect(await feedIds(viewer, "user")).not.toContain(posts.priv);
-        expect(await feedIds(viewer, "user", { sort: "latest", communityId: `frc-category-${marker}` })).not.toContain(posts.priv);
-        await expect(forumService.getPost(posts.priv, viewer, "user")).rejects.toMatchObject({ statusCode: 404 });
-        await expect(forumService.listComments(posts.priv, 1, 20, viewer, "user")).rejects.toMatchObject({ statusCode: 404 });
-        await expect(forumService.listPosts({ researchCommunityId: `frc-priv-${marker}` }, 1, 20, viewer, "user")).rejects.toMatchObject({ statusCode: 403 });
-        expect((await publicForumActivity(ids.writer, "topics", 1, viewer, "user")).items.map((item) => item.topicId)).not.toContain(posts.priv);
+  describe("any viewer reads research community posts", () => {
+    it("feed and search, including anonymous and banned viewers", async () => {
+      for (const [viewer, role] of [[ids.outsider, "user"], [undefined, undefined], [ids.banned, "user"], [ids.bannedPriv, "user"], [ids.author, "user"], [ids.admin, "admin"]] as const) {
+        const shown = await feedIds(viewer, role);
+        expect(shown).toEqual(expect.arrayContaining([posts.priv, posts.pub, posts.otherPriv]));
       }
+      expect(await feedIds(ids.outsider, "user", { communityId: `frc-category-${marker}` })).toContain(posts.priv);
+      for (const sort of ["latest", "popular", "unanswered"] as const) expect(await feedIds(ids.outsider, "user", { sort })).toContain(posts.priv);
     });
 
-    it("community feed is members-only (403) and works for members", async () => {
-      await expect(forumService.listPosts({ researchCommunityId: `frc-priv-${marker}` }, 1, 20, ids.outsider, "user")).rejects.toMatchObject({ statusCode: 403 });
-      await expect(forumService.listPosts({ researchCommunityId: `frc-priv-${marker}` }, 1, 20)).rejects.toMatchObject({ statusCode: 403 });
-      expect((await forumService.listPosts({ researchCommunityId: `frc-priv-${marker}` }, 1, 20, ids.author, "user")).data.map((row) => row.id)).toEqual([posts.priv]);
-      expect((await forumService.listPosts({ researchCommunityId: `frc-pub-${marker}` }, 1, 20, ids.outsider, "user")).data.map((row) => row.id)).toContain(posts.pub);
+    it("community feed is open to everyone", async () => {
+      const ofCommunity = async (slug: string, viewer?: string, role?: "user" | "admin") => (await forumService.listPosts({ researchCommunityId: slug }, 1, 20, viewer, role)).data.map((row) => row.id);
+      expect(await ofCommunity(`frc-priv-${marker}`)).toEqual([posts.priv]);
+      expect(await ofCommunity(`frc-priv-${marker}`, ids.outsider, "user")).toEqual([posts.priv]);
+      expect(await ofCommunity(`frc-priv-${marker}`, ids.bannedPriv, "user")).toEqual([posts.priv]);
+      expect(await ofCommunity(`frc-pub-${marker}`, ids.outsider, "user")).toContain(posts.pub);
     });
 
-    it("post detail, comments, views and reactions (404)", async () => {
-      await expect(forumService.getPost(posts.priv, ids.outsider, "user")).rejects.toMatchObject({ statusCode: 404 });
-      await expect(forumService.getPost(posts.priv)).rejects.toMatchObject({ statusCode: 404 });
-      await expect(forumService.listComments(posts.priv, 1, 20, ids.outsider, "user")).rejects.toMatchObject({ statusCode: 404 });
-      await expect(forumService.recentViews(posts.priv, ids.outsider, "user")).rejects.toMatchObject({ statusCode: 404 });
-      await expect(forumService.reactionPeople("topic", posts.priv, undefined, 1, 20, ids.outsider, "user")).rejects.toMatchObject({ statusCode: 404 });
-      await expect(forumService.listPostRevisions(posts.priv, ids.outsider, "user")).rejects.toMatchObject({ statusCode: 404 });
-      expect((await forumService.getPost(posts.priv, ids.author, "user")).id).toBe(posts.priv);
-      expect((await forumService.getPost(posts.priv, ids.admin, "admin")).id).toBe(posts.priv);
+    it("post detail, comments, views and reactions are readable", async () => {
+      expect((await forumService.getPost(posts.priv, ids.outsider, "user")).id).toBe(posts.priv);
+      expect((await forumService.getPost(posts.priv)).id).toBe(posts.priv);
+      expect((await forumService.getPost(posts.priv, ids.bannedPriv, "user")).id).toBe(posts.priv);
+      await expect(forumService.listComments(posts.priv, 1, 20, ids.outsider, "user")).resolves.toBeDefined();
+      await expect(forumService.recentViews(posts.priv, ids.outsider, "user")).resolves.toBeDefined();
+      await expect(forumService.reactionPeople("topic", posts.priv, undefined, 1, 20, ids.outsider, "user")).resolves.toBeDefined();
     });
 
-    it("writes: comment, vote, react and follow are refused as if the post did not exist", async () => {
-      await expect(forumService.addComment(posts.priv, { content: "Let me in" }, ids.outsider, "user")).rejects.toMatchObject({ statusCode: 404 });
-      await expect(forumService.vote("post", posts.priv, 1, ids.outsider, "user")).rejects.toMatchObject({ statusCode: 404 });
-      await expect(forumService.react("post", posts.priv, "LIKE", true, ids.outsider, "user")).rejects.toMatchObject({ statusCode: 404 });
-      await expect(forumService.follow(posts.priv, ids.outsider, true)).rejects.toMatchObject({ statusCode: 404 });
+    it("signed-in non-members comment and react; banned members cannot", async () => {
+      await expect(forumService.addComment(posts.priv, { content: "Hello from outside" }, ids.outsider, "user")).resolves.toMatchObject({ content: expect.stringContaining("Hello from outside") });
+      await expect(forumService.react("post", posts.priv, "LIKE", true, ids.outsider, "user")).resolves.toBeDefined();
+      await expect(forumService.addComment(posts.priv, { content: "banned reply" }, ids.bannedPriv, "user")).rejects.toMatchObject({ statusCode: 403 });
+      await expect(forumService.react("post", posts.priv, "LIKE", true, ids.bannedPriv, "user")).rejects.toMatchObject({ statusCode: 403 });
     });
 
     it("related threads and discovery", async () => {
-      await expect(forumService.postDiscovery(posts.priv, ids.outsider, "user")).rejects.toMatchObject({ statusCode: 404 });
       const asOutsider = await forumService.postDiscovery(posts.pub, ids.outsider, "user");
-      const shown = [...asOutsider.related, ...asOutsider.suggested].map((row) => row.id);
-      expect(shown).not.toContain(posts.priv);
-      const asMember = await forumService.postDiscovery(posts.pub, ids.author, "user");
-      expect([...asMember.related, ...asMember.suggested].map((row) => row.id)).toContain(posts.priv);
+      expect([...asOutsider.related, ...asOutsider.suggested].map((row) => row.id)).toContain(posts.priv);
     });
 
     it("tag suggestions", async () => {
-      const tag = `ztag-${marker}-priv`;
-      expect((await forumService.tagOptions(tag, ids.outsider, "user")).map((row) => row.slug)).toEqual([]);
-      expect((await forumService.tagOptions(tag, ids.author, "user")).length).toBe(1);
+      expect((await forumService.tagOptions(`ztag-${marker}-priv`, ids.outsider, "user")).length).toBe(1);
       expect((await forumService.tagOptions(`ztag-${marker}-pub`, ids.outsider, "user")).length).toBe(1);
     });
 
     it("user forum activity", async () => {
-      const topicTitles = async (viewer?: string, role?: "user" | "admin") => (await publicForumActivity(ids.writer, "topics", 1, viewer, role)).items.map((item) => item.topicId);
-      expect(await topicTitles(ids.outsider, "user")).not.toContain(posts.priv);
-      expect(await topicTitles()).not.toContain(posts.priv);
-      expect(await topicTitles(ids.outsider, "user")).toContain(posts.pub);
-      expect(await topicTitles(ids.mod, "user")).toContain(posts.priv);
-      expect(await topicTitles(ids.admin, "admin")).toContain(posts.priv);
+      const topicIds = async (viewer?: string, role?: "user" | "admin") => (await publicForumActivity(ids.writer, "topics", 1, viewer, role)).items.map((item) => item.topicId);
+      for (const [viewer, role] of [[ids.outsider, "user"], [undefined, undefined], [ids.mod, "user"], [ids.admin, "admin"]] as const) {
+        expect(await topicIds(viewer, role)).toEqual(expect.arrayContaining([posts.priv, posts.pub]));
+      }
     });
 
-    it("category counters", async () => {
+    it("category counters are the same for every viewer", async () => {
       const count = async (viewer?: string, role?: "user" | "admin") => (await forumCategoryService.list(false, role, viewer)).find((row) => row.id === c.category)?.topicCount;
       const outsiderCount = await count(ids.outsider, "user");
-      const memberCount = await count(ids.author, "user");
-      // priv and otherPriv are both private research communities the author belongs to.
-      expect(memberCount! - outsiderCount!).toBe(2);
-      expect(await count(ids.admin, "admin")).toBe(memberCount);
+      expect(outsiderCount).toBeGreaterThanOrEqual(3);
+      expect(await count(ids.author, "user")).toBe(outsiderCount);
+      expect(await count(ids.admin, "admin")).toBe(outsiderCount);
     });
 
     it("gap discussion drawer", async () => {
       const outsiderView = await forumService.gapDiscussionContext(gaps.outsider, ids.outsider, "user");
-      const shown = outsiderView.discussions.map((row) => row.id);
-      expect(shown).toContain(posts.pub);
-      expect(shown).not.toContain(posts.priv);
-      const memberView = await forumService.gapDiscussionContext(gaps.author, ids.writer, "user");
-      expect(memberView.discussions.map((row) => row.id)).toContain(posts.priv);
+      expect(outsiderView.discussions.map((row) => row.id)).toEqual(expect.arrayContaining([posts.pub, posts.priv]));
     });
 
-    it("the moderation queue hides reports of a private post from a category moderator who is not a member", async () => {
+    it("reports: any reader may report, and the category moderator sees the report", async () => {
       await forumModerationService.createReport({ targetType: "post", targetId: posts.priv, reason: "SPAM" }, ids.author);
-      await expect(forumModerationService.createReport({ targetType: "post", targetId: posts.priv, reason: "SPAM" }, ids.outsider)).rejects.toMatchObject({ statusCode: 404 });
+      await expect(forumModerationService.createReport({ targetType: "post", targetId: posts.priv, reason: "SPAM" }, ids.outsider)).resolves.toBeDefined();
       const targets = async (viewer: string, role: "user" | "admin") => (await forumModerationService.listQueue(viewer, role, "all", c.category)).map((row) => row.postId);
-      const privPublicId = (await getPrisma().forumPost.findUniqueOrThrow({ where: { id: posts.priv } })).id;
-      expect(await targets(ids.catMod, "user")).not.toContain(privPublicId);
-      expect(await targets(ids.admin, "admin")).toContain(privPublicId);
-      const listed = await forumService.listReports(c.category, "all", ids.catMod, "user");
-      expect(listed.map((row) => row.postId)).not.toContain(privPublicId);
+      expect(await targets(ids.catMod, "user")).toContain(posts.priv);
+      expect(await targets(ids.admin, "admin")).toContain(posts.priv);
     });
 
-    it("the builder is a no-op for admins and for posts without a research community", async () => {
-      expect(await forumPostVisibilityWhere({ role: "admin" })).toEqual({});
-      expect(await forumPostVisibilityWhere({ userId: ids.outsider, role: "user" })).toMatchObject({ OR: [{ researchCommunityId: null }, { researchCommunityId: { notIn: expect.arrayContaining([c.priv, c.other]) } }] });
+    it("only communities that are not readable by status are locked", async () => {
+      expect(await forumLockedResearchCommunityIds({ role: "admin" })).toEqual([]);
+      const locked = await forumLockedResearchCommunityIds({ userId: ids.outsider, role: "user" });
+      expect(locked).not.toContain(c.priv);
+      expect(locked).not.toContain(c.other);
+      const proposal = await getPrisma().community.create({ data: { name: `Frc proposal ${marker}`, slug: `frc-proposal-${marker}`, ownerId: ids.author, status: "PENDING_APPROVAL" } });
+      communityIds.push(proposal.id);
+      expect(await forumLockedResearchCommunityIds({ userId: ids.outsider, role: "user" })).toContain(proposal.id);
     });
   });
 
@@ -253,19 +240,19 @@ describe.sequential("forum posts scoped to a research community", () => {
     expect((await forumService.getPost(posts.pub, ids.mod, "user")).canModerate).toBe(false);
   });
 
-  it("a banned member cannot comment; members and outsiders of a public community can", async () => {
+  it("a banned member cannot comment; members and outsiders of a community can", async () => {
     await expect(forumService.addComment(posts.pub, { content: "banned reply" }, ids.banned, "user")).rejects.toMatchObject({ statusCode: 403 });
     await expect(forumService.react("post", posts.pub, "LIKE", true, ids.banned, "user")).rejects.toMatchObject({ statusCode: 403 });
     expect((await forumService.addComment(posts.pub, { content: "outsider reply" }, ids.outsider, "user")).content).toContain("outsider reply");
     expect((await forumService.addComment(posts.priv, { content: "member reply" }, ids.author, "user")).content).toContain("member reply");
   });
 
-  it("comment notifications skip people who can no longer read a private post", async () => {
+  it("comment notifications reach every watching follower, member or not", async () => {
     await getPrisma().forumThreadFollow.create({ data: { postId: posts.priv, userId: ids.outsider, notificationLevel: "WATCHING" } });
-    await forumService.addComment(posts.priv, { content: "notify the readers only" }, ids.mod, "user");
+    await forumService.addComment(posts.priv, { content: "notify the followers" }, ids.mod, "user");
     const notified = await getPrisma().notification.findMany({ where: { targetUuid: posts.priv, userId: { in: [ids.outsider, ids.writer] } }, select: { userId: true } });
     expect(notified.map((row) => row.userId)).toContain(ids.writer);
-    expect(notified.map((row) => row.userId)).not.toContain(ids.outsider);
+    expect(notified.map((row) => row.userId)).toContain(ids.outsider);
   });
 
   it("community summary reads the community's own posts", async () => {
@@ -287,19 +274,28 @@ describe.sequential("forum posts scoped to a research community", () => {
     await getPrisma().community.update({ where: { id: c.pub }, data: { status: "ACTIVE" } });
   });
 
-  it("leaving a private community hides its posts from that member immediately", async () => {
+  it("membership never changes who can read the posts", async () => {
     await member(c.priv, ids.outsider);
     expect(await feedIds(ids.outsider, "user")).toContain(posts.priv);
     await getPrisma().communityMembership.deleteMany({ where: { communityId: c.priv, userId: ids.outsider } });
-    expect(await feedIds(ids.outsider, "user")).not.toContain(posts.priv);
-    await expect(forumService.getPost(posts.priv, ids.outsider, "user")).rejects.toMatchObject({ statusCode: 404 });
+    expect(await feedIds(ids.outsider, "user")).toContain(posts.priv);
+    expect((await forumService.getPost(posts.priv, ids.outsider, "user")).id).toBe(posts.priv);
   });
 
-  it("hard-deleting a community that still has posts is refused, and the posts stay private", async () => {
+  it("an archived community's posts stay readable by anonymous viewers", async () => {
+    await getPrisma().community.update({ where: { id: c.other }, data: { status: "ARCHIVED" } });
+    try {
+      expect((await forumService.getPost(posts.otherPriv)).id).toBe(posts.otherPriv);
+      expect((await forumService.listPosts({ researchCommunityId: `frc-other-${marker}` }, 1, 20)).data.map((row) => row.id)).toContain(posts.otherPriv);
+    } finally {
+      await getPrisma().community.update({ where: { id: c.other }, data: { status: "ACTIVE" } });
+    }
+  });
+
+  it("hard-deleting a community that still has posts is refused, and the posts stay readable", async () => {
     await expect(getPrisma().community.delete({ where: { id: c.priv } })).rejects.toThrow();
     expect((await getPrisma().forumPost.findUniqueOrThrow({ where: { id: posts.priv } })).researchCommunityId).toBe(c.priv);
-    expect(await feedIds(ids.outsider, "user")).not.toContain(posts.priv);
-    await expect(forumService.getPost(posts.priv, ids.outsider, "user")).rejects.toMatchObject({ statusCode: 404 });
+    expect((await forumService.getPost(posts.priv, ids.outsider, "user")).id).toBe(posts.priv);
   });
 
   it("migration data step moves leftover posts to the default category and keeps the research scope", async () => {

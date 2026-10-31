@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import type { ForumPostType } from "@trend/shared-types";
+import { isAdminSystemRole, type ForumPostType } from "@trend/shared-types";
 import { ArrowLeft, Maximize2, MessageSquare, Minimize2, Search, Send } from "lucide-react";
+import { isAxiosError } from "axios";
 import { toast } from "sonner";
 import { useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -11,11 +12,12 @@ import { ForumBodyEditor } from "@/features/forum/components/forum-body-editor";
 import { ForumDoiLookup } from "@/features/forum/components/forum-doi-lookup";
 import { ForumTagInput } from "@/features/forum/components/forum-tag-input";
 import { ForumSidebar } from "@/features/forum/components/forum-sidebar";
-import { useCommunityList, useCreateForumPost, useForumContext, useForumPaperSearch, useShareForumGap } from "@/features/forum/hooks/use-forum";
+import { useCommunity, useCommunityList, useCreateForumPost, useForumContext, useForumPaperSearch, useShareForumGap } from "@/features/forum/hooks/use-forum";
 import { forumPaperApi, type ForumPaperSearchResult } from "@/features/forum/api/forum-paper.api";
 import type { ForumReferenceView } from "@/features/forum/api/forum.api";
 import { buildForumDiscussionInput, forumCategoryForCommunity, forumInitialDiscussionType, forumDiscussionTags, FORUM_DISCUSSION_TAG_LIMIT } from "@/features/forum/utils/forum-discussion-editor";
 import { useForumCategories } from "@/features/forum/hooks/use-forum-categories";
+import { useCurrentUser } from "@/features/auth";
 import { isValidDoi, normalizeDoi } from "@/features/projects/utils/doi";
 import { useI18n } from "@/i18n";
 import { useAuthStore } from "@/stores/auth-store";
@@ -103,8 +105,20 @@ export function ForumDiscussionComposer({ embedded = false, onClose, onPublished
   const [researchCommunityId, setResearchCommunityId] = useState("");
   const categoryTouched = useRef(false);
   const myCommunitiesQuery = useCommunityList({ scope: "mine", sort: "name" }, isAuthed);
-  // Only ACTIVE communities the user belongs to can receive a post.
   const myCommunities = useMemo(() => (myCommunitiesQuery.data?.pages.flatMap((page) => page.items) ?? []).filter((community) => community.status === "ACTIVE" && community.viewerMembership?.status === "active"), [myCommunitiesQuery.data]);
+  // `?community=<slug|id>` may name a research community the user has not joined yet. A forum category of that name
+  // is already in `joined`, so it is never fetched as a research community. Posting there joins the user.
+  const requestedCommunity = searchParams.get("community");
+  const requestedIsKnown = Boolean(requestedCommunity && (joined.some((item) => item.id === requestedCommunity || item.slug === requestedCommunity) || myCommunities.some((item) => item.id === requestedCommunity || item.slug === requestedCommunity)));
+  const requestedCommunityQuery = useCommunity(isAuthed && communitiesQuery.data && myCommunitiesQuery.data && requestedCommunity && !requestedIsKnown ? requestedCommunity : undefined);
+  // Only ACTIVE communities that are not banned for the user can receive a post (members are listed first, the requested one is added).
+  const postableCommunities = useMemo(() => {
+    const extra = requestedCommunityQuery.data;
+    if (!extra || extra.status !== "ACTIVE" || extra.viewerMembership?.status === "banned" || myCommunities.some((item) => item.id === extra.id)) return myCommunities;
+    return [...myCommunities, extra];
+  }, [myCommunities, requestedCommunityQuery.data]);
+  const { data: currentUser } = useCurrentUser();
+  const emailVerified = Boolean(currentUser?.user?.emailVerifiedAt) || isAdminSystemRole(currentUser?.user?.systemRole);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [tags, setTags] = useState("");
@@ -145,12 +159,12 @@ export function ForumDiscussionComposer({ embedded = false, onClose, onPublished
   }, [communitiesQuery.data, joined, searchParams]);
   // `?community=<slug>` may name a research community (a forum category of that name keeps working above).
   useEffect(() => {
-    if (initializedResearchCommunity.current || !communitiesQuery.data || !myCommunitiesQuery.data) return;
+    if (initializedResearchCommunity.current || !communitiesQuery.data || !myCommunitiesQuery.data || requestedCommunityQuery.isLoading) return;
     initializedResearchCommunity.current = true;
     const requested = searchParams.get("community");
-    const community = myCommunities.find((item) => item.id === requested || item.slug === requested);
+    const community = postableCommunities.find((item) => item.id === requested || item.slug === requested);
     if (community) selectResearchCommunity(community.id);
-  }, [communitiesQuery.data, myCommunitiesQuery.data, myCommunities, searchParams]);
+  }, [communitiesQuery.data, myCommunitiesQuery.data, postableCommunities, requestedCommunityQuery.isLoading, searchParams]);
   useEffect(() => {
     if (initializedGap.current || !context || type !== "RESEARCH_GAP_DISCUSSION") return;
     initializedGap.current = true;
@@ -187,12 +201,15 @@ export function ForumDiscussionComposer({ embedded = false, onClose, onPublished
   function selectResearchCommunity(value: string) {
     setResearchCommunityId(value);
     if (!value || categoryTouched.current) return;
-    const category = forumCategoryForCommunity(myCommunities.find((item) => item.id === value), joined);
+    const category = forumCategoryForCommunity(postableCommunities.find((item) => item.id === value), joined);
     if (category) setCommunityId(category);
   }
   const selectedGap = contextGaps.find((gap) => gap.id === linkedGapId);
   const selectedCommunity = joined.find((community) => community.id === communityId);
-  const canPublish = Boolean(communityId && joined.some((community) => community.id === communityId) && title.trim().length >= 3 && content.trim() && tagInputValid && forumDiscussionTags(tags).length <= FORUM_DISCUSSION_TAG_LIMIT && (type !== "PAPER_DISCUSSION" || linkedPaperId) && (type !== "RESEARCH_GAP_DISCUSSION" || selectedGap?.forumShareable));
+  const selectedResearchCommunity = postableCommunities.find((item) => item.id === researchCommunityId);
+  const willJoin = Boolean(selectedResearchCommunity && selectedResearchCommunity.viewerMembership?.status !== "active");
+  const needsVerifiedEmail = Boolean(researchCommunityId) && !emailVerified;
+  const canPublish = Boolean(communityId && joined.some((community) => community.id === communityId) && title.trim().length >= 3 && content.trim() && tagInputValid && forumDiscussionTags(tags).length <= FORUM_DISCUSSION_TAG_LIMIT && (type !== "PAPER_DISCUSSION" || linkedPaperId) && (type !== "RESEARCH_GAP_DISCUSSION" || selectedGap?.forumShareable) && !needsVerifiedEmail);
   const hasDraft = Boolean(title.trim() || content.trim() || tags.trim() || (type === "PAPER_DISCUSSION" && linkedPaperId) || (type === "RESEARCH_GAP_DISCUSSION" && linkedGapId) || references.length);
   const paperResults = paperLookupQuery.data ?? [];
   const titleNearLimit = title.length >= 200;
@@ -257,8 +274,10 @@ export function ForumDiscussionComposer({ embedded = false, onClose, onPublished
       toast.success(t("Discussion published"));
       if (onPublished) onPublished(post.publicSlug ?? post.id);
       else navigate(forumPostHref(post));
-    } catch {
-      setError(t("Could not publish this discussion. Your draft has been kept. Please try again."));
+    } catch (failure) {
+      // The API explains unverified email, link limit, duplicate post and restrictions: show that next to the Publish button.
+      const message = isAxiosError(failure) ? failure.response?.data?.error?.message : undefined;
+      setError(typeof message === "string" && message ? message : t("Could not publish this discussion. Your draft has been kept. Please try again."));
     } finally { submittingRef.current = false; }
   }
 
@@ -289,13 +308,16 @@ export function ForumDiscussionComposer({ embedded = false, onClose, onPublished
                 {THREAD_TYPES.map((option) => <option key={option.value} value={option.value}>{t(option.label)}</option>)}
               </select>
             </label>
-            {myCommunities.length ? <label className="min-w-0 sm:col-span-2">
+            {postableCommunities.length ? <div className="min-w-0 sm:col-span-2"><label className="block">
               <span className="sr-only">{t("Post in community")}</span>
               <select aria-label={t("Post in community")} value={researchCommunityId} onChange={(event) => selectResearchCommunity(event.target.value)} className={cn(fieldClass, "h-12 rounded-lg font-medium")}>
                 <option value="">{t("Post in community (optional)")}</option>
-                {myCommunities.map((community) => <option key={community.id} value={community.id}>{community.visibility === "private" ? `🔒 ${community.name}` : community.name}</option>)}
+                {postableCommunities.map((community) => <option key={community.id} value={community.id}>{community.name}</option>)}
               </select>
-            </label> : null}
+            </label>
+            {willJoin ? <p role="status" className="mt-2 text-sm text-muted-foreground">{t("Publishing will also make you a member of this community.")}</p> : null}
+            {needsVerifiedEmail ? <p role="alert" className="mt-2 text-sm text-destructive">{t("Verify your email to start discussions in communities.")} <Link to="/verify-email" className="font-medium underline">{t("Verify email")}</Link></p> : null}
+            </div> : null}
           </div>
           <div className="relative min-w-0">
             <label htmlFor="discussion-title" className="sr-only">{t("Discussion title")}</label>
@@ -333,7 +355,7 @@ export function ForumDiscussionComposer({ embedded = false, onClose, onPublished
         </div>
         </div>
         <footer className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-border bg-background px-5 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6">
-          <p className="hidden text-sm text-muted-foreground sm:block">{!selectedCommunity ? t("Select a category before publishing.") : researchCommunityId && myCommunities.find((item) => item.id === researchCommunityId)?.visibility === "private" ? t("Only members of this private community can read this discussion.") : t("Anyone can read this discussion.")}</p>
+          <p className="hidden text-sm text-muted-foreground sm:block">{!selectedCommunity ? t("Select a category before publishing.") : t("Anyone can read this discussion.")}</p>
           <div className="ml-auto flex items-center gap-2">
             <Button type="button" variant="ghost" className="h-11 text-base text-muted-foreground" onClick={cancel}>{t("Discard")}</Button>
             <Button type="submit" disabled={create.isPending || !canPublish} className="h-11 min-w-32 text-base shadow-none"><Send className="h-4 w-4" />{t(create.isPending ? "Publishing…" : "Publish discussion")}</Button>

@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { CheckCircle2, ExternalLink, EyeOff, History, RotateCcw, ShieldAlert, XCircle } from "lucide-react";
+import { CheckCircle2, ExternalLink, EyeOff, History, RotateCcw, ShieldAlert, UserX, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useForumModerationActions, useForumReports, type ForumReportView } from "@/features/forum";
 import { forumApi } from "../api/forum.api";
 import { useI18n } from "@/i18n";
@@ -16,11 +17,13 @@ export function ForumModerationQueue({ communityId }: { communityId?: string }) 
   const reportsQuery = useForumReports(communityId, "all", view === "reports"); const history = useForumModerationActions(communityId, view === "history");
   const reports = { ...reportsQuery, data: reportsQuery.data?.filter((report) => ["open", "claimed", "under_review"].includes(report.status) && !report.requiresAdminReview && report.reason !== "COPYRIGHT_CONCERN") };
   const client = useQueryClient();
-  const decision = useMutation({ mutationFn: async ({ report, action }: { report: ForumReportView; action: "DISMISS_REPORT" | "HIDE_CONTENT" | "RESTORE_CONTENT" | "ESCALATE_REPORT" }) => {
+  const decision = useMutation({ mutationFn: async ({ report, action, durationDays }: { report: ForumReportView; action: "DISMISS_REPORT" | "HIDE_CONTENT" | "RESTORE_CONTENT" | "ESCALATE_REPORT" | "RESTRICT_USER"; durationDays?: 1 | 7 | 30 }) => {
     const claim = await forumApi.claimReport(report.id, report.version);
-    await forumApi.reportAction(report.id, action, { expectedVersion: claim.version, reason: notes[report.id]?.trim() || report.reason });
+    await forumApi.reportAction(report.id, action, { expectedVersion: claim.version, reason: notes[report.id]?.trim() || report.reason, ...(durationDays ? { durationDays } : {}) });
   }, onSettled: async () => { await Promise.all([client.invalidateQueries({ queryKey: ["forum"] }), client.invalidateQueries({ queryKey: ["communities"] }), client.invalidateQueries({ queryKey: ["community"] })]); } });
   const [notes, setNotes] = useState<Record<string, string>>({});
+  const [restrictTarget, setRestrictTarget] = useState<ForumReportView>();
+  const [days, setDays] = useState<1 | 7 | 30>(7);
 
   async function dismiss(report: ForumReportView) {
     try { await decision.mutateAsync({ report, action: "DISMISS_REPORT" }); toast.success(t("Report dismissed")); }
@@ -30,6 +33,12 @@ export function ForumModerationQueue({ communityId }: { communityId?: string }) 
   async function escalate(report: ForumReportView) {
     try { await decision.mutateAsync({ report, action: "ESCALATE_REPORT" }); toast.success(t("Report forwarded for Admin review")); }
     catch { toast.error(t("Could not update this report.")); }
+  }
+
+  /** A moderator restricts the author in this community only, for a fixed number of days (the API requires the duration). */
+  async function restrictAuthor(report: ForumReportView) {
+    try { await decision.mutateAsync({ report, action: "RESTRICT_USER", durationDays: days }); toast.success(t("Author restricted and report resolved")); setRestrictTarget(undefined); }
+    catch { toast.error(t("Could not complete the moderation action.")); }
   }
 
   async function moderateAndResolve(report: ForumReportView) {
@@ -44,11 +53,27 @@ export function ForumModerationQueue({ communityId }: { communityId?: string }) 
     {view === "reports" ? reports.isLoading ? <Loading /> : reports.error ? <ErrorState text={t("Could not load moderation reports.")} /> : reports.data?.length ? <div className="mt-5 space-y-4">{reports.data.map((report) => <article key={report.id} className="rounded-xl border bg-card p-5"><div className="flex flex-wrap items-start justify-between gap-3"><div><div className="flex flex-wrap items-center gap-2"><Badge variant="outline">{t(report.reason)}</Badge><Badge variant="secondary">{t(report.targetType === "post" ? "Thread" : "Response")}</Badge>{report.community ? <span className="text-xs text-muted-foreground">{report.community.name}</span> : null}</div><h3 className="mt-3 font-semibold">{report.target.title || t("Reported response")}</h3><p className="mt-1 line-clamp-3 text-sm leading-6 text-muted-foreground">{report.target.excerpt || t("No preview is available.")}</p></div><Button asChild size="sm" variant="outline"><Link to={forumPostHref({ id: report.postId }) + (report.targetType === "comment" ? "#comment-" + encodeURIComponent(report.targetId) : "")}><ExternalLink className="h-3.5 w-3.5" />{t("Open discussion")}</Link></Button></div>
           <dl className="mt-4 grid gap-2 text-xs text-muted-foreground sm:grid-cols-2"><div><dt className="font-medium text-foreground">{t("Reported by")}</dt><dd>{report.reporter.fullName}</dd></div><div><dt className="font-medium text-foreground">{t("Submitted")}</dt><dd>{new Date(report.createdAt).toLocaleString()}</dd></div></dl>{report.description ? <div className="mt-4 rounded-lg bg-muted/40 p-3 text-sm leading-6"><span className="font-medium">{t("Reporter context")}:</span> {report.description}</div> : null}
           <label className="mt-4 block space-y-2"><span className="text-xs font-medium">{t("Moderator note")}</span><textarea rows={2} maxLength={2000} value={notes[report.id] ?? ""} onChange={(event) => setNotes((current) => ({ ...current, [report.id]: event.target.value }))} className="w-full rounded-md border bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" placeholder={t("Explain the decision for the audit history")} /></label>
-          <div className="mt-4 flex flex-wrap justify-end gap-2"><Button size="sm" variant="outline" disabled={decision.isPending} onClick={() => escalate(report)}><ShieldAlert className="h-4 w-4" />{t("Escalate to Admin")}</Button><Button size="sm" variant="ghost" disabled={decision.isPending} onClick={() => dismiss(report)}><XCircle className="h-4 w-4" />{t("Dismiss report")}</Button><Button size="sm" disabled={decision.isPending} onClick={() => moderateAndResolve(report)}>{report.target.status === "hidden" ? <RotateCcw className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}{t(report.target.status === "hidden" ? "Restore and resolve" : "Hide and resolve")}</Button></div>
+          <div className="mt-4 flex flex-wrap justify-end gap-2"><Button size="sm" variant="outline" disabled={decision.isPending} onClick={() => escalate(report)}><ShieldAlert className="h-4 w-4" />{t("Escalate to Admin")}</Button><Button size="sm" variant="ghost" className="min-h-11 sm:min-h-8" disabled={decision.isPending} onClick={() => dismiss(report)}><XCircle className="h-4 w-4" />{t("Dismiss report")}</Button><Button size="sm" variant="outline" className="min-h-11 text-red-600 sm:min-h-8" disabled={decision.isPending} onClick={() => setRestrictTarget(report)}><UserX className="h-4 w-4" />{t("Restrict author")}</Button><Button size="sm" disabled={decision.isPending} onClick={() => moderateAndResolve(report)}>{report.target.status === "hidden" ? <RotateCcw className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}{t(report.target.status === "hidden" ? "Restore and resolve" : "Hide and resolve")}</Button></div>
         </article>)}</div> : <Empty icon={CheckCircle2} title={t("Moderation queue is clear")} detail={t("There are no open reports in this scope.")} />
-      : history.isLoading ? <Loading /> : history.error ? <ErrorState text={t("Could not load moderation history.")} /> : history.data?.length ? <div className="mt-5 divide-y overflow-hidden rounded-xl border bg-card">{history.data.map((action) => <div key={action.id} className="p-4"><div className="flex flex-wrap items-center gap-2"><Badge variant="outline">{t(action.action)}</Badge>{action.community ? <span className="text-xs text-muted-foreground">{action.community.name}</span> : null}<time className="ml-auto text-xs text-muted-foreground">{new Date(action.createdAt).toLocaleString()}</time></div><p className="mt-2 text-sm"><span className="font-medium">{action.actor.fullName}</span>{action.reason ? ` · ${action.reason}` : ""}</p></div>)}</div> : <Empty icon={History} title={t("No moderation actions yet")} detail={t("Completed actions will appear here for auditability.")} />}
+      : history.isLoading ? <Loading /> : history.error ? <ErrorState text={t("Could not load moderation history.")} /> : history.data?.length ? <div className="mt-5 divide-y overflow-hidden rounded-xl border bg-card">{history.data.map((action) => <div key={action.id} className="p-4"><div className="flex flex-wrap items-center gap-2"><Badge variant="outline">{actionLabel(t, action.action)}</Badge>{action.community ? <span className="text-xs text-muted-foreground">{action.community.name}</span> : null}<time className="ml-auto text-xs text-muted-foreground">{new Date(action.createdAt).toLocaleString()}</time></div><p className="mt-2 text-sm"><span className="font-medium">{action.actor.system ? t("System") : action.actor.fullName}</span>{action.reason ? ` · ${action.reason}` : ""}</p></div>)}</div> : <Empty icon={History} title={t("No moderation actions yet")} detail={t("Completed actions will appear here for auditability.")} />}
+    <Dialog open={Boolean(restrictTarget)} onOpenChange={(open) => { if (!open) setRestrictTarget(undefined); }}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>{t("Restrict the author?")}</DialogTitle><DialogDescription>{t("The author cannot post or reply in this community for the chosen time. The report is resolved.")}</DialogDescription></DialogHeader>
+        <label className="space-y-2 text-sm"><span className="font-medium">{t("Duration")}</span>
+          <select value={days} onChange={(event) => setDays(Number(event.target.value) as 1 | 7 | 30)} className="h-11 w-full rounded-md border bg-background px-3 text-sm">
+            {([1, 7, 30] as const).map((value) => <option key={value} value={value}>{t(`${value} ${value === 1 ? "day" : "days"}`)}</option>)}
+          </select></label>
+        <DialogFooter>
+          <Button variant="ghost" className="min-h-11" onClick={() => setRestrictTarget(undefined)}>{t("Cancel")}</Button>
+          <Button variant="destructive" className="min-h-11" disabled={decision.isPending} onClick={() => restrictTarget && void restrictAuthor(restrictTarget)}>{t(decision.isPending ? "Working…" : "Restrict author")}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   </section>;
 }
+
+/** Raw enum values never reach the screen; system actions get their own wording. */
+function actionLabel(t: (key: string) => string, action: string) { return action === "AUTO_HIDDEN" ? t("Hidden automatically") : t(action); }
 
 function Loading() { return <div className="mt-5 space-y-3">{[0, 1, 2].map((item) => <div key={item} className="h-36 animate-pulse rounded-xl bg-muted" />)}</div>; }
 function ErrorState({ text }: { text: string }) { return <p role="alert" className="mt-5 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{text}</p>; }

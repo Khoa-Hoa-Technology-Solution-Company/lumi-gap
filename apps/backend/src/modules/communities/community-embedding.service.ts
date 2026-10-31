@@ -124,8 +124,7 @@ export interface NearestCommunity {
 }
 
 /**
- * Nearest ACTIVE communities by embedding similarity, public and private alike: a private community is
- * discoverable and the score reveals no topic. Archived communities and forum categories are excluded.
+ * Nearest ACTIVE communities by embedding similarity. Archived communities and forum categories are excluded.
  * Filters must be applied in SQL before LIMIT; post-filtering shrinks the result set (same bug fixed in the
  * retriever, issue #14).
  */

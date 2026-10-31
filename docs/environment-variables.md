@@ -98,6 +98,10 @@ Users can also save multiple personal API connections in Settings → AI Connect
 | `FORUM_COPYRIGHT_EMAIL_VERIFICATION_MINUTES` | `EnvSchema` / backend | Default / optional (see template) |
 | `FORUM_RATE_LIMIT_UNVERIFIED` | `EnvSchema` / backend | Default / optional (see template) |
 | `FORUM_RATE_LIMIT_VERIFIED` | `EnvSchema` / backend | Default / optional (see template) |
+| `FORUM_AUTO_HIDE_REPORT_THRESHOLD` | `EnvSchema` / backend | Default 3 (min 2): distinct eligible reporters that auto-hide a post or comment |
+| `FORUM_AUTO_HIDE_MIN_ACCOUNT_AGE_HOURS` | `EnvSchema` / backend | Default 24: minimum account age for a report to count and for unrestricted links |
+| `FORUM_NEW_ACCOUNT_MAX_LINKS` | `EnvSchema` / backend | Default 2: raw links allowed in a post or comment from a new account |
+| `FORUM_DUPLICATE_WINDOW_MINUTES` | `EnvSchema` / backend | Default 60: window in which an identical discussion body is rejected |
 | `FORUM_COPYRIGHT_PUBLIC_RATE_LIMIT` | `EnvSchema` / backend | Default / optional (see template) |
 | `FORUM_ALLOW_SOLE_ADMIN_APPEAL_REVIEW` | `EnvSchema` / backend | Default / optional (see template) |
 | `SYNC_CRON` | `EnvSchema` / backend | Default / optional (see template) |

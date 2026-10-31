@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { CheckCircle2, LockKeyhole, MessageSquare, Plus, Search, Sparkles, Users } from "lucide-react";
+import { CheckCircle2, MessageSquare, Plus, Search, Sparkles, Users } from "lucide-react";
 import type { CommunitySort } from "@trend/shared-types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -127,7 +127,6 @@ function CommunityRow({ community, t }: { community: CommunityView; t: (key: str
     <div className="min-w-0">
       <div className="flex flex-wrap items-center gap-2">
         <h2 className="text-lg font-semibold group-hover:text-blue-700">{community.name}</h2>
-        {community.visibility === "private" ? <Badge variant="outline" className="gap-1 font-normal"><LockKeyhole className="h-3 w-3" />{t("Private")}</Badge> : null}
         {status ? <Badge variant="outline" className={cn("font-normal", status.className)}>{t(status.label)}</Badge> : null}
         {community.viewerMembership?.status === "active" ? <Badge className="gap-1 border-emerald-200 bg-emerald-50 font-normal text-emerald-700 hover:bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300"><CheckCircle2 className="h-3 w-3" />{t("Joined")}</Badge> : null}
       </div>

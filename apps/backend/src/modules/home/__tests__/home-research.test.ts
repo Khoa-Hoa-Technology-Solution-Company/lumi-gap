@@ -50,7 +50,7 @@ describe.sequential("Research Home real data and access boundaries", () => {
       { projectId: shared, invitedById: other, email: `${user}@home-test.invalid`, expiresAt: new Date(Date.now() + 86400_000) },
       { projectId: privateId, invitedById: other, email: `${user}@home-test.invalid`, expiresAt: new Date(0) },
     ] });
-    await db.community.create({ data: { id: community, name: `Private Home community ${community}`, ownerId: other, slug: `home-${community}`, visibility: "private" } });
+    await db.community.create({ data: { id: community, name: `Private Home community ${community}`, ownerId: other, slug: `home-${community}` } });
     await db.forumPost.createMany({ data: [
       { id: privateTopic, communityId: community, authorId: other, title: "Private Home discussion", body: "Private" },
       { id: hiddenTopic, authorId: other, title: "Hidden Home discussion", body: "Hidden", visibilityStatus: "HIDDEN" },
