@@ -1,9 +1,9 @@
 import { useRef } from "react";
-import type { ScreeningChoice, ScreeningState, ScreeningPaperRow } from "@trend/shared-types";
+import type { ScreeningChoice, ScreeningState, ScreeningPaperRow, ScreeningRoundView } from "@trend/shared-types";
 import { isAxiosError } from "axios";
 import { Button } from "@/components/ui/button";
 import { useResearchCommand } from "../hooks/use-project-research";
-export const stateLabels: Record<ScreeningState, string> = { NOT_REVIEWED: "Chưa có đánh giá", IN_REVIEW: "Đang đánh giá", NEEDS_RESOLUTION: "Cần xem xét thêm", AWAITING_FINALIZATION: "Chờ quyết định", INCLUDED: "Đã chọn", EXCLUDED: "Đã loại", BACKGROUND: "Tài liệu nền" };
+export const stateLabels: Record<ScreeningState, string> = { NOT_REVIEWED: "Chờ đánh giá", IN_REVIEW: "Đang đánh giá", NEEDS_RESOLUTION: "Có bất đồng", NEEDS_MORE_INFO: "Cần xem xét thêm", ADJUDICATING: "Đang phân xử", AWAITING_FINALIZATION: "Chờ quyết định", INCLUDED: "Đã chọn", EXCLUDED: "Đã loại", BACKGROUND: "Tài liệu nền" };
 export const choiceLabels: Record<ScreeningChoice, string> = { INCLUDE: "Phù hợp", EXCLUDE: "Không phù hợp", UNSURE: "Chưa chắc chắn" };
 export function screeningMetadataWarning(paper: Pick<ScreeningPaperRow, "title" | "journalName" | "paperKind">) {
   const normalize = (value: string) => value.normalize("NFKC").trim().replace(/\s+/g, " ").toLocaleLowerCase("en");
@@ -11,7 +11,14 @@ export function screeningMetadataWarning(paper: Pick<ScreeningPaperRow, "title" 
   if (paper.paperKind === "journal" || paper.paperKind === "paratext") return "Nguồn có thể là tạp chí hoặc tài liệu phụ trợ. Cần xác minh loại tài liệu trước khi đánh giá.";
   return null;
 }
-export function ScreeningStatus({ status }: { status: ScreeningState }) { return <span className="screening-state" data-state={status}>{stateLabels[status]}</span>; }
+export function screeningStatusLabel(status: ScreeningState, round?: ScreeningRoundView | null) {
+  if ((round?.settings.workflowVersion ?? 0) >= 3 && round?.settings.reviewMode !== "COLLABORATIVE") {
+    if (status === "INCLUDED" && round?.phase === "TITLE_ABSTRACT") return "Qua sàng lọc";
+    if (status === "EXCLUDED" && round?.phase === "TITLE_ABSTRACT") return "Loại sơ bộ";
+  }
+  return stateLabels[status];
+}
+export function ScreeningStatus({ status, round }: { status: ScreeningState; round?: ScreeningRoundView | null }) { return <span className="screening-state" data-state={status}>{screeningStatusLabel(status, round)}</span>; }
 export function ScreeningError({ error, retry }: { error: unknown; retry?: () => void }) {
   if (!error) return null;
   const status = isAxiosError(error) ? error.response?.status : null;

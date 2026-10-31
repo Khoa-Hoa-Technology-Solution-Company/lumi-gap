@@ -12,7 +12,7 @@ import { useUnsavedWorkspace } from "./workspace-common";
 type Form = { message: string; mentorRole: MentorRole; attachments: MentorshipAttachment[] };
 const fingerprint = (value: Form) => JSON.stringify([value.message, value.mentorRole, value.attachments.map(a => a.id).sort()]);
 
-export function useInvitationContent(projectId: string, direction: string, enabled: boolean, allowedRoles: MentorRole[]) {
+export function useInvitationContent(projectId: string, direction: string, enabled: boolean, allowedRoles: MentorRole[], recipientId?: string) {
   const cache = useQueryClient(), userId = useAuthStore(s => s.user?.id);
   const queryKey = ["academic-support", userId, "invitation-draft", projectId, direction];
   const draft = useQuery({ queryKey, queryFn: () => academicSupportApi.draft(projectId, direction), enabled, staleTime: 0 });
@@ -21,7 +21,7 @@ export function useInvitationContent(projectId: string, direction: string, enabl
   const session = useMemo(() => ({ projectId, direction, userId, enabled,
     value: { message: "", mentorRole: "PRIMARY", attachments: [] } as Form,
     initialized: false, version: 0, saved: "", queue: Promise.resolve() as Promise<void>, uploading: false,
-  }), [projectId, direction, userId, enabled]);
+  }), [projectId, direction, userId, enabled, recipientId]);
   const current = useRef(session); current.current = session;
   const [status, setStatus] = useState<"loading" | "saving" | "saved" | "error">(enabled ? "loading" : "saved");
   const [error, setError] = useState("");
@@ -35,8 +35,8 @@ export function useInvitationContent(projectId: string, direction: string, enabl
   }, [session, enabled]);
   useEffect(() => {
     if (!enabled || !draft.data || draft.isFetching || session.initialized) return;
-    const initial: Form = { message: draft.data.message, attachments: draft.data.attachments, mentorRole: allowedRoles.includes(draft.data.mentorRole) ? draft.data.mentorRole : allowedRoles[0] ?? "PRIMARY" };
-    session.initialized = true; session.value = initial; session.version = draft.data.version; session.saved = fingerprint(draft.data);
+    const initial: Form = { message: recipientId ? "" : draft.data.message, attachments: recipientId ? [] : draft.data.attachments, mentorRole: allowedRoles.includes(draft.data.mentorRole) ? draft.data.mentorRole : allowedRoles[0] ?? "PRIMARY" };
+    session.initialized = true; session.value = initial; session.version = draft.data.version; session.saved = fingerprint(recipientId ? initial : draft.data);
     rerender(n => n + 1); setStatus("saved"); setError("");
   }, [enabled, draft.data, draft.isFetching, allowedRoles, session]);
   const change = (update: Partial<Form>) => {
@@ -44,11 +44,6 @@ export function useInvitationContent(projectId: string, direction: string, enabl
     session.value = { ...session.value, ...update }; rerender(n => n + 1); setError("");
     if (update.attachments) setUploadError("");
   };
-  useEffect(() => {
-    if (session.initialized && allowedRoles.length && !allowedRoles.includes(session.value.mentorRole)) {
-      session.value = { ...session.value, mentorRole: allowedRoles[0]! }; rerender(n => n + 1);
-    }
-  }, [allowedRoles, session]);
   const persist = () => {
     if (!enabled || !session.initialized || !ownsSession()) return Promise.resolve();
     const snapshot = session.value, key = fingerprint(snapshot);

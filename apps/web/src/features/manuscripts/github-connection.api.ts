@@ -13,4 +13,5 @@ export const githubConnectionApi = {
   async complete(userId: string, code: string, state: string) { return data((await api.post<ApiResponse<{ returnTo: string }>>(`${root}/complete`, { code, state }, { expectedUserId: userId })).data); },
   async repositories(userId: string, page: number, signal?: AbortSignal) { return data((await api.get<ApiResponse<GithubRepositories>>(`${root}/repositories`, { params: { page }, expectedUserId: userId, signal })).data); },
   async disconnect(userId: string) { return data((await api.delete<ApiResponse<{ disconnected: boolean; revoked: boolean }>>(root, { expectedUserId: userId })).data); },
+  async initializeRepository(userId: string, input: import("@trend/shared-types").InitializeGithubRepoInput) { return data((await api.post<ApiResponse<{ head: string }>>(`${root}/initialize-repository`, input, { expectedUserId: userId })).data); },
 };

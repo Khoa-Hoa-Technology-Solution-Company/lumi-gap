@@ -27,6 +27,8 @@ import { projectResearchRouter } from "./project-research.routes.js";
 import { createRateLimiter } from "../../common/middleware/rate-limit.js";
 import { env } from "../../config/env.js";
 import { projectMentorshipService } from "./project-mentorship.service.js";
+import { mentorPlanService } from "./mentor-plan.service.js";
+import { mentorPlanCommandSchema } from "./dto/mentor-plan.schema.js";
 import { mentorshipContentRouter } from "./mentorship-content.routes.js";
 import { mentorAccessRouter } from "./mentor-access.routes.js";
 import {
@@ -128,7 +130,16 @@ projectRouter.post("/:id/integrity-cases/:caseId/resolve", projectWriteLimiter, 
   res.json({ success: true, data: await researchIntegrityService.resolveCase(String(req.params.id), req.user!.sub, String(req.params.caseId), req.body, req.user?.role) });
 });
 
+projectRouter.get("/:id/mentor-plan", validate(paramIdSchema, "params"), async (req, res) => {
+  res.setHeader("Cache-Control", "private, no-store");
+  res.json({ success: true, data: await mentorPlanService.read(String(req.params.id), req.user!.sub) });
+});
+projectRouter.post("/:id/mentor-plan", academicRequestLimiter, validate(paramIdSchema, "params"), validate(mentorPlanCommandSchema), async (req, res) => {
+  res.setHeader("Cache-Control", "private, no-store");
+  res.json({ success: true, data: await mentorPlanService.change(String(req.params.id), req.user!.sub, req.body) });
+});
 projectRouter.get("/:id/mentorships", validate(paramIdSchema, "params"), validate(academicSearchSchema, "query"), projectMentorshipController.list);
+projectRouter.get("/:id/mentorships/:relationshipId", validate(mentorshipParamsSchema, "params"), projectMentorshipController.detail);
 projectRouter.get("/:id/mentor-suggestions", validate(paramIdSchema, "params"), validate(academicSearchSchema, "query"), async (req, res) => {
   res.json({ success: true, data: await projectMentorshipService.suggestions(String(req.params.id), req.user!.sub, academicSearchSchema.parse(req.query)) });
 });

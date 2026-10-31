@@ -22,15 +22,16 @@ export function cohenKappa(pairs: { reviewers: string[]; decisions: ScreeningCho
 }
 
 /** Stable greedy assignment minimizes pending work, then total assigned work. */
-export function balancedReviewers(eligible: string[], existing: string[], required: number, loads: Map<string, { pending: number; total: number }>) {
+export function balancedReviewers(eligible: string[], existing: string[], required: number, loads: Map<string, { pending: number; total: number }>, proposerId?: string | null) {
   const selected = new Set(existing);
   while (selected.size < required) {
     const next = eligible.filter(id => !selected.has(id)).sort((a, b) => {
       const x = loads.get(a) ?? { pending: 0, total: 0 }, y = loads.get(b) ?? { pending: 0, total: 0 };
-      return x.pending - y.pending || x.total - y.total || a.localeCompare(b);
+      return Number(a === proposerId) - Number(b === proposerId) || x.pending - y.pending || x.total - y.total || a.localeCompare(b);
     })[0];
     if (!next) break;
     selected.add(next); const load = loads.get(next) ?? { pending: 0, total: 0 }; loads.set(next, { pending: load.pending + 1, total: load.total + 1 });
   }
   return [...selected];
 }
+export const independentWorkflow = (settings: { reviewMode?: string; workflowVersion?: number }) => (settings.reviewMode === "INDEPENDENT" && (settings.workflowVersion ?? 1) >= 3) || (settings.reviewMode === "SIMPLE" && (settings.workflowVersion ?? 1) >= 5);

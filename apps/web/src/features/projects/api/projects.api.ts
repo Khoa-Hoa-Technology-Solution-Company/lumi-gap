@@ -96,7 +96,7 @@ export const projectsApi = {
     const res = await api.get(API_ROUTES.projects.invitations.preview(token));
     return res.data.data;
   },
-  async respondToInvitationToken(token: string, decision: "accept" | "decline"): Promise<{ status: "ACCEPTED" | "DECLINED"; alreadyMember: boolean }> {
+  async respondToInvitationToken(token: string, decision: "accept" | "decline"): Promise<{ status: "ACCEPTED" | "DECLINED"; alreadyMember: boolean; projectId: string }> {
     const res = await api.post(decision === "accept" ? API_ROUTES.projects.invitations.acceptToken(token) : API_ROUTES.projects.invitations.declineToken(token));
     return res.data.data;
   },

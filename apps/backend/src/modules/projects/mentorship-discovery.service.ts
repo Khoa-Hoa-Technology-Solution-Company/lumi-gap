@@ -3,7 +3,7 @@ import type { AcademicProfile, Project, User } from "../../generated/prisma/clie
 import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { env } from "../../config/env.js";
 import { mentorPositions, mentorshipPolicy } from "./mentorship-positions.js";
-import { pageMeta, mentorshipPreview, type AcademicSearch } from "./project-mentorship.service.js";
+import { pageMeta, mentorshipPreview, mentorshipTeamCounts, type AcademicSearch } from "./project-mentorship.service.js";
 
 const termsArray = (terms: string[]) => terms.length ? Prisma.sql`ARRAY[${Prisma.join(terms.map(s => s.toLowerCase()))}]::text[]` : Prisma.sql`ARRAY[]::text[]`;
 const pattern = (value: string) => `%${value.replace(/[\\%_]/g, "\\$&")}%`;
@@ -52,13 +52,13 @@ export const mentorshipDiscoveryService = {
   async opportunities(lecturer: User, profile: AcademicProfile, query: AcademicSearch) {
     const db = getPrisma(), meta = pageMeta(0, query), wanted = [...profile.expertiseAreas, ...lecturer.researchInterests];
     const cooldownSince = new Date(Date.now() - env.ACADEMIC_RELATIONSHIP_COOLDOWN_HOURS * 3600000);
-    const openRole = Prisma.sql`CASE
-      WHEN NOT EXISTS(SELECT 1 FROM mentor_relationships m WHERE m.project_id=p.id AND m.status='ACTIVE' AND m.mentor_role='PRIMARY') THEN 'PRIMARY'
-      WHEN EXISTS(SELECT 1 FROM mentor_relationships m JOIN users u ON u.id=m.mentor_user_id JOIN academic_profiles ap ON ap.user_id=u.id
-        WHERE m.project_id=p.id AND m.status='ACTIVE' AND m.mentor_role='PRIMARY' AND u.is_active AND u.account_status='ACTIVE'
-        AND u.email_verified_at IS NOT NULL AND ap.academic_role='LECTURER' AND ap.role_verification_status='VERIFIED' AND ap.position_status='VERIFIED')
-        AND NOT EXISTS(SELECT 1 FROM mentor_relationships m WHERE m.project_id=p.id AND m.status='ACTIVE' AND m.mentor_role='SECONDARY') THEN 'SECONDARY'
-      ELSE NULL END`;
+    const available = (role: string) => Prisma.sql`NOT EXISTS(SELECT 1 FROM mentor_relationships m WHERE m.project_id=p.id AND m.status='ACTIVE' AND m.mentor_role=${role})
+      AND NOT EXISTS(SELECT 1 FROM mentorship_requests q WHERE q.project_id=p.id AND q.status='PENDING' AND q.mentor_role=${role} AND (q.expires_at IS NULL OR q.expires_at>NOW()))
+      AND NOT EXISTS(SELECT 1 FROM mentor_invitation_plans plan WHERE plan.project_id=p.id AND plan.status='ACTIVE' AND ${role}=ANY(plan.closed_roles))`;
+    const secondaryAllowed = Prisma.sql`(EXISTS(SELECT 1 FROM mentor_relationships m WHERE m.project_id=p.id AND m.status='ACTIVE' AND m.mentor_role='PRIMARY') OR
+      EXISTS(SELECT 1 FROM mentor_invitation_plans plan WHERE plan.project_id=p.id AND plan.status='ACTIVE' AND plan.parallel_invitations))`;
+    const openRole = Prisma.sql`CASE WHEN ${available("PRIMARY")} THEN 'PRIMARY'
+      WHEN ${secondaryAllowed} AND ${available("SECONDARY")} THEN 'SECONDARY' ELSE NULL END`;
     const conditions = [Prisma.sql`p.mentorship_discovery='SEEKING_MENTOR' AND p.status NOT IN ('ARCHIVED','COMPLETED') AND p.owner_id<>${lecturer.id}::uuid`,
       Prisma.sql`(${openRole}) IS NOT NULL`,
       Prisma.sql`NOT EXISTS(SELECT 1 FROM project_members pm WHERE pm.project_id=p.id AND pm.user_id=${lecturer.id}::uuid AND pm.status='ACTIVE')`,
@@ -79,9 +79,11 @@ export const mentorshipDiscoveryService = {
     ], { isolationLevel: "RepeatableRead" });
     const projects = await db.project.findMany({ where: { id: { in: ids.map(r => r.id) }, mentorshipDiscovery: "SEEKING_MENTOR", status: { notIn: ["ARCHIVED", "COMPLETED"] } } });
     const byId = new Map(projects.map(p => [p.id, p]));
+    const teamCounts = await mentorshipTeamCounts(projects);
     const items = await Promise.all(ids.flatMap(r => { const p = byId.get(r.id); return p ? [p] : []; }).map(async p => {
       const positions = await mentorPositions(p.id);
-      return { ...mentorshipPreview(p), availableRoles: (["PRIMARY", "SECONDARY"] as const).filter(role => ["VACANT", "INVITING"].includes(positions[role].status) && positions[role].pendingRequests < mentorshipPolicy.maxPendingPerRole) };
+      const plan = await db.mentorInvitationPlan.findFirst({ where: { projectId: p.id, status: "ACTIVE" } });
+      return { ...mentorshipPreview(p, teamCounts.get(p.id)), availableRoles: (["PRIMARY", "SECONDARY"] as const).filter(role => positions[role].status === "VACANT" && !plan?.closedRoles.includes(role) && (role === "PRIMARY" || plan?.parallelInvitations || positions.PRIMARY.status === "ASSIGNED")) };
     }));
     return { items, meta: pageMeta(Number(count[0]?.total ?? 0), query) };
   },

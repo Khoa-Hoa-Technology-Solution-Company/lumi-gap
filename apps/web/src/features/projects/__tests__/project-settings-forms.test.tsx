@@ -20,6 +20,7 @@ vi.mock("../hooks/use-projects", () => ({
 }));
 vi.mock("../components/project-mentor-summary", () => ({ ProjectMentorSummary: () => null }));
 vi.mock("../components/project-members-tab", () => ({ ProjectMembersTab: () => <p>Current project members</p> }));
+vi.mock("../components/project-member-invite", () => ({ ProjectMemberInvite: () => <button>Invite member</button> }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 const project: IProject = { _id: "project", title: "Research idea", description: "Existing objective", visibility: "PRIVATE", status: "PLANNING", ownerId: "owner", accessRole: "OWNER", version: 3, memberCount: 1, paperCount: 0, members: [], papers: [], updatedAt: "2026-10-14T10:00:00Z", createdAt: "2026-10-14T10:00:00Z" };
 let root: Root, container: HTMLDivElement, client: QueryClient;

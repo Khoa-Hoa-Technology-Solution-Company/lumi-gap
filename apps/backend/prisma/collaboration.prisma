@@ -155,6 +155,9 @@ model MentorshipRequest {
   responseNote String?   @map("response_note")
   closeReason  String?   @map("close_reason") @db.VarChar(48)
   idempotencyKey String? @map("idempotency_key") @db.VarChar(80)
+  invitationSnapshot Json? @map("invitation_snapshot")
+  reservationEnforced Boolean @default(true) @map("reservation_enforced")
+  candidateId String? @unique @map("candidate_id") @db.Uuid
   createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -163,6 +166,33 @@ model MentorshipRequest {
   @@index([requestedBy, createdAt])
   @@unique([requestedBy, idempotencyKey])
   @@map("mentorship_requests")
+}
+
+model MentorInvitationPlan {
+  id String @id @default(uuid()) @db.Uuid
+  projectId String @map("project_id") @db.Uuid
+  createdById String @map("created_by_id") @db.Uuid
+  status String @default("ACTIVE") @db.VarChar(16)
+  parallelInvitations Boolean @default(false) @map("parallel_invitations")
+  closedRoles String[] @default([]) @map("closed_roles")
+  version Int @default(1)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  @@index([projectId, status])
+  @@map("mentor_invitation_plans")
+}
+
+model MentorCandidate {
+  id String @id @default(uuid()) @db.Uuid
+  planId String @map("plan_id") @db.Uuid
+  mentorUserId String @map("mentor_user_id") @db.Uuid
+  mentorRole String @map("mentor_role") @db.VarChar(16)
+  priority Int
+  status String @default("PLANNED") @db.VarChar(16)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  @@index([planId, mentorRole, priority])
+  @@map("mentor_candidates")
 }
 
 // A team recommendation is not a consent request and grants no access.

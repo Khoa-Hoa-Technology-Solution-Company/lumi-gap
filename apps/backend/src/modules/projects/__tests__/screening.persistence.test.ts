@@ -19,6 +19,8 @@ import { screeningService as service } from "../screening.service.js";
 import { screeningAiService as ai, validateScreeningAi } from "../screening-ai.service.js";
 import { projectScreeningService as legacy } from "../project-screening.service.js";
 import { projectService } from "../project.service.js";
+import { projectMentorshipService as consent } from "../project-mentorship.service.js";
+import { mentorPresets } from "@trend/shared-types";
 import { screeningRouter } from "../screening.routes.js";
 import { requireAuth } from "../../../common/middleware/auth.js";
 import { errorHandler } from "../../../common/middleware/error-handler.js";
@@ -42,13 +44,30 @@ describe.skipIf(!enabled).sequential("collaborative screening on isolated Postgr
     [owner, member, peer, outsider] = users as [string, string, string, string];
   });
   afterAll(disconnectPostgres);
-  async function fixture(options: { legacy?: boolean; assisted?: boolean; count?: number; reviewers?: string[]; simple?: boolean; consensus?: boolean; unblinded?: boolean } = {}) {
+  async function historicRound(roundId: string) {
+    const row = await db.screeningRound.findUniqueOrThrow({ where: { id: roundId } });
+    const { workflowVersion: _, ...settings } = row.settings as Record<string, unknown>;
+    await db.screeningRound.update({ where: { id: roundId }, data: { settings: JSON.parse(JSON.stringify(settings)) } });
+  }
+  async function fixture(options: { v3?: boolean; v4?: boolean; legacy?: boolean; assisted?: boolean; count?: number; reviewers?: string[]; simple?: boolean; consensus?: boolean; unblinded?: boolean } = {}) {
     const p = await createProjectFixture({ data: { title: "Screening fixture", ownerId: owner, status: "ACTIVE" } });
     await db.projectMember.createMany({ data: (options.simple ? [member] : [member, peer]).map(userId => ({ projectId: p.id, userId })) });
     const paper = await db.paper.create({ data: { title: "Machine learning in universities", abstractText: "A study of university students using machine learning.", publicationYear: 2025, primaryProvider: "user", dataStatus: "active" } });
     await db.projectPaper.create({ data: { projectId: p.id, paperId: paper.id, addedById: owner, screeningStatus: options.legacy ? "INCLUDED" : "UNDECIDED", inclusionReason: options.legacy ? "Historical decision" : null } });
     await service.configure(p.id, owner, { reviewMode: options.simple ? "SIMPLE" : "INDEPENDENT", blindReview: !options.unblinded && !options.simple, resolutionPolicy: options.consensus ? "CONSENSUS" : "ADJUDICATION", expectedVersion: 0, requiredReviewers: options.simple ? 1 : options.count ?? 2, consensusPolicy: "UNANIMOUS", aiAssisted: options.assisted ?? false, inclusionCriteria: options.assisted ? ["University students"] : [], exclusionCriteria: options.assisted ? ["Non-human studies"] : [], researchQuestions: options.assisted ? ["How is machine learning used?"] : [], clientKey: randomUUID() });
     const started = await service.start(p.id, owner, { paperIds: [paper.id], phase: "TITLE_ABSTRACT", confirmRescreen: Boolean(options.legacy), clientKey: randomUUID() }); const roundId = started.roundIds![0]!;
+    // Exercise actual pre-V3 immutable snapshots in the existing compatibility suite.
+    if (!options.v3 && !options.v4) {
+      await historicRound(roundId);
+      if (options.unblinded) {
+        const snapshot = await db.screeningRound.findUniqueOrThrow({ where: { id: roundId } });
+        await db.screeningRound.update({ where: { id: roundId }, data: { settings: { ...(snapshot.settings as Record<string, unknown>), blindReview: false } as never } });
+      }
+    }
+    else {
+      const snapshot = await db.screeningRound.findUniqueOrThrow({ where: { id: roundId } });
+      await db.screeningRound.update({ where: { id: roundId }, data: { settings: { ...(snapshot.settings as Record<string, unknown>), workflowVersion: options.v4 ? 4 : 3 } as never } });
+    }
     await service.assign(p.id, owner, { roundIds: [roundId], mode: "MANUAL", reviewerIds: options.reviewers ?? (options.simple ? [member] : [owner, member]), dueAt: null, clientKey: randomUUID() });
     return { id: p.id, paperId: paper.id, roundId };
   }
@@ -63,6 +82,7 @@ describe.skipIf(!enabled).sequential("collaborative screening on isolated Postgr
   async function collaborative() {
     const p = await createProjectFixture({ data: { title: "Shared research library", ownerId: owner, status: "ACTIVE" } });
     await db.projectMember.create({ data: { projectId: p.id, userId: member } });
+    await db.screeningSettings.create({ data: { projectId: p.id, reviewMode: "COLLABORATIVE", requiredReviewers: 1, blindReview: false } });
     const papers = await Promise.all(["First paper", "Second paper"].map(title => db.paper.create({ data: { title, abstractText: "Actual stored abstract for source verification", publicationYear: 2025, primaryProvider: "user", dataStatus: "active" } })));
     await db.projectPaper.createMany({ data: papers.map(paper => ({ projectId: p.id, paperId: paper.id, addedById: owner })) });
     return { id: p.id, paperIds: papers.map(p => p.id), paperId: papers[0]!.id };
@@ -71,6 +91,475 @@ describe.skipIf(!enabled).sequential("collaborative screening on isolated Postgr
     const board = await service.board(f.id, actor, page), row = board.items.find(p => p.paperId === f.paperId)!;
     return library.assess(f.id, actor, f.paperId, { roundId: row.round?.id ?? null, expectedRevision: row.round?.myReview?.revision ?? 0, settingsVersion: board.settings.version, decision, exclusionReason: decision === "EXCLUDE" ? "Outside our research question" : "", comment: `opinion-${actor}`, clientKey: randomUUID(), ...override });
   }
+  async function conflict() {
+    const f = await fixture({ v3: true, reviewers: [member, peer] });
+    await submit(f, member, "INCLUDE"); await submit(f, peer, "EXCLUDE");
+    return f;
+  }
+  async function discuss(f: Awaited<ReturnType<typeof fixture>>) {
+    for (const actor of [member, peer]) await service.comment(f.id, actor, f.roundId, { comment: "We discussed the population against the eligibility criteria", clientKey: randomUUID() });
+  }
+  async function appoint(f: Awaited<ReturnType<typeof fixture>>, finalizerId: string, extra = {}) {
+    return service.finalizer(f.id, owner, f.roundId, { expectedVersion: (await service.detail(f.id, owner, f.roundId)).version, finalizerId, reason: "Independent methodological expertise is required for this dispute", confirmed: true, clientKey: randomUUID(), ...extra });
+  }
+  async function lecturer(f: Awaited<ReturnType<typeof fixture>>) {
+    const user = await db.user.create({ data: { email: `adjudicator-${randomUUID()}@example.org`, fullName: "Lecturer", emailVerifiedAt: new Date(), onboardingCompletedAt: new Date() } });
+    await db.academicProfile.create({ data: { userId: user.id, academicRole: "LECTURER", primaryPosition: "LECTURER", roleVerificationStatus: "VERIFIED", positionStatus: "VERIFIED", supportAvailability: { enabled: true } } });
+    await db.project.update({ where: { id: f.id }, data: { mentorshipSummary: "Public research abstract", mentorshipNeeds: "Methodological adjudication", mentorshipDiscovery: "SEEKING_MENTOR" } });
+    const request = await consent.request(f.id, owner, { mentorUserId: user.id, message: "Please advise our review methodology", idempotencyKey: randomUUID(), access: { preset: "ADVISOR", permissions: [...mentorPresets.ADVISOR], expiresAt: null } });
+    await consent.accept(f.id, request.id, user.id, "Accepted", request.accessPolicy?.version);
+    return { id: user.id, access: await db.mentorAccess.findUniqueOrThrow({ where: { requestId: request.id } }) };
+  }
+  async function propose(f: Awaited<ReturnType<typeof fixture>>, actor = member, decision: "INCLUDED" | "EXCLUDED" = "INCLUDED") {
+    return service.proposeAgreement(f.id, actor, f.roundId, { expectedVersion: (await service.detail(f.id, actor, f.roundId)).version, decision, reason: "Keep for full text to verify the disputed population", confirmed: true, clientKey: randomUUID() });
+  }
+  async function confirmAgreement(f: Awaited<ReturnType<typeof fixture>>, actor: string, proposalId: string, extra = {}) {
+    return service.confirmAgreement(f.id, actor, f.roundId, { expectedVersion: (await service.detail(f.id, actor, f.roundId)).version, proposalId, confirmed: true, clientKey: randomUUID(), ...extra });
+  }
+
+  async function automatic(teamSize = 3, proposer = owner) {
+    const p = await createProjectFixture({ data: { title: "V5 automatic workflow", ownerId: owner, status: "ACTIVE" } });
+    if (teamSize > 1) await db.projectMember.createMany({ data: [member, peer, outsider].slice(0, teamSize - 1).map(userId => ({ projectId: p.id, userId })) });
+    const input = { title: "V5 automatically assigned source", authors: [], reference: "", clientKey: randomUUID() };
+    const imported = await sources.import(p.id, proposer, input);
+    const round = (await service.board(p.id, owner, page)).items[0]!.round!;
+    return { id: p.id, paperId: imported.paperId, roundId: round.id, input };
+  }
+  it("V5 adds a paper and assigns two non-proposers without Owner setup, with idempotent import", async () => {
+    const f = await automatic();
+    const row = await service.detail(f.id, owner, f.roundId);
+    expect(row.settings).toMatchObject({ workflowVersion: 5, reviewMode: "INDEPENDENT", blindReview: true, requiredReviewers: 2, stages: ["TITLE_ABSTRACT", "FULL_TEXT"] });
+    expect(row.assignments.map(a => a.reviewerId).sort()).toEqual([member, peer].sort());
+    await sources.import(f.id, owner, f.input);
+    expect(await db.screeningRound.count({ where: { projectId: f.id } })).toBe(1);
+    await submit(f, member, "INCLUDE");
+    const blinded = await service.detail(f.id, peer, f.roundId);
+    expect(blinded.hiddenReviews).toBe(true); expect(blinded.reviews).toHaveLength(0);
+    expect(JSON.stringify(await service.analytics(f.id, peer))).not.toContain("private-");
+    await submit(f, peer, "INCLUDE");
+    expect((await service.detail(f.id, owner, f.roundId))).toMatchObject({ active: false, status: "INCLUDED", extractionReady: false });
+    const full = (await service.board(f.id, owner, page)).items[0]!.round!;
+    expect(full).toMatchObject({ active: true, phase: "FULL_TEXT", completed: 0, assigned: 2 });
+    expect(await db.projectPaper.findFirst({ where: { projectId: f.id } })).toMatchObject({ screeningStatus: "UNDECIDED" });
+    await expect(submit({ ...f, roundId: full.id }, member, "INCLUDE")).rejects.toMatchObject({ statusCode: 400 });
+    for (const actor of [member, peer]) await submit({ ...f, roundId: full.id }, actor, "INCLUDE", { scope: "FULL_TEXT", fullTextReference: "Read the institutional full text, methods and results" });
+    expect((await service.detail(f.id, member, full.id))).toMatchObject({ status: "INCLUDED", extractionReady: true });
+  });
+  it("V5 four-person teams still require exactly two assigned reviewers and no Owner or third deciding vote", async () => {
+    const f = await automatic(4);
+    const view = await service.detail(f.id, owner, f.roundId);
+    const reviewers = view.assignments.map(a => a.reviewerId);
+    expect((await service.config(f.id, owner)).people).toHaveLength(4);
+    expect(reviewers).toHaveLength(2);
+    expect(reviewers).not.toContain(owner);
+    expect(view).toMatchObject({ assigned: 2, completed: 0, canReview: false, myAssignmentId: null, finalizerAssigned: false });
+    for (const actor of [owner, member, peer, outsider]) {
+      const personal = await service.detail(f.id, actor, f.roundId);
+      expect(personal.canReview).toBe(reviewers.includes(actor));
+      if (!reviewers.includes(actor)) await expect(service.submit(f.id, actor, f.roundId, { assignmentId: view.assignments[0]!.id, expectedRevision: 1, decision: "INCLUDE", exclusionReason: "", comment: "Unauthorized extra ballot", confirmed: true, clientKey: randomUUID() })).rejects.toMatchObject({ statusCode: 403 });
+    }
+    for (const actor of reviewers) await submit(f, actor, "EXCLUDE");
+    expect(await service.detail(f.id, owner, f.roundId)).toMatchObject({ assigned: 2, completed: 2, status: "EXCLUDED", finalDecision: { source: "CONSENSUS", resolverId: null } });
+    expect(await db.screeningReview.count({ where: { projectId: f.id } })).toBe(2);
+  });
+  it("V5 two-person and one-person defaults finish without an Owner deciding vote", async () => {
+    const pair = await automatic(2, member);
+    expect((await service.detail(pair.id, member, pair.roundId)).assignments.map(a => a.reviewerId).sort()).toEqual([owner, member].sort());
+    await submit(pair, member, "EXCLUDE"); await submit(pair, owner, "EXCLUDE");
+    expect((await service.detail(pair.id, owner, pair.roundId))).toMatchObject({ status: "EXCLUDED", finalDecision: { source: "CONSENSUS", resolverId: null } });
+    const solo = await automatic(1);
+    await db.projectMember.create({ data: { projectId: solo.id, userId: member } });
+    expect((await service.config(solo.id, owner)).settings).toMatchObject({ requiredReviewers: 1, version: 1 });
+    expect((await service.detail(solo.id, owner, solo.roundId)).settings).toMatchObject({ reviewMode: "SIMPLE", requiredReviewers: 1 });
+    await submit(solo, owner, "EXCLUDE");
+    expect((await service.detail(solo.id, owner, solo.roundId))).toMatchObject({ status: "EXCLUDED", canReopenOwn: true });
+    const old = await service.detail(solo.id, owner, solo.roundId);
+    await service.reopen(solo.id, owner, solo.roundId, { assignmentId: old.myAssignmentId!, expectedVersion: old.version, reason: "Reconsider the source after reading additional material", confirmed: true, clientKey: randomUUID() });
+    await submit(solo, owner, "EXCLUDE");
+    expect(await db.screeningReview.count({ where: { projectId: solo.id } })).toBe(2);
+  });
+  it("V5 proposer consent plus the other reviewer's acceptance records a separate versioned resolution", async () => {
+    const f = await automatic(); await submit(f, member, "INCLUDE"); await submit(f, peer, "EXCLUDE");
+    await expect(propose(f)).rejects.toMatchObject({ statusCode: 409 });
+    await discuss(f);
+    const proposal = await propose(f);
+    const agreement = (await service.detail(f.id, member, f.roundId)).agreement!;
+    expect(agreement.confirmedByIds).toEqual([member]); expect(agreement.confirmations?.[0]?.confirmedAt).toBeTruthy();
+    await expect(confirmAgreement(f, member, proposal.id!)).rejects.toMatchObject({ statusCode: 409 });
+    await expect(confirmAgreement(f, owner, proposal.id!)).rejects.toMatchObject({ statusCode: 409 });
+    const version = (await service.detail(f.id, peer, f.roundId)).version;
+    const outcomes = await Promise.allSettled([peer, peer].map(actor => service.confirmAgreement(f.id, actor, f.roundId, { expectedVersion: version, proposalId: proposal.id!, confirmed: true, clientKey: randomUUID() })));
+    expect(outcomes.filter(o => o.status === "fulfilled")).toHaveLength(1);
+    const final = await service.detail(f.id, owner, f.roundId);
+    expect(final.finalDecision).toMatchObject({ source: "CONSENSUS", decision: "INCLUDED" });
+    expect(final.agreement?.confirmedByIds.sort()).toEqual([member, peer].sort());
+    expect(final.reviews.map(r => r.decision).sort()).toEqual(["EXCLUDE", "INCLUDE"]);
+    expect(await db.screeningFinalDecision.count({ where: { roundId: f.roundId } })).toBe(1);
+    const events = await db.projectActivity.findMany({ where: { projectId: f.id, type: "SCREENING_PARTICIPATION" } });
+    expect(events.some(e => e.actorId === member)).toBe(true); expect(events.some(e => e.actorId === peer)).toBe(true);
+    expect(JSON.stringify(events.map(e => e.metadata))).not.toMatch(/private-|decision|exclusionReason/);
+  });
+  it("V5 declining a proposal leaves the conflict open and invalidates its confirmations", async () => {
+    const f = await automatic(); await submit(f, member, "INCLUDE"); await submit(f, peer, "EXCLUDE"); await discuss(f);
+    const proposal = await propose(f), row = await service.detail(f.id, peer, f.roundId);
+    await expect(service.declineAgreement(f.id, owner, f.roundId, { proposalId: proposal.id!, expectedVersion: row.version, reason: "I was not assigned as a reviewer", confirmed: true, clientKey: randomUUID() })).rejects.toMatchObject({ statusCode: 409 });
+    await service.declineAgreement(f.id, peer, f.roundId, { proposalId: proposal.id!, expectedVersion: row.version, reason: "The full text is needed before we can agree", confirmed: true, clientKey: randomUUID() });
+    expect((await service.detail(f.id, member, f.roundId))).toMatchObject({ status: "NEEDS_RESOLUTION", agreement: null, finalDecision: null });
+    await expect(confirmAgreement(f, peer, proposal.id!)).rejects.toMatchObject({ statusCode: 409 });
+    expect(JSON.stringify(await service.history(f.id, owner, f.roundId))).toContain("The full text is needed");
+  });
+  it("V5 uncertainty can end in a shared request for further information without a binary conclusion", async () => {
+    const f = await automatic(); await submit(f, member, "UNSURE"); await submit(f, peer, "INCLUDE");
+    expect((await service.detail(f.id, owner, f.roundId)).status).toBe("NEEDS_MORE_INFO"); await discuss(f);
+    const proposal = await service.proposeAgreement(f.id, member, f.roundId, { expectedVersion: (await service.detail(f.id, member, f.roundId)).version, decision: "NEEDS_MORE_INFO", reason: "Request full text and clarify the study population", confirmed: true, clientKey: randomUUID() });
+    await confirmAgreement(f, peer, proposal.id!);
+    const row = await service.detail(f.id, owner, f.roundId);
+    expect(row).toMatchObject({ status: "NEEDS_MORE_INFO", finalDecision: null, resolution: { decision: "NEEDS_MORE_INFO" } });
+    expect(await db.screeningRound.count({ where: { projectId: f.id } })).toBe(1);
+  });
+  it("V5 reviewers request an independent adjudicator after discussion; the adjudicator can request more information", async () => {
+    const f = await automatic(); await submit(f, member, "INCLUDE"); await submit(f, peer, "EXCLUDE");
+    let row = await service.detail(f.id, member, f.roundId);
+    await expect(service.requestAdjudication(f.id, member, f.roundId, { expectedVersion: row.version, reason: "An independent methodological assessment is needed", confirmed: true, clientKey: randomUUID() })).rejects.toMatchObject({ statusCode: 403 });
+    await discuss(f); row = await service.detail(f.id, member, f.roundId);
+    const payload = { expectedVersion: row.version, reason: "An independent methodological assessment is needed", confirmed: true as const, clientKey: randomUUID() };
+    const requested = await service.requestAdjudication(f.id, member, f.roundId, payload);
+    expect(await service.requestAdjudication(f.id, member, f.roundId, payload)).toEqual(requested);
+    await appoint(f, owner, { acknowledgeProposer: true });
+    row = await service.detail(f.id, owner, f.roundId);
+    await service.resolve(f.id, owner, f.roundId, { expectedVersion: row.version, decision: "NEEDS_MORE_INFO", reason: "Obtain the full text before the population can be determined", confirmed: true, clientKey: randomUUID() });
+    expect((await service.detail(f.id, member, f.roundId))).toMatchObject({ status: "NEEDS_MORE_INFO", finalDecision: null });
+    expect(await db.screeningReview.count({ where: { projectId: f.id } })).toBe(2);
+  });
+  it("V5 begin is a write action, preserves legacy data and never self-claims a third review", async () => {
+    const p = await createProjectFixture({ data: { title: "Existing library", ownerId: owner, status: "ACTIVE" } });
+    await db.projectMember.createMany({ data: [member, peer].map(userId => ({ projectId: p.id, userId })) });
+    const paper = await db.paper.create({ data: { title: "Historically included", publicationYear: 2025, primaryProvider: "user", dataStatus: "active" } });
+    await db.projectPaper.create({ data: { projectId: p.id, paperId: paper.id, addedById: owner, screeningStatus: "INCLUDED", inclusionReason: "Earlier assessment" } });
+    expect((await service.board(p.id, member, page)).items[0]?.round).toBeNull();
+    await expect(service.begin(p.id, member, paper.id, { confirmRescreen: false, clientKey: randomUUID() })).rejects.toMatchObject({ statusCode: 409 });
+    await service.begin(p.id, member, paper.id, { confirmRescreen: true, clientKey: randomUUID() });
+    expect((await service.rounds(p.id, owner, paper.id)).legacy).toBeTruthy();
+    expect(await db.screeningRound.count({ where: { projectId: p.id } })).toBe(1);
+    await service.begin(p.id, peer, paper.id, { confirmRescreen: true, clientKey: randomUUID() });
+    expect(await db.screeningAssignment.count({ where: { projectId: p.id } })).toBe(2);
+  });
+  it("V5 both catalog add and manual import initialize the same workflow", async () => {
+    const p = await createProjectFixture({ data: { title: "Catalog workflow", ownerId: owner, status: "ACTIVE" } });
+    await db.projectMember.create({ data: { projectId: p.id, userId: member } });
+    const paper = await db.paper.create({ data: { title: "Catalog source", publicationYear: 2025, primaryProvider: "user", dataStatus: "active" } });
+    await projectService.addPaperToProject(p.id, paper.id, owner, "Source matches our question");
+    expect((await service.board(p.id, member, page)).items[0]!.round).toMatchObject({ assigned: 2, status: "NOT_REVIEWED" });
+  });
+
+
+  it("V5 conservative full-text advancement is explicitly permitted, versioned, and does not resolve the abstract conflict", async () => {
+    const f = await automatic(2); await submit(f, owner, "INCLUDE"); await submit(f, member, "EXCLUDE");
+    for (const actor of [owner, member]) await service.comment(f.id, actor, f.roundId, { comment: "We need the full text to determine the eligible population", clientKey: randomUUID() });
+    let row = await service.detail(f.id, owner, f.roundId);
+    expect(row.canAdvanceConservatively).toBe(true);
+    const payload = { expectedVersion: row.version, reason: "No independent third person is available; inspect the full text", confirmed: true as const, clientKey: randomUUID() };
+    const result = await service.advanceConservatively(f.id, owner, f.roundId, payload);
+    expect(await service.advanceConservatively(f.id, owner, f.roundId, payload)).toEqual(result);
+    row = await service.detail(f.id, owner, f.roundId);
+    expect(row).toMatchObject({ active: false, status: "NEEDS_MORE_INFO", finalDecision: null });
+    expect(row.reviews.map(r => r.decision).sort()).toEqual(["EXCLUDE", "INCLUDE"]);
+    const next = (await service.board(f.id, member, page)).items[0]!.round!;
+    expect(next).toMatchObject({ phase: "FULL_TEXT", assigned: 2, completed: 0, provisionalAdvance: true });
+    expect(await db.screeningFinalDecision.count({ where: { roundId: f.roundId } })).toBe(0);
+    const other = await automatic(2); await submit(other, owner, "INCLUDE"); await submit(other, member, "EXCLUDE");
+    for (const actor of [owner, member]) await service.comment(other.id, actor, other.roundId, { comment: "We discussed full text and the protocol restrictions", clientKey: randomUUID() });
+    const old = await db.screeningRound.findUniqueOrThrow({ where: { id: other.roundId } });
+    await db.screeningRound.update({ where: { id: other.roundId }, data: { settings: { ...(old.settings as object), allowConservativeFullText: false } } });
+    await expect(service.advanceConservatively(other.id, owner, other.roundId, { ...payload, clientKey: randomUUID(), expectedVersion: old.version })).rejects.toMatchObject({ statusCode: 403 });
+  });
+  it("V5 freezes authorized adjudicators in the round and rechecks that list at decision time", async () => {
+    const f = await automatic(); await submit(f, member, "INCLUDE"); await submit(f, peer, "EXCLUDE"); await discuss(f);
+    const row = await db.screeningRound.findUniqueOrThrow({ where: { id: f.roundId } });
+    await db.screeningRound.update({ where: { id: row.id }, data: { settings: { ...(row.settings as object), authorizedAdjudicatorIds: [member] } } });
+    await expect(appoint(f, owner, { acknowledgeProposer: true })).rejects.toMatchObject({ statusCode: 400 });
+    await db.screeningRound.update({ where: { id: row.id }, data: { settings: { ...(row.settings as object), authorizedAdjudicatorIds: [owner] } } });
+    await appoint(f, owner, { acknowledgeProposer: true });
+    const current = await service.detail(f.id, owner, row.id);
+    await db.screeningRound.update({ where: { id: row.id }, data: { settings: { ...(row.settings as object), authorizedAdjudicatorIds: [member] } } });
+    await expect(service.resolve(f.id, owner, row.id, { decision: "INCLUDED", expectedVersion: current.version, reason: "The old UI tab still thinks this person can decide", confirmed: true, clientKey: randomUUID() })).rejects.toMatchObject({ statusCode: 403 });
+  });
+  it("V5 preserves Evidence Matrix entries and reopens accepted evidence when the screened source changes", async () => {
+    const f = await automatic(); await submit(f, member, "INCLUDE"); await submit(f, peer, "INCLUDE");
+    const full = (await service.board(f.id, member, page)).items[0]!.round!;
+    for (const actor of [member, peer]) await submit({ ...f, roundId: full.id }, actor, "INCLUDE", { scope: "FULL_TEXT", fullTextReference: "Institutional PDF, methods and findings inspected" });
+    const content = { claim: "A human-recorded finding", quotation: "", locator: "Results section", context: "University students", methodology: "Qualitative", population: "Students", results: "Observed outcome", limitations: "Small sample", themes: [] };
+    const item = await evidence.create(f.id, member, { ...content, paperId: f.paperId, origin: "HUMAN", clientKey: randomUUID() });
+    const accepted = await evidence.review(f.id, member, item.id, { expectedVersion: item.version, state: "ACCEPTED", rationale: "Verified against the actual full text" });
+    const round = await service.detail(f.id, member, full.id);
+    await service.reopen(f.id, member, full.id, { assignmentId: round.myAssignmentId!, expectedVersion: round.version, reason: "Newly identified population limitations require another review", confirmed: true, clientKey: randomUUID() });
+    const kept = await db.projectEvidenceItem.findUniqueOrThrow({ where: { id: item.id } });
+    expect(kept).toMatchObject({ claim: content.claim, reviewState: "PENDING", version: accepted.version + 1 });
+    const listed = await evidence.list(f.id, member, { page: 1, pageSize: 20, q: "" });
+    expect(listed.items[0]?.sourceNeedsReview).toBe(true);
+    expect((await evidence.history(f.id, member, item.id)).some(r => (r.snapshot as { reviewState?: string }).reviewState === "ACCEPTED")).toBe(true);
+  });
+
+  it("V4 enforces the exact reviewer cohort and keeps independent choices hidden until completion", async () => {
+    const f = await fixture({ v4: true, unblinded: true, reviewers: [member, peer] });
+    await expect(service.assign(f.id, owner, { roundIds: [f.roundId], mode: "MANUAL", reviewerIds: [owner, member, peer], dueAt: null, clientKey: randomUUID() })).rejects.toMatchObject({ statusCode: 400 });
+    await submit(f, peer, "EXCLUDE");
+    for (const actor of [owner, member]) {
+      const view = await service.detail(f.id, actor, f.roundId);
+      expect(view.hiddenReviews).toBe(true); expect(view.reviews).toHaveLength(0);
+      expect(JSON.stringify(await service.history(f.id, actor, f.roundId))).not.toContain(`private-${peer}`);
+    }
+    const row = await service.detail(f.id, owner, f.roundId);
+    await expect(service.unblind(f.id, owner, f.roundId, { expectedVersion: row.version, reason: "Owner attempts early exposure of the other vote", confirmed: true, clientKey: randomUUID() })).rejects.toMatchObject({ statusCode: 409 });
+    await expect(service.comment(f.id, member, f.roundId, { comment: "Cannot discuss unseen choices", clientKey: randomUUID() })).rejects.toMatchObject({ statusCode: 409 });
+    await submit(f, member, "INCLUDE");
+    expect((await service.detail(f.id, member, f.roundId)).reviews).toHaveLength(2);
+  });
+  it("lets a reviewer revise only their own unpublished vote without compromising independence", async () => {
+    const f = await fixture({ v4: true, reviewers: [member, peer] });
+    await submit(f, member, "INCLUDE");
+    const view = await service.detail(f.id, member, f.roundId);
+    expect(view.canReopenOwn).toBe(true);
+    const input = { assignmentId: view.myAssignmentId!, expectedVersion: view.version, reason: "Correct my population assessment before publication", confirmed: true as const, clientKey: randomUUID() };
+    await expect(service.reopen(f.id, peer, f.roundId, input)).rejects.toMatchObject({ statusCode: 403 });
+    await service.reopen(f.id, member, f.roundId, input);
+    await submit(f, member, "EXCLUDE");
+    expect((await service.detail(f.id, peer, f.roundId)).reviews).toHaveLength(0);
+    await submit(f, peer, "EXCLUDE");
+    expect((await service.detail(f.id, owner, f.roundId))).toMatchObject({ independenceCompromised: false, status: "EXCLUDED" });
+    expect(await db.screeningReview.count({ where: { projectId: f.id } })).toBe(3);
+  });
+  it("closes ordinary reviewer intake after completion and after reopening", async () => {
+    const f = await conflict();
+    const assign = () => service.assign(f.id, owner, { roundIds: [f.roundId], mode: "MANUAL" as const, reviewerIds: [owner, member, peer], dueAt: null, clientKey: randomUUID() });
+    await expect(assign()).rejects.toMatchObject({ statusCode: 409 });
+    const row = await service.detail(f.id, member, f.roundId);
+    await service.reopen(f.id, member, f.roundId, { assignmentId: row.myAssignmentId!, expectedVersion: row.version, reason: "Recheck my opinion with more evidence", confirmed: true, clientKey: randomUUID() });
+    await expect(assign()).rejects.toMatchObject({ statusCode: 409 });
+    expect((await service.detail(f.id, member, f.roundId)).hiddenReviews).toBe(true);
+    await expect(service.comment(f.id, member, f.roundId, { comment: "Still waiting for revised independent opinion", clientKey: randomUUID() })).rejects.toMatchObject({ statusCode: 409 });
+    await submit(f, member, "INCLUDE");
+    expect((await service.detail(f.id, member, f.roundId)).hiddenReviews).toBe(false);
+    expect(await db.screeningAssignment.count({ where: { roundId: f.roundId } })).toBe(2);
+  });
+  it("records a separate group agreement only after each reviewer confirms, without rewriting dissent", async () => {
+    const f = await conflict(); const before = await db.screeningReview.findMany({ where: { projectId: f.id }, orderBy: { id: "asc" } });
+    await expect(propose(f, owner)).rejects.toMatchObject({ statusCode: 403 });
+    const proposal = await propose(f); expect(proposal.id).toBeDefined();
+    expect((await service.detail(f.id, member, f.roundId)).agreement?.confirmedByIds).toEqual([]);
+    await expect(confirmAgreement(f, owner, proposal.id!)).rejects.toMatchObject({ statusCode: 409 });
+    const first = { expectedVersion: proposal.version!, proposalId: proposal.id!, confirmed: true as const, clientKey: randomUUID() };
+    const result = await service.confirmAgreement(f.id, member, f.roundId, first);
+    expect(await service.confirmAgreement(f.id, member, f.roundId, first)).toEqual(result);
+    expect((await service.detail(f.id, peer, f.roundId)).finalDecision).toBeNull();
+    await expect(confirmAgreement(f, member, proposal.id!)).rejects.toMatchObject({ statusCode: 409 });
+    await confirmAgreement(f, peer, proposal.id!);
+    const final = await service.detail(f.id, owner, f.roundId);
+    expect(final.finalDecision).toMatchObject({ source: "CONSENSUS", decision: "INCLUDED", resolverId: null });
+    expect(final.agreement?.confirmedByIds.sort()).toEqual([member, peer].sort());
+    expect(await db.screeningReview.findMany({ where: { projectId: f.id }, orderBy: { id: "asc" } })).toEqual(before);
+    expect(await db.screeningFinalDecision.count({ where: { roundId: f.roundId } })).toBe(1);
+    expect((await service.analytics(f.id, owner)).agreements).toBe(0);
+    const audit = await db.screeningAudit.findFirstOrThrow({ where: { roundId: f.roundId, type: "AGREEMENT_CONFIRMED" } });
+    await expect(db.screeningAudit.update({ where: { id: audit.id }, data: { details: {} } })).rejects.toThrow();
+  });
+  it("supersedes proposals and invalidates confirmations when a review is revised", async () => {
+    const f = await conflict(), first = await propose(f); await confirmAgreement(f, member, first.id!);
+    const second = await propose(f, peer, "EXCLUDED");
+    await expect(confirmAgreement(f, peer, first.id!)).rejects.toMatchObject({ statusCode: 409 });
+    expect((await service.detail(f.id, member, f.roundId)).agreement?.confirmedByIds).toEqual([]);
+    await confirmAgreement(f, member, second.id!);
+    const row = await service.detail(f.id, member, f.roundId);
+    await service.reopen(f.id, member, f.roundId, { assignmentId: row.myAssignmentId!, expectedVersion: row.version, reason: "Review revision invalidates the old shared agreement", confirmed: true, clientKey: randomUUID() });
+    await expect(confirmAgreement(f, peer, second.id!)).rejects.toMatchObject({ statusCode: 409 });
+    await submit(f, member, "INCLUDE");
+    expect((await service.detail(f.id, peer, f.roundId)).agreement).toBeNull();
+    await expect(confirmAgreement(f, peer, second.id!)).rejects.toMatchObject({ statusCode: 409 });
+  });
+  it("serializes competing proposals and stale confirmations", async () => {
+    const f = await conflict(); const version = (await service.detail(f.id, member, f.roundId)).version;
+    const outcomes = await Promise.allSettled([member, peer].map(actor => service.proposeAgreement(f.id, actor, f.roundId, { expectedVersion: version, decision: "INCLUDED", reason: "Keep the study for full text eligibility verification", confirmed: true, clientKey: randomUUID() })));
+    expect(outcomes.filter(r => r.status === "fulfilled")).toHaveLength(1);
+    const view = await service.detail(f.id, member, f.roundId);
+    await confirmAgreement(f, member, view.agreement!.id);
+    await expect(confirmAgreement(f, peer, view.agreement!.id, { expectedVersion: view.version })).rejects.toMatchObject({ statusCode: 409 });
+    await confirmAgreement(f, peer, view.agreement!.id);
+    expect(await db.screeningFinalDecision.count({ where: { roundId: f.roundId } })).toBe(1);
+  });
+  it("supports separate group agreement under CONSENSUS protocol and waits for every configured reviewer", async () => {
+    const f = await fixture({ v4: true, consensus: true, count: 3, reviewers: [owner, member, peer] });
+    await submit(f, owner, "INCLUDE"); await submit(f, member, "INCLUDE"); await submit(f, peer, "EXCLUDE");
+    const p = await propose(f, member, "EXCLUDED"); await confirmAgreement(f, owner, p.id!); await confirmAgreement(f, member, p.id!);
+    expect((await service.detail(f.id, owner, f.roundId)).finalDecision).toBeNull();
+    await confirmAgreement(f, peer, p.id!);
+    expect((await service.detail(f.id, owner, f.roundId)).finalDecision?.decision).toBe("EXCLUDED");
+  });
+  it("does not bypass uncertainty or allow new agreement writes after project completion", async () => {
+    const f = await fixture({ v4: true, reviewers: [member, peer] });
+    await submit(f, member, "UNSURE"); await submit(f, peer, "INCLUDE");
+    await expect(propose(f)).rejects.toMatchObject({ statusCode: 403 });
+    const other = await conflict(), p = await propose(other);
+    await db.project.update({ where: { id: other.id }, data: { status: "COMPLETED" } });
+    await expect(confirmAgreement(other, member, p.id!)).rejects.toMatchObject({ statusCode: 409 });
+  });
+  it("advances an agreed title decision to full text without treating it as final extraction approval", async () => {
+    const f = await fixture({ v4: true, reviewers: [member, peer] });
+    const snapshot = await db.screeningRound.findUniqueOrThrow({ where: { id: f.roundId } });
+    await db.screeningRound.update({ where: { id: f.roundId }, data: { settings: { ...(snapshot.settings as Record<string, unknown>), stages: ["TITLE_ABSTRACT", "FULL_TEXT"] } as never } });
+    await submit(f, member, "INCLUDE"); await submit(f, peer, "EXCLUDE");
+    const p = await propose(f); await confirmAgreement(f, member, p.id!); await confirmAgreement(f, peer, p.id!);
+    const title = await service.detail(f.id, owner, f.roundId);
+    expect(title).toMatchObject({ active: false, extractionReady: false, status: "INCLUDED" });
+    const fullText = await db.screeningRound.findFirstOrThrow({ where: { projectId: f.id, paperId: f.paperId, active: true } });
+    expect(fullText.phase).toBe("FULL_TEXT");
+    expect((await service.detail(f.id, owner, fullText.id))).toMatchObject({ assigned: 2, completed: 0, extractionReady: false });
+    expect(await db.screeningReview.count({ where: { projectId: f.id } })).toBe(2);
+  });
+  it("shares only owner-selected discussion from the same round with a scoped lecturer", async () => {
+    const f = await conflict(), other = await conflict(), mentor = await lecturer(f); await discuss(f); await discuss(other);
+    const proposal = await propose(f); await confirmAgreement(f, member, proposal.id!);
+    const comments = await db.screeningAudit.findMany({ where: { roundId: f.roundId, type: "DISCUSSION" } });
+    const foreign = await db.screeningAudit.findFirstOrThrow({ where: { roundId: other.roundId, type: "DISCUSSION" } });
+    await expect(appoint(f, mentor.id, { shareWithMentor: true, discussionIds: [foreign.id] })).rejects.toMatchObject({ statusCode: 400 });
+    await appoint(f, mentor.id, { shareWithMentor: true, discussionIds: [comments[0]!.id] });
+    expect((await service.detail(f.id, member, f.roundId)).agreement).toBeNull();
+    await expect(confirmAgreement(f, peer, proposal.id!)).rejects.toMatchObject({ statusCode: 409 });
+    const packet = (await service.adjudication(f.id, mentor.id, f.roundId)).packet;
+    expect(packet.discussion?.map(d => d.id)).toEqual([comments[0]!.id]);
+    expect(packet.discussion?.[0]?.comment).toBe((comments[0]!.details as { comment: string }).comment);
+    expect((await service.adjudication(f.id, mentor.id, f.roundId)).availableDiscussion).toBeUndefined();
+    expect(JSON.stringify(packet)).not.toContain(comments[1]!.id);
+    await expect(service.history(f.id, mentor.id, f.roundId)).rejects.toMatchObject({ statusCode: 404 });
+  });
+  it("V3 prioritizes non-proposers on automatic assignment and falls back for two-person teams", async () => {
+    const f = await fixture({ v3: true });
+    const imported = await sources.import(f.id, owner, { title: "Unassigned source", authors: [], reference: "", clientKey: randomUUID() });
+    const id = (await service.board(f.id, owner, page)).items.find(p => p.paperId === imported.paperId)!.round!.id;
+    await service.assign(f.id, owner, { roundIds: [id], mode: "AUTO", reviewerIds: [], dueAt: null, clientKey: randomUUID() });
+    expect((await service.detail(f.id, owner, id)).assignments.map(a => a.reviewerId).sort()).toEqual([member, peer].sort());
+    await projectService.leaveProject(f.id, peer);
+    await service.assign(f.id, owner, { roundIds: [id], mode: "AUTO", reviewerIds: [], dueAt: null, clientKey: randomUUID() });
+    expect((await service.detail(f.id, owner, id)).assignments.map(a => a.reviewerId).sort()).toEqual([member, owner].sort());
+  });
+  it.each(["INCLUDE", "EXCLUDE"] as const)("V3 waits for every assigned reviewer then automatically records unanimous %s once", async decision => {
+    const f = await fixture({ v3: true, reviewers: [owner, member, peer] });
+    expect((await service.detail(f.id, owner, f.roundId)).status).toBe("NOT_REVIEWED");
+    await submit(f, owner, decision); await submit(f, member, decision);
+    const partial = await service.detail(f.id, owner, f.roundId);
+    expect(partial.status).toBe("IN_REVIEW"); expect(partial.hiddenReviews).toBe(true); expect(partial.reviews).toHaveLength(1);
+    const r = await service.detail(f.id, peer, f.roundId);
+    const input = { assignmentId: r.myAssignmentId!, expectedRevision: 1, decision, exclusionReason: "Outside population", comment: "Checked protocol", confirmed: true as const, clientKey: randomUUID() };
+    await Promise.all([service.submit(f.id, peer, f.roundId, input), service.submit(f.id, peer, f.roundId, input)]);
+    const final = await service.detail(f.id, owner, f.roundId);
+    expect(final.status).toBe(decision === "INCLUDE" ? "INCLUDED" : "EXCLUDED");
+    expect(final.finalDecision).toMatchObject({ source: "CONSENSUS", resolverId: null });
+    expect(await db.screeningFinalDecision.count({ where: { roundId: f.roundId } })).toBe(1);
+  });
+  it("V3 advances unanimous title screening to assigned full-text review without granting extraction", async () => {
+    const f = await fixture({ v3: true });
+    const row = await db.screeningRound.findUniqueOrThrow({ where: { id: f.roundId } });
+    await db.screeningRound.update({ where: { id: row.id }, data: { settings: { ...(row.settings as object), stages: ["TITLE_ABSTRACT", "FULL_TEXT"] } } });
+    await submit(f, owner, "INCLUDE"); await submit(f, member, "INCLUDE");
+    const old = await service.detail(f.id, owner, f.roundId);
+    expect(old).toMatchObject({ active: false, status: "INCLUDED", extractionReady: false });
+    const next = await db.screeningRound.findFirstOrThrow({ where: { projectId: f.id, paperId: f.paperId, active: true } });
+    expect(next.phase).toBe("FULL_TEXT");
+    expect((await service.detail(f.id, owner, next.id)).assignments).toHaveLength(2);
+    expect((await db.projectPaper.findUniqueOrThrow({ where: { projectId_paperId: { projectId: f.id, paperId: f.paperId } } })).screeningStatus).not.toBe("INCLUDED");
+    await expect(submit({ ...f, roundId: next.id }, owner, "INCLUDE")).rejects.toMatchObject({ statusCode: 400 });
+  });
+  it("V3 treats unsure as missing information and blocks adjudication", async () => {
+    const f = await fixture({ v3: true }); await submit(f, owner, "INCLUDE"); await submit(f, member, "UNSURE");
+    expect((await service.detail(f.id, owner, f.roundId)).status).toBe("NEEDS_MORE_INFO");
+    await expect(appoint(f, peer)).rejects.toMatchObject({ statusCode: 409 });
+    expect(await db.screeningFinalDecision.count({ where: { roundId: f.roundId } })).toBe(0);
+  });
+  it("V3 requires discussion and explicit independent adjudicator; proposer needs acknowledgement", async () => {
+    const f = await conflict();
+    expect((await service.detail(f.id, owner, f.roundId)).finalizer.id).toBe("");
+    await expect(finalize(f)).rejects.toMatchObject({ statusCode: 403 });
+    await expect(appoint(f, owner, { acknowledgeProposer: true })).rejects.toMatchObject({ statusCode: 409 });
+    await service.comment(f.id, member, f.roundId, { comment: "First reviewer asks about population", clientKey: randomUUID() });
+    await expect(appoint(f, owner, { acknowledgeProposer: true })).rejects.toMatchObject({ statusCode: 409 });
+    await discuss(f);
+    await expect(appoint(f, member)).rejects.toMatchObject({ statusCode: 400 });
+    await expect(appoint(f, owner)).rejects.toMatchObject({ statusCode: 400 });
+    await appoint(f, owner, { acknowledgeProposer: true });
+    expect((await service.detail(f.id, owner, f.roundId)).status).toBe("ADJUDICATING");
+    await finalize(f);
+    expect(await db.screeningReview.count({ where: { projectId: f.id } })).toBe(2);
+  });
+  it("V3 lets reviewers reopen their own published vote and preserves revisions and previous finals", async () => {
+    const f = await conflict(); await discuss(f); await appoint(f, owner, { acknowledgeProposer: true }); await finalize(f);
+    const row = await service.detail(f.id, member, f.roundId);
+    const input = { expectedVersion: row.version, assignmentId: row.myAssignmentId!, reason: "Recheck the population after new methodological evidence", confirmed: true as const, clientKey: randomUUID() };
+    await expect(service.reopen(f.id, peer, f.roundId, input)).rejects.toMatchObject({ statusCode: 403 });
+    await service.reopen(f.id, member, f.roundId, input);
+    expect((await service.detail(f.id, member, f.roundId))).toMatchObject({ finalDecision: null, independenceCompromised: true, finalizerAssigned: false });
+    await submit(f, member, "EXCLUDE");
+    expect((await service.detail(f.id, owner, f.roundId)).finalDecision?.source).toBe("CONSENSUS");
+    expect(await db.screeningReview.count({ where: { projectId: f.id } })).toBe(3);
+    expect(await db.screeningFinalDecision.count({ where: { roundId: f.roundId } })).toBe(2);
+  });
+  it("V3 requires discussion from both sides of a disagreement with more than two reviewers", async () => {
+    const f = await fixture({ v3: true, reviewers: [owner, member, peer] });
+    await submit(f, owner, "INCLUDE"); await submit(f, member, "INCLUDE"); await submit(f, peer, "EXCLUDE");
+    for (const actor of [owner, member]) await service.comment(f.id, actor, f.roundId, { comment: "We believe it satisfies the eligibility criteria", clientKey: randomUUID() });
+    expect((await service.detail(f.id, owner, f.roundId)).discussionReady).toBe(false);
+    await service.comment(f.id, peer, f.roundId, { comment: "Our disagreement concerns the selected population", clientKey: randomUUID() });
+    expect((await service.detail(f.id, owner, f.roundId)).discussionReady).toBe(true);
+  });
+  it("V3 shares only approved packet with accepted lecturer, grants no team access, and serializes resolution", async () => {
+    const f = await conflict(), mentor = await lecturer(f); await discuss(f);
+    await expect(appoint(f, mentor.id)).rejects.toMatchObject({ statusCode: 400 });
+    await appoint(f, mentor.id, { shareWithMentor: true });
+    const view = await service.adjudication(f.id, mentor.id, f.roundId);
+    expect(view.canResolve).toBe(true); expect(view.packet.reviews).toHaveLength(2);
+    expect(JSON.stringify(view.packet)).not.toContain('"reviewerId"');
+    expect(Object.keys(view.packet).sort()).toEqual(["roundId", "paperId", "phase", "roundVersion", "paper", "inclusionCriteria", "exclusionCriteria", "researchQuestions", "reviews"].sort());
+    expect(await db.projectMember.count({ where: { projectId: f.id, userId: mentor.id } })).toBe(0);
+    await expect(service.detail(f.id, mentor.id, f.roundId)).rejects.toMatchObject({ statusCode: 404 });
+    await expect(service.board(f.id, mentor.id, page)).rejects.toMatchObject({ statusCode: 404 });
+    await expect(service.adjudication(f.id, outsider, f.roundId)).rejects.toMatchObject({ statusCode: 404 });
+    const app = express(); app.use(express.json()); app.use("/projects/:id/research/screening-v2", requireAuth, screeningRouter); app.use(errorHandler);
+    const server = createServer(app); server.listen(0, "127.0.0.1"); await once(server, "listening");
+    const sessionId = randomUUID(); await db.refreshToken.create({ data: { userId: mentor.id, familyId: sessionId, tokenHash: hashOpaqueToken(randomUUID()), expiresAt: new Date(Date.now() + 3600000) } });
+    const token = tokenService.signAccessToken({ sub: mentor.id, systemRole: "USER", sessionId }).token;
+    const endpoint = `http://127.0.0.1:${(server.address() as { port: number }).port}/projects/${f.id}/research/screening-v2/rounds/${f.roundId}`;
+    try {
+      expect((await fetch(`${endpoint}/adjudication`)).status).toBe(401);
+      const headers = { authorization: `Bearer ${token}` };
+      const response = await fetch(`${endpoint}/adjudication`, { headers });
+      expect(response.status).toBe(200); expect(response.headers.get("cache-control")).toContain("no-store");
+      expect((await response.json()).data.packet).toEqual(view.packet);
+      expect((await fetch(endpoint, { headers })).status).toBe(404);
+    } finally { server.close(); server.closeAllConnections(); }
+    const notification = await db.notification.findFirstOrThrow({ where: { userId: mentor.id, type: "SCREENING_ADJUDICATION_ASSIGNED" } });
+    expect(notification.emailPayload).toMatchObject({ screeningRoundId: f.roundId });
+    const input = { decision: "INCLUDED" as const, expectedVersion: view.version, reason: "Eligibility is supported by the population and methodology", confirmed: true as const, clientKey: randomUUID() };
+    await expect(service.resolve(f.id, mentor.id, f.roundId, { ...input, expectedVersion: view.version - 1 })).rejects.toMatchObject({ statusCode: 409 });
+    const outcomes = await Promise.allSettled([service.resolve(f.id, mentor.id, f.roundId, input), service.resolve(f.id, mentor.id, f.roundId, { ...input, decision: "EXCLUDED", clientKey: randomUUID() })]);
+    expect(outcomes.filter(r => r.status === "fulfilled")).toHaveLength(1);
+    expect(await db.screeningReview.count({ where: { projectId: f.id } })).toBe(2);
+    expect((await service.adjudication(f.id, mentor.id, f.roundId)).canResolve).toBe(false);
+    const review = await service.detail(f.id, member, f.roundId);
+    await service.reopen(f.id, member, f.roundId, { assignmentId: review.myAssignmentId!, expectedVersion: review.version, reason: "New evidence requires reviewer reconsideration", confirmed: true, clientKey: randomUUID() });
+    await expect(service.adjudication(f.id, mentor.id, f.roundId)).rejects.toMatchObject({ statusCode: 404 });
+    await submit(f, member, "INCLUDE"); await discuss(f); await appoint(f, mentor.id, { shareWithMentor: true });
+    expect((await service.adjudication(f.id, mentor.id, f.roundId)).finalDecision).toBeNull();
+  });
+  it.each(["share", "policy", "completed", "forged"])("V3 blocks lecturer writes after %s changes", async change => {
+    const f = await conflict(), mentor = await lecturer(f); await discuss(f); await appoint(f, mentor.id, { shareWithMentor: true });
+    const view = await service.adjudication(f.id, mentor.id, f.roundId);
+    if (change === "policy") await db.mentorAccess.update({ where: { id: mentor.access.id }, data: { revokedAt: new Date() } });
+    if (change === "share" || change === "forged") {
+      await db.mentorResourceShare.updateMany({ where: { accessId: mentor.access.id }, data: { revokedAt: new Date() } });
+      if (change === "forged") await db.mentorResourceShare.create({ data: { projectId: f.id, accessId: mentor.access.id, sharedById: owner, kind: "PAPER", resourceId: f.paperId, sectionKey: `screening:${f.roundId}`, title: "Forged packet", content: JSON.stringify(view.packet) } });
+    }
+    if (change === "completed") await db.project.update({ where: { id: f.id }, data: { status: "COMPLETED" } });
+    await expect(service.resolve(f.id, mentor.id, f.roundId, { decision: "INCLUDED", expectedVersion: view.version, reason: "Attempt after access or project status changed", confirmed: true, clientKey: randomUUID() })).rejects.toMatchObject({ statusCode: change === "completed" ? 409 : 404 });
+    expect(await db.screeningFinalDecision.count({ where: { roundId: f.roundId } })).toBe(0);
+  });
   it("seals actual research question text and reading scope in immutable review versions", async () => {
     const f = await collaborative(), questionId = randomUUID();
     await db.researchPlan.upsert({ where: { projectId: f.id }, create: { projectId: f.id, questions: [{ id: questionId, text: "How does the intervention support learning?" }] }, update: { questions: [{ id: questionId, text: "How does the intervention support learning?" }] } });
@@ -88,6 +577,7 @@ describe.skipIf(!enabled).sequential("collaborative screening on isolated Postgr
   });
   it("allows a sole researcher to select background, reopen it and preserve extracted evidence", async () => {
     const p = await createProjectFixture({ data: { title: "Sole researcher", ownerId: owner, status: "ACTIVE" } });
+    await db.screeningSettings.create({ data: { projectId: p.id, reviewMode: "COLLABORATIVE", requiredReviewers: 1, blindReview: false } });
     const imported = await sources.import(p.id, owner, { title: "A useful background method", publicationYear: 2025, authors: ["A Researcher"], reference: "", clientKey: randomUUID() });
     const f = { id: p.id, paperId: imported.paperId };
     const a = await assess(f, owner, "INCLUDE");
@@ -117,8 +607,8 @@ describe.skipIf(!enabled).sequential("collaborative screening on isolated Postgr
     await service.configure(f.id, owner, { reviewMode: "INDEPENDENT", blindReview: true, resolutionPolicy: "ADJUDICATION", expectedVersion: config.settings.version, requiredReviewers: 2, consensusPolicy: "UNANIMOUS", aiAssisted: false, inclusionCriteria: [], exclusionCriteria: [], researchQuestions: [], stages: ["TITLE_ABSTRACT", "FULL_TEXT"], clientKey: randomUUID() });
     const second = await sources.import(f.id, member, { title: "Protocol source", authors: [], reference: "", clientKey: randomUUID() });
     await expect(service.start(f.id, owner, { paperIds: [second.paperId], phase: "FULL_TEXT", confirmRescreen: false, clientKey: randomUUID() })).rejects.toMatchObject({ statusCode: 409 });
-    const started = await service.start(f.id, owner, { paperIds: [second.paperId], phase: "TITLE_ABSTRACT", confirmRescreen: false, clientKey: randomUUID() });
-    const next = { id: f.id, paperId: second.paperId, roundId: started.roundIds![0]! };
+    const next = { id: f.id, paperId: second.paperId, roundId: (await service.board(f.id, owner, page)).items.find(p => p.paperId === second.paperId)!.round!.id };
+    await historicRound(next.roundId);
     await service.assign(f.id, owner, { roundIds: [next.roundId], mode: "MANUAL", reviewerIds: [owner, member], dueAt: null, clientKey: randomUUID() });
     await submit(next, owner, "INCLUDE");
     await expect(finalize(next)).rejects.toMatchObject({ statusCode: 409 });
@@ -128,6 +618,7 @@ describe.skipIf(!enabled).sequential("collaborative screening on isolated Postgr
     await expect(sets.create(f.id, owner, { mode: "OFFICIAL", paperIds: [f.paperId, next.paperId], topic: "Review methods", clientKey: randomUUID() })).rejects.toMatchObject({ statusCode: 409 });
     const full = await service.start(f.id, owner, { paperIds: [next.paperId], phase: "FULL_TEXT", confirmRescreen: true, clientKey: randomUUID() });
     next.roundId = full.roundIds![0]!;
+    await historicRound(next.roundId);
     await service.assign(f.id, owner, { roundIds: [next.roundId], mode: "MANUAL", reviewerIds: [owner, member], dueAt: null, clientKey: randomUUID() });
     await expect(submit(next, owner, "INCLUDE", { scope: "TITLE_ABSTRACT" })).rejects.toMatchObject({ statusCode: 400 });
     await expect(submit(next, owner, "INCLUDE")).rejects.toMatchObject({ statusCode: 400 });
@@ -161,7 +652,7 @@ describe.skipIf(!enabled).sequential("collaborative screening on isolated Postgr
     const assignment = await db.screeningAssignment.findUniqueOrThrow({ where: { roundId_reviewerId: { roundId, reviewerId: member } } });
     expect((await db.screeningReview.findMany({ where: { assignmentId: assignment.id }, orderBy: { revision: "asc" } })).map(r => r.revision)).toEqual([1, 2]);
   });
-  it("defaults to collaborative and preserves two conflicting opinions and all own revisions", async () => {
+  it("preserves explicit collaborative rules and two conflicting opinions and all own revisions", async () => {
     const f = await collaborative();
     expect((await service.config(f.id, owner)).settings.reviewMode).toBe("COLLABORATIVE");
     await assess(f, owner, "INCLUDE"); const second = await assess(f, member, "EXCLUDE");

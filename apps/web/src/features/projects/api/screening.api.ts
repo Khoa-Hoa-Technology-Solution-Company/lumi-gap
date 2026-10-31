@@ -1,9 +1,16 @@
-import type { ProjectAnalysisSet, ScreeningBoard, ScreeningRoundView, ScreeningSettings, ScreeningMetrics, ScreeningAiView, ScreeningAuditView, WorkspacePage, WorkspacePerson } from "@trend/shared-types";
+import type { ScreeningWorkspaceSummary, ScreeningAdjudicationView, ProjectAnalysisSet, ScreeningBoard, ScreeningRoundView, ScreeningSettings, ScreeningMetrics, ScreeningAiView, ScreeningAuditView, WorkspacePage, WorkspacePerson } from "@trend/shared-types";
 import { api } from "@/services/api-client";
 const path = (id: string, suffix: string) => `/projects/${encodeURIComponent(id)}/research/screening-v2/${suffix}`;
 async function get<T>(id: string, suffix: string, params?: Record<string, string | number>) { return (await api.get<{ data: T }>(path(id, suffix), { params })).data.data; }
 async function write(id: string, suffix: string, data: unknown, method = "post") { return (await api.request<{ data: unknown }>({ url: path(id, suffix), method, data })).data.data; }
 export const screeningApi = {
+  advanceConservatively: (id: string, roundId: string, data: unknown) => write(id, `rounds/${roundId}/advance-full-text`, data),
+  begin: (id: string, paperId: string, data: unknown) => write(id, `papers/${paperId}/begin`, data),
+  declineAgreement: (id: string, roundId: string, data: unknown) => write(id, `rounds/${roundId}/agreement/decline`, data),
+  requestAdjudication: (id: string, roundId: string, data: unknown) => write(id, `rounds/${roundId}/request-adjudication`, data),
+  proposeAgreement: (id: string, roundId: string, data: unknown) => write(id, `rounds/${roundId}/agreement`, data),
+  confirmAgreement: (id: string, roundId: string, data: unknown) => write(id, `rounds/${roundId}/agreement/confirm`, data),
+  adjudication: (id: string, roundId: string) => get<ScreeningAdjudicationView>(id, `rounds/${roundId}/adjudication`),
   assess: (id: string, paperId: string, data: unknown) => write(id, `papers/${paperId}/assessment`, data),
   createSet: async (id: string, data: unknown) => await write(id, "analysis-sets", data) as { id: string },
   getSet: (id: string, setId: string) => get<ProjectAnalysisSet>(id, `analysis-sets/${setId}`),
@@ -21,4 +28,10 @@ export const screeningApi = {
   analytics: (id: string) => get<ScreeningMetrics>(id, "analytics"),
   ai: (id: string, roundId: string) => get<ScreeningAiView | null>(id, `rounds/${roundId}/ai`),
   requestAi: (id: string, roundId: string, clientKey: string) => write(id, `rounds/${roundId}/ai`, { clientKey }),
+  workspaceSummary: (id: string) => get<ScreeningWorkspaceSummary>(id, "workspace-summary"),
+  claim: (id: string, roundId: string, data?: unknown) => write(id, `rounds/${roundId}/claim`, data ?? {}),
+  release: (id: string, roundId: string, data?: unknown) => write(id, `rounds/${roundId}/release`, data ?? {}),
+  extend: (id: string, roundId: string, data?: unknown) => write(id, `rounds/${roundId}/extend`, data ?? {}),
+  claimNext: (id: string, data?: unknown) => write(id, "papers/claim-next", data ?? {}) as Promise<{ paperId: string | null; roundId: string | null; dueAt: string | null }>,
+  updateDiscoveryGoal: (id: string, data: unknown) => write(id, "discovery-goal", data, "put"),
 };

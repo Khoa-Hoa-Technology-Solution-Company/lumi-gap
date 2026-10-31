@@ -8,7 +8,7 @@ import { ScreeningWorkspace } from "../components/screening-workspace";
 import { ResearchLiterature } from "../components/research-literature";
 import { ScreeningSettingsForm } from "../components/screening-management";
 import type { ScreeningBoard, ScreeningRoundView } from "@trend/shared-types";
-const mocks = vi.hoisted(() => ({ board: vi.fn(), rounds: vi.fn(), detail: vi.fn(), history: vi.fn(), ai: vi.fn(), action: vi.fn(), start: vi.fn(), assign: vi.fn(), configure: vi.fn(), analytics: vi.fn(), requestAi: vi.fn(), proposal: vi.fn(), confirm: vi.fn() }));
+const mocks = vi.hoisted(() => ({ begin: vi.fn(), advanceConservatively: vi.fn(), requestAdjudication: vi.fn(), board: vi.fn(), rounds: vi.fn(), detail: vi.fn(), history: vi.fn(), ai: vi.fn(), action: vi.fn(), start: vi.fn(), assign: vi.fn(), configure: vi.fn(), analytics: vi.fn(), requestAi: vi.fn(), proposal: vi.fn(), confirm: vi.fn(), workspaceSummary: vi.fn(), claim: vi.fn(), release: vi.fn(), extend: vi.fn(), claimNext: vi.fn(), updateDiscoveryGoal: vi.fn() }));
 vi.mock("../api/screening.api", () => ({ screeningApi: mocks }));
 vi.mock("@/services/confirmation", () => ({ confirmUnsavedChanges: mocks.confirm }));
 vi.mock("@/stores/auth-store", () => ({ useAuthStore: (select: (state: { user: { id: string } }) => unknown) => select({ user: { id: "actor" } }) }));
@@ -22,19 +22,47 @@ async function render(node: ReactNode, path = "/projects/p?tab=papers&source=pap
 async function click(label: string) { const element = [...container.querySelectorAll<HTMLButtonElement>("button")].find(b => b.textContent === label); expect(element, label).toBeDefined(); await act(async () => element!.click()); await settle(); }
 async function fill(label: string, text: string) { const input = [...container.querySelectorAll("label")].find(l => l.textContent?.startsWith(label))?.querySelector<HTMLInputElement | HTMLTextAreaElement>("input,textarea"); expect(input, label).toBeDefined(); await act(async () => { const proto = input instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype; Object.getOwnPropertyDescriptor(proto, "value")!.set!.call(input, text); input!.dispatchEvent(new Event("input", { bubbles: true })); }); await settle(); }
 beforeEach(() => {
-  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true); vi.resetAllMocks(); Object.values(mocks).forEach(m => m.mockResolvedValue(undefined)); mocks.confirm.mockResolvedValue(true); mocks.board.mockResolvedValue(board); mocks.detail.mockResolvedValue(round); mocks.rounds.mockResolvedValue({ items: [round], total: 1, page: 1, pageSize: 10, hasNext: false, legacy: null }); mocks.history.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20, hasNext: false }); mocks.ai.mockResolvedValue(null);
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true); vi.resetAllMocks(); Object.values(mocks).forEach(m => m.mockResolvedValue(undefined)); mocks.confirm.mockResolvedValue(true); mocks.board.mockResolvedValue(board); mocks.detail.mockResolvedValue(round); mocks.rounds.mockResolvedValue({ items: [round], total: 1, page: 1, pageSize: 10, hasNext: false, legacy: null }); mocks.history.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20, hasNext: false }); mocks.ai.mockResolvedValue(null); mocks.workspaceSummary.mockResolvedValue({ myActiveClaims: [], pendingConsensus: [], pendingAdjudications: [], myProposalsCount: 1, recentProposals: [], eligibleQueueCount: 0, nextEligiblePaperId: null, discoveryGoal: { enabled: false, target: 2, period: "WEEK", paused: false, currentCount: 0, remaining: 2 }, capacityAdvice: { queueStatus: "NORMAL", message: "Tiến độ sàng lọc đều đặn" } });
   client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } } }); container = document.createElement("div"); document.body.append(container); root = createRoot(container);
 });
 afterEach(async () => { await act(async () => root.unmount()); client.clear(); container.remove(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
-it("opens the shared library by default and keeps organization accessible", async () => {
+it("opens the task-first workspace by default and keeps organization accessible", async () => {
   await render(<ResearchLiterature projectId="p" readOnly={false}><p>Thư viện cũ</p></ResearchLiterature>);
-  expect(container.textContent).toContain("Thư viện của nhóm"); expect(container.textContent).not.toContain("Thư viện cũ");
+  expect(container.textContent).toContain("Việc của tôi"); expect(container.textContent).not.toContain("Thư viện cũ");
   await click("Notes & Sources"); expect(container.textContent).toContain("Thư viện cũ");
 });
 it("shows safe completion and permissions, hides AI requests and renders paper text safely", async () => {
   await render(<ScreeningWorkspace projectId="p" readOnly={false} />);
   expect(container.textContent).toContain("1/2 phiếu đã gửi"); expect(container.textContent).toContain("Phiếu và nhận xét của người khác đang được ẩn"); expect(container.querySelector("script")).toBeNull();
   expect(mocks.ai).not.toHaveBeenCalled(); expect(container.textContent).not.toContain("Quản lý và xử lý bất đồng"); expect(container.textContent).not.toContain("Bắt đầu vòng cho bài đã chọn");
+});
+it("distinguishes the four-person team from the two assigned reviewers and identifies my assignment", async () => {
+  mocks.board.mockResolvedValue({ ...board, people: [...board.people, { id: "owner", name: "Chủ dự án" }, { id: "fourth", name: "Thành viên D" }] });
+  await render(<ScreeningWorkspace projectId="p" readOnly={false} />);
+  expect(container.querySelector('[aria-label="Phân công đánh giá của vòng"]')?.textContent).toContain("Nhóm có 4 thành viên đủ điều kiện đánh giá.");
+  expect(container.querySelector('[aria-label="Phân công đánh giá của vòng"]')?.textContent).toContain("yêu cầu 2 reviewer");
+  expect(container.querySelectorAll('[aria-label="Reviewer được phân công"] li')).toHaveLength(2);
+  expect(container.querySelector('[aria-label="Reviewer được phân công"]')?.textContent).toContain("Tôi (Bạn)");
+  expect(container.textContent).toContain("Bạn là reviewer được phân công cho vòng này.");
+});
+it.each([false, true])("does not offer an extra independent ballot to an unassigned team member, including the owner (%s)", async canManage => {
+  const unassigned = { ...round, canManage, myAssignmentId: null, canReview: false, assignments: round.assignments.map(a => ({ ...a, reviewerId: a.id === "mine" ? "another-reviewer" : a.reviewerId })) };
+  mocks.detail.mockResolvedValue(unassigned);
+  mocks.board.mockResolvedValue({ ...board, canManage, items: [{ ...board.items[0], round: unassigned }] });
+  await render(<ScreeningWorkspace projectId="p" readOnly={false} />);
+  expect(container.textContent).toContain("Bạn không được phân công đánh giá bài này.");
+  expect(container.querySelector('input[name="review-choice"]')).toBeNull();
+  expect([...container.querySelectorAll("button")].some(b => b.textContent === "Gửi và khóa phiếu")).toBe(false);
+  expect(mocks.action).not.toHaveBeenCalled();
+});
+it("explains empty frozen criteria without inventing or silently updating research rules", async () => {
+  const empty = { ...round, settings: { ...settings, researchQuestions: [], inclusionCriteria: [], exclusionCriteria: [] } };
+  mocks.detail.mockResolvedValue(empty); mocks.board.mockResolvedValue({ ...board, items: [{ ...board.items[0], round: empty }] });
+  await render(<ScreeningWorkspace projectId="p" readOnly={false} />);
+  expect(container.textContent).toContain("Vòng này chưa lưu tiêu chí đưa vào và tiêu chí loại.");
+  expect([...container.querySelectorAll("p")].filter(p => p.textContent === "Chưa thiết lập trong quy trình của vòng này.")).toHaveLength(3);
+  expect(mocks.configure).not.toHaveBeenCalled();
+  expect(mocks.action).not.toHaveBeenCalled();
 });
 it("requires confirmation, keeps a failed review draft, and reuses its idempotency key", async () => {
   mocks.action.mockRejectedValue(new Error("Network unavailable"));
@@ -141,7 +169,7 @@ it("requires the assigned finalizer to confirm and explain a final decision", as
   await click("Xác nhận và lưu lịch sử");
   expect(mocks.action).toHaveBeenCalledWith("p", "round", "finalize", expect.objectContaining({ decision: "INCLUDED", expectedVersion: 2, confirmed: true }));
   await act(async () => client.setQueryData(["project-research", "actor", "p", "screening-round", "round"], { ...ready, status: "INCLUDED", canFinalize: false, finalDecision: { id: "final", version: 3, decision: "INCLUDED", source: "MANUAL", reason: "Đã đối chiếu phạm vi và đối tượng theo tiêu chí", resolverId: "actor", createdAt: "2026-10-29T02:00:00Z" } })); await settle();
-  expect(container.textContent).toContain("Kết quả chính thức: Phù hợp");
+  expect(container.textContent).toContain("Kết quả của vòng: Phù hợp");
   expect(container.textContent).not.toContain("Quyền thao tác đã thay đổi");
   expect(container.textContent).not.toContain("Xác nhận và lưu lịch sử");
 });
@@ -210,10 +238,28 @@ it("separates legacy labels from current decisions and flags journal-like metada
   await render(<ScreeningWorkspace projectId="p" readOnly={false} />);
   expect(container.textContent).toContain("Đã có đánh giá: 0/1 bài");
   expect(container.textContent).toContain("Đã có quyết định cuối: 0/1 bài");
-  expect(container.querySelector(".screening-paper .screening-state")?.textContent).toBe("Chưa có đánh giá");
+  expect(container.querySelector(".screening-paper .screening-state")?.textContent).toBe("Chờ đánh giá");
   expect(container.textContent).toContain("Phân loại lịch sử: Phù hợp");
   expect(container.textContent).toContain("Tiêu đề trùng tên tạp chí");
   expect(container.querySelector('a[href="https://doi.org/10.3892%2Fijmm"]')).not.toBeNull();
   expect(container.querySelector('a[href="/papers/paper"]')).not.toBeNull();
   expect(mocks.action).not.toHaveBeenCalled();
+});
+
+it("lets an ordinary member initialize a never-started paper without Owner setup", async () => {
+  mocks.board.mockResolvedValue({ ...board, settings: { ...settings, workflowVersion: 5 }, items: [{ ...board.items[0], round: null }] });
+  mocks.rounds.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20, hasNext: false, legacy: null });
+  await render(<ScreeningWorkspace projectId="p" readOnly={false} />);
+  await click("Bắt đầu đánh giá độc lập");
+  expect(mocks.begin).toHaveBeenCalledWith("p", "paper", expect.objectContaining({ confirmRescreen: false }));
+});
+it("requires deliberate confirmation before permitted provisional full-text advancement", async () => {
+  const provisional = { ...round, hiddenReviews: false, canReview: false, status: "NEEDS_RESOLUTION", canAdvanceConservatively: true };
+  mocks.detail.mockResolvedValue(provisional); mocks.board.mockResolvedValue({ ...board, items: [{ ...board.items[0], round: provisional }] });
+  await render(<ScreeningWorkspace projectId="p" readOnly={false} />);
+  const send = [...container.querySelectorAll<HTMLButtonElement>("button")].find(b => b.textContent === "Chuyển sang đọc toàn văn")!;
+  expect(send.disabled).toBe(true); await fill("Lý do cần đọc toàn văn", "No independent third person is available for this abstract conflict");
+  const consent = [...container.querySelectorAll("label")].find(label => label.textContent?.includes("Tôi hiểu bước này"))!.querySelector<HTMLInputElement>("input")!;
+  await act(async () => consent.click()); await click("Chuyển sang đọc toàn văn");
+  expect(mocks.advanceConservatively).toHaveBeenCalledWith("p", "round", expect.objectContaining({ confirmed: true, expectedVersion: 2 }));
 });

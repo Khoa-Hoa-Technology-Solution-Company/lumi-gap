@@ -58,6 +58,7 @@ function ProjectInvitationRow({
         <p className="line-clamp-2 text-sm leading-6 text-muted-foreground">
           {invitation.message || invitation.projectDescription || t("Accepting adds this project to your workspace. Declining removes the invitation from your list.")}
         </p>
+        {invitation.invitedEmail && <p className="break-all text-sm text-muted-foreground">{t("Recipient email")}: <span className="font-medium text-foreground">{invitation.invitedEmail}</span></p>}
         <p className="text-sm text-muted-foreground">
           {t("Invite expires")}: {validExpiry ? <time dateTime={invitation.expiresAt}>{expiry}</time> : expiry}
         </p>
@@ -99,9 +100,9 @@ function ProjectInvitationRow({
   );
 }
 
-export function ProjectsListPage({ compact = false }: { compact?: boolean }) {
+export function ProjectsListPage({ compact = false, invitationsOnly = false }: { compact?: boolean; invitationsOnly?: boolean }) {
   const { data: projects, isLoading, isError, isFetching, refetch } = useProjects();
-  const { data: invitations = [], refetch: refetchInvitations } = useMyProjectInvitations();
+  const { data: invitations = [], isLoading: invitationsLoading, isError: invitationsError, isFetching: invitationsFetching, refetch: refetchInvitations } = useMyProjectInvitations();
   const respondToInvitation = useRespondToProjectInvitation();
   const navigate = useNavigate();
   const { t, language } = useI18n();
@@ -176,6 +177,28 @@ export function ProjectsListPage({ compact = false }: { compact?: boolean }) {
     {filters.search ? <button type="button" aria-label={t("Clear search")} onClick={() => updateFilter("q", "")}><X aria-hidden="true" /></button> : null}
   </div>;
 
+  const invitationSection = invitations.length > 0 && !(compact && searchParams.get("view") === "invitations") ? (
+    <InvitationContainer className="project-directory-invitations" aria-label={t("Project invitations")}>
+      {compact ? <summary><MailOpen aria-hidden="true" />{t("Project invitations")}<span>{number.format(invitations.length)}</span></summary> : <div className="flex items-center gap-3 border-b bg-muted/25 px-4 py-4 sm:px-5">
+        <MailOpen className="h-5 w-5 shrink-0 text-muted-foreground" aria-hidden="true" />
+        <h2 className="text-lg font-semibold">{t("Project invitations")}</h2>
+        <span className="text-sm text-muted-foreground">{number.format(invitations.length)}</span>
+      </div>}
+      <div className="divide-y">{invitations.map(invitation => <ProjectInvitationRow key={invitation.id} invitation={invitation}
+        busyAction={activeInvitationAction?.id === invitation.id ? activeInvitationAction.action : null}
+        onAccept={item => void handleInvitationResponse(item, "accept")} onDecline={item => void handleInvitationResponse(item, "decline")} />)}</div>
+    </InvitationContainer>
+  ) : null;
+
+  if (invitationsOnly) return <div className="projects-page project-page-width project-directory-page" data-no-i18n>
+    <header className="project-directory-heading"><h1 className="text-2xl font-semibold">{t("Project invitations")}</h1>
+      <p className="mt-2 text-sm text-muted-foreground">{t("Opening a notification does not accept an invitation. Review the recipient email and accept to join.")}</p>
+    </header>
+    {invitationsLoading ? <p role="status">{t("Loading...")}</p> : invitationsError ? <div role="alert" className="space-y-3">
+      <p>{t("Could not load project invitations.")}</p><Button variant="outline" disabled={invitationsFetching} onClick={() => void refetchInvitations()}>{t("Try again")}</Button>
+    </div> : invitationSection ?? <p className="rounded-xl border p-5 text-muted-foreground">{t("No pending project invitations for this account.")}</p>}
+  </div>;
+
   return (
     <div className={compact ? "projects-page project-switcher" : "projects-page project-page-width project-directory-page"} data-no-i18n>
       <header className="project-directory-heading">
@@ -199,32 +222,7 @@ export function ProjectsListPage({ compact = false }: { compact?: boolean }) {
         </div>
       </header>
 
-      {invitations.length > 0 ? (
-        <InvitationContainer className="project-directory-invitations" aria-labelledby="project-invitations-title">
-          {compact ? <summary id="project-invitations-title"><MailOpen aria-hidden="true" />{t("Project invitations")}<span>{number.format(invitations.length)}</span></summary> : <div className="flex flex-col gap-3 border-b bg-muted/25 px-4 py-4 sm:flex-row sm:items-center sm:px-5">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border bg-background text-muted-foreground">
-              <MailOpen className="h-4 w-4" aria-hidden="true" />
-            </span>
-            <div className="min-w-0 flex-1">
-              <h2 id="project-invitations-title" className="text-lg font-semibold">{t("Project invitations")}</h2>
-              <p className="mt-1 text-sm leading-5 text-muted-foreground">
-                {t(invitations.length === 1 ? "{{count}} pending invitation" : "{{count}} pending invitations", { count: number.format(invitations.length) })}
-              </p>
-            </div>
-          </div>}
-          <div className="divide-y">
-            {invitations.map((invitation) => (
-              <ProjectInvitationRow
-                key={invitation.id}
-                invitation={invitation}
-                busyAction={activeInvitationAction?.id === invitation.id ? activeInvitationAction.action : null}
-                onAccept={(item) => void handleInvitationResponse(item, "accept")}
-                onDecline={(item) => void handleInvitationResponse(item, "decline")}
-              />
-            ))}
-          </div>
-        </InvitationContainer>
-      ) : null}
+      {invitationSection}
 
       <section aria-label={t("Your research projects")}>
         {compact ? <div className="project-switcher-search">{searchControl}</div> : <div className="project-directory-toolbar">

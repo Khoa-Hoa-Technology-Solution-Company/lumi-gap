@@ -136,4 +136,55 @@ Tests/verification fixtures:
 - Existing protocol snapshots without an explicit stages list keep their prior behavior. To require a staged process, an owner saves a new configuration and starts subsequent rounds; historic assessments are not rewritten.
 - Existing evidence fields and related RQ/gap links remain in use. Assessing relevance never fabricates extraction content or marks a finding scientifically verified.
 - Existing metadata provenance, DOI canonicalization and project access controls are reused. No title-only deduplication is introduced.
-- Browser/runtime results and screenshots are recorded below after the local update.
+- Browser/runtime results and screenshots are recorded below.
+
+## Runtime verification completed — 2026-10-31
+
+Reverified the current checkout after the subsequent security changes. No new
+screening defect was found in this pass, so no additional runtime code change
+was needed.
+
+- `node apps/backend/scripts/test-screening-workflow.mjs`: **49/49 passed**, exit 0.
+  See `backend-reverify-2026-10-31.log`.
+- Focused React run of `collaborative-library`, `screening-workspace`,
+  `project-literature-flow` and `library-related-papers`: **60/60 passed**, exit 0.
+  See `frontend-reverify-2026-10-31.log`. React Router v7 migration notices remain
+  non-failing warnings.
+- Actual application at `localhost:8080`: inspected the existing project's
+  library and reading workspace without modifying its research records. The
+  existing opposing assessments stayed independently attributable. Missing
+  research questions and unrecorded historic reading scope were stated accurately.
+- Desktop at 1440 × 1000: metadata/abstract and assessment occupy two columns.
+  Dark mode was inspected and the original light theme restored afterward.
+- Mobile at 390 × 844: the workspace occupies one column; document scroll width
+  was 375 CSS px, within the 390 px viewport. Assessment choices stack, keyboard
+  focus reaches the optional note, and the previous/next controls remain visible
+  while scrolling. Temporary viewport overrides were reset afterward.
+- Disposable fixture at `127.0.0.1:4180`, using only
+  `lumigap_screening_workflow_v3_test`: created 14 clearly labeled fake papers
+  and two test accounts. Through browser login and real API requests, the owner
+  saved INCLUDE with the actual RQ1; the member subsequently saved EXCLUDE on the
+  same paper. Both version-1 assessments, timestamps and the owner's RQ remained
+  visible. The member began with no personal assessment and had no final-selection
+  control. The disagreement appeared without automatically selecting/excluding the
+  paper; evidence extraction remained disabled.
+- Rechecked navigation **12/14 → 13/14 → 12/14** through the actual UI. Titles
+  changed from fixture paper 03 to 02 and back, confirming the page boundary in
+  both directions.
+- The earlier browser pass verified explicit background-only finalization and
+  its attributed decision history on a separate disposable fixture. Final
+  decision permissions, reopening, evidence retention and strict protocol
+  behavior were also rechecked by the PostgreSQL suite above.
+
+Screenshots saved alongside this report:
+
+- `verified-desktop-2026-10-31.png`
+- `verified-mobile-2026-10-31.png`
+- `verified-dark-2026-10-31.png`
+- `verified-independent-reviews-2026-10-31.png`
+- `verified-page-boundary-2026-10-31.png`
+
+Scope of verification: responsive checks use browser viewport emulation, not
+physical mobile devices. This pass did not call a paid AI provider, fetch a
+publisher's full text, or perform a production-scale load test. The fixture
+server was stopped after verification; normal application containers stay running.

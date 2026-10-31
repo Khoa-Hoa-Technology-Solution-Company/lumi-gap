@@ -19,6 +19,8 @@ import { requireAuth } from "../../../common/middleware/auth.js";
 import { errorHandler } from "../../../common/middleware/error-handler.js";
 import { tokenService, hashOpaqueToken } from "../../auth/token.service.js";
 import { mentorPolicySchema, mentorShareSchema, mentorAgreementSchema, mentorFeedbackSchema } from "../dto/mentor-access.schema.js";
+import { projectMentorshipController, mentorshipParamsSchema, respondMentorshipSchema } from "../project-mentorship.controller.js";
+import { validate } from "../../../common/middleware/validate.js";
 
 vi.mock("../../../infrastructure/queue.js", () => ({ notificationQueue: { add: vi.fn().mockResolvedValue({}) }, aiJobsQueue: { add: vi.fn().mockResolvedValue({}) } }));
 const enabled = process.env.MENTOR_ACCESS_INTEGRATION === "1";
@@ -27,6 +29,8 @@ const advisor = (): MentorPolicyInput => ({ preset: "ADVISOR", permissions: [...
 
 describe("mentor policy validation", () => {
   it("rejects administration rights, duplicate permissions and unscoped manuscript sections", () => {
+    expect(respondMentorshipSchema.safeParse({ expectedPreviewToken: "invalid" }).success).toBe(false);
+    expect(respondMentorshipSchema.safeParse({ expectedPreviewToken: "a".repeat(64) }).success).toBe(true);
     expect(mentorPolicySchema.safeParse({ ...advisor(), permissions: ["ADMIN"] }).success).toBe(false);
     expect(mentorPolicySchema.safeParse({ ...advisor(), permissions: ["MENTOR_CHAT", "MENTOR_CHAT"] }).success).toBe(false);
     expect(mentorShareSchema.safeParse({ kind: "MANUSCRIPT", resourceId: randomUUID(), sectionKey: "", title: "Abstract", content: "Approved text" }).success).toBe(false);
@@ -47,7 +51,7 @@ describe.skipIf(!enabled).sequential("mentor consent and resource access on Post
   }
   async function fixture(options: { pending?: boolean; offer?: boolean; policy?: MentorPolicyInput } = {}) {
     const owner = await user("Chủ dự án"), mentor = await user("Cố vấn", true), member = await user("Thành viên"), outsider = await user("Người ngoài");
-    const p = await createProjectFixture({ data: { title: "Mentor access test", ownerId: owner, status: "ACTIVE", description: "PRIVATE-TEAM-DESCRIPTION", mentorshipSummary: "Published abstract", mentorshipNeeds: "Study design", mentorshipDiscovery: "SEEKING_MENTOR" } });
+    const p = await createProjectFixture({ data: { title: "Mentor access test", ownerId: owner, status: "ACTIVE", description: "PRIVATE-TEAM-DESCRIPTION", mentorshipSummary: "Published research abstract about evaluation methods and study design", mentorshipNeeds: "Study design", mentorshipDiscovery: "SEEKING_MENTOR" } });
     await db.projectMember.create({ data: { projectId: p.id, userId: member } });
     const input = { message: "Please help with our methodology", idempotencyKey: randomUUID() };
     const request = options.offer ? await consent.offer(p.id, mentor, input) : await consent.request(p.id, owner, { ...input, mentorUserId: mentor, access: options.policy ?? advisor() });
@@ -69,6 +73,9 @@ describe.skipIf(!enabled).sequential("mentor consent and resource access on Post
   it("exposes only the public preview and proposed policy before two-way consent", async () => {
     const f = await fixture({ pending: true }); await share(f);
     const invitation = (await consent.list(f.id, f.mentor)).requests[0]!;
+    expect(invitation.project).toMatchObject({ title: "Mentor access test", summary: "Published research abstract about evaluation methods and study design", teamMemberCount: 2, mentoringNeeds: "Study design" });
+    expect(invitation.actions.openProject).toBe(false);
+    expect(Object.keys(invitation.project!).sort()).toEqual(["id", "title", "summary", "teamMemberCount", "researchAreas", "mentoringNeeds", "stage", "expertise", "discovery"].sort());
     expect(invitation.accessPolicy?.permissions).toContain("MENTOR_CHAT");
     expect(JSON.stringify(invitation)).not.toContain("PRIVATE-TEAM");
     expect(JSON.stringify(invitation)).not.toContain("Only the published study design");
@@ -78,6 +85,17 @@ describe.skipIf(!enabled).sequential("mentor consent and resource access on Post
     expect(view.canManage).toBe(false); expect(view.policies[0]!.shares).toHaveLength(1);
     expect(view.policies[0]!.policy.effective).toBe(true);
     expect(await db.projectMember.count({ where: { projectId: f.id, userId: f.mentor } })).toBe(0);
+  });
+  it("counts only active team members and the owner once, without revealing their identities", async () => {
+    const f = await fixture({ pending: true });
+    expect((await consent.settings(f.id, f.owner)).teamMemberCount).toBe(2);
+    await db.projectMember.update({ where: { projectId_userId: { projectId: f.id, userId: f.member } }, data: { status: "LEFT" } });
+    const preview = (await consent.mine(f.mentor, { view: "incoming" })).requests.find(r => r.id === f.request.id)!.project!;
+    expect(preview.teamMemberCount).toBe(2); // Sent aggregate stays part of the immutable invitation.
+    expect((await consent.settings(f.id, f.owner)).teamMemberCount).toBe(1);
+    expect(JSON.stringify(preview)).not.toContain(f.member);
+    await expect(consent.settings(f.id, f.mentor)).rejects.toMatchObject({ statusCode: 403 });
+    await expect(service.catalog(f.id, f.mentor, { page: 1, q: "", kind: "MANUSCRIPT" })).rejects.toMatchObject({ statusCode: 404 });
   });
   it("supports mentor-origin offers without allowing self-granted permissions", async () => {
     const f = await fixture({ pending: true, offer: true });
@@ -90,6 +108,7 @@ describe.skipIf(!enabled).sequential("mentor consent and resource access on Post
   });
   it("serializes concurrent invitations and replays only the same payload", async () => {
     const f = await fixture({ pending: true }), other = await user("Concurrent mentor", true);
+    await consent.cancel(f.id, f.request.id, f.owner);
     const args = { mentorUserId: other, message: "Please help", idempotencyKey: randomUUID(), access: advisor() };
     const results = await Promise.all([consent.request(f.id, f.owner, args), consent.request(f.id, f.owner, args)]);
     expect(results[0]!.id).toBe(results[1]!.id);
@@ -103,6 +122,31 @@ describe.skipIf(!enabled).sequential("mentor consent and resource access on Post
     await consent.accept(f.id, f.request.id, f.mentor, "Read current rights", (await policy(f)).version);
     const event = await db.mentorAccessEvent.findFirstOrThrow({ where: { accessId: f.access.id, type: "ACCESS_ACCEPTED" } });
     expect(event.details).toMatchObject({ acceptedPolicyVersion: 2, permissions: ["MENTOR_CHAT"] });
+  });
+  it("preserves sent brief snapshots in both consent directions and ignores later private edits", async () => {
+    for (const offer of [false, true]) {
+      const f = await fixture({ pending: true, offer }), receiver = offer ? f.owner : f.mentor;
+      const initial = await consent.requestDetail(f.id, f.request.id, receiver);
+      expect(initial.previewToken).toMatch(/^[a-f0-9]{64}$/);
+      await db.project.update({ where: { id: f.id }, data: { mentorshipSummary: "An updated approved research abstract", description: "PRIVATE-UPDATED-INTERNAL-NOTES" } });
+      const current = await consent.requestDetail(f.id, f.request.id, receiver);
+      expect(current.previewToken).toBe(initial.previewToken);
+      expect(current.project?.summary).toBe(initial.project?.summary);
+      await consent.accept(f.id, f.request.id, receiver, "Reviewed the sent abstract", initial.accessPolicy?.version, initial.previewToken);
+      await consent.accept(f.id, f.request.id, receiver, "Retry after success", initial.accessPolicy?.version, initial.previewToken);
+      expect(await db.mentorRelationship.count({ where: { sourceRequestId: f.request.id } })).toBe(1);
+      expect(await db.projectMember.count({ where: { projectId: f.id, userId: f.mentor } })).toBe(0);
+    }
+  });
+  it("loads an invitation by exact ID independently of pagination and authorizes its project", async () => {
+    const f = await fixture({ pending: true }), other = await fixture({ pending: true });
+    for (const viewer of [f.owner, f.mentor, f.member]) expect((await consent.requestDetail(f.id, f.request.id, viewer)).id).toBe(f.request.id);
+    await expect(consent.requestDetail(f.id, f.request.id, f.outsider)).rejects.toMatchObject({ statusCode: 403 });
+    await expect(consent.requestDetail(other.id, f.request.id, other.owner)).rejects.toMatchObject({ statusCode: 404 });
+    const otherMentor = await user("Another mentor", true), old = await consent.settings(f.id, f.owner);
+    await db.project.update({ where: { id: f.id }, data: { mentorshipNeeds: "Changed support request" } });
+    await expect(consent.request(f.id, f.owner, { mentorUserId: otherMentor, message: "Please help", expectedPreviewToken: old.previewToken })).rejects.toMatchObject({ statusCode: 409 });
+    expect(await db.mentorshipRequest.count({ where: { projectId: f.id } })).toBe(1);
   });
   it("keeps declined, cancelled and expired invitations closed without granting access", async () => {
     for (const state of ["DECLINED", "CANCELLED", "EXPIRED"] as const) {
@@ -226,8 +270,7 @@ describe.skipIf(!enabled).sequential("mentor consent and resource access on Post
     await expect(service.comment(g.id, g.mentor, g.access.id, message())).rejects.toMatchObject({ statusCode: 404 });
     expect((await consent.list(g.id, g.mentor)).relationships[0]!.actions.openProject).toBe(false);
   });
-  it("honors expiry, ended relationships and lost lecturer eligibility immediately", async () => {
-    for (const scenario of ["expiry", "ended", "ineligible"] as const) {
+  it.each(["expiry", "ended", "ineligible"] as const)("revokes mentor access immediately: %s", async scenario => {
       const f = await fixture();
       if (scenario === "expiry") await db.mentorAccess.update({ where: { id: f.access.id }, data: { expiresAt: new Date(Date.now() - 1000) } });
       if (scenario === "ended") await consent.end(f.id, f.access.relationshipId!, f.mentor);
@@ -236,7 +279,6 @@ describe.skipIf(!enabled).sequential("mentor consent and resource access on Post
       await expect(service.workspace(f.id, f.mentor)).rejects.toMatchObject({ statusCode: 404 });
       await expect(service.comment(f.id, f.mentor, f.access.id, message())).rejects.toMatchObject({ statusCode: 404 });
       expect((await consent.list(f.id, f.mentor)).relationships[0]!.actions.openProject).toBe(false);
-    }
   });
   it("paginates feedback and audit history with stable ordering", async () => {
     const f = await fixture();
@@ -248,12 +290,22 @@ describe.skipIf(!enabled).sequential("mentor consent and resource access on Post
   });
   it("protects HTTP authentication, schemas, cache behavior and owner-only routes", async () => {
     const f = await fixture(); await share(f);
-    const app = express(); app.use(express.json()); app.use("/projects/:id/mentor-access", requireAuth, mentorAccessRouter); app.use(errorHandler);
+    const app = express(); app.use(express.json()); app.use("/projects/:id/mentor-access", requireAuth, mentorAccessRouter);
+    app.get("/projects/:id/mentorships/:relationshipId", requireAuth, validate(mentorshipParamsSchema, "params"), projectMentorshipController.detail);
+    app.use(errorHandler);
     const server = createServer(app); server.listen(0, "127.0.0.1"); await once(server, "listening");
     const sessionId = randomUUID(); await db.refreshToken.create({ data: { userId: f.mentor, familyId: sessionId, tokenHash: hashOpaqueToken(randomUUID()), expiresAt: new Date(Date.now() + 3600000) } });
     const token = tokenService.signAccessToken({ sub: f.mentor, systemRole: "USER", sessionId }).token;
     const headers = { authorization: `Bearer ${token}`, "content-type": "application/json" }, base = `http://127.0.0.1:${(server.address() as { port: number }).port}/projects/${f.id}/mentor-access`;
     try {
+      const detailUrl = `http://127.0.0.1:${(server.address() as { port: number }).port}/projects/${f.id}/mentorships/${f.request.id}`;
+      expect((await fetch(detailUrl)).status).toBe(401);
+      const detail = await fetch(detailUrl, { headers });
+      expect(detail.status).toBe(200); expect(detail.headers.get("cache-control")).toBe("private, no-store");
+      const invitation = (await detail.json()).data;
+      expect(invitation.id).toBe(f.request.id); expect(invitation.previewToken).toMatch(/^[a-f0-9]{64}$/);
+      expect(JSON.stringify(invitation)).not.toContain("PRIVATE-TEAM-DESCRIPTION");
+      expect((await fetch(detailUrl.replace(f.request.id, "invalid"), { headers })).status).toBe(400);
       expect((await fetch(base)).status).toBe(401);
       const response = await fetch(base, { headers }); expect(response.status).toBe(200); expect(response.headers.get("cache-control")).toContain("no-store");
       expect(JSON.stringify(await response.json())).not.toContain("PRIVATE-TEAM");

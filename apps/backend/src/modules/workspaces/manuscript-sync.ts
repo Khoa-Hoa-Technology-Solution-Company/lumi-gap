@@ -27,6 +27,7 @@ export const manuscriptSync = {
       paths.add(file.path.toLowerCase());
     }
     return withWorkspace(project, actor, { write: true }, async context => {
+      if (context.role !== "OWNER") throw AppError.forbidden("Only the project owner can manage GitHub synchronization");
       assertCanExportProjectSource(context.project, actor);
       if (context.project.visibility === "PRIVATE" && input.isPrivate === false) throw AppError.forbidden("Cannot export private project manuscript to a public repository");
 
@@ -43,7 +44,10 @@ export const manuscriptSync = {
     });
   },
   async apply(project: string, actor: string, id: string, input: z.infer<typeof syncBundleSchema>, bytes: Uint8Array) {
-    await withWorkspace(project, actor, { write: true }, async context => assertCanExportProjectSource(context.project, actor));
+    await withWorkspace(project, actor, { write: true }, async context => {
+      if (context.role !== "OWNER") throw AppError.forbidden("Only the project owner can manage GitHub synchronization");
+      assertCanExportProjectSource(context.project, actor);
+    });
     let value: unknown; try { value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)); } catch { throw AppError.badRequest("Invalid sync bundle"); }
     const parsed = bundleSchema.safeParse(value); if (!parsed.success) throw AppError.badRequest("Invalid sync bundle");
     const archive: Record<string, Uint8Array> = Object.create(null);
@@ -59,6 +63,7 @@ export const manuscriptSync = {
     if (sources.files.reduce((sum, file) => sum + file.bytes.length, 0) > 20_000_000 || sources.files.some(file => sources.files.some(parent => file !== parent && file.path.toLowerCase().startsWith(parent.path.toLowerCase() + "/")))) throw AppError.badRequest("Source path or size limit exceeded");
     const receipt = hashBytes(bytes), updates: Array<{ fileId: string; update: string; sequence: number; fileVersion: number }> = [];
     const result = await withWorkspace(project, actor, { write: true }, async context => {
+      if (context.role !== "OWNER") throw AppError.forbidden("Only the project owner can manage GitHub synchronization");
       assertCanExportProjectSource(context.project, actor);
 
       const draft = await context.tx.draftWorkspace.findFirst({ where: { id, projectId: project, writingMode: "LATEX", archivedAt: null, deletedAt: null } });

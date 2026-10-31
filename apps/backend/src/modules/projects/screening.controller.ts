@@ -7,6 +7,13 @@ import { screeningPageSchema, screeningHistorySchema } from "./dto/screening.sch
 const project = (r: Request) => String(r.params.id), actor = (r: Request) => r.user!.sub, round = (r: Request) => String(r.params.roundId);
 const send = (r: Response, data: unknown, status = 200) => r.status(status).json({ success: true, data });
 export const screeningController = {
+  advanceConservatively: async (r: Request, res: Response) => send(res, await service.advanceConservatively(project(r), actor(r), round(r), r.body)),
+  begin: async (r: Request, res: Response) => send(res, await service.begin(project(r), actor(r), String(r.params.paperId), r.body)),
+  declineAgreement: async (r: Request, res: Response) => send(res, await service.declineAgreement(project(r), actor(r), round(r), r.body)),
+  requestAdjudication: async (r: Request, res: Response) => send(res, await service.requestAdjudication(project(r), actor(r), round(r), r.body)),
+  proposeAgreement: async (r: Request, res: Response) => send(res, await service.proposeAgreement(project(r), actor(r), round(r), r.body)),
+  confirmAgreement: async (r: Request, res: Response) => send(res, await service.confirmAgreement(project(r), actor(r), round(r), r.body)),
+  adjudication: async (r: Request, res: Response) => send(res, await service.adjudication(project(r), actor(r), round(r))),
   assess: async (r: Request, res: Response) => send(res, await library.assess(project(r), actor(r), String(r.params.paperId), r.body)),
   defer: async (r: Request, res: Response) => send(res, await library.defer(project(r), actor(r), round(r), r.body)),
   createSet: async (r: Request, res: Response) => send(res, await sets.create(project(r), actor(r), r.body), 201),
@@ -30,4 +37,10 @@ export const screeningController = {
   analytics: async (r: Request, res: Response) => send(res, await service.analytics(project(r), actor(r))),
   ai: async (r: Request, res: Response) => send(res, await ai.get(project(r), actor(r), round(r))),
   requestAi: async (r: Request, res: Response) => send(res, await ai.request(project(r), actor(r), round(r), r.body.clientKey), 202),
+  workspaceSummary: async (r: Request, res: Response) => send(res, await service.workspaceSummary(project(r), actor(r))),
+  claim: async (r: Request, res: Response) => send(res, await service.claim(project(r), actor(r), round(r), r.body)),
+  claimNext: async (r: Request, res: Response) => send(res, await service.claimNext(project(r), actor(r), r.body)),
+  release: async (r: Request, res: Response) => send(res, await service.release(project(r), actor(r), round(r), r.body)),
+  extend: async (r: Request, res: Response) => send(res, await service.extend(project(r), actor(r), round(r), r.body)),
+  updateDiscoveryGoal: async (r: Request, res: Response) => send(res, await service.updateDiscoveryGoal(project(r), actor(r), r.body)),
 };

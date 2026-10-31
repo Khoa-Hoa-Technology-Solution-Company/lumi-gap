@@ -8,7 +8,7 @@ import { redis } from "../../infrastructure/redis.js";
 import { AppError } from "../../common/exceptions/app-error.js";
 import { openGithubToken, sealGithubToken } from "./github.crypto.js";
 import { GithubHttpError, githubJson } from "./github.http.js";
-import { githubCreateRepoSchema, githubRequestSchema, githubReturnPath, type GithubRequest } from "./github.schema.js";
+import { githubCreateRepoSchema, githubInitializeRepoSchema, githubRequestSchema, githubReturnPath, type GithubRequest } from "./github.schema.js";
 import { logger } from "../../infrastructure/logger.js";
 import { assertCanExportProjectSource, researchLedgerService } from "../audit/research-ledger.service.js";
 
@@ -24,6 +24,11 @@ async function actor(input: string) {
   const user = id && await getPrisma().user.findUnique({ where: id.kind === "uuid" ? { id: id.value } : { legacyMongoId: id.value }, select: { id: true, isActive: true, accountStatus: true } });
   if (!user || !user.isActive || user.accountStatus !== "ACTIVE") throw AppError.unauthorized();
   return user.id;
+}
+function projectIdentity(input: string) {
+  const id = parseDatabaseId(input);
+  if (!id) throw AppError.badRequest("Invalid project identifier");
+  return id.kind === "uuid" ? { id: id.value } : { legacyMongoId: id.value };
 }
 function credentials(value: z.infer<typeof tokenSchema>, userId: string) {
   return {
@@ -81,7 +86,7 @@ async function provider(userId: string, path: string, method = "GET", body?: unk
       throw AppError.forbidden("GitHub authorization revoked; reconnect GitHub");
     }
     if (error.rateLimited) throw AppError.tooMany("GitHub rate limit reached");
-    if ([409, 422].includes(error.status)) throw AppError.conflict("GitHub branch changed or is protected");
+    if ([409, 422].includes(error.status)) throw AppError.conflict("GitHub branch changed or is protected", { githubStatus: error.status, ...(error.status === 409 && method === "GET" && /\/git\/ref\/heads\//.test(path) ? { reason: "EMPTY_REPOSITORY" } : {}) });
     if ([403, 404].includes(error.status)) throw AppError.forbidden("GitHub repository access denied; check the app installation and repository permissions");
     throw AppError.serviceUnavailable("GitHub request failed");
   }
@@ -152,16 +157,18 @@ export const githubService = {
   },
   async createRepository(input: string, data: z.infer<typeof githubCreateRepoSchema>) {
     const userId = await actor(input);
+    if (!data.projectId) throw AppError.badRequest("Project identifier is required to create a repository");
     if (data.projectId) {
       const project = await getPrisma().project.findUnique({
-        where: { id: data.projectId },
+        where: projectIdentity(data.projectId),
         select: { id: true, ownerId: true, visibility: true, exportPolicy: true },
       });
       if (!project) throw AppError.notFound("Project not found");
       const membership = await getPrisma().projectMember.findFirst({
-        where: { projectId: data.projectId, userId, status: "ACTIVE" },
+        where: { projectId: project.id, userId, status: "ACTIVE" },
       });
       if (project.ownerId !== userId && !membership) throw AppError.forbidden("Project membership required");
+      if (project.ownerId !== userId) throw AppError.forbidden("Only the project owner can create a repository");
       assertCanExportProjectSource(project, userId);
       if (project.visibility === "PRIVATE" && data.isPrivate === false) {
         throw AppError.forbidden("Cannot export private project manuscript to a public repository");
@@ -192,23 +199,52 @@ export const githubService = {
     if (!value.success) throw AppError.serviceUnavailable("GitHub repository list is invalid");
     return { repositories: value.data.map(row => ({ fullName: row.full_name, defaultBranch: row.default_branch, private: row.private, writable: row.permissions?.push === true })), page, hasMore: value.data.length === 100 };
   },
+  async initializeRepository(input: string, data: z.infer<typeof githubInitializeRepoSchema>) {
+    const validated = githubInitializeRepoSchema.parse(data), userId = await actor(input);
+    const project = await getPrisma().project.findUnique({ where: projectIdentity(validated.projectId), select: { id: true, ownerId: true, visibility: true, exportPolicy: true } });
+    if (!project) throw AppError.notFound("Project not found");
+    const member = await getPrisma().projectMember.findFirst({ where: { projectId: project.id, userId, status: "ACTIVE" } });
+    if (project.ownerId !== userId && !member) throw AppError.forbidden("Project membership required");
+    if (project.ownerId !== userId) throw AppError.forbidden("Only the project owner can initialize a repository");
+    assertCanExportProjectSource(project, userId);
+    const repo = z.object({ private: z.boolean(), default_branch: z.string(), permissions: z.object({ push: z.boolean().optional() }).optional() }).parse(await provider(userId, `/repos/${validated.repository}`));
+    if (!repo.permissions?.push || project.visibility === "PRIVATE" && !repo.private) throw AppError.forbidden("Writable repository allowed by the project export policy required");
+    if (validated.branch !== repo.default_branch) throw AppError.badRequest("Initialize the repository's default branch first");
+    // A zero-KiB size is also possible for nonempty repos. Only the commits
+    // endpoint's explicit empty-repository response authorizes initialization.
+    let empty = false;
+    try { await provider(userId, `/repos/${validated.repository}/commits?per_page=1`); }
+    catch (error) { if (error instanceof AppError && error.statusCode === 409 && (error.details as { githubStatus?: number } | undefined)?.githubStatus === 409) empty = true; else throw error; }
+    if (!empty) throw AppError.conflict("Repository already has commits. Connect it again.");
+    const result = z.object({ commit: z.object({ sha: z.string().regex(/^[a-f0-9]{40}$/) }) }).parse(await provider(userId, `/repos/${validated.repository}/contents/README.md`, "PUT", {
+      message: "Initialize repository for LumiGap",
+      content: Buffer.from("# LumiGap manuscript repository\n\nManuscript source is synchronized only on explicit user action.\n").toString("base64"),
+      branch: validated.branch,
+      // No SHA: GitHub must create a new file and cannot overwrite an existing README.
+    }));
+    await researchLedgerService.record({ projectId: project.id, actorId: userId, eventType: "GITHUB_REPOSITORY_INITIALIZED", resourceKind: "GITHUB_REPOSITORY", resourceId: validated.repository, visibility: "PROJECT_TEAM", retentionClass: "SECURITY_AUDIT", currentVersionRef: result.commit.sha, metadata: { repository: validated.repository, branch: validated.branch } });
+    return { head: result.commit.sha };
+  },
   async request(input: string, request: GithubRequest) {
     const validated = githubRequestSchema.parse(request), userId = await actor(input);
+    let canonicalProjectId: string | undefined;
     const isMutation = validated.method === "POST" || validated.method === "PATCH";
     if (isMutation && !validated.projectId) {
       throw AppError.badRequest("Project identifier is required for source export or modification operations");
     }
     if (validated.projectId) {
       const project = await getPrisma().project.findUnique({
-        where: { id: validated.projectId },
+        where: projectIdentity(validated.projectId),
         select: { id: true, ownerId: true, visibility: true, exportPolicy: true },
       });
       if (!project) throw AppError.notFound("Project not found");
+      canonicalProjectId = project.id;
       const membership = await getPrisma().projectMember.findFirst({
-        where: { projectId: validated.projectId, userId, status: "ACTIVE" },
+        where: { projectId: project.id, userId, status: "ACTIVE" },
       });
       if (project.ownerId !== userId && !membership) throw AppError.forbidden("Project membership required");
       if (isMutation) {
+        if (project.ownerId !== userId) throw AppError.forbidden("Only the project owner can modify GitHub repositories");
         assertCanExportProjectSource(project, userId);
         if (project.visibility === "PRIVATE") {
           const isPrivate = await checkRepoPrivacy(userId, validated.repository);
@@ -219,13 +255,13 @@ export const githubService = {
       }
     }
     const result = await provider(userId, `/repos/${validated.repository}${validated.path}`, validated.method, validated.body);
-    if (validated.projectId && ((validated.method === "POST" && validated.path === "/git/refs") || (validated.method === "PATCH" && validated.path.startsWith("/git/refs/heads/")))) {
+    if (canonicalProjectId && ((validated.method === "POST" && validated.path === "/git/refs") || (validated.method === "PATCH" && validated.path.startsWith("/git/refs/heads/")))) {
       const targetRef = (validated.body as Record<string, unknown> | undefined)?.ref;
       const refName = typeof targetRef === "string" ? targetRef : validated.path;
       const targetSha = (validated.body as Record<string, unknown> | undefined)?.sha;
       const shaStr = typeof targetSha === "string" ? targetSha : null;
       await researchLedgerService.record({
-        projectId: validated.projectId,
+        projectId: canonicalProjectId,
         actorId: userId,
         eventType: "MANUSCRIPT_SOURCE_EXPORTED",
         resourceKind: "GITHUB_REPOSITORY",

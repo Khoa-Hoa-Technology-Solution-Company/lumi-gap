@@ -1,4 +1,6 @@
 model ScreeningSettings {
+  authorizedAdjudicatorIds String[] @default([]) @map("authorized_adjudicator_ids") @db.Uuid
+  allowConservativeFullText Boolean @default(false) @map("allow_conservative_full_text")
   reviewMode String @default("INDEPENDENT") @map("review_mode") @db.VarChar(24)
   blindReview Boolean @default(true) @map("blind_review")
   resolutionPolicy String @default("ADJUDICATION") @map("resolution_policy") @db.VarChar(24)
@@ -11,6 +13,10 @@ model ScreeningSettings {
   exclusionCriteria String[] @default([]) @map("exclusion_criteria")
   researchQuestions String[] @default([]) @map("research_questions")
   stages String[] @default([])
+  discoveryGoalEnabled Boolean @default(false) @map("discovery_goal_enabled")
+  discoveryGoalTarget Int @default(2) @map("discovery_goal_target")
+  discoveryGoalPeriod String @default("WEEK") @map("discovery_goal_period") @db.VarChar(16)
+  discoveryGoalPaused Boolean @default(false) @map("discovery_goal_paused")
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
   @@map("screening_settings")
 }

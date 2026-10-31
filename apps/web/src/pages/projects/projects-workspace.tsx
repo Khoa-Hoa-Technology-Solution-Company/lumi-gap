@@ -51,7 +51,7 @@ function WorkspaceSidebar() {
   const loading = !!id && !unavailable && !project && (projectsLoading || projectLoading);
   // The directory redirects as soon as its query settles. Opening its picker
   // before that decision flashes a dropdown on the first visit.
-  const directoryNeedsChoice = !id && !projectsLoading && !projectsFetching && (
+  const directoryNeedsChoice = !id && params.get("view") !== "invitations" && !projectsLoading && !projectsFetching && (
     projectsError || params.get("create") === "1" ||
     !selectDirectoryProjects(projects ?? [], readProjectSearchFilters(params), userId, language).length
   );
@@ -128,6 +128,7 @@ export function ProjectWorkspaceStart() {
   const [params] = useSearchParams();
   const candidates = useMemo(() => selectDirectoryProjects(projects ?? [], readProjectSearchFilters(params), userId, language), [projects, params, userId, language]);
   const first = candidates.find(project => project.status !== "ARCHIVED") ?? candidates[0];
+  if (params.get("view") === "invitations") return <ProjectsListPage invitationsOnly />;
   if (isLoading || isFetching) return <ProjectWorkspaceLoading />;
   if (first && !isError && params.get("create") !== "1") return <Navigate to={projectWorkspaceHref(first._id, params)} replace />;
   return <div className="project-browser-welcome" data-no-i18n>

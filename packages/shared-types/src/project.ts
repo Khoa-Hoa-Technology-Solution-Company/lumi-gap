@@ -97,6 +97,7 @@ export interface ProjectInvitation {
 
 export interface IncomingProjectInvitation {
   id: string;
+  invitedEmail?: string;
   projectId: string;
   projectTitle: string;
   projectDescription?: string;
@@ -128,6 +129,23 @@ export interface ProjectInvitationPreview {
 
 export type MentorshipRequestStatus = "PENDING" | "ACCEPTED" | "DECLINED" | "CANCELLED" | "CANCELED_BY_PROJECT" | "EXPIRED" | "CLOSED_CAPACITY_REACHED";
 export type MentorRole = "PRIMARY" | "SECONDARY";
+export type MentorPlanCommand = { expectedVersion: number } & (
+  { action: "add"; mentorUserId: string; mentorRole: MentorRole } |
+  { action: "remove"; candidateId: string } |
+  { action: "move"; candidateId: string; offset: -1 | 1 } |
+  { action: "configure"; parallelInvitations: boolean } |
+  { action: "restart" }
+);
+export interface MentorPlanCandidate {
+  id: string; mentorUserId: string; fullName: string; mentorRole: MentorRole; priority: number;
+  status: string; requestId?: string; canSend: boolean; unavailableReason?: string;
+}
+export interface MentorRecruitmentPlan {
+  id?: string; version: number; parallelInvitations: boolean; autoSend: false;
+  closedRoles: MentorRole[]; candidates: MentorPlanCandidate[]; positions: MentorPositions; canManage: boolean;
+  currentMentors: { mentorRole: MentorRole; fullName: string }[];
+  currentInvitations: { mentorRole: MentorRole; fullName: string; expiresAt?: string }[];
+}
 export interface MentorPosition {
   role: MentorRole; status: "LOCKED" | "VACANT" | "INVITING" | "ASSIGNED";
   pendingRequests: number; relationshipId?: string;
@@ -146,11 +164,15 @@ export interface MentorshipPerson extends ProjectMemberUserSummary {
 }
 export interface MentorProjectPreview {
   id: string; title: string; summary: string; researchField?: string;
+  /** Active team size, including the owner once. No member identities are shared. */
+  teamMemberCount?: number;
   stage: ProjectStatus; expertise: string[]; discovery: "CLOSED" | "SEEKING_MENTOR";
   researchAreas: string[]; mentoringNeeds: string;
   availableRoles?: MentorRole[];
 }
 export interface MentorDiscoverySettings extends MentorProjectPreview {
+  /** Opaque revision of the approved invitation brief, not an access credential. */
+  previewToken?: string;
   /** Optimistic version for owner-only discovery edits; excluded from public opportunity DTOs. */
   version: number;
   /** Sender identity as it will appear to the lecturer, respecting profile visibility. */
@@ -160,7 +182,12 @@ export interface MentorshipActions {
   accept: boolean; decline: boolean; cancel: boolean; end: boolean; openProject: boolean;
 }
 export interface MentorshipRequest {
+  /** Older invitations have no recoverable original snapshot. */
+  legacyPreview?: boolean;
+  reviewRequired?: boolean;
   kind: "REQUEST";
+  /** Approved brief revision to recheck when accepting from the web UI. */
+  previewToken?: string;
   accessPolicy?: import("./mentor-access.js").MentorAccessPolicy;
   mentorRole?: MentorRole;
   attachments?: MentorshipAttachment[];

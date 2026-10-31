@@ -18,10 +18,13 @@ screeningRouter.post("/assignments", writes, base, validate(s.screeningAssignSch
 screeningRouter.get("/analytics", base, c.analytics);
 screeningRouter.get("/papers/:paperId/rounds", validate(workspaceParams.extend({ paperId: z.string().uuid() }), "params"), validate(s.screeningPageSchema, "query"), c.rounds);
 screeningRouter.get("/rounds/:roundId", round, c.detail);
+screeningRouter.get("/rounds/:roundId/adjudication", round, c.adjudication);
 screeningRouter.post("/rounds/:roundId/reviews", writes, round, validate(s.screeningSubmitSchema), c.submit);
 screeningRouter.post("/rounds/:roundId/resolve", writes, round, validate(s.screeningResolveSchema), c.resolve);
 screeningRouter.post("/rounds/:roundId/finalize", writes, round, validate(s.screeningResolveSchema), c.resolve);
 screeningRouter.post("/rounds/:roundId/finalizer", writes, round, validate(s.screeningFinalizerSchema), c.finalizer);
+screeningRouter.post("/rounds/:roundId/agreement", writes, round, validate(s.screeningAgreementSchema), c.proposeAgreement);
+screeningRouter.post("/rounds/:roundId/agreement/confirm", writes, round, validate(s.screeningAgreementConfirmSchema), c.confirmAgreement);
 screeningRouter.put("/papers/:paperId/proposal", writes, validate(workspaceParams.extend({ paperId: z.string().uuid() }), "params"), validate(s.screeningProposalSchema), c.proposal);
 screeningRouter.post("/rounds/:roundId/reopen", writes, round, validate(s.screeningReopenSchema), c.reopen);
 screeningRouter.post("/rounds/:roundId/unblind", writes, round, validate(s.screeningActionSchema), c.unblind);
@@ -35,3 +38,15 @@ screeningRouter.post("/rounds/:roundId/defer", writes, round, validate(s.screeni
 screeningRouter.post("/analysis-sets", writes, base, validate(s.analysisSetSchema), c.createSet);
 screeningRouter.get("/analysis-sets", base, validate(s.screeningPageSchema, "query"), c.listSets);
 screeningRouter.get("/analysis-sets/:setId", validate(workspaceParams.extend({ setId: z.string().uuid() }), "params"), c.getSet);
+
+screeningRouter.post("/papers/:paperId/begin", writes, validate(workspaceParams.extend({ paperId: z.string().uuid() }), "params"), validate(s.screeningBeginSchema), c.begin);
+screeningRouter.post("/rounds/:roundId/agreement/decline", writes, round, validate(s.screeningAgreementDeclineSchema), c.declineAgreement);
+screeningRouter.post("/rounds/:roundId/request-adjudication", writes, round, validate(s.screeningActionSchema), c.requestAdjudication);
+
+screeningRouter.post("/rounds/:roundId/advance-full-text", writes, round, validate(s.screeningActionSchema), c.advanceConservatively);
+screeningRouter.get("/workspace-summary", base, c.workspaceSummary);
+screeningRouter.post("/rounds/:roundId/claim", writes, round, validate(s.screeningClaimSchema), c.claim);
+screeningRouter.post("/rounds/:roundId/release", writes, round, validate(s.screeningReleaseSchema), c.release);
+screeningRouter.post("/rounds/:roundId/extend", writes, round, validate(s.screeningExtendSchema), c.extend);
+screeningRouter.post("/papers/claim-next", writes, base, validate(s.screeningClaimSchema), c.claimNext);
+screeningRouter.put("/discovery-goal", writes, base, validate(s.screeningDiscoveryGoalUpdateSchema), c.updateDiscoveryGoal);

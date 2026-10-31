@@ -7,15 +7,15 @@ import type { IProject } from "@trend/shared-types";
 import { ProjectsWorkspacePage, ProjectWorkspaceStart } from "@/pages/projects/projects-workspace";
 import { projectWorkspaceHref } from "../utils/project-workspace-navigation";
 
-const mocks = vi.hoisted(() => ({ projects: vi.fn(), project: vi.fn(), user: { id: "me", systemRole: "USER", emailVerifiedAt: "2026-01-01" } as { id: string; systemRole: string; emailVerifiedAt: string } | null }));
+const mocks = vi.hoisted(() => ({ projects: vi.fn(), project: vi.fn(), invitations: vi.fn(), respond: vi.fn(), user: { id: "me", systemRole: "USER", emailVerifiedAt: "2026-01-01" } as { id: string; systemRole: string; emailVerifiedAt: string } | null }));
 vi.mock("@/i18n", () => ({ useI18n: () => ({ language: "en", t: (key: string, values?: Record<string, string | number>) => key.replace(/\{\{(\w+)\}\}/g, (_, name) => String(values?.[name] ?? "")) }) }));
 vi.mock("@/stores/auth-store", () => ({ useAuthStore: (selector: (state: { user: typeof mocks.user }) => unknown) => selector({ user: mocks.user }) }));
 vi.mock("../hooks/use-projects", () => ({
   useProjects: mocks.projects,
   useProject: mocks.project,
   useCreateProject: () => ({ mutateAsync: vi.fn(), isPending: false }),
-  useMyProjectInvitations: () => ({ data: [], refetch: vi.fn() }),
-  useRespondToProjectInvitation: () => ({ mutateAsync: vi.fn() }),
+  useMyProjectInvitations: mocks.invitations,
+  useRespondToProjectInvitation: () => ({ mutateAsync: mocks.respond }),
 }));
 
 const owned: IProject = { _id: "owned", title: "Evidence study", status: "ACTIVE", visibility: "PRIVATE", ownerId: "me", accessRole: "OWNER", papers: [], members: [], paperCount: 0, memberCount: 1, createdAt: "2026-10-01", updatedAt: "2026-10-08" };
@@ -45,6 +45,7 @@ beforeEach(() => {
   mocks.user = { id: "me", systemRole: "USER", emailVerifiedAt: "2026-01-01" };
   mocks.projects.mockReturnValue({ data: [owned, shared, archived], isLoading: false, isFetching: false, isError: false });
   mocks.project.mockReturnValue({ data: undefined, isLoading: false });
+  mocks.invitations.mockReturnValue({ data: [], isLoading: false, refetch: vi.fn() });
   container = document.createElement("div"); document.body.append(container); root = createRoot(container);
 });
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); vi.unstubAllGlobals(); });
@@ -178,4 +179,35 @@ it.each([403, 404])("hides cached private navigation after the detail reports un
   await render("/projects/shared");
   expect(container.querySelector(".coord-workspace-nav")).toBeNull();
   expect(container.querySelector(".coord-project-picker summary")?.textContent).not.toContain(shared.title);
+});
+
+it("opens invitation notifications without redirecting into a different existing project or accepting automatically", async () => {
+  mocks.invitations.mockReturnValue({ data: [{ id: "invitation", projectId: "new-team", projectTitle: "Invited team", invitedEmail: "member@example.test", status: "PENDING", role: "MEMBER", expiresAt: "2099-01-01", createdAt: "2026-10-31" }], isLoading: false });
+  await render("/projects?view=invitations");
+  expect(container.querySelector("output")?.textContent).toBe("/projects?view=invitations");
+  expect(container.querySelector(".project-browser-panel")?.textContent).toContain("member@example.test");
+  expect(container.querySelectorAll(".project-directory-invitations")).toHaveLength(1);
+  expect(container.querySelector<HTMLDetailsElement>(".coord-project-picker")?.open).toBe(false);
+  expect(mocks.respond).not.toHaveBeenCalled();
+  await act(async () => [...container.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Accept and open")!.click());
+  expect(mocks.respond).toHaveBeenCalledWith({ projectId: "new-team", invitationId: "invitation", decision: "accept" });
+  expect(container.querySelector("output")?.textContent).toBe("/projects/new-team");
+});
+
+it("keeps the invitation inbox open when no pending invitations remain", async () => {
+  await render("/projects?view=invitations");
+  expect(container.querySelector(".project-browser-panel")?.textContent).toContain("No pending project invitations for this account.");
+  expect(container.querySelector("output")?.textContent).toBe("/projects?view=invitations");
+});
+
+it("shows invitation loading and failure independently of cached projects", async () => {
+  mocks.invitations.mockReturnValue({ data: undefined, isLoading: true });
+  await render("/projects?view=invitations");
+  expect(container.querySelector(".project-browser-panel [role=status]")?.textContent).toBe("Loading...");
+  const retry = vi.fn();
+  mocks.invitations.mockReturnValue({ data: undefined, isLoading: false, isError: true, refetch: retry });
+  await render("/projects?view=invitations");
+  expect(container.querySelector(".project-browser-panel [role=alert]")?.textContent).toContain("Could not load project invitations.");
+  await act(async () => container.querySelector<HTMLButtonElement>(".project-browser-panel button")!.click());
+  expect(retry).toHaveBeenCalledOnce();
 });

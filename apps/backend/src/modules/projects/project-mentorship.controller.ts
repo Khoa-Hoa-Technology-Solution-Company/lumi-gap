@@ -16,6 +16,9 @@ const requestBody = z.object({
   attachmentIds: z.array(z.string().uuid()).max(5).refine(ids => new Set(ids).size === ids.length).default([]),
   idempotencyKey: z.string().uuid().optional(),
   access: mentorPolicySchema.optional(),
+  expectedPreviewToken: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+  candidateId: z.string().uuid().optional(),
+  expectedPlanVersion: z.number().int().positive().optional(),
 }).strict();
 const hasContent = (input: { message: string; attachmentIds: string[] }) => Boolean(input.message || input.attachmentIds.length);
 export const requestMentorshipSchema = requestBody.refine(hasContent, "Add a message or an attachment to your invitation");
@@ -30,14 +33,20 @@ export const academicSearchSchema = z.object({
   position: z.string().trim().max(160).optional(),
   view: z.enum(["all", "incoming", "outgoing", "active", "history"]).optional(),
 }).strict();
-export const mentorshipOfferSchema = requestBody.omit({ mentorUserId: true, access: true }).refine(hasContent, "Add a message or an attachment to your invitation");
+export const mentorshipOfferSchema = requestBody.omit({ mentorUserId: true, access: true, candidateId: true, expectedPlanVersion: true }).refine(hasContent, "Add a message or an attachment to your invitation");
 
 export const respondMentorshipSchema = z.object({
   note: z.string().trim().max(1000).optional(),
   expectedAccessVersion: z.number().int().positive().optional(),
+  expectedPreviewToken: z.string().regex(/^[a-f0-9]{64}$/).optional(),
 }).strict();
 
 export const projectMentorshipController = {
+  async detail(req: Request, res: Response) {
+    const data = await projectMentorshipService.requestDetail(req.params.id as string, req.params.relationshipId as string, req.user!.sub);
+    res.setHeader("Cache-Control", "private, no-store");
+    res.json({ success: true, data });
+  },
   async list(req: Request, res: Response) {
     const data = await projectMentorshipService.list(req.params.id as string, req.user!.sub, req.query as unknown as z.infer<typeof academicSearchSchema>);
     res.json({ success: true, data });
@@ -55,6 +64,7 @@ export const projectMentorshipController = {
       req.user!.sub,
       req.body.note,
       req.body.expectedAccessVersion,
+      req.body.expectedPreviewToken,
     );
     res.json({ success: true, data });
   },

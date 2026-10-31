@@ -7,7 +7,7 @@ import { logger } from "../../infrastructure/logger.js";
 
 const events = ["MENTORSHIP_REQUEST_RECEIVED", "MENTORSHIP_OFFER_RECEIVED", "MENTORSHIP_REQUEST_ACCEPTED", "MENTORSHIP_OFFER_ACCEPTED",
   "MENTORSHIP_REQUEST_DECLINED", "MENTORSHIP_OFFER_DECLINED", "MENTORSHIP_CANCELLED", "MENTORSHIP_EXPIRED", "MENTORSHIP_ENDED", "MENTORSHIP_SUGGESTED", "MENTORSHIP_POSITION_FILLED"] as const;
-const payloadSchema = z.object({ event: z.enum(events), projectId: z.string().uuid(), projectTitle: z.string().max(100), actorName: z.string().max(200) }).strict();
+const payloadSchema = z.object({ event: z.enum(events), projectId: z.string().uuid(), projectTitle: z.string().max(100), actorName: z.string().max(200), requestId: z.string().uuid().optional() }).strict();
 
 export function buildMentorshipMail(payload: MentorshipEmailPayload, name: string, locale: "en" | "vi", origin: string) {
   const { projectTitle: project, actorName: actor } = payload;
@@ -38,7 +38,13 @@ export function buildMentorshipMail(payload: MentorshipEmailPayload, name: strin
     MENTORSHIP_ENDED: [`The mentorship for “${project}” has ended. Mentor access is no longer active; previous guidance remains in project history.`, `Quan hệ hướng dẫn “${project}” đã kết thúc. Quyền mentor đã được thu hồi; góp ý trước đây vẫn được giữ trong lịch sử project.`],
   };
   const index = locale === "vi" ? 1 : 0, subject = subjects[payload.event][index];
-  const url = new URL("/academic-support", origin); url.searchParams.set("projectId", payload.projectId);
+  const url = new URL("/academic-support", origin);
+  if (["MENTORSHIP_REQUEST_RECEIVED", "MENTORSHIP_OFFER_RECEIVED"].includes(payload.event)) {
+    url.searchParams.set("view", "incoming");
+    if (payload.requestId) { url.searchParams.set("invitationProjectId", payload.projectId); url.searchParams.set("requestId", payload.requestId); }
+  } else if (payload.event.endsWith("_ACCEPTED")) url.searchParams.set("view", "active");
+  else if (payload.event === "MENTORSHIP_SUGGESTED") { url.pathname = `/projects/${encodeURIComponent(payload.projectId)}`; url.searchParams.set("tab", "support"); }
+  else url.searchParams.set("view", "history");
   return { subject, ...buildBrandedMail({ locale, subject, greeting: locale === "vi" ? `Xin chào ${name},` : `Hi ${name},`,
     paragraphs: [messages[payload.event][index]], cta: locale === "vi" ? "Mở Hỗ trợ học thuật" : "Open Academic Support", url: url.toString() }) };
 }
@@ -48,6 +54,13 @@ export async function deliverMentorshipEmail(notificationId: string) {
   if (!notification || notification.emailStatus !== "PENDING" || !notification.userId) return;
   const [user, profile] = await Promise.all([db.user.findUnique({ where: { id: notification.userId } }), db.academicProfile.findUnique({ where: { userId: notification.userId } })]);
   const parsed = payloadSchema.safeParse(notification.emailPayload);
+  // An outbox retry must not send an invitation that was withdrawn, expired or accepted meanwhile.
+  if (parsed.success && ["MENTORSHIP_REQUEST_RECEIVED", "MENTORSHIP_OFFER_RECEIVED"].includes(parsed.data.event)) {
+    const invitation = parsed.data.requestId ? await db.mentorshipRequest.findFirst({ where: { id: parsed.data.requestId, projectId: parsed.data.projectId } }) : null;
+    if (!invitation || invitation.status !== "PENDING" || invitation.expiresAt && invitation.expiresAt <= new Date()) {
+      await db.notification.updateMany({ where: { id: notificationId, emailStatus: "PENDING" }, data: { emailStatus: "SKIPPED" } }); return;
+    }
+  }
   if (!parsed.success || !user?.isActive || user.accountStatus !== "ACTIVE" || !user.emailVerifiedAt || profile?.mentorshipEmailEnabled === false || env.EMAIL_DELIVERY_MODE !== "smtp") {
     await db.notification.updateMany({ where: { id: notificationId, emailStatus: "PENDING" }, data: { emailStatus: "SKIPPED" } }); return;
   }

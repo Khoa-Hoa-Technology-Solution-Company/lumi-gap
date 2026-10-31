@@ -9,6 +9,8 @@ export interface NotificationItem {
   targetKind: "paper" | "report" | "gap" | "project" | "forum_post" | "academic_profile" | "community" | "review_request" | null;
   targetId: string | null;
   verificationRequestId?: string;
+  mentorshipRequestId?: string;
+  screeningRoundId?: string;
   allocationRevisionId?: string;
   workContributionId?: string;
   contributionEvaluationId?: string;

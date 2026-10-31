@@ -1,3 +1,4 @@
+import { initializePaperScreening } from "../projects/screening-bootstrap.js";
 import { withWorkspace } from "../projects/workspace-access.js";
 import { recordGapPacket, invalidateSourceAssessments } from "../projects/gap-revision.js";
 import { forumCitationOccurrences, forumCitationPaperIds, forumCitationPaperIdPattern, forumCitationToken } from "@trend/shared-types";
@@ -1032,12 +1033,15 @@ export const forumService = {
     if (gap.userId !== actor && !gap.projectId) throw AppError.forbidden("Only the candidate gap owner can review evidence for a standalone gap");
     if (input.screeningStatus === "EXCLUDED" && !input.exclusionReason?.trim()) throw AppError.badRequest("An exclusion reason is required when excluding a paper");
     let paperWasAdded = false;
-    const screenedProjectPaper = await withWorkspace(projectId, actor, { write: true }, async ({ tx, project: liveProject }) => {
+    const screenedProjectPaper = await withWorkspace(projectId, actor, { write: true }, async context => {
+      const { tx, project: liveProject } = context;
       const existing = await tx.projectPaper.findUnique({ where: { projectId_paperId: { projectId, paperId: paper.id } } });
       const row = existing ?? await tx.projectPaper.create({ data: { projectId, paperId: paper.id, addedById: actor } });
       paperWasAdded = !existing;
+      if (!existing) await initializePaperScreening(context, paper.id);
+      const hasRound = await tx.screeningRound.count({ where: { projectId, paperId: paper.id } });
       if (!existing) await tx.projectActivity.create({ data: { projectId, actorId: actor, type: "PAPER_ADDED_FROM_FORUM", entityKind: "PAPER", entityId: publicDatabaseId(paper), metadata: { title: paper.title, forumPostId: publicDatabaseId(post), gapId: publicDatabaseId(gap) } } });
-      if (input.screeningStatus && input.screeningStatus !== row.screeningStatus) {
+      if (!hasRound && input.screeningStatus && input.screeningStatus !== row.screeningStatus) {
         if (liveProject.screeningMode === "INDEPENDENT") throw AppError.conflict("Use the assigned independent screening workflow");
         await invalidateSourceAssessments(tx, projectId, actor, { paperId: paper.id });
         await tx.projectActivity.create({ data: { projectId, actorId: actor, type: "PAPER_SCREENED", entityKind: "PAPER", entityId: publicDatabaseId(paper), metadata: { paperId: paper.id, before: { status: row.screeningStatus }, after: { status: input.screeningStatus, reviewerId: actor, reason: input.exclusionReason ?? "" } } } });

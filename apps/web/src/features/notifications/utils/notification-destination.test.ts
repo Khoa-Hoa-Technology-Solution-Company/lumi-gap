@@ -23,8 +23,21 @@ describe("getNotificationDestination", () => {
     expect(getNotificationDestination({ ...notification, type: "LECTURER_VERIFICATION_REVIEW_REQUESTED" }, true)).toBe("/admin/academic-verifications?requestId=request%2F1%3Fother%3Dvalue");
     expect(getNotificationDestination({ ...notification, type: "LECTURER_VERIFICATION_REVIEW_REQUESTED" }, false)).toBeNull();
   });
-  it.each(["MENTORSHIP_REQUEST_CREATED", "MENTORSHIP_OFFER_CREATED", "MENTORSHIP_ACCEPTED", "MENTORSHIP_DECLINED", "MENTORSHIP_CANCELLED", "MENTORSHIP_ENDED"])("routes %s to Academic Support", type => {
+  it.each(["MENTORSHIP_REQUEST_CREATED", "MENTORSHIP_OFFER_CREATED"])("routes legacy %s to Academic Support", type => {
     expect(getNotificationDestination({ type, targetKind: "project", targetId: "project/one" }, false)).toBe("/academic-support?projectId=project%2Fone");
+  });
+  it.each(["MENTORSHIP_REQUEST_RECEIVED", "MENTORSHIP_OFFER_RECEIVED"])("opens %s without requiring project access", type => {
+    expect(getNotificationDestination({ type, targetKind: "project", targetId: "project/one" }, false)).toBe("/academic-support?view=incoming");
+    expect(getNotificationDestination({ type, targetKind: "project", targetId: "project/one", mentorshipRequestId: "request/one" }, false)).toBe("/academic-support?view=incoming&invitationProjectId=project%2Fone&requestId=request%2Fone");
+  });
+  it.each(["MENTORSHIP_REQUEST_ACCEPTED", "MENTORSHIP_OFFER_ACCEPTED", "MENTORSHIP_ACCEPTED"])("opens active mentorships for %s", type => {
+    expect(getNotificationDestination({ type, targetKind: "project", targetId: "project" }, false)).toBe("/academic-support?view=active");
+  });
+  it.each(["MENTORSHIP_REQUEST_DECLINED", "MENTORSHIP_CANCELLED", "MENTORSHIP_EXPIRED", "MENTORSHIP_ENDED", "MENTORSHIP_POSITION_FILLED"])("opens history for %s", type => {
+    expect(getNotificationDestination({ type, targetKind: "project", targetId: "project" }, false)).toBe("/academic-support?view=history");
+  });
+  it("opens team suggestions in the owner's project support panel", () => {
+    expect(getNotificationDestination({ type: "MENTORSHIP_SUGGESTED", targetKind: "project", targetId: "project/one" }, false)).toBe("/projects/project%2Fone?tab=support");
   });
   it.each(["academic_verification_submitted", "academic_verification_more_info", "academic_verification_approved", "academic_verification_rejected"])("routes %s to private settings", type => {
     expect(getNotificationDestination({ type, targetKind: "academic_profile", targetId: "profile" }, false)).toBe("/settings/academic");
@@ -44,8 +57,8 @@ describe("getNotificationDestination", () => {
     expect(getNotificationDestination({ type: "project_update", targetKind: "project", targetId: "project-1" }, false)).toBe("/projects/project-1");
   });
 
-  it("sends project invitees to the project list where they can accept or decline", () => {
-    expect(getNotificationDestination({ type: "project_invitation", targetKind: "project", targetId: "project-1" }, false)).toBe("/projects");
+  it("sends project invitees to the explicit inbox instead of opening a recent project", () => {
+    expect(getNotificationDestination({ type: "project_invitation", targetKind: "project", targetId: "project-1" }, false)).toBe("/projects?view=invitations");
   });
 
   it("sends reviewers to the review center instead of a project they are not in", () => {
@@ -99,4 +112,13 @@ describe("getNotificationDestination", () => {
 it("routes allocation notifications to exact restricted revisions and named work to record review", () => {
   expect(getNotificationDestination({ type: "PROJECT_ALLOCATION_UPDATE", targetKind: "project", targetId: "p", allocationRevisionId: "r" }, false)).toBe("/projects/p/allocation?revision=r");
   expect(getNotificationDestination({ type: "PROJECT_CONTRIBUTION_UPDATE", targetKind: "project", targetId: "p", workContributionId: "c" }, false)).toBe("/projects/p/contribution-review?record=c");
+});
+it("routes adjudicators to the scoped screening packet", () => {
+  expect(getNotificationDestination({ type: "SCREENING_ADJUDICATION_ASSIGNED", targetKind: "project", targetId: "p", screeningRoundId: "r" }, false)).toBe("/academic-support/projects/p/screening/r");
+});
+
+it("opens the exact project paper for screening assignment and consensus notifications", () => {
+  for (const type of ["SCREENING_REVIEW_ASSIGNED", "SCREENING_ACTION_REQUIRED"]) {
+    expect(getNotificationDestination({ type, targetKind: "project", targetId: "project", paperId: "paper" }, false)).toBe("/projects/project?tab=papers&source=paper");
+  }
 });

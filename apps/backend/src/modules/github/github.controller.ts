@@ -8,5 +8,6 @@ export const githubController = {
   async repositories(req: Request, res: Response) { res.json({ success: true, data: await githubService.repositories(req.user!.sub, Number(req.query.page)) }); },
   async request(req: Request, res: Response) { res.json({ success: true, data: await githubService.request(req.user!.sub, req.body) }); },
   async createRepository(req: Request, res: Response) { res.status(201).json({ success: true, data: await githubService.createRepository(req.user!.sub, req.body) }); },
+  async initializeRepository(req: Request, res: Response) { res.json({ success: true, data: await githubService.initializeRepository(req.user!.sub, req.body) }); },
   async disconnect(req: Request, res: Response) { res.json({ success: true, data: await githubService.disconnect(req.user!.sub) }); },
 };

@@ -53,3 +53,5 @@
 .screening-progress { display: flex; flex-wrap: wrap; gap: 1rem 2rem; margin-block: 1rem; }
 .screening-progress label { flex: 1 1 15rem; display: grid; gap: .5rem; font-size: .875rem; }
 .screening-state[data-state="AWAITING_FINALIZATION"] { background: hsl(var(--secondary)); color: hsl(var(--secondary-foreground)); }
+.screening-state[data-state="NEEDS_MORE_INFO"] { background: hsl(var(--secondary)); color: hsl(var(--secondary-foreground)); }
+.screening-state[data-state="ADJUDICATING"] { background: hsl(var(--primary) / .1); color: hsl(var(--primary)); border-color: hsl(var(--primary) / .25); }

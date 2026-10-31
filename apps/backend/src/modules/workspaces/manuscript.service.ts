@@ -212,7 +212,7 @@ export const manuscriptService = {
       }
       const [files, members] = await Promise.all([context.tx.manuscriptFile.findMany({ where: { workspaceId: id, deletedAt: null }, select: fileSelect, orderBy: { path: "asc" } }), context.tx.projectMember.findMany({ where: { projectId: context.project.id, status: "ACTIVE" }, select: { userId: true } })]);
       const [people, feedback] = await Promise.all([workspacePeople(context.tx, [context.project.ownerId, ...members.map(m => m.userId)]), latestFeedback(context.tx, context.project.id, id)]);
-      return { ...draftDto(row, context.project.status !== "ARCHIVED"), files: files.map(fileDto), collaborators: [...people.values()], latestFeedback: feedback.get(id) ?? null, compiler: compilerAvailability, compilerSettings: { engine: (row.compilerEngine ?? "pdflatex") as ManuscriptEngine, texLiveVersion: (row.compilerRelease ?? "2022") as import("@trend/shared-types").ManuscriptTexLive, revision: row.compilerRevision } };
+      return { ...draftDto(row, context.project.status !== "ARCHIVED"), canManageGithub: context.role === "OWNER" && context.project.status !== "ARCHIVED" && !row.archivedAt, files: files.map(fileDto), collaborators: [...people.values()], latestFeedback: feedback.get(id) ?? null, compiler: compilerAvailability, compilerSettings: { engine: (row.compilerEngine ?? "pdflatex") as ManuscriptEngine, texLiveVersion: (row.compilerRelease ?? "2022") as import("@trend/shared-types").ManuscriptTexLive, revision: row.compilerRevision } };
     });
   },
   async compilerSettings(projectId: string, actorId: string, id: string, input: { engine: ManuscriptEngine; texLiveVersion: import("@trend/shared-types").ManuscriptTexLive; expectedRevision: number }) {

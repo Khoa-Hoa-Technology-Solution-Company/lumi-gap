@@ -1,3 +1,4 @@
+import { initializePaperScreening } from "./screening-bootstrap.js";
 import { projectPaperWithDoi } from "./project-paper-identity.js";
 import { revokeProjectScreeningAssignments } from "./project-screening.service.js";
 import type {
@@ -511,9 +512,10 @@ export class ProjectService {
     try {
       await getPrisma().$transaction(async (tx) => {
         await lockProjectAccounts(tx, [rights.actor.id], rights.row.id);
-        await authorizeProjectTransaction(tx, rights.row.id, rights.actor.id, "CONTRIBUTE");
+        const liveAccess = await authorizeProjectTransaction(tx, rights.row.id, rights.actor.id, "CONTRIBUTE");
         if (paper.doi && await projectPaperWithDoi(tx, rights.row.id, paper.doi)) throw AppError.conflict("Bài báo có DOI này đã được thêm vào dự án");
         await tx.projectPaper.create({ data: { projectId: rights.row.id, paperId: paper.id, addedById: rights.actor.id, proposalReason } });
+        await initializePaperScreening({ tx, project: liveAccess.project, actorId: rights.actor.id, role: liveAccess.project.ownerId === rights.actor.id ? "OWNER" : "MEMBER" }, paper.id);
         await tx.projectActivity.create({ data: { projectId: rights.row.id, actorId: rights.actor.id, type: "PAPER_ADDED", entityKind: "PAPER", entityId: publicDatabaseId(paper), metadata: { title: paper.title, proposalReason } } });
       });
     } catch (error) {
@@ -666,7 +668,7 @@ export class ProjectService {
       getPrisma().user.findMany({ where: { id: { in: invitations.map(i => i.invitedById) } }, select: { id: true, fullName: true } }),
     ]);
     const byId = new Map(projects.map(p => [p.id, p])), inviterMap = new Map(inviters.map(u => [u.id, u]));
-    const items = invitations.flatMap(i => { const p = byId.get(i.projectId); return p ? [{ id: i.id, projectId: publicDatabaseId(p), projectTitle: p.title, inviterName: inviterMap.get(i.invitedById)?.fullName || undefined, role: "MEMBER" as const, status: "PENDING" as const, message: i.message ?? undefined, expiresAt: i.expiresAt.toISOString(), createdAt: i.createdAt.toISOString() }] : []; });
+    const items = invitations.flatMap(i => { const p = byId.get(i.projectId); return p ? [{ id: i.id, projectId: publicDatabaseId(p), projectTitle: p.title, invitedEmail: i.email, inviterName: inviterMap.get(i.invitedById)?.fullName || undefined, role: "MEMBER" as const, status: "PENDING" as const, message: i.message ?? undefined, expiresAt: i.expiresAt.toISOString(), createdAt: i.createdAt.toISOString() }] : []; });
     return { items, meta: { page, pageSize, hasNext } };
   }
 

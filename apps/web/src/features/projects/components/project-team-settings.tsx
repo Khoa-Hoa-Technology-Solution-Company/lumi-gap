@@ -15,6 +15,7 @@ import { cn } from "@/utils/cn";
 import { useAuthStore } from "@/stores/auth-store";
 import { useArchiveProject, useDeleteProject, useLeaveProject, useProjectTeam, useRestoreProject, useUpdateProject } from "../hooks/use-projects";
 import { ProjectMembersTab } from "./project-members-tab";
+import { ProjectMemberInvite } from "./project-member-invite";
 import { ProjectMentorSummary } from "./project-mentor-summary";
 import { ProjectGeneralSettings, ProjectPrivacySettings } from "./project-settings-form";
 import { ProjectSecurityPanel } from "./project-security-panel";
@@ -67,6 +68,9 @@ export function ProjectTeamSettings({ project }: { project: IProject }) {
           </div>
         </div>
         <div className="flex items-center gap-2.5 self-start md:self-center flex-wrap">
+          {project.accessRole === "OWNER" && project.status !== "ARCHIVED" && (
+            <ProjectMemberInvite projectId={project._id} projectTitle={project.title} ownerId={project.ownerId} members={project.members} />
+          )}
           <Badge variant="outline" className="gap-1.5 font-medium py-1.5 px-3 bg-card border-border/80 shadow-xs">
             <Shield className="h-3.5 w-3.5 text-primary" />
             <span>{project.accessRole === "OWNER" ? t("Owner") : t("Member")}</span>
@@ -163,6 +167,7 @@ export function ProjectTeamSettings({ project }: { project: IProject }) {
                 ownerId={project.ownerId}
                 currentUserId={userId}
                 readOnly={project.status === "ARCHIVED"}
+                showInviteAction={false}
               />
               <Pagination label={t("Member pages")} page={page} totalPages={team.data.memberMeta.totalPages} onChange={setPage} />
               <Pagination label={t("Invitation pages")} page={invitationPage} totalPages={team.data.invitationMeta.totalPages} onChange={setInvitationPage} />

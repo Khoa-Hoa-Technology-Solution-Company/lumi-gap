@@ -47,9 +47,12 @@ it("submits only the current user's expected revision and retains drafts if acce
   const own = { id: "review", assignmentId: "assignment", reviewerId: "actor", revision: 2, decision: "INCLUDE" as const, exclusionReason: "", comment: "My original opinion", submittedAt: "2026-10-29T00:00:00Z" };
   const round = { id: "round", settings, myReview: own, canReview: true, finalDecision: null } as unknown as ScreeningRoundView;
   await render(<LibraryAssessment projectId="p" paperId="one" round={round} settings={settings} readOnly={false} />);
+  expect(container.textContent).toContain("Phù hợp");
+  await click("Chỉnh sửa");
   await input(container.querySelector("textarea")!, "Updated after reading methods"); await click("Cập nhật ý kiến");
   expect(mocks.assess.mock.calls[0]![2]).toMatchObject({ roundId: "round", expectedRevision: 2, comment: "Updated after reading methods" });
   expect(mocks.assess.mock.calls[0]![2]).not.toHaveProperty("reviewerId");
+  await click("Chỉnh sửa");
   await input(container.querySelector("textarea")!, "A new draft to keep");
   await render(<LibraryAssessment projectId="p" paperId="one" round={{ ...round, canReview: false }} settings={settings} readOnly={false} />);
   expect(container.querySelector("textarea")!.value).toBe("A new draft to keep"); expect(container.querySelector<HTMLButtonElement>("button")!.disabled).toBe(true);

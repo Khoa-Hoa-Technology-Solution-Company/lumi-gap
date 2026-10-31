@@ -15,8 +15,8 @@ let root: Root, host: HTMLDivElement, client: QueryClient;
 let form: ReturnType<typeof useInvitationContent>;
 let saved: MentorshipDraft;
 const file = { id: "pdf", fileName: "Project.pdf", mimeType: "application/pdf", byteSize: 200 };
-function Harness({ roles = ["PRIMARY"], projectId = "project" }: { roles?: MentorRole[]; projectId?: string }) {
-  form = useInvitationContent(projectId, "PROJECT_TO_LECTURER", true, roles);
+function Harness({ roles = ["PRIMARY"], projectId = "project", recipientId }: { roles?: MentorRole[]; projectId?: string; recipientId?: string }) {
+  form = useInvitationContent(projectId, "PROJECT_TO_LECTURER", true, roles, recipientId);
   return <output>{form.message}</output>;
 }
 async function tick() { await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); }); }
@@ -44,6 +44,20 @@ it("restores text and attachments when reopened for another mentor", async () =>
   await act(async () => root.render(null));
   await mount();
   expect(form.message).toBe("The team's introduction"); expect(form.attachments).toEqual([file]); expect(form.dirty).toBe(false);
+});
+it("starts personal invitations empty and restores a saved message/files only on explicit reuse", async () => {
+  await act(async () => root.render(<QueryClientProvider client={client}><Harness recipientId="lecturer-a" /></QueryClientProvider>)); await tick();
+  expect(form.message).toBe(""); expect(form.attachments).toEqual([]); expect(form.dirty).toBe(false);
+  await act(async () => { await form.persist(); }); expect(api.saveDraft).not.toHaveBeenCalled();
+  await act(async () => { await form.reload(); }); await tick();
+  expect(form.message).toBe(saved.message); expect(form.attachments).toEqual([file]);
+  await act(async () => root.render(<QueryClientProvider client={client}><Harness recipientId="lecturer-b" /></QueryClientProvider>)); await tick();
+  expect(form.message).toBe(""); expect(form.attachments).toEqual([]);
+});
+it("does not silently change a chosen role when availability changes during composition", async () => {
+  await mount(["PRIMARY", "SECONDARY"]);
+  await act(async () => root.render(<QueryClientProvider client={client}><Harness roles={["SECONDARY"]} /></QueryClientProvider>)); await tick();
+  expect(form.mentorRole).toBe("PRIMARY");
 });
 it("serializes successive saves with the latest database version", async () => {
   await mount();

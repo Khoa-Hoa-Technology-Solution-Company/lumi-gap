@@ -1,3 +1,4 @@
+import { mentorPlanService } from "../mentor-plan.service.js";
 import { mentorAccessService as access } from "../mentor-access.service.js";
 import { createProjectFixture } from "../../../test-utils/project-fixture.js";
 import { beforeEach, afterAll, describe, it, expect, vi } from "vitest";
@@ -28,7 +29,7 @@ describe.skipIf(!enabled).sequential("academic relationship consent (PostgreSQL)
       await db.academicProfile.create({ data: { userId: user.id, academicRole: role, primaryPosition: role === "LECTURER" ? "LECTURER" : "STUDENT", positionTitle: role === "LECTURER" ? "Lecturer" : "Student", roleVerificationStatus: verified ? "VERIFIED" : "SELF_DECLARED", positionStatus: verified ? "VERIFIED" : "NOT_SUBMITTED", supportAvailability: { enabled: true } } });
     }
     [owner, lecturer, member, unverified, admin] = ids;
-    project = (await createProjectFixture({ data: { ownerId: owner, title: "Safe title", description: "CONFIDENTIAL internal description", visibility: "PRIVATE" } })).id;
+    project = (await createProjectFixture({ data: { ownerId: owner, title: "Safe title", description: "CONFIDENTIAL internal description", mentorshipSummary: "We compare evaluation methods for research studies in student teams.", visibility: "PRIVATE" } })).id;
     await db.projectMember.create({ data: { projectId: project, userId: member, role: "MEMBER", status: "ACTIVE" } });
   });
   afterAll(async () => {
@@ -65,7 +66,7 @@ describe.skipIf(!enabled).sequential("academic relationship consent (PostgreSQL)
     const previews = (await service.discovery(lecturer)).items;
     const preview = previews.find(p => p.id === project)!;
     expect(preview.summary).toContain("evaluation");
-    expect(Object.keys(preview).sort()).toEqual(["availableRoles", "discovery", "expertise", "id", "mentoringNeeds", "researchAreas", "researchField", "stage", "summary", "title"].sort());
+    expect(Object.keys(preview).sort()).toEqual(["availableRoles", "discovery", "expertise", "id", "mentoringNeeds", "researchAreas", "researchField", "stage", "summary", "teamMemberCount", "title"].sort());
     expect(JSON.stringify(preview)).not.toContain("CONFIDENTIAL");
     await expect(service.discovery(unverified)).rejects.toMatchObject({ statusCode: 403 });
     const offer = await service.offer(project, lecturer, { message: "I can mentor this project" });
@@ -96,6 +97,8 @@ describe.skipIf(!enabled).sequential("academic relationship consent (PostgreSQL)
     await service.decline(project, request.id, lecturer);
     await expect(service.request(project, owner, { mentorUserId: lecturer, message: "Help with research methods" })).rejects.toMatchObject({ statusCode: 409 });
     await db.mentorshipRequest.update({ where: { id: request.id }, data: { respondedAt: new Date(0) } });
+    const plan = await mentorPlanService.read(project, owner);
+    await mentorPlanService.change(project, owner, { action: "restart", expectedVersion: plan.version });
     const next = await service.request(project, owner, { mentorUserId: lecturer, message: "Help with research methods" });
     await db.mentorshipRequest.update({ where: { id: next.id }, data: { expiresAt: new Date(0) } });
     await expect(service.accept(project, next.id, lecturer)).rejects.toMatchObject({ statusCode: 409 });

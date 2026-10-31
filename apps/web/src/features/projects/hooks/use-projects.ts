@@ -142,7 +142,16 @@ export function useResendProjectInvitation(id: string) {
 }
 
 export function useProjectTeam(id: string, page: number, invitationPage: number) {
-  return useQuery({ queryKey: ["project", id, "team", page, invitationPage], queryFn: () => projectsApi.team(id, page, invitationPage), enabled: Boolean(id) });
+  return useQuery({
+    queryKey: ["project", id, "team", page, invitationPage],
+    queryFn: () => projectsApi.team(id, page, invitationPage),
+    enabled: Boolean(id),
+    refetchOnWindowFocus: true,
+    // Acceptance happens in another account's session. Refresh while waiting,
+    // including when the current invitation page becomes empty after a response.
+    refetchInterval: query => (query.state.data?.invitationMeta.total ?? 0) > 0 ? 10_000 : false,
+    refetchIntervalInBackground: false,
+  });
 }
 
 export function useRestoreProject(id: string) {
@@ -151,12 +160,18 @@ export function useRestoreProject(id: string) {
 }
 
 export function useMyProjectInvitations() {
-  return useQuery({ queryKey: ["project-invitations", "mine"], queryFn: projectsApi.listMyInvitations });
+  return useQuery({ queryKey: ["project-invitations", "mine"], queryFn: projectsApi.listMyInvitations, refetchOnWindowFocus: true });
 }
 
 export function useRespondToProjectInvitation() {
   const queryClient = useQueryClient();
-  return useMutation({ mutationFn: ({ projectId, invitationId, decision }: { projectId: string; invitationId: string; decision: "accept" | "decline" }) => projectsApi.respondToInvitation(projectId, invitationId, decision), onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["project-invitations", "mine"] }); queryClient.invalidateQueries({ queryKey: ["projects"] }); } });
+  return useMutation({
+    mutationFn: ({ projectId, invitationId, decision }: { projectId: string; invitationId: string; decision: "accept" | "decline" }) => projectsApi.respondToInvitation(projectId, invitationId, decision),
+    onSuccess: (_, { projectId }) => Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["project-invitations", "mine"] }),
+      refreshProject(queryClient, projectId),
+    ]),
+  });
 }
 
 export function useProjectInvitationPreview(token: string | undefined) {
@@ -173,11 +188,11 @@ export function useRespondToProjectInvitationToken(token: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (decision: "accept" | "decline") => projectsApi.respondToInvitationToken(token, decision),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["project-invitation-token", token] });
-      queryClient.invalidateQueries({ queryKey: ["project-invitations", "mine"] });
-      queryClient.invalidateQueries({ queryKey: ["projects"] });
-    },
+    onSuccess: ({ projectId }) => Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["project-invitation-token", token] }),
+      queryClient.invalidateQueries({ queryKey: ["project-invitations", "mine"] }),
+      refreshProject(queryClient, projectId),
+    ]),
   });
 }
 

@@ -1,3 +1,4 @@
+import { initializePaperScreening } from "./screening-bootstrap.js";
 import { createHash, randomUUID } from "node:crypto";
 import type { z } from "zod";
 import type { importPaperSchema } from "./dto/project-research.schema.js";
@@ -34,7 +35,9 @@ export const projectSourcesService = {
             await tx.paperAuthor.create({ data: { paperId: paper.id, authorId: author.id, displayName: name, position: position + 1 } });
           }
       }
+      const alreadyLinked = await tx.projectPaper.findUnique({ where: { projectId_paperId: { projectId: project.id, paperId: paper.id } } });
       await tx.projectPaper.upsert({ where: { projectId_paperId: { projectId: project.id, paperId: paper.id } }, create: { projectId: project.id, paperId: paper.id, addedById: context.actorId, importSource: doi ? "DOI_REFERENCE" : "MANUAL", sourceReference: input.reference || doi || null }, update: {} });
+      if (!alreadyLinked) await initializePaperScreening(context, paper.id);
       await workspaceEvent(context, "PAPER_IMPORTED", "IMPORT", input.clientKey, { hash, paperId: paper.id, duplicate }); return { paperId: paper.id, duplicate };
     });
   },

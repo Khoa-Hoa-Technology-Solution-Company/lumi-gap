@@ -29,6 +29,11 @@ export interface CreatedGithubRepo {
   defaultBranch: string;
   private: boolean;
 }
+export interface InitializeGithubRepoInput {
+  repository: string;
+  branch: string;
+  projectId: string;
+}
 
 export interface ManuscriptRemoteHistoryEntry {
   id: string;

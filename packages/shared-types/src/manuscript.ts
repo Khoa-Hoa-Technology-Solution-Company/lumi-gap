@@ -42,6 +42,7 @@ export interface ManuscriptSummary {
   latestFeedback?: ManuscriptFeedbackSummary | null;
 }
 export interface ManuscriptDetail extends ManuscriptSummary {
+  canManageGithub?: boolean;
   compilerSettings?: { engine: ManuscriptEngine; texLiveVersion: ManuscriptTexLive; revision: number };
   files: ManuscriptFile[]; collaborators: Array<{ id: string; name: string }>;
   compiler: { available: boolean; reason: string; versions?: ManuscriptTexLive[] };

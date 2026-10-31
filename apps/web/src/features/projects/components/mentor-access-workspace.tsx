@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { isAxiosError } from "axios";
 import { mentorPermissions, mentorPresets, creditRoles, type MentorAccessWorkspace as WorkspaceData, type MentorAccessPolicy, type MentorPolicyInput, type MentorPermission, type MentorResourceKind, type MentorShareInput, type MentorFeedback, type MentorAgreement } from "@trend/shared-types";
@@ -81,9 +82,10 @@ function AccessEntry({ projectId, data, entry, actorId }: { projectId: string; d
 }
 function SharedResourceText({ projectId, accessId, version, resource }: { projectId: string; accessId: string; version: number; resource: Entry["shares"][number] }) {
   const [open, setOpen] = useState(false), actorId = useAuthStore(s => s.user?.id);
+  const packetRoundId = resource.kind === "PAPER" && /^screening:[0-9a-f-]{36}$/.test(resource.sectionKey) ? resource.sectionKey.slice(10) : null;
   const query = useQuery({ queryKey: ["mentor-access", actorId, projectId, accessId, version, "resource", resource.id], queryFn: () => mentorAccessApi.resource(projectId, accessId, resource.id), enabled: open, retry: false, refetchInterval: open ? 5000 : false });
-  return <details open={open} onToggle={e => setOpen(e.currentTarget.open)}><summary>{kindLabels[resource.kind]} · {resource.title}{resource.sectionKey ? ` · ${sectionLabels[resource.sectionKey] ?? resource.sectionKey}` : ""}</summary>
-    {open && <>{query.isLoading && <WorkspaceLoading />}<AccessError error={query.error} />{query.data && !denied(query.error) && <p className="mentor-shared-text">{query.data.content}</p>}<small>Được chia sẻ {new Date(resource.createdAt).toLocaleString("vi-VN")}</small></>}
+  return <details open={open} onToggle={e => setOpen(e.currentTarget.open)}><summary>{kindLabels[resource.kind]} · {resource.title}{resource.sectionKey ? ` · ${packetRoundId ? "Gói phân xử" : sectionLabels[resource.sectionKey] ?? resource.sectionKey}` : ""}</summary>
+    {open && <>{query.isLoading && <WorkspaceLoading />}<AccessError error={query.error} />{query.data && !denied(query.error) && <div>{packetRoundId ? <Link className="text-primary underline" to={`/academic-support/projects/${encodeURIComponent(projectId)}/screening/${encodeURIComponent(packetRoundId)}`}>Mở gói phân xử bài báo</Link> : <p className="mentor-shared-text">{query.data.content}</p>}</div>}<small>Được chia sẻ {new Date(resource.createdAt).toLocaleString("vi-VN")}</small></>}
   </details>;
 }
 function PolicyDialog({ projectId, entry, onClose }: { projectId: string; entry: Entry; onClose: () => void }) {

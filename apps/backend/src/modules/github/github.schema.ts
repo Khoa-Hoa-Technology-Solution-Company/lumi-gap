@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { databaseIdSchema } from "../../common/validation/database-id.js";
 
 export const githubRepository = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9-]{0,99}\/[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/);
 export const githubReturnPath = z.string().max(500).regex(/^\/projects\/[a-fA-F0-9-]{24,36}(?:\/manuscripts\/[a-fA-F0-9-]{36}|\?tab=manuscripts)?$/);
@@ -18,19 +19,22 @@ export const githubCreateRepoSchema = z.object({
   name: z.string().min(1).max(100).regex(/^[A-Za-z0-9._-]+$/),
   description: z.string().max(500).optional(),
   isPrivate: z.boolean().default(true),
-  projectId: z.string().uuid().optional(),
+  projectId: databaseIdSchema.optional(),
 }).strict();
+export const githubInitializeRepoSchema = z.object({ repository: githubRepository, branch, projectId: databaseIdSchema }).strict();
 
 export const githubRequestSchema = z.object({
   repository: githubRepository,
   path: z.string().max(400),
   method: z.enum(["GET", "POST", "PATCH"]),
-  projectId: z.string().uuid().optional(),
+  projectId: databaseIdSchema.optional(),
   body: z.unknown().optional(),
 }).strict().superRefine((value, ctx) => {
   let valid = false;
   if (value.method === "GET" && value.body === undefined) {
     valid = value.path === "" || /^\/git\/(commits|blobs)\/[a-f0-9]{40}$/.test(value.path) || /^\/git\/trees\/[a-f0-9]{40}\?recursive=1$/.test(value.path);
+    if (/^\/commits\?sha=[A-Za-z0-9%._-]+&per_page=5$/.test(value.path)) try { valid = branch.safeParse(decodeURIComponent(value.path.slice(13, -11))).success; } catch { /* Invalid encoding */ }
+    if (/^\/compare\/[a-f0-9]{40}\.\.\.[a-f0-9]{40}\?per_page=1$/.test(value.path)) valid = true;
     if (value.path.startsWith("/git/ref/heads/")) try { valid = branch.safeParse(decodeURIComponent(value.path.slice(15))).success; } catch { /* Invalid encoding */ }
   } else if (value.method === "POST") {
     valid = value.path === "/git/blobs" ? blobBody.safeParse(value.body).success : value.path === "/git/trees" ? treeBody.safeParse(value.body).success : value.path === "/git/commits" ? commitBody.safeParse(value.body).success : value.path === "/git/refs" && newRefBody.safeParse(value.body).success;
