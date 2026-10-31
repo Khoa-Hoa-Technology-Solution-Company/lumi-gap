@@ -255,6 +255,20 @@ const EnvSchema = z.object({
   // is the honest ceiling of results for a single query.
   SEARCH_FILTER_POOL: z.coerce.number().int().min(50).max(1000).default(200),
 
+  // Query understanding in GET /search (deterministic, no LLM): resolve the query to OpenAlex taxonomy
+  // nodes / catalogue keywords, then hard-filter to the best one or boost papers that carry them.
+  SEARCH_AUTO_TAGS: z.enum(["true", "false"]).default("true").transform((value) => value === "true"),
+  // The best tag must reach this confidence (0..1) before it may act as a hard filter.
+  SEARCH_TAG_FILTER_MIN_CONFIDENCE: z.coerce.number().min(0).max(1).default(0.85),
+  // ...and own at least this many active papers, otherwise the filter would be too narrow to be useful.
+  SEARCH_TAG_FILTER_MIN_PAPERS: z.coerce.number().int().min(0).max(1_000_000).default(20),
+  // ...and own at most this share (0..1) of the active corpus; a broader tag narrows nothing and only boosts.
+  SEARCH_TAG_FILTER_MAX_SHARE: z.coerce.number().min(0).max(1).default(0.5),
+  // A filtered search returning fewer papers than this is re-run unfiltered with tag boosting instead.
+  SEARCH_TAG_FALLBACK_MIN_RESULTS: z.coerce.number().int().min(0).max(500).default(10),
+  // How long the in-memory taxonomy/keyword phrase dictionary is reused before it is reloaded.
+  TAXONOMY_DICTIONARY_TTL_SECONDS: z.coerce.number().int().min(1).max(86_400).default(600),
+
   // Phase B/C — LLM re-rank of semantic search. Size of the candidate pool the
   // LLM re-scores (bounded — re-ranking refines the head of the results).
   RERANK_CANDIDATES: z.coerce.number().int().min(2).max(50).default(20),
@@ -279,6 +293,30 @@ const EnvSchema = z.object({
   // Minimum similarity for a semantic community match. Score = 1 - cosine_distance / 2,
   // i.e. (1 + cos) / 2, so 0.75 corresponds to a cosine of 0.5. Tune on real embeddings.
   COMMUNITY_SUGGEST_MIN_SIMILARITY: z.coerce.number().min(0).max(1).default(0.75),
+
+  // Automatic tagging (tagging worker). Rules always run; embedding expansion adds papers whose embedding is within
+  // TAG_EMBEDDING_MIN_SIMILARITY (cosine) of the centroid of the tag's rule/manual papers, once at least
+  // TAG_EMBEDDING_MIN_SEED of those have an embedding, at most TAG_EMBEDDING_MAX_PAPERS per tag per run.
+  TAGGING_CRON: z.string().default("15 3 * * *"),
+  TAG_EMBEDDING_ENABLED: z.enum(["true", "false"]).default("true").transform((value) => value === "true"),
+  TAG_EMBEDDING_MIN_SEED: z.coerce.number().int().min(1).default(10),
+  TAG_EMBEDDING_MIN_SIMILARITY: z.coerce.number().min(0).max(1).default(0.82),
+  TAG_EMBEDDING_MAX_PAPERS: z.coerce.number().int().min(1).default(300),
+
+  // On-demand topic backfill (topic-backfill worker). A run imports at most TOPIC_BACKFILL_DEFAULT_NEW_PAPERS papers the
+  // corpus is missing (admins may ask for up to TOPIC_BACKFILL_MAX_NEW_PAPERS), reading at most TOPIC_BACKFILL_MAX_PAGES
+  // OpenAlex pages. Below TOPIC_BACKFILL_THIN_MAX_PAPERS local papers, search offers signed-in users a backfill, limited
+  // per user/hour, by a cooldown per target and by a daily cap on papers imported from search across all users.
+  TOPIC_BACKFILL_SEARCH_ENABLED: z.enum(["true", "false"]).default("true").transform((value) => value === "true"),
+  TOPIC_BACKFILL_THIN_MAX_PAPERS: z.coerce.number().int().min(1).default(30),
+  TOPIC_BACKFILL_DEFAULT_NEW_PAPERS: z.coerce.number().int().min(1).max(1000).default(100),
+  TOPIC_BACKFILL_MAX_NEW_PAPERS: z.coerce.number().int().min(1).max(5000).default(1000),
+  TOPIC_BACKFILL_MAX_PAGES: z.coerce.number().int().min(1).max(100).default(10),
+  TOPIC_BACKFILL_USER_MAX_PER_HOUR: z.coerce.number().int().positive().default(5),
+  TOPIC_BACKFILL_COOLDOWN_HOURS: z.coerce.number().int().min(0).default(24),
+  TOPIC_BACKFILL_DAILY_MAX_PAPERS: z.coerce.number().int().min(1).default(2000),
+  // Largest random sample an admin may plan from one tag in a single campaign.
+  TAG_CAMPAIGN_MAX_WORKS: z.coerce.number().int().min(1).default(5000),
 
   // Quality & Feedback — per-user/hour cap on the on-demand LLM-judge (a generate call).
   QUALITY_EVAL_MAX_PER_HOUR: z.coerce.number().int().positive().default(20),

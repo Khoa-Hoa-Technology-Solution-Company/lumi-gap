@@ -266,6 +266,40 @@ model ApiSyncRun {
   @@map("api_sync_runs")
 }
 
+/// On-demand OpenAlex import for one catalogue entry with thin local coverage.
+model TopicBackfillRun {
+  id               String    @id @default(uuid()) @db.Uuid
+  /// topic | subfield | keyword | tag (polymorphic with targetId, no foreign key)
+  targetKind       String    @map("target_kind") @db.VarChar(16)
+  targetId         String    @map("target_id") @db.Uuid
+  targetName       String    @map("target_name")
+  /// queued | running | completed | failed. At most one queued/running run per target (partial unique index in SQL).
+  state            String    @default("queued") @db.VarChar(16)
+  /// admin | search. Only "search" runs count against the daily cap.
+  trigger          String    @db.VarChar(16)
+  requestedById    String?   @map("requested_by_id") @db.Uuid
+  /// Stop after importing this many papers the corpus did not have.
+  maxNewPapers     Int       @map("max_new_papers")
+  paperCountBefore Int       @default(0) @map("paper_count_before")
+  fetchedCount     Int       @default(0) @map("fetched_count")
+  insertedCount    Int       @default(0) @map("inserted_count")
+  /// Works already in the corpus, which are left untouched.
+  skippedCount     Int       @default(0) @map("skipped_count")
+  rejectedCount    Int       @default(0) @map("rejected_count")
+  pagesFetched     Int       @default(0) @map("pages_fetched")
+  errorMessage     String?   @map("error_message")
+  startedAt        DateTime? @map("started_at") @db.Timestamptz(6)
+  finishedAt       DateTime? @map("finished_at") @db.Timestamptz(6)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([targetKind, targetId, createdAt(sort: Desc)])
+  @@index([state, createdAt])
+  @@index([trigger, createdAt])
+  @@index([requestedById])
+  @@map("topic_backfill_runs")
+}
+
 model OpenAlexIngestCampaign {
   id                String    @id @default(uuid()) @db.Uuid
   legacyMongoId     String?   @unique @map("legacy_mongo_id") @db.VarChar(24)
@@ -280,10 +314,13 @@ model OpenAlexIngestCampaign {
   completedAt       DateTime? @map("completed_at") @db.Timestamptz(6)
   failureReason     String?   @map("failure_reason")
   completionNote    String?   @map("completion_note")
+  /// Set when the campaign was planned from a tag; at most one live campaign per tag (partial unique index in SQL).
+  targetTagId       String?   @map("target_tag_id") @db.Uuid
   createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@index([state, createdAt])
+  @@index([targetTagId, createdAt(sort: Desc)])
   @@map("openalex_ingest_campaigns")
 }
 

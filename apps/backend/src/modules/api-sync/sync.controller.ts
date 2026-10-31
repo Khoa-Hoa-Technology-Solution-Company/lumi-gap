@@ -6,10 +6,12 @@ import { getPrisma } from "../../infrastructure/database/prisma.js";
 import type { TriggerSyncInput } from "./dto/trigger-sync.schema.js";
 import type { PlanOpenAlexCampaignInput } from "./dto/trigger-sync.schema.js";
 import type { TriggerCorpusValidationInput } from "./dto/trigger-sync.schema.js";
+import type { PlanTagCampaignInput, TagCampaignTarget } from "./dto/trigger-sync.schema.js";
 import { ingestCampaignAdminService } from "./scale/ingest-campaign-admin.service.js";
 import { ingestCampaignService } from "./scale/ingest-campaign.service.js";
 import { openAlexPreflightService } from "./scale/openalex-preflight.service.js";
 import { openAlexCampaignPlannerService } from "./scale/openalex-campaign-planner.service.js";
+import { tagCampaignService } from "./scale/tag-campaign.service.js";
 import { CORPUS_VALIDATOR_VERSION, corpusValidationService } from "./scale/corpus-validation.service.js";
 
 /**
@@ -64,6 +66,19 @@ export const syncController = {
         plannedPartitions: campaign.progress?.plannedPartitions ?? 0,
       },
     });
+  },
+
+  async preflightTagCampaign(req: Request<unknown, unknown, TagCampaignTarget>, res: Response) {
+    res.json({ success: true, data: await tagCampaignService.preflight(req.body.tagId) });
+  },
+
+  async planTagCampaign(req: Request<unknown, unknown, PlanTagCampaignInput>, res: Response) {
+    res.status(201).json({ success: true, data: await tagCampaignService.plan(req.user?.sub, req.body) });
+  },
+
+  async listTagCampaigns(req: Request, res: Response) {
+    const { tagId } = req.query as unknown as TagCampaignTarget;
+    res.json({ success: true, data: await tagCampaignService.listForTag(tagId) });
   },
 
   async getIngestCampaign(req: Request<{ campaignId: string }>, res: Response) {

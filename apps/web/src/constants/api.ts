@@ -140,6 +140,10 @@ export const API_ROUTES = {
   search: {
     semantic: "/search", 
   },
+  topicBackfill: {
+    request: "/topic-backfill",
+    run: (id: string) => `/topic-backfill/runs/${encodeURIComponent(id)}`,
+  },
   trends: {
     topic: (topic: string) => `/trends/${encodeURIComponent(topic)}`,
   },
@@ -202,6 +206,33 @@ export const API_ROUTES = {
     auditLogs: "/admin/audit-logs",
     workers: "/admin/workers",
     settings: "/admin/settings",
+    topicBackfill: {
+      request: "/admin/topic-backfill",
+      runs: "/admin/topic-backfill/runs",
+    },
+    tagCampaigns: {
+      preflight: "/admin/openalex-ingest/tag-campaigns/preflight",
+      list: "/admin/openalex-ingest/tag-campaigns",
+    },
+    taxonomy: {
+      stats: "/admin/taxonomy/stats",
+      nodes: "/admin/taxonomy/nodes",
+      node: (id: string) => `/admin/taxonomy/nodes/${id}`,
+      keywords: "/admin/taxonomy/keywords",
+      keyword: (id: string) => `/admin/taxonomy/keywords/${id}`,
+      mergeKeyword: (id: string) => `/admin/taxonomy/keywords/${id}/merge`,
+    },
+    tags: {
+      root: "/admin/tags",
+      applyAll: "/admin/tags/apply-all",
+      tag: (id: string) => `/admin/tags/${id}`,
+      rules: (id: string) => `/admin/tags/${id}/rules`,
+      preview: (id: string) => `/admin/tags/${id}/preview`,
+      apply: (id: string) => `/admin/tags/${id}/apply`,
+      papers: (id: string) => `/admin/tags/${id}/papers`,
+      paper: (id: string, paperId: string) => `/admin/tags/${id}/papers/${paperId}`,
+      unblock: (id: string, paperId: string) => `/admin/tags/${id}/papers/${paperId}/unblock`,
+    },
   },
   gaps: {
     evidencePreview: "/gaps/evidence-preview",

@@ -93,9 +93,11 @@ export async function providerJson(urlValue: string, apiKey: string, provider: s
       method: payload ? "POST" : "GET",
       headers: { accept: "application/json", ...(payload ? { "content-type": "application/json" } : {}),
         ...(apiKey ? provider === "gemini" ? { "x-goog-api-key": apiKey } : { authorization: `Bearer ${apiKey}` } : {}) },
-      // Pin the validated DNS address so a second lookup cannot redirect credentials into a private network.
+      // Pin the validated DNS addresses so a second lookup cannot redirect credentials into a private network.
+      // Offer all of them: "localhost" resolves to ::1 first, and many local gateways only listen on 127.0.0.1;
+      // Node's default autoSelectFamily then tries the next address when one refuses the connection.
       lookup: (_host, options, callback) => {
-        if (typeof options === "object" && options.all) callback(null, [pinned] as never);
+        if (typeof options === "object" && options.all) callback(null, addresses as never);
         else callback(null, pinned.address, pinned.family);
       },
     }, (res) => {

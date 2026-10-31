@@ -157,12 +157,12 @@ export function splitSeededSampleQuota(input: {
   }));
 }
 
-/** Stable positive 32-bit seed accepted by OpenAlex's sample API. */
+/** Stable positive seed accepted by OpenAlex's sample API. 31 bits, because the partition's seed column is an INTEGER. */
 export function stableSeed(value: string): number {
   let hash = 2_166_136_261;
   for (let index = 0; index < value.length; index += 1) {
     hash ^= value.charCodeAt(index);
     hash = Math.imul(hash, 16_777_619);
   }
-  return (hash >>> 0) || 1;
+  return (hash & 0x7fff_ffff) || 1;
 }

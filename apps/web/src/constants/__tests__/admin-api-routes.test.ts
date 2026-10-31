@@ -15,3 +15,10 @@ describe("OpenAlex ingest admin routes", () => {
     expect(API_ROUTES.admin.corpusValidationRun("run-id")).toBe("/admin/openalex-ingest/validations/run-id");
   });
 });
+
+describe("tag campaign admin routes", () => {
+  it("sit under the OpenAlex ingest router", () => {
+    expect(API_ROUTES.admin.tagCampaigns.preflight).toBe("/admin/openalex-ingest/tag-campaigns/preflight");
+    expect(API_ROUTES.admin.tagCampaigns.list).toBe("/admin/openalex-ingest/tag-campaigns");
+  });
+});

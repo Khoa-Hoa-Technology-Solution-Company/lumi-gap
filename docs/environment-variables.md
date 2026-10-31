@@ -148,6 +148,12 @@ Users can also save multiple personal API connections in Settings → AI Connect
 | `DEEP_ANALYSIS_MAX_TURNS` | `EnvSchema` / backend | Default / optional (see template) |
 | `DEEP_ANALYSIS_MAX_OUTPUT_TOKENS` | `EnvSchema` / backend | Default / optional (see template) |
 | `SEARCH_FILTER_POOL` | `EnvSchema` / backend | Default / optional (see template) |
+| `SEARCH_AUTO_TAGS` | `EnvSchema` / backend | Default / optional (default true): resolve a `GET /search` query to taxonomy nodes / keywords and filter or boost by them (no LLM); `autoTags=false` turns it off per request |
+| `SEARCH_TAG_FILTER_MIN_CONFIDENCE` | `EnvSchema` / backend | Default / optional (default 0.85, 0..1): minimum confidence before the best detected tag becomes a hard filter |
+| `SEARCH_TAG_FILTER_MIN_PAPERS` | `EnvSchema` / backend | Default / optional (default 20): minimum active papers a tag must own to be used as a hard filter |
+| `SEARCH_TAG_FILTER_MAX_SHARE` | `EnvSchema` / backend | Default / optional (default 0.5): a tag owning more than this share of the active corpus only boosts, since filtering by it narrows almost nothing |
+| `SEARCH_TAG_FALLBACK_MIN_RESULTS` | `EnvSchema` / backend | Default / optional (default 10): a tag-filtered search returning fewer papers re-runs unfiltered with tag boosting |
+| `TAXONOMY_DICTIONARY_TTL_SECONDS` | `EnvSchema` / backend | Default / optional (default 600): lifetime of the in-memory taxonomy/keyword phrase dictionary used for query understanding |
 | `RERANK_CANDIDATES` | `EnvSchema` / backend | Default / optional (see template) |
 | `RERANK_MAX_PER_HOUR` | `EnvSchema` / backend | Default / optional (see template) |
 | `SEMANTIC_SEARCH_MAX_PER_MINUTE` | `EnvSchema` / backend | Default / optional (see template) |
@@ -179,6 +185,20 @@ Users can also save multiple personal API connections in Settings → AI Connect
 | `MAX_PENDING_MENTOR_REQUESTS_PER_PROJECT` | `EnvSchema` / backend | Default 5 (1-20) |
 | `COMMUNITY_SUGGEST_MAX_PER_MINUTE` | `EnvSchema` / backend | Default 20 |
 | `COMMUNITY_SUGGEST_MIN_SIMILARITY` | `EnvSchema` / backend | Default 0.75 (0-1); tune with `pnpm --filter backend eval:community-suggest` |
+| `TAGGING_CRON` | `EnvSchema` / backend | Default `15 3 * * *`; cron of the tagging worker's `apply-all-tags` job |
+| `TAG_EMBEDDING_ENABLED` | `EnvSchema` / backend | Default `true`; `false` turns off embedding expansion (rules still run) |
+| `TAG_EMBEDDING_MIN_SEED` | `EnvSchema` / backend | Default 10; rule/manual papers with an embedding needed before a tag is expanded by embedding |
+| `TAG_EMBEDDING_MIN_SIMILARITY` | `EnvSchema` / backend | Default 0.82 (0-1); cosine similarity to the tag centroid |
+| `TAG_EMBEDDING_MAX_PAPERS` | `EnvSchema` / backend | Default 300; most papers one tag gains from embedding expansion per run |
+| `TOPIC_BACKFILL_SEARCH_ENABLED` | `EnvSchema` / backend | Default `true`; `false` hides the search hint and rejects user requests (admins can still start a backfill) |
+| `TOPIC_BACKFILL_THIN_MAX_PAPERS` | `EnvSchema` / backend | Default 30; an entry with fewer local papers counts as thin |
+| `TOPIC_BACKFILL_DEFAULT_NEW_PAPERS` | `EnvSchema` / backend | Default 100; new papers a run imports unless an admin sets another budget |
+| `TOPIC_BACKFILL_MAX_NEW_PAPERS` | `EnvSchema` / backend | Default 1000; largest budget an admin may set |
+| `TOPIC_BACKFILL_MAX_PAGES` | `EnvSchema` / backend | Default 10; OpenAlex pages (100 works each) one run may read |
+| `TOPIC_BACKFILL_USER_MAX_PER_HOUR` | `EnvSchema` / backend | Default 5; backfill requests per user per hour |
+| `TOPIC_BACKFILL_COOLDOWN_HOURS` | `EnvSchema` / backend | Default 24; hours before search can start another backfill of the same entry |
+| `TOPIC_BACKFILL_DAILY_MAX_PAPERS` | `EnvSchema` / backend | Default 2000; papers search-triggered runs may import in 24 hours across all users |
+| `TAG_CAMPAIGN_MAX_WORKS` | `EnvSchema` / backend | Default 5000; largest sample an admin may plan from one tag in a single campaign |
 | `GAP_SCARCE_ABS` | `EnvSchema` / backend | Default 5 |
 | `GAP_SCARCE_PCT` | `EnvSchema` / backend | Default 0.02 (0-1) |
 | `GAP_PARENT_RISING_MIN` | `EnvSchema` / backend | Default 10 |

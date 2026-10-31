@@ -53,11 +53,11 @@ mode because fixtures reject production. Use it only for local/demo data;
 repeated seed upserts fixtures and may reset demo passwords and fixture values.
 
 Default workers: topic sync, report, gaps, ai-jobs, embedding, paper analysis, notifications,
-corpus validation, community summary. Begin with roughly 8 GB Docker memory,
+corpus validation, community summary, tagging, topic backfill. Begin with roughly 8 GB Docker memory,
 then adjust to measured workload. Stop workers on a smaller machine:
 
 ```bash
-docker compose stop worker-sync worker-report worker-gaps worker-ai-jobs worker-embedding worker-paper-analysis worker-notifications worker-corpus-validation worker-community-summary
+docker compose stop worker-sync worker-report worker-gaps worker-ai-jobs worker-embedding worker-paper-analysis worker-notifications worker-corpus-validation worker-community-summary worker-tagging worker-topic-backfill
 ```
 
 They start again on the next full `up`. Optional profiles:
