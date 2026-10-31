@@ -6,32 +6,25 @@ import { PublicForumActivityQuerySchema } from "../dto/academic-profile.schema.j
 
 describe.sequential("Public forum activity visibility and pagination", () => {
   const prisma = getPrisma();
-  const ownerId = randomUUID(), viewerId = randomUUID(), publicId = randomUUID(), privateId = randomUUID();
+  const ownerId = randomUUID(), viewerId = randomUUID(), publicId = randomUUID();
   const marker = randomUUID();
-  const publicPost = randomUUID(), privatePost = randomUUID(), hiddenPost = randomUUID(), replyId = randomUUID();
-  const postIds = [publicPost, privatePost, hiddenPost];
+  const publicPost = randomUUID(), hiddenPost = randomUUID(), replyId = randomUUID();
+  const postIds = [publicPost, hiddenPost];
   beforeAll(async () => {
     await prisma.user.createMany({ data: [ownerId, viewerId].map((id) => ({ id, email: `${id}@activity-test.invalid`, fullName: "Activity test member" })) });
     await prisma.academicProfile.create({ data: { userId: ownerId, profileVisibility: "PUBLIC" } });
-    await prisma.community.createMany({ data: [
-      { id: publicId, ownerId, name: `Public activity test ${marker}`, slug: `activity-public-${marker}`, visibility: "public" },
-      { id: privateId, ownerId, name: `Private activity test ${marker}`, slug: `activity-private-${marker}`, visibility: "private" },
-    ] });
-    await prisma.communityMembership.create({ data: { communityId: privateId, userId: viewerId, status: "active" } });
+    await prisma.community.create({ data: { id: publicId, ownerId, name: `Public activity test ${marker}`, slug: `activity-public-${marker}`, visibility: "public" } });
     await prisma.forumPost.createMany({ data: [
       { id: publicPost, authorId: ownerId, communityId: publicId, title: "Visible topic", body: "Public content", viewCount: 12 },
-      { id: privatePost, authorId: ownerId, communityId: privateId, title: "Private topic", body: "Private content", viewCount: 99 },
       { id: hiddenPost, authorId: ownerId, communityId: publicId, title: "Hidden topic", body: "Hidden content", visibilityStatus: "HIDDEN" },
     ] });
     await prisma.forumComment.createMany({ data: [
       { id: replyId, postId: publicPost, postNumber: 2, authorId: ownerId, body: "Accepted public reply" },
-      { postId: privatePost, postNumber: 2, authorId: ownerId, body: "Private reply" },
       { postId: publicPost, postNumber: 3, authorId: ownerId, body: "Removed reply", visibilityStatus: "REMOVED" },
     ] });
     await prisma.forumPost.update({ where: { id: publicPost }, data: { acceptedCommentId: replyId } });
     await prisma.forumReaction.createMany({ data: [
       { targetType: "post", targetId: publicPost, userId: viewerId, reaction: "LIKE" },
-      { targetType: "post", targetId: privatePost, userId: ownerId, reaction: "LIKE" },
       { targetType: "comment", targetId: replyId, userId: ownerId, reaction: "INSIGHTFUL" },
       { targetType: "post", targetId: hiddenPost, userId: ownerId, reaction: "LIKE" },
     ] });
@@ -40,25 +33,18 @@ describe.sequential("Public forum activity visibility and pagination", () => {
     await prisma.forumReaction.deleteMany({ where: { userId: { in: [ownerId, viewerId] } } });
     await prisma.forumComment.deleteMany({ where: { postId: { in: postIds } } });
     await prisma.forumPost.deleteMany({ where: { id: { in: postIds } } });
-    await prisma.communityMembership.deleteMany({ where: { communityId: { in: [publicId, privateId] } } });
-    await prisma.community.deleteMany({ where: { id: { in: [publicId, privateId] } } });
+    await prisma.communityMembership.deleteMany({ where: { communityId: publicId } });
+    await prisma.community.deleteMany({ where: { id: publicId } });
     await prisma.academicProfile.deleteMany({ where: { userId: ownerId } });
     await prisma.user.deleteMany({ where: { id: { in: [ownerId, viewerId] } } });
   });
-  it("excludes private, hidden and removed content from lists, stats and rankings", async () => {
+  it("excludes hidden and removed content from lists, stats and rankings", async () => {
     const result = await publicForumActivity(ownerId, "all", 1);
     expect(result.stats).toMatchObject({ topicsCreated: 1, repliesCreated: 1, reactionsGiven: 1, reactionsReceived: 2, acceptedResponses: 1, topicViews: 12 });
     expect(result.meta.total).toBe(3);
     expect(result.items.every((item) => item.topicId === publicPost)).toBe(true);
     expect(result.topTopics.map((item) => item.topicId)).toEqual([publicPost]);
     expect(result.topReplies[0]).toMatchObject({ id: replyId, accepted: true, postNumber: 2, reactionCount: 1 });
-  });
-  it("includes private contributions only for active community members", async () => {
-    const member = await publicForumActivity(ownerId, "all", 1, viewerId);
-    expect(member.stats).toMatchObject({ topicsCreated: 2, repliesCreated: 2, reactionsGiven: 2, topicViews: 111 });
-    await prisma.communityMembership.update({ where: { communityId_userId: { communityId: privateId, userId: viewerId } }, data: { status: "banned" } });
-    const banned = await publicForumActivity(ownerId, "all", 1, viewerId);
-    expect(banned.stats.topicsCreated).toBe(1);
   });
   it("filters reactions and keeps accurate totals on empty later pages", async () => {
     const reactions = await publicForumActivity(ownerId, "reactions", 1);

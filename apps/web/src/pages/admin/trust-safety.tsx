@@ -31,7 +31,7 @@ const restrictionLabels: Record<string, string> = { CREATE_THREAD: "Cannot start
 const scopeLabels: Record<string, string> = { GLOBAL: "Forum-wide", COMMUNITY: "Community" };
 const appealLabels: Record<string, string> = { SUBMITTED: "Pending review", UPHELD: "Upheld", OVERTURNED: "Overturned" };
 const claimLabels: Record<string, string> = { RECEIVED: "Received", IN_REVIEW: "In review", RESOLVED: "Resolved", DISMISSED: "Dismissed" };
-const loggedActionLabels: Record<string, string> = { THREAD_PINNED: "Discussion pinned", THREAD_UNPINNED: "Discussion unpinned", THREAD_LOCKED: "Discussion locked", THREAD_UNLOCKED: "Discussion unlocked", THREAD_HIDDEN: "Discussion hidden", THREAD_RESTORED: "Discussion restored", RESPONSE_HIDDEN: "Response hidden", RESPONSE_RESTORED: "Response restored" };
+const loggedActionLabels: Record<string, string> = { AUTO_HIDDEN: "Hidden automatically", THREAD_PINNED: "Discussion pinned", THREAD_UNPINNED: "Discussion unpinned", THREAD_LOCKED: "Discussion locked", THREAD_UNLOCKED: "Discussion unlocked", THREAD_HIDDEN: "Discussion hidden", THREAD_RESTORED: "Discussion restored", RESPONSE_HIDDEN: "Response hidden", RESPONSE_RESTORED: "Response restored" };
 const appealActionLabels: Record<string, string> = { ...actionLabels, ...loggedActionLabels };
 /** Raw enum values never reach the screen: unknown ones become sentence-case words. */
 const humanize = (value: string) => { const words = value.replaceAll("_", " ").trim().toLowerCase(); return words.charAt(0).toUpperCase() + words.slice(1); };

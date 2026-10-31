@@ -9,7 +9,7 @@ import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { logger } from "../../infrastructure/logger.js";
 import type { Prisma } from "../../generated/prisma/client.js";
 import { auditService } from "../audit/audit.service.js";
-import { assertCommunityContentAccess, getActiveCommunityMembership, isCommunityModerator, narrowVisibility } from "../communities/community.service.js";
+import { getActiveCommunityMembership, isCommunityModerator, joinInTx, narrowVisibility } from "../communities/community.service.js";
 import { assertForumPostReadable, filterReportsByPostVisibility, forumPostVisibilitySql, forumPostVisibilityWhere, syncResearchThreadCount } from "./forum-visibility.js";
 /** The one visibility rule for research-community posts lives in forum-visibility.ts (shared with modules that cannot import this service). */
 export { forumPostVisibilityWhere };
@@ -20,6 +20,8 @@ import {
   canExposeForumProject,
   canShowAcademicIdentity,
   cleanForumText,
+  countRawLinks,
+  forumBodyHash,
   isAllowedForumUrl,
   isValidForumDoi,
   normalizeForumPostType,
@@ -28,7 +30,9 @@ import {
 import { structuredEvidenceItems } from "../gaps/structured-evidence.js";
 import { findGapCorpusPaper } from "../gaps/gap-corpus.js";
 import { forumDiscoveryTags, forumDiscoveryTerms, forumRelatedReason, type ForumDiscoveryReason } from "./forum-discovery.js";
+import { env } from "../../config/env.js";
 import { allocateForumSlug, withSlugRetry } from "./forum-slugs.js";
+import { hideCommentInTx, hidePostInTx, latestDate, wasAutoHidden } from "./forum-hide.js";
 import { forumModerationService } from "./forum-moderation.service.js";
 import { assertForumPinCapacity } from "./forum-locks.js";
 export { forumPublicSlug } from "./forum-slugs.js";
@@ -133,7 +137,7 @@ async function assertCanPostToCommunity(communityId: string | undefined): Promis
   if (community.status !== "ACTIVE") throw AppError.conflict("Archived categories are read-only");
   return community.id;
 }
-/** Optional research-community scope: ACTIVE, non-category, and the author must be an active member (admins exempt). */
+/** Optional research-community scope: ACTIVE, non-category, and the author must not be banned. Non-members are joined inside the post transaction. */
 async function assertCanPostToResearchCommunity(value: string | undefined, authorId: string): Promise<string | null> {
   if (!value) return null;
   const community = await resolveCommunity(value);
@@ -141,8 +145,22 @@ async function assertCanPostToResearchCommunity(value: string | undefined, autho
   if (row.isForumCategory) throw AppError.badRequest("Choose a research community, not a forum category");
   if (row.status !== "ACTIVE") throw AppError.conflict("This community is unavailable or archived");
   const member = await getPrisma().communityMembership.findUnique({ where: { communityId_userId: { communityId: row.id, userId: authorId } }, select: { status: true } });
-  if (member?.status !== "active" && !(await isAdminUser(getPrisma(), authorId))) throw AppError.forbidden("Only active community members can post in this community");
+  if (member?.status === "banned") throw AppError.forbidden("You are banned from this community");
   return row.id;
+}
+/** Link-spam guard: an account younger than FORUM_AUTO_HIDE_MIN_ACCOUNT_AGE_HOURS may put only a few raw links in a body. Staff accounts are exempt. */
+async function assertLinkLimitForNewAccount(authorId: string, body: string): Promise<void> {
+  const max = env.FORUM_NEW_ACCOUNT_MAX_LINKS;
+  if (countRawLinks(body) <= max) return;
+  const author = await getPrisma().user.findUnique({ where: { id: authorId }, select: { createdAt: true, systemRole: true } });
+  if (!author || author.systemRole !== "USER") return;
+  if (author.createdAt.getTime() > Date.now() - env.FORUM_AUTO_HIDE_MIN_ACCOUNT_AGE_HOURS * 3_600_000) throw AppError.badRequest(`New accounts can include at most ${max} links`);
+}
+/** Starting a thread in a research community needs a verified email (admins excepted). Commenting does not. */
+async function assertVerifiedForCommunityThread(authorId: string): Promise<void> {
+  if (await isAdminUser(getPrisma(), authorId)) return;
+  const author = await getPrisma().user.findUnique({ where: { id: authorId }, select: { emailVerifiedAt: true } });
+  if (!author?.emailVerifiedAt) throw AppError.forbidden("Verify your email to start discussions in communities");
 }
 async function isAdminUser(db: Pick<Prisma.TransactionClient, "user">, userId: string): Promise<boolean> {
   const user = await db.user.findUnique({ where: { id: userId }, select: { role: true, systemRole: true } });
@@ -522,7 +540,7 @@ async function presentPosts(posts: Array<Awaited<ReturnType<typeof resolvePost>>
   const participantAuthors = await academicAuthors(participantIds, viewerId);
   const authors = participantAuthors;
   const communityById = new Map(communities.map((community) => { const id = publicDatabaseId(community); return [community.id, { _id: id, id, name: community.name, slug: community.slug }]; }));
-  const researchCommunityById = new Map(communities.filter((community) => !community.isForumCategory).map((community) => { const id = publicDatabaseId(community); return [community.id, { id, name: community.name, slug: community.slug, visibility: narrowVisibility(community.visibility) }]; }));
+  const researchCommunityById = new Map(communities.filter((community) => !community.isForumCategory).map((community) => { const id = publicDatabaseId(community); return [community.id, { id, name: community.name, slug: community.slug }]; }));
   const referencesByPost = new Map<string, typeof references>();
   for (const reference of references) { const list = referencesByPost.get(reference.postId!) ?? []; list.push(reference); referencesByPost.set(reference.postId!, list); }
   const safePaperRows = await prisma.paper.findMany({
@@ -535,10 +553,13 @@ async function presentPosts(posts: Array<Awaited<ReturnType<typeof resolvePost>>
   const voteByPost = new Map(viewerVotes.flatMap((vote) => vote.postId ? [[vote.postId, vote.value]] : []));
   const followed = new Set(follows.filter((follow) => ["WATCHING", "TRACKING"].includes(follow.notificationLevel)).map((follow) => follow.postId));
   const notificationLevels = new Map(follows.map((follow) => [follow.postId, follow.notificationLevel]));
-  const activeMemberCommunities = new Set(viewerId ? (await prisma.communityMembership.findMany({ where: { userId: viewerId, communityId: { in: communities.map((community) => community.id) }, status: "active" }, select: { communityId: true } })).map((membership) => membership.communityId) : []);
+  const pageCommunityIds = [...new Set(posts.flatMap((post) => [post.communityId, post.researchCommunityId].filter((id): id is string => Boolean(id))))];
+  const viewerMemberships = viewerId ? await prisma.communityMembership.findMany({ where: { userId: viewerId, communityId: { in: pageCommunityIds } }, select: { communityId: true, status: true, role: true } }) : [];
+  const activeMemberCommunities = new Set(viewerMemberships.filter((membership) => membership.status === "active").map((membership) => membership.communityId));
+  const bannedCommunities = new Set(viewerMemberships.filter((membership) => membership.status === "banned").map((membership) => membership.communityId));
   const activeCommunities = new Set(communities.filter((community) => community.status === "ACTIVE").map((community) => community.id));
   const categoryIds = new Set(communities.filter((community) => community.isForumCategory).map((community) => community.id));
-  const moderatedCommunityIds = viewerId && viewerRole !== "admin" ? new Set((await prisma.communityMembership.findMany({ where: { userId: viewerId, communityId: { in: posts.flatMap((post) => [post.communityId, post.researchCommunityId].filter((id): id is string => Boolean(id))) }, status: "active", role: { in: ["owner", "moderator"] } }, select: { communityId: true } })).map((membership) => membership.communityId)) : new Set<string>();
+  const moderatedCommunityIds = viewerId && viewerRole !== "admin" ? new Set(viewerMemberships.filter((membership) => membership.status === "active" && ["owner", "moderator"].includes(membership.role)).map((membership) => membership.communityId)) : new Set<string>();
   return posts.map((post) => {
     const id = publicDatabaseId(post); const linkedPaper = post.linkedPaperId ? researchContexts.papers.get(post.linkedPaperId) : undefined;
     const linkedGap = (post.linkedResearchGapId ? researchContexts.gaps.get(post.linkedResearchGapId) : undefined)
@@ -567,7 +588,7 @@ async function presentPosts(posts: Array<Awaited<ReturnType<typeof resolvePost>>
       reactionCounts: reactionMetric.counts, viewerReactions: reactionMetric.viewerReactions, reactionUsers: reactionMetric.reactors,
       lastActivityAt: metric.lastActivityAt, participants: participantSummaries,
       canModerate: viewerRole === "admin" || Boolean(post.communityId && moderatedCommunityIds.has(post.communityId)) || Boolean(post.researchCommunityId && moderatedCommunityIds.has(post.researchCommunityId)),
-      canReply: Boolean(viewerId && post.status === "active" && (!post.researchCommunityId || activeCommunities.has(post.researchCommunityId)) && (!post.communityId || activeCommunities.has(post.communityId) && (categoryIds.has(post.communityId) || activeMemberCommunities.has(post.communityId)))),
+      canReply: Boolean(viewerId && post.status === "active" && (!post.researchCommunityId || (activeCommunities.has(post.researchCommunityId) && !bannedCommunities.has(post.researchCommunityId))) && (!post.communityId || activeCommunities.has(post.communityId) && (categoryIds.has(post.communityId) || activeMemberCommunities.has(post.communityId)))),
       references: (referencesByPost.get(post.id) ?? []).map(({ postId: _postId, commentId: _commentId, position: _position, ...reference }) => ({ ...reference, id: publicDatabaseId(reference), paperId: reference.paperId ? safePaperIds.get(reference.paperId) : undefined, venue: safePaperRows.find((paper) => paper.id === reference.paperId)?.journalName ?? undefined })) };
   });
 }
@@ -701,11 +722,12 @@ async function presentReports(reports: ReportRecord[]) {
   });
 }
 
-async function presentModerationActions(actions: Array<{ id: string; actorId: string; communityId: string | null; postId: string | null; commentId: string | null; reportId: string | null; action: string; reason: string | null; createdAt: Date }>) {
+/** `actorId` is null for system actions (auto-hide); they are presented as "System". */
+async function presentModerationActions(actions: Array<{ id: string; actorId: string | null; communityId: string | null; postId: string | null; commentId: string | null; reportId: string | null; action: string; reason: string | null; createdAt: Date }>) {
   if (!actions.length) return [];
   const prisma = getPrisma();
   const [actors, communities, posts, comments, reports] = await Promise.all([
-    prisma.user.findMany({ where: { id: { in: [...new Set(actions.map((action) => action.actorId))] } }, select: { id: true, legacyMongoId: true, fullName: true } }),
+    prisma.user.findMany({ where: { id: { in: [...new Set(actions.flatMap((action) => action.actorId ? [action.actorId] : []))] } }, select: { id: true, legacyMongoId: true, fullName: true } }),
     prisma.community.findMany({ where: { id: { in: actions.flatMap((action) => action.communityId ? [action.communityId] : []) } }, select: { id: true, legacyMongoId: true, name: true, slug: true } }),
     prisma.forumPost.findMany({ where: { id: { in: actions.flatMap((action) => action.postId ? [action.postId] : []) } }, select: { id: true, legacyMongoId: true } }),
     prisma.forumComment.findMany({ where: { id: { in: actions.flatMap((action) => action.commentId ? [action.commentId] : []) } }, select: { id: true, legacyMongoId: true } }),
@@ -717,7 +739,7 @@ async function presentModerationActions(actions: Array<{ id: string; actorId: st
   const postIds = publicMap(posts); const commentIds = publicMap(comments); const reportIds = publicMap(reports);
   return actions.map((action) => ({
     id: action.id, action: action.action, reason: action.reason ?? undefined,
-    actor: actorById.get(action.actorId) ?? { id: "", fullName: "Unknown administrator" },
+    actor: action.actorId ? actorById.get(action.actorId) ?? { id: "", fullName: "Unknown administrator" } : { id: "", fullName: "System", system: true },
     community: action.communityId ? communityById.get(action.communityId) : undefined,
     targetType: action.commentId ? "comment" as const : action.postId ? "post" as const : "report" as const,
     targetId: action.commentId ? commentIds.get(action.commentId) ?? "" : action.postId ? postIds.get(action.postId) ?? "" : action.reportId ? reportIds.get(action.reportId) ?? "" : "",
@@ -725,9 +747,6 @@ async function presentModerationActions(actions: Array<{ id: string; actorId: st
   }));
 }
 
-function latestDate(...values: Array<Date | null | undefined>) {
-  return values.filter((value): value is Date => Boolean(value)).sort((a, b) => b.getTime() - a.getTime())[0];
-}
 
 function discussionActivity(posts: Array<{ id: string; authorId: string; commentCount: number; voteScore: number; lastActivityAt: Date; createdAt: Date }>, comments: Array<{ id: string; postId: string; authorId: string; updatedAt: Date; editedAt: Date | null; createdAt: Date }>, references: Array<{ postId: string | null; commentId: string | null }>, commentPostById: Map<string, string>, follows: number) {
   const postIds = new Set(posts.map((post) => post.id));
@@ -846,29 +865,41 @@ export const forumService = {
     const [authorId, communityId, linkedPaperId, linkedResearchGapId, linkedProjectId, references] = await Promise.all([
       resolveUserId(userId), assertCanPostToCommunity(input.communityId), resolvePaper(input.linkedPaperId), resolveGapForWrite(input.linkedResearchGapId, userId), resolveProject(input.linkedProjectId), prepareReferences(input.references, input.content),
     ]);
-    await forumModerationService.assertForumRestriction(userId, "CREATE_THREAD", communityId ?? undefined);
     const researchCommunityId = await assertCanPostToResearchCommunity(input.researchCommunityId, authorId);
+    await forumModerationService.assertForumRestriction(userId, "CREATE_THREAD", [communityId, researchCommunityId]);
+    if (researchCommunityId) await assertVerifiedForCommunityThread(authorId);
     const tags = normalizeForumTags(input.tags ?? []);
     if (tags.length > 5) throw AppError.badRequest("Use up to 5 tags");
     const cleanTitle = cleanForumText(input.title);
     const cleanBody = cleanForumText(input.content);
     if (cleanTitle.length < 3 || cleanTitle.length > 240 || !cleanBody || cleanBody.length > 20000) throw AppError.badRequest("Title and discussion body are required");
+    await assertLinkLimitForNewAccount(authorId, cleanBody);
+    const bodyHash = forumBodyHash(cleanBody);
     const postId = randomUUID();
+    let joinedViaPost: string | null = null;
     const post = await withSlugRetry(async (tx) => {
+      joinedViaPost = null;
+      // The same author posting the same text twice at once must not both pass the check below.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`forum:duplicate:${authorId}:${bodyHash}`}))`;
+      const duplicate = await tx.forumPost.findFirst({ where: { authorId, bodyHash, status: { not: "deleted" }, createdAt: { gte: new Date(Date.now() - env.FORUM_DUPLICATE_WINDOW_MINUTES * 60_000) } }, select: { id: true } });
+      if (duplicate) throw AppError.conflict("You already posted this discussion recently");
       await tx.$queryRaw`SELECT id FROM communities WHERE id = ${communityId}::uuid FOR UPDATE`;
       const category = await tx.community.findUnique({ where: { id: communityId } });
       if (!category?.isForumCategory || category.status !== "ACTIVE") throw AppError.conflict("This category is unavailable or archived");
       const publicSlug = await allocateForumSlug(tx, cleanTitle);
       await assertReferencePapersAvailable(tx, references);
       if (researchCommunityId) {
-        // Re-check under the row lock: the community may have been archived or the member banned meanwhile.
-        await tx.$queryRaw`SELECT id FROM communities WHERE id = ${researchCommunityId}::uuid FOR SHARE`;
+        // Re-check under the row lock (FOR UPDATE: joining rewrites member_count): the community may have been archived or the member banned meanwhile.
+        await tx.$queryRaw`SELECT id FROM communities WHERE id = ${researchCommunityId}::uuid FOR UPDATE`;
         const scope = await tx.community.findUnique({ where: { id: researchCommunityId }, select: { status: true, isForumCategory: true } });
         if (!scope || scope.isForumCategory || scope.status !== "ACTIVE") throw AppError.conflict("This community is unavailable or archived");
-        const member = await tx.communityMembership.findUnique({ where: { communityId_userId: { communityId: researchCommunityId, userId: authorId } }, select: { status: true } });
-        if (member?.status !== "active" && !(await isAdminUser(tx, authorId))) throw AppError.forbidden("Only active community members can post in this community");
+        // Posting is joining: non-members become active members here. Admins are not auto-joined.
+        if (!(await isAdminUser(tx, authorId))) {
+          const joined = await joinInTx(tx, researchCommunityId, authorId);
+          if (joined.previousStatus !== "active") joinedViaPost = joined.membership.id;
+        }
       }
-      const created = await tx.forumPost.create({ data: { id: postId, publicSlug, authorId, communityId, researchCommunityId, researchGapId: linkedResearchGapId, linkedPaperId, linkedResearchGapId, linkedProjectId, type, title: cleanTitle, body: cleanBody, tags: tags.map((tag) => tag.name) } });
+      const created = await tx.forumPost.create({ data: { id: postId, publicSlug, authorId, communityId, researchCommunityId, researchGapId: linkedResearchGapId, linkedPaperId, linkedResearchGapId, linkedProjectId, type, title: cleanTitle, body: cleanBody, bodyHash, tags: tags.map((tag) => tag.name) } });
       if (linkedPaperId) await tx.forumPostPaper.create({ data: { postId: created.id, paperId: linkedPaperId, position: 0 } });
       if (linkedResearchGapId) await tx.forumPostGap.create({ data: { postId: created.id, gapId: linkedResearchGapId } });
       if (linkedProjectId) await tx.forumPostProject.create({ data: { postId: created.id, projectId: linkedProjectId } });
@@ -885,6 +916,7 @@ export const forumService = {
       return created;
     });
     await auditService.log("forum.post.created", { userId, targetTableName: "forum_posts", targetRecordId: post.id });
+    if (joinedViaPost) await auditService.log("community.joined", { userId, targetTableName: "community_memberships", targetRecordId: joinedViaPost, details: { communityId: researchCommunityId, status: "active", via: "post" } });
     if (linkedResearchGapId) {
       await auditService.log("GAP_DISCUSSION_CREATED", { userId, targetTableName: "forum_posts", targetRecordId: post.id, details: { gapId: linkedResearchGapId } });
       await auditService.log("THREAD_LINKED_TO_GAP", { userId, targetTableName: "forum_post_gaps", targetRecordId: post.id, details: { postId: post.id, gapId: linkedResearchGapId } });
@@ -901,11 +933,10 @@ export const forumService = {
     const where: Record<string, unknown> = { visibilityStatus: showModerated ? { in: ["ACTIVE", "HIDDEN", "REMOVED"] } : "ACTIVE", status: { in: showModerated ? ["active", "locked", "hidden", "deleted"] : ["active", "locked"] } };
     const conditions: Record<string, unknown>[] = [await forumPostVisibilityWhere({ userId: actorId, role: actorRole })];
     if (filter.researchCommunityId) {
-      // Same gate as the community's roster: private communities are members-only (403 for everyone else).
+      // Research communities are public; only proposals under review (or forum categories) are not readable.
       const scope = await resolveCommunity(filter.researchCommunityId);
-      const full = await getPrisma().community.findUniqueOrThrow({ where: { id: scope.id }, select: { id: true, visibility: true, isForumCategory: true, status: true } });
+      const full = await getPrisma().community.findUniqueOrThrow({ where: { id: scope.id }, select: { id: true, isForumCategory: true, status: true } });
       if (full.isForumCategory || ["PENDING_APPROVAL", "REJECTED"].includes(full.status)) throw AppError.notFound("Community not found");
-      await assertCommunityContentAccess(full, actorId ? await resolveUserId(actorId) : undefined, actorRole);
       where.researchCommunityId = full.id;
     }
     if (filter.communityIds) conditions.push({ communityId: { in: filter.communityIds } });
@@ -1327,9 +1358,10 @@ export const forumService = {
 
   async updatePost(postId: string, input: Partial<PostInput>, userId: string) {
     const post = await resolvePost(postId); if (post.status === "deleted") throw AppError.notFound("Forum post not found");
-    await forumModerationService.assertForumRestriction(userId, "POSTING", post.communityId ?? undefined);
+    await forumModerationService.assertForumRestriction(userId, "POSTING", [post.communityId, post.researchCommunityId]);
     const actorId = await resolveUserId(userId);
     if (post.authorId !== actorId) throw AppError.forbidden("Only the author can edit this post");
+    await assertResearchCommunityWritable(post, actorId);
     if (input.communityId !== undefined && (await resolveForumCategory(input.communityId)).id !== post.communityId) throw AppError.forbidden("Category moves require an administrator moderation action");
     if (post.status === "locked") throw AppError.conflict("A locked discussion cannot be edited");
     if (input.title !== undefined && cleanForumText(input.title).trim().length < 3 || input.content !== undefined && !cleanForumText(input.content).trim()) throw AppError.badRequest("Title and discussion body are required");
@@ -1363,7 +1395,7 @@ export const forumService = {
       } });
       if (references) await assertReferencePapersAvailable(tx, references);
       const result = await tx.forumPost.update({ where: { id: post.id }, data: {
-        ...(input.type !== undefined ? { type: nextType, ...(nextType !== "QUESTION" ? { acceptedCommentId: null } : {}) } : {}), ...(input.title !== undefined ? { title: cleanForumText(input.title) } : {}), ...(input.content !== undefined ? { body: cleanForumText(input.content) } : {}),
+        ...(input.type !== undefined ? { type: nextType, ...(nextType !== "QUESTION" ? { acceptedCommentId: null } : {}) } : {}), ...(input.title !== undefined ? { title: cleanForumText(input.title) } : {}), ...(input.content !== undefined ? { body: cleanForumText(input.content), bodyHash: forumBodyHash(input.content) } : {}),
         ...(tags !== undefined ? { tags: tags.map((tag) => tag.name) } : {}), ...(input.linkedPaperId !== undefined ? { linkedPaperId } : {}),
         ...(input.linkedResearchGapId !== undefined ? { linkedResearchGapId, researchGapId: linkedResearchGapId } : {}), ...(input.linkedProjectId !== undefined ? { linkedProjectId } : {}),
         editedAt: new Date(), lastActivityAt: new Date(),
@@ -1411,23 +1443,22 @@ export const forumService = {
       : action === "THREAD_UNPINNED" ? { isPinned: false, pinnedAt: null }
         : action === "THREAD_LOCKED" ? { status: "locked", isLocked: true }
           : action === "THREAD_UNLOCKED" ? { status: "active", isLocked: false }
-          : action === "THREAD_HIDDEN" ? { status: "hidden", visibilityStatus: "HIDDEN", isPinned: false, pinnedAt: null }
             : action === "THREAD_RESTORED" ? { status: post.isLocked ? "locked" : "active", visibilityStatus: "ACTIVE" }
-            : {};
+              : {};
     const actor = await resolveUserId(actorId);
+    const cleanReason = reason ? cleanForumText(reason) : undefined;
     const updated = await getPrisma().$transaction(async (tx) => {
+      if (action === "THREAD_HIDDEN") return hidePostInTx(tx, post, { actorId: actor, action, reason: cleanReason });
       await tx.$queryRaw`SELECT id FROM forum_posts WHERE id = ${post.id}::uuid FOR UPDATE`;
       if (action === "THREAD_PINNED") await assertForumPinCapacity(tx, post.communityId, post.id);
-      const changed = await tx.forumPost.updateMany({ where: { id: post.id, moderationVersion: post.moderationVersion, status: post.status, isPinned: post.isPinned }, data: { ...data, moderationVersion: { increment: 1 } } });
+      // A moderator who restores auto-hidden content exempts it from being auto-hidden again.
+      const exempt = action === "THREAD_RESTORED" && await wasAutoHidden(tx, { postId: post.id });
+      const changed = await tx.forumPost.updateMany({ where: { id: post.id, moderationVersion: post.moderationVersion, status: post.status, isPinned: post.isPinned }, data: { ...data, ...(exempt ? { autoHideExemptAt: new Date() } : {}), moderationVersion: { increment: 1 } } });
       if (!changed.count) throw AppError.conflict("This discussion changed. Please try again");
       const row = await tx.forumPost.findUniqueOrThrow({ where: { id: post.id } });
-      if (post.communityId && action === "THREAD_HIDDEN") {
-        await tx.community.updateMany({ where: { id: post.communityId, threadCount: { gt: 0 } }, data: { threadCount: { decrement: 1 } } });
-      } else if (post.communityId && action === "THREAD_RESTORED") {
-        await tx.community.update({ where: { id: post.communityId }, data: { threadCount: { increment: 1 } } });
-      }
-      if (action === "THREAD_HIDDEN" || action === "THREAD_RESTORED") await syncResearchThreadCount(tx, post.researchCommunityId);
-      await tx.forumModerationAction.create({ data: { actorId: actor, communityId: post.communityId, postId: post.id, action, reason: reason ? cleanForumText(reason) : undefined, previousState: { status: post.status, visibilityStatus: post.visibilityStatus, isLocked: post.isLocked, isPinned: post.isPinned, pinnedAt: post.pinnedAt?.toISOString() ?? null, moderationVersion: post.moderationVersion } } });
+      if (post.communityId && action === "THREAD_RESTORED") await tx.community.update({ where: { id: post.communityId }, data: { threadCount: { increment: 1 } } });
+      if (action === "THREAD_RESTORED") await syncResearchThreadCount(tx, post.researchCommunityId);
+      await tx.forumModerationAction.create({ data: { actorId: actor, communityId: post.communityId, postId: post.id, action, reason: cleanReason, previousState: { status: post.status, visibilityStatus: post.visibilityStatus, isLocked: post.isLocked, isPinned: post.isPinned, pinnedAt: post.pinnedAt?.toISOString() ?? null, moderationVersion: post.moderationVersion } } });
       return row;
     });
     await auditService.log(action, { userId: actorId, targetTableName: "forum_posts", targetRecordId: post.id, details: { reason, communityId: post.communityId } });
@@ -1440,10 +1471,11 @@ export const forumService = {
     const authorId = await resolveUserId(userId);
     await assertCanViewPost(post, userId, actorRole);
     await assertResearchCommunityWritable(post, authorId, actorRole);
-    await forumModerationService.assertForumRestriction(userId, "REPLY", post.communityId ?? undefined);
+    await forumModerationService.assertForumRestriction(userId, "REPLY", [post.communityId, post.researchCommunityId]);
     const parent = input.parentCommentId ? await resolveComment(input.parentCommentId) : undefined;
     const body = cleanForumText(input.content);
     if (!body || body.length > 10000) throw AppError.badRequest("Response content must contain 1 to 10000 characters");
+    await assertLinkLimitForNewAccount(authorId, body);
     const references = await prepareReferences(input.references, body);
     const prisma = getPrisma();
     const result = await prisma.$transaction(async (tx) => {
@@ -1489,12 +1521,6 @@ export const forumService = {
         if (gap && !recipients.has(gap.userId)) recipients.set(gap.userId, "FORUM_CITATION_ADDED_TO_GAP_DISCUSSION");
       }
       recipients.delete(authorId);
-      if (root.researchCommunityId) {
-        // Private research communities: never notify (and so never reveal the title to) someone who cannot read the post.
-        const readers = new Set([...recipients.keys()].length ? (await tx.communityMembership.findMany({ where: { communityId: root.researchCommunityId, status: "active", userId: { in: [...recipients.keys()] } }, select: { userId: true } })).map((row) => row.userId) : []);
-        const scope = await tx.community.findUnique({ where: { id: root.researchCommunityId }, select: { visibility: true } });
-        if (narrowVisibility(scope?.visibility ?? "private") !== "public") for (const recipient of [...recipients.keys()]) if (!readers.has(recipient)) recipients.delete(recipient);
-      }
       for (const preference of followers) if (preference.notificationLevel === "MUTED") recipients.delete(preference.userId);
       const notifications = await Promise.all([...recipients].map(([recipientId, type]) => notificationService.create({
         userId: recipientId,
@@ -1535,9 +1561,10 @@ export const forumService = {
   async updateComment(commentId: string, input: { content: string; references?: ReferenceInput[] }, userId: string) {
     const comment = await resolveComment(commentId); if (comment.status === "deleted") throw AppError.notFound("Comment not found");
     const post = await getPrisma().forumPost.findUniqueOrThrow({ where: { id: comment.postId } });
-    await forumModerationService.assertForumRestriction(userId, "POSTING", post.communityId ?? undefined);
+    await forumModerationService.assertForumRestriction(userId, "POSTING", [post.communityId, post.researchCommunityId]);
     const actorId = await resolveUserId(userId);
     if (comment.authorId !== actorId) throw AppError.forbidden("Only the author can edit this comment");
+    await assertResearchCommunityWritable(post, actorId);
     if (post.status === "locked") throw AppError.conflict("Responses in a locked discussion cannot be edited");
     const references = await prepareReferences(input.references ?? (await getPrisma().forumReference.findMany({ where: { commentId: comment.id } })).map((reference) => ({ ...reference, paperId: reference.paperId ?? undefined, doi: reference.doi ?? undefined, url: reference.url ?? undefined, title: reference.title ?? undefined, year: reference.year ?? undefined })), input.content, comment.body);
     const updated = await getPrisma().$transaction(async (tx) => {
@@ -1585,20 +1612,22 @@ export const forumService = {
     if (action === "RESPONSE_HIDDEN" && comment.status !== "active") throw AppError.conflict("This response is already hidden");
     if (action === "RESPONSE_RESTORED" && comment.status !== "hidden") throw AppError.conflict("Only a hidden response can be restored");
     const actor = await resolveUserId(actorId);
+    const cleanReason = reason ? cleanForumText(reason) : undefined;
     const updated = await getPrisma().$transaction(async (tx) => {
+      if (action === "RESPONSE_HIDDEN") return hideCommentInTx(tx, comment, post, { actorId: actor, action, reason: cleanReason });
       await tx.$queryRaw`SELECT id FROM forum_comments WHERE id = ${comment.id}::uuid FOR UPDATE`;
       await tx.$queryRaw`SELECT id FROM forum_posts WHERE id = ${post.id}::uuid FOR UPDATE`;
       const root = await tx.forumPost.findUniqueOrThrow({ where: { id: post.id } });
       if (root.communityId !== post.communityId) throw AppError.conflict("The discussion moved. Refresh and retry");
-      const changed = await tx.forumComment.updateMany({ where: { id: comment.id, status: comment.status, moderationVersion: comment.moderationVersion }, data: { status: action === "RESPONSE_HIDDEN" ? "hidden" : "active", visibilityStatus: action === "RESPONSE_HIDDEN" ? "HIDDEN" : "ACTIVE", moderationVersion: { increment: 1 } } });
+      // A moderator who restores auto-hidden content exempts it from being auto-hidden again.
+      const exempt = await wasAutoHidden(tx, { postId: post.id, commentId: comment.id });
+      const changed = await tx.forumComment.updateMany({ where: { id: comment.id, status: comment.status, moderationVersion: comment.moderationVersion }, data: { status: "active", visibilityStatus: "ACTIVE", ...(exempt ? { autoHideExemptAt: new Date() } : {}), moderationVersion: { increment: 1 } } });
       if (!changed.count) throw AppError.conflict("This response changed. Please try again");
       const row = await tx.forumComment.findUniqueOrThrow({ where: { id: comment.id } });
-      if (action === "RESPONSE_HIDDEN") await tx.forumPost.updateMany({ where: { id: post.id, commentCount: { gt: 0 } }, data: { commentCount: { decrement: 1 } } });
-      else await tx.forumPost.update({ where: { id: post.id }, data: { commentCount: { increment: 1 } } });
-      if (action === "RESPONSE_HIDDEN") await tx.forumPost.updateMany({ where: { id: post.id, acceptedCommentId: comment.id }, data: { acceptedCommentId: null } });
+      await tx.forumPost.update({ where: { id: post.id }, data: { commentCount: { increment: 1 } } });
       const latestReply = await tx.forumComment.aggregate({ where: { postId: post.id, status: "active" }, _max: { createdAt: true, editedAt: true } });
       await tx.forumPost.update({ where: { id: post.id }, data: { lastActivityAt: latestDate(post.editedAt, post.createdAt, latestReply._max.createdAt, latestReply._max.editedAt)! } });
-      await tx.forumModerationAction.create({ data: { actorId: actor, communityId: post.communityId, postId: post.id, commentId: comment.id, targetType: "RESPONSE", targetId: comment.id, action, reason: reason ? cleanForumText(reason) : undefined, previousState: { status: comment.status, visibilityStatus: comment.visibilityStatus, moderationVersion: comment.moderationVersion, acceptedCommentId: root.acceptedCommentId } } });
+      await tx.forumModerationAction.create({ data: { actorId: actor, communityId: post.communityId, postId: post.id, commentId: comment.id, targetType: "RESPONSE", targetId: comment.id, action, reason: cleanReason, previousState: { status: comment.status, visibilityStatus: comment.visibilityStatus, moderationVersion: comment.moderationVersion, acceptedCommentId: root.acceptedCommentId } } });
       return row;
     });
     await auditService.log(action, { userId: actorId, targetTableName: "forum_comments", targetRecordId: comment.id, details: { reason, communityId: post.communityId } });
@@ -1751,7 +1780,8 @@ export const forumService = {
       if (!(await canModerate(community.id, actorId, actorRole))) throw AppError.forbidden();
     } else if (actorRole !== "admin") throw AppError.forbidden("Administrator access is required for the global moderation queue");
     const reports = await getPrisma().contentReport.findMany({
-      where: { ...(resolvedCommunityId ? { communityId: resolvedCommunityId } : {}), ...(status === "all" ? {} : { status }) },
+      // A community scope is the forum category or the research community the reported post belongs to.
+      where: { ...(resolvedCommunityId ? { OR: [{ communityId: resolvedCommunityId }, { researchCommunityId: resolvedCommunityId }] } : {}), ...(status === "all" ? {} : { status }) },
       orderBy: { createdAt: status === "open" ? "asc" : "desc" }, take: 200,
     });
     return presentReports(await filterReportsByPostVisibility(reports as ReportRecord[], { userId: actorId, role: actorRole }));
@@ -1762,7 +1792,9 @@ export const forumService = {
       const community = await resolveCommunity(communityId); resolvedCommunityId = community.id;
       if (!(await canModerate(community.id, actorId, actorRole))) throw AppError.forbidden();
     } else if (actorRole !== "admin") throw AppError.forbidden("Administrator access is required for the global moderation history");
-    const actions = await getPrisma().forumModerationAction.findMany({ where: resolvedCommunityId ? { communityId: resolvedCommunityId } : {}, orderBy: { createdAt: "desc" }, take: 200 });
+    // Actions are stored with the forum category; a research community's history is the actions on its posts.
+    const researchPostIds = resolvedCommunityId ? (await getPrisma().forumPost.findMany({ where: { researchCommunityId: resolvedCommunityId }, select: { id: true }, take: 2000 })).map((post) => post.id) : [];
+    const actions = await getPrisma().forumModerationAction.findMany({ where: resolvedCommunityId ? { OR: [{ communityId: resolvedCommunityId }, ...(researchPostIds.length ? [{ postId: { in: researchPostIds } }] : [])] } : {}, orderBy: { createdAt: "desc" }, take: 200 });
     return presentModerationActions(actions);
   },
   async reviewReport(reportId: string, input: { status: "reviewed" | "resolved" | "dismissed"; moderationNote?: string }, actorId: string, actorRole: UserRole) {

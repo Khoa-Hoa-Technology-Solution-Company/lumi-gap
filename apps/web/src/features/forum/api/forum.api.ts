@@ -1,4 +1,4 @@
-import type { Community, CommunityFacet, CommunityInput, CommunityPublicMember, CommunityRecommendation, CommunityRelatedGap, CommunityRelatedPaper, CommunitySort, CommunityMember, CommunityReviewInput, CommunityStatus, CommunitySummary, CommunitySuggestion, ForumNotificationLevel, ForumPostType, ForumReportReason, ForumReportStatus, ForumResearchContext, ForumSort } from "@trend/shared-types";
+import type { Community, CommunityFacet, CommunityRestrictionType, CommunityInput, CommunityPublicMember, CommunityRecommendation, CommunityRelatedGap, CommunityRelatedPaper, CommunitySort, CommunityMember, CommunityReviewInput, CommunityStatus, CommunitySummary, CommunitySuggestion, ForumNotificationLevel, ForumPostType, ForumReportReason, ForumReportStatus, ForumResearchContext, ForumSort } from "@trend/shared-types";
 import { API_ROUTES } from "@/constants";
 import { api } from "@/services/api-client";
 
@@ -31,7 +31,7 @@ export type ForumPostView = {
   linkedProject?: { id: string; title: string };
   references: ForumReferenceView[]; author: ForumAuthorView;
   reactionCounts?: Record<ForumReactionName, number>; viewerReactions?: ForumReactionName[]; reactionUsers?: Partial<Record<ForumReactionName, ForumReactionUser[]>>;
-  community?: { id: string; name: string; slug: string }; researchCommunity?: { id: string; name: string; slug: string; visibility: "public" | "private" };
+  community?: { id: string; name: string; slug: string }; researchCommunity?: { id: string; name: string; slug: string };
   createdAt: string; updatedAt?: string;
 };
 export type ForumCommentView = {
@@ -73,7 +73,7 @@ export type ForumReportView = {
   moderationNote?: string; createdAt: string; reviewedAt?: string; version: number;
 };
 export type ForumModerationActionView = {
-  id: string; action: string; reason?: string; actor: { id: string; fullName: string };
+  id: string; action: string; reason?: string; actor: { id: string; fullName: string; system?: boolean };
   community?: { id: string; name: string; slug: string }; targetType: "post" | "comment" | "report";
   targetId: string; createdAt: string;
 };
@@ -111,7 +111,7 @@ function normalizeResearchContext(value: unknown): { id: string; title: string; 
 }
 function normalizeResearchCommunity(value: unknown): ForumPostView["researchCommunity"] {
   const row = record(value); const communityId = id(row); if (!communityId) return undefined;
-  return { id: communityId, name: text(row.name) ?? "Community", slug: text(row.slug) ?? communityId, visibility: row.visibility === "public" ? "public" : "private" };
+  return { id: communityId, name: text(row.name) ?? "Community", slug: text(row.slug) ?? communityId };
 }
 function normalizePost(value: unknown): ForumPostView {
   const row = record(value); const community = record(row.community ?? row.communityId); const author = row.author ?? row.authorId;
@@ -184,18 +184,17 @@ function normalizeCommunity(value: unknown): CommunityView {
   return {
     id: id(row), name: text(row.name) ?? "", slug: text(row.slug) ?? "", description: text(row.description) ?? "",
     researchTopics: stringList(row.researchTopics), researchField: text(row.researchField), icon: text(row.icon),
-    visibility: row.visibility === "private" ? "private" : "public", status, reviewNote: text(row.reviewNote),
+    status, reviewNote: text(row.reviewNote),
     reviewedAt: text(row.reviewedAt), rules: stringList(row.rules), memberCount: Number(row.memberCount ?? 0),
     threadCount: Number(row.threadCount ?? 0), moderators, viewerMembership: row.viewerMembership as CommunityMembershipView | undefined,
     canManage: row.canManage === true, canEditCommunity: row.canEditCommunity === true, isOwner: row.isOwner === true,
-    isAdmin: row.isAdmin === true, pendingRequestCount: typeof row.pendingRequestCount === "number" ? row.pendingRequestCount : undefined,
-    contentRestricted: row.contentRestricted === true, createdAt: text(row.createdAt) ?? new Date(0).toISOString(),
+    isAdmin: row.isAdmin === true, proposer: row.proposer ? (() => { const item = record(row.proposer); return { id: id(item), fullName: text(item.fullName) ?? "", academicProfileType: text(item.academicProfileType), roleVerificationStatus: text(item.roleVerificationStatus) }; })() : undefined, createdAt: text(row.createdAt) ?? new Date(0).toISOString(),
     updatedAt: text(row.updatedAt) ?? new Date(0).toISOString(),
   };
 }
 function normalizeCommunityMember(value: unknown): CommunityMemberView {
   const row = record(value); const user = record(row.user ?? row.userId);
-  return { id: id(row), user: { id: id(user), fullName: text(user.fullName) ?? "Unknown member", email: text(user.email) ?? "", avatarUrl: text(user.avatarUrl), role: text(user.role) ?? "user", institution: text(user.institution) }, role: row.role as CommunityMemberView["role"], status: row.status as CommunityMemberView["status"], joinedAt: text(row.joinedAt ?? row.createdAt) ?? new Date(0).toISOString() };
+  return { id: id(row), user: { id: id(user), fullName: text(user.fullName) ?? "Unknown member", email: text(user.email) ?? "", avatarUrl: text(user.avatarUrl), role: text(user.role) ?? "user", institution: text(user.institution) }, role: row.role as CommunityMemberView["role"], status: row.status as CommunityMemberView["status"], joinedAt: text(row.joinedAt ?? row.createdAt) ?? new Date(0).toISOString(), restrictions: Array.isArray(row.restrictions) ? row.restrictions.map((value) => { const item = record(value); return { id: id(item), type: item.type as CommunityRestrictionType, expiresAt: text(item.expiresAt) }; }) : [] };
 }
 
 function writableForumInput<T extends { references?: ForumReferenceView[] }>(input: T) {
@@ -254,7 +253,7 @@ export const forumApi = {
   async moderationQueue(status: ForumReportStatus | "all" = "open"): Promise<ForumQueueReport[]> { return (await api.get("/forum/moderation/queue", { params: { status } })).data.data; },
   async claimReport(id: string, expectedVersion: number): Promise<ForumQueueReport> { return (await api.post(`/forum/reports/${id}/claim`, { expectedVersion })).data.data; },
   async reassignReport(id: string, assigneeId: string, expectedVersion: number): Promise<ForumQueueReport> { return (await api.post(`/forum/reports/${id}/reassign`, { assigneeId, expectedVersion })).data.data; },
-  async reportAction(id: string, action: ForumQueueAction, input: { reason: string; expectedVersion: number; destinationCommunityId?: string }): Promise<void> { await api.post(`/forum/reports/${id}/action`, { action, ...input }); },
+  async reportAction(id: string, action: ForumQueueAction, input: { reason: string; expectedVersion: number; destinationCommunityId?: string; durationDays?: 1 | 7 | 30 }): Promise<void> { await api.post(`/forum/reports/${id}/action`, { action, ...input }); },
   async restrictions(): Promise<ForumRestrictionView[]> { return (await api.get("/forum/moderation/restrictions")).data.data; },
   async revokeRestriction(id: string): Promise<void> { await api.post(`/forum/moderation/restrictions/${id}/revoke`); },
   async appeals(status: "SUBMITTED" | "all" = "SUBMITTED"): Promise<ForumAppealView[]> { return (await api.get("/forum/appeals", { params: { status } })).data.data; },
@@ -303,5 +302,7 @@ export const forumApi = {
   async joinCommunity(communityId: string): Promise<CommunityMembershipView> { const response = await api.post(API_ROUTES.communities.join(communityId)); return response.data.data; },
   async leaveCommunity(communityId: string) { await api.delete(API_ROUTES.communities.leave(communityId)); },
   async communityMembers(communityId: string): Promise<CommunityMemberView[]> { const response = await api.get(API_ROUTES.communities.members(communityId)); return response.data.data.map(normalizeCommunityMember); },
-  async updateCommunityMember(communityId: string, userId: string, input: { role?: "moderator" | "member"; status?: "pending" | "active" | "declined" | "banned" }): Promise<void> { await api.patch(API_ROUTES.communities.member(communityId, userId), input); },
+  async updateCommunityMember(communityId: string, userId: string, input: { role?: "moderator" | "member"; status?: "active" | "banned" }): Promise<void> { await api.patch(API_ROUTES.communities.member(communityId, userId), input); },
+  async restrictCommunityMember(communityId: string, userId: string, input: { type: CommunityRestrictionType; durationDays: 1 | 7 | 30; reason: string }): Promise<void> { await api.post(API_ROUTES.communities.memberRestrictions(communityId, userId), input); },
+  async liftCommunityRestriction(communityId: string, userId: string, restrictionId: string): Promise<void> { await api.delete(API_ROUTES.communities.memberRestriction(communityId, userId, restrictionId)); },
 };

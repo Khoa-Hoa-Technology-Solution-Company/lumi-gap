@@ -16,7 +16,9 @@ vi.mock("@/features/forum/hooks/use-forum", () => ({
   useShareForumGap: () => ({ isPending: false, mutateAsync: vi.fn() }),
   useForumPaperSearch: () => ({ data: [], isLoading: false, isError: false, refetch: vi.fn() }),
   useCommunityList: () => ({ data: { pages: [{ items: [] }] } }),
+  useCommunity: () => ({ data: undefined, isLoading: false }),
 }));
+vi.mock("@/features/auth", () => ({ useCurrentUser: () => ({ data: { user: { emailVerifiedAt: "2026-10-01T00:00:00.000Z", systemRole: "USER" } } }) }));
 vi.mock("@/features/forum/hooks/use-forum-categories", () => ({
   useForumCategories: () => ({ data: state.loading || state.error ? undefined : communities, isLoading: state.loading, isError: state.error, refetch: vi.fn() }),
   useForumTags: () => ({ data: [] }),

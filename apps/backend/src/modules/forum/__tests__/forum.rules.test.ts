@@ -4,6 +4,8 @@ import {
   canExposeForumProject,
   canShowAcademicIdentity,
   cleanForumText,
+  countRawLinks,
+  forumBodyHash,
   isAllowedForumUrl,
   isValidForumDoi,
   normalizeForumPostType,
@@ -62,5 +64,23 @@ describe("forum domain rules", () => {
     expect(forumPublicSlug("Stable title")).toBe(forumPublicSlug("Stable title"));
     expect(forumPublicSlug("a ".repeat(250))).toMatch(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
     expect(forumPublicSlug("a ".repeat(250)).length).toBeLessThanOrEqual(260);
+  });
+});
+
+describe("link counting and duplicate hashing", () => {
+  it("counts raw http(s) links and skips DOI hosts", () => {
+    expect(countRawLinks("")).toBe(0);
+    expect(countRawLinks("no links, just text about doi.org and example.com")).toBe(0);
+    expect(countRawLinks("see https://example.org/a and http://example.net/b?x=1#y")).toBe(2);
+    expect(countRawLinks("cited https://doi.org/10.1000/abc, https://dx.doi.org/10.1000/def and https://www.doi.org/10.1000/ghi")).toBe(0);
+    expect(countRawLinks("mixed https://doi.org/10.1000/abc https://spam.example/x https://spam.example/y")).toBe(2);
+    expect(countRawLinks("markdown [site](https://example.org/a) and <https://example.org/b>")).toBe(2);
+    expect(countRawLinks("not a link: ftp://example.org and mailto:me@example.org")).toBe(0);
+  });
+  it("hashes the same text identically regardless of case, spacing and markup", () => {
+    expect(forumBodyHash("Hello   World")).toBe(forumBodyHash("  hello world  "));
+    expect(forumBodyHash("Hello <b>World</b>")).toBe(forumBodyHash("hello world"));
+    expect(forumBodyHash("Hello World")).not.toBe(forumBodyHash("Hello World!"));
+    expect(forumBodyHash("x")).toMatch(/^[a-f0-9]{64}$/);
   });
 });

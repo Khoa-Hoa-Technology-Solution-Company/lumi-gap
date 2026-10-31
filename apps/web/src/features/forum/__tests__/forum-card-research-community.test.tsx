@@ -11,16 +11,11 @@ const post = { id: "p1", publicSlug: "p1", type: "DISCUSSION", title: "Scoped to
 const render = (value: ForumPostView) => renderToStaticMarkup(<StaticRouter location="/forum"><ForumCard post={value} locale="en" /></StaticRouter>);
 
 describe("forum card research community chip", () => {
-  it("links a public research community without a lock", () => {
-    const html = render({ ...post, researchCommunity: { id: "r", name: "SE Lab", slug: "se-lab", visibility: "public" } });
+  it("links the research community chip without a lock", () => {
+    const html = render({ ...post, researchCommunity: { id: "r", name: "SE Lab", slug: "se-lab" } });
     expect(html).toContain('href="/communities/se-lab"');
     expect(html).toContain("SE Lab");
     expect(html).not.toContain('aria-label="Private community"');
-  });
-  it("marks a private research community with a lock", () => {
-    const html = render({ ...post, researchCommunity: { id: "r", name: "Closed Lab", slug: "closed-lab", visibility: "private" } });
-    expect(html).toContain("Closed Lab");
-    expect(html).toContain('aria-label="Private community"');
   });
   it("shows no chip for a post without a research community", () => {
     expect(render(post)).not.toContain("research-community-chip");

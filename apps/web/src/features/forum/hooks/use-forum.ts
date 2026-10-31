@@ -23,6 +23,17 @@ export function useForumPosts(params: ForumPostFilters, enabled = true) {
     enabled,
   });
 }
+/** Paged feed with "Load more": each page is fetched on demand, `meta.total` is the full count. */
+export function useForumPostsInfinite(params: Omit<ForumPostFilters, "page">, enabled = true) {
+  const viewer = useForumViewer();
+  return useInfiniteQuery({
+    queryKey: ["forum", "posts", "infinite", params, viewer],
+    queryFn: ({ pageParam, signal }) => forumApi.posts({ ...params, page: pageParam }, signal),
+    initialPageParam: 1,
+    getNextPageParam: (last) => (last.meta.page < last.meta.totalPages ? last.meta.page + 1 : undefined),
+    enabled,
+  });
+}
 export function useForumPost(id?: string) {
   const viewer = useForumViewer();
   const client = useQueryClient();
@@ -153,6 +164,8 @@ export function useCommunityRelatedGaps(id?: string, enabled = true) { return us
 export function useJoinCommunity() { const client = useQueryClient(); return useMutation({ mutationFn: forumApi.joinCommunity, onSuccess: () => invalidateCommunityQueries(client) }); }
 export function useLeaveCommunity() { const client = useQueryClient(); return useMutation({ mutationFn: forumApi.leaveCommunity, onSuccess: () => invalidateCommunityQueries(client) }); }
 export function useCommunityMembers(id?: string, enabled = true) { const viewer = useForumViewer(); return useQuery({ queryKey: ["community", id, "members", viewer], queryFn: () => forumApi.communityMembers(id!), enabled: Boolean(id) && enabled && viewer !== "anonymous" }); }
+export function useRestrictCommunityMember() { const client = useQueryClient(); return useMutation({ mutationFn: ({ id, userId, input }: { id: string; userId: string; input: Parameters<typeof forumApi.restrictCommunityMember>[2] }) => forumApi.restrictCommunityMember(id, userId, input), onSuccess: (_, variables) => { void client.invalidateQueries({ queryKey: ["community", variables.id, "members"] }); } }); }
+export function useLiftCommunityRestriction() { const client = useQueryClient(); return useMutation({ mutationFn: ({ id, userId, restrictionId }: { id: string; userId: string; restrictionId: string }) => forumApi.liftCommunityRestriction(id, userId, restrictionId), onSuccess: (_, variables) => { void client.invalidateQueries({ queryKey: ["community", variables.id, "members"] }); } }); }
 export function useUpdateCommunityMember() { const client = useQueryClient(); return useMutation({ mutationFn: ({ id, userId, input }: { id: string; userId: string; input: Parameters<typeof forumApi.updateCommunityMember>[2] }) => forumApi.updateCommunityMember(id, userId, input), onSuccess: (_, variables) => { client.invalidateQueries({ queryKey: ["community", variables.id, "members"] }); invalidateCommunityQueries(client); } }); }
 export function useForumReports(communityId?: string, status: ForumReportStatus | "all" = "open", enabled = true) { const viewer = useForumViewer(); return useQuery({ queryKey: ["forum", "reports", communityId, status, viewer], queryFn: () => forumApi.reports({ communityId, status }), enabled: enabled && viewer !== "anonymous" }); }
 export function useForumModerationActions(communityId?: string, enabled = true) { const viewer = useForumViewer(); return useQuery({ queryKey: ["forum", "moderation-actions", communityId, viewer], queryFn: () => forumApi.moderationActions(communityId), enabled: enabled && viewer !== "anonymous" }); }

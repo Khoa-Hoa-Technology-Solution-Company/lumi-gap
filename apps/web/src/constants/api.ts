@@ -92,6 +92,8 @@ export const API_ROUTES = {
     leave: (id: string) => `/communities/${id}/membership`,
     members: (id: string) => `/communities/${id}/members`,
     member: (id: string, userId: string) => `/communities/${id}/members/${userId}`,
+    memberRestrictions: (id: string, userId: string) => `/communities/${id}/members/${userId}/restrictions`,
+    memberRestriction: (id: string, userId: string, restrictionId: string) => `/communities/${id}/members/${userId}/restrictions/${restrictionId}`,
     review: (id: string) => `/communities/${id}/review`,
     facets: "/communities/facets",
     status: (id: string) => `/communities/${id}/status`,

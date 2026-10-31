@@ -80,24 +80,6 @@ describe.sequential("forum report decisions, restrictions and appeals", () => {
     await expect(forumService.reviewReport(item.id, { status: "dismissed" }, moderator, "user")).rejects.toMatchObject({ statusCode: 403 });
   });
 
-  it("does not let outsiders report member-only content", async () => {
-    const post = await topic();
-    await prisma.community.update({ where: { id: community }, data: { visibility: "private", isForumCategory: false } });
-    try {
-      await expect(report(post.id, "SPAM", outsider)).rejects.toMatchObject({ statusCode: 403 });
-      expect(await report(post.id)).toMatchObject({ status: "open" });
-    } finally { await prisma.community.update({ where: { id: community }, data: { visibility: "public", isForumCategory: true } }); }
-  });
-
-  it("rejects reports from outsiders when community visibility is unknown", async () => {
-    const post = await topic();
-    await prisma.$executeRaw`UPDATE communities SET is_forum_category = false, visibility = 'weird' WHERE id = ${community}::uuid`;
-    try {
-      await expect(report(post.id, "SPAM", outsider)).rejects.toMatchObject({ statusCode: 403 });
-      expect(await report(post.id)).toMatchObject({ status: "open" });
-    } finally { await prisma.community.update({ where: { id: community }, data: { visibility: "public", isForumCategory: true } }); }
-  });
-
   it("presents a response report as a response and retains the discussion URL", async () => {
     const post = await topic(); const response = await prisma.forumComment.create({ data: { postId: post.id, postNumber: 2, authorId: author, body: "Reported response, distinct from the opening post" } });
     const item = await moderation.createReport({ targetType: "comment", targetId: response.id, reason: "OFF_TOPIC" }, reporter);
@@ -145,9 +127,11 @@ describe.sequential("forum report decisions, restrictions and appeals", () => {
   it("limits moderator posting restrictions to their community and lifts the exact appealed restriction", async () => {
     const post = await topic(); const item = await report(post.id);
     const claim = await moderation.claim(item.id, moderator, "user", 0);
-    const action = await moderation.applyAction(item.id, "RESTRICT_USER", moderator, "user", { reason: "Repeated policy violation", expectedVersion: claim.version });
+    await expect(moderation.applyAction(item.id, "RESTRICT_USER", moderator, "user", { reason: "Repeated policy violation", expectedVersion: claim.version })).rejects.toMatchObject({ statusCode: 400 });
+    const action = await moderation.applyAction(item.id, "RESTRICT_USER", moderator, "user", { reason: "Repeated policy violation", expectedVersion: claim.version, durationDays: 7 });
     const restriction = await prisma.forumRestriction.findFirstOrThrow({ where: { userId: author, revokedAt: null } });
     expect(restriction).toMatchObject({ scope: "COMMUNITY", communityId: community, restrictionType: "POSTING" });
+    expect(Math.round((restriction.expiresAt!.getTime() - Date.now()) / 86_400_000)).toBe(7);
     try {
       await expect(forumService.createPost({ communityId: community, title: "Restricted attempt", content: "Cannot post" }, author)).rejects.toMatchObject({ statusCode: 403 });
       await expect(forumService.addComment(post.id, { content: "Cannot reply" }, author)).rejects.toMatchObject({ statusCode: 403 });
@@ -157,7 +141,7 @@ describe.sequential("forum report decisions, restrictions and appeals", () => {
       const appeal = await moderation.submitAppeal(action.id, "Please reconsider this restriction", author);
       await moderation.reviewAppeal(appeal.id, "OVERTURNED", "Restriction no longer justified", reviewer, "admin");
       expect((await prisma.forumRestriction.findUniqueOrThrow({ where: { id: restriction.id } })).revokedAt).not.toBeNull();
-      await moderation.assertForumRestriction(author, "CREATE_THREAD", community);
+      await moderation.assertForumRestriction(author, "CREATE_THREAD", [community]);
     } finally { await prisma.forumRestriction.updateMany({ where: { userId: author, revokedAt: null }, data: { revokedAt: new Date() } }); }
   });
 

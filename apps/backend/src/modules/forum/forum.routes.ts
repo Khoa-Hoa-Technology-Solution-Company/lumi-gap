@@ -161,6 +161,7 @@ const moderationActionSchema = z.object({
   expectedVersion: z.number().int().nonnegative().optional(),
   policyRuleCode: z.string().trim().max(80).optional(),
   policyVersion: z.string().trim().max(40).optional(),
+  durationDays: z.union([z.literal(1), z.literal(7), z.literal(30)]).optional(),
 }).strict();
 const appealSchema = z.object({ reason: z.string().trim().min(3).max(5000) }).strict();
 const appealReviewSchema = z.object({ decision: z.enum(["UPHELD", "OVERTURNED"]), decisionReason: z.string().trim().min(3).max(5000) }).strict();
@@ -170,7 +171,7 @@ const copyrightClaimSchema = z.object({
   copyrightedWorkDescription: z.string().trim().min(10).max(10000), ownershipBasis: z.string().trim().min(10).max(5000), originalSourceUrl: z.string().url().max(2000).optional(), details: z.string().trim().min(10).max(10000), sourceReportId: objectIdSchema.optional(), honeypot: z.string().max(200).optional(),
 }).strict();
 const copyrightVerifySchema = z.object({ token: z.string().trim().min(32).max(256) }).strict();
-const accountLimit = (req: Request) => req.user?.accountStatus === "ACTIVE" ? env.FORUM_RATE_LIMIT_VERIFIED : env.FORUM_RATE_LIMIT_UNVERIFIED;
+const accountLimit = (req: Request) => req.user?.emailVerified || req.user?.role === "admin" ? env.FORUM_RATE_LIMIT_VERIFIED : env.FORUM_RATE_LIMIT_UNVERIFIED;
 const threadCreateLimiter = createRateLimiter("forum:threadCreateLimiter", { windowMs: 10 * 60_000, limit: accountLimit, keyGenerator: (req) => req.user?.sub ?? req.ip ?? "anonymous" });
 const responseLimiter = createRateLimiter("forum:responseLimiter", { windowMs: 60_000, limit: accountLimit, keyGenerator: (req) => req.user?.sub ?? req.ip ?? "anonymous" });
 const voteLimiter = createRateLimiter("forum:voteLimiter", { windowMs: 60_000, limit: 90, keyGenerator: (req) => req.user?.sub ?? req.ip ?? "anonymous" });
