@@ -1,4 +1,4 @@
-import type { ActivityResult, AllocationDraftInput, AllocationPeriodInput, AllocationPeriodView, AllocationRevisionView, AllocationShareInput, ContributionInput, ContributionPage, WorkContribution } from "@trend/shared-types";
+import type { ActivityResult, AllocationDraftInput, AllocationPeriodInput, AllocationPeriodView, AllocationRevisionView, ContributionInput, ContributionPage, PersonalContributionHistoryExport, ProjectAdvisorContributionSummary, WorkContribution } from "@trend/shared-types";
 import { api as apiClient } from "@/services/api-client";
 const path = (id: string, resource: string) => `/projects/${encodeURIComponent(id)}/contributions/${resource}`;
 async function get<T>(id: string, resource: string, params?: Record<string, unknown>) { return (await apiClient.get<{ data: T }>(path(id, resource), { params })).data.data; }
@@ -15,10 +15,13 @@ export const contributionsApi = {
   createPeriod: (id: string, data: AllocationPeriodInput) => write<AllocationPeriodView>(id, "periods", data),
   history: (id: string, periodId: string) => get<AllocationRevisionView[]>(id, `periods/${periodId}/history`),
   draft: (id: string, periodId: string, data: AllocationDraftInput) => write<AllocationRevisionView>(id, `periods/${periodId}/revisions`, data),
-  edit: (id: string, revisionId: string, data: { shares: AllocationShareInput[]; rationale: string; expectedVersion: number }) => write<AllocationRevisionView>(id, `revisions/${revisionId}`, data, true),
+  edit: (id: string, revisionId: string, data: Omit<AllocationDraftInput, "clientKey"> & { expectedVersion: number }) => write<AllocationRevisionView>(id, `revisions/${revisionId}`, data, true),
   submitDraft: (id: string, revisionId: string, expectedVersion: number) => write<AllocationRevisionView>(id, `revisions/${revisionId}/submit`, { expectedVersion }),
   revision: (id: string, revisionId: string) => get<AllocationRevisionView>(id, `revisions/${revisionId}`),
   decide: (id: string, revisionId: string, decision: "APPROVE" | "DISPUTE", explanation = "") => write<AllocationRevisionView>(id, `revisions/${revisionId}/decisions`, { decision, explanation }),
   challenge: (id: string, periodId: string, revisionId: string, explanation: string) => write<AllocationRevisionView>(id, `periods/${periodId}/challenges`, { revisionId, explanation }),
   export: (id: string, revisionId: string) => get<AllocationRevisionView>(id, `revisions/${revisionId}/export`),
+  myHistory: (id: string) => get<PersonalContributionHistoryExport>(id, "my-history"),
+  exportMyHistory: (id: string) => get<PersonalContributionHistoryExport>(id, "my-history/export"),
+  advisorContributions: (id: string) => get<ProjectAdvisorContributionSummary[]>(id, "advisor-contributions"),
 };

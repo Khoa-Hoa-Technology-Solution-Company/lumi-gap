@@ -8,6 +8,9 @@ export interface ProjectMemberUserSummary {
 export type ProjectStatus = "PLANNING" | "ACTIVE" | "ON_HOLD" | "COMPLETED" | "ARCHIVED";
 // Legacy visibility values remain readable during the client migration.
 export type ProjectVisibility = "PRIVATE" | "PUBLIC" | "INVITE_ONLY" | "PUBLIC_SUMMARY";
+export type ProjectExportPolicy = "ALL_MEMBERS" | "OWNER_ONLY";
+export type ProjectAiDataPolicy = "ALLOW_PERSONAL_AI" | "PLATFORM_AI_ONLY" | "DISABLED";
+export type ProjectExternalLookupPolicy = "ALLOW_PUBLIC_INDEX" | "LOCAL_CORPUS_ONLY";
 export type ResearchApproach = "EXPLORATORY" | "LITERATURE_REVIEW" | "EMPIRICAL" | "UNDECIDED";
 export type ProjectRole = "OWNER" | "MEMBER";
 export type ProjectMemberStatus = "ACTIVE" | "REMOVED" | "LEFT";
@@ -94,6 +97,7 @@ export interface ProjectInvitation {
 
 export interface IncomingProjectInvitation {
   id: string;
+  invitedEmail?: string;
   projectId: string;
   projectTitle: string;
   projectDescription?: string;
@@ -125,6 +129,23 @@ export interface ProjectInvitationPreview {
 
 export type MentorshipRequestStatus = "PENDING" | "ACCEPTED" | "DECLINED" | "CANCELLED" | "CANCELED_BY_PROJECT" | "EXPIRED" | "CLOSED_CAPACITY_REACHED";
 export type MentorRole = "PRIMARY" | "SECONDARY";
+export type MentorPlanCommand = { expectedVersion: number } & (
+  { action: "add"; mentorUserId: string; mentorRole: MentorRole } |
+  { action: "remove"; candidateId: string } |
+  { action: "move"; candidateId: string; offset: -1 | 1 } |
+  { action: "configure"; parallelInvitations: boolean } |
+  { action: "restart" }
+);
+export interface MentorPlanCandidate {
+  id: string; mentorUserId: string; fullName: string; mentorRole: MentorRole; priority: number;
+  status: string; requestId?: string; canSend: boolean; unavailableReason?: string;
+}
+export interface MentorRecruitmentPlan {
+  id?: string; version: number; parallelInvitations: boolean; autoSend: false;
+  closedRoles: MentorRole[]; candidates: MentorPlanCandidate[]; positions: MentorPositions; canManage: boolean;
+  currentMentors: { mentorRole: MentorRole; fullName: string }[];
+  currentInvitations: { mentorRole: MentorRole; fullName: string; expiresAt?: string }[];
+}
 export interface MentorPosition {
   role: MentorRole; status: "LOCKED" | "VACANT" | "INVITING" | "ASSIGNED";
   pendingRequests: number; relationshipId?: string;
@@ -143,11 +164,15 @@ export interface MentorshipPerson extends ProjectMemberUserSummary {
 }
 export interface MentorProjectPreview {
   id: string; title: string; summary: string; researchField?: string;
+  /** Active team size, including the owner once. No member identities are shared. */
+  teamMemberCount?: number;
   stage: ProjectStatus; expertise: string[]; discovery: "CLOSED" | "SEEKING_MENTOR";
   researchAreas: string[]; mentoringNeeds: string;
   availableRoles?: MentorRole[];
 }
 export interface MentorDiscoverySettings extends MentorProjectPreview {
+  /** Opaque revision of the approved invitation brief, not an access credential. */
+  previewToken?: string;
   /** Optimistic version for owner-only discovery edits; excluded from public opportunity DTOs. */
   version: number;
   /** Sender identity as it will appear to the lecturer, respecting profile visibility. */
@@ -157,7 +182,13 @@ export interface MentorshipActions {
   accept: boolean; decline: boolean; cancel: boolean; end: boolean; openProject: boolean;
 }
 export interface MentorshipRequest {
+  /** Older invitations have no recoverable original snapshot. */
+  legacyPreview?: boolean;
+  reviewRequired?: boolean;
   kind: "REQUEST";
+  /** Approved brief revision to recheck when accepting from the web UI. */
+  previewToken?: string;
+  accessPolicy?: import("./mentor-access.js").MentorAccessPolicy;
   mentorRole?: MentorRole;
   attachments?: MentorshipAttachment[];
   direction: "PROJECT_TO_LECTURER" | "LECTURER_TO_PROJECT";
@@ -179,6 +210,7 @@ export interface MentorshipRequest {
 }
 export interface MentorRelationship {
   kind: "RELATIONSHIP";
+  accessPolicy?: import("./mentor-access.js").MentorAccessPolicy;
   mentorRole?: MentorRole;
   id: string; projectId: string; sourceRequestId: string;
   project?: MentorProjectPreview; mentorUser: MentorshipPerson;
@@ -251,6 +283,9 @@ export interface IProject {
   };
   status: ProjectStatus;
   visibility: ProjectVisibility;
+  exportPolicy?: ProjectExportPolicy;
+  aiDataPolicy?: ProjectAiDataPolicy;
+  externalLookupPolicy?: ProjectExternalLookupPolicy;
   ownerId: string;
   owner?: ProjectMemberUserSummary;
   accessRole?: ProjectRole;
@@ -283,6 +318,9 @@ export interface UpdateProjectRequest {
   researchField?: string | null;
   status?: ProjectStatus;
   visibility?: ProjectVisibility;
+  exportPolicy?: ProjectExportPolicy;
+  aiDataPolicy?: ProjectAiDataPolicy;
+  externalLookupPolicy?: ProjectExternalLookupPolicy;
   publicSummary?: string;
   researchAreas?: string[];
   researchApproach?: ResearchApproach;
@@ -306,6 +344,7 @@ export interface AddProjectMemberRequest {
 
 export interface AddProjectPaperRequest {
   paperId: string;
+  proposalReason?: string;
 }
 
 export interface UpdateProjectPaperRequest {

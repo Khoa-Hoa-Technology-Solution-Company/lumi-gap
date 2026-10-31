@@ -1,6 +1,8 @@
 export interface RepositoryFile { path: string; content: string }
 interface TreeEntry { path: string; mode: string; type: string; sha: string; size?: number }
 export interface RepositoryHead { sha: string; tree: string; entries: TreeEntry[]; private: boolean; writable: boolean }
+export interface RepositoryCommit { sha: string; message: string; author: string; date: string }
+export interface ConflictBranchResult { branch: string; commitUrl: string; compareUrl: string; repository: string; target: string }
 const supported = /\.(tex|bib|txt|sty|cls|bst|csv|tsv|dat|tikz|pgf|ist|bbx|cbx|lbx|def|cfg|fd|png|jpg|jpeg|webp|pdf|svg|eps)$/;
 const safePath = (path: string) => path.length <= 240 && path.split("/").every(part => /^[A-Za-z0-9][A-Za-z0-9._ ()-]*$/.test(part) && !part.endsWith(" ") && part.length <= 100) && path.split("/")[0]?.toLowerCase() !== "lumigap-build";
 export function validateRepository(repository: string, branch: string) {
@@ -18,13 +20,13 @@ export async function gitHash(content: string) {
 }
 /** PATs stay in dialog memory; connected accounts use a server-side credential. */
 export class ManuscriptGithubClient {
-  constructor(readonly repository: string, private token: string, private signal: AbortSignal, private connectedUser?: string) { validateRepository(repository, "main"); }
+  constructor(readonly repository: string, private token: string, private signal: AbortSignal, private connectedUser?: string, private projectId?: string) { validateRepository(repository, "main"); }
   get authenticated() { return Boolean(this.token || this.connectedUser); }
   private async request<T>(path: string, method = "GET", body?: unknown): Promise<T> {
-    if (path !== "" && !/^\/git\/(?:ref\/heads\/|refs(?:\/heads\/)?|commits(?:\/)?|trees(?:\/)?|blobs(?:\/)?)[A-Za-z0-9%?=._/-]*$/.test(path)) throw new Error("Invalid repository API path");
+    if (path !== "" && !/^\/git\/(?:ref\/heads\/|refs(?:\/heads\/)?|commits(?:\/)?|trees(?:\/)?|blobs(?:\/)?)[A-Za-z0-9%?=._/-]*$/.test(path) && !/^\/commits\?sha=[A-Za-z0-9%._-]+&per_page=5$/.test(path) && !/^\/compare\/[a-f0-9]{40}\.\.\.[a-f0-9]{40}\?per_page=1$/.test(path)) throw new Error("Invalid repository API path");
     if (this.connectedUser && !this.token) {
       const { api } = await import("@/services/api-client");
-      const response = await api.post<{ data: T }>("/integrations/github/repository", { repository: this.repository, path, method, ...(body !== undefined ? { body } : {}) }, { expectedUserId: this.connectedUser, signal: this.signal });
+      const response = await api.post<{ data: T }>("/integrations/github/repository", { repository: this.repository, path, method, ...(this.projectId ? { projectId: this.projectId } : {}), ...(body !== undefined ? { body } : {}) }, { expectedUserId: this.connectedUser, signal: this.signal });
       return response.data.data;
     }
     const response = await fetch(`https://api.github.com/repos/${this.repository}${path}`, { method, headers: { Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2026-03-10", ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}), ...(body ? { "Content-Type": "application/json" } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}), signal: AbortSignal.any([this.signal, AbortSignal.timeout(30000)]), credentials: "omit", redirect: "error", cache: "no-store", referrerPolicy: "no-referrer" });
@@ -40,14 +42,38 @@ export class ManuscriptGithubClient {
     const repo = await this.request<{ private: boolean; permissions?: { push?: boolean } }>("");
     const ref = await this.request<{ object: { sha: string } }>(`/git/ref/heads/${encodeURIComponent(branch)}`);
     if (!/^[a-f0-9]{40}$/.test(ref.object.sha)) throw new Error("Unsupported Git object hash");
-    const commit = await this.request<{ tree: { sha: string } }>(`/git/commits/${ref.object.sha}`);
+    return this.commitHead(ref.object.sha, { private: repo.private, writable: repo.permissions?.push === true });
+  }
+  private async commitHead(sha: string, permissions: Pick<RepositoryHead, "private" | "writable">): Promise<RepositoryHead> {
+    if (!/^[a-f0-9]{40}$/.test(sha)) throw new Error("Unsupported Git object hash");
+    const commit = await this.request<{ tree: { sha: string } }>(`/git/commits/${sha}`);
+    if (!/^[a-f0-9]{40}$/.test(commit.tree.sha)) throw new Error("Unsupported Git tree hash");
     const tree = await this.request<{ sha: string; truncated: boolean; tree: TreeEntry[] }>(`/git/trees/${commit.tree.sha}?recursive=1`);
     if (tree.truncated || !Array.isArray(tree.tree) || tree.tree.length > 10000) throw new Error("Repository tree exceeds limit");
-    return { sha: ref.object.sha, tree: commit.tree.sha, entries: tree.tree, private: repo.private, writable: repo.permissions?.push === true };
+    return { sha, tree: commit.tree.sha, entries: tree.tree, private: permissions.private, writable: permissions.writable };
   }
-  async pull(head: RepositoryHead, progress: (done: number, total: number) => void) {
+  async recentCommits(branch: string): Promise<RepositoryCommit[]> {
+    validateRepository(this.repository, branch);
+    const result = await this.request<Array<{ sha: string; commit: { message: string; author?: { name?: string; date?: string } } }>>(`/commits?sha=${encodeURIComponent(branch)}&per_page=5`);
+    if (!Array.isArray(result) || result.length > 5 || result.some(item => !/^[a-f0-9]{40}$/.test(item.sha) || typeof item.commit?.message !== "string")) throw new Error("Invalid commit history");
+    return result.map(item => ({ sha: item.sha, message: item.commit.message.split(/\r?\n/)[0]!.slice(0, 300), author: item.commit.author?.name?.slice(0, 100) ?? "", date: item.commit.author?.date ?? "" }));
+  }
+  async commonBase(head: RepositoryHead, sha: string, baseline: Array<{ path: string; sha: string }>): Promise<RepositoryHead | undefined> {
+    if (!baseline.length || !/^[a-f0-9]{40}$/.test(sha)) return;
+    if (head.sha !== sha) {
+      const comparison = await this.request<{ status: string; merge_base_commit?: { sha: string } }>(`/compare/${sha}...${head.sha}?per_page=1`);
+      if (!["ahead", "identical"].includes(comparison.status) || comparison.merge_base_commit?.sha !== sha) return;
+    }
+    const base = head.sha === sha ? head : await this.commitHead(sha, head);
+    const sources = base.entries.filter(entry => entry.type === "blob" && supported.test(entry.path));
+    if (sources.length !== baseline.length || sources.some(entry => !baseline.some(file => file.path === entry.path && file.sha === entry.sha))) return;
+    return base;
+  }
+  async pull(head: RepositoryHead, progress: (done: number, total: number) => void, allowEmptySource = false) {
     const selected = head.entries.filter(entry => entry.type === "blob" && (supported.test(entry.path) || entry.path === "lumigap-version.json"));
-    if (!selected.length || selected.length > 201 || selected.filter(entry => entry.path !== "lumigap-version.json").length > 200 || selected.some(entry => !safePath(entry.path) || !["100644", "100755"].includes(entry.mode) || (entry.size ?? 6_000_001) > 5_000_000) || selected.reduce((sum, entry) => sum + (entry.size ?? 0), 0) > 6_000_000) throw new Error("Source import exceeds path, file or size limits");
+    // A newly initialized repository may contain only README.md. Sync can add
+    // local source there; importing a new draft still requires actual source.
+    if (!selected.length && !allowEmptySource || selected.length > 201 || selected.filter(entry => entry.path !== "lumigap-version.json").length > 200 || selected.some(entry => !safePath(entry.path) || !["100644", "100755"].includes(entry.mode) || (entry.size ?? 6_000_001) > 5_000_000) || selected.reduce((sum, entry) => sum + (entry.size ?? 0), 0) > 6_000_000) throw new Error("Source import exceeds path, file or size limits");
     const files: RepositoryFile[] = new Array(selected.length); let totalBytes = 0, cursor = 0, completed = 0;
     const download = async (entry: TreeEntry) => {
       if (!head.private) {
@@ -101,5 +127,14 @@ export class ManuscriptGithubClient {
     if (updateExisting) await this.request(`/git/refs/heads/${encodeURIComponent(target)}`, "PATCH", { sha: commit.sha, force: false });
     else await this.request("/git/refs", "POST", { ref: `refs/heads/${target}`, sha: commit.sha });
     return `https://github.com/${this.repository}/commit/${commit.sha}`;
+  }
+  async createConflictBranch(base: RepositoryHead, files: RepositoryFile[], target: string): Promise<ConflictBranchResult> {
+    validateRepository(this.repository, target);
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    const conflictBranch = `lumigap/conflict-${timestamp}-${crypto.randomUUID().slice(0, 8)}`;
+    const changed = await this.changes(base, files);
+    const deletions = base.entries.filter(entry => entry.type === "blob" && supported.test(entry.path) && !files.some(file => file.path === entry.path)).map(entry => entry.path);
+    const commitUrl = await this.push(base, changed.length || deletions.length ? changed : files, conflictBranch, `LumiGap conflict resolution branch (${timestamp})`, () => undefined, false, deletions);
+    return { branch: conflictBranch, commitUrl, compareUrl: `https://github.com/${this.repository}/compare/${encodeURIComponent(target)}...${encodeURIComponent(conflictBranch)}?expand=1`, repository: this.repository, target };
   }
 }

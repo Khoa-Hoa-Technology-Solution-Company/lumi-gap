@@ -3,6 +3,7 @@ import type { z } from "zod";
 import { contributionActivityService as activity } from "./contribution-activity.service.js";
 import { workContributionsService as work } from "./work-contributions.service.js";
 import { allocationService as allocation } from "./allocation.service.js";
+import { contributionProtectionService as protection } from "./contribution-protection.service.js";
 import type { activitySchema, contributionsPageSchema } from "./dto/project-contributions.schema.js";
 const id = (req: Request) => String(req.params.id), item = (req: Request) => String(req.params.itemId), actor = (req: Request) => req.user!.sub;
 const send = (res: Response, data: unknown, status = 200) => res.status(status).json({ success: true, data });
@@ -25,4 +26,7 @@ export const projectContributionsController = {
   decide: async (req: Request, res: Response) => send(res, await allocation.decide(id(req), actor(req), item(req), req.body)),
   challenge: async (req: Request, res: Response) => send(res, await allocation.challenge(id(req), actor(req), item(req), req.body)),
   export: async (req: Request, res: Response) => { res.setHeader("Content-Disposition", `attachment; filename="allocation-${item(req)}.json"`); return send(res, await allocation.export(id(req), actor(req), item(req))); },
+  myHistory: async (req: Request, res: Response) => send(res, await protection.getMyContributionHistory(id(req), actor(req))),
+  exportMyHistory: async (req: Request, res: Response) => { res.setHeader("Content-Disposition", `attachment; filename="my-contributions-${id(req)}.json"`); return send(res, await protection.exportMyContributionHistory(id(req), actor(req))); },
+  advisorContributions: async (req: Request, res: Response) => send(res, await protection.listAdvisorContributions(id(req), actor(req))),
 };

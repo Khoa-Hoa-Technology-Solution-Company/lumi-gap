@@ -3,7 +3,7 @@ import { createServer } from "node:http";
 import { once } from "node:events";
 import { beforeAll, afterAll, beforeEach, expect, it, vi } from "vitest";
 import { ZodError } from "zod";
-const mocks = vi.hoisted(() => ({ status: vi.fn(), start: vi.fn(), complete: vi.fn(), repositories: vi.fn(), request: vi.fn(), disconnect: vi.fn(), authenticated: true }));
+const mocks = vi.hoisted(() => ({ status: vi.fn(), start: vi.fn(), complete: vi.fn(), repositories: vi.fn(), request: vi.fn(), initializeRepository: vi.fn(), disconnect: vi.fn(), authenticated: true }));
 vi.mock("../github.service.js", () => ({ githubService: mocks }));
 vi.mock("../../../common/middleware/auth.js", () => ({ requireAuth: (req: any, res: any, next: () => void) => { if (!mocks.authenticated) return res.status(401).end(); req.user = { sub: "authenticated-user", sessionId: "original-session" }; next(); } }));
 vi.mock("../../../common/middleware/rate-limit.js", () => ({ createRateLimiter: () => (_req: any, _res: any, next: () => void) => next() }));
@@ -18,6 +18,18 @@ const post = (path: string, body: unknown) => fetch(origin + path, { method: "PO
 it("requires LumiGap authentication for status, callback completion and repository operations", async () => {
   mocks.authenticated = false;
   expect((await fetch(origin)).status).toBe(401); expect((await post("/complete", {})).status).toBe(401); expect((await post("/repository", {})).status).toBe(401); expect(mocks.complete).not.toHaveBeenCalled();
+  expect((await post("/initialize-repository", {})).status).toBe(401); expect(mocks.initializeRepository).not.toHaveBeenCalled();
+});
+it("validates initialization strictly and derives the actor from authentication", async () => {
+  const input = { repository: "team/paper", branch: "main", projectId: "6ab33f1537802fe30d38753b" };
+  for (const body of [{ ...input, content: "untrusted" }, { ...input, projectId: undefined }, { ...input, repository: "../escape" }]) {
+    expect((await post("/initialize-repository", body)).status).toBe(400);
+  }
+  expect(mocks.initializeRepository).not.toHaveBeenCalled();
+  mocks.initializeRepository.mockResolvedValue({ head: "a".repeat(40) });
+  const response = await post("/initialize-repository", input);
+  expect(response.status).toBe(200);
+  expect(mocks.initializeRepository).toHaveBeenCalledWith("authenticated-user", input);
 });
 it("binds completion to the current user/session and marks connection responses private", async () => {
   mocks.complete.mockResolvedValue({ returnTo: "/projects/6ab33f1537802fe30d38753b?tab=manuscripts" });

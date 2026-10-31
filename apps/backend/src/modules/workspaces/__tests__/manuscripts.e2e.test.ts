@@ -11,6 +11,8 @@ import { tokenService, hashOpaqueToken } from "../../auth/token.service.js";
 import { manuscriptService as writing } from "../manuscript.service.js";
 import { attachManuscriptCollaboration } from "../manuscript-collaboration.js";
 import { sourceText } from "../manuscript-source.js";
+import { mentorPresets } from "@trend/shared-types";
+import { mentorAccessService } from "../../projects/mentor-access.service.js";
 import { projectService } from "../../projects/project.service.js";
 
 const isolated = process.env.WRITING_BROWSER_TEST === "1" && process.env.DATABASE_URL?.includes("127.0.0.1:15439/lumigap_project_slice_test") && process.env.REDIS_URL === "redis://127.0.0.1:16389";
@@ -122,39 +124,34 @@ describe.skipIf(!isolated).sequential("two actual manuscript sessions in Chromiu
     await uiExpect(pageA.getByRole("status").filter({ hasText: "Đã lưu" })).toBeVisible();
     await pageA.screenshot({ path: `${screenshots}/editor-vi-mobile.png`, fullPage: true }); expect(await pageA.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   }, 45000);
-  it("allows the active mentor to comment only on the shared version and keeps old feedback on v1", async () => {
+  it("lets mentors discuss only approved section text without opening the manuscript editor", async () => {
     const m = await actor("Academic mentor", true), request = await db.mentorshipRequest.create({ data: { projectId: project, mentorUserId: m.userId, requestedBy: a.userId, direction: "PROJECT_TO_LECTURER", status: "ACCEPTED", expiresAt: new Date(Date.now() + 86400000) } });
     const relationship = await db.mentorRelationship.create({ data: { projectId: project, mentorUserId: m.userId, sourceRequestId: request.id } });
-    const v1 = await writing.snapshot(project, a.userId, id, { label: "Mentor proposal v1", clientKey: crypto.randomUUID(), minimumSequences: {} });
-    await writing.comment(project, a.userId, id, { body: "Please check the sampling strategy", snapshotId: v1.id, mentorRelationshipId: relationship.id, clientKey: crypto.randomUUID() });
-    const overviewPage = await pageFor(a); await overviewPage.goto(`${origin}/projects/${project}?tab=manuscripts`);
-    await uiExpect(overviewPage.getByRole("link", { name: "Mentor feedback pending · Mentor proposal v1", exact: true })).toBeVisible();
-    const mentorPage = await pageFor(m); await mentorPage.goto(`${url()}?snapshot=${v1.id}`);
-    await mentorPage.getByRole("button", { name: "Comments", exact: true }).click(); await uiExpect(mentorPage.getByText("Please check the sampling strategy", { exact: true })).toBeVisible();
-    expect(await mentorPage.locator(".cm-content").getAttribute("contenteditable")).toBe("false");
-    await mentorPage.getByLabel("Add comment", { exact: true }).fill("Explain why the sample represents your population"); await mentorPage.getByRole("button", { name: "Post comment", exact: true }).click();
-    await uiExpect(mentorPage.getByText("Explain why the sample represents your population", { exact: true })).toBeVisible();
-    await mentorPage.screenshot({ path: `${screenshots}/mentor-snapshot-desktop.png`, fullPage: true });
-    await overviewPage.reload();
-    const feedbackLink = overviewPage.getByRole("link", { name: "Mentor feedback received · Mentor proposal v1", exact: true });
-    await uiExpect(feedbackLink).toBeVisible();
-    await overviewPage.screenshot({ path: `${screenshots}/overview-feedback-desktop.png`, fullPage: true });
-    await overviewPage.setViewportSize({ width: 390, height: 844 });
-    expect(await overviewPage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-    await overviewPage.screenshot({ path: `${screenshots}/overview-feedback-mobile.png`, fullPage: true });
-    await feedbackLink.click(); await uiExpect(overviewPage).toHaveURL(`${url()}?snapshot=${v1.id}`);
-    await overviewPage.getByRole("button", { name: "Comments", exact: true }).click();
-    await uiExpect(overviewPage.getByText("Explain why the sample represents your population", { exact: true })).toBeVisible();
-    await overviewPage.goto(url()); await saved(overviewPage);
-    await uiExpect(overviewPage.locator(".writing-statusbar").getByRole("link", { name: "Mentor feedback received · Mentor proposal v1", exact: true })).toBeVisible();
-    await pageB.goto(`${url()}?snapshot=${v1.id}`); await pageB.getByRole("button", { name: "Comments", exact: true }).click();
-    await pageB.getByLabel("Reply", { exact: true }).first().fill("We will revise the inclusion criteria"); await pageB.getByRole("button", { name: "Send reply", exact: true }).first().click();
-    await uiExpect(pageB.getByText("We will revise the inclusion criteria", { exact: true })).toBeVisible();
-    await pageB.goto(url()); await saved(pageB); await insert(pageB, "% revised inclusion criteria\n");
-    const v2 = await writing.snapshot(project, a.userId, id, { label: "Mentor proposal v2", clientKey: crypto.randomUUID(), minimumSequences: {} });
-    expect(await writing.comments(project, b.userId, id, v2.id)).toHaveLength(0); expect(await writing.comments(project, m.userId, id, v1.id)).toHaveLength(2);
-    await overviewPage.context().close();
-    await mentorPage.context().close();
+    const access = await db.mentorAccess.create({ data: { projectId: project, requestId: request.id, relationshipId: relationship.id, mentorUserId: m.userId, configuredById: a.userId, permissions: [...mentorPresets.ADVISOR] } });
+    await mentorAccessService.share(project, a.userId, access.id, { expectedVersion: 1, kind: "MANUSCRIPT", resourceId: id, sectionKey: "methodology", title: "Approved sampling methodology", content: "This approved section describes the sampling strategy." });
+    const mentorPage = await pageFor(m);
+    try {
+      await mentorPage.goto(`${origin}/academic-support/projects/${project}`);
+      await mentorPage.getByText("Approved sampling methodology", { exact: false }).first().click();
+      await uiExpect(mentorPage.getByText("This approved section describes the sampling strategy.", { exact: true })).toBeVisible();
+      expect(await mentorPage.locator(".cm-content").count()).toBe(0);
+      await mentorPage.getByLabel("Nội dung liên quan").selectOption({ label: "Approved sampling methodology · Phương pháp" });
+      await mentorPage.getByLabel("Nội dung phản hồi", { exact: true }).fill("Explain why this sample represents your population");
+      await mentorPage.getByRole("button", { name: "Gửi phản hồi", exact: true }).click();
+      await uiExpect(mentorPage.getByText("Explain why this sample represents your population", { exact: true })).toBeVisible();
+      const feedback = (await mentorAccessService.feedback(project, a.userId, access.id)).items[0]!;
+      await mentorAccessService.handle(project, b.userId, access.id, feedback.id, { expectedVersion: feedback.version, status: "ACCEPTED", response: "We will revise the inclusion criteria" });
+      await uiExpect(mentorPage.getByText("Phản hồi của nhóm: We will revise the inclusion criteria", { exact: true })).toBeVisible();
+      await mentorPage.screenshot({ path: `${screenshots}/mentor-section-desktop.png`, fullPage: true });
+      await mentorPage.setViewportSize({ width: 390, height: 844 });
+      expect(await mentorPage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      await mentorPage.screenshot({ path: `${screenshots}/mentor-section-mobile.png`, fullPage: true });
+      await expect(writing.detail(project, m.userId, id)).rejects.toMatchObject({ statusCode: 404 });
+      const policy = await db.mentorAccess.findUniqueOrThrow({ where: { id: access.id } });
+      await mentorAccessService.revoke(project, a.userId, access.id, { expectedVersion: policy.version, reason: "Mentorship complete", confirmed: true });
+      await uiExpect(mentorPage.getByRole("heading", { name: "Không gian cố vấn chưa khả dụng" })).toBeVisible({ timeout: 12000 });
+      await uiExpect(mentorPage.getByText("This approved section describes the sampling strategy.", { exact: true })).toHaveCount(0);
+    } finally { await mentorPage.context().close(); }
   }, 45000);
   it("rejects outsiders, forged room claims, cross-origin sockets, removed member edits and expired sessions", async () => {
     const root = `http://127.0.0.1:14039/api/v1/projects/${project}/manuscripts/${id}`;

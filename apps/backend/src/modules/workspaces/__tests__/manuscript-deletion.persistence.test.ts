@@ -6,6 +6,7 @@ import { manuscriptSuggestions } from "../manuscript-suggestions.js";
 import { manuscriptSync } from "../manuscript-sync.js";
 import { reviewTemplateService } from "../../reviews/review-template.service.js";
 import { reviewRequestService } from "../../reviews/review-request.service.js";
+import { manuscriptAttributionService } from "../manuscript-attribution.service.js";
 
 vi.mock("../../../infrastructure/queue.js", () => ({ notificationQueue: { add: vi.fn().mockResolvedValue({}) } }));
 const isolated = process.env.NODE_ENV === "test" && process.env.MANUSCRIPT_DELETE_INTEGRATION === "1" && /^postgres(?:ql)?:\/\/[^/]+@(127\.0\.0\.1|localhost):[0-9]+\/codex_github_[a-f0-9]{12}_test(?:\?|$)/.test(process.env.DATABASE_URL ?? "");
@@ -84,6 +85,9 @@ describe.skipIf(!isolated).sequential("manuscript deletion in disposable Postgre
     const d = await fixture();
     await db.academicProfile.update({ where: { userId: outsider }, data: { primaryPosition: "LECTURER", academicRole: "LECTURER", roleVerificationStatus: "VERIFIED", positionStatus: "VERIFIED", reviewAvailability: { enabled: true, maximumActiveReviews: 10 } } });
     const snapshot = await writing.snapshot(d.project, author, d.row.id, { label: "Submitted version", clientKey: crypto.randomUUID(), minimumSequences: {} });
+    await manuscriptAttributionService.saveAttributionCheck(d.project, author, d.row.id, snapshot.id, { proposedAuthors: [{ userId: owner, order: 1, creditRoles: ["CONCEPTUALIZATION"] }, { userId: author, order: 2, creditRoles: ["WRITING_REVIEW_EDITING"] }], acknowledgements: [], omittedContributors: [] });
+    const checkView = await manuscriptAttributionService.getAttributionCheck(d.project, owner, d.row.id, snapshot.id);
+    await manuscriptAttributionService.decideAttributionCheck(d.project, owner, d.row.id, checkView.checkId!, { decision: "CONFIRM" });
     const sealed = await writing.publish(d.project, owner, d.row.id, snapshot.id, [owner, author]);
     const template = await reviewTemplateService.create({ name: "Retained manuscript review", source: "PERSONAL", reviewMode: "RUBRIC_ASSESSMENT", publish: true, guidelines: [], criteria: [{ key: "method", title: "Method", weight: 1, required: true, levels: [{ label: "Clear", score: 4 }] }] }, owner, "USER");
     const request = await reviewRequestService.create({ submissionId: sealed.submissionId, reviewerId: outsider, templateVersionId: template.activeVersion!.id }, owner);

@@ -5,7 +5,8 @@ import { env } from "../../config/env.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { AppError } from "../../common/exceptions/app-error.js";
 import { tokenService } from "../auth/token.service.js";
-import { manuscriptService, manuscriptEvents } from "./manuscript.service.js";
+import { manuscriptService } from "./manuscript.service.js";
+import { manuscriptEvents } from "./manuscript-events.js";
 import { collaborationFrame } from "./dto/manuscript.schema.js";
 
 const ticketClaims = z.object({ actorId: z.string().uuid(), projectId: z.string().uuid(), manuscriptId: z.string().uuid(), fileId: z.string().uuid(), sessionId: z.string().uuid() });
@@ -108,14 +109,30 @@ export function attachManuscriptCollaboration(server: Server) {
     });
   });
   const metadata = (event: { projectId: string; manuscriptId: string }) => {
-    for (const client of clients.values()) if (client.scope.projectId === event.projectId && client.scope.manuscriptId === event.manuscriptId) send(client.socket, { type: "metadata" });
+    for (const client of clients.values()) {
+      if (client.scope.projectId === event.projectId && client.scope.manuscriptId === event.manuscriptId) {
+        void authorize(client)
+          .then(() => send(client.socket, { type: "metadata" }))
+          .catch(() => client.socket.close(4401, "Authorization required"));
+      }
+    }
   };
   const source = (event: { projectId: string; manuscriptId: string; fileId: string; update: string; sequence: number; fileVersion: number }) => {
     for (const client of clients.values()) if (client.scope.projectId === event.projectId && client.scope.manuscriptId === event.manuscriptId && client.scope.fileId === event.fileId) {
       void authorize(client).then(() => send(client.socket, { ...event, type: "update" })).catch(() => client.socket.close(4401, "Authorization required"));
     }
   };
-  manuscriptEvents.on("changed", metadata); manuscriptEvents.on("source", source);
+  const memberRevoked = (event: { projectId: string; userId: string }) => {
+    for (const client of clients.values()) {
+      if (client.scope.projectId === event.projectId && client.scope.actorId === event.userId) {
+        send(client.socket, { type: "error", code: "NOT_FOUND" });
+        client.socket.close(4401, "Authorization required");
+      }
+    }
+  };
+  manuscriptEvents.on("changed", metadata);
+  manuscriptEvents.on("source", source);
+  manuscriptEvents.on("member-revoked", memberRevoked);
   let auditing = false;
   const audit = setInterval(() => {
     for (const [id, budget] of accountBudgets) if (Date.now() - budget.start > 60000) accountBudgets.delete(id);
@@ -125,5 +142,13 @@ export function attachManuscriptCollaboration(server: Server) {
       catch { client.socket.close(4401, "Authorization required"); }
     })).finally(() => { auditing = false; });
   }, 5000); audit.unref();
-  return async () => { clearInterval(audit); manuscriptEvents.off("changed", metadata); manuscriptEvents.off("source", source); server.off("upgrade", upgrade); for (const socket of wss.clients) socket.terminate(); await new Promise<void>(resolve => wss.close(() => resolve())); };
+  return async () => {
+    clearInterval(audit);
+    manuscriptEvents.off("changed", metadata);
+    manuscriptEvents.off("source", source);
+    manuscriptEvents.off("member-revoked", memberRevoked);
+    server.off("upgrade", upgrade);
+    for (const socket of wss.clients) socket.terminate();
+    await new Promise<void>(resolve => wss.close(() => resolve()));
+  };
 }

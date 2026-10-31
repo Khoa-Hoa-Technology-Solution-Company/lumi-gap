@@ -6,6 +6,7 @@ model ManuscriptFile {
   version Int @default(1)
   sequence Int @default(0)
   crdtState Bytes? @map("crdt_state")
+  writingBaseline Json? @map("writing_baseline")
   assetData Bytes? @map("asset_data")
   mimeType String? @map("mime_type") @db.VarChar(80)
   sizeBytes Int @default(0) @map("size_bytes")
@@ -27,6 +28,7 @@ model ManuscriptUpdate {
   clientSequence Int @map("client_sequence")
   serverSequence Int @map("server_sequence")
   update Bytes
+  writingSpans Json? @map("writing_spans")
   checksum String @db.Char(64)
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   @@unique([fileId, actorId, clientSessionId, clientSequence])
@@ -42,6 +44,7 @@ model ManuscriptSnapshot {
   sourceVersion Int @map("source_version")
   manifest Json
   collaborationState Json? @map("collaboration_state")
+  writingState Json? @map("writing_state")
   checksum String @db.Char(64)
   createdById String @map("created_by_id") @db.Uuid
   clientKey String @map("client_key") @db.Uuid
@@ -50,6 +53,22 @@ model ManuscriptSnapshot {
   @@unique([id, projectId])
   @@index([workspaceId, createdAt])
   @@map("manuscript_snapshots")
+}
+
+model ManuscriptWritingReport {
+  id String @id @default(uuid()) @db.Uuid
+  projectId String @map("project_id") @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  snapshotId String @unique @map("snapshot_id") @db.Uuid
+  actorId String @map("actor_id") @db.Uuid
+  status String @default("QUEUED") @db.VarChar(16)
+  result Json?
+  inputHash String? @map("input_hash") @db.Char(64)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  calculatedAt DateTime? @map("calculated_at") @db.Timestamptz(6)
+  @@index([projectId, createdAt])
+  @@index([status, createdAt])
+  @@map("manuscript_writing_reports")
 }
 
 model ManuscriptSnapshotAsset {
@@ -108,4 +127,41 @@ model ManuscriptRemoteBinding {
   updatedById String @map("updated_by_id") @db.Uuid
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
   @@map("manuscript_remote_bindings")
+}
+
+model ManuscriptAttributionCheck {
+  id String @id @default(uuid()) @db.Uuid
+  projectId String @map("project_id") @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  snapshotId String @map("snapshot_id") @db.Uuid
+  version Int
+  status String @default("PENDING_CONFIRMATION") @db.VarChar(24)
+  proposedAuthors Json @default("[]") @map("proposed_authors")
+  acknowledgements Json @default("[]")
+  acknowledgementText String @default("") @map("acknowledgement_text")
+  omittedContributors Json @default("[]") @map("omitted_contributors")
+  snapshotDigestSha256 String @map("snapshot_digest_sha256") @db.Char(64)
+  createdById String @map("created_by_id") @db.Uuid
+  verifiedAt DateTime? @map("verified_at") @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([snapshotId, version])
+  @@unique([id, projectId])
+  @@index([projectId, workspaceId, snapshotId])
+  @@map("manuscript_attribution_checks")
+}
+
+model ManuscriptAttributionDecision {
+  id String @id @default(uuid()) @db.Uuid
+  checkId String @map("check_id") @db.Uuid
+  projectId String @map("project_id") @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  participantKind String @map("participant_kind") @db.VarChar(24)
+  decision String @db.VarChar(16)
+  note String @default("")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([checkId, createdAt])
+  @@index([checkId, userId, createdAt])
+  @@map("manuscript_attribution_decisions")
 }

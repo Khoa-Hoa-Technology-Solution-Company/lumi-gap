@@ -254,6 +254,7 @@ export function GapCard({
 
         {gap.validationStatus && (
           <div className="flex flex-wrap gap-2 pt-1 text-[10px] font-semibold uppercase tracking-wide">
+            {gap.analysisMode === "DRAFT" && <Badge variant="outline">Nháp · kết quả sơ bộ</Badge>}
             <Badge variant="outline">{t(gap.origin === "AI_ASSISTED" ? "AI-assisted candidate" : "Researcher candidate")}</Badge>
             <Badge variant="outline">{t(gap.validationStatus.replaceAll("_", " "))}</Badge>
             <span className="rounded-md bg-slate-100 px-2 py-1 text-slate-600 dark:bg-slate-800 dark:text-slate-300">{t("Gap confidence")}: {gap.gapConfidence ?? "LOW"}</span>

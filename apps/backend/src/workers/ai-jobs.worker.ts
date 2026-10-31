@@ -13,6 +13,10 @@ import { MANUSCRIPT_AI_JOB, manuscriptAiService } from "../modules/workspaces/ma
 import { PDF_IMPORT_JOB, manuscriptPdfImport } from "../modules/workspaces/manuscript-pdf-import.js";
 import { AI_PRE_REVIEW_JOB, aiPreReviewJobId, submissionService, type AiPreReviewJob } from "../modules/submissions/submission.service.js";
 import { QUALITY_EVALUATION_JOB, qualityJobs, type QualityEvaluationPayload } from "../modules/quality/quality.jobs.js";
+import { CONTRIBUTION_EVALUATION_JOB, contributionEvaluationService, enqueueEvaluation } from "../modules/projects/contribution-evaluation.service.js";
+import { MANUSCRIPT_WRITING_JOB, manuscriptWritingService, enqueueWritingReport } from "../modules/workspaces/manuscript-writing.service.js";
+
+import { SCREENING_AI_JOB, screeningAiService, enqueueScreeningAi } from "../modules/projects/screening-ai.service.js";
 
 enforcePostgresOnlyRuntime();
 
@@ -114,9 +118,22 @@ async function main() {
   await connectPostgres();
   const stopHeartbeat = startWorkerHeartbeat({ workerName: "worker:ai-jobs", queueName: QUEUE_NAMES.aiJobs });
   await sweepStuckPreReviews();
+  for (const run of await getPrisma().screeningAiSuggestion.findMany({ where: { status: "QUEUED" }, select: { id: true } })) {
+    if (!await hasLiveJob(aiJobsQueue, `screening-${run.id}`)) await enqueueScreeningAi(run.id);
+  }
+  for (const report of await getPrisma().manuscriptWritingReport.findMany({ where: { status: "QUEUED" }, select: { id: true } })) {
+    if (!await hasLiveJob(aiJobsQueue, `writing-${report.id}`)) await enqueueWritingReport(report.id);
+  }
+  // Recover durable calculation requests after a process or queue interruption.
+  for (const run of await getPrisma().contributionEvaluationRun.findMany({ where: { status: "QUEUED" }, select: { id: true } })) {
+    if (!await hasLiveJob(aiJobsQueue, `evaluation-${run.id}`)) {
+      const old = await aiJobsQueue.getJob(`evaluation-${run.id}`); if (old) await old.remove();
+      await enqueueEvaluation(run.id);
+    }
+  }
   const worker = new Worker(
     QUEUE_NAMES.aiJobs,
-    async (job) => job.name === PDF_IMPORT_JOB ? manuscriptPdfImport.process(job.id!) : job.name === MANUSCRIPT_AI_JOB ? manuscriptAiService.process(job.data.runId as string) : job.name === AI_PRE_REVIEW_JOB
+    async (job) => job.name === SCREENING_AI_JOB ? screeningAiService.process(job.data.id as string) : job.name === MANUSCRIPT_WRITING_JOB ? manuscriptWritingService.process(job.data.runId as string) : job.name === CONTRIBUTION_EVALUATION_JOB ? contributionEvaluationService.process(job.data.runId as string) : job.name === PDF_IMPORT_JOB ? manuscriptPdfImport.process(job.id!) : job.name === MANUSCRIPT_AI_JOB ? manuscriptAiService.process(job.data.runId as string) : job.name === AI_PRE_REVIEW_JOB
       ? submissionService.processAiPreReview(job.data as AiPreReviewJob)
       : job.name === QUALITY_EVALUATION_JOB
       ? qualityJobs.process(job.data as QualityEvaluationPayload)
@@ -127,6 +144,15 @@ async function main() {
   worker.on("completed", (job) => logger.info({ jobId: job.id }, "AI job completed"));
   worker.on("failed", (job, error) => {
     logger.error({ jobId: job?.id, error }, "AI job failed");
+    if (job?.name === MANUSCRIPT_WRITING_JOB && job.attemptsMade >= (job.opts.attempts ?? 1)) {
+      void getPrisma().manuscriptWritingReport.updateMany({ where: { id: job.data.runId as string, status: "QUEUED" }, data: { status: "FAILED" } }).catch(failure => logger.error({ failure }, "Could not mark writing report failure"));
+    }
+    if (job?.name === CONTRIBUTION_EVALUATION_JOB && job.attemptsMade >= (job.opts.attempts ?? 1)) {
+      void getPrisma().contributionEvaluationRun.updateMany({ where: { id: job.data.runId as string, status: "QUEUED" }, data: { status: "FAILED" } }).catch(failure => logger.error({ failure }, "Could not mark evaluation failure"));
+    }
+    if (job?.name === SCREENING_AI_JOB && job.attemptsMade >= (job.opts.attempts ?? 1)) {
+      void getPrisma().screeningAiSuggestion.updateMany({ where: { id: job.data.id as string, status: "QUEUED" }, data: { status: "FAILED" } }).catch(failure => logger.error({ failure }, "Could not mark screening AI failure"));
+    }
     // Pre-reviews retry with backoff; only the last failed attempt is surfaced to the author.
     if (job?.name === AI_PRE_REVIEW_JOB && job.attemptsMade >= (job.opts.attempts ?? 1)) {
       void submissionService.failAiPreReview((job.data as AiPreReviewJob).preReviewId);

@@ -2,7 +2,7 @@ import { Router } from "express";
 import { requireAuth } from "../../common/middleware/auth.js";
 import { createRateLimiter } from "../../common/middleware/rate-limit.js";
 import { validate } from "../../common/middleware/validate.js";
-import { githubCompleteSchema, githubPageSchema, githubRequestSchema, githubStartSchema } from "./github.schema.js";
+import { githubCompleteSchema, githubCreateRepoSchema, githubInitializeRepoSchema, githubPageSchema, githubRequestSchema, githubStartSchema } from "./github.schema.js";
 import { githubController } from "./github.controller.js";
 
 export const githubRouter: Router = Router();
@@ -15,4 +15,6 @@ githubRouter.post("/start", connections, validate(githubStartSchema), githubCont
 githubRouter.post("/complete", connections, validate(githubCompleteSchema), githubController.complete);
 githubRouter.get("/repositories", requests, validate(githubPageSchema, "query"), githubController.repositories);
 githubRouter.post("/repository", requests, validate(githubRequestSchema), githubController.request);
+githubRouter.post("/create-repository", connections, validate(githubCreateRepoSchema), githubController.createRepository);
+githubRouter.post("/initialize-repository", connections, validate(githubInitializeRepoSchema), githubController.initializeRepository);
 githubRouter.delete("/", connections, githubController.disconnect);

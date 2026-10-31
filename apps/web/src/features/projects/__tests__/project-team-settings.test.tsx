@@ -14,6 +14,7 @@ vi.mock("@/features/auth/api/auth.api", () => ({ authApi: { academicOnboardingOp
 vi.mock("../api/academic-support.api", () => ({ academicSupportApi: { settings: async () => ({ discovery: "CLOSED", summary: "", expertise: [] }) } }));
 vi.mock("../hooks/use-projects", () => ({
   useProjectTeam: mocks.team,
+  useInviteProjectMember: () => ({ isPending: false }),
   useUpdateProject: () => ({ mutateAsync: mocks.update, isPending: false }),
   useArchiveProject: () => ({ isPending: false }), useRestoreProject: () => ({ isPending: false }),
   useDeleteProject: () => ({ isPending: false }), useLeaveProject: () => ({ isPending: false }),
@@ -72,6 +73,22 @@ it("supports keyboard section switching and recovers a failed team load", async 
   expect(mocks.retry).toHaveBeenCalledOnce();
 });
 
+it.each(["/projects/project?tab=members", "/projects/project?tab=members&team=settings"])("exposes the invitation action at the top of %s even when the team request fails", async path => {
+  await render(project, path);
+  const action = container.querySelector<HTMLButtonElement>("header button");
+  expect(action?.textContent).toBe("Invite member");
+  await act(async () => action!.click());
+  expect(document.querySelector('[role="dialog"]')?.textContent).toContain("Recipient email");
+});
+
+it.each([
+  { ...project, accessRole: "MEMBER" as const, ownerId: "other" },
+  { ...project, status: "ARCHIVED" as const },
+])("does not offer invitations for $accessRole in $status", async value => {
+  await render(value);
+  expect([...container.querySelectorAll("button")].some(button => button.textContent === "Invite member")).toBe(false);
+});
+
 it.each(["Member pages", "Invitation pages"])("returns to an available page when %s shrink after a team update", async label => {
   let totalPages = 2;
   mocks.team.mockImplementation((_id: string, page: number, invitationPage: number) => ({
@@ -84,4 +101,9 @@ it.each(["Member pages", "Invitation pages"])("returns to an available page when
   totalPages = 1;
   await render(project, "/projects/project?tab=members");
   expect(mocks.team).toHaveBeenLastCalledWith("project", 1, 1);
+});
+
+it("does not trust a cached OWNER role when the authenticated account is not the project owner", async () => {
+  await render({ ...project, accessRole: "OWNER", ownerId: "new-owner" });
+  expect([...container.querySelectorAll("button")].some(button => button.textContent === "Invite member")).toBe(false);
 });

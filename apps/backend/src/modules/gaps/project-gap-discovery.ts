@@ -1,3 +1,4 @@
+import { validateAnalysisSet } from "../projects/project-analysis-set.service.js";
 import type { DiscoveryPaperResult, ProjectGapDiscoveryResult, SynthesisContent } from "@trend/shared-types";
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
@@ -14,14 +15,16 @@ import { jsonSnapshot, withWorkspace, type WorkspaceContext, type WorkspaceDb } 
 
 export interface DiscoveryInput {
   kind: "PROJECT_DISCOVERY";
+  analysisSetId?: string; analysisMode?: "DRAFT" | "OFFICIAL"; analysisSetHash?: string;
   projectContext?: { title: string; summary: string; researchField: string; researchAreas: string[] };
   sources: Array<{ id: string; projectPaperId: string; updatedAt: string; fingerprint: string }>;
   result: ProjectGapDiscoveryResult;
 }
-export async function discoverySources(context: WorkspaceContext, selectedIds: string[]) {
+export async function discoverySources(context: WorkspaceContext, selectedIds: string[], analysisSetId?: string) {
   if (selectedIds.length < 2 || new Set(selectedIds).size !== selectedIds.length) throw AppError.badRequest("Select at least 2 distinct relevant papers");
+  const set = analysisSetId ? await validateAnalysisSet(context, analysisSetId, selectedIds) : null;
   const [links, papers] = await Promise.all([
-    context.tx.projectPaper.findMany({ where: { projectId: context.project.id, paperId: { in: selectedIds }, screeningStatus: "INCLUDED" } }),
+    context.tx.projectPaper.findMany({ where: { projectId: context.project.id, paperId: { in: selectedIds }, ...(set?.mode === "DRAFT" ? {} : { screeningStatus: "INCLUDED" }) } }),
     context.tx.paper.findMany({ where: { id: { in: selectedIds }, dataStatus: "active" } }),
   ]);
   if (links.length !== selectedIds.length || papers.length !== selectedIds.length) throw AppError.conflict("Selected papers must still be Relevant in this project");
@@ -32,7 +35,7 @@ export async function assertDiscoverySources(context: WorkspaceContext, input: D
     await context.tx.$queryRaw`SELECT id FROM papers WHERE id = ANY(${input.sources.map(source => source.id)}::uuid[]) ORDER BY id FOR SHARE`;
     await context.tx.$queryRaw`SELECT id FROM paper_documents WHERE paper_id = ANY(${input.sources.map(source => source.id)}::uuid[]) ORDER BY id FOR SHARE`;
   }
-  const current = await discoverySources(context, input.sources.map(source => source.id));
+  const current = await discoverySources(context, input.sources.map(source => source.id), input.analysisSetId);
   if (!isDeepStrictEqual(current, input.sources)) throw AppError.conflict("Selected sources changed during analysis. Review Relevant papers and try again");
   if (result?.papers.length) {
     const documents = await context.tx.paperDocument.findMany({ where: { paperId: { in: result.papers.map(paper => paper.id) } } });
@@ -63,19 +66,23 @@ export async function prepareDiscovery(projectId: string, actorId: string, analy
     const relations = knowledge.edges.slice(0, 24).map(edge => ({ kind: edge.kind, quote: edge.quote, chunkId: edge.chunkId, pageNumber: edge.pageNumber }));
     const chunkIds = [...new Set([...relations.map(edge => edge.chunkId), ...knowledge.passages.map(passage => passage.id)])].slice(0, 8);
     const chunks = await getPrisma().paperChunk.findMany({ where: { id: { in: chunkIds }, documentId: doc.id }, orderBy: { position: "asc" }, select: { id: true, pageNumber: true, text: true } });
-    const item: DiscoveryPaperResult = { id: paper.id, title: paper.title, analysis: paper.aiAnalysis as unknown as DiscoveryPaperResult["analysis"], sourceKind: knowledge.sourceKind ?? "abstract",
-      contentHash: doc.contentHash ?? "", warnings: knowledge.warnings, relations: relations.filter(edge => chunks.some(chunk => chunk.id === edge.chunkId && chunk.text.includes(edge.quote))), passages: chunks.map(passage => ({ ...passage, text: passage.text.slice(0, 5000) })) };
+    const item: DiscoveryPaperResult = {
+      id: paper.id, title: paper.title, analysis: paper.aiAnalysis as unknown as DiscoveryPaperResult["analysis"], sourceKind: knowledge.sourceKind ?? "abstract",
+      contentHash: doc.contentHash ?? "", warnings: knowledge.warnings, relations: relations.filter(edge => chunks.some(chunk => chunk.id === edge.chunkId && chunk.text.includes(edge.quote))), passages: chunks.map(passage => ({ ...passage, text: passage.text.slice(0, 5000) }))
+    };
     result.papers.push(item); result.completed++;
     if (JSON.stringify(result.papers).length > 180000) throw AppError.badRequest("The analysis pack is too large. Select fewer papers");
     await discoveryProgress(projectId, actorId, analysisId, input, result);
   }
   result.stage = "synthesizing";
   await discoveryProgress(projectId, actorId, analysisId, input, result);
-  result.synthesis = await cachedGenerateJSON<SynthesisContent>({ task: "extract", promptVersion: DISCOVERY_SYNTHESIS_VERSION, model: aiModel(),
-    keyParts: { papers: result.papers.map(paper => [paper.id, paper.contentHash]) },
+  result.synthesis = await cachedGenerateJSON<SynthesisContent>({
+    task: "extract", promptVersion: DISCOVERY_SYNTHESIS_VERSION, model: aiModel(),
+    keyParts: { projectId, papers: result.papers.map(paper => [paper.id, paper.contentHash]) },
     prompt: JSON.stringify({ topic, projectContext: input.projectContext, papers: result.papers.map((paper, index) => ({ number: index + 1, ...paper })) }),
     options: { system: DISCOVERY_SYNTHESIS_SYSTEM, temperature: 0, maxOutputTokens: 4096 },
-    validate: raw => parseDiscoverySynthesis(raw, result.papers.length) });
+    validate: raw => parseDiscoverySynthesis(raw, result.papers.length)
+  });
   result.stage = "generating";
   await discoveryProgress(projectId, actorId, analysisId, input, result);
   return result;
@@ -88,12 +95,20 @@ export async function publishDiscoveryEvidence(tx: WorkspaceDb, projectId: strin
     const passage = paper.passages.find(passage => passage.id === (anchor?.chunkId ?? relation?.chunkId)) ?? paper.passages[0];
     const claim = paper.analysis.findings?.[0] || paper.analysis.limitations?.[0] || paper.analysis.summary || "AI interpretation requires source review";
     const source = input.sources.find(source => source.id === paper.id)!;
-    const item = await tx.projectEvidenceItem.create({ data: { projectId, paperId: paper.id, extractedById: actorId, clientKey: randomUUID(), origin: "AI_SUGGESTED",
-      claim: claim.slice(0, 5000), quotation: anchor?.quote ?? relation?.quote ?? passage?.text ?? "", locator: passage?.pageNumber ? `PDF p. ${passage.pageNumber}` : paper.sourceKind === "abstract" ? "Abstract" : "Indexed source passage",
-      methodology: paper.analysis.methods?.slice(0, 5000) ?? "", population: paper.analysis.dataset?.slice(0, 5000) ?? "", results: paper.analysis.findings.join("\n").slice(0, 5000), limitations: paper.analysis.limitations.join("\n").slice(0, 5000),
-      sourceSnapshot: jsonSnapshot({ analysisId, sourceFingerprint: source.fingerprint, title: paper.title, sourceKind: paper.sourceKind, contentHash: paper.contentHash, sourceText: passage?.text ?? "", chunkId: passage?.id, quoteCheckedAgainstIndexedSource: Boolean(passage), originalSuggestion: paper.analysis }) } });
+    const item = await tx.projectEvidenceItem.create({
+      data: {
+        projectId, paperId: paper.id, extractedById: actorId, clientKey: randomUUID(), origin: "AI_SUGGESTED",
+        claim: claim.slice(0, 5000), quotation: anchor?.quote ?? relation?.quote ?? passage?.text ?? "", locator: passage?.pageNumber ? `PDF p. ${passage.pageNumber}` : paper.sourceKind === "abstract" ? "Abstract" : "Indexed source passage",
+        methodology: paper.analysis.methods?.slice(0, 5000) ?? "", population: paper.analysis.dataset?.slice(0, 5000) ?? "", results: paper.analysis.findings.join("\n").slice(0, 5000), limitations: paper.analysis.limitations.join("\n").slice(0, 5000),
+        sourceSnapshot: jsonSnapshot({ analysisId, sourceFingerprint: source.fingerprint, title: paper.title, sourceKind: paper.sourceKind, contentHash: paper.contentHash, sourceText: passage?.text ?? "", chunkId: passage?.id, quoteCheckedAgainstIndexedSource: Boolean(passage), originalSuggestion: paper.analysis })
+      }
+    });
     const revision = await tx.projectWorkspaceRevision.create({ data: { projectId, actorId, entityKind: "EXTRACTION", entityId: item.id, version: item.version, snapshot: jsonSnapshot(item) } });
-    await tx.gapEvidenceRecord.create({ data: { gapId, paperId: paper.id, projectPaperId: source.projectPaperId, evidenceKind: "SUPPORTING", evidenceType: `EXTRACTION:${item.id}`, evidenceItemId: item.id, evidenceRevisionId: revision.id,
-      excerpt: item.quotation || item.claim, sourceLocation: item.locator, explanation: "AI-suggested source relation. Check the source and interpretation before recording team support.", addedById: actorId } });
+    await tx.gapEvidenceRecord.create({
+      data: {
+        gapId, paperId: paper.id, projectPaperId: source.projectPaperId, evidenceKind: "SUPPORTING", evidenceType: `EXTRACTION:${item.id}`, evidenceItemId: item.id, evidenceRevisionId: revision.id,
+        excerpt: item.quotation || item.claim, sourceLocation: item.locator, explanation: "AI-suggested source relation. Check the source and interpretation before recording team support.", addedById: actorId
+      }
+    });
   }
 }

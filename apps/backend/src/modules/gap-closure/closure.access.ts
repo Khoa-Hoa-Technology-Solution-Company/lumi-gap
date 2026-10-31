@@ -19,14 +19,18 @@ export type GapAccessLevel = "manager" | "member" | "none";
 export interface GapAccessFacts {
   userId: string;
   gapOwnerId: string;
+  hasProject?: boolean;
   projectOwnerId?: string | null;
   isActiveProjectMember?: boolean;
 }
 
-/** manager: the gap's creator or its project's owner; member: an ACTIVE project member; none: nobody else. */
+/** manager: the gap's creator (while active on the project) or its project's owner; member: an ACTIVE project member; none: nobody else. */
 export function gapAccessLevel(facts: GapAccessFacts): GapAccessLevel {
-  if (facts.userId === facts.gapOwnerId || (facts.projectOwnerId && facts.userId === facts.projectOwnerId)) return "manager";
-  return facts.isActiveProjectMember ? "member" : "none";
+  const inProject = Boolean(facts.hasProject || facts.projectOwnerId);
+  if (!inProject) return facts.userId === facts.gapOwnerId ? "manager" : "none";
+  if (facts.projectOwnerId && facts.userId === facts.projectOwnerId) return "manager";
+  if (!facts.isActiveProjectMember) return "none";
+  return facts.userId === facts.gapOwnerId ? "manager" : "member";
 }
 
 /** A calibration check is visible to the calibration's creator and to people allowed to validate gaps. */
@@ -112,15 +116,18 @@ export async function loadGapForUser(gapParam: string, userId: string) {
   if (!gap) throw AppError.notFound("Research gap not found");
   let projectOwnerId: string | null = null;
   let isActiveProjectMember = false;
-  if (gap.projectId && gap.userId !== userId) {
+  if (gap.projectId) {
     const project = await prisma.project.findUnique({ where: { id: gap.projectId }, select: { ownerId: true } });
-    projectOwnerId = project?.ownerId ?? null;
-    if (project && project.ownerId !== userId) {
+    if (!project) throw AppError.notFound("Research gap not found");
+    projectOwnerId = project.ownerId;
+    if (project.ownerId === userId) {
+      isActiveProjectMember = true;
+    } else {
       const member = await prisma.projectMember.findUnique({ where: { projectId_userId: { projectId: gap.projectId, userId } } });
       isActiveProjectMember = member?.status === "ACTIVE";
     }
   }
-  const level = gapAccessLevel({ userId, gapOwnerId: gap.userId, projectOwnerId, isActiveProjectMember });
+  const level = gapAccessLevel({ userId, gapOwnerId: gap.userId, hasProject: Boolean(gap.projectId), projectOwnerId, isActiveProjectMember });
   if (level === "none") throw AppError.notFound("Research gap not found");
   return { gap, level };
 }

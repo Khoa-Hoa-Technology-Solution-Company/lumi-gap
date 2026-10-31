@@ -64,6 +64,7 @@ model SubmissionRevision {
   contentSnapshot  String?  @map("content_snapshot")
   contentType      String   @default("PDF") @map("content_type") @db.VarChar(16)
   manuscriptSnapshotId String? @map("manuscript_snapshot_id") @db.Uuid
+  attributionCheckId String? @map("attribution_check_id") @db.Uuid
   createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 

@@ -1,7 +1,22 @@
 import { describe, expect, it } from "vitest";
-import { githubRequestSchema, githubReturnPath } from "../github.schema.js";
+import { githubRequestSchema, githubReturnPath, githubCreateRepoSchema } from "../github.schema.js";
 const sha = "a".repeat(40), repository = "team/paper";
 describe("GitHub repository proxy boundary", () => {
+  it("allows only bounded commit history and SHA-pinned ancestry comparisons", () => {
+    for (const path of ["/commits?sha=main&per_page=5", "/commits?sha=feature%2Fpaper&per_page=5", `/compare/${sha}...${"b".repeat(40)}?per_page=1`]) expect(githubRequestSchema.safeParse({ repository, path, method: "GET" }).success).toBe(true);
+    for (const path of ["/commits?sha=main&per_page=100", "/commits?sha=main&per_page=5&page=2", "/commits?sha=..%2Fprivate&per_page=5", "/commits?sha=main%26path%3Dsecret&per_page=5", "/commits?sha=%FF&per_page=5", "/compare/main...other", `/compare/${sha}...${sha}?per_page=100`]) expect(githubRequestSchema.safeParse({ repository, path, method: "GET" }).success).toBe(false);
+    expect(githubRequestSchema.safeParse({ repository, path: "/commits?sha=main&per_page=5", method: "POST" }).success).toBe(false);
+  });
+  it("accepts both canonical and preserved legacy project identifiers", () => {
+    for (const projectId of ["6ab33f1537802fe30d38753b", "6b7bf9dc-16b5-4f6a-a3d3-4c9e0a70346a"]) {
+      expect(githubRequestSchema.safeParse({ repository, path: "", method: "GET", projectId }).success).toBe(true);
+      expect(githubCreateRepoSchema.safeParse({ name: "paper", isPrivate: true, projectId }).success).toBe(true);
+    }
+    for (const projectId of ["../private", "not-an-id", "6ab33f1537802fe30d38753b/other"]) {
+      expect(githubRequestSchema.safeParse({ repository, path: "", method: "GET", projectId }).success).toBe(false);
+      expect(githubCreateRepoSchema.safeParse({ name: "paper", projectId }).success).toBe(false);
+    }
+  });
   it("permits existing source-sync read and non-force write operations", () => {
     for (const path of ["", `/git/ref/heads/${encodeURIComponent("feature/paper")}`, `/git/commits/${sha}`, `/git/trees/${sha}?recursive=1`, `/git/blobs/${sha}`]) expect(githubRequestSchema.safeParse({ repository, path, method: "GET" }).success).toBe(true);
     const writes = [

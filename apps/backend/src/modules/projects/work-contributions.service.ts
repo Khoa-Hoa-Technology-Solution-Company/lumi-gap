@@ -1,5 +1,15 @@
 import { isDeepStrictEqual } from "node:util";
-import type { ContributionInput, CreditRole, WorkContribution, WorkspacePerson } from "@trend/shared-types";
+import {
+  contributionCategories,
+  inferContributionCategoryFromRoles,
+  type ContributionArtifactLink,
+  type ContributionCategoryKey,
+  type ContributionInput,
+  type CreditRole,
+  type ResolvedContributionArtifactRef,
+  type WorkContribution,
+  type WorkspacePerson,
+} from "@trend/shared-types";
 import type { z } from "zod";
 import type { ContributionParticipant, ContributionReview, ProjectContributionProposal } from "../../generated/prisma/client.js";
 import { AppError } from "../../common/exceptions/app-error.js";
@@ -9,12 +19,67 @@ import { withWorkspace, workspaceId, expectWorkspaceVersion, assertWorkspaceLink
 import { contributionsNotify } from "./contributions-notification.js";
 import type { contributionsPageSchema, contributionReviewSchema } from "./dto/project-contributions.schema.js";
 
+function deduplicateEvidenceRefs(refs: ContributionArtifactLink[]): ContributionArtifactLink[] {
+  const seen = new Set<string>();
+  const out: ContributionArtifactLink[] = [];
+  for (const ref of refs) {
+    const key = `${ref.kind}:${ref.id}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(ref);
+  }
+  return out;
+}
+
+export async function resolveContributionArtifactRefs(
+  context: WorkspaceContext,
+  refs: ContributionArtifactLink[],
+): Promise<ResolvedContributionArtifactRef[]> {
+  const results: ResolvedContributionArtifactRef[] = [];
+  for (const link of refs) {
+    let available = false;
+    try {
+      if (link.kind === "TASK") {
+        available = Boolean(
+          await context.tx.projectTask.findFirst({
+            where: { id: link.id, projectId: context.project.id, deletedAt: null },
+            select: { id: true },
+          }),
+        );
+      } else {
+        await assertWorkspaceLink(context, link);
+        available = true;
+      }
+    } catch {
+      available = false;
+    }
+    results.push({
+      kind: link.kind,
+      id: link.id,
+      available,
+      label: available ? null : "Artifact unavailable or removed from project",
+    });
+  }
+  return results;
+}
+
+function resolveRowCategory(row: ProjectContributionProposal): ContributionCategoryKey {
+  if (row.source === "LEGACY" && Array.isArray(row.roles) && row.roles.length > 0) {
+    return inferContributionCategoryFromRoles(row.roles as CreditRole[]);
+  }
+  const raw = (row as { category?: string | null }).category;
+  if (raw && (contributionCategories as readonly string[]).includes(raw)) {
+    return raw as ContributionCategoryKey;
+  }
+  return inferContributionCategoryFromRoles((row.roles ?? []) as CreditRole[]);
+}
+
 async function record(context: WorkspaceContext, id: string) {
   const row = await context.tx.projectContributionProposal.findFirst({ where: { id, projectId: context.project.id } });
   if (!row) throw AppError.notFound("Contribution not found");
   return row;
 }
-async function withWorkRecord<T>(projectId: string, actorId: string, id: string, write: boolean, run: (context: WorkspaceContext) => Promise<T>) {
+export async function withWorkRecord<T>(projectId: string, actorId: string, id: string, write: boolean, run: (context: WorkspaceContext) => Promise<T>) {
   const db = getPrisma(); const [project, actor] = await Promise.all([db.project.findUnique({ where: workspaceId(projectId) }), db.user.findUnique({ where: workspaceId(actorId) })]);
   if (!project || !actor) throw AppError.notFound("Contribution not found");
   return db.$transaction(async tx => {
@@ -46,7 +111,11 @@ async function present(context: WorkspaceContext, row: ProjectContributionPropos
     else if (context.role) reviewActions.push("ACCEPT");
     reviewActions.push("NEEDS_CHANGES", "DISPUTE");
   }
-  return { id: row.id, projectId: row.projectId, title: row.title, description: row.description, source: row.source as ContributionInput["source"], workDate: row.workDate.toISOString(), version: row.version, status: row.status, createdBy: workspacePerson(people, row.proposedById), participants: participants.map(p => ({ ...p, name: workspacePerson(people, p.userId).name, roles: p.roles as CreditRole[] })), evidence: row.evidence ?? "", evidenceRefs: context.role ? row.evidenceRefs as unknown as ContributionInput["evidenceRefs"] : [], reviews: reviews.map(r => ({ ...r, name: workspacePerson(people, r.userId).name, createdAt: r.createdAt.toISOString() })), history: history.map(h => ({ ...h, snapshot: context.role ? h.snapshot : { title: (h.snapshot as { title?: string }).title, description: (h.snapshot as { description?: string }).description, participants: (h.snapshot as { participants?: unknown }).participants, status: (h.snapshot as { status?: string }).status }, createdAt: h.createdAt.toISOString() })), viewerId: context.actorId, reviewActions, canManage: Boolean(context.role) && row.proposedById === context.actorId && row.source !== "LEGACY" && row.status !== "SUBMITTED" && context.project.status !== "ARCHIVED", readOnly: context.project.status === "ARCHIVED", createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
+  const visibleEvidenceRefs = context.role ? (row.evidenceRefs as unknown as ContributionInput["evidenceRefs"]) : [];
+  const evidenceRefDetails = context.role && Array.isArray(visibleEvidenceRefs)
+    ? await resolveContributionArtifactRefs(context, visibleEvidenceRefs)
+    : [];
+  return { id: row.id, projectId: row.projectId, title: row.title, description: row.description, category: resolveRowCategory(row), source: row.source as ContributionInput["source"], workDate: row.workDate.toISOString(), version: row.version, status: row.status, createdBy: workspacePerson(people, row.proposedById), participants: participants.map(p => ({ ...p, name: workspacePerson(people, p.userId).name, roles: p.roles as CreditRole[] })), evidence: row.evidence ?? "", evidenceRefs: visibleEvidenceRefs, evidenceRefDetails, reviews: reviews.map(r => ({ ...r, name: workspacePerson(people, r.userId).name, createdAt: r.createdAt.toISOString() })), history: history.map(h => ({ ...h, snapshot: context.role ? h.snapshot : { title: (h.snapshot as { title?: string }).title, description: (h.snapshot as { description?: string }).description, participants: (h.snapshot as { participants?: unknown }).participants, status: (h.snapshot as { status?: string }).status }, createdAt: h.createdAt.toISOString() })), viewerId: context.actorId, reviewActions, canManage: Boolean(context.role) && row.proposedById === context.actorId && row.source !== "LEGACY" && row.status !== "SUBMITTED" && context.project.status !== "ARCHIVED", readOnly: context.project.status === "ARCHIVED", createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
 }
 async function history(context: WorkspaceContext, row: ProjectContributionProposal, action: string, note?: string, input?: unknown) {
   const participants = await context.tx.contributionParticipant.findMany({ where: { proposalId: row.id } });
@@ -58,13 +127,27 @@ async function validateWork(context: WorkspaceContext, input: ContributionInput)
     const membership = await context.tx.projectMembershipPeriod.findFirst({ where: { projectId: context.project.id, userId: person.userId } });
     if (!membership) throw AppError.badRequest("Participants must have documented team membership");
   }
-  for (const link of input.evidenceRefs) {
+  const uniqueRefs = deduplicateEvidenceRefs(input.evidenceRefs);
+  for (const link of uniqueRefs) {
     if (link.kind === "TASK") { if (!await context.tx.projectTask.findFirst({ where: { id: link.id, projectId: context.project.id, deletedAt: null } })) throw AppError.badRequest("Related task must belong to this project"); }
     else await assertWorkspaceLink(context, link);
   }
   if (new Date(input.workDate) > new Date()) throw AppError.badRequest("Work date cannot be in the future");
 }
-const fields = (input: ContributionInput) => ({ title: input.title, description: input.description, source: input.source, workDate: new Date(input.workDate), roles: [...new Set(input.participants.flatMap(p => p.roles))], evidence: input.evidence, evidenceRefs: jsonSnapshot(input.evidenceRefs) });
+const fields = (input: ContributionInput) => {
+  const allRoles = [...new Set(input.participants.flatMap(p => p.roles))];
+  const category = input.category ?? inferContributionCategoryFromRoles(allRoles);
+  return {
+    title: input.title,
+    description: input.description,
+    category,
+    source: input.source,
+    workDate: new Date(input.workDate),
+    roles: allRoles,
+    evidence: input.evidence,
+    evidenceRefs: jsonSnapshot(deduplicateEvidenceRefs(input.evidenceRefs)),
+  };
+};
 export const workContributionsService = {
   async list(projectId: string, actorId: string, query: z.infer<typeof contributionsPageSchema>) {
     return withWorkspace(projectId, actorId, {}, async context => {

@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/stores/auth-store";
-export function useResearchResource<T>(id: string, key: readonly unknown[], load: () => Promise<T>, enabled = true, pollWhile?: (data: T | undefined) => boolean) {
+export function useResearchResource<T>(id: string, key: readonly unknown[], load: () => Promise<T>, enabled = true, pollWhile?: (data: T | undefined) => boolean, pollInterval = 2500) {
   const actorId = useAuthStore(state => state.user?.id);
-  return useQuery({ queryKey: ["project-research", actorId, id, ...key], queryFn: load, enabled: Boolean(actorId && id && enabled), refetchInterval: query => pollWhile?.(query.state.data) ? 2500 : false });
+  return useQuery({ queryKey: ["project-research", actorId, id, ...key], queryFn: load, enabled: Boolean(actorId && id && enabled), refetchInterval: query => pollWhile?.(query.state.data) ? pollInterval : false });
 }
 export function useResearchCommand(id: string) {
   const client = useQueryClient();

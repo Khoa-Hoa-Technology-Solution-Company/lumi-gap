@@ -56,23 +56,21 @@ export function DiscussionDetail({ projectId, selected, readOnly, owner, mentor,
     </>}
   </section>;
 }
-function DiscussionEditor({ projectId, thread, owner, onSaved }: { projectId: string; thread?: WorkspaceDiscussion; owner: boolean; onSaved: (id: string) => void }) {
+function DiscussionEditor({ projectId, thread, onSaved }: { projectId: string; thread?: WorkspaceDiscussion; owner: boolean; onSaved: (id: string) => void }) {
   const { t } = useI18n(); const [params] = useSearchParams(); const sourceGap = params.get("targetGap");
   const initial: SaveWorkspaceDiscussion = { title: thread?.title ?? "", body: thread?.body ?? "", category: thread?.category ?? (sourceGap ? "EVIDENCE" : "GENERAL"), link: thread?.link ?? (sourceGap ? { kind: "GAP", id: sourceGap } : null), mentorRelationshipId: thread?.mentorRelationshipId ?? null };
   const [form, setForm] = useState(initial); const [mentions, setMentions] = useState<string[]>([]); const key = useRef(crypto.randomUUID()); const busy = useRef(false); const [saved, setSaved] = useState(false);
   const [baseline, setBaseline] = useState(initial); const [expectedVersion, setExpectedVersion] = useState(thread?.version);
-  const shares = useWorkspaceResource(projectId, "plan-shares", () => workspaceApi.shares(projectId), null, owner);
   const save = useWorkspaceCommand(projectId, () => workspaceApi.saveDiscussion(projectId, { ...form, mentions, ...(thread ? { expectedVersion } : { clientKey: key.current }) }, thread?.id));
   const dirty = JSON.stringify(form) !== JSON.stringify(baseline) || mentions.length > 0;
   useUnsavedWorkspace(!saved && dirty);
-  const sharedOptions = shares.data?.filter(share => !share.revokedAt) ?? [];
   return <form className="coord-editor" onSubmit={async e => { e.preventDefault(); if (busy.current) return; busy.current = true; try { const result = await save.mutateAsync(); setSaved(true); onSaved(result.id); } catch { /* Keep the draft. */ } finally { busy.current = false; } }}><h3>{t(thread ? "Edit discussion" : "New discussion")}</h3>{thread && thread.version !== expectedVersion && <div role="status" className="coord-share-notice"><p>{t("A newer version is available. Your draft has been kept.")}</p><Button type="button" size="sm" variant="outline" onClick={async () => { if (!dirty || (await canLeaveWorkspace())) { setForm(initial); setBaseline(initial); setExpectedVersion(thread.version); setMentions([]); } }}>{t("Load latest version")}</Button></div>}<fieldset className="coord-field-stack" disabled={save.isPending}>
     <label>{t("Discussion title")}<input required maxLength={240} value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} /></label><label>{t("Category")}<select value={form.category} onChange={e => setForm({ ...form, category: e.target.value as DiscussionCategory, mentorRelationshipId: null })}>{Object.entries(categoryLabels).map(([value, label]) => <option key={value} value={value}>{t(label)}</option>)}</select></label>
     <label>{t("Discussion content")}<textarea required rows={6} maxLength={10000} value={form.body} onChange={e => setForm({ ...form, body: e.target.value })} /></label>
-    {form.category === "MENTOR_QUESTION" && owner && <label>{t("Share with mentor, optional")}<select value={form.mentorRelationshipId && form.link ? `${form.mentorRelationshipId}:${form.link.id}` : ""} onChange={e => { const share = sharedOptions.find(item => `${item.relationshipId}:${item.revisionId}` === e.target.value); setForm({ ...form, mentorRelationshipId: share?.relationshipId ?? null, link: share ? { kind: "PLAN_REVISION", id: share.revisionId } : null }); }}><option value="">{t("Team only")}</option>{sharedOptions.map(share => <option key={share.id} value={`${share.relationshipId}:${share.revisionId}`}>{share.mentor.name} · {t("Version {{version}}", { version: share.version })}</option>)}</select><small>{t("Share a plan revision first. The selected mentor can read this entire discussion and reply.")}</small></label>}
+    {form.category === "MENTOR_QUESTION" && <p>Trao đổi tại đây được giữ trong nhóm. Để gửi cho cố vấn, mở <Link className="underline" to={`/projects/${encodeURIComponent(projectId)}?tab=support`}>Tìm cố vấn</Link> và dùng kênh trao đổi riêng.</p>}
     {!form.mentorRelationshipId && <WorkspaceArtifactPicker projectId={projectId} value={form.link} onChange={link => setForm({ ...form, link })} />}
     <details><summary>{t("Notify a teammate")}</summary><WorkspacePeoplePicker projectId={projectId} value={mentions} onChange={setMentions} multiple /></details></fieldset>
-    {save.error && <WorkspaceError error={save.error} />}<div className="coord-form-actions"><span>{t(form.mentorRelationshipId ? "Shared with mentor" : "Visible to project members")}</span><Button disabled={save.isPending || !form.title.trim() || !form.body.trim()}>{t("Save discussion")}</Button></div>
+    {save.error && <WorkspaceError error={save.error} />}<div className="coord-form-actions"><span>{t("Visible to project members")}</span><Button disabled={save.isPending || !form.title.trim() || !form.body.trim()}>{t("Save discussion")}</Button></div>
   </form>;
 }
 function DiscussionResolution({ projectId, thread }: { projectId: string; thread: WorkspaceDiscussion }) {
@@ -89,5 +87,5 @@ function ThreadHistory({ projectId, threadId }: { projectId: string; threadId: s
 
 export function WorkspaceMentorPlanLink({ projectId }: { projectId: string }) {
   const { t } = useI18n();
-  return <Link className="coord-inline-link" to={`/projects/${encodeURIComponent(projectId)}/plan-review`}>{t("Open shared plan and questions")}</Link>;
+  return <Link className="coord-inline-link" data-no-i18n to={`/academic-support/projects/${encodeURIComponent(projectId)}`}>{t("Academic Support")}</Link>;
 }

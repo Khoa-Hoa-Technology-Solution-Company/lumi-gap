@@ -121,6 +121,7 @@ export function GapDetailDrawer({ gap, isOpen, onClose, onDraftProposal, researc
                 </DialogPrimitive.Description>
 
                 <div className="pt-1.5 pb-2.5 border-b border-slate-100 dark:border-slate-800/60">
+                  {gap.analysisMode === "DRAFT" && <Badge variant="outline">Nháp · kết quả sơ bộ</Badge>}
                   <GapOrigin 
                     source={gap.source} 
                     sourceReportId={gap.sourceReportId} 

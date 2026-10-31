@@ -6,15 +6,16 @@ import { notificationService } from "../notifications/notification.service.js";
 export type MentorshipEvent = "MENTORSHIP_REQUEST_RECEIVED" | "MENTORSHIP_OFFER_RECEIVED" | "MENTORSHIP_REQUEST_ACCEPTED"
   | "MENTORSHIP_OFFER_ACCEPTED" | "MENTORSHIP_REQUEST_DECLINED" | "MENTORSHIP_OFFER_DECLINED"
   | "MENTORSHIP_CANCELLED" | "MENTORSHIP_EXPIRED" | "MENTORSHIP_ENDED" | "MENTORSHIP_SUGGESTED" | "MENTORSHIP_POSITION_FILLED";
-export interface MentorshipEmailPayload { event: MentorshipEvent; projectId: string; projectTitle: string; actorName: string }
+export interface MentorshipEmailPayload { event: MentorshipEvent; projectId: string; projectTitle: string; actorName: string; requestId?: string }
 
 // Persist through the existing Notification store inside the domain transaction.
 export async function mentorshipNotification(tx: Prisma.TransactionClient, input: {
   event: MentorshipEvent; recordId: string; projectId: string; projectTitle: string; actorId: string; recipients: string[];
 }) {
   const actor = await tx.user.findUniqueOrThrow({ where: { id: input.actorId }, select: { fullName: true } });
-  const payload: MentorshipEmailPayload = { event: input.event, projectId: input.projectId, projectTitle: input.projectTitle, actorName: actor.fullName };
-  for (const userId of [...new Set(input.recipients)].filter(id => id !== input.actorId)) {
+  const payload: MentorshipEmailPayload = { event: input.event, projectId: input.projectId, projectTitle: input.projectTitle, actorName: actor.fullName,
+    ...(["MENTORSHIP_REQUEST_RECEIVED", "MENTORSHIP_OFFER_RECEIVED"].includes(input.event) ? { requestId: input.recordId } : {}) };
+  for (const userId of [...new Set(input.recipients)].filter(id => id !== input.actorId || input.event === "MENTORSHIP_EXPIRED")) {
     const preference = await tx.academicProfile.findUnique({ where: { userId }, select: { notificationLocale: true } });
     const vi = preference?.notificationLocale === "vi";
     const labels: Record<MentorshipEvent, [string, string]> = {

@@ -54,7 +54,7 @@ export async function resolveFeaturedWorks(works: AcademicFeaturedWorkInput[], v
     if (kind === "PROJECT" && work.projectId) {
       const row = projectMap.get(work.projectId);
       if (!row || !canReadProjectSummary(row.visibility, canReadProjectContent(row, researchViewerId, activeProjects))) return [];
-      return [{ kind, source: "LUMIGAP", projectId: publicDatabaseId(row), title: row.title, canonical: true, visibility: row.visibility === "PUBLIC_SUMMARY" ? "PUBLIC" : "RESTRICTED", href: `/projects/${publicDatabaseId(row)}` }];
+      return [{ kind, source: "LUMIGAP", projectId: publicDatabaseId(row), title: row.title, canonical: true, visibility: ["PUBLIC", "PUBLIC_SUMMARY"].includes(row.visibility) ? "PUBLIC" : "RESTRICTED", href: `/projects/${publicDatabaseId(row)}` }];
     }
     if (["RESEARCH_PROPOSAL", "RESEARCH_ARTIFACT"].includes(kind) && work.submissionId) {
       const row = submissionMap.get(work.submissionId);
@@ -64,12 +64,14 @@ export async function resolveFeaturedWorks(works: AcademicFeaturedWorkInput[], v
     }
     if (kind === "CANDIDATE_GAP" && work.gapId) {
       const row = gapMap.get(work.gapId);
-      if (!row || row.status !== "active" || !(researchViewerId && (row.userId === researchViewerId || canReadNested(row.projectId)))) return [];
+      const canReadGap = row?.projectId ? canReadNested(row.projectId) : row?.userId === researchViewerId;
+      if (!row || row.status !== "active" || !(researchViewerId && canReadGap)) return [];
       return [{ kind, source: "LUMIGAP", gapId: publicDatabaseId(row), title: row.title, canonical: true, visibility: "RESTRICTED", href: `/research-gaps/${publicDatabaseId(row)}` }];
     }
     if (["RESEARCH_PROPOSAL", "RESEARCH_ARTIFACT"].includes(kind) && work.reportId) {
       const row = reportMap.get(work.reportId);
-      if (!row || !row.title || row.status !== "ready" || !(researchViewerId && (row.userId === researchViewerId || canReadNested(row.projectId))) || (kind === "RESEARCH_PROPOSAL" && row.artifactType !== "RESEARCH_PROPOSAL")) return [];
+      const canReadReport = row?.projectId ? canReadNested(row.projectId) : row?.userId === researchViewerId;
+      if (!row || !row.title || row.status !== "ready" || !(researchViewerId && canReadReport) || (kind === "RESEARCH_PROPOSAL" && row.artifactType !== "RESEARCH_PROPOSAL")) return [];
       return [{ kind, source: "LUMIGAP", reportId: publicDatabaseId(row), title: row.title, canonical: true, visibility: "RESTRICTED", href: `/reports/${publicDatabaseId(row)}` }];
     }
     return [];
@@ -103,12 +105,12 @@ export async function featuredWorkOptions(userId: string, kind: AcademicFeatured
   const base = { take: 10, orderBy: { updatedAt: "desc" as const } };
   let works: AcademicFeaturedWorkInput[] = [];
   if (kind === "PAPER") works = (await db.paper.findMany({ where: { ...(title ? { title } : {}), OR: [{ dataStatus: "active" }, { requestedById: user.id }, { uploadedById: user.id }] }, take: 10, orderBy: { updatedAt: "desc" }, select: { id: true } })).map(item => ({ kind, paperId: item.id, source: "LUMIGAP" }));
-  if (kind === "PROJECT") works = (await db.project.findMany({ ...base, where: { ...(title ? { title } : {}), OR: [{ id: { in: projectIds } }, { visibility: "PUBLIC_SUMMARY" }] }, select: { id: true } })).map(item => ({ kind, projectId: item.id, source: "LUMIGAP" }));
+  if (kind === "PROJECT") works = (await db.project.findMany({ ...base, where: { ...(title ? { title } : {}), OR: [{ id: { in: projectIds } }, { visibility: { in: ["PUBLIC", "PUBLIC_SUMMARY"] } }] }, select: { id: true } })).map(item => ({ kind, projectId: item.id, source: "LUMIGAP" }));
   if (kind === "RESEARCH_PROPOSAL" || kind === "RESEARCH_ARTIFACT") {
     const authors = await db.submissionAuthor.findMany({ where: { userId: user.id }, select: { submissionId: true } });
     works = (await db.submission.findMany({ ...base, where: { ...(title ? { title } : {}), ...(kind === "RESEARCH_PROPOSAL" ? { submissionType: "RESEARCH_PROPOSAL" } : {}), OR: [{ projectId: { in: projectIds } }, { id: { in: authors.map(item => item.submissionId) } }] }, select: { id: true } })).map(item => ({ kind, submissionId: item.id, source: "LUMIGAP" }));
-    works.push(...(await db.report.findMany({ ...base, where: { ...(title ? { title } : {}), status: "ready", ...(kind === "RESEARCH_PROPOSAL" ? { artifactType: "RESEARCH_PROPOSAL" } : {}), OR: [{ userId: user.id }, { projectId: { in: projectIds } }] }, select: { id: true } })).map(item => ({ kind, reportId: item.id, source: "LUMIGAP" as const })));
+    works.push(...(await db.report.findMany({ ...base, where: { ...(title ? { title } : {}), status: "ready", ...(kind === "RESEARCH_PROPOSAL" ? { artifactType: "RESEARCH_PROPOSAL" } : {}), OR: [{ userId: user.id, projectId: null }, { projectId: { in: projectIds } }] }, select: { id: true } })).map(item => ({ kind, reportId: item.id, source: "LUMIGAP" as const })));
   }
-  if (kind === "CANDIDATE_GAP") works = (await db.researchGap.findMany({ ...base, where: { ...(title ? { title } : {}), status: "active", OR: [{ userId: user.id }, { projectId: { in: projectIds } }] }, select: { id: true } })).map(item => ({ kind, gapId: item.id, source: "LUMIGAP" }));
+  if (kind === "CANDIDATE_GAP") works = (await db.researchGap.findMany({ ...base, where: { ...(title ? { title } : {}), status: "active", OR: [{ userId: user.id, projectId: null }, { projectId: { in: projectIds } }] }, select: { id: true } })).map(item => ({ kind, gapId: item.id, source: "LUMIGAP" }));
   return (await resolveFeaturedWorks(works, user.id)).slice(0, 10);
 }

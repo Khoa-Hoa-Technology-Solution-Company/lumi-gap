@@ -16,6 +16,10 @@ import type {
   MentorRelationship, MentorshipRequest, MentorshipCollection,
   RequestMentorRelationshipRequest,
   RespondMentorRelationshipRequest,
+  CreateIntegrityCaseInput,
+  IntegrityContainmentAction,
+  ProjectSecurityOverview,
+  ResearchIntegrityCaseView,
 } from "@trend/shared-types";
 import { api } from "@/services/api-client";
 import { API_ROUTES } from "@/constants";
@@ -63,8 +67,8 @@ export const projectsApi = {
   async addMember(id: string, data: AddProjectMemberRequest): Promise<void> {
     await api.post(API_ROUTES.projects.addMember(id), data);
   },
-  async removeMember(id: string, memberId: string): Promise<IProject> {
-    const res = await api.delete(API_ROUTES.projects.removeMember(id, memberId));
+  async removeMember(id: string, memberId: string, reason?: string): Promise<IProject> {
+    const res = await api.delete(API_ROUTES.projects.removeMember(id, memberId), { data: reason ? { reason } : undefined });
     return res.data.data;
   },
   async inviteMember(id: string, data: InviteProjectMemberRequest): Promise<void> {
@@ -92,7 +96,7 @@ export const projectsApi = {
     const res = await api.get(API_ROUTES.projects.invitations.preview(token));
     return res.data.data;
   },
-  async respondToInvitationToken(token: string, decision: "accept" | "decline"): Promise<{ status: "ACCEPTED" | "DECLINED"; alreadyMember: boolean }> {
+  async respondToInvitationToken(token: string, decision: "accept" | "decline"): Promise<{ status: "ACCEPTED" | "DECLINED"; alreadyMember: boolean; projectId: string }> {
     const res = await api.post(decision === "accept" ? API_ROUTES.projects.invitations.acceptToken(token) : API_ROUTES.projects.invitations.declineToken(token));
     return res.data.data;
   },
@@ -141,6 +145,38 @@ export const projectsApi = {
   },
   async confirmContribution(id: string, proposalId: string, data: ResolveProjectContributionRequest = {}): Promise<ProjectContributionProposal> {
     const res = await api.post(`/projects/${id}/contributions/${proposalId}/confirm`, data);
+    return res.data.data;
+  },
+  async securityOverview(id: string): Promise<ProjectSecurityOverview> {
+    const res = await api.get(`/projects/${encodeURIComponent(id)}/security`);
+    return res.data.data;
+  },
+  async integrityCases(id: string): Promise<ResearchIntegrityCaseView[]> {
+    const res = await api.get(`/projects/${encodeURIComponent(id)}/integrity-cases`);
+    return res.data.data;
+  },
+  async integrityCase(id: string, caseId: string): Promise<ResearchIntegrityCaseView> {
+    const res = await api.get(`/projects/${encodeURIComponent(id)}/integrity-cases/${encodeURIComponent(caseId)}`);
+    return res.data.data;
+  },
+  async createIntegrityCase(id: string, data: CreateIntegrityCaseInput): Promise<ResearchIntegrityCaseView> {
+    const res = await api.post(`/projects/${encodeURIComponent(id)}/integrity-cases`, data);
+    return res.data.data;
+  },
+  async respondIntegrityCase(id: string, caseId: string, note: string): Promise<ResearchIntegrityCaseView> {
+    const res = await api.post(`/projects/${encodeURIComponent(id)}/integrity-cases/${encodeURIComponent(caseId)}/responses`, { note });
+    return res.data.data;
+  },
+  async containLeakIncident(id: string, caseId: string, actions: IntegrityContainmentAction[], note?: string): Promise<ResearchIntegrityCaseView> {
+    const res = await api.post(`/projects/${encodeURIComponent(id)}/integrity-cases/${encodeURIComponent(caseId)}/contain`, { actions, note });
+    return res.data.data;
+  },
+  async escalateIntegrityCase(id: string, caseId: string, reason: string): Promise<ResearchIntegrityCaseView> {
+    const res = await api.post(`/projects/${encodeURIComponent(id)}/integrity-cases/${encodeURIComponent(caseId)}/escalate`, { reason });
+    return res.data.data;
+  },
+  async resolveIntegrityCase(id: string, caseId: string, resolutionSummary: string, resultingStatus: "RESOLVED" | "CLOSED" = "RESOLVED"): Promise<ResearchIntegrityCaseView> {
+    const res = await api.post(`/projects/${encodeURIComponent(id)}/integrity-cases/${encodeURIComponent(caseId)}/resolve`, { resolutionSummary, resultingStatus });
     return res.data.data;
   },
   async rejectContribution(id: string, proposalId: string, data: ResolveProjectContributionRequest = {}): Promise<ProjectContributionProposal> {

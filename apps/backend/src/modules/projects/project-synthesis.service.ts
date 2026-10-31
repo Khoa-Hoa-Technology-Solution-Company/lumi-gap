@@ -7,7 +7,7 @@ import { logger } from "../../infrastructure/logger.js";
 import { creditService } from "../credits/credit.service.js";
 import { getAiActionCost } from "../credits/credit-policy.js";
 import { cachedGenerateJSON } from "../llm/llm.run.js";
-import { aiModel } from "../user-ai/user-ai.runtime.js";
+import { aiModel, withProjectAi } from "../user-ai/user-ai.runtime.js";
 import { synthesisContentSchema } from "./dto/project-research.schema.js";
 import { expectWorkspaceVersion, jsonSnapshot, withWorkspace, type WorkspaceContext, type WorkspaceDb } from "./workspace-access.js";
 import { assertSynthesisCitations, buildSynthesisPrompt, SYNTHESIS_JOB, SYNTHESIS_PROMPT_VERSION, SYNTHESIS_SYSTEM, synthesisJobId, type SynthesisJob } from "./research-synthesis.js";
@@ -115,6 +115,7 @@ export const projectSynthesisService = {
   },
   async generate(projectId: string, actorId: string, input: Pick<SaveSynthesis, "expectedVersion" | "evidence">) {
     const row = await withWorkspace(projectId, actorId, { write: true }, async context => {
+      if (context.project.aiDataPolicy === "DISABLED") throw AppError.forbidden("External AI processing is disabled by this project's security policy");
       const current = await latest(context.tx, context.project.id);
       expectWorkspaceVersion(current?.version ?? 0, input.expectedVersion);
       if (current && stored(current).status === "QUEUED") throw AppError.conflict("A synthesis is already queued");
@@ -147,11 +148,11 @@ export const projectSynthesisService = {
     });
     if (!input) return;
     let cacheHit = false;
-    const content = await cachedGenerateJSON<SynthesisContent>({ task: "extract", promptVersion: SYNTHESIS_PROMPT_VERSION,
+    const content = await withProjectAi(job.projectId, job.userId, () => cachedGenerateJSON<SynthesisContent>({ task: "extract", promptVersion: SYNTHESIS_PROMPT_VERSION,
       model: aiModel(), keyParts: { projectId: job.projectId, sources: input.value.sources },
       prompt: buildSynthesisPrompt(input.title, input.value.sources),
       validate: raw => { const parsed = synthesisContentSchema.parse(raw); assertSynthesisCitations(parsed, input.value.sources.length); return parsed; },
-      options: { system: SYNTHESIS_SYSTEM, temperature: 0, maxOutputTokens: 4096 }, onCacheHit: () => { cacheHit = true; } });
+      options: { system: SYNTHESIS_SYSTEM, temperature: 0, maxOutputTokens: 4096 }, onCacheHit: () => { cacheHit = true; } }));
     await withWorkspace(job.projectId, job.userId, { write: true }, async context => {
       const live = await latest(context.tx, context.project.id);
       // Duplicate delivery must not overwrite a human revision.

@@ -4,31 +4,94 @@ import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import type { MentorAccessWorkspace, MentorAgreement } from "@trend/shared-types";
 import { MentorProjectPage } from "../mentor-project";
 
-const mocks = vi.hoisted(() => ({ workspace: vi.fn(), guidance: vi.fn(), canLeave: vi.fn() }));
-vi.mock("@/features/projects/api/academic-support.api", () => ({ academicSupportApi: mocks }));
-vi.mock("@/stores/auth-store", () => ({ useAuthStore: (select: any) => select({ user: { id: "mentor" } }) }));
-vi.mock("@/i18n", () => ({ useI18n: () => ({ language: "en", t: (key: string) => key }) }));
-vi.mock("@/features/projects/components/workspace-plan", () => ({ WorkspacePlanPanel: ({ projectId, mentor }: any) => <div data-testid="shared-plan" data-project={projectId} data-mentor={mentor}>Shared plan content</div> }));
-vi.mock("@/features/projects/components/workspace-discussions", () => ({ WorkspaceDiscussionsPanel: ({ projectId, mentor, readOnly }: any) => <div data-testid="shared-questions" data-project={projectId} data-mentor={mentor} data-readonly={readOnly}>Shared questions</div> }));
-vi.mock("@/features/projects/components/workspace-common", async original => ({ ...await original<any>(), canLeaveWorkspace: () => mocks.canLeave() }));
-const meta = { page: 1, pageSize: 10, total: 1, totalPages: 1 };
-const base = { project: { id: "project", title: "Student team", researchAreas: ["Education"], summary: "Public summary", mentoringNeeds: "Review the evaluation design" }, accessRole: "MENTOR", canProvideFeedback: true, guidance: [], context: { description: "Research introduction", inclusionCriteria: ["Peer reviewed"], exclusionCriteria: [], section: "papers", items: [{ id: "paper", title: "Related paper", body: "Source abstract", detail: "2024" }], counts: { papers: 1, gaps: 2, evidence: 0, reports: 0, members: 3 }, meta } };
+const mocks = vi.hoisted(() => ({ workspace: vi.fn(), resource: vi.fn(), feedback: vi.fn(), history: vi.fn(), agreements: vi.fn(), comment: vi.fn(), propose: vi.fn(), respond: vi.fn(), configure: vi.fn(), catalog: vi.fn(), revoke: vi.fn(), unshare: vi.fn(), canLeave: vi.fn(), actorId: "mentor" }));
+vi.mock("@/features/projects/api/mentor-access.api", () => ({ mentorAccessApi: mocks }));
+vi.mock("@/stores/auth-store", () => ({ useAuthStore: (select: (state: { user: { id: string } }) => unknown) => select({ user: { id: mocks.actorId } }) }));
+vi.mock("@/i18n", () => ({ useI18n: () => ({ language: "vi", t: (key: string) => key }) }));
+vi.mock("@/features/projects/components/workspace-common", async original => ({ ...await original<typeof import("@/features/projects/components/workspace-common")>(), canLeaveWorkspace: () => mocks.canLeave() }));
+const base: MentorAccessWorkspace = {
+  viewerId: "mentor", projectId: "project", title: "Nhóm nghiên cứu", canManage: false, readOnly: false, page: 1, pageSize: 20, total: 1, hasNext: false,
+  policies: [{ mentorId: "mentor", mentorName: "Giảng viên", invitationState: "ACCEPTED", policy: { id: "access", requestId: "request", relationshipId: "relationship", version: 2, preset: "ADVISOR", permissions: ["MANUSCRIPTS_VIEW", "MANUSCRIPTS_COMMENT"], expiresAt: null, revokedAt: null, effective: true }, shares: [{ id: "abstract", kind: "MANUSCRIPT", resourceId: "manuscript", sectionKey: "abstract", title: "Tóm tắt được duyệt", createdAt: "2026-10-28T08:00:00Z", revokedAt: null }] }],
+};
+const emptyPage = { items: [], page: 1, pageSize: 20, total: 0, hasNext: false };
 let host: HTMLDivElement, root: Root, client: QueryClient;
-async function tick() { await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)); }); }
-async function mount(query = "") { await act(async () => root.render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[`/academic-support/projects/project${query}`]}><Routes><Route path="/academic-support/projects/:projectId" element={<MentorProjectPage />} /></Routes></MemoryRouter></QueryClientProvider>)); await tick(); await tick(); }
-function button(label: string) { return [...host.querySelectorAll<HTMLButtonElement>("button")].find(value => value.textContent?.trim() === label)!; }
-async function click(label: string) { await act(async () => button(label).click()); await tick(); }
-async function typeNote(value: string) { const input = host.querySelector<HTMLTextAreaElement>("textarea")!; await act(async () => { Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(input, value); input.dispatchEvent(new Event("input", { bubbles: true })); }); }
-beforeEach(() => { vi.resetAllMocks(); vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true); mocks.canLeave.mockResolvedValue(true); mocks.workspace.mockResolvedValue(structuredClone(base)); mocks.guidance.mockResolvedValue(base); client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } }); host = document.createElement("div"); document.body.append(host); root = createRoot(host); });
+async function tick() { await act(async () => { await new Promise(resolve => setTimeout(resolve, 25)); }); }
+async function mount() { await act(async () => root.render(<QueryClientProvider client={client}><MemoryRouter initialEntries={["/academic-support/projects/project"]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}><Routes><Route path="/academic-support/projects/:projectId" element={<MentorProjectPage />} /></Routes></MemoryRouter></QueryClientProvider>)); await tick(); await tick(); }
+function button(label: string) { return [...document.querySelectorAll<HTMLButtonElement>("button")].find(value => value.textContent?.trim() === label)!; }
+async function click(label: string) { expect(button(label), label).toBeDefined(); await act(async () => button(label).click()); await tick(); }
+async function fill(label: string, value: string) {
+  const input = [...document.querySelectorAll("label")].find(l => l.textContent?.startsWith(label))?.querySelector<HTMLInputElement | HTMLTextAreaElement>("input,textarea"); expect(input, label).toBeDefined();
+  await act(async () => { Object.getOwnPropertyDescriptor(input instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype, "value")!.set!.call(input, value); input!.dispatchEvent(new Event("input", { bubbles: true })); }); await tick();
+}
+beforeEach(() => {
+  vi.resetAllMocks(); mocks.actorId = "mentor"; vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true); mocks.canLeave.mockResolvedValue(true);
+  mocks.workspace.mockResolvedValue(structuredClone(base)); mocks.resource.mockResolvedValue({ ...base.policies[0]!.shares[0], content: "Nội dung đã được duyệt <script>private()</script>" }); mocks.feedback.mockResolvedValue(emptyPage); mocks.history.mockResolvedValue(emptyPage); mocks.agreements.mockResolvedValue(emptyPage); mocks.catalog.mockResolvedValue(emptyPage);
+  client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } } }); host = document.createElement("div"); document.body.append(host); root = createRoot(host);
+});
 afterEach(async () => { await act(async () => root.unmount()); client.clear(); host.remove(); vi.unstubAllGlobals(); });
 
-it("opens the authorized overview with a return path and no automatic writes", async () => { await mount(); expect(host.querySelector("h1")?.textContent).toBe("Student team"); expect(host.textContent).toContain("Review the evaluation design"); expect(host.textContent).toContain("Research introduction"); expect(host.querySelector("a")?.getAttribute("href")).toBe("/academic-support?view=active"); expect(mocks.workspace).toHaveBeenCalledWith("project", { section: "papers", page: 1 }); expect(mocks.guidance).not.toHaveBeenCalled(); });
-it("loads each resource section and its pagination from the existing API", async () => { mocks.workspace.mockImplementation(async (_id, query) => ({ ...base, context: { ...base.context, section: query.section, meta: { ...meta, page: query.page, total: 21, totalPages: 3 } } })); await mount("?tab=research"); const select = host.querySelector("select")!; await act(async () => { Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")!.set!.call(select, "gaps"); select.dispatchEvent(new Event("change", { bubbles: true })); }); await tick(); expect(mocks.workspace).toHaveBeenLastCalledWith("project", { section: "gaps", page: 1 }); await click("Next"); expect(mocks.workspace).toHaveBeenLastCalledWith("project", { section: "gaps", page: 2 }); });
-it("uses shared plan and question components with mentor permissions", async () => { await mount(); await click("Shared research plan"); expect(host.querySelector('[data-testid="shared-plan"]')?.getAttribute("data-mentor")).toBe("true"); await click("Team questions"); expect(host.querySelector('[data-testid="shared-questions"]')?.getAttribute("data-mentor")).toBe("true"); expect(host.querySelector('[data-testid="shared-questions"]')?.getAttribute("data-readonly")).toBe("false"); });
-it("sends guidance only on submit, then refreshes the team's history", async () => { await mount(); expect(button("Send guidance").disabled).toBe(true); await typeNote("Compare the baseline first"); expect(mocks.guidance).not.toHaveBeenCalled(); mocks.workspace.mockResolvedValue({ ...base, guidance: [{ id: "guidance", note: "Compare the baseline first", attribution: "MENTOR", author: { fullName: "Lecturer" }, createdAt: "2026-10-21T08:00:00Z" }] }); await click("Send guidance"); await tick(); expect(mocks.guidance).toHaveBeenCalledWith("project", "Compare the baseline first"); expect(host.querySelector("textarea")?.value).toBe(""); expect(host.textContent).toContain("Guidance sent to the team."); expect(host.querySelector("ol")?.textContent).toContain("Compare the baseline first"); });
-it("keeps a failed guidance draft and guards navigation with unsaved text", async () => { mocks.guidance.mockRejectedValue(new Error("Offline")); await mount(); await typeNote("Keep this suggestion"); await click("Send guidance"); expect(host.querySelector("textarea")?.value).toBe("Keep this suggestion"); expect(host.querySelector('[role="alert"]')).not.toBeNull(); mocks.canLeave.mockResolvedValue(false); await click("Shared research plan"); expect(host.querySelector("textarea")?.value).toBe("Keep this suggestion"); expect(host.querySelector('[data-testid="shared-plan"]')).toBeNull(); });
-it("makes completed projects read-only for guidance and discussion replies", async () => { mocks.workspace.mockResolvedValue({ ...base, canProvideFeedback: false }); await mount(); expect(host.querySelector("textarea")).toBeNull(); expect(host.textContent).toContain("Read-only project"); await click("Team questions"); expect(host.querySelector('[data-testid="shared-questions"]')?.getAttribute("data-readonly")).toBe("true"); expect(mocks.guidance).not.toHaveBeenCalled(); });
-it("does not render research or feedback controls when access is denied", async () => { mocks.workspace.mockRejectedValue({ isAxiosError: true, response: { status: 403 } }); await mount(); expect(host.textContent).toContain("Project guidance unavailable"); expect(host.querySelector("textarea")).toBeNull(); expect(host.querySelector(".mentor-project-nav")).toBeNull(); expect(host.textContent).not.toContain("Research introduction"); });
-it("explains empty resource sections without presenting an error", async () => { mocks.workspace.mockResolvedValue({ ...base, context: { ...base.context, items: [], meta: { ...meta, total: 0 } } }); await mount("?tab=research&section=evidence"); expect(host.textContent).toContain("No research material here yet"); expect(host.querySelector('[role="alert"]')).toBeNull(); });
+it("renders only approved section text with no source, exports or team navigation", async () => {
+  await mount(); expect(host.querySelector("h2")?.textContent).toBe("Nhóm nghiên cứu"); expect(host.textContent).toContain("Tóm tắt được duyệt"); expect(mocks.resource).not.toHaveBeenCalled();
+  const summary = [...host.querySelectorAll("summary")].find(s => s.textContent?.includes("Tóm tắt được duyệt"))!;
+  await act(async () => { const detail = summary.parentElement as HTMLDetailsElement; detail.open = true; detail.dispatchEvent(new Event("toggle")); }); await tick(); await tick();
+  expect(mocks.resource).toHaveBeenCalledWith("project", "access", "abstract"); expect(host.textContent).toContain("Nội dung đã được duyệt"); expect(host.querySelector("script")).toBeNull();
+  expect(host.querySelector("a")?.getAttribute("href")).toBe("/academic-support?view=active"); expect(mocks.workspace).toHaveBeenCalledWith("project", 1);
+  for (const label of ["Cấu hình quyền và chia sẻ", "Thu hồi truy cập", "Chia sẻ mã nguồn", "Shared research plan", "Team questions", "Download ZIP"]) expect(host.textContent).not.toContain(label);
+  expect(mocks.comment).not.toHaveBeenCalled();
+});
+it("offers only the granted comment action and no dedicated chat when chat permission is absent", async () => {
+  await mount(); const select = [...host.querySelectorAll("label")].find(l => l.textContent?.startsWith("Loại phản hồi"))?.querySelector("select");
+  expect([...select!.options].map(o => o.value)).toEqual(["COMMENT"]); expect(host.textContent).not.toContain("Cuộc trao đổi riêng");
+  await fill("Nội dung phản hồi", "So sánh với baseline rõ hơn"); await click("Gửi phản hồi");
+  expect(mocks.comment).toHaveBeenCalledWith("project", "access", expect.objectContaining({ shareId: "abstract", kind: "COMMENT", body: "So sánh với baseline rõ hơn" }));
+});
+it("keeps failed drafts and retries with the same idempotency key", async () => {
+  mocks.comment.mockRejectedValue(new Error("Offline")); await mount(); await fill("Nội dung phản hồi", "Không làm mất ý kiến này"); await click("Gửi phản hồi");
+  expect(host.querySelector("textarea")?.value).toBe("Không làm mất ý kiến này"); expect(host.querySelector('[role="alert"]')).not.toBeNull(); const key = mocks.comment.mock.calls[0]![2].clientKey;
+  await click("Gửi phản hồi"); expect(mocks.comment.mock.calls[1]![2].clientKey).toBe(key);
+});
+it("hides feedback posting for observers while keeping published content readable", async () => {
+  const view = structuredClone(base); view.policies[0]!.policy = { ...view.policies[0]!.policy, preset: "OBSERVER", permissions: ["MANUSCRIPTS_VIEW"] }; mocks.workspace.mockResolvedValue(view); await mount();
+  expect(host.textContent).toContain("Tóm tắt được duyệt"); expect(button("Gửi phản hồi")).toBeUndefined(); expect(mocks.comment).not.toHaveBeenCalled();
+});
+it("chooses suggestions for tasks rather than submitting an invalid comment", async () => {
+  const view = structuredClone(base); view.policies[0]!.policy.permissions = ["TASKS_VIEW", "TASKS_SUGGEST"]; view.policies[0]!.shares[0] = { ...view.policies[0]!.shares[0]!, kind: "TASK", sectionKey: "", title: "Thí nghiệm" }; mocks.workspace.mockResolvedValue(view);
+  await mount(); await fill("Nội dung phản hồi", "Thêm kiểm tra đối chứng"); await click("Gửi phản hồi"); expect(mocks.comment.mock.calls[0]![2].kind).toBe("SUGGESTION");
+});
+it("clears previously permitted UI on policy refresh without losing a pending text draft", async () => {
+  await mount(); await fill("Nội dung phản hồi", "Bản nháp đang viết"); const next = structuredClone(base); next.policies[0]!.policy.version++; next.policies[0]!.policy.permissions = []; next.policies[0]!.shares = [];
+  mocks.workspace.mockResolvedValue(next); await act(async () => { await client.invalidateQueries({ queryKey: ["mentor-access", "mentor", "project", "workspace"] }); }); await tick();
+  expect(host.textContent).not.toContain("Tóm tắt được duyệt"); expect(button("Gửi phản hồi")).toBeUndefined();
+  mocks.workspace.mockResolvedValue({ ...base, policies: [{ ...base.policies[0]!, policy: { ...base.policies[0]!.policy, version: 4 } }] });
+  await act(async () => { await client.invalidateQueries({ queryKey: ["mentor-access", "mentor", "project", "workspace"] }); }); await tick(); expect(host.querySelector("textarea")?.value).toBe("Bản nháp đang viết");
+});
+it("hides cached resources and comments after an access-denied refetch", async () => {
+  await mount(); mocks.workspace.mockRejectedValue({ isAxiosError: true, response: { status: 403 } });
+  await act(async () => { await client.invalidateQueries({ queryKey: ["mentor-access", "mentor", "project", "workspace"] }); }); await tick();
+  expect(host.textContent).toContain("Không gian cố vấn chưa khả dụng"); expect(host.textContent).not.toContain("Tóm tắt được duyệt"); expect(button("Gửi phản hồi")).toBeUndefined();
+});
+it("requires explicit reading confirmation before accepting a contribution agreement", async () => {
+  const agreement: MentorAgreement = { id: "agreement", proposedById: "owner", creditRoles: ["SUPERVISION"], acknowledgement: "Cảm ơn góp ý thiết kế nghiên cứu", note: "", status: "PROPOSED", respondedById: null, createdAt: "2026-10-28T08:00:00Z" };
+  mocks.agreements.mockResolvedValue({ ...emptyPage, total: 1, items: [agreement] }); await mount();
+  expect(button("Chấp nhận thỏa thuận").disabled).toBe(true); const consentLabel = [...host.querySelectorAll("label")].find(l => l.textContent?.startsWith("Tôi đã đọc"))!; const checkbox = consentLabel.querySelector<HTMLInputElement>("input")!;
+  await act(async () => checkbox.click()); await click("Chấp nhận thỏa thuận"); expect(mocks.respond).toHaveBeenCalledWith("project", "access", "agreement", "ACCEPTED");
+});
+it("does not let a nonowner teammate propose or accept agreements", async () => {
+  mocks.actorId = "member"; mocks.workspace.mockResolvedValue({ ...base, viewerId: "member" }); mocks.agreements.mockResolvedValue({ ...emptyPage, total: 1, items: [{ id: "agreement", proposedById: "mentor", creditRoles: ["SUPERVISION"], acknowledgement: "Đề nghị ghi nhận", status: "PROPOSED" }] }); await mount();
+  expect(button("Đề xuất thỏa thuận")).toBeUndefined(); expect(button("Chấp nhận thỏa thuận")).toBeUndefined(); expect(button("Gửi phản hồi")).toBeDefined();
+});
+it("keeps completed projects readable and disables new collaboration", async () => {
+  mocks.workspace.mockResolvedValue({ ...base, readOnly: true }); await mount(); expect(host.textContent).toContain("Tóm tắt được duyệt"); expect(button("Gửi phản hồi")).toBeUndefined(); expect(button("Đề xuất thỏa thuận")).toBeUndefined();
+});
+it("paginates mentor feedback independently", async () => {
+  mocks.feedback.mockResolvedValue({ ...emptyPage, total: 21, hasNext: true }); await mount(); await click("Trang sau"); expect(mocks.feedback).toHaveBeenLastCalledWith("project", "access", 2);
+});
+it("retains a stale permission draft until the owner explicitly reloads", async () => {
+  mocks.actorId = "owner"; const view = { ...structuredClone(base), viewerId: "owner", canManage: true }; mocks.workspace.mockResolvedValue(view); await mount(); await click("Cấu hình quyền và chia sẻ"); await fill("Lý do thay đổi", "Cập nhật theo trao đổi");
+  const newer = structuredClone(view); newer.policies[0]!.policy.version++; mocks.workspace.mockResolvedValue(newer);
+  await act(async () => { await client.invalidateQueries({ queryKey: ["mentor-access", "owner", "project", "workspace"] }); }); await tick();
+  expect(button("Lưu quyền và nội dung đã duyệt").disabled).toBe(true); expect(document.body.textContent).toContain("Bản nháp vẫn được giữ"); expect(mocks.configure).not.toHaveBeenCalled();
+});

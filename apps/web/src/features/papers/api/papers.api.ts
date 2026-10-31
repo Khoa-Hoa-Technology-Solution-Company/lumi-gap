@@ -92,13 +92,20 @@ export const papersApi = {
     const res = await api.get(API_ROUTES.papers.translationCapabilities);
     return res.data.data;
   },
-  async references(id: string): Promise<{ references: PaperRef[]; totalReferenced: number; inCorpus: number }> {
+  async references(id: string): Promise<{ references: PaperRef[]; totalReferenced?: number; inCorpus: number }> {
     const res = await api.get(`/papers/${id}/references`);
-    return res.data.data || { references: [], totalReferenced: 0, inCorpus: 0 };
+    const data = res.data.data;
+    // The current API returns an array of indexed works, without a source total.
+    if (Array.isArray(data)) return { references: data, inCorpus: data.length };
+    if (!Array.isArray(data?.references)) throw new Error("Dữ liệu tài liệu trích dẫn không hợp lệ.");
+    return data;
   },
-  async related(id: string): Promise<{ relatedWorks: PaperRef[]; totalRelated: number; inCorpus: number }> {
+  async related(id: string): Promise<{ relatedWorks: PaperRef[]; totalRelated?: number; inCorpus: number }> {
     const res = await api.get(`/papers/${id}/related`);
-    return res.data.data || { relatedWorks: [], totalRelated: 0, inCorpus: 0 };
+    const data = res.data.data;
+    if (Array.isArray(data)) return { relatedWorks: data, inCorpus: data.length };
+    if (!Array.isArray(data?.relatedWorks)) throw new Error("Dữ liệu bài báo liên quan không hợp lệ.");
+    return data;
   },
   async getFormatPresets(): Promise<Array<{ name: string; description: string; source_url?: string }>> {
     const res = await api.get("/papers/format-presets");

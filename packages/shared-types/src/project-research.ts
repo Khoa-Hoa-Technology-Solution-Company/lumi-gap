@@ -15,7 +15,7 @@ export interface ProjectEvidence extends EvidenceContent {
   id: string; projectId: string; paperId: string; version: number; origin: "HUMAN" | "AI_SUGGESTED";
   reviewState: EvidenceReviewState; reviewRationale: string; extractedById: string;
   reviewedById: string | null; reviewedAt: string | null; createdAt: string; updatedAt: string;
-  sourceSnapshot: Record<string, unknown>; sourceTitle: string;
+  sourceSnapshot: Record<string, unknown>; sourceTitle: string; sourceNeedsReview?: boolean;
   relatedQuestions?: Array<{ id: string; text: string }>;
   relatedGaps?: Array<{ id: string; title: string }>;
 }

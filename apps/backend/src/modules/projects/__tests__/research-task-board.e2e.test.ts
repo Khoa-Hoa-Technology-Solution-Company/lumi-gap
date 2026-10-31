@@ -159,8 +159,10 @@ describe.skipIf(!isolated).sequential("Research tasks with PostgreSQL, HTTP and 
     const invitation = await call(id, "/mentorships", owner, "POST", { mentorUserId: mentor.userId, message: "Review this version", idempotencyKey: crypto.randomUUID() });
     expect((await call(id, `/mentorships/${invitation.json.data.id}/accept`, mentor, "POST", {})).status).toBe(200);
     const relation = await db.mentorRelationship.findFirstOrThrow({ where: { projectId: id, mentorUserId: mentor.userId, status: "ACTIVE" } });
-    const feedback = await call(id, `/manuscripts/${mid}/comments`, owner, "POST", { body: "Please review our evidence synthesis", snapshotId: sid, mentorRelationshipId: relation.id, clientKey: crypto.randomUUID() }); expect(feedback.status).toBe(201);
-    for (const link of [{ kind: "MANUSCRIPT_SNAPSHOT" as const, id: sid }, { kind: "MENTOR_FEEDBACK" as const, id: feedback.json.data.id }]) {
+    expect((await call(id, `/manuscripts/${mid}/comments`, owner, "POST", { body: "Please review our evidence synthesis", snapshotId: sid, mentorRelationshipId: relation.id, clientKey: crypto.randomUUID() })).status).toBe(400);
+    // Retained pre-migration reference remains useful to the team, without granting mentor access.
+    const feedback = await db.projectDiscussion.create({ data: { projectId: id, authorId: owner.userId, clientKey: crypto.randomUUID(), title: "Legacy feedback", body: "Please review our evidence synthesis", category: "MENTOR_QUESTION", targetKind: "MANUSCRIPT_SNAPSHOT", targetId: sid, mentorRelationshipId: relation.id } });
+    for (const link of [{ kind: "MANUSCRIPT_SNAPSHOT" as const, id: sid }, { kind: "MENTOR_FEEDBACK" as const, id: feedback.id }]) {
       const tid = await create(id, { link }); expect((await read(id, tid)).link).toEqual(link);
       expect((await call(id, `/workspace/artifacts/${link.id}?kind=${link.kind}`)).json.data.href).toBe(`/projects/${id}/manuscripts/${mid}?snapshot=${sid}`);
       expect((await call(other, "/tasks", owner, "POST", input({ link }))).status).toBe(400);

@@ -2,9 +2,12 @@ import type { NotificationItem } from "@trend/shared-types";
 import { getTopicTrendTarget } from "@/features/trends/trend-navigation";
 
 export function getNotificationDestination(
-  notification: Pick<NotificationItem, "type" | "targetKind" | "targetId"> & Partial<Pick<NotificationItem, "title" | "verificationRequestId" | "allocationRevisionId" | "workContributionId" | "manuscriptId" | "manuscriptSnapshotId" | "trendTopic" | "trendTopicId">>,
+  notification: Pick<NotificationItem, "type" | "targetKind" | "targetId"> & Partial<Pick<NotificationItem, "paperId" | "title" | "screeningRoundId" | "mentorshipRequestId" | "verificationRequestId" | "allocationRevisionId" | "workContributionId" | "contributionEvaluationId" | "manuscriptId" | "manuscriptSnapshotId" | "trendTopic" | "trendTopicId">>,
   isAdmin: boolean,
 ): string | null {
+  if (["SCREENING_REVIEW_ASSIGNED", "SCREENING_ACTION_REQUIRED"].includes(notification.type) && notification.targetId) return `/projects/${encodeURIComponent(notification.targetId)}?tab=papers${notification.paperId ? `&source=${encodeURIComponent(notification.paperId)}` : ""}`;
+  if (notification.type === "SCREENING_ADJUDICATION_ASSIGNED" && notification.targetId && notification.screeningRoundId) return `/academic-support/projects/${encodeURIComponent(notification.targetId)}/screening/${encodeURIComponent(notification.screeningRoundId)}`;
+  if (notification.type === "PROJECT_CONTRIBUTION_UPDATE" && notification.targetId && notification.contributionEvaluationId) return `/projects/${encodeURIComponent(notification.targetId)}/contribution-review?evaluation=${encodeURIComponent(notification.contributionEvaluationId)}`;
   if (notification.type === "MANUSCRIPT_FEEDBACK_REQUEST" && notification.targetId && notification.manuscriptId && notification.manuscriptSnapshotId) return `/projects/${encodeURIComponent(notification.targetId)}/manuscripts/${encodeURIComponent(notification.manuscriptId)}?snapshot=${encodeURIComponent(notification.manuscriptSnapshotId)}`;
   if (notification.type === "PROJECT_ALLOCATION_UPDATE" && notification.targetId && notification.allocationRevisionId) return `/projects/${encodeURIComponent(notification.targetId)}/allocation?revision=${encodeURIComponent(notification.allocationRevisionId)}`;
   if (notification.type === "PROJECT_CONTRIBUTION_UPDATE" && notification.targetId) return notification.workContributionId ? `/projects/${encodeURIComponent(notification.targetId)}/contribution-review?record=${encodeURIComponent(notification.workContributionId)}` : `/projects/${encodeURIComponent(notification.targetId)}?tab=contributions&contributionTab=work`;
@@ -20,7 +23,17 @@ export function getNotificationDestination(
   const verificationQuery = notification.verificationRequestId ? `?requestId=${encodeURIComponent(notification.verificationRequestId)}` : "";
   if (notification.type === "LECTURER_VERIFICATION_REVIEW_REQUESTED") return isAdmin ? `/admin/academic-verifications${verificationQuery}` : null;
   if (notification.type.startsWith("LECTURER_VERIFICATION_")) return `/settings/verification/lecturer${verificationQuery}`;
-  if (notification.type.startsWith("MENTORSHIP_") || notification.type.startsWith("PROJECT_MENTORSHIP_")) return notification.targetId ? `/academic-support?projectId=${encodeURIComponent(notification.targetId)}` : "/academic-support";
+  if (notification.type.startsWith("MENTORSHIP_") || notification.type.startsWith("PROJECT_MENTORSHIP_")) {
+    if (["MENTORSHIP_REQUEST_RECEIVED", "MENTORSHIP_OFFER_RECEIVED"].includes(notification.type)) {
+      const query = new URLSearchParams({ view: "incoming" });
+      if (notification.targetId && notification.mentorshipRequestId) { query.set("invitationProjectId", notification.targetId); query.set("requestId", notification.mentorshipRequestId); }
+      return `/academic-support?${query}`;
+    }
+    if (notification.type.endsWith("_ACCEPTED")) return "/academic-support?view=active";
+    if (["_DECLINED", "_CANCELLED", "_EXPIRED", "_ENDED", "_POSITION_FILLED"].some(suffix => notification.type.endsWith(suffix))) return "/academic-support?view=history";
+    if (notification.type === "MENTORSHIP_SUGGESTED" && notification.targetId) return `/projects/${encodeURIComponent(notification.targetId)}?tab=support`;
+    return notification.targetId ? `/academic-support?projectId=${encodeURIComponent(notification.targetId)}` : "/academic-support";
+  }
   if (notification.type.startsWith("academic_verification_")) return "/settings/academic";
   // Reviewers can respond in the review center without project membership.
   if (["REVIEW_REQUESTED", "REVISION_RESUBMITTED", "REVIEW_REQUEST_CANCELLED"].includes(notification.type)) return "/reviews";
@@ -56,8 +69,8 @@ export function getNotificationDestination(
   if (!isAdmin && notification.type === "submission_rejected" && notification.targetKind === "paper" && notification.targetId) {
     return `/settings/submit-paper?edit=${encodeURIComponent(notification.targetId)}`;
   }
-  // The invitee is not a member yet: the project page cannot accept, the project list shows the pending invitation.
-  if (notification.type === "project_invitation") return "/projects";
+  // Keep invitations visible instead of auto-opening an unrelated recent project.
+  if (notification.type === "project_invitation") return "/projects?view=invitations";
   if (notification.targetId) {
     const routeByKind: Record<NonNullable<NotificationItem["targetKind"]>, string> = {
       paper: "/papers",

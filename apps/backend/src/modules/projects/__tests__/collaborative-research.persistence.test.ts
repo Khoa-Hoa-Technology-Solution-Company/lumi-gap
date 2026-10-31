@@ -1,3 +1,4 @@
+import { screeningService as currentScreening } from "../screening.service.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import express from "express";
 import { once } from "node:events";
@@ -20,7 +21,7 @@ import { errorHandler } from "../../../common/middleware/error-handler.js";
 import { hashOpaqueToken, tokenService } from "../../auth/token.service.js";
 import { createEvidenceSchema, importPaperSchema } from "../dto/project-research.schema.js";
 
-const isolated = process.env.PROJECT_SLICE_TEST === "1" && process.env.DATABASE_URL?.includes("127.0.0.1:15439/lumigap_project_slice_test") && process.env.REDIS_URL === "redis://127.0.0.1:16389";
+const isolated = (process.env.SCREENING_INTEGRATION === "1" && new URL(process.env.DATABASE_URL!).pathname.endsWith("_test")) || (process.env.MENTOR_ACCESS_INTEGRATION === "1" && /^postgres(?:ql)?:\/\/[^/]+@(127\.0\.0\.1|localhost):[0-9]+\/lumigap_mentor_access_v1_test(?:\?|$)/.test(process.env.DATABASE_URL ?? "")) || process.env.PROJECT_SLICE_TEST === "1" && process.env.DATABASE_URL?.includes("127.0.0.1:15439/lumigap_project_slice_test") && process.env.REDIS_URL === "redis://127.0.0.1:16389";
 describe.skipIf(!isolated).sequential("collaborative research workflow, disposable PostgreSQL", () => {
   const db = getPrisma(), marker = crypto.randomUUID(), users: string[] = [], projects: string[] = [], papers: string[] = [];
   let owner: string, member: string, outsider: string, mentor: string, expert: string;
@@ -36,7 +37,7 @@ describe.skipIf(!isolated).sequential("collaborative research workflow, disposab
   }
   async function source(id: string, include = true) {
     const result = await sources.import(id, owner, { title: `Study ${crypto.randomUUID()}`, authors: ["Research Author"], reference: "Team reference", abstractText: "Different transfer outcomes were reported.", clientKey: crypto.randomUUID() }); papers.push(result.paperId);
-    if (include) { const link = await db.projectPaper.findUniqueOrThrow({ where: { projectId_paperId: { projectId: id, paperId: result.paperId } } }); await projectService.updateProjectPaper(id, result.paperId, { screeningStatus: "INCLUDED", expectedUpdatedAt: link.updatedAt.toISOString(), inclusionReason: "Relevant study" }, member); }
+    if (include) { const link = await db.projectPaper.findUniqueOrThrow({ where: { projectId_paperId: { projectId: id, paperId: result.paperId } } }); await db.projectPaper.update({ where: { id: link.id }, data: { screeningStatus: "INCLUDED", inclusionReason: "Legacy relevant study" } }); }
     return result.paperId;
   }
   async function candidate(projectId: string) {
@@ -46,6 +47,7 @@ describe.skipIf(!isolated).sequential("collaborative research workflow, disposab
   async function explicitPlan(id: string) { const view = await plans.get(id, owner); await projectPlanDraftService.snapshot(id, owner, { expectedVersion: view.version, clientKey: crypto.randomUUID(), changeSummary: "Explicit sharing checkpoint" }); return plans.get(id, owner); }
   beforeAll(async () => { owner = await person("owner"); member = await person("member"); outsider = await person("outsider"); mentor = await person("mentor"); expert = await person("expert"); await db.userCapability.create({ data: { userId: expert, capability: "GAP_VALIDATION", status: "ACTIVE", source: "TEST" } }); });
   afterAll(async () => {
+    if (process.env.SCREENING_INTEGRATION === "1") return;
     await db.gapValidation.deleteMany({ where: { reviewerId: { in: users } } });
     await db.gapEvidenceRecord.deleteMany({ where: { addedById: { in: users } } });
     await db.projectPaperFile.deleteMany({ where: { projectId: { in: projects } } });
@@ -82,11 +84,12 @@ describe.skipIf(!isolated).sequential("collaborative research workflow, disposab
     expect((await db.paper.findUniqueOrThrow({ where: { id: paperId } })).pdfPath).toBeNull();
     await expect(projectService.removePaperFromProject(id, paperId, owner)).rejects.toMatchObject({ statusCode: 409 });
   });
-  it("records exploratory MAYBE and version conflicts with human decision history", async () => {
+  it("blocks direct legacy decisions while keeping notes and version protection", async () => {
     const id = await project(), paperId = await source(id, false), link = await db.projectPaper.findUniqueOrThrow({ where: { projectId_paperId: { projectId: id, paperId } } });
-    await projectService.updateProjectPaper(id, paperId, { screeningStatus: "MAYBE", expectedUpdatedAt: link.updatedAt.toISOString() }, member);
-    await expect(projectService.updateProjectPaper(id, paperId, { screeningStatus: "INCLUDED", expectedUpdatedAt: link.updatedAt.toISOString() }, owner)).rejects.toMatchObject({ statusCode: 409 });
-    expect((await screening.library(id, owner, page)).items[0]?.screeningStatus).toBe("MAYBE"); expect((await screening.history(id, owner, paperId)).length).toBeGreaterThan(0);
+    await expect(projectService.updateProjectPaper(id, paperId, { screeningStatus: "MAYBE", expectedUpdatedAt: link.updatedAt.toISOString() }, owner)).rejects.toMatchObject({ statusCode: 409 });
+    await projectService.updateProjectPaper(id, paperId, { notes: "Still assessing eligibility", expectedUpdatedAt: link.updatedAt.toISOString() }, owner);
+    await expect(projectService.updateProjectPaper(id, paperId, { notes: "Stale note", expectedUpdatedAt: link.updatedAt.toISOString() }, owner)).rejects.toMatchObject({ statusCode: 409 });
+    expect((await screening.library(id, owner, page)).items[0]?.screeningStatus).toBe("UNDECIDED");
     await expect(evidence.create(id, owner, { ...extraction(), paperId })).rejects.toMatchObject({ statusCode: 400 });
   });
   it("keeps blinded votes separate, identifies conflicts, resolves explicitly and rejects policy bypass", async () => {
@@ -101,8 +104,8 @@ describe.skipIf(!isolated).sequential("collaborative research workflow, disposab
     await screening.vote(id, member, paperId, { phase: "TITLE_ABSTRACT", decision: "EXCLUDED", reason: "Population differs", expectedVersion: 1 });
     item = (await screening.library(id, owner, page)).items[0]!; expect(item.conflict).toBe(true); expect(item.screeningStatus).toBe("UNDECIDED");
     await expect(screening.resolve(id, member, paperId, { phase: "TITLE_ABSTRACT", decision: "INCLUDED", reason: "Team discussed it", expectedUpdatedAt: new Date(item.updatedAt).toISOString() })).rejects.toMatchObject({ statusCode: 403 });
-    await screening.resolve(id, owner, paperId, { phase: "TITLE_ABSTRACT", decision: "INCLUDED", reason: "We retain it for context comparison", expectedUpdatedAt: new Date(item.updatedAt).toISOString() });
-    expect((await screening.library(id, owner, page)).items[0]?.screeningStatus).toBe("INCLUDED");
+    await expect(screening.resolve(id, owner, paperId, { phase: "TITLE_ABSTRACT", decision: "INCLUDED", reason: "We retain it for context comparison", expectedUpdatedAt: new Date(item.updatedAt).toISOString() })).rejects.toMatchObject({ statusCode: 409 });
+    expect((await screening.library(id, owner, page)).items[0]?.screeningStatus).toBe("UNDECIDED");
     await screening.vote(id, member, paperId, { phase: "TITLE_ABSTRACT", decision: "MAYBE", reason: "Need full text", expectedVersion: 2 });
     expect((await screening.library(id, owner, page)).items[0]?.screeningStatus).toBe("UNDECIDED");
     expect((await screening.history(id, member, paperId)).length).toBeGreaterThanOrEqual(3);
@@ -146,7 +149,7 @@ describe.skipIf(!isolated).sequential("collaborative research workflow, disposab
     const row = await evidence.create(id, member, { ...extraction(), ...suggestion.content, paperId, origin: "AI_SUGGESTED", corpusPaperId: cp.id });
     expect(row.reviewState).toBe("PENDING"); expect(row.sourceSnapshot).toMatchObject({ originalSuggestion: { findings: "An unverified model interpretation" } });
     await expect(evidence.create(id, owner, { ...extraction(), paperId, origin: "AI_SUGGESTED" })).rejects.toMatchObject({ statusCode: 400 });
-    const other = await project(); await db.projectPaper.create({ data: { projectId: other, paperId, addedById: owner } }); const link = await db.projectPaper.findUniqueOrThrow({ where: { projectId_paperId: { projectId: other, paperId } } }); await projectService.updateProjectPaper(other, paperId, { screeningStatus: "INCLUDED", expectedUpdatedAt: link.updatedAt.toISOString() }, owner);
+    const other = await project(); await db.projectPaper.create({ data: { projectId: other, paperId, addedById: owner } }); const link = await db.projectPaper.findUniqueOrThrow({ where: { projectId_paperId: { projectId: other, paperId } } }); await db.projectPaper.update({ where: { id: link.id }, data: { screeningStatus: "INCLUDED" } });
     await expect(evidence.create(other, owner, { ...extraction(), paperId, origin: "AI_SUGGESTED", corpusPaperId: cp.id })).rejects.toMatchObject({ statusCode: 400 });
   });
   it("connects structured and legacy evidence to tasks, discussions and focused views without crossing project boundaries", async () => {
@@ -193,7 +196,13 @@ describe.skipIf(!isolated).sequential("collaborative research workflow, disposab
     const queue = await gapValidationService.listValidationQueue(expert, { page: 1, pageSize: 50 }); const queued = queue.items.find(item => item.id === gap.id)!; expect(queued.validationCount).toBe(0); expect(queued.reviewedByMe).toBe(false);
     await expect(gapValidationService.addValidation(gap.id, expert, { action: "VALIDATE", comment: "Stale packet evaluation", expectedVersion: 2 })).rejects.toMatchObject({ statusCode: 409 });
     const old = (await gapValidationService.getValidations(gap.id, owner))[0]!; expect(old.gapVersion).toBe(2);
-    const link = await db.projectPaper.findUniqueOrThrow({ where: { projectId_paperId: { projectId: id, paperId } } }); await projectService.updateProjectPaper(id, paperId, { screeningStatus: "EXCLUDED", exclusionReason: "OTHER", exclusionNote: "Scope changed", expectedUpdatedAt: link.updatedAt.toISOString() }, member);
+    const started = await currentScreening.start(id, owner, { paperIds: [paperId], phase: "TITLE_ABSTRACT", confirmRescreen: true, clientKey: crypto.randomUUID() });
+    const roundId = started.roundIds![0]!;
+    await currentScreening.assign(id, owner, { roundIds: [roundId], mode: "MANUAL", reviewerIds: [member], dueAt: null, clientKey: crypto.randomUUID() });
+    const assigned = await currentScreening.detail(id, member, roundId);
+    await currentScreening.submit(id, member, roundId, { assignmentId: assigned.myAssignmentId!, expectedRevision: 1, decision: "EXCLUDE", exclusionReason: "Scope changed", comment: "New evidence excludes this study", confirmed: true, clientKey: crypto.randomUUID() });
+    const ready = await currentScreening.detail(id, owner, roundId);
+    await currentScreening.resolve(id, owner, roundId, { expectedVersion: ready.version, decision: "EXCLUDED", reason: "Scope changed after reassessing the source", confirmed: true, clientKey: crypto.randomUUID() });
     expect((await gaps.detail(id, owner, gap.id)).gap.validationStatus).toBe("CANDIDATE");
   });
   it("enforces signed HTTP sessions, project boundaries and private PDF responses", async () => {
@@ -207,43 +216,18 @@ describe.skipIf(!isolated).sequential("collaborative research workflow, disposab
       await projectService.removeMemberFromProject(id, member, owner); expect((await fetch(`${origin}/papers`, { headers: { authorization: `Bearer ${token}` } })).status).toBe(404);
     } finally { server.closeAllConnections(); await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); }
   });
-  it("permits mentor discussion without research overwrite, denies outsiders and archives all research writes", async () => {
+  it("denies legacy mentor research access while preserving team research and archived reads", async () => {
     const id = await project(), paperId = await source(id), gap = await candidate(id);
     await db.academicProfile.update({ where: { userId: mentor }, data: { primaryPosition: "LECTURER", academicRole: "LECTURER", roleVerificationStatus: "VERIFIED", positionStatus: "VERIFIED", supportAvailability: { enabled: true } } });
     const request = await db.mentorshipRequest.create({ data: { projectId: id, mentorUserId: mentor, requestedBy: owner, direction: "PROJECT_TO_LECTURER", status: "ACCEPTED", expiresAt: new Date(Date.now() + 86400000) } });
     const relation = await db.mentorRelationship.create({ data: { projectId: id, mentorUserId: mentor, sourceRequestId: request.id } });
-    const plan = await explicitPlan(id); await plans.share(id, owner, { revisionId: plan.currentRevisionId!, relationshipId: relation.id });
-    const thread = await discussions.save(id, owner, { title: "Challenge this scope", body: "Please suggest additional counterevidence", category: "MENTOR_QUESTION", mentorRelationshipId: relation.id, link: { kind: "PLAN_REVISION", id: plan.currentRevisionId! }, clientKey: crypto.randomUUID(), mentions: [] });
-    await discussions.reply(id, mentor, thread.id, { replyToId: null, body: "Compare a second population before extending the claim", clientKey: crypto.randomUUID(), mentions: [] });
-    const feedback = { note: "Challenge the scope with a second population", expectedVersion: gap.version, clientKey: crypto.randomUUID() };
-    const receipt = await gaps.guidance(id, mentor, gap.id, feedback);
-    expect((await gaps.guidance(id, mentor, gap.id, feedback)).id).toBe(receipt.id);
-    const responseNotice = await db.notification.findFirstOrThrow({ where: { eventKey: `WORKSPACE:GAP_GUIDANCE:${receipt.id}:${owner}` } });
-    expect(responseNotice.type).toBe("PROJECT_WORKSPACE_MENTOR_FEEDBACK"); expect(await canDeliverWorkspaceNotification(responseNotice)).toBe(true);
-    const requested = await gaps.guidance(id, owner, gap.id, { note: "Please challenge this scope", expectedVersion: gap.version, clientKey: crypto.randomUUID() });
-    const notice = await db.notification.findFirstOrThrow({ where: { eventKey: `WORKSPACE:GAP_GUIDANCE:${requested.id}:${mentor}` } });
-    expect(notice.type).toBe("PROJECT_WORKSPACE_GAP_GUIDANCE"); expect(await canDeliverWorkspaceNotification(notice)).toBe(true);
-    expect(await canDeliverWorkspaceNotification({ ...notice, type: "PROJECT_WORKSPACE_MENTOR_FEEDBACK" })).toBe(true);
-    expect(await canDeliverWorkspaceNotification({ ...notice, userId: outsider })).toBe(false);
-    expect(await canDeliverWorkspaceNotification({ ...notice, eventKey: `WORKSPACE:GAP_GUIDANCE:${crypto.randomUUID()}:${mentor}` })).toBe(false);
-    await db.academicProfile.update({ where: { userId: mentor }, data: { roleVerificationStatus: "SELF_DECLARED" } });
-    expect(await canDeliverWorkspaceNotification(notice)).toBe(false);
-    await db.academicProfile.update({ where: { userId: mentor }, data: { roleVerificationStatus: "VERIFIED" } });
-    const mentorView = await gaps.detail(id, mentor, gap.id);
-    expect(mentorView.guidance.find(row => row.id === receipt.id)).toMatchObject({ note: feedback.note, attribution: "MENTOR", gapVersion: gap.version });
-    expect(mentorView.discussions).toEqual([]);
-    expect(mentorView.canRequestExpertReview).toBe(false);
-    expect((await gaps.detail(id, owner, gap.id)).canRequestExpertReview).toBe(true);
-    await expect(gaps.guidance(id, mentor, gap.id, { ...feedback, note: "Reusing the key with different content" })).rejects.toMatchObject({ statusCode: 409 });
-    await expect(gaps.guidance(id, outsider, gap.id, { ...feedback, clientKey: crypto.randomUUID() })).rejects.toMatchObject({ statusCode: 404 });
-    await expect(gaps.assess(id, mentor, gap.id, { status: "REJECTED", rationale: "Mentor cannot overwrite the team", expectedVersion: gap.version })).rejects.toMatchObject({ statusCode: 404 });
-    await gaps.revise(id, member, gap.id, { title: "Transfer within comparable universities", description: "A bounded replication question", rationale: "Respond to the mentor's population concern", scope: "Comparable university settings", assumptions: "Equivalent outcome measures", expectedVersion: gap.version });
-    const revisedGap = await gaps.detail(id, mentor, gap.id);
-    expect(revisedGap.gap.version).toBe(gap.version + 1);
-    expect(revisedGap.guidance.find(row => row.id === receipt.id)?.gapVersion).toBe(gap.version);
-    await db.mentorRelationship.update({ where: { id: relation.id }, data: { status: "ENDED" } });
-    expect(await canDeliverWorkspaceNotification(notice)).toBe(false);
+    const plan = await explicitPlan(id);
+    await db.planShare.create({ data: { projectId: id, revisionId: plan.currentRevisionId!, relationshipId: relation.id, sharedById: owner } });
+    await expect(plans.get(id, mentor)).rejects.toMatchObject({ statusCode: 404 });
     await expect(gaps.detail(id, mentor, gap.id)).rejects.toMatchObject({ statusCode: 404 });
+    await expect(gaps.guidance(id, mentor, gap.id, { note: "Legacy guidance", expectedVersion: gap.version, clientKey: crypto.randomUUID() })).rejects.toMatchObject({ statusCode: 404 });
+    expect(await canDeliverWorkspaceNotification({ type: "PROJECT_WORKSPACE_GAP_GUIDANCE", targetUuid: id, userId: mentor })).toBe(false);
+    expect((await gaps.detail(id, owner, gap.id)).canRequestExpertReview).toBe(true);
     for (const actor of [mentor, outsider]) await expect(evidence.create(id, actor, { ...extraction(), paperId })).rejects.toMatchObject({ statusCode: 404 });
     await expect(gaps.detail(await project(), owner, gap.id)).rejects.toMatchObject({ statusCode: 404 });
     await projectService.archiveProject(id, owner);

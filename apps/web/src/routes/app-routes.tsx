@@ -77,6 +77,7 @@ const CommunityDetailPage = lazy(() => import("@/pages/communities/community-det
 const CommunityNewPage = lazy(() => import("@/pages/communities/community-new").then((m) => ({ default: m.CommunityNewPage })));
 const CommunityManagePage = lazy(() => import("@/pages/communities/community-manage").then((m) => ({ default: m.CommunityManagePage })));
 const AcademicSupportPage = lazy(() => import("@/pages/academics/academic-support").then(m => ({ default: m.AcademicSupportPage })));
+const ScreeningAdjudicationPage = lazy(() => import("@/features/projects/components/screening-adjudication"));
 const MentorProjectPage = lazy(() => import("@/pages/academics/mentor-project").then(m => ({ default: m.MentorProjectPage })));
 const LecturerDirectoryPage = lazy(() => import("@/pages/academics/lecturer-directory").then((m) => ({ default: m.LecturerDirectoryPage })));
 const PublicAcademicProfilePage = lazy(() => import("@/pages/academics/public-academic-profile").then((m) => ({ default: m.PublicAcademicProfilePage })));
@@ -212,6 +213,7 @@ export function AppRoutes() {
             <Route path="/review-opportunities" element={<ReviewOpportunitiesPage />} />
             <Route path="/academic-support" element={<AcademicSupportPage />} />
             <Route path="/academic-support/projects/:projectId" element={<MentorProjectPage />} />
+            <Route path="/academic-support/projects/:projectId/screening/:roundId" element={<ScreeningAdjudicationPage />} />
             <Route path="/reviews" element={<ReviewDashboardPage />} />
             <Route path="/reviews/:assignmentId" element={<ReviewWorkspacePage />} />
             <Route path="/review-requests/:requestId" element={<ReviewRequestDetailPage />} />

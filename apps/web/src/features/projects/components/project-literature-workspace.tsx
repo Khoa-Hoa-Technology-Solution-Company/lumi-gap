@@ -4,7 +4,6 @@ import { toast } from "sonner";
 import {
   AlertCircle,
   AlertTriangle,
-  BookMarked,
   BookOpen,
   Calendar,
   Check,
@@ -17,7 +16,6 @@ import {
   ExternalLink,
   FileText,
   HelpCircle,
-  Layers,
   Link2,
   Loader2,
   Maximize2,
@@ -36,7 +34,6 @@ import {
 } from "lucide-react";
 import type { IProject, Paper, ProjectExclusionReason, ProjectPaperSummary, ProjectReadingStatus, ProjectScreeningStatus } from "@trend/shared-types";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -56,14 +53,6 @@ type ProjectPaperLink = IProject["papers"][number];
 type LiteratureFilter = ProjectScreeningStatus | "ALL";
 const reviewGroups = [{ value: "ALL", label: "All papers" }, { value: "UNDECIDED", label: "Not reviewed" }, { value: "MAYBE", label: "Considering" }, { value: "INCLUDED", label: "Relevant" }, { value: "EXCLUDED", label: "Not relevant" }] as const;
 const relevanceLabels = { UNDECIDED: "Not reviewed", MAYBE: "Considering", INCLUDED: "Relevant", EXCLUDED: "Not relevant" } as const;
-
-const groupIcons = {
-  ALL: Layers,
-  UNDECIDED: CircleHelp,
-  MAYBE: HelpCircle,
-  INCLUDED: CheckCircle2,
-  EXCLUDED: XCircle,
-} as const;
 
 const statusIcons = {
   UNDECIDED: CircleHelp,
@@ -100,7 +89,7 @@ function authorLine(authors?: Array<{ displayName?: string }>) {
 export function ProjectLiteratureWorkspace({
   projectId,
   papers,
-  screeningMode = "EXPLORATORY",
+
   readOnly,
   onRequestAddPaper,
   onViewEvidence,
@@ -114,7 +103,6 @@ export function ProjectLiteratureWorkspace({
 }) {
   const { t, language } = useI18n();
   const paperTrigger = useRef<HTMLButtonElement | null>(null);
-  const exclusionTrigger = useRef<HTMLElement | null>(null);
   const paperSearch = useRef<HTMLInputElement>(null);
   const reader = useRef<HTMLDivElement>(null);
   const updatePaper = useUpdateProjectPaper(projectId);
@@ -132,9 +120,6 @@ export function ProjectLiteratureWorkspace({
   const sourceParam = searchParams.get("source") ?? "";
   const [selectedPaperId, setSelectedPaperId] = useState(sourceParam);
   const [selectedBulkIds, setSelectedBulkIds] = useState<string[]>([]);
-  const [excludeDialog, setExcludeDialog] = useState<ProjectPaperLink | null>(null);
-  const [exclusionReason, setExclusionReason] = useState<ProjectExclusionReason | "">("");
-  const [exclusionNote, setExclusionNote] = useState("");
   const [notesDialog, setNotesDialog] = useState<ProjectPaperLink | null>(null);
   const [noteValue, setNoteValue] = useState("");
   const [removeDialog, setRemoveDialog] = useState<ProjectPaperLink | null>(null);
@@ -195,38 +180,6 @@ export function ProjectLiteratureWorkspace({
   const paperQuery = usePaper(selectedParts?.id);
   const selectedPaper = paperQuery.data;
 
-  const persistStatus = async (link: ProjectPaperLink, status: ProjectScreeningStatus) => {
-    if (readOnly || screeningMode === "INDEPENDENT" || updatePaper.isPending) return;
-    const { id } = paperParts(link);
-    try {
-      await updatePaper.mutateAsync({ paperId: id, data: { screeningStatus: status, expectedUpdatedAt: link.updatedAt } });
-      toast.success(t("Screening decision saved."));
-    } catch {
-      toast.error(t("Could not save the screening decision."));
-    }
-  };
-
-  const startExclusion = (link: ProjectPaperLink, trigger?: HTMLElement) => {
-    exclusionTrigger.current = trigger ?? reader.current?.querySelector<HTMLElement>('[data-reader-action="exclude"]') ?? null;
-    setExclusionReason("");
-    setExclusionNote("");
-    setExcludeDialog(link);
-  };
-
-  const saveExclusion = async () => {
-    if (readOnly || !excludeDialog || !exclusionReason || updatePaper.isPending) return;
-    try {
-      await updatePaper.mutateAsync({
-        paperId: paperParts(excludeDialog).id,
-        data: { screeningStatus: "EXCLUDED", exclusionReason, exclusionNote: exclusionNote.trim() || null, expectedUpdatedAt: excludeDialog.updatedAt },
-      });
-      toast.success(t("Screening decision saved."));
-      setExcludeDialog(null);
-    } catch {
-      toast.error(t("Could not save the screening decision."));
-    }
-  };
-
   const saveNotes = async () => {
     if (readOnly || !notesDialog || updatePaper.isPending) return;
     try {
@@ -271,14 +224,6 @@ export function ProjectLiteratureWorkspace({
     setSortBy("newest");
     setFilter("ALL");
   };
-
-  const totalCount = papers.length;
-  const includedCount = counts.INCLUDED;
-  const maybeCount = counts.MAYBE;
-  const undecidedCount = counts.UNDECIDED;
-  const excludedCount = counts.EXCLUDED;
-  const screenedCount = includedCount + maybeCount + excludedCount;
-  const percentScreened = totalCount > 0 ? Math.round((screenedCount / totalCount) * 100) : 0;
 
   const [readerLayout, setReaderLayout] = useState<"modal" | "drawer">("modal");
   const currentPaperIndex = filteredPapers.findIndex(link => matchesPaper(link, selectedPaperId));
@@ -333,14 +278,11 @@ export function ProjectLiteratureWorkspace({
       isLoading={paperQuery.isLoading}
       isError={paperQuery.isError}
       isReadOnly={readOnly}
-      independentScreening={screeningMode === "INDEPENDENT"}
       onOpenScreening={() => { setSelectedPaperId(""); const params = new URLSearchParams(searchParams); params.set("view", "screening"); params.set("source", selectedParts.id); setSearchParams(params); }}
       isSaving={updatePaper.isPending}
       language={language}
       t={t}
       onReadingStatus={(status) => void changeReadingStatus(selectedLink, status)}
-      onScreen={(status) => void persistStatus(selectedLink, status)}
-      onExclude={() => startExclusion(selectedLink)}
       onEditNotes={() => { setNoteValue(selectedLink.notes ?? ""); setNotesDialog(selectedLink); }}
       onViewEvidence={onViewEvidence}
       hasNextPaper={hasNextPaper}
@@ -375,25 +317,9 @@ export function ProjectLiteratureWorkspace({
         <ProjectLiteratureEmpty readOnly={readOnly} onAdd={onRequestAddPaper} />
       ) : (
         <>
-          {totalCount > 0 && (
-            <div className="project-screening-progress-wrap" data-complete={percentScreened === 100}>
-              <div className="project-screening-progress-header">
-                <span className="project-screening-progress-label">
-                  {t("Screening progress")}
-                </span>
-                <span className="project-screening-progress-val">
-                  <strong>{percentScreened}%</strong> · {t("{{screened}} of {{total}} reviewed", { screened: screenedCount, total: totalCount })}
-                </span>
-              </div>
-              <div className="project-screening-progress-bar">
-                <div
-                  className="project-screening-progress-fill"
-                  data-complete={percentScreened === 100}
-                  style={{ width: `${percentScreened}%` }}
-                />
-              </div>
-            </div>
-          )}
+          <p className="screening-notice" data-no-i18n>
+            Thư viện giữ trạng thái phân loại và ghi chú hiện có. Tiến độ gửi phiếu và quyết định cuối được theo dõi riêng trong Đánh giá bài báo.
+          </p>
 
           <div className="project-literature-groups" role="group" aria-label={t("Paper review groups")}>
             {reviewGroups.map((group) => {
@@ -598,29 +524,9 @@ export function ProjectLiteratureWorkspace({
 
                   <div className="project-paper-actions-side">
                     <div className="project-paper-decision">
-                      {readOnly || screeningMode === "INDEPENDENT" ? (
-                        <span className="project-relevance" data-status={link.screeningStatus}>
-                          {t(screeningLabel)}
-                        </span>
-                      ) : (
-                        <select
-                          aria-label={t("Relevance of {{title}}", { title })}
-                          value={link.screeningStatus}
-                          disabled={updatePaper.isPending}
-                          data-status={link.screeningStatus}
-                          onChange={event => {
-                            const next = event.target.value as ProjectScreeningStatus;
-                            if (next === "EXCLUDED") startExclusion(link, event.currentTarget);
-                            else void persistStatus(link, next);
-                          }}
-                        >
-                          {Object.entries(relevanceLabels).map(([status, label]) => (
-                            <option key={status} value={status}>
-                              {t(label)}
-                            </option>
-                          ))}
-                        </select>
-                      )}
+                      <span className="project-relevance" data-status={link.screeningStatus}>
+                        {t(screeningLabel)}
+                      </span>
                     </div>
 
                     <Button
@@ -641,31 +547,6 @@ export function ProjectLiteratureWorkspace({
           </section>
         </>
       )}
-
-      <Dialog open={Boolean(excludeDialog)} onOpenChange={(open) => { if (!open && !updatePaper.isPending) setExcludeDialog(null); }}>
-        <DialogContent className="sm:max-w-lg" onCloseAutoFocus={event => { event.preventDefault(); (exclusionTrigger.current?.isConnected ? exclusionTrigger.current : paperSearch.current)?.focus({ preventScroll: true }); }}>
-          <DialogHeader>
-            <DialogTitle>{t("Why are you excluding this paper?")}</DialogTitle>
-            <DialogDescription className="line-clamp-2">{excludeDialog ? paperParts(excludeDialog).summary?.title : ""}</DialogDescription>
-          </DialogHeader>
-          <fieldset className="space-y-2" disabled={readOnly || updatePaper.isPending}>
-            <legend className="mb-2 text-sm font-medium">{t("Choose a reason")}</legend>
-            {exclusionReasons.map((reason) => (
-              <label key={reason.value} className={`flex cursor-pointer items-center gap-3 rounded-md border px-3 py-2.5 text-sm hover:bg-muted/50 ${exclusionReason === reason.value ? "border-primary bg-primary/[0.04]" : ""}`}>
-                <input type="radio" name="project-exclusion-reason" value={reason.value} checked={exclusionReason === reason.value} onChange={() => setExclusionReason(reason.value)} className="h-4 w-4 accent-primary" />{t(reason.label)}
-              </label>
-            ))}
-          </fieldset>
-          <div className="space-y-2">
-            <Label htmlFor="project-exclusion-note">{t("Optional note")}</Label>
-            <textarea id="project-exclusion-note" disabled={readOnly || updatePaper.isPending} value={exclusionNote} onChange={(event) => setExclusionNote(event.target.value)} maxLength={2000} rows={3} className="w-full resize-y rounded-md border bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setExcludeDialog(null)} disabled={updatePaper.isPending}>{t("Cancel")}</Button>
-            <Button variant="destructive" onClick={() => void saveExclusion()} disabled={!exclusionReason || updatePaper.isPending}>{updatePaper.isPending ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />{t("Saving…")}</> : t("Exclude paper")}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={Boolean(notesDialog)} onOpenChange={(open) => { if (!open && !updatePaper.isPending) setNotesDialog(null); }}>
         <DialogContent onCloseAutoFocus={event => { event.preventDefault(); reader.current?.querySelector<HTMLElement>('[data-reader-action="notes"]')?.focus({ preventScroll: true }); }}>
@@ -697,7 +578,7 @@ export function ProjectLiteratureWorkspace({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={Boolean(selectedLink)} onOpenChange={open => { if (!open && !notesDialog && !excludeDialog) closeReader(); }}>
+      <Dialog open={Boolean(selectedLink)} onOpenChange={open => { if (!open && !notesDialog) closeReader(); }}>
         <DialogContent
           ref={reader}
           className="project-paper-dialog"
@@ -775,14 +656,11 @@ function PaperDetailPanel({
   isLoading,
   isError,
   isReadOnly,
-  independentScreening,
   onOpenScreening,
   isSaving,
   language,
   t,
   onReadingStatus,
-  onScreen,
-  onExclude,
   onEditNotes,
   onViewEvidence,
   hasNextPaper,
@@ -795,14 +673,11 @@ function PaperDetailPanel({
   isLoading: boolean;
   isError: boolean;
   isReadOnly: boolean;
-  independentScreening: boolean;
   onOpenScreening: () => void;
   isSaving: boolean;
   language: string;
   t: (key: string, values?: Record<string, string | number>) => string;
   onReadingStatus: (status: ProjectReadingStatus) => void;
-  onScreen: (status: ProjectScreeningStatus) => void;
-  onExclude: () => void;
   onEditNotes: () => void;
   onViewEvidence: () => void;
   hasNextPaper?: boolean;
@@ -1080,10 +955,8 @@ function PaperDetailPanel({
             <option value="NOT_STARTED">{t("Not started")}</option><option value="READING">{t("Reading")}</option><option value="REVIEWED">{t("Reviewed")}</option>
           </select>
         </label>
-        {independentScreening ? <Button type="button" variant="outline" onClick={onOpenScreening}>{t("Independent reviewers")} · {t("Screening")}</Button> : <div className="project-relevance-actions" aria-label={t("Fit with the research topic")}>
-          <Button type="button" size="sm" variant={link.screeningStatus === "INCLUDED" ? "default" : "outline"} onClick={() => onScreen("INCLUDED")} disabled={isReadOnly || isSaving}><Check className="mr-1.5 h-3.5 w-3.5" />{t("Relevant")}</Button>
-          <Button type="button" size="sm" variant={link.screeningStatus === "MAYBE" ? "secondary" : "outline"} onClick={() => onScreen("MAYBE")} disabled={isReadOnly || isSaving}>{t("Considering")}</Button>
-          <Button type="button" size="sm" variant={link.screeningStatus === "EXCLUDED" ? "secondary" : "outline"} data-reader-action="exclude" onClick={onExclude} disabled={isReadOnly || isSaving}>{t("Not relevant")}</Button>
+        <div className="project-relevance-actions">
+          <Button type="button" variant="outline" onClick={onOpenScreening}><span data-no-i18n>Đánh giá bài báo</span></Button>
           {hasNextPaper && onNextPaper && (
             <Button
               type="button"
@@ -1096,7 +969,7 @@ function PaperDetailPanel({
               <ChevronRight className="h-3.5 w-3.5 ml-1" />
             </Button>
           )}
-        </div>}
+        </div>
       </footer>
     </div>
   );

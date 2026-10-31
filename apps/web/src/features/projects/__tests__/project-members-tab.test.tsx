@@ -51,7 +51,7 @@ it("shows one owner badge and uses a system invitation without a message field",
   expect(container.textContent).toContain("Project owner");
   expect(container.textContent).not.toContain("Creator");
   expect(mocks.search).not.toHaveBeenCalled();
-  await click("Invite collaborator");
+  await click("Invite member");
   expect(document.querySelector("textarea")).toBeNull();
   expect(document.querySelector('[aria-label="Invitation email"]')?.textContent).toContain("Project Owner invites you to collaborate on Research evidence.");
   await fill("external@example.test");
@@ -62,7 +62,7 @@ it("shows one owner badge and uses a system invitation without a message field",
 
 it("debounces user lookup and invites the chosen user without allowing a changed account email", async () => {
   mocks.search.mockResolvedValue({ data: { data: [{ id: "person", fullName: "Research Collaborator", email: "person@example.test" }] } });
-  await render(); await click("Invite collaborator");
+  await render(); await click("Invite member");
   await fill("per"); await fill("person@example.test");
   expect(mocks.search).not.toHaveBeenCalled();
   await act(async () => { await vi.advanceTimersByTimeAsync(300); });
@@ -77,10 +77,8 @@ it("debounces user lookup and invites the chosen user without allowing a changed
 });
 
 it("routes mentor collaboration through the consent workflow without sending a member invitation", async () => {
-  await render(); await click("Invite collaborator");
-  const mentorLabel = [...document.querySelectorAll("label")].find(label => label.textContent?.includes("Academic Mentor"))!;
-  await act(async () => mentorLabel.querySelector<HTMLInputElement>('input[type="radio"]')!.click());
-  expect(document.querySelector("#project-invite-email")).toBeNull();
+  await render(); await click("Invite member");
+  expect(document.querySelector('input[type="radio"]')).toBeNull();
   const next = document.querySelector<HTMLAnchorElement>('a[href="/projects/project?tab=support"]')!;
   expect(next.textContent).toBe("Continue to Academic Support");
   await act(async () => next.click());
@@ -90,14 +88,14 @@ it("routes mentor collaboration through the consent workflow without sending a m
 
 it("does not expose invitation or ownership controls to a regular member", async () => {
   await render("member");
-  expect([...container.querySelectorAll("button")].find(button => button.textContent === "Invite collaborator")).toBeUndefined();
+  expect([...container.querySelectorAll("button")].find(button => button.textContent === "Invite member")).toBeUndefined();
   expect(container.querySelector('[aria-label="Transfer ownership"]')).toBeNull();
   expect(mocks.search).not.toHaveBeenCalled();
 });
 
 it("keeps the chosen recipient when invitation delivery fails", async () => {
   mocks.invite.mockRejectedValue(new Error("Offline"));
-  await render(); await click("Invite collaborator"); await fill("external@example.test");
+  await render(); await click("Invite member"); await fill("external@example.test");
   await act(async () => document.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
   expect(document.querySelector<HTMLInputElement>("#project-invite-email")?.value).toBe("external@example.test");
   expect(document.querySelector('[role="dialog"]')).not.toBeNull();
@@ -105,7 +103,33 @@ it("keeps the chosen recipient when invitation delivery fails", async () => {
 it("does not expose member management for an archived project owner", async () => {
   await render("owner", true);
   expect(container.textContent).toContain("Project owner");
-  expect([...container.querySelectorAll("button")].find(button => button.textContent === "Invite collaborator")).toBeUndefined();
+  expect([...container.querySelectorAll("button")].find(button => button.textContent === "Invite member")).toBeUndefined();
   expect(container.querySelector('[aria-label="Transfer ownership"]')).toBeNull();
   expect(mocks.invite).not.toHaveBeenCalled();
+});
+
+it("prevents repeated submission and navigation away while the invitation is being sent", async () => {
+  let finish!: () => void;
+  mocks.invite.mockImplementation(() => new Promise<void>(resolve => { finish = resolve; }));
+  await render(); await click("Invite member"); await fill("external@example.test");
+  await act(async () => {
+    const form = document.querySelector("form")!;
+    form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    document.querySelector<HTMLAnchorElement>('a[href="/projects/project?tab=support"]')!.click();
+  });
+  expect(mocks.invite).toHaveBeenCalledTimes(1);
+  expect(container.querySelector("[data-location]")?.textContent).toBe("?tab=members");
+  await act(async () => finish());
+  expect(document.querySelector('[role="dialog"]')).toBeNull();
+});
+
+it("clears the previous error when the invitation form is closed and reopened", async () => {
+  mocks.invite.mockRejectedValue({ response: { status: 409 } });
+  await render(); await click("Invite member"); await fill("external@example.test");
+  await act(async () => document.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+  expect(document.querySelector('[role="alert"]')?.textContent).toContain("pending invitation");
+  await click("Cancel"); await click("Invite member");
+  expect(document.querySelector('[role="alert"]')).toBeNull();
+  expect(document.querySelector<HTMLInputElement>("#project-invite-email")?.value).toBe("");
 });

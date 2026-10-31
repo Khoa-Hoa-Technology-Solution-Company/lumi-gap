@@ -11,6 +11,15 @@ import { assertAcceptingNewMentorships, assertVerifiedLecturer } from "./academi
 
 type Db = Prisma.TransactionClient;
 export const attachmentFields = { id: true, fileName: true, mimeType: true, byteSize: true } as const;
+export function invitationAttachmentDto<T extends { fileName: string }>(file: T): T {
+  let name = file.fileName;
+  // Multipart headers may carry UTF-8 bytes interpreted by Busboy as Latin-1.
+  // Only decode a lossless byte sequence; genuine Unicode and Latin-1 names stay intact.
+  if ([...name].every(char => char.codePointAt(0)! <= 255)) {
+    try { name = new TextDecoder("utf-8", { fatal: true }).decode(Buffer.from(name, "latin1")); } catch { /* Already a genuine filename. */ }
+  }
+  return { ...file, fileName: name.split(/[\\/]/).pop()!.replace(/[\x00-\x1f\x7f]/g, "").trim().slice(0, 180) || "attachment" };
+}
 export const invitationMimeTypes = ["application/pdf", "image/jpeg", "image/png", "image/webp", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
 export type InvitationDirection = "PROJECT_TO_LECTURER" | "LECTURER_TO_PROJECT";
 
@@ -36,7 +45,7 @@ export async function invitationFiles(db: Db, projectId: string, userId: string,
   const files = await db.mentorshipAttachment.findMany({ where: { id: { in: ids }, projectId, uploadedById: userId }, select: attachmentFields });
   if (files.length !== ids.length) throw AppError.forbidden("Invitation files must belong to you and this project");
   if (files.reduce((sum, file) => sum + file.byteSize, 0) > 20 * 1024 * 1024) throw AppError.badRequest("Invitation attachments must total at most 20 MB");
-  return files;
+  return files.map(invitationAttachmentDto);
 }
 
 async function validateContent(file: { buffer: Buffer; mimetype: string; originalname: string }) {
@@ -70,11 +79,11 @@ export const mentorshipContentService = {
     // Authorize before image/ZIP processing and check again under the write lock.
     await getPrisma().$transaction(tx => senderContext(tx, projectId, actorId, direction));
     const file = await validateContent(input), sha256 = createHash("sha256").update(file.buffer).digest("hex");
-    const fileName = file.originalname.split(/[\\/]/).pop()!.replace(/[\x00-\x1f\x7f]/g, "").trim().slice(0, 180) || "attachment";
+    const { fileName } = invitationAttachmentDto({ fileName: file.originalname });
     return getPrisma().$transaction(async tx => {
       const context = await senderContext(tx, projectId, actorId, direction);
       const existing = await tx.mentorshipAttachment.findFirst({ where: { projectId: context.projectId, uploadedById: context.userId, sha256, mimeType: file.mimetype }, select: attachmentFields });
-      if (existing) return existing;
+      if (existing) return invitationAttachmentDto(existing);
       const size = await tx.mentorshipAttachment.aggregate({ where: { projectId: context.projectId, uploadedById: context.userId }, _sum: { byteSize: true } });
       if ((size._sum.byteSize ?? 0) + file.buffer.length > 100 * 1024 * 1024) throw AppError.conflict("Invitation file storage limit reached for this project");
       return tx.mentorshipAttachment.create({ data: { projectId: context.projectId, uploadedById: context.userId, fileName, mimeType: file.mimetype, byteSize: file.buffer.length, sha256, content: new Uint8Array(file.buffer) }, select: attachmentFields });
@@ -103,13 +112,23 @@ export const mentorshipContentService = {
       await tx.$queryRaw`SELECT id FROM projects WHERE id=${file.projectId}::uuid FOR SHARE`;
       const project = await tx.project.findUniqueOrThrow({ where: { id: file.projectId } });
       const links = await tx.mentorshipRequestAttachment.findMany({ where: { attachmentId }, select: { requestId: true } });
-      const shared = await tx.mentorshipRequest.count({ where: { id: { in: links.map(l => l.requestId) }, projectId: file.projectId,
+      let allowedRequestIds = links.map(l => l.requestId);
+      if (file.uploadedById !== user.id && project.ownerId !== user.id) {
+        const now = new Date();
+        const policies = await tx.mentorAccess.findMany({ where: { requestId: { in: allowedRequestIds }, mentorUserId: user.id,
+          revokedAt: null, OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] } });
+        const active = await tx.mentorRelationship.findMany({ where: { projectId: project.id, mentorUserId: user.id, status: "ACTIVE" } });
+        const requests = await tx.mentorshipRequest.findMany({ where: { id: { in: policies.map(p => p.requestId) }, projectId: project.id,
+          mentorUserId: user.id, OR: [{ status: "PENDING", OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] }, { status: "ACCEPTED", id: { in: active.map(r => r.sourceRequestId) } }] } });
+        allowedRequestIds = requests.map(r => r.id);
+      }
+      const shared = await tx.mentorshipRequest.count({ where: { id: { in: allowedRequestIds }, projectId: file.projectId,
         ...(project.ownerId === user.id ? {} : { OR: [{ requestedBy: user.id }, { mentorUserId: user.id }] }) } });
       const isOwner = project.ownerId === user.id;
       // Staged files are private to their author while authorized for this project.
       const authorMember = file.uploadedById === user.id && await tx.projectMember.count({ where: { projectId: file.projectId, userId: user.id, status: "ACTIVE" } });
       if (!shared && !(file.uploadedById === user.id && (isOwner || authorMember || project.mentorshipDiscovery === "SEEKING_MENTOR"))) throw AppError.notFound("Invitation file not found");
-      return tx.mentorshipAttachment.findUniqueOrThrow({ where: { id: attachmentId } });
+      return invitationAttachmentDto(await tx.mentorshipAttachment.findUniqueOrThrow({ where: { id: attachmentId } }));
     });
   },
 };

@@ -38,6 +38,7 @@ export function ProjectGapResults({
         {gaps.map((gap) => (
           <article key={gap.id} className="gap-discovery-direction">
             <div className="gap-discovery-direction-meta">
+              {gap.analysisMode === "DRAFT" && <span className="gap-origin-badge">Nháp · kết quả sơ bộ</span>}
               <span className="gap-origin-badge">
                 <Sparkles className="h-3 w-3 text-primary" />
                 {t(gap.origin === "HUMAN" ? "Human proposal" : "AI-suggested candidate")}

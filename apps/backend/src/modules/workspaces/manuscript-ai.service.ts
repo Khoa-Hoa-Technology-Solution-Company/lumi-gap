@@ -4,7 +4,7 @@ import { AppError } from "../../common/exceptions/app-error.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { aiJobsQueue } from "../../infrastructure/queue.js";
 import { cachedGenerateJSON } from "../llm/llm.run.js";
-import { withUserAi } from "../user-ai/user-ai.runtime.js";
+import { withProjectAi } from "../user-ai/user-ai.runtime.js";
 import { withWorkspace } from "../projects/workspace-access.js";
 import { discoveryEvidenceIsCurrent } from "../projects/project-evidence.service.js";
 import { markAiRunStarted, completeAiRun, failAiRun } from "../ai-jobs/ai-run.service.js";
@@ -110,6 +110,7 @@ async function access(project: string, actor: string, id: string) {
   return withWorkspace(project, actor, { write: true }, async context => {
     const draft = await context.tx.draftWorkspace.findFirst({ where: { id, projectId: context.project.id, writingMode: "LATEX", archivedAt: null, deletedAt: null } });
     if (!draft) throw AppError.notFound("Writable manuscript not found");
+    if (context.project.aiDataPolicy === "DISABLED") throw AppError.forbidden("External AI processing is disabled by this project's security policy");
     return { project: context.project.id, actor: context.actorId };
   });
 }
@@ -219,7 +220,7 @@ export const manuscriptAiService = {
       const allowedKeys = [...new Set([...(input.action === "repair" ? [] : sources.map(r => r.citationKey)), ...loaded.flatMap(f => f.keys), ...preservedKeys])];
       const compilation = latest.latest ? { id: latest.latest.id, status: latest.latest.status, engine: latest.latest.engine, sourceVersion: latest.latest.sourceVersion, stale: latest.latest.sourceVersion !== detail.version, diagnostics: latest.latest.sourceVersion === detail.version ? latest.latest.diagnostics.slice(-12000) : "" } : null;
       const payload = { action: input.action, operation: manuscriptAiOperations[input.action], instruction: input.instruction, targetLanguage: input.language, selection: input.original, before: target.fullSource.slice(Math.max(0, input.from - 4000), input.from), after: target.fullSource.slice(input.to, input.to + 4000), sourceSequence: target.sequence, sourceVersion: detail.version, targetFile: target.path, selectionFrom: input.from, selectionTo: input.to, mainFile: detail.files.find(f => f.id === detail.mainFileId)?.path, compilation, files, research: context.plan, sources, verifiedEvidence: verified, allowedCitationKeys: allowedKeys };
-      const result = await withUserAi(row.ownerId, () => cachedGenerateJSON<Output>({
+      const result = await withProjectAi(row.projectId, row.ownerId, () => cachedGenerateJSON<Output>({
         task: "chat", promptVersion: "manuscript-writing-v6", keyParts: { owner: row.ownerId, manuscript: row.workspaceId, ...(input.regenerateOf ? { regeneration: row.id } : {}) }, ttlSeconds: 3600,
         prompt: JSON.stringify(payload), options: { temperature: 0.2, maxOutputTokens: 6000, system: manuscriptAiSystem(input.action) },
         validate: raw => { outputSchema.parse(raw); validateManuscriptAiOutput(raw, sources, allowedKeys, input.action, input.original, proposalScope); return raw; },

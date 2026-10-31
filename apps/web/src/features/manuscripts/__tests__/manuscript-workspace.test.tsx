@@ -21,10 +21,21 @@ vi.mock("../collaboration-provider", async () => {
     readonly text = this.doc.getText("source");
     readonly awareness = new Awareness(this.doc);
     readonly undoManager = new Y.UndoManager(this.text, { trackedOrigins: new Set() });
+    readonly listeners = new Set<() => void>();
     private state = { status: "SAVED", canWrite: true, ready: true, pending: 0, sequence: 1, fileVersion: 1, error: null };
-    constructor(_project: string, _draft: string, readonly fileId: string) { this.text.insert(0, fileId === "main" ? "Main source quotation" : "Other file source"); }
+    constructor(_project: string, _draft: string, readonly fileId: string) {
+      this.text.insert(0, fileId === "main" ? "Main source quotation" : "Other file source");
+      data.lastProvider = this;
+    }
     getSnapshot = () => this.state;
-    subscribe = () => () => {};
+    subscribe = (fn: () => void) => {
+      this.listeners.add(fn);
+      return () => { this.listeners.delete(fn); };
+    };
+    notify = () => {
+      this.state = { ...this.state };
+      for (const listener of this.listeners) listener();
+    };
     waitForSaved = async () => {};
     destroy() { this.undoManager.destroy(); this.awareness.destroy(); this.doc.destroy(); }
   }
@@ -32,9 +43,11 @@ vi.mock("../collaboration-provider", async () => {
 });
 vi.mock("@/features/projects/api/workspace.api", () => ({ workspaceApi: { discussion: data.discussion } }));
 vi.mock("@/features/academic-profile/components/private-evidence-pdf-preview", () => ({ default: () => <div>Rendered private PDF</div> }));
-const data = vi.hoisted(() => ({ userId: "", canWrite: true, available: false, detailFailed: false, removedFiles: [] as string[], changeFile: vi.fn(), olderComments: [] as ManuscriptComment[], discussion: vi.fn(), versions: [] as ManuscriptSnapshot[], viewSnapshot: vi.fn(), extraFiles: [] as ManuscriptFile[], references: [] as ManuscriptReference[], insertCitation: vi.fn(), state: { latest: null, successful: null } as ManuscriptCompilationState, compile: vi.fn(), snapshot: vi.fn(), assist: vi.fn(), aiRun: vi.fn(), comments: [] as ManuscriptComment[], comment: vi.fn(), reply: vi.fn() }));
+const data = vi.hoisted(() => ({ lastProvider: null as any, userId: "", canWrite: true, available: false, detailFailed: false, removedFiles: [] as string[], changeFile: vi.fn(), olderComments: [] as ManuscriptComment[], discussion: vi.fn(), versions: [] as ManuscriptSnapshot[], viewSnapshot: vi.fn(), extraFiles: [] as ManuscriptFile[], references: [] as ManuscriptReference[], insertCitation: vi.fn(), state: { latest: null, successful: null } as ManuscriptCompilationState, compile: vi.fn(), snapshot: vi.fn(), assist: vi.fn(), aiRun: vi.fn(), comments: [] as ManuscriptComment[], comment: vi.fn(), reply: vi.fn() }));
 const file = (id: string, path: string, kind: ManuscriptFile["kind"] = "TEXT"): ManuscriptFile => ({ id, path, kind, version: 1, sequence: 0, sizeBytes: 0, mimeType: null, checksum: null, updatedAt: "2026-10-19" });
+vi.mock("../github-connection.api", () => ({ githubConnectionApi: { status: async () => ({ configured: false, connected: false }) } }));
 vi.mock("../manuscripts.api", () => ({ manuscriptsApi: {
+  remote: async () => null,
   detail: async () => { if (data.detailFailed) throw new Error("Network interrupted"); return { id: "draft", title: "Team research paper", files: [{ id: "main", path: "main.tex", kind: "TEXT", version: 1 }, { id: "intro", path: "sections/introduction.tex", kind: "TEXT", version: 1 }, ...data.extraFiles].filter(file => !data.removedFiles.includes(file.id)), collaborators: [], compiler: { available: data.available, reason: "READY" }, version: 2, mainFileId: "main", canWrite: data.canWrite }; },
   changeFile: data.changeFile,
   compilations: async () => data.state, compile: data.compile, snapshot: data.snapshot,
@@ -52,12 +65,12 @@ beforeAll(() => {
   Range.prototype.getBoundingClientRect = () => new DOMRect();
 });
 afterEach(async () => { await cleanup?.(); vi.unstubAllGlobals(); data.userId = ""; data.canWrite = true; data.available = false; data.detailFailed = false; data.removedFiles = []; data.olderComments = []; data.versions = []; data.state = { latest: null, successful: null }; data.comments = []; data.extraFiles = []; data.references = []; vi.clearAllMocks(); });
-async function render(node: React.ReactNode) {
+async function render(node: React.ReactNode, githubConnected = false) {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   workspaceClient = client;
-  await act(async () => { root.render(<QueryClientProvider client={client}><MemoryRouter initialEntries={["/projects/project/manuscripts/draft"]}>{node}</MemoryRouter></QueryClientProvider>); });
+  await act(async () => { root.render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[{ pathname: "/projects/project/manuscripts/draft", state: githubConnected ? { githubConnected: true } : null }]}>{node}</MemoryRouter></QueryClientProvider>); });
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)); });
   cleanup = async () => { await act(async () => root.unmount()); client.clear(); host.remove(); };
   return host;
@@ -105,7 +118,7 @@ it("retains and disables a local visual draft when a teammate removes its source
   expect(host.textContent).toContain("A file was removed while this tab had unsaved edits.");
   expect(EditorView.findFromDOM(host.querySelector<HTMLElement>(".writing-source-code-host .cm-editor")!)!.state.readOnly).toBe(true);
   await act(async () => [...draft.querySelectorAll<HTMLButtonElement>("button")].find(node => node.textContent === "Cancel")!.click());
-  expect(host.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toBe("introduction.tex");
+  expect(host.querySelector('.writing-file-tabs [role="tab"][aria-selected="true"]')?.textContent).toBe("introduction.tex");
 });
 
 it("keeps an unfinished tracked buffer on its removed file and blocks proposal saves", async () => {
@@ -121,7 +134,7 @@ it("keeps an unfinished tracked buffer on its removed file and blocks proposal s
   expect(proposal.state.doc.toString()).toContain("Retain this proposal");
   expect(proposal.state.readOnly).toBe(true);
   expect([...host.querySelectorAll<HTMLButtonElement>(".writing-tracked-editing button")].find(node => node.textContent === "Save proposal")!.disabled).toBe(true);
-  expect(host.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toBe("main.tex");
+  expect(host.querySelector('.writing-file-tabs [role="tab"][aria-selected="true"]')?.textContent).toBe("main.tex");
 });
 
 it("loads older comment pages and opens the complete paginated conversation", async () => {
@@ -411,7 +424,7 @@ it("opens the errored file and requests a whole-file AI repair without editing s
   const host = await render(workspace());
   for (let i = 0; i < 30 && !button(host, "Ask AI to fix errors"); i++) await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)); });
   await act(async () => button(host, "Ask AI to fix errors").click());
-  expect(host.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toBe("introduction.tex");
+  expect(host.querySelector('.writing-file-tabs [role="tab"][aria-selected="true"]')?.textContent).toBe("introduction.tex");
   expect(host.querySelector<HTMLSelectElement>(".writing-ai form select")?.value).toBe("repair");
   expect(host.querySelector(".writing-error-hint")).toBeNull();
   const analyze = [...host.querySelectorAll<HTMLButtonElement>("button")].find(node => node.textContent === "Analyze LaTeX errors")!;
@@ -434,13 +447,13 @@ it("does not offer AI repairs in a read-only manuscript", async () => {
 it("opens and closes file tabs without deleting project files", async () => {
   const host = await render(workspace());
   await act(async () => [...host.querySelectorAll<HTMLButtonElement>(".writing-file")].find(node => node.title === "sections/introduction.tex")!.click());
-  expect(host.querySelectorAll('[role="tab"]')).toHaveLength(2);
-  expect(host.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toBe("introduction.tex");
-  await act(async () => host.querySelector('[role="tab"][aria-selected="true"]')!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true })));
-  expect(host.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toBe("main.tex");
+  expect(host.querySelectorAll('.writing-file-tabs [role="tab"]')).toHaveLength(2);
+  expect(host.querySelector('.writing-file-tabs [role="tab"][aria-selected="true"]')?.textContent).toBe("introduction.tex");
+  await act(async () => host.querySelector('.writing-file-tabs [role="tab"][aria-selected="true"]')!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true })));
+  expect(host.querySelector('.writing-file-tabs [role="tab"][aria-selected="true"]')?.textContent).toBe("main.tex");
   await act(async () => button(host, "Close file {{name}}").click());
-  expect(host.querySelectorAll('[role="tab"]')).toHaveLength(1);
-  expect(host.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toBe("main.tex");
+  expect(host.querySelectorAll('.writing-file-tabs [role="tab"]')).toHaveLength(1);
+  expect(host.querySelector('.writing-file-tabs [role="tab"][aria-selected="true"]')?.textContent).toBe("main.tex");
   expect(host.querySelector('.writing-file[title="sections/introduction.tex"]')).not.toBeNull();
 });
 it("disables formatting while the collaborative editor is not writable", async () => {
@@ -486,7 +499,7 @@ it("posts a selection against its original file after switching the active edito
   await act(async () => view.dispatch({ selection: { anchor: 0, head: 4 } }));
   await act(async () => button(host, "Comment on selection").click());
   await act(async () => host.querySelector<HTMLButtonElement>('.writing-file[title="sections/introduction.tex"]')!.click());
-  expect(host.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toBe("introduction.tex");
+  expect(host.querySelector('.writing-file-tabs [role="tab"][aria-selected="true"]')?.textContent).toBe("introduction.tex");
   const input = host.querySelector<HTMLTextAreaElement>(".writing-context form textarea")!;
   await act(async () => {
     Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(input, "Check this source quote");
@@ -494,4 +507,45 @@ it("posts a selection against its original file after switching the active edito
   });
   await act(async () => input.closest("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
   expect(data.comment).toHaveBeenCalledWith("project", "draft", expect.objectContaining({ fileId: "main", quote: "Main", body: "Check this source quote", start: expect.any(Object), end: expect.any(Object) }));
+});
+
+it("opens a dedicated GitHub panel after OAuth and allows returning to PDF", async () => {
+  data.userId = "writer";
+  const host = await render(workspace(), true);
+  const github = host.querySelector<HTMLButtonElement>("#writing-github-tab")!;
+  expect(github.getAttribute("aria-selected")).toBe("true");
+  expect(button(host, "Toggle information panel").textContent).toContain("GitHub");
+  expect(host.querySelector("#writing-github-tabpanel")?.hasAttribute("hidden")).toBe(false);
+  expect(host.querySelector('[role="dialog"]')).toBeNull();
+  expect(host.textContent).toContain("One sync coordinator is enough");
+  await act(async () => host.querySelector<HTMLButtonElement>("#writing-preview-tab")!.click());
+  expect(github.getAttribute("aria-selected")).toBe("false");
+  expect(host.querySelector("#writing-preview-tabpanel")).not.toBeNull();
+});
+
+it("deduplicates multiple presence sessions for the same user into a single avatar in the toolbar", async () => {
+  data.userId = "writer";
+  const host = await render(workspace());
+  const provider = data.lastProvider;
+  expect(provider).toBeDefined();
+
+  await act(async () => {
+    provider.awareness.setLocalStateField("user", { id: "user-1", name: "Nguyen Dinh", color: "#3b82f6" });
+    const { applyAwarenessUpdate } = await import("y-protocols/awareness");
+    const encoding = await import("lib0/encoding");
+    const encoder = encoding.createEncoder();
+    encoding.writeVarUint(encoder, 1);
+    encoding.writeVarUint(encoder, 9999);
+    encoding.writeVarUint(encoder, 1);
+    encoding.writeVarString(encoder, JSON.stringify({ user: { id: "user-1", name: "Nguyen Dinh", color: "#3b82f6" } }));
+    applyAwarenessUpdate(provider.awareness, encoding.toUint8Array(encoder), provider);
+    provider.notify();
+  });
+
+  const onlineSection = host.querySelector(".writing-online");
+  expect(onlineSection).not.toBeNull();
+  const avatars = onlineSection!.querySelectorAll("span");
+  expect(avatars).toHaveLength(1);
+  expect(avatars[0]!.getAttribute("title")).toBe("Nguyen Dinh");
+  expect(avatars[0]!.textContent).toBe("ND");
 });
