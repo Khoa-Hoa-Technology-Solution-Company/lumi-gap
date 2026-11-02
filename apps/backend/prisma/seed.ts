@@ -3,6 +3,7 @@ import { getPrisma, disconnectPostgres } from "../src/infrastructure/database/pr
 import { passwordService } from "../src/modules/auth/password.service.js";
 import { seedCommunities } from "./seed-communities.js";
 import { seedForumPagination } from "./seed-forum-pagination.js";
+import { seedApiProviders } from "./seed-providers.js";
 
 async function main() {
   if (process.env.NODE_ENV === "production") throw new Error("Development seed data must not be applied in production");
@@ -11,22 +12,7 @@ async function main() {
 
   // 1. Seed API Provider (OpenAlex)
   console.log("🌐 Seeding API Providers...");
-  const openalexProvider = await prisma.apiProvider.upsert({
-    where: { providerName: "openalex" },
-    create: {
-      providerName: "openalex",
-      baseUrl: "https://api.openalex.org",
-      providerKind: "academic-api",
-      providerStatus: "enabled",
-      rateLimitPerMin: 600,
-    },
-    update: {
-      baseUrl: "https://api.openalex.org",
-      providerKind: "academic-api",
-      providerStatus: "enabled",
-      rateLimitPerMin: 600,
-    },
-  });
+  const openalexProvider = await seedApiProviders();
 
   // 3. Seed Users
   console.log("👤 Seeding User Accounts...");

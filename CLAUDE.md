@@ -347,7 +347,7 @@ If env is invalid, a red banner names the missing variable.
 
 See root [`.env.example`](.env.example) and [the key inventory](docs/environment-variables.md). Run `pnpm setup` to generate local passwords and RS256 keys, then fill in `GEMINI_API_KEY`. Backend/Prisma/workers load root `.env` independent of cwd and expand `${...}`; Compose overrides internal hosts.
 
-Use `pnpm docker:infra` for native backend/web or `pnpm docker:up` for the full stack with default workers. Migrations and Docker JWT keys initialize automatically. Demo seed is opt-in (`docker compose --profile seed up seed`). Vite uses root `envDir` and exposes only `VITE_*`; native web runs on port 3000. The Flutter launcher consumes only the public API configuration from root `.env`. Production uses the separate root `.env.production.example` template and the existing Jenkins credential contract.
+Use `pnpm docker:infra` for native backend/web or `pnpm docker:up` for the full stack with default workers. Migrations and Docker JWT keys initialize automatically. Demo seed is opt-in (`docker compose --profile seed up seed`). Sync, campaigns and topic backfill need the `openalex` API provider row: create it with `pnpm --filter backend seed:providers` (safe in production, never overwrites an existing row; the demo seed also runs it). Vite uses root `envDir` and exposes only `VITE_*`; native web runs on port 3000. The Flutter launcher consumes only the public API configuration from root `.env`. Production uses the separate root `.env.production.example` template and the existing Jenkins credential contract.
 
 ---
 
@@ -445,7 +445,7 @@ These are the things that caused real bugs or near-misses. Keep them in mind:
 - **DO ask before** scaffolding new packages, installing global tools, or making changes outside `apps/`, `packages/`, or `docs/`.
 
 ### Code rules
-- **Read the relevant design spec first** (Phase A spec for sync/data flow; other specs under `docs/superpowers/specs/`) before suggesting changes to data flow, model schemas, or sync logic.
+- **Read the relevant design docs first** before suggesting changes to data flow, model schemas, or sync logic. There is no written Phase A spec: for sync/ingest read [docs/OPENALEX_MILLION_INGEST_RUNBOOK.md](docs/OPENALEX_MILLION_INGEST_RUNBOOK.md) and `apps/backend/src/modules/api-sync/` itself (the code is authoritative where the runbook disagrees); other specs live under `docs/superpowers/specs/`.
 - **Stay within the conventions in §6.** They are not preferences — they are constraints we agreed on.
 - **Long-running work goes in BullMQ workers, not request handlers.** No exceptions.
 - **Validate every new env var with Zod in `config/env.ts`.** Don't read `process.env.X` directly outside that file.
