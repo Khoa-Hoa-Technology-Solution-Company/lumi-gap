@@ -19,8 +19,11 @@ export async function runSync(job: RunSyncJob): Promise<any> {
   const config = job.syncConfigId ? await prisma.apiSyncConfig.findUnique({ where: { id: job.syncConfigId } }).catch(() => null) : null;
   let run = await prisma.apiSyncRun.create({ data: { syncConfigId: config?.id, providerId: provider.id, runStatus: "running", searchText: job.searchText, startedAt: new Date() } });
   await auditService.log("sync.started", { targetTableName: "api_sync_runs", targetRecordId: run.id, details: job }); let cursor = "*";
-  try { for (let page = 0; page < job.maxPages; page++) { const result = await fetchOpenAlexPage({ searchText: job.searchText, yearFrom: job.yearFrom, cursor }); const ingested = await ingestOpenAlexWorks(result.results, provider.id); run = await prisma.apiSyncRun.update({ where: { id: run.id }, data: { totalFetched: { increment: ingested.fetchedCount }, totalInserted: { increment: ingested.insertedCount }, totalUpdated: { increment: ingested.updatedCount }, totalDuplicates: { increment: ingested.updatedCount } } }); if (!result.nextCursor || !result.results.length) break; cursor = result.nextCursor; } run = await prisma.apiSyncRun.update({ where: { id: run.id }, data: { runStatus: "succeeded", finishedAt: new Date() } }); } catch (error) { run = await prisma.apiSyncRun.update({ where: { id: run.id }, data: { runStatus: "failed", errorMessage: error instanceof Error ? error.message : String(error), finishedAt: new Date() } }); logger.error({ error, runId: run.id }, "sync run failed"); }
-  await auditService.log("sync.completed", { targetTableName: "api_sync_runs", targetRecordId: run.id, details: { runStatus: run.runStatus, totalFetched: run.totalFetched, totalInserted: run.totalInserted, totalUpdated: run.totalUpdated } }); return { ...run, _id: { toString: () => publicDatabaseId(run) } };
+  let failure: { error: unknown } | undefined;
+  try { for (let page = 0; page < job.maxPages; page++) { const result = await fetchOpenAlexPage({ searchText: job.searchText, yearFrom: job.yearFrom, cursor }); const ingested = await ingestOpenAlexWorks(result.results, provider.id); run = await prisma.apiSyncRun.update({ where: { id: run.id }, data: { totalFetched: { increment: ingested.fetchedCount }, totalInserted: { increment: ingested.insertedCount }, totalUpdated: { increment: ingested.updatedCount }, totalDuplicates: { increment: ingested.updatedCount } } }); if (!result.nextCursor || !result.results.length) break; cursor = result.nextCursor; } run = await prisma.apiSyncRun.update({ where: { id: run.id }, data: { runStatus: "succeeded", finishedAt: new Date() } }); } catch (error) { run = await prisma.apiSyncRun.update({ where: { id: run.id }, data: { runStatus: "failed", errorMessage: error instanceof Error ? error.message : String(error), finishedAt: new Date() } }); logger.error({ error, runId: run.id }, "sync run failed"); failure = { error }; }
+  await auditService.log("sync.completed", { targetTableName: "api_sync_runs", targetRecordId: run.id, details: { runStatus: run.runStatus, totalFetched: run.totalFetched, totalInserted: run.totalInserted, totalUpdated: run.totalUpdated } });
+  if (failure) throw failure.error; // surface the failure so BullMQ retries the job and no analysis is enqueued
+  return { ...run, _id: { toString: () => publicDatabaseId(run) } };
 }
 
 export async function ingestOpenAlexWorks(works: OpenAlexWork[], providerId: string, options: { purpose?: "citation" } = {}): Promise<OpenAlexIngestResult> {
@@ -29,7 +32,24 @@ export async function ingestOpenAlexWorks(works: OpenAlexWork[], providerId: str
   return { records, fetchedCount: works.length, insertedCount: records.filter((row) => row.action === "insert").length, updatedCount: records.filter((row) => row.action === "update").length, rejectedCount: rejectedWorks.length, rejectedWorks };
 }
 
-async function upsertPaper(normalized: NormalizedPaper, purpose?: "citation"): Promise<{ action: "insert" | "update"; paper: any }> {
+const isEmpty = (value: unknown) => value === null || value === undefined || value === "";
+
+// Best-effort: a failed link must not lose the ingested paper; the next taxonomy backfill links it.
+async function linkTaxonomyBestEffort(prisma: ReturnType<typeof getPrisma>, paperId: string) {
+  try { await taxonomyBackfillService.linkPaperTaxonomy(prisma, paperId); } catch (error) { logger.warn({ error, paperId }, "taxonomy link failed; left for backfill"); }
+}
+
+// A user-owned row (draft/pending request, project DOI import) only receives OpenAlex enrichment; its workflow state and authors/keywords/topics are never touched.
+async function enrichUserOwnedPaper(existing: any, normalized: NormalizedPaper): Promise<{ action: "update"; paper: any }> {
+  const prisma = getPrisma(); const fillable = { abstractText: normalized.abstractText, journalName: normalized.journalName, publicationYear: normalized.publicationYear, publicationDate: normalized.publicationDate, paperKind: normalized.paperKind, language: normalized.language, openAccessStatus: normalized.openAccessStatus, openAccessUrl: normalized.openAccessUrl, licenseName: normalized.licenseName };
+  const fills = Object.fromEntries(Object.entries(fillable).filter(([key, value]) => isEmpty((existing as Record<string, unknown>)[key]) && !isEmpty(value)));
+  const data = { ...fills, ...(isEmpty(existing.openalexId) && normalized.externalIds.openalexId ? { openalexId: normalized.externalIds.openalexId } : {}), citationCount: Math.max(existing.citationCount ?? 0, normalized.citationCount), fwci: normalized.fwci, citationNormalizedPercentile: normalized.citationNormalizedPercentile as never, relatedWorksCount: normalized.relatedWorksCount, referencedWorks: normalized.referencedWorks, relatedWorks: normalized.relatedWorks };
+  const paper = await prisma.paper.update({ where: { id: existing.id }, data });
+  await linkTaxonomyBestEffort(prisma, paper.id);
+  return { action: "update", paper: { ...paper, _id: { toString: () => publicDatabaseId(paper) } } };
+}
+
+async function upsertPaper(normalized: NormalizedPaper, purpose?: "citation", retried = false): Promise<{ action: "insert" | "update"; paper: any }> {
   const prisma = getPrisma(); const existing = await prisma.paper.findFirst({ where: { OR: [...(normalized.externalIds.doi ? [{ doi: normalized.externalIds.doi }] : []), ...(normalized.externalIds.openalexId ? [{ openalexId: normalized.externalIds.openalexId }] : [])] } });
   const citationMetadata = hasOpenAlexCitationMetadata(normalized);
   if (purpose === "citation") {
@@ -40,12 +60,14 @@ async function upsertPaper(normalized: NormalizedPaper, purpose?: "citation"): P
       return { action: "update", paper: existing };
     }
   }
+  if (existing && existing.primaryProvider !== "openalex") return enrichUserOwnedPaper(existing, normalized);
   const isAiAnalyzable = Boolean(normalized.abstractText && normalized.abstractText.length >= 250);
   const publicCitationMetadata = citationMetadata && (purpose === "citation" || (existing?.dataStatus === "active" && existing.isAiAnalyzable === false));
   const data = { doi: normalized.externalIds.doi, openalexId: normalized.externalIds.openalexId, title: normalized.title, abstractText: normalized.abstractText, journalName: normalized.journalName, publicationYear: normalized.publicationYear, publicationDate: normalized.publicationDate, paperKind: normalized.paperKind, language: normalized.language, openAccessStatus: normalized.openAccessStatus, openAccessUrl: normalized.openAccessUrl, licenseName: normalized.licenseName, citationCount: normalized.citationCount, fwci: normalized.fwci, citationNormalizedPercentile: normalized.citationNormalizedPercentile as never, relatedWorksCount: normalized.relatedWorksCount, primaryProvider: "openalex", paperStatus: OPENALEX_PAPER_STATUS, dataStatus: isAiAnalyzable || publicCitationMetadata ? "active" : "low-quality", isAiAnalyzable, referencedWorks: normalized.referencedWorks, relatedWorks: normalized.relatedWorks };
-  const paper = existing ? await prisma.paper.update({ where: { id: existing.id }, data: { ...data, citationCount: Math.max(existing.citationCount, normalized.citationCount) } }) : await prisma.paper.create({ data });
+  let paper;
+  // A concurrent worker may insert the same openalex_id/doi between our lookup and create (P2002): re-run the lookup once and take the update path.
+  try { paper = existing ? await prisma.paper.update({ where: { id: existing.id }, data: { ...data, citationCount: Math.max(existing.citationCount, normalized.citationCount) } }) : await prisma.paper.create({ data }); } catch (error) { if (!existing && !retried && (error as { code?: string })?.code === "P2002") return upsertPaper(normalized, purpose, true); throw error; }
   await prisma.$transaction(async (tx) => { await Promise.all([tx.paperAuthor.deleteMany({ where: { paperId: paper.id } }), tx.paperKeyword.deleteMany({ where: { paperId: paper.id } }), tx.paperTopic.deleteMany({ where: { paperId: paper.id } })]); if (normalized.authors.length) await tx.paperAuthor.createMany({ data: normalized.authors.map((author) => ({ paperId: paper.id, displayName: author.displayName, position: author.position, isCorresponding: author.isCorresponding })) }); if (normalized.keywords.length) await tx.paperKeyword.createMany({ data: normalized.keywords.map((keyword, position) => ({ paperId: paper.id, keywordName: keyword.keywordName, detectedBy: keyword.detectedBy, confidence: keyword.confidence, position })) }); if (normalized.topics.length) await tx.paperTopic.createMany({ data: normalized.topics.map((topic, position) => ({ paperId: paper.id, ...topic, position })) }); });
-  // Best-effort: a failed link must not lose the ingested paper; the next taxonomy backfill links it.
-  try { await taxonomyBackfillService.linkPaperTaxonomy(prisma, paper.id); } catch (error) { logger.warn({ error, paperId: paper.id }, "taxonomy link failed; left for backfill"); }
+  await linkTaxonomyBestEffort(prisma, paper.id);
   return { action: existing ? "update" : "insert", paper: { ...paper, _id: { toString: () => publicDatabaseId(paper) } } };
 }
