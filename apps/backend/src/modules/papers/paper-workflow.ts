@@ -1,5 +1,16 @@
 export const OPENALEX_PAPER_STATUS = "not-downloaded" as const;
 
+/** Shortest abstract (in characters) that is worth embedding and AI analysis. */
+export const AI_ANALYZABLE_MIN_ABSTRACT_CHARS = 250;
+
+/**
+ * `papers.is_ai_analyzable` is derived from the abstract alone and gates embedding.
+ * Publication state is separate: embedding also requires dataStatus "active".
+ */
+export function isAiAnalyzableAbstract(text: string | null | undefined): boolean {
+  return typeof text === "string" && text.length >= AI_ANALYZABLE_MIN_ABSTRACT_CHARS;
+}
+
 type PaperOrigin = { primaryProvider?: string | null; requestedBy?: unknown; requestedById?: unknown };
 
 /**

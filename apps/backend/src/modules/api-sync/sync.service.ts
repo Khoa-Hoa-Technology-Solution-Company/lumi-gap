@@ -7,7 +7,7 @@ import { taxonomyBackfillService } from "../taxonomy/taxonomy-backfill.service.j
 import { fetchOpenAlexPage } from "./providers/openalex.client.js";
 import { hasOpenAlexCitationMetadata, normalizeOpenAlexWork, type NormalizedPaper } from "./providers/openalex.normalizer.js";
 import type { OpenAlexWork } from "./providers/openalex.types.js";
-import { OPENALEX_PAPER_STATUS } from "../papers/paper-workflow.js";
+import { OPENALEX_PAPER_STATUS, isAiAnalyzableAbstract } from "../papers/paper-workflow.js";
 
 export interface RunSyncJob { searchText: string; yearFrom: number; maxPages: number; syncConfigId?: string }
 type PaperRow = Awaited<ReturnType<typeof getPrisma>> extends never ? never : any;
@@ -39,11 +39,14 @@ async function linkTaxonomyBestEffort(prisma: ReturnType<typeof getPrisma>, pape
   try { await taxonomyBackfillService.linkPaperTaxonomy(prisma, paperId); } catch (error) { logger.warn({ error, paperId }, "taxonomy link failed; left for backfill"); }
 }
 
-// A user-owned row (draft/pending request, project DOI import) only receives OpenAlex enrichment; its workflow state and authors/keywords/topics are never touched.
+// A user-owned row (draft/pending request, project DOI import) only receives OpenAlex enrichment; its workflow state (status fields) and authors/keywords/topics are never touched; isAiAnalyzable is recomputed from the abstract.
 async function enrichUserOwnedPaper(existing: any, normalized: NormalizedPaper): Promise<{ action: "update"; paper: any }> {
   const prisma = getPrisma(); const fillable = { abstractText: normalized.abstractText, journalName: normalized.journalName, publicationYear: normalized.publicationYear, publicationDate: normalized.publicationDate, paperKind: normalized.paperKind, language: normalized.language, openAccessStatus: normalized.openAccessStatus, openAccessUrl: normalized.openAccessUrl, licenseName: normalized.licenseName };
   const fills = Object.fromEntries(Object.entries(fillable).filter(([key, value]) => isEmpty((existing as Record<string, unknown>)[key]) && !isEmpty(value)));
-  const data = { ...fills, ...(isEmpty(existing.openalexId) && normalized.externalIds.openalexId ? { openalexId: normalized.externalIds.openalexId } : {}), citationCount: Math.max(existing.citationCount ?? 0, normalized.citationCount), fwci: normalized.fwci, citationNormalizedPercentile: normalized.citationNormalizedPercentile as never, relatedWorksCount: normalized.relatedWorksCount, referencedWorks: normalized.referencedWorks, relatedWorks: normalized.relatedWorks };
+  // Only fillable gaps are written, so the abstract after this update is the existing one or the OpenAlex fill.
+  // isAiAnalyzable is derived from it (the one workflow-adjacent field enrichment may set); dataStatus stays untouched, so nothing is published.
+  const finalAbstract = (fills.abstractText ?? existing.abstractText) as string | null | undefined;
+  const data = { ...fills, isAiAnalyzable: isAiAnalyzableAbstract(finalAbstract), ...(isEmpty(existing.openalexId) && normalized.externalIds.openalexId ? { openalexId: normalized.externalIds.openalexId } : {}), citationCount: Math.max(existing.citationCount ?? 0, normalized.citationCount), fwci: normalized.fwci, citationNormalizedPercentile: normalized.citationNormalizedPercentile as never, relatedWorksCount: normalized.relatedWorksCount, referencedWorks: normalized.referencedWorks, relatedWorks: normalized.relatedWorks };
   const paper = await prisma.paper.update({ where: { id: existing.id }, data });
   await linkTaxonomyBestEffort(prisma, paper.id);
   return { action: "update", paper: { ...paper, _id: { toString: () => publicDatabaseId(paper) } } };
@@ -61,7 +64,7 @@ async function upsertPaper(normalized: NormalizedPaper, purpose?: "citation", re
     }
   }
   if (existing && existing.primaryProvider !== "openalex") return enrichUserOwnedPaper(existing, normalized);
-  const isAiAnalyzable = Boolean(normalized.abstractText && normalized.abstractText.length >= 250);
+  const isAiAnalyzable = isAiAnalyzableAbstract(normalized.abstractText);
   const publicCitationMetadata = citationMetadata && (purpose === "citation" || (existing?.dataStatus === "active" && existing.isAiAnalyzable === false));
   const data = { doi: normalized.externalIds.doi, openalexId: normalized.externalIds.openalexId, title: normalized.title, abstractText: normalized.abstractText, journalName: normalized.journalName, publicationYear: normalized.publicationYear, publicationDate: normalized.publicationDate, paperKind: normalized.paperKind, language: normalized.language, openAccessStatus: normalized.openAccessStatus, openAccessUrl: normalized.openAccessUrl, licenseName: normalized.licenseName, citationCount: normalized.citationCount, fwci: normalized.fwci, citationNormalizedPercentile: normalized.citationNormalizedPercentile as never, relatedWorksCount: normalized.relatedWorksCount, primaryProvider: "openalex", paperStatus: OPENALEX_PAPER_STATUS, dataStatus: isAiAnalyzable || publicCitationMetadata ? "active" : "low-quality", isAiAnalyzable, referencedWorks: normalized.referencedWorks, relatedWorks: normalized.relatedWorks };
   let paper;

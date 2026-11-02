@@ -7,6 +7,7 @@ import { assertPdfMagic } from "../../common/middleware/upload.js";
 import { withWorkspace, workspaceEvent } from "./workspace-access.js";
 import { researchPaper } from "./project-evidence.service.js";
 import { projectPaperWithDoi } from "./project-paper-identity.js";
+import { isAiAnalyzableAbstract } from "../papers/paper-workflow.js";
 import { researchLedgerService } from "../audit/research-ledger.service.js";
 
 export const projectSourcesService = {
@@ -29,7 +30,7 @@ export const projectSourcesService = {
       if (paper && paper.dataStatus !== "active" && paper.requestedById !== context.actorId && !await tx.projectPaper.findUnique({ where: { projectId_paperId: { projectId: project.id, paperId: paper.id } } })) throw AppError.conflict("This DOI cannot be linked automatically; review the reference details");
       const duplicate = Boolean(paper);
       if (!paper) {
-          paper = await tx.paper.create({ data: { title: input.title, doi, publicationYear: input.publicationYear ?? 0, journalName: input.journalName, abstractText: input.abstractText, paperLink: input.paperLink, primaryProvider: "user", dataStatus: "draft", paperStatus: "pending", requestedById: context.actorId } });
+          paper = await tx.paper.create({ data: { title: input.title, doi, publicationYear: input.publicationYear ?? 0, journalName: input.journalName, abstractText: input.abstractText, isAiAnalyzable: isAiAnalyzableAbstract(input.abstractText), paperLink: input.paperLink, primaryProvider: "user", dataStatus: "draft", paperStatus: "pending", requestedById: context.actorId } });
           for (const [position, name] of input.authors.entries()) {
             const author = await tx.author.create({ data: { displayName: name } });
             await tx.paperAuthor.create({ data: { paperId: paper.id, authorId: author.id, displayName: name, position: position + 1 } });

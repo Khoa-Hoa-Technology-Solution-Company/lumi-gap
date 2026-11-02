@@ -13,7 +13,7 @@ import type { CreatePaperInput } from "./dto/create-paper.schema.js";
 import type { SearchSortKey } from "./dto/paper-filters.schema.js";
 import type { PaperFilterInput } from "./paper-filter.match.js";
 import { calculatePaperQuality } from "./paper-quality.js";
-import { isAllowedAdminPaperStatusChange, isCancellablePaperRequest, type PaperRequestStatus } from "./paper-workflow.js";
+import { isAiAnalyzableAbstract, isAllowedAdminPaperStatusChange, isCancellablePaperRequest, type PaperRequestStatus } from "./paper-workflow.js";
 import { presentPaperDetail, type PaperDetailDto } from "./paper.presenter.js";
 
 export interface ListPapersParams extends PaperFilterInput { q?: string; page: number; pageSize: number; sort?: SearchSortKey }
@@ -121,7 +121,10 @@ async function listWhere(input: ListPapersParams): Promise<Record<string, unknow
 
 function cleanUpdate(input: Record<string, unknown>) {
   const allowed = ["title", "abstractText", "journalName", "publicationYear", "publicationDate", "paperKind", "language", "openAccessStatus", "openAccessUrl", "paperLink", "licenseName", "citationCount", "fwci", "paperStatus", "dataStatus", "rejectionReason", "pdfPath", "uploadedAt"];
-  return Object.fromEntries(allowed.filter((key) => input[key] !== undefined).map((key) => [key, input[key]]));
+  const data: Record<string, unknown> = Object.fromEntries(allowed.filter((key) => input[key] !== undefined).map((key) => [key, input[key]]));
+  // isAiAnalyzable is never accepted from the caller; it is derived whenever the abstract is written.
+  if ("abstractText" in data) data.isAiAnalyzable = isAiAnalyzableAbstract(data.abstractText as string | null | undefined);
+  return data;
 }
 
 export const paperService = {
@@ -149,7 +152,7 @@ export const paperService = {
     const paperId = randomUUID(); const charge = isAdmin ? null : await creditService.chargeCreditsChecked({ userId, action: "paper_request", amount: getAiActionCost("paper_request"), idempotencyKey: paperRequestChargeKey(paperId), metadata: { doi: input.doi.toLowerCase() } });
     const quality = calculatePaperQuality(input as never);
     let row: Awaited<ReturnType<ReturnType<typeof getPrisma>["paper"]["create"]>>;
-    try { row = await getPrisma().$transaction(async (tx) => { const created = await tx.paper.create({ data: { id: paperId, doi: input.doi.toLowerCase(), title: input.title, abstractText: input.abstractText, publicationYear: input.publicationYear, paperKind: input.paperKind, paperLink: input.paperLink, openAccessUrl: input.openAccessUrl || null, openAccessStatus: input.openAccessUrl ? "green" : "unknown", primaryProvider: "user", requestedById: user.id, uploadedById: pdfPath ? user.id : null, uploadedAt: pdfPath ? new Date() : null, pdfPath, paperStatus: pdfPath ? "pending" : "not-downloaded", dataStatus: "draft", dataQualityScore: quality.qualityScore / 100, isAiAnalyzable: false, metadataScore: quality.metadataScore, sourceScore: quality.sourceScore, duplicateScore: quality.duplicateScore, relevanceScore: quality.relevanceScore, prestigeScore: quality.prestigeScore, utilityScore: quality.utilityScore, qualityScore: quality.qualityScore, qualityTier: quality.qualityTier, qualityTierName: quality.qualityTierName } });
+    try { row = await getPrisma().$transaction(async (tx) => { const created = await tx.paper.create({ data: { id: paperId, doi: input.doi.toLowerCase(), title: input.title, abstractText: input.abstractText, publicationYear: input.publicationYear, paperKind: input.paperKind, paperLink: input.paperLink, openAccessUrl: input.openAccessUrl || null, openAccessStatus: input.openAccessUrl ? "green" : "unknown", primaryProvider: "user", requestedById: user.id, uploadedById: pdfPath ? user.id : null, uploadedAt: pdfPath ? new Date() : null, pdfPath, paperStatus: pdfPath ? "pending" : "not-downloaded", dataStatus: "draft", dataQualityScore: quality.qualityScore / 100, isAiAnalyzable: isAiAnalyzableAbstract(input.abstractText), metadataScore: quality.metadataScore, sourceScore: quality.sourceScore, duplicateScore: quality.duplicateScore, relevanceScore: quality.relevanceScore, prestigeScore: quality.prestigeScore, utilityScore: quality.utilityScore, qualityScore: quality.qualityScore, qualityTier: quality.qualityTier, qualityTierName: quality.qualityTierName } });
       await tx.paperAuthor.createMany({ data: input.authors.map((author, index) => ({ paperId: created.id, displayName: author.displayName, position: index, isCorresponding: author.isCorresponding })) });
       await tx.paperKeyword.createMany({ data: input.keywords.map((keyword, index) => ({ paperId: created.id, keywordName: keyword.keywordName, detectedBy: "user", position: index })) });
       if (input.topics.length) await tx.paperTopic.createMany({ data: input.topics.map((topic, index) => ({ paperId: created.id, topicName: topic.topicName, detectedBy: "user", position: index })) }); return created; });

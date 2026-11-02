@@ -45,12 +45,27 @@ describe("upsertPaper through ingestOpenAlexWorks", () => {
     expect(data.abstractText.length).toBeGreaterThanOrEqual(250);
     expect(data).toMatchObject({ openalexId: "W123", citationCount: 100 });
     expect(data).not.toHaveProperty("journalName");
-    for (const key of ["primaryProvider", "paperStatus", "dataStatus", "isAiAnalyzable", "title", "doi"]) expect(data).not.toHaveProperty(key);
+    for (const key of ["primaryProvider", "paperStatus", "dataStatus", "title", "doi"]) expect(data).not.toHaveProperty(key);
+    // The enriched abstract is long enough to embed, so the derived flag is recomputed; dataStatus stays untouched, so nothing is published.
+    expect(data.isAiAnalyzable).toBe(true);
     expect(mocks.authorDelete).not.toHaveBeenCalled();
     expect(mocks.keywordDelete).not.toHaveBeenCalled();
     expect(mocks.topicDelete).not.toHaveBeenCalled();
     expect(mocks.authorCreate).not.toHaveBeenCalled();
     expect(mocks.link).toHaveBeenCalledWith(expect.anything(), id);
+  });
+
+  it("derives isAiAnalyzable for a user-owned paper from the abstract it keeps", async () => {
+    const userRow = { id, doi: "10.1038/171737a0", openalexId: null, primaryProvider: "user", paperStatus: "pending", dataStatus: "draft", citationCount: 0 };
+    mocks.update.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({ id, ...data }));
+    mocks.find.mockResolvedValue({ ...userRow, isAiAnalyzable: false, abstractText: "u".repeat(300) });
+    await ingestOpenAlexWorks([work], "provider");
+    expect(mocks.update.mock.calls[0]![0].data).not.toHaveProperty("abstractText");
+    expect(mocks.update.mock.calls[0]![0].data.isAiAnalyzable).toBe(true);
+    mocks.find.mockResolvedValue({ ...userRow, isAiAnalyzable: true, abstractText: "u".repeat(100) });
+    await ingestOpenAlexWorks([work], "provider");
+    expect(mocks.update.mock.calls[1]![0].data.isAiAnalyzable).toBe(false);
+    expect(mocks.update.mock.calls[1]![0].data).not.toHaveProperty("dataStatus");
   });
 
   it("keeps overwriting an OpenAlex-owned paper as before", async () => {
