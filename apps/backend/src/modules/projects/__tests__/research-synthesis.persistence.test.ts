@@ -22,21 +22,21 @@ vi.mock("../../../infrastructure/queue.js", () => ({ gapsQueue: { add: vi.fn().m
 vi.mock("../../llm/llm.run.js", () => ({ cachedGenerateJSON: vi.fn() }));
 vi.mock("../../embeddings/embedding.factory.js", () => ({ getEmbeddingProvider: () => ({ embed: vi.fn().mockRejectedValue(new Error("No network in tests")) }) }));
 
-const isolated = process.env.NODE_ENV === "test" && process.env.DATABASE_URL?.includes("codex_mentorship_");
+const isolated = process.env.NODE_ENV === "test" && (process.env.DATABASE_URL?.includes("codex_mentorship_") || process.env.SCREENING_INTEGRATION === "1" && /\/lumigap_evidence_workspace_test(?:\?|$)/.test(process.env.DATABASE_URL ?? ""));
 describe.skipIf(!isolated).sequential("reviewed project research flow (isolated PostgreSQL)", () => {
   const db = getPrisma(), users: string[] = [], projects: string[] = [], papers: string[] = [];
   let owner: string, member: string, outsider: string;
   const content = { claim: "The source reports mixed learning outcomes", quotation: "Mixed learning outcomes.", locator: "Abstract", methodology: "Interviews", population: "Students", context: "University", results: "Mixed outcomes", limitations: "One institution", themes: ["learning"] };
   const summary = { commonFindings: "Studies report mixed learning outcomes [1] [2] [3].", contradictions: "", openQuestions: "Does the finding transfer to other institutions? [1]" };
-  async function pack() {
+  async function pack(firstAbstract = "Mixed learning outcomes.") {
     const project = await createProjectFixture({ data: { title: `Learning ${crypto.randomUUID()}`, ownerId: owner } }); projects.push(project.id);
     await db.projectMember.create({ data: { projectId: project.id, userId: member, role: "MEMBER" } });
     const sources = [];
     for (let i = 0; i < 3; i++) {
-      const paper = await db.paper.create({ data: { title: `Learning study ${i}`, abstractText: "Mixed learning outcomes.", publicationYear: 2024, primaryProvider: "user", dataStatus: "active", ...(i === 0 ? { legacyMongoId: crypto.randomUUID().replaceAll("-", "").slice(0, 24) } : {}) } }); papers.push(paper.id);
+      const paper = await db.paper.create({ data: { title: `Learning study ${i}`, abstractText: i === 0 ? firstAbstract : "Mixed learning outcomes.", publicationYear: 2024, primaryProvider: "user", dataStatus: "active", ...(i === 0 ? { legacyMongoId: crypto.randomUUID().replaceAll("-", "").slice(0, 24) } : {}) } }); papers.push(paper.id);
       await db.projectPaper.create({ data: { projectId: project.id, paperId: paper.id, addedById: owner, screeningStatus: "INCLUDED" } });
       const item = await evidence.create(project.id, member, { ...content, paperId: paper.id, origin: "HUMAN", clientKey: crypto.randomUUID() });
-      sources.push(await evidence.review(project.id, owner, item.id, { state: "ACCEPTED", expectedVersion: item.version, rationale: "Checked the source and interpretation" }));
+      sources.push(await evidence.review(project.id, owner, item.id, { state: "ACCEPTED", sourceConfirmed: true, expectedVersion: item.version, rationale: "Checked the source and interpretation" }));
     }
     return { project, sources, selection: sources.map(item => ({ id: item.id, version: item.version })) };
   }
@@ -124,9 +124,8 @@ describe.skipIf(!isolated).sequential("reviewed project research flow (isolated 
     expect((await db.researchPlan.findUniqueOrThrow({ where: { projectId: project.id } })).problem).toEqual(plan.problem);
   });
   it("never sends raw private files or papers outside the approved pack to synthesis", async () => {
-    const { project, selection, sources } = await pack();
+    const { project, selection, sources } = await pack("UNREVIEWED_ABSTRACT_SENTINEL");
     await db.projectPaperFile.create({ data: { projectId: project.id, paperId: sources[0]!.paperId, uploadedById: owner, sha256: "f".repeat(64), content: Buffer.from("PRIVATE_ATTACHMENT_SENTINEL"), byteSize: 27 } });
-    await db.paper.update({ where: { id: sources[0]!.paperId }, data: { abstractText: "UNREVIEWED_ABSTRACT_SENTINEL" } });
     const queued = await synthesis.generate(project.id, owner, { expectedVersion: 0, evidence: selection });
     await synthesis.run({ projectId: project.id, userId: owner, version: queued.version });
     const call = vi.mocked(cachedGenerateJSON).mock.calls.at(-1)![0];

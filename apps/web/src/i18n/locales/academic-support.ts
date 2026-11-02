@@ -1,4 +1,7 @@
 export const academicSupportEn = {
+  "With mentors": "With mentors",
+  "Talk with mentors": "Talk with mentors",
+  "Find lecturers, track invitations and manage shared content.": "Find lecturers, track invitations and manage shared content.",
   "The shared project introduction changed. Review it before sending again.": "The shared project introduction changed. Review it before sending again.",
   "The shared project introduction changed. Review it before accepting.": "The shared project introduction changed. Review it before accepting.",
   "Invitation sent. Track the response in Invitations & mentors.": "Invitation sent. Track the response in Invitations & mentors.",
@@ -762,6 +765,9 @@ export const academicSupportEn = {
 } as const;
 
 export const academicSupportVi = {
+  "With mentors": "Với cố vấn",
+  "Talk with mentors": "Trao đổi với cố vấn",
+  "Find lecturers, track invitations and manage shared content.": "Tìm giảng viên hướng dẫn, theo dõi lời mời và quản lý nội dung chia sẻ.",
   "The shared project introduction changed. Review it before sending again.": "Thông tin giới thiệu dự án đã thay đổi. Hãy xem lại trước khi gửi lời mời.",
   "The shared project introduction changed. Review it before accepting.": "Thông tin giới thiệu dự án đã thay đổi. Hãy xem lại trước khi nhận hướng dẫn.",
   "Invitation sent. Track the response in Invitations & mentors.": "Đã gửi lời mời. Bạn có thể theo dõi phản hồi trong Lời mời & cố vấn.",

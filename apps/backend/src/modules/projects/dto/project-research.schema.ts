@@ -1,13 +1,22 @@
 import { z } from "zod";
 export const researchPageSchema = z.object({ page: z.coerce.number().int().min(1).max(10000).default(1), pageSize: z.coerce.number().int().min(1).max(50).default(20), q: z.string().trim().max(200).default(""), state: z.string().max(32).optional(), itemId: z.string().uuid().optional() }).strict();
 const text = (max = 5000) => z.string().trim().max(max);
+export const evidencePageSchema = researchPageSchema.extend({ paperId: z.string().uuid().optional() }).strict();
+export const evidenceWorkspaceSchema = z.object({
+  page: z.coerce.number().int().min(1).max(10000).default(1), pageSize: z.coerce.number().int().min(1).max(50).default(20),
+  q: text(200).default(""), questionId: z.string().max(100).default(""), theme: text(80).default(""),
+  status: z.enum(["", "DRAFT", "NEEDS_VERIFICATION", "VERIFIED", "REVISIT"]).default(""),
+  eligibility: z.enum(["ELIGIBLE", "ALL"]).default("ELIGIBLE"),
+  paperId: z.string().uuid().optional(),
+}).strict();
+const evidenceWorkflow = { questionIds: z.array(z.string().min(1).max(100)).max(50).refine(ids => new Set(ids).size === ids.length).optional(), draft: z.boolean().optional(), sourceScope: z.enum(["ABSTRACT", "FULL_TEXT", "UNSPECIFIED"]).optional() };
 export const evidenceContentSchema = z.object({
   claim: text().min(3), quotation: text(), locator: text(500), context: text(), methodology: text(),
   population: text(), results: text(), limitations: text(), themes: z.array(text(80).min(1)).max(12),
 }).strict();
-export const createEvidenceSchema = evidenceContentSchema.extend({ paperId: z.string().uuid(), origin: z.enum(["HUMAN", "AI_SUGGESTED"]), clientKey: z.string().uuid(), sourceChunkId: z.string().uuid().optional(), corpusPaperId: z.string().uuid().optional(), analysisHash: z.string().regex(/^[a-f0-9]{64}$/).optional() }).strict();
-export const editEvidenceSchema = evidenceContentSchema.extend({ expectedVersion: z.number().int().positive() }).strict();
-export const reviewEvidenceSchema = z.object({ expectedVersion: z.number().int().positive(), state: z.enum(["ACCEPTED", "REJECTED"]), rationale: text(2000).min(3) }).strict();
+export const createEvidenceSchema = evidenceContentSchema.extend({ ...evidenceWorkflow, paperId: z.string().uuid(), origin: z.enum(["HUMAN", "AI_SUGGESTED"]), clientKey: z.string().uuid(), sourceChunkId: z.string().uuid().optional(), corpusPaperId: z.string().uuid().optional(), analysisHash: z.string().regex(/^[a-f0-9]{64}$/).optional() }).strict();
+export const editEvidenceSchema = evidenceContentSchema.extend({ ...evidenceWorkflow, expectedVersion: z.number().int().positive() }).strict();
+export const reviewEvidenceSchema = z.object({ expectedVersion: z.number().int().positive(), state: z.enum(["ACCEPTED", "REJECTED"]), rationale: text(2000).min(3), sourceConfirmed: z.boolean().optional() }).strict().refine(value => value.state !== "ACCEPTED" || value.sourceConfirmed === true, "Confirm that you compared the extraction with its source");
 export const screeningPolicySchema = z.object({ mode: z.enum(["EXPLORATORY", "INDEPENDENT"]), blinded: z.boolean(), expectedVersion: z.number().int().positive() }).strict();
 export const assignScreeningSchema = z.object({ reviewerIds: z.array(z.string().uuid()).min(2).max(5).refine(ids => new Set(ids).size === ids.length), phase: z.enum(["TITLE_ABSTRACT", "FULL_TEXT"]), expectedUpdatedAt: z.string().datetime() }).strict();
 export const voteScreeningSchema = z.object({ phase: z.enum(["TITLE_ABSTRACT", "FULL_TEXT"]), decision: z.enum(["UNDECIDED", "INCLUDED", "EXCLUDED", "MAYBE"]), reason: text(2000), expectedVersion: z.number().int().positive() }).strict().refine(value => value.decision !== "EXCLUDED" || value.reason.length >= 3, { message: "Explain the exclusion", path: ["reason"] });

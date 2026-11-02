@@ -1,10 +1,28 @@
 import type { ScreeningChoice, ScreeningConsensusPolicy, ScreeningMetrics, ScreeningState } from "@trend/shared-types";
 
+/** Only a complete, distinct pair from one round can carry a disagreement. */
+export function classifyScreeningPair(reviews: readonly { reviewerId: string; roundId: string; decision: string; exclusionReason: string }[], phase: string, requirePrimaryReason = true) {
+  if (reviews.length !== 2 || reviews[0]!.reviewerId === reviews[1]!.reviewerId || reviews[0]!.roundId !== reviews[1]!.roundId) return null;
+  const decisions = reviews.map(r => r.decision);
+  if (decisions.some(d => !["INCLUDE", "EXCLUDE", "UNSURE"].includes(d))) return null;
+  if (decisions.every(d => d === "UNSURE")) return "NEEDS_MORE_INFORMATION" as const;
+  if (decisions.includes("UNSURE")) return "NEEDS_CLARIFICATION" as const;
+  if (decisions.every(d => d === "INCLUDE")) return "AGREEMENT_INCLUDE" as const;
+  if (decisions.every(d => d === "EXCLUDE")) return phase === "FULL_TEXT" && requirePrimaryReason && differingExclusionReasons(reviews) ? "EXCLUSION_REASON_MISMATCH" as const : "AGREEMENT_EXCLUDE" as const;
+  return "CONFLICT" as const;
+}
+
 export function screeningConsensus(decisions: ScreeningChoice[], assigned: number, required: number, policy: ScreeningConsensusPolicy): ScreeningState {
   if (assigned < required || decisions.length < assigned) return decisions.length ? "IN_REVIEW" : "NOT_REVIEWED";
   const include = decisions.filter(d => d === "INCLUDE").length, exclude = decisions.filter(d => d === "EXCLUDE").length;
   const threshold = policy === "UNANIMOUS" ? assigned : Math.floor(assigned / 2) + 1;
   return include >= threshold ? "INCLUDED" : exclude >= threshold ? "EXCLUDED" : "NEEDS_RESOLUTION";
+}
+
+/** Matching exclusion votes can still disagree on the full-text exclusion reason. */
+export function differingExclusionReasons(reviews: readonly { decision: string; exclusionReason: string }[]) {
+  return reviews.length >= 2 && reviews.every(r => r.decision === "EXCLUDE") &&
+    new Set(reviews.map(r => r.exclusionReason.normalize("NFKC").trim().replace(/\s+/g, " ").toLocaleLowerCase("en"))).size > 1;
 }
 
 export function cohenKappa(pairs: { reviewers: string[]; decisions: ScreeningChoice[] }[]): ScreeningMetrics["kappa"] {
@@ -24,8 +42,10 @@ export function cohenKappa(pairs: { reviewers: string[]; decisions: ScreeningCho
 /** Stable greedy assignment minimizes pending work, then total assigned work. */
 export function balancedReviewers(eligible: string[], existing: string[], required: number, loads: Map<string, { pending: number; total: number }>, proposerId?: string | null) {
   const selected = new Set(existing);
+  const otherEligible = proposerId ? eligible.filter(id => id !== proposerId) : eligible;
+  const candidatePool = (proposerId && otherEligible.length >= required) ? otherEligible : eligible;
   while (selected.size < required) {
-    const next = eligible.filter(id => !selected.has(id)).sort((a, b) => {
+    const next = candidatePool.filter(id => !selected.has(id)).sort((a, b) => {
       const x = loads.get(a) ?? { pending: 0, total: 0 }, y = loads.get(b) ?? { pending: 0, total: 0 };
       return Number(a === proposerId) - Number(b === proposerId) || x.pending - y.pending || x.total - y.total || a.localeCompare(b);
     })[0];

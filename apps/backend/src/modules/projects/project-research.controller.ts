@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import { AppError } from "../../common/exceptions/app-error.js";
-import { researchPageSchema } from "./dto/project-research.schema.js";
+import { researchPageSchema, evidencePageSchema, evidenceWorkspaceSchema } from "./dto/project-research.schema.js";
+import { projectEvidenceWorkspaceService } from "./project-evidence-workspace.service.js";
 import { projectEvidenceService as evidence } from "./project-evidence.service.js";
 import { projectScreeningService as screening } from "./project-screening.service.js";
 import { projectSourcesService as sources } from "./project-sources.service.js";
@@ -31,7 +32,8 @@ export const projectResearchController = {
   organize: async (req: Request, res: Response) => send(res, await sources.organize(id(req), actor(req), item(req), req.body)),
   upload: async (req: Request, res: Response) => { const file = (req as Request & { file?: { buffer: Buffer } }).file; if (!file) throw AppError.badRequest("Choose a legally held PDF"); return send(res, await sources.upload(id(req), actor(req), item(req), file.buffer), 201); },
   file: async (req: Request, res: Response) => { const file = await sources.file(id(req), actor(req), item(req)); res.set({ "Content-Type": "application/pdf", "Content-Disposition": 'attachment; filename="research-source.pdf"', "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" }); return res.send(Buffer.from(file.content)); },
-  evidence: async (req: Request, res: Response) => send(res, await evidence.list(id(req), actor(req), researchPageSchema.parse(req.query))),
+  evidenceWorkspace: async (req: Request, res: Response) => { res.set("Cache-Control", "private, no-store"); return send(res, await projectEvidenceWorkspaceService.get(id(req), actor(req), evidenceWorkspaceSchema.parse(req.query))); },
+  evidence: async (req: Request, res: Response) => send(res, await evidence.list(id(req), actor(req), evidencePageSchema.parse(req.query))),
   createEvidence: async (req: Request, res: Response) => send(res, await evidence.create(id(req), actor(req), req.body), 201),
   editEvidence: async (req: Request, res: Response) => send(res, await evidence.update(id(req), actor(req), item(req), req.body)),
   reviewEvidence: async (req: Request, res: Response) => send(res, await evidence.review(id(req), actor(req), item(req), req.body)),

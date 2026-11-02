@@ -159,6 +159,9 @@ export function ProjectTeamSettings({ project }: { project: IProject }) {
             </div>
           ) : (
             <>
+              <div className="mb-6">
+                <ProjectMentorSummary projectId={project._id} />
+              </div>
               <ProjectMembersTab
                 projectId={project._id}
                 projectTitle={project.title}
@@ -173,9 +176,7 @@ export function ProjectTeamSettings({ project }: { project: IProject }) {
               <Pagination label={t("Invitation pages")} page={invitationPage} totalPages={team.data.invitationMeta.totalPages} onChange={setInvitationPage} />
             </>
           )}
-          <div className="mt-8">
-            <ProjectMentorSummary projectId={project._id} />
-          </div>
+
         </section>
       )}
     </div>

@@ -15,7 +15,6 @@ import {
   Layers,
   UserCheck,
   BookOpen,
-  Table,
   FolderOpen,
   Sliders,
 } from "lucide-react";
@@ -108,20 +107,12 @@ export function ResearchLiterature({
 
         {/* Secondary Navigation Tools */}
         <div className="papers-secondary-tools">
-          <Button
-            variant={view === "evidence" ? "default" : "ghost"}
-            size="sm"
-            className="secondary-tool-btn"
-            onClick={() => void change("evidence")}
-          >
-            <Table size={13} className="mr-1.5" />
-            {t("Evidence Matrix")}
-          </Button>
 
           <Button
             variant={view === "organize" ? "default" : "ghost"}
             size="sm"
-            className="secondary-tool-btn"
+            className="sr-only"
+            tabIndex={-1}
             onClick={() => void change("organize")}
           >
             <FolderOpen size={13} className="mr-1.5" />
@@ -129,9 +120,9 @@ export function ResearchLiterature({
           </Button>
 
           <Button
-            variant={view === "screening" ? "default" : "ghost"}
+            variant={view === "screening" ? "default" : "outline"}
             size="sm"
-            className="secondary-tool-btn text-muted-foreground"
+            className={`secondary-tool-btn font-medium ${view === "screening" ? "!text-primary-foreground font-semibold shadow-xs" : "text-foreground bg-background"}`}
             onClick={() => void change("screening")}
             title="Quy trình và kiểm soát sàng lọc nâng cao"
           >

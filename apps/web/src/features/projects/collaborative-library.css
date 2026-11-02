@@ -220,6 +220,18 @@
   background: #059669;
   color: #ffffff;
 }
+.library-pill.pill-in-review.active {
+  background: #2563eb;
+  color: #ffffff;
+}
+.library-pill.pill-background.active {
+  background: #7c3aed;
+  color: #ffffff;
+}
+.library-pill.pill-excluded.active {
+  background: #dc2626;
+  color: #ffffff;
+}
 .library-pill.pill-not-reviewed.active {
   background: #4b5563;
   color: #ffffff;
@@ -238,6 +250,18 @@
 }
 :root.dark .library-pill.pill-included.active {
   background: #10b981;
+  color: #0f172a;
+}
+:root.dark .library-pill.pill-in-review.active {
+  background: #3b82f6;
+  color: #0f172a;
+}
+:root.dark .library-pill.pill-background.active {
+  background: #a855f7;
+  color: #0f172a;
+}
+:root.dark .library-pill.pill-excluded.active {
+  background: #ef4444;
   color: #0f172a;
 }
 
@@ -3751,4 +3775,24 @@
   border-radius: 0.75rem;
   border: 1px dashed hsl(var(--border));
   background: hsl(var(--muted) / 0.2);
+}
+
+.library-pill-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 5px;
+  min-width: 17px;
+  height: 17px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 700;
+  margin-left: 5px;
+  background: hsl(var(--muted));
+  color: hsl(var(--foreground));
+  line-height: 1;
+}
+.library-pill.active .library-pill-count {
+  background: rgba(255, 255, 255, 0.25);
+  color: inherit;
 }

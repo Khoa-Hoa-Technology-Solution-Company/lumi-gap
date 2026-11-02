@@ -119,6 +119,6 @@ it("routes adjudicators to the scoped screening packet", () => {
 
 it("opens the exact project paper for screening assignment and consensus notifications", () => {
   for (const type of ["SCREENING_REVIEW_ASSIGNED", "SCREENING_ACTION_REQUIRED"]) {
-    expect(getNotificationDestination({ type, targetKind: "project", targetId: "project", paperId: "paper" }, false)).toBe("/projects/project?tab=papers&source=paper");
+    expect(getNotificationDestination({ type, targetKind: "project", targetId: "project", paperId: "paper" }, false)).toBe("/projects/project?tab=papers&paper=paper");
   }
 });

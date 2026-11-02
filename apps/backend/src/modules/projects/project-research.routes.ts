@@ -35,7 +35,8 @@ projectResearchRouter.post("/screening/:itemId/assign", writes, item, validate(s
 projectResearchRouter.put("/screening/:itemId/vote", writes, item, validate(s.voteScreeningSchema), c.vote);
 projectResearchRouter.post("/screening/:itemId/resolve", writes, item, validate(s.resolveScreeningSchema), c.resolve);
 projectResearchRouter.get("/screening/:itemId/history", item, c.screeningHistory);
-projectResearchRouter.get("/evidence", params, validate(s.researchPageSchema, "query"), c.evidence);
+projectResearchRouter.get("/evidence/workspace", params, validate(s.evidenceWorkspaceSchema, "query"), c.evidenceWorkspace);
+projectResearchRouter.get("/evidence", params, validate(s.evidencePageSchema, "query"), c.evidence);
 projectResearchRouter.post("/evidence", writes, params, validate(s.createEvidenceSchema), c.createEvidence);
 projectResearchRouter.patch("/evidence/:itemId", writes, item, validate(s.editEvidenceSchema), c.editEvidence);
 projectResearchRouter.post("/evidence/:itemId/review", writes, item, validate(s.reviewEvidenceSchema), c.reviewEvidence);

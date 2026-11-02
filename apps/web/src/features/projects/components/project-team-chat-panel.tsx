@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowDown, CheckCheck, FileText, Lightbulb, Loader2, SendHorizonal, Trash2, Users, XCircle } from "lucide-react";
+import { ArrowDown, CheckCheck, FileText, Lightbulb, Loader2, Trash2, Users, XCircle } from "lucide-react";
 import { isAdminSystemRole, type ProjectTeamChatMessage } from "@trend/shared-types";
 import { Button } from "@/components/ui/button";
 import { useAuthStore } from "@/stores/auth-store";
 import { useI18n } from "@/i18n";
 import { projectTeamChatApi } from "../api/project-team-chat.api";
+import { ProjectChatComposer, ProjectChatMessage } from "./project-chat-primitives";
 import { useChatScroll } from "../hooks/use-chat-scroll";
 
 interface ProjectTeamChatPanelProps {
@@ -44,14 +45,6 @@ export function ProjectTeamChatPanel({ projectId, ownerId, draft, onDraftChange,
       label: t("Check out the candidate research gaps identified in the Gaps tab."),
     },
   ];
-
-  // Auto-resize textarea
-  useEffect(() => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = "auto";
-      textareaRef.current.style.height = `${Math.min(Math.max(textareaRef.current.scrollHeight, 46), 160)}px`;
-    }
-  }, [message]);
 
   const historyQuery = useQuery({
     queryKey,
@@ -234,11 +227,6 @@ export function ProjectTeamChatPanel({ projectId, ownerId, draft, onDraftChange,
     sendMutation.mutate(text);
   };
 
-  const getInitials = (sender: { fullName?: string; email?: string }) => {
-    const name = sender.fullName || sender.email || "?";
-    return name.charAt(0).toUpperCase();
-  };
-
   const isDisabled = sendMutation.isPending || historyQuery.isError;
 
   const selectStarter = (text: string) => { setMessage(text); textareaRef.current?.focus(); };
@@ -279,45 +267,18 @@ export function ProjectTeamChatPanel({ projectId, ownerId, draft, onDraftChange,
             const newDay = !previous || date.toDateString() !== new Date(previous.createdAt).toDateString();
             return <div key={item.id}>
               {newDay && <div className="project-chat-date"><time dateTime={item.createdAt}>{date.toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" })}</time></div>}
-              <div className="project-chat-message" data-own={isMe} data-deleted={item.isDeleted}>
-                {!isMe && <div className="project-chat-avatar" aria-hidden="true">{item.sender.avatarUrl ? <img src={item.sender.avatarUrl} alt="" /> : getInitials(item.sender)}</div>}
-                <div className="project-chat-message-main">
-                  <div className="project-chat-message-meta"><strong>{isMe ? t("You") : item.sender.fullName || item.sender.email || t("Member")}</strong><time dateTime={item.createdAt} title={date.toLocaleString(locale)}>{date.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" })}</time></div>
-                  <div className="project-chat-bubble"><p>{item.isDeleted ? t("This message was removed.") : item.content}</p></div>
-                  <div className="project-chat-message-footer">
+              <ProjectChatMessage own={isMe} author={isMe ? t("You") : item.sender.fullName || item.sender.email || t("Member")} avatarUrl={item.sender.avatarUrl} createdAt={item.createdAt} locale={locale} deleted={item.isDeleted} content={item.isDeleted ? t("This message was removed.") : item.content} footer={<>
+
                     {isMe && !item.isDeleted && <span><CheckCheck size={13} aria-hidden="true" />{isPending ? t("Sending…") : readByOthers ? t("Seen by {{count}}", { count: readByOthers }) : t("Sent")}</span>}
                     {canDelete && !isPending && !item.isDeleted && <button type="button" onClick={() => deleteMutation.mutate(item.id)} disabled={deleteMutation.isPending} aria-label={t("Delete message")} title={t("Delete message")}><Trash2 size={14} aria-hidden="true" /></button>}
-                  </div>
-                </div>
-              </div>
+              </>} />
             </div>;
           })}
         </div>
         {!atBottom && <button type="button" className="project-chat-jump" onClick={jumpToLatest}><ArrowDown size={15} aria-hidden="true" />{t(hasNewMessages ? "New messages" : "Jump to latest")}</button>}
         </div>
         {(sendMutation.isError || deleteMutation.isError) && <div className="project-chat-error" role="alert"><XCircle size={16} aria-hidden="true" />{t(sendMutation.isError ? "Could not send. Your message is kept below; try again." : "Could not remove this message. Try again.")}</div>}
-        <div className="project-chat-compose">
-          <form onSubmit={event => { event.preventDefault(); submit(); }}>
-            <textarea
-              ref={textareaRef}
-              value={message}
-              onChange={event => { setMessage(event.target.value); if (sendMutation.isError) sendMutation.reset(); }}
-              onKeyDown={event => {
-                if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing && event.keyCode !== 229 && !window.matchMedia("(pointer: coarse)").matches) { event.preventDefault(); submit(); }
-              }}
-              maxLength={2000}
-              rows={1}
-              aria-label={t("Message your team")}
-              placeholder={t("Message your team…")}
-              disabled={isDisabled || historyQuery.isLoading}
-            />
-            <div className="project-chat-compose-toolbar">
-              <span className="project-chat-keyboard-hint">{t("Enter to send · Shift+Enter for a new line")}</span>
-              <span className="project-chat-mobile-hint">{t("Only visible to your team")}</span>
-              <div className="project-chat-send-actions">{message.length > 1600 && <small>{message.length}/2000</small>}<Button type="submit" size="sm" disabled={!message.trim() || isDisabled || historyQuery.isLoading}>{sendMutation.isPending ? <Loader2 size={16} className="animate-spin" /> : <SendHorizonal size={16} />}{t("Send")}</Button></div>
-            </div>
-          </form>
-        </div>
+        <ProjectChatComposer value={message} onChange={value => { setMessage(value); if (sendMutation.isError) sendMutation.reset(); }} onSend={submit} textareaRef={textareaRef} disabled={isDisabled || historyQuery.isLoading} pending={sendMutation.isPending} label={t("Message your team")} placeholder={t("Message your team…")} sendLabel={t("Send")} keyboardHint={t("Enter to send · Shift+Enter for a new line")} mobileHint={t("Only visible to your team")} />
       </div>
     </div>
   );

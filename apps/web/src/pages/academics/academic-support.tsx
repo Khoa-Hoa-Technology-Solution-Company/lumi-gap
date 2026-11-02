@@ -613,6 +613,7 @@ export function MentorProjectPanel({ projectId }: { projectId: string }) {
     initialView === "access" || initialView === "permissions" ? "access" : "find"
   );
   const [requestPage, setRequestPage] = useState(1);
+  const [showPlan, setShowPlan] = useState(false);
   const [planned, setPlanned] = useState<{ candidate: MentorPlanCandidate; version: number }>();
   const workspace = useQuery({ queryKey: ["academic-support", userId, "workspace", projectId], queryFn: () => academicSupportApi.workspace(projectId) });
   const list = useQuery({ queryKey: ["academic-support", userId, "project", projectId, requestPage], queryFn: () => academicSupportApi.list(projectId, { page: requestPage }) });
@@ -634,12 +635,35 @@ export function MentorProjectPanel({ projectId }: { projectId: string }) {
   };
   return <section className="mentor-workspace" data-no-i18n>
     {workspace.isError && <div role="alert"><p>{t("Academic Support is available to the project team and active verified mentors.")}</p><Button variant="outline" size="sm" onClick={() => void workspace.refetch()}>{t("Try again")}</Button></div>}
-    <header className="mentor-page-heading">
-      <p className="mentor-project-name">{data.project.title}</p>
-      <h2>{t(canFind ? (activeTab === "access" ? "Mentor permissions & sharing" : activeTab === "requests" ? "Invitations & mentors" : "Find Mentors") : "Invitations & mentors")}</h2>
-      {data.accessRole === "MENTOR" && <Link className="mt-3 inline-flex text-sm text-primary underline underline-offset-4" to={`/projects/${encodeURIComponent(projectId)}/plan-review`}>{t("Open shared plan and questions")}</Link>}
+    <header className="mentor-page-heading mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2 text-xs font-semibold text-primary mb-1">
+            <GraduationCap size={15} />
+            <span>Học thuật & Cố vấn</span>
+          </div>
+          <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground">
+            Cố vấn học thuật & Hướng dẫn đề tài
+          </h2>
+          <p className="text-xs sm:text-sm text-muted-foreground mt-1 max-w-2xl leading-relaxed">
+            {data.project.title} · {t("Find lecturers, track invitations and manage shared content.")}
+          </p>
+        </div>
+        {data.canManage && activeTab === "find" && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8.5 text-xs font-semibold gap-1.5 shadow-xs shrink-0 self-start sm:self-center"
+            onClick={() => setShowPlan(true)}
+          >
+            <Users size={14} />
+            <span>Kế hoạch mời ứng viên</span>
+          </Button>
+        )}
+      </div>
+      {data.accessRole === "MENTOR" && <Link className="mt-3 inline-flex text-sm text-primary underline underline-offset-4 font-medium" to={`/projects/${encodeURIComponent(projectId)}/plan-review`}>{t("Open shared plan and questions")}</Link>}
+      {data.accessRole === "TEAM" && Boolean(list.data?.counts.active) && <Button asChild variant="outline" className="mt-3"><Link to={`/projects/${encodeURIComponent(projectId)}?tab=chat&channel=mentors`}>{t("Talk with mentors")}</Link></Button>}
     </header>
-    {data.canManage && activeTab !== "access" && <MentorRecruitmentPlan projectId={projectId} onSend={(candidate, version) => setPlanned({ candidate, version })} />}
     {planned && <ConsentComposer project={data.project} mentor={{ _id: planned.candidate.mentorUserId, fullName: planned.candidate.fullName }} planned={planned} onClose={() => setPlanned(undefined)} />}
     {canFind && <div role="tablist" aria-label={t("Project mentorship")} className="mentor-workspace-tabs" onKeyDown={event => {
       const allTabs: Array<"find" | "requests" | "access"> = ["find", "requests", "access"];
@@ -654,7 +678,28 @@ export function MentorProjectPanel({ projectId }: { projectId: string }) {
       <button type="button" role="tab" id={`mentor-requests-tab-${projectId}`} aria-selected={activeTab === "requests"} aria-controls={`mentor-requests-panel-${projectId}`} tabIndex={activeTab === "requests" ? 0 : -1} onClick={() => void changeTab("requests")}><Mail size={17} aria-hidden="true" />{t("Invitations & mentors")}{Boolean(list.data?.counts.pending) && <span className="mentor-tab-count">{list.data!.counts.pending}</span>}</button>
       <button type="button" role="tab" id={`mentor-access-tab-${projectId}`} aria-selected={activeTab === "access"} aria-controls={`mentor-access-panel-${projectId}`} tabIndex={activeTab === "access" ? 0 : -1} onClick={() => void changeTab("access")}><ShieldCheck size={17} aria-hidden="true" />{t("Mentor permissions & sharing")}</button>
     </div>}
-    {canFind && <div role="tabpanel" id={`mentor-find-panel-${projectId}`} aria-labelledby={`mentor-find-tab-${projectId}`} hidden={activeTab !== "find"}><MentorSearch key={projectId} project={data.project} canInvite={data.canManage} disabled={unavailable} /></div>}
+    {canFind && <div role="tabpanel" id={`mentor-find-panel-${projectId}`} aria-labelledby={`mentor-find-tab-${projectId}`} hidden={activeTab !== "find"}>
+      <MentorSearch key={projectId} project={data.project} canInvite={data.canManage} disabled={unavailable} />
+      {showPlan && (
+        <Dialog open onOpenChange={setShowPlan}>
+          <DialogContent className="max-w-3xl max-h-[90dvh] overflow-y-auto" data-no-i18n>
+            <DialogHeader>
+              <DialogTitle>Kế hoạch mời người hướng dẫn</DialogTitle>
+              <DialogDescription>
+                Quản lý các ứng viên được đưa vào kế hoạch mời của đề tài.
+              </DialogDescription>
+            </DialogHeader>
+            <MentorRecruitmentPlan
+              projectId={projectId}
+              onSend={(candidate, version) => {
+                setShowPlan(false);
+                setPlanned({ candidate, version });
+              }}
+            />
+          </DialogContent>
+        </Dialog>
+      )}
+    </div>}
     <div role={canFind ? "tabpanel" : undefined} id={`mentor-requests-panel-${projectId}`} aria-labelledby={canFind ? `mentor-requests-tab-${projectId}` : undefined} hidden={activeTab !== "requests"} className="mentor-requests-panel">
       {list.isLoading && <Skeleton className="h-36 w-full" />}
       {list.data && <><div className="mentor-requests-heading"><h3>{t("Invitations & mentors")}</h3><p>{list.data.counts.active} {t("active mentors")} · {list.data.counts.pending} {t("pending requests")}</p></div><MentoringItems items={[...list.data.relationships, ...list.data.requests]} onOpenAccess={() => void changeTab("access")} /><Pager meta={list.data.requestMeta.totalPages >= list.data.relationshipMeta.totalPages ? list.data.requestMeta : list.data.relationshipMeta} onPage={setRequestPage} /></>}

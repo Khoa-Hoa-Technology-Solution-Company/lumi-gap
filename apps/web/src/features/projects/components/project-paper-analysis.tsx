@@ -11,7 +11,7 @@ import {
   Info,
   MinusCircle,
   RefreshCw,
-  Sparkles,
+
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -129,7 +129,7 @@ export function ProjectPaperAnalysis({
           {analysis.summary && (
             <div className="project-ai-summary-card">
               <div className="flex items-center gap-2 mb-2">
-                <Sparkles className="h-4 w-4 text-amber-500 shrink-0" />
+                <FileText className="h-4 w-4 text-amber-500 shrink-0" />
                 <h4 className="text-xs font-bold uppercase tracking-wider text-foreground">
                   {t("Summary")}
                 </h4>

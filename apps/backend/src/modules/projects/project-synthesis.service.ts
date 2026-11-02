@@ -1,6 +1,8 @@
 import type { ProjectResearchQuestion, ProjectSynthesis, SaveSynthesis, SynthesisContent, SynthesisSource } from "@trend/shared-types";
 import { isDeepStrictEqual } from "node:util";
 import { AppError } from "../../common/exceptions/app-error.js";
+import { evidenceEligibility } from "./evidence-eligibility.js";
+import { evidenceSourceChanged } from "./evidence-presentation.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { gapsQueue, hasLiveJob } from "../../infrastructure/queue.js";
 import { logger } from "../../infrastructure/logger.js";
@@ -26,16 +28,18 @@ export async function synthesisSources(context: { tx: WorkspaceDb; project: { id
   if (selection.length < 3 || selection.length > 30 || new Set(selection.map(item => item.id)).size !== selection.length) throw AppError.badRequest("Choose 3 to 30 distinct accepted extractions");
   const { tx, project } = context;
   const rows = await tx.projectEvidenceItem.findMany({ where: { projectId: project.id, id: { in: selection.map(item => item.id) } } });
-  const [papers, links, revisions] = await Promise.all([
-    tx.paper.findMany({ where: { id: { in: rows.map(row => row.paperId) }, dataStatus: "active" }, select: { id: true, title: true, updatedAt: true } }),
+  const eligibility = await evidenceEligibility(tx, project.id, rows.map(row => row.paperId));
+  const [papers, links, revisions, documents] = await Promise.all([
+    tx.paper.findMany({ where: { id: { in: rows.map(row => row.paperId) }, dataStatus: "active" }, select: { id: true, title: true, updatedAt: true, abstractText: true, pdfPath: true, openAccessUrl: true, uploadedAt: true } }),
     tx.projectPaper.findMany({ where: { projectId: project.id, paperId: { in: rows.map(row => row.paperId) }, screeningStatus: "INCLUDED" } }),
     tx.projectWorkspaceRevision.findMany({ where: { projectId: project.id, entityKind: "EXTRACTION", entityId: { in: rows.map(row => row.id) } } }),
+    tx.paperDocument.findMany({ where: { paperId: { in: rows.map(row => row.paperId) } }, select: { paperId: true, status: true, contentHash: true, sourceHash: true } }),
   ]);
   const sources = selection.map(selected => {
     const row = rows.find(item => item.id === selected.id);
     const paper = papers.find(item => item.id === row?.paperId), link = links.find(item => item.paperId === row?.paperId);
     const revision = revisions.find(item => item.entityId === row?.id && item.version === selected.version);
-    if (!row || row.version !== selected.version || row.reviewState !== "ACCEPTED" || !paper || !link || !revision) {
+    if (!row || row.version !== selected.version || row.reviewState !== "ACCEPTED" || !paper || !link || !revision || !eligibility.get(row.paperId)?.eligible || evidenceSourceChanged(row.sourceSnapshot as Record<string, unknown>, paper, documents.find(document => document.paperId === row.paperId))) {
       throw AppError.conflict("Evidence changed or is no longer accepted. Review the current included sources");
     }
     return { id: row.id, version: row.version, revisionId: revision.id, paperId: row.paperId, projectPaperId: link.id,

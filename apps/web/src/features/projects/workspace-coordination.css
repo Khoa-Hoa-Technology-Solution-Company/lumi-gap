@@ -168,6 +168,16 @@
   background: color-mix(in oklch, var(--coord-accent) 12%, transparent);
   color: var(--coord-accent);
   transition: transform 200ms ease, background-color 200ms ease;
+  white-space: nowrap !important;
+  word-break: keep-all !important;
+  overflow-wrap: normal !important;
+  flex-shrink: 0 !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  box-sizing: border-box;
+  line-height: 1.25;
 }
 .coord-nav-tabs button:hover {
   background: var(--coord-hover);

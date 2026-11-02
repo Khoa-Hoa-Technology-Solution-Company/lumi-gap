@@ -1,13 +1,11 @@
 import { useState } from "react";
 import {
-  Sparkles,
+
   BookOpen,
   ArrowRight,
   Eye,
   Search,
   CheckCircle2,
-  Clock,
-  User,
   Users,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -32,25 +30,32 @@ export function ScreeningQueueView({
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [claimingId, setClaimingId] = useState<string | null>(null);
+  const [slotFilter, setSlotFilter] = useState<"ALL" | "UNCLAIMED" | "LAST_SLOT">("ALL");
 
   const command = useScreeningCommand(projectId);
   const boardQuery = useResearchResource(
     projectId,
-    ["screening-queue", page, search],
-    () => screeningApi.board(projectId, { filter: "QUEUE", page, pageSize: 12, q: search })
+    ["screening-queue", page, search, slotFilter],
+    () => screeningApi.board(projectId, { filter: "QUEUE", page, pageSize: 12, q: search, slots: slotFilter }), true, () => !readOnly, 10000
   );
 
   const board = boardQuery.data;
 
+  const filteredItems = board?.items ?? [];
+
   const handleClaim = async (roundId: string, paperId: string) => {
     setClaimingId(roundId);
     try {
-      await command.run({}, async () => {
-        return await screeningApi.claim(projectId, roundId);
+      const ok = await command.run({ roundId, action: "claim" }, async (clientKey) => {
+        return await screeningApi.claim(projectId, roundId, { clientKey });
       });
-      toast.success("Đã nhận bài thành công! Suất đánh giá được giữ trong 24 giờ.");
-      void boardQuery.refetch();
-      onOpenPaper(paperId);
+      if (ok) {
+        toast.success("Đã nhận bài thành công! Suất đánh giá được giữ trong 24 giờ.");
+        void boardQuery.refetch();
+        onOpenPaper(paperId);
+      } else {
+        toast.error("Không thể nhận suất đánh giá. Có thể suất vừa được thành viên khác nhận.");
+      }
     } catch {
       toast.error("Không thể nhận suất đánh giá. Có thể suất vừa được thành viên khác nhận.");
     } finally {
@@ -61,8 +66,8 @@ export function ScreeningQueueView({
   const handleClaimNext = async () => {
     try {
       let claimPaperId: string | null = null;
-      const ok = await command.run({}, async () => {
-        const res = (await screeningApi.claimNext(projectId)) as { paperId?: string | null } | null;
+      const ok = await command.run({ action: "claim-next" }, async (clientKey) => {
+        const res = (await screeningApi.claimNext(projectId, { clientKey })) as { paperId?: string | null } | null;
         claimPaperId = res?.paperId ?? null;
         return res;
       });
@@ -73,6 +78,8 @@ export function ScreeningQueueView({
         onOpenPaper(claimPaperId);
       } else if (ok) {
         toast.info("Không có bài báo nào đủ điều kiện trong hàng đợi hiện tại.");
+      } else {
+        toast.error("Không thể nhận bài. Vui lòng thử lại.");
       }
     } catch {
       toast.error("Không thể nhận bài. Vui lòng thử lại.");
@@ -93,7 +100,7 @@ export function ScreeningQueueView({
             )}
           </div>
           <p className="text-xs text-muted-foreground mt-1">
-            Chỉ liệt kê các bài đủ điều kiện để bạn tham gia đánh giá độc lập. Mở xem trước bài báo sẽ không tự động chiếm suất đánh giá.
+            Chỉ liệt kê các bài đủ điều kiện để bạn tham gia đánh giá độc lập. Bài do bạn đề xuất (trong nhóm từ 3 thành viên trở lên) sẽ được dành cho 2 thành viên khác đánh giá khách quan và theo dõi tại "Tôi đã đề xuất".
           </p>
         </div>
 
@@ -104,7 +111,7 @@ export function ScreeningQueueView({
               disabled={command.isPending}
               className="queue-claim-next-btn"
             >
-              <Sparkles size={14} className="mr-1.5" />
+
               Nhận bài tiếp theo
             </Button>
           </div>
@@ -127,18 +134,58 @@ export function ScreeningQueueView({
         </div>
       </div>
 
+      {/* Slot Availability Filter Pills */}
+      {board && (
+        <div className="flex flex-wrap items-center gap-2 mb-4" role="group" aria-label="Lọc theo suất đánh giá">
+          <button
+            type="button"
+            onClick={() => { setSlotFilter("ALL"); setPage(1); }}
+            className={`h-7 px-3 rounded-full text-xs font-semibold transition-colors border ${
+              slotFilter === "ALL"
+                ? "bg-primary text-primary-foreground border-primary"
+                : "bg-card text-muted-foreground border-border hover:bg-muted"
+            }`}
+          >
+            Tất cả
+          </button>
+          <button
+            type="button"
+            onClick={() => { setSlotFilter("UNCLAIMED"); setPage(1); }}
+            className={`h-7 px-3 rounded-full text-xs font-semibold transition-colors border ${
+              slotFilter === "UNCLAIMED"
+                ? "bg-emerald-600 text-white border-emerald-600"
+                : "bg-card text-muted-foreground border-border hover:bg-muted"
+            }`}
+          >
+            Chưa ai nhận
+          </button>
+          <button
+            type="button"
+            onClick={() => { setSlotFilter("LAST_SLOT"); setPage(1); }}
+            className={`h-7 px-3 rounded-full text-xs font-semibold transition-colors border ${
+              slotFilter === "LAST_SLOT"
+                ? "bg-amber-600 text-white border-amber-600"
+                : "bg-card text-muted-foreground border-border hover:bg-muted"
+            }`}
+          >
+            Còn 1 suất cuối
+          </button>
+        </div>
+      )}
+
       {/* Main Queue Content */}
       {boardQuery.isLoading ? (
         <WorkspaceLoading />
       ) : boardQuery.isError ? (
         <ScreeningError error={boardQuery.error} retry={() => void boardQuery.refetch()} />
-      ) : board && board.items.length > 0 ? (
+      ) : board && filteredItems.length > 0 ? (
         <>
           <div className="queue-paper-grid">
-            {board.items.map(p => {
+            {filteredItems.map(p => {
               const round = p.round;
-              const completedCount = round?.completed ?? 0;
+              const assignedCount = round?.assigned ?? 0;
               const requiredCount = round?.settings.requiredReviewers ?? 2;
+              const remainingCount = Math.max(0, requiredCount - assignedCount);
               const isClaimingThis = claimingId === round?.id;
 
               return (
@@ -158,11 +205,13 @@ export function ScreeningQueueView({
 
                     <div className="queue-slot-badge">
                       <Users size={12} className="inline mr-1 text-primary" />
-                      {completedCount === 0 ? (
-                        <span className="text-primary font-medium">Chưa ai nhận (0/{requiredCount})</span>
+                      {assignedCount === 0 ? (
+                        <span className="text-emerald-700 dark:text-emerald-400 font-semibold text-xs">
+                          Chưa ai nhận · Còn {requiredCount} suất
+                        </span>
                       ) : (
-                        <span className="text-amber-600 font-medium">
-                          Còn {requiredCount - completedCount} suất ({completedCount}/{requiredCount})
+                        <span className="text-amber-700 dark:text-amber-400 font-semibold text-xs">
+                          {assignedCount} người đã nhận · {round?.completed ?? 0}/{requiredCount} phiếu đã gửi · Còn {remainingCount} suất
                         </span>
                       )}
                     </div>
@@ -237,7 +286,7 @@ export function ScreeningQueueView({
             })}
           </div>
 
-          {(board.total > 12 || page > 1) && (
+          {board && board.total > 0 && (
             <div className="mt-4">
               <ScreeningPager
                 page={page}
@@ -254,12 +303,12 @@ export function ScreeningQueueView({
             <CheckCircle2 size={32} className="text-emerald-500" />
           </div>
           <h3 className="queue-empty-title">
-            {search ? "Không tìm thấy bài báo nào khớp với từ khóa" : "Hàng đợi đánh giá đã sạch bài!"}
+            {search ? "Không tìm thấy bài báo nào khớp với từ khóa" : "Hiện không có suất đánh giá phù hợp"}
           </h3>
           <p className="queue-empty-desc">
             {search
               ? "Hãy thử tìm kiếm bằng từ khóa khác hoặc xóa bộ lọc."
-              : "Hiện không còn bài báo nào cần reviewer. Cả nhóm có thể tìm kiếm thêm tài liệu mới cho đề tài."}
+              : "Bài có thể đã đủ người nhận hoặc đang giải quyết bất đồng. Kiểm tra Việc của tôi và Thư viện để theo dõi tiếp."}
           </p>
           {!search && onAddPaper && !readOnly && (
             <Button size="sm" onClick={onAddPaper} className="queue-empty-cta-btn">

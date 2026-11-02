@@ -62,6 +62,26 @@ describe("Task-First Papers Workspace Views", () => {
     vi.unstubAllGlobals();
   });
 
+  it("prioritizes confirmations, distinct clarification tasks and assigned adjudications without completed claim timers", async () => {
+    mocks.workspaceSummary.mockResolvedValue({
+      myActiveClaims: [], pendingConsensus: [{ paperId: "confirm", roundId: "r1", agreementId: "a1", title: "Confirmation paper", reason: "Check population", proposedByName: "Reviewer B" }],
+      pendingDiscussions: [{ paperId: "confirm", roundId: "r1", title: "Duplicate confirmation", classification: "CONFLICT", phase: "TITLE_ABSTRACT" }, { paperId: "clarify", roundId: "r2", title: "Clarification paper", classification: "NEEDS_CLARIFICATION", phase: "FULL_TEXT" }],
+      pendingAdjudications: [{ paperId: "adjudicate", roundId: "r3", title: "Adjudication paper" }],
+      myProposalsCount: 0, recentProposals: [], eligibleQueueCount: 0, nextEligiblePaperId: null,
+      discoveryGoal: { enabled: false, target: 2, period: "WEEK", paused: false, currentCount: 0, remaining: 2 }, capacityAdvice: { queueStatus: "NORMAL", message: "Theo dõi tiến độ" },
+    });
+    const open = vi.fn();
+    await act(async () => root.render(<QueryClientProvider client={client}><MemoryRouter><MyWorkView projectId="p" readOnly={false} onOpenPaper={open} onSwitchView={vi.fn()} /></MemoryRouter></QueryClientProvider>));
+    await settle();
+    const section = container.querySelector('[aria-label="Cần tôi giải quyết"]')!;
+    expect([...section.querySelectorAll("h4")].map(e => e.textContent)).toEqual(["Confirmation paper", "Clarification paper", "Adjudication paper"]);
+    expect(section.textContent).toContain("Cần làm rõ"); expect(section.textContent).toContain("2/2 đánh giá đã gửi");
+    expect(container.textContent).not.toContain("+24h Gia hạn"); expect(container.textContent).not.toContain("Trả lại hàng đợi");
+    const clarificationCard = [...section.querySelectorAll("article")].find(card => card.textContent?.includes("Clarification paper"))!;
+    await act(async () => clarificationCard.querySelector("button")!.click());
+    expect(open).toHaveBeenCalledWith("clarify");
+  });
+
   it("renders MyWorkView with active claims, countdown timer, capacity advice and discovery goals", async () => {
     const summaryData: ScreeningWorkspaceSummary = {
       myActiveClaims: [
@@ -146,6 +166,21 @@ describe("Task-First Papers Workspace Views", () => {
 
     // Verify claim next button
     expect(container.textContent).toContain("Có 4 bài báo đang chờ người đánh giá");
+
+    // A full queue does not mean the team needs to import more papers.
+    await act(async () => {
+      client.setQueriesData({ queryKey: ["project-research", "user-123", "proj-1"] }, {
+        ...summaryData,
+        eligibleQueueCount: 0,
+        capacityAdvice: { queueStatus: "EMPTY_QUEUE", message: "Chưa có suất phù hợp.", suggestedAction: "DISCOVER_MORE" },
+      });
+    });
+    await settle();
+    const openLibrary = Array.from(container.querySelectorAll("button")).find(button => button.textContent?.includes("Mở Thư viện"));
+    expect(openLibrary).toBeDefined();
+    expect(container.textContent).not.toContain("Tìm tài liệu mới");
+    await act(async () => openLibrary!.click());
+    expect(onSwitch).toHaveBeenCalledWith("library");
   });
 
   it("renders ScreeningQueueView with slot statuses and claimable paper cards", async () => {
@@ -248,7 +283,7 @@ describe("Task-First Papers Workspace Views", () => {
     expect(container.textContent).toContain("Hàng đợi đánh giá");
     expect(container.textContent).toContain("1 bài cần người đánh giá");
     expect(container.textContent).toContain("Deep Learning for Systematic Reviews");
-    expect(container.textContent).toContain("Còn 1 suất (1/2)");
+    expect(container.textContent).toContain("1 người đã nhận · 1/2 phiếu đã gửi · Còn 1 suất");
     expect(container.textContent).toContain("Nhận đánh giá");
     expect(container.textContent).toContain("Xem trước");
   });

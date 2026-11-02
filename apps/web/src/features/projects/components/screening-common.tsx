@@ -1,3 +1,4 @@
+import { caseStatusLabels } from "./screening-case-labels";
 import { useRef } from "react";
 import type { ScreeningChoice, ScreeningState, ScreeningPaperRow, ScreeningRoundView } from "@trend/shared-types";
 import { isAxiosError } from "axios";
@@ -5,13 +6,20 @@ import { Button } from "@/components/ui/button";
 import { useResearchCommand } from "../hooks/use-project-research";
 export const stateLabels: Record<ScreeningState, string> = { NOT_REVIEWED: "Chờ đánh giá", IN_REVIEW: "Đang đánh giá", NEEDS_RESOLUTION: "Có bất đồng", NEEDS_MORE_INFO: "Cần xem xét thêm", ADJUDICATING: "Đang phân xử", AWAITING_FINALIZATION: "Chờ quyết định", INCLUDED: "Đã chọn", EXCLUDED: "Đã loại", BACKGROUND: "Tài liệu nền" };
 export const choiceLabels: Record<ScreeningChoice, string> = { INCLUDE: "Phù hợp", EXCLUDE: "Không phù hợp", UNSURE: "Chưa chắc chắn" };
+/** Auth can expose a migrated public ID; round membership uses the database UUID. */
+export function screeningActorId(round: ScreeningRoundView, publicActorId?: string) {
+  return round.myReview?.reviewerId ?? round.assignments.find(a => a.id === round.myAssignmentId)?.reviewerId ?? publicActorId;
+}
 export function screeningMetadataWarning(paper: Pick<ScreeningPaperRow, "title" | "journalName" | "paperKind">) {
   const normalize = (value: string) => value.normalize("NFKC").trim().replace(/\s+/g, " ").toLocaleLowerCase("en");
   if (paper.journalName && normalize(paper.title) === normalize(paper.journalName)) return "Tiêu đề trùng tên tạp chí. Cần kiểm tra nguồn và DOI để xác nhận đây là một bài báo cụ thể.";
   if (paper.paperKind === "journal" || paper.paperKind === "paratext") return "Nguồn có thể là tạp chí hoặc tài liệu phụ trợ. Cần xác minh loại tài liệu trước khi đánh giá.";
   return null;
 }
+export const classificationLabels = { CONFLICT: "Có bất đồng", NEEDS_CLARIFICATION: "Cần làm rõ", NEEDS_MORE_INFORMATION: "Cần đọc thêm", EXCLUSION_REASON_MISMATCH: "Cần thống nhất lý do loại", AGREEMENT_INCLUDE: "Phù hợp", AGREEMENT_EXCLUDE: "Không phù hợp" };
 export function screeningStatusLabel(status: ScreeningState, round?: ScreeningRoundView | null) {
+  if (round?.adjudicationCase && ["ADJUDICATING", "NEEDS_MORE_INFO"].includes(status)) return caseStatusLabels[round.adjudicationCase.status] ?? "Hồ sơ phân xử";
+  if (["NEEDS_RESOLUTION", "NEEDS_MORE_INFO"].includes(status) && round?.classification) return round.resolution ? "Đã thống nhất cần đọc thêm" : classificationLabels[round.classification];
   if ((round?.settings.workflowVersion ?? 0) >= 3 && round?.settings.reviewMode !== "COLLABORATIVE") {
     if (status === "INCLUDED" && round?.phase === "TITLE_ABSTRACT") return "Qua sàng lọc";
     if (status === "EXCLUDED" && round?.phase === "TITLE_ABSTRACT") return "Loại sơ bộ";
@@ -19,6 +27,11 @@ export function screeningStatusLabel(status: ScreeningState, round?: ScreeningRo
   return stateLabels[status];
 }
 export function ScreeningStatus({ status, round }: { status: ScreeningState; round?: ScreeningRoundView | null }) { return <span className="screening-state" data-state={status}>{screeningStatusLabel(status, round)}</span>; }
+export function screeningProgressLabel(round: ScreeningRoundView) {
+  if (round.legacyNeedsAudit) return `Dữ liệu cần rà soát: ${round.assigned} phân công, ${round.completed} phiếu đã gửi`;
+  if (round.settings.reviewMode === "COLLABORATIVE") return `Quy trình cộng tác cũ · ${round.completed} ý kiến đã gửi`;
+  return round.completed === round.settings.requiredReviewers ? `${round.completed}/${round.settings.requiredReviewers} đánh giá đã gửi${round.resolutionType === "ADJUDICATION" ? " · Đã phân xử" : ""}` : `${round.completed}/${round.settings.requiredReviewers} phiếu đã gửi · ${round.assigned} chỗ có người`;
+}
 export function ScreeningError({ error, retry }: { error: unknown; retry?: () => void }) {
   if (!error) return null;
   const status = isAxiosError(error) ? error.response?.status : null;
@@ -41,4 +54,19 @@ export function useScreeningCommand(projectId: string) {
 }
 export function ScreeningPager({ page, total, hasNext, onPage }: { page: number; total: number; hasNext: boolean; onPage: (page: number) => void }) {
   return <nav aria-label="Phân trang" className="screening-actions"><Button type="button" variant="outline" size="sm" disabled={page <= 1} onClick={() => onPage(page-1)}>Trang trước</Button><span>Trang {page} · {total} mục</span><Button type="button" variant="outline" size="sm" disabled={!hasNext} onClick={() => onPage(page+1)}>Trang sau</Button></nav>;
+}
+
+export function isConflictedRound(round: ScreeningRoundView): boolean {
+  return Boolean(
+    round.adjudicationCase ||
+    round.status === "ADJUDICATING" ||
+    round.status === "NEEDS_RESOLUTION" ||
+    round.status === "NEEDS_MORE_INFO" ||
+    (round.completed >= 2 && (
+      (round.classification && !round.classification.startsWith("AGREEMENT")) ||
+      (round.reviews.length >= 2 &&
+        (round.reviews.some(r => r.decision === "INCLUDE") && round.reviews.some(r => r.decision === "EXCLUDE") ||
+         round.reviews.some(r => r.decision === "UNSURE")))
+    ))
+  );
 }
