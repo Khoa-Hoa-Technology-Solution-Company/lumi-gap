@@ -22,3 +22,9 @@ describe("tag campaign admin routes", () => {
     expect(API_ROUTES.admin.tagCampaigns.list).toBe("/admin/openalex-ingest/tag-campaigns");
   });
 });
+
+describe("paper request routes", () => {
+  it("withdraws a request through the cancel endpoint, not the hard-delete one", () => {
+    expect(API_ROUTES.papers.cancel("paper-id")).toBe("/papers/paper-id/cancel");
+  });
+});
