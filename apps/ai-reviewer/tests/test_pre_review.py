@@ -55,6 +55,29 @@ def test_structured_output_accepts_only_supplied_evidence_ids(monkeypatch) -> No
     assert run_pre_review(request, api_key="test", model="test-model")["summary"] == "Advisory analysis only."
 
 
+def test_client_uses_the_configured_gateway(monkeypatch) -> None:
+    output = {
+        "summary": "Advisory analysis only.",
+        "goal_alignment": {"assessment": "Partially aligned.", "evidence_ids": []},
+        "rq_coverage": [],
+        "unsupported_claims": [],
+        "citation_issues": [],
+        "contribution_comparison": "Comparison remains provisional.",
+        "review_focus_areas": ["Check methodology."],
+        "limitations": [],
+    }
+    fake_interactions = SimpleNamespace(create=lambda **_kwargs: SimpleNamespace(output_text=json.dumps(output)))
+    clients: list[dict] = []
+
+    def client(**kwargs):
+        clients.append(kwargs)
+        return SimpleNamespace(interactions=fake_interactions)
+
+    monkeypatch.setattr("app.pre_review.genai.Client", client)
+    run_pre_review(PreReviewRequest(title="Evidence-aware gap study"), api_key="test", model="test-model", base_url="https://gateway.example")
+    assert clients == [{"api_key": "test", "http_options": {"base_url": "https://gateway.example"}}]
+
+
 MANUSCRIPT = "We claim that our model beats every baseline on all datasets without any statistical testing at all. Other text follows."
 
 

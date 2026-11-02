@@ -17,6 +17,7 @@ from app.config import (
     STATIC_DIR,
     UPLOAD_DIR,
     ensure_directories,
+    system_gemini_base_url,
 )
 from app.db import Database
 from app.account_routes import account_router
@@ -270,6 +271,7 @@ def start_review(
         raise HTTPException(422, "Chế độ thanh toán không hợp lệ")
     security.captcha(request.headers.get("X-Captcha-Token", ""), "review")
     settings = security.settings(reveal=True)
+    base_url = None
     if billing_mode == "personal":
         api_key = security.decrypt(user["gemini_key"])
         if not api_key:
@@ -278,6 +280,7 @@ def start_review(
         api_key = settings["gemini_api_key"]
         if not settings["system_reviews_enabled"] or not api_key:
             raise HTTPException(503, "Review bằng credit hiện chưa sẵn sàng")
+        base_url = system_gemini_base_url()
     model = settings["gemini_model"]
     try:
         job, created = database.reserve_review(paper_id, user["id"], strictness, model, billing_mode,
@@ -287,18 +290,18 @@ def start_review(
     except ValueError as exc:
         raise HTTPException(409, str(exc)) from exc
     if created:
-        background_tasks.add_task(run_review_job, job["id"], paper_id, Path(paper["file_path"]), strictness, api_key, model)
+        background_tasks.add_task(run_review_job, job["id"], paper_id, Path(paper["file_path"]), strictness, api_key, model, base_url)
     return {"review_id": job["id"], "status": job["status"]}
 
 
-def run_review_job(review_id: int, paper_id: int, path: Path, strictness: str, api_key: str, model: str) -> None:
+def run_review_job(review_id: int, paper_id: int, path: Path, strictness: str, api_key: str, model: str, base_url: str | None = None) -> None:
     database.update_review(review_id, status="running")
     output_dir = OUTPUT_DIR / safe_slug(path.stem) / f'review_{review_id}_{strictness}'
     database.update_review(review_id, output_dir=str(output_dir.resolve()))
     try:
         job = database.get_review(review_id)
         with storage.materialize(paper_id) as local_pdf:
-            result = GeminiReviewProvider(model=model, api_key=api_key, review_type=job).review(local_pdf, strictness)
+            result = GeminiReviewProvider(model=model, api_key=api_key, review_type=job, base_url=base_url).review(local_pdf, strictness)
         scores, report, output_dir = write_artifacts(result, path, strictness, review_id)
         storage.register_outputs(paper_id, review_id, output_dir)
         storage.archive(paper_id)

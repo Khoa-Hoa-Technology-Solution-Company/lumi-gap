@@ -243,9 +243,10 @@ class ReviewProvider(Protocol):
 
 
 class GeminiReviewProvider:
-    def __init__(self, model: str | None = None, api_key: str | None = None, review_type: dict | None = None) -> None:
+    def __init__(self, model: str | None = None, api_key: str | None = None, review_type: dict | None = None, base_url: str | None = None) -> None:
         self.api_key = api_key
         self.review_type = review_type
+        self.base_url = base_url
         self.model = model or os.getenv("GEMINI_MODEL", "gemini-3.7-flash")
 
     def review(self, pdf_path: Path, strictness: str) -> dict[str, Any]:
@@ -256,7 +257,7 @@ class GeminiReviewProvider:
             )
         instructions, input_text, pages = build_review_request(pdf_path, strictness, self.review_type)
         custom = self.review_type is not None and self.review_type.get('output_format') == 'markdown'
-        client = genai.Client(api_key=api_key)
+        client = genai.Client(api_key=api_key, http_options={"base_url": self.base_url})
 
         def _generate(text: str) -> dict[str, Any]:
             interaction = client.interactions.create(

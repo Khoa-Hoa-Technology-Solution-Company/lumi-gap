@@ -72,7 +72,7 @@ export class AiProviderHttpError extends AppError {
   }
 }
 
-export async function providerJson(urlValue: string, apiKey: string, provider: string, body?: unknown): Promise<any> {
+export async function providerJson(urlValue: string, apiKey: string, provider: string, body?: unknown, timeoutMs: number = body ? env.AI_PROVIDER_TIMEOUT_MS : 20000): Promise<any> {
   const originalUrl = new URL(urlValue);
   const url = resolveAiEndpointUrl(urlValue);
   const hostname = url.hostname.replace(/^\[|\]$/g, "");
@@ -129,7 +129,6 @@ export async function providerJson(urlValue: string, apiKey: string, provider: s
         catch { reject(AppError.serviceUnavailable("AI provider returned an invalid JSON response")); }
       });
     });
-    const timeoutMs = body ? env.AI_PROVIDER_TIMEOUT_MS : 20000;
     let timedOut = false;
     const timer = setTimeout(() => { timedOut = true; req.destroy(new Error("request timed out")); }, timeoutMs);
     req.on("close", () => clearTimeout(timer));
