@@ -1,13 +1,15 @@
 import os from "node:os";
 
-import { Worker } from "bullmq";
+import { UnrecoverableError, Worker } from "bullmq";
 import { enforcePostgresOnlyRuntime } from "../infrastructure/database/postgres-only-runtime.js";
 import { env } from "../config/env.js";
 import { connectPostgres, disconnectPostgres } from "../infrastructure/database/prisma.js";
 import { logger } from "../infrastructure/logger.js";
 import { makeConnection, openAlexIngestQueue, paperAnalysisQueue, QUEUE_NAMES } from "../infrastructure/queue.js";
 import { startWorkerHeartbeat } from "../infrastructure/worker-heartbeat.js";
+import { isNonRetryableOpenAlexError } from "../modules/api-sync/providers/openalex.client.js";
 import { runCampaignPartitionPage } from "../modules/api-sync/scale/campaign-partition-runner.js";
+import { ingestCampaignService } from "../modules/api-sync/scale/ingest-campaign.service.js";
 
 enforcePostgresOnlyRuntime();
 
@@ -36,11 +38,19 @@ async function main() {
     QUEUE_NAMES.openAlexIngest,
     async (job) => {
       const data = job.data as CampaignPageJob;
-      const result = await runCampaignPartitionPage({
-        campaignId: data.campaignId,
-        workerId,
-        leaseMs: env.OPENALEX_INGEST_LEASE_SECONDS * 1_000,
-      });
+      let result: Awaited<ReturnType<typeof runCampaignPartitionPage>>;
+      try {
+        result = await runCampaignPartitionPage({
+          campaignId: data.campaignId,
+          workerId,
+          leaseMs: env.OPENALEX_INGEST_LEASE_SECONDS * 1_000,
+        });
+      } catch (error) {
+        // A request OpenAlex rejected (bad filter, bad api_key, ...) fails identically on every attempt. The
+        // "failed" handler below treats UnrecoverableError as final and pauses the campaign.
+        if (isNonRetryableOpenAlexError(error)) throw new UnrecoverableError((error as Error).message);
+        throw error;
+      }
 
       // Keep a single logical chain alive until every partition is exhausted.
       // Leasing makes this safe when an operator intentionally raises worker
@@ -55,7 +65,17 @@ async function main() {
   );
 
   worker.on("completed", (job, result) => logger.info({ jobId: job.id, result }, "OpenAlex campaign page completed"));
-  worker.on("failed", (job, error) => logger.error({ jobId: job?.id, error }, "OpenAlex campaign page failed"));
+  worker.on("failed", (job, error) => {
+    logger.error({ jobId: job?.id, error }, "OpenAlex campaign page failed");
+    // BullMQ increments attemptsMade before emitting "failed", so on the last attempt it equals opts.attempts.
+    // UnrecoverableError skips the remaining retries. Either way no successor is enqueued, so stop the campaign visibly.
+    const finalFailure = job && (job.attemptsMade >= (job.opts.attempts ?? 1) || error.name === "UnrecoverableError");
+    if (!job || !finalFailure) return;
+    const { campaignId } = job.data as CampaignPageJob;
+    void ingestCampaignService.pauseAfterFailure(campaignId, error.message)
+      .then((paused) => { if (paused) logger.warn({ jobId: job.id, campaignId }, "OpenAlex campaign paused after its final page attempt failed; restart it from the admin pipeline page"); })
+      .catch((pauseError) => logger.error({ jobId: job.id, campaignId, error: pauseError }, "Could not pause OpenAlex campaign after final page failure"));
+  });
   logger.info({ workerId, concurrency: env.OPENALEX_INGEST_CONCURRENCY }, "OpenAlex campaign worker listening");
 
   const shutdown = async (signal: string) => {
