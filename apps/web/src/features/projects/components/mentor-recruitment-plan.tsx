@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { AvailableMentor, MentorPlanCandidate, MentorPlanCommand, MentorRole } from "@trend/shared-types";
-import { ArrowDown, ArrowUp, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Trash2, GraduationCap, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useAuthStore } from "@/stores/auth-store";
@@ -22,26 +22,174 @@ export function MentorRecruitmentPlan({ projectId, onSend }: { projectId: string
   if (plan.isLoading) return <p role="status" className="text-sm text-muted-foreground">Đang tải kế hoạch mời…</p>;
   if (!plan.data) return <div role="alert" className="space-y-2 text-sm"><p>Chưa tải được kế hoạch mời người hướng dẫn.</p><Button variant="outline" size="sm" onClick={() => void plan.refetch()}>Thử lại</Button></div>;
   const data = plan.data, busy = update.isPending || plan.isFetching, writable = data.canManage && !busy;
-  return <section className="min-w-0 space-y-4" aria-label="Người hướng dẫn" data-no-i18n>
-    <header className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="text-lg font-semibold">Người hướng dẫn</h3><p className="mt-1 text-xs text-muted-foreground">{data.candidates.length}/4 ứng viên · Tối đa 2 lời mời đồng thời</p></div><Button variant="ghost" size="sm" disabled={!writable} onClick={() => setRestart(true)}>Mở đợt mời mới</Button></header>
-    <label className="flex items-start gap-2 text-sm leading-6"><input type="checkbox" className="mt-1.5" checked={data.parallelInvitations} disabled={!writable} onChange={e => void change({ action: "configure", expectedVersion: data.version, parallelInvitations: e.target.checked })} /><span>Mời Mentor chính và Mentor phụ song song<span className="block text-xs text-muted-foreground">{data.parallelInvitations ? "Hai vai trò được giữ chỗ độc lập; Mentor phụ có thể nhận trước." : "Mặc định mời Mentor chính trước, rồi mới mời Mentor phụ."}</span></span></label>
-    <div className="grid min-w-0 gap-4 lg:grid-cols-2">{roles.map(role => {
-      const queue = data.candidates.filter(c => c.mentorRole === role), unsent = queue.filter(c => !c.requestId), position = data.positions[role];
-      const relationship = data.currentMentors.find(i => i.mentorRole === role);
-      const invitation = data.currentInvitations.find(i => i.mentorRole === role);
-      return <section key={role} className="min-w-0 rounded-lg border p-4" aria-label={mentorRoleLabel(role)}><div className="flex items-start justify-between gap-3"><h4 className="font-semibold">{mentorRoleLabel(role)}</h4><span className="text-xs text-muted-foreground">{position.status === "ASSIGNED" ? "Đã có người hướng dẫn" : position.pendingRequests ? "Đang mời" : "Chưa có người hướng dẫn"}</span></div>
-        {position.pendingRequests > 1 && <p role="alert" className="mt-3 text-sm text-destructive">Có {position.pendingRequests} lời mời cũ cùng vai trò. Hãy rà soát và thu hồi lời mời trước khi tiếp tục.</p>}
-        {relationship && <p className="mt-3 break-words text-sm font-medium">{relationship.fullName}</p>}
-        {invitation && <p className="mt-3 break-words text-sm">Đang chờ {invitation.fullName} phản hồi.</p>}
-        {data.closedRoles.includes(role) && <p role="status" className="mt-3 text-sm text-muted-foreground">Đã dừng tuyển sau khi kết thúc hướng dẫn. Mở đợt mới để xác nhận tuyển lại.</p>}
-        {!queue.length && <p className="mt-4 text-sm leading-6 text-muted-foreground">Chưa có ứng viên. Chọn giảng viên trong danh sách bên dưới để thêm vào kế hoạch.</p>}
-        <ol className="mt-3 divide-y">{queue.map(c => <li key={c.id} className="min-w-0 space-y-2 py-3"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="break-words text-sm font-medium">{c.fullName}</p><p className="mt-1 text-xs text-muted-foreground">{labels[c.status] ?? "Chưa gửi"}</p></div>{!c.requestId && <div className="flex shrink-0"><Button size="icon" variant="ghost" aria-label={`Ưu tiên ${c.fullName}`} disabled={!writable || unsent[0]?.id === c.id} onClick={() => void change({ action: "move", expectedVersion: data.version, candidateId: c.id, offset: -1 })}><ArrowUp size={15} /></Button><Button size="icon" variant="ghost" aria-label={`Lùi ưu tiên ${c.fullName}`} disabled={!writable || unsent.at(-1)?.id === c.id} onClick={() => void change({ action: "move", expectedVersion: data.version, candidateId: c.id, offset: 1 })}><ArrowDown size={15} /></Button><Button size="icon" variant="ghost" aria-label={`Bỏ ${c.fullName} khỏi kế hoạch`} disabled={!writable} onClick={() => void change({ action: "remove", expectedVersion: data.version, candidateId: c.id })}><Trash2 size={15} /></Button></div>}</div>{c.unavailableReason && <p className="text-xs leading-5 text-muted-foreground">{c.unavailableReason}</p>}{c.canSend && <Button size="sm" disabled={!writable} onClick={() => onSend(c, data.version)}>Xem trước và gửi lời mời</Button>}</li>)}</ol>
-      </section>;
-    })}</div>
-    <p className="text-xs leading-5 text-muted-foreground">Ứng viên dự phòng chưa nhận thông báo hay tài liệu. Mỗi lần gửi cần bạn xác nhận; không tự gửi dự phòng.</p>
-    {(update.error || plan.isError) && <div role="alert" className="flex flex-wrap items-center gap-2 text-sm text-destructive"><p>{update.error ? mentorshipError(update.error) : "Kế hoạch có thể đã thay đổi."}</p><Button size="sm" variant="outline" onClick={() => void plan.refetch()}>Tải lại kế hoạch</Button></div>}
-    <Dialog open={restart} onOpenChange={open => { if (!busy) setRestart(open); }}><DialogContent><DialogHeader><DialogTitle>Mở đợt mời mới?</DialogTitle><DialogDescription>Lưu kế hoạch hiện tại vào lịch sử và bắt đầu danh sách ứng viên mới. Mentor đã nhận vẫn giữ vai trò; hệ thống không liên hệ ứng viên cũ. Hãy xử lý các lời mời đang chờ trước.</DialogDescription></DialogHeader><div className="flex justify-end gap-2"><Button variant="ghost" disabled={busy} onClick={() => setRestart(false)}>Quay lại</Button><Button disabled={!writable} onClick={() => void change({ action: "restart", expectedVersion: data.version })}>Mở đợt mới</Button></div>{update.error && <p role="alert" className="text-sm text-destructive">{mentorshipError(update.error)}</p>}</DialogContent></Dialog>
-  </section>;
+  return (
+    <section className="mentor-recruitment-box rounded-2xl border border-border/80 bg-card p-5 sm:p-6 shadow-xs space-y-5 mb-6" aria-label="Người hướng dẫn" data-no-i18n>
+      <header className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-border/70">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary border border-primary/20 shadow-2xs">
+            <GraduationCap className="h-5 w-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="text-base sm:text-lg font-bold text-foreground">Người hướng dẫn</h3>
+              <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-muted text-muted-foreground border border-border/60">
+                {data.candidates.length}/4 ứng viên
+              </span>
+            </div>
+            <p className="mt-0.5 text-xs text-muted-foreground">{data.candidates.length}/4 ứng viên · Tối đa 2 lời mời đồng thời</p>
+          </div>
+        </div>
+        <Button variant="outline" size="sm" className="h-8 text-xs font-semibold gap-1.5" disabled={!writable} onClick={() => setRestart(true)}>
+          <RotateCcw className="h-3.5 w-3.5" />
+          <span>Mở đợt mời mới</span>
+        </Button>
+      </header>
+
+      <label className="flex items-start gap-3 p-3.5 rounded-xl bg-muted/20 border border-border/60 hover:bg-muted/40 transition-colors cursor-pointer text-sm leading-6">
+        <input type="checkbox" className="mt-1 h-4 w-4 rounded border-border text-primary focus:ring-primary/20 cursor-pointer" checked={data.parallelInvitations} disabled={!writable} onChange={e => void change({ action: "configure", expectedVersion: data.version, parallelInvitations: e.target.checked })} />
+        <div>
+          <span className="font-semibold text-foreground">Mời Mentor chính và Mentor phụ song song</span>
+          <span className="block text-xs text-muted-foreground mt-0.5 leading-relaxed">{data.parallelInvitations ? "Hai vai trò được giữ chỗ độc lập; Mentor phụ có thể nhận trước." : "Mặc định mời Mentor chính trước, rồi mới mời Mentor phụ."}</span>
+        </div>
+      </label>
+
+      <div className="grid min-w-0 gap-4 lg:grid-cols-2">
+        {roles.map(role => {
+          const queue = data.candidates.filter(c => c.mentorRole === role), unsent = queue.filter(c => !c.requestId), position = data.positions[role];
+          const relationship = data.currentMentors.find(i => i.mentorRole === role);
+          const invitation = data.currentInvitations.find(i => i.mentorRole === role);
+          const isAssigned = position.status === "ASSIGNED";
+          return (
+            <section
+              key={role}
+              className={`min-w-0 rounded-xl border p-4.5 transition-all shadow-2xs ${
+                isAssigned
+                  ? "border-emerald-500/30 bg-emerald-500/[0.03]"
+                  : position.pendingRequests
+                  ? "border-blue-500/30 bg-blue-500/[0.03]"
+                  : "border-border/80 bg-card"
+              }`}
+              aria-label={mentorRoleLabel(role)}
+            >
+              <div className="flex items-center justify-between gap-3 pb-3 border-b border-border/50">
+                <h4 className="font-bold text-sm text-foreground">{mentorRoleLabel(role)}</h4>
+                <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold ${
+                  isAssigned
+                    ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/25"
+                    : position.pendingRequests
+                    ? "bg-blue-500/10 text-blue-700 dark:text-blue-400 border border-blue-500/25"
+                    : "bg-muted text-muted-foreground border border-border/60"
+                }`}>
+                  <span className={`h-1.5 w-1.5 rounded-full ${
+                    isAssigned ? "bg-emerald-500" : position.pendingRequests ? "bg-blue-500 animate-pulse" : "bg-muted-foreground/60"
+                  }`} />
+                  <span>{isAssigned ? "Đã có người hướng dẫn" : position.pendingRequests ? "Đang mời" : "Chưa có người hướng dẫn"}</span>
+                </span>
+              </div>
+
+              {position.pendingRequests > 1 && (
+                <p role="alert" className="mt-3 text-xs text-destructive bg-destructive/10 p-2.5 rounded-lg border border-destructive/20 leading-relaxed">
+                  Có {position.pendingRequests} lời mời cũ cùng vai trò. Hãy rà soát và thu hồi lời mời trước khi tiếp tục.
+                </p>
+              )}
+
+              {relationship && (
+                <div className="mt-3.5 flex items-center gap-3 p-3 rounded-lg bg-card border border-border/80 shadow-2xs">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-600 font-bold text-xs ring-1 ring-emerald-500/30">
+                    {relationship.fullName.charAt(0) || "M"}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="break-words text-sm font-bold text-foreground truncate">{relationship.fullName}</p>
+                    <p className="text-2xs text-muted-foreground">Đang hướng dẫn chính thức cho đề tài</p>
+                  </div>
+                </div>
+              )}
+
+              {invitation && (
+                <div className="mt-3.5 flex items-center gap-2 p-2.5 rounded-lg bg-blue-500/10 border border-blue-500/20 text-xs text-blue-700 dark:text-blue-300">
+                  <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse shrink-0" />
+                  <p className="break-words">Đang chờ <strong>{invitation.fullName}</strong> phản hồi.</p>
+                </div>
+              )}
+
+              {data.closedRoles.includes(role) && (
+                <p role="status" className="mt-3 text-xs text-muted-foreground bg-muted/40 p-2.5 rounded-lg border border-border/40">
+                  Đã dừng tuyển sau khi kết thúc hướng dẫn. Mở đợt mới để xác nhận tuyển lại.
+                </p>
+              )}
+
+              {!queue.length && (
+                <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+                  {isAssigned
+                    ? "Vị trí này đã có người hướng dẫn. Không cần thêm ứng viên mới."
+                    : "Chưa có ứng viên. Chọn giảng viên trong danh sách bên dưới để thêm vào kế hoạch."}
+                </p>
+              )}
+
+              {queue.length > 0 && (
+                <ol className="mt-3 divide-y divide-border/60">
+                  {queue.map(c => (
+                    <li key={c.id} className="min-w-0 space-y-2 py-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="break-words text-sm font-semibold text-foreground">{c.fullName}</p>
+                          <p className="mt-0.5 text-xs text-muted-foreground">{labels[c.status] ?? "Chưa gửi"}</p>
+                        </div>
+                        {!c.requestId && (
+                          <div className="flex shrink-0 items-center gap-0.5">
+                            <Button size="icon" variant="ghost" className="h-7 w-7" aria-label={`Ưu tiên ${c.fullName}`} disabled={!writable || unsent[0]?.id === c.id} onClick={() => void change({ action: "move", expectedVersion: data.version, candidateId: c.id, offset: -1 })}>
+                              <ArrowUp size={14} />
+                            </Button>
+                            <Button size="icon" variant="ghost" className="h-7 w-7" aria-label={`Lùi ưu tiên ${c.fullName}`} disabled={!writable || unsent.at(-1)?.id === c.id} onClick={() => void change({ action: "move", expectedVersion: data.version, candidateId: c.id, offset: 1 })}>
+                              <ArrowDown size={14} />
+                            </Button>
+                            <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-destructive" aria-label={`Bỏ ${c.fullName} khỏi kế hoạch`} disabled={!writable} onClick={() => void change({ action: "remove", expectedVersion: data.version, candidateId: c.id })}>
+                              <Trash2 size={14} />
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                      {c.unavailableReason && <p className="text-xs leading-relaxed text-muted-foreground bg-muted/40 p-2 rounded">{c.unavailableReason}</p>}
+                      {c.canSend && (
+                        <Button size="sm" className="h-8 text-xs font-semibold gap-1.5 mt-1" disabled={!writable} onClick={() => onSend(c, data.version)}>
+                          Xem trước và gửi lời mời
+                        </Button>
+                      )}
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </section>
+          );
+        })}
+      </div>
+
+      <p className="text-xs leading-relaxed text-muted-foreground">
+        Ứng viên dự phòng chưa nhận thông báo hay tài liệu. Mỗi lần gửi cần bạn xác nhận; không tự gửi dự phòng.
+      </p>
+      {(update.error || plan.isError) && (
+        <div role="alert" className="flex flex-wrap items-center gap-2 text-sm text-destructive bg-destructive/10 p-3 rounded-lg border border-destructive/20">
+          <p>{update.error ? mentorshipError(update.error) : "Kế hoạch có thể đã thay đổi."}</p>
+          <Button size="sm" variant="outline" onClick={() => void plan.refetch()}>Tải lại kế hoạch</Button>
+        </div>
+      )}
+      <Dialog open={restart} onOpenChange={open => { if (!busy) setRestart(open); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Mở đợt mời mới?</DialogTitle>
+            <DialogDescription>
+              Lưu kế hoạch hiện tại vào lịch sử và bắt đầu danh sách ứng viên mới. Mentor đã nhận vẫn giữ vai trò; hệ thống không liên hệ ứng viên cũ. Hãy xử lý các lời mời đang chờ trước.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" disabled={busy} onClick={() => setRestart(false)}>Quay lại</Button>
+            <Button disabled={!writable} onClick={() => void change({ action: "restart", expectedVersion: data.version })}>Mở đợt mới</Button>
+          </div>
+          {update.error && <p role="alert" className="text-sm text-destructive">{mentorshipError(update.error)}</p>}
+        </DialogContent>
+      </Dialog>
+    </section>
+  );
 }
 
 export function AddMentorCandidate({ projectId, mentor, onClose }: { projectId: string; mentor: AvailableMentor; onClose: () => void }) {

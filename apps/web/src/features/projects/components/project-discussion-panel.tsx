@@ -1,11 +1,13 @@
-import { useId, useState } from "react";
-import { Users, Sparkles, Bot, LockKeyhole } from "lucide-react";
+import { useEffect, useId, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import { Users, Sparkles, Bot, LockKeyhole, GraduationCap } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
 import { useI18n } from "@/i18n";
 import { ProjectTeamChatPanel } from "./project-team-chat-panel";
 import { ProjectChatPanel } from "./project-chat-panel";
 import "../project-chat.css";
-import { useUnsavedWorkspace } from "./workspace-common";
+import { canLeaveWorkspace, useUnsavedWorkspace } from "./workspace-common";
+import { MentorAccessWorkspace } from "./mentor-access-workspace";
 
 interface ProjectDiscussionPanelProps {
   projectId: string;
@@ -15,6 +17,7 @@ interface ProjectDiscussionPanelProps {
 }
 
 type ChatMode = "team-chat" | "private-ai" | "team-ai";
+type Channel = ChatMode | "mentors";
 
 export function ProjectDiscussionPanel(props: ProjectDiscussionPanelProps) {
   const currentUser = useAuthStore((s) => s.user);
@@ -25,7 +28,17 @@ function DiscussionChannels({ projectId, paperCount, ownerId, onAddPapers }: Pro
   const { t } = useI18n();
   const id = useId();
   const currentUser = useAuthStore((s) => s.user);
-  const [activeMode, setActiveMode] = useState<ChatMode>("team-chat");
+  const [params, setParams] = useSearchParams();
+  const requestedChannel = params.get("channel");
+  const activeMode: Channel = ["private-ai", "team-ai", "mentors"].includes(requestedChannel ?? "") ? requestedChannel as Channel : "team-chat";
+  useEffect(() => {
+    document.getElementById(`${id}-${activeMode}`)?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+  }, [activeMode, id]);
+  const changeChannel = async (mode: Channel) => {
+    if (activeMode === "mentors" && mode !== activeMode && !await canLeaveWorkspace()) return false;
+    setParams(current => { const next = new URLSearchParams(current); next.set("channel", mode); return next; }, { replace: true });
+    return true;
+  };
   const [drafts, setDrafts] = useState<Record<ChatMode, string>>({ "team-chat": "", "private-ai": "", "team-ai": "" });
   useUnsavedWorkspace(Object.values(drafts).some(value => Boolean(value.trim())));
   const setDraft = (mode: ChatMode, value: string) => setDrafts(current => ({ ...current, [mode]: value }));
@@ -34,6 +47,7 @@ function DiscussionChannels({ projectId, paperCount, ownerId, onAddPapers }: Pro
     { id: "team-chat" as const, label: t("Team Chat"), icon: Users },
     { id: "private-ai" as const, label: t("My AI"), icon: Sparkles },
     { id: "team-ai" as const, label: t("Team AI Room"), icon: Bot },
+    { id: "mentors" as const, label: t("With mentors"), icon: GraduationCap },
   ];
 
   return (
@@ -49,15 +63,14 @@ function DiscussionChannels({ projectId, paperCount, ownerId, onAddPapers }: Pro
             aria-selected={activeMode === channel.id}
             aria-controls={`${id}-panel`}
             tabIndex={activeMode === channel.id ? 0 : -1}
-            onClick={() => setActiveMode(channel.id)}
+            onClick={() => void changeChannel(channel.id)}
             onKeyDown={event => {
               const next = event.key === "ArrowRight" ? (index + 1) % channels.length
                 : event.key === "ArrowLeft" ? (index + channels.length - 1) % channels.length
                 : event.key === "Home" ? 0 : event.key === "End" ? channels.length - 1 : null;
               if (next === null) return;
               event.preventDefault();
-              setActiveMode(channels[next]!.id);
-              document.getElementById(`${id}-${channels[next]!.id}`)?.focus();
+              void changeChannel(channels[next]!.id).then(changed => { if (changed) document.getElementById(`${id}-${channels[next]!.id}`)?.focus(); });
             }}
           >
             <Icon size={17} aria-hidden="true" />
@@ -67,7 +80,7 @@ function DiscussionChannels({ projectId, paperCount, ownerId, onAddPapers }: Pro
         })}
       </div>
       <div id={`${id}-panel`} role="tabpanel" aria-labelledby={`${id}-${activeMode}`} key={activeMode}>
-        {activeMode === "team-chat" ? <ProjectTeamChatPanel projectId={projectId} ownerId={ownerId} draft={drafts[activeMode]} onDraftChange={value => setDraft(activeMode, value)} onSent={content => clearSentDraft("team-chat", content)} /> : (
+        {activeMode === "mentors" ? <div className="project-mentor-channel"><MentorAccessWorkspace projectId={projectId} mode="conversation" /></div> : activeMode === "team-chat" ? <ProjectTeamChatPanel projectId={projectId} ownerId={ownerId} draft={drafts[activeMode]} onDraftChange={value => setDraft(activeMode, value)} onSent={content => clearSentDraft("team-chat", content)} /> : (
           <ProjectChatPanel
             projectId={projectId}
             paperCount={paperCount}

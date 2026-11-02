@@ -1,14 +1,14 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { ArrowRight } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { useResearchResource } from "../hooks/use-project-research";
 import { screeningApi } from "../api/screening.api";
 import { ScreeningPaperDetail } from "./screening-round";
 import { ScreeningError } from "./screening-common";
-import { WorkspaceLoading } from "./workspace-common";
+import { canLeaveWorkspace, WorkspaceLoading } from "./workspace-common";
 import { LibraryRelatedPapers } from "./library-related-papers";
+import { PaperNotesDialog } from "./paper-notes-dialog";
 
 export function ReadingPaperModal({
   projectId,
@@ -26,6 +26,7 @@ export function ReadingPaperModal({
   onSelectPaper?: (paperId: string) => void;
 }) {
   const [params, setParams] = useSearchParams();
+  const [showNotes, setShowNotes] = useState(false);
 
   const focusQuery = useResearchResource(
     projectId,
@@ -81,12 +82,14 @@ export function ReadingPaperModal({
   const people = data?.people ?? [];
 
   return (
-    <Dialog open onOpenChange={open => { if (!open) onClose(); }}>
-      <DialogContent
-        className="screening-workspace library-paper-dialog"
-        data-no-i18n
-        onOpenAutoFocus={e => e.preventDefault()}
-      >
+    <>
+      <Dialog open onOpenChange={async open => { if (!open && await canLeaveWorkspace()) onClose(); }}>
+        <DialogContent
+          closeLabel="Đóng"
+          className="screening-workspace library-paper-dialog"
+          data-no-i18n
+          onOpenAutoFocus={e => e.preventDefault()}
+        >
         <div className="library-dialog-header">
           <DialogTitle>Đọc và đánh giá tài liệu</DialogTitle>
           <DialogDescription>
@@ -158,15 +161,9 @@ export function ReadingPaperModal({
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => {
-                    const next = new URLSearchParams(params);
-                    next.set("view", "organize");
-                    next.delete("paper");
-                    setParams(next);
-                    onClose();
-                  }}
+                  onClick={() => setShowNotes(true)}
                 >
-                  Ghi chú, nhãn & nguồn
+                  Ghi chú tài liệu
                 </Button>
                 <Button
                   size="sm"
@@ -178,22 +175,30 @@ export function ReadingPaperModal({
                     next.set("extract", focused.paperId);
                     next.delete("source");
                     next.delete("paper");
-                    setParams(next);
-                    onClose();
+                    void canLeaveWorkspace().then(ok => { if (ok) setParams(next); });
                   }}
                 >
                   Trích xuất vào ma trận minh chứng
                 </Button>
               </div>
-              {(focused.round?.finalDecision?.decision !== "INCLUDED" || focused.round?.extractionReady === false) && (
-                <p className="text-xs text-muted-foreground">
-                  Trích xuất mở sau khi hoàn thành quy trình và có quyết định đưa vào phân tích. Minh chứng đã lưu vẫn được giữ khi thay đổi lựa chọn.
-                </p>
-              )}
             </footer>
           </>
         )}
       </DialogContent>
     </Dialog>
+
+    {showNotes && focused && (
+      <PaperNotesDialog
+        projectId={projectId}
+        paperId={focused.paperId}
+        paperTitle={focused.title}
+        initialNotes={focused.notes}
+        updatedAt={focused.updatedAt}
+        open={showNotes}
+        onClose={() => setShowNotes(false)}
+        readOnly={readOnly}
+      />
+    )}
+  </>
   );
 }

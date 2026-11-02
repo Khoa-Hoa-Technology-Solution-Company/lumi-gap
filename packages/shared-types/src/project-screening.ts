@@ -1,10 +1,13 @@
 import type { ScreeningPhase } from "./project-research.js";
 import type { WorkspacePage, WorkspacePerson } from "./project-workspace.js";
 
+export type ScreeningClassification = "AGREEMENT_INCLUDE" | "AGREEMENT_EXCLUDE" | "CONFLICT" | "NEEDS_CLARIFICATION" | "NEEDS_MORE_INFORMATION" | "EXCLUSION_REASON_MISMATCH";
+export type ScreeningResolutionType = "AGREEMENT_FROM_REVIEWS" | "CONSENSUS_AFTER_DISCUSSION" | "ADJUDICATION";
 export type ScreeningChoice = "INCLUDE" | "EXCLUDE" | "UNSURE";
 export type ScreeningState = "NOT_REVIEWED" | "IN_REVIEW" | "NEEDS_RESOLUTION" | "NEEDS_MORE_INFO" | "ADJUDICATING" | "AWAITING_FINALIZATION" | "INCLUDED" | "EXCLUDED" | "BACKGROUND";
 export type ScreeningConsensusPolicy = "UNANIMOUS" | "STRICT_MAJORITY";
 export interface ScreeningSettings {
+  preferredAdjudicatorId?: string | null; adjudicationCoordinatorIds?: string[]; statementWindowHours?: number; adjudicationReminderHours?: number; adjudicationReassignHours?: number;
   workflowVersion?: number;
   authorizedAdjudicatorIds?: string[]; allowConservativeFullText?: boolean;
   reviewMode: "COLLABORATIVE" | "SIMPLE" | "INDEPENDENT"; blindReview: boolean; resolutionPolicy: "CONSENSUS" | "ADJUDICATION";
@@ -19,19 +22,49 @@ export interface ScreeningSettings {
 }
 
 export interface ScreeningWorkspaceSummary {
+  pendingDiscussions?: Array<{ paperId: string; roundId: string; title: string; status: ScreeningState; classification?: ScreeningClassification | null; phase?: ScreeningPhase }>;
+  expiredClaims?: Array<{ paperId: string; roundId: string; title: string }>;
+  completedPersonalReviews?: number;
+  myTrackedDisputes?: Array<{
+    paperId: string;
+    roundId: string;
+    title: string;
+    publicationYear?: number | null;
+    journalName?: string | null;
+    phase: ScreeningPhase;
+    status: ScreeningState;
+    caseStatus?: string;
+    myDecision: ScreeningChoice;
+    deadline?: string | null;
+    adjudicatorName?: string | null;
+  }>;
+  myCompletedEvaluations?: Array<{
+    paperId: string;
+    roundId: string;
+    title: string;
+    publicationYear?: number | null;
+    journalName?: string | null;
+    phase: ScreeningPhase;
+    finalDecision: string;
+    myDecision: ScreeningChoice;
+    decidedAt?: string | null;
+    resolverName?: string | null;
+    isAdjudicated?: boolean;
+  }>;
   myActiveClaims: Array<{
     paperId: string;
     roundId: string;
     assignmentId: string;
     title: string;
     authors?: string[];
-    publicationYear: number;
+    publicationYear: number | null;
     journalName?: string | null;
     phase: ScreeningPhase;
     dueAt: string | null;
     expiresInSeconds: number | null;
     canExtend: boolean;
     canRelease: boolean;
+    partner?: { name: string; completed: boolean } | null;
   }>;
   pendingConsensus: Array<{
     paperId: string;
@@ -47,6 +80,7 @@ export interface ScreeningWorkspaceSummary {
     roundId: string;
     title: string;
     status: ScreeningState;
+    caseStatus?: string;
   }>;
   myProposalsCount: number;
   recentProposals: Array<{
@@ -56,7 +90,10 @@ export interface ScreeningWorkspaceSummary {
     journalName?: string | null;
     proposedAt: string;
     screeningStatus: string;
+    classification?: ScreeningClassification | null; roundStatus?: ScreeningState; caseStatus?: string;
     finalDecision?: string | null;
+    legacyProgress?: boolean;
+    legacyNeedsAudit?: boolean;
     reviewProgress: { completed: number; required: number; held: number };
   }>;
   eligibleQueueCount: number;
@@ -78,6 +115,8 @@ export interface ScreeningWorkspaceSummary {
 export interface ScreeningReview {
   id: string; assignmentId: string; reviewerId: string; revision: number; decision: ScreeningChoice;
   exclusionReason: string; comment: string; submittedAt: string;
+  phaseMarker?: "INDEPENDENT_INITIAL" | "POST_DISCUSSION_REVISION";
+  reassessmentReason?: string;
   scope?: ScreeningPhase | null; fullTextReference?: string | null;
   researchQuestions?: Array<{ id: string; text: string }>;
 }
@@ -86,40 +125,98 @@ export interface ScreeningAssignment {
   dueAt: string | null; overdue: boolean;
 }
 export interface ScreeningRoundView {
-  resolution?: { decision: "NEEDS_MORE_INFO"; reason: string; createdAt: string } | null;
-  canRequestAdjudication?: boolean; canAdvanceConservatively?: boolean; provisionalAdvance?: boolean;
+  classification?: ScreeningClassification | null; resolutionType?: ScreeningResolutionType | null;
+  legacyNeedsAudit?: boolean;
+  legacyOutcome?: boolean;
+  canClaim?: boolean;
+  isProposer?: boolean;
+  proposerExcluded?: boolean;
+  proposerExceptionGranted?: boolean;
+  resolution?: { decision: "NEEDS_MORE_INFO"; reason: string; createdAt: string; resolverName?: string; resolverRole?: string; sourceMaterial?: string | null } | null;
+  canRequestAdjudication?: boolean; canReassess?: boolean; canAdvanceConservatively?: boolean; provisionalAdvance?: boolean;
   reviewerIntakeClosed?: boolean;
   canProposeAgreement?: boolean;
   agreement?: ScreeningAgreement | null;
   adjudicators?: Array<WorkspacePerson & { mentor: boolean; proposer: boolean }>;
-  discussionReady?: boolean; canReopenOwn?: boolean; finalizerAssigned?: boolean;
+  adjudicationCase?: {
+    id: string;
+    status: "COLLECTING" | "NEEDS_MORE_INFO" | "INVITED" | "ACCEPTED" | "COI_REVIEW" | "CANCELLED_REOPENED" | "REQUESTED" | "WAITING_ASSIGNMENT" | "ASSIGNED" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED_AS_RESOLVED";
+    requestedByIds: string[];
+    disputePoints: Array<{ reviewerId: string; reviewerName: string; text: string; createdAt: string }>;
+    assignedAdjudicator?: { id: string; name: string; mentor: boolean; role?: string } | null;
+    ready?: boolean;
+    deadline?: string;
+    createdAt: string;
+  } | null;
+  reviewHistory?: Array<{
+    id: string;
+    assignmentId: string;
+    reviewerId: string;
+    reviewerName: string;
+    revision: number;
+    phaseMarker: "INDEPENDENT_INITIAL" | "POST_DISCUSSION_REVISION";
+    decision: ScreeningChoice;
+    exclusionReason: string;
+    comment: string;
+    submittedAt: string;
+  }>;
+  escalationReady?: boolean; discussionReady?: boolean; canReopenOwn?: boolean; finalizerAssigned?: boolean;
   extractionReady?: boolean;
   finalizer: WorkspacePerson; canFinalize: boolean; canDefer?: boolean;
   id: string; paperId: string; number: number; phase: ScreeningPhase; version: number; status: ScreeningState;
   active: boolean; settings: ScreeningSettings; unblindedAt: string | null; independenceCompromised: boolean;
   assignments: ScreeningAssignment[]; reviews: ScreeningReview[]; myReview: ScreeningReview | null;
   myAssignmentId: string | null; hiddenReviews: boolean; completed: number; assigned: number;
-  finalDecision: { id: string; version: number; decision: "INCLUDED" | "EXCLUDED" | "BACKGROUND"; source: "CONSENSUS" | "MANUAL"; reason: string; resolverId: string | null; createdAt: string } | null;
+  finalDecision: { id: string; version: number; decision: "INCLUDED" | "EXCLUDED" | "BACKGROUND"; source: "CONSENSUS" | "MANUAL"; reason: string; exclusionReason?: string | null; sourceMaterial?: string | null; resolverId: string | null; createdAt: string } | null;
   canReview: boolean; canManage: boolean; aiVisible: boolean;
 }
 export interface ScreeningAgreement {
+  exclusionReason?: string; sourceMaterial?: string; retrieveFullText?: boolean;
   id: string; decision: "INCLUDED" | "EXCLUDED" | "NEEDS_MORE_INFO"; reason: string; proposedById: string;
   reviewIds: string[]; confirmedByIds: string[]; requiredReviewerIds: string[];
   canConfirm: boolean; canDecline?: boolean; confirmations?: Array<{ reviewerId: string; confirmedAt: string }>; createdAt: string;
 }
-export interface ScreeningSharedDiscussion { id: string; comment: string; createdAt: string }
+export interface ScreeningSharedDiscussion { id: string; comment: string; createdAt: string; actorName?: string }
 export interface ScreeningAdjudicationPacket {
+  sources?: Array<{ id: string; sha256: string; byteSize: number }>;
+  protocol?: { version: number; workflowVersion: number | null; stages: ScreeningPhase[]; allowConservativeFullText: boolean };
+  consensusAttempts?: Array<{ id: string; action: string; actorName: string; createdAt: string; decision?: string; reason?: string }>;
   discussion?: ScreeningSharedDiscussion[];
   roundId: string; paperId: string; phase: ScreeningPhase; roundVersion: number;
   paper: { title: string; abstractText: string | null; doi: string | null; publicationYear: number };
   inclusionCriteria: string[]; exclusionCriteria: string[]; researchQuestions: string[];
-  reviews: Array<{ id: string; decision: ScreeningChoice; exclusionReason: string; comment: string; revision: number; scope: ScreeningPhase | null; fullTextReference: string | null }>;
+  reviews: Array<{ reviewerId?: string; reviewerName?: string; id: string; decision: ScreeningChoice; exclusionReason: string; comment: string; revision: number; scope: ScreeningPhase | null; fullTextReference: string | null }>;
+  disputePoints?: Array<{ reviewerId: string; reviewerName: string; text: string; createdAt: string }>;
+  requestReason?: string;
+  caseMetadata?: { caseId: string; status: string; requestedByIds: string[]; assignedAdjudicator?: { id: string; name: string; mentor: boolean } | null; createdAt: string };
+  allReviews?: Array<{ id: string; reviewerId: string; revision: number; decision: ScreeningChoice; exclusionReason: string; comment: string; phaseMarker: "INDEPENDENT_INITIAL" | "POST_DISCUSSION_REVISION"; submittedAt: string }>;
 }
 export interface ScreeningAdjudicationView {
-  resolution?: { decision: "NEEDS_MORE_INFO"; reason: string; createdAt: string } | null;
+  case?: ScreeningDisputeCase | null;
+  caseHistory?: Array<{ id: string; status: string; createdAt: string }>;
+  thread?: ScreeningSharedDiscussion[];
+  resolution?: { decision: "NEEDS_MORE_INFO"; reason: string; createdAt: string; resolverName?: string; resolverRole?: string; sourceMaterial?: string | null } | null;
   availableDiscussion?: ScreeningSharedDiscussion[];
   packet: ScreeningAdjudicationPacket; version: number; status: ScreeningState; canResolve: boolean;
-  finalDecision: { decision: "INCLUDED" | "EXCLUDED" | "BACKGROUND"; reason: string; createdAt: string } | null;
+  finalDecision: { resolverName?: string; resolverRole?: string; decision: "INCLUDED" | "EXCLUDED" | "BACKGROUND"; reason: string; exclusionReason?: string | null; sourceMaterial?: string | null; createdAt: string } | null;
+}
+export interface ScreeningDisputeStatement {
+  reviewerId: string; name: string; completed: boolean; hidden: boolean; revision: number;
+  useExisting?: boolean; text?: string; submittedAt?: string;
+  history?: Array<{ revision: number; packetVersion: number; text: string; useExisting: boolean; createdAt: string }>;
+}
+export interface ScreeningDisputeCase {
+  /** Canonical reviewer identity for the current viewer; never supplied by the client. */
+  myReviewerId?: string | null;
+  id: string; status: string; version: number; packetVersion: number; active: boolean;
+  lockedAt?: string | null; canStart?: boolean; canReassign?: boolean;
+  deadline: string; ready: boolean; createdAt: string; requestedByIds: string[];
+  invitation: { id: string; userId: string; name: string; role: string; status: string; responseReason?: string | null; createdAt: string; respondedAt: string | null } | null;
+  invitations: Array<{ id: string; userId: string; name: string; role: string; status: string; responseReason?: string | null; createdAt: string; respondedAt: string | null }>;
+  statements: ScreeningDisputeStatement[];
+  candidates: Array<{ id: string; name: string; role: string }>;
+  conflicts: Array<{ id: string; reason: string; resolvedAt: string | null; resolution: string | null; upheld: boolean | null }>;
+  canRespond: boolean; canStatement: boolean; canCoordinate: boolean; canReport: boolean; canResolve: boolean;
 }
 export interface ScreeningPaperRow {
   tags?: string[]; notes?: string | null; importSource?: string | null;
@@ -146,3 +243,11 @@ export interface ScreeningAiResult {
 }
 export interface ScreeningAiView { id: string; status: "QUEUED" | "COMPLETED" | "FAILED"; createdAt: string; generatedAt: string | null; result: ScreeningAiResult | null }
 export interface ScreeningAuditView { id: string; type: string; actorId: string; actorName?: string; createdAt: string; details: Record<string, unknown> | null }
+
+/** Invalidation only: clients refetch content through authorized screening APIs. */
+export interface ScreeningLiveEvent {
+  type: "ready" | "comment" | "round_updated";
+  projectId: string;
+  roundId: string;
+  occurredAt: string;
+}

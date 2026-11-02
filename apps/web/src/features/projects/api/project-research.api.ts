@@ -1,5 +1,6 @@
 import { api } from "@/services/api-client";
 import type { ProjectGapDiscoveryOverview } from "@trend/shared-types";
+import type { EvidenceWorkflowInput, ResearchSynthesisWorkspace } from "@trend/shared-types";
 import type { EvidenceContent, ExtractionSuggestion, GapAssessment, GapResearchView, ProjectEvidencePage, ProjectResearchLibrary, SaveProjectEvidence, ScreeningPhase, ProjectSynthesis, SaveSynthesis, ProjectResearchQuestion, ProjectPaperAnalysis, SynthesisRevision } from "@trend/shared-types";
 const path = (id: string, suffix: string) => `/projects/${encodeURIComponent(id)}/research/${suffix}`;
 async function get<T>(id: string, suffix: string, params?: Record<string, string | number | undefined>) { return (await api.get<{ data: T }>(path(id, suffix), { params })).data.data; }
@@ -26,9 +27,10 @@ export const researchApi = {
   upload: async (id: string, paperId: string, file: File) => { const form = new FormData(); form.append("pdf", file); return write(id, `papers/${paperId}/pdf`, form); },
   download: async (id: string, fileId: string) => (await api.get<Blob>(path(id, `files/${fileId}`), { responseType: "blob" })).data,
   evidence: (id: string, params: Record<string, string | number | undefined>) => get<ProjectEvidencePage>(id, "evidence", params),
+  evidenceWorkspace: (id: string, params: Record<string, string | number | undefined>) => get<ResearchSynthesisWorkspace>(id, "evidence/workspace", params),
   createEvidence: (id: string, data: SaveProjectEvidence) => write(id, "evidence", data),
-  editEvidence: (id: string, evidenceId: string, data: EvidenceContent & { expectedVersion: number }) => write(id, `evidence/${evidenceId}`, data, "patch"),
-  reviewEvidence: (id: string, evidenceId: string, data: { expectedVersion: number; state: "ACCEPTED" | "REJECTED"; rationale: string }) => write(id, `evidence/${evidenceId}/review`, data),
+  editEvidence: (id: string, evidenceId: string, data: EvidenceContent & EvidenceWorkflowInput & { expectedVersion: number }) => write(id, `evidence/${evidenceId}`, data, "patch"),
+  reviewEvidence: (id: string, evidenceId: string, data: { expectedVersion: number; state: "ACCEPTED" | "REJECTED"; rationale: string; sourceConfirmed?: boolean }) => write(id, `evidence/${evidenceId}/review`, data),
   evidenceHistory: (id: string, evidenceId: string) => get<Array<{ id: string; version: number; createdAt: string; snapshot: Record<string, unknown> }>>(id, `evidence/${evidenceId}/history`),
   guidance: (id: string, gapId: string, data: { note: string; expectedVersion: number; clientKey: string }) => write(id, `gaps/${gapId}/guidance`, data),
   gap: (id: string, gapId: string) => get<GapResearchView>(id, `gaps/${gapId}`),

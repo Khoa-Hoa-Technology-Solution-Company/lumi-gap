@@ -1,6 +1,9 @@
 /* Conversation controls and composer share the workspace's existing theme. */
 .project-conversation { --primary: 224 76% 48%; --primary-foreground: 0 0% 100%; --chat-text-size: 17px; --chat-text-leading: 1.55; --chat-message-width: 68ch; min-width: 0; border: 1px solid hsl(var(--border)); border-radius: 12px; background: hsl(var(--background)); overflow: hidden; }
 .project-chat-channels { display: flex; gap: 8px; padding: 0 16px; border-bottom: 1px solid hsl(var(--border)); }
+.project-mentor-channel { padding: 1rem clamp(.75rem, 2vw, 1.5rem); min-width: 0; }
+.project-mentor-channel .mentor-access-workspace { margin-block: 0; }
+.project-mentor-channel .mentor-collaboration-panel { border: 0; border-radius: 0; box-shadow: none; padding: 0; background: transparent; margin-top: 1.25rem; }
 .project-chat-channels [role="tab"] { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 52px; padding: 0 14px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: hsl(var(--muted-foreground)); font-size: 15px; font-weight: 600; white-space: nowrap; }
 .project-chat-channels [role="tab"][aria-selected="true"] { color: hsl(var(--primary)); border-bottom-color: hsl(var(--primary)); }
 .project-chat-channels [role="tab"]:hover { background: hsl(var(--muted) / .55); color: hsl(var(--foreground)); }
@@ -49,8 +52,8 @@
 .project-chat-compose { flex-shrink: 0; padding: 12px 16px 16px; background: hsl(var(--background)); border-top: 1px solid hsl(var(--border) / .6); }
 .project-chat-compose form { border: 1px solid hsl(var(--border)); border-radius: 10px; background: hsl(var(--background)); }
 .project-chat-compose form:focus-within { border-color: hsl(var(--primary)); box-shadow: 0 0 0 2px hsl(var(--primary) / .1); }
-.coord-discussions .project-chat-compose textarea { display: block; min-height: 64px; max-height: 160px; width: 100%; padding: 12px 14px 6px; border: 0; border-radius: 10px; background: transparent; color: hsl(var(--foreground)); font-family: inherit; font-size: var(--chat-text-size); line-height: var(--chat-text-leading); resize: none; box-shadow: none; outline: none; }
-.coord-discussions .project-chat-compose textarea:focus-visible { outline: none; }
+.project-chat-surface .project-chat-compose textarea { display: block; min-height: 64px; max-height: 160px; width: 100%; padding: 12px 14px 6px; border: 0; border-radius: 10px; background: transparent; color: hsl(var(--foreground)); font-family: inherit; font-size: var(--chat-text-size); line-height: var(--chat-text-leading); resize: none; box-shadow: none; outline: none; }
+.project-chat-surface .project-chat-compose textarea:focus-visible { outline: none; }
 .project-chat-compose textarea:disabled { opacity: .6; }
 .project-chat-compose textarea::placeholder { color: hsl(var(--muted-foreground)); }
 .project-chat-compose-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 8px 8px 14px; }
@@ -77,7 +80,7 @@
   .project-chat-message { gap: 7px; }
   .project-chat-avatar { height: 26px; width: 26px; }
   .project-chat-compose { padding: 10px; }
-  .coord-discussions .project-chat-compose textarea { font-size: 17px; }
+  .project-chat-surface .project-chat-compose textarea { font-size: 17px; }
   .project-chat-keyboard-hint { display: none; }
   .project-chat-mobile-hint { display: inline; }
   .project-chat-send-actions button { min-height: 40px; }
@@ -100,4 +103,21 @@
 .project-ai-feed .prose code { font-size: .875em; }
 @media (max-width: 640px) {
   .project-ai-request-bubble, .project-ai-response-bubble { max-width: calc(100% - 42px); }
+}
+
+/* Compact conversation in the paper reading workspace. */
+.screening-discussion { --chat-text-size: 14px; --chat-text-leading: 1.6; --chat-message-width: 65ch; min-width: 0; }
+.screening-discussion .project-chat-body { height: 390px; max-height: 65dvh; min-height: 260px; }
+.screening-discussion-context { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 6px 12px; padding: 0 0 12px; color: hsl(var(--muted-foreground)); font-size: 12px; }
+.screening-discussion .project-chat-feed { padding: 0 4px 16px; }
+.screening-discussion .project-chat-compose { padding: 12px 0 0; }
+.screening-discussion .project-chat-empty { min-height: 180px; }
+.screening-discussion .project-chat-empty h4 { font-size: 15px; }
+.screening-discussion .project-chat-date { padding: 12px 0; }
+.screening-discussion .project-chat-message { margin: 12px 0; }
+.screening-discussion-readonly { margin: 0; padding: 12px 0; border-top: 1px solid hsl(var(--border)); color: hsl(var(--muted-foreground)); font-size: 12px; line-height: 1.6; }
+@media (max-width: 640px) {
+  .screening-discussion .project-chat-message-main { max-width: calc(100% - 40px); }
+  .screening-discussion .project-chat-message-meta { flex-wrap: wrap; gap: 2px 8px; }
+  .screening-discussion .project-chat-compose textarea { font-size: 16px; }
 }

@@ -93,7 +93,14 @@ export function ProjectSectionNav({ activeTab, onChange, paperCount, memberCount
                 >
                   <Icon className={`h-[18px] w-[18px] shrink-0 transition-colors ${isSelected ? "text-primary" : section.iconColor}`} />
                   <span className="font-medium">{t(section.label)}</span>
-                  {count !== undefined && <small>{count}</small>}
+                  {count !== undefined && (
+                    <small
+                      className="ml-auto inline-flex shrink-0 items-center justify-center whitespace-nowrap font-mono text-[11.5px] font-bold tabular-nums"
+                      style={{ minWidth: "26px", whiteSpace: "nowrap", wordBreak: "keep-all" }}
+                    >
+                      {count}
+                    </small>
+                  )}
                 </button>
               );
             })}

@@ -17,19 +17,37 @@ export function LecturerDeliveryNotice() {
   const job = useLecturerDelivery(signedIn ? userId : undefined), queryClient = useQueryClient();
   const [previewOpen, setPreviewOpen] = useState(false), [actionError, setActionError] = useState(false);
   const notified = useRef("");
+  const hadActiveDelivery = useRef(false);
+  const lastJobId = useRef<string | undefined>(undefined);
+
   useEffect(() => { if (job?.state === "SENT") setPreviewOpen(false); }, [job?.state]);
   useEffect(() => {
     if (!userId || !signedIn || !activeDelivery(job) || !navigator.onLine) return;
     void runLecturerDelivery(userId, () => useAuthStore.getState().user?.id === userId && Boolean(useAuthStore.getState().tokens?.accessToken)).catch(() => { setActionError(true); });
   }, [job, userId, signedIn]);
   useEffect(() => {
-    if (activeDelivery(job)) { notified.current = ""; return; }
+    if (job?.id !== lastJobId.current) {
+      lastJobId.current = job?.id;
+      hadActiveDelivery.current = activeDelivery(job);
+    }
+    if (activeDelivery(job)) {
+      hadActiveDelivery.current = true;
+      notified.current = "";
+      return;
+    }
     if (!job || !["SENT", "FAILED", "UNCERTAIN"].includes(job.state) || notified.current === `${job.id}:${job.state}`) return;
     notified.current = `${job.id}:${job.state}`;
     if (job.state === "SENT") {
+      if (!hadActiveDelivery.current || job.notified) {
+        if (!job.notified && job.userId) {
+          void lecturerDeliveryStore.update(job.userId, current => current.id === job.id ? { ...current, notified: true } : current);
+        }
+        return;
+      }
       void queryClient.invalidateQueries({ queryKey: ["academic-profile", "me"] });
       void queryClient.invalidateQueries({ queryKey: ["academic-profile", "verification-status"] });
       toast.success(t("Verification request submitted"));
+      void lecturerDeliveryStore.update(job.userId, current => current.id === job.id ? { ...current, notified: true } : current);
     } else toast.error(t("Evidence delivery needs your attention"), { description: t("Your evidence is saved. Open the delivery notice to retry."), duration: 8000 });
   }, [job, queryClient, t]);
   if (!job || job.state === "SENT") return null;
@@ -37,7 +55,7 @@ export function LecturerDeliveryNotice() {
   const heading = t(failed ? "Evidence delivery needs your attention" : "Sending verification in the background…");
   async function retry() {
     setActionError(false);
-    try { await lecturerDeliveryStore.update(job!.userId, current => current.id === job!.id && ["FAILED", "UNCERTAIN"].includes(current.state) ? { ...current, state: "QUEUED", error: undefined } : current); }
+    try { await lecturerDeliveryStore.update(job!.userId, current => current.id === job!.id && ["FAILED", "UNCERTAIN"].includes(current.state) ? { ...current, state: "QUEUED", error: undefined, notified: false } : current); }
     catch { setActionError(true); }
   }
   async function dismiss() {

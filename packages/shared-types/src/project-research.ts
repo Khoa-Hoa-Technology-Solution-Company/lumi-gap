@@ -6,6 +6,9 @@ export interface ProjectPaperAnalysis { paperId: string; title: string; screenin
 
 export type ScreeningPhase = "TITLE_ABSTRACT" | "FULL_TEXT";
 export type EvidenceReviewState = "PENDING" | "ACCEPTED" | "REJECTED";
+export type EvidenceVerificationStatus = "DRAFT" | "NEEDS_VERIFICATION" | "VERIFIED" | "REVISIT";
+export type EvidenceSourceScope = "ABSTRACT" | "FULL_TEXT" | "UNSPECIFIED";
+export interface EvidenceWorkflowInput { questionIds?: string[]; draft?: boolean; sourceScope?: EvidenceSourceScope }
 export type GapAssessment = "PROPOSED" | "IN_REVIEW" | "NEEDS_MORE_EVIDENCE" | "TEAM_SUPPORTED" | "REJECTED";
 export interface EvidenceContent {
   claim: string; quotation: string; locator: string; context: string; methodology: string;
@@ -16,11 +19,23 @@ export interface ProjectEvidence extends EvidenceContent {
   reviewState: EvidenceReviewState; reviewRationale: string; extractedById: string;
   reviewedById: string | null; reviewedAt: string | null; createdAt: string; updatedAt: string;
   sourceSnapshot: Record<string, unknown>; sourceTitle: string; sourceNeedsReview?: boolean;
+  verificationStatus?: EvidenceVerificationStatus; sourceScope?: EvidenceSourceScope;
+  extractedByName?: string; reviewedByName?: string | null;
   relatedQuestions?: Array<{ id: string; text: string }>;
   relatedGaps?: Array<{ id: string; title: string }>;
 }
 export interface ProjectEvidencePage extends WorkspacePage<ProjectEvidence> { legacyGapId?: string }
-export interface SaveProjectEvidence extends EvidenceContent { paperId: string; origin: "HUMAN" | "AI_SUGGESTED"; clientKey: string; sourceChunkId?: string; corpusPaperId?: string; analysisHash?: string }
+export interface SaveProjectEvidence extends EvidenceContent, EvidenceWorkflowInput { paperId: string; origin: "HUMAN" | "AI_SUGGESTED"; clientKey: string; sourceChunkId?: string; corpusPaperId?: string; analysisHash?: string }
+export type EvidenceOverviewEntry = Pick<ProjectEvidence, "id" | "version" | "origin" | "reviewState" | "claim" | "methodology" | "results" | "limitations" | "themes" | "relatedQuestions" | "verificationStatus" | "sourceScope">;
+export interface ResearchSynthesisPaper {
+  paperId: string; title: string; doi: string | null; publicationYear: number | null;
+  eligible: boolean; screeningStatus: string; eligibilityReason: string | null;
+  entries: EvidenceOverviewEntry[]; extractionCount: number; verifiedCount: number;
+  questions: Array<{ id: string; text: string }>; themes: string[];
+}
+export interface ResearchSynthesisWorkspace extends WorkspacePage<ResearchSynthesisPaper> {
+  questions: Array<{ id: string; text: string }>; themes: string[];
+}
 export interface ExtractionSuggestion { corpusPaperId?: string; analysisHash?: string; paperId: string; content: EvidenceContent; provenance: "CORPUS_EXTRACTION_UNREVIEWED" | "PAPER_ANALYSIS_UNREVIEWED" }
 
 export interface SynthesisContent { commonFindings: string; contradictions: string; openQuestions: string }

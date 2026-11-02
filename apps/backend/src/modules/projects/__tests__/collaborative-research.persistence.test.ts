@@ -35,15 +35,34 @@ describe.skipIf(!isolated).sequential("collaborative research workflow, disposab
     const p = await projectService.createProject({ title: `Research ${marker}`, description: "A research workflow", idempotencyKey: crypto.randomUUID() }, owner); projects.push(p._id);
     const invitation = await projectService.inviteMember(p._id, { userId: member }, owner); await projectService.respondToInvitation(p._id, invitation.id, member, "ACCEPTED"); return p._id;
   }
-  async function source(id: string, include = true) {
-    const result = await sources.import(id, owner, { title: `Study ${crypto.randomUUID()}`, authors: ["Research Author"], reference: "Team reference", abstractText: "Different transfer outcomes were reported.", clientKey: crypto.randomUUID() }); papers.push(result.paperId);
-    if (include) { const link = await db.projectPaper.findUniqueOrThrow({ where: { projectId_paperId: { projectId: id, paperId: result.paperId } } }); await db.projectPaper.update({ where: { id: link.id }, data: { screeningStatus: "INCLUDED", inclusionReason: "Legacy relevant study" } }); }
+  async function source(id: string, include = true, legacy = false) {
+    // Legacy API tests need an actual pre-protocol association. New imports initialize screening.
+    const result = legacy ? await (async () => {
+      const paper = await db.paper.create({ data: { title: `Legacy study ${crypto.randomUUID()}`, primaryProvider: "user", publicationYear: 0, abstractText: "Different transfer outcomes were reported." } });
+      await db.projectPaper.create({ data: { projectId: id, paperId: paper.id, addedById: owner } });
+      return { paperId: paper.id };
+    })() : await sources.import(id, owner, { title: `Study ${crypto.randomUUID()}`, authors: ["Research Author"], reference: "Team reference", abstractText: "Different transfer outcomes were reported.", clientKey: crypto.randomUUID() }); papers.push(result.paperId);
+    if (include && legacy) { const link = await db.projectPaper.findUniqueOrThrow({ where: { projectId_paperId: { projectId: id, paperId: result.paperId } } }); await db.projectPaper.update({ where: { id: link.id }, data: { screeningStatus: "INCLUDED", inclusionReason: "Legacy relevant study" } }); }
+    if (include && !legacy) {
+      // Complete the real frozen protocol; mutating the legacy cache is not eligibility.
+      for (let stage = 0; stage < 2; stage++) {
+        const round = await db.screeningRound.findFirstOrThrow({ where: { projectId: id, paperId: result.paperId, active: true } });
+        for (const actor of [owner, member]) {
+          await currentScreening.claim(id, actor, round.id, { clientKey: crypto.randomUUID() });
+          const view = await currentScreening.detail(id, actor, round.id);
+          const assignment = view.assignments.find(row => row.id === view.myAssignmentId)!;
+          await currentScreening.submit(id, actor, round.id, { assignmentId: assignment.id, expectedRevision: assignment.revision, decision: "INCLUDE", exclusionReason: "", comment: "Matches the review scope", ...(round.phase === "FULL_TEXT" ? { scope: "FULL_TEXT" as const, fullTextReference: "Test source, methods and results inspected" } : {}), confirmed: true, clientKey: crypto.randomUUID() });
+        }
+        const current = await db.projectPaper.findUniqueOrThrow({ where: { projectId_paperId: { projectId: id, paperId: result.paperId } } });
+        if (current.screeningStatus === "INCLUDED") break;
+      }
+    }
     return result.paperId;
   }
   async function candidate(projectId: string) {
     return gapValidationService.createCandidate(owner, { projectId, topic: "Transfer outcomes", title: "Transfer across contexts", gapType: "CONTEXT_GAP", establishedKnowledge: "Transfer varies across contexts", observedLimitation: "Most studies use a single institution", missingEvidence: "Cross-institution replication is missing", significanceExplanation: "Scope may explain contradictory results", gapConfidence: "LOW", researchPriority: "MODERATE" });
   }
-  async function accepted(projectId: string, paperId: string) { const row = await evidence.create(projectId, member, { ...extraction(), paperId }); return evidence.review(projectId, owner, row.id, { expectedVersion: row.version, state: "ACCEPTED", rationale: "Compared interpretation with the source" }); }
+  async function accepted(projectId: string, paperId: string) { const row = await evidence.create(projectId, member, { ...extraction(), paperId }); return evidence.review(projectId, owner, row.id, { expectedVersion: row.version, state: "ACCEPTED", sourceConfirmed: true, rationale: "Compared interpretation with the source" }); }
   async function explicitPlan(id: string) { const view = await plans.get(id, owner); await projectPlanDraftService.snapshot(id, owner, { expectedVersion: view.version, clientKey: crypto.randomUUID(), changeSummary: "Explicit sharing checkpoint" }); return plans.get(id, owner); }
   beforeAll(async () => { owner = await person("owner"); member = await person("member"); outsider = await person("outsider"); mentor = await person("mentor"); expert = await person("expert"); await db.userCapability.create({ data: { userId: expert, capability: "GAP_VALIDATION", status: "ACTIVE", source: "TEST" } }); });
   afterAll(async () => {
@@ -93,7 +112,7 @@ describe.skipIf(!isolated).sequential("collaborative research workflow, disposab
     await expect(evidence.create(id, owner, { ...extraction(), paperId })).rejects.toMatchObject({ statusCode: 400 });
   });
   it("keeps blinded votes separate, identifies conflicts, resolves explicitly and rejects policy bypass", async () => {
-    const id = await project(), paperId = await source(id, false), p = await db.project.findUniqueOrThrow({ where: { id } });
+    const id = await project(), paperId = await source(id, false, true), p = await db.project.findUniqueOrThrow({ where: { id } });
     await screening.policy(id, owner, { mode: "INDEPENDENT", blinded: true, expectedVersion: p.version });
     let item = (await screening.library(id, owner, page)).items[0]!;
     await screening.assign(id, owner, paperId, { reviewerIds: [owner, member], phase: "TITLE_ABSTRACT", expectedUpdatedAt: new Date(item.updatedAt).toISOString() });
@@ -111,7 +130,7 @@ describe.skipIf(!isolated).sequential("collaborative research workflow, disposab
     expect((await screening.history(id, member, paperId)).length).toBeGreaterThanOrEqual(3);
   });
   it("revokes independent assignments on member removal and never restores old votes on rejoining", async () => {
-    const id = await project(), paperId = await source(id, false), projectRow = await db.project.findUniqueOrThrow({ where: { id } });
+    const id = await project(), paperId = await source(id, false, true), projectRow = await db.project.findUniqueOrThrow({ where: { id } });
     await screening.policy(id, owner, { mode: "INDEPENDENT", blinded: true, expectedVersion: projectRow.version });
     const currentSource = async () => (await screening.library(id, owner, page)).items[0]!;
     await screening.assign(id, owner, paperId, { reviewerIds: [owner, member], phase: "TITLE_ABSTRACT", expectedUpdatedAt: new Date((await currentSource()).updatedAt).toISOString() });
@@ -133,7 +152,7 @@ describe.skipIf(!isolated).sequential("collaborative research workflow, disposab
     const row = await evidence.create(id, member, input); expect(row.reviewState).toBe("PENDING"); expect(row.sourceSnapshot).toMatchObject({ quoteCheckedAgainstIndexedSource: true });
     expect((await evidence.create(id, member, input)).id).toBe(row.id);
     await expect(evidence.create(id, member, { ...input, claim: "Changed retry" })).rejects.toMatchObject({ statusCode: 409 });
-    const acceptedRow = await evidence.review(id, owner, row.id, { state: "ACCEPTED", rationale: "Read the source", expectedVersion: 1 });
+    const acceptedRow = await evidence.review(id, owner, row.id, { state: "ACCEPTED", sourceConfirmed: true, rationale: "Read the source", expectedVersion: 1 });
     const { origin: _o, clientKey: _k, paperId: _p, ...content } = input;
     const results = await Promise.allSettled([evidence.update(id, owner, row.id, { ...content, claim: "First interpretation", expectedVersion: acceptedRow.version }), evidence.update(id, member, row.id, { ...content, claim: "Second interpretation", expectedVersion: acceptedRow.version })]);
     expect(results.filter(result => result.status === "fulfilled")).toHaveLength(1);
@@ -187,7 +206,7 @@ describe.skipIf(!isolated).sequential("collaborative research workflow, disposab
     await expect(gaps.derive(id, owner, gap.id, { ...input, expectedVersion: changed.gap.version, expectedPlanVersion: current.version, clientKey: crypto.randomUUID() })).rejects.toThrow();
   });
   it("invalidates expert packets on source changes and counts only current-revision expert decisions", async () => {
-    const id = await project(), paperId = await source(id), item = await accepted(id, paperId), gap = await candidate(id);
+    const id = await project(), paperId = await source(id, true, true), item = await accepted(id, paperId), gap = await candidate(id);
     await gaps.link(id, owner, gap.id, { evidenceItemId: item.id, expectedEvidenceVersion: item.version, expectedVersion: 1, kind: "SUPPORTING", explanation: "Relevant limitation" });
     await gapValidationService.requestValidation(gap.id, owner);
     await gapValidationService.addValidation(gap.id, expert, { action: "VALIDATE", comment: "Scope and sources were reviewed", expectedVersion: 2 });
@@ -196,13 +215,13 @@ describe.skipIf(!isolated).sequential("collaborative research workflow, disposab
     const queue = await gapValidationService.listValidationQueue(expert, { page: 1, pageSize: 50 }); const queued = queue.items.find(item => item.id === gap.id)!; expect(queued.validationCount).toBe(0); expect(queued.reviewedByMe).toBe(false);
     await expect(gapValidationService.addValidation(gap.id, expert, { action: "VALIDATE", comment: "Stale packet evaluation", expectedVersion: 2 })).rejects.toMatchObject({ statusCode: 409 });
     const old = (await gapValidationService.getValidations(gap.id, owner))[0]!; expect(old.gapVersion).toBe(2);
+    await currentScreening.configure(id, owner, { expectedVersion: 0, reviewMode: "SIMPLE", requiredReviewers: 1, consensusPolicy: "UNANIMOUS", aiAssisted: false, inclusionCriteria: [], exclusionCriteria: [], researchQuestions: [], stages: ["TITLE_ABSTRACT"], clientKey: crypto.randomUUID() });
     const started = await currentScreening.start(id, owner, { paperIds: [paperId], phase: "TITLE_ABSTRACT", confirmRescreen: true, clientKey: crypto.randomUUID() });
     const roundId = started.roundIds![0]!;
     await currentScreening.assign(id, owner, { roundIds: [roundId], mode: "MANUAL", reviewerIds: [member], dueAt: null, clientKey: crypto.randomUUID() });
     const assigned = await currentScreening.detail(id, member, roundId);
     await currentScreening.submit(id, member, roundId, { assignmentId: assigned.myAssignmentId!, expectedRevision: 1, decision: "EXCLUDE", exclusionReason: "Scope changed", comment: "New evidence excludes this study", confirmed: true, clientKey: crypto.randomUUID() });
-    const ready = await currentScreening.detail(id, owner, roundId);
-    await currentScreening.resolve(id, owner, roundId, { expectedVersion: ready.version, decision: "EXCLUDED", reason: "Scope changed after reassessing the source", confirmed: true, clientKey: crypto.randomUUID() });
+    expect((await currentScreening.detail(id, owner, roundId)).status).toBe("EXCLUDED");
     expect((await gaps.detail(id, owner, gap.id)).gap.validationStatus).toBe("CANDIDATE");
   });
   it("enforces signed HTTP sessions, project boundaries and private PDF responses", async () => {

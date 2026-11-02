@@ -23,7 +23,7 @@ import {
   Plus,
   RotateCcw,
   Search,
-  Sparkles,
+
   StickyNote,
   Tag,
   Trash2,
@@ -401,7 +401,7 @@ export function ProjectLiteratureWorkspace({
               <span className="project-bulk-count">{t("{{count}} selected", { count: selectedBulkIds.length })}</span>
               <div className="project-bulk-actions">
                 <Button size="sm" variant="outline" className="rounded-lg shadow-xs" disabled={selectedBulkIds.length < 2 || selectedBulkIds.length > 4} onClick={beginCompare}>
-                  <Sparkles className="mr-1.5 h-3.5 w-3.5 text-primary" />
+                  <FileText className="mr-1.5 h-3.5 w-3.5 text-primary" />
                   {t("Compare selected")}
                 </Button>
                 <Button size="sm" variant="ghost" className="rounded-lg" onClick={() => setSelectedBulkIds([])}>{t("Clear selection")}</Button>
@@ -458,7 +458,7 @@ export function ProjectLiteratureWorkspace({
                         )}
                         {link.evidenceCount > 0 && (
                           <span className="project-paper-badge-pill evidence-pill">
-                            <Sparkles className="h-3 w-3 shrink-0" aria-hidden="true" />
+                            <FileText className="h-3 w-3 shrink-0" aria-hidden="true" />
                             <span>{t("{{count}} linked to research gaps", { count: link.evidenceCount })}</span>
                           </span>
                         )}
@@ -572,7 +572,7 @@ export function ProjectLiteratureWorkspace({
 
       <Dialog open={compareOpen} onOpenChange={setCompareOpen}>
         <DialogContent className="max-h-[85vh] max-w-4xl overflow-y-auto">
-          <DialogHeader><DialogTitle className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-primary" />{t("Cross-paper comparison")}</DialogTitle><DialogDescription>{t("AI-generated comparison of findings, methods, and outcomes.")}</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle className="flex items-center gap-2"><FileText className="h-4 w-4 text-primary" />{t("Cross-paper comparison")}</DialogTitle><DialogDescription>{t("AI-generated comparison of findings, methods, and outcomes.")}</DialogDescription></DialogHeader>
           {comparing ? <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />{t("Comparing papers…")}</div> : compareError ? <div className="flex items-center justify-center gap-2 py-12 text-sm text-destructive"><AlertCircle className="h-4 w-4" />{t("Comparison could not be loaded. Try again.")}</div> : compareData ? <CompareTable comparison={compareData} /> : null}
           <DialogFooter><Button onClick={() => setCompareOpen(false)}>{t("Close")}</Button></DialogFooter>
         </DialogContent>
@@ -820,7 +820,7 @@ function PaperDetailPanel({
               className={`project-reader-tab ${readerTab === "analysis" ? "active" : ""}`}
               onClick={() => setReaderTab("analysis")}
             >
-              <Sparkles className="h-4 w-4 text-amber-500" />
+              <FileText className="h-4 w-4 text-amber-500" />
               <span>{t("AI Insights & Analysis")}</span>
             </button>
           </div>

@@ -5,6 +5,7 @@ import { researchPaper } from "./project-evidence.service.js";
 import { projectScreeningStatus, recomputeScreening, roundSettings, screeningCommand, screeningSettings, screeningRound } from "./screening-context.js";
 import { libraryAssessmentSchema, screeningActionSchema } from "./dto/screening.schema.js";
 import { assessmentContext, meaningfulLegacyScreening } from "./screening-review-context.js";
+import { latestCase } from "./screening-case-context.js";
 
 export const libraryAssessmentService = {
   async assess(project: string, actor: string, paperId: string, raw: z.infer<typeof libraryAssessmentSchema>) {
@@ -22,6 +23,7 @@ export const libraryAssessmentService = {
         row = await c.tx.screeningRound.create({ data: { projectId: c.project.id, paperId, phase: "TITLE_ABSTRACT", number: (previous?.number ?? 0) + 1, settings: jsonSnapshot(settings), unblindedAt: new Date(), createdById: c.actorId } });
       }
       if (roundSettings(row.settings).reviewMode !== "COLLABORATIVE") throw AppError.conflict("Phiếu độc lập phải tuân theo phân công và quy tắc mở lại");
+      if ((await latestCase(c, row.id))?.active) throw AppError.conflict("Hồ sơ phân xử đã mở. Hai reviewer dùng sửa phiếu hoặc bổ sung ý kiến riêng trong hồ sơ");
       if (["INCLUDED", "EXCLUDED", "BACKGROUND"].includes(row.status)) throw AppError.conflict("Bài đã có quyết định. Người phụ trách cần mở lại để xem xét thêm");
       const own = await c.tx.screeningAssignment.findUnique({ where: { roundId_reviewerId: { roundId: row.id, reviewerId: c.actorId } } });
       expectWorkspaceVersion(own?.revision ?? 0, input.expectedRevision);

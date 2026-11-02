@@ -22,7 +22,15 @@ const board: ScreeningBoard = { settings, canManage: true, progress: { total: 2,
 let root: Root, container: HTMLDivElement, client: QueryClient;
 async function settle() { await act(async () => { await new Promise(resolve => setTimeout(resolve, 25)); }); }
 async function render(node: ReactNode) { await act(async () => root.render(<QueryClientProvider client={client}><MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>{node}</MemoryRouter></QueryClientProvider>)); await settle(); }
-async function click(text: string) { const button = [...container.querySelectorAll<HTMLButtonElement>("button")].find(b => b.textContent === text); expect(button).toBeDefined(); await act(async () => button!.click()); await settle(); }
+async function click(text: string) {
+  let button: HTMLButtonElement | undefined;
+  await vi.waitFor(async () => {
+    await settle();
+    button = [...container.querySelectorAll<HTMLButtonElement>("button")].find(b => b.textContent === text);
+    expect(button, text).toBeDefined();
+  });
+  await act(async () => button!.click()); await settle();
+}
 async function input(element: HTMLInputElement | HTMLTextAreaElement, value: string) { await act(async () => { Object.getOwnPropertyDescriptor(element instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype, "value")!.set!.call(element, value); element.dispatchEvent(new Event("input", { bubbles: true })); }); }
 beforeEach(() => { vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true); vi.clearAllMocks(); mocks.board.mockResolvedValue(board); mocks.assess.mockResolvedValue({ roundId: "round", revision: 1 }); mocks.sets.mockResolvedValue({ items: [], total: 0, page: 1, hasNext: false }); mocks.confirm.mockResolvedValue(true); client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } } }); container = document.createElement("div"); document.body.append(container); root = createRoot(container); });
 afterEach(async () => { await act(async () => root.unmount()); client.clear(); container.remove(); vi.unstubAllGlobals(); });
@@ -110,7 +118,10 @@ it("navigates between papers without returning to the list and keeps reviewer fi
   const reviewer = container.querySelector<HTMLSelectElement>('[aria-label="Người đánh giá"]')!;
   await act(async () => { reviewer.value = "reviewer"; reviewer.dispatchEvent(new Event("change", { bubbles: true })); });
   await settle();
-  expect(mocks.board.mock.calls.some(call => call[1].reviewerId === "reviewer")).toBe(true);
+  await vi.waitFor(async () => {
+    await settle();
+    expect(mocks.board.mock.calls.some(call => call[1].reviewerId === "reviewer")).toBe(true);
+  });
 });
 
 it("keeps the current paper when the researcher declines to discard a pending assessment", async () => {
@@ -118,6 +129,12 @@ it("keeps the current paper when the researcher declines to discard a pending as
   await click("Source one <script>unsafe()</script>");
   await act(async () => container.querySelector<HTMLInputElement>('input[type="radio"]')!.click());
   mocks.confirm.mockResolvedValue(false);
+  await click("Bài tiếp →");
+  expect(mocks.confirm).not.toHaveBeenCalled();
+  expect(container.querySelector('[aria-label="Chuyển bài báo"]')?.textContent).toContain("2 / 2 bài");
+  await click("← Bài trước");
+  await act(async () => container.querySelector<HTMLInputElement>('input[type="radio"]')!.click());
+  await input(container.querySelector("textarea")!, "Đang đọc bản nháp");
   await click("Bài tiếp →");
   expect(mocks.confirm).toHaveBeenCalledOnce();
   expect(container.querySelector('[aria-label="Chuyển bài báo"]')?.textContent).toContain("1 / 2 bài");

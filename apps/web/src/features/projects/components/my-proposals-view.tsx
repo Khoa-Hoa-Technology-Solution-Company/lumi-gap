@@ -1,10 +1,9 @@
+import { screeningStatusLabel } from "./screening-common";
 import { useState } from "react";
 import {
-  FileText,
   Search,
   CheckCircle2,
   XCircle,
-  HelpCircle,
   AlertCircle,
   Clock,
   Pencil,
@@ -12,6 +11,7 @@ import {
   Plus,
   BookOpen,
   Info,
+  Users,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useResearchResource } from "../hooks/use-project-research";
@@ -77,15 +77,22 @@ export function MyProposalsView({
   const handleSaveReason = async () => {
     if (!editingPaper) return;
     try {
-      await command.run({}, async () => {
-        return await screeningApi.proposal(projectId, editingPaper.paperId, {
-          reason: editReasonText.trim(),
-          expectedUpdatedAt: editingPaper.updatedAt,
-        });
-      });
-      toast.success("Đã cập nhật lý do đề xuất bài báo!");
-      setEditingPaper(null);
-      void boardQuery.refetch();
+      const ok = await command.run(
+        { paperId: editingPaper.paperId, reason: editReasonText.trim() },
+        async () => {
+          return await screeningApi.proposal(projectId, editingPaper.paperId, {
+            reason: editReasonText.trim(),
+            expectedUpdatedAt: editingPaper.updatedAt,
+          });
+        }
+      );
+      if (ok) {
+        toast.success("Đã cập nhật lý do đề xuất bài báo!");
+        setEditingPaper(null);
+        void boardQuery.refetch();
+      } else {
+        toast.error("Không thể lưu lý do đề xuất.");
+      }
     } catch {
       toast.error("Không thể lưu lý do đề xuất.");
     }
@@ -234,7 +241,7 @@ export function MyProposalsView({
               const round = p.round;
               const completedCount = round?.completed ?? 0;
               const requiredCount = round?.settings.requiredReviewers ?? 2;
-              const status = round?.status ?? p.legacyStatus;
+              const status = round?.status ?? "NOT_REVIEWED";
               const isExcluded = status === "EXCLUDED" || round?.finalDecision?.decision === "EXCLUDED";
               const isIncluded = status === "INCLUDED" || round?.finalDecision?.decision === "INCLUDED";
               const hasConflict = status === "NEEDS_RESOLUTION" || status === "ADJUDICATING";
@@ -256,10 +263,10 @@ export function MyProposalsView({
                     </div>
 
                     <div className="proposal-status-wrap">
-                      {isIncluded ? (
+                      {!round && p.legacyProvenance ? <span className="proposal-status-badge">Phân loại lịch sử, chưa xác nhận theo vòng mới</span> : round?.legacyNeedsAudit ? <span className="proposal-status-badge">Cần rà soát dữ liệu cũ</span> : isIncluded ? (
                         <span className="proposal-status-badge status-included">
                           <CheckCircle2 size={12} className="inline mr-1" />
-                          Qua sàng lọc
+                          {round?.phase === "FULL_TEXT" ? "Đủ điều kiện sau toàn văn" : "Qua sàng lọc sơ bộ"}
                         </span>
                       ) : isExcluded ? (
                         <span className="proposal-status-badge status-excluded">
@@ -269,12 +276,12 @@ export function MyProposalsView({
                       ) : hasConflict ? (
                         <span className="proposal-status-badge status-conflict">
                           <AlertCircle size={12} className="inline mr-1" />
-                          Có bất đồng · Đang thảo luận
+                          {screeningStatusLabel(status, round)}{status === "NEEDS_RESOLUTION" && " · Đang thảo luận"}
                         </span>
                       ) : needsMoreInfo ? (
                         <span className="proposal-status-badge status-more-info">
                           <BookOpen size={12} className="inline mr-1" />
-                          Cần đọc toàn văn
+                          {screeningStatusLabel(status, round)}
                         </span>
                       ) : round?.status === "IN_REVIEW" ? (
                         <span className="proposal-status-badge status-reviewing">
@@ -300,6 +307,27 @@ export function MyProposalsView({
                       <p className="proposal-authors" title={p.authors!.join(", ")}>
                         {p.authors!.join(", ")}
                       </p>
+                    )}
+
+                    {round && (
+                      <div className="proposal-screening-info text-xs text-muted-foreground my-2 space-y-1">
+                        <div className="flex items-center gap-1.5 font-medium">
+                          <Users size={12} className="text-primary shrink-0" />
+                          <span>
+                            Tiến độ đánh giá: {round.assigned ?? 0}/{requiredCount} người nhận · {completedCount}/{requiredCount} phiếu đã gửi
+                          </span>
+                        </div>
+                        {round.proposerExcluded && (
+                          <p className="text-[11.5px] text-blue-700 dark:text-blue-300">
+                            Bài bạn đề xuất · Dành cho 2 thành viên khác đánh giá độc lập.
+                          </p>
+                        )}
+                        {round.proposerExceptionGranted && (
+                          <p className="text-[11.5px] text-amber-700 dark:text-amber-300">
+                            Đã được cấp ngoại lệ cho phép bạn tham gia đánh giá.
+                          </p>
+                        )}
+                      </div>
                     )}
 
                     {/* Proposal Reason Section */}
@@ -355,7 +383,9 @@ export function MyProposalsView({
                       </span>
                       <span className="proposal-footer-sep">·</span>
                       <span className="proposal-review-progress">
-                        Tiến độ đánh giá: <strong>{completedCount}/{requiredCount} phiếu đã gửi</strong>
+                        Tiến độ đánh giá: <strong>{round?.legacyNeedsAudit ? "Cần rà soát dữ liệu cũ"
+                          : round?.settings.reviewMode === "COLLABORATIVE" ? `${completedCount} ý kiến trong quy trình cũ`
+                          : `${completedCount}/${requiredCount} phiếu đã gửi`}</strong>
                         {round?.assignments && round.assignments.some(a => !a.completed && a.dueAt && new Date(a.dueAt) > new Date()) && (
                           <span className="ml-1 text-primary">· Đang có người giữ suất</span>
                         )}

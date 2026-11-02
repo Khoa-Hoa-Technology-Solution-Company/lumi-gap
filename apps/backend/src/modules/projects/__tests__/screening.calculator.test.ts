@@ -1,3 +1,4 @@
+import { classifyScreeningPair } from "../screening.calculator.js";
 import { describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import { balancedReviewers, cohenKappa, screeningConsensus } from "../screening.calculator.js";
@@ -44,6 +45,10 @@ describe("screening consensus and agreement", () => {
     expect([...loads.values()].map(l => l.pending)).toEqual([8, 8, 8]);
     expect(balancedReviewers(["a", "b"], ["retained-submitted"], 2, new Map())).toEqual(["retained-submitted", "a"]);
     expect(balancedReviewers(["only"], [], 2, new Map())).toEqual(["only"]);
+    // Proposer-aware eligibility tests
+    expect(balancedReviewers(["a", "b", "c"], [], 2, new Map(), "a")).toEqual(["b", "c"]);
+    expect(balancedReviewers(["a", "b"], [], 2, new Map(), "a")).toEqual(["b", "a"]);
+    expect(balancedReviewers(["a"], [], 1, new Map(), "a")).toEqual(["a"]);
   });
 });
 describe("screening request boundaries", () => {
@@ -52,6 +57,19 @@ describe("screening request boundaries", () => {
     expect(screeningSubmitSchema.safeParse(valid).success).toBe(true);
     for (const altered of [{ ...valid, exclusionReason: " " }, { ...valid, confirmed: false }, { ...valid, reviewerId: randomUUID() }, { ...valid, expectedRevision: 0 }]) expect(screeningSubmitSchema.safeParse(altered).success).toBe(false);
     expect(screeningActionSchema.safeParse({ expectedVersion: 1, reason: "short", confirmed: true, clientKey: randomUUID() }).success).toBe(false);
+  });
+  it.each(["INCLUDE", "EXCLUDE", "UNSURE"] as const)("requires a nonblank rationale for %s, including edited submissions", decision => {
+    const field = decision === "EXCLUDE" ? "exclusionReason" : "comment";
+    const input = { ...valid, decision, expectedRevision: 2, exclusionReason: "", comment: "" };
+    for (const value of [undefined, "", "   ", " a "]) {
+      const result = screeningSubmitSchema.safeParse({ ...input, [field]: value });
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.issues.some(issue => issue.path[0] === field)).toBe(true);
+    }
+    const parsed = screeningSubmitSchema.parse({ ...input, [field]: "  Có căn cứ từ tiêu chí nghiên cứu  " });
+    expect(parsed[field]).toBe("Có căn cứ từ tiêu chí nghiên cứu");
+    const wrongField = field === "comment" ? "exclusionReason" : "comment";
+    expect(screeningSubmitSchema.safeParse({ ...input, [wrongField]: "A rationale in the wrong field" }).success).toBe(false);
   });
   it("rejects duplicate assignment ids and unsupported policies/counts", () => {
     const id = randomUUID();
@@ -67,5 +85,31 @@ describe("screening request boundaries", () => {
     expect(screeningConfigSchema.safeParse({ ...config, stages: ["FULL_TEXT", "FULL_TEXT"] }).success).toBe(false);
     expect(screeningResolveSchema.safeParse({ decision: "BACKGROUND", expectedVersion: 1, reason: "Useful background for the research context", confirmed: true, clientKey: randomUUID() }).success).toBe(true);
     expect(screeningResolveSchema.safeParse({ decision: "EXCLUDED", expectedVersion: 1, reason: " ", confirmed: true, clientKey: randomUUID() }).success).toBe(false);
+  });
+});
+
+
+describe("precise current-stage review pairs", () => {
+  const pair = (a: string, b: string, reasons = ["Population", "Population"]) => [a,b].map((decision, i) => ({ reviewerId: String(i), roundId: "same-round", decision, exclusionReason: reasons[i]! }));
+  it.each([
+    ["INCLUDE", "INCLUDE", "AGREEMENT_INCLUDE"], ["EXCLUDE", "EXCLUDE", "AGREEMENT_EXCLUDE"],
+    ["INCLUDE", "EXCLUDE", "CONFLICT"], ["EXCLUDE", "INCLUDE", "CONFLICT"],
+    ["INCLUDE", "UNSURE", "NEEDS_CLARIFICATION"], ["UNSURE", "INCLUDE", "NEEDS_CLARIFICATION"],
+    ["EXCLUDE", "UNSURE", "NEEDS_CLARIFICATION"], ["UNSURE", "EXCLUDE", "NEEDS_CLARIFICATION"],
+    ["UNSURE", "UNSURE", "NEEDS_MORE_INFORMATION"],
+  ])("%s and %s classify as %s", (a,b,result) => expect(classifyScreeningPair(pair(a,b), "TITLE_ABSTRACT")).toBe(result));
+  it("only reconciles required full-text primary reasons, ignoring title notes and normalized whitespace", () => {
+    const reviews = pair("EXCLUDE", "EXCLUDE", ["Population", "Method"]);
+    expect(classifyScreeningPair(reviews, "FULL_TEXT")).toBe("EXCLUSION_REASON_MISMATCH");
+    expect(classifyScreeningPair(reviews, "FULL_TEXT", false)).toBe("AGREEMENT_EXCLUDE");
+    expect(classifyScreeningPair(reviews, "TITLE_ABSTRACT")).toBe("AGREEMENT_EXCLUDE");
+    expect(classifyScreeningPair(pair("EXCLUDE", "EXCLUDE", [" Population ", "population"]), "FULL_TEXT")).toBe("AGREEMENT_EXCLUDE");
+  });
+  it("rejects incomplete, duplicate, draft and cross-round pairs", () => {
+    const reviews = pair("INCLUDE", "EXCLUDE");
+    expect(classifyScreeningPair(reviews.slice(0,1), "FULL_TEXT")).toBeNull();
+    expect(classifyScreeningPair([reviews[0]!, { ...reviews[1]!, reviewerId: "0" }], "FULL_TEXT")).toBeNull();
+    expect(classifyScreeningPair([reviews[0]!, { ...reviews[1]!, roundId: "other-stage" }], "FULL_TEXT")).toBeNull();
+    expect(classifyScreeningPair(pair("DRAFT", "EXCLUDE"), "FULL_TEXT")).toBeNull();
   });
 });

@@ -1,3 +1,4 @@
+import { maintainScreeningCases } from "../modules/projects/screening-case-maintenance.js";
 import { Worker } from "bullmq";
 import { enforcePostgresOnlyRuntime } from "../infrastructure/database/postgres-only-runtime.js";
 import { connectPostgres, disconnectPostgres } from "../infrastructure/database/prisma.js";
@@ -162,6 +163,7 @@ async function main() {
       // A worker that died after sending cannot know SMTP delivery outcome.
       await db.notification.updateMany({ where: { emailStatus: "SENDING", emailClaimedAt: { lt: new Date(Date.now() - 5 * 60000) } }, data: { emailStatus: "UNCERTAIN" } });
       await projectMentorshipService.expireRequests();
+      await maintainScreeningCases();
       await recoverProjectInvitationEmails();
       const rows = await db.notification.findMany({ where: { userId: { not: null }, AND: [{ OR: [{ eventKey: { startsWith: "MENTORSHIP_" } }, { eventKey: { startsWith: "PROJECT_INVITATION_" } }, { eventKey: { startsWith: "LECTURER_VERIFICATION_" } }, { eventKey: { startsWith: "WORKSPACE:" } }, { eventKey: { startsWith: "CONTRIBUTIONS:" } }] }, { OR: [{ dispatchedAt: null }, { emailStatus: "PENDING" }, { pushSentAt: null }] }] }, take: 100, orderBy: { createdAt: "asc" } });
       for (const row of rows) {

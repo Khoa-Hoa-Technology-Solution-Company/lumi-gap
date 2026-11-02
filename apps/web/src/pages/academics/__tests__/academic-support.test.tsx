@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { AcademicSupportPage, MentorProjectPanel, ConsentComposer } from '../academic-support';
+import { MentorAccessWorkspace } from '@/features/projects/components/mentor-access-workspace';
 const mocks=vi.hoisted(()=>({mine:vi.fn(),preferences:vi.fn(),savePreferences:vi.fn(),opportunities:vi.fn(),respond:vi.fn(),offer:vi.fn(),draft:vi.fn(),saveDraft:vi.fn(),projects:vi.fn(),workspace:vi.fn(),list:vi.fn(),mentors:vi.fn(),guidance:vi.fn(),settings:vi.fn(),request:vi.fn(),requestDetail:vi.fn()}));
 const accessMocks=vi.hoisted(()=>({workspace:vi.fn(),feedback:vi.fn(),history:vi.fn(),agreements:vi.fn(),comment:vi.fn()}));
 vi.mock('@/features/projects/api/mentor-access.api',()=>({mentorAccessApi:accessMocks}));
@@ -189,13 +190,13 @@ it('filters discovery on the server and clears both fields together',async()=>{a
 it('opens availability settings from the header without changing preferences',async()=>{await mount('/academic-support?view=discover');expect(host.querySelector<HTMLDetailsElement>('#mentoring-settings')!.open).toBe(false);await act(async()=>host.querySelector<HTMLAnchorElement>('.lecturer-availability')!.click());expect(host.querySelector<HTMLDetailsElement>('#mentoring-settings')!.open).toBe(true);expect(mocks.savePreferences).not.toHaveBeenCalled();});
 it('opens an active project on its dedicated guidance page',async()=>{mocks.mine.mockResolvedValue({requests:[],relationships:[{...invitation,kind:'RELATIONSHIP',status:'ACTIVE',startedAt:'2026-10-21T08:00:00Z',actions:{openProject:true,end:true}}],counts:{incoming:0,active:1},requestMeta:meta,relationshipMeta:meta});await mount('/academic-support?view=active');await click('Open project');expect(host.querySelector('[data-testid="current-location"]')?.textContent).toBe('/academic-support/projects/project');expect(host.querySelector('.mentor-workspace')).toBeNull();});
 it('redirects old lecturer project links to the dedicated guidance page',async()=>{await mount('/academic-support?projectId=project');expect(host.querySelector('[data-testid="current-location"]')?.textContent).toBe('/academic-support/projects/project');});
-it('keeps an unsent team update mounted when the mentor workspace background request fails',async()=>{
+it('keeps an unsent mentor message mounted when the conversation background request fails',async()=>{
   mocks.workspace.mockResolvedValue({project:{...project,discovery:'CLOSED'},accessRole:'TEAM',canManage:false,canProvideFeedback:true,guidance:[]});
   mocks.list.mockResolvedValue({relationships:[],requests:[],counts:{active:0,pending:0},policy:{maxActiveMentors:2,maxPendingRequests:3},requestMeta:meta,relationshipMeta:meta});
   mocks.mentors.mockResolvedValue({items:[],meta});
   accessMocks.workspace.mockResolvedValue({viewerId:'mentor',projectId:'project',title:project.title,canManage:false,readOnly:false,page:1,pageSize:20,total:1,hasNext:false,policies:[{mentorId:'lecturer',mentorName:'Lecturer',invitationState:'ACCEPTED',policy:{id:'access',requestId:'request',relationshipId:'relation',version:1,preset:'ADVISOR',permissions:['MENTOR_CHAT'],expiresAt:null,revokedAt:null,effective:true},shares:[]}]});
-  await act(async()=>root.render(<QueryClientProvider client={client}><MemoryRouter><MentorProjectPanel projectId="project"/></MemoryRouter></QueryClientProvider>));await tick();await tick();
-  const note=[...host.querySelectorAll('label')].find(l=>l.textContent?.startsWith('Nội dung phản hồi'))!.querySelector<HTMLTextAreaElement>('textarea')!;
+  await act(async()=>root.render(<QueryClientProvider client={client}><MemoryRouter><MentorAccessWorkspace projectId="project" mode="conversation"/></MemoryRouter></QueryClientProvider>));await tick();await tick();
+  const note=host.querySelector<HTMLTextAreaElement>('.mentor-collab-composer textarea')!;
   await act(async()=>{Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value')!.set!.call(note,'Keep this follow-up question');note.dispatchEvent(new Event('input',{bubbles:true}));});
   accessMocks.workspace.mockRejectedValue(new Error('Background request interrupted'));
   await act(async()=>{await client.invalidateQueries({queryKey:['mentor-access','mentor','project','workspace']});});await tick();

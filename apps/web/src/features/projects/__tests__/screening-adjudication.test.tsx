@@ -5,7 +5,7 @@ import { Link, MemoryRouter, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { ScreeningAdjudicationView, ScreeningRoundView } from "@trend/shared-types";
-import AdjudicationPage from "../components/screening-adjudication";
+import AdjudicationPage, { ScreeningPacket } from "../components/screening-adjudication";
 import { OwnerActions } from "../components/screening-round";
 import { ScreeningAgreementPanel } from "../components/screening-agreement";
 const mocks = vi.hoisted(() => ({ adjudication: vi.fn(), action: vi.fn(), proposeAgreement: vi.fn(), confirmAgreement: vi.fn(), declineAgreement: vi.fn() }));
@@ -31,6 +31,8 @@ async function click(text: string) {
 }
 async function reason(text: string) {
   const input = container.querySelector("textarea")!;
+  const source = [...container.querySelectorAll("label")].find(l => l.textContent?.startsWith("Nguồn tài liệu đã xem xét"))?.querySelector("textarea");
+  if (source) await act(async () => { Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(source, "Abstract and the registered stage criteria"); source.dispatchEvent(new Event("input", { bubbles: true })); });
   await act(async () => { Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(input, text); input.dispatchEvent(new Event("input", { bubbles: true })); }); await settle();
 }
 async function confirm() { await act(async () => container.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click()); await settle(); }
@@ -42,7 +44,7 @@ beforeEach(() => {
 afterEach(async () => { await act(async () => root.unmount()); client.clear(); container.remove(); vi.unstubAllGlobals(); });
 it("shows only the scoped packet as escaped text and requires deliberate confirmation", async () => {
   await render(); expect(mocks.adjudication).toHaveBeenCalledWith("p", "r");
-  expect(container.textContent).toContain("Shared abstract"); expect(container.textContent).toContain("Reviewer 1");
+  expect(container.textContent).toContain("Shared abstract"); expect(container.textContent).toContain("Reviewer A");
   expect(container.querySelector("script")).toBeNull(); expect(container.textContent).not.toContain("Thư viện của nhóm");
   const send = container.querySelector<HTMLButtonElement>('button[type="submit"],form button:last-child')!;
   expect(send.disabled).toBe(true); await reason("The population matches the stated criteria"); expect(send.disabled).toBe(true);
@@ -72,7 +74,7 @@ it("hides a previously loaded packet after access revocation", async () => {
 });
 it("shows completed decisions without a second submission form", async () => {
   mocks.adjudication.mockResolvedValue({ ...view, status: "INCLUDED", canResolve: false, finalDecision: { decision: "INCLUDED", reason: "Eligibility confirmed", createdAt: "2026-10-31T00:00:00Z" } });
-  await render(); expect(container.textContent).toContain("Đã ghi kết luận: Phù hợp"); expect(container.querySelector("form")).toBeNull();
+  await render(); expect(container.textContent).toContain("Đã ghi kết luận: Qua vòng sàng lọc"); expect(container.querySelector("form")).toBeNull();
 });
 it("resets the draft when navigating to another adjudication round", async () => {
   await render(<><Link to="/academic-support/projects/p/screening/other">Other packet</Link><Routes><Route path="/academic-support/projects/:projectId/screening/:roundId" element={<AdjudicationPage />} /></Routes></>);
@@ -131,9 +133,37 @@ it("hides agreement actions before independent reviews are disclosed and for rea
   expect(container.querySelector("form")).toBeNull(); expect(container.textContent).toContain("Read full text");
 });
 it("renders selected discussion as escaped text without giving access to the full project", async () => {
-  mocks.adjudication.mockResolvedValue({ ...view, packet: { ...view.packet, discussion: [{ id: "c", comment: "Discuss <img src=x onerror=unsafe()> eligibility", createdAt: "2026-10-31T00:00:00Z" }] } });
-  await render(); expect(container.textContent).toContain("Discuss <img src=x onerror=unsafe()> eligibility");
-  expect(container.querySelector("img")).toBeNull(); expect(container.textContent).toContain("Thảo luận được chọn để chia sẻ");
+  const p = { ...view.packet, discussion: [{ id: "c", comment: "Discuss <img src=x onerror=unsafe()> eligibility", createdAt: "2026-10-31T00:00:00Z" }] };
+  await render(<ScreeningPacket packet={p} showDiscussion />);
+  expect(container.textContent).toContain("Discuss <img src=x onerror=unsafe()> eligibility");
+  expect(container.querySelector("img")).toBeNull();
+  expect(container.textContent).toContain("Thảo luận trước khi mở hồ sơ");
+});
+it("keeps long ballot text compact and opens the complete escaped content in a scrollable dialog", async () => {
+  const exclusionReason = `${"Lý do cần đối chiếu ".repeat(500)}<img src=x onerror=unsafe()> END-OF-REASON`;
+  const comment = "Nhận xét khác cần được giữ nguyên";
+  const p = { ...view.packet, reviews: [view.packet.reviews[0]!, { ...view.packet.reviews[1]!, exclusionReason, comment }] };
+  await render(<ScreeningPacket packet={p} />);
+  const ballot = container.querySelectorAll("article")[1]!;
+  expect(ballot.textContent).not.toContain("END-OF-REASON");
+  expect(ballot.textContent!.length).toBeLessThan(500);
+  expect(ballot.textContent).toContain(comment);
+  expect(container.querySelectorAll("button")).toHaveLength(1);
+  await click("Xem đầy đủ");
+  const dialog = document.querySelector('[role="dialog"]')!;
+  expect(dialog.textContent).toContain(exclusionReason);
+  expect(dialog.textContent).toContain(comment);
+  expect(dialog.querySelector("img")).toBeNull();
+  expect(dialog.querySelector('[role="region"]')?.className).toContain("overflow-y-auto");
+  await act(async () => dialog.querySelector<HTMLButtonElement>('button')!.click());
+  await settle();
+  expect(document.querySelector('[role="dialog"]')).toBeNull();
+});
+it("also offers full reading for long unbroken comments and many short lines", async () => {
+  const p = { ...view.packet, reviews: [{ ...view.packet.reviews[0]!, comment: "x".repeat(2000) }, { ...view.packet.reviews[1]!, exclusionReason: "a\nb\nc\nd\ne" }] };
+  await render(<ScreeningPacket packet={p} />);
+  expect(container.querySelectorAll("button")).toHaveLength(2);
+  for (const article of container.querySelectorAll("article")) expect(article.className).toContain("[overflow-wrap:anywhere]");
 });
 it("requires renewed sharing approval when the owner changes the selected discussion", async () => {
   mocks.adjudication.mockResolvedValue({ ...view, availableDiscussion: [{ id: "c1", comment: "Share this methodological question", createdAt: "2026-10-31T00:00:00Z" }, { id: "c2", comment: "Keep this internal", createdAt: "2026-10-31T00:00:00Z" }] });
@@ -179,7 +209,7 @@ it("the other reviewer can continue discussion and cannot decline a stale propos
 });
 it("an adjudicator can request information without manufacturing a binary outcome", async () => {
   await render();
-  await act(async () => [...container.querySelectorAll("label")].find(label => label.textContent?.includes("Cần đọc thêm / bổ sung thông tin"))!.querySelector<HTMLInputElement>("input")!.click());
+  await act(async () => [...container.querySelectorAll("label")].find(label => label.textContent === "Cần thêm thông tin")!.querySelector<HTMLInputElement>("input")!.click());
   await reason("Obtain the full text before the population can be determined"); await confirm(); await click("Ghi kết luận và lưu lịch sử");
   expect(mocks.action).toHaveBeenCalledWith("p", "r", "resolve", expect.objectContaining({ decision: "NEEDS_MORE_INFO" }));
 });

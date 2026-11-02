@@ -1,8 +1,23 @@
 import type { WorkspaceContext } from "./workspace-access.js";
 
 export async function screeningPeople(c: WorkspaceContext) {
-  const members = await c.tx.projectMember.findMany({ where: { projectId: c.project.id, status: "ACTIVE" }, select: { userId: true } });
-  const rows = await c.tx.user.findMany({ where: { id: { in: [c.project.ownerId, ...members.map(m => m.userId)] }, isActive: true, accountStatus: "ACTIVE", emailVerifiedAt: { not: null } }, select: { id: true, fullName: true } });
+  const members = await c.tx.projectMember.findMany({
+    where: {
+      projectId: c.project.id,
+      status: "ACTIVE",
+      role: { notIn: ["MENTOR", "ADVISOR"] },
+    },
+    select: { userId: true },
+  });
+  const rows = await c.tx.user.findMany({
+    where: {
+      id: { in: [c.project.ownerId, ...members.map(m => m.userId)] },
+      isActive: true,
+      accountStatus: "ACTIVE",
+      emailVerifiedAt: { not: null },
+    },
+    select: { id: true, fullName: true },
+  });
   return rows.map(p => ({ id: p.id, name: p.fullName || "Thành viên" }));
 }
 

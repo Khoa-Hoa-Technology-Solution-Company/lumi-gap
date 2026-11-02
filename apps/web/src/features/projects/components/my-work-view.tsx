@@ -14,13 +14,60 @@ import {
   ExternalLink,
   Settings2,
   Check,
+  Scale,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useResearchResource } from "../hooks/use-project-research";
 import { screeningApi } from "../api/screening.api";
-import { useScreeningCommand, ScreeningError } from "./screening-common";
+import { useScreeningCommand, ScreeningError, classificationLabels } from "./screening-common";
+import { caseStatusLabels } from "./screening-case-labels";
 import { WorkspaceLoading } from "./workspace-common";
+import { ScreeningAdjudicationDialog } from "./screening-adjudication";
 import { Button } from "@/components/ui/button";
+
+function renderBallotBadge(decision: string) {
+  if (decision === "INCLUDE" || decision === "INCLUDED") {
+    return (
+      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800">
+        Phù hợp
+      </span>
+    );
+  }
+  if (decision === "EXCLUDE" || decision === "EXCLUDED") {
+    return (
+      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800">
+        Không phù hợp
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800">
+      Chưa chắc chắn
+    </span>
+  );
+}
+
+function renderFinalDecisionBadge(decision: string) {
+  if (decision === "INCLUDE" || decision === "INCLUDED") {
+    return (
+      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200">
+        <CheckCircle2 size={12} /> Đã đưa vào (Phù hợp)
+      </span>
+    );
+  }
+  if (decision === "EXCLUDE" || decision === "EXCLUDED") {
+    return (
+      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-100 text-rose-800 dark:bg-rose-900/60 dark:text-rose-200">
+        Đã loại (Không phù hợp)
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-200">
+      {decision}
+    </span>
+  );
+}
 import {
   Dialog,
   DialogContent,
@@ -47,7 +94,7 @@ export function MyWorkView({
   onAddPaper?: () => void;
 }) {
   const summaryQuery = useResearchResource(projectId, ["screening-workspace-summary"], () =>
-    screeningApi.workspaceSummary(projectId)
+    screeningApi.workspaceSummary(projectId), true, data => Boolean(data?.myTrackedDisputes?.some(item => item.needsMyStatement)), 30000
   );
   const command = useScreeningCommand(projectId);
   const summary = summaryQuery.data;
@@ -57,6 +104,14 @@ export function MyWorkView({
   const [goalTarget, setGoalTarget] = useState(2);
   const [goalPeriod, setGoalPeriod] = useState<"WEEK" | "MONTH">("WEEK");
   const [goalEnabled, setGoalEnabled] = useState(false);
+
+  // Adjudication popup modal state
+  const [adjudicationModalRoundId, setAdjudicationModalRoundId] = useState<string | null>(null);
+
+  // Work filter & search state
+  type WorkViewFilter = "ALL" | "REVIEWING" | "ACTION_NEEDED" | "DISPUTES" | "COMPLETED" | "ADJUDICATED";
+  const [activeFilter, setActiveFilter] = useState<WorkViewFilter>("ALL");
+  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
     if (summary?.discoveryGoal) {
@@ -141,13 +196,62 @@ export function MyWorkView({
 
   if (!summary) return null;
 
-  const hasActiveClaims = summary.myActiveClaims.length > 0;
-  const hasConsensus = summary.pendingConsensus.length > 0;
-  const hasAdjudications = summary.pendingAdjudications.length > 0;
-  const hasActionNeeded = hasConsensus || hasAdjudications;
+  const discussions = (summary.pendingDiscussions ?? []).filter(
+    p => !summary.pendingConsensus.some(c => c.roundId === p.roundId) && !summary.pendingAdjudications.some(a => a.roundId === p.roundId) && !summary.myTrackedDisputes?.some(t => t.roundId === p.roundId && t.caseStatus)
+  );
+  const trackedDisputes = (summary.myTrackedDisputes ?? []).filter(
+    t => !discussions.some(d => d.roundId === t.roundId)
+  );
+  const completedEvaluations = summary.myCompletedEvaluations ?? [];
+  const statementTasks = trackedDisputes.filter(item => item.needsMyStatement && !readOnly)
+    .sort((a, b) => (a.deadline ?? "").localeCompare(b.deadline ?? ""));
+
+  const q = searchQuery.trim().toLowerCase();
+  const matchesSearch = (title?: string) => !q || (title?.toLowerCase().includes(q) ?? false);
+
+  const filteredClaims = summary.myActiveClaims.filter(c => matchesSearch(c.title));
+  const filteredConsensus = summary.pendingConsensus.filter(c => matchesSearch(c.title));
+  const filteredDiscussions = discussions.filter(d => matchesSearch(d.title));
+  const filteredAdjudications = summary.pendingAdjudications.filter(a => matchesSearch(a.title));
+  const filteredDisputes = [...trackedDisputes].sort((a, b) => Number(Boolean(b.needsMyStatement)) - Number(Boolean(a.needsMyStatement)))
+    .filter(t => matchesSearch(t.title) && (activeFilter !== "ACTION_NEEDED" || t.needsMyStatement && !readOnly));
+  const filteredCompleted = completedEvaluations.filter(e => {
+    if (!matchesSearch(e.title)) return false;
+    if (activeFilter === "ADJUDICATED") return Boolean(e.isAdjudicated || e.resolverName);
+    return true;
+  });
+
+  const claimsCount = summary.myActiveClaims.length;
+  const actionNeededCount = summary.pendingConsensus.length + discussions.length + summary.pendingAdjudications.length + statementTasks.length;
+  const disputesCount = trackedDisputes.length;
+  const completedCount = completedEvaluations.length;
+  const adjudicatedCount = completedEvaluations.filter(e => e.isAdjudicated || Boolean(e.resolverName)).length;
+  const totalCount = claimsCount + actionNeededCount - statementTasks.length + disputesCount + completedCount;
+
+  const showClaims = (activeFilter === "ALL" || activeFilter === "REVIEWING");
+  const showActionNeeded = (activeFilter === "ALL" || activeFilter === "ACTION_NEEDED");
+  const showDisputes = (activeFilter === "ALL" || activeFilter === "DISPUTES" || activeFilter === "ACTION_NEEDED");
+  const showCompleted = (activeFilter === "ALL" || activeFilter === "COMPLETED" || activeFilter === "ADJUDICATED");
+
+  const visibleItemsCount =
+    (showClaims ? filteredClaims.length : 0) +
+    (showActionNeeded ? (filteredConsensus.length + filteredDiscussions.length + filteredAdjudications.length) : 0) +
+    (showDisputes ? filteredDisputes.length : 0) +
+    (showCompleted ? filteredCompleted.length : 0);
 
   return (
     <div className="my-work-dashboard">
+      {statementTasks[0] && <section aria-label="Ý kiến phân xử cần gửi" role="status" className="mb-4 flex flex-col gap-3 rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 items-start gap-3">
+          <AlertCircle size={20} className="mt-0.5 shrink-0" aria-hidden="true" />
+          <div className="min-w-0 space-y-1">
+            <h3 className="text-sm font-semibold">Bạn chưa gửi ý kiến cho {statementTasks.length} hồ sơ phân xử</h3>
+            <p className="line-clamp-2 break-words text-sm">{statementTasks[0].title}</p>
+            <p className="text-xs">{statementTasks[0].deadline && <>Hạn gửi: {new Date(statementTasks[0].deadline).toLocaleString("vi-VN", { dateStyle: "short", timeStyle: "short" })}. </>}Gửi ý kiến của bạn để hồ sơ sớm được phân xử.</p>
+          </div>
+        </div>
+        <Button className="shrink-0 self-start sm:self-center" size="sm" onClick={() => setAdjudicationModalRoundId(statementTasks[0]!.roundId)}>Nhập ý kiến ngay<ArrowRight size={14} className="ml-1.5" aria-hidden="true" /></Button>
+      </section>}
       {/* 1. Contextual Advice & Capacity Banner */}
       <div className={`my-work-advice-banner status-${summary.capacityAdvice.queueStatus.toLowerCase()}`}>
         <div className="advice-banner-left">
@@ -174,11 +278,18 @@ export function MyWorkView({
           </div>
         </div>
         <div className="advice-banner-right">
-          {summary.capacityAdvice.suggestedAction === "DISCOVER_MORE" && onAddPaper && !readOnly && (
-            <Button size="sm" onClick={onAddPaper} className="advice-action-btn">
-              <Search size={14} className="mr-1.5" />
-              Tìm tài liệu mới
-            </Button>
+          {summary.capacityAdvice.suggestedAction === "DISCOVER_MORE" && (
+            summary.capacityAdvice.queueStatus === "EMPTY_QUEUE" ? (
+              <Button size="sm" onClick={() => onSwitchView("library")} className="advice-action-btn">
+                Mở Thư viện
+                <ArrowRight size={14} className="ml-1.5" />
+              </Button>
+            ) : onAddPaper && !readOnly ? (
+              <Button size="sm" onClick={onAddPaper} className="advice-action-btn">
+                <Search size={14} className="mr-1.5" />
+                Tìm tài liệu mới
+              </Button>
+            ) : null
           )}
           {summary.capacityAdvice.suggestedAction === "REVIEW_QUEUE" && (
             <Button size="sm" variant="default" onClick={() => onSwitchView("queue")} className="advice-action-btn">
@@ -192,20 +303,165 @@ export function MyWorkView({
       <div className="my-work-grid">
         {/* Main Column */}
         <div className="my-work-main-column">
+          {/* Work Status Filter & Search Bar */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 mb-5 pb-3 border-b border-border/60">
+            <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Bộ lọc công việc">
+              <button
+                type="button"
+                onClick={() => setActiveFilter("ALL")}
+                className={`h-7.5 px-3 rounded-full text-xs font-semibold transition-all border ${activeFilter === "ALL"
+                  ? "bg-primary text-primary-foreground border-primary shadow-xs"
+                  : "bg-card text-muted-foreground border-border hover:bg-muted hover:text-foreground"
+                  }`}
+              >
+                Tất cả ({totalCount})
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveFilter("REVIEWING")}
+                className={`h-7.5 px-3 rounded-full text-xs font-semibold transition-all border flex items-center gap-1.5 ${activeFilter === "REVIEWING"
+                  ? "bg-blue-600 text-white border-blue-600 shadow-xs"
+                  : "bg-card text-muted-foreground border-border hover:bg-muted hover:text-foreground"
+                  }`}
+              >
+                <Clock size={12} />
+                Đang đánh giá ({claimsCount})
+              </button>
+
+              {actionNeededCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setActiveFilter("ACTION_NEEDED")}
+                  className={`h-7.5 px-3 rounded-full text-xs font-semibold transition-all border flex items-center gap-1.5 ${activeFilter === "ACTION_NEEDED"
+                    ? "bg-amber-600 text-white border-amber-600 shadow-xs"
+                    : "bg-card text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800/50 hover:bg-amber-50 dark:hover:bg-amber-950/40"
+                    }`}
+                >
+                  <AlertCircle size={12} />
+                  Cần giải quyết ({actionNeededCount})
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => setActiveFilter("DISPUTES")}
+                className={`h-7.5 px-3 rounded-full text-xs font-semibold transition-all border flex items-center gap-1.5 ${activeFilter === "DISPUTES"
+                  ? "bg-indigo-600 text-white border-indigo-600 shadow-xs"
+                  : "bg-card text-muted-foreground border-border hover:bg-muted hover:text-foreground"
+                  }`}
+              >
+                <Scale size={12} />
+                Đang theo dõi phân xử & bất đồng ({disputesCount})
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveFilter("COMPLETED")}
+                className={`h-7.5 px-3 rounded-full text-xs font-semibold transition-all border flex items-center gap-1.5 ${activeFilter === "COMPLETED"
+                  ? "bg-emerald-600 text-white border-emerald-600 shadow-xs"
+                  : "bg-card text-muted-foreground border-border hover:bg-muted hover:text-foreground"
+                  }`}
+              >
+                <CheckCircle2 size={12} />
+                Đã hoàn thành đánh giá ({completedCount})
+              </button>
+
+              {adjudicatedCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setActiveFilter("ADJUDICATED")}
+                  className={`h-7.5 px-3 rounded-full text-xs font-semibold transition-all border flex items-center gap-1.5 ${activeFilter === "ADJUDICATED"
+                    ? "bg-violet-600 text-white border-violet-600 shadow-xs"
+                    : "bg-card text-violet-800 dark:text-violet-300 border-violet-200 dark:border-violet-800/50 hover:bg-violet-50 dark:hover:bg-violet-950/40"
+                    }`}
+                >
+                  <Scale size={12} />
+                  Đã qua phân xử ({adjudicatedCount})
+                </button>
+              )}
+            </div>
+
+            {/* Quick search input */}
+            <div className="relative shrink-0 sm:w-60">
+              <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Lọc theo tên bài báo…"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                className="pl-8 h-7.5 text-xs bg-card border-border"
+              />
+            </div>
+          </div>
+
+          {/* Active Review Claims Section */}
+          {showClaims && (
+            <section className="my-work-section active-claims-section" aria-label="Bài đang đánh giá">
+              <div className="section-header">
+                <div className="flex items-center gap-2">
+                  <Clock size={16} className="text-primary" />
+                  <h3 className="section-title">Bài tôi đang giữ chỗ ({filteredClaims.length})</h3>
+                </div>
+                <span className="section-subtitle">Mỗi suất giữ chỗ có thời hạn 24 giờ</span>
+              </div>
+
+              {filteredClaims.length > 0 ? (
+                <div className="active-claims-list">
+                  {filteredClaims.map(claim => (
+                    <ClaimedPaperCard
+                      key={claim.roundId}
+                      claim={claim}
+                      onOpen={() => onOpenPaper(claim.paperId)}
+                      onExtend={() => void handleExtend(claim.roundId)}
+                      onRelease={() => void handleRelease(claim.roundId)}
+                      isPending={command.isPending}
+                    />
+                  ))}
+                </div>
+              ) : activeFilter === "REVIEWING" ? (
+                <p className="text-sm text-muted-foreground py-4 text-center">Không có bài nào đang giữ chỗ phù hợp với bộ lọc.</p>
+              ) : (
+                <div className="my-work-empty-claims">
+                  <div className="empty-claims-icon">
+                    <FileText size={24} className="text-muted-foreground" />
+                  </div>
+                  <div className="empty-claims-text">
+                    <p className="font-semibold text-foreground">Bạn chưa nhận bài nào trong vòng này</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {summary.eligibleQueueCount > 0
+                        ? `Có ${summary.eligibleQueueCount} bài báo đang chờ người đánh giá trong hàng đợi.`
+                        : "Hàng đợi đánh giá hiện đã sạch. Cả nhóm có thể tìm thêm tài liệu mới."}
+                    </p>
+                  </div>
+                  {summary.eligibleQueueCount > 0 && !readOnly && (
+                    <Button
+                      size="sm"
+                      className="empty-claims-btn"
+                      onClick={() => void handleClaimNext()}
+                      disabled={command.isPending}
+                    >
+                      Nhận bài tiếp theo
+                    </Button>
+                  )}
+                </div>
+              )}
+            </section>
+          )}
+
           {/* Action Needed Section (Consensus & Adjudications) */}
-          {hasActionNeeded && (
-            <section className="my-work-section action-needed-section" aria-label="Việc cần giải quyết ngay">
+          {showActionNeeded && (filteredConsensus.length > 0 || filteredDiscussions.length > 0 || filteredAdjudications.length > 0) && (
+            <section className="my-work-section action-needed-section" aria-label="Cần tôi giải quyết">
               <div className="section-header">
                 <div className="flex items-center gap-2">
                   <AlertCircle size={16} className="text-amber-600" />
                   <h3 className="section-title text-amber-900 dark:text-amber-300">
-                    Cần giải quyết ({summary.pendingConsensus.length + summary.pendingAdjudications.length})
+                    Cần giải quyết ({filteredConsensus.length + filteredDiscussions.length + filteredAdjudications.length})
                   </h3>
                 </div>
               </div>
 
               <div className="action-needed-list">
-                {summary.pendingConsensus.map(c => (
+                {filteredConsensus.map(c => (
                   <div key={c.agreementId} className="action-needed-card consensus-card">
                     <div className="action-card-header">
                       <span className="action-card-badge consensus-badge">Đồng thuận nhóm chờ phản hồi</span>
@@ -224,18 +480,45 @@ export function MyWorkView({
                   </div>
                 ))}
 
-                {summary.pendingAdjudications.map(a => (
+                {filteredDiscussions.map(p => (
+                  <article key={p.roundId} className="action-needed-card conflict-card">
+                    <div className="action-card-header">
+                      <span className="action-card-badge conflict-badge">
+                        {p.classification ? classificationLabels[p.classification] : "Có bất đồng"}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {p.phase === "FULL_TEXT" ? "Toàn văn" : "Tiêu đề / Tóm tắt"}
+                      </span>
+                    </div>
+                    <h4 className="action-card-paper-title">{p.title}</h4>
+                    <p className="action-card-reason">
+                      {p.classification === "CONFLICT"
+                        ? "Hai người có kết luận khác nhau. Trao đổi và xem xét lại trước khi nhờ phân xử."
+                        : p.classification === "EXCLUSION_REASON_MISMATCH"
+                          ? "Cả hai đều loại bài nhưng khác lý do. Cần thống nhất lý do loại chính thức."
+                          : p.classification === "NEEDS_CLARIFICATION" ? "2/2 đánh giá đã gửi. Cần trao đổi thêm để làm rõ tiêu chí hoặc bổ sung nguồn minh chứng." : "Cần trao đổi thêm để làm rõ tiêu chí hoặc bổ sung nguồn minh chứng."}
+                    </p>
+                    <div className="action-card-footer">
+                      <Button size="sm" onClick={() => onOpenPaper(p.paperId)}>
+                        Trao đổi và xem lại
+                        <ArrowRight size={13} className="ml-1.5" />
+                      </Button>
+                    </div>
+                  </article>
+                ))}
+
+                {filteredAdjudications.map(a => (
                   <div key={a.roundId} className="action-needed-card adjudication-card">
                     <div className="action-card-header">
-                      <span className="action-card-badge adjudication-badge">Bạn được giao phân xử bất đồng</span>
+                      <span className="action-card-badge adjudication-badge">{caseStatusLabels[a.caseStatus ?? ""] ?? "Bạn được giao phân xử bất đồng"}</span>
                     </div>
                     <h4 className="action-card-paper-title">{a.title}</h4>
                     <p className="action-card-reason">
                       Hai reviewer có ý kiến khác nhau. Hãy xem xét minh chứng và đưa ra kết luận theo tiêu chuẩn của đề tài.
                     </p>
                     <div className="action-card-footer">
-                      <Button size="sm" onClick={() => onOpenPaper(a.paperId)}>
-                        Mở phân xử
+                      <Button size="sm" onClick={() => setAdjudicationModalRoundId(a.roundId)}>
+                        Mở hồ sơ phân xử
                         <ArrowRight size={13} className="ml-1.5" />
                       </Button>
                     </div>
@@ -245,91 +528,202 @@ export function MyWorkView({
             </section>
           )}
 
-          {/* Active Review Claims Section */}
-          <section className="my-work-section active-claims-section" aria-label="Bài đang đánh giá">
-            <div className="section-header">
-              <div className="flex items-center gap-2">
-                <Clock size={16} className="text-primary" />
-                <h3 className="section-title">Bài tôi đang giữ chỗ ({summary.myActiveClaims.length})</h3>
-              </div>
-              <span className="section-subtitle">Mỗi suất giữ chỗ có thời hạn 24 giờ</span>
-            </div>
-
-            {hasActiveClaims ? (
-              <div className="active-claims-list">
-                {summary.myActiveClaims.map(claim => (
-                  <ClaimedPaperCard
-                    key={claim.roundId}
-                    claim={claim}
-                    onOpen={() => onOpenPaper(claim.paperId)}
-                    onExtend={() => void handleExtend(claim.roundId)}
-                    onRelease={() => void handleRelease(claim.roundId)}
-                    isPending={command.isPending}
-                  />
-                ))}
-              </div>
-            ) : (
-              <div className="my-work-empty-claims">
-                <div className="empty-claims-icon">
-                  <FileText size={24} className="text-muted-foreground" />
+          {/* Tracked Disputes & Adjudication Cases */}
+          {showDisputes && (Boolean(filteredDisputes.length) || activeFilter === "DISPUTES") && (
+            <section className="my-work-section tracked-disputes-section" aria-label="Bài đang theo dõi phân xử">
+              <div className="section-header">
+                <div className="flex items-center gap-2">
+                  <Scale size={16} className="text-indigo-600 dark:text-indigo-400" />
+                  <h3 className="section-title text-indigo-950 dark:text-indigo-200">
+                    Đang theo dõi phân xử & bất đồng ({filteredDisputes.length})
+                  </h3>
                 </div>
-                <div className="empty-claims-text">
-                  <p className="font-semibold text-foreground">Bạn chưa nhận bài nào trong vòng này</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    {summary.eligibleQueueCount > 0
-                      ? `Có ${summary.eligibleQueueCount} bài báo đang chờ người đánh giá trong hàng đợi.`
-                      : "Hàng đợi đánh giá hiện đã sạch. Cả nhóm có thể tìm thêm tài liệu mới."}
-                  </p>
-                </div>
-                {summary.eligibleQueueCount > 0 && !readOnly && (
-                  <Button
-                    size="sm"
-                    className="empty-claims-btn"
-                    onClick={() => void handleClaimNext()}
-                    disabled={command.isPending}
-                  >
-                    <Sparkles size={14} className="mr-1.5" />
-                    Nhận bài tiếp theo
-                  </Button>
-                )}
+                <span className="section-subtitle">Bài bạn đã gửi đánh giá, đang chờ thống nhất ý kiến hoặc kết luận phân xử</span>
               </div>
-            )}
-          </section>
 
-          {/* Quick "Claim Next Paper" CTA Card if Eligible Work Exists */}
-          {summary.eligibleQueueCount > 0 && !readOnly && (
-            <div className="claim-next-banner">
-              <div className="claim-next-left">
-                <div className="claim-next-badge">Hàng đợi có sẵn</div>
-                <h4 className="claim-next-title">
-                  Có <strong>{summary.eligibleQueueCount} bài báo</strong> đang chờ người đánh giá
-                </h4>
-                <p className="claim-next-desc">
-                  Hệ thống tự động ưu tiên bài chưa ai nhận hoặc bài của thành viên khác để đảm bảo tính khách quan khoa học.
-                </p>
+              {filteredDisputes.length > 0 ? (
+                <div className="flex flex-col gap-3">
+                  {filteredDisputes.map(item => (
+                    <div
+                      key={item.roundId}
+                      className={`p-4 rounded-xl border shadow-sm flex flex-col gap-2.5 ${item.needsMyStatement && !readOnly ? "border-amber-300 bg-amber-50/70 dark:border-amber-800 dark:bg-amber-950/20" : "border-indigo-100 bg-white dark:bg-card dark:border-indigo-900/40"}`}
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 dark:bg-indigo-950/50 dark:text-indigo-300 dark:border-indigo-800">
+                            {item.caseStatus
+                              ? caseStatusLabels[item.caseStatus] || item.caseStatus
+                              : item.status === "ADJUDICATING"
+                                ? "Đang phân xử"
+                                : "Có ý kiến khác nhau"}
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            {item.phase === "FULL_TEXT" ? "Toàn văn" : "Tiêu đề / Tóm tắt"}
+                            {item.publicationYear ? ` · ${item.publicationYear}` : ""}
+                            {item.journalName ? ` · ${item.journalName}` : ""}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-xs">
+                          <span className="text-muted-foreground">Phiếu của bạn:</span>
+                          {renderBallotBadge(item.myDecision)}
+                        </div>
+                      </div>
+
+                      <h4 className="font-medium text-foreground text-sm leading-snug line-clamp-2">
+                        {item.title}
+                      </h4>
+
+                      {(item.deadline || item.adjudicatorName) && (
+                        <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground pt-1 border-t border-border/50">
+                          {item.adjudicatorName && (
+                            <span>Người phân xử: <strong className="text-foreground">{item.adjudicatorName}</strong></span>
+                          )}
+                          {item.deadline && (
+                            <span>Hạn hoàn tất ý kiến: <strong className="text-foreground">{new Date(item.deadline).toLocaleString("vi-VN", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit", year: "numeric" })}</strong></span>
+                          )}
+                        </div>
+                      )}
+
+                      <div className="flex items-center justify-end gap-2 pt-1">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-8 text-xs border-indigo-200 text-indigo-700 hover:bg-indigo-50 dark:border-indigo-800 dark:text-indigo-300 dark:hover:bg-indigo-950/50"
+                          onClick={() => setAdjudicationModalRoundId(item.roundId)}
+                        >
+                          <Scale size={13} className="mr-1.5" />
+                          {item.needsMyStatement && !readOnly ? "Nhập ý kiến ngay" : "Hồ sơ phân xử"}
+                        </Button>
+                        <Button
+                          size="sm"
+                          className="h-8 text-xs"
+                          onClick={() => onOpenPaper(item.paperId)}
+                        >
+                          Xem chi tiết bài
+                          <ArrowRight size={13} className="ml-1.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground py-4 text-center">Không có bài nào đang phân xử phù hợp với bộ lọc.</p>
+              )}
+            </section>
+          )}
+
+          {/* Completed Evaluations Section */}
+          {showCompleted && (Boolean(filteredCompleted.length) || activeFilter === "COMPLETED" || activeFilter === "ADJUDICATED") && (
+            <section className="my-work-section completed-evaluations-section" aria-label="Bài tôi đã hoàn thành đánh giá">
+              <div className="section-header">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 size={16} className="text-emerald-600 dark:text-emerald-400" />
+                  <h3 className="section-title text-emerald-950 dark:text-emerald-200">
+                    {activeFilter === "ADJUDICATED" ? "Bài đã qua phân xử" : "Bài tôi đã hoàn thành đánh giá"} ({filteredCompleted.length})
+                  </h3>
+                </div>
+                <span className="section-subtitle">
+                  {activeFilter === "ADJUDICATED" ? "Các bài đã được giải quyết qua hội đồng hoặc người phân xử độc lập" : "Các bài bạn đã tham gia đánh giá và đã có quyết định chính thức"}
+                </span>
               </div>
-              <div className="claim-next-right">
-                <Button
-                  size="default"
-                  onClick={() => void handleClaimNext()}
-                  disabled={command.isPending}
-                  className="claim-next-btn"
-                >
-                  <Sparkles size={15} className="mr-2" />
-                  Nhận bài tiếp theo
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => onSwitchView("queue")}
-                  className="claim-view-queue-btn"
-                >
-                  Xem toàn bộ hàng đợi
-                  <ChevronRight size={14} className="ml-1" />
-                </Button>
-              </div>
+
+              {filteredCompleted.length > 0 ? (
+                <div className="flex flex-col gap-2.5">
+                  {filteredCompleted.map(item => (
+                    <div
+                      key={item.roundId}
+                      className="p-3.5 rounded-xl border border-border bg-white dark:bg-card shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-border/80 transition-colors"
+                    >
+                      <div className="flex-1 min-w-0 flex flex-col gap-1.5">
+                        <div className="flex flex-wrap items-center gap-2">
+                          {renderFinalDecisionBadge(item.finalDecision)}
+                          {(item.isAdjudicated || Boolean(item.resolverName)) && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-violet-50 text-violet-700 border border-violet-200 dark:bg-violet-950/50 dark:text-violet-300 dark:border-violet-800">
+                              <Scale size={11} /> Đã qua phân xử
+                            </span>
+                          )}
+                          <span className="text-xs text-muted-foreground">
+                            {item.phase === "FULL_TEXT" ? "Toàn văn" : "Tiêu đề / Tóm tắt"}
+                            {item.publicationYear ? ` · ${item.publicationYear}` : ""}
+                          </span>
+                        </div>
+                        <h4 className="font-medium text-foreground text-sm line-clamp-1">
+                          {item.title}
+                        </h4>
+                        <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                          <span className="flex items-center gap-1">
+                            Phiếu của bạn: {renderBallotBadge(item.myDecision)}
+                          </span>
+                          {item.decidedAt && (
+                            <span>Ngày quyết định: {new Date(item.decidedAt).toLocaleDateString("vi-VN")}</span>
+                          )}
+                          {item.resolverName && (
+                            <span>Phân xử bởi: <strong>{item.resolverName}</strong></span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center shrink-0">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-8 text-xs text-muted-foreground hover:text-foreground"
+                          onClick={() => onOpenPaper(item.paperId)}
+                        >
+                          Xem lại bài
+                          <ChevronRight size={14} className="ml-1" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground py-4 text-center">Không có bài đánh giá nào phù hợp với bộ lọc.</p>
+              )}
+            </section>
+          )}
+
+          {/* Overall Empty State when all filtered results are 0 */}
+          {visibleItemsCount === 0 && (
+            <div className="p-8 text-center rounded-2xl border border-dashed border-border bg-card/40 my-4">
+              <FileText size={32} className="mx-auto text-muted-foreground/60 mb-2" />
+              <p className="font-semibold text-foreground text-sm">Không có bài báo nào trong mục này</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                {searchQuery ? "Không tìm thấy bài nào khớp với từ khóa tìm kiếm." : "Bạn có thể chuyển sang bộ lọc khác hoặc kiểm tra lại hàng đợi."}
+              </p>
+              {(searchQuery || activeFilter !== "ALL") && (
+                <div className="flex items-center justify-center gap-2 mt-3">
+                  {searchQuery && (
+                    <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => setSearchQuery("")}>
+                      Xóa tìm kiếm
+                    </Button>
+                  )}
+                  {activeFilter !== "ALL" && (
+                    <Button size="sm" variant="default" className="text-xs h-7" onClick={() => setActiveFilter("ALL")}>
+                      Xem tất cả ({totalCount})
+                    </Button>
+                  )}
+                </div>
+              )}
             </div>
           )}
+
+          {Boolean(summary.expiredClaims?.length) && (
+            <section className="my-work-section" aria-label="Suất đã hết hạn">
+              <h3 className="section-title">Suất đã hết hạn</h3>
+              <p className="text-sm text-muted-foreground">
+                Bản nháp trên thiết bị này vẫn được giữ. Cần nhận lại suất còn trống trước khi gửi.
+              </p>
+              {summary.expiredClaims!.map(p => (
+                <div key={p.roundId} className="flex flex-wrap items-center justify-between gap-2 py-2">
+                  <span>{p.title}</span>
+                  <Button size="sm" variant="outline" onClick={() => onOpenPaper(p.paperId)}>
+                    Xem bài và bản nháp
+                  </Button>
+                </div>
+              ))}
+            </section>
+          )}
+
         </div>
 
         {/* Sidebar Column: Discovery Goal & Recent Proposals */}
@@ -545,6 +939,18 @@ export function MyWorkView({
           </DialogContent>
         </Dialog>
       )}
+
+      {adjudicationModalRoundId && (
+        <ScreeningAdjudicationDialog
+          projectId={projectId}
+          roundId={adjudicationModalRoundId}
+          open={Boolean(adjudicationModalRoundId)}
+          onClose={() => {
+            setAdjudicationModalRoundId(null);
+            void summaryQuery.refetch();
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -561,7 +967,7 @@ function ClaimedPaperCard({
     roundId: string;
     title: string;
     authors?: string[];
-    publicationYear: number;
+    publicationYear: number | null;
     journalName?: string | null;
     phase: string;
     dueAt: string | null;

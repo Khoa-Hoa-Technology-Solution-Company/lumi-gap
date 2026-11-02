@@ -1,5 +1,4 @@
 import type { ScreeningPhase, ScreeningReview, ScreeningSettings } from "@trend/shared-types";
-import { ChevronDown, FileText, BookOpen, Lock } from "lucide-react";
 
 export interface AssessmentContextValue {
   scope: ScreeningPhase;
@@ -30,45 +29,29 @@ export function AssessmentContextFields({
 
   return (
     <div className="assessment-context">
-      <div className="assessment-scope-control">
-        <label htmlFor="assessment-scope-select" className="assessment-scope-label">
-          <span>Phạm vi đã đọc</span>
-          {fixedScope && (
-            <span className="assessment-scope-fixed-tag">
-              <Lock size={11} className="inline mr-1" />
-              Cố định
-            </span>
-          )}
-        </label>
+      {fixedScope ? (
+        <input type="hidden" name="scope" value={value.scope} />
+      ) : (
+        <div className="assessment-scope-control">
+          <label htmlFor="assessment-scope-select" className="assessment-scope-label">
+            <span>Phạm vi đã đọc</span>
+          </label>
 
-        <div className="assessment-scope-select-wrapper">
-          <div className="assessment-scope-select-icon">
-            {isFullText ? (
-              <BookOpen size={15} className="text-emerald-600 shrink-0" />
-            ) : (
-              <FileText size={15} className="text-primary shrink-0" />
-            )}
+          <div className="assessment-scope-select-wrapper">
+            <select
+              id="assessment-scope-select"
+              aria-label="Chọn phạm vi đã đọc"
+              disabled={isLocked}
+              value={value.scope}
+              onChange={e => onChange({ ...value, scope: e.target.value as ScreeningPhase })}
+              className="assessment-scope-select"
+            >
+              <option value="TITLE_ABSTRACT">Tiêu đề / Tóm tắt</option>
+              <option value="FULL_TEXT">Toàn văn</option>
+            </select>
           </div>
-          <select
-            id="assessment-scope-select"
-            aria-label="Chọn phạm vi đã đọc"
-            disabled={isLocked}
-            value={value.scope}
-            onChange={e => onChange({ ...value, scope: e.target.value as ScreeningPhase })}
-            className={`assessment-scope-select ${fixedScope ? "is-fixed" : ""}`}
-          >
-            <option value="TITLE_ABSTRACT">Tiêu đề / Tóm tắt</option>
-            <option value="FULL_TEXT">Toàn văn</option>
-          </select>
-          <ChevronDown size={14} className="assessment-scope-select-arrow" />
         </div>
-
-        {fixedScope && (
-          <p className="assessment-scope-fixed-note">
-            Phạm vi đánh giá cố định theo giai đoạn của vòng này.
-          </p>
-        )}
-      </div>
+      )}
 
       {isFullText && (
         <label className="assessment-fulltext-label">
@@ -119,13 +102,24 @@ export function AssessmentContextFields({
 }
 
 export function ReviewContextSummary({ review }: { review: ScreeningReview }) {
+  if (!review.scope && !review.researchQuestions?.length) return null;
+  const hasFullText = review.scope === "FULL_TEXT";
+  const hasCustomRef = Boolean(review.fullTextReference);
+  const hasRqs = Boolean(review.researchQuestions?.length);
+  if (!hasFullText && !hasCustomRef && !hasRqs) return null;
+
   return (
-    <div className="assessment-review-context">
-      <small>
-        {review.scope === "FULL_TEXT" ? "Đã đọc toàn văn" : review.scope === "TITLE_ABSTRACT" ? "Tiêu đề / Tóm tắt" : "Chưa ghi nhận phạm vi đọc"}
-        {review.fullTextReference ? ` · ${review.fullTextReference}` : ""}
-      </small>
-      {review.researchQuestions?.map(q => <p key={q.id}>RQ: {q.text}</p>)}
+    <div className="assessment-review-context text-muted-foreground text-[11px] space-y-0.5">
+      {hasFullText ? (
+        <small className="text-muted-foreground">
+          Đã đọc toàn văn{review.fullTextReference ? ` · ${review.fullTextReference}` : ""}
+        </small>
+      ) : hasCustomRef ? (
+        <small className="text-muted-foreground">
+          {review.fullTextReference}
+        </small>
+      ) : null}
+      {review.researchQuestions?.map(q => <p key={q.id} className="text-muted-foreground">RQ: {q.text}</p>)}
     </div>
   );
 }

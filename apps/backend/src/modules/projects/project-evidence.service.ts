@@ -1,5 +1,7 @@
 import { invalidateSourceAssessments } from "./gap-revision.js";
-import type { EvidenceContent, ExtractionSuggestion, PaperAiAnalysis, PlanQuestion, ProjectEvidence, SaveProjectEvidence } from "@trend/shared-types";
+import type { EvidenceContent, EvidenceWorkflowInput, ExtractionSuggestion, PaperAiAnalysis, PlanQuestion, ProjectEvidence, SaveProjectEvidence } from "@trend/shared-types";
+import { evidenceEligibility } from "./evidence-eligibility.js";
+import { evidenceScope, evidenceStatus, extractionQuestions, evidenceSourceChanged } from "./evidence-presentation.js";
 import { createHash } from "node:crypto";
 import { RAG_INDEX_VERSION, sourceFingerprint } from "../knowledge/knowledge.text.js";
 import { AppError } from "../../common/exceptions/app-error.js";
@@ -16,21 +18,28 @@ export async function evidenceItem(context: WorkspaceContext, id: string) {
   return row;
 }
 export async function discoveryEvidenceIsCurrent(context: WorkspaceContext, row: { paperId: string; sourceSnapshot: unknown }) {
-  const snapshot = row.sourceSnapshot as { analysisId?: string; sourceFingerprint?: string; contentHash?: string };
-  if (!snapshot.analysisId) return true;
+  const snapshot = row.sourceSnapshot as Record<string, unknown>;
   await context.tx.$queryRaw`SELECT id FROM papers WHERE id = ${row.paperId}::uuid FOR SHARE`;
   await context.tx.$queryRaw`SELECT id FROM paper_documents WHERE paper_id = ${row.paperId}::uuid FOR SHARE`;
   const [paper, document] = await Promise.all([
     context.tx.paper.findUnique({ where: { id: row.paperId } }),
     context.tx.paperDocument.findUnique({ where: { paperId: row.paperId } }),
   ]);
-  return Boolean(paper?.dataStatus === "active" && document?.status === "ready" && snapshot.sourceFingerprint === sourceFingerprint(paper) && document.sourceHash === snapshot.sourceFingerprint && document.contentHash === snapshot.contentHash);
+  return Boolean(paper && (!snapshot.analysisId || paper.dataStatus === "active") && !evidenceSourceChanged(snapshot, paper, document ?? undefined));
+}
+async function workflowMetadata(context: WorkspaceContext, input: EvidenceWorkflowInput) {
+  if (input.questionIds) {
+    const plan = await context.tx.researchPlan.findUnique({ where: { projectId: context.project.id }, select: { questions: true } });
+    const questions = (Array.isArray(plan?.questions) ? plan.questions : []) as unknown as PlanQuestion[];
+    if (input.questionIds.some(id => !questions.some(question => question.id === id))) throw AppError.badRequest("Choose a research question from this project");
+  }
+  return { ...(input.questionIds ? { questionIds: input.questionIds } : {}), ...(input.draft !== undefined ? { draft: input.draft } : {}), ...(input.sourceScope ? { declaredSourceScope: input.sourceScope } : {}) };
 }
 export async function reviewEvidenceInContext(context: WorkspaceContext, id: string, input: { expectedVersion: number; state: "ACCEPTED" | "REJECTED"; rationale: string }) {
   const row = await evidenceItem(context, id); expectWorkspaceVersion(row.version, input.expectedVersion);
   const link = await researchPaper(context, row.paperId);
-  if (input.state === "ACCEPTED" && link.screeningStatus !== "INCLUDED") throw AppError.conflict("The source is no longer included in this project's synthesis");
-  if (input.state === "ACCEPTED" && !await discoveryEvidenceIsCurrent(context, row)) throw AppError.conflict("The analyzed source changed. Run a new analysis before accepting this extraction");
+  if (input.state === "ACCEPTED" && !(await evidenceEligibility(context.tx, context.project.id, [link.paperId])).get(link.paperId)?.eligible) throw AppError.conflict("The source is no longer included in this project's synthesis");
+  if (input.state === "ACCEPTED" && !await discoveryEvidenceIsCurrent(context, row)) throw AppError.conflict("The source changed. Create a new extraction from the current source before confirming it");
   await invalidateSourceAssessments(context.tx, context.project.id, context.actorId, { evidenceItemId: id });
   const next = await context.tx.projectEvidenceItem.update({ where: { id }, data: { reviewState: input.state, reviewRationale: input.rationale, reviewedById: context.actorId, reviewedAt: new Date(), version: { increment: 1 } } });
   await workspaceRevision(context, "EXTRACTION", next); await workspaceEvent(context, "EVIDENCE_REVIEWED", "EXTRACTION", id, { state: input.state }); return next;
@@ -58,7 +67,7 @@ export const projectEvidenceService = {
       return suggestions;
     });
   },
-  async list(projectId: string, actorId: string, query: { page: number; pageSize: number; q: string; state?: string; itemId?: string }) {
+  async list(projectId: string, actorId: string, query: { page: number; pageSize: number; q: string; state?: string; itemId?: string; paperId?: string }) {
     return withWorkspace(projectId, actorId, {}, async ({ tx, project }) => {
       let itemId = query.itemId;
       if (itemId && !await tx.projectEvidenceItem.findFirst({ where: { id: itemId, projectId: project.id }, select: { id: true } })) {
@@ -67,16 +76,24 @@ export const projectEvidenceService = {
         if (!legacy.evidenceItemId) return { items: [], total: 0, page: 1, pageSize: query.pageSize, hasNext: false, legacyGapId: legacy.gapId };
         itemId = legacy.evidenceItemId;
       }
-      const where = { projectId: project.id, ...(itemId ? { id: itemId } : {}), ...(query.state ? { reviewState: query.state } : {}), ...(query.q ? { OR: [{ claim: { contains: query.q, mode: "insensitive" as const } }, { methodology: { contains: query.q, mode: "insensitive" as const } }, { context: { contains: query.q, mode: "insensitive" as const } }, { themes: { has: query.q } }] } : {}) };
+      const where = { projectId: project.id, ...(query.paperId ? { paperId: query.paperId } : {}), ...(itemId ? { id: itemId } : {}), ...(query.state ? { reviewState: query.state } : {}), ...(query.q ? { OR: [{ claim: { contains: query.q, mode: "insensitive" as const } }, { methodology: { contains: query.q, mode: "insensitive" as const } }, { context: { contains: query.q, mode: "insensitive" as const } }, { themes: { has: query.q } }] } : {}) };
       const [rows, total] = await Promise.all([tx.projectEvidenceItem.findMany({ where, orderBy: [{ createdAt: "desc" }, { id: "desc" }], skip: (query.page - 1) * query.pageSize, take: query.pageSize }), tx.projectEvidenceItem.count({ where })]);
-      const sourceLinks = await tx.projectPaper.findMany({ where: { projectId: project.id, paperId: { in: rows.map(row => row.paperId) } }, select: { paperId: true, screeningStatus: true } });
-      const papers = await tx.paper.findMany({ where: { id: { in: rows.map(row => row.paperId) } }, select: { id: true, title: true } });
+      const eligibility = await evidenceEligibility(tx, project.id, rows.map(row => row.paperId));
+      const [papers, documents] = await Promise.all([
+        tx.paper.findMany({ where: { id: { in: rows.map(row => row.paperId) } }, select: { id: true, title: true, abstractText: true, pdfPath: true, openAccessUrl: true, uploadedAt: true } }),
+        tx.paperDocument.findMany({ where: { paperId: { in: rows.map(row => row.paperId) } }, select: { paperId: true, status: true, contentHash: true, sourceHash: true } }),
+      ]);
       const plan = await tx.researchPlan.findUnique({ where: { projectId: project.id }, select: { questions: true } });
       const questions = (Array.isArray(plan?.questions) ? plan.questions : []) as unknown as PlanQuestion[];
       const revisions = await tx.projectWorkspaceRevision.findMany({ where: { projectId: project.id, entityKind: "EXTRACTION", entityId: { in: rows.map(row => row.id) } }, select: { id: true, entityId: true } });
       const gapLinks = await tx.gapEvidenceRecord.findMany({ where: { evidenceItemId: { in: rows.map(row => row.id) } }, select: { evidenceItemId: true, gapId: true } });
       const gaps = await tx.researchGap.findMany({ where: { id: { in: gapLinks.map(link => link.gapId) }, projectId: project.id }, select: { id: true, title: true } });
-      return { items: rows.map(row => ({ ...row, sourceNeedsReview: sourceLinks.find(link => link.paperId === row.paperId)?.screeningStatus !== "INCLUDED", relatedGaps: gaps.filter(gap => gapLinks.some(link => link.evidenceItemId === row.id && link.gapId === gap.id)), relatedQuestions: questions.filter(question => question.sourceEvidenceRevisionIds?.some(id => revisions.some(revision => revision.id === id && revision.entityId === row.id))).map(question => ({ id: question.id, text: question.text })), sourceTitle: papers.find(paper => paper.id === row.paperId)?.title ?? "" } as unknown as ProjectEvidence)), total, page: query.page, pageSize: query.pageSize, hasNext: query.page * query.pageSize < total };
+      const people = await tx.user.findMany({ where: { id: { in: [...new Set(rows.flatMap(row => [row.extractedById, ...(row.reviewedById ? [row.reviewedById] : [])]))] } }, select: { id: true, fullName: true } });
+      return { items: rows.map(row => {
+        const snapshot = row.sourceSnapshot as Record<string, unknown>, needsReview = !eligibility.get(row.paperId)?.eligible || evidenceSourceChanged(snapshot, papers.find(paper => paper.id === row.paperId), documents.find(document => document.paperId === row.paperId));
+        return { ...row, sourceNeedsReview: needsReview, sourceScope: evidenceScope(snapshot), verificationStatus: evidenceStatus(row, needsReview), extractedByName: people.find(person => person.id === row.extractedById)?.fullName ?? "Researcher", reviewedByName: people.find(person => person.id === row.reviewedById)?.fullName ?? null,
+          relatedGaps: gaps.filter(gap => gapLinks.some(link => link.evidenceItemId === row.id && link.gapId === gap.id)), relatedQuestions: extractionQuestions(snapshot, questions, new Set(revisions.filter(revision => revision.entityId === row.id).map(revision => revision.id))), sourceTitle: papers.find(paper => paper.id === row.paperId)?.title ?? "" } as unknown as ProjectEvidence;
+      }), total, page: query.page, pageSize: query.pageSize, hasNext: query.page * query.pageSize < total };
     });
   },
   async create(projectId: string, actorId: string, input: SaveProjectEvidence) {
@@ -85,13 +102,14 @@ export const projectEvidenceService = {
       const prior = await tx.projectEvidenceItem.findUnique({ where: { projectId_extractedById_clientKey: { projectId: project.id, extractedById: context.actorId, clientKey: input.clientKey } } });
       if (prior) { await assertWorkspaceRetry(context, "EXTRACTION", prior.id, input); return prior; }
       const link = await researchPaper(context, input.paperId);
-      if (link.screeningStatus !== "INCLUDED") throw AppError.badRequest("Include the paper before extracting synthesis evidence");
+      if (!(await evidenceEligibility(tx, project.id, [link.paperId])).get(link.paperId)?.eligible) throw AppError.badRequest("Include the paper before extracting synthesis evidence");
       const paper = await tx.paper.findUniqueOrThrow({ where: { id: input.paperId } });
-      const source: Record<string, unknown> = { paperId: paper.id, title: paper.title, doi: paper.doi, publicationYear: paper.publicationYear, screeningStatus: link.screeningStatus, screenedAt: link.screenedAt?.toISOString() ?? null, quoteCheckedAgainstIndexedSource: false };
+      const source: Record<string, unknown> = { paperId: paper.id, paperFingerprint: sourceFingerprint(paper), title: paper.title, doi: paper.doi, publicationYear: paper.publicationYear, screeningStatus: link.screeningStatus, screenedAt: link.screenedAt?.toISOString() ?? null, quoteCheckedAgainstIndexedSource: false, ...await workflowMetadata(context, input) };
       if (input.sourceChunkId) {
         const chunk = await tx.paperChunk.findUnique({ where: { id: input.sourceChunkId }, include: { document: true } });
         if (!chunk || chunk.document.paperId !== paper.id || !input.quotation || !chunk.text.includes(input.quotation)) throw AppError.badRequest("The quotation must match the selected source chunk");
-        Object.assign(source, { chunkId: chunk.id, chunkHash: chunk.contentHash, sourceText: chunk.text, documentHash: chunk.document.contentHash, pageNumber: chunk.pageNumber, quoteCheckedAgainstIndexedSource: true });
+        if (chunk.document.status !== "ready" || chunk.document.indexVersion !== RAG_INDEX_VERSION || chunk.document.sourceHash !== sourceFingerprint(paper)) throw AppError.conflict("The indexed source changed. Reload the current source before extracting");
+        Object.assign(source, { sourceKind: chunk.document.sourceKind.toUpperCase(), chunkId: chunk.id, chunkHash: chunk.contentHash, sourceText: chunk.text, documentHash: chunk.document.contentHash, pageNumber: chunk.pageNumber, quoteCheckedAgainstIndexedSource: true });
       } else if (input.quotation && paper.abstractText?.includes(input.quotation)) {
         Object.assign(source, { sourceKind: "ABSTRACT", sourceText: paper.abstractText, contentHash: createHash("sha256").update(paper.abstractText).digest("hex"), quoteCheckedAgainstIndexedSource: true });
       }
@@ -99,7 +117,7 @@ export const projectEvidenceService = {
       if (input.analysisHash) {
         const document = await tx.paperDocument.findUnique({ where: { paperId: paper.id } });
         if (input.origin !== "AI_SUGGESTED" || !paper.aiAnalysis || createHash("sha256").update(JSON.stringify(paper.aiAnalysis)).digest("hex") !== input.analysisHash || document?.status !== "ready" || document.indexVersion !== RAG_INDEX_VERSION || document.sourceHash !== sourceFingerprint(paper)) throw AppError.conflict("Paper analysis changed. Reload the suggestion before saving");
-        Object.assign(source, { analysisHash: input.analysisHash, originalSuggestion: paper.aiAnalysis });
+        Object.assign(source, { documentSourceKind: document.sourceKind, analysisHash: input.analysisHash, originalSuggestion: paper.aiAnalysis });
       }
       if (input.corpusPaperId) {
         const corpusPaper = await tx.corpusPaper.findUnique({ where: { id: input.corpusPaperId } });
@@ -107,26 +125,27 @@ export const projectEvidenceService = {
         if (!corpusPaper || corpus?.projectId !== project.id || corpusPaper.paperId !== input.paperId || input.origin !== "AI_SUGGESTED") throw AppError.badRequest("Choose an extraction suggestion from this project source");
         Object.assign(source, { corpusPaperId: corpusPaper.id, originalSuggestion: corpusPaper.evidence });
       }
-      const { clientKey, paperId, origin, sourceChunkId: _chunk, corpusPaperId: _corpus, analysisHash: _analysis, ...content } = input;
+      const { clientKey, paperId, origin, sourceChunkId: _chunk, corpusPaperId: _corpus, analysisHash: _analysis, questionIds: _questions, draft: _draft, sourceScope: _scope, ...content } = input;
       const row = await tx.projectEvidenceItem.create({ data: { ...content, projectId: project.id, paperId, origin, clientKey, extractedById: context.actorId, sourceSnapshot: jsonSnapshot(source) } });
       await workspaceRevision(context, "EXTRACTION", row, input);
       await workspaceEvent(context, "EVIDENCE_EXTRACTED", "EXTRACTION", row.id);
       return row;
     });
   },
-  async update(projectId: string, actorId: string, id: string, input: EvidenceContent & { expectedVersion: number }) {
+  async update(projectId: string, actorId: string, id: string, input: EvidenceContent & EvidenceWorkflowInput & { expectedVersion: number }) {
     return withWorkspace(projectId, actorId, { write: true }, async context => {
       const row = await evidenceItem(context, id); expectWorkspaceVersion(row.version, input.expectedVersion);
-      const { expectedVersion: _version, ...content } = input;
+      const { expectedVersion: _version, questionIds: _questions, draft: _draft, sourceScope: _scope, ...content } = input;
       // The original source snapshot and origin are immutable even when the interpretation is corrected.
-      const source = row.sourceSnapshot as Record<string, unknown>;
+      const source: Record<string, unknown> = { ...row.sourceSnapshot as Record<string, unknown>, ...await workflowMetadata(context, input) };
       await invalidateSourceAssessments(context.tx, context.project.id, context.actorId, { evidenceItemId: id });
       const next = await context.tx.projectEvidenceItem.update({ where: { id }, data: { ...content, sourceSnapshot: jsonSnapshot({ ...source, quoteCheckedAgainstIndexedSource: Boolean(content.quotation && typeof source.sourceText === "string" && source.sourceText.includes(content.quotation)) }), reviewState: "PENDING", reviewRationale: "", reviewedById: null, reviewedAt: null, version: { increment: 1 } } });
       await workspaceRevision(context, "EXTRACTION", next); await workspaceEvent(context, "EVIDENCE_REVISED", "EXTRACTION", id);
       return next;
     });
   },
-  async review(projectId: string, actorId: string, id: string, input: { expectedVersion: number; state: "ACCEPTED" | "REJECTED"; rationale: string }) {
+  async review(projectId: string, actorId: string, id: string, input: { expectedVersion: number; state: "ACCEPTED" | "REJECTED"; rationale: string; sourceConfirmed?: boolean }) {
+    if (input.state === "ACCEPTED" && input.sourceConfirmed !== true) throw AppError.badRequest("Confirm that you compared the extraction with its source");
     return withWorkspace(projectId, actorId, { write: true }, context => reviewEvidenceInContext(context, id, input));
   },
   async history(projectId: string, actorId: string, id: string) {

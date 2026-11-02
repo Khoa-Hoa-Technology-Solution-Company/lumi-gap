@@ -32,13 +32,18 @@ export function LibraryAssessment({
   const [dirty, setDirty] = useState(false), [saved, setSaved] = useState(false);
   const [context, setContext] = useState(() => initialAssessmentContext(own));
   const command = useScreeningCommand(projectId);
-  useUnsavedWorkspace(dirty || command.isPending);
+  const hasText = own
+    ? reason.trim() !== (own.exclusionReason ?? "").trim() ||
+      comment.trim() !== (own.comment ?? "").trim() ||
+      (context.scope === "FULL_TEXT" && context.fullTextReference.trim() !== (own.fullTextReference ?? "").trim())
+    : Boolean(reason.trim() || comment.trim() || (context.scope === "FULL_TEXT" && context.fullTextReference.trim()));
+  useUnsavedWorkspace(hasText || command.isPending);
   const locked = readOnly || Boolean(round?.finalDecision) || (round ? !round.canReview : settings.reviewMode !== "COLLABORATIVE");
   const stale = base.roundId !== (round?.id ?? null) || base.revision < currentRevision || (!round && base.settingsVersion !== settings.version);
   const change = () => { setDirty(true); setSaved(false); };
 
   const cancelEdit = async () => {
-    if (dirty) {
+    if (hasText) {
       if (!(await canLeaveWorkspace())) return;
     }
     setDecision(own?.decision ?? "");
@@ -58,12 +63,15 @@ export function LibraryAssessment({
     const displayFullTextRef = (saved ? context.fullTextReference : own.fullTextReference) || own.fullTextReference || "";
 
     return (
-      <div className="screening-form library-assessment assessment-summary-card">
-        <div className="assessment-summary-header">
-          <div className="assessment-summary-header-left">
-            <h4 className="assessment-summary-title">Đánh giá của tôi</h4>
+      <div className="screening-form library-assessment assessment-summary-card p-3 rounded-lg border bg-card space-y-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <h4 className="assessment-summary-title font-semibold text-xs text-foreground">Đánh giá của tôi</h4>
             <span className="assessment-summary-badge" data-choice={displayDecision}>
               {choiceLabels[displayDecision as ScreeningChoice] || displayDecision}
+            </span>
+            <span className="text-[11px] text-muted-foreground">
+              v{own.revision}{own.submittedAt ? ` · ${new Date(own.submittedAt).toLocaleDateString("vi-VN")}` : ""}
             </span>
           </div>
           {!locked && (
@@ -71,87 +79,59 @@ export function LibraryAssessment({
               type="button"
               variant="outline"
               size="sm"
-              className="assessment-edit-btn"
+              className="assessment-edit-btn h-7 px-2.5 text-xs"
               onClick={() => {
                 setIsEditing(true);
                 setSaved(false);
               }}
             >
-              <Pencil size={12} className="mr-1" />
+              <Pencil size={11} className="mr-1" />
               Chỉnh sửa
             </Button>
           )}
         </div>
 
-        <div className="assessment-summary-body">
-          {displayDecision === "EXCLUDE" && displayReason && (
-            <div className="assessment-summary-row">
-              <span className="assessment-summary-label">Lý do không phù hợp:</span>
-              <span className="assessment-summary-value text-destructive font-medium">
-                {displayReason}
-              </span>
-            </div>
-          )}
+        {displayDecision === "EXCLUDE" && displayReason && (
+          <div className="text-xs text-rose-700 dark:text-rose-400 bg-rose-50/70 dark:bg-rose-950/20 px-2.5 py-1.5 rounded-md border border-rose-200/60">
+            <strong>Lý do:</strong> {displayReason}
+          </div>
+        )}
 
-          {displayComment && (
-            <div
-              className={`assessment-summary-row assessment-summary-comment-row ${!readOnly && !locked ? "assessment-summary-row-interactive" : ""}`}
-              onClick={() => {
-                if (!readOnly && !locked) setIsEditing(true);
-              }}
-              title={!readOnly && !locked ? "Nhấp để chỉnh sửa nhận xét" : undefined}
-            >
-              <span className="assessment-summary-label">Ghi chú:</span>
-              <p className="assessment-summary-comment">{displayComment}</p>
-            </div>
-          )}
-
+        {displayComment && (
           <div
-            className={`assessment-summary-row ${!readOnly && !locked ? "assessment-summary-row-interactive" : ""}`}
+            className={`text-xs text-muted-foreground italic bg-muted/40 px-2.5 py-1.5 rounded-md ${!readOnly && !locked ? "cursor-pointer hover:bg-muted/60" : ""}`}
             onClick={() => {
               if (!readOnly && !locked) setIsEditing(true);
             }}
-            title={!readOnly && !locked ? "Nhấp để chỉnh sửa phạm vi đọc" : undefined}
+            title={!readOnly && !locked ? "Nhấp để chỉnh sửa nhận xét" : undefined}
           >
-            <span className="assessment-summary-label">Phạm vi đã đọc:</span>
-            <span className="assessment-summary-value">
-              {displayScope === "FULL_TEXT" ? "Toàn văn" : "Tiêu đề / Tóm tắt"}
-              {displayFullTextRef ? ` · ${displayFullTextRef}` : ""}
-              {!readOnly && !locked && (
-                <Pencil size={11} className="inline ml-1.5 opacity-60 text-muted-foreground" />
-              )}
-            </span>
+            {displayComment}
           </div>
+        )}
 
-          {Boolean(own.researchQuestions?.length) && (
-            <div className="assessment-summary-row">
-              <span className="assessment-summary-label">Câu hỏi nghiên cứu:</span>
-              <div className="assessment-summary-rqs">
-                {own.researchQuestions!.map(q => (
-                  <span key={q.id} className="assessment-summary-rq-chip">
-                    {q.text}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="assessment-summary-footer">
-          <div className="assessment-status-indicator" role="status">
-            {saved ? (
-              <span className="status-saved">
-                <Check size={13} className="inline mr-1 text-emerald-600" />
-                Đã lưu ý kiến của bạn.{base.revision ? ` Phiên bản ${base.revision}.` : ""}
-              </span>
-            ) : (
-              <span className="status-clean">
-                Đã lưu · Phiên bản {own.revision}
-                {own.submittedAt ? ` · ${new Date(own.submittedAt).toLocaleDateString("vi-VN")}` : ""}
-              </span>
-            )}
+        {displayScope === "FULL_TEXT" && (
+          <div className="text-[11px] text-muted-foreground flex items-center gap-1">
+            <span className="font-medium text-emerald-600 dark:text-emerald-400">Toàn văn</span>
+            {displayFullTextRef && <span>· {displayFullTextRef}</span>}
           </div>
-        </div>
+        )}
+
+        {Boolean(own.researchQuestions?.length) && (
+          <div className="flex flex-wrap gap-1 text-[11px]">
+            {own.researchQuestions!.map(q => (
+              <span key={q.id} className="bg-muted px-2 py-0.5 rounded text-muted-foreground">
+                {q.text}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {saved && (
+          <div className="assessment-status-indicator text-xs text-emerald-600 font-medium" role="status">
+            <Check size={13} className="inline mr-1" />
+            Đã lưu ý kiến của bạn.{base.revision ? ` Phiên bản ${base.revision}.` : ""}
+          </div>
+        )}
       </div>
     );
   }
@@ -251,7 +231,7 @@ export function LibraryAssessment({
           />
         </label>
       </div>
-      <AssessmentContextFields value={context} settings={settings} disabled={locked || command.isPending} onChange={value => { setContext(value); change(); }} />
+      <AssessmentContextFields value={context} settings={settings} fixedScope={Boolean(round)} disabled={locked || command.isPending} onChange={value => { setContext(value); change(); }} />
     </fieldset>
     {locked && <p role="status">{round?.finalDecision ? "Đã chốt chọn bài. Người phụ trách có thể mở lại để xem xét thêm." : "Hiện chỉ có quyền xem; bản nháp vẫn được giữ."}</p>}
     <ScreeningError error={command.error} />

@@ -60,3 +60,10 @@ it("does not display or send another account's saved files", async () => {
   expect(container.querySelector("aside")).toBeNull(); expect(mocks.submit).not.toHaveBeenCalled();
   await store.update("different-user", () => undefined);
 });
+it("does not show success toast on reload when delivery was already sent", async () => {
+  const saved = job("SENT"); await store.enqueue(saved);
+  await render(); await act(async () => {});
+  expect(mocks.success).not.toHaveBeenCalled();
+  expect(mocks.error).not.toHaveBeenCalled();
+  expect(container.querySelector("aside")).toBeNull();
+});

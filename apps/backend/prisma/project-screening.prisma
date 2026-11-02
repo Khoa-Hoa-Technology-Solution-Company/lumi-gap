@@ -1,4 +1,9 @@
 model ScreeningSettings {
+  preferredAdjudicatorId String? @map("preferred_adjudicator_id") @db.Uuid
+  adjudicationCoordinatorIds String[] @default([]) @map("adjudication_coordinator_ids") @db.Uuid
+  adjudicationReminderHours Int @default(72) @map("adjudication_reminder_hours")
+  adjudicationReassignHours Int @default(168) @map("adjudication_reassign_hours")
+  statementWindowHours Int @default(48) @map("statement_window_hours")
   authorizedAdjudicatorIds String[] @default([]) @map("authorized_adjudicator_ids") @db.Uuid
   allowConservativeFullText Boolean @default(false) @map("allow_conservative_full_text")
   reviewMode String @default("INDEPENDENT") @map("review_mode") @db.VarChar(24)
@@ -20,7 +25,69 @@ model ScreeningSettings {
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
   @@map("screening_settings")
 }
+model ScreeningAdjudicationCase {
+  id String @id @default(uuid()) @db.Uuid
+  finalDecisionId String? @unique @map("final_decision_id") @db.Uuid
+  projectId String @map("project_id") @db.Uuid
+  roundId String @map("round_id") @db.Uuid
+  active Boolean @default(true)
+  lockedAt DateTime? @map("locked_at") @db.Timestamptz(6)
+  status String @default("COLLECTING") @db.VarChar(32)
+  version Int @default(1)
+  packetVersion Int @default(1) @map("packet_version")
+  packet Json
+  reviewerIds String[] @map("reviewer_ids") @db.Uuid
+  requestedByIds String[] @map("requested_by_ids") @db.Uuid
+  deadline DateTime @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  completedAt DateTime? @map("completed_at") @db.Timestamptz(6)
+  @@unique([id, projectId])
+  @@index([projectId, roundId, createdAt])
+  @@map("screening_adjudication_cases")
+}
+model ScreeningAdjudicationInvitation {
+  id String @id @default(uuid()) @db.Uuid
+  projectId String @map("project_id") @db.Uuid
+  caseId String @map("case_id") @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  role String @db.VarChar(32)
+  status String @default("SENT") @db.VarChar(16)
+  responseReason String? @map("response_reason")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  respondedAt DateTime? @map("responded_at") @db.Timestamptz(6)
+  @@unique([caseId, userId])
+  @@index([projectId, userId, status])
+  @@map("screening_adjudication_invitations")
+}
+model ScreeningAdjudicationStatement {
+  id String @id @default(uuid()) @db.Uuid
+  projectId String @map("project_id") @db.Uuid
+  caseId String @map("case_id") @db.Uuid
+  reviewerId String @map("reviewer_id") @db.Uuid
+  packetVersion Int @map("packet_version")
+  revision Int
+  useExisting Boolean @map("use_existing")
+  text String
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@unique([caseId, reviewerId, revision])
+  @@map("screening_adjudication_statements")
+}
+model ScreeningAdjudicationConflict {
+  id String @id @default(uuid()) @db.Uuid
+  projectId String @map("project_id") @db.Uuid
+  caseId String @map("case_id") @db.Uuid
+  invitationId String @map("invitation_id") @db.Uuid
+  reportedById String @map("reported_by_id") @db.Uuid
+  reason String
+  resolvedById String? @map("resolved_by_id") @db.Uuid
+  resolution String?
+  upheld Boolean?
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  resolvedAt DateTime? @map("resolved_at") @db.Timestamptz(6)
+  @@map("screening_adjudication_conflicts")
+}
 model ScreeningRound {
+  legacyNeedsAudit Boolean @default(false) @map("legacy_needs_audit")
   finalizerId String? @map("finalizer_id") @db.Uuid
   id String @id @default(uuid()) @db.Uuid
   projectId String @map("project_id") @db.Uuid
@@ -72,6 +139,9 @@ model ScreeningReview {
   @@map("screening_reviews")
 }
 model ScreeningFinalDecision {
+  resolutionType String? @map("resolution_type") @db.VarChar(32)
+  exclusionReason String? @map("exclusion_reason") @db.VarChar(500)
+  sourceMaterial String? @map("source_material")
   id String @id @default(uuid()) @db.Uuid
   projectId String @map("project_id") @db.Uuid
   roundId String @map("round_id") @db.Uuid
@@ -83,6 +153,7 @@ model ScreeningFinalDecision {
   reviewIds String[] @map("review_ids") @db.Uuid
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   @@unique([roundId, roundVersion])
+  @@unique([id, projectId, roundId])
   @@index([projectId, roundId, createdAt])
   @@map("screening_final_decisions")
 }

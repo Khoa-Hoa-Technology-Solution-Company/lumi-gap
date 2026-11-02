@@ -17,7 +17,7 @@ function allocationRevisionId(row: { type: string; emailPayload: Prisma.JsonValu
 }
 function screeningNotification(row: { type: string; emailPayload: Prisma.JsonValue | null }) {
   const payload = row.emailPayload;
-  if (row.type !== "SCREENING_ADJUDICATION_ASSIGNED" || !payload || typeof payload !== "object" || Array.isArray(payload)) return {};
+  if (!row.type.startsWith("SCREENING_") || !payload || typeof payload !== "object" || Array.isArray(payload)) return {};
   const id = typeof payload.screeningRoundId === "string" ? parseDatabaseId(payload.screeningRoundId) : null;
   return id?.kind === "uuid" ? { screeningRoundId: id.value } : {};
 }

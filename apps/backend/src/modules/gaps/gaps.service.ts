@@ -1,4 +1,5 @@
 import { groundedDiscoveryCandidates } from "./project-gap-candidates.js";
+import { validateAnalysisSet } from "../projects/project-analysis-set.service.js";
 import { withWorkspace, jsonSnapshot, type WorkspaceContext } from "../projects/workspace-access.js";
 import { discoverySources, assertDiscoverySources, prepareDiscovery, publishDiscoveryEvidence, type DiscoveryInput } from "./project-gap-discovery.js";
 import { reviewedSynthesis } from "../projects/project-synthesis.service.js";
@@ -290,8 +291,8 @@ async function analysisDto(analysis: NonNullable<Awaited<ReturnType<typeof resol
   const [gaps, papers] = await Promise.all([getPrisma().researchGap.findMany({ where: { analysisId: analysis.id }, select: { id: true, legacyMongoId: true } }), getPrisma().gapAnalysisPaper.findMany({ where: { analysisId: analysis.id }, orderBy: { position: "asc" } })]);
   const paperRows = await getPrisma().paper.findMany({ where: { id: { in: papers.map((row) => row.paperId) } }, select: { id: true, legacyMongoId: true } }); const paperMap = new Map(paperRows.map((row) => [row.id, publicDatabaseId(row)]));
   const packet = analysis.projectId ? await getPrisma().projectWorkspaceRevision.findFirst({ where: { projectId: analysis.projectId, entityKind: "GAP_ANALYSIS_INPUT", entityId: analysis.id }, orderBy: { version: "desc" } }) : null;
-  const discovery = (packet?.snapshot as unknown as DiscoveryInput | undefined)?.kind === "PROJECT_DISCOVERY" ? (packet!.snapshot as unknown as DiscoveryInput).result : undefined;
-  return { discovery, promptVersion: analysis.promptVersion ?? undefined, id: publicDatabaseId(analysis), topic: analysis.topic, status: analysis.status, gapIds: gaps.map(publicDatabaseId), evidenceSnapshot: analysis.evidenceSnapshot as unknown as import("@trend/shared-types").PaperEvidenceSnapshot[], errorMessage: analysis.errorMessage ?? undefined, yearFrom: analysis.yearFrom ?? undefined, yearTo: analysis.yearTo ?? undefined, selectedPaperIds: papers.flatMap((row) => { const id = paperMap.get(row.paperId); return id ? [id] : []; }), evidenceMode: analysis.evidenceMode as GapEvidenceMode, createdAt: analysis.createdAt.toISOString(), updatedAt: analysis.updatedAt.toISOString() };
+  const input = (packet?.snapshot as unknown as DiscoveryInput | undefined)?.kind === "PROJECT_DISCOVERY" ? packet!.snapshot as unknown as DiscoveryInput : undefined;
+  return { discovery: input?.result, analysisSetId: input?.analysisSetId, analysisMode: input?.analysisMode, promptVersion: analysis.promptVersion ?? undefined, id: publicDatabaseId(analysis), topic: analysis.topic, status: analysis.status, gapIds: gaps.map(publicDatabaseId), evidenceSnapshot: analysis.evidenceSnapshot as unknown as import("@trend/shared-types").PaperEvidenceSnapshot[], errorMessage: analysis.errorMessage ?? undefined, yearFrom: analysis.yearFrom ?? undefined, yearTo: analysis.yearTo ?? undefined, selectedPaperIds: papers.flatMap((row) => { const id = paperMap.get(row.paperId); return id ? [id] : []; }), evidenceMode: analysis.evidenceMode as GapEvidenceMode, createdAt: analysis.createdAt.toISOString(), updatedAt: analysis.updatedAt.toISOString() };
 }
 
 async function directionsDto(row: { id: string; gapId: string; model: string; updatedAt: Date }): Promise<GapDirections> {
@@ -337,8 +338,15 @@ export const gapsService = {
     if (dto.projectDiscovery && (!dto.projectId || dto.evidenceMode !== "selected" || dto.synthesisRevisionId)) throw AppError.badRequest("Project discovery requires selected project papers");
     if ((dto.selectedPaperIds?.length ?? 0) > env.GAPS_TOP_K) throw AppError.badRequest(`Gap evidence cannot exceed ${env.GAPS_TOP_K} papers.`);
     const user = await resolveUser(userInput), project = await resolveProject(dto.projectId); let projectPaperIds: string[] | undefined;
-    if (project) await withWorkspace(project.id, user.id, { write: true }, async context => dto.projectDiscovery ? discoverySources(context, await resolvePaperIds(dto.selectedPaperIds ?? [])) : projectAnalysisSynthesis(context, dto));
-    if (dto.projectId) projectPaperIds = await projectService.getProjectPaperIdsForUser(dto.projectId, userInput, "gap analysis");
+    if (project) await withWorkspace(project.id, user.id, { write: true }, async context => {
+      const ids = await resolvePaperIds(dto.selectedPaperIds ?? []);
+      if (dto.projectDiscovery && dto.analysisSetId) {
+        const set = await validateAnalysisSet(context, dto.analysisSetId, ids);
+        if (set.topic !== dto.topic) throw AppError.conflict("Chủ đề phải khớp với bộ bài phân tích đã lưu");
+      }
+      return dto.projectDiscovery ? discoverySources(context, ids, dto.analysisSetId) : projectAnalysisSynthesis(context, dto);
+    });
+    if (dto.projectId) projectPaperIds = dto.projectDiscovery ? dto.selectedPaperIds : await projectService.getProjectPaperIdsForUser(dto.projectId, userInput, "gap analysis");
     if (dto.evidenceMode === "selected") { const evidence = await collectGapEvidence({ topic: dto.topic, selectedPaperIds: dto.selectedPaperIds, evidenceMode: "selected", yearFrom: dto.yearFrom, yearTo: dto.yearTo, projectPaperIds }); if (evidence.papers.length < (dto.projectDiscovery ? 2 : 3) || evidence.missingSelectedPaperIds.length) throw AppError.badRequest(`Select at least ${dto.projectDiscovery ? 2 : 3} active relevant papers in this scope.`, { missingPaperIds: evidence.missingSelectedPaperIds }); }
     const analysisId = crypto.randomUUID(), cost = getAiActionCost("generate_gaps"); const tx = await creditService.chargeCreditsChecked({ userId: user.id, action: "generate_gaps", amount: cost, targetKind: "gap_analysis", targetId: analysisId, idempotencyKey: `gap_analysis:${analysisId}` });
     try {
@@ -346,13 +354,15 @@ export const gapsService = {
       const create = async (db: Prisma.TransactionClient, context?: WorkspaceContext) => {
         if (context && dto.projectDiscovery && await db.gapAnalysis.findFirst({ where: { projectId: context.project.id, status: { in: ["queued", "analyzing"] } } })) throw AppError.conflict("A project analysis is already running");
         const synthesis = context && !dto.projectDiscovery ? await projectAnalysisSynthesis(context, dto) : null;
-        const sources = context && dto.projectDiscovery ? await discoverySources(context, selectedIds) : null;
+        const analysisSet = context && dto.projectDiscovery && dto.analysisSetId ? await validateAnalysisSet(context, dto.analysisSetId, selectedIds) : null;
+        if (analysisSet && analysisSet.topic !== dto.topic) throw AppError.conflict("Chủ đề phải khớp với bộ bài phân tích đã lưu");
+        const sources = context && dto.projectDiscovery ? await discoverySources(context, selectedIds, dto.analysisSetId) : null;
         const row = await db.gapAnalysis.create({ data: { id: analysisId, userId: user.id, projectId: project?.id, topic: dto.topic, yearFrom: dto.yearFrom, yearTo: dto.yearTo, evidenceMode: dto.evidenceMode ?? "auto", status: "queued", creditTransactionId: tx?.id, creditCost: cost, creditAction: "generate_gaps" } });
         if (selectedIds.length) await db.gapAnalysisPaper.createMany({ data: selectedIds.map((paperId, position) => ({ analysisId: row.id, paperId, position })) });
         if (synthesis) await db.projectWorkspaceRevision.create({ data: { projectId: project!.id, entityKind: "GAP_ANALYSIS_INPUT", entityId: row.id,
           version: 1, actorId: user.id, snapshot: jsonSnapshot({ synthesisRevisionId: synthesis.revisionId, synthesis }) } });
         if (sources) await db.projectWorkspaceRevision.create({ data: { projectId: project!.id, entityKind: "GAP_ANALYSIS_INPUT", entityId: row.id,
-          version: 1, actorId: user.id, snapshot: jsonSnapshot({ kind: "PROJECT_DISCOVERY", projectContext: { title: context!.project.title, summary: (context!.project.description ?? "").slice(0, 2000), researchField: context!.project.researchField ?? "", researchAreas: context!.project.researchAreas.slice(0, 20) }, sources, result: { stage: "queued", total: sources.length, completed: 0, papers: [] } } satisfies DiscoveryInput) } });
+          version: 1, actorId: user.id, snapshot: jsonSnapshot({ kind: "PROJECT_DISCOVERY", ...(analysisSet ? { analysisSetId: analysisSet.id, analysisMode: analysisSet.mode, analysisSetHash: analysisSet.hash } : {}), projectContext: { title: context!.project.title, summary: (context!.project.description ?? "").slice(0, 2000), researchField: context!.project.researchField ?? "", researchAreas: context!.project.researchAreas.slice(0, 20) }, sources, result: { stage: "queued", total: sources.length, completed: 0, papers: [] } } satisfies DiscoveryInput) } });
         return row;
       };
       const analysis = project ? await withWorkspace(project.id, user.id, { write: true }, context => create(context.tx, context)) : await getPrisma().$transaction(db => create(db));
@@ -399,9 +409,10 @@ export const gapsService = {
     const synthesisRevisionId = (packet?.snapshot as { synthesisRevisionId?: string } | undefined)?.synthesisRevisionId;
     const synthesis = project && synthesisRevisionId ? await withWorkspace(project.id, user.id, { write: true }, context => reviewedSynthesis(context, synthesisRevisionId)) : null;
     const discoveryInput = (packet?.snapshot as unknown as DiscoveryInput | undefined)?.kind === "PROJECT_DISCOVERY" ? packet!.snapshot as unknown as DiscoveryInput : null;
+    const scopedPaperIds = discoveryInput ? discoveryInput.sources.map(source => source.id) : projectPaperIds;
     const discovery = project && discoveryInput ? await prepareDiscovery(project.id, user.id, analysis.id, analysis.topic, discoveryInput) : null;
     const selectedLinks = await getPrisma().gapAnalysisPaper.findMany({ where: { analysisId: analysis.id }, orderBy: { position: "asc" } }); const selectedRows = await getPrisma().paper.findMany({ where: { id: { in: selectedLinks.map((row) => row.paperId) } }, select: { id: true, legacyMongoId: true } }); const selectedMap = new Map(selectedRows.map((row) => [row.id, publicDatabaseId(row)]));
-    const evidence = await collectGapEvidence({ topic: analysis.topic, queryVector, selectedPaperIds: selectedLinks.flatMap((row) => { const id = selectedMap.get(row.paperId); return id ? [id] : []; }), evidenceMode, yearFrom: analysis.yearFrom ?? undefined, yearTo: analysis.yearTo ?? undefined, projectPaperIds });
+    const evidence = await collectGapEvidence({ topic: analysis.topic, queryVector, selectedPaperIds: selectedLinks.flatMap((row) => { const id = selectedMap.get(row.paperId); return id ? [id] : []; }), evidenceMode, yearFrom: analysis.yearFrom ?? undefined, yearTo: analysis.yearTo ?? undefined, projectPaperIds: scopedPaperIds });
     const papers = evidence.papers.map(paper => {
       if (discovery) {
         const extracted = discovery.papers.find(source => source.id === paper.id || selectedRows.some(row => row.id === source.id && row.legacyMongoId === paper.id))!;
@@ -424,7 +435,7 @@ export const gapsService = {
     // where any topic intersection would look scarce. A project's papers are scored separately as context.
     // Probe terms must be grounded in the evidence the model read before corpus counts are persisted.
     const grounded = output.gaps.slice(0, 5).map((gap) => ({ gap, probe: groundProbe(gap.probe, probeTexts(papers), { analysisId: analysis.id, title: gap.title }) }));
-    const scoreScopes = await createGapScopeScorer({ yearFrom: analysis.yearFrom ?? undefined, yearTo: analysis.yearTo ?? undefined }, projectPaperIds, countProbes(grounded));
+    const scoreScopes = await createGapScopeScorer({ yearFrom: analysis.yearFrom ?? undefined, yearTo: analysis.yearTo ?? undefined }, scopedPaperIds, countProbes(grounded));
     const paperRows = await getPrisma().paper.findMany({ where: { OR: papers.map((paper) => idWhere(paper.id)) }, select: { id: true, legacyMongoId: true } });
     const paperMap = new Map<string, string>();
     for (const row of paperRows) { paperMap.set(publicDatabaseId(row), row.id); paperMap.set(row.id, row.id); }

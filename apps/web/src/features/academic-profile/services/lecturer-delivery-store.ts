@@ -14,6 +14,7 @@ export type LecturerDelivery = {
   error?: string;
   progress?: number;
   lease?: { owner: string; until: number };
+  notified?: boolean;
 };
 export interface DeliveryStore {
   read(userId: string): Promise<LecturerDelivery | undefined>;
