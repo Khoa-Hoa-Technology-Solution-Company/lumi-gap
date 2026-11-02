@@ -58,7 +58,7 @@
 | §5 Communications | Họp hằng ngày, review PR, review tài liệu hằng tuần, họp GVHD |
 | §6 Configuration Mgmt | Quản lý tài liệu, nhánh, PR, CI (`ci.yml`), Jenkins; bảng công cụ §6.3 |
 
-## Report 3 — SRS (khoảng 100 trang, 32 sơ đồ + 35 ảnh màn hình)
+## Report 3 — SRS (khoảng 100 trang, 32 sơ đồ + 48 ảnh màn hình)
 
 | Mục | Nội dung chính | Hình |
 |---|---|---|
@@ -70,7 +70,7 @@
 | §3.1.3 Screen Authorization | Ma trận ai vào được màn hình nào | — |
 | §3.1.4 Non-Screen Functions | 15 chức năng nền (11 worker, AI Reviewer, webhook, SSE, health) | — |
 | §3.1.5 ERD | ERD **logic**: 57 entity, bảng mô tả entity | **Hình 10(a)–14(c)**: 16 ERD |
-| §3.2–§3.9 | **53 FR**, mỗi FR gồm: trigger, mô tả (actor, status), screen layout, dữ liệu và kiểm tra, quy tắc, trường hợp thường, ngoại lệ, AC-xx.y, code evidence | **Hình 15–49**: 35 ảnh màn hình (33 FR) |
+| §3.2–§3.9 | **53 FR**, mỗi FR gồm: trigger, mô tả (actor, status), screen layout, dữ liệu và kiểm tra, quy tắc, trường hợp thường, ngoại lệ, AC-xx.y, code evidence | **Hình 15–62**: 48 ảnh màn hình (46 FR; FR-19, FR-50 còn TBD) |
 | §4.1 External Interfaces | 12 giao tiếp (web, OpenAlex, AI, Google, PayOS, SMTP, dịch, storage, GitHub, AI Reviewer, compiler…) | — |
 | §4.2 Quality Attributes | 19 NFR theo 4 nhóm: Usability, Reliability, Performance, Security; mỗi NFR có chỉ số, ngưỡng, cách đo, trạng thái | — |
 | §5.1 Business Rules | BR-01…BR-17 | — |
@@ -144,6 +144,6 @@
 | Test case cam kết / tự động / unit case | 79 / 73 (92%) / 127 |
 | Database (main 016d562) | 99 migration, 191 model, 190 bảng vẽ ERD, 428 khóa ngoại |
 | Worker / module backend | 11 / 39 |
-| Hình: R1 / R2 / R3 / R4 | 3 / 2 / 32 + 35 ảnh màn hình / 121 |
+| Hình: R1 / R2 / R3 / R4 | 3 / 2 / 32 + 48 ảnh màn hình / 121 |
 | WBS | 284 MD |
 | BM02 | 51 finding, 17 High (11 Fixed, 6 Planned) |

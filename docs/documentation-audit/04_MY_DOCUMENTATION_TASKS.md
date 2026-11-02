@@ -98,7 +98,7 @@
 | B-01 Bỏ "PaperLens" trong R3 §1 | ✅ |
 | B-02 Record of Changes R1–R5 | ✅ Đã sửa mô tả "Mermaid", thêm dòng 22–23/10, 26/10, 28/10; ô "In charge" là Nguyễn Đức Hoàng |
 | B-06 Dẫn chéo ERD logic trong R4 §2 | ✅ |
-| Ảnh màn hình R3 | 🟡 35 ảnh / 33 FR đã chèn; còn 15 FR |
+| Ảnh màn hình R3 | 🟡 48 ảnh / 46 FR đã chèn (02/11); còn FR-19, FR-50 |
 | Ngày Review 2 vào R5, BM01 | ✅ 05/11/2026 |
 
 ## Lịch cụ thể tới Review 2 (05/11/2026, thứ Năm)
