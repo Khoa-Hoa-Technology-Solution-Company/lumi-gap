@@ -15,7 +15,12 @@ export const SavePlatformAiConnectionSchema = AiConnectionDraftSchema.extend({
   fastModel: z.string().trim().min(1).max(200),
   deepModel: z.string().trim().min(1).max(200),
 });
+export const SavePlatformEmbeddingConnectionSchema = AiConnectionDraftSchema.omit({ provider: true }).extend({
+  name: z.string().trim().min(1).max(100),
+  model: z.string().trim().min(1).max(200),
+});
 export const AiPreferenceSchema = z.object({ connectionId: z.string().uuid().nullable() }).strict();
 export type AiConnectionDraft = z.infer<typeof AiConnectionDraftSchema>;
 export type SaveAiConnectionInput = z.infer<typeof SaveAiConnectionSchema>;
 export type SavePlatformAiConnectionInput = z.infer<typeof SavePlatformAiConnectionSchema>;
+export type SavePlatformEmbeddingConnectionInput = z.infer<typeof SavePlatformEmbeddingConnectionSchema>;

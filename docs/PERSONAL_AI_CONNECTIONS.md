@@ -38,8 +38,25 @@ Platform keys use the same AES-256-GCM envelope as personal keys, bound to `plat
 id, are decrypted only when a call is made, and are never returned. Each process (API and every worker) re-reads the
 active connection at most every 30 seconds, so a change applies everywhere within that time without a restart. Cached
 LLM output is scoped to the platform connection's id and last edit, so switching provider does not serve the previous
-provider's answers. Search embeddings always use the environment Gemini key: changing the embedding model would make
-stored 768-dimension vectors incomparable.
+provider's answers.
+
+## Embedding connection (admins)
+
+Embeddings are shared by everyone, so there is no personal option. Admins can serve them from an OpenAI-compatible
+endpoint in **Admin → Platform Settings → Embedding connection** (`/api/v1/admin/ai-connections/embedding`), chosen
+independently of the text-generation connection. Without an active one the environment Gemini key is used.
+
+This moves requests, not the vector space. An endpoint must run the model that made the stored vectors: on save and on
+activation the server embeds up to three public papers again and refuses a best cosine below 0.999. Only titles and
+abstracts of public papers are sent. The endpoint's id for the model may differ from `GEMINI_EMBEDDING_MODEL` (for
+example a `vendor/...-preview` id); stored vectors keep the `GEMINI_EMBEDDING_MODEL` provenance, so nothing is embedded
+again. With no stored vectors yet, only the 768-dimension shape can be checked and the connection shows as not compared.
+
+A different embedding model is not supported this way: search queries do not filter by `embedding_model`, and
+`paper_chunks` has no provenance columns, so old and new vectors would be compared with each other.
+
+Keys are bound to `platform-embedding:<connectionId>`, and the same 30-second refresh, audit log and endpoint network
+rules apply as for platform AI connections.
 
 ## Server environment
 
