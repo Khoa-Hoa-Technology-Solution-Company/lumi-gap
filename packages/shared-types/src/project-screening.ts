@@ -34,6 +34,7 @@ export interface ScreeningWorkspaceSummary {
     phase: ScreeningPhase;
     status: ScreeningState;
     caseStatus?: string;
+    needsMyStatement?: boolean;
     myDecision: ScreeningChoice;
     deadline?: string | null;
     adjudicatorName?: string | null;
