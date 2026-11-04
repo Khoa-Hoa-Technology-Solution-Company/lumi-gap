@@ -217,3 +217,41 @@ describe("F4 the joined reason names a community that contains the post", () => 
     expect(ranked!.reasonCommunity).toBeUndefined();
   });
 });
+
+describe("B2 the feed fills up to `limit`", () => {
+  const personalPosts = (count: number) => rankPersonal(
+    Array.from({ length: count }, (_, index) => windowPost(`p${index}`, { topics: one("t"), bucketId: `pb${index}` })), profileWith([{ key: "t" }]), NOW);
+
+  it("2. fills personal -> trending -> new up to the requested limit and keeps that order", () => {
+    const tiers = rankTiers([
+      ...Array.from({ length: 3 }, (_, index) => windowPost(`t${index}`, { readers: 4, bucketId: `tb${index}` })),
+      ...Array.from({ length: 10 }, (_, index) => windowPost(`n${index}`, { createdAt: daysAgo(index / 4 + 0.1), bucketId: `nb${index}` })),
+      windowPost("quiet", { createdAt: daysAgo(30), lastActivityAt: daysAgo(30) }),
+    ], NOW);
+    const { entries } = assembleFeed(personalPosts(4), tiers, 12);
+    expect(entries).toHaveLength(12);
+    expect(entries.map((entry) => entry.reasonKind)).toEqual([...Array(4).fill("followed"), ...Array(3).fill("trending"), ...Array(5).fill("new")]);
+    expect(new Set(entries.map((entry) => entry.postId)).size).toBe(12);
+    expect(entries.some((entry) => entry.postId === "quiet")).toBe(false);
+  });
+
+  it("2. never pads with old zero-activity posts: fewer qualifying posts than the limit gives a shorter feed", () => {
+    const tiers = rankTiers([windowPost("n1", { createdAt: daysAgo(1) }), windowPost("old1", { createdAt: daysAgo(40), lastActivityAt: daysAgo(40) }), windowPost("old2", { createdAt: daysAgo(90), lastActivityAt: daysAgo(90) })], NOW);
+    const { entries } = assembleFeed(personalPosts(2), tiers, 20);
+    expect(entries.map((entry) => entry.postId)).toEqual(["p0", "p1", "n1"]);
+  });
+
+  it("2. a post that is both a personal match and in the window appears once, as the personal entry", () => {
+    const shared = windowPost("shared", { topics: one("t"), bucketId: "s", readers: 4 });
+    const personal = rankPersonal([shared], profileWith([{ key: "t" }]), NOW);
+    const { entries } = assembleFeed(personal, rankTiers([shared], NOW), 20);
+    expect(entries.map((entry) => [entry.postId, entry.reasonKind])).toEqual([["shared", "followed"]]);
+  });
+
+  it("2. the diversity cap still holds with a larger limit, and open slots are filled from the skipped posts", () => {
+    const tiers = rankTiers(Array.from({ length: 9 }, (_, index) => windowPost(`n${index}`, { bucketId: index < 6 ? "same" : `o${index}`, createdAt: daysAgo(index + 1) })), NOW);
+    const { entries } = assembleFeed([], tiers, 9);
+    expect(entries).toHaveLength(9);
+    expect(entries.slice(0, 5).filter((entry) => entry.reasonTopic.key === "same")).toHaveLength(2);
+  });
+});

@@ -13,7 +13,7 @@ vi.mock("@/i18n", () => ({ useI18n: () => ({ t: (key: string) => key, language: 
 describe("Forum list URL pagination", () => {
   it("defaults to 20 and restores every valid URL value", () => {
     expect(parseForumListParams(new URLSearchParams())).toMatchObject({ page: 1, pageSize: 20, sort: "latest", type: "", query: "" });
-    expect(parseForumListParams(new URLSearchParams("page=2&pageSize=30&sort=following&type=QUESTION&q=screening"))).toEqual({ page: 2, pageSize: 30, sort: "following", type: "QUESTION", query: "screening", category: "" });
+    expect(parseForumListParams(new URLSearchParams("page=2&pageSize=30&sort=following&type=QUESTION&q=screening"))).toEqual({ page: 2, pageSize: 30, sort: "following", feed: "following", type: "QUESTION", query: "screening", category: "" });
   });
   it.each(["0", "-1", "1.5", "Infinity", "NaN", "9007199254740992", "1000001", "x"])("normalizes invalid page %s", (value) => {
     expect(parseForumListParams(new URLSearchParams({ page: value })).page).toBe(1);
@@ -90,5 +90,29 @@ describe("Forum readability and locale", () => {
     for (const key of ["References", "replies", "views", "helpful", "active", "Reply to discussion", "Position verified", "Load more replies", "Topic pagination", "Add citation", "Post reply"] as const) expect(vietnamese[key]).not.toBe(key);
     expect(vietnamese.References).toBe("Tài liệu tham khảo");
     expect(vietnamese["Paper Discussion"]).toBe("Bình luận bài báo");
+  });
+});
+
+describe("the web-only For you feed (B4, B6)", () => {
+  it("parses feed=for-you as a feed but keeps the API sort at latest", () => {
+    expect(parseForumListParams(new URLSearchParams("feed=for-you"))).toMatchObject({ feed: "for-you", sort: "latest" });
+    expect(parseForumListParams(new URLSearchParams("feed=for-you&sort=popular"))).toMatchObject({ feed: "for-you", sort: "latest" });
+    expect(parseForumListParams(new URLSearchParams("sort=for-you"))).toMatchObject({ feed: "latest", sort: "latest" });
+    expect(parseForumListParams(new URLSearchParams("feed=popular"))).toMatchObject({ feed: "popular", sort: "popular" });
+  });
+  it("the For you link drops every other parameter", () => {
+    const params = new URLSearchParams("category=x&community=y&type=QUESTION&q=a&search=b&page=3&pageSize=30&feed=popular");
+    expect(updateForumListParam(params, "feed", "for-you").toString()).toBe("feed=for-you");
+    expect(updateForumListParam(params, "sort", "for-you").toString()).toBe("feed=for-you");
+  });
+  it("choosing a category, type or search while on For you leaves it for Latest", () => {
+    const onForYou = new URLSearchParams("feed=for-you");
+    for (const [key, value] of [["category", "se"], ["community", "se"], ["type", "QUESTION"], ["q", "gnn"]] as const) {
+      const next = updateForumListParam(onForYou, key, value);
+      expect(next.has("feed"), key).toBe(false);
+      expect(parseForumListParams(next).feed, key).toBe("latest");
+    }
+    // clearing a filter value does not by itself change the feed
+    expect(updateForumListParam(onForYou, "type").get("feed")).toBe("for-you");
   });
 });

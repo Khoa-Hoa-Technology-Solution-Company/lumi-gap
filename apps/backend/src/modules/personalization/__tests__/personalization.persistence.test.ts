@@ -3,7 +3,7 @@ import { getPrisma } from "../../../infrastructure/database/prisma.js";
 import { AppError } from "../../../common/exceptions/app-error.js";
 import { forumService } from "../../forum/forum.service.js";
 import { personalizationService } from "../personalization.service.js";
-import { loadTopicContext, refreshPostTopics } from "../personalization-topics.service.js";
+import { loadTopicContext, recomputeAllPostTopics, refreshPostTopics } from "../personalization-topics.service.js";
 
 // Follows enqueue a recompute job; keep tests from feeding a running dev worker.
 vi.mock("../../../infrastructure/queue.js", async (importOriginal) => {
@@ -56,7 +56,9 @@ describe.sequential("personalization persistence", () => {
     await prisma.communityMembership.create({ data: { communityId: bannedIn.id, userId: me.id, role: "member", status: "banned" } });
 
     const recent = new Date(Date.now() - 3600_000);
-    await makePost("match", { topicKeys: [TOPIC], lastActivityAt: recent });
+    // The title carries the topic: the shared dev database may have a live tagging worker that recomputes every post's
+    // topics at any moment, and it must derive the same topic for this fixture as the explicit key set here.
+    await makePost("match", { title: `Persistence match ${marker} about ${TOPIC}`, topicKeys: [TOPIC], lastActivityAt: recent });
     await makePost("own", { authorId: me.id, topicKeys: [TOPIC], lastActivityAt: recent });
     await makePost("read", { topicKeys: [TOPIC], lastActivityAt: recent });
     await makePost("downvoted", { topicKeys: [TOPIC], lastActivityAt: recent });
@@ -118,6 +120,8 @@ describe.sequential("personalization persistence", () => {
   });
 
   it("18 + 24. candidates exclude own, read, voted, hidden, archived-community, banned-community and out-of-window posts", async () => {
+    // What a live worker would do at any moment: recompute this post's topics from its text.
+    await recomputeAllPostTopics({ onlyIds: [posts.match!] });
     const feed = await personalizationService.forYou(ids.me, "user");
     const feedIds = feed.posts.map((post) => post.id);
     expect(feedIds).toContain(posts.match);
@@ -125,6 +129,17 @@ describe.sequential("personalization persistence", () => {
     // Only this suite's own fixtures are asserted: other dev data may add posts, so no index, length or global order.
     expect(feed.posts.find((post) => post.id === posts.match)).toMatchObject({ reasonKind: "followed", reasonTopic: { key: TOPIC } });
     expect(feed.postsBasis).toBe("personal");
+  });
+
+  it("B1/B2. limit 20 returns at most 20 distinct posts, still starts with the personal match and never an out-of-window post", async () => {
+    const feed = await personalizationService.forYou(ids.me, "user", 20);
+    const feedIds = feed.posts.map((post) => post.id);
+    expect(feedIds.length).toBeLessThanOrEqual(20);
+    expect(new Set(feedIds).size).toBe(feedIds.length);
+    expect(feedIds).toContain(posts.match);
+    expect(feedIds).not.toContain(posts.old);
+    // the default stays five
+    expect((await personalizationService.forYou(ids.me, "user")).posts.length).toBeLessThanOrEqual(5);
   });
 
   it("21. interests but no matching post: postsBasis explore with 5 trending or new posts", async () => {

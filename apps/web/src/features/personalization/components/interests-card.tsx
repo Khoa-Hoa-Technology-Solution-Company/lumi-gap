@@ -59,7 +59,7 @@ export function InterestsCard() {
   return <section aria-labelledby="interests-heading" aria-busy={interests.isLoading} className="space-y-6">
     <header>
       <h2 id="interests-heading" className="text-xl font-bold">{t("Your interests")}</h2>
-      <p className="mt-1 text-sm leading-6 text-muted-foreground">{t("These topics shape the For you section on the Communities page. Following a topic here does not change your academic profile.")}</p>
+      <p className="mt-1 text-sm leading-6 text-muted-foreground">{t("These topics shape your For you feed in the Research Forum and the communities suggested to you. Following a topic here does not change your academic profile.")}</p>
       <p className="mt-1 text-sm leading-6 text-muted-foreground">{t("Unfollow stops following a topic you chose. Mute hides a topic from For you, even when it comes from your academic profile or your reading.")}</p>
     </header>
 

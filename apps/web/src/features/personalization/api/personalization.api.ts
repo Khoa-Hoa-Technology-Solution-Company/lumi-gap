@@ -39,8 +39,8 @@ function toForYou(raw: Record<string, unknown>): ForYouView {
 }
 
 export const personalizationApi = {
-  async forYou(signal?: AbortSignal): Promise<ForYouView> {
-    const response = await api.get(API_ROUTES.personalization.forYou, { signal });
+  async forYou(limit: number, signal?: AbortSignal): Promise<ForYouView> {
+    const response = await api.get(API_ROUTES.personalization.forYou, { params: { limit }, signal });
     return toForYou(response.data.data);
   },
   async communities(signal?: AbortSignal): Promise<ForYouCommunityView[]> {

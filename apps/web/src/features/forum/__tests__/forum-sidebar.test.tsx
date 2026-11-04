@@ -46,7 +46,8 @@ describe("Forum sidebar real URL navigation", () => {
       expect(url.searchParams.get("community")).toBe(community.slug);
       expect(url.searchParams.has("page")).toBe(false);
     }
-    expect(navigation.some((item) => item.href === "/communities")).toBe(false);
+    // Research Communities is reachable from the forum sidebar, never an active entry of it
+    expect(navigation.filter((item) => item.href === "/communities")).toEqual([{ href: "/communities", active: false, label: "Research Communities" }]);
     const all = new URL(navigation.find((item) => item.label === "All categories")!.href!, "https://local.test");
     expect(all.pathname).toBe("/forum/categories");
     expect(all.search).toBe("");

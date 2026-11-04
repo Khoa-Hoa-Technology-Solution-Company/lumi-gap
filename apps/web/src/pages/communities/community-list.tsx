@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useCurrentUser } from "@/features/auth";
 import { canProposeCommunity, useCommunityFacets, useCommunityList, useCommunitySuggestions, type CommunityView } from "@/features/forum";
-import { ForYouSection } from "@/features/personalization";
+import { CommunitySuggestions } from "@/features/personalization";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { useI18n } from "@/i18n";
 import { cn } from "@/utils/cn";
@@ -50,7 +50,7 @@ export function CommunityListPage() {
       <div className="max-w-2xl">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-700">{t("Research fields")}</p>
         <h1 className="lumi-page-title mt-2">{t("Research Communities")}</h1>
-        <p className="mt-2 text-sm leading-6 text-muted-foreground">{t("Join research communities in your field to connect with researchers and follow related papers and gaps.")}</p>
+        <p className="mt-2 text-sm leading-6 text-muted-foreground">{t("Discover and join communities around research directions to follow and discuss them with people who share your interests.")}</p>
       </div>
       {canCreate ? <Button variant="discussion" asChild className="gap-2 self-start sm:self-auto"><Link to="/communities/new"><Plus className="h-4 w-4" />{t("Create community")}</Link></Button> : null}
     </header>
@@ -80,7 +80,7 @@ export function CommunityListPage() {
       {facets.data.map((facet) => <FieldChip key={facet.name} active={field === facet.name} onClick={() => setField(field === facet.name ? undefined : facet.name)}>{facet.name} <span className="tabular-nums opacity-70">{facet.count}</span></FieldChip>)}
     </div> : null}
 
-    {user && !isFiltering ? <ForYouSection /> : null}
+    {user && !isFiltering ? <CommunitySuggestions /> : null}
 
     {list.isLoading ? <div className="mt-7 divide-y overflow-hidden rounded-xl border bg-card">{Array.from({ length: 4 }).map((_, index) => <div key={index} className="h-36 animate-pulse bg-muted/40" />)}</div>
       : list.error ? <div className="mt-7 rounded-xl border border-red-200 bg-red-50 p-5 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">{t("Unable to load communities. Please try again.")}</div>

@@ -29,12 +29,14 @@ describe("Research thread actions and semantics", () => {
     expect(markup).toContain('aria-label="More response actions"');
   });
   it("uses real chronological, unanswered, activity and follow semantics in both navigations", () => {
-    expect(FORUM_FEEDS.map((feed) => feed.value)).toEqual(["latest", "unanswered", "popular", "following"]);
-    expect(FORUM_FEEDS[1]!.description).toContain("no visible replies");
-    expect(FORUM_FEEDS[2]!.description).toContain("not research validity");
-    expect(FORUM_FEEDS[3]!.description).toContain("chose to follow");
+    expect(FORUM_FEEDS.map((feed) => feed.value)).toEqual(["latest", "for-you", "unanswered", "popular", "following"]);
+    const description = (value: string) => FORUM_FEEDS.find((feed) => feed.value === value)!.description;
+    expect(description("for-you")).toBe("Unread discussions picked from your interests and the communities you joined.");
+    expect(description("unanswered")).toContain("no visible replies");
+    expect(description("popular")).toContain("not research validity");
+    expect(description("following")).toContain("chose to follow");
     const source = readFileSync(new URL("../../../pages/forum/forum-list.tsx", import.meta.url), "utf8");
-    expect(source).toContain("FORUM_FEEDS.map");
+    expect(source).toContain("FORUM_FEEDS.filter(");
     expect(source).toContain('if (sort !== "latest") next.set("feed", sort)');
   });
   it("edits with the existing table dialog, formatting and preview instead of a plain textarea", () => {

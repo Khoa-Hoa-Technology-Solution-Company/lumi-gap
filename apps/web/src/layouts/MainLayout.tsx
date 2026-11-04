@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
-import { Link, Navigate, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { Link, Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { LogOut, User, Bookmark, ChevronDown, Coins, GraduationCap, KeyRound, Menu, Trophy, X } from "lucide-react";
 
 import logoImage from "@/assets/logo.png";
@@ -29,7 +29,10 @@ import "./app-header.css";
 
 const NotificationMenu = lazy(() => import("@/features/notifications/components/notification-menu"));
 
-const navGroups = [
+interface NavItem { to: string; label: string; description?: string }
+interface NavGroup { label: string; items: readonly NavItem[] }
+
+const navGroups: readonly NavGroup[] = [
   {
     label: "Explore",
     items: [
@@ -52,7 +55,8 @@ const navGroups = [
   {
     label: "Community",
     items: [
-      { to: "/forum", label: "Forum" },
+      { to: "/forum", label: "Research Forum", description: "Post, ask, exchange and discuss research across the whole platform." },
+      { to: "/communities", label: "Research Communities", description: "Discover and join communities around research directions to follow and discuss them with people who share your interests." },
     ],
   },
   {
@@ -62,7 +66,7 @@ const navGroups = [
       { to: "/papers/format-check", label: "Format Check" },
     ],
   },
-] as const;
+];
 
 function pathMatches(pathname: string, to: string) {
   return pathname === to || pathname.startsWith(`${to}/`);
@@ -71,21 +75,22 @@ function pathMatches(pathname: string, to: string) {
 function DesktopNavDropdown({
   label,
   items,
-  pathname,
+  isItemActive,
   open,
   onOpen,
   onClose,
   onDismiss,
 }: {
   label: string;
-  items: ReadonlyArray<{ to: string; label: string }>;
-  pathname: string;
+  items: ReadonlyArray<NavItem>;
+  isItemActive: (to: string) => boolean;
   open: boolean;
   onOpen: () => void;
   onClose: () => void;
   onDismiss: () => void;
 }) {
-  const active = items.some((item) => pathMatches(pathname, item.to));
+  const active = items.some((item) => isItemActive(item.to));
+  const hasDescriptions = items.some((item) => item.description);
 
   return (
     <div
@@ -124,23 +129,29 @@ function DesktopNavDropdown({
           onPointerLeave={(event) => {
             if (event.pointerType === "mouse") onClose();
           }}
-          className="w-56 rounded-xl border-slate-200/90 p-1.5 shadow-xl shadow-slate-900/10 dark:border-slate-800 dark:shadow-black/30"
+          className={cn("rounded-xl border-slate-200/90 p-1.5 shadow-xl shadow-slate-900/10 dark:border-slate-800 dark:shadow-black/30", hasDescriptions ? "w-80" : "w-56")}
         >
-          {items.map((item) => (
-            <DropdownMenuItem key={item.to} asChild>
-              <NavLink
-                to={item.to}
-                className={({ isActive }) =>
-                  cn(
+          {items.map((item) => {
+            const itemActive = isItemActive(item.to);
+            return (
+              <DropdownMenuItem key={item.to} asChild>
+                <Link
+                  to={item.to}
+                  aria-current={itemActive ? "page" : undefined}
+                  className={cn(
                     "w-full rounded-lg px-3 py-2.5",
-                    isActive && "bg-blue-50 font-medium text-blue-700 dark:bg-blue-950/30 dark:text-blue-300",
-                  )
-                }
-              >
-                {item.label}
-              </NavLink>
-            </DropdownMenuItem>
-          ))}
+                    // DropdownMenuItem (asChild) merges "flex items-center gap-2" into this link; with a description the
+                    // link must stack label over description, and `!` beats the merged class whatever the CSS order.
+                    item.description ? "flex !flex-col !items-start gap-0.5" : "block",
+                    itemActive && "bg-blue-50 font-medium text-blue-700 dark:bg-blue-950/30 dark:text-blue-300",
+                  )}
+                >
+                  <span>{item.label}</span>
+                  {item.description ? <span className="block text-xs font-normal leading-4 text-slate-500 dark:text-slate-400">{item.description}</span> : null}
+                </Link>
+              </DropdownMenuItem>
+            );
+          })}
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
@@ -161,6 +172,8 @@ export function MainLayout() {
   const isProjectsSurface = location.pathname === "/projects" || location.pathname.startsWith("/projects/");
   const isForumSurface = location.pathname === "/forum" || location.pathname.startsWith("/forum/") || /^\/(?:u|academics)\/[^/]+\/(?:activity|summary)\/?$/.test(location.pathname);
   const isCommunitySurface = /^\/communities(\/|$)/.test(location.pathname);
+  // The Community group holds two surfaces; every other group matches by path prefix.
+  const isNavItemActive = (to: string) => to === "/forum" ? isForumSurface : to === "/communities" ? isCommunitySurface : pathMatches(location.pathname, to);
   const [isHeaderScrolled, setIsHeaderScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [activeDesktopMenu, setActiveDesktopMenu] = useState<string | null>(null);
@@ -266,12 +279,11 @@ export function MainLayout() {
             className="hidden items-center justify-self-center gap-0.5 whitespace-nowrap min-[1180px]:flex"
           >
             {visibleNavGroups.map((group) => (
-              group.label === "Community" ? <Link key={group.label} to="/forum" aria-current={isForumSurface || isCommunitySurface ? "page" : undefined} className={cn("rounded-md px-3 py-2 text-sm font-medium transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", (isForumSurface || isCommunitySurface) && "bg-muted text-primary")}>{t(group.label)}</Link> :
               <DesktopNavDropdown
                 key={group.label}
                 label={t(group.label)}
-                pathname={location.pathname}
-                items={group.items.map((item) => ({ ...item, label: t(item.label) }))}
+                isItemActive={isNavItemActive}
+                items={group.items.map((item) => ({ ...item, label: t(item.label), description: item.description ? t(item.description) : undefined }))}
                 open={activeDesktopMenu === group.label}
                 onOpen={() => openDesktopMenu(group.label)}
                 onClose={scheduleDesktopMenuClose}
@@ -327,21 +339,21 @@ export function MainLayout() {
                 <div key={group.label} className="space-y-1">
                   <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400">{t(group.label)}</p>
                   {group.items.map((item) => (
-                    <NavLink
+                    <Link
                       key={item.to}
                       to={item.to}
                       onClick={() => setIsMobileMenuOpen(false)}
-                      className={({ isActive }) =>
-                        cn(
-                          "block rounded-md px-3 py-2.5 text-sm font-medium",
-                          isActive
-                            ? "bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-300"
-                            : "text-slate-600 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-zinc-800",
-                        )
-                      }
+                      aria-current={isNavItemActive(item.to) ? "page" : undefined}
+                      className={cn(
+                        "block rounded-md px-3 py-2.5 text-sm font-medium",
+                        isNavItemActive(item.to)
+                          ? "bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-300"
+                          : "text-slate-600 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-zinc-800",
+                      )}
                     >
                       {t(item.label)}
-                    </NavLink>
+                      {item.description ? <span className="mt-0.5 block text-xs font-normal leading-4 text-slate-500 dark:text-slate-400">{t(item.description)}</span> : null}
+                    </Link>
                   ))}
                 </div>
               ))}

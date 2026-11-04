@@ -51,6 +51,11 @@ export interface ForYouPost extends ForumPost {
   reasonStats?: { readers: number; replies: number };
 }
 
+/** Query of GET /personalization/for-you. `limit` is a whole number from 5 to 20; absent means 5. */
+export interface ForYouQuery {
+  limit?: number;
+}
+
 export interface ForYouResponse {
   postsBasis: ForYouPostsBasis;
   papersBasis: ForYouPapersBasis;
