@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { readFileSync } from "node:fs";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
@@ -8,7 +9,8 @@ import type { InterestTopic } from "@trend/shared-types";
 import { CommunityDiscussionsTab } from "@/pages/communities/community-discussions-tab";
 // Static import: no async dictionary loading, so the test cannot time out under load.
 import { vi as vietnameseDictionary } from "@/i18n/locales/vi";
-import { ForYouSection, forYouReasonText } from "../components/for-you-section";
+import { CommunitySuggestions } from "../components/community-suggestions";
+import { ForYouFeed, forYouReasonText } from "../components/for-you-feed";
 import { InterestsCard } from "../components/interests-card";
 import { TopicChipFilter, orderTopicsByProfile } from "../components/topic-chip-filter";
 
@@ -24,8 +26,10 @@ vi.mock("@/i18n", () => ({
     t: (key: string, values?: Record<string, string | number>) => Object.entries(values ?? {}).reduce((text, [name, value]) => text.replace(`{{${name}}}`, String(value)), key),
   }),
 }));
-vi.mock("../hooks/use-personalization", () => ({
-  useForYou: () => mocks.forYou(),
+vi.mock("../hooks/use-personalization", async (importOriginal) => ({
+  // useJoinSuggestion stays real so the join helper itself is tested; only the data hooks are stubbed.
+  ...(await importOriginal<typeof import("../hooks/use-personalization")>()),
+  useForYou: (options: unknown) => mocks.forYou(options),
   useForYouCommunities: () => mocks.suggestions(),
   PERSONALIZATION_KEY: ["personalization"],
   useInterests: () => mocks.interests(),
@@ -36,12 +40,12 @@ vi.mock("../hooks/use-personalization", () => ({
     mute: { mutate: mocks.mute, isPending: false }, unmute: { mutate: mocks.unmute, isPending: false },
   }),
 }));
-vi.mock("@/features/forum/hooks/use-forum", () => ({ useJoinCommunity: () => ({ mutate: mocks.join, isPending: false }) }));
+vi.mock("@/features/forum/hooks/use-forum", () => ({ useJoinCommunity: () => ({ mutateAsync: (id: string) => mocks.join(id) }) }));
 vi.mock("@/features/forum/components/forum-card", () => ({
-  ForumCard: ({ post }: { post: { id: string; title: string } }) => <article data-post={post.id}>{post.title}</article>,
+  ForumCard: ({ post, kicker, layout }: { post: { id: string; title: string }; kicker?: React.ReactNode; layout?: string }) => <article data-post={post.id} data-layout={layout}>{kicker}<a href={`/forum/${post.id}`}>{post.title}</a></article>,
 }));
 vi.mock("@/features/forum", () => ({
-  ForumCard: ({ post }: { post: { id: string; title: string } }) => <article data-post={post.id}>{post.title}</article>,
+  ForumCard: ({ post, kicker, layout }: { post: { id: string; title: string }; kicker?: React.ReactNode; layout?: string }) => <article data-post={post.id} data-layout={layout}>{kicker}<a href={`/forum/${post.id}`}>{post.title}</a></article>,
   useForumPostsInfinite: (params: unknown) => mocks.posts(params),
   useCommunitySummary: () => ({ data: undefined }),
   useRequestCommunitySummary: () => ({ mutate: vi.fn(), isPending: false }),
@@ -109,66 +113,125 @@ const community = (id: string, overrides: Record<string, unknown> = {}) => ({
   id, slug: id, name: `Community ${id}`, researchField: "Computer Science", matchReason: "topic", matchedTopics: [{ key: "nlp", label: "NLP" }, { key: "a", label: "A" }, { key: "b", label: "B" }, { key: "c", label: "C" }], ...overrides,
 });
 
-describe("ForYouSection", () => {
-  it("keeps a reserved aria-busy block while loading and only draws the skeleton when the answer is slow", async () => {
+const emptyFeed = { isLoading: false, error: null, data: { postsBasis: "none", papersBasis: "none", posts: [], papers: [] } };
+const headings = () => Array.from(container.querySelectorAll("h2")).map((node) => node.textContent);
+
+describe("ForYouFeed (7)", () => {
+  it("asks for 20 discussions and keeps a reserved aria-busy block while loading; the skeleton only appears when the answer is slow", async () => {
     mocks.forYou.mockReturnValue({ isLoading: true, data: undefined, error: null });
     mocks.delayed = false;
-    await render(<ForYouSection />);
+    await render(<ForYouFeed />);
+    expect(mocks.forYou).toHaveBeenCalledWith({ limit: 20 });
     const busy = container.querySelector('section[aria-busy="true"]');
     expect(busy).not.toBeNull();
     expect(busy!.className).toContain("min-h-");
     expect(busy!.querySelector(".animate-pulse")).toBeNull();
     mocks.delayed = true;
-    await render(<ForYouSection />);
+    await render(<ForYouFeed />);
     expect(container.querySelector('section[aria-busy="true"] .animate-pulse')).not.toBeNull();
   });
 
-  it("renders nothing when all three blocks are empty, or when the feed fails and there are no communities", async () => {
-    mocks.forYou.mockReturnValue({ isLoading: false, error: null, data: { postsBasis: "none", papersBasis: "none", posts: [], papers: [] } });
-    await render(<ForYouSection />);
-    expect(container.innerHTML).toBe("");
-    mocks.forYou.mockReturnValue({ isLoading: false, error: new Error("boom"), data: undefined });
-    await render(<ForYouSection />);
-    expect(container.innerHTML).toBe("");
+  it("shows an error with Retry that refetches", async () => {
+    const refetch = vi.fn();
+    mocks.forYou.mockReturnValue({ isLoading: false, error: new Error("boom"), data: undefined, refetch, isFetching: false });
+    await render(<ForYouFeed />);
+    expect(container.querySelector('[role="alert"]')!.textContent).toContain("Could not load discussions for you.");
+    await act(async () => buttonByText("Retry")!.click());
+    expect(refetch).toHaveBeenCalledTimes(1);
   });
 
-  it("45. shows one 'For you' heading and switches the block headings per basis", async () => {
+  it("never renders nothing: an empty answer shows 'No suggestions yet' with both links", async () => {
+    mocks.forYou.mockReturnValue(emptyFeed);
+    await render(<ForYouFeed />);
+    expect(container.innerHTML).not.toBe("");
+    expect(headings()).toEqual(["No suggestions yet"]);
+    const links = Array.from(container.querySelectorAll("[data-testid='for-you-empty'] a"));
+    expect(links.map((link) => [link.textContent, link.getAttribute("href")])).toEqual([["Manage interests", "/settings/interests"], ["Explore communities", "/communities"]]);
+  });
+
+  it("the empty state gives way to the communities block when there are suggestions, and waits while they load", async () => {
+    mocks.forYou.mockReturnValue(emptyFeed);
+    mocks.suggestions.mockReturnValue({ data: [community("c1")] });
+    await render(<ForYouFeed />);
+    expect(headings()).toEqual(["Communities you may like"]);
+    mocks.suggestions.mockReturnValue({ data: undefined, isLoading: true });
+    await render(<ForYouFeed />);
+    expect(container.querySelector("[data-testid='for-you-empty']")).toBeNull();
+  });
+
+  it("45. headings follow postsBasis and papersBasis, and the reason sits under each discussion", async () => {
     const posts = [{ post: post("a"), reasonKind: "followed", reasonTopic: { key: "nlp", label: "NLP" }, reasonSource: "followed" }];
     const papers = [{ id: "paper-1", title: "Attention is all you need", publicationYear: 2017, citationCount: 1 }];
     mocks.forYou.mockReturnValue({ isLoading: false, error: null, data: { postsBasis: "personal", papersBasis: "personal", posts, papers } });
     mocks.suggestions.mockReturnValue({ data: [community("c1")] });
-    await render(<ForYouSection />);
-    expect(Array.from(container.querySelectorAll("h2")).map((node) => node.textContent)).toEqual(["For you"]);
-    expect(Array.from(container.querySelectorAll("h3")).map((node) => node.textContent)).toEqual(["Discussions for you", "Papers for you", "Communities you may like"]);
+    await render(<ForYouFeed />);
+    expect(headings()).toEqual(["Discussions for you", "Papers for you", "Communities you may like"]);
     expect(container.querySelector('a[href="/papers/paper-1"]')!.textContent).toBe("Attention is all you need");
     expect(container.textContent).toContain("1 citation");
     expect(container.querySelector('a[href="/settings/interests"]')!.textContent).toBe("Manage interests");
-    expect(container.textContent).not.toContain("Recommended for you");
+    expect(container.querySelector('[data-testid="for-you-reason"]')!.textContent).toBe("Because you follow NLP");
 
     mocks.forYou.mockReturnValue({ isLoading: false, error: null, data: { postsBasis: "explore", papersBasis: "trending", posts: [{ ...posts[0], reasonKind: "new", reasonTopic: { key: "c", label: "Vision Lab" } }], papers } });
-    await render(<ForYouSection />);
-    expect(Array.from(container.querySelectorAll("h3")).map((node) => node.textContent)).toEqual(["Discussions to explore", "Papers on topics people are discussing", "Communities you may like"]);
+    await render(<ForYouFeed />);
+    expect(headings()).toEqual(["Discussions to explore", "Papers on topics people are discussing", "Communities you may like"]);
     expect(container.querySelector('[data-testid="for-you-reason"]')!.textContent).toBe("New in Vision Lab");
   });
 
-  it("45. hides a block whose basis is none, and still shows the communities", async () => {
-    mocks.forYou.mockReturnValue({ isLoading: false, error: null, data: { postsBasis: "none", papersBasis: "none", posts: [], papers: [] } });
-    mocks.suggestions.mockReturnValue({ data: [community("c1")] });
-    await render(<ForYouSection />);
-    expect(Array.from(container.querySelectorAll("h3")).map((node) => node.textContent)).toEqual(["Communities you may like"]);
+  it("P1/P2. discussions use the stacked card and the reason kicker comes before the title link", async () => {
+    const posts = [{ post: post("a"), reasonKind: "followed", reasonTopic: { key: "nlp", label: "NLP" }, reasonSource: "followed" }];
+    mocks.forYou.mockReturnValue({ isLoading: false, error: null, data: { postsBasis: "personal", papersBasis: "none", posts, papers: [] } });
+    await render(<ForYouFeed />);
+    const card = container.querySelector("article[data-post='a']")!;
+    expect(card.getAttribute("data-layout")).toBe("stacked");
+    const reason = card.querySelector("[data-testid='for-you-reason']")!;
+    expect(reason.className).toContain("text-blue-700");
+    expect(reason.className).toContain("font-medium");
+    // text only: no sparkle or any other icon
+    expect(reason.querySelector("svg")).toBeNull();
+    expect(container.querySelector("svg.lucide-sparkles")).toBeNull();
+    expect(reason.compareDocumentPosition(card.querySelector("a")!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it("45. a community card shows at most 3 matched topics or 'Close to your interests', and Join calls join then invalidates personalization and communities", async () => {
-    mocks.forYou.mockReturnValue({ isLoading: false, error: null, data: { postsBasis: "none", papersBasis: "none", posts: [], papers: [] } });
+  it("hides a block whose basis is none, and still shows the communities", async () => {
+    mocks.forYou.mockReturnValue(emptyFeed);
+    mocks.suggestions.mockReturnValue({ data: [community("c1")] });
+    await render(<ForYouFeed />);
+    expect(headings()).toEqual(["Communities you may like"]);
+  });
+});
+
+describe("CommunitySuggestions (8, 9)", () => {
+  it("8. shows only 'Communities you may like': no discussions or papers block, and the feed is not requested", async () => {
+    mocks.suggestions.mockReturnValue({ data: [community("c1")] });
+    await render(<CommunitySuggestions />);
+    expect(headings()).toEqual(["Communities you may like"]);
+    expect(mocks.forYou).not.toHaveBeenCalled();
+  });
+
+  it("P5. the Join button is 44px tall on touch screens and shrinks from sm up", async () => {
+    mocks.suggestions.mockReturnValue({ data: [community("c1")] });
+    await render(<CommunitySuggestions />);
+    const join = buttonByText("Join")!;
+    expect(join.className).toContain("min-h-11");
+    expect(join.className).toContain("sm:min-h-8");
+  });
+
+  it("renders nothing when there is nothing to suggest", async () => {
+    mocks.suggestions.mockReturnValue({ data: [] });
+    await render(<CommunitySuggestions />);
+    expect(container.innerHTML).toBe("");
+  });
+
+  it("a card shows at most 3 matched topics or 'Close to your interests', and Join calls join then invalidates personalization and communities", async () => {
     mocks.suggestions.mockReturnValue({ data: [community("c1"), community("c2", { matchReason: "semantic", matchedTopics: [] })] });
-    mocks.join.mockImplementation((_id: string, options: { onSuccess: () => void }) => options.onSuccess());
+    mocks.join.mockResolvedValue({});
     const invalidate = vi.spyOn(queryClient, "invalidateQueries");
-    await render(<ForYouSection />);
+    await render(<CommunitySuggestions />);
     const cards = Array.from(container.querySelectorAll("ul li"));
     expect(cards[0]!.querySelectorAll(".font-normal")).toHaveLength(3);
     expect(cards[1]!.textContent).toContain("Close to your interests");
     await act(async () => cards[0]!.querySelector<HTMLButtonElement>("button")!.click());
-    expect(mocks.join).toHaveBeenCalledWith("c1", expect.anything());
+    expect(mocks.join).toHaveBeenCalledWith("c1");
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ["personalization"] });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ["communities"] });
   });
@@ -310,25 +373,48 @@ describe("51. review fixes F1-F3 (web)", () => {
     expect(mocks.toastError).toHaveBeenLastCalledWith("You can mute up to 100 topics");
   });
 
-  it("F3 a failed Join shows the server message, and only the clicked card is disabled while it is pending", async () => {
-    mocks.forYou.mockReturnValue({ isLoading: false, error: null, data: { postsBasis: "none", papersBasis: "none", posts: [], papers: [] } });
-    mocks.suggestions.mockReturnValue({ data: [community("c1"), community("c2")] });
-    let settle: (() => void) | undefined;
-    let fail: (() => void) | undefined;
-    mocks.join.mockImplementation((_id: string, options: { onError: (error: unknown) => void; onSettled: () => void }) => {
-      fail = () => options.onError({ response: { data: { error: { message: "You are banned from this community" } } } });
-      settle = () => options.onSettled();
+  for (const [name, view] of [["the communities page", <CommunitySuggestions key="page" />], ["the forum feed", <ForYouFeed key="feed" />]] as const) {
+    it(`9. (${name}) a failed Join shows the server message, and only the clicked card is disabled while it is pending`, async () => {
+      mocks.forYou.mockReturnValue(emptyFeed);
+      mocks.suggestions.mockReturnValue({ data: [community("c1"), community("c2")] });
+      const pending = new Map<string, { resolve: () => void; reject: (error: unknown) => void }>();
+      mocks.join.mockImplementation((id: string) => new Promise<void>((resolve, reject) => { pending.set(id, { resolve: () => resolve(), reject }); }));
+      await render(view);
+      const buttons = () => Array.from(container.querySelectorAll<HTMLButtonElement>("ul li button"));
+      await act(async () => buttons()[0]!.click());
+      expect(buttons().map((button) => button.disabled)).toEqual([true, false]);
+      // a second click on the pending card is ignored
+      await act(async () => buttons()[0]!.click());
+      expect(mocks.join).toHaveBeenCalledTimes(1);
+      // joining the other card does not re-enable the first one when that one settles first
+      await act(async () => buttons()[1]!.click());
+      expect(buttons().map((button) => button.disabled)).toEqual([true, true]);
+      await act(async () => { pending.get("c2")!.resolve(); });
+      expect(buttons().map((button) => button.disabled)).toEqual([true, false]);
+      await act(async () => { pending.get("c1")!.reject({ response: { data: { error: { message: "You are banned from this community" } } } }); });
+      expect(mocks.toastError).toHaveBeenLastCalledWith("You are banned from this community");
+      expect(buttons().map((button) => button.disabled)).toEqual([false, false]);
+      // no server message: the generic string
+      mocks.join.mockRejectedValue(new Error("network"));
+      await act(async () => buttons()[1]!.click());
+      expect(mocks.toastError).toHaveBeenLastCalledWith("Something went wrong. Please try again.");
     });
-    await render(<ForYouSection />);
-    const buttons = () => Array.from(container.querySelectorAll<HTMLButtonElement>("ul li button"));
-    await act(async () => buttons()[0]!.click());
-    expect(buttons().map((button) => button.disabled)).toEqual([true, false]);
-    await act(async () => { fail!(); settle!(); });
-    expect(mocks.toastError).toHaveBeenLastCalledWith("You are banned from this community");
-    expect(buttons().map((button) => button.disabled)).toEqual([false, false]);
-    // no server message: the generic string
-    mocks.join.mockImplementation((_id: string, options: { onError: (error: unknown) => void; onSettled: () => void }) => { options.onError(new Error("network")); options.onSettled(); });
-    await act(async () => buttons()[1]!.click());
-    expect(mocks.toastError).toHaveBeenLastCalledWith("Something went wrong. Please try again.");
+  }
+});
+
+describe("P7 no AI-looking icons in the For you feature", () => {
+  it("the empty state and the intro line carry no icon, and the feed's source files never name a sparkle/star/magic glyph", async () => {
+    mocks.forYou.mockReturnValue(emptyFeed);
+    await render(<ForYouFeed />);
+    expect(container.querySelector("svg")).toBeNull();
+    for (const file of ["../components/for-you-feed.tsx", "../components/community-suggestions.tsx", "../../forum/utils/forum-navigation.ts"]) {
+      expect(readFileSync(new URL(file, import.meta.url), "utf8"), file).not.toMatch(/Sparkle|Stars?\b|Wand|Magic/);
+    }
+  });
+
+  it("the For you feed uses the UserRound icon like the other feeds use theirs", async () => {
+    const { FORUM_FEEDS } = await import("@/features/forum/utils/forum-navigation");
+    const { UserRound } = await import("lucide-react");
+    expect(FORUM_FEEDS.find((feed) => feed.value === "for-you")!.icon).toBe(UserRound);
   });
 });

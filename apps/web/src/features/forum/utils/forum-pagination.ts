@@ -1,4 +1,5 @@
 import type { ForumPostType, ForumSort } from "@trend/shared-types";
+import type { ForumFeed } from "./forum-navigation";
 
 export const FORUM_PAGE_SIZES = [10, 20, 30] as const;
 export const FORUM_DEFAULT_PAGE_SIZE = 20;
@@ -11,13 +12,17 @@ export function parseForumListParams(params: URLSearchParams) {
   const page = rawPage && /^\d+$/.test(rawPage) && Number.isSafeInteger(candidate) && candidate > 0 && candidate <= 1_000_000 ? candidate : 1;
   const size = Number(params.get("pageSize"));
   const pageSize = FORUM_PAGE_SIZES.find((value) => value === size) ?? FORUM_DEFAULT_PAGE_SIZE;
+  const forYou = params.get("feed") === "for-you";
   const rawFeed = params.get("feed") as ForumSort;
   const rawSort = sorts.includes(rawFeed) ? rawFeed : params.get("sort") as ForumSort;
   const rawType = params.get("type") as ForumPostType;
+  // `sort` is what the forum list API understands; `feed` also knows the web-only "for-you".
+  const sort: ForumSort = !forYou && sorts.includes(rawSort) ? rawSort : "latest";
   return {
     page, pageSize,
+    feed: (forYou ? "for-you" : sort) as ForumFeed,
     category: params.get("category") ?? params.get("community") ?? "",
-    sort: sorts.includes(rawSort) ? rawSort : "latest" as ForumSort,
+    sort,
     type: types.includes(rawType) ? rawType : "" as const,
     query: (params.get("q") ?? params.get("search") ?? "").slice(0, 240),
   };
@@ -25,7 +30,11 @@ export function parseForumListParams(params: URLSearchParams) {
 
 /** Keep filters together; every non-page edit starts at page one. */
 export function updateForumListParam(params: URLSearchParams, key: string, value?: string) {
+  // "For you" never combines with another filter: it replaces the whole query.
+  if ((key === "feed" || key === "sort") && value === "for-you") return new URLSearchParams({ feed: "for-you" });
   const next = new URLSearchParams(params);
+  // Narrowing by category, type or text leaves the personalised feed for the plain one.
+  if (value && ["category", "community", "type", "q"].includes(key) && next.get("feed") === "for-you") next.delete("feed");
   if (key === "sort" || key === "feed") {
     next.delete("sort");
     next.delete("feed");

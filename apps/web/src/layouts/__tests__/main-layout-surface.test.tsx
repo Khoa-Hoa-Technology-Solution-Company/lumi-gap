@@ -21,8 +21,9 @@ function render(path: string) {
   return renderToStaticMarkup(<StaticRouter location={path}><MainLayout /></StaticRouter>);
 }
 
+/** The "Community" dropdown trigger; it is active when its class carries the blue underline. */
 function communityLink(markup: string) {
-  return markup.match(/<a[^>]*href="\/forum"[^>]*>Community<\/a>/)?.[0] ?? "";
+  return markup.match(/<button[^>]*>Community<svg/)?.[0] ?? "";
 }
 
 describe("Community area shell", () => {
@@ -51,14 +52,13 @@ describe("Community area shell", () => {
   });
 
   it("highlights the Community menu on forum and community pages only", () => {
-    for (const path of ["/forum", "/forum/categories", "/communities", "/communities/new", "/communities/data-science"]) {
+    for (const path of ["/forum", "/forum/categories", "/u/x/activity", "/communities", "/communities/new", "/communities/data-science"]) {
       const link = communityLink(render(path));
-      expect(link, path).toContain('aria-current="page"');
-      expect(link, path).toContain("bg-muted");
+      expect(link, path).toContain("border-blue-600");
     }
     const other = communityLink(render("/trends"));
-    expect(other).not.toContain("aria-current");
-    expect(other).not.toContain("bg-muted text-primary");
+    expect(other).toContain("border-transparent");
+    expect(other).not.toContain("border-blue-600");
   });
 
   it("restyles the footer only on community pages", () => {

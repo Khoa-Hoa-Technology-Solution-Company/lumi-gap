@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { renderToStaticMarkup } from "react-dom/server";
 import { StaticRouter } from "react-router-dom/server";
 import { describe, expect, it, vi } from "vitest";
@@ -46,7 +47,8 @@ describe("Forum sidebar real URL navigation", () => {
       expect(url.searchParams.get("community")).toBe(community.slug);
       expect(url.searchParams.has("page")).toBe(false);
     }
-    expect(navigation.some((item) => item.href === "/communities")).toBe(false);
+    // Research Communities is reachable from the forum sidebar, never an active entry of it
+    expect(navigation.filter((item) => item.href === "/communities")).toEqual([{ href: "/communities", active: false, label: "Research Communities" }]);
     const all = new URL(navigation.find((item) => item.label === "All categories")!.href!, "https://local.test");
     expect(all.pathname).toBe("/forum/categories");
     expect(all.search).toBe("");
@@ -102,5 +104,19 @@ describe("forum category visual presentation", () => {
   it("uses the restrained general treatment for custom or missing slugs", () => {
     expect(getForumCategoryPresentation("new-custom-category").tone).toBe("general-research");
     expect(getForumCategoryPresentation(null).tone).toBe("general-research");
+  });
+});
+
+describe("Research Communities in the forum sidebar (P6)", () => {
+  it("sits in its own section after Categories, not inside the Categories section", () => {
+    const document = new DOMParser().parseFromString(render("/forum"), "text/html");
+    const link = document.querySelector('a[href="/communities"]')!;
+    const section = link.closest(".forum-sidebar-section")!;
+    const categories = document.querySelector(".forum-sidebar-section--categories")!;
+    expect(section.classList.contains("forum-sidebar-section--communities")).toBe(true);
+    expect(categories.contains(link)).toBe(false);
+    expect(section.className).toContain("border-t");
+    expect(section.querySelector("p")).toBeNull();
+    expect(categories.compareDocumentPosition(section) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });

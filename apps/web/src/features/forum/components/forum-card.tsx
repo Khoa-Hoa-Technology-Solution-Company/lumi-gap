@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { CheckCircle2, Lock, Pin, ThumbsUp } from "lucide-react";
 import type { ForumPostView } from "../api/forum.api";
@@ -10,14 +11,54 @@ import { cn } from "@/utils/cn";
 import { getForumCategoryPresentation } from "../utils/forum-category-presentation";
 import { preloadForumDetailPage } from "../utils/forum-page-loading";
 
-interface ForumCardProps { post: ForumPostView; locale: string; isAuthed?: boolean; onVote?: (value: -1 | 0 | 1) => void; categoryContext?: boolean; viewMode?: "compact" | "expanded" }
+interface ForumCardProps {
+  post: ForumPostView; locale: string; isAuthed?: boolean; onVote?: (value: -1 | 0 | 1) => void; categoryContext?: boolean; viewMode?: "compact" | "expanded";
+  /** "row" is the table row that relies on the column header; "stacked" labels every number and needs no header row. */
+  layout?: "row" | "stacked";
+  /** Stacked only: a line above the title (the "why you see this" reason on the For you feed). */
+  kicker?: ReactNode;
+}
 
 /** Compact topic row; all metrics come from the server, never the loaded replies. */
-export function ForumCard({ post, locale, categoryContext = false, viewMode = "compact" }: ForumCardProps) {
+export function ForumCard({ post, locale, categoryContext = false, viewMode = "compact", layout = "row", kicker }: ForumCardProps) {
   const { t } = useI18n();
   const compact = (value: number) => formatForumCompactNumber(value, locale);
   const activityAt = post.lastActivityAt ?? post.createdAt;
   const categoryMarkerClass = getForumCategoryPresentation(post.community?.slug).markerClassName;
+  if (layout === "stacked") {
+    // Every number carries its unit ("2 replies", "1 view"), so no column header is needed.
+    const replies = post.replyCount === 1 ? t("1 reply") : t("{{count}} replies", { count: formatForumNumber(post.replyCount, locale) });
+    const views = post.viewCount === 1 ? t("1 view") : t("{{count}} views", { count: formatForumNumber(post.viewCount, locale) });
+    return (
+      <article className={cn("forum-topic-stacked group px-4 py-3 transition-colors hover:bg-muted/40", post.isPinned && "bg-muted/20")} data-layout="stacked">
+        {kicker}
+        <Link to={forumPostHref(post)} onPointerEnter={preloadForumDetailPage} onFocus={preloadForumDetailPage} className="block rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <h2 className="line-clamp-2 break-words text-base font-semibold leading-snug text-foreground group-hover:text-primary">
+            {post.isPinned ? <Pin className="mr-1.5 inline h-3.5 w-3.5 text-muted-foreground" aria-label={t("Pinned")} /> : null}
+            {post.status === "locked" ? <Lock className="mr-1.5 inline h-3.5 w-3.5 text-muted-foreground" aria-label={t("Locked")} /> : null}
+            {post.title}
+          </h2>
+        </Link>
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs leading-5 text-muted-foreground" data-testid="stacked-meta">
+          <ForumAuthorPopover author={post.author} className="inline-flex items-center gap-1.5 rounded">
+            <ForumAuthorAvatar author={post.author} size="xs" />
+            <span className="font-medium text-foreground/80">{post.author.fullName}</span>
+          </ForumAuthorPopover>
+          <span aria-hidden="true">·</span>
+          {post.community ? <Link to={`/forum?category=${encodeURIComponent(post.community.slug)}`} className="font-medium hover:text-primary">{t(post.community.name)}</Link> : <span>{t("General Research")}</span>}
+          <span aria-hidden="true">·</span>
+          <ForumPostTypeBadge type={post.type} size="sm" showIcon={false} className="border-0 px-0 py-0 text-xs" />
+        </div>
+        <p className="mt-1 flex flex-wrap items-center gap-x-1.5 text-xs tabular-nums text-muted-foreground" data-testid="stacked-stats">
+          <Link to={forumPostHref(post, "responses-section")} className="hover:text-primary">{replies}</Link>
+          <span aria-hidden="true">·</span>
+          <span>{views}</span>
+          <span aria-hidden="true">·</span>
+          <time dateTime={activityAt} title={new Date(activityAt).toLocaleString(locale)}>{formatForumActivityTime(activityAt, locale)}</time>
+        </p>
+      </article>
+    );
+  }
   return (
     <article className={cn("forum-topic-row group grid transition-colors hover:bg-muted/40", post.isPinned && "forum-topic-row-pinned bg-muted/20")}>
       <ForumAuthorPopover author={post.author} className="forum-topic-mobile-avatar"><ForumAuthorAvatar author={post.author} size="sm" /></ForumAuthorPopover>

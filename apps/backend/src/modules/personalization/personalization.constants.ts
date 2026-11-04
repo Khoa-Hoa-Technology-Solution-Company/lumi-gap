@@ -10,7 +10,10 @@ export const PERSONALIZATION = {
   CANDIDATE_LIMIT: 200,
   FRESH_HALF_LIFE_DAYS: 14,
   FRESH_FLOOR: 0.3,
+  /** Default number of discussions of GET /for-you; the caller may ask for FEED_MIN..FEED_MAX. */
   FEED_SIZE: 5,
+  FEED_MIN: 5,
+  FEED_MAX: 20,
   /** W of a topic that only comes from a joined community is COMMUNITY_BASE_WEIGHT + (1 - COMMUNITY_BASE_WEIGHT) x s. */
   COMMUNITY_BASE_WEIGHT: 0.5,
   /** Trending needs this much heat AND this many distinct participants in the window. */

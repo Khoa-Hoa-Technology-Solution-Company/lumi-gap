@@ -208,7 +208,7 @@ export const personalizationService = {
   },
 
   /** GET /for-you. Posts and papers fall back independently; the feed itself is never cached. */
-  async forYou(sub: string, role: string | undefined, now: Date = new Date()): Promise<ForYouResponse> {
+  async forYou(sub: string, role: string | undefined, limit: number = PERSONALIZATION.FEED_SIZE, now: Date = new Date()): Promise<ForYouResponse> {
     const userId = await resolveUserUuid(sub);
     const vocab = await loadVocabulary();
     const { profile } = await loadProfile(userId, vocab, now);
@@ -216,7 +216,7 @@ export const personalizationService = {
     const excludePostIds = [...new Set([...signals.map((signal) => signal.postId), ...voted])];
     const visibilitySql = await forumPostVisibilitySql({ userId, role: role as never }, "p");
 
-    // Posts: profile first, then trending to fill the five slots.
+    // Posts: profile first, then trending, then new, until `limit` (ranked once per request; nothing is cached).
     const keys = profile.topics.filter((topic) => topic.matchable).map((topic) => topic.key);
     let personal: ReturnType<typeof rankPersonal> = [];
     if (keys.length > 0) {
@@ -233,11 +233,11 @@ export const personalizationService = {
     }
     const windowSince = new Date(now.getTime() - PERSONALIZATION.TRENDING_DAYS * DAY_MS);
     // Trending and new posts only matter when personal matches do not fill the feed.
-    const windowRows = personal.length >= PERSONALIZATION.FEED_SIZE ? [] : await fetchCandidates({
+    const windowRows = personal.length >= limit ? [] : await fetchCandidates({
       userId, visibilitySql, since: windowSince, windowSince, excludePostIds, limit: PERSONALIZATION.CANDIDATE_LIMIT,
     });
     const tiers = rankTiers(windowRows.map((row) => toWindowCandidate(row, vocab)), now);
-    const { basis: postsBasis, entries } = assembleFeed(personal, tiers);
+    const { basis: postsBasis, entries } = assembleFeed(personal, tiers, limit);
 
     const presented = await forumService.listPostsByIds(entries.map((entry) => entry.postId), userId);
     const byId = new Map(presented.map((item) => [item.internalId, item.post]));

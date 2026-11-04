@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import type { ForYouQuery } from "@trend/shared-types";
 import { personalizationService } from "./personalization.service.js";
 
 export const personalizationController = {
@@ -29,6 +30,6 @@ export const personalizationController = {
     res.json({ success: true, data: await personalizationService.communities(req.user!.sub) });
   },
   async forYou(req: Request, res: Response) {
-    res.json({ success: true, data: await personalizationService.forYou(req.user!.sub, req.user!.role) });
+    res.json({ success: true, data: await personalizationService.forYou(req.user!.sub, req.user!.role, (req.query as ForYouQuery).limit) });
   },
 };

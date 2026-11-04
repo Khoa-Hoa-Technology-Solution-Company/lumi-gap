@@ -43,7 +43,7 @@ export function ForumCategoryDirectoryPage() {
                 </label>
               </div>
               <nav ref={feedNavigation} className="forum-topic-feeds flex min-w-0 flex-1 flex-nowrap items-center gap-0.5 overflow-x-auto" aria-label={t("Forum feeds")}>
-                {FORUM_FEEDS.map((feed) => {
+                {FORUM_FEEDS.filter((feed) => feed.value !== "for-you" || isAuthed).map((feed) => {
                   const href = `/forum?feed=${feed.value}`;
                   return <Link key={feed.value} to={feed.value === "following" && !isAuthed ? `/login?returnTo=${encodeURIComponent(href)}` : href} title={t(feed.description)} className="forum-topic-feed relative min-h-10 min-w-max rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted/70 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t(feed.label)}</Link>;
                 })}
