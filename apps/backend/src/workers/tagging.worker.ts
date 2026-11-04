@@ -9,6 +9,7 @@ import { startWorkerHeartbeat } from "../infrastructure/worker-heartbeat.js";
 import {
   APPLY_ALL_TAGS_JOB, APPLY_TAG_JOB, tagAssignmentService, type ApplyTagJobData,
 } from "../modules/tags/tag-assignment.service.js";
+import { RECOMPUTE_FORUM_TOPICS_JOB, recomputeAllPostTopics } from "../modules/personalization/personalization-topics.service.js";
 
 enforcePostgresOnlyRuntime();
 
@@ -19,7 +20,8 @@ const CRON_JOB_ID = "apply-all-tags-cron";
  * Standalone tagging worker — a SEPARATE Node process from the API.
  * Run with: pnpm --filter backend worker:tagging
  *
- * Consumes the "tagging" queue: `apply-tag` recomputes one tag, `apply-all-tags` every tag.
+ * Consumes the "tagging" queue: `apply-tag` recomputes one tag, `apply-all-tags` every tag, `recompute-forum-topics`
+ * refreshes the stored topic keys of forum posts (personalized "For you").
  * Also registers a daily cron (TAGGING_CRON) so papers synced since the last run get tagged.
  */
 async function registerCron() {
@@ -63,7 +65,18 @@ async function main() {
           ruleTagged: results.reduce((sum, r) => sum + r.ruleTagged, 0),
           embeddingTagged: results.reduce((sum, r) => sum + r.embeddingTagged, 0),
         }, "all tags applied");
+        // Daily run: also catches keyword-table changes that no request announced.
+        try {
+          logger.info({ jobId: job.id, ...(await recomputeAllPostTopics()) }, "forum topics recomputed");
+        } catch (error) {
+          logger.error({ jobId: job.id, error }, "forum topic recompute failed after tag run");
+        }
         return { tags: results.length, failures };
+      }
+      if (job.name === RECOMPUTE_FORUM_TOPICS_JOB) {
+        const result = await recomputeAllPostTopics();
+        logger.info({ jobId: job.id, ...result }, "forum topics recomputed");
+        return result;
       }
       logger.warn({ jobId: job.id, name: job.name }, "unknown tagging job ignored");
       return null;

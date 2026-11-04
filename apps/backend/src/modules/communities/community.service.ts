@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import type { Community, CommunityRecommendation, CommunityStatus as SharedCommunityStatus, CommunitySuggestion, UserRole } from "@trend/shared-types";
+import type { Community, CommunityStatus as SharedCommunityStatus, CommunitySuggestion, UserRole } from "@trend/shared-types";
 import { AppError } from "../../common/exceptions/app-error.js";
 import { Prisma } from "../../generated/prisma/client.js";
 import { parseDatabaseId, publicDatabaseId } from "../../infrastructure/database/database-id.js";
@@ -12,12 +12,12 @@ import {
   canProposeCommunity,
   initialCommunityStatus,
   isCommunityAdmin,
-  matchInterests,
   MAX_PENDING_PROPOSALS,
-  prepareInterests,
   type CommunityActor,
 } from "./community.rules.js";
 import { enqueueCommunityEmbedding, nearestCommunityIds } from "./community-embedding.service.js";
+import { enqueueRecomputeForumTopics } from "../personalization/personalization-topics.service.js";
+import { invalidatePersonalizationProfile } from "../personalization/personalization.cache.js";
 import type { CommunityListQuery } from "./dto/community.schema.js";
 
 type CommunityContent = {
@@ -244,7 +244,7 @@ export function narrowVisibility(value: string): "public" | "private" {
   return "private";
 }
 
-function presentCommunity(community: {
+export function presentCommunity(community: {
   id: string; legacyMongoId: string | null; name: string; slug: string; description: string;
   researchTopics: string[]; researchField: string | null; icon: string | null; status: string;
   rules: string[]; memberCount: number; threadCount: number;
@@ -294,7 +294,7 @@ export const communityService = {
       return created;
     }).catch(translateNameConflict);
     await auditService.log("community.created", { userId: actor.sub, targetTableName: "communities", targetRecordId: community.id, details: { status: community.status } });
-    if (community.status === "ACTIVE") enqueueCommunityEmbedding();
+    if (community.status === "ACTIVE") { enqueueCommunityEmbedding(); enqueueRecomputeForumTopics(); }
     if (community.status === REVIEW_PENDING_STATUS) {
       await notifySafely({ role: "admin", title: "New community proposal", message: `“${community.name}” is waiting for approval.`, type: "COMMUNITY_PROPOSED", targetKind: "community", targetId: community.id });
     }
@@ -363,53 +363,6 @@ export const communityService = {
       .slice(0, 30);
   },
 
-  /** Suggests ACTIVE communities whose topics overlap the viewer's research interests, then fills up with semantic neighbours. */
-  async recommend(userId: string, limit = 6): Promise<CommunityRecommendation[]> {
-    const resolvedUserId = await resolveUserId(userId);
-    const prisma = getPrisma();
-    const user = await prisma.user.findUniqueOrThrow({ where: { id: resolvedUserId }, select: { researchInterests: true } });
-    const interests = prepareInterests(user.researchInterests);
-    if (interests.length === 0) return [];
-    const [joined, candidates] = await Promise.all([
-      prisma.communityMembership.findMany({ where: { userId: resolvedUserId }, select: { communityId: true } }),
-      prisma.community.findMany({ where: { status: "ACTIVE", isForumCategory: false }, orderBy: [{ memberCount: "desc" }, { id: "asc" }], take: 300 }),
-    ]);
-    const excluded = new Set(joined.map((row) => row.communityId));
-    const topicMatches = candidates
-      .filter((community) => !excluded.has(community.id))
-      .map((community) => ({ community, matchedInterests: matchInterests(interests, community) }))
-      .filter((entry) => entry.matchedInterests.length > 0)
-      .sort((a, b) => b.matchedInterests.length - a.matchedInterests.length || b.community.memberCount - a.community.memberCount)
-      .slice(0, limit);
-    const byTopic = topicMatches.map(({ community, matchedInterests }) => ({
-      ...presentCommunity(community, null, undefined, resolvedUserId),
-      matchedInterests,
-      matchReason: "topic" as const,
-    }));
-    if (byTopic.length >= limit) return byTopic;
-
-    // Not enough string matches: fill the rest with communities close in meaning to the interests.
-    const vector = await embedQuerySafely(interests.join(", "));
-    if (!vector) return byTopic;
-    const matchedIds = topicMatches.map((entry) => entry.community.id);
-    const nearest = await nearestCommunityIds(vector, {
-      limit: limit - byTopic.length,
-      excludeIds: [...excluded, ...matchedIds],
-    });
-    if (nearest.length === 0) return byTopic;
-    const similarityById = new Map(nearest.map((row) => [row.id, row.similarity]));
-    const rows = await prisma.community.findMany({ where: { id: { in: nearest.map((row) => row.id) }, status: "ACTIVE", isForumCategory: false } });
-    const semantic = rows
-      .sort((a, b) => (similarityById.get(b.id) ?? 0) - (similarityById.get(a.id) ?? 0))
-      .map((community) => ({
-        ...presentCommunity(community, null, undefined, resolvedUserId),
-        matchedInterests: [] as string[],
-        matchReason: "semantic" as const,
-        similarity: Math.round((similarityById.get(community.id) ?? 0) * 100) / 100,
-      }));
-    return [...byTopic, ...semantic];
-  },
-
   /** Semantic "did you mean" for a free-text query; empty when nothing is close or embedding is unavailable. */
   async suggest(q: string, userId?: string, role?: UserRole, limit = 5): Promise<CommunitySuggestion[]> {
     const resolvedUserId = userId ? await resolveUserId(userId) : undefined;
@@ -461,7 +414,7 @@ export const communityService = {
       // Invalidate the stale vector in the same transaction; the worker recomputes it.
       if (contentChanged) await tx.$executeRaw`UPDATE "communities" SET "embedding" = NULL, "embedding_updated_at" = NULL WHERE "id" = ${id}::uuid`;
     }).catch(translateNameConflict);
-    if (contentChanged) enqueueCommunityEmbedding();
+    if (contentChanged) { enqueueCommunityEmbedding(); enqueueRecomputeForumTopics(); }
     await auditService.log("community.updated", { userId: actorId, targetTableName: "communities", targetRecordId: id, details: { fields: Object.keys(input) } });
     return this.get(id, actorId, actorRole);
   },
@@ -481,7 +434,7 @@ export const communityService = {
       }
       await tx.community.update({ where: { id }, data: { status } });
     }).catch(translateNameConflict);
-    if (status === "ACTIVE") enqueueCommunityEmbedding();
+    if (status === "ACTIVE") { enqueueCommunityEmbedding(); enqueueRecomputeForumTopics(); }
     await auditService.log("community.status_changed", { userId: actorId, targetTableName: "communities", targetRecordId: id, details: { from: current.status, to: status } });
     return this.get(id, actorId, actorRole);
   },
@@ -495,7 +448,7 @@ export const communityService = {
       data: { status: nextStatus, reviewNote: input.note ?? null, reviewedById: reviewerId, reviewedAt: new Date() },
     });
     if (!changed.count) throw AppError.conflict("Only communities pending approval can be reviewed");
-    if (input.decision === "approve") enqueueCommunityEmbedding();
+    if (input.decision === "approve") { enqueueCommunityEmbedding(); enqueueRecomputeForumTopics(); }
     await auditService.log(input.decision === "approve" ? "community.approved" : "community.rejected", { userId: actorId, targetTableName: "communities", targetRecordId: id, details: { note: input.note } });
     const reviewed = await getPrisma().community.findUniqueOrThrow({ where: { id }, select: { name: true, ownerId: true } });
     const approved = input.decision === "approve";
@@ -565,6 +518,7 @@ export const communityService = {
       if (community.status !== "ACTIVE") throw AppError.conflict("Only active communities can accept new members");
       return joinInTx(tx, id, resolvedUserId);
     });
+    await invalidatePersonalizationProfile(resolvedUserId);
     if (previousStatus !== "active") {
       await auditService.log("community.joined", { userId, targetTableName: "community_memberships", targetRecordId: membership.id, details: { communityId: id, status: membership.status } });
     }
@@ -587,6 +541,7 @@ export const communityService = {
       return membership;
     });
     if (!removed) return;
+    await invalidatePersonalizationProfile(resolvedUserId);
     await auditService.log("community.left", { userId, targetTableName: "community_memberships", targetRecordId: removed.id, details: { communityId: id } });
   },
 
@@ -736,6 +691,7 @@ export const communityService = {
       return { updated: result, target: membership, communityName: community.name };
     });
     await auditService.log("community.member.updated", { userId: actorId, targetTableName: "community_memberships", targetRecordId: target.id, details: input });
+    if (input.status && input.status !== target.status) await invalidatePersonalizationProfile(resolvedTargetId);
     if (input.status && input.status !== target.status && ["active", "banned"].includes(input.status)) {
       const copy = {
         active: { title: "Community access restored", message: `You can take part in “${communityName}” again.`, type: "COMMUNITY_MEMBER_APPROVED" },

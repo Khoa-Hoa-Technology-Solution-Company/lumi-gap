@@ -1,3 +1,4 @@
+import { enqueueRecomputeForumTopics } from "../personalization/personalization-topics.service.js";
 import {
   classifyAcademicPosition,
   type AcademicAffiliation,
@@ -437,6 +438,7 @@ export const academicProfileService = {
       }
     });
     await capabilityService.evaluate(user.id);
+    if (input.researchInterests !== undefined) enqueueRecomputeForumTopics();
     if (displayNameChanged) await auditService.log("academic_profile.display_name.changed", { userId: user.id, targetTableName: "users", targetRecordId: user.id });
     if (positionChanged) await auditService.log("academic_profile.position.changed", { userId: user.id, targetTableName: "academic_profiles", targetRecordId: profile.id, details: { previous: profile.positionTitle, next: nextTitle, previousStatus: profile.positionStatus } });
     if (institutionChanged) await auditService.log("academic_profile.affiliation.changed", { userId: user.id, targetTableName: "affiliations", targetRecordId: profile.id, details: { previous: currentAffiliation?.institutionName ?? user.institution, next: requestedInstitution } });

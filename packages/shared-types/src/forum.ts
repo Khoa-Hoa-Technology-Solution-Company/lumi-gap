@@ -58,14 +58,6 @@ export interface CommunityFacet {
   count: number;
 }
 
-export interface CommunityRecommendation extends Community {
-  matchedInterests: string[];
-  /** "topic" = string overlap with research interests; "semantic" = embedding similarity. */
-  matchReason: "topic" | "semantic";
-  /** Embedding similarity 0..1; present only for "semantic" matches. */
-  similarity?: number;
-}
-
 /** A community returned by semantic search when the text query matched nothing. */
 export interface CommunitySuggestion extends Community {
   similarity: number;

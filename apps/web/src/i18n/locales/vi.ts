@@ -33,9 +33,11 @@ import { trendResearchLinkViStrings } from "./trend-research-links";
 import { trendPeriodsViStrings } from "./trend-periods";
 import { qualityEvaluationVi } from "./quality-evaluation";
 import { adminCatalogVi } from "./admin-catalog";
+import { personalizationViStrings } from "./personalization";
 
 export const vi: Record<keyof typeof en, string> = {
   ...en,
+  ...personalizationViStrings,
   ...qualityEvaluationVi,
   ...adminCatalogVi,
   ...manuscriptsVi,

@@ -26,7 +26,6 @@ vi.mock("@/features/forum", () => ({
   },
   useCommunityList: mocks.list,
   useCommunityFacets: () => ({ data: [] }),
-  useCommunityRecommendations: () => ({ data: [] }),
   useCommunitySuggestions: () => ({ data: [] }),
   useJoinCommunity: () => mutation,
   useLeaveCommunity: () => ({ ...mutation, mutate: mocks.leave }),

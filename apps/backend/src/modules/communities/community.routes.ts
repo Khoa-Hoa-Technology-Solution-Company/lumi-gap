@@ -41,7 +41,6 @@ const suggestionLimiter = createRateLimiter("communities:suggestionLimiter", {
 communityRouter.get("/", optionalAuth, validate(listQuerySchema, "query"), communityController.list);
 communityRouter.post("/", requireAuth, validate(communityCreateSchema), communityController.create);
 communityRouter.get("/facets", optionalAuth, communityController.facets);
-communityRouter.get("/recommendations", requireAuth, communityController.recommendations);
 communityRouter.get("/suggestions", optionalAuth, suggestionLimiter, validate(suggestQuerySchema, "query"), communityController.suggestions);
 communityRouter.get("/:idOrSlug", optionalAuth, validate(lookupParamsSchema, "params"), communityController.get);
 communityRouter.patch("/:id", requireAuth, validate(idParamsSchema, "params"), validate(communityUpdateSchema), communityController.update);

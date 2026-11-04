@@ -11,7 +11,7 @@ vi.mock("../community.service.js", async (importOriginal) => {
   return { ...original, communityService: { ...original.communityService, suggest } };
 });
 // Importing the router must not open real queue connections.
-vi.mock("../../../infrastructure/queue.js", () => ({ embeddingQueue: { add: vi.fn().mockResolvedValue(undefined) } }));
+vi.mock("../../../infrastructure/queue.js", () => ({ embeddingQueue: { add: vi.fn().mockResolvedValue(undefined) }, taggingQueue: { add: vi.fn().mockResolvedValue(undefined) } }));
 
 describe("GET /communities/suggestions rate limit", () => {
   let server: import("node:http").Server;

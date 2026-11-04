@@ -73,6 +73,7 @@ const postQuerySchema = paginationSchema.extend({
   linkedPaperId: objectIdSchema.optional(),
   type: z.enum(["QUESTION", "DISCUSSION", "PAPER_DISCUSSION", "RESEARCH_GAP_DISCUSSION"]).optional(),
   tag: z.string().trim().min(1).max(80).optional(),
+  topic: z.string().trim().min(1).max(80).optional(),
   query: z.string().trim().min(1).max(240).optional(),
   sort: z.enum(["latest", "popular", "unanswered", "following"]).default("latest"),
   feed: z.enum(["latest", "popular", "unanswered", "following"]).optional(),

@@ -15,17 +15,6 @@ export function normalizeTerm(value: string): string {
   return value.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 }
 
-/** Normalized research interests worth matching on (drops blanks, duplicates and tokens under 3 characters). */
-export function prepareInterests(interests: string[]): string[] {
-  return [...new Set(interests.map(normalizeTerm).filter((term) => term.length >= 3))];
-}
-
-/** Which of the (already normalized) interests overlap a community's name, field or topics. */
-export function matchInterests(interests: string[], community: { name: string; researchField: string | null; researchTopics: string[] }): string[] {
-  const terms = [community.name, community.researchField ?? "", ...community.researchTopics].map(normalizeTerm).filter((term) => term.length >= 3);
-  return interests.filter((interest) => terms.some((term) => term.includes(interest) || interest.includes(term)));
-}
-
 export function isCommunityAdmin(actor: Pick<CommunityActor, "systemRole" | "role">): boolean {
   return actor.systemRole === "ADMIN" || actor.role === "admin";
 }
