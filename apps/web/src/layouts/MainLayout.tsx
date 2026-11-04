@@ -55,8 +55,8 @@ const navGroups: readonly NavGroup[] = [
   {
     label: "Community",
     items: [
-      { to: "/forum", label: "Research Forum", description: "Post, ask, exchange and discuss research across the whole platform." },
-      { to: "/communities", label: "Research Communities", description: "Discover and join communities around research directions to follow and discuss them with people who share your interests." },
+      { to: "/forum", label: "Research Forum", description: "Discussions across the platform" },
+      { to: "/communities", label: "Research Communities", description: "Groups by research direction" },
     ],
   },
   {

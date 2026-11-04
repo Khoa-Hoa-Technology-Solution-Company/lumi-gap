@@ -19,8 +19,8 @@ vi.mock("@/features/credits", () => ({ useCreditBalance: () => ({ data: undefine
 vi.mock("@/features/bookmarks", () => ({ useBookmarks: () => ({ data: undefined }) }));
 vi.mock("@/features/notifications", () => ({ useNotifications: () => ({ data: undefined, isLoading: false }) }));
 
-const FORUM_TEXT = "Post, ask, exchange and discuss research across the whole platform.";
-const COMMUNITIES_TEXT = "Discover and join communities around research directions to follow and discuss them with people who share your interests.";
+const FORUM_TEXT = "Discussions across the platform";
+const COMMUNITIES_TEXT = "Groups by research direction";
 
 let root: Root;
 let container: HTMLDivElement;

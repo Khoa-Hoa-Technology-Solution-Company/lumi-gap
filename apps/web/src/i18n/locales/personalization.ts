@@ -75,6 +75,8 @@ const personalizationKeys = [
   "Follow a topic, read a few discussions or join a community, and unread discussions will be picked for you here.",
   "Explore communities",
   "Could not load discussions for you.",
+  "Discussions across the platform",
+  "Groups by research direction",
 ] as const;
 
 export const personalizationStrings = Object.fromEntries(personalizationKeys.map((key) => [key, key])) as Record<(typeof personalizationKeys)[number], string>;
@@ -155,4 +157,6 @@ export const personalizationViStrings: Record<(typeof personalizationKeys)[numbe
   "Follow a topic, read a few discussions or join a community, and unread discussions will be picked for you here.": "Hãy theo dõi một chủ đề, đọc vài thảo luận hoặc tham gia một cộng đồng, các thảo luận chưa đọc sẽ được chọn cho bạn ở đây.",
   "Explore communities": "Khám phá cộng đồng",
   "Could not load discussions for you.": "Không tải được các thảo luận dành cho bạn.",
+  "Discussions across the platform": "Thảo luận chung trên toàn nền tảng",
+  "Groups by research direction": "Nhóm theo hướng nghiên cứu",
 };
