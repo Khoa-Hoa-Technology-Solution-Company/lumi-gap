@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ChevronDown, Clock3, Eye, Heart, Link2, MessageSquare, Sparkles, X } from "lucide-react";
+import { ChevronDown, Clock3, FileText, X } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useI18n } from "@/i18n";
 import type { ForumCommentView, ForumPostView } from "../api/forum.api";
@@ -20,7 +20,7 @@ function excerpt(content: string, limit = 300) {
   return sentence?.trim() || `${text.slice(0, limit).replace(/\s\S*$/, "")}…`;
 }
 
-export function ForumTopicStats({ post, comments, hasMore, onLoadMore, loadingMore, onFilterAuthor, onJumpToPost, compact = false }: {
+export function ForumTopicStats({ post, comments, hasMore, onLoadMore, loadingMore, onFilterAuthor, onJumpToPost }: {
   post: ForumPostView;
   comments: ForumCommentView[];
   hasMore?: boolean;
@@ -28,7 +28,6 @@ export function ForumTopicStats({ post, comments, hasMore, onLoadMore, loadingMo
   loadingMore?: boolean;
   onFilterAuthor?: (authorId: string) => void;
   onJumpToPost?: (postNumber: number) => void;
-  compact?: boolean;
 }) {
   const { t, language } = useI18n();
   const [summaryOpen, setSummaryOpen] = useState(false);
@@ -43,28 +42,24 @@ export function ForumTopicStats({ post, comments, hasMore, onLoadMore, loadingMo
   const lastActivityAt = post.lastActivityAt ?? post.createdAt;
   const authorTopicPostCount = (authorId: string) => hasMore ? undefined : (post.author.id === authorId ? 1 : 0) + comments.filter((comment) => comment.author.id === authorId).length;
 
-  return <section aria-label={t(compact ? "Discussion overview" : "Discussion statistics")} className="forum-topic-stats">
+  // One strip under the title: counts read as a sentence with units ("1 reply · 60 views · 0 reactions"), then who took
+  // part, when it was last active, the reading time and the summary. Rendered once per page.
+  return <section aria-label={t("Discussion statistics")} className="forum-topic-stats">
     <div className="forum-topic-stats-row">
-      {!compact ? <ul className="forum-topic-stats-metrics">
-        <li><ForumPostLink post={post} postNumber={firstReply?.postNumber ?? 1} targetId={firstReply ? `comment-${firstReply.id}` : "responses-section"} onJump={firstReply ? onJumpToPost : undefined} className="forum-topic-stat"><MessageSquare aria-hidden="true" className="h-3.5 w-3.5 text-amber-600 dark:text-amber-300" /><span><strong className="forum-topic-stat-value">{formatForumNumber(post.replyCount, language)}</strong> {t(post.replyCount === 1 ? "reply" : "replies")}</span></ForumPostLink></li>
-        <li><ForumStatPopover triggerClassName="forum-topic-stat" title={t("Recent views")} label={t("Recent views")} className="forum-views-popover" trigger={<>
-          <Eye aria-hidden="true" className="h-3.5 w-3.5 text-sky-600 dark:text-sky-300" /><span><strong className="forum-topic-stat-value">{formatForumNumber(post.viewCount, language)}</strong> {t("Views")}</span>
-        </>}><ForumViewsPopoverContent postId={post.id} /></ForumStatPopover></li>
-        <li><ForumReactorsPopover target={{ scope: "topic", id: post.id }} counts={topicReactionCounts} triggerClassName="forum-topic-stat" title={t("Who reacted")} trigger={<>
-          <Heart aria-hidden="true" className="h-3.5 w-3.5 text-rose-600 dark:text-rose-300" /><span><strong className="forum-topic-stat-value">{formatForumNumber(reactions, language)}</strong> {t("Reactions")}</span>
-        </>} /></li>
-        {linkCount > 0 ? <li><span className="forum-topic-stat"><Link2 aria-hidden="true" className="h-3.5 w-3.5 text-violet-600 dark:text-violet-300" /><span><strong className="forum-topic-stat-value">{formatForumNumber(linkCount, language)}</strong> {t("Links")}</span></span></li> : null}
-      </ul> : <span className="forum-topic-reading-time"><Clock3 aria-hidden="true" className="h-3.5 w-3.5" />{readingTime} {t("min")} {t("read")}</span>}
-      {!compact ? <div className="forum-topic-stat-participants" aria-label={t("Participants")}>
+      <ul className="forum-topic-stats-metrics">
+        <li><ForumPostLink post={post} postNumber={firstReply?.postNumber ?? 1} targetId={firstReply ? `comment-${firstReply.id}` : "responses-section"} onJump={firstReply ? onJumpToPost : undefined} className="forum-topic-stat"><span><strong className="forum-topic-stat-value">{formatForumNumber(post.replyCount, language)}</strong> {t(post.replyCount === 1 ? "reply" : "replies")}</span></ForumPostLink></li>
+        <li><ForumStatPopover triggerClassName="forum-topic-stat" title={t("Recent views")} label={t("Recent views")} className="forum-views-popover" trigger={<span><strong className="forum-topic-stat-value">{formatForumNumber(post.viewCount, language)}</strong> {t(post.viewCount === 1 ? "view" : "views")}</span>}><ForumViewsPopoverContent postId={post.id} /></ForumStatPopover></li>
+        <li><ForumReactorsPopover target={{ scope: "topic", id: post.id }} counts={topicReactionCounts} triggerClassName="forum-topic-stat" title={t("Who reacted")} trigger={<span><strong className="forum-topic-stat-value">{formatForumNumber(reactions, language)}</strong> {t(reactions === 1 ? "reaction" : "reactions")}</span>} /></li>
+        {linkCount > 0 ? <li><span className="forum-topic-stat"><span><strong className="forum-topic-stat-value">{formatForumNumber(linkCount, language)}</strong> {t(linkCount === 1 ? "link" : "links")}</span></span></li> : null}
+      </ul>
+      <div className="forum-topic-stat-participants" aria-label={t("Participants")}>
         <span className="sr-only"><strong>{formatForumNumber(participantCount, language)}</strong> {t("Participants")}</span>
         <div className="forum-topic-participant-avatars">{post.participants.map((author) => <ForumAuthorPopover key={author.id} author={author} authorTopicPostCount={authorTopicPostCount(author.id)} onFilterPosts={onFilterAuthor ? () => onFilterAuthor(author.id) : undefined}><ForumAuthorAvatar author={author} size="sm" /></ForumAuthorPopover>)}</div>
-      </div> : null}
-      <button type="button" onClick={() => setSummaryOpen((previous) => !previous)} aria-expanded={summaryOpen} className="forum-topic-summary-button"><Sparkles className="h-4 w-4" aria-hidden="true" />{t(summaryOpen ? "Show full discussion" : "Summarize")}</button>
-    </div>
-    {!compact ? <div className="forum-topic-stats-meta">
+      </div>
       <span className="forum-topic-last-activity">{t("Last activity")}: <time dateTime={lastActivityAt} title={new Date(lastActivityAt).toLocaleString(language)}>{formatForumRelativeTime(lastActivityAt, language)}</time></span>
       <span className="forum-topic-reading-time"><Clock3 aria-hidden="true" className="h-3.5 w-3.5" />{readingTime} {t("min")} {t("read")}</span>
-    </div> : null}
+      <button type="button" onClick={() => setSummaryOpen((previous) => !previous)} aria-expanded={summaryOpen} className="forum-topic-summary-button"><FileText className="h-4 w-4" aria-hidden="true" />{t(summaryOpen ? "Show full discussion" : "Summarize")}</button>
+    </div>
     {summaryOpen ? <div className="forum-topic-summary" role="region" aria-label={t("Discussion summary")}>
       <div className="mb-4 flex items-start justify-between gap-3"><div><h3 className="font-semibold">{t("Discussion summary")}</h3><p className="mt-1 text-xs text-muted-foreground">{t("Excerpts from the opening post and the most reacted-to replies.")}</p></div><button type="button" aria-label={t("Close summary")} onClick={() => setSummaryOpen(false)} className="rounded p-1 hover:bg-muted"><X className="h-4 w-4" /></button></div>
       <ol className="space-y-4">{[{ id: "opening-post", number: 1, author: post.author, content: post.content }, ...highlights.map((comment) => ({ ...comment, number: comment.postNumber ?? comments.findIndex((row) => row.id === comment.id) + 2, id: `comment-${comment.id}` }))].map((item) => <li key={item.id}><ForumPostLink post={post} postNumber={item.number} targetId={item.id} onJump={onJumpToPost} className="text-sm font-semibold hover:text-primary">{item.author.fullName}</ForumPostLink><p className="mt-1 text-sm leading-relaxed">{excerpt(item.content)}</p><ForumPostLink post={post} postNumber={item.number} targetId={item.id} onJump={onJumpToPost} className="mt-1 inline-block text-xs text-primary hover:underline">{t("Read full post")}</ForumPostLink></li>)}</ol>

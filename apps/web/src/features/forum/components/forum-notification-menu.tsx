@@ -1,4 +1,4 @@
-import { Bell, BellOff, BellRing, Eye, Loader2 } from "lucide-react";
+import { Bell, BellOff, BellRing, ChevronDown, Eye, Loader2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useI18n } from "@/i18n";
@@ -20,7 +20,7 @@ export function ForumNotificationMenu({ level, isAuthed, pending, disabled, logi
   return <DropdownMenu modal={false}>
     <DropdownMenuTrigger asChild><button type="button" disabled={pending || disabled} aria-label={`${t("Discussion notifications")}: ${t(selected.label)}`} title={`${t("Discussion notifications")}: ${t(selected.label)}`} aria-busy={pending} data-notification-level={selected.value} className={cn(showLabel ? "forum-notification-button" : "forum-timeline-control", "forum-notification-trigger")}>
       {pending ? <Loader2 className="forum-notification-trigger-icon h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <Icon className="forum-notification-trigger-icon h-4 w-4" aria-hidden="true" />}
-      {showLabel ? t(selected.label) : null}
+      {showLabel ? <>{t(selected.label)}<ChevronDown className="h-3.5 w-3.5" aria-hidden="true" /></> : null}
     </button></DropdownMenuTrigger>
     {showLabel ? <span role="status" className="sr-only">{pending ? t("Saving notification settings…") : ""}</span> : null}
     <DropdownMenuContent align="start" aria-label={t("Discussion notifications")} className="forum-notification-menu w-80 max-w-[calc(100vw-2rem)] p-1.5">

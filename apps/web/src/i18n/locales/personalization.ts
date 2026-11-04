@@ -77,6 +77,13 @@ const personalizationKeys = [
   "Could not load discussions for you.",
   "Discussions across the platform",
   "Groups by research direction",
+  "1 view",
+  "{{count}} views",
+  "view",
+  "reaction",
+  "reactions",
+  "link",
+  "links",
 ] as const;
 
 export const personalizationStrings = Object.fromEntries(personalizationKeys.map((key) => [key, key])) as Record<(typeof personalizationKeys)[number], string>;
@@ -159,4 +166,11 @@ export const personalizationViStrings: Record<(typeof personalizationKeys)[numbe
   "Could not load discussions for you.": "Không tải được các thảo luận dành cho bạn.",
   "Discussions across the platform": "Thảo luận chung trên toàn nền tảng",
   "Groups by research direction": "Nhóm theo hướng nghiên cứu",
+  "1 view": "1 lượt xem",
+  "{{count}} views": "{{count}} lượt xem",
+  "view": "lượt xem",
+  "reaction": "cảm xúc",
+  "reactions": "cảm xúc",
+  "link": "liên kết",
+  "links": "liên kết",
 };

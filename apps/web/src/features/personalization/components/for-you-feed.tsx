@@ -1,5 +1,4 @@
 import { Link } from "react-router-dom";
-import { Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ForumCard } from "@/features/forum/components/forum-card";
 import { useI18n } from "@/i18n";
@@ -73,7 +72,7 @@ export function ForYouFeed() {
 
   return <section className="p-4 sm:p-6" aria-label={t("For you")} aria-busy={query.isFetching}>
     <div className="flex flex-wrap items-center justify-between gap-2">
-      <p className="flex items-center gap-2 text-sm text-muted-foreground"><Sparkles aria-hidden="true" className="h-4 w-4 shrink-0 text-blue-700" />{t("Unread discussions picked from your interests and the communities you joined.")}</p>
+      <p className="text-sm text-muted-foreground">{t("Unread discussions picked from your interests and the communities you joined.")}</p>
       <Link to="/settings/interests" className="inline-flex min-h-6 items-center rounded text-sm font-medium text-blue-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t("Manage interests")}</Link>
     </div>
 
@@ -82,8 +81,8 @@ export function ForYouFeed() {
         <h2 id="for-you-discussions" className="border-b px-4 py-3 text-sm font-semibold">{t(data.postsBasis === "personal" ? "Discussions for you" : "Discussions to explore")}</h2>
         <ul className="divide-y">
           {data.posts.map((item) => <li key={item.post.id}>
-            <ForumCard post={item.post} locale={language} />
-            <p className="px-4 pb-3 text-xs text-muted-foreground" data-testid="for-you-reason">{forYouReasonText(item, t)}</p>
+            <ForumCard post={item.post} locale={language} layout="stacked" kicker={
+              <p className="mb-1 text-xs font-medium text-blue-700 dark:text-blue-300" data-testid="for-you-reason">{forYouReasonText(item, t)}</p>} />
           </li>)}
         </ul>
       </div> : null}
@@ -97,7 +96,6 @@ export function ForYouFeed() {
         </ul>
       </div> : null}
     </div> : !hasCommunities && !stillLoadingCommunities ? <div className="mt-4 rounded-xl border border-dashed px-6 py-12 text-center" data-testid="for-you-empty">
-      <Sparkles aria-hidden="true" className="mx-auto h-6 w-6 text-muted-foreground" />
       <h2 className="mt-3 font-semibold">{t("No suggestions yet")}</h2>
       <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">{t("Follow a topic, read a few discussions or join a community, and unread discussions will be picked for you here.")}</p>
       <div className="mt-5 flex flex-wrap justify-center gap-2">

@@ -159,6 +159,9 @@ export function ForumSidebar({
         ) : (
           <p className="forum-sidebar-feedback px-3 py-2 text-sm text-muted-foreground">{t("No forum categories available.")}</p>
         )}
+      </div>
+
+      <div className="forum-sidebar-section forum-sidebar-section--communities mt-4 border-t border-border/70 pt-3">
         <Link to="/communities" onClick={close} title={t("Discover and join communities around research directions to follow and discuss them with people who share your interests.")} className={itemClass}>
           <Users aria-hidden="true" data-sidebar-icon="communities" className={iconClass} />
           <span>{t("Research Communities")}</span>

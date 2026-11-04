@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { readFileSync } from "node:fs";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
@@ -41,10 +42,10 @@ vi.mock("../hooks/use-personalization", async (importOriginal) => ({
 }));
 vi.mock("@/features/forum/hooks/use-forum", () => ({ useJoinCommunity: () => ({ mutateAsync: (id: string) => mocks.join(id) }) }));
 vi.mock("@/features/forum/components/forum-card", () => ({
-  ForumCard: ({ post }: { post: { id: string; title: string } }) => <article data-post={post.id}>{post.title}</article>,
+  ForumCard: ({ post, kicker, layout }: { post: { id: string; title: string }; kicker?: React.ReactNode; layout?: string }) => <article data-post={post.id} data-layout={layout}>{kicker}<a href={`/forum/${post.id}`}>{post.title}</a></article>,
 }));
 vi.mock("@/features/forum", () => ({
-  ForumCard: ({ post }: { post: { id: string; title: string } }) => <article data-post={post.id}>{post.title}</article>,
+  ForumCard: ({ post, kicker, layout }: { post: { id: string; title: string }; kicker?: React.ReactNode; layout?: string }) => <article data-post={post.id} data-layout={layout}>{kicker}<a href={`/forum/${post.id}`}>{post.title}</a></article>,
   useForumPostsInfinite: (params: unknown) => mocks.posts(params),
   useCommunitySummary: () => ({ data: undefined }),
   useRequestCommunitySummary: () => ({ mutate: vi.fn(), isPending: false }),
@@ -176,6 +177,21 @@ describe("ForYouFeed (7)", () => {
     expect(container.querySelector('[data-testid="for-you-reason"]')!.textContent).toBe("New in Vision Lab");
   });
 
+  it("P1/P2. discussions use the stacked card and the reason kicker comes before the title link", async () => {
+    const posts = [{ post: post("a"), reasonKind: "followed", reasonTopic: { key: "nlp", label: "NLP" }, reasonSource: "followed" }];
+    mocks.forYou.mockReturnValue({ isLoading: false, error: null, data: { postsBasis: "personal", papersBasis: "none", posts, papers: [] } });
+    await render(<ForYouFeed />);
+    const card = container.querySelector("article[data-post='a']")!;
+    expect(card.getAttribute("data-layout")).toBe("stacked");
+    const reason = card.querySelector("[data-testid='for-you-reason']")!;
+    expect(reason.className).toContain("text-blue-700");
+    expect(reason.className).toContain("font-medium");
+    // text only: no sparkle or any other icon
+    expect(reason.querySelector("svg")).toBeNull();
+    expect(container.querySelector("svg.lucide-sparkles")).toBeNull();
+    expect(reason.compareDocumentPosition(card.querySelector("a")!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it("hides a block whose basis is none, and still shows the communities", async () => {
     mocks.forYou.mockReturnValue(emptyFeed);
     mocks.suggestions.mockReturnValue({ data: [community("c1")] });
@@ -190,6 +206,14 @@ describe("CommunitySuggestions (8, 9)", () => {
     await render(<CommunitySuggestions />);
     expect(headings()).toEqual(["Communities you may like"]);
     expect(mocks.forYou).not.toHaveBeenCalled();
+  });
+
+  it("P5. the Join button is 44px tall on touch screens and shrinks from sm up", async () => {
+    mocks.suggestions.mockReturnValue({ data: [community("c1")] });
+    await render(<CommunitySuggestions />);
+    const join = buttonByText("Join")!;
+    expect(join.className).toContain("min-h-11");
+    expect(join.className).toContain("sm:min-h-8");
   });
 
   it("renders nothing when there is nothing to suggest", async () => {
@@ -376,4 +400,21 @@ describe("51. review fixes F1-F3 (web)", () => {
       expect(mocks.toastError).toHaveBeenLastCalledWith("Something went wrong. Please try again.");
     });
   }
+});
+
+describe("P7 no AI-looking icons in the For you feature", () => {
+  it("the empty state and the intro line carry no icon, and the feed's source files never name a sparkle/star/magic glyph", async () => {
+    mocks.forYou.mockReturnValue(emptyFeed);
+    await render(<ForYouFeed />);
+    expect(container.querySelector("svg")).toBeNull();
+    for (const file of ["../components/for-you-feed.tsx", "../components/community-suggestions.tsx", "../../forum/utils/forum-navigation.ts"]) {
+      expect(readFileSync(new URL(file, import.meta.url), "utf8"), file).not.toMatch(/Sparkle|Stars?\b|Wand|Magic/);
+    }
+  });
+
+  it("the For you feed uses the UserRound icon like the other feeds use theirs", async () => {
+    const { FORUM_FEEDS } = await import("@/features/forum/utils/forum-navigation");
+    const { UserRound } = await import("lucide-react");
+    expect(FORUM_FEEDS.find((feed) => feed.value === "for-you")!.icon).toBe(UserRound);
+  });
 });

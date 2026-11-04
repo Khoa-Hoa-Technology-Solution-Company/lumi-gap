@@ -26,7 +26,7 @@ export function CommunitySuggestions({ className = "mt-7" }: { className?: strin
             ? <p className="mt-3 text-xs text-muted-foreground">{t("Close to your interests")}</p>
             : <div className="mt-3 flex flex-wrap gap-1.5">{community.matchedTopics.slice(0, 3).map((topic) => <Badge key={topic.key} variant="secondary" className="font-normal">{topic.label}</Badge>)}</div>}
         </div>
-        <Button type="button" size="sm" variant="outline" className="min-h-8 self-start" disabled={isJoining(community.id)} aria-label={t("Join {{community}}", { community: community.name })} onClick={() => void joinCommunity(community)}>{t("Join")}</Button>
+        <Button type="button" size="sm" variant="outline" className="min-h-11 self-start sm:min-h-8" disabled={isJoining(community.id)} aria-label={t("Join {{community}}", { community: community.name })} onClick={() => void joinCommunity(community)}>{t("Join")}</Button>
       </li>)}
     </ul>
   </section>;
