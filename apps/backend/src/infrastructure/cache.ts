@@ -48,6 +48,27 @@ export const cache = {
     }
   },
 
+  /** Atomic INCR. Returns the new value, or null when Redis is unavailable (callers must degrade, not throw). */
+  async incr(key: string): Promise<number | null> {
+    try {
+      return await withTimeout(redis.incr(key), "incr");
+    } catch (err) {
+      logger.warn({ err, key }, "cache incr failed");
+      return null;
+    }
+  },
+
+  /** Integer counter: 0 when the key does not exist, null when Redis is unavailable. */
+  async getInt(key: string): Promise<number | null> {
+    try {
+      const raw = await withTimeout(redis.get(key), "getInt");
+      return raw === null ? 0 : Number(raw);
+    } catch (err) {
+      logger.warn({ err, key }, "cache getInt failed");
+      return null;
+    }
+  },
+
   async del(key: string): Promise<void> {
     try {
       await withTimeout(redis.del(key), "del");

@@ -29,6 +29,7 @@ export const PERSONALIZATION = {
   SINGLE_WORD_MIN_LEN: 4,
   CURATED_MIN_LEN: 2,
   MAX_FOLLOWS: 20,
+  MAX_MUTES: 100,
   MAX_TERM_WORDS: 8,
   GENERIC_TERMS: [
     "simulation", "statistics", "optimisation", "optimization", "data", "model", "models",

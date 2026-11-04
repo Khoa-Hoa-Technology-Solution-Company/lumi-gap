@@ -21,6 +21,9 @@ vi.mock("../../../infrastructure/cache.js", async (importOriginal) => {
       get: async (key: string) => { if (cacheMock.failing) throw new Error("redis down"); return cacheMock.store.get(key) ?? null; },
       set: async (key: string, value: unknown) => { if (cacheMock.failing) throw new Error("redis down"); cacheMock.store.set(key, value); },
       del: async (key: string) => { cacheMock.store.delete(key); },
+      // Counters used by the personalization profile/vocabulary versions; null = Redis unavailable, like the real cache.
+      incr: async (key: string) => { if (cacheMock.failing) return null; const next = Number(cacheMock.store.get(key) ?? 0) + 1; cacheMock.store.set(key, next); return next; },
+      getInt: async (key: string) => (cacheMock.failing ? null : Number(cacheMock.store.get(key) ?? 0)),
     },
   };
 });

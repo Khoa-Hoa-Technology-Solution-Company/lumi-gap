@@ -520,7 +520,7 @@ export const authService = {
         data: { researchInterests: input.researchInterests },
       });
     });
-    if (input.researchInterests !== undefined) enqueueRecomputeForumTopics();
+    if (input.researchInterests !== undefined) void enqueueRecomputeForumTopics();
     return toUserDto(updated);
   },
 
@@ -773,7 +773,7 @@ export const authService = {
       });
     }
     await capabilityService.evaluate(user.id);
-    if (researchInterests !== undefined) enqueueRecomputeForumTopics();
+    if (researchInterests !== undefined) void enqueueRecomputeForumTopics();
     return toUserDto((await findUser(user.id))!);
   },
 

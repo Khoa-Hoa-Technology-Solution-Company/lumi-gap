@@ -294,7 +294,7 @@ export const communityService = {
       return created;
     }).catch(translateNameConflict);
     await auditService.log("community.created", { userId: actor.sub, targetTableName: "communities", targetRecordId: community.id, details: { status: community.status } });
-    if (community.status === "ACTIVE") { enqueueCommunityEmbedding(); enqueueRecomputeForumTopics(); }
+    if (community.status === "ACTIVE") { enqueueCommunityEmbedding(); void enqueueRecomputeForumTopics(); }
     if (community.status === REVIEW_PENDING_STATUS) {
       await notifySafely({ role: "admin", title: "New community proposal", message: `“${community.name}” is waiting for approval.`, type: "COMMUNITY_PROPOSED", targetKind: "community", targetId: community.id });
     }
@@ -414,7 +414,7 @@ export const communityService = {
       // Invalidate the stale vector in the same transaction; the worker recomputes it.
       if (contentChanged) await tx.$executeRaw`UPDATE "communities" SET "embedding" = NULL, "embedding_updated_at" = NULL WHERE "id" = ${id}::uuid`;
     }).catch(translateNameConflict);
-    if (contentChanged) { enqueueCommunityEmbedding(); enqueueRecomputeForumTopics(); }
+    if (contentChanged) { enqueueCommunityEmbedding(); void enqueueRecomputeForumTopics(); }
     await auditService.log("community.updated", { userId: actorId, targetTableName: "communities", targetRecordId: id, details: { fields: Object.keys(input) } });
     return this.get(id, actorId, actorRole);
   },
@@ -434,7 +434,7 @@ export const communityService = {
       }
       await tx.community.update({ where: { id }, data: { status } });
     }).catch(translateNameConflict);
-    if (status === "ACTIVE") { enqueueCommunityEmbedding(); enqueueRecomputeForumTopics(); }
+    if (status === "ACTIVE") { enqueueCommunityEmbedding(); void enqueueRecomputeForumTopics(); }
     await auditService.log("community.status_changed", { userId: actorId, targetTableName: "communities", targetRecordId: id, details: { from: current.status, to: status } });
     return this.get(id, actorId, actorRole);
   },
@@ -448,7 +448,7 @@ export const communityService = {
       data: { status: nextStatus, reviewNote: input.note ?? null, reviewedById: reviewerId, reviewedAt: new Date() },
     });
     if (!changed.count) throw AppError.conflict("Only communities pending approval can be reviewed");
-    if (input.decision === "approve") { enqueueCommunityEmbedding(); enqueueRecomputeForumTopics(); }
+    if (input.decision === "approve") { enqueueCommunityEmbedding(); void enqueueRecomputeForumTopics(); }
     await auditService.log(input.decision === "approve" ? "community.approved" : "community.rejected", { userId: actorId, targetTableName: "communities", targetRecordId: id, details: { note: input.note } });
     const reviewed = await getPrisma().community.findUniqueOrThrow({ where: { id }, select: { name: true, ownerId: true } });
     const approved = input.decision === "approve";

@@ -186,6 +186,8 @@ export interface FeedCandidate {
   voteScore: number;
   commentCount: number;
   topics: readonly TopicRelevance[];
+  /** Set when the post belongs to a research community the viewer is an active member of. */
+  joinedCommunity?: { id: string; name: string };
 }
 
 export interface RankedPost {
@@ -221,6 +223,8 @@ export function rankPersonal(candidates: readonly FeedCandidate[], profile: Inte
     if (!best || match <= 0) continue;
     const fresh = freshness(now, candidate.lastActivityAt);
     const quality = 1 + Math.log(1 + Math.max(candidate.voteScore, 0) + candidate.commentCount);
+    // "Because you joined X" must name a community that really contains the post: its own, when the viewer joined it.
+    const reasonCommunity = best.topic.source === "community" ? (candidate.joinedCommunity ?? best.topic.viaCommunity) : undefined;
     const reasonKind: ForYouReasonKind = best.topic.source === "community" ? "joined"
       : best.topic.source !== "inferred" ? "followed"
         : best.topic.lowConfidence ? "lowConfidence" : "inferred";
@@ -228,7 +232,7 @@ export function rankPersonal(candidates: readonly FeedCandidate[], profile: Inte
       candidate, match, fresh, quality,
       score: match * (PERSONALIZATION.FRESH_FLOOR + (1 - PERSONALIZATION.FRESH_FLOOR) * fresh) * quality,
       reasonKind, reasonTopic: { key: best.topic.key, label: best.topic.label }, reasonSource: best.topic.source,
-      ...(best.topic.viaCommunity ? { reasonCommunity: best.topic.viaCommunity } : {}),
+      ...(reasonCommunity ? { reasonCommunity } : {}),
     });
   }
   return ranked.sort((left, right) => right.score - left.score || byRecencyThenId(left.candidate, right.candidate));

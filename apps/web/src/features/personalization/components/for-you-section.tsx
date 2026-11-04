@@ -1,6 +1,8 @@
 import { Link } from "react-router-dom";
+import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Sparkles } from "lucide-react";
+import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ForumCard } from "@/features/forum/components/forum-card";
@@ -47,6 +49,8 @@ export function ForYouSection() {
   const query = useForYou(true);
   const suggestions = useForYouCommunities(true);
   const join = useJoinCommunity();
+  // Only the clicked card is busy; the others stay usable while one join is in flight.
+  const [joiningId, setJoiningId] = useState<string | null>(null);
   const showSkeleton = useDelayedFlag(query.isLoading);
 
   if (query.isLoading) {
@@ -63,12 +67,20 @@ export function ForYouSection() {
   const communities = suggestions.data ?? [];
   if (!hasPosts && !hasPapers && communities.length === 0) return null;
 
-  const joinCommunity = (community: ForYouCommunityView) => join.mutate(community.id, {
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: PERSONALIZATION_KEY });
-      void queryClient.invalidateQueries({ queryKey: ["communities"] });
-    },
-  });
+  const joinCommunity = (community: ForYouCommunityView) => {
+    setJoiningId(community.id);
+    join.mutate(community.id, {
+      onSuccess: () => {
+        void queryClient.invalidateQueries({ queryKey: PERSONALIZATION_KEY });
+        void queryClient.invalidateQueries({ queryKey: ["communities"] });
+      },
+      onError: (error) => {
+        const message = (error as { response?: { data?: { error?: { message?: string } } } } | undefined)?.response?.data?.error?.message;
+        toast.error(message ?? t("Something went wrong. Please try again."));
+      },
+      onSettled: () => setJoiningId(null),
+    });
+  };
 
   return <section className="mt-7" aria-labelledby="for-you-heading" aria-busy="false">
     <div className="flex flex-wrap items-center justify-between gap-2">
@@ -106,7 +118,7 @@ export function ForYouSection() {
               ? <p className="mt-3 text-xs text-muted-foreground">{t("Close to your interests")}</p>
               : <div className="mt-3 flex flex-wrap gap-1.5">{community.matchedTopics.slice(0, 3).map((topic) => <Badge key={topic.key} variant="secondary" className="font-normal">{topic.label}</Badge>)}</div>}
           </div>
-          <Button type="button" size="sm" variant="outline" className="min-h-8 self-start" disabled={join.isPending} aria-label={t("Join {{community}}", { community: community.name })} onClick={() => joinCommunity(community)}>{t("Join")}</Button>
+          <Button type="button" size="sm" variant="outline" className="min-h-8 self-start" disabled={joiningId === community.id} aria-label={t("Join {{community}}", { community: community.name })} onClick={() => joinCommunity(community)}>{t("Join")}</Button>
         </li>)}
       </ul>
     </div> : null}
