@@ -1,4 +1,5 @@
 import { cache } from "../../infrastructure/cache.js";
+import { logger } from "../../infrastructure/logger.js";
 
 /**
  * Cache of a user's interest profile. Kept in its own tiny file (imports only the cache) so community.service and
@@ -18,4 +19,20 @@ export async function readProfileVersion(userId: string): Promise<number | null>
 /** Call after the change has committed. Never throws: without Redis there is no cache to go stale. */
 export async function invalidatePersonalizationProfile(userId: string): Promise<void> {
   await cache.incr(profileVersionKey(userId));
+}
+
+const INVALIDATE_CHUNK = 100;
+
+/**
+ * Bulk form for a community status change. Dedupes, bumps in chunks of 100 and never throws: a Redis failure is logged
+ * once (the cached profiles then expire by TTL) and must not undo a status that has already committed.
+ */
+export async function invalidatePersonalizationProfiles(userIds: readonly string[]): Promise<void> {
+  const unique = [...new Set(userIds)];
+  let failed = false;
+  for (let start = 0; start < unique.length; start += INVALIDATE_CHUNK) {
+    await Promise.all(unique.slice(start, start + INVALIDATE_CHUNK).map((userId) =>
+      invalidatePersonalizationProfile(userId).catch(() => { failed = true; })));
+  }
+  if (failed) logger.warn({ count: unique.length }, "personalization profile invalidation failed for some members; entries expire by TTL");
 }

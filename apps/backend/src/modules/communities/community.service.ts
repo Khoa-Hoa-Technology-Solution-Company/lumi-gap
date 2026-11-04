@@ -17,7 +17,7 @@ import {
 } from "./community.rules.js";
 import { enqueueCommunityEmbedding, nearestCommunityIds } from "./community-embedding.service.js";
 import { enqueueRecomputeForumTopics } from "../personalization/personalization-topics.service.js";
-import { invalidatePersonalizationProfile } from "../personalization/personalization.cache.js";
+import { invalidatePersonalizationProfile, invalidatePersonalizationProfiles } from "../personalization/personalization.cache.js";
 import type { CommunityListQuery } from "./dto/community.schema.js";
 
 type CommunityContent = {
@@ -269,6 +269,23 @@ export function presentCommunity(community: {
   };
 }
 
+/**
+ * Personalization side effects of a community status change, run after commit. They apply only when the change enters or
+ * leaves ACTIVE (the only status that feeds the topic vocabulary and members' community-source topics): the post topics
+ * are recomputed, and every active member's cached profile is invalidated. Banned members get no community topics, so
+ * they are skipped. Never throws: the status has already committed.
+ */
+async function applyStatusSideEffects(communityId: string, from: string, to: string): Promise<void> {
+  if (from === to || (from !== "ACTIVE" && to !== "ACTIVE")) return;
+  void enqueueRecomputeForumTopics();
+  try {
+    const members = await getPrisma().communityMembership.findMany({ where: { communityId, status: "active" }, select: { userId: true } });
+    await invalidatePersonalizationProfiles(members.map((member) => member.userId));
+  } catch (error) {
+    logger.warn({ error, communityId }, "could not invalidate member profiles after a community status change");
+  }
+}
+
 export const communityService = {
   async create(input: CommunityContent, actor: CommunityActor) {
     const ownerId = await resolveUserId(actor.sub);
@@ -423,19 +440,29 @@ export const communityService = {
   async setStatus(communityId: string, status: "ACTIVE" | "ARCHIVED", actorId: string, actorRole?: UserRole) {
     if (actorRole !== "admin") throw AppError.forbidden("Only administrators can archive or restore research communities");
     const id = await resolveCommunityId(communityId);
-    const current = await getPrisma().community.findUniqueOrThrow({ where: { id }, select: { status: true, name: true, isForumCategory: true } });
-    if (current.isForumCategory) throw AppError.forbidden("Use forum category administration to manage this category");
-    if (OWNER_ONLY_STATUSES.includes(current.status)) throw AppError.conflict("Use the review endpoint to approve or reject a proposed community");
-    await getPrisma().$transaction(async (tx) => {
+    const outcome = await getPrisma().$transaction(async (tx) => {
+      // The current status is read under a row lock, so two concurrent calls cannot both act on a stale value.
+      const rows = await tx.$queryRaw<{ status: string; name: string; is_forum_category: boolean }[]>`
+        SELECT "status", "name", "is_forum_category" FROM "communities" WHERE "id" = ${id}::uuid FOR UPDATE`;
+      const locked = rows[0];
+      if (!locked) throw AppError.notFound("Community not found");
+      if (locked.is_forum_category) throw AppError.forbidden("Use forum category administration to manage this category");
+      if (OWNER_ONLY_STATUSES.includes(locked.status as never)) throw AppError.conflict("Use the review endpoint to approve or reject a proposed community");
+      // Already in the requested state: idempotent, no write, no side effects, no audit entry.
+      if (locked.status === status) return { changed: false as const, from: locked.status };
       // The name may have been reused while this community was archived.
       if (status === "ACTIVE") {
         await lockNaming(tx);
-        await assertNameAvailable(current.name, id, tx);
+        await assertNameAvailable(locked.name, id, tx);
       }
       await tx.community.update({ where: { id }, data: { status } });
+      return { changed: true as const, from: locked.status };
     }).catch(translateNameConflict);
-    if (status === "ACTIVE") { enqueueCommunityEmbedding(); void enqueueRecomputeForumTopics(); }
-    await auditService.log("community.status_changed", { userId: actorId, targetTableName: "communities", targetRecordId: id, details: { from: current.status, to: status } });
+    if (outcome.changed) {
+      if (status === "ACTIVE") enqueueCommunityEmbedding();
+      await applyStatusSideEffects(id, outcome.from, status);
+      await auditService.log("community.status_changed", { userId: actorId, targetTableName: "communities", targetRecordId: id, details: { from: outcome.from, to: status } });
+    }
     return this.get(id, actorId, actorRole);
   },
 
@@ -448,7 +475,7 @@ export const communityService = {
       data: { status: nextStatus, reviewNote: input.note ?? null, reviewedById: reviewerId, reviewedAt: new Date() },
     });
     if (!changed.count) throw AppError.conflict("Only communities pending approval can be reviewed");
-    if (input.decision === "approve") { enqueueCommunityEmbedding(); void enqueueRecomputeForumTopics(); }
+    if (input.decision === "approve") { enqueueCommunityEmbedding(); await applyStatusSideEffects(id, REVIEW_PENDING_STATUS, "ACTIVE"); }
     await auditService.log(input.decision === "approve" ? "community.approved" : "community.rejected", { userId: actorId, targetTableName: "communities", targetRecordId: id, details: { note: input.note } });
     const reviewed = await getPrisma().community.findUniqueOrThrow({ where: { id }, select: { name: true, ownerId: true } });
     const approved = input.decision === "approve";
