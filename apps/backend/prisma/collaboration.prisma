@@ -432,6 +432,11 @@ model ForumPost {
   editedAt            DateTime? @map("edited_at") @db.Timestamptz(6)
   autoHideExemptAt    DateTime? @map("auto_hide_exempt_at") @db.Timestamptz(6)
   bodyHash            String?   @map("body_hash") @db.VarChar(64)
+  /// Normalized tag keys that are in the topic vocabulary (relevance 1.0). See modules/personalization.
+  topicKeys           String[]  @default([]) @map("topic_keys")
+  /// Keys found in the title, linked paper keywords or body; derivedTopicWeights holds their relevance in the same order.
+  derivedTopicKeys    String[]  @default([]) @map("derived_topic_keys")
+  derivedTopicWeights Float[]   @default([]) @map("derived_topic_weights") @db.Real
   createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -446,6 +451,8 @@ model ForumPost {
   @@index([type, status, createdAt])
   @@index([tags], type: Gin)
   @@index([publicSlugAliases], type: Gin)
+  @@index([topicKeys], map: "forum_posts_topic_keys_gin", type: Gin)
+  @@index([derivedTopicKeys], map: "forum_posts_derived_topic_keys_gin", type: Gin)
   @@map("forum_posts")
 }
 
@@ -619,6 +626,7 @@ model ForumPostView {
 
   @@unique([postId, viewerKey])
   @@index([postId, viewedAt])
+  @@index([viewerKey, viewedAt], map: "forum_post_views_viewer_key_viewed_at_idx")
   @@map("forum_post_views")
 }
 
@@ -901,4 +909,26 @@ model WorkspaceComment {
 
   @@index([workspaceId, sectionId, createdAt])
   @@map("workspace_comments")
+}
+
+/// Topics a user chose to follow for "For you". Never mirrored into users.research_interests (the academic profile).
+model UserTopicFollow {
+  userId    String   @map("user_id") @db.Uuid
+  topicKey  String   @map("topic_key") @db.VarChar(120)
+  label     String   @db.VarChar(200)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@id([userId, topicKey])
+  @@map("user_topic_follows")
+}
+
+/// Topics a user hides from "For you" (including ones that come from the academic profile).
+model UserTopicMute {
+  userId    String   @map("user_id") @db.Uuid
+  topicKey  String   @map("topic_key") @db.VarChar(120)
+  label     String   @db.VarChar(200)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@id([userId, topicKey])
+  @@map("user_topic_mutes")
 }

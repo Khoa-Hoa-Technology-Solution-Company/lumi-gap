@@ -8,7 +8,7 @@ import { forumService } from "../forum.service.js";
 // Community changes enqueue jobs; keep tests from feeding a running dev worker.
 vi.mock("../../../infrastructure/queue.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../../infrastructure/queue.js")>();
-  return { ...actual, embeddingQueue: { add: vi.fn().mockResolvedValue(undefined) } };
+  return { ...actual, embeddingQueue: { add: vi.fn().mockResolvedValue(undefined) }, taggingQueue: { add: vi.fn().mockResolvedValue(undefined) } };
 });
 
 const HOUR = 3_600_000;

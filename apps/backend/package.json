@@ -33,6 +33,8 @@
     "eval:gap-closure-retro": "tsx scripts/gap-closure-retro-eval.ts",
     "eval:gaps": "tsx scripts/gap-eval.ts",
     "eval:search-tags": "tsx scripts/search-tags-eval.ts",
+    "eval:interests": "tsx scripts/interests-eval.ts",
+    "personalization:backfill-topics": "tsx scripts/personalization-backfill-topics.ts",
     "taxonomy:sync": "tsx scripts/taxonomy-sync.ts",
     "worker:sync": "tsx src/workers/sync.worker.ts",
     "worker:openalex-ingest": "tsx src/workers/openalex-ingest.worker.ts",

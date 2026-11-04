@@ -2,20 +2,14 @@ import type { UserRole } from "@trend/shared-types";
 import { cache, hashKey } from "../../infrastructure/cache.js";
 import { publicDatabaseId } from "../../infrastructure/database/database-id.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
-import { Prisma } from "../../generated/prisma/client.js";
 import { loadViewableCommunity } from "./community.service.js";
+import { searchPapersByTopics, type RelatedPaper } from "./related-papers.query.js";
 
 const CACHE_TTL_SECONDS = 3600;
 const MAX_TOPICS = 10;
 const RESULT_LIMIT = 5;
 
-export interface RelatedPaper {
-  id: string;
-  title: string;
-  publicationYear: number;
-  citationCount: number;
-  doi?: string;
-}
+export type { RelatedPaper };
 
 export interface RelatedGap {
   id: string;
@@ -42,20 +36,7 @@ export const communityRelatedService = {
     const cached = await cache.get<RelatedPaper[]>(key);
     if (cached) return cached;
 
-    const tsquery = Prisma.sql`(${Prisma.join(topics.map((topic) => Prisma.sql`websearch_to_tsquery('simple', ${topic}::text)`), " || ")})`;
-    const rows = await getPrisma().$queryRaw<Array<{ id: string; legacy_mongo_id: string | null; title: string; publication_year: number; citation_count: number; doi: string | null }>>(Prisma.sql`
-      SELECT "id", "legacy_mongo_id", "title", "publication_year", "citation_count", "doi"
-      FROM "papers"
-      WHERE "data_status" = 'active' AND "search_document" @@ ${tsquery}
-      ORDER BY ts_rank("search_document", ${tsquery}) * ln(2 + "citation_count") DESC, "publication_year" DESC
-      LIMIT ${RESULT_LIMIT}`);
-    const papers = rows.map((row) => ({
-      id: publicDatabaseId({ id: row.id, legacyMongoId: row.legacy_mongo_id }),
-      title: row.title,
-      publicationYear: Number(row.publication_year),
-      citationCount: Number(row.citation_count),
-      doi: row.doi ?? undefined,
-    }));
+    const papers = await searchPapersByTopics(topics, RESULT_LIMIT);
     await cache.set(key, papers, CACHE_TTL_SECONDS);
     return papers;
   },

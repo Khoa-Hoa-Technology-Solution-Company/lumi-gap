@@ -1,12 +1,13 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { CheckCircle2, MessageSquare, Plus, Search, Sparkles, Users } from "lucide-react";
+import { CheckCircle2, MessageSquare, Plus, Search, Users } from "lucide-react";
 import type { CommunitySort } from "@trend/shared-types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useCurrentUser } from "@/features/auth";
-import { canProposeCommunity, useCommunityFacets, useCommunityList, useCommunityRecommendations, useCommunitySuggestions, type CommunityView } from "@/features/forum";
+import { canProposeCommunity, useCommunityFacets, useCommunityList, useCommunitySuggestions, type CommunityView } from "@/features/forum";
+import { ForYouSection } from "@/features/personalization";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { useI18n } from "@/i18n";
 import { cn } from "@/utils/cn";
@@ -36,11 +37,9 @@ export function CommunityListPage() {
   const list = useCommunityList({ q: debouncedQuery || undefined, field, sort, scope });
   const facets = useCommunityFacets();
   const isFiltering = Boolean(debouncedQuery || field || scope === "mine");
-  const recommendations = useCommunityRecommendations(Boolean(user) && !isFiltering);
 
   const communities = useMemo(() => list.data?.pages.flatMap((page) => page.items) ?? [], [list.data]);
   const total = list.data?.pages[0]?.total ?? 0;
-  const recommended = recommendations.data ?? [];
   // Text search found nothing: fall back to communities that are close in meaning.
   const noTextMatch = Boolean(debouncedQuery) && !list.isLoading && !list.error && communities.length === 0;
   const suggestions = useCommunitySuggestions(debouncedQuery, noTextMatch);
@@ -81,19 +80,7 @@ export function CommunityListPage() {
       {facets.data.map((facet) => <FieldChip key={facet.name} active={field === facet.name} onClick={() => setField(field === facet.name ? undefined : facet.name)}>{facet.name} <span className="tabular-nums opacity-70">{facet.count}</span></FieldChip>)}
     </div> : null}
 
-    {recommended.length && !isFiltering ? <section className="mt-7" aria-labelledby="recommended-communities">
-      <div className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-blue-700" /><h2 id="recommended-communities" className="text-sm font-semibold">{t("Recommended for you")}</h2></div>
-      <p className="mt-1 text-xs text-muted-foreground">{t("Based on the research interests in your academic profile.")}</p>
-      <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {recommended.map((community) => <Link key={community.id} to={`/communities/${community.slug}`} className="rounded-xl border bg-card p-4 transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-          <h3 className="font-semibold">{community.name}</h3>
-          {community.researchField ? <p className="mt-1 text-xs font-medium text-blue-700">{community.researchField}</p> : null}
-          {community.matchReason === "semantic"
-            ? <p className="mt-3 text-xs text-muted-foreground">{t("Close to your research interests")}</p>
-            : <div className="mt-3 flex flex-wrap gap-1.5">{community.matchedInterests.slice(0, 3).map((interest) => <Badge key={interest} variant="secondary" className="font-normal">{interest}</Badge>)}</div>}
-        </Link>)}
-      </div>
-    </section> : null}
+    {user && !isFiltering ? <ForYouSection /> : null}
 
     {list.isLoading ? <div className="mt-7 divide-y overflow-hidden rounded-xl border bg-card">{Array.from({ length: 4 }).map((_, index) => <div key={index} className="h-36 animate-pulse bg-muted/40" />)}</div>
       : list.error ? <div className="mt-7 rounded-xl border border-red-200 bg-red-50 p-5 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">{t("Unable to load communities. Please try again.")}</div>

@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { logger } from "../../../infrastructure/logger.js";
 
 // Importing the service must not open real queue connections.
-vi.mock("../../../infrastructure/queue.js", () => ({ embeddingQueue: { add: vi.fn().mockResolvedValue(undefined) } }));
+vi.mock("../../../infrastructure/queue.js", () => ({ embeddingQueue: { add: vi.fn().mockResolvedValue(undefined) }, taggingQueue: { add: vi.fn().mockResolvedValue(undefined) } }));
 
 import { narrowStatus, narrowVisibility } from "../community.service.js";
 

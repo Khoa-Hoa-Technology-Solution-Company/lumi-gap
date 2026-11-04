@@ -47,3 +47,4 @@ export * from "./github.js";
 export * from "./project-analysis-set.js";
 export * from "./research-trust.js";
 export * from "./taxonomy.js";
+export * from "./personalization.js";

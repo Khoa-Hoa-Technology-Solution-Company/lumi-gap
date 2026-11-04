@@ -1,6 +1,6 @@
 import { useState, FormEvent, useEffect } from "react";
 import { Navigate, useParams } from "react-router-dom";
-import { User, Lock, Settings2, Save, Key, ShieldAlert, Plus, X, GraduationCap, Mail, FileText, Upload, Award, ReceiptText } from "lucide-react";
+import { User, Lock, Settings2, Save, Key, ShieldAlert, Plus, X, GraduationCap, Sparkles, Mail, FileText, Upload, Award, ReceiptText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,11 +16,13 @@ import { checkPasswordPolicy } from "@/features/auth/utils/password-policy";
 import { useI18n } from "@/i18n";
 import { SettingsPanelTransition } from "@/components/settings-panel-transition";
 import { UserAiSettings } from "@/features/user-ai/user-ai-settings";
+import { InterestsCard } from "@/features/personalization";
 
-type SettingsSection = "profile" | "credits" | "security" | "preferences" | "ai" | "submit-paper" | "my-papers";
+type SettingsSection = "profile" | "credits" | "security" | "preferences" | "ai" | "interests" | "submit-paper" | "my-papers";
 
 function settingsSectionFromRoute(section: string | undefined, isAdmin: boolean): SettingsSection {
   if (section === "ai") return "ai";
+  if (section === "interests") return "interests";
   if (["security", "account"].includes(section ?? "")) return "security";
   if (["credits", "credit-history"].includes(section ?? "")) return "credits";
   if (["preferences", "customization", "notifications"].includes(section ?? "")) return "preferences";
@@ -178,6 +180,11 @@ export function AccountSettingsPage() {
           <button onClick={() => { setActiveSection("ai"); setSuccessMessage(""); setErrorMessage(""); }}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left text-sm font-semibold transition-all ${activeSection === "ai" ? "bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400" : "text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/40"}`}>
             <Key className="w-4 h-4" />AI Connections
+          </button>
+
+          <button aria-current={activeSection === "interests" ? "page" : undefined} onClick={() => { setActiveSection("interests"); setSuccessMessage(""); setErrorMessage(""); }}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left text-sm font-semibold transition-all ${activeSection === "interests" ? "bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400" : "text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/40"}`}>
+            <Sparkles className="w-4 h-4" />{t("Your interests")}
           </button>
 
           {!isAdmin && (
@@ -575,6 +582,7 @@ export function AccountSettingsPage() {
 
           {/* Section 5: Submit Paper */}
           {activeSection === "ai" && <UserAiSettings />}
+          {activeSection === "interests" && <InterestsCard />}
           {activeSection === "submit-paper" && !isAdmin && (
             <SubmitPaperPage isEmbedded={true} />
           )}

@@ -9,7 +9,7 @@ import type { CommunityActor } from "../community.rules.js";
 import { communityCreateSchema, communityUpdateSchema, reviewSchema, updateMemberSchema, type CommunityListQuery } from "../dto/community.schema.js";
 
 // Community changes enqueue embedding jobs; keep tests from feeding a running dev worker.
-vi.mock("../../../infrastructure/queue.js", () => ({ embeddingQueue: { add: vi.fn().mockResolvedValue(undefined) } }));
+vi.mock("../../../infrastructure/queue.js", () => ({ embeddingQueue: { add: vi.fn().mockResolvedValue(undefined) }, taggingQueue: { add: vi.fn().mockResolvedValue(undefined) } }));
 
 // In-memory cache so cooldown tests never depend on a real Redis; `failing` simulates an outage.
 const cacheMock = vi.hoisted(() => ({ store: new Map<string, unknown>(), failing: false }));

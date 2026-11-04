@@ -44,6 +44,7 @@ import { literatureRouter } from "../modules/literature/literature.routes.js";
 import { userAiRouter } from "../modules/user-ai/user-ai.routes.js";
 import { platformAiRouter } from "../modules/user-ai/platform-ai.routes.js";
 import { githubRouter } from "../modules/github/github.routes.js";
+import { personalizationRouter } from "../modules/personalization/personalization.routes.js";
 
 export const apiRouter: Router = Router();
 apiRouter.use("/projects/:projectId/manuscripts", manuscriptRouter);
@@ -62,6 +63,7 @@ apiRouter.use("/gaps", gapsRouter); // Phase D — research gaps
 apiRouter.use("/gap-closure", closureRouter); // Gap Closure Protocol
 apiRouter.use("/communities", communityRouter);
 apiRouter.use("/forum", forumRouter);
+apiRouter.use("/personalization", personalizationRouter);
 apiRouter.use("/openings", recruitmentRouter);
 apiRouter.use("/submissions", submissionRouter);
 apiRouter.use("/workspaces", workspaceRouter);
