@@ -4,7 +4,7 @@ import { cache } from "../../../infrastructure/cache.js";
 import { getPrisma } from "../../../infrastructure/database/prisma.js";
 import { communityService } from "../../communities/community.service.js";
 import { forumService } from "../../forum/forum.service.js";
-import { profileCacheKey } from "../personalization.cache.js";
+import { profileCacheKey, readProfileVersion } from "../personalization.cache.js";
 import { fetchCandidates } from "../personalization.repository.js";
 import { tierOf } from "../personalization.rules.js";
 import { personalizationService } from "../personalization.service.js";
@@ -43,7 +43,8 @@ describe.sequential("personalization revision 2 persistence", () => {
     c[key] = row.id;
   };
   const member = (communityId: string, userId: string, status = "active") => getPrisma().communityMembership.create({ data: { communityId, userId, role: "member", status } });
-  const cached = () => cache.get<unknown>(profileCacheKey(ids.me));
+  // The entry of the CURRENT profile version: an invalidation bumps the version, so the new key starts empty.
+  const cached = async () => cache.get<unknown>(profileCacheKey(ids.me, (await readProfileVersion(ids.me)) ?? -1));
 
   beforeAll(async () => {
     const prisma = getPrisma();

@@ -6,17 +6,18 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { InterestTopic } from "@trend/shared-types";
 import { CommunityDiscussionsTab } from "@/pages/communities/community-discussions-tab";
-import { loadDictionary } from "@/i18n/locales";
+// Static import: no async dictionary loading, so the test cannot time out under load.
+import { vi as vietnameseDictionary } from "@/i18n/locales/vi";
 import { ForYouSection, forYouReasonText } from "../components/for-you-section";
 import { InterestsCard } from "../components/interests-card";
 import { TopicChipFilter, orderTopicsByProfile } from "../components/topic-chip-filter";
 
 const mocks = vi.hoisted(() => ({
-  forYou: vi.fn(), suggestions: vi.fn(), join: vi.fn(), interests: vi.fn(), vocabulary: vi.fn(), posts: vi.fn(), toast: vi.fn(),
+  toastError: vi.fn(), forYou: vi.fn(), suggestions: vi.fn(), join: vi.fn(), interests: vi.fn(), vocabulary: vi.fn(), posts: vi.fn(), toast: vi.fn(),
   follow: vi.fn(), unfollow: vi.fn(), mute: vi.fn(), unmute: vi.fn(), delayed: true,
 }));
 
-vi.mock("sonner", () => ({ toast: Object.assign(mocks.toast, { error: vi.fn() }) }));
+vi.mock("sonner", () => ({ toast: Object.assign(mocks.toast, { error: mocks.toastError }) }));
 vi.mock("@/i18n", () => ({
   useI18n: () => ({
     language: "en",
@@ -51,7 +52,7 @@ let root: Root;
 let container: HTMLDivElement;
 beforeEach(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-  for (const mock of [mocks.forYou, mocks.suggestions, mocks.join, mocks.interests, mocks.vocabulary, mocks.posts, mocks.toast, mocks.follow, mocks.unfollow, mocks.mute, mocks.unmute]) mock.mockReset();
+  for (const mock of [mocks.toastError, mocks.forYou, mocks.suggestions, mocks.join, mocks.interests, mocks.vocabulary, mocks.posts, mocks.toast, mocks.follow, mocks.unfollow, mocks.mute, mocks.unmute]) mock.mockReset();
   mocks.delayed = true;
   mocks.suggestions.mockReturnValue({ data: [] });
   mocks.vocabulary.mockReturnValue({ data: [], isFetching: false });
@@ -93,8 +94,8 @@ describe("forYouReasonText", () => {
     expect(label(0, 0)).toBe("Trending in Vision Lab");
   });
 
-  it("45. the same labels exist in Vietnamese", async () => {
-    const vietnamese = interpolate(await loadDictionary("vi"));
+  it("45. the same labels exist in Vietnamese", () => {
+    const vietnamese = interpolate(vietnameseDictionary);
     const label = (readers: number, replies: number) => forYouReasonText({ reasonKind: "trending", reasonTopic: lab, reasonStats: { readers, replies } }, vietnamese);
     expect(label(3, 2)).toBe("Đang được quan tâm trong Vision Lab · 3 người đọc, 2 trả lời trong 2 tuần qua");
     expect(label(1, 1)).toBe("Đang được quan tâm trong Vision Lab · 1 người đọc, 1 trả lời trong 2 tuần qua");
@@ -237,6 +238,9 @@ describe("InterestsCard", () => {
     expect(row("NLP").textContent).toContain("Based on 1 post");
     expect(buttonByText("Unfollow", row("Blockchain"))).toBeUndefined();
     expect(row("Blockchain").textContent).toContain("Edit it in your academic profile");
+    // F1: profile interests are edited only in the academic profile, so the hint is a real link.
+    expect(row("Blockchain").querySelector('a[href="/settings/profile"]')!.textContent).toBe("Edit it in your academic profile");
+    expect(buttonByText("Mute", row("Blockchain"))).toBeDefined();
     expect(row("Blockchain").textContent).toContain("No discussions use this term yet");
     expect(buttonByText("Follow", row("Graphs"))).toBeDefined();
     expect(row("Graphs").textContent).toContain("Early guess");
@@ -281,5 +285,50 @@ describe("InterestsCard", () => {
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 300)); });
     await act(async () => buttonByText("Graph neural networks")!.click());
     expect(mocks.follow).toHaveBeenCalledWith("Graph neural networks", expect.anything());
+  });
+});
+
+describe("51. review fixes F1-F3 (web)", () => {
+  it("F2 a community topic has Follow next to Mute, and following uses the topic label", async () => {
+    mocks.interests.mockReturnValue({ isLoading: false, error: null, data: { muted: [], topics: [topic({ key: "nlp", label: "NLP", source: "community", viaCommunity: { id: "c", name: "NLP Lab" }, evidenceCount: 0 })] } });
+    await render(<InterestsCard />);
+    const row = Array.from(container.querySelectorAll("li")).find((item) => item.querySelector("p")?.textContent === "NLP")!;
+    expect(row.textContent).toContain("via NLP Lab");
+    expect(buttonByText("Mute", row)).toBeDefined();
+    await act(async () => buttonByText("Follow", row)!.click());
+    expect(mocks.follow).toHaveBeenCalledWith("NLP", expect.anything());
+  });
+
+  it("F2 follow and mute failures show a toast with the right limit", async () => {
+    mocks.interests.mockReturnValue({ isLoading: false, error: null, data: { muted: [], topics: [topic({ key: "nlp", label: "NLP", source: "community" })] } });
+    mocks.follow.mockImplementation((_topic: string, options: { onError: (error: unknown) => void }) => options.onError({ response: { status: 409 } }));
+    mocks.mute.mockImplementation((_topic: string, options: { onError: (error: unknown) => void }) => options.onError({ response: { status: 409 } }));
+    await render(<InterestsCard />);
+    await act(async () => buttonByText("Follow")!.click());
+    expect(mocks.toastError).toHaveBeenLastCalledWith("You can follow up to 20 topics");
+    await act(async () => buttonByText("Mute")!.click());
+    expect(mocks.toastError).toHaveBeenLastCalledWith("You can mute up to 100 topics");
+  });
+
+  it("F3 a failed Join shows the server message, and only the clicked card is disabled while it is pending", async () => {
+    mocks.forYou.mockReturnValue({ isLoading: false, error: null, data: { postsBasis: "none", papersBasis: "none", posts: [], papers: [] } });
+    mocks.suggestions.mockReturnValue({ data: [community("c1"), community("c2")] });
+    let settle: (() => void) | undefined;
+    let fail: (() => void) | undefined;
+    mocks.join.mockImplementation((_id: string, options: { onError: (error: unknown) => void; onSettled: () => void }) => {
+      fail = () => options.onError({ response: { data: { error: { message: "You are banned from this community" } } } });
+      settle = () => options.onSettled();
+    });
+    await render(<ForYouSection />);
+    const buttons = () => Array.from(container.querySelectorAll<HTMLButtonElement>("ul li button"));
+    await act(async () => buttons()[0]!.click());
+    expect(buttons().map((button) => button.disabled)).toEqual([true, false]);
+    await act(async () => { fail!(); settle!(); });
+    expect(mocks.toastError).toHaveBeenLastCalledWith("You are banned from this community");
+    expect(buttons().map((button) => button.disabled)).toEqual([false, false]);
+    // no server message: the generic string
+    mocks.join.mockImplementation((_id: string, options: { onError: (error: unknown) => void; onSettled: () => void }) => { options.onError(new Error("network")); options.onSettled(); });
+    await act(async () => buttons()[1]!.click());
+    expect(mocks.toastError).toHaveBeenLastCalledWith("Something went wrong. Please try again.");
   });
 });

@@ -12,7 +12,7 @@ import { presentCommunity } from "../communities/community.service.js";
 import { getEmbeddingProvider } from "../embeddings/embedding.factory.js";
 import { normalizeTerm } from "../taxonomy/taxonomy.normalize.js";
 import { PERSONALIZATION } from "./personalization.constants.js";
-import { invalidatePersonalizationProfile, profileCacheKey } from "./personalization.cache.js";
+import { invalidatePersonalizationProfile, profileCacheKey, readProfileVersion } from "./personalization.cache.js";
 import { enqueueRecomputeForumTopics, loadVocabulary } from "./personalization-topics.service.js";
 import {
   fetchActiveMemberships, fetchCandidates, fetchFollows, fetchMembershipCommunityIds, fetchMutes, fetchProfileInterests, fetchResearchCommunityTopics, fetchSignals,
@@ -73,16 +73,22 @@ async function buildProfile(userId: string, vocab: Vocabulary, now: Date): Promi
 }
 
 async function loadProfile(userId: string, vocab: Vocabulary, now: Date): Promise<CachedProfile> {
-  const cached = await cache.get<CachedProfile>(profileCacheKey(userId));
+  // The version is read BEFORE the database: if an invalidation lands while this build is running, the result is
+  // written under the old version's key, which nobody reads any more. Redis down: build without caching.
+  const version = await readProfileVersion(userId);
+  if (version === null) return buildProfile(userId, vocab, now);
+  const key = profileCacheKey(userId, version);
+  const cached = await cache.get<CachedProfile>(key);
   if (cached) return cached;
   const built = await buildProfile(userId, vocab, now);
-  await cache.set(profileCacheKey(userId), built, PERSONALIZATION.PROFILE_CACHE_TTL_SECONDS);
+  await cache.set(key, built, PERSONALIZATION.PROFILE_CACHE_TTL_SECONDS);
   return built;
 }
 
 const toCandidate = (row: CandidateRow, vocab: Vocabulary): FeedCandidate => ({
   id: row.id, bucketId: row.bucketId, bucketName: row.bucketName, lastActivityAt: row.lastActivityAt,
   voteScore: row.voteScore, commentCount: row.commentCount, topics: postTopicRelevance(row.stored, vocab),
+  ...(row.inJoinedCommunity ? { joinedCommunity: { id: row.bucketId, name: row.bucketName } } : {}),
 });
 const toWindowCandidate = (row: CandidateRow, vocab: Vocabulary): WindowCandidate => ({
   ...toCandidate(row, vocab), createdAt: row.createdAt, readers: row.readers, repliers: row.repliers,
@@ -161,7 +167,7 @@ export const personalizationService = {
       await tx.userTopicMute.deleteMany({ where: { userId, topicKey: key } });
     });
     await invalidateProfile(userId);
-    if (key.includes(" ")) enqueueRecomputeForumTopics();
+    if (key.includes(" ")) void enqueueRecomputeForumTopics();
   },
 
   /** A topic that also comes from the academic profile stays in the list with source `profile`. */
@@ -170,7 +176,7 @@ export const personalizationService = {
     const key = normalizeTerm(rawKey);
     await getPrisma().userTopicFollow.deleteMany({ where: { userId, topicKey: key } });
     await invalidateProfile(userId);
-    if (key.includes(" ")) enqueueRecomputeForumTopics();
+    if (key.includes(" ")) void enqueueRecomputeForumTopics();
   },
 
   /** Hides a topic from "For you" (including profile interests) and drops any follow of it. */
@@ -181,7 +187,15 @@ export const personalizationService = {
     if (!key) throw AppError.badRequest("Topic is required");
     const label = topic.trim();
     await getPrisma().$transaction(async (tx) => {
-      await tx.userTopicMute.upsert({ where: { userId_topicKey: { userId, topicKey: key } }, create: { userId, topicKey: key, label }, update: {} });
+      // Same advisory lock as follow: "count then write" limits must be serialized per user.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`personalization:follow:${userId}`}))`;
+      const existing = await tx.userTopicMute.findUnique({ where: { userId_topicKey: { userId, topicKey: key } }, select: { topicKey: true } });
+      // Muting a topic that is already muted is idempotent and never counts against the limit.
+      if (!existing) {
+        const count = await tx.userTopicMute.count({ where: { userId } });
+        if (count >= PERSONALIZATION.MAX_MUTES) throw AppError.conflict(`You can mute up to ${PERSONALIZATION.MAX_MUTES} topics`);
+        await tx.userTopicMute.create({ data: { userId, topicKey: key, label } });
+      }
       await tx.userTopicFollow.deleteMany({ where: { userId, topicKey: key } });
     });
     await invalidateProfile(userId);

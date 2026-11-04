@@ -67,6 +67,7 @@ const personalizationKeys = [
   "Trending in {{community}} · {{replies}} in the last 2 weeks",
   "From communities you joined",
   "via {{community}}",
+  "You can mute up to 100 topics",
 ] as const;
 
 export const personalizationStrings = Object.fromEntries(personalizationKeys.map((key) => [key, key])) as Record<(typeof personalizationKeys)[number], string>;
@@ -139,4 +140,5 @@ export const personalizationViStrings: Record<(typeof personalizationKeys)[numbe
   "Trending in {{community}} · {{replies}} in the last 2 weeks": "Đang được quan tâm trong {{community}} · {{replies}} trong 2 tuần qua",
   "From communities you joined": "Từ các cộng đồng bạn đã tham gia",
   "via {{community}}": "qua {{community}}",
+  "You can mute up to 100 topics": "Bạn có thể tắt tối đa 100 chủ đề",
 };

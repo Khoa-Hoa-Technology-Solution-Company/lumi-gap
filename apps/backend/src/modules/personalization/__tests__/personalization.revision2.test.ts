@@ -193,3 +193,27 @@ describe("R4 community suggestions (pure part)", () => {
     expect(ranked.find((item) => item.id === "y")!.score).toBeCloseTo(1.3, 10);
   });
 });
+
+describe("F4 the joined reason names a community that contains the post", () => {
+  const post = (overrides: Record<string, unknown> = {}) => ({ id: "p", bucketId: "x", bucketName: "X", lastActivityAt: NOW, voteScore: 0, commentCount: 0, topics: one("t"), ...overrides });
+  // The topic comes from Y (joined later, so the most recent) and also exists in X.
+  const profile = profileOf({ communityInterests: [community("t", "X", 30, "x"), community("t", "Y", 2, "y")] });
+
+  it("46. a post in joined community X says X even though Y was joined later", () => {
+    expect(profile.topics[0]!.viaCommunity).toEqual({ id: "y", name: "Y" });
+    const [ranked] = rankPersonal([post({ joinedCommunity: { id: "x", name: "X" } })], profile, NOW);
+    expect(ranked).toMatchObject({ reasonKind: "joined", reasonCommunity: { id: "x", name: "X" } });
+  });
+
+  it("46. a post outside the joined communities falls back to viaCommunity", () => {
+    const [ranked] = rankPersonal([post()], profile, NOW);
+    expect(ranked).toMatchObject({ reasonKind: "joined", reasonCommunity: { id: "y", name: "Y" } });
+  });
+
+  it("46. non-community reasons carry no community", () => {
+    const followed = profileOf({ follows: [{ key: "t", label: "T" }], communityInterests: [community("t", "X", 30, "x")] });
+    const [ranked] = rankPersonal([post({ joinedCommunity: { id: "x", name: "X" } })], followed, NOW);
+    expect(ranked!.reasonKind).toBe("followed");
+    expect(ranked!.reasonCommunity).toBeUndefined();
+  });
+});

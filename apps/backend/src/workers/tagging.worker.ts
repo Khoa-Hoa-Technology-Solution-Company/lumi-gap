@@ -9,7 +9,7 @@ import { startWorkerHeartbeat } from "../infrastructure/worker-heartbeat.js";
 import {
   APPLY_ALL_TAGS_JOB, APPLY_TAG_JOB, tagAssignmentService, type ApplyTagJobData,
 } from "../modules/tags/tag-assignment.service.js";
-import { RECOMPUTE_FORUM_TOPICS_JOB, recomputeAllPostTopics } from "../modules/personalization/personalization-topics.service.js";
+import { RECOMPUTE_FORUM_TOPICS_JOB, recomputeAllPostTopics, requeueIfVersionAdvanced, runVersionedRecompute } from "../modules/personalization/personalization-topics.service.js";
 
 enforcePostgresOnlyRuntime();
 
@@ -74,9 +74,9 @@ async function main() {
         return { tags: results.length, failures };
       }
       if (job.name === RECOMPUTE_FORUM_TOPICS_JOB) {
-        const result = await recomputeAllPostTopics();
-        logger.info({ jobId: job.id, ...result }, "forum topics recomputed");
-        return result;
+        const outcome = await runVersionedRecompute();
+        logger.info({ jobId: job.id, passes: outcome.passes, capped: outcome.capped, ...outcome.result }, "forum topics recomputed");
+        return { settledVersion: outcome.settledVersion, capped: outcome.capped, passes: outcome.passes };
       }
       logger.warn({ jobId: job.id, name: job.name }, "unknown tagging job ignored");
       return null;
@@ -84,7 +84,10 @@ async function main() {
     { connection: makeConnection(), concurrency: 1 },
   );
 
-  worker.on("completed", (job) => logger.info({ jobId: job.id, name: job.name }, "tagging job completed"));
+  worker.on("completed", (job, result) => {
+    logger.info({ jobId: job.id, name: job.name }, "tagging job completed");
+    if (job.name === RECOMPUTE_FORUM_TOPICS_JOB && result) void requeueIfVersionAdvanced(result as { settledVersion: number | null; capped: boolean });
+  });
   worker.on("failed", (job, error) => logger.error({ jobId: job?.id, name: job?.name, error }, "tagging job failed"));
 
   await registerCron();

@@ -11,10 +11,11 @@ import { useInterestActions, useInterests, useInterestVocabulary } from "../hook
 
 type Translate = (key: string, values?: Record<string, string | number>) => string;
 
-function failureMessage(error: unknown, t: Translate): string {
+/** Which limit a 409 refers to depends on the action that failed. */
+function failureMessage(error: unknown, t: Translate, action: "follow" | "mute" = "follow"): string {
   const response = (error as { response?: { status?: number; data?: { error?: { message?: string } } } } | undefined)?.response;
   if (response?.status === 422) return t("No discussion or community uses this topic yet");
-  if (response?.status === 409) return t("You can follow up to 20 topics");
+  if (response?.status === 409) return t(action === "mute" ? "You can mute up to 100 topics" : "You can follow up to 20 topics");
   return response?.data?.error?.message ?? t("Something went wrong. Please try again.");
 }
 
@@ -48,7 +49,7 @@ export function InterestsCard() {
     onSuccess: () => toast(t("{{topic}} is muted for For you", { topic: topic.label }), {
       action: { label: t("Undo"), onClick: () => actions.unmute.mutate(topic.key, { onSuccess: () => { if (topic.source === "followed") follow(topic.label); } }) },
     }),
-    onError: (error) => toast.error(failureMessage(error, t)),
+    onError: (error) => toast.error(failureMessage(error, t, "mute")),
   });
   const unmute = (item: { key: string; label: string }) => actions.unmute.mutate(item.key, {
     onSuccess: () => toast(t("{{topic}} is back in For you", { topic: item.label })),
@@ -88,10 +89,11 @@ export function InterestsCard() {
             <RowButton label={t("Mute")} onClick={() => mute(topic)} />
           </>} />
           <TopicGroup title={t("From your academic profile")} topics={fromProfile} t={t} renderActions={(topic) => <>
-            <span className="text-xs text-muted-foreground">{t("Edit it in your academic profile")}</span>
+            <Link to="/settings/profile" className="inline-flex min-h-6 items-center rounded text-xs font-medium text-blue-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t("Edit it in your academic profile")}</Link>
             <RowButton label={t("Mute")} onClick={() => mute(topic)} />
           </>} />
           <TopicGroup title={t("From communities you joined")} topics={fromCommunities} t={t} renderActions={(topic) => <>
+            <RowButton label={t("Follow")} onClick={() => follow(topic.label)} />
             <RowButton label={t("Mute")} onClick={() => mute(topic)} />
           </>} />
           <TopicGroup title={t("Inferred from what you read and discuss")} topics={inferred} t={t} renderActions={(topic) => <>
