@@ -1,6 +1,6 @@
 # 05 — Bộ câu hỏi và trả lời để nắm chắc dự án
 
-> [01 Tổng quan](01_PROJECT_COMPLETE_OVERVIEW.md) · [02 Toàn bộ luồng](02_PROJECT_ALL_FLOWS.md) · [03 Audit](03_DOCUMENTATION_AUDIT.md) · [04 Việc của tôi](04_MY_DOCUMENTATION_TASKS.md) · **05 Hỏi đáp**
+> [01 Tổng quan](01_PROJECT_COMPLETE_OVERVIEW.md) · [02 Toàn bộ luồng](02_PROJECT_ALL_FLOWS.md) · [03 Audit](03_DOCUMENTATION_AUDIT.md) · [04 Việc của tôi](04_MY_DOCUMENTATION_TASKS.md) · **05 Hỏi đáp** · [07 Nội dung tài liệu](07_REPORT_CONTENT_SUMMARY.md) · [08 Ký hiệu sơ đồ](08_DIAGRAM_NOTATION_GUIDE.md)
 >
 > Mọi câu trả lời đều lấy từ tài liệu, có ghi nguồn. Ký hiệu ⚠ = tài liệu chưa có bằng chứng hoặc còn TBD: khi bị hỏi thì **nói thật là chưa có**, không khẳng định.
 > Cách học: đọc câu hỏi, tự trả lời thành tiếng, rồi mới xem đáp án. Cấp 5 là phần giảng viên phản biện hay hỏi nhất (theo trình tự buổi review [HD mục 07]).
