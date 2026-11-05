@@ -1,0 +1,141 @@
+@startuml
+!pragma layout elk
+skinparam dpi 200
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam backgroundColor #FFFFFF
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam ArrowFontSize 12
+skinparam ArrowFontColor #4A5A6A
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam entity {
+  BackgroundColor #EFE6F8
+  BorderColor #6A3FA0
+}
+skinparam legend {
+  BackgroundColor #FFF8E1
+  BorderColor #C9B36B
+  FontSize 12
+}
+skinparam stereotypeFontSize 10
+hide circle
+hide empty methods
+title Logical ERD 3(e) - Mentor access and research integrity
+entity MentorInvitationPlan #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
+  --
+  projectId <<FK,UK*>>
+  createdById <<FK User>>
+  ..
+  status
+  parallelInvitations
+}
+entity MentorCandidate #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
+  --
+  planId <<FK>>
+  mentorUserId <<FK User>>
+  ..
+  mentorRole
+  status
+}
+entity MentorAccess #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
+  --
+  projectId <<FK>>
+  requestId <<FK,UK>>
+  relationshipId <<FK,UK>>
+  mentorUserId <<FK User>>
+  configuredById <<FK User>>
+  ..
+  preset
+  expiresAt
+}
+entity MentorResourceShare #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
+  --
+  projectId <<FK>>
+  accessId <<FK>>
+  sharedById <<FK User>>
+  ..
+  kind
+  title
+}
+entity MentorFeedback #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
+  --
+  projectId <<FK>>
+  accessId <<FK>>
+  shareId <<FK>>
+  replyToId <<FK>>
+  authorId <<FK User>>
+  handledById <<FK User>>
+  ..
+  kind
+  status
+}
+entity MentorAgreement #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
+  --
+  projectId <<FK>>
+  accessId <<FK>>
+  proposedById <<FK User>>
+  respondedById <<FK User>>
+  ..
+  acknowledgement
+  status
+}
+entity ResearchIntegrityCase #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
+  --
+  projectId <<FK>>
+  reporterId <<FK User>>
+  respondentUserId <<FK User>>
+  resolvedById <<FK User>>
+  ..
+  kind
+  status
+}
+entity ResearchIntegrityEvent #EFE6F8;line:6A3FA0 {
+  * id <<PK>>
+  --
+  caseId <<FK>>
+  projectId <<FK>>
+  actorId <<FK User>>
+  ..
+  action
+  note
+}
+entity Project #FFFFFF;line:6A3FA0;line.dashed {
+  * id <<PK>>
+}
+entity MentorshipRequest #FFFFFF;line:6A3FA0;line.dashed {
+  * id <<PK>>
+}
+entity MentorRelationship #FFFFFF;line:6A3FA0;line.dashed {
+  * id <<PK>>
+}
+MentorAccess ||--o{ MentorAgreement
+MentorAccess ||--o{ MentorFeedback
+MentorAccess ||--o{ MentorResourceShare
+MentorCandidate |o--o| MentorshipRequest
+MentorFeedback |o--o{ MentorFeedback : replyToId
+MentorInvitationPlan ||--o{ MentorCandidate
+MentorRelationship |o--o{ MentorAccess
+MentorResourceShare |o--o{ MentorFeedback
+MentorshipRequest ||--o{ MentorAccess
+Project ||--o{ MentorAccess
+Project ||--o{ MentorInvitationPlan
+Project ||--o{ ResearchIntegrityCase
+ResearchIntegrityCase ||--o{ ResearchIntegrityEvent
+legend bottom
+Crow's-foot notation. PK primary key, FK foreign key, UK unique key.
+FK <name>: the foreign key references an entity that is not drawn here.
+Dashed boxes belong to another diagram (key only).
+UK*: partial unique index (unique only for rows matching its WHERE condition).
+endlegend
+@enduml

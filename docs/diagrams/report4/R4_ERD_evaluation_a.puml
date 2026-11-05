@@ -1,0 +1,92 @@
+@startuml
+!pragma layout elk
+skinparam dpi 200
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam backgroundColor #FFFFFF
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam ArrowFontSize 12
+skinparam ArrowFontColor #4A5A6A
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam entity {
+  BackgroundColor #EFE6F8
+  BorderColor #6A3FA0
+}
+skinparam legend {
+  BackgroundColor #FFF8E1
+  BorderColor #C9B36B
+  FontSize 12
+}
+skinparam stereotypeFontSize 10
+hide circle
+hide empty methods
+title Physical ERD - Contribution evaluation: rules, outcomes and decisions (1 of 2)
+entity contribution_evaluation_rules #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  project_id : uuid <<FK>>
+  created_by_id : uuid <<FK>>
+  ..
+  title : varchar(240)
+  rationale : text
+}
+entity contribution_outcomes #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  project_id : uuid <<FK>>
+  created_by_id : uuid <<FK>>
+  ..
+  key : varchar(100)
+}
+entity contribution_outcome_sources #EFE6F8;line:6A3FA0 {
+  * contribution_id : uuid <<PK,FK project_contribution_proposals>>
+  --
+  project_id : uuid <<FK>>
+  outcome_id : uuid <<FK>>
+}
+entity contribution_outcome_evaluations #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  project_id : uuid <<FK>>
+  outcome_id : uuid <<FK>>
+  rule_id : uuid <<FK>>
+  created_by_id : uuid <<FK>>
+  ..
+  client_key : uuid
+}
+entity contribution_evaluation_decisions #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  project_id : uuid <<FK>>
+  evaluation_id : uuid <<FK>>
+  user_id : uuid <<FK>>
+  ..
+  kind : varchar(24)
+  decision : varchar(16)
+}
+entity projects #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+entity users #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+contribution_evaluation_rules ||--o{ contribution_outcome_evaluations
+contribution_outcome_evaluations ||--o{ contribution_evaluation_decisions
+contribution_outcomes ||--o{ contribution_outcome_evaluations
+contribution_outcomes ||--o{ contribution_outcome_sources
+projects ||--o{ contribution_evaluation_rules
+projects ||--o{ contribution_outcomes
+users ||--o{ contribution_evaluation_decisions
+users ||--o{ contribution_evaluation_rules
+users ||--o{ contribution_outcome_evaluations
+users ||--o{ contribution_outcomes
+legend bottom
+Crow's-foot notation. PK primary key, FK foreign key, UK unique key.
+FK <name>: the foreign key references a table that is not drawn here.
+Dashed boxes belong to another diagram (key only).
+endlegend
+@enduml

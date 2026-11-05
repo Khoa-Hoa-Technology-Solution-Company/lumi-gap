@@ -32,6 +32,7 @@ entity Paper #EFE6F8;line:6A3FA0 {
   requestedById <<FK User>>
   uploadedById <<FK User>>
   doi <<UK>>
+  openalexId <<UK>>
   ..
   title
   journalName

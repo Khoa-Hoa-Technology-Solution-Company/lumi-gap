@@ -1,0 +1,127 @@
+@startuml
+!pragma layout elk
+skinparam dpi 200
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam backgroundColor #FFFFFF
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam ArrowFontSize 12
+skinparam ArrowFontColor #4A5A6A
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam entity {
+  BackgroundColor #EFE6F8
+  BorderColor #6A3FA0
+}
+skinparam legend {
+  BackgroundColor #FFF8E1
+  BorderColor #C9B36B
+  FontSize 12
+}
+skinparam stereotypeFontSize 10
+hide circle
+hide empty methods
+title Physical ERD - Collaborative screening: rounds, reviews and decisions (1 of 2)
+entity screening_settings #EFE6F8;line:6A3FA0 {
+  * project_id : uuid <<PK,FK>>
+  --
+  preferred_adjudicator_id : uuid
+  adjudication_reminder_hours : integer
+}
+entity screening_rounds #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  finalizer_id : uuid <<FK>>
+  project_id : uuid <<FK>>
+  paper_id : uuid <<FK project_papers>>
+  created_by_id : uuid <<FK>>
+  ..
+  legacy_needs_audit : boolean
+  status : varchar(24)
+}
+entity screening_assignments #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  project_id : uuid <<FK>>
+  round_id : uuid <<FK>>
+  reviewer_id : uuid <<FK>>
+  ..
+  active : boolean
+  revision : integer
+}
+entity screening_reviews #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  project_id : uuid <<FK>>
+  assignment_id : uuid <<FK>>
+  ..
+  revision : integer
+  decision : varchar(16)
+}
+entity screening_final_decisions #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  project_id : uuid <<FK>>
+  round_id : uuid <<FK>>
+  resolver_id : uuid <<FK>>
+  ..
+  resolution_type : varchar(32)
+  decision : varchar(16)
+}
+entity screening_ai_suggestions #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  project_id : uuid <<FK>>
+  round_id : uuid <<FK>>
+  actor_id : uuid <<FK>>
+  ..
+  client_key : uuid
+  status : varchar(16)
+}
+entity screening_audit #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  project_id : uuid <<FK>>
+  round_id : uuid <<FK>>
+  actor_id : uuid <<FK>>
+  ..
+  type : varchar(48)
+  client_key : uuid
+}
+entity screening_legacy_records #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  project_id : uuid <<FK>>
+  paper_id : uuid <<FK project_papers>>
+}
+entity projects #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+entity papers #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+entity users #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+projects ||--o{ screening_audit
+projects ||--o| screening_settings
+screening_assignments ||--o{ screening_reviews
+screening_rounds ||--o{ screening_ai_suggestions
+screening_rounds ||--o{ screening_assignments
+screening_rounds |o--o{ screening_audit
+screening_rounds ||--o{ screening_final_decisions
+users ||--o{ screening_ai_suggestions
+users ||--o{ screening_assignments
+users ||--o{ screening_audit
+users |o--o{ screening_final_decisions
+users ||--o{ screening_rounds : created_by_id
+users |o--o{ screening_rounds : finalizer_id
+legend bottom
+Crow's-foot notation. PK primary key, FK foreign key, UK unique key.
+FK <name>: the foreign key references a table that is not drawn here.
+Dashed boxes belong to another diagram (key only).
+endlegend
+@enduml

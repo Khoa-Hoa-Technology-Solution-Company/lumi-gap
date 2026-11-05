@@ -32,6 +32,7 @@ entity ContentReport #EFE6F8;line:6A3FA0 {
   postId <<FK>>
   commentId <<FK>>
   communityId <<FK>>
+  researchCommunityId <<FK>>
   reviewedById <<FK User>>
   ..
   targetType
@@ -58,7 +59,8 @@ entity ForumPost #FFFFFF;line:6A3FA0;line.dashed {
 entity ForumComment #FFFFFF;line:6A3FA0;line.dashed {
   * id <<PK>>
 }
-Community |o--o{ ContentReport
+Community |o--o{ ContentReport : communityId
+Community |o--o{ ContentReport : researchCommunityId
 Community |o--o{ ForumModerationAction
 ForumComment |o--o{ ContentReport
 ForumComment |o--o{ ForumModerationAction

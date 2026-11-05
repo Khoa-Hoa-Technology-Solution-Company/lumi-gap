@@ -1,0 +1,86 @@
+@startuml
+!pragma layout elk
+skinparam dpi 200
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam backgroundColor #FFFFFF
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam ArrowFontSize 12
+skinparam ArrowFontColor #4A5A6A
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam entity {
+  BackgroundColor #EFE6F8
+  BorderColor #6A3FA0
+}
+skinparam legend {
+  BackgroundColor #FFF8E1
+  BorderColor #C9B36B
+  FontSize 12
+}
+skinparam stereotypeFontSize 10
+hide circle
+hide empty methods
+title Physical ERD - Manuscript attribution checks and writing reports
+entity manuscript_attribution_checks #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  project_id : uuid <<FK>>
+  workspace_id : uuid <<FK>>
+  snapshot_id : uuid <<FK>>
+  created_by_id : uuid <<FK>>
+  ..
+  status : varchar(24)
+  acknowledgement_text : text
+}
+entity manuscript_attribution_decisions #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  check_id : uuid <<FK>>
+  project_id : uuid <<FK>>
+  user_id : uuid <<FK>>
+  ..
+  participant_kind : varchar(24)
+  decision : varchar(16)
+}
+entity manuscript_writing_reports #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  project_id : uuid <<FK>>
+  workspace_id : uuid <<FK>>
+  snapshot_id : uuid <<FK,UK>>
+  actor_id : uuid <<FK>>
+  ..
+  status : varchar(16)
+  calculated_at : timestamptz
+}
+entity draft_workspaces #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+entity manuscript_snapshots #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+entity projects #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+entity users #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+draft_workspaces ||--o{ manuscript_attribution_checks
+draft_workspaces ||--o{ manuscript_writing_reports
+manuscript_attribution_checks ||--o{ manuscript_attribution_decisions
+manuscript_snapshots ||--o{ manuscript_attribution_checks
+manuscript_snapshots ||--o{ manuscript_writing_reports
+projects ||--o{ manuscript_attribution_checks
+projects ||--o{ manuscript_writing_reports
+users ||--o{ manuscript_attribution_checks
+users ||--o{ manuscript_attribution_decisions
+users ||--o{ manuscript_writing_reports
+legend bottom
+Crow's-foot notation. PK primary key, FK foreign key, UK unique key.
+Dashed boxes belong to another diagram (key only).
+endlegend
+@enduml

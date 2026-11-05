@@ -1,0 +1,96 @@
+@startuml
+!pragma layout elk
+skinparam dpi 200
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam backgroundColor #FFFFFF
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam ArrowFontSize 12
+skinparam ArrowFontColor #4A5A6A
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam entity {
+  BackgroundColor #EFE6F8
+  BorderColor #6A3FA0
+}
+skinparam legend {
+  BackgroundColor #FFF8E1
+  BorderColor #C9B36B
+  FontSize 12
+}
+skinparam stereotypeFontSize 10
+hide circle
+hide empty methods
+title Physical ERD - Curated tags, topic backfill and platform embedding connections
+entity tags #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  created_by_id : uuid <<FK>>
+  slug : varchar(120) <<UK>>
+  ..
+  name : varchar(200)
+  status : varchar(16)
+}
+entity tag_rules #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  tag_id : uuid <<FK>>
+  research_topic_id : uuid <<FK>>
+  keyword_id : uuid <<FK>>
+  ..
+  rule_kind : varchar(16)
+  effect : varchar(16)
+}
+entity paper_tags #EFE6F8;line:6A3FA0 {
+  * paper_id : uuid <<PK,FK>>
+  * tag_id : uuid <<PK,FK>>
+  --
+  source : varchar(16)
+  confidence : double precision
+}
+entity topic_backfill_runs #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  requested_by_id : uuid <<FK>>
+  ..
+  target_kind : varchar(16)
+  target_name : text
+}
+entity platform_embedding_connections #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  created_by_id : uuid <<FK>>
+  is_active : boolean <<UK*>>
+  ..
+  name : varchar(100)
+  base_url : text
+}
+entity papers #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+entity research_topics #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+entity keywords #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+entity users #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+keywords |o--o{ tag_rules
+papers ||--o{ paper_tags
+research_topics |o--o{ tag_rules
+tags ||--o{ paper_tags
+tags ||--o{ tag_rules
+users |o--o{ platform_embedding_connections
+users |o--o{ tags
+users |o--o{ topic_backfill_runs
+legend bottom
+Crow's-foot notation. PK primary key, FK foreign key, UK unique key.
+Dashed boxes belong to another diagram (key only).
+UK*: partial unique index (unique only for rows matching its WHERE condition).
+endlegend
+@enduml
