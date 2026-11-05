@@ -3,27 +3,38 @@
  "ucs": [
   [
    "UC29",
-   "UC-29 Manage user accounts"
+   "UC-29",
+   "Manage user accounts"
   ],
   [
    "UC30",
-   "UC-30 Manage paper corpus"
-  ],
-  [
-   "UC31",
-   "UC-31 Operate sync and ingestion"
-  ],
-  [
-   "UC32",
-   "UC-32 Monitor pipeline and evaluate quality"
+   "UC-30",
+   "Manage paper corpus"
   ],
   [
    "UC33",
-   "UC-33 Review lecturer verification"
+   "UC-33",
+   "Review lecturer verification"
   ],
   [
    "UC36",
-   "UC-36 Report and moderate content"
+   "UC-36",
+   "Report and moderate content"
+  ],
+  [
+   "UC32",
+   "UC-32",
+   "Monitor pipeline and evaluate quality"
+  ],
+  [
+   "UC31",
+   "UC-31",
+   "Operate sync and ingestion"
+  ],
+  [
+   "UC50",
+   "UC-50",
+   "Manage taxonomy, keywords and tags"
   ]
  ],
  "actors": [
@@ -32,13 +43,13 @@
    "Administrator"
   ]
  ],
- "gens": [],
  "exts": [
   [
    "OA",
    "OpenAlex"
   ]
  ],
+ "gens": [],
  "links": [
   [
    "AD",
@@ -65,9 +76,16 @@
    "UC36"
   ],
   [
+   "AD",
+   "UC50"
+  ],
+  [
    "UC31",
    "OA"
+  ],
+  [
+   "UC50",
+   "OA"
   ]
- ],
- "rels": []
+ ]
 }

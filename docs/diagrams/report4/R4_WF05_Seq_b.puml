@@ -78,10 +78,13 @@ PO ->> R : POST /credits/payos/webhook\n(code, data, signature)
 activate R
 R -> P : handleWebhook(body)
 activate P
-alt PAYOS_CHECKSUM_KEY set and\nsignature mismatch
+alt no PAYOS_CHECKSUM_KEY
+  P --> R : AppError 503
+  R --> PO : 503
+else signature mismatch
   P --> R : AppError 400
   R --> PO : 400
-else signature ok, or no key
+else signature ok
   alt code is not 00
     P --> R : success false\n(order unchanged)
   else code is 00

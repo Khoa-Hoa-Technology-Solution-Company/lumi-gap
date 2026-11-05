@@ -32,6 +32,7 @@ entity forum_content_reports #EFE6F8;line:6A3FA0 {
   post_id : uuid <<FK>>
   comment_id : uuid <<FK>>
   community_id : uuid <<FK>>
+  research_community_id : uuid <<FK>>
   reviewed_by_id : uuid <<FK users>>
   ..
   target_type : varchar(16)
@@ -80,7 +81,8 @@ entity forum_posts #FFFFFF;line:6A3FA0;line.dashed {
 entity forum_comments #FFFFFF;line:6A3FA0;line.dashed {
   * id : uuid <<PK>>
 }
-communities |o--o{ forum_content_reports
+communities |o--o{ forum_content_reports : community_id
+communities |o--o{ forum_content_reports : research_community_id
 communities |o--o{ forum_moderation_actions
 forum_comments |o--o{ forum_content_reports
 forum_comments |o--o{ forum_moderation_actions

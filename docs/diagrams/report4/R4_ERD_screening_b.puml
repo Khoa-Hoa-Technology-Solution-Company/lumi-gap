@@ -1,0 +1,97 @@
+@startuml
+!pragma layout elk
+skinparam dpi 200
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam backgroundColor #FFFFFF
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam ArrowFontSize 12
+skinparam ArrowFontColor #4A5A6A
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam entity {
+  BackgroundColor #EFE6F8
+  BorderColor #6A3FA0
+}
+skinparam legend {
+  BackgroundColor #FFF8E1
+  BorderColor #C9B36B
+  FontSize 12
+}
+skinparam stereotypeFontSize 10
+hide circle
+hide empty methods
+title Physical ERD - Collaborative screening: adjudication cases (2 of 2)
+entity screening_adjudication_cases #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  final_decision_id : uuid <<FK,UK>>
+  project_id : uuid <<FK>>
+  round_id : uuid <<FK,UK*>>
+  ..
+  active : boolean
+  status : varchar(32)
+}
+entity screening_adjudication_invitations #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  project_id : uuid <<FK>>
+  case_id : uuid <<FK,UK*>>
+  user_id : uuid <<FK>>
+  ..
+  role : varchar(32)
+  status : varchar(16)
+}
+entity screening_adjudication_statements #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  project_id : uuid <<FK>>
+  case_id : uuid <<FK>>
+  reviewer_id : uuid <<FK>>
+  ..
+  packet_version : integer
+  revision : integer
+}
+entity screening_adjudication_conflicts #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  project_id : uuid <<FK>>
+  case_id : uuid <<FK>>
+  invitation_id : uuid <<FK>>
+  reported_by_id : uuid <<FK>>
+  resolved_by_id : uuid <<FK>>
+  ..
+  reason : text
+  resolution : text
+}
+entity projects #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+entity screening_rounds #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+entity screening_final_decisions #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+entity users #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+screening_adjudication_cases ||--o{ screening_adjudication_conflicts
+screening_adjudication_cases ||--o{ screening_adjudication_invitations
+screening_adjudication_cases ||--o{ screening_adjudication_statements
+screening_adjudication_invitations ||--o{ screening_adjudication_conflicts
+screening_final_decisions |o--o{ screening_adjudication_cases
+screening_rounds ||--o{ screening_adjudication_cases
+users ||--o{ screening_adjudication_conflicts : reported_by_id
+users |o--o{ screening_adjudication_conflicts : resolved_by_id
+users ||--o{ screening_adjudication_invitations
+users ||--o{ screening_adjudication_statements
+legend bottom
+Crow's-foot notation. PK primary key, FK foreign key, UK unique key.
+Dashed boxes belong to another diagram (key only).
+UK*: partial unique index (unique only for rows matching its WHERE condition).
+endlegend
+@enduml

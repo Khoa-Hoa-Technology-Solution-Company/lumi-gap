@@ -31,6 +31,7 @@ entity mentorship_requests #EFE6F8;line:6A3FA0 {
   project_id : uuid <<FK>>
   mentor_user_id : uuid <<FK users>>
   requested_by : uuid <<FK users>>
+  candidate_id : uuid <<FK,UK mentor_candidates>>
   ..
   mentor_role : varchar(16)
   status : varchar(24)

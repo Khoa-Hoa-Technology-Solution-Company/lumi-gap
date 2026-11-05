@@ -1,0 +1,74 @@
+@startuml
+!pragma layout elk
+skinparam dpi 200
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam backgroundColor #FFFFFF
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam ArrowFontSize 12
+skinparam ArrowFontColor #4A5A6A
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam entity {
+  BackgroundColor #EFE6F8
+  BorderColor #6A3FA0
+}
+skinparam legend {
+  BackgroundColor #FFF8E1
+  BorderColor #C9B36B
+  FontSize 12
+}
+skinparam stereotypeFontSize 10
+hide circle
+hide empty methods
+title Physical ERD - Research integrity cases and evidence ledger
+entity research_integrity_cases #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  project_id : uuid <<FK>>
+  reporter_id : uuid <<FK>>
+  respondent_user_id : uuid <<FK>>
+  resolved_by_id : uuid <<FK>>
+  ..
+  kind : varchar(32)
+  status : varchar(24)
+}
+entity research_integrity_events #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  case_id : uuid <<FK>>
+  project_id : uuid <<FK>>
+  actor_id : uuid <<FK>>
+  ..
+  action : varchar(32)
+  note : text
+}
+entity research_evidence_events #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  actor_id : uuid <<FK>>
+  ..
+  event_type : varchar(48)
+  resource_kind : varchar(32)
+}
+entity projects #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+entity users #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+projects ||--o{ research_integrity_cases
+research_integrity_cases ||--o{ research_integrity_events
+users |o--o{ research_evidence_events
+users ||--o{ research_integrity_cases : reporter_id
+users |o--o{ research_integrity_cases : resolved_by_id
+users |o--o{ research_integrity_cases : respondent_user_id
+users ||--o{ research_integrity_events
+legend bottom
+Crow's-foot notation. PK primary key, FK foreign key, UK unique key.
+Dashed boxes belong to another diagram (key only).
+endlegend
+@enduml
