@@ -11,6 +11,7 @@ export interface NotificationItem {
   verificationRequestId?: string;
   mentorshipRequestId?: string;
   screeningRoundId?: string;
+  screeningMessageId?: string;
   allocationRevisionId?: string;
   workContributionId?: string;
   contributionEvaluationId?: string;

@@ -27,7 +27,7 @@ export default function NotificationMenu({ notifications, isLoading, unreadCount
   const recent = notifications?.slice(0, 5) ?? [];
 
   const openNotification = (notification: NotificationItem) => {
-    if (!notification.isRead) markRead.mutate(notification.id);
+    if (!notification.isRead && notification.type !== "SCREENING_DISCUSSION_MESSAGE") markRead.mutate(notification.id);
     const destination = getNotificationDestination(notification, isAdmin);
     if (destination) navigate(destination);
   };

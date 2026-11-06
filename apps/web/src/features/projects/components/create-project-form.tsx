@@ -2,7 +2,7 @@ import { useRef, useState, type FormEvent } from "react";
 import type { CreateProjectRequest, ResearchApproach } from "@trend/shared-types";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { Globe2, LockKeyhole } from "lucide-react";
+import { LockKeyhole } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,7 +12,7 @@ import { useAuthStore } from "@/stores/auth-store";
 import { useCreateProject } from "../hooks/use-projects";
 import { ProjectResearchFields } from "./project-research-fields";
 
-interface Draft extends CreateProjectRequest { idempotencyKey: string; submitted?: boolean }
+interface Draft extends CreateProjectRequest { visibility: "PRIVATE"; idempotencyKey: string; submitted?: boolean }
 function readDraft(key: string): Draft {
   try {
     const parsed: unknown = JSON.parse(sessionStorage.getItem(key) || "null");
@@ -28,7 +28,7 @@ function readDraft(key: string): Draft {
         && typeof value.researchApproach === "string" && ["UNDECIDED", "EXPLORATORY", "LITERATURE_REVIEW", "EMPIRICAL"].includes(value.researchApproach)
         && (value.submitted === undefined || typeof value.submitted === "boolean")) {
         return { title: value.title, description: value.description, idempotencyKey: value.idempotencyKey,
-          visibility: value.visibility, researchAreas: value.researchAreas as string[],
+          visibility: "PRIVATE", researchAreas: value.researchAreas as string[],
           researchApproach: value.researchApproach as ResearchApproach, submitted: value.submitted as boolean | undefined };
       }
     }
@@ -58,7 +58,7 @@ export function CreateProjectForm({ onClose, onBusyChange }: { onClose: () => vo
     const { submitted: _submitted, ...payload } = draft;
     change({ submitted: true });
     try {
-      const project = await create.mutateAsync({ ...payload, title: payload.title.trim(), description: payload.description?.trim() });
+      const project = await create.mutateAsync({ ...payload, visibility: "PRIVATE", title: payload.title.trim(), description: payload.description?.trim() });
       try { sessionStorage.removeItem(storageKey); } catch { /* Optional storage. */ }
       toast.success(t("Project created successfully"));
       onClose(); navigate(`/projects/${encodeURIComponent(project._id)}?tab=papers&welcome=1`);
@@ -83,14 +83,7 @@ export function CreateProjectForm({ onClose, onBusyChange }: { onClose: () => vo
         <div className="space-y-2"><Label htmlFor="project-create-description">{t("Research problem or objective")} <span className="font-normal text-muted-foreground">{t("(optional)")}</span></Label>
           <textarea id="project-create-description" className="project-form-textarea" rows={3} maxLength={5000} value={draft.description ?? ""} onChange={event => change({ description: event.target.value })} placeholder={t("A few sentences about the idea you want to explore.")} />
         </div>
-        <fieldset><legend className="mb-2 text-sm font-medium">{t("Visibility")}</legend>
-          <div className="grid gap-2 sm:grid-cols-2">{(["PRIVATE", "PUBLIC"] as const).map(value => <label key={value} className="project-privacy-choice" data-selected={draft.visibility === value}>
-            <input type="radio" name="visibility" value={value} checked={draft.visibility === value} onChange={() => change({ visibility: value })} />
-            {value === "PRIVATE" ? <LockKeyhole aria-hidden="true" /> : <Globe2 aria-hidden="true" />}<span>{t(value === "PRIVATE" ? "Private" : "Public summary")}</span>
-          </label>)}</div>
-          <p className="mt-2 text-xs leading-5 text-muted-foreground">{t(draft.visibility === "PRIVATE" ? "Only your team can open the workspace. Mentor discovery starts off."
-            : "Publishes the title and research areas. You can approve a public summary later. Research content stays private.")}</p>
-        </fieldset>
+        <p className="flex items-start gap-2 text-xs leading-5 text-muted-foreground"><LockKeyhole className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /><span>{t("Your project starts private. Invite people when you are ready.")}</span></p>
         <details className="project-form-optional"><summary>{t("Research direction (optional)")}</summary><div className="pt-4"><ProjectResearchFields areas={draft.researchAreas ?? []} approach={draft.researchApproach ?? "UNDECIDED"} onAreasChange={researchAreas => change({ researchAreas })} onApproachChange={(researchApproach: ResearchApproach) => change({ researchApproach })} /></div></details>
       </fieldset>
       {error ? <p role="alert" className="text-sm leading-6 text-destructive">{error}</p> : null}

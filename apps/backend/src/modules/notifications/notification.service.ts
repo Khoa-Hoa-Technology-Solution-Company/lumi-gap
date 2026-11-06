@@ -19,7 +19,8 @@ function screeningNotification(row: { type: string; emailPayload: Prisma.JsonVal
   const payload = row.emailPayload;
   if (!row.type.startsWith("SCREENING_") || !payload || typeof payload !== "object" || Array.isArray(payload)) return {};
   const id = typeof payload.screeningRoundId === "string" ? parseDatabaseId(payload.screeningRoundId) : null;
-  return id?.kind === "uuid" ? { screeningRoundId: id.value } : {};
+  const message = typeof payload.screeningMessageId === "string" ? parseDatabaseId(payload.screeningMessageId) : null;
+  return id?.kind === "uuid" ? { screeningRoundId: id.value, ...(row.type === "SCREENING_DISCUSSION_MESSAGE" && message?.kind === "uuid" ? { screeningMessageId: message.value } : {}) } : {};
 }
 function mentorshipRequestId(row: { type: string; emailPayload: Prisma.JsonValue | null }) {
   const payload = row.emailPayload;

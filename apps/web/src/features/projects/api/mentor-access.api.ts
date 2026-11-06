@@ -1,9 +1,10 @@
 import { api } from "@/services/api-client";
-import type { MentorAccessWorkspace, MentorAccessPage, MentorSharedResource, MentorShareInput, MentorResourceKind, MentorPolicyInput, MentorFeedback, MentorAgreement } from "@trend/shared-types";
+import type { MentorAssignedTask, MentorAccessWorkspace, MentorAccessPage, MentorSharedResource, MentorShareInput, MentorResourceKind, MentorPolicyInput, MentorFeedback, MentorAgreement } from "@trend/shared-types";
 const base = (id: string) => `/projects/${encodeURIComponent(id)}/mentor-access`;
 const get = async <T>(id: string, suffix = "", params?: object): Promise<T> => (await api.get(`${base(id)}${suffix}`, { params })).data.data;
 const send = async (id: string, suffix: string, body: unknown, method = "post") => (await api.request({ url: `${base(id)}${suffix}`, method, data: body })).data.data;
 export const mentorAccessApi = {
+  tasks: (id: string, page = 1) => get<MentorAccessPage<MentorAssignedTask>>(id, "/tasks", { page }),
   workspace: (id: string, page = 1) => get<MentorAccessWorkspace>(id, "", { page }),
   catalog: (id: string, kind: MentorResourceKind, page: number, q: string) => get<MentorAccessPage<MentorShareInput>>(id, "/catalog", { kind, page, q }),
   configure: (id: string, accessId: string, body: MentorPolicyInput & { expectedVersion: number; reason: string }) => send(id, `/${accessId}`, body, "put"),

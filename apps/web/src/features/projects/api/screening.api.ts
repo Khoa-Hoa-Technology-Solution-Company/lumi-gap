@@ -1,4 +1,4 @@
-import type { ScreeningLiveEvent } from "@trend/shared-types";
+import type { ScreeningLiveEvent, ScreeningAutomaticTask } from "@trend/shared-types";
 import type { ScreeningWorkspaceSummary, ScreeningAdjudicationView, ProjectAnalysisSet, ScreeningBoard, ScreeningRoundView, ScreeningSettings, ScreeningMetrics, ScreeningAiView, ScreeningAuditView, WorkspacePage, WorkspacePerson } from "@trend/shared-types";
 import { api, API_BASE_URL } from "@/services/api-client";
 import { useAuthStore } from "@/stores/auth-store";
@@ -6,9 +6,11 @@ const path = (id: string, suffix: string) => `/projects/${encodeURIComponent(id)
 async function get<T>(id: string, suffix: string, params?: Record<string, string | number>) { return (await api.get<{ data: T }>(path(id, suffix), { params })).data.data; }
 async function write(id: string, suffix: string, data: unknown, method = "post") { return (await api.request<{ data: unknown }>({ url: path(id, suffix), method, data })).data.data; }
 export const screeningApi = {
+  automaticTasks: (id: string) => get<ScreeningAutomaticTask[]>(id, "automatic-tasks"),
+  resumeFullText: (id: string, roundId: string, data: unknown) => write(id, `rounds/${roundId}/resume-full-text`, data),
   caseAction: (id: string, roundId: string, data: unknown) => write(id, `rounds/${roundId}/adjudication`, data),
   caseSource: async (id: string, roundId: string, fileId: string, caseId?: string) => (await api.get<Blob>(path(id, `rounds/${roundId}/adjudication/sources/${fileId}`), { responseType: "blob", params: { caseId } })).data,
-  adjudicationTasks: (id: string) => get<Array<{ roundId: string; paperId: string; title: string; phase: "TITLE_ABSTRACT" | "FULL_TEXT"; caseStatus?: string }>>(id, "adjudications"),
+  adjudicationTasks: (id: string) => get<Array<{ automaticTaskId?: string; taskStatus?: string; roundId: string; paperId: string; title: string; phase: "TITLE_ABSTRACT" | "FULL_TEXT"; caseStatus?: string }>>(id, "adjudications"),
   advanceConservatively: (id: string, roundId: string, data: unknown) => write(id, `rounds/${roundId}/advance-full-text`, data),
   begin: (id: string, paperId: string, data: unknown) => write(id, `papers/${paperId}/begin`, data),
   declineAgreement: (id: string, roundId: string, data: unknown) => write(id, `rounds/${roundId}/agreement/decline`, data),

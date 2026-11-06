@@ -278,16 +278,18 @@ export class ProjectService {
       title: data.title.trim(), description: data.description?.trim() || null,
       researchAreas: data.researchAreas ?? (data.researchField?.trim() ? [data.researchField.trim()] : []),
       approach: data.researchApproach ?? "UNDECIDED", status: data.status ?? "PLANNING",
-      visibility: data.visibility === "PUBLIC_SUMMARY" || data.visibility === "PUBLIC" ? "PUBLIC" : "PRIVATE",
+      visibility: "PRIVATE",
     };
     const requestHash = createHash("sha256").update(JSON.stringify(normalized)).digest("hex");
+    // Recover retries made before private-only creation without changing existing projects.
+    const legacyPublicRequestHash = createHash("sha256").update(JSON.stringify({ ...normalized, visibility: "PUBLIC" })).digest("hex");
     const row = await getPrisma().$transaction(async tx => {
       await lockProjectAccounts(tx, [owner.id]);
       await assertActiveProjectAccount(tx, owner.id, true);
       if (data.idempotencyKey) {
         const existing = await tx.project.findUnique({ where: { createdById_creationKey: { createdById: owner.id, creationKey: data.idempotencyKey } } });
         if (existing) {
-          if (existing.creationRequestHash !== requestHash) throw AppError.conflict("This creation key was already used with different project details");
+          if (existing.creationRequestHash !== requestHash && existing.creationRequestHash !== legacyPublicRequestHash) throw AppError.conflict("This creation key was already used with different project details");
           await authorizeProjectTransaction(tx, existing.id, owner.id);
           return existing;
         }
@@ -322,23 +324,30 @@ export class ProjectService {
       db.project.count({ where }),
     ]);
     const ids = rows.map(p => p.id);
-    const [members, papers, owners, plans] = await Promise.all([
+    const [members, papers, owners, plans, projectPapers] = await Promise.all([
       db.projectMember.groupBy({ by: ["projectId"], where: { projectId: { in: ids }, status: ACTIVE }, _count: true }),
       db.projectPaper.groupBy({ by: ["projectId"], where: { projectId: { in: ids } }, _count: true }),
       db.user.findMany({ where: { id: { in: [...new Set(rows.map(p => p.ownerId))] } }, select: { id: true, legacyMongoId: true, fullName: true, avatarUrl: true } }),
       db.researchPlan.findMany({ where: { projectId: { in: ids } } }),
+      db.projectPaper.findMany({ where: { projectId: { in: ids } }, select: { projectId: true, paperId: true } }),
     ]);
     const memberCounts = new Map(members.map(m => [m.projectId, m._count]));
     const paperCounts = new Map(papers.map(m => [m.projectId, m._count]));
     const ownerMap = new Map(owners.map(u => [u.id, u]));
     const approaches = new Map(plans.map(plan => [plan.projectId, plan.approach]));
+    const projectPapersMap = new Map<string, Array<{ targetId: string }>>();
+    for (const link of projectPapers) {
+      const list = projectPapersMap.get(link.projectId) ?? [];
+      list.push({ targetId: link.paperId });
+      projectPapersMap.set(link.projectId, list);
+    }
     const items = rows.map(row => ({
       _id: publicDatabaseId(row), title: row.title, description: row.description ?? undefined,
       researchField: row.researchField ?? undefined, researchAreas: row.researchAreas,
       researchApproach: approaches.get(row.id) ?? "UNDECIDED", visibility: row.visibility,
       status: row.status, ownerId: ownerMap.has(row.ownerId) ? publicDatabaseId(ownerMap.get(row.ownerId)!) : row.ownerId,
       owner: ownerMap.has(row.ownerId) ? userSummary(ownerMap.get(row.ownerId)!) : undefined,
-      accessRole: row.ownerId === actor.id ? "OWNER" : "MEMBER", members: [], papers: [],
+      accessRole: row.ownerId === actor.id ? "OWNER" : "MEMBER", members: [], papers: (projectPapersMap.get(row.id) ?? []) as unknown as import("@trend/shared-types").IProjectPaper[],
       memberCount: memberCounts.get(row.id) ?? 0, paperCount: paperCounts.get(row.id) ?? 0,
       createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString(), archivedAt: row.archivedAt?.toISOString(),
     }));

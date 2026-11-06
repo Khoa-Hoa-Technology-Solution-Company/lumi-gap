@@ -161,6 +161,33 @@ describe("ScreeningConflictResolution Component", () => {
     expect(container.textContent).not.toContain("Nguyễn Đình Thanh (Bạn)");
   });
 
+  it.each(["NEEDS_CLARIFICATION", "NEEDS_MORE_INFORMATION", "EXCLUSION_REASON_MISMATCH"] as const)("explains %s from the backend without claiming a binary disagreement", async classification => {
+    await renderRound({ ...mockRound, classification, status: classification === "EXCLUSION_REASON_MISMATCH" ? "NEEDS_RESOLUTION" : "NEEDS_MORE_INFO" });
+    expect(container.querySelector(`section[aria-label="${classification === "EXCLUSION_REASON_MISMATCH" ? "Thống nhất lý do loại" : "Làm rõ thông tin"}"]`)).not.toBeNull();
+    expect(container.textContent).not.toContain("Có bất đồng kết luận giữa 2 reviewer");
+    expect(button("Nhờ người phân xử")).toBeDefined();
+  });
+
+  it("revises a fulltext ballot with its source and linked RQs, requiring a usable source", async () => {
+    const own = { ...mockRound.myReview!, scope: "FULL_TEXT" as const, fullTextReference: "PDF p. 4, study population", researchQuestions: [{ id: "rq-1", text: "Study population?" }] };
+    await renderRound({ ...mockRound, phase: "FULL_TEXT", myReview: own, settings: { ...mockRound.settings, screeningMode: "TWO_STAGE", workflowVersion: 11 } });
+    await act(async () => button("Cập nhật phiếu của tôi")!.click());
+    await settle();
+    const source = document.querySelector('[aria-label="Nguồn toàn văn và vị trí đã đối chiếu"]') as HTMLTextAreaElement;
+    expect(source.value).toBe(own.fullTextReference);
+    expect(source.maxLength).toBe(1000);
+    await act(async () => document.querySelector<HTMLInputElement>('[role="dialog"] input[type="radio"][value="INCLUDE"]')!.click());
+    const reason = document.querySelector('textarea[placeholder="Ghi rõ lý do bạn thay đổi hoặc cập nhật đánh giá..."]') as HTMLTextAreaElement;
+    await inputText(reason, "Updated evidence after comparing participant criteria");
+    await inputText(source, "");
+    expect(button("Lưu đánh giá mới")!.disabled).toBe(true);
+    await inputText(source, "PDF p. 5, participant inclusion criteria");
+    expect(button("Lưu đánh giá mới")!.disabled).toBe(false);
+    await act(async () => button("Lưu đánh giá mới")!.click());
+    await settle();
+    expect(mocks.reassess).toHaveBeenCalledWith("proj-1", "round-1", expect.objectContaining({ decision: "INCLUDE", scope: "FULL_TEXT", fullTextReference: "PDF p. 5, participant inclusion criteria", researchQuestionIds: ["rq-1"] }));
+  });
+
   it.each([false, true])("uses the shared conflict discussion regardless of personal action capabilities: %s", async observer => {
     const current = { ...mockRound, settings: { ...mockRound.settings, reviewMode: "COLLABORATIVE" as const },
       canManage: false, canReassess: !observer, canRequestAdjudication: !observer,
@@ -170,9 +197,11 @@ describe("ScreeningConflictResolution Component", () => {
     mocks.board.mockResolvedValue({ items: [{ paperId: "paper-1", title: "Shared review layout", abstractText: "Abstract", round: current }], settings: current.settings, people });
     await act(async () => root.render(<QueryClientProvider client={client}><MemoryRouter><ReadingPaperModal projectId="proj-1" paperId="paper-1" readOnly={observer} onClose={() => {}} /></MemoryRouter></QueryClientProvider>));
     await settle(); await settle();
-    expect(document.body.textContent).toContain("Giải quyết bất đồng");
+    expect(document.body.querySelector('[aria-label="Giải quyết bất đồng"]')).not.toBeNull();
     expect(document.body.querySelector('.screening-discussion [role="log"]')).not.toBeNull();
-    expect(document.body.textContent).toContain("Đánh giá độc lập của 2 reviewer");
+    expect(document.body.textContent).toContain("Hai phiếu đánh giá");
+    expect(document.body.querySelectorAll(".screening-resolution-round .screening-state")).toHaveLength(1);
+    expect(document.body.querySelector(".screening-conflict-header")).toBeNull();
     expect(Boolean(button("Nhờ người phân xử"))).toBe(!observer);
   });
 
@@ -189,8 +218,8 @@ describe("ScreeningConflictResolution Component", () => {
     await settle(); await settle();
     expect(document.body.textContent).toContain("Đọc và đánh giá tài liệu");
     expect(button("Nhờ người phân xử")).toBeDefined();
-    const discussion = [...document.querySelectorAll("button")].find(b => b.textContent?.startsWith("Trao đổi ("))!;
-    expect(discussion.compareDocumentPosition(button("Nhờ người phân xử")!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const discussion = [...document.querySelectorAll("h4")].find(b => b.textContent?.startsWith("Trao đổi ("))!;
+    expect(button("Nhờ người phân xử")!.compareDocumentPosition(discussion) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     await act(async () => button("Nhờ người phân xử")!.click()); await settle();
     expect(document.body.textContent).toContain("Chuyển bất đồng sang phân xử");
     expect(mocks.requestAdjudication).not.toHaveBeenCalled();
@@ -201,13 +230,15 @@ describe("ScreeningConflictResolution Component", () => {
     await act(async () => button("Tạo yêu cầu phân xử")!.click()); await settle();
     expect(mocks.requestAdjudication).toHaveBeenCalledWith("proj-1", "round-1", expect.objectContaining({ expectedVersion: 1, confirmed: true, clientKey: expect.any(String) }));
     expect(button("Nhờ người phân xử")).toBeUndefined();
-    expect(button("Sửa đánh giá của tôi")).toBeUndefined();
+    expect(button("Đổi kết luận của tôi")).toBeUndefined();
     expect(document.body.textContent).not.toContain("Bạn muốn xử lý thế nào?");
     expect(document.body.textContent).toContain("Đang thu thập ý kiến");
     expect(document.body.textContent).not.toContain("Chờ người phân xử nhận nhiệm vụ");
     expect(button("Hồ sơ phân xử")).toBeDefined();
     await act(async () => button("Hồ sơ phân xử")!.click()); await settle();
-    expect(document.body.textContent).toContain("Mở toàn trang");
+    expect([...document.querySelectorAll('[role="dialog"] h2')].some(heading => heading.textContent === "Hồ sơ phân xử")).toBe(true);
+    expect(document.body.textContent).not.toContain("Mở toàn trang");
+    expect(document.querySelector('a[title="Mở hồ sơ ở tab mới"]')).toBeNull();
     expect(mocks.action).not.toHaveBeenCalled();
   });
 
@@ -244,7 +275,7 @@ describe("ScreeningConflictResolution Component", () => {
     if (status === "COMPLETED") expect(document.body.textContent).toContain("Đã phân xử");
   });
 
-  it("renders conflict header, side-by-side reviews, and action buttons", async () => {
+  it("renders compact review rows, a single explanation, and action buttons", async () => {
     await act(async () => {
       root.render(
         <QueryClientProvider client={client}>
@@ -259,25 +290,27 @@ describe("ScreeningConflictResolution Component", () => {
     });
     await settle();
 
-    expect(container.textContent).toContain("Giải quyết bất đồng");
-    expect(container.textContent).toContain("Có bất đồng");
-    expect(container.textContent).toContain("Đánh giá độc lập của 2 reviewer");
+    expect(container.querySelector('[aria-label="Giải quyết bất đồng"]')).not.toBeNull();
+    expect(container.textContent).toContain("Hai phiếu đang khác kết luận");
+    expect(container.textContent).toContain("Hai phiếu đánh giá");
+    expect(container.querySelectorAll(".screening-review-row")).toHaveLength(2);
     expect(container.textContent).toContain("Thanh Đình");
     expect(container.textContent).toContain("Nguyễn Đình Thanh");
     expect(container.textContent).toContain("Phù hợp");
     expect(container.textContent).toContain("Không phù hợp");
     const viewReasonBtns = Array.from(container.querySelectorAll("button")).filter(b => b.textContent?.includes("Xem lý do"));
-    expect(viewReasonBtns.length).toBeGreaterThanOrEqual(2);
+    expect(viewReasonBtns).toHaveLength(1);
     await act(async () => {
-      viewReasonBtns[1]?.click();
+      viewReasonBtns[0]?.click();
     });
     await settle();
-    expect(document.body.textContent).toContain("Không đúng đối tượng nghiên cứu");
-    expect(container.textContent).toContain("Sửa đánh giá của tôi");
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain("Không đúng đối tượng nghiên cứu");
+    expect(document.querySelector('[role="dialog"]')?.textContent).toContain("Nghiên cứu chỉ tập trung vào sinh viên nghệ thuật");
+    expect(container.textContent).toContain("Đổi kết luận của tôi");
     expect(container.textContent).toContain("Nhờ người phân xử");
   });
 
-  it("opens Reassessment dialog when clicking 'Sửa đánh giá của tôi'", async () => {
+  it("opens Reassessment dialog when clicking 'Đổi kết luận của tôi'", async () => {
     await act(async () => {
       root.render(
         <QueryClientProvider client={client}>
@@ -292,7 +325,7 @@ describe("ScreeningConflictResolution Component", () => {
     });
     await settle();
 
-    const reassessBtn = Array.from(container.querySelectorAll("button")).find(b => b.textContent?.includes("Sửa đánh giá của tôi"));
+    const reassessBtn = Array.from(container.querySelectorAll("button")).find(b => b.textContent?.includes("Đổi kết luận của tôi"));
     expect(reassessBtn).toBeDefined();
 
     await act(async () => {
@@ -300,9 +333,39 @@ describe("ScreeningConflictResolution Component", () => {
     });
     await settle();
 
-    expect(document.body.textContent).toContain("Cập nhật lại kết luận sau khi thảo luận");
+    expect(document.body.textContent).toContain("Hai reviewer đã gửi phiếu. Chọn kết luận khác");
     expect(document.body.textContent).toContain("Lý do xem xét lại đánh giá");
     expect(document.body.textContent).toContain("Lưu đánh giá mới");
+  });
+
+  it.each(["INCLUDE", "EXCLUDE", "UNSURE"] as const)("disables the current %s conclusion and requires a different choice after both ballots", async decision => {
+    await renderRound({ ...mockRound, myReview: { ...mockRound.myReview!, decision } });
+    await act(async () => button("Đổi kết luận của tôi")!.click());
+    const dialog = document.querySelector('[role="dialog"]')!;
+    const current = dialog.querySelector<HTMLInputElement>(`input[type="radio"][value="${decision}"]`)!;
+    expect(current.disabled).toBe(true);
+    await inputText(dialog.querySelector('textarea')!, "Đã đối chiếu lại với tiêu chí nghiên cứu");
+    expect(button("Lưu đánh giá mới")!.disabled).toBe(true);
+    await act(async () => dialog.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+    expect(mocks.reassess).not.toHaveBeenCalled();
+    const alternative = [...dialog.querySelectorAll<HTMLInputElement>('input[type="radio"]')].find(input => !input.disabled && input.value === 'UNSURE') ?? [...dialog.querySelectorAll<HTMLInputElement>('input[type="radio"]')].find(input => !input.disabled)!;
+    await act(async () => alternative.click());
+    expect(button("Lưu đánh giá mới")!.disabled).toBe(false);
+    await act(async () => button("Lưu đánh giá mới")!.click());
+    expect(mocks.reassess).toHaveBeenCalledWith("proj-1", "round-1", expect.objectContaining({ decision: decision === 'UNSURE' ? 'INCLUDE' : 'UNSURE', expectedRevision: 1 }));
+  });
+
+  it("requires a real exclusion criterion when changing an include ballot to exclude", async () => {
+    await renderRound(mockRound);
+    await act(async () => button("Đổi kết luận của tôi")!.click());
+    const dialog = document.querySelector('[role="dialog"]')!;
+    await act(async () => dialog.querySelector<HTMLInputElement>('input[type="radio"][value="EXCLUDE"]')!.click());
+    await inputText(dialog.querySelector('textarea')!, "Đối tượng nghiên cứu không đáp ứng tiêu chí");
+    expect(button("Lưu đánh giá mới")!.disabled).toBe(true);
+    const criterion = dialog.querySelector<HTMLSelectElement>('select')!;
+    await act(async () => { criterion.value = mockRound.settings.exclusionCriteria[0]!; criterion.dispatchEvent(new Event('change', { bubbles: true })); });
+    await act(async () => button("Lưu đánh giá mới")!.click());
+    expect(mocks.reassess).toHaveBeenCalledWith("proj-1", "round-1", expect.objectContaining({ decision: 'EXCLUDE', exclusionReason: mockRound.settings.exclusionCriteria[0] }));
   });
 
   it("opens Adjudication dialog when clicking 'Nhờ người phân xử'", async () => {
@@ -349,7 +412,7 @@ describe("ScreeningConflictResolution Component", () => {
     expect(submitBtn.disabled).toBe(false);
   });
 
-  it("hides 'Bạn muốn xử lý thế nào?' and 'Sửa đánh giá của tôi' when adjudicationCase exists", async () => {
+  it("hides 'Bạn muốn xử lý thế nào?' and 'Đổi kết luận của tôi' when adjudicationCase exists", async () => {
     await renderRound({
       ...mockRound,
       adjudicationCase: {
@@ -364,7 +427,7 @@ describe("ScreeningConflictResolution Component", () => {
     });
 
     expect(document.body.textContent).not.toContain("Bạn muốn xử lý thế nào?");
-    expect(document.body.textContent).not.toContain("Sửa đánh giá của tôi");
+    expect(document.body.textContent).not.toContain("Đổi kết luận của tôi");
     expect(document.body.textContent).not.toContain("Khi bạn sửa đánh giá cùng quyết định với đồng reviewer");
   });
   it("opens review detail dialog when clicking 'Xem lý do' and shows empty indicator for reviews without notes", async () => {
@@ -425,4 +488,87 @@ describe("ScreeningConflictResolution Component", () => {
     expect(document.body.textContent).toContain("Bài báo này là một nghiên cứu tổng quan tài liệu");
     expect(document.body.textContent).toContain("Cần tham khảo thêm");
   });
+  it("separates ballots and discussion into accessible tabs with shared actions", async () => {
+    await renderRound({ ...mockRound, reviews: mockRound.reviews.map(r => ({ ...r, exclusionReason: "", comment: "Cần đối chiếu đối tượng nghiên cứu.", fullTextReference: undefined })) });
+    const tabs = [...container.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
+    expect(tabs.map(t => t.textContent)).toEqual(["Trao đổi", "Hai phiếu đánh giá"]);
+    const panel = (tab: HTMLElement) => document.getElementById(tab.getAttribute('aria-controls')!)!;
+    expect(tabs[1]!.getAttribute('aria-selected')).toBe('true');
+    expect(panel(tabs[1]!).hidden).toBe(false);
+    expect(panel(tabs[0]!).hidden).toBe(true);
+    expect(container.querySelectorAll('.screening-review-row')).toHaveLength(2);
+    expect(container.querySelector('.screening-review-detail-link')).toBeNull();
+    expect(panel(tabs[1]!).textContent).toContain('Cần đối chiếu đối tượng nghiên cứu.');
+    expect(button('Xem căn cứ')).toBeUndefined();
+    await act(async () => tabs[0]!.click());
+    expect(panel(tabs[1]!).hidden).toBe(true);
+    expect(panel(tabs[0]!).hidden).toBe(false);
+    expect(button('Đổi kết luận của tôi')!.closest('[role="tabpanel"]')).toBeNull();
+    expect(button('Nhờ người phân xử')!.closest('[role="tabpanel"]')).toBeNull();
+    expect(container.querySelector('.screening-conflict-container')?.getAttribute('data-focus-chat')).toBe('true');
+    await act(async () => tabs[1]!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true })));
+    expect(document.activeElement).toBe(tabs[0]);
+    expect(tabs[0]!.getAttribute('aria-selected')).toBe('true');
+    await act(async () => tabs[0]!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })));
+    expect(document.activeElement).toBe(tabs[1]);
+    expect(tabs[1]!.getAttribute('aria-selected')).toBe('true');
+    expect(tabs[0]!.tabIndex).toBe(-1);
+  });
+
+  it("keeps a long reason bounded in the row and fully available as safe text in the dialog", async () => {
+    const long = '<img src=x onerror=alert(1)> ' + 'Đối chiếu thông tin trong bài báo. '.repeat(500);
+    await renderRound({ ...mockRound, reviews: [{ ...mockRound.reviews[0]!, comment: long }] });
+    expect(container.querySelector('.screening-resolution-reason')?.textContent === long.trim()).toBe(true);
+    expect(container.querySelector('.screening-resolution-reason')?.getAttribute('data-truncated')).toBe('true');
+    expect(container.querySelector('.screening-resolution-reason img')).toBeNull();
+    await act(async () => button('Xem lý do')!.click());
+    const dialog = document.querySelector('[role="dialog"]')!;
+    expect(dialog.classList.contains('screening-ballot-dialog')).toBe(true);
+    expect(dialog.querySelector('.screening-ballot-content')?.textContent).toContain(long);
+    expect(dialog.querySelector('.screening-ballot-content img')).toBeNull();
+    await renderRound({ ...mockRound, hiddenReviews: true });
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(container.querySelector('.screening-review-row')).toBeNull();
+    expect(container.textContent).not.toContain(long);
+  });
+
+  it("preserves the chat draft and editor while switching between tabs", async () => {
+    await renderRound(mockRound);
+    await act(async () => button("Trao đổi")!.click());
+    const editor = container.querySelector<HTMLTextAreaElement>('[aria-label="Tin nhắn trao đổi về bài báo"]')!;
+    await inputText(editor, "Mình cần đối chiếu nguồn trước khi đổi phiếu.");
+    await act(async () => button("Hai phiếu đánh giá")!.click());
+    expect(editor.isConnected).toBe(true);
+    expect(editor.value).toBe("Mình cần đối chiếu nguồn trước khi đổi phiếu.");
+    await act(async () => button("Trao đổi")!.click());
+    expect(editor.isConnected).toBe(true);
+    expect(editor.value).toBe("Mình cần đối chiếu nguồn trước khi đổi phiếu.");
+    expect(mocks.action).not.toHaveBeenCalled();
+  });
+
+  it("opens a discussion deep link in the discussion tab of the actual paper modal", async () => {
+    const current = { ...mockRound, canManage: false };
+    mocks.detail.mockResolvedValue(current);
+    mocks.rounds.mockResolvedValue({ items: [current], total: 1, page: 1, hasNext: false });
+    mocks.board.mockResolvedValue({ items: [{ paperId: "paper-1", title: "Deep-linked paper", authors: [], proposalReason: "", proposedAt: current.myReview!.submittedAt, updatedAt: current.myReview!.submittedAt, canEditProposal: false, round: current }], settings: current.settings, people });
+    await act(async () => root.render(<QueryClientProvider client={client}><MemoryRouter initialEntries={["/?section=discussion&round=round-1"]}><ReadingPaperModal projectId="proj-1" paperId="paper-1" readOnly={false} onClose={vi.fn()} /></MemoryRouter></QueryClientProvider>));
+    await settle(); await settle();
+    const tabs = [...document.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
+    expect(tabs.find(t => t.textContent === "Trao đổi")?.getAttribute('aria-selected')).toBe('true');
+    const editor = document.querySelector<HTMLTextAreaElement>('[aria-label="Tin nhắn trao đổi về bài báo"]')!;
+    expect(editor.closest<HTMLElement>('[role="tabpanel"]')!.hidden).toBe(false);
+  });
+
+  it("loads discussion only when selected and stops polling while its tab is hidden", async () => {
+    await renderRound(mockRound);
+    expect(mocks.history).not.toHaveBeenCalled();
+    await act(async () => button("Trao đổi")!.click()); await settle();
+    expect(mocks.history).toHaveBeenCalledWith("proj-1", "round-1", 1, "DISCUSSION");
+    const key = ["project-research", "user-1", "proj-1", "screening-discussion", "round-1", false];
+    const query = client.getQueryCache().find({ queryKey: key })!;
+    expect(query.isActive()).toBe(true);
+    await act(async () => button("Hai phiếu đánh giá")!.click());
+    expect(query.isActive()).toBe(false);
+  });
+
 });

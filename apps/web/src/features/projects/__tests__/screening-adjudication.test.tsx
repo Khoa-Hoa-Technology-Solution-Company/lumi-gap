@@ -42,29 +42,33 @@ beforeEach(() => {
   container = document.createElement("div"); document.body.append(container); root = createRoot(container);
 });
 afterEach(async () => { await act(async () => root.unmount()); client.clear(); container.remove(); vi.unstubAllGlobals(); });
-it("shows only the scoped packet as escaped text and requires deliberate confirmation", async () => {
+it("shows the scoped packet safely and requires a reason without extra source or consent fields", async () => {
   await render(); expect(mocks.adjudication).toHaveBeenCalledWith("p", "r");
   expect(container.textContent).toContain("Shared abstract"); expect(container.textContent).toContain("Reviewer A");
   expect(container.querySelector("script")).toBeNull(); expect(container.textContent).not.toContain("Thư viện của nhóm");
   const send = container.querySelector<HTMLButtonElement>('button[type="submit"],form button:last-child')!;
-  expect(send.disabled).toBe(true); await reason("The population matches the stated criteria"); expect(send.disabled).toBe(true);
-  await confirm(); expect(send.disabled).toBe(false); await click("Ghi kết luận và lưu lịch sử");
+  expect(container.querySelectorAll('input[type="radio"]')).toHaveLength(2);
+  expect(container.querySelector('input[type="checkbox"]')).toBeNull();
+  expect(container.querySelectorAll("textarea")).toHaveLength(1);
+  expect(container.textContent).not.toContain("Nguồn tài liệu đã xem xét");
+  expect(send.disabled).toBe(true); await reason("short"); expect(send.disabled).toBe(true);
+  await reason("The population matches the stated criteria"); expect(send.disabled).toBe(false); await click("Ghi kết luận và lưu lịch sử");
   expect(mocks.action).toHaveBeenCalledWith("p", "r", "resolve", expect.objectContaining({ expectedVersion: 5, decision: "INCLUDED", confirmed: true }));
 });
 it("retains a failed conclusion and reuses its request key on retry", async () => {
   mocks.action.mockRejectedValue(new Error("Offline")); await render();
-  await reason("Keep this conclusion while the network is offline"); await confirm();
+  await reason("Keep this conclusion while the network is offline");
   await click("Ghi kết luận và lưu lịch sử"); await click("Ghi kết luận và lưu lịch sử");
   expect(container.querySelector("textarea")?.value).toContain("Keep this conclusion");
   expect(mocks.action.mock.calls[0]![3].clientKey).toBe(mocks.action.mock.calls[1]![3].clientKey);
 });
 it("blocks a stale draft until the revised packet is checked again", async () => {
-  await render(); await reason("My draft based on the earlier packet"); await confirm();
+  await render(); await reason("My draft based on the earlier packet");
   await act(async () => client.setQueryData(["project-research", "actor", "p", "screening-adjudication", "r"], { ...view, version: 6 })); await settle();
   expect(container.textContent).toContain("Gói hoặc phân công đã thay đổi");
   expect(container.querySelector("textarea")?.value).toContain("My draft");
   await click("Ghi kết luận và lưu lịch sử"); expect(mocks.action).not.toHaveBeenCalled();
-  await click("Tôi đã kiểm tra gói hiện tại"); await confirm(); await click("Ghi kết luận và lưu lịch sử");
+  await click("Tôi đã kiểm tra gói hiện tại"); await click("Ghi kết luận và lưu lịch sử");
   expect(mocks.action.mock.calls[0]![3].expectedVersion).toBe(6);
 });
 it("hides a previously loaded packet after access revocation", async () => {
@@ -139,6 +143,24 @@ it("renders selected discussion as escaped text without giving access to the ful
   expect(container.querySelector("img")).toBeNull();
   expect(container.textContent).toContain("Thảo luận trước khi mở hồ sơ");
 });
+it("shows the saved import page and hides empty research question and criterion sections", async () => {
+  await render(<ScreeningPacket packet={{ ...view.packet, sourceUrl: "https://example.org/original-paper", researchQuestions: [], inclusionCriteria: ["   "], exclusionCriteria: [] }} />);
+  const link = [...container.querySelectorAll('a')].find(a => a.textContent?.includes("Trang nguồn đã lưu"))!;
+  expect(link.href).toBe("https://example.org/original-paper");
+  expect(link.rel).toContain("noreferrer");
+  expect(container.textContent).not.toContain("Câu hỏi nghiên cứu");
+  expect(container.textContent).not.toContain("Tiêu chí đưa vào");
+  expect(container.textContent).not.toContain("Tiêu chí loại");
+  expect(container.textContent).not.toContain("Chưa được khai báo");
+  expect(container.textContent).toContain("Shared abstract");
+  expect(container.textContent).toContain("Hai phiếu hiện hành");
+});
+it.each([undefined, "javascript:alert(1)", "data:text/html,unsafe", "https://user:password@example.org/paper"])("does not create a source-page link from unsafe or missing URLs: %s", async sourceUrl => {
+  await render(<ScreeningPacket packet={{ ...view.packet, sourceUrl }} />);
+  expect(container.textContent).not.toContain("Trang nguồn đã lưu");
+  expect(container.textContent).toContain("Câu hỏi nghiên cứu");
+  expect(container.textContent).toContain("University students");
+});
 it("keeps long ballot text compact and opens the complete escaped content in a scrollable dialog", async () => {
   const exclusionReason = `${"Lý do cần đối chiếu ".repeat(500)}<img src=x onerror=unsafe()> END-OF-REASON`;
   const comment = "Nhận xét khác cần được giữ nguyên";
@@ -207,9 +229,62 @@ it("the other reviewer can continue discussion and cannot decline a stale propos
   await click("Tôi đã đọc lại đề xuất"); await click("Tiếp tục thảo luận, chưa chốt");
   expect(mocks.declineAgreement).toHaveBeenCalledWith("p", "r", expect.objectContaining({ expectedVersion: 9, proposalId: "proposal" }));
 });
-it("an adjudicator can request information without manufacturing a binary outcome", async () => {
+it("offers only inclusion and exclusion and submits the written rationale", async () => {
   await render();
-  await act(async () => [...container.querySelectorAll("label")].find(label => label.textContent === "Cần thêm thông tin")!.querySelector<HTMLInputElement>("input")!.click());
-  await reason("Obtain the full text before the population can be determined"); await confirm(); await click("Ghi kết luận và lưu lịch sử");
-  expect(mocks.action).toHaveBeenCalledWith("p", "r", "resolve", expect.objectContaining({ decision: "NEEDS_MORE_INFO" }));
+  const options = [...container.querySelectorAll('label')].filter(label => label.querySelector('input[type="radio"]'));
+  expect(options.map(label => label.textContent?.trim())).toEqual(["Qua vòng", "Loại theo tiêu chí"]);
+  await act(async () => options[1]!.querySelector<HTMLInputElement>("input")!.click());
+  await reason("The study population does not satisfy the registered eligibility criteria"); await click("Ghi kết luận và lưu lịch sử");
+  expect(mocks.action).toHaveBeenCalledWith("p", "r", "resolve", expect.objectContaining({ decision: "EXCLUDED", reason: "The study population does not satisfy the registered eligibility criteria" }));
+  expect(mocks.action.mock.calls[0]![3]).not.toHaveProperty("sourceMaterial");
+  expect(mocks.action.mock.calls[0]![3]).not.toHaveProperty("exclusionReason");
+});
+it("keeps historical information requests readable without offering a new information decision", async () => {
+  mocks.adjudication.mockResolvedValue({ ...view, canResolve: false, resolution: { decision: "NEEDS_MORE_INFO", reason: "Retrieve the source methods before deciding", sourceMaterial: "Abstract: population missing", resolverName: "Previous adjudicator", createdAt: "2026-11-01T00:00:00Z" } });
+  await render();
+  expect(container.textContent).toContain("Retrieve the source methods before deciding");
+  expect(container.textContent).toContain("Abstract: population missing");
+  expect(container.querySelector("form")).toBeNull();
+  expect(mocks.action).not.toHaveBeenCalled();
+});
+
+it.each(["TITLE_ABSTRACT", "FULL_TEXT"] as const)("labels a modern %s decision by its frozen stage and requires source evidence", async phase => {
+  mocks.adjudication.mockResolvedValue({ ...view, packet: { ...view.packet, phase, protocol: { screeningMode: "TWO_STAGE", version: 2, workflowVersion: 11, stages: ["TITLE_ABSTRACT", "FULL_TEXT"], allowConservativeFullText: false } } });
+  await render();
+  expect(container.textContent).toContain(phase === "TITLE_ABSTRACT" ? "Qua vòng tiêu đề / tóm tắt" : "Chấp nhận cuối");
+  await reason("Confirmed from the registered criteria and the source");
+  const send = [...container.querySelectorAll<HTMLButtonElement>("button")].find(b => b.textContent === "Ghi kết luận và lưu lịch sử")!;
+  expect(send.disabled).toBe(true);
+  const source = container.querySelectorAll("textarea")[1]!;
+  await act(async () => { Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(source, "Source PDF, page 4, participant methods"); source.dispatchEvent(new Event("input", { bubbles: true })); });
+  await settle();
+  expect(send.disabled).toBe(false);
+  await click("Ghi kết luận và lưu lịch sử");
+  expect(mocks.action).toHaveBeenCalledWith("p", "r", "resolve", expect.objectContaining({ decision: "INCLUDED", sourceMaterial: "Source PDF, page 4, participant methods" }));
+});
+
+it.each([{ criteria: [] as string[] }, { criteria: ["Wrong population"] }])("uses a saved exclusion criterion only when available: $criteria", async ({ criteria }) => {
+  mocks.adjudication.mockResolvedValue({ ...view, packet: { ...view.packet, exclusionCriteria: criteria, protocol: { screeningMode: "SINGLE_STAGE", version: 2, workflowVersion: 11, stages: ["TITLE_ABSTRACT"], allowConservativeFullText: false } } });
+  await render();
+  await act(async () => container.querySelectorAll<HTMLInputElement>('input[type="radio"]')[1]!.click());
+  await reason("The source population does not match the research question");
+  const source = container.querySelectorAll("textarea")[1]!;
+  await act(async () => { Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(source, "Abstract paragraph 1 describes the population"); source.dispatchEvent(new Event("input", { bubbles: true })); });
+  await settle();
+  const send = [...container.querySelectorAll<HTMLButtonElement>("button")].find(b => b.textContent === "Ghi kết luận và lưu lịch sử")!;
+  const select = container.querySelector("select");
+  if (criteria.length) {
+    expect(send.disabled).toBe(true);
+    expect(select).not.toBeNull();
+    await act(async () => { select!.value = criteria[0]!; select!.dispatchEvent(new Event("change", { bubbles: true })); });
+    await settle();
+  } else {
+    expect(select).toBeNull();
+  }
+  expect(send.disabled).toBe(false);
+  await click("Ghi kết luận và lưu lịch sử");
+  const payload = mocks.action.mock.calls[0]![3];
+  expect(payload).toMatchObject({ decision: "EXCLUDED", reason: "The source population does not match the research question" });
+  if (criteria.length) expect(payload.exclusionReason).toBe(criteria[0]);
+  else expect(payload).not.toHaveProperty("exclusionReason");
 });

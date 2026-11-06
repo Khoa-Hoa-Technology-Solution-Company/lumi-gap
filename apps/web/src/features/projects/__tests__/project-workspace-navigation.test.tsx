@@ -7,7 +7,10 @@ import type { IProject } from "@trend/shared-types";
 import { ProjectsWorkspacePage, ProjectWorkspaceStart } from "@/pages/projects/projects-workspace";
 import { projectWorkspaceHref } from "../utils/project-workspace-navigation";
 
-const mocks = vi.hoisted(() => ({ projects: vi.fn(), project: vi.fn(), invitations: vi.fn(), respond: vi.fn(), user: { id: "me", systemRole: "USER", emailVerifiedAt: "2026-01-01" } as { id: string; systemRole: string; emailVerifiedAt: string } | null }));
+vi.mock("../hooks/use-mentored-projects", () => ({ useMentoredProjects: () => ({ data: [], isLoading: false, isError: false }) }));
+
+const mocks = vi.hoisted(() => ({ projects: vi.fn(), project: vi.fn(), mentorEntry: vi.fn(), invitations: vi.fn(), respond: vi.fn(), user: { id: "me", systemRole: "USER", emailVerifiedAt: "2026-01-01" } as { id: string; systemRole: string; emailVerifiedAt: string } | null }));
+vi.mock("../hooks/use-mentor-project-entry", () => ({ useMentorProjectEntry: mocks.mentorEntry }));
 vi.mock("@/i18n", () => ({ useI18n: () => ({ language: "en", t: (key: string, values?: Record<string, string | number>) => key.replace(/\{\{(\w+)\}\}/g, (_, name) => String(values?.[name] ?? "")) }) }));
 vi.mock("@/stores/auth-store", () => ({ useAuthStore: (selector: (state: { user: typeof mocks.user }) => unknown) => selector({ user: mocks.user }) }));
 vi.mock("../hooks/use-projects", () => ({
@@ -45,6 +48,7 @@ beforeEach(() => {
   mocks.user = { id: "me", systemRole: "USER", emailVerifiedAt: "2026-01-01" };
   mocks.projects.mockReturnValue({ data: [owned, shared, archived], isLoading: false, isFetching: false, isError: false });
   mocks.project.mockReturnValue({ data: undefined, isLoading: false });
+  mocks.mentorEntry.mockReturnValue({ data: undefined, isLoading: false });
   mocks.invitations.mockReturnValue({ data: [], isLoading: false, refetch: vi.fn() });
   container = document.createElement("div"); document.body.append(container); root = createRoot(container);
 });

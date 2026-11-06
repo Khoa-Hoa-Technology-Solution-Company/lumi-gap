@@ -18,6 +18,7 @@ vi.mock("@dnd-kit/react", () => ({ KeyboardSensor: class {}, PointerSensor: { co
 vi.mock("@dnd-kit/react/sortable", () => ({ useSortable: () => ({ ref: () => undefined, handleRef: () => undefined, isDragSource: false }), isSortable: () => false }));
 const mocks = vi.hoisted(() => Object.fromEntries(["gapEvidence", "plan", "savePlan", "updatePlanDraft", "snapshotPlan", "restorePlan", "planThreads", "createPlanThread", "planHistory", "shares", "overview", "comments", "comment", "people", "artifacts", "tasks", "taskBoard", "moveTask", "task", "saveTask", "milestones", "saveMilestone", "discussions", "discussion", "saveDiscussion", "reply", "resolve", "decisions", "saveDecision", "history"].map(key => [key, vi.fn()])));
 vi.mock("../api/workspace.api", () => ({ workspaceApi: mocks }));
+vi.mock("../api/screening.api", () => ({ screeningApi: { workspaceSummary: async () => ({ myActiveClaims: [], pendingConsensus: [], pendingAdjudications: [] }) } }));
 vi.mock("@/features/gaps/api/gaps.api", () => ({ gapsApi: { evidence: mocks.gapEvidence } }));
 vi.mock("@/stores/auth-store", () => ({ useAuthStore: (select: (state: { user: { id: string } }) => unknown) => select({ user: { id: "actor" } }) }));
 vi.mock("@/i18n", () => ({ useI18n: () => ({ language: "en", t: (key: string, values?: Record<string, unknown>) => key.replace(/\{\{(\w+)\}\}/g, (_, name) => String(values?.[name] ?? "")) }) }));
@@ -308,7 +309,7 @@ it("renders discussion content as text and denies mentor editing or team decisio
 });
 it("opens team chat by default and keeps threads and decisions as tools inside it", async () => {
   await render(<WorkspaceDiscussionsPanel projectId="p" readOnly={false} legacyChat={<p>Chat interface</p>} />, "/projects/p?tab=chat");
-  expect(container.querySelector("h2")?.textContent).toBe("Team chat & AI");
+  expect(container.querySelector("h2")?.textContent).toBe("Team Chat");
   expect(container.textContent).toContain("Chat interface");
   expect(container.querySelector(".coord-subnav")).toBeNull();
   expect(mocks.discussions).not.toHaveBeenCalled(); expect(mocks.decisions).not.toHaveBeenCalled();

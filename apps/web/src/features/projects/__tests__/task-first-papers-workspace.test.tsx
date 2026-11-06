@@ -75,11 +75,11 @@ describe("Task-First Papers Workspace Views", () => {
     await settle();
     const section = container.querySelector('[aria-label="Cần tôi giải quyết"]')!;
     expect([...section.querySelectorAll("h4")].map(e => e.textContent)).toEqual(["Confirmation paper", "Clarification paper", "Adjudication paper"]);
-    expect(section.textContent).toContain("Cần làm rõ"); expect(section.textContent).toContain("2/2 đánh giá đã gửi");
-    expect(container.textContent).not.toContain("+24h Gia hạn"); expect(container.textContent).not.toContain("Trả lại hàng đợi");
+    expect(section.textContent).toContain("Cần làm rõ"); expect(section.textContent).toContain("Đối chiếu nguồn, bổ sung căn cứ hoặc cập nhật đánh giá của bạn.");
+    expect(container.textContent).not.toContain("Gia hạn +24h"); expect(container.textContent).not.toContain("Trả lại hàng đợi");
     const clarificationCard = [...section.querySelectorAll("article")].find(card => card.textContent?.includes("Clarification paper"))!;
     await act(async () => clarificationCard.querySelector("button")!.click());
-    expect(open).toHaveBeenCalledWith("clarify");
+    expect(open).toHaveBeenCalledWith("clarify", { roundId: "r2", section: "discussion" });
   });
 
   it("renders MyWorkView with active claims, countdown timer, capacity advice and discovery goals", async () => {
@@ -152,17 +152,16 @@ describe("Task-First Papers Workspace Views", () => {
     await settle();
 
     // Verify advice banner
-    expect(container.textContent).toContain("Tiến độ sàng lọc đang duy trì đều đặn.");
+    expect(container.textContent).not.toContain("Tiến độ sàng lọc đang duy trì đều đặn.");
 
     // Verify active claim card & countdown
     expect(container.textContent).toContain("Generative AI in Education");
     expect(container.textContent).toContain("Tiếp tục đánh giá");
-    expect(container.textContent).toContain("+24h Gia hạn");
+    expect(container.textContent).toContain("Gia hạn +24h");
     expect(container.textContent).toContain("Trả lại hàng đợi");
 
-    // Verify discovery goal
-    expect(container.textContent).toContain("Mục tiêu tìm tài liệu");
-    expect(container.textContent).toContain("1 / 2 bài");
+    // Verify discovery goal and sidebar widgets removed to stretch workspace full width
+    expect(container.textContent).not.toContain("Mục tiêu tìm tài liệu");
 
     // Verify claim next button
     expect(container.textContent).toContain("Có 4 bài báo đang chờ người đánh giá");
@@ -395,13 +394,60 @@ describe("Task-First Papers Workspace Views", () => {
 
     expect(container.textContent).toContain("Tôi đã đề xuất");
     expect(container.textContent).toContain("Excluded Literature Study");
-    expect(container.textContent).toContain("Không chọn cho phân tích");
+    expect(container.textContent).toContain("Đã loại");
     expect(container.textContent).toContain("Tài liệu không nằm trong phạm vi giáo dục đại học.");
     // Proposer attribution and respectful scientific exclusion note
     expect(container.textContent).toContain("đóng góp quan trọng để làm rõ ranh giới nghiên cứu");
     expect(container.textContent).toContain("Khảo sát bối cảnh ban đầu");
   });
 
+  async function proposalEditor(canEditProposal = true) {
+    const item = {
+      paperId: "proposal", title: "Proposal requiring review", abstractText: "", doi: null,
+      publicationYear: null, journalName: null, authors: [], proposedAt: "2026-11-04T01:00:00.000Z",
+      updatedAt: "2026-11-04T01:00:00.000Z", proposalReason: "Original proposal reason", canEditProposal,
+      proposer: { id: "user-123", name: "Proposer" }, round: null, legacyStatus: "UNDECIDED", legacyProvenance: false,
+    };
+    const data = { items: [item], total: 1, page: 1, pageSize: 12, hasNext: false, canManage: false };
+    mocks.board.mockResolvedValue(data);
+    await act(async () => root.render(<QueryClientProvider client={client}><MemoryRouter><MyProposalsView projectId="p" readOnly={false} onOpenPaper={vi.fn()} /></MemoryRouter></QueryClientProvider>));
+    await settle();
+    return data;
+  }
+  const proposalButton = (text: string) => [...document.querySelectorAll<HTMLButtonElement>("button")].find(b => b.textContent?.trim() === text);
+
+  it("hides proposal reason editing when backend locks a reviewed proposal", async () => {
+    await proposalEditor(false);
+    expect(proposalButton("Sửa lý do")).toBeUndefined();
+    expect(container.textContent).toContain("Original proposal reason");
+  });
+  it("disables a stale proposal editor after the first review without losing the draft", async () => {
+    const data = await proposalEditor();
+    await act(async () => proposalButton("Sửa lý do")!.click());
+    const textarea = document.querySelector("textarea")!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(textarea, "Unsaved proposal draft");
+      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => client.setQueryData(["project-research", "user-123", "p", "my-proposals", 1, "ALL", ""], { ...data, items: [{ ...data.items[0], canEditProposal: false }] }));
+    await settle();
+    expect(proposalButton("Lưu lý do đề xuất")!.disabled).toBe(true);
+    expect(textarea.value).toBe("Unsaved proposal draft");
+    expect(document.body.textContent).toContain("Bản nháp vẫn được giữ");
+    expect(mocks.proposal).not.toHaveBeenCalled();
+  });
+  it("shows backend rejection if a reviewer submits while proposal editing is open", async () => {
+    const data = await proposalEditor();
+    await act(async () => proposalButton("Sửa lý do")!.click());
+    mocks.proposal.mockRejectedValue({ isAxiosError: true, response: { status: 409, data: { error: { message: "Bài đã có phiếu đánh giá. Lý do đề xuất đã khóa" } } } });
+    mocks.board.mockResolvedValue({ ...data, items: [{ ...data.items[0], canEditProposal: false }] });
+    await act(async () => proposalButton("Lưu lý do đề xuất")!.click());
+    await settle();
+    expect(document.querySelector('[role="alert"]')?.textContent).toContain("Lý do đề xuất đã khóa");
+    expect(document.querySelector("textarea")!.value).toBe("Original proposal reason");
+    expect(proposalButton("Lưu lý do đề xuất")!.disabled).toBe(true);
+    expect(mocks.proposal).toHaveBeenCalledTimes(1);
+  });
   it("renders ReadingPaperModal by querying source: paperId without showing not found error", async () => {
     const singlePaperBoard: ScreeningBoard = {
       items: [

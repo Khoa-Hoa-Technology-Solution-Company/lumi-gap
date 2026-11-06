@@ -1,3 +1,6 @@
+import { ScreeningStatusBadge } from "./screening-status-badge";
+import { ScreeningDecisionChoices, screeningReviewOptions } from "./screening-decision-choices";
+import { screeningChoiceTone } from "../screening-status";
 import { useState } from "react";
 import { Check, Pencil } from "lucide-react";
 import type { ScreeningChoice, ScreeningRoundView, ScreeningSettings } from "@trend/shared-types";
@@ -67,9 +70,9 @@ export function LibraryAssessment({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <h4 className="assessment-summary-title font-semibold text-xs text-foreground">Đánh giá của tôi</h4>
-            <span className="assessment-summary-badge" data-choice={displayDecision}>
-              {choiceLabels[displayDecision as ScreeningChoice] || displayDecision}
-            </span>
+            <ScreeningStatusBadge tone={screeningChoiceTone(displayDecision)}>
+              {choiceLabels[displayDecision]}
+            </ScreeningStatusBadge>
             <span className="text-[11px] text-muted-foreground">
               v{own.revision}{own.submittedAt ? ` · ${new Date(own.submittedAt).toLocaleDateString("vi-VN")}` : ""}
             </span>
@@ -157,21 +160,8 @@ export function LibraryAssessment({
       <div className="assessment-header-title-row">
         <h4>{own ? "Chỉnh sửa đánh giá của tôi" : "Đánh giá của tôi"}</h4>
       </div>
-      <div className="assessment-choices">
-        {Object.entries(choiceLabels).map(([value, label]) => (
-          <label className="assessment-choice" data-selected={decision === value} data-choice={value} key={value}>
-            <input
-              type="radio"
-              name={`assessment-${paperId}`}
-              checked={decision === value}
-              disabled={command.isPending || locked}
-              onChange={() => { setDecision(value as ScreeningChoice); change(); }}
-              required
-            />
-            {label}
-          </label>
-        ))}
-      </div>
+      <ScreeningDecisionChoices legend="Kết luận đánh giá" value={decision} options={screeningReviewOptions}
+        disabled={command.isPending || locked} required onChange={value => { setDecision(value); change(); }} />
     </div>
     <fieldset disabled={command.isPending || locked} className="assessment-fieldset">
       {decision === "EXCLUDE" && (

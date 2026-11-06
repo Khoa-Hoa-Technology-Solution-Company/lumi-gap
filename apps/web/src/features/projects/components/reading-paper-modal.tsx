@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { useSearchParams } from "react-router-dom";
@@ -7,7 +7,6 @@ import { screeningApi } from "../api/screening.api";
 import { ScreeningPaperDetail } from "./screening-round";
 import { ScreeningError } from "./screening-common";
 import { canLeaveWorkspace, WorkspaceLoading } from "./workspace-common";
-import { LibraryRelatedPapers } from "./library-related-papers";
 import { PaperNotesDialog } from "./paper-notes-dialog";
 
 export function ReadingPaperModal({
@@ -27,22 +26,34 @@ export function ReadingPaperModal({
 }) {
   const [params, setParams] = useSearchParams();
   const [showNotes, setShowNotes] = useState(false);
+  const roundId = params.get("round");
+  const section = params.get("section");
+  const contentRef = useRef<HTMLDivElement>(null);
 
   const focusQuery = useResearchResource(
     projectId,
-    ["paper-reading-modal", paperId],
+    ["paper-reading-modal", paperId, roundId],
     async () => {
       if (!paperId) return null;
       const result = await screeningApi.board(projectId, { source: paperId, filter: "ALL", pageSize: 1 });
-      const found = result.items.find(i => i.paperId === paperId) ?? result.items[0] ?? null;
+      const found = result.items.find(i => i.paperId === paperId) ?? null;
+      const requestedRound = roundId ? await screeningApi.detail(projectId, roundId) : null;
+      if (requestedRound && requestedRound.paperId !== paperId) throw new Error("Vòng đánh giá không thuộc bài báo đang mở.");
       return {
-        paper: found,
+        paper: found && requestedRound ? { ...found, round: requestedRound } : found,
         settings: result.settings,
         people: result.people,
       };
     },
     Boolean(paperId)
   );
+  useEffect(() => {
+    if (!focusQuery.data || !["review", "discussion", "history"].includes(section ?? "")) return;
+    const selector = section === "history" ? ".paper-reading-assessment" : section === "discussion" ? '[data-screening-section="discussion"], .paper-discussion' : '[data-screening-section="review"]';
+    const target = contentRef.current?.querySelector<HTMLElement>(selector);
+    target?.scrollIntoView?.({ block: "center" });
+    if (section !== "history") target?.querySelector<HTMLTextAreaElement>("textarea")?.focus({ preventScroll: true });
+  }, [focusQuery.data?.paper?.round?.id, section]);
 
   const currentIndex = paperIds && paperId ? paperIds.indexOf(paperId) : -1;
 
@@ -85,6 +96,7 @@ export function ReadingPaperModal({
     <>
       <Dialog open onOpenChange={async open => { if (!open && await canLeaveWorkspace()) onClose(); }}>
         <DialogContent
+          ref={contentRef}
           closeLabel="Đóng"
           className="screening-workspace library-paper-dialog"
           data-no-i18n
@@ -146,14 +158,7 @@ export function ReadingPaperModal({
               paper={focused}
               people={people}
               readOnly={readOnly}
-              relatedSection={
-                <LibraryRelatedPapers
-                  key={`modal-related-${focused.paperId}`}
-                  projectId={projectId}
-                  paperId={focused.paperId}
-                  readOnly={readOnly}
-                />
-              }
+              discussionRequested={section === "discussion"}
             />
 
             <footer className="library-dialog-footer">
