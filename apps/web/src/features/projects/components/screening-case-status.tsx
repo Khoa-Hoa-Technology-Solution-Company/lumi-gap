@@ -11,7 +11,7 @@ export function ScreeningCaseStatus({ projectId, round }: { projectId: string; r
   const [isDossierOpen, setIsDossierOpen] = useState(false);
   const data = round.adjudicationCase;
   if (!data) return null;
-  const collecting = data.ready === false && ["COLLECTING"].includes(data.status);
+  const collecting = data.ready === false && ["COLLECTING", "COI_REVIEW"].includes(data.status);
 
   return (
     <>
@@ -30,6 +30,29 @@ export function ScreeningCaseStatus({ projectId, round }: { projectId: string; r
           </ScreeningStatusBadge>
         </div>
 
+        <div role="group" aria-label="Người phân xử" className="flex items-start gap-2 rounded-lg bg-background/60 px-3 py-2.5">
+          <User size={16} className="screening-status-text mt-0.5 shrink-0" aria-hidden="true" />
+          <div className="min-w-0">
+            <p className="text-xs text-muted-foreground">Người phân xử</p>
+            {data.assignedAdjudicator ? (
+              <p className="mt-0.5 break-words text-sm text-foreground">
+                <strong className="font-semibold">{data.assignedAdjudicator.name}</strong>
+                {" · "}{adjudicatorRoleLabels[data.assignedAdjudicator.role ?? ""] ?? (data.assignedAdjudicator.mentor ? "Cố vấn học thuật" : "Người phân xử độc lập")}
+              </p>
+            ) : <>
+              <p className="mt-0.5 text-sm font-medium text-foreground">Chờ phân công</p>
+              {["COLLECTING", "WAITING_ASSIGNMENT"].includes(data.status) && <>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">{round.adjudicationBlockedReason || "Chưa có người độc lập đủ điều kiện. Chủ dự án cần mời thêm thành viên hoặc cố vấn."}</p>
+                {round.canManage && <div className="mt-2 flex flex-wrap gap-2">
+                  <Button asChild size="sm" variant="outline"><a href={`/projects/${encodeURIComponent(projectId)}?tab=members`}>Mời thêm thành viên</a></Button>
+                  {!round.adjudicationBlockedReason && <Button asChild size="sm" variant="outline"><a href={`/projects/${encodeURIComponent(projectId)}?tab=support`}>Mời cố vấn</a></Button>}
+                </div>}
+              </>}
+            </>}
+          </div>
+        </div>
+
+        {data.assignedAdjudicator && round.adjudicationBlockedReason && <p role="status" className="text-xs leading-5 text-muted-foreground">{round.adjudicationBlockedReason}</p>}
         {collecting && (
           <div className="space-y-1 text-xs text-muted-foreground">
             {data.deadline && (
@@ -39,18 +62,9 @@ export function ScreeningCaseStatus({ projectId, round }: { projectId: string; r
               </p>
             )}
             <p className="leading-relaxed">
-              Mỗi reviewer bổ sung ý kiến riêng hoặc sử dụng ý kiến đã ghi. Không phản hồi không đồng nghĩa đồng ý.
+              Hai reviewer gửi ý kiến riêng trong thời hạn chung. Người phân xử được giao tự động, không cần nhận lời mời. Không phản hồi không đồng nghĩa đồng ý.
             </p>
           </div>
-        )}
-
-        {data.assignedAdjudicator && (
-          <p className="text-xs text-muted-foreground flex items-center gap-1.5">
-            <User size={13} className="screening-status-text" />
-            <span>
-              {data.assignedAdjudicator.name} · {adjudicatorRoleLabels[data.assignedAdjudicator.role ?? ""] ?? (data.assignedAdjudicator.mentor ? "Cố vấn học thuật" : "Người phân xử độc lập")}
-            </span>
-          </p>
         )}
 
         <div className="pt-0.5">

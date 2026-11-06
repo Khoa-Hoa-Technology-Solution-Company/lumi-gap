@@ -148,7 +148,7 @@ export function ScreeningConflictResolution({ projectId, round, paper, people, r
         !round.adjudicationCase &&
         !isAdjudicating &&
         !isWaitingAdjudicator &&
-        (round.canReassess || round.canRequestAdjudication) && (
+        (round.canReassess || round.canRequestAdjudication || round.adjudicationBlockedReason) && (
         <section className="screening-resolution-actions" aria-label="Xử lý sau trao đổi">
           <div className="screening-resolution-action-buttons">
             {round.canReassess && (
@@ -180,6 +180,7 @@ export function ScreeningConflictResolution({ projectId, round, paper, people, r
               </Button>
             )}
           </div>
+          {round.adjudicationBlockedReason && <p role="status" className="text-xs leading-relaxed text-muted-foreground">{round.adjudicationBlockedReason}</p>}
         </section>
       )}
 

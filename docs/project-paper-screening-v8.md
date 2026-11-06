@@ -1,5 +1,15 @@
 # Paper screening v8: independent adjudication invitations
 
+## Current assignment policy (2026-11-06)
+
+This section supersedes the invitation/selection steps described in the original v8 specification below.
+
+- Opening a case directly assigns an eligible independent person. There is no accept/decline step. Existing priority tiers and the frozen allowlist remain in effect; equal-priority candidates are selected uniformly using `crypto.randomInt`. The selection tier is audited, and refreshing does not reroll a valid assignment.
+- While A/B submit their own statements, the case remains `COLLECTING`. The assignee is visible to both reviewers and has a `BLOCKED` task, with no right to start or decide. Supplements remain private until both finish or the shared deadline expires. Sealing makes the same task actionable and notifies the assignee.
+- Adjudication requires at least three active project team members, counting the Owner once and excluding separate mentor/advisor roles. With only two members, both the UI and request API block opening a case, even if an independent mentor has already accepted. If an existing case's team drops below three, statements/decisions pause and automatic tasks become blocked until the minimum is restored. Existing ballots, packets and decisions remain intact.
+- When no eligible person exists, the UI explains the missing independent participant and provides Owner-only links to invite a member or mentor. Joining/accepting remains consensual. Normal scoped reads and maintenance assign the person automatically once eligible, preserving the same case and both ballots.
+- An inactive, revoked, conflicted, unauthorized or proposing candidate is never selected. Existing assignments are rechecked and revoked when eligibility is lost. Historical reviewer IDs are excluded even if their assignments later become inactive.
+
 ## User flow
 
 1. Two independent reviewers submit their own ballots. Disagreement stays in both reviewers' My Work; it is not returned to the available review queue.

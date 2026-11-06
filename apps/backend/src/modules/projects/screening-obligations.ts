@@ -5,6 +5,7 @@ import { withWorkspace, type WorkspaceContext } from "./workspace-access.js";
 import { roundView, roundSettings } from "./screening-context.js";
 import { screeningPeople } from "./screening-assignments.js";
 import { caseView, ensureAssignment } from "./screening-case-context.js";
+import { adjudicationTeamRequirement } from "./screening-adjudication-context.js";
 
 const open = (status: string) => ["TODO", "IN_PROGRESS", "BLOCKED"].includes(status);
 const final = (round: ScreeningRound) => ["INCLUDED", "EXCLUDED", "BACKGROUND", "WAITING_FULLTEXT"].includes(round.status);
@@ -41,6 +42,7 @@ export async function reconcileScreeningObligations(c: WorkspaceContext) {
   rounds = await c.tx.screeningRound.findMany({ where: { projectId: c.project.id } });
   const desired: Desired[] = [];
   const writable = !["ARCHIVED", "COMPLETED"].includes(c.project.status);
+  const teamBlockedReason = await adjudicationTeamRequirement(c);
   for (const r of rounds) {
     const enabled = writable && r.active && !r.legacyNeedsAudit;
     const assigned = assignments.filter(a => a.roundId === r.id);
@@ -55,8 +57,8 @@ export async function reconcileScreeningObligations(c: WorkspaceContext) {
     if (!enabled) continue;
     if (dispute) {
       for (const id of dispute.reviewerIds.filter(id => live.has(id))) {
-        if (dispute.status === "COLLECTING" && !dispute.lockedAt && dispute.deadline > now && !statements.some(s => s.caseId === dispute.id && s.reviewerId === id && s.packetVersion === dispute.packetVersion))
-          desired.push({ round: r, actor: id, kind: "STATEMENT", instance: `statement:${dispute.id}:${dispute.packetVersion}`, dueAt: dispute.deadline, reason: "Chờ bạn gửi quan điểm riêng" });
+        if (["COLLECTING", "COI_REVIEW"].includes(dispute.status) && !dispute.lockedAt && dispute.deadline > now && !statements.some(s => s.caseId === dispute.id && s.reviewerId === id && s.packetVersion === dispute.packetVersion))
+          desired.push({ round: r, actor: id, kind: "STATEMENT", instance: `statement:${dispute.id}:${dispute.packetVersion}`, dueAt: dispute.deadline, status: teamBlockedReason ? "BLOCKED" : "TODO", reason: teamBlockedReason || "Chờ bạn gửi quan điểm riêng" });
       }
       const ids = new Set([c.project.ownerId, ...(roundSettings(r.settings).adjudicationCoordinatorIds ?? []), ...invitations.filter(i => i.caseId === dispute.id && i.status === "ASSIGNED").map(i => i.userId)]);
       for (const id of ids) {
@@ -64,10 +66,10 @@ export async function reconcileScreeningObligations(c: WorkspaceContext) {
         try {
           const view = await caseView(asActor(id), r, dispute);
           const invitation = invitations.find(i => i.caseId === dispute.id && i.userId === id && i.status === "ASSIGNED");
-          if (view.canResolve && invitation || invitation && view.invitation?.userId === id && dispute.status === "COI_REVIEW")
-            desired.push({ round: r, actor: id, kind: "ADJUDICATION", instance: `adjudication:${invitation!.id}`, status: dispute.status === "COI_REVIEW" ? "BLOCKED" : dispute.status === "IN_PROGRESS" ? "IN_PROGRESS" : "TODO", reason: dispute.status === "COI_REVIEW" ? "Chờ điều phối xem xét xung đột lợi ích" : "Chờ kết luận có lý do và căn cứ" });
+          if (invitation && view.invitation?.userId === id)
+            desired.push({ round: r, actor: id, kind: "ADJUDICATION", instance: `adjudication:${invitation.id}`, status: view.adjudicationBlockedReason || dispute.status === "COI_REVIEW" || !view.ready ? "BLOCKED" : dispute.status === "IN_PROGRESS" ? "IN_PROGRESS" : "TODO", reason: view.adjudicationBlockedReason || (dispute.status === "COI_REVIEW" ? "Chờ điều phối xem xét xung đột lợi ích" : !view.ready ? "Chờ hai reviewer hoàn tất ý kiến hoặc hết hạn chung" : "Chờ kết luận có lý do và căn cứ") });
           if (view.canCoordinate && ["WAITING_ASSIGNMENT", "COI_REVIEW"].includes(view.status))
-            desired.push({ round: r, actor: id, kind: "COORDINATION", instance: `coordination:${dispute.id}:${dispute.status}`, reason: view.status === "COI_REVIEW" ? "Xem xét báo cáo xung đột lợi ích" : "Phân công người phân xử hợp lệ" });
+            desired.push({ round: r, actor: id, kind: "COORDINATION", instance: `coordination:${dispute.id}:${dispute.status}`, status: teamBlockedReason ? "BLOCKED" : "TODO", reason: teamBlockedReason || (view.status === "COI_REVIEW" ? "Xem xét báo cáo xung đột lợi ích" : "Phân công người phân xử hợp lệ") });
         } catch (error) { if (!(error instanceof AppError && error.statusCode === 404)) throw error; }
       }
     } else if (["NEEDS_RESOLUTION", "NEEDS_MORE_INFO"].includes(r.status)) {

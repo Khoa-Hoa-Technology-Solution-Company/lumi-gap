@@ -205,6 +205,15 @@ describe("ScreeningConflictResolution Component", () => {
     expect(Boolean(button("Nhờ người phân xử"))).toBe(!observer);
   });
 
+  it("explains the three-member minimum and blocks the request while preserving discussion and ballot changes", async () => {
+    await renderRound({ ...mockRound, canRequestAdjudication: false, adjudicationBlockedReason: "Phân xử yêu cầu ít nhất 3 thành viên đang hoạt động trong nhóm." });
+    expect(button("Nhờ người phân xử")).toBeUndefined();
+    expect(container.textContent).toContain("ít nhất 3 thành viên");
+    expect(button("Đổi kết luận của tôi")).toBeDefined();
+    expect(button("Trao đổi")).toBeDefined();
+    expect(mocks.requestAdjudication).not.toHaveBeenCalled();
+  });
+
   it.each(["INDEPENDENT", "COLLABORATIVE"] as const)("opens a working request confirmation inside the actual %s paper modal and refreshes its status", async mode => {
     let current = { ...mockRound, settings: { ...mockRound.settings, reviewMode: mode }, canManage: false, discussionReady: false };
     mocks.detail.mockImplementation(async () => current);
@@ -271,8 +280,26 @@ describe("ScreeningConflictResolution Component", () => {
     await renderRound({ ...mockRound, canRequestAdjudication: false, adjudicationCase: { id: "case-1", status, requestedByIds: ["user-1"], disputePoints: [], ready: status === "IN_PROGRESS" || status === "COMPLETED", createdAt: new Date().toISOString(), assignedAdjudicator: status === "WAITING_ASSIGNMENT" ? null : { id: "mentor", name: "TS. Linh", mentor: true, role: "PRIMARY_MENTOR" } } });
     expect(button("Nhờ người phân xử")).toBeUndefined();
     expect(document.body.textContent).toContain("Hồ sơ phân xử");
-    if (status !== "WAITING_ASSIGNMENT") expect(document.body.textContent).toContain("TS. Linh · Mentor chính");
+    const adjudicator = container.querySelector('[aria-label="Người phân xử"]');
+    expect(adjudicator).not.toBeNull();
+    if (status !== "WAITING_ASSIGNMENT") expect(adjudicator?.textContent).toContain("TS. Linh · Mentor chính");
+    else expect(adjudicator?.textContent).toContain("Chờ phân công");
     if (status === "COMPLETED") expect(document.body.textContent).toContain("Đã phân xử");
+  });
+
+  it("shows the pending adjudicator while collecting statements without inventing an assignment", async () => {
+    await renderRound({ ...mockRound, canRequestAdjudication: false, adjudicationCase: { id: "case-1", status: "COLLECTING", requestedByIds: ["user-1"], disputePoints: [], ready: false, createdAt: new Date().toISOString(), assignedAdjudicator: null } });
+    const adjudicator = container.querySelector('[aria-label="Người phân xử"]');
+    expect(adjudicator?.textContent).toContain("Người phân xửChờ phân công");
+    expect(adjudicator?.textContent).toContain("Chưa có người độc lập đủ điều kiện");
+    expect(button("Nhờ người phân xử")).toBeUndefined();
+  });
+
+  it.each([false, true])("offers team and mentor invitations only to an owner when there is no eligible adjudicator (%s)", async canManage => {
+    await renderRound({ ...mockRound, canManage, canRequestAdjudication: false, adjudicationCase: { id: "case-1", status: "WAITING_ASSIGNMENT", requestedByIds: ["user-1"], disputePoints: [], ready: true, createdAt: new Date().toISOString(), assignedAdjudicator: null } });
+    const adjudicator = container.querySelector('[aria-label="Người phân xử"]')!;
+    const links = [...adjudicator.querySelectorAll("a")];
+    expect(links.map(link => link.getAttribute("href"))).toEqual(canManage ? ["/projects/proj-1?tab=members", "/projects/proj-1?tab=support"] : []);
   });
 
   it("renders compact review rows, a single explanation, and action buttons", async () => {

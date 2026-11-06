@@ -196,6 +196,7 @@ export interface ScreeningRoundView {
   proposerExceptionGranted?: boolean;
   resolution?: { decision: "NEEDS_MORE_INFO"; reason: string; createdAt: string; resolverName?: string; resolverRole?: string; sourceMaterial?: string | null } | null;
   canRequestAdjudication?: boolean; canReassess?: boolean; canAdvanceConservatively?: boolean; provisionalAdvance?: boolean;
+  adjudicationBlockedReason?: string | null;
   reviewerIntakeClosed?: boolean;
   canProposeAgreement?: boolean;
   agreement?: ScreeningAgreement | null;
@@ -269,6 +270,7 @@ export interface ScreeningDisputeStatement {
   history?: Array<{ revision: number; packetVersion: number; text: string; useExisting: boolean; createdAt: string }>;
 }
 export interface ScreeningDisputeCase {
+  adjudicationBlockedReason?: string | null;
   /** Canonical reviewer identity for the current viewer; never supplied by the client. */
   myReviewerId?: string | null;
   id: string; status: string; version: number; packetVersion: number; active: boolean;

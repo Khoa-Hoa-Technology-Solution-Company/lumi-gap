@@ -4,7 +4,7 @@ import { AppError } from "../../common/exceptions/app-error.js";
 import { withWorkspace, jsonSnapshot, expectWorkspaceVersion } from "./workspace-access.js";
 import { screeningCommand, screeningRound } from "./screening-context.js";
 import { reconcileScreeningObligations, screeningObligationDtos } from "./screening-obligations.js";
-import { adjudicationPacket, sharedAdjudicationPacket, screeningAdjudicators, adjudicationSourceUrl } from "./screening-adjudication-context.js";
+import { adjudicationPacket, sharedAdjudicationPacket, screeningAdjudicators, adjudicationSourceUrl, adjudicationTeamRequirement } from "./screening-adjudication-context.js";
 import { screeningClassification } from "./screening-resolution-context.js";
 import { effectiveAssignments } from "./screening-assignments.js";
 import { caseAudit, caseNotify, casePacket, caseView, ensureAssignment, assignCandidate, latestCase, rankedCandidates, notifyCaseCoordinators } from "./screening-case-context.js";
@@ -17,6 +17,8 @@ export const screeningCaseService = {
     return screeningCommand(project, actor, "ADJUDICATION_REQUESTED", { ...input, roundId }, {}, async c => {
       const round = await screeningRound(c, roundId);
       if (c.project.status === "COMPLETED") throw AppError.conflict("Dự án đã hoàn tất, không thể mở hồ sơ mới");
+      const blockedReason = await adjudicationTeamRequirement(c);
+      if (blockedReason) throw AppError.conflict(blockedReason);
       const assignments = await effectiveAssignments(c, roundId);
       if (!assignments.some(a => a.reviewerId === c.actorId && a.submittedAt)) throw AppError.forbidden("Chỉ reviewer đã gửi phiếu mới được mở hồ sơ");
       const classification = await screeningClassification(c, round);
@@ -52,6 +54,7 @@ export const screeningCaseService = {
       if (!row || row.id !== input.caseId || !row.active || !round.active) throw AppError.conflict("Hồ sơ đã đóng hoặc đã được thay thế");
       row = await ensureAssignment(c, round, row);
       const view = await caseView(c, round, row);
+      if (view.adjudicationBlockedReason && ["STATEMENT", "SELECT", "RETRY", "REASSIGN", "START"].includes(input.action)) throw AppError.conflict(view.adjudicationBlockedReason);
       if (input.action === "STATEMENT") {
         if (!view.canStatement) throw AppError.forbidden("Chỉ reviewer được bổ sung ý kiến riêng trong thời hạn chung");
         expectWorkspaceVersion(row.packetVersion, input.expectedPacketVersion);
@@ -64,7 +67,7 @@ export const screeningCaseService = {
         expectWorkspaceVersion(row.version, input.expectedCaseVersion);
         const invitation = view.invitation;
         if (input.action === "ACCEPT" || input.action === "DECLINE") {
-          throw AppError.conflict("Nhiệm vụ được phân công trực tiếp sau khi khóa hồ sơ, không cần nhận hoặc từ chối lời mời");
+          throw AppError.conflict("Nhiệm vụ được phân công trực tiếp khi mở hồ sơ, không cần nhận hoặc từ chối lời mời");
         } else if (input.action === "START") {
           if (!view.canStart) throw AppError.forbidden("Chỉ người được phân công được bắt đầu phân xử");
           row = await c.tx.screeningAdjudicationCase.update({ where: { id: row.id }, data: { status: "IN_PROGRESS", version: { increment: 1 } } });
@@ -101,7 +104,7 @@ export const screeningCaseService = {
             await c.tx.screeningRound.update({ where: { id: roundId }, data: { finalizerId: null, version: { increment: 1 } } });
           }
           const pending = await c.tx.screeningAdjudicationConflict.count({ where: { caseId: row.id, resolvedAt: null } });
-          row = await c.tx.screeningAdjudicationCase.update({ where: { id: row.id }, data: { status: input.upheld ? "WAITING_ASSIGNMENT" : pending ? "COI_REVIEW" : "ASSIGNED", version: { increment: 1 } } });
+          row = await c.tx.screeningAdjudicationCase.update({ where: { id: row.id }, data: { status: input.upheld ? row.lockedAt ? "WAITING_ASSIGNMENT" : "COLLECTING" : pending ? "COI_REVIEW" : row.lockedAt ? "ASSIGNED" : "COLLECTING", version: { increment: 1 } } });
           if (input.upheld) row = await ensureAssignment(c, round, row);
         }
       }

@@ -20,7 +20,7 @@ import { balancedReviewers, cohenKappa, screeningConsensus, independentWorkflow,
 import { advanceScreeningStage, effectiveAssignments, projectScreeningStatus, recomputeScreening, roundView, roundSettings, screeningCommand, screeningPeople, screeningRound, screeningSettings, settingsForNewScreening, screeningReviewsVisible } from "./screening-context.js";
 import { screeningConfigSchema, screeningFinalizerSchema, screeningResolveSchema, screeningClaimSchema, screeningReleaseSchema, screeningExtendSchema, screeningDiscoveryGoalUpdateSchema, screeningProposerExceptionSchema, screeningAgreementSchema } from "./dto/screening.schema.js";
 import type { ScreeningWorkspaceSummary, ScreeningPhase, ScreeningState } from "@trend/shared-types";
-import { adjudicationPacket, adjudicationSection, screeningAdjudicatorPool, screeningAdjudicators, screeningDiscussionReady, screeningEscalationReady, sharedAdjudicationPacket } from "./screening-adjudication-context.js";
+import { adjudicationPacket, adjudicationSection, screeningAdjudicatorPool, screeningAdjudicators, screeningDiscussionReady, screeningEscalationReady, sharedAdjudicationPacket, adjudicationTeamRequirement } from "./screening-adjudication-context.js";
 import { effectiveMentorAccess, publishMentorShare } from "./mentor-access.service.js";
 import { notificationService } from "../notifications/notification.service.js";
 import * as s from "./dto/screening.schema.js";
@@ -814,6 +814,7 @@ export const screeningService = {
       }
 
       // Reconcile the common deadline under the project lock. Tasks and Papers share this projection.
+      const adjudicationBlockedReason = await adjudicationTeamRequirement(c);
       const activeCases = await c.tx.screeningAdjudicationCase.findMany({ where: { projectId: c.project.id, active: true } });
       const pendingAdjudications: ScreeningWorkspaceSummary["pendingAdjudications"] = [];
       for (const initial of activeCases) {
@@ -822,7 +823,7 @@ export const screeningService = {
         if (!r.active || dispute.reviewerIds.includes(c.actorId)) continue;
         try {
           const cv = await caseView(c, r, dispute);
-          if (cv.canResolve || cv.canCoordinate && (cv.status === "WAITING_ASSIGNMENT" || cv.status === "COI_REVIEW")) {
+          if (!cv.adjudicationBlockedReason && (cv.canResolve || cv.canCoordinate && (cv.status === "WAITING_ASSIGNMENT" || cv.status === "COI_REVIEW"))) {
             pendingAdjudications.push({ paperId: r.paperId, roundId: r.id, title: (dispute.packet as unknown as { paper: { title: string } }).paper.title, status: r.status as ScreeningState, caseStatus: cv.status });
           }
         } catch (error) { if (error instanceof AppError && error.statusCode === 404) continue; throw error; }
@@ -1049,7 +1050,7 @@ export const screeningService = {
           if (!adjudicationCaseMap.has(ac.roundId)) {
             adjudicationCaseMap.set(ac.roundId, {
               ...ac,
-              needsMyStatement: !["ARCHIVED", "COMPLETED"].includes(c.project.status) && !ac.lockedAt && ac.deadline > now && ac.status === "COLLECTING" && !ownStatements.some(s => s.caseId === ac.id && s.packetVersion === ac.packetVersion),
+              needsMyStatement: !adjudicationBlockedReason && !["ARCHIVED", "COMPLETED"].includes(c.project.status) && !ac.lockedAt && ac.deadline > now && ["COLLECTING", "COI_REVIEW"].includes(ac.status) && !ownStatements.some(s => s.caseId === ac.id && s.packetVersion === ac.packetVersion),
               adjudicatorName: caseAdjudicatorMap.get(ac.id) || null
             });
           }

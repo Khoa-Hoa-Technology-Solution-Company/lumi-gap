@@ -1,8 +1,9 @@
 import type { ScreeningAdjudicationPacket, ScreeningDisputeCase } from "@trend/shared-types";
+import { selectCaseCandidate } from "./screening-case-selection.js";
 import type { ScreeningAdjudicationCase, ScreeningRound } from "../../generated/prisma/client.js";
 import { AppError } from "../../common/exceptions/app-error.js";
 import { jsonSnapshot, type WorkspaceContext } from "./workspace-access.js";
-import { adjudicationPacket, screeningAdjudicators } from "./screening-adjudication-context.js";
+import { adjudicationPacket, screeningAdjudicators, adjudicationTeamRequirement } from "./screening-adjudication-context.js";
 import { effectiveAssignments } from "./screening-assignments.js";
 import { notificationService } from "../notifications/notification.service.js";
 
@@ -36,7 +37,7 @@ export async function rankedCandidates(c: WorkspaceContext, round: ScreeningRoun
   const tried = new Set(invitations.map(i => i.userId));
   const preferred = policy.preferredAdjudicatorId ?? (policy.authorizedAdjudicatorIds?.length === 1 ? policy.authorizedAdjudicatorIds[0] : undefined);
   // Proposing the paper is a declared conflict. Owner privileges never remove it.
-  const candidates = pool.filter(p => !p.proposer && !tried.has(p.id)).map(p => {
+  const candidates = pool.filter(p => !p.proposer && !row.reviewerIds.includes(p.id) && !tried.has(p.id)).map(p => {
     const mentorRole = requests.find(r => accesses.some(a => a.mentorUserId === p.id && a.requestId === r.id))?.mentorRole;
     const priority = p.id === preferred ? 1 : p.mentor ? mentorRole === "PRIMARY" ? 2 : 3 : p.id === c.project.ownerId ? 5 : 4;
     return { ...p, priority, role: priority === 1 ? "PREDESIGNATED" : p.mentor ? mentorRole === "PRIMARY" ? "PRIMARY_MENTOR" : "SECONDARY_MENTOR" : p.id === c.project.ownerId ? "OWNER" : "MEMBER" };
@@ -63,13 +64,13 @@ export async function notifyCaseCoordinators(c: WorkspaceContext, round: Screeni
   ]);
   await caseNotify(c, row, ids.filter(id => !row.reviewerIds.includes(id) && !excluded.includes(id) && id !== link.addedById && users.some(u => u.id === id) && (id === c.project.ownerId || members.some(m => m.userId === id))), event, title);
 }
-/** Assignment is direct and only runs under the project lock, after sealing the packet. */
-export async function assignCandidate(c: WorkspaceContext, round: ScreeningRound, row: ScreeningAdjudicationCase, candidate: { id: string; role: string }, automated = false) {
-  if (!row.lockedAt) throw AppError.conflict("Hồ sơ chưa khóa");
+/** Reserve the independent assignee under the project lock; decision rights still require a sealed packet. */
+export async function assignCandidate(c: WorkspaceContext, round: ScreeningRound, row: ScreeningAdjudicationCase, candidate: { id: string; role: string }, automated = false, selection?: { method: "RANDOM_ELIGIBLE"; candidateIds: string[] }) {
+  if (row.reviewerIds.includes(candidate.id)) throw AppError.forbidden("Reviewer không được phân xử bất đồng của mình");
   const assignment = await c.tx.screeningAdjudicationInvitation.create({ data: { projectId: c.project.id, caseId: row.id, userId: candidate.id, role: candidate.role, status: "ASSIGNED" } });
-  const next = await c.tx.screeningAdjudicationCase.update({ where: { id: row.id }, data: { status: "ASSIGNED", version: { increment: 1 } } });
+  const next = await c.tx.screeningAdjudicationCase.update({ where: { id: row.id }, data: { status: row.lockedAt ? "ASSIGNED" : "COLLECTING", version: { increment: 1 } } });
   await c.tx.screeningRound.update({ where: { id: round.id }, data: { finalizerId: candidate.id, version: { increment: 1 } } });
-  await caseAudit(c, next, "ADJUDICATION_DIRECT_ASSIGNED", { assignmentId: assignment.id, userId: candidate.id, role: candidate.role, automated });
+  await caseAudit(c, next, "ADJUDICATION_DIRECT_ASSIGNED", { assignmentId: assignment.id, userId: candidate.id, role: candidate.role, automated, ...(selection ? { selection } : {}) });
   await caseNotify(c, next, [candidate.id, ...row.reviewerIds], "ASSIGNED", "Đã phân công người phân xử bài báo");
   return next;
 }
@@ -78,41 +79,50 @@ export async function caseReady(c: WorkspaceContext, row: ScreeningAdjudicationC
   const submitted = await c.tx.screeningAdjudicationStatement.groupBy({ by: ["reviewerId"], where: { caseId: row.id, packetVersion: row.packetVersion, reviewerId: { in: row.reviewerIds } } });
   return submitted.length === row.reviewerIds.length;
 }
-/** Called under the project transaction lock; never selects a winner from a tie. */
+/** Pick once under the project lock. Equal-priority eligible candidates are sampled uniformly. */
 export async function ensureAssignment(c: WorkspaceContext, round: ScreeningRound, initial: ScreeningAdjudicationCase, automated = false) {
   if (!initial.active || !round.active || ["ARCHIVED", "COMPLETED"].includes(c.project.status)) return initial;
   let row = initial;
+  let sealedNow = false;
   if (!row.lockedAt) {
     if (!await caseReady(c, row)) {
-      if (round.finalizerId) await c.tx.screeningRound.update({ where: { id: round.id }, data: { finalizerId: null, version: { increment: 1 } } });
       if (row.status !== "COLLECTING" && row.status !== "COI_REVIEW") row = await c.tx.screeningAdjudicationCase.update({ where: { id: row.id }, data: { status: "COLLECTING", version: { increment: 1 } } });
-      return row;
+    } else {
+      row = await c.tx.screeningAdjudicationCase.update({ where: { id: row.id }, data: { lockedAt: new Date(), status: row.status === "COI_REVIEW" ? "COI_REVIEW" : "WAITING_ASSIGNMENT", version: { increment: 1 } } });
+      sealedNow = true;
+      await caseAudit(c, row, "ADJUDICATION_CASE_LOCKED", { deadline: row.deadline, packetVersion: row.packetVersion, automated });
     }
-    row = await c.tx.screeningAdjudicationCase.update({ where: { id: row.id }, data: { lockedAt: new Date(), status: row.status === "COI_REVIEW" ? "COI_REVIEW" : "WAITING_ASSIGNMENT", version: { increment: 1 } } });
-    await caseAudit(c, row, "ADJUDICATION_CASE_LOCKED", { deadline: row.deadline, packetVersion: row.packetVersion, automated });
+  }
+  if (await adjudicationTeamRequirement(c)) {
+    const status = row.status === "COI_REVIEW" ? "COI_REVIEW" : row.lockedAt ? "WAITING_ASSIGNMENT" : "COLLECTING";
+    return row.status === status ? row : c.tx.screeningAdjudicationCase.update({ where: { id: row.id }, data: { status, version: { increment: 1 } } });
   }
   const assignment = await c.tx.screeningAdjudicationInvitation.findFirst({ where: { caseId: row.id, status: { in: ["SENT", "ACCEPTED", "ASSIGNED"] } } });
   if (assignment) {
-    if ((await screeningAdjudicators(c, round)).some(p => p.id === assignment.userId && !p.proposer)) {
+    if (!row.reviewerIds.includes(assignment.userId) && (await screeningAdjudicators(c, round)).some(p => p.id === assignment.userId && !p.proposer)) {
       // Transition an existing invitation without fabricating an acceptance response.
       if (assignment.status !== "ASSIGNED") {
         await c.tx.screeningAdjudicationInvitation.update({ where: { id: assignment.id }, data: { status: "ASSIGNED" } });
-        row = await c.tx.screeningAdjudicationCase.update({ where: { id: row.id }, data: { status: row.status === "COI_REVIEW" ? "COI_REVIEW" : "ASSIGNED", version: { increment: 1 } } });
-        await c.tx.screeningRound.update({ where: { id: round.id }, data: { finalizerId: assignment.userId, version: { increment: 1 } } });
         await caseAudit(c, row, "ADJUDICATION_DIRECT_ASSIGNED", { assignmentId: assignment.id, userId: assignment.userId, migrated: true, automated });
         await caseNotify(c, row, [assignment.userId, ...row.reviewerIds], "ASSIGNED", "Đã phân công người phân xử bài báo");
       }
+      const status = row.status === "COI_REVIEW" ? "COI_REVIEW" : row.lockedAt ? row.status === "IN_PROGRESS" ? "IN_PROGRESS" : "ASSIGNED" : "COLLECTING";
+      if (row.status !== status || assignment.status !== "ASSIGNED") row = await c.tx.screeningAdjudicationCase.update({ where: { id: row.id }, data: { status, version: { increment: 1 } } });
+      if (round.finalizerId !== assignment.userId) await c.tx.screeningRound.update({ where: { id: round.id }, data: { finalizerId: assignment.userId, version: { increment: 1 } } });
+      if (sealedNow && row.status !== "COI_REVIEW") await caseNotify(c, row, [assignment.userId], "READY", "Hồ sơ đã sẵn sàng để phân xử");
       return row;
     }
     await c.tx.screeningAdjudicationInvitation.update({ where: { id: assignment.id }, data: { status: "REVOKED", respondedAt: new Date() } });
     await c.tx.screeningAdjudicationConflict.updateMany({ where: { caseId: row.id, invitationId: assignment.id, resolvedAt: null }, data: { resolvedAt: new Date(), resolution: "Quyền ứng viên không còn hiệu lực", upheld: true } });
-    row = await c.tx.screeningAdjudicationCase.update({ where: { id: row.id }, data: { status: "WAITING_ASSIGNMENT", version: { increment: 1 } } });
+    row = await c.tx.screeningAdjudicationCase.update({ where: { id: row.id }, data: { status: row.lockedAt ? "WAITING_ASSIGNMENT" : "COLLECTING", version: { increment: 1 } } });
     await c.tx.screeningRound.update({ where: { id: round.id }, data: { finalizerId: null, version: { increment: 1 } } });
     await caseAudit(c, row, "ADJUDICATION_ACCESS_REVOKED", { userId: assignment.userId, automated });
   }
   if (row.status === "COI_REVIEW") return row;
   const candidates = await rankedCandidates(c, round, row);
-  if (candidates.length === 1) return assignCandidate(c, round, row, candidates[0]!, automated);
+  const candidate = selectCaseCandidate(candidates);
+  if (candidate) return assignCandidate(c, round, row, candidate, automated, { method: "RANDOM_ELIGIBLE", candidateIds: candidates.map(p => p.id) });
+  if (!row.lockedAt) return row;
   if (row.status !== "WAITING_ASSIGNMENT") row = await c.tx.screeningAdjudicationCase.update({ where: { id: row.id }, data: { status: "WAITING_ASSIGNMENT", version: { increment: 1 } } });
   await notifyCaseCoordinators(c, round, row, "WAITING", "Hồ sơ chờ phân công người phân xử");
   return row;
@@ -124,8 +134,8 @@ export async function caseView(c: WorkspaceContext, round: ScreeningRound, row: 
     c.tx.screeningAdjudicationConflict.findMany({ where: { caseId: row.id }, orderBy: { createdAt: "asc" } }),
     screeningAdjudicators(c, round),
   ]);
-  const current = row.lockedAt || !row.active ? invitations.find(i => ["ASSIGNED", "ACCEPTED"].includes(i.status)) : undefined;
-  const isEligible = Boolean(current && eligible.some(p => p.id === current.userId && !p.proposer));
+  const current = invitations.find(i => ["ASSIGNED", "ACCEPTED"].includes(i.status));
+  const isEligible = Boolean(current && !row.reviewerIds.includes(current.userId) && eligible.some(p => p.id === current.userId && !p.proposer));
   const isReviewer = row.reviewerIds.includes(c.actorId);
   const coordinator = await caseCoordinator(c, round, row);
   const isAssignee = current?.userId === c.actorId && isEligible;
@@ -137,8 +147,9 @@ export async function caseView(c: WorkspaceContext, round: ScreeningRound, row: 
   const name = (id: string) => names.find(p => p.id === id)?.fullName || "Thành viên";
   const invitationViews = invitations.map(i => ({ id: i.id, userId: i.userId, name: name(i.userId), role: i.role, status: i.status, responseReason: i.responseReason ?? null, createdAt: i.createdAt.toISOString(), respondedAt: i.respondedAt?.toISOString() ?? null }));
   const writable = row.active && round.active && !["ARCHIVED", "COMPLETED"].includes(c.project.status);
-  const canResolve = writable && ready && isAssignee && current?.status === "ASSIGNED" && row.status !== "COI_REVIEW";
-  return { lockedAt: row.lockedAt?.toISOString() ?? null, canStart: canResolve && row.status === "ASSIGNED", canReassign: writable && coordinator && current?.userId !== c.actorId && Boolean(current) && row.status !== "COI_REVIEW", myReviewerId: isReviewer ? c.actorId : null, id: row.id, status: row.status, version: row.version, packetVersion: row.packetVersion, active: row.active, deadline: row.deadline.toISOString(), ready, createdAt: row.createdAt.toISOString(), requestedByIds: row.requestedByIds,
+  const adjudicationBlockedReason = row.active ? await adjudicationTeamRequirement(c) : null;
+  const canResolve = writable && !adjudicationBlockedReason && Boolean(row.lockedAt) && ready && isAssignee && current?.status === "ASSIGNED" && row.status !== "COI_REVIEW";
+  return { adjudicationBlockedReason, lockedAt: row.lockedAt?.toISOString() ?? null, canStart: canResolve && row.status === "ASSIGNED", canReassign: writable && !adjudicationBlockedReason && coordinator && current?.userId !== c.actorId && Boolean(current) && row.status !== "COI_REVIEW", myReviewerId: isReviewer ? c.actorId : null, id: row.id, status: row.status, version: row.version, packetVersion: row.packetVersion, active: row.active, deadline: row.deadline.toISOString(), ready, createdAt: row.createdAt.toISOString(), requestedByIds: row.requestedByIds,
     invitation: invitationViews.find(i => i.id === current?.id) ?? null, invitations: invitationViews,
     statements: row.reviewerIds.map((id, index) => {
       const statement = latest[index];
@@ -148,9 +159,9 @@ export async function caseView(c: WorkspaceContext, round: ScreeningRound, row: 
         ...(visible && statement ? { useExisting: statement.useExisting, text: statement.text, submittedAt: statement.createdAt.toISOString() } : {}),
         ...(visible ? { history: statements.filter(s => s.reviewerId === id).map(s => ({ revision: s.revision, packetVersion: s.packetVersion, useExisting: s.useExisting, text: s.text, createdAt: s.createdAt.toISOString() })) } : {}) };
     }),
-    candidates: writable && coordinator && row.lockedAt && !current ? (await rankedCandidates(c, round, row)).map(p => ({ id: p.id, name: p.name, role: p.role })) : [],
+    candidates: writable && !adjudicationBlockedReason && coordinator && row.lockedAt && !current ? (await rankedCandidates(c, round, row)).map(p => ({ id: p.id, name: p.name, role: p.role })) : [],
     conflicts: conflicts.map(r => ({ id: r.id, reason: r.reason, resolvedAt: r.resolvedAt?.toISOString() ?? null, resolution: r.resolution, upheld: r.upheld })),
-    canRespond: false, canStatement: writable && isReviewer && !ready && !row.lockedAt && row.deadline > new Date(), canCoordinate: writable && coordinator && current?.userId !== c.actorId,
+    canRespond: false, canStatement: writable && !adjudicationBlockedReason && isReviewer && !ready && !row.lockedAt && row.deadline > new Date(), canCoordinate: writable && coordinator && current?.userId !== c.actorId,
     canReport: writable && isReviewer && Boolean(current), canResolve };
 }
 export async function closeCase(c: WorkspaceContext, roundId: string, status: "COMPLETED" | "NEEDS_MORE_INFO" | "CANCELLED_AS_RESOLVED" | "CANCELLED_REOPENED", finalDecisionId?: string) {
@@ -168,6 +179,6 @@ export async function refreshCasePacket(c: WorkspaceContext, round: ScreeningRou
   const settings = round.settings as { statementWindowHours?: number };
   const next = await c.tx.screeningAdjudicationCase.update({ where: { id: row.id }, data: { packet: jsonSnapshot(await casePacket(c, round)), packetVersion: { increment: 1 }, version: { increment: 1 }, deadline: new Date(Date.now() + (settings.statementWindowHours ?? 48) * 3600000) } });
   await caseAudit(c, next, "ADJUDICATION_PACKET_REVISED", { packetVersion: next.packetVersion, previousPacket: row.packet, packet: next.packet });
-  const invitation = await c.tx.screeningAdjudicationInvitation.findFirst({ where: { caseId: row.id, status: "ACCEPTED" } });
+  const invitation = await c.tx.screeningAdjudicationInvitation.findFirst({ where: { caseId: row.id, status: { in: ["ASSIGNED", "ACCEPTED"] } } });
   await caseNotify(c, next, [...row.reviewerIds, ...invitation ? [invitation.userId] : []], "PACKET_REVISED", "Phiếu đã đổi, cần đọc lại hồ sơ và bổ sung quan điểm");
 }
