@@ -7,6 +7,7 @@ import { SubmissionListPage } from "@/pages/submissions/submission-list";
 import { SubmissionNewPage } from "@/pages/submissions/submission-new";
 import { SubmissionDetailPage } from "@/pages/submissions/submission-detail";
 import { ProjectSubmissionsPanel } from "../components/project-submissions-panel";
+const createVersion = vi.hoisted(() => vi.fn());
 
 const mocks = vi.hoisted(() => ({ list: vi.fn(), detail: vi.fn(), projects: vi.fn(), project: vi.fn(), create: vi.fn(), historyQuery: vi.fn(), preReviews: vi.fn(), addRevision: vi.fn(), user: { systemRole: "USER", emailVerifiedAt: "2026-10-01" }, history: { canManage: true, canRequestReview: true, canRunAiPreReview: true, currentRevisionNumber: 2, reviewRequests: [] as Array<{ id: string; reviewerName: string; status: string; revisionNumber: number; dueAt: string | null; canView: boolean }>, revisions: [] } }));
 vi.mock("@/i18n", () => ({ useI18n: () => ({ t: (key: string) => key, language: "en" }) }));
@@ -15,6 +16,7 @@ vi.mock("@/features/submissions", () => ({
   useSubmissions: mocks.list, useSubmission: mocks.detail,
   useCreateSubmission: () => ({ mutateAsync: mocks.create, isPending: false }),
   useSubmissionHistory: mocks.historyQuery,
+  useCreateSubmissionVersion: () => ({ mutateAsync: createVersion, isPending: false }),
   useAddSubmissionRevision: () => ({ mutateAsync: mocks.addRevision, isPending: false }), useAiPreReviews: mocks.preReviews, useRunAiPreReview: () => ({}),
 }));
 vi.mock("@/features/projects/hooks/use-projects", () => ({ useProjects: mocks.projects, useProject: mocks.project }));
@@ -107,6 +109,77 @@ it("does not show empty research detail cards for a PDF-only submission", async 
   await render(<SubmissionDetailPage submissionId="manuscript" projectId="project-a" />);
   expect(container.textContent).not.toContain("Not specified");
   expect(container.textContent).not.toContain("Research goal");
+});
+
+it("opens detail after an uncached load without changing hook order", async () => {
+  mocks.detail.mockReturnValue({ isLoading: true });
+  await render(<SubmissionDetailPage submissionId="manuscript" projectId="project-a" />);
+  mocks.detail.mockReturnValue({ data: { _id: "manuscript", title: "Loaded manuscript", status: "submitted", currentRevisionId: "v2" } });
+  await render(<SubmissionDetailPage submissionId="manuscript" projectId="project-a" />);
+  expect(container.textContent).toContain("Loaded manuscript");
+});
+
+it("does not claim a mentor task exists for an unassigned submission", async () => {
+  await render(<SubmissionDetailPage submissionId="manuscript" projectId="project-a" />);
+  expect(container.textContent).not.toContain("Chờ Mentor góp ý");
+  expect(container.textContent).not.toContain("Bản thảo đã được gửi vào danh sách nhiệm vụ của Mentor");
+});
+
+it("waits for revision metadata before offering a PDF download", async () => {
+  mocks.historyQuery.mockReturnValue({ isLoading: true });
+  await render(<SubmissionDetailPage submissionId="manuscript" projectId="project-a" />);
+  expect(container.textContent).not.toContain("Tải PDF");
+  expect(container.textContent).not.toContain("Tải tệp PDF");
+});
+
+it("can recover from an unavailable detail without changing hook order", async () => {
+  mocks.detail.mockReturnValue({ error: new Error("offline"), refetch: vi.fn() });
+  await render(<SubmissionDetailPage submissionId="manuscript" />);
+  mocks.detail.mockReturnValue({ data: { _id: "manuscript", title: "Recovered manuscript", status: "submitted" } });
+  await render(<SubmissionDetailPage submissionId="manuscript" />);
+  expect(container.textContent).toContain("Recovered manuscript");
+});
+
+it("opens the current revision when the API returns versions newest first", async () => {
+  mocks.detail.mockReturnValue({ data: { _id: "manuscript", title: "Current paper", status: "revised", currentRevisionId: "v2", currentRevisionNumber: 2 } });
+  mocks.historyQuery.mockReturnValue({ data: { ...mocks.history, versions: [
+    { id: "v2", revisionNumber: 2, contentSnapshot: "Latest revision content", reviews: [] },
+    { id: "v1", revisionNumber: 1, contentSnapshot: "Outdated revision content", reviews: [] },
+  ] } });
+  await render(<SubmissionDetailPage submissionId="manuscript" />);
+  expect(container.textContent).toContain("Latest revision content");
+  expect(container.textContent).not.toContain("Outdated revision content");
+});
+
+it("saves a text revision through the version API without sending a previously selected PDF", async () => {
+  mocks.detail.mockReturnValue({ data: { _id: "manuscript", title: "Current paper", status: "revised", currentRevisionNumber: 2 } });
+  await render(<SubmissionDetailPage submissionId="manuscript" />);
+  await act(async () => Array.from(container.querySelectorAll("button")).find(button => button.textContent === "New PDF version")!.click());
+  await chooseFile();
+  await act(async () => Array.from(container.querySelectorAll("button")).find(button => button.textContent === "Cập nhật văn bản")!.click());
+  const upload = Array.from(container.querySelectorAll("button")).find(button => button.textContent === "Upload version")!;
+  expect(upload.disabled).toBe(true);
+  await changeInput(container.querySelector('textarea[placeholder="Dán nội dung bản thảo đã chỉnh sửa..."]')!, " Revised manuscript ");
+  expect(upload.disabled).toBe(true);
+  await changeInput(container.querySelector('textarea[placeholder^="Tóm tắt ngắn gọn"]')!, " Updated evidence ");
+  await act(async () => upload.click());
+  expect(createVersion).toHaveBeenCalledWith({ content: "Revised manuscript", summary: "Updated evidence", expectedRevisionNumber: 2 });
+  expect(mocks.addRevision).not.toHaveBeenCalled();
+});
+
+it("preserves a failed text revision and permits retry", async () => {
+  createVersion.mockRejectedValueOnce(new Error("offline")).mockResolvedValueOnce(undefined);
+  await render(<SubmissionDetailPage submissionId="manuscript" />);
+  await act(async () => Array.from(container.querySelectorAll("button")).find(button => button.textContent === "New PDF version")!.click());
+  await act(async () => Array.from(container.querySelectorAll("button")).find(button => button.textContent === "Cập nhật văn bản")!.click());
+  const content = container.querySelector<HTMLTextAreaElement>('textarea[placeholder="Dán nội dung bản thảo đã chỉnh sửa..."]')!;
+  await changeInput(content, "Retained manuscript");
+  await changeInput(container.querySelector('textarea[placeholder^="Tóm tắt ngắn gọn"]')!, "Reviewed sources");
+  const upload = Array.from(container.querySelectorAll("button")).find(button => button.textContent === "Upload version")!;
+  await act(async () => upload.click());
+  expect(content.value).toBe("Retained manuscript");
+  await act(async () => upload.click());
+  expect(createVersion).toHaveBeenCalledTimes(2);
 });
 
 it("preserves structured research details on older submissions", async () => {

@@ -2,6 +2,8 @@ import type { StructuredSubmissionInput, SubmissionStatus, SubmissionType, Submi
 import { API_ROUTES } from "@/constants";
 import { api } from "@/services/api-client";
 
+const readOptions = (signal?: AbortSignal) => ({ signal, timeout: 20_000 });
+
 export interface SubmissionSummary {
   _id: string;
   projectId: string;
@@ -57,19 +59,19 @@ export interface AiPreReview {
 }
 
 export const submissionsApi = {
-  async history(id: string): Promise<SubmissionHistory> { return (await api.get(API_ROUTES.submissions.history(id))).data.data; },
+  async history(id: string, signal?: AbortSignal): Promise<SubmissionHistory> { return (await api.get(API_ROUTES.submissions.history(id), readOptions(signal))).data.data; },
   async createVersion(id: string, input: { content?: string; sourceRevisionId?: string; expectedRevisionNumber: number; summary: string }): Promise<void> { await api.post(API_ROUTES.submissions.versions(id), input); },
   async setOpenForReview(id: string, enabled: boolean): Promise<void> { await api.patch(API_ROUTES.submissions.openReview(id), { enabled }); },
-  async list(projectId?: string): Promise<SubmissionSummary[]> {
-    const response = await api.get(API_ROUTES.submissions.list, { params: projectId ? { projectId } : undefined });
+  async list(projectId?: string, signal?: AbortSignal): Promise<SubmissionSummary[]> {
+    const response = await api.get(API_ROUTES.submissions.list, { ...readOptions(signal), params: projectId ? { projectId } : undefined });
     return response.data.data;
   },
-  async detail(id: string, projectId?: string): Promise<SubmissionSummary> {
-    const response = await api.get(API_ROUTES.submissions.detail(id), { params: projectId ? { projectId } : undefined });
+  async detail(id: string, projectId?: string, signal?: AbortSignal): Promise<SubmissionSummary> {
+    const response = await api.get(API_ROUTES.submissions.detail(id), { ...readOptions(signal), params: projectId ? { projectId } : undefined });
     return response.data.data;
   },
-  async revisions(id: string): Promise<SubmissionRevision[]> {
-    const response = await api.get(API_ROUTES.submissions.revisions(id));
+  async revisions(id: string, signal?: AbortSignal): Promise<SubmissionRevision[]> {
+    const response = await api.get(API_ROUTES.submissions.revisions(id), readOptions(signal));
     return response.data.data;
   },
   async create(input: StructuredSubmissionInput, file: File): Promise<{ submission: SubmissionSummary; revision: SubmissionRevision }> {
@@ -88,8 +90,8 @@ export const submissionsApi = {
     if (responseToReview) body.append("responseToReview", responseToReview);
     await api.post(API_ROUTES.submissions.revisions(id), body);
   },
-  async aiPreReviews(id: string): Promise<AiPreReview[]> {
-    const response = await api.get(API_ROUTES.submissions.aiPreReviews(id));
+  async aiPreReviews(id: string, signal?: AbortSignal): Promise<AiPreReview[]> {
+    const response = await api.get(API_ROUTES.submissions.aiPreReviews(id), readOptions(signal));
     return response.data.data;
   },
   async runAiPreReview(id: string): Promise<AiPreReview> {
