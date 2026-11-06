@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, Bot, Play, Upload } from "lucide-react";
+import { ArrowLeft, Bot, Play, Upload, Send, FileText, Download } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,8 @@ import { SubmissionReviewProgress } from "@/features/submissions/components/subm
 import { useI18n } from "@/i18n";
 import {
   useAddSubmissionRevision,
+  useCreateSubmissionVersion,
+  submissionsApi,
   useAiPreReviews,
   useRunAiPreReview,
   useSubmission,
@@ -20,7 +22,7 @@ import {
 import { projectSubmissionPath } from "@/features/submissions/project-submission-path";
 
 export function SubmissionDetailPage({ submissionId, projectId, readOnly = false }: { submissionId?: string; projectId?: string; readOnly?: boolean }) {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const uploading = useRef(false);
   const { id: routeId = "" } = useParams();
   const id = submissionId ?? routeId;
@@ -30,10 +32,14 @@ export function SubmissionDetailPage({ submissionId, projectId, readOnly = false
   const scopedAccess = Boolean(submission.data) && !submission.error;
   const history = useSubmissionHistory(id, scopedAccess);
   const addRevision = useAddSubmissionRevision(id);
+  const createVersion = useCreateSubmissionVersion(id);
   const preReviews = useAiPreReviews(id, scopedAccess);
   const runPreReview = useRunAiPreReview(id);
-  const [file, setFile] = useState<File>();
-  const [response, setResponse] = useState("");
+  const [selectedVersionId, setSelectedVersionId] = useState("");
+  const [revisionFile, setRevisionFile] = useState<File>();
+  const [revisionResponse, setRevisionResponse] = useState("");
+  const [revisionContent, setRevisionContent] = useState("");
+  const [revisionMode, setRevisionMode] = useState<"PDF" | "TEXT">("PDF");
   const [showRevision, setShowRevision] = useState(false);
 
   if (submission.isLoading) return <div className="mx-auto max-w-5xl px-4 py-10"><div className="h-80 animate-pulse rounded-lg bg-muted" /></div>;
@@ -43,6 +49,27 @@ export function SubmissionDetailPage({ submissionId, projectId, readOnly = false
   const canRevise = !readOnly && history.data?.canManage === true && !["accepted", "rejected", "withdrawn"].includes(data.status);
   const canRequestReview = !readOnly && history.data?.canRequestReview === true && !["accepted", "rejected", "withdrawn"].includes(data.status);
   const canRunPreReview = !readOnly && history.data?.canRunAiPreReview === true && !["completed", "accepted", "rejected", "withdrawn"].includes(data.status);
+  // Extract versions and current version
+  const versions = history.data?.versions ?? [];
+  const currentVersion = versions.find(v => v.id === selectedVersionId)
+    ?? versions.find(v => v.id === data.currentRevisionId)
+    ?? versions.reduce<(typeof versions)[number] | undefined>((latest, version) => !latest || version.revisionNumber > latest.revisionNumber ? version : latest, undefined)
+    ?? {
+    id: data.currentRevisionId ?? "",
+    revisionNumber: data.currentRevisionNumber ?? 1,
+    hasPdf: false,
+    contentSnapshot: "",
+    reviews: [],
+    createdAt: data.updatedAt,
+  };
+
+  const paragraphs: string[] = (currentVersion.contentSnapshot ?? "")
+    .split(/\n\s*\n/)
+    .map((p: string) => p.trim())
+    .filter(Boolean);
+  const revisionPending = addRevision.isPending || createVersion.isPending;
+
+
   const researchDetails = [
     { title: "Research goal", value: data.researchGoal },
     { title: "Research questions", value: data.researchQuestions?.map((item, index) => `${index + 1}. ${item}`).join("\n"), preserve: true },
@@ -58,15 +85,37 @@ export function SubmissionDetailPage({ submissionId, projectId, readOnly = false
 
   async function uploadRevision() {
     if (uploading.current) return;
-    if (!file) return toast.error("Choose a PDF revision");
-    if (file.type !== "application/pdf" || file.size > 10 * 1024 * 1024) return toast.error("Use a PDF no larger than 10 MB");
+    if (revisionMode === "PDF" && !revisionFile) {
+      toast.error("Choose a PDF revision");
+      return;
+    }
+    if (revisionMode === "PDF" && revisionFile && (revisionFile.type !== "application/pdf" || revisionFile.size === 0 || revisionFile.size > 10 * 1024 * 1024)) {
+      toast.error("Use a PDF no larger than 10 MB");
+      return;
+    }
+    if (revisionMode === "TEXT" && (!revisionContent.trim() || revisionResponse.trim().length < 3)) {
+      toast.error("Nhập nội dung bản thảo và mô tả thay đổi ít nhất 3 ký tự");
+      return;
+    }
+
     uploading.current = true;
     try {
-      await addRevision.mutateAsync({ file, responseToReview: response || undefined });
+      if (revisionMode === "PDF") {
+        await addRevision.mutateAsync({ file: revisionFile!, responseToReview: revisionResponse || undefined });
+      } else {
+        await createVersion.mutateAsync({ content: revisionContent.trim(), summary: revisionResponse.trim(), expectedRevisionNumber: data.currentRevisionNumber });
+      }
       toast.success("Immutable revision uploaded");
-      setFile(undefined); setResponse(""); setShowRevision(false);
-    } catch { toast.error("Could not upload this revision"); }
-    finally { uploading.current = false; }
+      setRevisionFile(undefined);
+      setRevisionResponse("");
+      setRevisionContent("");
+      setSelectedVersionId("");
+      setShowRevision(false);
+    } catch {
+      toast.error("Could not upload this revision");
+    } finally {
+      uploading.current = false;
+    }
   }
 
   return <div className={projectId ? "project-submission-detail" : "mx-auto w-full max-w-5xl px-4 py-8 sm:px-6"}>
@@ -75,7 +124,7 @@ export function SubmissionDetailPage({ submissionId, projectId, readOnly = false
       <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between"><div>
         <div className="flex flex-wrap gap-2"><Badge variant="outline">{data.submissionType?.replaceAll("_", " ") || "Submission"}</Badge><Badge>{data.status.replaceAll("_", " ")}</Badge><Badge variant="secondary">Revision {data.currentRevisionNumber}</Badge></div>
         <Heading className="mt-4 text-2xl font-semibold tracking-tight">{data.title}</Heading><p className="mt-2 text-sm text-muted-foreground">{data.researchField || "Research field not specified"}</p>
-      </div><div className="flex flex-wrap gap-2">{canRevise ? <Button variant="outline" onClick={() => setShowRevision((value) => !value)} disabled={addRevision.isPending}><Upload />New PDF version</Button> : null}{canRequestReview ? <SubmitReviewDialog submissionId={id} artifactTitle={data.title} artifactType={data.submissionType} /> : null}</div></div>
+      </div><div className="flex flex-wrap gap-2">{canRevise ? <Button variant="outline" onClick={() => setShowRevision((value) => !value)} disabled={revisionPending}><Upload />New PDF version</Button> : null}{canRequestReview ? <SubmitReviewDialog submissionId={id} artifactTitle={data.title} artifactType={data.submissionType} /> : null}</div></div>
       {data.abstract ? <div className="mt-5 border-t border-border pt-5"><SubmissionIntroductionView content={data.abstract} /></div> : null}
     </header>
 
@@ -96,8 +145,179 @@ export function SubmissionDetailPage({ submissionId, projectId, readOnly = false
         {latestPreReview.contributionComparison ? <div className="md:col-span-2"><h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Contribution comparison</h3><p className="mt-2 text-sm leading-6">{latestPreReview.contributionComparison}</p></div> : null}</div> : null}
     </section>
 
+        {/* Version Switcher Bar */}
+        {versions.length > 1 && (
+          <div className="mt-5 border-t border-border pt-4">
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <span className="font-semibold text-muted-foreground mr-1">Lịch sử phiên bản:</span>
+              {versions.map((v: any) => {
+                const isSelected = (currentVersion?.id === v.id);
+                const hasFeedback = v.reviews && v.reviews.length > 0;
+                return (
+                  <button
+                    key={v.id}
+                    type="button"
+                    onClick={() => setSelectedVersionId(v.id)}
+                    className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1 font-medium transition-colors ${
+                      isSelected
+                        ? "bg-primary text-primary-foreground shadow-xs"
+                        : "bg-muted/70 text-muted-foreground hover:bg-muted hover:text-foreground"
+                    }`}
+                  >
+                    <span>v{v.revisionNumber}</span>
+                    {hasFeedback && (
+                      <span className={`h-1.5 w-1.5 rounded-full ${isSelected ? "bg-primary-foreground" : "bg-primary"}`} />
+                    )}
+                    <span className="text-[10px] opacity-75">
+                      ({new Date(v.createdAt).toLocaleDateString(language, { month: 'numeric', day: 'numeric' })})
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+
+          {/* Manuscript Content Box */}
+          <section className="rounded-xl border border-border bg-card p-6 shadow-xs">
+            <div className="flex items-center justify-between border-b border-border/80 pb-4">
+              <div className="flex items-center gap-2">
+                <FileText className="h-5 w-5 text-primary" />
+                <h3 className="font-semibold text-base">Nội dung bản thảo (v{currentVersion?.revisionNumber ?? 1})</h3>
+              </div>
+              {currentVersion?.hasPdf && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5 text-xs h-8"
+                  onClick={() => submissionsApi.downloadRevision(id, currentVersion.id, currentVersion.revisionNumber)}
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  Tải PDF
+                </Button>
+              )}
+            </div>
+
+            {/* Content view */}
+            <div className="mt-5">
+              {currentVersion?.contentSnapshot ? (
+                <div className="space-y-4">
+                  <p className="text-xs text-muted-foreground italic mb-2">
+                    Nội dung văn bản được đánh số đoạn để tiện theo dõi góp ý:
+                  </p>
+                  {paragraphs.map((p: string, index: number) => (
+                    <div
+                      key={index}
+                      id={`para-${index + 1}`}
+                      className="group rounded-lg border border-transparent p-3 transition-colors hover:border-primary/20 hover:bg-muted/30"
+                    >
+                      <div className="flex items-center justify-between text-xs text-muted-foreground mb-1.5">
+                        <span className="font-semibold text-primary/80">Đoạn {index + 1}</span>
+
+                      </div>
+                      <p className="text-sm leading-relaxed text-foreground break-words">{p}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : currentVersion?.hasPdf ? (
+                <div className="rounded-lg border border-dashed bg-muted/20 p-8 text-center space-y-3">
+                  <FileText className="mx-auto h-10 w-10 text-primary/60" />
+                  <h4 className="font-medium text-sm">Bản thảo định dạng PDF</h4>
+                  <p className="text-xs text-muted-foreground max-w-md mx-auto">
+                    Bản nộp đính kèm tệp PDF đầy đủ. Bạn có thể tải tệp về để đọc hoặc xem các ghi chú bên cạnh.
+                  </p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1.5"
+                    onClick={() => submissionsApi.downloadRevision(id, currentVersion.id, currentVersion.revisionNumber)}
+                  >
+                    <Download className="h-4 w-4" />
+                    Tải tệp PDF (v{currentVersion.revisionNumber})
+                  </Button>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground italic py-6 text-center">
+                  Nội dung bản thảo đang được cập nhật.
+                </p>
+              )}
+            </div>
+          </section>
+
+
     {history.data ? <VersionHistory id={id} history={history.data} readOnly={readOnly || ["accepted", "rejected", "withdrawn"].includes(data.status)} /> : <div className="mt-6 text-sm text-muted-foreground" role={history.error ? "alert" : "status"}>{history.error ? <><p>{t("Unable to load version history and review requests.")}</p><Button variant="outline" className="mt-3" disabled={history.isFetching} onClick={() => void history.refetch()}>{t("Retry")}</Button></> : "Đang tải lịch sử phiên bản…"}</div>}
-    {showRevision && canRevise ? <section className="mt-6 rounded-xl border bg-card p-5"><h2 className="font-semibold">Upload a new PDF version</h2><fieldset disabled={addRevision.isPending}><label className="mt-3 block text-sm">PDF file<input type="file" accept="application/pdf,.pdf" className="mt-2 block w-full min-w-0 text-xs" onChange={(event) => setFile(event.target.files?.[0])} /></label><label className="mt-3 block text-sm">Revision summary<textarea className="mt-2 min-h-20 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm" value={response} onChange={(event) => setResponse(event.target.value)} /></label><Button className="mt-3" size="sm" onClick={uploadRevision} disabled={!file || addRevision.isPending}>Upload version</Button></fieldset></section> : null}
+      {/* Revision Upload Section */}
+      {showRevision && canRevise && (
+        <section className="mt-6 rounded-xl border border-primary/30 bg-card p-6 shadow-sm">
+          <h2 className="font-semibold">{t("Upload a new PDF version")}</h2>
+          <fieldset disabled={revisionPending}>
+            <div className="mt-3 flex rounded-lg border bg-muted/40 p-0.5 text-xs w-fit">
+              <button
+                type="button"
+                className={`rounded-md px-3 py-1 font-medium transition-colors ${revisionMode === "PDF" ? "bg-background text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground"}`}
+                onClick={() => setRevisionMode("PDF")}
+              >
+                Tải PDF mới
+              </button>
+              <button
+                type="button"
+                className={`rounded-md px-3 py-1 font-medium transition-colors ${revisionMode === "TEXT" ? "bg-background text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground"}`}
+                onClick={() => setRevisionMode("TEXT")}
+              >
+                Cập nhật văn bản
+              </button>
+            </div>
+
+            <label className="mt-3 block text-sm font-medium">
+              {t("Revision summary")}
+              <textarea
+                className="mt-1.5 min-h-20 w-full rounded-md border border-input bg-background p-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                placeholder="Tóm tắt ngắn gọn các điểm nhóm đã tiếp thu và sửa đổi theo góp ý của Mentor..."
+                value={revisionResponse}
+                maxLength={20000}
+                onChange={e => setRevisionResponse(e.target.value)}
+              />
+            </label>
+
+            {revisionMode === "PDF" ? (
+              <label className="mt-3 block text-sm font-medium">
+                {t("PDF file")}
+                <input
+                  type="file"
+                  accept="application/pdf,.pdf"
+                  className="mt-1.5 block w-full text-xs text-muted-foreground file:mr-3 file:rounded-md file:border-0 file:bg-primary file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-primary-foreground hover:file:bg-primary/90"
+                  onChange={e => setRevisionFile(e.target.files?.[0])}
+                />
+              </label>
+            ) : (
+              <label className="mt-3 block text-sm font-medium">
+                Nội dung bản thảo mới
+                <textarea
+                  className="mt-1.5 min-h-40 w-full rounded-md border border-input bg-background p-3 text-xs font-mono leading-5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  placeholder="Dán nội dung bản thảo đã chỉnh sửa..."
+                  value={revisionContent}
+                  maxLength={500000}
+                  onChange={e => setRevisionContent(e.target.value)}
+                  rows={8}
+                />
+              </label>
+            )}
+
+            <div className="flex justify-end gap-2 pt-3">
+              <Button variant="ghost" size="sm" onClick={() => setShowRevision(false)}>
+                Hủy
+              </Button>
+              <Button size="sm" onClick={uploadRevision} disabled={revisionPending || (revisionMode === "PDF" ? !revisionFile : !revisionContent.trim() || revisionResponse.trim().length < 3)}>
+                <Send className="mr-1.5 h-3.5 w-3.5" />
+                {t("Upload version")}
+              </Button>
+            </div>
+          </fieldset>
+        </section>
+      )}
+
+
     {researchDetails.length ? <section className="mt-6 grid min-w-0 grid-cols-1 gap-4 md:grid-cols-2">{researchDetails.map(item => <Claim key={item.title} {...item} />)}</section> : null}
   </div>;
 }
