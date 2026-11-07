@@ -201,6 +201,9 @@ Users can also save multiple personal API connections in Settings → AI Connect
 | `TOPIC_BACKFILL_MAX_PAGES` | `EnvSchema` / backend | Default 10; OpenAlex pages (100 works each) one run may read |
 | `TOPIC_BACKFILL_USER_MAX_PER_HOUR` | `EnvSchema` / backend | Default 5; backfill requests per user per hour |
 | `TOPIC_BACKFILL_COOLDOWN_HOURS` | `EnvSchema` / backend | Default 24; hours before search can start another backfill of the same entry |
+| `TOPIC_WATCH_DAILY_MAX_PAPERS` | `EnvSchema` / sync worker | Default 500; new papers the daily topic-watch job may import across all watches, never more than `EMBED_MAX_PAPERS_PER_RUN` |
+| `TOPIC_WATCH_OVERLAP_DAYS` | `EnvSchema` / sync worker | Default 7; days a tracking window reaches back before the last completed one |
+| `TOPIC_WATCH_DEFAULT_BACKLOG_PAPERS` | `EnvSchema` / sync worker | Default 1000; new papers a watch imports from older works before it moves on to tracking |
 | `TOPIC_BACKFILL_DAILY_MAX_PAPERS` | `EnvSchema` / backend | Default 2000; papers search-triggered runs may import in 24 hours across all users |
 | `TAG_CAMPAIGN_MAX_WORKS` | `EnvSchema` / backend | Default 5000; largest sample an admin may plan from one tag in a single campaign |
 | `GAP_SCARCE_ABS` | `EnvSchema` / backend | Default 5 |

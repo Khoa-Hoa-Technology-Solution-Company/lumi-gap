@@ -9,6 +9,7 @@ import { BackfillRunsSection } from "@/features/catalog/components/backfill-runs
 import { StatusBadge } from "@/features/catalog/components/catalog-badges";
 import { apiErr, ErrorState } from "@/features/catalog/components/catalog-ui";
 import { EditTagDialog, RETAG_TOAST } from "@/features/catalog/components/tag-dialogs";
+import { TopicWatchControl } from "@/features/catalog/components/topic-watch-control";
 import { TagCampaignDialog } from "@/features/catalog/components/tag-campaign-dialog";
 import { TagCampaignsSection } from "@/features/catalog/components/tag-campaigns-section";
 import { TagPapersSection } from "@/features/catalog/components/tag-papers-section";
@@ -135,6 +136,7 @@ export function AdminTagDetailPage() {
 
           <TagRulesSection key={tag.id} tag={tag} />
           <TagPreviewSection tagId={tag.id} />
+          <TopicWatchControl targetKind="tag" targetId={tag.id} />
           <BackfillRunsSection targetKind="tag" targetId={tag.id} />
           <TagCampaignsSection tagId={tag.id} />
           <TagPapersSection tag={tag} />

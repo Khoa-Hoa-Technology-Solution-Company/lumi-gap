@@ -26,6 +26,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { TopicWatchesPanel } from "@/features/catalog/components/topic-watches-panel";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -379,6 +380,8 @@ export function AdminSyncPage() {
           </Link>
         </div>
       </div>
+
+      <TopicWatchesPanel />
 
       {/* Run History List */}
       <div className="space-y-4">

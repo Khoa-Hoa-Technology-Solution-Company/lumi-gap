@@ -16,6 +16,10 @@ import type {
   TaxonomyNodeDetail,
   TaxonomyNodeStatus,
   TaxonomyStats,
+  TopicBackfillTargetKind,
+  TopicWatch,
+  TopicWatchList,
+  TopicWatchUpsertResult,
 } from "@trend/shared-types";
 import { API_ROUTES } from "@/constants";
 import { api } from "@/services/api-client";
@@ -196,5 +200,45 @@ export const tagCampaignsApi = {
   async list(tagId: string): Promise<TagCampaign[]> {
     const res = await api.get(API_ROUTES.admin.tagCampaigns.list, { params: { tagId } });
     return res.data.data as TagCampaign[];
+  },
+};
+
+export interface TopicWatchListParams {
+  targetKind?: TopicBackfillTargetKind;
+  targetId?: string;
+}
+
+export interface TopicWatchUpsertInput {
+  targetKind: TopicBackfillTargetKind;
+  targetId: string;
+  dailyMaxNewPapers?: number | null;
+  backlogTargetPapers?: number;
+}
+
+export interface TopicWatchPatch {
+  enabled?: boolean;
+  dailyMaxNewPapers?: number | null;
+  backlogTargetPapers?: number;
+}
+
+export const topicWatchesApi = {
+  async list(params: TopicWatchListParams = {}): Promise<TopicWatchList> {
+    const res = await api.get(API_ROUTES.admin.topicWatches.list, { params });
+    return res.data.data as TopicWatchList;
+  },
+  async upsert(input: TopicWatchUpsertInput): Promise<TopicWatchUpsertResult> {
+    const res = await api.post(API_ROUTES.admin.topicWatches.list, input);
+    return res.data.data as TopicWatchUpsertResult;
+  },
+  async update(id: string, patch: TopicWatchPatch): Promise<TopicWatch> {
+    const res = await api.patch(API_ROUTES.admin.topicWatches.item(id), patch);
+    return res.data.data as TopicWatch;
+  },
+  async remove(id: string): Promise<void> {
+    await api.delete(API_ROUTES.admin.topicWatches.item(id));
+  },
+  async run(): Promise<{ queued: boolean }> {
+    const res = await api.post(API_ROUTES.admin.topicWatches.run);
+    return res.data.data as { queued: boolean };
   },
 };

@@ -19,6 +19,10 @@ vi.mock("@/features/topic-backfill/api/topic-backfill.api", async (importOrigina
   ...(await importOriginal<typeof import("@/features/topic-backfill/api/topic-backfill.api")>()),
   topicBackfillApi: { adminRequest: mocks.adminRequest, adminRuns: mocks.adminRuns, getRun: mocks.getRun },
 }));
+vi.mock("../api/catalog.api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../api/catalog.api")>()),
+  topicWatchesApi: { list: vi.fn().mockResolvedValue({ watches: [], dailyBudget: 0, usedToday: 0 }) },
+}));
 vi.mock("../hooks/use-taxonomy", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../hooks/use-taxonomy")>()),
   useTaxonomyNode: mocks.node,

@@ -300,6 +300,46 @@ model TopicBackfillRun {
   @@map("topic_backfill_runs")
 }
 
+/// A catalogue entry the daily OpenAlex job keeps following: older works first (backlog), then new ones (tracking).
+model TopicWatch {
+  id                    String    @id @default(uuid()) @db.Uuid
+  /// topic | subfield | keyword | tag (polymorphic with targetId, no foreign key)
+  targetKind            String    @map("target_kind") @db.VarChar(16)
+  targetId              String    @map("target_id") @db.Uuid
+  targetName            String    @map("target_name")
+  enabled               Boolean   @default(true)
+  /// backlog | tracking
+  phase                 String    @default("backlog") @db.VarChar(16)
+  /// This entry's own daily cap on new papers; null means only the shared daily budget applies.
+  dailyMaxNewPapers     Int?      @map("daily_max_new_papers")
+  /// New papers to import before moving on to tracking. 0 skips the backlog.
+  backlogTargetPapers   Int       @map("backlog_target_papers")
+  backlogInserted       Int       @default(0) @map("backlog_inserted")
+  /// Hash of the OpenAlex queries; when a tag's rules change the position below no longer applies and restarts.
+  queryFingerprint      String?   @map("query_fingerprint")
+  queryIndex            Int       @default(0) @map("query_index")
+  /// Where the next run continues inside query number queryIndex; null starts that query from its first page.
+  cursor                String?
+  /// Tracking window being read: from_publication_date, and the day it was opened.
+  windowFrom            DateTime? @map("window_from") @db.Date
+  windowStartedOn       DateTime? @map("window_started_on") @db.Date
+  lastWindowCompletedOn DateTime? @map("last_window_completed_on") @db.Date
+  quotaDay              DateTime? @map("quota_day") @db.Date
+  insertedOnQuotaDay    Int       @default(0) @map("inserted_on_quota_day")
+  totalInserted         Int       @default(0) @map("total_inserted")
+  totalSkipped          Int       @default(0) @map("total_skipped")
+  lastRunAt             DateTime? @map("last_run_at") @db.Timestamptz(6)
+  lastError             String?   @map("last_error")
+  createdById           String?   @map("created_by_id") @db.Uuid
+  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([targetKind, targetId])
+  @@index([enabled, lastRunAt])
+  @@index([createdById])
+  @@map("topic_watches")
+}
+
 model OpenAlexIngestCampaign {
   id                String    @id @default(uuid()) @db.Uuid
   legacyMongoId     String?   @unique @map("legacy_mongo_id") @db.VarChar(24)

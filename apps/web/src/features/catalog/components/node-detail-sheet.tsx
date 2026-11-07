@@ -13,6 +13,7 @@ import { BackfillDialog } from "./backfill-dialog";
 import { BackfillRunsSection } from "./backfill-runs-section";
 import { LevelBadge } from "./catalog-badges";
 import { ChipInput } from "./chip-input";
+import { TopicWatchControl } from "./topic-watch-control";
 import { apiErr, ErrorState, formatCompact, SELECT_CLASS } from "./catalog-ui";
 
 const TEXTAREA_CLASS =
@@ -185,6 +186,7 @@ function NodeEditor({ node, onSelectNode, onBrowseChildren }: {
           )}
         </div>
 
+        {backfillKind ? <TopicWatchControl targetKind={backfillKind} targetId={node.id} /> : null}
         {backfillKind ? <BackfillRunsSection embedded targetKind={backfillKind} targetId={node.id} /> : null}
       </div>
 

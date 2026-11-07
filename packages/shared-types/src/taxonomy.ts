@@ -169,6 +169,45 @@ export interface TopicBackfillRequestResult {
   created: boolean;
 }
 
+/** backlog: reading the entry's older works, a little each day. tracking: following newly published works. */
+export type TopicWatchPhase = "backlog" | "tracking";
+
+/** A catalogue entry the daily OpenAlex job keeps following. */
+export interface TopicWatch {
+  id: string;
+  targetKind: TopicBackfillTargetKind;
+  targetId: string;
+  targetName: string;
+  enabled: boolean;
+  phase: TopicWatchPhase;
+  /** This entry's own daily cap on new papers; null means only the shared daily budget applies. */
+  dailyMaxNewPapers: number | null;
+  /** New papers to import before moving on to tracking. */
+  backlogTargetPapers: number;
+  backlogInserted: number;
+  insertedToday: number;
+  totalInserted: number;
+  /** Works read that the corpus already had. */
+  totalSkipped: number;
+  /** Day (YYYY-MM-DD) the entry was last fully caught up with new works; null before the first time. */
+  lastWindowCompletedOn: string | null;
+  lastRunAt: ISODateString | null;
+  lastError: string | null;
+  createdAt: ISODateString;
+}
+
+export interface TopicWatchList {
+  watches: TopicWatch[];
+  /** New papers the daily job may import across all entries. */
+  dailyBudget: number;
+  usedToday: number;
+}
+
+export interface TopicWatchUpsertResult {
+  watch: TopicWatch;
+  created: boolean;
+}
+
 /** A planned OpenAlex campaign that samples one tag's works. Start, pause and cancel live on the pipeline page. */
 export interface TagCampaign {
   id: string;

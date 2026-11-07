@@ -229,6 +229,11 @@ export const API_ROUTES = {
       request: "/admin/topic-backfill",
       runs: "/admin/topic-backfill/runs",
     },
+    topicWatches: {
+      list: "/admin/topic-watches",
+      item: (id: string) => `/admin/topic-watches/${encodeURIComponent(id)}`,
+      run: "/admin/topic-watches/run",
+    },
     tagCampaigns: {
       preflight: "/admin/openalex-ingest/tag-campaigns/preflight",
       list: "/admin/openalex-ingest/tag-campaigns",
