@@ -7,6 +7,8 @@ import { withWorkspace, workspaceEvent, expectWorkspaceVersion, jsonSnapshot, wo
 import { evidenceItem, researchPaper, reviewEvidenceInContext, discoveryEvidenceIsCurrent } from "./project-evidence.service.js";
 
 import { recordGapPacket } from "./gap-revision.js";
+import { feasibilitySummary, feasibilitySummaries } from "./feasibility-summary.js";
+import { assertFeasibleForSupport, distinctPaperCount } from "./literature.rules.js";
 import { notificationService } from "../notifications/notification.service.js";
 
 export async function projectGap(context: WorkspaceContext, id: string) {
@@ -29,6 +31,18 @@ async function eligibleEvidence(context: WorkspaceContext, gapId: string) {
   }
   if (links.some(link => link.evidenceItemId && !checked.some(item => item.id === link.id))) throw AppError.conflict("A linked extraction changed. Review and relink all current evidence revisions");
   return checked;
+}
+/** Links one human-accepted extraction (exact revision) to a gap. The caller bumps the gap version and records packets. */
+export async function linkEvidenceInContext(context: WorkspaceContext, gapId: string, item: Awaited<ReturnType<typeof evidenceItem>>, kind: "SUPPORTING" | "COUNTER", explanation: string) {
+  const source = await researchPaper(context, item.paperId);
+  if (item.reviewState !== "ACCEPTED" || source.screeningStatus !== "INCLUDED") throw AppError.badRequest("Link a human-reviewed extraction from an included project paper");
+  const revision = await context.tx.projectWorkspaceRevision.findFirst({ where: { projectId: context.project.id, entityKind: "EXTRACTION", entityId: item.id, version: item.version } });
+  if (!revision) throw AppError.conflict("The accepted evidence revision is unavailable");
+  const evidenceType = `EXTRACTION:${item.id}`;
+  const values = { evidenceItemId: item.id, evidenceRevisionId: revision.id, excerpt: item.quotation || item.claim, sourceLocation: item.locator || "Human interpretation, see source", projectPaperId: source.id, explanation, addedById: context.actorId };
+  const link = await context.tx.gapEvidenceRecord.upsert({ where: { gapId_paperId_evidenceKind_evidenceType: { gapId, paperId: item.paperId, evidenceKind: kind, evidenceType } }, create: { ...values, gapId, paperId: item.paperId, evidenceKind: kind, evidenceType }, update: values });
+  await context.tx.researchGapPaper.upsert({ where: { gapId_paperId_kind: { gapId, paperId: item.paperId, kind: kind === "SUPPORTING" ? "supporting" : "evidence" } }, create: { gapId, paperId: item.paperId, kind: kind === "SUPPORTING" ? "supporting" : "evidence", position: 0 }, update: {} });
+  return { link, revision };
 }
 export const projectGapResearchService = {
   async guidance(projectId: string, actorId: string, gapId: string, input: { note: string; expectedVersion: number; clientKey: string }) {
@@ -69,7 +83,12 @@ export const projectGapResearchService = {
       const relatedLiterature = await context.tx.paper.findMany({ where: { id: { in: relatedSources.map(row => row.paperId) } }, select: { id: true, title: true, publicationYear: true } });
       const currentItems = new Set<string>();
       for (const item of items) if (await discoveryEvidenceIsCurrent(context, item)) currentItems.add(item.id);
-      return { gap: jsonSnapshot(gap), relatedLiterature: relatedLiterature.map(row => ({ paperId: row.id, title: row.title, publicationYear: row.publicationYear || null, suggestedSupport: relatedLinks.some(link => link.paperId === row.id && link.kind === "supporting") })), canContribute: context.project.status !== "ARCHIVED", canRequestExpertReview: context.role === "OWNER" && context.project.status !== "ARCHIVED", discussions, guidance: feedback.map(row => ({ id: row.id, author: authors.find(user => user.id === row.actorId)?.fullName ?? "Researcher", createdAt: row.createdAt.toISOString(), ...(row.metadata as { note: string; gapVersion: number; attribution: string }) })), questions, history: jsonSnapshot(history), evidence: evidence.map(row => {
+      const promoted = await context.tx.projectLimitation.findMany({ where: { projectId: context.project.id, gapId: gap.id }, select: { id: true, statement: true } });
+      const promotedSources = await context.tx.projectLimitationSource.findMany({ where: { limitationId: { in: promoted.map(row => row.id) } }, select: { limitationId: true, evidenceItemId: true } });
+      const promotedItems = await context.tx.projectEvidenceItem.findMany({ where: { id: { in: promotedSources.map(row => row.evidenceItemId) } }, select: { id: true, paperId: true } });
+      const limitations = promoted.map(row => ({ id: row.id, statement: row.statement, paperCount: distinctPaperCount(promotedItems.filter(item => promotedSources.some(source => source.limitationId === row.id && source.evidenceItemId === item.id))) }));
+      const feasibility = (await feasibilitySummaries(context.tx, context.project.id, "GAP", [gap.id])).get(gap.id);
+      return { feasibility, limitations, gap: jsonSnapshot(gap), relatedLiterature: relatedLiterature.map(row => ({ paperId: row.id, title: row.title, publicationYear: row.publicationYear || null, suggestedSupport: relatedLinks.some(link => link.paperId === row.id && link.kind === "supporting") })), canContribute: context.project.status !== "ARCHIVED", canRequestExpertReview: context.role === "OWNER" && context.project.status !== "ARCHIVED", discussions, guidance: feedback.map(row => ({ id: row.id, author: authors.find(user => user.id === row.actorId)?.fullName ?? "Researcher", createdAt: row.createdAt.toISOString(), ...(row.metadata as { note: string; gapVersion: number; attribution: string }) })), questions, history: jsonSnapshot(history), evidence: evidence.map(row => {
         const item = items.find(candidate => candidate.id === row.evidenceItemId), revision = revisions.find(candidate => candidate.id === row.evidenceRevisionId);
         const snapshot = revision?.snapshot as { reviewState?: string } | undefined;
         return { ...row, sourceTitle: papers.find(paper => paper.id === row.paperId)?.title ?? "", reviewed: snapshot?.reviewState === "ACCEPTED", evidenceVersion: item?.version, reviewState: item?.reviewState, discovery: Boolean((item?.sourceSnapshot as { analysisId?: string } | undefined)?.analysisId), claim: item?.claim, methodology: item?.methodology, limitations: item?.limitations, sourceChanged: Boolean(item && (item.version !== revision?.version || !currentItems.has(item.id) || sources.find(source => source.paperId === row.paperId)?.screeningStatus !== "INCLUDED")) };
@@ -88,15 +107,8 @@ export const projectGapResearchService = {
     return withWorkspace(projectId, actorId, { write: true }, async context => {
       const gap = await projectGap(context, gapId); gapId = gap.id; const item = await evidenceItem(context, input.evidenceItemId);
       expectWorkspaceVersion(gap.version, input.expectedVersion); expectWorkspaceVersion(item.version, input.expectedEvidenceVersion);
-      const source = await researchPaper(context, item.paperId);
-      if (item.reviewState !== "ACCEPTED" || source.screeningStatus !== "INCLUDED") throw AppError.badRequest("Link a human-reviewed extraction from an included project paper");
-      const revision = await context.tx.projectWorkspaceRevision.findFirst({ where: { projectId: context.project.id, entityKind: "EXTRACTION", entityId: item.id, version: item.version } });
-      if (!revision) throw AppError.conflict("The accepted evidence revision is unavailable");
       await captureGapRevision(context, gapId);
-      const evidenceType = `EXTRACTION:${item.id}`;
-      const values = { evidenceItemId: item.id, evidenceRevisionId: revision.id, excerpt: item.quotation || item.claim, sourceLocation: item.locator || "Human interpretation, see source", projectPaperId: source.id, explanation: input.explanation, addedById: context.actorId };
-      const link = await context.tx.gapEvidenceRecord.upsert({ where: { gapId_paperId_evidenceKind_evidenceType: { gapId, paperId: item.paperId, evidenceKind: input.kind, evidenceType } }, create: { ...values, gapId, paperId: item.paperId, evidenceKind: input.kind, evidenceType }, update: values });
-      await context.tx.researchGapPaper.upsert({ where: { gapId_paperId_kind: { gapId, paperId: item.paperId, kind: input.kind === "SUPPORTING" ? "supporting" : "evidence" } }, create: { gapId, paperId: item.paperId, kind: input.kind === "SUPPORTING" ? "supporting" : "evidence", position: 0 }, update: {} });
+      const { link, revision } = await linkEvidenceInContext(context, gapId, item, input.kind, input.explanation);
       await context.tx.researchGap.update({ where: { id: gapId }, data: { version: { increment: 1 }, assessmentStatus: "PROPOSED", assessmentRationale: "", validationStatus: "CANDIDATE" } });
       await captureGapRevision(context, gapId); await workspaceEvent(context, "EVIDENCE_LINKED", "GAP", gapId, { kind: input.kind, revisionId: revision.id }); return link;
     });
@@ -118,6 +130,7 @@ export const projectGapResearchService = {
         }
       }
       if (input.status === "TEAM_SUPPORTED" && !(await eligibleEvidence(context, gapId)).some(row => row.evidenceKind === "SUPPORTING")) throw AppError.badRequest("Review and link supporting evidence before recording team support");
+      if (input.status === "TEAM_SUPPORTED") assertFeasibleForSupport(await feasibilitySummary(context.tx, context.project.id, "GAP", gapId));
       await captureGapRevision(context, gapId);
       const next = await context.tx.researchGap.update({ where: { id: gapId }, data: { assessmentStatus: input.status, assessmentRationale: input.rationale, version: { increment: 1 }, validationStatus: "CANDIDATE" } });
       await captureGapRevision(context, gapId); await workspaceEvent(context, "GAP_ASSESSED", "GAP", gapId, { status: input.status, rationale: input.rationale }); return next;

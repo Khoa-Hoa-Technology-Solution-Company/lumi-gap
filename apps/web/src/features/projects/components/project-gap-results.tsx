@@ -8,23 +8,26 @@ export function ProjectGapResults({
   projectId,
   gaps,
   onOpen,
+  heading,
 }: {
   projectId: string;
   gaps: ResearchGapItem[];
   onOpen: (gap: ResearchGapItem) => void;
+  /** Replaces the AI-results heading, e.g. for candidates written by the team. */
+  heading?: { title: string; description: string };
 }) {
   const { t } = useI18n();
   if (!gaps.length) return null;
 
   return (
-    <section className="gap-discovery-candidates" data-no-i18n aria-label={t("Research directions")}>
+    <section className="gap-discovery-candidates" data-no-i18n aria-label={heading?.title ?? t("Research directions")}>
       <div className="gap-candidates-header">
         <div className="flex items-center gap-2">
           <Sparkles className="h-5 w-5 text-primary" />
-          <h3>{t("Research directions")}</h3>
+          <h3>{heading?.title ?? t("Research directions")}</h3>
         </div>
         <p className="research-help">
-          {t("Research directions to review, grounded in your selected papers.")}
+          {heading?.description ?? t("Research directions to review, grounded in your selected papers.")}
         </p>
       </div>
 
