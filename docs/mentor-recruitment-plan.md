@@ -9,7 +9,7 @@ Luồng cũ cho phép ba lời mời mỗi vai trò, chỉ mở Mentor phụ sau
 - Hai vị trí độc lập, một lời mời giữ chỗ cho mỗi vị trí. Mặc định mời chính trước; chủ dự án bật mời song song nếu cần.
 - Một kế hoạch hiện hành, tối đa bốn giảng viên khác nhau. Mỗi vai trò có hàng đợi riêng. Chỉ chủ dự án sửa kế hoạch và xác nhận gửi. Không tự gửi dự phòng.
 - Ứng viên chưa gửi không nhận thông báo, tệp hoặc quyền truy cập. Gửi lại phải kiểm tra thứ tự, quyền, phiên bản kế hoạch, vị trí và điều kiện giảng viên.
-- Lời mời mới có hạn 14 ngày và bản chụp giới thiệu/người gửi bất biến. Tóm tắt phải là trường đã chỉ định để chia sẻ, không sao chép mô tả nội bộ.
+- Lời mời mới có hạn 6 ngày kể từ khi gửi và bản chụp giới thiệu/người gửi bất biến. Ứng viên chưa gửi lời mời chưa tính hạn; lời mời đã gửi giữ nguyên hạn ban đầu. Tóm tắt phải là trường đã chỉ định để chia sẻ, không sao chép mô tả nội bộ.
 - Khi kết thúc quan hệ, khóa tuyển lại vai trò đó. Chủ dự án phải mở đợt mới; ứng viên cũ và quan hệ Mentor phụ được giữ nguyên trong lịch sử.
 - Chưa triển khai tự gửi dự phòng; không có tác vụ nền liên hệ ứng viên dự phòng.
 

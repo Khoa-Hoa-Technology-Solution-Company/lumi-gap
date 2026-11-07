@@ -47,7 +47,7 @@ export function NotificationsPage() {
   };
 
   const handleNotificationClick = (notification: NotificationItem) => {
-    if (!notification.isRead) markReadMutation.mutate(notification.id);
+    if (!notification.isRead && notification.type !== "SCREENING_DISCUSSION_MESSAGE") markReadMutation.mutate(notification.id);
     const destination = getNotificationDestination(notification, isAdmin);
     if (destination) navigate(destination);
   };

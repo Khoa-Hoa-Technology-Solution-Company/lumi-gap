@@ -3,17 +3,23 @@ import type { ISODateString } from "./common.js";
 export type SubmissionType =
   | "RESEARCH_PROPOSAL"
   | "LITERATURE_REVIEW"
+  | "RESEARCH_GAP"
+  | "METHODOLOGY"
+  | "THESIS_CHAPTER"
   | "THESIS_DRAFT"
   | "RESEARCH_PAPER"
   | "SOFTWARE_RESEARCH_PROJECT";
 
 export type SubmissionStatus =
   | "DRAFT"
+  | "WAITING_FEEDBACK"
+  | "REVISION_REQUESTED"
+  | "FEEDBACK_RECEIVED"
+  | "READY_TO_ADVANCE"
   | "SUBMITTED"
   | "AI_PRE_REVIEW"
   | "READY_FOR_REVIEW"
   | "UNDER_REVIEW"
-  | "REVISION_REQUESTED"
   | "REVISED"
   | "COMPLETED"
   | "REJECTED"
@@ -67,6 +73,9 @@ export interface StructuredSubmissionInput {
   expectedReviewWorkload?: string;
   authorIds?: string[];
   declaredConflictUserIds?: string[];
+  mentorId?: string;
+  contentSnapshot?: string;
+  message?: string;
 }
 
 export type HumanReviewRecommendation =

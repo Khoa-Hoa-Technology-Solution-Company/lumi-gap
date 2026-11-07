@@ -164,9 +164,9 @@ describe.skipIf(!enabled).sequential("controlled mentor recruitment (PostgreSQL)
     await expect(db.mentorshipRequest.update({ where: { id: a.id }, data: { message: "Silently changed" } })).rejects.toThrow();
     await expect(db.mentorshipRequest.update({ where: { id: a.id }, data: { mentorRole: "SECONDARY" } })).rejects.toThrow();
   });
-  it("gives new invitations 14 days without changing the deadline on retries", async () => {
+  it("gives new invitations 6 days without changing the deadline on retries", async () => {
     const key = crypto.randomUUID(), a = await send(0, "PRIMARY", { idempotencyKey: key });
-    expect(new Date(a.expiresAt!).getTime() - new Date(a.createdAt).getTime()).toBeCloseTo(14 * 86400000, -3);
+    expect(new Date(a.expiresAt!).getTime() - new Date(a.createdAt).getTime()).toBeCloseTo(6 * 86400000, -3);
     const b = await send(0, "PRIMARY", { idempotencyKey: key }); expect(b.expiresAt).toBe(a.expiresAt);
   });
   it("stops planning for assigned or departed roles until the owner explicitly reopens recruitment", async () => {

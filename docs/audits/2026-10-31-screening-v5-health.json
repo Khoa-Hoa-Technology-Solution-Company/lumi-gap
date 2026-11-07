@@ -1,0 +1,20 @@
+{
+  "Backend": {
+    "success": true,
+    "data": {
+      "status": "ready",
+      "dependencies": {
+        "redis": {
+          "ok": true,
+          "latencyMs": 1
+        },
+        "postgres": {
+          "ok": true,
+          "latencyMs": 1
+        }
+      },
+      "ts": "2026-10-31T10:56:00.675Z"
+    }
+  },
+  "WebStatus": 200
+}

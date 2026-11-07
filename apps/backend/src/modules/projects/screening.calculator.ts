@@ -1,4 +1,34 @@
-import type { ScreeningChoice, ScreeningConsensusPolicy, ScreeningMetrics, ScreeningState } from "@trend/shared-types";
+import type { ScreeningChoice, ScreeningConsensusPolicy, ScreeningMetrics, ScreeningState, ScreeningSettings, ScreeningOutcome } from "@trend/shared-types";
+
+/** Current two-reviewer workflows accept a paper in one round. Older protocols retain their frozen stage rules. */
+export function automaticFullTextStage(settings: Pick<ScreeningSettings, "workflowVersion" | "reviewMode" | "stages" | "screeningMode">) {
+  if (settings.screeningMode) return settings.screeningMode === "TWO_STAGE";
+  return (settings.workflowVersion ?? 0) < 5 && settings.reviewMode !== "COLLABORATIVE" && Boolean(settings.stages?.includes("FULL_TEXT"));
+}
+
+export type EffectiveBallot = {
+  reviewerId: string; roundId: string; decision: string; exclusionReason: string;
+  revision?: number; scope?: string | null; fullTextReference?: string | null;
+};
+/** Protocol v11. Caller supplies only submitted, effective assignment revisions. */
+export function evaluateScreeningPair(settings: Pick<ScreeningSettings, "screeningMode" | "workflowVersion" | "exclusionCriteria">, phase: string, ballots: readonly EffectiveBallot[], exclusionEvidenceAvailable = true): ScreeningOutcome {
+  if (ballots.length === 0) return "WAITING_REVIEWS";
+  if (ballots.length === 1) return "WAITING_SECOND_REVIEW";
+  if (ballots.length !== 2 || ballots[0]!.reviewerId === ballots[1]!.reviewerId || ballots[0]!.roundId !== ballots[1]!.roundId || ballots.some(b => !["INCLUDE", "EXCLUDE", "UNSURE"].includes(b.decision) || b.scope && b.scope !== phase)) return "NEEDS_CLARIFICATION";
+  const decisions = ballots.map(b => b.decision), has = (choice: string) => decisions.includes(choice);
+  if (decisions.every(d => d === "EXCLUDE")) {
+    if (!exclusionEvidenceAvailable || !settings.exclusionCriteria.length || ballots.some(b => !settings.exclusionCriteria.includes(b.exclusionReason.trim()) || phase === "FULL_TEXT" && !b.fullTextReference?.trim())) return "NEEDS_CLARIFICATION";
+    if (phase === "FULL_TEXT" && differingExclusionReasons(ballots)) return "NEEDS_RESOLUTION";
+    return "EXCLUDED";
+  }
+  if (settings.screeningMode === "TWO_STAGE" && phase === "TITLE_ABSTRACT") return has("EXCLUDE") ? "CONFLICT" : "ADVANCE_TO_FULLTEXT";
+  if (has("UNSURE")) return phase !== "FULL_TEXT" && has("EXCLUDE") ? "NEEDS_RESOLUTION" : "NEEDS_CLARIFICATION";
+  return has("INCLUDE") && has("EXCLUDE") ? "CONFLICT" : "FINAL_INCLUDED";
+}
+
+export function outcomeState(outcome: ScreeningOutcome): ScreeningState {
+  return ({ WAITING_REVIEWS: "NOT_REVIEWED", WAITING_SECOND_REVIEW: "IN_REVIEW", FINAL_INCLUDED: "INCLUDED", EXCLUDED: "EXCLUDED", CONFLICT: "NEEDS_RESOLUTION", NEEDS_RESOLUTION: "NEEDS_RESOLUTION", NEEDS_CLARIFICATION: "NEEDS_MORE_INFO", ADVANCE_TO_FULLTEXT: "INCLUDED", WAITING_FULLTEXT: "WAITING_FULLTEXT" } as const)[outcome];
+}
 
 /** Only a complete, distinct pair from one round can carry a disagreement. */
 export function classifyScreeningPair(reviews: readonly { reviewerId: string; roundId: string; decision: string; exclusionReason: string }[], phase: string, requirePrimaryReason = true) {

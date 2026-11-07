@@ -1,0 +1,35 @@
+.mentor-message-chat {
+  --chat-text-size: 16px;
+  --chat-text-leading: 1.6;
+  --chat-message-width: 65ch;
+  min-width: 0;
+  margin-top: 16px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 12px;
+  overflow: hidden;
+  background: hsl(var(--background));
+}
+.mentor-message-chat .project-chat-body { height: clamp(300px, calc(100dvh - 390px), 760px); }
+.mentor-message-chat .project-chat-bubble p { margin: 0; }
+.mentor-message-chat .project-chat-feed { padding-top: 8px; }
+.mentor-message-chat .project-chat-message-footer { min-height: 22px; }
+.mentor-message-chat .project-chat-compose textarea { width: 100%; }
+.mentor-message-chat .project-chat-error { flex-wrap: wrap; }
+.mentor-message-chat .mentor-access-error { margin: 0; padding: 10px 16px; font-size: 14px; }
+.mentor-message-reply { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px 0; font-size: 13px; }
+.mentor-message-reply > div { min-width: 0; }
+.mentor-message-chat .mentor-message-reply p { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 2px 0 0; color: hsl(var(--muted-foreground)); }
+.mentor-message-reply-context { display: flex; align-items: center; gap: 6px; max-width: 70%; margin-top: 10px; color: hsl(var(--muted-foreground)); font-size: 12px; }
+.mentor-message-reply-context[data-own="true"] { margin-left: auto; justify-content: flex-end; }
+.mentor-message-reply-context span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mentor-message-reply-context svg { flex-shrink: 0; }
+.mentor-message-chat .mentor-message-readonly { margin: 0; padding: 12px 16px; border-top: 1px solid hsl(var(--border)); color: hsl(var(--muted-foreground)); font-size: 14px; }
+.mentor-conversation-workspace > header { margin-bottom: 12px; }
+.mentor-conversation-workspace > label { margin-block: 12px; }
+.mentor-conversation-workspace > details summary { padding-block: 5px; font-size: 13px; color: hsl(var(--muted-foreground)); }
+@media (max-width: 640px) {
+  .mentor-message-chat .project-chat-body { height: clamp(420px, calc(100svh - 270px), 640px); }
+  .mentor-message-chat .project-chat-message-meta { flex-wrap: wrap; column-gap: 6px; row-gap: 2px; }
+  .mentor-message-chat .project-chat-message-main { max-width: 86%; }
+  .mentor-message-chat .project-chat-message-footer button { opacity: 1; }
+}

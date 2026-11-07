@@ -373,7 +373,21 @@ export const VerificationDecisionSchema = z.discriminatedUnion("decision", [
   z.object({ decision: z.literal("more_info"), reason: z.string().trim().min(1).max(1000), note: optionalText(1000), ...reviewFields }).strict(),
 ]);
 
+export const OrcidConnectStartSchema = z.object({
+  returnTo: z.string().trim().max(200).optional(),
+  returnOrigin: z.string().trim().max(300).optional(),
+}).strict();
+
+export const OrcidConnectCallbackSchema = z.object({
+  code: z.string().trim().min(1).max(512).optional(),
+  state: z.string().trim().min(20).max(200).optional(),
+  error: z.string().trim().max(120).optional(),
+  error_description: z.string().trim().max(500).optional(),
+}).strict();
+
 export type UpdateAcademicProfileDetailsInput = z.infer<typeof UpdateAcademicProfileDetailsSchema>;
 export type VerificationDecisionInput = z.infer<typeof VerificationDecisionSchema>;
 export type VerificationRequestInput = z.infer<typeof VerificationRequestSchema>;
 export type LecturerListQueryInput = z.infer<typeof LecturerListQuerySchema>;
+export type OrcidConnectStartInput = z.infer<typeof OrcidConnectStartSchema>;
+export type OrcidConnectCallbackInput = z.infer<typeof OrcidConnectCallbackSchema>;

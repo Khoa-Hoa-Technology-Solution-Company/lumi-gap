@@ -1,6 +1,7 @@
 import { assertLiveRequestSession } from "../../common/middleware/auth.js";
 import { screeningEventHub } from "./screening.events.js";
 import { screeningCaseService } from "./screening-case.service.js";
+import { screeningObligationsService } from "./screening-obligations.js";
 import { libraryAssessmentService as library } from "./library-assessment.service.js";
 import { projectAnalysisSetService as sets } from "./project-analysis-set.service.js";
 import type { Request, Response } from "express";
@@ -10,6 +11,8 @@ import { screeningPageSchema, screeningHistorySchema } from "./dto/screening.sch
 const project = (r: Request) => String(r.params.id), actor = (r: Request) => r.user!.sub, round = (r: Request) => String(r.params.roundId);
 const send = (r: Response, data: unknown, status = 200) => r.status(status).json({ success: true, data });
 export const screeningController = {
+  automaticTasks: async (r: Request, res: Response) => send(res, await screeningObligationsService.list(project(r), actor(r))),
+  resumeFullText: async (r: Request, res: Response) => send(res, await service.resumeFullText(project(r), actor(r), round(r), r.body)),
   caseAction: async (r: Request, res: Response) => send(res, await screeningCaseService.act(project(r), actor(r), round(r), r.body)),
   caseSource: async (r: Request, res: Response) => { const bytes = await screeningCaseService.source(project(r), actor(r), round(r), String(r.params.fileId), r.query.caseId as string | undefined); res.set({ "Content-Type": "application/pdf", "Content-Disposition": 'inline; filename="paper-source.pdf"', "X-Content-Type-Options": "nosniff" }).send(Buffer.from(bytes)); },
   adjudicationTasks: async (r: Request, res: Response) => send(res, await service.adjudicationTasks(project(r), actor(r))),

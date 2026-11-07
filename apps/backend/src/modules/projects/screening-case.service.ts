@@ -3,7 +3,8 @@ import type { ScreeningAdjudicationPacket } from "@trend/shared-types";
 import { AppError } from "../../common/exceptions/app-error.js";
 import { withWorkspace, jsonSnapshot, expectWorkspaceVersion } from "./workspace-access.js";
 import { screeningCommand, screeningRound } from "./screening-context.js";
-import { adjudicationPacket, sharedAdjudicationPacket, screeningAdjudicators } from "./screening-adjudication-context.js";
+import { reconcileScreeningObligations, screeningObligationDtos } from "./screening-obligations.js";
+import { adjudicationPacket, sharedAdjudicationPacket, screeningAdjudicators, adjudicationSourceUrl } from "./screening-adjudication-context.js";
 import { screeningClassification } from "./screening-resolution-context.js";
 import { effectiveAssignments } from "./screening-assignments.js";
 import { caseAudit, caseNotify, casePacket, caseView, ensureAssignment, assignCandidate, latestCase, rankedCandidates, notifyCaseCoordinators } from "./screening-case-context.js";
@@ -115,7 +116,8 @@ export const screeningCaseService = {
       if (caseId && !row) throw AppError.notFound("Không tìm thấy hồ sơ trong vòng này");
       if (!row) {
         if (((round.settings as { workflowVersion?: number }).workflowVersion ?? 0) >= 8) throw AppError.notFound("Chưa có hồ sơ phân xử. Reviewer cần mở hồ sơ sau thảo luận");
-        const packet = c.role ? await adjudicationPacket(c, round) : await sharedAdjudicationPacket(c, round);
+        const scopedPacket = c.role ? await adjudicationPacket(c, round) : await sharedAdjudicationPacket(c, round);
+        const packet = scopedPacket.sourceUrl === undefined ? { ...scopedPacket, sourceUrl: await adjudicationSourceUrl(c, round) } : scopedPacket;
         return { case: null, packet, version: round.version, status: round.status, canResolve: ((round.settings as { workflowVersion?: number }).workflowVersion ?? 0) < 5 && round.active && round.status === "ADJUDICATING" && round.finalizerId === c.actorId && (await screeningAdjudicators(c, round)).some(p => p.id === c.actorId), thread: [], finalDecision: null, resolution: null };
       }
       // Reconcile access on a scoped read so revoked mentors cannot retain an invitation.
@@ -124,7 +126,9 @@ export const screeningCaseService = {
       if (row.active) row = await ensureAssignment(c, round, row);
       round = await screeningRound(c, roundId);
       const view = await caseView(c, round, row);
-      const fullPacket = row.packet as unknown as ScreeningAdjudicationPacket;
+      const snapshot = row.packet as unknown as ScreeningAdjudicationPacket;
+      // Older sealed packets predate sourceUrl. Enrich the response after access checks; never rewrite their history.
+      const fullPacket = snapshot.sourceUrl === undefined ? { ...snapshot, sourceUrl: await adjudicationSourceUrl(c, round) } : snapshot;
       const invitationOnly = view.invitation?.userId === c.actorId && view.invitation.status === "SENT";
       const packet = invitationOnly ? { ...fullPacket, paper: { ...fullPacket.paper, abstractText: null }, reviews: [], allReviews: [], discussion: [], sources: [], consensusAttempts: [] } : fullPacket;
       const final = ["COMPLETED", "NEEDS_MORE_INFO"].includes(row.status) && row.finalDecisionId ? await c.tx.screeningFinalDecision.findFirst({ where: { id: row.finalDecisionId, projectId: c.project.id, roundId } }) : null;
@@ -144,6 +148,8 @@ export const screeningCaseService = {
   async tasks(project: string, actor: string) {
     return withWorkspace(project, actor, scope, async c => {
       if (["ARCHIVED", "COMPLETED"].includes(c.project.status)) return [];
+      await reconcileScreeningObligations(c);
+      const obligations = await screeningObligationDtos(c);
       const invitations = await c.tx.screeningAdjudicationInvitation.findMany({ where: { projectId: c.project.id, userId: c.actorId, status: { in: ["ASSIGNED"] } } });
       const cases = await c.tx.screeningAdjudicationCase.findMany({ where: { projectId: c.project.id, active: true, id: { in: invitations.map(i => i.caseId) } } });
       const tasks = [];
@@ -152,7 +158,8 @@ export const screeningCaseService = {
         if (!round.active) continue;
         try {
           const view = await caseView(c, round, row);
-          tasks.push({ roundId: round.id, paperId: round.paperId, phase: round.phase, title: (row.packet as unknown as ScreeningAdjudicationPacket).paper.title, caseStatus: view.status });
+          const obligation = obligations.find(t => t.roundId === round.id && t.actionType === "ADJUDICATION" && !t.endedAt);
+          if (obligation) tasks.push({ automaticTaskId: obligation.id, taskStatus: obligation.status, roundId: round.id, paperId: round.paperId, phase: round.phase, title: (row.packet as unknown as ScreeningAdjudicationPacket).paper.title, caseStatus: view.status });
         } catch (error) { if (error instanceof AppError && error.statusCode === 404) continue; throw error; }
       }
       return tasks;

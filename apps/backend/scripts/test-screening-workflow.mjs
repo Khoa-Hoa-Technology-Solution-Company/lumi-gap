@@ -30,4 +30,9 @@ async function run(args) {
   await new Promise((resolve, reject) => { process.on("error", reject); process.on("exit", code => code === 0 ? resolve() : reject(new Error(`Test command failed (${code})`))); });
 }
 await run(["../../node_modules/prisma/build/index.js", "migrate", "deploy", "--config", "prisma7.config.ts"]);
-await run(["../../node_modules/vitest/vitest.mjs", "run", "src/modules/projects/__tests__/screening.persistence.test.ts", "src/modules/projects/__tests__/screening.calculator.test.ts", "src/modules/projects/__tests__/screening-slots.persistence.test.ts", "src/modules/projects/__tests__/screening-migration.persistence.test.ts", ...(process.argv.includes("--regression") ? ["src/modules/projects/__tests__/workspace-collaboration.persistence.test.ts", "src/modules/projects/__tests__/collaborative-research.persistence.test.ts"] : []), "--maxWorkers=1", "--minWorkers=1"]);
+const suites = process.argv.includes("--obligations-only") ? ["screening-obligations.persistence"] : process.argv.includes("--slots-only") ? ["screening-slots.persistence"] : process.argv.includes("--tasks-only") ? ["screening-obligations.persistence", "screening-slots.persistence", "screening-stages.persistence"] : ["screening.persistence", "screening.calculator", "screening-stage-rules", "screening-stages.persistence", "screening-obligations.persistence", "screening-slots.persistence", "screening-migration.persistence"];
+if (process.argv.includes("--regression")) suites.push("workspace-collaboration.persistence", "collaborative-research.persistence");
+const pattern = process.argv.find(arg => arg.startsWith("--testNamePattern="));
+const timing = process.argv.includes("--slow") ? ["--testTimeout=60000", "--hookTimeout=60000"] : [];
+// A fresh process per suite keeps disconnected Prisma pools from leaking across suites.
+for (const suite of suites) await run(["../../node_modules/vitest/vitest.mjs", "run", `src/modules/projects/__tests__/${suite}.test.ts`, ...(pattern ? [pattern] : []), ...timing, "--maxWorkers=1", "--minWorkers=1"]);

@@ -214,8 +214,28 @@ export const academicIdentityService = {
 
   async remove(userId: string, identityId: string): Promise<void> {
     const { user, identity } = await ownedIdentity(userId, identityId);
-    await getPrisma().academicIdentityLink.delete({ where: { id: identity.id } });
-    await auditService.log("academic_profile.identity.deleted", { userId: user.id, targetTableName: "academic_identity_links", targetRecordId: identity.id, details: { provider: identity.provider } });
+    const prisma = getPrisma();
+    await prisma.academicIdentityLink.delete({ where: { id: identity.id } });
+    if (identity.provider === "ORCID" && prisma.academicProfile?.updateMany) {
+      await prisma.academicProfile.updateMany({
+        where: { userId: user.id },
+        data: { orcidStatus: "NOT_SUBMITTED" },
+      });
+    }
+    await auditService.log("academic_profile.identity.deleted", {
+      userId: user.id,
+      targetTableName: "academic_identity_links",
+      targetRecordId: identity.id,
+      details: { provider: identity.provider, verificationStatus: identity.verificationStatus },
+    });
+    if (identity.provider === "ORCID" && identity.verificationStatus === "PROVIDER_CONNECTED") {
+      await auditService.log("academic_profile.orcid.disconnected", {
+        userId: user.id,
+        targetTableName: "academic_identity_links",
+        targetRecordId: identity.id,
+        details: { provider: "ORCID", identifier: identity.identifier },
+      });
+    }
   },
 };
 

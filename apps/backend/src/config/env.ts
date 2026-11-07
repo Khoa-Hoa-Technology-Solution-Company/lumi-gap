@@ -78,6 +78,21 @@ const EnvSchema = z.object({
   }, "GitHub callback must use HTTPS (or localhost HTTP) and /integrations/github/callback"),
   GITHUB_CONNECTION_ENCRYPTION_KEY: z.preprocess(value => value === "" ? undefined : value, z.string().min(32).optional()),
 
+  ORCID_CLIENT_ID: optionalEnvString,
+  ORCID_CLIENT_SECRET: optionalEnvString,
+  ORCID_BASE_URL: z.preprocess(
+    (value) => value === "" || value === undefined ? "https://sandbox.orcid.org" : String(value).trim().replace(/\/+$/, ""),
+    z.enum(["https://sandbox.orcid.org", "https://orcid.org"]),
+  ),
+  ORCID_REDIRECT_URI: z.preprocess(
+    (value) => value === "" ? undefined : value,
+    z.string().url().refine((value) => {
+      const url = new URL(value);
+      return !url.username && !url.password && !url.search && !url.hash
+        && (url.protocol === "https:" || (url.protocol === "http:" && ["localhost", "127.0.0.1"].includes(url.hostname)));
+    }, "ORCID_REDIRECT_URI must use HTTPS (or localhost/127.0.0.1 HTTP) without credentials, query parameters, or fragments").optional(),
+  ),
+
   // Transactional email for security-sensitive verification messages. "log" is
   // an explicit local-development transport and is forbidden in production.
   EMAIL_DELIVERY_MODE: z.enum(["disabled", "log", "smtp"]).default("disabled"),

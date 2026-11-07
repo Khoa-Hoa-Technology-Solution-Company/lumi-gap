@@ -322,9 +322,9 @@ describe.skipIf(!enabled).sequential("complete mentorship consent, access and de
     await expect(db.mentorRelationship.create({ data: { projectId: project, mentorUserId: second, sourceRequestId: duplicate.id } })).rejects.toThrow();
     expect(await db.mentorRelationship.count({ where: { projectId: project, status: "ACTIVE" } })).toBe(1);
   });
-  it("uses fourteen-day requests, preserves explicit owner cancellation and expiry history", async () => {
+  it("uses six-day requests, preserves explicit owner cancellation and expiry history", async () => {
     const request = await invite();
-    expect(new Date(request.expiresAt!).getTime() - new Date(request.createdAt).getTime()).toBeCloseTo(14 * 86400000, -3);
+    expect(new Date(request.expiresAt!).getTime() - new Date(request.createdAt).getTime()).toBeCloseTo(6 * 86400000, -3);
     const cancelled = await service.cancel(project, request.id, owner);
     expect(cancelled.status).toBe("CANCELED_BY_PROJECT");
     const other = await invite(second);

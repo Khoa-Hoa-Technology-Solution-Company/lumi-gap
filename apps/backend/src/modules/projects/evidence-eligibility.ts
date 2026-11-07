@@ -1,4 +1,6 @@
 import type { WorkspaceDb } from "./workspace-access.js";
+import type { ScreeningSettings } from "@trend/shared-types";
+import { automaticFullTextStage } from "./screening.calculator.js";
 
 /** Reads the frozen screening protocol, never infers completion from reviewer counts. */
 export async function evidenceEligibility(tx: WorkspaceDb, projectId: string, paperIds?: string[]) {
@@ -10,8 +12,8 @@ export async function evidenceEligibility(tx: WorkspaceDb, projectId: string, pa
   const byPaper = new Map(rounds.map(round => [round.paperId, round]));
   return new Map(links.map(link => {
     const round = byPaper.get(link.paperId);
-    const settings = round?.settings as { reviewMode?: string; stages?: string[] } | undefined;
-    const awaitingFullText = Boolean(round && settings?.reviewMode !== "COLLABORATIVE" && round.phase !== "FULL_TEXT" && settings?.stages?.includes("FULL_TEXT"));
+    const settings = round?.settings as ScreeningSettings | undefined;
+    const awaitingFullText = Boolean(round && settings && round.phase !== "FULL_TEXT" && automaticFullTextStage(settings));
     const eligible = link.screeningStatus === "INCLUDED" && (round ? round.status === "INCLUDED" && !round.legacyNeedsAudit && !awaitingFullText : !settingsExist);
     const reason = eligible ? null : round?.legacyNeedsAudit ? "Kết quả cũ cần được kiểm tra lại" : awaitingFullText ? "Chưa hoàn tất sàng lọc toàn văn" : "Nguồn chưa đủ điều kiện phân tích theo kết quả sàng lọc hiện tại";
     return [link.paperId, { eligible, screeningStatus: round?.status ?? link.screeningStatus, eligibilityReason: reason }] as const;

@@ -18,7 +18,19 @@ const createSchema = z.object({
   projectId: objectIdSchema,
   title: z.string().trim().min(3).max(300),
   abstract: z.string().trim().max(10000).optional(),
-  submissionType: z.enum(["RESEARCH_PROPOSAL", "LITERATURE_REVIEW", "THESIS_DRAFT", "RESEARCH_PAPER", "SOFTWARE_RESEARCH_PROJECT"]).optional(),
+  submissionType: z.enum([
+    "RESEARCH_PROPOSAL",
+    "LITERATURE_REVIEW",
+    "RESEARCH_GAP",
+    "METHODOLOGY",
+    "THESIS_CHAPTER",
+    "THESIS_DRAFT",
+    "RESEARCH_PAPER",
+    "SOFTWARE_RESEARCH_PROJECT"
+  ]).optional(),
+  mentorId: objectIdSchema.optional(),
+  contentSnapshot: z.string().trim().max(500000).optional(),
+  message: z.string().trim().max(5000).optional(),
   researchField: z.string().trim().max(200).optional(),
   researchGoal: z.string().trim().max(5000).optional(),
   researchQuestions: z.array(z.string().trim().min(1).max(1000)).max(20).optional(),
@@ -52,6 +64,26 @@ function deprecatedForReviewRequests(_req: Request, res: Response, next: NextFun
   res.setHeader("Deprecation", "true");
   res.setHeader("Link", '</api/v1/review-requests>; rel="successor-version"');
   next();
+}
+
+const feedbackSchema = z.object({
+  result: z.enum(["FEEDBACK_GIVEN", "REVISION_REQUESTED", "READY_TO_ADVANCE"]),
+  overallComment: z.string().trim().min(3).max(20000),
+  paragraphComments: z.array(z.object({
+    criterionKey: z.string().trim().max(80).optional(),
+    comment: z.string().trim().min(1).max(10000),
+    evidence: z.string().trim().max(5000).optional(),
+  })).max(50).optional(),
+  requestedInformation: z.string().trim().max(5000).optional(),
+}).strict();
+
+function optionalUploadedPdf(req: Request) {
+  const file = (req as Request & {
+    file?: { buffer: Buffer; originalname: string; size: number };
+  }).file;
+  if (!file) return undefined;
+  assertPdfMagic(file.buffer);
+  return { buffer: file.buffer, originalname: file.originalname, size: file.size };
 }
 
 function uploadedPdf(req: Request) {
@@ -107,6 +139,11 @@ submissionRouter.post("/", requirePermission("submission:create"), uploadSingleP
 submissionRouter.get("/:id", validate(submissionParamsSchema, "params"), validate(projectScopeSchema, "query"), async (req, res) => {
   const { projectId } = projectScopeSchema.parse(req.query);
   res.json({ success: true, data: await submissionService.get(String(req.params.id), req.user!.sub, req.user!.role, projectId) });
+});
+
+submissionRouter.post("/:id/feedback", validate(submissionParamsSchema, "params"), validate(feedbackSchema), async (req, res) => {
+  const data = await submissionService.submitFeedback(String(req.params.id), req.body, req.user!.sub, req.user!.role);
+  res.status(201).json({ success: true, data });
 });
 
 submissionRouter.get("/:id/history", validate(submissionParamsSchema, "params"), async (req, res) => {

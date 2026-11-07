@@ -19,6 +19,9 @@ import type {
   LecturerVerificationSubmitInput,
   LecturerVerificationSubmission,
   AcademicVerificationStatusResponse,
+  OrcidConnectionStatus,
+  OrcidConnectStartResponse,
+  OrcidConnectCompleteResponse,
 } from "@trend/shared-types";
 import { API_ROUTES } from "@/constants";
 import { api } from "@/services/api-client";
@@ -98,6 +101,30 @@ export const academicProfileApi = {
   },
   async deleteAcademicIdentity(identityId: string): Promise<void> {
     await api.delete(API_ROUTES.academicProfiles.academicIdentity(identityId));
+  },
+  async orcidStatus(signal?: AbortSignal): Promise<OrcidConnectionStatus> {
+    const response = await api.get(API_ROUTES.academicProfiles.orcid, { signal });
+    return response.data.data;
+  },
+  async startOrcidConnection(returnTo = "/profile"): Promise<OrcidConnectStartResponse> {
+    const response = await api.post(API_ROUTES.academicProfiles.orcidConnect, {
+      returnTo,
+      returnOrigin: typeof window !== "undefined" ? window.location.origin : undefined,
+    });
+    return response.data.data;
+  },
+  async completeOrcidConnection(input: {
+    code?: string;
+    state?: string;
+    error?: string;
+    error_description?: string;
+  }): Promise<OrcidConnectCompleteResponse> {
+    const response = await api.post(API_ROUTES.academicProfiles.orcidCallback, input);
+    return response.data.data;
+  },
+  async disconnectOrcid(): Promise<{ disconnected: true }> {
+    const response = await api.delete(API_ROUTES.academicProfiles.orcid);
+    return response.data.data;
   },
   async requestVerification(input: { type?: "POSITION" | "AFFILIATION"; evidenceType?: "INSTITUTIONAL_EMAIL" | "INSTITUTIONAL_PROFILE" | "ORCID" | "EXTERNAL_ACADEMIC_PROFILE" | "DOCUMENT" | "OTHER"; reference?: string; file?: File; additionalFile?: File; sources?: LecturerEvidenceEntry[]; evidenceFiles?: File[]; onUploadProgress?: (percent: number) => void; path?: "STANDARD" | "MANUAL"; primarySourceType?: LecturerEvidenceType; additionalSourceType?: LecturerEvidenceType; additionalReference?: string; institutionId?: string; studentId?: string; staffId?: string; additionalNote?: string; proofType?: "STUDENT_CARD" | "ENROLLMENT" | "STAFF" | "APPOINTMENT" } = {}): Promise<AcademicProfile> {
     const { file, additionalFile, sources, evidenceFiles, onUploadProgress, ...request } = input;

@@ -11,7 +11,7 @@ export function assertScreeningCapacity(round: Pick<ScreeningRound, "legacyNeeds
   const s = round.settings as { reviewMode?: string; requiredReviewers?: number };
   if (round.legacyNeedsAudit || s.reviewMode !== "COLLABORATIVE" &&
       (s.reviewMode === "SIMPLE" ? s.requiredReviewers !== 1 : s.requiredReviewers !== 2)) {
-    throw AppError.conflict("Cần rà soát dữ liệu cũ. Chủ dự án mở vòng mới đã xác nhận; các phiếu và quyết định cũ được giữ trong lịch sử");
+    throw AppError.conflict("Cần rà soát dữ liệu cũ. Chủ dự án cần xác nhận mở vòng mới; các phiếu và quyết định cũ được giữ trong lịch sử");
   }
 }
 

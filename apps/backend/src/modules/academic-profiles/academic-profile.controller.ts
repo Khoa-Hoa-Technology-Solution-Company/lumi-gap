@@ -11,7 +11,19 @@ import { academicProfileAvatarService } from "./academic-profile-avatar.service.
 import { AppError } from "../../common/exceptions/app-error.js";
 import { affiliationService } from "../verification/affiliation.service.js";
 import { academicIdentityService } from "./academic-identity.service.js";
+import { getOrcidConfig, orcidOAuthService } from "./orcid-oauth.service.js";
+import { resolveOAuthReturnOrigin } from "../auth/google-oidc.service.js";
 import { auditService } from "../audit/audit.service.js";
+
+function mapOrcidErrorCode(error: unknown): string {
+  if (error instanceof AppError) {
+    if (error.statusCode === 409) return "already_linked";
+    if (error.statusCode === 401 || error.statusCode === 403) return "session_mismatch";
+    if (error.message.toLowerCase().includes("cancelled")) return "cancelled";
+    if (error.message.toLowerCase().includes("state")) return "expired";
+  }
+  return "failed";
+}
 
 export const academicProfileController = {
   async featuredWorkOptions(req: Request, res: Response) {
@@ -36,6 +48,76 @@ export const academicProfileController = {
   async deleteAcademicIdentity(req: Request, res: Response) {
     await academicIdentityService.remove(req.user!.sub, req.params.identityId as string);
     res.status(204).send();
+  },
+  async orcidStatus(req: Request, res: Response) {
+    res.setHeader("Cache-Control", "private, no-store");
+    res.json({ success: true, data: await orcidOAuthService.status(req.user!.sub) });
+  },
+  async startOrcidConnection(req: Request, res: Response) {
+    res.setHeader("Cache-Control", "private, no-store");
+    const returnTo = typeof req.body?.returnTo === "string"
+      ? req.body.returnTo
+      : typeof req.query?.returnTo === "string"
+        ? req.query.returnTo
+        : undefined;
+    const returnOrigin = typeof req.body?.returnOrigin === "string"
+      ? req.body.returnOrigin
+      : typeof req.query?.returnOrigin === "string"
+        ? req.query.returnOrigin
+        : req.get("origin");
+    const sessionId = req.user!.sessionId ?? (req.user as { jti?: string } | undefined)?.jti;
+    const started = await orcidOAuthService.start(req.user!.sub, sessionId, { returnTo, returnOrigin });
+    res.json({ success: true, data: started });
+  },
+  async completeOrcidConnection(req: Request, res: Response) {
+    res.setHeader("Cache-Control", "private, no-store");
+    const sessionId = req.user!.sessionId ?? (req.user as { jti?: string } | undefined)?.jti;
+    const result = await orcidOAuthService.complete({
+      code: req.body?.code,
+      state: req.body?.state,
+      error: req.body?.error,
+      errorDescription: req.body?.error_description,
+      authenticatedUserId: req.user!.sub,
+      authenticatedSessionId: sessionId,
+    });
+    res.json({
+      success: true,
+      data: {
+        link: result.link,
+        returnTo: result.returnTo,
+      },
+    });
+  },
+  async orcidCallbackRedirect(req: Request, res: Response) {
+    res.setHeader("Cache-Control", "private, no-store");
+    if (!getOrcidConfig().configured) {
+      throw AppError.serviceUnavailable("ORCID connection is not configured");
+    }
+    try {
+      const result = await orcidOAuthService.complete({
+        code: typeof req.query.code === "string" ? req.query.code : undefined,
+        state: typeof req.query.state === "string" ? req.query.state : undefined,
+        error: typeof req.query.error === "string" ? req.query.error : undefined,
+        errorDescription: typeof req.query.error_description === "string" ? req.query.error_description : undefined,
+      });
+      const redirectUrl = new URL(result.returnTo, result.returnOrigin);
+      redirectUrl.searchParams.set("orcid", "connected");
+      res.redirect(302, redirectUrl.toString());
+    } catch (error) {
+      const details = error instanceof AppError && error.details && typeof error.details === "object"
+        ? (error.details as { returnOrigin?: string; returnTo?: string })
+        : {};
+      const origin = details.returnOrigin ?? resolveOAuthReturnOrigin();
+      const path = details.returnTo ?? "/profile";
+      const redirectUrl = new URL(path, origin);
+      redirectUrl.searchParams.set("orcid_error", mapOrcidErrorCode(error));
+      res.redirect(302, redirectUrl.toString());
+    }
+  },
+  async disconnectOrcid(req: Request, res: Response) {
+    res.setHeader("Cache-Control", "private, no-store");
+    const result = await orcidOAuthService.disconnect(req.user!.sub);
+    res.json({ success: true, data: result });
   },
   async publicProfile(req: Request, res: Response) {
     res.json({ success: true, data: await academicProfileService.getPublic(req.params.userId as string, req.user?.sub) });

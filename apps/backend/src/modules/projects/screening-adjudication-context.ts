@@ -12,7 +12,8 @@ const phase = z.enum(["TITLE_ABSTRACT", "FULL_TEXT"]);
 const discussionReviewIds = z.array(z.string().uuid()).min(2).max(10);
 const discussionSchema = z.object({ id: z.string().uuid(), comment: z.string().min(3).max(2000), createdAt: z.string().datetime(), actorName: z.string().optional() }).strict();
 const packetSchema = z.object({
-  protocol: z.object({ version: z.number().int().min(0), workflowVersion: z.number().int().nullable(), stages: z.array(phase), allowConservativeFullText: z.boolean() }).strict().optional(),
+  sourceUrl: z.string().url().refine(value => /^https?:\/\//i.test(value)).nullable().optional(),
+  protocol: z.object({ screeningMode: z.enum(["SINGLE_STAGE", "TWO_STAGE"]).optional(), version: z.number().int().min(0), workflowVersion: z.number().int().nullable(), stages: z.array(phase), allowConservativeFullText: z.boolean() }).strict().optional(),
   consensusAttempts: z.array(z.object({ id: z.string().uuid(), action: z.string(), actorName: z.string(), createdAt: z.string().datetime(), decision: z.string().optional(), reason: z.string().optional() }).strict()).max(20).optional(),
   discussion: z.array(discussionSchema).max(20).optional(),
   roundId: z.string().uuid(), paperId: z.string().uuid(), phase, roundVersion: z.number().int().positive(),
@@ -22,6 +23,21 @@ const packetSchema = z.object({
 }).strict();
 
 export const adjudicationSection = (id: string) => `screening:${id}`;
+/** The project import reference takes precedence over the paper's saved landing page. */
+export async function adjudicationSourceUrl(c: WorkspaceContext, row: ScreeningRound): Promise<string | null> {
+  const [link, paper] = await Promise.all([
+    c.tx.projectPaper.findUnique({ where: { projectId_paperId: { projectId: c.project.id, paperId: row.paperId } }, select: { sourceReference: true } }),
+    c.tx.paper.findUniqueOrThrow({ where: { id: row.paperId }, select: { paperLink: true, openAccessUrl: true } }),
+  ]);
+  for (const value of [link?.sourceReference, paper.paperLink, paper.openAccessUrl]) {
+    if (!value) continue;
+    try {
+      const url = new URL(value.trim());
+      if (["http:", "https:"].includes(url.protocol) && !url.username && !url.password) return url.href;
+    } catch { /* A reference can be a citation or DOI rather than a web address. */ }
+  }
+  return null;
+}
 export async function adjudicationThread(c: WorkspaceContext, row: ScreeningRound) {
   if (!row.finalizerId) return [];
   const assignment = await c.tx.screeningAudit.findFirst({ where: { projectId: c.project.id, roundId: row.id, type: "FINALIZER_ASSIGNED", details: { path: ["finalizerId"], equals: row.finalizerId } }, orderBy: { createdAt: "desc" } });
@@ -94,8 +110,8 @@ export async function adjudicationDiscussion(c: WorkspaceContext, row: Screening
   return items;
 }
 function packetProtocol(row: ScreeningRound): NonNullable<ScreeningAdjudicationPacket["protocol"]> {
-  const settings = row.settings as { version: number; workflowVersion?: number; stages?: Array<"TITLE_ABSTRACT" | "FULL_TEXT">; allowConservativeFullText?: boolean };
-  return { version: settings.version, workflowVersion: settings.workflowVersion ?? null, stages: settings.stages ?? [], allowConservativeFullText: Boolean(settings.allowConservativeFullText) };
+  const settings = row.settings as { screeningMode?: "SINGLE_STAGE" | "TWO_STAGE"; version: number; workflowVersion?: number; stages?: Array<"TITLE_ABSTRACT" | "FULL_TEXT">; allowConservativeFullText?: boolean };
+  return { ...(settings.screeningMode ? { screeningMode: settings.screeningMode } : {}), version: settings.version, workflowVersion: settings.workflowVersion ?? null, stages: settings.stages ?? [], allowConservativeFullText: Boolean(settings.allowConservativeFullText) };
 }
 async function consensusAttempts(c: WorkspaceContext, row: ScreeningRound) {
   const events = await c.tx.screeningAudit.findMany({ where: { projectId: c.project.id, roundId: row.id, type: { in: ["AGREEMENT_PROPOSED", "AGREEMENT_DECLINED", "AGREEMENT_CONFIRMED"] } }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 20 });
@@ -112,7 +128,7 @@ export async function adjudicationPacket(c: WorkspaceContext, row: ScreeningRoun
   const settings = row.settings as { inclusionCriteria: string[]; exclusionCriteria: string[]; researchQuestions: string[]; requiredReviewers: number };
   if (assignments.length < settings.requiredReviewers || assignments.some(a => !a.submittedAt)) throw AppError.conflict("Chờ tất cả reviewer hoàn thành");
   const reviews = await c.tx.screeningReview.findMany({ where: { projectId: c.project.id, OR: assignments.map(a => ({ assignmentId: a.id, revision: a.revision })) }, select: { id: true, decision: true, exclusionReason: true, comment: true, revision: true, scope: true, fullTextReference: true }, orderBy: { id: "asc" } });
-  return { protocol: packetProtocol(row), consensusAttempts: await consensusAttempts(c, row), ...(discussionIds.length ? { discussion: await adjudicationDiscussion(c, row, discussionIds) } : {}), roundId: row.id, paperId: row.paperId, phase: row.phase as ScreeningAdjudicationPacket["phase"], roundVersion: row.version, paper,
+  return { sourceUrl: await adjudicationSourceUrl(c, row), protocol: packetProtocol(row), consensusAttempts: await consensusAttempts(c, row), ...(discussionIds.length ? { discussion: await adjudicationDiscussion(c, row, discussionIds) } : {}), roundId: row.id, paperId: row.paperId, phase: row.phase as ScreeningAdjudicationPacket["phase"], roundVersion: row.version, paper,
     inclusionCriteria: settings.inclusionCriteria, exclusionCriteria: settings.exclusionCriteria, researchQuestions: settings.researchQuestions,
     reviews: reviews as ScreeningAdjudicationPacket["reviews"] };
 }

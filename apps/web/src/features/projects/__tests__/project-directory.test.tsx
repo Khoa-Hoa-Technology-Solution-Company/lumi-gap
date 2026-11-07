@@ -8,6 +8,8 @@ import type { IProject, IncomingProjectInvitation } from "@trend/shared-types";
 import { ProjectsListPage } from "@/pages/projects/projects-list";
 import { readProjectDirectoryFilters, selectDirectoryProjects } from "../utils/project-directory";
 
+vi.mock("../hooks/use-mentored-projects", () => ({ useMentoredProjects: () => ({ data: [], isLoading: false, isError: false }) }));
+
 const mocks = vi.hoisted(() => ({
   projects: vi.fn(), create: vi.fn(), respond: vi.fn(), refetch: vi.fn(), refetchInvitations: vi.fn(),
   invitations: [] as IncomingProjectInvitation[],

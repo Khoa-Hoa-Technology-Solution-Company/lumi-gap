@@ -7,6 +7,6 @@ export function useResearchResource<T>(id: string, key: readonly unknown[], load
 export function useResearchCommand(id: string) {
   const client = useQueryClient();
   return useMutation({ mutationFn: (run: () => Promise<unknown>) => run(), onSuccess: async () => {
-    await Promise.all([client.invalidateQueries({ queryKey: ["project-research"] }), client.invalidateQueries({ queryKey: ["project", id] }), client.invalidateQueries({ queryKey: ["project-workspace"] }), client.invalidateQueries({ queryKey: ["gaps"] }), client.invalidateQueries({ queryKey: ["credits"] })]);
+    await Promise.all([client.invalidateQueries({ queryKey: ["project-research"] }), client.invalidateQueries({ queryKey: ["project", id] }), client.invalidateQueries({ queryKey: ["project-workspace"] }), client.invalidateQueries({ queryKey: ["mentor-access"] }), client.invalidateQueries({ queryKey: ["gaps"] }), client.invalidateQueries({ queryKey: ["credits"] })]);
   } });
 }

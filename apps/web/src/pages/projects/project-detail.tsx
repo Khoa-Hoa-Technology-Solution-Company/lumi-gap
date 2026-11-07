@@ -32,6 +32,8 @@ import { ProjectNextSteps } from "@/features/projects/components/project-next-st
 import { ProjectContributionsWorkspace } from "@/features/projects/components/project-contributions-workspace";
 import { ManuscriptsPanel, type ManuscriptCreationDraft } from "@/features/manuscripts/manuscripts-panel";
 import { useI18n } from "@/i18n";
+import { projectAccessDenied, useMentorProjectEntry } from "@/features/projects/hooks/use-mentor-project-entry";
+import { MentorProjectWorkspace } from "@/features/projects/components/mentor-project-workspace";
 
 const ProjectSubmissionsPanel = lazy(() => import("@/features/projects/components/project-submissions-panel").then(m => ({ default: m.ProjectSubmissionsPanel })));
 
@@ -40,6 +42,8 @@ export function ProjectDetailPage() {
   const { t } = useI18n();
   const { id } = useParams<{ id: string }>();
   const { data: project, isLoading, isError, error, isFetching, refetch } = useProject(id);
+  const mentorFallback = Boolean(currentUser && (projectAccessDenied(error) || project?.isPublicSummary));
+  const mentorEntry = useMentorProjectEntry(id, mentorFallback);
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get("tab");
   const activeTab = resolveProjectTab(tabParam);
@@ -83,7 +87,10 @@ export function ProjectDetailPage() {
     );
   }
 
-  if (!project) {
+  if (mentorFallback && mentorEntry.isLoading) return <div className="project-page-width py-6" role="status"><Skeleton className="h-10 w-64" /><Skeleton className="mt-5 h-64 w-full" /><span className="sr-only">Đang tải không gian cố vấn…</span></div>;
+  if (mentorFallback && !mentorEntry.error && mentorEntry.data?.policies.some(p => p.mentorId === mentorEntry.data.viewerId && p.policy.effective)) return <MentorProjectWorkspace data={mentorEntry.data} />;
+
+  if (!project || projectAccessDenied(error)) {
     const status = (error as { response?: { status?: number } } | null)?.response?.status;
     const unavailable = status === 403 || status === 404;
     return (

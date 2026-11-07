@@ -1,0 +1,28 @@
+// Separate from editable ProjectTask: only Screening commands control these records.
+model ScreeningObligation {
+  id String @id @default(uuid()) @db.Uuid
+  projectId String @map("project_id") @db.Uuid
+  paperId String @map("paper_id") @db.Uuid
+  roundId String @map("round_id") @db.Uuid
+  assigneeId String @map("assignee_id") @db.Uuid
+  actionType String @map("action_type") @db.VarChar(24)
+  workflowInstanceId String @map("workflow_instance_id") @db.VarChar(160)
+  status String @default("TODO") @db.VarChar(24)
+  reason String @default("")
+  dueAt DateTime? @map("due_at") @db.Timestamptz(6)
+  endedAt DateTime? @map("ended_at") @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  @@unique([roundId, assigneeId, actionType, workflowInstanceId])
+  @@index([projectId, assigneeId, status, updatedAt])
+  @@map("screening_obligations")
+}
+model ScreeningObligationEvent {
+  id String @id @default(uuid()) @db.Uuid
+  obligationId String @map("obligation_id") @db.Uuid
+  status String @db.VarChar(24)
+  reason String
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@index([obligationId, createdAt])
+  @@map("screening_obligation_events")
+}
