@@ -13,6 +13,8 @@ const evidenceWorkflow = { questionIds: z.array(z.string().min(1).max(100)).max(
 export const evidenceContentSchema = z.object({
   claim: text().min(3), quotation: text(), locator: text(500), context: text(), methodology: text(),
   population: text(), results: text(), limitations: text(), themes: z.array(text(80).min(1)).max(12),
+  /** Custom literature-matrix values keyed by criterion id; the service checks the ids against the project's active columns. */
+  criteriaValues: z.record(z.string().uuid(), z.string().max(2000)).refine(values => Object.keys(values).length <= 50, "Too many matrix values").optional(),
 }).strict();
 export const createEvidenceSchema = evidenceContentSchema.extend({ ...evidenceWorkflow, paperId: z.string().uuid(), origin: z.enum(["HUMAN", "AI_SUGGESTED"]), clientKey: z.string().uuid(), sourceChunkId: z.string().uuid().optional(), corpusPaperId: z.string().uuid().optional(), analysisHash: z.string().regex(/^[a-f0-9]{64}$/).optional() }).strict();
 export const editEvidenceSchema = evidenceContentSchema.extend({ ...evidenceWorkflow, expectedVersion: z.number().int().positive() }).strict();

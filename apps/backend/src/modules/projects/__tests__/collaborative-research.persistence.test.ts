@@ -9,6 +9,7 @@ import { projectSourcesService as sources } from "../project-sources.service.js"
 import { projectScreeningService as screening } from "../project-screening.service.js";
 import { projectEvidenceService as evidence } from "../project-evidence.service.js";
 import { projectGapResearchService as gaps } from "../project-gap-research.service.js";
+import { projectFeasibilityService as feasibility } from "../project-feasibility.service.js";
 import { projectPlanService as plans } from "../project-plan.service.js";
 import { projectPlanDraftService } from "../project-plan-draft.service.js";
 import { gapValidationService } from "../../gaps/gap-validation.service.js";
@@ -194,6 +195,8 @@ describe.skipIf(!isolated).sequential("collaborative research workflow, disposab
     await expect(gaps.assess(id, owner, gap.id, { status: "TEAM_SUPPORTED", rationale: "We agree", expectedVersion: 1 })).rejects.toMatchObject({ statusCode: 400 });
     await gaps.link(id, member, gap.id, { evidenceItemId: support.id, expectedEvidenceVersion: support.version, expectedVersion: 1, kind: "SUPPORTING", explanation: "Single-context finding motivates replication" });
     await gaps.link(id, owner, gap.id, { evidenceItemId: counter.id, expectedEvidenceVersion: counter.version, expectedVersion: 2, kind: "COUNTER", explanation: "This result limits the scope of the claim" });
+    await expect(gaps.assess(id, member, gap.id, { status: "TEAM_SUPPORTED", rationale: "No feasibility yet", expectedVersion: 3 })).rejects.toMatchObject({ statusCode: 400 });
+    await feasibility.save(id, member, "GAP", gap.id, { dataAvailability: 4, expertise: 4, resources: 4, timeline: 4, risk: 4, notes: "" });
     await gaps.assess(id, member, gap.id, { status: "TEAM_SUPPORTED", rationale: "A bounded replication question is justified", expectedVersion: 3 });
     const plan = await plans.get(id, owner), input = { text: "Do the reported outcomes transfer across institutions?", expectedVersion: 4, expectedPlanVersion: plan.version, clientKey: crypto.randomUUID() };
     const question = await gaps.derive(id, member, gap.id, input); expect((await gaps.derive(id, member, gap.id, input)).questionId).toBe(question.questionId);

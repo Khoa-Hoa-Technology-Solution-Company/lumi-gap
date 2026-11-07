@@ -1,0 +1,67 @@
+/* Research step navigation, literature matrix, limitations and feasibility. */
+.research-step-nav { display:flex; flex-wrap:wrap; max-width:100%; overflow-x:auto; }
+.research-step-nav button { display:inline-flex; align-items:center; gap:.5rem; min-height:44px; font-size:.9rem; padding:8px 14px; }
+.research-step-index { display:inline-grid; place-items:center; width:1.4rem; height:1.4rem; border-radius:999px; font-size:.72rem; background:hsl(var(--muted)); color:hsl(var(--muted-foreground)); }
+.research-step-nav button[aria-current] .research-step-index { background:hsl(var(--primary)); color:hsl(var(--primary-foreground)); }
+
+/* Matrix */
+.literature-matrix { display:grid; gap:1rem; }
+/* .evidence-table sizes its six columns by position; the matrix has a variable column count, so reset every width. */
+.evidence-table.matrix-table thead th,.evidence-table.matrix-table thead th:nth-child(n) { width:180px; }
+.evidence-table.matrix-table thead th:first-child { width:260px; }
+.evidence-table.matrix-table thead th:last-child { width:160px; }
+.matrix-table th.matrix-custom-column { background:hsl(var(--primary)/.08); color:hsl(var(--foreground)); }
+.matrix-criteria { border:1px solid hsl(var(--border)); border-radius:10px; padding:1rem; display:grid; gap:.75rem; background:hsl(var(--muted)/.3); }
+.matrix-criteria h3 { font-size:1rem; font-weight:600; }
+.matrix-criteria-list { display:grid; gap:.4rem; list-style:none; padding:0; margin:0; }
+.matrix-criteria-list li { display:flex; justify-content:space-between; align-items:center; gap:.75rem; flex-wrap:wrap; padding:.5rem .75rem; border:1px solid hsl(var(--border)); border-radius:8px; background:hsl(var(--background)); }
+.matrix-criteria-add,.matrix-criteria-edit { display:grid; grid-template-columns:minmax(10rem,1fr) minmax(12rem,2fr) auto auto; gap:.5rem; align-items:center; width:100%; }
+.evidence-matrix-fields { display:grid; gap:.75rem; grid-template-columns:repeat(auto-fit,minmax(16rem,1fr)); border:1px dashed hsl(var(--border)); border-radius:8px; padding:.75rem; }
+.evidence-matrix-fields legend { font-weight:600; font-size:.85rem; padding:0 .25rem; }
+.evidence-matrix-fields legend span { font-weight:400; color:hsl(var(--muted-foreground)); }
+
+/* Limitations */
+.research-limitations { display:grid; gap:1rem; }
+.limitations-layout { display:grid; grid-template-columns:minmax(18rem,1fr) minmax(0,1.6fr); gap:1.25rem; align-items:start; }
+.limitations-pool,.limitations-groups { display:grid; gap:.75rem; grid-template-columns:minmax(0,1fr); min-width:0; }
+/* Long option labels must not widen the column: grid items default to their min-content width. */
+.research-limitations select,.feasibility-panel select { width:100%; max-width:100%; text-overflow:ellipsis; }
+.limitation-card,.feasibility-panel,.limitations-create { grid-template-columns:minmax(0,1fr); min-width:0; }
+.limitations-pool { border:1px solid hsl(var(--border)); border-radius:10px; padding:1rem; background:hsl(var(--muted)/.3); position:sticky; top:1rem; max-height:calc(100vh - 2rem); overflow:auto; }
+.limitations-pool h3,.limitations-groups h3 { font-size:1rem; font-weight:600; }
+.limitations-sources { display:grid; gap:.5rem; list-style:none; padding:0; margin:0; }
+.limitations-sources li { border-left:3px solid hsl(var(--border)); padding:.25rem .6rem; }
+.limitations-sources small { display:block; }
+.limitations-create { border-top:1px solid hsl(var(--border)); padding-top:.75rem; }
+.limitation-card { display:grid; gap:.6rem; border:1px solid hsl(var(--border)); border-radius:10px; padding:1rem; background:hsl(var(--background)); }
+.limitation-card > header { display:flex; justify-content:space-between; gap:1rem; align-items:flex-start; }
+.limitation-statement { font-weight:600; line-height:1.45; }
+.limitation-category { display:inline-block; padding:0 .45rem; border-radius:999px; background:hsl(var(--muted)); font-size:.75rem; }
+.limitation-dismissed { opacity:.7; }
+.limitation-promoted { border-color:hsl(var(--primary)/.5); }
+
+/* Feasibility */
+.feasibility-panel { display:grid; gap:.75rem; padding:.75rem 0; }
+.feasibility-head { display:flex; justify-content:space-between; gap:1rem; align-items:flex-start; }
+.feasibility-head h4 { font-weight:600; }
+.feasibility-verdict { display:inline-block; white-space:nowrap; padding:.15rem .6rem; border-radius:999px; font-size:.75rem; font-weight:600; border:1px solid transparent; }
+.feasibility-verdict-feasible { background:hsl(142 70% 40%/.12); color:hsl(142 70% 28%); border-color:hsl(142 70% 40%/.3); }
+.feasibility-verdict-conditional { background:hsl(38 92% 50%/.14); color:hsl(30 80% 30%); border-color:hsl(38 92% 50%/.35); }
+.feasibility-verdict-not_feasible { background:hsl(0 84% 60%/.12); color:hsl(0 70% 38%); border-color:hsl(0 84% 60%/.3); }
+.feasibility-verdict-none { background:hsl(var(--muted)); color:hsl(var(--muted-foreground)); }
+.feasibility-means { display:grid; grid-template-columns:repeat(auto-fit,minmax(7.5rem,1fr)); gap:.5rem; margin:0; }
+.feasibility-means > div { border:1px solid hsl(var(--border)); border-radius:8px; padding:.4rem .6rem; }
+.feasibility-means dt { font-size:.72rem; color:hsl(var(--muted-foreground)); }
+.feasibility-means dd { margin:0; font-weight:600; }
+.feasibility-means .feasibility-blocker { border-color:hsl(0 84% 60%/.5); background:hsl(0 84% 60%/.06); }
+.feasibility-list { display:grid; gap:.5rem; list-style:none; padding:0; margin:0; }
+.feasibility-list li { display:flex; flex-wrap:wrap; gap:.4rem; align-items:baseline; }
+.feasibility-list li p { flex-basis:100%; margin:0; }
+.feasibility-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(10rem,1fr)); gap:.75rem; }
+.feasibility-grid small { display:block; min-height:2.2em; }
+
+@media (max-width: 900px) {
+  .limitations-layout { grid-template-columns:1fr; }
+  .limitations-pool { position:static; max-height:none; }
+  .matrix-criteria-add,.matrix-criteria-edit { grid-template-columns:1fr; }
+}

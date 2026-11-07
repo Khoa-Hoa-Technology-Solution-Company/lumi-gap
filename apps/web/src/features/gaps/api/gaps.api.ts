@@ -71,6 +71,8 @@ export const gapsApi = {
     page?: number;
     pageSize?: number;
     projectId?: string;
+    origin?: "HUMAN" | "AI_ASSISTED";
+    gapId?: string;
   }): Promise<ListGapsResponse> {
     const res = await api.get(API_ROUTES.gaps.list, { params });
     return { data: res.data.data, meta: res.data.meta };
