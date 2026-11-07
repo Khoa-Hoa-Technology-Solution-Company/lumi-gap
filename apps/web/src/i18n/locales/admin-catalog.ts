@@ -191,6 +191,16 @@ export const adminCatalogVi = {
   "Planned on": "Ngày lập",
   "Planned": "Dự kiến",
   "Paused": "Đã dừng",
+  // Taxonomy catalogue load
+  "Taxonomy update": "Cập nhật danh mục",
+  "Update taxonomy": "Cập nhật danh mục",
+  "Load taxonomy": "Nạp danh mục",
+  "Taxonomy update queued.": "Đã xếp hàng cập nhật danh mục.",
+  "A taxonomy update is already running.": "Đang có một lần cập nhật danh mục chạy.",
+  "Loading the taxonomy from OpenAlex. This takes a few minutes and runs in the background.": "Đang nạp danh mục từ OpenAlex. Việc này mất vài phút và chạy ở nền.",
+  "Last updated from OpenAlex: {{date}}": "Cập nhật lần cuối từ OpenAlex: {{date}}",
+  "The taxonomy is empty, so there are no topics to follow or tag yet. Load it from OpenAlex first.": "Danh mục đang trống nên chưa có topic để theo dõi hoặc gắn tag. Hãy nạp danh mục từ OpenAlex trước.",
+  "The last update failed: {{error}}": "Lần cập nhật gần nhất thất bại: {{error}}",
   // Daily follow of catalogue entries
   "Daily follow": "Theo dõi hằng ngày",
   "The daily job reads this entry’s older works first, then keeps following new ones.": "Tác vụ hằng ngày sẽ đọc các công trình cũ hơn của mục này trước, sau đó tiếp tục theo dõi các công trình mới.",

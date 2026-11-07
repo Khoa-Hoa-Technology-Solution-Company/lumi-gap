@@ -16,6 +16,7 @@ import type {
   TaxonomyNodeDetail,
   TaxonomyNodeStatus,
   TaxonomyStats,
+  TaxonomySyncStatus,
   TopicBackfillTargetKind,
   TopicWatch,
   TopicWatchList,
@@ -107,6 +108,14 @@ function clean<T extends object>(params: T): Partial<T> {
 }
 
 export const taxonomyApi = {
+  async syncStatus(): Promise<TaxonomySyncStatus> {
+    const res = await api.get(API_ROUTES.admin.taxonomy.sync);
+    return res.data.data as TaxonomySyncStatus;
+  },
+  async requestSync(): Promise<{ queued: boolean }> {
+    const res = await api.post(API_ROUTES.admin.taxonomy.sync);
+    return res.data.data as { queued: boolean };
+  },
   async stats(): Promise<TaxonomyStats> {
     const res = await api.get(API_ROUTES.admin.taxonomy.stats);
     return res.data.data as TaxonomyStats;

@@ -251,6 +251,16 @@ export interface TagCampaignPreflight {
   liveCampaign: TagCampaign | null;
 }
 
+/** State of the taxonomy catalogue loaded from OpenAlex. */
+export interface TaxonomySyncStatus {
+  /** False on a new database: there are no topics to follow or tag yet. */
+  loaded: boolean;
+  running: boolean;
+  lastSyncedAt: ISODateString | null;
+  /** Why the latest load failed, when no load has succeeded since. */
+  lastError: string | null;
+}
+
 export interface TaxonomyStats {
   /** Active papers. */
   papers: number;

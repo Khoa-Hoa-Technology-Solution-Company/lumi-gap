@@ -240,6 +240,7 @@ export const API_ROUTES = {
     },
     taxonomy: {
       stats: "/admin/taxonomy/stats",
+      sync: "/admin/taxonomy/sync",
       nodes: "/admin/taxonomy/nodes",
       node: (id: string) => `/admin/taxonomy/nodes/${id}`,
       keywords: "/admin/taxonomy/keywords",

@@ -26,6 +26,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { TaxonomySyncCard } from "@/features/catalog/components/taxonomy-sync-card";
 import { TopicWatchesPanel } from "@/features/catalog/components/topic-watches-panel";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -380,6 +381,8 @@ export function AdminSyncPage() {
           </Link>
         </div>
       </div>
+
+      <TaxonomySyncCard onlyWhenEmpty />
 
       <TopicWatchesPanel />
 

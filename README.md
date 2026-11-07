@@ -210,7 +210,7 @@ pnpm lint                     # lint everything
 pnpm test                     # unit tests (turbo)
 pnpm test:e2e                 # Playwright e2e tests
 
-pnpm docker:up                # full Docker stack, builds images
+pnpm docker:up                # full Docker stack, builds images (a new database loads the taxonomy by itself)
 pnpm docker:down              # stop them
 pnpm docker:infra             # only PostgreSQL + Redis
 pnpm docker:logs              # tail their logs
