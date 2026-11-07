@@ -8,8 +8,9 @@ import { CollaborativeLibrary } from "../components/collaborative-library";
 import { ScreeningWorkspace } from "../components/screening-workspace";
 import { ResearchLiterature } from "../components/research-literature";
 import { ScreeningSettingsForm } from "../components/screening-management";
+import { ReadingPaperModal } from "../components/reading-paper-modal";
 import type { ScreeningBoard, ScreeningRoundView } from "@trend/shared-types";
-const mocks = vi.hoisted(() => ({ begin: vi.fn(), advanceConservatively: vi.fn(), requestAdjudication: vi.fn(), board: vi.fn(), rounds: vi.fn(), detail: vi.fn(), history: vi.fn(), ai: vi.fn(), action: vi.fn(), start: vi.fn(), assign: vi.fn(), configure: vi.fn(), analytics: vi.fn(), requestAi: vi.fn(), proposal: vi.fn(), confirm: vi.fn(), workspaceSummary: vi.fn(), claim: vi.fn(), release: vi.fn(), extend: vi.fn(), claimNext: vi.fn(), updateDiscoveryGoal: vi.fn() }));
+const mocks = vi.hoisted(() => ({ resumeFullText: vi.fn(), begin: vi.fn(), advanceConservatively: vi.fn(), requestAdjudication: vi.fn(), board: vi.fn(), rounds: vi.fn(), detail: vi.fn(), history: vi.fn(), ai: vi.fn(), action: vi.fn(), start: vi.fn(), assign: vi.fn(), configure: vi.fn(), analytics: vi.fn(), requestAi: vi.fn(), proposal: vi.fn(), confirm: vi.fn(), workspaceSummary: vi.fn(), claim: vi.fn(), release: vi.fn(), extend: vi.fn(), claimNext: vi.fn(), updateDiscoveryGoal: vi.fn() }));
 vi.mock("../api/screening.api", () => ({ screeningApi: mocks }));
 vi.mock("@/services/confirmation", () => ({ confirmUnsavedChanges: mocks.confirm }));
 vi.mock("@/stores/auth-store", () => ({ useAuthStore: (select: (state: { user: { id: string } }) => unknown) => select({ user: { id: "actor" } }) }));
@@ -52,7 +53,7 @@ it.each([false, true])("does not offer an extra independent ballot to an unassig
   mocks.board.mockResolvedValue({ ...board, canManage, items: [{ ...board.items[0], round: unassigned }] });
   await render(<CollaborativeLibrary projectId="p" readOnly={false} />);
   expect(document.body.textContent).toContain("Bạn chưa giữ suất đánh giá.");
-  expect(document.querySelector('input[name="review-choice"]')).toBeNull();
+  expect(document.querySelector('.screening-decision-choices input[type="radio"]')).toBeNull();
   expect([...document.querySelectorAll("button")].some(b => b.textContent === "Gửi và khóa phiếu")).toBe(false);
   expect(mocks.action).not.toHaveBeenCalled();
 });
@@ -83,7 +84,7 @@ it.each([
   ["UNSURE", "Điểm cần làm rõ thêm", "comment"],
 ])("requires a written rationale before submitting %s", async (decision, label, field) => {
   await render(<CollaborativeLibrary projectId="p" readOnly={false} />);
-  await act(async () => document.querySelector<HTMLInputElement>(`input[name="review-choice"][value="${decision}"]`)!.click());
+  await act(async () => document.querySelector<HTMLInputElement>(`input[type="radio"][value="${decision}"]`)!.click());
   const area = [...document.querySelectorAll("label")].find(l => l.textContent?.startsWith(label))!.querySelector("textarea")!;
   const send = [...document.querySelectorAll<HTMLButtonElement>("button")].find(b => b.textContent === "Gửi và khóa phiếu")!;
   expect(area.required).toBe(true);
@@ -99,8 +100,33 @@ it.each([
   await click("Gửi và khóa phiếu");
   expect(mocks.action).toHaveBeenCalledWith("p", "round", "reviews", expect.objectContaining({ decision, [field]: "Căn cứ đã đối chiếu với tiêu chí nghiên cứu" }));
 });
+it.each([false, true])("allows fulltext evidence and RQ input with fixed stage, retaining saved context on edit=%s", async editing => {
+  const question = { id: "rq-1", text: "Population and outcomes" };
+  const full: ScreeningRoundView = { ...round, phase: "FULL_TEXT", completed: editing ? 1 : 0, canReview: !editing,
+    settings: { ...settings, screeningMode: "TWO_STAGE", workflowVersion: 11, questionOptions: [question] },
+    assignments: round.assignments.map(a => ({ ...a, completed: editing && a.id === "mine" })),
+    myReview: editing ? { id: "review", assignmentId: "mine", reviewerId: "actor", revision: 1, decision: "INCLUDE", exclusionReason: "", comment: "Original source rationale", scope: "FULL_TEXT", fullTextReference: "PDF p. 4, participant criteria", researchQuestions: [question], submittedAt: new Date().toISOString() } : null };
+  mocks.detail.mockResolvedValue(full);
+  mocks.board.mockResolvedValue({ ...board, items: [{ ...board.items[0]!, fullTextAvailable: true, round: full }] });
+  await render(<CollaborativeLibrary projectId="p" readOnly={false} />);
+  if (editing) await click("Sửa lựa chọn");
+  const source = [...document.querySelectorAll("label")].find(l => l.textContent?.startsWith("Nguồn toàn văn đã đọc"))!.querySelector("input")!;
+  const rq = document.querySelector<HTMLInputElement>('.assessment-questions input[type="checkbox"]')!;
+  expect(source.disabled).toBe(false);
+  expect(rq.disabled).toBe(false);
+  expect(document.querySelector('select[aria-label="Chọn phạm vi đã đọc"]')).toBeNull();
+  expect(source.value).toBe(editing ? full.myReview!.fullTextReference : "");
+  expect(rq.checked).toBe(editing);
+  if (!editing) {
+    await act(async () => { document.querySelector<HTMLInputElement>('input[type="radio"][value="INCLUDE"]')!.click(); rq.click(); });
+    await fill("Lý do / Căn cứ phù hợp", "Evidence supports the registered population");
+  }
+  await fill("Nguồn toàn văn đã đọc", "PDF p. 5, updated population criteria");
+  await click(editing ? "Cập nhật phiếu" : "Gửi và khóa phiếu");
+  expect(mocks.action).toHaveBeenCalledWith("p", "round", "reviews", expect.objectContaining({ scope: "FULL_TEXT", fullTextReference: "PDF p. 5, updated population criteria", researchQuestionIds: [question.id] }));
+});
 it("preserves the include rationale while editing and blocks clearing it", async () => {
-  const reviewed = { ...round, canReview: false, myReview: { id: "r", assignmentId: "mine", reviewerId: "actor", revision: 1, decision: "INCLUDE" as const, exclusionReason: "", comment: "Bài đáp ứng tiêu chí đối tượng", submittedAt: new Date().toISOString() } };
+  const reviewed = { ...round, canReview: false, assignments: round.assignments.map(a => ({ ...a, completed: a.id === "mine" })), myReview: { id: "r", assignmentId: "mine", reviewerId: "actor", revision: 1, decision: "INCLUDE" as const, exclusionReason: "", comment: "Bài đáp ứng tiêu chí đối tượng", submittedAt: new Date().toISOString() } };
   mocks.detail.mockResolvedValue(reviewed);
   mocks.board.mockResolvedValue({ ...board, items: [{ ...board.items[0]!, round: reviewed }] });
   await render(<CollaborativeLibrary projectId="p" readOnly={false} />);
@@ -116,6 +142,31 @@ it("preserves the include rationale while editing and blocks clearing it", async
   await click("Cập nhật phiếu");
   expect(mocks.action).toHaveBeenCalledWith("p", "round", "reviews", expect.objectContaining({ decision: "INCLUDE", comment: "Căn cứ mới sau khi đối chiếu" }));
 });
+it("does not allow rationale-only editing once the other reviewer submitted, even before unblinding", async () => {
+  const reviewed = { ...round, canReview: false, completed: 2, assignments: round.assignments.map(a => ({ ...a, completed: true })), myReview: { id: "r", assignmentId: "mine", reviewerId: "actor", revision: 1, decision: "INCLUDE" as const, exclusionReason: "", comment: "Phiếu hiện tại", submittedAt: new Date().toISOString() } };
+  mocks.detail.mockResolvedValue(reviewed);
+  mocks.board.mockResolvedValue({ ...board, items: [{ ...board.items[0]!, round: reviewed }] });
+  await render(<CollaborativeLibrary projectId="p" readOnly={false} />);
+  expect([...document.querySelectorAll('button')].find(b => b.textContent === 'Sửa lựa chọn')).toBeUndefined();
+  expect(mocks.action).not.toHaveBeenCalled();
+});
+it("blocks an already-open rationale edit when the peer submits and retains the draft", async () => {
+  const reviewed = { ...round, canReview: false, assignments: round.assignments.map(a => ({ ...a, completed: a.id === "mine" })), myReview: { id: "r", assignmentId: "mine", reviewerId: "actor", revision: 1, decision: "INCLUDE" as const, exclusionReason: "", comment: "Lý do ban đầu", submittedAt: new Date().toISOString() } };
+  mocks.detail.mockResolvedValue(reviewed);
+  mocks.board.mockResolvedValue({ ...board, items: [{ ...board.items[0]!, round: reviewed }] });
+  await render(<CollaborativeLibrary projectId="p" readOnly={false} />);
+  await click("Sửa lựa chọn");
+  await fill("Lý do / Căn cứ phù hợp", "Bản nháp đang chỉnh sửa");
+  const completed = { ...reviewed, completed: 2, assignments: reviewed.assignments.map(a => ({ ...a, completed: true })) };
+  mocks.detail.mockResolvedValue(completed);
+  await act(async () => { client.setQueryData(["project-research", "actor", "p", "screening-round", "round"], completed); });
+  await settle();
+  expect(document.body.textContent).toContain('Quyền gửi phiếu đã thay đổi');
+  const area = [...document.querySelectorAll('textarea')].find(e => e.value === 'Bản nháp đang chỉnh sửa')!;
+  expect(area).toBeDefined();
+  await act(async () => area.closest('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })));
+  expect(mocks.action).not.toHaveBeenCalled();
+});
 it("protects an unfinished review when changing filters or closing its details", async () => {
   await render(<CollaborativeLibrary projectId="p" readOnly={false} />); await act(async () => document.querySelector<HTMLInputElement>('input[type="radio"][value="EXCLUDE"]')!.click()); await fill("Lý do loại", "Đang đọc và chưa hoàn thành"); mocks.confirm.mockResolvedValue(false);
   const select = document.querySelector<HTMLSelectElement>('select[aria-label="Trạng thái chi tiết"]')!;
@@ -128,15 +179,100 @@ it("keeps submitted decisions locked and renders independent human provenance", 
   mocks.board.mockResolvedValue({ ...board, items: [{ ...board.items[0], round: locked }] });
   await render(<CollaborativeLibrary projectId="p" readOnly={false} />); expect(document.body.textContent).toContain("Phù hợp · đã khóa"); expect(document.body.textContent).not.toContain("Gửi và khóa phiếu"); expect(mocks.action).not.toHaveBeenCalled();
 });
+it("keeps the edit action when my first ballot is visible but the other reviewer has not submitted", async () => {
+  const mine = { id: "mine-review", assignmentId: "mine", reviewerId: "actor", revision: 1, decision: "INCLUDE" as const, exclusionReason: "", comment: "Căn cứ đang chờ reviewer còn lại", submittedAt: "2026-11-05T01:34:00.000Z" };
+  const waiting: ScreeningRoundView = { ...round, hiddenReviews: false, myReview: mine, reviews: [mine], assignments: round.assignments.map(assignment => ({ ...assignment, completed: assignment.id === "mine" })) };
+  mocks.detail.mockResolvedValue(waiting);
+  mocks.board.mockResolvedValue({ ...board, items: [{ ...board.items[0]!, round: waiting }] });
+  await render(<CollaborativeLibrary projectId="p" readOnly={false} />);
+  await click("Sửa lựa chọn");
+  expect(document.querySelector<HTMLInputElement>('input[type="radio"][value="INCLUDE"]')?.checked).toBe(true);
+  expect([...document.querySelectorAll("textarea")].some(area => area.value === mine.comment)).toBe(true);
+});
+it.each(["INCLUDED", "EXCLUDED", "AWAITING_FINALIZATION"] as const)("shows each published ballot once, with my identity, in %s", async status => {
+  const mine = { id: "mine-review", assignmentId: "mine", reviewerId: "actor", revision: 1, decision: "INCLUDE" as const, exclusionReason: "", comment: "Căn cứ riêng của reviewer hiện tại", submittedAt: "2026-11-05T01:34:00.000Z" };
+  const peer = { ...mine, id: "peer-review", assignmentId: "peer", reviewerId: "peer", comment: "Căn cứ riêng của reviewer còn lại" };
+  const published: ScreeningRoundView = {
+    ...round, status, hiddenReviews: false, completed: 2, canReview: false, unblindedAt: mine.submittedAt,
+    assignments: round.assignments.map(assignment => ({ ...assignment, completed: true })),
+    myReview: mine, reviews: [mine, peer],
+    finalDecision: status === "AWAITING_FINALIZATION" ? null : { id: "final", version: 3, decision: status, source: "MANUAL", reason: "Kết quả của nhóm được lưu riêng", resolverId: "owner", createdAt: mine.submittedAt },
+  };
+  mocks.detail.mockResolvedValue(published);
+  mocks.board.mockResolvedValue({ ...board, items: [{ ...board.items[0]!, round: published }] });
+  await render(<CollaborativeLibrary projectId="p" readOnly={false} />);
+  expect([...document.querySelectorAll("h4")].some(heading => heading.textContent === "Phiếu của tôi")).toBe(false);
+  const ballots = [...document.querySelectorAll(".screening-team-reviews li")];
+  expect(ballots).toHaveLength(2);
+  expect(document.querySelector('[aria-label="Phiếu của bạn"]')?.textContent).toContain("TôiBạn · Phù hợp");
+  expect(document.body.textContent?.split(mine.comment)).toHaveLength(2);
+  expect(document.body.textContent?.split(peer.comment)).toHaveLength(2);
+  expect(mocks.action).not.toHaveBeenCalled();
+});
+it.each(["INCLUDED", "EXCLUDED"] as const)("shows saved discussion in the actual %s paper detail and removes AI screening", async decision => {
+  const final = { ...round, status: decision, hiddenReviews: false, completed: 2, aiVisible: true, canReview: false, myReview: { id: "r", assignmentId: "mine", reviewerId: "actor", revision: 2, decision: "INCLUDE" as const, exclusionReason: "", comment: "Căn cứ phiếu của tôi", submittedAt: new Date().toISOString() }, finalDecision: { id: "final", version: 3, decision, source: "CONSENSUS" as const, reason: "Kết quả đã chốt", resolverId: null, createdAt: new Date().toISOString() } };
+  mocks.detail.mockResolvedValue(final);
+  mocks.board.mockResolvedValue({ ...board, items: [{ ...board.items[0]!, round: final }] });
+  mocks.history.mockResolvedValue({ items: [{ id: "saved-chat", type: "DISCUSSION", actorId: "peer", actorName: "Thành viên B", createdAt: new Date().toISOString(), details: { comment: "Đã đối chiếu nguồn trong cuộc thảo luận" } }], total: 1, page: 1, pageSize: 20, hasNext: false });
+  await render(<CollaborativeLibrary projectId="p" readOnly={false} />); await settle();
+  expect(document.body.textContent).toContain("Đã đối chiếu nguồn trong cuộc thảo luận");
+  expect(document.querySelector('[data-screening-section="discussion"]')).not.toBeNull();
+  expect(document.querySelector('.paper-discussion textarea')).toBeNull();
+  expect(document.body.textContent).not.toContain('Trợ lý AI sàng lọc');
+  expect(document.body.textContent).not.toContain('Yêu cầu đề xuất AI');
+  expect(mocks.ai).not.toHaveBeenCalled(); expect(mocks.requestAi).not.toHaveBeenCalled();
+});
 it("keeps oversight separate and requires deliberate legacy reopening", async () => {
   mocks.board.mockResolvedValue({ ...board, canManage: true, items: [{ ...board.items[0], round: { ...round, legacyNeedsAudit: true } }] });
   await render(<ScreeningWorkspace projectId="p" readOnly={false} />);
-  expect(document.querySelector('input[name="review-choice"]')).toBeNull();
+  expect(document.querySelector('input[type="radio"][value="INCLUDE"]')).toBeNull();
   const start = [...document.querySelectorAll<HTMLButtonElement>("button")].find(b => b.textContent === "Mở vòng mới đã xác nhận")!;
   expect(start.disabled).toBe(true);
   const check = [...document.querySelectorAll("label")].find(l => l.textContent?.startsWith("Tạo vòng mới"))!.querySelector<HTMLInputElement>("input")!;
   await act(async () => check.click()); await click("Mở vòng mới đã xác nhận");
   expect(mocks.start).toHaveBeenCalledWith("p", expect.objectContaining({ paperIds: ["paper"], confirmRescreen: true }));
+});
+it.each([[true, false], [false, false], [true, true]])("shows legacy recovery in the Library reading modal, owner=%s readOnly=%s", async (canManage, readOnly) => {
+  // Even an old cached capability must not expose a writable ballot for a flagged round.
+  const legacy = { ...round, canManage, canReview: true, assigned: 3, completed: 2, legacyNeedsAudit: true };
+  mocks.detail.mockResolvedValue(legacy);
+  mocks.board.mockResolvedValue({ ...board, canManage, items: [{ ...board.items[0]!, round: legacy }] });
+  await render(<ReadingPaperModal projectId="p" paperId="paper" readOnly={readOnly} onClose={vi.fn()} />);
+  expect(document.querySelector('[aria-label="Rà soát vòng đánh giá cũ"]')).not.toBeNull();
+  expect(document.querySelector('input[type="radio"][value="INCLUDE"]')).toBeNull();
+  expect(document.body.textContent).toContain("Vòng này chỉ được xem");
+  const reopen = [...document.querySelectorAll<HTMLButtonElement>("button")].find(b => b.textContent === "Mở vòng mới đã xác nhận");
+  if (canManage && !readOnly) {
+    expect(reopen?.disabled).toBe(true);
+    expect(mocks.start).not.toHaveBeenCalled();
+    mocks.start.mockImplementationOnce(async () => {
+      const fresh = { ...round, id: "fresh-round", number: 2, canManage: true, canReview: false, myAssignmentId: null, assignments: [], assigned: 0, completed: 0 };
+      mocks.detail.mockResolvedValue(fresh);
+      mocks.board.mockResolvedValue({ ...board, canManage: true, items: [{ ...board.items[0]!, round: fresh }] });
+      mocks.rounds.mockResolvedValue({ items: [fresh, { ...legacy, active: false }], total: 2, page: 1, pageSize: 10, hasNext: false, legacy: null });
+      return { roundIds: [fresh.id] };
+    });
+    const checkbox = document.querySelector<HTMLInputElement>('[aria-label="Rà soát vòng đánh giá cũ"] input[type="checkbox"]')!;
+    await act(async () => checkbox.click());
+    await click("Mở vòng mới đã xác nhận");
+    expect(mocks.start).toHaveBeenCalledWith("p", expect.objectContaining({ paperIds: ["paper"], phase: "TITLE_ABSTRACT", confirmRescreen: true }));
+    expect(document.querySelector('[aria-label="Rà soát vòng đánh giá cũ"]')).toBeNull();
+    expect(document.body.textContent).toContain("Vòng 2");
+  } else {
+    expect(reopen).toBeUndefined();
+    expect(document.body.textContent).toContain("Chủ dự án cần xác nhận mở vòng mới");
+    expect(mocks.start).not.toHaveBeenCalled();
+  }
+  expect(mocks.action).not.toHaveBeenCalled();
+});
+it("keeps an in-progress draft visible but blocks sending when a round becomes legacy-audited", async () => {
+  await render(<CollaborativeLibrary projectId="p" readOnly={false} />);
+  await act(async () => document.querySelector<HTMLInputElement>('input[type="radio"][value="EXCLUDE"]')!.click());
+  await fill("Lý do loại", "Căn cứ đang viết cần được giữ");
+  await act(async () => client.setQueryData(["project-research", "actor", "p", "screening-round", "round"], { ...round, legacyNeedsAudit: true, canReview: false })); await settle();
+  expect([...document.querySelectorAll("textarea")].some(t => t.value === "Căn cứ đang viết cần được giữ")).toBe(true);
+  expect([...document.querySelectorAll<HTMLButtonElement>("button")].find(b => b.textContent === "Gửi và khóa phiếu")!.disabled).toBe(true);
+  expect(mocks.action).not.toHaveBeenCalled();
 });
 it("retains a review draft when a refreshed assignment removes submission access", async () => {
   await render(<CollaborativeLibrary projectId="p" readOnly={false} />);
@@ -187,7 +323,7 @@ it("explains submitted versus occupied slots and omits personal review forms fro
   expect(document.body.textContent).toContain("Đã có kết quả giai đoạn hiện tại: 0/1");
   expect(document.body.textContent).toContain("1/2 phiếu đã gửi · 2 chỗ có người");
   expect(document.body.textContent).not.toContain("Người chốt:");
-  expect(document.querySelector('input[name="review-choice"]')).toBeNull();
+  expect(document.querySelector('input[type="radio"][value="INCLUDE"]')).toBeNull();
 });
 it("configures one reviewer without needing a third teammate", async () => {
   mocks.configure.mockResolvedValue({ version: 2 });
@@ -212,7 +348,7 @@ it("requires the assigned finalizer to confirm and explain a final decision", as
   await click("Xác nhận và lưu lịch sử");
   expect(mocks.action).toHaveBeenCalledWith("p", "round", "finalize", expect.objectContaining({ decision: "INCLUDED", expectedVersion: 2, confirmed: true }));
   await act(async () => client.setQueryData(["project-research", "actor", "p", "screening-round", "round"], { ...ready, status: "INCLUDED", canFinalize: false, finalDecision: { id: "final", version: 3, decision: "INCLUDED", source: "MANUAL", reason: "Đã đối chiếu phạm vi và đối tượng theo tiêu chí", resolverId: "actor", createdAt: "2026-10-29T02:00:00Z" } })); await settle();
-  expect(document.body.textContent).toContain("Kết quả của vòng: Phù hợp");
+  expect(document.body.textContent).toContain("Kết quả của vòng: Được chấp nhận");
   expect(document.body.textContent).not.toContain("Quyền thao tác đã thay đổi");
   expect(document.body.textContent).not.toContain("Xác nhận và lưu lịch sử");
 });
@@ -309,4 +445,45 @@ it("requires deliberate confirmation before permitted provisional full-text adva
   const consent = [...document.querySelectorAll("label")].find(label => label.textContent?.includes("Tôi hiểu bước này"))!.querySelector<HTMLInputElement>("input")!;
   await act(async () => consent.click()); await click("Chuyển sang đọc toàn văn");
   expect(mocks.advanceConservatively).toHaveBeenCalledWith("p", "round", expect.objectContaining({ confirmed: true, expectedVersion: 2 }));
+});
+it("restores the precise historical round from a task link even when a newer round is current", async () => {
+  const historical = { ...round, id: "historical-round", number: 1, active: false, status: "INCLUDED" as const, canReview: false, extractionReady: false };
+  mocks.board.mockResolvedValue({ ...board, items: [{ ...board.items[0]!, round: { ...round, number: 2, phase: "FULL_TEXT" } }] });
+  mocks.detail.mockResolvedValue(historical);
+  await render(<ReadingPaperModal projectId="p" paperId="paper" readOnly={false} onClose={vi.fn()} />, "/projects/p?tab=papers&view=my-work&paper=paper&round=historical-round&section=history");
+  expect(mocks.detail).toHaveBeenCalledWith("p", "historical-round");
+  expect(mocks.detail.mock.calls.every(args => args[1] === "historical-round")).toBe(true);
+  expect(document.body.textContent).not.toContain("Vòng 2");
+});
+it("rejects a round deep link that belongs to a different paper", async () => {
+  mocks.board.mockResolvedValue(board);
+  mocks.detail.mockResolvedValue({ ...round, paperId: "unrelated" });
+  await render(<ReadingPaperModal projectId="p" paperId="paper" readOnly={false} onClose={vi.fn()} />, "/projects/p?tab=papers&paper=paper&round=wrong-round");
+  expect(document.querySelector('[role="alert"]')).not.toBeNull();
+  expect(document.querySelector("form")).toBeNull();
+});
+
+it("persists an explicit two-stage protocol without flattening it to a single stage", async () => {
+  mocks.configure.mockResolvedValue({ version: 2 });
+  await render(<ScreeningSettingsForm projectId="p" settings={{ ...settings, screeningMode: "TWO_STAGE", stages: ["TITLE_ABSTRACT", "FULL_TEXT"] }} />);
+  const mode = [...container.querySelectorAll("select")].find(s => s.value === "TWO_STAGE")!;
+  expect(mode).toBeDefined();
+  await fill("Tiêu chí đưa vào", "University population updated");
+  await act(async () => container.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+  await settle();
+  expect(mocks.configure).toHaveBeenCalledWith("p", expect.objectContaining({ screeningMode: "TWO_STAGE", stages: ["TITLE_ABSTRACT", "FULL_TEXT"], expectedVersion: 1 }));
+  expect(container.textContent).toContain("Vòng 2 chỉ mở khi có toàn văn");
+});
+
+it("offers an authorized waiting-fulltext action and keeps a missing-source error visible", async () => {
+  const waiting = { ...round, status: "WAITING_FULLTEXT" as const, settings: { ...settings, screeningMode: "TWO_STAGE" as const }, canResumeFullText: true, canReview: false, canManage: false };
+  mocks.detail.mockResolvedValue(waiting); mocks.board.mockResolvedValue({ ...board, items: [{ ...board.items[0], round: waiting }] });
+  mocks.resumeFullText.mockRejectedValue({ isAxiosError: true, response: { data: { error: { code: "CONFLICT", message: "Chưa có toàn văn" } } } });
+  await render(<CollaborativeLibrary projectId="p" readOnly={false} />);
+  expect(container.textContent).toContain("Chờ toàn văn");
+  expect(document.querySelector('input[type="file"]')).not.toBeNull();
+  expect(container.querySelector('input[type="radio"][value="INCLUDE"]')).toBeNull();
+  await click("Đã có toàn văn · Mở vòng 2");
+  expect(mocks.resumeFullText).toHaveBeenCalledWith("p", "round", expect.objectContaining({ expectedVersion: 2, confirmed: true }));
+  expect(document.body.textContent).toContain("Chưa có toàn văn");
 });

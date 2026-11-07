@@ -231,6 +231,25 @@ export interface AcademicIdentityLink {
   updatedAt: ISODateString;
 }
 
+export type OrcidEnvironment = "sandbox" | "production";
+
+export interface OrcidConnectionStatus {
+  configured: boolean;
+  environment: OrcidEnvironment;
+  connected: boolean;
+  link: AcademicIdentityLink | null;
+}
+
+export interface OrcidConnectStartResponse {
+  url: string;
+  state: string;
+}
+
+export interface OrcidConnectCompleteResponse {
+  link: AcademicIdentityLink;
+  returnTo: string;
+}
+
 export interface AcademicAvailability<T extends string> {
   enabled: boolean;
   types: T[];

@@ -17,7 +17,7 @@ vi.mock("@/features/submissions", () => ({
   useCreateSubmission: () => ({ mutateAsync: mocks.create, isPending: false }),
   useSubmissionHistory: mocks.historyQuery,
   useCreateSubmissionVersion: () => ({ mutateAsync: createVersion, isPending: false }),
-  useAddSubmissionRevision: () => ({ mutateAsync: mocks.addRevision, isPending: false }), useAiPreReviews: mocks.preReviews, useRunAiPreReview: () => ({}),
+  useAddSubmissionRevision: () => ({ mutateAsync: mocks.addRevision, isPending: false }), useSubmitFeedback: () => ({ mutateAsync: vi.fn(), isPending: false }), useActiveMentors: () => ({ data: [], isLoading: false }), useAiPreReviews: mocks.preReviews, useRunAiPreReview: () => ({}),
 }));
 vi.mock("@/features/projects/hooks/use-projects", () => ({ useProjects: mocks.projects, useProject: mocks.project }));
 vi.mock("@/features/submissions/components/version-history", () => ({ VersionHistory: ({ readOnly }: { readOnly: boolean }) => <div data-readonly={readOnly}>Version history</div> }));
@@ -131,7 +131,6 @@ it("waits for revision metadata before offering a PDF download", async () => {
   expect(container.textContent).not.toContain("Tải PDF");
   expect(container.textContent).not.toContain("Tải tệp PDF");
 });
-
 it("can recover from an unavailable detail without changing hook order", async () => {
   mocks.detail.mockReturnValue({ error: new Error("offline"), refetch: vi.fn() });
   await render(<SubmissionDetailPage submissionId="manuscript" />);

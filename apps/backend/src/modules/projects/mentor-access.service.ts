@@ -1,4 +1,4 @@
-import { mentorPresets, type MentorAccessPolicy, type MentorPermission, type MentorPolicyInput, type MentorResourceKind, type MentorShareInput, type MentorAccessWorkspace } from "@trend/shared-types";
+import { mentorPresets, type MentorAssignedTask, type MentorAccessPage, type MentorAccessPolicy, type MentorPermission, type MentorPolicyInput, type MentorResourceKind, type MentorShareInput, type MentorAccessWorkspace } from "@trend/shared-types";
 import type { z } from "zod";
 import type { MentorshipRequest } from "../../generated/prisma/client.js";
 import { AppError } from "../../common/exceptions/app-error.js";
@@ -85,6 +85,27 @@ export async function initializeMentorAccess(tx: WorkspaceDb, request: Mentorshi
 
 const scoped = <T>(project: string, actor: string, write: boolean, run: (c: WorkspaceContext) => Promise<T>) => withWorkspace(project, actor, { write, mentor: true, mentorScope: "SHARED_RESOURCES" }, run);
 export const mentorAccessService = {
+  async tasks(project: string, actor: string, page = 1): Promise<MentorAccessPage<MentorAssignedTask>> {
+    return scoped(project, actor, false, async c => {
+      const policies = await c.tx.mentorAccess.findMany({ where: { projectId: c.project.id, mentorUserId: c.actorId, revokedAt: null } });
+      const permissions = new Set<string>();
+      let hasEffectivePolicy = false;
+      for (const policy of policies) if (await effectiveMentorAccess(c.tx, policy)) {
+        hasEffectivePolicy = true;
+        for (const permission of policy.permissions) permissions.add(permission);
+      }
+      // A live mentorship and direct assignment permit reading one's own task.
+      // TASKS_VIEW still controls shared project resources, not this personal list.
+      if (!hasEffectivePolicy) throw AppError.notFound("Không có quyền truy cập công việc cố vấn");
+      const where = { projectId: c.project.id, assigneeId: c.actorId, deletedAt: null };
+      const [rows, total] = await Promise.all([
+        c.tx.projectTask.findMany({ where, ...paging(page), orderBy: [{ updatedAt: "desc" }, { id: "desc" }], select: { id: true, title: true, description: true, status: true, dueAt: true, blockedReason: true, targetKind: true, targetId: true } }),
+        c.tx.projectTask.count({ where }),
+      ]);
+      return pageResult(rows.map(row => ({ id: row.id, title: row.title, description: row.description, status: row.status as MentorAssignedTask["status"], dueAt: row.dueAt?.toISOString() ?? null, blockedReason: row.blockedReason,
+        submissionId: permissions.has("SUBMISSIONS_VIEW") && row.targetKind?.toLowerCase() === "submission" ? row.targetId : null })), total, page);
+    });
+  },
   async workspace(project: string, actor: string, page = 1): Promise<MentorAccessWorkspace> {
     return scoped(project, actor, false, async c => {
       const where = { projectId: c.project.id, ...(c.role ? {} : { mentorUserId: c.actorId, relationshipId: { not: null }, revokedAt: null, OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] }) };
@@ -96,7 +117,16 @@ export const mentorAccessService = {
         const invitationState = request.status === "DECLINED" ? "REJECTED" : ["CANCELLED", "CANCELED_BY_PROJECT", "CLOSED_CAPACITY_REACHED"].includes(request.status) ? "CANCELLED" : request.status as "PENDING" | "ACCEPTED" | "EXPIRED";
         policies.push({ policy: await policyDto(c.tx, row), mentorId: row.mentorUserId, mentorName: person.fullName, invitationState, shares: shares.map(s => ({ ...s, kind: s.kind as MentorResourceKind, createdAt: s.createdAt.toISOString(), revokedAt: s.revokedAt?.toISOString() ?? null })) });
       }
-      return { viewerId: c.actorId, projectId: c.project.id, title: c.project.title, canManage: c.role === "OWNER", readOnly: ["ARCHIVED", "COMPLETED"].includes(c.project.status), ...pageResult([], total, page), policies };
+      // Basic collaboration context for accepted mentors; never expose the private plan or description.
+      const members = await c.tx.projectMember.findMany({ where: { projectId: c.project.id, status: "ACTIVE" }, select: { userId: true } });
+      const people = await c.tx.user.findMany({ where: { id: { in: [...new Set([c.project.ownerId, ...members.map(m => m.userId)])] }, isActive: true, accountStatus: "ACTIVE" }, select: { id: true, fullName: true }, orderBy: [{ fullName: "asc" }, { id: "asc" }] });
+      const basics: NonNullable<MentorAccessWorkspace["basics"]> = {
+        summary: c.project.mentorshipSummary || c.project.publicSummary || null,
+        researchField: c.project.researchField,
+        status: c.project.status,
+        team: people.map(p => ({ id: p.id, name: p.fullName, role: p.id === c.project.ownerId ? "OWNER" : "MEMBER" })),
+      };
+      return { viewerId: c.actorId, projectId: c.project.id, title: c.project.title, basics, canManage: c.role === "OWNER", readOnly: ["ARCHIVED", "COMPLETED"].includes(c.project.status), ...pageResult([], total, page), policies };
     });
   },
   async resource(project: string, actor: string, id: string, shareId: string) {

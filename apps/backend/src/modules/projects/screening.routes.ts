@@ -12,6 +12,7 @@ const ai = createRateLimiter("projects:screening-v2-ai", { windowMs: 3600000, li
 screeningRouter.use((_r, res, next) => { res.set("Cache-Control", "private, no-store"); next(); });
 screeningRouter.get("/config", base, c.config);
 screeningRouter.get("/adjudications", base, c.adjudicationTasks);
+screeningRouter.get("/automatic-tasks", base, c.automaticTasks);
 screeningRouter.put("/config", writes, base, validate(s.screeningConfigSchema), c.configure);
 screeningRouter.get("/papers", base, validate(s.screeningPageSchema, "query"), c.board);
 screeningRouter.post("/rounds", writes, base, validate(s.screeningStartSchema), c.start);
@@ -49,6 +50,7 @@ screeningRouter.post("/rounds/:roundId/request-adjudication", writes, round, val
 screeningRouter.post("/rounds/:roundId/reassess", writes, round, validate(s.screeningReassessSchema), c.reassess);
 
 screeningRouter.post("/rounds/:roundId/advance-full-text", writes, round, validate(s.screeningActionSchema), c.advanceConservatively);
+screeningRouter.post("/rounds/:roundId/resume-full-text", writes, round, validate(s.screeningActionSchema), c.resumeFullText);
 screeningRouter.get("/workspace-summary", base, c.workspaceSummary);
 screeningRouter.post("/rounds/:roundId/claim", writes, round, validate(s.screeningClaimSchema), c.claim);
 screeningRouter.post("/rounds/:roundId/release", writes, round, validate(s.screeningReleaseSchema), c.release);

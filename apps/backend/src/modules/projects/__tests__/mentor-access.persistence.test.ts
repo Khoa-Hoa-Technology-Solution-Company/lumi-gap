@@ -97,6 +97,69 @@ describe.skipIf(!enabled).sequential("mentor consent and resource access on Post
     await expect(consent.settings(f.id, f.mentor)).rejects.toMatchObject({ statusCode: 403 });
     await expect(service.catalog(f.id, f.mentor, { page: 1, q: "", kind: "MANUSCRIPT" })).rejects.toMatchObject({ statusCode: 404 });
   });
+  it("provides accepted mentors basic context and the active team while keeping internal data private", async () => {
+    const f = await fixture();
+    const departed = await user("Departed teammate");
+    await db.projectMember.create({ data: { projectId: f.id, userId: departed, status: "LEFT" } });
+    const view = await service.workspace(f.id, f.mentor);
+    expect(view.basics).toMatchObject({ summary: "Published research abstract about evaluation methods and study design", status: "ACTIVE" });
+    expect(view.basics!.team.map(p => p.id).sort()).toEqual([f.owner, f.member].sort());
+    expect(view.basics!.team.find(p => p.id === f.owner)?.role).toBe("OWNER");
+    for (const person of view.basics!.team) expect(Object.keys(person).sort()).toEqual(["id", "name", "role"]);
+    expect(JSON.stringify(view)).not.toContain("PRIVATE-TEAM-DESCRIPTION");
+    expect(JSON.stringify(view)).not.toContain("@example");
+    await expect(service.workspace(f.id, f.outsider)).rejects.toMatchObject({ statusCode: 404 });
+    await revoke(f);
+    await expect(service.workspace(f.id, f.mentor)).rejects.toMatchObject({ statusCode: 404 });
+  });
+  it("lists only the signed-in mentor's assigned tasks within the current project and effective policy", async () => {
+    const f = await fixture(), other = await fixture();
+    const create = (projectId: string, assigneeId: string | null, title: string, deletedAt: Date | null = null) => db.projectTask.create({ data: { projectId, assigneeId, title, createdById: f.owner, clientKey: randomUUID(), deletedAt } });
+    const mine = await create(f.id, f.mentor, "My assigned task");
+    await create(f.id, f.member, "Team task, private");
+    await create(f.id, null, "Unassigned task, private");
+    await create(f.id, f.mentor, "Deleted task", new Date());
+    await create(other.id, f.mentor, "Other project task");
+    const legacyId = randomUUID().replaceAll("-", "").slice(0, 24);
+    await db.project.update({ where: { id: f.id }, data: { legacyMongoId: legacyId } });
+    for (const projectId of [f.id, legacyId]) {
+      const page = await service.tasks(projectId, f.mentor);
+      expect(page.total).toBe(1);
+      expect(page.items.map(task => task.id)).toEqual([mine.id]);
+      expect(JSON.stringify(page)).not.toContain("private");
+    }
+    await expect(service.tasks(f.id, f.outsider)).rejects.toMatchObject({ statusCode: 404 });
+    await expect(service.tasks(other.id, f.mentor)).rejects.toMatchObject({ statusCode: 404 });
+    await configure(f, { ...advisor(), permissions: ["MENTOR_CHAT"] });
+    expect((await service.tasks(f.id, f.mentor)).items.map(task => task.id)).toEqual([mine.id]);
+    await revoke(f);
+    await expect(service.tasks(f.id, f.mentor)).rejects.toMatchObject({ statusCode: 404 });
+  });
+  it("opens one relationship conversation for the mentor and every active team member without creating project membership", async () => {
+    const f = await fixture();
+    for (const [actor, body] of [[f.mentor, "Mentor guidance"], [f.owner, "Owner reply"], [f.member, "Member follow-up"]]) {
+      await service.comment(f.id, actor!, f.access.id, message({ body, creditRoles: [] }));
+    }
+    for (const actor of [f.mentor, f.owner, f.member]) {
+      expect((await service.feedback(f.id, actor, f.access.id)).items.map(i => i.body).sort()).toEqual(["Mentor guidance", "Owner reply", "Member follow-up"].sort());
+    }
+    const other = await fixture();
+    await expect(service.feedback(f.id, other.mentor, f.access.id)).rejects.toMatchObject({ statusCode: 404 });
+    await db.projectMember.update({ where: { projectId_userId: { projectId: f.id, userId: f.member } }, data: { status: "LEFT" } });
+    await expect(service.comment(f.id, f.member, f.access.id, message())).rejects.toMatchObject({ statusCode: 404 });
+    expect(await db.projectMember.count({ where: { projectId: f.id, userId: f.mentor } })).toBe(0);
+  });
+  it("uses the same persisted mentor chat through canonical and legacy project URLs", async () => {
+    const f = await fixture(), legacyId = randomUUID().replaceAll("-", "").slice(0, 24);
+    await db.project.update({ where: { id: f.id }, data: { legacyMongoId: legacyId } });
+    const fromMember = await service.comment(legacyId, f.member, f.access.id, message({ body: "Team message from legacy project URL", creditRoles: [] }));
+    const fromMentor = await service.comment(f.id, f.mentor, f.access.id, message({ body: "Mentor response from canonical project URL", replyToId: fromMember.id, creditRoles: [] }));
+    const mentorView = await service.feedback(f.id, f.mentor, f.access.id);
+    const memberView = await service.feedback(legacyId, f.member, f.access.id);
+    expect(mentorView.items.map(item => item.id)).toEqual(memberView.items.map(item => item.id));
+    expect(mentorView.items.find(item => item.id === fromMentor.id)?.replyToId).toBe(fromMember.id);
+    expect((await service.workspace(legacyId, f.mentor)).policies[0]?.policy.id).toBe(f.access.id);
+  });
   it("supports mentor-origin offers without allowing self-granted permissions", async () => {
     const f = await fixture({ pending: true, offer: true });
     await expect(consent.accept(f.id, f.request.id, f.mentor)).rejects.toMatchObject({ statusCode: 403 });
@@ -307,12 +370,20 @@ describe.skipIf(!enabled).sequential("mentor consent and resource access on Post
       expect(JSON.stringify(invitation)).not.toContain("PRIVATE-TEAM-DESCRIPTION");
       expect((await fetch(detailUrl.replace(f.request.id, "invalid"), { headers })).status).toBe(400);
       expect((await fetch(base)).status).toBe(401);
+        expect((await fetch(`${base}/tasks`)).status).toBe(401);
+        expect((await fetch(`${base}/tasks?page=0`, { headers })).status).toBe(400);
+        expect((await fetch(`${base}/tasks?assigneeId=${f.member}`, { headers })).status).toBe(400);
+        const taskResponse = await fetch(`${base}/tasks`, { headers });
+        expect(taskResponse.status).toBe(200);
+        expect(taskResponse.headers.get("cache-control")).toBe("private, no-store");
+        expect((await taskResponse.json()).data.items).toEqual([]);
       const response = await fetch(base, { headers }); expect(response.status).toBe(200); expect(response.headers.get("cache-control")).toContain("no-store");
       expect(JSON.stringify(await response.json())).not.toContain("PRIVATE-TEAM");
       expect((await fetch(`${base}/catalog`, { headers })).status).toBe(404);
       expect((await fetch(`${base}/${f.access.id}`, { method: "PUT", headers, body: JSON.stringify({ ...advisor(), expectedVersion: (await policy(f)).version, reason: "Self grant" }) })).status).toBe(403);
       expect((await fetch(`${base}/${f.access.id}/feedback`, { method: "POST", headers, body: JSON.stringify({ ...message(), administrator: true }) })).status).toBe(400);
-      await revoke(f); expect((await fetch(base, { headers })).status).toBe(404);
+        await revoke(f); expect((await fetch(base, { headers })).status).toBe(404);
+        expect((await fetch(`${base}/tasks`, { headers })).status).toBe(404);
     } finally { server.close(); server.closeAllConnections(); }
   });
   it("backfills old consent without auto-sharing, preserving old relationships and immutable history", async () => {

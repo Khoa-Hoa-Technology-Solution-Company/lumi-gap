@@ -1,4 +1,4 @@
-import { screeningStatusLabel } from "./screening-common";
+import { ScreeningStatus } from "./screening-common";
 import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import { BookOpen, Plus, Search, ArrowRight, SlidersHorizontal, ArrowUpDown, X, Filter, RotateCcw, LayoutGrid, List } from "lucide-react";
@@ -12,12 +12,11 @@ import { useResearchResource } from "../hooks/use-project-research";
 import { canLeaveWorkspace, useUnsavedWorkspace, WorkspaceLoading } from "./workspace-common";
 import { ScreeningError, ScreeningPager, screeningMetadataWarning, useScreeningCommand, choiceLabels } from "./screening-common";
 import { ScreeningPaperDetail } from "./screening-round";
-import { LibraryRelatedPapers } from "./library-related-papers";
 import { PaperNotesDialog } from "./paper-notes-dialog";
 import "../screening.css";
 import "../collaborative-library.css";
 
-const states: Record<string, string> = { NOT_REVIEWED: "Chờ đánh giá", IN_REVIEW: "Đang đánh giá", NEEDS_RESOLUTION: "Có bất đồng", NEEDS_MORE_INFO: "Cần xem xét thêm", ADJUDICATING: "Đang phân xử", AWAITING_FINALIZATION: "Chờ quyết định", INCLUDED: "Đã chọn", BACKGROUND: "Tài liệu nền", EXCLUDED: "Đã loại" };
+const states: Record<string, string> = { WAITING_FULLTEXT: "Chờ toàn văn", NOT_REVIEWED: "Chờ đánh giá", IN_REVIEW: "Đang đánh giá", NEEDS_RESOLUTION: "Có bất đồng", NEEDS_MORE_INFO: "Cần xem xét thêm", ADJUDICATING: "Đang phân xử", AWAITING_FINALIZATION: "Chờ quyết định", INCLUDED: "Đã chọn", BACKGROUND: "Tài liệu nền", EXCLUDED: "Đã loại" };
 
 export function CollaborativeLibrary({ projectId, readOnly, onAdd }: { projectId: string; readOnly: boolean; onAdd?: () => void }) {
   const [params, setParams] = useSearchParams();
@@ -105,8 +104,6 @@ export function CollaborativeLibrary({ projectId, readOnly, onAdd }: { projectId
     setPage(1);
   };
   const [selected, setSelected] = useState<Map<string, string>>(new Map()), [makingSet, setMakingSet] = useState(false);
-  const [setsPage, setSetsPage] = useState(1), [showSets, setShowSets] = useState(false);
-  const sets = useResearchResource(projectId, ["analysis-sets", setsPage], () => screeningApi.sets(projectId, setsPage), showSets);
   const move = async (next: URLSearchParams) => { if (await canLeaveWorkspace()) setParams(next); };
   const open = (id: string | null) => { const next = new URLSearchParams(params); if (id) next.set("source", id); else next.delete("source"); void move(next); };
   const analyzeSet = (id: string, saved = false) => { const next = new URLSearchParams(params); next.set("tab", "gaps"); next.set("analysisSet", id); next.delete("source"); next.delete("view"); if (saved) setParams(next); else void move(next); };
@@ -375,9 +372,7 @@ export function CollaborativeLibrary({ projectId, readOnly, onAdd }: { projectId
                 </div>
 
                 <div className="library-paper-header-right">
-                  <span className="library-selection-state" data-state={round?.status ?? "NOT_REVIEWED"}>
-                    {screeningStatusLabel(round?.status ?? "NOT_REVIEWED", round)}
-                  </span>
+                  <ScreeningStatus className="library-selection-state" status={round?.status ?? "NOT_REVIEWED"} round={round} />
                 </div>
               </header>
 
@@ -455,7 +450,6 @@ export function CollaborativeLibrary({ projectId, readOnly, onAdd }: { projectId
       {board && board.total > 0 && <ScreeningPager page={page} total={board.total} hasNext={board.hasNext} onPage={setPage} />}
     </>}
     {selected.size > 0 && !readOnly && <div className="library-selection-bar" role="region" aria-label="Bộ bài đang chọn"><span><strong>{selected.size}/10</strong> bài trong bộ phân tích</span><Button variant="ghost" size="sm" onClick={() => setSelected(new Map())}>Bỏ chọn</Button><Button disabled={selected.size < 2} onClick={() => setMakingSet(true)}>Đưa vào phân tích<ArrowRight size={14} /></Button><small>Cần 2–10 bài. Có thể tạo bộ nháp trước khi chốt.</small></div>}
-    <details onToggle={e => setShowSets(e.currentTarget.open)} className="library-sets"><summary>Các bộ bài phân tích đã lưu</summary>{sets.isLoading ? <WorkspaceLoading /> : sets.isError ? <ScreeningError error={sets.error} retry={() => void sets.refetch()} /> : <>{sets.data?.items.map(s => <div key={s.id}><span><strong>{s.mode === "DRAFT" ? "Nháp" : "Chính thức"} · {s.sources.length} bài</strong><small>{s.topic} · {new Date(s.createdAt).toLocaleString("vi-VN")}</small></span><Button size="sm" variant="outline" onClick={() => analyzeSet(s.id)}>Mở bộ bài</Button></div>)}{sets.data && !sets.data.total && <p>Chưa tạo bộ bài. Đánh dấu từ hai bài trong thư viện để bắt đầu.</p>}{sets.data && sets.data.total > 20 && <ScreeningPager page={setsPage} total={sets.data.total} hasNext={sets.data.hasNext} onPage={setSetsPage} />}</>}</details>
     {focusId && <Dialog open onOpenChange={v => { if (!v) open(null); }}><DialogContent closeLabel="Đóng" className="screening-workspace library-paper-dialog" data-no-i18n onOpenAutoFocus={e => e.preventDefault()}>
       <div className="library-dialog-header">
         <DialogTitle>Đọc và đánh giá tài liệu</DialogTitle>
@@ -471,7 +465,7 @@ export function CollaborativeLibrary({ projectId, readOnly, onAdd }: { projectId
           <Button size="sm" variant="outline" disabled={navigating || position < 0 || (position === (board?.items.length ?? 0) - 1 && !board?.hasNext)} onClick={() => void navigatePaper(1)}>Bài tiếp →</Button>
         </nav>
         <ScreeningError error={navigationError} />
-        <ScreeningPaperDetail settings={board?.settings} collaborative={board?.settings.reviewMode === "COLLABORATIVE"} key={`detail-${focused.paperId}`} projectId={projectId} paper={focused} people={board?.people ?? []} readOnly={readOnly} relatedSection={<LibraryRelatedPapers key={`related-${focused.paperId}`} projectId={projectId} paperId={focused.paperId} readOnly={readOnly} />} />
+        <ScreeningPaperDetail settings={board?.settings} collaborative={board?.settings.reviewMode === "COLLABORATIVE"} key={`detail-${focused.paperId}`} projectId={projectId} paper={focused} people={board?.people ?? []} readOnly={readOnly} />
         <footer className="library-dialog-footer">
           <div className="screening-actions">
             <Button size="sm" variant="outline" onClick={() => setNotesPaper(focused)}>Ghi chú tài liệu</Button>

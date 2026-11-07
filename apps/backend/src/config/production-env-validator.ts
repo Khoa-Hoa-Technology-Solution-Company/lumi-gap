@@ -103,6 +103,19 @@ export function validateProductionEnvironment(values: ProductionEnvironment): st
     errors.push("GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are required for production sign-in");
   }
 
+  const hasAnyOrcidConfig = !isMissing(values.ORCID_CLIENT_ID) || !isMissing(values.ORCID_CLIENT_SECRET) || !isMissing(values.ORCID_REDIRECT_URI);
+  if (hasAnyOrcidConfig) {
+    if (isMissing(values.ORCID_CLIENT_ID) || isMissing(values.ORCID_CLIENT_SECRET) || isMissing(values.ORCID_REDIRECT_URI)) {
+      errors.push("ORCID_CLIENT_ID, ORCID_CLIENT_SECRET, and ORCID_REDIRECT_URI must all be provided when ORCID OAuth is enabled");
+    }
+    if (!isMissing(values.ORCID_REDIRECT_URI) && !isHttpsUrl(values.ORCID_REDIRECT_URI)) {
+      errors.push("ORCID_REDIRECT_URI must be an HTTPS URL in production");
+    }
+  }
+  if (!isMissing(values.ORCID_BASE_URL) && values.ORCID_BASE_URL !== "https://orcid.org" && values.ORCID_BASE_URL !== "https://sandbox.orcid.org") {
+    errors.push("ORCID_BASE_URL must be https://orcid.org or https://sandbox.orcid.org");
+  }
+
   if (values.STORAGE_PROVIDER === "r2") {
     for (const key of R2_KEYS) {
       if (isMissing(values[key])) errors.push(`${key} is required when STORAGE_PROVIDER=r2`);

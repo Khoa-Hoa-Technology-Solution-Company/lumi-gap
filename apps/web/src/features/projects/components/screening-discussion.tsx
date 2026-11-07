@@ -11,6 +11,7 @@ import { ProjectChatComposer, ProjectChatMessage } from "./project-chat-primitiv
 import "../project-chat.css";
 import { screeningActorId, ScreeningError, useScreeningCommand } from "./screening-common";
 import { useUnsavedWorkspace } from "./workspace-common";
+import { useReadScreeningDiscussion } from "../hooks/use-screening-discussion-unread";
 
 export function useScreeningDiscussion(projectId: string, round: ScreeningRoundView, visible: boolean) {
   const actorId = useAuthStore(state => state.user?.id);
@@ -20,7 +21,7 @@ export function useScreeningDiscussion(projectId: string, round: ScreeningRoundV
     initialPageParam: 1,
     getNextPageParam: page => page.hasNext ? page.page + 1 : undefined,
     enabled: Boolean(actorId && projectId && round.id && visible),
-    refetchInterval: visible && round.active ? 2500 : false,
+    refetchInterval: visible && round.active && !round.finalDecision ? 2500 : false,
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: "always",
     refetchOnReconnect: "always",
@@ -42,11 +43,12 @@ export function ScreeningDiscussion({ projectId, round, people, readOnly, query,
 
   // Events are invalidation hints only. Authorized history remains the source of content.
   useEffect(() => {
-    if (!visible || !round.active || !publicActorId || typeof screeningApi.streamEvents !== "function") return;
+    if (!visible || !round.active || round.finalDecision || !publicActorId || typeof screeningApi.streamEvents !== "function") return;
     const controller = new AbortController();
     let reconnectTimer: number | undefined;
     let cancelled = false;
     const refresh = () => {
+      void queryClient.invalidateQueries({ queryKey: ["notifications", publicActorId] });
       void queryClient.invalidateQueries({ queryKey: ["project-research", publicActorId, projectId, "screening-discussion", round.id] });
       void queryClient.invalidateQueries({ queryKey: ["project-research", publicActorId, projectId, "screening-history", round.id] });
       void queryClient.invalidateQueries({ queryKey: ["project-research", publicActorId, projectId, "screening-round", round.id] });
@@ -65,13 +67,16 @@ export function ScreeningDiscussion({ projectId, round, people, readOnly, query,
     };
     connect();
     return () => { cancelled = true; controller.abort(); setLive(false); if (reconnectTimer) window.clearTimeout(reconnectTimer); };
-  }, [visible, round.active, round.id, projectId, publicActorId, queryClient]);
+  }, [visible, round.active, round.finalDecision, round.id, projectId, publicActorId, queryClient]);
 
   const messages = useMemo(() => {
     const unique = new Map(query.data?.pages.flatMap(page => page.items).map(item => [item.id, item]));
     return [...unique.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
   }, [query.data]);
   const { containerRef, atBottom, hasNewMessages, onScroll, jumpToLatest } = useChatScroll(messages.at(-1)?.id);
+  useReadScreeningDiscussion(round.id, messages.map(message => message.id), visible && atBottom && !round.hiddenReviews && !query.isLoading && !query.isError);
+  // A kept-mounted tab has no layout while hidden. Reposition only followers on reveal.
+  useLayoutEffect(() => { if (visible && atBottom) jumpToLatest(); }, [visible]);
   useLayoutEffect(() => {
     if (query.isFetchingNextPage || !olderAnchor.current || !containerRef.current) return;
     const anchor = olderAnchor.current;
@@ -91,8 +96,10 @@ export function ScreeningDiscussion({ projectId, round, people, readOnly, query,
   };
   return <div className="screening-discussion project-chat-surface">
     <div className="screening-discussion-context">
-      <span>Đối chiếu tiêu chí và căn cứ đánh giá</span>
-      <span role="status">{query.isError ? "Chưa cập nhật được trao đổi" : live ? "Đang kết nối trực tiếp" : "Cập nhật tự động"}</span>
+      <h4>Trao đổi ({query.data?.pages[0]?.total ?? 0})</h4>
+      <span role="status" className="screening-discussion-connection" data-live={live && !query.isError && !round.finalDecision}>
+        <i aria-hidden="true" />{query.isError ? "Chưa cập nhật được" : round.finalDecision ? "Đã lưu trao đổi" : live ? "Trực tiếp" : "Cập nhật tự động"}
+      </span>
     </div>
     <div className="project-chat-body">
       <div className="project-chat-feed-region">
@@ -122,8 +129,8 @@ export function ScreeningDiscussion({ projectId, round, people, readOnly, query,
       {query.isError && query.data && <ScreeningError error={query.error} retry={() => void query.refetch()} />}
       <ScreeningError error={command.error} />
       {canCompose ? <ProjectChatComposer value={draft} onChange={value => { setDraft(value); if (command.isError) command.reset(); }} onSend={() => void submit()} textareaRef={textareaRef} minLength={3}
-        disabled={query.isError || query.isLoading} pending={command.isPending} label="Tin nhắn trao đổi về bài báo" placeholder="Nêu tiêu chí hoặc căn cứ bạn muốn đối chiếu..." sendLabel="Gửi" keyboardHint="Enter để gửi · Shift+Enter để xuống dòng" mobileHint="Trao đổi về bài báo" /> :
-        <p className="screening-discussion-readonly">{round.adjudicationCase ? "Hồ sơ phân xử đã mở. Mỗi Reviewer bổ sung ý kiến riêng trong hồ sơ." : round.hiddenReviews ? "Trao đổi mở sau khi công bố phiếu đánh giá." : "Bạn đang xem lịch sử trao đổi."}</p>}
+        disabled={query.isError || query.isLoading} pending={command.isPending} label="Tin nhắn trao đổi về bài báo" placeholder="Nhập trao đổi hoặc căn cứ…" sendLabel="Gửi" keyboardHint="Enter để gửi · Shift+Enter để xuống dòng" mobileHint="Trao đổi về bài báo" /> :
+        <p className="screening-discussion-readonly">{round.finalDecision ? "Vòng đánh giá đã kết thúc. Bạn có thể xem lại cuộc trao đổi giữa hai reviewer." : round.adjudicationCase ? "Hồ sơ phân xử đã mở. Mỗi Reviewer bổ sung ý kiến riêng trong hồ sơ." : round.hiddenReviews ? "Trao đổi mở sau khi công bố phiếu đánh giá." : "Bạn đang xem lịch sử trao đổi."}</p>}
     </div>
   </div>;
 }

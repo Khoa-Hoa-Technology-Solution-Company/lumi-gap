@@ -28,6 +28,15 @@ async function render(node: ReactNode) { await act(async () => root.render(<Quer
 async function click(text: string) { const button = [...host.querySelectorAll("button")].find(button => button.textContent === text)!; expect(button).toBeDefined(); await act(async () => button.click()); await settle(); }
 async function fill(label: string, value: string) { const input = [...host.querySelectorAll("label")].find(node => node.textContent?.startsWith(label))?.querySelector("input,textarea") as HTMLInputElement | HTMLTextAreaElement; expect(input).toBeDefined(); await act(async () => { Object.getOwnPropertyDescriptor(input instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype, "value")!.set!.call(input, value); input.dispatchEvent(new Event("input", { bubbles: true })); }); }
 async function submit() { await act(async () => { host.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); }); await settle(); }
+async function fillAllocationShares() {
+  // Allocation now records a share for each contribution category.
+  const inputs = [...host.querySelectorAll<HTMLInputElement>('input[aria-label$=" share: Writer"]')];
+  expect(inputs).toHaveLength(4);
+  for (const input of inputs) await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, '100');
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+}
 
 it("retries unchanged workspace comments with one receipt, then creates a new receipt after editing", async () => {
   const send = vi.fn().mockRejectedValue(new Error("Lost reply"));
@@ -71,7 +80,7 @@ it("keeps allocation period retries stable until content changes and protects Ca
 });
 it("binds allocation proposal receipts to the exact shares and rationale", async () => {
   mocks.periods.mockResolvedValue([{ id: "period", title: "Writing", scope: "Writing work", roster: [{ id: "me", name: "Writer", reasons: [] }], historyIncomplete: false }]); mocks.draft.mockRejectedValue(new Error("Response lost"));
-  await render(<ContributionAllocationPanel projectId="p" isOwner readOnly={false} />); await settle(); await click("Create allocation draft"); await fill("Proposed percentage", "100"); await fill("Proposal rationale", "A proposal for all documented work"); await submit(); await submit();
+  await render(<ContributionAllocationPanel projectId="p" isOwner readOnly={false} />); await settle(); await click("Create allocation draft"); await fillAllocationShares(); await fill("Proposal rationale", "A proposal for all documented work"); await submit(); await submit();
   expect(mocks.draft.mock.calls[1]?.[2].clientKey).toBe(mocks.draft.mock.calls[0]?.[2].clientKey);
   await fill("Proposal rationale", "An updated proposal for all documented work"); await submit(); expect(mocks.draft.mock.calls[2]?.[2].clientKey).not.toBe(mocks.draft.mock.calls[0]?.[2].clientKey);
 });
@@ -99,7 +108,7 @@ it("retains a period draft and prevents saving after ownership is lost", async (
 it("retains a proposal draft and prevents saving when the project is archived", async () => {
   mocks.periods.mockResolvedValue([{ id: "period", title: "Writing", scope: "Writing work", roster: [{ id: "me", name: "Writer", reasons: [] }], historyIncomplete: false }]);
   await render(<ContributionAllocationPanel projectId="p" isOwner readOnly={false} />); await settle();
-  await click("Create allocation draft"); await fill("Proposed percentage", "100"); await fill("Proposal rationale", "Retained proposal for documented work");
+  await click("Create allocation draft"); await fillAllocationShares(); await fill("Proposal rationale", "Retained proposal for documented work");
   await render(<ContributionAllocationPanel projectId="p" isOwner readOnly />);
   expect(host.querySelector<HTMLTextAreaElement>('textarea[rows="4"]')?.value).toBe("Retained proposal for documented work");
   expect(host.querySelector<HTMLFieldSetElement>(".contribution-editor-fields")?.disabled).toBe(true);

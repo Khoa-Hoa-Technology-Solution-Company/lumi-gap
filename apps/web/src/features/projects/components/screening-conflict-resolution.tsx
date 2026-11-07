@@ -1,8 +1,11 @@
+import { ScreeningStatusBadge } from "./screening-status-badge";
+import { ScreeningDecisionChoices, screeningReviewOptions } from "./screening-decision-choices";
+import { screeningChoiceTone } from "../screening-status";
 import { RoundHistory } from "./screening-round-history";
+import { useScreeningDiscussionUnread } from "../hooks/use-screening-discussion-unread";
 import { ScreeningCaseStatus } from "./screening-case-status";
-import { caseStatusLabels } from "./screening-case-controls";
 import { useUnsavedWorkspace } from "./workspace-common";
-import React, { useState } from "react";
+import React, { useEffect, useId, useState } from "react";
 import type { ScreeningRoundView, ScreeningPaperRow, WorkspacePerson, ScreeningChoice } from "@trend/shared-types";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
@@ -10,7 +13,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { screeningApi } from "../api/screening.api";
 import { useAuthStore } from "@/stores/auth-store";
 import { screeningActorId, useScreeningCommand, ScreeningError } from "./screening-common";
-import { CheckCircle2, XCircle, HelpCircle, Scale, Edit3, Users, Clock, FileText, Info } from "lucide-react";
+import "../screening-review-workspace.css";
+import { CheckCircle2, XCircle, HelpCircle, Scale, Edit3, Info } from "lucide-react";
 
 const choiceLabels: Record<ScreeningChoice, string> = {
   INCLUDE: "Phù hợp",
@@ -24,13 +28,18 @@ interface ConflictResolutionProps {
   paper?: ScreeningPaperRow | null;
   people: WorkspacePerson[];
   readOnly: boolean;
+  discussionRequested?: boolean;
 }
 
-export function ScreeningConflictResolution({ projectId, round, paper, people, readOnly }: ConflictResolutionProps) {
+export function ScreeningConflictResolution({ projectId, round, paper, people, readOnly, discussionRequested = false }: ConflictResolutionProps) {
   const publicActorId = useAuthStore(state => state.user?.id);
   const currentUserId = screeningActorId(round, publicActorId);
   const queryClient = useQueryClient();
   const command = useScreeningCommand(projectId);
+  const [activeTab, setActiveTab] = useState<"ballots" | "discussion">(discussionRequested ? "discussion" : "ballots");
+  const workspaceId = useId();
+  const unreadDiscussion = useScreeningDiscussionUnread(round.id, !round.hiddenReviews);
+  useEffect(() => { if (discussionRequested) setActiveTab("discussion"); }, [discussionRequested]);
 
   // Modals state
   const [isReassessOpen, setIsReassessOpen] = useState(false);
@@ -39,10 +48,11 @@ export function ScreeningConflictResolution({ projectId, round, paper, people, r
   // Reassess form state
   const myCurrentReview = round.myReview;
   const myReview = round.myReview ?? round.reviews.find(r => r.reviewerId === currentUserId);
-  const [newDecision, setNewDecision] = useState<ScreeningChoice>(myCurrentReview?.decision ?? "INCLUDE");
+  const [newDecision, setNewDecision] = useState<ScreeningChoice | "">("");
   const [reassessReason, setReassessReason] = useState("");
   const [exclusionReason, setExclusionReason] = useState(myCurrentReview?.exclusionReason ?? "");
   const [comment, setComment] = useState("");
+  const [fullTextReference, setFullTextReference] = useState("");
 
   // Adjudication form state
   const [adjudicateReason, setAdjudicateReason] = useState("");
@@ -53,24 +63,33 @@ export function ScreeningConflictResolution({ projectId, round, paper, people, r
   const isReviewerOnRound = Boolean(round.myAssignmentId && round.myReview);
   const isAdjudicating = round.adjudicationCase ? ["IN_PROGRESS", "ASSIGNED"].includes(round.adjudicationCase.status) : round.status === "ADJUDICATING";
   const isWaitingAdjudicator = round.adjudicationCase?.status === "WAITING_ASSIGNMENT";
+  const needsClarification = round.classification === "NEEDS_CLARIFICATION" || round.classification === "NEEDS_MORE_INFORMATION";
+  const reasonMismatch = round.classification === "EXCLUSION_REASON_MISMATCH";
+  const issueTitle = needsClarification ? "Làm rõ thông tin" : reasonMismatch ? "Thống nhất lý do loại" : "Giải quyết bất đồng";
+  const issueDescription = needsClarification
+    ? "Đối chiếu nguồn và trao đổi trước khi cập nhật phiếu."
+    : reasonMismatch ? "Hai reviewer chọn loại nhưng chưa thống nhất tiêu chí loại. Đối chiếu nguồn và cập nhật căn cứ hoặc nhờ phân xử."
+    : "Hai phiếu đang khác kết luận. Trao đổi để đối chiếu tiêu chí và căn cứ đánh giá.";
 
-  // Check if reassessing to newDecision would create immediate consensus
-  const otherReview = round.reviews.find(r => r.reviewerId !== currentUserId);
-  const wouldResolveAgreement = otherReview && otherReview.decision === newDecision && (newDecision === "INCLUDE" || (newDecision === "EXCLUDE" && (!round.settings.exclusionCriteria?.length || exclusionReason)));
+  const otherReview = round.hiddenReviews ? undefined : round.reviews.find(r => r.reviewerId !== currentUserId);
 
-  useUnsavedWorkspace(Boolean(reassessReason || comment || adjudicateReason) || command.isPending);
+  useUnsavedWorkspace(Boolean(reassessReason || comment || adjudicateReason || isReassessOpen && fullTextReference !== (myReview?.fullTextReference ?? "")) || command.isPending);
 
   // Submit reassessment
   const handleReassessSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (reassessReason.trim().length < 5 || command.isPending || readOnly) return;
+    if (!newDecision || !round.settings.screeningMode && newDecision === myReview?.decision || !round.canReassess || !round.active || round.finalDecision || reassessReason.trim().length < 5 || command.isPending || readOnly) return;
     if (newDecision === "EXCLUDE" && round.settings.exclusionCriteria?.length && !exclusionReason.trim()) return;
+    if (round.phase === "FULL_TEXT" && fullTextReference.trim().length < 10) return;
 
     const payload = {
       decision: newDecision,
       reason: reassessReason.trim(),
       exclusionReason: newDecision === "EXCLUDE" ? exclusionReason.trim() : "",
       comment: comment.trim(),
+      scope: round.phase,
+      ...(round.phase === "FULL_TEXT" ? { fullTextReference: fullTextReference.trim() } : {}),
+      researchQuestionIds: myReview?.researchQuestions?.map(question => question.id) ?? [],
       expectedRevision: round.version,
       confirmed: true,
     };
@@ -112,140 +131,14 @@ export function ScreeningConflictResolution({ projectId, round, paper, people, r
   };
 
   return (
-    <div className="screening-conflict-container space-y-5">
-      {/* Main Screen Header: Compact, clean, non-redundant */}
-      <div className="screening-conflict-header rounded-xl border border-amber-200/80 bg-amber-50/60 px-3.5 py-2.5 dark:border-amber-900/40 dark:bg-amber-950/20">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="rounded-lg bg-amber-100 p-1.5 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300 shrink-0">
-              <Scale size={16} />
-            </div>
-            <div className="min-w-0 text-xs">
-              <span className="font-bold text-foreground">Giải quyết bất đồng: </span>
-              <span className="text-muted-foreground">
-                {round.adjudicationCase
-                  ? "Hồ sơ đã mở. Reviewer bổ sung quan điểm riêng và theo dõi phân xử."
-                  : "Có bất đồng kết luận giữa 2 reviewer. Bạn có thể trao đổi thảo luận, sửa phiếu hoặc nhờ phân xử."}
-              </span>
-            </div>
-          </div>
-          {round.adjudicationCase ? (
-            <span className="shrink-0 rounded-full bg-purple-100 px-2.5 py-0.5 text-xs font-semibold text-purple-800 dark:bg-purple-950/50 dark:text-purple-300">
-              {caseStatusLabels[round.adjudicationCase.status] ?? "Đang xử lý hồ sơ"}
-            </span>
-          ) : (
-            <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800 dark:bg-amber-950/50 dark:text-amber-300">
-              Có bất đồng
-            </span>
-          )}
-        </div>
-      </div>
+    <div className="screening-conflict-container" data-focus-chat={activeTab === "discussion" && !round.adjudicationCase}>
+      <ScreeningCaseStatus projectId={projectId} round={round} />
 
-      {/* Section B: Two Reviewer Assessments (Clean stacked comparison cards with proper spacing) */}
-      <div className="space-y-2">
-        <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-          <Users size={13} className="text-muted-foreground" />
-          <span>Đánh giá độc lập của 2 reviewer</span>
-        </h4>
-        <div className="rounded-xl border border-border/80 bg-card/60 shadow-xs overflow-hidden divide-y divide-border/60">
-          {round.reviews.map(r => {
-            const assign = round.assignments.find(a => a.id === r.assignmentId);
-            const reviewerName = assign?.name || "Reviewer";
-            const isMe = r.reviewerId === currentUserId;
-            const isInclude = r.decision === "INCLUDE";
-            const isExclude = r.decision === "EXCLUDE";
-            const contentText = (r.exclusionReason || r.comment || "").trim();
-            const hasReason = Boolean(contentText);
-
-            return (
-              <div
-                key={r.id}
-                className={`p-3 space-y-2 transition-colors ${
-                  isInclude
-                    ? "bg-emerald-50/15 dark:bg-emerald-950/15"
-                    : isExclude
-                    ? "bg-rose-50/15 dark:bg-rose-950/15"
-                    : "bg-amber-50/15 dark:bg-amber-950/15"
-                }`}
-              >
-                {/* Header row: Avatar + Name + Revision on left; Decision Badge on right */}
-                <div className="flex items-center justify-between gap-2.5 min-w-0">
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full font-bold text-xs ${
-                      isInclude
-                        ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300"
-                        : isExclude
-                        ? "bg-rose-100 text-rose-800 dark:bg-rose-950/80 dark:text-rose-300"
-                        : "bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300"
-                    }`}>
-                      {reviewerName.slice(0, 1).toUpperCase()}
-                    </div>
-
-                    <div className="min-w-0">
-                      <div className="font-semibold text-xs text-foreground truncate">
-                        {reviewerName} {isMe && <span className="font-normal text-muted-foreground">(Bạn)</span>}
-                      </div>
-
-                      <div className="text-[11px] text-muted-foreground flex items-center gap-1.5 truncate mt-0.5">
-                        <span>Phiên bản {r.revision}</span>
-                        <span>·</span>
-                        <span>{new Date(r.submittedAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })} {new Date(r.submittedAt).toLocaleDateString("vi-VN")}</span>
-                        {r.scope === "FULL_TEXT" && (
-                          <>
-                            <span>·</span>
-                            <span className="font-medium text-primary">Toàn văn</span>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  <span className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                    isInclude
-                      ? "bg-emerald-50 text-emerald-700 border border-emerald-200/80 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800"
-                      : isExclude
-                      ? "bg-rose-50 text-rose-700 border border-rose-200/80 dark:bg-rose-950/50 dark:text-rose-300 dark:border-rose-800"
-                      : "bg-amber-50 text-amber-700 border border-amber-200/80 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-800"
-                  }`}>
-                    {isInclude && <CheckCircle2 size={12} className="shrink-0" />}
-                    {isExclude && <XCircle size={12} className="shrink-0" />}
-                    {!isInclude && !isExclude && <HelpCircle size={12} className="shrink-0" />}
-                    <span>{choiceLabels[r.decision]}</span>
-                  </span>
-                </div>
-
-                {/* Sub row: Reason snippet or status with 'Xem lý do' button */}
-                <div className="flex items-center justify-between gap-2 pt-1 border-t border-border/40 text-xs">
-                  {hasReason ? (
-                    <div className="flex items-center justify-between w-full gap-2 min-w-0">
-                      <p className="text-[11px] text-muted-foreground truncate italic min-w-0">
-                        {r.exclusionReason ? `Lý do: ${r.exclusionReason}` : r.comment}
-                      </p>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setViewingReview(r)}
-                        className="h-6 px-2 text-[11px] gap-1 font-medium hover:bg-muted cursor-pointer shrink-0"
-                        title="Bấm để xem lý do và căn cứ đánh giá"
-                      >
-                        <FileText size={11} className="text-muted-foreground" />
-                        <span>Xem lý do</span>
-                      </Button>
-                    </div>
-                  ) : (
-                    <span className="text-[11px] text-muted-foreground/60 italic px-0.5">
-                      Không kèm ghi chú
-                    </span>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      <RoundHistory projectId={projectId} round={round} people={people} readOnly={readOnly} />
+      <section className="screening-resolution-intro" aria-label={issueTitle}>
+        <p>{round.adjudicationCase
+          ? "Hồ sơ đã mở. Bổ sung quan điểm riêng và theo dõi kết quả trong Hồ sơ phân xử."
+          : issueDescription}</p>
+      </section>
 
       {/* Both reviewers can act directly after discussion, without a message quota. */}
       {!readOnly &&
@@ -256,47 +149,90 @@ export function ScreeningConflictResolution({ projectId, round, paper, people, r
         !isAdjudicating &&
         !isWaitingAdjudicator &&
         (round.canReassess || round.canRequestAdjudication) && (
-        <div className="rounded-xl border border-primary/20 bg-primary/5 p-3.5 space-y-2">
-          <div className="flex items-center justify-between">
-            <h4 className="text-xs font-semibold text-foreground">Bạn muốn xử lý thế nào?</h4>
-            <span className="text-[11px] text-muted-foreground">Hai bên có quyền bình đẳng</span>
-          </div>
-          <div className="flex flex-wrap items-center gap-2.5">
+        <section className="screening-resolution-actions" aria-label="Xử lý sau trao đổi">
+          <div className="screening-resolution-action-buttons">
             {round.canReassess && (
               <Button
-                variant="default"
+                variant="outline"
                 size="sm"
                 onClick={() => {
-                  setNewDecision(myCurrentReview?.decision ?? "INCLUDE");
+                  setNewDecision("");
                   setExclusionReason(myCurrentReview?.exclusionReason ?? "");
+                  setFullTextReference(myReview?.fullTextReference ?? "");
                   setIsReassessOpen(true);
                 }}
-                className="gap-1.5 font-medium shadow-sm"
+                className="gap-1.5 font-medium"
               >
                 <Edit3 size={14} />
-                Sửa đánh giá của tôi
+                {round.settings.screeningMode ? "Cập nhật phiếu của tôi" : "Đổi kết luận của tôi"}
               </Button>
             )}
 
             {round.canRequestAdjudication && (
               <Button
-                variant="outline"
+                variant="ghost"
                 size="sm"
                 onClick={() => setIsAdjudicateOpen(true)}
-                className="gap-1.5 border-purple-300 text-purple-900 hover:bg-purple-50 dark:border-purple-800 dark:text-purple-300"
+                className="gap-1.5"
               >
                 <Scale size={14} />
                 Nhờ người phân xử
               </Button>
             )}
           </div>
-          <p className="text-[11px] text-muted-foreground leading-relaxed">
-            💡 <em>Mẹo:</em> Khi bạn sửa đánh giá cùng quyết định với đồng reviewer, hệ thống tự ghi nhận thống nhất nếu hai phiếu đáp ứng tiêu chí và quy tắc của giai đoạn.
-          </p>
-        </div>
+        </section>
       )}
 
-      <ScreeningCaseStatus projectId={projectId} round={round} />
+      <div className="screening-resolution-tabs" role="tablist" aria-label="Đánh giá và trao đổi">
+        {([{ value: "discussion", label: "Trao đổi" }, { value: "ballots", label: "Hai phiếu đánh giá" }] as const).map((tab, index) => <button
+          key={tab.value} type="button" role="tab" id={`${workspaceId}-${tab.value}-tab`}
+          aria-selected={activeTab === tab.value} aria-controls={`${workspaceId}-${tab.value}-panel`}
+          tabIndex={activeTab === tab.value ? 0 : -1}
+          onClick={() => setActiveTab(tab.value)}
+          onKeyDown={event => {
+            if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+            event.preventDefault();
+            const next = event.key === "Home" ? "discussion" : event.key === "End" ? "ballots" : index === 0 ? "ballots" : "discussion";
+            setActiveTab(next); document.getElementById(`${workspaceId}-${next}-tab`)?.focus();
+          }}
+        >{tab.label}{tab.value === "discussion" && unreadDiscussion.length > 0 && <span className="screening-discussion-unread-count" aria-label={`${unreadDiscussion.length} tin nhắn chưa đọc`}>{unreadDiscussion.length}</span>}</button>)}
+      </div>
+
+      <section className="screening-review-comparison screening-resolution-panel" role="tabpanel" id={`${workspaceId}-ballots-panel`} aria-labelledby={`${workspaceId}-ballots-tab`} hidden={activeTab !== "ballots"} tabIndex={0}>
+        {round.hiddenReviews ? <p className="screening-review-note">Phiếu được công bố khi quy trình cho phép xem đánh giá của cả hai reviewer.</p> :
+          <div className="screening-review-list">
+            {round.reviews.map(r => {
+              const assign = round.assignments.find(a => a.id === r.assignmentId);
+              const reviewerName = assign?.name || "Reviewer";
+              const isMe = r.reviewerId === currentUserId;
+              const contentText = (r.exclusionReason || r.comment || r.fullTextReference || "").trim();
+              const needsDetail = contentText.length > 180 || Boolean(r.exclusionReason && r.comment || r.fullTextReference);
+              return <article key={r.id} className="screening-review-row" aria-label={`Phiếu của ${reviewerName}`}>
+                <div className="screening-review-row-heading">
+                  <div className="screening-review-person">
+                    <span className="screening-review-avatar" aria-hidden="true">{reviewerName.slice(0, 1).toUpperCase()}</span>
+                    <div className="screening-review-identity">
+                      <strong>{reviewerName}{isMe && <span> (Bạn)</span>}</strong>
+                      <p>Phiên bản {r.revision} · <time dateTime={r.submittedAt}>{new Date(r.submittedAt).toLocaleString("vi-VN", { hour: "2-digit", minute: "2-digit", day: "numeric", month: "numeric", year: "numeric" })}</time>{r.scope === "FULL_TEXT" && " · Toàn văn"}</p>
+                    </div>
+                  </div>
+                  <ScreeningStatusBadge tone={screeningChoiceTone(r.decision)}>
+                    {r.decision === "INCLUDE" ? <CheckCircle2 size={13} aria-hidden="true" /> : r.decision === "EXCLUDE" ? <XCircle size={13} aria-hidden="true" /> : <HelpCircle size={13} aria-hidden="true" />}
+                    {choiceLabels[r.decision]}
+                  </ScreeningStatusBadge>
+                </div>
+                <div className="screening-review-rationale">
+                  <p className="screening-resolution-reason" data-truncated={needsDetail || undefined}>{contentText ? <>{r.exclusionReason && <span>Lý do loại: </span>}{contentText}</> : <span className="screening-review-note">Không kèm ghi chú</span>}</p>
+                  {needsDetail && <button type="button" className="screening-review-detail-link" aria-label={`Xem lý do của ${reviewerName}`} onClick={() => setViewingReview(r)}>Xem lý do</button>}
+                </div>
+              </article>;
+            })}
+          </div>}
+      </section>
+
+      <div className="screening-resolution-panel screening-discussion-panel" role="tabpanel" id={`${workspaceId}-discussion-panel`} aria-labelledby={`${workspaceId}-discussion-tab`} hidden={activeTab !== "discussion"} tabIndex={0}>
+        <RoundHistory projectId={projectId} round={round} people={people} readOnly={readOnly} visible={activeTab === "discussion"} />
+      </div>
 
       <ScreeningError error={command.error} />
 
@@ -304,36 +240,29 @@ export function ScreeningConflictResolution({ projectId, round, paper, people, r
       <Dialog open={isReassessOpen} onOpenChange={setIsReassessOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Sửa đánh giá của tôi</DialogTitle>
+            <DialogTitle>{round.settings.screeningMode ? "Cập nhật phiếu của tôi" : "Đổi kết luận của tôi"}</DialogTitle>
             <DialogDescription>
-              Cập nhật lại kết luận sau khi thảo luận. Phiếu ban đầu vẫn được lưu lại trong lịch sử khoa học.
+              {round.settings.screeningMode ? "Đối chiếu nguồn, cập nhật kết luận hoặc lý do. Mỗi phiên bản phiếu được giữ trong lịch sử." : "Hai reviewer đã gửi phiếu. Chọn kết luận khác sau khi thảo luận; phiếu ban đầu vẫn được giữ trong lịch sử."}
             </DialogDescription>
           </DialogHeader>
 
           <form onSubmit={handleReassessSubmit} className="space-y-4 py-2">
-            <div>
-              <label className="text-xs font-semibold text-foreground block mb-1">Kết luận mới</label>
-              <div className="grid grid-cols-3 gap-2">
-                {(["INCLUDE", "EXCLUDE", "UNSURE"] as ScreeningChoice[]).map(c => (
-                  <button
-                    key={c}
-                    type="button"
-                    onClick={() => setNewDecision(c)}
-                    className={`rounded-lg border p-2 text-xs font-semibold transition-all ${
-                      newDecision === c
-                        ? c === "INCLUDE"
-                          ? "border-emerald-500 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300"
-                          : c === "EXCLUDE"
-                          ? "border-rose-500 bg-rose-50 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300"
-                          : "border-amber-500 bg-amber-50 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300"
-                        : "border-border bg-background text-muted-foreground hover:bg-muted"
-                    }`}
-                  >
-                    {choiceLabels[c]}
-                  </button>
-                ))}
-              </div>
-            </div>
+            <ScreeningDecisionChoices legend="Kết luận mới" value={newDecision} onChange={setNewDecision}
+              currentValue={myReview?.decision} required disabled={command.isPending}
+              options={screeningReviewOptions.map(option => ({ ...option, disabled: !round.settings.screeningMode && option.value === myReview?.decision }))} />
+
+            {newDecision === "EXCLUDE" && Boolean(round.settings.exclusionCriteria?.length) && <label className="block text-xs font-semibold">
+              Tiêu chí loại
+              <select aria-label="Tiêu chí loại" required value={exclusionReason} onChange={e => setExclusionReason(e.target.value)} className="mt-1 w-full rounded-lg border border-border bg-background p-2.5 text-xs">
+                <option value="">Chọn tiêu chí loại</option>
+                {round.settings.exclusionCriteria!.map(criterion => <option key={criterion} value={criterion}>{criterion}</option>)}
+              </select>
+            </label>}
+
+            {round.phase === "FULL_TEXT" && <label className="block space-y-1 text-xs font-semibold">
+              <span>Nguồn toàn văn và vị trí đã đối chiếu *</span>
+              <textarea aria-label="Nguồn toàn văn và vị trí đã đối chiếu" value={fullTextReference} onChange={e => setFullTextReference(e.target.value)} required minLength={10} maxLength={1000} rows={3} className="w-full rounded-lg border border-border bg-background p-2.5 text-xs font-normal" />
+            </label>}
 
             <div>
               <label className="text-xs font-semibold text-foreground block mb-1">
@@ -355,7 +284,7 @@ export function ScreeningConflictResolution({ projectId, round, paper, people, r
               <Button type="button" variant="outline" size="sm" onClick={() => setIsReassessOpen(false)}>
                 Hủy
               </Button>
-              <Button type="submit" size="sm" disabled={command.isPending || reassessReason.trim().length < 5}>
+              <Button type="submit" size="sm" disabled={command.isPending || !newDecision || !round.settings.screeningMode && newDecision === myReview?.decision || reassessReason.trim().length < 5 || round.phase === "FULL_TEXT" && fullTextReference.trim().length < 10 || newDecision === "EXCLUDE" && Boolean(round.settings.exclusionCriteria?.length) && !exclusionReason.trim()}>
                 {command.isPending ? "Đang lưu..." : "Lưu đánh giá mới"}
               </Button>
             </DialogFooter>
@@ -382,30 +311,18 @@ export function ScreeningConflictResolution({ projectId, round, paper, people, r
                 <span className="text-xs sm:text-sm font-semibold text-foreground block mb-1.5">
                   Đánh giá của bạn
                 </span>
-                <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                  (myCurrentReview?.decision ?? myReview?.decision) === "INCLUDE"
-                    ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300"
-                    : (myCurrentReview?.decision ?? myReview?.decision) === "EXCLUDE"
-                    ? "bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300"
-                    : "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300"
-                }`}>
+                <ScreeningStatusBadge tone={screeningChoiceTone(myCurrentReview?.decision ?? myReview?.decision ?? "UNSURE")}>
                   {choiceLabels[myCurrentReview?.decision ?? myReview?.decision ?? "INCLUDE"]}
-                </span>
+                </ScreeningStatusBadge>
               </div>
 
               <div>
                 <span className="text-xs sm:text-sm font-semibold text-foreground block mb-1.5">
                   Reviewer còn lại
                 </span>
-                <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                  otherReview?.decision === "INCLUDE"
-                    ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300"
-                    : otherReview?.decision === "EXCLUDE"
-                    ? "bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300"
-                    : "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300"
-                }`}>
+                <ScreeningStatusBadge tone={otherReview ? screeningChoiceTone(otherReview.decision) : "neutral"}>
                   {otherReview ? choiceLabels[otherReview.decision] : "Chưa đánh giá"}
-                </span>
+                </ScreeningStatusBadge>
               </div>
             </div>
 
@@ -420,7 +337,7 @@ export function ScreeningConflictResolution({ projectId, round, paper, people, r
             {/* Timeline notice */}
             <div className="space-y-1 pt-1">
               <h5 className="text-xs sm:text-sm font-bold text-foreground">
-                Thời hạn hoàn tất ý kiến: 48 giờ
+                Thời hạn hoàn tất ý kiến: {round.settings.statementWindowHours ?? 48} giờ
               </h5>
               <p className="text-xs text-muted-foreground leading-relaxed">
                 Hồ sơ được chuyển sớm nếu cả hai hoàn tất. Hết hạn, hệ thống sử dụng các ý kiến hiện có.
@@ -474,93 +391,23 @@ export function ScreeningConflictResolution({ projectId, round, paper, people, r
         </DialogContent>
       </Dialog>
 
-      {/* Modal: Chi tiết lý do và căn cứ đánh giá của Reviewer */}
-      <Dialog open={Boolean(viewingReview)} onOpenChange={open => { if (!open) setViewingReview(null); }}>
-        <DialogContent className="max-w-md">
-          {viewingReview && (() => {
-            const assign = round.assignments.find(a => a.id === viewingReview.assignmentId);
-            const reviewerName = assign?.name || "Reviewer";
-            const isMe = viewingReview.reviewerId === currentUserId;
-            const isInclude = viewingReview.decision === "INCLUDE";
-            const isExclude = viewingReview.decision === "EXCLUDE";
-
-            return (
-              <>
-                <DialogHeader>
-                  <div className="flex items-center justify-between gap-2 pr-6">
-                    <div className="flex items-center gap-2">
-                      <div className={`flex h-8 w-8 items-center justify-center rounded-full font-bold text-xs ${
-                        isInclude
-                          ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300"
-                          : isExclude
-                          ? "bg-rose-100 text-rose-800 dark:bg-rose-950/80 dark:text-rose-300"
-                          : "bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300"
-                      }`}>
-                        {reviewerName.slice(0, 1).toUpperCase()}
-                      </div>
-                      <div>
-                        <DialogTitle className="text-sm font-semibold">
-                          Phiếu đánh giá: {reviewerName} {isMe && "(Bạn)"}
-                        </DialogTitle>
-                        <DialogDescription className="text-xs text-muted-foreground">
-                          Phiên bản {viewingReview.revision} · {new Date(viewingReview.submittedAt).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" })} {new Date(viewingReview.submittedAt).toLocaleDateString("vi-VN")}
-                        </DialogDescription>
-                      </div>
-                    </div>
-                    <span className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                      isInclude
-                        ? "bg-emerald-50 text-emerald-700 border border-emerald-200/80 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800"
-                        : isExclude
-                        ? "bg-rose-50 text-rose-700 border border-rose-200/80 dark:bg-rose-950/50 dark:text-rose-300 dark:border-rose-800"
-                        : "bg-amber-50 text-amber-700 border border-amber-200/80 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-800"
-                    }`}>
-                      {choiceLabels[viewingReview.decision]}
-                    </span>
-                  </div>
-                </DialogHeader>
-
-                <div className="space-y-3 py-2 text-xs">
-                  {viewingReview.exclusionReason && (
-                    <div className="rounded-lg border border-rose-200/80 bg-rose-50/50 p-3 dark:border-rose-900/40 dark:bg-rose-950/20">
-                      <div className="flex items-center gap-1.5 font-semibold text-rose-700 dark:text-rose-400 mb-1">
-                        <XCircle size={14} />
-                        <span>Lý do loại bài:</span>
-                      </div>
-                      <p className="text-foreground whitespace-pre-wrap leading-relaxed break-words text-xs max-h-56 overflow-y-auto">
-                        {viewingReview.exclusionReason}
-                      </p>
-                    </div>
-                  )}
-
-                  {viewingReview.comment && (
-                    <div className="rounded-lg border border-border/70 bg-muted/30 p-3">
-                      <div className="flex items-center gap-1.5 font-semibold text-muted-foreground mb-1">
-                        <FileText size={14} />
-                        <span>Ghi chú & căn cứ:</span>
-                      </div>
-                      <p className="text-foreground whitespace-pre-wrap leading-relaxed break-words text-xs max-h-56 overflow-y-auto">
-                        {viewingReview.comment}
-                      </p>
-                    </div>
-                  )}
-
-                  {viewingReview.fullTextReference && (
-                    <div className="rounded-lg border border-border/70 bg-muted/30 p-3">
-                      <div className="font-semibold text-muted-foreground mb-1">Đoạn trích toàn văn:</div>
-                      <p className="text-foreground whitespace-pre-wrap leading-relaxed break-words text-xs max-h-56 overflow-y-auto">
-                        {viewingReview.fullTextReference}
-                      </p>
-                    </div>
-                  )}
-                </div>
-
-                <DialogFooter>
-                  <Button type="button" variant="outline" size="sm" onClick={() => setViewingReview(null)}>
-                    Đóng
-                  </Button>
-                </DialogFooter>
-              </>
-            );
+      <Dialog open={Boolean(viewingReview) && !round.hiddenReviews} onOpenChange={open => { if (!open) setViewingReview(null); }}>
+        <DialogContent className="screening-ballot-dialog max-w-lg max-h-[85dvh]" closeLabel="Đóng">
+          {viewingReview && !round.hiddenReviews && (() => {
+            const reviewerName = round.assignments.find(a => a.id === viewingReview.assignmentId)?.name || "Reviewer";
+            return <>
+              <DialogHeader className="text-left pr-5">
+                <DialogTitle className="text-base leading-relaxed break-words">Phiếu đánh giá: {reviewerName}{viewingReview.reviewerId === currentUserId && " (Bạn)"}</DialogTitle>
+                <DialogDescription>Phiên bản {viewingReview.revision} · {new Date(viewingReview.submittedAt).toLocaleString("vi-VN", { dateStyle: "short", timeStyle: "short" })}</DialogDescription>
+              </DialogHeader>
+              <div><ScreeningStatusBadge tone={screeningChoiceTone(viewingReview.decision)}>{choiceLabels[viewingReview.decision]}</ScreeningStatusBadge></div>
+              <div className="screening-ballot-content">
+                {viewingReview.exclusionReason && <section><h4>Lý do loại bài</h4><p>{viewingReview.exclusionReason}</p></section>}
+                {viewingReview.comment && <section><h4>Ghi chú và căn cứ</h4><p>{viewingReview.comment}</p></section>}
+                {viewingReview.fullTextReference && <section><h4>Nguồn toàn văn đã đối chiếu</h4><p>{viewingReview.fullTextReference}</p></section>}
+              </div>
+              <DialogFooter><Button type="button" variant="outline" size="sm" onClick={() => setViewingReview(null)}>Đóng</Button></DialogFooter>
+            </>;
           })()}
         </DialogContent>
       </Dialog>

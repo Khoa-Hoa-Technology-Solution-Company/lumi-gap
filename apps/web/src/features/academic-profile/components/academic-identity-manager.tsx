@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   AcademicIdentityLink,
   AcademicIdentityProvider,
@@ -33,12 +33,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  useAcademicIdentityLinks,
-  useCreateAcademicIdentity,
-  useDeleteAcademicIdentity,
-  useUpdateAcademicIdentity,
-} from "../hooks/use-academic-profile";
+import * as academicProfileHooks from "../hooks/use-academic-profile";
 
 type ProfileWithAcademicIdentities = AcademicProfile | PublicAcademicProfile;
 
@@ -181,12 +176,32 @@ function valueForIdentity(identity: AcademicIdentityLink): string {
   return identity.profileUrl ?? identity.identifier ?? "";
 }
 
+function mapOrcidErrorMessage(code: string, t: Translate): string {
+  if (code === "cancelled" || code === "access_denied") return t("ORCID authorization was cancelled.");
+  if (code === "already_linked") return t("This ORCID iD is already connected to another LumiGap account.");
+  if (code === "expired" || code === "session_mismatch") return t("ORCID connection expired. Please try connecting again.");
+  return t("Could not connect ORCID. Please try again.");
+}
+
 export function AcademicIdentityManager({ profile, editable }: { profile: ProfileWithAcademicIdentities; editable: boolean }) {
   const { t } = useI18n();
-  const linksQuery = useAcademicIdentityLinks(editable);
-  const create = useCreateAcademicIdentity();
-  const update = useUpdateAcademicIdentity();
-  const remove = useDeleteAcademicIdentity();
+  const linksQuery = academicProfileHooks.useAcademicIdentityLinks(editable);
+  const create = academicProfileHooks.useCreateAcademicIdentity();
+  const update = academicProfileHooks.useUpdateAcademicIdentity();
+  const remove = academicProfileHooks.useDeleteAcademicIdentity();
+  const orcidStatusQuery = academicProfileHooks.useOrcidConnectionStatus?.(editable) ?? {
+    data: { configured: false, environment: "sandbox" as const, connected: false, link: null },
+    isLoading: false,
+    refetch: undefined,
+  };
+  const startOrcid = academicProfileHooks.useStartOrcidConnection?.() ?? {
+    mutateAsync: async () => { throw new Error("ORCID connection is not available yet."); },
+    isPending: false,
+  };
+  const completeOrcid = academicProfileHooks.useCompleteOrcidConnection?.() ?? {
+    mutateAsync: async () => { throw new Error("ORCID connection is not available yet."); },
+    isPending: false,
+  };
   const [dialogOpen, setDialogOpen] = useState(false);
   const [step, setStep] = useState<"choice" | "other">("choice");
   const [editing, setEditing] = useState<AcademicIdentityLink | null>(null);
@@ -195,8 +210,91 @@ export function AcademicIdentityManager({ profile, editable }: { profile: Profil
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [redirectingOrcid, setRedirectingOrcid] = useState(false);
+  const callbackHandled = useRef(false);
 
   const links = useMemo(() => editable && linksQuery.data ? linksQuery.data : profile.academicIdentityLinks, [editable, linksQuery.data, profile.academicIdentityLinks]);
+  const orcidConfigured = Boolean(orcidStatusQuery.data?.configured);
+  const orcidBusy = Boolean(redirectingOrcid || startOrcid.isPending || completeOrcid.isPending);
+
+  useEffect(() => {
+    if (!editable || callbackHandled.current || typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const orcidParam = params.get("orcid");
+    const orcidError = params.get("orcid_error");
+    const code = params.get("code");
+    const state = params.get("state");
+    const oauthError = params.get("error");
+
+    if (!orcidParam && !orcidError && !(code && state) && !oauthError) return;
+    callbackHandled.current = true;
+
+    for (const key of ["orcid", "orcid_error", "code", "state", "error", "error_description"]) {
+      params.delete(key);
+    }
+    const remainingSearch = params.toString();
+    const cleanUrl = `${window.location.pathname}${remainingSearch ? `?${remainingSearch}` : ""}${window.location.hash}`;
+    window.history.replaceState(window.history.state, "", cleanUrl);
+
+    if (orcidParam === "connected") {
+      void linksQuery.refetch?.();
+      void orcidStatusQuery.refetch?.();
+      setNotice(t("ORCID connected."));
+      toast.success(t("ORCID connected"));
+      return;
+    }
+
+    if (orcidError) {
+      const message = mapOrcidErrorMessage(orcidError, t);
+      setNotice(message);
+      toast.error(message);
+      return;
+    }
+
+    if (oauthError) {
+      void completeOrcid.mutateAsync({ error: oauthError, state: state ?? undefined }).catch(() => undefined);
+      const message = mapOrcidErrorMessage(oauthError, t);
+      setNotice(message);
+      toast.error(message);
+      return;
+    }
+
+    if (code && state) {
+      void completeOrcid.mutateAsync({ code, state }).then(() => {
+        void linksQuery.refetch?.();
+        void orcidStatusQuery.refetch?.();
+        setNotice(t("ORCID connected."));
+        toast.success(t("ORCID connected"));
+      }).catch((error: unknown) => {
+        const response = error as { response?: { data?: { error?: { message?: string } } } };
+        const message = response.response?.data?.error?.message ?? t("Could not connect ORCID. Please try again.");
+        setNotice(message);
+        toast.error(message);
+      });
+    }
+  }, [completeOrcid, editable, linksQuery, orcidStatusQuery, t]);
+
+  async function connectOrcid() {
+    if (!orcidConfigured || orcidBusy) return;
+    setFormError(null);
+    setRedirectingOrcid(true);
+    try {
+      const returnTo = typeof window !== "undefined" && window.location.pathname
+        ? `${window.location.pathname}${window.location.search}`
+        : "/profile";
+      const started = await startOrcid.mutateAsync(returnTo);
+      if (typeof window !== "undefined") {
+        window.location.assign(started.url);
+      }
+    } catch (error) {
+      setRedirectingOrcid(false);
+      const response = error as { response?: { data?: { error?: { message?: string } } } };
+      const message = response.response?.data?.error?.message ?? t("Could not start ORCID connection. Please try again.");
+      setFormError(message);
+      setNotice(message);
+      toast.error(message);
+    }
+  }
 
   function openCreate() {
     setEditing(null);
@@ -319,12 +417,26 @@ export function AcademicIdentityManager({ profile, editable }: { profile: Profil
               <div className="flex items-center gap-2"><span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#a6ce39] text-white text-xs font-semibold" aria-hidden="true">iD</span><h4 className="text-sm font-semibold">ORCID</h4></div>
               {links.some((identity) => identity.provider === "ORCID") ? <>
                 {links.filter((identity) => identity.provider === "ORCID").map((identity) => <div key={identity.id} className="space-y-1 text-sm"><p className="break-all text-muted-foreground">{identity.identifier || identity.profileUrl}</p><p>{t(isProviderConnected(identity) ? "ORCID connected" : "Self-declared")}</p></div>)}
+                {orcidConfigured && !links.some(isProviderConnected) && (
+                  <Button type="button" variant="outline" className="w-full" disabled={orcidBusy} onClick={() => void connectOrcid()}>
+                    {t(orcidBusy ? "Connecting ORCID…" : "Connect ORCID")}
+                  </Button>
+                )}
               </> : <>
                 <p className="text-sm leading-6 text-muted-foreground">{t("Connect ORCID to link your scholarly identifier with LumiGap.")}</p>
-                {/* No ORCID OAuth endpoint exists yet. Never turn a manual ID into a provider connection. */}
-                <Button type="button" variant="outline" className="w-full" disabled aria-describedby="orcid-unavailable">{t("Connect ORCID")}</Button>
-                <p id="orcid-unavailable" className="text-xs text-muted-foreground">{t("ORCID connection is not available yet.")}</p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  disabled={!orcidConfigured || orcidBusy}
+                  aria-describedby={!orcidConfigured ? "orcid-unavailable" : undefined}
+                  onClick={() => void connectOrcid()}
+                >
+                  {t(orcidBusy ? "Connecting ORCID…" : "Connect ORCID")}
+                </Button>
+                {!orcidConfigured && <p id="orcid-unavailable" className="text-xs text-muted-foreground">{t("ORCID connection is not available yet.")}</p>}
               </>}
+              {formError && <p role="alert" className="text-xs text-destructive">{formError}</p>}
             </section>
             <div className="flex items-center gap-3 text-xs text-muted-foreground"><span className="h-px flex-1 bg-border" />{t("Or")}<span className="h-px flex-1 bg-border" /></div>
             <Button type="button" variant="outline" className="w-full gap-2" onClick={() => setStep("other")}><Plus className="h-4 w-4" />{t("Add another academic profile")}</Button>

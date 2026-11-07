@@ -1,14 +1,28 @@
 import type { ScreeningPhase } from "./project-research.js";
 import type { WorkspacePage, WorkspacePerson } from "./project-workspace.js";
 
+export type ScreeningTaskAction = "REVIEW" | "DISCUSSION" | "CONSENSUS" | "STATEMENT" | "ADJUDICATION" | "COORDINATION" | "FULLTEXT" | "INFORMATION";
+export type ScreeningTaskStatus = "TODO" | "IN_PROGRESS" | "BLOCKED" | "DONE" | "EXPIRED" | "CANCELLED" | "REPLACED";
+export interface ScreeningAutomaticTask {
+  id: string; paperId: string; roundId: string; assigneeId: string; actionType: ScreeningTaskAction;
+  status: ScreeningTaskStatus; title: string; reason: string; phase: ScreeningPhase; roundNumber: number;
+  roundStatus: string; roundActive: boolean; dueAt: string | null; endedAt: string | null; updatedAt: string; actionLabel?: string;
+}
+export interface ScreeningTaskFeedback {
+  roundId?: string; completedAction: string; nextStatus: string; nextActor: string;
+}
+
 export type ScreeningClassification = "AGREEMENT_INCLUDE" | "AGREEMENT_EXCLUDE" | "CONFLICT" | "NEEDS_CLARIFICATION" | "NEEDS_MORE_INFORMATION" | "EXCLUSION_REASON_MISMATCH";
 export type ScreeningResolutionType = "AGREEMENT_FROM_REVIEWS" | "CONSENSUS_AFTER_DISCUSSION" | "ADJUDICATION";
 export type ScreeningChoice = "INCLUDE" | "EXCLUDE" | "UNSURE";
-export type ScreeningState = "NOT_REVIEWED" | "IN_REVIEW" | "NEEDS_RESOLUTION" | "NEEDS_MORE_INFO" | "ADJUDICATING" | "AWAITING_FINALIZATION" | "INCLUDED" | "EXCLUDED" | "BACKGROUND";
+export type ScreeningStageMode = "SINGLE_STAGE" | "TWO_STAGE";
+export type ScreeningOutcome = "WAITING_REVIEWS" | "WAITING_SECOND_REVIEW" | "FINAL_INCLUDED" | "EXCLUDED" | "CONFLICT" | "NEEDS_RESOLUTION" | "NEEDS_CLARIFICATION" | "ADVANCE_TO_FULLTEXT" | "WAITING_FULLTEXT";
+export type ScreeningState = "NOT_REVIEWED" | "IN_REVIEW" | "NEEDS_RESOLUTION" | "NEEDS_MORE_INFO" | "ADJUDICATING" | "AWAITING_FINALIZATION" | "INCLUDED" | "EXCLUDED" | "BACKGROUND" | "WAITING_FULLTEXT";
 export type ScreeningConsensusPolicy = "UNANIMOUS" | "STRICT_MAJORITY";
 export interface ScreeningSettings {
   preferredAdjudicatorId?: string | null; adjudicationCoordinatorIds?: string[]; statementWindowHours?: number; adjudicationReminderHours?: number; adjudicationReassignHours?: number;
   workflowVersion?: number;
+  screeningMode?: ScreeningStageMode;
   authorizedAdjudicatorIds?: string[]; allowConservativeFullText?: boolean;
   reviewMode: "COLLABORATIVE" | "SIMPLE" | "INDEPENDENT"; blindReview: boolean; resolutionPolicy: "CONSENSUS" | "ADJUDICATION";
   version: number; requiredReviewers: number; consensusPolicy: ScreeningConsensusPolicy;
@@ -21,7 +35,51 @@ export interface ScreeningSettings {
   discoveryGoalPaused?: boolean;
 }
 
+export type ScreeningEvaluationStatus = "WAITING_REVIEWER" | "CONFLICT" | "ADJUDICATING" | "INCLUDED" | "EXCLUDED" | "NEEDS_MORE_INFO" | "AWAITING_FINALIZATION" | "BACKGROUND" | "WAITING_FULLTEXT" | "ADVANCE_TO_FULLTEXT";
+/** Read-only card projection; review choices are included only after protocol disclosure. */
+export interface ScreeningWorkPaper {
+  invalidated?: boolean;
+  roundId: string; paperId: string; title: string; authors: string[];
+  publicationYear: number | null; journalName: string | null;
+  roundNumber: number; phase: ScreeningPhase; status: ScreeningState;
+  completed: number; required: number; hiddenReviews: boolean;
+  reviews: Array<{ reviewerId: string; name: string; decision: ScreeningChoice }>;
+  acceptedForAnalysis: boolean; resolutionType: ScreeningResolutionType | null;
+  groupReason: string | null;
+}
+export interface ScreeningPersonalEvaluation {
+  invalidated?: boolean;
+  paperId: string;
+  roundId: string;
+  title: string;
+  publicationYear: number | null;
+  journalName: string | null;
+  phase: ScreeningPhase;
+  myDecision: ScreeningChoice;
+  submittedAt: string;
+  groupStatus: ScreeningEvaluationStatus;
+  finalDecision: string | null;
+  isAdjudicated: boolean;
+  resolverName: string | null;
+  decidedAt: string | null;
+  acceptedForAnalysis?: boolean;
+  caseStatus?: string | null;
+  groupReason?: string | null;
+  groupSourceMaterial?: string | null;
+  roundNumber?: number;
+}
+
 export interface ScreeningWorkspaceSummary {
+  automaticTasks?: ScreeningAutomaticTask[];
+  readOnly?: boolean;
+  pendingInformation?: Array<{ paperId: string; roundId: string; title: string; reason: string; kind: "FULLTEXT" | "INFORMATION" }>;
+  workPapers?: ScreeningWorkPaper[];
+  acceptedPapers?: Array<{
+    paperId: string; roundId: string; title: string;
+    publicationYear: number | null; journalName: string | null; phase: ScreeningPhase;
+    acceptedAt: string; isAdjudicated: boolean; resolverName: string | null;
+  }>;
+  myEvaluations?: ScreeningPersonalEvaluation[];
   pendingDiscussions?: Array<{ paperId: string; roundId: string; title: string; status: ScreeningState; classification?: ScreeningClassification | null; phase?: ScreeningPhase }>;
   expiredClaims?: Array<{ paperId: string; roundId: string; title: string }>;
   completedPersonalReviews?: number;
@@ -126,6 +184,9 @@ export interface ScreeningAssignment {
   dueAt: string | null; overdue: boolean;
 }
 export interface ScreeningRoundView {
+  invalidated?: boolean;
+  outcome?: ScreeningOutcome;
+  canResumeFullText?: boolean;
   classification?: ScreeningClassification | null; resolutionType?: ScreeningResolutionType | null;
   legacyNeedsAudit?: boolean;
   legacyOutcome?: boolean;
@@ -179,8 +240,9 @@ export interface ScreeningAgreement {
 }
 export interface ScreeningSharedDiscussion { id: string; comment: string; createdAt: string; actorName?: string }
 export interface ScreeningAdjudicationPacket {
+  sourceUrl?: string | null;
   sources?: Array<{ id: string; sha256: string; byteSize: number }>;
-  protocol?: { version: number; workflowVersion: number | null; stages: ScreeningPhase[]; allowConservativeFullText: boolean };
+  protocol?: { screeningMode?: ScreeningStageMode; version: number; workflowVersion: number | null; stages: ScreeningPhase[]; allowConservativeFullText: boolean };
   consensusAttempts?: Array<{ id: string; action: string; actorName: string; createdAt: string; decision?: string; reason?: string }>;
   discussion?: ScreeningSharedDiscussion[];
   roundId: string; paperId: string; phase: ScreeningPhase; roundVersion: number;

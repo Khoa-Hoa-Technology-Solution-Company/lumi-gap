@@ -141,8 +141,9 @@ export async function caseView(c: WorkspaceContext, round: ScreeningRound, row: 
   return { lockedAt: row.lockedAt?.toISOString() ?? null, canStart: canResolve && row.status === "ASSIGNED", canReassign: writable && coordinator && current?.userId !== c.actorId && Boolean(current) && row.status !== "COI_REVIEW", myReviewerId: isReviewer ? c.actorId : null, id: row.id, status: row.status, version: row.version, packetVersion: row.packetVersion, active: row.active, deadline: row.deadline.toISOString(), ready, createdAt: row.createdAt.toISOString(), requestedByIds: row.requestedByIds,
     invitation: invitationViews.find(i => i.id === current?.id) ?? null, invitations: invitationViews,
     statements: row.reviewerIds.map((id, index) => {
-      const own = id === c.actorId, visible = own || ready && (!isAssignee || ["ASSIGNED", "ACCEPTED"].includes(current?.status ?? ""));
       const statement = latest[index];
+      // Each reviewer writes independently. Other participants see supplements only once sealed.
+      const own = id === c.actorId, visible = own || ready;
       return { reviewerId: id, name: name(id), completed: Boolean(statement), hidden: !visible, revision: own ? statements.find(s => s.reviewerId === id)?.revision ?? 0 : visible ? statement?.revision ?? 0 : 0,
         ...(visible && statement ? { useExisting: statement.useExisting, text: statement.text, submittedAt: statement.createdAt.toISOString() } : {}),
         ...(visible ? { history: statements.filter(s => s.reviewerId === id).map(s => ({ revision: s.revision, packetVersion: s.packetVersion, useExisting: s.useExisting, text: s.text, createdAt: s.createdAt.toISOString() })) } : {}) };

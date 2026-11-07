@@ -3,7 +3,7 @@ import type { Prisma } from "../../generated/prisma/client.js";
 import { getPrisma } from "../../infrastructure/database/prisma.js";
 import { AppError } from "../../common/exceptions/app-error.js";
 
-export const mentorshipPolicy = { maxActiveMentors: 2, maxPendingRequests: 2, maxPendingPerRole: 1, expiryDays: 14 } as const;
+export const mentorshipPolicy = { maxActiveMentors: 2, maxPendingRequests: 2, maxPendingPerRole: 1, expiryDays: 6 } as const;
 
 export async function mentorPositions(projectId: string, db: Prisma.TransactionClient = getPrisma()): Promise<MentorPositions> {
   const now = new Date();

@@ -1,10 +1,12 @@
 import { caseStatusLabels } from "./screening-case-labels";
+import { screeningStatusTone, screeningClassificationLabels } from "../screening-status";
+import { ScreeningStatusBadge } from "./screening-status-badge";
 import { useRef } from "react";
 import type { ScreeningChoice, ScreeningState, ScreeningPaperRow, ScreeningRoundView } from "@trend/shared-types";
 import { isAxiosError } from "axios";
 import { Button } from "@/components/ui/button";
 import { useResearchCommand } from "../hooks/use-project-research";
-export const stateLabels: Record<ScreeningState, string> = { NOT_REVIEWED: "Chờ đánh giá", IN_REVIEW: "Đang đánh giá", NEEDS_RESOLUTION: "Có bất đồng", NEEDS_MORE_INFO: "Cần xem xét thêm", ADJUDICATING: "Đang phân xử", AWAITING_FINALIZATION: "Chờ quyết định", INCLUDED: "Đã chọn", EXCLUDED: "Đã loại", BACKGROUND: "Tài liệu nền" };
+export const stateLabels: Record<ScreeningState, string> = { WAITING_FULLTEXT: "Chờ toàn văn", NOT_REVIEWED: "Chờ đánh giá", IN_REVIEW: "Đang đánh giá", NEEDS_RESOLUTION: "Có bất đồng", NEEDS_MORE_INFO: "Cần xem xét thêm", ADJUDICATING: "Đang phân xử", AWAITING_FINALIZATION: "Chờ quyết định", INCLUDED: "Đã chọn", EXCLUDED: "Đã loại", BACKGROUND: "Tài liệu nền" };
 export const choiceLabels: Record<ScreeningChoice, string> = { INCLUDE: "Phù hợp", EXCLUDE: "Không phù hợp", UNSURE: "Chưa chắc chắn" };
 /** Auth can expose a migrated public ID; round membership uses the database UUID. */
 export function screeningActorId(round: ScreeningRoundView, publicActorId?: string) {
@@ -16,8 +18,9 @@ export function screeningMetadataWarning(paper: Pick<ScreeningPaperRow, "title" 
   if (paper.paperKind === "journal" || paper.paperKind === "paratext") return "Nguồn có thể là tạp chí hoặc tài liệu phụ trợ. Cần xác minh loại tài liệu trước khi đánh giá.";
   return null;
 }
-export const classificationLabels = { CONFLICT: "Có bất đồng", NEEDS_CLARIFICATION: "Cần làm rõ", NEEDS_MORE_INFORMATION: "Cần đọc thêm", EXCLUSION_REASON_MISMATCH: "Cần thống nhất lý do loại", AGREEMENT_INCLUDE: "Phù hợp", AGREEMENT_EXCLUDE: "Không phù hợp" };
+export const classificationLabels = screeningClassificationLabels;
 export function screeningStatusLabel(status: ScreeningState, round?: ScreeningRoundView | null) {
+  if (round?.extractionReady && status === "INCLUDED") return "Được chấp nhận";
   if (round?.adjudicationCase && ["ADJUDICATING", "NEEDS_MORE_INFO"].includes(status)) return caseStatusLabels[round.adjudicationCase.status] ?? "Hồ sơ phân xử";
   if (["NEEDS_RESOLUTION", "NEEDS_MORE_INFO"].includes(status) && round?.classification) return round.resolution ? "Đã thống nhất cần đọc thêm" : classificationLabels[round.classification];
   if ((round?.settings.workflowVersion ?? 0) >= 3 && round?.settings.reviewMode !== "COLLABORATIVE") {
@@ -26,7 +29,10 @@ export function screeningStatusLabel(status: ScreeningState, round?: ScreeningRo
   }
   return stateLabels[status];
 }
-export function ScreeningStatus({ status, round }: { status: ScreeningState; round?: ScreeningRoundView | null }) { return <span className="screening-state" data-state={status}>{screeningStatusLabel(status, round)}</span>; }
+export function ScreeningStatus({ status, round, className = "" }: { status: ScreeningState; round?: ScreeningRoundView | null; className?: string }) {
+  const tone = screeningStatusTone({ status, classification: round?.classification, caseStatus: round?.adjudicationCase?.status, legacyNeedsAudit: round?.legacyNeedsAudit });
+  return <ScreeningStatusBadge className={`screening-state ${className}`} state={status} tone={tone}>{screeningStatusLabel(status, round)}</ScreeningStatusBadge>;
+}
 export function screeningProgressLabel(round: ScreeningRoundView) {
   if (round.legacyNeedsAudit) return `Dữ liệu cần rà soát: ${round.assigned} phân công, ${round.completed} phiếu đã gửi`;
   if (round.settings.reviewMode === "COLLABORATIVE") return `Quy trình cộng tác cũ · ${round.completed} ý kiến đã gửi`;
@@ -47,7 +53,10 @@ export function useScreeningCommand(projectId: string) {
     const content = JSON.stringify(payload);
     if (attempt.current?.content !== content) attempt.current = { content, key: crypto.randomUUID() };
     busy.current = true;
-    try { await command.mutateAsync(() => execute(attempt.current!.key)); attempt.current = undefined; return true; }
+    try {
+      await command.mutateAsync(() => execute(attempt.current!.key));
+      attempt.current = undefined; return true;
+    }
     catch { return false; } finally { busy.current = false; }
   };
   return { ...command, run };

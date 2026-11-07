@@ -4,6 +4,7 @@ import { notificationService } from "../notifications/notification.service.js";
 import { withWorkspace } from "./workspace-access.js";
 import { screeningRound } from "./screening-context.js";
 import { caseAudit, ensureAssignment, notifyCaseCoordinators } from "./screening-case-context.js";
+import { reconcileScreeningObligations } from "./screening-obligations.js";
 
 /** Keyset batches avoid starving expired packets behind older pending cases. */
 export async function maintainScreeningCases(caseId?: string) {
@@ -21,6 +22,7 @@ export async function maintainScreeningCases(caseId?: string) {
           const round = await screeningRound(c, row.roundId);
           if (!row.active || !round.active || ["ARCHIVED", "COMPLETED"].includes(c.project.status)) return;
           const next = await ensureAssignment(c, round, row, true);
+          await reconcileScreeningObligations(c);
           const assignment = await c.tx.screeningAdjudicationInvitation.findFirst({ where: { caseId: next.id, status: "ASSIGNED" } });
           if (!assignment || !next.lockedAt) return;
           const policy = round.settings as { adjudicationReminderHours?: number; adjudicationReassignHours?: number };
@@ -41,5 +43,14 @@ export async function maintainScreeningCases(caseId?: string) {
       } catch (error) { logger.warn({ err: error, caseId: initial.id }, "Screening case maintenance will retry"); }
     }
     cursor = rows[rows.length - 1]!.id;
+  }
+  if (!caseId) {
+    const projects = await db.screeningObligation.findMany({ where: { endedAt: null }, distinct: ["projectId"], select: { projectId: true } });
+    for (const row of projects) {
+      try {
+        const project = await db.project.findUnique({ where: { id: row.projectId }, select: { ownerId: true } });
+        if (project) await withWorkspace(row.projectId, project.ownerId, {}, reconcileScreeningObligations);
+      } catch (error) { logger.warn({ err: error, projectId: row.projectId }, "Screening obligation reconciliation will retry"); }
+    }
   }
 }

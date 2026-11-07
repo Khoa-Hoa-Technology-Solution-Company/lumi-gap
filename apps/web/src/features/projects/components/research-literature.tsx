@@ -53,9 +53,11 @@ export function ResearchLiterature({
     setParams(next, { replace: true });
   };
 
-  const openPaper = (paperId: string) => {
+  const openPaper = (paperId: string, context?: { roundId: string; section: string }) => {
     setActivePaperId(paperId);
     const next = new URLSearchParams(params);
+    next.delete("round"); next.delete("section");
+    if (context) { next.set("round", context.roundId); next.set("section", context.section); }
     next.set("paper", paperId);
     setParams(next);
   };
@@ -64,6 +66,7 @@ export function ResearchLiterature({
     setActivePaperId(null);
     const next = new URLSearchParams(params);
     next.delete("paper");
+    next.delete("round"); next.delete("section");
     setParams(next);
   };
 

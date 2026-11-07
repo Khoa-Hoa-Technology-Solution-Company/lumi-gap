@@ -2,8 +2,24 @@ import type { StructuredSubmissionInput, SubmissionStatus, SubmissionType, Submi
 import { API_ROUTES } from "@/constants";
 import { api } from "@/services/api-client";
 
+// A disconnected API must expose retry instead of leaving this workspace loading indefinitely.
 const readOptions = (signal?: AbortSignal) => ({ signal, timeout: 20_000 });
 
+export interface ActiveMentorOption {
+  id: string;
+  fullName: string;
+  email: string;
+  institution?: string;
+  avatarUrl?: string | null;
+  mentorRole: string;
+}
+
+export interface MentorFeedbackPayload {
+  result: "FEEDBACK_GIVEN" | "REVISION_REQUESTED" | "READY_TO_ADVANCE";
+  overallComment: string;
+  paragraphComments?: Array<{ criterionKey?: string; comment: string; evidence?: string }>;
+  requestedInformation?: string;
+}
 export interface SubmissionSummary {
   _id: string;
   projectId: string;
@@ -19,7 +35,7 @@ export interface SubmissionSummary {
   scope?: string;
   keywords: string[];
   expectedReviewWorkload?: string;
-  status: Lowercase<SubmissionStatus> | "accepted";
+  status: string;
   currentRevisionNumber: number;
   currentRevisionId?: string;
   createdAt: string;
@@ -74,13 +90,20 @@ export const submissionsApi = {
     const response = await api.get(API_ROUTES.submissions.revisions(id), readOptions(signal));
     return response.data.data;
   },
-  async create(input: StructuredSubmissionInput, file: File): Promise<{ submission: SubmissionSummary; revision: SubmissionRevision }> {
+  async activeMentors(projectId: string): Promise<ActiveMentorOption[]> {
+    const response = await api.get("/submissions/active-mentors", { params: { projectId } });
+    return response.data.data;
+  },
+  async submitFeedback(id: string, payload: MentorFeedbackPayload): Promise<void> {
+    await api.post(`/submissions/${id}/feedback`, payload);
+  },
+  async create(input: StructuredSubmissionInput & { mentorId?: string; contentSnapshot?: string; message?: string }, file?: File): Promise<{ submission: SubmissionSummary; revision: SubmissionRevision }> {
     const body = new FormData();
     for (const [key, value] of Object.entries(input)) {
       if (value === undefined) continue;
-      body.append(key, Array.isArray(value) ? JSON.stringify(value) : value);
+      body.append(key, Array.isArray(value) ? JSON.stringify(value) : String(value));
     }
-    body.append("pdf", file);
+    if (file) body.append("pdf", file);
     const response = await api.post(API_ROUTES.submissions.create, body);
     return response.data.data;
   },

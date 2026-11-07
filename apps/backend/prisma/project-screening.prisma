@@ -1,4 +1,5 @@
 model ScreeningSettings {
+  screeningMode String? @map("screening_mode") @db.VarChar(24)
   preferredAdjudicatorId String? @map("preferred_adjudicator_id") @db.Uuid
   adjudicationCoordinatorIds String[] @default([]) @map("adjudication_coordinator_ids") @db.Uuid
   adjudicationReminderHours Int @default(72) @map("adjudication_reminder_hours")
