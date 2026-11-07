@@ -59,7 +59,7 @@ export function ForumResponseItem({ comment, isQuestion, isPostOwner, isCommentO
     try { await navigator.clipboard.writeText(url.href); toast.success(t("Copied link to clipboard")); } catch { toast.info(url.href); }
   };
   return (
-    <article id={`comment-${comment.id}`} tabIndex={-1} data-thread-post className="forum-thread-post scroll-mt-[calc(var(--app-header-offset)+1rem)] border-t border-border py-4 outline-none">
+    <article id={`comment-${comment.id}`} tabIndex={-1} data-thread-post className="forum-thread-post forum-thread-card scroll-mt-[calc(var(--app-header-offset)+1rem)] rounded-xl border border-border bg-card p-4 outline-none sm:p-5">
       <div className="grid grid-cols-[40px_minmax(0,1fr)] gap-x-3 sm:grid-cols-[44px_minmax(0,1fr)] sm:gap-x-4">
         <ForumAuthorPopover className="forum-post-avatar" author={comment.author} authorTopicPostCount={authorTopicPostCount} canReply={!readOnly && (!isAuthed || canReply)} onReply={() => onReply(comment)} onFilterPosts={onFilterAuthor ? () => onFilterAuthor(comment.author.id) : undefined}>
           <ForumAuthorAvatar author={comment.author} size="md" />
@@ -79,11 +79,11 @@ export function ForumResponseItem({ comment, isQuestion, isPostOwner, isCommentO
             </> : null}
             {active ? <ForumReactionPicker countsOnly target={{ scope: "comment", id: comment.id }} counts={comment.reactionCounts} viewerReactions={comment.viewerReactions} reactionUsers={comment.reactionUsers} isAuthed={isAuthed} disabled={readOnly} pending={reactionPending} onToggle={onReaction ?? (() => undefined)} /> : null}
             {replies.length ? <button type="button" aria-expanded={repliesExpanded} onClick={() => setRepliesExpanded((previous) => !previous)} className="forum-post-reply-count inline-flex items-center gap-1 rounded px-2 py-1 text-sm text-muted-foreground hover:text-foreground">{replies.length} {t(replies.length === 1 ? "reply" : "replies")}<ChevronDown aria-hidden="true" className={cn("h-3 w-3", repliesExpanded && "rotate-180")} /></button> : null}
-            <div className="forum-post-action-links ml-auto inline-flex items-center gap-0.5">
+            <div className="forum-post-action-links inline-flex items-center gap-1">
             {active ? <ForumReactionPicker triggerOnly counts={comment.reactionCounts} viewerReactions={comment.viewerReactions} reactionUsers={comment.reactionUsers} isAuthed={isAuthed} disabled={readOnly} pending={reactionPending} onToggle={onReaction ?? (() => undefined)} /> : null}
-            <Button type="button" variant="ghost" size="icon" onClick={share} aria-label={t("Share response")} title={t("Share response")} className="h-9 w-9 text-muted-foreground"><Link2 aria-hidden="true" className="h-4 w-4" /></Button>
+            <Button type="button" variant="ghost" size="icon" onClick={share} aria-label={t("Share response")} title={t("Share response")} className="h-10 w-10 text-muted-foreground"><Link2 aria-hidden="true" className="h-4 w-4" /></Button>
             {active && isAuthed ? <DropdownMenu>
-              <DropdownMenuTrigger asChild><Button type="button" variant="ghost" size="icon" className="h-9 w-9 text-muted-foreground" aria-label={t("More response actions")} title={t("More response actions")}><MoreHorizontal aria-hidden="true" className="h-4 w-4" /></Button></DropdownMenuTrigger>
+              <DropdownMenuTrigger asChild><Button type="button" variant="ghost" size="icon" className="h-10 w-10 text-muted-foreground" aria-label={t("More response actions")} title={t("More response actions")}><MoreHorizontal aria-hidden="true" className="h-4 w-4" /></Button></DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 {isCommentOwner && !readOnly ? <><DropdownMenuItem onSelect={() => onEdit(comment)}><Pencil aria-hidden="true" className="mr-2 h-4 w-4" />{t("Edit response")}</DropdownMenuItem><DropdownMenuSeparator /></> : null}
                 <DropdownMenuItem onSelect={() => onReport(comment.id)}><Flag aria-hidden="true" className="mr-2 h-4 w-4" />{t("Report response")}</DropdownMenuItem>
@@ -91,7 +91,7 @@ export function ForumResponseItem({ comment, isQuestion, isPostOwner, isCommentO
                 {isCommentOwner && !readOnly ? <><DropdownMenuSeparator /><DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => onDelete(comment.id)}><Trash2 aria-hidden="true" className="mr-2 h-4 w-4" />{t("Delete response")}</DropdownMenuItem></> : null}
               </DropdownMenuContent>
             </DropdownMenu> : null}
-            {active ? <Button type="button" variant="ghost" size="sm" disabled={readOnly || (isAuthed && !canReply)} onClick={() => onReply(comment)} className="gap-1.5 text-muted-foreground"><Reply aria-hidden="true" className="h-4 w-4" />{t("Reply")}</Button> : null}
+            {active ? <Button type="button" variant="ghost" size="sm" disabled={readOnly || (isAuthed && !canReply)} onClick={() => onReply(comment)} className="min-h-10 gap-1.5 text-muted-foreground"><Reply aria-hidden="true" className="h-4 w-4" />{t("Reply")}</Button> : null}
             </div>
           </div>
           {repliesExpanded ? <div className="col-span-2 mt-3 space-y-3 border-t border-border py-3" aria-label={t("Replies to this post")}>{replies.map((reply) => <ForumPostLink key={reply.id} post={post ?? { id: comment.postId }} postNumber={postNumberForComment?.(reply.id) ?? ordinal} targetId={`comment-${reply.id}`} onJump={onJumpToPost} className="flex items-start gap-2 rounded text-sm hover:bg-muted/40"><ForumAuthorAvatar author={reply.author} size="xs" /><span><strong className="font-semibold">{reply.author.fullName}</strong><span className="mt-1 block line-clamp-2 text-muted-foreground">{reply.content}</span></span></ForumPostLink>)}</div> : null}

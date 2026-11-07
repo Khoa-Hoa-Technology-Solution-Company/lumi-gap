@@ -6,9 +6,11 @@
 
 ## Tình trạng (28/10/2026)
 
-Đã chèn **35 ảnh (Figure 15–49) cho 33 FR** vào `LumiGap_Report3_v2.docx`. Ảnh chụp từ bản local của main, commit af46d5d, bằng tài khoản seed. Bản sao lưu trước khi sửa: `Reports_Output/_backup_before_screenshots/LumiGap_Report3_v2_2810.docx`.
+Đã chèn **48 ảnh (Figure 15–62) cho 46 FR** vào `LumiGap_Report3_v2.docx`. Đợt 1 (28/10): 35 ảnh cho 33 FR, chụp trên main af46d5d. Đợt 2 (02/11): 13 ảnh cho 13 FR, chụp trên main f381e04 với một dự án demo tạo bằng tài khoản seed sinh viên; các hình được đánh số lại theo thứ tự. Bản sao lưu trước khi sửa: `Reports_Output/_backup_before_screenshots/LumiGap_Report3_v2_2810.docx`.
 - **Đã có ảnh:** FR-01, 02, 05, 07, 08, 11, 12, 13, 14, 15, 17, 20, 21, 22, 29, 30, 31, 32, 34, 35, 36, 37, 38, 39, 40 (2 ảnh), 41 (2 ảnh), 42, 43, 45, 47, 48, 51, 53.
-- **Còn TBD (15 FR), cần dữ liệu demo:** FR-04, 06, 09, 10, 18, 19, 23, 24, 25, 26, 27, 46, 49, 50, 52.
+- **Đợt 2 đã có ảnh:** FR-04, 06, 09, 10, 18, 23, 24, 25, 26, 27, 46, 49, 52.
+- **Còn TBD (2 FR), cần dữ liệu demo:** FR-19 (cần gap đã sinh để tạo research directions), FR-50 (cần review request đã được giảng viên nhận).
+- **Ảnh không đúng hẳn chức năng, ghi chú trong R3:** FR-04 (ảnh màn hình đăng nhập có nút Google), FR-18 (chưa có phân tích lỗi nên không thấy nút Retry), FR-27 (danh sách bản thảo, chưa mở editor), FR-49 (Review Center trống).
 - **Ảnh trạng thái trống, cần chụp lại khi có dữ liệu:** FR-12, 20, 22, 34, 42, 45.
 
 ## Quy tắc chung
@@ -76,7 +78,7 @@
 | ☐ | FR-38 | §3.8.3 | `/admin/sync` | Danh sách lần chạy, kế hoạch campaign, nút điều khiển | Admin |
 | ☐ | FR-39 | §3.8.4 | `/admin/pipeline`, `/admin/workers`, `/admin/evaluation` | Thẻ hàng đợi, bảng worker, bảng đánh giá | Admin |
 | ☐ | FR-40 | §3.9.1 | `/forum`, `/forum/:id`, `/forum/new` | Danh sách thread, trang thread, form đăng bài | User |
-| ☐ | FR-41 | §3.9.2 | `/communities`, `/communities/:slug`, `/manage` | Danh mục community, trang chi tiết, trang quản lý | ⚠ Đã đổi sau ca8fe4d (PR #63/#64) |
+| ☑ | FR-41 | §3.9.2 | `/communities`, `/communities/:slug`, `/manage` | Danh mục community (có "Recommended for you"), trang chi tiết, trang quản lý | Chụp lại 02/11 trên main f381e04 sau PR #71 (community chỉ còn public); Hình 51–52 |
 | ☐ | FR-42 | §3.9.3 | `/forum/moderation`, `/admin/trust-safety` | Hàng đợi kiểm duyệt, chi tiết báo cáo, hộp thoại xử lý | Moderator hoặc admin |
 | ☐ | FR-46 | §3.9.7 | Settings > Academic, `/profile` | Trình sửa hồ sơ, form lịch nhận review | User hoặc lecturer |
 | ☐ | FR-47 | §3.9.8 | `/academic-support` | Form mời/đề nghị mentor, hộp thư accept/decline | Owner và lecturer đã xác minh |

@@ -499,7 +499,7 @@ paperRouter.delete("/:id/pdf", requireAuth, requireRole("admin"), async (req, re
   }
 });
 
-/** DELETE /papers/:id — requester or admin deletes paper request. */
+/** DELETE /papers/:id — admin hard-deletes a paper; a requester can only withdraw a request that never reached the corpus (same rules and refund as /:id/cancel). */
 paperRouter.delete("/:id", requireAuth, async (req, res, next) => {
   try {
     await paperService.deletePaper(String(req.params.id), String(req.user!.sub), String(req.user!.role));

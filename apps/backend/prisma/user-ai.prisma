@@ -27,7 +27,7 @@ model UserAiPreference {
 /**
  * Platform-wide AI connection chosen by an admin (same protocols as UserAiConnection, plus a fast and a deep model).
  * At most one is active (partial unique index in SQL). Without an active one the env GEMINI_* settings are used.
- * Text generation only: embeddings stay on the env Gemini key so stored 768-dim vectors remain comparable.
+ * Text generation only: embeddings have their own PlatformEmbeddingConnection.
  */
 model PlatformAiConnection {
   id           String   @id @default(uuid()) @db.Uuid
@@ -43,4 +43,25 @@ model PlatformAiConnection {
   updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@map("platform_ai_connections")
+}
+
+/**
+ * OpenAI-compatible endpoint serving the embedding model the stored vectors were made with, chosen by an admin.
+ * At most one is active (partial unique index in SQL). Without an active one the env Gemini key is used.
+ * `model` is the provider's id for the model. Stored vectors keep env GEMINI_EMBEDDING_MODEL as their provenance, and
+ * `verifiedSimilarity` is the cosine against stored vectors that proved they are comparable (null: none existed yet).
+ */
+model PlatformEmbeddingConnection {
+  id                 String   @id @default(uuid()) @db.Uuid
+  name               String   @db.VarChar(100)
+  baseUrl            String   @map("base_url")
+  encryptedKey       String?  @map("encrypted_key")
+  model              String
+  verifiedSimilarity Float?   @map("verified_similarity")
+  isActive           Boolean  @default(false) @map("is_active")
+  createdById        String?  @map("created_by_id") @db.Uuid
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("platform_embedding_connections")
 }

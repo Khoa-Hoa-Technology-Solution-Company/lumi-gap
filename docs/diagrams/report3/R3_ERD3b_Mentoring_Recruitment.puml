@@ -31,6 +31,7 @@ entity MentorshipRequest #EFE6F8;line:6A3FA0 {
   projectId <<FK>>
   mentorUserId <<FK User>>
   requestedBy <<FK User>>
+  candidateId <<FK,UK MentorCandidate>>
   ..
   mentorRole
   status

@@ -1,0 +1,116 @@
+@startuml
+!pragma layout elk
+skinparam dpi 200
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam backgroundColor #FFFFFF
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam ArrowFontSize 12
+skinparam ArrowFontColor #4A5A6A
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam entity {
+  BackgroundColor #EFE6F8
+  BorderColor #6A3FA0
+}
+skinparam legend {
+  BackgroundColor #FFF8E1
+  BorderColor #C9B36B
+  FontSize 12
+}
+skinparam stereotypeFontSize 10
+hide circle
+hide empty methods
+title Physical ERD - Mentor access, shared resources, feedback and agreements
+entity mentor_access #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  project_id : uuid <<FK>>
+  request_id : uuid <<FK,UK>>
+  relationship_id : uuid <<FK,UK>>
+  mentor_user_id : uuid <<FK>>
+  configured_by_id : uuid <<FK>>
+  ..
+  preset : varchar(16)
+  expires_at : timestamptz
+}
+entity mentor_resource_shares #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  project_id : uuid <<FK>>
+  access_id : uuid <<FK>>
+  shared_by_id : uuid <<FK>>
+  ..
+  kind : varchar(24)
+  title : varchar(240)
+}
+entity mentor_feedback #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  project_id : uuid <<FK>>
+  access_id : uuid <<FK>>
+  share_id : uuid <<FK>>
+  reply_to_id : uuid <<FK>>
+  author_id : uuid <<FK>>
+  handled_by_id : uuid <<FK>>
+  ..
+  kind : varchar(16)
+  status : varchar(16)
+}
+entity mentor_agreements #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  project_id : uuid <<FK>>
+  access_id : uuid <<FK>>
+  proposed_by_id : uuid <<FK>>
+  responded_by_id : uuid <<FK>>
+  ..
+  acknowledgement : text
+  status : varchar(16)
+}
+entity mentor_access_events #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  project_id : uuid <<FK>>
+  access_id : uuid <<FK>>
+  actor_id : uuid <<FK>>
+  ..
+  type : varchar(32)
+}
+entity projects #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+entity mentor_relationships #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+entity mentorship_requests #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+entity users #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+mentor_access ||--o{ mentor_access_events
+mentor_access ||--o{ mentor_agreements
+mentor_access ||--o{ mentor_feedback
+mentor_access ||--o{ mentor_resource_shares
+mentor_feedback |o--o{ mentor_feedback : reply_to_id
+mentor_relationships |o--o{ mentor_access
+mentor_resource_shares |o--o{ mentor_feedback
+mentorship_requests ||--o{ mentor_access
+projects ||--o{ mentor_access
+users ||--o{ mentor_access : configured_by_id
+users ||--o{ mentor_access : mentor_user_id
+users ||--o{ mentor_access_events
+users ||--o{ mentor_agreements : proposed_by_id
+users |o--o{ mentor_agreements : responded_by_id
+users ||--o{ mentor_feedback : author_id
+users |o--o{ mentor_feedback : handled_by_id
+users ||--o{ mentor_resource_shares
+legend bottom
+Crow's-foot notation. PK primary key, FK foreign key, UK unique key.
+Dashed boxes belong to another diagram (key only).
+endlegend
+@enduml

@@ -11,6 +11,9 @@ import { logger } from "../../infrastructure/logger.js";
 import type { Prisma } from "../../generated/prisma/client.js";
 import { auditService } from "../audit/audit.service.js";
 import { getActiveCommunityMembership, isCommunityModerator, joinInTx, narrowVisibility } from "../communities/community.service.js";
+import { invalidatePersonalizationProfile } from "../personalization/personalization.cache.js";
+import { refreshPostTopics, tryLoadTopicContext } from "../personalization/personalization-topics.service.js";
+import { normalizeTerm } from "../taxonomy/taxonomy.normalize.js";
 import { assertForumPostReadable, filterReportsByPostVisibility, forumPostVisibilitySql, forumPostVisibilityWhere, syncResearchThreadCount } from "./forum-visibility.js";
 /** The one visibility rule for research-community posts lives in forum-visibility.ts (shared with modules that cannot import this service). */
 export { forumPostVisibilityWhere };
@@ -875,6 +878,7 @@ export const forumService = {
     const cleanBody = cleanForumText(input.content);
     if (cleanTitle.length < 3 || cleanTitle.length > 240 || !cleanBody || cleanBody.length > 20000) throw AppError.badRequest("Title and discussion body are required");
     await assertLinkLimitForNewAccount(authorId, cleanBody);
+    const topicContext = await tryLoadTopicContext();
     const bodyHash = forumBodyHash(cleanBody);
     const postId = randomUUID();
     let joinedViaPost: string | null = null;
@@ -912,11 +916,14 @@ export const forumService = {
       }
       if (canonicalTags.length) created.tags = (await tx.forumPost.update({ where: { id: created.id }, data: { tags: canonicalTags } })).tags;
       if (references.length) await tx.forumReference.createMany({ data: references.map((reference) => ({ ...reference, postId: created.id, createdById: authorId })) });
+      await refreshPostTopics(tx, created.id, topicContext);
       if (communityId) await tx.community.update({ where: { id: communityId }, data: { threadCount: { increment: 1 } } });
       await syncResearchThreadCount(tx, researchCommunityId);
       return created;
     });
     await auditService.log("forum.post.created", { userId, targetTableName: "forum_posts", targetRecordId: post.id });
+    // Posting joins the community, which adds its topics to the author's interest profile.
+    if (joinedViaPost) await invalidatePersonalizationProfile(authorId);
     if (joinedViaPost) await auditService.log("community.joined", { userId, targetTableName: "community_memberships", targetRecordId: joinedViaPost, details: { communityId: researchCommunityId, status: "active", via: "post" } });
     if (linkedResearchGapId) {
       await auditService.log("GAP_DISCUSSION_CREATED", { userId, targetTableName: "forum_posts", targetRecordId: post.id, details: { gapId: linkedResearchGapId } });
@@ -926,7 +933,7 @@ export const forumService = {
     return (await presentPosts([post], userId))[0];
   },
 
-  async listPosts(filter: { communityId?: string; researchCommunityId?: string; communityIds?: string[]; linkedResearchGapId?: string; linkedPaperId?: string; type?: string; tag?: string; query?: string; sort?: ForumSort; includeModerated?: boolean }, page: number, pageSize: number, actorId?: string, actorRole?: UserRole) {
+  async listPosts(filter: { communityId?: string; researchCommunityId?: string; communityIds?: string[]; linkedResearchGapId?: string; linkedPaperId?: string; type?: string; tag?: string; topic?: string; query?: string; sort?: ForumSort; includeModerated?: boolean }, page: number, pageSize: number, actorId?: string, actorRole?: UserRole) {
     const prisma = getPrisma();
     // Admins see moderated posts everywhere; a community's owner/moderators see them inside that community.
     const scopeForModerators = filter.includeModerated && actorRole !== "admin" && filter.researchCommunityId && actorId ? await resolveCommunity(filter.researchCommunityId) : undefined;
@@ -949,6 +956,19 @@ export const forumService = {
       const row = tag ? await prisma.forumTag.findUnique({ where: { slug: tag.slug } }) : null;
       const links = row ? await prisma.forumPostTag.findMany({ where: { tagId: row.id }, select: { postId: true } }) : [];
       where.id = { in: links.map((item) => item.postId) };
+    }
+    const topicKey = filter.topic ? normalizeTerm(filter.topic) : "";
+    if (topicKey) {
+      const stored = [{ topicKeys: { has: topicKey } }, { derivedTopicKeys: { has: topicKey } }];
+      if (filter.researchCommunityId) {
+        // Inside one community every post shares its topics, so the joined community topics would match all of them.
+        conditions.push({ OR: stored });
+      } else {
+        // Across communities: stored keys, or the topics of the post's research community (joined here, never stored).
+        const communities = await prisma.community.findMany({ where: { isForumCategory: false, status: { in: ["ACTIVE", "ARCHIVED"] } }, select: { id: true, researchTopics: true } });
+        const communityIds = communities.filter((row) => row.researchTopics.some((topic) => normalizeTerm(topic) === topicKey)).map((row) => row.id);
+        conditions.push({ OR: [...stored, { researchCommunityId: { in: communityIds } }] });
+      }
     }
     if (filter.communityId) {
       const community = await resolveForumCategory(filter.communityId);
@@ -991,6 +1011,18 @@ export const forumService = {
       prisma.forumPost.count({ where }),
     ]);
     return { data: await presentTopicRows(data, actorId), meta: { page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)) } };
+  },
+
+  /**
+   * List-shaped presentation of posts picked elsewhere (the "For you" feed), in the order of `ids`. The caller has already
+   * applied the visibility rule; posts that are not active or locked are dropped here as a second guard.
+   */
+  async listPostsByIds(ids: string[], actorId?: string) {
+    if (!ids.length) return [];
+    const rows = await getPrisma().forumPost.findMany({ where: { id: { in: ids }, visibilityStatus: "ACTIVE", status: { in: ["active", "locked"] } }, select: topicListSelect });
+    const presented = await presentTopicRows(rows, actorId);
+    const byId = new Map(rows.map((row, index) => [row.id, presented[index]!]));
+    return ids.flatMap((id) => byId.has(id) ? [{ internalId: id, post: byId.get(id)! }] : []);
   },
 
   async gapDiscussionContext(gapInput: string, actorInput: string, actorRole: UserRole) {
@@ -1383,6 +1415,7 @@ export const forumService = {
         : undefined,
     ]);
     const tags = input.tags !== undefined ? normalizeForumTags(input.tags) : undefined;
+    const topicContext = await tryLoadTopicContext();
     const updated = await getPrisma().$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM forum_posts WHERE id = ${post.id}::uuid FOR UPDATE`;
       const current = await tx.forumPost.findUniqueOrThrow({ where: { id: post.id } });
@@ -1414,6 +1447,7 @@ export const forumService = {
         result.tags = (await tx.forumPost.update({ where: { id: post.id }, data: { tags: canonicalTags } })).tags;
       }
       if (references !== undefined) { await tx.forumReference.deleteMany({ where: { postId: post.id } }); if (references.length) await tx.forumReference.createMany({ data: references.map((reference) => ({ ...reference, postId: post.id, createdById: post.authorId })) }); }
+      await refreshPostTopics(tx, post.id, topicContext);
       return result;
     });
     return (await presentPosts([updated], userId))[0];

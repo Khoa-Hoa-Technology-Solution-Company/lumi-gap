@@ -1,10 +1,11 @@
-import { Worker } from "bullmq";
+import { UnrecoverableError, Worker } from "bullmq";
 import { enforcePostgresOnlyRuntime } from "../infrastructure/database/postgres-only-runtime.js";
 import { env } from "../config/env.js";
 import { connectPostgres, disconnectPostgres } from "../infrastructure/database/prisma.js";
 import { apiSyncQueue, paperAnalysisQueue, makeConnection, QUEUE_NAMES } from "../infrastructure/queue.js";
 import { logger } from "../infrastructure/logger.js";
 import { startWorkerHeartbeat } from "../infrastructure/worker-heartbeat.js";
+import { isNonRetryableOpenAlexError } from "../modules/api-sync/providers/openalex.client.js";
 import { runSync, type RunSyncJob } from "../modules/api-sync/sync.service.js";
 
 enforcePostgresOnlyRuntime();
@@ -24,7 +25,14 @@ async function main() {
     QUEUE_NAMES.apiSync,
     async (job) => {
       logger.info({ jobId: job.id, data: job.data }, "sync job received");
-      const result = await runSync(job.data as RunSyncJob);
+      let result: Awaited<ReturnType<typeof runSync>>;
+      try {
+        result = await runSync(job.data as RunSyncJob);
+      } catch (error) {
+        // A request OpenAlex rejected (bad filter, bad api_key, ...) fails identically on every attempt.
+        if (isNonRetryableOpenAlexError(error)) throw new UnrecoverableError((error as Error).message);
+        throw error;
+      }
       await paperAnalysisQueue.add("synced-paper-knowledge", {});
       return result;
     },

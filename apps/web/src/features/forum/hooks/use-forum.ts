@@ -69,7 +69,6 @@ export function useCommunityList(params: Omit<CommunityListParams, "page">, enab
 }
 export function useCommunityFacets() { const viewer = useForumViewer(); return useQuery({ queryKey: ["communities", "facets", viewer], queryFn: forumApi.communityFacets, staleTime: 5 * 60_000 }); }
 export function useCommunitySuggestions(q: string, enabled = true) { const viewer = useForumViewer(); return useQuery({ queryKey: ["communities", "suggestions", viewer, q], queryFn: () => forumApi.communitySuggestions(q), enabled: enabled && q.length >= 2, staleTime: 5 * 60_000, retry: false }); }
-export function useCommunityRecommendations(enabled = true) { const viewer = useForumViewer(); return useQuery({ queryKey: ["communities", "recommendations", viewer], queryFn: forumApi.communityRecommendations, enabled, staleTime: 5 * 60_000 }); }
 export function useCommunity(slug?: string) { const viewer = useForumViewer(); return useQuery({ queryKey: ["community", slug, viewer], queryFn: () => forumApi.community(slug!), enabled: Boolean(slug) }); }
 export function useCreateForumPost() { const client = useQueryClient(); return useMutation({ mutationFn: forumApi.createPost, onSuccess: () => invalidateForumThreadQueries(client) }); }
 export function useUpdateForumPost() { const client = useQueryClient(); return useMutation({ mutationFn: ({ postId, input }: { postId: string; input: Partial<ForumPostInput> }) => forumApi.updatePost(postId, input), onSuccess: () => invalidateForumThreadQueries(client) }); }
@@ -149,6 +148,8 @@ function invalidateCommunityQueries(client: ReturnType<typeof useQueryClient>) {
   client.invalidateQueries({ queryKey: ["communities"] });
   client.invalidateQueries({ queryKey: ["community"] });
   client.invalidateQueries({ queryKey: ["forum"] });
+  // Joining or leaving changes the interest profile behind "For you".
+  client.invalidateQueries({ queryKey: ["personalization"] });
 }
 export function useCreateCommunity() { const client = useQueryClient(); return useMutation({ mutationFn: forumApi.createCommunity, onSuccess: () => invalidateCommunityQueries(client) }); }
 export function useUpdateCommunity() { const client = useQueryClient(); return useMutation({ mutationFn: ({ id, input }: { id: string; input: Parameters<typeof forumApi.updateCommunity>[1] }) => forumApi.updateCommunity(id, input), onSuccess: () => invalidateCommunityQueries(client) }); }

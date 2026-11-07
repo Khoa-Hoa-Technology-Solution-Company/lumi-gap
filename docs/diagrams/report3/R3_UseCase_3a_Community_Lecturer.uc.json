@@ -3,35 +3,53 @@
  "ucs": [
   [
    "UC45",
-   "UC-45 Browse lecturer directory"
+   "UC-45",
+   "Browse lecturer directory"
   ],
   [
    "UC34",
-   "UC-34 Participate in academic forum"
+   "UC-34",
+   "Participate in academic forum"
+  ],
+  [
+   "UC51",
+   "UC-51",
+   "Follow topics and read For you feed"
   ],
   [
    "UC35",
-   "UC-35 Manage communities"
+   "UC-35",
+   "Manage communities"
   ],
   [
    "UC36",
-   "UC-36 Report and moderate content"
+   "UC-36",
+   "Report and moderate content"
   ],
   [
    "UC33",
-   "UC-33 Review lecturer verification"
+   "UC-33",
+   "Review lecturer verification"
   ],
   [
    "UC37",
-   "UC-37 Submit lecturer verification"
+   "UC-37",
+   "Submit lecturer verification"
   ],
   [
    "UC38",
-   "UC-38 Manage academic profile and review availability"
+   "UC-38",
+   "Manage academic profile and review availability"
   ],
   [
    "UC39",
-   "UC-39 Request or offer lecturer mentoring"
+   "UC-39",
+   "Request or offer lecturer mentoring"
+  ],
+  [
+   "UC49",
+   "UC-49",
+   "Share project with mentor"
   ]
  ],
  "actors": [
@@ -48,6 +66,10 @@
    "Community moderator\n(community role)"
   ],
   [
+   "AD",
+   "Administrator"
+  ],
+  [
    "L",
    "Lecturer"
   ],
@@ -56,10 +78,11 @@
    "Project member"
   ],
   [
-   "AD",
-   "Administrator"
+   "PO",
+   "Project owner"
   ]
  ],
+ "exts": [],
  "gens": [
   [
    "U",
@@ -76,9 +99,12 @@
   [
    "PM",
    "U"
+  ],
+  [
+   "PO",
+   "PM"
   ]
  ],
- "exts": [],
  "links": [
   [
    "G",
@@ -117,8 +143,20 @@
    "UC39"
   ],
   [
+   "L",
+   "UC49"
+  ],
+  [
    "PM",
    "UC39"
+  ],
+  [
+   "PO",
+   "UC49"
+  ],
+  [
+   "U",
+   "UC51"
   ],
   [
    "AD",
@@ -133,5 +171,5 @@
    "UC33"
   ]
  ],
- "rels": []
+ "even": true
 }

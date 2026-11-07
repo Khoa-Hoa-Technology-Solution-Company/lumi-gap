@@ -225,41 +225,78 @@ export async function fetchOpenAlexWorkById(id: string): Promise<OpenAlexWork | 
   return await response.json() as OpenAlexWork;
 }
 
+/**
+ * Failure of an OpenAlex request. `retryable` is false for a request the provider rejected for a reason a retry
+ * cannot fix (400 bad filter, 401/403 bad api_key, 404, ...), so job runners (BullMQ) should stop retrying it too.
+ */
+export class OpenAlexRequestError extends Error {
+  readonly status?: number;
+  readonly retryable: boolean;
+
+  constructor(message: string, options: { status?: number; retryable: boolean; cause?: unknown }) {
+    super(message, options.cause === undefined ? undefined : { cause: options.cause });
+    this.name = "OpenAlexRequestError";
+    this.status = options.status;
+    this.retryable = options.retryable;
+  }
+}
+
+/** True when retrying the same OpenAlex request (in process or via a queue) cannot succeed. */
+export function isNonRetryableOpenAlexError(error: unknown): boolean {
+  return error instanceof OpenAlexRequestError && !error.retryable;
+}
+
+const ERROR_BODY_MAX_CHARS = 500;
+
+/**
+ * GET one OpenAlex page. 429/5xx and network/timeout/parse failures are retried in process with exponential backoff
+ * (2s, 4s, 8s); any other non-2xx status fails immediately as a non-retryable OpenAlexRequestError so a bad request
+ * never multiplies against the shared daily key.
+ */
 export async function fetchWithRetry(url: string, attempt = 1): Promise<OpenAlexPage> {
-  await sleep(RATE_LIMIT_DELAY_MS);
-  const t0 = Date.now();
-  try {
-    const res = await fetch(url, {
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-      headers: {
-        "User-Agent": `TrendSystem/0.1 (mailto:${env.OPENALEX_MAILTO ?? "unknown"})`,
-        Accept: "application/json",
-      },
-    });
+  for (; ; attempt += 1) {
+    await sleep(RATE_LIMIT_DELAY_MS);
+    const t0 = Date.now();
+    let failure: OpenAlexRequestError;
+    try {
+      const res = await fetch(url, {
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        headers: {
+          "User-Agent": `TrendSystem/0.1 (mailto:${env.OPENALEX_MAILTO ?? "unknown"})`,
+          Accept: "application/json",
+        },
+      });
 
-    if ((res.status >= 500 || res.status === 429) && attempt <= MAX_RETRIES) {
-      const backoff = 2000 * 2 ** (attempt - 1); // 2s, 4s, 8s
-      logger.warn({ status: res.status, attempt, backoffMs: backoff }, "openalex retry");
-      await sleep(backoff);
-      return fetchWithRetry(url, attempt + 1);
-    }
-    if (!res.ok) {
-      throw new Error(`OpenAlex ${res.status}: ${await res.text().catch(() => res.statusText)}`);
+      if (res.ok) {
+        const json = (await res.json()) as OpenAlexPage;
+        logger.debug(
+          { ms: Date.now() - t0, results: json.results?.length ?? 0 },
+          "openalex page fetched",
+        );
+        return json;
+      }
+
+      const body = (await res.text().catch(() => res.statusText)).slice(0, ERROR_BODY_MAX_CHARS);
+      const error = new OpenAlexRequestError(`OpenAlex ${res.status}: ${body}`, {
+        status: res.status,
+        retryable: res.status === 429 || res.status >= 500,
+      });
+      // A request the provider rejected will be rejected again: do not spend more of the shared key on it.
+      if (!error.retryable) throw error;
+      failure = error;
+    } catch (err) {
+      if (err instanceof OpenAlexRequestError && !err.retryable) throw err;
+      failure = err instanceof OpenAlexRequestError
+        ? err
+        : new OpenAlexRequestError(`OpenAlex request failed: ${err instanceof Error ? err.message : String(err)}`, {
+          retryable: true,
+          cause: err,
+        });
     }
 
-    const json = (await res.json()) as OpenAlexPage;
-    logger.debug(
-      { ms: Date.now() - t0, results: json.results?.length ?? 0 },
-      "openalex page fetched",
-    );
-    return json;
-  } catch (err) {
-    if (attempt <= MAX_RETRIES) {
-      const backoff = 2000 * 2 ** (attempt - 1);
-      logger.warn({ err, attempt, backoffMs: backoff }, "openalex fetch error — retrying");
-      await sleep(backoff);
-      return fetchWithRetry(url, attempt + 1);
-    }
-    throw err;
+    if (attempt > MAX_RETRIES) throw failure;
+    const backoff = 2000 * 2 ** (attempt - 1); // 2s, 4s, 8s
+    logger.warn({ status: failure.status, err: failure.cause ?? failure, attempt, backoffMs: backoff }, "openalex retry");
+    await sleep(backoff);
   }
 }

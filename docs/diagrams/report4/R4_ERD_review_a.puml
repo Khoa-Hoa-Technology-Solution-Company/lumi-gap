@@ -49,6 +49,7 @@ entity submission_revisions #EFE6F8;line:6A3FA0 {
   uploaded_by_id : uuid <<FK users>>
   source_revision_id : uuid <<FK>>
   manuscript_snapshot_id : uuid <<FK manuscript_snapshots>>
+  attribution_check_id : uuid <<FK manuscript_attribution_checks>>
   ..
   original_file_name : varchar(255)
   content_type : varchar(16)

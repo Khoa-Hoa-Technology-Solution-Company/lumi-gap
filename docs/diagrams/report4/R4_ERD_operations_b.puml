@@ -54,6 +54,7 @@ entity api_sync_runs #EFE6F8;line:6A3FA0 {
 entity openalex_ingest_campaigns #EFE6F8;line:6A3FA0 {
   * id : uuid <<PK>>
   --
+  target_tag_id : uuid <<FK,UK* tags>>
   campaign_key : text <<UK>>
   ..
   provider_name : text

@@ -9,7 +9,7 @@ import type { CommunityActor } from "../community.rules.js";
 import { communityCreateSchema, communityUpdateSchema, reviewSchema, updateMemberSchema, type CommunityListQuery } from "../dto/community.schema.js";
 
 // Community changes enqueue embedding jobs; keep tests from feeding a running dev worker.
-vi.mock("../../../infrastructure/queue.js", () => ({ embeddingQueue: { add: vi.fn().mockResolvedValue(undefined) } }));
+vi.mock("../../../infrastructure/queue.js", () => ({ embeddingQueue: { add: vi.fn().mockResolvedValue(undefined) }, taggingQueue: { add: vi.fn().mockResolvedValue(undefined) } }));
 
 // In-memory cache so cooldown tests never depend on a real Redis; `failing` simulates an outage.
 const cacheMock = vi.hoisted(() => ({ store: new Map<string, unknown>(), failing: false }));
@@ -21,6 +21,9 @@ vi.mock("../../../infrastructure/cache.js", async (importOriginal) => {
       get: async (key: string) => { if (cacheMock.failing) throw new Error("redis down"); return cacheMock.store.get(key) ?? null; },
       set: async (key: string, value: unknown) => { if (cacheMock.failing) throw new Error("redis down"); cacheMock.store.set(key, value); },
       del: async (key: string) => { cacheMock.store.delete(key); },
+      // Counters used by the personalization profile/vocabulary versions; null = Redis unavailable, like the real cache.
+      incr: async (key: string) => { if (cacheMock.failing) return null; const next = Number(cacheMock.store.get(key) ?? 0) + 1; cacheMock.store.set(key, next); return next; },
+      getInt: async (key: string) => (cacheMock.failing ? null : Number(cacheMock.store.get(key) ?? 0)),
     },
   };
 });

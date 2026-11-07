@@ -243,7 +243,8 @@ function GapsTab({
   onDraftProposal?: (gap: ResearchGapItem) => void;
 }) {
   const [page, setPage] = useState(1);
-  const [gapParams] = useSearchParams();
+  const [gapParams, setGapParams] = useSearchParams();
+  const linkedGapId = gapParams.get("gap");
   const analysisSetId = gapParams.get("analysisSet");
   const [latestAnalysis, setLatestAnalysis] = useState<GapAnalysisResult | null>(null);
   const { data: currentProject } = useProject(projectId);
@@ -252,6 +253,15 @@ function GapsTab({
 
   const [selectedGap, setSelectedGap] = useState<ResearchGapItem | null>(null);
   const { t } = useI18n();
+  // Candidates written by the team (manually or from a literature limitation) are not part of any AI analysis.
+  const { data: teamGaps } = useGaps({ projectId, origin: "HUMAN", status: "active", page: 1, pageSize: 50, sortBy: "newest" });
+  // Deep link (?gap=<id>) from research questions and limitations: open that candidate's drawer.
+  const { data: linkedGap } = useGaps({ projectId, gapId: linkedGapId ?? undefined, status: "active", page: 1, pageSize: 1 }, Boolean(linkedGapId));
+  useEffect(() => { const gap = linkedGap?.data[0]; if (linkedGapId && gap) setSelectedGap(gap); }, [linkedGapId, linkedGap]);
+  const closeGap = () => {
+    setSelectedGap(null);
+    if (linkedGapId) { const next = new URLSearchParams(gapParams); next.delete("gap"); setGapParams(next, { replace: true }); }
+  };
 
   useEffect(() => { if (openOnInit) onOpenChange?.(false); }, [openOnInit, onOpenChange]);
   useEffect(() => { setPage(1); }, [latestAnalysis?.id]);
@@ -271,12 +281,14 @@ function GapsTab({
         null
       )}
 
+      {!!teamGaps?.data.length && <ProjectGapResults projectId={projectId} gaps={teamGaps.data} onOpen={setSelectedGap} heading={{ title: `Gap ứng viên do nhóm đề xuất (${teamGaps.data.length})`, description: "Gồm gap viết tay và gap chuyển từ hạn chế của tài liệu. Các gap này không thuộc lần phân tích AI nào." }} />}
+
       <GapDetailDrawer
         researchProjectId={projectId}
-        gap={gapsData?.data.find(item => item.id === selectedGap?.id) ?? selectedGap}
+        gap={gapsData?.data.find(item => item.id === selectedGap?.id) ?? teamGaps?.data.find(item => item.id === selectedGap?.id) ?? selectedGap}
         isOpen={selectedGap !== null}
-        onClose={() => setSelectedGap(null)}
-        onDraftProposal={onDraftProposal ? (gap) => { setSelectedGap(null); onDraftProposal(gap); } : undefined}
+        onClose={closeGap}
+        onDraftProposal={onDraftProposal ? (gap) => { closeGap(); onDraftProposal(gap); } : undefined}
       />
     </div>
   );

@@ -1,4 +1,4 @@
-import type { Community, CommunityFacet, CommunityRestrictionType, CommunityInput, CommunityPublicMember, CommunityRecommendation, CommunityRelatedGap, CommunityRelatedPaper, CommunitySort, CommunityMember, CommunityReviewInput, CommunityStatus, CommunitySummary, CommunitySuggestion, ForumNotificationLevel, ForumPostType, ForumReportReason, ForumReportStatus, ForumResearchContext, ForumSort } from "@trend/shared-types";
+import type { Community, CommunityFacet, CommunityRestrictionType, CommunityInput, CommunityPublicMember, CommunityRelatedGap, CommunityRelatedPaper, CommunitySort, CommunityMember, CommunityReviewInput, CommunityStatus, CommunitySummary, CommunitySuggestion, ForumNotificationLevel, ForumPostType, ForumReportReason, ForumReportStatus, ForumResearchContext, ForumSort } from "@trend/shared-types";
 import { API_ROUTES } from "@/constants";
 import { api } from "@/services/api-client";
 
@@ -63,7 +63,7 @@ export type ForumPostInput = {
 };
 export type ForumPostFilters = {
   page?: number; pageSize?: number; query?: string; category?: string; communityId?: string; researchCommunityId?: string; type?: ForumPostType;
-  tag?: string; sort?: ForumSort; linkedPaperId?: string; linkedResearchGapId?: string; includeModerated?: boolean;
+  tag?: string; topic?: string; sort?: ForumSort; linkedPaperId?: string; linkedResearchGapId?: string; includeModerated?: boolean;
 };
 export type ForumReportView = {
   requiresAdminReview?: boolean;
@@ -113,6 +113,8 @@ function normalizeResearchCommunity(value: unknown): ForumPostView["researchComm
   const row = record(value); const communityId = id(row); if (!communityId) return undefined;
   return { id: communityId, name: text(row.name) ?? "Community", slug: text(row.slug) ?? communityId };
 }
+/** Shared with the "For you" feed, which returns posts in the same list shape. */
+export function normalizeForumPost(value: unknown): ForumPostView { return normalizePost(value); }
 function normalizePost(value: unknown): ForumPostView {
   const row = record(value); const community = record(row.community ?? row.communityId); const author = row.author ?? row.authorId;
   const rawType = String(row.type ?? "DISCUSSION").toUpperCase();
@@ -176,6 +178,8 @@ function normalizeReactionUsers(value: unknown): Partial<Record<ForumReactionNam
   for (const reaction of REACTION_NAMES) { const users = row[reaction]; if (Array.isArray(users)) result[reaction] = users.map((item) => { const user = record(item); return { id: id(user), fullName: text(user.fullName) ?? "Researcher", avatarUrl: text(user.avatarUrl) }; }); }
   return result;
 }
+/** Shared with the "For you" community suggestions, which return communities in the same list shape. */
+export function normalizeForumCommunity(value: unknown): CommunityView { return normalizeCommunity(value); }
 function normalizeCommunity(value: unknown): CommunityView {
   const row = record(value);
   const moderators = Array.isArray(row.moderators) ? row.moderators.map((value) => { const moderator = record(value); return { id: id(moderator), fullName: text(moderator.fullName) ?? "", avatarUrl: text(moderator.avatarUrl) }; }) : undefined;
@@ -285,7 +289,6 @@ export const forumApi = {
     return { items: response.data.data.map(normalizeCommunity), page: Number(meta.page ?? params.page ?? 1), totalPages: Number(meta.totalPages ?? 1), total: Number(meta.total ?? 0) };
   },
   async communityFacets(): Promise<CommunityFacet[]> { const response = await api.get(API_ROUTES.communities.facets); return response.data.data; },
-  async communityRecommendations(): Promise<CommunityRecommendation[]> { const response = await api.get(API_ROUTES.communities.recommendations); return response.data.data.map((row: Record<string, unknown>) => ({ ...normalizeCommunity(row), matchedInterests: stringList(row.matchedInterests), matchReason: row.matchReason === "semantic" ? "semantic" as const : "topic" as const, similarity: typeof row.similarity === "number" ? row.similarity : undefined })); },
   async communitySuggestions(q: string): Promise<CommunitySuggestion[]> { const response = await api.get(API_ROUTES.communities.suggestions, { params: { q } }); return response.data.data.map((row: Record<string, unknown>) => ({ ...normalizeCommunity(row), similarity: Number(row.similarity ?? 0) })); },
   async community(idOrSlug: string): Promise<CommunityView> { const response = await api.get(API_ROUTES.communities.detail(idOrSlug)); return normalizeCommunity(response.data.data); },
   async createCommunity(input: CommunityInput): Promise<CommunityView> { const response = await api.post(API_ROUTES.communities.list, input); return normalizeCommunity(response.data.data); },

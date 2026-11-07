@@ -166,7 +166,7 @@ model Paper {
   id                           String                      @id @default(uuid()) @db.Uuid
   legacyMongoId                String?                     @unique @map("legacy_mongo_id") @db.VarChar(24)
   doi                          String?                     @unique
-  openalexId                   String?                     @map("openalex_id")
+  openalexId                   String?                     @unique @map("openalex_id")
   semanticScholarId            String?                     @map("semantic_scholar_id")
   arxivId                      String?                     @map("arxiv_id")
   pubmedId                     String?                     @map("pubmed_id")
@@ -226,7 +226,6 @@ model Paper {
   createdAt                    DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt                    DateTime                    @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  @@index([openalexId])
   @@index([semanticScholarId])
   @@index([arxivId])
   @@index([pubmedId])

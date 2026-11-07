@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  AI_ANALYZABLE_MIN_ABSTRACT_CHARS,
+  isAiAnalyzableAbstract,
   isAllowedAdminPaperStatusChange,
   isCancellablePaperRequest,
   isImportedPaperRecord,
@@ -39,5 +41,20 @@ describe("paper workflow status", () => {
     expect(isCancellablePaperRequest({ dataStatus: "draft" })).toBe(true);
     expect(isCancellablePaperRequest({ dataStatus: "low-quality" })).toBe(true);
     expect(isCancellablePaperRequest({ dataStatus: "active" })).toBe(false);
+  });
+});
+
+describe("isAiAnalyzableAbstract", () => {
+  it("uses a 250 character threshold", () => {
+    expect(AI_ANALYZABLE_MIN_ABSTRACT_CHARS).toBe(250);
+    expect(isAiAnalyzableAbstract("a".repeat(249))).toBe(false);
+    expect(isAiAnalyzableAbstract("a".repeat(250))).toBe(true);
+    expect(isAiAnalyzableAbstract("a".repeat(5000))).toBe(true);
+  });
+
+  it("is false for a missing or empty abstract", () => {
+    expect(isAiAnalyzableAbstract(null)).toBe(false);
+    expect(isAiAnalyzableAbstract(undefined)).toBe(false);
+    expect(isAiAnalyzableAbstract("")).toBe(false);
   });
 });

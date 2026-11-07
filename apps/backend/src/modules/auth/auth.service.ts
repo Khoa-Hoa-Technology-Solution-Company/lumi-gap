@@ -1,3 +1,4 @@
+import { enqueueRecomputeForumTopics } from "../personalization/personalization-topics.service.js";
 import crypto from "node:crypto";
 import {
   classifyAcademicPosition, isAdminSystemRole, type AcademicRole, type AuthResponse, type AuthTokens,
@@ -519,6 +520,7 @@ export const authService = {
         data: { researchInterests: input.researchInterests },
       });
     });
+    if (input.researchInterests !== undefined) void enqueueRecomputeForumTopics();
     return toUserDto(updated);
   },
 
@@ -771,6 +773,7 @@ export const authService = {
       });
     }
     await capabilityService.evaluate(user.id);
+    if (researchInterests !== undefined) void enqueueRecomputeForumTopics();
     return toUserDto((await findUser(user.id))!);
   },
 

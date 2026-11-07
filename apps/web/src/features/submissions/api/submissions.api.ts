@@ -20,7 +20,6 @@ export interface MentorFeedbackPayload {
   paragraphComments?: Array<{ criterionKey?: string; comment: string; evidence?: string }>;
   requestedInformation?: string;
 }
-
 export interface SubmissionSummary {
   _id: string;
   projectId: string;

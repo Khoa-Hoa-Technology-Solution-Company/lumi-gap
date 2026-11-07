@@ -1,21 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { canProposeCommunity, initialCommunityStatus, isCommunityAdmin, matchInterests, normalizeTerm, prepareInterests } from "../community.rules.js";
+import { canProposeCommunity, initialCommunityStatus, isCommunityAdmin, normalizeTerm } from "../community.rules.js";
 
-describe("community interest matching", () => {
+describe("community term normalization", () => {
   it("normalizes case and diacritics", () => {
     expect(normalizeTerm("  Học Máy ")).toBe("hoc may");
-  });
-
-  it("drops short, blank and duplicate interests", () => {
-    expect(prepareInterests(["NLP", "nlp", "ai", " ", "Machine Learning"])).toEqual(["nlp", "machine learning"]);
-  });
-
-  it("matches on topics, field or name in either direction", () => {
-    const community = { name: "Software Engineering", researchField: "Computer Science", researchTopics: ["code review", "empirical study"] };
-    expect(matchInterests(["code review"], community)).toEqual(["code review"]);
-    expect(matchInterests(["computer science education"], community)).toEqual(["computer science education"]);
-    expect(matchInterests(["software"], community)).toEqual(["software"]);
-    expect(matchInterests(["quantum"], community)).toEqual([]);
   });
 });
 

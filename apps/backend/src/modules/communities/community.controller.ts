@@ -13,10 +13,6 @@ export const communityController = {
     res.json({ success: true, data: await communityService.facets(req.user?.sub, req.user?.role) });
   },
 
-  async recommendations(req: Request, res: Response) {
-    res.json({ success: true, data: await communityService.recommend(req.user!.sub) });
-  },
-
   async suggestions(req: Request, res: Response) {
     const { q, limit } = req.query as unknown as { q: string; limit: number };
     res.json({ success: true, data: await communityService.suggest(q, req.user?.sub, req.user?.role, limit) });

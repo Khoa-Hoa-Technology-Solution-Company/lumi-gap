@@ -9,7 +9,7 @@ from typing import Any, Optional
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel
 
-from app.config import ALLOWED_STRICTNESS, OUTPUT_DIR, UPLOAD_DIR
+from app.config import ALLOWED_STRICTNESS, OUTPUT_DIR, UPLOAD_DIR, system_gemini_base_url
 from app.format_checker import PRESETS, analyze_format, report_markdown
 from app.reviewer import GeminiReviewProvider, safe_slug, write_artifacts
 from app.security import Security
@@ -52,7 +52,7 @@ def internal_router(database, security: Security) -> APIRouter:
             raise HTTPException(status_code=503, detail="AI pre-review is disabled because Gemini is not configured")
         model = settings.get("gemini_model", "gemini-3.7-flash")
         try:
-            analysis = run_pre_review(payload, api_key=api_key, model=model)
+            analysis = run_pre_review(payload, api_key=api_key, model=model, base_url=system_gemini_base_url())
             return {"status": "completed", "provider": "gemini", "model": model, "analysis": analysis}
         except ValueError as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc
@@ -123,7 +123,7 @@ def internal_router(database, security: Security) -> APIRouter:
                 temp_file = Path(tmp.name)
             target_path = temp_file
 
-            provider = GeminiReviewProvider(model=active_model, api_key=active_key)
+            provider = GeminiReviewProvider(model=active_model, api_key=active_key, base_url=None if api_key else system_gemini_base_url())
             result = provider.review(target_path, strictness)
 
             job_id = int(uuid.uuid4().int % 1_000_000_000)

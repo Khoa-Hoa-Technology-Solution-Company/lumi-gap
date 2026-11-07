@@ -2,6 +2,7 @@ import { confirmAction } from "@/services/confirmation";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "@/services/api-client";
+import { API_ROUTES } from "@/constants/api";
 import { toast } from "sonner";
 import { useAuthStore } from "@/stores/auth-store";
 import {
@@ -94,7 +95,7 @@ export function MyPapersPage({ isEmbedded = false }: { isEmbedded?: boolean } = 
     if (!(await confirmAction({ kind: "withdraw", description: "Are you sure you want to withdraw this submission?" }))) return;
     setCancelling(paperId);
     try {
-      await api.delete(`/papers/${paperId}`);
+      await api.delete(API_ROUTES.papers.cancel(paperId));
       toast.success("Submission withdrawn successfully.");
       setPapers((prev) => prev.filter((p) => p.id !== paperId));
     } catch (error: any) {
@@ -212,7 +213,7 @@ export function MyPapersPage({ isEmbedded = false }: { isEmbedded?: boolean } = 
                     </Link>
                   )}
 
-                  {paper.paperStatus === "pending" && (
+                  {paper.dataStatus !== "active" && (
                     <Button
                       variant="outline"
                       size="sm"

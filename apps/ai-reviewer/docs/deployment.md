@@ -35,6 +35,7 @@ Không ghi đè `.env` đang dùng khi nâng cấp. Chỉ bổ sung các biến 
 | `ADMIN_EMAILS` | Email admin, phân cách dấu phẩy | Chỉ cấp quyền khi tài khoản Google đó đăng nhập lần đầu |
 | `ADMIN_GOOGLE_SUBS` | Có thể để trống | Google subject ID tin cậy để bootstrap admin khi cần |
 | `GEMINI_API_KEY` | Có thể để trống | Key hệ thống cho review nội dung; không cần cho kiểm tra định dạng |
+| `GEMINI_BASE_URL` | Có thể để trống | Gateway cho key hệ thống, không kèm `/v1beta`; gateway phải hỗ trợ Interactions API. Key Gemini cá nhân của người dùng luôn gọi thẳng Google |
 | `GEMINI_MODEL` | Giữ model đang hoạt động | Tên model Gemini Interactions khả dụng với tài khoản của bạn |
 | `PAYOS_CLIENT_ID`, `PAYOS_API_KEY`, `PAYOS_CHECKSUM_KEY` | Có thể để trống | Cần đủ để nạp credit; không cần để kiểm tra định dạng |
 | `CAPTCHA_ENABLED` | `false` | Bật `true` khi đã cấu hình cả hai key Turnstile |

@@ -331,7 +331,6 @@ export function SubmissionDetailPage({
           </div>
         )}
       </header>
-
       {/* Revision Upload Section */}
       {showRevision && canRevise && (
         <section className="mt-6 rounded-xl border border-primary/30 bg-card p-6 shadow-sm">

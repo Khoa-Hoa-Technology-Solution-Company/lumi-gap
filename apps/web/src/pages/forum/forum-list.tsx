@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, Navigate, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type { ForumPostType } from "@trend/shared-types";
 import { ArrowDown, ChevronDown, List, MessageSquare, PanelTop, SquarePen, Search, ShieldAlert, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -11,12 +11,13 @@ import { ForumPagination } from "@/features/forum/components/forum-pagination";
 import { useForumFeedVisibility } from "@/features/forum/hooks/use-forum-feed-visibility";
 import { parseForumListParams, updateForumListParam } from "@/features/forum/utils/forum-pagination";
 import { forumListHref } from "@/features/forum/utils/forum-pagination";
-import { FORUM_FEEDS } from "@/features/forum/utils/forum-navigation";
+import { FORUM_FEEDS, FOR_YOU_FEED_HREF } from "@/features/forum/utils/forum-navigation";
 import { useI18n } from "@/i18n";
 import { useAuthStore } from "@/stores/auth-store";
 import { cn } from "@/utils/cn";
 import { getForumCategoryPresentation } from "@/features/forum/utils/forum-category-presentation";
 import { ForumComposerResizeHandle } from "@/features/forum/components/forum-composer-resize-handle";
+import { ForYouFeed } from "@/features/personalization";
 
 const ForumDiscussionComposer = lazy(() => import("@/pages/forum/forum-new").then((module) => ({ default: module.ForumDiscussionComposer })));
 
@@ -55,8 +56,9 @@ export function ForumListPage() {
   }, [viewMode]);
   const [searchOpen, setSearchOpen] = useState(() => Boolean(searchParams.get("q")));
   const searchField = useRef<HTMLInputElement>(null);
-  const { page, pageSize, sort, type, query } = parseForumListParams(searchParams);
-  const feedNavigation = useForumFeedVisibility(`${sort}:${language}`);
+  const { page, pageSize, sort, feed, type, query } = parseForumListParams(searchParams);
+  const onForYou = feed === "for-you";
+  const feedNavigation = useForumFeedVisibility(`${feed}:${language}`);
   // A draft belongs to one history entry. Back/forward immediately restores the URL's search.
   const [searchDraft, setSearchDraft] = useState({ value: query, locationKey: location.key });
   const searchInput = searchDraft.locationKey === location.key ? searchDraft.value : query;
@@ -93,7 +95,7 @@ export function ForumListPage() {
     page, pageSize, query: query.trim() || undefined, sort,
     type: type || undefined, category: communityId || undefined,
     tag: tag || undefined, linkedResearchGapId,
-  }, sort !== "following" || isAuthed);
+  }, !onForYou && (sort !== "following" || isAuthed));
   const { data: communities, isLoading: communitiesLoading, isError: communitiesError, refetch: retryCommunities } = useForumCategories();
   const selectedCommunity = communities?.find((item) => item.id === communityId || item.slug === communityId);
   const categoryContext = Boolean(communityId);
@@ -113,10 +115,17 @@ export function ForumListPage() {
     if (data && !isPlaceholderData && page > data.meta.totalPages) next = updateForumListParam(next, "page", String(data.meta.totalPages));
     if (searchParams.has("pageSize") && searchParams.get("pageSize") !== String(pageSize)) next.set("pageSize", String(pageSize));
     if (searchParams.has("sort") && searchParams.get("sort") !== sort) next.delete("sort");
-    if (searchParams.has("feed") && searchParams.get("feed") !== sort) next.delete("feed");
+    if (searchParams.has("feed") && searchParams.get("feed") !== feed) next.delete("feed");
     if (searchParams.has("type") && searchParams.get("type") !== type) next.delete("type");
     if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
-  }, [data, isPlaceholderData, page, pageSize, sort, type, searchParams, setSearchParams]);
+  }, [data, isPlaceholderData, page, pageSize, sort, feed, type, searchParams, setSearchParams]);
+
+  // "For you" is platform-wide: an old link that mixes it with a category or filter keeps only the feed. `replace`, so
+  // Back does not return to the mixed URL and loop.
+  const mixedForYou = onForYou && isAuthed && (Boolean(categorySlug) || Array.from(routeSearchParams.keys()).some((key) => key !== "feed"));
+  useEffect(() => {
+    if (mixedForYou) navigate(FOR_YOU_FEED_HREF, { replace: true });
+  }, [mixedForYou, navigate]);
 
   const setParam = (key: string, value?: string) => {
     const next = updateForumListParam(searchParams, key, value);
@@ -134,6 +143,9 @@ export function ForumListPage() {
     if (pageSize !== 20) next.set("pageSize", String(pageSize));
     setSearchParams(next);
   };
+
+  // Guests have no profile: the same sign-in redirect as the Following feed, coming back to the feed afterwards.
+  if (onForYou && !isAuthed) return <Navigate to={`/login?returnTo=${encodeURIComponent(FOR_YOU_FEED_HREF)}`} replace />;
 
   return (
       <ForumLayout
@@ -155,13 +167,13 @@ export function ForumListPage() {
           <header className={cn("forum-list-header relative border-b border-border/70 px-4 py-3.5 sm:px-6", categoryContext && categoryPresentation.accentClassName)}>
             {categoryContext ? <span aria-hidden="true" className={cn("forum-category-context-icon", categoryPresentation.iconClassName)}><CategoryIcon className="h-5 w-5" /></span> : null}
             <h1 className="text-xl font-semibold tracking-tight">{selectedCommunity ? t(selectedCommunity.name) : t("Research Forum")}</h1>
-            <p className="mt-1 max-w-3xl text-sm leading-5 text-muted-foreground">{t(selectedCommunity?.description || "Discuss research questions, papers, methods, and emerging research gaps.")}</p>
+            <p className="mt-1 max-w-3xl text-sm leading-5 text-muted-foreground">{t(selectedCommunity?.description || "Post, ask, exchange and discuss research across the whole platform.")}</p>
             {updating && !isLoading ? <div role="status" className="absolute inset-x-0 bottom-0 h-0.5 animate-pulse bg-primary/60 motion-reduce:animate-none"><span className="sr-only">{t("Updating discussions…")}</span></div> : null}
           </header>
           <ForumSurface data-view-mode={viewMode} className={cn("forum-topics overflow-hidden", categoryContext && "forum-category-topics")}>
           <div className="forum-topic-toolbar border-b border-slate-200 dark:border-slate-800">
             <div className="forum-topic-toolbar-row flex min-w-0 flex-wrap items-center gap-2 px-4 py-2 sm:px-6">
-              <div className="forum-topic-filter-group flex min-w-0 items-center gap-2">
+              {!onForYou ? <div className="forum-topic-filter-group flex min-w-0 items-center gap-2">
                 <label className="forum-topic-filter-control">
                   <span className="sr-only">{t("Category")}</span>
                   <span className="forum-topic-filter-shell" aria-hidden="true">
@@ -197,27 +209,28 @@ export function ForumListPage() {
                     ))}
                   </select>
                 </label>
-              </div>
+              </div> : null}
 
               <nav ref={feedNavigation} className="forum-topic-feeds flex min-w-0 flex-1 flex-nowrap items-center gap-0.5 overflow-x-auto" aria-label={t("Forum feeds")}>
-              {FORUM_FEEDS.map((feed) => (
+              {/* For you is hidden for guests and inside a category, whose tab bar is scoped to that category. */}
+              {FORUM_FEEDS.filter((item) => item.value !== "for-you" || (isAuthed && !categoryContext)).map((item) => (
                 <Link
-                  key={feed.value}
-                  to={feed.value === "following" && !isAuthed ? `/login?returnTo=${encodeURIComponent(forumListHref(searchParams, "feed", feed.value))}` : forumListHref(searchParams, "feed", feed.value)}
-                  title={t(feed.description)}
-                  aria-current={sort === feed.value ? "page" : undefined}
-                  className={`forum-topic-feed relative min-h-10 min-w-max rounded-md px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:text-base ${sort === feed.value ? "is-active text-primary" : "text-muted-foreground hover:bg-muted/70 hover:text-foreground"}`}
+                  key={item.value}
+                  to={item.value === "following" && !isAuthed ? `/login?returnTo=${encodeURIComponent(forumListHref(searchParams, "feed", item.value))}` : forumListHref(searchParams, "feed", item.value)}
+                  title={t(item.description)}
+                  aria-current={feed === item.value ? "page" : undefined}
+                  className={`forum-topic-feed relative min-h-10 min-w-max rounded-md px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:text-base ${feed === item.value ? "is-active text-primary" : "text-muted-foreground hover:bg-muted/70 hover:text-foreground"}`}
                 >
-                  {t(feed.label)}
-                  {sort === feed.value ? <span className="forum-topic-feed-indicator absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-primary" /> : null}
+                  {t(item.label)}
+                  {feed === item.value ? <span className="forum-topic-feed-indicator absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-primary" /> : null}
                 </Link>
               ))}
                 <Link to="/forum/categories" className="forum-topic-feed relative min-h-10 min-w-max rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted/70 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t("Categories")}</Link>
               </nav>
               <div className="forum-topic-toolbar-actions ml-auto flex shrink-0 items-center gap-2">
-                <Button type="button" variant="outline" size="icon" aria-label={t(searchOpen ? "Hide search" : "Show search")} aria-expanded={searchOpen} aria-controls="forum-list-search" className="forum-search-toggle h-9 w-9 rounded-full" onClick={() => setSearchOpen((open) => !open)}>
+                {!onForYou ? <Button type="button" variant="outline" size="icon" aria-label={t(searchOpen ? "Hide search" : "Show search")} aria-expanded={searchOpen} aria-controls="forum-list-search" className="forum-search-toggle h-9 w-9 rounded-full" onClick={() => setSearchOpen((open) => !open)}>
                   {searchOpen ? <X className="h-4 w-4" /> : <Search className="h-4 w-4" />}
-                </Button>
+                </Button> : null}
                 <div className="forum-topic-create-group inline-flex items-center">
                   {isAuthed ? (
                     <Button variant="discussion" type="button" aria-label={t("New discussion")} title={t("New discussion")} aria-haspopup="dialog" aria-expanded={composerOpen} className="forum-new-discussion shrink-0 gap-1.5 px-3 text-sm" onClick={() => { setCloseRequest(0); setComposerExpanded(false); setComposerOpen(true); }}>
@@ -241,15 +254,15 @@ export function ForumListPage() {
                 </div>
               </div>
             </div>
-            <div id="forum-list-search" data-expanded={searchOpen} className="forum-list-search relative mx-4 max-w-2xl pb-3 sm:mx-6" role="search">
+            {!onForYou ? <div id="forum-list-search" data-expanded={searchOpen} className="forum-list-search relative mx-4 max-w-2xl pb-3 sm:mx-6" role="search">
               <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-[calc(50%+0.375rem)] text-sky-600 dark:text-sky-300" />
               <Input ref={searchField} value={searchInput} onChange={(event) => setSearchInput(event.target.value)} aria-label={t("Search discussions")} placeholder={t("Search discussions, papers, DOI, topics...")} className="h-10 rounded-lg border-slate-300 bg-white/80 pl-10 text-sm shadow-sm ring-1 ring-white/60 placeholder:text-slate-400 focus-visible:border-violet-400 focus-visible:ring-violet-400/30 dark:border-slate-700 dark:bg-slate-950/60 dark:ring-slate-800/60" />
-            </div>
-            <p className="sr-only">{t(FORUM_FEEDS.find((feed) => feed.value === sort)!.description)}</p>
+            </div> : null}
+            <p className="sr-only">{t(FORUM_FEEDS.find((item) => item.value === feed)!.description)}</p>
           </div>
 
           {/* Active filters */}
-          {hasFilters ? (
+          {hasFilters && !onForYou ? (
             <div className="flex flex-wrap items-center gap-2 border-b border-border px-5 py-3 text-sm sm:px-6">
               <span className="font-medium text-muted-foreground">{t("Showing:")}</span>
               {searchInput ? <FilterChip label={`"${searchInput}"`} onClear={() => setSearchInput("")} /> : null}
@@ -260,21 +273,21 @@ export function ForumListPage() {
             </div>
           ) : null}
 
-          <div className="forum-topic-head items-center gap-4 border-b border-border px-6 py-4 text-base font-medium text-muted-foreground">
+          {!onForYou ? <div className="forum-topic-head items-center gap-4 border-b border-border px-6 py-4 text-base font-medium text-muted-foreground">
             <span>{t("Topic")}</span>
             <span className="forum-topic-head-metrics grid items-center gap-2">
               <span className="forum-topic-head-participants text-left">{t("Participants")}</span>
               <span className="text-center">{t("Replies")}</span>
               <span className="forum-topic-head-views text-center">{t("Views")}</span>
-              <button type="button" onClick={() => setParam("feed", "popular")} title={t(FORUM_FEEDS[2]!.description)} className="forum-topic-head-helpful items-center justify-center gap-1 rounded focus-visible:ring-2 focus-visible:ring-ring hover:text-slate-900 dark:hover:text-white">
+              <button type="button" onClick={() => setParam("feed", "popular")} title={t(FORUM_FEEDS.find((item) => item.value === "popular")!.description)} className="forum-topic-head-helpful items-center justify-center gap-1 rounded focus-visible:ring-2 focus-visible:ring-ring hover:text-slate-900 dark:hover:text-white">
                 {t("Helpful")}{sort === "popular" ? <ArrowDown aria-hidden="true" className="h-3.5 w-3.5" /> : null}
               </button>
-              <button type="button" onClick={() => setParam("feed", "latest")} title={t(FORUM_FEEDS[0]!.description)} className="flex items-center justify-end gap-1 rounded text-right focus-visible:ring-2 focus-visible:ring-ring">{t("Activity")}{sort === "latest" ? <ArrowDown aria-hidden="true" className="h-3.5 w-3.5" /> : null}</button>
+              <button type="button" onClick={() => setParam("feed", "latest")} title={t(FORUM_FEEDS.find((item) => item.value === "latest")!.description)} className="flex items-center justify-end gap-1 rounded text-right focus-visible:ring-2 focus-visible:ring-ring">{t("Activity")}{sort === "latest" ? <ArrowDown aria-hidden="true" className="h-3.5 w-3.5" /> : null}</button>
             </span>
-          </div>
+          </div> : null}
 
-          {/* Topic list */}
-          <div aria-live="polite" aria-busy={updating}>
+          {/* Topic list. On For you the personalised feed replaces the list: no filters, header row or pagination. */}
+          {onForYou ? <ForYouFeed /> : <div aria-live="polite" aria-busy={updating}>
             {sort === "following" && !isAuthed ? (
               <div className="p-10 text-center"><h2 className="font-semibold">{t("Sign in to see followed discussions.")}</h2><Button asChild size="sm" className="mt-4"><Link to={`/login?returnTo=${encodeURIComponent(location.pathname + location.search)}`}>{t("Sign in")}</Link></Button></div>
             ) : isLoading ? (
@@ -318,7 +331,7 @@ export function ForumListPage() {
             ) : (
               <EmptyState hasFilters={hasFilters} isAuthed={isAuthed} following={sort === "following"} onClear={clearFilters} onNewDiscussion={() => { setCloseRequest(0); setComposerExpanded(false); setComposerOpen(true); }} t={t} />
             )}
-          </div>
+          </div>}
           </ForumSurface>
         </section>
         <Dialog open={composerOpen} onOpenChange={(open) => { if (open) setComposerOpen(true); }}>

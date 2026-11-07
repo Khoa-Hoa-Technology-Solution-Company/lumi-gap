@@ -52,7 +52,7 @@ describe("DOI citation ingestion through existing Paper storage", () => {
     expect(result.records[0]?.paper.doi).toBeUndefined();
   });
   it("keeps an active citation source available after a later ordinary sync", async () => {
-    mocks.find.mockResolvedValue({ id, dataStatus: "active", isAiAnalyzable: false, citationCount: 12 });
+    mocks.find.mockResolvedValue({ id, primaryProvider: "openalex", dataStatus: "active", isAiAnalyzable: false, citationCount: 12 });
     const result = await ingestOpenAlexWorks([work], "provider");
     expect(result.records[0]?.paper).toMatchObject({ dataStatus: "active", isAiAnalyzable: false, citationCount: 12 });
   });

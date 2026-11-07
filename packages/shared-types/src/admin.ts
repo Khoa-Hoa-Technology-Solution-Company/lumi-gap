@@ -231,3 +231,24 @@ export interface PlatformAiSettings {
   activeConnectionId: string | null;
   environmentDefaults: { provider: "gemini"; fastModel: string; deepModel: string };
 }
+
+/** A platform-wide embedding connection as shown to admins; the API key is never returned. */
+export interface PlatformEmbeddingConnection {
+  id: string;
+  name: string;
+  baseUrl: string;
+  /** The provider's id for the model. */
+  model: string;
+  hasApiKey: boolean;
+  isActive: boolean;
+  /** Cosine against stored vectors at the last check; null when no stored vectors existed to compare with. */
+  verifiedSimilarity: number | null;
+  updatedAt: string;
+}
+
+/** GET /admin/ai-connections/embedding. Without an active connection, the environment defaults are used. */
+export interface PlatformEmbeddingSettings {
+  connections: PlatformEmbeddingConnection[];
+  activeConnectionId: string | null;
+  environmentDefaults: { provider: "gemini"; model: string; dimensions: number };
+}

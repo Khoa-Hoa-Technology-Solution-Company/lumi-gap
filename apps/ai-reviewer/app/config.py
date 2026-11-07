@@ -27,6 +27,11 @@ ALLOWED_STRICTNESS = ("lenient", "balanced", "strict")
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # Initial value; the admin storage policy controls HTTP uploads.
 
 
+def system_gemini_base_url() -> str | None:
+    """Gateway for the system key, same variable as the backend. A user's personal Google key never goes through it."""
+    return os.getenv("GEMINI_BASE_URL") or None
+
+
 def ensure_directories() -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)

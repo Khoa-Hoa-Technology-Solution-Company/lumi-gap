@@ -74,7 +74,7 @@ export function PlatformAiSettings() {
     <header className="flex flex-wrap items-start justify-between gap-3">
       <div>
         <h2 className="flex items-center gap-2 text-sm font-bold text-slate-900 dark:text-white"><Bot className="h-4 w-4 text-blue-600" />Platform AI connection</h2>
-        <p className="mt-1 max-w-2xl text-xs text-muted-foreground">The AI provider and models used by everyone without a personal AI connection: reports, research gaps, scoring, paper analysis and chat. Search embeddings always use the server's Gemini key, so stored vectors stay comparable. Changes reach every worker within 30 seconds.</p>
+        <p className="mt-1 max-w-2xl text-xs text-muted-foreground">The AI provider and models used by everyone without a personal AI connection: reports, research gaps, scoring, paper analysis and chat. Embeddings have their own connection below. Changes reach every worker within 30 seconds.</p>
       </div>
       <Button size="sm" disabled={busy} onClick={() => { setDraft(fresh()); setModels([]); setError(""); setNotice(""); }}><Plus className="mr-2 h-4 w-4" />Add connection</Button>
     </header>

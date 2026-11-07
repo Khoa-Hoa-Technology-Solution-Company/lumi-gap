@@ -39,7 +39,9 @@ entity allocation_revisions #EFE6F8;line:6A3FA0 {
   --
   period_id : uuid <<FK,UK*>>
   project_id : uuid <<FK>>
+  evaluation_snapshot_id : uuid <<FK contribution_evaluation_snapshots>>
   created_by_id : uuid <<FK users>>
+  finalized_by_id : uuid <<FK users>>
   ..
   revision : integer
   status : varchar(24)

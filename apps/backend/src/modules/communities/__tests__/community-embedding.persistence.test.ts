@@ -8,7 +8,7 @@ import { communityService } from "../community.service.js";
 
 vi.mock("../../embeddings/embedding.factory.js", () => ({ getEmbeddingProvider: vi.fn() }));
 // Never enqueue real jobs from tests: a running dev worker would call Gemini.
-vi.mock("../../../infrastructure/queue.js", () => ({ embeddingQueue: { add: vi.fn().mockResolvedValue(undefined) } }));
+vi.mock("../../../infrastructure/queue.js", () => ({ embeddingQueue: { add: vi.fn().mockResolvedValue(undefined) }, taggingQueue: { add: vi.fn().mockResolvedValue(undefined) } }));
 
 const unit = (axis: number) => Array.from({ length: PAPER_EMBEDDING_DIMENSIONS }, (_, i) => (i === axis ? 1 : 0));
 const near = unit(0);
@@ -144,14 +144,6 @@ describe.sequential("community embedding suggestions (PostgreSQL)", () => {
     expect(ours(await communityService.suggest("anything", ownerId, "admin", 10))).not.toContain("Cemb catNear");
   });
 
-  it("recommend() never returns forum categories, by text match or by semantic match", async () => {
-    mockProvider(async () => near);
-    const names = ours(await communityService.recommend(outsiderId, 10));
-    expect(names).toContain("Cemb near");
-    expect(names).not.toContain("Cemb catNear");
-    expect(names).not.toContain("Cemb catCrowd");
-  });
-
   it("runCommunityEmbedding() does not embed forum categories", async () => {
     mockProvider(async () => near);
     const result = await runCommunityEmbedding({ ids: [c.catFresh] });
@@ -162,37 +154,6 @@ describe.sequential("community embedding suggestions (PostgreSQL)", () => {
   it("suggest() returns [] instead of throwing when embedding fails", async () => {
     mockProvider(async () => { throw new Error("quota exceeded"); });
     await expect(communityService.suggest("anything", outsiderId, "user")).resolves.toEqual([]);
-  });
-
-  it("recommend() falls back to semantic matches and skips joined ones", async () => {
-    mockProvider(async () => near);
-    const result = await communityService.recommend(outsiderId, 10);
-    const names = ours(result);
-    expect(names).toContain("Cemb near");
-    expect(names).not.toContain("Cemb joined");
-    expect(names).toContain("Cemb priv");
-    expect(result.find((row) => row.name === `Cemb priv ${marker}`)).toMatchObject({ matchReason: "semantic" });
-    expect(result.filter((row) => row.name.endsWith(marker)).every((row) => row.matchReason === "semantic")).toBe(true);
-  });
-
-  it("recommend() matches every ACTIVE community by its topics", async () => {
-    const prisma = getPrisma();
-    const topic = `zzqx-${marker}`;
-    const [first, second] = await Promise.all([
-      prisma.community.create({ data: { name: `Cemb topicOne ${marker}`, slug: `cemb-topicone-${marker}`, ownerId, status: "ACTIVE", researchTopics: [topic] } }),
-      prisma.community.create({ data: { name: `Cemb topicTwo ${marker}`, slug: `cemb-topictwo-${marker}`, ownerId, status: "ACTIVE", researchTopics: [topic] } }),
-    ]);
-    communityIds.push(first.id, second.id);
-    mockProvider(async () => { throw new Error("no embedding needed"); });
-    const result = await communityService.recommend(outsiderId, 10);
-    const byName = new Map(result.map((row) => [row.name, row]));
-    expect(byName.get(`Cemb topicOne ${marker}`)?.matchReason).toBe("topic");
-    expect(byName.get(`Cemb topicTwo ${marker}`)?.matchReason).toBe("topic");
-  });
-
-  it("recommend() still resolves with string matches only when embedding fails", async () => {
-    mockProvider(async () => { throw new Error("quota exceeded"); });
-    await expect(communityService.recommend(outsiderId, 6)).resolves.toBeInstanceOf(Array);
   });
 
   it("runCommunityEmbedding() embeds ACTIVE communities only and records provenance", async () => {

@@ -67,6 +67,9 @@ import { useForumNotificationLevel } from "@/features/forum/hooks/use-forum";
 const ForumComposer = lazy(() => import("@/features/forum/components/forum-composer").then((module) => ({ default: module.ForumComposer })));
 const ForumBodyEditor = lazy(() => import("@/features/forum/components/forum-body-editor").then((module) => ({ default: module.ForumBodyEditor })));
 
+/** A thread of this many posts or fewer shows no timeline: it adds nothing to a short page. */
+const TIMELINE_MIN_POSTS = 3;
+
 function ForumEditorLoading() {
   const { t } = useI18n();
   return <div role="status" className="min-h-24 p-4 text-sm text-muted-foreground">{t("Loading discussion editor")}</div>;
@@ -166,6 +169,10 @@ export function ForumDetailPage() {
   const authorTopicPostCount = (authorId: string) => commentsQuery.hasNextPage || commentsQuery.isLoading ? undefined : authorPostCounts.get(authorId);
   const showOpening = !filteredAuthorId || filteredAuthorId === post?.author.id;
   const timelineIds = useMemo(() => [...(showOpening ? ["opening-post"] : []), ...visibleComments.map((comment) => `comment-${comment.id}`)], [visibleComments, showOpening]);
+  // A short thread (3 posts or fewer) gains nothing from a timeline, so it is hidden below this size.
+  const timelineTotal = filteredAuthorId ? timelineIds.length : (commentsQuery.data?.pages[0]?.meta.total ?? post?.replyCount ?? 0) + 1;
+  const showTimeline = timelineIds.length > 0 && timelineTotal > TIMELINE_MIN_POSTS;
+  const replyHeadingCount = filteredAuthorId ? visibleComments.length : (commentsQuery.data?.pages[0]?.meta.total ?? post?.replyCount ?? 0);
   const timelineDates = useMemo(() => [...(showOpening && post ? [post.createdAt] : []), ...visibleComments.map((comment) => comment.createdAt)], [visibleComments, showOpening, post?.createdAt]);
   const replyLookup = useMemo(() => {
     const children = new Map<string, ForumCommentView[]>();
@@ -471,13 +478,14 @@ export function ForumDetailPage() {
                   {post.isPinned ? <span className="inline-flex items-center gap-1"><Pin className="h-3.5 w-3.5" />{t("Pinned")}</span> : null}
                   {locked ? <span className="inline-flex items-center gap-1"><Lock className="h-3.5 w-3.5" />{t("Locked")}</span> : null}
                 </div>
+                {!filteredAuthorId ? <ForumTopicStats key={`${post.id}-stats`} post={post} comments={comments} hasMore={commentsQuery.hasNextPage} loadingMore={commentsQuery.isFetchingNextPage} onLoadMore={() => void commentsQuery.fetchNextPage()} onFilterAuthor={filterAuthor} onJumpToPost={jumpToPost} /> : null}
               </header>
-          <div className="forum-detail-grid mx-auto grid grid-cols-[minmax(0,1fr)] gap-6 xl:grid-cols-[minmax(0,1fr)_168px] xl:gap-8">
+          <div className={cn("forum-detail-grid mx-auto grid grid-cols-[minmax(0,1fr)] gap-6 xl:gap-8", showTimeline && "xl:grid-cols-[minmax(0,1fr)_168px]")}>
             <div className="min-w-0">
               {filteredAuthorId ? <div role="status" className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded border border-border bg-muted/30 p-3 text-sm"><span>{t("Showing posts by")} {post.author.id === filteredAuthorId ? post.author.fullName : comments.find((comment) => comment.author.id === filteredAuthorId)?.author.fullName}</span><button type="button" onClick={() => setFilteredAuthorId(undefined)} className="inline-flex items-center gap-1 text-primary hover:underline"><X className="h-3.5 w-3.5" />{t("Show all posts")}</button></div> : null}
               {locked ? <div role="status" className="mb-6 flex gap-3 rounded-md border border-border bg-muted/30 p-4"><Lock className="mt-0.5 h-4 w-4 shrink-0" /><div><p className="text-sm font-semibold">{t("This discussion is locked.")}</p><p className="mt-1 text-sm text-muted-foreground">{t("Existing responses remain visible, but new replies cannot be added.")}</p></div></div> : null}
               {removed || post.status === "hidden" ? <p role="status" className="mb-5 text-sm text-muted-foreground">{t(removed ? "This discussion was removed. Existing responses remain visible." : "This discussion is hidden from the forum.")}</p> : null}
-              {showOpening ? <article id="opening-post" data-thread-post tabIndex={-1} className="forum-thread-post scroll-mt-[calc(var(--app-header-offset)+1rem)] border-t border-border py-4 outline-none">
+              {showOpening ? <article id="opening-post" data-thread-post tabIndex={-1} className="forum-thread-post forum-thread-card forum-thread-card--opening scroll-mt-[calc(var(--app-header-offset)+1rem)] rounded-xl border border-slate-300 bg-card p-4 outline-none sm:p-5 dark:border-border">
                 <div className="grid grid-cols-[40px_minmax(0,1fr)] gap-x-3 sm:grid-cols-[44px_minmax(0,1fr)] sm:gap-x-4">
                   <ForumAuthorPopover className="forum-post-avatar" author={post.author} canReply={!readOnly && (!isAuthed || canReply)} onReply={() => openComposer()} onFilterPosts={() => filterAuthor(post.author.id)} authorTopicPostCount={authorTopicPostCount(post.author.id)}>
                     <ForumAuthorAvatar author={post.author} size="md" />
@@ -496,18 +504,18 @@ export function ForumDetailPage() {
                     {post.references.length ? <section aria-label={t("References")} className="col-span-2 mt-6 min-w-0"><h2 className="forum-post-section-title mb-3">{t("References")}</h2><ol className="space-y-3">{orderForumReferences(post.content, post.references).map((reference, index) => <li key={reference.id || index}><ForumReferenceItem reference={reference} index={index + 1} linkedGapId={isAuthed ? post.linkedResearchGapId : undefined} onReviewEvidence={setReviewTarget} /></li>)}</ol></section> : null}
                     <div role="group" aria-label={t("Discussion actions")} className="forum-post-actions col-span-2 mt-5 flex flex-wrap items-center gap-x-1 gap-y-2">
                       <ForumReactionPicker countsOnly target={{ scope: "post", id: post.id }} counts={post.reactionCounts} viewerReactions={post.viewerReactions} reactionUsers={post.reactionUsers} isAuthed={isAuthed} disabled={readOnly} pending={reaction.isPending} onToggle={(reactionName, active) => reaction.mutate({ kind: "post", id: post.id, reaction: reactionName, active }, { onError: () => toast.error(t("Could not update reaction.")) })} />
-                      <div className="forum-post-action-links ml-auto inline-flex items-center gap-0.5">
+                      <div className="forum-post-action-links inline-flex items-center gap-1">
                       <ForumReactionPicker triggerOnly counts={post.reactionCounts} viewerReactions={post.viewerReactions} reactionUsers={post.reactionUsers} isAuthed={isAuthed} disabled={readOnly} pending={reaction.isPending} onToggle={(reactionName, active) => reaction.mutate({ kind: "post", id: post.id, reaction: reactionName, active }, { onError: () => toast.error(t("Could not update reaction.")) })} />
-                      <Button type="button" variant="ghost" size="icon" onClick={handleShare} aria-label={t("Share")} title={t("Share")} className="h-9 w-9 text-muted-foreground"><Link2 aria-hidden="true" className="h-4 w-4" /></Button>
+                      <Button type="button" variant="ghost" size="icon" onClick={handleShare} aria-label={t("Share")} title={t("Share")} className="h-10 w-10 text-muted-foreground"><Link2 aria-hidden="true" className="h-4 w-4" /></Button>
                       {isAuthed && !removed ? <DropdownMenu>
-                        <DropdownMenuTrigger asChild><Button type="button" variant="ghost" size="icon" className="h-9 w-9 text-muted-foreground" aria-label={t("More discussion actions")} title={t("More discussion actions")}><MoreHorizontal aria-hidden="true" className="h-4 w-4" /></Button></DropdownMenuTrigger>
+                        <DropdownMenuTrigger asChild><Button type="button" variant="ghost" size="icon" className="h-10 w-10 text-muted-foreground" aria-label={t("More discussion actions")} title={t("More discussion actions")}><MoreHorizontal aria-hidden="true" className="h-4 w-4" /></Button></DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           {isOwner && !readOnly ? <><DropdownMenuItem onSelect={() => { setEditTitle(post.title); setEditContent(post.content); setEditReferences(post.references); setEditTags(post.tags.join(", ")); setPostEditorOpen(true); }}><Pencil aria-hidden="true" className="mr-2 h-4 w-4" />{t("Edit discussion")}</DropdownMenuItem><DropdownMenuSeparator /></> : null}
                           <DropdownMenuItem onSelect={() => setReportTarget({ type: "post", id: post.id })}><Flag aria-hidden="true" className="mr-2 h-4 w-4" />{t("Report content")}</DropdownMenuItem>
                           {isOwner && !readOnly ? <><DropdownMenuSeparator /><DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => setDeleteTarget({ type: "post", id: post.id })}><Trash2 aria-hidden="true" className="mr-2 h-4 w-4" />{t("Delete discussion")}</DropdownMenuItem></> : null}
                         </DropdownMenuContent>
                       </DropdownMenu> : null}
-                      <Button type="button" variant="ghost" size="sm" disabled={readOnly || (isAuthed && !canReply)} onClick={() => openComposer()} title={!canReply ? t(isAuthed ? readOnly ? "This discussion is read-only." : "This category is read-only or replying is unavailable." : "Sign in to join the discussion.") : undefined} className="gap-1.5 text-muted-foreground"><Reply aria-hidden="true" className="h-4 w-4" />{t("Reply")}</Button>
+                      <Button type="button" variant="ghost" size="sm" disabled={readOnly || (isAuthed && !canReply)} onClick={() => openComposer()} title={!canReply ? t(isAuthed ? readOnly ? "This discussion is read-only." : "This category is read-only or replying is unavailable." : "Sign in to join the discussion.") : undefined} className="min-h-10 gap-1.5 text-muted-foreground"><Reply aria-hidden="true" className="h-4 w-4" />{t("Reply")}</Button>
                       </div>
                     </div>
                     {post.canModerate && !removed ? <div className="col-span-2 mt-3 flex flex-wrap gap-1 border-t border-border pt-3">
@@ -518,9 +526,8 @@ export function ForumDetailPage() {
                   </div>
                 </div>
               </article> : null}
-              {!filteredAuthorId ? <ForumTopicStats key={`${post.id}-opening`} post={post} comments={comments} hasMore={commentsQuery.hasNextPage} loadingMore={commentsQuery.isFetchingNextPage} onLoadMore={() => void commentsQuery.fetchNextPage()} onFilterAuthor={filterAuthor} onJumpToPost={jumpToPost} /> : null}
-              <section id="responses-section" tabIndex={-1} className="scroll-mt-[calc(var(--app-header-offset)+1rem)] outline-none" aria-label={t("Replies")}>
-                <h2 className="sr-only">{t("Replies")}</h2>
+              <section id="responses-section" tabIndex={-1} className="flex scroll-mt-[calc(var(--app-header-offset)+1rem)] flex-col gap-3 outline-none" aria-label={t("Replies")}>
+                {replyHeadingCount > 0 ? <h2 className="forum-replies-heading" data-testid="replies-heading">{replyHeadingCount} {t(replyHeadingCount === 1 ? "reply" : "replies")}</h2> : null}
                 {commentsQuery.isLoading ? <div className="h-32 animate-pulse border-t bg-muted/30" aria-label={t("Loading replies")} /> : null}
                 {commentsQuery.isError ? <div role="alert" className="border-t py-6 text-sm"><p>{t("Could not load replies.")}</p><Button variant="outline" size="sm" className="mt-3" onClick={() => commentsQuery.refetch()}>{t("Try again")}</Button></div> : null}
                 {visibleComments.map((comment) => <ForumResponseItem key={comment.id}
@@ -542,8 +549,7 @@ export function ForumDetailPage() {
                 {!commentsQuery.isLoading && !commentsQuery.isError && !post.replyCount && !comments.length ? <p className="border-t py-6 text-sm text-muted-foreground">{t("No replies yet. Start the conversation with a question or a reference.")}</p> : null}
               </section>
               <div id="thread-end" tabIndex={-1} className="scroll-mt-24 outline-none">
-                {!filteredAuthorId && comments.length ? <ForumTopicStats key={`${post.id}-end`} post={post} comments={comments} hasMore={commentsQuery.hasNextPage} loadingMore={commentsQuery.isFetchingNextPage} onLoadMore={() => void commentsQuery.fetchNextPage()} onJumpToPost={jumpToPost} compact /> : null}
-                <div className="flex flex-wrap items-center justify-end gap-2 py-4"><Button type="button" variant="discussion" size="sm" disabled={readOnly || (isAuthed && !canReply)} onClick={() => openComposer()} className="gap-1.5 rounded-full"><Reply className="h-4 w-4" aria-hidden="true" />{t("Reply")}</Button><Button type="button" variant="outline" size="sm" aria-pressed={post.isFollowing} disabled={follow.isPending || removed || post.status === "hidden"} onClick={() => { if (!isAuthed) { navigate(`/login?returnTo=${encodeURIComponent(forumPostHref(post))}`); return; } follow.mutate({ postId: post.id, following: !post.isFollowing }, { onError: () => toast.error(t("Could not update follow status.")) }); }}>{t(post.isFollowing ? "Following" : "Follow")}</Button>{notificationControl(true)}</div>
+                <div className="forum-thread-bottom-bar flex flex-wrap items-center gap-2 py-4"><Button type="button" variant="discussion" size="sm" disabled={readOnly || (isAuthed && !canReply)} onClick={() => openComposer()} className="gap-1.5 rounded-full"><Reply className="h-4 w-4" aria-hidden="true" />{t("Reply")}</Button><Button type="button" variant="outline" size="sm" aria-pressed={post.isFollowing} disabled={follow.isPending || removed || post.status === "hidden"} onClick={() => { if (!isAuthed) { navigate(`/login?returnTo=${encodeURIComponent(forumPostHref(post))}`); return; } follow.mutate({ postId: post.id, following: !post.isFollowing }, { onError: () => toast.error(t("Could not update follow status.")) }); }}>{t(post.isFollowing ? "Following" : "Follow")}</Button><span className="inline-flex items-center gap-2 text-sm text-muted-foreground"><span>{t("Notifications")}:</span>{notificationControl(true)}</span></div>
                 <div id="response-composer" className="scroll-mt-24">
                   {isAuthed && !removed && post.status !== "hidden" ? <>
                     {canReply ? (
@@ -579,7 +585,7 @@ export function ForumDetailPage() {
               </div>
               {!removed && post.status !== "hidden" ? <ForumThreadDiscovery key={post.id} postId={post.id} /> : null}
             </div>
-            {timelineIds.length ? <ForumThreadTimeline key={`${post.id}-${filteredAuthorId ?? "all"}`} postIds={timelineIds} postDates={timelineDates} total={filteredAuthorId ? timelineIds.length : (commentsQuery.data?.pages[0]?.meta.total ?? post.replyCount) + 1} createdAt={post.createdAt} lastActivityAt={post.lastActivityAt ?? post.createdAt} hasMore={Boolean(commentsQuery.hasNextPage)} loadingMore={commentsQuery.isLoading || commentsQuery.isFetchingNextPage} onLoadMore={() => void (commentsQuery.hasNextPage ? commentsQuery.fetchNextPage() : commentsQuery.refetch())} onReply={() => openComposer()} replyDisabled={readOnly || (isAuthed && !canReply)} notificationControl={notificationControl()} /> : null}
+            {showTimeline ? <ForumThreadTimeline key={`${post.id}-${filteredAuthorId ?? "all"}`} postIds={timelineIds} postDates={timelineDates} total={filteredAuthorId ? timelineIds.length : (commentsQuery.data?.pages[0]?.meta.total ?? post.replyCount) + 1} createdAt={post.createdAt} lastActivityAt={post.lastActivityAt ?? post.createdAt} hasMore={Boolean(commentsQuery.hasNextPage)} loadingMore={commentsQuery.isLoading || commentsQuery.isFetchingNextPage} onLoadMore={() => void (commentsQuery.hasNextPage ? commentsQuery.fetchNextPage() : commentsQuery.refetch())} onReply={() => openComposer()} replyDisabled={readOnly || (isAuthed && !canReply)} notificationControl={notificationControl()} /> : null}
           </div>
         </ForumSurface>
 

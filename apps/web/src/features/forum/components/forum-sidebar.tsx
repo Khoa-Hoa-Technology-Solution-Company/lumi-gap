@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Layers, Menu, SquarePen, Shield } from "lucide-react";
+import { Layers, Menu, SquarePen, Shield, Users } from "lucide-react";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import type { ForumCategoryView } from "../api/forum.api";
@@ -50,7 +50,7 @@ export function ForumSidebar({
   const onList = location.pathname === "/forum" || Boolean(categoryRouteSlug);
   const params = new URLSearchParams(onList ? location.search : "");
   if (categoryRouteSlug && !params.has("category")) params.set("category", decodeURIComponent(categoryRouteSlug));
-  const { sort, type } = parseForumListParams(params);
+  const { feed, type } = parseForumListParams(params);
   const categoryFilter = params.get("category") ?? params.get("community") ?? "";
   const [open, setOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -98,8 +98,8 @@ export function ForumSidebar({
       )}
 
       <div className="forum-sidebar-section forum-sidebar-section--feeds space-y-0.5">
-        {FORUM_FEEDS.map(({ value, label, description, icon: Icon }) => {
-          const active = onList && sort === value;
+        {FORUM_FEEDS.filter(({ value }) => value !== "for-you" || isAuthed).map(({ value, label, description, icon: Icon }) => {
+          const active = onList && feed === value;
           const target = forumListHref(params, "feed", value);
           return (
             <Link
@@ -159,6 +159,13 @@ export function ForumSidebar({
         ) : (
           <p className="forum-sidebar-feedback px-3 py-2 text-sm text-muted-foreground">{t("No forum categories available.")}</p>
         )}
+      </div>
+
+      <div className="forum-sidebar-section forum-sidebar-section--communities mt-4 border-t border-border/70 pt-3">
+        <Link to="/communities" onClick={close} title={t("Discover and join communities around research directions to follow and discuss them with people who share your interests.")} className={itemClass}>
+          <Users aria-hidden="true" data-sidebar-icon="communities" className={iconClass} />
+          <span>{t("Research Communities")}</span>
+        </Link>
       </div>
 
       <div className="forum-sidebar-section forum-sidebar-section--types mt-4 border-t border-border/70 pt-3">

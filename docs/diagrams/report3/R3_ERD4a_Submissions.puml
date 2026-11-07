@@ -43,6 +43,7 @@ entity SubmissionRevision #EFE6F8;line:6A3FA0 {
   uploadedById <<FK User>>
   sourceRevisionId <<FK>>
   manuscriptSnapshotId <<FK ManuscriptSnapshot>>
+  attributionCheckId <<FK ManuscriptAttributionCheck>>
   ..
   originalFileName
   contentType

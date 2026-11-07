@@ -1,7 +1,8 @@
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { MessageSquare, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ForumCard, useCommunitySummary, useForumPostsInfinite, useRequestCommunitySummary, type CommunityView } from "@/features/forum";
+import { TopicChipFilter, orderTopicsByProfile, useInterests } from "@/features/personalization";
 import { useI18n } from "@/i18n";
 import { useAuthStore } from "@/stores/auth-store";
 import { CommunitySummaryText } from "./community-summary-text";
@@ -12,7 +13,17 @@ export function CommunityDiscussionsTab({ community }: { community: CommunityVie
   const isMember = community.viewerMembership?.status === "active";
   const isAuthed = useAuthStore((state) => Boolean(state.tokens?.accessToken));
   const canStartThread = isAuthed && community.status === "ACTIVE" && community.viewerMembership?.status !== "banned";
-  const posts = useForumPostsInfinite({ researchCommunityId: community.id, pageSize: 20, sort: "latest" });
+  // The selected topic lives in the URL so the back button restores it.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const topic = searchParams.get("topic")?.trim() || null;
+  const selectTopic = (next: string | null) => setSearchParams((current) => {
+    const params = new URLSearchParams(current);
+    if (next) params.set("topic", next); else params.delete("topic");
+    return params;
+  });
+  const interests = useInterests(isAuthed);
+  const chipTopics = orderTopicsByProfile(community.researchTopics, (interests.data?.topics ?? []).filter((item) => item.matchable).map((item) => item.key));
+  const posts = useForumPostsInfinite({ researchCommunityId: community.id, pageSize: 20, sort: "latest", ...(topic ? { topic } : {}) });
   const canSummarize = (isMember || community.isAdmin) && community.status === "ACTIVE";
   const summary = useCommunitySummary(community.id, canSummarize);
   const requestSummary = useRequestCommunitySummary();
@@ -24,6 +35,7 @@ export function CommunityDiscussionsTab({ community }: { community: CommunityVie
       <p className="text-sm text-muted-foreground"><span className="tabular-nums">{community.threadCount}</span> {t(community.threadCount === 1 ? "discussion" : "discussions")}</p>
       {canStartThread ? <Button asChild variant="discussion"><Link to={`/forum/new?community=${encodeURIComponent(community.slug)}`}><MessageSquare className="h-4 w-4" />{t("New discussion")}</Link></Button> : null}
     </div>
+    <TopicChipFilter topics={chipTopics} selected={topic} onSelect={selectTopic} />
     {canSummarize ? <section className="rounded-xl border bg-card p-5" aria-label={t("AI summary")}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h3 className="flex items-center gap-2 text-sm font-semibold"><Sparkles className="h-4 w-4 text-blue-700" />{t("Recent discussions summary")}</h3>
@@ -35,7 +47,7 @@ export function CommunityDiscussionsTab({ community }: { community: CommunityVie
     </section> : null}
     {posts.isLoading ? <div className="space-y-2">{[0, 1, 2].map((item) => <div key={item} className="h-20 animate-pulse rounded-lg bg-muted" />)}</div>
       : posts.error ? <p role="alert" className="text-sm text-red-600">{t("Could not load this community's discussions.")}</p>
-        : rows.length === 0 ? <p className="rounded-xl border border-dashed px-6 py-12 text-center text-sm text-muted-foreground">{t("No discussions in this community yet.")}</p>
+        : rows.length === 0 ? <p className="rounded-xl border border-dashed px-6 py-12 text-center text-sm text-muted-foreground">{t(topic ? "No discussions in this community match this topic yet." : "No discussions in this community yet.")}</p>
           : <><div className="divide-y overflow-hidden rounded-xl border bg-card">{rows.map((post) => <ForumCard key={post.id} post={post} locale={language} />)}</div>
             <div className="flex flex-col items-center gap-2"><p className="text-xs tabular-nums text-muted-foreground">{rows.length} / {total}</p>
               {posts.hasNextPage ? <Button variant="outline" className="min-h-11" disabled={posts.isFetchingNextPage} onClick={() => void posts.fetchNextPage()}>{t(posts.isFetchingNextPage ? "Loading…" : "Load more")}</Button> : null}</div></>}

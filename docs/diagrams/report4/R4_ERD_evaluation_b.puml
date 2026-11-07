@@ -1,0 +1,76 @@
+@startuml
+!pragma layout elk
+skinparam dpi 200
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam backgroundColor #FFFFFF
+skinparam ArrowColor #4A5A6A
+skinparam ArrowThickness 1.2
+skinparam ArrowFontSize 12
+skinparam ArrowFontColor #4A5A6A
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam entity {
+  BackgroundColor #EFE6F8
+  BorderColor #6A3FA0
+}
+skinparam legend {
+  BackgroundColor #FFF8E1
+  BorderColor #C9B36B
+  FontSize 12
+}
+skinparam stereotypeFontSize 10
+hide circle
+hide empty methods
+title Physical ERD - Contribution evaluation: runs and snapshots (2 of 2)
+entity contribution_evaluation_states #EFE6F8;line:6A3FA0 {
+  * project_id : uuid <<PK,FK>>
+  --
+}
+entity contribution_evaluation_runs #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  project_id : uuid <<FK>>
+  period_id : uuid <<FK>>
+  rule_id : uuid <<FK>>
+  actor_id : uuid <<FK>>
+  ..
+  client_key : uuid
+  status : varchar(16)
+}
+entity contribution_evaluation_snapshots #EFE6F8;line:6A3FA0 {
+  * id : uuid <<PK>>
+  --
+  project_id : uuid <<FK>>
+  period_id : uuid <<FK>>
+  rule_id : uuid <<FK>>
+  run_id : uuid <<FK,UK>>
+  ..
+  input_version : bigint
+}
+entity projects #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+entity allocation_periods #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+entity contribution_evaluation_rules #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+entity users #FFFFFF;line:6A3FA0;line.dashed {
+  * id : uuid <<PK>>
+}
+allocation_periods ||--o{ contribution_evaluation_runs
+allocation_periods ||--o{ contribution_evaluation_snapshots
+contribution_evaluation_rules ||--o{ contribution_evaluation_runs
+contribution_evaluation_rules ||--o{ contribution_evaluation_snapshots
+contribution_evaluation_runs ||--o{ contribution_evaluation_snapshots
+projects ||--o| contribution_evaluation_states
+users ||--o{ contribution_evaluation_runs
+legend bottom
+Crow's-foot notation. PK primary key, FK foreign key, UK unique key.
+Dashed boxes belong to another diagram (key only).
+endlegend
+@enduml

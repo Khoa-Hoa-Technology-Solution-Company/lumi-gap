@@ -27,6 +27,11 @@ export interface EmbeddingProvenance {
   embeddingUpdatedAt: Date;
 }
 
+/** Input text = title + abstract. Abstract may be missing → still embeddable. */
+export function paperEmbeddingText(title: string | null, abstractText: string | null): string {
+  return `${title ?? ""}\n\n${abstractText ?? ""}`.trim();
+}
+
 export function buildEmbeddingCandidateFilter(provider: EmbeddingProvider): Record<string, unknown> {
   return {
     isAiAnalyzable: true,
@@ -103,8 +108,7 @@ export async function runEmbedding(job: RunEmbeddingJob = {}): Promise<Embedding
     if (candidates.length === 0) break;
     batches += 1;
 
-    // Input text = title + abstract. Abstract may be missing → still embeddable.
-    const texts = candidates.map((p) => `${p.title ?? ""}\n\n${p.abstractText ?? ""}`.trim());
+    const texts = candidates.map((p) => paperEmbeddingText(p.title, p.abstractText));
 
     let vectors: number[][];
     try {

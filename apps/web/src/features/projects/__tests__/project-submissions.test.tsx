@@ -125,6 +125,12 @@ it("does not claim a mentor task exists for an unassigned submission", async () 
   expect(container.textContent).not.toContain("Bản thảo đã được gửi vào danh sách nhiệm vụ của Mentor");
 });
 
+it("waits for revision metadata before offering a PDF download", async () => {
+  mocks.historyQuery.mockReturnValue({ isLoading: true });
+  await render(<SubmissionDetailPage submissionId="manuscript" projectId="project-a" />);
+  expect(container.textContent).not.toContain("Tải PDF");
+  expect(container.textContent).not.toContain("Tải tệp PDF");
+});
 it("can recover from an unavailable detail without changing hook order", async () => {
   mocks.detail.mockReturnValue({ error: new Error("offline"), refetch: vi.fn() });
   await render(<SubmissionDetailPage submissionId="manuscript" />);

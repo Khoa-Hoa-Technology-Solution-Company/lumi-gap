@@ -8,6 +8,7 @@ import { CommunityDetailPage } from "../community-detail";
 import { CommunityListPage } from "../community-list";
 import { CommunityManagePage } from "../community-manage";
 import { CommunityNewPage } from "../community-new";
+import { personalizationApi } from "@/features/personalization";
 
 const mutation = { mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false, error: null };
 const mocks = vi.hoisted(() => ({ community: vi.fn(), posts: vi.fn(), list: vi.fn(), members: vi.fn(), canPropose: vi.fn(), leave: vi.fn(), publicMembers: vi.fn(), restrict: vi.fn(), lift: vi.fn(), summary: vi.fn(), infinite: vi.fn(), authed: true }));
@@ -26,7 +27,6 @@ vi.mock("@/features/forum", () => ({
   },
   useCommunityList: mocks.list,
   useCommunityFacets: () => ({ data: [] }),
-  useCommunityRecommendations: () => ({ data: [] }),
   useCommunitySuggestions: () => ({ data: [] }),
   useJoinCommunity: () => mutation,
   useLeaveCommunity: () => ({ ...mutation, mutate: mocks.leave }),
@@ -247,6 +247,31 @@ describe("archived community", () => {
     await render("/communities/machine-learning", <CommunityDetailPage />, "/communities/:slug");
     expect(buttons()).toContain("Join community");
     expect(container.textContent).not.toContain("This community is archived");
+  });
+});
+
+describe("community list page layout (P3, P4)", () => {
+  it("has no 'Research fields' eyebrow, and the suggestions come before the filters they must not split from the list", async () => {
+    vi.spyOn(personalizationApi, "communities").mockResolvedValue([{ ...base, matchedTopics: [{ key: "nlp", label: "NLP" }], matchReason: "topic" } as never]);
+    await render("/communities", <CommunityListPage />, "/communities");
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    expect(container.textContent).not.toContain("Research fields");
+    expect(container.querySelector("h1")!.previousElementSibling).toBeNull();
+    const suggestions = container.querySelector("#for-you-communities")!;
+    const search = container.querySelector("input")!;
+    const list = container.querySelector(".divide-y")!;
+    expect(suggestions).not.toBeNull();
+    expect(suggestions.compareDocumentPosition(search) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(search.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("hides the suggestions while filtering", async () => {
+    vi.spyOn(personalizationApi, "communities").mockResolvedValue([{ ...base, matchedTopics: [], matchReason: "semantic" } as never]);
+    mocks.list.mockReturnValue({ data: { pages: [{ items: [base], total: 1 }] }, isLoading: false, error: null, hasNextPage: false, isFetchingNextPage: false });
+    await render("/communities", <CommunityListPage />, "/communities");
+    const mine = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.trim() === "My communities")!;
+    await act(async () => mine.click());
+    expect(container.querySelector("#for-you-communities")).toBeNull();
   });
 });
 

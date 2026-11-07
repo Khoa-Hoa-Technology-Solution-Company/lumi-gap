@@ -94,8 +94,8 @@ MIN_QUOTE_CHARS = 20
 NO_MANUSCRIPT_LIMITATION = "Only submission metadata was analysed; the manuscript text was not available."
 
 
-def run_pre_review(payload: PreReviewRequest, api_key: str, model: str) -> dict[str, Any]:
-    client = genai.Client(api_key=api_key)
+def run_pre_review(payload: PreReviewRequest, api_key: str, model: str, base_url: str | None = None) -> dict[str, Any]:
+    client = genai.Client(api_key=api_key, http_options={"base_url": base_url})
     interaction = client.interactions.create(
         model=model,
         system_instruction=SYSTEM_INSTRUCTION,

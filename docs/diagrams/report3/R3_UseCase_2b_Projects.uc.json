@@ -3,31 +3,53 @@
  "ucs": [
   [
    "UC16",
-   "UC-16 Manage research project"
+   "UC-16",
+   "Manage research project"
   ],
   [
    "UC18",
-   "UC-18 Manage members and invitations"
+   "UC-18",
+   "Manage members and invitations"
   ],
   [
    "UC22",
-   "UC-22 Manage recruitment openings"
+   "UC-22",
+   "Manage recruitment openings"
   ],
   [
    "UC17",
-   "UC-17 Manage project literature"
+   "UC-17",
+   "Manage project literature"
   ],
   [
-   "UC19",
-   "UC-19 Consult project AI assistant"
+   "UC47",
+   "UC-47",
+   "Evaluate contributions"
   ],
   [
    "UC20",
-   "UC-20 Chat with team"
+   "UC-20",
+   "Chat with team"
+  ],
+  [
+   "UC19",
+   "UC-19",
+   "Consult project AI assistant"
+  ],
+  [
+   "UC46",
+   "UC-46",
+   "Screen papers collaboratively"
   ],
   [
    "UC21",
-   "UC-21 Write manuscript collaboratively"
+   "UC-21",
+   "Write manuscript collaboratively"
+  ],
+  [
+   "UC48",
+   "UC-48",
+   "Handle research integrity cases"
   ]
  ],
  "actors": [
@@ -36,22 +58,16 @@
    "User"
   ],
   [
+   "PO",
+   "Project owner"
+  ],
+  [
    "PM",
    "Project member"
   ],
   [
-   "PO",
-   "Project owner"
-  ]
- ],
- "gens": [
-  [
-   "PM",
-   "U"
-  ],
-  [
-   "PO",
-   "PM"
+   "AD",
+   "Administrator"
   ]
  ],
  "exts": [
@@ -62,6 +78,16 @@
   [
    "GH",
    "GitHub"
+  ]
+ ],
+ "gens": [
+  [
+   "PM",
+   "U"
+  ],
+  [
+   "PO",
+   "PM"
   ]
  ],
  "links": [
@@ -83,7 +109,7 @@
   ],
   [
    "PM",
-   "UC19"
+   "UC47"
   ],
   [
    "PM",
@@ -91,16 +117,35 @@
   ],
   [
    "PM",
+   "UC19"
+  ],
+  [
+   "PM",
+   "UC46"
+  ],
+  [
+   "PM",
    "UC21"
+  ],
+  [
+   "PM",
+   "UC48"
+  ],
+  [
+   "AD",
+   "UC48"
   ],
   [
    "UC19",
    "LLM"
   ],
   [
+   "UC46",
+   "LLM"
+  ],
+  [
    "UC21",
    "GH"
   ]
- ],
- "rels": []
+ ]
 }

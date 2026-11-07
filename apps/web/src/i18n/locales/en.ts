@@ -26,8 +26,10 @@ import { trendResearchLinkStrings } from "./trend-research-links";
 import { trendPeriodsStrings } from "./trend-periods";
 import { qualityEvaluationEn } from "./quality-evaluation";
 import { adminCatalogEn } from "./admin-catalog";
+import { personalizationStrings } from "./personalization";
 
 export const en = {
+  ...personalizationStrings,
   ...adminCatalogEn,
   ...qualityEvaluationEn,
   ...researchTasksEn,

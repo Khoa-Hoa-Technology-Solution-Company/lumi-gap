@@ -81,6 +81,10 @@ export const ListGapsQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(50).default(20),
   projectId: z.string().optional(),
+  /** HUMAN: candidates written by people (manual or from a project limitation); AI_ASSISTED: discovery output. */
+  origin: z.enum(["HUMAN", "AI_ASSISTED"]).optional(),
+  /** One gap, for deep links (?gap=<id>). Still limited to what the caller may list. */
+  gapId: databaseIdSchema.optional(),
 });
 
 /** Body of PATCH /api/v1/gaps/:id. */

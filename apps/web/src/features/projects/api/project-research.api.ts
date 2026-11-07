@@ -1,6 +1,7 @@
 import { api } from "@/services/api-client";
 import type { ProjectGapDiscoveryOverview } from "@trend/shared-types";
 import type { EvidenceWorkflowInput, ResearchSynthesisWorkspace } from "@trend/shared-types";
+import type { CreateLimitation, FeasibilityTargetKind, FeasibilityView, LiteratureMatrix, LiteratureMatrixQuery, MatrixCriterion, ProjectLimitation, ProjectLimitationList, PromoteLimitation, SaveFeasibility, SaveMatrixCriterion, SetLimitationStatus, UpdateLimitation, UpdateMatrixCriterion } from "@trend/shared-types";
 import type { EvidenceContent, ExtractionSuggestion, GapAssessment, GapResearchView, ProjectEvidencePage, ProjectResearchLibrary, SaveProjectEvidence, ScreeningPhase, ProjectSynthesis, SaveSynthesis, ProjectResearchQuestion, ProjectPaperAnalysis, SynthesisRevision } from "@trend/shared-types";
 const path = (id: string, suffix: string) => `/projects/${encodeURIComponent(id)}/research/${suffix}`;
 async function get<T>(id: string, suffix: string, params?: Record<string, string | number | undefined>) { return (await api.get<{ data: T }>(path(id, suffix), { params })).data.data; }
@@ -38,5 +39,21 @@ export const researchApi = {
   assessGap: (id: string, gapId: string, data: { status: GapAssessment; rationale: string; expectedVersion: number; reviewedEvidence?: Array<{ id: string; version: number }> }) => write(id, `gaps/${gapId}/assessment`, data),
   linkEvidence: (id: string, gapId: string, data: unknown) => write(id, `gaps/${gapId}/evidence`, data),
   deriveQuestion: (id: string, gapId: string, data: unknown) => write(id, `gaps/${gapId}/questions`, data),
+  // Literature matrix (step 3)
+  matrix: (id: string, params: LiteratureMatrixQuery) => get<LiteratureMatrix>(id, "matrix", params as Record<string, string>),
+  matrixCriteria: (id: string) => get<MatrixCriterion[]>(id, "matrix/criteria"),
+  createCriterion: (id: string, data: SaveMatrixCriterion) => write<MatrixCriterion>(id, "matrix/criteria", data),
+  updateCriterion: (id: string, criterionId: string, data: UpdateMatrixCriterion) => write<MatrixCriterion>(id, `matrix/criteria/${encodeURIComponent(criterionId)}`, data, "patch"),
+  archiveCriterion: (id: string, criterionId: string, expectedVersion: number) => write(id, `matrix/criteria/${encodeURIComponent(criterionId)}/archive`, { expectedVersion }),
+  reorderCriteria: (id: string, order: string[]) => write<MatrixCriterion[]>(id, "matrix/criteria/order", { order }, "put"),
+  // Limitation identification (step 4)
+  limitations: (id: string) => get<ProjectLimitationList>(id, "limitations"),
+  createLimitation: (id: string, data: CreateLimitation) => write<ProjectLimitation>(id, "limitations", data),
+  updateLimitation: (id: string, limitationId: string, data: UpdateLimitation) => write<ProjectLimitation>(id, `limitations/${encodeURIComponent(limitationId)}`, data, "patch"),
+  limitationStatus: (id: string, limitationId: string, data: SetLimitationStatus) => write<ProjectLimitation>(id, `limitations/${encodeURIComponent(limitationId)}/status`, data),
+  promoteLimitation: (id: string, limitationId: string, data: PromoteLimitation) => write<ProjectLimitation>(id, `limitations/${encodeURIComponent(limitationId)}/promote`, data),
+  // Feasibility
+  feasibility: (id: string, kind: FeasibilityTargetKind, targetId: string) => get<FeasibilityView>(id, `feasibility/${kind}/${encodeURIComponent(targetId)}`),
+  saveFeasibility: (id: string, kind: FeasibilityTargetKind, targetId: string, data: SaveFeasibility) => write<FeasibilityView>(id, `feasibility/${kind}/${encodeURIComponent(targetId)}`, data, "put"),
 };
 export type { ScreeningPhase };
