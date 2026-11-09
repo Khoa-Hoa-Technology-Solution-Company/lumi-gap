@@ -19,6 +19,8 @@ abstract class User with _$User {
     String? institution,
     List<String>? researchInterests,
     @Default(0) int points,
+    // Null until the user verifies their email (GET /auth/me, ISO-8601).
+    DateTime? emailVerifiedAt,
   }) = _User;
 
   factory User.fromJson(Map<String, dynamic> json) => _$UserFromJson(json);

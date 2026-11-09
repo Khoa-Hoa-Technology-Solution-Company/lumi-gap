@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/features/bookmarks/data/bookmarks_api.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -25,27 +26,27 @@ class PaperCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final lumi = context.lumi;
 
     final statusAsync = ref.watch(bookmarkStatusProvider(BookmarkTarget('paper', id)));
     final isBookmarked = statusAsync.value?.bookmarked ?? false;
 
-    final cardBg = isDark ? const Color(0xFF1A2332) : Colors.white;
-    final borderColor = isDark ? const Color(0xFF26334A) : const Color(0xFFE2E8F0);
-    final textColor = isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B);
+    final cardBg = lumi.surface;
+    final borderColor = lumi.line;
+    final textColor = lumi.muted;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
         color: cardBg,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(color: borderColor),
       ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(8),
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
@@ -57,27 +58,23 @@ class PaperCard extends ConsumerWidget {
                     Expanded(
                       child: Text(
                         title,
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: isDark ? const Color(0xFFF8FAFC) : theme.textTheme.titleMedium?.color,
-                          height: 1.25,
-                        ),
+                        style: theme.textTheme.titleMedium,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
                     if (onBookmarkTap != null)
-                      GestureDetector(
-                        onTap: onBookmarkTap,
-                        behavior: HitTestBehavior.opaque,
-                        child: Padding(
-                          padding: const EdgeInsets.only(left: 12, bottom: 4),
-                          child: Icon(
-                            isBookmarked ? Icons.bookmark : Icons.bookmark_border,
-                            color: isBookmarked ? const Color(0xFF06B6D4) : textColor,
-                            size: 18,
-                          ),
+                      IconButton(
+                        onPressed: onBookmarkTap,
+                        tooltip: isBookmarked ? 'Remove bookmark' : 'Bookmark',
+                        constraints:
+                            const BoxConstraints(minWidth: 48, minHeight: 48),
+                        padding: EdgeInsets.zero,
+                        visualDensity: VisualDensity.standard,
+                        icon: Icon(
+                          isBookmarked ? Icons.bookmark : Icons.bookmark_border,
+                          color: isBookmarked ? lumi.primary : textColor,
+                          size: 24,
                         ),
                       ),
                   ],
@@ -85,10 +82,7 @@ class PaperCard extends ConsumerWidget {
                 const SizedBox(height: 4),
                 Text(
                   authors,
-                  style: TextStyle(
-                    color: textColor,
-                    fontSize: 12,
-                  ),
+                  style: theme.textTheme.bodySmall?.copyWith(color: textColor),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -98,10 +92,8 @@ class PaperCard extends ConsumerWidget {
                     Expanded(
                       child: Text(
                         venueAndYear,
-                        style: TextStyle(
-                          color: textColor,
-                          fontSize: 11,
-                        ),
+                        style: theme.textTheme.labelMedium
+                            ?.copyWith(color: textColor),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -110,21 +102,18 @@ class PaperCard extends ConsumerWidget {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
-                          color: isDark ? const Color(0xFF083344) : const Color(0xFFECFEFF),
+                          color: lumi.primarySoft,
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(Icons.auto_awesome, color: Color(0xFF06B6D4), size: 12),
+                            Icon(Icons.insights_outlined, color: lumi.primary, size: 14),
                             const SizedBox(width: 4),
                             Text(
                               score!,
-                              style: TextStyle(
-                                color: isDark ? const Color(0xFF67E8F9) : const Color(0xFF0891B2),
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
-                              ),
+                              style: theme.textTheme.labelMedium
+                                  ?.copyWith(color: lumi.primary),
                             ),
                           ],
                         ),

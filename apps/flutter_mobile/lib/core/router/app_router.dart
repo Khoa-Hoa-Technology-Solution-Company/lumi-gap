@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_mobile/core/widgets/app_loading.dart';
 import 'package:flutter_mobile/features/admin/presentation/admin_sync_screen.dart';
 import 'package:flutter_mobile/features/auth/data/auth_models.dart';
+import 'package:flutter_mobile/features/auth/presentation/forgot_password_screen.dart';
 import 'package:flutter_mobile/features/auth/presentation/login_screen.dart';
 import 'package:flutter_mobile/features/auth/presentation/register_screen.dart';
 import 'package:flutter_mobile/features/auth/providers/auth_controller.dart';
 import 'package:flutter_mobile/features/bookmarks/presentation/bookmarks_screen.dart';
+import 'package:flutter_mobile/features/explore/presentation/explore_screen.dart';
 import 'package:flutter_mobile/features/gaps/presentation/gaps_screen.dart';
 import 'package:flutter_mobile/features/home/presentation/app_shell_screen.dart';
 import 'package:flutter_mobile/features/home/presentation/home_screen.dart';
@@ -43,8 +45,8 @@ class PlaceholderScreen extends StatelessWidget {
 // Global navigator keys
 final _rootNavigatorKey = GlobalKey<NavigatorState>();
 final _shellNavigatorHomeKey = GlobalKey<NavigatorState>(debugLabel: 'homeTab');
-final _shellNavigatorBookmarksKey = GlobalKey<NavigatorState>(debugLabel: 'bookmarksTab');
-final _shellNavigatorAlertsKey = GlobalKey<NavigatorState>(debugLabel: 'alertsTab');
+final _shellNavigatorExploreKey = GlobalKey<NavigatorState>(debugLabel: 'exploreTab');
+final _shellNavigatorProjectsKey = GlobalKey<NavigatorState>(debugLabel: 'projectsTab');
 final _shellNavigatorProfileKey = GlobalKey<NavigatorState>(debugLabel: 'profileTab');
 
 class RouterNotifier extends ChangeNotifier {
@@ -69,7 +71,9 @@ final routerProvider = Provider<GoRouter>((ref) {
       final isLoading = authState.isLoading;
       final user = authState.value;
       
-      final isGoingToLogin = state.matchedLocation == '/login' || state.matchedLocation == '/register';
+      final isGoingToLogin = state.matchedLocation == '/login' ||
+          state.matchedLocation == '/register' ||
+          state.matchedLocation == '/forgot-password';
       final isSplash = state.matchedLocation == '/splash';
       
       
@@ -100,6 +104,12 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const LoginScreen(),
       ),
       GoRoute(
+        path: '/forgot-password',
+        builder: (context, state) => ForgotPasswordScreen(
+          initialEmail: state.uri.queryParameters['email'] ?? '',
+        ),
+      ),
+      GoRoute(
         path: '/register',
         builder: (context, state) => const RegisterScreen(),
       ),
@@ -121,22 +131,22 @@ final routerProvider = Provider<GoRouter>((ref) {
             ],
           ),
           StatefulShellBranch(
-            navigatorKey: _shellNavigatorBookmarksKey,
+            navigatorKey: _shellNavigatorExploreKey,
             routes: [
               GoRoute(
-                path: '/bookmarks',
-                name: 'bookmarks',
-                builder: (context, state) => const BookmarksScreen(),
+                path: '/explore',
+                name: 'explore',
+                builder: (context, state) => const ExploreScreen(),
               ),
             ],
           ),
           StatefulShellBranch(
-            navigatorKey: _shellNavigatorAlertsKey,
+            navigatorKey: _shellNavigatorProjectsKey,
             routes: [
               GoRoute(
-                path: '/notifications',
-                name: 'notifications',
-                builder: (context, state) => const NotificationsScreen(),
+                path: '/projects',
+                name: 'projects',
+                builder: (context, state) => const ProjectsScreen(),
               ),
             ],
           ),
@@ -212,9 +222,14 @@ final routerProvider = Provider<GoRouter>((ref) {
         },
       ),
       GoRoute(
-        path: '/projects',
-        name: 'projects',
-        builder: (context, state) => const ProjectsScreen(),
+        path: '/bookmarks',
+        name: 'bookmarks',
+        builder: (context, state) => const BookmarksScreen(),
+      ),
+      GoRoute(
+        path: '/notifications',
+        name: 'notifications',
+        builder: (context, state) => const NotificationsScreen(),
       ),
       GoRoute(
         path: '/project/:id',

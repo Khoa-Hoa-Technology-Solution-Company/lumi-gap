@@ -63,7 +63,9 @@ class _BookmarksScreenState extends ConsumerState<BookmarksScreen> {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    return SafeArea(
+    return Scaffold(
+      appBar: AppBar(title: const Text('Bookmarks')),
+      body: SafeArea(
       child: RefreshIndicator(
         onRefresh: () async {
           ref
@@ -73,35 +75,6 @@ class _BookmarksScreenState extends ConsumerState<BookmarksScreen> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 112),
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Bookmarks',
-                      style: theme.textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold),
-                    ),
-                    Text(
-                      'Saved papers and AI reports',
-                      style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
-                    ),
-                  ],
-                ),
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: theme.cardColor,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: theme.dividerColor),
-                  ),
-                  child: const Icon(Icons.edit_note, color: Color(0xFF06B6D4), size: 20),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
             bookmarksAsync.when(
               data: (bookmarks) {
                 return reportsAsync.when(
@@ -402,6 +375,7 @@ class _BookmarksScreenState extends ConsumerState<BookmarksScreen> {
             ),
           ],
         ),
+      ),
       ),
     );
   }

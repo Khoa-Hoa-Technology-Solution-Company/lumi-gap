@@ -612,7 +612,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                                 child: OutlinedButton(
                                   onPressed: () {
                                     Navigator.pop(context);
-                                    unawaited(context.push('/projects'));
+                                    context.go('/projects');
                                   },
                                   child: const Text(
                                     'Create your first project',

@@ -23,14 +23,13 @@ class AppScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Theme.of(context).colorScheme.surface,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: title != null
           ? AppBar(
               title: Text(title!),
               automaticallyImplyLeading: showBackButton,
               actions: actions,
               elevation: 0,
-              backgroundColor: Colors.transparent,
             )
           : null,
       body: SafeArea(

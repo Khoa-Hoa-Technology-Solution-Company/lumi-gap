@@ -1,8 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/core/theme/theme_provider.dart';
 import 'package:flutter_mobile/features/auth/providers/auth_controller.dart';
 import 'package:flutter_mobile/features/bookmarks/data/bookmarks_api.dart';
 import 'package:flutter_mobile/features/papers/data/papers_models.dart';
+import 'package:flutter_mobile/features/profile/presentation/email_verification_banner.dart';
+import 'package:flutter_mobile/features/profile/presentation/theme_mode_sheet.dart';
 import 'package:flutter_mobile/features/rankings/domain/level_helper.dart';
 import 'package:flutter_mobile/features/reports/data/reports_api.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -24,7 +29,7 @@ class ProfileScreen extends ConsumerWidget {
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            style: TextButton.styleFrom(foregroundColor: context.lumi.error),
             child: const Text('Sign out'),
           ),
         ],
@@ -51,7 +56,7 @@ class ProfileScreen extends ConsumerWidget {
         .length;
 
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final lumi = context.lumi;
 
     final userPoints = user?.points ?? 0;
     final userLevel = LevelHelper.getLevel(userPoints);
@@ -61,7 +66,7 @@ class ProfileScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Profile', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text('Profile'),
         automaticallyImplyLeading: false,
       ),
       body: SafeArea(
@@ -77,9 +82,9 @@ class ProfileScreen extends ConsumerWidget {
                     height: 80,
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: isDark ? const Color(0xFF111C2E) : Colors.white,
+                      color: lumi.surface,
                       shape: BoxShape.circle,
-                      border: Border.all(color: const Color(0xFF06B6D4), width: 2),
+                      border: Border.all(color: lumi.primary, width: 2),
                     ),
                     child: Image.asset(
                       levelAsset,
@@ -89,34 +94,31 @@ class ProfileScreen extends ConsumerWidget {
                   const SizedBox(height: 12),
                   Text(
                     user?.fullName ?? 'Researcher',
-                    style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+                    style: theme.textTheme.headlineSmall,
                   ),
                   const SizedBox(height: 8),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF06B6D4).withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(16),
+                      color: lumi.primarySoft,
+                      borderRadius: BorderRadius.circular(6),
                     ),
                     child: Text(
                       user?.role.name.toUpperCase() ?? 'RESEARCHER',
-                      style: const TextStyle(
-                        color: Color(0xFF0891B2),
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                      ),
+                      style: theme.textTheme.labelMedium
+                          ?.copyWith(color: lumi.primary),
                     ),
                   ),
                   const SizedBox(height: 8),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.school, size: 16, color: theme.colorScheme.onSurfaceVariant),
+                      Icon(Icons.school, size: 16, color: lumi.foregroundSecondary),
                       const SizedBox(width: 4),
                       Text(
                         user?.institution ?? 'FPT University',
                         style: theme.textTheme.bodyMedium?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
+                          color: lumi.foregroundSecondary,
                         ),
                       ),
                     ],
@@ -125,6 +127,9 @@ class ProfileScreen extends ConsumerWidget {
               ),
             ),
             const SizedBox(height: 24),
+
+            const EmailVerificationBanner(),
+            const SizedBox(height: 16),
 
             // Stats Cards Row
             Row(
@@ -139,25 +144,20 @@ class ProfileScreen extends ConsumerWidget {
             const SizedBox(height: 24),
 
             // Activity section
-            const Padding(
-              padding: EdgeInsets.only(left: 4, bottom: 8),
+            Padding(
+              padding: const EdgeInsets.only(left: 4, bottom: 8),
               child: Text(
                 'ACTIVITY',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.grey,
-                  letterSpacing: 1.1,
-                ),
+                style: theme.textTheme.labelMedium?.copyWith(color: lumi.muted),
               ),
             ),
             Card(
               elevation: 0,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-                side: BorderSide(color: theme.dividerColor),
+                borderRadius: BorderRadius.circular(8),
+                side: BorderSide(color: lumi.line),
               ),
-              color: theme.cardColor,
+              color: lumi.surface,
               clipBehavior: Clip.antiAlias,
               child: Column(
                 children: [
@@ -176,7 +176,13 @@ class ProfileScreen extends ConsumerWidget {
                   _SettingsRow(
                     icon: Icons.folder_outlined,
                     label: 'Projects',
-                    onTap: () => context.push('/projects'),
+                    onTap: () => context.go('/projects'),
+                    theme: theme,
+                  ),
+                  _SettingsRow(
+                    icon: Icons.bookmark_border,
+                    label: 'Bookmarks',
+                    onTap: () => context.push('/bookmarks'),
                     theme: theme,
                   ),
                   _SettingsRow(
@@ -204,35 +210,28 @@ class ProfileScreen extends ConsumerWidget {
             const SizedBox(height: 24),
 
             // Appearance section
-            const Padding(
-              padding: EdgeInsets.only(left: 4, bottom: 8),
+            Padding(
+              padding: const EdgeInsets.only(left: 4, bottom: 8),
               child: Text(
                 'APPEARANCE',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.grey,
-                  letterSpacing: 1.1,
-                ),
+                style: theme.textTheme.labelMedium?.copyWith(color: lumi.muted),
               ),
             ),
             Card(
               elevation: 0,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-                side: BorderSide(color: theme.dividerColor),
+                borderRadius: BorderRadius.circular(8),
+                side: BorderSide(color: lumi.line),
               ),
-              color: theme.cardColor,
+              color: lumi.surface,
               clipBehavior: Clip.antiAlias,
               child: Column(
                 children: [
                   _SettingsRow(
-                    icon: currentThemeMode == ThemeMode.dark ? Icons.dark_mode : Icons.light_mode,
-                    label: 'Theme',
-                    value: currentThemeMode == ThemeMode.dark ? 'Dark' : 'Light',
-                    onTap: () {
-                      ref.read(themeModeProvider.notifier).toggleTheme();
-                    },
+                    icon: themeModeIcon(currentThemeMode),
+                    label: 'Giao diện',
+                    value: themeModeLabel(currentThemeMode),
+                    onTap: () => unawaited(showThemeModeSheet(context)),
                     theme: theme,
                   ),
                   _SettingsRow(
@@ -250,20 +249,10 @@ class ProfileScreen extends ConsumerWidget {
             OutlinedButton(
               onPressed: authState.isLoading ? null : () => _handleLogout(context, ref),
               style: OutlinedButton.styleFrom(
-                foregroundColor: Colors.red,
-                side: const BorderSide(color: Colors.red),
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
+                foregroundColor: lumi.error,
+                side: BorderSide(color: lumi.error),
               ),
-              child: const Text(
-                'Sign out',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+              child: const Text('Sign out'),
             ),
             const SizedBox(height: 32),
           ],
@@ -282,27 +271,26 @@ class _StatCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final lumi = context.lumi;
     return Expanded(
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12),
         decoration: BoxDecoration(
-          color: theme.cardColor,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: theme.dividerColor),
+          color: lumi.surface,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: lumi.line),
         ),
         child: Column(
           children: [
             Text(
               value,
-              style: theme.textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
+              style: theme.textTheme.titleLarge,
             ),
             const SizedBox(height: 4),
             Text(
               label,
               style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
+                color: lumi.foregroundSecondary,
               ),
             ),
           ],
@@ -328,6 +316,7 @@ class _SettingsRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final lumi = context.lumi;
     final rowContent = Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       child: Row(
@@ -335,20 +324,17 @@ class _SettingsRow extends StatelessWidget {
           Icon(
             icon,
             size: 20,
-            color: theme.colorScheme.onSurfaceVariant,
+            color: lumi.foregroundSecondary,
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: Text(
-              label,
-              style: const TextStyle(fontWeight: FontWeight.w500),
-            ),
+            child: Text(label, style: theme.textTheme.titleMedium),
           ),
           if (value != null) ...[
             Text(
               value!,
               style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
+                color: lumi.foregroundSecondary,
               ),
             ),
             const SizedBox(width: 8),
@@ -357,7 +343,7 @@ class _SettingsRow extends StatelessWidget {
             Icon(
               Icons.chevron_right,
               size: 20,
-              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
+              color: lumi.muted,
             ),
         ],
       ),

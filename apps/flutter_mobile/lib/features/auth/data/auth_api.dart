@@ -53,6 +53,22 @@ class AuthApi {
     return User.fromJson(data['user'] as Map<String, dynamic>);
   }
 
+  /// Backend answers 202 whether or not the email has an account.
+  Future<void> forgotPassword(String email) async {
+    await _client.dio.post<void>(
+      ApiRoutes.authPasswordForgot,
+      data: {'email': email.trim()},
+    );
+  }
+
+  /// Re-sends the verification email (202, same rate limiter as forgot).
+  Future<void> resendVerification(String email) async {
+    await _client.dio.post<void>(
+      ApiRoutes.authEmailResend,
+      data: {'email': email.trim()},
+    );
+  }
+
   Future<void> changePassword(String currentPassword, String newPassword) async {
     await _client.dio.post<void>(
       ApiRoutes.authChangePassword,
