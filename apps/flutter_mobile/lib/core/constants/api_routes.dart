@@ -9,8 +9,14 @@ class ApiRoutes {
   static const String authMe = '/auth/me';
   static const String authAcademicProfile = '/auth/me/academic-profile';
   static const String authChangePassword = '/auth/change-password';
+  static const String authPasswordForgot = '/auth/password/forgot';
+  static const String authEmailResend = '/auth/email/resend';
   static const String authRankingsTop = '/auth/rankings/top';
   static const String authRankingsMe = '/auth/rankings/me';
+
+  // Home
+  static const String homeOverview = '/home/overview';
+  static const String homeResearch = '/home/research';
 
   // Papers
   static const String papersList = '/papers';

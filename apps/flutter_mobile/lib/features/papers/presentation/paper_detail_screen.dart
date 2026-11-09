@@ -161,7 +161,7 @@ class _PaperDetailScreenState extends ConsumerState<PaperDetailScreen> {
                                 child: OutlinedButton(
                                   onPressed: () {
                                     Navigator.pop(context);
-                                    unawaited(context.push('/projects'));
+                                    context.go('/projects');
                                   },
                                   child: const Text(
                                     'Create your first project',
