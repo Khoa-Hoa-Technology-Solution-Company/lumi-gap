@@ -1,6 +1,6 @@
 # Entity Dictionary - Overall Logical ERD (LumiGap)
 
-Companion to `OVERALL_LOGICAL_ERD.drawio` (Chen notation, version 1.0).
+Companion to `OVERALL_LOGICAL_ERD.drawio` (Chen notation, version 1.1).
 
 **Source of truth.** Entities, attributes and keys come from the Prisma schema in `apps/backend/prisma/*.prisma`. Foreign keys and UNIQUE constraints were replayed from the 139 SQL migrations in `apps/backend/prisma/migrations` on `main` a4b8c28. Most relations are declared only in SQL, not in Prisma. Each entity was also checked for read/write use in `apps/backend/src` services.
 
@@ -8,12 +8,16 @@ Companion to `OVERALL_LOGICAL_ERD.drawio` (Chen notation, version 1.0).
 
 **Status legend.** Every entity in the diagram is *Implemented*: the table exists in the migrations and backend services read or write it. Items that are only *Documented* or *Proposed* are listed at the end and are not drawn.
 
+**Participation.** A double line joins an entity to a relationship when every instance of that entity must take part, meaning the FK column it holds is NOT NULL. A single line means partial participation: the FK is nullable, or the entity is the referenced (parent) side. The schema cannot force a parent to have children, so parent sides are always partial. Both sides of an N:M relationship are partial for the same reason.
+
+**Weak entities.** An entity is drawn as weak (double rectangle) only when it has no key of its own and its primary key is the owner's key plus a partial key (dashed underline), joined to the owner by an identifying relationship (double diamond). The 39 strong entities all have their own UUID `id`. Some of them depend on another record in business terms (for example SubmissionRevision, ReviewTemplateVersion, HumanReview), but they still have their own key, so they are strong. Only `paper_authors` and `paper_topics` meet the rule: PK (paperId, position), with no own id. Version 1.0 drew them as N:M relationships. That was not correct, because authorId and topicId are nullable, so a row can exist without the second participant. Version 1.1 draws them as weak entities of Paper. They are the same two tables, so the scope is unchanged.
+
 ## Summary
 
 | Domain | Entities |
 |---|---|
 | D1  Identity & Academic Verification | User, AcademicProfile, AcademicExternalIdentity, Affiliation, Institution, VerificationEvidence (6) |
-| D2  Scholarly Corpus | Paper, Author, Journal, ResearchTopic (4) |
+| D2  Scholarly Corpus | Paper, Author, Journal, ResearchTopic, PaperAuthor (weak), PaperTopic (weak) (6) |
 | D3  Research Analysis (AI) | Report, GapAnalysis, ResearchGap, GapValidation (4) |
 | D4  Projects & Collaboration | Project, ResearchPlan, ProjectTask, MentorshipRequest, MentorRelationship, RecruitmentOpening, RecruitmentApplication (7) |
 | D5  Manuscript & Peer Review | DraftWorkspace, Submission, SubmissionRevision, AiPreReview, ReviewRequest, ReviewerAssignment, HumanReview, ReviewTemplate, ReviewTemplateVersion (9) |
@@ -21,7 +25,7 @@ Companion to `OVERALL_LOGICAL_ERD.drawio` (Chen notation, version 1.0).
 | D7  Credits & Payments | CreditTransaction, PaymentOrder (2) |
 | D8  Notifications & System Operations | Notification, AuditLog, UserAiConnection (3) |
 
-Totals: **39 entities**, **63 relationships** (5 x 1:1, 50 x 1:N, 8 x N:M), **8 domains**.
+Totals: **39 strong + 2 weak entities**, **75 relationships** (5 x 1:1, 64 x 1:N, 6 x N:M; 2 identifying), **8 domains**.
 
 ## D1  Identity & Academic Verification
 
@@ -100,7 +104,7 @@ Totals: **39 entities**, **63 relationships** (5 x 1:1, 50 x 1:N, 8 x N:M), **8 
 - **Other important attributes:** `slug`
 - **Unique:** (slug)
 - **Foreign keys:** none
-- **Relationships on the diagram:** *is affiliated at* (1:N) with Affiliation
+- **Relationships on the diagram:** *is affiliated at* (1:N) with Affiliation; *concerns institution* (1:N) with VerificationEvidence
 
 ### VerificationEvidence
 
@@ -120,7 +124,7 @@ Totals: **39 entities**, **63 relationships** (5 x 1:1, 50 x 1:N, 8 x N:M), **8 
   | `reviewedById` | User | SET NULL | no | yes |
   | `userId` | User | CASCADE | no | no |
 
-- **Relationships on the diagram:** *submits evidence* (1:N) with User; *supports* (1:N) with AcademicProfile
+- **Relationships on the diagram:** *submits evidence* (1:N) with User; *supports* (1:N) with AcademicProfile; *concerns institution* (1:N) with Institution; *resubmits* (1:N) with VerificationEvidence; *resubmits* (1:N) with VerificationEvidence
 
 ## D2  Scholarly Corpus
 
@@ -140,7 +144,7 @@ Totals: **39 entities**, **63 relationships** (5 x 1:1, 50 x 1:N, 8 x N:M), **8 
   | `requestedById` | User | SET NULL | no | yes |
   | `uploadedById` | User | SET NULL | no | yes |
 
-- **Relationships on the diagram:** *writes* (N:M) with Author; *publishes* (1:N) with Journal; *classified under* (N:M) with ResearchTopic; *cites* (N:M) with Report; *analyzes* (N:M) with GapAnalysis; *grounded in* (N:M) with ResearchGap; *collects* (N:M) with Project
+- **Relationships on the diagram:** *lists author* (1:N) with PaperAuthor; *publishes* (1:N) with Journal; *has topic* (1:N) with PaperTopic; *cites* (N:M) with Report; *analyzes* (N:M) with GapAnalysis; *grounded in* (N:M) with ResearchGap; *collects* (N:M) with Project; *references paper* (1:N) with ForumPost
 
 ### Author
 
@@ -151,7 +155,7 @@ Totals: **39 entities**, **63 relationships** (5 x 1:1, 50 x 1:N, 8 x N:M), **8 
 - **Other important attributes:** `openalexId`
 - **Unique:** (openalexId)
 - **Foreign keys:** none
-- **Relationships on the diagram:** *writes* (N:M) with Paper
+- **Relationships on the diagram:** *is credited as* (1:N) with PaperAuthor
 
 ### Journal
 
@@ -178,7 +182,38 @@ Totals: **39 entities**, **63 relationships** (5 x 1:1, 50 x 1:N, 8 x N:M), **8 
   |---|---|---|---|---|
   | `parentTopicId` | ResearchTopic | SET NULL | no | yes |
 
-- **Relationships on the diagram:** *classified under* (N:M) with Paper; *is parent of* (1:N) with ResearchTopic; *is parent of* (1:N) with ResearchTopic
+- **Relationships on the diagram:** *classifies* (1:N) with PaperTopic; *is parent of* (1:N) with ResearchTopic; *is parent of* (1:N) with ResearchTopic
+
+### PaperAuthor
+
+- **Table:** `paper_authors` (Prisma file `scholarly.prisma`)
+- **Purpose:** Weak entity: one author slot of a paper (position, display name, corresponding flag). It is identified by its paper plus position; the link to an Author record is optional, so a slot may carry only a display name.
+- **Primary key:** (`paperId`, `position`): owner key `paperId` (identifying relationship to Paper) + partial key `position`
+- **Attributes on the diagram:** `position`, `displayName`, `isCorresponding`, `authorId`
+- **Foreign keys (all, from the migrations):**
+
+  | FK column | References | On delete | Unique | Nullable |
+  |---|---|---|---|---|
+  | `authorId` | Author | SET NULL | no | yes |
+  | `paperId` | Paper | CASCADE | no | no |
+
+- **Relationships on the diagram:** *lists author* (1:N) with Paper; *is credited as* (1:N) with Author
+
+### PaperTopic
+
+- **Table:** `paper_topics` (Prisma file `scholarly.prisma`)
+- **Purpose:** Weak entity: one topic slot of a paper (position, topic name, confidence, primary flag, OpenAlex field/subfield/domain names). It is identified by its paper plus position; the link to ResearchTopic is optional.
+- **Primary key:** (`paperId`, `position`): owner key `paperId` (identifying relationship to Paper) + partial key `position`
+- **Attributes on the diagram:** `position`, `topicName`, `confidence`, `topicId`
+- **Other important attributes:** `isPrimary`
+- **Foreign keys (all, from the migrations):**
+
+  | FK column | References | On delete | Unique | Nullable |
+  |---|---|---|---|---|
+  | `paperId` | Paper | CASCADE | no | no |
+  | `topicId` | ResearchTopic | SET NULL | no | yes |
+
+- **Relationships on the diagram:** *has topic* (1:N) with Paper; *classifies* (1:N) with ResearchTopic
 
 ## D3  Research Analysis (AI)
 
@@ -234,7 +269,7 @@ Totals: **39 entities**, **63 relationships** (5 x 1:1, 50 x 1:N, 8 x N:M), **8 
   | `sourceReportId` | Report | SET NULL | no | yes |
   | `userId` | User | RESTRICT | no | no |
 
-- **Relationships on the diagram:** *produces* (1:N) with GapAnalysis; *suggests* (1:N) with Report; *grounded in* (N:M) with Paper; *receives vote* (1:N) with GapValidation; *discusses gap* (1:N) with ForumPost
+- **Relationships on the diagram:** *produces* (1:N) with GapAnalysis; *suggests* (1:N) with Report; *grounded in* (N:M) with Paper; *receives vote* (1:N) with GapValidation; *discusses gap* (1:N) with ForumPost; *scopes gap* (1:N) with Project
 
 ### GapValidation
 
@@ -269,7 +304,7 @@ Totals: **39 entities**, **63 relationships** (5 x 1:1, 50 x 1:N, 8 x N:M), **8 
   | `createdById` | User | SET NULL | no | yes |
   | `ownerId` | User | RESTRICT | no | no |
 
-- **Relationships on the diagram:** *owns* (1:N) with User; *is member of* (N:M) with User; *collects* (N:M) with Paper; *scopes report* (1:N) with Report; *scopes analysis* (1:N) with GapAnalysis; *has plan* (1:1) with ResearchPlan; *contains* (1:N) with ProjectTask; *requests mentor* (1:N) with MentorshipRequest; *is mentored in* (1:N) with MentorRelationship; *opens* (1:N) with RecruitmentOpening; *drafts in* (1:N) with DraftWorkspace; *submits* (1:N) with Submission
+- **Relationships on the diagram:** *owns* (1:N) with User; *is member of* (N:M) with User; *collects* (N:M) with Paper; *scopes report* (1:N) with Report; *scopes analysis* (1:N) with GapAnalysis; *has plan* (1:1) with ResearchPlan; *contains* (1:N) with ProjectTask; *requests mentor* (1:N) with MentorshipRequest; *is mentored in* (1:N) with MentorRelationship; *opens* (1:N) with RecruitmentOpening; *drafts in* (1:N) with DraftWorkspace; *submits* (1:N) with Submission; *showcases project* (1:N) with ForumPost; *defines rubric* (1:N) with ReviewTemplate; *scopes gap* (1:N) with ResearchGap
 
 ### ResearchPlan
 
@@ -416,7 +451,7 @@ Totals: **39 entities**, **63 relationships** (5 x 1:1, 50 x 1:N, 8 x N:M), **8 
   | `projectId` | Project | RESTRICT | no | no |
   | `sourceReportId` | Report | SET NULL | yes | yes |
 
-- **Relationships on the diagram:** *submits* (1:N) with Project; *is submitted as* (1:1) with Report; *has revision* (1:N) with SubmissionRevision; *is pre-reviewed by* (1:N) with AiPreReview; *requests review* (1:N) with ReviewRequest
+- **Relationships on the diagram:** *submits* (1:N) with Project; *is submitted as* (1:1) with Report; *has revision* (1:N) with SubmissionRevision; *is pre-reviewed by* (1:N) with AiPreReview; *requests review* (1:N) with ReviewRequest; *is current revision of* (1:N) with SubmissionRevision
 
 ### SubmissionRevision
 
@@ -436,7 +471,7 @@ Totals: **39 entities**, **63 relationships** (5 x 1:1, 50 x 1:N, 8 x N:M), **8 
   | `submissionId` | Submission | CASCADE | no | no |
   | `uploadedById` | User | RESTRICT | no | no |
 
-- **Relationships on the diagram:** *has revision* (1:N) with Submission; *is reviewed in* (1:N) with ReviewRequest
+- **Relationships on the diagram:** *has revision* (1:N) with Submission; *is reviewed in* (1:N) with ReviewRequest; *assesses revision* (1:N) with HumanReview; *is current revision of* (1:N) with Submission
 
 ### AiPreReview
 
@@ -512,7 +547,7 @@ Totals: **39 entities**, **63 relationships** (5 x 1:1, 50 x 1:N, 8 x N:M), **8 
   | `templateId` | ReviewTemplate | SET NULL | no | yes |
   | `templateVersionId` | ReviewTemplateVersion | RESTRICT | no | yes |
 
-- **Relationships on the diagram:** *produces round* (1:N) with ReviewerAssignment
+- **Relationships on the diagram:** *produces round* (1:N) with ReviewerAssignment; *assesses revision* (1:N) with SubmissionRevision; *follows rubric* (1:N) with ReviewTemplateVersion
 
 ### ReviewTemplate
 
@@ -528,7 +563,7 @@ Totals: **39 entities**, **63 relationships** (5 x 1:1, 50 x 1:N, 8 x N:M), **8 
   | `ownerId` | User | SET NULL | no | yes |
   | `projectId` | Project | CASCADE | no | yes |
 
-- **Relationships on the diagram:** *has version* (1:N) with ReviewTemplateVersion
+- **Relationships on the diagram:** *has version* (1:N) with ReviewTemplateVersion; *defines rubric* (1:N) with Project
 
 ### ReviewTemplateVersion
 
@@ -545,7 +580,7 @@ Totals: **39 entities**, **63 relationships** (5 x 1:1, 50 x 1:N, 8 x N:M), **8 
   | `createdById` | User | SET NULL | no | yes |
   | `templateId` | ReviewTemplate | CASCADE | no | no |
 
-- **Relationships on the diagram:** *has version* (1:N) with ReviewTemplate; *is used by* (1:N) with ReviewRequest
+- **Relationships on the diagram:** *has version* (1:N) with ReviewTemplate; *is used by* (1:N) with ReviewRequest; *follows rubric* (1:N) with HumanReview
 
 ## D6  Community & Forum
 
@@ -587,7 +622,7 @@ Totals: **39 entities**, **63 relationships** (5 x 1:1, 50 x 1:N, 8 x N:M), **8 
   | `researchCommunityId` | Community | RESTRICT | no | yes |
   | `researchGapId` | ResearchGap | SET NULL | no | yes |
 
-- **Relationships on the diagram:** *hosts* (1:N) with Community; *authors post* (1:N) with User; *has comment* (1:N) with ForumComment; *is reported in* (1:N) with ContentReport; *discusses gap* (1:N) with ResearchGap
+- **Relationships on the diagram:** *hosts* (1:N) with Community; *authors post* (1:N) with User; *has comment* (1:N) with ForumComment; *is reported in* (1:N) with ContentReport; *discusses gap* (1:N) with ResearchGap; *references paper* (1:N) with Paper; *showcases project* (1:N) with Project; *accepts answer* (1:N) with ForumComment
 
 ### ForumComment
 
@@ -605,7 +640,7 @@ Totals: **39 entities**, **63 relationships** (5 x 1:1, 50 x 1:N, 8 x N:M), **8 
   | `parentCommentId` | ForumComment | SET NULL | no | yes |
   | `postId` | ForumPost | CASCADE | no | no |
 
-- **Relationships on the diagram:** *has comment* (1:N) with ForumPost; *replies to* (1:N) with ForumComment; *replies to* (1:N) with ForumComment; *writes comment* (1:N) with User; *flags comment* (1:N) with ContentReport
+- **Relationships on the diagram:** *has comment* (1:N) with ForumPost; *replies to* (1:N) with ForumComment; *replies to* (1:N) with ForumComment; *writes comment* (1:N) with User; *flags comment* (1:N) with ContentReport; *accepts answer* (1:N) with ForumPost
 
 ### ContentReport
 
@@ -715,8 +750,6 @@ Totals: **39 entities**, **63 relationships** (5 x 1:1, 50 x 1:N, 8 x N:M), **8 
 
 | Join table | Realises | Attributes on the diamond |
 |---|---|---|
-| `paper_authors` (PaperAuthor) | Author N:M Paper (writes). PK (paperId, position); authorId is nullable, so an author slot may hold only a display name. | position, isCorresponding |
-| `paper_topics` (PaperTopic) | Paper N:M ResearchTopic (classified under). PK (paperId, position); topicId is nullable. | confidence, isPrimary |
 | `report_papers` (ReportPaper) | Report N:M Paper (cites). PK (reportId, paperId, kind). | kind, position |
 | `gap_analysis_papers` (GapAnalysisPaper) | GapAnalysis N:M Paper (analyzes). PK (analysisId, paperId). | position |
 | `research_gap_papers` (ResearchGapPaper) | ResearchGap N:M Paper (grounded in). PK (gapId, paperId, kind). | kind |
@@ -726,71 +759,149 @@ Totals: **39 entities**, **63 relationships** (5 x 1:1, 50 x 1:N, 8 x N:M), **8 
 
 ## Relationship list
 
-| # | Relationship | Cardinality | Entities | Evidence (FK / constraint) | Note |
+| # | Relationship | Cardinality | Entities (participation) | Evidence (FK / constraint) | Note |
 |---|---|---|---|---|---|
-| 1 | has profile | 1:1 | User (1) - AcademicProfile (1) | `AcademicProfile.userId (UNIQUE)` |  |
-| 2 | links identity | 1:N | AcademicProfile (1) - AcademicExternalIdentity (N) | `AcademicExternalIdentity.profileId` |  |
-| 3 | holds | 1:N | User (1) - Affiliation (N) | `Affiliation.userId` |  |
-| 4 | is affiliated at | 1:N | Institution (1) - Affiliation (N) | `Affiliation.institutionId` |  |
-| 5 | submits evidence | 1:N | User (1) - VerificationEvidence (N) | `VerificationEvidence.userId` |  |
-| 6 | supports | 1:N | AcademicProfile (1) - VerificationEvidence (N) | `VerificationEvidence.academicProfileId` |  |
-| 7 | writes | N:M | Author (N) - Paper (M) | `PaperAuthor.paperId, PaperAuthor.authorId` |  |
-| 8 | publishes | 1:N | Journal (1) - Paper (N) | `Paper.journalId` |  |
-| 9 | classified under | N:M | Paper (N) - ResearchTopic (M) | `PaperTopic.paperId, PaperTopic.topicId` |  |
-| 10 | is parent of | 1:N | ResearchTopic (1) - ResearchTopic (N) | `ResearchTopic.parentTopicId` |  |
-| 11 | requests report | 1:N | User (1) - Report (N) | `Report.userId` |  |
-| 12 | cites | N:M | Report (N) - Paper (M) | `ReportPaper.reportId, ReportPaper.paperId` |  |
-| 13 | runs analysis | 1:N | User (1) - GapAnalysis (N) | `GapAnalysis.userId` |  |
-| 14 | analyzes | N:M | GapAnalysis (N) - Paper (M) | `GapAnalysisPaper.analysisId, GapAnalysisPaper.paperId` |  |
-| 15 | produces | 1:N | GapAnalysis (1) - ResearchGap (N) | `ResearchGap.analysisId` |  |
-| 16 | suggests | 1:N | Report (1) - ResearchGap (N) | `ResearchGap.sourceReportId` |  |
-| 17 | grounded in | N:M | ResearchGap (N) - Paper (M) | `ResearchGapPaper.gapId, ResearchGapPaper.paperId` |  |
-| 18 | receives vote | 1:N | ResearchGap (1) - GapValidation (N) | `GapValidation.gapId` |  |
-| 19 | validates | 1:N | User (1) - GapValidation (N) | `GapValidation.reviewerId` |  |
-| 20 | has ledger entry | 1:N | User (1) - CreditTransaction (N) | `CreditTransaction.userId` |  |
-| 21 | refunds | 1:N | CreditTransaction (1) - CreditTransaction (N) | `CreditTransaction.refundedTransactionId` | refundCreditsOnce writes at most one refund per charge (idempotency key refund:<chargeId> is UNIQUE); the FK column itself is not UNIQUE, so the diagram shows the database cardinality 1:N. |
-| 22 | charges report | 1:N | CreditTransaction (1) - Report (N) | `Report.creditTransactionId` | A charge belongs to one report by business rule, but reports.credit_transaction_id has no UNIQUE constraint, so the database allows 1:N. |
-| 23 | charges analysis | 1:N | CreditTransaction (1) - GapAnalysis (N) | `GapAnalysis.creditTransactionId` | Same as 'charges report' for gap analyses. |
-| 24 | places order | 1:N | User (1) - PaymentOrder (N) | `PaymentOrder.userId` |  |
-| 25 | receives | 1:N | User (1) - Notification (N) | `Notification.userId` |  |
-| 26 | performs | 1:N | User (1) - AuditLog (N) | `AuditLog.userId` |  |
-| 27 | configures | 1:N | User (1) - UserAiConnection (N) | `UserAiConnection.userId` |  |
-| 28 | owns | 1:N | User (1) - Project (N) | `Project.ownerId` |  |
-| 29 | is member of | N:M | User (N) - Project (M) | `ProjectMember.userId, ProjectMember.projectId (UNIQUE pair)` |  |
-| 30 | collects | N:M | Project (N) - Paper (M) | `ProjectPaper.projectId, ProjectPaper.paperId (UNIQUE pair)` |  |
-| 31 | scopes report | 1:N | Project (1) - Report (N) | `Report.projectId` |  |
-| 32 | scopes analysis | 1:N | Project (1) - GapAnalysis (N) | `GapAnalysis.projectId` |  |
-| 33 | has plan | 1:1 | Project (1) - ResearchPlan (1) | `ResearchPlan.projectId (UNIQUE)` |  |
-| 34 | contains | 1:N | Project (1) - ProjectTask (N) | `ProjectTask.projectId` |  |
-| 35 | requests mentor | 1:N | Project (1) - MentorshipRequest (N) | `MentorshipRequest.projectId` |  |
-| 36 | is invited as mentor | 1:N | User (1) - MentorshipRequest (N) | `MentorshipRequest.mentorUserId` |  |
-| 37 | becomes | 1:1 | MentorshipRequest (1) - MentorRelationship (1) | `MentorRelationship.sourceRequestId (UNIQUE)` |  |
-| 38 | is mentored in | 1:N | Project (1) - MentorRelationship (N) | `MentorRelationship.projectId` |  |
-| 39 | opens | 1:N | Project (1) - RecruitmentOpening (N) | `RecruitmentOpening.projectId` |  |
-| 40 | receives application | 1:N | RecruitmentOpening (1) - RecruitmentApplication (N) | `RecruitmentApplication.openingId` |  |
-| 41 | applies | 1:N | User (1) - RecruitmentApplication (N) | `RecruitmentApplication.applicantId` |  |
-| 42 | drafts in | 1:N | Project (1) - DraftWorkspace (N) | `DraftWorkspace.projectId` |  |
-| 43 | submits | 1:N | Project (1) - Submission (N) | `Submission.projectId` |  |
-| 44 | is submitted as | 1:1 | Report (1) - Submission (1) | `Submission.sourceReportId (UNIQUE)` |  |
-| 45 | has revision | 1:N | Submission (1) - SubmissionRevision (N) | `SubmissionRevision.submissionId` |  |
-| 46 | is pre-reviewed by | 1:N | Submission (1) - AiPreReview (N) | `AiPreReview.submissionId` |  |
-| 47 | requests review | 1:N | Submission (1) - ReviewRequest (N) | `ReviewRequest.submissionId` |  |
-| 48 | is reviewed in | 1:N | SubmissionRevision (1) - ReviewRequest (N) | `ReviewRequest.artifactRevisionId` |  |
-| 49 | assigns | 1:1 | ReviewRequest (1) - ReviewerAssignment (1) | `ReviewerAssignment.reviewRequestId (UNIQUE)` |  |
-| 50 | reviews as | 1:N | User (1) - ReviewerAssignment (N) | `ReviewerAssignment.reviewerId` |  |
-| 51 | produces round | 1:N | ReviewerAssignment (1) - HumanReview (N) | `HumanReview.assignmentId` |  |
-| 52 | has version | 1:N | ReviewTemplate (1) - ReviewTemplateVersion (N) | `ReviewTemplateVersion.templateId` |  |
-| 53 | is used by | 1:N | ReviewTemplateVersion (1) - ReviewRequest (N) | `ReviewRequest.templateVersionId` |  |
-| 54 | joins | N:M | User (N) - Community (M) | `CommunityMembership.userId, CommunityMembership.communityId (UNIQUE pair)` |  |
-| 55 | hosts | 1:N | Community (1) - ForumPost (N) | `ForumPost.communityId` |  |
-| 56 | authors post | 1:N | User (1) - ForumPost (N) | `ForumPost.authorId` |  |
-| 57 | has comment | 1:N | ForumPost (1) - ForumComment (N) | `ForumComment.postId` |  |
-| 58 | replies to | 1:N | ForumComment (1) - ForumComment (N) | `ForumComment.parentCommentId` |  |
-| 59 | writes comment | 1:N | User (1) - ForumComment (N) | `ForumComment.authorId` |  |
-| 60 | is reported in | 1:N | ForumPost (1) - ContentReport (N) | `ContentReport.postId` |  |
-| 61 | flags comment | 1:N | ForumComment (1) - ContentReport (N) | `ContentReport.commentId` |  |
-| 62 | files report | 1:N | User (1) - ContentReport (N) | `ContentReport.reporterId` |  |
-| 63 | discusses gap | 1:N | ResearchGap (1) - ForumPost (N) | `ForumPost.linkedResearchGapId` |  |
+| 1 | has profile | 1:1 | User (1, partial) - AcademicProfile (1, total) | `AcademicProfile.userId (UNIQUE)` |  |
+| 2 | links identity | 1:N | AcademicProfile (1, partial) - AcademicExternalIdentity (N, total) | `AcademicExternalIdentity.profileId` |  |
+| 3 | holds | 1:N | User (1, partial) - Affiliation (N, total) | `Affiliation.userId` |  |
+| 4 | is affiliated at | 1:N | Institution (1, partial) - Affiliation (N, total) | `Affiliation.institutionId` |  |
+| 5 | submits evidence | 1:N | User (1, partial) - VerificationEvidence (N, total) | `VerificationEvidence.userId` |  |
+| 6 | supports | 1:N | AcademicProfile (1, partial) - VerificationEvidence (N, partial) | `VerificationEvidence.academicProfileId` |  |
+| 7 | lists author (identifying) | 1:N | Paper (1, partial) - PaperAuthor (N, total) | `PaperAuthor.paperId (part of PK)` | Identifying relationship of the weak entity PaperAuthor. |
+| 8 | is credited as | 1:N | Author (1, partial) - PaperAuthor (N, partial) | `PaperAuthor.authorId` |  |
+| 9 | publishes | 1:N | Journal (1, partial) - Paper (N, partial) | `Paper.journalId` |  |
+| 10 | has topic (identifying) | 1:N | Paper (1, partial) - PaperTopic (N, total) | `PaperTopic.paperId (part of PK)` | Identifying relationship of the weak entity PaperTopic. |
+| 11 | classifies | 1:N | ResearchTopic (1, partial) - PaperTopic (N, partial) | `PaperTopic.topicId` |  |
+| 12 | is parent of | 1:N | ResearchTopic (1, partial) - ResearchTopic (N, partial) | `ResearchTopic.parentTopicId` |  |
+| 13 | requests report | 1:N | User (1, partial) - Report (N, total) | `Report.userId` |  |
+| 14 | cites | N:M | Report (N, partial) - Paper (M, partial) | `ReportPaper.reportId, ReportPaper.paperId` |  |
+| 15 | runs analysis | 1:N | User (1, partial) - GapAnalysis (N, total) | `GapAnalysis.userId` |  |
+| 16 | analyzes | N:M | GapAnalysis (N, partial) - Paper (M, partial) | `GapAnalysisPaper.analysisId, GapAnalysisPaper.paperId` |  |
+| 17 | produces | 1:N | GapAnalysis (1, partial) - ResearchGap (N, partial) | `ResearchGap.analysisId` |  |
+| 18 | suggests | 1:N | Report (1, partial) - ResearchGap (N, partial) | `ResearchGap.sourceReportId` |  |
+| 19 | grounded in | N:M | ResearchGap (N, partial) - Paper (M, partial) | `ResearchGapPaper.gapId, ResearchGapPaper.paperId` |  |
+| 20 | receives vote | 1:N | ResearchGap (1, partial) - GapValidation (N, total) | `GapValidation.gapId` |  |
+| 21 | validates | 1:N | User (1, partial) - GapValidation (N, total) | `GapValidation.reviewerId` |  |
+| 22 | has ledger entry | 1:N | User (1, partial) - CreditTransaction (N, total) | `CreditTransaction.userId` |  |
+| 23 | refunds | 1:N | CreditTransaction (1, partial) - CreditTransaction (N, partial) | `CreditTransaction.refundedTransactionId` | refundCreditsOnce writes at most one refund per charge (idempotency key refund:<chargeId> is UNIQUE); the FK column itself is not UNIQUE, so the diagram shows the database cardinality 1:N. |
+| 24 | charges report | 1:N | CreditTransaction (1, partial) - Report (N, partial) | `Report.creditTransactionId` | A charge belongs to one report by business rule, but reports.credit_transaction_id has no UNIQUE constraint, so the database allows 1:N. |
+| 25 | charges analysis | 1:N | CreditTransaction (1, partial) - GapAnalysis (N, partial) | `GapAnalysis.creditTransactionId` | Same as 'charges report' for gap analyses. |
+| 26 | places order | 1:N | User (1, partial) - PaymentOrder (N, total) | `PaymentOrder.userId` |  |
+| 27 | receives | 1:N | User (1, partial) - Notification (N, partial) | `Notification.userId` |  |
+| 28 | performs | 1:N | User (1, partial) - AuditLog (N, partial) | `AuditLog.userId` |  |
+| 29 | configures | 1:N | User (1, partial) - UserAiConnection (N, total) | `UserAiConnection.userId` |  |
+| 30 | owns | 1:N | User (1, partial) - Project (N, total) | `Project.ownerId` |  |
+| 31 | is member of | N:M | User (N, partial) - Project (M, partial) | `ProjectMember.userId, ProjectMember.projectId (UNIQUE pair)` |  |
+| 32 | collects | N:M | Project (N, partial) - Paper (M, partial) | `ProjectPaper.projectId, ProjectPaper.paperId (UNIQUE pair)` |  |
+| 33 | scopes report | 1:N | Project (1, partial) - Report (N, partial) | `Report.projectId` |  |
+| 34 | scopes analysis | 1:N | Project (1, partial) - GapAnalysis (N, partial) | `GapAnalysis.projectId` |  |
+| 35 | has plan | 1:1 | Project (1, partial) - ResearchPlan (1, total) | `ResearchPlan.projectId (UNIQUE)` |  |
+| 36 | contains | 1:N | Project (1, partial) - ProjectTask (N, total) | `ProjectTask.projectId` |  |
+| 37 | requests mentor | 1:N | Project (1, partial) - MentorshipRequest (N, total) | `MentorshipRequest.projectId` |  |
+| 38 | is invited as mentor | 1:N | User (1, partial) - MentorshipRequest (N, total) | `MentorshipRequest.mentorUserId` |  |
+| 39 | becomes | 1:1 | MentorshipRequest (1, partial) - MentorRelationship (1, total) | `MentorRelationship.sourceRequestId (UNIQUE)` |  |
+| 40 | is mentored in | 1:N | Project (1, partial) - MentorRelationship (N, total) | `MentorRelationship.projectId` |  |
+| 41 | opens | 1:N | Project (1, partial) - RecruitmentOpening (N, total) | `RecruitmentOpening.projectId` |  |
+| 42 | receives application | 1:N | RecruitmentOpening (1, partial) - RecruitmentApplication (N, total) | `RecruitmentApplication.openingId` |  |
+| 43 | applies | 1:N | User (1, partial) - RecruitmentApplication (N, total) | `RecruitmentApplication.applicantId` |  |
+| 44 | drafts in | 1:N | Project (1, partial) - DraftWorkspace (N, total) | `DraftWorkspace.projectId` |  |
+| 45 | submits | 1:N | Project (1, partial) - Submission (N, total) | `Submission.projectId` |  |
+| 46 | is submitted as | 1:1 | Report (1, partial) - Submission (1, partial) | `Submission.sourceReportId (UNIQUE)` |  |
+| 47 | has revision | 1:N | Submission (1, partial) - SubmissionRevision (N, total) | `SubmissionRevision.submissionId` |  |
+| 48 | is pre-reviewed by | 1:N | Submission (1, partial) - AiPreReview (N, total) | `AiPreReview.submissionId` |  |
+| 49 | requests review | 1:N | Submission (1, partial) - ReviewRequest (N, total) | `ReviewRequest.submissionId` |  |
+| 50 | is reviewed in | 1:N | SubmissionRevision (1, partial) - ReviewRequest (N, total) | `ReviewRequest.artifactRevisionId` |  |
+| 51 | assigns | 1:1 | ReviewRequest (1, partial) - ReviewerAssignment (1, partial) | `ReviewerAssignment.reviewRequestId (UNIQUE)` |  |
+| 52 | reviews as | 1:N | User (1, partial) - ReviewerAssignment (N, total) | `ReviewerAssignment.reviewerId` |  |
+| 53 | produces round | 1:N | ReviewerAssignment (1, partial) - HumanReview (N, total) | `HumanReview.assignmentId` |  |
+| 54 | has version | 1:N | ReviewTemplate (1, partial) - ReviewTemplateVersion (N, total) | `ReviewTemplateVersion.templateId` |  |
+| 55 | is used by | 1:N | ReviewTemplateVersion (1, partial) - ReviewRequest (N, total) | `ReviewRequest.templateVersionId` |  |
+| 56 | joins | N:M | User (N, partial) - Community (M, partial) | `CommunityMembership.userId, CommunityMembership.communityId (UNIQUE pair)` |  |
+| 57 | hosts | 1:N | Community (1, partial) - ForumPost (N, partial) | `ForumPost.communityId` |  |
+| 58 | authors post | 1:N | User (1, partial) - ForumPost (N, total) | `ForumPost.authorId` |  |
+| 59 | has comment | 1:N | ForumPost (1, partial) - ForumComment (N, total) | `ForumComment.postId` |  |
+| 60 | replies to | 1:N | ForumComment (1, partial) - ForumComment (N, partial) | `ForumComment.parentCommentId` |  |
+| 61 | writes comment | 1:N | User (1, partial) - ForumComment (N, total) | `ForumComment.authorId` |  |
+| 62 | is reported in | 1:N | ForumPost (1, partial) - ContentReport (N, partial) | `ContentReport.postId` |  |
+| 63 | flags comment | 1:N | ForumComment (1, partial) - ContentReport (N, partial) | `ContentReport.commentId` |  |
+| 64 | files report | 1:N | User (1, partial) - ContentReport (N, total) | `ContentReport.reporterId` |  |
+| 65 | discusses gap | 1:N | ResearchGap (1, partial) - ForumPost (N, partial) | `ForumPost.linkedResearchGapId` |  |
+| 66 | references paper | 1:N | Paper (1, partial) - ForumPost (N, partial) | `ForumPost.linkedPaperId` |  |
+| 67 | showcases project | 1:N | Project (1, partial) - ForumPost (N, partial) | `ForumPost.linkedProjectId` |  |
+| 68 | accepts answer | 1:N | ForumComment (1, partial) - ForumPost (N, partial) | `ForumPost.acceptedCommentId` | forum_posts.accepted_comment_id has no UNIQUE constraint; the database cardinality is 1:N. |
+| 69 | assesses revision | 1:N | SubmissionRevision (1, partial) - HumanReview (N, total) | `HumanReview.revisionId` |  |
+| 70 | follows rubric | 1:N | ReviewTemplateVersion (1, partial) - HumanReview (N, partial) | `HumanReview.templateVersionId` |  |
+| 71 | is current revision of | 1:N | SubmissionRevision (1, partial) - Submission (N, partial) | `Submission.currentRevisionId` | submissions.current_revision_id has no UNIQUE constraint; the database cardinality is 1:N (business intent: one current revision per submission). |
+| 72 | concerns institution | 1:N | Institution (1, partial) - VerificationEvidence (N, partial) | `VerificationEvidence.institutionId` |  |
+| 73 | resubmits | 1:N | VerificationEvidence (1, partial) - VerificationEvidence (N, partial) | `VerificationEvidence.previousRequestId` | previous_request_id has no UNIQUE constraint; the database cardinality is 1:N. |
+| 74 | defines rubric | 1:N | Project (1, partial) - ReviewTemplate (N, partial) | `ReviewTemplate.projectId` |  |
+| 75 | scopes gap | 1:N | Project (1, partial) - ResearchGap (N, partial) | `ResearchGap.projectId` |  |
+
+Total-participation lines (double): **39**; all other entity-relationship lines are single (partial).
+
+
+## Foreign keys not drawn (48 of 117 FK constraints held by the drawn entities)
+
+The diagram shows **69** of the **117** FK constraints that the 41 drawn entities hold. It also shows the FKs of the 6 join tables drawn as N:M diamonds. The FKs below are real and enforced in the database, but they are **not** drawn. This is a deliberate overview choice, so the diagram is **not** a 100% complete picture of the schema's FKs.
+
+| Category | Meaning | Count |
+|---|---|---|
+| A | Actor / audit reference (who created, decided, reviewed, uploaded, assigned or updated the record) | 22 |
+| B | Ownership or assignment link to User, omitted only to keep the User hub readable | 6 |
+| C | Denormalised copy: the same fact is reachable through relationships already drawn | 8 |
+| D | Secondary or technical pointer (current-version pointer, lineage, legacy alias, second scope, context link) | 5 |
+| F | Target model is outside the 41-entity overview | 7 |
+
+| Cat. | FK column | References | Nullable | Detail |
+|---|---|---|---|---|
+| A | `AcademicProfile.rejectedById` | User | yes |  |
+| A | `AcademicProfile.verifiedById` | User | yes |  |
+| A | `AiPreReview.requestedById` | User | no |  |
+| A | `Community.reviewedById` | User | yes |  |
+| A | `ContentReport.reviewedById` | User | yes |  |
+| A | `DraftWorkspace.createdById` | User | no |  |
+| A | `MentorshipRequest.requestedBy` | User | no |  |
+| A | `Paper.requestedById` | User | yes |  |
+| A | `Paper.uploadedById` | User | yes |  |
+| A | `Project.createdById` | User | yes |  |
+| A | `ProjectTask.completedById` | User | yes |  |
+| A | `ProjectTask.createdById` | User | no |  |
+| A | `RecruitmentApplication.decidedById` | User | yes |  |
+| A | `RecruitmentOpening.createdById` | User | no |  |
+| A | `ResearchPlan.updatedById` | User | yes |  |
+| A | `ReviewRequest.requesterId` | User | no |  |
+| A | `ReviewTemplateVersion.createdById` | User | yes |  |
+| A | `ReviewerAssignment.assignedById` | User | no |  |
+| A | `Submission.createdById` | User | no |  |
+| A | `SubmissionRevision.uploadedById` | User | no |  |
+| A | `User.accountStatusChangedById` | User | yes |  |
+| A | `VerificationEvidence.reviewedById` | User | yes |  |
+| B | `Community.ownerId` | User | no |  |
+| B | `HumanReview.reviewerId` | User | no |  |
+| B | `MentorRelationship.mentorUserId` | User | no |  |
+| B | `ProjectTask.assigneeId` | User | yes |  |
+| B | `ResearchGap.userId` | User | no |  |
+| B | `ReviewTemplate.ownerId` | User | yes |  |
+| C | `ContentReport.communityId` | Community | yes |  |
+| C | `ContentReport.researchCommunityId` | Community | yes |  |
+| C | `HumanReview.submissionId` | Submission | no |  |
+| C | `HumanReview.templateId` | ReviewTemplate | yes |  |
+| C | `RecruitmentApplication.projectId` | Project | no |  |
+| C | `ReviewRequest.projectId` | Project | no |  |
+| C | `ReviewerAssignment.artifactRevisionId` | SubmissionRevision | yes |  |
+| C | `ReviewerAssignment.submissionId` | Submission | no |  |
+| D | `ForumPost.researchCommunityId` | Community | yes | optional research-community scope used for moderation, besides the drawn forum category |
+| D | `ForumPost.researchGapId` | ResearchGap | yes | legacy column; the API maps a `researchGapId` input onto `linkedResearchGapId`, which is drawn |
+| D | `Notification.paperId` | Paper | yes | optional context link of a notification |
+| D | `ReviewTemplate.activeVersionId` | ReviewTemplateVersion | yes | pointer to the active version; the versions themselves are drawn through 'has version' |
+| D | `SubmissionRevision.sourceRevisionId` | SubmissionRevision | yes | revision lineage (self-reference) |
+| F | `DraftWorkspace.mainFileId` | ManuscriptFile | yes |  |
+| F | `MentorshipRequest.candidateId` | MentorCandidate | yes |  |
+| F | `ProjectTask.milestoneId, projectId` | ProjectMilestone | no |  |
+| F | `ResearchGap.corpusId` | LiteratureCorpus | yes |  |
+| F | `ResearchGap.latestClosureCheckId` | GapClosureCheck | yes |  |
+| F | `SubmissionRevision.attributionCheckId` | ManuscriptAttributionCheck | yes |  |
+| F | `SubmissionRevision.manuscriptSnapshotId` | ManuscriptSnapshot | yes |  |
 
 ## Models not drawn on the overview (190 of 237)
 
@@ -820,7 +931,6 @@ The overview shows the core entity of each business flow. The models below are i
 
 ## Points to verify / not implemented
 
-- **Audit FKs are not drawn as lines.** Columns such as `reviewedById`, `decidedById`, `verifiedById`, `assignedById` and `uploadedById` reference User. They are listed in the FK tables above, but drawn lines are limited to the owning or acting user of each record, to keep the overview readable.
 - **Journal** is read by `papers/paper.service.ts`, but no service in `apps/backend/src` writes it. Its rows come from the legacy data migration or from ingestion outside the API, so the write path needs verification.
 - **Payment and ledger link.** PaymentOrder has no FK to CreditTransaction. A paid order is linked to its reward ledger row only by the idempotency key `payos:<orderCode>`, so the diagram draws no relationship between them.
 - **Dead status values** (allowed by CHECK constraints but never written by code): ReviewRequest `SUBMITTED`; Submission `accepted`, `rejected`, `withdrawn`; PaymentOrder `cancelled`, `expired`; VerificationEvidence `UNVERIFIED`, `NOT_SUBMITTED`, `EXPIRED`. These do not change the ERD.
