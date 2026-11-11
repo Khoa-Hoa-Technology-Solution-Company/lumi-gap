@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/features/gaps/data/gaps_api.dart';
 import 'package:flutter_mobile/features/projects/data/projects_api.dart';
 import 'package:flutter_mobile/features/reports/data/reports_api.dart';
@@ -85,28 +86,28 @@ class ProjectOverviewTab extends StatelessWidget {
           children: [
             _buildCounterCard(
               context,
-              'Papers',
+              context.t('Papers'),
               project.papers.length.toString(),
               Icons.article_outlined,
               const Color(0xFF06B6D4),
             ),
             _buildCounterCard(
               context,
-              'Team Members',
+              context.t('Team Members'),
               project.members.length.toString(),
               Icons.people_outline,
               const Color(0xFF22C55E),
             ),
             _buildCounterCard(
               context,
-              'Reports',
+              context.t('Reports'),
               reportsCount.toString(),
               Icons.description_outlined,
               const Color(0xFFA78BFA),
             ),
             _buildCounterCard(
               context,
-              'Gaps Detected',
+              context.t('Gaps Detected'),
               gapsCount.toString(),
               Icons.bolt_outlined,
               const Color(0xFFF59E0B),
@@ -137,15 +138,15 @@ class ProjectOverviewTab extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Ground Your Research',
-                        style: TextStyle(
+                      Text(
+                        context.t('Ground Your Research'),
+                        style: const TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 13,
                         ),
                       ),
                       Text(
-                        'Add publications to power grounding reports, chat, and gap detection.',
+                        context.t('Add publications to power grounding reports, chat, and gap detection.'),
                         style: TextStyle(
                           fontSize: 11,
                           color: theme.colorScheme.onSurfaceVariant,
@@ -168,9 +169,9 @@ class ProjectOverviewTab extends StatelessWidget {
                   onPressed: () => DefaultTabController.of(
                     context,
                   ).animateTo(1), // Go to Papers Tab
-                  child: const Text(
-                    'Add',
-                    style: TextStyle(
+                  child: Text(
+                    context.t('Add'),
+                    style: const TextStyle(
                       color: Colors.white,
                       fontSize: 12,
                       fontWeight: FontWeight.bold,
@@ -184,9 +185,9 @@ class ProjectOverviewTab extends StatelessWidget {
         const SizedBox(height: 20),
 
         // Activity log snapshot
-        const Text(
-          'Workspace Activity Log',
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+        Text(
+          context.t('Workspace Activity Log'),
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
         ),
         const SizedBox(height: 10),
         Card(
@@ -196,20 +197,20 @@ class ProjectOverviewTab extends StatelessWidget {
             borderRadius: BorderRadius.circular(12),
             side: BorderSide(color: theme.dividerColor),
           ),
-          child: const Padding(
-            padding: EdgeInsets.all(16),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
             child: Row(
               children: [
-                Icon(
+                const Icon(
                   Icons.history_toggle_off,
                   color: Color(0xFF94A3B8),
                   size: 18,
                 ),
-                SizedBox(width: 12),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    'Workspace initialized and ready for research.',
-                    style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic),
+                    context.t('Workspace initialized and ready for research.'),
+                    style: const TextStyle(fontSize: 12, fontStyle: FontStyle.italic),
                   ),
                 ),
               ],

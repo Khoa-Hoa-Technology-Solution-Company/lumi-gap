@@ -1,15 +1,20 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/features/auth/providers/auth_controller.dart';
 import 'package:flutter_mobile/features/gaps/data/gaps_api.dart';
 import 'package:flutter_mobile/features/projects/data/projects_api.dart';
+import 'package:flutter_mobile/features/projects/data/team_chat_api.dart';
+import 'package:flutter_mobile/features/projects/data/team_chat_models.dart';
 import 'package:flutter_mobile/features/projects/presentation/project_detail_screen.dart';
+import 'package:flutter_mobile/features/projects/providers/team_chat_controller.dart';
 import 'package:flutter_mobile/features/reports/data/reports_api.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'auth_test_support.dart';
+import 'team_chat_support.dart';
 
 /// Characterization test for the project workspace screen, written before it
 /// was split into `project_detail/` (Phase 5): it records what every tab
@@ -17,19 +22,7 @@ import 'auth_test_support.dart';
 /// neutral by running the same test before and after.
 
 class _FakeProjectsApi extends Fake implements ProjectsApi {
-  final List<String> teamSends = [];
   final List<({String text, String scope})> aiSends = [];
-  final List<String> markedRead = [];
-
-  @override
-  Future<void> markTeamChatRead(String projectId, String messageId) async {
-    markedRead.add(messageId);
-  }
-
-  @override
-  Future<void> sendTeamChat(String projectId, String content) async {
-    teamSends.add(content);
-  }
 
   @override
   Future<void> sendChat(
@@ -40,6 +33,41 @@ class _FakeProjectsApi extends Fake implements ProjectsApi {
     aiSends.add((text: content, scope: scope));
   }
 }
+
+/// Everything the screen talks to: the AI chat API, the live team chat API
+/// and the timers of the team chat controller.
+class _Fakes {
+  final projects = _FakeProjectsApi();
+  final chat = FakeTeamChatApi();
+  final timers = ManualTimers();
+  final _readied = <int>{};
+
+  /// Texts sent to the team chat.
+  List<String> get teamSends => chat.sendCalls.map((c) => c.content).toList();
+
+  /// Messages sent to the AI: scope and text.
+  List<({String text, String scope})> get aiSends => projects.aiSends;
+}
+
+_Fakes? _active;
+
+/// The team chat opens its live connection when the Chat tab is shown; the
+/// server then says `ready` and the history loads. Do that for every new
+/// connection.
+Future<void> _deliverReady(WidgetTester tester) async {
+  final fakes = _active;
+  if (fakes == null) return;
+  for (var i = 0; i < fakes.chat.streams.length; i++) {
+    if (fakes._readied.add(i) && fakes.chat.streams[i].hasListener) {
+      fakes.chat.streams[i].add(chatEvent(TeamChatEventType.ready));
+      await tester.pumpAndSettle();
+    }
+  }
+}
+
+/// Fixtures are built relative to today so the "Hôm nay" separator holds on
+/// any day.
+final _today = DateTime.now();
 
 const _project = ProjectView(
   id: 'p1',
@@ -63,13 +91,22 @@ const _project = ProjectView(
 
 const _emptyProject = ProjectView(id: 'p2', title: 'Dự án trống');
 
-Future<_FakeProjectsApi> _pump(
+Future<_Fakes> _pump(
   WidgetTester tester, {
   ProjectView project = _project,
   bool messages = true,
   double width = 412,
 }) async {
-  final api = _FakeProjectsApi();
+  final fakes = _active = _Fakes();
+  fakes.chat.onList = (_, _) async => messages
+      ? [
+          chatMessage(
+            'm1',
+            content: 'Chào cả nhóm',
+            at: DateTime(_today.year, _today.month, _today.day, 9),
+          ),
+        ]
+      : <TeamChatMessage>[];
   tester.view
     ..physicalSize = Size(width * 2, 892 * 2)
     ..devicePixelRatio = 2;
@@ -80,20 +117,10 @@ Future<_FakeProjectsApi> _pump(
         authControllerProvider.overrideWith(
           () => FakeAuthController(testUser()),
         ),
-        projectsApiProvider.overrideWithValue(api),
+        projectsApiProvider.overrideWithValue(fakes.projects),
+        teamChatApiProvider.overrideWithValue(fakes.chat),
+        teamChatEnvProvider.overrideWithValue(testEnv(fakes.timers)),
         projectProvider.overrideWith((ref, id) async => project),
-        projectTeamChatProvider.overrideWith(
-          (ref, id) async => messages
-              ? [
-                  ProjectTeamChatMessage(
-                    id: 'm1',
-                    sender: const ChatSender(id: 'u2', fullName: 'Lan Tran'),
-                    content: 'Chào cả nhóm',
-                    createdAt: DateTime.utc(2026, 11, 8, 9).toIso8601String(),
-                  ),
-                ]
-              : <ProjectTeamChatMessage>[],
-        ),
         projectChatProvider.overrideWith(
           (ref, query) async => messages
               ? [
@@ -101,7 +128,7 @@ Future<_FakeProjectsApi> _pump(
                     id: 'a1',
                     role: 'assistant',
                     content: 'Đây là câu trả lời của AI',
-                    createdAt: DateTime.utc(2026, 11, 8, 10).toIso8601String(),
+                    createdAt: DateTime(2026, 11, 8, 10).toIso8601String(),
                   ),
                 ]
               : <ProjectChatMessage>[],
@@ -123,11 +150,16 @@ Future<_FakeProjectsApi> _pump(
           (ref, params) async => const ListGapsResponse(data: [], total: 0),
         ),
       ],
-      child: const MaterialApp(home: ProjectDetailScreen(id: 'p1')),
+      child: MaterialApp(
+        locale: AppLocale.en.locale,
+        supportedLocales: AppLocale.supportedLocales,
+        localizationsDelegates: appLocalizationsDelegates,
+        home: const ProjectDetailScreen(id: 'p1'),
+      ),
     ),
   );
   await tester.pumpAndSettle();
-  return api;
+  return fakes;
 }
 
 /// `flutter test --dart-define=RECORD=true test/project_detail_screen_test.dart`
@@ -179,7 +211,14 @@ Future<void> _openTab(WidgetTester tester, String name) async {
   await tester.ensureVisible(tab);
   await tester.tap(tab);
   await tester.pumpAndSettle();
+  if (name == 'Chat') await _deliverReady(tester);
 }
+
+/// The send button of either chat (the team chat and the AI tab use
+/// different icons).
+Finder _sendIcon() => find.byWidgetPredicate(
+  (w) => w is Icon && (w.icon == Icons.send || w.icon == Icons.send_rounded),
+);
 
 Future<void> _dispose(WidgetTester tester) async {
   // Stops the 5s chat poller.
@@ -265,7 +304,9 @@ void main() {
     await _openTab(tester, 'Chat');
 
     await tester.enterText(find.byType(TextField), '  xin chào  ');
-    await tester.tap(find.byIcon(Icons.send_rounded));
+
+    await tester.pump();
+    await tester.tap(_sendIcon());
     await tester.pumpAndSettle();
 
     expect(api.teamSends, ['xin chào']);
@@ -282,7 +323,9 @@ void main() {
     await _openTab(tester, 'Chat');
 
     await tester.enterText(find.byType(TextField), '   ');
-    await tester.tap(find.byIcon(Icons.send_rounded));
+
+    await tester.pump();
+    await tester.tap(_sendIcon());
     await tester.pumpAndSettle();
 
     expect(api.teamSends, isEmpty);
@@ -290,25 +333,146 @@ void main() {
     await _dispose(tester);
   });
 
-  _screenTest('sending from the AI tab: what goes where (recorded behaviour)', (
-    tester,
-  ) async {
-    final api = await _pump(tester, project: _emptyProject, messages: false);
-    await _openTab(tester, 'AI Assistant');
-    await tester.enterText(find.byType(TextField), 'hỏi AI');
-    await tester.tap(find.byIcon(Icons.send_rounded));
-    await tester.pumpAndSettle();
+  group('chat channels', () {
+    Finder input() => find.byType(TextField).hitTestable();
+    Finder sendButton() => _sendIcon().hitTestable();
 
-    _check('aiTabSend', {
-      'team': api.teamSends,
-      'ai': api.aiSends.map((e) => '${e.scope}:${e.text}').toList(),
-    }, _expectedAiTabSend);
-    await _dispose(tester);
+    Future<void> send(WidgetTester tester, String text) async {
+      await tester.enterText(input(), text);
+      await tester.pump();
+      await tester.tap(sendButton());
+      await tester.pumpAndSettle();
+    }
+
+    List<String> ai(_Fakes api) =>
+        api.aiSends.map((e) => '${e.scope}:${e.text}').toList();
+
+    _screenTest(
+      'AI tab: the default channel is the private AI, never the team chat',
+      (
+        tester,
+      ) async {
+        final api = await _pump(tester, messages: false);
+        await _openTab(tester, 'AI Assistant');
+        await send(tester, 'hỏi AI');
+
+        expect(api.teamSends, isEmpty);
+        expect(ai(api), ['private:hỏi AI']);
+        await _dispose(tester);
+      },
+    );
+
+    _screenTest('Chat tab: always the team chat', (tester) async {
+      final api = await _pump(tester, messages: false);
+      await _openTab(tester, 'Chat');
+      await send(tester, 'chào nhóm');
+
+      expect(api.teamSends, ['chào nhóm']);
+      expect(api.aiSends, isEmpty);
+      await _dispose(tester);
+    });
+
+    _screenTest(
+      'picking Team AI in the AI tab does not change the Chat tab, and back',
+      (
+        tester,
+      ) async {
+        final api = await _pump(tester, messages: false);
+        await _openTab(tester, 'AI Assistant');
+        await tester.tap(find.text('Team AI (Shared)'));
+        await tester.pumpAndSettle();
+
+        await _openTab(tester, 'Chat');
+        expect(find.text('Message the team…'), findsOneWidget);
+        await send(tester, 'tin cho nhóm');
+        expect(api.teamSends, ['tin cho nhóm']);
+        expect(api.aiSends, isEmpty);
+
+        await _openTab(tester, 'AI Assistant');
+        expect(
+          find.text('Team AI Room - Shared'),
+          findsOneWidget,
+          reason: 'AI channel kept',
+        );
+        await send(tester, 'hỏi cả nhóm');
+        expect(api.teamSends, ['tin cho nhóm'], reason: 'team chat untouched');
+        expect(ai(api), ['team:hỏi cả nhóm']);
+        await _dispose(tester);
+      },
+    );
+
+    _screenTest(
+      'AI tab without papers: error shown, no API call, any channel',
+      (
+        tester,
+      ) async {
+        final api = await _pump(
+          tester,
+          project: _emptyProject,
+          messages: false,
+        );
+        await _openTab(tester, 'AI Assistant');
+
+        // The empty AI chat already shows this sentence as a hint (1); the
+        // error banner adds a second one.
+        expect(find.text('Add papers before asking AI.'), findsOneWidget);
+        await send(tester, 'hỏi AI');
+        expect(find.text('Add papers before asking AI.'), findsNWidgets(2));
+        expect(api.aiSends, isEmpty);
+        expect(api.teamSends, isEmpty);
+
+        await tester.tap(find.text('Team AI (Shared)'));
+        await tester.pumpAndSettle();
+        expect(
+          find.text('Add papers before asking AI.'),
+          findsOneWidget,
+          reason: 'error cleared on channel change (only the hint is left)',
+        );
+        await send(tester, 'hỏi nhóm AI');
+        expect(find.text('Add papers before asking AI.'), findsNWidgets(2));
+        expect(api.aiSends, isEmpty);
+        expect(api.teamSends, isEmpty);
+        await _dispose(tester);
+      },
+    );
+
+    _screenTest('team chat still works in a project without papers', (
+      tester,
+    ) async {
+      final api = await _pump(tester, project: _emptyProject, messages: false);
+      await _openTab(tester, 'Chat');
+      await send(tester, 'dự án mới');
+
+      expect(api.teamSends, ['dự án mới']);
+      expect(find.text('Add papers before asking AI.'), findsNothing);
+      await _dispose(tester);
+    });
+
+    _screenTest('each tab keeps its own draft and error', (tester) async {
+      await _pump(tester, messages: false);
+      await _openTab(tester, 'Chat');
+      await tester.enterText(input(), 'bản nháp nhóm');
+      await tester.pump();
+      await _openTab(tester, 'AI Assistant');
+      expect(tester.widget<TextField>(input()).controller!.text, isEmpty);
+
+      await tester.enterText(input(), 'bản nháp AI');
+
+      await tester.pump();
+      await _openTab(tester, 'Chat');
+      expect(
+        tester.widget<TextField>(input()).controller!.text,
+        'bản nháp nhóm',
+      );
+      await _dispose(tester);
+    });
   });
 }
 
-// Recorded from the original single-file implementation (before Phase 5).
-// Refresh with: flutter test --dart-define=RECORD=true test/project_detail_screen_test.dart
+// What every tab shows. Recorded from the single-file implementation before
+// the split (Phase 5); the Chat tab was re-recorded when the live team chat
+// replaced it. Refresh with:
+//   flutter test --dart-define=RECORD=true test/project_detail_screen_test.dart
 const Map<String, List<String>> _expected = {
   'Overview': [
     '0',
@@ -348,26 +512,22 @@ const Map<String, List<String>> _expected = {
     'Year: N/A · Citations: 0',
   ],
   'Chat': [
-    '16:00',
+    '09:00',
     'AI Assistant',
     'Chat',
     'Chào cả nhóm',
-    'Discuss with project members',
     'Học liên kết trong y tế',
+    'L',
     'Lan Tran',
-    'Live',
     'Members',
-    'Message your project team...',
-    'My AI',
+    'Message the team…',
     'Outputs',
     'Overview',
     'Papers',
-    'Team',
-    'Team AI',
-    'Team Chat',
+    'Today',
   ],
   'AI Assistant': [
-    '17:00',
+    '10:00',
     'AI Assistant',
     'AI assistant',
     'Ask AI Assistant about project publications...',
@@ -457,20 +617,13 @@ const Map<String, List<String>> _expectedEmpty = {
   'Chat': [
     'AI Assistant',
     'Chat',
-    'Discuss with project members',
     'Dự án trống',
-    'Live',
     'Members',
-    'Message your project team...',
-    'My AI',
-    'No team messages yet',
+    'Message the team…',
+    'No messages yet. Start the conversation.',
     'Outputs',
     'Overview',
     'Papers',
-    'Start the discussion with your project members.',
-    'Team',
-    'Team AI',
-    'Team Chat',
   ],
   'AI Assistant': [
     'AI Assistant',
@@ -517,15 +670,4 @@ const Map<String, List<String>> _expectedEmpty = {
     'Workspace Members',
     'Workspace Settings',
   ],
-};
-
-/// KNOWN ISSUE (kept as-is in Phase 5): typing in the "AI Assistant" tab
-/// without first tapping a channel posts to the TEAM chat, because the
-/// screen state starts in team mode while the AI tab only *displays*
-/// private-AI mode.
-const Map<String, List<String>> _expectedAiTabSend = {
-  'team': [
-    'hỏi AI',
-  ],
-  'ai': <String>[],
 };

@@ -1,16 +1,17 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/widgets/app_error_state.dart';
 import 'package:flutter_mobile/core/widgets/app_loading.dart';
 import 'package:flutter_mobile/features/projects/data/projects_api.dart';
 import 'package:flutter_mobile/features/projects/presentation/project_detail/ai_assistant_tab.dart';
 import 'package:flutter_mobile/features/projects/presentation/project_detail/chat_mode.dart';
-import 'package:flutter_mobile/features/projects/presentation/project_detail/chat_tab.dart';
 import 'package:flutter_mobile/features/projects/presentation/project_detail/members_settings_tab.dart';
 import 'package:flutter_mobile/features/projects/presentation/project_detail/outputs_tab.dart';
 import 'package:flutter_mobile/features/projects/presentation/project_detail/overview_tab.dart';
 import 'package:flutter_mobile/features/projects/presentation/project_detail/papers_tab.dart';
+import 'package:flutter_mobile/features/projects/presentation/project_detail/team_chat/team_chat_view.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 class ProjectDetailScreen extends ConsumerStatefulWidget {
@@ -24,12 +25,18 @@ class ProjectDetailScreen extends ConsumerStatefulWidget {
 }
 
 class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
-  final _message = TextEditingController();
+  /// Position of the live team chat in the tab bar.
+  static const _chatTabIndex = 2;
+
+  // The Chat tab is the live team conversation and owns its own state
+  // (`TeamChatView`). This screen only holds the AI Assistant tab's draft,
+  // channel (private or shared), error and sending flag.
+  final _aiMessage = TextEditingController();
   final _scrollController = ScrollController();
-  ProjectChatMode _mode = ProjectChatMode.team;
+  ProjectChatMode _aiMode = ProjectChatMode.privateAi;
   Timer? _poller;
-  bool _sending = false;
-  String? _sendError;
+  bool _aiSending = false;
+  String? _aiError;
 
   @override
   void initState() {
@@ -40,61 +47,52 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
   @override
   void dispose() {
     _poller?.cancel();
-    _message.dispose();
+    _aiMessage.dispose();
     _scrollController.dispose();
     super.dispose();
   }
 
   void _refresh() {
     if (!mounted) return;
-    if (_mode == ProjectChatMode.team) {
-      ref.invalidate(projectTeamChatProvider(widget.id));
-    } else {
-      ref.invalidate(
-        projectChatProvider((
-          projectId: widget.id,
-          scope: _mode == ProjectChatMode.privateAi ? 'private' : 'team',
-        )),
-      );
-    }
+    ref.invalidate(
+      projectChatProvider((projectId: widget.id, scope: _aiScope(_aiMode))),
+    );
   }
 
-  void _selectMode(ProjectChatMode mode) {
+  String _aiScope(ProjectChatMode mode) =>
+      mode == ProjectChatMode.privateAi ? 'private' : 'team';
+
+  void _selectAiMode(ProjectChatMode mode) {
     setState(() {
-      _mode = mode;
-      _sendError = null;
+      _aiMode = mode;
+      _aiError = null;
     });
     _refresh();
   }
 
-  Future<void> _send(int paperCount) async {
-    final text = _message.text.trim();
-    if (text.isEmpty || _sending) return;
-    if (_mode != ProjectChatMode.team && paperCount == 0) {
-      setState(() => _sendError = 'Add papers before asking AI.');
+  /// Sends the AI tab's draft to the channel that tab shows. Without papers
+  /// the AI cannot answer, so nothing is sent.
+  Future<void> _sendAi(int paperCount) async {
+    final text = _aiMessage.text.trim();
+    if (text.isEmpty || _aiSending) return;
+    if (paperCount == 0) {
+      setState(() => _aiError = context.t('Add papers before asking AI.'));
       return;
     }
     setState(() {
-      _sending = true;
-      _sendError = null;
+      _aiSending = true;
+      _aiError = null;
     });
     try {
-      final api = ref.read(projectsApiProvider);
-      if (_mode == ProjectChatMode.team) {
-        await api.sendTeamChat(widget.id, text);
-      } else {
-        await api.sendChat(
-          widget.id,
-          text,
-          scope: _mode == ProjectChatMode.privateAi ? 'private' : 'team',
-        );
-      }
-      _message.clear();
+      await ref
+          .read(projectsApiProvider)
+          .sendChat(widget.id, text, scope: _aiScope(_aiMode));
+      _aiMessage.clear();
       _refresh();
     } on Object catch (error) {
-      if (mounted) setState(() => _sendError = error.toString());
+      if (mounted) setState(() => _aiError = error.toString());
     } finally {
-      if (mounted) setState(() => _sending = false);
+      if (mounted) setState(() => _aiSending = false);
     }
   }
 
@@ -109,21 +107,21 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
         appBar: AppBar(
           title: project.maybeWhen(
             data: (data) => Text(data.title),
-            orElse: () => const Text('Project Workspace'),
+            orElse: () => Text(context.t('Project Workspace')),
           ),
-          bottom: const TabBar(
+          bottom: TabBar(
             isScrollable: true,
             tabAlignment: TabAlignment.start,
-            indicatorColor: Color(0xFF06B6D4),
-            labelColor: Color(0xFF06B6D4),
-            unselectedLabelColor: Color(0xFF94A3B8),
+            indicatorColor: const Color(0xFF06B6D4),
+            labelColor: const Color(0xFF06B6D4),
+            unselectedLabelColor: const Color(0xFF94A3B8),
             tabs: [
-              Tab(text: 'Overview'),
-              Tab(text: 'Papers'),
-              Tab(text: 'Chat'),
-              Tab(text: 'AI Assistant'),
-              Tab(text: 'Outputs'),
-              Tab(text: 'Members'),
+              Tab(text: context.t('Overview')),
+              Tab(text: context.t('Papers')),
+              Tab(text: context.t('Chat')),
+              Tab(text: context.t('AI Assistant')),
+              Tab(text: context.t('Outputs')),
+              Tab(text: context.t('Members')),
             ],
           ),
         ),
@@ -132,41 +130,31 @@ class _ProjectDetailScreenState extends ConsumerState<ProjectDetailScreen> {
             children: [
               ProjectOverviewTab(project: data, projectId: widget.id, ref: ref),
               ProjectPapersTab(project: data, projectId: widget.id, ref: ref),
-              ProjectChatTab(
+              TeamChatView(
                 projectId: widget.id,
-                project: data,
-                mode: ProjectChatMode.team,
-                selectMode: _selectMode,
-                scrollController: _scrollController,
-                refresh: _refresh,
-                messageController: _message,
-                sending: _sending,
-                sendError: _sendError,
-                sendFn: _send,
-                colors: colors,
+                ownerId: data.ownerId,
+                tabIndex: _chatTabIndex,
               ),
               ProjectAiAssistantTab(
                 projectId: widget.id,
                 project: data,
-                mode: _mode == ProjectChatMode.team
-                    ? ProjectChatMode.privateAi
-                    : _mode,
-                selectMode: _selectMode,
+                mode: _aiMode,
+                selectMode: _selectAiMode,
                 scrollController: _scrollController,
                 refresh: _refresh,
-                messageController: _message,
-                sending: _sending,
-                sendError: _sendError,
-                sendFn: _send,
+                messageController: _aiMessage,
+                sending: _aiSending,
+                sendError: _aiError,
+                sendFn: _sendAi,
                 colors: colors,
               ),
               ProjectOutputsTab(projectId: widget.id, ref: ref),
               ProjectMembersSettingsTab(project: data, ref: ref),
             ],
           ),
-          loading: () => const AppLoading(
+          loading: () => AppLoading(
             fullScreen: true,
-            message: 'Loading project workspace...',
+            message: context.t('Loading project workspace...'),
           ),
           error: (error, _) => AppErrorState(message: error.toString()),
         ),

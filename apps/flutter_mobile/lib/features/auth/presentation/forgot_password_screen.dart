@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/core/widgets/app_alert.dart';
 import 'package:flutter_mobile/features/auth/data/auth_api.dart';
@@ -9,9 +10,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 /// Shown for every 202, whether or not the email has an account.
-const forgotPasswordSuccessMessage =
-    'Nếu email này có tài khoản, bạn sẽ nhận được hướng dẫn đặt lại mật khẩu. '
-    'Liên kết trong email sẽ mở trên trình duyệt.';
+final String forgotPasswordSuccessMessage =
+    tk('If this email has an account, you will receive instructions to reset your password. The link in the email opens in your browser.');
 
 class ForgotPasswordScreen extends ConsumerStatefulWidget {
   const ForgotPasswordScreen({super.key, this.initialEmail = ''});
@@ -81,7 +81,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
     final lumi = context.lumi;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Quên mật khẩu')),
+      appBar: AppBar(title: Text(context.t('Forgot password'))),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(16),
@@ -89,15 +89,15 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
               ? Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const AppAlert(
+                    AppAlert(
                       tone: AppAlertTone.success,
-                      child: Text(forgotPasswordSuccessMessage),
+                      child: Text(context.t(forgotPasswordSuccessMessage)),
                     ),
                     const SizedBox(height: 12),
                     TextButton(
                       onPressed: () =>
                           context.canPop() ? context.pop() : context.go('/login'),
-                      child: const Text('Quay lại đăng nhập'),
+                      child: Text(context.t('Back to sign in')),
                     ),
                   ],
                 )
@@ -105,8 +105,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Nhập email của tài khoản. Chúng tôi sẽ gửi hướng dẫn '
-                      'đặt lại mật khẩu.',
+                      context.t('Enter your account email. We will send you instructions to reset your password.'),
                       style: theme.textTheme.bodyLarge?.copyWith(
                         color: lumi.foregroundSecondary,
                         height: 1.6,
@@ -126,7 +125,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
                         }
                       },
                       decoration: InputDecoration(
-                        labelText: 'Email',
+                        labelText: context.t('Email'),
                         error: _emailError == null
                             ? null
                             : Row(
@@ -137,7 +136,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
                                     color: lumi.error,
                                   ),
                                   const SizedBox(width: 6),
-                                  Expanded(child: Text(_emailError!)),
+                                  Expanded(child: Text(context.t(_emailError!))),
                                 ],
                               ),
                       ),
@@ -151,14 +150,14 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(_failure!.message),
+                            Text(context.t(_failure!.message)),
                             if (_failure == RecoveryFailure.offline ||
                                 _failure == RecoveryFailure.other)
                               TextButton(
                                 onPressed: _sending
                                     ? null
                                     : () => unawaited(_send()),
-                                child: const Text('Thử lại'),
+                                child: Text(context.t('Try again')),
                               ),
                           ],
                         ),
@@ -183,10 +182,10 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
                                     ),
                                   ),
                                   const SizedBox(width: 8),
-                                  const Text('Đang gửi…'),
+                                  Text(context.t('Sending…')),
                                 ],
                               )
-                            : const Text('Gửi hướng dẫn'),
+                            : Text(context.t('Send instructions')),
                       ),
                     ),
                   ],

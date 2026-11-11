@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/app_theme.dart';
 import 'package:flutter_mobile/core/theme/theme_provider.dart';
 import 'package:flutter_mobile/features/auth/data/auth_models.dart';
@@ -12,6 +13,7 @@ import 'package:flutter_mobile/features/reports/data/reports_api.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'i18n_support.dart';
 
 class _SignedOutAuth extends AuthController {
   @override
@@ -80,6 +82,9 @@ Future<GoRouter> _pumpApp(WidgetTester tester) async {
         ),
       ],
       child: MaterialApp.router(
+        locale: AppLocale.vi.locale,
+        supportedLocales: AppLocale.supportedLocales,
+        localizationsDelegates: appLocalizationsDelegates,
         theme: AppTheme.lightTheme,
         routerConfig: router,
       ),
@@ -119,7 +124,7 @@ void main() {
 
     await tester.tap(_tab('Hồ sơ'));
     await tester.pumpAndSettle();
-    expect(find.text('ACTIVITY'), findsOneWidget);
+    expect(find.text(vi('ACTIVITY')), findsOneWidget);
 
     await tester.tap(_tab('Trang chủ'));
     await tester.pumpAndSettle();
@@ -148,7 +153,7 @@ void main() {
     await tester.pumpAndSettle();
 
     for (final entry in ExploreScreen.entries) {
-      final tile = find.widgetWithText(ListTile, entry.title);
+      final tile = find.widgetWithText(ListTile, vi(entry.title));
       expect(tile, findsOneWidget);
       expect(tester.getSize(tile).height, greaterThanOrEqualTo(48));
     }
@@ -173,7 +178,7 @@ void main() {
 
     final row = find.descendant(
       of: find.byType(Card),
-      matching: find.text('Bookmarks'),
+      matching: find.text(vi('Bookmarks')),
     );
     await tester.scrollUntilVisible(row, 200);
     await tester.pumpAndSettle();

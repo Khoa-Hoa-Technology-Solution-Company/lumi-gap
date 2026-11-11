@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/features/home/data/home_models.dart';
 import 'package:flutter_mobile/features/home/presentation/widgets/home_section_frame.dart';
@@ -81,22 +82,22 @@ class _SparklinePainter extends CustomPainter {
   LumiColors lumi,
 ) => switch (verdict) {
   TrendVerdict.rising => (
-    text: 'Tăng',
+    text: tk('Up'),
     color: lumi.success,
     icon: Icons.arrow_upward,
   ),
   TrendVerdict.declining => (
-    text: 'Giảm',
+    text: tk('Down'),
     color: lumi.error,
     icon: Icons.arrow_downward,
   ),
   TrendVerdict.stable => (
-    text: 'Ổn định',
+    text: tk('Stable'),
     color: lumi.muted,
     icon: Icons.arrow_forward,
   ),
   TrendVerdict.insufficient => (
-    text: 'Chưa đủ dữ liệu',
+    text: tk('Insufficient data'),
     color: lumi.muted,
     icon: Icons.remove,
   ),
@@ -117,7 +118,7 @@ class HomeTrendLabel extends StatelessWidget {
         const SizedBox(width: 4),
         Flexible(
           child: Text(
-            style.text,
+            context.t(style.text),
             textAlign: TextAlign.end,
             style: Theme.of(
               context,

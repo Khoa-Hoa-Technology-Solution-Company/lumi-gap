@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/features/projects/data/projects_api.dart';
 import 'package:flutter_mobile/features/projects/presentation/project_detail/channel_switcher.dart';
 import 'package:flutter_mobile/features/projects/presentation/project_detail/chat_mode.dart';
@@ -43,7 +44,6 @@ class ProjectAiAssistantTab extends StatelessWidget {
           child: ProjectChatPanel(
             projectId: projectId,
             mode: mode,
-            ownerId: project.ownerId,
             paperCount: project.papers.length,
             controller: scrollController,
             onRefresh: refresh,
@@ -83,16 +83,16 @@ class ProjectAiAssistantTab extends StatelessWidget {
                       maxLines: 4,
                       maxLength: 2000,
                       textInputAction: TextInputAction.newline,
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         hintText:
-                            'Ask AI Assistant about project publications...',
+                            context.t('Ask AI Assistant about project publications...'),
                         counterText: '',
                         border: InputBorder.none,
-                        prefixIcon: Icon(
+                        prefixIcon: const Icon(
                           Icons.auto_awesome_rounded,
                           size: 20,
                         ),
-                        contentPadding: EdgeInsets.symmetric(
+                        contentPadding: const EdgeInsets.symmetric(
                           horizontal: 10,
                           vertical: 13,
                         ),
@@ -159,13 +159,13 @@ class ProjectAiChannelSwitcher extends StatelessWidget {
       child: Row(
         children: [
           ProjectChannelTab(
-            label: 'My AI (Private)',
+            label: context.t('My AI (Private)'),
             icon: Icons.auto_awesome_rounded,
             selected: mode == ProjectChatMode.privateAi,
             onTap: () => onChanged(ProjectChatMode.privateAi),
           ),
           ProjectChannelTab(
-            label: 'Team AI (Shared)',
+            label: context.t('Team AI (Shared)'),
             icon: Icons.smart_toy_rounded,
             selected: mode == ProjectChatMode.teamAi,
             onTap: () => onChanged(ProjectChatMode.teamAi),

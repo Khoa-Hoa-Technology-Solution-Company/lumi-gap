@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/features/gaps/data/gaps_api.dart';
 import 'package:flutter_mobile/features/reports/data/reports_api.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -43,9 +44,9 @@ class ProjectOutputsTab extends StatelessWidget {
               context.push('/reports?create=true&projectId=$projectId'),
             ),
             icon: const Icon(Icons.add, color: Colors.white),
-            label: const Text(
-              'Generate RAG Report',
-              style: TextStyle(
+            label: Text(
+              context.t('Generate RAG Report'),
+              style: const TextStyle(
                 color: Colors.white,
                 fontWeight: FontWeight.bold,
               ),
@@ -61,19 +62,19 @@ class ProjectOutputsTab extends StatelessWidget {
             Icons.description_outlined,
             color: Color(0xFFA78BFA),
           ),
-          title: const Text(
-            'RAG Analytical Reports',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+          title: Text(
+            context.t('RAG Analytical Reports'),
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
           ),
           children: [
             reportsQuery.when(
               data: (data) {
                 if (data.reports.isEmpty) {
-                  return const Padding(
-                    padding: EdgeInsets.all(16),
+                  return Padding(
+                    padding: const EdgeInsets.all(16),
                     child: Text(
-                      'No analytical reports generated yet.',
-                      style: TextStyle(
+                      context.t('No analytical reports generated yet.'),
+                      style: const TextStyle(
                         fontStyle: FontStyle.italic,
                         fontSize: 12,
                       ),
@@ -95,14 +96,14 @@ class ProjectOutputsTab extends StatelessWidget {
                       ),
                       child: ListTile(
                         title: Text(
-                          report.topic ?? 'Dataset report',
+                          report.topic ?? context.t('Dataset report'),
                           style: const TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 13,
                           ),
                         ),
                         subtitle: Text(
-                          'Status: ${report.status.toUpperCase()} · ${report.query}',
+                          context.t('Status: {{status}} · {{query}}', {'status': report.status.toUpperCase(), 'query': report.query}),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(fontSize: 11),
@@ -124,7 +125,7 @@ class ProjectOutputsTab extends StatelessWidget {
               error: (err, _) => Padding(
                 padding: const EdgeInsets.all(16),
                 child: Text(
-                  'Error loading reports: $err',
+                  context.t('Error loading reports: {{err}}', {'err': err}),
                   style: const TextStyle(color: Colors.red),
                 ),
               ),
@@ -137,19 +138,19 @@ class ProjectOutputsTab extends StatelessWidget {
         ExpansionTile(
           initiallyExpanded: true,
           leading: const Icon(Icons.bolt_outlined, color: Color(0xFFF59E0B)),
-          title: const Text(
-            'Discovered Research Gaps',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+          title: Text(
+            context.t('Discovered Research Gaps'),
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
           ),
           children: [
             gapsQuery.when(
               data: (data) {
                 if (data.data.isEmpty) {
-                  return const Padding(
-                    padding: EdgeInsets.all(16),
+                  return Padding(
+                    padding: const EdgeInsets.all(16),
                     child: Text(
-                      'No research gaps found for this workspace.',
-                      style: TextStyle(
+                      context.t('No research gaps found for this workspace.'),
+                      style: const TextStyle(
                         fontStyle: FontStyle.italic,
                         fontSize: 12,
                       ),
@@ -178,7 +179,7 @@ class ProjectOutputsTab extends StatelessWidget {
                           ),
                         ),
                         subtitle: Text(
-                          '${(gap.confidence * 100).round()}% confidence · ${gap.description}',
+                          context.t('{{percent}}% confidence · {{description}}', {'percent': (gap.confidence * 100).round(), 'description': gap.description}),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(fontSize: 11),
@@ -199,7 +200,7 @@ class ProjectOutputsTab extends StatelessWidget {
               error: (err, _) => Padding(
                 padding: const EdgeInsets.all(16),
                 child: Text(
-                  'Error loading gaps: $err',
+                  context.t('Error loading gaps: {{err}}', {'err': err}),
                   style: const TextStyle(color: Colors.red),
                 ),
               ),

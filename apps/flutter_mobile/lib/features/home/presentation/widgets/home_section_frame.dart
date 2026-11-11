@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 
 /// Section title with an optional "Xem tất cả" text button (48dp tall).
@@ -26,7 +27,7 @@ class HomeSectionHeader extends StatelessWidget {
             ),
           ),
           if (onAll != null)
-            TextButton(onPressed: onAll, child: const Text('Xem tất cả')),
+            TextButton(onPressed: onAll, child: Text(context.t('View all'))),
         ],
       ),
     );
@@ -50,7 +51,7 @@ class HomeSkeleton extends StatelessWidget {
   Widget build(BuildContext context) {
     final lumi = context.lumi;
     return Semantics(
-      label: 'Đang tải',
+      label: context.t('Loading'),
       container: true,
       child: Column(
         children: [
@@ -77,12 +78,13 @@ class HomeSectionError extends StatelessWidget {
     required this.onRetry,
     super.key,
     this.retrying = false,
-    this.message = 'Chưa tải được phần này',
+    this.message,
   });
 
   final VoidCallback onRetry;
   final bool retrying;
-  final String message;
+  /// Defaults to "This section could not be loaded".
+  final String? message;
 
   @override
   Widget build(BuildContext context) {
@@ -97,7 +99,7 @@ class HomeSectionError extends StatelessWidget {
           const SizedBox(width: 12),
           Expanded(
             child: Text(
-              message,
+              message ?? context.t('This section could not be loaded'),
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: lumi.foregroundSecondary,
               ),
@@ -118,10 +120,10 @@ class HomeSectionError extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(width: 8),
-                      const Text('Đang tải…'),
+                      Text(context.t('Loading…')),
                     ],
                   )
-                : const Text('Thử lại'),
+                : Text(context.t('Try again')),
           ),
         ],
       ),

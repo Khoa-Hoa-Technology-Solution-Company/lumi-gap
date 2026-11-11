@@ -356,7 +356,17 @@ Bốn tab trong `NavigationBar`, mỗi tab có icon và nhãn: Trang chủ, Khá
 
 ### 11.4. Phạm vi hiện tại
 
-Mới các màn nền tảng (đăng nhập, quên mật khẩu, Trang chủ, Khám phá, Hồ sơ, thông báo) theo bảng trên. Các màn còn lại vẫn có màu và cỡ chữ viết thẳng trong code cũ, sẽ chuyển sang token khi được sửa.
+- **Đã theo token** (`context.lumi`, `Theme.textTheme`): đăng nhập, quên mật khẩu, Trang chủ, Khám phá, Hồ sơ, thông báo, banner xác minh email, tab Chat của dự án (chat nhóm realtime) và các màn dùng chung (`paper_card`, `app_error_state`, `confirm_dialog`, chuông thông báo).
+- **Chưa chuyển:** các màn còn lại (xu hướng, báo cáo, khoảng trống, tìm kiếm, chi tiết bài báo, bài báo của tôi, đã đánh dấu, danh sách dự án, tab Tổng quan và Thành viên của dự án, admin, bảng xếp hạng) vẫn còn màu `Color(0x…)` (542 chỗ) và `fontSize:` (317 chỗ) viết thẳng; chuyển sang token khi màn đó được sửa. Màn mới không được thêm hex hay `fontSize` viết thẳng.
+- Mọi màn đã dịch được (xem 11.5); chạy được ở 320dp + cỡ chữ 1,3 với cả hai ngôn ngữ đối với các màn có test layout (Trang chủ, Chat nhóm, sheet ngôn ngữ, các tab dự án).
+
+### 11.5. Ngôn ngữ mobile (vi/en)
+
+- Hai ngôn ngữ: Tiếng Việt và English. Mặc định theo ngôn ngữ ưu tiên đầu của điện thoại (vi thì vi, còn lại en) và đổi theo khi người dùng đổi ngôn ngữ điện thoại lúc app đang chạy; người dùng có thể chọn cố định ở Hồ sơ → Ngôn ngữ (lưu trong secure storage).
+- **Thêm chuỗi:** viết chuỗi **tiếng Anh** làm khóa, `context.t('Save changes')`; có tham số thì `context.t('Hello, {{name}}', {'name': n})` (placeholder `{{name}}` giống web); số nhiều thì `context.plural(n, one: '{{count}} paper', other: '{{count}} papers')`. Rồi thêm bản dịch vào `lib/core/i18n/translations_vi.dart` (ưu tiên đúng câu web đã dùng cho cùng khóa để thuật ngữ hai bên thống nhất). Thiếu bản dịch thì app hiện tiếng Anh.
+- Chuỗi nằm trong model, enum hay hằng (không có `BuildContext`) bọc bằng `tk('…')` để trả về khóa, rồi hiển thị bằng `context.t(giáTrị)`. Ngoài cây widget dùng `trNow`. Không dịch chữ do server trả.
+- **Test chặn lỗi:** `test/i18n_test.dart` quét `lib/` và báo tên khóa + file khi (a) khóa không có bản dịch vi, (b) bản dịch thừa hoặc lệch placeholder, (c) có `Text('…')` hay `labelText`/`hintText`/`tooltip`/… viết thẳng. Chuỗi không cần dịch (tên riêng, ký hiệu) ghi `// i18n-ignore: <lý do>` ngay trên dòng đó.
+- Ngày giờ: `relativeTime(time, locale)` và `formatShortDate(time, locale)` (`dd/MM/yyyy` ở vi, `Nov 9, 2026` ở en); không tự ghép chuỗi ngày trong widget.
 
 ---
 

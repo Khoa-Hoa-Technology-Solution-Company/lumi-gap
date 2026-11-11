@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/features/auth/data/auth_models.dart';
 import 'package:flutter_mobile/features/auth/providers/auth_controller.dart';
@@ -44,7 +45,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
     if (email.isEmpty || password.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter your email and password.')),
+        SnackBar(content: Text(context.t('Please enter your email and password.'))),
       );
       return;
     }
@@ -53,7 +54,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       final name = _fullNameController.text.trim();
       if (name.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please enter your full name.')),
+          SnackBar(content: Text(context.t('Please enter your full name.'))),
         );
         return;
       }
@@ -75,8 +76,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             );
           } else {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Registration successful. Please sign in.'),
+              SnackBar(
+                content: Text(context.t('Registration successful. Please sign in.')),
 
               ),
             );
@@ -223,13 +224,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  'Publication Trend',
+                  context.t('Publication Trend'),
                   style: theme.textTheme.headlineSmall,
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'AI-powered research discovery',
+                  context.t('AI-powered research discovery'),
                   style: theme.textTheme.bodyMedium
                       ?.copyWith(color: lumi.foregroundSecondary),
                   textAlign: TextAlign.center,
@@ -253,38 +254,38 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         padding: const EdgeInsets.all(4),
                         child: Row(
                           children: [
-                            _tab(context, 'Sign in', !_isRegisterTab,
+                            _tab(context, context.t('Sign in'), !_isRegisterTab,
                                 isLoading ? null : () => setState(() => _isRegisterTab = false)),
-                            _tab(context, 'Create account', _isRegisterTab,
+                            _tab(context, context.t('Create account'), _isRegisterTab,
                                 isLoading ? null : () => setState(() => _isRegisterTab = true)),
                           ],
                         ),
                       ),
                       const SizedBox(height: 24),
                       if (_isRegisterTab) ...[
-                        _label(context, 'Full name'),
+                        _label(context, context.t('Full name')),
                         const SizedBox(height: 8),
                         _field(
                           context: context,
                           controller: _fullNameController,
                           icon: Icons.person_outline,
-                          hint: 'Hoang Long Anh',
+                          hint: context.t('Hoang Long Anh'),
                           enabled: !isLoading,
                         ),
                         const SizedBox(height: 16),
                       ],
-                      _label(context, 'Email address'),
+                      _label(context, context.t('Email address')),
                       const SizedBox(height: 8),
                       _field(
                         context: context,
                         controller: _emailController,
                         icon: Icons.mail_outline,
-                        hint: 'researcher@university.edu',
+                        hint: context.t('researcher@university.edu'),
                         keyboardType: TextInputType.emailAddress,
                         enabled: !isLoading,
                       ),
                       const SizedBox(height: 16),
-                      _label(context, 'Password'),
+                      _label(context, context.t('Password')),
                       const SizedBox(height: 8),
                       _field(
                         context: context,
@@ -294,7 +295,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         obscure: !_showPassword,
                         enabled: !isLoading,
                         trailing: IconButton(
-                          tooltip: _showPassword ? 'Hide password' : 'Show password',
+                          tooltip: _showPassword ? context.t('Hide password') : context.t('Show password'),
                           onPressed: () => setState(() => _showPassword = !_showPassword),
                           icon: Icon(
                             _showPassword
@@ -309,7 +310,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         const SizedBox(height: 16),
                         Row(
                           children: [
-                            for (final entry in const [
+                            for (final entry in [
                               (UserRole.student, 'student'),
                               (UserRole.lecturer, 'lecturer'),
                               (UserRole.researcher, 'researcher'),
@@ -348,7 +349,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                         ).toString(),
                                       ),
                                     ),
-                            child: const Text('Quên mật khẩu?'),
+                            child: Text(context.t('Forgot password?')),
                           ),
                         ),
                       ],
@@ -369,7 +370,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               : Row(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
-                                    Text(_isRegisterTab ? 'Create account' : 'Sign in'),
+                                    Text(_isRegisterTab ? context.t('Create account') : context.t('Sign in')),
                                     const SizedBox(width: 8),
                                     const Icon(Icons.arrow_forward, size: 18),
                                   ],
@@ -383,7 +384,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 16),
                             child: Text(
-                              'OR',
+                              context.t('OR'),
                               style: theme.textTheme.labelMedium
                                   ?.copyWith(color: lumi.muted),
                             ),
@@ -407,14 +408,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                   color: lumi.surfaceMuted,
                                 ),
                                 alignment: Alignment.center,
-                                child: Text(
+                                child: Text( // i18n-ignore: Google logo letter
                                   'G',
                                   style: theme.textTheme.labelMedium
                                       ?.copyWith(color: lumi.foreground),
                                 ),
                               ),
                               const SizedBox(width: 12),
-                              const Text('Continue with Google'),
+                              Text(context.t('Continue with Google')),
                             ],
                           ),
                         ),
@@ -429,14 +430,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     style: theme.textTheme.bodySmall
                         ?.copyWith(color: lumi.foregroundSecondary),
                     children: [
-                      const TextSpan(text: 'By continuing, you agree to our '),
+                      TextSpan(text: context.t('By continuing, you agree to our ')),
                       TextSpan(
-                        text: 'Terms of Service',
+                        text: context.t('Terms of Service'),
                         style: TextStyle(color: lumi.primary, fontWeight: FontWeight.w600),
                       ),
-                      const TextSpan(text: ' and '),
+                      TextSpan(text: context.t(' and ')),
                       TextSpan(
-                        text: 'Privacy Policy',
+                        text: context.t('Privacy Policy'),
                         style: TextStyle(color: lumi.primary, fontWeight: FontWeight.w600),
                       ),
                       const TextSpan(text: '.'),

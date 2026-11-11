@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/core/widgets/notification_bell.dart';
 import 'package:go_router/go_router.dart';
@@ -9,29 +10,29 @@ import 'package:go_router/go_router.dart';
 class ExploreScreen extends StatelessWidget {
   const ExploreScreen({super.key});
 
-  static const entries = <ExploreEntry>[
+  static final entries = <ExploreEntry>[
     ExploreEntry(
       icon: Icons.trending_up,
-      title: 'Xu hướng',
-      description: 'Chủ đề đang tăng hoặc giảm theo năm',
+      title: tk('Trends'),
+      description: tk('Topics rising or falling by year'),
       route: '/trends',
     ),
     ExploreEntry(
       icon: Icons.description_outlined,
-      title: 'Báo cáo',
-      description: 'Báo cáo phân tích có dẫn chứng',
+      title: tk('Reports'),
+      description: tk('Analytical reports with evidence'),
       route: '/reports',
     ),
     ExploreEntry(
       icon: Icons.insights_outlined,
-      title: 'Khoảng trống nghiên cứu',
-      description: 'Hướng nghiên cứu còn bỏ ngỏ theo chủ đề',
+      title: tk('Research gaps'),
+      description: tk('Open research directions by topic'),
       route: '/gaps',
     ),
     ExploreEntry(
       icon: Icons.emoji_events_outlined,
-      title: 'Bảng xếp hạng',
-      description: 'Thứ hạng và điểm đóng góp',
+      title: tk('Leaderboard'),
+      description: tk('Rank and contribution points'),
       route: '/rankings',
     ),
   ];
@@ -44,7 +45,7 @@ class ExploreScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         automaticallyImplyLeading: false,
-        title: const Text('Khám phá', maxLines: 1, overflow: TextOverflow.ellipsis),
+        title: Text(context.t('Explore'), maxLines: 1, overflow: TextOverflow.ellipsis),
         actions: const [NotificationBell(), SizedBox(width: 4)],
       ),
       body: ListView(
@@ -52,7 +53,7 @@ class ExploreScreen extends StatelessWidget {
         children: [
           Semantics(
             button: true,
-            label: 'Tìm kiếm bài báo',
+            label: context.t('Search papers'),
             excludeSemantics: true,
             onTap: () => unawaited(context.push('/search')),
             child: InkWell(
@@ -72,7 +73,7 @@ class ExploreScreen extends StatelessWidget {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        'Tìm bài báo, từ khóa…',
+                        context.t('Search papers, keywords…'),
                         style: theme.textTheme.bodyLarge
                             ?.copyWith(color: lumi.muted),
                         maxLines: 1,
@@ -85,7 +86,7 @@ class ExploreScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 24),
-          Text('Công cụ phân tích', style: theme.textTheme.titleLarge),
+          Text(context.t('Analysis tools'), style: theme.textTheme.titleLarge),
           const SizedBox(height: 12),
           for (final entry in entries) ...[
             _ExploreTile(entry: entry),
@@ -124,9 +125,9 @@ class _ExploreTile extends StatelessWidget {
         minTileHeight: 64,
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         leading: Icon(entry.icon, size: 24, color: lumi.foregroundSecondary),
-        title: Text(entry.title, style: theme.textTheme.titleMedium),
+        title: Text(context.t(entry.title), style: theme.textTheme.titleMedium),
         subtitle: Text(
-          entry.description,
+          context.t(entry.description),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: theme.textTheme.bodyMedium

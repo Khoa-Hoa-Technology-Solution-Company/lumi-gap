@@ -1,5 +1,6 @@
 import 'package:flutter_mobile/features/home/data/home_models.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'i18n_support.dart';
 
 Map<String, dynamic> attention(
   String id, {
@@ -499,19 +500,28 @@ void main() {
         paper(reason: 'interest', label: 'federated learning').chipText,
         'federated learning',
       );
-      expect(paper(reason: 'project', label: ' Học máy ').chipText, 'Học máy');
+      expect(
+        vi(paper(reason: 'project', label: ' Học máy ').chipText),
+        'Học máy',
+      );
     });
 
     test('derives it from reason when the label is missing or blank', () {
-      expect(paper(reason: 'interest').chipText, 'Theo chủ đề bạn quan tâm');
       expect(
-        paper(reason: 'project', label: '').chipText,
+        vi(paper(reason: 'interest').chipText),
+        'Theo chủ đề bạn quan tâm',
+      );
+      expect(
+        vi(paper(reason: 'project', label: '').chipText),
         'Liên quan dự án của bạn',
       );
-      expect(paper(reason: 'recent', label: '   ').chipText, 'Mới xuất bản');
-      expect(paper(reason: 'recent', label: 7).chipText, 'Mới xuất bản');
-      expect(paper(reason: 'mystery').chipText, 'Gợi ý cho bạn');
-      expect(paper().chipText, 'Gợi ý cho bạn');
+      expect(
+        vi(paper(reason: 'recent', label: '   ').chipText),
+        'Mới xuất bản',
+      );
+      expect(vi(paper(reason: 'recent', label: 7).chipText), 'Mới xuất bản');
+      expect(vi(paper(reason: 'mystery').chipText), 'Gợi ý cho bạn');
+      expect(vi(paper().chipText), 'Gợi ý cho bạn');
     });
   });
 

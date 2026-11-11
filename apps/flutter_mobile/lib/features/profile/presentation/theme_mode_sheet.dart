@@ -1,14 +1,15 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/core/theme/theme_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 String themeModeLabel(ThemeMode mode) => switch (mode) {
-      ThemeMode.system => 'Theo hệ thống',
-      ThemeMode.light => 'Sáng',
-      ThemeMode.dark => 'Tối',
+      ThemeMode.system => tk('System default'),
+      ThemeMode.light => tk('Light'),
+      ThemeMode.dark => tk('Dark'),
     };
 
 IconData themeModeIcon(ThemeMode mode) => switch (mode) {
@@ -40,7 +41,7 @@ class ThemeModeSheet extends ConsumerWidget {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: Text('Giao diện', style: theme.textTheme.titleLarge),
+            child: Text(context.t('Appearance'), style: theme.textTheme.titleLarge),
           ),
           RadioGroup<ThemeMode>(
             groupValue: mode,
@@ -59,7 +60,7 @@ class ThemeModeSheet extends ConsumerWidget {
                     value: option,
                     minVerticalPadding: 16,
                     title: Text(
-                      themeModeLabel(option),
+                      context.t(themeModeLabel(option)),
                       style: theme.textTheme.bodyLarge
                           ?.copyWith(color: context.lumi.foreground),
                     ),

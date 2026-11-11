@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/features/trends/data/trends_api.dart';
 import 'package:go_router/go_router.dart';
 
@@ -222,13 +223,13 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Row(
+                    Row(
                       children: [
-                        Icon(Icons.shield, color: Color(0xFF06B6D4), size: 18),
-                        SizedBox(width: 8),
+                        const Icon(Icons.shield, color: Color(0xFF06B6D4), size: 18),
+                        const SizedBox(width: 8),
                         Text(
-                          'Current Scope Summary',
-                          style: TextStyle(
+                          context.t('Current Scope Summary'),
+                          style: const TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 14,
                           ),
@@ -237,16 +238,16 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
                     ),
                     TextButton(
                       onPressed: _clearAll,
-                      child: const Text(
-                        'Reset',
-                        style: TextStyle(fontSize: 12, color: Colors.red),
+                      child: Text(
+                        context.t('Reset'),
+                        style: const TextStyle(fontSize: 12, color: Colors.red),
                       ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Publications in scope: $totalPublications papers',
+                  context.t('Publications in scope: {{totalPublications}} papers', {'totalPublications': totalPublications}),
                   style: const TextStyle(
                     fontWeight: FontWeight.bold,
                     fontSize: 13,
@@ -258,9 +259,7 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
                     _selectedSubfields.isNotEmpty) ...[
                   const SizedBox(height: 6),
                   Text(
-                    'Taxonomy path: ${_selectedDomains.join(', ')}'
-                    '${_selectedFields.isNotEmpty ? ' ➔ ${_selectedFields.join(', ')}' : ''}'
-                    '${_selectedSubfields.isNotEmpty ? ' ➔ ${_selectedSubfields.join(', ')}' : ''}',
+                    context.t('Taxonomy path: {{path}}', {'path': [_selectedDomains.join(', '), if (_selectedFields.isNotEmpty) _selectedFields.join(', '), if (_selectedSubfields.isNotEmpty) _selectedSubfields.join(', ')].join(' ➔ ')}),
                     style: const TextStyle(
                       fontSize: 11,
                       color: Color(0xFF94A3B8),
@@ -270,9 +269,9 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
                 const SizedBox(height: 8),
                 const Divider(),
                 const SizedBox(height: 4),
-                const Text(
-                  'These filters change every Signals, Compare, Search, Report, and Explain result dynamically.',
-                  style: TextStyle(
+                Text(
+                  context.t('These filters change every Signals, Compare, Search, Report, and Explain result dynamically.'),
+                  style: const TextStyle(
                     fontSize: 11,
                     height: 1.4,
                     fontStyle: FontStyle.italic,
@@ -286,9 +285,9 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
         const SizedBox(height: 24),
 
         // Year range selector
-        const Text(
-          'Publication Year Range',
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+        Text(
+          context.t('Publication Year Range'),
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
         ),
         const SizedBox(height: 10),
         Row(
@@ -297,7 +296,7 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
               child: DropdownButtonFormField<int>(
                 initialValue: _yearFrom,
                 decoration: InputDecoration(
-                  labelText: 'From Year',
+                  labelText: context.t('From Year'),
                   contentPadding: const EdgeInsets.symmetric(
                     horizontal: 12,
                     vertical: 8,
@@ -323,7 +322,7 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
               child: DropdownButtonFormField<int>(
                 initialValue: _yearTo,
                 decoration: InputDecoration(
-                  labelText: 'To Year',
+                  labelText: context.t('To Year'),
                   contentPadding: const EdgeInsets.symmetric(
                     horizontal: 12,
                     vertical: 8,
@@ -351,19 +350,19 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
         if (facets != null) ...[
           // Taxonomy selectors
           _buildMultiSelectChips(
-            title: 'Taxonomy Domains',
+            title: context.t('Taxonomy Domains'),
             buckets: facets.domains,
             selectedList: _selectedDomains,
             isDark: isDark,
           ),
           _buildMultiSelectChips(
-            title: 'Taxonomy Fields',
+            title: context.t('Taxonomy Fields'),
             buckets: facets.fields,
             selectedList: _selectedFields,
             isDark: isDark,
           ),
           _buildMultiSelectChips(
-            title: 'Taxonomy Subfields',
+            title: context.t('Taxonomy Subfields'),
             buckets: facets.subfields,
             selectedList: _selectedSubfields,
             isDark: isDark,
@@ -371,13 +370,13 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
 
           // Publication selectors
           _buildMultiSelectChips(
-            title: 'Paper Type',
+            title: context.t('Paper Type'),
             buckets: facets.paperKinds,
             selectedList: _selectedKinds,
             isDark: isDark,
           ),
           _buildMultiSelectChips(
-            title: 'Open Access Status',
+            title: context.t('Open Access Status'),
             buckets: facets.openAccessStatuses,
             selectedList: _selectedOA,
             isDark: isDark,
@@ -387,9 +386,9 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
         const Divider(height: 32),
 
         // Recommended Actions
-        const Text(
-          'Recommended Actions in this Scope',
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+        Text(
+          context.t('Recommended Actions in this Scope'),
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
         ),
         const SizedBox(height: 12),
         Card(
@@ -406,9 +405,9 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
                   Icons.trending_up,
                   color: Color(0xFF22C55E),
                 ),
-                title: const Text(
-                  'Find signals in this scope',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                title: Text(
+                  context.t('Find signals in this scope'),
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
                 ),
                 trailing: const Icon(Icons.chevron_right, size: 16),
                 onTap: widget.onGoToSignals,
@@ -416,9 +415,9 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
               const Divider(height: 1),
               ListTile(
                 leading: const Icon(Icons.search, color: Color(0xFF06B6D4)),
-                title: const Text(
-                  'Search scoped papers',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                title: Text(
+                  context.t('Search scoped papers'),
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
                 ),
                 trailing: const Icon(Icons.chevron_right, size: 16),
                 onTap: () {
@@ -438,9 +437,9 @@ class _TrendsScopeTabState extends State<TrendsScopeTab> {
                   Icons.description,
                   color: Color(0xFFA78BFA),
                 ),
-                title: const Text(
-                  'Generate scoped report',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                title: Text(
+                  context.t('Generate scoped report'),
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
                 ),
                 trailing: const Icon(Icons.chevron_right, size: 16),
                 onTap: () {
