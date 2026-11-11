@@ -6,6 +6,7 @@ export const evaluationStatusLabels: Record<ScreeningEvaluationStatus, string> =
   WAITING_REVIEWER: "Chờ người còn lại", CONFLICT: "Có bất đồng", ADJUDICATING: "Đang phân xử",
   INCLUDED: "Qua vòng", EXCLUDED: "Đã loại", NEEDS_MORE_INFO: "Cần làm rõ",
   AWAITING_FINALIZATION: "Chờ chốt kết quả", BACKGROUND: "Tài liệu nền",
+  CLOSED_UNRESOLVED: "Đã đóng — Không đạt đồng thuận",
 };
 export type MyWorkTask = {
   obligation?: ScreeningAutomaticTask;

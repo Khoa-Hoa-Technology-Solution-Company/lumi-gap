@@ -200,6 +200,7 @@ export interface ScreeningDiscussionTiming {
   maxExtensions: number;
   isOverdue: boolean;
   canExtend: boolean;
+  remainingMs?: number;
   closedAt?: string | null;
 }
 
@@ -230,6 +231,7 @@ export interface ScreeningRoundView {
   closureReason?: ScreeningClosureReason | null;
   closureDetails?: ScreeningClosureDetails | null;
   canCloseUnresolved?: boolean;
+  canReopenUnresolved?: boolean;
   agreement?: ScreeningAgreement | null;
   adjudicators?: Array<WorkspacePerson & { mentor: boolean; proposer: boolean }>;
   adjudicationCase?: {

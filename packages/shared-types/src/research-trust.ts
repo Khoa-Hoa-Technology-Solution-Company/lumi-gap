@@ -323,6 +323,10 @@ export type CitationDoiStatus =
 
 export interface CitationIntegrityItem {
   key: string;
+  citationKey?: string;
+  title?: string;
+  doi?: string;
+  status?: string;
   filePath: string;
   line?: number;
   bibEntry?: {
@@ -363,6 +367,7 @@ export interface AiTransparencyItem {
   purposeDescription: string;
   affectedScope?: string | null;
   humanOversightVerified: boolean;
+  humanOversightNote?: string | null;
   verifiedById?: string | null;
   verifiedByName?: string | null;
   verifiedAt?: string | null;

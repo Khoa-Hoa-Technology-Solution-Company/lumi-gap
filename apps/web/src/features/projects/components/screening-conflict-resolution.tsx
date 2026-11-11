@@ -205,7 +205,7 @@ export function ScreeningConflictResolution({ projectId, round, paper, people, r
                   <strong className="text-amber-600 dark:text-amber-400">Đã quá hạn thảo luận</strong>
                 ) : (
                   <span>
-                    Thời hạn thảo luận: <strong>Còn {Math.max(0, Math.ceil(timing.remainingMs / (1000 * 60 * 60)))} giờ</strong>
+                    Thời hạn thảo luận: <strong>Còn {Math.max(0, Math.ceil((timing.remainingMs ?? (new Date(timing.effectiveDeadlineAt).getTime() - Date.now())) / (1000 * 60 * 60)))} giờ</strong>
                   </span>
                 )}
                 {" · Hạn: "}

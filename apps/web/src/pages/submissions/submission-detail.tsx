@@ -152,6 +152,11 @@ export function SubmissionDetailPage({
     revisionNumber: data.currentRevisionNumber ?? 1,
     hasPdf: false,
     contentSnapshot: "",
+    contentType: "text/markdown",
+    checksumSha256: "",
+    sizeBytes: 0,
+    sourceRevisionId: null,
+    responseToReview: null,
     reviews: [],
     createdAt: data.updatedAt,
   };
@@ -636,7 +641,9 @@ export function SubmissionDetailPage({
                   {latestPreReview.goalAlignment && (
                     <div className="rounded-lg border bg-card p-3 space-y-1">
                       <strong className="text-primary block font-semibold">Mục tiêu nghiên cứu & Độ tương thích (Goal Alignment):</strong>
-                      <p className="text-foreground leading-relaxed">{latestPreReview.goalAlignment}</p>
+                      <p className="text-foreground leading-relaxed">
+                        {typeof latestPreReview.goalAlignment === "string" ? latestPreReview.goalAlignment : latestPreReview.goalAlignment?.assessment ?? ""}
+                      </p>
                     </div>
                   )}
 
@@ -807,7 +814,10 @@ export function SubmissionDetailPage({
                             placeholder="Ghi chú thêm cho tiêu chí này (tùy chọn)..."
                             className="w-full rounded border border-input bg-background px-2 py-1 text-[11px]"
                             value={current.comment ?? ""}
-                            onChange={e => setRubricScores(prev => ({ ...prev, [crit.key]: { ...prev[crit.key], comment: e.target.value } }))}
+                            onChange={e => setRubricScores(prev => ({
+                              ...prev,
+                              [crit.key]: { score: prev[crit.key]?.score ?? 0, comment: e.target.value },
+                            }))}
                           />
                         </div>
                       );
