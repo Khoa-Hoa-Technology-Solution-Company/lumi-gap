@@ -38,11 +38,11 @@ export function myWorkTasks(summary: ScreeningWorkspaceSummary, readOnly: boolea
       kind: "DISCUSSION",
       label: t.classification === "NEEDS_CLARIFICATION" ? "Cần làm rõ" : t.classification === "NEEDS_MORE_INFORMATION" ? "Cần đọc thêm" : isMismatch ? "Cần thống nhất lý do loại" : "Có bất đồng",
       description: isClarification
-        ? "Trao đổi và xem xét lại phiếu của bạn. Chưa đủ căn cứ kết luận, đối chiếu tiêu chí và cập nhật phiếu hoặc nhờ phân xử."
+        ? "Thảo luận căn cứ và cùng xác nhận kết luận cuối cùng hoặc bổ sung thông tin còn thiếu."
         : isMismatch
-        ? "Hai reviewer chọn loại nhưng chưa thống nhất lý do. Thảo luận để chọn cùng tiêu chí hoặc nhờ phân xử."
-        : "Có bất đồng kết luận giữa hai reviewer. Trao đổi và xem xét lại phiếu của bạn.",
-      action: isClarification ? "Xem lại & làm rõ" : "Trao đổi và xem lại"
+        ? "Hai reviewer chọn loại nhưng chưa thống nhất lý do. Thảo luận căn cứ và cùng xác nhận kết luận cuối cùng."
+        : "Có bất đồng kết luận giữa hai reviewer. Thảo luận căn cứ và cùng xác nhận kết luận cuối cùng.",
+      action: isClarification ? "Làm rõ & thống nhất" : "Thảo luận & thống nhất"
     });
   }
 

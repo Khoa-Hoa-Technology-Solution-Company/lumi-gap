@@ -208,6 +208,16 @@ export async function roundView(c: WorkspaceContext, row: ScreeningRound): Promi
   const canResumeFullText = writable && row.status === "WAITING_FULLTEXT" && Boolean(c.role === "OWNER" || link?.addedById === c.actorId);
   const timing = await getDiscussionTiming(c, row);
   const closure = await getClosureDetails(c, row);
+  const moreInfoAudit = visible && row.status === "NEEDS_MORE_INFO" ? await c.tx.screeningAudit.findFirst({
+    where: { projectId: c.project.id, roundId: row.id, type: "MORE_INFO_REQUESTED" },
+    orderBy: { createdAt: "desc" }
+  }) : null;
+  const requestedInfo = moreInfoAudit ? {
+    reason: String((moreInfoAudit.details as any)?.reason ?? ""),
+    requestedBy: moreInfoAudit.actorId,
+    requestedByName: names.find(n => n.id === moreInfoAudit.actorId)?.fullName || "Reviewer",
+    requestedAt: moreInfoAudit.createdAt.toISOString(),
+  } : null;
   const now = new Date();
   const canCloseUnresolved = c.role === "OWNER" && row.active && ["NEEDS_RESOLUTION", "NEEDS_MORE_INFO"].includes(row.status) && Boolean(timing && now >= new Date(timing.initialDeadlineAt));
 
@@ -219,7 +229,7 @@ export async function roundView(c: WorkspaceContext, row: ScreeningRound): Promi
     myAssignmentId: own?.id ?? null, reviews: shown, myReview: shown.find(r => r.reviewerId === c.actorId) ?? null, hiddenReviews: !visible,
     finalDecision: final ? { id: final.id, version: final.roundVersion, decision: final.decision as "INCLUDED" | "EXCLUDED" | "BACKGROUND", source: final.source as "CONSENSUS" | "MANUAL", reason: final.reason, resolverId: final.resolverId, createdAt: final.createdAt.toISOString() } : null,
     canReview: Boolean(writable && ((settings.reviewMode === "COLLABORATIVE") || (own && !own.submittedAt)) && !["INCLUDED", "EXCLUDED", "BACKGROUND", "CLOSED_UNRESOLVED"].includes(row.status)), canManage: !invalidated && !["ARCHIVED", "COMPLETED"].includes(c.project.status) && c.role === "OWNER", aiVisible: Boolean(row.unblindedAt || settings.aiAssisted),
-    discussionTiming: timing, closureReason: closure?.reason ?? null, closureDetails: closure, canCloseUnresolved };
+    discussionTiming: timing, closureReason: closure?.reason ?? null, closureDetails: closure, canCloseUnresolved, requestedInfo };
 }
 export function screeningReviewsVisible(row: Pick<ScreeningRound, "unblindedAt">, settings: Settings, assignments: Array<{ submittedAt: Date | null }>) {
   if (independentWorkflow(settings)) return Boolean(row.unblindedAt) && assignments.length >= settings.requiredReviewers && assignments.every(a => a.submittedAt);

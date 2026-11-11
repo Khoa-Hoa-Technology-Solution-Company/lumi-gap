@@ -58,6 +58,7 @@ screeningRouter.post("/rounds/:roundId/extend", writes, round, validate(s.screen
 screeningRouter.post("/rounds/:roundId/discussion/extend", writes, round, validate(s.screeningDiscussionExtendSchema), c.extendDiscussion);
 screeningRouter.post("/rounds/:roundId/close-unresolved", writes, round, validate(s.screeningCloseUnresolvedSchema), c.closeUnresolved);
 screeningRouter.post("/rounds/:roundId/reopen-unresolved", writes, round, validate(s.screeningReopenUnresolvedSchema), c.reopenUnresolved);
+screeningRouter.post("/rounds/:roundId/request-more-info", writes, round, validate(s.screeningRequestMoreInfoSchema), c.requestMoreInfo);
 screeningRouter.post("/rounds/:roundId/proposer-exception", writes, round, validate(s.screeningProposerExceptionSchema), c.grantProposerException);
 screeningRouter.post("/papers/claim-next", writes, base, validate(s.screeningClaimSchema), c.claimNext);
 screeningRouter.put("/discovery-goal", writes, base, validate(s.screeningDiscoveryGoalUpdateSchema), c.updateDiscoveryGoal);

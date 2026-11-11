@@ -77,10 +77,10 @@ export function ScreeningConflictResolution({ projectId, round, paper, people, r
   const issueTitle = needsClarification ? "Làm rõ thông tin" : reasonMismatch ? "Thống nhất lý do loại" : "Giải quyết bất đồng";
   const issueDescription = isTeamScreening
     ? (needsClarification
-      ? "Đối chiếu nguồn và trao đổi qua khung thảo luận để thống nhất quyết định chung."
+      ? "Thảo luận căn cứ và cùng xác nhận kết luận cuối cùng."
       : reasonMismatch
-      ? "Hai reviewer chọn loại nhưng chưa thống nhất tiêu chí loại. Đối chiếu nguồn và cùng xác nhận quyết định chung."
-      : "Hai phiếu độc lập có kết luận khác nhau. Trao đổi để đối chiếu tiêu chí và thống nhất quyết định chung.")
+      ? "Hai reviewer chọn loại nhưng chưa thống nhất tiêu chí loại. Thảo luận căn cứ và cùng xác nhận kết luận cuối cùng."
+      : "Hai phiếu độc lập có kết luận khác nhau. Thảo luận căn cứ và cùng xác nhận kết luận cuối cùng.")
     : (needsClarification
       ? "Đối chiếu nguồn và trao đổi trước khi cập nhật phiếu."
       : reasonMismatch ? "Hai reviewer chọn loại nhưng chưa thống nhất tiêu chí loại. Đối chiếu nguồn và cập nhật căn cứ hoặc nhờ phân xử."

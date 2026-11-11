@@ -9,6 +9,7 @@ import {
   screeningAgreementSchema,
   screeningAgreementConfirmSchema,
   screeningAgreementDeclineSchema,
+  screeningRequestMoreInfoSchema,
 } from "../dto/screening.schema.js";
 import type { ScreeningSettings } from "@trend/shared-types";
 
@@ -235,6 +236,32 @@ describe("TEAM_SCREENING: Two-Reviewer Consensus Workflow", () => {
         clientKey: randomUUID(),
       };
       expect(screeningAgreementDeclineSchema.safeParse(decline).success).toBe(true);
+    });
+
+    it("validates request more info schema", () => {
+      const valid = {
+        expectedVersion: 2,
+        reason: "Cần toàn văn để kiểm tra số liệu phương pháp và tiêu chí chọn mẫu",
+        clientKey: randomUUID(),
+      };
+      expect(screeningRequestMoreInfoSchema.safeParse(valid).success).toBe(true);
+
+      // Short reason (< 10 chars) rejected
+      expect(screeningRequestMoreInfoSchema.safeParse({ ...valid, reason: "Cần thêm" }).success).toBe(false);
+
+      // Negative version rejected
+      expect(screeningRequestMoreInfoSchema.safeParse({ ...valid, expectedVersion: -1 }).success).toBe(false);
+    });
+
+    it("enforces that proposal reason has at least 10 characters", () => {
+      const shortProposal = {
+        expectedVersion: 2,
+        decision: "INCLUDED" as const,
+        reason: "Quá ngắn",
+        confirmed: true as const,
+        clientKey: randomUUID(),
+      };
+      expect(screeningAgreementSchema.safeParse(shortProposal).success).toBe(false);
     });
   });
 });

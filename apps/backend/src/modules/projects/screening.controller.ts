@@ -55,6 +55,7 @@ export const screeningController = {
   extendDiscussion: async (r: Request, res: Response) => send(res, await service.extendDiscussion(project(r), actor(r), round(r), r.body)),
   closeUnresolved: async (r: Request, res: Response) => send(res, await service.closeUnresolved(project(r), actor(r), round(r), r.body)),
   reopenUnresolved: async (r: Request, res: Response) => send(res, await service.reopenUnresolved(project(r), actor(r), round(r), r.body)),
+  requestMoreInfo: async (r: Request, res: Response) => send(res, await service.requestMoreInfo(project(r), actor(r), round(r), r.body)),
   grantProposerException: async (r: Request, res: Response) => send(res, await service.grantProposerException(project(r), actor(r), round(r), r.body)),
   updateDiscoveryGoal: async (r: Request, res: Response) => send(res, await service.updateDiscoveryGoal(project(r), actor(r), r.body)),
   streamEvents: async (r: Request, res: Response) => {

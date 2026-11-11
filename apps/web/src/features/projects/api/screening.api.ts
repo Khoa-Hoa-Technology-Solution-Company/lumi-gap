@@ -45,6 +45,7 @@ export const screeningApi = {
   extendDiscussion: (id: string, roundId: string, data: { expectedVersion: number; hours?: number; reason: string; clientKey?: string }) => write(id, `rounds/${roundId}/discussion/extend`, typeof data === "object" && data !== null && "clientKey" in data && data.clientKey ? data : { ...data, clientKey: crypto.randomUUID() }),
   closeUnresolved: (id: string, roundId: string, data: { expectedVersion: number; reason: string; note?: string; clientKey?: string }) => write(id, `rounds/${roundId}/close-unresolved`, typeof data === "object" && data !== null && "clientKey" in data && data.clientKey ? data : { ...data, clientKey: crypto.randomUUID() }),
   reopenUnresolved: (id: string, roundId: string, data: { expectedVersion: number; reason: string; clientKey?: string }) => write(id, `rounds/${roundId}/reopen-unresolved`, typeof data === "object" && data !== null && "clientKey" in data && data.clientKey ? data : { ...data, clientKey: crypto.randomUUID() }),
+  requestMoreInfo: (id: string, roundId: string, data: { expectedVersion: number; reason: string; clientKey?: string }) => write(id, `rounds/${roundId}/request-more-info`, typeof data === "object" && data !== null && "clientKey" in data && data.clientKey ? data : { ...data, clientKey: crypto.randomUUID() }),
   updateDiscoveryGoal: (id: string, data: unknown) => write(id, "discovery-goal", data, "put"),
   streamEvents: async (
     id: string,

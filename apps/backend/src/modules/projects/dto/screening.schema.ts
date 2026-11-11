@@ -100,3 +100,9 @@ export const screeningReopenUnresolvedSchema = z.object({
   reason: text().min(5, "Cần ghi lý do mở lại vòng đánh giá (ít nhất 5 ký tự)"),
   clientKey: z.string().uuid(),
 }).strict();
+
+export const screeningRequestMoreInfoSchema = z.object({
+  expectedVersion: z.number().int().nonnegative(),
+  reason: text().min(10, "Cần nêu rõ thông tin hoặc căn cứ cần làm rõ (ít nhất 10 ký tự)"),
+  clientKey: z.string().uuid(),
+}).strict();
