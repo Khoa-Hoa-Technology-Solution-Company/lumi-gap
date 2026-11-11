@@ -330,7 +330,24 @@ export interface ScreeningPaperRow {
   citationCount?: number; openAccessStatus?: string; keywords?: string[];
   legacyStatus: string; legacyProvenance: boolean; round: ScreeningRoundView | null;
 }
-export interface ScreeningBoard extends WorkspacePage<ScreeningPaperRow> { adjudicatorOptions?: Array<WorkspacePerson & { mentor: boolean }>; librarySummary?: { selected: number; attention: number; discussion: number }; tags?: string[]; filters: { proposers: WorkspacePerson[]; reviewers: WorkspacePerson[] }; progress: { total: number; reviewed: number; finalized: number; legacy: number }; canManage: boolean; people: WorkspacePerson[]; settings: ScreeningSettings; myProgress: { assigned: number; completed: number; pending: number; overdue: number } }
+export interface ScreeningBoard extends WorkspacePage<ScreeningPaperRow> {
+  adjudicatorOptions?: Array<WorkspacePerson & { mentor: boolean }>;
+  librarySummary?: {
+    selected: number;
+    attention: number;
+    discussion: number;
+    background?: number;
+    excluded?: number;
+    unresolved?: number;
+  };
+  tags?: string[];
+  filters: { proposers: WorkspacePerson[]; reviewers: WorkspacePerson[] };
+  progress: { total: number; reviewed: number; finalized: number; legacy: number };
+  canManage: boolean;
+  people: WorkspacePerson[];
+  settings: ScreeningSettings;
+  myProgress: { assigned: number; completed: number; pending: number; overdue: number };
+}
 export interface ScreeningMetrics {
   reviewedPapers: number; finalizedPapers: number; legacyPapers: number;
   totalPapers: number; evaluatedPapers: number; fullyParticipated: number; fullyReviewed: number; agreements: number; disagreements: number; pendingReviews: number;

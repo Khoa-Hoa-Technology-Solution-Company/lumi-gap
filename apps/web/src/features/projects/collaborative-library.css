@@ -177,7 +177,8 @@
   justify-content: space-between;
   gap: 8px;
   flex-wrap: wrap;
-  padding-top: 2px;
+  padding: 4px 0;
+  min-height: 40px;
 }
 .library-quick-pills {
   display: flex;
@@ -188,53 +189,70 @@
 .library-pill {
   display: inline-flex;
   align-items: center;
-  padding: 4px 12px;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
   border-radius: 9999px;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
-  background: hsl(var(--muted) / 0.5);
+  background: hsl(var(--muted) / 0.55);
   color: hsl(var(--muted-foreground));
-  border: 1px solid transparent;
+  border: 1px solid hsl(var(--border) / 0.6);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
   user-select: none;
+  white-space: nowrap;
 }
 .library-pill:hover {
   background: hsl(var(--muted));
   color: hsl(var(--foreground));
+  border-color: hsl(var(--border));
 }
 .library-pill.active {
   background: hsl(var(--foreground));
   color: hsl(var(--background));
-  font-weight: 600;
+  border-color: transparent;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
 }
 .library-pill.pill-pending.active {
   background: #2563eb;
   color: #ffffff;
+  border-color: transparent;
 }
 .library-pill.pill-needs-resolution.active {
   background: #ea580c;
   color: #ffffff;
+  border-color: transparent;
 }
 .library-pill.pill-included.active {
   background: #059669;
   color: #ffffff;
+  border-color: transparent;
 }
 .library-pill.pill-in-review.active {
   background: #2563eb;
   color: #ffffff;
+  border-color: transparent;
 }
 .library-pill.pill-background.active {
   background: #7c3aed;
   color: #ffffff;
+  border-color: transparent;
 }
 .library-pill.pill-excluded.active {
   background: #dc2626;
   color: #ffffff;
+  border-color: transparent;
+}
+.library-pill.pill-unresolved.active {
+  background: #4b5563;
+  color: #ffffff;
+  border-color: transparent;
 }
 .library-pill.pill-not-reviewed.active {
   background: #4b5563;
   color: #ffffff;
+  border-color: transparent;
 }
 :root.dark .library-pill.active {
   background: hsl(var(--foreground));
@@ -258,11 +276,15 @@
 }
 :root.dark .library-pill.pill-background.active {
   background: #a855f7;
-  color: #0f172a;
+  color: #ffffff;
 }
 :root.dark .library-pill.pill-excluded.active {
   background: #ef4444;
   color: #0f172a;
+}
+:root.dark .library-pill.pill-unresolved.active {
+  background: #6b7280;
+  color: #ffffff;
 }
 
 .library-sort-wrap {
@@ -3520,18 +3542,75 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0 5px;
-  min-width: 17px;
-  height: 17px;
+  padding: 0 6px;
+  min-width: 19px;
+  height: 18px;
   border-radius: 9999px;
   font-size: 11px;
-  font-weight: 700;
-  margin-left: 5px;
-  background: hsl(var(--muted));
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  margin-left: 2px;
+  background: hsl(var(--foreground) / 0.08);
   color: hsl(var(--foreground));
   line-height: 1;
 }
 .library-pill.active .library-pill-count {
-  background: rgba(255, 255, 255, 0.25);
-  color: inherit;
+  background: rgba(255, 255, 255, 0.22);
+  color: #ffffff;
+}
+
+.library-content-container {
+  position: relative;
+  min-height: 360px;
+  transition: opacity 0.15s ease;
+}
+.library-content-container.is-fetching {
+  opacity: 0.65;
+  pointer-events: none;
+}
+.library-fetching-bar {
+  position: sticky;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: hsl(var(--muted) / 0.4);
+  overflow: hidden;
+  border-radius: 9999px;
+  z-index: 10;
+  margin-bottom: 6px;
+}
+.library-fetching-bar-indicator {
+  width: 35%;
+  height: 100%;
+  background: #2563eb;
+  border-radius: 9999px;
+  animation: library-bar-anim 1s infinite ease-in-out;
+}
+@keyframes library-bar-anim {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(350%); }
+}
+
+.library-legacy-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 14px;
+  margin: 6px 0 12px 0;
+  border-radius: 8px;
+  border: 1px solid rgba(217, 119, 6, 0.25);
+  background: rgba(245, 158, 11, 0.08);
+  color: #b45309;
+  font-size: 13px;
+  line-height: 1.45;
+}
+:root.dark .library-legacy-alert {
+  border-color: rgba(245, 158, 11, 0.2);
+  background: rgba(245, 158, 11, 0.06);
+  color: #fcd34d;
+}
+
+.library-empty {
+  min-height: 260px;
 }
