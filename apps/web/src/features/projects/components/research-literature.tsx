@@ -9,6 +9,7 @@ import { MyProposalsView } from "./my-proposals-view";
 import { ScreeningWorkspace } from "./screening-workspace";
 import { ResearchEvidence } from "./research-evidence";
 import { LiteratureMatrixView } from "./literature-matrix";
+import { LiteratureTopicClustersView } from "./literature-topic-clusters";
 import { ResearchLimitations } from "./research-limitations";
 import { ReadingPaperModal } from "./reading-paper-modal";
 import { Button } from "@/components/ui/button";
@@ -18,6 +19,7 @@ import {
   UserCheck,
   BookOpen,
   FolderOpen,
+  FolderKanban,
   Sliders,
   Table2,
   TriangleAlert,
@@ -109,6 +111,16 @@ export function ResearchLiterature({
           >
             <BookOpen size={15} className="tab-icon" />
             <span>Thư viện</span>
+          </button>
+
+          <button
+            type="button"
+            className={`papers-nav-tab ${view === "clusters" ? "active" : ""}`}
+            onClick={() => void change("clusters")}
+            title="Phân cụm theo chủ đề, phương pháp, câu hỏi nghiên cứu và so sánh bài báo"
+          >
+            <FolderKanban size={15} className="tab-icon" />
+            <span>Chủ đề & So sánh</span>
           </button>
 
           <button
@@ -208,6 +220,13 @@ export function ResearchLiterature({
         <ScreeningWorkspace key={`screening-${projectId}`} projectId={projectId} readOnly={readOnly} />
       ) : view === "evidence" ? (
         <ResearchEvidence projectId={projectId} readOnly={readOnly} />
+      ) : view === "clusters" ? (
+        <LiteratureTopicClustersView
+          key={`clusters-${projectId}`}
+          projectId={projectId}
+          readOnly={readOnly}
+          onOpenPaper={openPaper}
+        />
       ) : view === "matrix" ? (
         <LiteratureMatrixView projectId={projectId} readOnly={readOnly} />
       ) : view === "limitations" ? (

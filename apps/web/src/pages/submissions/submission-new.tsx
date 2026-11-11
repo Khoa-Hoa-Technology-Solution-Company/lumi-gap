@@ -1,14 +1,20 @@
-import { useId, useRef, useState } from "react";
+import { useContext, useId, useRef, useState } from "react";
 import type { StructuredSubmissionInput, SubmissionType } from "@trend/shared-types";
 import { Link, useNavigate } from "react-router-dom";
-import { ArrowLeft, ChevronDown, FileText, Plus, User, Send, AlertCircle, HelpCircle } from "lucide-react";
+import { ArrowLeft, ChevronDown, FileText, Plus, User, Send, AlertCircle, HelpCircle, FileCode2, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
+import { QueryClient, QueryClientContext, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useProject, useProjects } from "@/features/projects/hooks/use-projects";
 import { useCreateSubmission, useActiveMentors } from "@/features/submissions";
+import { manuscriptsApi } from "@/features/manuscripts/manuscripts.api";
 import { useI18n } from "@/i18n";
 import { projectSubmissionPath } from "@/features/submissions/project-submission-path";
+
+const fallbackQueryClient = new QueryClient({
+  defaultOptions: { queries: { enabled: false, retry: false } },
+});
 
 const types: Array<{ value: SubmissionType; label: string }> = [
   { value: "RESEARCH_PROPOSAL", label: "Research proposal" },
@@ -35,6 +41,10 @@ export function SubmissionNewPage({ projectId, projectTitle }: { projectId?: str
   const [file, setFile] = useState<File>();
   const [error, setError] = useState("");
   const [mentorId, setMentorId] = useState("");
+  const [sourceMode, setSourceMode] = useState<"PDF" | "SNAPSHOT">("PDF");
+  const [selectedManuscriptId, setSelectedManuscriptId] = useState("");
+  const [selectedSnapshotId, setSelectedSnapshotId] = useState("");
+  const [snapshotMessage, setSnapshotMessage] = useState("");
   const [form, setForm] = useState({
     projectId: projectId ?? "",
     title: undefined as string | undefined,
@@ -48,6 +58,26 @@ export function SubmissionNewPage({ projectId, projectTitle }: { projectId?: str
   const activeMentors = useActiveMentors(selectedProjectId || undefined);
   const selectedProject = project.data ?? projects.data?.find(item => item._id === selectedProjectId);
 
+  const queryClient = useContext(QueryClientContext) ?? fallbackQueryClient;
+
+  const manuscripts = useQuery(
+    {
+      queryKey: ["manuscripts-for-submission", selectedProjectId],
+      queryFn: () => manuscriptsApi.list(selectedProjectId),
+      enabled: Boolean(selectedProjectId && sourceMode === "SNAPSHOT"),
+    },
+    queryClient
+  );
+
+  const snapshots = useQuery(
+    {
+      queryKey: ["manuscript-snapshots-for-submission", selectedProjectId, selectedManuscriptId],
+      queryFn: () => manuscriptsApi.snapshots(selectedProjectId, selectedManuscriptId),
+      enabled: Boolean(selectedProjectId && selectedManuscriptId && sourceMode === "SNAPSHOT"),
+    },
+    queryClient
+  );
+
   const title = form.title ?? projectTitle ?? selectedProject?.title ?? "";
   const researchField = form.researchField ?? (selectedProject?.researchField || selectedProject?.researchAreas?.join(", ") || "").slice(0, 200);
   const update = (key: keyof typeof form, value: string) => setForm(current => ({ ...current, [key]: value }));
@@ -59,29 +89,42 @@ export function SubmissionNewPage({ projectId, projectTitle }: { projectId?: str
       setError(t("Choose a project and enter a title of 3–300 characters."));
       return;
     }
-    if (!file) {
-      setError(t("Attach a PDF manuscript"));
-      return;
+    if (sourceMode === "PDF") {
+      if (!file) {
+        setError(t("Attach a PDF manuscript"));
+        return;
+      }
+      if (file.type !== "application/pdf" || file.size === 0 || file.size > 10 * 1024 * 1024) {
+        setError(t("Use a PDF no larger than 10 MB"));
+        return;
+      }
+    } else {
+      if (!selectedSnapshotId) {
+        setError(t("Chọn một bản lưu snapshot LaTeX bất biến để nộp đánh giá"));
+        return;
+      }
     }
-    if (file.type !== "application/pdf" || file.size === 0 || file.size > 10 * 1024 * 1024) {
-      setError(t("Use a PDF no larger than 10 MB"));
-      return;
-    }
-    const input: StructuredSubmissionInput & { mentorId?: string } = {
+    const input: StructuredSubmissionInput & { mentorId?: string; manuscriptSnapshotId?: string; message?: string } = {
       ...form,
       projectId: selectedProjectId,
       title: title.trim(),
       researchField,
       mentorId: mentorId || undefined,
+      ...(sourceMode === "SNAPSHOT" && selectedSnapshotId ? {
+        manuscriptSnapshotId: selectedSnapshotId,
+        message: snapshotMessage || undefined,
+      } : {}),
     };
     submitting.current = true;
     setError("");
     try {
-      const result = await create.mutateAsync({ input, file });
+      const result = await create.mutateAsync({ input, file: sourceMode === "PDF" ? file : undefined });
       toast.success(t("Submission saved. Choose a lecturer to request feedback."));
       navigate(projectSubmissionPath(selectedProjectId, result.submission._id));
     } catch {
-      setError(t("Could not create the submission. Your PDF and entered information are retained; try again."));
+      setError(sourceMode === "PDF"
+        ? t("Could not create the submission. Your PDF and entered information are retained; try again.")
+        : t("Could not create the submission from manuscript snapshot. Try again."));
     } finally {
       submitting.current = false;
     }
@@ -158,40 +201,118 @@ export function SubmissionNewPage({ projectId, projectTitle }: { projectId?: str
             </Field>
           )}
 
-          <div>
-            <label className="flex cursor-pointer items-center gap-4 rounded-lg border border-dashed border-input bg-muted/20 p-4 hover:bg-muted/40 focus-within:ring-2 focus-within:ring-ring">
-              <FileText className="h-6 w-6 shrink-0 text-muted-foreground" aria-hidden="true" />
-              <span className="min-w-0 flex-1 text-sm">
-                <span className="block break-words font-medium">{file?.name || t("Choose PDF manuscript")}</span>
-                <span className="mt-1 block text-xs text-muted-foreground">
-                  {t("PDF only · maximum 10 MB")}{file ? ` · ${(file.size / 1024 / 1024).toFixed(1)} MB` : ""}
-                </span>
-              </span>
-              <input
-                className="sr-only"
-                type="file"
-                accept="application/pdf,.pdf"
-                aria-label={t("Choose PDF manuscript")}
-                onChange={event => {
-                  const selected = event.target.files?.[0];
-                  if (selected) { setFile(selected); setError(""); }
-                }}
-              />
-            </label>
-            {file ? (
-              <button
-                type="button"
-                className="mt-2 text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground"
-                onClick={event => {
-                  setFile(undefined);
-                  const input = event.currentTarget.parentElement?.querySelector<HTMLInputElement>('input[type="file"]');
-                  if (input) input.value = "";
-                }}
-              >
-                {t("Remove PDF")}
-              </button>
-            ) : null}
+          {/* Source mode selector: PDF Upload vs Immutable LaTeX Manuscript Snapshot */}
+          <div className="flex rounded-lg border bg-muted/40 p-0.5 text-xs w-fit">
+            <button
+              type="button"
+              className={`rounded-md px-3 py-1.5 font-medium transition-colors ${sourceMode === "PDF" ? "bg-background text-foreground shadow-xs font-semibold" : "text-muted-foreground hover:text-foreground"}`}
+              onClick={() => setSourceMode("PDF")}
+            >
+              Tải tệp PDF
+            </button>
+            <button
+              type="button"
+              className={`rounded-md px-3 py-1.5 font-medium transition-colors ${sourceMode === "SNAPSHOT" ? "bg-background text-foreground shadow-xs font-semibold" : "text-muted-foreground hover:text-foreground"}`}
+              onClick={() => setSourceMode("SNAPSHOT")}
+            >
+              Từ bản lưu LaTeX Snapshot
+            </button>
           </div>
+
+          {sourceMode === "PDF" ? (
+            <div>
+              <label className="flex cursor-pointer items-center gap-4 rounded-lg border border-dashed border-input bg-muted/20 p-4 hover:bg-muted/40 focus-within:ring-2 focus-within:ring-ring">
+                <FileText className="h-6 w-6 shrink-0 text-muted-foreground" aria-hidden="true" />
+                <span className="min-w-0 flex-1 text-sm">
+                  <span className="block break-words font-medium">{file?.name || t("Choose PDF manuscript")}</span>
+                  <span className="mt-1 block text-xs text-muted-foreground">
+                    {t("PDF only · maximum 10 MB")}{file ? ` · ${(file.size / 1024 / 1024).toFixed(1)} MB` : ""}
+                  </span>
+                </span>
+                <input
+                  className="sr-only"
+                  type="file"
+                  accept="application/pdf,.pdf"
+                  aria-label={t("Choose PDF manuscript")}
+                  onChange={event => {
+                    const selected = event.target.files?.[0];
+                    if (selected) { setFile(selected); setError(""); }
+                  }}
+                />
+              </label>
+              {file ? (
+                <button
+                  type="button"
+                  className="mt-2 text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground"
+                  onClick={event => {
+                    setFile(undefined);
+                    const input = event.currentTarget.parentElement?.querySelector<HTMLInputElement>('input[type="file"]');
+                    if (input) input.value = "";
+                  }}
+                >
+                  {t("Remove PDF")}
+                </button>
+              ) : null}
+            </div>
+          ) : (
+            <div className="rounded-xl border border-indigo-500/30 bg-card p-4 space-y-3">
+              <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
+                <FileCode2 className="h-4 w-4 text-indigo-500" />
+                <span>Chọn bản lưu snapshot từ trình soạn thảo LaTeX</span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Bản lưu snapshot là bản ghi bất biến có băm SHA-256 đã đóng gói toàn bộ mã nguồn LaTeX, tệp và định nghĩa trích dẫn.
+              </p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="Bản thảo trong dự án">
+                  <select
+                    className={controlClass}
+                    value={selectedManuscriptId}
+                    onChange={e => {
+                      setSelectedManuscriptId(e.target.value);
+                      setSelectedSnapshotId("");
+                    }}
+                  >
+                    <option value="">Chọn bản thảo LaTeX</option>
+                    {manuscripts.data?.map(m => (
+                      <option key={m.id} value={m.id}>
+                        {m.title}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Bản lưu Snapshot bất biến">
+                  <select
+                    className={controlClass}
+                    value={selectedSnapshotId}
+                    disabled={!selectedManuscriptId}
+                    onChange={e => {
+                      setSelectedSnapshotId(e.target.value);
+                      setError("");
+                    }}
+                  >
+                    <option value="">
+                      {!selectedManuscriptId ? "Chọn bản thảo trước" : "Chọn snapshot"}
+                    </option>
+                    {snapshots.data?.map(s => (
+                      <option key={s.id} value={s.id}>
+                        {s.label || `v${s.sourceVersion}`} · {s.digestSha256?.slice(0, 10)}… ({new Date(s.createdAt).toLocaleDateString()})
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              </div>
+              <Field label="Ghi chú kèm theo cho đợt nộp (tùy chọn)">
+                <Input
+                  className="mt-1"
+                  placeholder="Ví dụ: Nộp bản thảo sơ bộ đã bổ sung phần phương pháp nghiên cứu..."
+                  value={snapshotMessage}
+                  maxLength={5000}
+                  onChange={e => setSnapshotMessage(e.target.value)}
+                />
+              </Field>
+            </div>
+          )}
 
           <details className="group">
             <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 rounded-sm py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
@@ -251,7 +372,7 @@ export function SubmissionNewPage({ projectId, projectTitle }: { projectId?: str
             </Button>
             <Button
               type="submit"
-              disabled={create.isPending || !selectedProjectId || !file || title.trim().length < 3}
+              disabled={create.isPending || !selectedProjectId || (sourceMode === "PDF" ? !file : !selectedSnapshotId) || title.trim().length < 3}
             >
               {create.isPending ? t("Creating…") : t("Save and continue")}
             </Button>

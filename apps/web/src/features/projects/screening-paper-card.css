@@ -1,10 +1,16 @@
 .screening-paper-card {
   min-width: 0;
-  padding: 1.125rem 1.25rem;
-  border: 1px solid hsl(var(--border));
-  border-radius: .75rem;
-  background: hsl(var(--card));
+  padding: 1.25rem 1.375rem;
+  border: 1px solid hsl(var(--border) / .85);
+  border-radius: .875rem;
+  background: linear-gradient(180deg, hsl(var(--card)) 0%, hsl(var(--card) / .96) 100%);
   color: hsl(var(--foreground));
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / .03);
+  transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease;
+}
+.screening-paper-card:hover {
+  border-color: hsl(var(--primary) / .35);
+  box-shadow: 0 4px 14px -3px rgb(0 0 0 / .06);
 }
 .screening-paper-card-top {
   display: flex;
@@ -16,14 +22,19 @@
 }
 .screening-paper-card-round {
   margin: 0;
-  font-size: .75rem;
-  font-weight: 500;
+  font-size: .72rem;
+  font-weight: 650;
+  letter-spacing: .04em;
+  text-transform: uppercase;
   color: hsl(var(--muted-foreground));
 }
-.screening-paper-card-status { font-size: .75rem; }
+.screening-paper-card-status {
+  font-size: .75rem;
+  font-weight: 600;
+}
 .screening-paper-card-dot {
-  width: .3125rem;
-  height: .3125rem;
+  width: .375rem;
+  height: .375rem;
   flex-shrink: 0;
   border-radius: 50%;
   background: currentColor;
@@ -31,14 +42,16 @@
 .screening-paper-card .screening-paper-card-identity h4 {
   margin: 0;
   max-width: 75ch;
-  font-size: 1rem;
+  font-size: 1.025rem;
   font-weight: 650;
-  line-height: 1.5;
+  line-height: 1.45;
   overflow-wrap: anywhere;
 }
 .screening-paper-card-identity h4 :is(a, button) {
   text-align: left;
   border-radius: .125rem;
+  color: hsl(var(--foreground));
+  transition: color .15s ease;
 }
 .screening-paper-card-identity h4 :is(a, button):hover {
   color: hsl(var(--primary));
@@ -83,10 +96,14 @@
   display: grid;
   gap: .125rem;
   margin: 0;
-  font-size: .875rem;
+  padding: .625rem .875rem;
+  border-radius: .5rem;
+  border: 1px solid hsl(var(--border) / .7);
+  background: hsl(var(--muted) / .35);
+  font-size: .84rem;
   line-height: 1.5;
 }
-.screening-paper-card-next-step strong { font-weight: 600; }
+.screening-paper-card-next-step strong { font-weight: 600; color: hsl(var(--foreground)); }
 .screening-paper-card-next-step > span { color: hsl(var(--muted-foreground)); }
 .screening-paper-card .screening-paper-card-ballots-details > summary {
   width: fit-content;
@@ -97,18 +114,23 @@
   cursor: pointer;
 }
 .screening-paper-card-ballots {
-  display: grid;
-  gap: .5rem;
-  margin-top: .5rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: .5rem .875rem;
+  margin-top: .375rem;
   font-size: .8125rem;
 }
 .screening-ballot-row {
-  display: flex;
+  display: inline-flex;
   flex-wrap: wrap;
-  align-items: baseline;
-  gap: .25rem 1rem;
+  align-items: center;
+  gap: .375rem .5rem;
+  padding: .25rem .625rem;
+  border-radius: .5rem;
+  border: 1px solid hsl(var(--border) / .65);
+  background: hsl(var(--muted) / .3);
 }
-.screening-ballot-row dt { min-width: 8rem; overflow-wrap: anywhere; }
+.screening-ballot-row dt { color: hsl(var(--muted-foreground)); font-weight: 500; overflow-wrap: anywhere; }
 .screening-ballot-row dd { display: inline-flex; align-items: center; gap: .25rem; font-weight: 600; }
 .screening-paper-card-footer {
   display: flex;
@@ -128,9 +150,9 @@
 }
 .screening-paper-card-progress { display: flex; align-items: center; gap: .5rem; }
 .screening-paper-card-progress-label { font-size: .75rem; color: hsl(var(--muted-foreground)); }
-.screening-paper-card-progress-label strong { font-weight: 500; font-variant-numeric: tabular-nums; }
-.screening-paper-card-segments { display: flex; gap: .1875rem; width: 3rem; }
-.screening-paper-card-segments span { flex: 1; height: .25rem; border-radius: 999px; background: hsl(var(--muted-foreground) / .18); }
+.screening-paper-card-progress-label strong { font-weight: 600; color: hsl(var(--foreground)); font-variant-numeric: tabular-nums; }
+.screening-paper-card-segments { display: flex; gap: .1875rem; width: 3.5rem; }
+.screening-paper-card-segments span { flex: 1; height: .3125rem; border-radius: 999px; background: hsl(var(--muted-foreground) / .18); }
 .screening-paper-card-segments span[data-filled="true"] { background: var(--screening-progress-color); }
 .screening-paper-card-deadline {
   display: inline-flex;
@@ -144,14 +166,23 @@
 .screening-paper-card-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: .25rem .375rem; margin-left: auto; }
 .screening-paper-card-actions :is(button,a) { min-height: 2.25rem; font-size: .8125rem; }
 .screening-paper-card-actions :is(button,a):not(:first-child) { color: hsl(var(--muted-foreground)); }
-.screening-paper-card-evaluation { display: grid; gap: .5rem; }
-.screening-paper-card-evaluation dl { display: flex; flex-wrap: wrap; gap: .625rem 2rem; font-size: .875rem; }
+.screening-paper-card-evaluation { display: grid; gap: .625rem; }
+.screening-paper-card-evaluation dl {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .625rem 1.5rem;
+  padding: .625rem .875rem;
+  border-radius: .625rem;
+  border: 1px solid hsl(var(--border) / .65);
+  background: hsl(var(--muted) / .22);
+  font-size: .875rem;
+}
 .screening-paper-card-evaluation dl > div { min-width: 0; }
-.screening-paper-card-evaluation dt { font-size: .75rem; color: hsl(var(--muted-foreground)); }
-.screening-paper-card-evaluation dd { display: inline-flex; align-items: center; gap: .25rem; font-weight: 600; overflow-wrap: anywhere; }
+.screening-paper-card-evaluation dt { font-size: .72rem; font-weight: 500; text-transform: uppercase; letter-spacing: .03em; color: hsl(var(--muted-foreground)); margin-bottom: .125rem; }
+.screening-paper-card-evaluation dd { display: inline-flex; align-items: center; gap: .25rem; font-weight: 650; overflow-wrap: anywhere; }
 .screening-paper-card-resolution { display: flex; align-items: center; gap: .375rem; font-size: .75rem; color: hsl(var(--muted-foreground)); }
 .screening-paper-card-reason { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; max-width: 75ch; font-size: .8125rem; line-height: 1.5; color: hsl(var(--muted-foreground)); }
-.screening-paper-card-reason span { font-weight: 600; }
+.screening-paper-card-reason span { font-weight: 600; color: hsl(var(--foreground)); }
 @media (max-width: 639px) {
   .screening-paper-card { padding: 1rem; }
   .screening-paper-card-top { align-items: flex-start; }

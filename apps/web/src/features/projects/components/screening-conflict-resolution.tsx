@@ -4,6 +4,7 @@ import { screeningChoiceTone } from "../screening-status";
 import { RoundHistory } from "./screening-round-history";
 import { useScreeningDiscussionUnread } from "../hooks/use-screening-discussion-unread";
 import { ScreeningCaseStatus } from "./screening-case-status";
+import { ScreeningAgreementPanel } from "./screening-agreement";
 import { useUnsavedWorkspace } from "./workspace-common";
 import React, { useEffect, useId, useState } from "react";
 import type { ScreeningRoundView, ScreeningPaperRow, WorkspacePerson, ScreeningChoice } from "@trend/shared-types";
@@ -14,7 +15,7 @@ import { screeningApi } from "../api/screening.api";
 import { useAuthStore } from "@/stores/auth-store";
 import { screeningActorId, useScreeningCommand, ScreeningError } from "./screening-common";
 import "../screening-review-workspace.css";
-import { CheckCircle2, XCircle, HelpCircle, Scale, Edit3, Info } from "lucide-react";
+import { CheckCircle2, XCircle, HelpCircle, Scale, Edit3, Info, Clock } from "lucide-react";
 
 const choiceLabels: Record<ScreeningChoice, string> = {
   INCLUDE: "Phù hợp",
@@ -44,6 +45,14 @@ export function ScreeningConflictResolution({ projectId, round, paper, people, r
   // Modals state
   const [isReassessOpen, setIsReassessOpen] = useState(false);
   const [isAdjudicateOpen, setIsAdjudicateOpen] = useState(false);
+  const [isExtendOpen, setIsExtendOpen] = useState(false);
+  const [extendReason, setExtendReason] = useState("");
+  const [isCloseUnresolvedOpen, setIsCloseUnresolvedOpen] = useState(false);
+  const [closeReason, setCloseReason] = useState<"NO_CONSENSUS" | "NO_RESPONSE" | "INSUFFICIENT_INFORMATION" | "DEADLINE_EXPIRED">("NO_CONSENSUS");
+  const [closeNote, setCloseNote] = useState("");
+
+  const isTeamScreening = round.settings?.workflowKind === "TEAM_SCREENING";
+  const timing = round.discussionTiming;
 
   // Reassess form state
   const myCurrentReview = round.myReview;
@@ -66,14 +75,59 @@ export function ScreeningConflictResolution({ projectId, round, paper, people, r
   const needsClarification = round.classification === "NEEDS_CLARIFICATION" || round.classification === "NEEDS_MORE_INFORMATION";
   const reasonMismatch = round.classification === "EXCLUSION_REASON_MISMATCH";
   const issueTitle = needsClarification ? "Làm rõ thông tin" : reasonMismatch ? "Thống nhất lý do loại" : "Giải quyết bất đồng";
-  const issueDescription = needsClarification
-    ? "Đối chiếu nguồn và trao đổi trước khi cập nhật phiếu."
-    : reasonMismatch ? "Hai reviewer chọn loại nhưng chưa thống nhất tiêu chí loại. Đối chiếu nguồn và cập nhật căn cứ hoặc nhờ phân xử."
-    : "Hai phiếu đang khác kết luận. Trao đổi để đối chiếu tiêu chí và căn cứ đánh giá.";
+  const issueDescription = isTeamScreening
+    ? (needsClarification
+      ? "Đối chiếu nguồn và trao đổi qua khung thảo luận để thống nhất quyết định chung."
+      : reasonMismatch
+      ? "Hai reviewer chọn loại nhưng chưa thống nhất tiêu chí loại. Đối chiếu nguồn và cùng xác nhận quyết định chung."
+      : "Hai phiếu độc lập có kết luận khác nhau. Trao đổi để đối chiếu tiêu chí và thống nhất quyết định chung.")
+    : (needsClarification
+      ? "Đối chiếu nguồn và trao đổi trước khi cập nhật phiếu."
+      : reasonMismatch ? "Hai reviewer chọn loại nhưng chưa thống nhất tiêu chí loại. Đối chiếu nguồn và cập nhật căn cứ hoặc nhờ phân xử."
+      : "Hai phiếu đang khác kết luận. Trao đổi để đối chiếu tiêu chí và căn cứ đánh giá.");
 
   const otherReview = round.hiddenReviews ? undefined : round.reviews.find(r => r.reviewerId !== currentUserId);
 
-  useUnsavedWorkspace(Boolean(reassessReason || comment || adjudicateReason || isReassessOpen && fullTextReference !== (myReview?.fullTextReference ?? "")) || command.isPending);
+  useUnsavedWorkspace(Boolean(reassessReason || comment || adjudicateReason || extendReason || isReassessOpen && fullTextReference !== (myReview?.fullTextReference ?? "")) || command.isPending);
+
+  // Submit extend discussion
+  const handleExtendSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (command.isPending || readOnly || !extendReason.trim()) return;
+    const payload = {
+      expectedVersion: round.version,
+      hours: 24,
+      reason: extendReason.trim(),
+    };
+    const success = await command.run({ roundId: round.id, ...payload }, clientKey =>
+      screeningApi.extendDiscussion(projectId, round.id, { ...payload, clientKey })
+    );
+    if (success) {
+      setIsExtendOpen(false);
+      setExtendReason("");
+      void queryClient.invalidateQueries({ queryKey: ["projects", projectId, "screening"] });
+    }
+  };
+
+  // Submit close unresolved
+  const handleCloseUnresolvedSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (command.isPending || readOnly || !closeReason) return;
+    const payload = {
+      expectedVersion: round.version,
+      reason: closeReason,
+      note: closeNote.trim() || undefined,
+    };
+    const success = await command.run({ roundId: round.id, ...payload }, clientKey =>
+      screeningApi.closeUnresolved(projectId, round.id, { ...payload, clientKey })
+    );
+    if (success) {
+      setIsCloseUnresolvedOpen(false);
+      setCloseReason("NO_CONSENSUS");
+      setCloseNote("");
+      void queryClient.invalidateQueries({ queryKey: ["projects", projectId, "screening"] });
+    }
+  };
 
   // Submit reassessment
   const handleReassessSubmit = async (e: React.FormEvent) => {
@@ -140,8 +194,76 @@ export function ScreeningConflictResolution({ projectId, round, paper, people, r
           : issueDescription}</p>
       </section>
 
-      {/* Both reviewers can act directly after discussion, without a message quota. */}
+      {/* Discussion Timing Banner for Team Screening */}
+      {timing && (
+        <section className={`p-3.5 rounded-lg border text-xs space-y-2 ${timing.isOverdue ? "bg-amber-500/10 border-amber-500/30 text-amber-900 dark:text-amber-200" : "bg-muted/40 border-border/70"}`} aria-label="Thời hạn thảo luận">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-2 font-medium">
+              <Clock size={15} className={timing.isOverdue ? "text-amber-600 dark:text-amber-400" : "text-primary"} />
+              <span>
+                {timing.isOverdue ? (
+                  <strong className="text-amber-600 dark:text-amber-400">Đã quá hạn thảo luận</strong>
+                ) : (
+                  <span>
+                    Thời hạn thảo luận: <strong>Còn {Math.max(0, Math.ceil(timing.remainingMs / (1000 * 60 * 60)))} giờ</strong>
+                  </span>
+                )}
+                {" · Hạn: "}
+                <time dateTime={timing.effectiveDeadlineAt}>
+                  {new Date(timing.effectiveDeadlineAt).toLocaleString("vi-VN", { dateStyle: "short", timeStyle: "short" })}
+                </time>
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5 text-muted-foreground text-[11px]">
+              <span className="px-2 py-0.5 rounded bg-background/80 border border-border/50">
+                Gia hạn: {timing.extensionCount}/{timing.maxExtensions}
+              </span>
+            </div>
+          </div>
+
+          {timing.isOverdue && (
+            <p className="text-[11px] text-muted-foreground">
+              Thời hạn thảo luận ban đầu (48 giờ) đã kết thúc. Nhóm nghiên cứu cần thống nhất quyết định chung bên dưới, hoặc Chủ đề tài có thể gia hạn/đóng đánh giá.
+            </p>
+          )}
+
+          {round.canManage && !readOnly && round.active && !round.finalDecision && (
+            <div className="flex items-center gap-2 pt-1 border-t border-border/40">
+              {timing.extensionCount < timing.maxExtensions && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs font-normal"
+                  onClick={() => setIsExtendOpen(true)}
+                >
+                  Gia hạn thảo luận (+24h)
+                </Button>
+              )}
+              {round.canCloseUnresolved && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 font-normal"
+                  onClick={() => setIsCloseUnresolvedOpen(true)}
+                >
+                  Đóng — Không đồng thuận
+                </Button>
+              )}
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* For Team Screening, consensus proposal & confirmation is displayed directly */}
+      {isTeamScreening && (
+        <ScreeningAgreementPanel projectId={projectId} round={round} readOnly={readOnly} />
+      )}
+
+      {/* Legacy/Systematic Review actions: Both reviewers can act directly after discussion */}
       {!readOnly &&
+        !isTeamScreening &&
         isReviewerOnRound &&
         round.active &&
         !round.finalDecision &&
@@ -409,6 +531,94 @@ export function ScreeningConflictResolution({ projectId, round, paper, people, r
               <DialogFooter><Button type="button" variant="outline" size="sm" onClick={() => setViewingReview(null)}>Đóng</Button></DialogFooter>
             </>;
           })()}
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal: Gia hạn thảo luận */}
+      <Dialog open={isExtendOpen} onOpenChange={setIsExtendOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Gia hạn thời gian thảo luận</DialogTitle>
+            <DialogDescription>
+              Cộng thêm tối đa 24 giờ để hai reviewer tiếp tục trao đổi và thống nhất kết luận. Mỗi vòng chỉ được gia hạn tối đa 1 lần.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleExtendSubmit} className="space-y-4 py-2">
+            <div>
+              <label className="text-xs font-semibold text-foreground block mb-1">
+                Lý do gia hạn <span className="text-rose-500">*</span>
+              </label>
+              <textarea
+                value={extendReason}
+                onChange={e => setExtendReason(e.target.value)}
+                placeholder="Nêu lý do cần thêm thời gian thảo luận..."
+                rows={3}
+                required
+                minLength={5}
+                className="w-full rounded-lg border border-border bg-background p-2.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+              <p className="text-[11px] text-muted-foreground mt-0.5">Tối thiểu 5 ký tự để lưu vào lịch sử kiểm toán.</p>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" size="sm" onClick={() => setIsExtendOpen(false)}>
+                Hủy
+              </Button>
+              <Button type="submit" size="sm" disabled={command.isPending || extendReason.trim().length < 5}>
+                {command.isPending ? "Đang gia hạn..." : "Xác nhận gia hạn 24 giờ"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal: Đóng không đồng thuận */}
+      <Dialog open={isCloseUnresolvedOpen} onOpenChange={setIsCloseUnresolvedOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Đóng vòng đánh giá — Không đạt đồng thuận</DialogTitle>
+            <DialogDescription>
+              Kết thúc quy trình đánh giá bài báo này ở trạng thái không đồng thuận. Hai phiếu độc lập và toàn bộ trao đổi vẫn được lưu lại nguyên vẹn.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleCloseUnresolvedSubmit} className="space-y-4 py-2">
+            <div>
+              <label className="text-xs font-semibold text-foreground block mb-1">
+                Lý do đóng <span className="text-rose-500">*</span>
+              </label>
+              <select
+                aria-label="Lý do đóng"
+                value={closeReason}
+                onChange={e => setCloseReason(e.target.value as "NO_CONSENSUS" | "NO_RESPONSE" | "INSUFFICIENT_INFORMATION" | "DEADLINE_EXPIRED")}
+                className="w-full rounded-lg border border-border bg-background p-2.5 text-xs text-foreground"
+              >
+                <option value="NO_CONSENSUS">Không đạt đồng thuận sau thảo luận</option>
+                <option value="DEADLINE_EXPIRED">Hết thời hạn thảo luận</option>
+                <option value="NO_RESPONSE">Không có phản hồi từ người đánh giá</option>
+                <option value="INSUFFICIENT_INFORMATION">Không đủ thông tin để kết luận</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-foreground block mb-1">
+                Ghi chú bổ sung (tùy chọn)
+              </label>
+              <textarea
+                value={closeNote}
+                onChange={e => setCloseNote(e.target.value)}
+                placeholder="Ghi chú thêm về lý do kết thúc vòng..."
+                rows={2}
+                maxLength={1000}
+                className="w-full rounded-lg border border-border bg-background p-2.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" size="sm" onClick={() => setIsCloseUnresolvedOpen(false)}>
+                Hủy
+              </Button>
+              <Button type="submit" size="sm" variant="destructive" disabled={command.isPending}>
+                {command.isPending ? "Đang đóng..." : "Xác nhận đóng vòng"}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </div>

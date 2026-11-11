@@ -42,6 +42,9 @@ export const screeningApi = {
   extend: (id: string, roundId: string, data?: unknown) => write(id, `rounds/${roundId}/extend`, typeof data === "object" && data !== null && "clientKey" in data ? data : { ...(typeof data === "object" && data ? data : {}), clientKey: crypto.randomUUID() }),
   grantProposerException: (id: string, roundId: string, data: { reason: string; clientKey?: string }) => write(id, `rounds/${roundId}/proposer-exception`, data),
   claimNext: (id: string, data?: unknown) => write(id, "papers/claim-next", typeof data === "object" && data !== null && "clientKey" in data ? data : { ...(typeof data === "object" && data ? data : {}), clientKey: crypto.randomUUID() }) as Promise<{ paperId: string | null; roundId: string | null; dueAt: string | null }>,
+  extendDiscussion: (id: string, roundId: string, data: { expectedVersion: number; hours?: number; reason: string; clientKey?: string }) => write(id, `rounds/${roundId}/discussion/extend`, typeof data === "object" && data !== null && "clientKey" in data && data.clientKey ? data : { ...data, clientKey: crypto.randomUUID() }),
+  closeUnresolved: (id: string, roundId: string, data: { expectedVersion: number; reason: string; note?: string; clientKey?: string }) => write(id, `rounds/${roundId}/close-unresolved`, typeof data === "object" && data !== null && "clientKey" in data && data.clientKey ? data : { ...data, clientKey: crypto.randomUUID() }),
+  reopenUnresolved: (id: string, roundId: string, data: { expectedVersion: number; reason: string; clientKey?: string }) => write(id, `rounds/${roundId}/reopen-unresolved`, typeof data === "object" && data !== null && "clientKey" in data && data.clientKey ? data : { ...data, clientKey: crypto.randomUUID() }),
   updateDiscoveryGoal: (id: string, data: unknown) => write(id, "discovery-goal", data, "put"),
   streamEvents: async (
     id: string,

@@ -16,7 +16,7 @@ import { PaperNotesDialog } from "./paper-notes-dialog";
 import "../screening.css";
 import "../collaborative-library.css";
 
-const states: Record<string, string> = { WAITING_FULLTEXT: "Chờ toàn văn", NOT_REVIEWED: "Chờ đánh giá", IN_REVIEW: "Đang đánh giá", NEEDS_RESOLUTION: "Có bất đồng", NEEDS_MORE_INFO: "Cần xem xét thêm", ADJUDICATING: "Đang phân xử", AWAITING_FINALIZATION: "Chờ quyết định", INCLUDED: "Đã chọn", BACKGROUND: "Tài liệu nền", EXCLUDED: "Đã loại" };
+const states: Record<string, string> = { WAITING_FULLTEXT: "Chờ toàn văn", NOT_REVIEWED: "Chờ đánh giá", IN_REVIEW: "Đang đánh giá", NEEDS_RESOLUTION: "Có bất đồng", NEEDS_MORE_INFO: "Cần xem xét thêm", ADJUDICATING: "Đang phân xử", AWAITING_FINALIZATION: "Chờ quyết định", INCLUDED: "Đã chọn", BACKGROUND: "Tài liệu nền", EXCLUDED: "Đã loại", CLOSED_UNRESOLVED: "Đã đóng — Không đạt đồng thuận" };
 
 export function CollaborativeLibrary({ projectId, readOnly, onAdd }: { projectId: string; readOnly: boolean; onAdd?: () => void }) {
   const [params, setParams] = useSearchParams();
@@ -95,6 +95,7 @@ export function CollaborativeLibrary({ projectId, readOnly, onAdd }: { projectId
   const isPillBackground = status === "BACKGROUND";
   const isPillExcluded = status === "EXCLUDED";
   const isPillDisagreement = status === "NEEDS_RESOLUTION";
+  const isPillClosedUnresolved = status === "CLOSED_UNRESOLVED";
   const activeFilterCount = (status ? 1 : 0) + advancedFilterCount;
   const resetFilters = () => {
     setStatus("");
@@ -250,6 +251,13 @@ export function CollaborativeLibrary({ projectId, readOnly, onAdd }: { projectId
             onClick={() => change(() => setStatus(isPillExcluded ? "" : "EXCLUDED"))}
           >
             <span>Đã loại</span>
+          </button>
+          <button
+            type="button"
+            className={`library-pill pill-unresolved ${isPillClosedUnresolved ? "active" : ""}`}
+            onClick={() => change(() => setStatus(isPillClosedUnresolved ? "" : "CLOSED_UNRESOLVED"))}
+          >
+            <span>Không đồng thuận</span>
           </button>
           {Boolean(board?.librarySummary?.discussion) && (
             <button

@@ -6,7 +6,7 @@ import type { ScreeningChoice, ScreeningState, ScreeningPaperRow, ScreeningRound
 import { isAxiosError } from "axios";
 import { Button } from "@/components/ui/button";
 import { useResearchCommand } from "../hooks/use-project-research";
-export const stateLabels: Record<ScreeningState, string> = { WAITING_FULLTEXT: "Chờ toàn văn", NOT_REVIEWED: "Chờ đánh giá", IN_REVIEW: "Đang đánh giá", NEEDS_RESOLUTION: "Có bất đồng", NEEDS_MORE_INFO: "Cần xem xét thêm", ADJUDICATING: "Đang phân xử", AWAITING_FINALIZATION: "Chờ quyết định", INCLUDED: "Đã chọn", EXCLUDED: "Đã loại", BACKGROUND: "Tài liệu nền" };
+export const stateLabels: Record<ScreeningState, string> = { WAITING_FULLTEXT: "Chờ toàn văn", NOT_REVIEWED: "Chờ đánh giá", IN_REVIEW: "Đang đánh giá", NEEDS_RESOLUTION: "Có bất đồng", NEEDS_MORE_INFO: "Cần xem xét thêm", ADJUDICATING: "Đang phân xử", AWAITING_FINALIZATION: "Chờ quyết định", INCLUDED: "Đã chọn", EXCLUDED: "Đã loại", BACKGROUND: "Tài liệu nền", CLOSED_UNRESOLVED: "Đã đóng — Không đạt đồng thuận" };
 export const choiceLabels: Record<ScreeningChoice, string> = { INCLUDE: "Phù hợp", EXCLUDE: "Không phù hợp", UNSURE: "Chưa chắc chắn" };
 /** Auth can expose a migrated public ID; round membership uses the database UUID. */
 export function screeningActorId(round: ScreeningRoundView, publicActorId?: string) {

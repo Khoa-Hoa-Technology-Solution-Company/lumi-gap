@@ -25,6 +25,7 @@ export interface ResearchVersion {
   checksumSha256: string | null;
   sizeBytes: number;
   sourceRevisionId: string | null;
+  manuscriptSnapshotId?: string | null;
   responseToReview: string | null;
   createdAt: string;
   hasPdf: boolean;

@@ -2,7 +2,7 @@ import type { z } from "zod";
 import type { ScreeningAdjudicationPacket } from "@trend/shared-types";
 import { AppError } from "../../common/exceptions/app-error.js";
 import { withWorkspace, jsonSnapshot, expectWorkspaceVersion } from "./workspace-access.js";
-import { screeningCommand, screeningRound } from "./screening-context.js";
+import { screeningCommand, screeningRound, roundSettings } from "./screening-context.js";
 import { reconcileScreeningObligations, screeningObligationDtos } from "./screening-obligations.js";
 import { adjudicationPacket, sharedAdjudicationPacket, screeningAdjudicators, adjudicationSourceUrl } from "./screening-adjudication-context.js";
 import { screeningClassification } from "./screening-resolution-context.js";
@@ -16,6 +16,10 @@ export const screeningCaseService = {
     const input = s.screeningRequestAdjudicationSchema.parse(raw);
     return screeningCommand(project, actor, "ADJUDICATION_REQUESTED", { ...input, roundId }, {}, async c => {
       const round = await screeningRound(c, roundId);
+      const roundConf = roundSettings(round.settings);
+      if (roundConf.workflowKind === "TEAM_SCREENING" || roundConf.resolutionPolicy === "CONSENSUS") {
+        throw AppError.forbidden("Quy trình Đánh giá nhóm (TEAM_SCREENING) giải quyết bất đồng bằng đồng thuận giữa 2 reviewer, không có phân xử của bên thứ ba.");
+      }
       if (c.project.status === "COMPLETED") throw AppError.conflict("Dự án đã hoàn tất, không thể mở hồ sơ mới");
       const assignments = await effectiveAssignments(c, roundId);
       if (!assignments.some(a => a.reviewerId === c.actorId && a.submittedAt)) throw AppError.forbidden("Chỉ reviewer đã gửi phiếu mới được mở hồ sơ");
