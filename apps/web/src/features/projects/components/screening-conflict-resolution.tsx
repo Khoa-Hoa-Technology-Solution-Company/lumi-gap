@@ -15,7 +15,8 @@ import { screeningApi } from "../api/screening.api";
 import { useAuthStore } from "@/stores/auth-store";
 import { screeningActorId, useScreeningCommand, ScreeningError } from "./screening-common";
 import "../screening-review-workspace.css";
-import { CheckCircle2, XCircle, HelpCircle, Scale, Edit3, Info, Clock } from "lucide-react";
+import { CheckCircle2, XCircle, HelpCircle, Scale, Edit3, Info, Clock, MessageSquare, CheckSquare } from "lucide-react";
+import { toast } from "sonner";
 
 const choiceLabels: Record<ScreeningChoice, string> = {
   INCLUDE: "Phù hợp",
@@ -57,11 +58,33 @@ export function ScreeningConflictResolution({ projectId, round, paper, people, r
   // Reassess form state
   const myCurrentReview = round.myReview;
   const myReview = round.myReview ?? round.reviews.find(r => r.reviewerId === currentUserId);
-  const [newDecision, setNewDecision] = useState<ScreeningChoice | "">("");
+  const [newDecision, setNewDecision] = useState<ScreeningChoice | "">(myCurrentReview?.decision ?? "");
   const [reassessReason, setReassessReason] = useState("");
   const [exclusionReason, setExclusionReason] = useState(myCurrentReview?.exclusionReason ?? "");
   const [comment, setComment] = useState("");
   const [fullTextReference, setFullTextReference] = useState("");
+
+  const deadlineStr = timing?.effectiveDeadlineAt || (round as any).consensus?.deadline;
+  const [now, setNow] = useState(Date.now);
+
+  useEffect(() => {
+    if (!deadlineStr || round.finalDecision) return;
+    const interval = setInterval(() => {
+      setNow(Date.now());
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [deadlineStr, round.finalDecision]);
+
+  const remainingMs = deadlineStr ? Date.parse(deadlineStr) - now : null;
+  const isExpired = timing?.isOverdue || (remainingMs !== null && remainingMs <= 0);
+  const remainingSecs = remainingMs !== null ? Math.max(0, Math.ceil(remainingMs / 1000)) : 0;
+  const formattedCountdown = [
+    Math.floor(remainingSecs / 3600),
+    Math.floor((remainingSecs % 3600) / 60),
+    remainingSecs % 60,
+  ]
+    .map(n => String(n).padStart(2, "0"))
+    .join(":");
 
   // Adjudication form state
   const [adjudicateReason, setAdjudicateReason] = useState("");
@@ -157,6 +180,8 @@ export function ScreeningConflictResolution({ projectId, round, paper, people, r
       setReassessReason("");
       setComment("");
       void queryClient.invalidateQueries({ queryKey: ["projects", projectId, "screening"] });
+      void queryClient.invalidateQueries({ queryKey: ["project-research"] });
+      toast.success("Đã cập nhật đánh giá thành công!");
     }
   };
 
@@ -185,76 +210,68 @@ export function ScreeningConflictResolution({ projectId, round, paper, people, r
   };
 
   return (
-    <div className="screening-conflict-container" data-focus-chat={activeTab === "discussion" && !round.adjudicationCase}>
+    <div className="screening-conflict-container space-y-4" data-focus-chat={activeTab === "discussion" && !round.adjudicationCase}>
       <ScreeningCaseStatus projectId={projectId} round={round} />
 
-      <section className="screening-resolution-intro" aria-label={issueTitle}>
-        <p>{round.adjudicationCase
-          ? "Hồ sơ đã mở. Bổ sung quan điểm riêng và theo dõi kết quả trong Hồ sơ phân xử."
-          : issueDescription}</p>
-      </section>
-
-      {/* Discussion Timing Banner for Team Screening */}
-      {timing && (
-        <section className={`p-3.5 rounded-lg border text-xs space-y-2 ${timing.isOverdue ? "bg-amber-500/10 border-amber-500/30 text-amber-900 dark:text-amber-200" : "bg-muted/40 border-border/70"}`} aria-label="Thời hạn thảo luận">
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <div className="flex items-center gap-2 font-medium">
-              <Clock size={15} className={timing.isOverdue ? "text-amber-600 dark:text-amber-400" : "text-primary"} />
-              <span>
-                {timing.isOverdue ? (
-                  <strong className="text-amber-600 dark:text-amber-400">Đã quá hạn thảo luận</strong>
-                ) : (
-                  <span>
-                    Thời hạn thảo luận: <strong>Còn {Math.max(0, Math.ceil((timing.remainingMs ?? (new Date(timing.effectiveDeadlineAt).getTime() - Date.now())) / (1000 * 60 * 60)))} giờ</strong>
-                  </span>
-                )}
-                {" · Hạn: "}
-                <time dateTime={timing.effectiveDeadlineAt}>
-                  {new Date(timing.effectiveDeadlineAt).toLocaleString("vi-VN", { dateStyle: "short", timeStyle: "short" })}
-                </time>
-              </span>
-            </div>
-            <div className="flex items-center gap-1.5 text-muted-foreground text-[11px]">
-              <span className="px-2 py-0.5 rounded bg-background/80 border border-border/50">
-                Gia hạn: {timing.extensionCount}/{timing.maxExtensions}
-              </span>
-            </div>
+      <section className="screening-resolution-intro screening-consensus-card rounded-xl border border-amber-200/80 bg-amber-50/50 dark:border-amber-900/40 dark:bg-amber-950/20 p-4 space-y-2.5 shadow-xs" aria-label={issueTitle}>
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-2">
+            <Scale size={16} className="text-amber-600 dark:text-amber-400 shrink-0" />
+            <h4 className="text-sm font-semibold text-foreground m-0">{issueTitle}</h4>
           </div>
 
-          {timing.isOverdue && (
-            <p className="text-[11px] text-muted-foreground">
-              Thời hạn thảo luận ban đầu (48 giờ) đã kết thúc. Nhóm nghiên cứu cần thống nhất quyết định chung bên dưới, hoặc Chủ đề tài có thể gia hạn/đóng đánh giá.
-            </p>
-          )}
-
-          {round.canManage && !readOnly && round.active && !round.finalDecision && (
-            <div className="flex items-center gap-2 pt-1 border-t border-border/40">
-              {timing.extensionCount < timing.maxExtensions && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-7 text-xs font-normal"
-                  onClick={() => setIsExtendOpen(true)}
-                >
-                  Gia hạn thảo luận (+24h)
-                </Button>
-              )}
-              {round.canCloseUnresolved && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 font-normal"
-                  onClick={() => setIsCloseUnresolvedOpen(true)}
-                >
-                  Đóng — Không đồng thuận
-                </Button>
-              )}
+          {deadlineStr && (
+            <div className="screening-consensus-countdown-pill" title={`Hạn: ${new Date(deadlineStr).toLocaleString("vi-VN")}`}>
+              <span className="screening-live-dot" />
+              <Clock size={12} className="shrink-0" />
+              <span>Đang thảo luận</span>
+              <span>·</span>
+              <time dateTime={deadlineStr} aria-label="Thời gian thảo luận còn lại">
+                {isExpired ? "Đã hết hạn" : `Còn ${formattedCountdown}`}
+              </time>
             </div>
           )}
-        </section>
-      )}
+        </div>
+
+        <p className="text-xs text-muted-foreground leading-relaxed m-0">
+          {round.adjudicationCase
+            ? "Hồ sơ đã mở. Bổ sung quan điểm riêng và theo dõi kết quả trong Hồ sơ phân xử."
+            : issueDescription}
+        </p>
+
+        {timing?.isOverdue && (
+          <p className="text-[11px] text-amber-800 dark:text-amber-300 font-medium m-0">
+            Thời hạn thảo luận ban đầu (48 giờ) đã kết thúc. Nhóm nghiên cứu cần thống nhất quyết định chung bên dưới, hoặc Chủ đề tài có thể gia hạn/đóng đánh giá.
+          </p>
+        )}
+
+        {round.canManage && !readOnly && round.active && !round.finalDecision && (
+          <div className="flex items-center gap-2 pt-1 border-t border-amber-200/60 dark:border-amber-900/40">
+            {timing && timing.extensionCount < timing.maxExtensions && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs font-normal bg-background/80"
+                onClick={() => setIsExtendOpen(true)}
+              >
+                Gia hạn thảo luận (+24h)
+              </Button>
+            )}
+            {round.canCloseUnresolved && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 font-normal"
+                onClick={() => setIsCloseUnresolvedOpen(true)}
+              >
+                Đóng — Không đồng thuận
+              </Button>
+            )}
+          </div>
+        )}
+      </section>
 
       {/* For Team Screening, consensus proposal & confirmation is displayed directly */}
       {isTeamScreening && (
@@ -272,7 +289,7 @@ export function ScreeningConflictResolution({ projectId, round, paper, people, r
         !isWaitingAdjudicator &&
         (round.canReassess || round.canRequestAdjudication) && (
         <section className="screening-resolution-actions" aria-label="Xử lý sau trao đổi">
-          <div className="screening-resolution-action-buttons">
+          <div className="screening-resolution-action-buttons flex items-center gap-2">
             {round.canReassess && (
               <Button
                 variant="outline"
@@ -283,9 +300,9 @@ export function ScreeningConflictResolution({ projectId, round, paper, people, r
                   setFullTextReference(myReview?.fullTextReference ?? "");
                   setIsReassessOpen(true);
                 }}
-                className="gap-1.5 font-medium"
+                className="gap-1.5 font-medium text-xs h-8"
               >
-                <Edit3 size={14} />
+                <Edit3 size={13} />
                 {round.settings.screeningMode ? "Cập nhật phiếu của tôi" : "Đổi kết luận của tôi"}
               </Button>
             )}
@@ -295,9 +312,9 @@ export function ScreeningConflictResolution({ projectId, round, paper, people, r
                 variant="ghost"
                 size="sm"
                 onClick={() => setIsAdjudicateOpen(true)}
-                className="gap-1.5"
+                className="gap-1.5 text-xs h-8"
               >
-                <Scale size={14} />
+                <Scale size={13} />
                 Nhờ người phân xử
               </Button>
             )}
@@ -306,50 +323,260 @@ export function ScreeningConflictResolution({ projectId, round, paper, people, r
       )}
 
       <div className="screening-resolution-tabs" role="tablist" aria-label="Đánh giá và trao đổi">
-        {([{ value: "discussion", label: "Trao đổi" }, { value: "ballots", label: "Hai phiếu đánh giá" }] as const).map((tab, index) => <button
-          key={tab.value} type="button" role="tab" id={`${workspaceId}-${tab.value}-tab`}
-          aria-selected={activeTab === tab.value} aria-controls={`${workspaceId}-${tab.value}-panel`}
-          tabIndex={activeTab === tab.value ? 0 : -1}
-          onClick={() => setActiveTab(tab.value)}
-          onKeyDown={event => {
-            if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
-            event.preventDefault();
-            const next = event.key === "Home" ? "discussion" : event.key === "End" ? "ballots" : index === 0 ? "ballots" : "discussion";
-            setActiveTab(next); document.getElementById(`${workspaceId}-${next}-tab`)?.focus();
-          }}
-        >{tab.label}{tab.value === "discussion" && unreadDiscussion.length > 0 && <span className="screening-discussion-unread-count" aria-label={`${unreadDiscussion.length} tin nhắn chưa đọc`}>{unreadDiscussion.length}</span>}</button>)}
+        {([{ value: "discussion", label: "Trao đổi", icon: MessageSquare }, { value: "ballots", label: "Hai phiếu đánh giá", icon: CheckSquare }] as const).map((tab, index) => {
+          const Icon = tab.icon;
+          const isActive = activeTab === tab.value;
+          return (
+            <button
+              key={tab.value}
+              type="button"
+              role="tab"
+              id={`${workspaceId}-${tab.value}-tab`}
+              aria-selected={isActive}
+              aria-controls={`${workspaceId}-${tab.value}-panel`}
+              tabIndex={isActive ? 0 : -1}
+              onClick={() => setActiveTab(tab.value)}
+              onKeyDown={event => {
+                if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+                event.preventDefault();
+                const next = event.key === "Home" ? "discussion" : event.key === "End" ? "ballots" : index === 0 ? "ballots" : "discussion";
+                setActiveTab(next);
+                document.getElementById(`${workspaceId}-${next}-tab`)?.focus();
+              }}
+              className={`screening-tab-button ${isActive ? "active" : ""}`}
+            >
+              <Icon size={14} className="mr-1.5 shrink-0" />
+              <span>{tab.label}</span>
+              {tab.value === "discussion" && unreadDiscussion.length > 0 && (
+                <span className="screening-discussion-unread-count" aria-label={`${unreadDiscussion.length} tin nhắn chưa đọc`}>
+                  {unreadDiscussion.length}
+                </span>
+              )}
+            </button>
+          );
+        })}
       </div>
 
-      <section className="screening-review-comparison screening-resolution-panel" role="tabpanel" id={`${workspaceId}-ballots-panel`} aria-labelledby={`${workspaceId}-ballots-tab`} hidden={activeTab !== "ballots"} tabIndex={0}>
-        {round.hiddenReviews ? <p className="screening-review-note">Phiếu được công bố khi quy trình cho phép xem đánh giá của cả hai reviewer.</p> :
-          <div className="screening-review-list">
-            {round.reviews.map(r => {
+      <section className="screening-review-comparison screening-resolution-panel space-y-4" role="tabpanel" id={`${workspaceId}-ballots-panel`} aria-labelledby={`${workspaceId}-ballots-tab`} hidden={activeTab !== "ballots"} tabIndex={0}>
+        {round.hiddenReviews ? (
+          <p className="screening-review-note">Phiếu được công bố khi quy trình cho phép xem đánh giá của cả hai reviewer.</p>
+        ) : (
+          <div className="screening-review-list screening-review-cards-grid grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+            {round.reviews.map((r, idx) => {
               const assign = round.assignments.find(a => a.id === r.assignmentId);
-              const reviewerName = assign?.name || "Reviewer";
+              const reviewerName = assign?.name || `Reviewer ${idx + 1}`;
               const isMe = r.reviewerId === currentUserId;
+              const isInclude = r.decision === "INCLUDE";
+              const isExclude = r.decision === "EXCLUDE";
               const contentText = (r.exclusionReason || r.comment || r.fullTextReference || "").trim();
               const needsDetail = contentText.length > 180 || Boolean(r.exclusionReason && r.comment || r.fullTextReference);
-              return <article key={r.id} className="screening-review-row" aria-label={`Phiếu của ${reviewerName}`}>
-                <div className="screening-review-row-heading">
-                  <div className="screening-review-person">
-                    <span className="screening-review-avatar" aria-hidden="true">{reviewerName.slice(0, 1).toUpperCase()}</span>
-                    <div className="screening-review-identity">
-                      <strong>{reviewerName}{isMe && <span> (Bạn)</span>}</strong>
-                      <p>Phiên bản {r.revision} · <time dateTime={r.submittedAt}>{new Date(r.submittedAt).toLocaleString("vi-VN", { hour: "2-digit", minute: "2-digit", day: "numeric", month: "numeric", year: "numeric" })}</time>{r.scope === "FULL_TEXT" && " · Toàn văn"}</p>
+              return (
+                <article
+                  key={r.id}
+                  className={`screening-review-row screening-review-card ${isInclude ? "is-include" : isExclude ? "is-exclude" : "is-unsure"} p-3.5 rounded-xl border bg-card space-y-2.5 transition-shadow`}
+                  aria-label={`Phiếu của ${reviewerName}`}
+                >
+                  <div className="screening-review-row-heading flex items-center justify-between gap-2">
+                    <div className="screening-review-person flex items-center gap-2.5 min-w-0">
+                      <span className="screening-review-avatar shrink-0 w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs bg-muted text-muted-foreground" aria-hidden="true">
+                        {reviewerName.slice(0, 1).toUpperCase()}
+                      </span>
+                      <div className="screening-review-identity min-w-0">
+                        <strong className="text-xs font-semibold text-foreground truncate block">
+                          {reviewerName}{isMe && <span> (Bạn)</span>}
+                        </strong>
+                        <p className="text-[11px] text-muted-foreground truncate">
+                          Phiên bản {r.revision} · <time dateTime={r.submittedAt}>{new Date(r.submittedAt).toLocaleString("vi-VN", { hour: "2-digit", minute: "2-digit", day: "numeric", month: "numeric", year: "numeric" })}</time>{r.scope === "FULL_TEXT" && " · Toàn văn"}
+                        </p>
+                      </div>
                     </div>
+                    <ScreeningStatusBadge tone={screeningChoiceTone(r.decision)}>
+                      {isInclude ? <CheckCircle2 size={13} aria-hidden="true" className="shrink-0" /> : isExclude ? <XCircle size={13} aria-hidden="true" className="shrink-0" /> : <HelpCircle size={13} aria-hidden="true" className="shrink-0" />}
+                      <span>{choiceLabels[r.decision]}</span>
+                    </ScreeningStatusBadge>
                   </div>
-                  <ScreeningStatusBadge tone={screeningChoiceTone(r.decision)}>
-                    {r.decision === "INCLUDE" ? <CheckCircle2 size={13} aria-hidden="true" /> : r.decision === "EXCLUDE" ? <XCircle size={13} aria-hidden="true" /> : <HelpCircle size={13} aria-hidden="true" />}
-                    {choiceLabels[r.decision]}
-                  </ScreeningStatusBadge>
+                <div className="screening-review-rationale text-xs space-y-1.5 pt-1 border-t border-border/40">
+                  <p className="screening-resolution-reason text-xs text-foreground/90 leading-relaxed whitespace-pre-wrap break-words" data-truncated={needsDetail || undefined}>
+                    {contentText ? (
+                      <>
+                        {r.exclusionReason && <span>Lý do loại: </span>}
+                        {contentText}
+                      </>
+                    ) : (
+                      <span className="screening-review-note text-muted-foreground italic text-[11px]">Không kèm ghi chú</span>
+                    )}
+                  </p>
+                  {needsDetail && (
+                    <button
+                      type="button"
+                      className="screening-review-detail-link text-[11px] font-medium text-primary hover:underline cursor-pointer block mt-1"
+                      aria-label={`Xem lý do của ${reviewerName}`}
+                      onClick={() => setViewingReview(r)}
+                    >
+                      Xem lý do
+                    </button>
+                  )}
                 </div>
-                <div className="screening-review-rationale">
-                  <p className="screening-resolution-reason" data-truncated={needsDetail || undefined}>{contentText ? <>{r.exclusionReason && <span>Lý do loại: </span>}{contentText}</> : <span className="screening-review-note">Không kèm ghi chú</span>}</p>
-                  {needsDetail && <button type="button" className="screening-review-detail-link" aria-label={`Xem lý do của ${reviewerName}`} onClick={() => setViewingReview(r)}>Xem lý do</button>}
-                </div>
-              </article>;
+                </article>
+              );
             })}
-          </div>}
+          </div>
+        )}
+
+        {/* Inline Reassessment / Consensus Update Form matching user request */}
+        {!readOnly && round.active && !round.finalDecision && isReviewerOnRound && (
+          <div className="screening-inline-reassess-card rounded-xl border border-border/80 bg-card p-4 space-y-3.5 shadow-xs">
+            <div className="flex items-center justify-between">
+              <h5 className="text-xs sm:text-sm font-semibold text-foreground flex items-center gap-1.5">
+                <Edit3 size={14} className="text-primary" />
+                <span>Đánh giá của tôi</span>
+              </h5>
+              {myReview && (
+                <span className="text-[11px] text-muted-foreground">
+                  Phiếu hiện tại: <strong>{choiceLabels[myReview.decision]}</strong> (v{myReview.revision})
+                </span>
+              )}
+            </div>
+
+            <form onSubmit={handleReassessSubmit} className="screening-form space-y-3.5" aria-label="Cập nhật đánh giá của tôi">
+              {/* Radio choice cards */}
+              <div className="grid grid-cols-2 gap-2.5">
+                <label className={`flex items-center gap-2.5 p-3 rounded-lg border text-xs font-semibold cursor-pointer transition-all ${newDecision === "INCLUDE" ? "border-emerald-500 bg-emerald-50/80 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200 ring-2 ring-emerald-500/20 shadow-xs" : "border-border/80 bg-background text-foreground/80 hover:bg-muted/50"}`}>
+                  <input
+                    type="radio"
+                    name="inline-eval-decision"
+                    value="INCLUDE"
+                    checked={newDecision === "INCLUDE"}
+                    onChange={() => setNewDecision("INCLUDE")}
+                    disabled={command.isPending}
+                    className="accent-emerald-600"
+                  />
+                  <div className="flex items-center gap-1.5">
+                    <CheckCircle2 size={14} className={newDecision === "INCLUDE" ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"} />
+                    <span>Phù hợp</span>
+                  </div>
+                </label>
+
+                <label className={`flex items-center gap-2.5 p-3 rounded-lg border text-xs font-semibold cursor-pointer transition-all ${newDecision === "EXCLUDE" ? "border-rose-500 bg-rose-50/80 text-rose-900 dark:bg-rose-950/40 dark:text-rose-200 ring-2 ring-rose-500/20 shadow-xs" : "border-border/80 bg-background text-foreground/80 hover:bg-muted/50"}`}>
+                  <input
+                    type="radio"
+                    name="inline-eval-decision"
+                    value="EXCLUDE"
+                    checked={newDecision === "EXCLUDE"}
+                    onChange={() => setNewDecision("EXCLUDE")}
+                    disabled={command.isPending}
+                    className="accent-rose-600"
+                  />
+                  <div className="flex items-center gap-1.5">
+                    <XCircle size={14} className={newDecision === "EXCLUDE" ? "text-rose-600 dark:text-rose-400" : "text-muted-foreground"} />
+                    <span>Không phù hợp</span>
+                  </div>
+                </label>
+              </div>
+
+              {/* Exclusion criteria if EXCLUDE */}
+              {newDecision === "EXCLUDE" && Boolean(round.settings?.exclusionCriteria?.length) && (
+                <div>
+                  <label className="text-xs font-semibold text-foreground block mb-1">
+                    Tiêu chí loại trừ <span className="text-rose-500">*</span>
+                  </label>
+                  <select
+                    aria-label="Tiêu chí loại"
+                    value={exclusionReason}
+                    onChange={e => setExclusionReason(e.target.value)}
+                    required
+                    className="w-full rounded-lg border border-border bg-background p-2.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  >
+                    <option value="">Chọn tiêu chí loại trừ...</option>
+                    {round.settings.exclusionCriteria!.map(criterion => (
+                      <option key={criterion} value={criterion}>{criterion}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Fulltext reference if FULL_TEXT scope */}
+              {round.phase === "FULL_TEXT" && (
+                <div>
+                  <label className="text-xs font-semibold text-foreground block mb-1">
+                    Nguồn toàn văn và vị trí đã đối chiếu <span className="text-rose-500">*</span>
+                  </label>
+                  <textarea
+                    aria-label="Nguồn toàn văn và vị trí đã đối chiếu"
+                    value={fullTextReference}
+                    onChange={e => setFullTextReference(e.target.value)}
+                    required
+                    minLength={10}
+                    maxLength={1000}
+                    rows={2}
+                    className="w-full rounded-lg border border-border bg-background p-2.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+              )}
+
+              {/* Lý do cập nhật */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-semibold text-foreground">
+                    Lý do cập nhật <span className="text-rose-500">*</span>
+                  </label>
+                  <span className="text-[11px] text-muted-foreground font-normal">
+                    {reassessReason.length}/2000 ký tự (tối thiểu 5)
+                  </span>
+                </div>
+                <textarea
+                  value={reassessReason}
+                  onChange={e => setReassessReason(e.target.value)}
+                  placeholder="Ghi rõ lý do bạn cập nhật hoặc căn cứ đối chiếu từ bài báo..."
+                  rows={3}
+                  required
+                  minLength={5}
+                  maxLength={2000}
+                  disabled={command.isPending}
+                  className="w-full rounded-lg border border-border bg-background p-2.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+              </div>
+
+              {/* Explanatory note */}
+              <p className="text-xs text-muted-foreground flex items-center gap-1.5 leading-relaxed">
+                <Info size={13} className="shrink-0 text-muted-foreground" />
+                <span>Mọi phiên bản được lưu. Hệ thống chốt khi hai đánh giá hiện hành trùng nhau.</span>
+              </p>
+
+              {/* Action buttons */}
+              <div className="flex items-center justify-between pt-1">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setNewDecision(myReview?.decision ?? "");
+                    setReassessReason("");
+                    setExclusionReason(myCurrentReview?.exclusionReason ?? "");
+                  }}
+                  className="text-xs text-muted-foreground hover:text-foreground"
+                >
+                  Quay lại
+                </Button>
+
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={
+                    command.isPending ||
+                    !newDecision ||
+                    reassessReason.trim().length < 5 ||
+                    (newDecision === "EXCLUDE" && Boolean(round.settings?.exclusionCriteria?.length) && !exclusionReason.trim()) ||
+                    (round.phase === "FULL_TEXT" && fullTextReference.trim().length < 10)
+                  }
+                  className="text-xs font-semibold px-4 h-8"
+                >
+                  {command.isPending ? "Đang lưu..." : "Cập nhật đánh giá"}
+                </Button>
+              </div>
+            </form>
+          </div>
+        )}
       </section>
 
       <div className="screening-resolution-panel screening-discussion-panel" role="tabpanel" id={`${workspaceId}-discussion-panel`} aria-labelledby={`${workspaceId}-discussion-tab`} hidden={activeTab !== "discussion"} tabIndex={0}>
