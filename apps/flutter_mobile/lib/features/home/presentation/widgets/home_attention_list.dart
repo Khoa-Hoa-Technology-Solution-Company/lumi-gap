@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/core/utils/relative_time.dart';
 import 'package:flutter_mobile/features/home/data/home_models.dart';
@@ -74,7 +75,7 @@ class HomeAttentionList extends StatelessWidget {
                               ),
                             if (items[i].occurredAt != null)
                               Text(
-                                relativeTimeVi(items[i].occurredAt!),
+                                relativeTime(items[i].occurredAt!, context.appLocale),
                                 style: theme.textTheme.bodySmall?.copyWith(
                                   color: lumi.muted,
                                 ),
@@ -85,7 +86,7 @@ class HomeAttentionList extends StatelessWidget {
                       if (items[i].count != null) ...[
                         const SizedBox(width: 8),
                         Semantics(
-                          label: '${items[i].count} mục',
+                          label: context.plural(items[i].count!, one: '{{count}} item', other: '{{count}} items'),
                           excludeSemantics: true,
                           child: Container(
                             padding: const EdgeInsets.symmetric(

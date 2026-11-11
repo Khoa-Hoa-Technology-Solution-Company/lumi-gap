@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/widgets/app_empty_state.dart';
 import 'package:flutter_mobile/core/widgets/app_error_state.dart';
 import 'package:flutter_mobile/core/widgets/app_loading.dart';
@@ -20,7 +21,7 @@ class KeywordPapersScreen extends ConsumerWidget {
       appBar: AppBar(title: Text(decoded)),
       body: query.when(
         data: (data) {
-          if (data.papers.isEmpty) return const AppEmptyState(title: 'No papers found', message: 'Try another keyword.');
+          if (data.papers.isEmpty) return AppEmptyState(title: context.t('No papers found'), message: context.t('Try another keyword.'));
           return ListView(
             padding: const EdgeInsets.all(16),
             children: data.papers
@@ -29,7 +30,7 @@ class KeywordPapersScreen extends ConsumerWidget {
                     id: paper.id,
                     title: paper.title,
                     authors: paper.authors.map((author) => author.displayName).join(', '),
-                    venueAndYear: '${paper.publicationYear} - ${paper.citationCount} cites',
+                    venueAndYear: context.t('{{publicationYear}} - {{citationCount}} cites', {'publicationYear': paper.publicationYear, 'citationCount': paper.citationCount}),
                     score: paper.dataQualityScore.toStringAsFixed(2),
                     onTap: () => context.push('/paper/${paper.id}'),
                   ),
@@ -37,7 +38,7 @@ class KeywordPapersScreen extends ConsumerWidget {
                 .toList(),
           );
         },
-        loading: () => const AppLoading(fullScreen: true, message: 'Loading papers...'),
+        loading: () => AppLoading(fullScreen: true, message: context.t('Loading papers...')),
         error: (error, _) => AppErrorState(message: error.toString()),
       ),
     );

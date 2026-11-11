@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/widgets/app_empty_state.dart';
 import 'package:flutter_mobile/core/widgets/app_error_state.dart';
 import 'package:flutter_mobile/core/widgets/app_loading.dart';
@@ -36,11 +37,11 @@ class _BookmarksScreenState extends ConsumerState<BookmarksScreen> {
         title: Text(title),
         content: Text(content),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(context, false), child: Text(context.t('Cancel'))),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
             style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Delete'),
+            child: Text(context.t('Delete')),
           ),
         ],
       ),
@@ -64,7 +65,7 @@ class _BookmarksScreenState extends ConsumerState<BookmarksScreen> {
     final isDark = theme.brightness == Brightness.dark;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Bookmarks')),
+      appBar: AppBar(title: Text(context.t('Bookmarks'))),
       body: SafeArea(
       child: RefreshIndicator(
         onRefresh: () async {
@@ -90,9 +91,9 @@ class _BookmarksScreenState extends ConsumerState<BookmarksScreen> {
 
                     final totalCount = paperBookmarks.length + reports.length;
                     final filters = [
-                      ('All ($totalCount)', 'all'),
-                      ('Papers (${paperBookmarks.length})', 'paper'),
-                      ('Reports (${reports.length})', 'report'),
+                      (context.t('All ({{totalCount}})', {'totalCount': totalCount}), 'all'),
+                      (context.t('Papers ({{length}})', {'length': paperBookmarks.length}), 'paper'),
+                      (context.t('Reports ({{length}})', {'length': reports.length}), 'report'),
                     ];
 
                     return Column(
@@ -134,17 +135,17 @@ class _BookmarksScreenState extends ConsumerState<BookmarksScreen> {
                         if (displayPapers.isEmpty && displayReports.isEmpty)
                           AppEmptyState(
                             icon: Icons.bookmark_outline,
-                            title: _filter == 'report' ? 'No reports yet' : 'No saved items yet',
+                            title: _filter == 'report' ? context.t('No reports yet') : context.t('No saved items yet'),
                             message: _filter == 'report'
-                                ? 'Create AI reports from the Reports screen to keep them here.'
-                                : 'Save papers from Home or Paper Detail to build your research library.',
+                                ? context.t('Create AI reports from the Reports screen to keep them here.')
+                                : context.t('Save papers from Home or Paper Detail to build your research library.'),
                           )
                         else ...[
                           ...displayPapers.map((bookmark) {
                             final paper = bookmark.paperDetail;
-                            final title = paper?.title ?? 'Saved paper';
-                            final authors = paper?.authors.map((a) => a.displayName).join(', ') ?? 'Unknown authors';
-                            final subtitle = '${paper?.journalName ?? 'Paper'} - ${paper?.publicationYear ?? 'Unknown year'}';
+                            final title = paper?.title ?? context.t('Saved paper');
+                            final authors = paper?.authors.map((a) => a.displayName).join(', ') ?? context.t('Unknown authors');
+                            final subtitle = '${paper?.journalName ?? context.t('Paper')} - ${paper?.publicationYear ?? context.t('Unknown year')}';
                             return Dismissible(
                               key: Key(bookmark.id),
                               direction: DismissDirection.endToStart,
@@ -158,7 +159,7 @@ class _BookmarksScreenState extends ConsumerState<BookmarksScreen> {
                                 padding: const EdgeInsets.only(right: 24),
                                 child: const Icon(Icons.delete_outline, color: Colors.white, size: 24),
                               ),
-                              confirmDismiss: (direction) => _showConfirmDialog('Remove bookmark', 'Delete this saved item?'),
+                              confirmDismiss: (direction) => _showConfirmDialog(context.t('Remove bookmark'), context.t('Delete this saved item?')),
                               onDismissed: (direction) => _deleteBookmarkDirectly(bookmark.id),
                               child: Card(
                                 elevation: 0,
@@ -197,7 +198,7 @@ class _BookmarksScreenState extends ConsumerState<BookmarksScreen> {
                                                   borderRadius: BorderRadius.circular(4),
                                                 ),
                                                 child: Text(
-                                                  'PAPER',
+                                                  context.t('PAPER'),
                                                   style: TextStyle(
                                                     fontSize: 10,
                                                     fontWeight: FontWeight.bold,
@@ -270,7 +271,7 @@ class _BookmarksScreenState extends ConsumerState<BookmarksScreen> {
                                 padding: const EdgeInsets.only(right: 24),
                                 child: const Icon(Icons.delete_outline, color: Colors.white, size: 24),
                               ),
-                              confirmDismiss: (direction) => _showConfirmDialog('Delete report', 'Delete this report?'),
+                              confirmDismiss: (direction) => _showConfirmDialog(context.t('Delete report'), context.t('Delete this report?')),
                               onDismissed: (direction) => _deleteReportDirectly(report.id),
                               child: Card(
                                 elevation: 0,
@@ -315,7 +316,7 @@ class _BookmarksScreenState extends ConsumerState<BookmarksScreen> {
                                                   borderRadius: BorderRadius.circular(4),
                                                 ),
                                                 child: Text(
-                                                  'REPORT',
+                                                  context.t('REPORT'),
                                                   style: TextStyle(
                                                     fontSize: 10,
                                                     fontWeight: FontWeight.bold,
@@ -366,11 +367,11 @@ class _BookmarksScreenState extends ConsumerState<BookmarksScreen> {
                       ],
                     );
                   },
-                  loading: () => const AppLoading(message: 'Loading reports...'),
+                  loading: () => AppLoading(message: context.t('Loading reports...')),
                   error: (error, _) => AppErrorState(message: error.toString()),
                 );
               },
-              loading: () => const AppLoading(message: 'Loading bookmarks...'),
+              loading: () => AppLoading(message: context.t('Loading bookmarks...')),
               error: (error, _) => AppErrorState(message: error.toString()),
             ),
           ],

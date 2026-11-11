@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/app_theme.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/core/utils/web_href.dart';
@@ -161,6 +162,7 @@ Future<void> _pump(
   _Harness h, {
   double height = 4000,
   double width = 412,
+  AppLocale locale = AppLocale.vi,
 }) async {
   // A very tall window so the lazy ListView builds every section at once.
   tester.view
@@ -218,6 +220,9 @@ Future<void> _pump(
         }),
       ],
       child: MaterialApp.router(
+        locale: locale.locale,
+        supportedLocales: AppLocale.supportedLocales,
+        localizationsDelegates: appLocalizationsDelegates,
         theme: AppTheme.lightTheme,
         routerConfig: h.router,
       ),
@@ -644,28 +649,36 @@ void main() {
     });
   });
 
-  testWidgets('survives system text scale 1.3 at 320dp without overflow', (
-    tester,
-  ) async {
-    tester.platformDispatcher.textScaleFactorTestValue = 1.3;
-    addTearDown(tester.platformDispatcher.clearAllTestValues);
+  for (final locale in AppLocale.values) {
+    testWidgets(
+      'survives system text scale 1.3 at 320dp without overflow '
+      '(${locale.code})',
+      (tester) async {
+        tester.platformDispatcher.textScaleFactorTestValue = 1.3;
+        addTearDown(tester.platformDispatcher.clearAllTestValues);
 
-    final h = _Harness();
-    await _pump(tester, h, width: 320, height: 900);
-    await tester.pumpAndSettle();
+        final h = _Harness();
+        await _pump(tester, h, width: 320, height: 900, locale: locale);
+        await tester.pumpAndSettle();
 
-    final scaler = MediaQuery.textScalerOf(
-      tester.element(find.byType(HomeScreen)),
+        final scaler = MediaQuery.textScalerOf(
+          tester.element(find.byType(HomeScreen)),
+        );
+        expect(
+          scaler.scale(10),
+          closeTo(13, 0.01),
+          reason: 'scale really applied',
+        );
+
+        for (final text in [
+          'Retrieval-Augmented Generation',
+          'Một bài báo mới',
+          'Cách đánh giá bộ dữ liệu y tế?',
+        ]) {
+          await _scrollTo(tester, find.text(text));
+        }
+        expect(tester.takeException(), isNull);
+      },
     );
-    expect(scaler.scale(10), closeTo(13, 0.01), reason: 'scale really applied');
-
-    for (final text in [
-      'Retrieval-Augmented Generation',
-      'Một bài báo mới',
-      'Cách đánh giá bộ dữ liệu y tế?',
-    ]) {
-      await _scrollTo(tester, find.text(text));
-    }
-    expect(tester.takeException(), isNull);
-  });
+  }
 }

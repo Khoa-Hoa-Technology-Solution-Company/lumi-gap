@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/features/bookmarks/data/bookmarks_api.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -66,7 +67,7 @@ class PaperCard extends ConsumerWidget {
                     if (onBookmarkTap != null)
                       IconButton(
                         onPressed: onBookmarkTap,
-                        tooltip: isBookmarked ? 'Remove bookmark' : 'Bookmark',
+                        tooltip: isBookmarked ? context.t('Remove bookmark') : context.t('Bookmark'),
                         constraints:
                             const BoxConstraints(minWidth: 48, minHeight: 48),
                         padding: EdgeInsets.zero,

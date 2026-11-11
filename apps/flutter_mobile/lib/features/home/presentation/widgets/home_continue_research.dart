@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/features/home/data/home_models.dart';
 
@@ -17,7 +18,7 @@ class HomeStageChip extends StatelessWidget {
         borderRadius: BorderRadius.circular(6),
       ),
       child: Text(
-        stage.label,
+        context.t(stage.label),
         style: Theme.of(
           context,
         ).textTheme.labelMedium?.copyWith(color: lumi.primary),
@@ -105,9 +106,9 @@ class HomeContinueResearch extends StatelessWidget {
                       Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          stat(p.paperCount, 'bài báo'),
-                          stat(p.screenedCount, 'đã sàng lọc'),
-                          stat(p.candidateGapCount, 'khoảng trống ứng viên'),
+                          stat(p.paperCount, context.t('papers')),
+                          stat(p.screenedCount, context.t('screened')),
+                          stat(p.candidateGapCount, context.t('candidate gaps')),
                         ],
                       ),
                     ],

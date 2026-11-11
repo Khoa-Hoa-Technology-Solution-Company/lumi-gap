@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 
 class AppErrorState extends StatelessWidget {
 
@@ -25,7 +26,7 @@ class AppErrorState extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             Text(
-              'An error occurred',
+              context.t('An error occurred'),
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w600,
                   ),
@@ -42,7 +43,7 @@ class AppErrorState extends StatelessWidget {
               const SizedBox(height: 24),
               FilledButton.tonal(
                 onPressed: onRetry,
-                child: const Text('Try Again'),
+                child: Text(context.t('Try Again')),
               ),
             ]
           ],

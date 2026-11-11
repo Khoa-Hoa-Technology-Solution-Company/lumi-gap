@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/features/reports/data/reports_api.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -38,9 +39,9 @@ class ProjectReportsTab extends StatelessWidget {
                 context.push('/reports?create=true&projectId=$projectId'),
               ),
               icon: const Icon(Icons.add, color: Colors.white),
-              label: const Text(
-                'Generate RAG Report',
-                style: TextStyle(
+              label: Text(
+                context.t('Generate RAG Report'),
+                style: const TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.bold,
                 ),
@@ -52,10 +53,10 @@ class ProjectReportsTab extends StatelessWidget {
           child: query.when(
             data: (data) {
               if (data.reports.isEmpty) {
-                return const Center(
+                return Center(
                   child: Text(
-                    'No analytical reports generated yet.',
-                    style: TextStyle(fontStyle: FontStyle.italic),
+                    context.t('No analytical reports generated yet.'),
+                    style: const TextStyle(fontStyle: FontStyle.italic),
                   ),
                 );
               }
@@ -73,7 +74,7 @@ class ProjectReportsTab extends StatelessWidget {
                     ),
                     child: ListTile(
                       title: Text(
-                        report.topic ?? 'Dataset report',
+                        report.topic ?? context.t('Dataset report'),
                         style: const TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 13,
@@ -103,7 +104,7 @@ class ProjectReportsTab extends StatelessWidget {
             loading: () => const Center(child: CircularProgressIndicator()),
             error: (err, _) => Center(
               child: Text(
-                'Error loading reports: $err',
+                context.t('Error loading reports: {{err}}', {'err': err}),
                 style: const TextStyle(color: Colors.red),
               ),
             ),

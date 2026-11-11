@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/core/utils/relative_time.dart';
 import 'package:flutter_mobile/features/home/data/home_models.dart';
@@ -58,7 +59,7 @@ class HomeCommunityList extends StatelessWidget {
                               ),
                               const SizedBox(width: 4),
                               Text(
-                                '${items[i].replyCount} trả lời',
+                                context.plural(items[i].replyCount, one: '{{count}} reply', other: '{{count}} replies'),
                                 style: theme.textTheme.bodySmall?.copyWith(
                                   color: lumi.muted,
                                 ),
@@ -67,7 +68,7 @@ class HomeCommunityList extends StatelessWidget {
                           ),
                           if (items[i].occurredAt != null)
                             Text(
-                              relativeTimeVi(items[i].occurredAt!),
+                              relativeTime(items[i].occurredAt!, context.appLocale),
                               style: theme.textTheme.bodySmall?.copyWith(
                                 color: lumi.muted,
                               ),

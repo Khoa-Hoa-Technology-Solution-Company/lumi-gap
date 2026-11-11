@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/router/app_router.dart';
 import 'package:flutter_mobile/core/theme/app_theme.dart';
 import 'package:flutter_mobile/features/auth/data/auth_api.dart';
@@ -12,6 +13,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
 import 'auth_test_support.dart';
+import 'i18n_support.dart';
 
 Future<void> _pumpForgot(
   WidgetTester tester,
@@ -22,6 +24,9 @@ Future<void> _pumpForgot(
     ProviderScope(
       overrides: [authApiProvider.overrideWithValue(api)],
       child: MaterialApp(
+        locale: AppLocale.vi.locale,
+        supportedLocales: AppLocale.supportedLocales,
+        localizationsDelegates: appLocalizationsDelegates,
         theme: AppTheme.lightTheme,
         home: ForgotPasswordScreen(initialEmail: initialEmail),
       ),
@@ -38,11 +43,11 @@ Future<void> _enterAndSend(WidgetTester tester, String email) async {
 void main() {
   group('validateRecoveryEmail', () {
     test('rejects empty and malformed, accepts trimmed valid', () {
-      expect(validateRecoveryEmail(''), 'Vui lòng nhập email');
-      expect(validateRecoveryEmail('   '), 'Vui lòng nhập email');
-      expect(validateRecoveryEmail('abc'), 'Email không hợp lệ');
-      expect(validateRecoveryEmail('a@b'), 'Email không hợp lệ');
-      expect(validateRecoveryEmail('a b@c.vn'), 'Email không hợp lệ');
+      expect(vi(validateRecoveryEmail('')!), 'Vui lòng nhập email');
+      expect(vi(validateRecoveryEmail('   ')!), 'Vui lòng nhập email');
+      expect(vi(validateRecoveryEmail('abc')!), 'Email không hợp lệ');
+      expect(vi(validateRecoveryEmail('a@b')!), 'Email không hợp lệ');
+      expect(vi(validateRecoveryEmail('a b@c.vn')!), 'Email không hợp lệ');
       expect(validateRecoveryEmail(' minh@fpt.edu.vn '), isNull);
     });
   });
@@ -74,7 +79,7 @@ void main() {
 
         expect(find.text('Email không hợp lệ'), findsOneWidget);
         expect(api.forgotCalls, isEmpty);
-        expect(find.text(forgotPasswordSuccessMessage), findsNothing);
+        expect(find.text(vi(forgotPasswordSuccessMessage)), findsNothing);
       },
     );
 
@@ -115,9 +120,9 @@ void main() {
         await tester.pump();
 
         expect(api.forgotCalls, [email]);
-        expect(find.text(forgotPasswordSuccessMessage), findsOneWidget);
+        expect(find.text(vi(forgotPasswordSuccessMessage)), findsOneWidget);
         expect(
-          forgotPasswordSuccessMessage,
+          vi(forgotPasswordSuccessMessage),
           contains('Nếu email này có tài khoản'),
         );
         expect(find.textContaining(email), findsNothing);
@@ -150,7 +155,7 @@ void main() {
         find.text('Bạn đã thử quá nhiều lần, vui lòng thử lại sau.'),
         findsOneWidget,
       );
-      expect(find.text(forgotPasswordSuccessMessage), findsNothing);
+      expect(find.text(vi(forgotPasswordSuccessMessage)), findsNothing);
       expect(find.text('Gửi hướng dẫn'), findsOneWidget);
     });
 
@@ -178,7 +183,7 @@ void main() {
       await tester.pump();
 
       expect(api.forgotCalls, hasLength(2));
-      expect(find.text(forgotPasswordSuccessMessage), findsOneWidget);
+      expect(find.text(vi(forgotPasswordSuccessMessage)), findsOneWidget);
     });
 
     testWidgets('double tap sends exactly one request and locks the button', (
@@ -208,7 +213,7 @@ void main() {
       await tester.pump();
       await tester.pump();
       expect(api.forgotCalls, hasLength(1));
-      expect(find.text(forgotPasswordSuccessMessage), findsOneWidget);
+      expect(find.text(vi(forgotPasswordSuccessMessage)), findsOneWidget);
     });
 
     testWidgets('prefills the email passed from the login screen', (
@@ -233,6 +238,9 @@ void main() {
             builder: (context, ref, _) {
               router = ref.watch(routerProvider);
               return MaterialApp.router(
+                locale: AppLocale.vi.locale,
+                supportedLocales: AppLocale.supportedLocales,
+                localizationsDelegates: appLocalizationsDelegates,
                 theme: AppTheme.lightTheme,
                 routerConfig: router,
               );
@@ -248,7 +256,11 @@ void main() {
       'signed out: /forgot-password is public, not bounced to login',
       (tester) async {
         final router = await pumpRouter(tester);
-        expect(find.text('Sign in'), findsWidgets, reason: 'starts on login');
+        expect(
+          find.text(vi('Sign in')),
+          findsWidgets,
+          reason: 'starts on login',
+        );
 
         router.go('/forgot-password');
         await tester.pumpAndSettle();

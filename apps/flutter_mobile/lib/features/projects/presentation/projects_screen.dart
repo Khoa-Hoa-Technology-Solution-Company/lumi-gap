@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/widgets/app_empty_state.dart';
 import 'package:flutter_mobile/core/widgets/app_error_state.dart';
 import 'package:flutter_mobile/core/widgets/app_loading.dart';
@@ -29,8 +30,8 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
     final cleanTitle = title.text.trim();
     if (cleanTitle.isEmpty || cleanTitle.length > 100) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Project title must be 1-100 characters.'),
+        SnackBar(
+          content: Text(context.t('Project title must be 1-100 characters.')),
         ),
       );
       return;
@@ -53,7 +54,7 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
     return Scaffold(
       appBar: AppBar(
         automaticallyImplyLeading: false,
-        title: const Text('Dự án'),
+        title: Text(context.t('Projects')),
         surfaceTintColor: Colors.transparent,
         actions: const [NotificationBell(), SizedBox(width: 4)],
       ),
@@ -68,7 +69,7 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
             ),
             const SizedBox(height: 22),
             Text(
-              'Active workspaces',
+              context.t('Active workspaces'),
               style: theme.textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.w800,
                 color: theme.colorScheme.onSurface,
@@ -78,12 +79,12 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
             projects.when(
               data: (items) {
                 if (items.isEmpty) {
-                  return const Padding(
-                    padding: EdgeInsets.only(top: 18),
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 18),
                     child: AppEmptyState(
                       icon: Icons.folder_open,
-                      title: 'No projects yet',
-                      message: 'Create your first research workspace above.',
+                      title: context.t('No projects yet'),
+                      message: context.t('Create your first research workspace above.'),
                     ),
                   );
                 }
@@ -102,7 +103,7 @@ class _ProjectsScreenState extends ConsumerState<ProjectsScreen> {
                       .toList(),
                 );
               },
-              loading: () => const AppLoading(message: 'Loading projects...'),
+              loading: () => AppLoading(message: context.t('Loading projects...')),
               error: (error, _) => AppErrorState(message: error.toString()),
             ),
           ],
@@ -175,14 +176,14 @@ class _CreateProjectPanel extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Start a research project',
+                        context.t('Start a research project'),
                         style: theme.textTheme.titleSmall?.copyWith(
                           fontWeight: FontWeight.w800,
                         ),
                       ),
                       const SizedBox(height: 3),
                       Text(
-                        'Group papers, team chat, and AI notes in one place.',
+                        context.t('Group papers, team chat, and AI notes in one place.'),
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.onSurface.withValues(
                             alpha: 0.64,
@@ -205,7 +206,7 @@ class _CreateProjectPanel extends StatelessWidget {
                   textInputAction: TextInputAction.next,
                   decoration: _fieldDecoration(
                     context,
-                    label: 'Project title',
+                    label: context.t('Project title'),
                     icon: Icons.drive_file_rename_outline,
                   ),
                 ),
@@ -216,7 +217,7 @@ class _CreateProjectPanel extends StatelessWidget {
                   maxLines: 3,
                   decoration: _fieldDecoration(
                     context,
-                    label: 'Description',
+                    label: context.t('Description'),
                     icon: Icons.notes_outlined,
                   ),
                 ),
@@ -227,7 +228,7 @@ class _CreateProjectPanel extends StatelessWidget {
                   child: FilledButton.icon(
                     onPressed: onCreate,
                     icon: const Icon(Icons.add),
-                    label: const Text('Create project'),
+                    label: Text(context.t('Create project')),
                     style: FilledButton.styleFrom(
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(8),
@@ -260,7 +261,7 @@ class _ProjectCard extends StatelessWidget {
     final theme = Theme.of(context);
     final description = project.description?.trim().isNotEmpty == true
         ? project.description!.trim()
-        : 'No description';
+        : context.t('No description');
 
     return Material(
       color: isDark ? const Color(0xFF111C2E) : Colors.white,
@@ -321,11 +322,11 @@ class _ProjectCard extends StatelessWidget {
                       children: [
                         _MetaPill(
                           icon: Icons.description_outlined,
-                          label: '${project.papers.length} papers',
+                          label: context.plural(project.papers.length, one: '{{count}} paper', other: '{{count}} papers'),
                         ),
                         _MetaPill(
                           icon: Icons.group_outlined,
-                          label: '${project.members.length} members',
+                          label: context.plural(project.members.length, one: '{{count}} member', other: '{{count}} members'),
                         ),
                       ],
                     ),

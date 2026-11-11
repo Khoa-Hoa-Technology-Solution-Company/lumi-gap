@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/core/utils/web_href.dart';
 import 'package:flutter_mobile/core/widgets/notification_bell.dart';
@@ -20,9 +21,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 String? _roleLabel(AcademicProfileType? type) => switch (type) {
-  AcademicProfileType.student => 'Sinh viên',
-  AcademicProfileType.researcher => 'Nhà nghiên cứu',
-  AcademicProfileType.lecturer => 'Giảng viên',
+  AcademicProfileType.student => tk('Student'),
+  AcademicProfileType.researcher => tk('Researcher'),
+  AcademicProfileType.lecturer => tk('Lecturer'),
   null => null,
 };
 
@@ -61,7 +62,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     ]);
     if (!mounted || !results.contains(false)) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Chưa làm mới được một số phần.')),
+      SnackBar(content: Text(context.t('Some sections could not be refreshed.'))),
     );
   }
 
@@ -120,12 +121,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     void retryResearch() => ref.invalidate(homeResearchProvider);
 
     final name = research.value?.userName ?? user?.fullName;
-    final role = _roleLabel(user?.academicProfileType);
+    final roleKey = _roleLabel(user?.academicProfileType);
+    final role = roleKey == null ? null : context.t(roleKey);
 
     return Scaffold(
       appBar: AppBar(
         automaticallyImplyLeading: false,
-        title: const Text('Trang chủ'),
+        title: Text(context.t('Home')),
         actions: const [NotificationBell(), SizedBox(width: 4)],
       ),
       body: RefreshIndicator(
@@ -142,7 +144,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   Text(
-                    name == null ? 'Chào bạn' : 'Chào, $name',
+                    name == null ? context.t('Hello') : context.t('Hello, {{name}}', {'name': name}),
                     style: theme.textTheme.headlineSmall,
                   ),
                   if (role != null)
@@ -166,12 +168,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ),
             ),
             _section<HomeResearchOverview, List<HomeAttentionItem>>(
-              title: 'Việc cần làm',
+              title: context.t('To do'),
               async: research,
               pick: (o) => o.attentionSection,
               retry: retryResearch,
               isEmpty: (d) => d.isEmpty,
-              emptyText: 'Bạn không có việc nào cần xử lý.',
+              emptyText: context.t('You have nothing to handle.'),
               skeletonRows: 3,
               builder: (items) => HomeAttentionList(
                 items: items.take(5).toList(),
@@ -179,26 +181,26 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ),
             ),
             _section<HomeResearchOverview, List<HomeResearchWorkspace>>(
-              title: 'Tiếp tục nghiên cứu',
+              title: context.t('Continue your research'),
               async: research,
               pick: (o) => o.continueSection,
               retry: retryResearch,
               isEmpty: (d) => d.isEmpty,
               emptyText:
-                  'Chưa có dự án nào. Tạo hoặc tham gia một dự án để bắt đầu.',
+                  context.t('No projects yet. Create or join a project to get started.'),
               skeletonHeight: 160,
               onAll: () => context.go('/projects'),
               builder: (items) =>
                   HomeContinueResearch(items: items, onOpen: _open),
             ),
             _section<HomeResearchOverview, List<HomeRecommendedPaper>>(
-              title: 'Gợi ý bài báo',
+              title: context.t('Suggested papers'),
               async: research,
               pick: (o) => o.recommendations,
               retry: retryResearch,
               isEmpty: (d) => d.isEmpty,
               emptyText:
-                  'Chưa có gợi ý nào. Thêm chủ đề quan tâm để nhận gợi ý.',
+                  context.t('No suggestions yet. Add topics you are interested in to get suggestions.'),
               skeletonHeight: 112,
               builder: (items) => HomeRecommendedList(
                 items: items,
@@ -206,12 +208,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ),
             ),
             _section<HomeOverview, List<HomeTrendTopic>>(
-              title: 'Xu hướng nổi bật',
+              title: context.t('Trending topics'),
               async: overview,
               pick: (o) => HomeSection.ready(o.topics.take(4).toList()),
               retry: retryOverview,
               isEmpty: (d) => d.isEmpty,
-              emptyText: 'Chưa có dữ liệu xu hướng.',
+              emptyText: context.t('No trend data yet.'),
               onAll: () => unawaited(context.push('/trends')),
               builder: (topics) => HomeTrendList(
                 topics: topics,
@@ -219,12 +221,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ),
             ),
             _section<HomeOverview, List<HomeRecentPaper>>(
-              title: 'Bài mới',
+              title: context.t('New papers'),
               async: overview,
               pick: (o) => HomeSection.ready(o.recentPapers.take(5).toList()),
               retry: retryOverview,
               isEmpty: (d) => d.isEmpty,
-              emptyText: 'Chưa có bài báo mới.',
+              emptyText: context.t('No new papers yet.'),
               skeletonHeight: 112,
               builder: (papers) => Column(
                 children: [
@@ -233,12 +235,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       id: p.id,
                       title: p.title,
                       authors: p.authors.isEmpty
-                          ? 'Chưa rõ tác giả'
+                          ? context.t('Unknown authors')
                           : formatAuthors(p.authors),
                       venueAndYear: [
-                        p.venue ?? 'Chưa rõ nơi đăng',
+                        p.venue ?? context.t('Unknown venue'),
                         if (p.year != null) '${p.year}',
-                        '${p.citationCount} trích dẫn',
+                        context.t('{{citationCount}} citations', {'citationCount': p.citationCount}),
                       ].join(' · '),
                       onTap: () => unawaited(context.push('/paper/${p.id}')),
                       onBookmarkTap: () => unawaited(_toggleBookmark(p.id)),
@@ -247,12 +249,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ),
             ),
             _section<HomeResearchOverview, List<HomeCommunityTopic>>(
-              title: 'Hoạt động cộng đồng',
+              title: context.t('Community activity'),
               async: research,
               pick: (o) => o.communityActivity,
               retry: retryResearch,
               isEmpty: (d) => d.isEmpty,
-              emptyText: 'Chưa có hoạt động cộng đồng nào.',
+              emptyText: context.t('No community activity yet.'),
               builder: (items) =>
                   HomeCommunityList(items: items, onOpen: _open),
             ),

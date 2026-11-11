@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/widgets/app_loading.dart';
 import 'package:flutter_mobile/features/admin/presentation/admin_sync_screen.dart';
 import 'package:flutter_mobile/features/auth/data/auth_models.dart';
@@ -37,7 +38,7 @@ class PlaceholderScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: Text(title)),
-      body: Center(child: Text('Screen: $title')),
+      body: Center(child: Text(context.t('Screen: {{title}}', {'title': title}))),
     );
   }
 }
@@ -95,8 +96,8 @@ final routerProvider = Provider<GoRouter>((ref) {
     routes: [
       GoRoute(
         path: '/splash',
-        builder: (context, state) => const Scaffold(
-          body: AppLoading(fullScreen: true, message: 'Initializing...'),
+        builder: (context, state) => Scaffold(
+          body: AppLoading(fullScreen: true, message: context.t('Initializing...')),
         ),
       ),
       GoRoute(

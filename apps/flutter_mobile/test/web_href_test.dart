@@ -1,3 +1,4 @@
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/utils/relative_time.dart';
 import 'package:flutter_mobile/core/utils/web_href.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -124,41 +125,70 @@ void main() {
     });
   });
 
-  group('relativeTimeVi', () {
+  group('relativeTime (vi)', () {
     final now = DateTime.utc(2026, 11, 9, 12);
     test('minutes, hours, days, then a date', () {
-      expect(relativeTimeVi(now, now: now), 'Vừa xong');
+      expect(relativeTime(now, AppLocale.vi, now: now), 'Vừa xong');
       expect(
-        relativeTimeVi(now.subtract(const Duration(seconds: 59)), now: now),
+        relativeTime(
+          now.subtract(const Duration(seconds: 59)),
+          AppLocale.vi,
+          now: now,
+        ),
         'Vừa xong',
       );
       expect(
-        relativeTimeVi(now.subtract(const Duration(minutes: 20)), now: now),
+        relativeTime(
+          now.subtract(const Duration(minutes: 20)),
+          AppLocale.vi,
+          now: now,
+        ),
         '20 phút trước',
       );
       expect(
-        relativeTimeVi(now.subtract(const Duration(minutes: 59)), now: now),
+        relativeTime(
+          now.subtract(const Duration(minutes: 59)),
+          AppLocale.vi,
+          now: now,
+        ),
         '59 phút trước',
       );
       expect(
-        relativeTimeVi(now.subtract(const Duration(hours: 1)), now: now),
+        relativeTime(
+          now.subtract(const Duration(hours: 1)),
+          AppLocale.vi,
+          now: now,
+        ),
         '1 giờ trước',
       );
       expect(
-        relativeTimeVi(now.subtract(const Duration(hours: 23)), now: now),
+        relativeTime(
+          now.subtract(const Duration(hours: 23)),
+          AppLocale.vi,
+          now: now,
+        ),
         '23 giờ trước',
       );
       expect(
-        relativeTimeVi(now.subtract(const Duration(days: 2)), now: now),
+        relativeTime(
+          now.subtract(const Duration(days: 2)),
+          AppLocale.vi,
+          now: now,
+        ),
         '2 ngày trước',
       );
       expect(
-        relativeTimeVi(now.subtract(const Duration(days: 6)), now: now),
+        relativeTime(
+          now.subtract(const Duration(days: 6)),
+          AppLocale.vi,
+          now: now,
+        ),
         '6 ngày trước',
       );
       expect(
-        relativeTimeVi(
+        relativeTime(
           DateTime(2026, 10, 25, 9),
+          AppLocale.vi,
           now: DateTime(2026, 11, 9, 12),
         ),
         '25/10/2026',
@@ -167,7 +197,7 @@ void main() {
 
     test('a timestamp in the future reads as just now', () {
       expect(
-        relativeTimeVi(now.add(const Duration(hours: 3)), now: now),
+        relativeTime(now.add(const Duration(hours: 3)), AppLocale.vi, now: now),
         'Vừa xong',
       );
     });

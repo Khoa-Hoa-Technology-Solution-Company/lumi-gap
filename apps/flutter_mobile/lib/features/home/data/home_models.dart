@@ -1,3 +1,4 @@
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/features/trends/data/trends_api.dart'
     show YearlyCount;
 
@@ -70,15 +71,22 @@ class HomeSection<T> {
 }
 
 enum HomeWorkflowStage {
-  collection('Thu thập'),
-  screening('Sàng lọc'),
-  evidence('Bằng chứng'),
-  gaps('Khoảng trống'),
-  revision('Chỉnh sửa'),
-  unknown('Đang thực hiện');
+  collection,
+  screening,
+  evidence,
+  gaps,
+  revision,
+  unknown;
 
-  const HomeWorkflowStage(this.label);
-  final String label;
+  /// English key; show with `context.t(stage.label)`.
+  String get label => switch (this) {
+    collection => tk('Collection'),
+    screening => tk('Screening'),
+    evidence => tk('Evidence'),
+    gaps => tk('Gaps'),
+    revision => tk('Revision'),
+    unknown => tk('In progress'),
+  };
 }
 
 enum HomeAttentionType {
@@ -93,13 +101,18 @@ enum HomeAttentionType {
 }
 
 enum HomeRecommendationReason {
-  interest('Theo chủ đề bạn quan tâm'),
-  project('Liên quan dự án của bạn'),
-  recent('Mới xuất bản'),
-  unknown('Gợi ý cho bạn');
+  interest,
+  project,
+  recent,
+  unknown;
 
-  const HomeRecommendationReason(this.label);
-  final String label;
+  /// English key; show with `context.t(reason.label)`.
+  String get label => switch (this) {
+    interest => tk('Based on your interests'),
+    project => tk('Related to your projects'),
+    recent => tk('Recently published'),
+    unknown => tk('Suggested for you'),
+  };
 }
 
 class HomeResearchWorkspace {
@@ -254,9 +267,8 @@ class HomeRecommendedPaper {
   /// Why it was suggested, from the API (the matching topic or field).
   final String? reasonLabel;
 
-  /// Chip text: the API's `reasonLabel` when present, otherwise derived from
-  /// [reason] ("Theo chủ đề bạn quan tâm", "Liên quan dự án của bạn",
-  /// "Mới xuất bản").
+  /// Chip text: the API's `reasonLabel` when present, otherwise the English
+  /// key of [reason] ("Based on your interests", ...), shown with `context.t`.
   String get chipText => reasonLabel ?? reason.label;
 }
 
@@ -273,6 +285,7 @@ List<String> _authorNames(Object? raw) {
 
 /// "A, B, C et al." for more than three authors.
 String formatAuthors(List<String> authors) => authors.length > 3
+    // i18n-ignore: "et al." is the citation convention in both languages
     ? '${authors.take(3).join(', ')} et al.'
     : authors.join(', ');
 

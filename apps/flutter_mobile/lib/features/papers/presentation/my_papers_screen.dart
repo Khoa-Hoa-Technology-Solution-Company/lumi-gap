@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/widgets/app_empty_state.dart';
 import 'package:flutter_mobile/core/widgets/app_error_state.dart';
 import 'package:flutter_mobile/core/widgets/app_loading.dart';
@@ -16,11 +17,11 @@ class MyPapersScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('My Papers'),
+        title: Text(context.t('My Papers')),
         surfaceTintColor: Colors.transparent,
         actions: [
           IconButton(
-            tooltip: 'Submit paper',
+            tooltip: context.t('Submit paper'),
             onPressed: () => context.push('/submit-paper'),
             icon: const Icon(Icons.add_circle_outline),
           ),
@@ -34,9 +35,9 @@ class MyPapersScreen extends ConsumerWidget {
               children: [
                 AppEmptyState(
                   icon: Icons.archive_outlined,
-                  title: 'No papers yet',
-                  message: 'Submit a paper request to start.',
-                  actionLabel: 'Submit paper',
+                  title: context.t('No papers yet'),
+                  message: context.t('Submit a paper request to start.'),
+                  actionLabel: context.t('Submit paper'),
                   onAction: () => context.push('/submit-paper'),
                 ),
               ],
@@ -60,9 +61,9 @@ class MyPapersScreen extends ConsumerWidget {
             ),
           );
         },
-        loading: () => const AppLoading(
+        loading: () => AppLoading(
           fullScreen: true,
-          message: 'Loading your papers...',
+          message: context.t('Loading your papers...'),
         ),
         error: (error, _) => AppErrorState(message: error.toString()),
       ),
@@ -108,14 +109,14 @@ class _PapersHeader extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '$count submitted ${count == 1 ? 'paper' : 'papers'}',
+                  context.plural(count, one: '{{count}} submitted paper', other: '{{count}} submitted papers'),
                   style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w900,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Track review state, year, and paper details here.',
+                  context.t('Track review state, year, and paper details here.'),
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurface.withValues(alpha: 0.64),
                   ),
@@ -188,7 +189,7 @@ class _PaperRequestCard extends StatelessWidget {
                       runSpacing: 8,
                       children: [
                         _StatusPill(
-                          label: _statusLabel(status),
+                          label: context.t(_statusLabel(status)),
                           color: statusColor,
                         ),
                         _MiniMeta(
@@ -283,13 +284,13 @@ class _MiniMeta extends StatelessWidget {
 
 String _statusLabel(String status) {
   final normalized = status.toLowerCase().replaceAll('_', ' ');
-  if (normalized.contains('pending')) return 'Pending review';
+  if (normalized.contains('pending')) return tk('Pending review');
   if (normalized.contains('approve') || normalized.contains('active')) {
-    return 'Approved';
+    return tk('Approved');
   }
-  if (normalized.contains('reject')) return 'Rejected';
-  if (normalized.contains('download')) return 'Downloaded';
-  return normalized.isEmpty ? 'Unknown' : normalized;
+  if (normalized.contains('reject')) return tk('Rejected');
+  if (normalized.contains('download')) return tk('Downloaded');
+  return normalized.isEmpty ? tk('Unknown') : normalized;
 }
 
 Color _statusColor(String status) {

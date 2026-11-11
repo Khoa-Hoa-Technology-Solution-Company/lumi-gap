@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/features/projects/data/projects_api.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -23,13 +24,13 @@ class ProjectPapersTab extends StatelessWidget {
       ref.invalidate(projectProvider(projectId));
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Paper removed from project.')),
+        SnackBar(content: Text(context.t('Paper removed from project.'))),
       );
     } on Object catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Failed to remove paper: $e'),
+          content: Text(context.t('Failed to remove paper: {{e}}', {'e': e})),
           backgroundColor: Colors.red,
         ),
       );
@@ -51,21 +52,21 @@ class ProjectPapersTab extends StatelessWidget {
                 color: Color(0xFF94A3B8),
               ),
               const SizedBox(height: 12),
-              const Text(
-                'No papers inside this project workspace yet.',
-                style: TextStyle(fontWeight: FontWeight.bold),
+              Text(
+                context.t('No papers inside this project workspace yet.'),
+                style: const TextStyle(fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 6),
-              const Text(
-                'Search for publications outside and tap "Add" button to associate them here.',
+              Text(
+                context.t('Search for publications outside and tap "Add" button to associate them here.'),
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
+                style: const TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
               ),
               const SizedBox(height: 16),
               ElevatedButton.icon(
                 onPressed: () => context.push('/search'),
                 icon: const Icon(Icons.search, size: 16),
-                label: const Text('Search publications'),
+                label: Text(context.t('Search publications')),
               ),
             ],
           ),
@@ -108,7 +109,7 @@ class ProjectPapersTab extends StatelessWidget {
                     children: [
                       Expanded(
                         child: Text(
-                          'Year: ${paper.publicationYear ?? 'N/A'} · Citations: ${paper.citationCount ?? 0}',
+                          context.t('Year: {{year}} · Citations: {{citations}}', {'year': paper.publicationYear ?? context.t('N/A'), 'citations': paper.citationCount ?? 0}),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:go_router/go_router.dart';
 
 class AppShellDestination {
@@ -9,11 +10,11 @@ class AppShellDestination {
 }
 
 /// The four root tabs, in branch order (see `app_router.dart`).
-const appShellDestinations = <AppShellDestination>[
-  AppShellDestination('Trang chủ', Icons.home_outlined, Icons.home),
-  AppShellDestination('Khám phá', Icons.explore_outlined, Icons.explore),
-  AppShellDestination('Dự án', Icons.folder_outlined, Icons.folder),
-  AppShellDestination('Hồ sơ', Icons.person_outline, Icons.person),
+final appShellDestinations = <AppShellDestination>[
+  AppShellDestination(tk('Home'), Icons.home_outlined, Icons.home),
+  AppShellDestination(tk('Explore'), Icons.explore_outlined, Icons.explore),
+  AppShellDestination(tk('Projects'), Icons.folder_outlined, Icons.folder),
+  AppShellDestination(tk('Profile'), Icons.person_outline, Icons.person),
 ];
 
 class AppShellScreen extends StatelessWidget {
@@ -48,7 +49,7 @@ class AppShellScreen extends StatelessWidget {
               NavigationDestination(
                 icon: Icon(d.icon),
                 selectedIcon: Icon(d.selectedIcon),
-                label: d.label,
+                label: context.t(d.label),
               ),
           ],
         ),

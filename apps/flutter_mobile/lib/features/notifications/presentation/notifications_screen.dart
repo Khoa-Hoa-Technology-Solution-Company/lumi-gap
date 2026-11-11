@@ -1,7 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
+import 'package:flutter_mobile/core/utils/relative_time.dart';
 import 'package:flutter_mobile/core/widgets/app_empty_state.dart';
 import 'package:flutter_mobile/core/widgets/app_error_state.dart';
 import 'package:flutter_mobile/core/widgets/app_loading.dart';
@@ -17,7 +19,7 @@ class NotificationsScreen extends ConsumerWidget {
     final query = ref.watch(notificationsProvider);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Notifications'),
+        title: Text(context.t('Notifications')),
         surfaceTintColor: Colors.transparent,
         actions: [
           TextButton.icon(
@@ -26,7 +28,7 @@ class NotificationsScreen extends ConsumerWidget {
               ref.invalidate(notificationsProvider);
             },
             icon: const Icon(Icons.done_all_rounded, size: 18),
-            label: const Text('Read all'),
+            label: Text(context.t('Read all')),
           ),
         ],
       ),
@@ -37,11 +39,11 @@ class NotificationsScreen extends ConsumerWidget {
             if (items.isEmpty) {
               return ListView(
                 padding: const EdgeInsets.all(24),
-                children: const [
+                children: [
                   AppEmptyState(
                     icon: Icons.notifications_none,
-                    title: 'No notifications',
-                    message: 'Research activity will appear here.',
+                    title: context.t('No notifications'),
+                    message: context.t('Research activity will appear here.'),
                   ),
                 ],
               );
@@ -72,9 +74,9 @@ class NotificationsScreen extends ConsumerWidget {
               },
             );
           },
-          loading: () => const AppLoading(
+          loading: () => AppLoading(
             fullScreen: true,
-            message: 'Loading notifications...',
+            message: context.t('Loading notifications...'),
           ),
           error: (error, _) => AppErrorState(message: error.toString()),
         ),
@@ -136,12 +138,12 @@ class _NotificationsHeader extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '$unreadCount unread updates',
+                  context.t('{{unreadCount}} unread updates', {'unreadCount': unreadCount}),
                   style: theme.textTheme.titleMedium,
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '$totalCount total alerts from papers, projects, and reports.',
+                  context.t('{{totalCount}} total alerts from papers, projects, and reports.', {'totalCount': totalCount}),
                   style: theme.textTheme.bodySmall
                       ?.copyWith(color: lumi.foregroundSecondary),
                 ),
@@ -260,11 +262,11 @@ class _NotificationCard extends StatelessWidget {
                             runSpacing: 8,
                             children: [
                               _NotificationPill(
-                                label: _notificationTypeLabel(item),
+                                label: context.t(_notificationTypeLabel(item)),
                                 color: accent,
                               ),
                               _NotificationPill(
-                                label: _relativeTime(item.createdAt),
+                                label: _relativeTime(context, item.createdAt),
                                 color: lumi.muted,
                                 muted: true,
                               ),
@@ -340,16 +342,11 @@ IconData _notificationIcon(AppNotification item) {
 String _notificationTypeLabel(AppNotification item) {
   if (item.targetKind?.isNotEmpty == true) return item.targetKind!;
   if (item.type?.isNotEmpty == true) return item.type!;
-  return item.isRead ? 'Read' : 'New';
+  return item.isRead ? tk('Read') : tk('New');
 }
 
-String _relativeTime(String value) {
+String _relativeTime(BuildContext context, String value) {
   final parsed = DateTime.tryParse(value);
-  if (parsed == null) return 'recently';
-  final diff = DateTime.now().difference(parsed.toLocal());
-  if (diff.inMinutes < 1) return 'just now';
-  if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-  if (diff.inHours < 24) return '${diff.inHours}h ago';
-  if (diff.inDays < 7) return '${diff.inDays}d ago';
-  return '${parsed.year}-${parsed.month.toString().padLeft(2, '0')}-${parsed.day.toString().padLeft(2, '0')}';
+  if (parsed == null) return context.t('recently');
+  return relativeTime(parsed.toLocal(), context.appLocale);
 }

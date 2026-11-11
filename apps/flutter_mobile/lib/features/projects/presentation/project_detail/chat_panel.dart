@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/widgets/app_error_state.dart';
 import 'package:flutter_mobile/core/widgets/app_loading.dart';
 import 'package:flutter_mobile/features/projects/data/projects_api.dart';
@@ -10,7 +11,6 @@ class ProjectChatPanel extends ConsumerWidget {
   const ProjectChatPanel({
     required this.projectId,
     required this.mode,
-    required this.ownerId,
     required this.paperCount,
     required this.controller,
     required this.onRefresh,
@@ -19,7 +19,6 @@ class ProjectChatPanel extends ConsumerWidget {
 
   final String projectId;
   final ProjectChatMode mode;
-  final String? ownerId;
   final int paperCount;
   final ScrollController controller;
   final VoidCallback onRefresh;
@@ -27,58 +26,35 @@ class ProjectChatPanel extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final title = switch (mode) {
-      ProjectChatMode.team => 'Team Chat',
-      ProjectChatMode.privateAi => 'My AI - Private',
-      ProjectChatMode.teamAi => 'Team AI Room - Shared',
+      ProjectChatMode.privateAi => context.t('My AI - Private'),
+      ProjectChatMode.teamAi => context.t('Team AI Room - Shared'),
     };
     final subtitle = switch (mode) {
-      ProjectChatMode.team => 'Discuss with project members',
-      ProjectChatMode.privateAi => 'Only you can see this AI conversation',
+      ProjectChatMode.privateAi => context.t('Only you can see this AI conversation'),
       ProjectChatMode.teamAi =>
-        'AI answers are visible to every project member',
+        context.t('AI answers are visible to every project member'),
     };
 
-    final body = mode == ProjectChatMode.team
-        ? ref
-              .watch(projectTeamChatProvider(projectId))
-              .when(
-                data: (messages) => ProjectTeamMessages(
-                  projectId: projectId,
-                  messages: messages,
-                  ownerId: ownerId,
-                  controller: controller,
-                  onRefresh: onRefresh,
-                ),
-                loading: () =>
-                    const AppLoading(message: 'Loading team chat...'),
-                error: (error, _) => AppErrorState(
-                  message: error.toString(),
-                  onRetry: onRefresh,
-                ),
-              )
-        : ref
-              .watch(
-                projectChatProvider((
-                  projectId: projectId,
-                  scope: mode == ProjectChatMode.privateAi ? 'private' : 'team',
-                )),
-              )
-              .when(
-                data: (messages) => ProjectAiMessages(
-                  projectId: projectId,
-                  messages: messages,
-                  shared: mode == ProjectChatMode.teamAi,
-                  paperCount: paperCount,
-                  controller: controller,
-                  onRefresh: onRefresh,
-                ),
-                loading: () =>
-                    const AppLoading(message: 'Loading AI history...'),
-                error: (error, _) => AppErrorState(
-                  message: error.toString(),
-                  onRetry: onRefresh,
-                ),
-              );
+    final body = ref
+        .watch(
+          projectChatProvider((
+            projectId: projectId,
+            scope: mode == ProjectChatMode.privateAi ? 'private' : 'team',
+          )),
+        )
+        .when(
+          data: (messages) => ProjectAiMessages(
+            projectId: projectId,
+            messages: messages,
+            shared: mode == ProjectChatMode.teamAi,
+            paperCount: paperCount,
+            controller: controller,
+            onRefresh: onRefresh,
+          ),
+          loading: () => AppLoading(message: context.t('Loading AI history...')),
+          error: (error, _) =>
+              AppErrorState(message: error.toString(), onRetry: onRefresh),
+        );
 
     final colors = Theme.of(context).colorScheme;
     return Container(
@@ -115,9 +91,7 @@ class ProjectChatPanel extends ConsumerWidget {
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Icon(
-                    mode == ProjectChatMode.team
-                        ? Icons.forum_rounded
-                        : mode == ProjectChatMode.privateAi
+                    mode == ProjectChatMode.privateAi
                         ? Icons.auto_awesome_rounded
                         : Icons.smart_toy_rounded,
                     size: 18,
@@ -190,7 +164,7 @@ class ProjectStatusPill extends StatelessWidget {
           ),
           const SizedBox(width: 5),
           Text(
-            private ? 'Private' : 'Live',
+            private ? context.t('Private') : context.t('Live'),
             style: TextStyle(
               fontSize: 10,
               fontWeight: FontWeight.w700,

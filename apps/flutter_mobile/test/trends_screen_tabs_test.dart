@@ -8,7 +8,7 @@ void main() {
       'lib/features/trends/presentation/trends_screen.dart',
     ).readAsStringSync();
 
-    expect(source, contains("Tab(text: 'Compare')"));
+    expect(source, contains("Tab(text: context.t('Compare'))"));
     expect(source, contains('TrendsCompareTab('));
   });
 }

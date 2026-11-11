@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_mobile/core/constants/api_routes.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/network/api_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart';
@@ -219,7 +220,7 @@ class GapSupportingPaper {
   factory GapSupportingPaper.fromJson(Map<String, dynamic> json) {
     return GapSupportingPaper(
       id: (json['id'] ?? json['_id'] ?? '').toString(),
-      title: (json['title'] ?? 'Untitled paper').toString(),
+      title: (json['title'] ?? trNow('Untitled paper')).toString(),
       publicationYear: (json['publicationYear'] as num?)?.toInt(),
       journalName: json['journalName']?.toString(),
       citationCount: (json['citationCount'] as num?)?.toInt(),

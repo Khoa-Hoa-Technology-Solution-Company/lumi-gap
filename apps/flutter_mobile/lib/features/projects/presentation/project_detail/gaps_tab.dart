@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/features/gaps/data/gaps_api.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -15,10 +16,10 @@ class ProjectGapsTab extends StatelessWidget {
     return query.when(
       data: (data) {
         if (data.data.isEmpty) {
-          return const Center(
+          return Center(
             child: Text(
-              'No research gaps found for this workspace.',
-              style: TextStyle(fontStyle: FontStyle.italic),
+              context.t('No research gaps found for this workspace.'),
+              style: const TextStyle(fontStyle: FontStyle.italic),
             ),
           );
         }
@@ -49,7 +50,7 @@ class ProjectGapsTab extends StatelessWidget {
                   style: const TextStyle(fontSize: 12),
                 ),
                 trailing: Text(
-                  '${(gap.confidence * 100).round()}% conf',
+                  context.t('{{percent}}% conf', {'percent': (gap.confidence * 100).round()}),
                   style: const TextStyle(
                     fontSize: 10,
                     fontWeight: FontWeight.bold,
@@ -63,7 +64,7 @@ class ProjectGapsTab extends StatelessWidget {
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (err, _) => Center(
         child: Text(
-          'Error loading gaps: $err',
+          context.t('Error loading gaps: {{err}}', {'err': err}),
           style: const TextStyle(color: Colors.red),
         ),
       ),

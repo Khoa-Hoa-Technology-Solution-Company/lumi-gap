@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/features/auth/data/auth_api.dart';
 import 'package:flutter_mobile/features/auth/data/recovery_failure.dart';
@@ -27,7 +28,8 @@ class _EmailVerificationBannerState
   int _cooldown = 0;
   bool _resending = false;
   bool _checking = false;
-  String? _success; // only "Đã gửi email xác minh…"
+  // English keys, translated when shown so a language change applies at once.
+  String? _success; // only "Verification email sent…"
   String? _info; // neutral status, e.g. still unverified
   String? _problem; // failure message
 
@@ -60,7 +62,7 @@ class _EmailVerificationBannerState
       if (!mounted) return;
       setState(() {
         _resending = false;
-        _success = 'Đã gửi email xác minh. Kiểm tra hộp thư của bạn.';
+        _success = tk('Verification email sent. Check your inbox.');
       });
       _startCooldown();
     } on Object catch (e) {
@@ -87,14 +89,14 @@ class _EmailVerificationBannerState
         _checking = false;
         // A verified user hides the banner; only the unverified case needs words.
         if (fresh != null && fresh.emailVerifiedAt == null) {
-          _info = 'Email vẫn chưa được xác minh.';
+          _info = tk('Your email is still not verified.');
         }
       });
     } on Object catch (_) {
       if (!mounted) return;
       setState(() {
         _checking = false;
-        _problem = 'Không tải lại được thông tin tài khoản. Vui lòng thử lại.';
+        _problem = tk('Could not reload your account. Please try again.');
       });
     }
   }
@@ -103,20 +105,20 @@ class _EmailVerificationBannerState
   /// error for failures, a neutral info icon for "still unverified".
   ({IconData icon, Color color, String text})? _status(LumiColors lumi) {
     if (_problem != null) {
-      return (icon: Icons.error_outline, color: lumi.error, text: _problem!);
+      return (icon: Icons.error_outline, color: lumi.error, text: context.t(_problem!));
     }
     if (_success != null) {
       return (
         icon: Icons.check_circle_outline,
         color: lumi.success,
-        text: _success!,
+        text: context.t(_success!),
       );
     }
     if (_info != null) {
       return (
         icon: Icons.info_outline,
         color: lumi.foregroundSecondary,
-        text: _info!,
+        text: context.t(_info!),
       );
     }
     return null;
@@ -160,10 +162,10 @@ class _EmailVerificationBannerState
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('Email chưa xác minh',
+                            Text(context.t('Email not verified'),
                                 style: theme.textTheme.titleMedium),
                             Text(
-                              'Một số chức năng cần email đã xác minh.',
+                              context.t('Some features need a verified email.'),
                               style: theme.textTheme.bodyMedium?.copyWith(
                                 color: lumi.foregroundSecondary,
                               ),
@@ -199,18 +201,18 @@ class _EmailVerificationBannerState
                                       : () => unawaited(_resend(user.email)),
                                   child: Text(
                                     _resending
-                                        ? 'Đang gửi…'
+                                        ? context.t('Sending…')
                                         : _cooldown > 0
-                                            ? 'Gửi lại sau ${_cooldown}s'
-                                            : 'Gửi lại email',
+                                            ? context.t('Resend in {{cooldown}}s', {'cooldown': _cooldown})
+                                            : context.t('Resend email'),
                                   ),
                                 ),
                                 TextButton(
                                   onPressed:
                                       busy ? null : () => unawaited(_recheck()),
                                   child: Text(_checking
-                                      ? 'Đang kiểm tra…'
-                                      : 'Tôi đã xác minh'),
+                                      ? context.t('Checking…')
+                                      : context.t('I have verified')),
                                 ),
                               ],
                             ),

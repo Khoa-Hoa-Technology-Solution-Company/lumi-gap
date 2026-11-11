@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_mobile/core/constants/api_routes.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/network/api_client.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart';
@@ -259,7 +260,7 @@ class TrendingTopic {
 
   factory TrendingTopic.fromJson(Map<String, dynamic> json) {
     return TrendingTopic(
-      topic: (json['topic'] ?? json['topicName'] ?? 'Unknown topic').toString(),
+      topic: (json['topic'] ?? json['topicName'] ?? trNow('Unknown topic')).toString(),
       momentum: (json['momentum'] as num?)?.toDouble() ?? 0,
       growthRatePct: (json['growthRatePct'] as num?)?.toDouble() ?? 0,
       totalPapers: (json['totalPapers'] as num?)?.toInt() ?? 0,
@@ -334,7 +335,7 @@ class PublicationTrend {
 
   factory PublicationTrend.fromJson(Map<String, dynamic> json) {
     return PublicationTrend(
-      topic: (json['topic'] ?? 'Unknown topic').toString(),
+      topic: (json['topic'] ?? trNow('Unknown topic')).toString(),
       yearlyBreakdown: (json['yearlyBreakdown'] as List<dynamic>? ?? [])
           .whereType<Map<String, dynamic>>()
           .map(YearlyCount.fromJson)
@@ -562,7 +563,7 @@ class TopicComparisonItem extends TrendingTopic {
   });
 
   factory TopicComparisonItem.fromJson(Map<String, dynamic> json) => TopicComparisonItem(
-        topic: (json['topic'] ?? 'Unknown topic').toString(),
+        topic: (json['topic'] ?? trNow('Unknown topic')).toString(),
         momentum: (json['momentum'] as num?)?.toDouble() ?? 0,
         growthRatePct: (json['growthRatePct'] as num?)?.toDouble() ?? 0,
         totalPapers: (json['totalPapers'] as num?)?.toInt() ?? 0,
@@ -611,7 +612,7 @@ class TrendTopicCandidate extends TrendingTopic {
   });
 
   factory TrendTopicCandidate.fromJson(Map<String, dynamic> json) => TrendTopicCandidate(
-        topic: (json['topic'] ?? 'Unknown topic').toString(),
+        topic: (json['topic'] ?? trNow('Unknown topic')).toString(),
         momentum: (json['momentum'] as num?)?.toDouble() ?? 0,
         growthRatePct: (json['growthRatePct'] as num?)?.toDouble() ?? 0,
         totalPapers: (json['totalPapers'] as num?)?.toInt() ?? 0,

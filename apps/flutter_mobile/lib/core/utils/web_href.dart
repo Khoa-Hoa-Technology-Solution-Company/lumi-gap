@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_mobile/core/config/app_config.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -97,7 +98,7 @@ Future<void> openWebHref(
   }
   if (!opened && context.mounted) {
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Không mở được liên kết.')),
+      SnackBar(content: Text(context.t('Could not open the link.'))),
     );
   }
 }

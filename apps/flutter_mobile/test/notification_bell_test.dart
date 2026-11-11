@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/app_theme.dart';
 import 'package:flutter_mobile/core/widgets/notification_bell.dart';
 import 'package:flutter_mobile/features/notifications/data/notifications_api.dart';
@@ -49,6 +50,9 @@ Future<void> _pumpBell(
         notificationsProvider.overrideWith((ref) => load()),
       ],
       child: MaterialApp.router(
+        locale: AppLocale.vi.locale,
+        supportedLocales: AppLocale.supportedLocales,
+        localizationsDelegates: appLocalizationsDelegates,
         theme: AppTheme.lightTheme,
         routerConfig: router,
       ),
@@ -69,9 +73,9 @@ void main() {
     });
 
     test('screen-reader label carries the real unread count', () {
-      expect(notificationBellLabel(0), 'Thông báo');
-      expect(notificationBellLabel(3), 'Thông báo, 3 chưa đọc');
-      expect(notificationBellLabel(12), 'Thông báo, 12 chưa đọc');
+      expect(notificationBellLabel(0, AppLocale.vi), 'Thông báo');
+      expect(notificationBellLabel(3, AppLocale.vi), 'Thông báo, 3 chưa đọc');
+      expect(notificationBellLabel(12, AppLocale.vi), 'Thông báo, 12 chưa đọc');
     });
   });
 

@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_mobile/core/errors/api_exception.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 
 /// Why forgot-password / resend-verification failed, in terms the UI can
 /// explain. A 202 is never a failure: the backend answers 202 whether or not
@@ -7,13 +8,14 @@ import 'package:flutter_mobile/core/errors/api_exception.dart';
 enum RecoveryFailure { rateLimited, offline, invalidEmail, other }
 
 extension RecoveryFailureMessage on RecoveryFailure {
+  /// English key; show it with `context.t(failure.message)`.
   String get message => switch (this) {
         RecoveryFailure.rateLimited =>
-          'Bạn đã thử quá nhiều lần, vui lòng thử lại sau.',
+          tk('Too many attempts. Please try again later.'),
         RecoveryFailure.offline =>
-          'Không kết nối được. Kiểm tra mạng rồi thử lại.',
-        RecoveryFailure.invalidEmail => 'Email không hợp lệ',
-        RecoveryFailure.other => 'Đã có lỗi xảy ra. Vui lòng thử lại.',
+          tk('Could not connect. Check your network and try again.'),
+        RecoveryFailure.invalidEmail => tk('Invalid email'),
+        RecoveryFailure.other => tk('Something went wrong. Please try again.'),
       };
 }
 
@@ -40,10 +42,11 @@ bool _isConnectionProblem(DioExceptionType type) =>
 
 final _emailPattern = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$');
 
-/// Same rules and wording as the Lovable prototype. Null means valid.
+/// Same rules as the Lovable prototype. Null means valid; otherwise an
+/// English key to show with `context.t`.
 String? validateRecoveryEmail(String value) {
   final v = value.trim();
-  if (v.isEmpty) return 'Vui lòng nhập email';
-  if (!_emailPattern.hasMatch(v)) return 'Email không hợp lệ';
+  if (v.isEmpty) return tk('Please enter your email');
+  if (!_emailPattern.hasMatch(v)) return tk('Invalid email');
   return null;
 }

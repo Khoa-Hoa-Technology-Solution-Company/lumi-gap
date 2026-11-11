@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/theme/lumi_colors.dart';
 import 'package:flutter_mobile/features/home/data/home_models.dart';
 
@@ -44,7 +45,7 @@ class HomeRecommendedList extends StatelessWidget {
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: Text(
-                        items[i].chipText,
+                        context.t(items[i].chipText),
                         style: theme.textTheme.labelMedium?.copyWith(
                           color: lumi.foregroundSecondary,
                         ),
