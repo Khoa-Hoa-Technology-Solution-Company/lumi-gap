@@ -88,4 +88,7 @@ export function balancedReviewers(eligible: string[], existing: string[], requir
   }
   return [...selected];
 }
-export const independentWorkflow = (settings: { reviewMode?: string; workflowVersion?: number }) => (settings.reviewMode === "INDEPENDENT" && (settings.workflowVersion ?? 1) >= 3) || (settings.reviewMode === "SIMPLE" && (settings.workflowVersion ?? 1) >= 5);
+export const independentWorkflow = (settings: { reviewMode?: string; workflowVersion?: number; workflowKind?: string }) =>
+  settings.workflowKind === "TEAM_SCREENING" ||
+  (settings.reviewMode === "INDEPENDENT" && (settings.workflowVersion ?? 1) >= 3) ||
+  (settings.reviewMode === "SIMPLE" && (settings.workflowVersion ?? 1) >= 5);

@@ -173,7 +173,7 @@ export function ScreeningTaskCard({ projectId, summary, task, onOpen, href, now,
     : task.kind === "CONSENSUS" ? "Xem đề xuất thống nhất và gửi phản hồi của bạn."
     : isClarification ? "Đối chiếu nguồn, bổ sung căn cứ hoặc cập nhật đánh giá của bạn."
     : task.kind === "DISCUSSION" && paper.classification === "EXCLUSION_REASON_MISMATCH" ? "Đối chiếu căn cứ loại và thống nhất tiêu chí với reviewer còn lại."
-    : task.kind === "DISCUSSION" ? "Trao đổi với reviewer còn lại để thống nhất kết luận."
+    : task.kind === "DISCUSSION" ? "Thảo luận căn cứ và cùng xác nhận kết luận cuối cùng."
     : task.description;
 
   return <WorkPaperCard paper={paper} status={expired ? "Đã hết hạn" : status} tone={tone} onOpen={onOpen} href={href} now={now}

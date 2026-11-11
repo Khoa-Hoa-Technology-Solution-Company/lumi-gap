@@ -376,6 +376,14 @@ export const screeningService = {
       const row = await screeningRound(c, roundId);
       const s = roundSettings(row.settings);
       const isTeamScreening = s.workflowKind === "TEAM_SCREENING" || s.resolutionPolicy === "CONSENSUS";
+      if (isTeamScreening && input.decision === "NEEDS_MORE_INFO") {
+        throw AppError.badRequest("Trong quy trình Đánh giá nhóm, quyết định chung phải là Phù hợp (INCLUDED) hoặc Loại bỏ (EXCLUDED). Nếu cần làm rõ tài liệu, hãy sử dụng hành động 'Cần thêm thông tin'.");
+      }
+      if (input.decision === "EXCLUDED" && s.exclusionCriteria.length > 0) {
+        if (!input.exclusionReason?.trim() || !s.exclusionCriteria.includes(input.exclusionReason.trim())) {
+          throw AppError.badRequest("Cần chọn tiêu chí loại hợp lệ từ danh sách tiêu chí của đề tài.");
+        }
+      }
       if (!isTeamScreening && (s.workflowVersion ?? 0) >= 8) throw AppError.conflict("Mỗi reviewer tự sửa phiếu hoặc mở hồ sơ phân xử, không xác nhận thay người còn lại");
       expectWorkspaceVersion(row.version, input.expectedVersion);
       const view = await roundView(c, row);
@@ -852,6 +860,61 @@ export const screeningService = {
       await reconcileScreeningObligations(c);
       await notifyScreeningParticipants(c, row, "ROUND_REOPENED", "Chủ đề tài đã mở lại vòng đánh giá mới cho bài báo", newRound.version);
       return { roundId: newRound.id, result: { previousRoundId: row.id, newRoundId: newRound.id, version: newRound.version }, details };
+    });
+  },
+
+  async requestMoreInfo(project: string, actor: string, roundId: string, rawInput: z.infer<typeof s.screeningRequestMoreInfoSchema>) {
+    const input = s.screeningRequestMoreInfoSchema.parse(rawInput);
+    return screeningCommand(project, actor, "MORE_INFO_REQUESTED", { ...input, roundId }, {}, async c => {
+      const row = await screeningRound(c, roundId);
+      expectWorkspaceVersion(row.version, input.expectedVersion);
+      if (!row.active || !["NEEDS_RESOLUTION", "NEEDS_MORE_INFO"].includes(row.status)) {
+        throw AppError.conflict("Chỉ có thể yêu cầu thêm thông tin cho vòng đang có bất đồng hoặc cần làm rõ.");
+      }
+      const ownAssignment = await c.tx.screeningAssignment.findFirst({
+        where: { roundId, reviewerId: c.actorId, active: true, submittedAt: { not: null } }
+      });
+      if (!ownAssignment) {
+        throw AppError.forbidden("Chỉ reviewer đã gửi phiếu trong vòng mới có thể yêu cầu làm rõ thêm thông tin.");
+      }
+      const next = await c.tx.screeningRound.update({
+        where: { id: roundId },
+        data: { status: "NEEDS_MORE_INFO", version: { increment: 1 } }
+      });
+      const now = new Date();
+      const details = {
+        reason: input.reason.trim(),
+        requestedBy: c.actorId,
+        requestedAt: now.toISOString(),
+      };
+      await c.tx.screeningAudit.create({
+        data: {
+          projectId: c.project.id,
+          roundId,
+          actorId: c.actorId,
+          type: "MORE_INFO_REQUESTED",
+          details: jsonSnapshot(details),
+          clientKey: input.clientKey,
+        }
+      });
+      await projectScreeningStatus(c, next, "NEEDS_MORE_INFO", input.reason);
+      const otherReviewers = (await effectiveAssignments(c, row.id))
+        .map(a => a.reviewerId)
+        .filter(id => id !== c.actorId);
+      for (const reviewerId of otherReviewers) {
+        await notificationService.create({
+          userId: reviewerId,
+          type: "SCREENING_ACTION_REQUIRED",
+          paperId: row.paperId,
+          title: "Reviewer yêu cầu làm rõ thêm thông tin cho bài báo",
+          message: input.reason.trim(),
+          targetKind: "project",
+          targetId: c.project.id,
+          eventKey: `SCREENING:MORE_INFO:${roundId}:${now.getTime()}`,
+          emailStatus: "SKIPPED",
+        }, c.tx);
+      }
+      return { roundId, result: { roundId, version: next.version, status: "NEEDS_MORE_INFO" }, details };
     });
   },
 

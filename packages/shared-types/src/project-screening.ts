@@ -232,6 +232,12 @@ export interface ScreeningRoundView {
   closureDetails?: ScreeningClosureDetails | null;
   canCloseUnresolved?: boolean;
   canReopenUnresolved?: boolean;
+  requestedInfo?: {
+    reason: string;
+    requestedBy: string;
+    requestedByName?: string;
+    requestedAt: string;
+  } | null;
   agreement?: ScreeningAgreement | null;
   adjudicators?: Array<WorkspacePerson & { mentor: boolean; proposer: boolean }>;
   adjudicationCase?: {

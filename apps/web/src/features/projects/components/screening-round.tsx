@@ -470,7 +470,7 @@ function RoundContentInner({ projectId, initial, paper, people, readOnly: projec
 
   const isTeamScreening = round.settings?.workflowKind === "TEAM_SCREENING";
   const roundHeaderLabel = isTeamScreening
-    ? "Đánh giá mức độ phù hợp"
+    ? (round.number > 1 ? `Đánh giá mức độ phù hợp (Lần ${round.number})` : "Đánh giá mức độ phù hợp")
     : `Vòng ${round.number} · ${round.phase === "FULL_TEXT" ? "Toàn văn" : "Tiêu đề và tóm tắt"}`;
 
   if (round.status === "CLOSED_UNRESOLVED") {
@@ -774,7 +774,7 @@ function ClosedUnresolvedRound({ projectId, round, people, readOnly }: { project
 
   const isTeamScreening = round.settings?.workflowKind === "TEAM_SCREENING";
   const roundHeaderLabel = isTeamScreening
-    ? "Đánh giá mức độ phù hợp"
+    ? (round.number > 1 ? `Đánh giá mức độ phù hợp (Lần ${round.number})` : "Đánh giá mức độ phù hợp")
     : `Vòng ${round.number} · ${round.phase === "FULL_TEXT" ? "Toàn văn" : "Tiêu đề và tóm tắt"}`;
 
   const closureDetails = round.closureDetails;

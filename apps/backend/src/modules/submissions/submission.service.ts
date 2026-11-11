@@ -223,13 +223,24 @@ async function syncRevisionWithMentorWorkflow(
     },
   });
 
-  // Check if there was an assigned mentor
+  // Check if there was an assigned mentor with an active mentorship relationship
+  if (typeof tx.mentorRelationship?.findFirst !== "function") return;
+
   const prevAssignment = await tx.reviewerAssignment.findFirst({
-    where: { submissionId: submission.id },
+    where: {
+      submissionId: submission.id,
+      reviewRequestId: null,
+      anonymousCode: { startsWith: "mentor-" },
+    },
     orderBy: { createdAt: "desc" },
   });
   if (prevAssignment) {
     const mentorId = prevAssignment.reviewerId;
+    const activeRel = await tx.mentorRelationship.findFirst({
+      where: { projectId: submission.projectId, mentorUserId: mentorId, status: "ACTIVE" },
+    });
+    if (!activeRel) return;
+
     await tx.submission.update({
       where: { id: submission.id },
       data: { status: "WAITING_FEEDBACK" },
