@@ -22,16 +22,26 @@ export const screeningHash = (value: unknown) => createHash("sha256").update(JSO
 /** Old immutable snapshots keep their original policy and receive explicit compatibility defaults. */
 export function roundSettings(value: unknown): Settings {
   const settings = value as Settings;
-  return { ...settings, reviewMode: settings.reviewMode ?? "INDEPENDENT", blindReview: independentWorkflow(settings) ? true : settings.blindReview ?? true, resolutionPolicy: settings.resolutionPolicy ?? "ADJUDICATION" };
+  return {
+    ...settings,
+    workflowKind: settings.workflowKind ?? (settings.screeningMode === "TWO_STAGE" ? "SYSTEMATIC_REVIEW" : "TEAM_SCREENING"),
+    reviewMode: settings.reviewMode ?? "INDEPENDENT",
+    blindReview: independentWorkflow(settings) ? true : settings.blindReview ?? true,
+    resolutionPolicy: settings.resolutionPolicy ?? (settings.screeningMode === "TWO_STAGE" ? "ADJUDICATION" : "CONSENSUS"),
+    claimDurationHours: settings.claimDurationHours ?? 24,
+    discussionWindowHours: settings.discussionWindowHours ?? 48,
+    maxExtensionHours: settings.maxExtensionHours ?? 24,
+    maxExtensions: settings.maxExtensions ?? 1,
+  };
 }
 export async function screeningSettings(c: WorkspaceContext): Promise<Settings> {
   const questionOptions = await projectQuestionOptions(c);
   const row = await c.tx.screeningSettings.findUnique({ where: { projectId: c.project.id } });
-  if (row) return { ...(row.screeningMode ? { screeningMode: row.screeningMode as Settings["screeningMode"] } : {}), preferredAdjudicatorId: row.preferredAdjudicatorId, adjudicationCoordinatorIds: row.adjudicationCoordinatorIds, statementWindowHours: row.statementWindowHours, adjudicationReminderHours: row.adjudicationReminderHours, adjudicationReassignHours: row.adjudicationReassignHours, authorizedAdjudicatorIds: row.authorizedAdjudicatorIds, allowConservativeFullText: row.allowConservativeFullText, workflowVersion: row.screeningMode ? 11 : 10, reviewMode: row.reviewMode as Settings["reviewMode"], blindReview: row.reviewMode === "INDEPENDENT" || row.blindReview, resolutionPolicy: row.resolutionPolicy as Settings["resolutionPolicy"], version: row.version, requiredReviewers: row.requiredReviewers, consensusPolicy: row.consensusPolicy as Settings["consensusPolicy"], aiAssisted: row.aiAssisted, inclusionCriteria: row.inclusionCriteria, exclusionCriteria: row.exclusionCriteria, researchQuestions: row.researchQuestions, stages: row.stages as Settings["stages"], questionOptions, discoveryGoalEnabled: row.discoveryGoalEnabled, discoveryGoalTarget: row.discoveryGoalTarget, discoveryGoalPeriod: (row.discoveryGoalPeriod as Settings["discoveryGoalPeriod"]) || "WEEK", discoveryGoalPaused: row.discoveryGoalPaused };
+  if (row) return { workflowKind: (row.screeningMode === "TWO_STAGE" ? "SYSTEMATIC_REVIEW" : "TEAM_SCREENING") as Settings["workflowKind"], ...(row.screeningMode ? { screeningMode: row.screeningMode as Settings["screeningMode"] } : {}), preferredAdjudicatorId: row.preferredAdjudicatorId, adjudicationCoordinatorIds: row.adjudicationCoordinatorIds, statementWindowHours: row.statementWindowHours, adjudicationReminderHours: row.adjudicationReminderHours, adjudicationReassignHours: row.adjudicationReassignHours, authorizedAdjudicatorIds: row.authorizedAdjudicatorIds, allowConservativeFullText: row.allowConservativeFullText, workflowVersion: row.screeningMode ? 11 : 10, reviewMode: row.reviewMode as Settings["reviewMode"], blindReview: row.reviewMode === "INDEPENDENT" || row.blindReview, resolutionPolicy: row.resolutionPolicy as Settings["resolutionPolicy"], version: row.version, requiredReviewers: row.requiredReviewers, consensusPolicy: row.consensusPolicy as Settings["consensusPolicy"], aiAssisted: row.aiAssisted, inclusionCriteria: row.inclusionCriteria, exclusionCriteria: row.exclusionCriteria, researchQuestions: row.researchQuestions, stages: row.stages as Settings["stages"], questionOptions, discoveryGoalEnabled: row.discoveryGoalEnabled, discoveryGoalTarget: row.discoveryGoalTarget, discoveryGoalPeriod: (row.discoveryGoalPeriod as Settings["discoveryGoalPeriod"]) || "WEEK", discoveryGoalPaused: row.discoveryGoalPaused };
   const plan = await c.tx.researchPlan.findUnique({ where: { projectId: c.project.id }, select: { questions: true } });
   const questions = Array.isArray(plan?.questions) ? plan.questions.flatMap(q => q && typeof q === "object" && !Array.isArray(q) && typeof q.text === "string" ? [q.text] : []) : [];
   const single = false; // A one-reviewer exception must be explicitly configured.
-  return { preferredAdjudicatorId: null, adjudicationCoordinatorIds: [], statementWindowHours: 48, adjudicationReminderHours: 72, adjudicationReassignHours: 168, authorizedAdjudicatorIds: [], allowConservativeFullText: false, workflowVersion: 11, screeningMode: "SINGLE_STAGE", reviewMode: single ? "SIMPLE" : "INDEPENDENT", blindReview: true, resolutionPolicy: "ADJUDICATION", version: 0, requiredReviewers: single ? 1 : 2, consensusPolicy: "UNANIMOUS", aiAssisted: false, inclusionCriteria: c.project.inclusionCriteria, exclusionCriteria: c.project.exclusionCriteria, researchQuestions: questions, stages: ["TITLE_ABSTRACT"], questionOptions, discoveryGoalEnabled: false, discoveryGoalTarget: 2, discoveryGoalPeriod: "WEEK", discoveryGoalPaused: false };
+  return { workflowKind: "TEAM_SCREENING", preferredAdjudicatorId: null, adjudicationCoordinatorIds: [], statementWindowHours: 48, adjudicationReminderHours: 72, adjudicationReassignHours: 168, authorizedAdjudicatorIds: [], allowConservativeFullText: false, workflowVersion: 11, screeningMode: "SINGLE_STAGE", reviewMode: single ? "SIMPLE" : "INDEPENDENT", blindReview: true, resolutionPolicy: "CONSENSUS", version: 0, requiredReviewers: single ? 1 : 2, consensusPolicy: "UNANIMOUS", aiAssisted: false, inclusionCriteria: c.project.inclusionCriteria, exclusionCriteria: c.project.exclusionCriteria, researchQuestions: questions, stages: ["TITLE_ABSTRACT"], questionOptions, discoveryGoalEnabled: false, discoveryGoalTarget: 2, discoveryGoalPeriod: "WEEK", discoveryGoalPaused: false };
 }
 export async function screeningRound(c: WorkspaceContext, id: string) {
   const row = await c.tx.screeningRound.findFirst({ where: { id, projectId: c.project.id } });
@@ -52,12 +62,117 @@ export async function settingsForNewScreening(c: WorkspaceContext): Promise<Sett
   await c.tx.screeningAudit.create({ data: { projectId: c.project.id, actorId: c.actorId, type: "DEFAULT_RULES_SAVED", details: jsonSnapshot({ ...settings, version: row.version }) } });
   return { ...settings, version: row.version };
 }
+export async function getDiscussionTiming(c: WorkspaceContext, row: ScreeningRound): Promise<import("@trend/shared-types").ScreeningDiscussionTiming | null> {
+  const startedAudit = await c.tx.screeningAudit.findFirst({
+    where: { projectId: c.project.id, roundId: row.id, type: "DISCUSSION_STARTED" },
+    orderBy: { createdAt: "asc" },
+  });
+  if (!startedAudit) return null;
+  const startedDetails = startedAudit.details as Record<string, unknown>;
+  const discussionStartedAt = new Date((startedDetails.startedAt as string) || startedAudit.createdAt);
+  const initialDeadlineAt = new Date((startedDetails.initialDeadline as string) || (discussionStartedAt.getTime() + 48 * 3600 * 1000));
+  const hardDeadlineAt = new Date((startedDetails.hardDeadline as string) || (discussionStartedAt.getTime() + 72 * 3600 * 1000));
+
+  const extensions = await c.tx.screeningAudit.findMany({
+    where: { projectId: c.project.id, roundId: row.id, type: "DISCUSSION_EXTENDED" },
+    orderBy: { createdAt: "asc" },
+  });
+  const extensionCount = extensions.length;
+  let effectiveDeadlineAt = initialDeadlineAt;
+  for (const ext of extensions) {
+    const details = ext.details as Record<string, unknown>;
+    const hours = Number(details.hours ?? details.extensionHours ?? 24);
+    effectiveDeadlineAt = new Date(Math.min(effectiveDeadlineAt.getTime() + hours * 3600 * 1000, hardDeadlineAt.getTime()));
+  }
+
+  const closedAudit = await c.tx.screeningAudit.findFirst({
+    where: { projectId: c.project.id, roundId: row.id, type: "ROUND_CLOSED_UNRESOLVED" },
+    orderBy: { createdAt: "desc" },
+  });
+
+  const now = new Date();
+  const isOverdue = !closedAudit && !["INCLUDED", "EXCLUDED", "CLOSED_UNRESOLVED"].includes(row.status) && now > effectiveDeadlineAt;
+  const canExtend = c.role === "OWNER" && row.active && ["NEEDS_RESOLUTION", "NEEDS_MORE_INFO"].includes(row.status) && extensionCount < 1;
+
+  return {
+    discussionStartedAt: discussionStartedAt.toISOString(),
+    initialDeadlineAt: initialDeadlineAt.toISOString(),
+    effectiveDeadlineAt: effectiveDeadlineAt.toISOString(),
+    hardDeadlineAt: hardDeadlineAt.toISOString(),
+    extensionCount,
+    maxExtensions: 1,
+    isOverdue,
+    canExtend,
+    closedAt: closedAudit ? closedAudit.createdAt.toISOString() : null,
+  };
+}
+
+export async function getClosureDetails(c: WorkspaceContext, row: ScreeningRound): Promise<import("@trend/shared-types").ScreeningClosureDetails | null> {
+  if (row.status !== "CLOSED_UNRESOLVED") return null;
+  const audit = await c.tx.screeningAudit.findFirst({
+    where: { projectId: c.project.id, roundId: row.id, type: "ROUND_CLOSED_UNRESOLVED" },
+    orderBy: { createdAt: "desc" },
+  });
+  if (!audit) {
+    return {
+      actorType: "SYSTEM",
+      closedAt: row.createdAt.toISOString(),
+      reason: "NO_CONSENSUS",
+    };
+  }
+  const details = audit.details as Record<string, unknown>;
+  return {
+    actorType: (details.actorType as "SYSTEM" | "OWNER") || "SYSTEM",
+    actorId: audit.actorId,
+    closedAt: audit.createdAt.toISOString(),
+    reason: (details.reason as any) || "NO_CONSENSUS",
+    note: details.note ? String(details.note) : undefined,
+  };
+}
+
+export async function reconcileExpiredDiscussions(c: WorkspaceContext) {
+  const activeUnresolvedRounds = await c.tx.screeningRound.findMany({
+    where: {
+      projectId: c.project.id,
+      active: true,
+      status: { in: ["NEEDS_RESOLUTION", "NEEDS_MORE_INFO"] }
+    }
+  });
+  const now = new Date();
+  for (const r of activeUnresolvedRounds) {
+    const timing = await getDiscussionTiming(c, r);
+    if (timing && new Date(timing.hardDeadlineAt) <= now) {
+      const next = await c.tx.screeningRound.update({
+        where: { id: r.id },
+        data: { status: "CLOSED_UNRESOLVED", version: { increment: 1 } }
+      });
+      await c.tx.screeningAudit.create({
+        data: {
+          projectId: c.project.id,
+          roundId: r.id,
+          actorId: "00000000-0000-0000-0000-000000000000",
+          type: "ROUND_CLOSED_UNRESOLVED",
+          details: {
+            actorType: "SYSTEM",
+            reason: "DEADLINE_EXPIRED",
+            hardDeadlineAt: timing.hardDeadlineAt,
+            closedAt: now.toISOString(),
+          }
+        }
+      });
+      await projectScreeningStatus(c, next, "CLOSED_UNRESOLVED", "Hết thời hạn thảo luận tối đa (72 giờ) mà nhóm chưa đạt đồng thuận");
+      await notifyScreeningParticipants(c, r, "ROUND_CLOSED", "Quy trình đánh giá đã tự động đóng do hết thời hạn tối đa (72 giờ) mà không đạt đồng thuận", next.version);
+    }
+  }
+}
+
 export async function roundView(c: WorkspaceContext, row: ScreeningRound): Promise<ScreeningRoundView> {
   const activeCase = await latestCase(c, row.id);
   if (activeCase?.active) { await ensureAssignment(c, row, activeCase); row = await screeningRound(c, row.id); }
   const settings = roundSettings(row.settings), assignments = await effectiveAssignments(c, row.id);
   const visible = screeningReviewsVisible(row, settings, assignments);
   const protocol = independentWorkflow(settings);
+  const isTeamScreening = settings.workflowKind === "TEAM_SCREENING" || settings.resolutionPolicy === "CONSENSUS";
   const finalizerId = row.finalizerId ?? (protocol ? "" : c.project.ownerId);
   const finalizer = finalizerId ? await c.tx.user.findUnique({ where: { id: finalizerId }, select: { fullName: true } }) : null;
   const names = await c.tx.user.findMany({ where: { id: { in: assignments.map(a => a.reviewerId) } }, select: { id: true, fullName: true } });
@@ -67,16 +182,16 @@ export async function roundView(c: WorkspaceContext, row: ScreeningRound): Promi
   const history = await c.tx.screeningReview.findMany({ where: { projectId: c.project.id, assignmentId: { in: assignments.filter(a => visible || a.reviewerId === c.actorId).map(a => a.id) } }, orderBy: [{ submittedAt: "asc" }, { id: "asc" }] });
   const reviewHistory: ScreeningRoundView["reviewHistory"] = history.map(r => { const reviewerId = assignments.find(a => a.id === r.assignmentId)!.reviewerId; return { id: r.id, assignmentId: r.assignmentId, reviewerId, reviewerName: names.find(p => p.id === reviewerId)?.fullName || "Reviewer", revision: r.revision, phaseMarker: r.revision === 1 ? "INDEPENDENT_INITIAL" : "POST_DISCUSSION_REVISION", decision: r.decision as ScreeningReview["decision"], exclusionReason: r.exclusionReason, comment: r.comment, submittedAt: r.submittedAt.toISOString() }; });
   const own = assignments.find(a => a.reviewerId === c.actorId);
-  const final = row.unblindedAt && ["INCLUDED", "EXCLUDED", "BACKGROUND", "WAITING_FULLTEXT"].includes(row.status) ? await c.tx.screeningFinalDecision.findFirst({ where: { roundId: row.id }, orderBy: { roundVersion: "desc" } }) : null;
+  const final = row.unblindedAt && ["INCLUDED", "EXCLUDED", "BACKGROUND", "WAITING_FULLTEXT", "CLOSED_UNRESOLVED"].includes(row.status) ? await c.tx.screeningFinalDecision.findFirst({ where: { roundId: row.id }, orderBy: { roundVersion: "desc" } }) : null;
   const pendingResolution = visible && row.status === "NEEDS_MORE_INFO" ? await c.tx.screeningFinalDecision.findFirst({ where: { roundId: row.id, decision: "NEEDS_MORE_INFO", roundVersion: row.version }, orderBy: { roundVersion: "desc" } }) : null;
   const activeWritable = !["ARCHIVED", "COMPLETED"].includes(c.project.status) && row.active;
-  const writable = activeWritable && !row.legacyNeedsAudit;
-  const needsAdjudication = protocol && ["NEEDS_RESOLUTION", "NEEDS_MORE_INFO", "ADJUDICATING"].includes(row.status);
-  const discussionReady = needsAdjudication && await screeningDiscussionReady(c, row);
-  const adjudicators = needsAdjudication ? await screeningAdjudicators(c, row) : [];
+  const writable = activeWritable && !row.legacyNeedsAudit && row.status !== "CLOSED_UNRESOLVED";
+  const needsAdjudication = !isTeamScreening && protocol && ["NEEDS_RESOLUTION", "NEEDS_MORE_INFO", "ADJUDICATING"].includes(row.status);
+  const discussionReady = (needsAdjudication || isTeamScreening) && await screeningDiscussionReady(c, row);
+  const adjudicators = isTeamScreening ? [] : needsAdjudication ? await screeningAdjudicators(c, row) : [];
   const provisionalAdvance = Boolean(await c.tx.screeningAudit.findFirst({ where: { projectId: c.project.id, roundId: row.id, type: "STAGE_ADVANCED", details: { path: ["provisional"], equals: true } }, select: { id: true } }));
   const classification = visible ? await screeningClassification(c, row) : null;
-  const dispute = visible ? await latestCase(c, row.id) : null;
+  const dispute = !isTeamScreening && visible ? await latestCase(c, row.id) : null;
   const invitation = dispute ? await c.tx.screeningAdjudicationInvitation.findFirst({ where: { caseId: dispute.id, status: { in: ["ASSIGNED", "ACCEPTED"] } }, orderBy: { createdAt: "desc" } }) : null;
   const adjudicator = invitation ? await c.tx.user.findUnique({ where: { id: invitation.userId }, select: { fullName: true } }) : null;
   const statementCount = dispute ? await c.tx.screeningAdjudicationStatement.groupBy({ by: ["reviewerId"], where: { caseId: dispute.id, packetVersion: dispute.packetVersion, reviewerId: { in: dispute.reviewerIds } } }) : [];
@@ -88,17 +203,23 @@ export async function roundView(c: WorkspaceContext, row: ScreeningRound): Promi
   const resolutionType = final?.resolutionType as ScreeningRoundView["resolutionType"] ?? null;
   const adjudicationCase: ScreeningRoundView["adjudicationCase"] = dispute ? { id: dispute.id, status: (dispute.status === "ACCEPTED" && caseReady ? "IN_PROGRESS" : dispute.status) as NonNullable<ScreeningRoundView["adjudicationCase"]>["status"], requestedByIds: dispute.requestedByIds, disputePoints: [], assignedAdjudicator: invitation ? { id: invitation.userId, name: adjudicator?.fullName || "Người phân xử", mentor: invitation.role.includes("MENTOR"), role: invitation.role } : null, ready: caseReady, deadline: dispute.deadline.toISOString(), createdAt: dispute.createdAt.toISOString() } : null;
   const invalidated = !row.active && Boolean(await c.tx.screeningAudit.findFirst({ where: { projectId: c.project.id, roundId: row.id, type: "DEPENDENCY_INVALIDATED" }, select: { id: true } }));
-  const outcome = row.status === "WAITING_FULLTEXT" ? "WAITING_FULLTEXT" as const : settings.screeningMode && visible ? final ? final.decision === "INCLUDED" ? automaticFullTextStage(settings) && row.phase === "TITLE_ABSTRACT" ? "ADVANCE_TO_FULLTEXT" as const : "FINAL_INCLUDED" as const : final.decision === "EXCLUDED" ? "EXCLUDED" as const : undefined : evaluateScreeningPair(settings, row.phase, shown.map(r => ({ ...r, roundId: row.id })), !shown.every(r => r.decision === "EXCLUDE") || await screeningExclusionEvidence(c, row.paperId, row.phase)) : settings.screeningMode && !visible ? submitted.length ? "WAITING_SECOND_REVIEW" as const : "WAITING_REVIEWS" as const : undefined;
+  const outcome = row.status === "WAITING_FULLTEXT" ? "WAITING_FULLTEXT" as const : row.status === "CLOSED_UNRESOLVED" ? "CLOSED_UNRESOLVED" as const : settings.screeningMode && visible ? final ? final.decision === "INCLUDED" ? automaticFullTextStage(settings) && row.phase === "TITLE_ABSTRACT" ? "ADVANCE_TO_FULLTEXT" as const : "FINAL_INCLUDED" as const : final.decision === "EXCLUDED" ? "EXCLUDED" as const : undefined : evaluateScreeningPair(settings, row.phase, shown.map(r => ({ ...r, roundId: row.id })), !shown.every(r => r.decision === "EXCLUDE") || await screeningExclusionEvidence(c, row.paperId, row.phase)) : settings.screeningMode && !visible ? submitted.length ? "WAITING_SECOND_REVIEW" as const : "WAITING_REVIEWS" as const : undefined;
   const link = row.status === "WAITING_FULLTEXT" ? await c.tx.projectPaper.findUnique({ where: { projectId_paperId: { projectId: c.project.id, paperId: row.paperId } }, select: { addedById: true } }) : null;
   const canResumeFullText = writable && row.status === "WAITING_FULLTEXT" && Boolean(c.role === "OWNER" || link?.addedById === c.actorId);
-  return { invalidated, outcome, canResumeFullText, reviewHistory, canClaim, isProposer: proposerEligibility.isProposer, proposerExcluded: proposerEligibility.proposerExcluded, proposerExceptionGranted: proposerEligibility.hasException, classification, resolutionType, legacyNeedsAudit: row.legacyNeedsAudit, adjudicationCase, canReassess: (settings.screeningMode ? writable && !final : openDisagreement) && !(dispute?.active && caseReady) && !pendingResolution && Boolean(own?.submittedAt), provisionalAdvance, canAdvanceConservatively: !dispute?.active && !pendingResolution && (settings.workflowVersion ?? 0) < 8 && writable && visible && !row.finalizerId && needsAdjudication && discussionReady && row.phase === "TITLE_ABSTRACT" && settings.allowConservativeFullText === true && Boolean(settings.stages?.includes("FULL_TEXT")) && Boolean(own?.submittedAt) && adjudicators.length === 0, resolution: pendingResolution ? { decision: "NEEDS_MORE_INFO" as const, reason: pendingResolution.reason, createdAt: pendingResolution.createdAt.toISOString() } : null, canRequestAdjudication: openDisagreement && !pendingResolution && !dispute?.active && settings.resolutionPolicy === "ADJUDICATION" && Boolean(own?.submittedAt), reviewerIntakeClosed: protocol && Boolean(row.unblindedAt), canProposeAgreement: !dispute?.active && (settings.workflowVersion ?? 0) < 8 && writable && protocol && (row.status === "NEEDS_RESOLUTION" || (settings.workflowVersion ?? 0) >= 5 && row.status === "NEEDS_MORE_INFO") && !row.finalizerId && Boolean(own?.submittedAt), agreement: protocol && visible ? await screeningAgreement(c, row) : null, finalizerAssigned: Boolean(row.finalizerId), ...(protocol ? { discussionReady, canReopenOwn: writable && !(dispute?.active && caseReady) && !pendingResolution && !final && Boolean(own?.submittedAt), ...(c.role === "OWNER" ? { adjudicators } : {}) } : {}), id: row.id, paperId: row.paperId, number: row.number, phase: row.phase as ScreeningRoundView["phase"], version: row.version, active: row.active, status: row.status as ScreeningRoundView["status"], settings: { ...settings, questionOptions: await projectQuestionOptions(c) }, extractionReady: row.active && row.status === "INCLUDED" && !(row.phase !== "FULL_TEXT" && automaticFullTextStage(settings)),
+  const timing = await getDiscussionTiming(c, row);
+  const closure = await getClosureDetails(c, row);
+  const now = new Date();
+  const canCloseUnresolved = c.role === "OWNER" && row.active && ["NEEDS_RESOLUTION", "NEEDS_MORE_INFO"].includes(row.status) && Boolean(timing && now >= new Date(timing.initialDeadlineAt));
+
+  return { invalidated, outcome, canResumeFullText, reviewHistory, canClaim, isProposer: proposerEligibility.isProposer, proposerExcluded: proposerEligibility.proposerExcluded, proposerExceptionGranted: proposerEligibility.hasException, classification, resolutionType, legacyNeedsAudit: row.legacyNeedsAudit, adjudicationCase, canReassess: !isTeamScreening && (settings.screeningMode ? writable && !final : openDisagreement) && !(dispute?.active && caseReady) && !pendingResolution && Boolean(own?.submittedAt), provisionalAdvance, canAdvanceConservatively: !dispute?.active && !pendingResolution && (settings.workflowVersion ?? 0) < 8 && writable && visible && !row.finalizerId && needsAdjudication && discussionReady && row.phase === "TITLE_ABSTRACT" && settings.allowConservativeFullText === true && Boolean(settings.stages?.includes("FULL_TEXT")) && Boolean(own?.submittedAt) && adjudicators.length === 0, resolution: pendingResolution ? { decision: "NEEDS_MORE_INFO" as const, reason: pendingResolution.reason, createdAt: pendingResolution.createdAt.toISOString() } : null, canRequestAdjudication: !isTeamScreening && openDisagreement && !pendingResolution && !dispute?.active && settings.resolutionPolicy === "ADJUDICATION" && Boolean(own?.submittedAt), reviewerIntakeClosed: protocol && Boolean(row.unblindedAt), canProposeAgreement: !dispute?.active && (isTeamScreening || (settings.workflowVersion ?? 0) < 8) && writable && protocol && (row.status === "NEEDS_RESOLUTION" || (settings.workflowVersion ?? 0) >= 5 && row.status === "NEEDS_MORE_INFO" || isTeamScreening && row.status === "NEEDS_MORE_INFO") && !row.finalizerId && Boolean(own?.submittedAt), agreement: protocol && visible ? await screeningAgreement(c, row) : null, finalizerAssigned: Boolean(row.finalizerId), ...(protocol ? { discussionReady, canReopenOwn: writable && !(dispute?.active && caseReady) && !pendingResolution && !final && Boolean(own?.submittedAt), ...(c.role === "OWNER" && !isTeamScreening ? { adjudicators } : {}) } : {}), id: row.id, paperId: row.paperId, number: row.number, phase: row.phase as ScreeningRoundView["phase"], version: row.version, active: row.active, status: row.status as ScreeningRoundView["status"], settings: { ...settings, questionOptions: await projectQuestionOptions(c) }, extractionReady: row.active && row.status === "INCLUDED" && !(row.phase !== "FULL_TEXT" && automaticFullTextStage(settings)),
     unblindedAt: row.unblindedAt?.toISOString() ?? null, independenceCompromised: row.independenceCompromised, assigned: assignments.length, completed: submitted.length,
     assignments: assignments.map(a => ({ id: a.id, reviewerId: a.reviewerId, name: names.find(n => n.id === a.reviewerId)?.fullName || "Thành viên", revision: a.revision, completed: Boolean(a.submittedAt), active: a.active, dueAt: a.submittedAt ? null : a.dueAt?.toISOString() ?? null, overdue: !a.submittedAt && Boolean(a.dueAt && a.dueAt < new Date()) })),
     canDefer: writable && settings.reviewMode === "COLLABORATIVE" && (c.actorId === finalizerId || c.role === "OWNER"),
     finalizer: { id: finalizerId, name: finalizer?.fullName || (protocol ? "Chưa chỉ định" : "Người chốt") }, canFinalize: writable && c.actorId === finalizerId && ["AWAITING_FINALIZATION", "NEEDS_RESOLUTION", "NEEDS_MORE_INFO", "ADJUDICATING"].includes(row.status),
     myAssignmentId: own?.id ?? null, reviews: shown, myReview: shown.find(r => r.reviewerId === c.actorId) ?? null, hiddenReviews: !visible,
     finalDecision: final ? { id: final.id, version: final.roundVersion, decision: final.decision as "INCLUDED" | "EXCLUDED" | "BACKGROUND", source: final.source as "CONSENSUS" | "MANUAL", reason: final.reason, resolverId: final.resolverId, createdAt: final.createdAt.toISOString() } : null,
-    canReview: Boolean(writable && ((settings.reviewMode === "COLLABORATIVE") || (own && !own.submittedAt)) && !["INCLUDED", "EXCLUDED", "BACKGROUND"].includes(row.status)), canManage: !invalidated && !["ARCHIVED", "COMPLETED"].includes(c.project.status) && c.role === "OWNER", aiVisible: Boolean(row.unblindedAt || settings.aiAssisted) };
+    canReview: Boolean(writable && ((settings.reviewMode === "COLLABORATIVE") || (own && !own.submittedAt)) && !["INCLUDED", "EXCLUDED", "BACKGROUND", "CLOSED_UNRESOLVED"].includes(row.status)), canManage: !invalidated && !["ARCHIVED", "COMPLETED"].includes(c.project.status) && c.role === "OWNER", aiVisible: Boolean(row.unblindedAt || settings.aiAssisted),
+    discussionTiming: timing, closureReason: closure?.reason ?? null, closureDetails: closure, canCloseUnresolved };
 }
 export function screeningReviewsVisible(row: Pick<ScreeningRound, "unblindedAt">, settings: Settings, assignments: Array<{ submittedAt: Date | null }>) {
   if (independentWorkflow(settings)) return Boolean(row.unblindedAt) && assignments.length >= settings.requiredReviewers && assignments.every(a => a.submittedAt);
@@ -142,6 +263,30 @@ export async function recomputeScreening(c: WorkspaceContext, row: ScreeningRoun
     if (!row.unblindedAt) await notifyScreeningParticipants(c, row, "DISCLOSURE", "Hai phiếu đã hoàn tất, xem kết quả đối chiếu", updated.version);
   }
   if (complete) await c.tx.screeningAudit.create({ data: { projectId: c.project.id, roundId: row.id, actorId: c.actorId, type: "REVIEWS_COMPLETED", details: { status, reviewMode: settings.reviewMode, resolutionPolicy: settings.resolutionPolicy, completionRule: "ALL_ASSIGNED", ruleVersion: settings.version, reviewIds: reviews.map(r => r.id) } } });
+  if (complete && ["NEEDS_RESOLUTION", "NEEDS_MORE_INFO"].includes(status)) {
+    const existingStarted = await c.tx.screeningAudit.findFirst({
+      where: { projectId: c.project.id, roundId: row.id, type: "DISCUSSION_STARTED" }
+    });
+    if (!existingStarted) {
+      const startedAt = new Date();
+      const initialDeadline = new Date(startedAt.getTime() + (settings.discussionWindowHours ?? 48) * 3600 * 1000);
+      const hardDeadline = new Date(startedAt.getTime() + ((settings.discussionWindowHours ?? 48) + (settings.maxExtensionHours ?? 24)) * 3600 * 1000);
+      await c.tx.screeningAudit.create({
+        data: {
+          projectId: c.project.id,
+          roundId: row.id,
+          actorId: c.actorId,
+          type: "DISCUSSION_STARTED",
+          details: {
+            startedAt: startedAt.toISOString(),
+            initialDeadline: initialDeadline.toISOString(),
+            hardDeadline: hardDeadline.toISOString(),
+            reviewIds: reviews.map(r => r.id),
+          }
+        }
+      });
+    }
+  }
   if (automatic) {
     const reason = outcome === "ADVANCE_TO_FULLTEXT" ? "Đủ điều kiện chuyển đọc toàn văn theo quy tắc vòng đầu. Bài chưa được chấp nhận cuối." : result === "INCLUDED" ? "Tất cả reviewer xác nhận phù hợp theo tiêu chí của vòng" : reviews.map(r => r.exclusionReason).filter(Boolean).join("; ");
     await c.tx.screeningFinalDecision.create({ data: { projectId: c.project.id, roundId: row.id, roundVersion: updated.version, decision: result, source: "CONSENSUS", sourceMaterial: reviews.map(r => r.fullTextReference || r.comment || r.exclusionReason).filter(Boolean).join("; "), resolutionType: reviews.some(r => r.revision > 1) ? "CONSENSUS_AFTER_DISCUSSION" : "AGREEMENT_FROM_REVIEWS", reason, resolverId: null, reviewIds: reviews.map(r => r.id) } });

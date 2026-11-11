@@ -29,6 +29,7 @@ const createSchema = z.object({
     "SOFTWARE_RESEARCH_PROJECT"
   ]).optional(),
   mentorId: objectIdSchema.optional(),
+  manuscriptSnapshotId: z.string().uuid().optional(),
   contentSnapshot: z.string().trim().max(500000).optional(),
   message: z.string().trim().max(5000).optional(),
   researchField: z.string().trim().max(200).optional(),
@@ -74,6 +75,12 @@ const feedbackSchema = z.object({
     comment: z.string().trim().min(1).max(10000),
     evidence: z.string().trim().max(5000).optional(),
   })).max(50).optional(),
+  rubricScores: z.array(z.object({
+    criterionKey: z.string().trim().min(1).max(80),
+    score: z.number().int().min(1).max(5).optional(),
+    assessment: z.string().trim().max(80).optional(),
+    comment: z.string().trim().max(5000).optional(),
+  })).max(20).optional(),
   requestedInformation: z.string().trim().max(5000).optional(),
 }).strict();
 
@@ -124,6 +131,10 @@ submissionRouter.get("/reviewer-assignments/me", deprecatedForReviewRequests, re
   res.json({ success: true, data: await submissionService.listMyAssignments(req.user!.sub) });
 });
 
+submissionRouter.get("/active-mentors", validate(z.object({ projectId: objectIdSchema }), "query"), async (req, res) => {
+  res.json({ success: true, data: await submissionService.listActiveMentors(String(req.query.projectId), req.user!.sub) });
+});
+
 submissionRouter.get("/", validate(projectScopeSchema, "query"), async (req, res) => {
   const { projectId } = projectScopeSchema.parse(req.query);
   res.json({ success: true, data: await submissionService.listMine(req.user!.sub, req.user!.role, projectId) });
@@ -132,7 +143,10 @@ submissionRouter.get("/", validate(projectScopeSchema, "query"), async (req, res
 submissionRouter.post("/", requirePermission("submission:create"), uploadSinglePdf, async (req, res) => {
   const parsed = createSchema.safeParse(parseArrayFields(req.body));
   if (!parsed.success) throw parsed.error;
-  const data = await submissionService.create(parsed.data, uploadedPdf(req), req.user!.sub, req.user!.role);
+  const pdf = parsed.data.contentSnapshot || parsed.data.manuscriptSnapshotId
+    ? optionalUploadedPdf(req)
+    : uploadedPdf(req);
+  const data = await submissionService.create(parsed.data, pdf, req.user!.sub, req.user!.role);
   res.status(201).json({ success: true, data });
 });
 

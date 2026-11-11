@@ -31,6 +31,7 @@ import { mentorPlanService } from "./mentor-plan.service.js";
 import { mentorPlanCommandSchema } from "./dto/mentor-plan.schema.js";
 import { mentorshipContentRouter } from "./mentorship-content.routes.js";
 import { mentorAccessRouter } from "./mentor-access.routes.js";
+import { scientificIntegrityRouter } from "./scientific-integrity.routes.js";
 import {
   contributionProposalParamsSchema,
   projectContributionController,
@@ -215,6 +216,7 @@ projectRouter.use("/:id/team-chat", projectTeamChatRouter);
 projectRouter.use("/:id", projectWorkspaceRouter);
 projectRouter.use("/:id/research", projectResearchRouter);
 projectRouter.use("/:id/mentor-access", mentorAccessRouter);
+projectRouter.use("/:id/scientific-integrity", scientificIntegrityRouter);
 
 projectRouter.post("/:id/members", projectWriteLimiter, validate(paramIdSchema, "params"), validate(addMemberSchema, "body"), projectController.addMember);
 projectRouter.delete("/:id/members/:memberId", validate(paramMemberIdSchema, "params"), validate(removeMemberBodySchema, "body"), projectController.removeMember);

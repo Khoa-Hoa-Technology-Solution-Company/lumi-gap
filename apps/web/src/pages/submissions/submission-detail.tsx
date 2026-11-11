@@ -18,6 +18,11 @@ import {
   Trash2,
   Download,
   ChevronDown,
+  GitCompare,
+  ShieldAlert,
+  Scale,
+  CheckSquare,
+  ListChecks,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -27,6 +32,7 @@ import { SubmissionIntroductionView } from "@/features/submissions/components/su
 import { VersionHistory } from "@/features/submissions/components/version-history";
 import { SubmitReviewDialog } from "@/features/reviews/components/submit-review-dialog";
 import { SubmissionReviewProgress } from "@/features/submissions/components/submission-review-progress";
+import { ContentComparison } from "@/features/submissions/components/content-comparison";
 import { submissionStatusBadge, submissionTypeBadge } from "./submission-list";
 import { useI18n } from "@/i18n";
 import {
@@ -40,6 +46,17 @@ import {
   submissionsApi,
 } from "@/features/submissions";
 import { projectSubmissionPath } from "@/features/submissions/project-submission-path";
+
+const RUBRIC_CRITERIA = [
+  { key: "rq_clarity", label: "Câu hỏi nghiên cứu & Mục tiêu", desc: "Tính rõ ràng, khả thi và sự đóng góp tri thức của câu hỏi nghiên cứu." },
+  { key: "methodology", label: "Phương pháp luận", desc: "Tính chặt chẽ, tính tái lập và sự phù hợp của quy trình nghiên cứu." },
+  { key: "results", label: "Kết quả & Dữ liệu", desc: "Độ tin cậy của phân tích, minh bạch về số liệu và tính logic của kết quả." },
+  { key: "evidence", label: "Bằng chứng & Lập luận", desc: "Các luận điểm có bằng chứng khoa học đối chiếu, không suy diễn thiếu căn cứ." },
+  { key: "discussion", label: "Thảo luận & So sánh", desc: "So sánh khách quan với các công trình trước, không tự nhận là tốt nhất khi điều kiện khác biệt." },
+  { key: "limitations", label: "Giới hạn nghiên cứu", desc: "Thành thật thừa nhận các hạn chế về tập dữ liệu, phương pháp hoặc phạm vi." },
+  { key: "citations", label: "Trích dẫn & Nguồn tham khảo", desc: "Trích dẫn chuẩn xác, không bịa nguồn, không có trích dẫn ma hoặc sai ngữ cảnh." },
+  { key: "integrity", label: "Liêm chính học thuật & AI", desc: "Minh bạch việc sử dụng công cụ AI trợ giúp, đúng chuẩn mực COPE/ICMJE." },
+];
 
 export function SubmissionDetailPage({
   submissionId,
@@ -68,6 +85,8 @@ export function SubmissionDetailPage({
 
   // Active selected version
   const [selectedVersionId, setSelectedVersionId] = useState<string>("");
+  const [showDiff, setShowDiff] = useState(false);
+  const [addressedAiItems, setAddressedAiItems] = useState<Record<string, boolean>>({});
 
   // Revision upload modal / section state
   const [showRevision, setShowRevision] = useState(false);
@@ -83,6 +102,16 @@ export function SubmissionDetailPage({
   const [newCommentParagraph, setNewCommentParagraph] = useState("1");
   const [newCommentText, setNewCommentText] = useState("");
   const [newCommentQuote, setNewCommentQuote] = useState("");
+  const [rubricScores, setRubricScores] = useState<Record<string, { score: number; comment?: string }>>({
+    rq_clarity: { score: 4, comment: "" },
+    methodology: { score: 4, comment: "" },
+    results: { score: 4, comment: "" },
+    evidence: { score: 4, comment: "" },
+    discussion: { score: 4, comment: "" },
+    limitations: { score: 4, comment: "" },
+    citations: { score: 4, comment: "" },
+    integrity: { score: 5, comment: "" },
+  });
 
   if (submission.isLoading) {
     return (
@@ -126,6 +155,7 @@ export function SubmissionDetailPage({
     reviews: [],
     createdAt: data.updatedAt,
   };
+  const previousVersion = versions.find(v => v.revisionNumber === (currentVersion.revisionNumber - 1));
 
   const paragraphs: string[] = (currentVersion.contentSnapshot ?? "")
     .split(/\n\s*\n/)
@@ -212,12 +242,19 @@ export function SubmissionDetailPage({
       return;
     }
 
+    const formattedRubric = Object.entries(rubricScores).map(([criterionKey, val]) => ({
+      criterionKey,
+      score: val.score,
+      comment: val.comment?.trim() || undefined,
+    }));
+
     try {
       await submitFeedbackMutation.mutateAsync({
         result,
         overallComment: overallComment.trim(),
         requestedInformation: requestedInformation.trim() || undefined,
         paragraphComments: paragraphComments.length > 0 ? paragraphComments : undefined,
+        rubricScores: formattedRubric,
       });
       toast.success("Đã hoàn tất góp ý cho bản thảo");
       setOverallComment("");
@@ -431,18 +468,47 @@ export function SubmissionDetailPage({
                 <FileText className="h-5 w-5 text-primary" />
                 <h3 className="font-semibold text-base">Nội dung bản thảo (v{currentVersion?.revisionNumber ?? 1})</h3>
               </div>
-              {currentVersion?.hasPdf && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="gap-1.5 text-xs h-8"
-                  onClick={() => submissionsApi.downloadRevision(id, currentVersion.id, currentVersion.revisionNumber)}
-                >
-                  <Download className="h-3.5 w-3.5" />
-                  Tải PDF
-                </Button>
-              )}
+              <div className="flex items-center gap-2">
+                {previousVersion && (
+                  <Button
+                    size="sm"
+                    variant={showDiff ? "secondary" : "outline"}
+                    className="gap-1.5 text-xs h-8"
+                    onClick={() => setShowDiff(prev => !prev)}
+                  >
+                    <GitCompare className="h-3.5 w-3.5" />
+                    {showDiff ? "Ẩn so sánh" : `So sánh với v${previousVersion.revisionNumber}`}
+                  </Button>
+                )}
+                {currentVersion?.hasPdf && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1.5 text-xs h-8"
+                    onClick={() => submissionsApi.downloadRevision(id, currentVersion.id, currentVersion.revisionNumber)}
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    Tải PDF
+                  </Button>
+                )}
+              </div>
             </div>
+
+            {/* Comparison view when enabled */}
+            {showDiff && previousVersion && (
+              <div className="mt-4 rounded-xl border border-primary/30 bg-muted/10 p-4">
+                <div className="flex items-center justify-between pb-3 border-b mb-3">
+                  <span className="text-xs font-semibold flex items-center gap-1.5 text-primary">
+                    <GitCompare className="h-4 w-4" />
+                    So sánh bản thảo: v{previousVersion.revisionNumber} → v{currentVersion.revisionNumber}
+                  </span>
+                  <Button variant="ghost" size="sm" className="h-6 text-xs px-2" onClick={() => setShowDiff(false)}>
+                    Đóng
+                  </Button>
+                </div>
+                <ContentComparison id={id} before={previousVersion} after={currentVersion} />
+              </div>
+            )}
 
             {/* Content view */}
             <div className="mt-5">
@@ -522,18 +588,21 @@ export function SubmissionDetailPage({
           )}
 
           {/* AI Pre-review Advisory (Collapsible) */}
-          <details className="group rounded-xl border border-primary/20 bg-primary/5 p-5">
+          <details className="group rounded-xl border border-primary/20 bg-primary/5 p-5" open={latestPreReview?.status === "COMPLETED"}>
             <summary className="flex cursor-pointer list-none items-center justify-between font-semibold text-sm">
               <span className="flex items-center gap-2">
                 <Bot className="h-4 w-4 text-primary" />
-                AI Pre-review (Tham khảo tự động)
+                AI Pre-review (Cố vấn học thuật sơ bộ)
               </span>
               <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180 text-muted-foreground" />
             </summary>
             <div className="mt-4 space-y-4 text-xs leading-5">
-              <p className="text-muted-foreground">
-                Đánh giá sơ bộ mục tiêu và khoảng trống nghiên cứu mang tính gợi ý, không thay thế nhận xét của Mentor.
-              </p>
+              <div className="rounded-lg border border-amber-300/60 bg-amber-500/10 p-3 text-xs text-amber-900 dark:text-amber-200 flex items-start gap-2">
+                <ShieldAlert className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                <p>
+                  <strong>Lưu ý liêm chính học thuật:</strong> AI Pre-review là công cụ phân tích cố vấn sơ bộ tự động, không thay thế bình duyệt chính thức của Mentor hoặc phê chuẩn của Hội đồng học thuật. Sinh viên cần đối chiếu và tự kiểm chứng từng gợi ý.
+                </p>
+              </div>
               {latestPreReview && (
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge variant="outline">
@@ -558,11 +627,108 @@ export function SubmissionDetailPage({
                 </Button>
               )}
               {latestPreReview?.status === "COMPLETED" && (
-                <div className="space-y-3 pt-2 border-t border-primary/20">
-                  <p><strong>Tóm tắt AI:</strong> {latestPreReview.summary}</p>
+                <div className="space-y-4 pt-3 border-t border-primary/20">
+                  <div className="rounded-lg border bg-card p-3 space-y-1">
+                    <strong className="text-primary block font-semibold">Tóm tắt phân tích học thuật:</strong>
+                    <p className="text-foreground leading-relaxed">{latestPreReview.summary}</p>
+                  </div>
+
+                  {latestPreReview.goalAlignment && (
+                    <div className="rounded-lg border bg-card p-3 space-y-1">
+                      <strong className="text-primary block font-semibold">Mục tiêu nghiên cứu & Độ tương thích (Goal Alignment):</strong>
+                      <p className="text-foreground leading-relaxed">{latestPreReview.goalAlignment}</p>
+                    </div>
+                  )}
+
+                  {latestPreReview.rqCoverage && latestPreReview.rqCoverage.length > 0 && (
+                    <div className="rounded-lg border bg-card p-3 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <strong className="text-primary flex items-center gap-1.5 font-semibold">
+                          <CheckSquare className="h-3.5 w-3.5" />
+                          Độ bao phủ câu hỏi nghiên cứu (RQ Coverage)
+                        </strong>
+                        <span className="text-[11px] text-muted-foreground">Tự rà soát trước khi gửi Mentor</span>
+                      </div>
+                      <ul className="space-y-1.5">
+                        {latestPreReview.rqCoverage.map((rq: any, idx: number) => {
+                          const key = `rq_${idx}`;
+                          const isAddressed = addressedAiItems[key];
+                          return (
+                            <li key={idx} className="flex items-start gap-2 rounded bg-muted/20 p-2 text-xs">
+                              <input
+                                type="checkbox"
+                                id={key}
+                                checked={!!isAddressed}
+                                onChange={e => setAddressedAiItems(prev => ({ ...prev, [key]: e.target.checked }))}
+                                className="mt-0.5 rounded border-input"
+                              />
+                              <label htmlFor={key} className={`cursor-pointer ${isAddressed ? "line-through text-muted-foreground" : "text-foreground"}`}>
+                                <span className="font-semibold">{rq.question ?? `RQ ${idx + 1}`}:</span> {rq.status || rq.assessment || JSON.stringify(rq)}
+                              </label>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  )}
+
+                  {latestPreReview.unsupportedClaims && latestPreReview.unsupportedClaims.length > 0 && (
+                    <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <strong className="text-destructive flex items-center gap-1.5 font-semibold">
+                          <AlertCircle className="h-3.5 w-3.5" />
+                          Luận điểm thiếu bằng chứng đối chứng ({latestPreReview.unsupportedClaims.length})
+                        </strong>
+                        <span className="text-[11px] text-destructive/80">Cần bổ sung nguồn</span>
+                      </div>
+                      <ul className="space-y-2">
+                        {latestPreReview.unsupportedClaims.map((claim: any, idx: number) => {
+                          const key = `claim_${idx}`;
+                          const isAddressed = addressedAiItems[key];
+                          return (
+                            <li key={idx} className="rounded border bg-card p-2.5 text-xs space-y-1">
+                              <div className="flex items-start gap-2">
+                                <input
+                                  type="checkbox"
+                                  id={key}
+                                  checked={!!isAddressed}
+                                  onChange={e => setAddressedAiItems(prev => ({ ...prev, [key]: e.target.checked }))}
+                                  className="mt-0.5 rounded border-input"
+                                />
+                                <label htmlFor={key} className={`cursor-pointer ${isAddressed ? "line-through text-muted-foreground" : "text-foreground"}`}>
+                                  {typeof claim === "string" ? claim : (
+                                    <div>
+                                      {claim.quote && <p className="italic text-muted-foreground">“{claim.quote}”</p>}
+                                      <p className="font-medium mt-0.5">{claim.reason ?? claim.claim}</p>
+                                    </div>
+                                  )}
+                                </label>
+                              </div>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  )}
+
+                  {latestPreReview.citationIssues && latestPreReview.citationIssues.length > 0 && (
+                    <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 space-y-1.5">
+                      <strong className="text-amber-800 dark:text-amber-300 block font-semibold">
+                        Cảnh báo trích dẫn & Nguồn tài liệu ({latestPreReview.citationIssues.length}):
+                      </strong>
+                      <ul className="list-disc pl-4 space-y-1">
+                        {latestPreReview.citationIssues.map((issue: any, idx: number) => (
+                          <li key={idx} className="text-xs text-foreground">
+                            {typeof issue === "string" ? issue : `${issue.citation}: ${issue.issue}`}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
                   {latestPreReview.reviewFocusAreas?.length ? (
-                    <div>
-                      <strong>Điểm trọng tâm cần xem xét:</strong>
+                    <div className="rounded-lg border bg-card p-3 space-y-1">
+                      <strong className="text-primary block font-semibold">Các điểm trọng tâm khuyến nghị rà soát:</strong>
                       <ul className="list-disc pl-4 mt-1 space-y-0.5">
                         {latestPreReview.reviewFocusAreas.map((f: string, i: number) => <li key={i}>{f}</li>)}
                       </ul>
@@ -597,6 +763,56 @@ export function SubmissionDetailPage({
                     onChange={e => setOverallComment(e.target.value)}
                     rows={4}
                   />
+                </div>
+
+                {/* Academic Rubric Criteria Evaluation */}
+                <div className="space-y-3 rounded-lg border bg-muted/20 p-4">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-semibold uppercase text-muted-foreground flex items-center gap-1.5">
+                      <Scale className="h-3.5 w-3.5 text-primary" />
+                      Thang điểm Rubric học thuật ({RUBRIC_CRITERIA.length} tiêu chí)
+                    </h4>
+                    <span className="text-xs font-bold text-primary">
+                      Điểm TB: {(Object.values(rubricScores).reduce((acc, c) => acc + (c.score || 0), 0) / RUBRIC_CRITERIA.length).toFixed(1)} / 5.0
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-2.5">
+                    {RUBRIC_CRITERIA.map(crit => {
+                      const current = rubricScores[crit.key] ?? { score: 4 };
+                      return (
+                        <div key={crit.key} className="rounded-md border bg-card p-3 text-xs space-y-1.5">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-semibold text-foreground">{crit.label}</span>
+                            <div className="flex items-center gap-1">
+                              {[1, 2, 3, 4, 5].map(pt => (
+                                <button
+                                  key={pt}
+                                  type="button"
+                                  onClick={() => setRubricScores(prev => ({ ...prev, [crit.key]: { ...prev[crit.key], score: pt } }))}
+                                  className={`h-6 w-6 rounded text-[11px] font-semibold transition-colors ${
+                                    current.score === pt
+                                      ? "bg-primary text-primary-foreground shadow-xs"
+                                      : "bg-muted text-muted-foreground hover:bg-muted/80"
+                                  }`}
+                                >
+                                  {pt}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                          <p className="text-[11px] text-muted-foreground">{crit.desc}</p>
+                          <input
+                            type="text"
+                            placeholder="Ghi chú thêm cho tiêu chí này (tùy chọn)..."
+                            className="w-full rounded border border-input bg-background px-2 py-1 text-[11px]"
+                            value={current.comment ?? ""}
+                            onChange={e => setRubricScores(prev => ({ ...prev, [crit.key]: { ...prev[crit.key], comment: e.target.value } }))}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
 
                 {/* Paragraph-level comments */}
@@ -764,6 +980,47 @@ export function SubmissionDetailPage({
                 </p>
               </div>
 
+              {/* Rubric Evaluation Summary */}
+              {latestMentorReview.responses?.some((r: any) => r.criterionKey?.startsWith("rubric:")) && (
+                <div className="space-y-3 rounded-lg border bg-muted/20 p-4">
+                  <div className="flex items-center justify-between border-b pb-2">
+                    <h4 className="text-xs font-semibold uppercase text-muted-foreground flex items-center gap-1.5">
+                      <Scale className="h-3.5 w-3.5 text-primary" />
+                      Kết quả đánh giá theo Rubric học thuật
+                    </h4>
+                    {latestMentorReview.weightedScore !== null && latestMentorReview.weightedScore !== undefined && (
+                      <span className="font-bold text-xs text-primary">
+                        Điểm tổng hợp: {Number(latestMentorReview.weightedScore).toFixed(1)} / 5.0
+                      </span>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                    {latestMentorReview.responses
+                      .filter((r: any) => r.criterionKey?.startsWith("rubric:"))
+                      .map((r: any, idx: number) => {
+                        const cleanKey = r.criterionKey.replace(/^rubric:/, "");
+                        const crit = RUBRIC_CRITERIA.find(c => c.key === cleanKey);
+                        const title = crit ? crit.label : cleanKey;
+                        return (
+                          <div key={idx} className="rounded border bg-card p-2.5 text-xs space-y-1">
+                            <div className="flex items-center justify-between">
+                              <span className="font-medium text-foreground">{title}</span>
+                              {r.score !== null && (
+                                <Badge variant="outline" className="text-[11px] font-bold">
+                                  {r.score} / 5
+                                </Badge>
+                              )}
+                            </div>
+                            {r.comment && !r.comment.startsWith("Rubric score:") && (
+                              <p className="text-muted-foreground text-[11px]">{r.comment}</p>
+                            )}
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
+              )}
+
               {/* Requested Information */}
               {latestMentorReview.keyStrengths && (
                 <div className="rounded-lg border border-amber-300/60 bg-amber-500/10 p-3.5 text-xs text-amber-900 dark:text-amber-200">
@@ -773,19 +1030,21 @@ export function SubmissionDetailPage({
               )}
 
               {/* Paragraph Comments */}
-              {latestMentorReview.responses && latestMentorReview.responses.length > 0 && (
+              {latestMentorReview.responses && latestMentorReview.responses.filter((r: any) => !r.criterionKey?.startsWith("rubric:")).length > 0 && (
                 <div className="space-y-3 pt-2 border-t">
                   <h4 className="text-xs font-semibold uppercase text-muted-foreground">
-                    Bình luận chi tiết theo đoạn ({latestMentorReview.responses.length}):
+                    Bình luận chi tiết theo đoạn ({latestMentorReview.responses.filter((r: any) => !r.criterionKey?.startsWith("rubric:")).length}):
                   </h4>
                   <div className="space-y-2.5">
-                    {latestMentorReview.responses.map((resp: any, i: number) => (
-                      <div key={i} className="rounded-lg border bg-muted/20 p-3 text-xs space-y-1">
-                        <span className="font-semibold text-primary block">{resp.criterionKey}</span>
-                        {resp.evidence && <p className="italic text-muted-foreground">“{resp.evidence}”</p>}
-                        <p className="text-foreground leading-relaxed">{resp.comment}</p>
-                      </div>
-                    ))}
+                    {latestMentorReview.responses
+                      .filter((r: any) => !r.criterionKey?.startsWith("rubric:"))
+                      .map((resp: any, i: number) => (
+                        <div key={i} className="rounded-lg border bg-muted/20 p-3 text-xs space-y-1">
+                          <span className="font-semibold text-primary block">{resp.criterionKey}</span>
+                          {resp.evidence && <p className="italic text-muted-foreground">“{resp.evidence}”</p>}
+                          <p className="text-foreground leading-relaxed">{resp.comment}</p>
+                        </div>
+                      ))}
                   </div>
                 </div>
               )}

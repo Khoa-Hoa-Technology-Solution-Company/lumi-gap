@@ -5,6 +5,7 @@ import { WorkContributionsPanel } from "./work-contributions";
 import { ContributionAllocationPanel } from "./contribution-allocation";
 import { AdvisorContributionsPanel } from "./advisor-contributions-panel";
 import { PersonalContributionEvidencePanel } from "./personal-contribution-evidence-panel";
+import { SubmissionReadinessPackage } from "./submission-readiness-package";
 import { canLeaveWorkspace } from "./workspace-common";
 import "../project-contributions.css";
 
@@ -27,6 +28,7 @@ export function ProjectContributionsWorkspace({
     value === "activity" ||
     value === "advisors" ||
     value === "evidence" ||
+    value === "readiness" ||
     value === "allocation"
       ? value
       : "allocation";
@@ -54,6 +56,7 @@ export function ProjectContributionsWorkspace({
           ["work", "Work contributions"],
           ["advisors", "Advisor contributions"],
           ["evidence", "My evidence & export"],
+          ["readiness", "Authorship & Integrity Package"],
           ["activity", "Activity"],
         ].map(([key, label]) => (
           <button
@@ -68,6 +71,13 @@ export function ProjectContributionsWorkspace({
       </nav>
       {tab === "activity" ? (
         <ContributionActivityPanel projectId={projectId} />
+      ) : tab === "readiness" ? (
+        <SubmissionReadinessPackage
+          projectId={projectId}
+          currentUserId={currentUserId}
+          isOwner={isOwner}
+          readOnly={readOnly}
+        />
       ) : tab === "work" ? (
         <WorkContributionsPanel projectId={projectId} currentUserId={currentUserId} readOnly={readOnly} />
       ) : tab === "advisors" ? (

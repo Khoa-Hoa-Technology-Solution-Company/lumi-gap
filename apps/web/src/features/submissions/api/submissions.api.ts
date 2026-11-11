@@ -18,6 +18,7 @@ export interface MentorFeedbackPayload {
   result: "FEEDBACK_GIVEN" | "REVISION_REQUESTED" | "READY_TO_ADVANCE";
   overallComment: string;
   paragraphComments?: Array<{ criterionKey?: string; comment: string; evidence?: string }>;
+  rubricScores?: Array<{ criterionKey: string; score?: number; assessment?: string; comment?: string }>;
   requestedInformation?: string;
 }
 export interface SubmissionSummary {
@@ -97,7 +98,7 @@ export const submissionsApi = {
   async submitFeedback(id: string, payload: MentorFeedbackPayload): Promise<void> {
     await api.post(`/submissions/${id}/feedback`, payload);
   },
-  async create(input: StructuredSubmissionInput & { mentorId?: string; contentSnapshot?: string; message?: string }, file?: File): Promise<{ submission: SubmissionSummary; revision: SubmissionRevision }> {
+  async create(input: StructuredSubmissionInput & { mentorId?: string; manuscriptSnapshotId?: string; contentSnapshot?: string; message?: string }, file?: File): Promise<{ submission: SubmissionSummary; revision: SubmissionRevision }> {
     const body = new FormData();
     for (const [key, value] of Object.entries(input)) {
       if (value === undefined) continue;

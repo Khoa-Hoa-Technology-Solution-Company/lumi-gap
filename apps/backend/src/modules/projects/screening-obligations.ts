@@ -2,12 +2,12 @@ import type { ScreeningObligation, ScreeningRound } from "../../generated/prisma
 import type { ScreeningAutomaticTask, ScreeningTaskAction, ScreeningTaskStatus, ScreeningTaskFeedback } from "@trend/shared-types";
 import { AppError } from "../../common/exceptions/app-error.js";
 import { withWorkspace, type WorkspaceContext } from "./workspace-access.js";
-import { roundView, roundSettings } from "./screening-context.js";
+import { roundView, roundSettings, reconcileExpiredDiscussions } from "./screening-context.js";
 import { screeningPeople } from "./screening-assignments.js";
 import { caseView, ensureAssignment } from "./screening-case-context.js";
 
 const open = (status: string) => ["TODO", "IN_PROGRESS", "BLOCKED"].includes(status);
-const final = (round: ScreeningRound) => ["INCLUDED", "EXCLUDED", "BACKGROUND", "WAITING_FULLTEXT"].includes(round.status);
+const final = (round: ScreeningRound) => ["INCLUDED", "EXCLUDED", "BACKGROUND", "WAITING_FULLTEXT", "CLOSED_UNRESOLVED"].includes(round.status);
 type Desired = { round: ScreeningRound; actor: string; kind: ScreeningTaskAction; instance: string; dueAt?: Date | null; completedAt?: Date | null; status?: ScreeningTaskStatus; reason?: string };
 
 /** Run only inside withWorkspace's project lock. State, ledger and events commit together.
@@ -15,6 +15,7 @@ type Desired = { round: ScreeningRound; actor: string; kind: ScreeningTaskAction
  * No ballot text or sealed statement content is copied into the task ledger.
  */
 export async function reconcileScreeningObligations(c: WorkspaceContext) {
+  await reconcileExpiredDiscussions(c);
   const now = new Date();
   let rounds = await c.tx.screeningRound.findMany({ where: { projectId: c.project.id } });
   const [assignments, members, people, old] = await Promise.all([
@@ -113,7 +114,7 @@ export async function reconcileScreeningObligations(c: WorkspaceContext) {
       else if (version !== dispute.packetVersion) { status = "REPLACED"; reason = "Hồ sơ có phiên bản mới, cần đối chiếu lại"; }
       else if (dispute.deadline <= now) { status = "EXPIRED"; reason = "Hết hạn gửi quan điểm; không bổ sung ý kiến"; }
     } else if (["DISCUSSION", "CONSENSUS"].includes(row.actionType) && activeCase) { status = "REPLACED"; reason = "Chuyển sang phân xử"; }
-    else if (["DISCUSSION", "CONSENSUS"].includes(row.actionType) && final(r)) { status = "DONE"; reason = "Hai phiếu đã có kết quả hợp lệ"; }
+    else if (["DISCUSSION", "CONSENSUS"].includes(row.actionType) && final(r)) { status = "DONE"; reason = r.status === "CLOSED_UNRESOLVED" ? "Vòng sàng lọc đã đóng" : "Hai phiếu đã có kết quả hợp lệ"; }
     else if (row.actionType === "ADJUDICATION") {
       const invitation = invitations.find(i => row.workflowInstanceId.includes(i.id));
       const source = cases.find(d => d.id === invitation?.caseId);

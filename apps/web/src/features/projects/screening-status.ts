@@ -7,6 +7,7 @@ export const screeningStateTones = {
   WAITING_FULLTEXT: "neutral", AWAITING_FINALIZATION: "neutral", BACKGROUND: "neutral",
   NEEDS_RESOLUTION: "dispute", CONFLICT: "dispute", NEEDS_MORE_INFO: "warning",
   ADJUDICATING: "adjudication", INCLUDED: "success", ADVANCE_TO_FULLTEXT: "success", EXCLUDED: "excluded",
+  CLOSED_UNRESOLVED: "neutral",
 } satisfies Record<ScreeningState | ScreeningEvaluationStatus, ScreeningTone>;
 
 export const screeningClassificationTones = {

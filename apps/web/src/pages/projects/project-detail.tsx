@@ -29,6 +29,7 @@ import { useAuthStore } from "@/stores/auth-store";
 import { MentorProjectPanel } from "@/pages/academics/academic-support";
 import { ProjectTeamSettings } from "@/features/projects/components/project-team-settings";
 import { ProjectNextSteps } from "@/features/projects/components/project-next-steps";
+import { ResearchJourneyBar } from "@/features/projects/components/research-journey-bar";
 import { ProjectContributionsWorkspace } from "@/features/projects/components/project-contributions-workspace";
 import { ManuscriptsPanel, type ManuscriptCreationDraft } from "@/features/manuscripts/manuscripts-panel";
 import { useI18n } from "@/i18n";
@@ -126,6 +127,14 @@ export function ProjectDetailPage() {
           </div>
         ) : (
           <>
+            <ResearchJourneyBar
+              project={project}
+              activeTab={activeTab}
+              onAddPaper={() => {
+                setPaperPickerSource("search");
+                setPaperPickerOpen(true);
+              }}
+            />
             {activeTab === "overview" && (
               <ProjectNextSteps
                 key={project._id}
