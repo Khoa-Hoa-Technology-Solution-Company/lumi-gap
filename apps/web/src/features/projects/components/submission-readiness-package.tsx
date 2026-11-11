@@ -32,22 +32,7 @@ import type {
 } from "@trend/shared-types";
 import { creditRoles } from "@trend/shared-types";
 
-const ALL_CREDIT_ROLES: CreditRole[] = [
-  "Conceptualization",
-  "Data curation",
-  "Formal analysis",
-  "Funding acquisition",
-  "Investigation",
-  "Methodology",
-  "Project administration",
-  "Resources",
-  "Software",
-  "Supervision",
-  "Validation",
-  "Visualization",
-  "Writing – original draft",
-  "Writing – review & editing",
-];
+const ALL_CREDIT_ROLES: CreditRole[] = [...creditRoles];
 
 export function SubmissionReadinessPackage({
   projectId,
@@ -641,10 +626,10 @@ export function SubmissionReadinessPackage({
 
                   <p className="text-foreground leading-relaxed">{item.purposeDescription}</p>
 
-                  {item.humanOversightNote && (
+                  {(item.humanOversightNote ?? item.verificationNote) && (
                     <div className="rounded bg-muted/20 p-2.5 text-[11px] text-muted-foreground">
                       <strong className="text-foreground block">Kiểm soát con người:</strong>
-                      {item.humanOversightNote}
+                      {item.humanOversightNote ?? item.verificationNote}
                     </div>
                   )}
                 </div>
@@ -687,17 +672,22 @@ export function SubmissionReadinessPackage({
                     </td>
                   </tr>
                 ) : (
-                  overview.citations.items.map(citation => (
-                    <tr key={citation.citationKey}>
-                      <td className="py-3 px-4 font-mono font-semibold text-primary">{citation.citationKey}</td>
-                      <td className="py-3 px-4 max-w-xs truncate text-foreground">{citation.title ?? "Chưa rõ nhan đề"}</td>
-                      <td className="py-3 px-4 font-mono text-[11px] text-muted-foreground">{citation.doi ?? "Không có DOI"}</td>
+                  overview.citations.items.map(citation => {
+                    const citKey = citation.citationKey ?? citation.key;
+                    const citTitle = citation.title ?? citation.bibEntry?.title ?? "Chưa rõ nhan đề";
+                    const citDoi = citation.doi ?? citation.bibEntry?.doi ?? "Không có DOI";
+                    const citStatus = citation.status ?? (citation.doiStatus === "VALID" ? "VALID" : citation.doiStatus === "NOT_FOUND" ? "BROKEN" : "PENDING");
+                    return (
+                    <tr key={citKey}>
+                      <td className="py-3 px-4 font-mono font-semibold text-primary">{citKey}</td>
+                      <td className="py-3 px-4 max-w-xs truncate text-foreground">{citTitle}</td>
+                      <td className="py-3 px-4 font-mono text-[11px] text-muted-foreground">{citDoi}</td>
                       <td className="py-3 px-4">
-                        {citation.status === "VALID" ? (
+                        {citStatus === "VALID" ? (
                           <Badge className="bg-emerald-500/15 text-emerald-800 border-emerald-300 text-[10px]">
                             Hợp lệ
                           </Badge>
-                        ) : citation.status === "BROKEN" ? (
+                        ) : citStatus === "BROKEN" ? (
                           <Badge className="bg-rose-500/15 text-rose-800 border-rose-300 text-[10px]">
                             Lỗi trích dẫn
                           </Badge>
@@ -714,17 +704,18 @@ export function SubmissionReadinessPackage({
                             variant="ghost"
                             className="h-7 text-xs px-2"
                             onClick={() => verifyCitationMutation.mutate({
-                              citationKey: citation.citationKey,
-                              action: citation.status === "VALID" ? "UNVERIFY" : "VERIFY",
+                              citationKey: citKey,
+                              action: citStatus === "VALID" ? "UNVERIFY" : "VERIFY",
                             })}
                             disabled={verifyCitationMutation.isPending}
                           >
-                            {citation.status === "VALID" ? "Hủy xác thực" : "Xác nhận nguồn"}
+                            {citStatus === "VALID" ? "Hủy xác thực" : "Xác nhận nguồn"}
                           </Button>
                         )}
                       </td>
                     </tr>
-                  ))
+                    );
+                  })
                 )}
               </tbody>
             </table>

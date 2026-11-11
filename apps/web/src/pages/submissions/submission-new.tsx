@@ -296,7 +296,7 @@ export function SubmissionNewPage({ projectId, projectTitle }: { projectId?: str
                     </option>
                     {snapshots.data?.map(s => (
                       <option key={s.id} value={s.id}>
-                        {s.label || `v${s.sourceVersion}`} · {s.digestSha256?.slice(0, 10)}… ({new Date(s.createdAt).toLocaleDateString()})
+                        {s.label || `v${s.sourceVersion}`} · {(s.checksum ?? s.digestSha256)?.slice(0, 10)}… ({new Date(s.createdAt).toLocaleDateString()})
                       </option>
                     ))}
                   </select>
