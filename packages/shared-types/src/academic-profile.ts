@@ -235,6 +235,8 @@ export interface AcademicAvailability<T extends string> {
   enabled: boolean;
   types: T[];
   preferredTopics: string[];
+  preferredTopicIds?: string[];
+  requestedEnabled?: boolean;
   note?: string;
   updatedAt?: ISODateString;
   acceptedFields?: string[];
@@ -358,6 +360,8 @@ export interface AcademicProfile {
   institutionalEmail?: string;
   researchInterests: string[];
   expertiseAreas: string[];
+  researchClassification?: import("./research-classification.js").ResearchClassification;
+  researchSpecializations?: string[];
   skills: string[];
   researchKeywords: string[];
   externalIdentities: AcademicExternalIdentity[];
@@ -471,6 +475,8 @@ export interface UpdateAcademicProfileDetailsRequest {
   };
   researchInterests?: string[];
   expertiseAreas?: string[];
+  researchClassification?: import("./research-classification.js").ResearchClassificationInput;
+  researchSpecializations?: string[];
   skills?: string[];
   researchKeywords?: string[];
   externalIdentities?: Array<{
@@ -496,4 +502,10 @@ export interface AcademicVerificationListResponse {
 export interface LecturerDirectoryResponse {
   data: CompactAcademicProfile[];
   meta: { page: number; pageSize: number; total: number; totalPages: number };
+}
+
+/** Account ownership only; never lecturer, institution, or expertise verification. */
+export interface OrcidConnectionAvailability {
+  configured: boolean;
+  environment: "SANDBOX" | "PRODUCTION";
 }

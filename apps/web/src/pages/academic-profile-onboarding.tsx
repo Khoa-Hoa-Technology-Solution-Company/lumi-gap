@@ -1,3 +1,4 @@
+import { classificationInput } from "@/features/academic-profile/utils/research-classification";
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { AcademicRole, User } from "@trend/shared-types";
@@ -16,11 +17,14 @@ import { LanguageSwitcher, useI18n } from "@/i18n";
 import { ResearchCheckboxField } from "@/features/academic-profile/components/research-checkbox-field";
 import { getResearchSuggestions, researchInterestOptions, researchSkillOptions } from "@/features/academic-profile/utils/research-suggestions";
 import { OnboardingOptionalSection } from "@/features/academic-profile/components/onboarding-optional-section";
+import { SupervisionTopicFields, MentoringSupportFields, ResearchClassificationFields } from "@/features/academic-profile/components/research-classification-fields";
+import type { ResearchClassificationInput } from "@trend/shared-types";
+import { ResearchTagField } from "@/features/academic-profile/components/research-focus-fields";
 import { OnboardingAreaPicker } from "@/features/academic-profile/components/onboarding-area-picker";
 import "./academic-profile-onboarding.css";
 
 type FocusSelections = { researchAreas: string[]; researchInterests: string[]; skills: string[] };
-type Draft = FocusSelections & { step: number; expandedFocus: "interests" | "skills" | null; institutionId: string; institutionName: string; institutionSearch: string; customInstitution: boolean; academicRole: AcademicRole | ""; programId: string; programName: string; positionTitle: string };
+type Draft = FocusSelections & { preferredTopicIds?: string[]; mentoringSupportTypes?: import("@trend/shared-types").ResearchSupportType[]; researchClassification?: ResearchClassificationInput; researchSpecializations: string[]; researchKeywords: string[]; mentoringTopics: string[]; mentoringInterested: boolean; biography: string; step: number; expandedFocus: "interests" | "skills" | null; institutionId: string; institutionName: string; institutionSearch: string; customInstitution: boolean; academicRole: AcademicRole | ""; programId: string; programName: string; positionTitle: string };
 const roles = ["STUDENT", "LECTURER", "RESEARCHER"] as const;
 const roleQuestions = {
   STUDENT: { details: "Your studies", institution: "Where are you studying?", search: "Search your school or university", institutionName: "School or university name", position: "Program / Major / Field of Study", focus: "Your learning interests", areas: "Fields you want to explore", help: "Choose fields you want to learn about. You do not need prior research experience.", interests: "Topics you want to explore", example: "e.g. Building accessible mobile apps" },
@@ -29,7 +33,7 @@ const roleQuestions = {
 } as const;
 const positions = { RESEARCHER: ["Research Assistant", "Research Fellow", "Research Engineer", "Research Staff", "Independent Researcher"], LECTURER: ["Lecturer", "Senior Lecturer", "Assistant Professor", "Associate Professor", "Professor"] };
 function readDraft(key: string, institutionName: string, academicRole: AcademicRole | ""): Draft {
-  const empty: Draft = { step: 1, expandedFocus: null, institutionId: "", institutionName, institutionSearch: institutionName, customInstitution: false, academicRole, programId: "", programName: "", positionTitle: "", researchAreas: [], researchInterests: [], skills: [] };
+  const empty: Draft = { step: 1, researchSpecializations: [], researchKeywords: [], mentoringTopics: [], mentoringInterested: false, biography: "", expandedFocus: null, institutionId: "", institutionName, institutionSearch: institutionName, customInstitution: false, academicRole, programId: "", programName: "", positionTitle: "", researchAreas: [], researchInterests: [], skills: [] };
   try {
     const current = sessionStorage.getItem(key);
     const legacy = current === null;
@@ -39,7 +43,7 @@ function readDraft(key: string, institutionName: string, academicRole: AcademicR
     const expandedFocus = value.expandedFocus === "interests" || value.expandedFocus === "skills" ? value.expandedFocus : value.expandedFocus === null ? null : value.focusTab === "interests" || value.focusTab === "skills" ? value.focusTab : null;
     const focus = (source: Partial<FocusSelections>): FocusSelections => ({ researchAreas: strings(source.researchAreas), researchInterests: strings(source.researchInterests), skills: strings(source.skills, 30) });
     const selections = focus(value);
-    return { ...empty, step: value.step!, expandedFocus: legacy ? null : expandedFocus, academicRole: roles.includes(value.academicRole as AcademicRole) ? value.academicRole! : "", customInstitution: value.customInstitution === true,
+    return { ...empty, ...(Array.isArray(value.preferredTopicIds) ? { preferredTopicIds: value.preferredTopicIds.filter(id => typeof id === "string").slice(0, 10) } : {}), ...(Array.isArray(value.mentoringSupportTypes) ? { mentoringSupportTypes: value.mentoringSupportTypes.slice(0, 8) } : {}), ...(value.researchClassification && Array.isArray(value.researchClassification.nodeIds) && Array.isArray(value.researchClassification.skillIds) && Array.isArray(value.researchClassification.keywordIds) ? { researchClassification: classificationInput(value.researchClassification) } : {}), researchSpecializations: strings(value.researchSpecializations, 10), researchKeywords: strings(value.researchKeywords, 30), mentoringTopics: strings(value.mentoringTopics, 10), mentoringInterested: value.mentoringInterested === true, biography: typeof value.biography === "string" ? value.biography.slice(0, 2000) : "", step: value.step!, expandedFocus: legacy ? null : expandedFocus, academicRole: roles.includes(value.academicRole as AcademicRole) ? value.academicRole! : "", customInstitution: value.customInstitution === true,
       ...Object.fromEntries(["institutionId", "institutionName", "programId", "programName", "positionTitle"].flatMap(k => typeof value[k as keyof Draft] === "string" ? [[k, value[k as keyof Draft]]] : [])),
       institutionSearch: typeof value.institutionSearch === "string" ? value.institutionSearch : typeof value.institutionName === "string" ? value.institutionName : institutionName,
       ...(legacy ? { researchAreas: [], researchInterests: [], skills: [] } : selections) };
@@ -126,7 +130,7 @@ function AcademicProfileOnboardingForm({ user, accessToken, requestedPath }: { u
     if (!identityValid || !detailsValid || !draft.researchAreas.length) { setError(t("Complete your academic identity, details and research areas.")); return; }
     setError("");
     try {
-      const result = await save.mutateAsync({ academicRole: draft.academicRole as AcademicRole, institutionName: draft.institutionName.trim(), ...(draft.institutionId ? { institutionId: draft.institutionId } : {}), ...(isStudent ? (draft.programId ? { programId: draft.programId } : { programName: draft.programName.trim() }) : { positionTitle: currentPosition }), researchAreas: draft.researchAreas, researchInterests: draft.researchInterests, skills: draft.skills });
+      const result = await save.mutateAsync({ academicRole: draft.academicRole as AcademicRole, institutionName: draft.institutionName.trim(), ...(draft.institutionId ? { institutionId: draft.institutionId } : {}), ...(isStudent ? (draft.programId ? { programId: draft.programId } : { programName: draft.programName.trim() }) : { positionTitle: currentPosition }), researchAreas: draft.researchAreas, researchInterests: draft.researchInterests, skills: draft.skills, ...(isLecturer ? { researchClassification: classificationInput(draft.researchClassification), researchSpecializations: draft.researchSpecializations, researchKeywords: draft.researchKeywords, ...(draft.biography ? { biography: draft.biography } : {}), mentorshipPreferences: { preferredTopicIds: draft.preferredTopicIds ?? [], supportTypes: draft.mentoringSupportTypes ?? [], interested: draft.mentoringInterested, preferredTopics: draft.mentoringTopics } } : {}) });
       try { for (const version of ["v4", "v3", "v2"]) sessionStorage.removeItem(`lumigap.onboarding.${version}.${user.id}`); } catch { /* Optional persistence. */ }
       navigate(resolvePostAuthPath(result.user, requestedPath), { replace: true });
     } catch (failure) {
@@ -209,7 +213,7 @@ function AcademicProfileOnboardingForm({ user, accessToken, requestedPath }: { u
           <OnboardingOptionalSection id="interests" label="Research Interests" count={draft.researchInterests.length} max={MAX_ONBOARDING_RESEARCH_INTERESTS}
             expanded={draft.expandedFocus === "interests"} onToggle={() => { if (areasValid) setFieldsExpanded(false); update({ expandedFocus: draft.expandedFocus === "interests" ? null : "interests" }); }}>
           <ResearchCheckboxField id="research-interest" label="Research Interests" description="Choose up to 5 topics you want to explore."
-            options={suggestions.interests} allOptions={researchInterestOptions} searchLabel="Search topics"
+            options={suggestions.interests} allOptions={[...options.data?.researchTopics ?? [], ...researchInterestOptions]} searchLabel="Search topics"
             values={draft.researchInterests} onChange={researchInterests => updateFocus({ researchInterests })} max={MAX_ONBOARDING_RESEARCH_INTERESTS}
             placeholder="Search or add a topic" />
           </OnboardingOptionalSection>
@@ -220,6 +224,18 @@ function AcademicProfileOnboardingForm({ user, accessToken, requestedPath }: { u
             values={draft.skills} onChange={skills => updateFocus({ skills })} max={MAX_ONBOARDING_RESEARCH_SKILLS}
             placeholder="Search or add a skill" />
           </OnboardingOptionalSection>
+          {isLecturer && <details className="space-y-4 rounded-lg border p-4"><summary className="cursor-pointer font-medium">{t("Specializations and mentoring preferences")}</summary><div className="space-y-5 pt-3">
+            <ResearchClassificationFields value={draft.researchClassification} onChange={researchClassification => update({ researchClassification })} />
+            <ResearchTagField label={t("Research Specializations")} values={draft.researchSpecializations} onChange={researchSpecializations => update({ researchSpecializations })} options={options.data?.researchSpecializations} max={10} maxLength={80} />
+            <ResearchTagField label={t("Research keywords")} values={draft.researchKeywords} onChange={researchKeywords => update({ researchKeywords })} max={30} maxLength={80} />
+            <label className="block space-y-2 text-sm"><span>{t("Short academic biography (optional)")}</span><textarea className="min-h-24 w-full rounded-md border bg-background p-3" value={draft.biography} maxLength={2000} onChange={event => update({ biography: event.target.value })} /></label>
+            <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={draft.mentoringInterested} onChange={event => update({ mentoringInterested: event.target.checked })} />{t("I am interested in mentoring after verification")}</label>
+            {draft.mentoringInterested && <SupervisionTopicFields ids={draft.preferredTopicIds ?? []} onChange={preferredTopicIds => update({ preferredTopicIds })} />}
+            {draft.mentoringInterested && <MentoringSupportFields values={draft.mentoringSupportTypes ?? []} onChange={mentoringSupportTypes => update({ mentoringSupportTypes })} />}
+            {draft.mentoringInterested && <ResearchTagField label={t("Preferred mentoring topics")} values={draft.mentoringTopics} onChange={mentoringTopics => update({ mentoringTopics })} options={[...draft.researchInterests, ...options.data?.researchTopics ?? []]} max={10} maxLength={80} />}
+            <p className="text-sm leading-6 text-muted-foreground">{t("These preferences do not make you available for formal mentoring. Verify your lecturer role and enable availability in your profile first.")}</p>
+            <p className="text-sm leading-6 text-muted-foreground">{t("After setup, you can connect ORCID and select publications in your academic profile.")}</p>
+          </div></details>}
         </div>}
         {error && <p role="alert" className="mt-5 text-sm text-red-600 dark:text-red-400">{error}</p>}
         </div>

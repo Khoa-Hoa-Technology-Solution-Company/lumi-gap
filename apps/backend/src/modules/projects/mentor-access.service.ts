@@ -6,6 +6,7 @@ import { withWorkspace, jsonSnapshot, expectWorkspaceVersion, type WorkspaceCont
 import type * as schemas from "./dto/mentor-access.schema.js";
 import { isVerifiedLecturer } from "./academic-relationship-access.js";
 import { researchLedgerService } from "../audit/research-ledger.service.js";
+import { closeAcceptedApplication, syncApplicationRequest } from "./mentorship-application-context.js";
 
 export const mentorViewPermission: Record<MentorResourceKind, MentorPermission> = { OVERVIEW: "OVERVIEW_VIEW", PAPER: "PAPERS_VIEW", GAP: "GAPS_VIEW", TASK: "TASKS_VIEW", MILESTONE: "TASKS_VIEW", MANUSCRIPT: "MANUSCRIPTS_VIEW", SUBMISSION: "SUBMISSIONS_VIEW", CONTRIBUTION: "CONTRIBUTIONS_VIEW" };
 type Access = NonNullable<Awaited<ReturnType<WorkspaceDb["mentorAccess"]["findUnique"]>>>;
@@ -157,6 +158,9 @@ export const mentorAccessService = {
       const updated = await c.tx.mentorAccess.update({ where: { id }, data: { revokedAt: now, version: { increment: 1 } } });
       if (row.relationshipId) await c.tx.mentorRelationship.updateMany({ where: { id: row.relationshipId, status: "ACTIVE" }, data: { status: "ENDED", endedAt: now, endedById: c.actorId, endReason: input.reason } });
       else await c.tx.mentorshipRequest.updateMany({ where: { id: row.requestId, status: "PENDING" }, data: { status: "CANCELED_BY_PROJECT", respondedAt: now, responseNote: input.reason } });
+      const request = await c.tx.mentorshipRequest.findUniqueOrThrow({ where: { id: row.requestId } });
+      if (row.relationshipId) await closeAcceptedApplication(c.tx, request, c.actorId, row.relationshipId);
+      else await syncApplicationRequest(c.tx, request, c.actorId);
       await mentorAccessEvent(c.tx, row, c.actorId, "ACCESS_REVOKED", { reason: input.reason }); return policyDto(c.tx, updated);
     });
   },

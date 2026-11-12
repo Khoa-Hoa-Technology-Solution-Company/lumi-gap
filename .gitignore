@@ -8,7 +8,9 @@ build/
 out/
 .turbo/
 *.tsbuildinfo
-apps/backend/src/generated/prisma/
+apps/backend/src/generated/
+apps/backend/scratch/
+apps/web/scratch/
 
 # Env
 .env

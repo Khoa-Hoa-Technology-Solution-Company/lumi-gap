@@ -13,13 +13,14 @@ export interface ScreeningTaskFeedback {
 }
 
 export type ScreeningClassification = "AGREEMENT_INCLUDE" | "AGREEMENT_EXCLUDE" | "CONFLICT" | "NEEDS_CLARIFICATION" | "NEEDS_MORE_INFORMATION" | "EXCLUSION_REASON_MISMATCH";
-export type ScreeningResolutionType = "AGREEMENT_FROM_REVIEWS" | "CONSENSUS_AFTER_DISCUSSION" | "ADJUDICATION";
+export type ScreeningResolutionType = "AGREEMENT_FROM_REVIEWS" | "CONSENSUS_AFTER_DISCUSSION" | "CONSENSUS_NOT_REACHED" | "ADJUDICATION";
 export type ScreeningChoice = "INCLUDE" | "EXCLUDE" | "UNSURE";
 export type ScreeningStageMode = "SINGLE_STAGE" | "TWO_STAGE";
 export type ScreeningOutcome = "WAITING_REVIEWS" | "WAITING_SECOND_REVIEW" | "FINAL_INCLUDED" | "EXCLUDED" | "CONFLICT" | "NEEDS_RESOLUTION" | "NEEDS_CLARIFICATION" | "ADVANCE_TO_FULLTEXT" | "WAITING_FULLTEXT";
-export type ScreeningState = "NOT_REVIEWED" | "IN_REVIEW" | "NEEDS_RESOLUTION" | "NEEDS_MORE_INFO" | "ADJUDICATING" | "AWAITING_FINALIZATION" | "INCLUDED" | "EXCLUDED" | "BACKGROUND" | "WAITING_FULLTEXT";
+export type ScreeningState = "CONSENSUS_REQUIRED" | "CONSENSUS_IN_PROGRESS" | "NOT_REVIEWED" | "IN_REVIEW" | "NEEDS_RESOLUTION" | "NEEDS_MORE_INFO" | "ADJUDICATING" | "AWAITING_FINALIZATION" | "INCLUDED" | "EXCLUDED" | "BACKGROUND" | "WAITING_FULLTEXT";
 export type ScreeningConsensusPolicy = "UNANIMOUS" | "STRICT_MAJORITY";
 export interface ScreeningSettings {
+  consensusWindowHours?: number;
   preferredAdjudicatorId?: string | null; adjudicationCoordinatorIds?: string[]; statementWindowHours?: number; adjudicationReminderHours?: number; adjudicationReassignHours?: number;
   workflowVersion?: number;
   screeningMode?: ScreeningStageMode;
@@ -35,9 +36,10 @@ export interface ScreeningSettings {
   discoveryGoalPaused?: boolean;
 }
 
-export type ScreeningEvaluationStatus = "WAITING_REVIEWER" | "CONFLICT" | "ADJUDICATING" | "INCLUDED" | "EXCLUDED" | "NEEDS_MORE_INFO" | "AWAITING_FINALIZATION" | "BACKGROUND" | "WAITING_FULLTEXT" | "ADVANCE_TO_FULLTEXT";
+export type ScreeningEvaluationStatus = "CONSENSUS_REQUIRED" | "CONSENSUS_IN_PROGRESS" | "WAITING_REVIEWER" | "CONFLICT" | "ADJUDICATING" | "INCLUDED" | "EXCLUDED" | "NEEDS_MORE_INFO" | "AWAITING_FINALIZATION" | "BACKGROUND" | "WAITING_FULLTEXT" | "ADVANCE_TO_FULLTEXT";
 /** Read-only card projection; review choices are included only after protocol disclosure. */
 export interface ScreeningWorkPaper {
+  consensusDeadline?: string | null;
   invalidated?: boolean;
   roundId: string; paperId: string; title: string; authors: string[];
   publicationYear: number | null; journalName: string | null;
@@ -183,7 +185,15 @@ export interface ScreeningAssignment {
   id: string; reviewerId: string; name: string; revision: number; completed: boolean; active: boolean;
   dueAt: string | null; overdue: boolean;
 }
+export interface ScreeningConsensusView {
+  startedAt: string; deadline: string; status: "CONSENSUS_REQUIRED" | "CONSENSUS_IN_PROGRESS" | "ACCEPTED" | "REJECTED";
+  canUpdate?: boolean;
+  /** Historical v12 records only. New disagreements are resolved from the latest review revisions. */
+  canConfirm: boolean;
+  confirmations: Array<{ reviewerId: string; decision: "INCLUDE" | "EXCLUDE"; reason: string; confirmedAt: string }>;
+}
 export interface ScreeningRoundView {
+  consensus?: ScreeningConsensusView | null;
   invalidated?: boolean;
   outcome?: ScreeningOutcome;
   canResumeFullText?: boolean;
@@ -292,7 +302,13 @@ export interface ScreeningPaperRow {
   citationCount?: number; openAccessStatus?: string; keywords?: string[];
   legacyStatus: string; legacyProvenance: boolean; round: ScreeningRoundView | null;
 }
-export interface ScreeningBoard extends WorkspacePage<ScreeningPaperRow> { adjudicatorOptions?: Array<WorkspacePerson & { mentor: boolean }>; librarySummary?: { selected: number; attention: number; discussion: number }; tags?: string[]; filters: { proposers: WorkspacePerson[]; reviewers: WorkspacePerson[] }; progress: { total: number; reviewed: number; finalized: number; legacy: number }; canManage: boolean; people: WorkspacePerson[]; settings: ScreeningSettings; myProgress: { assigned: number; completed: number; pending: number; overdue: number } }
+export interface ScreeningClaimResult { paperId: string; roundId: string; assignmentId: string; dueAt: string | null }
+export type ScreeningClaimNextResult = ScreeningClaimResult | { paperId: null; roundId: null; dueAt: null };
+export interface ScreeningBoard extends WorkspacePage<ScreeningPaperRow> {
+  /** Counts across the viewer's eligible queue, independent of search and slot filters. */
+  queueSummary?: { available: number; unclaimed: number; lastSlot: number; awaitingSecondReview: number };
+  adjudicatorOptions?: Array<WorkspacePerson & { mentor: boolean }>; librarySummary?: { selected: number; attention: number; discussion: number }; tags?: string[]; filters: { proposers: WorkspacePerson[]; reviewers: WorkspacePerson[] }; progress: { total: number; reviewed: number; finalized: number; legacy: number }; canManage: boolean; people: WorkspacePerson[]; settings: ScreeningSettings; myProgress: { assigned: number; completed: number; pending: number; overdue: number };
+}
 export interface ScreeningMetrics {
   reviewedPapers: number; finalizedPapers: number; legacyPapers: number;
   totalPapers: number; evaluatedPapers: number; fullyParticipated: number; fullyReviewed: number; agreements: number; disagreements: number; pendingReviews: number;

@@ -4,6 +4,7 @@ import { ProtectedRoute } from "@/components/protected-route";
 import { ResearchWorkflowRoute } from "@/components/research-workflow-route";
 import { LITERATURE_PATH } from "@/features/home/utils/home-search";
 import { loadForumDetailPage } from "@/features/forum/utils/forum-page-loading";
+import { PageLoading } from "@/components/page-loading";
 
 const MainLayout = lazy(() => import("@/layouts/MainLayout").then((m) => ({ default: m.MainLayout })));
 const AdminLayout = lazy(() => import("@/layouts/AdminLayout").then((m) => ({ default: m.AdminLayout })));
@@ -13,6 +14,7 @@ const AuthLayout = lazy(() => import("@/layouts/AuthLayout").then((m) => ({ defa
 const LoginPage = lazy(() => import("@/pages/login").then((m) => ({ default: m.LoginPage })));
 const RegisterPage = lazy(() => import("@/pages/register").then((m) => ({ default: m.RegisterPage })));
 const OAuthCallbackPage = lazy(() => import("@/pages/oauth-callback").then((m) => ({ default: m.OAuthCallbackPage })));
+const OrcidCallbackPage = lazy(() => import("@/pages/orcid-callback").then(m => ({ default: m.OrcidCallbackPage })));
 const GithubCallbackPage = lazy(() => import("@/pages/github-callback").then(m => ({ default: m.GithubCallbackPage })));
 const VerifyEmailPage = lazy(() => import("@/pages/verify-email").then((m) => ({ default: m.VerifyEmailPage })));
 const ForgotPasswordPage = lazy(() => import("@/pages/forgot-password").then((m) => ({ default: m.ForgotPasswordPage })));
@@ -37,6 +39,8 @@ const ProjectsWorkspacePage = lazy(() => import("@/pages/projects/projects-works
 const ProjectWorkspaceStart = lazy(() => import("@/pages/projects/projects-workspace").then((m) => ({ default: m.ProjectWorkspaceStart })));
 const ProjectDetailPage = lazy(() => import("@/pages/projects/project-detail").then((m) => ({ default: m.ProjectDetailPage })));
 const ManuscriptEditorPage = lazy(() => import("@/features/manuscripts/manuscript-editor").then(m => ({ default: m.ManuscriptEditorPage })));
+const ManuscriptIntegrityPage = lazy(() => import("@/features/manuscripts/manuscript-integrity").then(m => ({ default: m.ManuscriptIntegrityPage })));
+const ManuscriptAttributionReviewPage = lazy(() => import("@/pages/projects/manuscript-attribution-review").then(m => ({ default: m.ManuscriptAttributionReviewPage })));
 const ProjectPlanReviewPage = lazy(() => import("@/pages/projects/project-plan-review").then((m) => ({ default: m.ProjectPlanReviewPage })));
 const ProjectAllocationReviewPage = lazy(() => import("@/pages/projects/project-allocation-review").then(m => ({ default: m.ProjectAllocationReviewPage })));
 const ProjectContributionReviewPage = lazy(() => import("@/pages/projects/project-contribution-review").then(m => ({ default: m.ProjectContributionReviewPage })));
@@ -95,15 +99,7 @@ const ContributionArchivePage = lazy(() => import("@/pages/academics/contributio
 const ResearchGapDiscoverPage = lazy(() => import("@/pages/research-gap-discover").then((m) => ({ default: m.ResearchGapDiscoverPage })));
 
 function RouteLoading() {
-  return (
-    <div
-      className="min-h-screen bg-slate-50 dark:bg-[#09090b]"
-      role="status"
-      aria-live="polite"
-    >
-      <span className="sr-only">Loading page...</span>
-    </div>
-  );
+  return <PageLoading className="min-h-screen" />;
 }
 
 function LegacySearchRedirect() {
@@ -187,6 +183,8 @@ export function AppRoutes() {
           <Route element={<ProtectedRoute />}>
             <Route path="/projects/:id/plan-review" element={<ProjectPlanReviewPage />} />
             <Route path="/projects/:projectId/manuscripts/:id" element={<ManuscriptEditorPage />} />
+            <Route path="/projects/:projectId/manuscripts/:id/integrity" element={<ManuscriptIntegrityPage />} />
+            <Route path="/projects/:projectId/manuscripts/:id/attribution/:snapshotId" element={<ManuscriptAttributionReviewPage />} />
             <Route path="/projects/:id/allocation" element={<ProjectAllocationReviewPage />} />
             <Route path="/projects/:id/contribution-review" element={<ProjectContributionReviewPage />} />
             <Route path="/forum/moderation" element={<ForumModerationPage />} />
@@ -240,6 +238,7 @@ export function AppRoutes() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/auth/oauth-callback" element={<OAuthCallbackPage />} />
+          <Route path="/integrations/orcid/callback" element={<OrcidCallbackPage />} />
           <Route path="/integrations/github/callback" element={<GithubCallbackPage />} />
           <Route path="/verify-email" element={<VerifyEmailPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />

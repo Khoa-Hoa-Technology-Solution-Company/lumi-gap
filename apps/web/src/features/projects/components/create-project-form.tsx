@@ -10,6 +10,7 @@ import { DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/co
 import { useI18n } from "@/i18n";
 import { useAuthStore } from "@/stores/auth-store";
 import { useCreateProject } from "../hooks/use-projects";
+import { ResearchClassificationFields } from "@/features/academic-profile/components/research-classification-fields";
 import { ProjectResearchFields } from "./project-research-fields";
 
 interface Draft extends CreateProjectRequest { visibility: "PRIVATE"; idempotencyKey: string; submitted?: boolean }
@@ -29,6 +30,7 @@ function readDraft(key: string): Draft {
         && (value.submitted === undefined || typeof value.submitted === "boolean")) {
         return { title: value.title, description: value.description, idempotencyKey: value.idempotencyKey,
           visibility: "PRIVATE", researchAreas: value.researchAreas as string[],
+          ...(value.researchClassification && typeof value.researchClassification === "object" ? { researchClassification: value.researchClassification as CreateProjectRequest["researchClassification"] } : {}),
           researchApproach: value.researchApproach as ResearchApproach, submitted: value.submitted as boolean | undefined };
       }
     }
@@ -84,7 +86,7 @@ export function CreateProjectForm({ onClose, onBusyChange }: { onClose: () => vo
           <textarea id="project-create-description" className="project-form-textarea" rows={3} maxLength={5000} value={draft.description ?? ""} onChange={event => change({ description: event.target.value })} placeholder={t("A few sentences about the idea you want to explore.")} />
         </div>
         <p className="flex items-start gap-2 text-xs leading-5 text-muted-foreground"><LockKeyhole className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" /><span>{t("Your project starts private. Invite people when you are ready.")}</span></p>
-        <details className="project-form-optional"><summary>{t("Research direction (optional)")}</summary><div className="pt-4"><ProjectResearchFields areas={draft.researchAreas ?? []} approach={draft.researchApproach ?? "UNDECIDED"} onAreasChange={researchAreas => change({ researchAreas })} onApproachChange={(researchApproach: ResearchApproach) => change({ researchApproach })} /></div></details>
+        <details className="project-form-optional"><summary>{t("Research direction (optional)")}</summary><div className="pt-4"><ProjectResearchFields areas={draft.researchAreas ?? []} approach={draft.researchApproach ?? "UNDECIDED"} onAreasChange={researchAreas => change({ researchAreas })} onApproachChange={(researchApproach: ResearchApproach) => change({ researchApproach })} /><div className="mt-5"><ResearchClassificationFields value={draft.researchClassification} onChange={researchClassification => change({ researchClassification })} /></div></div></details>
       </fieldset>
       {error ? <p role="alert" className="text-sm leading-6 text-destructive">{error}</p> : null}
       {draft.submitted && !create.isPending ? <p className="text-xs text-muted-foreground">{t("Your submitted details are kept for a safe retry.")}</p> : null}

@@ -8,6 +8,7 @@ Student, Researcher and Lecturer use the existing `AcademicProfile`, profile end
 - Researcher/Lecturer: Institution and Current Position. Lecturer authority requires verification and the existing assignment checks.
 - Content order: Research Focus & Expertise, Academic Biography, Featured Works & Contributions, Scholarly Profiles / Links. Empty optional sections are omitted for other viewers; owners receive compact editing actions.
 - Research areas use the onboarding taxonomy; interests, skills and keywords use tags.
+- Canonical field/subfield/topic and keyword references now reuse the existing catalogue across profiles and projects. Technical skills have a separate controlled vocabulary; current interests and preferred supervision topics remain distinct. Legacy/custom tags remain readable and editable. See [mentor discovery journey](mentor-discovery-journey.md).
 - Forum identity uses the same role/affiliation source and shared identity summary. Forum, project members and review attribution link to `/academics/:userId` or `/u/:handle`.
 
 ## Featured Works
@@ -26,7 +27,7 @@ Profile visibility, field privacy and individual scholarly-link visibility are e
 
 The FPT badge means only a verified, current affiliation with a host institution. Lecturer position status remains separate and requires both role and position verification. Academic role/position/institution changes invalidate the relevant position authority; choosing Lecturer alone never grants review or mentoring privileges.
 
-Modern scholarly links retain `verificationStatus` (`UNVERIFIED`, `PROVIDER_CONNECTED`) separately from `visibility` (`PUBLIC`, `REGISTERED_USERS`, `PRIVATE`). Client PATCH cannot assign provider connection or verification. Existing progressive disclosure is retained. ORCID OAuth is not configured in this repository; manual links remain unverified.
+Modern scholarly links retain `verificationStatus` (`UNVERIFIED`, `PROVIDER_CONNECTED`) separately from `visibility` (`PUBLIC`, `REGISTERED_USERS`, `PRIVATE`). Client PATCH cannot assign provider connection or verification. Existing progressive disclosure is retained. Optional ORCID OAuth uses the existing identity-link model and requires configured credentials; manual links remain unverified. Provider connection never verifies lecturer authority. See [ORCID setup](orcid-account-linking.md).
 
 ## Validation
 

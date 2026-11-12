@@ -247,3 +247,7 @@ export function useDecideAcademicVerification() {
     },
   });
 }
+
+export function useOrcidAvailability(enabled = true) {
+  return useQuery({ queryKey: ["academic-profile", "orcid-availability"], queryFn: academicProfileApi.orcidAvailability, enabled, retry: false });
+}

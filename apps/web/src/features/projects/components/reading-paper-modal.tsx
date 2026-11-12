@@ -50,9 +50,13 @@ export function ReadingPaperModal({
   useEffect(() => {
     if (!focusQuery.data || !["review", "discussion", "history"].includes(section ?? "")) return;
     const selector = section === "history" ? ".paper-reading-assessment" : section === "discussion" ? '[data-screening-section="discussion"], .paper-discussion' : '[data-screening-section="review"]';
-    const target = contentRef.current?.querySelector<HTMLElement>(selector);
-    target?.scrollIntoView?.({ block: "center" });
-    if (section !== "history") target?.querySelector<HTMLTextAreaElement>("textarea")?.focus({ preventScroll: true });
+    // Let the portal and its focus scope finish mounting before moving into the form.
+    const timer = window.setTimeout(() => {
+      const target = contentRef.current?.querySelector<HTMLElement>(selector);
+      target?.scrollIntoView?.({ block: "center" });
+      if (section !== "history") target?.querySelector<HTMLElement>("textarea:not(:disabled), input:not(:disabled), select:not(:disabled), button:not(:disabled)")?.focus({ preventScroll: true });
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [focusQuery.data?.paper?.round?.id, section]);
 
   const currentIndex = paperIds && paperId ? paperIds.indexOf(paperId) : -1;
@@ -100,7 +104,7 @@ export function ReadingPaperModal({
           closeLabel="Đóng"
           className="screening-workspace library-paper-dialog"
           data-no-i18n
-          onOpenAutoFocus={e => e.preventDefault()}
+          onOpenAutoFocus={e => { if (section === "review" || section === "discussion") e.preventDefault(); }}
         >
         <div className="library-dialog-header">
           <DialogTitle>Đọc và đánh giá tài liệu</DialogTitle>
@@ -151,6 +155,7 @@ export function ReadingPaperModal({
         ) : (
           <>
             <ScreeningPaperDetail
+              onBack={onClose}
               settings={settings}
               collaborative={settings?.reviewMode === "COLLABORATIVE"}
               key={`modal-detail-${focused.paperId}`}

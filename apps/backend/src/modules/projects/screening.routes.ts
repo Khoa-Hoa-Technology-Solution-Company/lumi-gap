@@ -58,3 +58,5 @@ screeningRouter.post("/rounds/:roundId/extend", writes, round, validate(s.screen
 screeningRouter.post("/rounds/:roundId/proposer-exception", writes, round, validate(s.screeningProposerExceptionSchema), c.grantProposerException);
 screeningRouter.post("/papers/claim-next", writes, base, validate(s.screeningClaimSchema), c.claimNext);
 screeningRouter.put("/discovery-goal", writes, base, validate(s.screeningDiscoveryGoalUpdateSchema), c.updateDiscoveryGoal);
+
+screeningRouter.post("/rounds/:roundId/consensus/confirm", writes, round, validate(s.screeningConsensusConfirmSchema), c.confirmConsensus);

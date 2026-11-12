@@ -120,6 +120,11 @@ export interface ProposedManuscriptAuthor {
   order: number;
   creditRoles: CreditRole[];
   rationale: string;
+  displayName?: string;
+  email?: string;
+  affiliation?: string;
+  orcid?: string;
+  corresponding?: boolean;
   confirmed?: boolean;
   decision?: "CONFIRM" | "CLARIFY" | "DISPUTE" | null;
   decisionNote?: string | null;
@@ -131,6 +136,7 @@ export interface ProposedManuscriptAcknowledgement {
   affiliation?: string;
   contributionSummary: string;
   creditRoles: CreditRole[];
+  permissionNote?: string;
 }
 
 export interface ReviewedNonAuthorJustification {
@@ -168,6 +174,7 @@ export interface ManuscriptAttributionDecisionView {
 }
 
 export interface ManuscriptAttributionCheckView {
+  viewerId?: string;
   checkId: string | null;
   projectId: string;
   manuscriptId: string;
@@ -195,14 +202,46 @@ export interface ManuscriptAttributionCheckView {
   viewerCanManage: boolean;
   viewerCanDecide: boolean;
   externalSubmissionNotice: string;
+  publicationPolicy?: ManuscriptPublicationPolicy;
+  pendingAcknowledgementIds?: string[];
+  sealed?: boolean;
+}
+
+export interface ManuscriptPublicationPolicy {
+  name: string;
+  version: string;
+  guidanceUrl?: string;
+  requireAcknowledgementPermission: boolean;
+}
+
+export interface CreditContributionStatement {
+  standard: string;
+  projectId: string;
+  manuscriptId: string;
+  snapshotId: string;
+  snapshotChecksum: string;
+  attributionCheckId: string;
+  attributionDigest: string;
+  authors: Array<{ userId: string; name: string; order: number; corresponding: boolean; email: string; affiliation: string; orcid?: string; roles: Array<{ code: CreditRole; id: string; name: string; source: string }> }>;
+  acknowledgements: ProposedManuscriptAcknowledgement[];
+  policy?: ManuscriptPublicationPolicy;
+  text: string;
+  latex: string;
 }
 
 export interface SaveManuscriptAttributionInput {
+  expectedVersion?: number;
+  publicationPolicy?: ManuscriptPublicationPolicy;
   proposedAuthors: Array<{
     userId: string;
     order: number;
     creditRoles: CreditRole[];
     rationale?: string;
+    displayName?: string;
+    email?: string;
+    affiliation?: string;
+    orcid?: string;
+    corresponding?: boolean;
   }>;
   acknowledgements: Array<{
     userId?: string | null;
@@ -210,6 +249,7 @@ export interface SaveManuscriptAttributionInput {
     affiliation?: string;
     contributionSummary: string;
     creditRoles?: CreditRole[];
+    permissionNote?: string;
   }>;
   acknowledgementText?: string;
   omittedContributors: Array<{

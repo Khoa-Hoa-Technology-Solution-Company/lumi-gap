@@ -1,3 +1,8 @@
+import { readResearchClassification, resolveResearchClassification } from "../taxonomy/research-classification.service.js";
+import { mentorshipTopicSuggestions } from "./mentorship-topic-suggestions.service.js";
+import { lecturerMatchEvidence } from "./lecturer-match-evidence.js";
+import { mentorshipApplicationsService } from "./mentorship-applications.service.js";
+import { assertApplicationInvitation, applicationEvent, syncApplicationRequest, closeAcceptedApplication } from "./mentorship-application-context.js";
 import { AppError } from "../../common/exceptions/app-error.js";
 import { isDeepStrictEqual } from "node:util";
 import { createHash } from "node:crypto";
@@ -21,7 +26,7 @@ export type { AcademicSupportSearch as AcademicSearch } from "@trend/shared-type
 type Db = Prisma.TransactionClient;
 const emptyActions = { accept: false, decline: false, cancel: false, end: false, openProject: false };
 const policy = () => mentorshipPolicy;
-type RequestInput = { mentorUserId?: string; message: string; idempotencyKey?: string; mentorRole?: MentorRole; attachmentIds?: string[]; access?: MentorPolicyInput; expectedPreviewToken?: string; candidateId?: string; expectedPlanVersion?: number };
+type RequestInput = { applicationId?: string; expectedApplicationVersion?: number; mentorUserId?: string; message: string; idempotencyKey?: string; mentorRole?: MentorRole; attachmentIds?: string[]; access?: MentorPolicyInput; expectedPreviewToken?: string; candidateId?: string; expectedPlanVersion?: number };
 export function pageMeta(total: number, input: AcademicSearch = {}) {
   const page = Math.max(1, input.page ?? 1), pageSize = Math.min(30, Math.max(1, input.pageSize ?? 10));
   return { page, pageSize, total, totalPages: Math.ceil(total / pageSize) };
@@ -42,15 +47,15 @@ async function project(input: string, db: Db = getPrisma()) {
   return row;
 }
 export function mentorshipPreview(row: Project, teamMemberCount?: number) {
-  return { id: publicDatabaseId(row), title: row.title, summary: row.mentorshipSummary ?? "", researchField: row.mentorshipResearchAreas[0],
+  return { ...(readResearchClassification(row.mentorshipClassification) ? { researchClassification: readResearchClassification(row.mentorshipClassification) } : {}), id: publicDatabaseId(row), title: row.title, summary: row.mentorshipSummary ?? "", researchField: row.mentorshipResearchAreas[0],
     ...(teamMemberCount !== undefined ? { teamMemberCount } : {}),
-    researchAreas: row.mentorshipResearchAreas, mentoringNeeds: row.mentorshipNeeds,
+    ...(row.mentorshipSupportTypes.length ? { supportTypes: row.mentorshipSupportTypes as import("@trend/shared-types").ResearchSupportType[] } : {}), researchAreas: row.mentorshipResearchAreas, mentoringNeeds: row.mentorshipNeeds, methodologies: row.mentorshipMethodologies,
     stage: row.status, expertise: row.mentorshipExpertise, discovery: row.mentorshipDiscovery };
 }
 function previewToken(row: Project) {
   // Hash only the approved brief. Unrelated private project edits do not invalidate consent.
   return createHash("sha256").update(JSON.stringify([row.title, row.mentorshipSummary ?? "", row.status,
-    row.mentorshipResearchAreas, row.mentorshipExpertise, row.mentorshipNeeds])).digest("hex");
+    row.mentorshipResearchAreas, row.mentorshipExpertise, row.mentorshipNeeds, row.mentorshipMethodologies, row.mentorshipClassification, row.mentorshipSupportTypes])).digest("hex");
 }
 /** Share only aggregate team size; never expose the membership list before consent. */
 export async function mentorshipTeamCounts(projects: Pick<Project, "id" | "ownerId">[], db: Db = getPrisma()) {
@@ -90,7 +95,8 @@ async function record(tx: Db, p: Project, actorId: string | null, type: string, 
 async function expireInProject(tx: Db, p: Project) {
   const rows = await tx.mentorshipRequest.findMany({ where: { projectId: p.id, status: "PENDING", expiresAt: { lte: new Date() } } });
   for (const row of rows) {
-    await tx.mentorshipRequest.update({ where: { id: row.id }, data: { status: "EXPIRED", respondedAt: new Date(), closeReason: "REQUEST_EXPIRED" } });
+    const expired = await tx.mentorshipRequest.update({ where: { id: row.id }, data: { status: "EXPIRED", respondedAt: new Date(), closeReason: "REQUEST_EXPIRED" } });
+    await syncApplicationRequest(tx, expired, p.ownerId);
     await record(tx, p, null, "MENTORSHIP_EXPIRED", row.id);
     await mentorshipNotification(tx, { event: "MENTORSHIP_EXPIRED", recordId: row.id, projectId: p.id, projectTitle: p.title,
       actorId: row.requestedBy, recipients: [p.ownerId, row.mentorUserId] });
@@ -213,6 +219,13 @@ export const projectMentorshipService = {
     const owner = await getPrisma().user.findUniqueOrThrow({ where: { id: p.ownerId } });
     return mentorshipDiscoveryService.mentors(p, owner, query);
   },
+  async mentorEvidence(projectInput: string, actorInput: string, mentorInput: string) {
+    const [p, a, mentor] = await Promise.all([project(projectInput), actor(actorInput), actor(mentorInput)]);
+    await assertTeam(p, a.id); assertOpenProject(p);
+    const profile = await assertAcceptingNewMentorships(getPrisma(), mentor.id);
+    if (!["PUBLIC", "MEMBERS_ONLY"].includes(profile.profileVisibility) || !profile.showInResearcherSearch) throw AppError.notFound("Mentor profile is not available for discovery");
+    return lecturerMatchEvidence(mentor.id, a.id, { topics: [...new Set([...(readResearchClassification(p.researchClassification)?.nodes.map(node => node.name) ?? []), p.researchField ?? "", ...p.researchAreas, ...p.mentorshipResearchAreas, ...p.mentorshipExpertise].filter(Boolean))], methodologies: p.mentorshipMethodologies, needs: p.mentorshipNeeds }, { areas: [], methodologies: [], capabilities: [] }, true);
+  },
   async suggestions(projectInput: string, actorInput: string, query: AcademicSearch = {}) {
     const [p, a] = await Promise.all([project(projectInput), actor(actorInput)]);
     await assertTeam(p, a.id);
@@ -256,23 +269,35 @@ export const projectMentorshipService = {
     const a = await actor(actorInput), profile = await assertAcceptingNewMentorships(getPrisma(), a.id);
     return mentorshipDiscoveryService.opportunities(a, profile, query);
   },
-  async settings(projectInput: string, actorInput: string, input?: { discovery: "CLOSED" | "SEEKING_MENTOR"; summary: string; expertise: string[]; researchAreas?: string[]; mentoringNeeds?: string; expectedVersion?: number }) {
+  async topicSuggestions(projectInput: string, actorInput: string, input: { authorized: true; expectedVersion: number } | { jobId: string }) {
+    const [p, a] = await Promise.all([project(projectInput), actor(actorInput)]);
+    await assertAcademicRelationshipManager(p.id, a.id);
+    if ("jobId" in input) return mentorshipTopicSuggestions.status(p.id, a.id, input.jobId);
+    if (input.authorized !== true) throw AppError.forbidden("Authorize sharing the approved research brief first");
+    if (input.expectedVersion !== p.version) throw AppError.conflict("Save and review the latest approved introduction first");
+    const result = await mentorshipTopicSuggestions.start(p.id, a.id);
+    await record(getPrisma(), p, a.id, "MENTOR_CLASSIFICATION_REQUESTED", p.id, { provider: "OPENALEX", approvedVersion: p.version });
+    return result;
+  },
+  async settings(projectInput: string, actorInput: string, input?: { supportTypes?: import("@trend/shared-types").ResearchSupportType[]; researchClassification?: import("@trend/shared-types").ResearchClassificationInput; discovery: "CLOSED" | "SEEKING_MENTOR"; summary: string; expertise: string[]; researchAreas?: string[]; mentoringNeeds?: string; methodologies?: string[]; expectedVersion?: number }) {
     const [p, a] = await Promise.all([project(projectInput), actor(actorInput)]);
     await assertAcademicRelationshipManager(p.id, a.id);
     const ap = await getPrisma().academicProfile.findUnique({ where: { userId: a.id } });
     const invitationSender = mentorshipPerson(a, ap, a.id);
-    if (!input) return { ...mentorshipPreview(p, (await mentorshipTeamCounts([p])).get(p.id)), previewToken: previewToken(p), version: p.version, invitationSender };
+    if (!input) return { ...mentorshipPreview(p, (await mentorshipTeamCounts([p])).get(p.id)), researchClassification: readResearchClassification(p.researchClassification), previewToken: previewToken(p), version: p.version, invitationSender };
     return getPrisma().$transaction(async tx => {
       await locks(tx, p.id, [a.id]); const live = await assertAcademicRelationshipManager(p.id, a.id, tx); assertOpenProject(live);
       if (input.expectedVersion !== undefined && input.expectedVersion !== live.version) throw AppError.conflict("Project settings changed. Refresh before saving again");
       if (input.discovery === "SEEKING_MENTOR" && input.summary.trim().length < 10) throw AppError.badRequest("Add a safe summary before opening discovery");
-      const updated = await tx.project.update({ where: { id: p.id }, data: { mentorshipDiscovery: input.discovery, mentorshipSummary: input.summary, mentorshipExpertise: input.expertise, mentorshipResearchAreas: input.researchAreas, mentorshipNeeds: input.mentoringNeeds, version: { increment: 1 } } });
+      const classification = input.researchClassification ? await resolveResearchClassification(input.researchClassification, tx) : undefined;
+      const updated = await tx.project.update({ where: { id: p.id }, data: { ...(classification ? { researchClassification: classification as never, mentorshipClassification: classification as never } : {}), mentorshipDiscovery: input.discovery, mentorshipSummary: input.summary, mentorshipExpertise: input.expertise, mentorshipResearchAreas: input.researchAreas, mentorshipSupportTypes: input.supportTypes, mentorshipNeeds: input.mentoringNeeds, mentorshipMethodologies: input.methodologies, version: { increment: 1 } } });
       await record(tx, live, a.id, "MENTOR_DISCOVERY_UPDATED", p.id, { discovery: input.discovery }); return { ...mentorshipPreview(updated, (await mentorshipTeamCounts([updated], tx)).get(updated.id)), previewToken: previewToken(updated), version: updated.version, invitationSender };
     });
   },
   async request(p: string, a: string, input: RequestInput & { mentorUserId: string }) { return this.create(p, a, input, "PROJECT_TO_LECTURER"); },
-  async offer(p: string, a: string, input: RequestInput) { return this.create(p, a, input, "LECTURER_TO_PROJECT"); },
+  async offer(p: string, a: string, input: RequestInput) { return mentorshipApplicationsService.legacyOffer(p, a, input); },
   async create(projectInput: string, actorInput: string, input: RequestInput, direction: string) {
+    if (direction !== "PROJECT_TO_LECTURER") throw AppError.conflict("Lecturers express interest through the applicant pool");
     const [p, a] = await Promise.all([project(projectInput), actor(actorInput)]);
     const mentor = direction === "PROJECT_TO_LECTURER" ? await actor(input.mentorUserId!) : a;
     const mentorRole = input.mentorRole ?? "PRIMARY", attachmentIds = input.attachmentIds ?? [];
@@ -283,7 +308,7 @@ export const projectMentorshipService = {
         const previous = await tx.mentorshipRequest.findUnique({ where: { requestedBy_idempotencyKey: { requestedBy: a.id, idempotencyKey: input.idempotencyKey } } });
         if (previous) {
           const linked = await tx.mentorshipRequestAttachment.findMany({ where: { requestId: previous.id } });
-          if (previous.projectId !== p.id || previous.mentorUserId !== mentor.id || previous.direction !== direction || (input.candidateId && previous.candidateId !== input.candidateId) || previous.mentorRole !== mentorRole || previous.message !== input.message.trim() || JSON.stringify(linked.map(l => l.attachmentId).sort()) !== JSON.stringify([...attachmentIds].sort())) throw AppError.conflict("Idempotency key was already used for a different request");
+          if (previous.projectId !== p.id || previous.mentorUserId !== mentor.id || previous.direction !== direction || previous.applicationId !== (input.applicationId ?? null) || (input.candidateId && previous.candidateId !== input.candidateId) || previous.mentorRole !== mentorRole || previous.message !== input.message.trim() || JSON.stringify(linked.map(l => l.attachmentId).sort()) !== JSON.stringify([...attachmentIds].sort())) throw AppError.conflict("Idempotency key was already used for a different request");
           const oldAccess = await tx.mentorAccess.findUnique({ where: { requestId: previous.id } });
           const proposal = oldAccess ? await tx.mentorAccessEvent.findFirst({ where: { accessId: oldAccess.id, type: "ACCESS_PROPOSED" }, orderBy: { createdAt: "asc" } }) : null;
           if (!isDeepStrictEqual((proposal?.details as { initialInput?: unknown } | undefined)?.initialInput ?? null, input.access ?? null)) throw AppError.conflict("Quyền trong lời mời đã khác yêu cầu gốc");
@@ -305,22 +330,19 @@ export const projectMentorshipService = {
       await expireInProject(tx, live); const now = new Date();
       await assertMentorPosition(tx, p.id, mentorRole, true);
       if (direction === "PROJECT_TO_LECTURER" && ((live.mentorshipSummary?.trim().length ?? 0) < 30 || (live.mentorshipSummary?.trim().split(/\s+/).length ?? 0) < 5)) throw AppError.badRequest("Bổ sung tóm tắt nghiên cứu được phép chia sẻ (ít nhất 30 ký tự, 5 từ) trước khi gửi");
+      const application = input.applicationId ? await assertApplicationInvitation(tx, input.applicationId, p.id, mentor.id, input.expectedApplicationVersion) : null;
       const candidate = direction === "PROJECT_TO_LECTURER" ? await prepareMentorCandidate(tx, p.id, live.ownerId, mentor.id, mentorRole, input.candidateId, input.expectedPlanVersion) : null;
-      if (direction === "LECTURER_TO_PROJECT") {
-        const plan = await ensureMentorPlan(tx, p.id, live.ownerId);
-        if (plan.closedRoles.includes(mentorRole)) throw AppError.conflict("Vai trò đã dừng tuyển. Chủ dự án cần mở đợt mới");
-      }
-      if (direction === "LECTURER_TO_PROJECT" && mentorRole === "SECONDARY") {
-        const plan = await ensureMentorPlan(tx, p.id, live.ownerId);
-        if (plan.closedRoles.includes(mentorRole) || !plan.parallelInvitations && !await tx.mentorRelationship.count({ where: { projectId: p.id, mentorRole: "PRIMARY", status: "ACTIVE" } })) throw AppError.conflict("Dự án chưa mở lời mời Mentor phụ");
-      }
       await invitationFiles(tx, p.id, a.id, attachmentIds);
       if (await tx.mentorshipRequest.findFirst({ where: { projectId: p.id, mentorUserId: mentor.id, status: "PENDING" } }) || await tx.mentorRelationship.findFirst({ where: { projectId: p.id, mentorUserId: mentor.id, status: "ACTIVE" } })) throw AppError.conflict("A pending request or active mentorship already exists");
       if (await tx.mentorshipRequest.findFirst({ where: { projectId: p.id, mentorUserId: mentor.id, status: { in: ["DECLINED", "CANCELLED", "CANCELED_BY_PROJECT"] }, respondedAt: { gt: new Date(now.getTime() - env.ACADEMIC_RELATIONSHIP_COOLDOWN_HOURS * 3600000) } } })) throw AppError.conflict("Wait before sending another mentorship request to this pair");
       if (await tx.mentorshipRequest.count({ where: { requestedBy: a.id, createdAt: { gt: new Date(now.getTime() - 3600000) } } }) >= env.ACADEMIC_RELATIONSHIP_REQUEST_LIMIT) throw AppError.conflict("Mentorship request limit reached; try later");
       const senderProfile = await tx.academicProfile.findUnique({ where: { userId: a.id } });
       const snapshot = JSON.parse(JSON.stringify({ project: mentorshipPreview(live, (await mentorshipTeamCounts([live], tx)).get(live.id)), sender: mentorshipPerson(a, senderProfile, a.id), previewToken: previewToken(live) })) as Prisma.InputJsonValue;
-      const request = await tx.mentorshipRequest.create({ data: { projectId: p.id, mentorUserId: mentor.id, requestedBy: a.id, direction, mentorRole, message: input.message.trim(), idempotencyKey: input.idempotencyKey, candidateId: candidate?.id, invitationSnapshot: snapshot, expiresAt: new Date(now.getTime() + mentorshipPolicy.expiryDays * 86400000) } });
+      const request = await tx.mentorshipRequest.create({ data: { projectId: p.id, mentorUserId: mentor.id, requestedBy: a.id, direction, mentorRole, message: input.message.trim(), idempotencyKey: input.idempotencyKey, candidateId: candidate?.id, applicationId: application?.id, invitationSnapshot: snapshot, expiresAt: new Date(now.getTime() + mentorshipPolicy.expiryDays * 86400000) } });
+      if (application) {
+        const invited = await tx.mentorshipApplication.update({ where: { id: application.id }, data: { status: "INVITED", version: { increment: 1 } } });
+        await applicationEvent(tx, invited, a.id, "INVITED", { requestId: request.id });
+      }
       if (candidate) {
         await tx.mentorCandidate.update({ where: { id: candidate.id }, data: { status: "INVITED" } });
         await tx.mentorInvitationPlan.update({ where: { id: candidate.planId }, data: { version: { increment: 1 } } });
@@ -359,7 +381,8 @@ export const projectMentorshipService = {
         await assertMentorPosition(tx, p.id, live.mentorRole as MentorRole);
       }
       const now = new Date();
-      await tx.mentorshipRequest.update({ where: { id: live.id }, data: { status, responseNote: note?.trim(), respondedAt: now } });
+      const responded = await tx.mentorshipRequest.update({ where: { id: live.id }, data: { status, responseNote: note?.trim(), respondedAt: now } });
+      await syncApplicationRequest(tx, responded, a.id);
       if (action === "ACCEPTED") {
         // Expired competitors keep their own outcome even between worker sweeps.
         await expireInProject(tx, liveProject);
@@ -391,6 +414,8 @@ export const projectMentorshipService = {
       if (a.id !== live.mentorUserId && a.id !== liveProject.ownerId) throw AppError.forbidden();
       if (live.status === "ENDED") return live;
       const result = await tx.mentorRelationship.update({ where: { id: live.id }, data: { status: "ENDED", endedAt: new Date(), endedById: a.id, endReason: reason?.trim() } });
+      const source = await tx.mentorshipRequest.findUniqueOrThrow({ where: { id: live.sourceRequestId } });
+      await closeAcceptedApplication(tx, source, a.id, live.id);
       const access = await tx.mentorAccess.findUnique({ where: { relationshipId: live.id } });
       if (access) { await tx.mentorAccess.update({ where: { id: access.id }, data: { revokedAt: new Date(), version: { increment: 1 } } }); await mentorAccessEvent(tx, access, a.id, "ACCESS_REVOKED", { reason: reason ?? "Kết thúc cố vấn" }); }
       // A departure requires fresh owner authorization; it never contacts an old backup.

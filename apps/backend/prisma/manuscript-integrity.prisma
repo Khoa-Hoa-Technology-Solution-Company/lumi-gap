@@ -1,0 +1,48 @@
+// Snapshot-scoped declarations and reports. They do not confer authorship, ownership or access.
+model ManuscriptIntegrityRecord {
+  id String @id @default(uuid()) @db.Uuid
+  projectId String @map("project_id") @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  snapshotId String @map("snapshot_id") @db.Uuid
+  kind String @db.VarChar(32)
+  version Int
+  content Json
+  evidenceDigest String @map("evidence_digest") @db.Char(64)
+  checksum String @db.Char(64)
+  createdById String @map("created_by_id") @db.Uuid
+  clientKey String @map("client_key") @db.Uuid
+  commandHash String @map("command_hash") @db.Char(64)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@unique([snapshotId, kind, version])
+  @@unique([workspaceId, createdById, clientKey])
+  @@unique([id, projectId])
+  @@unique([id, snapshotId])
+  @@index([projectId, workspaceId, snapshotId, kind])
+  @@map("manuscript_integrity_records")
+}
+model ManuscriptIntegrityAcknowledgement {
+  id String @id @default(uuid()) @db.Uuid
+  recordId String @map("record_id") @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  evidenceDigest String @map("evidence_digest") @db.Char(64)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@unique([recordId, userId])
+  @@map("manuscript_integrity_acknowledgements")
+}
+model ManuscriptAiAcceptance {
+  id String @id @default(uuid()) @db.Uuid
+  projectId String @map("project_id") @db.Uuid
+  workspaceId String @map("workspace_id") @db.Uuid
+  runId String @map("run_id") @db.Uuid
+  acceptedById String @map("accepted_by_id") @db.Uuid
+  fileId String @map("file_id") @db.Uuid
+  sequence Int
+  sourceVersion Int @map("source_version")
+  sourceChecksum String @map("source_checksum") @db.Char(64)
+  proposalChecksum String @map("proposal_checksum") @db.Char(64)
+  clientKey String @map("client_key") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@unique([workspaceId, acceptedById, clientKey])
+  @@index([workspaceId, createdAt])
+  @@map("manuscript_ai_acceptances")
+}

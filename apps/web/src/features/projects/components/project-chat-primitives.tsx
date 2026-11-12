@@ -3,13 +3,13 @@ import { Loader2, SendHorizonal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 /** Presentation only. Each conversation keeps its own API and access rules. */
-export function ProjectChatMessage({ own, author, avatarUrl, createdAt, locale, content, deleted = false, footer }: {
+export function ProjectChatMessage({ own, author, avatarUrl, createdAt, locale, content, deleted = false, footer, showOwnAvatar = false }: {
   own: boolean; author: string; avatarUrl?: string; createdAt: string; locale: string;
-  content: string; deleted?: boolean; footer?: ReactNode;
+  content: string; deleted?: boolean; footer?: ReactNode; showOwnAvatar?: boolean;
 }) {
   const date = new Date(createdAt);
   return <div className="project-chat-message" data-own={own} data-deleted={deleted}>
-    {!own && <div className="project-chat-avatar" aria-hidden="true">{avatarUrl ? <img src={avatarUrl} alt="" /> : author.charAt(0).toUpperCase()}</div>}
+    {(!own || showOwnAvatar) && <div className="project-chat-avatar" aria-hidden="true">{avatarUrl ? <img src={avatarUrl} alt="" /> : author.charAt(0).toUpperCase()}</div>}
     <div className="project-chat-message-main">
       <div className="project-chat-message-meta"><strong>{author}</strong><time dateTime={createdAt} title={date.toLocaleString(locale)}>{date.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" })}</time></div>
       <div className="project-chat-bubble"><p>{content}</p></div>

@@ -57,6 +57,10 @@ export interface WorkContribution extends Omit<ContributionInput, "participants"
   canManage: boolean;
 }
 export type ContributionPage = WorkspacePage<WorkContribution> & { currentActorId: string };
+export interface ContributionOverview {
+  people: Array<{ userId: string; name: string; declaredRoles: CreditRole[]; independentlyAcknowledgedRoles: CreditRole[] }>;
+  distinctArtifactCount: number;
+}
 export type ActivityCategory = "PLAN" | "LITERATURE" | "SCREENING" | "EVIDENCE" | "GAP" | "TASK" | "DECISION" | "MANUSCRIPT";
 export interface ContributionActivity {
   id: string; type: string; category: ActivityCategory; actor: WorkspacePerson; createdAt: string;

@@ -35,6 +35,7 @@ export async function screeningWorkPapers(c: WorkspaceContext, roundIds: string[
     const final = decisions.find(d => d.roundId === r.id);
     const matchingFinal = visible.has(r.id) && final?.decision === r.status ? final : null;
     return {
+      consensusDeadline: r.consensusDeadline?.toISOString() ?? null,
       invalidated: !r.active && invalidated.has(r.id), roundId: r.id, paperId: r.paperId, title: paper?.title || "Bài báo",
       authors: authors.filter(a => a.paperId === r.paperId).map(a => a.displayName),
       publicationYear: paper?.publicationYear || null, journalName: paper?.journalName || null,

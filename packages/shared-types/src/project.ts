@@ -163,11 +163,13 @@ export interface MentorshipPerson extends ProjectMemberUserSummary {
   verifiedLecturer?: boolean;
 }
 export interface MentorProjectPreview {
+  supportTypes?: import("./academic-profile.js").ResearchSupportType[];
+  researchClassification?: import("./research-classification.js").ResearchClassification;
   id: string; title: string; summary: string; researchField?: string;
   /** Active team size, including the owner once. No member identities are shared. */
   teamMemberCount?: number;
   stage: ProjectStatus; expertise: string[]; discovery: "CLOSED" | "SEEKING_MENTOR";
-  researchAreas: string[]; mentoringNeeds: string;
+  researchAreas: string[]; mentoringNeeds: string; methodologies?: string[];
   availableRoles?: MentorRole[];
 }
 export interface MentorDiscoverySettings extends MentorProjectPreview {
@@ -221,7 +223,7 @@ export interface MentorRelationship {
 export interface AcademicPageMeta { page: number; pageSize: number; total: number; totalPages: number }
 export interface AcademicSupportSearch {
   q?: string; page?: number; pageSize?: number; institution?: string;
-  area?: string; interest?: string; position?: string;
+  area?: string; interest?: string; specialization?: string; technology?: string; position?: string;
   view?: "all" | "incoming" | "outgoing" | "active" | "history";
 }
 export interface MentorSuggestion {
@@ -236,7 +238,9 @@ export interface MentorshipCollection {
   requestMeta: AcademicPageMeta; relationshipMeta: AcademicPageMeta;
 }
 export interface AvailableMentor extends MentorshipPerson {
+  matchExplanation?: { relevance: "HIGHLY_RELEVANT" | "RELEVANT" | "POTENTIAL"; topics: string[]; subfields: string[]; fields: string[]; skills: string[]; interests: string[]; supervisionTopics?: string[]; support: string[]; gaps: string[] };
   expertiseAreas: string[]; researchInterests: string[]; matchedTerms: string[];
+  researchSpecializations?: string[]; skills?: string[]; researchKeywords?: string[];
   sameInstitution: boolean; acceptingMentorships: true;
 }
 export interface MentoringPreferences {
@@ -266,6 +270,7 @@ export interface ProjectActivity {
 }
 
 export interface IProject {
+  researchClassification?: import("./research-classification.js").ResearchClassification;
   _id: string;
   title: string;
   description?: string;
@@ -302,6 +307,7 @@ export interface IProject {
 }
 
 export interface CreateProjectRequest {
+  researchClassification?: import("./research-classification.js").ResearchClassificationInput;
   title: string;
   description?: string;
   researchField?: string;
@@ -313,6 +319,7 @@ export interface CreateProjectRequest {
 }
 
 export interface UpdateProjectRequest {
+  researchClassification?: import("./research-classification.js").ResearchClassificationInput;
   title?: string;
   description?: string;
   researchField?: string | null;

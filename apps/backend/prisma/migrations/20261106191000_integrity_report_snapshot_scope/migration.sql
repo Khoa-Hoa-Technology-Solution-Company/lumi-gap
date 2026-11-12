@@ -1,0 +1,3 @@
+ALTER TABLE manuscript_integrity_records ADD CONSTRAINT manuscript_integrity_records_id_snapshot_id_key UNIQUE(id,snapshot_id);
+ALTER TABLE submission_revisions ADD CONSTRAINT submission_integrity_report_snapshot_fk
+ FOREIGN KEY(integrity_report_id,manuscript_snapshot_id) REFERENCES manuscript_integrity_records(id,snapshot_id);

@@ -1,5 +1,7 @@
 import type { MentorProjectPreview, MentorshipPerson } from "@trend/shared-types";
 import { useI18n } from "@/i18n";
+import { ResearchClassificationSummary } from "@/features/academic-profile/components/research-classification-fields";
+import { MENTOR_SUPPORT_AREAS } from "@trend/shared-types";
 
 /** Render only the server's approved mentorship preview DTO. */
 export function MentorPreviewContent({ preview }: { preview: MentorProjectPreview }) {
@@ -11,6 +13,8 @@ export function MentorPreviewContent({ preview }: { preview: MentorProjectPrevie
       <div><dt className="text-xs font-medium text-muted-foreground">{t("Shared research abstract")}</dt><dd className="mt-1 max-w-prose whitespace-pre-wrap leading-6">{preview.summary || t("The team has not shared a research abstract yet.")}</dd></div>
       {preview.teamMemberCount !== undefined && <div><dt className="text-xs font-medium text-muted-foreground">{t("Research team")}</dt><dd className="mt-1">{preview.teamMemberCount} {t("team members, including the project owner")}</dd></div>}
     </dl>
+    <ResearchClassificationSummary value={preview.researchClassification} />
+    {Boolean(preview.supportTypes?.length) && <p><span className="text-muted-foreground">{t("Mentoring support areas")}: </span>{preview.supportTypes?.map(type => t(MENTOR_SUPPORT_AREAS.find(area => area.id === type)?.label ?? type)).join(" · ")}</p>}
     <p className="text-xs text-muted-foreground">{t(stages[preview.stage])}{preview.researchAreas.length > 0 && ` · ${preview.researchAreas.map(area => t(area)).join(" · ")}`}</p>
     {preview.expertise.length > 0 && <p><span className="text-muted-foreground">{t("Expertise requested")}: </span>{preview.expertise.map(area => t(area)).join(" · ")}</p>}
     {preview.mentoringNeeds && <div><p className="mb-1 text-xs font-medium text-muted-foreground">{t("Mentoring needs")}</p><p className="whitespace-pre-wrap leading-6">{preview.mentoringNeeds}</p></div>}

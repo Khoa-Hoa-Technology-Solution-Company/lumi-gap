@@ -149,3 +149,10 @@ describe("academic profile onboarding contracts", () => {
     expect(hasPermission("user", "community:moderate")).toBe(false);
   });
 });
+
+it("accepts lecturer mentoring intent but rejects privileged availability or verification claims", () => {
+  const input = { academicRole: "LECTURER", institutionName: "Research University", positionTitle: "Lecturer", researchAreas: ["Computer Science"], researchSpecializations: ["Computer Vision"], mentorshipPreferences: { interested: true, preferredTopics: ["Medical images"] } };
+  expect(UpdateAcademicProfileSchema.safeParse(input).success).toBe(true);
+  expect(UpdateAcademicProfileSchema.safeParse({ ...input, roleVerificationStatus: "VERIFIED" }).success).toBe(false);
+  expect(UpdateAcademicProfileSchema.safeParse({ ...input, mentorshipPreferences: { ...input.mentorshipPreferences, enabled: true } }).success).toBe(false);
+});

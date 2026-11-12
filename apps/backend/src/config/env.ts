@@ -68,6 +68,15 @@ const EnvSchema = z.object({
   GOOGLE_CLIENT_SECRET: z.string().optional(),
   GOOGLE_CALLBACK_URL: z.string().default("http://localhost:4000/api/v1/auth/google/callback"),
 
+  ORCID_CLIENT_ID: optionalEnvString,
+  ORCID_CLIENT_SECRET: optionalEnvString,
+  ORCID_BASE_URL: z.preprocess(value => value === "" ? undefined : typeof value === "string" ? value.replace(/\/$/, "") : value, z.enum(["https://orcid.org", "https://sandbox.orcid.org"]).default("https://sandbox.orcid.org")),
+  ORCID_REDIRECT_URI: z.string().url().default("http://localhost:8080/integrations/orcid/callback").refine(value => {
+    const url = new URL(value);
+    return !url.username && !url.password && !url.search && !url.hash && url.pathname === "/integrations/orcid/callback"
+      && (url.protocol === "https:" || url.protocol === "http:" && ["localhost", "127.0.0.1"].includes(url.hostname));
+  }, "ORCID redirect must use HTTPS (or localhost HTTP) and /integrations/orcid/callback"),
+
   GITHUB_CLIENT_ID: optionalEnvString,
   GITHUB_CLIENT_SECRET: optionalEnvString,
   GITHUB_APP_SLUG: z.preprocess(value => value === "" ? undefined : value, z.string().regex(/^[a-z0-9][a-z0-9-]{0,99}$/).optional()),

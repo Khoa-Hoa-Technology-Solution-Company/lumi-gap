@@ -8,6 +8,8 @@ import type { activitySchema, contributionsPageSchema } from "./dto/project-cont
 const id = (req: Request) => String(req.params.id), item = (req: Request) => String(req.params.itemId), actor = (req: Request) => req.user!.sub;
 const send = (res: Response, data: unknown, status = 200) => res.status(status).json({ success: true, data });
 export const projectContributionsController = {
+  overview: async (req: Request, res: Response) => send(res, await work.overview(id(req), actor(req))),
+  people: async (req: Request, res: Response) => send(res, await work.people(id(req), actor(req))),
   activity: async (req: Request, res: Response) => send(res, await activity.list(id(req), actor(req), req.query as unknown as z.infer<typeof activitySchema>)),
   list: async (req: Request, res: Response) => send(res, await work.list(id(req), actor(req), req.query as unknown as z.infer<typeof contributionsPageSchema>)),
   detail: async (req: Request, res: Response) => send(res, await work.detail(id(req), actor(req), item(req))),

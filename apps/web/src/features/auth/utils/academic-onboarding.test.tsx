@@ -328,3 +328,10 @@ describe("progressive academic onboarding", () => {
     expect(mocks.save).toHaveBeenCalledWith(expect.objectContaining({ positionTitle: "Lecturer" }));
   });
 });
+
+it("restores lecturer expertise and saves mentoring intent without requesting verification privileges", async () => {
+  sessionStorage.setItem("lumigap.onboarding.v4.member", JSON.stringify({ step: 3, academicRole: "LECTURER", institutionId: "11111111-1111-4111-8111-111111111111", institutionName: "University of Melbourne", positionTitle: "Lecturer", researchAreas: ["Artificial Intelligence"], researchSpecializations: ["Computer Vision"], researchInterests: ["Medical Image Analysis"], skills: ["PyTorch"], researchKeywords: ["Medical AI"], mentoringInterested: true, mentoringTopics: ["Medical Image Analysis"], biography: "I study medical image analysis." }));
+  await render(); expect(container.textContent).toContain("Specializations and mentoring preferences"); expect(container.textContent).toContain("Computer Vision"); expect(container.textContent).toContain("formal mentoring");
+  await click("Complete onboarding");
+  const input = mocks.save.mock.calls[0]![0]; expect(input).toMatchObject({ researchSpecializations: ["Computer Vision"], skills: ["PyTorch"], researchKeywords: ["Medical AI"], mentorshipPreferences: { interested: true, preferredTopics: ["Medical Image Analysis"] } }); expect(input).not.toHaveProperty("roleVerificationStatus"); expect(input).not.toHaveProperty("supportAvailability");
+});

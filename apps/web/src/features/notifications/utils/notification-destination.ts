@@ -2,9 +2,11 @@ import type { NotificationItem } from "@trend/shared-types";
 import { getTopicTrendTarget } from "@/features/trends/trend-navigation";
 
 export function getNotificationDestination(
-  notification: Pick<NotificationItem, "type" | "targetKind" | "targetId"> & Partial<Pick<NotificationItem, "paperId" | "title" | "screeningRoundId" | "mentorshipRequestId" | "verificationRequestId" | "allocationRevisionId" | "workContributionId" | "contributionEvaluationId" | "manuscriptId" | "manuscriptSnapshotId" | "trendTopic" | "trendTopicId">>,
+  notification: Pick<NotificationItem, "type" | "targetKind" | "targetId"> & Partial<Pick<NotificationItem, "paperId" | "title" | "screeningRoundId" | "mentorshipRequestId" | "verificationRequestId" | "allocationRevisionId" | "workContributionId" | "contributionEvaluationId" | "manuscriptId" | "manuscriptSnapshotId" | "integrityRecordId" | "trendTopic" | "trendTopicId">>,
   isAdmin: boolean,
 ): string | null {
+  if (notification.type.startsWith("MANUSCRIPT_ATTRIBUTION_") && notification.targetId && notification.manuscriptId && notification.manuscriptSnapshotId) return `/projects/${encodeURIComponent(notification.targetId)}/manuscripts/${encodeURIComponent(notification.manuscriptId)}/attribution/${encodeURIComponent(notification.manuscriptSnapshotId)}`;
+  if (notification.type === "MANUSCRIPT_INTEGRITY_DECLARATION" && notification.targetId && notification.manuscriptId && notification.manuscriptSnapshotId && notification.integrityRecordId) return `/projects/${encodeURIComponent(notification.targetId)}/manuscripts/${encodeURIComponent(notification.manuscriptId)}/integrity?snapshot=${encodeURIComponent(notification.manuscriptSnapshotId)}&declaration=${encodeURIComponent(notification.integrityRecordId)}`;
   if (notification.type === "SCREENING_DISCUSSION_MESSAGE" && notification.targetKind === "project" && notification.targetId && notification.paperId && notification.screeningRoundId) return `/projects/${encodeURIComponent(notification.targetId)}?tab=papers&view=my-work&paper=${encodeURIComponent(notification.paperId)}&round=${encodeURIComponent(notification.screeningRoundId)}&section=discussion`;
   if (["SCREENING_REVIEW_ASSIGNED", "SCREENING_ACTION_REQUIRED", "SCREENING_STAGE_COMPLETED"].includes(notification.type) && notification.targetId) return `/projects/${encodeURIComponent(notification.targetId)}?tab=papers${notification.paperId ? `&paper=${encodeURIComponent(notification.paperId)}` : ""}`;
   if (notification.type === "SCREENING_ADJUDICATION_ASSIGNED" && notification.targetId && notification.screeningRoundId) return `/academic-support/projects/${encodeURIComponent(notification.targetId)}/screening/${encodeURIComponent(notification.screeningRoundId)}`;
@@ -24,6 +26,8 @@ export function getNotificationDestination(
   const verificationQuery = notification.verificationRequestId ? `?requestId=${encodeURIComponent(notification.verificationRequestId)}` : "";
   if (notification.type === "LECTURER_VERIFICATION_REVIEW_REQUESTED") return isAdmin ? `/admin/academic-verifications${verificationQuery}` : null;
   if (notification.type.startsWith("LECTURER_VERIFICATION_")) return `/settings/verification/lecturer${verificationQuery}`;
+  if (notification.type === "MENTORSHIP_APPLICATION_UPDATE") return "/academic-support?view=outgoing";
+  if (notification.type === "MENTORSHIP_APPLICANT_UPDATE" && notification.targetId) return `/projects/${encodeURIComponent(notification.targetId)}?tab=support`;
   if (notification.type.startsWith("MENTORSHIP_") || notification.type.startsWith("PROJECT_MENTORSHIP_")) {
     if (["MENTORSHIP_REQUEST_RECEIVED", "MENTORSHIP_OFFER_RECEIVED"].includes(notification.type)) {
       const query = new URLSearchParams({ view: "incoming" });

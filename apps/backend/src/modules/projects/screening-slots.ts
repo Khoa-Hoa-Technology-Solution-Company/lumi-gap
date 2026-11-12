@@ -144,6 +144,7 @@ export async function checkProposerEligibility(
 
 /** One eligibility and priority calculation shared by queue, claim-next and My Work. */
 export async function screeningQueue(c: WorkspaceContext) {
+  if (["ARCHIVED", "COMPLETED"].includes(c.project.status)) return [];
   const rounds = await c.tx.screeningRound.findMany({ where: { projectId: c.project.id, active: true,
     legacyNeedsAudit: false, unblindedAt: null, status: { in: ["NOT_REVIEWED", "IN_REVIEW"] } } });
   const [assignments, links, people, papers, audits] = await Promise.all([

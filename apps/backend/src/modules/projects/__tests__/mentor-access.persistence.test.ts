@@ -8,6 +8,8 @@ import { Client } from "pg";
 import { mentorPresets, type MentorPolicyInput, type MentorShareInput } from "@trend/shared-types";
 import { getPrisma, disconnectPostgres } from "../../../infrastructure/database/prisma.js";
 import { createProjectFixture } from "../../../test-utils/project-fixture.js";
+import { initializeMentorAccess } from "../mentor-access.service.js";
+import { mentorshipPreview } from "../project-mentorship.service.js";
 import { projectMentorshipService as consent } from "../project-mentorship.service.js";
 import { mentorAccessService as service, validateMentorPermissions } from "../mentor-access.service.js";
 import { mentorAccessRouter } from "../mentor-access.routes.js";
@@ -54,7 +56,14 @@ describe.skipIf(!enabled).sequential("mentor consent and resource access on Post
     const p = await createProjectFixture({ data: { title: "Mentor access test", ownerId: owner, status: "ACTIVE", description: "PRIVATE-TEAM-DESCRIPTION", mentorshipSummary: "Published research abstract about evaluation methods and study design", mentorshipNeeds: "Study design", mentorshipDiscovery: "SEEKING_MENTOR" } });
     await db.projectMember.create({ data: { projectId: p.id, userId: member } });
     const input = { message: "Please help with our methodology", idempotencyKey: randomUUID() };
-    const request = options.offer ? await consent.offer(p.id, mentor, input) : await consent.request(p.id, owner, { ...input, mentorUserId: mentor, access: options.policy ?? advisor() });
+    // Historical lecturer-origin requests remain supported; new interest uses applications.
+    let request: Awaited<ReturnType<typeof consent.request>>;
+    if (options.offer) {
+      const settings = await consent.settings(p.id, owner);
+      const legacy = await db.mentorshipRequest.create({ data: { projectId: p.id, mentorUserId: mentor, requestedBy: mentor, direction: "LECTURER_TO_PROJECT", message: input.message, expiresAt: new Date(Date.now()+86400000), invitationSnapshot: { project: mentorshipPreview(p), previewToken: settings.previewToken! } } });
+      await db.$transaction(tx => initializeMentorAccess(tx, legacy, owner, options.policy ?? advisor()));
+      request = await consent.requestDetail(p.id, legacy.id, mentor);
+    } else request = await consent.request(p.id, owner, { ...input, mentorUserId: mentor, access: options.policy ?? advisor() });
     if (!options.pending) await consent.accept(p.id, request.id, options.offer ? owner : mentor, "Agreed", request.accessPolicy?.version);
     const access = await db.mentorAccess.findUniqueOrThrow({ where: { requestId: request.id } });
     return { id: p.id, owner, mentor, member, outsider, request, access };
@@ -75,7 +84,7 @@ describe.skipIf(!enabled).sequential("mentor consent and resource access on Post
     const invitation = (await consent.list(f.id, f.mentor)).requests[0]!;
     expect(invitation.project).toMatchObject({ title: "Mentor access test", summary: "Published research abstract about evaluation methods and study design", teamMemberCount: 2, mentoringNeeds: "Study design" });
     expect(invitation.actions.openProject).toBe(false);
-    expect(Object.keys(invitation.project!).sort()).toEqual(["id", "title", "summary", "teamMemberCount", "researchAreas", "mentoringNeeds", "stage", "expertise", "discovery"].sort());
+    expect(Object.keys(invitation.project!).sort()).toEqual(["id", "title", "summary", "teamMemberCount", "researchAreas", "mentoringNeeds", "methodologies", "stage", "expertise", "discovery"].sort());
     expect(invitation.accessPolicy?.permissions).toContain("MENTOR_CHAT");
     expect(JSON.stringify(invitation)).not.toContain("PRIVATE-TEAM");
     expect(JSON.stringify(invitation)).not.toContain("Only the published study design");

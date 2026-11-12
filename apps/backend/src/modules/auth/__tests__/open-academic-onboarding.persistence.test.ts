@@ -26,11 +26,9 @@ describe.skipIf(!enabled).sequential("open registration, onboarding and generic 
     const admin = await db.user.create({ data: { email: `admin-open-${marker}@example.test`, fullName: "Admin", systemRole: "ADMIN", role: "admin", emailVerifiedAt: new Date() } }); adminId = admin.id; ids.push(adminId);
   });
   afterAll(async () => {
-    await db.project.deleteMany({ where: { ownerId: { in: ids } } });
-    await db.user.deleteMany({ where: { id: { in: ids } } });
+    // Consented mentor access and attribution history have restrictive foreign keys.
+    // Preserve these synthetic fixtures in the isolated test database instead of bypassing retention.
     await cleanupVerificationEvidence();
-    await db.academicProgram.deleteMany({ where: { institutionId: { in: institutions } } });
-    await db.institution.deleteMany({ where: { id: { in: institutions } } });
     vi.restoreAllMocks();
   });
   async function account(email: string) {
@@ -78,6 +76,7 @@ describe.skipIf(!enabled).sequential("open registration, onboarding and generic 
     const lecturer = await db.user.findUniqueOrThrow({ where: { email: `lecturer-${marker}@other-university.edu` } });
     const student = await db.user.findUniqueOrThrow({ where: { email: `student-${marker}@other-university.edu` } });
     const project = await projectService.createProject({ title: "Assigned mentoring" }, student.id);
+    await db.project.update({ where: { id: project._id }, data: { mentorshipSummary: "A controlled study of learning outcomes using transparent research methods." } });
     await expect(projectMentorshipService.request(project._id, student.id, { mentorUserId: lecturer.id, message: "Please guide our study design" })).rejects.toMatchObject({ statusCode: 403 });
     const additionalBytes = Buffer.from("%PDF-1.4\nappointment\n%%EOF"), additional = { ...file, buffer: additionalBytes, size: additionalBytes.length };
     async function verifyLecturer() {

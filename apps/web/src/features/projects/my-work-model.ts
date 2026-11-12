@@ -2,6 +2,7 @@ import type { ScreeningAutomaticTask, ScreeningClassification, ScreeningEvaluati
 import { screeningStatusTone, screeningClassificationLabels } from "./screening-status";
 
 export const evaluationStatusLabels: Record<ScreeningEvaluationStatus, string> = {
+  CONSENSUS_REQUIRED: "Cần thảo luận", CONSENSUS_IN_PROGRESS: "Đang thảo luận",
   WAITING_FULLTEXT: "Chờ toàn văn", ADVANCE_TO_FULLTEXT: "Qua vòng tiêu đề / tóm tắt",
   WAITING_REVIEWER: "Chờ người còn lại", CONFLICT: "Có bất đồng", ADJUDICATING: "Đang phân xử",
   INCLUDED: "Qua vòng", EXCLUDED: "Đã loại", NEEDS_MORE_INFO: "Cần làm rõ",
@@ -37,9 +38,9 @@ export function myWorkTasks(summary: ScreeningWorkspaceSummary, readOnly: boolea
       kind: "DISCUSSION",
       label: t.classification === "NEEDS_CLARIFICATION" ? "Cần làm rõ" : t.classification === "NEEDS_MORE_INFORMATION" ? "Cần đọc thêm" : isMismatch ? "Cần thống nhất lý do loại" : "Có bất đồng",
       description: isClarification
-        ? "Trao đổi và xem xét lại phiếu của bạn. Chưa đủ căn cứ kết luận, đối chiếu tiêu chí và cập nhật phiếu hoặc nhờ phân xử."
+        ? "Trao đổi và xem xét lại phiếu của bạn. Chưa đủ căn cứ kết luận, đối chiếu tiêu chí và cập nhật phiếu của bạn."
         : isMismatch
-        ? "Hai reviewer chọn loại nhưng chưa thống nhất lý do. Thảo luận để chọn cùng tiêu chí hoặc nhờ phân xử."
+        ? "Hai reviewer chọn loại nhưng chưa thống nhất lý do. Thảo luận để đối chiếu tiêu chí và cập nhật đánh giá."
         : "Có bất đồng kết luận giữa hai reviewer. Trao đổi và xem xét lại phiếu của bạn.",
       action: isClarification ? "Xem lại & làm rõ" : "Trao đổi và xem lại"
     });
@@ -95,7 +96,7 @@ export function screeningWorkLink(projectId: string, item: Pick<MyWorkTask, "pap
   return `/projects/${encodeURIComponent(projectId)}?${query}`;
 }
 
-export const automaticTaskActions = { REVIEW: "Đánh giá bài báo", DISCUSSION: "Giải quyết bất đồng", CONSENSUS: "Phản hồi đề xuất thống nhất", STATEMENT: "Gửi quan điểm phân xử", ADJUDICATION: "Đưa ra kết luận phân xử", COORDINATION: "Điều phối phân xử", FULLTEXT: "Bổ sung toàn văn", INFORMATION: "Bổ sung thông tin" };
+export const automaticTaskActions = { REVIEW: "Đánh giá bài báo", DISCUSSION: "Giải quyết bất đồng", CONSENSUS: "Thảo luận và cập nhật đánh giá", STATEMENT: "Gửi quan điểm phân xử", ADJUDICATION: "Đưa ra kết luận phân xử", COORDINATION: "Điều phối phân xử", FULLTEXT: "Bổ sung toàn văn", INFORMATION: "Bổ sung thông tin" };
 export const automaticTaskStatuses = { TODO: "Cần làm", IN_PROGRESS: "Đang thực hiện", BLOCKED: "Đang vướng mắc", DONE: "Hoàn thành", EXPIRED: "Hết hạn", CANCELLED: "Đã hủy", REPLACED: "Đã chuyển bước" };
 export function automaticWorkTask(task: ScreeningAutomaticTask): MyWorkTask {
   return { paperId: task.paperId, roundId: task.roundId, title: task.title, kind: task.actionType, label: task.actionLabel ?? automaticTaskActions[task.actionType], description: task.reason, action: task.endedAt ? "Xem lại" : task.status === "BLOCKED" ? "Xem trạng thái" : task.actionType === "REVIEW" ? "Tiếp tục đánh giá" : automaticTaskActions[task.actionType], deadline: task.dueAt, obligation: task };
@@ -131,6 +132,8 @@ export function workCaseLabel(status?: string | null) {
 export function workPaperStatus(paper: ScreeningCardPaper, evaluation?: ScreeningPersonalEvaluation, caseStatus?: string | null) {
   if (paper.invalidated || evaluation?.invalidated) return "Vòng đã mất hiệu lực";
   const group = evaluation?.groupStatus;
+  if (group === "CONSENSUS_REQUIRED" || paper.status === "CONSENSUS_REQUIRED") return "Cần thảo luận";
+  if (group === "CONSENSUS_IN_PROGRESS" || paper.status === "CONSENSUS_IN_PROGRESS") return "Đang thảo luận";
   const number = paper.roundNumber ?? evaluation?.roundNumber;
   if (group === "INCLUDED" || paper.status === "INCLUDED") return (paper.acceptedForAnalysis ?? evaluation?.acceptedForAnalysis) ? "Đã chọn cho phân tích" : `Qua vòng${number ? ` ${number}` : ""}`;
   if (group === "WAITING_FULLTEXT" || paper.status === "WAITING_FULLTEXT") return "Chờ nguồn toàn văn";

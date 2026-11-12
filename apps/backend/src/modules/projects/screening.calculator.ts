@@ -2,6 +2,7 @@ import type { ScreeningChoice, ScreeningConsensusPolicy, ScreeningMetrics, Scree
 
 /** Current two-reviewer workflows accept a paper in one round. Older protocols retain their frozen stage rules. */
 export function automaticFullTextStage(settings: Pick<ScreeningSettings, "workflowVersion" | "reviewMode" | "stages" | "screeningMode">) {
+  if ((settings.workflowVersion ?? 0) >= 12 && settings.reviewMode === "INDEPENDENT") return false;
   if (settings.screeningMode) return settings.screeningMode === "TWO_STAGE";
   return (settings.workflowVersion ?? 0) < 5 && settings.reviewMode !== "COLLABORATIVE" && Boolean(settings.stages?.includes("FULL_TEXT"));
 }

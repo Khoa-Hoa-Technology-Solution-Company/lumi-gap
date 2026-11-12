@@ -156,3 +156,14 @@ describe("shared academic profile presentation and editing", () => {
     expect(container.textContent).not.toContain("LumiGap paper ID");
   });
 });
+
+it("saves mentoring preferences from the profile without sending server timestamps", async () => {
+  await render(<AcademicProfileInlineEditor section="availability" profile={profile({ academicRole: "LECTURER", supportAvailability: { enabled: false, requestedEnabled: true, types: [], preferredTopics: ["Computer Vision"], updatedAt: "2026-11-07T00:00:00Z" } })} onClose={mocks.close} />);
+  expect(container.textContent).toContain("Preferred topics"); await click("Save changes");
+  expect(mocks.save).toHaveBeenCalledWith(expect.objectContaining({ supportAvailability: { enabled: false, requestedEnabled: true, types: [], preferredTopics: ["Computer Vision"] } }));
+  expect(mocks.save.mock.calls[0]![0].supportAvailability).not.toHaveProperty("updatedAt");
+});
+it("shows lecturer specializations and technologies as self-declared expertise", async () => {
+  await render(<AcademicProfileView profile={profile({ academicRole: "LECTURER", researchSpecializations: ["Medical AI"], skills: ["PyTorch"] })} />);
+  expect(container.textContent).toContain("Research Specializations"); expect(container.textContent).toContain("Medical AI"); expect(container.textContent).toContain("Technologies & Skills"); expect(container.textContent).toContain("Expertise is self-declared");
+});

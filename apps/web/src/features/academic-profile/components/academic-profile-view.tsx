@@ -1,3 +1,4 @@
+import { ResearchClassificationSummary } from "./research-classification-fields";
 import { lazy, Suspense, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import type { AcademicProfile, PublicAcademicProfile } from "@trend/shared-types";
@@ -57,7 +58,7 @@ export function AcademicProfileView({ profile, editableProfile, editingSection, 
   const role = student ? "Student" : lecturer ? "Lecturer" : "Researcher";
   const detail = student ? identity.programMajor : identity.currentPosition;
   const biography = combineAcademicBio(profile.headline, profile.biography, profile.bio);
-  const hasResearch = Boolean(profile.expertiseAreas.length || profile.researchInterests.length || profile.skills.length || profile.researchKeywords.length);
+  const hasResearch = Boolean(profile.researchClassification?.nodes.length || profile.researchClassification?.skillIds.length || profile.expertiseAreas.length || profile.researchSpecializations?.length || profile.researchInterests.length || profile.skills.length || profile.researchKeywords.length);
   const legacyLinks = profile.externalIdentities.filter(item => item.provider !== "GITHUB" && !profile.academicIdentityLinks.some(link => link.provider === item.provider));
   const professionalLinks = profile.externalIdentities.filter(item => item.provider === "GITHUB" && safeExternalUrl(item.profileUrl));
   const identityCount = profile.academicIdentityLinks.length + legacyLinks.filter(item => scholarlyUrl(item)).length;
@@ -154,7 +155,7 @@ export function AcademicProfileView({ profile, editableProfile, editingSection, 
             {biography ? <div className="rounded-2xl bg-slate-50/70 p-5 dark:bg-white/[0.02]"><p className="whitespace-pre-wrap break-words text-sm leading-7 text-slate-700 dark:text-slate-300 sm:text-[15px]">{biography}</p></div> : <OwnerPrompt text={t("Share a brief academic background or research goal. This is optional.")} label={t("Add biography")} onClick={() => edit("intro")} />}
           </ProfileSection>}
           {(hasResearch || owner) && <ProfileSection title={t("Research Focus & Expertise")} subtitle={t("Disciplines, specific interests, and research skills")} icon={GraduationCap} action={owner && <EditButton label={t("Edit research focus")} onClick={() => edit("research")} />}>
-            {hasResearch ? <div className="space-y-5"><TagList title={t("Research Areas")} values={profile.expertiseAreas} primary /><TagList title={t("Research Interests")} values={profile.researchInterests} /><TagList title={t("Research skills")} values={profile.skills} /><TagList title={t("Keywords")} values={profile.researchKeywords} /></div> : <OwnerPrompt text={t("Add the research areas and topics you are exploring.")} label={t("Add research focus")} onClick={() => edit("research")} />}
+            {hasResearch ? <div className="space-y-5"><ResearchClassificationSummary value={profile.researchClassification} /><p className="text-xs text-muted-foreground">{t("Expertise is self-declared. Lecturer verification does not certify these topics or skills.")}</p><TagList title={t(lecturer ? "Research Fields" : "Research Areas")} values={profile.expertiseAreas} primary /><TagList title={t("Research Specializations")} values={profile.researchSpecializations ?? []} /><TagList title={t("Research Interests")} values={profile.researchInterests} /><TagList title={t("Technologies & Skills")} values={profile.skills} /><TagList title={t("Keywords")} values={profile.researchKeywords} /></div> : <OwnerPrompt text={t("Add the research areas and topics you are exploring.")} label={t("Add research focus")} onClick={() => edit("research")} />}
           </ProfileSection>}
           {(profile.featuredWorks.length > 0 || owner) && <ProfileSection title={t("Featured Works & Contributions")} icon={BriefcaseBusiness} action={owner && <EditButton label={t("Edit featured works")} onClick={() => edit("works")} />}>
             {profile.featuredWorks.length ? <ul className="space-y-3">{profile.featuredWorks.map((work, index) => <li key={`${work.paperId ?? work.projectId ?? work.submissionId ?? work.reportId ?? work.gapId ?? work.title}-${index}`} className="group flex items-start gap-4 rounded-2xl border border-slate-100 bg-slate-50/50 p-4 transition-colors hover:border-blue-200 hover:bg-blue-50/20 dark:border-white/5 dark:bg-white/[0.02] dark:hover:border-blue-900/50">

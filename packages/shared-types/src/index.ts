@@ -48,3 +48,7 @@ export * from "./project-analysis-set.js";
 export * from "./research-trust.js";
 export * from "./taxonomy.js";
 export * from "./personalization.js";
+export * from "./mentorship-application.js";
+export * from "./manuscript-integrity.js";
+export * from "./research-classification.js";
+export * from "./credit-taxonomy.js";

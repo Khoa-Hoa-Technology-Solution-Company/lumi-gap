@@ -5,10 +5,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AcademicIdentityLink, AcademicProfile } from "@trend/shared-types";
 import { AcademicIdentityManager } from "../components/academic-identity-manager";
 
-const mocks = vi.hoisted(() => ({ links: [] as AcademicIdentityLink[], create: vi.fn(), update: vi.fn(), remove: vi.fn() }));
+const mocks = vi.hoisted(() => ({ links: [] as AcademicIdentityLink[], create: vi.fn(), update: vi.fn(), remove: vi.fn(), start: vi.fn(), redirect: vi.fn(), configured: false }));
+vi.mock("../api/academic-profile.api", () => ({ academicProfileApi: { startOrcid: mocks.start } }));
+vi.mock("../orcid-authorization", () => ({ redirectToOrcidAuthorization: mocks.redirect }));
+vi.mock("@/stores/auth-store", () => ({ useAuthStore: (select: (value: unknown) => unknown) => select({ user: { id: "viewer" } }) }));
 vi.mock("@/i18n", () => ({ useI18n: () => ({ t: (key: string) => key }) }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock("../hooks/use-academic-profile", () => ({
+  useOrcidAvailability: () => ({ data: { configured: mocks.configured, environment: "SANDBOX" }, isLoading: false, isError: false }),
   useAcademicIdentityLinks: () => ({ data: mocks.links, isLoading: false, isError: false }),
   useCreateAcademicIdentity: () => ({ mutateAsync: mocks.create, isPending: false }),
   useUpdateAcademicIdentity: () => ({ mutateAsync: mocks.update, isPending: false }),
@@ -35,14 +39,14 @@ async function choose(provider: string) {
 async function mount(editable = true) { await act(async () => root.render(<AcademicIdentityManager profile={profile} editable={editable} />)); }
 
 beforeEach(() => {
-  vi.clearAllMocks(); mocks.links = [];
+  vi.clearAllMocks(); mocks.links = []; mocks.configured = false;
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   container = document.createElement("div"); document.body.append(container); root = createRoot(container);
 });
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); vi.unstubAllGlobals(); });
 
 describe("Academic identity disclosure and ownership semantics", () => {
-  it("starts with ORCID without exposing other provider fields or pretending OAuth is available", async () => {
+  it("keeps manual profiles usable when ORCID credentials are absent", async () => {
     await mount(); await click("Add academic identity");
     const dialog = document.querySelector('[role="dialog"]')!;
     expect(dialog.textContent).toContain("Connect ORCID to link your scholarly identifier with LumiGap.");
@@ -75,7 +79,7 @@ describe("Academic identity disclosure and ownership semantics", () => {
     expect(container.textContent).not.toContain("Verified Researcher");
     await click("Add academic identity");
     expect(document.querySelector('[role="dialog"]')?.textContent).toContain(identity.identifier);
-    expect(button("Connect ORCID")).toBeUndefined();
+    expect(button("Connect ORCID").disabled).toBe(true);
   });
 
   it("changes only visibility for a connected ORCID and requires confirmation to disconnect", async () => {
@@ -102,4 +106,15 @@ describe("Academic identity disclosure and ownership semantics", () => {
     expect(button("Add academic identity")).toBeUndefined();
     expect(container.querySelector("select")).toBeNull();
   });
+});
+
+it("starts the authenticated provider redirect when configured, including upgrade of a manual claim", async () => {
+  mocks.configured = true; mocks.links = [{ ...identity, connectionMethod: "MANUAL", verificationStatus: "UNVERIFIED" }];
+  mocks.start.mockResolvedValue({ authorizationUrl: "https://sandbox.orcid.org/oauth/authorize", state: "test" });
+  await mount(); await click("Add academic identity"); expect(button("Connect ORCID").disabled).toBe(false); await click("Connect ORCID");
+  expect(mocks.redirect).toHaveBeenCalledWith({ authorizationUrl: "https://sandbox.orcid.org/oauth/authorize", state: "test" }, "viewer");
+});
+it("shows a start failure and leaves other profile functions available", async () => {
+  mocks.configured = true; mocks.start.mockRejectedValue(new Error("provider unavailable")); await mount(); await click("Add academic identity"); await click("Connect ORCID");
+  expect(document.querySelector('[role="alert"]')?.textContent).toContain("could not start"); expect(button("Add another academic profile").disabled).toBe(false);
 });

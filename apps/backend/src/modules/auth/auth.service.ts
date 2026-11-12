@@ -1,3 +1,4 @@
+import { resolveResearchClassification, validateSupervisionTopics } from "../taxonomy/research-classification.service.js";
 import { enqueueRecomputeForumTopics } from "../personalization/personalization-topics.service.js";
 import crypto from "node:crypto";
 import {
@@ -530,14 +531,16 @@ export const authService = {
       where: { hostInstitution: true, status: "ACTIVE", isActive: true },
       orderBy: { name: "asc" },
     });
-    const [institutions, fields] = await Promise.all([
+    const [institutions, fields, subfields, topics] = await Promise.all([
       prisma.institution.findMany({ where: { isActive: true, status: "ACTIVE", ...(query.q ? { name: { contains: query.q, mode: "insensitive" } } : {}) }, orderBy: [{ hostInstitution: "desc" }, { name: "asc" }], take: 30, select: { id: true, name: true, hostInstitution: true } }),
       prisma.paperTopic.groupBy({ by: ["fieldName"], where: { fieldName: { not: null } }, orderBy: { fieldName: "asc" }, take: 100 }),
+      prisma.researchTopic.findMany({ where: { level: "subfield", status: "active" }, orderBy: [{ paperCount: "desc" }, { topicName: "asc" }], take: 200, select: { topicName: true } }),
+      prisma.researchTopic.findMany({ where: { level: "topic", status: "active" }, orderBy: [{ paperCount: "desc" }, { topicName: "asc" }], take: 300, select: { topicName: true } }),
     ]);
     const researchAreas = [...new Set(["Computer Science", "Software Engineering", "Artificial Intelligence", "Data Science", "Information Systems", "Cybersecurity", "Education", "Business and Management", ...fields.flatMap(item => item.fieldName ? [item.fieldName] : [])])];
     const selectedInstitutionId = query.institutionId ?? hostInstitution?.id;
     if (!hostInstitution && !selectedInstitutionId) {
-      return { institutions, researchAreas,
+      return { institutions, researchAreas, researchSpecializations: subfields.map(item => item.topicName), researchTopics: topics.map(item => item.topicName),
         hostInstitution: undefined,
         campuses: [],
         programs: [],
@@ -558,7 +561,7 @@ export const authService = {
       }),
     ]);
     return {
-      institutions, researchAreas,
+      institutions, researchAreas, researchSpecializations: subfields.map(item => item.topicName), researchTopics: topics.map(item => item.topicName),
       hostInstitution: hostInstitution ? { id: hostInstitution.id, name: hostInstitution.name } : undefined,
       campuses: campuses.map((campus) => ({
         id: campus.id,
@@ -595,6 +598,9 @@ export const authService = {
     const researchInterests = cleanTags(input.researchInterests);
     const expertiseAreas = cleanTags(input.expertiseAreas ?? input.researchAreas);
     const researchKeywords = cleanTags(input.researchKeywords);
+    if (input.mentorshipPreferences?.preferredTopicIds) await validateSupervisionTopics(input.mentorshipPreferences.preferredTopicIds);
+    const researchSpecializations = cleanTags(input.researchSpecializations);
+    const researchClassification = input.researchClassification ? await resolveResearchClassification(input.researchClassification) : undefined;
     const skills = cleanTags(input.skills);
     const positionTitle = (
       input.positionTitle
@@ -690,6 +696,18 @@ export const authService = {
           ...(researchInterests !== undefined ? { researchInterests } : {}),
         },
       });
+      const currentSupport = liveProfile?.supportAvailability && typeof liveProfile.supportAvailability === "object" && !Array.isArray(liveProfile.supportAvailability) ? liveProfile.supportAvailability : {};
+      const mentorshipPreferencePatch = academicRole === "LECTURER" && input.mentorshipPreferences ? {
+        supportAvailability: {
+          ...currentSupport,
+          enabled: input.mentorshipPreferences.interested && !positionChanged && currentSupport.enabled === true,
+          requestedEnabled: input.mentorshipPreferences.interested,
+          preferredTopics: input.mentorshipPreferences.preferredTopics,
+          ...(input.mentorshipPreferences.preferredTopicIds ? { preferredTopicIds: input.mentorshipPreferences.preferredTopicIds } : {}),
+          ...(input.mentorshipPreferences.supportTypes ? { types: input.mentorshipPreferences.supportTypes } : {}),
+          updatedAt: now.toISOString(),
+        },
+      } : {};
       await tx.academicProfile.upsert({
         where: { userId: user.id },
         create: {
@@ -707,6 +725,10 @@ export const authService = {
           verificationStatus: "SELF_DECLARED",
           ...(expertiseAreas !== undefined ? { expertiseAreas } : {}),
           ...(skills !== undefined ? { skills } : {}),
+          ...(researchSpecializations !== undefined ? { researchSpecializations } : {}),
+          ...(researchClassification ? { researchClassification: researchClassification as never } : {}),
+          ...(input.biography !== undefined ? { biography: input.biography } : {}),
+          ...mentorshipPreferencePatch,
           ...(researchKeywords !== undefined ? { researchKeywords } : {}),
           onboardingCompletedAt: now,
         },
@@ -724,6 +746,10 @@ export const authService = {
           onboardingCompletedAt: now,
           ...(expertiseAreas !== undefined ? { expertiseAreas } : {}),
           ...(skills !== undefined ? { skills } : {}),
+          ...(researchSpecializations !== undefined ? { researchSpecializations } : {}),
+          ...(researchClassification ? { researchClassification: researchClassification as never } : {}),
+          ...(input.biography !== undefined ? { biography: input.biography } : {}),
+          ...mentorshipPreferencePatch,
           ...(researchKeywords !== undefined ? { researchKeywords } : {}),
         },
       });

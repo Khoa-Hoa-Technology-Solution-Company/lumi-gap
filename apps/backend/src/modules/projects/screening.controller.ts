@@ -11,6 +11,7 @@ import { screeningPageSchema, screeningHistorySchema } from "./dto/screening.sch
 const project = (r: Request) => String(r.params.id), actor = (r: Request) => r.user!.sub, round = (r: Request) => String(r.params.roundId);
 const send = (r: Response, data: unknown, status = 200) => r.status(status).json({ success: true, data });
 export const screeningController = {
+  confirmConsensus: async (r: Request, res: Response) => send(res, await service.confirmConsensus(project(r), actor(r), round(r), r.body)),
   automaticTasks: async (r: Request, res: Response) => send(res, await screeningObligationsService.list(project(r), actor(r))),
   resumeFullText: async (r: Request, res: Response) => send(res, await service.resumeFullText(project(r), actor(r), round(r), r.body)),
   caseAction: async (r: Request, res: Response) => send(res, await screeningCaseService.act(project(r), actor(r), round(r), r.body)),

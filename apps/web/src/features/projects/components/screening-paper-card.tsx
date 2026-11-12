@@ -39,10 +39,11 @@ function CardAction({ href, onOpen, children, secondary = false }: { href?: stri
     : <Button size="sm" variant={secondary ? "outline" : "default"} onClick={onOpen}>{children}<ArrowRight size={14} aria-hidden="true" /></Button>;
 }
 
-export function WorkPaperCard({ paper, status, onOpen, href, children, actions, actionRequired, deadline, now = Date.now(), ariaLabel, tone: providedTone }: {
+export function WorkPaperCard({ paper, status, onOpen, href, children, actions, actionRequired, deadline, now = Date.now(), ariaLabel, tone: providedTone, roundLabel, progressLabel }: {
   paper: ScreeningCardPaper; status: string; onOpen: () => void; href?: string;
   children?: ReactNode; actions: ReactNode; actionRequired?: boolean;
-  deadline?: { at: string; kind: "CLAIM" | "STATEMENT" }; now?: number; ariaLabel?: string; tone?: ScreeningTone;
+  deadline?: { at: string; kind: "CLAIM" | "STATEMENT" | "CONSENSUS" }; now?: number; ariaLabel?: string; tone?: ScreeningTone;
+  roundLabel?: string; progressLabel?: string;
 }) {
   const titleId = useId();
   const remaining = deadline ? Math.max(0, Math.ceil((new Date(deadline.at).getTime() - now) / 1000)) : null;
@@ -57,7 +58,7 @@ export function WorkPaperCard({ paper, status, onOpen, href, children, actions, 
   const tone = providedTone ?? workPaperTone(paper);
   return <article className="screening-paper-card screening-tone" data-tone={tone} data-action-required={actionRequired || undefined} aria-label={ariaLabel} aria-labelledby={ariaLabel ? undefined : titleId}>
     <header className="screening-paper-card-top">
-      {(paper.roundNumber || paper.phase) && <p className="screening-paper-card-round">{[paper.roundNumber ? `Vòng ${paper.roundNumber}` : null, paper.phase === "FULL_TEXT" ? "Toàn văn" : paper.phase === "TITLE_ABSTRACT" ? "Tiêu đề & Tóm tắt" : null].filter(Boolean).join(" · ")}</p>}
+      {(paper.roundNumber || paper.phase) && <p className="screening-paper-card-round">{roundLabel ?? [paper.roundNumber ? `Vòng ${paper.roundNumber}` : null, paper.phase === "FULL_TEXT" ? "Toàn văn" : paper.phase === "TITLE_ABSTRACT" ? "Tiêu đề & Tóm tắt" : null].filter(Boolean).join(" · ")}</p>}
       <ScreeningStatusBadge className="screening-paper-card-status" tone={tone}><span aria-hidden="true" className="screening-paper-card-dot" /><span className="sr-only">Trạng thái: </span>{status}</ScreeningStatusBadge>
     </header>
     <div className="screening-paper-card-identity">
@@ -76,14 +77,14 @@ export function WorkPaperCard({ paper, status, onOpen, href, children, actions, 
     <footer className="screening-paper-card-footer">
       <div className="screening-paper-card-tracking">
       {hasProgress && <div className="screening-paper-card-progress">
-        <div className="screening-paper-card-progress-label"><span className="sr-only">Tiến độ vòng đánh giá</span><strong>{complete}/{required} phiếu đã gửi</strong></div>
-        <div role="progressbar" aria-label="Tiến độ vòng đánh giá" aria-valuemin={0} aria-valuemax={required} aria-valuenow={Math.min(complete, required)} aria-valuetext={`${complete}/${required} phiếu đã gửi`} className="screening-paper-card-segments">
+        <div className="screening-paper-card-progress-label">{!progressLabel && <span className="sr-only">Tiến độ vòng đánh giá</span>}<strong>{progressLabel ?? `${complete}/${required} phiếu đã gửi`}</strong></div>
+        <div role="progressbar" aria-label={progressLabel ?? "Tiến độ vòng đánh giá"} aria-valuemin={0} aria-valuemax={required} aria-valuenow={Math.min(complete, required)} aria-valuetext={progressLabel ?? `${complete}/${required} phiếu đã gửi`} className="screening-paper-card-segments">
           {Array.from({ length: required }, (_, index) => <span key={index} data-filled={index < complete} />)}
         </div>
       </div>}
       {deadline ? (
         <div className="screening-paper-card-deadline screening-tone" data-tone={urgent ? "warning" : "neutral"} data-urgent={urgent}>
-          <span>{deadline.kind === "CLAIM" ? "Hạn phiếu đang giữ" : "Hạn gửi quan điểm"}</span>
+          <span>{deadline.kind === "CLAIM" ? "Hạn phiếu đang giữ" : deadline.kind === "CONSENSUS" ? "Hạn thảo luận" : "Hạn gửi quan điểm"}</span>
           {deadline.kind === "CLAIM" ? <strong aria-label={`Còn ${counter}`}><Clock size={14} aria-hidden="true" />{remaining === 0 ? "Đã hết hạn" : counter}</strong> : <strong><Clock size={14} aria-hidden="true" />{date(deadline.at)}</strong>}
         </div>
       ) : null}
@@ -108,7 +109,7 @@ export function EvaluationSummary({ item, paper }: { item: ScreeningPersonalEval
       <div><dt>Kết quả của nhóm</dt><dd className="screening-tone screening-status-text" data-tone={workPaperTone(context, item)}>{result}</dd></div>
     </dl>
     {(paper?.invalidated || item.invalidated) && <p className="text-xs text-muted-foreground">Vòng trước đã mở lại. Các phiếu và kết quả ở đây được giữ để tra cứu lịch sử.</p>}
-    {resolution && <p className="screening-paper-card-resolution">{resolution === "ADJUDICATION" ? <Scale size={13} aria-hidden="true" /> : <Check size={13} aria-hidden="true" />}{resolution === "ADJUDICATION" ? "Quyết định sau phân xử" : resolution === "CONSENSUS_AFTER_DISCUSSION" ? "Thống nhất sau thảo luận" : paper?.required === 2 ? "Thống nhất từ hai phiếu" : "Thống nhất từ phiếu đánh giá"}</p>}
+    {resolution && <p className="screening-paper-card-resolution">{resolution === "ADJUDICATION" ? <Scale size={13} aria-hidden="true" /> : resolution === "CONSENSUS_NOT_REACHED" ? <X size={13} aria-hidden="true" /> : <Check size={13} aria-hidden="true" />}{resolution === "ADJUDICATION" ? "Quyết định sau phân xử" : resolution === "CONSENSUS_NOT_REACHED" ? "Không đạt đồng thuận" : resolution === "CONSENSUS_AFTER_DISCUSSION" ? "Thống nhất sau thảo luận" : paper?.required === 2 ? "Thống nhất từ hai phiếu" : "Thống nhất từ phiếu đánh giá"}</p>}
     {item.resolverName && <p className="text-xs text-muted-foreground">Người phân xử: {item.resolverName}</p>}
     {reason && <p className="screening-paper-card-reason"><span>Lý do: </span>{reason}</p>}
   </div>;
@@ -120,10 +121,10 @@ export function EvaluationPaperCard({ summary, item, onOpen, href, actions, chil
   const paper = workPaperFor(summary, item);
   const tracked = summary.myTrackedDisputes?.find(t => t.roundId === item.roundId);
   return <WorkPaperCard paper={paper} status={workPaperStatus(paper, item)} tone={workPaperTone(paper, item)} onOpen={onOpen} href={href}
-    deadline={tracked?.caseStatus === "COLLECTING" && tracked.deadline ? { kind: "STATEMENT", at: tracked.deadline } : undefined}
+    deadline={paper.consensusDeadline && ["CONSENSUS_REQUIRED", "CONSENSUS_IN_PROGRESS"].includes(paper.status ?? "") ? { kind: "CONSENSUS", at: paper.consensusDeadline } : tracked?.caseStatus === "COLLECTING" && tracked.deadline ? { kind: "STATEMENT", at: tracked.deadline } : undefined}
     actions={actions ?? <CardAction onOpen={onOpen} href={href} secondary>Xem lại bài</CardAction>}>
     <EvaluationSummary item={item} paper={paper} />
-    {["CONFLICT", "NEEDS_MORE_INFO", "ADJUDICATING"].includes(item.groupStatus) && <PublicBallots paper={paper} />}
+    {["CONSENSUS_REQUIRED", "CONSENSUS_IN_PROGRESS", "CONFLICT", "NEEDS_MORE_INFO", "ADJUDICATING"].includes(item.groupStatus) && <PublicBallots paper={paper} />}
     {!item.resolverName && tracked?.adjudicatorName && <p className="text-xs text-muted-foreground">Người phân xử: {tracked.adjudicatorName}</p>}
     {item.submittedAt && <p className="text-xs text-muted-foreground">Đã gửi phiếu {date(item.submittedAt)}</p>}
     {children}
@@ -141,11 +142,11 @@ export function ScreeningTaskCard({ projectId, summary, task, onOpen, href, now,
   const statement = task.kind === "STATEMENT";
   const adjudication = task.kind === "ADJUDICATION";
   const isClarification = paper.classification === "NEEDS_CLARIFICATION" || paper.classification === "NEEDS_MORE_INFORMATION" || paper.status === "NEEDS_MORE_INFO" && !paper.caseStatus;
-  const status = statement ? "Cần gửi quan điểm phân xử"
+  const status = ["CONSENSUS_REQUIRED", "CONSENSUS_IN_PROGRESS"].includes(paper.status ?? "") ? workPaperStatus(paper, evaluation) : statement ? "Cần gửi quan điểm phân xử"
     : ["FULLTEXT", "INFORMATION"].includes(task.kind) ? task.label
     : task.kind === "REVIEW" ? "Đang đánh giá"
     : task.kind === "DISCUSSION" ? paper.classification === "NEEDS_MORE_INFORMATION" ? "Cần đọc thêm" : isClarification ? "Cần làm rõ" : paper.classification === "EXCLUSION_REASON_MISMATCH" ? "Cần thống nhất lý do loại" : "Cần giải quyết bất đồng"
-    : task.kind === "CONSENSUS" ? "Cần phản hồi thống nhất"
+    : task.kind === "CONSENSUS" ? paper.status === "CONSENSUS_IN_PROGRESS" ? "Đang thảo luận" : "Cần thảo luận"
     : workCaseLabel(summary.pendingAdjudications.find(a => a.roundId === task.roundId)?.caseStatus) ?? (task.kind === "COORDINATION" ? "Chờ phân công" : "Đang phân xử");
   const action = statement ? "Bổ sung quan điểm"
     : adjudication ? "Đưa ra kết luận"
@@ -170,7 +171,7 @@ export function ScreeningTaskCard({ projectId, summary, task, onOpen, href, now,
     : adjudication ? "Đọc hồ sơ hai bên và ghi kết luận có căn cứ."
     : task.kind === "COORDINATION" ? paper.caseStatus === "COI_REVIEW" ? "Xem xét báo cáo xung đột lợi ích để tiếp tục phân xử." : "Phân công người phân xử đủ điều kiện cho hồ sơ này."
     : task.kind === "REVIEW" ? "Đọc bài báo và gửi phiếu đánh giá trước hạn."
-    : task.kind === "CONSENSUS" ? "Xem đề xuất thống nhất và gửi phản hồi của bạn."
+    : task.kind === "CONSENSUS" ? "Trao đổi dựa trên tiêu chí và cập nhật đánh giá của bạn trước hạn."
     : isClarification ? "Đối chiếu nguồn, bổ sung căn cứ hoặc cập nhật đánh giá của bạn."
     : task.kind === "DISCUSSION" && paper.classification === "EXCLUSION_REASON_MISMATCH" ? "Đối chiếu căn cứ loại và thống nhất tiêu chí với reviewer còn lại."
     : task.kind === "DISCUSSION" ? "Trao đổi với reviewer còn lại để thống nhất kết luận."
@@ -178,7 +179,7 @@ export function ScreeningTaskCard({ projectId, summary, task, onOpen, href, now,
 
   return <WorkPaperCard paper={paper} status={expired ? "Đã hết hạn" : status} tone={tone} onOpen={onOpen} href={href} now={now}
     ariaLabel={statement ? "Ý kiến phân xử cần gửi" : undefined} actionRequired={canAct}
-    deadline={task.deadline ? { at: task.deadline, kind: task.kind === "REVIEW" ? "CLAIM" : "STATEMENT" } : undefined}
+    deadline={task.deadline ? { at: task.deadline, kind: task.kind === "REVIEW" ? "CLAIM" : task.kind === "CONSENSUS" || paper.consensusDeadline ? "CONSENSUS" : "STATEMENT" } : undefined}
     actions={canAct ? <>
       <CardAction onOpen={onOpen} href={href}>{action}</CardAction>
       {task.kind === "REVIEW" && claim?.canExtend && <Button size="sm" variant="ghost" disabled={command.isPending} onClick={() => void changeClaim("extend")}>Gia hạn +24h</Button>}

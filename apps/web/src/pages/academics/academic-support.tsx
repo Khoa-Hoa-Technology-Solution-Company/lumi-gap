@@ -1,3 +1,6 @@
+import { MentorRelevanceSummary } from "@/features/projects/components/mentor-relevance-summary";
+import { MentorshipApplicantPool, MentorshipApplicationDialog, MyMentorshipApplications } from "@/features/projects/components/mentorship-applicants";
+import type { MentorshipApplicationView } from "@trend/shared-types";
 import { useEffect, useState, useMemo, useRef } from "react";
 import { Link, Navigate, useSearchParams, useNavigate } from "react-router-dom";
 import { keepPreviousData, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -25,6 +28,7 @@ import { ArrowUpRight, BadgeCheck, Building2, ChevronDown, Globe, GraduationCap,
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { useInvitationContent, InvitationAttachments, InvitationUpload } from "@/features/projects/components/mentorship-invitation-content";
+import { MentorMatchEvidenceDialog } from "@/features/projects/components/mentor-match-evidence-dialog";
 import "@/features/projects/mentor-discovery.css";
 import "./academic-support.css";
 
@@ -68,7 +72,7 @@ export function AcademicSupportPage() {
   const listedItems = [...(mine.data?.relationships ?? []), ...(mine.data?.requests ?? []).filter(item => item.id !== linkedInvitation.data?.id)];
   const opportunities = useQuery({ queryKey: ["academic-support", userId, "opportunities", q, deferredArea, opportunityPage], queryFn: () => academicSupportApi.opportunities({ q, area: deferredArea || undefined, page: opportunityPage }), enabled: lecturer && view === "discover" && pref.data?.acceptingMentorships === true });
   const tabs = [...(lecturer ? ["discover" as const] : []), "incoming", "active", "outgoing", "history"] as const;
-  const tabLabels = { discover: "Find teams to mentor", incoming: "Incoming Requests", active: lecturer ? "Teams you mentor" : "Active Mentorships", outgoing: lecturer ? "Sent mentorship offers" : "Outgoing Requests", history: "Mentoring history" };
+  const tabLabels = { discover: "Find teams to mentor", incoming: "Incoming Requests", active: lecturer ? "Teams you mentor" : "Active Mentorships", outgoing: lecturer ? "My mentoring applications" : "Outgoing Requests", history: "Mentoring history" };
   const tabIcons = { discover: Search, incoming: Inbox, active: Users, outgoing: Send, history: History };
   const clearFilters = () => { setSearch(""); setArea(""); setOpportunityPage(1); };
   const openProject = (id: string) => { if (lecturer) navigate(`/academic-support/projects/${encodeURIComponent(id)}`); else setParams(current => { const next = new URLSearchParams(current); next.set("projectId", id); return next; }); };
@@ -95,8 +99,9 @@ export function AcademicSupportPage() {
       <div className="team-opportunities" aria-busy={opportunities.isFetching}>{!opportunities.isError && opportunities.data?.items.map(p => <Opportunity key={p.id} preview={p} onOffer={() => setOfferProject(p)} />)}</div><Pager meta={opportunities.data?.meta} onPage={setOpportunityPage} />
     </> }</section> : <section className="space-y-4" aria-label={t(tabLabels[view])}><div className="academic-section-heading"><div><h2>{t(tabLabels[view])}</h2>
       {lecturer && <p>{t(view === "incoming" ? "Review the team's request before accepting a mentoring role." : view === "active" ? "Open a team to review its research and provide guidance." : view === "outgoing" ? "Follow the offers you have sent. Teams decide whether to accept." : "Review previous requests and completed mentorships.")}</p>}</div></div>
+      {lecturer && view === "outgoing" && <MyMentorshipApplications />}
       {mine.isLoading ? <p role="status">{t("Loading…")}</p> : mine.isError ? <div role="alert" className="space-y-2"><p>{t("Unable to load mentorship requests.")}</p><Button variant="outline" size="sm" onClick={() => void mine.refetch()}>{t("Try again")}</Button></div> : <>
-        {mine.data && !mine.data.requests.length && !mine.data.relationships.length && !linkedInvitation.data ? <p className="rounded-lg border border-dashed p-6 text-sm leading-6 text-muted-foreground">{t(view === "incoming" ? "No incoming mentorship invitations. Teams can invite you from your profile when you are accepting new teams." : view === "outgoing" ? "No outgoing mentorship requests yet." : view === "active" ? "No active mentorships yet. Accepted invitations and offers will appear here." : "No mentorship history yet.")}</p> : listedItems.length > 0 && <MentoringItems items={listedItems} onOpen={openProject} />}
+        {mine.data && !mine.data.requests.length && !mine.data.relationships.length && !linkedInvitation.data && !(lecturer && view === "outgoing") ? <p className="rounded-lg border border-dashed p-6 text-sm leading-6 text-muted-foreground">{t(view === "incoming" ? "No incoming mentorship invitations. Teams can invite you from your profile when you are accepting new teams." : view === "outgoing" ? "No outgoing mentorship requests yet." : view === "active" ? "No active mentorships yet. Accepted invitations and offers will appear here." : "No mentorship history yet.")}</p> : listedItems.length > 0 && <MentoringItems items={listedItems} onOpen={openProject} />}
         <Pager meta={mine.data && (mine.data.requestMeta.totalPages >= mine.data.relationshipMeta.totalPages ? mine.data.requestMeta : mine.data.relationshipMeta)} onPage={setPage} /></>}
     </section>}
     {!lecturer && <ProjectMentorFinder onSelect={id => setParams(id ? { projectId: id } : {})} selected={projectId ?? ""} />}
@@ -106,7 +111,7 @@ export function AcademicSupportPage() {
       {lecturer && profile.data && pref.data && !pref.data.canEnable && <PositionVerificationPanel profile={profile.data} editable onEditPosition={() => navigate("/profile?edit=affiliation")} />}
       <MentoringPreferencesPanel lecturer={lecturer} />
     </div></details>
-    {offerProject && <ConsentComposer project={offerProject} onClose={() => setOfferProject(undefined)} />}
+    {offerProject && <MentorshipApplicationDialog project={offerProject} onClose={() => setOfferProject(undefined)} />}
   </main>;
 }
 function ProjectMentorFinder({ selected, onSelect }: { selected: string; onSelect: (id: string) => void }) {
@@ -114,7 +119,7 @@ function ProjectMentorFinder({ selected, onSelect }: { selected: string; onSelec
   const projects = useQuery({ queryKey: ["projects", userId, "mentorship-finder"], queryFn: projectsApi.list });
   return <section className="space-y-2 border-t pt-5"><h2 className="text-base font-semibold">{t("Find Mentors")}</h2><label className="block text-sm text-muted-foreground" htmlFor="mentorship-project">{t("Choose a project to find or suggest mentors.")}</label><select id="mentorship-project" className="h-10 w-full rounded-md border bg-background px-3 text-sm sm:max-w-md" value={selected} onChange={async e => { const id = e.target.value; if (await canLeaveWorkspace()) onSelect(id); }}><option value="">{t("Choose a project")}</option>{projects.data?.filter(p => !["ARCHIVED", "COMPLETED"].includes(p.status)).map(p => <option key={p._id} value={p._id}>{p.title}</option>)}</select>{projects.isError && <p role="alert" className="text-sm">{t("Unable to load project. Please try again.")}</p>}</section>;
 }
-export function ConsentComposer({ project, mentor, suggestion = false, onClose, planned }: { project: MentorPreview; mentor?: MentorshipPerson; suggestion?: boolean; onClose: () => void; planned?: { candidate: MentorPlanCandidate; version: number } }) {
+export function ConsentComposer({ project, mentor, suggestion = false, onClose, planned, application }: { project: MentorPreview; mentor?: MentorshipPerson; suggestion?: boolean; onClose: () => void; planned?: { candidate: MentorPlanCandidate; version: number }; application?: { id: string; version: number } }) {
   const { t } = useI18n(), refresh = useSupportRefresh(), [key, setKey] = useState(() => crypto.randomUUID());
   const userId = useAuthStore(s => s.user?.id);
   const invitation = Boolean(mentor && !suggestion), direction = mentor ? "PROJECT_TO_LECTURER" : "LECTURER_TO_PROJECT";
@@ -131,7 +136,7 @@ export function ConsentComposer({ project, mentor, suggestion = false, onClose, 
     if (useAuthStore.getState().user?.id !== userId) throw new Error("Your account changed. Reopen the invitation before continuing.");
     if (!suggestion) await content.persist();
     if (useAuthStore.getState().user?.id !== userId) throw new Error("Your account changed. Reopen the invitation before continuing.");
-    const payload = { ...(planned ? { candidateId: planned.candidate.id, expectedPlanVersion: planned.version } : {}), mentorRole: content.mentorRole, attachmentIds: content.attachments.map(a => a.id), ...(invitation ? { access: accessPolicy, ...(settings.data?.previewToken ? { expectedPreviewToken: settings.data.previewToken } : {}) } : {}) };
+    const payload = { ...(application ? { applicationId: application.id, expectedApplicationVersion: application.version } : {}), ...(planned ? { candidateId: planned.candidate.id, expectedPlanVersion: planned.version } : {}), mentorRole: content.mentorRole, attachmentIds: content.attachments.map(a => a.id), ...(invitation ? { access: accessPolicy, ...(settings.data?.previewToken ? { expectedPreviewToken: settings.data.previewToken } : {}) } : {}) };
     return mentor ? suggestion ? academicSupportApi.suggest(project.id, mentor._id, content.message) : academicSupportApi.request(project.id, mentor._id, content.message, key, payload) : academicSupportApi.offer(project.id, content.message, key, payload);
   }, onSuccess: () => { if (useAuthStore.getState().user?.id !== userId) return; toast.success(t(!mentor ? "Mentorship offer sent. Track the team's response in Sent mentorship offers." : suggestion ? "Mentor suggestion sent to the project owner." : "Invitation sent. Track the response in Invitations & mentors.")); refresh(); onClose(); }, onError: refresh });
   const submit = () => { if (sendLock.current) return; sendLock.current = true; void send.mutateAsync().catch(() => {}).finally(() => { sendLock.current = false; }); };
@@ -201,7 +206,7 @@ function Opportunity({ preview, onOffer }: { preview: MentorPreview; onOffer: ()
     <h3>{preview.title}</h3><p className={expanded ? "team-opportunity-summary" : "team-opportunity-summary line-clamp-2"}>{preview.summary || t("No public description yet.")}</p>
     <div className="team-opportunity-need"><p>{t("Where you can help")}</p><p>{preview.mentoringNeeds || t("Discuss the team's mentoring needs before agreeing to guide them.")}</p></div>
     <div id={`team-detail-${preview.id}`} hidden={!expanded} className="team-opportunity-detail">{preview.expertise.length > 0 && <div><p>{t("Expertise requested")}</p><div className="team-expertise">{preview.expertise.map(term => <span key={term}>{t(term)}</span>)}</div></div>}{Boolean(preview.availableRoles?.length) && <p>{t("Available mentoring roles")}: {preview.availableRoles!.map(role => t(role === "PRIMARY" ? "Primary mentor" : "Secondary mentor")).join(" · ")}</p>}<p>{t("The team leader reviews your offer before you receive project access.")}</p></div>
-    <div className="team-opportunity-actions"><button type="button" aria-expanded={expanded} aria-controls={`team-detail-${preview.id}`} onClick={() => setExpanded(value => !value)}>{t(expanded ? "Show less" : "View team details")}<ChevronDown size={16} aria-hidden="true" /></button><Button size="sm" onClick={onOffer}>{t("Offer Mentorship")}<ArrowUpRight size={15} aria-hidden="true" /></Button></div></article>;
+    <div className="team-opportunity-actions"><button type="button" aria-expanded={expanded} aria-controls={`team-detail-${preview.id}`} onClick={() => setExpanded(value => !value)}>{t(expanded ? "Show less" : "View team details")}<ChevronDown size={16} aria-hidden="true" /></button><Button size="sm" onClick={onOffer}>{t("Express mentoring interest")}<ArrowUpRight size={15} aria-hidden="true" /></Button></div></article>;
 }
 export function MentorshipList({ items, onOpen, onOpenAccess }: { items: MentorshipItem[]; onOpen?: (id: string) => void; onOpenAccess?: () => void }) {
   const { t } = useI18n(), refresh = useSupportRefresh();
@@ -261,6 +266,7 @@ export function MentorshipList({ items, onOpen, onOpenAccess }: { items: Mentors
 function MentorSearch({ project, disabled, canInvite }: { project: MentorPreview; disabled: boolean; canInvite: boolean }) {
   const { t } = useI18n(), [filters, setFilters] = useState<AcademicSearch>({}), deferred = useDebouncedValue(filters, 300), [page, setPage] = useState(1), [selected, setSelected] = useState<AvailableMentor>();
   const [pageSize, setPageSize] = useState(6);
+  const [evidenceMentor, setEvidenceMentor] = useState<AvailableMentor>();
   const resultsHeading = useRef<HTMLDivElement>(null);
   const showPage = (next: number) => { setPage(next); resultsHeading.current?.scrollIntoView?.({ block: "start" }); };
   const [showFilters, setShowFilters] = useState(false);
@@ -275,7 +281,7 @@ function MentorSearch({ project, disabled, canInvite }: { project: MentorPreview
   const correctingPage = search.data?.meta.page === page && page > lastPage;
   useEffect(() => { if (correctingPage) setPage(lastPage); }, [correctingPage, lastPage]);
   const change = (field: keyof AcademicSearch, value: string) => { setFilters(current => ({ ...current, [field]: value || undefined })); setPage(1); };
-  const filterCount = [filters.area, filters.interest, filters.institution, filters.position].filter(Boolean).length;
+  const filterCount = [filters.area, filters.specialization, filters.interest, filters.technology, filters.institution, filters.position].filter(Boolean).length;
   const filtered = Boolean(filters.q?.trim() || filterCount);
   const clear = () => { setFilters({}); setPage(1); };
 
@@ -450,9 +456,9 @@ function MentorSearch({ project, disabled, canInvite }: { project: MentorPreview
 
       <div id={`mentor-filters-${project.id}`} hidden={!showFilters} className="mentor-search-filters">
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {(["area", "interest", "institution", "position"] as const).map(field => (
+          {(["area", "specialization", "interest", "technology", "institution", "position"] as const).map(field => (
             <label key={field} className="space-y-1.5 text-sm">
-              <span>{t({ institution: "Institution", area: "Research Area", interest: "Research Interest", position: "Current Position" }[field])}</span>
+              <span>{t({ institution: "Institution", area: "Research Field", specialization: "Research Specializations", interest: "Research Topic", technology: "Technology or skill", position: "Current Position" }[field])}</span>
               <Input
                 value={filters[field] ?? ""}
                 list={field === "area" ? `mentor-area-options-${project.id}` : undefined}
@@ -470,7 +476,7 @@ function MentorSearch({ project, disabled, canInvite }: { project: MentorPreview
 
     {filtered && (
       <div className="mentor-active-filters">
-        {(["area", "interest", "institution", "position"] as const).filter(field => filters[field]).map(field => (
+        {(["area", "specialization", "interest", "technology", "institution", "position"] as const).filter(field => filters[field]).map(field => (
           <button key={field} type="button" onClick={() => change(field, "")} aria-label={`${t("Remove filter")}: ${filters[field]}`}>
             {filters[field]}
             <X size={13} aria-hidden="true" />
@@ -533,12 +539,13 @@ function MentorSearch({ project, disabled, canInvite }: { project: MentorPreview
                 </p>
               )}
 
-              {hasTopicMatch ? (
+              <MentorRelevanceSummary match={mentor.matchExplanation} />
+              {!mentor.matchExplanation && (hasTopicMatch ? (
                 <div className="mentor-expertise-clean">
                   <div className="mentor-field-group">
                     <span className="mentor-field-label">
                       <Sparkles size={12} className="text-emerald-600 dark:text-emerald-400 shrink-0" aria-hidden="true" />
-                      {t("Matches team topic:")}
+                      {t("Shared declared research terms")}
                     </span>
                     <div className="mentor-chips-wrap">
                       {mentor.matchedTerms.map(term => (
@@ -581,8 +588,9 @@ function MentorSearch({ project, disabled, canInvite }: { project: MentorPreview
                     </div>
                   </div>
                 </div>
-              )}
+              ))}
 
+              <p className="text-xs text-muted-foreground">{t("Shared terms explain relevance, not verified expertise or mentoring quality.")}</p>
               {mentor.sameInstitution && <p className="mentor-match"><Building2 size={13} aria-hidden="true" />{t("Same institution as your project owner")}</p>}
               {mentor.researchInterests.some(term => !mentor.expertiseAreas.some(area => area.toLocaleLowerCase() === term.toLocaleLowerCase())) && (
                 <p className="mentor-interests"><span className="font-medium text-foreground/80">{t("Research Interest")}:</span> {mentor.researchInterests.filter(term => !mentor.expertiseAreas.some(area => area.toLocaleLowerCase() === term.toLocaleLowerCase())).join(" · ")}</p>
@@ -594,6 +602,7 @@ function MentorSearch({ project, disabled, canInvite }: { project: MentorPreview
                 <span>{t("Accepting new teams")}</span>
               </span>
               <Button size="sm" className="mentor-action-cta" disabled={disabled || editingPreferences || search.isFetching} onClick={() => setSelected(mentor)}>{canInvite ? "Thêm vào kế hoạch" : t("Suggest Mentor")}</Button>
+              <Button variant="ghost" size="sm" onClick={() => setEvidenceMentor(mentor)}>{t("View matching evidence")}</Button>
               <Link target="_blank" rel="noopener noreferrer" className="mentor-profile-link" to={`/academics/${encodeURIComponent(mentor._id)}`}><span>{t("View profile")}</span><ArrowUpRight size={13} className="inline ml-1" aria-hidden="true" /></Link>
             </div>
           </article>
@@ -601,6 +610,7 @@ function MentorSearch({ project, disabled, canInvite }: { project: MentorPreview
       })}
       {search.data && !search.isError && !correctingPage && !search.data.items.length && <div className="mentor-search-empty"><Search size={26} aria-hidden="true" /><h4>{t(filtered ? "No available Mentors match these filters." : "No lecturers are available right now.")}</h4><p>{t(filtered ? "Try a broader search or remove a filter." : "Lecturers appear here when they are verified and accepting new teams.")}</p>{filtered && <Button variant="outline" size="sm" onClick={clear}>{t("Clear filters")}</Button>}</div>}
     </div>{search.data && !search.isError && !correctingPage && <MentorSearchPagination meta={search.data.meta} busy={search.isFetching} onPage={showPage} onPageSize={size => { setPageSize(size); showPage(1); }} />}
+    {evidenceMentor && <MentorMatchEvidenceDialog projectId={project.id} mentor={evidenceMentor} onClose={() => setEvidenceMentor(undefined)} />}
     {selected && (canInvite ? <AddMentorCandidate projectId={project.id} mentor={selected} onClose={() => setSelected(undefined)} /> : <ConsentComposer project={project} mentor={selected} suggestion onClose={() => setSelected(undefined)} />)}
     <Dialog open={editingPreferences} onOpenChange={async open => { if (open || await canLeaveWorkspace()) setEditingPreferences(open); }}><DialogContent className="mentor-preferences-dialog max-h-[88dvh] overflow-y-auto sm:max-w-2xl" data-no-i18n><DialogHeader className="pr-6 text-left"><DialogTitle>{t("Mentor preferences")}</DialogTitle><DialogDescription>{t("Saved fields and expertise are used to rank lecturers. Describe the support you need in your invitation.")}</DialogDescription></DialogHeader>{editingPreferences && <MentorDiscoverySettings projectId={project.id} startEditing onDone={() => setEditingPreferences(false)} />}</DialogContent></Dialog>
   </section>;
@@ -614,6 +624,7 @@ export function MentorProjectPanel({ projectId }: { projectId: string }) {
   );
   const [requestPage, setRequestPage] = useState(1);
   const [showPlan, setShowPlan] = useState(false);
+  const [selectedApplicant, setSelectedApplicant] = useState<MentorshipApplicationView>();
   const [planned, setPlanned] = useState<{ candidate: MentorPlanCandidate; version: number }>();
   const workspace = useQuery({ queryKey: ["academic-support", userId, "workspace", projectId], queryFn: () => academicSupportApi.workspace(projectId) });
   const list = useQuery({ queryKey: ["academic-support", userId, "project", projectId, requestPage], queryFn: () => academicSupportApi.list(projectId, { page: requestPage }) });
@@ -679,6 +690,8 @@ export function MentorProjectPanel({ projectId }: { projectId: string }) {
       <button type="button" role="tab" id={`mentor-access-tab-${projectId}`} aria-selected={activeTab === "access"} aria-controls={`mentor-access-panel-${projectId}`} tabIndex={activeTab === "access" ? 0 : -1} onClick={() => void changeTab("access")}><ShieldCheck size={17} aria-hidden="true" />{t("Mentor permissions & sharing")}</button>
     </div>}
     {canFind && <div role="tabpanel" id={`mentor-find-panel-${projectId}`} aria-labelledby={`mentor-find-tab-${projectId}`} hidden={activeTab !== "find"}>
+      {data.canManage && <MentorshipApplicantPool projectId={projectId} onInvite={setSelectedApplicant} />}
+      {selectedApplicant && <ConsentComposer project={data.project} mentor={{ _id: selectedApplicant.lecturer.id, fullName: selectedApplicant.lecturer.name, verifiedLecturer: selectedApplicant.lecturer.verifiedLecturer }} application={{ id: selectedApplicant.id, version: selectedApplicant.version }} onClose={() => setSelectedApplicant(undefined)} />}
       <MentorSearch key={projectId} project={data.project} canInvite={data.canManage} disabled={unavailable} />
       {showPlan && (
         <Dialog open onOpenChange={setShowPlan}>

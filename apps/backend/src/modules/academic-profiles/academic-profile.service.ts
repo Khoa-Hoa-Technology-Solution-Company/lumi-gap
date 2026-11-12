@@ -1,3 +1,4 @@
+import { readResearchClassification, resolveResearchClassification, validateSupervisionTopics } from "../taxonomy/research-classification.service.js";
 import { enqueueRecomputeForumTopics } from "../personalization/personalization-topics.service.js";
 import {
   classifyAcademicPosition,
@@ -199,7 +200,7 @@ async function buildPrivateProfile(userId: string, context: { viewerId?: string;
     affiliation: { ...currentAffiliation, institutionalEmail: profile.institutionalEmail ?? undefined, institutionalEmailVerifiedAt: profile.institutionalEmailVerifiedAt?.toISOString() },
     affiliationHistory: mappedAffiliations, institution: currentAffiliation.institutionName, department: currentAffiliation.department,
     institutionalEmail: profile.institutionalEmail ?? undefined, researchInterests: user.researchInterests,
-    expertiseAreas: profile.expertiseAreas, skills: profile.skills, researchKeywords: profile.researchKeywords,
+    researchClassification: readResearchClassification(profile.researchClassification), expertiseAreas: profile.expertiseAreas, researchSpecializations: profile.researchSpecializations, skills: profile.skills, researchKeywords: profile.researchKeywords,
      externalIdentities: identities.map((identity) => ({
        provider: identity.provider as AcademicProfile["externalIdentities"][number]["provider"], externalId: identity.externalId ?? undefined,
        profileUrl: identity.profileUrl ?? undefined, status: identity.status as AcademicProfile["externalIdentities"][number]["status"],
@@ -214,7 +215,7 @@ async function buildPrivateProfile(userId: string, context: { viewerId?: string;
        visibility: identity.visibility as AcademicIdentityLink["visibility"],
      })),
     featuredWorks: await resolveFeaturedWorks(works.map(work => ({ kind: work.kind as AcademicFeaturedWork["kind"], paperId: work.paperId ?? undefined, projectId: work.projectId ?? undefined, submissionId: work.submissionId ?? undefined, reportId: work.reportId ?? undefined, gapId: work.gapId ?? undefined, doi: work.doi ?? undefined, title: work.title ?? undefined, year: work.year ?? undefined, source: work.source as AcademicFeaturedWork["source"] })), context.viewerId),
-    supportAvailability: { enabled: support.enabled === true && (profile.academicRole !== "LECTURER" || isVerifiedLecturer(user, profile)), types: normalizeSupportTypes(support.types), preferredTopics: stringArray(support.preferredTopics), note: stringValue(support.note), updatedAt: iso(support.updatedAt) },
+    supportAvailability: { enabled: support.enabled === true && (profile.academicRole !== "LECTURER" || isVerifiedLecturer(user, profile)), types: normalizeSupportTypes(support.types), preferredTopics: stringArray(support.preferredTopics), preferredTopicIds: stringArray(support.preferredTopicIds), requestedEnabled: support.requestedEnabled === true, note: stringValue(support.note), updatedAt: iso(support.updatedAt) },
     reviewAvailability: { enabled: review.enabled === true, types: normalizeReviewTypes(review.types), preferredTopics: stringArray(review.preferredTopics), acceptedFields: stringArray(review.acceptedFields), maximumActiveReviews: typeof review.maximumActiveReviews === "number" ? review.maximumActiveReviews : 3, preferredReviewWorkload: stringValue(review.preferredReviewWorkload), note: stringValue(review.note), temporarilyUnavailableUntil: iso(review.temporarilyUnavailableUntil), autoRecommendationEnabled: review.autoRecommendationEnabled !== false, updatedAt: iso(review.updatedAt) },
     verificationStatus: compositeStatus,
     verificationStatuses: { identity: status(profile.identityStatus), email: status(profile.emailStatus), affiliation: status(profile.affiliationStatus), position: status(profile.positionStatus), orcid: status(profile.orcidStatus) },
@@ -247,6 +248,8 @@ function toPublicProfile(profile: AcademicProfile, viewerId?: string): PublicAca
     ...safe,
     researchInterests: visibleTo(privacy.researchInterests, viewerId) ? safe.researchInterests : [],
     expertiseAreas: visibleTo(privacy.expertise, viewerId) ? safe.expertiseAreas : [],
+    researchClassification: visibleTo(privacy.expertise, viewerId) ? safe.researchClassification : undefined,
+    researchSpecializations: visibleTo(privacy.expertise, viewerId) ? safe.researchSpecializations ?? [] : [],
      skills: visibleTo(privacy.expertise, viewerId) ? safe.skills : [],
     researchKeywords: visibleTo(privacy.expertise, viewerId) ? safe.researchKeywords : [],
      // Backfilled scholarly rows must not bypass per-link visibility or resurrect deleted links.
@@ -338,6 +341,8 @@ export const academicProfileService = {
     const identities = await prisma.academicExternalIdentity.findMany({ where: { profileId: profile.id } });
     const incomingOrcid = input.externalIdentities?.find((item) => item.provider === "ORCID"), oldOrcid = identities.find((item) => item.provider === "ORCID");
     const orcidChanged = input.externalIdentities !== undefined && JSON.stringify(incomingOrcid ?? null) !== JSON.stringify(oldOrcid ? { provider: "ORCID", externalId: oldOrcid.externalId ?? undefined, profileUrl: oldOrcid.profileUrl ?? undefined } : null);
+    if (input.supportAvailability?.preferredTopicIds) await validateSupervisionTopics(input.supportAvailability.preferredTopicIds);
+    const researchClassification = input.researchClassification ? await resolveResearchClassification(input.researchClassification) : undefined;
     const resolvedWorks = input.featuredWorks ? await prepareFeaturedWorks(input.featuredWorks, user.id) : [];
     const nextRole = input.academicRole ?? (nextPrimaryPosition ? academicRoleForPosition(nextPrimaryPosition) : profile.academicRole);
     const enteringLecturerRole = nextRole === "LECTURER" && profile.academicRole !== "LECTURER";
@@ -393,7 +398,8 @@ export const academicProfileService = {
         ...(input.discoverability?.showInResearcherSearch !== undefined ? { showInResearcherSearch: input.discoverability.showInResearcherSearch } : {}),
         ...(input.discoverability?.allowCollaborationRequests !== undefined ? { allowCollaborationRequests: input.discoverability.allowCollaborationRequests } : {}),
         ...((input.biography ?? input.bio) !== undefined ? { biography: (input.biography ?? input.bio) || null } : {}), ...(input.academicTitle !== undefined ? { academicTitle: input.academicTitle } : {}),
-        ...(input.expertiseAreas !== undefined ? { expertiseAreas: input.expertiseAreas } : {}), ...(input.skills !== undefined ? { skills: input.skills } : {}), ...(input.researchKeywords !== undefined ? { researchKeywords: input.researchKeywords } : {}),
+        ...(input.expertiseAreas !== undefined ? { expertiseAreas: input.expertiseAreas } : {}),
+        ...(researchClassification ? { researchClassification: researchClassification as never } : {}), ...(input.researchSpecializations !== undefined ? { researchSpecializations: input.researchSpecializations } : {}), ...(input.skills !== undefined ? { skills: input.skills } : {}), ...(input.researchKeywords !== undefined ? { researchKeywords: input.researchKeywords } : {}),
         ...(requested.rorId !== undefined ? { affiliationRorId: requested.rorId || null } : {}), ...(requestedDepartment !== undefined ? { affiliationDepartment: requestedDepartment || null } : {}), ...(positionInputProvided ? { affiliationPosition: nextTitle || null } : {}),
         ...(requested.startYear !== undefined ? { affiliationStartYear: requested.startYear } : {}), ...(requestedEmail !== undefined ? { institutionalEmail: requestedEmail || null } : {}),
         // General research support is not consent to receive official mentorship requests.
