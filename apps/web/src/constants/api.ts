@@ -200,6 +200,7 @@ export const API_ROUTES = {
     },
     sync: "/admin/sync",
     syncRuns: "/admin/sync/runs",
+    syncOptions: "/admin/sync/options",
     embedStatus: "/admin/embed/status",
     triggerEmbed: "/admin/embed",
     users: "/admin/users",

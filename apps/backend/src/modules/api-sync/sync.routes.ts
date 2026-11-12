@@ -23,6 +23,7 @@ export const syncRouter: Router = Router();
 
 syncRouter.post("/sync", ...adminGuard, validate(TriggerSyncSchema), syncController.trigger);
 syncRouter.get("/sync/runs", ...adminGuard, syncController.listRuns);
+syncRouter.get("/sync/options", ...adminGuard, syncController.options);
 // Campaigns are created only by the durable planner. These endpoints expose
 // lifecycle controls for an already-planned campaign; they never synthesize a
 // biased "download pages until N" campaign inside an HTTP request.

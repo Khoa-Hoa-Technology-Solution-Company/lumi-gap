@@ -169,6 +169,12 @@ export interface TopicBackfillRequestResult {
   created: boolean;
 }
 
+/** What the admin sync page may offer. GET /admin/sync/options. */
+export interface SyncOptions {
+  /** Sync by free search text (debug only, SYNC_FREE_TEXT_ENABLED). Off means imports go through the catalogue. */
+  freeTextSyncEnabled: boolean;
+}
+
 /** backlog: reading the entry's older works, a little each day. tracking: following newly published works. */
 export type TopicWatchPhase = "backlog" | "tracking";
 

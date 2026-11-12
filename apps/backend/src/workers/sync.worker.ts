@@ -6,6 +6,7 @@ import { apiSyncQueue, paperAnalysisQueue, makeConnection, QUEUE_NAMES } from ".
 import { logger } from "../infrastructure/logger.js";
 import { startWorkerHeartbeat } from "../infrastructure/worker-heartbeat.js";
 import { isNonRetryableOpenAlexError } from "../modules/api-sync/providers/openalex.client.js";
+import { failStaleSyncRunsSafely } from "../modules/api-sync/stale-runs.js";
 import { runSync, type RunSyncJob } from "../modules/api-sync/sync.service.js";
 import { TOPIC_WATCH_DAILY_JOB, TOPIC_WATCH_RUN_JOB } from "../modules/topic-watch/topic-watch.rules.js";
 import { topicWatchService } from "../modules/topic-watch/topic-watch.service.js";
@@ -25,12 +26,15 @@ const RETIRED_CRON_JOB = "scheduled-sync";
 async function main() {
   await connectPostgres();
   const stopHeartbeat = startWorkerHeartbeat({ workerName: "worker:sync", queueName: QUEUE_NAMES.apiSync });
+  // A run is recorded as "running" when it starts; if a worker was stopped mid-run that row never finishes.
+  await failStaleSyncRunsSafely();
 
   const worker = new Worker(
     QUEUE_NAMES.apiSync,
     async (job) => {
       logger.info({ jobId: job.id, name: job.name, data: job.data }, "sync job received");
       if (job.name === RETIRED_CRON_JOB) return { ignored: true };
+      await failStaleSyncRunsSafely();
       if (job.name === TOPIC_WATCH_DAILY_JOB || job.name === TOPIC_WATCH_RUN_JOB) return topicWatchService.runDaily();
       let result: Awaited<ReturnType<typeof runSync>>;
       try {

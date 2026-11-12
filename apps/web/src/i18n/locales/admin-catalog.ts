@@ -152,6 +152,7 @@ export const adminCatalogVi = {
   "Start import": "Bắt đầu nhập",
   "OpenAlex imports": "Lượt nhập từ OpenAlex",
   "The latest imports of new papers from OpenAlex.": "Các lượt nhập bài báo mới gần nhất từ OpenAlex.",
+  "The latest imports started from the catalogue, newest first.": "Các lượt nhập gần nhất từ danh mục, mới nhất trước.",
   "No imports yet.": "Chưa có lượt nhập nào.",
   "Finished": "Kết thúc",
   "New papers": "Bài báo mới",
@@ -226,6 +227,19 @@ export const adminCatalogVi = {
   "A daily follow job is already waiting.": "Đã có một tác vụ theo dõi hằng ngày đang chờ.",
   "Nothing is followed yet. Follow an entry from its tag page or its taxonomy page.": "Chưa theo dõi mục nào. Hãy theo dõi một mục từ trang thẻ hoặc trang phân loại của nó.",
   "Tags": "Thẻ",
+  // Import from the catalogue (admin sync page)
+  "Import from catalogue": "Nhập từ danh mục",
+  "Pick a topic, subfield, keyword or tag from the catalogue and import its papers from OpenAlex.": "Chọn một chủ đề, chuyên ngành, từ khóa hoặc thẻ trong danh mục và nhập bài báo của mục đó từ OpenAlex.",
+  "Search the catalogue": "Tìm trong danh mục",
+  "Search topics, subfields, keywords or tags…": "Tìm chủ đề, chuyên ngành, từ khóa hoặc thẻ…",
+  "For a whole domain or field, create a tag with that rule first in": "Để nhập cả một lĩnh vực hoặc một ngành, hãy tạo trước một thẻ với quy tắc đó tại",
+  "Clear selected entry": "Bỏ mục đã chọn",
+  "Follow daily": "Theo dõi hằng ngày",
+  "Import now": "Nhập ngay",
+  "“{{name}}” is now followed daily.": "Đã theo dõi hằng ngày “{{name}}”.",
+  "Free-text sync (debug)": "Đồng bộ theo văn bản tự do (gỡ lỗi)",
+  "Free-text sync is disabled on this server. Import from the catalogue instead.": "Máy chủ này đã tắt đồng bộ theo văn bản tự do. Hãy nhập từ danh mục.",
+  "Debug only: synchronize papers from OpenAlex using a free search text. This bypasses the catalogue.": "Chỉ dùng để gỡ lỗi: đồng bộ bài báo từ OpenAlex theo văn bản tìm kiếm tự do. Cách này bỏ qua danh mục.",
 } as const;
 
 export const adminCatalogEn = Object.fromEntries(

@@ -355,6 +355,9 @@ const EnvSchema = z.object({
   // team can demo before an admin user is seeded. Never enable in production.
   // (Plain z.coerce.boolean() is unsafe — "false" would coerce to true — so we
   //  parse an explicit "true"/"false" string instead.)
+  // Admin sync by free search text (POST /admin/sync). Off by default: imports should be planned from the catalogue
+  // (topic backfill, tag campaign, topic watch). Turn on only to debug the OpenAlex client.
+  SYNC_FREE_TEXT_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
   SYNC_ADMIN_BYPASS: z
     .enum(["true", "false"])
     .default("false")
