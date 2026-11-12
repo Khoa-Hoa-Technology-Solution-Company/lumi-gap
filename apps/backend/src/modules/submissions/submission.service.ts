@@ -552,6 +552,7 @@ export const submissionService = {
       if (!content && !source?.storageUri) throw AppError.badRequest("Provide Markdown content or an existing revision to restore");
       const created = await tx.submissionRevision.create({ data: { submissionId: live.id, revisionNumber: live.currentRevisionNumber + 1, uploadedById: actor.id, sourceRevisionId: source?.id ?? live.currentRevisionId, responseToReview: input.summary,
         contentSnapshot: content, contentType: input.content !== undefined ? "MARKDOWN" : source?.contentType ?? "MARKDOWN", storageUri: input.content !== undefined ? null : source?.storageUri, manuscriptSnapshotId: input.content !== undefined ? null : source?.manuscriptSnapshotId,
+        attributionCheckId: input.content !== undefined ? null : source?.attributionCheckId, integrityReportId: input.content !== undefined ? null : source?.integrityReportId,
         checksumSha256: content ? crypto.createHash("sha256").update(content).digest("hex") : source?.checksumSha256, sizeBytes: content ? Buffer.byteLength(content) : source?.sizeBytes ?? 0, originalFileName: input.content !== undefined ? null : source?.originalFileName,
       } });
       await tx.submission.update({ where: { id: live.id }, data: { currentRevisionId: created.id, currentRevisionNumber: created.revisionNumber, status: "revised" } });
@@ -630,7 +631,7 @@ export const submissionService = {
     return getPrisma().reviewerAssignment.findUniqueOrThrow({ where: { id: assignment.id } });
   },
 
-  
+
   async submitFeedback(submissionInput: string, input: { result: "FEEDBACK_GIVEN" | "REVISION_REQUESTED" | "READY_TO_ADVANCE"; overallComment: string; paragraphComments?: Array<{ criterionKey?: string; comment: string; evidence?: string }>; rubricScores?: Array<{ criterionKey: string; score?: number; assessment?: string; comment?: string }>; requestedInformation?: string }, actorInput: string, actorRole: UserRole) {
     const actor = await resolveUser(actorInput);
     const submission = await getSubmissionOrThrow(submissionInput);

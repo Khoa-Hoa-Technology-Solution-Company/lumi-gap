@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { MAX_ONBOARDING_RESEARCH_AREAS, MAX_ONBOARDING_RESEARCH_INTERESTS, MAX_ONBOARDING_RESEARCH_SKILLS } from "@trend/shared-types";
+import { researchClassificationSchema } from "../../taxonomy/research-classification.schema.js";
+import { MAX_ONBOARDING_RESEARCH_AREAS, MAX_ONBOARDING_RESEARCH_INTERESTS, MAX_ONBOARDING_RESEARCH_SKILLS, ACADEMIC_BIOGRAPHY_MAX_CHARACTERS, ACADEMIC_BIOGRAPHY_MAX_WORDS, countAcademicBiographyWords } from "@trend/shared-types";
 
 export const RegisterSchema = z.object({
   email: z.string().email().toLowerCase(),
@@ -28,6 +29,10 @@ export const UpdateAcademicProfileSchema = z.object({
   researchAreas: z.array(z.string().trim().min(1).max(80)).max(MAX_ONBOARDING_RESEARCH_AREAS).optional(),
   expertiseAreas: z.array(z.string().trim().min(1).max(80)).max(MAX_ONBOARDING_RESEARCH_AREAS).optional(),
   researchInterests: z.array(z.string().trim().min(1).max(80)).max(MAX_ONBOARDING_RESEARCH_INTERESTS).optional(),
+  researchClassification: researchClassificationSchema.optional(),
+  researchSpecializations: z.array(z.string().trim().min(1).max(80)).max(10).optional(),
+  biography: z.string().trim().max(ACADEMIC_BIOGRAPHY_MAX_CHARACTERS).refine(value => countAcademicBiographyWords(value) <= ACADEMIC_BIOGRAPHY_MAX_WORDS, "Biography is too long").optional(),
+  mentorshipPreferences: z.object({ preferredTopicIds: z.array(z.string().uuid()).max(10).optional(), supportTypes: z.array(z.enum(["RESEARCH_DIRECTION", "LITERATURE_REVIEW", "RESEARCH_GAP_VALIDATION", "RESEARCH_METHODOLOGY", "EXPERIMENT_DESIGN", "DATA_ANALYSIS", "ACADEMIC_WRITING", "SOFTWARE_TECHNICAL_GUIDANCE"])).max(8).optional(), interested: z.boolean(), preferredTopics: z.array(z.string().trim().min(1).max(80)).max(10) }).strict().optional(),
   researchKeywords: z.array(z.string().trim().min(1).max(80)).max(30).optional(),
   skills: z.array(z.string().trim().min(1).max(80)).max(MAX_ONBOARDING_RESEARCH_SKILLS).optional(),
 }).strict().superRefine((data, ctx) => {

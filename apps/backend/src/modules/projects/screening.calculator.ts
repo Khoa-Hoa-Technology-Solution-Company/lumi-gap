@@ -2,6 +2,7 @@ import type { ScreeningChoice, ScreeningConsensusPolicy, ScreeningMetrics, Scree
 
 /** Current two-reviewer workflows accept a paper in one round. Older protocols retain their frozen stage rules. */
 export function automaticFullTextStage(settings: Pick<ScreeningSettings, "workflowVersion" | "reviewMode" | "stages" | "screeningMode">) {
+  if ((settings.workflowVersion ?? 0) >= 12 && settings.reviewMode === "INDEPENDENT") return false;
   if (settings.screeningMode) return settings.screeningMode === "TWO_STAGE";
   return (settings.workflowVersion ?? 0) < 5 && settings.reviewMode !== "COLLABORATIVE" && Boolean(settings.stages?.includes("FULL_TEXT"));
 }
@@ -31,7 +32,7 @@ export function evaluateScreeningPair(settings: Pick<ScreeningSettings, "screeni
 }
 
 export function outcomeState(outcome: ScreeningOutcome): ScreeningState {
-  return ({ WAITING_REVIEWS: "NOT_REVIEWED", WAITING_SECOND_REVIEW: "IN_REVIEW", FINAL_INCLUDED: "INCLUDED", EXCLUDED: "EXCLUDED", CONFLICT: "NEEDS_RESOLUTION", NEEDS_RESOLUTION: "NEEDS_RESOLUTION", NEEDS_CLARIFICATION: "NEEDS_MORE_INFO", ADVANCE_TO_FULLTEXT: "INCLUDED", WAITING_FULLTEXT: "WAITING_FULLTEXT", CLOSED_UNRESOLVED: "CLOSED_UNRESOLVED" } as const)[outcome];
+  return ({ CLOSED_UNRESOLVED: "CLOSED_UNRESOLVED", WAITING_REVIEWS: "NOT_REVIEWED", WAITING_SECOND_REVIEW: "IN_REVIEW", FINAL_INCLUDED: "INCLUDED", EXCLUDED: "EXCLUDED", CONFLICT: "NEEDS_RESOLUTION", NEEDS_RESOLUTION: "NEEDS_RESOLUTION", NEEDS_CLARIFICATION: "NEEDS_MORE_INFO", ADVANCE_TO_FULLTEXT: "INCLUDED", WAITING_FULLTEXT: "WAITING_FULLTEXT" } as const)[outcome];
 }
 
 /** Only a complete, distinct pair from one round can carry a disagreement. */

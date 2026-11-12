@@ -90,4 +90,3 @@ Khi có thông tin khoa học mới hoặc bài đính chính:
 - Bắt buộc phải nhập **Lý do mở lại (Justification)** tối thiểu 5 ký tự để lưu vào nhật ký kiểm toán (`ScreeningAudit`).
 - Hệ thống vô hiệu hóa vòng đánh giá cũ và tạo ra một vòng đánh giá mới (Vòng N + 1) để hai reviewer nhận lượt và đánh giá lại độc lập từ đầu.
 - Toàn bộ dữ liệu của vòng cũ vẫn được lưu trữ vĩnh viễn trong lịch sử để đối chiếu.
-

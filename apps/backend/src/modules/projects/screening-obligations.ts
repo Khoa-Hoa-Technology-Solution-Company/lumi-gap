@@ -1,13 +1,15 @@
+import { maintainProjectConsensus, consensusPending } from "./screening-consensus.js";
 import type { ScreeningObligation, ScreeningRound } from "../../generated/prisma/client.js";
 import type { ScreeningAutomaticTask, ScreeningTaskAction, ScreeningTaskStatus, ScreeningTaskFeedback } from "@trend/shared-types";
 import { AppError } from "../../common/exceptions/app-error.js";
 import { withWorkspace, type WorkspaceContext } from "./workspace-access.js";
-import { roundView, roundSettings, reconcileExpiredDiscussions } from "./screening-context.js";
+import { roundView, roundSettings } from "./screening-context.js";
 import { screeningPeople } from "./screening-assignments.js";
 import { caseView, ensureAssignment } from "./screening-case-context.js";
+import { adjudicationTeamRequirement } from "./screening-adjudication-context.js";
 
 const open = (status: string) => ["TODO", "IN_PROGRESS", "BLOCKED"].includes(status);
-const final = (round: ScreeningRound) => ["INCLUDED", "EXCLUDED", "BACKGROUND", "WAITING_FULLTEXT", "CLOSED_UNRESOLVED"].includes(round.status);
+const final = (round: ScreeningRound) => ["INCLUDED", "EXCLUDED", "BACKGROUND", "WAITING_FULLTEXT"].includes(round.status);
 type Desired = { round: ScreeningRound; actor: string; kind: ScreeningTaskAction; instance: string; dueAt?: Date | null; completedAt?: Date | null; status?: ScreeningTaskStatus; reason?: string };
 
 /** Run only inside withWorkspace's project lock. State, ledger and events commit together.
@@ -15,7 +17,7 @@ type Desired = { round: ScreeningRound; actor: string; kind: ScreeningTaskAction
  * No ballot text or sealed statement content is copied into the task ledger.
  */
 export async function reconcileScreeningObligations(c: WorkspaceContext) {
-  await reconcileExpiredDiscussions(c);
+  await maintainProjectConsensus(c);
   const now = new Date();
   let rounds = await c.tx.screeningRound.findMany({ where: { projectId: c.project.id } });
   const [assignments, members, people, old] = await Promise.all([
@@ -42,6 +44,7 @@ export async function reconcileScreeningObligations(c: WorkspaceContext) {
   rounds = await c.tx.screeningRound.findMany({ where: { projectId: c.project.id } });
   const desired: Desired[] = [];
   const writable = !["ARCHIVED", "COMPLETED"].includes(c.project.status);
+  const teamBlockedReason = await adjudicationTeamRequirement(c);
   for (const r of rounds) {
     const enabled = writable && r.active && !r.legacyNeedsAudit;
     const assigned = assignments.filter(a => a.roundId === r.id);
@@ -54,10 +57,14 @@ export async function reconcileScreeningObligations(c: WorkspaceContext) {
       }
     }
     if (!enabled) continue;
-    if (dispute) {
+    if (consensusPending(r.status)) {
+      for (const a of assigned.filter(a => a.active && a.submittedAt && live.has(a.reviewerId))) {
+        desired.push({ round: r, actor: a.reviewerId, kind: "DISCUSSION", instance: `evaluation-discussion:${r.id}:${r.consensusStartedAt?.toISOString()}`, dueAt: r.consensusDeadline, status: r.status === "CONSENSUS_IN_PROGRESS" ? "IN_PROGRESS" : "TODO", reason: "Trao đổi và cập nhật đánh giá để thống nhất" });
+      }
+    } else if (dispute) {
       for (const id of dispute.reviewerIds.filter(id => live.has(id))) {
-        if (dispute.status === "COLLECTING" && !dispute.lockedAt && dispute.deadline > now && !statements.some(s => s.caseId === dispute.id && s.reviewerId === id && s.packetVersion === dispute.packetVersion))
-          desired.push({ round: r, actor: id, kind: "STATEMENT", instance: `statement:${dispute.id}:${dispute.packetVersion}`, dueAt: dispute.deadline, reason: "Chờ bạn gửi quan điểm riêng" });
+        if (["COLLECTING", "COI_REVIEW"].includes(dispute.status) && !dispute.lockedAt && dispute.deadline > now && !statements.some(s => s.caseId === dispute.id && s.reviewerId === id && s.packetVersion === dispute.packetVersion))
+          desired.push({ round: r, actor: id, kind: "STATEMENT", instance: `statement:${dispute.id}:${dispute.packetVersion}`, dueAt: dispute.deadline, status: teamBlockedReason ? "BLOCKED" : "TODO", reason: teamBlockedReason || "Chờ bạn gửi quan điểm riêng" });
       }
       const ids = new Set([c.project.ownerId, ...(roundSettings(r.settings).adjudicationCoordinatorIds ?? []), ...invitations.filter(i => i.caseId === dispute.id && i.status === "ASSIGNED").map(i => i.userId)]);
       for (const id of ids) {
@@ -65,10 +72,10 @@ export async function reconcileScreeningObligations(c: WorkspaceContext) {
         try {
           const view = await caseView(asActor(id), r, dispute);
           const invitation = invitations.find(i => i.caseId === dispute.id && i.userId === id && i.status === "ASSIGNED");
-          if (view.canResolve && invitation || invitation && view.invitation?.userId === id && dispute.status === "COI_REVIEW")
-            desired.push({ round: r, actor: id, kind: "ADJUDICATION", instance: `adjudication:${invitation!.id}`, status: dispute.status === "COI_REVIEW" ? "BLOCKED" : dispute.status === "IN_PROGRESS" ? "IN_PROGRESS" : "TODO", reason: dispute.status === "COI_REVIEW" ? "Chờ điều phối xem xét xung đột lợi ích" : "Chờ kết luận có lý do và căn cứ" });
+          if (invitation && view.invitation?.userId === id)
+            desired.push({ round: r, actor: id, kind: "ADJUDICATION", instance: `adjudication:${invitation.id}`, status: view.adjudicationBlockedReason || dispute.status === "COI_REVIEW" || !view.ready ? "BLOCKED" : dispute.status === "IN_PROGRESS" ? "IN_PROGRESS" : "TODO", reason: view.adjudicationBlockedReason || (dispute.status === "COI_REVIEW" ? "Chờ điều phối xem xét xung đột lợi ích" : !view.ready ? "Chờ hai reviewer hoàn tất ý kiến hoặc hết hạn chung" : "Chờ kết luận có lý do và căn cứ") });
           if (view.canCoordinate && ["WAITING_ASSIGNMENT", "COI_REVIEW"].includes(view.status))
-            desired.push({ round: r, actor: id, kind: "COORDINATION", instance: `coordination:${dispute.id}:${dispute.status}`, reason: view.status === "COI_REVIEW" ? "Xem xét báo cáo xung đột lợi ích" : "Phân công người phân xử hợp lệ" });
+            desired.push({ round: r, actor: id, kind: "COORDINATION", instance: `coordination:${dispute.id}:${dispute.status}`, status: teamBlockedReason ? "BLOCKED" : "TODO", reason: teamBlockedReason || (view.status === "COI_REVIEW" ? "Xem xét báo cáo xung đột lợi ích" : "Phân công người phân xử hợp lệ") });
         } catch (error) { if (!(error instanceof AppError && error.statusCode === 404)) throw error; }
       }
     } else if (["NEEDS_RESOLUTION", "NEEDS_MORE_INFO"].includes(r.status)) {
@@ -114,7 +121,7 @@ export async function reconcileScreeningObligations(c: WorkspaceContext) {
       else if (version !== dispute.packetVersion) { status = "REPLACED"; reason = "Hồ sơ có phiên bản mới, cần đối chiếu lại"; }
       else if (dispute.deadline <= now) { status = "EXPIRED"; reason = "Hết hạn gửi quan điểm; không bổ sung ý kiến"; }
     } else if (["DISCUSSION", "CONSENSUS"].includes(row.actionType) && activeCase) { status = "REPLACED"; reason = "Chuyển sang phân xử"; }
-    else if (["DISCUSSION", "CONSENSUS"].includes(row.actionType) && final(r)) { status = "DONE"; reason = r.status === "CLOSED_UNRESOLVED" ? "Vòng sàng lọc đã đóng" : "Hai phiếu đã có kết quả hợp lệ"; }
+    else if (["DISCUSSION", "CONSENSUS"].includes(row.actionType) && final(r)) { status = "DONE"; reason = "Hai phiếu đã có kết quả hợp lệ"; }
     else if (row.actionType === "ADJUDICATION") {
       const invitation = invitations.find(i => row.workflowInstanceId.includes(i.id));
       const source = cases.find(d => d.id === invitation?.caseId);
@@ -175,7 +182,7 @@ export async function screeningTaskFeedback(c: WorkspaceContext, roundId: string
     : final(round) ? "Không còn hành động trong vòng này"
     : assignments.some(a => a.reviewerId === c.actorId && !a.submittedAt) ? "Bạn cần gửi phiếu đánh giá"
     : ["IN_REVIEW", "NOT_REVIEWED"].includes(round.status) || assignments.some(a => !a.submittedAt) ? "Reviewer chưa gửi phiếu hoặc reviewer nhận suất còn trống" : "Hai reviewer theo quy trình của vòng";
-  const labelsByStatus: Record<string, string> = { COLLECTING: "Đang thu thập ý kiến", WAITING_ASSIGNMENT: "Chờ phân công", ASSIGNED: "Đã phân công người phân xử", IN_PROGRESS: "Đang phân xử", INCLUDED: "Đã qua vòng theo quy trình", EXCLUDED: "Đã loại", WAITING_FULLTEXT: "Chờ toàn văn", IN_REVIEW: assignments.some(a => a.submittedAt) ? "Chờ phiếu còn lại" : "Đang đánh giá", NEEDS_MORE_INFO: "Cần bổ sung thông tin", NEEDS_RESOLUTION: "Cần giải quyết bất đồng", COI_REVIEW: "Chờ xem xét xung đột lợi ích" };
+  const labelsByStatus: Record<string, string> = { CONSENSUS_REQUIRED: "Cần thảo luận", CONSENSUS_IN_PROGRESS: "Đang thảo luận", COLLECTING: "Đang thu thập ý kiến", WAITING_ASSIGNMENT: "Chờ phân công", ASSIGNED: "Đã phân công người phân xử", IN_PROGRESS: "Đang phân xử", INCLUDED: "Đã qua vòng theo quy trình", EXCLUDED: "Đã loại", WAITING_FULLTEXT: "Chờ toàn văn", IN_REVIEW: assignments.some(a => a.submittedAt) ? "Chờ phiếu còn lại" : "Đang đánh giá", NEEDS_MORE_INFO: "Cần bổ sung thông tin", NEEDS_RESOLUTION: "Cần giải quyết bất đồng", COI_REVIEW: "Chờ xem xét xung đột lợi ích" };
   return { roundId, completedAction: labels[command]!, nextStatus: nextRound?.phase === "FULL_TEXT" ? "Qua vòng tiêu đề / tóm tắt, chờ đánh giá toàn văn" : labelsByStatus[dispute?.status ?? round.status] ?? round.status,
     nextActor };
 }

@@ -839,4 +839,3 @@ export function SubmissionReadinessPackage({
     </div>
   );
 }
-

@@ -1,3 +1,4 @@
+import { readResearchClassification, resolveResearchClassification } from "../taxonomy/research-classification.service.js";
 import { initializePaperScreening } from "./screening-bootstrap.js";
 import { projectPaperWithDoi } from "./project-paper-identity.js";
 import { revokeProjectScreeningAssignments } from "./project-screening.service.js";
@@ -203,7 +204,7 @@ async function hydrate(row: Awaited<ReturnType<typeof resolveProject>>, viewerId
     title: row.title,
     description: row.description ?? undefined,
     researchField: row.researchField ?? undefined,
-    researchAreas: row.researchAreas, researchApproach: (plan?.approach ?? "UNDECIDED") as import("@trend/shared-types").ResearchApproach,
+    researchClassification: readResearchClassification(row.researchClassification), researchAreas: row.researchAreas, researchApproach: (plan?.approach ?? "UNDECIDED") as import("@trend/shared-types").ResearchApproach,
     publicSummary: row.publicSummary ?? undefined, mentorshipDiscovery: row.mentorshipDiscovery,
     version: row.version,
     screeningMode: publicSummary ? undefined : row.screeningMode as "EXPLORATORY" | "INDEPENDENT",
@@ -278,22 +279,26 @@ export class ProjectService {
       title: data.title.trim(), description: data.description?.trim() || null,
       researchAreas: data.researchAreas ?? (data.researchField?.trim() ? [data.researchField.trim()] : []),
       approach: data.researchApproach ?? "UNDECIDED", status: data.status ?? "PLANNING",
-      visibility: data.visibility === "PUBLIC_SUMMARY" || data.visibility === "PUBLIC" ? "PUBLIC" : "PRIVATE",
+      visibility: "PRIVATE",
     };
-    const requestHash = createHash("sha256").update(JSON.stringify(normalized)).digest("hex");
+    const classification = data.researchClassification ? await resolveResearchClassification(data.researchClassification) : undefined;
+    const requestHash = createHash("sha256").update(JSON.stringify({ ...normalized, ...(data.researchClassification ? { classification: data.researchClassification } : {}) })).digest("hex");
+    // Recover retries made before private-only creation without changing existing projects.
+    const legacyPublicRequestHash = createHash("sha256").update(JSON.stringify({ ...normalized, visibility: "PUBLIC" })).digest("hex");
     const row = await getPrisma().$transaction(async tx => {
       await lockProjectAccounts(tx, [owner.id]);
       await assertActiveProjectAccount(tx, owner.id, true);
       if (data.idempotencyKey) {
         const existing = await tx.project.findUnique({ where: { createdById_creationKey: { createdById: owner.id, creationKey: data.idempotencyKey } } });
         if (existing) {
-          if (existing.creationRequestHash !== requestHash) throw AppError.conflict("This creation key was already used with different project details");
+          if (existing.creationRequestHash !== requestHash && existing.creationRequestHash !== legacyPublicRequestHash) throw AppError.conflict("This creation key was already used with different project details");
           await authorizeProjectTransaction(tx, existing.id, owner.id);
           return existing;
         }
       }
       const created = await tx.project.create({ data: {
         title: normalized.title, description: normalized.description,
+        ...(classification ? { researchClassification: classification as never } : {}),
         researchAreas: normalized.researchAreas, researchField: normalized.researchAreas[0],
         status: normalized.status, visibility: normalized.visibility, mentorshipDiscovery: "CLOSED", researchStage: "DISCOVERY",
         ownerId: owner.id, createdById: owner.id, creationKey: data.idempotencyKey, creationRequestHash: requestHash,
@@ -390,6 +395,7 @@ export class ProjectService {
       const areas = data.researchAreas ?? (data.researchField !== undefined ? data.researchField ? [data.researchField] : [] : undefined);
       const changesPlan = data.researchApproach !== undefined || data.inclusionCriteria !== undefined || data.exclusionCriteria !== undefined;
       const next = await tx.project.update({ where: { id: row.id }, data: {
+        ...(data.researchClassification ? { researchClassification: await resolveResearchClassification(data.researchClassification, tx) as never } : {}),
         ...(data.title !== undefined ? { title: data.title } : {}),
         ...(data.description !== undefined ? { description: data.description } : {}),
         ...(areas !== undefined ? { researchAreas: areas, researchField: areas[0] ?? null } : {}),

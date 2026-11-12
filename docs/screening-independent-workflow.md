@@ -1,3 +1,5 @@
+> Current workflow (2026-11-08): see [Reviewer Discussion](screening-reviewer-discussion.md). The arbitration behavior below describes historical versions only; its mutation APIs are retired.
+
 # Independent screening and scoped lecturer adjudication
 
 Implemented: 2026-10-31. New rounds use `workflowVersion: 5`.

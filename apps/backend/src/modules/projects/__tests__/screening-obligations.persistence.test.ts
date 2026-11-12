@@ -159,24 +159,35 @@ describe.skipIf(!enabled).sequential("automatic Screening obligation ledger", ()
     expect((await manual.detail(f.id, a, created.id, { page: 1, pageSize: 20 })).task.status).toBe("DONE");
     expect((await active(f, a))[0]?.status).toBe("TODO");
   });
-  it("creates a coordinator obligation on a tied eligible pool and completes it on authorized direct selection", async () => {
+  it("samples a tied pool automatically and gives the assignee one task without a coordinator selection step", async () => {
     const f = await conflict(); await open(f);
     await db.projectPaper.update({ where: { projectId_paperId: { projectId: f.id, paperId: f.paperId } }, data: { addedById: b } });
+    const candidates: string[] = [];
     for (const fullName of ["Independent candidate 1", "Independent candidate 2"]) {
       const user = await db.user.create({ data: { fullName, email: `${key()}@example.org`, emailVerifiedAt: new Date() } });
       await db.projectMember.create({ data: { projectId: f.id, userId: user.id } });
+      candidates.push(user.id);
     }
     await db.projectMember.updateMany({ where: { projectId: f.id, userId: judge }, data: { status: "LEFT" } });
     await statement(f, a); await statement(f, b);
-    const coordinator = (await active(f, owner))[0]!;
-    expect(coordinator).toMatchObject({ actionType: "COORDINATION", status: "TODO" });
+    expect((await active(f, owner)).some(task => task.actionType === "COORDINATION")).toBe(false);
     const cv = (await cases.view(f.id, owner, f.roundId)).case!;
-    expect(cv.status).toBe("WAITING_ASSIGNMENT"); expect(cv.candidates).toHaveLength(2);
-    const input = { action: "SELECT" as const, caseId: cv.id, expectedCaseVersion: cv.version, candidateId: cv.candidates[0]!.id, reason: "Independent candidate meets the project eligibility policy", clientKey: key() };
+    expect(cv.status).toBe("ASSIGNED"); expect(cv.candidates).toEqual([]);
+    expect(candidates).toContain(cv.invitation?.userId);
+    const input = { action: "SELECT" as const, caseId: cv.id, expectedCaseVersion: cv.version, candidateId: candidates[0]!, reason: "Cannot override the automatically selected independent person", clientKey: key() };
     await expect(cases.act(f.id, a, f.roundId, input)).rejects.toMatchObject({ statusCode: 403 });
-    await cases.act(f.id, owner, f.roundId, input);
-    expect((await tasks.list(f.id, owner)).find(t => t.id === coordinator.id)?.status).toBe("DONE");
-    expect((await active(f, cv.candidates[0]!.id))[0]?.actionType).toBe("ADJUDICATION");
+    await expect(cases.act(f.id, owner, f.roundId, input)).rejects.toMatchObject({ statusCode: 403 });
+    expect((await active(f, cv.invitation!.userId))[0]?.actionType).toBe("ADJUDICATION");
+  });
+
+  it("tracks early direct assignment as blocked until statements are sealed, using the same task", async () => {
+    const f = await conflict(); await open(f);
+    const pending = (await active(f, judge))[0]!;
+    expect(pending).toMatchObject({ actionType: "ADJUDICATION", status: "BLOCKED", reason: "Chờ hai reviewer hoàn tất ý kiến hoặc hết hạn chung" });
+    expect((await screening.workspaceSummary(f.id, judge)).pendingAdjudications).toEqual([]);
+    await statement(f, a); await statement(f, b);
+    expect((await active(f, judge))[0]).toMatchObject({ id: pending.id, status: "TODO" });
+    expect((await screening.workspaceSummary(f.id, judge)).pendingAdjudications).toHaveLength(1);
   });
   it("stores a real blocking reason for a conflict of interest and does not permit a decision", async () => {
     const f = await conflict(); await open(f); await statement(f, a); await statement(f, b);

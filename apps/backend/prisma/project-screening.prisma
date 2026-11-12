@@ -1,4 +1,5 @@
 model ScreeningSettings {
+  consensusWindowHours Int @default(48) @map("consensus_window_hours")
   screeningMode String? @map("screening_mode") @db.VarChar(24)
   preferredAdjudicatorId String? @map("preferred_adjudicator_id") @db.Uuid
   adjudicationCoordinatorIds String[] @default([]) @map("adjudication_coordinator_ids") @db.Uuid
@@ -9,7 +10,7 @@ model ScreeningSettings {
   allowConservativeFullText Boolean @default(false) @map("allow_conservative_full_text")
   reviewMode String @default("INDEPENDENT") @map("review_mode") @db.VarChar(24)
   blindReview Boolean @default(true) @map("blind_review")
-  resolutionPolicy String @default("ADJUDICATION") @map("resolution_policy") @db.VarChar(24)
+  resolutionPolicy String @default("CONSENSUS") @map("resolution_policy") @db.VarChar(24)
   projectId String @id @map("project_id") @db.Uuid
   version Int @default(1)
   requiredReviewers Int @default(2) @map("required_reviewers")
@@ -88,6 +89,8 @@ model ScreeningAdjudicationConflict {
   @@map("screening_adjudication_conflicts")
 }
 model ScreeningRound {
+  consensusStartedAt DateTime? @map("consensus_started_at") @db.Timestamptz(6)
+  consensusDeadline DateTime? @map("consensus_deadline") @db.Timestamptz(6)
   legacyNeedsAudit Boolean @default(false) @map("legacy_needs_audit")
   finalizerId String? @map("finalizer_id") @db.Uuid
   id String @id @default(uuid()) @db.Uuid

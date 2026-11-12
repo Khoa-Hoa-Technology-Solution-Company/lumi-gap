@@ -1,3 +1,5 @@
+import { mentorshipApplicationsService as applications } from "../mentorship-applications.service.js";
+import { legacyMentorshipOffer } from "./legacy-mentorship.fixture.js";
 import { createProjectFixture } from "../../../test-utils/project-fixture.js";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { getPrisma, disconnectPostgres } from "../../../infrastructure/database/prisma.js";
@@ -64,7 +66,7 @@ describe.skipIf(!enabled).sequential("complete mentorship consent, access and de
   it("turning OFF blocks invites, offers and default discovery but preserves pending consent", async () => {
     await seeking(); const request = await invite();
     await service.preferences(mentor, { acceptingMentorships: false });
-    await expect(service.offer(project, mentor, { message: "I can help" })).rejects.toMatchObject({ statusCode: 409 });
+    await expect(service.offer(project, mentor, { message: "I can help with your research methods" })).rejects.toMatchObject({ statusCode: 409 });
     await expect(service.discovery(mentor)).rejects.toMatchObject({ statusCode: 409 });
     expect((await service.mentors(project, owner, { q: prefix })).items.some(m => m._id === mentor)).toBe(false);
     const otherProject = (await createProjectFixture({ data: { ownerId: owner, title: "Another project" } })).id;
@@ -186,20 +188,20 @@ describe.skipIf(!enabled).sequential("complete mentorship consent, access and de
     expect(settings.mentoringNeeds).toContain("experimental design");
     const found = await service.discovery(mentor, { q: prefix, area: "Software Engineering" });
     expect(found.items[0]).toMatchObject({ researchAreas: ["Software Engineering"], summary: "We seek guidance on study design", mentoringNeeds: "Help with experimental design and evaluation" });
-    expect(Object.keys(found.items[0]).sort()).toEqual(["availableRoles", "discovery", "expertise", "id", "mentoringNeeds", "researchAreas", "researchField", "stage", "summary", "teamMemberCount", "title"].sort());
+    expect(Object.keys(found.items[0]).sort()).toEqual(["availableRoles", "discovery", "expertise", "id", "mentoringNeeds", "methodologies", "researchAreas", "researchField", "stage", "summary", "teamMemberCount", "title"].sort());
     expect(JSON.stringify(found)).not.toMatch(/PRIVATE-|UNAPPROVED|version|ownerId|visibility|papers|manuscripts|discussions/);
     expect((await service.discovery(mentor, { q: "PRIVATE-FIELD" })).items).toEqual([]);
     expect((await service.discovery(mentor, { area: "PRIVATE-AREA" })).items).toEqual([]);
     await service.settings(project, owner, { discovery: "CLOSED", summary: settings.summary, expertise: settings.expertise });
     expect((await service.discovery(mentor, { q: prefix })).items).toEqual([]);
-    await expect(service.offer(project, mentor, { message: "Guide" })).rejects.toMatchObject({ statusCode: 403 });
+    await expect(service.offer(project, mentor, { message: "I can guide your research methods" })).rejects.toMatchObject({ statusCode: 409 });
     expect((await db.project.findUniqueOrThrow({ where: { id: project } })).visibility).toBe("PRIVATE");
   });
-  it("lecturer discovery to owner acceptance grants scoped feedback, never membership, and termination revokes it", async () => {
+  it("legacy lecturer discovery to owner acceptance grants scoped feedback, never membership, and termination revokes it", async () => {
     await seeking();
     const preview = (await service.discovery(mentor, { q: prefix })).items[0];
     expect(preview.id).toBe(project);
-    const offer = await service.offer(preview.id, mentor, { message: "I can guide the experiments", idempotencyKey: crypto.randomUUID() });
+    const offer = await legacyMentorshipOffer(preview.id, mentor, { message: "I can guide the experiments", idempotencyKey: crypto.randomUUID() });
     expect((await service.mine(owner, { view: "incoming" })).requests.map(r => r.id)).toContain(offer.id);
     expect((await service.mine(mentor, { view: "outgoing" })).requests.map(r => r.id)).toContain(offer.id);
     expect((await service.mine(mentor, { view: "incoming" })).requests).toEqual([]);
@@ -244,16 +246,15 @@ describe.skipIf(!enabled).sequential("complete mentorship consent, access and de
     expect(await db.projectMember.count({ where: { projectId: project, userId: mentor } })).toBe(0);
     expect(await db.notification.count({ where: { targetUuid: project, type: "MENTORSHIP_REQUEST_ACCEPTED" } })).toBe(1);
   });
-  it("simultaneous team invitation and lecturer offer create only one pending consent record", async () => {
+  it("simultaneous owner invitation and applicant interest create at most one formal consent record", async () => {
     await seeking();
-    const outcomes = await Promise.allSettled([invite(), service.offer(project, mentor, { message: "I can guide this research" })]);
-    expect(outcomes.filter(r => r.status === "fulfilled")).toHaveLength(1);
-    const rejected = outcomes.find(r => r.status === "rejected") as PromiseRejectedResult;
-    expect(rejected.reason).toMatchObject({ statusCode: 409 });
+    const outcomes = await Promise.allSettled([invite(), applications.apply(project, mentor, { message: "I can guide the research methodology", mentorRole: "PRIMARY", availability: "Feedback once every week", areas: [], methodologies: [], capabilities: [], idempotencyKey: crypto.randomUUID() })]);
+    expect(outcomes[0].status).toBe("fulfilled");
+    if (outcomes[1].status === "rejected") expect(outcomes[1].reason).toMatchObject({ statusCode: 409 });
     expect(await db.mentorshipRequest.count({ where: { projectId: project, mentorUserId: mentor, status: "PENDING" } })).toBe(1);
     expect(await db.mentorRelationship.count({ where: { projectId: project } })).toBe(0);
     expect(await db.projectMember.count({ where: { projectId: project, userId: mentor } })).toBe(0);
-    expect(await db.notification.count({ where: { targetUuid: project } })).toBe(1);
+    expect(await db.notification.count({ where: { targetUuid: project, type: "MENTORSHIP_REQUEST_RECEIVED" } })).toBe(1);
   });
   it("reserves the role before consent and accepts a valid invitation idempotently", async () => {
     const a = await invite();
@@ -408,7 +409,7 @@ describe.skipIf(!enabled).sequential("complete mentorship consent, access and de
     await content.draft(project, mentor, "LECTURER_TO_PROJECT", { message: "My mentoring approach", mentorRole: "PRIMARY", attachmentIds: [file.id], expectedVersion: 0 });
     expect((await content.draft(project, second, "LECTURER_TO_PROJECT")).message).toBe("");
     await expect(content.file(file.id, owner)).rejects.toMatchObject({ statusCode: 404 });
-    const offer = await service.offer(project, mentor, { message: "My mentoring approach", attachmentIds: [file.id] });
+    const offer = await legacyMentorshipOffer(project, mentor, { message: "My mentoring approach", attachmentIds: [file.id] });
     expect((await service.list(project, owner)).requests[0].attachments).toEqual([file]);
     expect((await content.file(file.id, owner)).fileName).toBe("brief.pdf");
     await service.accept(project, offer.id, owner);
@@ -420,7 +421,7 @@ describe.skipIf(!enabled).sequential("complete mentorship consent, access and de
     const live = await db.mentorshipRequest.findUniqueOrThrow({ where: { id: request.id } });
     expect(await db.mentorRelationship.count({ where: { sourceRequestId: request.id } })).toBe(live.status === "ACCEPTED" ? 1 : 0);
     const other = (await createProjectFixture({ data: { ownerId: owner, title: "Offered project", mentorshipDiscovery: "SEEKING_MENTOR", mentorshipSummary: "Safe study design preview" } })).id;
-    const offer = await service.offer(other, second, { message: "Offer guidance" });
+    const offer = await legacyMentorshipOffer(other, second, { message: "Offer guidance" });
     const response = await Promise.allSettled([service.accept(other, offer.id, owner), service.cancel(other, offer.id, second)]);
     expect(response.filter(r => r.status === "fulfilled")).toHaveLength(1);
   });
@@ -442,7 +443,7 @@ describe.skipIf(!enabled).sequential("complete mentorship consent, access and de
   });
   it.each(["PROJECT_TO_LECTURER", "LECTURER_TO_PROJECT"])("%s response notes are visible only to the consent parties", async direction => {
     await seeking();
-    const request = direction === "PROJECT_TO_LECTURER" ? await invite() : await service.offer(project, mentor, { message: "I can guide your methodology" });
+    const request = direction === "PROJECT_TO_LECTURER" ? await invite() : await legacyMentorshipOffer(project, mentor, { message: "I can guide your methodology" });
     const privateReason = "PRIVATE-DECLINE-REASON";
     await service.decline(project, request.id, direction === "PROJECT_TO_LECTURER" ? mentor : owner, privateReason);
     for (const principal of [owner, mentor]) expect((await service.list(project, principal)).requests[0].responseNote).toBe(privateReason);
@@ -488,7 +489,7 @@ describe.skipIf(!enabled).sequential("complete mentorship consent, access and de
     expect(JSON.stringify(found)).not.toContain("PRIVATE-RESEARCH-NOTES");
     await service.settings(secondProject, owner, { discovery: "SEEKING_MENTOR", summary: "Safe second project preview", expertise: [] });
     expect((await service.discovery(mentor, { q: prefix, page: 2, pageSize: 1 })).items).toHaveLength(1);
-    const offer = await service.offer(project, mentor, { message: "I can guide the study" });
+    const offer = await legacyMentorshipOffer(project, mentor, { message: "I can guide the study" });
     expect(offer.status).toBe("PENDING"); await expect(service.accept(project, offer.id, member)).rejects.toMatchObject({ statusCode: 403 });
     await expect(service.workspace(project, mentor)).rejects.toMatchObject({ statusCode: 403 });
     await service.preferences(mentor, { acceptingMentorships: false }); await service.accept(project, offer.id, owner);

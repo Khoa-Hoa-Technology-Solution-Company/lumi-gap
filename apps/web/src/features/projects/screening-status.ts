@@ -3,6 +3,7 @@ import type { ScreeningChoice, ScreeningClassification, ScreeningEvaluationStatu
 /** Presentation only. Keep colors independent of translated labels and viewer actions. */
 export type ScreeningTone = "neutral" | "attention" | "warning" | "dispute" | "adjudication" | "success" | "excluded";
 export const screeningStateTones = {
+  CONSENSUS_REQUIRED: "dispute", CONSENSUS_IN_PROGRESS: "dispute",
   NOT_REVIEWED: "neutral", IN_REVIEW: "attention", WAITING_REVIEWER: "neutral",
   WAITING_FULLTEXT: "neutral", AWAITING_FINALIZATION: "neutral", BACKGROUND: "neutral",
   NEEDS_RESOLUTION: "dispute", CONFLICT: "dispute", NEEDS_MORE_INFO: "warning",

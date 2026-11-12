@@ -4,6 +4,8 @@ const path = (id: string, resource: string) => `/projects/${encodeURIComponent(i
 async function get<T>(id: string, resource: string, params?: Record<string, unknown>) { return (await apiClient.get<{ data: T }>(path(id, resource), { params })).data.data; }
 async function write<T>(id: string, resource: string, data: unknown, edit = false) { return (await apiClient[edit ? "patch" : "post"]<{ data: T }>(path(id, resource), data)).data.data; }
 export const contributionsApi = {
+  overview: (id: string) => get<import("@trend/shared-types").ContributionOverview>(id, "overview"),
+  people: (id: string) => get<{ items: import("@trend/shared-types").WorkspacePerson[]; feedbackReferences?: Array<{kind:"MENTOR_FEEDBACK";id:string;label:string}> }>(id, "work-people"),
   activity: (id: string, query: Record<string, unknown>) => get<ActivityResult>(id, "activity", query),
   work: (id: string, query: Record<string, unknown>) => get<ContributionPage>(id, "work", query),
   detail: (id: string, recordId: string) => get<WorkContribution>(id, `work/${recordId}`),

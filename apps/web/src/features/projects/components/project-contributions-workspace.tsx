@@ -1,4 +1,5 @@
 import { useSearchParams } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { useI18n } from "@/i18n";
 import { ContributionActivityPanel } from "./contribution-activity";
 import { WorkContributionsPanel } from "./work-contributions";
@@ -7,6 +8,7 @@ import { AdvisorContributionsPanel } from "./advisor-contributions-panel";
 import { PersonalContributionEvidencePanel } from "./personal-contribution-evidence-panel";
 import { SubmissionReadinessPackage } from "./submission-readiness-package";
 import { canLeaveWorkspace } from "./workspace-common";
+import { ContributionOverviewPanel } from "./contribution-overview";
 import "../project-contributions.css";
 
 export function ProjectContributionsWorkspace({
@@ -24,14 +26,14 @@ export function ProjectContributionsWorkspace({
   const [params, setParams] = useSearchParams();
   const value = params.get("contributionTab");
   const tab =
-    value === "work" ||
+    value === "work" || value === "pending" || value === "overview" ||
     value === "activity" ||
     value === "advisors" ||
     value === "evidence" ||
     value === "readiness" ||
     value === "allocation"
       ? value
-      : "allocation";
+      : "work";
 
   async function selectTab(nextKey: string) {
     if (!(await canLeaveWorkspace())) return;
@@ -46,18 +48,17 @@ export function ProjectContributionsWorkspace({
         <h2>{t("Contributions")}</h2>
         <p>
           {t(
-            "Manage agreed contribution percentages via the 4-category Contribution Matrix, supporting research evidence, and member confirmation.",
+            "Record research work and evidence first. CRediT roles, team allocation and manuscript authorship are separate decisions.",
           )}
         </p>
       </header>
+      <Link className="inline-block text-sm text-primary underline" to={`/projects/${encodeURIComponent(projectId)}?tab=manuscripts`}>{t("Authorship and submission")}</Link>
       <nav className="contribution-tabs" aria-label={t("Contribution sections")}>
         {[
-          ["allocation", "Contribution allocation"],
           ["work", "Work contributions"],
-          ["advisors", "Advisor contributions"],
-          ["evidence", "My evidence & export"],
-          ["readiness", "Authorship & Integrity Package"],
-          ["activity", "Activity"],
+          ["pending", "Pending acknowledgements"],
+          ["overview", "Research contribution overview"],
+          ["allocation", "Contribution allocation"],
         ].map(([key, label]) => (
           <button
             key={key}
@@ -68,8 +69,9 @@ export function ProjectContributionsWorkspace({
             {t(label!)}
           </button>
         ))}
+        <details open={["advisors", "evidence", "activity"].includes(tab)} className="px-3 py-2"><summary className="cursor-pointer text-sm text-muted-foreground">{t("More contribution tools")}</summary><div className="mt-2 flex flex-wrap gap-2">{[["advisors", "Advisor contributions"], ["evidence", "My evidence & export"], ["activity", "Activity"]].map(([key, label]) => <button key={key} type="button" aria-current={tab === key ? "page" : undefined} onClick={() => void selectTab(key!)}>{t(label!)}</button>)}</div></details>
       </nav>
-      {tab === "activity" ? (
+      {tab === "overview" ? <ContributionOverviewPanel projectId={projectId} /> : tab === "pending" ? <WorkContributionsPanel key="pending" projectId={projectId} currentUserId={currentUserId} readOnly={readOnly} initialFilter="PENDING" /> : tab === "activity" ? (
         <ContributionActivityPanel projectId={projectId} />
       ) : tab === "readiness" ? (
         <SubmissionReadinessPackage

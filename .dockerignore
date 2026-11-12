@@ -3,6 +3,8 @@
 .turbo
 node_modules
 **/node_modules
+**/scratch
+apps/backend/src/generated
 **/dist
 **/*.tsbuildinfo
 .env

@@ -6,6 +6,7 @@ import logoImage from "@/assets/logo.png";
 import logoDarkImage from "@/assets/logo-dark.png";
 import { Button } from "@/components/ui/button";
 import { RouteTransition } from "@/components/route-transition";
+import { PageLoading } from "@/components/page-loading";
 import { ThemeToggle } from "@/components/theme-toggle";
 import {
   DropdownMenu,
@@ -159,11 +160,7 @@ function DesktopNavDropdown({
 }
 
 function PageLoadingFallback() {
-  return (
-    <div className="min-h-[50vh] bg-slate-50 dark:bg-[#09090b]" role="status" aria-live="polite">
-      <span className="sr-only">Loading page...</span>
-    </div>
-  );
+  return <PageLoading />;
 }
 
 export function MainLayout() {

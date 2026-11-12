@@ -30,10 +30,12 @@ async function render(data = summary, readOnly = false) {
 }
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-11-02T07:00:00Z"));
   client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   container = document.createElement("div"); document.body.append(container); root = createRoot(container);
 });
-afterEach(async () => { await act(async () => root.unmount()); client.clear(); container.remove(); vi.unstubAllGlobals(); });
+afterEach(async () => { await act(async () => root.unmount()); client.clear(); container.remove(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 it("highlights missing opinions, prioritizes them and opens the correct dossier", async () => {
   await render({ ...summary, pendingDiscussions: [{ paperId: "pending", roundId: "pending-round", title: "Duplicate discussion", status: "ADJUDICATING" }] });
   const reminder = container.querySelector('[aria-label="Ý kiến phân xử cần gửi"]')!;

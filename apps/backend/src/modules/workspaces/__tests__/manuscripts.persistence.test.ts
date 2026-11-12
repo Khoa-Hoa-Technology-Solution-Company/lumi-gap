@@ -394,9 +394,10 @@ describe.skipIf(!isolated).sequential("manuscripts in disposable PostgreSQL", ()
   });
   it("executes formal request, acceptance and structured review against the sealed source only", async () => {
     const d = await draft(), v1 = await writing.snapshot(d.project, owner, d.id, { label: "Submission v1", clientKey: crypto.randomUUID(), minimumSequences: {} });
-    await manuscriptAttributionService.saveAttributionCheck(d.project, owner, d.id, v1.id, { proposedAuthors: [{ userId: owner, order: 1, creditRoles: ["CONCEPTUALIZATION"] }, { userId: member, order: 2, creditRoles: ["WRITING_REVIEW_EDITING"] }], acknowledgements: [], omittedContributors: [] });
+    await manuscriptAttributionService.saveAttributionCheck(d.project, owner, d.id, v1.id, { proposedAuthors: [{ userId: owner, order: 1, displayName: "Research author 1", email: "author-1@example.invalid", affiliation: "Test institution", corresponding: true, creditRoles: ["CONCEPTUALIZATION"] }, { userId: member, order: 2, displayName: "Research author 2", email: "author-2@example.invalid", affiliation: "Test institution", corresponding: false, creditRoles: ["WRITING_REVIEW_EDITING"] }], acknowledgements: [], omittedContributors: [] });
     const checkView = await manuscriptAttributionService.getAttributionCheck(d.project, member, d.id, v1.id);
     await manuscriptAttributionService.decideAttributionCheck(d.project, member, d.id, checkView.checkId!, { decision: "CONFIRM" });
+    await manuscriptAttributionService.decideAttributionCheck(d.project, owner, d.id, checkView.checkId!, { decision: "CONFIRM", note: "Explicit approval of this exact version" });
     const sealed = await writing.publish(d.project, member, d.id, v1.id, [owner, member]);
     await expect(writing.publish(d.project, member, d.id, v1.id, [member])).rejects.toMatchObject({ statusCode: 409 });
     const template = await reviewTemplateService.create({ name: "Manuscript methods rubric", source: "PERSONAL", reviewMode: "RUBRIC_ASSESSMENT", publish: true, guidelines: [], criteria: [{ key: "method", title: "Method", weight: 1, required: true, levels: [{ label: "Clear", score: 4 }] }] }, owner, "USER");

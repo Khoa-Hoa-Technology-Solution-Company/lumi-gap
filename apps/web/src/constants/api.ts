@@ -21,9 +21,9 @@ export const API_ROUTES = {
   },
   academicProfiles: {
     me: "/academic-profiles/me",
+    orcid: "/academic-profiles/me/orcid",
     academicIdentities: "/academic-profiles/me/academic-identities",
     academicIdentity: (identityId: string) => `/academic-profiles/me/academic-identities/${identityId}`,
-    orcid: "/academic-profiles/me/orcid",
     orcidConnect: "/academic-profiles/me/orcid/connect",
     orcidCallback: "/academic-profiles/me/orcid/callback",
     public: (userId: string) => `/academic-profiles/${userId}`,

@@ -48,6 +48,7 @@ const file = (id: string, path: string, kind: ManuscriptFile["kind"] = "TEXT"): 
 vi.mock("../github-connection.api", () => ({ githubConnectionApi: { status: async () => ({ configured: false, connected: false }) } }));
 vi.mock("../manuscripts.api", () => ({ manuscriptsApi: {
   remote: async () => null,
+  remoteHistory: async () => [],
   detail: async () => { if (data.detailFailed) throw new Error("Network interrupted"); return { id: "draft", title: "Team research paper", files: [{ id: "main", path: "main.tex", kind: "TEXT", version: 1 }, { id: "intro", path: "sections/introduction.tex", kind: "TEXT", version: 1 }, ...data.extraFiles].filter(file => !data.removedFiles.includes(file.id)), collaborators: [], compiler: { available: data.available, reason: "READY" }, version: 2, mainFileId: "main", canWrite: data.canWrite }; },
   changeFile: data.changeFile,
   compilations: async () => data.state, compile: data.compile, snapshot: data.snapshot,
@@ -517,7 +518,7 @@ it("opens a dedicated GitHub panel after OAuth and allows returning to PDF", asy
   expect(button(host, "Toggle information panel").textContent).toContain("GitHub");
   expect(host.querySelector("#writing-github-tabpanel")?.hasAttribute("hidden")).toBe(false);
   expect(host.querySelector('[role="dialog"]')).toBeNull();
-  expect(host.textContent).toContain("One sync coordinator is enough");
+  expect(host.textContent).toContain("GitHub synchronization");
   await act(async () => host.querySelector<HTMLButtonElement>("#writing-preview-tab")!.click());
   expect(github.getAttribute("aria-selected")).toBe("false");
   expect(host.querySelector("#writing-preview-tabpanel")).not.toBeNull();

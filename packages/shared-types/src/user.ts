@@ -93,6 +93,10 @@ export interface UpdateAcademicProfileRequest {
   programName?: string;
   researchAreas?: string[];
   expertiseAreas?: string[];
+  researchSpecializations?: string[];
+  researchClassification?: import("./research-classification.js").ResearchClassificationInput;
+  biography?: string;
+  mentorshipPreferences?: { preferredTopicIds?: string[]; interested: boolean; preferredTopics: string[]; supportTypes?: import("./academic-profile.js").ResearchSupportType[] };
   researchInterests?: string[];
   researchKeywords?: string[];
   skills?: string[];
@@ -101,6 +105,8 @@ export interface UpdateAcademicProfileRequest {
 export interface AcademicOnboardingOptions {
   institutions: Array<{ id: string; name: string; hostInstitution: boolean }>;
   researchAreas: string[];
+  researchSpecializations?: string[];
+  researchTopics?: string[];
   hostInstitution?: {
     id: string;
     name: string;

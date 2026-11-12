@@ -34,6 +34,7 @@ export const projectTeamVi = {
   "Empirical research": "Nghiên cứu thực nghiệm",
   "A starting direction. You can change it as your question develops.": "Định hướng ban đầu, có thể thay đổi khi câu hỏi nghiên cứu rõ hơn.",
   "Only your team can open the workspace. Mentor discovery starts off.": "Chỉ nhóm của bạn truy cập được. Tính năng tìm người hướng dẫn mặc định tắt.",
+  "Your project starts private. Invite people when you are ready.": "Dự án được tạo ở chế độ riêng tư. Bạn có thể mời cộng sự khi sẵn sàng.",
   "Publishes the title and research areas. You can approve a public summary later. Research content stays private.": "Công khai tên và lĩnh vực. Bạn có thể duyệt bản tóm tắt sau. Nội dung nghiên cứu vẫn riêng tư.",
   "Complete your academic profile before creating a project.": "Hoàn tất hồ sơ học thuật trước khi tạo dự án.",
   "Please sign in again. Your project details are saved.": "Vui lòng đăng nhập lại. Thông tin dự án đã được giữ lại.",

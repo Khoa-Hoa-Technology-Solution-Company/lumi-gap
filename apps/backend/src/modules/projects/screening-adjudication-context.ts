@@ -23,6 +23,13 @@ const packetSchema = z.object({
 }).strict();
 
 export const adjudicationSection = (id: string) => `screening:${id}`;
+/** Mentors are separate from the active project team; they do not satisfy its minimum size. */
+export async function adjudicationTeamRequirement(c: WorkspaceContext): Promise<string | null> {
+  const members = await c.tx.projectMember.findMany({ where: { projectId: c.project.id, status: "ACTIVE", role: { notIn: ["MENTOR", "ADVISOR"] } }, select: { userId: true } });
+  return new Set([c.project.ownerId, ...members.map(m => m.userId)]).size < 3
+    ? "Phân xử yêu cầu ít nhất 3 thành viên đang hoạt động trong nhóm."
+    : null;
+}
 /** The project import reference takes precedence over the paper's saved landing page. */
 export async function adjudicationSourceUrl(c: WorkspaceContext, row: ScreeningRound): Promise<string | null> {
   const [link, paper] = await Promise.all([

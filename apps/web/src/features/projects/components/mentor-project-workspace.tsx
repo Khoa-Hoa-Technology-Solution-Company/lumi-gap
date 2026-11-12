@@ -6,6 +6,9 @@ import { canLeaveWorkspace, WorkspaceHeading } from "./workspace-common";
 import { ProjectDiscussionPanel } from "./project-discussion-panel";
 import { ProjectSectionNav, type ProjectTab } from "./project-section-nav";
 import { MentorProjectTasks } from "./mentor-project-tasks";
+import { WorkContributionsPanel } from "./work-contributions";
+import "../project-workspace.css";
+import "../workspace-coordination.css";
 
 export function MentorProjectNav() {
   const [params, setParams] = useSearchParams();
@@ -24,16 +27,16 @@ export function MentorProjectWorkspace({ data, standalone = false }: { data: Wor
   const chat = params.get("tab") === "chat";
   const ownPolicy = data.policies.find(p => p.mentorId === data.viewerId && p.policy.effective);
   const statuses: Record<string, string> = { PLANNING: "Đang lập kế hoạch", ACTIVE: "Đang thực hiện", COMPLETED: "Đã hoàn thành", ARCHIVED: "Đã lưu trữ" };
-  if (params.get("tab") === "tasks") return <div className="project-workspace" data-no-i18n><div className="project-page-width py-6 space-y-4">
+  if (params.get("tab") === "tasks") return <div className="project-workspace coord-mentor-page" data-no-i18n><div className="project-page-width py-6 space-y-4">
     {standalone && <MentorProjectNav />}
     <MentorProjectTasks key={`${data.projectId}:${data.viewerId}`} projectId={data.projectId} />
   </div></div>;
-  if (chat) return <div className="project-workspace" data-no-i18n><div className="project-page-width py-6 space-y-4 coord-discussions">
+  if (chat) return <div className="project-workspace coord-mentor-page" data-no-i18n><div className="project-page-width py-6 space-y-4 coord-discussions">
     {standalone && <MentorProjectNav />}
     <WorkspaceHeading title="Trò chuyện nhóm" description={data.title} />
     <ProjectDiscussionPanel projectId={data.projectId} paperCount={0} mentorView />
   </div></div>;
-  return <div className="project-workspace" data-no-i18n>
+  return <div className="project-workspace coord-mentor-page" data-no-i18n>
     <div className="project-page-width space-y-6 py-6">
       <header className="space-y-2 border-b pb-5">
         <Link to="/academic-support?view=active" className="text-sm text-muted-foreground hover:text-primary">Nhóm đang cố vấn</Link>
@@ -54,6 +57,7 @@ export function MentorProjectWorkspace({ data, standalone = false }: { data: Wor
           <ul className="mt-3 divide-y">{data.basics?.team.map(person => <li key={person.id} className="flex items-center justify-between gap-3 py-3 text-sm"><span className="min-w-0 break-words font-medium">{person.name}</span><span className="shrink-0 text-xs text-muted-foreground">{person.role === "OWNER" ? "Chủ dự án" : "Thành viên"}</span></li>)}</ul>
         </section>
       </div>
+      <details><summary className="cursor-pointer text-sm font-medium">Ghi nhận và xác nhận đóng góp nghiên cứu của tôi</summary><div className="mt-4"><WorkContributionsPanel mentorView projectId={data.projectId} currentUserId={data.viewerId} readOnly={data.readOnly} /></div></details>
     </div>
   </div>;
 }
