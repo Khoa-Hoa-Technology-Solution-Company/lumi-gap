@@ -129,7 +129,27 @@ describe.skipIf(!enabled).sequential("ORCID ownership linking with PostgreSQL an
     const url = `http://127.0.0.1:${port}/me/orcid`, authorization = `Bearer ${tokenService.signAccessToken({ sub: user, systemRole: "USER", sessionId: session }).token}`;
     expect((await nativeFetch(`${url}/start`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" })).status).toBe(401);
     const response = await nativeFetch(url, { headers: { authorization } }); expect(response.status).toBe(200); expect(response.headers.get("cache-control")).toBe("private, no-store");
-    expect(await response.json()).toMatchObject({ success: true, data: { configured: true, environment: "SANDBOX" } });
+    expect(await response.json()).toMatchObject({ success: true, data: { configured: true, environment: "sandbox" } });
     expect((await nativeFetch(`${url}/callback`, { method: "POST", headers: { authorization, "Content-Type": "application/json" }, body: JSON.stringify({ state: "a".repeat(43), code: "code", userId: other, verificationStatus: "PROVIDER_CONNECTED" }) })).status).toBe(400);
   });
+  it("keeps main's connect/status/disconnect APIs on the same authenticated ownership flow", async () => {
+    const app = express(), router = express.Router(); app.use(express.json()); mountOrcidOauthRoutes(router); app.use(router); app.use(errorHandler);
+    server = app.listen(0, "127.0.0.1"); await new Promise<void>(resolve => server!.once("listening", () => resolve()));
+    const url = `http://127.0.0.1:${(server.address() as { port: number }).port}/me/orcid`;
+    const headers = { authorization: `Bearer ${tokenService.signAccessToken({ sub: user, systemRole: "USER", sessionId: session }).token}`, "Content-Type": "application/json" };
+    expect((await nativeFetch(`${url}/connect`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" })).status).toBe(401);
+    const begin = await nativeFetch(`${url}/connect`, { method: "POST", headers, body: JSON.stringify({ returnTo: "/profile", returnOrigin: "http://localhost:8080" }) });
+    expect(begin.status).toBe(200); const flow = (await begin.json() as { data: { state: string; authorizationUrl: string; url: string } }).data;
+    states.push(flow.state); expect(flow.url).toBe(flow.authorizationUrl);
+    const completed = await nativeFetch(`${url}/callback`, { method: "POST", headers, body: JSON.stringify({ state: flow.state, code: "synthetic-code" }) });
+    expect(completed.status).toBe(200); const result = await completed.json();
+    expect(result).toMatchObject({ data: { cancelled: false, identity: { identifier: orcid, visibility: "PRIVATE" }, link: { identifier: orcid } } });
+    expect(JSON.stringify(result)).not.toMatch(/synthetic-private-token|synthetic-refresh-token/);
+    expect(await (await nativeFetch(url, { headers })).json()).toMatchObject({ data: { connected: true, link: { verificationStatus: "PROVIDER_CONNECTED" } } });
+    expect((await nativeFetch(`${url}/callback`, { method: "POST", headers, body: JSON.stringify({ state: flow.state, code: "replay" }) })).status).toBe(403);
+    expect((await nativeFetch(url, { method: "DELETE", headers })).status).toBe(200);
+    expect(await db.academicIdentityLink.count({ where: { userId: user, provider: "ORCID" } })).toBe(0);
+    expect(await (await nativeFetch(url, { headers })).json()).toMatchObject({ data: { connected: false, link: null } });
+  });
+
 });

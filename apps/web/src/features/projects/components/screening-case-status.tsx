@@ -67,6 +67,15 @@ export function ScreeningCaseStatus({ projectId, round }: { projectId: string; r
           </div>
         )}
 
+        {data.assignedAdjudicator && (
+          <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+            <User size={13} className="screening-status-text" />
+            <span>
+              {data.assignedAdjudicator.name} · {adjudicatorRoleLabels[data.assignedAdjudicator.role ?? ""] ?? (data.assignedAdjudicator.mentor ? "Cố vấn học thuật" : "Người phân xử độc lập")}
+            </span>
+          </p>
+        )}
+
         <div className="pt-0.5">
           <Button
             type="button"

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/widgets/app_empty_state.dart';
 import 'package:flutter_mobile/core/widgets/app_error_state.dart';
 import 'package:flutter_mobile/core/widgets/app_loading.dart';
@@ -16,7 +17,7 @@ class RankingsScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Rankings'),
+        title: Text(context.t('Rankings')),
         surfaceTintColor: Colors.transparent,
       ),
       body: SafeArea(
@@ -34,7 +35,7 @@ class RankingsScreen extends ConsumerWidget {
                     ? const SizedBox.shrink()
                     : _MyRankCard(data: data),
                 loading: () =>
-                    const AppLoading(message: 'Loading your rank...'),
+                    AppLoading(message: context.t('Loading your rank...')),
                 error: (error, _) => _InlineError(message: error.toString()),
               ),
               const SizedBox(height: 20),
@@ -42,7 +43,7 @@ class RankingsScreen extends ConsumerWidget {
                 children: [
                   Expanded(
                     child: Text(
-                      'Leaderboard',
+                      context.t('Leaderboard'),
                       style: theme.textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w800,
                       ),
@@ -58,7 +59,7 @@ class RankingsScreen extends ConsumerWidget {
                       borderRadius: BorderRadius.circular(999),
                     ),
                     child: Text(
-                      'Top 20',
+                      context.t('Top 20'),
                       style: theme.textTheme.labelSmall?.copyWith(
                         color: const Color(0xFF0891B2),
                         fontWeight: FontWeight.w800,
@@ -71,12 +72,12 @@ class RankingsScreen extends ConsumerWidget {
               rankings.when(
                 data: (data) {
                   if (data.rankings.isEmpty) {
-                    return const Padding(
-                      padding: EdgeInsets.only(top: 18),
+                    return Padding(
+                      padding: const EdgeInsets.only(top: 18),
                       child: AppEmptyState(
                         icon: Icons.emoji_events_outlined,
-                        title: 'No rankings yet',
-                        message: 'Scores will appear after research activity.',
+                        title: context.t('No rankings yet'),
+                        message: context.t('Scores will appear after research activity.'),
                       ),
                     );
                   }
@@ -92,7 +93,7 @@ class RankingsScreen extends ConsumerWidget {
                   );
                 },
                 loading: () =>
-                    const AppLoading(message: 'Loading leaderboard...'),
+                    AppLoading(message: context.t('Loading leaderboard...')),
                 error: (error, _) => AppErrorState(message: error.toString()),
               ),
             ],
@@ -139,7 +140,7 @@ class _MyRankCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Your rank #${data.rank}',
+                  context.t('Your rank #{{rank}}', {'rank': data.rank}),
                   style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w900,
                   ),
@@ -149,9 +150,9 @@ class _MyRankCard extends StatelessWidget {
                   spacing: 8,
                   runSpacing: 8,
                   children: [
-                    _StatPill(label: '${data.points} pts'),
-                    _StatPill(label: '${data.uploadedPdfs} PDFs'),
-                    _StatPill(label: '${data.requestedPapers} requests'),
+                    _StatPill(label: context.t('{{points}} pts', {'points': data.points})),
+                    _StatPill(label: context.plural(data.uploadedPdfs, one: '{{count}} PDF', other: '{{count}} PDFs')),
+                    _StatPill(label: context.plural(data.requestedPapers, one: '{{count}} request', other: '{{count}} requests')),
                   ],
                 ),
               ],
@@ -209,7 +210,7 @@ class _LeaderboardTile extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    user.name.isEmpty ? 'Unnamed researcher' : user.name,
+                    user.name.isEmpty ? context.t('Unnamed researcher') : user.name,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.titleSmall?.copyWith(
@@ -218,7 +219,7 @@ class _LeaderboardTile extends StatelessWidget {
                   ),
                   const SizedBox(height: 5),
                   Text(
-                    '${user.university ?? 'University'} - ${user.role}',
+                    '${user.university ?? context.t('University')} - ${user.role}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.bodySmall?.copyWith(
@@ -241,7 +242,7 @@ class _LeaderboardTile extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  'points',
+                  context.t('points'),
                   style: theme.textTheme.labelSmall?.copyWith(
                     color: theme.colorScheme.onSurface.withValues(alpha: 0.54),
                   ),

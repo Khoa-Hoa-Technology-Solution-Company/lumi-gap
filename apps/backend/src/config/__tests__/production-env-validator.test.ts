@@ -94,4 +94,28 @@ describe("validateProductionEnvironment", () => {
     expect(errors).toContain("Self-hosted REDIS_URL hostname must be redis");
     expect(errors).toContain("REDIS_URL password must match REDIS_PASSWORD");
   });
+
+  it("validates optional ORCID OAuth settings when partially or fully provided", () => {
+    const partial = validEnvironment();
+    partial.ORCID_CLIENT_ID = "APP-123456";
+    expect(validateProductionEnvironment(partial)).toContain(
+      "ORCID_CLIENT_ID, ORCID_CLIENT_SECRET, and ORCID_REDIRECT_URI must all be provided when ORCID OAuth is enabled",
+    );
+
+    const insecure = validEnvironment();
+    insecure.ORCID_CLIENT_ID = "APP-123456";
+    insecure.ORCID_CLIENT_SECRET = "orcid-secret";
+    insecure.ORCID_REDIRECT_URI = "http://api.lumigap.uk/api/v1/academic-profiles/orcid/callback";
+    insecure.ORCID_BASE_URL = "https://evil.example.com";
+    const insecureErrors = validateProductionEnvironment(insecure);
+    expect(insecureErrors).toContain("ORCID_REDIRECT_URI must be an HTTPS URL in production");
+    expect(insecureErrors).toContain("ORCID_BASE_URL must be https://orcid.org or https://sandbox.orcid.org");
+
+    const validOrcid = validEnvironment();
+    validOrcid.ORCID_CLIENT_ID = "APP-123456";
+    validOrcid.ORCID_CLIENT_SECRET = "orcid-secret";
+    validOrcid.ORCID_REDIRECT_URI = "https://api.lumigap.uk/api/v1/academic-profiles/orcid/callback";
+    validOrcid.ORCID_BASE_URL = "https://orcid.org";
+    expect(validateProductionEnvironment(validOrcid)).toEqual([]);
+  });
 });

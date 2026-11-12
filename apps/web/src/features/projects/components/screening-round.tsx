@@ -1,3 +1,4 @@
+import { ProjectPaperAnalysis } from "./project-paper-analysis";
 import { ScreeningStatusBadge } from "./screening-status-badge";
 import { ScreeningDecisionChoices, screeningReviewOptions } from "./screening-decision-choices";
 import { screeningChoiceTone, screeningStatusTone } from "../screening-status";
@@ -11,11 +12,13 @@ import { ScreeningPacketPreview } from "./screening-adjudication";
 import { LibraryAssessment } from "./library-assessment";
 import { LegacyScreeningRepair } from "./screening-legacy-repair";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { FileText, ExternalLink, Globe, Copy, Check, Quote, Tag, CheckCircle2, Bookmark, BookOpen, Info, Users, AlertTriangle, Edit3 } from "lucide-react";
+import { Sparkles, RotateCcw, FileText, ExternalLink, Globe, Copy, Check, Quote, Tag, CheckCircle2, Bookmark, BookOpen, Info, Users, AlertTriangle, Edit3 } from "lucide-react";
 import { toast } from "sonner";
 import type { ScreeningChoice, ScreeningPaperRow, ScreeningRoundView, ScreeningSettings, WorkspacePerson } from "@trend/shared-types";
 import { AssessmentContextFields, initialAssessmentContext, ReviewContextSummary } from "./assessment-context";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { useQueryClient } from "@tanstack/react-query";
 import { researchApi } from "../api/project-research.api";
 import { screeningApi } from "../api/screening.api";
 import { useResearchResource } from "../hooks/use-project-research";
@@ -261,6 +264,28 @@ export function ScreeningPaperDetail({ projectId, paper, people, readOnly, colla
           </div>
         </div>
 
+        {/* AI PAPER INSIGHT PANEL: Vấn đề, Phương pháp, Kết quả, Hạn chế, Mức độ liên quan RQ & Minh chứng */}
+        <details className="paper-secondary-meta-details" open>
+          <summary className="paper-secondary-meta-summary">
+            <div className="flex items-center gap-2 text-xs font-semibold text-foreground">
+              <Sparkles size={13} className="shrink-0 text-primary" />
+              <span>AI Paper Insight · Vấn đề, Phương pháp, Kết quả, Hạn chế & Minh chứng</span>
+              <span className="paper-meta-summary-pill">
+                {paper.fullTextAvailable ? "Có toàn văn" : "Chỉ từ tóm tắt (Abstract-only)"}
+              </span>
+            </div>
+            <span className="text-[11px] text-muted-foreground/80">Ẩn/Hiện ▾</span>
+          </summary>
+          <div className="paper-secondary-meta-body pt-3">
+            <ProjectPaperAnalysis
+              projectId={projectId}
+              paperId={paper.paperId}
+              readOnly={readOnly}
+              paper={paper}
+            />
+          </div>
+        </details>
+
         {/* THU GỌN: Chỉ số trích dẫn, Loại bài, Quyền truy cập & Keywords */}
         {(Boolean(paper.keywords?.length) || Boolean(paper.tags?.length) || typeof paper.citationCount === "number" || paper.paperKind || paper.importSource) && (
           <details className="paper-secondary-meta-details">
@@ -443,6 +468,22 @@ function RoundContentInner({ projectId, initial, paper, people, readOnly: projec
   const canEditOwnVote = !readOnly && Boolean(round.active && !round.finalDecision && !conflicted && !round.unblindedAt && round.completed < 2 && !round.assignments.some(a => a.id !== round.myAssignmentId && a.completed) && round.myAssignmentId && round.myReview);
   const ownVoteInTeam = !round.hiddenReviews && !canEditOwnVote && Boolean(round.myReview && round.reviews.some(review => review.assignmentId === round.myAssignmentId));
 
+  const isTeamScreening = round.settings?.workflowKind === "TEAM_SCREENING";
+  const roundHeaderLabel = isTeamScreening
+    ? (round.number > 1 ? `Đánh giá mức độ phù hợp (Lần ${round.number})` : "Đánh giá mức độ phù hợp")
+    : `Vòng ${round.number} · ${round.phase === "FULL_TEXT" ? "Toàn văn" : "Tiêu đề và tóm tắt"}`;
+
+  if (round.status === "CLOSED_UNRESOLVED") {
+    return (
+      <ClosedUnresolvedRound
+        projectId={projectId}
+        round={round}
+        people={people}
+        readOnly={readOnly}
+      />
+    );
+  }
+
   if (round.status === "WAITING_FULLTEXT") return <section data-screening-section="review" className="space-y-4">
     <h4 className="font-semibold">Qua vòng tiêu đề / tóm tắt · Chờ toàn văn</h4>
     <p className="text-sm text-muted-foreground">Bài chưa được chấp nhận cuối. Đính kèm PDF trong phần tài liệu nguồn. Khi có toàn văn, mở vòng mới với hai phiếu độc lập.</p>
@@ -596,7 +637,7 @@ function RoundContentInner({ projectId, initial, paper, people, readOnly: projec
       {legacyNotice}
       {round.settings.reviewMode !== "INDEPENDENT" && <ScreeningCaseStatus projectId={projectId} round={round} />}
       <div className="screening-actions">
-        <h4>Vòng {round.number} · {round.phase === "FULL_TEXT" ? "Toàn văn" : "Tiêu đề và tóm tắt"}</h4>
+        <h4>{roundHeaderLabel}</h4>
         <ScreeningStatus status={round.status} round={round} />
       </div>
       {data.isError && <ScreeningError error={data.error} retry={() => void data.refetch()} />}
@@ -725,6 +766,160 @@ function RoundContentInner({ projectId, initial, paper, people, readOnly: projec
       <ScreeningAgreementPanel projectId={projectId} round={round} readOnly={readOnly} />
       <RoundHistory projectId={projectId} round={round} people={people} readOnly={readOnly} />
     </>
+  );
+}
+
+function ClosedUnresolvedRound({ projectId, round, people, readOnly }: { projectId: string; round: ScreeningRoundView; people: WorkspacePerson[]; readOnly: boolean }) {
+  const [isReopenOpen, setIsReopenOpen] = useState(false);
+  const [reopenReason, setReopenReason] = useState("");
+  const command = useScreeningCommand(projectId);
+  const queryClient = useQueryClient();
+
+  const isTeamScreening = round.settings?.workflowKind === "TEAM_SCREENING";
+  const roundHeaderLabel = isTeamScreening
+    ? (round.number > 1 ? `Đánh giá mức độ phù hợp (Lần ${round.number})` : "Đánh giá mức độ phù hợp")
+    : `Vòng ${round.number} · ${round.phase === "FULL_TEXT" ? "Toàn văn" : "Tiêu đề và tóm tắt"}`;
+
+  const closureDetails = round.closureDetails;
+  const reasonLabel = closureDetails?.reason === "DEADLINE_EXPIRED"
+    ? "Hết thời hạn thảo luận (48 giờ)"
+    : closureDetails?.reason === "NO_CONSENSUS"
+    ? "Không đạt đồng thuận sau thảo luận"
+    : closureDetails?.reason === "NO_RESPONSE"
+    ? "Không có phản hồi từ người đánh giá"
+    : closureDetails?.reason === "INSUFFICIENT_INFORMATION"
+    ? "Không đủ thông tin để kết luận"
+    : "Không đạt đồng thuận";
+
+  const closedByName = closureDetails?.actorType === "SYSTEM"
+    ? "Hệ thống (tự động hết hạn)"
+    : people.find(p => p.id === closureDetails?.actorId)?.name ?? "Chủ đề tài";
+
+  const handleReopenSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (command.isPending || readOnly || reopenReason.trim().length < 5) return;
+    const payload = {
+      expectedVersion: round.version,
+      reason: reopenReason.trim(),
+    };
+    const success = await command.run({ roundId: round.id, ...payload }, clientKey =>
+      screeningApi.reopenUnresolved(projectId, round.id, { ...payload, clientKey })
+    );
+    if (success) {
+      setIsReopenOpen(false);
+      setReopenReason("");
+      void queryClient.invalidateQueries({ queryKey: ["projects", projectId, "screening"] });
+    }
+  };
+
+  return (
+    <div className="space-y-4" data-screening-section="closed-unresolved">
+      <div className="screening-resolution-round-heading flex items-center justify-between">
+        <h4 className="text-sm font-semibold">{roundHeaderLabel}</h4>
+        <ScreeningStatus status={round.status} round={round} />
+      </div>
+
+      <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 space-y-2 text-xs">
+        <div className="flex items-center gap-2 font-semibold text-amber-900 dark:text-amber-200">
+          <AlertTriangle size={16} className="text-amber-600 dark:text-amber-400 shrink-0" />
+          <span className="text-sm">Đã đóng — Không đạt đồng thuận</span>
+        </div>
+        <p className="text-muted-foreground leading-relaxed">
+          Quy trình đánh giá bài báo này đã kết thúc ở trạng thái không đạt đồng thuận sau thời hạn thảo luận.
+          Kết quả này <strong>không</strong> đồng nghĩa với việc bài báo bị loại vì không đạt tiêu chí khoa học.
+        </p>
+        <div className="pt-2 border-t border-amber-500/20 text-[11px] text-muted-foreground space-y-1">
+          <div><strong>Lý do đóng:</strong> {reasonLabel}</div>
+          {closureDetails?.note && <div><strong>Ghi chú:</strong> {closureDetails.note}</div>}
+          {closureDetails?.closedAt && (
+            <div>
+              <strong>Thời gian đóng:</strong> {new Date(closureDetails.closedAt).toLocaleString("vi-VN")} · <strong>Thực hiện:</strong> {closedByName}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Two independent ballots preserved */}
+      <div className="space-y-2 pt-1">
+        <h5 className="text-xs font-semibold text-muted-foreground">Hai phiếu đánh giá độc lập ban đầu (bảo lưu)</h5>
+        <div className="space-y-2">
+          {round.reviews.map(r => {
+            const reviewerName = round.assignments.find(a => a.id === r.assignmentId)?.name ?? "Reviewer";
+            return (
+              <div key={r.id} className="p-3 rounded-lg border text-xs bg-card space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <strong>{reviewerName}</strong>
+                  <ScreeningStatusBadge tone={screeningChoiceTone(r.decision)}>{choiceLabels[r.decision]}</ScreeningStatusBadge>
+                </div>
+                {r.exclusionReason && <p className="text-rose-700 dark:text-rose-400"><strong>Lý do loại:</strong> {r.exclusionReason}</p>}
+                {r.comment && <p className="text-muted-foreground italic">{r.comment}</p>}
+                <ReviewContextSummary review={r} />
+                <div className="text-[11px] text-muted-foreground">Phiên bản {r.revision} · {new Date(r.submittedAt).toLocaleString("vi-VN")}</div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Discussion history */}
+      <div className="pt-2">
+        <h5 className="text-xs font-semibold text-muted-foreground mb-2">Lịch sử trao đổi và sự kiện</h5>
+        <RoundHistory projectId={projectId} round={round} people={people} readOnly={true} />
+      </div>
+
+      {/* Owner reopen button */}
+      {!readOnly && (round.canReopenUnresolved || round.canManage) && (
+        <div className="pt-3 border-t">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="text-xs gap-1.5"
+            onClick={() => setIsReopenOpen(true)}
+          >
+            <RotateCcw size={13} />
+            Mở lại vòng đánh giá mới
+          </Button>
+        </div>
+      )}
+
+      {/* Modal: Mở lại vòng đánh giá mới */}
+      <Dialog open={isReopenOpen} onOpenChange={setIsReopenOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Mở lại vòng đánh giá cho bài báo</DialogTitle>
+            <DialogDescription>
+              Hệ thống sẽ tạo một vòng đánh giá mới (Vòng {round.number + 1}). Vòng đánh giá đã đóng và hai phiếu độc lập cũ vẫn được lưu trữ nguyên vẹn trong lịch sử đề tài.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleReopenSubmit} className="space-y-4 py-2">
+            <div>
+              <label className="text-xs font-semibold text-foreground block mb-1">
+                Lý do mở lại vòng đánh giá <span className="text-rose-500">*</span>
+              </label>
+              <textarea
+                value={reopenReason}
+                onChange={e => setReopenReason(e.target.value)}
+                placeholder="Nêu căn cứ hoặc lý do đề tài cần mở lại đánh giá bài báo này..."
+                rows={3}
+                required
+                minLength={5}
+                className="w-full rounded-lg border border-border bg-background p-2.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+              <p className="text-[11px] text-muted-foreground mt-0.5">Tối thiểu 5 ký tự để lưu vào nhật ký kiểm toán.</p>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" size="sm" onClick={() => setIsReopenOpen(false)}>
+                Hủy
+              </Button>
+              <Button type="submit" size="sm" disabled={command.isPending || reopenReason.trim().length < 5}>
+                {command.isPending ? "Đang mở lại..." : "Xác nhận mở lại"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }
 

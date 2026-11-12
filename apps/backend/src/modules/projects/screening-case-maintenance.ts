@@ -30,4 +30,13 @@ export async function maintainScreeningCases(caseId?: string) {
     }
     cursor = rows[rows.length - 1]!.id;
   }
+  if (!caseId) {
+    const projects = await db.screeningObligation.findMany({ where: { endedAt: null }, distinct: ["projectId"], select: { projectId: true } });
+    for (const row of projects) {
+      try {
+        const project = await db.project.findUnique({ where: { id: row.projectId }, select: { ownerId: true } });
+        if (project) await withWorkspace(row.projectId, project.ownerId, {}, reconcileScreeningObligations);
+      } catch (error) { logger.warn({ err: error, projectId: row.projectId }, "Screening obligation reconciliation will retry"); }
+    }
+  }
 }

@@ -5,6 +5,7 @@ import { evidenceScope, evidenceStatus, extractionQuestions, evidenceSourceChang
 import { createHash } from "node:crypto";
 import { RAG_INDEX_VERSION, sourceFingerprint } from "../knowledge/knowledge.text.js";
 import { AppError } from "../../common/exceptions/app-error.js";
+import { matrixCriteriaValues } from "./project-matrix.service.js";
 import { withWorkspace, workspaceRevision, workspaceEvent, expectWorkspaceVersion, assertWorkspaceRetry, jsonSnapshot, type WorkspaceContext } from "./workspace-access.js";
 
 export async function researchPaper(context: WorkspaceContext, paperId: string) {
@@ -126,7 +127,7 @@ export const projectEvidenceService = {
         Object.assign(source, { corpusPaperId: corpusPaper.id, originalSuggestion: corpusPaper.evidence });
       }
       const { clientKey, paperId, origin, sourceChunkId: _chunk, corpusPaperId: _corpus, analysisHash: _analysis, questionIds: _questions, draft: _draft, sourceScope: _scope, ...content } = input;
-      const row = await tx.projectEvidenceItem.create({ data: { ...content, projectId: project.id, paperId, origin, clientKey, extractedById: context.actorId, sourceSnapshot: jsonSnapshot(source) } });
+      const row = await tx.projectEvidenceItem.create({ data: { ...content, criteriaValues: await matrixCriteriaValues(context, content.criteriaValues), projectId: project.id, paperId, origin, clientKey, extractedById: context.actorId, sourceSnapshot: jsonSnapshot(source) } });
       await workspaceRevision(context, "EXTRACTION", row, input);
       await workspaceEvent(context, "EVIDENCE_EXTRACTED", "EXTRACTION", row.id);
       return row;
@@ -139,7 +140,7 @@ export const projectEvidenceService = {
       // The original source snapshot and origin are immutable even when the interpretation is corrected.
       const source: Record<string, unknown> = { ...row.sourceSnapshot as Record<string, unknown>, ...await workflowMetadata(context, input) };
       await invalidateSourceAssessments(context.tx, context.project.id, context.actorId, { evidenceItemId: id });
-      const next = await context.tx.projectEvidenceItem.update({ where: { id }, data: { ...content, sourceSnapshot: jsonSnapshot({ ...source, quoteCheckedAgainstIndexedSource: Boolean(content.quotation && typeof source.sourceText === "string" && source.sourceText.includes(content.quotation)) }), reviewState: "PENDING", reviewRationale: "", reviewedById: null, reviewedAt: null, version: { increment: 1 } } });
+      const next = await context.tx.projectEvidenceItem.update({ where: { id }, data: { ...content, ...(content.criteriaValues !== undefined ? { criteriaValues: await matrixCriteriaValues(context, content.criteriaValues, row.criteriaValues) } : {}), sourceSnapshot: jsonSnapshot({ ...source, quoteCheckedAgainstIndexedSource: Boolean(content.quotation && typeof source.sourceText === "string" && source.sourceText.includes(content.quotation)) }), reviewState: "PENDING", reviewRationale: "", reviewedById: null, reviewedAt: null, version: { increment: 1 } } });
       await workspaceRevision(context, "EXTRACTION", next); await workspaceEvent(context, "EVIDENCE_REVISED", "EXTRACTION", id);
       return next;
     });

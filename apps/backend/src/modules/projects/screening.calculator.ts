@@ -12,7 +12,7 @@ export type EffectiveBallot = {
   revision?: number; scope?: string | null; fullTextReference?: string | null;
 };
 /** Protocol v11. Caller supplies only submitted, effective assignment revisions. */
-export function evaluateScreeningPair(settings: Pick<ScreeningSettings, "screeningMode" | "workflowVersion" | "exclusionCriteria">, phase: string, ballots: readonly EffectiveBallot[], exclusionEvidenceAvailable = true): ScreeningOutcome {
+export function evaluateScreeningPair(settings: Pick<ScreeningSettings, "screeningMode" | "workflowVersion" | "exclusionCriteria" | "workflowKind">, phase: string, ballots: readonly EffectiveBallot[], exclusionEvidenceAvailable = true): ScreeningOutcome {
   if (ballots.length === 0) return "WAITING_REVIEWS";
   if (ballots.length === 1) return "WAITING_SECOND_REVIEW";
   if (ballots.length !== 2 || ballots[0]!.reviewerId === ballots[1]!.reviewerId || ballots[0]!.roundId !== ballots[1]!.roundId || ballots.some(b => !["INCLUDE", "EXCLUDE", "UNSURE"].includes(b.decision) || b.scope && b.scope !== phase)) return "NEEDS_CLARIFICATION";
@@ -22,13 +22,17 @@ export function evaluateScreeningPair(settings: Pick<ScreeningSettings, "screeni
     if (phase === "FULL_TEXT" && differingExclusionReasons(ballots)) return "NEEDS_RESOLUTION";
     return "EXCLUDED";
   }
+  if (settings.workflowKind === "TEAM_SCREENING") {
+    if (has("UNSURE")) return "NEEDS_CLARIFICATION";
+    return has("INCLUDE") && has("EXCLUDE") ? "CONFLICT" : "FINAL_INCLUDED";
+  }
   if (settings.screeningMode === "TWO_STAGE" && phase === "TITLE_ABSTRACT") return has("EXCLUDE") ? "CONFLICT" : "ADVANCE_TO_FULLTEXT";
   if (has("UNSURE")) return phase !== "FULL_TEXT" && has("EXCLUDE") ? "NEEDS_RESOLUTION" : "NEEDS_CLARIFICATION";
   return has("INCLUDE") && has("EXCLUDE") ? "CONFLICT" : "FINAL_INCLUDED";
 }
 
 export function outcomeState(outcome: ScreeningOutcome): ScreeningState {
-  return ({ WAITING_REVIEWS: "NOT_REVIEWED", WAITING_SECOND_REVIEW: "IN_REVIEW", FINAL_INCLUDED: "INCLUDED", EXCLUDED: "EXCLUDED", CONFLICT: "NEEDS_RESOLUTION", NEEDS_RESOLUTION: "NEEDS_RESOLUTION", NEEDS_CLARIFICATION: "NEEDS_MORE_INFO", ADVANCE_TO_FULLTEXT: "INCLUDED", WAITING_FULLTEXT: "WAITING_FULLTEXT" } as const)[outcome];
+  return ({ CLOSED_UNRESOLVED: "CLOSED_UNRESOLVED", WAITING_REVIEWS: "NOT_REVIEWED", WAITING_SECOND_REVIEW: "IN_REVIEW", FINAL_INCLUDED: "INCLUDED", EXCLUDED: "EXCLUDED", CONFLICT: "NEEDS_RESOLUTION", NEEDS_RESOLUTION: "NEEDS_RESOLUTION", NEEDS_CLARIFICATION: "NEEDS_MORE_INFO", ADVANCE_TO_FULLTEXT: "INCLUDED", WAITING_FULLTEXT: "WAITING_FULLTEXT" } as const)[outcome];
 }
 
 /** Only a complete, distinct pair from one round can carry a disagreement. */
@@ -85,4 +89,7 @@ export function balancedReviewers(eligible: string[], existing: string[], requir
   }
   return [...selected];
 }
-export const independentWorkflow = (settings: { reviewMode?: string; workflowVersion?: number }) => (settings.reviewMode === "INDEPENDENT" && (settings.workflowVersion ?? 1) >= 3) || (settings.reviewMode === "SIMPLE" && (settings.workflowVersion ?? 1) >= 5);
+export const independentWorkflow = (settings: { reviewMode?: string; workflowVersion?: number; workflowKind?: string }) =>
+  settings.workflowKind === "TEAM_SCREENING" ||
+  (settings.reviewMode === "INDEPENDENT" && (settings.workflowVersion ?? 1) >= 3) ||
+  (settings.reviewMode === "SIMPLE" && (settings.workflowVersion ?? 1) >= 5);

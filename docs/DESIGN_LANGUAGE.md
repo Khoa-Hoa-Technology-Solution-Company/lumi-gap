@@ -33,15 +33,17 @@ Token thật (CSS variables, định dạng HSL của shadcn, `:root` trong `glo
 ```
 --background / --card / --popover   0 0% 100%          trắng tinh
 --foreground                        222.2 84% 4.9%     gần đen xanh navy
---primary                           222.2 47.4% 11.2%  navy đậm (nút chính)
+--primary                           221.2 83.2% 53.3%  = #2563EB (blue-600): nút chính, link, tab đang chọn
 --primary-foreground                210 40% 98%
 --secondary / --muted / --accent    210 40% 96.1%
 --muted-foreground                  215.4 16.3% 46.9%
 --destructive                       0 84.2% 60.2%
 --border / --input                  214.3 31.8% 91.4%
---ring                              222.2 84% 4.9%
+--ring                              221.2 83.2% 53.3%  cùng màu primary
 --radius                            0.5rem
 ```
+
+Màu nhấn của giao diện là **xanh dương `#2563EB`**, không phải navy. Navy `222.2 84% 4.9%` chỉ dùng cho chữ (`--foreground`) và nền chế độ tối.
 
 ### 2.2. Dark Mode (Premium feel — code at night)
 
@@ -50,14 +52,16 @@ Token thật (`.dark` trong `globals.css`):
 ```
 --background / --card / --popover   222.2 84% 4.9%     navy rất đậm, không dùng đen thuần
 --foreground                        210 40% 98%
---primary                           210 40% 98%
---primary-foreground                222.2 47.4% 11.2%
+--primary                           217.2 91.2% 59.8%  = #3B82F6 (blue-500)
+--primary-foreground                0 0% 100%
 --secondary / --muted / --accent    217.2 32.6% 17.5%
 --muted-foreground                  215 20.2% 65.1%
 --destructive                       0 62.8% 30.6%
 --border / --input                  217.2 32.6% 17.5%
---ring                              212.7 26.8% 83.9%
+--ring                              217.2 91.2% 59.8%
 ```
+
+Lưu ý tương phản: chữ trắng trên `#3B82F6` chỉ đạt khoảng 3,7:1, thấp hơn mức 4,5:1 cho chữ thường. Vùng Community và Projects của web dùng bộ riêng `.lumi-surface` (`apps/web/src/theme/lumi-surface.css`: nhấn `#60A5FA`, chữ trên nhấn `#0B1120`, đạt khoảng 7,4:1), và bảng token mobile ở §11 theo bộ này. Web hiện còn dùng lẫn vài nền tối khác (`slate-900`, `#121212`, `#09090b`, `#0B1120`); chưa thống nhất.
 
 ### 2.3. Biểu đồ và badge điểm AI
 
@@ -290,11 +294,79 @@ Rule: **icon size = font size × 1**. body text 16px → icon 16px (h-4 w-4).
 
 ## 11. Mobile (Flutter)
 
-Mobile client là Flutter (`apps/flutter_mobile`, Dart); app React Native/Expo cũ đã bị gỡ. Màu của mobile nằm trong `apps/flutter_mobile/lib/core/theme/app_colors.dart` và không tự đồng bộ với CSS variables của web, nên đổi màu phải sửa cả hai nơi.
+Mobile client là Flutter (`apps/flutter_mobile`, Dart); app React Native/Expo cũ đã bị gỡ.
 
-- Team test trên Android (emulator hoặc thiết bị thật); code Flutter vẫn đa nền tảng.
+**Mobile không tự đồng bộ với web.** Token mobile là hằng số Dart, không đọc CSS variables. Bảng dưới được chọn theo màu web dùng nhiều nhất (chế độ sáng) và theo bộ `.lumi-surface` (chế độ tối), rồi được ghi tay vào code. Đổi màu hoặc cỡ chữ ở web không làm mobile đổi theo, và ngược lại: phải sửa cả hai nơi, và sửa luôn bảng này cùng test `test/theme_tokens_test.dart`.
+
+- Team test trên Android (emulator hoặc thiết bị thật); khung thiết kế Pixel 6 (412×892dp). Code Flutter vẫn đa nền tảng.
 - Touch target tối thiểu 48dp (Material 3).
-- Giữ các nguyên tắc chung: skeleton thay spinner cho danh sách, không truyền đạt thông tin chỉ bằng màu, hỗ trợ light và dark.
+- Giữ các nguyên tắc chung: skeleton thay spinner cho danh sách, không truyền đạt thông tin chỉ bằng màu, hỗ trợ light và dark, chịu được cỡ chữ hệ thống 1,3 ở bề rộng 320dp.
+- Không dùng icon gợi "AI" (lấp lánh, đũa phép); dùng Material Symbols trung tính.
+
+### 11.1. Token màu mobile
+
+Nguồn: `lib/core/theme/app_colors.dart` (hằng số), `lib/core/theme/lumi_colors.dart` (`context.lumi`), `lib/core/theme/app_theme.dart` (`ColorScheme` và theme component). Màn hình đọc màu qua `Theme.of(context).colorScheme` hoặc `context.lumi`, không viết hex trong màn hình.
+
+| Token (`context.lumi`) | Ý nghĩa | Sáng | Tối |
+|---|---|---|---|
+| `background` | Nền trang | `#F8FAFC` | `#0B1120` |
+| `surface` | Card, sheet, thanh tab | `#FFFFFF` | `#131C31` |
+| `surfaceMuted` | Chip, nền phụ, hàng xen kẽ | `#F1F5F9` | `#1E293B` |
+| `line` | Viền, divider | `#E2E8F0` | `#1E293B` |
+| `foreground` | Chữ chính | `#0F172A` | `#F1F5F9` |
+| `foregroundSecondary` | Chữ phụ đậm (mô tả) | `#475569` | `#CBD5E1` |
+| `muted` | Chữ mờ (metadata, thời gian) | `#64748B` | `#94A3B8` |
+| `primary` | Nút chính, link, tab đang chọn | `#2563EB` | `#60A5FA` |
+| `primaryPressed` | Trạng thái nhấn | `#1D4ED8` | `#93C5FD` |
+| `onPrimary` | Chữ trên nền `primary` | `#FFFFFF` | `#0B1120` |
+| `primarySoft` | Nền nhạt của chip và badge chính | `#EFF6FF` | `#172554` |
+| `error` / `onError` | Lỗi / chữ trên nền lỗi | `#DC2626` / `#FFFFFF` | `#F87171` / `#0B1120` |
+| `success` | Thành công | `#15803D` | `#4ADE80` |
+| `warning` | Cảnh báo | `#B45309` | `#FBBF24` |
+| `focus` | Viền focus (2px) | `#2563EB` | `#60A5FA` |
+
+Quy tắc đi kèm:
+
+- **Cặp màu bị cấm:** không đặt chữ `muted` lên nền `surfaceMuted`. Ở chế độ sáng cặp này chỉ khoảng 4,3:1 (dưới 4,5:1). Trên `surfaceMuted` dùng `foregroundSecondary` hoặc `foreground`. Tương tự, chữ và spinner của nút bị khóa (nền `surfaceMuted`) dùng `foregroundSecondary`.
+- Các cặp sau đều ≥ 4,5:1 ở cả hai chế độ và được test: `foreground`/`background`, `foreground`/`surface`, `muted`/`surface`, `muted`/`background`, `foregroundSecondary`/`surface`, `foregroundSecondary`/`surfaceMuted`, `onPrimary`/`primary`, `primary`/`primarySoft`, `error`/`surface`, `success`/`surface`, `warning`/`surface`, `onError`/`error`.
+- Bo góc: 8 (card, nút, ô nhập), 6 (chip nhỏ), 12 (bottom sheet, dialog), 999 (avatar, pill). Khoảng cách theo lưới 4/8, lề trang 16.
+- Chế độ sáng: card dùng elevation 0 và viền `line`. Chế độ tối không dùng bóng.
+- Thông báo trạng thái luôn có icon và chữ: thành công dùng `success`, lỗi dùng `error`, cảnh báo dùng `warning`, thông tin trung tính dùng `foregroundSecondary`.
+
+### 11.2. Chữ mobile
+
+Font **Source Sans 3**, đóng gói bản TTF tĩnh (400, 500, 600, 700, italic 400) trong `assets/fonts/` cùng giấy phép OFL. Thang chữ thu gọn so với web (web tính cho desktop), đọc qua `Theme.of(context).textTheme`:
+
+| Vai trò Material | Dùng cho | Cỡ / dòng / độ đậm |
+|---|---|---|
+| `headlineSmall` | Tiêu đề trang | 24 / 32 / 600 |
+| `titleLarge` | Tiêu đề mục | 20 / 28 / 600 |
+| `titleMedium` | Tiêu đề card, tiêu đề bài báo trong danh sách | 16 / 24 / 600 |
+| `bodyLarge` | Nội dung mặc định | 16 / 24 / 400 |
+| `bodyMedium` | Metadata, mô tả ngắn | 14 / 20 / 400 |
+| `bodySmall` | Chú thích | 12 / 16 / 400 |
+| `labelLarge` | Chữ trên nút | 14 / 20 / 600 |
+| `labelMedium` | Badge, nhãn, thời gian | 12 / 16 / 500 |
+
+Đoạn đọc dài (abstract, báo cáo) dùng `bodyLarge` với `height: 1.6`. Không chặn cỡ chữ hệ thống.
+
+### 11.3. Điều hướng mobile
+
+Bốn tab trong `NavigationBar`, mỗi tab có icon và nhãn: Trang chủ, Khám phá, Dự án, Hồ sơ. Thông báo là nút chuông trên AppBar của ba tab đầu (badge số chưa đọc, `9+` khi hơn 9), mở màn riêng ngoài thanh tab. Nút Back của Android ở tab khác Trang chủ thì về Trang chủ; ở Trang chủ thì thoát app.
+
+### 11.4. Phạm vi hiện tại
+
+- **Đã theo token** (`context.lumi`, `Theme.textTheme`): đăng nhập, quên mật khẩu, Trang chủ, Khám phá, Hồ sơ, thông báo, banner xác minh email, tab Chat của dự án (chat nhóm realtime) và các màn dùng chung (`paper_card`, `app_error_state`, `confirm_dialog`, chuông thông báo).
+- **Chưa chuyển:** các màn còn lại (xu hướng, báo cáo, khoảng trống, tìm kiếm, chi tiết bài báo, bài báo của tôi, đã đánh dấu, danh sách dự án, tab Tổng quan và Thành viên của dự án, admin, bảng xếp hạng) vẫn còn màu `Color(0x…)` (542 chỗ) và `fontSize:` (317 chỗ) viết thẳng; chuyển sang token khi màn đó được sửa. Màn mới không được thêm hex hay `fontSize` viết thẳng.
+- Mọi màn đã dịch được (xem 11.5); chạy được ở 320dp + cỡ chữ 1,3 với cả hai ngôn ngữ đối với các màn có test layout (Trang chủ, Chat nhóm, sheet ngôn ngữ, các tab dự án).
+
+### 11.5. Ngôn ngữ mobile (vi/en)
+
+- Hai ngôn ngữ: Tiếng Việt và English. Mặc định theo ngôn ngữ ưu tiên đầu của điện thoại (vi thì vi, còn lại en) và đổi theo khi người dùng đổi ngôn ngữ điện thoại lúc app đang chạy; người dùng có thể chọn cố định ở Hồ sơ → Ngôn ngữ (lưu trong secure storage).
+- **Thêm chuỗi:** viết chuỗi **tiếng Anh** làm khóa, `context.t('Save changes')`; có tham số thì `context.t('Hello, {{name}}', {'name': n})` (placeholder `{{name}}` giống web); số nhiều thì `context.plural(n, one: '{{count}} paper', other: '{{count}} papers')`. Rồi thêm bản dịch vào `lib/core/i18n/translations_vi.dart` (ưu tiên đúng câu web đã dùng cho cùng khóa để thuật ngữ hai bên thống nhất). Thiếu bản dịch thì app hiện tiếng Anh.
+- Chuỗi nằm trong model, enum hay hằng (không có `BuildContext`) bọc bằng `tk('…')` để trả về khóa, rồi hiển thị bằng `context.t(giáTrị)`. Ngoài cây widget dùng `trNow`. Không dịch chữ do server trả.
+- **Test chặn lỗi:** `test/i18n_test.dart` quét `lib/` và báo tên khóa + file khi (a) khóa không có bản dịch vi, (b) bản dịch thừa hoặc lệch placeholder, (c) có `Text('…')` hay `labelText`/`hintText`/`tooltip`/… viết thẳng. Chuỗi không cần dịch (tên riêng, ký hiệu) ghi `// i18n-ignore: <lý do>` ngay trên dòng đó.
+- Ngày giờ: `relativeTime(time, locale)` và `formatShortDate(time, locale)` (`dd/MM/yyyy` ở vi, `Nov 9, 2026` ở en); không tự ghép chuỗi ngày trong widget.
 
 ---
 
@@ -333,10 +405,11 @@ Trước khi build component mới, đối chiếu:
 CSS variables nằm trong:
 ```
 apps/web/src/theme/globals.css                       (web — đã wire next-themes)
-apps/flutter_mobile/lib/core/theme/app_colors.dart   (mobile Flutter)
+apps/flutter_mobile/lib/core/theme/app_colors.dart   (mobile Flutter: hằng số màu)
+apps/flutter_mobile/lib/core/theme/app_theme.dart    (mobile Flutter: ColorScheme và theme component)
 ```
 
-Đổi màu web → sửa `globals.css`; component dùng token sẽ tự cập nhật. Mobile sửa riêng trong file Dart.
+Đổi màu web → sửa `globals.css`; component dùng token sẽ tự cập nhật. Mobile sửa riêng trong file Dart và không tự theo web (xem §11).
 
 ---
 

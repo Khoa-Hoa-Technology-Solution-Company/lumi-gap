@@ -304,4 +304,87 @@ describe("ScreeningConflictResolution Component", () => {
     await settle(); await settle(); expect(document.body.textContent).toContain("Hai Reviewer chưa thống nhất");
     expect(button("Quay lại")).toBeDefined(); expect(button("Cập nhật đánh giá")).toBeDefined();
   });
+  it("separates ballots and discussion into accessible tabs with shared actions", async () => {
+    await renderRound({ ...mockRound, reviews: mockRound.reviews.map(r => ({ ...r, exclusionReason: "", comment: "Cần đối chiếu đối tượng nghiên cứu.", fullTextReference: undefined })) });
+    const tabs = [...container.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
+    expect(tabs.map(t => t.textContent)).toEqual(["Trao đổi", "Hai phiếu đánh giá"]);
+    const panel = (tab: HTMLElement) => document.getElementById(tab.getAttribute('aria-controls')!)!;
+    expect(tabs[0]!.getAttribute('aria-selected')).toBe('true');
+    expect(panel(tabs[0]!).hidden).toBe(false);
+    expect(panel(tabs[1]!).hidden).toBe(true);
+    expect(panel(tabs[1]!).querySelectorAll('article')).toHaveLength(2);
+    expect(container.querySelector('.screening-review-detail-link')).toBeNull();
+    expect(panel(tabs[1]!).textContent).toContain('Cần đối chiếu đối tượng nghiên cứu.');
+    expect(button('Xem căn cứ')).toBeUndefined();
+    await act(async () => tabs[0]!.click());
+    expect(panel(tabs[1]!).hidden).toBe(true);
+    expect(panel(tabs[0]!).hidden).toBe(false);
+    expect(button('Cập nhật đánh giá')!.closest('[role="tabpanel"]')).toBe(panel(tabs[1]!));
+    expect(button('Nhờ người phân xử')).toBeUndefined();
+    expect(container.querySelector('.screening-conflict-container')?.getAttribute('data-focus-chat')).toBe('true');
+    await act(async () => tabs[1]!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true })));
+    expect(document.activeElement).toBe(tabs[0]);
+    expect(tabs[0]!.getAttribute('aria-selected')).toBe('true');
+    await act(async () => tabs[0]!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true })));
+    expect(document.activeElement).toBe(tabs[1]);
+    expect(tabs[1]!.getAttribute('aria-selected')).toBe('true');
+    expect(tabs[0]!.tabIndex).toBe(-1);
+  });
+
+  it("keeps long reasons bounded and available as safe text in an expandable disclosure", async () => {
+    const long = '<img src=x onerror=alert(1)> ' + 'Đối chiếu thông tin trong bài báo. '.repeat(500);
+    await renderRound({ ...mockRound, reviews: [{ ...mockRound.reviews[0]!, comment: long }] });
+    const preview = container.querySelector('article p.line-clamp-3')!;
+    expect(preview.textContent).toBe(long);
+    expect(preview.querySelector('img')).toBeNull();
+    const disclosure = container.querySelector('article details')!;
+    expect(disclosure.querySelector('summary')?.textContent).toBe('Xem đầy đủ căn cứ');
+    await act(async () => disclosure.setAttribute('open', ''));
+    expect(disclosure.textContent).toContain(long);
+    expect(disclosure.querySelector('img')).toBeNull();
+    await renderRound({ ...mockRound, hiddenReviews: true, reviews: [] });
+    expect(container.querySelector('article')).toBeNull();
+    expect(container.textContent).not.toContain(long);
+  });
+
+  it("preserves the chat draft and editor while switching between tabs", async () => {
+    await renderRound(mockRound);
+    await act(async () => button("Trao đổi")!.click());
+    const editor = container.querySelector<HTMLTextAreaElement>('[aria-label="Tin nhắn trao đổi về bài báo"]')!;
+    await inputText(editor, "Mình cần đối chiếu nguồn trước khi đổi phiếu.");
+    await act(async () => button("Hai phiếu đánh giá")!.click());
+    expect(editor.isConnected).toBe(true);
+    expect(editor.value).toBe("Mình cần đối chiếu nguồn trước khi đổi phiếu.");
+    await act(async () => button("Trao đổi")!.click());
+    expect(editor.isConnected).toBe(true);
+    expect(editor.value).toBe("Mình cần đối chiếu nguồn trước khi đổi phiếu.");
+    expect(mocks.action).not.toHaveBeenCalled();
+  });
+
+  it("opens a discussion deep link in the discussion tab of the actual paper modal", async () => {
+    const current = { ...mockRound, canManage: false };
+    mocks.detail.mockResolvedValue(current);
+    mocks.rounds.mockResolvedValue({ items: [current], total: 1, page: 1, hasNext: false });
+    mocks.board.mockResolvedValue({ items: [{ paperId: "paper-1", title: "Deep-linked paper", authors: [], proposalReason: "", proposedAt: current.myReview!.submittedAt, updatedAt: current.myReview!.submittedAt, canEditProposal: false, round: current }], settings: current.settings, people });
+    await act(async () => root.render(<QueryClientProvider client={client}><MemoryRouter initialEntries={["/?section=discussion&round=round-1"]}><ReadingPaperModal projectId="proj-1" paperId="paper-1" readOnly={false} onClose={vi.fn()} /></MemoryRouter></QueryClientProvider>));
+    await settle(); await settle();
+    const tabs = [...document.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
+    expect(tabs.find(t => t.textContent === "Trao đổi")?.getAttribute('aria-selected')).toBe('true');
+    const editor = document.querySelector<HTMLTextAreaElement>('[aria-label="Tin nhắn trao đổi về bài báo"]')!;
+    expect(editor.closest<HTMLElement>('[role="tabpanel"]')!.hidden).toBe(false);
+  });
+
+  it("loads discussion by default and stops polling while its tab is hidden", async () => {
+    await renderRound(mockRound);
+    await settle();
+    expect(mocks.history).toHaveBeenCalledWith("proj-1", "round-1", 1, "DISCUSSION");
+    const key = ["project-research", "user-1", "proj-1", "screening-discussion", "round-1", false];
+    const query = client.getQueryCache().find({ queryKey: key })!;
+    expect(query.isActive()).toBe(true);
+    await act(async () => button("Hai phiếu đánh giá")!.click());
+    expect(query.isActive()).toBe(false);
+    await act(async () => button("Trao đổi")!.click());
+    expect(query.isActive()).toBe(true);
+  });
+
 });

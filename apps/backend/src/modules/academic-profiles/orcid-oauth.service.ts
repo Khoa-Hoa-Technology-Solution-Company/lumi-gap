@@ -12,6 +12,8 @@ import { mapAcademicIdentity } from "./academic-identity.service.js";
 import { isValidOrcid } from "./dto/academic-profile.schema.js";
 import { orcidCallbackSchema } from "./dto/orcid-oauth.schema.js";
 import { orcidCache, orcidLatestKey, orcidStateDigest, orcidStateKey } from "./orcid-oauth-state.js";
+import { cancelPendingOrcid } from "./orcid-oauth-state.js";
+import { resolveOAuthReturnOrigin } from "../auth/google-oidc.service.js";
 
 const stateSchema = z.object({ userId: z.string().uuid(), sessionId: z.string(), createdAt: z.number(), config: z.string(), identity: z.object({ id: z.string(), updatedAt: z.string() }).nullable() });
 const invalidState = () => AppError.forbidden("ORCID connection expired. Start again with the original LumiGap account.");
@@ -112,5 +114,50 @@ export const orcidOauthService = {
       if (error && typeof error === "object" && "code" in error && error.code === "P2025") throw AppError.conflict("Your academic identity changed. Please connect ORCID again.");
       throw error;
     }
+  },
+};
+
+/** Compatibility contract for main's API; linking still uses one authenticated flow. */
+export function resolveOrcidBaseUrl(rawBaseUrl: string = env.ORCID_BASE_URL) {
+  const baseUrl = rawBaseUrl.replace(/\/+$/, "");
+  if (baseUrl !== "https://orcid.org" && baseUrl !== "https://sandbox.orcid.org") throw AppError.serviceUnavailable("ORCID base URL is invalid or not allowed");
+  return { baseUrl, environment: baseUrl === "https://orcid.org" ? "production" as const : "sandbox" as const };
+}
+export function isValidOrcidRedirectUri(value?: string) {
+  if (!value) return false;
+  try { const url = new URL(value); return !url.username && !url.password && !url.search && !url.hash && (url.protocol === "https:" || url.protocol === "http:" && ["localhost", "127.0.0.1"].includes(url.hostname)); } catch { return false; }
+}
+export function getOrcidConfig() {
+  return { ...resolveOrcidBaseUrl(), configured: Boolean(env.ORCID_CLIENT_ID && env.ORCID_CLIENT_SECRET && isValidOrcidRedirectUri(env.ORCID_REDIRECT_URI)) };
+}
+export const orcidOAuthService = {
+  async status(input: string) {
+    const userId = await actor(input);
+    const identity = await getPrisma().academicIdentityLink.findFirst({ where: { userId, provider: "ORCID" } });
+    return { ...getOrcidConfig(), connected: identity?.verificationStatus === "PROVIDER_CONNECTED", link: identity ? mapAcademicIdentity(identity as Parameters<typeof mapAcademicIdentity>[0]) : null };
+  },
+  async start(input: string, sessionId?: string, _options?: { returnTo?: string; returnOrigin?: string }) {
+    if (!sessionId) throw AppError.unauthorized("An active session is required to connect ORCID");
+    const result = await orcidOauthService.start(input, sessionId);
+    return { ...result, url: result.authorizationUrl };
+  },
+  async complete(input: { authenticatedUserId?: string; authenticatedSessionId?: string; code?: string; state?: string; error?: string; errorDescription?: string }) {
+    configured();
+    if (!input.authenticatedUserId || !input.authenticatedSessionId) throw AppError.unauthorized("Complete ORCID linking from the original authenticated session");
+    const result = await orcidOauthService.callback(input.authenticatedUserId, input.authenticatedSessionId, { state: input.state, ...(input.error ? { error: input.error } : { code: input.code }) });
+    if (result.cancelled) throw AppError.badRequest("ORCID authorization was cancelled");
+    return { link: result.identity, returnTo: "/profile", returnOrigin: resolveOAuthReturnOrigin() };
+  },
+  async disconnect(input: string) {
+    const userId = await actor(input);
+    const removed = await getPrisma().$transaction(async tx => {
+      await tx.$queryRaw`SELECT id FROM users WHERE id=${userId}::uuid FOR NO KEY UPDATE`;
+      await cancelPendingOrcid(userId);
+      const identity = await tx.academicIdentityLink.findFirst({ where: { userId, provider: "ORCID" } });
+      if (identity) await tx.academicIdentityLink.delete({ where: { id: identity.id, userId, updatedAt: identity.updatedAt } });
+      return identity;
+    });
+    await auditService.log("academic_profile.orcid.disconnected", { userId, targetTableName: "academic_identity_links", targetRecordId: removed?.id });
+    return { disconnected: true as const };
   },
 };

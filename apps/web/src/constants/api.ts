@@ -24,6 +24,8 @@ export const API_ROUTES = {
     orcid: "/academic-profiles/me/orcid",
     academicIdentities: "/academic-profiles/me/academic-identities",
     academicIdentity: (identityId: string) => `/academic-profiles/me/academic-identities/${identityId}`,
+    orcidConnect: "/academic-profiles/me/orcid/connect",
+    orcidCallback: "/academic-profiles/me/orcid/callback",
     public: (userId: string) => `/academic-profiles/${userId}`,
     byHandle: (handle: string) => `/academic-profiles/by-handle/${encodeURIComponent(handle)}`,
     forumActivity: (userId: string) => `/academic-profiles/${encodeURIComponent(userId)}/forum-activity`,

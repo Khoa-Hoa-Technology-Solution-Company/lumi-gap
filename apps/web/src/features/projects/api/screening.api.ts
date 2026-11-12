@@ -6,6 +6,10 @@ const path = (id: string, suffix: string) => `/projects/${encodeURIComponent(id)
 async function get<T>(id: string, suffix: string, params?: Record<string, string | number>) { return (await api.get<{ data: T }>(path(id, suffix), { params })).data.data; }
 async function write(id: string, suffix: string, data: unknown, method = "post") { return (await api.request<{ data: unknown }>({ url: path(id, suffix), method, data })).data.data; }
 export const screeningApi = {
+  extendDiscussion: (id: string, roundId: string, data: { expectedVersion: number; hours?: number; reason: string; clientKey?: string }) => write(id, `rounds/${roundId}/discussion/extend`, typeof data === "object" && data !== null && "clientKey" in data && data.clientKey ? data : { ...data, clientKey: crypto.randomUUID() }),
+  reopenUnresolved: (id: string, roundId: string, data: { expectedVersion: number; reason: string; clientKey?: string }) => write(id, `rounds/${roundId}/reopen-unresolved`, typeof data === "object" && data !== null && "clientKey" in data && data.clientKey ? data : { ...data, clientKey: crypto.randomUUID() }),
+  closeUnresolved: (id: string, roundId: string, data: { expectedVersion: number; reason: string; note?: string; clientKey?: string }) => write(id, `rounds/${roundId}/close-unresolved`, typeof data === "object" && data !== null && "clientKey" in data && data.clientKey ? data : { ...data, clientKey: crypto.randomUUID() }),
+  requestMoreInfo: (id: string, roundId: string, data: { expectedVersion: number; reason: string; clientKey?: string }) => write(id, `rounds/${roundId}/request-more-info`, typeof data === "object" && data !== null && "clientKey" in data && data.clientKey ? data : { ...data, clientKey: crypto.randomUUID() }),
   automaticTasks: (id: string) => get<ScreeningAutomaticTask[]>(id, "automatic-tasks"),
   resumeFullText: (id: string, roundId: string, data: unknown) => write(id, `rounds/${roundId}/resume-full-text`, data),
   caseAction: (id: string, roundId: string, data: unknown) => write(id, `rounds/${roundId}/adjudication`, data),

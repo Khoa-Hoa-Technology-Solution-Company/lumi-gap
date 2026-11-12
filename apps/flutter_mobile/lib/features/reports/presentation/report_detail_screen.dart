@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/widgets/app_error_state.dart';
 import 'package:flutter_mobile/core/widgets/app_loading.dart';
 import 'package:flutter_mobile/features/quality/presentation/quality_panel.dart';
@@ -16,7 +17,7 @@ class ReportDetailScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final query = ref.watch(reportProvider(id));
     return Scaffold(
-      appBar: AppBar(title: const Text('Report Detail')),
+      appBar: AppBar(title: Text(context.t('Report Detail'))),
       body: query.when(
         data: (report) => ListView(
           padding: const EdgeInsets.all(16),
@@ -26,30 +27,30 @@ class ReportDetailScreen extends ConsumerWidget {
             Chip(label: Text(report.status)),
             if (report.errorMessage != null) Text(report.errorMessage!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
             const SizedBox(height: 16),
-            MarkdownBody(data: report.markdown ?? 'No markdown yet. Keep the report worker running and refresh later.'),
+            MarkdownBody(data: report.markdown ?? context.t('No markdown yet. Keep the report worker running and refresh later.')),
             const Divider(height: 32),
-            Text('Grounding papers', style: Theme.of(context).textTheme.titleLarge),
+            Text(context.t('Grounding papers'), style: Theme.of(context).textTheme.titleLarge),
             ...report.groundingPapers.map((paper) => ListTile(title: Text(paper.title), subtitle: Text('${paper.publicationYear}'), onTap: () => context.push('/paper/${paper.id}'))),
             const Divider(height: 32),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('Identified Research Gaps', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+                Text(context.t('Identified Research Gaps'), style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
                 GestureDetector(
                   onTap: () => context.push('/gaps?topic=${Uri.encodeComponent(report.topic ?? report.query)}'),
-                  child: const Row(
+                  child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        'View Gaps Board',
-                        style: TextStyle(
+                        context.t('View Gaps Board'),
+                        style: const TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.bold,
                           color: Color(0xFF06B6D4),
                         ),
                       ),
-                      SizedBox(width: 2),
-                      Icon(Icons.chevron_right, size: 14, color: Color(0xFF06B6D4)),
+                      const SizedBox(width: 2),
+                      const Icon(Icons.chevron_right, size: 14, color: Color(0xFF06B6D4)),
                     ],
                   ),
                 ),
@@ -107,7 +108,7 @@ class ReportDetailScreen extends ConsumerWidget {
             QualityPanel(targetKind: 'report', targetId: id),
           ],
         ),
-        loading: () => const AppLoading(fullScreen: true, message: 'Loading report...'),
+        loading: () => AppLoading(fullScreen: true, message: context.t('Loading report...')),
         error: (error, _) => AppErrorState(message: error.toString()),
       ),
     );
@@ -152,7 +153,7 @@ class _ConfidenceBar extends StatelessWidget {
         ),
         const SizedBox(width: 8),
         Text(
-          '$pct% confidence',
+          context.t('{{pct}}% confidence', {'pct': pct}),
           style: const TextStyle(
             fontSize: 11,
             fontWeight: FontWeight.bold,

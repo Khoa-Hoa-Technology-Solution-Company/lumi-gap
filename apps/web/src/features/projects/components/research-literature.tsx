@@ -8,6 +8,9 @@ import { ScreeningQueueView } from "./screening-queue-view";
 import { MyProposalsView } from "./my-proposals-view";
 import { ScreeningWorkspace } from "./screening-workspace";
 import { ResearchEvidence } from "./research-evidence";
+import { LiteratureMatrixView } from "./literature-matrix";
+import { LiteratureTopicClustersView } from "./literature-topic-clusters";
+import { ResearchLimitations } from "./research-limitations";
 import { ReadingPaperModal } from "./reading-paper-modal";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,7 +19,10 @@ import {
   UserCheck,
   BookOpen,
   FolderOpen,
+  FolderKanban,
   Sliders,
+  Table2,
+  TriangleAlert,
 } from "lucide-react";
 import "../project-research.css";
 
@@ -106,6 +112,36 @@ export function ResearchLiterature({
             <BookOpen size={15} className="tab-icon" />
             <span>Thư viện</span>
           </button>
+
+          <button
+            type="button"
+            className={`papers-nav-tab ${view === "clusters" ? "active" : ""}`}
+            onClick={() => void change("clusters")}
+            title="Phân cụm theo chủ đề, phương pháp, câu hỏi nghiên cứu và so sánh bài báo"
+          >
+            <FolderKanban size={15} className="tab-icon" />
+            <span>Chủ đề & So sánh</span>
+          </button>
+
+          <button
+            type="button"
+            className={`papers-nav-tab ${view === "matrix" ? "active" : ""}`}
+            onClick={() => void change("matrix")}
+            title="So sánh các bài đã đưa vào theo cùng tiêu chí"
+          >
+            <Table2 size={15} className="tab-icon" />
+            <span>Ma trận</span>
+          </button>
+
+          <button
+            type="button"
+            className={`papers-nav-tab ${view === "limitations" ? "active" : ""}`}
+            onClick={() => void change("limitations")}
+            title="Gom hạn chế mà các bài cùng nêu"
+          >
+            <TriangleAlert size={15} className="tab-icon" />
+            <span>Hạn chế</span>
+          </button>
         </nav>
 
         {/* Secondary Navigation Tools */}
@@ -184,6 +220,17 @@ export function ResearchLiterature({
         <ScreeningWorkspace key={`screening-${projectId}`} projectId={projectId} readOnly={readOnly} />
       ) : view === "evidence" ? (
         <ResearchEvidence projectId={projectId} readOnly={readOnly} />
+      ) : view === "clusters" ? (
+        <LiteratureTopicClustersView
+          key={`clusters-${projectId}`}
+          projectId={projectId}
+          readOnly={readOnly}
+          onOpenPaper={openPaper}
+        />
+      ) : view === "matrix" ? (
+        <LiteratureMatrixView projectId={projectId} readOnly={readOnly} />
+      ) : view === "limitations" ? (
+        <ResearchLimitations projectId={projectId} readOnly={readOnly} />
       ) : (
         children
       )}

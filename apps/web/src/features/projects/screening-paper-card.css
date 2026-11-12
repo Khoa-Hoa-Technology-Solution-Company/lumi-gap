@@ -39,6 +39,8 @@
 .screening-paper-card-identity h4 :is(a, button) {
   text-align: left;
   border-radius: .125rem;
+  color: hsl(var(--foreground));
+  transition: color .15s ease;
 }
 .screening-paper-card-identity h4 :is(a, button):hover {
   color: hsl(var(--primary));

@@ -8,6 +8,8 @@ import { workspaceParams } from "./dto/project-workspace.schema.js";
 import * as s from "./dto/project-research.schema.js";
 import { projectResearchController as c } from "./project-research.controller.js";
 import { screeningRouter } from "./screening.routes.js";
+import * as lit from "./dto/project-literature.schema.js";
+import { projectLiteratureController as l } from "./project-literature.controller.js";
 export const projectResearchRouter = Router({ mergeParams: true });
 projectResearchRouter.use("/screening-v2", screeningRouter);
 const params = validate(workspaceParams, "params"), item = validate(workspaceParams.extend({ itemId: z.string().uuid() }), "params");
@@ -47,3 +49,19 @@ projectResearchRouter.patch("/gaps/:itemId", writes, gapParams, validate(s.revis
 projectResearchRouter.post("/gaps/:itemId/assessment", writes, gapParams, validate(s.assessGapSchema), c.assessGap);
 projectResearchRouter.post("/gaps/:itemId/evidence", writes, gapParams, validate(s.linkGapEvidenceSchema), c.linkGap);
 projectResearchRouter.post("/gaps/:itemId/questions", writes, gapParams, validate(s.deriveQuestionSchema), c.deriveQuestion);
+
+// Literature matrix (step 3), limitation identification (step 4) and feasibility assessment.
+projectResearchRouter.get("/matrix", params, validate(lit.matrixQuerySchema, "query"), l.matrix);
+projectResearchRouter.get("/matrix/criteria", params, l.criteria);
+projectResearchRouter.post("/matrix/criteria", writes, params, validate(lit.createCriterionSchema), l.createCriterion);
+projectResearchRouter.put("/matrix/criteria/order", writes, params, validate(lit.reorderCriteriaSchema), l.reorderCriteria);
+projectResearchRouter.patch("/matrix/criteria/:itemId", writes, item, validate(lit.updateCriterionSchema), l.updateCriterion);
+projectResearchRouter.post("/matrix/criteria/:itemId/archive", writes, item, validate(lit.archiveCriterionSchema), l.archiveCriterion);
+projectResearchRouter.get("/limitations", params, l.limitations);
+projectResearchRouter.post("/limitations", writes, params, validate(lit.createLimitationSchema), l.createLimitation);
+projectResearchRouter.patch("/limitations/:itemId", writes, item, validate(lit.updateLimitationSchema), l.updateLimitation);
+projectResearchRouter.post("/limitations/:itemId/status", writes, item, validate(lit.limitationStatusSchema), l.limitationStatus);
+projectResearchRouter.post("/limitations/:itemId/promote", writes, item, validate(lit.promoteLimitationSchema), l.promoteLimitation);
+const feasibilityParams = validate(lit.feasibilityTargetParams, "params");
+projectResearchRouter.get("/feasibility/:targetKind/:targetId", feasibilityParams, l.feasibility);
+projectResearchRouter.put("/feasibility/:targetKind/:targetId", writes, feasibilityParams, validate(lit.saveFeasibilitySchema), l.saveFeasibility);

@@ -95,6 +95,7 @@ export function CollaborativeLibrary({ projectId, readOnly, onAdd }: { projectId
   const isPillBackground = status === "BACKGROUND";
   const isPillExcluded = status === "EXCLUDED";
   const isPillDisagreement = status === "NEEDS_RESOLUTION";
+  const isPillClosedUnresolved = status === "CLOSED_UNRESOLVED";
   const activeFilterCount = (status ? 1 : 0) + advancedFilterCount;
   const resetFilters = () => {
     setStatus("");
@@ -250,6 +251,13 @@ export function CollaborativeLibrary({ projectId, readOnly, onAdd }: { projectId
             onClick={() => change(() => setStatus(isPillExcluded ? "" : "EXCLUDED"))}
           >
             <span>Đã loại</span>
+          </button>
+          <button
+            type="button"
+            className={`library-pill pill-unresolved ${isPillClosedUnresolved ? "active" : ""}`}
+            onClick={() => change(() => setStatus(isPillClosedUnresolved ? "" : "CLOSED_UNRESOLVED"))}
+          >
+            <span>Không đồng thuận</span>
           </button>
           {Boolean(board?.librarySummary?.discussion) && (
             <button

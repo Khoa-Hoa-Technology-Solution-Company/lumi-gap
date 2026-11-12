@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/widgets/app_empty_state.dart';
 import 'package:flutter_mobile/core/widgets/app_loading.dart';
 import 'package:flutter_mobile/features/bookmarks/data/bookmarks_api.dart';
@@ -214,7 +215,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Search failed: $e')),
+          SnackBar(content: Text(context.t('Search failed: {{e}}', {'e': e}))),
         );
       }
     }
@@ -266,9 +267,9 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text(
-                            'Search Filters',
-                            style: TextStyle(
+                          Text(
+                            context.t('Search Filters'),
+                            style: const TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
                             ),
@@ -292,9 +293,9 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                                 _topicIds = [];
                               });
                             },
-                            child: const Text(
-                              'Clear All',
-                              style: TextStyle(color: Color(0xFF06B6D4)),
+                            child: Text(
+                              context.t('Clear All'),
+                              style: const TextStyle(color: Color(0xFF06B6D4)),
                             ),
                           ),
                         ],
@@ -303,16 +304,16 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
 
                       // Rerank Toggle
                       SwitchListTile(
-                        title: const Text(
-                          'Semantic Reranking',
-                          style: TextStyle(
+                        title: Text(
+                          context.t('Semantic Reranking'),
+                          style: const TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 14,
                           ),
                         ),
-                        subtitle: const Text(
-                          'Uses AI models to re-evaluate relevance. May increase search latency.',
-                          style: TextStyle(
+                        subtitle: Text(
+                          context.t('Uses AI models to re-evaluate relevance. May increase search latency.'),
+                          style: const TextStyle(
                             fontSize: 11,
                             color: Color(0xFF94A3B8),
                           ),
@@ -329,9 +330,9 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                       const SizedBox(height: 16),
 
                       // Years Range Inputs
-                      const Text(
-                        'Publication Years',
-                        style: TextStyle(
+                      Text(
+                        context.t('Publication Years'),
+                        style: const TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 14,
                         ),
@@ -342,7 +343,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                           Expanded(
                             child: TextField(
                               decoration: InputDecoration(
-                                hintText: 'From Year',
+                                hintText: context.t('From Year'),
                                 contentPadding: const EdgeInsets.symmetric(
                                   horizontal: 12,
                                   vertical: 10,
@@ -364,7 +365,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                           Expanded(
                             child: TextField(
                               decoration: InputDecoration(
-                                hintText: 'To Year',
+                                hintText: context.t('To Year'),
                                 contentPadding: const EdgeInsets.symmetric(
                                   horizontal: 12,
                                   vertical: 10,
@@ -387,9 +388,9 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                       const SizedBox(height: 16),
 
                       // Sort By
-                      const Text(
-                        'Sort Results By',
-                        style: TextStyle(
+                      Text(
+                        context.t('Sort Results By'),
+                        style: const TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 14,
                         ),
@@ -406,18 +407,18 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                             borderRadius: BorderRadius.circular(10),
                           ),
                         ),
-                        items: const [
+                        items: [
                           DropdownMenuItem(
                             value: 'relevance',
-                            child: Text('Relevance'),
+                            child: Text(context.t('Relevance')),
                           ),
                           DropdownMenuItem(
                             value: 'citations',
-                            child: Text('Citation Count'),
+                            child: Text(context.t('Citation Count')),
                           ),
                           DropdownMenuItem(
                             value: 'year',
-                            child: Text('Publication Year'),
+                            child: Text(context.t('Publication Year')),
                           ),
                         ],
                         onChanged: (val) {
@@ -429,9 +430,9 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                       const SizedBox(height: 16),
 
                       // Paper Kind
-                      const Text(
-                        'Paper Kind',
-                        style: TextStyle(
+                      Text(
+                        context.t('Paper Kind'),
+                        style: const TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 14,
                         ),
@@ -448,31 +449,31 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                             borderRadius: BorderRadius.circular(10),
                           ),
                         ),
-                        hint: const Text('All Kinds'),
-                        items: const [
+                        hint: Text(context.t('All Kinds')),
+                        items: [
                           DropdownMenuItem(
                             value: 'article',
-                            child: Text('Journal Article'),
+                            child: Text(context.t('Journal Article')),
                           ),
                           DropdownMenuItem(
                             value: 'book-chapter',
-                            child: Text('Book Chapter'),
+                            child: Text(context.t('Book Chapter')),
                           ),
                           DropdownMenuItem(
                             value: 'proceedings',
-                            child: Text('Conference Proceeding'),
+                            child: Text(context.t('Conference Proceeding')),
                           ),
                           DropdownMenuItem(
                             value: 'preprint',
-                            child: Text('Preprint'),
+                            child: Text(context.t('Preprint')),
                           ),
                           DropdownMenuItem(
                             value: 'review',
-                            child: Text('Review'),
+                            child: Text(context.t('Review')),
                           ),
                           DropdownMenuItem(
                             value: 'other',
-                            child: Text('Other'),
+                            child: Text(context.t('Other')),
                           ),
                         ],
                         onChanged: (val) {
@@ -485,9 +486,9 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
 
                       // Open Access Status
                       CheckboxListTile(
-                        title: const Text(
-                          'Open Access Only',
-                          style: TextStyle(
+                        title: Text(
+                          context.t('Open Access Only'),
+                          style: const TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.bold,
                           ),
@@ -504,9 +505,9 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                       const SizedBox(height: 16),
 
                       // Source
-                      const Text(
-                        'Journal / Venue Source',
-                        style: TextStyle(
+                      Text(
+                        context.t('Journal / Venue Source'),
+                        style: const TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 14,
                         ),
@@ -514,7 +515,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                       const SizedBox(height: 8),
                       TextField(
                         decoration: InputDecoration(
-                          hintText: 'e.g. Nature, IEEE',
+                          hintText: context.t('e.g. Nature, IEEE'),
                           contentPadding: const EdgeInsets.symmetric(
                             horizontal: 12,
                             vertical: 10,
@@ -545,9 +546,9 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                             Navigator.pop(context);
                             unawaited(_performSearch(reset: true));
                           },
-                          child: const Text(
-                            'Apply Filters',
-                            style: TextStyle(
+                          child: Text(
+                            context.t('Apply Filters'),
+                            style: const TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.bold,
                               fontSize: 15,
@@ -589,7 +590,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Text(
-                            'Add to project',
+                            context.t('Add to project'),
                             style: theme.textTheme.titleMedium?.copyWith(
                               fontWeight: FontWeight.bold,
                             ),
@@ -612,10 +613,10 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                                 child: OutlinedButton(
                                   onPressed: () {
                                     Navigator.pop(context);
-                                    unawaited(context.push('/projects'));
+                                    context.go('/projects');
                                   },
-                                  child: const Text(
-                                    'Create your first project',
+                                  child: Text(
+                                    context.t('Create your first project'),
                                   ),
                                 ),
                               ),
@@ -647,7 +648,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                   subtitle: Text(
-                                    '${project.papers.length} papers',
+                                    context.plural(project.papers.length, one: '{{count}} paper', other: '{{count}} papers'),
                                   ),
                                   trailing: const Icon(
                                     Icons.add,
@@ -664,9 +665,9 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                                         ScaffoldMessenger.of(
                                           context,
                                         ).showSnackBar(
-                                          const SnackBar(
+                                          SnackBar(
                                             content: Text(
-                                              'Added paper to project',
+                                              context.t('Added paper to project'),
                                             ),
                                           ),
                                         );
@@ -677,7 +678,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                                           context,
                                         ).showSnackBar(
                                           SnackBar(
-                                            content: Text('Failed to add: $e'),
+                                            content: Text(context.t('Failed to add: {{e}}', {'e': e})),
                                           ),
                                         );
                                       }
@@ -690,7 +691,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                         },
                         loading: () =>
                             const Center(child: CircularProgressIndicator()),
-                        error: (e, _) => Text('Error loading projects: $e'),
+                        error: (e, _) => Text(context.t('Error loading projects: {{e}}', {'e': e})),
                       ),
                     ],
                   ),
@@ -710,14 +711,14 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       await api.delete(status.bookmarkId!);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Bookmark removed')),
+          SnackBar(content: Text(context.t('Bookmark removed'))),
         );
       }
     } else {
       await api.create(targetKind: 'paper', targetId: paperId);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Bookmarked successfully')),
+          SnackBar(content: Text(context.t('Bookmarked successfully'))),
         );
       }
     }
@@ -727,12 +728,12 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   void _copyCitation(Paper paper) {
     final authors = paper.authors.map((a) => a.displayName).join(', ');
     final citation =
-        '${authors.isEmpty ? "Unknown" : authors} (${paper.publicationYear}). ${paper.title}. ${paper.journalName ?? "Unknown Journal"}.';
+        '${authors.isEmpty ? context.t("Unknown") : authors} (${paper.publicationYear}). ${paper.title}. ${paper.journalName ?? context.t("Unknown Journal")}.';
     unawaited(
       Clipboard.setData(ClipboardData(text: citation)).then((_) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Citation copied to clipboard')),
+            SnackBar(content: Text(context.t('Citation copied to clipboard'))),
           );
         }
       }),
@@ -761,14 +762,14 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     return Scaffold(
       backgroundColor: bgColor,
       appBar: AppBar(
-        title: const Text('Search Papers'),
+        title: Text(context.t('Search Papers')),
         backgroundColor: Colors.transparent,
         elevation: 0,
         actions: [
           IconButton(
             icon: const Icon(Icons.filter_list),
             onPressed: _openFilterBottomSheet,
-            tooltip: 'Filters',
+            tooltip: context.t('Filters'),
           ),
         ],
       ),
@@ -794,8 +795,8 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                         Expanded(
                           child: TextField(
                             controller: _searchController,
-                            decoration: const InputDecoration(
-                              hintText: 'Search term or query...',
+                            decoration: InputDecoration(
+                              hintText: context.t('Search term or query...'),
                               border: InputBorder.none,
                             ),
                             textInputAction: TextInputAction.search,
@@ -819,9 +820,9 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                       padding: const EdgeInsets.symmetric(horizontal: 20),
                     ),
                     onPressed: () => unawaited(_performSearch(reset: true)),
-                    child: const Text(
-                      'Search',
-                      style: TextStyle(
+                    child: Text(
+                      context.t('Search'),
+                      style: const TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.bold,
                       ),
@@ -850,7 +851,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                         padding: const EdgeInsets.only(right: 8),
                         child: InputChip(
                           label: Text(
-                            'Year: ${_yearFrom ?? ""}-${_yearTo ?? ""}',
+                            context.t('Year: {{from}}-{{to}}', {'from': _yearFrom ?? '', 'to': _yearTo ?? ''}),
                           ),
                           onDeleted: () {
                             setState(() {
@@ -865,7 +866,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                       Padding(
                         padding: const EdgeInsets.only(right: 8),
                         child: InputChip(
-                          label: Text('Kind: $_paperKind'),
+                          label: Text(context.t('Kind: {{paperKind}}', {'paperKind': _paperKind})),
                           onDeleted: () {
                             setState(() {
                               _paperKind = null;
@@ -878,7 +879,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                       Padding(
                         padding: const EdgeInsets.only(right: 8),
                         child: InputChip(
-                          label: const Text('Open Access'),
+                          label: Text(context.t('Open Access')),
                           onDeleted: () {
                             setState(() {
                               _openAccess = null;
@@ -891,7 +892,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                       (id) => Padding(
                         padding: const EdgeInsets.only(right: 8),
                         child: InputChip(
-                          label: Text('Domain: $id'),
+                          label: Text(context.t('Domain: {{id}}', {'id': id})),
                           onDeleted: () {
                             setState(() {
                               _domainIds.remove(id);
@@ -905,7 +906,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                       (id) => Padding(
                         padding: const EdgeInsets.only(right: 8),
                         child: InputChip(
-                          label: Text('Field: $id'),
+                          label: Text(context.t('Field: {{id}}', {'id': id})),
                           onDeleted: () {
                             setState(() {
                               _fieldIds.remove(id);
@@ -919,7 +920,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                       (id) => Padding(
                         padding: const EdgeInsets.only(right: 8),
                         child: InputChip(
-                          label: Text('Subfield: $id'),
+                          label: Text(context.t('Subfield: {{id}}', {'id': id})),
                           onDeleted: () {
                             setState(() {
                               _subfieldIds.remove(id);
@@ -933,7 +934,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                       (id) => Padding(
                         padding: const EdgeInsets.only(right: 8),
                         child: InputChip(
-                          label: Text('Topic: $id'),
+                          label: Text(context.t('Topic: {{id}}', {'id': id})),
                           onDeleted: () {
                             setState(() {
                               _topicIds.remove(id);
@@ -952,12 +953,12 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
           Expanded(
             child: _loadedPapers.isEmpty
                 ? (_isLoadingMore
-                      ? const AppLoading(message: 'Searching papers...')
-                      : const AppEmptyState(
+                      ? AppLoading(message: context.t('Searching papers...'))
+                      : AppEmptyState(
                           icon: Icons.search_off_outlined,
-                          title: 'No search results',
+                          title: context.t('No search results'),
                           message:
-                              'Enter a keyword above or relax/clear filters in the top-right button to find broader publications.',
+                              context.t('Enter a keyword above or relax/clear filters in the top-right button to find broader publications.'),
                         ))
                 : ListView.builder(
                     controller: _scrollController,
@@ -1080,7 +1081,7 @@ class _SearchResultCard extends StatelessWidget {
               ),
               const SizedBox(height: 6),
               Text(
-                authors.isEmpty ? 'No authors listed' : authors,
+                authors.isEmpty ? context.t('No authors listed') : authors,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
@@ -1094,7 +1095,7 @@ class _SearchResultCard extends StatelessWidget {
               Row(
                 children: [
                   Text(
-                    '${paper.publicationYear} · ${paper.journalName ?? "Unknown venue"} · ${paper.citationCount} cites',
+                    context.t('{{year}} · {{venue}} · {{count}} cites', {'year': paper.publicationYear, 'venue': paper.journalName ?? context.t('Unknown venue'), 'count': paper.citationCount}),
                     style: const TextStyle(
                       fontSize: 11,
                       color: Color(0xFF94A3B8),
@@ -1111,9 +1112,9 @@ class _SearchResultCard extends StatelessWidget {
                         color: const Color(0xFF451A03),
                         borderRadius: BorderRadius.circular(4),
                       ),
-                      child: const Text(
-                        'OA',
-                        style: TextStyle(
+                      child: Text(
+                        context.t('OA'),
+                        style: const TextStyle(
                           color: Color(0xFFFBBF24),
                           fontSize: 8,
                           fontWeight: FontWeight.bold,
@@ -1129,17 +1130,17 @@ class _SearchResultCard extends StatelessWidget {
                 children: [
                   IconButton(
                     icon: const Icon(Icons.bookmark_outline, size: 18),
-                    tooltip: 'Save Paper',
+                    tooltip: context.t('Save Paper'),
                     onPressed: onBookmarkTap,
                   ),
                   IconButton(
                     icon: const Icon(Icons.folder_open_outlined, size: 18),
-                    tooltip: 'Add to project',
+                    tooltip: context.t('Add to project'),
                     onPressed: onAddProjectTap,
                   ),
                   IconButton(
                     icon: const Icon(Icons.format_quote_outlined, size: 18),
-                    tooltip: 'Cite Paper',
+                    tooltip: context.t('Cite Paper'),
                     onPressed: onCiteTap,
                   ),
                   const Spacer(),
@@ -1150,9 +1151,9 @@ class _SearchResultCard extends StatelessWidget {
                       size: 14,
                       color: Color(0xFF06B6D4),
                     ),
-                    label: const Text(
-                      'View Detail',
-                      style: TextStyle(
+                    label: Text(
+                      context.t('View Detail'),
+                      style: const TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.bold,
                         color: Color(0xFF06B6D4),

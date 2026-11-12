@@ -80,6 +80,7 @@ export interface CreateManuscriptSnapshot {
 export interface ManuscriptSnapshot {
   collaboration?: { comments: number; suggestions: number } | null;
   id: string; label: string; sourceVersion: number; checksum: string; createdAt: string;
+  digestSha256?: string;
   createdBy: { id: string; name: string }; manifest?: ManuscriptManifest;
   canComment?: boolean; canResolve?: boolean; formalRevisionId?: string | null;
   formalAssignmentId?: string | null;

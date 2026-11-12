@@ -22,6 +22,7 @@ export * from "./admin.js";
 export * from "./project.js";
 export * from "./project-workspace.js";
 export * from "./project-research.js";
+export * from "./project-literature.js";
 export * from "./level.js";
 export * from "./home.js";
 export * from "./credit.js";

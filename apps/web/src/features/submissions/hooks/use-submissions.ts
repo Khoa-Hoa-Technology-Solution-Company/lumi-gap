@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import type { StructuredSubmissionInput } from "@trend/shared-types";
-import { submissionsApi } from "../api/submissions.api";
+import { submissionsApi, type MentorFeedbackPayload } from "../api/submissions.api";
 
 export function useSubmissions(projectId?: string) {
   return useQuery({ queryKey: ["submissions", "list", projectId ?? "mine"], queryFn: ({ signal }) => submissionsApi.list(projectId, signal) });
@@ -15,19 +15,51 @@ export function useSubmissionRevisions(id: string) {
   return useQuery({ queryKey: ["submissions", id, "revisions"], queryFn: ({ signal }) => submissionsApi.revisions(id, signal), enabled: Boolean(id) });
 }
 
+export function useActiveMentors(projectId?: string) {
+  return useQuery({
+    queryKey: ["submissions", "active-mentors", projectId],
+    queryFn: () => submissionsApi.activeMentors(projectId!),
+    enabled: Boolean(projectId),
+  });
+}
+
 export function useCreateSubmission() {
   const client = useQueryClient();
-  return useMutation({ mutationFn: ({ input, file }: { input: StructuredSubmissionInput; file: File }) => submissionsApi.create(input, file), onSuccess: () => client.invalidateQueries({ queryKey: ["submissions"] }) });
+  return useMutation({
+    mutationFn: ({ input, file }: { input: StructuredSubmissionInput & { mentorId?: string; contentSnapshot?: string; message?: string }; file?: File }) =>
+      submissionsApi.create(input, file),
+    onSuccess: () => {
+      client.invalidateQueries({ queryKey: ["submissions"] });
+      client.invalidateQueries({ queryKey: ["workspace-tasks"] });
+    },
+  });
+}
+
+export function useSubmitFeedback(id: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: MentorFeedbackPayload) => submissionsApi.submitFeedback(id, payload),
+    onSuccess: () => {
+      client.invalidateQueries({ queryKey: ["submissions", id] });
+      client.invalidateQueries({ queryKey: ["submissions", "list"] });
+      client.invalidateQueries({ queryKey: ["workspace-tasks"] });
+      client.invalidateQueries({ queryKey: ["mentor-access"] });
+    },
+  });
 }
 
 export function useAddSubmissionRevision(id: string) {
   const client = useQueryClient();
-  return useMutation({ mutationFn: ({ file, responseToReview }: { file: File; responseToReview?: string }) => submissionsApi.addRevision(id, file, responseToReview), onSuccess: () => {
-    client.invalidateQueries({ queryKey: ["submissions", id] });
-    client.invalidateQueries({ queryKey: ["submissions", "list"] });
-    client.invalidateQueries({ queryKey: ["submissions", id, "revisions"] });
-    client.invalidateQueries({ queryKey: ["review-opportunities"] });
-  } });
+  return useMutation({
+    mutationFn: ({ file, responseToReview }: { file: File; responseToReview?: string }) => submissionsApi.addRevision(id, file, responseToReview),
+    onSuccess: () => {
+      client.invalidateQueries({ queryKey: ["submissions", id] });
+      client.invalidateQueries({ queryKey: ["submissions", "list"] });
+      client.invalidateQueries({ queryKey: ["submissions", id, "revisions"] });
+      client.invalidateQueries({ queryKey: ["review-opportunities"] });
+      client.invalidateQueries({ queryKey: ["workspace-tasks"] });
+    },
+  });
 }
 
 export function useCreateSubmissionVersion(id: string) {

@@ -16,19 +16,25 @@ export type ScreeningClassification = "AGREEMENT_INCLUDE" | "AGREEMENT_EXCLUDE" 
 export type ScreeningResolutionType = "AGREEMENT_FROM_REVIEWS" | "CONSENSUS_AFTER_DISCUSSION" | "CONSENSUS_NOT_REACHED" | "ADJUDICATION";
 export type ScreeningChoice = "INCLUDE" | "EXCLUDE" | "UNSURE";
 export type ScreeningStageMode = "SINGLE_STAGE" | "TWO_STAGE";
-export type ScreeningOutcome = "WAITING_REVIEWS" | "WAITING_SECOND_REVIEW" | "FINAL_INCLUDED" | "EXCLUDED" | "CONFLICT" | "NEEDS_RESOLUTION" | "NEEDS_CLARIFICATION" | "ADVANCE_TO_FULLTEXT" | "WAITING_FULLTEXT";
-export type ScreeningState = "CONSENSUS_REQUIRED" | "CONSENSUS_IN_PROGRESS" | "NOT_REVIEWED" | "IN_REVIEW" | "NEEDS_RESOLUTION" | "NEEDS_MORE_INFO" | "ADJUDICATING" | "AWAITING_FINALIZATION" | "INCLUDED" | "EXCLUDED" | "BACKGROUND" | "WAITING_FULLTEXT";
+export type ScreeningWorkflowKind = "TEAM_SCREENING" | "SYSTEMATIC_REVIEW";
+export type ScreeningOutcome = "WAITING_REVIEWS" | "WAITING_SECOND_REVIEW" | "FINAL_INCLUDED" | "EXCLUDED" | "CONFLICT" | "NEEDS_RESOLUTION" | "NEEDS_CLARIFICATION" | "ADVANCE_TO_FULLTEXT" | "WAITING_FULLTEXT" | "CLOSED_UNRESOLVED";
+export type ScreeningState = "CONSENSUS_REQUIRED" | "CONSENSUS_IN_PROGRESS" | "NOT_REVIEWED" | "IN_REVIEW" | "NEEDS_RESOLUTION" | "NEEDS_MORE_INFO" | "ADJUDICATING" | "AWAITING_FINALIZATION" | "INCLUDED" | "EXCLUDED" | "BACKGROUND" | "WAITING_FULLTEXT" | "CLOSED_UNRESOLVED";
 export type ScreeningConsensusPolicy = "UNANIMOUS" | "STRICT_MAJORITY";
 export interface ScreeningSettings {
   consensusWindowHours?: number;
   preferredAdjudicatorId?: string | null; adjudicationCoordinatorIds?: string[]; statementWindowHours?: number; adjudicationReminderHours?: number; adjudicationReassignHours?: number;
   workflowVersion?: number;
+  workflowKind?: ScreeningWorkflowKind;
   screeningMode?: ScreeningStageMode;
   authorizedAdjudicatorIds?: string[]; allowConservativeFullText?: boolean;
   reviewMode: "COLLABORATIVE" | "SIMPLE" | "INDEPENDENT"; blindReview: boolean; resolutionPolicy: "CONSENSUS" | "ADJUDICATION";
   version: number; requiredReviewers: number; consensusPolicy: ScreeningConsensusPolicy;
   aiAssisted: boolean; inclusionCriteria: string[]; exclusionCriteria: string[]; researchQuestions: string[];
   stages?: ScreeningPhase[];
+  claimDurationHours?: number;
+  discussionWindowHours?: number;
+  maxExtensionHours?: number;
+  maxExtensions?: number;
   questionOptions?: Array<{ id: string; text: string }>;
   discoveryGoalEnabled?: boolean;
   discoveryGoalTarget?: number;
@@ -36,7 +42,7 @@ export interface ScreeningSettings {
   discoveryGoalPaused?: boolean;
 }
 
-export type ScreeningEvaluationStatus = "CONSENSUS_REQUIRED" | "CONSENSUS_IN_PROGRESS" | "WAITING_REVIEWER" | "CONFLICT" | "ADJUDICATING" | "INCLUDED" | "EXCLUDED" | "NEEDS_MORE_INFO" | "AWAITING_FINALIZATION" | "BACKGROUND" | "WAITING_FULLTEXT" | "ADVANCE_TO_FULLTEXT";
+export type ScreeningEvaluationStatus = "CONSENSUS_REQUIRED" | "CONSENSUS_IN_PROGRESS" | "WAITING_REVIEWER" | "CONFLICT" | "ADJUDICATING" | "INCLUDED" | "EXCLUDED" | "NEEDS_MORE_INFO" | "AWAITING_FINALIZATION" | "BACKGROUND" | "WAITING_FULLTEXT" | "ADVANCE_TO_FULLTEXT" | "CLOSED_UNRESOLVED";
 /** Read-only card projection; review choices are included only after protocol disclosure. */
 export interface ScreeningWorkPaper {
   consensusDeadline?: string | null;
@@ -185,6 +191,29 @@ export interface ScreeningAssignment {
   id: string; reviewerId: string; name: string; revision: number; completed: boolean; active: boolean;
   dueAt: string | null; overdue: boolean;
 }
+export type ScreeningClosureReason = "NO_CONSENSUS" | "NO_RESPONSE" | "INSUFFICIENT_INFORMATION" | "DEADLINE_EXPIRED";
+
+export interface ScreeningDiscussionTiming {
+  discussionStartedAt: string;
+  initialDeadlineAt: string;
+  effectiveDeadlineAt: string;
+  hardDeadlineAt: string;
+  extensionCount: number;
+  maxExtensions: number;
+  isOverdue: boolean;
+  canExtend: boolean;
+  remainingMs?: number;
+  closedAt?: string | null;
+}
+
+export interface ScreeningClosureDetails {
+  actorType: "SYSTEM" | "OWNER";
+  actorId?: string;
+  closedAt: string;
+  reason: ScreeningClosureReason;
+  note?: string;
+}
+
 export interface ScreeningConsensusView {
   startedAt: string; deadline: string; status: "CONSENSUS_REQUIRED" | "CONSENSUS_IN_PROGRESS" | "ACCEPTED" | "REJECTED";
   canUpdate?: boolean;
@@ -209,6 +238,17 @@ export interface ScreeningRoundView {
   adjudicationBlockedReason?: string | null;
   reviewerIntakeClosed?: boolean;
   canProposeAgreement?: boolean;
+  discussionTiming?: ScreeningDiscussionTiming | null;
+  closureReason?: ScreeningClosureReason | null;
+  closureDetails?: ScreeningClosureDetails | null;
+  canCloseUnresolved?: boolean;
+  canReopenUnresolved?: boolean;
+  requestedInfo?: {
+    reason: string;
+    requestedBy: string;
+    requestedByName?: string;
+    requestedAt: string;
+  } | null;
   agreement?: ScreeningAgreement | null;
   adjudicators?: Array<WorkspacePerson & { mentor: boolean; proposer: boolean }>;
   adjudicationCase?: {

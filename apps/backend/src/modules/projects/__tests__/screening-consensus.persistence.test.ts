@@ -72,6 +72,15 @@ describe.skipIf(!enabled).sequential("two-reviewer consensus, PostgreSQL", () =>
     expect(await db.screeningAdjudicationCase.count({ where: { roundId: f.roundId } })).toBe(0);
     expect((await screeningObligationsService.list(f.id, a)).filter(t => !t.endedAt).map(t => t.actionType)).toEqual(["DISCUSSION"]);
   });
+  it("cannot bypass the current consensus deadline through main's legacy commands", async () => {
+    const f = await dispute(); const row = await service.detail(f.id, a, f.roundId);
+    await expect(service.extendDiscussion(f.id, owner, f.roundId, { expectedVersion: row.version, hours: 24, reason: "Attempt to reset the deadline", clientKey: key() })).rejects.toMatchObject({ statusCode: 409 });
+    await expect(service.closeUnresolved(f.id, owner, f.roundId, { expectedVersion: row.version, reason: "DEADLINE_EXPIRED", clientKey: key() })).rejects.toMatchObject({ statusCode: 409 });
+    await expect(service.requestMoreInfo(f.id, a, f.roundId, { expectedVersion: row.version, reason: "Attempt to leave consensus", clientKey: key() })).rejects.toMatchObject({ statusCode: 409 });
+    const after = await service.detail(f.id, a, f.roundId);
+    expect(after.consensus?.deadline).toBe(row.consensus?.deadline); expect(after.status).toBe(row.status);
+    expect(after.version).toBe(row.version); expect(after.finalDecision).toBeNull();
+  });
   it("neither comments, evaluation revisions nor future settings reset the deadline", async () => {
     const f = await dispute(6), initial = await service.detail(f.id, a, f.roundId);
     await service.comment(f.id, a, f.roundId, { comment: "Please compare the methodology", shareWithAdjudicator: false, clientKey: key() });

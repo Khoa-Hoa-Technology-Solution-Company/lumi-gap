@@ -6,6 +6,7 @@ import { WorkContributionsPanel } from "./work-contributions";
 import { ContributionAllocationPanel } from "./contribution-allocation";
 import { AdvisorContributionsPanel } from "./advisor-contributions-panel";
 import { PersonalContributionEvidencePanel } from "./personal-contribution-evidence-panel";
+import { SubmissionReadinessPackage } from "./submission-readiness-package";
 import { canLeaveWorkspace } from "./workspace-common";
 import { ContributionOverviewPanel } from "./contribution-overview";
 import "../project-contributions.css";
@@ -29,6 +30,7 @@ export function ProjectContributionsWorkspace({
     value === "activity" ||
     value === "advisors" ||
     value === "evidence" ||
+    value === "readiness" ||
     value === "allocation"
       ? value
       : "work";
@@ -71,6 +73,13 @@ export function ProjectContributionsWorkspace({
       </nav>
       {tab === "overview" ? <ContributionOverviewPanel projectId={projectId} /> : tab === "pending" ? <WorkContributionsPanel key="pending" projectId={projectId} currentUserId={currentUserId} readOnly={readOnly} initialFilter="PENDING" /> : tab === "activity" ? (
         <ContributionActivityPanel projectId={projectId} />
+      ) : tab === "readiness" ? (
+        <SubmissionReadinessPackage
+          projectId={projectId}
+          currentUserId={currentUserId}
+          isOwner={isOwner}
+          readOnly={readOnly}
+        />
       ) : tab === "work" ? (
         <WorkContributionsPanel projectId={projectId} currentUserId={currentUserId} readOnly={readOnly} />
       ) : tab === "advisors" ? (

@@ -84,7 +84,7 @@ export function ScreeningConflictResolution({ projectId, round, people, readOnly
     </div>
     <div role="tabpanel" id={`${tabId}-reviews-panel`} aria-labelledby={`${tabId}-reviews`} hidden={activeTab !== "reviews"} tabIndex={0} className="screening-resolution-panel space-y-5">
     <div className="grid min-w-0 gap-3 sm:grid-cols-2">
-      {round.assignments.filter(a => a.completed).map((assignment, i) => {
+      {round.assignments.filter(a => a.completed && !round.hiddenReviews).map((assignment, i) => {
         const current = round.reviews.find(r => r.assignmentId === assignment.id);
         return <article key={assignment.id} className="min-w-0 space-y-3 rounded-lg border bg-background p-4">
           <div className="flex items-center gap-2"><span aria-hidden="true" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold">{assignment.name.trim().charAt(0).toUpperCase()}</span><h5 className="text-sm font-semibold">Reviewer {i + 1} · {assignment.name}{assignment.reviewerId === actorId ? " (Bạn)" : ""}</h5></div>

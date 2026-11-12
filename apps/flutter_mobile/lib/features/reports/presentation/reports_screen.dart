@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_mobile/core/i18n/i18n.dart';
 import 'package:flutter_mobile/core/widgets/app_empty_state.dart';
 import 'package:flutter_mobile/core/widgets/app_error_state.dart';
 import 'package:flutter_mobile/core/widgets/app_loading.dart';
@@ -54,12 +55,12 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   void initState() {
     super.initState();
     topic = TextEditingController(
-      text: widget.initialTopic ?? 'LLM in education',
+      text: widget.initialTopic ?? context.t('LLM in education'),
     );
     query = TextEditingController(
       text:
           widget.initialQuery ??
-          'Analyze research trends in large language models for education',
+          context.t('Analyze research trends in large language models for education'),
     );
   }
 
@@ -111,7 +112,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to load evidence preview: $e'),
+            content: Text(context.t('Failed to load evidence preview: {{e}}', {'e': e})),
             backgroundColor: Colors.red,
           ),
         );
@@ -152,11 +153,11 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
       ref.invalidate(reportsProvider(ReportsParams(projectId: _projectId)));
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
+          SnackBar(
             content: Text(
-              'Report queued. Worker will generate it in the background.',
+              context.t('Report queued. Worker will generate it in the background.'),
             ),
-            backgroundColor: Color(0xFF06B6D4),
+            backgroundColor: const Color(0xFF06B6D4),
           ),
         );
       }
@@ -164,7 +165,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to queue report: $e'),
+            content: Text(context.t('Failed to queue report: {{e}}', {'e': e})),
             backgroundColor: Colors.red,
           ),
         );
@@ -186,14 +187,14 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
       ref.invalidate(reportsProvider(ReportsParams(projectId: _projectId)));
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Report deleted successfully')),
+          SnackBar(content: Text(context.t('Report deleted successfully'))),
         );
       }
     } on Object catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to delete report: $e'),
+            content: Text(context.t('Failed to delete report: {{e}}', {'e': e})),
             backgroundColor: Colors.red,
           ),
         );
@@ -233,7 +234,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
         children: [
           _buildStepNode(
             1,
-            'Setup',
+            context.t('Setup'),
             _currentStep >= 1,
             activeColor,
             inactiveColor,
@@ -241,7 +242,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
           _buildStepLine(_currentStep >= 2, activeColor, inactiveColor),
           _buildStepNode(
             2,
-            'Preview',
+            context.t('Preview'),
             _currentStep >= 2,
             activeColor,
             inactiveColor,
@@ -249,7 +250,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
           _buildStepLine(_currentStep >= 3, activeColor, inactiveColor),
           _buildStepNode(
             3,
-            'Edit Pack',
+            context.t('Edit Pack'),
             _currentStep >= 3,
             activeColor,
             inactiveColor,
@@ -257,7 +258,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
           _buildStepLine(_currentStep >= 4, activeColor, inactiveColor),
           _buildStepNode(
             4,
-            'Status',
+            context.t('Status'),
             _currentStep >= 4,
             activeColor,
             inactiveColor,
@@ -354,7 +355,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     return Scaffold(
       backgroundColor: bgColor,
       appBar: AppBar(
-        title: const Text('RAG Reports Workbench'),
+        title: Text(context.t('RAG Reports Workbench')),
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
@@ -388,9 +389,9 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
             ),
             const SizedBox(height: 24),
 
-            const Text(
-              'My reports',
-              style: TextStyle(
+            Text(
+              context.t('My reports'),
+              style: const TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
               ),
@@ -400,9 +401,9 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
             reports.when(
               data: (data) {
                 if (data.reports.isEmpty) {
-                  return const AppEmptyState(
-                    title: 'No reports yet',
-                    message: 'Create one above.',
+                  return AppEmptyState(
+                    title: context.t('No reports yet'),
+                    message: context.t('Create one above.'),
                   );
                 }
                 return Column(
@@ -504,7 +505,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                   }).toList(),
                 );
               },
-              loading: () => const AppLoading(message: 'Loading reports...'),
+              loading: () => AppLoading(message: context.t('Loading reports...')),
               error: (error, _) => AppErrorState(message: error.toString()),
             ),
           ],
@@ -556,14 +557,14 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Step 1: Configure RAG Scope',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          Text(
+            context.t('Step 1: Configure RAG Scope'),
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 16),
-          const Text(
-            'TOPIC',
-            style: TextStyle(
+          Text(
+            context.t('TOPIC'),
+            style: const TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.bold,
               color: Color(0xFF94A3B8),
@@ -583,17 +584,17 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
               controller: topic,
               style: const TextStyle(fontSize: 14),
               enabled: !_loadingPreview,
-              decoration: const InputDecoration.collapsed(
-                hintText: 'Topic label (e.g. LLM in education)',
-                hintStyle: TextStyle(color: Color(0xFF64748B)),
+              decoration: InputDecoration.collapsed(
+                hintText: context.t('Topic label (e.g. LLM in education)'),
+                hintStyle: const TextStyle(color: Color(0xFF64748B)),
               ),
             ),
           ),
           const SizedBox(height: 16),
 
-          const Text(
-            'RESEARCH QUESTION',
-            style: TextStyle(
+          Text(
+            context.t('RESEARCH QUESTION'),
+            style: const TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.bold,
               color: Color(0xFF94A3B8),
@@ -613,18 +614,18 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
               minLines: 3,
               maxLines: 5,
               enabled: !_loadingPreview,
-              decoration: const InputDecoration.collapsed(
-                hintText: 'What specific trends should Gemini write about?',
-                hintStyle: TextStyle(color: Color(0xFF64748B)),
+              decoration: InputDecoration.collapsed(
+                hintText: context.t('What specific trends should Gemini write about?'),
+                hintStyle: const TextStyle(color: Color(0xFF64748B)),
               ),
             ),
           ),
           const SizedBox(height: 16),
 
           // Language Selector
-          const Text(
-            'REPORT LANGUAGE',
-            style: TextStyle(
+          Text(
+            context.t('REPORT LANGUAGE'),
+            style: const TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.bold,
               color: Color(0xFF94A3B8),
@@ -642,18 +643,18 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                 borderRadius: BorderRadius.circular(10),
               ),
             ),
-            items: const [
+            items: [
               DropdownMenuItem(
                 value: ReportLanguage.auto,
-                child: Text('Auto-detect Language'),
+                child: Text(context.t('Auto-detect Language')),
               ),
               DropdownMenuItem(
                 value: ReportLanguage.en,
-                child: Text('English (en)'),
+                child: Text(context.t('English (en)')),
               ),
               DropdownMenuItem(
                 value: ReportLanguage.vi,
-                child: Text('Vietnamese (vi)'),
+                child: Text(context.t('Vietnamese (vi)')),
               ),
             ],
             onChanged: _loadingPreview
@@ -684,16 +685,16 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Deep Analysis',
-                        style: TextStyle(
+                      Text(
+                        context.t('Deep Analysis'),
+                        style: const TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'Gemini runs detailed semantic search loops to backfill grounding bibliography.',
+                        context.t('Gemini runs detailed semantic search loops to backfill grounding bibliography.'),
                         style: TextStyle(
                           fontSize: 11,
                           color: isDark
@@ -739,9 +740,9 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                         color: Colors.white,
                       ),
                     )
-                  : const Text(
-                      'Preview Evidence Pack',
-                      style: TextStyle(
+                  : Text(
+                      context.t('Preview Evidence Pack'),
+                      style: const TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.bold,
                       ),
@@ -766,13 +767,13 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Step 2: Preview Retrieved Evidence',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          Text(
+            context.t('Step 2: Preview Retrieved Evidence'),
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 8),
           Text(
-            'Gemini retrieved ${papers.length} source candidates matching your query.',
+            context.t('Gemini retrieved {{length}} source candidates matching your query.', {'length': papers.length}),
             style: const TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
           ),
           const SizedBox(height: 12),
@@ -783,14 +784,14 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
               borderRadius: BorderRadius.circular(8),
               border: Border.all(color: borderColor.withValues(alpha: 0.5)),
             ),
-            child: const Row(
+            child: Row(
               children: [
-                Icon(Icons.info_outline, size: 16, color: Color(0xFF06B6D4)),
-                SizedBox(width: 8),
+                const Icon(Icons.info_outline, size: 16, color: Color(0xFF06B6D4)),
+                const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'Adding a paper makes it available as grounded evidence for Gemini. It will not force a pre-determined conclusion.',
-                    style: TextStyle(fontSize: 11, height: 1.3),
+                    context.t('Adding a paper makes it available as grounded evidence for Gemini. It will not force a pre-determined conclusion.'),
+                    style: const TextStyle(fontSize: 11, height: 1.3),
                   ),
                 ),
               ],
@@ -798,12 +799,12 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
           ),
           const SizedBox(height: 16),
           if (papers.isEmpty)
-            const Center(
+            Center(
               child: Padding(
-                padding: EdgeInsets.symmetric(vertical: 24),
+                padding: const EdgeInsets.symmetric(vertical: 24),
                 child: Text(
-                  'No papers retrieved. Try broadening your research question.',
-                  style: TextStyle(fontStyle: FontStyle.italic),
+                  context.t('No papers retrieved. Try broadening your research question.'),
+                  style: const TextStyle(fontStyle: FontStyle.italic),
                 ),
               ),
             )
@@ -848,7 +849,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
-                                  '${paper.year ?? 'N/A'} · ${paper.citations} cites · Relevance: ${paper.score.toStringAsFixed(2)}',
+                                  context.t('{{year}} · {{citations}} cites · Relevance: {{score}}', {'year': paper.year ?? context.t('N/A'), 'citations': paper.citations, 'score': paper.score.toStringAsFixed(2)}),
                                   style: const TextStyle(
                                     fontSize: 11,
                                     color: Color(0xFF94A3B8),
@@ -864,7 +865,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                               size: 16,
                               color: Color(0xFF06B6D4),
                             ),
-                            tooltip: 'Open paper detail',
+                            tooltip: context.t('Open paper detail'),
                             onPressed: () => context.push('/paper/${paper.id}'),
                           ),
                         ],
@@ -880,7 +881,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
               Expanded(
                 child: OutlinedButton(
                   onPressed: () => setState(() => _currentStep = 1),
-                  child: const Text('Back to Setup'),
+                  child: Text(context.t('Back to Setup')),
                 ),
               ),
               const SizedBox(width: 16),
@@ -892,9 +893,9 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                   onPressed: papers.isEmpty
                       ? null
                       : () => setState(() => _currentStep = 3),
-                  child: const Text(
-                    'Edit Evidence',
-                    style: TextStyle(
+                  child: Text(
+                    context.t('Edit Evidence'),
+                    style: const TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
                     ),
@@ -924,12 +925,12 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                'Step 3: Edit Evidence Pack',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              Text(
+                context.t('Step 3: Edit Evidence Pack'),
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
               Text(
-                'Selected: ${_selectedPaperIds.length}/${papers.length}',
+                context.t('Selected: {{selected}}/{{total}}', {'selected': _selectedPaperIds.length, 'total': papers.length}),
                 style: const TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.bold,
@@ -939,9 +940,9 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
             ],
           ),
           const SizedBox(height: 8),
-          const Text(
-            'Exclude papers that may not be fully relevant to filter the grounding RAG context.',
-            style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
+          Text(
+            context.t('Exclude papers that may not be fully relevant to filter the grounding RAG context.'),
+            style: const TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
           ),
           const SizedBox(height: 12),
           Container(
@@ -951,14 +952,14 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
               borderRadius: BorderRadius.circular(8),
               border: Border.all(color: borderColor.withValues(alpha: 0.5)),
             ),
-            child: const Row(
+            child: Row(
               children: [
-                Icon(Icons.info_outline, size: 16, color: Color(0xFF06B6D4)),
-                SizedBox(width: 8),
+                const Icon(Icons.info_outline, size: 16, color: Color(0xFF06B6D4)),
+                const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'Deselected publications will not be used in the RAG generation pipeline.',
-                    style: TextStyle(fontSize: 11, height: 1.3),
+                    context.t('Deselected publications will not be used in the RAG generation pipeline.'),
+                    style: const TextStyle(fontSize: 11, height: 1.3),
                   ),
                 ),
               ],
@@ -1018,7 +1019,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                               ),
                               const SizedBox(height: 2),
                               Text(
-                                '${paper.year ?? 'N/A'} · ${paper.citations} cites',
+                                context.t('{{year}} · {{citations}} cites', {'year': paper.year ?? context.t('N/A'), 'citations': paper.citations}),
                                 style: const TextStyle(
                                   fontSize: 11,
                                   color: Color(0xFF94A3B8),
@@ -1033,7 +1034,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                             size: 16,
                             color: Color(0xFF06B6D4),
                           ),
-                          tooltip: 'Open paper detail',
+                          tooltip: context.t('Open paper detail'),
                           onPressed: () => context.push('/paper/${paper.id}'),
                         ),
                       ],
@@ -1049,7 +1050,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
               Expanded(
                 child: OutlinedButton(
                   onPressed: () => setState(() => _currentStep = 2),
-                  child: const Text('Back'),
+                  child: Text(context.t('Back')),
                 ),
               ),
               const SizedBox(width: 16),
@@ -1068,9 +1069,9 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                             color: Colors.white,
                           ),
                         )
-                      : const Text(
-                          'Generate Report',
-                          style: TextStyle(
+                      : Text(
+                          context.t('Generate Report'),
+                          style: const TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.bold,
                           ),
@@ -1100,7 +1101,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
         ),
         padding: const EdgeInsets.all(20),
         alignment: Alignment.center,
-        child: const Text('No active report selected to monitor.'),
+        child: Text(context.t('No active report selected to monitor.')),
       );
     }
 
@@ -1119,9 +1120,9 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
-                  'Step 4: Report Generation Status',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                Text(
+                  context.t('Step 4: Report Generation Status'),
+                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
                 ),
                 if (report.status == 'queued' || report.status == 'generating')
                   const SizedBox(
@@ -1144,9 +1145,9 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
             const SizedBox(height: 8),
             Row(
               children: [
-                const Text(
-                  'STATUS: ',
-                  style: TextStyle(
+                Text(
+                  context.t('STATUS: '),
+                  style: const TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.bold,
                     color: Color(0xFF94A3B8),
@@ -1194,9 +1195,9 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                         size: 16,
                         color: Colors.white,
                       ),
-                      label: const Text(
-                        'View Full Report',
-                        style: TextStyle(
+                      label: Text(
+                        context.t('View Full Report'),
+                        style: const TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.bold,
                           fontSize: 13,
@@ -1210,15 +1211,15 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                   const SizedBox(width: 12),
                   OutlinedButton(
                     onPressed: () => setState(() => _currentStep = 1),
-                    child: const Text('New Report'),
+                    child: Text(context.t('New Report')),
                   ),
                 ],
               ),
             ] else ...[
               const SizedBox(height: 12),
-              const Text(
-                'Background worker is compiling bibliography and writing analysis...',
-                style: TextStyle(
+              Text(
+                context.t('Background worker is compiling bibliography and writing analysis...'),
+                style: const TextStyle(
                   fontSize: 12,
                   color: Color(0xFF94A3B8),
                   fontStyle: FontStyle.italic,
@@ -1227,7 +1228,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
               const SizedBox(height: 16),
               OutlinedButton(
                 onPressed: () => setState(() => _currentStep = 1),
-                child: const Text('New Report Configuration'),
+                child: Text(context.t('New Report Configuration')),
               ),
             ],
           ],
