@@ -102,7 +102,12 @@ export const projectTasksService = {
   async board(projectId: string, actorId: string, query: z.infer<typeof taskBoardQuerySchema>): Promise<WorkspaceTaskBoard> {
     return withWorkspace(projectId, actorId, {}, async context => {
       const pages = [query.todoPage, query.progressPage, query.blockedPage, query.donePage];
-      const columns = await Promise.all(taskStatuses.map((status, index) => taskPage(context, { ...query, status, page: pages[index]! })));
+      const columns = await Promise.all(taskStatuses.map((status, index) => {
+        // Bound the DONE column query to 5 items on the Kanban preview to avoid overfetching
+        // while preserving the true total completed count.
+        const pageSize = status === "DONE" ? Math.min(query.pageSize, 5) : query.pageSize;
+        return taskPage(context, { ...query, status, page: pages[index]!, pageSize });
+      }));
       return { boardVersion: context.project.taskBoardVersion, columns: Object.fromEntries(taskStatuses.map((status, i) => [status, columns[i]])) as WorkspaceTaskBoard["columns"] };
     });
   },

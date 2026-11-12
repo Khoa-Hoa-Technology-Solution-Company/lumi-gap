@@ -188,35 +188,72 @@ function TaskColumn({ status, column, readOnly, onSelect, onPage, onMove, screen
   const totalCompleted = column.total + screeningTasks.length;
 
   type DoneCardItem =
-    | { type: "screening"; task: MyWorkTask; time: number }
-    | { type: "manual"; task: WorkspaceTask; time: number; index: number };
+    | { type: "screening"; task: MyWorkTask; time: number; id: string }
+    | { type: "manual"; task: WorkspaceTask; time: number; index: number; id: string };
 
   let combinedDone: DoneCardItem[] = [];
   if (isDone) {
     const nowMs = Date.now();
     const windowMs = doneDays === "all" ? Infinity : (typeof doneDays === "number" ? doneDays : 14) * 86400000;
     const cutoffMs = doneDays === "all" ? 0 : nowMs - windowMs;
+
+    // 1. Up to 5 most recent screening DONE tasks (ordered by endedAt desc, secondary by ID)
+    const recentScreening = [...screeningTasks]
+      .sort((a, b) => {
+        const timeA = a.obligation?.endedAt ? Date.parse(a.obligation.endedAt) : 0;
+        const timeB = b.obligation?.endedAt ? Date.parse(b.obligation.endedAt) : 0;
+        return timeB - timeA || (b.obligation?.id ?? "").localeCompare(a.obligation?.id ?? "");
+      })
+      .slice(0, 5);
+
+    // 2. Up to 5 most recent manual DONE tasks (ordered by completedAt desc, secondary by ID)
+    const recentManual = [...column.items]
+      .sort((a, b) => {
+        const timeA = a.completedAt ? Date.parse(a.completedAt) : 0;
+        const timeB = b.completedAt ? Date.parse(b.completedAt) : 0;
+        return timeB - timeA || b.id.localeCompare(a.id);
+      })
+      .slice(0, 5);
+
+    // 3. Merge candidates (at most 10) across both sources
+    // Note: Legacy records without completed timestamps fall back to 0 (epoch)
+    // so they are never falsely misrepresented as completed within the 14-day preview.
     const allDone: DoneCardItem[] = [
-      ...screeningTasks.map(task => ({
+      ...recentScreening.map(task => ({
         type: "screening" as const,
         task,
-        time: task.obligation?.endedAt ? Date.parse(task.obligation.endedAt) : (task.obligation?.updatedAt ? Date.parse(task.obligation.updatedAt) : 0),
+        time: task.obligation?.endedAt ? Date.parse(task.obligation.endedAt) : 0,
+        id: task.obligation?.id ?? task.roundId,
       })),
-      ...column.items.map((task, index) => ({
+      ...recentManual.map((task, index) => ({
         type: "manual" as const,
         task,
         index,
-        time: task.completedAt ? Date.parse(task.completedAt) : (task.updatedAt ? Date.parse(task.updatedAt) : 0),
+        time: task.completedAt ? Date.parse(task.completedAt) : 0,
+        id: task.id,
       })),
     ];
+
+    // 4. Filter by preview window (14 days by default)
     const inWindow = allDone.filter(item => cutoffMs === 0 || item.time >= cutoffMs);
-    inWindow.sort((a, b) => b.time - a.time);
+    // Sort descending by completion timestamp, with stable secondary sort by unique ID
+    inWindow.sort((a, b) => (b.time - a.time) || b.id.localeCompare(a.id));
+    // 5. Take top 5
     combinedDone = inWindow.slice(0, 5);
   }
 
   return <section ref={ref} className="task-column" data-status={status} data-over={isDropTarget} aria-label={t(taskLabels[status])}>
     <header>
-      <span className="task-column-name"><Icon size={15} /><h3>{t(taskLabels[status])}</h3><span className="task-column-count">{totalCompleted}</span></span>
+      <span className="task-column-name">
+        <Icon size={15} />
+        <h3>{t(taskLabels[status])}</h3>
+        <span
+          className="task-column-count"
+          title={isDone && column.total > 0 && screeningTasks.length > 0 ? `${column.total} ${t("project tasks")} · ${screeningTasks.length} ${t("my screening tasks")}` : undefined}
+        >
+          {totalCompleted}
+        </span>
+      </span>
       {isDone ? (
         <div className="task-done-window-picker">
           <select
@@ -279,6 +316,11 @@ function TaskColumn({ status, column, readOnly, onSelect, onPage, onMove, screen
           <small className="task-page-count">
             {t("Showing {{shown}} of {{total}} completed tasks", { shown: combinedDone.length, total: totalCompleted })}
           </small>
+          {column.total > 0 && screeningTasks.length > 0 && (
+            <small className="task-done-breakdown text-[11px] text-muted-foreground text-center block">
+              ({column.total} {t("project tasks")} · {screeningTasks.length} {t("my screening tasks")})
+            </small>
+          )}
           {onViewAllCompleted && (
             <button type="button" className="task-view-all-completed-btn" onClick={onViewAllCompleted}>
               <List size={13} />

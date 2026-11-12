@@ -74,6 +74,8 @@ export const researchTasksVi: Record<string, string> = {
   "Last 30 days": "30 ngày qua",
   "All time": "Tất cả thời gian",
   "Total completed": "Tổng hoàn thành",
+  "project tasks": "việc dự án",
+  "my screening tasks": "nhiệm vụ sàng lọc của tôi",
   "Loading linked artifact…": "Đang tải liên kết tài liệu…",
   "This task was deleted. Its history is retained.": "Công việc đã được xóa. Lịch sử vẫn được lưu giữ.",
   "Task created": "Đã tạo công việc",

@@ -394,4 +394,100 @@ describe("Smart Completed-Task Management (Jira/Linear inspired)", () => {
 
     expect(container.querySelector(".task-board")).not.toBeNull();
   });
+
+  it("handles 3 manual DONE and 25 screening DONE: total 28, capped at 5 newest, with breakdown", async () => {
+    // 3 manual tasks completed today
+    const manualTasks = [
+      makeManualTask("m-1", "Manual Analysis 1", "DONE", new Date(Date.now() - 1000).toISOString()),
+      makeManualTask("m-2", "Manual Analysis 2", "DONE", new Date(Date.now() - 3000).toISOString()),
+      makeManualTask("m-3", "Manual Analysis 3", "DONE", new Date(Date.now() - 5000).toISOString()),
+    ];
+
+    // 25 screening obligations completed today
+    const screeningObligations = Array.from({ length: 25 }, (_, i) =>
+      makeObligation(`s-${i + 1}`, "DONE", new Date(Date.now() - (i + 1) * 2000).toISOString())
+    );
+
+    mocks.workspaceSummary.mockResolvedValue({
+      ...baseSummary,
+      automaticTasks: screeningObligations,
+    });
+
+    mocks.taskBoard.mockResolvedValue({
+      boardVersion: 1,
+      columns: {
+        TODO: empty,
+        IN_PROGRESS: empty,
+        BLOCKED: empty,
+        DONE: { items: manualTasks, total: 3, page: 1, pageSize: 5, hasNext: false },
+      },
+    });
+
+    await render();
+    const doneColumn = container.querySelector('.task-column[data-status="DONE"]')!;
+    expect(doneColumn).not.toBeNull();
+
+    // Total header is exactly 28 (3 manual + 25 screening)
+    expect(doneColumn.querySelector(".task-column-count")?.textContent).toBe("28");
+
+    // Renders exactly 5 cards (capped)
+    const cards = doneColumn.querySelectorAll(".task-card");
+    expect(cards).toHaveLength(5);
+
+    // Footer shows "Showing 5 of 28 completed tasks"
+    expect(doneColumn.querySelector(".task-done-column-footer")?.textContent).toContain("Showing 5 of 28 completed tasks");
+
+    // Footer shows breakdown distinguishing project tasks vs screening tasks
+    const breakdown = doneColumn.querySelector(".task-done-breakdown");
+    expect(breakdown).not.toBeNull();
+    expect(breakdown?.textContent).toContain("3 project tasks");
+    expect(breakdown?.textContent).toContain("25 my screening tasks");
+  });
+
+  it("sorts deterministically by unique ID when completion timestamps are identical", async () => {
+    const identicalTime = "2026-11-12T01:00:00.000Z";
+    const taskA = makeManualTask("task-aaa", "Task AAA", "DONE", identicalTime);
+    const taskZ = makeManualTask("task-zzz", "Task ZZZ", "DONE", identicalTime);
+
+    mocks.taskBoard.mockResolvedValue({
+      boardVersion: 1,
+      columns: {
+        TODO: empty,
+        IN_PROGRESS: empty,
+        BLOCKED: empty,
+        DONE: { items: [taskA, taskZ], total: 2, page: 1, pageSize: 5, hasNext: false },
+      },
+    });
+
+    await render();
+    const doneColumn = container.querySelector('.task-column[data-status="DONE"]')!;
+    const titles = [...doneColumn.querySelectorAll(".task-card-title")].map(t => t.textContent);
+    // Stable secondary sort orders zzz before aaa (descending by unique ID)
+    expect(titles).toEqual(["Task ZZZ", "Task AAA"]);
+  });
+
+  it("handles legacy manual tasks missing completedAt without falsely showing them in 14-day preview", async () => {
+    const legacyTask = makeManualTask("m-legacy", "Legacy Task without completedAt", "DONE", null);
+    // Explicitly nullify completedAt to simulate old unverified record
+    legacyTask.completedAt = null;
+
+    mocks.taskBoard.mockResolvedValue({
+      boardVersion: 1,
+      columns: {
+        TODO: empty,
+        IN_PROGRESS: empty,
+        BLOCKED: empty,
+        DONE: { items: [legacyTask], total: 1, page: 1, pageSize: 5, hasNext: false },
+      },
+    });
+
+    await render();
+    const doneColumn = container.querySelector('.task-column[data-status="DONE"]')!;
+    expect(doneColumn.querySelector(".task-column-count")?.textContent).toBe("1");
+
+    // Falls back to epoch 0, so it is > 14 days old and NOT rendered in recent preview
+    expect(doneColumn.querySelectorAll(".task-card")).toHaveLength(0);
+    expect(doneColumn.textContent).toContain("No recently completed tasks");
+    expect(doneColumn.textContent).toContain("1 previously completed tasks are retained in history.");
+  });
 });
