@@ -9,6 +9,7 @@ import { WorkspaceTasksPanel } from "../components/workspace-tasks";
 
 const mocks = vi.hoisted(() => ({
   workspaceSummary: vi.fn(),
+  automaticTasksPage: vi.fn(),
   taskBoard: vi.fn(),
   tasks: vi.fn(),
   milestones: vi.fn(),
@@ -136,6 +137,7 @@ describe("Smart Completed-Task Management (Jira/Linear inspired)", () => {
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
     vi.resetAllMocks();
     mocks.workspaceSummary.mockResolvedValue(baseSummary);
+    mocks.automaticTasksPage.mockResolvedValue(empty);
     mocks.milestones.mockResolvedValue(empty);
     mocks.people.mockResolvedValue(empty);
     mocks.moveTask.mockResolvedValue({});
@@ -410,7 +412,9 @@ describe("Smart Completed-Task Management (Jira/Linear inspired)", () => {
 
     mocks.workspaceSummary.mockResolvedValue({
       ...baseSummary,
-      automaticTasks: screeningObligations,
+      // Bounded preview query sends top 5 items and total count from server
+      automaticTasks: screeningObligations.slice(0, 5),
+      automaticDoneTotal: 25,
     });
 
     mocks.taskBoard.mockResolvedValue({
@@ -464,6 +468,65 @@ describe("Smart Completed-Task Management (Jira/Linear inspired)", () => {
     const titles = [...doneColumn.querySelectorAll(".task-card-title")].map(t => t.textContent);
     // Stable secondary sort orders zzz before aaa (descending by unique ID)
     expect(titles).toEqual(["Task ZZZ", "Task AAA"]);
+  });
+
+  it("uses real server-side pagination for screening obligations and manual tasks in List View", async () => {
+    const manualTasksPage1 = [makeManualTask("m-1", "Manual Task Page 1", "DONE")];
+    const screeningPage1Items = Array.from({ length: 20 }, (_, i) =>
+      makeObligation(`s-${i + 1}`, "DONE", new Date(Date.now() - (i + 1) * 1000).toISOString())
+    );
+    const screeningPage2Items = Array.from({ length: 5 }, (_, i) =>
+      makeObligation(`s-${i + 21}`, "DONE", new Date(Date.now() - (i + 21) * 1000).toISOString())
+    );
+
+    mocks.workspaceSummary.mockResolvedValue({
+      ...baseSummary,
+      automaticTasks: screeningPage1Items.slice(0, 5),
+      automaticDoneTotal: 25,
+    });
+
+    mocks.tasks.mockImplementation((_projectId, query) => {
+      if (query.page === 2) {
+        return Promise.resolve({ items: [], total: 1, page: 2, pageSize: 20, hasNext: false });
+      }
+      return Promise.resolve({ items: manualTasksPage1, total: 1, page: 1, pageSize: 20, hasNext: false });
+    });
+
+    mocks.automaticTasksPage.mockImplementation((_projectId, query) => {
+      if (query.page === 2) {
+        return Promise.resolve({ items: screeningPage2Items, total: 25, page: 2, pageSize: 20, hasNext: false });
+      }
+      return Promise.resolve({ items: screeningPage1Items, total: 25, page: 1, pageSize: 20, hasNext: true });
+    });
+
+    await render("/projects/project?tab=tasks&view=list&taskStatus=DONE");
+
+    // Verify initial call to automaticTasksPage with page 1
+    expect(mocks.automaticTasksPage).toHaveBeenCalledWith("project", expect.objectContaining({ page: 1, pageSize: 20, status: "DONE" }));
+
+    // Page 1 contains items from screeningPage1Items
+    expect(container.textContent).toContain("Screening Paper s-1");
+    expect(container.textContent).toContain("Screening Paper s-20");
+    expect(container.textContent).not.toContain("Screening Paper s-21");
+
+    // Pagination button for Next page should be present and enabled
+    const nextBtn = container.querySelector<HTMLButtonElement>('button[aria-label="Next page"]')!;
+    expect(nextBtn).not.toBeNull();
+    expect(nextBtn.disabled).toBe(false);
+
+    // Click Next page
+    await act(async () => {
+      nextBtn.click();
+    });
+    await settle();
+
+    // Verify call to automaticTasksPage and tasks with page 2
+    expect(mocks.automaticTasksPage).toHaveBeenCalledWith("project", expect.objectContaining({ page: 2, pageSize: 20, status: "DONE" }));
+    expect(mocks.tasks).toHaveBeenCalledWith("project", expect.objectContaining({ page: 2, status: "DONE" }));
+
+    // Page 2 displays s-21 and not s-1
+    expect(container.textContent).toContain("Screening Paper s-21");
+    expect(container.textContent).not.toContain("Screening Paper s-1");
   });
 
   it("handles legacy manual tasks missing completedAt without falsely showing them in 14-day preview", async () => {

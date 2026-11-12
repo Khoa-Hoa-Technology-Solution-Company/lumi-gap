@@ -84,7 +84,9 @@ export function TaskBoardView({ projectId, readOnly, onSelect, mode, onMode }: {
   const boardQuery = { ...query, sort: "manual", pageSize: 20, todoPage: pages[0], progressPage: pages[1], blockedPage: pages[2], donePage: pages[3] };
   const listQuery = { ...query, sort, status: status || undefined, page, completedSince };
   const board = useWorkspaceResource(projectId, "task-board", () => workspaceApi.taskBoard(projectId, boardQuery), boardQuery, mode === "board");
-  const tasks = useWorkspaceResource(projectId, "tasks", () => workspaceApi.tasks(projectId, listQuery), listQuery, mode === "list");
+  const tasks = useWorkspaceResource(projectId, "tasks", () => workspaceApi.tasks(projectId, listQuery), listQuery, mode === "list" && source !== "SCREENING");
+  const screeningListQuery = { page, pageSize: 20, status: status || undefined, sort, q: q || undefined, completedSince };
+  const screeningPage = useResearchResource(projectId, ["screening-automatic-tasks-page", page, status, sort, q, completedSince], () => screeningApi.automaticTasksPage(projectId, screeningListQuery), mode === "list" && source !== "MANUAL", () => true, 15000);
   const [milestonePage, setMilestonePage] = useState(1);
   const milestones = useWorkspaceResource(projectId, "milestones", () => workspaceApi.milestones(projectId, milestonePage), milestonePage);
   const [optimistic, setOptimistic] = useState<WorkspaceTaskBoard | null>(null);
@@ -119,7 +121,18 @@ export function TaskBoardView({ projectId, readOnly, onSelect, mode, onMode }: {
   });
   const history = screeningTasks.filter(task => task.obligation && ["EXPIRED", "CANCELLED", "REPLACED"].includes(task.obligation.status));
   const boardTasks = screeningTasks.filter(task => !history.includes(task));
-  const total = (mode === "board" ? current ? taskStatuses.reduce((n, key) => n + current.columns[key].total, 0) : 0 : source === "SCREENING" ? 0 : tasks.data?.total ?? 0) + boardTasks.length;
+  const listScreeningRows = (source === "MANUAL" ? [] : screeningPage.data?.items ? screeningPage.data.items.map(automaticWorkTask) : boardTasks).filter(task => {
+    if (unassigned || priority || milestone || assignee[0] && assignee[0] !== (task.obligation?.assigneeId ?? actorId) || (status && status !== (task.obligation?.status ?? "TODO"))) return false;
+    if (task.obligation && !task.obligation.endedAt && task.deadline && Date.parse(task.deadline) <= now) return false;
+    if (overdue && (!task.deadline || new Date(task.deadline).getTime() >= now)) return false;
+    if (completedSince && task.obligation?.endedAt && Date.parse(task.obligation.endedAt) < Date.parse(completedSince)) return false;
+    return !q || `${task.title} ${task.label}`.toLocaleLowerCase().includes(q.toLocaleLowerCase());
+  });
+  const manualTotal = source === "SCREENING" ? 0 : tasks.data?.total ?? 0;
+  const screeningTotal = source === "MANUAL" ? 0 : screeningPage.data?.total ?? (screening.data?.automaticDoneTotal ?? boardTasks.length);
+  const total = (mode === "board"
+    ? (current ? taskStatuses.reduce((n, key) => n + current.columns[key].total, 0) : 0) + (status === "DONE" ? (screening.data?.automaticDoneTotal ?? boardTasks.length) : boardTasks.length)
+    : manualTotal + screeningTotal);
 
   const handleViewAllCompleted = () => {
     setStatus("DONE");
@@ -163,11 +176,11 @@ export function TaskBoardView({ projectId, readOnly, onSelect, mode, onMode }: {
         void doMove(task, status, beforeId);
       }}><div className="task-board" aria-label={t("Research Kanban board")} aria-busy={move.isPending}>
         {taskStatuses.map((status, i) => <TaskColumn key={status} status={status} column={current.columns[status]} readOnly={readOnly || move.isPending} onSelect={onSelect} onPage={next => setPages(old => old.map((value, index) => index === i ? next : value))} onMove={(task, status) => void doMove(task, status, null)}
-          screeningTasks={boardTasks.filter(task => (task.obligation?.status ?? "TODO") === status)} projectId={projectId} onViewAllCompleted={status === "DONE" ? handleViewAllCompleted : undefined} doneDays={doneDays} onDoneDaysChange={setDoneDays} />)}
+          screeningTasks={boardTasks.filter(task => (task.obligation?.status ?? "TODO") === status)} screeningDoneTotal={status === "DONE" ? screening.data?.automaticDoneTotal : undefined} projectId={projectId} onViewAllCompleted={status === "DONE" ? handleViewAllCompleted : undefined} doneDays={doneDays} onDoneDaysChange={setDoneDays} />)}
       </div></DragDropProvider><p className="task-board-help"><GripVertical size={13} />{t("Drag cards between columns or use the status menu.")}</p>
-    </> : tasks.isLoading ? <WorkspaceLoading /> : tasks.isError ? <WorkspaceError error={tasks.error} retry={() => void tasks.refetch()} /> : !manualRows.length && !boardTasks.length ? <WorkspaceEmpty title={t(filtered ? "No matching tasks" : "Plan the next research step")}><p>{t("Create a task for a concrete action, such as reading a paper or comparing research methods.")}</p>{!readOnly && <Button onClick={() => onSelect("new")}>{t("Create the first task")}</Button>}</WorkspaceEmpty> : <>
+    </> : (tasks.isLoading || screeningPage.isLoading) ? <WorkspaceLoading /> : tasks.isError ? <WorkspaceError error={tasks.error} retry={() => void tasks.refetch()} /> : screeningPage.isError ? <ScreeningError error={screeningPage.error} retry={() => void screeningPage.refetch()} /> : !manualRows.length && !listScreeningRows.length ? <WorkspaceEmpty title={t(filtered ? "No matching tasks" : "Plan the next research step")}><p>{t("Create a task for a concrete action, such as reading a paper or comparing research methods.")}</p>{!readOnly && <Button onClick={() => onSelect("new")}>{t("Create the first task")}</Button>}</WorkspaceEmpty> : <>
       {status === "DONE" && <div className="task-completed-history-banner"><div className="flex items-center gap-2"><CheckCircle2 size={16} className="text-emerald-600 dark:text-emerald-400" /><span className="font-semibold text-sm">{t("Completed history")}</span><span className="text-xs text-muted-foreground font-medium">({total} {t("tasks")})</span></div><Button size="sm" variant="outline" className="text-xs h-7" onClick={() => onMode("board")}><LayoutGrid size={13} className="mr-1.5" />{t("Back to Kanban board")}</Button></div>}
-      <div className="coord-table-wrap task-list"><table className="coord-table"><thead><tr>{[status === "DONE" ? "Task" : "Task", "Assignee", "Status", status === "DONE" ? "Completed At" : "Priority", status === "DONE" ? "Priority" : "Deadline", "Milestones", "Linked research artifact"].map(label => <th key={label}>{t(label)}</th>)}</tr></thead><tbody>{boardTasks.map(task => <tr key={`screening:${task.obligation?.id ?? task.roundId}`} data-screening-round={task.roundId}>
+      <div className="coord-table-wrap task-list"><table className="coord-table"><thead><tr>{[status === "DONE" ? "Task" : "Task", "Assignee", "Status", status === "DONE" ? "Completed At" : "Priority", status === "DONE" ? "Priority" : "Deadline", "Milestones", "Linked research artifact"].map(label => <th key={label}>{t(label)}</th>)}</tr></thead><tbody>{listScreeningRows.map(task => <tr key={`screening:${task.obligation?.id ?? task.roundId}`} data-screening-round={task.roundId}>
       <td><Link className="task-list-title" to={withTaskReturn(screeningWorkLink(projectId, task, sectionForTask(task)), task, location.pathname + location.search)}>{task.title}</Link><small className="task-screening-kind">{task.label}</small></td>
       <td>Bạn</td><td><span className="task-status-label" data-status={task.obligation?.status ?? "TODO"}>{task.obligation ? automaticTaskStatuses[task.obligation.status] : t(taskLabels.TODO)}</span></td>
       {status === "DONE" ? <><td>{task.obligation?.endedAt ? <span className="task-due font-medium text-emerald-700 dark:text-emerald-300"><CheckCheck size={12} className="inline mr-1 text-emerald-600 dark:text-emerald-400" />{new Intl.DateTimeFormat(language, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(task.obligation.endedAt))}</span> : "–"}</td><td>–</td></> : <><td>–</td><td><ScreeningTeamTaskDeadline task={task} /></td></>}
@@ -175,17 +188,24 @@ export function TaskBoardView({ projectId, readOnly, onSelect, mode, onMode }: {
       <td><Link className="text-sm text-primary underline underline-offset-4" to={withTaskReturn(screeningWorkLink(projectId, task, sectionForTask(task)), task, location.pathname + location.search)}>{screeningTeamAction(task)}</Link></td>
     </tr>)}{manualRows.map(task => <tr key={task.id}><td><button className="task-list-title" type="button" onClick={() => onSelect(task.id)}>{task.title}</button>{task.status === "BLOCKED" && <small className="task-blocked-reason">{task.blockedReason}</small>}</td><td><Person task={task} /></td><td><span className="task-status-label" data-status={task.status}>{t(taskLabels[task.status])}</span></td>
       {status === "DONE" ? <><td>{task.completedAt ? <span className="task-due font-medium text-emerald-700 dark:text-emerald-300" title={new Date(task.completedAt).toLocaleString(language)}><CheckCheck size={12} className="inline mr-1 text-emerald-600 dark:text-emerald-400" />{new Intl.DateTimeFormat(language, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(task.completedAt))}</span> : "–"}</td><td><TaskPriority priority={task.priority} /></td></> : <><td><TaskPriority priority={task.priority} /></td><td><TaskDueDate task={task} /></td></>}
-      <td>{milestones.data?.items.find(item => item.id === task.milestoneId)?.title ?? (task.milestoneId ? t("Milestone") : "–")}</td><td><WorkspaceArtifactLink projectId={projectId} link={task.link} /></td></tr>)}</tbody></table></div>{source !== "SCREENING" && <WorkspacePager data={tasks.data} page={page} onPage={setPage} />}</>}
+      <td>{milestones.data?.items.find(item => item.id === task.milestoneId)?.title ?? (task.milestoneId ? t("Milestone") : "–")}</td><td><WorkspaceArtifactLink projectId={projectId} link={task.link} /></td></tr>)}</tbody></table></div>
+      <WorkspacePager
+        data={source === "SCREENING" ? screeningPage.data : source === "MANUAL" ? tasks.data : { total, hasNext: Boolean(tasks.data?.hasNext || screeningPage.data?.hasNext) }}
+        page={page}
+        onPage={setPage}
+      />
+    </>}
     {history.length > 0 && <details className="coord-history-panel"><summary>Lịch sử Task tự động ({history.length})</summary><ul className="space-y-3 pt-3">{history.map(task => <li key={task.obligation!.id} className="flex flex-wrap items-baseline justify-between gap-2 border-b pb-3 text-sm"><div className="min-w-0"><p className="font-medium break-words">{task.title}</p><p className="text-muted-foreground">{task.label} · {automaticTaskStatuses[task.obligation!.status]} · {task.description}</p></div><Link className="text-primary underline" to={withTaskReturn(screeningWorkLink(projectId, task, sectionForTask(task)), task, location.pathname + location.search)}>Xem trạng thái</Link></li>)}</ul></details>}
   </section>;
 }
-function TaskColumn({ status, column, readOnly, onSelect, onPage, onMove, screeningTasks, projectId, onViewAllCompleted, doneDays = 14, onDoneDaysChange }: {
-  status: WorkspaceTaskStatus; column: WorkspaceTaskBoard["columns"][WorkspaceTaskStatus]; readOnly: boolean; onSelect: SelectTask; onPage: (page: number) => void; onMove: (task: WorkspaceTask, status: WorkspaceTaskStatus) => void; screeningTasks: MyWorkTask[]; projectId: string; onViewAllCompleted?: () => void; doneDays?: number | "all"; onDoneDaysChange?: (days: number | "all") => void;
+function TaskColumn({ status, column, readOnly, onSelect, onPage, onMove, screeningTasks, screeningDoneTotal, projectId, onViewAllCompleted, doneDays = 14, onDoneDaysChange }: {
+  status: WorkspaceTaskStatus; column: WorkspaceTaskBoard["columns"][WorkspaceTaskStatus]; readOnly: boolean; onSelect: SelectTask; onPage: (page: number) => void; onMove: (task: WorkspaceTask, status: WorkspaceTaskStatus) => void; screeningTasks: MyWorkTask[]; screeningDoneTotal?: number; projectId: string; onViewAllCompleted?: () => void; doneDays?: number | "all"; onDoneDaysChange?: (days: number | "all") => void;
 }) {
   const { t } = useI18n(); const Icon = icons[status];
   const { ref, isDropTarget } = useDroppable({ id: status, type: "column", accept: "task", disabled: readOnly, collisionPriority: 1 });
   const isDone = status === "DONE";
-  const totalCompleted = column.total + screeningTasks.length;
+  const doneScreeningCount = isDone ? (screeningDoneTotal ?? screeningTasks.length) : screeningTasks.length;
+  const totalCompleted = column.total + doneScreeningCount;
 
   type DoneCardItem =
     | { type: "screening"; task: MyWorkTask; time: number; id: string }
@@ -249,7 +269,7 @@ function TaskColumn({ status, column, readOnly, onSelect, onPage, onMove, screen
         <h3>{t(taskLabels[status])}</h3>
         <span
           className="task-column-count"
-          title={isDone && column.total > 0 && screeningTasks.length > 0 ? `${column.total} ${t("project tasks")} · ${screeningTasks.length} ${t("my screening tasks")}` : undefined}
+          title={isDone && column.total > 0 && doneScreeningCount > 0 ? `${column.total} ${t("project tasks")} · ${doneScreeningCount} ${t("my screening tasks")}` : undefined}
         >
           {totalCompleted}
         </span>
@@ -316,9 +336,9 @@ function TaskColumn({ status, column, readOnly, onSelect, onPage, onMove, screen
           <small className="task-page-count">
             {t("Showing {{shown}} of {{total}} completed tasks", { shown: combinedDone.length, total: totalCompleted })}
           </small>
-          {column.total > 0 && screeningTasks.length > 0 && (
+          {column.total > 0 && doneScreeningCount > 0 && (
             <small className="task-done-breakdown text-[11px] text-muted-foreground text-center block">
-              ({column.total} {t("project tasks")} · {screeningTasks.length} {t("my screening tasks")})
+              ({column.total} {t("project tasks")} · {doneScreeningCount} {t("my screening tasks")})
             </small>
           )}
           {onViewAllCompleted && (

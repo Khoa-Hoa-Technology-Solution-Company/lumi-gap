@@ -77,6 +77,7 @@ export interface ScreeningPersonalEvaluation {
 
 export interface ScreeningWorkspaceSummary {
   automaticTasks?: ScreeningAutomaticTask[];
+  automaticDoneTotal?: number;
   readOnly?: boolean;
   pendingInformation?: Array<{ paperId: string; roundId: string; title: string; reason: string; kind: "FULLTEXT" | "INFORMATION" }>;
   workPapers?: ScreeningWorkPaper[];

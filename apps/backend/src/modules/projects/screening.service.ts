@@ -1385,10 +1385,14 @@ export const screeningService = {
       }
       const acceptedPapers = await acceptedScreeningPapers(c);
       await reconcileScreeningObligations(c);
-      const automaticTasks = await screeningObligationDtos(c);
+      const [automaticTasks, automaticDoneTotal] = await Promise.all([
+        screeningObligationDtos(c, { maxDone: 5 }),
+        c.tx.screeningObligation.count({ where: { projectId: c.project.id, assigneeId: c.actorId, status: "DONE" } }),
+      ]);
       const workPapers = await screeningWorkPapers(c, [...myActiveClaims, ...pendingConsensus, ...pendingDiscussions, ...pendingAdjudications, ...myEvaluations, ...acceptedPapers, ...pendingInformation].map(item => item.roundId));
       return {
         automaticTasks,
+        automaticDoneTotal,
         readOnly: ["ARCHIVED", "COMPLETED"].includes(c.project.status),
         workPapers, pendingInformation,
         pendingDiscussions, expiredClaims, completedPersonalReviews,

@@ -6,7 +6,8 @@ const path = (id: string, suffix: string) => `/projects/${encodeURIComponent(id)
 async function get<T>(id: string, suffix: string, params?: Record<string, string | number>) { return (await api.get<{ data: T }>(path(id, suffix), { params })).data.data; }
 async function write(id: string, suffix: string, data: unknown, method = "post") { return (await api.request<{ data: unknown }>({ url: path(id, suffix), method, data })).data.data; }
 export const screeningApi = {
-  automaticTasks: (id: string) => get<ScreeningAutomaticTask[]>(id, "automatic-tasks"),
+  automaticTasks: (id: string, params?: Record<string, string | number>) => get<ScreeningAutomaticTask[]>(id, "automatic-tasks", params),
+  automaticTasksPage: (id: string, params: Record<string, string | number | undefined>) => get<WorkspacePage<ScreeningAutomaticTask>>(id, "automatic-tasks", params as Record<string, string | number>),
   resumeFullText: (id: string, roundId: string, data: unknown) => write(id, `rounds/${roundId}/resume-full-text`, data),
   caseAction: (id: string, roundId: string, data: unknown) => write(id, `rounds/${roundId}/adjudication`, data),
   caseSource: async (id: string, roundId: string, fileId: string, caseId?: string) => (await api.get<Blob>(path(id, `rounds/${roundId}/adjudication/sources/${fileId}`), { responseType: "blob", params: { caseId } })).data,

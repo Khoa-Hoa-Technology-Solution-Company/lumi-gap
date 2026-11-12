@@ -36,7 +36,8 @@ export async function workspaceHistory(context: WorkspaceContext, entityKind: st
 type TaskQuery = Partial<z.infer<typeof taskQuerySchema>> & Page;
 const taskStatuses: WorkspaceTaskStatus[] = ["TODO", "IN_PROGRESS", "BLOCKED", "DONE"];
 function taskWhere(context: WorkspaceContext, query: TaskQuery): Prisma.ProjectTaskWhereInput {
-  return { projectId: context.project.id, deletedAt: null,
+  return {
+    projectId: context.project.id, deletedAt: null,
     ...(query.q ? { title: { contains: query.q, mode: "insensitive" } } : {}),
     ...(query.status ? { status: query.status } : {}), ...(query.priority ? { priority: query.priority } : {}),
     ...(query.milestoneId ? { milestoneId: query.milestoneId } : {}), ...(query.parentTaskId ? { parentTaskId: query.parentTaskId } : {}),
@@ -56,13 +57,13 @@ async function taskPage(context: WorkspaceContext, query: TaskQuery) {
   const where = taskWhere(context, query);
   const order: Prisma.ProjectTaskOrderByWithRelationInput[] =
     query.sort === "due" ? [{ dueAt: { sort: "asc", nulls: "last" } }]
-    : query.sort === "priority" ? [{ priority: "desc" }]
-    : query.sort === "title" ? [{ title: "asc" }]
-    : query.sort === "updated" ? [{ updatedAt: "desc" }]
-    : query.sort === "completed" ? [{ completedAt: { sort: "desc", nulls: "last" } }, { updatedAt: "desc" }, { id: "desc" }]
-    : query.sort === "completed_asc" ? [{ completedAt: { sort: "asc", nulls: "first" } }, { updatedAt: "asc" }, { id: "asc" }]
-    : query.status === "DONE" && query.sort === "manual" ? [{ completedAt: { sort: "desc", nulls: "last" } }, { updatedAt: "desc" }, { id: "desc" }]
-    : [{ sortOrder: "asc" }];
+      : query.sort === "priority" ? [{ priority: "desc" }]
+        : query.sort === "title" ? [{ title: "asc" }]
+          : query.sort === "updated" ? [{ updatedAt: "desc" }]
+            : query.sort === "completed" ? [{ completedAt: { sort: "desc", nulls: "last" } }, { updatedAt: "desc" }, { id: "desc" }]
+              : query.sort === "completed_asc" ? [{ completedAt: { sort: "asc", nulls: "first" } }, { updatedAt: "asc" }, { id: "asc" }]
+                : query.status === "DONE" && query.sort === "manual" ? [{ completedAt: { sort: "desc", nulls: "last" } }, { updatedAt: "desc" }, { id: "desc" }]
+                  : [{ sortOrder: "asc" }];
   const [rows, total] = await Promise.all([context.tx.projectTask.findMany({ where, ...paging(query), orderBy: [...order, { id: "asc" }] }), context.tx.projectTask.count({ where })]);
   return pageOf(await taskDtos(context, rows), total, query);
 }

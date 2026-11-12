@@ -11,7 +11,7 @@ import { screeningPageSchema, screeningHistorySchema } from "./dto/screening.sch
 const project = (r: Request) => String(r.params.id), actor = (r: Request) => r.user!.sub, round = (r: Request) => String(r.params.roundId);
 const send = (r: Response, data: unknown, status = 200) => r.status(status).json({ success: true, data });
 export const screeningController = {
-  automaticTasks: async (r: Request, res: Response) => send(res, await screeningObligationsService.list(project(r), actor(r))),
+  automaticTasks: async (r: Request, res: Response) => send(res, await screeningObligationsService.list(project(r), actor(r), r.query as any)),
   resumeFullText: async (r: Request, res: Response) => send(res, await service.resumeFullText(project(r), actor(r), round(r), r.body)),
   caseAction: async (r: Request, res: Response) => send(res, await screeningCaseService.act(project(r), actor(r), round(r), r.body)),
   caseSource: async (r: Request, res: Response) => { const bytes = await screeningCaseService.source(project(r), actor(r), round(r), String(r.params.fileId), r.query.caseId as string | undefined); res.set({ "Content-Type": "application/pdf", "Content-Disposition": 'inline; filename="paper-source.pdf"', "X-Content-Type-Options": "nosniff" }).send(Buffer.from(bytes)); },
